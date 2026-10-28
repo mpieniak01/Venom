@@ -384,7 +384,7 @@ export interface RuntimeCatalogModelInfo {
   name: string;
   provider: string;
   runtime_id: string;
-  source_type: "local-runtime" | "cloud-api";
+  source_type: "local-runtime" | "cloud-api" | "remote";
   active: boolean;
   chat_compatible?: boolean;
   feedback_loop_ready?: boolean;
@@ -409,7 +409,9 @@ export interface UnifiedModelCatalogResponse {
   };
   runtimes: Array<{
     runtime_id: string;
-    source_type: "local-runtime" | "cloud-api";
+    label?: string;
+    display_name?: string;
+    source_type: "local-runtime" | "cloud-api" | "remote";
     configured: boolean;
     available: boolean;
     status: string;
@@ -814,7 +816,9 @@ type RuntimeOptionsPayload = {
   };
   runtimes?: Array<{
     runtime_id: string;
-    source_type: "local-runtime" | "cloud-api";
+    label?: string;
+    display_name?: string;
+    source_type: "local-runtime" | "cloud-api" | "remote";
     configured: boolean;
     available: boolean;
     status: string;

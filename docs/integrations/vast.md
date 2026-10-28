@@ -447,3 +447,47 @@ References:
 - [NVIDIA NGC registry](https://docs.nvidia.com/ngc/latest/ngc-catalog-user-guide.html)
 - [vLLM OpenAI-compatible serving](https://docs.vllm.ai/en/stable/serving/online_serving/openai_compatible_server/)
 - [Ollama loaded models](https://docs.ollama.com/api/ps)
+
+## Managed Ollama in the existing chat
+
+The chat selector offers **Ollama · Vast** only when a manually attached instance,
+its SSH tunnel and Ollama API are available. An empty remote catalog cannot
+provide a selectable model. Models are read from the attached server; local
+models with the same name remain separate.
+
+Run the existing CLI manually to search, plan, create, inspect and provision
+the instance. Before creating it, prepare an Ollama profile with a pinned image
+and model digest, explicit download budget, context and rental budget.
+The inspect profile used for the infrastructure-only trial does not install
+a chat model.
+
+With the Venom API running, use these commands (set --api-base if necessary):
+
+    python scripts/cloud/vast/vast.py --json chat-attach --plan PLAN_ID --api-base http://127.0.0.1:8800
+    python scripts/cloud/vast/vast.py --json chat-status --api-base http://127.0.0.1:8800
+    python scripts/cloud/vast/vast.py --json chat-detach --api-base http://127.0.0.1:8800
+
+The API owns the tunnel. Reloading the browser does not close it. Chat requests
+continue through the existing Direct and Normal flows, using the selected
+remote model and preserving runtime identity. A broken connection does not
+switch the prompt to a local model. Detaching or cancelling generation does
+not stop billing or destroy the rented instance.
+
+After the trial, use the manual lifecycle commands to export and destroy the
+trial instance. The cleanup-zero command confirms removal and reads the full
+account instance list, including stopped instances. Success requires a count
+of zero. Unknown state or a failed read is not zero; unrelated instances are
+reported and never deleted automatically. trial-zero uses an inspect plan for
+a create/SSH/inspect/destroy infrastructure trial without a model download or
+chat generation.
+
+    python scripts/cloud/vast/vast.py --json cleanup-zero --plan PLAN_ID --api-base http://127.0.0.1:8800 --timeout 120
+    python scripts/cloud/vast/vast.py --json verify-zero
+
+Mock tests do not create paid resources. Real creation and chat generation
+are separate, explicitly invoked operator actions.
+
+Direct keeps up to 20 completed messages (50,000 characters) per remote target,
+connection generation, model and session in the mounted chat. Reloading the
+page clears this Direct context cache. Incomplete responses are not added to
+context. The existing emergency STOP also aborts the active Direct HTTP stream.

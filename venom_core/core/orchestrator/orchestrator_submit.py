@@ -183,6 +183,9 @@ def _spawn_background_task(coro: Coroutine[Any, Any, Any]) -> None:
 
 async def submit_task(orch: "Orchestrator", request: TaskRequest) -> TaskResponse:
     """Create task, apply queue limits, and schedule execution."""
+    from venom_core.services.vast_chat_runtime import preflight
+
+    await preflight()
     orch._refresh_kernel_if_needed()
     orch.last_activity = get_utc_now()
 

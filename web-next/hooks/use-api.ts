@@ -866,7 +866,17 @@ export type SimpleChatStreamRequest = {
   maxTokens?: number | null;
   temperature?: number | null;
   sessionId?: string | null;
+  expectedRuntimeId?: string | null;
+  expectedConfigHash?: string | null;
+  history?: Array<{ role: "user" | "assistant"; content: string }>;
 };
+
+let simpleChatController: AbortController | null = null;
+
+export function cancelSimpleChatStream() {
+  simpleChatController?.abort();
+  simpleChatController = null;
+}
 
 export async function sendSimpleChatStream(payload: SimpleChatStreamRequest) {
   const baseUrl = getApiBaseUrl();
@@ -877,6 +887,9 @@ export async function sendSimpleChatStream(payload: SimpleChatStreamRequest) {
     max_tokens?: number;
     temperature?: number;
     session_id?: string;
+    expected_runtime_id?: string;
+    expected_config_hash?: string;
+    history?: Array<{ role: "user" | "assistant"; content: string }>;
   } = {
     content: payload.content,
   };
@@ -884,19 +897,27 @@ export async function sendSimpleChatStream(payload: SimpleChatStreamRequest) {
   if (typeof payload.maxTokens === "number") body.max_tokens = payload.maxTokens;
   if (typeof payload.temperature === "number") body.temperature = payload.temperature;
   if (payload.sessionId) body.session_id = payload.sessionId;
+  if (payload.expectedRuntimeId) body.expected_runtime_id = payload.expectedRuntimeId;
+  if (payload.expectedConfigHash) body.expected_config_hash = payload.expectedConfigHash;
+  if (payload.history) body.history = payload.history;
+  const controller = new AbortController();
+  simpleChatController = controller;
   let response: Response;
   try {
     response = await fetch(target, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
+      signal: controller.signal,
     });
   } catch (error) {
+    if (controller.signal.aborted || payload.expectedRuntimeId?.startsWith("ollama@vast:")) throw error;
     if (baseUrl) {
       response = await fetch("/api/v1/llm/simple/stream", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
+        signal: controller.signal,
       });
     } else {
       throw error;
@@ -1059,6 +1080,7 @@ export async function purgeQueue() {
 }
 
 export async function emergencyStop() {
+  cancelSimpleChatStream();
   return apiFetch<{ cancelled: number; purged: number }>(
     "/api/v1/queue/emergency-stop",
     { method: "POST" },

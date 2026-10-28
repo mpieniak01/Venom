@@ -350,6 +350,10 @@ export function useCockpitLogic({
             .map((model) => model.name);
         const currentSelection = (interactive.state.selectedLlmModel || "").trim();
         if (runtimeModels.length === 0) {
+            if (effectiveServer === "vast_ollama") {
+                if (currentSelection) interactive.setters.setSelectedLlmModel("");
+                return;
+            }
             const fallbackModel = (activeModelFromRuntime || currentSelection).trim();
             if (!fallbackModel) {
                 if (interactive.state.selectedLlmModel) {

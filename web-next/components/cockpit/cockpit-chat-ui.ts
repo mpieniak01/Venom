@@ -58,6 +58,9 @@ type CockpitChatUiParams = {
     maxTokens: number | null;
     temperature: number | null;
     sessionId: string | null;
+    expectedRuntimeId?: string | null;
+    expectedConfigHash?: string | null;
+    history?: Array<{ role: "user" | "assistant"; content: string }>;
   }) => Promise<Response>;
   sendTask: (payload: SendTaskInput) => Promise<{ task_id?: string | null }>;
   ingestMemoryEntry: (payload: {

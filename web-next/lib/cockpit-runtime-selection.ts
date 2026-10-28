@@ -16,6 +16,7 @@ export function normalizeRuntimeId(value: string | null | undefined): string {
   if (!candidate) {
     return "";
   }
+  if (candidate.toLowerCase().startsWith("ollama@vast:")) return "vast_ollama";
   const atIndex = candidate.indexOf("@");
   if (atIndex <= 0) {
     return candidate.toLowerCase();
@@ -31,7 +32,7 @@ type CatalogRuntimeModel = {
 type CatalogRuntime = {
   runtime_id: string;
   active?: boolean;
-  source_type?: "local-runtime" | "cloud-api";
+  source_type?: "local-runtime" | "cloud-api" | "remote";
   models?: ReadonlyArray<CatalogRuntimeModel>;
 };
 
@@ -51,7 +52,7 @@ export type ActiveRuntimeInfo = {
   active_model?: string | null;
   config_hash?: string | null;
   runtime_id?: string | null;
-  source_type?: "local-runtime" | "cloud-api";
+  source_type?: "local-runtime" | "cloud-api" | "remote";
   requested_model_alias?: string | null;
   resolved_model_id?: string | null;
   resolution_reason?: "exact" | "fallback" | "resource_guard" | "not_found" | null;
@@ -159,7 +160,11 @@ export function resolveCockpitActiveRuntimeInfo(
   return {
     ...fallback,
     active_server: activeRuntimeId,
-    runtime_id: activeRuntimeId,
+    runtime_id: activeRuntimeId === "vast_ollama"
+      ? catalog?.active?.runtime_id?.startsWith("ollama@vast:")
+        ? catalog.active.runtime_id
+        : fallbackRuntimeId === activeRuntimeId ? fallback?.runtime_id ?? activeRuntimeId : activeRuntimeId
+      : activeRuntimeId,
     active_model: resolvedActiveModel,
     ...(activeRuntime?.source_type ?? fallback?.source_type
       ? { source_type: activeRuntime?.source_type ?? fallback?.source_type }
@@ -177,9 +182,11 @@ export function resolveCockpitSelectedRuntimeId(
 }
 
 export function isCockpitRuntimeDisabled(
-  runtime: Pick<LlmRuntimeTargetOption, "configured" | "status" | "reason"> | null | undefined,
+  runtime: (Pick<LlmRuntimeTargetOption, "configured" | "status" | "reason"> & Partial<Pick<LlmRuntimeTargetOption, "runtime_id" | "source_type" | "available" | "models">>) | null | undefined,
 ): boolean {
   if (!runtime) return true;
+  if ((runtime.runtime_id === "vast_ollama" || runtime.source_type === "remote")
+    && (!runtime.available || !runtime.models?.length)) return true;
   return runtime.configured === false
     || (runtime.status || "").trim().toLowerCase() === "disabled"
     || ["runtime_disabled_by_profile", "runtime_not_installed", "runtime_not_supported"].includes(runtime.reason ?? "");

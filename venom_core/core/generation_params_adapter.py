@@ -174,6 +174,16 @@ class GenerationParamsAdapter:
             logger.warning(f"Nie udało się sparsować MODEL_GENERATION_OVERRIDES: {exc}")
             return {}
         runtime_key = cls._detect_provider(provider)
+        from venom_core.services import vast_chat_runtime
+        from venom_core.services.vast_chat_model_config import scope
+
+        selected = vast_chat_runtime.selection()
+        if (
+            selected is not None
+            and selected.get("model") == model_name
+            and runtime_key == "ollama"
+        ):
+            runtime_key = scope("vast_ollama") or "vast_ollama"
         return (
             payload.get(runtime_key, {}).get(model_name, {})
             if isinstance(payload, dict)

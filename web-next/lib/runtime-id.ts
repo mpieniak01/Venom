@@ -15,6 +15,7 @@ export function normalizeRuntimeId(value: string | null | undefined): string {
 export function canonicalRuntimeId(value: string | null | undefined): string {
   const normalized = normalizeRuntimeId(value);
   const atIndex = normalized.indexOf("@");
+  if (normalized.startsWith("ollama@vast:")) return "vast_ollama";
   if (atIndex < 0) return normalized;
   return normalized.slice(0, atIndex);
 }

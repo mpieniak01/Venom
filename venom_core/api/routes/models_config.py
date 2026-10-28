@@ -17,6 +17,7 @@ from venom_core.core import metrics as metrics_module
 from venom_core.core.generation_params_adapter import GenerationParamsAdapter
 from venom_core.core.model_registry_types import ModelProvider
 from venom_core.core.ollama_runtime_probe import probe_ollama_runtime_capabilities
+from venom_core.services import vast_chat_model_config
 from venom_core.utils.llm_runtime import get_active_llm_runtime
 from venom_core.utils.logger import get_logger
 
@@ -49,6 +50,9 @@ def _load_generation_schema(model_registry, model_name: str, *, update_mode: boo
 
 
 def _resolve_runtime_key(runtime: Optional[str]) -> str:
+    remote_scope = vast_chat_model_config.scope(runtime)
+    if remote_scope is not None:
+        return remote_scope
     runtime_info = get_active_llm_runtime()
     provider = runtime if runtime else runtime_info.provider
     return GenerationParamsAdapter.normalize_provider(provider)
@@ -142,8 +146,14 @@ def get_model_capabilities_endpoint(model_name: str):
 
 
 @router.get("/models/{model_name}/runtime-capabilities", responses=NOT_FOUND_RESPONSES)
-async def get_model_runtime_capabilities_endpoint(model_name: str):
+async def get_model_runtime_capabilities_endpoint(
+    model_name: str, runtime: Optional[str] = None
+):
     """Pobiera runtime capabilities modelu Ollama na podstawie `/api/show`."""
+    if vast_chat_model_config.scope(runtime) is not None:
+        import asyncio
+
+        return await asyncio.to_thread(vast_chat_model_config.capabilities, model_name)
     model_registry = get_model_registry()
     if model_registry is None:
         raise HTTPException(status_code=503, detail=MODEL_REGISTRY_UNAVAILABLE_DETAIL)
@@ -187,8 +197,10 @@ def get_model_config_endpoint(model_name: str, runtime: Optional[str] = None):
         raise HTTPException(status_code=503, detail=MODEL_REGISTRY_UNAVAILABLE_DETAIL)
 
     try:
-        generation_schema = _load_generation_schema(
-            model_registry, model_name, update_mode=False
+        generation_schema = (
+            vast_chat_model_config.generation_schema(model_name)
+            if vast_chat_model_config.scope(runtime) is not None
+            else _load_generation_schema(model_registry, model_name, update_mode=False)
         )
 
         schema = {key: param.to_dict() for key, param in generation_schema.items()}
@@ -220,8 +232,10 @@ def update_model_config_endpoint(model_name: str, request: ModelConfigUpdateRequ
         raise HTTPException(status_code=503, detail=MODEL_REGISTRY_UNAVAILABLE_DETAIL)
 
     try:
-        generation_schema = _load_generation_schema(
-            model_registry, model_name, update_mode=True
+        generation_schema = (
+            vast_chat_model_config.generation_schema(model_name)
+            if vast_chat_model_config.scope(request.runtime) is not None
+            else _load_generation_schema(model_registry, model_name, update_mode=True)
         )
         runtime_key = _resolve_runtime_key(request.runtime)
 

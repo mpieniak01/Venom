@@ -73,6 +73,20 @@ class KernelBuilder:
             ValueError: Jeśli konfiguracja jest niepoprawna
         """
         kernel = Kernel()
+        from venom_core.services.vast_chat_runtime import is_remote, runtime_override
+
+        runtime = runtime_override()
+        if is_remote(runtime):
+            if not runtime.endpoint:
+                raise ValueError("vast_chat_target_unavailable")
+            self._register_local_http_service(
+                kernel,
+                "local_llm" if self.enable_multi_service else "local",
+                runtime.model_name,
+                runtime.endpoint,
+                api_key="ollama",
+            )
+            return kernel
 
         if self.enable_multi_service:
             # Tryb multi-service - zarejestruj wszystkie dostępne serwisy
@@ -128,6 +142,10 @@ class KernelBuilder:
             self._register_service(kernel, "local", service_id="local_llm")
             logger.info("Zarejestrowano serwis: local_llm")
         except Exception as e:
+            from venom_core.services.vast_chat_runtime import selection
+
+            if selection() is not None:
+                raise
             if self.settings.LLM_SERVICE_TYPE.lower() == "onnx":
                 raise
             active_server = str(getattr(self.settings, "ACTIVE_LLM_SERVER", "") or "")
@@ -193,6 +211,20 @@ class KernelBuilder:
     def _register_local_service(
         self, kernel: Kernel, service_id: str, model_name: str, _enable_grounding: bool
     ) -> None:
+        from venom_core.services.vast_chat_runtime import is_remote, runtime_override
+
+        runtime = runtime_override()
+        if is_remote(runtime):
+            if not runtime.endpoint:
+                raise ValueError("vast_chat_target_unavailable")
+            self._register_local_http_service(
+                kernel,
+                service_id,
+                runtime.model_name,
+                runtime.endpoint,
+                api_key="ollama",
+            )
+            return
         active_server = str(
             getattr(self.settings, "ACTIVE_LLM_SERVER", "") or ""
         ).lower()
@@ -219,10 +251,16 @@ class KernelBuilder:
         self._register_local_http_service(kernel, service_id, model_name, endpoint)
 
     def _register_local_http_service(
-        self, kernel: Kernel, service_id: str, model_name: str, endpoint: str
+        self,
+        kernel: Kernel,
+        service_id: str,
+        model_name: str,
+        endpoint: str,
+        *,
+        api_key: str | None = None,
     ) -> None:
         async_client = AsyncOpenAI(
-            api_key=self.settings.LLM_LOCAL_API_KEY,
+            api_key=self.settings.LLM_LOCAL_API_KEY if api_key is None else api_key,
             base_url=endpoint,
         )
         chat_service = MafChatService(

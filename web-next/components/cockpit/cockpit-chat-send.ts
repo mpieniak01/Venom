@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useRef } from "react";
+import { appendVastChatTurn, vastChatHistoryKey, type VastChatTurn } from "@/lib/vast-chat-history";
 import { useTranslation } from "@/lib/i18n";
 import { parseInputCommand } from "@/lib/slash-commands";
 
@@ -46,13 +47,16 @@ function shouldUseSimpleMode(
 export function resolveEffectiveChatModelSelection(
   selectedLlmModel: string,
   activeModel: string | null | undefined,
+  selectedRuntime = "",
+  activeRuntime = "",
 ): string {
   const selected = (selectedLlmModel || "").trim();
   if (selected) return selected;
+  if (selectedRuntime !== activeRuntime && [selectedRuntime, activeRuntime].includes("vast_ollama")) return "";
   return String(activeModel || "").trim();
 }
 
-async function syncTargetServerIfNeeded(params: {
+export async function syncTargetServerIfNeeded(params: {
   selectedLlmServer: string;
   selectedLlmModel: string;
   activeServerInfo: ChatSendParams["activeServerInfo"];
@@ -61,18 +65,17 @@ async function syncTargetServerIfNeeded(params: {
   refreshActiveServer: ChatSendParams["refreshActiveServer"];
   setMessage: ChatSendParams["setMessage"];
   t: (key: string) => string;
-}): Promise<boolean> {
+}): Promise<ChatSendParams["activeServerInfo"] | false> {
   const targetServer = (params.selectedLlmServer || "").toLowerCase().trim();
   const activeServer = (params.activeServerInfo?.active_server || "").toLowerCase().trim();
-  if (!targetServer || !activeServer || targetServer === activeServer) return true;
+  const sameModel = !params.selectedLlmModel || params.selectedLlmModel === params.activeServerInfo?.active_model;
+  if (!targetServer || (targetServer === activeServer && sameModel)) return params.activeServerInfo;
   try {
-    if (isCloudRuntimeServer(targetServer)) {
-      await params.setActiveLlmRuntime(targetServer, params.selectedLlmModel);
-    } else {
-      await params.setActiveLlmServer(targetServer, params.selectedLlmModel);
-    }
+    const switched = isCloudRuntimeServer(targetServer)
+      ? await params.setActiveLlmRuntime(targetServer, params.selectedLlmModel)
+      : await params.setActiveLlmServer(targetServer, params.selectedLlmModel);
     params.refreshActiveServer();
-    return true;
+    return { ...params.activeServerInfo, ...switched, active_server: targetServer };
   } catch (err) {
     params.setMessage(getServerSwitchErrorMessage(err, params.t("cockpit.chatMessages.serverSwitchError")));
     return false;
@@ -149,6 +152,7 @@ export function useChatSend(params: ChatSendParams) {
   } = params;
 
   const t = useTranslation();
+  const vastHistory = useRef(new Map<string, VastChatTurn[]>());
 
   return useCallback(async (payload: string) => {
     const parsed = parseInputCommand(payload);
@@ -160,6 +164,8 @@ export function useChatSend(params: ChatSendParams) {
     const effectiveSelectedModel = resolveEffectiveChatModelSelection(
       selectedLlmModel,
       activeServerInfo?.active_model,
+      selectedLlmServer,
+      activeServerInfo?.active_server ?? "",
     );
     if (selectedLlmServer && !effectiveSelectedModel) {
       setMessage(t("cockpit.chatMessages.modelSelectionRequired"));
@@ -186,7 +192,7 @@ export function useChatSend(params: ChatSendParams) {
       return false;
     }
 
-    const serverOk = await syncTargetServerIfNeeded({
+    const effectiveActiveServerInfo = await syncTargetServerIfNeeded({
       selectedLlmServer,
       selectedLlmModel: effectiveSelectedModel,
       activeServerInfo,
@@ -196,9 +202,9 @@ export function useChatSend(params: ChatSendParams) {
       setMessage,
       t,
     });
-    if (!serverOk) return false;
+    if (effectiveActiveServerInfo === false) return false;
     const modelOk = await ensureSelectedModelIsActive({
-      activeServerInfo,
+      activeServerInfo: effectiveActiveServerInfo,
       selectedLlmModel: effectiveSelectedModel,
       ensureModelActive,
       setMessage,
@@ -244,13 +250,22 @@ export function useChatSend(params: ChatSendParams) {
       }
     }
 
+    const historyKey = vastChatHistoryKey(effectiveActiveServerInfo?.runtime_id, effectiveSelectedModel, resolvedSession);
     const taskParams = {
+      ...(historyKey ? {
+        history: vastHistory.current.get(historyKey) ?? [],
+        onCompleted: (answer: string) => {
+          const history = appendVastChatTurn(vastHistory.current.get(historyKey) ?? [], trimmed, answer);
+          vastHistory.current.clear();
+          vastHistory.current.set(historyKey, history);
+        },
+      } : {}),
       clientId,
       trimmed,
       resolvedSession,
       generationParams,
       selectedLlmModel: effectiveSelectedModel,
-      activeServerInfo,
+      activeServerInfo: effectiveActiveServerInfo,
       sendSimpleChatStream,
       linkOptimisticRequest,
       setLocalSessionHistory,

@@ -523,8 +523,12 @@ class SessionHandler:
         headers: Dict[str, str] = {}
         if runtime.provider == "openai" and SETTINGS.OPENAI_API_KEY:
             headers["Authorization"] = f"Bearer {SETTINGS.OPENAI_API_KEY}"
-        if runtime.service_type == "local" and getattr(
-            SETTINGS, "LLM_LOCAL_API_KEY", None
+        from venom_core.services.vast_chat_runtime import is_remote
+
+        if (
+            not is_remote(runtime)
+            and runtime.service_type == "local"
+            and getattr(SETTINGS, "LLM_LOCAL_API_KEY", None)
         ):
             headers["Authorization"] = f"Bearer {SETTINGS.LLM_LOCAL_API_KEY}"
         return headers

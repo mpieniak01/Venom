@@ -6750,6 +6750,76 @@
       "rationale": "Default release-lane regression coverage."
     },
     {
+      "path": "tests/test_vast_chat_cli.py",
+      "domain": "misc",
+      "test_type": "service_contract",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Vast chat target, manual lifecycle and identity regression coverage."
+    },
+    {
+      "path": "tests/test_vast_chat_connection.py",
+      "domain": "misc",
+      "test_type": "service_contract",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Vast chat target, manual lifecycle and identity regression coverage."
+    },
+    {
+      "path": "tests/test_vast_chat_runtime.py",
+      "domain": "misc",
+      "test_type": "service_contract",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Vast chat target, manual lifecycle and identity regression coverage."
+    },
+    {
+      "path": "tests/test_vast_chat_smoke.py",
+      "domain": "misc",
+      "test_type": "service_contract",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Vast chat target, manual lifecycle and identity regression coverage."
+    },
+    {
+      "path": "tests/test_vast_cleanup_zero.py",
+      "domain": "misc",
+      "test_type": "service_contract",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Vast chat target, manual lifecycle and identity regression coverage."
+    },
+    {
       "path": "tests/test_vast_cli.py",
       "domain": "misc",
       "test_type": "service_contract",

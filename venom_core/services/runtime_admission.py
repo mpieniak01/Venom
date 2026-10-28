@@ -542,9 +542,9 @@ class RuntimeAdmission:
             rejected = False
             if isinstance(exc, RuntimeOperationRejection):
                 rejected = exc.confirms_rejection(_CURRENT_OPERATION.get())
-            uncertain = not rejected and (
-                confirm_quiescent is None or not confirm_quiescent()
-            )
+            uncertain = False
+            if not rejected:
+                uncertain = confirm_quiescent is None or not confirm_quiescent()
             raise
         finally:
             if uncertain and operation is None:

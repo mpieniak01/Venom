@@ -71,7 +71,10 @@ def test_probe_ollama_runtime_capabilities_builds_snapshot():
     assert caps.probes["thinking"]["status"] == "verified"
     assert caps.probes["tools"]["status"] == "verified"
     assert caps.probes["vision"]["status"] == "verified"
-    assert caps.probes["audio"]["status"] == "metadata_only"
+    assert caps.probes["audio"] == {
+        "status": "metadata_only",
+        "reason": "recorded_audio_required",
+    }
     assert caps.probe_status == "metadata_only"
 
 
@@ -92,6 +95,26 @@ def test_resolve_voice_pipeline_selects_declared_native_audio():
     assert decision.reasoning == "think_api"
     assert decision.tools == "policy_gated_tools"
     assert decision.vision == "images_api"
+
+
+def test_probe_audio_reports_missing_capability_without_generation():
+    class TextOnlyClient(_NoopOllamaClient):
+        async def get_model_show(self, model_name: str):
+            return {"capabilities": ["completion"]}
+
+        async def chat(self, payload):
+            raise AssertionError("Text-only metadata must not start a probe")
+
+    client = TextOnlyClient()
+    caps = asyncio.run(
+        probe_ollama_runtime_capabilities(
+            client=client, model_name="text-only", endpoint=client.endpoint
+        )
+    )
+    assert caps.probes["audio"] == {
+        "status": "metadata_only",
+        "reason": "capability_missing",
+    }
 
 
 def test_probe_ollama_runtime_capabilities_handles_empty_show_payload():

@@ -20,6 +20,13 @@ from venom_core.infrastructure.traffic_control.retry_policy import (
 )
 
 
+@pytest.mark.parametrize("body", [b"\xff", b"{not-json", b"[]"])
+def test_error_reason_handles_invalid_or_non_object_body(body):
+    from venom_core.infrastructure.traffic_control.http_client import _error_reason
+
+    assert _error_reason(body) == "unspecified"
+
+
 class TestTokenBucket:
     """Testy dla TokenBucket rate limitera."""
 

@@ -108,7 +108,7 @@ def render(rows: list[dict], count: int, locale: str) -> str:
             f"{amount(row['quote']['hourly_usd']):.5f}",
             f"CUDA {offer.get('cuda_max_good', '?')}; NVIDIA {offer.get('driver_version', '?')}; machine {offer.get('machine_id', '?')}",
             offer.get("gpu_name"),
-            f"{flops:.2f}" if flops is not None else None,
+            f"{flops:.0f}" if flops is not None else None,
             offer.get("gpu_ram"),
             offer.get("cpu_ram"),
             memory.get("baseline_ram_mb"),

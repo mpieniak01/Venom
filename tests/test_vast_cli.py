@@ -317,7 +317,7 @@ def test_offer_table_readonly_and_render(service, tmp_path, capsys):
         ]
     output = capsys.readouterr().out
     assert "64000" in output and "32000" in output
-    assert "FLOPS [TFLOPS]" in output and "35.58" in output
+    assert "FLOPS [TFLOPS]" in output and "| 36 |" in output
     assert "Xeon / test CPU" in output
     for locale in ("pl", "en", "de"):
         assert offers_table.TEXT[locale]["empty"] in offers_table.render([], 0, locale)

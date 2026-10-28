@@ -67,7 +67,10 @@ def _model_operation(plan, instance: dict, operation: str) -> dict:
     with (
         tunnel(plan, instance) as endpoint,
         httpx.Client(
-            base_url=endpoint, timeout=30, trust_env=False, follow_redirects=False
+            base_url=endpoint,
+            timeout=httpx.Timeout(180, connect=10),
+            trust_env=False,
+            follow_redirects=False,
         ) as client,
     ):
         engine = _engine_ready(client, plan.profile)

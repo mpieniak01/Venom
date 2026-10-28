@@ -419,3 +419,20 @@ def test_worker_venv_sees_selected_image_environment_without_installing(tmp_path
     files = list(inner.rglob("venom-image-site-packages.pth"))
     assert len(files) == 1
     assert str(package) in files[0].read_text().splitlines()
+
+
+def test_ollama_cold_start_allows_more_than_one_minute():
+    from venom_core.services.vast_environments.evaluation import StreamCapture
+
+    capture = StreamCapture(started=100.0)
+    with patch(
+        "venom_core.services.vast_environments.evaluation.time.monotonic",
+        return_value=170.0,
+    ):
+        assert capture.append('{"message":{"content":"ok"},"done":false}') is False
+    with patch(
+        "venom_core.services.vast_environments.evaluation.time.monotonic",
+        return_value=281.0,
+    ):
+        with pytest.raises(VastError, match="vast.sample_limit"):
+            capture.append("{}")

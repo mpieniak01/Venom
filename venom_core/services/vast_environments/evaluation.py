@@ -56,7 +56,7 @@ class StreamCapture:
 
     def append(self, line: str) -> bool:
         self.size += len(line)
-        if self.size > 2_000_000 or time.monotonic() - self.started > 60:
+        if self.size > 2_000_000 or time.monotonic() - self.started > 180:
             raise VastError("vast.sample_limit")
         if not line:
             return False

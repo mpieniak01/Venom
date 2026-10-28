@@ -438,3 +438,22 @@ def test_absent_instance_is_distinct_from_invalid_response():
         api, _ = client([(200, body)])
         with pytest.raises(VastError, match="vast.invalid_response"):
             api.instance(88)
+
+
+def test_ram_baseline_uses_machine_fraction_not_card_vram(profile, offer):
+    shared = {**offer, "cpu_ram": 128000, "gpu_frac": 0.125}
+    result = assess(shared, profile)
+    assert result.status == "ineligible"
+    assert "cpu_ram" in result.reasons
+    assert result.runtime["memory_allocation"]["baseline_ram_mb"] == "16000.000"
+    assert result.offer["gpu_ram"] == offer["gpu_ram"]
+    enough = assess({**shared, "cpu_ram": 512000}, profile)
+    assert enough.status == "eligible"
+    assert "gpu_frac" not in enough.reasons
+
+
+def test_unknown_machine_fraction_does_not_claim_ram_baseline(profile, offer):
+    row = {k: v for k, v in offer.items() if k != "gpu_frac"}
+    result = assess(row, profile)
+    assert "cpu_ram" in result.unknown
+    assert result.runtime["memory_allocation"]["baseline_ram_mb"] is None

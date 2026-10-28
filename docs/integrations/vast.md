@@ -525,3 +525,20 @@ Run create/wait/inspect/provision/ready and review GPU qualification before atta
 Engine availability is not GPU acceptance. Explicit chat request options may
 override server context defaults; verify the effective context using ollama ps.
 No undocumented memory-allocation flag or automatic replacement rental is added.
+
+
+### Memory allocation semantics
+Vast allocates baseline RAM/CPU proportionally to the machine GPU allocation:
+https://docs.vast.ai/guides/instances/docker-environment
+Offer cpu_ram is host RAM in MB; estimated baseline is cpu_ram*gpu_frac.
+gpu_frac is the machine share, not shared ownership of one GPU. Allocated GPUs
+are exclusive. cpu_cores_effective is already effective and is not scaled twice.
+Default min_gpu_fraction is0.001; an explicitly saved1 retains its restriction.
+
+Inspection separates host meminfo, cgroupv2 hard limit/current/high/swap/events,
+cgroupv1 hard limit, and /dev/shm capacity. Swap/shared memory are not additional
+RAM. A huge v1 sentinel means unlimited. Memory.high is soft pressure, and usage
+includes reclaimable cache; limit-current is not model headroom.
+Instance mem_limit/mem_usage/vmem_usage are retained as provider observations,
+without guessing undocumented units. SSH hard limits remain the acceptance
+source. A declaration and proportional estimate never replace actual checks.

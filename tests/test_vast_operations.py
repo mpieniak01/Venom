@@ -631,3 +631,28 @@ def test_real_versions_checked_before_download(service, driver, engine, accepted
     else:
         with pytest.raises(VastError, match="vast.runtime_version_mismatch"):
             _check_ollama_capacity(plan, capacity)
+
+
+@pytest.mark.parametrize(
+    "limit,expected", [("8589934592", 8589934592), ("max", 32768000), (None, 32768000)]
+)
+def test_hard_ram_limit_not_added_to_usage_or_swap(limit, expected):
+    from venom_core.services.vast_environments.ssh import _memory_bytes
+
+    facts = {
+        "memory": "MemTotal: 32000 kB",
+        "cgroup_memory_max": limit,
+        "cgroup_memory_current": "20000000",
+        "cgroup_memory_high": "1000",
+        "cgroup_memory_swap_max": "99999999999",
+    }
+    assert _memory_bytes(facts) == min(32768000, expected)
+
+
+def test_cgroup_v1_limit_and_unlimited_sentinel():
+    from venom_core.services.vast_environments.ssh import _memory_bytes
+
+    facts = {"memory": "MemTotal: 32000000 kB", "cgroup_memory_limit_v1": "8589934592"}
+    assert _memory_bytes(facts) == 8589934592
+    facts["cgroup_memory_limit_v1"] = str(1 << 63)
+    assert _memory_bytes(facts) == 32000000 * 1024

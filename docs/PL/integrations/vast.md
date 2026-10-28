@@ -84,3 +84,28 @@ Kolejność: plan/create → wait → inspect → provision → ready/kwalifikac
 Odbiór CUDA nadal wymaga 100% GPU i braku niezgodności, bez automatycznego CPU.
 Kontekst rzeczywistego żądania czatu może jawnie nadpisać domyślną wartość serwera;
 należy sprawdzić zgodność w ollama ps. Nie wynajmujemy automatycznie kolejnego hosta.
+
+
+## Pamięć hosta, przydział instancji i limit kontenera
+
+Dokumentacja Vast: https://docs.vast.ai/guides/instances/docker-environment
+opisuje proporcjonalny bazowy przydział RAM/CPU względem udziału GPU maszyny.
+cpu_ram to deklaracja MB RAM hosta; gpu_frac to udział GPU maszyny, a nie
+współdzielenie VRAM pojedynczej karty. GPU przypisane instancji są wyłączne.
+Wyszukiwanie ocenia bazowy RAM jako cpu_ram*gpu_frac (szacunek, nie pomiar).
+cpu_cores_effective jest już wartością efektywną; nie mnożymy jej drugi raz.
+Domyślny min_gpu_fraction=0.001 pozwala oceniać także części maszyn; jawne1
+w starym profilu zachowuje wymóg pełnego udziału. Num_gpus nadal wynosi1.
+
+Inspect rozdziela /proc/meminfo od memory.max, memory.current, memory.high,
+memory.swap.max, zdarzeń OOM i pojemności /dev/shm. Obsługuje także cgroupv1
+memory.limit_in_bytes. Twardy pułap RAM to minimum z RAM hosta i ograniczenia
+kontenera; v1 sentinel oznacza brak limitu. Memory.high to próg presji, nie
+twardy przydział. Użycie zawiera cache: limit minus current nie jest
+wiarygodną pulą dostępnej pamięci modelu. Swap i /dev/shm nie zwiększają RAM.
+gpu_ram i gpu_total_ram pozostają odrębne; dla jednegoGPU wymagamy VRAM karty.
+
+Odczyt instancji zachowuje mem_limit/mem_usage/vmem_usage bez zakładania ich
+jednostek; dokumentacja API nie określa ich precyzyjnie. Źródłem odbioru są
+pomiary SSH, nie sam odczyt cpu_ram. Nie dodajemy nieudokumentowanych flag
+zamówienia RAM. Nowy plan jest konieczny po aktualizacji profilu.

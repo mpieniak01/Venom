@@ -23,6 +23,7 @@ TEXT = {
             "USD/h",
             "Opis",
             "GPU",
+            "FLOPS [TFLOPS]",
             "VRAM [MB]",
             "RAM hosta [MB]",
             "RAM instancji ~[MB]",
@@ -39,6 +40,7 @@ TEXT = {
             "USD/h",
             "Description",
             "GPU",
+            "FLOPS [TFLOPS]",
             "VRAM [MB]",
             "Host RAM [MB]",
             "Instance RAM ~[MB]",
@@ -55,6 +57,7 @@ TEXT = {
             "USD/h",
             "Beschreibung",
             "GPU",
+            "FLOPS [TFLOPS]",
             "VRAM [MB]",
             "Host-RAM [MB]",
             "Instanz-RAM ~[MB]",
@@ -99,11 +102,13 @@ def render(rows: list[dict], count: int, locale: str) -> str:
     for row in rows:
         offer = row["offer"]
         memory = row["runtime"].get("memory_allocation", {})
+        flops = amount(offer.get("total_flops"))
         values = [
             offer["id"],
             f"{amount(row['quote']['hourly_usd']):.5f}",
             f"CUDA {offer.get('cuda_max_good', '?')}; NVIDIA {offer.get('driver_version', '?')}; machine {offer.get('machine_id', '?')}",
             offer.get("gpu_name"),
+            f"{flops:.2f}" if flops is not None else None,
             offer.get("gpu_ram"),
             offer.get("cpu_ram"),
             memory.get("baseline_ram_mb"),
@@ -144,6 +149,7 @@ def main(argv=None) -> int:
                 "--sort",
                 "price",
                 "--no-country-preference",
+                "--any-gpu",
             ]
         )
     document = json.loads(captured.getvalue())

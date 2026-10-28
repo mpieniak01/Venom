@@ -11,10 +11,12 @@ Domyślnie skrypt czyta istniejący profil
 `.venom_runtime/vast/prepared/chat-gemma4-26b-q4-24gb.json` i poświadczenia
 z `.env.dev`. Pokazuje do 10 ofert ocenionych jako `eligible`, posortowanych
 numerycznie po cenie godzinowej USD (wraz z dyskiem z profilu, bez transferu).
-Nie stosuje preferencji kraju; ograniczenia krajów zapisane w profilu pozostają.
+Wyszukuje dowolny model GPU, pomijając listę gpu_names z profilu. Pozostałe
+wymagania (m.in. NVIDIA/CUDA, VRAM, RAM, CPU) pozostają. Nie stosuje preferencji
+kraju; ograniczenia krajów zapisane w profilu pozostają. Plik profilu nie jest zmieniany.
 
 Kolumny: ID oferty, USD/h, opis techniczny (CUDA, sterownik NVIDIA, machine ID),
-GPU, VRAM, RAM hosta, szacowany RAM instancji, procesor i efektywne rdzenie,
+GPU, FLOPS (TFLOPS deklarowane przez Vast w total_flops), VRAM, RAM hosta, szacowany RAM instancji, procesor i efektywne rdzenie,
 lokalizacja. Jednostki pamięci MB pozostają zgodne z danymi API.
 RAM instancji to `cpu_ram * gpu_frac`, nie potwierdzony limit kontenera.
 Ocena oferty nie potwierdza inferencji GPU ani gotowości modelu.

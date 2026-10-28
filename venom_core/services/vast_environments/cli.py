@@ -85,6 +85,7 @@ def _add_offer_commands(sub) -> None:
             ],
         )
         item.add_argument("--country", action="append")
+        item.add_argument("--any-gpu", action="store_true")
         preferences = item.add_mutually_exclusive_group()
         preferences.add_argument("--prefer-country", action="append")
         preferences.add_argument("--no-country-preference", action="store_true")
@@ -217,6 +218,8 @@ def workload_profile(args) -> WorkloadProfile:
         )
         if getattr(args, argument, None) is not None
     }
+    if getattr(args, "any_gpu", False):
+        overrides["gpu_names"] = []
     if args.no_country_preference:
         overrides["preferred_countries"] = []
     return WorkloadProfile.model_validate({**profile.model_dump(), **overrides})

@@ -295,7 +295,9 @@ def test_offer_table_readonly_and_render(service, tmp_path, capsys):
 
     svc, plan, _ = service
     assessment = svc.search(plan.profile)[0].model_dump(mode="json")
-    assessment["offer"].update(cpu_name="Xeon | test\nCPU", cpu_ram=64000)
+    assessment["offer"].update(
+        cpu_name="Xeon | test\nCPU", cpu_ram=64000, total_flops=35.58
+    )
     assessment["runtime"]["memory_allocation"]["baseline_ram_mb"] = "32000"
     payload = {"ok": True, "result": [assessment]}
 
@@ -311,9 +313,11 @@ def test_offer_table_readonly_and_render(service, tmp_path, capsys):
             "--sort",
             "price",
             "--no-country-preference",
+            "--any-gpu",
         ]
     output = capsys.readouterr().out
     assert "64000" in output and "32000" in output
+    assert "FLOPS [TFLOPS]" in output and "35.58" in output
     assert "Xeon / test CPU" in output
     for locale in ("pl", "en", "de"):
         assert offers_table.TEXT[locale]["empty"] in offers_table.render([], 0, locale)
@@ -326,3 +330,21 @@ def test_offer_table_readonly_and_render(service, tmp_path, capsys):
     captured = capsys.readouterr()
     assert captured.out == ""
     assert json.loads(captured.err)["ok"] is False
+
+
+def test_offer_table_any_gpu_preserves_other_requirements(service, tmp_path):
+    from venom_core.services.vast_environments.assessment import search_filters
+    from venom_core.services.vast_environments.cli import workload_profile
+
+    _, plan, _ = service
+    profile = plan.profile.model_copy(update={"gpu_names": ["RTX 3090"]})
+    path = tmp_path / "profile.json"
+    path.write_text(profile.model_dump_json(), encoding="utf-8")
+    args = parser().parse_args(["offers", "--profile", str(path), "--any-gpu"])
+    result = workload_profile(args)
+    assert result.gpu_names == []
+    assert "gpu_name" not in search_filters(result)
+    expected = profile.model_dump()
+    expected["gpu_names"] = []
+    assert result.model_dump() == expected
+    assert json.loads(path.read_text(encoding="utf-8"))["gpu_names"] == ["RTX 3090"]

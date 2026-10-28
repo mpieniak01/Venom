@@ -36,3 +36,22 @@ pasujących ofertach skrypt pokazuje dostępne wyniki bez poluzowania wymagań.
 Błąd API kończy się kodem niezerowym i komunikatem JSON na stderr.
 
 Skrypt wywołuje wyłącznie odczyt ofert. Nie tworzy planu ani instancji.
+
+
+## Zwykłe wyszukiwanie hosta
+
+Zwykłe CLI i tabela korzystają z tych samych filtrów. Aby pominąć listę modeli
+GPU zapisaną w profilu, dodaj `--any-gpu`:
+
+```bash
+python scripts/cloud/vast/vast.py --json offers \
+  --profile .venom_runtime/vast/prepared/chat-gemma4-26b-q4-24gb.json \
+  --any-gpu --sort price --no-country-preference
+```
+
+Opcja działa również przy `assess` i `plan`; użyj jej na wszystkich tych
+etapach, jeśli oferta dotyczy modelu spoza listy profilu. Zachowuje wymagania
+VRAM, RAM, CPU, NVIDIA/CUDA i pozostałe ograniczenia. Nie zmienia pliku profilu.
+Bez `--any-gpu` zwykłe CLI stosuje `gpu_names` z profilu; pusta lista
+`"gpu_names": []` pozwala zapisać dowolny model GPU jako ustawienie profilu.
+Tabela `offers_table.py` już przekazuje `--any-gpu` automatycznie.

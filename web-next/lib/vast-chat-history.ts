@@ -1,8 +1,8 @@
 export type VastChatTurn = { role: "user" | "assistant"; content: string };
 
-export function vastChatHistoryKey(runtime: string | null | undefined, model: string, session: string | null): string | null {
+export function vastChatHistoryKey(runtime: string | null | undefined, model: string, session: string | null, configHash?: string | null): string | null {
   return runtime?.startsWith("ollama@vast:") && model && session
-    ? JSON.stringify([runtime, model, session]) : null;
+    ? JSON.stringify([runtime, model, session, configHash ?? null]) : null;
 }
 
 export function appendVastChatTurn(previous: VastChatTurn[], prompt: string, answer: string): VastChatTurn[] {

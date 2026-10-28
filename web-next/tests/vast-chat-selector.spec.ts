@@ -41,6 +41,8 @@ test.describe("Vast Ollama selector with isolated API fixtures", () => {
           await route.fulfill({json: path.includes("/history") || path.endsWith("/tasks") ? [] : {}});
         }
       });
+      await page.route("**/v1/daemon/**", (route) => route.fulfill({status: 503, json: {detail: "fixture daemon unavailable"}}));
+      await page.routeWebSocket("**/ws/**", (socket) => socket.close());
       await page.goto("/");
       const select = page.getByTestId("llm-server-select");
       await expect(select).toBeVisible();

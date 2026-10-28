@@ -21,6 +21,10 @@ from venom_core.services.runtime_switch_telemetry import (
 router = APIRouter()
 
 
+class DetachRequest(BaseModel):
+    plan_id: str | None = Field(default=None, pattern=r"^[a-f0-9]{32}$")
+
+
 class AttachRequest(BaseModel):
     plan_id: str = Field(pattern=r"^[a-f0-9]{32}$")
 
@@ -51,8 +55,12 @@ async def attach(request: AttachRequest):
     "/system/vast-chat/detach", dependencies=[Depends(require_localhost_request)]
 )
 @admitted_operation("runtime_command", mutation=True)
-async def detach():
+async def detach(request: DetachRequest | None = None):
     # Keep selected identity: a later generation fails instead of falling back.
+    if request is not None and request.plan_id is not None:
+        return await asyncio.to_thread(
+            vast_chat_runtime.connection().detach, request.plan_id
+        )
     return await asyncio.to_thread(vast_chat_runtime.connection().detach)
 
 

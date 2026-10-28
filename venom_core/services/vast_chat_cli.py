@@ -36,6 +36,7 @@ def admin(command: str, base: str = DEFAULT_API, plan_id: str | None = None) -> 
         method, url, body = "POST", url + "/attach", {"plan_id": plan_id}
     elif command == "chat-detach":
         method, url = "POST", url + "/detach"
+        body = {"plan_id": plan_id} if plan_id is not None else None
     elif command != "chat-status":
         raise VastError("vast.invalid_action")
     try:
@@ -68,4 +69,4 @@ def detach_plan(plan_id: str, base: str = DEFAULT_API) -> None:
     status = admin("chat-status", base)
     if status.get("plan_id") not in {None, plan_id}:
         raise VastError("vast.chat_detach_target_changed")
-    admin("chat-detach", base)
+    admin("chat-detach", base, plan_id)

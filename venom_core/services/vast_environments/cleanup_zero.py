@@ -9,7 +9,7 @@ from contextlib import contextmanager
 from typing import Any, cast
 
 from venom_core.infrastructure.providers.vast.client import VastError
-from venom_core.infrastructure.providers.vast.models import now
+from venom_core.infrastructure.providers.vast.models import EnvironmentRecord, now
 from venom_core.services.vast_environments.lifecycle import Environments
 from venom_core.services.vast_environments.operations import workload
 
@@ -102,6 +102,33 @@ def _poll_cleanup(
         sleep(min(2.0, max(0.0, deadline - clock())))
 
 
+def _assert_owned_instance(
+    service: Environments, plan_id: str, record: EnvironmentRecord
+) -> None:
+    """Only the exact provider-observed resource created for this plan is deletable."""
+    plan = service.journal.plan(plan_id)
+    observed = record.instance
+    if (
+        type(record.instance_id) is not int
+        or record.instance_id <= 0
+        or not isinstance(observed, dict)
+        or observed.get("id") != record.instance_id
+        or type(observed.get("id")) is not int
+        or observed.get("label") != "venom-" + plan_id
+    ):
+        raise VastError("vast.cleanup_instance_mismatch")
+    for key in ("host_id", "machine_id"):
+        expected, actual = plan.assessment.offer.get(key), observed.get(key)
+        if (
+            type(expected) is not int
+            or expected <= 0
+            or type(actual) is not int
+            or actual <= 0
+            or actual != expected
+        ):
+            raise VastError("vast.cleanup_instance_mismatch")
+
+
 def _cleanup_zero(
     service: Environments,
     plan_id: str,
@@ -132,6 +159,8 @@ def _cleanup_zero(
         report["instance_id"] = record.instance_id
         if record.instance_id is None:
             raise VastError("vast.cleanup_instance_unknown")
+        if record.state != "destroyed":
+            _assert_owned_instance(service, plan_id, record)
         service.export(plan_id)
         # Never replay a destroy request whose outcome is not known.
         if record.state != "destroyed" and record.pending_action != "destroy":

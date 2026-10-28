@@ -43,7 +43,7 @@ def test_manual_api(monkeypatch, command, path, method):
     args, kwargs = client.request.call_args
     assert args == (method, "http://127.0.0.1:8800/api/v1/system/vast-chat" + path)
     assert kwargs["json"] == (
-        {"plan_id": "a" * 32} if command == "chat-attach" else None
+        {"plan_id": "a" * 32} if command in {"chat-attach", "chat-detach"} else None
     )
     assert factory.call_args.kwargs["follow_redirects"] is False
     assert factory.call_args.kwargs["trust_env"] is False

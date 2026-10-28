@@ -1,5 +1,7 @@
 """Generation settings and metadata scoped to the remote target, never local manifests."""
 
+import math
+
 from fastapi import HTTPException
 
 from venom_core.services import vast_chat_runtime as remote
@@ -29,7 +31,34 @@ def generation_schema(name: str):
     from venom_core.core.model_registry import create_default_generation_schema
 
     require_model(name)
-    return create_default_generation_schema()
+    schema = create_default_generation_schema()
+    parameters = remote.connection().model_details(name).get("parameters", "")
+    if isinstance(parameters, str):
+        mapping = {
+            "temperature": "temperature",
+            "top_p": "top_p",
+            "top_k": "top_k",
+            "repeat_penalty": "repeat_penalty",
+            "num_predict": "max_tokens",
+        }
+        for line in parameters.splitlines()[:64]:
+            parts = line.split()
+            if len(parts) != 2 or parts[0] not in mapping:
+                continue
+            spec = schema[mapping[parts[0]]]
+            try:
+                value = float(parts[1])
+            except ValueError:
+                continue
+            if (
+                not math.isfinite(value)
+                or (spec.min is not None and value < spec.min)
+                or (spec.max is not None and value > spec.max)
+                or (spec.type == "int" and not value.is_integer())
+            ):
+                continue
+            spec.default = int(value) if spec.type == "int" else value
+    return schema
 
 
 def capabilities(name: str) -> dict:

@@ -85,6 +85,7 @@ class KernelBuilder:
                 runtime.model_name,
                 runtime.endpoint,
                 api_key="ollama",
+                max_retries=0,
             )
             return kernel
 
@@ -223,6 +224,7 @@ class KernelBuilder:
                 runtime.model_name,
                 runtime.endpoint,
                 api_key="ollama",
+                max_retries=0,
             )
             return
         active_server = str(
@@ -257,11 +259,16 @@ class KernelBuilder:
         model_name: str,
         endpoint: str,
         *,
+        max_retries: int | None = None,
         api_key: str | None = None,
     ) -> None:
+        options: dict[str, Any] = (
+            {"max_retries": max_retries} if max_retries is not None else {}
+        )
         async_client = AsyncOpenAI(
             api_key=self.settings.LLM_LOCAL_API_KEY if api_key is None else api_key,
             base_url=endpoint,
+            **options,
         )
         chat_service = MafChatService(
             service_id=service_id,

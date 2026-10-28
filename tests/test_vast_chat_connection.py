@@ -324,3 +324,15 @@ def test_show_rejects_non_object_response(connection):
     with pytest.raises(VastError, match="vast.chat_unavailable"):
         manager.model_details("demo:latest")
     assert tunnel.close_count == 1
+
+
+def test_conditional_detach_cannot_close_other_plan_after_race(connection):
+    manager, _svc, plan, tunnel, _requests, _responses = connection
+    before = manager.attach(plan.plan_id)
+    with pytest.raises(VastError, match="vast.chat_detach_target_changed"):
+        manager.detach(expected_plan_id="f" * 32)
+    assert tunnel.alive()
+    assert manager.status(refresh=False)["target_id"] == before["target_id"]
+    result = manager.detach(expected_plan_id=plan.plan_id)
+    assert not result["available"] and result["target_id"] is None
+    assert not tunnel.alive()

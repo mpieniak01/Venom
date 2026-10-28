@@ -250,7 +250,7 @@ export function useChatSend(params: ChatSendParams) {
       }
     }
 
-    const historyKey = vastChatHistoryKey(effectiveActiveServerInfo?.runtime_id, effectiveSelectedModel, resolvedSession);
+    const historyKey = vastChatHistoryKey(effectiveActiveServerInfo?.runtime_id, effectiveSelectedModel, resolvedSession, effectiveActiveServerInfo?.config_hash);
     const taskParams = {
       ...(historyKey ? {
         history: vastHistory.current.get(historyKey) ?? [],

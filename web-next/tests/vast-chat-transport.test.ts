@@ -42,6 +42,7 @@ describe("Vast Direct transport", () => {
     assert.notEqual(key, vastChatHistoryKey("ollama@vast:p:i:g", "other", "session"));
     assert.notEqual(key, vastChatHistoryKey("ollama@vast:p:i:g", "model", "other"));
     assert.equal(vastChatHistoryKey("ollama@local", "model", "session"), null);
+    assert.notEqual(vastChatHistoryKey("ollama@vast:p:i:g", "model", "session", "old"), vastChatHistoryKey("ollama@vast:p:i:g", "model", "session", "new"));
     let history = appendVastChatTurn([], "first", "answer");
     for (let i = 0; i < 15; i += 1) history = appendVastChatTurn(history, "q" + i, "a" + i);
     assert.equal(history.length, 20);

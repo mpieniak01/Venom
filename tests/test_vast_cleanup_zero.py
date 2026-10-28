@@ -17,7 +17,13 @@ from venom_core.services.vast_environments.cli import dispatch, parser
 
 @pytest.fixture
 def service(tmp_path):
-    return source_service.__wrapped__(tmp_path)
+    svc, plan, offer = source_service.__wrapped__(tmp_path)
+    svc.client.instance.return_value.update(
+        label="venom-" + plan.plan_id,
+        host_id=offer["host_id"],
+        machine_id=offer["machine_id"],
+    )
+    return svc, plan, offer
 
 
 def removed(svc):
@@ -241,3 +247,94 @@ def test_interrupted_trial_still_cleans_up_without_false_success(service):
         trial_zero(svc, plan.plan_id)
     assert caught.value.report["success"] is False
     assert caught.value.report["cleanup"]["zero_confirmed"] is True
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"id": 99},
+        {"id": True},
+        {"label": "venom-other-plan"},
+        {"label": None},
+        {"host_id": 99},
+        {"machine_id": 99},
+        {"host_id": None},
+        {"machine_id": None},
+        {"machine_id": True},
+    ],
+)
+def test_cleanup_refuses_wrong_or_incomplete_provider_identity(service, changes):
+    svc, plan, _ = service
+    svc.create(plan.plan_id)
+    svc.client.instance.return_value.update(changes)
+    with pytest.raises(
+        ZeroCheckError, match="vast.cleanup_instance_mismatch"
+    ) as caught:
+        cleanup_zero(svc, plan.plan_id)
+    assert caught.value.report["zero_confirmed"] is False
+    svc.client.destroy.assert_not_called()
+
+
+def test_cleanup_refuses_tampered_record_id_referencing_foreign_host(service):
+    svc, plan, _ = service
+    svc.create(plan.plan_id)
+    record = svc.journal.record(plan.plan_id)
+    record.instance_id = 99
+    svc.journal.save_record(record)
+    svc.client.instance.return_value.update(
+        id=99,
+        label="someone-elses-host",
+        host_id=30,
+        machine_id=40,
+    )
+    with pytest.raises(ZeroCheckError, match="vast.cleanup_instance_mismatch"):
+        cleanup_zero(svc, plan.plan_id)
+    svc.client.destroy.assert_not_called()
+
+
+def test_cleanup_unknown_observation_never_uses_cached_identity(service):
+    svc, plan, _ = service
+    svc.create(plan.plan_id)
+    svc.reconcile(plan.plan_id)
+    svc.client.instance.side_effect = VastError("vast.http_error", 503)
+    with pytest.raises(ZeroCheckError, match="vast.http_error"):
+        cleanup_zero(svc, plan.plan_id)
+    svc.client.destroy.assert_not_called()
+
+
+def test_cleanup_already_destroyed_uses_fresh_inventory_without_provider_identity(
+    service,
+):
+    svc, plan, _ = service
+    svc.create(plan.plan_id)
+    record = svc.journal.record(plan.plan_id)
+    record.state = "destroyed"
+    record.instance = {}
+    svc.journal.save_record(record)
+    svc.client.instance.side_effect = VastError("vast.http_error", 404)
+    svc.client.instances.return_value = []
+    assert cleanup_zero(svc, plan.plan_id)["zero_confirmed"]
+    svc.client.destroy.assert_not_called()
+    svc.client.instance.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "key,value",
+    [
+        ("host_id", None),
+        ("host_id", 0),
+        ("host_id", True),
+        ("machine_id", None),
+        ("machine_id", 0),
+        ("machine_id", True),
+    ],
+)
+def test_cleanup_requires_valid_positive_plan_host_snapshot(service, key, value):
+    svc, plan, _ = service
+    svc.create(plan.plan_id)
+    plan.assessment.offer[key] = value
+    plan.checksum = plan.calculate_checksum()
+    svc.journal.save_plan(plan)
+    with pytest.raises(ZeroCheckError, match="vast.cleanup_instance_mismatch"):
+        cleanup_zero(svc, plan.plan_id)
+    svc.client.destroy.assert_not_called()

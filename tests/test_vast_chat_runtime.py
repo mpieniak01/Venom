@@ -305,7 +305,12 @@ def test_kernel_local_service_uses_selected_remote_model_and_endpoint(target):
     kernel = Mock()
     builder._register_local_service(kernel, "local_llm", "local-name", False)
     register.assert_called_once_with(
-        kernel, "local_llm", "demo:latest", state["endpoint"], api_key="ollama"
+        kernel,
+        "local_llm",
+        "demo:latest",
+        state["endpoint"],
+        api_key="ollama",
+        max_retries=0,
     )
 
 
@@ -365,3 +370,132 @@ def test_successful_activation_uses_shared_switch_and_saves_model(target, monkey
     wait.assert_awaited_once()
     assert not gate.get_runtime_switch_gate_snapshot().in_progress
     assert remote.selection()["target_id"] == TARGET
+
+
+def test_remote_sdk_does_not_retry_generation_and_local_defaults_are_unchanged(
+    target, monkeypatch
+):
+    from venom_core.execution import kernel_builder
+    from venom_core.execution.kernel_builder import KernelBuilder
+
+    factory = Mock()
+    monkeypatch.setattr(kernel_builder, "AsyncOpenAI", factory)
+    monkeypatch.setattr(kernel_builder, "MafChatService", Mock())
+    builder = object.__new__(KernelBuilder)
+    builder.settings = SimpleNamespace(LLM_LOCAL_API_KEY="local-fixture-key")
+    kernel = Mock()
+    builder._register_local_http_service(
+        kernel,
+        "local",
+        "remote-model",
+        target[0]["endpoint"],
+        api_key="ollama",
+        max_retries=0,
+    )
+    assert factory.call_args.kwargs == {
+        "api_key": "ollama",
+        "base_url": target[0]["endpoint"],
+        "max_retries": 0,
+    }
+    factory.reset_mock()
+    builder._register_local_http_service(
+        kernel, "local", "local-model", "http://localhost:11434/v1"
+    )
+    assert factory.call_args.kwargs == {
+        "api_key": "local-fixture-key",
+        "base_url": "http://localhost:11434/v1",
+    }
+
+
+def test_direct_service_uses_remote_history_endpoint_and_no_local_adapter(
+    target, monkeypatch
+):
+    from venom_core.api.schemas.llm_simple import SimpleChatRequest
+    from venom_core.services import llm_simple_service as simple
+
+    state, _ = target
+    select()
+    runtime = remote.runtime_override()
+    monkeypatch.setattr(simple, "_trace_simple_request", Mock())
+    monkeypatch.setattr(simple, "_trace_context_preview", Mock())
+    adapter = AsyncMock(side_effect=AssertionError("local adapter must not be queried"))
+    monkeypatch.setattr(simple, "_get_active_adapter_id", adapter)
+    captured = {}
+
+    async def stream(**kwargs):
+        captured.update(kwargs)
+        yield "event: done\\ndata: {}\\n\\n"
+
+    monkeypatch.setattr(simple, "_stream_simple_chunks", stream)
+    request = SimpleChatRequest(
+        content="second prompt",
+        model="demo:latest",
+        expected_runtime_id=runtime.runtime_id,
+        expected_config_hash=runtime.config_hash,
+        history=[
+            {"role": "user", "content": "first prompt"},
+            {"role": "assistant", "content": "first answer"},
+        ],
+    )
+
+    async def run():
+        response = await simple.stream_simple_chat(request)
+        return [chunk async for chunk in response.body_iterator]
+
+    assert asyncio.run(run())
+    adapter.assert_not_awaited()
+    assert captured["completions_url"] == state["endpoint"] + "/chat/completions"
+    assert captured["payload"]["model"] == "demo:latest"
+    assert captured["payload"]["messages"][-3:] == [
+        {"role": "user", "content": "first prompt"},
+        {"role": "assistant", "content": "first answer"},
+        {"role": "user", "content": "second prompt"},
+    ]
+    assert "keep_alive" not in captured["payload"]
+    assert "options" not in captured["payload"]
+
+
+@pytest.mark.parametrize("change", ["runtime", "model", "history"])
+def test_direct_service_rejects_drift_or_oversized_history_before_stream(
+    target, monkeypatch, change
+):
+    from venom_core.api.schemas.llm_simple import SimpleChatRequest
+    from venom_core.services import llm_simple_service as simple
+
+    select()
+    runtime = remote.runtime_override()
+    monkeypatch.setattr(simple, "_trace_simple_request", Mock())
+    monkeypatch.setattr(simple, "_trace_context_preview", Mock())
+    stream = Mock(side_effect=AssertionError("must reject before stream"))
+    monkeypatch.setattr(simple, "_stream_simple_chunks", stream)
+    values = {
+        "content": "prompt",
+        "model": "demo:latest",
+        "expected_runtime_id": runtime.runtime_id,
+        "expected_config_hash": runtime.config_hash,
+    }
+    if change == "runtime":
+        values["expected_runtime_id"] = runtime.runtime_id + "-old"
+    elif change == "model":
+        values["model"] = "local-only"
+    else:
+        values["history"] = [
+            {"role": "user", "content": "x" * 30000},
+            {"role": "assistant", "content": "y" * 30000},
+        ]
+    with pytest.raises(HTTPException) as error:
+        asyncio.run(simple.stream_simple_chat(SimpleChatRequest(**values)))
+    assert error.value.status_code == (400 if change == "history" else 409)
+    stream.assert_not_called()
+
+
+def test_remote_form_defaults_are_read_from_remote_show(target):
+    _state, connection = target
+    connection.model_details.return_value = {
+        "parameters": "temperature 0.25\ntop_p 0.8\nnum_predict 512\nnum_ctx 32768\ntop_k nan"
+    }
+    schema = model_config.generation_schema("demo:latest")
+    assert schema["temperature"].default == 0.25
+    assert schema["top_p"].default == 0.8
+    assert schema["max_tokens"].default == 512
+    assert schema["top_k"].default == 40

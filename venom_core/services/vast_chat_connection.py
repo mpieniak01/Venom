@@ -343,8 +343,14 @@ class VastChatConnection:
             raise VastError("vast.chat_unavailable")
         return value
 
-    def detach(self) -> dict[str, Any]:
+    def detach(self, expected_plan_id: str | None = None) -> dict[str, Any]:
         with self._lock:
+            if (
+                expected_plan_id is not None
+                and self._intent is not None
+                and self._intent.get("plan_id") != expected_plan_id
+            ):
+                raise VastError("vast.chat_detach_target_changed")
             self._close_transport()
             self._intent = self._plan = None
             self._error = None

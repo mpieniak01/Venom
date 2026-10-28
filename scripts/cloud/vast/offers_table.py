@@ -24,9 +24,9 @@ TEXT = {
             "Opis",
             "GPU",
             "FLOPS [TFLOPS]",
-            "VRAM [MB]",
-            "RAM hosta [MB]",
-            "RAM instancji ~[MB]",
+            "VRAM [GB]",
+            "RAM hosta [GB]",
+            "RAM instancji ~[GB]",
             "Procesor / efektywne rdzenie",
             "Lokalizacja",
         ],
@@ -41,9 +41,9 @@ TEXT = {
             "Description",
             "GPU",
             "FLOPS [TFLOPS]",
-            "VRAM [MB]",
-            "Host RAM [MB]",
-            "Instance RAM ~[MB]",
+            "VRAM [GB]",
+            "Host RAM [GB]",
+            "Instance RAM ~[GB]",
             "CPU / effective cores",
             "Location",
         ],
@@ -58,9 +58,9 @@ TEXT = {
             "Beschreibung",
             "GPU",
             "FLOPS [TFLOPS]",
-            "VRAM [MB]",
-            "Host-RAM [MB]",
-            "Instanz-RAM ~[MB]",
+            "VRAM [GB]",
+            "Host-RAM [GB]",
+            "Instanz-RAM ~[GB]",
             "CPU / effektive Kerne",
             "Standort",
         ],
@@ -73,6 +73,11 @@ TEXT = {
 
 def cell(value: object) -> str:
     return " ".join(str(value if value is not None else "?").split()).replace("|", "/")
+
+
+def memory_gb(value: object) -> str:
+    megabytes = amount(value)
+    return f"{megabytes / 1000:.2f}" if megabytes is not None else "?"
 
 
 def select(rows: list[dict], limit: int) -> tuple[list[dict], int]:
@@ -105,13 +110,13 @@ def render(rows: list[dict], count: int, locale: str) -> str:
         flops = amount(offer.get("total_flops"))
         values = [
             offer["id"],
-            f"{amount(row['quote']['hourly_usd']):.5f}",
+            f"{amount(row['quote']['hourly_usd']):.4f}",
             f"CUDA {offer.get('cuda_max_good', '?')}; NVIDIA {offer.get('driver_version', '?')}; machine {offer.get('machine_id', '?')}",
             offer.get("gpu_name"),
             f"{flops:.0f}" if flops is not None else None,
-            offer.get("gpu_ram"),
-            offer.get("cpu_ram"),
-            memory.get("baseline_ram_mb"),
+            memory_gb(offer.get("gpu_ram")),
+            memory_gb(offer.get("cpu_ram")),
+            memory_gb(memory.get("baseline_ram_mb")),
             f"{offer.get('cpu_name', '?')} / {offer.get('cpu_cores_effective', '?')}",
             offer.get("geolocation") or row["host"].get("country_code"),
         ]

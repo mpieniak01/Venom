@@ -299,6 +299,7 @@ def test_offer_table_readonly_and_render(service, tmp_path, capsys):
         cpu_name="Xeon | test\nCPU", cpu_ram=64000, total_flops=35.58
     )
     assessment["runtime"]["memory_allocation"]["baseline_ram_mb"] = "32000"
+    assessment["quote"]["hourly_usd"] = "0.1234567"
     payload = {"ok": True, "result": [assessment]}
 
     # Assert only the offers action is dispatched; never lifecycle operations.
@@ -316,7 +317,11 @@ def test_offer_table_readonly_and_render(service, tmp_path, capsys):
             "--any-gpu",
         ]
     output = capsys.readouterr().out
-    assert "64000" in output and "32000" in output
+    assert "| 64.00 | 32.00 |" in output
+    assert "VRAM [GB]" in output
+    assert offers_table.memory_gb(24576) == "24.58"
+    assert offers_table.memory_gb(None) == "?"
+    assert "| 0.1235 |" in output
     assert "FLOPS [TFLOPS]" in output and "| 36 |" in output
     assert "Xeon / test CPU" in output
     for locale in ("pl", "en", "de"):

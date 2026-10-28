@@ -17,7 +17,7 @@ kraju; ograniczenia krajów zapisane w profilu pozostają. Plik profilu nie jest
 
 Kolumny: ID oferty, USD/h, opis techniczny (CUDA, sterownik NVIDIA, machine ID),
 GPU, FLOPS (TFLOPS deklarowane przez Vast w total_flops), VRAM, RAM hosta, szacowany RAM instancji, procesor i efektywne rdzenie,
-lokalizacja. Jednostki pamięci MB pozostają zgodne z danymi API.
+lokalizacja. Pamięć jest przeliczana z MB na GB (MB / 1000), do dwóch miejsc po przecinku. Cena USD/h ma cztery miejsca po przecinku; sortowanie używa pełnej precyzji.
 RAM instancji to `cpu_ram * gpu_frac`, nie potwierdzony limit kontenera.
 Ocena oferty nie potwierdza inferencji GPU ani gotowości modelu.
 

@@ -2,7 +2,9 @@
 
 # ruff: noqa: E402
 
+import builtins
 import sys
+from types import ModuleType
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -161,3 +163,78 @@ class TestInputSkill:
         width, height = input_skill.get_screen_size()
         assert width == 1920
         assert height == 1080
+
+
+@pytest.mark.parametrize(
+    "failure_kind",
+    [
+        "display",
+        "missing_package",
+        "runtime",
+        "os",
+        "missing_env",
+        "unexpected",
+        "exit",
+    ],
+)
+def test_optional_gui_import_does_not_block_api_on_unreachable_display(
+    monkeypatch, failure_kind
+):
+    from venom_core.execution.skills import input_skill
+
+    class DisplayError(Exception):
+        pass
+
+    class DisplayConnectionError(DisplayError):
+        pass
+
+    xlib = ModuleType("Xlib")
+    error_module = ModuleType("Xlib.error")
+    error_module.DisplayError = DisplayError
+    monkeypatch.setitem(sys.modules, "Xlib", xlib)
+    monkeypatch.setitem(sys.modules, "Xlib.error", error_module)
+    monkeypatch.setattr(input_skill.platform, "system", lambda: "Linux")
+    monkeypatch.setenv("DISPLAY", ":0")
+    errors = {
+        "display": DisplayConnectionError("Cannot connect to :0"),
+        "missing_package": ImportError("pyautogui missing"),
+        "runtime": RuntimeError("desktop unavailable"),
+        "os": OSError("display socket refused"),
+        "missing_env": KeyError("DISPLAY"),
+        "unexpected": ValueError("programming error"),
+        "exit": SystemExit(17),
+    }
+    original_import = builtins.__import__
+
+    def importing(name, *args, **kwargs):
+        if name == "pyautogui":
+            raise errors[failure_kind]
+        return original_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", importing)
+    if failure_kind in {"unexpected", "exit"}:
+        with pytest.raises(type(errors[failure_kind])):
+            input_skill._load_pyautogui()
+    else:
+        assert input_skill._load_pyautogui() is None
+
+
+@pytest.mark.parametrize("system", ["Linux", "Windows"])
+def test_gui_import_error_contract_without_xlib(monkeypatch, system):
+    from venom_core.execution.skills import input_skill
+
+    monkeypatch.setattr(input_skill.platform, "system", lambda: system)
+    original_import = builtins.__import__
+
+    def importing(name, *args, **kwargs):
+        if name == "Xlib.error":
+            raise ImportError("optional Xlib not installed")
+        return original_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", importing)
+    assert input_skill._gui_import_errors() == (
+        ImportError,
+        RuntimeError,
+        OSError,
+        KeyError,
+    )

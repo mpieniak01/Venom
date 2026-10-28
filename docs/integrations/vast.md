@@ -26,7 +26,10 @@ CLI calls the shared Environments service; future adapters must reuse it.
 
 Copy config/cloud/vast/inspect.example.json or ollama.example.json into an ignored
 local directory. Replace the image placeholder with a verified immutable digest
-compatible with cpu_arch. Ollama also requires an exact model name and digest.
+compatible with cpu_arch. Model-bound Ollama profiles also require an exact model name and digest.
+An engine-only Ollama profile may leave both empty only with download_gb=0;
+its ready operation checks version/tags without generation. Benchmark still
+requires a model and digest.
 Examples intentionally cannot rent until edited. No engine image is declared a
 stable default after the observed CUDA errors. Template hashes are not digests.
 
@@ -458,8 +461,9 @@ models with the same name remain separate.
 Run the existing CLI manually to search, plan, create, inspect and provision
 the instance. Before creating it, prepare an Ollama profile with a pinned image
 and model digest, explicit download budget, context and rental budget.
-The inspect profile used for the infrastructure-only trial does not install
-a chat model.
+For trial-zero, use the Ollama recipe with a verified, pinned Ollama image,
+empty model/model_digest and download_gb=0. This prepares the engine without
+pulling weights. The inspect recipe remains available for inventory-only tasks.
 
 With the Venom API running, use these commands (set --api-base if necessary):
 
@@ -477,9 +481,20 @@ After the trial, use the manual lifecycle commands to export and destroy the
 trial instance. The cleanup-zero command confirms removal and reads the full
 account instance list, including stopped instances. Success requires a count
 of zero. Unknown state or a failed read is not zero; unrelated instances are
-reported and never deleted automatically. trial-zero uses an inspect plan for
-a create/SSH/inspect/destroy infrastructure trial without a model download or
-chat generation.
+reported and never deleted automatically. trial-zero requires an engine-only
+Ollama plan and runs create -> SSH/inspect -> provision -> ready -> export ->
+destroy -> confirmed zero. Readiness checks GET /api/version and /api/tags
+through SSH; an empty model list is valid for the engine-only trial. Provision
+or API failure still triggers cleanup. This is not a model/GPU generation test.
+
+    python scripts/cloud/vast/vast.py --json prepare --profile HOST_PROFILE.json --recipe ollama --download-gb 0 --output .venom_runtime/vast/ollama-zero.json
+    python scripts/cloud/vast/vast.py --json trial-zero --plan PLAN_ID --timeout 120 --accept-new-host-key
+
+HOST_PROFILE.json must already name a verified, pinned Ollama image for its
+architecture and contain empty model/model_digest. Search, assess and plan with
+the prepared profile, review costs, and explicitly invoke trial-zero. No inspect
+or model-download plan is accepted for trial-zero. Chat uses a separate,
+model-bound profile with a concrete model/digest; benchmark requires that model.
 
     python scripts/cloud/vast/vast.py --json cleanup-zero --plan PLAN_ID --api-base http://127.0.0.1:8800 --timeout 120
     python scripts/cloud/vast/vast.py --json verify-zero

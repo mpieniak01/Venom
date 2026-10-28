@@ -12,7 +12,9 @@ Lokalne i zdalne modele o tej samej nazwie są osobnymi celami.
 
 Przed utworzeniem hosta przygotuj profil Ollama z konkretnym modelem i digestem,
 przypiętym obrazem, kontekstem oraz jawnym budżetem wynajmu i pobierania.
-Profil inspect służy do odbioru infrastruktury i nie instaluje modelu czatu.
+Dla testu zerowego wybierz recepturę Ollama z przypiętym obrazem zawierającym
+Ollamę i curl, pustym modelem/digestem oraz download_gb=0. To przygotowuje sam
+silnik, bez pobierania wag. Profil inspect pozostaje dostępny do samej inwentaryzacji.
 Reużyj komend offers/assess/plan/create/wait/inspect/provision/ready.
 
 Działające API Venoma jest właścicielem tunelu. Polecenia CLI:
@@ -37,10 +39,22 @@ nie są zerem. Inne instancje są raportowane i nie są automatycznie usuwane.
     python scripts/cloud/vast/vast.py --json cleanup-zero --plan PLAN_ID --api-base http://127.0.0.1:8800 --timeout 120
     python scripts/cloud/vast/vast.py --json verify-zero
 
-Test zerowy infrastruktury korzysta z komendy trial-zero i planu inspect:
-create -> SSH/inspect -> eksport -> destroy -> potwierdzenie zera.
-Nie pobiera modelu i nie uruchamia rozmowy. Test czatu po przygotowaniu modelu
-jest osobną próbą. Testy automatyczne używają atrap i nie tworzą płatnych zasobów.
+Test zerowy korzysta z komendy trial-zero i planu **Ollama bez modelu**:
+create -> SSH/inspect -> provision -> ready (GET /api/version i /api/tags)
+-> eksport -> destroy -> potwierdzenie zera. Pusty katalog jest poprawnym
+wynikiem odbioru silnika; nie jest potwierdzeniem gotowego modelu czatu.
+Każda awaria przygotowania lub API nadal prowadzi do cleanup.
+
+    python scripts/cloud/vast/vast.py --json prepare --profile PROFIL_HOSTA.json --recipe ollama --download-gb 0 --output .venom_runtime/vast/ollama-zero.json
+    python scripts/cloud/vast/vast.py --json trial-zero --plan PLAN_ID --timeout 120 --accept-new-host-key
+
+PROFIL_HOSTA.json musi już wskazywać zweryfikowany obraz Ollamy, właściwą
+architekturę i puste model/model_digest. Następnie wykonaj offers/assess/plan
+dla utworzonego profilu, sprawdź koszty i dopiero jawnie uruchom trial-zero.
+Nie używaj do testu zero planu inspect ani planu pobierającego model.
+Test nie wykonuje generacji i nie potwierdza obliczeń modelu na GPU.
+Dla rozmowy przygotuj osobny plan z konkretnym modelem i zgodnym digestem;
+benchmark wymaga modelu. Testy automatyczne używają atrap i nie tworzą zasobów.
 
 Pełny opis istniejącego CLI: [Vast environment operations](../../integrations/vast.md).
 

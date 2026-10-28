@@ -139,6 +139,32 @@ class OllamaProbe:
         self.client = client
         self.profile = profile
 
+    def engine_ready(self) -> dict:
+        """Read API readiness only; never download, load or generate a model."""
+        version = self.client.get("/api/version")
+        tags = self.client.get("/api/tags")
+        version.raise_for_status()
+        tags.raise_for_status()
+        version_data, tags_data = version.json(), tags.json()
+        engine_version = (
+            version_data.get("version") if isinstance(version_data, dict) else None
+        )
+        models = tags_data.get("models") if isinstance(tags_data, dict) else None
+        if (
+            not isinstance(engine_version, str)
+            or not engine_version.strip()
+            or not isinstance(models, list)
+            or any(not isinstance(row, dict) for row in models)
+        ):
+            raise VastError("vast.ollama_api_invalid")
+        return {
+            "runtime": "ready",
+            "acceptance_scope": "engine_only",
+            "engine_version": engine_version,
+            "model_count": len(models),
+            "generation_tested": False,
+        }
+
     def metadata(self) -> dict:
         version = self.client.get("/api/version")
         tags = self.client.get("/api/tags")

@@ -10,7 +10,7 @@ import httpx
 import pytest
 
 from venom_core.infrastructure.providers.vast.client import VastError, ssh_fingerprint
-from venom_core.infrastructure.providers.vast.models import WorkloadProfile, now
+from venom_core.infrastructure.providers.vast.models import WorkloadProfile, digest, now
 from venom_core.services.vast_environments.billing import costs
 from venom_core.services.vast_environments.cli import main
 from venom_core.services.vast_environments.evaluation import (
@@ -483,3 +483,75 @@ def test_synthetic_prompt_is_repeatable_across_profile_roundtrip(service):
     finally:
         first.client.close()
         second.client.close()
+
+
+@pytest.mark.parametrize(
+    "version,tags",
+    [
+        ({}, {"models": []}),
+        ({"version": ""}, {"models": []}),
+        ([], {"models": []}),
+        ({"version": "1.0"}, {}),
+        ({"version": "1.0"}, {"models": [None]}),
+        ({"version": "1.0"}, []),
+    ],
+)
+def test_engine_only_readiness_rejects_malformed_api(service, version, tags):
+    _, plan, _ = service
+
+    def respond(req):
+        assert req.method == "GET"
+        return httpx.Response(
+            200, json=version if req.url.path == "/api/version" else tags
+        )
+
+    with httpx.Client(
+        base_url="http://127.0.0.1:1234", transport=httpx.MockTransport(respond)
+    ) as client:
+        with pytest.raises(VastError, match="vast.ollama_api_invalid"):
+            OllamaProbe(client, plan.profile).engine_ready()
+
+
+def test_engine_only_workload_ready_has_no_generation_or_gpu_probe(service):
+    svc, plan, _ = service
+    plan.profile.mode = "ollama"
+    plan.startup_sha256 = digest(startup(plan.profile))
+    plan.checksum = plan.calculate_checksum()
+    svc.journal.save_plan(plan)
+    svc.create(plan.plan_id)
+    requests = []
+
+    def respond(req):
+        requests.append((req.method, req.url.path))
+        return httpx.Response(
+            200,
+            json={"version": "0.40.11"}
+            if req.url.path == "/api/version"
+            else {"models": []},
+        )
+
+    client = httpx.Client(
+        base_url="http://127.0.0.1:1234", transport=httpx.MockTransport(respond)
+    )
+    with (
+        patch(
+            "venom_core.services.vast_environments.operations.inspect",
+            return_value={"reasons": []},
+        ),
+        patch("venom_core.services.vast_environments.operations.tunnel") as tunnel,
+        patch(
+            "venom_core.services.vast_environments.operations.httpx.Client",
+            return_value=client,
+        ),
+        patch("venom_core.services.vast_environments.operations._gpu_facts") as gpu,
+    ):
+        tunnel.return_value.__enter__.return_value = "http://127.0.0.1:1234"
+        result = workload(svc, plan.plan_id, "ready")
+    assert result["runtime"] == "ready"
+    assert result["acceptance_scope"] == "engine_only"
+    assert result["model_count"] == 0
+    assert result["generation_tested"] is False
+    assert requests == [("GET", "/api/version"), ("GET", "/api/tags")]
+    gpu.assert_not_called()
+    with pytest.raises(VastError, match="vast.model_digest_required"):
+        workload(svc, plan.plan_id, "benchmark")

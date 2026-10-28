@@ -48,7 +48,10 @@ def _gpu_facts(plan, instance: dict, accept_new: bool = False) -> dict:
 def _engine_ready(client, profile) -> dict:
     if profile.mode == "vllm":
         return openai_ready(client, profile)
-    engine = OllamaProbe(client, profile).ready()
+    probe = OllamaProbe(client, profile)
+    if not profile.model:
+        return probe.engine_ready()
+    engine = probe.ready()
     engine["loaded_model"] = _loaded_model(client, profile)
     return engine
 
@@ -56,6 +59,8 @@ def _engine_ready(client, profile) -> dict:
 def _model_operation(plan, instance: dict, operation: str) -> dict:
     if plan.profile.mode not in {"ollama", "vllm"}:
         raise VastError("vast.ollama_profile_required")
+    if operation == "benchmark" and not plan.profile.model:
+        raise VastError("vast.model_digest_required")
     inspection = inspect(plan, instance)
     if inspection["reasons"]:
         raise VastError("vast.capacity_mismatch")
@@ -66,6 +71,8 @@ def _model_operation(plan, instance: dict, operation: str) -> dict:
         ) as client,
     ):
         engine = _engine_ready(client, plan.profile)
+        if not plan.profile.model:
+            return {**engine, "inspection": inspection}
         facts = _gpu_facts(plan, instance)
         preliminary = qualify(
             plan, inspection, facts, engine, evaluate_performance=False

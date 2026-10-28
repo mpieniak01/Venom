@@ -108,7 +108,13 @@ def test_recipe_scripts_and_validation(service, mode, tmp_path):
 def test_bad_recipe_and_plan_template_change(service, tmp_path):
     svc, plan, _ = service
     with pytest.raises(VastError, match="model_digest_required"):
-        prepare(svc.client, plan.profile, "ollama", None, tmp_path / "bad.json")
+        prepare(
+            svc.client,
+            plan.profile.model_copy(update={"download_gb": Decimal(1)}),
+            "ollama",
+            None,
+            tmp_path / "bad.json",
+        )
     cfg = plan.profile.model_copy(
         update={"mode": "vllm", "model": "org/x", "model_digest": "latest"}
     )
@@ -519,3 +525,50 @@ nohup() {{ echo launched >> "{tmp_path}/launches"; }}
         assert not launches.exists()
     else:
         assert launches.read_text().splitlines() == ["launched"]
+
+
+def test_engine_only_ollama_can_be_prepared_and_planned(service, tmp_path):
+    svc, plan, _ = service
+    output = tmp_path / "engine-only.json"
+    result = prepare(svc.client, plan.profile, "ollama", None, output)
+    profile = plan.profile.model_validate_json(output.read_text())
+    assert result["recipe"]["port"] == 11434
+    assert profile.model == profile.model_digest == ""
+    assert profile.download_gb == 0
+    assert "ollama serve" in result["startup"]
+    assert "ollama pull" not in result["startup"]
+    engine_plan = svc.plan(
+        profile,
+        12,
+        plan.max_hourly_usd,
+        plan.max_total_usd,
+        Path(plan.ssh_identity_file),
+        tmp_path / "known",
+    )
+    assert engine_plan.profile.mode == "ollama"
+    svc.client.create.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "update",
+    [
+        {"model": "test"},
+        {"model_digest": "digest"},
+        {"download_gb": Decimal(1)},
+        {"mode": "vllm"},
+    ],
+)
+def test_engine_only_exception_does_not_relax_model_contract(service, tmp_path, update):
+    svc, plan, _ = service
+    profile = plan.profile.model_copy(update={"mode": "ollama", **update})
+    with pytest.raises(VastError, match="vast.model_digest_required"):
+        verify_template(svc.client, profile)
+    with pytest.raises(VastError, match="vast.model_digest_required"):
+        svc.plan(
+            profile,
+            12,
+            plan.max_hourly_usd,
+            plan.max_total_usd,
+            Path(plan.ssh_identity_file),
+            tmp_path / "known",
+        )

@@ -78,8 +78,6 @@ class Environments:
         assessment = self.assess(profile, offer, retest)
         if assessment.status != "eligible":
             raise VastError("vast.offer_not_eligible")
-        if profile.mode == "ollama" and (not profile.model or not profile.model_digest):
-            raise VastError("vast.model_digest_required")
         plan_id = uuid4().hex
         plan = EnvironmentPlan(
             plan_id=plan_id,

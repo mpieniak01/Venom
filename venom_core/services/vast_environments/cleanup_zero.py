@@ -189,11 +189,13 @@ def _trial_zero(
     accept_new_host_key: bool = False,
     before_destroy: Callable[[str], None] | None = None,
 ) -> dict[str, Any]:
-    """Explicit paid command: one create, SSH inspection, then confirmed deletion."""
+    """Explicit paid command: create, inspect and ready Ollama, then delete."""
     _timeout(timeout)
     plan = service.journal.plan(plan_id)
-    if plan.profile.mode != "inspect":
-        raise VastError("vast.trial_inspect_profile_required")
+    if plan.profile.mode != "ollama":
+        raise VastError("vast.trial_ollama_profile_required")
+    if plan.profile.model or plan.profile.model_digest or plan.profile.download_gb != 0:
+        raise VastError("vast.trial_engine_only_profile_required")
     if service.journal.record(plan_id).state != "planned":
         raise VastError("vast.reconcile_required")
     report: dict[str, Any] = {
@@ -201,6 +203,7 @@ def _trial_zero(
         "plan_id": plan_id,
         "baseline_instance_ids": None,
         "ssh": "not_tested",
+        "engine": {"runtime": "not_tested"},
         "success": False,
     }
     try:
@@ -230,6 +233,18 @@ def _trial_zero(
         )
         if report["ssh"] != "ready" or inspected.get("reasons"):
             raise VastError("vast.trial_inspection_failed")
+        provisioned = workload(service, plan_id, "provision", False)
+        report["provision"] = provisioned
+        if provisioned.get("startup") != "completed":
+            raise VastError("vast.provision_failed")
+        engine = workload(service, plan_id, "ready", False)
+        report["engine"] = engine
+        if (
+            engine.get("runtime") != "ready"
+            or engine.get("acceptance_scope") != "engine_only"
+            or engine.get("generation_tested") is not False
+        ):
+            raise VastError("vast.trial_engine_not_ready")
     except KeyboardInterrupt:
         report["error"] = "vast.trial_interrupted"
     except (VastError, OSError) as error:

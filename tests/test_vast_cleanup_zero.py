@@ -1,11 +1,13 @@
 """Account-empty acceptance never deletes unrelated resources or retries creation."""
 
-from unittest.mock import Mock, patch
+from decimal import Decimal
+from unittest.mock import Mock, call, patch
 
 import pytest
 
 from tests.test_vast_operations import service as source_service
 from venom_core.infrastructure.providers.vast.client import VastError
+from venom_core.infrastructure.providers.vast.models import digest
 from venom_core.services.vast_environments.cleanup_zero import (
     ZeroCheckError,
     cleanup_zero,
@@ -13,11 +15,16 @@ from venom_core.services.vast_environments.cleanup_zero import (
     verify_zero,
 )
 from venom_core.services.vast_environments.cli import dispatch, parser
+from venom_core.services.vast_environments.startup import startup
 
 
 @pytest.fixture
 def service(tmp_path):
     svc, plan, offer = source_service.__wrapped__(tmp_path)
+    plan.profile.mode = "ollama"
+    plan.startup_sha256 = digest(startup(plan.profile))
+    plan.checksum = plan.calculate_checksum()
+    svc.journal.save_plan(plan)
     svc.client.instance.return_value.update(
         label="venom-" + plan.plan_id,
         host_id=offer["host_id"],
@@ -137,7 +144,7 @@ def test_cleanup_inventory_read_error_cannot_pass(service):
     assert caught.value.report["instance_count"] is None
 
 
-def test_trial_requires_inspect_and_empty_baseline(service):
+def test_trial_requires_empty_baseline(service):
     svc, plan, _ = service
     svc.client.instances.return_value = [{"id": 77}]
     with pytest.raises(ZeroCheckError, match="vast.account_not_empty"):
@@ -145,12 +152,12 @@ def test_trial_requires_inspect_and_empty_baseline(service):
     svc.client.create.assert_not_called()
 
 
-def test_trial_inspect_profile_required(service):
+def test_trial_ollama_profile_required(service):
     svc, plan, _ = service
-    plan.profile.mode = "ollama"
+    plan.profile.mode = "inspect"
     plan.checksum = plan.calculate_checksum()
     svc.journal.save_plan(plan)
-    with pytest.raises(VastError, match="vast.trial_inspect_profile_required"):
+    with pytest.raises(VastError, match="vast.trial_ollama_profile_required"):
         trial_zero(svc, plan.plan_id)
     svc.client.create.assert_not_called()
 
@@ -160,11 +167,24 @@ def test_trial_success_uses_inspection_and_guaranteed_cleanup(service):
     svc.client.destroy.side_effect = lambda _: removed(svc)
     with patch(
         "venom_core.services.vast_environments.cleanup_zero.workload",
-        return_value={"ssh": "ready", "reasons": []},
+        side_effect=[
+            {"ssh": "ready", "reasons": []},
+            {"startup": "completed"},
+            {
+                "runtime": "ready",
+                "acceptance_scope": "engine_only",
+                "generation_tested": False,
+            },
+        ],
     ) as inspect:
         result = trial_zero(svc, plan.plan_id, accept_new_host_key=True)
     assert result["success"] and result["cleanup"]["zero_confirmed"]
-    inspect.assert_called_once_with(svc, plan.plan_id, "inspect", True)
+    assert result["engine"]["generation_tested"] is False
+    assert inspect.call_args_list == [
+        call(svc, plan.plan_id, "inspect", True),
+        call(svc, plan.plan_id, "provision", False),
+        call(svc, plan.plan_id, "ready", False),
+    ]
     svc.client.create.assert_called_once()
 
 
@@ -281,6 +301,10 @@ def test_cleanup_refuses_tampered_record_id_referencing_foreign_host(service):
     record = svc.journal.record(plan.plan_id)
     record.instance_id = 99
     svc.journal.save_record(record)
+    plan.profile.mode = "ollama"
+    plan.startup_sha256 = digest(startup(plan.profile))
+    plan.checksum = plan.calculate_checksum()
+    svc.journal.save_plan(plan)
     svc.client.instance.return_value.update(
         id=99,
         label="someone-elses-host",
@@ -338,3 +362,47 @@ def test_cleanup_requires_valid_positive_plan_host_snapshot(service, key, value)
     with pytest.raises(ZeroCheckError, match="vast.cleanup_instance_mismatch"):
         cleanup_zero(svc, plan.plan_id)
     svc.client.destroy.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "values",
+    [
+        {"model": "model", "model_digest": "digest"},
+        {"model_digest": "digest"},
+        {"download_gb": Decimal(1)},
+    ],
+)
+def test_trial_rejects_model_or_download_before_renting(service, values):
+    svc, plan, _ = service
+    plan.profile = plan.profile.model_copy(update=values)
+    plan.checksum = plan.calculate_checksum()
+    svc.journal.save_plan(plan)
+    with pytest.raises(VastError, match="vast.trial_engine_only_profile_required"):
+        trial_zero(svc, plan.plan_id)
+    svc.client.create.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "stage_result,error",
+    [
+        ({"startup": "failed"}, "vast.provision_failed"),
+        ({"runtime": "unknown"}, "vast.trial_engine_not_ready"),
+    ],
+)
+def test_trial_unready_engine_still_destroys(service, stage_result, error):
+    svc, plan, _ = service
+    svc.client.destroy.side_effect = lambda _: removed(svc)
+    stages = [{"ssh": "ready", "reasons": []}]
+    if error == "vast.trial_engine_not_ready":
+        stages.append({"startup": "completed"})
+    stages.append(stage_result)
+    with (
+        patch(
+            "venom_core.services.vast_environments.cleanup_zero.workload",
+            side_effect=stages,
+        ),
+        pytest.raises(ZeroCheckError, match=error) as caught,
+    ):
+        trial_zero(svc, plan.plan_id)
+    assert caught.value.report["cleanup"]["zero_confirmed"]
+    assert caught.value.report["success"] is False

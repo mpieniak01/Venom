@@ -401,6 +401,19 @@ def pytest_collection_modifyitems(config, items):
 
 
 @pytest.fixture(autouse=True)
+def _isolate_vast_chat_selection(request, monkeypatch, tmp_path):
+    """Offline tests cannot read or overwrite the operator's runtime selection."""
+    if _is_live(request.node):
+        return
+    from venom_core.services import vast_chat_runtime
+
+    monkeypatch.setattr(
+        vast_chat_runtime, "_SELECTION", tmp_path / "vast-selection.json"
+    )
+    monkeypatch.setattr(vast_chat_runtime, "_selected", None)
+
+
+@pytest.fixture(autouse=True)
 def _live_preflight(request: pytest.FixtureRequest):
     global _LIVE_API_ALLOWED, _LIVE_API_TARGET
     item = request.node

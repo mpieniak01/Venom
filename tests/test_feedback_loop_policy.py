@@ -78,7 +78,8 @@ def test_missing_selection_and_preferred_role():
         available_models=set(),
         prefer_feedback_loop_default=False,
     )
-    assert result.resolved_model_id is None and not result.feedback_loop_ready
+    assert result.resolved_model_id is None
+    assert not result.feedback_loop_ready
     result = policy.resolve_feedback_loop_model(
         requested_model=None,
         available_models={"qwen2.5-coder:3b"},
@@ -125,10 +126,12 @@ def test_resource_budget_is_explicit_and_small_model_allowed(
     assert result.allowed is (reason is None)
     if reason:
         assert reason in result.reason_code
-        assert result.recommendation and " " in result.recommendation
+        assert result.recommendation
+        assert " " in result.recommendation
         assert result.reason_code not in result.recommendation
     else:
-        assert result.guard_reason is None and result.recommendation is None
+        assert result.guard_reason is None
+        assert result.recommendation is None
     result = policy.evaluate_feedback_loop_guard(
         model_id="unrelated:model",
         settings=settings,

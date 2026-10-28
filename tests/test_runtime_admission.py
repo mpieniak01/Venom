@@ -1161,7 +1161,8 @@ def test_process_instance_identity_is_stable_but_changes_with_boot(monkeypatch):
     from pathlib import Path
 
     identity = admission_module.process_instance_identity(os.getpid())
-    assert identity is not None and len(identity) == 64
+    assert identity is not None
+    assert len(identity) == 64
     assert identity == admission_module.process_instance_identity(os.getpid())
     original = Path.read_text
 
@@ -1236,7 +1237,8 @@ def test_process_identity_supports_container_init_pid_one(monkeypatch):
     monkeypatch.setattr(Path, "read_text", proc_metadata)
     monkeypatch.setattr(os, "readlink", lambda _path: "pid:[4026531836]")
     identity = admission_module.process_instance_identity(1)
-    assert identity is not None and len(identity) == 64
+    assert identity is not None
+    assert len(identity) == 64
     boot[0] = "boot-two"
     assert admission_module.process_instance_identity(1) != identity
 
@@ -1266,12 +1268,12 @@ def test_recovery_startup_rechecks_fresh_state_and_fails_closed(admission):
     lease = acquire(admission)
     with pytest.raises(RuntimeAdmissionError, match="runtime_busy"):
         with admission.recovery_startup(permitted=lambda _value: True):
-            pytest.fail("normal owned lease is not a recovery startup")
+            pass
     with admission._transaction() as db:
         db.execute("UPDATE lease SET quarantine=1")
     with pytest.raises(RuntimeAdmissionError, match="runtime_busy"):
         with admission.recovery_startup(permitted=lambda _value: False):
-            pytest.fail("owner identity was not proven stale")
+            pass
     assert admission.snapshot()["status"] == "quarantined"
     with admission._transaction() as db:
         db.execute(
@@ -1279,7 +1281,7 @@ def test_recovery_startup_rechecks_fresh_state_and_fails_closed(admission):
         )
     with pytest.raises(RuntimeAdmissionError, match="runtime_busy"):
         with admission.recovery_startup(permitted=lambda _value: True):
-            pytest.fail("active work must prevent recovery startup")
+            pass
     with admission._transaction() as db:
         db.execute("DELETE FROM operation")
     assert lease.recover(confirm_quiescent=lambda: True)

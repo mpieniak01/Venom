@@ -49,8 +49,9 @@ def test_existing_16khz_input_preserves_samples(tmp_path):
 
 @pytest.mark.parametrize("kwargs", [{"channels": 2}, {"width": 1}, {"frames": 0}])
 def test_reject_invalid_or_empty_audio(tmp_path, kwargs):
+    path = wav_file(tmp_path, **kwargs)
     with pytest.raises(ValueError):
-        audio.encode_audio_input(wav_file(tmp_path, **kwargs))
+        audio.encode_audio_input(path)
 
 
 def test_large_audio_rejected_before_read(monkeypatch):
@@ -133,10 +134,12 @@ async def test_native_request_separates_system_instruction_and_audio(
     assert kwargs["disable_retry"] is True
     payload = kwargs["json"]
     assert payload["model"] == "custom-model"
-    assert payload["think"] is False and payload["stream"] is False
+    assert payload["think"] is False
+    assert payload["stream"] is False
     system, user = payload["messages"]
     assert system["role"] == "system"
-    assert user["role"] == "user" and user["content"] == ""
+    assert user["role"] == "user"
+    assert user["content"] == ""
     assert base64.b64decode(user["images"][0]).startswith(b"RIFF")
 
 
@@ -343,8 +346,9 @@ async def test_empty_transcript_finishes_voice_ui_without_generation(tmp_path):
 
 @pytest.mark.parametrize("rate", [1, 7999, 192001])
 def test_unsupported_rate_rejected_before_resampling(tmp_path, rate):
+    path = wav_file(tmp_path, rate=rate, frames=8)
     with pytest.raises(ValueError, match="unsupported_sample_rate"):
-        audio.encode_audio_input(wav_file(tmp_path, rate=rate, frames=8))
+        audio.encode_audio_input(path)
 
 
 def test_expanded_wav_is_bounded_before_allocating_output(monkeypatch, tmp_path):

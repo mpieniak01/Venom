@@ -1607,12 +1607,14 @@ async def test_coding_guard_returns_readable_detail_and_machine_header(
         "_evaluate_feedback_loop_resource_guard",
         AsyncMock(return_value=guard),
     )
+    request = SimpleNamespace(exact_only=exact)
+    available_models = set()
     with pytest.raises(system_routes.HTTPException) as caught:
         await system_routes._resolve_feedback_guarded_selection(
-            request=SimpleNamespace(exact_only=exact),
+            request=request,
             model_manager=None,
             selected_model="qwen2.5-coder:3b",
-            available_models=set(),
+            available_models=available_models,
         )
     assert caught.value.detail == "Za mało pamięci RAM."
     assert caught.value.headers["X-Reason-Code"] == "feedback_loop_ram_budget_exceeded"

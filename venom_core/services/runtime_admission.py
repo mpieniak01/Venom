@@ -539,9 +539,9 @@ class RuntimeAdmission:
         try:
             yield
         except BaseException as exc:
-            rejected = isinstance(
-                exc, RuntimeOperationRejection
-            ) and exc.confirms_rejection(_CURRENT_OPERATION.get())
+            rejected = False
+            if isinstance(exc, RuntimeOperationRejection):
+                rejected = exc.confirms_rejection(_CURRENT_OPERATION.get())
             uncertain = not rejected and (
                 confirm_quiescent is None or not confirm_quiescent()
             )

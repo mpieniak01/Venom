@@ -115,7 +115,7 @@ def test_probe_helpers_cover_metadata_only_and_failed_paths():
         thinking = await _probe_thinking(client, "model")
         tools = await _probe_tools(client, "model")
         vision = await _probe_vision(client, "model")
-        audio = await _probe_audio(client, "model")
+        audio = _probe_audio(client, "model")
         return thinking, tools, vision, audio
 
     thinking, tools, vision, audio = asyncio.run(_run())

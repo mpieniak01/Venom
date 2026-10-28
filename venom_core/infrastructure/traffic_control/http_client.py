@@ -72,7 +72,7 @@ def _error_reason(body: bytes) -> str:
     """Return only fixed reason codes; an upstream body may contain secrets."""
     try:
         payload = json.loads(body)
-    except (ValueError, UnicodeDecodeError):
+    except ValueError:
         return "unspecified"
     if not isinstance(payload, dict):
         return "unspecified"

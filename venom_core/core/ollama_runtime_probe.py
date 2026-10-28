@@ -222,7 +222,7 @@ async def _probe_vision(client: OllamaClient, model_name: str) -> dict[str, Any]
     return {"status": "failed", "reason": "empty_response"}
 
 
-async def _probe_audio(client: OllamaClient, model_name: str) -> dict[str, Any]:
+def _probe_audio(client: OllamaClient, model_name: str) -> dict[str, Any]:
     # A text answer cannot establish that an audio encoder actually works.
     return {"status": "metadata_only", "reason": "recorded_audio_required"}
 
@@ -279,15 +279,10 @@ async def probe_ollama_runtime_capabilities(
         client=client,
         model_name=model_name,
     )
-    await _record_optional_probe(
-        probes,
-        capability_enabled=bool(capabilities.capabilities.get("audio_input")),
-        probe_name="audio",
-        capability_missing_reason="capability_missing",
-        probe_fn=_probe_audio,
-        client=client,
-        model_name=model_name,
-    )
+    if capabilities.capabilities.get("audio_input"):
+        probes["audio"] = _probe_audio(client, model_name)
+    else:
+        probes["audio"] = {"status": "metadata_only", "reason": "capability_missing"}
 
     capabilities.probes = probes
     capabilities.probe_status = _aggregate_probe_status(probes)

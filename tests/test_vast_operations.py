@@ -278,7 +278,9 @@ def test_startup_is_deterministic(service):
         update={"mode": "ollama", "model": "test", "download_gb": Decimal("25")}
     )
     script = startup(cfg)
-    assert "ollama pull" in script
+    assert "ollama pull" not in script
+    assert "awaiting_capacity_check" in script
+    assert "ollama pull" in startup(cfg, download_model=True)
     assert "flock" in script
     assert "curl" in script
     assert "ollama pull" not in startup(
@@ -563,3 +565,69 @@ def test_reconcile_null_provider_status_stays_readable(service):
     svc.client.instance.return_value["actual_status"] = None
     assert svc.reconcile(plan.plan_id).state == "unknown"
     assert svc.journal.record(plan.plan_id).state == "unknown"
+
+
+@pytest.mark.parametrize("reasons,unknown", [(["cpu_ram"], []), ([], ["cpu_cores"])])
+def test_provision_blocks_download_on_insufficient_or_unknown_capacity(
+    service, reasons, unknown
+):
+    from venom_core.services.vast_environments.operations import _provision
+
+    _, plan, _ = service
+    plan.profile.mode = "ollama"
+    with (
+        patch(
+            "venom_core.services.vast_environments.operations.inspect",
+            return_value={"reasons": reasons, "unknown": unknown, "facts": {}},
+        ),
+        patch("venom_core.services.vast_environments.operations.subprocess.run") as run,
+    ):
+        with pytest.raises(VastError, match="vast.capacity_mismatch"):
+            _provision(plan, {}, False)
+        run.assert_not_called()
+
+
+def test_ollama_order_carries_context_and_parallelism(service):
+    svc, plan, _ = service
+    plan.profile.mode = "ollama"
+    plan.profile.context_tokens = 8192
+    plan.profile.max_parallel_requests = 1
+    plan.startup_sha256 = digest(startup(plan.profile))
+    plan.checksum = plan.calculate_checksum()
+    svc.journal.save_plan(plan)
+    svc.create(plan.plan_id)
+    body = svc.client.create.call_args.args[1]
+    assert body["env"]["OLLAMA_CONTEXT_LENGTH"] == "8192"
+    assert body["env"]["OLLAMA_NUM_PARALLEL"] == "1"
+    assert body["env"]["OLLAMA_HOST"] == "127.0.0.1:11434"
+    assert "ollama pull" not in body["onstart"]
+
+
+@pytest.mark.parametrize(
+    "driver,engine,accepted",
+    [
+        ("535.146.02", "0.40.11", False),
+        ("595.84", "0.19.0", False),
+        ("595.84", "0.40.11", True),
+        ("", "", False),
+    ],
+)
+def test_real_versions_checked_before_download(service, driver, engine, accepted):
+    from venom_core.services.vast_environments.operations import _check_ollama_capacity
+
+    _, plan, _ = service
+    plan.profile.runtime.min_driver = "550"
+    plan.profile.runtime.min_engine_version = "0.40.11"
+    capacity = {
+        "reasons": [],
+        "unknown": [],
+        "facts": {
+            "gpu": "RTX 3090, " + driver + ", 24576, 0",
+            "ollama_version": "ollama version is " + engine,
+        },
+    }
+    if accepted:
+        _check_ollama_capacity(plan, capacity)
+    else:
+        with pytest.raises(VastError, match="vast.runtime_version_mismatch"):
+            _check_ollama_capacity(plan, capacity)

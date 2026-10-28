@@ -174,9 +174,15 @@ def test_workload_records_error_and_success(service):
     assert rec.runtime_state == "error"
     assert rec.ssh_state == "unknown"
     assert rec.reports["ready"]["status"] == "error"
-    with patch(
-        "venom_core.services.vast_environments.operations.subprocess.run",
-        return_value=Mock(returncode=0),
+    with (
+        patch(
+            "venom_core.services.vast_environments.operations.subprocess.run",
+            return_value=Mock(returncode=0),
+        ),
+        patch(
+            "venom_core.services.vast_environments.operations.inspect",
+            return_value={"reasons": [], "unknown": [], "facts": {}},
+        ),
     ):
         assert workload(svc, plan.plan_id, "provision")["startup"] == "completed"
     with pytest.raises(VastError):

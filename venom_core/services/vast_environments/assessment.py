@@ -157,6 +157,18 @@ def search_filters(profile: WorkloadProfile) -> dict[str, Any]:
         "order": provider_order(profile.sort_by),
         "reliability": {"gte": profile.min_reliability},
     }
+    for field, minimum in (
+        ("gpu_ram", profile.min_gpu_ram_mb),
+        ("cpu_ram", profile.min_cpu_ram_mb),
+        ("cpu_cores_effective", profile.min_cpu_cores),
+        ("disk_space", profile.disk_gb),
+        ("disk_bw", profile.min_disk_mb_s),
+        ("duration", profile.duration_minutes * 60),
+        ("gpu_frac", profile.min_gpu_fraction),
+        ("direct_port_count", 1),
+    ):
+        if minimum:
+            result[field] = {"gte": minimum}
     if profile.min_dlperf:
         result["dlperf"] = {"gte": profile.min_dlperf}
     if profile.min_gpu_mem_bw_gb_s:

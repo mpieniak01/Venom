@@ -25,7 +25,7 @@ from venom_core.services.vast_environments.assessment import assess, search_filt
 from venom_core.services.vast_environments.history import lookup
 from venom_core.services.vast_environments.recipes import verify_template
 from venom_core.services.vast_environments.selection import preferred_queries, rank
-from venom_core.services.vast_environments.startup import startup
+from venom_core.services.vast_environments.startup import ollama_environment, startup
 from venom_core.services.vast_environments.store import Journal
 
 
@@ -168,6 +168,11 @@ class Environments:
                         "cancel_unavail": True,
                         "label": "venom-" + plan_id,
                         "onstart": startup(plan.profile),
+                        **(
+                            {"env": ollama_environment(plan.profile)}
+                            if plan.profile.mode == "ollama"
+                            else {}
+                        ),
                     },
                 )
             except VastError as exc:

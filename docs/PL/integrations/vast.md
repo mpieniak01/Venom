@@ -62,3 +62,25 @@ Direct zachowuje do 20 zakończonych wiadomości (50 000 znaków) dla konkretneg
 celu, generacji połączenia, modelu i sesji w otwartym czacie. Odświeżenie strony
 czyści ten kontekst Direct. Niepełne odpowiedzi nie są dopisywane do kontekstu.
 Istniejący awaryjny STOP anuluje także aktywny strumień HTTP Direct.
+
+
+## Odbiór jakości zamawianego hosta
+
+Dla Ollamy create uruchamia wyłącznie silnik; pobranie modelu wykonuje dopiero
+jawne provision po kontroli SSH, rzeczywistego RAM/CPU/VRAM, wolnego dysku
+i wymaganych wersji sterownika/silnika. Nieznane zasoby lub niezgodność
+zatrzymują pobieranie. Host pozostaje do diagnozy zgodnie z polityką manual.
+Nie należy utożsamiać deklarowanego cpu_ram oferty z limitem kontenera.
+
+Profil context_tokens i max_parallel_requests są przekazywane przez env przy
+tworzeniu kontenera oraz eksportowane w skrypcie startowym. Ollama nasłuchuje
+na loopback, utrzymuje maksymalnie jeden załadowany model. Wersjonowany startup-v5
+zmienia sumę skryptu: stare plany wymagają ponownego planowania, nie edycji checksum.
+Wyszukiwanie przekazuje minima RAM/VRAM/CPU/dysku/czasu także do API, a następnie
+ponownie ocenia oferty lokalnie. API nie gwarantuje przydziału z samej deklaracji.
+
+Kolejność: plan/create → wait → inspect → provision → ready/kwalifikacja GPU
+→ chat-attach. Stan ready silnika nie zastępuje kwalifikacji rzeczywistej generacji.
+Odbiór CUDA nadal wymaga 100% GPU i braku niezgodności, bez automatycznego CPU.
+Kontekst rzeczywistego żądania czatu może jawnie nadpisać domyślną wartość serwera;
+należy sprawdzić zgodność w ollama ps. Nie wynajmujemy automatycznie kolejnego hosta.

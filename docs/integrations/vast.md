@@ -506,3 +506,22 @@ Direct keeps up to 20 completed messages (50,000 characters) per remote target,
 connection generation, model and session in the mounted chat. Reloading the
 page clears this Direct context cache. Incomplete responses are not added to
 context. The existing emergency STOP also aborts the active Direct HTTP stream.
+
+
+### Host quality acceptance before Ollama model download
+
+Ollama create now starts the engine only. Explicit provision inspects actual
+container RAM/CPU/VRAM and disk, plus configured minimum driver/engine versions,
+before downloading weights. Unknown or insufficient resources block provisioning;
+manual lifecycle leaves the instance available for diagnosis.
+
+Search sends capacity minimums to the provider and reassesses results locally.
+Offer cpu_ram remains a declaration, not a guaranteed container limit.
+Creation supplies context length and parallel requests through env; startup also
+exports them, binds loopback and limits loaded models to one. Startup-v5 changes
+the startup checksum: create a fresh plan rather than rewriting old plans.
+
+Run create/wait/inspect/provision/ready and review GPU qualification before attach.
+Engine availability is not GPU acceptance. Explicit chat request options may
+override server context defaults; verify the effective context using ollama ps.
+No undocumented memory-allocation flag or automatic replacement rental is added.

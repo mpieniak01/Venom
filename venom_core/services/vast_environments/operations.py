@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import subprocess
 import time
 
@@ -9,6 +10,7 @@ import httpx
 
 from venom_core.infrastructure.providers.vast.client import VastError
 from venom_core.infrastructure.providers.vast.models import now
+from venom_core.infrastructure.providers.vast.runtime_contracts import version_parts
 from venom_core.services.vast_environments.evaluation import OllamaProbe
 from venom_core.services.vast_environments.gpu_probe import probe_gpu
 from venom_core.services.vast_environments.history import remember
@@ -22,10 +24,29 @@ from venom_core.services.vast_environments.ssh import inspect, ssh_args, tunnel
 from venom_core.services.vast_environments.startup import startup
 
 
+def _check_ollama_capacity(plan, capacity: dict) -> None:
+    if capacity["reasons"] or capacity["unknown"]:
+        raise VastError("vast.capacity_mismatch")
+    facts = capacity["facts"]
+    gpu = str(facts.get("gpu", "")).split(",")
+    engine = re.search(r"\d+\.\d+(?:\.\d+)?", str(facts.get("ollama_version", "")))
+    for actual, minimum in (
+        (gpu[1].strip() if len(gpu) >= 2 else None, plan.profile.runtime.min_driver),
+        (engine.group() if engine else None, plan.profile.runtime.min_engine_version),
+    ):
+        if minimum:
+            observed, required = version_parts(actual), version_parts(minimum)
+            if observed is None or required is None or observed < required:
+                raise VastError("vast.runtime_version_mismatch")
+
+
 def _provision(plan, instance: dict, accept_new: bool) -> dict:
+    if plan.profile.mode == "ollama":
+        capacity = inspect(plan, instance, accept_new)
+        _check_ollama_capacity(plan, capacity)
     process = subprocess.run(
         ssh_args(plan, instance, accept_new) + ["bash", "-s"],
-        input=startup(plan.profile),
+        input=startup(plan.profile, download_model=True),
         text=True,
         capture_output=True,
         timeout=(

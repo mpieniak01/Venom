@@ -273,7 +273,8 @@ def _offer_action(args, service: Environments):
         ]
     if command == "assess":
         rows = service.client.offers(
-            profile.disk_gb, {**search_filters(profile), "id": {"eq": args.offer}}
+            profile.disk_gb,
+            {**search_filters(profile), "ask_contract_id": {"eq": args.offer}},
         )
         selected = [row for row in rows if row.get("id") == args.offer]
         if len(selected) != 1:

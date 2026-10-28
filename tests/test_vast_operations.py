@@ -555,3 +555,11 @@ def test_engine_only_workload_ready_has_no_generation_or_gpu_probe(service):
     gpu.assert_not_called()
     with pytest.raises(VastError, match="vast.model_digest_required"):
         workload(svc, plan.plan_id, "benchmark")
+
+
+def test_reconcile_null_provider_status_stays_readable(service):
+    svc, plan, _ = service
+    svc.create(plan.plan_id)
+    svc.client.instance.return_value["actual_status"] = None
+    assert svc.reconcile(plan.plan_id).state == "unknown"
+    assert svc.journal.record(plan.plan_id).state == "unknown"

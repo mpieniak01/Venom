@@ -406,3 +406,16 @@ def test_trial_unready_engine_still_destroys(service, stage_result, error):
         trial_zero(svc, plan.plan_id)
     assert caught.value.report["cleanup"]["zero_confirmed"]
     assert caught.value.report["success"] is False
+
+
+def test_trial_unexpected_wait_failure_still_destroys_instance(service):
+    svc, plan, _ = service
+    svc.client.destroy.side_effect = lambda _: removed(svc)
+    with patch.object(svc, "wait", side_effect=ValueError("bad response")):
+        with pytest.raises(
+            ZeroCheckError, match="vast.trial_unexpected_error"
+        ) as caught:
+            trial_zero(svc, plan.plan_id)
+    assert caught.value.report["error_type"] == "ValueError"
+    assert caught.value.report["cleanup"]["zero_confirmed"] is True
+    svc.client.destroy.assert_called_once_with(88)

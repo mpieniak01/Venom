@@ -251,6 +251,10 @@ def _trial_zero(
         report["error"] = (
             error.code if isinstance(error, VastError) else "vast.trial_io_error"
         )
+    except Exception as error:
+        # Unexpected provider/validation failures must still reach cleanup.
+        report["error"] = "vast.trial_unexpected_error"
+        report["error_type"] = type(error).__name__
     finally:
         if submitted:
             try:

@@ -102,7 +102,7 @@ class Environments:
         return plan
 
     def _offer(self, profile: WorkloadProfile, offer_id: int) -> dict:
-        filters = {**search_filters(profile), "id": {"eq": offer_id}}
+        filters = {**search_filters(profile), "ask_contract_id": {"eq": offer_id}}
         offers = list(self.client.offers(profile.disk_gb, filters))
         matching = [x for x in offers if x.get("id") == offer_id]
         if len(matching) != 1:
@@ -216,7 +216,7 @@ class Environments:
                 self._event(record, "unknown")
                 raise
             record.instance = instance
-            state = instance.get("actual_status", "unknown")
+            state = instance.get("actual_status") or "unknown"
             target = {"start": "running", "stop": "stopped"}.get(
                 record.pending_action or ""
             )

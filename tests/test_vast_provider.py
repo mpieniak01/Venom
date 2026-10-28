@@ -427,3 +427,14 @@ def test_ssh_list_skips_only_invalid_rows():
     from venom_core.infrastructure.providers.vast.client import ssh_fingerprint
 
     assert api.ssh_fingerprints() == [ssh_fingerprint(public)]
+
+
+def test_absent_instance_is_distinct_from_invalid_response():
+    api, _ = client([(200, {"instances": None})])
+    with pytest.raises(VastError, match="vast.instance_not_found") as caught:
+        api.instance(88)
+    assert caught.value.status == 404
+    for body in ({}, {"instances": []}, {"instances": {"id": 99}}):
+        api, _ = client([(200, body)])
+        with pytest.raises(VastError, match="vast.invalid_response"):
+            api.instance(88)

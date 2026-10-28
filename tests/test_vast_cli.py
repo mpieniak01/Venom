@@ -264,3 +264,65 @@ def test_cli_json_reads_use_utf8(tmp_path, monkeypatch, capsys):
     assert profile in reads
     assert report in reads
     assert json.loads(capsys.readouterr().out.split("\n", 1)[1])["result"]["comparable"]
+
+
+def test_offer_table_price_filter_and_ties():
+    from scripts.cloud.vast.offers_table import select
+
+    def row(identifier, price, status="eligible"):
+        return {
+            "offer": {"id": identifier},
+            "quote": {"hourly_usd": price},
+            "status": status,
+        }
+
+    rows = [
+        row(5, "10"),
+        row(3, "2"),
+        row(1, "2"),
+        row(2, "0.1", "ineligible"),
+        row(4, None),
+        row(6, "0.2", "unknown"),
+        row(7, "NaN"),
+    ]
+    selected, count = select(rows, 2)
+    assert [entry["offer"]["id"] for entry in selected] == [1, 3]
+    assert count == 3
+
+
+def test_offer_table_readonly_and_render(service, tmp_path, capsys):
+    from scripts.cloud.vast import offers_table
+
+    svc, plan, _ = service
+    assessment = svc.search(plan.profile)[0].model_dump(mode="json")
+    assessment["offer"].update(cpu_name="Xeon | test\nCPU", cpu_ram=64000)
+    assessment["runtime"]["memory_allocation"]["baseline_ram_mb"] = "32000"
+    payload = {"ok": True, "result": [assessment]}
+
+    # Assert only the offers action is dispatched; never lifecycle operations.
+    with patch.object(offers_table, "vast_main") as cli:
+        cli.side_effect = lambda argv: (print(json.dumps(payload)) or 0)
+        assert offers_table.main(["--profile", str(tmp_path / "profile.json")]) == 0
+        argv = cli.call_args.args[0]
+        assert argv[5:] == [
+            "offers",
+            "--profile",
+            str(tmp_path / "profile.json"),
+            "--sort",
+            "price",
+            "--no-country-preference",
+        ]
+    output = capsys.readouterr().out
+    assert "64000" in output and "32000" in output
+    assert "Xeon / test CPU" in output
+    for locale in ("pl", "en", "de"):
+        assert offers_table.TEXT[locale]["empty"] in offers_table.render([], 0, locale)
+
+    with patch.object(offers_table, "vast_main") as cli:
+        cli.side_effect = lambda argv: (
+            print('{"ok": false, "error": "vast.http_error"}') or 1
+        )
+        assert offers_table.main([]) == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert json.loads(captured.err)["ok"] is False

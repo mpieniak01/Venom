@@ -11,6 +11,7 @@ from venom_core.services.vast_environments.recipes import validate_recipe
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_PROFILE = ROOT / ".venom_runtime/vast/prepared/chat-gemma4-26b-q4-24gb.json"
 SSH_PROFILE = ROOT / "secrets/ssh/vast/connection.json"
+INVALID_SSH_PROFILE = "vast.invalid_ssh_profile"
 TRUSTED_SSH_ROOTS = (Path.home() / ".ssh", ROOT / "secrets/ssh")
 
 
@@ -50,11 +51,11 @@ def ssh_paths() -> tuple[Path, Path]:
     # Profile text is only a lookup key, never a filesystem existence probe.
     identity = files.get(str(Path(value["identity_file"]).expanduser()))
     if identity is None or str(identity) + ".pub" not in files:
-        raise VastError("vast.invalid_ssh_profile")
+        raise VastError(INVALID_SSH_PROFILE)
     known = Path(value["known_hosts"]).expanduser()
     if not any(known.is_relative_to(root) for root in TRUSTED_SSH_ROOTS):
-        raise VastError("vast.invalid_ssh_profile")
+        raise VastError(INVALID_SSH_PROFILE)
     known = known.resolve()
     if not any(known.is_relative_to(root.resolve()) for root in TRUSTED_SSH_ROOTS):
-        raise VastError("vast.invalid_ssh_profile")
+        raise VastError(INVALID_SSH_PROFILE)
     return identity, known

@@ -95,17 +95,18 @@ export function useRemoteModels() {
   const fetchProviders = useCallback((): Promise<void> => {
     providersRefreshQueued.current = true;
     if (providersRequest.current) return providersRequest.current;
-    providersRequest.current = Promise.resolve().then(async () => {
-      try {
-        while (providersRefreshQueued.current && mounted.current) {
-          providersRefreshQueued.current = false;
-          await readProviders();
-        }
-      } finally {
+    const readQueued = async (): Promise<void> => {
+      if (!mounted.current) {
         providersRequest.current = null;
-        if (mounted.current) setProvidersLoading(false);
+        return;
       }
-    });
+      providersRefreshQueued.current = false;
+      await readProviders();
+      if (providersRefreshQueued.current && mounted.current) return readQueued();
+      providersRequest.current = null;
+      if (mounted.current) setProvidersLoading(false);
+    };
+    providersRequest.current = Promise.resolve().then(readQueued);
     return providersRequest.current;
   }, [readProviders]);
 

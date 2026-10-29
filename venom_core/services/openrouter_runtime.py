@@ -107,7 +107,7 @@ def _catalog_row(row, as_of, core):
     if (
         not isinstance(model, str)
         or not model
-        or ":" in model
+        or (":" in model and (not model.endswith(":free") or model.count(":") != 1))
         or (not isinstance(provider, str))
         or (not provider)
     ):

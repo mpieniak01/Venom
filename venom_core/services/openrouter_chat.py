@@ -72,7 +72,9 @@ def prepare(request) -> dict[str, Any]:
     prices = core.strict_prices(row["pricing"])
     amount = prices.estimate(input_bound, maximum)
     request_id = uuid4().hex
-    conversation = "openrouter:" + row["id"] + ":" + request.session_id
+    conversation = json.dumps(
+        ["openrouter", row["id"], request.session_id], separators=(",", ":")
+    )
     try:
         payload = core.build_chat_payload(
             core.ChatRequest(
@@ -102,6 +104,8 @@ def prepare(request) -> dict[str, Any]:
         "require_parameters": True,
         "data_collection": "deny",
     }
+    if row["id"].endswith(":free"):
+        payload["provider"]["max_price"] = {"prompt": 0, "completion": 0, "request": 0}
     return {
         "id": request_id,
         "model": row["id"],
@@ -200,7 +204,10 @@ def _apply_metadata(item, turn, state):
             if key in item
         }
     )
-    if state["metadata"]["confirmed_model"] not in {None, turn["model"]}:
+    allowed = {None, turn["model"]}
+    if turn["model"].endswith(":free"):
+        allowed.add(turn["model"].removesuffix(":free"))
+    if state["metadata"]["confirmed_model"] not in allowed:
         raise ValueError("model_mismatch")
 
 

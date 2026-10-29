@@ -32,3 +32,9 @@ Quotes conservatively bound serialized input and maximum output; they are not re
 STOP cancels the client's quote or response and closes the application's upstream request. It does not certify immediate cessation of provider billing. Pending reservations need reconciliation from confirmed provider accounting; restarting or changing the selected model does not erase them. Rollback disables the feature, selects a local runtime explicitly, and preserves accounting state.
 
 Private `.venom_runtime/openrouter/requests/` receipts retain requested/confirmed identities and accounting after STOP, without prompts or credentials. They allow pending reservations to be correlated with provider accounting. Daily ledger boundaries use UTC.
+
+## Test zero
+
+`scripts/cloud/openrouter/test_zero.py` defaults to read-only authentication/catalog checks. Explicit `--live --max-cost-usd 0` permits one synthetic short text completion only from a zero-priced fixed text-model endpoint. It validates the live catalog and endpoints, pins one provider, disallows fallback/retry, and requires a completed marker-bearing answer with reported model identity. Reports distinguish preflight from confirmed response, and confirmed zero spend from unknown accounting. Credentials may be provided over stdin and are never logged or persisted by this probe. Use a fresh ignored output path for each attempt.
+
+Explicit `vendor/model:free` entries are catalog variants, not the dynamic `openrouter/free` router. Shared core 0.1.1 accepts fixed free variants; the router remains forbidden. Missing optional request pricing is normalized to zero only for API-listed `:free` entries with both explicit zero token rates, based on the provider's documented free-variant contract. Unknown token prices remain unavailable. This test certifies the provider connection/shared transport; it does not activate the running cockpit or certify conversation quality.

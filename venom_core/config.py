@@ -306,7 +306,7 @@ class Settings(BaseSettings):
     OPENROUTER_MESSAGE_LIMIT_USD: str = "0"
     OPENROUTER_CONVERSATION_LIMIT_USD: str = "0"
     OPENROUTER_DAILY_LIMIT_USD: str = "0"
-    OPENROUTER_LIBRARY_VERSION: str = "0.1.0"
+    OPENROUTER_LIBRARY_VERSION: str = "0.1.1"
 
     ACTIVE_LLM_SERVER: str = ""  # Ostatnio aktywowany serwer LLM
     LLM_CONFIG_HASH: str = (

@@ -386,11 +386,11 @@ def test_release_gate_rejects_different_artifact_and_peer(tmp_path):
 
     from scripts.qualify_openrouter_local import verify_artifact
 
-    wheel = tmp_path / "agent_execution_core-0.1.0-py3-none-any.whl"
+    wheel = tmp_path / "agent_execution_core-0.1.1-py3-none-any.whl"
     wheel.write_bytes(b"fixture")
     receipt = {
         "package": "agent-execution-core",
-        "version": "0.1.0",
+        "version": "0.1.1",
         "wheel": wheel.name,
         "sha256": hashlib.sha256(wheel.read_bytes()).hexdigest(),
         "source_commit": "a" * 40,
@@ -453,3 +453,46 @@ def test_cancelled_turn_retains_provider_identity_without_text(configured, monke
     assert "test-secret" not in json.dumps(receipt) and "Hello" not in json.dumps(
         receipt
     )
+
+
+def test_explicit_free_variant_retains_requested_identity(configured, monkeypatch):
+    core, _, path = configured
+    raw = json.loads(path.read_text())
+    raw["models"][0]["id"] = "vendor/test:free"
+    path.write_text(json.dumps(raw))
+    rt.select_model("vendor/test:free")
+    core.SSEDecoder = lambda: Decoder("pending")
+    monkeypatch.setattr(
+        chat,
+        "client_factory",
+        lambda **kw: httpx.AsyncClient(
+            transport=httpx.MockTransport(
+                lambda req: httpx.Response(200, content=b"fixture")
+            ),
+            **kw,
+        ),
+    )
+    body = consume(authorized_request())
+    assert "event: done" in body
+    assert '"requested_model": "vendor/test:free"' in body
+    assert '"confirmed_model": "vendor/test"' in body
+
+
+def test_free_variant_conversation_namespace_cannot_collide(configured):
+    _, _, path = configured
+    first = request()
+    first.session_id = "free:session"
+    one = chat.prepare(first)["conversation"]
+    raw = json.loads(path.read_text())
+    raw["models"][0]["id"] = "vendor/test:free"
+    path.write_text(json.dumps(raw))
+    rt.select_model("vendor/test:free")
+    second = request()
+    second.session_id = "session"
+    turn = chat.prepare(second)
+    assert one != turn["conversation"]
+    assert turn["payload"]["provider"]["max_price"] == {
+        "prompt": 0,
+        "completion": 0,
+        "request": 0,
+    }

@@ -4706,6 +4706,20 @@
       "rationale": "Offline provider boundary, identity, quotes, policy and billing regressions."
     },
     {
+      "path": "tests/test_openrouter_test_zero.py",
+      "domain": "misc",
+      "test_type": "service_contract",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Test zero: real auth/catalog/one zero-cost completion logic tested with fake transport; live mode remains explicit."
+    },
+    {
       "path": "tests/test_openrouter_wheel.py",
       "domain": "misc",
       "test_type": "service_contract",

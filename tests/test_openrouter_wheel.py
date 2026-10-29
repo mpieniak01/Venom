@@ -178,3 +178,21 @@ def test_public_direct_route_with_actual_installed_wheel(installed, monkeypatch)
         result = client.post("/api/v1/llm/simple/stream", json=item.model_dump())
         assert result.status_code == 200
         assert "HTTP answer" in result.text and "event: done" in result.text
+
+
+def test_test_zero_uses_real_free_model_contract(installed):
+    from scripts.cloud.openrouter.test_zero import generation_payload
+
+    prices = installed.strict_prices({"prompt": "0", "completion": "0", "request": "0"})
+    payload = generation_payload(
+        installed,
+        {
+            "model": "cohere/north-mini-code:free",
+            "prices": prices,
+            "provider": "cohere",
+            "reasoning_disabled": True,
+        },
+    )
+    assert payload["model"] == "cohere/north-mini-code:free"
+    assert payload["provider"]["allow_fallbacks"] is False
+    assert payload["provider"]["max_price"] == {"prompt": 0, "completion": 0}

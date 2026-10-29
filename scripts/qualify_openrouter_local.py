@@ -16,7 +16,7 @@ from pathlib import Path
 def verify_artifact(wheel: Path, receipt: dict, peer: dict) -> None:
     if (
         receipt.get("package") != "agent-execution-core"
-        or receipt.get("version") != "0.1.0"
+        or receipt.get("version") != "0.1.1"
     ):
         raise ValueError("unexpected_package")
     if (

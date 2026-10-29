@@ -107,14 +107,10 @@ def test_recipe_scripts_and_validation(service, mode, tmp_path):
 
 def test_bad_recipe_and_plan_template_change(service, tmp_path):
     svc, plan, _ = service
+    profile = plan.profile.model_copy(update={"download_gb": Decimal(1)})
+    output = tmp_path / "bad.json"
     with pytest.raises(VastError, match="model_digest_required"):
-        prepare(
-            svc.client,
-            plan.profile.model_copy(update={"download_gb": Decimal(1)}),
-            "ollama",
-            None,
-            tmp_path / "bad.json",
-        )
+        prepare(svc.client, profile, "ollama", None, output)
     cfg = plan.profile.model_copy(
         update={"mode": "vllm", "model": "org/x", "model_digest": "latest"}
     )

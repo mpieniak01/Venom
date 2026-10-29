@@ -322,7 +322,8 @@ def test_offer_table_readonly_and_render(service, tmp_path, capsys):
     assert offers_table.memory_gb(24576) == "24.58"
     assert offers_table.memory_gb(None) == "?"
     assert "| 0.1235 |" in output
-    assert "FLOPS [TFLOPS]" in output and "| 36 |" in output
+    assert "FLOPS [TFLOPS]" in output
+    assert "| 36 |" in output
     assert "Xeon / test CPU" in output
     for locale in ("pl", "en", "de"):
         assert offers_table.TEXT[locale]["empty"] in offers_table.render([], 0, locale)

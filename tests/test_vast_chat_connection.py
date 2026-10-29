@@ -87,7 +87,8 @@ def connection(tmp_path):
 def test_attach_probes_own_instance_and_deduplicates_remote_catalog(connection):
     manager, svc, plan, tunnel, requests, _ = connection
     state = manager.attach(plan.plan_id)
-    assert state["available"] and state["endpoint"] == tunnel.endpoint + "/v1"
+    assert state["available"]
+    assert state["endpoint"] == tunnel.endpoint + "/v1"
     assert state["target_id"] == f"ollama@vast:{plan.plan_id}:88"
     assert [row["name"] for row in state["models"]] == ["demo:latest"]
     assert all(request.url.host == "127.0.0.1" for request in requests)
@@ -106,7 +107,8 @@ def test_status_without_refresh_has_no_network_and_tracks_child_exit(connection)
     svc.client.instance.assert_not_called()
     tunnel.running = False
     value = manager.status(refresh=False)
-    assert not value["available"] and value["endpoint"] is None
+    assert not value["available"]
+    assert value["endpoint"] is None
     assert value["target_id"] == state["target_id"]
     assert value["error"] == "vast.tunnel_failed"
 
@@ -126,7 +128,8 @@ def test_failed_refresh_revokes_old_endpoint_and_closes_tunnel(connection, chang
     else:
         responses["/api/tags"] = 400
     result = manager.status()
-    assert not result["available"] and result["endpoint"] is None
+    assert not result["available"]
+    assert result["endpoint"] is None
     assert result["models"] == []
     assert result["target_id"] == state["target_id"]
     assert tunnel.close_count == 1
@@ -144,7 +147,8 @@ def test_restart_loads_identity_only_and_does_not_connect(connection):
         manager.settings, journal=svc.journal, client_factory=factory
     )
     value = restarted.status()
-    assert not value["available"] and value["endpoint"] is None
+    assert not value["available"]
+    assert value["endpoint"] is None
     assert value["target_id"] == original["target_id"]
     assert value["generation"] != original["generation"]
     assert value["error"] == "vast.chat_attach_required"
@@ -158,7 +162,8 @@ def test_detach_forgets_intent_and_never_stops_instance(connection):
     manager, svc, plan, tunnel, _, _ = connection
     before = manager.attach(plan.plan_id)
     result = manager.detach()
-    assert result["target_id"] is None and not result["available"]
+    assert result["target_id"] is None
+    assert not result["available"]
     assert result["generation"] != before["generation"]
     assert tunnel.close_count == 1
     svc.client.destroy.assert_not_called()
@@ -190,7 +195,8 @@ def test_model_metadata_comes_from_same_target_without_generation(connection):
     manager.attach(plan.plan_id)
     assert manager.model_details("demo:latest")["capabilities"] == ["completion"]
     show = [r for r in requests if r.url.path == "/api/show"]
-    assert len(show) == 1 and json.loads(show[0].content) == {"model": "demo:latest"}
+    assert len(show) == 1
+    assert json.loads(show[0].content) == {"model": "demo:latest"}
     with pytest.raises(VastError, match="vast.chat_model_missing"):
         manager.model_details("local-only:latest")
     assert len([r for r in requests if r.url.path == "/api/show"]) == 1
@@ -263,8 +269,9 @@ def test_ssh_failed_start_and_termination_timeout_are_bounded(monkeypatch):
         "venom_core.services.vast_chat_connection.subprocess.Popen",
         Mock(return_value=process),
     )
+    plan = Mock()
     with pytest.raises(VastError, match="vast.tunnel_failed"):
-        ManagedTunnel(Mock(), {})
+        ManagedTunnel(plan, {})
     tunnel = object.__new__(ManagedTunnel)
     tunnel.process = process
     process.poll.return_value = None
@@ -296,7 +303,8 @@ def test_empty_catalog_has_no_models_and_does_not_install_them(connection):
     manager, svc, plan, _, requests, responses = connection
     responses["/api/tags"] = {"models": []}
     state = manager.attach(plan.plan_id)
-    assert state["available"] and state["models"] == []
+    assert state["available"]
+    assert state["models"] == []
     svc.client.create.assert_not_called()
     assert not any(request.url.path == "/api/pull" for request in requests)
 
@@ -336,7 +344,8 @@ def test_conditional_detach_cannot_close_other_plan_after_race(connection):
     assert tunnel.alive()
     assert manager.status(refresh=False)["target_id"] == before["target_id"]
     result = manager.detach(expected_plan_id=plan.plan_id)
-    assert not result["available"] and result["target_id"] is None
+    assert not result["available"]
+    assert result["target_id"] is None
     assert not tunnel.alive()
 
 
@@ -352,13 +361,15 @@ def test_transient_probe_failures_preserve_tunnel_until_threshold(connection, fa
         responses["/api/tags"] = 429 if failure == "http429" else 500
     for count in (1, 2):
         state = manager.status()
-        assert not state["available"] and state["endpoint"] is None
+        assert not state["available"]
+        assert state["endpoint"] is None
         assert state["probe_failures"] == count
         assert state["generation"] == original["generation"]
         assert tunnel.alive()
         svc.client.close.assert_not_called()
     state = manager.status()
-    assert not state["available"] and state["probe_failures"] == 3
+    assert not state["available"]
+    assert state["probe_failures"] == 3
     assert tunnel.close_count == 1
     svc.client.close.assert_called_once()
 
@@ -371,7 +382,8 @@ def test_probe_success_resets_transient_failures_without_reattach(connection):
         assert manager.status()["probe_failures"] == 1
         svc.client.instance.side_effect = None
         recovered = manager.status()
-        assert recovered["available"] and recovered["probe_failures"] == 0
+        assert recovered["available"]
+        assert recovered["probe_failures"] == 0
         assert recovered["generation"] == original["generation"]
         assert manager.tunnel_factory.call_count == 1
     assert tunnel.close_count == 0

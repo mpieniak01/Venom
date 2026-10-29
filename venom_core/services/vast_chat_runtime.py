@@ -33,8 +33,9 @@ def selection() -> dict[str, str] | None:
                 elif (
                     isinstance(value, dict)
                     and re.fullmatch(
-                        r"ollama@vast:[a-f0-9]{32}:[1-9][0-9]*",
+                        r"ollama@vast:[a-f0-9]{32}:[1-9]\d*",
                         str(value.get("target_id", "")),
+                        flags=re.ASCII,
                     )
                     and isinstance(value.get("model"), str)
                     and value["model"]

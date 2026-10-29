@@ -103,12 +103,9 @@ def test_cleanup_inflight_destroy_is_not_replayed(service):
 def test_cleanup_detach_failure_does_not_destroy(service):
     svc, plan, _ = service
     svc.create(plan.plan_id)
+    detach = Mock(side_effect=VastError("vast.detach_unconfirmed"))
     with pytest.raises(ZeroCheckError, match="vast.detach_unconfirmed"):
-        cleanup_zero(
-            svc,
-            plan.plan_id,
-            before_destroy=Mock(side_effect=VastError("vast.detach_unconfirmed")),
-        )
+        cleanup_zero(svc, plan.plan_id, before_destroy=detach)
     svc.client.destroy.assert_not_called()
 
 
@@ -179,7 +176,8 @@ def test_trial_success_uses_inspection_and_guaranteed_cleanup(service):
         ],
     ) as inspect:
         result = trial_zero(svc, plan.plan_id, accept_new_host_key=True)
-    assert result["success"] and result["cleanup"]["zero_confirmed"]
+    assert result["success"]
+    assert result["cleanup"]["zero_confirmed"]
     assert result["engine"]["generation_tested"] is False
     assert inspect.call_args_list == [
         call(svc, plan.plan_id, "inspect", True),

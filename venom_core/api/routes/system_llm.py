@@ -2839,7 +2839,7 @@ async def _resolve_switch_model_selection(
 
 
 async def _enforce_selected_ollama_model(
-    server_name: str, endpoint: str, selected_model: str
+    server_name: str, endpoint: str | None, selected_model: str
 ) -> None:
     if server_name != "ollama":
         return

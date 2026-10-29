@@ -35,7 +35,13 @@ async def status():
 
 
 @router.post(
-    "/system/vast-chat/attach", dependencies=[Depends(require_localhost_request)]
+    "/system/vast-chat/attach",
+    dependencies=[Depends(require_localhost_request)],
+    responses={
+        409: {
+            "description": "Select the local runtime before attaching another target."
+        }
+    },
 )
 @admitted_operation("runtime_command", mutation=True)
 async def attach(request: AttachRequest):

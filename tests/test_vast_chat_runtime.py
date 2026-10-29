@@ -92,7 +92,8 @@ def test_selected_unavailable_target_never_becomes_local(target, change):
     else:
         state.update(available=False, endpoint=None)
     runtime = remote.runtime_override()
-    assert runtime is not None and remote.is_remote(runtime)
+    assert runtime is not None
+    assert remote.is_remote(runtime)
     assert TARGET in runtime.runtime_id
     assert runtime.endpoint is None
     assert remote.server_name(runtime) == remote.SERVER
@@ -125,8 +126,9 @@ def test_generation_preflight_rejects_changed_remote_target(target, change):
         state["models"] = []
     else:
         state["models"][0]["digest"] = "f" * 64
+    preflight = remote.preflight()
     with pytest.raises(HTTPException) as error:
-        asyncio.run(remote.preflight())
+        asyncio.run(preflight)
     assert error.value.status_code == 503
     assert remote.selection()["target_id"] == TARGET
 
@@ -148,9 +150,11 @@ def test_generation_guard_does_not_enter_body_after_remote_disappears(target):
         async with gate.runtime_request_guard(request_kind="simple_chat"):
             reached.append(True)
 
+    operation = attempt()
     with pytest.raises(HTTPException) as error:
-        asyncio.run(attempt())
-    assert error.value.status_code == 503 and reached == []
+        asyncio.run(operation)
+    assert error.value.status_code == 503
+    assert reached == []
     assert gate.get_runtime_switch_gate_snapshot().active_requests == 0
 
 
@@ -159,10 +163,9 @@ def test_expected_identity_prevents_generation_after_reconnect(target):
     select()
     old = remote.runtime_override()
     state["generation"] = "new-generation"
+    current = remote.runtime_override()
     with pytest.raises(HTTPException) as error:
-        remote.assert_identity(
-            remote.runtime_override(), old.runtime_id, old.config_hash
-        )
+        remote.assert_identity(current, old.runtime_id, old.config_hash)
     assert error.value.status_code == 409
 
 
@@ -178,10 +181,37 @@ def test_corrupt_persisted_selection_is_fail_closed(target, monkeypatch, payload
     remote._SELECTION.write_text(payload)
     monkeypatch.setattr(remote, "_selected", remote._UNSET)
     runtime = remote.runtime_override()
-    assert runtime is not None and remote.is_remote(runtime)
+    assert runtime is not None
+    assert remote.is_remote(runtime)
     assert runtime.endpoint is None
+    preflight = remote.preflight()
     with pytest.raises(HTTPException) as error:
-        asyncio.run(remote.preflight())
+        asyncio.run(preflight)
+    assert error.value.status_code == 503
+
+
+@pytest.mark.parametrize("instance_suffix", ["42١", "42１"])
+def test_persisted_target_rejects_non_ascii_instance_digits(
+    target, monkeypatch, instance_suffix
+):
+    remote._SELECTION.write_text(
+        json.dumps(
+            {
+                "target_id": f"ollama@vast:{PLAN}:{instance_suffix}",
+                "model": "demo:latest",
+                "digest": DIGEST,
+            }
+        )
+    )
+    monkeypatch.setattr(remote, "_selected", remote._UNSET)
+    assert remote.selection()["target_id"] == "ollama@vast:unavailable"
+    runtime = remote.runtime_override()
+    assert runtime is not None
+    assert remote.is_remote(runtime)
+    assert runtime.endpoint is None
+    preflight = remote.preflight()
+    with pytest.raises(HTTPException) as error:
+        asyncio.run(preflight)
     assert error.value.status_code == 503
 
 
@@ -228,7 +258,8 @@ def test_target_payload_exposes_only_remote_models_and_unavailable_is_empty(targ
     assert payload["models"][0]["active"]
     state.update(available=False, models=[])
     payload = asyncio.run(remote.target_payload())
-    assert not payload["available"] and payload["models"] == []
+    assert not payload["available"]
+    assert payload["models"] == []
 
 
 def test_api_attach_rejects_remote_request_before_ssh(target):
@@ -263,8 +294,10 @@ def test_api_local_attach_and_detach_do_not_change_selection(target):
 def test_api_attach_other_plan_is_rejected_while_remote_selected(target):
     _, connection = target
     select()
+    request = AttachRequest(plan_id="b" * 32)
+    activation = vast_chat.attach(request)
     with pytest.raises(HTTPException) as error:
-        asyncio.run(vast_chat.attach(AttachRequest(plan_id="b" * 32)))
+        asyncio.run(activation)
     assert error.value.status_code == 409
     connection.attach.assert_not_called()
 
@@ -284,8 +317,9 @@ def test_activate_drains_requests_and_releases_switch_on_failure(target, monkeyp
         vast_chat, "wait_for_runtime_requests_to_drain", AsyncMock(return_value=False)
     )
     request = ActiveLlmServerRequest(server_name=remote.SERVER, model="demo:latest")
+    activation = vast_chat.activate(request, "ui")
     with pytest.raises(HTTPException) as error:
-        asyncio.run(vast_chat.activate(request, "ui"))
+        asyncio.run(activation)
     assert error.value.status_code == 409
     assert not gate.get_runtime_switch_gate_snapshot().in_progress
     assert remote.selection() is None
@@ -325,8 +359,9 @@ def test_kernel_cannot_build_local_client_for_offline_selected_target(target):
 
     builder.settings = SETTINGS
     builder._register_local_http_service = Mock()
+    kernel = Mock()
     with pytest.raises(ValueError, match="vast_chat_target_unavailable"):
-        builder._register_local_service(Mock(), "local_llm", "local-name", False)
+        builder._register_local_service(kernel, "local_llm", "local-name", False)
     builder._register_local_http_service.assert_not_called()
 
 
@@ -483,8 +518,10 @@ def test_direct_service_rejects_drift_or_oversized_history_before_stream(
             {"role": "user", "content": "x" * 30000},
             {"role": "assistant", "content": "y" * 30000},
         ]
+    request = SimpleChatRequest(**values)
+    stream_operation = simple.stream_simple_chat(request)
     with pytest.raises(HTTPException) as error:
-        asyncio.run(simple.stream_simple_chat(SimpleChatRequest(**values)))
+        asyncio.run(stream_operation)
     assert error.value.status_code == (400 if change == "history" else 409)
     stream.assert_not_called()
 
@@ -529,8 +566,9 @@ def test_rejected_preflight_releases_admission_for_target_switch(
             pytest.fail("Preflight must reject before generation starts")
 
     error = asyncio.CancelledError if failure == "cancel" else HTTPException
+    operation = attempt()
     with pytest.raises(error):
-        asyncio.run(attempt())
+        asyncio.run(operation)
     assert ledger.snapshot()["active_operations"] == 0
     assert gate.get_runtime_switch_gate_snapshot().active_requests == 0
     with ledger.operation(kind="runtime_switch", mutation=True):
@@ -553,13 +591,18 @@ def test_dispatched_generation_retains_uncertainty_and_blocks_switch(
             raise HTTPException(503, "Generation failed after dispatch")
 
     error = asyncio.CancelledError if failure == "cancel" else HTTPException
+    operation = attempt()
     with pytest.raises(error):
-        asyncio.run(attempt())
+        asyncio.run(operation)
     assert ledger.snapshot()["active_operations"] == 1
     assert gate.get_runtime_switch_gate_snapshot().active_requests == 0
-    with pytest.raises(admission.RuntimeAdmissionError):
+
+    def attempt_switch():
         with ledger.operation(kind="runtime_switch", mutation=True):
             pytest.fail("Uncertain generation must still prevent switching")
+
+    with pytest.raises(admission.RuntimeAdmissionError):
+        attempt_switch()
 
 
 @pytest.mark.parametrize("host,expected", [("127.0.0.1", 200), ("203.0.113.5", 403)])
@@ -607,10 +650,12 @@ def test_failed_activation_preserves_local_model_with_vast_selected(
             "inspect_onnx_worker",
             AsyncMock(return_value={"ready": True, "models": ["candidate"]}),
         )
-    with pytest.raises(RuntimeError, match="save failed"):
-        if provider == "onnx":
-            asyncio.run(system_llm._activate_onnx_runtime("candidate"))
-        else:
+    if provider == "onnx":
+        activation = system_llm._activate_onnx_runtime("candidate")
+        with pytest.raises(RuntimeError, match="save failed"):
+            asyncio.run(activation)
+    else:
+        with pytest.raises(RuntimeError, match="save failed"):
             system_llm._activate_cloud_runtime(provider, "candidate")
     assert system_llm.SETTINGS.LLM_MODEL_NAME == "local-only"
     assert system_llm.SETTINGS.LLM_SERVICE_TYPE == "local"

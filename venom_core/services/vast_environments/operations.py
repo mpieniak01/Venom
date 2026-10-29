@@ -30,7 +30,9 @@ def _check_ollama_capacity(plan, capacity: dict) -> None:
         raise VastError("vast.capacity_mismatch")
     facts = capacity["facts"]
     gpu = str(facts.get("gpu", "")).split(",")
-    engine = re.search(r"\d+\.\d+(?:\.\d+)?", str(facts.get("ollama_version", "")))
+    engine = re.search(
+        r"(?<!\d)\d++\.\d++(?:\.\d++)?", str(facts.get("ollama_version", ""))
+    )
     for actual, minimum in (
         (gpu[1].strip() if len(gpu) >= 2 else None, plan.profile.runtime.min_driver),
         (engine.group() if engine else None, plan.profile.runtime.min_engine_version),

@@ -109,3 +109,19 @@ Odczyt instancji zachowuje mem_limit/mem_usage/vmem_usage bez zakładania ich
 jednostek; dokumentacja API nie określa ich precyzyjnie. Źródłem odbioru są
 pomiary SSH, nie sam odczyt cpu_ram. Nie dodajemy nieudokumentowanych flag
 zamówienia RAM. Nowy plan jest konieczny po aktualizacji profilu.
+
+
+## Odbiór kilku tur Direct
+
+`python scripts/cloud/vast/chat_smoke.py` wykonuje domyślnie tylko odczyt
+preflight. Jawny `--live --turns 2` (lub 3) uruchamia generację na już
+wybranym celu i wymaga zgody na takie wykonanie. Nie tworzy ani nie usuwa hosta.
+
+Smoke przekazuje ograniczoną historię i w drugiej turze wymaga dokładnego
+odtworzenia losowego znacznika z pierwszej wiadomości. Brak zgodności kończy
+test błędem; raport zawiera tylko wynik kontroli, bez treści i znacznika.
+Nie potwierdza to odbioru UI, Normal ani ogólnej jakości modelu.
+
+Odmowa preflight przed rozpoczęciem generacji zwalnia admission, umożliwiając
+zmianę celu. Błąd lub anulowanie po rozpoczęciu generacji zachowuje stan
+niepewnego wykonania; nie czyścić go automatycznie bez dowodu zatrzymania.

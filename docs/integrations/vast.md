@@ -542,3 +542,19 @@ includes reclaimable cache; limit-current is not model headroom.
 Instance mem_limit/mem_usage/vmem_usage are retained as provider observations,
 without guessing undocumented units. SSH hard limits remain the acceptance
 source. A declaration and proportional estimate never replace actual checks.
+
+
+## Multi-turn Direct acceptance
+
+`python scripts/cloud/vast/chat_smoke.py` defaults to read-only preflight.
+Explicit `--live --turns 2` (or 3) generates against an already selected target
+and requires authorization for that execution. It never creates or deletes a host.
+
+The smoke sends bounded history and requires exact recall of a random marker
+on the second turn. A mismatch fails acceptance; the report contains only the
+verification result, without conversation text or the marker. This does not
+establish browser, Normal-mode, or general model-quality acceptance.
+
+Preflight rejection before generation releases admission so the target can
+be changed. Errors or cancellation after generation starts retain uncertainty;
+never clear it automatically without evidence that the work has stopped.

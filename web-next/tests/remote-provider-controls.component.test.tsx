@@ -22,10 +22,16 @@ describe("Remote API operator controls", () => {
     assert.ok(screen.getByText("Unavailable"));
     assert.ok(screen.getByText("Selected for chat"));
     assert.ok(screen.getByText(/does not stop the rented instance/));
-    assert.equal(screen.getByRole("link").getAttribute("href"), "/config?tab=integrations&integration=core%3Avast");
+    assert.equal(screen.getByRole("link").getAttribute("href"), "/models?tab=vast");
     fireEvent.click(screen.getByRole("button", { name: "Check connection" }));
     fireEvent.click(screen.getByRole("button", { name: "VAST · Ollama: Disable API" }));
     assert.deepEqual(calls, [["vast_ollama"], ["vast_ollama", false]]);
+  });
+
+  it("shows the VAST connection badge from live provider availability without selection", () => {
+    render(<RemoteProviderCard provider={{ ...provider, selected: false, available: true }} pending={false} manage={async () => {}} connectVast={async () => {}} t={t} />);
+    assert.ok(screen.getByText("Connected"));
+    assert.equal(screen.queryByText("Selected for chat") === null, true);
   });
 
   it("disables both controls while an operation is pending", () => {

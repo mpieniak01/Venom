@@ -34,3 +34,38 @@ Tests use mocked transports and an isolated network namespace. No live API gener
 ## Manual provider test zero
 
 VAST and OpenRouter test zero are manual acceptance operations only on an explicit operator request for that run. They are excluded from automatic test policies, startup and post-change checks. Metadata checks and model connections never trigger generation. Automated tests of their code use only doubles. See [policy](PROVIDER_TEST_ZERO_POLICY.md) ([PL](PL/PROVIDER_TEST_ZERO_POLICY.md)).
+
+## VAST management tab
+
+Open **Models → VAST** (`/models?tab=vast`). The server loads one reviewed Ollama
+profile from `VAST_CHAT_PROFILE_FILE`; the local default is the existing prepared
+`chat-gemma4-26b-q4-24gb.json` under `.venom_runtime/vast/prepared/`. The profile
+pins the image and model digests, download allowance and hardware requirements.
+SSH uses the existing private `secrets/ssh/vast/connection.json`; the browser
+never supplies executable recipes, filesystem paths, credentials or SSH options.
+
+1. Search offers for the selected estimated duration and choose an eligible host.
+2. Set maximum hourly and estimated total USD, then prepare a time-limited quote.
+3. Review it and explicitly confirm the paid order. First-use SSH trust is a
+   separate opt-in (`accept-new`); changed host keys remain rejected.
+4. The background job creates one rental, waits for SSH, checks capacity, installs
+   the pinned model and opens the managed tunnel. Matching API/model metadata
+   automatically marks VAST connected in Remote Models. No generation is sent.
+5. In chat select **VAST · Ollama**, then the installed model. Attachment does not
+   change the active provider or model; normal runtime selection remains explicit.
+6. Stop or destroy from the environment row. Stopped hosts may still incur storage
+   charges. The panel keeps possible billing visible until provider reconciliation
+   confirms destruction. Setup currently completes or fails before cleanup actions
+   become available; interrupted, never-submitted orders can be cancelled safely.
+
+Cost caps validate the rental quote, including the declared transfer allowance;
+they are not an ongoing spending meter or an automatic destruction timer. Failed
+setup retains the rented host for operator recovery/cleanup. Unknown create outcomes
+are reconciled without retrying the paid create call. API restart never re-rents or
+automatically provisions: use the row's refresh to reattach a previously provisioned
+order, or clean up an interrupted setup. Disabling the provider prevents setup/attach
+and generation, while cleanup remains available. Missing VAST configuration or an
+unavailable external API never blocks Venom startup.
+
+This workflow does not invoke `ready`, benchmarks or `trial-zero`: those can generate
+model output. Real Test Zero remains a separate manual operator-request-only action.

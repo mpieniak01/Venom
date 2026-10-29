@@ -264,3 +264,13 @@ async def test_runtime_server_selector_uses_persisted_enable_flag(monkeypatch, o
     )
     servers = (await system_llm.get_llm_servers())["servers"]
     assert any(row["name"] == "openrouter" for row in servers) is on
+
+
+def test_running_vast_engine_without_model_is_not_connected(isolated):
+    state, _ = isolated
+    state.update(available=True, models=[], error=None)
+    info = control.status("vast_ollama")
+    assert not info["available"]
+    assert info["error"] == "vast.chat_model_missing"
+    state["models"] = [{"name": "fixture/model"}]
+    assert control.status("vast_ollama")["available"]

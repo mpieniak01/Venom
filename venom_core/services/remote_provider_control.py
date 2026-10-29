@@ -89,7 +89,9 @@ def status(provider: str) -> dict[str, Any]:
         probe = dict(_CHECKS.get(provider, {}))
     available = probe.get("available") if on and configured else False
     if provider == "vast_ollama":
-        available = bool(on and info.get("available"))
+        available = bool(on and info.get("available") and info.get("models"))
+        if on and info.get("available") and not info.get("models"):
+            reason = "vast.chat_model_missing"
     return {
         "provider": provider,
         "enabled": on,

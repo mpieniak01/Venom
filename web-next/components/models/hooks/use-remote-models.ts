@@ -61,6 +61,8 @@ export function useRemoteModels() {
   const [providerActions, setProviderActions] = useState<Record<string, boolean>>({});
   const [providerActionError, setProviderActionError] = useState<string | null>(null);
   const activeActions = useRef(new Set<string>());
+  const providersRequest = useRef(false);
+  const mounted = useRef(true);
 
   const [catalog, setCatalog] = useState<RemoteModelInfo[]>([]);
   const [catalogProvider, setCatalogProvider] = useState<string | null>(null);
@@ -75,21 +77,22 @@ export function useRemoteModels() {
 
   // Fetch providers
   const fetchProviders = useCallback(async () => {
+    if (providersRequest.current) return;
+    providersRequest.current = true;
     try {
-      setProvidersLoading(true);
       setProvidersError(null);
       const response = await fetch("/api/v1/models/remote/providers");
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);
       }
       const data: RemoteProvidersResponse = await response.json();
-      setProviders(data.providers || []);
+      if (mounted.current) setProviders(data.providers || []);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
-      setProvidersError(message);
-      setProviders([]);
+      if (mounted.current) { setProvidersError(message); setProviders([]); }
     } finally {
-      setProvidersLoading(false);
+      providersRequest.current = false;
+      if (mounted.current) setProvidersLoading(false);
     }
   }, []);
 
@@ -173,8 +176,11 @@ export function useRemoteModels() {
 
   // Initial fetch
   useEffect(() => {
-    fetchProviders();
-    fetchBindings();
+    mounted.current = true;
+    void fetchProviders();
+    void fetchBindings();
+    const timer = setInterval(() => { void fetchProviders(); }, 10000);
+    return () => { mounted.current = false; clearInterval(timer); };
   }, [fetchProviders, fetchBindings]);
 
   return {

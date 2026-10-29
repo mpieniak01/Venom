@@ -102,7 +102,7 @@ class VastManagement:
             )
         )
         if phase == "ready" and not connected:
-            phase = "connecting"
+            phase, error = "interrupted", "vast.chat_attach_required"
         return {
             "plan_id": plan_id,
             "model": plan.profile.model,
@@ -149,7 +149,14 @@ class VastManagement:
         )
         for path in paths[:100]:
             try:
-                rows.append(self.row(path.name.removesuffix(".plan.json")))
+                plan_id = path.name.removesuffix(".plan.json")
+                if self._job(plan_id).get("phase") in {
+                    "stop_requested",
+                    "destroy_requested",
+                }:
+                    rows.append(self.refresh(plan_id))
+                else:
+                    rows.append(self.row(plan_id))
             except ERRORS:
                 reason = reason or "vast.management_journal_invalid"
         return {
@@ -280,6 +287,9 @@ class VastManagement:
             raise VastError("vast.management_disabled")
         self._target_allowed(plan_id)
         plan = self.journal.plan(plan_id)
+        record = self.journal.record(plan_id)
+        if record.pending_action or record.state != "running":
+            raise VastError("vast.chat_instance_unavailable")
         state = self.connection.status(refresh=False)
         if state.get("plan_id") != plan_id or not state.get("available"):
             state = self.connection.attach(
@@ -296,6 +306,12 @@ class VastManagement:
             raise VastError("vast.management_model_not_ready")
 
     def _run(self, plan_id: str) -> None:
+        with Journal(self.journal.root / "management-locks").lock(plan_id):
+            self._run_owned(plan_id)
+
+    def _run_owned(self, plan_id: str) -> None:
+        if self._job(plan_id).get("phase") != "queued":
+            return
         try:
             with self._service() as service:
                 self._save(plan_id, phase="creating")
@@ -336,13 +352,25 @@ class VastManagement:
             )
 
     def refresh(self, plan_id: str) -> dict[str, Any]:
+        with Journal(self.journal.root / "management-locks").lock(plan_id):
+            return self._refresh_owned(plan_id)
+
+    def _refresh_owned(self, plan_id: str) -> dict[str, Any]:
         job = self._job(plan_id)
         if job.get("phase") in ACTIVE and job.get("owner") == self.owner:
             return self.row(plan_id)
         try:
             with self._service(check_enabled=False) as service:
                 record = service.reconcile(plan_id)
-            if record.state in {"stopped", "destroyed"}:
+            if record.pending_action or record.state in {"stopped", "destroyed"}:
+                state = self.connection.status(refresh=False)
+                if state.get("plan_id") == plan_id:
+                    self.connection.detach(expected_plan_id=plan_id)
+            if record.pending_action:
+                self._save(
+                    plan_id, phase=record.pending_action + "_requested", error=None
+                )
+            elif record.state in {"stopped", "destroyed"}:
                 self._save(plan_id, phase=record.state, error=None)
             elif (
                 record.state == "running"
@@ -362,9 +390,25 @@ class VastManagement:
         return self.row(plan_id)
 
     def change(self, plan_id: str, action: str) -> dict[str, Any]:
+        with Journal(self.journal.root / "management-locks").lock(plan_id):
+            return self._change_owned(plan_id, action)
+
+    def _change_owned(self, plan_id: str, action: str) -> dict[str, Any]:
         if action not in {"stop", "destroy"}:
             raise VastError("vast.invalid_action")
         job = self._job(plan_id)
+        record = self.journal.record(plan_id)
+        if record.pending_action == action or record.pending_action == "destroy":
+            return self.row(plan_id)
+        if (
+            action == "destroy"
+            and job.get("authorized")
+            and record.submitted_at is None
+        ):
+            record.state = "cancelled"
+            self.journal.save_record(record)
+            self._save(plan_id, phase="cancelled", authorized=False, error=None)
+            return self.row(plan_id)
         if job.get("phase") in ACTIVE and job.get("owner") == self.owner:
             raise VastError("vast.management_busy")
         state = self.connection.status(refresh=False)
@@ -373,7 +417,7 @@ class VastManagement:
         with self._service(check_enabled=False) as service:
             if action == "destroy":
                 service.export(plan_id)
-            service.change(plan_id, action)
+            service.change(plan_id, "destroy" if action == "destroy" else "stop")
         self._save(plan_id, phase=action + "_requested", error=None)
         return self.row(plan_id)
 

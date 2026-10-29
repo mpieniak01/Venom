@@ -1,0 +1,118 @@
+import { useCallback, useEffect, useRef, useState } from "react";
+
+export interface VastEnvironment {
+  plan_id: string; model: string; state: string; phase: string;
+  instance_id: number | null; hourly_usd: string | null; total_usd: string | null;
+  duration_minutes: number; expires_at: string; connected: boolean;
+  error: string | null; billing_possible: boolean;
+}
+export interface VastOffer {
+  offer_id: number; gpu_name: string; country: string | null; gpu_ram_mb: number | null;
+  hourly_usd: string; total_usd: string; status: "eligible" | "ineligible" | "unknown";
+  reasons: string[];
+}
+export interface VastEnvironmentsState {
+  configured: boolean; enabled: boolean; model: string | null;
+  duration_minutes: number; reason: string | null; environments: VastEnvironment[];
+}
+const base = "/api/v1/vast/environments";
+const activePhases = new Set(["queued", "creating", "waiting", "provisioning", "connecting", "stop_requested", "destroy_requested"]);
+export const VAST_POLL_INTERVAL = 5000;
+
+async function jsonResponse(response: Response) {
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null);
+    throw new Error(typeof payload?.detail === "string" ? payload.detail : `HTTP ${response.status}`);
+  }
+  return response.json();
+}
+
+export function useVastEnvironments(onChanged?: () => Promise<unknown>) {
+  const [state, setState] = useState<VastEnvironmentsState | null>(null);
+  const [offers, setOffers] = useState<VastOffer[] | null>(null);
+  const [draft, setDraft] = useState<VastEnvironment | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const mounted = useRef(true);
+  const busy = useRef(false);
+  const reading = useRef(false);
+  const readSequence = useRef(0);
+  const refreshQueued = useRef(false);
+  const callback = useRef(onChanged); callback.current = onChanged;
+  const connectionSignature = useRef("");
+
+  const refresh = useCallback(async (): Promise<void> => {
+    if (reading.current || busy.current) { refreshQueued.current = true; return; }
+    reading.current = true;
+    const sequence = ++readSequence.current;
+    try {
+      const value: VastEnvironmentsState = await jsonResponse(await fetch(base));
+      if (!mounted.current || sequence !== readSequence.current) return;
+      setState(value);
+      const signature = value.environments.filter(row => row.connected).map(row => row.plan_id).sort().join(",");
+      if (signature !== connectionSignature.current) {
+        connectionSignature.current = signature;
+        await callback.current?.();
+      }
+    } catch (e) {
+      if (mounted.current && sequence === readSequence.current) setError(e instanceof Error ? e.message : "vast.request_failed");
+    } finally {
+      reading.current = false;
+      if (mounted.current) {
+        setLoading(false);
+        if (refreshQueued.current) { refreshQueued.current = false; void refresh(); }
+      }
+    }
+  }, []);
+
+  const cancelRead = useCallback(() => { ++readSequence.current; }, []);
+  useEffect(() => {
+    mounted.current = true;
+    void refresh();
+    return () => { mounted.current = false; cancelRead(); };
+  }, [refresh, cancelRead]);
+
+  const hasActiveOrder = state?.environments.some(row => activePhases.has(row.phase)) ?? false;
+  useEffect(() => {
+    if (!hasActiveOrder) return;
+    const timer = setInterval(() => { void refresh(); }, VAST_POLL_INTERVAL);
+    return () => clearInterval(timer);
+  }, [hasActiveOrder, refresh]);
+
+  const post = async (path: string, body: object, accept: (data: unknown) => void) => {
+    if (busy.current) return;
+    busy.current = true;
+    ++readSequence.current;
+    setPending(true); setError(null);
+    try {
+      const result = await jsonResponse(await fetch(base + path, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+      }));
+      if (mounted.current) accept(result);
+    } catch (e) {
+      if (mounted.current) setError(e instanceof Error ? e.message : "vast.request_failed");
+    } finally {
+      busy.current = false;
+      if (mounted.current) { setPending(false); await refresh(); }
+    }
+  };
+  const search = (duration: number) => {
+    setDraft(null); setOffers(null);
+    return post("/search", { duration_minutes: duration }, data => setOffers((data as { offers: VastOffer[] }).offers));
+  };
+  const prepare = (offer: VastOffer, duration: number, hourly: string, total: string) => {
+    setDraft(null);
+    return post("/plans", {
+      offer_id: offer.offer_id, duration_minutes: duration, max_hourly_usd: hourly, max_total_usd: total,
+    }, data => setDraft(data as VastEnvironment));
+  };
+  const action = (planId: string, operation: "order" | "refresh" | "stop" | "destroy", acceptNewHostKey = false) => post(
+    `/${encodeURIComponent(planId)}/${operation}`,
+    operation === "order" ? { confirmed: true, accept_new_host_key: acceptNewHostKey } : operation === "refresh" ? {} : { confirmed: true },
+    () => { if (operation === "order") setDraft(null); },
+  );
+  const clearDraft = () => setDraft(null);
+  const clearOffers = () => setOffers(null);
+  return { state, offers, draft, loading, pending, error, search, prepare, action, refresh, clearDraft, clearOffers };
+}

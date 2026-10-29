@@ -234,7 +234,7 @@ def test_refresh_restores_only_existing_provisioned_order(f):
     order(f)
     f.state.update(available=False, plan_id=None)
     f.m.owner = "restart"
-    assert f.m.row(f.p.plan_id)["phase"] == "connecting"
+    assert f.m.row(f.p.plan_id)["phase"] == "interrupted"
     assert f.m.refresh(f.p.plan_id)["connected"]
     assert len(f.calls) == 2
     f.svc.client.instance.return_value["actual_status"] = "stopped"
@@ -359,3 +359,47 @@ def test_api_cleanup_errors_and_origin_guard(api, f):
     with pytest.raises(HTTPException) as e:
         routes.invoke(Mock(side_effect=OSError("private")))
     assert e.value.detail == "vast.management_unavailable"
+
+
+def test_operation_lock_prevents_refresh_cleanup_and_provision_races(f):
+    from venom_core.services.vast_environments.store import Journal
+
+    journal = Journal(f.m.journal.root / "management-locks")
+    with journal.lock(f.p.plan_id):
+        for action in (
+            lambda: f.m.refresh(f.p.plan_id),
+            lambda: f.m.change(f.p.plan_id, "stop"),
+        ):
+            with pytest.raises(VastError, match="vast.plan_busy"):
+                action()
+    f.svc.client.create.assert_not_called()
+    f.connection.attach.assert_not_called()
+
+
+def test_pending_cleanup_never_reattaches_and_get_confirms_destroyed(f):
+    order(f)
+    f.m.change(f.p.plan_id, "destroy")
+    row = f.m.refresh(f.p.plan_id)
+    assert row["phase"] == "destroy_requested" and not row["connected"]
+    assert f.connection.attach.call_count == 1
+    f.m.change(f.p.plan_id, "destroy")
+    f.svc.client.destroy.assert_called_once()
+    f.svc.client.instance.side_effect = VastError("vast.http_error", 404)
+    row = f.m.overview()["environments"][0]
+    assert row["phase"] == "destroyed" and not row["billing_possible"]
+
+
+def test_operator_can_cancel_interrupted_queue_without_rental(f):
+    f.m.order(f.p.plan_id, False)
+    f.m.owner = "new-api-process"
+    assert f.m.row(f.p.plan_id)["phase"] == "interrupted"
+    assert f.m.change(f.p.plan_id, "destroy")["phase"] == "cancelled"
+    run(f)  # late scheduler callback must not revive cancelled intent
+    f.svc.client.create.assert_not_called()
+    assert f.m.row(f.p.plan_id)["phase"] == "cancelled"
+
+
+def test_provision_waits_for_initial_startup_lock_instead_of_skipping_install(f):
+    assert "flock -w 120 9" in startup(f.p.profile, download_model=True)
+    assert "ollama pull" in startup(f.p.profile, download_model=True)
+    assert "flock -n 9 || exit 0" in startup(f.p.profile)

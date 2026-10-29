@@ -29,6 +29,7 @@ export function RemoteProviderCard({ provider, pending, manage, connectVast, t }
           <Badge tone={provider.enabled ? "success" : "neutral"}>{t(key + (provider.enabled ? "enabled" : "disabled"))}</Badge>
           <Badge tone={provider.configured ? "success" : "warning"}>{t(key + (provider.configured ? "configured" : "unconfigured"))}</Badge>
           <Badge tone={provider.available ? "success" : "neutral"}>{t(key + (provider.available === true ? "available" : provider.available === false ? "unavailable" : "unchecked"))}</Badge>
+          {provider.provider === "vast_ollama" && provider.available === true && <Badge tone="success">{t("models.vast.connected")}</Badge>}
           {provider.selected && <Badge tone="warning">{t(key + "selected")}</Badge>}
         </> : <Badge tone={provider.status === "configured" ? "success" : "neutral"}>{provider.status}</Badge>}
       </div>
@@ -50,6 +51,6 @@ export function RemoteProviderCard({ provider, pending, manage, connectVast, t }
       <Button size="sm" variant="secondary" disabled={pending || !provider.enabled || !validPlan} onClick={() => void connectVast(normalizedPlanId)}>{t(key + "attach")}</Button>
       <Button size="sm" variant="secondary" disabled={pending || !provider.configured} onClick={() => void connectVast(null)}>{t(key + "detach")}</Button>
     </div>}
-    {provider.provider === "vast_ollama" && <p className="mt-2 text-xs text-[color:var(--ui-muted)]">{t(key + "vastHint")} <Link className="underline underline-offset-4" href="/config?tab=integrations&integration=core%3Avast">{t(key + "manageInfrastructure")}</Link></p>}
+    {provider.provider === "vast_ollama" && <p className="mt-2 text-xs text-[color:var(--ui-muted)]">{t(key + "vastHint")} <Link className="underline underline-offset-4" href="/models?tab=vast">{t(key + "manageInfrastructure")}</Link></p>}
   </div>;
 }

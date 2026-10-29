@@ -262,6 +262,11 @@ def test_single_post_and_settlement_semantics(configured, monkeypatch, kind):
     assert calls[0].headers["Authorization"] == "Bearer test-secret"
     payload = json.loads(calls[0].content)
     assert payload["provider"]["allow_fallbacks"] is False
+    assert payload["provider"]["max_price"] == {
+        "prompt": 0.3,
+        "completion": 1.5,
+        "request": 0.0,
+    }
     ledger.reserve.assert_called_once()
     if kind == "settled":
         ledger.settle.assert_called_once_with(

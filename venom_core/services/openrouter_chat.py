@@ -104,6 +104,11 @@ def prepare(request) -> dict[str, Any]:
         "require_parameters": True,
         "data_collection": "deny",
     }
+    payload["provider"]["max_price"] = {
+        "prompt": float(prices.input_per_million),
+        "completion": float(prices.output_per_million),
+        "request": float(prices.request),
+    }
     if row["id"].endswith(":free"):
         payload["provider"]["max_price"] = {"prompt": 0, "completion": 0, "request": 0}
     return {

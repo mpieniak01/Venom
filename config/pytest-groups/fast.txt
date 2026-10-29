@@ -11,7 +11,6 @@ tests/api/test_memory_openapi_contract.py
 tests/api/test_system_api.py
 tests/api/test_system_api_dynamic.py
 tests/security/test_autonomy_enforcement.py
-tests/test_202c_benchmark_metrics.py
 tests/test_204a_canonical_control_state.py
 tests/test_214a_daemon_management.py
 tests/test_214a_gemma4_daemon.py
@@ -63,6 +62,7 @@ tests/test_artifact_strategy.py
 tests/test_assistant_skill.py
 tests/test_audio_compute_contracts.py
 tests/test_audio_engine.py
+tests/test_audio_stream_handler_roi.py
 tests/test_audit_stream_api.py
 tests/test_audit_stream_service.py
 tests/test_autonomy_enforcement.py
@@ -144,7 +144,6 @@ tests/test_env_contracts.py
 tests/test_env_report_diff.py
 tests/test_environment_policy.py
 tests/test_error_mappings.py
-tests/test_execution_inventory.py
 tests/test_execution_mode_planner.py
 tests/test_executive_agent_roi.py
 tests/test_eyes.py
@@ -160,10 +159,10 @@ tests/test_flow_router.py
 tests/test_foreman_agent.py
 tests/test_forge_flow.py
 tests/test_gemma4_audio_models.py
-tests/test_gemma4_audio_runtime_main.py
 tests/test_generation_params_adapter.py
 tests/test_generation_schema.py
 tests/test_ghost_agent.py
+tests/test_ghost_agent_hil.py
 tests/test_git_routes_logic.py
 tests/test_git_skill.py
 tests/test_git_skill_roi.py
@@ -223,6 +222,7 @@ tests/test_learning_logs.py
 tests/test_lessons_governance.py
 tests/test_lessons_manager.py
 tests/test_lessons_store.py
+tests/test_light_release_installers.py
 tests/test_llm_runtime_activation_api.py
 tests/test_llm_runtime_options_api.py
 tests/test_llm_runtime_stability_audit.py
@@ -309,9 +309,6 @@ tests/test_ollama_voice_input.py
 tests/test_onnx_llm_client.py
 tests/test_onnx_runtime_cleanup.py
 tests/test_openai_semantic_kernel_compat.py
-tests/test_openrouter_runtime.py
-tests/test_openrouter_test_zero.py
-tests/test_openrouter_wheel.py
 tests/test_operator_agent.py
 tests/test_optional_modules_contracts_guard.py
 tests/test_oracle_agent.py
@@ -359,6 +356,7 @@ tests/test_queue_governance.py
 tests/test_recorder.py
 tests/test_release_manager.py
 tests/test_remote_models_service.py
+tests/test_remote_provider_control.py
 tests/test_render_skill.py
 tests/test_research_skill.py
 tests/test_researcher_agent.py
@@ -447,9 +445,7 @@ tests/test_validate_sonar_architecture.py
 tests/test_vast_chat_cli.py
 tests/test_vast_chat_connection.py
 tests/test_vast_chat_runtime.py
-tests/test_vast_chat_smoke.py
 tests/test_vast_cleanup_zero.py
-tests/test_vast_cli.py
 tests/test_vast_faults.py
 tests/test_vast_operations.py
 tests/test_vast_provider.py

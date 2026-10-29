@@ -299,6 +299,7 @@ tests/test_pytest_group_runner.py
 tests/test_qualification_process.py
 tests/test_release_manager.py
 tests/test_remote_models_service.py
+tests/test_remote_provider_control.py
 tests/test_render_skill.py
 tests/test_research_skill.py
 tests/test_researcher_agent.py

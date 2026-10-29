@@ -1,6 +1,7 @@
 """Moduł: kernel_builder - budowanie usług Microsoft Agent Framework."""
 
 import importlib.util
+from contextlib import aclosing
 from typing import Any, Optional
 
 from openai import AsyncOpenAI
@@ -27,6 +28,70 @@ def _safe_find_spec(module_name: str) -> Any | None:
 
 GOOGLE_AVAILABLE = _safe_find_spec("agent_framework_openai") is not None
 GEMINI_OPENAI_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/openai/"
+
+
+class _DeferredVastChatService(MafChatService):
+    """Keep an offline external selection without making it a startup dependency."""
+
+    def __init__(self, service_id: str, runtime: Any):
+        self.service_id = service_id
+        self.ai_model_id = runtime.model_name
+        from venom_core.services.vast_chat_runtime import selection
+
+        self._target_id = runtime.runtime_id.rsplit(":", 1)[0]
+        self._selection = selection()
+        self._delegate: MafChatService | None = None
+        self._endpoint: str | None = None
+
+    async def _available_service(self) -> MafChatService:
+        from venom_core.services.remote_provider_control import enabled
+        from venom_core.services.vast_chat_runtime import (
+            is_remote,
+            runtime_override,
+            selection,
+        )
+
+        if not enabled("vast_ollama"):
+            raise ValueError("vast_chat_disabled")
+        current = runtime_override()
+        if (
+            not is_remote(current)
+            or selection() != self._selection
+            or current.runtime_id.rsplit(":", 1)[0] != self._target_id
+            or current.model_name != self.ai_model_id
+        ):
+            raise ValueError("vast_chat_target_changed")
+        if not current.endpoint:
+            raise ValueError("vast_chat_target_unavailable")
+        if self._delegate is None or self._endpoint != current.endpoint:
+            await self.aclose()
+            self._delegate = MafChatService(
+                service_id=self.service_id,
+                ai_model_id=self.ai_model_id,
+                async_client=AsyncOpenAI(
+                    api_key="ollama", base_url=current.endpoint, max_retries=0
+                ),
+            )
+            self._endpoint = current.endpoint
+        return self._delegate
+
+    async def get_chat_message_content(self, **kwargs):
+        service = await self._available_service()
+        return await service.get_chat_message_content(**kwargs)
+
+    async def get_streaming_chat_message_contents(self, **kwargs):
+        service = await self._available_service()
+        async with aclosing(
+            service.get_streaming_chat_message_contents(**kwargs)
+        ) as stream:
+            async for chunk in stream:
+                yield chunk
+
+    async def aclose(self) -> None:
+        if self._delegate is not None:
+            await self._delegate.aclose()
+            self._delegate = None
+            self._endpoint = None
 
 
 class KernelBuilder:
@@ -77,15 +142,10 @@ class KernelBuilder:
 
         runtime = runtime_override()
         if is_remote(runtime):
-            if not runtime.endpoint:
-                raise ValueError("vast_chat_target_unavailable")
-            self._register_local_http_service(
-                kernel,
-                "local_llm" if self.enable_multi_service else "local",
-                runtime.model_name,
-                runtime.endpoint,
-                api_key="ollama",
-                max_retries=0,
+            kernel.add_service(
+                _DeferredVastChatService(
+                    "local_llm" if self.enable_multi_service else "local", runtime
+                )
             )
             return kernel
 
@@ -217,17 +277,9 @@ class KernelBuilder:
 
         runtime = runtime_override()
         if is_remote(runtime):
-            if not runtime.endpoint:
-                raise ValueError("vast_chat_target_unavailable")
-            self._register_local_http_service(
-                kernel,
-                service_id,
-                runtime.model_name,
-                runtime.endpoint,
-                api_key="ollama",
-                max_retries=0,
-            )
+            kernel.add_service(_DeferredVastChatService(service_id, runtime))
             return
+
         active_server = str(
             getattr(self.settings, "ACTIVE_LLM_SERVER", "") or ""
         ).lower()

@@ -95,7 +95,13 @@ def runtime_override():
     config = (
         runtime_id + "|" + selected.get("model", "") + "|" + selected.get("digest", "")
     )
-    endpoint = state.get("endpoint") if same and state.get("available") else None
+    from venom_core.services.remote_provider_control import enabled
+
+    endpoint = (
+        state.get("endpoint")
+        if same and state.get("available") and enabled(SERVER)
+        else None
+    )
     return LLMRuntimeInfo(
         provider="ollama",
         model_name=selected.get("model", ""),
@@ -119,6 +125,10 @@ async def preflight() -> None:
     selected = selection()
     if selected is None:
         return
+    from venom_core.services.remote_provider_control import enabled
+
+    if not enabled(SERVER):
+        raise HTTPException(503, "vast_chat_disabled")
     state = await asyncio.to_thread(connection().status, refresh=True)
     models = state.get("models", [])
     valid_model = any(
@@ -135,6 +145,10 @@ async def preflight() -> None:
 
 
 async def select_model(model: str | None) -> dict:
+    from venom_core.services.remote_provider_control import enabled
+
+    if not enabled(SERVER):
+        raise HTTPException(503, "vast_chat_disabled")
     state = await asyncio.to_thread(connection().status, refresh=True)
     if not state.get("available"):
         raise HTTPException(status_code=503, detail="vast_chat_target_unavailable")
@@ -162,6 +176,15 @@ async def select_model(model: str | None) -> dict:
 
 async def target_payload() -> dict:
     state = await asyncio.to_thread(connection().status, refresh=True)
+    from venom_core.services.remote_provider_control import enabled
+
+    if not enabled(SERVER):
+        state = {
+            **state,
+            "available": False,
+            "models": [],
+            "error": "vast_chat_disabled",
+        }
     selected = selection()
     models = [
         {

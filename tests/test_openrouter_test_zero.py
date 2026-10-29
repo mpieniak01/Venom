@@ -63,8 +63,10 @@ def test_default_is_read_only_and_zero_budget():
         return httpx.Client(transport=httpx.MockTransport(endpoint), **kw)
 
     report = smoke.run("fixture-key", core(), client_factory=factory)
-    assert report["authenticated"] and not report["response_confirmed"]
-    assert report["generation_requests"] == 0 and report["selected_model"] == MODEL
+    assert report["authenticated"]
+    assert not report["response_confirmed"]
+    assert report["generation_requests"] == 0
+    assert report["selected_model"] == MODEL
     assert all(r.method == "GET" for r in calls)
     assert "fixture-key" not in str(report)
 
@@ -123,8 +125,10 @@ def test_generation_failure_has_no_retry_and_preserves_preflight(monkeypatch):
 
     monkeypatch.setattr(smoke, "generate", fail)
     report = smoke.run("fixture", core(), live=True, client_factory=factory)
-    assert report["authenticated"] and report["models_visible"] == 1
-    assert report["status"] == "failed" and report["generation_requests"] == 1
+    assert report["authenticated"]
+    assert report["models_visible"] == 1
+    assert report["status"] == "failed"
+    assert report["generation_requests"] == 1
     assert len(attempts) == 1
 
 
@@ -142,7 +146,9 @@ def test_answer_validation():
         {"type": "metadata", "model": MODEL, "generation_id": "gen"}, state
     )
     smoke.apply_event({"type": "done"}, state)
-    assert state["done"] and state["text"] == "OK" and state["generation_id"] == "gen"
+    assert state["done"]
+    assert state["text"] == "OK"
+    assert state["generation_id"] == "gen"
     with pytest.raises(smoke.TestZeroError):
         smoke.apply_event({"type": "error"}, state)
 
@@ -171,7 +177,53 @@ def test_invalid_local_payload_never_counts_as_generation(monkeypatch):
         return httpx.Client(transport=httpx.MockTransport(endpoint), **kw)
 
     report = smoke.run("fixture", api, live=True, client_factory=factory)
-    assert (
-        report["generation_requests"] == 0
-        and report["reason"] == "local_request_invalid"
-    )
+    assert report["generation_requests"] == 0
+    assert report["reason"] == "local_request_invalid"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "case,reason",
+    [
+        ("success", None),
+        ("marker", "answer_marker_missing"),
+        ("model", "model_identity_mismatch"),
+        ("cost", "reported_cost_exceeds_reservation"),
+        ("incomplete", "no_completed_text_answer"),
+        ("http", "generation_http_429"),
+    ],
+)
+async def test_generate_validates_one_mocked_completion(case, reason):
+    api = core()
+    events = [
+        {"type": "text", "text": "wrong" if case == "marker" else smoke.MARKER},
+        {"type": "metadata", "model": "wrong/model" if case == "model" else MODEL},
+    ]
+    if case != "incomplete":
+        events.append({"type": "done"})
+    api.SSEDecoder = lambda: SimpleNamespace(feed=lambda raw: events, finish=lambda: [])
+    api.usage_cost = lambda usage: Decimal("1" if case == "cost" else "0")
+    calls = []
+
+    def handler(request):
+        calls.append(request)
+        return httpx.Response(429 if case == "http" else 200, content=b"fixture")
+
+    def factory(**kwargs):
+        return httpx.AsyncClient(transport=httpx.MockTransport(handler), **kwargs)
+
+    candidate = {"model": MODEL, "provider": "fixed", "estimate": Decimal("0")}
+    if reason is None:
+        report = await smoke.generate(
+            api, "fixture", candidate, factory, payload={"fixture": True}
+        )
+        assert report["answered"] is True
+        assert report["accounting"] == "settled"
+        assert report["reported_usd"] == "0"
+    else:
+        with pytest.raises(smoke.TestZeroError, match=reason):
+            await smoke.generate(
+                api, "fixture", candidate, factory, payload={"fixture": True}
+            )
+    assert len(calls) == 1
+    assert calls[0].method == "POST"

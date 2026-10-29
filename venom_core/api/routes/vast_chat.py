@@ -38,9 +38,10 @@ async def status():
     "/system/vast-chat/attach",
     dependencies=[Depends(require_localhost_request)],
     responses={
+        503: {"description": "VAST chat provider is disabled or unavailable."},
         409: {
             "description": "Select the local runtime before attaching another target."
-        }
+        },
     },
 )
 @admitted_operation("runtime_command", mutation=True)

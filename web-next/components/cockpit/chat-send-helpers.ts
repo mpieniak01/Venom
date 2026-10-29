@@ -284,7 +284,7 @@ function assertCompletedRemoteStream(
     }
 }
 
-export async function handleSimpleTaskSend(params: {
+type SimpleTaskSendParams = {
     clientId: string;
     trimmed: string;
     resolvedSession: string | null;
@@ -310,7 +310,37 @@ export async function handleSimpleTaskSend(params: {
     clearSimpleStream: ChatSendParams["clearSimpleStream"];
     setMessage: ChatSendParams["setMessage"];
     setSending: ChatSendParams["setSending"];
-}) {
+};
+
+function failSimpleTaskSend(
+    params: SimpleTaskSendParams,
+    requestId: string,
+    error_: unknown,
+    openRouter: boolean,
+): void {
+    const error = openRouter
+        ? new Error(params.t?.("cockpit.openrouter.failure") ?? "cockpit.openrouter.failure")
+        : error_;
+    const errorText = error instanceof Error ? error.message : "Błąd trybu prostego.";
+    params.updateSimpleStream(params.clientId, {
+        text: errorText,
+        status: "FAILED",
+        done: true,
+    });
+    params.dropOptimisticRequest(params.clientId);
+    params.setMessage(error instanceof Error ? error.message : "Nie udało się wysłać zadania");
+    params.setLocalSessionHistory(previous => {
+        const next = [...previous];
+        upsertHistoryEntry(next, requestId, "assistant", errorText, new Date().toISOString(), params.resolvedSession);
+        const index = next.findIndex(entry => entry.request_id === requestId && entry.role === "assistant");
+        if (index >= 0) {
+            next[index] = { ...next[index], pending: false, status: "FAILED" };
+        }
+        return next;
+    });
+}
+
+export async function handleSimpleTaskSend(params: SimpleTaskSendParams) {
     const {
         clientId,
         trimmed,
@@ -330,7 +360,6 @@ export async function handleSimpleTaskSend(params: {
         setResponseDurations,
         dropOptimisticRequest,
         clearSimpleStream,
-        setMessage,
         setSending,
     } = params;
     let resolvedRequestId = clientId;
@@ -425,42 +454,55 @@ export async function handleSimpleTaskSend(params: {
         let firstChunkLogged = false;
         let streamCompleted = false;
 
-        const parser = createParser({
-            onEvent: (msg) => {
-                if (msg.event === "content") {
-                    const data = JSON.parse(msg.data);
-                    if (data.text) {
-                        buffer += data.text;
-                        if (!firstChunkLogged) {
-                            const ttftTiming = uiTimingsRef.current.get(simpleRequestId);
-                            if (ttftTiming && ttftTiming.ttftMs === undefined) {
-                                recordUiTiming(simpleRequestId, { ttftMs: Date.now() - ttftTiming.t0 });
-                            }
-                            firstChunkLogged = true;
-                        }
-                        updateSimpleStream(clientId, { text: buffer, status: "W toku" });
-                        upsertLocalHistory("assistant", buffer);
-                    }
-                } else if (msg.event === "start" && openRouter) {
-                    provenance = readOpenRouterMetadata(JSON.parse(msg.data));
-                    recordAccounting("PROCESSING");
-                } else if (msg.event === "cost") {
-                    const cost = readOpenRouterCost(JSON.parse(msg.data));
-                    if (cost && openRouter) { accounting = cost; recordAccounting("PROCESSING"); }
-                } else if (msg.event === "done") {
-                    const completion = openRouter ? JSON.parse(msg.data) : {};
-                    if (openRouter) {
-                        provenance = readOpenRouterMetadata(completion);
-                        actualUsage = readOpenRouterUsage(completion.usage, completion.usage_source);
-                    }
-                    const cost = readOpenRouterCost(completion.cost);
-                    if (cost && openRouter) accounting = cost;
-                    streamCompleted = true;
-                } else if (msg.event === "error") {
-                    const data = JSON.parse(msg.data);
-                    throw new Error(data.error || "Wystąpił błąd strumieniowania.");
+        const handleContent = (raw: string) => {
+            const data = JSON.parse(raw);
+            if (!data.text) return;
+            buffer += data.text;
+            if (!firstChunkLogged) {
+                const timing = uiTimingsRef.current.get(simpleRequestId);
+                if (timing && timing.ttftMs === undefined) {
+                    recordUiTiming(simpleRequestId, { ttftMs: Date.now() - timing.t0 });
                 }
-            },
+                firstChunkLogged = true;
+            }
+            updateSimpleStream(clientId, { text: buffer, status: "W toku" });
+            upsertLocalHistory("assistant", buffer);
+        };
+        const handleStart = (raw: string) => {
+            if (!openRouter) return;
+            provenance = readOpenRouterMetadata(JSON.parse(raw));
+            recordAccounting("PROCESSING");
+        };
+        const handleCost = (raw: string) => {
+            const cost = readOpenRouterCost(JSON.parse(raw));
+            if (cost && openRouter) {
+                accounting = cost;
+                recordAccounting("PROCESSING");
+            }
+        };
+        const handleDone = (raw: string) => {
+            const completion = openRouter ? JSON.parse(raw) : {};
+            if (openRouter) {
+                provenance = readOpenRouterMetadata(completion);
+                actualUsage = readOpenRouterUsage(completion.usage, completion.usage_source);
+            }
+            const cost = readOpenRouterCost(completion.cost);
+            if (cost && openRouter) accounting = cost;
+            streamCompleted = true;
+        };
+        const handleError = (raw: string) => {
+            const data = JSON.parse(raw);
+            throw new Error(data.error || "Wystąpił błąd strumieniowania.");
+        };
+        const eventHandlers = new Map<string, (raw: string) => void>([
+            ["content", handleContent],
+            ["start", handleStart],
+            ["cost", handleCost],
+            ["done", handleDone],
+            ["error", handleError],
+        ]);
+        const parser = createParser({
+            onEvent: message => eventHandlers.get(message.event ?? "")?.(message.data),
         });
 
         try {
@@ -547,40 +589,9 @@ export async function handleSimpleTaskSend(params: {
             dropOptimisticRequest(clientId);
             clearSimpleStream(clientId);
         }, 200);
-    } catch (caught) {
-        const err = openRouter ? new Error(params.t?.("cockpit.openrouter.failure") ?? "cockpit.openrouter.failure") : caught;
+    } catch (error_) {
         recordAccounting("FAILED");
-        updateSimpleStream(clientId, {
-            text: err instanceof Error ? err.message : "Błąd trybu prostego.",
-            status: "FAILED",
-            done: true,
-        });
-        dropOptimisticRequest(clientId);
-        setMessage(err instanceof Error ? err.message : "Nie udało się wysłać zadania");
-        setLocalSessionHistory((prev) => {
-            const next = [...prev];
-            const errorText = err instanceof Error ? err.message : "Błąd trybu prostego.";
-            const requestId = resolvedRequestId;
-            upsertHistoryEntry(
-                next,
-                requestId,
-                "assistant",
-                errorText,
-                new Date().toISOString(),
-                resolvedSession,
-            );
-            const idx = next.findIndex(
-                (entry) => entry.request_id === requestId && entry.role === "assistant",
-            );
-            if (idx >= 0) {
-                next[idx] = {
-                    ...next[idx],
-                    pending: false,
-                    status: "FAILED",
-                };
-            }
-            return next;
-        });
+        failSimpleTaskSend(params, resolvedRequestId, error_, openRouter);
     } finally {
         setSending(false);
     }

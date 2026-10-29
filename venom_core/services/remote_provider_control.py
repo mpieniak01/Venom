@@ -69,47 +69,96 @@ def set_enabled(provider: str, value: bool) -> None:
         _CHECKS.pop(provider, None)
 
 
-def status(provider: str) -> dict[str, Any]:
-    _provider(provider)
+def _provider_metadata(provider: str) -> dict[str, Any]:
     from venom_core.services import openrouter_runtime, vast_chat_runtime
 
     if provider == "openrouter":
         info = openrouter_runtime.status()
-        on = enabled(provider, bool(openrouter_runtime.SETTINGS.OPENROUTER_ENABLED))
-        configured = info["configured"]
-        selected = info["active"]
-        reason = info["reason"]
-    else:
-        on = enabled(provider)
-        info = vast_chat_runtime.connection().status(refresh=False)
-        configured = bool(info.get("target_id") or info.get("plan_id"))
-        selected = vast_chat_runtime.selection() is not None
-        reason = info.get("error")
+        return {
+            "enabled": enabled(
+                provider, bool(openrouter_runtime.SETTINGS.OPENROUTER_ENABLED)
+            ),
+            "configured": info["configured"],
+            "selected": info["active"],
+            "reason": info["reason"],
+            "connection": info,
+        }
+    info = vast_chat_runtime.connection().status(refresh=False)
+    return {
+        "enabled": enabled(provider),
+        "configured": bool(info.get("target_id") or info.get("plan_id")),
+        "selected": vast_chat_runtime.selection() is not None,
+        "reason": info.get("error"),
+        "connection": info,
+    }
+
+
+def _status_name(on: bool, available: bool | None) -> str:
+    if not on:
+        return "disabled"
+    if available:
+        return "reachable"
+    if available is False:
+        return "degraded"
+    return "configured"
+
+
+def status(provider: str) -> dict[str, Any]:
+    _provider(provider)
+    metadata = _provider_metadata(provider)
+    on = metadata["enabled"]
+    reason = metadata["reason"]
     with _LOCK:
         probe = dict(_CHECKS.get(provider, {}))
-    available = probe.get("available") if on and configured else False
+    available: bool | None = False
+    if on and metadata["configured"]:
+        available = probe.get("available")
     if provider == "vast_ollama":
+        info = metadata["connection"]
         available = bool(on and info.get("available") and info.get("models"))
+        if available:
+            probe.pop("error", None)
+            reason = None
         if on and info.get("available") and not info.get("models"):
             reason = "vast.chat_model_missing"
+    error = "remote_provider_disabled"
+    if on:
+        error = probe.get("error") or reason
     return {
         "provider": provider,
         "enabled": on,
-        "configured": configured,
-        "selected": selected,
+        "configured": metadata["configured"],
+        "selected": metadata["selected"],
         "available": available,
-        "status": "disabled"
-        if not on
-        else (
-            "reachable"
-            if available
-            else ("degraded" if available is False else "configured")
-        ),
+        "status": _status_name(on, available),
         "last_check": probe.get("last_check"),
         "latency_ms": probe.get("latency_ms"),
-        "error": (probe.get("error") or reason) if on else "remote_provider_disabled",
+        "error": error,
         "infrastructure_managed_separately": provider == "vast_ollama",
     }
+
+
+async def _check_openrouter(configured: bool) -> tuple[bool, str | None]:
+    from venom_core.services import openrouter_runtime
+
+    if not configured:
+        return False, "openrouter_missing_credentials"
+    if not openrouter_runtime.cloud_allowed():
+        return False, "openrouter_cloud_policy_denied"
+    try:
+        async with httpx.AsyncClient(timeout=6, follow_redirects=False) as client:
+            response = await client.get(
+                "https://openrouter.ai/api/v1/key",
+                headers={"Authorization": "Bearer " + openrouter_runtime.credential()},
+            )
+        if response.status_code != 200:
+            return False, "openrouter_authentication_failed"
+        payload = response.json()
+        if not isinstance(payload, dict) or not isinstance(payload.get("data"), dict):
+            return False, "openrouter_authentication_failed"
+        return True, None
+    except (httpx.HTTPError, TimeoutError, ValueError):
+        return False, "openrouter_connection_unavailable"
 
 
 async def check(provider: str) -> dict[str, Any]:
@@ -129,33 +178,7 @@ async def check(provider: str) -> dict[str, Any]:
         available = bool(state.get("available"))
         error = None if available else "vast_chat_target_unavailable"
     else:
-        from venom_core.services import openrouter_runtime
-
-        if not info["configured"]:
-            error = "openrouter_missing_credentials"
-        elif not openrouter_runtime.cloud_allowed():
-            error = "openrouter_cloud_policy_denied"
-        else:
-            try:
-                async with httpx.AsyncClient(
-                    timeout=6, follow_redirects=False
-                ) as client:
-                    response = await client.get(
-                        "https://openrouter.ai/api/v1/key",
-                        headers={
-                            "Authorization": "Bearer " + openrouter_runtime.credential()
-                        },
-                    )
-                    available = response.status_code == 200
-                    if available:
-                        payload = response.json()
-                        available = isinstance(payload, dict) and isinstance(
-                            payload.get("data"), dict
-                        )
-                    error = None if available else "openrouter_authentication_failed"
-            except (httpx.HTTPError, TimeoutError, ValueError):
-                available = False
-                error = "openrouter_connection_unavailable"
+        available, error = await _check_openrouter(info["configured"])
     with _LOCK:
         _CHECKS[provider] = {
             "available": available,

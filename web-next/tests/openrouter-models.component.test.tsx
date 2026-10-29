@@ -141,3 +141,10 @@ for (const [language, locale] of Object.entries({ pl, en, de })) {
     await waitFor(() => assert.ok(calls.some(path => path.includes("category=programming"))));
   });
 }
+
+
+it("shows the effective budget output cap for a connected model", async () => {
+  globalThis.fetch = async () => Response.json({ models: [model("vendor/a", { connected: true, available: true, max_output_tokens: 256 })] });
+  render(<OpenRouterModelsSection t={t} />);
+  await waitFor(() => assert.ok(screen.getByText("Maximum output (tokens, MVP budget cap): 256")));
+});

@@ -122,14 +122,13 @@ async def test_multiple_connections_survive_reopen_and_keep_selected_hash(state)
     assert catalog.connected()["count"] == 0
     assert rt.selection() == identity
     assert rt.configured_catalog()[1] == []
+    input_under_test = SimpleNamespace(
+        expected_runtime_id="openrouter@vendor/a",
+        expected_config_hash=digest,
+        model="vendor/a",
+    )
     with pytest.raises(HTTPException):
-        rt.assert_identity(
-            SimpleNamespace(
-                expected_runtime_id="openrouter@vendor/a",
-                expected_config_hash=digest,
-                model="vendor/a",
-            )
-        )
+        rt.assert_identity(input_under_test)
 
 
 @pytest.mark.asyncio
@@ -173,7 +172,8 @@ async def test_stale_model_is_visible_but_cannot_become_fresh_by_adding_another(
 @pytest.mark.asyncio
 async def test_search_profiles_query_pagination_and_category_only_upstream(state):
     first = await catalog.search(limit=1)
-    assert first["total"] == 3 and first["next_offset"] == 1
+    assert first["total"] == 3
+    assert first["next_offset"] == 1
     assert (await catalog.search(purpose="tasks"))["count"] == 2
     assert (await catalog.search(q="B"))["models"][0]["id"] == "vendor/b"
     assert (await catalog.search(offset=10))["models"] == []
@@ -329,7 +329,8 @@ async def test_metadata_transport_sanitizes_errors(state, monkeypatch, kind):
         with pytest.raises(HTTPException) as failure:
             await _REAL_GET("/models")
         assert "fixture-only-secret" not in str(failure.value.detail)
-    assert len(calls) == 1 and calls[0].method == "GET"
+    assert len(calls) == 1
+    assert calls[0].method == "GET"
     assert calls[0].url.host == "openrouter.ai"
 
 
@@ -399,3 +400,34 @@ async def test_malformed_endpoint_rejected(state, bad):
         await catalog.connect("vendor/a")
     assert failure.value.detail == "openrouter_model_endpoint_unavailable"
     assert not catalog._path().exists()
+
+
+@pytest.mark.asyncio
+async def test_refresh_selected_model_rebinds_identity_and_rejects_old_quote(state):
+    await catalog.connect("vendor/a")
+    rt.select_model("vendor/a")
+    previous = rt.selection()
+    data = endpoint()
+    data["endpoints"][0]["pricing"]["completion"] = "0.000003"
+    state.side_effect = lambda path, params=None: [row()] if path == "/models" else data
+    await catalog.connect("vendor/a")
+    current = rt.selection()
+    assert current["model"] == previous["model"]
+    assert current["config_hash"] != previous["config_hash"]
+    captured = SimpleNamespace(
+        model="vendor/a",
+        expected_runtime_id="openrouter@vendor/a",
+        expected_config_hash=previous["config_hash"],
+    )
+    with pytest.raises(HTTPException) as error:
+        rt.assert_identity(captured)
+    assert error.value.detail == "openrouter_selection_changed"
+    captured.expected_config_hash = current["config_hash"]
+    assert rt.assert_identity(captured)["id"] == "vendor/a"
+
+
+@pytest.mark.asyncio
+async def test_connect_does_not_select_and_reports_the_small_budget_output_cap(state):
+    await catalog.connect("vendor/a")
+    assert rt.selection() is None
+    assert catalog.connected()["models"][0]["max_output_tokens"] == 256

@@ -35,7 +35,7 @@ export const ModelsViewer = () => {
   const logic = useModelsViewerLogic();
   const { t } = logic;
   const initialTab = useSyncExternalStore(subscribeToLocation, locationTab, serverTab);
-  const [chosenTab, setActiveTab] = useState<ModelsTab | null>(null);
+  const [chosenTab, setChosenTab] = useState<ModelsTab | null>(null);
   const activeTab = chosenTab ?? initialTab;
 
   return (
@@ -62,7 +62,7 @@ export const ModelsViewer = () => {
       {/* Tabs */}
       <div className={THEME_TAB_BAR_CLASS}>
         <Button
-          onClick={() => setActiveTab("news")}
+          onClick={() => setChosenTab("news")}
           variant="ghost"
           size="sm"
           className={cn(getThemeTabClass(activeTab === "news"))}
@@ -71,7 +71,7 @@ export const ModelsViewer = () => {
           {t("models.tabs.news")}
         </Button>
         <Button
-          onClick={() => setActiveTab("models")}
+          onClick={() => setChosenTab("models")}
           variant="ghost"
           size="sm"
           className={cn(getThemeTabClass(activeTab === "models"))}
@@ -80,7 +80,7 @@ export const ModelsViewer = () => {
           {t("models.tabs.models")}
         </Button>
         <Button
-          onClick={() => setActiveTab("remote")}
+          onClick={() => setChosenTab("remote")}
           variant="ghost"
           size="sm"
           className={cn(getThemeTabClass(activeTab === "remote"))}
@@ -88,10 +88,10 @@ export const ModelsViewer = () => {
           <Cloud className="h-4 w-4" />
           {t("models.tabs.remoteModels")}
         </Button>
-        <Button onClick={() => setActiveTab("openrouter")} variant="ghost" size="sm" className={cn(getThemeTabClass(activeTab === "openrouter"))}>
+        <Button onClick={() => setChosenTab("openrouter")} variant="ghost" size="sm" className={cn(getThemeTabClass(activeTab === "openrouter"))}>
           <Cloud className="h-4 w-4" />OpenRouter
         </Button>
-        <Button onClick={() => setActiveTab("vast")} variant="ghost" size="sm" className={cn(getThemeTabClass(activeTab === "vast"))}>
+        <Button onClick={() => setChosenTab("vast")} variant="ghost" size="sm" className={cn(getThemeTabClass(activeTab === "vast"))}>
           <Cloud className="h-4 w-4" />{t("models.vast.tab")}
         </Button>
       </div>

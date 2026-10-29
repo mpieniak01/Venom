@@ -4,6 +4,7 @@ export type OpenRouterPurpose = "chat" | "tasks" | "programming";
 export interface OpenRouterModel {
   id: string; name: string; description: string; context_length: number | null;
   input_price_per_million: string | null; output_price_per_million: string | null;
+  max_output_tokens?: number;
   supports_tools: boolean; connected: boolean; available?: boolean; reason?: string | null;
 }
 export interface OpenRouterSearchResult {
@@ -17,9 +18,9 @@ async function responseJson(response: Response) {
 }
 
 export function useOpenRouterModels(onChanged?: () => Promise<unknown>) {
-  const [query, updateQuery] = useState("");
-  const [purpose, updatePurpose] = useState<OpenRouterPurpose>("chat");
-  const [category, updateCategory] = useState("");
+  const [queryState, setQueryState] = useState("");
+  const [purposeState, setPurposeState] = useState<OpenRouterPurpose>("chat");
+  const [categoryState, setCategoryState] = useState("");
   const [results, setResults] = useState<OpenRouterSearchResult | null>(null);
   const [connected, setConnected] = useState<OpenRouterModel[]>([]);
   const [loading, setLoading] = useState(false);
@@ -52,14 +53,14 @@ export function useOpenRouterModels(onChanged?: () => Promise<unknown>) {
   }, [loadConnected, cancelPending]);
 
   const invalidate = () => { ++searchSequence.current; setLoading(false); setResults(null); };
-  const setQuery = (value: string) => { invalidate(); updateQuery(value); };
-  const setPurpose = (value: OpenRouterPurpose) => { invalidate(); updatePurpose(value); };
-  const setCategory = (value: string) => { invalidate(); updateCategory(value); };
+  const setQuery = (value: string) => { invalidate(); setQueryState(value); };
+  const setPurpose = (value: OpenRouterPurpose) => { invalidate(); setPurposeState(value); };
+  const setCategory = (value: string) => { invalidate(); setCategoryState(value); };
   const search = async (offset = 0) => {
     const sequence = ++searchSequence.current;
     setLoading(true); setError(null);
-    const params = new URLSearchParams({ q: query.trim(), purpose, offset: String(offset), limit: "25" });
-    if (category) params.set("category", category);
+    const params = new URLSearchParams({ q: queryState.trim(), purpose: purposeState, offset: String(offset), limit: "25" });
+    if (categoryState) params.set("category", categoryState);
     try {
       const data = await responseJson(await fetch(`${base}/search?${params}`));
       if (mounted.current && sequence === searchSequence.current) setResults(data);
@@ -86,5 +87,5 @@ export function useOpenRouterModels(onChanged?: () => Promise<unknown>) {
       if (mounted.current) setPending(current => ({ ...current, [id]: false }));
     }
   };
-  return { query, setQuery, purpose, setPurpose, category, setCategory, results, connected, loading, connectedLoading, error, pending, search, manage, loadConnected };
+  return { query: queryState, setQuery, purpose: purposeState, setPurpose, category: categoryState, setCategory, results, connected, loading, connectedLoading, error, pending, search, manage, loadConnected };
 }

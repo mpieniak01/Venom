@@ -1,7 +1,7 @@
 """Local operator VAST management. No implicit rental on GET or startup."""
 
 from decimal import Decimal
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Request
@@ -21,7 +21,16 @@ def local_operator(request: Request) -> None:
         raise HTTPException(403, "vast.management_local_operator_required")
 
 
-router = APIRouter(prefix="/vast/environments", dependencies=[Depends(local_operator)])
+ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
+    403: {"description": "Local operator request required."},
+    409: {"description": "Conflicting or invalid environment operation."},
+    503: {"description": "VAST configuration or service unavailable."},
+}
+router = APIRouter(
+    prefix="/vast/environments",
+    dependencies=[Depends(local_operator)],
+    responses=ERROR_RESPONSES,
+)
 PlanId = Annotated[str, Path(pattern=r"^[a-f0-9]{32}$")]
 
 
@@ -49,32 +58,29 @@ def invoke(method, *args):
     try:
         return method(*args)
     except VastError as error:
-        status = (
-            503
-            if error.code
-            in {
-                "vast.management_disabled",
-                "vast.missing_api_key",
-                "vast.management_profile_invalid",
-            }
-            else 409
-        )
+        status = 409
+        if error.code in {
+            "vast.management_disabled",
+            "vast.missing_api_key",
+            "vast.management_profile_invalid",
+        }:
+            status = 503
         raise HTTPException(status, error.code) from None
     except (OSError, ValueError):
         raise HTTPException(503, "vast.management_unavailable") from None
 
 
-@router.get("")
+@router.get("", responses=ERROR_RESPONSES)
 def overview():
     return invoke(vast_management.manager().overview)
 
 
-@router.post("/search")
+@router.post("/search", responses=ERROR_RESPONSES)
 def search(request: SearchRequest):
     return invoke(vast_management.manager().search, request.duration_minutes)
 
 
-@router.post("/plans")
+@router.post("/plans", responses=ERROR_RESPONSES)
 def plan(request: PlanRequest):
     return invoke(
         vast_management.manager().plan,
@@ -85,21 +91,21 @@ def plan(request: PlanRequest):
     )
 
 
-@router.post("/{plan_id}/order", status_code=202)
+@router.post("/{plan_id}/order", status_code=202, responses=ERROR_RESPONSES)
 def order(plan_id: PlanId, request: OrderRequest):
     return invoke(vast_management.manager().order, plan_id, request.accept_new_host_key)
 
 
-@router.post("/{plan_id}/refresh")
+@router.post("/{plan_id}/refresh", responses=ERROR_RESPONSES)
 def refresh(plan_id: PlanId):
     return invoke(vast_management.manager().refresh, plan_id)
 
 
-@router.post("/{plan_id}/stop")
+@router.post("/{plan_id}/stop", responses=ERROR_RESPONSES)
 def stop(plan_id: PlanId, request: Confirmation):
     return invoke(vast_management.manager().change, plan_id, "stop")
 
 
-@router.post("/{plan_id}/destroy")
+@router.post("/{plan_id}/destroy", responses=ERROR_RESPONSES)
 def destroy(plan_id: PlanId, request: Confirmation):
     return invoke(vast_management.manager().change, plan_id, "destroy")

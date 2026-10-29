@@ -198,3 +198,81 @@ test("refresh keeps full OpenRouter identity or reattaches selector-only and sta
     }
   }
 });
+
+
+test("chunked SSE dispatch preserves accounting and ignores unknown event names", async () => {
+  const previous = Object.getOwnPropertyDescriptor(globalThis, "window");
+  Object.defineProperty(globalThis, "window", { value: { setTimeout: () => 0 }, configurable: true });
+  let details: Record<string, import("../lib/types").HistoryRequestDetail> = {};
+  let history: import("../components/cockpit/chat-send-helpers").LocalHistoryEntry[] = [];
+  let answer = "";
+  let sends = 0;
+  const cost = { currency: "USD", state: "settled", reported_usd: "0.001" };
+  const completion = { cost, requested_model: "vendor/model", confirmed_model: "vendor/model", generation_id: "gen-complete", usage: { total_tokens: 3 }, usage_source: "upstream" };
+  const encoded = new TextEncoder().encode([
+    "event: constructor\ndata: {}\n\n",
+    "event: toString\ndata: {}\n\n",
+    "event: start\ndata: {\"requested_model\":\"vendor/model\",\"generation_id\":\"gen-start\"}\n\n",
+    "event: cost\ndata: " + JSON.stringify(cost) + "\n\n",
+    "event: content\ndata: {\"text\":\"Zażółć\"}\n\n",
+    "event: done\ndata: " + JSON.stringify(completion) + "\n\n",
+  ].join(""));
+  try {
+    await handleSimpleTaskSend({
+      clientId: "local", trimmed: "question", resolvedSession: "session", generationParams: null, selectedLlmModel: "vendor/model",
+      activeServerInfo: { active_server: "openrouter", runtime_id: "openrouter@vendor/model", config_hash: "fixed" },
+      expectedQuoteHash: "q".repeat(64), onCompleted: value => { answer = value; },
+      sendSimpleChatStream: async payload => {
+        sends++;
+        assert.equal(payload.expectedQuoteHash, "q".repeat(64));
+        return new Response(new ReadableStream({ start(controller) {
+          for (let index = 0; index < encoded.length; index += 7) controller.enqueue(encoded.slice(index, index + 7));
+          controller.close();
+        } }), { headers: { "x-request-id": "server-request" } });
+      },
+      setLocalSessionHistory: update => { history = typeof update === "function" ? update(history) : update; },
+      setSimpleRequestDetails: update => { details = typeof update === "function" ? update(details) : update; },
+      linkOptimisticRequest: () => {}, updateSimpleStream: () => {}, recordUiTiming: () => {}, uiTimingsRef: { current: new Map() },
+      ingestMemoryEntry: async () => {}, setLastResponseDurationMs: () => {}, setResponseDurations: () => {}, dropOptimisticRequest: () => {}, clearSimpleStream: () => {}, setMessage: () => {}, setSending: () => {},
+    });
+    assert.equal(sends, 1);
+    assert.equal(answer, "Zażółć");
+    assert.equal(details["server-request"].status, "COMPLETED");
+    assert.equal(details["server-request"].openrouter_cost?.reported_usd, "0.001");
+    assert.equal(details["server-request"].openrouter_metadata?.generation_id, "gen-complete");
+    assert.equal(details["server-request"].openrouter_usage?.total_tokens, 3);
+    assert.equal(history.find(entry => entry.role === "assistant")?.pending, false);
+  } finally {
+    if (previous) Object.defineProperty(globalThis, "window", previous);
+    else Reflect.deleteProperty(globalThis, "window");
+  }
+});
+
+test("SSE errors mark the reconciled remote request failed without retaining a partial answer", async () => {
+  let details: Record<string, import("../lib/types").HistoryRequestDetail> = {};
+  let history: import("../components/cockpit/chat-send-helpers").LocalHistoryEntry[] = [];
+  let completed = false;
+  let sending = true;
+  let message: string | null = null;
+  await handleSimpleTaskSend({
+    clientId: "local", trimmed: "question", resolvedSession: "session", generationParams: null, selectedLlmModel: "vendor/model",
+    activeServerInfo: { active_server: "openrouter", runtime_id: "openrouter@vendor/model", config_hash: "fixed" },
+    onCompleted: () => { completed = true; }, t: key => key,
+    sendSimpleChatStream: async () => new Response('event: content\ndata: {"text":"partial"}\n\nevent: error\ndata: {"error":"private upstream reason"}\n\n', { headers: { "x-request-id": "failed-request" } }),
+    setLocalSessionHistory: update => { history = typeof update === "function" ? update(history) : update; },
+    setSimpleRequestDetails: update => { details = typeof update === "function" ? update(details) : update; },
+    linkOptimisticRequest: () => {}, updateSimpleStream: () => {}, recordUiTiming: () => {}, uiTimingsRef: { current: new Map() },
+    ingestMemoryEntry: async () => {}, setLastResponseDurationMs: () => {}, setResponseDurations: () => {}, dropOptimisticRequest: () => {}, clearSimpleStream: () => {}, setMessage: value => { message = value; }, setSending: value => { sending = value; },
+  });
+  assert.equal(completed, false);
+  assert.equal(sending, false);
+  assert.equal(message, "cockpit.openrouter.failure");
+  assert.equal(details["failed-request"].status, "FAILED");
+  assert.equal(details["failed-request"].openrouter_cost?.state, "pending");
+  const assistant = history.find(entry => entry.role === "assistant");
+  assert.equal(assistant?.request_id, "failed-request");
+  assert.equal(assistant?.pending, false);
+  assert.equal(assistant?.status, "FAILED");
+  assert.equal(assistant?.content, "cockpit.openrouter.failure");
+  assert.equal(JSON.stringify({ history, details }).includes("private upstream reason"), false);
+});

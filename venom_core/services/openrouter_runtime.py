@@ -34,7 +34,7 @@ def library():
         ):
             raise ValueError("version")
         return core
-    except (ImportError, importlib.metadata.PackageNotFoundError, ValueError) as exc:
+    except (ImportError, ValueError) as exc:
         raise HTTPException(503, "openrouter_library_unavailable") from exc
 
 
@@ -82,6 +82,14 @@ def save_selection(value: dict[str, str] | None) -> None:
             os.replace(name, _STATE / "selection.json")
         finally:
             Path(name).unlink(missing_ok=True)
+
+
+def refresh_selection(model: str) -> None:
+    """Rebind only the current model after an explicit operator metadata refresh."""
+    with _LOCK:
+        selected = selection()
+        if selected is not None and selected["model"] == model:
+            save_selection({"model": model, "config_hash": config_hash(model)})
 
 
 def clear_selection() -> None:
@@ -153,7 +161,7 @@ def configured_catalog() -> tuple[str, list[dict[str, Any]]]:
         if moment.tzinfo is None or not 0 <= age <= 86400:
             raise ValueError("stale")
         rows = raw["models"]
-        if not isinstance(rows, list) or not 0 <= len(rows) <= 100:
+        if not isinstance(rows, list) or len(rows) > 100:
             raise ValueError("shortlist")
         result = []
         for row in rows:

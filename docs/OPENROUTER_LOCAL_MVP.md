@@ -34,6 +34,8 @@ Select OpenRouter using the existing runtime/model selector. `/api/v1/openrouter
 
 ## Billing and STOP
 
+Newly connected models deliberately use an MVP output cap of 256 tokens (or the smaller provider/context limit), matching the operator request for small budgets. The connected-model card displays the effective cap. Requests above it fail before reservation or generation; this is an application budget limit, not a model capability limit.
+
 Quotes conservatively bound serialized input and maximum output; they are not reported token usage. SQLite reservations are atomic and survive restart. A single admitted request performs one POST to the fixed HTTPS OpenRouter endpoint, with one provider and no fallback/retry. Stream errors after HTTP200, incomplete EOF, total deadline expiry and cancellation retain uncertain usage as pending. A zero-priced estimate is still distinct from reported zero cost. UI shows per-turn and conversation reported/held values, real usage when present, and requested/confirmed model/provider/generation identity.
 
 STOP cancels the client's quote or response and closes the application's upstream request. It does not certify immediate cessation of provider billing. Pending reservations need reconciliation from confirmed provider accounting; restarting or changing the selected model does not erase them. Rollback disables the feature, selects a local runtime explicitly, and preserves accounting state.

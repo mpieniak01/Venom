@@ -95,7 +95,8 @@ def test_offline_discovery_search_and_plan(f):
     found = f.m.search(30)
     assert found["offers"][0]["status"] == "eligible"
     row = f.m.plan(12, 30, Decimal("0.5"), Decimal("1"))
-    assert row["phase"] == "planned" and not row["billing_possible"]
+    assert row["phase"] == "planned"
+    assert not row["billing_possible"]
     assert "identity" not in json.dumps(row)
     f.svc.client.create.assert_not_called()
 
@@ -110,7 +111,9 @@ def test_order_autoattaches_without_generation_or_selection(f):
     f.m.client_factory.assert_not_called()
     run(f)
     row = f.m.row(f.p.plan_id)
-    assert row["phase"] == "ready" and row["connected"] and row["billing_possible"]
+    assert row["phase"] == "ready"
+    assert row["connected"]
+    assert row["billing_possible"]
     assert f.calls == [("inspect", True), ("provision", True)]
     f.connection.attach.assert_called_once_with(
         f.p.plan_id, expected_model=(f.p.profile.model, f.p.profile.model_digest)
@@ -210,7 +213,8 @@ def test_ssh_retry_bounded_and_opt_in(f, monkeypatch):
     op = Mock(side_effect=[VastError("vast.ssh_failed"), {}])
     monkeypatch.setattr(management, "workload", op)
     f.m._await_ssh(f.svc, f.p.plan_id, False)
-    assert op.call_count == 2 and op.call_args.args[-1] is False
+    assert op.call_count == 2
+    assert op.call_args.args[-1] is False
     op.side_effect = VastError("vast.ssh_failed")
     op.reset_mock()
     with pytest.raises(VastError):
@@ -256,7 +260,8 @@ def test_cleanup_works_when_provider_disabled(f):
     assert f.svc.journal.path(f.p.plan_id, ".export.json").exists()
     f.svc.client.instance.side_effect = VastError("vast.http_error", 404)
     row = f.m.refresh(f.p.plan_id)
-    assert row["phase"] == "destroyed" and not row["billing_possible"]
+    assert row["phase"] == "destroyed"
+    assert not row["billing_possible"]
     with pytest.raises(VastError):
         f.m.change(f.p.plan_id, "start")
 
@@ -271,15 +276,18 @@ def test_bad_profile_credentials_and_journal_do_not_break_discovery(f):
     f.svc.journal.path("e" * 32, ".plan.json").write_text("{}")
     f.m.settings.VAST_API_KEY = SecretStr("fake")
     overview = f.m.overview()
-    assert overview["configured"] and overview["reason"] is None
+    assert overview["configured"]
+    assert overview["reason"] is None
     invalid = next(
         row for row in overview["environments"] if row["plan_id"] == "e" * 32
     )
     assert invalid["error"] == "vast.management_journal_invalid"
-    assert invalid["billing_possible"] and not invalid["connected"]
+    assert invalid["billing_possible"]
+    assert not invalid["connected"]
 
 
 def test_server_owned_profile_and_ssh_contract(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "TRUSTED_SSH_ROOTS", (tmp_path,))
     path = tmp_path / "profile.json"
     settings = SimpleNamespace(VAST_CHAT_PROFILE_FILE=str(path))
     with pytest.raises(VastError):
@@ -362,8 +370,9 @@ def test_api_cleanup_errors_and_origin_guard(api, f):
     assert api.post(path + "/destroy", json={"confirmed": True}).status_code == 200
     f.m.is_enabled = lambda: False
     assert api.post(root + "/search", json={"duration_minutes": 30}).status_code == 503
+    input_under_test = Mock(side_effect=OSError("private"))
     with pytest.raises(HTTPException) as e:
-        routes.invoke(Mock(side_effect=OSError("private")))
+        routes.invoke(input_under_test)
     assert e.value.detail == "vast.management_unavailable"
 
 
@@ -386,13 +395,15 @@ def test_pending_cleanup_never_reattaches_and_get_confirms_destroyed(f):
     order(f)
     f.m.change(f.p.plan_id, "destroy")
     row = f.m.refresh(f.p.plan_id)
-    assert row["phase"] == "destroy_requested" and not row["connected"]
+    assert row["phase"] == "destroy_requested"
+    assert not row["connected"]
     assert f.connection.attach.call_count == 1
     f.m.change(f.p.plan_id, "destroy")
     f.svc.client.destroy.assert_called_once()
     f.svc.client.instance.side_effect = VastError("vast.http_error", 404)
     row = f.m.overview()["environments"][0]
-    assert row["phase"] == "destroyed" and not row["billing_possible"]
+    assert row["phase"] == "destroyed"
+    assert not row["billing_possible"]
 
 
 def test_operator_can_cancel_interrupted_queue_without_rental(f):
@@ -418,7 +429,8 @@ def test_bad_historical_record_does_not_block_valid_profile_or_offers(f):
     old.write_text(json.dumps(record))
     before = old.read_bytes()
     info = f.m.overview()
-    assert info["configured"] and info["reason"] is None
+    assert info["configured"]
+    assert info["reason"] is None
     assert info["environments"][0]["error"] == "vast.management_journal_invalid"
     assert f.m.search(30)["offers"]
     assert old.read_bytes() == before
@@ -460,3 +472,33 @@ def test_invalid_provider_status_does_not_corrupt_durable_record(f, bad_state):
     assert record.state == "unknown"
     assert all(isinstance(item["state"], str) for item in record.events)
     assert record.instance_id == 88
+
+
+@pytest.mark.parametrize("escape", ["outside", "symlink", "known-hosts"])
+def test_ssh_profile_cannot_probe_or_use_files_outside_private_stores(
+    tmp_path, monkeypatch, escape
+):
+    store = tmp_path / "ssh"
+    store.mkdir()
+    key = store / "key"
+    key.write_text("private-fixture")
+    (store / "key.pub").write_text("public-fixture")
+    outside = tmp_path / "outside"
+    outside.write_text("not-an-SSH-credential")
+    known = store / "known_hosts"
+    identity = key
+    if escape == "outside":
+        identity = outside
+    elif escape == "symlink":
+        identity = store / "linked"
+        identity.symlink_to(outside)
+    else:
+        known = outside
+    monkeypatch.setattr(config, "TRUSTED_SSH_ROOTS", (store,))
+    monkeypatch.setattr(
+        config,
+        "ssh_profile",
+        lambda _: {"identity_file": str(identity), "known_hosts": str(known)},
+    )
+    with pytest.raises(VastError, match="vast.invalid_ssh_profile"):
+        config.ssh_paths()

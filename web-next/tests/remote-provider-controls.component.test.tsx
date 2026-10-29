@@ -98,3 +98,33 @@ describe("Remote API operator controls", () => {
     for (const locale of [pl, de]) assert.deepEqual(Object.keys(locale.models.sections.remote.controls).sort(), keys);
   });
 });
+
+
+it("awaits a fresh providers read when a mutation overlaps an older poll", async () => {
+  const reads: ((value: Response) => void)[] = [];
+  globalThis.fetch = async (input, init) => {
+    if (String(input).endsWith("/connectivity")) return Response.json({ bindings: [] });
+    if (init?.method === "POST") return Response.json({ enabled: false });
+    return new Promise<Response>((resolve) => reads.push(resolve));
+  };
+  const { result } = renderHook(() => useRemoteModels());
+  await waitFor(() => assert.equal(reads.length, 1));
+  let completed = false;
+  let operation: Promise<void>;
+  await act(async () => {
+    operation = result.current.manageProvider("vast_ollama", false).then(() => { completed = true; });
+  });
+  assert.equal(completed, false);
+  await act(async () => { reads[0](Response.json({ providers: [provider] })); });
+  await waitFor(() => assert.equal(reads.length, 2));
+  assert.equal(completed, false);
+  assert.equal(result.current.providerActions.vast_ollama, true);
+  await act(async () => {
+    reads[1](Response.json({ providers: [{ ...provider, enabled: false }] }));
+    await operation!;
+  });
+  assert.equal(completed, true);
+  assert.equal(result.current.providers[0].enabled, false);
+  assert.equal(result.current.providerActions.vast_ollama, false);
+  assert.equal(reads.length, 2);
+});

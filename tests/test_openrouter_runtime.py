@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import os
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -122,8 +123,9 @@ def test_quote_is_offline_unreserved_and_bound_to_content(configured):
     assert quote["reserved_usd"] == "0"
     ledger.reserve.assert_not_called()
     value.content = "changed"
+    operation_under_test = chat.response(value)
     with pytest.raises(HTTPException) as exc:
-        asyncio.run(chat.response(value))
+        asyncio.run(operation_under_test)
     assert exc.value.status_code == 409
 
 
@@ -272,7 +274,8 @@ def test_single_post_and_settlement_semantics(configured, monkeypatch, kind):
         ledger.settle.assert_called_once_with(
             ledger.reserve.call_args.args[0], Decimal("0.0001")
         )
-        assert "event: done" in body and '"reported_usd": "0.0001"' in body
+        assert "event: done" in body
+        assert '"reported_usd": "0.0001"' in body
     else:
         ledger.settle.assert_called_once_with(ledger.reserve.call_args.args[0], None)
         assert '"state": "pending"' in body
@@ -286,8 +289,9 @@ def test_busy_request_has_no_reservation(configured):
 
     async def run():
         async with chat._ACTIVE:
+            input_under_test = request()
             with pytest.raises(HTTPException):
-                await chat.response(request())
+                await chat.response(input_under_test)
 
     asyncio.run(run())
     ledger.reserve.assert_not_called()
@@ -313,8 +317,9 @@ def test_ledger_rejection_prevents_post(configured, monkeypatch):
 def test_selection_corruption_cannot_fall_back_local(configured):
     (rt._STATE / "selection.json").write_text("invalid")
     assert rt.runtime_override().provider == "openrouter"
+    input_under_test = request()
     with pytest.raises(HTTPException):
-        chat.prepare(request())
+        chat.prepare(input_under_test)
 
 
 def test_missing_library_is_actionable(monkeypatch):
@@ -428,18 +433,15 @@ def test_release_gate_rejects_different_artifact_and_peer(tmp_path):
     verify_artifact(wheel, receipt, peer)
     with pytest.raises(ValueError):
         verify_artifact(wheel, {**receipt, "version": "9"}, peer)
+    input_under_test = dict(peer, receipt={**receipt, "source_commit": "bad"})
     with pytest.raises(ValueError):
-        verify_artifact(
-            wheel,
-            {**receipt, "source_commit": "bad"},
-            dict(peer, receipt={**receipt, "source_commit": "bad"}),
-        )
+        verify_artifact(wheel, {**receipt, "source_commit": "bad"}, input_under_test)
+    input_under_test = dict(peer, groups=[])
     with pytest.raises(ValueError):
-        verify_artifact(wheel, receipt, dict(peer, groups=[]))
+        verify_artifact(wheel, receipt, input_under_test)
+    input_under_test = dict(peer, groups=[{"returncode": 1}, {"returncode": 0}])
     with pytest.raises(ValueError):
-        verify_artifact(
-            wheel, receipt, dict(peer, groups=[{"returncode": 1}, {"returncode": 0}])
-        )
+        verify_artifact(wheel, receipt, input_under_test)
     wheel.write_bytes(b"changed")
     with pytest.raises(ValueError):
         verify_artifact(wheel, receipt, peer)
@@ -470,10 +472,10 @@ def test_cancelled_turn_retains_provider_identity_without_text(configured, monke
     asyncio.run(run())
     receipt = json.loads(next((rt._STATE / "requests").glob("*.json")).read_text())
     assert receipt["generation_id"] == "gen-1"
-    assert receipt["requested_model"] == "vendor/test" and receipt["state"] == "pending"
-    assert "test-secret" not in json.dumps(receipt) and "Hello" not in json.dumps(
-        receipt
-    )
+    assert receipt["requested_model"] == "vendor/test"
+    assert receipt["state"] == "pending"
+    assert "test-secret" not in json.dumps(receipt)
+    assert "Hello" not in json.dumps(receipt)
 
 
 def test_explicit_free_variant_retains_requested_identity(configured, monkeypatch):
@@ -517,3 +519,34 @@ def test_free_variant_conversation_namespace_cannot_collide(configured):
         "completion": 0,
         "request": 0,
     }
+
+
+def test_wheel_qualification_excludes_live_credential_sources(tmp_path, monkeypatch):
+    from scripts.qualify_openrouter_local import qualification_environment
+
+    monkeypatch.setenv("OPENROUTER_API_KEY", "live-secret")
+    monkeypatch.setenv("OPENROUTER_CREDENTIAL_FILE", str(tmp_path / "private-key"))
+    monkeypatch.setenv("VAST_API_KEY", "live-vast-secret")
+    monkeypatch.setenv("ENV_FILE", str(tmp_path / ".env.dev"))
+    monkeypatch.setenv("QUALIFICATION_MARKER", "retained")
+    env = qualification_environment(tmp_path / "installed", tmp_path)
+    assert env["OPENROUTER_API_KEY"] == ""
+    assert "OPENROUTER_CREDENTIAL_FILE" not in env
+    assert "VAST_API_KEY" not in env
+    assert env["ENV_FILE"] == os.devnull
+    assert env["QUALIFICATION_MARKER"] == "retained"
+
+
+@pytest.mark.asyncio
+async def test_cancel_before_quote_capture_does_not_prepare_or_reserve(monkeypatch):
+    from unittest.mock import Mock
+
+    from venom_core.services import openrouter_chat
+
+    prepare = Mock(side_effect=AssertionError("cancelled operation must not prepare"))
+    monkeypatch.setattr(openrouter_chat, "prepare", prepare)
+    operation = asyncio.create_task(openrouter_chat.response(SimpleNamespace()))
+    asyncio.get_running_loop().call_soon(operation.cancel)
+    with pytest.raises(asyncio.CancelledError):
+        await operation
+    prepare.assert_not_called()

@@ -822,6 +822,13 @@ def _assert_cloud_provider_requirements(provider_raw: str) -> None:
         )
 
 
+def _has_external_runtime_selection() -> bool:
+    return (
+        vast_chat_runtime.selection() is not None
+        or openrouter_runtime.selection() is not None
+    )
+
+
 async def _activate_onnx_runtime(model: str | None) -> dict[str, Any]:
     _ensure_server_allowed("onnx")
     status = await system_llm_service.inspect_onnx_worker(
@@ -851,8 +858,7 @@ async def _activate_onnx_runtime(model: str | None) -> dict[str, Any]:
         SETTINGS.ACTIVE_LLM_SERVER = "onnx"
         runtime = (
             get_active_llm_runtime(SETTINGS.model_copy())
-            if vast_chat_runtime.selection() is not None
-            or openrouter_runtime.selection() is not None
+            if _has_external_runtime_selection()
             else get_active_llm_runtime()
         )
         config_hash = runtime.config_hash or ""
@@ -1922,6 +1928,29 @@ async def _cloud_runtime_target(
     return target
 
 
+def _mark_external_runtime_target(
+    targets, server: str, model_name: str | None = None
+) -> None:
+    for item in targets:
+        item["active"] = item["runtime_id"] == server
+        for candidate in item.get("models", []):
+            if model_name is not None:
+                candidate["active"] = item["active"] and candidate["id"] == model_name
+            elif not item["active"]:
+                candidate["active"] = False
+
+
+def _append_optional_cloud_target(targets, active_runtime) -> None:
+    if vast_chat_runtime.selection() is not None:
+        _mark_external_runtime_target(targets, vast_chat_runtime.SERVER)
+    if openrouter_runtime.is_enabled() or openrouter_runtime.selection() is not None:
+        targets.append(openrouter_runtime.target_payload())
+        if openrouter_runtime.selection() is not None:
+            _mark_external_runtime_target(
+                targets, openrouter_runtime.SERVER, active_runtime.model_name
+            )
+
+
 async def _resolve_runtime_options_payload() -> dict[str, Any]:
     active_runtime = get_active_llm_runtime()
     _get_llm_controller_or_503()
@@ -1937,8 +1966,7 @@ async def _resolve_runtime_options_payload() -> dict[str, Any]:
         local_models = []
     auto_heal = (
         _apply_vllm_runtime_autofix(local_models=local_models)
-        if vast_chat_runtime.selection() is None
-        and openrouter_runtime.selection() is None
+        if not _has_external_runtime_selection()
         else None
     )
     if auto_heal:
@@ -1962,21 +1990,7 @@ async def _resolve_runtime_options_payload() -> dict[str, Any]:
         *cloud_targets,
         await vast_chat_runtime.target_payload(),
     ]
-    if vast_chat_runtime.selection() is not None:
-        for item in runtime_targets:
-            item["active"] = item["runtime_id"] == vast_chat_runtime.SERVER
-            if not item["active"]:
-                for candidate in item.get("models", []):
-                    candidate["active"] = False
-    if openrouter_runtime.is_enabled() or openrouter_runtime.selection() is not None:
-        runtime_targets.append(openrouter_runtime.target_payload())
-        if openrouter_runtime.selection() is not None:
-            for item in runtime_targets:
-                item["active"] = item["runtime_id"] == openrouter_runtime.SERVER
-                for candidate in item.get("models", []):
-                    candidate["active"] = (
-                        item["active"] and candidate["id"] == active_runtime.model_name
-                    )
+    _append_optional_cloud_target(runtime_targets, active_runtime)
     trainable_models = await _load_trainable_model_catalog(
         model_manager,
         local_models=local_models,
@@ -2083,8 +2097,7 @@ def _activate_cloud_runtime(provider_raw: str, model: str | None) -> dict[str, A
 
         runtime = (
             get_active_llm_runtime(SETTINGS.model_copy())
-            if vast_chat_runtime.selection() is not None
-            or openrouter_runtime.selection() is not None
+            if _has_external_runtime_selection()
             else get_active_llm_runtime()
         )
         config_hash = runtime.config_hash or ""

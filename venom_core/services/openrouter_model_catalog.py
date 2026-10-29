@@ -226,6 +226,7 @@ def connected() -> dict[str, Any]:
             valid = _validate(row)
             display = _display(row, True)
             display.update(
+                max_output_tokens=valid["max_output_tokens"],
                 input_price_per_million=valid["input_price_per_million"],
                 output_price_per_million=valid["output_price_per_million"],
             )
@@ -258,40 +259,40 @@ def _save(rows):
         Path(name).unlink(missing_ok=True)
 
 
+def _matches_search(row, query: str, purpose: str) -> bool:
+    model = row.get("id", "")
+    if not fixed_model(model) or not _textual(row):
+        return False
+    if purpose in {"tasks", "programming"} and "tools" not in _parameters(row):
+        return False
+    return query in (model + " " + str(row.get("name", ""))).casefold()
+
+
+def _price_rank(row):
+    a, b = row["input_price_per_million"], row["output_price_per_million"]
+    price = Decimal("Infinity")
+    if a is not None and b is not None:
+        price = Decimal(a) + Decimal(b)
+    return price, row["id"]
+
+
 async def search(q="", purpose="chat", category="", offset=0, limit=25):
-    if (
-        purpose not in {"chat", "tasks", "programming"}
-        or category
-        and category not in CATEGORIES
-        or len(q) > 120
-        or offset < 0
-        or not 1 <= limit <= 100
+    if purpose not in {"chat", "tasks", "programming"} or (
+        category and category not in CATEGORIES
     ):
+        raise HTTPException(400, "openrouter_search_invalid")
+    if len(q) > 120 or offset < 0 or not 1 <= limit <= 100:
         raise HTTPException(400, "openrouter_search_invalid")
     category = "programming" if purpose == "programming" else category
     fetched, rows = await _models(category)
     ids = {row["id"] for row in connected()["models"]}
-    result = []
-    for row in rows:
-        model = row.get("id", "")
-        if not fixed_model(model) or not _textual(row):
-            continue
-        if purpose in {"tasks", "programming"} and "tools" not in _parameters(row):
-            continue
-        if q.casefold() not in (model + " " + str(row.get("name", ""))).casefold():
-            continue
-        result.append(_display(row, model in ids))
-
-    def rank(row):
-        a, b = row["input_price_per_million"], row["output_price_per_million"]
-        return (
-            Decimal(a) + Decimal(b)
-            if a is not None and b is not None
-            else Decimal("Infinity"),
-            row["id"],
-        )
-
-    result.sort(key=rank)
+    query = q.casefold()
+    result = [
+        _display(row, row["id"] in ids)
+        for row in rows
+        if _matches_search(row, query, purpose)
+    ]
+    result.sort(key=_price_rank)
     total = len(result)
     page = result[offset : offset + limit]
     return {
@@ -306,6 +307,67 @@ async def search(q="", purpose="chat", category="", offset=0, limit=25):
     }
 
 
+def _endpoint_limits(endpoint, model) -> tuple[int, int] | None:
+    context_raw = endpoint.get("context_length") or model.get("context_length")
+    output_raw = endpoint.get("max_completion_tokens") or 256
+    if type(context_raw) is not int or context_raw < 2:
+        return None
+    if type(output_raw) is not int or output_raw < 1:
+        return None
+    context = min(context_raw, 32768)
+    return context, min(output_raw, 256, context - 1)
+
+
+def _endpoint_candidate(endpoint, model_id, model, core):
+    if not isinstance(endpoint, dict) or endpoint.get("status") != 0:
+        return None
+    if not {"max_tokens", "temperature"} <= set(_parameters(endpoint)):
+        return None
+    tariff = dict(endpoint["pricing"])
+    if (
+        model_id.endswith(":free")
+        and tariff.get("prompt") == "0"
+        and tariff.get("completion") == "0"
+    ):
+        tariff.setdefault("request", "0")
+    prices = core.strict_prices(tariff)
+    provider = endpoint.get("tag") or endpoint.get("provider_name")
+    limits = _endpoint_limits(endpoint, model)
+    if not isinstance(provider, str) or not provider or limits is None:
+        return None
+    context, output = limits
+    row = {
+        "id": model_id,
+        "name": model.get("name") or model_id,
+        "description": str(model.get("description") or "")[:2000],
+        "supported_parameters": _parameters(model),
+        "provider_endpoint": provider,
+        "context_length": context,
+        "max_output_tokens": output,
+        "pricing": tariff,
+        "pricing_as_of": datetime.now(timezone.utc).isoformat(),
+    }
+    return prices.estimate(1024, output), provider, row
+
+
+def _select_endpoint(data, model_id, model):
+    endpoints = data.get("endpoints") if isinstance(data, dict) else None
+    if not isinstance(endpoints, list):
+        raise HTTPException(400, "openrouter_model_endpoint_unavailable")
+    core = _runtime().library()
+    options = []
+    for endpoint in endpoints:
+        try:
+            candidate = _endpoint_candidate(endpoint, model_id, model, core)
+            if candidate is not None:
+                options.append(candidate)
+        except (ValueError, KeyError, TypeError, ArithmeticError):
+            continue
+    if not options:
+        raise HTTPException(400, "openrouter_model_endpoint_unavailable")
+    return min(options, key=lambda x: (x[0], x[1]))[2]
+
+
 async def connect(model_id: str):
     _allowed()
     if not fixed_model(model_id):
@@ -317,64 +379,7 @@ async def connect(model_id: str):
     if not _textual(model):
         raise HTTPException(400, "openrouter_text_chat_only")
     data = await _get("/models/" + quote(model_id, safe="/:") + "/endpoints")
-    options = []
-    core = _runtime().library()
-    for endpoint in (
-        (data.get("endpoints") or [])
-        if isinstance(data, dict) and isinstance(data.get("endpoints"), list)
-        else []
-    ):
-        try:
-            if not isinstance(endpoint, dict):
-                continue
-            if endpoint.get("status") != 0 or not {"max_tokens", "temperature"} <= set(
-                _parameters(endpoint)
-            ):
-                continue
-            tariff = dict(endpoint["pricing"])
-            if (
-                model_id.endswith(":free")
-                and tariff.get("prompt") == "0"
-                and tariff.get("completion") == "0"
-            ):
-                tariff.setdefault("request", "0")
-            prices = core.strict_prices(tariff)
-            provider = endpoint.get("tag") or endpoint.get("provider_name")
-            context_raw = endpoint.get("context_length") or model.get("context_length")
-            output_raw = endpoint.get("max_completion_tokens") or 256
-            if (
-                type(context_raw) is not int
-                or context_raw < 2
-                or type(output_raw) is not int
-                or output_raw < 1
-            ):
-                continue
-            context = min(context_raw, 32768)
-            output = min(output_raw, 256, context - 1)
-            if not isinstance(provider, str) or not provider or output < 1:
-                continue
-            options.append(
-                (
-                    prices.estimate(1024, output),
-                    provider,
-                    {
-                        "id": model_id,
-                        "name": model.get("name") or model_id,
-                        "description": str(model.get("description") or "")[:2000],
-                        "supported_parameters": _parameters(model),
-                        "provider_endpoint": provider,
-                        "context_length": context,
-                        "max_output_tokens": output,
-                        "pricing": tariff,
-                        "pricing_as_of": datetime.now(timezone.utc).isoformat(),
-                    },
-                )
-            )
-        except (ValueError, KeyError, TypeError, ArithmeticError):
-            continue
-    if not options:
-        raise HTTPException(400, "openrouter_model_endpoint_unavailable")
-    row = min(options, key=lambda x: (x[0], x[1]))[2]
+    row = _select_endpoint(data, model_id, model)
     with _WRITE_LOCK:
         rows = raw_connected()
         if rows is None:
@@ -383,6 +388,7 @@ async def connect(model_id: str):
         if len(rows) >= MAX_CONNECTED:
             raise HTTPException(400, "openrouter_connected_limit")
         _save([*rows, row])
+        _runtime().refresh_selection(model_id)
     return {"status": "success", **connected()}
 
 

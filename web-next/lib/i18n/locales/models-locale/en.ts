@@ -71,6 +71,7 @@ export const models = {
     }
 },
   openrouter: {
+    outputLimit: "Maximum output (tokens, MVP budget cap)",
   categories: {
   "programming": "Programming",
   "roleplay": "Roleplay",

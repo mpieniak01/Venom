@@ -30,9 +30,9 @@ export function VastEnvironmentRow({ row, pending, action, t }: Readonly<Props>)
       <Button size="sm" variant="secondary" disabled={pending || provisioning || awaitingCleanup || !canManage || cancellable || row.phase === "stopped"} onClick={() => setConfirm("stop")}>{text("stop")}</Button>
       <Button size="sm" variant="secondary" disabled={pending || provisioning || awaitingCleanup || !canManage} onClick={() => setConfirm("destroy")}>{text("destroy")}</Button>
     </div>
-    {confirm && canManage && !provisioning && !awaitingCleanup && <div role="group" aria-label={text("confirmAction")} className="rounded-xl border border-amber-500/40 p-3 space-y-2">
+    {confirm && canManage && !provisioning && !awaitingCleanup && <fieldset aria-label={text("confirmAction")} className="rounded-xl border border-amber-500/40 p-3 space-y-2">
       <p className="text-sm">{text(confirm === "stop" ? "stopHint" : "destroyHint")}</p>
       <div className="flex gap-2"><Button size="sm" disabled={pending} onClick={() => { const operation = confirm; setConfirm(null); void action(row.plan_id, operation); }}>{text(confirm === "stop" ? "confirmStop" : "confirmDestroy")}</Button><Button size="sm" variant="secondary" onClick={() => setConfirm(null)}>{text("cancel")}</Button></div>
-    </div>}
+    </fieldset>}
   </li>;
 }

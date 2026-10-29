@@ -359,8 +359,9 @@ def test_kernel_offline_selected_target_defers_failure_until_generation(
     assert service.ai_model_id == "demo:latest"
     assert remote.selection()["target_id"] == TARGET
     builder._register_local_http_service.assert_not_called()
+    operation_under_test = service.get_chat_message_content(chat_history=[])
     with pytest.raises(ValueError, match="vast_chat_target_unavailable"):
-        asyncio.run(service.get_chat_message_content(chat_history=[]))
+        asyncio.run(operation_under_test)
     assert remote.selection()["target_id"] == TARGET
     client.assert_not_called()
 
@@ -401,8 +402,9 @@ def test_deferred_vast_service_recovers_only_same_selected_target(target, monkey
     )
     factory.assert_called_once()
     remote.clear_selection()
+    operation_under_test = service.get_chat_message_content(chat_history=[])
     with pytest.raises(ValueError, match="vast_chat_target_changed"):
-        asyncio.run(service.get_chat_message_content(chat_history=[]))
+        asyncio.run(operation_under_test)
     asyncio.run(service.aclose())
     delegate.aclose.assert_awaited_once()
 
@@ -723,7 +725,8 @@ def test_initialized_vast_maf_service_checks_operator_switch_before_every_call(
         asyncio.run(service.get_chat_message_content(chat_history=[])) == "remote reply"
     )
     on["value"] = False
+    operation_under_test = service.get_chat_message_content(chat_history=[])
     with pytest.raises(ValueError, match="vast_chat_disabled"):
-        asyncio.run(service.get_chat_message_content(chat_history=[]))
+        asyncio.run(operation_under_test)
     assert delegate.get_chat_message_content.await_count == 1
     asyncio.run(service.aclose())

@@ -61,7 +61,8 @@ export function useRemoteModels() {
   const [providerActions, setProviderActions] = useState<Record<string, boolean>>({});
   const [providerActionError, setProviderActionError] = useState<string | null>(null);
   const activeActions = useRef(new Set<string>());
-  const providersRequest = useRef(false);
+  const providersRequest = useRef<Promise<void> | null>(null);
+  const providersRefreshQueued = useRef(false);
   const mounted = useRef(true);
 
   const [catalog, setCatalog] = useState<RemoteModelInfo[]>([]);
@@ -75,26 +76,38 @@ export function useRemoteModels() {
   const [bindingsLoading, setBindingsLoading] = useState(true);
   const [bindingsError, setBindingsError] = useState<string | null>(null);
 
-  // Fetch providers
-  const fetchProviders = useCallback(async () => {
-    if (providersRequest.current) return;
-    providersRequest.current = true;
+  const readProviders = useCallback(async () => {
     try {
       setProvidersError(null);
       const response = await fetch("/api/v1/models/remote/providers");
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const data: RemoteProvidersResponse = await response.json();
-      if (mounted.current) setProviders(data.providers || []);
+      if (mounted.current && !providersRefreshQueued.current) setProviders(data.providers || []);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
-      if (mounted.current) { setProvidersError(message); setProviders([]); }
-    } finally {
-      providersRequest.current = false;
-      if (mounted.current) setProvidersLoading(false);
+      if (mounted.current && !providersRefreshQueued.current) {
+        setProvidersError(message); setProviders([]);
+      }
     }
   }, []);
+
+  // Mutations await a fresh read even if a poll was already in flight.
+  const fetchProviders = useCallback((): Promise<void> => {
+    providersRefreshQueued.current = true;
+    if (providersRequest.current) return providersRequest.current;
+    providersRequest.current = Promise.resolve().then(async () => {
+      try {
+        while (providersRefreshQueued.current && mounted.current) {
+          providersRefreshQueued.current = false;
+          await readProviders();
+        }
+      } finally {
+        providersRequest.current = null;
+        if (mounted.current) setProvidersLoading(false);
+      }
+    });
+    return providersRequest.current;
+  }, [readProviders]);
 
   // Fetch catalog for a specific provider
   const fetchCatalog = useCallback(async (provider: string) => {

@@ -1122,6 +1122,10 @@ async def stream_simple_chat(request: SimpleChatRequest):
         from venom_core.services.openrouter_chat import response
 
         return await response(request)
+    return await _stream_non_openrouter_chat(request)
+
+
+async def _stream_non_openrouter_chat(request: SimpleChatRequest):
     await asyncio.sleep(0)
     from venom_core.services.vast_chat_runtime import preflight
 

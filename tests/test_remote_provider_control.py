@@ -94,7 +94,8 @@ async def test_openrouter_check_is_metadata_only(monkeypatch, status_code):
     )
     result = await control.check("openrouter")
     assert result["available"] is (status_code == 200)
-    assert len(calls) == 1 and calls[0].method == "GET"
+    assert len(calls) == 1
+    assert calls[0].method == "GET"
     assert str(calls[0].url) == "https://openrouter.ai/api/v1/key"
     assert "fixture-secret" not in str(result)
 
@@ -178,7 +179,8 @@ async def test_remote_routes_enable_check_and_catalog(monkeypatch):
         result = await client.post(
             "/api/v1/models/remote/providers/openrouter/enable", json={"enabled": False}
         )
-        assert result.status_code == 200 and result.json()["enabled"] is False
+        assert result.status_code == 200
+        assert result.json()["enabled"] is False
         assert (
             await client.post("/api/v1/models/remote/providers/openrouter/check")
         ).json()["available"] is True
@@ -274,3 +276,21 @@ def test_running_vast_engine_without_model_is_not_connected(isolated):
     assert info["error"] == "vast.chat_model_missing"
     state["models"] = [{"name": "fixture/model"}]
     assert control.status("vast_ollama")["available"]
+
+
+@pytest.mark.asyncio
+async def test_automatic_vast_attachment_supersedes_failed_probe(isolated):
+    state, connection = isolated
+    failed = await control.check("vast_ollama")
+    assert failed["error"] == "vast_chat_target_unavailable"
+    checked = failed["last_check"]
+    connection.status.reset_mock()
+    state.update(available=True, models=[{"name": "fixture/model"}], error=None)
+    current = control.status("vast_ollama")
+    assert current["available"] is True
+    assert current["status"] == "reachable"
+    assert current["error"] is None
+    assert current["last_check"] == checked
+    connection.status.assert_called_once_with(refresh=False)
+    state.update(available=False, error="offline")
+    assert control.status("vast_ollama")["error"] == "vast_chat_target_unavailable"

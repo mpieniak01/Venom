@@ -23,6 +23,16 @@ from venom_core.services.vast_environments.lifecycle import Environments
 from venom_core.services.vast_environments.operations import workload
 from venom_core.services.vast_environments.store import Journal
 
+MANAGEMENT_DISABLED = "vast.management_disabled"
+MANAGEMENT_SUFFIX = ".management.json"
+OPERATION_LOCKS = "management-locks"
+SSH_RETRY_ERRORS = {"vast.ssh_failed", "vast.invalid_ssh_host", "vast.invalid_ssh_port"}
+ATTACH_RETRY_ERRORS = {
+    "vast.management_model_not_ready",
+    "vast.chat_probe_failed",
+    "vast.tunnel_failed",
+}
+
 ACTIVE = {"queued", "creating", "waiting", "provisioning", "connecting"}
 ERRORS = (VastError, OSError, ValueError, httpx.HTTPError)
 
@@ -62,7 +72,7 @@ class VastManagement:
     @contextmanager
     def _service(self, *, check_enabled: bool = True) -> Iterator[Environments]:
         if check_enabled and not self.is_enabled():
-            raise VastError("vast.management_disabled")
+            raise VastError(MANAGEMENT_DISABLED)
         client = self.client_factory(self.settings.VAST_API_KEY)
         try:
             yield Environments(client, self.journal)
@@ -70,7 +80,7 @@ class VastManagement:
             client.close()
 
     def _job(self, plan_id: str) -> dict[str, Any]:
-        path = self.journal.path(plan_id, ".management.json")
+        path = self.journal.path(plan_id, MANAGEMENT_SUFFIX)
         try:
             value = json.loads(path.read_text())
         except FileNotFoundError:
@@ -82,7 +92,7 @@ class VastManagement:
     def _save(self, plan_id: str, **values: Any) -> None:
         with self._guard:
             job = {**self._job(plan_id), **values, "updated_at": now().isoformat()}
-            self.journal.write(self.journal.path(plan_id, ".management.json"), job)
+            self.journal.write(self.journal.path(plan_id, MANAGEMENT_SUFFIX), job)
 
     def row(self, plan_id: str) -> dict[str, Any]:
         plan, record = self.journal.plan(plan_id), self.journal.record(plan_id)
@@ -136,11 +146,9 @@ class VastManagement:
             ):
                 raise VastError("vast.missing_api_key")
         except ERRORS as error:
-            reason = (
-                error.code
-                if isinstance(error, VastError)
-                else "vast.management_profile_invalid"
-            )
+            reason = "vast.management_profile_invalid"
+            if isinstance(error, VastError):
+                reason = error.code
         rows = []
         paths = sorted(
             self.journal.root.glob("*.plan.json"),
@@ -235,7 +243,7 @@ class VastManagement:
     def order(self, plan_id: str, accept_new_host_key: bool) -> dict[str, Any]:
         with self._guard, self.journal.lock("0" * 32):
             if not self.is_enabled():
-                raise VastError("vast.management_disabled")
+                raise VastError(MANAGEMENT_DISABLED)
             plan = self.journal.plan(plan_id)
             job = self._job(plan_id)
             if job.get("authorized"):
@@ -249,7 +257,7 @@ class VastManagement:
                 raise VastError("vast.plan_expired")
             self._target_allowed(plan_id)
             for path in self.journal.root.glob("*.management.json"):
-                other = path.name.removesuffix(".management.json")
+                other = path.name.removesuffix(MANAGEMENT_SUFFIX)
                 if other == plan_id:
                     continue
                 previous = self._job(other)
@@ -282,26 +290,18 @@ class VastManagement:
     def _await_ssh(self, service: Environments, plan_id: str, accept_new: bool) -> None:
         for attempt in range(12):
             if not self.is_enabled():
-                raise VastError("vast.management_disabled")
+                raise VastError(MANAGEMENT_DISABLED)
             try:
                 workload(service, plan_id, "inspect", accept_new)
                 return
             except VastError as error:
-                if (
-                    error.code
-                    not in {
-                        "vast.ssh_failed",
-                        "vast.invalid_ssh_host",
-                        "vast.invalid_ssh_port",
-                    }
-                    or attempt == 11
-                ):
+                if error.code not in SSH_RETRY_ERRORS or attempt == 11:
                     raise
                 self.sleep(5)
 
     def _attach(self, plan_id: str) -> None:
         if not self.is_enabled():
-            raise VastError("vast.management_disabled")
+            raise VastError(MANAGEMENT_DISABLED)
         self._target_allowed(plan_id)
         plan = self.journal.plan(plan_id)
         record = self.journal.record(plan_id)
@@ -325,9 +325,7 @@ class VastManagement:
     def _run(self, plan_id: str) -> None:
         # A concurrent short refresh must not discard the only scheduled worker.
         # HTTP handlers remain non-blocking; only the background worker waits.
-        with Journal(self.journal.root / "management-locks").lock(
-            plan_id, blocking=True
-        ):
+        with Journal(self.journal.root / OPERATION_LOCKS).lock(plan_id, blocking=True):
             self._run_owned(plan_id)
 
     def _run_owned(self, plan_id: str) -> None:
@@ -351,15 +349,7 @@ class VastManagement:
                         self._attach(plan_id)
                         break
                     except VastError as error:
-                        if (
-                            error.code
-                            not in {
-                                "vast.management_model_not_ready",
-                                "vast.chat_probe_failed",
-                                "vast.tunnel_failed",
-                            }
-                            or attempt == 11
-                        ):
+                        if error.code not in ATTACH_RETRY_ERRORS or attempt == 11:
                             raise
                         self.sleep(5)
                 self._save(plan_id, phase="ready", error=None)
@@ -373,7 +363,7 @@ class VastManagement:
             )
 
     def refresh(self, plan_id: str) -> dict[str, Any]:
-        with Journal(self.journal.root / "management-locks").lock(plan_id):
+        with Journal(self.journal.root / OPERATION_LOCKS).lock(plan_id):
             return self._refresh_owned(plan_id)
 
     def _refresh_owned(self, plan_id: str) -> dict[str, Any]:
@@ -411,7 +401,7 @@ class VastManagement:
         return self.row(plan_id)
 
     def change(self, plan_id: str, action: str) -> dict[str, Any]:
-        with Journal(self.journal.root / "management-locks").lock(plan_id):
+        with Journal(self.journal.root / OPERATION_LOCKS).lock(plan_id):
             return self._change_owned(plan_id, action)
 
     def _change_owned(self, plan_id: str, action: str) -> dict[str, Any]:

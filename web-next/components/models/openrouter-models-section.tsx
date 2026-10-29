@@ -8,6 +8,10 @@ export function OpenRouterModelsSection({ t, onChanged }: Readonly<Props>) {
   const catalog = useOpenRouterModels(onChanged);
   const text = (name: string) => t("models.openrouter." + name);
   const connectedIds = new Set(catalog.connected.map(model => model.id));
+  const actionLabel = (id: string, isConnected: boolean) => {
+    if (catalog.pending[id]) return "saving";
+    return isConnected ? "disconnect" : "connect";
+  };
   const card = (model: OpenRouterModel, isConnected: boolean) => <li key={model.id} className="flex flex-wrap items-start justify-between gap-4 rounded-2xl border border-[color:var(--ui-border)] p-4">
     <div className="min-w-0 flex-1">
       <p className="font-medium break-words">{model.name}</p><p className="text-xs text-[color:var(--ui-muted)] break-all">{model.id}</p>
@@ -15,6 +19,7 @@ export function OpenRouterModelsSection({ t, onChanged }: Readonly<Props>) {
         <span>{text("context")}: {model.context_length?.toLocaleString() ?? text("unknown")}</span>
         <span>{text("input")}: {model.input_price_per_million ?? text("unknown")}</span>
         <span>{text("output")}: {model.output_price_per_million ?? text("unknown")}</span>
+        {isConnected && model.max_output_tokens !== undefined && <span>{text("outputLimit")}: {model.max_output_tokens}</span>}
         {model.supports_tools && <Badge tone="neutral">{text("tools")}</Badge>}
         {isConnected && <Badge tone="success">{text("connected")}</Badge>}
         {isConnected && model.available === false && <Badge tone="warning">{text("needsRefresh")}</Badge>}
@@ -22,7 +27,7 @@ export function OpenRouterModelsSection({ t, onChanged }: Readonly<Props>) {
       {model.description && <p className="mt-2 line-clamp-2 text-xs text-[color:var(--ui-muted)]">{model.description}</p>}
     </div>
     <div className="flex gap-2">{isConnected && model.available === false && <Button size="sm" variant="secondary" disabled={Boolean(catalog.pending[model.id])} aria-label={`${text("refresh")}: ${model.id}`} onClick={() => void catalog.manage(model.id, true)}>{text("refresh")}</Button>}
-    <Button size="sm" variant="secondary" disabled={Boolean(catalog.pending[model.id])} aria-label={`${text(isConnected ? "disconnect" : "connect")}: ${model.id}`} onClick={() => void catalog.manage(model.id, !isConnected)}>{text(catalog.pending[model.id] ? "saving" : isConnected ? "disconnect" : "connect")}</Button></div>
+    <Button size="sm" variant="secondary" disabled={Boolean(catalog.pending[model.id])} aria-label={`${text(isConnected ? "disconnect" : "connect")}: ${model.id}`} onClick={() => void catalog.manage(model.id, !isConnected)}>{text(actionLabel(model.id, isConnected))}</Button></div>
   </li>;
   return <section className="space-y-6" aria-label="OpenRouter">
     <div><h2 className="text-lg font-semibold">OpenRouter</h2><p className="text-sm text-[color:var(--ui-muted)]">{text("description")}</p></div>
@@ -30,7 +35,7 @@ export function OpenRouterModelsSection({ t, onChanged }: Readonly<Props>) {
     <div className="rounded-2xl border border-[color:var(--ui-border)] p-5 space-y-3">
       <h3 className="font-semibold">{text("connectedTitle")} ({catalog.connected.length})</h3>
       <p className="text-xs text-[color:var(--ui-muted)]">{text("connectedHint")}</p>
-      {catalog.connectedLoading && <p role="status">{text("loading")}</p>}
+      {catalog.connectedLoading && <output className="block">{text("loading")}</output>}
       {!catalog.connectedLoading && catalog.connected.length === 0 && <p className="text-sm">{text("noneConnected")}</p>}
       <ul className="space-y-2">{catalog.connected.map(model => card(model, true))}</ul>
     </div>

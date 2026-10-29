@@ -11,6 +11,7 @@ from venom_core.services.vast_environments.recipes import validate_recipe
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_PROFILE = ROOT / ".venom_runtime/vast/prepared/chat-gemma4-26b-q4-24gb.json"
 SSH_PROFILE = ROOT / "secrets/ssh/vast/connection.json"
+TRUSTED_SSH_ROOTS = (Path.home() / ".ssh", ROOT / "secrets/ssh")
 
 
 def profile(settings: Any, duration: int | None = None) -> WorkloadProfile:
@@ -33,9 +34,27 @@ def profile(settings: Any, duration: int | None = None) -> WorkloadProfile:
         raise VastError("vast.management_profile_invalid") from None
 
 
+def _trusted_ssh_files() -> dict[str, Path]:
+    """Only enumerated regular files from private SSH stores can be identities."""
+    files = {}
+    for root in TRUSTED_SSH_ROOTS:
+        for candidate in root.rglob("*"):
+            if not candidate.is_symlink() and candidate.is_file():
+                files[str(candidate)] = candidate
+    return files
+
+
 def ssh_paths() -> tuple[Path, Path]:
     value = ssh_profile(SSH_PROFILE)
-    identity, known = Path(value["identity_file"]), Path(value["known_hosts"])
-    if not identity.is_file() or not Path(str(identity) + ".pub").is_file():
-        raise VastError("vast.ssh_identity_missing")
+    files = _trusted_ssh_files()
+    # Profile text is only a lookup key, never a filesystem existence probe.
+    identity = files.get(str(Path(value["identity_file"]).expanduser()))
+    if identity is None or str(identity) + ".pub" not in files:
+        raise VastError("vast.invalid_ssh_profile")
+    known = Path(value["known_hosts"]).expanduser()
+    if not any(known.is_relative_to(root) for root in TRUSTED_SSH_ROOTS):
+        raise VastError("vast.invalid_ssh_profile")
+    known = known.resolve()
+    if not any(known.is_relative_to(root.resolve()) for root in TRUSTED_SSH_ROOTS):
+        raise VastError("vast.invalid_ssh_profile")
     return identity, known

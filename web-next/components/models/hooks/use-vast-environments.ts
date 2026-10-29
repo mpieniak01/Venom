@@ -27,6 +27,12 @@ async function jsonResponse(response: Response) {
   return response.json();
 }
 
+function actionBody(operation: "order" | "refresh" | "stop" | "destroy", acceptNewHostKey: boolean): object {
+  if (operation === "order") return { confirmed: true, accept_new_host_key: acceptNewHostKey };
+  if (operation === "refresh") return {};
+  return { confirmed: true };
+}
+
 export function useVastEnvironments(onChanged?: () => Promise<unknown>) {
   const [state, setState] = useState<VastEnvironmentsState | null>(null);
   const [offers, setOffers] = useState<VastOffer[] | null>(null);
@@ -50,7 +56,7 @@ export function useVastEnvironments(onChanged?: () => Promise<unknown>) {
       const value: VastEnvironmentsState = await jsonResponse(await fetch(base));
       if (!mounted.current || sequence !== readSequence.current) return;
       setState(value);
-      const signature = value.environments.filter(row => row.connected).map(row => row.plan_id).sort().join(",");
+      const signature = value.environments.filter(row => row.connected).map(row => row.plan_id).sort((left, right) => left.localeCompare(right)).join(",");
       if (signature !== connectionSignature.current) {
         connectionSignature.current = signature;
         await callback.current?.();
@@ -109,7 +115,7 @@ export function useVastEnvironments(onChanged?: () => Promise<unknown>) {
   };
   const action = (planId: string, operation: "order" | "refresh" | "stop" | "destroy", acceptNewHostKey = false) => post(
     `/${encodeURIComponent(planId)}/${operation}`,
-    operation === "order" ? { confirmed: true, accept_new_host_key: acceptNewHostKey } : operation === "refresh" ? {} : { confirmed: true },
+    actionBody(operation, acceptNewHostKey),
     () => { if (operation === "order") setDraft(null); },
   );
   const clearDraft = () => setDraft(null);

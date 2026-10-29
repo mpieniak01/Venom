@@ -71,6 +71,7 @@ export const models = {
     }
 },
   openrouter: {
+    outputLimit: "Maximale Ausgabe (Tokens, MVP-Budgetlimit)",
   categories: {
   "programming": "Programmierung",
   "roleplay": "Rollenspiel",

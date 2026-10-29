@@ -16,6 +16,7 @@ from fastapi.responses import StreamingResponse
 from venom_core.services import openrouter_runtime as runtime
 from venom_core.services.runtime_switch_gate import runtime_request_guard
 
+FREE_VARIANT_SUFFIX = ":free"
 _ACTIVE = asyncio.Lock()
 client_factory = httpx.AsyncClient
 
@@ -109,7 +110,7 @@ def prepare(request) -> dict[str, Any]:
         "completion": float(prices.output_per_million),
         "request": float(prices.request),
     }
-    if row["id"].endswith(":free"):
+    if row["id"].endswith(FREE_VARIANT_SUFFIX):
         payload["provider"]["max_price"] = {"prompt": 0, "completion": 0, "request": 0}
     return {
         "id": request_id,
@@ -210,8 +211,8 @@ def _apply_metadata(item, turn, state):
         }
     )
     allowed = {None, turn["model"]}
-    if turn["model"].endswith(":free"):
-        allowed.add(turn["model"].removesuffix(":free"))
+    if turn["model"].endswith(FREE_VARIANT_SUFFIX):
+        allowed.add(turn["model"].removesuffix(FREE_VARIANT_SUFFIX))
     if state["metadata"]["confirmed_model"] not in allowed:
         raise ValueError("model_mismatch")
 
@@ -239,8 +240,7 @@ async def _upstream(turn, state):
         client_factory(
             timeout=httpx.Timeout(90.0, connect=10.0), follow_redirects=False
         ) as client,
-    ):
-        async with client.stream(
+        client.stream(
             "POST",
             runtime.ENDPOINT,
             headers={
@@ -248,16 +248,17 @@ async def _upstream(turn, state):
                 "Content-Type": "application/json",
             },
             json=turn["payload"],
-        ) as response:
-            if response.status_code != 200:
-                raise HTTPException(502, "openrouter_http_" + str(response.status_code))
-            async for data in response.aiter_bytes():
-                for item in decoder.feed(data):
-                    output = _handle_packet(item, turn, state)
-                    if output is not None:
-                        yield output
-                if state["complete"]:
-                    break
+        ) as response,
+    ):
+        if response.status_code != 200:
+            raise HTTPException(502, "openrouter_http_" + str(response.status_code))
+        async for data in response.aiter_bytes():
+            for item in decoder.feed(data):
+                output = _handle_packet(item, turn, state)
+                if output is not None:
+                    yield output
+            if state["complete"]:
+                break
     for item in decoder.finish():
         output = _handle_packet(item, turn, state)
         if output is not None:
@@ -377,11 +378,9 @@ async def stream(request, turn):
             for output in _done(turn, state):
                 yield output
     except (httpx.HTTPError, ValueError, HTTPException, TimeoutError) as exc:
-        code = (
-            str(exc.detail)
-            if isinstance(exc, HTTPException)
-            else "openrouter_request_failed"
-        )
+        code = "openrouter_request_failed"
+        if isinstance(exc, HTTPException):
+            code = str(exc.detail)
         yield event("error", {"code": code, "cost": cost(turn, None, "pending")})
     finally:
         if reserved:
@@ -393,6 +392,8 @@ async def stream(request, turn):
 
 
 async def response(request):
+    # Honour cancellation before capturing a quote or creating a paid stream.
+    await asyncio.sleep(0)
     if _ACTIVE.locked():
         raise HTTPException(409, "openrouter_busy")
     turn = prepare(request)

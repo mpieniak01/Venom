@@ -16,6 +16,7 @@ import {
   handleSimpleTaskSend,
   handleStandardTaskSend,
   buildSimpleStreamRequestPayload,
+  addInitialSimpleUserHistoryEntry,
 } from "./chat-send-helpers";
 
 function resolveSession(
@@ -120,6 +121,57 @@ async function executeSendFlow(params: {
     return;
   }
   await handleStandardTaskSend(params.standardParams);
+}
+
+async function prepareOpenRouterQuote(params: {
+  activeServerInfo: ChatSendParams["activeServerInfo"];
+  trimmed: string;
+  selectedModel: string;
+  generationParams: ChatSendParams["generationParams"];
+  resolvedSession: string;
+  history: VastChatTurn[] | undefined;
+  setMessage: ChatSendParams["setMessage"];
+  setSending: ChatSendParams["setSending"];
+  t: (key: string) => string;
+}): Promise<OpenRouterQuote | undefined | false> {
+  if (!isOpenRouterRuntime(params.activeServerInfo?.runtime_id) && params.activeServerInfo?.active_server !== "openrouter") {
+    return undefined;
+  }
+  try {
+    const quote = await quoteOpenRouterChat(buildSimpleStreamRequestPayload(
+      params.trimmed, params.selectedModel, params.generationParams,
+      params.resolvedSession, params.activeServerInfo, params.history,
+    ));
+    publishOpenRouterQuote(params.selectedModel, params.resolvedSession, quote);
+    return quote;
+  } catch {
+    params.setMessage(params.t("cockpit.openrouter.quoteFailed"));
+    params.setSending(false);
+    return false;
+  }
+}
+
+function recordStandardRequestHistory(params: {
+  shouldUseSimple: boolean;
+  clientId: string;
+  trimmed: string;
+  resolvedSession: string | null;
+  setLocalSessionHistory: ChatSendParams["setLocalSessionHistory"];
+  uiTimingsRef: ChatSendParams["uiTimingsRef"];
+  recordUiTiming: ChatSendParams["recordUiTiming"];
+}): void {
+  if (params.shouldUseSimple) return;
+  addInitialSimpleUserHistoryEntry(
+    params.setLocalSessionHistory,
+    params.clientId,
+    params.trimmed,
+    new Date().toISOString(),
+    params.resolvedSession,
+  );
+  const timing = params.uiTimingsRef.current.get(params.clientId);
+  if (timing && timing.historyMs === undefined) {
+    params.recordUiTiming(params.clientId, { historyMs: Date.now() - timing.t0 });
+  }
 }
 
 export function useChatSend(params: ChatSendParams) {
@@ -235,18 +287,18 @@ export function useChatSend(params: ChatSendParams) {
     const shouldUseSimple = shouldUseSimpleMode(chatMode, parsed);
     const historyKey = vastChatHistoryKey(effectiveActiveServerInfo?.runtime_id, effectiveSelectedModel, resolvedSession, effectiveActiveServerInfo?.config_hash);
     const history = historyKey ? (vastHistory.current.get(historyKey) ?? []).map(turn => ({...turn})) : undefined;
-    let quote: OpenRouterQuote | undefined;
-    if (isOpenRouterRuntime(effectiveActiveServerInfo?.runtime_id) || effectiveActiveServerInfo?.active_server === "openrouter") {
-      try {
-        quote = await quoteOpenRouterChat(buildSimpleStreamRequestPayload(trimmed, effectiveSelectedModel,
-          generationParams, resolvedSession, effectiveActiveServerInfo, history));
-        publishOpenRouterQuote(effectiveSelectedModel, resolvedSession, quote);
-      } catch {
-        setMessage(t("cockpit.openrouter.quoteFailed"));
-        setSending(false);
-        return false;
-      }
-    }
+    const quote = await prepareOpenRouterQuote({
+      activeServerInfo: effectiveActiveServerInfo,
+      trimmed,
+      selectedModel: effectiveSelectedModel,
+      generationParams,
+      resolvedSession,
+      history,
+      setMessage,
+      setSending,
+      t,
+    });
+    if (quote === false) return false;
 
     const forcedIntent = chatMode === "complex" ? "COMPLEX_PLANNING" : null;
     const clientId = enqueueOptimisticRequest(trimmed, {
@@ -256,28 +308,15 @@ export function useChatSend(params: ChatSendParams) {
       simpleMode: shouldUseSimple,
     });
 
-    if (!shouldUseSimple) {
-      const timestamp = new Date().toISOString();
-      setLocalSessionHistory((prev) => {
-        if (prev.some((entry) => entry.request_id === clientId && entry.role === "user")) {
-          return prev;
-        }
-        return [
-          ...prev,
-          {
-            role: "user",
-            content: trimmed,
-            request_id: clientId,
-            timestamp,
-            session_id: resolvedSession ?? undefined,
-          },
-        ];
-      });
-      const timing = uiTimingsRef.current.get(clientId);
-      if (timing && timing.historyMs === undefined) {
-        recordUiTiming(clientId, { historyMs: Date.now() - timing.t0 });
-      }
-    }
+    recordStandardRequestHistory({
+      shouldUseSimple,
+      clientId,
+      trimmed,
+      resolvedSession,
+      setLocalSessionHistory,
+      uiTimingsRef,
+      recordUiTiming,
+    });
 
 
     const taskParams = {

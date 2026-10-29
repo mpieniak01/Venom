@@ -73,11 +73,14 @@ def test_real_wheel_quote_and_completion(installed, monkeypatch):
         "Quote must not create the ledger"
     )
     body = consume(item)
-    assert "event: done" in body and "Answer" in body and "gen-test" in body
+    assert "event: done" in body
+    assert "Answer" in body
+    assert "gen-test" in body
     row = installed.BudgetLedger(rt._STATE / "budget.sqlite").snapshot()[
         "reservations"
     ][0]
-    assert row["status"] == "settled" and row["cost"] == "0.0001"
+    assert row["status"] == "settled"
+    assert row["cost"] == "0.0001"
 
 
 def test_real_wheel_unknown_cost_survives_reopen(installed, monkeypatch):
@@ -99,7 +102,8 @@ def test_real_wheel_unknown_cost_survives_reopen(installed, monkeypatch):
     row = installed.BudgetLedger(rt._STATE / "budget.sqlite").snapshot()[
         "reservations"
     ][0]
-    assert row["status"] == "pending" and row["cost"] is None
+    assert row["status"] == "pending"
+    assert row["cost"] is None
 
 
 def test_real_wheel_stop_keeps_reservation(installed, monkeypatch):
@@ -177,7 +181,8 @@ def test_public_direct_route_with_actual_installed_wheel(installed, monkeypatch)
         item.expected_quote_hash = quote.json()["quote_hash"]
         result = client.post("/api/v1/llm/simple/stream", json=item.model_dump())
         assert result.status_code == 200
-        assert "HTTP answer" in result.text and "event: done" in result.text
+        assert "HTTP answer" in result.text
+        assert "event: done" in result.text
 
 
 def test_test_zero_uses_real_free_model_contract(installed):
@@ -228,4 +233,5 @@ def test_test_zero_done_closes_without_waiting_for_network_eof(installed):
         "reasoning_disabled": False,
     }
     result = asyncio.run(smoke.generate(installed, "fixture", candidate, factory))
-    assert result["answered"] is True and result["marker_matched"] is True
+    assert result["answered"] is True
+    assert result["marker_matched"] is True

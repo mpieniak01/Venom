@@ -73,3 +73,44 @@ nie przedstawiamy go jako zielonego wyniku tej gałęzi.
    nie przepisał historycznych danych operatora; poprawka zapobiega nowemu zapisowi
    tego samego rodzaju błędnego stanu.
 6. Nie opublikowano kodu ani nie uruchomiono bramek GitHub/Sonar dla nowej rewizji.
+
+
+## Poprawka po Sonarze i CodeRabbit — PR #566
+
+Raport dla `26c591ee` zawierał 81 zgłoszeń: 78 utrzymaniowych, 2 błędy i 1
+podatność. Bramkę blokowały reliability D i security C; pokrycie 92,4%, duplikacja
+0% i przegląd hotspotów 100% były zaliczone. Nie zmieniamy progów ani statusów
+zgłoszeń, aby odblokować wynik.
+
+Naprawa ogranicza wybór klucza SSH do regularnych plików z zaufanych magazynów
+`~/.ssh` i `secrets/ssh`; odrzuca tożsamości przez symlink i ścieżki poza tymi
+magazynami. `known_hosts` również musi pozostać w tych magazynach po rozwiązaniu
+ścieżki. Profil jest serwerowy. Testy nie czytają rzeczywistych kluczy.
+
+Pozostałe poprawki Sonara obejmują sortowanie, warunek długości, złożoność
+funkcji, semantykę i dostępność HTML, nazwy stanu React, stałe, obsługę kontekstów,
+dokumentację odpowiedzi API i jednoznaczne asercje/wywołania w testach wyjątków.
+Rozdzielenie logiki wysyłania ma regresje STOP podczas wyceny oraz odrzucenia
+wyceny bez fallbacku. Anulowanie przed przechwyceniem wyceny nie przygotowuje
+żądania ani rezerwacji.
+
+Recenzja CodeRabbit dla tej samej rewizji została odebrana przed publikacją
+poprawki. Uwzględniono wszystkie 5 uwag i dodatkowy test ścieżki `generate()`:
+
+- Jawne odświeżenie wybranego modelu aktualizuje hash selekcji. Stara wycena
+  nadal jest odrzucana; odświeżenie innego modelu nie zmienia selekcji.
+- Limit 256 tokenów pozostaje celowym ograniczeniem małego budżetu MVP na
+  wcześniejsze żądanie operatora. Karta modelu pokazuje rzeczywisty limit;
+  dokumentacja odróżnia go od możliwości modelu.
+- Status dostępnego VAST pomija historyczny błąd sondy; przy niedostępności
+  zachowuje informację o błędzie bez automatycznego odpytania dostawcy.
+- Akcja operatora oczekuje na świeży odczyt dostawców, także jeśli wcześniejszy
+  polling nadal trwa. Nie może zwolnić przycisków na podstawie starego odczytu.
+- Kwalifikacja wheel nie dziedziczy pliku poświadczeń OpenRouter ani klucza VAST
+  i nie ładuje `.env.dev`; test sprawdza izolację źródeł sekretów.
+- Testy `generate()` na atrapach obejmują sukces, brak markera, błędny model,
+  koszt ponad rezerwację, niedokończony strumień i HTTP 429 bez ponowienia.
+
+Wyniki końcowej lokalnej bramki i ponownej analizy GitHub/Sonar należy odnosić
+do rewizji zawierającej tę poprawkę, nie do pierwotnego raportu powyżej.
+Rzeczywiste Test Zero i najem VAST pozostają poza zakresem tej walidacji.

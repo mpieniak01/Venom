@@ -40,6 +40,23 @@ def verify_artifact(wheel: Path, receipt: dict, peer: dict) -> None:
         raise ValueError("source_commit_invalid")
 
 
+def qualification_environment(target: Path, root: Path) -> dict[str, str]:
+    """Exclude live credentials and environment files from offline qualification."""
+    inherited = {
+        key: value
+        for key, value in os.environ.items()
+        if key not in {"OPENROUTER_CREDENTIAL_FILE", "VAST_API_KEY"}
+    }
+    return dict(
+        inherited,
+        PYTHONPATH=os.pathsep.join((str(target), str(root))),
+        EXECUTION_CORE_WHEEL_TEST="1",
+        EXECUTION_CORE_INSTALLED_ROOT=str(target),
+        OPENROUTER_API_KEY="",
+        ENV_FILE=os.devnull,
+    )
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--wheel", type=Path, required=True)
@@ -63,13 +80,7 @@ def main(argv=None) -> int:
     args.output.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="openrouter-wheel-") as name:
         target = Path(name) / "installed"
-        env = dict(
-            os.environ,
-            PYTHONPATH=os.pathsep.join((str(target), str(root))),
-            EXECUTION_CORE_WHEEL_TEST="1",
-            EXECUTION_CORE_INSTALLED_ROOT=str(target),
-            OPENROUTER_API_KEY="",
-        )
+        env = qualification_environment(target, root)
         commands = [
             (
                 "install",

@@ -102,6 +102,23 @@ describe("VAST environment management", () => {
     context.mock.timers.reset();
   });
 
+  it("treats connected plan order as irrelevant and refreshes chat only on membership changes", async () => {
+    const first = row({ plan_id: "b".repeat(32), phase: "ready", connected: true });
+    const second = row({ plan_id: "a".repeat(32), phase: "ready", connected: true });
+    let environments = [first, second];
+    let changed = 0;
+    globalThis.fetch = async () => Response.json(status(environments));
+    const { result } = renderHook(() => useVastEnvironments(async () => { changed++; }));
+    await waitFor(() => assert.equal(result.current.loading, false));
+    assert.equal(changed, 1);
+    environments = [second, first];
+    await act(async () => { await result.current.refresh(); });
+    assert.equal(changed, 1);
+    environments = [second];
+    await act(async () => { await result.current.refresh(); });
+    assert.equal(changed, 2);
+  });
+
   it("requires separate confirmation for stop and permanent release", () => {
     const actions: string[] = [];
     render(<VastEnvironmentRow row={row({ phase: "ready", instance_id: 77, connected: true, billing_possible: true })} pending={false} action={async (_id, action) => { actions.push(action); }} t={t} />);

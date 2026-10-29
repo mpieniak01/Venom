@@ -21,4 +21,23 @@ Limity kontrolują wycenę przed zamówieniem. Czas służy oszacowaniu kosztu i
 niszczy instancji automatycznie. Niepowodzenie instalacji może pozostawić płatny
 host do jawnego sprzątnięcia. Test Zero wykonuje operator na osobne żądanie.
 
-Weryfikacja i końcowe pokrycie zmian zostaną uzupełnione po `make pr-fast`.
+Weryfikacja lokalna zakończona:
+
+- `npm --prefix web-next ci --offline`: PASS.
+- `pytest -q tests/test_vast*.py tests/test_remote_provider_control.py`: 512 PASS;
+  wyłącznie atrapy dostawcy, HTTP i SSH.
+- Regresja komponentów VAST/OpenRouter/selektorów: 31 PASS.
+- `mypy` czterech modułów, TypeScript `--noEmit`, ESLint i `lint:locales`: PASS.
+- `make test-web-unit`, `make test-ci-lite`, `make test-catalog-check`,
+  `make test-groups-check`, `make check-new-code-coverage-diagnostics`: PASS.
+- Końcowe `make pr-fast`: PASS, 176.95 s, 1408 testów backendu
+  oraz 239 testów komponentów frontendu; pokrycie zmienionych linii 95.25%,
+  wszystkie 14 progów plikowych spełnione. Sieć testów była izolowana.
+- Rzeczywisty panel `/models?tab=vast`: DOM i odczyt ofert VAST PASS;
+  API konfiguracji, `/rider` i `/cooperation-lab`: HTTP 200.
+
+Odbiór środowiska wykrył jeden stary wpis z nieprawidłowym formatem stanu.
+Panel pokazuje go jako ostrzeżenie bez blokowania prawidłowego profilu i ofert;
+historycznych danych nie przepisano. Nie wykonano rzeczywistego zamówienia,
+instalacji na płatnym hoście, generacji, Test Zero ani pełnego regresu E2E.
+Ta część przyjęcia wymaga jawnego zamówienia operatora.

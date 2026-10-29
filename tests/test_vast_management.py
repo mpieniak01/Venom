@@ -270,7 +270,13 @@ def test_bad_profile_credentials_and_journal_do_not_break_discovery(f):
     assert f.m.overview()["reason"] == "vast.missing_api_key"
     f.svc.journal.path("e" * 32, ".plan.json").write_text("{}")
     f.m.settings.VAST_API_KEY = SecretStr("fake")
-    assert f.m.overview()["reason"] == "vast.management_journal_invalid"
+    overview = f.m.overview()
+    assert overview["configured"] and overview["reason"] is None
+    invalid = next(
+        row for row in overview["environments"] if row["plan_id"] == "e" * 32
+    )
+    assert invalid["error"] == "vast.management_journal_invalid"
+    assert invalid["billing_possible"] and not invalid["connected"]
 
 
 def test_server_owned_profile_and_ssh_contract(tmp_path, monkeypatch):
@@ -403,3 +409,17 @@ def test_provision_waits_for_initial_startup_lock_instead_of_skipping_install(f)
     assert "flock -w 120 9" in startup(f.p.profile, download_model=True)
     assert "ollama pull" in startup(f.p.profile, download_model=True)
     assert "flock -n 9 || exit 0" in startup(f.p.profile)
+
+
+def test_bad_historical_record_does_not_block_valid_profile_or_offers(f):
+    old = f.svc.journal.path(f.p.plan_id, ".record.json")
+    record = json.loads(old.read_text())
+    record["state"] = True  # malformed legacy provider state
+    old.write_text(json.dumps(record))
+    before = old.read_bytes()
+    info = f.m.overview()
+    assert info["configured"] and info["reason"] is None
+    assert info["environments"][0]["error"] == "vast.management_journal_invalid"
+    assert f.m.search(30)["offers"]
+    assert old.read_bytes() == before
+    f.svc.client.create.assert_not_called()

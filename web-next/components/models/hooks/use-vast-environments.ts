@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 export interface VastEnvironment {
   plan_id: string; model: string; state: string; phase: string;
   instance_id: number | null; hourly_usd: string | null; total_usd: string | null;
-  duration_minutes: number; expires_at: string; connected: boolean;
+  duration_minutes: number; expires_at: string | null; connected: boolean;
   error: string | null; billing_possible: boolean;
 }
 export interface VastOffer {

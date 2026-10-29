@@ -158,7 +158,24 @@ class VastManagement:
                 else:
                     rows.append(self.row(plan_id))
             except ERRORS:
-                reason = reason or "vast.management_journal_invalid"
+                # A damaged historical entry is visible, but is not evidence
+                # that the independent current profile/credentials are invalid.
+                rows.append(
+                    {
+                        "plan_id": path.name.removesuffix(".plan.json"),
+                        "model": "—",
+                        "state": "unknown",
+                        "phase": "error",
+                        "instance_id": None,
+                        "hourly_usd": None,
+                        "total_usd": None,
+                        "duration_minutes": 0,
+                        "expires_at": None,
+                        "connected": False,
+                        "error": "vast.management_journal_invalid",
+                        "billing_possible": True,
+                    }
+                )
         return {
             "configured": reason is None,
             "enabled": self.is_enabled(),

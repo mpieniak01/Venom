@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+from contextlib import aclosing
 from typing import Any
 from uuid import uuid4
 
@@ -287,6 +288,30 @@ def _done(turn, state):
     ]
 
 
+def _record_receipt(turn, state, settled):
+    """Persist only IDs, counters and accounting so cancelled turns remain reconcilable."""
+    value = {
+        "request_id": turn["id"],
+        "runtime_id": turn["runtime_id"],
+        "config_hash": turn["config_hash"],
+        "quote_hash": quote_hash(turn),
+        **state["metadata"],
+        "estimated_usd": turn["estimated"],
+        "reserved_usd": turn["reserved_usd"],
+        "reported_usd": str(state["actual"])
+        if settled and state["actual"] is not None
+        else None,
+        "state": "settled" if settled and state["actual"] is not None else "pending",
+    }
+    try:
+        runtime.save_request_receipt(turn["id"], value)
+    except OSError:
+        # The durable reservation remains authoritative if an auxiliary receipt cannot be written.
+        from venom_core.utils.logger import get_logger
+
+        get_logger(__name__).warning("openrouter_accounting_receipt_unavailable")
+
+
 async def stream(request, turn):
     """Never retry a paid POST; uncertainty and cancellation retain reservations."""
     state = {
@@ -325,8 +350,9 @@ async def stream(request, turn):
                     "cost": cost(turn, None, "pending"),
                 },
             )
-            async for output in _upstream(turn, state):
-                yield output
+            async with aclosing(_upstream(turn, state)) as upstream:
+                async for output in upstream:
+                    yield output
             turn["ledger"].settle(turn["id"], state["actual"])
             settled = True
             for output in _done(turn, state):
@@ -339,8 +365,12 @@ async def stream(request, turn):
         )
         yield event("error", {"code": code, "cost": cost(turn, None, "pending")})
     finally:
-        if reserved and not settled:
-            turn["ledger"].settle(turn["id"], None)
+        if reserved:
+            try:
+                if not settled:
+                    turn["ledger"].settle(turn["id"], None)
+            finally:
+                _record_receipt(turn, state, settled)
 
 
 async def response(request):

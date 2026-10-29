@@ -105,7 +105,7 @@ def test_real_wheel_unknown_cost_survives_reopen(installed, monkeypatch):
 def test_real_wheel_stop_keeps_reservation(installed, monkeypatch):
     class Waiting(httpx.AsyncByteStream):
         async def __aiter__(self):
-            yield b'data: {"choices":[{"delta":{"content":"A"}}]}\n\n'
+            yield b'data: {"id":"gen-stop","model":"vendor/test","choices":[{"delta":{"content":"A"}}]}\n\n'
             await asyncio.Event().wait()
 
     def endpoint(req):
@@ -130,6 +130,9 @@ def test_real_wheel_stop_keeps_reservation(installed, monkeypatch):
         "reservations"
     ][0]
     assert row["status"] == "pending"
+    receipt = json.loads(next((rt._STATE / "requests").glob("*.json")).read_text())
+    assert receipt["state"] == "pending"
+    assert "test-secret" not in json.dumps(receipt)
 
 
 def test_real_wheel_invalid_price_prevents_execution(installed, configured):

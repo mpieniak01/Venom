@@ -422,3 +422,34 @@ def test_release_gate_rejects_different_artifact_and_peer(tmp_path):
     wheel.write_bytes(b"changed")
     with pytest.raises(ValueError):
         verify_artifact(wheel, receipt, peer)
+
+
+def test_cancelled_turn_retains_provider_identity_without_text(configured, monkeypatch):
+    core, _, _ = configured
+    core.SSEDecoder = lambda: Decoder("pending")
+    monkeypatch.setattr(
+        chat,
+        "client_factory",
+        lambda **kw: httpx.AsyncClient(
+            transport=httpx.MockTransport(
+                lambda req: httpx.Response(200, content=b"fixture")
+            ),
+            **kw,
+        ),
+    )
+
+    async def run():
+        response = await chat.response(authorized_request())
+        iterator = response.body_iterator
+        await anext(iterator)
+        await anext(iterator)
+        await anext(iterator)
+        await iterator.aclose()
+
+    asyncio.run(run())
+    receipt = json.loads(next((rt._STATE / "requests").glob("*.json")).read_text())
+    assert receipt["generation_id"] == "gen-1"
+    assert receipt["requested_model"] == "vendor/test" and receipt["state"] == "pending"
+    assert "test-secret" not in json.dumps(receipt) and "Hello" not in json.dumps(
+        receipt
+    )

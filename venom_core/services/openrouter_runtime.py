@@ -321,3 +321,18 @@ def target_payload() -> dict[str, Any]:
         "adapter_deploy_supported": False,
         "normal_supported": False,
     }
+
+
+def save_request_receipt(request_id: str, value: dict[str, Any]) -> None:
+    """Keep provider accounting identities after STOP without storing conversation text."""
+    if len(request_id) != 32 or any(c not in "0123456789abcdef" for c in request_id):
+        raise ValueError("request_identity_invalid")
+    folder = _STATE / "requests"
+    folder.mkdir(parents=True, exist_ok=True, mode=0o700)
+    fd, name = tempfile.mkstemp(prefix="receipt-", dir=folder)
+    try:
+        with os.fdopen(fd, "w") as stream:
+            json.dump(value, stream)
+        os.replace(name, folder / (request_id + ".json"))
+    finally:
+        Path(name).unlink(missing_ok=True)

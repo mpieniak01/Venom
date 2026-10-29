@@ -95,41 +95,42 @@ class KernelBuilder:
             self._register_all_services(kernel)
         else:
             # Tryb single-service - wybierz optymalny serwis
-            service_type = self.settings.LLM_SERVICE_TYPE.lower()
-
-            # Jeśli routing włączony i podano zadanie, użyj routera
-            if self.enable_routing and task:
-                routing_info = self.model_router.get_routing_info(task)
-                recommended_service = routing_info["selected_service"]
-                logger.info(
-                    f"Router rekomenduje: {recommended_service} (complexity={routing_info['complexity']})"
-                )
-
-                # Mapowanie ServiceId na typ serwisu
-                service_mapping = {
-                    ServiceId.LOCAL.value: "local",
-                    ServiceId.CLOUD_FAST.value: (
-                        service_type
-                        if service_type in ["openai", "azure"]
-                        else "openai"
-                    ),
-                    ServiceId.CLOUD_HIGH.value: (
-                        service_type
-                        if service_type in ["openai", "azure"]
-                        else "openai"
-                    ),
-                }
-
-                service_type = service_mapping.get(recommended_service, service_type)
-
-            force_local = getattr(self.settings, "FORCE_LOCAL_MODEL", False)
-            ai_mode = getattr(self.settings, "AI_MODE", "")
-            if force_local or ai_mode == "LOCAL":
-                service_type = "local"
-            logger.info(f"Inicjalizacja Kernel z typem serwisu: {service_type}")
+            service_type = self._resolve_single_service_type(task)
             self._register_service(kernel, service_type)
 
         return kernel
+
+    def _resolve_single_service_type(self, task: Optional[str]) -> str:
+        """Resolve routing and local-only policy for a single service."""
+        service_type = self.settings.LLM_SERVICE_TYPE.lower()
+
+        # Jeśli routing włączony i podano zadanie, użyj routera
+        if self.enable_routing and task:
+            routing_info = self.model_router.get_routing_info(task)
+            recommended_service = routing_info["selected_service"]
+            logger.info(
+                f"Router rekomenduje: {recommended_service} (complexity={routing_info['complexity']})"
+            )
+
+            # Mapowanie ServiceId na typ serwisu
+            service_mapping = {
+                ServiceId.LOCAL.value: "local",
+                ServiceId.CLOUD_FAST.value: (
+                    service_type if service_type in ["openai", "azure"] else "openai"
+                ),
+                ServiceId.CLOUD_HIGH.value: (
+                    service_type if service_type in ["openai", "azure"] else "openai"
+                ),
+            }
+
+            service_type = service_mapping.get(recommended_service, service_type)
+
+        force_local = getattr(self.settings, "FORCE_LOCAL_MODEL", False)
+        ai_mode = getattr(self.settings, "AI_MODE", "")
+        if force_local or ai_mode == "LOCAL":
+            service_type = "local"
+        logger.info(f"Inicjalizacja Kernel z typem serwisu: {service_type}")
+        return service_type
 
     def _register_all_services(self, kernel: Kernel) -> None:
         """

@@ -4,7 +4,16 @@ import math
 
 from fastapi import HTTPException
 
+from venom_core.core.model_registry_types import GenerationParameter
 from venom_core.services import vast_chat_runtime as remote
+
+_PARAMETER_NAMES = {
+    "temperature": "temperature",
+    "top_p": "top_p",
+    "top_k": "top_k",
+    "repeat_penalty": "repeat_penalty",
+    "num_predict": "max_tokens",
+}
 
 
 def scope(runtime: str | None) -> str | None:
@@ -27,6 +36,25 @@ def require_model(name: str) -> None:
         raise HTTPException(status_code=404, detail="vast_chat_model_unavailable")
 
 
+def _apply_parameter_default(schema: dict[str, GenerationParameter], line: str) -> None:
+    parts = line.split()
+    if len(parts) != 2 or parts[0] not in _PARAMETER_NAMES:
+        return
+    spec = schema[_PARAMETER_NAMES[parts[0]]]
+    try:
+        value = float(parts[1])
+    except ValueError:
+        return
+    if (
+        not math.isfinite(value)
+        or (spec.min is not None and value < spec.min)
+        or (spec.max is not None and value > spec.max)
+        or (spec.type == "int" and not value.is_integer())
+    ):
+        return
+    spec.default = int(value) if spec.type == "int" else value
+
+
 def generation_schema(name: str):
     from venom_core.core.model_registry import create_default_generation_schema
 
@@ -34,30 +62,8 @@ def generation_schema(name: str):
     schema = create_default_generation_schema()
     parameters = remote.connection().model_details(name).get("parameters", "")
     if isinstance(parameters, str):
-        mapping = {
-            "temperature": "temperature",
-            "top_p": "top_p",
-            "top_k": "top_k",
-            "repeat_penalty": "repeat_penalty",
-            "num_predict": "max_tokens",
-        }
         for line in parameters.splitlines()[:64]:
-            parts = line.split()
-            if len(parts) != 2 or parts[0] not in mapping:
-                continue
-            spec = schema[mapping[parts[0]]]
-            try:
-                value = float(parts[1])
-            except ValueError:
-                continue
-            if (
-                not math.isfinite(value)
-                or (spec.min is not None and value < spec.min)
-                or (spec.max is not None and value > spec.max)
-                or (spec.type == "int" and not value.is_integer())
-            ):
-                continue
-            spec.default = int(value) if spec.type == "int" else value
+            _apply_parameter_default(schema, line)
     return schema
 
 

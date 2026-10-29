@@ -116,12 +116,14 @@ export interface LlmServerInfo {
   };
 }
 
+export type LlmRuntimeSourceType = "local-runtime" | "cloud-api" | "remote";
+
 export interface LlmRuntimeModelOption {
   id: string;
   name: string;
   provider: string;
   runtime_id: string;
-  source_type: "local-runtime" | "cloud-api" | "remote";
+  source_type: LlmRuntimeSourceType;
   active: boolean;
   capabilities?: string[];
   chat_compatible?: boolean;
@@ -141,7 +143,7 @@ export interface LlmRuntimeTargetOption {
   runtime_id: string;
   label?: string;
   display_name?: string;
-  source_type: "local-runtime" | "cloud-api" | "remote";
+  source_type: LlmRuntimeSourceType;
   configured: boolean;
   available: boolean;
   status: string;
@@ -175,7 +177,7 @@ export interface LlmRuntimeOptionsResponse {
     active_model?: string | null;
     active_endpoint?: string | null;
     config_hash?: string | null;
-    source_type?: "local-runtime" | "cloud-api" | "remote";
+    source_type?: LlmRuntimeSourceType;
     requested_model_alias?: string | null;
     resolved_model_id?: string | null;
     resolution_reason?: "exact" | "fallback" | "resource_guard" | "not_found" | null;
@@ -294,7 +296,7 @@ export interface ActiveLlmServerResponse {
   active_model?: string | null;
   config_hash?: string | null;
   runtime_id?: string | null;
-  source_type?: "local-runtime" | "cloud-api" | "remote";
+  source_type?: LlmRuntimeSourceType;
   requested_model_alias?: string | null;
   resolved_model_id?: string | null;
   resolution_reason?: "exact" | "fallback" | "resource_guard" | "not_found" | null;

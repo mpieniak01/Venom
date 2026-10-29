@@ -8,6 +8,7 @@ import {
   resolveCockpitActiveRuntimeInfo,
   resolveCockpitSelectedRuntimeId,
   resolveCockpitRuntimeModelSelection,
+  resolveCockpitEmptyRuntimeModelUpdate,
 } from "../lib/cockpit-runtime-selection";
 import type { LlmRuntimeTargetOption } from "../lib/types";
 
@@ -284,4 +285,26 @@ describe("cockpit runtime model selection", () => {
       `optimized=${optimizedMs.toFixed(2)}ms baseline=${baselineMs.toFixed(2)}ms`,
     );
   });
+});
+
+
+describe("empty runtime catalog model updates", () => {
+  const cases: Array<[string, string, string, string | null]> = [
+    ["vast_ollama", "local-model", "remote-model", ""],
+    ["vast_ollama", "local-model", "", null],
+    ["vast_ollama", "local-model", "  ", null],
+    ["ollama", "active-model", "old-model", "active-model"],
+    ["ollama", "", "selected-model", null],
+    ["ollama", "", " selected-model ", null],
+    ["ollama", "", "  ", ""],
+    ["ollama", "", "", null],
+  ];
+  for (const [runtime, activeModel, selection, expected] of cases) {
+    it(`preserves model fallback rules for ${runtime}/${JSON.stringify(selection)}`, () => {
+      assert.equal(
+        resolveCockpitEmptyRuntimeModelUpdate(runtime, activeModel, selection),
+        expected,
+      );
+    });
+  }
 });

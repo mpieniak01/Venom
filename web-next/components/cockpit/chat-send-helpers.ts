@@ -257,13 +257,29 @@ export const buildSimpleStreamRequestPayload = (
     selectedLlmModel: string,
     generationParams: GenerationParams | null,
     resolvedSession: string | null,
+    activeServerInfo?: ActiveServerInfo,
+    history?: Array<{ role: "user" | "assistant"; content: string }>,
 ) => ({
+    ...(activeServerInfo?.runtime_id?.startsWith("ollama@vast:") ? {
+        expectedRuntimeId: activeServerInfo.runtime_id,
+        expectedConfigHash: activeServerInfo.config_hash,
+    } : {}),
+    ...(history ? { history } : {}),
     content: trimmed,
     model: selectedLlmModel || null,
     maxTokens: typeof generationParams?.max_tokens === "number" ? generationParams.max_tokens : null,
     temperature: typeof generationParams?.temperature === "number" ? generationParams.temperature : null,
     sessionId: resolvedSession,
 });
+
+function assertCompletedRemoteStream(
+    activeServerInfo: ActiveServerInfo,
+    streamCompleted: boolean,
+): void {
+    if (activeServerInfo?.runtime_id?.startsWith("ollama@vast:") && !streamCompleted) {
+        throw new Error("Remote response ended before generation completed.");
+    }
+}
 
 export async function handleSimpleTaskSend(params: {
     clientId: string;
@@ -331,12 +347,10 @@ export async function handleSimpleTaskSend(params: {
         updateSimpleStream(clientId, { text: "", status: "W toku", done: false });
         const response = await sendSimpleChatStream(
             {
-                ...buildSimpleStreamRequestPayload(trimmed, selectedLlmModel, generationParams, resolvedSession),
-                ...(activeServerInfo?.runtime_id?.startsWith("ollama@vast:") ? {
-                    expectedRuntimeId: activeServerInfo.runtime_id,
-                    expectedConfigHash: activeServerInfo.config_hash,
-                } : {}),
-                ...(params.history ? { history: params.history } : {}),
+                ...buildSimpleStreamRequestPayload(
+                    trimmed, selectedLlmModel, generationParams, resolvedSession,
+                    activeServerInfo, params.history,
+                ),
             },
         );
         const headerRequestId = response.headers.get("x-request-id");
@@ -426,9 +440,7 @@ export async function handleSimpleTaskSend(params: {
             reader.releaseLock();
         }
 
-        if (activeServerInfo?.runtime_id?.startsWith("ollama@vast:") && !streamCompleted) {
-            throw new Error("Remote response ended before generation completed.");
-        }
+        assertCompletedRemoteStream(activeServerInfo, streamCompleted);
         params.onCompleted?.(buffer);
         updateSimpleStream(clientId, { text: buffer, status: "COMPLETED", done: true });
         const duration = Date.now() - startedAt;

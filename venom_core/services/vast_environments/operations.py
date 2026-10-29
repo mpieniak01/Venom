@@ -24,16 +24,34 @@ from venom_core.services.vast_environments.ssh import inspect, ssh_args, tunnel
 from venom_core.services.vast_environments.startup import startup
 
 
+def _engine_version_from_banner(value: str) -> str | None:
+    """Read the first adjacent major/minor/optional-patch digit runs in linear time."""
+    runs = iter(re.finditer(r"\d+", value))
+    previous = next(runs, None)
+    if previous is None:
+        return None
+    for current in runs:
+        if value[previous.end() : current.start()] != ".":
+            previous = current
+            continue
+        end = current.end()
+        patch = next(runs, None)
+        if patch is not None and value[end : patch.start()] == ".":
+            end = patch.end()
+        return value[previous.start() : end]
+    return None
+
+
 def _check_ollama_capacity(plan, capacity: dict) -> None:
     blocking = [reason for reason in capacity["reasons"] if reason != "startup"]
     if blocking or capacity["unknown"]:
         raise VastError("vast.capacity_mismatch")
     facts = capacity["facts"]
     gpu = str(facts.get("gpu", "")).split(",")
-    engine = re.search(r"\d+\.\d+(?:\.\d+)?", str(facts.get("ollama_version", "")))
+    engine = _engine_version_from_banner(str(facts.get("ollama_version", "")))
     for actual, minimum in (
         (gpu[1].strip() if len(gpu) >= 2 else None, plan.profile.runtime.min_driver),
-        (engine.group() if engine else None, plan.profile.runtime.min_engine_version),
+        (engine, plan.profile.runtime.min_engine_version),
     ):
         if minimum:
             observed, required = version_parts(actual), version_parts(minimum)

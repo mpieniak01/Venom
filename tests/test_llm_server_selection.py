@@ -792,7 +792,15 @@ async def test_get_llm_servers_filters_vllm_outside_full_profile(monkeypatch):
     try:
         response = await system_routes.get_llm_servers()
         names = [entry["name"] for entry in response["servers"]]
-        assert names == ["ollama"]
+        assert names == ["ollama", system_routes.vast_chat_runtime.SERVER]
+        assert response["count"] == 2
+        remote = response["servers"][-1]
+        assert remote["available"] is False
+        assert remote["capabilities"] == {
+            "can_start": False,
+            "can_stop": False,
+            "can_restart": False,
+        }
     finally:
         _restore_settings(original)
 
@@ -1115,7 +1123,15 @@ async def test_get_llm_servers_excludes_not_installed_runtime(monkeypatch):
     try:
         response = await system_routes.get_llm_servers()
         names = [entry["name"] for entry in response["servers"]]
-        assert names == ["ollama"]
+        assert names == ["ollama", system_routes.vast_chat_runtime.SERVER]
+        assert response["count"] == 2
+        remote = response["servers"][-1]
+        assert remote["available"] is False
+        assert remote["capabilities"] == {
+            "can_start": False,
+            "can_stop": False,
+            "can_restart": False,
+        }
     finally:
         _restore_settings(original)
 

@@ -106,6 +106,7 @@ _SIMPLE_MODE_STEP = "SimpleMode"
 _PROMPT_PREVIEW_MAX_CHARS = 200
 _CONTEXT_PREVIEW_MAX_CHARS = 2000
 _RESPONSE_PREVIEW_MAX_CHARS = 4000
+_VAST_RUNTIME_PREFIX = "ollama@vast:"
 _SSE_EVENT_START = "event: start\ndata: {}\n\n"
 _SSE_EVENT_DONE = "event: done\ndata: {}\n\n"
 _SSE_MEDIA_TYPE = "text/event-stream"
@@ -867,6 +868,21 @@ async def _handle_stream_http_error(
     )
 
 
+def _expected_vast_identity(runtime) -> tuple[Optional[str], Optional[str]]:
+    if not str(getattr(runtime, "runtime_id", "")).startswith(_VAST_RUNTIME_PREFIX):
+        return None, None
+    return runtime.runtime_id, runtime.config_hash
+
+
+def _simple_stream_max_attempts(runtime) -> int:
+    is_vast = str(getattr(runtime, "runtime_id", "") or "").startswith(
+        _VAST_RUNTIME_PREFIX
+    )
+    if runtime.provider == "ollama" and not is_vast:
+        return max(1, int(SETTINGS.OLLAMA_RETRY_MAX_ATTEMPTS))
+    return 1
+
+
 async def _stream_simple_chunks(
     *,
     completions_url: str,
@@ -875,20 +891,13 @@ async def _stream_simple_chunks(
     request_id: UUID,
     model_name: str,
 ) -> AsyncIterator[str]:
+    expected_runtime_id, expected_config_hash = _expected_vast_identity(runtime)
     async with runtime_request_guard(
         request_kind="simple_chat_stream",
         provider=runtime.provider,
         model=model_name,
-        expected_runtime_id=(
-            runtime.runtime_id
-            if str(getattr(runtime, "runtime_id", "")).startswith("ollama@vast:")
-            else None
-        ),
-        expected_config_hash=(
-            runtime.config_hash
-            if str(getattr(runtime, "runtime_id", "")).startswith("ollama@vast:")
-            else None
-        ),
+        expected_runtime_id=expected_runtime_id,
+        expected_config_hash=expected_config_hash,
     ):
         state = _SimpleStreamState(chunks=[])
         stream_start = time.perf_counter()
@@ -896,14 +905,7 @@ async def _stream_simple_chunks(
 
         yield _SSE_EVENT_START
 
-        max_attempts = (
-            max(1, int(SETTINGS.OLLAMA_RETRY_MAX_ATTEMPTS))
-            if runtime.provider == "ollama"
-            and not str(getattr(runtime, "runtime_id", "") or "").startswith(
-                "ollama@vast:"
-            )
-            else 1
-        )
+        max_attempts = _simple_stream_max_attempts(runtime)
         retry_backoff = max(0.0, float(SETTINGS.OLLAMA_RETRY_BACKOFF_SECONDS))
 
         for attempt in range(1, max_attempts + 1):
@@ -974,20 +976,13 @@ async def _stream_simple_chunks_non_stream(
     request_id: UUID,
     model_name: str,
 ) -> AsyncIterator[str]:
+    expected_runtime_id, expected_config_hash = _expected_vast_identity(runtime)
     async with runtime_request_guard(
         request_kind="simple_chat_non_stream",
         provider=runtime.provider,
         model=model_name,
-        expected_runtime_id=(
-            runtime.runtime_id
-            if str(getattr(runtime, "runtime_id", "")).startswith("ollama@vast:")
-            else None
-        ),
-        expected_config_hash=(
-            runtime.config_hash
-            if str(getattr(runtime, "runtime_id", "")).startswith("ollama@vast:")
-            else None
-        ),
+        expected_runtime_id=expected_runtime_id,
+        expected_config_hash=expected_config_hash,
     ):
         stream_start = time.perf_counter()
         chunks: list[str] = []

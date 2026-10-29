@@ -27,6 +27,11 @@ from venom_core.services.vast_environments.store import Journal
 SERVER_NAME = "vast_ollama"
 ROOT = Path(__file__).resolve().parents[2] / ".venom_runtime" / "vast"
 _MAX_RESPONSE = 2_000_000
+TUNNEL_FAILED = "vast.tunnel_failed"
+CHAT_MODELS_INVALID = "vast.chat_models_invalid"
+CHAT_UNAVAILABLE = "vast.chat_unavailable"
+CHAT_INSTANCE_UNAVAILABLE = "vast.chat_instance_unavailable"
+CHAT_PROBE_FAILED = "vast.chat_probe_failed"
 
 
 class ManagedTunnel:
@@ -62,7 +67,7 @@ class ManagedTunnel:
                     if time.monotonic() >= deadline:
                         break
                     time.sleep(0.1)
-            raise VastError("vast.tunnel_failed")
+            raise VastError(TUNNEL_FAILED)
         except BaseException:
             self.close()
             raise
@@ -85,11 +90,11 @@ class ManagedTunnel:
 def _models(value: Any) -> list[dict[str, Any]]:
     rows = value.get("models") if isinstance(value, dict) else None
     if not isinstance(rows, list) or len(rows) > 256:
-        raise VastError("vast.chat_models_invalid")
+        raise VastError(CHAT_MODELS_INVALID)
     models: dict[str, dict[str, Any]] = {}
     for row in rows:
         if not isinstance(row, dict):
-            raise VastError("vast.chat_models_invalid")
+            raise VastError(CHAT_MODELS_INVALID)
         name, digest = row.get("name"), row.get("digest")
         if (
             not isinstance(name, str)
@@ -102,7 +107,7 @@ def _models(value: Any) -> list[dict[str, Any]]:
             or type(row.get("size")) is not int
             or row["size"] < 0
         ):
-            raise VastError("vast.chat_models_invalid")
+            raise VastError(CHAT_MODELS_INVALID)
         item = {
             "name": name,
             "digest": digest,
@@ -201,7 +206,7 @@ class VastChatConnection:
 
     def _json(self, path: str, payload: dict[str, Any] | None = None) -> Any:
         if self._tunnel is None:
-            raise VastError("vast.chat_unavailable")
+            raise VastError(CHAT_UNAVAILABLE)
         with self.http_factory(
             timeout=3.0,
             trust_env=False,
@@ -227,13 +232,13 @@ class VastChatConnection:
             or self._client is None
             or self._intent is None
         ):
-            raise VastError("vast.chat_unavailable")
+            raise VastError(CHAT_UNAVAILABLE)
         instance = self._client.instance(self._intent["instance_id"])
         if (
             instance.get("id") != self._intent["instance_id"]
             or instance.get("actual_status") != "running"
         ):
-            raise VastError("vast.chat_instance_unavailable")
+            raise VastError(CHAT_INSTANCE_UNAVAILABLE)
         for key in ("host_id", "machine_id"):
             if instance.get(key) != self._plan.assessment.offer.get(key):
                 raise VastError("vast.chat_instance_mismatch")
@@ -259,7 +264,7 @@ class VastChatConnection:
             if plan.profile.mode != "ollama" or record.instance_id is None:
                 raise VastError("vast.chat_ollama_plan_required")
             if record.pending_action or record.state == "destroyed":
-                raise VastError("vast.chat_instance_unavailable")
+                raise VastError(CHAT_INSTANCE_UNAVAILABLE)
             self._close_transport()
             self._plan = plan
             self._intent = {"plan_id": plan_id, "instance_id": record.instance_id}
@@ -274,16 +279,14 @@ class VastChatConnection:
                     instance.get("id") != record.instance_id
                     or instance.get("actual_status") != "running"
                 ):
-                    raise VastError("vast.chat_instance_unavailable")
+                    raise VastError(CHAT_INSTANCE_UNAVAILABLE)
                 for key in ("host_id", "machine_id"):
                     if instance.get(key) != plan.assessment.offer.get(key):
                         raise VastError("vast.chat_instance_mismatch")
                 self._tunnel = self.tunnel_factory(plan, instance)
                 self._probe()
             except (VastError, OSError, ValueError, httpx.HTTPError) as exc:
-                code = (
-                    exc.code if isinstance(exc, VastError) else "vast.chat_probe_failed"
-                )
+                code = exc.code if isinstance(exc, VastError) else CHAT_PROBE_FAILED
                 self._invalidate(code)
                 raise VastError(code) from None
             return self.status(refresh=False)
@@ -302,7 +305,7 @@ class VastChatConnection:
         return isinstance(error, httpx.TransportError)
 
     def _probe_failed(self, error: Exception) -> None:
-        code = error.code if isinstance(error, VastError) else "vast.chat_probe_failed"
+        code = error.code if isinstance(error, VastError) else CHAT_PROBE_FAILED
         self._probe_failures += 1
         if self._transient(error) and self._probe_failures < 3:
             self._available = False
@@ -349,9 +352,7 @@ class VastChatConnection:
         # Popen.poll is non-blocking. Revocation is immediate even before the
         # next refresh can serialize transport cleanup.
         if tunnel is not None and not tunnel.alive():
-            value.update(
-                available=False, endpoint=None, models=[], error="vast.tunnel_failed"
-            )
+            value.update(available=False, endpoint=None, models=[], error=TUNNEL_FAILED)
         return value
 
     def status(self, refresh: bool = True) -> dict[str, Any]:
@@ -361,7 +362,7 @@ class VastChatConnection:
             if self._tunnel is not None:
                 try:
                     if not self._tunnel.alive():
-                        raise VastError("vast.tunnel_failed")
+                        raise VastError(TUNNEL_FAILED)
                     self._probe()
                 except (VastError, OSError, ValueError, httpx.HTTPError) as error:
                     self._probe_failed(error)
@@ -386,12 +387,12 @@ class VastChatConnection:
                 }
             except (VastError, OSError, ValueError, httpx.HTTPError) as exc:
                 self._probe_failed(exc)
-                raise VastError("vast.chat_unavailable") from None
+                raise VastError(CHAT_UNAVAILABLE) from None
 
     def require_available(self) -> dict[str, Any]:
         value = self.status(refresh=True)
         if not value["available"]:
-            raise VastError("vast.chat_unavailable")
+            raise VastError(CHAT_UNAVAILABLE)
         return value
 
     def detach(self, expected_plan_id: str | None = None) -> dict[str, Any]:

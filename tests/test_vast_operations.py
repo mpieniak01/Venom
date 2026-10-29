@@ -510,8 +510,9 @@ def test_engine_only_readiness_rejects_malformed_api(service, version, tags):
     with httpx.Client(
         base_url="http://127.0.0.1:1234", transport=httpx.MockTransport(respond)
     ) as client:
+        probe = OllamaProbe(client, plan.profile)
         with pytest.raises(VastError, match="vast.ollama_api_invalid"):
-            OllamaProbe(client, plan.profile).engine_ready()
+            probe.engine_ready()
 
 
 def test_engine_only_workload_ready_has_no_generation_or_gpu_probe(service):
@@ -617,6 +618,11 @@ def test_ollama_order_carries_context_and_parallelism(service):
         ("535.146.02", "0.40.11", False),
         ("595.84", "0.19.0", False),
         ("595.84", "0.40.11", True),
+        ("595.84", "v0.40.11-rc1", True),
+        ("595.84", "0.40.11+cuda12.4", True),
+        ("595.84", "server 0.40.11 trailing", True),
+        ("595.84", "١.٤٠.١١", False),
+        pytest.param("595.84", "9" * 50000, False, id="long-digit-run"),
         ("", "", False),
     ],
 )
@@ -690,3 +696,22 @@ def test_failed_startup_is_repairable_only_with_valid_capacity(service):
             == "completed"
         )
     assert "ollama pull" in run.call_args.kwargs["input"]
+
+
+@pytest.mark.parametrize(
+    "banner,expected",
+    [
+        ("v0.40.11-rc1", "0.40.11"),
+        ("candidate 12..34 then 0.40.11", "0.40.11"),
+        ("0.40.11.9", "0.40.11"),
+        ("first 0.40 then 1.0.0", "0.40"),
+        ("١.٤٠.١١", "١.٤٠.١١"),
+        ("123...456", None),
+    ],
+)
+def test_engine_banner_preserves_first_contiguous_version(banner, expected):
+    from venom_core.services.vast_environments.operations import (
+        _engine_version_from_banner,
+    )
+
+    assert _engine_version_from_banner(banner) == expected

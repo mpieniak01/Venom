@@ -92,7 +92,9 @@ describe("Direct chat identity compatibility", () => {
         activeServerInfo: {runtime_id: runtime, config_hash: "current-hash"},
         sendSimpleChatStream: async (body) => {
           payload = body;
-          return new Response('event: content\ndata: {"text":"answer"}\n\nevent: done\ndata: {}\n\n');
+          const completion = runtime.startsWith("ollama@vast:")
+            ? 'event: done\ndata: {}\n\n' : "";
+          return new Response('event: content\ndata: {"text":"answer"}\n\n' + completion);
         },
         linkOptimisticRequest: () => {}, setLocalSessionHistory: () => {},
         updateSimpleStream: (_id, update) => {status = update.status ?? status;},

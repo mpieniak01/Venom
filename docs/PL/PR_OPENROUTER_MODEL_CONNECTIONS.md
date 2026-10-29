@@ -31,15 +31,24 @@ Gałąź: codex/openrouter-chat-mvp. Repo: Venom. Biblioteka współdzielona 0.2
 
 ## Quality Gates
 
-- [ ] make pr-fast
-- [ ] katalog/grupy nowych testów i changed-lines coverage
-- [ ] targetowane testy Python, TypeScript/DOM, lint, i18n
-- [ ] lokalny smoke rzeczywistego panelu
+- [x] make pr-fast
+- [x] katalog/grupy nowych testów i changed-lines coverage
+- [x] targetowane testy Python, TypeScript/DOM, lint, i18n
+- [x] lokalny smoke rzeczywistego panelu
 - [ ] CI i Sonar po publikacji (nie wykonano w lokalnym etapie)
 
 ## Validation Report
 
-Wyniki zostaną uzupełnione po integracji. Pełne prywatne dowody i metadane API pozostają w docs_dev, poza Git. Bieżące małe budżety operatora pozostają bez zmian.
+Kod: f29738ca (backend), 599632d5 (UI), 10106407 (limit taryfy endpointu dla wszystkich modeli, zero dla :free).
+
+- `make pr-fast`: PASS, 171,89 s; 1353 testy backendu i 230 interfejsu. Changed-lines coverage 93,61% przy progu 80%; progi 14 plików zaliczone.
+- `scripts/qualify_openrouter_local.py`: PASS, 2,35 s; niezmieniony wheel 0.2.0 i zgodny receipt konsumenta Windows. Pakiet i repo orkiestracji bez zmian.
+- `pytest tests/test_openrouter_model_catalog.py tests/test_openrouter_runtime.py`: 68 PASS.
+- Testy nowej zakładki i selektora czatu: 11 PASS; pełny TypeScript, targeted ESLint, mypy trzech modułów oraz PL/EN/DE parity PASS.
+- `make test-groups-sync test-catalog-check test-groups-check`: PASS. Rejestracja obejmuje wyłącznie nowy plik; wcześniejszy podział testów zachowany.
+- Live smoke: wyszukiwanie, dwa bezpłatne modele, odłączenie jednego bez utraty drugiego i ponowne podłączenie PASS. Aktywny model nie zmienił się; bez generacji. API runtime options i rzeczywisty DOM potwierdzają nowy panel i dostępność OpenRouter.
+
+Pełna bramka wykonana w izolacji sieci, GPU i danych z czystym ENV_FILE=/dev/null, bez operatorskiego profilu i sekretów. Lokalny runner poprawiono dla kanonicznego checkoutu: zapisywalne puste katalogi sandboxa oraz właściciel wygenerowanych raportów. Nie zmieniano progów ani zakresu bramek. Pełne prywatne dowody: docs_dev/openrouter-local-20261029/validation-connections.json, live-connections-check.json i pr-fast-connections.log.
 
 ## Risks / Limitations / Skips
 

@@ -71,6 +71,20 @@ export const models = {
     }
 },
   openrouter: {
+  categories: {
+  "programming": "Programmierung",
+  "roleplay": "Rollenspiel",
+  "marketing": "Marketing",
+  "marketing/seo": "Marketing / SEO",
+  "technology": "Technologie",
+  "science": "Wissenschaft",
+  "translation": "Übersetzung",
+  "legal": "Recht",
+  "finance": "Finanzen",
+  "health": "Gesundheit",
+  "trivia": "Wissensfragen",
+  "academia": "Hochschule"
+},
   "refresh": "Modell aktualisieren",
   "description": "OpenRouter-Modelle suchen und für die Verwendung im Chat verbinden.",
   "connectedTitle": "Verbundene Modelle",

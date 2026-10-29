@@ -6,6 +6,8 @@ import { act, cleanup, fireEvent, render, renderHook, screen, waitFor } from "@t
 import { OpenRouterModelsSection } from "../components/models/openrouter-models-section";
 import { useOpenRouterModels, type OpenRouterModel } from "../components/models/hooks/use-openrouter-models";
 import { en } from "../lib/i18n/locales/en";
+import { pl } from "../lib/i18n/locales/pl";
+import { de } from "../lib/i18n/locales/de";
 
 const t = (key: string) => key.split(".").reduce<unknown>((value, part) => (value as Record<string, unknown>)[part], en) as string;
 const model = (id: string, extra: Partial<OpenRouterModel> = {}): OpenRouterModel => ({ id, name: id, description: "Text model", context_length: 8192, input_price_per_million: "0", output_price_per_million: null, supports_tools: true, connected: false, ...extra });
@@ -120,3 +122,22 @@ describe("OpenRouter model connections", () => {
     assert.deepEqual(posts, ["/api/v1/openrouter/models/connect"]);
   });
 });
+
+
+for (const [language, locale] of Object.entries({ pl, en, de })) {
+  it(`localizes category labels and preserves API identifiers in ${language}`, async () => {
+    const calls: string[] = [];
+    globalThis.fetch = async input => {
+      const path = String(input); calls.push(path);
+      return Response.json(path.includes("/search?") ? results([]) : { models: [] });
+    };
+    const translate = (key: string) => key.split(".").reduce<unknown>((value, part) => (value as Record<string, unknown>)[part], locale) as string;
+    render(<OpenRouterModelsSection t={translate} />);
+    const category = screen.getByLabelText(locale.models.openrouter.category) as HTMLSelectElement;
+    const option = Array.from(category.options).find(item => item.text === locale.models.openrouter.categories.programming);
+    assert.equal(option?.value, "programming");
+    fireEvent.change(category, { target: { value: "programming" } });
+    fireEvent.click(screen.getByRole("button", { name: locale.models.openrouter.search }));
+    await waitFor(() => assert.ok(calls.some(path => path.includes("category=programming"))));
+  });
+}

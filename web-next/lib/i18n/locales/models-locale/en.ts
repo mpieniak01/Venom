@@ -71,6 +71,20 @@ export const models = {
     }
 },
   openrouter: {
+  categories: {
+  "programming": "Programming",
+  "roleplay": "Roleplay",
+  "marketing": "Marketing",
+  "marketing/seo": "Marketing / SEO",
+  "technology": "Technology",
+  "science": "Science",
+  "translation": "Translation",
+  "legal": "Legal",
+  "finance": "Finance",
+  "health": "Health",
+  "trivia": "Trivia",
+  "academia": "Academia"
+},
   "refresh": "Refresh model",
   "description": "Find models on OpenRouter and connect the ones you want to use in chat.",
   "connectedTitle": "Connected models",

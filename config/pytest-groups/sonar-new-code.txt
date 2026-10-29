@@ -376,6 +376,7 @@ tests/test_vast_chat_smoke.py
 tests/test_vast_cleanup_zero.py
 tests/test_vast_cli.py
 tests/test_vast_faults.py
+tests/test_vast_management.py
 tests/test_vast_observation.py
 tests/test_vast_operations.py
 tests/test_vast_provider.py

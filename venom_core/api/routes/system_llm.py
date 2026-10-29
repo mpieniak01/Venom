@@ -16,7 +16,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from venom_core.api.routes import academy
 from venom_core.api.routes import openrouter as openrouter_routes
-from venom_core.api.routes import system_deps, vast_chat
+from venom_core.api.routes import system_deps, vast_chat, vast_environments
 from venom_core.api.routes.models_introspection import get_introspection_queue_metrics
 from venom_core.api.routes.models_utils import infer_model_provider
 from venom_core.api.routes.permission_denied_contract import (
@@ -89,6 +89,7 @@ router = APIRouter(prefix="/api/v1", tags=["system"])
 
 router.include_router(openrouter_routes.router)
 router.include_router(vast_chat.router)
+router.include_router(vast_environments.router)
 
 LLM_CONTROLLER_UNAVAILABLE = "LLMController nie jest dostępny"
 

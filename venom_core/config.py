@@ -369,6 +369,9 @@ class Settings(BaseSettings):
     ENABLE_HF_INTEGRATION: bool = True  # Włącz integrację z Hugging Face
     HF_TOKEN: SecretStr = SecretStr("")  # Token Hugging Face API (opcjonalny)
     VAST_API_KEY: SecretStr = SecretStr("")  # Vast.ai rental API; local ENV_FILE
+    VAST_CHAT_PROFILE_FILE: str = (
+        ""  # Server-owned single-model VAST management profile
+    )
     GITHUB_TOKEN: SecretStr = SecretStr("")  # Personal Access Token do GitHub API
     GITHUB_REPO_NAME: str = ""  # Nazwa repozytorium np. "mpieniak01/Venom"
     DISCORD_WEBHOOK_URL: SecretStr = SecretStr(

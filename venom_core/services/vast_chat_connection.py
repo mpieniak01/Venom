@@ -145,6 +145,7 @@ class VastChatConnection:
         self._cached_status: dict[str, Any] = {}
         self._cached_tunnel: Any = None
         self._probe_failures = 0
+        self._expected_model: tuple[str, str] | None = None
         self._tunnel: Any = None
         self._client: Any = None
         self._plan: Any = None
@@ -250,13 +251,20 @@ class VastChatConnection:
         ):
             raise VastError("vast.chat_version_invalid")
         self._catalog = _models(self._json("/api/tags"))
+        if self._expected_model is not None and not any(
+            (row["name"], row["digest"]) == self._expected_model
+            for row in self._catalog
+        ):
+            raise VastError("vast.management_model_not_ready")
         self._version = version["version"][:100]
         self._available = True
         self._error = None
         self._probe_failures = 0
         self._publish_status()
 
-    def attach(self, plan_id: str) -> dict[str, Any]:
+    def attach(
+        self, plan_id: str, *, expected_model: tuple[str, str] | None = None
+    ) -> dict[str, Any]:
         with self._lock:
             self.journal.path(plan_id, ".plan.json")
             plan = self.journal.plan(plan_id)
@@ -267,6 +275,7 @@ class VastChatConnection:
                 raise VastError(CHAT_INSTANCE_UNAVAILABLE)
             self._close_transport()
             self._plan = plan
+            self._expected_model = expected_model
             self._intent = {"plan_id": plan_id, "instance_id": record.instance_id}
             self._generation = uuid4().hex
             self._save_intent()

@@ -162,10 +162,10 @@ async def generate(
             if response.status_code != 200:
                 raise TestZeroError("generation_http_" + str(response.status_code))
             async for raw in response.aiter_bytes():
-                for item in decoder.feed(raw):
-                    apply_event(item, state)
-    for item in decoder.finish():
-        apply_event(item, state)
+                apply_events(decoder.feed(raw), state)
+                if state["done"]:
+                    break
+    apply_events(decoder.finish(), state)
     if not state["done"] or not state["text"].strip():
         raise TestZeroError("no_completed_text_answer")
     if MARKER not in state["text"]:
@@ -186,6 +186,12 @@ async def generate(
         "reported_usd": str(actual) if actual is not None else None,
         "accounting": "settled" if actual is not None else "pending",
     }
+
+
+def apply_events(items, state):
+    """Apply normalized events in order before deciding whether the socket is complete."""
+    for item in items:
+        apply_event(item, state)
 
 
 def apply_event(item, state):

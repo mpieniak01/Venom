@@ -196,3 +196,36 @@ def test_test_zero_uses_real_free_model_contract(installed):
     assert payload["model"] == "cohere/north-mini-code:free"
     assert payload["provider"]["allow_fallbacks"] is False
     assert payload["provider"]["max_price"] == {"prompt": 0, "completion": 0}
+
+
+def test_test_zero_done_closes_without_waiting_for_network_eof(installed):
+    from scripts.cloud.openrouter import test_zero as smoke
+
+    class Keepalive(httpx.AsyncByteStream):
+        async def __aiter__(self):
+            packet = {
+                "id": "gen-fixture",
+                "model": "cohere/north-mini-code:free",
+                "choices": [{"delta": {"content": smoke.MARKER}}],
+            }
+            yield ("data: " + json.dumps(packet) + "\n\ndata: [DONE]\n\n").encode()
+            raise AssertionError("DONE must close the stream before another read")
+
+    def factory(**kw):
+        return httpx.AsyncClient(
+            transport=httpx.MockTransport(
+                lambda req: httpx.Response(200, stream=Keepalive())
+            ),
+            **kw,
+        )
+
+    prices = installed.strict_prices({"prompt": "0", "completion": "0", "request": "0"})
+    candidate = {
+        "model": "cohere/north-mini-code:free",
+        "provider": "cohere",
+        "estimate": prices.estimate(1, 1),
+        "prices": prices,
+        "reasoning_disabled": False,
+    }
+    result = asyncio.run(smoke.generate(installed, "fixture", candidate, factory))
+    assert result["answered"] is True and result["marker_matched"] is True

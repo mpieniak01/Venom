@@ -251,6 +251,8 @@ async def _upstream(turn, state):
                     output = _handle_packet(item, turn, state)
                     if output is not None:
                         yield output
+                if state["complete"]:
+                    break
     for item in decoder.finish():
         output = _handle_packet(item, turn, state)
         if output is not None:

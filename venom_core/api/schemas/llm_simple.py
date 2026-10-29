@@ -15,6 +15,7 @@ class SimpleChatRequest(BaseModel):
 
     content: str = Field(..., min_length=1, max_length=50000)
     model: Optional[str] = None
+    expected_quote_hash: Optional[str] = Field(default=None, max_length=64)
     expected_runtime_id: Optional[str] = Field(default=None, max_length=1024)
     expected_config_hash: Optional[str] = Field(default=None, max_length=128)
     max_tokens: Optional[int] = None

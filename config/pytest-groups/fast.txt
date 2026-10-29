@@ -309,6 +309,8 @@ tests/test_ollama_voice_input.py
 tests/test_onnx_llm_client.py
 tests/test_onnx_runtime_cleanup.py
 tests/test_openai_semantic_kernel_compat.py
+tests/test_openrouter_runtime.py
+tests/test_openrouter_wheel.py
 tests/test_operator_agent.py
 tests/test_optional_modules_contracts_guard.py
 tests/test_oracle_agent.py

@@ -14,7 +14,9 @@ import httpx
 import psutil
 from fastapi import APIRouter, Depends, HTTPException
 
-from venom_core.api.routes import academy, system_deps, vast_chat
+from venom_core.api.routes import academy
+from venom_core.api.routes import openrouter as openrouter_routes
+from venom_core.api.routes import system_deps, vast_chat
 from venom_core.api.routes.models_introspection import get_introspection_queue_metrics
 from venom_core.api.routes.models_utils import infer_model_provider
 from venom_core.api.routes.permission_denied_contract import (
@@ -27,6 +29,7 @@ from venom_core.api.schemas.system_llm import (
 )
 from venom_core.config import SETTINGS
 from venom_core.services import (
+    openrouter_runtime,
     remote_models_service,
     system_llm_service,
     traffic_control_service,
@@ -83,6 +86,8 @@ from venom_core.utils.url_policy import build_http_url
 logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1", tags=["system"])
+
+router.include_router(openrouter_routes.router)
 router.include_router(vast_chat.router)
 
 LLM_CONTROLLER_UNAVAILABLE = "LLMController nie jest dostępny"
@@ -846,6 +851,7 @@ async def _activate_onnx_runtime(model: str | None) -> dict[str, Any]:
         runtime = (
             get_active_llm_runtime(SETTINGS.model_copy())
             if vast_chat_runtime.selection() is not None
+            or openrouter_runtime.selection() is not None
             else get_active_llm_runtime()
         )
         config_hash = runtime.config_hash or ""
@@ -865,6 +871,8 @@ async def _activate_onnx_runtime(model: str | None) -> dict[str, Any]:
         raise
     if vast_chat_runtime.selection() is not None:
         vast_chat_runtime.clear_selection()
+    if openrouter_runtime.selection() is not None:
+        openrouter_runtime.clear_selection()
     return _runtime_activate_payload(runtime)
 
 
@@ -1929,6 +1937,7 @@ async def _resolve_runtime_options_payload() -> dict[str, Any]:
     auto_heal = (
         _apply_vllm_runtime_autofix(local_models=local_models)
         if vast_chat_runtime.selection() is None
+        and openrouter_runtime.selection() is None
         else None
     )
     if auto_heal:
@@ -1958,6 +1967,15 @@ async def _resolve_runtime_options_payload() -> dict[str, Any]:
             if not item["active"]:
                 for candidate in item.get("models", []):
                     candidate["active"] = False
+    if SETTINGS.OPENROUTER_ENABLED or openrouter_runtime.selection() is not None:
+        runtime_targets.append(openrouter_runtime.target_payload())
+        if openrouter_runtime.selection() is not None:
+            for item in runtime_targets:
+                item["active"] = item["runtime_id"] == openrouter_runtime.SERVER
+                for candidate in item.get("models", []):
+                    candidate["active"] = (
+                        item["active"] and candidate["id"] == active_runtime.model_name
+                    )
     trainable_models = await _load_trainable_model_catalog(
         model_manager,
         local_models=local_models,
@@ -2065,6 +2083,7 @@ def _activate_cloud_runtime(provider_raw: str, model: str | None) -> dict[str, A
         runtime = (
             get_active_llm_runtime(SETTINGS.model_copy())
             if vast_chat_runtime.selection() is not None
+            or openrouter_runtime.selection() is not None
             else get_active_llm_runtime()
         )
         config_hash = runtime.config_hash or ""
@@ -2087,6 +2106,8 @@ def _activate_cloud_runtime(provider_raw: str, model: str | None) -> dict[str, A
         raise
     if vast_chat_runtime.selection() is not None:
         vast_chat_runtime.clear_selection()
+    if openrouter_runtime.selection() is not None:
+        openrouter_runtime.clear_selection()
     return _runtime_activate_payload(runtime)
 
 
@@ -2176,6 +2197,21 @@ async def get_llm_servers():
         }
     )
 
+    if SETTINGS.OPENROUTER_ENABLED or openrouter_runtime.selection() is not None:
+        state = openrouter_runtime.status()
+        servers.append(
+            {
+                "name": "openrouter",
+                "label": "OpenRouter",
+                "status": "online" if state["available"] else "offline",
+                "available": state["available"],
+                "capabilities": {
+                    "can_start": False,
+                    "can_stop": False,
+                    "can_restart": False,
+                },
+            }
+        )
     return {"status": "success", "servers": servers, "count": len(servers)}
 
 
@@ -2383,6 +2419,8 @@ async def set_active_llm_runtime(request: LlmRuntimeActivateRequest):
     """
     switch_source = assert_runtime_switch_source_allowed(request.switch_source)
     assert_runtime_switch_ownership_token(request.ownership_token)
+    if request.provider.lower() == "openrouter":
+        return await openrouter_routes.activate(request, switch_source)
     provider_raw = _normalize_runtime_provider(request.provider)
     _assert_runtime_provider_supported(provider_raw)
     active_runtime = get_active_llm_runtime()
@@ -2977,6 +3015,8 @@ async def _set_active_llm_server_impl(
 
         runtime = get_active_llm_runtime()
         await _enforce_selected_ollama_model(server_name, endpoint, selected_model)
+        if openrouter_runtime.selection() is not None:
+            openrouter_runtime.clear_selection()
         if vast_chat_runtime.selection() is not None:
             vast_chat_runtime.clear_selection()
         runtime = get_active_llm_runtime()
@@ -3022,13 +3062,21 @@ async def set_active_llm_server(request: ActiveLlmServerRequest):
     server_name = normalize_runtime_id(request.server_name)
     try:
         switch_source = assert_runtime_switch_source_allowed(request.switch_source)
+        if server_name == openrouter_runtime.SERVER:
+            return await openrouter_routes.activate(request, switch_source)
         if server_name == vast_chat_runtime.SERVER:
-            return await vast_chat.activate(request, switch_source)
-        return await _set_active_llm_server_impl(
+            result = await vast_chat.activate(request, switch_source)
+            if openrouter_runtime.selection() is not None:
+                openrouter_runtime.clear_selection()
+            return result
+        result = await _set_active_llm_server_impl(
             request=request,
             server_name=server_name,
             switch_source=switch_source,
         )
+        if openrouter_runtime.selection() is not None:
+            openrouter_runtime.clear_selection()
+        return result
     except HTTPException:
         raise
     except Exception as exc:  # pragma: no cover

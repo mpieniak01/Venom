@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { apiFetch } from "@/lib/api-client";
 import { useTranslation } from "@/lib/i18n";
+import { useOpenRouterLastQuote } from "@/lib/openrouter-quote-state";
 import { moneyText, type OpenRouterCatalog, type OpenRouterStatus } from "@/lib/openrouter-chat";
 
 export function useOpenRouterCatalog(enabled: boolean) {
@@ -22,10 +23,11 @@ export function useOpenRouterCatalog(enabled: boolean) {
   return {result: enabled ? result : null, failed: enabled && failed};
 }
 
-export function OpenRouterModelStatus({selection, model}: Readonly<{
-  selection: ReturnType<typeof useOpenRouterCatalog>; model: string;
+export function OpenRouterModelStatus({selection, model, session}: Readonly<{
+  selection: ReturnType<typeof useOpenRouterCatalog>; model: string; session: string;
 }>) {
   const t = useTranslation();
+  const quote = useOpenRouterLastQuote(model, session);
   const {result, failed} = selection;
   if (failed) return <p role="alert">{t("cockpit.openrouter.unavailable")}</p>;
   if (!result) return <p>{t("cockpit.openrouter.loading")}</p>;
@@ -35,13 +37,14 @@ export function OpenRouterModelStatus({selection, model}: Readonly<{
   return <section className="space-y-2 text-xs" data-testid="openrouter-model-status" aria-label={t("cockpit.openrouter.title")}>
     <p>{t("cockpit.openrouter.directOnly")}</p>
     <p>{t(result.status.configured ? "cockpit.openrouter.configured" : "cockpit.openrouter.notConfigured")} · {t("cockpit.openrouter.authentication." + authentication)}</p>
-    {!result.status.available && <p role="status">{t("cockpit.openrouter.unavailable")}</p>}
+    {!result.status.available && <output className="block" aria-live="polite">{t("cockpit.openrouter.unavailable")}</output>}
     {selected && <>
       <p>{t("cockpit.openrouter.prices", {input: exact(selected.input_price_per_million), output: exact(selected.output_price_per_million)})}</p>
       <p>{t("cockpit.openrouter.requestPrice", {price: exact(selected.request_price)})}</p>
       <p>{t("cockpit.openrouter.limits", {context: selected.context_length, output: selected.max_output_tokens})}</p>
       <p>{t("cockpit.openrouter.pricingDate", {date: selected.pricing_as_of || result.catalog.pricing_as_of || t("cockpit.openrouter.unknown")})}</p>
     </>}
+    {quote && <p data-testid="openrouter-last-quote">{t("cockpit.openrouter.lastQuote", {amount: quote.estimated_usd, input: quote.input_token_upper_bound, output: quote.max_output_tokens})}</p>}
     <p>{t("cockpit.openrouter.costNotice")}</p>
   </section>;
 }

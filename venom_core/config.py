@@ -299,6 +299,15 @@ class Settings(BaseSettings):
     PREVIOUS_ONNX_LLM_MODEL_PATH: str = (
         ""  # Poprzednia ścieżka modelu ONNX (rollback po deploy adaptera)
     )
+    OPENROUTER_ENABLED: bool = False
+    OPENROUTER_API_KEY: str = ""
+    OPENROUTER_CREDENTIAL_FILE: str = ""
+    OPENROUTER_MODELS_FILE: str = ""
+    OPENROUTER_MESSAGE_LIMIT_USD: str = "0"
+    OPENROUTER_CONVERSATION_LIMIT_USD: str = "0"
+    OPENROUTER_DAILY_LIMIT_USD: str = "0"
+    OPENROUTER_LIBRARY_VERSION: str = "0.1.0"
+
     ACTIVE_LLM_SERVER: str = ""  # Ostatnio aktywowany serwer LLM
     LLM_CONFIG_HASH: str = (
         ""  # Hash aktywnej konfiguracji LLM (endpoint+model+provider)

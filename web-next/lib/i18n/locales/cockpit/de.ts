@@ -1,5 +1,16 @@
 export const cockpitLocale = {
     openrouter: {
+      "provenance": {"requested_model": "Angefordertes Modell", "confirmed_model": "Bestätigtes Modell", "confirmed_provider": "Bestätigter Anbieter", "generation_id": "Generierungs-ID"},
+      "upstreamUsage": "Vom Anbieter gemeldete Token",
+      "usageValues": "Eingabe {{input}} · Ausgabe {{output}} · gesamt {{total}}",
+
+      "conversationTitle": "Gesprächskosten für dieses Modell",
+      "conversationReported": "Bestätigte Gesprächskosten: {{amount}} USD",
+      "conversationReserved": "Reservierungen des Gesprächs: {{amount}} USD",
+
+      "quoteFailed": "Die OpenRouter-Schätzung konnte nicht bestätigt werden. Die Nachricht wurde nicht an das Modell gesendet.",
+      "lastQuote": "Letzte Nachrichtenschätzung: {{amount}} USD · obere Eingabegrenze: {{input}} Token · maximale Ausgabe: {{output}} Token",
+
       "title": "OpenRouter-Chat",
       "directOnly": "OpenRouter unterstützt nur Direct-Chat. Normal, Complex und Werkzeuge sind nicht verfügbar.",
       "loading": "Freigegebene Modelle und Preise werden geladen…",

@@ -1,5 +1,16 @@
 export const cockpitLocale = {
     openrouter: {
+      "provenance": {"requested_model": "Żądany model", "confirmed_model": "Potwierdzony model", "confirmed_provider": "Potwierdzony dostawca", "generation_id": "ID generacji"},
+      "upstreamUsage": "Tokeny raportowane przez dostawcę",
+      "usageValues": "Wejście {{input}} · wyjście {{output}} · razem {{total}}",
+
+      "conversationTitle": "Koszt rozmowy dla tego modelu",
+      "conversationReported": "Potwierdzone koszty rozmowy: {{amount}} USD",
+      "conversationReserved": "Rezerwacje rozmowy: {{amount}} USD",
+
+      "quoteFailed": "Nie można potwierdzić szacunku OpenRouter. Nie wysłano wiadomości do modelu.",
+      "lastQuote": "Ostatni szacunek wiadomości: {{amount}} USD · górny limit wejścia: {{input}} tokenów · maksymalne wyjście: {{output}} tokenów",
+
       "title": "Czat OpenRouter",
       "directOnly": "OpenRouter obsługuje wyłącznie czat Direct. Tryby Normal, Complex i narzędzia są niedostępne.",
       "loading": "Ładowanie dopuszczonych modeli i cen…",

@@ -1,4 +1,4 @@
-import { pendingOpenRouterCost, readOpenRouterCost } from "@/lib/openrouter-chat";
+import { pendingOpenRouterCost, readOpenRouterCost, readOpenRouterMetadata, readOpenRouterUsage } from "@/lib/openrouter-chat";
 import { isGuardedChatRuntime, isOpenRouterRuntime } from "@/lib/remote-chat";
 import { createParser } from "eventsource-parser";
 import { type GenerationParams, type HistoryRequestDetail } from "@/lib/types";
@@ -53,6 +53,7 @@ export type ChatSendParams = {
         sessionId: string | null;
         expectedRuntimeId?: string | null;
         expectedConfigHash?: string | null;
+        expectedQuoteHash?: string | null;
         history?: Array<{ role: "user" | "assistant"; content: string }>;
     }) => Promise<Response>;
     sendTask: (payload: SendTaskInput) => Promise<{ task_id?: string | null }>;
@@ -293,6 +294,8 @@ export async function handleSimpleTaskSend(params: {
     history?: Array<{ role: "user" | "assistant"; content: string }>;
     onCompleted?: (answer: string) => void;
     t?: (key: string) => string;
+    expectedQuoteHash?: string;
+    initialCost?: ReturnType<typeof pendingOpenRouterCost>;
     sendSimpleChatStream: ChatSendParams["sendSimpleChatStream"];
     linkOptimisticRequest: ChatSendParams["linkOptimisticRequest"];
     setLocalSessionHistory: ChatSendParams["setLocalSessionHistory"];
@@ -332,12 +335,16 @@ export async function handleSimpleTaskSend(params: {
     } = params;
     let resolvedRequestId = clientId;
     const openRouter = isOpenRouterRuntime(activeServerInfo?.runtime_id) || activeServerInfo?.active_server === "openrouter";
-    let accounting = openRouter ? pendingOpenRouterCost() : undefined;
+    let accounting = openRouter ? params.initialCost ?? pendingOpenRouterCost() : undefined;
+    let provenance = readOpenRouterMetadata({requested_model: selectedLlmModel});
+    let actualUsage: ReturnType<typeof readOpenRouterUsage> = null;
     const recordAccounting = (status: string) => {
         if (!accounting) return;
         setSimpleRequestDetails(previous => ({...previous, [resolvedRequestId]: {
             ...previous[resolvedRequestId], request_id: resolvedRequestId, prompt: trimmed,
-            status, created_at: new Date().toISOString(), openrouter_cost: accounting,
+            status, created_at: previous[resolvedRequestId]?.created_at ?? new Date().toISOString(), openrouter_cost: accounting,
+            session_id: resolvedSession ?? null, llm_config_hash: activeServerInfo?.config_hash ?? null,
+            openrouter_metadata: provenance, ...(actualUsage ? {openrouter_usage: actualUsage} : {}),
             llm_provider: "openrouter", llm_model: selectedLlmModel,
             llm_runtime_id: activeServerInfo?.runtime_id ?? null,
         }}));
@@ -365,6 +372,7 @@ export async function handleSimpleTaskSend(params: {
                     trimmed, selectedLlmModel, generationParams, resolvedSession,
                     activeServerInfo, params.history,
                 ),
+                ...(params.expectedQuoteHash ? {expectedQuoteHash: params.expectedQuoteHash} : {}),
             },
         );
         const headerRequestId = response.headers.get("x-request-id");
@@ -433,11 +441,18 @@ export async function handleSimpleTaskSend(params: {
                         updateSimpleStream(clientId, { text: buffer, status: "W toku" });
                         upsertLocalHistory("assistant", buffer);
                     }
+                } else if (msg.event === "start" && openRouter) {
+                    provenance = readOpenRouterMetadata(JSON.parse(msg.data));
+                    recordAccounting("PROCESSING");
                 } else if (msg.event === "cost") {
                     const cost = readOpenRouterCost(JSON.parse(msg.data));
                     if (cost && openRouter) { accounting = cost; recordAccounting("PROCESSING"); }
                 } else if (msg.event === "done") {
                     const completion = openRouter ? JSON.parse(msg.data) : {};
+                    if (openRouter) {
+                        provenance = readOpenRouterMetadata(completion);
+                        actualUsage = readOpenRouterUsage(completion.usage, completion.usage_source);
+                    }
                     const cost = readOpenRouterCost(completion.cost);
                     if (cost && openRouter) accounting = cost;
                     streamCompleted = true;
@@ -502,7 +517,7 @@ export async function handleSimpleTaskSend(params: {
                 llm_endpoint: simpleEndpoint ?? null,
                 llm_config_hash: activeServerInfo?.config_hash ?? null,
                 llm_runtime_id: activeServerInfo?.runtime_id ?? null,
-                ...(accounting ? {openrouter_cost: accounting} : {}),
+                ...(accounting ? {openrouter_cost: accounting, openrouter_metadata: provenance, ...(actualUsage ? {openrouter_usage: actualUsage} : {})} : {}),
                 forced_tool: null,
                 forced_provider: null,
                 session_id: resolvedSession ?? null,

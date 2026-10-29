@@ -171,7 +171,7 @@ export function CockpitModels({
               buttonClassName="w-full justify-between rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white"
               menuClassName="w-full max-h-72 overflow-y-auto"
             />
-            {openRouterSelected && <OpenRouterModelStatus selection={openRouterCatalog} model={selectedLlmModel} />}
+            {openRouterSelected && <OpenRouterModelStatus selection={openRouterCatalog} model={selectedLlmModel} session={sessionId} />}
             {gateSwitching && (
               <p className="text-xs text-amber-300">
                 {`Trwa przełączanie runtime: ${runtimeState.switch.fromRuntime || "—"} -> ${

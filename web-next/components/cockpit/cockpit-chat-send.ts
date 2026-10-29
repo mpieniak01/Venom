@@ -1,7 +1,10 @@
 "use client";
 
 import { useCallback, useRef } from "react";
-import { allowsOpenRouterChat } from "@/lib/remote-chat";
+import { quoteOpenRouterChat } from "@/hooks/use-api";
+import { pendingOpenRouterCost, type OpenRouterQuote } from "@/lib/openrouter-chat";
+import { publishOpenRouterQuote } from "@/lib/openrouter-quote-state";
+import { allowsOpenRouterChat, isOpenRouterRuntime } from "@/lib/remote-chat";
 import { appendVastChatTurn, vastChatHistoryKey, type VastChatTurn } from "@/lib/vast-chat-history";
 import { useTranslation } from "@/lib/i18n";
 import { parseInputCommand } from "@/lib/slash-commands";
@@ -12,6 +15,7 @@ import {
   handleRuntimeSwitch,
   handleSimpleTaskSend,
   handleStandardTaskSend,
+  buildSimpleStreamRequestPayload,
 } from "./chat-send-helpers";
 
 function resolveSession(
@@ -70,7 +74,12 @@ export async function syncTargetServerIfNeeded(params: {
   const targetServer = (params.selectedLlmServer || "").toLowerCase().trim();
   const activeServer = (params.activeServerInfo?.active_server || "").toLowerCase().trim();
   const sameModel = !params.selectedLlmModel || params.selectedLlmModel === params.activeServerInfo?.active_model;
-  if (!targetServer || (targetServer === activeServer && sameModel)) return params.activeServerInfo;
+  const identityReady = targetServer !== "openrouter" || Boolean(
+    params.activeServerInfo?.active_model
+    && params.activeServerInfo.runtime_id === "openrouter@" + params.activeServerInfo.active_model
+    && params.activeServerInfo.config_hash?.trim(),
+  );
+  if (!targetServer || (targetServer === activeServer && sameModel && identityReady)) return params.activeServerInfo;
   try {
     const switched = isCloudRuntimeServer(targetServer)
       ? await params.setActiveLlmRuntime(targetServer, params.selectedLlmModel)
@@ -224,6 +233,20 @@ export function useChatSend(params: ChatSendParams) {
     setMessage(null);
 
     const shouldUseSimple = shouldUseSimpleMode(chatMode, parsed);
+    const historyKey = vastChatHistoryKey(effectiveActiveServerInfo?.runtime_id, effectiveSelectedModel, resolvedSession, effectiveActiveServerInfo?.config_hash);
+    const history = historyKey ? (vastHistory.current.get(historyKey) ?? []).map(turn => ({...turn})) : undefined;
+    let quote: OpenRouterQuote | undefined;
+    if (isOpenRouterRuntime(effectiveActiveServerInfo?.runtime_id) || effectiveActiveServerInfo?.active_server === "openrouter") {
+      try {
+        quote = await quoteOpenRouterChat(buildSimpleStreamRequestPayload(trimmed, effectiveSelectedModel,
+          generationParams, resolvedSession, effectiveActiveServerInfo, history));
+        publishOpenRouterQuote(effectiveSelectedModel, resolvedSession, quote);
+      } catch {
+        setMessage(t("cockpit.openrouter.quoteFailed"));
+        setSending(false);
+        return false;
+      }
+    }
 
     const forcedIntent = chatMode === "complex" ? "COMPLEX_PLANNING" : null;
     const clientId = enqueueOptimisticRequest(trimmed, {
@@ -256,16 +279,17 @@ export function useChatSend(params: ChatSendParams) {
       }
     }
 
-    const historyKey = vastChatHistoryKey(effectiveActiveServerInfo?.runtime_id, effectiveSelectedModel, resolvedSession, effectiveActiveServerInfo?.config_hash);
+
     const taskParams = {
       ...(historyKey ? {
-        history: vastHistory.current.get(historyKey) ?? [],
+        history,
         onCompleted: (answer: string) => {
           const history = appendVastChatTurn(vastHistory.current.get(historyKey) ?? [], trimmed, answer);
           vastHistory.current.clear();
           vastHistory.current.set(historyKey, history);
         },
       } : {}),
+      ...(quote ? {expectedQuoteHash: quote.quote_hash, initialCost: {...pendingOpenRouterCost(), estimated_usd: quote.estimated_usd}} : {}),
       clientId,
       trimmed,
       resolvedSession,

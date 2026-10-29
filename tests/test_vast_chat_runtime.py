@@ -499,3 +499,64 @@ def test_remote_form_defaults_are_read_from_remote_show(target):
     assert schema["top_p"].default == 0.8
     assert schema["max_tokens"].default == 512
     assert schema["top_k"].default == 40
+
+
+@pytest.mark.parametrize("failure", ["offline", "digest", "identity", "cancel"])
+def test_rejected_preflight_releases_admission_for_target_switch(
+    target, tmp_path, monkeypatch, failure
+):
+    state, _ = target
+    select()
+    runtime = remote.runtime_override()
+    ledger = admission.RuntimeAdmission(tmp_path / "enabled.sqlite", enabled=True)
+    monkeypatch.setattr(admission, "_ADMISSION", ledger)
+    expected_id = runtime.runtime_id
+    if failure == "offline":
+        state["available"] = False
+    elif failure == "digest":
+        state["models"][0]["digest"] = "f" * 64
+    elif failure == "identity":
+        expected_id += "-stale"
+    else:
+        monkeypatch.setattr(
+            remote, "preflight", AsyncMock(side_effect=asyncio.CancelledError)
+        )
+
+    async def attempt():
+        async with gate.runtime_request_guard(
+            request_kind="simple_chat_stream", expected_runtime_id=expected_id
+        ):
+            pytest.fail("Preflight must reject before generation starts")
+
+    error = asyncio.CancelledError if failure == "cancel" else HTTPException
+    with pytest.raises(error):
+        asyncio.run(attempt())
+    assert ledger.snapshot()["active_operations"] == 0
+    assert gate.get_runtime_switch_gate_snapshot().active_requests == 0
+    with ledger.operation(kind="runtime_switch", mutation=True):
+        remote.clear_selection()
+    assert remote.selection() is None
+
+
+@pytest.mark.parametrize("failure", ["error", "cancel"])
+def test_dispatched_generation_retains_uncertainty_and_blocks_switch(
+    target, tmp_path, monkeypatch, failure
+):
+    select()
+    ledger = admission.RuntimeAdmission(tmp_path / "enabled.sqlite", enabled=True)
+    monkeypatch.setattr(admission, "_ADMISSION", ledger)
+
+    async def attempt():
+        async with gate.runtime_request_guard(request_kind="simple_chat_stream"):
+            if failure == "cancel":
+                raise asyncio.CancelledError
+            raise HTTPException(503, "Generation failed after dispatch")
+
+    error = asyncio.CancelledError if failure == "cancel" else HTTPException
+    with pytest.raises(error):
+        asyncio.run(attempt())
+    assert ledger.snapshot()["active_operations"] == 1
+    assert gate.get_runtime_switch_gate_snapshot().active_requests == 0
+    with pytest.raises(admission.RuntimeAdmissionError):
+        with ledger.operation(kind="runtime_switch", mutation=True):
+            pytest.fail("Uncertain generation must still prevent switching")

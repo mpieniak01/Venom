@@ -318,8 +318,13 @@ async def runtime_request_guard(
         model or "",
         snapshot.active_requests,
     )
+    work_started = False
     try:
-        with get_runtime_admission().operation(kind=request_kind):
+        # Preflight only reads metadata. A rejection/cancellation before yielding
+        # cannot leave a generation running; errors after yielding remain uncertain.
+        with get_runtime_admission().operation(
+            kind=request_kind, confirm_quiescent=lambda: not work_started
+        ):
             from venom_core.services.vast_chat_runtime import preflight
 
             await preflight()
@@ -330,6 +335,7 @@ async def runtime_request_guard(
                 assert_identity(
                     get_active_llm_runtime(), expected_runtime_id, expected_config_hash
                 )
+            work_started = True
             yield snapshot
     finally:
         with _STATE_LOCK:

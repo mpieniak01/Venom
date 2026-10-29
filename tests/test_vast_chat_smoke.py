@@ -25,7 +25,7 @@ SSE = (
 )
 
 
-def fake_client(*, active=None, status=None, sse=SSE, on_stream=None):
+def fake_client(*, active=None, status=None, sse=None, on_stream=None):
     calls = []
 
     def handle(request):
@@ -44,6 +44,7 @@ def fake_client(*, active=None, status=None, sse=SSE, on_stream=None):
                                 "properties": {
                                     "expected_runtime_id": {},
                                     "expected_config_hash": {},
+                                    "history": {},
                                 }
                             },
                         }
@@ -53,9 +54,19 @@ def fake_client(*, active=None, status=None, sse=SSE, on_stream=None):
         assert request.url.path == "/api/v1/llm/simple/stream"
         if on_stream:
             on_stream(request)
+        response_sse = sse
+        if response_sse is None:
+            payload = json.loads(request.content)
+            history = payload.get("history", [])
+            answer = (
+                history[0]["content"].split("marker: ", 1)[1].split()[0]
+                if len(history) == 2
+                else "test response"
+            )
+            response_sse = SSE.replace("test response", answer)
         return httpx.Response(
             200,
-            text=sse,
+            text=response_sse,
             headers={"content-type": "text/event-stream"},
         )
 
@@ -82,6 +93,18 @@ def test_live_three_turns_preserve_identity_session_and_do_not_log_content():
     assert len(report["turns"]) == len(posts) == 3
     payloads = [json.loads(request.content) for request in posts]
     assert len({payload["session_id"] for payload in payloads}) == 1
+    assert [len(payload["history"]) for payload in payloads] == [0, 2, 4]
+    assert payloads[1]["history"] == [
+        {"role": "user", "content": payloads[0]["content"]},
+        {"role": "assistant", "content": "test response"},
+    ]
+    marker = payloads[0]["content"].split("marker: ", 1)[1].split()[0]
+    assert payloads[2]["history"][2:] == [
+        {"role": "user", "content": payloads[1]["content"]},
+        {"role": "assistant", "content": marker},
+    ]
+    assert report["turns"][1]["recall_verified"] is True
+    assert marker not in json.dumps(report)
     for payload in payloads:
         assert payload["expected_runtime_id"] == ACTIVE["runtime_id"]
         assert payload["expected_config_hash"] == ACTIVE["config_hash"]
@@ -222,3 +245,44 @@ def test_stream_total_deadline_and_limit_are_bounded():
     response = httpx.Response(200, text="x" * 1_000_001)
     with pytest.raises(SmokeError, match="stream_limit_exceeded"):
         list(_events(response, deadline=5, clock=lambda: 0))
+
+
+def test_stateless_answers_fail_recall_and_stop_before_third_turn():
+    client, calls = fake_client(sse=SSE)
+    with client:
+        report = run(client, live=True, turns=3)
+    assert report["status"] == "failed"
+    assert report["error"] == "conversation_recall_failed"
+    assert report["turns"][1]["recall_verified"] is False
+    assert sum(request.method == "POST" for request in calls) == 2
+    assert "test response" not in json.dumps(report)
+
+
+def test_smoke_does_not_send_oversized_conversation_history():
+    client, calls = fake_client(sse=SSE.replace("test response", "x" * 50001))
+    with client:
+        report = run(client, live=True)
+    assert report["error"] == "conversation_history_limit"
+    assert sum(request.method == "POST" for request in calls) == 1
+
+
+def test_smoke_requires_api_history_support_before_any_generation():
+    client, calls = fake_client()
+    original = client._transport
+
+    def handle(request):
+        response = original.handle_request(request)
+        if request.url.path == "/openapi.json":
+            schema = response.json()
+            del schema["components"]["schemas"]["SimpleChatRequest"]["properties"][
+                "history"
+            ]
+            return httpx.Response(200, json=schema)
+        return response
+
+    with httpx.Client(
+        base_url="http://localhost", transport=httpx.MockTransport(handle)
+    ) as wrapped:
+        result = run(wrapped, live=True)
+    assert result["error"] == "conversation_history_required"
+    assert not any(request.method == "POST" for request in calls)

@@ -2838,6 +2838,23 @@ async def _resolve_switch_model_selection(
     return selected_model, last_model_key, feedback_resolution
 
 
+async def _enforce_selected_ollama_model(
+    server_name: str, endpoint: str, selected_model: str
+) -> None:
+    if server_name != "ollama":
+        return
+    try:
+        await enforce_single_loaded_ollama_model(
+            endpoint=endpoint, selected_model=selected_model
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Nie udało się zastosować polityki pojedynczego modelu "
+            f"Ollama: {exc}",
+        ) from exc
+
+
 @admitted_operation("runtime_switch", mutation=True)
 async def _set_active_llm_server_impl(
     *,
@@ -2959,18 +2976,7 @@ async def _set_active_llm_server_impl(
         switch_state.mark_done(LifecycleStep.CONFIG_SAVED)
 
         runtime = get_active_llm_runtime()
-        if server_name == "ollama":
-            try:
-                await enforce_single_loaded_ollama_model(
-                    endpoint=endpoint,
-                    selected_model=selected_model,
-                )
-            except Exception as exc:
-                raise HTTPException(
-                    status_code=503,
-                    detail="Nie udało się zastosować polityki pojedynczego modelu "
-                    f"Ollama: {exc}",
-                ) from exc
+        await _enforce_selected_ollama_model(server_name, endpoint, selected_model)
         if vast_chat_runtime.selection() is not None:
             vast_chat_runtime.clear_selection()
         runtime = get_active_llm_runtime()

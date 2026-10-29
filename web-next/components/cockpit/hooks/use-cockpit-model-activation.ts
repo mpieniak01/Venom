@@ -36,7 +36,7 @@ export function useCockpitModelActivation(input: {
     }
 
     try {
-      if (provider === "openai" || provider === "google") {
+      if (provider === "openai" || provider === "google" || provider === "openrouter") {
         await setActiveLlmRuntimeFn(provider, model);
       } else {
         // Local runtimes must switch runtime+model atomically to avoid stale model 404.

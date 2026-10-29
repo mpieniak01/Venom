@@ -1,3 +1,5 @@
+import { pendingOpenRouterCost, readOpenRouterCost } from "@/lib/openrouter-chat";
+import { isGuardedChatRuntime, isOpenRouterRuntime } from "@/lib/remote-chat";
 import { createParser } from "eventsource-parser";
 import { type GenerationParams, type HistoryRequestDetail } from "@/lib/types";
 import { type ParsedSlashCommand } from "@/lib/slash-commands";
@@ -37,7 +39,7 @@ export type ChatSendParams = {
     language: string;
     resetSession: () => string | null;
     refreshActiveServer: () => void;
-    setActiveLlmRuntime: (runtime: "openai" | "google", model: string) => Promise<{
+    setActiveLlmRuntime: (runtime: "openai" | "google" | "openrouter", model: string) => Promise<{
         config_hash?: string | null;
         runtime_id?: string | null;
     }>;
@@ -260,9 +262,9 @@ export const buildSimpleStreamRequestPayload = (
     activeServerInfo?: ActiveServerInfo,
     history?: Array<{ role: "user" | "assistant"; content: string }>,
 ) => ({
-    ...(activeServerInfo?.runtime_id?.startsWith("ollama@vast:") ? {
-        expectedRuntimeId: activeServerInfo.runtime_id,
-        expectedConfigHash: activeServerInfo.config_hash,
+    ...(isGuardedChatRuntime(activeServerInfo?.runtime_id) ? {
+        expectedRuntimeId: activeServerInfo?.runtime_id,
+        expectedConfigHash: activeServerInfo?.config_hash,
     } : {}),
     ...(history ? { history } : {}),
     content: trimmed,
@@ -276,7 +278,7 @@ function assertCompletedRemoteStream(
     activeServerInfo: ActiveServerInfo,
     streamCompleted: boolean,
 ): void {
-    if (activeServerInfo?.runtime_id?.startsWith("ollama@vast:") && !streamCompleted) {
+    if (isGuardedChatRuntime(activeServerInfo?.runtime_id) && !streamCompleted) {
         throw new Error("Remote response ended before generation completed.");
     }
 }
@@ -290,6 +292,7 @@ export async function handleSimpleTaskSend(params: {
     activeServerInfo: ActiveServerInfo;
     history?: Array<{ role: "user" | "assistant"; content: string }>;
     onCompleted?: (answer: string) => void;
+    t?: (key: string) => string;
     sendSimpleChatStream: ChatSendParams["sendSimpleChatStream"];
     linkOptimisticRequest: ChatSendParams["linkOptimisticRequest"];
     setLocalSessionHistory: ChatSendParams["setLocalSessionHistory"];
@@ -328,6 +331,17 @@ export async function handleSimpleTaskSend(params: {
         setSending,
     } = params;
     let resolvedRequestId = clientId;
+    const openRouter = isOpenRouterRuntime(activeServerInfo?.runtime_id) || activeServerInfo?.active_server === "openrouter";
+    let accounting = openRouter ? pendingOpenRouterCost() : undefined;
+    const recordAccounting = (status: string) => {
+        if (!accounting) return;
+        setSimpleRequestDetails(previous => ({...previous, [resolvedRequestId]: {
+            ...previous[resolvedRequestId], request_id: resolvedRequestId, prompt: trimmed,
+            status, created_at: new Date().toISOString(), openrouter_cost: accounting,
+            llm_provider: "openrouter", llm_model: selectedLlmModel,
+            llm_runtime_id: activeServerInfo?.runtime_id ?? null,
+        }}));
+    };
 
     try {
         const createdTimestamp = new Date().toISOString();
@@ -356,6 +370,7 @@ export async function handleSimpleTaskSend(params: {
         const headerRequestId = response.headers.get("x-request-id");
         const simpleRequestId = headerRequestId || `simple-${clientId}`;
         resolvedRequestId = simpleRequestId;
+        recordAccounting("PROCESSING");
         linkOptimisticRequest(clientId, simpleRequestId);
         reconcileRequestId(setLocalSessionHistory, clientId, simpleRequestId);
         let lastHistoryUpdate = 0;
@@ -418,7 +433,13 @@ export async function handleSimpleTaskSend(params: {
                         updateSimpleStream(clientId, { text: buffer, status: "W toku" });
                         upsertLocalHistory("assistant", buffer);
                     }
+                } else if (msg.event === "cost") {
+                    const cost = readOpenRouterCost(JSON.parse(msg.data));
+                    if (cost && openRouter) { accounting = cost; recordAccounting("PROCESSING"); }
                 } else if (msg.event === "done") {
+                    const completion = openRouter ? JSON.parse(msg.data) : {};
+                    const cost = readOpenRouterCost(completion.cost);
+                    if (cost && openRouter) accounting = cost;
                     streamCompleted = true;
                 } else if (msg.event === "error") {
                     const data = JSON.parse(msg.data);
@@ -481,6 +502,7 @@ export async function handleSimpleTaskSend(params: {
                 llm_endpoint: simpleEndpoint ?? null,
                 llm_config_hash: activeServerInfo?.config_hash ?? null,
                 llm_runtime_id: activeServerInfo?.runtime_id ?? null,
+                ...(accounting ? {openrouter_cost: accounting} : {}),
                 forced_tool: null,
                 forced_provider: null,
                 session_id: resolvedSession ?? null,
@@ -510,7 +532,9 @@ export async function handleSimpleTaskSend(params: {
             dropOptimisticRequest(clientId);
             clearSimpleStream(clientId);
         }, 200);
-    } catch (err) {
+    } catch (caught) {
+        const err = openRouter ? new Error(params.t?.("cockpit.openrouter.failure") ?? "cockpit.openrouter.failure") : caught;
+        recordAccounting("FAILED");
         updateSimpleStream(clientId, {
             text: err instanceof Error ? err.message : "Błąd trybu prostego.",
             status: "FAILED",
@@ -678,7 +702,7 @@ export async function handleRuntimeSwitch(params: {
             return { success: false, runtimeOverride: null };
         }
         try {
-            const runtime = await setActiveLlmRuntime(forcedRuntimeProvider as "openai" | "google", selectedLlmModel);
+            const runtime = await setActiveLlmRuntime(forcedRuntimeProvider as "openai" | "google" | "openrouter", selectedLlmModel);
             refreshActiveServer();
             return {
                 success: true,

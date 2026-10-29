@@ -1,3 +1,4 @@
+import { isGuardedChatRuntime } from "@/lib/remote-chat";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { ApiError, apiFetch } from "@/lib/api-client";
 import {
@@ -911,7 +912,7 @@ export async function sendSimpleChatStream(payload: SimpleChatStreamRequest) {
       signal: controller.signal,
     });
   } catch (error) {
-    if (controller.signal.aborted || payload.expectedRuntimeId?.startsWith("ollama@vast:")) throw error;
+    if (controller.signal.aborted || isGuardedChatRuntime(payload.expectedRuntimeId)) throw error;
     if (baseUrl) {
       response = await fetch("/api/v1/llm/simple/stream", {
         method: "POST",

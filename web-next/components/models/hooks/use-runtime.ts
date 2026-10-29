@@ -26,8 +26,8 @@ import {
 } from "@/hooks/use-api";
 import { getRuntimeForProvider, normalizeProvider } from "../models-helpers";
 
-const isCloudRuntime = (runtime: string): runtime is "openai" | "google" =>
-    runtime === "openai" || runtime === "google";
+const isCloudRuntime = (runtime: string): runtime is "openai" | "google" | "openrouter" =>
+    runtime === "openai" || runtime === "google" || runtime === "openrouter";
 
 const isServerWithInlineModelActivation = (runtime: string): boolean =>
     isMultiRuntime(runtime);

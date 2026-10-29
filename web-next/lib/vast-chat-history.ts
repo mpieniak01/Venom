@@ -1,7 +1,9 @@
+import { isGuardedChatRuntime } from "./remote-chat";
+
 export type VastChatTurn = { role: "user" | "assistant"; content: string };
 
 export function vastChatHistoryKey(runtime: string | null | undefined, model: string, session: string | null, configHash?: string | null): string | null {
-  return runtime?.startsWith("ollama@vast:") && model && session
+  return isGuardedChatRuntime(runtime) && model && session
     ? JSON.stringify([runtime, model, session, configHash ?? null]) : null;
 }
 

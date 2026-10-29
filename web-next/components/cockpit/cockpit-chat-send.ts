@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useRef } from "react";
+import { allowsOpenRouterChat } from "@/lib/remote-chat";
 import { appendVastChatTurn, vastChatHistoryKey, type VastChatTurn } from "@/lib/vast-chat-history";
 import { useTranslation } from "@/lib/i18n";
 import { parseInputCommand } from "@/lib/slash-commands";
@@ -28,8 +29,8 @@ function getServerSwitchErrorMessage(err: unknown, fallback: string): string {
   return err instanceof Error ? err.message : fallback;
 }
 
-function isCloudRuntimeServer(server: string): server is "openai" | "google" {
-  return server === "openai" || server === "google";
+function isCloudRuntimeServer(server: string): server is "openai" | "google" | "openrouter" {
+  return server === "openai" || server === "google" || server === "openrouter";
 }
 
 function shouldUseSimpleMode(
@@ -52,7 +53,7 @@ export function resolveEffectiveChatModelSelection(
 ): string {
   const selected = (selectedLlmModel || "").trim();
   if (selected) return selected;
-  if (selectedRuntime !== activeRuntime && [selectedRuntime, activeRuntime].includes("vast_ollama")) return "";
+  if (selectedRuntime !== activeRuntime && [selectedRuntime, activeRuntime].some(runtime => runtime === "vast_ollama" || runtime === "openrouter")) return "";
   return String(activeModel || "").trim();
 }
 
@@ -172,6 +173,11 @@ export function useChatSend(params: ChatSendParams) {
       return false;
     }
 
+    if (!allowsOpenRouterChat(selectedLlmServer || activeServerInfo?.active_server || "", shouldUseSimpleMode(chatMode, parsed))) {
+      setMessage(t("cockpit.openrouter.directOnly"));
+      return false;
+    }
+
     const switchResult = await handleRuntimeSwitch({
       parsed,
       activeServerInfo,
@@ -266,6 +272,7 @@ export function useChatSend(params: ChatSendParams) {
       generationParams,
       selectedLlmModel: effectiveSelectedModel,
       activeServerInfo: effectiveActiveServerInfo,
+      t,
       sendSimpleChatStream,
       linkOptimisticRequest,
       setLocalSessionHistory,

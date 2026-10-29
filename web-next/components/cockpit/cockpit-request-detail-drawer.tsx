@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import { OpenRouterCost } from "./openrouter-cost";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -143,6 +144,7 @@ export function CockpitRequestDetailDrawer({
             />
 
             <ModelInfoSection historyDetail={historyDetail} t={t} />
+            {historyDetail.openrouter_cost && <OpenRouterCost cost={historyDetail.openrouter_cost} t={t} />}
 
             <TimingSection
               uiTimingEntry={uiTimingEntry}

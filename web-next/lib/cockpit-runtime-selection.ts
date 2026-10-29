@@ -16,7 +16,7 @@ export function resolveCockpitEmptyRuntimeModelUpdate(
   activeModel: string,
   currentSelection: string,
 ): string | null {
-  if (runtimeId === "vast_ollama") {
+  if (runtimeId === "vast_ollama" || runtimeId === "openrouter") {
     return currentSelection.trim() ? "" : null;
   }
   const normalizedSelection = currentSelection.trim();
@@ -149,11 +149,11 @@ function resolveCatalogRuntimeIdentity(
   fallback: ActiveRuntimeInfo,
   fallbackRuntimeId: string,
 ): string {
-  if (activeRuntimeId !== "vast_ollama") {
+  if (activeRuntimeId !== "vast_ollama" && activeRuntimeId !== "openrouter") {
     return activeRuntimeId;
   }
   const declaredIdentity = catalog?.active?.runtime_id;
-  if (declaredIdentity?.startsWith("ollama@vast:")) {
+  if (declaredIdentity?.startsWith("ollama@vast:") || declaredIdentity?.startsWith("openrouter@")) {
     return declaredIdentity;
   }
   if (fallbackRuntimeId === activeRuntimeId) {

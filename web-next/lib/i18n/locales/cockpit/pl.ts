@@ -1,4 +1,30 @@
 export const cockpitLocale = {
+    openrouter: {
+      "title": "Czat OpenRouter",
+      "directOnly": "OpenRouter obsługuje wyłącznie czat Direct. Tryby Normal, Complex i narzędzia są niedostępne.",
+      "loading": "Ładowanie dopuszczonych modeli i cen…",
+      "unavailable": "OpenRouter jest niedostępny. Sprawdź konfigurację, politykę chmury, dopuszczone modele i budżet.",
+      "unknown": "Nieznane",
+      "configured": "Klucz API skonfigurowany",
+      "notConfigured": "Klucz API nieskonfigurowany",
+      "authentication": {
+            "unknown": "Uwierzytelnianie niesprawdzone",
+            "true": "Uwierzytelnianie potwierdzone",
+            "false": "Błąd uwierzytelniania"
+      },
+      "prices": "Wejście {{input}} · wyjście {{output}} USD / 1 mln tokenów",
+      "requestPrice": "Dodatkowa cena żądania: {{price}} USD",
+      "limits": "Kontekst: {{context}} tokenów · maksymalne wyjście: {{output}} tokenów",
+      "pricingDate": "Cennik z dnia: {{date}}",
+      "costNotice": "Koszt obejmuje historię rozmowy. Brak rozliczenia pozostaje w oczekiwaniu; STOP może nadal wiązać się z opłatą dostawcy.",
+      "costTitle": "Rozliczenie OpenRouter",
+      "pending": "Oczekiwanie na rozliczenie",
+      "settled": "Rozliczono",
+      "estimated": "Szacunek: {{amount}} USD",
+      "reserved": "Rezerwacja: {{amount}} USD",
+      "reported": "Zaraportowano: {{amount}} USD",
+      "failure": "Żądanie OpenRouter nie powiodło się lub zostało przerwane. Sprawdź rozliczenie przed ponowieniem."
+},
     feedback: {
       up: "Kciuk w górę",
       down: "Kciuk w dół",

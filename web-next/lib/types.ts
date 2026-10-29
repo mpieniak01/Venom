@@ -1,3 +1,4 @@
+import type { OpenRouterCost } from "./openrouter-chat";
 import type { components } from "./generated/api-types";
 
 type ApiSchemas = components["schemas"];
@@ -54,6 +55,7 @@ export interface HistoryRequestDetail
     rating: "up" | "down";
     comment?: string | null;
   } | null;
+  openrouter_cost?: OpenRouterCost;
   adapter_applied?: boolean | null;
   adapter_id?: string | null;
 }

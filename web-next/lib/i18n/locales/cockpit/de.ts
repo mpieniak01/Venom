@@ -1,4 +1,30 @@
 export const cockpitLocale = {
+    openrouter: {
+      "title": "OpenRouter-Chat",
+      "directOnly": "OpenRouter unterstützt nur Direct-Chat. Normal, Complex und Werkzeuge sind nicht verfügbar.",
+      "loading": "Freigegebene Modelle und Preise werden geladen…",
+      "unavailable": "OpenRouter ist nicht verfügbar. Konfiguration, Cloud-Richtlinie, freigegebene Modelle und Budget prüfen.",
+      "unknown": "Unbekannt",
+      "configured": "API-Schlüssel konfiguriert",
+      "notConfigured": "API-Schlüssel nicht konfiguriert",
+      "authentication": {
+            "unknown": "Authentifizierung nicht geprüft",
+            "true": "Authentifizierung bestätigt",
+            "false": "Authentifizierung fehlgeschlagen"
+      },
+      "prices": "Eingabe {{input}} · Ausgabe {{output}} USD / 1 Mio. Token",
+      "requestPrice": "Zusätzlicher Anfragepreis: {{price}} USD",
+      "limits": "Kontext: {{context}} Token · maximale Ausgabe: {{output}} Token",
+      "pricingDate": "Preisstand: {{date}}",
+      "costNotice": "Die Kosten umfassen den Gesprächsverlauf. Fehlende Abrechnung bleibt ausstehend; STOP kann weiterhin Anbieterkosten verursachen.",
+      "costTitle": "OpenRouter-Abrechnung",
+      "pending": "Abrechnung ausstehend",
+      "settled": "Abgerechnet",
+      "estimated": "Schätzung: {{amount}} USD",
+      "reserved": "Reserviert: {{amount}} USD",
+      "reported": "Gemeldet: {{amount}} USD",
+      "failure": "Die OpenRouter-Anfrage ist fehlgeschlagen oder wurde unterbrochen. Abrechnung vor erneutem Versuch prüfen."
+},
     runtime: {
       switchConfirm: "Die Direktive verlangt einen Runtime-Wechsel zu {{label}}. Jetzt wechseln?",
       switchCancelled: "Runtime-Wechsel abgebrochen.",

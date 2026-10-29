@@ -1,5 +1,7 @@
 "use client";
 
+import { OpenRouterModelStatus, useOpenRouterCatalog } from "./openrouter-model-status";
+import { moneyText } from "@/lib/openrouter-chat";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Panel } from "@/components/ui/panel";
@@ -78,6 +80,15 @@ export function CockpitModels({
   gemma4AudioRuntimeInfo,
 }: CockpitModelsProps) {
   const t = useTranslation();
+  const openRouterSelected = normalizeRuntimeId(selectedLlmServer) === "openrouter";
+  const openRouterCatalog = useOpenRouterCatalog(openRouterSelected);
+  const displayedModelOptions = openRouterSelected ? llmModelOptions.map(option => {
+    const model = openRouterCatalog.result?.catalog.models.find(item => item.id === option.value);
+    return model ? {...option, description: t("cockpit.openrouter.prices", {
+      input: moneyText(model.input_price_per_million) ?? t("cockpit.openrouter.unknown"),
+      output: moneyText(model.output_price_per_million) ?? t("cockpit.openrouter.unknown"),
+    })} : option;
+  }) : llmModelOptions;
   const selectedRuntimeDisabled = llmServerOptions.find(
     (option) => normalizeRuntimeId(option.value) === normalizeRuntimeId(selectedLlmServer),
   )?.disabled === true;
@@ -148,7 +159,7 @@ export function CockpitModels({
             </p>
             <SelectMenu
               value={selectedLlmModel}
-              options={llmModelOptions}
+              options={displayedModelOptions}
               onChange={onSelectLlmModel}
               ariaLabel="Wybierz model LLM"
               placeholder={
@@ -160,6 +171,7 @@ export function CockpitModels({
               buttonClassName="w-full justify-between rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white"
               menuClassName="w-full max-h-72 overflow-y-auto"
             />
+            {openRouterSelected && <OpenRouterModelStatus selection={openRouterCatalog} model={selectedLlmModel} />}
             {gateSwitching && (
               <p className="text-xs text-amber-300">
                 {`Trwa przełączanie runtime: ${runtimeState.switch.fromRuntime || "—"} -> ${

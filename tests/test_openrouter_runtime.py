@@ -28,7 +28,18 @@ def configured(tmp_path, monkeypatch):
         estimate=Mock(return_value=Decimal("0.001")),
     )
     ledger = Mock()
+
+    class ExecutionBoundary:
+        # Boundary stub only: lifecycle semantics are tested with the real wheel.
+        def __init__(self, ledger, request_id, conversation_id, amount, **limits):
+            self.reserve = lambda: ledger.reserve(
+                request_id, conversation_id, amount, **limits
+            )
+            self.settle = lambda actual: ledger.settle(request_id, actual)
+            self.pending = lambda: ledger.settle(request_id, None)
+
     core = SimpleNamespace(
+        Execution=ExecutionBoundary,
         strict_prices=Mock(return_value=prices),
         decimal_amount=lambda v, *_: Decimal(v),
         BudgetLedger=Mock(return_value=ledger),
@@ -386,11 +397,11 @@ def test_release_gate_rejects_different_artifact_and_peer(tmp_path):
 
     from scripts.qualify_openrouter_local import verify_artifact
 
-    wheel = tmp_path / "agent_execution_core-0.1.1-py3-none-any.whl"
+    wheel = tmp_path / "agent_execution_core-0.2.0-py3-none-any.whl"
     wheel.write_bytes(b"fixture")
     receipt = {
         "package": "agent-execution-core",
-        "version": "0.1.1",
+        "version": "0.2.0",
         "wheel": wheel.name,
         "sha256": hashlib.sha256(wheel.read_bytes()).hexdigest(),
         "source_commit": "a" * 40,

@@ -264,9 +264,14 @@ async def _upstream(turn, state):
 def _reserve(turn):
     turn["ledger"] = turn["core"].BudgetLedger(runtime._STATE / "budget.sqlite")
     try:
-        turn["ledger"].reserve(
-            turn["id"], turn["conversation"], turn["estimated"], **runtime.limits()
+        turn["execution"] = turn["core"].Execution(
+            turn["ledger"],
+            turn["id"],
+            turn["conversation"],
+            turn["estimated"],
+            **runtime.limits(),
         )
+        turn["execution"].reserve()
     except ValueError as exc:
         raise HTTPException(429, "openrouter_budget_exceeded") from exc
     turn["reservation_created"] = True
@@ -362,7 +367,7 @@ async def stream(request, turn):
             async with aclosing(_upstream(turn, state)) as upstream:
                 async for output in upstream:
                     yield output
-            turn["ledger"].settle(turn["id"], state["actual"])
+            turn["execution"].settle(state["actual"])
             settled = True
             for output in _done(turn, state):
                 yield output
@@ -377,7 +382,7 @@ async def stream(request, turn):
         if reserved:
             try:
                 if not settled:
-                    turn["ledger"].settle(turn["id"], None)
+                    turn["execution"].pending()
             finally:
                 _record_receipt(turn, state, settled)
 

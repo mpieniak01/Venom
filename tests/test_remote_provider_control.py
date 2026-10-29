@@ -215,3 +215,19 @@ async def test_provider_controls_reject_nonlocal_mutations():
         assert (
             await client.post("/api/v1/models/remote/providers/openrouter/check")
         ).status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_malformed_success_is_not_authenticated(monkeypatch):
+    real = httpx.AsyncClient
+    monkeypatch.setattr(
+        control.httpx,
+        "AsyncClient",
+        lambda **kw: real(
+            transport=httpx.MockTransport(
+                lambda request: httpx.Response(200, text="not JSON")
+            ),
+            **kw,
+        ),
+    )
+    assert (await control.check("openrouter"))["available"] is False

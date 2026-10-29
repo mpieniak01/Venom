@@ -1,4 +1,5 @@
 import React from "react";
+import { RemoteProviderCard } from "./remote-provider-card";
 import { Search } from "lucide-react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
@@ -557,6 +558,10 @@ export function RemoteModelsSection(props: Readonly<ModelsViewerLogic>) {
         remoteProvidersLoading,
         remoteProvidersError,
         fetchRemoteProviders,
+        remoteProviderActions,
+        remoteProviderActionError,
+        manageRemoteProvider,
+        connectVastProvider,
         remoteCatalog,
         remoteCatalogLoading,
         remoteCatalogError,
@@ -601,25 +606,8 @@ export function RemoteModelsSection(props: Readonly<ModelsViewerLogic>) {
                     {!remoteProvidersLoading && !remoteProvidersError && remoteProviders.length === 0 && (
                         <p className="text-xs text-[color:var(--ui-muted)]">{t("models.sections.remote.providerStatus.noProviders")}</p>
                     )}
-                    {remoteProviders.map((provider) => (
-                        <div key={provider.provider} className="flex items-center justify-between rounded-2xl border border-[color:var(--ui-border)] bg-[color:var(--ui-surface)] p-4">
-                            <div className="flex items-center gap-3">
-                                <span className="text-sm font-medium capitalize">{provider.provider}</span>
-                                <Badge tone={provider.status === "configured" ? "success" : "neutral"}>
-                                    {provider.status}
-                                </Badge>
-                            </div>
-                            <div className="flex items-center gap-4 text-xs text-[color:var(--ui-muted)]">
-                                {provider.latency_ms && (
-                                    <span>{t("models.sections.remote.providerStatus.latency")}: {provider.latency_ms.toFixed(0)}ms</span>
-                                )}
-                                <span>{t("models.sections.remote.providerStatus.lastCheck")}: {formatDateTime(provider.last_check)}</span>
-                                {provider.error && (
-                                    <Badge tone="danger">{provider.error}</Badge>
-                                )}
-                            </div>
-                        </div>
-                    ))}
+                    {remoteProviderActionError && <Badge tone="danger">{remoteProviderActionError}</Badge>}
+                    {remoteProviders.map((provider) => <RemoteProviderCard key={provider.provider} provider={provider} pending={Boolean(remoteProviderActions[provider.provider])} manage={manageRemoteProvider} connectVast={connectVastProvider} t={t} />)}
                 </div>
             </div>
 
@@ -638,6 +626,8 @@ export function RemoteModelsSection(props: Readonly<ModelsViewerLogic>) {
                         options={[
                             { value: "openai", label: "OpenAI" },
                             { value: "google", label: "Google" },
+                            { value: "openrouter", label: "OpenRouter" },
+                            { value: "vast_ollama", label: "VAST · Ollama" },
                         ]}
                         onChange={(val) => setSelectedProvider(val || null)}
                         placeholder={t("models.runtime.select")}
@@ -679,10 +669,11 @@ export function RemoteModelsSection(props: Readonly<ModelsViewerLogic>) {
                                 size="sm"
                                 variant="secondary"
                                 className="ml-4 shrink-0 rounded-full px-4"
-                                disabled={!selectedProvider || pendingActions[`activate:${selectedProvider}:${model.id}`]}
+                                disabled={!selectedProvider || pendingActions[`activate:${selectedProvider}:${model.id}`] || Boolean(remoteProviderActions[selectedProvider]) || ((selectedProvider === "openrouter" || selectedProvider === "vast_ollama") && !remoteProviders.some((provider) => provider.provider === selectedProvider && provider.enabled && provider.available))}
                                 onClick={async () => {
                                     if (!selectedProvider) return;
                                     await handleActivateRuntimeModel(selectedProvider, model.id);
+                                    await fetchRemoteProviders();
                                 }}
                             >
                                 {t("models.actions.activate")}

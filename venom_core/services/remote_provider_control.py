@@ -87,7 +87,7 @@ def status(provider: str) -> dict[str, Any]:
         reason = info.get("error")
     with _LOCK:
         probe = dict(_CHECKS.get(provider, {}))
-    available = probe.get("available") if on else False
+    available = probe.get("available") if on and configured else False
     if provider == "vast_ollama":
         available = bool(on and info.get("available"))
     return {
@@ -145,8 +145,14 @@ async def check(provider: str) -> dict[str, Any]:
                         },
                     )
                     available = response.status_code == 200
+                    if available:
+                        payload = response.json()
+                        available = isinstance(payload, dict) and isinstance(
+                            payload.get("data"), dict
+                        )
                     error = None if available else "openrouter_authentication_failed"
-            except (httpx.HTTPError, TimeoutError):
+            except (httpx.HTTPError, TimeoutError, ValueError):
+                available = False
                 error = "openrouter_connection_unavailable"
     with _LOCK:
         _CHECKS[provider] = {

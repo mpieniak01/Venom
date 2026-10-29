@@ -30,7 +30,7 @@ const isCloudRuntime = (runtime: string): runtime is "openai" | "google" | "open
     runtime === "openai" || runtime === "google" || runtime === "openrouter";
 
 const isServerWithInlineModelActivation = (runtime: string): boolean =>
-    isMultiRuntime(runtime);
+    isMultiRuntime(runtime) || runtime === "vast_ollama";
 
 const ERROR_DETAIL_KEYS = ["detail", "message", "error", "reason"] as const;
 
@@ -306,7 +306,8 @@ export function useRuntime() {
             if (!server) return;
             const canonicalServer = canonicalRuntimeId(server);
             const targetServer = canonicalServer || server;
-            const resolvedModel = resolveSelectedModelForServer(targetServer, model);
+            const remote = isCloudRuntime(targetServer) || targetServer === "vast_ollama";
+            const resolvedModel = remote && model ? model : resolveSelectedModelForServer(targetServer, model);
             let response: ActiveLlmServerResponse | void = undefined;
             if (isCloudRuntime(targetServer)) {
                 response = await setActiveLlmRuntime(targetServer, resolvedModel ?? model ?? undefined);

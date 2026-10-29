@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import subprocess
 import time
 
@@ -9,6 +10,7 @@ import httpx
 
 from venom_core.infrastructure.providers.vast.client import VastError
 from venom_core.infrastructure.providers.vast.models import now
+from venom_core.infrastructure.providers.vast.runtime_contracts import version_parts
 from venom_core.services.vast_environments.evaluation import OllamaProbe
 from venom_core.services.vast_environments.gpu_probe import probe_gpu
 from venom_core.services.vast_environments.history import remember
@@ -22,10 +24,30 @@ from venom_core.services.vast_environments.ssh import inspect, ssh_args, tunnel
 from venom_core.services.vast_environments.startup import startup
 
 
+def _check_ollama_capacity(plan, capacity: dict) -> None:
+    blocking = [reason for reason in capacity["reasons"] if reason != "startup"]
+    if blocking or capacity["unknown"]:
+        raise VastError("vast.capacity_mismatch")
+    facts = capacity["facts"]
+    gpu = str(facts.get("gpu", "")).split(",")
+    engine = re.search(r"\d+\.\d+(?:\.\d+)?", str(facts.get("ollama_version", "")))
+    for actual, minimum in (
+        (gpu[1].strip() if len(gpu) >= 2 else None, plan.profile.runtime.min_driver),
+        (engine.group() if engine else None, plan.profile.runtime.min_engine_version),
+    ):
+        if minimum:
+            observed, required = version_parts(actual), version_parts(minimum)
+            if observed is None or required is None or observed < required:
+                raise VastError("vast.runtime_version_mismatch")
+
+
 def _provision(plan, instance: dict, accept_new: bool) -> dict:
+    if plan.profile.mode == "ollama":
+        capacity = inspect(plan, instance, accept_new)
+        _check_ollama_capacity(plan, capacity)
     process = subprocess.run(
         ssh_args(plan, instance, accept_new) + ["bash", "-s"],
-        input=startup(plan.profile),
+        input=startup(plan.profile, download_model=True),
         text=True,
         capture_output=True,
         timeout=(
@@ -48,7 +70,10 @@ def _gpu_facts(plan, instance: dict, accept_new: bool = False) -> dict:
 def _engine_ready(client, profile) -> dict:
     if profile.mode == "vllm":
         return openai_ready(client, profile)
-    engine = OllamaProbe(client, profile).ready()
+    probe = OllamaProbe(client, profile)
+    if not profile.model:
+        return probe.engine_ready()
+    engine = probe.ready()
     engine["loaded_model"] = _loaded_model(client, profile)
     return engine
 
@@ -56,16 +81,23 @@ def _engine_ready(client, profile) -> dict:
 def _model_operation(plan, instance: dict, operation: str) -> dict:
     if plan.profile.mode not in {"ollama", "vllm"}:
         raise VastError("vast.ollama_profile_required")
+    if operation == "benchmark" and not plan.profile.model:
+        raise VastError("vast.model_digest_required")
     inspection = inspect(plan, instance)
     if inspection["reasons"]:
         raise VastError("vast.capacity_mismatch")
     with (
         tunnel(plan, instance) as endpoint,
         httpx.Client(
-            base_url=endpoint, timeout=30, trust_env=False, follow_redirects=False
+            base_url=endpoint,
+            timeout=httpx.Timeout(180, connect=10),
+            trust_env=False,
+            follow_redirects=False,
         ) as client,
     ):
         engine = _engine_ready(client, plan.profile)
+        if not plan.profile.model:
+            return {**engine, "inspection": inspection}
         facts = _gpu_facts(plan, instance)
         preliminary = qualify(
             plan, inspection, facts, engine, evaluate_performance=False

@@ -25,7 +25,7 @@ from venom_core.services.vast_environments.assessment import assess, search_filt
 from venom_core.services.vast_environments.history import lookup
 from venom_core.services.vast_environments.recipes import verify_template
 from venom_core.services.vast_environments.selection import preferred_queries, rank
-from venom_core.services.vast_environments.startup import startup
+from venom_core.services.vast_environments.startup import ollama_environment, startup
 from venom_core.services.vast_environments.store import Journal
 
 
@@ -78,8 +78,6 @@ class Environments:
         assessment = self.assess(profile, offer, retest)
         if assessment.status != "eligible":
             raise VastError("vast.offer_not_eligible")
-        if profile.mode == "ollama" and (not profile.model or not profile.model_digest):
-            raise VastError("vast.model_digest_required")
         plan_id = uuid4().hex
         plan = EnvironmentPlan(
             plan_id=plan_id,
@@ -104,7 +102,7 @@ class Environments:
         return plan
 
     def _offer(self, profile: WorkloadProfile, offer_id: int) -> dict:
-        filters = {**search_filters(profile), "id": {"eq": offer_id}}
+        filters = {**search_filters(profile), "ask_contract_id": {"eq": offer_id}}
         offers = list(self.client.offers(profile.disk_gb, filters))
         matching = [x for x in offers if x.get("id") == offer_id]
         if len(matching) != 1:
@@ -170,6 +168,11 @@ class Environments:
                         "cancel_unavail": True,
                         "label": "venom-" + plan_id,
                         "onstart": startup(plan.profile),
+                        **(
+                            {"env": ollama_environment(plan.profile)}
+                            if plan.profile.mode == "ollama"
+                            else {}
+                        ),
                     },
                 )
             except VastError as exc:
@@ -218,7 +221,7 @@ class Environments:
                 self._event(record, "unknown")
                 raise
             record.instance = instance
-            state = instance.get("actual_status", "unknown")
+            state = instance.get("actual_status") or "unknown"
             target = {"start": "running", "stop": "stopped"}.get(
                 record.pending_action or ""
             )

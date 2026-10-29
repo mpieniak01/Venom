@@ -41,7 +41,7 @@ export type ChatSendParams = {
         config_hash?: string | null;
         runtime_id?: string | null;
     }>;
-    setActiveLlmServer: (server: string, model?: string) => Promise<{ status?: string; active_model?: string | null }>;
+    setActiveLlmServer: (server: string, model?: string) => Promise<NonNullable<ActiveServerInfo> & { status?: string }>;
     ensureModelActive?: (model: string) => Promise<boolean>;
     sendSimpleChatStream: (payload: {
         content: string;
@@ -49,6 +49,9 @@ export type ChatSendParams = {
         maxTokens: number | null;
         temperature: number | null;
         sessionId: string | null;
+        expectedRuntimeId?: string | null;
+        expectedConfigHash?: string | null;
+        history?: Array<{ role: "user" | "assistant"; content: string }>;
     }) => Promise<Response>;
     sendTask: (payload: SendTaskInput) => Promise<{ task_id?: string | null }>;
     ingestMemoryEntry: (payload: {
@@ -269,6 +272,8 @@ export async function handleSimpleTaskSend(params: {
     generationParams: GenerationParams | null;
     selectedLlmModel: string;
     activeServerInfo: ActiveServerInfo;
+    history?: Array<{ role: "user" | "assistant"; content: string }>;
+    onCompleted?: (answer: string) => void;
     sendSimpleChatStream: ChatSendParams["sendSimpleChatStream"];
     linkOptimisticRequest: ChatSendParams["linkOptimisticRequest"];
     setLocalSessionHistory: ChatSendParams["setLocalSessionHistory"];
@@ -325,7 +330,14 @@ export async function handleSimpleTaskSend(params: {
         );
         updateSimpleStream(clientId, { text: "", status: "W toku", done: false });
         const response = await sendSimpleChatStream(
-            buildSimpleStreamRequestPayload(trimmed, selectedLlmModel, generationParams, resolvedSession),
+            {
+                ...buildSimpleStreamRequestPayload(trimmed, selectedLlmModel, generationParams, resolvedSession),
+                ...(activeServerInfo?.runtime_id?.startsWith("ollama@vast:") ? {
+                    expectedRuntimeId: activeServerInfo.runtime_id,
+                    expectedConfigHash: activeServerInfo.config_hash,
+                } : {}),
+                ...(params.history ? { history: params.history } : {}),
+            },
         );
         const headerRequestId = response.headers.get("x-request-id");
         const simpleRequestId = headerRequestId || `simple-${clientId}`;
@@ -374,6 +386,7 @@ export async function handleSimpleTaskSend(params: {
         let buffer = "";
         const startedAt = Date.now();
         let firstChunkLogged = false;
+        let streamCompleted = false;
 
         const parser = createParser({
             onEvent: (msg) => {
@@ -391,6 +404,8 @@ export async function handleSimpleTaskSend(params: {
                         updateSimpleStream(clientId, { text: buffer, status: "W toku" });
                         upsertLocalHistory("assistant", buffer);
                     }
+                } else if (msg.event === "done") {
+                    streamCompleted = true;
                 } else if (msg.event === "error") {
                     const data = JSON.parse(msg.data);
                     throw new Error(data.error || "Wystąpił błąd strumieniowania.");
@@ -411,6 +426,10 @@ export async function handleSimpleTaskSend(params: {
             reader.releaseLock();
         }
 
+        if (activeServerInfo?.runtime_id?.startsWith("ollama@vast:") && !streamCompleted) {
+            throw new Error("Remote response ended before generation completed.");
+        }
+        params.onCompleted?.(buffer);
         updateSimpleStream(clientId, { text: buffer, status: "COMPLETED", done: true });
         const duration = Date.now() - startedAt;
         const timestamp = new Date().toISOString();

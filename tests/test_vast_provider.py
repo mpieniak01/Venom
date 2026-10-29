@@ -427,3 +427,33 @@ def test_ssh_list_skips_only_invalid_rows():
     from venom_core.infrastructure.providers.vast.client import ssh_fingerprint
 
     assert api.ssh_fingerprints() == [ssh_fingerprint(public)]
+
+
+def test_absent_instance_is_distinct_from_invalid_response():
+    api, _ = client([(200, {"instances": None})])
+    with pytest.raises(VastError, match="vast.instance_not_found") as caught:
+        api.instance(88)
+    assert caught.value.status == 404
+    for body in ({}, {"instances": []}, {"instances": {"id": 99}}):
+        api, _ = client([(200, body)])
+        with pytest.raises(VastError, match="vast.invalid_response"):
+            api.instance(88)
+
+
+def test_ram_baseline_uses_machine_fraction_not_card_vram(profile, offer):
+    shared = {**offer, "cpu_ram": 128000, "gpu_frac": 0.125}
+    result = assess(shared, profile)
+    assert result.status == "ineligible"
+    assert "cpu_ram" in result.reasons
+    assert result.runtime["memory_allocation"]["baseline_ram_mb"] == "16000.000"
+    assert result.offer["gpu_ram"] == offer["gpu_ram"]
+    enough = assess({**shared, "cpu_ram": 512000}, profile)
+    assert enough.status == "eligible"
+    assert "gpu_frac" not in enough.reasons
+
+
+def test_unknown_machine_fraction_does_not_claim_ram_baseline(profile, offer):
+    row = {k: v for k, v in offer.items() if k != "gpu_frac"}
+    result = assess(row, profile)
+    assert "cpu_ram" in result.unknown
+    assert result.runtime["memory_allocation"]["baseline_ram_mb"] is None

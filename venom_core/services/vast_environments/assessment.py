@@ -24,6 +24,13 @@ from venom_core.services.vast_environments.selection import (
 )
 
 
+def _ram_baseline(offer: dict) -> Decimal | None:
+    total, fraction = amount(offer.get("cpu_ram")), amount(offer.get("gpu_frac"))
+    if total is None or fraction is None or not 0 < fraction <= 1:
+        return None
+    return total * fraction
+
+
 def quote(offer: dict, profile: WorkloadProfile) -> CostQuote:
     search = offer.get("search") or {}
     hourly = amount(search.get("totalHour", offer.get("dph_total")))
@@ -106,6 +113,8 @@ def _check_minimums(
     for key, minimum in requirements.items():
         raw = reliability(offer) if key == "reliability" else offer.get(key)
         value = amount(raw)
+        if key == "cpu_ram" and value is not None:
+            value = _ram_baseline(offer)
         if value is None and minimum:
             unknown.append(key)
         if value is not None and value < Decimal(str(minimum)):
@@ -135,6 +144,14 @@ def assess(offer: dict[str, Any], profile: WorkloadProfile) -> OfferAssessment:
     _check_minimums(offer, profile, reasons, unknown)
     _check_identity(offer, profile, reasons, unknown)
     runtime = declared_compatibility(offer, profile)
+    runtime["memory_allocation"] = {
+        "host_ram_mb": offer.get("cpu_ram"),
+        "machine_gpu_fraction": offer.get("gpu_frac"),
+        "baseline_ram_mb": str(_ram_baseline(offer))
+        if _ram_baseline(offer) is not None
+        else None,
+        "acceptance": "requires_container_inspection",
+    }
     reasons.extend("runtime." + value for value in runtime["reasons"])
     cost = quote(offer, profile)
     unknown.extend(cost.unknown)
@@ -157,6 +174,18 @@ def search_filters(profile: WorkloadProfile) -> dict[str, Any]:
         "order": provider_order(profile.sort_by),
         "reliability": {"gte": profile.min_reliability},
     }
+    for field, minimum in (
+        ("gpu_ram", profile.min_gpu_ram_mb),
+        ("cpu_ram", profile.min_cpu_ram_mb),
+        ("cpu_cores_effective", profile.min_cpu_cores),
+        ("disk_space", profile.disk_gb),
+        ("disk_bw", profile.min_disk_mb_s),
+        ("duration", profile.duration_minutes * 60),
+        ("gpu_frac", profile.min_gpu_fraction),
+        ("direct_port_count", 1),
+    ):
+        if minimum:
+            result[field] = {"gte": minimum}
     if profile.min_dlperf:
         result["dlperf"] = {"gte": profile.min_dlperf}
     if profile.min_gpu_mem_bw_gb_s:

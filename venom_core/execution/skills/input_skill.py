@@ -34,6 +34,24 @@ def _build_mouseinfo_stub() -> ModuleType:
     return module
 
 
+def _gui_import_errors() -> tuple[type[Exception], ...]:
+    """Treat an unreachable optional X11 desktop like an unavailable GUI package."""
+
+    errors: tuple[type[Exception], ...] = (
+        ImportError,
+        RuntimeError,
+        OSError,
+        KeyError,
+    )
+    if platform.system() == "Linux":
+        try:
+            from Xlib.error import DisplayError  # type: ignore[import-untyped]
+        except ImportError:
+            return errors
+        return (*errors, DisplayError)
+    return errors
+
+
 def _load_pyautogui():
     """Import pyautogui without suppressing real application exits."""
 
@@ -49,12 +67,7 @@ def _load_pyautogui():
 
     try:  # pragma: no cover - zależne od środowiska testowego
         import pyautogui  # type: ignore[import-untyped]
-    except (
-        ImportError,
-        RuntimeError,
-        OSError,
-        KeyError,
-    ) as exc:  # pragma: no cover
+    except _gui_import_errors() as exc:
         logger.warning(
             "PyAutoGUI is unavailable in this environment: %s",
             exc,

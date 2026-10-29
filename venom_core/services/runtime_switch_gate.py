@@ -279,7 +279,12 @@ async def wait_for_runtime_requests_to_drain(
 
 @asynccontextmanager
 async def runtime_request_guard(
-    *, request_kind: str, provider: str | None = None, model: str | None = None
+    *,
+    request_kind: str,
+    provider: str | None = None,
+    model: str | None = None,
+    expected_runtime_id: str | None = None,
+    expected_config_hash: str | None = None,
 ) -> AsyncIterator[RuntimeSwitchGateSnapshot]:
     with _STATE_LOCK:
         _recover_stale_gate_unlocked()
@@ -313,8 +318,24 @@ async def runtime_request_guard(
         model or "",
         snapshot.active_requests,
     )
+    work_started = False
     try:
-        with get_runtime_admission().operation(kind=request_kind):
+        # Preflight only reads metadata. A rejection/cancellation before yielding
+        # cannot leave a generation running; errors after yielding remain uncertain.
+        with get_runtime_admission().operation(
+            kind=request_kind, confirm_quiescent=lambda: not work_started
+        ):
+            from venom_core.services.vast_chat_runtime import preflight
+
+            await preflight()
+            if expected_runtime_id is not None or expected_config_hash is not None:
+                from venom_core.services.vast_chat_runtime import assert_identity
+                from venom_core.utils.llm_runtime import get_active_llm_runtime
+
+                assert_identity(
+                    get_active_llm_runtime(), expected_runtime_id, expected_config_hash
+                )
+            work_started = True
             yield snapshot
     finally:
         with _STATE_LOCK:

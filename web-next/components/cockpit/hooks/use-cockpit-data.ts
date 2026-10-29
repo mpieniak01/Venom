@@ -58,7 +58,7 @@ export function useCockpitData(initialData: CockpitInitialData) {
     const llmServers =
         liveUnifiedModelCatalog?.runtimes.map((runtime) => ({
             name: runtime.runtime_id,
-            display_name: runtime.runtime_id.toUpperCase(),
+            display_name: runtime.label || runtime.display_name || (runtime.runtime_id === "vast_ollama" ? "Ollama · Vast" : runtime.runtime_id.toUpperCase()),
             provider: runtime.runtime_id,
             status: runtime.status,
             error_message: runtime.reason ?? null,

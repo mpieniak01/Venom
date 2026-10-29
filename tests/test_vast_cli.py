@@ -264,3 +264,92 @@ def test_cli_json_reads_use_utf8(tmp_path, monkeypatch, capsys):
     assert profile in reads
     assert report in reads
     assert json.loads(capsys.readouterr().out.split("\n", 1)[1])["result"]["comparable"]
+
+
+def test_offer_table_price_filter_and_ties():
+    from scripts.cloud.vast.offers_table import select
+
+    def row(identifier, price, status="eligible"):
+        return {
+            "offer": {"id": identifier},
+            "quote": {"hourly_usd": price},
+            "status": status,
+        }
+
+    rows = [
+        row(5, "10"),
+        row(3, "2"),
+        row(1, "2"),
+        row(2, "0.1", "ineligible"),
+        row(4, None),
+        row(6, "0.2", "unknown"),
+        row(7, "NaN"),
+    ]
+    selected, count = select(rows, 2)
+    assert [entry["offer"]["id"] for entry in selected] == [1, 3]
+    assert count == 3
+
+
+def test_offer_table_readonly_and_render(service, tmp_path, capsys):
+    from scripts.cloud.vast import offers_table
+
+    svc, plan, _ = service
+    assessment = svc.search(plan.profile)[0].model_dump(mode="json")
+    assessment["offer"].update(
+        cpu_name="Xeon | test\nCPU", cpu_ram=64000, total_flops=35.58
+    )
+    assessment["runtime"]["memory_allocation"]["baseline_ram_mb"] = "32000"
+    assessment["quote"]["hourly_usd"] = "0.1234567"
+    payload = {"ok": True, "result": [assessment]}
+
+    # Assert only the offers action is dispatched; never lifecycle operations.
+    with patch.object(offers_table, "vast_main") as cli:
+        cli.side_effect = lambda argv: (print(json.dumps(payload)) or 0)
+        assert offers_table.main(["--profile", str(tmp_path / "profile.json")]) == 0
+        argv = cli.call_args.args[0]
+        assert argv[5:] == [
+            "offers",
+            "--profile",
+            str(tmp_path / "profile.json"),
+            "--sort",
+            "price",
+            "--no-country-preference",
+            "--any-gpu",
+        ]
+    output = capsys.readouterr().out
+    assert "| 64.00 | 32.00 |" in output
+    assert "VRAM [GB]" in output
+    assert offers_table.memory_gb(24576) == "24.58"
+    assert offers_table.memory_gb(None) == "?"
+    assert "| 0.1235 |" in output
+    assert "FLOPS [TFLOPS]" in output and "| 36 |" in output
+    assert "Xeon / test CPU" in output
+    for locale in ("pl", "en", "de"):
+        assert offers_table.TEXT[locale]["empty"] in offers_table.render([], 0, locale)
+
+    with patch.object(offers_table, "vast_main") as cli:
+        cli.side_effect = lambda argv: (
+            print('{"ok": false, "error": "vast.http_error"}') or 1
+        )
+        assert offers_table.main([]) == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert json.loads(captured.err)["ok"] is False
+
+
+def test_offer_table_any_gpu_preserves_other_requirements(service, tmp_path):
+    from venom_core.services.vast_environments.assessment import search_filters
+    from venom_core.services.vast_environments.cli import workload_profile
+
+    _, plan, _ = service
+    profile = plan.profile.model_copy(update={"gpu_names": ["RTX 3090"]})
+    path = tmp_path / "profile.json"
+    path.write_text(profile.model_dump_json(), encoding="utf-8")
+    args = parser().parse_args(["offers", "--profile", str(path), "--any-gpu"])
+    result = workload_profile(args)
+    assert result.gpu_names == []
+    assert "gpu_name" not in search_filters(result)
+    expected = profile.model_dump()
+    expected["gpu_names"] = []
+    assert result.model_dump() == expected
+    assert json.loads(path.read_text(encoding="utf-8"))["gpu_names"] == ["RTX 3090"]

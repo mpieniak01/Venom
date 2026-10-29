@@ -26,7 +26,10 @@ CLI calls the shared Environments service; future adapters must reuse it.
 
 Copy config/cloud/vast/inspect.example.json or ollama.example.json into an ignored
 local directory. Replace the image placeholder with a verified immutable digest
-compatible with cpu_arch. Ollama also requires an exact model name and digest.
+compatible with cpu_arch. Model-bound Ollama profiles also require an exact model name and digest.
+An engine-only Ollama profile may leave both empty only with download_gb=0;
+its ready operation checks version/tags without generation. Benchmark still
+requires a model and digest.
 Examples intentionally cannot rent until edited. No engine image is declared a
 stable default after the observed CUDA errors. Template hashes are not digests.
 
@@ -447,3 +450,123 @@ References:
 - [NVIDIA NGC registry](https://docs.nvidia.com/ngc/latest/ngc-catalog-user-guide.html)
 - [vLLM OpenAI-compatible serving](https://docs.vllm.ai/en/stable/serving/online_serving/openai_compatible_server/)
 - [Ollama loaded models](https://docs.ollama.com/api/ps)
+
+## Managed Ollama in the existing chat
+
+The chat selector offers **Ollama · Vast** only when a manually attached instance,
+its SSH tunnel and Ollama API are available. An empty remote catalog cannot
+provide a selectable model. Models are read from the attached server; local
+models with the same name remain separate.
+
+Run the existing CLI manually to search, plan, create, inspect and provision
+the instance. Before creating it, prepare an Ollama profile with a pinned image
+and model digest, explicit download budget, context and rental budget.
+For trial-zero, use the Ollama recipe with a verified, pinned Ollama image,
+empty model/model_digest and download_gb=0. This prepares the engine without
+pulling weights. The inspect recipe remains available for inventory-only tasks.
+
+With the Venom API running, use these commands (set --api-base if necessary):
+
+    python scripts/cloud/vast/vast.py --json chat-attach --plan PLAN_ID --api-base http://127.0.0.1:8800
+    python scripts/cloud/vast/vast.py --json chat-status --api-base http://127.0.0.1:8800
+    python scripts/cloud/vast/vast.py --json chat-detach --api-base http://127.0.0.1:8800
+
+The API owns the tunnel. Reloading the browser does not close it. Chat requests
+continue through the existing Direct and Normal flows, using the selected
+remote model and preserving runtime identity. A broken connection does not
+switch the prompt to a local model. Detaching or cancelling generation does
+not stop billing or destroy the rented instance.
+
+After the trial, use the manual lifecycle commands to export and destroy the
+trial instance. The cleanup-zero command confirms removal and reads the full
+account instance list, including stopped instances. Success requires a count
+of zero. Unknown state or a failed read is not zero; unrelated instances are
+reported and never deleted automatically. trial-zero requires an engine-only
+Ollama plan and runs create -> SSH/inspect -> provision -> ready -> export ->
+destroy -> confirmed zero. Readiness checks GET /api/version and /api/tags
+through SSH; an empty model list is valid for the engine-only trial. Provision
+or API failure still triggers cleanup. This is not a model/GPU generation test.
+
+    python scripts/cloud/vast/vast.py --json prepare --profile HOST_PROFILE.json --recipe ollama --download-gb 0 --output .venom_runtime/vast/ollama-zero.json
+    python scripts/cloud/vast/vast.py --json trial-zero --plan PLAN_ID --timeout 120 --accept-new-host-key
+
+HOST_PROFILE.json must already name a verified, pinned Ollama image for its
+architecture and contain empty model/model_digest. Search, assess and plan with
+the prepared profile, review costs, and explicitly invoke trial-zero. No inspect
+or model-download plan is accepted for trial-zero. Chat uses a separate,
+model-bound profile with a concrete model/digest; benchmark requires that model.
+
+    python scripts/cloud/vast/vast.py --json cleanup-zero --plan PLAN_ID --api-base http://127.0.0.1:8800 --timeout 120
+    python scripts/cloud/vast/vast.py --json verify-zero
+
+Mock tests do not create paid resources. Real creation and chat generation
+are separate, explicitly invoked operator actions.
+
+Direct keeps up to 20 completed messages (50,000 characters) per remote target,
+connection generation, model and session in the mounted chat. Reloading the
+page clears this Direct context cache. Incomplete responses are not added to
+context. The existing emergency STOP also aborts the active Direct HTTP stream.
+
+
+### Host quality acceptance before Ollama model download
+
+Ollama create now starts the engine only. Explicit provision inspects actual
+container RAM/CPU/VRAM and disk, plus configured minimum driver/engine versions,
+before downloading weights. Unknown or insufficient resources block provisioning;
+manual lifecycle leaves the instance available for diagnosis.
+
+Search sends capacity minimums to the provider and reassesses results locally.
+Offer cpu_ram remains a declaration, not a guaranteed container limit.
+Creation supplies context length and parallel requests through env; startup also
+exports them, binds loopback and limits loaded models to one. Startup-v5 changes
+the startup checksum: create a fresh plan rather than rewriting old plans.
+
+Run create/wait/inspect/provision/ready and review GPU qualification before attach.
+Engine availability is not GPU acceptance. Explicit chat request options may
+override server context defaults; verify the effective context using ollama ps.
+No undocumented memory-allocation flag or automatic replacement rental is added.
+
+
+### Memory allocation semantics
+Vast allocates baseline RAM/CPU proportionally to the machine GPU allocation:
+https://docs.vast.ai/guides/instances/docker-environment
+Offer cpu_ram is host RAM in MB; estimated baseline is cpu_ram*gpu_frac.
+gpu_frac is the machine share, not shared ownership of one GPU. Allocated GPUs
+are exclusive. cpu_cores_effective is already effective and is not scaled twice.
+Default min_gpu_fraction is 0.001; an explicitly saved 1 retains its restriction.
+
+Inspection separates host meminfo, cgroupv2 hard limit/current/high/swap/events,
+cgroupv1 hard limit, and /dev/shm capacity. Swap/shared memory are not additional
+RAM. A huge v1 sentinel means unlimited. Memory.high is soft pressure, and usage
+includes reclaimable cache; limit-current is not model headroom.
+Instance mem_limit/mem_usage/vmem_usage are retained as provider observations,
+without guessing undocumented units. SSH hard limits remain the acceptance
+source. A declaration and proportional estimate never replace actual checks.
+
+
+## Multi-turn Direct acceptance
+
+`python scripts/cloud/vast/chat_smoke.py` defaults to read-only preflight.
+Explicit `--live --turns 2` (or 3) generates against an already selected target
+and requires authorization for that execution. It never creates or deletes a host.
+
+The smoke sends bounded history and requires exact recall of a random marker
+on the second turn. A mismatch fails acceptance; the report contains only the
+verification result, without conversation text or the marker. This does not
+establish browser, Normal-mode, or general model-quality acceptance.
+
+Preflight rejection before generation releases admission so the target can
+be changed. Errors or cancellation after generation starts retain uncertainty;
+never clear it automatically without evidence that the work has stopped.
+
+
+Non-refresh status reads use a short cache lock and do not wait for network
+operations or SSH shutdown. A transient probe failure makes the target
+unavailable while retaining the tunnel until three consecutive failures;
+a successful probe resets the counter. SSH exit, identity mismatch and a
+stopped instance invalidate the connection immediately.
+
+Provision may repair a previous startup failure while still requiring valid
+capacity and versions. Owned-host cleanup may continue after a refused
+connection to the local API; API error responses or timeouts still block an
+unconfirmed detach.

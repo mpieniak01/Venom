@@ -14,7 +14,7 @@ import httpx
 import psutil
 from fastapi import APIRouter, Depends, HTTPException
 
-from venom_core.api.routes import academy, system_deps
+from venom_core.api.routes import academy, system_deps, vast_chat
 from venom_core.api.routes.models_introspection import get_introspection_queue_metrics
 from venom_core.api.routes.models_utils import infer_model_provider
 from venom_core.api.routes.permission_denied_contract import (
@@ -30,6 +30,7 @@ from venom_core.services import (
     remote_models_service,
     system_llm_service,
     traffic_control_service,
+    vast_chat_runtime,
 )
 from venom_core.services.config_manager import config_manager
 from venom_core.services.feedback_loop_policy import (
@@ -82,6 +83,7 @@ from venom_core.utils.url_policy import build_http_url
 logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1", tags=["system"])
+router.include_router(vast_chat.router)
 
 LLM_CONTROLLER_UNAVAILABLE = "LLMController nie jest dostępny"
 
@@ -764,10 +766,9 @@ def _assert_runtime_provider_supported(provider_raw: str) -> None:
 
 
 def _capture_runtime_settings_snapshot() -> tuple[str, str, str, str]:
-    runtime = get_active_llm_runtime()
     return (
         SETTINGS.LLM_SERVICE_TYPE,
-        str(getattr(runtime, "model_name", "") or ""),
+        str(getattr(SETTINGS, "LLM_MODEL_NAME", "") or ""),
         str(getattr(SETTINGS, "ACTIVE_LLM_SERVER", "") or ""),
         SETTINGS.LLM_CONFIG_HASH,
     )
@@ -786,7 +787,7 @@ def _runtime_activate_payload(runtime) -> dict[str, Any]:
     feedback_resolution = _feedback_loop_resolution_defaults(runtime.model_name)
     return {
         "status": "success",
-        "active_server": runtime.provider,
+        "active_server": vast_chat_runtime.server_name(runtime),
         "active_endpoint": runtime.endpoint,
         "active_model": runtime.model_name,
         "config_hash": runtime.config_hash,
@@ -842,7 +843,11 @@ async def _activate_onnx_runtime(model: str | None) -> dict[str, Any]:
         SETTINGS.LLM_SERVICE_TYPE = "onnx"
         SETTINGS.LLM_MODEL_NAME = model_name
         SETTINGS.ACTIVE_LLM_SERVER = "onnx"
-        runtime = get_active_llm_runtime()
+        runtime = (
+            get_active_llm_runtime(SETTINGS.model_copy())
+            if vast_chat_runtime.selection() is not None
+            else get_active_llm_runtime()
+        )
         config_hash = runtime.config_hash or ""
         SETTINGS.LLM_CONFIG_HASH = config_hash
         result = config_manager.update_config(
@@ -858,6 +863,8 @@ async def _activate_onnx_runtime(model: str | None) -> dict[str, Any]:
     except Exception:
         _restore_runtime_settings_snapshot(snapshot)
         raise
+    if vast_chat_runtime.selection() is not None:
+        vast_chat_runtime.clear_selection()
     return _runtime_activate_payload(runtime)
 
 
@@ -1919,7 +1926,11 @@ async def _resolve_runtime_options_payload() -> dict[str, Any]:
     except Exception:
         logger.warning("Nie udało się pobrać listy modeli lokalnych.")
         local_models = []
-    auto_heal = _apply_vllm_runtime_autofix(local_models=local_models)
+    auto_heal = (
+        _apply_vllm_runtime_autofix(local_models=local_models)
+        if vast_chat_runtime.selection() is None
+        else None
+    )
     if auto_heal:
         active_runtime = get_active_llm_runtime()
 
@@ -1936,7 +1947,17 @@ async def _resolve_runtime_options_payload() -> dict[str, Any]:
         _cloud_runtime_target(provider="openai", active_runtime=active_runtime),
         _cloud_runtime_target(provider="google", active_runtime=active_runtime),
     )
-    runtime_targets = [*local_targets, *cloud_targets]
+    runtime_targets = [
+        *local_targets,
+        *cloud_targets,
+        await vast_chat_runtime.target_payload(),
+    ]
+    if vast_chat_runtime.selection() is not None:
+        for item in runtime_targets:
+            item["active"] = item["runtime_id"] == vast_chat_runtime.SERVER
+            if not item["active"]:
+                for candidate in item.get("models", []):
+                    candidate["active"] = False
     trainable_models = await _load_trainable_model_catalog(
         model_manager,
         local_models=local_models,
@@ -1958,12 +1979,16 @@ async def _resolve_runtime_options_payload() -> dict[str, Any]:
     return {
         "status": "success",
         "active": {
-            "runtime_id": active_runtime.provider,
-            "active_server": active_runtime.provider,
+            "runtime_id": vast_chat_runtime.server_name(active_runtime),
+            "active_server": vast_chat_runtime.server_name(active_runtime),
             "active_model": active_runtime.model_name,
             "active_endpoint": active_runtime.endpoint,
             "config_hash": active_runtime.config_hash,
-            "source_type": _runtime_source_type(active_runtime.provider),
+            "source_type": (
+                "remote"
+                if vast_chat_runtime.is_remote(active_runtime)
+                else _runtime_source_type(active_runtime.provider)
+            ),
             "mode_contracts": mode_contracts_payload(),
             "requested_model_alias": active_feedback_resolution[
                 "requested_model_alias"
@@ -2037,7 +2062,11 @@ def _activate_cloud_runtime(provider_raw: str, model: str | None) -> dict[str, A
         SETTINGS.LLM_MODEL_NAME = model_name
         SETTINGS.ACTIVE_LLM_SERVER = provider_raw
 
-        runtime = get_active_llm_runtime()
+        runtime = (
+            get_active_llm_runtime(SETTINGS.model_copy())
+            if vast_chat_runtime.selection() is not None
+            else get_active_llm_runtime()
+        )
         config_hash = runtime.config_hash or ""
         SETTINGS.LLM_CONFIG_HASH = config_hash
 
@@ -2056,6 +2085,8 @@ def _activate_cloud_runtime(provider_raw: str, model: str | None) -> dict[str, A
     except Exception:
         _restore_runtime_settings_snapshot(snapshot)
         raise
+    if vast_chat_runtime.selection() is not None:
+        vast_chat_runtime.clear_selection()
     return _runtime_activate_payload(runtime)
 
 
@@ -2130,6 +2161,20 @@ async def get_llm_servers():
     active_runtime = get_active_llm_runtime()
     active_server_name = str(getattr(active_runtime, "provider", "") or "").strip()
     await _probe_servers(servers, active_server_name)
+    remote = await vast_chat_runtime.target_payload()
+    servers.append(
+        {
+            "name": vast_chat_runtime.SERVER,
+            "label": "Ollama · Vast",
+            "status": remote["status"],
+            "available": remote["available"],
+            "capabilities": {
+                "can_start": False,
+                "can_stop": False,
+                "can_restart": False,
+            },
+        }
+    )
 
     return {"status": "success", "servers": servers, "count": len(servers)}
 
@@ -2221,7 +2266,7 @@ def get_active_llm_server():
     config = config_manager.get_config(mask_secrets=False)
     return {
         "status": "success",
-        "active_server": runtime.provider,
+        "active_server": vast_chat_runtime.server_name(runtime),
         "active_endpoint": runtime.endpoint,
         "active_model": runtime.model_name,
         "config_hash": runtime.config_hash,
@@ -2926,6 +2971,9 @@ async def _set_active_llm_server_impl(
                     detail="Nie udało się zastosować polityki pojedynczego modelu "
                     f"Ollama: {exc}",
                 ) from exc
+        if vast_chat_runtime.selection() is not None:
+            vast_chat_runtime.clear_selection()
+        runtime = get_active_llm_runtime()
         _trace_switch(
             request_tracer,
             request.trace_id,
@@ -2968,6 +3016,8 @@ async def set_active_llm_server(request: ActiveLlmServerRequest):
     server_name = normalize_runtime_id(request.server_name)
     try:
         switch_source = assert_runtime_switch_source_allowed(request.switch_source)
+        if server_name == vast_chat_runtime.SERVER:
+            return await vast_chat.activate(request, switch_source)
         return await _set_active_llm_server_impl(
             request=request,
             server_name=server_name,

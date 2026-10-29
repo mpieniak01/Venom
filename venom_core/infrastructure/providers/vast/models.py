@@ -62,7 +62,12 @@ class WorkloadProfile(Contract):
     min_upload_mbps: float = Field(default=0, ge=0)
     min_dlperf: float = Field(default=0, ge=0)
     min_gpu_mem_bw_gb_s: float = Field(default=0, ge=0)
-    min_gpu_fraction: float = Field(default=1, gt=0, le=1)
+    min_gpu_fraction: float = Field(
+        default=0.001,
+        gt=0,
+        le=1,
+        description="Minimum machine GPU allocation fraction, not per-card exclusivity",
+    )
     countries: list[str] = Field(default_factory=list, max_length=50)
     preferred_countries: list[str] = Field(default_factory=lambda: ["PL"], max_length=8)
     sort_by: Literal[
@@ -195,6 +200,11 @@ INSTANCE_FIELDS = (
     "gpu_name",
     "cpu_arch",
     "cpu_ram",
+    "cpu_cores_effective",
+    "gpu_frac",
+    "mem_limit",
+    "mem_usage",
+    "vmem_usage",
     "gpu_ram",
     "dph_total",
     "host_id",

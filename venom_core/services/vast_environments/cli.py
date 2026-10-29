@@ -16,8 +16,15 @@ from pydantic import ValidationError
 from venom_core.infrastructure.providers.vast.client import VastClient, VastError
 from venom_core.infrastructure.providers.vast.images import resolve_image
 from venom_core.infrastructure.providers.vast.models import WorkloadProfile, now
+from venom_core.services.vast_chat_cli import detach_plan
 from venom_core.services.vast_environments.assessment import search_filters
 from venom_core.services.vast_environments.billing import costs
+from venom_core.services.vast_environments.cleanup_zero import (
+    ZeroCheckError,
+    cleanup_zero,
+    trial_zero,
+    verify_zero,
+)
 from venom_core.services.vast_environments.evaluation import compare
 from venom_core.services.vast_environments.history import entries
 from venom_core.services.vast_environments.history import report as qualification_report
@@ -78,6 +85,7 @@ def _add_offer_commands(sub) -> None:
             ],
         )
         item.add_argument("--country", action="append")
+        item.add_argument("--any-gpu", action="store_true")
         preferences = item.add_mutually_exclusive_group()
         preferences.add_argument("--prefer-country", action="append")
         preferences.add_argument("--no-country-preference", action="store_true")
@@ -171,10 +179,22 @@ def parser() -> argparse.ArgumentParser:
     templates.add_argument("--recommended", action="store_true")
     history = sub.add_parser("host-results")
     history.add_argument("--machine", type=int, required=True)
-    for command in ("account", "list", "volumes"):
+    for command in ("chat-attach", "chat-detach", "chat-status"):
+        item = sub.add_parser(command)
+        item.add_argument("--api-base", default="http://127.0.0.1:8800")
+        if command == "chat-attach":
+            item.add_argument("--plan", required=True)
+    for command in ("account", "list", "volumes", "verify-zero"):
         sub.add_parser(command)
     _add_offer_commands(sub)
     _add_record_commands(sub)
+    for command in ("trial-zero", "cleanup-zero"):
+        item = sub.add_parser(command)
+        item.add_argument("--plan", required=True)
+        item.add_argument("--timeout", type=int, default=120)
+        item.add_argument("--api-base", default="http://127.0.0.1:8800")
+        if command == "trial-zero":
+            item.add_argument("--accept-new-host-key", action="store_true")
     item = sub.add_parser("compare")
     item.add_argument("reports", type=Path, nargs="+")
     return root
@@ -198,6 +218,8 @@ def workload_profile(args) -> WorkloadProfile:
         )
         if getattr(args, argument, None) is not None
     }
+    if getattr(args, "any_gpu", False):
+        overrides["gpu_names"] = []
     if args.no_country_preference:
         overrides["preferred_countries"] = []
     return WorkloadProfile.model_validate({**profile.model_dump(), **overrides})
@@ -254,7 +276,8 @@ def _offer_action(args, service: Environments):
         ]
     if command == "assess":
         rows = service.client.offers(
-            profile.disk_gb, {**search_filters(profile), "id": {"eq": args.offer}}
+            profile.disk_gb,
+            {**search_filters(profile), "ask_contract_id": {"eq": args.offer}},
         )
         selected = [row for row in rows if row.get("id") == args.offer]
         if len(selected) != 1:
@@ -328,6 +351,23 @@ def _record_action(args, service: Environments):
 
 def dispatch(args, service: Environments):
     command = args.command
+    if command == "verify-zero":
+        return verify_zero(service)
+    if command == "cleanup-zero":
+        return cleanup_zero(
+            service,
+            args.plan,
+            args.timeout,
+            before_destroy=lambda plan: detach_plan(plan, args.api_base),
+        )
+    if command == "trial-zero":
+        return trial_zero(
+            service,
+            args.plan,
+            args.timeout,
+            accept_new_host_key=args.accept_new_host_key,
+            before_destroy=lambda plan: detach_plan(plan, args.api_base),
+        )
     if command in {"recipes", "resolve-image", "compare", "qualifications", "report"}:
         return _offline(args)
     if command in {"account", "list", "volumes"}:
@@ -370,6 +410,10 @@ def dispatch(args, service: Environments):
 
 
 def _run(args, client_factory):
+    if args.command in {"chat-attach", "chat-detach", "chat-status"}:
+        from venom_core.services.vast_chat_cli import admin
+
+        return admin(args.command, args.api_base, getattr(args, "plan", None))
     if args.command in {
         "recipes",
         "resolve-image",
@@ -393,6 +437,8 @@ def _error_output(exc: Exception) -> dict[str, Any]:
     result = {"ok": False, "error": error}
     if isinstance(exc, VastError):
         result.update(http_status=exc.status, outcome_unknown=exc.ambiguous)
+    if isinstance(exc, ZeroCheckError):
+        result["report"] = exc.report
     return result
 
 

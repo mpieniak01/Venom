@@ -10,7 +10,7 @@ import httpx
 import pytest
 
 from venom_core.infrastructure.providers.vast.client import VastError, ssh_fingerprint
-from venom_core.infrastructure.providers.vast.models import WorkloadProfile, now
+from venom_core.infrastructure.providers.vast.models import WorkloadProfile, digest, now
 from venom_core.services.vast_environments.billing import costs
 from venom_core.services.vast_environments.cli import main
 from venom_core.services.vast_environments.evaluation import (
@@ -278,7 +278,9 @@ def test_startup_is_deterministic(service):
         update={"mode": "ollama", "model": "test", "download_gb": Decimal("25")}
     )
     script = startup(cfg)
-    assert "ollama pull" in script
+    assert "ollama pull" not in script
+    assert "awaiting_capacity_check" in script
+    assert "ollama pull" in startup(cfg, download_model=True)
     assert "flock" in script
     assert "curl" in script
     assert "ollama pull" not in startup(
@@ -483,3 +485,208 @@ def test_synthetic_prompt_is_repeatable_across_profile_roundtrip(service):
     finally:
         first.client.close()
         second.client.close()
+
+
+@pytest.mark.parametrize(
+    "version,tags",
+    [
+        ({}, {"models": []}),
+        ({"version": ""}, {"models": []}),
+        ([], {"models": []}),
+        ({"version": "1.0"}, {}),
+        ({"version": "1.0"}, {"models": [None]}),
+        ({"version": "1.0"}, []),
+    ],
+)
+def test_engine_only_readiness_rejects_malformed_api(service, version, tags):
+    _, plan, _ = service
+
+    def respond(req):
+        assert req.method == "GET"
+        return httpx.Response(
+            200, json=version if req.url.path == "/api/version" else tags
+        )
+
+    with httpx.Client(
+        base_url="http://127.0.0.1:1234", transport=httpx.MockTransport(respond)
+    ) as client:
+        with pytest.raises(VastError, match="vast.ollama_api_invalid"):
+            OllamaProbe(client, plan.profile).engine_ready()
+
+
+def test_engine_only_workload_ready_has_no_generation_or_gpu_probe(service):
+    svc, plan, _ = service
+    plan.profile.mode = "ollama"
+    plan.startup_sha256 = digest(startup(plan.profile))
+    plan.checksum = plan.calculate_checksum()
+    svc.journal.save_plan(plan)
+    svc.create(plan.plan_id)
+    requests = []
+
+    def respond(req):
+        requests.append((req.method, req.url.path))
+        return httpx.Response(
+            200,
+            json={"version": "0.40.11"}
+            if req.url.path == "/api/version"
+            else {"models": []},
+        )
+
+    client = httpx.Client(
+        base_url="http://127.0.0.1:1234", transport=httpx.MockTransport(respond)
+    )
+    with (
+        patch(
+            "venom_core.services.vast_environments.operations.inspect",
+            return_value={"reasons": []},
+        ),
+        patch("venom_core.services.vast_environments.operations.tunnel") as tunnel,
+        patch(
+            "venom_core.services.vast_environments.operations.httpx.Client",
+            return_value=client,
+        ),
+        patch("venom_core.services.vast_environments.operations._gpu_facts") as gpu,
+    ):
+        tunnel.return_value.__enter__.return_value = "http://127.0.0.1:1234"
+        result = workload(svc, plan.plan_id, "ready")
+    assert result["runtime"] == "ready"
+    assert result["acceptance_scope"] == "engine_only"
+    assert result["model_count"] == 0
+    assert result["generation_tested"] is False
+    assert requests == [("GET", "/api/version"), ("GET", "/api/tags")]
+    gpu.assert_not_called()
+    with pytest.raises(VastError, match="vast.model_digest_required"):
+        workload(svc, plan.plan_id, "benchmark")
+
+
+def test_reconcile_null_provider_status_stays_readable(service):
+    svc, plan, _ = service
+    svc.create(plan.plan_id)
+    svc.client.instance.return_value["actual_status"] = None
+    assert svc.reconcile(plan.plan_id).state == "unknown"
+    assert svc.journal.record(plan.plan_id).state == "unknown"
+
+
+@pytest.mark.parametrize(
+    "reasons,unknown",
+    [
+        (["cpu_ram"], []),
+        ([], ["cpu_cores"]),
+        (["startup", "cpu_ram"], []),
+        (["startup"], ["gpu_ram"]),
+    ],
+)
+def test_provision_blocks_download_on_insufficient_or_unknown_capacity(
+    service, reasons, unknown
+):
+    from venom_core.services.vast_environments.operations import _provision
+
+    _, plan, _ = service
+    plan.profile.mode = "ollama"
+    with (
+        patch(
+            "venom_core.services.vast_environments.operations.inspect",
+            return_value={"reasons": reasons, "unknown": unknown, "facts": {}},
+        ),
+        patch("venom_core.services.vast_environments.operations.subprocess.run") as run,
+    ):
+        with pytest.raises(VastError, match="vast.capacity_mismatch"):
+            _provision(plan, {}, False)
+        run.assert_not_called()
+
+
+def test_ollama_order_carries_context_and_parallelism(service):
+    svc, plan, _ = service
+    plan.profile.mode = "ollama"
+    plan.profile.context_tokens = 8192
+    plan.profile.max_parallel_requests = 1
+    plan.startup_sha256 = digest(startup(plan.profile))
+    plan.checksum = plan.calculate_checksum()
+    svc.journal.save_plan(plan)
+    svc.create(plan.plan_id)
+    body = svc.client.create.call_args.args[1]
+    assert body["env"]["OLLAMA_CONTEXT_LENGTH"] == "8192"
+    assert body["env"]["OLLAMA_NUM_PARALLEL"] == "1"
+    assert body["env"]["OLLAMA_HOST"] == "127.0.0.1:11434"
+    assert "ollama pull" not in body["onstart"]
+
+
+@pytest.mark.parametrize(
+    "driver,engine,accepted",
+    [
+        ("535.146.02", "0.40.11", False),
+        ("595.84", "0.19.0", False),
+        ("595.84", "0.40.11", True),
+        ("", "", False),
+    ],
+)
+def test_real_versions_checked_before_download(service, driver, engine, accepted):
+    from venom_core.services.vast_environments.operations import _check_ollama_capacity
+
+    _, plan, _ = service
+    plan.profile.runtime.min_driver = "550"
+    plan.profile.runtime.min_engine_version = "0.40.11"
+    capacity = {
+        "reasons": [],
+        "unknown": [],
+        "facts": {
+            "gpu": "RTX 3090, " + driver + ", 24576, 0",
+            "ollama_version": "ollama version is " + engine,
+        },
+    }
+    if accepted:
+        _check_ollama_capacity(plan, capacity)
+    else:
+        with pytest.raises(VastError, match="vast.runtime_version_mismatch"):
+            _check_ollama_capacity(plan, capacity)
+
+
+@pytest.mark.parametrize(
+    "limit,expected", [("8589934592", 8589934592), ("max", 32768000), (None, 32768000)]
+)
+def test_hard_ram_limit_not_added_to_usage_or_swap(limit, expected):
+    from venom_core.services.vast_environments.ssh import _memory_bytes
+
+    facts = {
+        "memory": "MemTotal: 32000 kB",
+        "cgroup_memory_max": limit,
+        "cgroup_memory_current": "20000000",
+        "cgroup_memory_high": "1000",
+        "cgroup_memory_swap_max": "99999999999",
+    }
+    assert _memory_bytes(facts) == min(32768000, expected)
+
+
+def test_cgroup_v1_limit_and_unlimited_sentinel():
+    from venom_core.services.vast_environments.ssh import _memory_bytes
+
+    facts = {"memory": "MemTotal: 32000000 kB", "cgroup_memory_limit_v1": "8589934592"}
+    assert _memory_bytes(facts) == 8589934592
+    facts["cgroup_memory_limit_v1"] = str(1 << 63)
+    assert _memory_bytes(facts) == 32000000 * 1024
+
+
+def test_failed_startup_is_repairable_only_with_valid_capacity(service):
+    from venom_core.services.vast_environments.operations import _provision
+
+    _, plan, _ = service
+    plan.profile.mode = "ollama"
+    plan.profile.download_gb = 1
+    capacity = {"reasons": ["startup"], "unknown": [], "facts": {}}
+    with (
+        patch(
+            "venom_core.services.vast_environments.operations.inspect",
+            return_value=capacity,
+        ),
+        patch(
+            "venom_core.services.vast_environments.operations.subprocess.run",
+            return_value=Mock(returncode=0),
+        ) as run,
+    ):
+        assert (
+            _provision(plan, {"ssh_host": "fixture.test", "ssh_port": 22}, False)[
+                "startup"
+            ]
+            == "completed"
+        )
+    assert "ollama pull" in run.call_args.kwargs["input"]

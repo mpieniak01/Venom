@@ -8,10 +8,19 @@ from venom_core.services.vast_environments.runtime_scripts import (
     vllm_script,
 )
 
-STARTUP_VERSION = "venom-vast-startup-v4"
+STARTUP_VERSION = "venom-vast-startup-v5"
 
 
-def startup(profile: WorkloadProfile) -> str:
+def ollama_environment(profile: WorkloadProfile) -> dict[str, str]:
+    return {
+        "OLLAMA_HOST": "127.0.0.1:11434",
+        "OLLAMA_CONTEXT_LENGTH": str(profile.context_tokens),
+        "OLLAMA_NUM_PARALLEL": str(profile.max_parallel_requests),
+        "OLLAMA_MAX_LOADED_MODELS": "1",
+    }
+
+
+def startup(profile: WorkloadProfile, *, download_model: bool = False) -> str:
     base = f"""#!/bin/bash
 # {STARTUP_VERSION}
 set -euo pipefail
@@ -37,6 +46,8 @@ test "$FREE_BYTES" -ge "$REQUIRED_BYTES"
         return base + vllm_script(profile)
     if profile.mode == "pytorch":
         return base + pytorch_script(profile)
+    for key, value in ollama_environment(profile).items():
+        base += f"export {key}={shlex.quote(value)}\n"
     base += """command -v ollama >/dev/null
 command -v curl >/dev/null
 FREE_BYTES=$(df -PB1 /workspace | awk 'NR==2 {print $4}')
@@ -51,6 +62,9 @@ for i in $(seq 1 60); do
 done
 curl --fail --silent --max-time 5 http://127.0.0.1:11434/api/version >/dev/null
 """
-    if profile.download_gb > 0:
+    if download_model and profile.download_gb > 0:
         base += 'ollama pull "$MODEL"\n'
-    return base + "echo ready > /workspace/venom-vast/startup.state\n"
+    state = (
+        "ready" if download_model or not profile.model else "awaiting_capacity_check"
+    )
+    return base + f"echo {state} > /workspace/venom-vast/startup.state\n"

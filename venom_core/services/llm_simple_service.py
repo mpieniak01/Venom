@@ -322,7 +322,9 @@ def _build_payload(
     }
     if stream and runtime.provider in {"ollama", "vllm", "openai", "onnx"}:
         payload["stream_options"] = {"include_usage": True}
-    if runtime.provider == "ollama":
+    from venom_core.services.vast_chat_runtime import is_remote
+
+    if runtime.provider == "ollama" and not is_remote(runtime):
         payload["keep_alive"] = normalize_ollama_keep_alive(SETTINGS.LLM_KEEP_ALIVE)
         payload["options"] = build_ollama_runtime_options(SETTINGS)
 
@@ -877,6 +879,16 @@ async def _stream_simple_chunks(
         request_kind="simple_chat_stream",
         provider=runtime.provider,
         model=model_name,
+        expected_runtime_id=(
+            runtime.runtime_id
+            if str(getattr(runtime, "runtime_id", "")).startswith("ollama@vast:")
+            else None
+        ),
+        expected_config_hash=(
+            runtime.config_hash
+            if str(getattr(runtime, "runtime_id", "")).startswith("ollama@vast:")
+            else None
+        ),
     ):
         state = _SimpleStreamState(chunks=[])
         stream_start = time.perf_counter()
@@ -887,6 +899,9 @@ async def _stream_simple_chunks(
         max_attempts = (
             max(1, int(SETTINGS.OLLAMA_RETRY_MAX_ATTEMPTS))
             if runtime.provider == "ollama"
+            and not str(getattr(runtime, "runtime_id", "") or "").startswith(
+                "ollama@vast:"
+            )
             else 1
         )
         retry_backoff = max(0.0, float(SETTINGS.OLLAMA_RETRY_BACKOFF_SECONDS))
@@ -963,6 +978,16 @@ async def _stream_simple_chunks_non_stream(
         request_kind="simple_chat_non_stream",
         provider=runtime.provider,
         model=model_name,
+        expected_runtime_id=(
+            runtime.runtime_id
+            if str(getattr(runtime, "runtime_id", "")).startswith("ollama@vast:")
+            else None
+        ),
+        expected_config_hash=(
+            runtime.config_hash
+            if str(getattr(runtime, "runtime_id", "")).startswith("ollama@vast:")
+            else None
+        ),
     ):
         stream_start = time.perf_counter()
         chunks: list[str] = []
@@ -1097,12 +1122,22 @@ def _validate_simple_chat_runtime(runtime) -> str:
 async def stream_simple_chat(request: SimpleChatRequest):
     assert_runtime_request_allowed(request_kind="simple_chat")
     await asyncio.sleep(0)
+    from venom_core.services.vast_chat_runtime import preflight
+
+    await preflight()
     runtime = get_active_llm_runtime()
+    from venom_core.services.vast_chat_runtime import assert_identity, is_remote
+
+    assert_identity(runtime, request.expected_runtime_id, request.expected_config_hash)
+    if is_remote(runtime) and request.model not in {None, runtime.model_name}:
+        raise HTTPException(status_code=409, detail="vast_chat_model_selection_changed")
     runtime_provider = _validate_simple_chat_runtime(runtime)
     model_name = _resolve_model_name_for_simple_request(
         request_model=request.model,
         runtime_model=runtime.model_name,
-        active_adapter_id=await _get_active_adapter_id(),
+        active_adapter_id=None
+        if is_remote(runtime)
+        else await _get_active_adapter_id(),
     )
     if not model_name:
         raise HTTPException(status_code=400, detail="Brak nazwy modelu LLM.")
@@ -1114,6 +1149,11 @@ async def stream_simple_chat(request: SimpleChatRequest):
         request.content, system_prompt, runtime, request_id
     )
     messages = _build_messages(system_prompt, user_content)
+    if is_remote(runtime) and request.history:
+        if sum(len(item.content) for item in request.history) > 50000:
+            raise HTTPException(status_code=400, detail="vast_chat_history_limit")
+        history = [item.model_dump() for item in request.history]
+        messages = [*messages[:-1], *history, messages[-1]]
     payload = _build_payload(request, runtime, model_name, messages)
     _trace_context_preview(request_id, messages)
     headers = _build_streaming_headers(str(request_id), request.session_id or "")

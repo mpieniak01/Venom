@@ -256,7 +256,11 @@ class VastClient:
 
     def instance(self, instance_id: int) -> dict:
         data = self._request("GET", f"/api/v0/instances/{instance_id}/")
-        row = self._object(data).get("instances")
+        response = self._object(data)
+        if "instances" in response and response["instances"] is None:
+            # Vast returns HTTP 200 with a null instance for an absent resource.
+            raise VastError("vast.instance_not_found", status=404)
+        row = response.get("instances")
         if not isinstance(row, dict) or row.get("id") != instance_id:
             raise VastError(INVALID_RESPONSE)
         return project(row, INSTANCE_FIELDS)

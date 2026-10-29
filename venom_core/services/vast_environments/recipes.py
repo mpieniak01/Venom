@@ -38,8 +38,16 @@ def validate_recipe(profile: WorkloadProfile) -> None:
         profile.mode != "pytorch" or profile.download_gb <= 0
     ):
         raise VastError("vast.worker_install_download_budget_required")
-    if profile.mode in {"ollama", "vllm"} and (
-        not profile.model or not profile.model_digest
+    engine_only = (
+        profile.mode == "ollama"
+        and not profile.model
+        and not profile.model_digest
+        and profile.download_gb == 0
+    )
+    if (
+        profile.mode in {"ollama", "vllm"}
+        and not engine_only
+        and (not profile.model or not profile.model_digest)
     ):
         raise VastError("vast.model_digest_required")
     if profile.mode == "vllm" and (

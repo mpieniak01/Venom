@@ -35,6 +35,13 @@ print(json.dumps({
   'kernel':platform.release(), 'cpu_count':os.cpu_count(),
   'memory':text('/proc/meminfo'),
   'cgroup_memory_max':text('/sys/fs/cgroup/memory.max'),
+  'cgroup_memory_limit_v1':text('/sys/fs/cgroup/memory/memory.limit_in_bytes'),
+  'cgroup_memory_current':text('/sys/fs/cgroup/memory.current'),
+  'cgroup_memory_high':text('/sys/fs/cgroup/memory.high'),
+  'cgroup_memory_swap_max':text('/sys/fs/cgroup/memory.swap.max'),
+  'cgroup_memory_events':text('/sys/fs/cgroup/memory.events'),
+  'cgroup_membership':text('/proc/self/cgroup'),
+  'shm':{'total_bytes':shutil.disk_usage('/dev/shm').total,'free_bytes':shutil.disk_usage('/dev/shm').free} if Path('/dev/shm').exists() else None,
   'cgroup_cpu_max':text('/sys/fs/cgroup/cpu.max'),
   'disk':{'total_bytes':disk.total,'free_bytes':disk.free},
   'mounts':run(['findmnt','-J','-o','TARGET,FSTYPE','/workspace']),
@@ -109,8 +116,24 @@ def _memory_bytes(facts: dict) -> float:
     memory = str(facts.get("memory") or "")
     line = next((row for row in memory.splitlines() if row.startswith("MemTotal:")), "")
     value = int(line.split()[1]) * 1024
-    cgroup = str(facts.get("cgroup_memory_max") or "").strip()
-    return min(value, int(cgroup)) if cgroup and cgroup != "max" else value
+    cgroup = str(
+        facts.get("cgroup_memory_max") or facts.get("cgroup_memory_limit_v1") or ""
+    ).strip()
+    if cgroup and cgroup != "max":
+        limit = int(cgroup)
+        if limit <= 0:
+            raise ValueError("vast.invalid_memory_limit")
+        # Linux cgroup v1 represents unlimited memory with a huge sentinel.
+        if limit < 1 << 60:
+            return min(value, limit)
+    return value
+
+
+def _safe_memory_bytes(facts: dict) -> float | None:
+    try:
+        return _memory_bytes(facts)
+    except (ValueError, KeyError, IndexError, TypeError):
+        return None
 
 
 def _cpu_cores(facts: dict) -> float:
@@ -175,6 +198,13 @@ def inspect(plan: EnvironmentPlan, instance: dict, accept_new: bool = False) -> 
     return {
         "ssh": "ready",
         "facts": facts,
+        "memory": {
+            "effective_ram_ceiling_bytes": (_safe_memory_bytes(facts)),
+            "host_meminfo": facts.get("memory"),
+            "usage_is_not_available_ram": True,
+            "swap_is_not_ram": True,
+            "shared_memory_is_not_additional_ram": True,
+        },
         "capacity_status": "unsuitable" if failures else "inconclusive",
         "reasons": failures,
         "unknown": unknown,

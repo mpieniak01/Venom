@@ -171,6 +171,12 @@ def get_active_llm_runtime(settings=None) -> LLMRuntimeInfo:
     Buduje obiekt opisujący aktualnie używane runtime LLM na podstawie konfiguracji.
     """
 
+    if settings is None or settings is SETTINGS:
+        from venom_core.services.vast_chat_runtime import runtime_override
+
+        remote = runtime_override()
+        if remote is not None:
+            return remote
     settings = settings or SETTINGS
     service_type = (settings.LLM_SERVICE_TYPE or "local").lower()
     mode = (settings.AI_MODE or "LOCAL").upper()

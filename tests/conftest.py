@@ -411,6 +411,10 @@ def _isolate_vast_chat_selection(request, monkeypatch, tmp_path):
         vast_chat_runtime, "_SELECTION", tmp_path / "vast-selection.json"
     )
     monkeypatch.setattr(vast_chat_runtime, "_selected", None)
+    from venom_core.services import vast_chat_connection
+
+    monkeypatch.setattr(vast_chat_connection, "ROOT", tmp_path / "vast")
+    monkeypatch.setattr(vast_chat_connection, "_connection", None)
 
 
 @pytest.fixture(autouse=True)

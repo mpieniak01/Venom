@@ -25,7 +25,8 @@ from venom_core.services.vast_environments.startup import startup
 
 
 def _check_ollama_capacity(plan, capacity: dict) -> None:
-    if capacity["reasons"] or capacity["unknown"]:
+    blocking = [reason for reason in capacity["reasons"] if reason != "startup"]
+    if blocking or capacity["unknown"]:
         raise VastError("vast.capacity_mismatch")
     facts = capacity["facts"]
     gpu = str(facts.get("gpu", "")).split(",")

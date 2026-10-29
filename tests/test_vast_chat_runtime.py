@@ -560,3 +560,60 @@ def test_dispatched_generation_retains_uncertainty_and_blocks_switch(
     with pytest.raises(admission.RuntimeAdmissionError):
         with ledger.operation(kind="runtime_switch", mutation=True):
             pytest.fail("Uncertain generation must still prevent switching")
+
+
+@pytest.mark.parametrize("host,expected", [("127.0.0.1", 200), ("203.0.113.5", 403)])
+def test_api_status_is_local_administration_only(target, host, expected):
+    _, connection = target
+    connection.status.reset_mock()
+    app = FastAPI()
+    app.include_router(vast_chat.router, prefix="/api/v1")
+    with TestClient(app, client=(host, 40000)) as client:
+        result = client.get("/api/v1/system/vast-chat")
+    assert result.status_code == expected
+    assert connection.status.call_count == (1 if expected == 200 else 0)
+
+
+@pytest.mark.parametrize("provider", ["openai", "onnx"])
+def test_failed_activation_preserves_local_model_with_vast_selected(
+    target, monkeypatch, provider
+):
+    from venom_core.api.routes import system_llm
+
+    select()
+    for name, value in {
+        "LLM_MODEL_NAME": "local-only",
+        "LLM_SERVICE_TYPE": "local",
+        "ACTIVE_LLM_SERVER": "ollama",
+        "LLM_CONFIG_HASH": "local-hash",
+    }.items():
+        monkeypatch.setattr(system_llm.SETTINGS, name, value)
+    monkeypatch.setattr(
+        system_llm,
+        "get_active_llm_runtime",
+        lambda settings=None: remote.runtime_override()
+        if settings is None
+        else SimpleNamespace(config_hash="candidate"),
+    )
+    monkeypatch.setattr(
+        system_llm.config_manager,
+        "update_config",
+        Mock(side_effect=RuntimeError("save failed")),
+    )
+    if provider == "onnx":
+        monkeypatch.setattr(system_llm, "_ensure_server_allowed", lambda _: None)
+        monkeypatch.setattr(
+            system_llm.system_llm_service,
+            "inspect_onnx_worker",
+            AsyncMock(return_value={"ready": True, "models": ["candidate"]}),
+        )
+    with pytest.raises(RuntimeError, match="save failed"):
+        if provider == "onnx":
+            asyncio.run(system_llm._activate_onnx_runtime("candidate"))
+        else:
+            system_llm._activate_cloud_runtime(provider, "candidate")
+    assert system_llm.SETTINGS.LLM_MODEL_NAME == "local-only"
+    assert system_llm.SETTINGS.LLM_SERVICE_TYPE == "local"
+    assert system_llm.SETTINGS.ACTIVE_LLM_SERVER == "ollama"
+    assert system_llm.SETTINGS.LLM_CONFIG_HASH == "local-hash"
+    assert remote.selection()["model"] == "demo:latest"

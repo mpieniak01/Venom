@@ -50,6 +50,8 @@ def admin(command: str, base: str = DEFAULT_API, plan_id: str | None = None) -> 
         if not isinstance(result, dict):
             raise ValueError
         return result
+    except httpx.ConnectError:
+        raise VastError("vast.chat_api_unreachable") from None
     except (httpx.HTTPError, ValueError):
         raise VastError("vast.chat_api_unavailable") from None
 
@@ -64,9 +66,20 @@ def detach_plan(plan_id: str, base: str = DEFAULT_API) -> None:
         intent = json.loads(path.read_text()).get("target")
     except (OSError, ValueError, AttributeError):
         raise VastError("vast.chat_intent_invalid") from None
-    if intent is None or intent.get("plan_id") != plan_id:
+    if intent is None:
         return
-    status = admin("chat-status", base)
+    if not isinstance(intent, dict):
+        raise VastError("vast.chat_intent_invalid")
+    if intent.get("plan_id") != plan_id:
+        return
+    try:
+        status = admin("chat-status", base)
+    except VastError as error:
+        # A refused connection cannot service a detach. A responding API error or
+        # timeout is not proof that its active target can be disregarded.
+        if error.code == "vast.chat_api_unreachable":
+            return
+        raise
     if status.get("plan_id") not in {None, plan_id}:
         raise VastError("vast.chat_detach_target_changed")
     admin("chat-detach", base, plan_id)

@@ -7,6 +7,7 @@ identity only; a restarted API always requires a fresh explicit attach.
 from __future__ import annotations
 
 import atexit
+import copy
 import json
 import re
 import socket
@@ -134,7 +135,11 @@ class VastChatConnection:
         self.client_factory = client_factory
         self.tunnel_factory = tunnel_factory
         self.http_factory = http_factory
-        self._lock = threading.RLock()
+        self._lock = threading.RLock()  # Serializes transport operations only.
+        self._state_lock = threading.Lock()
+        self._cached_status: dict[str, Any] = {}
+        self._cached_tunnel: Any = None
+        self._probe_failures = 0
         self._tunnel: Any = None
         self._client: Any = None
         self._plan: Any = None
@@ -169,6 +174,7 @@ class VastChatConnection:
                 AttributeError,
             ):
                 self._error = "vast.chat_intent_invalid"
+        self._publish_status()
 
     def _save_intent(self) -> None:
         self.journal.write(
@@ -180,6 +186,7 @@ class VastChatConnection:
         self._catalog = []
         tunnel, client = self._tunnel, self._client
         self._tunnel = self._client = None
+        self._publish_status()
         try:
             if tunnel is not None:
                 tunnel.close()
@@ -241,6 +248,8 @@ class VastChatConnection:
         self._version = version["version"][:100]
         self._available = True
         self._error = None
+        self._probe_failures = 0
+        self._publish_status()
 
     def attach(self, plan_id: str) -> dict[str, Any]:
         with self._lock:
@@ -256,6 +265,8 @@ class VastChatConnection:
             self._intent = {"plan_id": plan_id, "instance_id": record.instance_id}
             self._generation = uuid4().hex
             self._save_intent()
+            self._probe_failures = 0
+            self._publish_status()
             try:
                 self._client = self.client_factory(self.settings.VAST_API_KEY)
                 instance = self._client.instance(record.instance_id)
@@ -277,42 +288,84 @@ class VastChatConnection:
                 raise VastError(code) from None
             return self.status(refresh=False)
 
+    @staticmethod
+    def _transient(error: Exception) -> bool:
+        if isinstance(error, VastError):
+            return error.code == "vast.transport_error" or (
+                error.status is not None
+                and (error.status == 429 or error.status >= 500)
+            )
+        if isinstance(error, httpx.HTTPStatusError):
+            return (
+                error.response.status_code == 429 or error.response.status_code >= 500
+            )
+        return isinstance(error, httpx.TransportError)
+
+    def _probe_failed(self, error: Exception) -> None:
+        code = error.code if isinstance(error, VastError) else "vast.chat_probe_failed"
+        self._probe_failures += 1
+        if self._transient(error) and self._probe_failures < 3:
+            self._available = False
+            self._catalog = []
+            self._error = code
+            self._publish_status()
+        else:
+            self._invalidate(code)
+
+    def _publish_status(self) -> None:
+        # The operation lock owns mutable transport fields. Readers only see this
+        # coherent snapshot; no network or process shutdown holds the state lock.
+        intent = self._intent or {}
+        target = (
+            f"ollama@vast:{intent['plan_id']}:{intent['instance_id']}"
+            if intent
+            else None
+        )
+        value = {
+            "server_name": SERVER_NAME,
+            "label": "Ollama · Vast",
+            "engine": "ollama",
+            "placement": "remote",
+            "owner": "vast",
+            "target_id": target,
+            "plan_id": intent.get("plan_id"),
+            "instance_id": intent.get("instance_id"),
+            "generation": self._generation,
+            "available": self._available,
+            "endpoint": self._tunnel.endpoint + "/v1" if self._available else None,
+            "models": copy.deepcopy(self._catalog),
+            "version": self._version,
+            "error": self._error,
+            "probe_failures": self._probe_failures,
+        }
+        with self._state_lock:
+            self._cached_status = value
+            self._cached_tunnel = self._tunnel
+
+    def _read_status(self) -> dict[str, Any]:
+        with self._state_lock:
+            value = copy.deepcopy(self._cached_status)
+            tunnel = self._cached_tunnel
+        # Popen.poll is non-blocking. Revocation is immediate even before the
+        # next refresh can serialize transport cleanup.
+        if tunnel is not None and not tunnel.alive():
+            value.update(
+                available=False, endpoint=None, models=[], error="vast.tunnel_failed"
+            )
+        return value
+
     def status(self, refresh: bool = True) -> dict[str, Any]:
+        if not refresh:
+            return self._read_status()
         with self._lock:
             if self._tunnel is not None:
                 try:
                     if not self._tunnel.alive():
                         raise VastError("vast.tunnel_failed")
-                    if refresh:
-                        self._probe()
-                except (VastError, OSError, ValueError, httpx.HTTPError) as exc:
-                    self._invalidate(
-                        exc.code
-                        if isinstance(exc, VastError)
-                        else "vast.chat_probe_failed"
-                    )
-            intent = self._intent or {}
-            target = (
-                f"ollama@vast:{intent['plan_id']}:{intent['instance_id']}"
-                if intent
-                else None
-            )
-            return {
-                "server_name": SERVER_NAME,
-                "label": "Ollama · Vast",
-                "engine": "ollama",
-                "placement": "remote",
-                "owner": "vast",
-                "target_id": target,
-                "plan_id": intent.get("plan_id"),
-                "instance_id": intent.get("instance_id"),
-                "generation": self._generation,
-                "available": self._available,
-                "endpoint": self._tunnel.endpoint + "/v1" if self._available else None,
-                "models": [dict(row) for row in self._catalog],
-                "version": self._version,
-                "error": self._error,
-            }
+                    self._probe()
+                except (VastError, OSError, ValueError, httpx.HTTPError) as error:
+                    self._probe_failed(error)
+            return self._read_status()
 
     def catalog(self) -> list[dict[str, Any]]:
         return self.status()["models"]
@@ -332,9 +385,7 @@ class VastChatConnection:
                     if key in value
                 }
             except (VastError, OSError, ValueError, httpx.HTTPError) as exc:
-                self._invalidate(
-                    exc.code if isinstance(exc, VastError) else "vast.chat_probe_failed"
-                )
+                self._probe_failed(exc)
                 raise VastError("vast.chat_unavailable") from None
 
     def require_available(self) -> dict[str, Any]:
@@ -357,6 +408,7 @@ class VastChatConnection:
             self._version = None
             self._generation = uuid4().hex
             self._save_intent()
+            self._publish_status()
             return self.status(refresh=False)
 
     def close(self) -> None:

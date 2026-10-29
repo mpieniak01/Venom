@@ -533,7 +533,7 @@ https://docs.vast.ai/guides/instances/docker-environment
 Offer cpu_ram is host RAM in MB; estimated baseline is cpu_ram*gpu_frac.
 gpu_frac is the machine share, not shared ownership of one GPU. Allocated GPUs
 are exclusive. cpu_cores_effective is already effective and is not scaled twice.
-Default min_gpu_fraction is0.001; an explicitly saved1 retains its restriction.
+Default min_gpu_fraction is 0.001; an explicitly saved 1 retains its restriction.
 
 Inspection separates host meminfo, cgroupv2 hard limit/current/high/swap/events,
 cgroupv1 hard limit, and /dev/shm capacity. Swap/shared memory are not additional

@@ -766,10 +766,9 @@ def _assert_runtime_provider_supported(provider_raw: str) -> None:
 
 
 def _capture_runtime_settings_snapshot() -> tuple[str, str, str, str]:
-    runtime = get_active_llm_runtime()
     return (
         SETTINGS.LLM_SERVICE_TYPE,
-        str(getattr(runtime, "model_name", "") or ""),
+        str(getattr(SETTINGS, "LLM_MODEL_NAME", "") or ""),
         str(getattr(SETTINGS, "ACTIVE_LLM_SERVER", "") or ""),
         SETTINGS.LLM_CONFIG_HASH,
     )

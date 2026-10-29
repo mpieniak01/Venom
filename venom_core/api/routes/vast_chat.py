@@ -29,7 +29,7 @@ class AttachRequest(BaseModel):
     plan_id: str = Field(pattern=r"^[a-f0-9]{32}$")
 
 
-@router.get("/system/vast-chat")
+@router.get("/system/vast-chat", dependencies=[Depends(require_localhost_request)])
 async def status():
     return await asyncio.to_thread(vast_chat_runtime.connection().status, refresh=True)
 

@@ -2,6 +2,8 @@
 
 import json
 import subprocess
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -122,7 +124,7 @@ def test_failed_refresh_revokes_old_endpoint_and_closes_tunnel(connection, chang
     elif change == "version":
         responses["/api/version"] = {"version": ""}
     else:
-        responses["/api/tags"] = 500
+        responses["/api/tags"] = 400
     result = manager.status()
     assert not result["available"] and result["endpoint"] is None
     assert result["models"] == []
@@ -302,7 +304,7 @@ def test_empty_catalog_has_no_models_and_does_not_install_them(connection):
 def test_metadata_failure_closes_transport(connection):
     manager, _, plan, tunnel, _, responses = connection
     manager.attach(plan.plan_id)
-    responses["/api/show"] = 500
+    responses["/api/show"] = 400
     with pytest.raises(VastError, match="vast.chat_unavailable"):
         manager.model_details("demo:latest")
     assert tunnel.close_count == 1
@@ -336,3 +338,103 @@ def test_conditional_detach_cannot_close_other_plan_after_race(connection):
     result = manager.detach(expected_plan_id=plan.plan_id)
     assert not result["available"] and result["target_id"] is None
     assert not tunnel.alive()
+
+
+@pytest.mark.parametrize("failure", ["transport", "http429", "http500", "timeout"])
+def test_transient_probe_failures_preserve_tunnel_until_threshold(connection, failure):
+    manager, svc, plan, tunnel, _, responses = connection
+    original = manager.attach(plan.plan_id)
+    if failure == "transport":
+        svc.client.instance.side_effect = VastError("vast.transport_error")
+    elif failure == "timeout":
+        svc.client.instance.side_effect = httpx.ReadTimeout("fixture timeout")
+    else:
+        responses["/api/tags"] = 429 if failure == "http429" else 500
+    for count in (1, 2):
+        state = manager.status()
+        assert not state["available"] and state["endpoint"] is None
+        assert state["probe_failures"] == count
+        assert state["generation"] == original["generation"]
+        assert tunnel.alive()
+        svc.client.close.assert_not_called()
+    state = manager.status()
+    assert not state["available"] and state["probe_failures"] == 3
+    assert tunnel.close_count == 1
+    svc.client.close.assert_called_once()
+
+
+def test_probe_success_resets_transient_failures_without_reattach(connection):
+    manager, svc, plan, tunnel, _, _ = connection
+    original = manager.attach(plan.plan_id)
+    for _ in range(2):
+        svc.client.instance.side_effect = VastError("vast.transport_error")
+        assert manager.status()["probe_failures"] == 1
+        svc.client.instance.side_effect = None
+        recovered = manager.status()
+        assert recovered["available"] and recovered["probe_failures"] == 0
+        assert recovered["generation"] == original["generation"]
+        assert manager.tunnel_factory.call_count == 1
+    assert tunnel.close_count == 0
+
+
+@pytest.mark.parametrize("operation", ["probe", "attach", "detach"])
+def test_cached_status_does_not_wait_for_network_or_shutdown(connection, operation):
+    manager, svc, plan, tunnel, _, _ = connection
+    manager.attach(plan.plan_id)
+    entered, release = threading.Event(), threading.Event()
+
+    def blocked(result):
+        entered.set()
+        assert release.wait(5)
+        return result
+
+    if operation == "probe":
+        instance = dict(svc.client.instance.return_value)
+        svc.client.instance.side_effect = lambda _: blocked(instance)
+        mutate = manager.status
+    elif operation == "attach":
+        manager.tunnel_factory.side_effect = lambda *_: blocked(FakeTunnel())
+
+        def mutate():
+            return manager.attach(plan.plan_id)
+    else:
+        close = tunnel.close
+
+        def delayed_close():
+            blocked(None)
+            close()
+
+        tunnel.close = delayed_close
+        mutate = manager.detach
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        pending = executor.submit(mutate)
+        try:
+            assert entered.wait(2)
+            state = executor.submit(manager.status, False).result(timeout=1)
+            assert state["target_id"] is not None
+            if operation != "probe":
+                assert not state["available"]
+        finally:
+            release.set()
+        pending.result(timeout=2)
+
+
+def test_transient_model_metadata_error_does_not_destroy_healthy_tunnel(connection):
+    manager, _, plan, tunnel, _, responses = connection
+    manager.attach(plan.plan_id)
+    responses["/api/show"] = 503
+    with pytest.raises(VastError, match="vast.chat_unavailable"):
+        manager.model_details("demo:latest")
+    assert tunnel.alive()
+    assert not manager.status(False)["available"]
+    assert manager.status()["available"]
+
+
+def test_offline_singleton_uses_isolated_journal(tmp_path):
+    from venom_core.services import vast_chat_connection as transport
+
+    assert transport.ROOT == tmp_path / "vast"
+    assert transport._connection is None
+    manager = transport.get_vast_chat_connection()
+    assert manager.journal.root == (tmp_path / "vast").resolve()
+    assert manager.status(False)["target_id"] is None

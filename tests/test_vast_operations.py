@@ -567,7 +567,15 @@ def test_reconcile_null_provider_status_stays_readable(service):
     assert svc.journal.record(plan.plan_id).state == "unknown"
 
 
-@pytest.mark.parametrize("reasons,unknown", [(["cpu_ram"], []), ([], ["cpu_cores"])])
+@pytest.mark.parametrize(
+    "reasons,unknown",
+    [
+        (["cpu_ram"], []),
+        ([], ["cpu_cores"]),
+        (["startup", "cpu_ram"], []),
+        (["startup"], ["gpu_ram"]),
+    ],
+)
 def test_provision_blocks_download_on_insufficient_or_unknown_capacity(
     service, reasons, unknown
 ):
@@ -656,3 +664,29 @@ def test_cgroup_v1_limit_and_unlimited_sentinel():
     assert _memory_bytes(facts) == 8589934592
     facts["cgroup_memory_limit_v1"] = str(1 << 63)
     assert _memory_bytes(facts) == 32000000 * 1024
+
+
+def test_failed_startup_is_repairable_only_with_valid_capacity(service):
+    from venom_core.services.vast_environments.operations import _provision
+
+    _, plan, _ = service
+    plan.profile.mode = "ollama"
+    plan.profile.download_gb = 1
+    capacity = {"reasons": ["startup"], "unknown": [], "facts": {}}
+    with (
+        patch(
+            "venom_core.services.vast_environments.operations.inspect",
+            return_value=capacity,
+        ),
+        patch(
+            "venom_core.services.vast_environments.operations.subprocess.run",
+            return_value=Mock(returncode=0),
+        ) as run,
+    ):
+        assert (
+            _provision(plan, {"ssh_host": "fixture.test", "ssh_port": 22}, False)[
+                "startup"
+            ]
+            == "completed"
+        )
+    assert "ollama pull" in run.call_args.kwargs["input"]

@@ -1,5 +1,6 @@
 """Account-empty acceptance never deletes unrelated resources or retries creation."""
 
+import json
 from decimal import Decimal
 from unittest.mock import Mock, call, patch
 
@@ -418,4 +419,24 @@ def test_trial_unexpected_wait_failure_still_destroys_instance(service):
             trial_zero(svc, plan.plan_id)
     assert caught.value.report["error_type"] == "ValueError"
     assert caught.value.report["cleanup"]["zero_confirmed"] is True
+    svc.client.destroy.assert_called_once_with(88)
+
+
+def test_cleanup_can_destroy_owned_host_when_local_api_is_not_listening(
+    service, tmp_path, monkeypatch
+):
+    from venom_core.services import vast_chat_cli, vast_chat_connection
+
+    svc, plan, _ = service
+    svc.create(plan.plan_id)
+    monkeypatch.setattr(vast_chat_connection, "ROOT", tmp_path)
+    (tmp_path / "chat-target.json").write_text(
+        json.dumps({"target": {"plan_id": plan.plan_id}})
+    )
+    monkeypatch.setattr(
+        vast_chat_cli, "admin", Mock(side_effect=VastError("vast.chat_api_unreachable"))
+    )
+    svc.client.destroy.side_effect = lambda _: removed(svc)
+    result = cleanup_zero(svc, plan.plan_id, before_destroy=vast_chat_cli.detach_plan)
+    assert result["zero_confirmed"]
     svc.client.destroy.assert_called_once_with(88)

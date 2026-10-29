@@ -1,5 +1,6 @@
 "use client";
 
+import { OpenRouterModelsSection } from "./openrouter-models-section";
 import { ModelResourcesControl } from "./model-resources-control";
 import React, { useState } from "react";
 import Link from "next/link";
@@ -22,7 +23,7 @@ import {
 export const ModelsViewer = () => {
   const logic = useModelsViewerLogic();
   const { t } = logic;
-  const [activeTab, setActiveTab] = useState<"news" | "models" | "remote">("news");
+  const [activeTab, setActiveTab] = useState<"news" | "models" | "remote" | "openrouter">("news");
 
   return (
     <div className="space-y-6 pb-10">
@@ -74,6 +75,9 @@ export const ModelsViewer = () => {
           <Cloud className="h-4 w-4" />
           {t("models.tabs.remoteModels")}
         </Button>
+        <Button onClick={() => setActiveTab("openrouter")} variant="ghost" size="sm" className={cn(getThemeTabClass(activeTab === "openrouter"))}>
+          <Cloud className="h-4 w-4" />OpenRouter
+        </Button>
       </div>
 
       {/* Content */}
@@ -100,6 +104,7 @@ export const ModelsViewer = () => {
           </>
         )}
 
+        {activeTab === "openrouter" && <OpenRouterModelsSection t={t} onChanged={async () => { await Promise.all([logic.llmServers.refresh(), logic.fetchRemoteProviders()]); }} />}
         {activeTab === "remote" && (
           <RemoteModelsSection {...logic} />
         )}

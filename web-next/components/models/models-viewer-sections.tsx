@@ -626,7 +626,6 @@ export function RemoteModelsSection(props: Readonly<ModelsViewerLogic>) {
                         options={[
                             { value: "openai", label: "OpenAI" },
                             { value: "google", label: "Google" },
-                            { value: "openrouter", label: "OpenRouter" },
                             { value: "vast_ollama", label: "VAST · Ollama" },
                         ]}
                         onChange={(val) => setSelectedProvider(val || null)}

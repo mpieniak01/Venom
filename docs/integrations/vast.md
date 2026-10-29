@@ -558,3 +558,15 @@ establish browser, Normal-mode, or general model-quality acceptance.
 Preflight rejection before generation releases admission so the target can
 be changed. Errors or cancellation after generation starts retain uncertainty;
 never clear it automatically without evidence that the work has stopped.
+
+
+Non-refresh status reads use a short cache lock and do not wait for network
+operations or SSH shutdown. A transient probe failure makes the target
+unavailable while retaining the tunnel until three consecutive failures;
+a successful probe resets the counter. SSH exit, identity mismatch and a
+stopped instance invalidate the connection immediately.
+
+Provision may repair a previous startup failure while still requiring valid
+capacity and versions. Owned-host cleanup may continue after a refused
+connection to the local API; API error responses or timeouts still block an
+unconfirmed detach.

@@ -125,3 +125,15 @@ Nie potwierdza to odbioru UI, Normal ani ogólnej jakości modelu.
 Odmowa preflight przed rozpoczęciem generacji zwalnia admission, umożliwiając
 zmianę celu. Błąd lub anulowanie po rozpoczęciu generacji zachowuje stan
 niepewnego wykonania; nie czyścić go automatycznie bez dowodu zatrzymania.
+
+
+Status bez odświeżania korzysta z krótkiej blokady pamięci podręcznej i nie
+czeka na sieć ani zamykanie SSH. Po błędzie przejściowym sondy cel jest
+niedostępny, ale tunel pozostaje do trzeciej kolejnej porażki; udana sonda
+zeruje licznik. Zakończony SSH, zmiana tożsamości lub zatrzymana instancja
+unieważniają połączenie od razu.
+
+Ponowny provision może naprawić wcześniejszy błąd startup, nadal wymagając
+prawidłowych zasobów i wersji. Cleanup własnego hosta może kontynuować po
+odmowie połączenia z lokalnym API; odpowiedź błędu API lub timeout nadal
+blokują niepotwierdzone odłączenie.

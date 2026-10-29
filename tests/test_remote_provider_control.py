@@ -231,3 +231,36 @@ async def test_malformed_success_is_not_authenticated(monkeypatch):
         ),
     )
     assert (await control.check("openrouter"))["available"] is False
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("on", [False, True])
+async def test_runtime_server_selector_uses_persisted_enable_flag(monkeypatch, on):
+    from venom_core.api.routes import system_llm
+
+    monkeypatch.setattr(ort.SETTINGS, "OPENROUTER_ENABLED", False)
+    monkeypatch.setattr(ort, "selection", lambda: None)
+    monkeypatch.setattr(ort, "status", lambda: {"available": True})
+    control.set_enabled("openrouter", on)
+    monkeypatch.setattr(
+        system_llm.system_deps,
+        "get_llm_controller",
+        lambda: SimpleNamespace(list_servers=lambda: []),
+    )
+    monkeypatch.setattr(system_llm.system_deps, "get_service_monitor", lambda: None)
+    monkeypatch.setattr(system_llm, "_allowed_local_servers", lambda: set())
+    monkeypatch.setattr(system_llm, "_installed_local_servers", lambda: set())
+    monkeypatch.setattr(
+        system_llm, "_merge_monitor_status_into_servers", lambda *args: None
+    )
+    monkeypatch.setattr(
+        system_llm, "get_active_llm_runtime", lambda: SimpleNamespace(provider="ollama")
+    )
+    monkeypatch.setattr(system_llm, "_probe_servers", AsyncMock())
+    monkeypatch.setattr(
+        vrt,
+        "target_payload",
+        AsyncMock(return_value={"status": "offline", "available": False}),
+    )
+    servers = (await system_llm.get_llm_servers())["servers"]
+    assert any(row["name"] == "openrouter" for row in servers) is on

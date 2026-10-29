@@ -195,10 +195,14 @@ def config_hash(model: str) -> str:
     return hashlib.sha256(json.dumps(value, sort_keys=True).encode()).hexdigest()[:32]
 
 
-def require_ready() -> tuple[str, list[dict[str, Any]]]:
+def is_enabled() -> bool:
     from venom_core.services.remote_provider_control import enabled
 
-    if not enabled(SERVER, SETTINGS.OPENROUTER_ENABLED):
+    return enabled(SERVER, SETTINGS.OPENROUTER_ENABLED)
+
+
+def require_ready() -> tuple[str, list[dict[str, Any]]]:
+    if not is_enabled():
         raise HTTPException(503, "openrouter_disabled")
     if not cloud_allowed():
         raise HTTPException(403, "openrouter_cloud_policy_denied")
@@ -265,8 +269,6 @@ def select_model(model: str | None) -> dict[str, Any]:
 
 def status() -> dict[str, Any]:
     """Metadata-only status does not claim authentication from key presence."""
-    from venom_core.services.remote_provider_control import enabled
-
     reason = None
     available = False
     rows: list[dict[str, Any]] = []
@@ -281,7 +283,7 @@ def status() -> dict[str, Any]:
         reason = str(exc.detail)
     active = runtime_override()
     return {
-        "enabled": enabled(SERVER, SETTINGS.OPENROUTER_ENABLED),
+        "enabled": is_enabled(),
         "configured": bool(credential()),
         "library_available": library_available,
         "available": available,

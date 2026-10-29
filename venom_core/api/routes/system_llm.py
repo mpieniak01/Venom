@@ -1967,7 +1967,7 @@ async def _resolve_runtime_options_payload() -> dict[str, Any]:
             if not item["active"]:
                 for candidate in item.get("models", []):
                     candidate["active"] = False
-    if SETTINGS.OPENROUTER_ENABLED or openrouter_runtime.selection() is not None:
+    if openrouter_runtime.is_enabled() or openrouter_runtime.selection() is not None:
         runtime_targets.append(openrouter_runtime.target_payload())
         if openrouter_runtime.selection() is not None:
             for item in runtime_targets:
@@ -2197,7 +2197,7 @@ async def get_llm_servers():
         }
     )
 
-    if SETTINGS.OPENROUTER_ENABLED or openrouter_runtime.selection() is not None:
+    if openrouter_runtime.is_enabled() or openrouter_runtime.selection() is not None:
         state = openrouter_runtime.status()
         servers.append(
             {

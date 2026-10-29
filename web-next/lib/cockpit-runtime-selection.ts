@@ -1,4 +1,4 @@
-import type { LlmRuntimeTargetOption } from "./types";
+import type { LlmRuntimeSourceType, LlmRuntimeTargetOption } from "./types";
 
 export function resolveCockpitRuntimeModelSelection(
   currentSelection: string,
@@ -9,6 +9,22 @@ export function resolveCockpitRuntimeModelSelection(
     return "";
   }
   return runtimeModels.includes(normalizedSelection) ? normalizedSelection : "";
+}
+
+export function resolveCockpitEmptyRuntimeModelUpdate(
+  runtimeId: string,
+  activeModel: string,
+  currentSelection: string,
+): string | null {
+  if (runtimeId === "vast_ollama") {
+    return currentSelection.trim() ? "" : null;
+  }
+  const normalizedSelection = currentSelection.trim();
+  const fallbackModel = (activeModel || normalizedSelection).trim();
+  if (!fallbackModel) {
+    return currentSelection ? "" : null;
+  }
+  return fallbackModel !== normalizedSelection ? fallbackModel : null;
 }
 
 export function normalizeRuntimeId(value: string | null | undefined): string {
@@ -32,7 +48,7 @@ type CatalogRuntimeModel = {
 type CatalogRuntime = {
   runtime_id: string;
   active?: boolean;
-  source_type?: "local-runtime" | "cloud-api" | "remote";
+  source_type?: LlmRuntimeSourceType;
   models?: ReadonlyArray<CatalogRuntimeModel>;
 };
 
@@ -52,7 +68,7 @@ export type ActiveRuntimeInfo = {
   active_model?: string | null;
   config_hash?: string | null;
   runtime_id?: string | null;
-  source_type?: "local-runtime" | "cloud-api" | "remote";
+  source_type?: LlmRuntimeSourceType;
   requested_model_alias?: string | null;
   resolved_model_id?: string | null;
   resolution_reason?: "exact" | "fallback" | "resource_guard" | "not_found" | null;
@@ -127,6 +143,25 @@ function resolveCatalogActiveModel(
   return fallbackRuntimeId === activeRuntimeId ? fallback?.active_model || null : null;
 }
 
+function resolveCatalogRuntimeIdentity(
+  activeRuntimeId: string,
+  catalog: UnifiedModelCatalogLike,
+  fallback: ActiveRuntimeInfo,
+  fallbackRuntimeId: string,
+): string {
+  if (activeRuntimeId !== "vast_ollama") {
+    return activeRuntimeId;
+  }
+  const declaredIdentity = catalog?.active?.runtime_id;
+  if (declaredIdentity?.startsWith("ollama@vast:")) {
+    return declaredIdentity;
+  }
+  if (fallbackRuntimeId === activeRuntimeId) {
+    return fallback?.runtime_id ?? activeRuntimeId;
+  }
+  return activeRuntimeId;
+}
+
 export function resolveCockpitActiveRuntimeInfo(
   catalog: UnifiedModelCatalogLike,
   fallback: ActiveRuntimeInfo,
@@ -160,11 +195,9 @@ export function resolveCockpitActiveRuntimeInfo(
   return {
     ...fallback,
     active_server: activeRuntimeId,
-    runtime_id: activeRuntimeId === "vast_ollama"
-      ? catalog?.active?.runtime_id?.startsWith("ollama@vast:")
-        ? catalog.active.runtime_id
-        : fallbackRuntimeId === activeRuntimeId ? fallback?.runtime_id ?? activeRuntimeId : activeRuntimeId
-      : activeRuntimeId,
+    runtime_id: resolveCatalogRuntimeIdentity(
+      activeRuntimeId, catalog, fallback, fallbackRuntimeId,
+    ),
     active_model: resolvedActiveModel,
     ...(activeRuntime?.source_type ?? fallback?.source_type
       ? { source_type: activeRuntime?.source_type ?? fallback?.source_type }

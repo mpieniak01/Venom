@@ -59,6 +59,7 @@ import { useCockpitMetricsDisplay } from "./use-cockpit-metrics-display";
 import {
     normalizeRuntimeId,
     resolveCockpitRuntimeModelSelection,
+    resolveCockpitEmptyRuntimeModelUpdate,
 } from "@/lib/cockpit-runtime-selection";
 import { filterRuntimeBaseModels } from "@/lib/runtime-model-filters";
 
@@ -350,19 +351,13 @@ export function useCockpitLogic({
             .map((model) => model.name);
         const currentSelection = (interactive.state.selectedLlmModel || "").trim();
         if (runtimeModels.length === 0) {
-            if (effectiveServer === "vast_ollama") {
-                if (currentSelection) interactive.setters.setSelectedLlmModel("");
-                return;
-            }
-            const fallbackModel = (activeModelFromRuntime || currentSelection).trim();
-            if (!fallbackModel) {
-                if (interactive.state.selectedLlmModel) {
-                    interactive.setters.setSelectedLlmModel("");
-                }
-                return;
-            }
-            if (fallbackModel !== currentSelection) {
-                interactive.setters.setSelectedLlmModel(fallbackModel);
+            const modelUpdate = resolveCockpitEmptyRuntimeModelUpdate(
+                effectiveServer,
+                activeModelFromRuntime,
+                interactive.state.selectedLlmModel || "",
+            );
+            if (modelUpdate !== null) {
+                interactive.setters.setSelectedLlmModel(modelUpdate);
             }
             return;
         }

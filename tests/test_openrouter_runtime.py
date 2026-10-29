@@ -431,19 +431,25 @@ def test_release_gate_rejects_different_artifact_and_peer(tmp_path):
         ],
     }
     verify_artifact(wheel, receipt, peer)
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="unexpected_package"):
         verify_artifact(wheel, {**receipt, "version": "9"}, peer)
     input_under_test = dict(peer, receipt={**receipt, "source_commit": "bad"})
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="source_commit_invalid"):
         verify_artifact(wheel, {**receipt, "source_commit": "bad"}, input_under_test)
     input_under_test = dict(peer, groups=[])
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="peer_receipt_missing_or_mismatched"):
         verify_artifact(wheel, receipt, input_under_test)
-    input_under_test = dict(peer, groups=[{"returncode": 1}, {"returncode": 0}])
-    with pytest.raises(ValueError):
+    input_under_test = dict(
+        peer,
+        groups=[
+            {"group": "library", "returncode": 1},
+            {"group": "orchestration", "returncode": 0},
+        ],
+    )
+    with pytest.raises(ValueError, match="peer_checks_failed"):
         verify_artifact(wheel, receipt, input_under_test)
     wheel.write_bytes(b"changed")
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="wheel_identity_mismatch"):
         verify_artifact(wheel, receipt, peer)
 
 

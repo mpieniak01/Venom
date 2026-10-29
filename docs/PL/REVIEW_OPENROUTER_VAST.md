@@ -114,3 +114,12 @@ poprawki. Uwzględniono wszystkie 5 uwag i dodatkowy test ścieżki `generate()`
 Wyniki końcowej lokalnej bramki i ponownej analizy GitHub/Sonar należy odnosić
 do rewizji zawierającej tę poprawkę, nie do pierwotnego raportu powyżej.
 Rzeczywiste Test Zero i najem VAST pozostają poza zakresem tej walidacji.
+
+
+Ponowny Sonar dla `a5101241` potwierdził bramkę PASS, A/A/A, 92,4% pokrycia,
+0% duplikacji i brak błędów/podatności. Pozostałe 2 uwagi utrzymaniowe usunięto
+przez stały kod błędu SSH i sekwencyjne opróżnianie kolejki bez `await` w pętli.
+Dodatkowa recenzja CodeRabbit wskazała test kwalifikacji Windows, który odrzucał
+nieprawidłowy zakres zamiast nieudanego wykonania. Poprawione nazwy grup i
+asercja `peer_checks_failed` sprawdzają teraz właściwą gałąź walidatora;
+pozostałe przypadki także weryfikują konkretne powody odrzucenia.

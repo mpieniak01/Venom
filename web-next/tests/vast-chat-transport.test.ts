@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { afterEach, describe, it } from "node:test";
+import { afterEach, beforeEach, describe, it } from "node:test";
 import { cancelSimpleChatStream, sendSimpleChatStream } from "../hooks/use-api";
 import { appendVastChatTurn, vastChatHistoryKey } from "../lib/vast-chat-history";
 import { handleSimpleTaskSend } from "../components/cockpit/chat-send-helpers";
@@ -71,4 +71,46 @@ describe("Vast Direct transport", () => {
     assert.equal(completed, false);
     assert.equal(status, "FAILED");
   });
+});
+
+describe("Direct chat identity compatibility", () => {
+  const previousWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
+  beforeEach(() => Object.defineProperty(globalThis, "window", {
+    value: {setTimeout: () => 0}, configurable: true,
+  }));
+  afterEach(() => {
+    if (previousWindow) Object.defineProperty(globalThis, "window", previousWindow);
+    else Reflect.deleteProperty(globalThis, "window");
+  });
+  for (const runtime of ["ollama", "vllm", "openai", "ollama@vast:p:i:g"]) {
+    it("only attaches the full identity guard to remote Vast: " + runtime, async () => {
+      let payload: Parameters<typeof sendSimpleChatStream>[0] | undefined;
+      let status = "";
+      await handleSimpleTaskSend({
+        clientId: "id", trimmed: "question", resolvedSession: "session",
+        generationParams: null, selectedLlmModel: "selected",
+        activeServerInfo: {runtime_id: runtime, config_hash: "current-hash"},
+        sendSimpleChatStream: async (body) => {
+          payload = body;
+          return new Response('event: content\ndata: {"text":"answer"}\n\nevent: done\ndata: {}\n\n');
+        },
+        linkOptimisticRequest: () => {}, setLocalSessionHistory: () => {},
+        updateSimpleStream: (_id, update) => {status = update.status ?? status;},
+        recordUiTiming: () => {}, uiTimingsRef: {current: new Map()},
+        setSimpleRequestDetails: () => {}, ingestMemoryEntry: async () => {},
+        setLastResponseDurationMs: () => {}, setResponseDurations: () => {},
+        dropOptimisticRequest: () => {}, clearSimpleStream: () => {},
+        setMessage: () => {}, setSending: () => {},
+      });
+      assert.equal(status, "COMPLETED");
+      assert.ok(payload);
+      if (runtime.startsWith("ollama@vast:")) {
+        assert.equal(payload.expectedRuntimeId, runtime);
+        assert.equal(payload.expectedConfigHash, "current-hash");
+      } else {
+        assert.equal(payload.expectedRuntimeId, undefined);
+        assert.equal(payload.expectedConfigHash, undefined);
+      }
+    });
+  }
 });

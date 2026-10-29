@@ -332,8 +332,10 @@ export async function handleSimpleTaskSend(params: {
         const response = await sendSimpleChatStream(
             {
                 ...buildSimpleStreamRequestPayload(trimmed, selectedLlmModel, generationParams, resolvedSession),
-                expectedRuntimeId: activeServerInfo?.runtime_id,
-                expectedConfigHash: activeServerInfo?.config_hash,
+                ...(activeServerInfo?.runtime_id?.startsWith("ollama@vast:") ? {
+                    expectedRuntimeId: activeServerInfo.runtime_id,
+                    expectedConfigHash: activeServerInfo.config_hash,
+                } : {}),
                 ...(params.history ? { history: params.history } : {}),
             },
         );

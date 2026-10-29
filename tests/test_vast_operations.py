@@ -696,3 +696,22 @@ def test_failed_startup_is_repairable_only_with_valid_capacity(service):
             == "completed"
         )
     assert "ollama pull" in run.call_args.kwargs["input"]
+
+
+@pytest.mark.parametrize(
+    "banner,expected",
+    [
+        ("v0.40.11-rc1", "0.40.11"),
+        ("candidate 12..34 then 0.40.11", "0.40.11"),
+        ("0.40.11.9", "0.40.11"),
+        ("first 0.40 then 1.0.0", "0.40"),
+        ("١.٤٠.١١", "١.٤٠.١١"),
+        ("123...456", None),
+    ],
+)
+def test_engine_banner_preserves_first_contiguous_version(banner, expected):
+    from venom_core.services.vast_environments.operations import (
+        _engine_version_from_banner,
+    )
+
+    assert _engine_version_from_banner(banner) == expected

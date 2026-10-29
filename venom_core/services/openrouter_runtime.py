@@ -139,6 +139,11 @@ def _catalog_row(row, as_of, core):
 
 def configured_catalog() -> tuple[str, list[dict[str, Any]]]:
     """Validate the operator-approved snapshot; never discover or generate implicitly."""
+    from venom_core.services.openrouter_model_catalog import runtime_catalog
+
+    registered = runtime_catalog()
+    if registered is not None:
+        return registered
     core = library()
     try:
         raw = json.loads(Path(SETTINGS.OPENROUTER_MODELS_FILE).read_text())
@@ -148,7 +153,7 @@ def configured_catalog() -> tuple[str, list[dict[str, Any]]]:
         if moment.tzinfo is None or not 0 <= age <= 86400:
             raise ValueError("stale")
         rows = raw["models"]
-        if not isinstance(rows, list) or not 1 <= len(rows) <= 3:
+        if not isinstance(rows, list) or not 0 <= len(rows) <= 100:
             raise ValueError("shortlist")
         result = []
         for row in rows:
@@ -182,12 +187,14 @@ def limits() -> dict[str, Any]:
 
 
 def config_hash(model: str) -> str:
-    as_of, rows = configured_catalog()
+    _, rows = configured_catalog()
+    selected = next((row for row in rows if row["id"] == model), None)
+    if selected is None:
+        raise HTTPException(409, "openrouter_model_unavailable")
     policy = {k: str(v) for k, v in limits().items()}
     value = {
         "model": model,
-        "models": rows,
-        "pricing_as_of": as_of,
+        "model_config": selected,
         "limits": policy,
         "library": SETTINGS.OPENROUTER_LIBRARY_VERSION,
         "endpoint": ENDPOINT,

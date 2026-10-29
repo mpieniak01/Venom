@@ -21,6 +21,11 @@ from venom_core.services import openrouter_runtime as rt
 
 @pytest.fixture
 def configured(tmp_path, monkeypatch):
+    from venom_core.services import remote_provider_control
+
+    monkeypatch.setattr(
+        remote_provider_control, "_STATE", tmp_path / "provider-control.json"
+    )
     prices = SimpleNamespace(
         input_per_million=Decimal("0.3"),
         output_per_million=Decimal("1.5"),

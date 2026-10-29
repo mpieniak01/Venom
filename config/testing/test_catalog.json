@@ -4692,6 +4692,20 @@
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
+      "path": "tests/test_openrouter_model_catalog.py",
+      "domain": "providers",
+      "test_type": "service_contract",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Metadata discovery, multi-model connections and per-model quote identity."
+    },
+    {
       "path": "tests/test_openrouter_runtime.py",
       "domain": "misc",
       "test_type": "service_contract",

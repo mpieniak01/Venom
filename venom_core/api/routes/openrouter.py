@@ -1,6 +1,9 @@
 """Metadata-only OpenRouter administration and admitted selection."""
 
-from fastapi import APIRouter, Depends, HTTPException
+from typing import Annotated, Literal
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, Field
 
 from venom_core.api.routes.system_config import require_localhost_request
 from venom_core.api.schemas.llm_simple import SimpleChatRequest
@@ -63,3 +66,41 @@ async def activate(request, switch_source):
         return result
     finally:
         finish_runtime_switch(switch_id=gate.switch_id)
+
+
+class ModelConnectionRequest(BaseModel):
+    model_id: str = Field(min_length=1, max_length=300)
+
+
+@router.get("/models/search")
+async def search_models(
+    q: Annotated[str, Query(max_length=120)] = "",
+    purpose: Literal["chat", "tasks", "programming"] = "chat",
+    category: str = "",
+    offset: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=1, le=100)] = 25,
+):
+    from venom_core.services import openrouter_model_catalog as catalog
+
+    return await catalog.search(q, purpose, category, offset, limit)
+
+
+@router.get("/models/connected")
+async def connected_models():
+    from venom_core.services import openrouter_model_catalog as catalog
+
+    return catalog.connected()
+
+
+@router.post("/models/connect")
+async def connect_model(request: ModelConnectionRequest):
+    from venom_core.services import openrouter_model_catalog as catalog
+
+    return await catalog.connect(request.model_id)
+
+
+@router.post("/models/disconnect")
+async def disconnect_model(request: ModelConnectionRequest):
+    from venom_core.services import openrouter_model_catalog as catalog
+
+    return catalog.disconnect(request.model_id)

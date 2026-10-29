@@ -17,7 +17,14 @@ Run this in the approved isolated test environment. The Windows receipt must inc
 
 ## Configuration and activation
 
-Before a separately authorized live pilot, configure `OPENROUTER_MODELS_FILE` with an operator-approved shortlist (one to three exact model IDs). Its JSON object contains `pricing_as_of` (timezone-aware ISO time, at most 24 hours old) and `models`. Each row requires `id`, `provider_endpoint`, `context_length`, `max_output_tokens`, and `pricing` with explicit `prompt`, `completion`, `request` rates in USD/token or USD/request as returned by the provider. Missing prices are unavailable, not free. Auto/latest aliases are refused. Catalog refresh is explicit and external to normal chat; opening the page does not query OpenRouter.
+Models → OpenRouter now maintains the connected-model registry. Search and explicit
+connect fetch metadata only. The legacy `OPENROUTER_MODELS_FILE` snapshot below is
+a bootstrap source until a registry exists; disconnecting the last model keeps an
+empty registry and does not restore legacy entries. Prices expire per model after
+24 hours. See [operator flow](REMOTE_PROVIDER_OPERATIONS.md).
+
+
+Before a separately authorized live pilot, configure `OPENROUTER_MODELS_FILE` with an operator-approved shortlist (up to 100 exact model IDs). Its JSON object contains `pricing_as_of` (timezone-aware ISO time, at most 24 hours old) and `models`. Each row requires `id`, `provider_endpoint`, `context_length`, `max_output_tokens`, and `pricing` with explicit `prompt`, `completion`, `request` rates in USD/token or USD/request as returned by the provider. Missing prices are unavailable, not free. Auto/latest aliases are refused. Catalog refresh is explicit and external to normal chat; opening the page does not query OpenRouter.
 
 The following settings default to disabled/zero: `OPENROUTER_ENABLED`, `OPENROUTER_MESSAGE_LIMIT_USD`, `OPENROUTER_CONVERSATION_LIMIT_USD`, `OPENROUTER_DAILY_LIMIT_USD`. Supply approved limits before a pilot. `OPENROUTER_LIBRARY_VERSION` pins the installed distribution. Cloud policy requires `AI_MODE=HYBRID` or `CLOUD` and `SENSITIVE_DATA_LOCAL_ONLY=false`; selecting the runtime does not weaken those settings.
 
@@ -37,4 +44,4 @@ Private `.venom_runtime/openrouter/requests/` receipts retain requested/confirme
 
 `scripts/cloud/openrouter/test_zero.py` defaults to read-only authentication/catalog checks. Explicit `--live --max-cost-usd 0` permits one synthetic short text completion only from a zero-priced fixed text-model endpoint. It validates the live catalog and endpoints, pins one provider, disallows fallback/retry, and requires a completed marker-bearing answer with reported model identity. Reports distinguish preflight from confirmed response, and confirmed zero spend from unknown accounting. Credentials may be provided over stdin and are never logged or persisted by this probe. Use a fresh ignored output path for each attempt.
 
-Explicit `vendor/model:free` entries are catalog variants, not the dynamic `openrouter/free` router. Shared core 0.1.1 accepts fixed free variants; the router remains forbidden. Missing optional request pricing is normalized to zero only for API-listed `:free` entries with both explicit zero token rates, based on the provider's documented free-variant contract. Unknown token prices remain unavailable. This test certifies the provider connection/shared transport; it does not activate the running cockpit or certify conversation quality.
+Explicit `vendor/model:free` entries are catalog variants, not the dynamic `openrouter/free` router. Shared core 0.2.0 accepts fixed free variants; the router remains forbidden. Missing optional request pricing is normalized to zero only for API-listed `:free` entries with both explicit zero token rates, based on the provider's documented free-variant contract. Unknown token prices remain unavailable. This test certifies the provider connection/shared transport; it does not activate the running cockpit or certify conversation quality.

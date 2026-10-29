@@ -323,7 +323,11 @@ class VastManagement:
             raise VastError("vast.management_model_not_ready")
 
     def _run(self, plan_id: str) -> None:
-        with Journal(self.journal.root / "management-locks").lock(plan_id):
+        # A concurrent short refresh must not discard the only scheduled worker.
+        # HTTP handlers remain non-blocking; only the background worker waits.
+        with Journal(self.journal.root / "management-locks").lock(
+            plan_id, blocking=True
+        ):
             self._run_owned(plan_id)
 
     def _run_owned(self, plan_id: str) -> None:

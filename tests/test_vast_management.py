@@ -423,3 +423,40 @@ def test_bad_historical_record_does_not_block_valid_profile_or_offers(f):
     assert f.m.search(30)["offers"]
     assert old.read_bytes() == before
     f.svc.client.create.assert_not_called()
+
+
+def test_worker_waits_for_short_operation_lock_instead_of_losing_order(f):
+    from concurrent.futures import ThreadPoolExecutor, TimeoutError
+    from threading import Event
+
+    from venom_core.services.vast_environments.store import Journal
+
+    f.m.order(f.p.plan_id, False)
+    entered = Event()
+
+    def invoke_worker():
+        entered.set()
+        run(f)
+
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        with Journal(f.m.journal.root / "management-locks").lock(f.p.plan_id):
+            future = pool.submit(invoke_worker)
+            assert entered.wait(2)
+            with pytest.raises(TimeoutError):
+                future.result(timeout=0.05)
+            f.svc.client.create.assert_not_called()
+        future.result(timeout=2)
+    assert f.m.row(f.p.plan_id)["phase"] == "ready"
+    f.svc.client.create.assert_called_once()
+
+
+@pytest.mark.parametrize("bad_state", [True, 7, {"state": "running"}, ["running"]])
+def test_invalid_provider_status_does_not_corrupt_durable_record(f, bad_state):
+    f.svc.create(f.p.plan_id)
+    f.svc.client.instance.return_value["actual_status"] = bad_state
+    with pytest.raises(VastError, match="vast.instance_status_invalid"):
+        f.svc.reconcile(f.p.plan_id)
+    record = f.svc.journal.record(f.p.plan_id)
+    assert record.state == "unknown"
+    assert all(isinstance(item["state"], str) for item in record.events)
+    assert record.instance_id == 88

@@ -48,6 +48,10 @@ If brief and code diverge, code remains source of truth.
 - If the same gate fails twice without a code or environment change, stop and report the blocker instead of looping.
 - Keep documentation updates concise and actionable. Capture the rule that will prevent the next mistake, not the whole debugging story.
 
+## Manual provider test zero (VAST / OpenRouter)
+
+Real provider test zero is operator-request-only for each run. Never run it as part of automated tests, PR/CI/Sonar gates, startup, deployment or post-change checks. Credentials, a configured budget or completion of work do not imply authorization. Automated code tests must use fake transports/provider doubles; they do not count as a live test zero. See [provider test-zero policy](PROVIDER_TEST_ZERO_POLICY.md) and [Polish policy](PL/PROVIDER_TEST_ZERO_POLICY.md).
+
 ## Default Test Command (Use First)
 
 When test scope is unclear, start from this baseline:

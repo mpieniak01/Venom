@@ -30,3 +30,7 @@ Disconnecting an active model retains its identity but blocks its next request; 
 ## Local acceptance
 
 Tests use mocked transports and an isolated network namespace. No live API generation or infrastructure operation is required. Feature source remains on the existing branch until a separate deployment/review decision.
+
+## Manual provider test zero
+
+VAST and OpenRouter test zero are manual acceptance operations only on an explicit operator request for that run. They are excluded from automatic test policies, startup and post-change checks. Metadata checks and model connections never trigger generation. Automated tests of their code use only doubles. See [policy](PROVIDER_TEST_ZERO_POLICY.md) ([PL](PL/PROVIDER_TEST_ZERO_POLICY.md)).

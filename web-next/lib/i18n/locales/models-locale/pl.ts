@@ -2,7 +2,28 @@ export const models = {
   vast: {
     "historyBillingHint": "Sprawdź instancję po jej ID w konsoli VAST i zwolnij ją tam, jeśli nie jest potrzebna. Przy braku ID sprawdź listę instancji na koncie.",
     "historyBilling": "Rozliczenie",
-    "billingStates": {"reported": "Zaraportowane", "unverified": "Niezweryfikowane", "unavailable": "Niedostępne", "not_applicable": "Nie dotyczy"},
+    "accountBilling": {
+    "title": "Konto i rozliczenia VAST",
+    "credit": "Dostępny kredyt",
+    "spent": "Wydatki w okresie",
+    "partialSpent": "Raportowane wydatki (niepełne)",
+    "managed": "Instancje w historii Venoma",
+    "other": "Pozostałe / nieprzypisane",
+    "period": "Okres",
+    "updated": "Sprawdzono konto",
+    "progress": "Pobrane dni",
+    "working": "Pobieranie rozliczeń…",
+    "refresh": "Odśwież rozliczenia",
+    "reconcile": "Uzgodnij historię ponownie",
+    "states": {
+        "empty": "Nie pobrano",
+        "ready": "Dane pobrane",
+        "partial": "Dane częściowe",
+        "stale": "Dane nieaktualne",
+        "unavailable": "Niedostępne"
+    }
+},
+    "billingStates": {"partial": "Częściowe", "reported": "Zaraportowane", "unverified": "Niezweryfikowane", "unavailable": "Niedostępne", "not_applicable": "Nie dotyczy"},
     "history": "Historia prób uruchomienia",
     "historyHint": "Zapis wcześniejszych prób CLI. Stan pochodzi z dziennika próby i nie potwierdza aktualnej dostępności instancji.",
     "noHistory": "Brak zapisanych prób.",

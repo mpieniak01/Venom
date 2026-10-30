@@ -5,6 +5,7 @@ import { afterEach, describe, it } from "node:test";
 import { act, cleanup, fireEvent, render, renderHook, screen, waitFor, within } from "@testing-library/react";
 import { VastEnvironmentsSection } from "../components/models/vast-environments-section";
 import { formatVastUsd } from "../lib/vast-price";
+import { VastAccountBillingPanel } from "../components/models/vast-account-billing";
 import { VastEnvironmentRow } from "../components/models/vast-environment-row";
 import { useVastEnvironments, VAST_POLL_INTERVAL, type VastEnvironment } from "../components/models/hooks/use-vast-environments";
 import { en } from "../lib/i18n/locales/en";
@@ -304,4 +305,52 @@ it("shows recorded VAST charges including zero and uses statuses for missing bil
   assert.ok(within(history).getByText("Not applicable"));
   assert.ok(within(history).getByText("Unverified"));
   assert.equal(within(history).queryByText(/may still incur charges/), null);
+});
+
+
+describe("VAST account billing", () => {
+  const billing = {
+    configured: true, status: "ready" as const, error: null, account_error: null,
+    credit_usd: "8.9195945862", balance_usd: "0", account_observed_at: "2026-10-30T12:00:00Z",
+    observed_at: "2026-10-30T12:00:00Z", from_utc: "2026-09-30", to_utc: "2026-10-30",
+    total_usd: "1.080", managed_usd: "0.546", other_usd: "0.534",
+    covered_days: 31, expected_days: 31, complete: true,
+  };
+  it("shows credit, period and provider costs with explicit reconciliation", async () => {
+    const operations: boolean[] = [];
+    render(<VastAccountBillingPanel billing={billing} pending={false} enabled sync={async (reconcile = false) => { operations.push(reconcile); }} t={t} />);
+    assert.ok(screen.getByText("8.9196 USD"));
+    assert.ok(screen.getByText("1.0800 USD"));
+    assert.ok(screen.getByText(/2026-09-30/));
+    fireEvent.click(screen.getByRole("button", { name: "Refresh billing" }));
+    fireEvent.click(screen.getByRole("button", { name: "Reconcile history again" }));
+    assert.deepEqual(operations, [false, true]);
+  });
+  it("retains stale values, labels partial amounts and disables external reads when off", () => {
+    render(<VastAccountBillingPanel billing={{ ...billing, status: "stale", complete: false, account_error: "unavailable", covered_days: 10 }} pending={false} enabled={false} sync={async () => { throw Error("disabled"); }} t={t} />);
+    assert.ok(screen.getByText("Stale data"));
+    assert.ok(screen.getByText("Reported spend (incomplete)"));
+    assert.ok(screen.getByText("8.9196 USD"));
+    assert.ok(screen.getByText(/10 \/ 31/));
+    assert.equal((screen.getByRole("button", { name: "Refresh billing" }) as HTMLButtonElement).disabled, true);
+  });
+  it("automatically syncs billing only and refreshes displayed history", async () => {
+    const posts: string[] = [];
+    globalThis.fetch = async (input, init) => {
+      const path = String(input);
+      if (init?.method === "POST") { posts.push(path); return Response.json(billing); }
+      return Response.json({ ...status(), billing, history: [row({ instance_id: 88, billing_status: "reported", billed_usd: "0.403" })] });
+    };
+    render(<VastEnvironmentsSection t={t} />);
+    await waitFor(() => assert.equal(posts.length, 1));
+    await waitFor(() => assert.ok(screen.getByText("0.4030 USD")));
+    assert.deepEqual(posts, [base + "/billing/sync"]);
+    assert.ok(screen.getByText("1.0800 USD"));
+  });
+  it("keeps translation parity for account billing and partial amounts", () => {
+    for (const locale of [pl, en, de]) {
+      assert.deepEqual(Object.keys(locale.models.vast.accountBilling).sort(), Object.keys(en.models.vast.accountBilling).sort());
+      assert.ok(locale.models.vast.billingStates.partial);
+    }
+  });
 });

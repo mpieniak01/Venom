@@ -8,10 +8,10 @@ export function VastBillingStatus({ row, t }: Readonly<{
   const unknown = t("models.vast.unknown");
   const amount = formatVastUsd(row.billed_usd, unknown);
   let status = row.billing_status ?? "unverified";
-  if (status === "reported" && amount === unknown) status = "unverified";
-  const reported = status === "reported";
+  if ((status === "reported" || status === "partial") && amount === unknown) status = "unverified";
+  const reported = status === "reported" || status === "partial";
   return <span className="inline-flex flex-wrap items-center gap-2">
-    <Badge tone={reported || status === "not_applicable" ? "neutral" : "warning"}>{t("models.vast.billingStates." + status)}</Badge>
+    <Badge tone={status === "reported" || status === "not_applicable" ? "neutral" : "warning"}>{t("models.vast.billingStates." + status)}</Badge>
     {reported && <span className="font-mono text-xs">{amount} USD</span>}
   </span>;
 }

@@ -2,7 +2,28 @@ export const models = {
   vast: {
     "historyBillingHint": "Prüfen Sie die Instanz anhand ihrer ID in der VAST-Konsole und geben Sie sie dort frei, wenn sie nicht mehr benötigt wird. Ohne ID prüfen Sie die Instanzliste des Kontos.",
     "historyBilling": "Abrechnung",
-    "billingStates": {"reported": "Gemeldet", "unverified": "Ungeprüft", "unavailable": "Nicht verfügbar", "not_applicable": "Nicht zutreffend"},
+    "accountBilling": {
+    "title": "VAST-Konto und Abrechnung",
+    "credit": "Verfügbares Guthaben",
+    "spent": "Ausgaben im Zeitraum",
+    "partialSpent": "Gemeldete Ausgaben (unvollständig)",
+    "managed": "Instanzen im Venom-Verlauf",
+    "other": "Sonstige / nicht zugeordnet",
+    "period": "Zeitraum",
+    "updated": "Konto geprüft",
+    "progress": "Abgerufene Tage",
+    "working": "Abrechnung wird geladen…",
+    "refresh": "Abrechnung aktualisieren",
+    "reconcile": "Verlauf erneut abgleichen",
+    "states": {
+        "empty": "Nicht abgerufen",
+        "ready": "Abgerufen",
+        "partial": "Teilweise Daten",
+        "stale": "Veraltete Daten",
+        "unavailable": "Nicht verfügbar"
+    }
+},
+    "billingStates": {"partial": "Teilweise", "reported": "Gemeldet", "unverified": "Ungeprüft", "unavailable": "Nicht verfügbar", "not_applicable": "Nicht zutreffend"},
     "history": "Verlauf der Startversuche",
     "historyHint": "Frühere CLI-Versuche. Der protokollierte Status ist historisch und bestätigt keine aktuelle Verfügbarkeit.",
     "noHistory": "Keine gespeicherten Versuche.",

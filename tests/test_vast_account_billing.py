@@ -78,8 +78,8 @@ def test_rollover_fetches_new_day_and_revises_recent_days(billing):
     b.client.charges.return_value = [{"source": "instance-88", "amount": "0.5"}]
     result = b.ledger.sync(b.client)
     assert b.client.charges.call_count == 33
-    assert Decimal(result["instances"]["88"]) == Decimal("12.6")
-    assert result["from_utc"] == "2026-10-01"
+    assert Decimal(result["instances"]["88"]) == Decimal("13.0")
+    assert result["from_utc"] == "2026-09-30"
 
 
 def test_partial_unknown_is_not_a_complete_instance_total(billing):
@@ -91,7 +91,7 @@ def test_partial_unknown_is_not_a_complete_instance_total(billing):
     result = b.ledger.sync(b.client)
     assert result["status"] == "partial"
     assert result["instances"]["88"] is None
-    assert instance_summary(result, 88) == {}
+    assert instance_summary(result, 88)["billed_usd"] is None
     b.current[0] += timedelta(minutes=6)
     b.client.charges.return_value = [{"source": "instance-88", "amount": "0"}]
     result = b.ledger.sync(b.client)

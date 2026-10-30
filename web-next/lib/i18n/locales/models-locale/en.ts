@@ -2,7 +2,28 @@ export const models = {
   vast: {
     "historyBillingHint": "Find the instance by its ID in the VAST console and release it there if no longer needed. If the ID is unknown, check the account's instance list.",
     "historyBilling": "Billing",
-    "billingStates": {"reported": "Reported", "unverified": "Unverified", "unavailable": "Unavailable", "not_applicable": "Not applicable"},
+    "accountBilling": {
+    "title": "VAST account and billing",
+    "credit": "Available credit",
+    "spent": "Spend in period",
+    "partialSpent": "Reported spend (incomplete)",
+    "managed": "Instances in Venom history",
+    "other": "Other / unattributed",
+    "period": "Period",
+    "updated": "Account checked",
+    "progress": "Days retrieved",
+    "working": "Fetching billing…",
+    "refresh": "Refresh billing",
+    "reconcile": "Reconcile history again",
+    "states": {
+        "empty": "Not retrieved",
+        "ready": "Retrieved",
+        "partial": "Partial data",
+        "stale": "Stale data",
+        "unavailable": "Unavailable"
+    }
+},
+    "billingStates": {"partial": "Partial", "reported": "Reported", "unverified": "Unverified", "unavailable": "Unavailable", "not_applicable": "Not applicable"},
     "history": "Launch attempt history",
     "historyHint": "Earlier CLI attempts. The recorded state is historical and does not confirm current instance availability.",
     "noHistory": "No recorded attempts.",

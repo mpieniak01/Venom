@@ -692,3 +692,30 @@ def test_unavailable_billing_ignores_estimates_and_invalid_amounts(f, report):
     result = f.m.row(f.p.plan_id)
     assert result["billing_status"] == "unavailable"
     assert result["billed_usd"] is None
+
+
+def test_api_billing_sync_is_cached_offline_and_links_history(api, f):
+    root = "/api/v1/vast/environments"
+    record = f.svc.journal.record(f.p.plan_id)
+    record.instance_id, record.state, record.submitted_at = 88, "destroyed", now()
+    f.svc.journal.save_record(record)
+    f.svc.client.account.return_value = {"credit": "8.9", "balance": 0}
+    f.svc.client.charges.return_value = [{"source": "instance-88", "amount": "0.01"}]
+    assert api.post(root + "/billing/sync", json={"unknown": True}).status_code == 422
+    response = api.post(root + "/billing/sync", json={})
+    assert response.status_code == 200
+    assert response.json()["credit_usd"] == "8.9"
+    assert "instances" not in response.json()
+    count = f.svc.client.charges.call_count
+    result = api.get(root).json()
+    assert result["environments"][0]["billed_usd"] == "0.31"
+    assert result["billing"]["total_usd"] == "0.31"
+    assert f.svc.client.charges.call_count == count
+    assert api.post(root + "/billing/sync", json={}).status_code == 200
+    assert f.svc.client.charges.call_count == count
+    assert api.post(root + "/billing/sync", json={"reconcile": True}).status_code == 200
+    assert f.svc.client.charges.call_count == count * 2
+    f.m.is_enabled = lambda: False
+    assert api.post(root + "/billing/sync", json={}).status_code == 503
+    assert api.get(root).json()["billing"]["total_usd"] == "0.31"
+    f.svc.client.create.assert_not_called()

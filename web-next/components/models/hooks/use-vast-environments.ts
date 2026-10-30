@@ -5,18 +5,30 @@ export interface VastEnvironment {
   instance_id: number | null; hourly_usd: string | null; total_usd: string | null;
   duration_minutes: number; expires_at: string | null; connected: boolean;
   error: string | null; billing_possible: boolean;
-  billing_status?: "reported" | "unavailable" | "unverified" | "not_applicable";
+  billing_status?: "reported" | "partial" | "unavailable" | "unverified" | "not_applicable";
   billed_usd?: string | null;
+  billing_observed_at?: string | null;
 }
 export interface VastOffer {
   offer_id: number; gpu_name: string; country: string | null; gpu_ram_mb: number | null;
   hourly_usd: string; total_usd: string; status: "eligible" | "ineligible" | "unknown";
   reasons: string[];
 }
+export interface VastAccountBilling {
+  configured: boolean;
+  status: "empty" | "ready" | "partial" | "stale" | "unavailable";
+  error: string | null; account_error: string | null;
+  credit_usd: string | null; balance_usd: string | null;
+  account_observed_at: string | null; observed_at: string | null;
+  from_utc: string; to_utc: string;
+  total_usd: string | null; managed_usd: string | null; other_usd: string | null;
+  covered_days: number; expected_days: number; complete: boolean;
+}
 export interface VastEnvironmentsState {
   configured: boolean; enabled: boolean; model: string | null;
   duration_minutes: number; reason: string | null; environments: VastEnvironment[];
   history?: VastEnvironment[];
+  billing?: VastAccountBilling;
 }
 const base = "/api/v1/vast/environments";
 const activePhases = new Set(["queued", "creating", "waiting", "provisioning", "connecting", "stop_requested", "destroy_requested"]);
@@ -42,6 +54,8 @@ export function useVastEnvironments(onChanged?: () => Promise<unknown>) {
   const [draft, setDraft] = useState<VastEnvironment | null>(null);
   const [loading, setLoading] = useState(true);
   const [pending, setPending] = useState(false);
+  const [billingPending, setBillingPending] = useState(false);
+  const billingBusy = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const mounted = useRef(true);
   const busy = useRef(false);
@@ -75,6 +89,31 @@ export function useVastEnvironments(onChanged?: () => Promise<unknown>) {
       }
     }
   }, []);
+
+  const syncBilling = useCallback(async (reconcile = false) => {
+    if (billingBusy.current) return;
+    billingBusy.current = true;
+    setBillingPending(true);
+    try {
+      await jsonResponse(await fetch(base + "/billing/sync", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reconcile }),
+      }));
+      if (mounted.current) setError(null);
+    } catch (e) {
+      if (mounted.current) setError(e instanceof Error ? e.message : "vast.request_failed");
+    } finally {
+      billingBusy.current = false;
+      if (mounted.current) { setBillingPending(false); await refresh(); }
+    }
+  }, [refresh]);
+  const billingEnabled = Boolean(state?.enabled && state?.billing?.configured);
+  useEffect(() => {
+    if (!billingEnabled) return;
+    void syncBilling();
+    const timer = setInterval(() => { void syncBilling(); }, 300_000);
+    return () => clearInterval(timer);
+  }, [billingEnabled, syncBilling]);
 
   const cancelRead = useCallback(() => { ++readSequence.current; }, []);
   useEffect(() => {
@@ -124,5 +163,5 @@ export function useVastEnvironments(onChanged?: () => Promise<unknown>) {
   );
   const clearDraft = () => setDraft(null);
   const clearOffers = () => setOffers(null);
-  return { state, offers, draft, loading, pending, error, search, prepare, action, refresh, clearDraft, clearOffers };
+  return { state, offers, draft, loading, pending, billingPending, syncBilling, error, search, prepare, action, refresh, clearDraft, clearOffers };
 }

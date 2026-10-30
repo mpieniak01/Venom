@@ -72,6 +72,42 @@ def _sum_rows(rows: list[dict], observed: datetime) -> ChargeDay:
     return result
 
 
+def _instance_totals(days: dict[str, ChargeDay]) -> dict[str, Decimal | None]:
+    instances: dict[str, Decimal | None] = {}
+    for value in days.values():
+        for key, usd in value.instances.items():
+            old = instances.get(key, Decimal(0))
+            instances[key] = None if old is None or usd is None else old + usd
+    return instances
+
+
+def _cache_status(
+    cache: BillingCache, days: dict[str, ChargeDay], expected: int, current: datetime
+) -> tuple[str, bool]:
+    partial = (
+        len(days) != expected
+        or any(v.unknown_amounts for v in days.values())
+        or bool(cache.reconcile_pending)
+    )
+    expired = bool(
+        cache.attempted_at
+        and (current - cache.attempted_at).total_seconds() > REFRESH_SECONDS * 2
+    )
+    if cache.error or expired:
+        return ("stale" if days else "unavailable"), False
+    if not days and not cache.attempted_at:
+        return "empty", False
+    return ("partial" if partial else "ready"), not partial
+
+
+def _text(value: Any) -> str | None:
+    return str(value) if value is not None else None
+
+
+def _observed(value: datetime | None) -> str | None:
+    return value.isoformat() if value else None
+
+
 class AccountBilling:
     def __init__(self, journal: Journal, api_key: Any, clock=now):
         key = (
@@ -101,37 +137,30 @@ class AccountBilling:
                 continue
         return records
 
-    def _start(self, records: list[Any], current: datetime) -> datetime:
+    def _start(
+        self, records: list[Any], current: datetime, cache: BillingCache
+    ) -> datetime:
         dates = [current - timedelta(days=30)]
         dates.extend(r.submitted_at for r in records if r.submitted_at is not None)
+        dates.extend(
+            datetime.fromisoformat(key).replace(tzinfo=timezone.utc)
+            for key in cache.days
+        )
         return _day(min(dates))
 
     def _snapshot(self, cache: BillingCache) -> dict[str, Any]:
         current = self.clock()
         records = self._records()
-        start = self._start(records, current)
+        start = self._start(records, current, cache)
         today = _day(current)
         days = {
             key: value
             for key, value in cache.days.items()
             if start.date().isoformat() <= key <= today.date().isoformat()
         }
-        instances: dict[str, Decimal | None] = {}
-        for value in days.values():
-            for key, usd in value.instances.items():
-                old = instances.get(key, Decimal(0))
-                instances[key] = None if old is None or usd is None else old + usd
+        instances = _instance_totals(days)
         expected = (today - start).days + 1
-        partial = (
-            len(days) != expected
-            or any(v.unknown_amounts for v in days.values())
-            or bool(cache.reconcile_pending)
-        )
-        status = "partial" if partial else "ready"
-        if cache.error:
-            status = "stale" if days else "unavailable"
-        if not days and not cache.attempted_at and not cache.error:
-            status = "empty"
+        status, complete = _cache_status(cache, days, expected, current)
         managed_ids = {str(r.instance_id) for r in records if r.instance_id is not None}
         managed = sum(
             (
@@ -143,17 +172,14 @@ class AccountBilling:
         )
         total = sum((value.total for value in days.values()), Decimal(0))
         return {
+            "configured": self.configured,
             "status": status,
             "error": cache.error,
             "account_error": cache.account_error,
-            "credit_usd": str(cache.credit) if cache.credit is not None else None,
-            "balance_usd": str(cache.balance) if cache.balance is not None else None,
-            "account_observed_at": cache.account_observed_at.isoformat()
-            if cache.account_observed_at
-            else None,
-            "observed_at": cache.attempted_at.isoformat()
-            if cache.attempted_at
-            else None,
+            "credit_usd": _text(cache.credit),
+            "balance_usd": _text(cache.balance),
+            "account_observed_at": _observed(cache.account_observed_at),
+            "observed_at": _observed(cache.attempted_at),
             "from_utc": start.date().isoformat(),
             "to_utc": today.date().isoformat(),
             "total_usd": str(total) if days else None,
@@ -161,11 +187,8 @@ class AccountBilling:
             "other_usd": str(total - managed) if days else None,
             "covered_days": len(days),
             "expected_days": expected,
-            "instances": {
-                key: str(value) if value is not None else None
-                for key, value in instances.items()
-            },
-            "complete": not partial and not cache.error,
+            "instances": {key: _text(value) for key, value in instances.items()},
+            "complete": complete,
         }
 
     def snapshot(self) -> dict[str, Any]:
@@ -190,12 +213,22 @@ class AccountBilling:
             cache = BillingCache()
         current = self.clock()
         if (
-            cache.attempted_at
+            not reconcile
+            and cache.attempted_at
             and (current - cache.attempted_at).total_seconds() < REFRESH_SECONDS
         ):
             return self._snapshot(cache)
         cache.attempted_at = current
         cache.error = None
+        self._account(cache, client, current)
+        self._refresh_days(cache, client, current, reconcile)
+        self.journal.write(
+            self.journal.path(CACHE_ID, ".billing.json"), cache.model_dump(mode="json")
+        )
+        return self._snapshot(cache)
+
+    @staticmethod
+    def _account(cache: BillingCache, client: Any, current: datetime) -> None:
         try:
             data = client.account()
             account = BillingCache(
@@ -205,7 +238,11 @@ class AccountBilling:
             cache.account_observed_at, cache.account_error = current, None
         except ERRORS as exc:
             cache.account_error = _error(exc)
-        start, today = self._start(self._records(), current), _day(current)
+
+    def _candidates(
+        self, cache: BillingCache, current: datetime, reconcile: bool
+    ) -> list[datetime]:
+        start, today = self._start(self._records(), current, cache), _day(current)
         candidates = []
         cursor = today
         while cursor >= start:
@@ -219,6 +256,12 @@ class AccountBilling:
             ):
                 candidates.append(cursor)
             cursor -= timedelta(days=1)
+        return candidates
+
+    def _refresh_days(
+        self, cache: BillingCache, client: Any, current: datetime, reconcile: bool
+    ) -> None:
+        candidates = self._candidates(cache, current, reconcile)
         if reconcile:
             cache.reconcile_pending = [value.date().isoformat() for value in candidates]
         for cursor in candidates[:MAX_DAYS_PER_SYNC]:
@@ -234,18 +277,17 @@ class AccountBilling:
             except ERRORS as exc:
                 cache.error = _error(exc)
                 break
-        self.journal.write(
-            self.journal.path(CACHE_ID, ".billing.json"), cache.model_dump(mode="json")
-        )
-        return self._snapshot(cache)
 
 
 def instance_summary(snapshot: dict, instance_id: int | None) -> dict[str, Any]:
     if instance_id is None:
         return {}
-    value = snapshot["instances"].get(str(instance_id))
-    if value is None:
+    key = str(instance_id)
+    if key not in snapshot["instances"]:
         return {}
+    value = snapshot["instances"][key]
+    if value is None:
+        return {"billed_usd": None, "billing_status": "unverified"}
     status = "reported" if snapshot["complete"] else "partial"
     return {
         "billed_usd": value,

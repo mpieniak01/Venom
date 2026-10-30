@@ -99,3 +99,27 @@ the page. `Reported` displays the saved USD amount, including an explicit zero;
 `Unavailable` means the saved billing query was unavailable, `Unverified` means
 there is no usable provider amount, and `Not applicable` identifies a plan that
 has never been submitted. Quotes and estimates are never displayed as charges.
+
+
+### Persistent VAST account billing
+
+The VAST screen automatically synchronizes account credit and provider charges while
+open (five-minute minimum between ordinary synchronizations). Its GET overview is
+cache-only. Data is private in `.venom_runtime/vast/billing/`, isolated by a hash of
+the configured credential, protected by an inter-process lock and atomic writes.
+No rental, generation or test zero is triggered by billing.
+
+Daily UTC snapshots are replaced, never appended or added twice. Initial backfill
+covers at least 30 days and extends to the oldest retained local submission. Up to
+31 days are fetched per synchronization; longer histories continue on subsequent
+refreshes. The panel labels the exact covered period and incomplete backfill.
+Only today, yesterday, missing days and invalid amounts are fetched routinely;
+older successful snapshots are retained across restarts. “Reconcile history again”
+explicitly schedules an archive refresh, also continued in bounded batches.
+
+Charges are linked by `instance-<ID>` independently of whether the instance still
+exists. Totals use provider parent amounts, excluding child component duplication.
+Account totals include resources outside local history; managed and unattributed
+amounts are shown separately. Missing data is not presented as a zero or as a final
+settlement. Errors preserve last-known values with stale/partial status. VAST does
+not document a finalization marker; retained daily data is not proof of finality.

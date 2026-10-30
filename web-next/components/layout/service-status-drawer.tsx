@@ -18,9 +18,10 @@ import { useTranslation } from "@/lib/i18n";
 type ServiceStatusDrawerProps = Readonly<{
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  returnFocusRef?: React.RefObject<HTMLElement | null>;
 }>;
 
-export function ServiceStatusDrawer({ open, onOpenChange }: ServiceStatusDrawerProps) {
+export function ServiceStatusDrawer({ open, onOpenChange, returnFocusRef }: ServiceStatusDrawerProps) {
   const { data: services } = useServiceStatus(20000, open);
   const serviceEntries = useMemo(() => services ?? [], [services]);
   const servicesOffline = !serviceEntries || serviceEntries.length === 0;
@@ -37,6 +38,7 @@ export function ServiceStatusDrawer({ open, onOpenChange }: ServiceStatusDrawerP
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
+        returnFocusRef={returnFocusRef}
         data-testid="service-status-drawer"
         className="glass-panel flex h-full max-w-xl flex-col gap-4 border-l border-[color:var(--ui-border)] bg-[color:var(--bg-panel)] text-[color:var(--text-primary)]"
       >

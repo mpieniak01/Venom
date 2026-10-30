@@ -10,10 +10,10 @@ import { en } from "../lib/i18n/locales/en";
 
 const originalFetch = globalThis.fetch;
 
-function Panel({ open, onOpenChange }: { open: boolean; onOpenChange: (value: boolean) => void }) {
+function Panel({ open, onOpenChange, returnFocusRef }: { open: boolean; onOpenChange: (value: boolean) => void; returnFocusRef?: React.RefObject<HTMLElement | null> }) {
   const [draft, setDraft] = useState("");
   return <Sheet open={open} onOpenChange={onOpenChange}>
-    <SheetContent><SheetTitle>Panel</SheetTitle><SheetDescription>Panel details</SheetDescription>
+    <SheetContent returnFocusRef={returnFocusRef}><SheetTitle>Panel</SheetTitle><SheetDescription>Panel details</SheetDescription>
       <input aria-label="draft" value={draft} onChange={(event) => setDraft(event.target.value)} />
     </SheetContent>
   </Sheet>;
@@ -22,9 +22,16 @@ function Panel({ open, onOpenChange }: { open: boolean; onOpenChange: (value: bo
 function DeferredPanel() {
   const [open, setOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const openerRef = useRef<HTMLButtonElement | null>(null);
   return <>
-    <button onClick={() => { setMounted(true); setOpen(true); }}>open panel</button>
-    {mounted && <Panel open={open} onOpenChange={setOpen} />}
+    <button ref={openerRef} onClick={() => {
+      // A first lazy mount can lose document.activeElement before FocusScope.
+      // The external trigger identity must survive that real-browser sequence.
+      openerRef.current?.blur();
+      setMounted(true);
+      setOpen(true);
+    }}>open panel</button>
+    {mounted && <Panel open={open} onOpenChange={setOpen} returnFocusRef={openerRef} />}
   </>;
 }
 
@@ -57,7 +64,7 @@ afterEach(() => {
 });
 
 describe("Sheet invoking control focus", () => {
-  it("restores Escape and Close focus for a lazily mounted panel and retains its state on reopen", async () => {
+  it("restores the external trigger after it blurs before lazy mount, including Close and reopen", async () => {
     render(english(<DeferredPanel />));
     const opener = screen.getByRole("button", { name: "open panel" });
     opener.focus();

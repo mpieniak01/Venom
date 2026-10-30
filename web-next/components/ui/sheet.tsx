@@ -26,11 +26,15 @@ const SheetOverlay = forwardRef<
 ));
 SheetOverlay.displayName = SheetPrimitive.Overlay.displayName;
 
+type SheetContentProps = React.ComponentPropsWithoutRef<typeof SheetPrimitive.Content> & {
+  returnFocusRef?: React.RefObject<HTMLElement | null>;
+};
+
 const SheetContent = forwardRef<
   React.ElementRef<typeof SheetPrimitive.Content>,
-  React.ComponentPropsWithoutRef<typeof SheetPrimitive.Content>
->(({ className, children, onOpenAutoFocus, onCloseAutoFocus, ...props }, ref) => {
-  const returnFocusRef = useRef<HTMLElement | null>(null);
+  SheetContentProps
+>(({ className, children, onOpenAutoFocus, onCloseAutoFocus, returnFocusRef, ...props }, ref) => {
+  const capturedFocusRef = useRef<HTMLElement | null>(null);
   const t = useTranslation();
   return (
     <SheetPortal>
@@ -45,7 +49,7 @@ const SheetContent = forwardRef<
           // Controlled/lazy sheets may be opened without a Radix Trigger. Save
           // the invoking control before FocusScope moves focus into the panel.
           const active = document.activeElement;
-          returnFocusRef.current = active instanceof HTMLElement && active !== document.body
+          capturedFocusRef.current = active instanceof HTMLElement && active !== document.body
             ? active
             : null;
           onOpenAutoFocus?.(event);
@@ -53,7 +57,9 @@ const SheetContent = forwardRef<
         onCloseAutoFocus={(event) => {
           onCloseAutoFocus?.(event);
           if (event.defaultPrevented) return;
-          const opener = returnFocusRef.current;
+          // A lazy panel can blur its trigger before FocusScope mounts. Prefer
+          // the explicit external trigger when the owner provides one.
+          const opener = returnFocusRef?.current ?? capturedFocusRef.current;
           if (opener?.isConnected && !opener.hasAttribute("disabled")) {
             event.preventDefault();
             opener.focus();

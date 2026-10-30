@@ -27,3 +27,5 @@ Start nie wykonuje `ollama list`, pobierania modelu ani próbnej generacji. Warm
 **Nie jest to kwalifikacja uruchomionego Dockera ani pełnej funkcjonalności Full.** Obecny backend Docker instaluje lock Light; samo ustawienie Full nie dodaje pakietów głosu, RAG lub innych brakujących zależności. Obrazy Full i moduły wymagają osobnego odbioru instalacyjnego. Gotowe obrazy release muszą zawierać obsługę bieżącego kontraktu; stary obraz nie staje się zgodny przez samo przekazanie nowych zmiennych.
 
 Regresje adapterów korzystają wyłącznie z atrapy Docker CLI oraz parsowania szablonów. Nie wykonują build/run/pull kontenerów, nie kwalifikują GPU ani ruchu SSE/WebSocket w kontenerach i nie wywołują rzeczywistych providerów.
+
+Start pobiera brakujące obrazy zgodnie z VENOM_DOCKER_PULL_POLICY=missing. Tryb offline wymaga jawnego VENOM_DOCKER_PULL_POLICY=never; always wymusza odświeżenie obrazów. Nie dotyczy to pobierania wag modeli.

@@ -23,7 +23,7 @@ from venom_core.infrastructure.providers.vast.models import (
     now,
 )
 from venom_core.services.vast_environments.assessment import assess, search_filters
-from venom_core.services.vast_environments.history import lookup
+from venom_core.services.vast_environments.history import lookup, matching_rows
 from venom_core.services.vast_environments.recipes import verify_template
 from venom_core.services.vast_environments.selection import preferred_queries, rank
 from venom_core.services.vast_environments.startup import ollama_environment, startup
@@ -36,10 +36,15 @@ class Environments:
         self.journal = journal
 
     def assess(
-        self, profile: WorkloadProfile, offer: dict, retest: bool = False
+        self,
+        profile: WorkloadProfile,
+        offer: dict,
+        retest: bool = False,
+        *,
+        history_rows: list[dict] | None = None,
     ) -> OfferAssessment:
         result = assess(offer, profile)
-        result.history = lookup(self.journal, profile, result.offer)
+        result.history = lookup(self.journal, profile, result.offer, rows=history_rows)
         if result.history["excluded"] and not retest:
             result.status = "ineligible"
             result.reasons.append("qualification.previous_unsuitable")
@@ -63,8 +68,13 @@ class Environments:
                 value if type(value) is int and value > 0 else f"unknown-{len(merged)}"
             )
             merged[key] = row
+        history_rows = matching_rows(self.journal, profile)
         return rank(
-            [self.assess(profile, row, retest) for row in merged.values()], profile
+            [
+                self.assess(profile, row, retest, history_rows=history_rows)
+                for row in merged.values()
+            ],
+            profile,
         )
 
     def plan(

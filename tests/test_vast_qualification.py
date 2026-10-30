@@ -437,3 +437,49 @@ def test_legacy_qualification_report_without_performance_flag_is_retained(servic
     report.pop("performance_evaluated")
     _save_result(svc, plan.plan_id, "qualify", report)
     assert len(entries(svc.journal)) == 1
+
+
+@pytest.mark.parametrize("negative_history", [False, True])
+def test_search_reads_history_and_computes_workload_key_once_for_thousand_offers(
+    service, negative_history
+):
+    from venom_core.services.vast_environments import history
+
+    svc, plan, offer = service
+    plan.profile.mode = "pytorch"
+    plan.profile.model = "org/model"
+    plan.profile.model_digest = "b" * 40
+    offer.update(gpu_name="GB10", compute_cap=1210, driver_version="580.29.04")
+    if negative_history:
+        report = qualify(plan, inspection(), {**gpu(), "engine_kernel": "failed"})
+        remember(svc.journal, plan, report)
+    svc.client.offers.return_value = [
+        {**offer, "id": number} for number in range(1, 1001)
+    ]
+    with (
+        patch.object(history, "entries", wraps=history.entries) as read_history,
+        patch.object(
+            history, "workload_key", wraps=history.workload_key
+        ) as hash_workload,
+    ):
+        rows = svc.search(plan.profile)
+        assert len(rows) == 1000
+        assert {row.status for row in rows} == {
+            "ineligible" if negative_history else "eligible"
+        }
+        assert all(row.history["excluded"] == negative_history for row in rows)
+        read_history.assert_called_once_with(svc.journal)
+        hash_workload.assert_called_once_with(plan.profile)
+
+
+def test_standalone_assessment_observes_new_history_after_search(service):
+    svc, plan, offer = service
+    plan.profile.mode = "pytorch"
+    plan.profile.model = "org/model"
+    plan.profile.model_digest = "b" * 40
+    offer.update(gpu_name="GB10", compute_cap=1210, driver_version="580.29.04")
+    assert svc.search(plan.profile)[0].status == "eligible"
+    report = qualify(plan, inspection(), {**gpu(), "engine_kernel": "failed"})
+    remember(svc.journal, plan, report)
+    assert svc.assess(plan.profile, offer).status == "ineligible"
+    assert svc.assess(plan.profile, offer, retest=True).status == "eligible"

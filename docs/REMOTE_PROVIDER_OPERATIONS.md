@@ -20,7 +20,9 @@ An offline or disabled selected provider remains selected. Venom can start and e
 See [VAST provisioning and environment lifecycle](integrations/vast.md) for the existing host preparation, installation, qualification and cleanup workflow. The integration configuration link is diagnostic/configuration UI, not a rental console.
 
 VAST retrieves up to 1000 candidates per global/preferred-country metadata query
-before local qualification and deduplication. This remains a bounded catalog
+before local qualification and deduplication. Each search reads qualification
+history and computes the workload identity once; standalone assessments still
+read fresh history. This remains a bounded catalog
 sample, not a guarantee of every marketplace offer.
 VAST offer search displays only eligible offers with known nonnegative hourly
 and total quotes. It sorts by the exact hourly rate ascending before limiting

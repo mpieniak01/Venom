@@ -1288,9 +1288,12 @@ def test_recovery_startup_rechecks_fresh_state_and_fails_closed(admission):
 
 
 def test_uncertain_host_operation_returns_recovery_code_instead_of_busy(admission):
-    with pytest.raises(RuntimeError, match="lost"):
+    def fail_generation():
         with admission.operation(kind="maf_generation"):
             raise RuntimeError("lost")
+
+    with pytest.raises(RuntimeError, match="lost"):
+        fail_generation()
     scope = admission.operation(kind="runtime_switch", mutation=True)
     with pytest.raises(RuntimeAdmissionError, match="runtime_recovery_required"):
         run_scoped(scope)

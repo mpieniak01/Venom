@@ -197,6 +197,25 @@ o opłatach i czytelne wyniki, bez żądań POST przy samym odczycie historii.
 Walidacja: 162 testy backendu PASS; 12 testów komponentu VAST PASS;
 `make test-ci-lite` (895 testów) PASS; `make test-web-unit`, katalog/grupy
 i diagnostyka pokrycia PASS; mypy czterech modułów, TypeScript i Ruff PASS.
-Pełne `make pr-fast` wykonuje obowiązkowy hook pre-push bez obejść.
+Hook `pre-push` uruchamia pełne `make pr-fast` dla zmian objętych zakresem;
+kontrola `block-docs-dev-tracked` jest wykonywana osobno.
 Poprzednie zdalne CI, oba E2E i bramka Sonara dla `1f6d9225` są zielone;
 po aktualizacji wymagają ponownego potwierdzenia dla nowego SHA.
+
+### Zgłoszenia Sonara po aktualizacji recenzji
+
+Bramka Sonara dla `b2ae025e` była zielona, lecz raport zawierał 16 zgłoszeń
+utrzymaniowych: 3 HIGH i 13 MEDIUM. Wprowadzono naprawy wszystkich wskazań:
+- wydzielono walidację bariery mutacji oraz odczyt jednego wpisu VAST,
+  zmniejszając złożoność funkcji bez zmiany warunków blokad i obsługi błędów;
+- dodano jedną stałą sufiksu planu;
+- testy wyjątków wykonują w bloku `pytest.raises` tylko badane wywołanie;
+  przygotowanie danych jest poza tym blokiem;
+- regresja timeoutu wymaga konkretnego `ChatClientException`;
+- sprawdzenie spoczynku transportu ma jawne warunki zachowujące kolejność
+  i logikę oceny wcześniejszych prób.
+
+Regresje: 256 testów PASS; Ruff PASS. Nie wyłączano reguł ani nie zmieniano
+statusów zgłoszeń. Zamknięcie wskazań wymaga wyniku kolejnego skanu.
+Poprawiono też doprecyzowanie recenzenta dotyczące kierunku wywołania hooka:
+to `pre-push` uruchamia `make pr-fast`, a nie odwrotnie.

@@ -679,9 +679,12 @@ async def test_llm_recovery_clears_uncertainty_without_touching_rider_or_voice(
 async def test_llm_recovery_keeps_unrelated_uncertainty(world, monkeypatch):
     from unittest.mock import Mock
 
-    with pytest.raises(RuntimeError, match="vision failed"):
+    def fail_vision():
         with world.operation(kind="vision"):
             raise RuntimeError("vision failed")
+
+    with pytest.raises(RuntimeError, match="vision failed"):
+        fail_vision()
     controller = SimpleNamespace(list_servers=Mock(return_value=[]))
     with pytest.raises(HTTPException) as error:
         await service.release_all_runtime_models(
@@ -696,9 +699,10 @@ async def test_llm_recovery_requires_an_observed_daemon_even_for_a_matching_kind
     from unittest.mock import Mock
 
     uncertain(world)
+    controller = SimpleNamespace(list_servers=Mock(return_value=[]))
     with pytest.raises(HTTPException):
         await service.release_all_runtime_models(
-            SimpleNamespace(list_servers=Mock(return_value=[])),
+            controller,
             runtime_ids={"ollama"},
             include_registered=False,
         )
@@ -757,12 +761,18 @@ async def test_recovery_scope_keeps_only_llm_work_blocked_until_settled(
             assert vision_frame() == "frame"
             assert await voice_frame() == "audio"
 
-        with pytest.raises(RuntimeAdmissionError):
+        def attempt_generation():
             with world.operation(kind="maf_generation"):
                 pytest.fail("generation admitted during cleanup")
-        with pytest.raises(HTTPException):
+
+        async def attempt_chat():
             async with runtime_request_guard(request_kind="simple_chat"):
                 pytest.fail("chat admitted during cleanup")
+
+        with pytest.raises(RuntimeAdmissionError):
+            attempt_generation()
+        with pytest.raises(HTTPException):
+            await attempt_chat()
 
         # The runtime switch gate also serializes scoped and global cleanups.
         with pytest.raises(HTTPException):
@@ -822,9 +832,12 @@ async def test_llm_recovery_can_retry_a_failed_scoped_cleanup(world, monkeypatch
 async def test_llm_recovery_never_clears_a_failed_global_cleanup(world, monkeypatch):
     from unittest.mock import AsyncMock
 
-    with pytest.raises(RuntimeError):
+    def fail_global_cleanup():
         with world.operation(kind="cleanup", mutation=True, _cleanup=True):
             raise RuntimeError("global release did not verify vision")
+
+    with pytest.raises(RuntimeError):
+        fail_global_cleanup()
     monkeypatch.setattr(service, "_listening", AsyncMock(return_value=True))
     monkeypatch.setattr(service, "_unload_ollama", AsyncMock(return_value=[]))
     controller = SimpleNamespace(

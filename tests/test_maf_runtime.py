@@ -1048,11 +1048,15 @@ async def test_operator_can_disable_an_existing_cloud_service_before_transport(
     history = ConversationHistory()
     history.add_user_message("fixture")
     control.set_enabled(provider, False)
-    with pytest.raises(HTTPException) as failure:
+
+    async def attempt():
         if stream:
             await anext(model.get_streaming_chat_message_contents(chat_history=history))
         else:
             await model.get_chat_message_content(chat_history=history)
+
+    with pytest.raises(HTTPException) as failure:
+        await attempt()
     assert failure.value.detail["code"] == "remote_provider_disabled"
     assert calls == []
     assert get_runtime_admission().snapshot()["active_operations"] == 0
@@ -1096,11 +1100,12 @@ async def test_disabling_provider_in_tool_blocks_followup_request(
     runtime.add_plugin(Tools(), "Local")
     history = ConversationHistory()
     history.add_user_message("run tool")
+    settings = CompletionOptions(function_choice_behavior=ToolPolicy.Auto())
     try:
         with pytest.raises(HTTPException) as rejected:
             await model.get_chat_message_content(
                 chat_history=history,
-                settings=CompletionOptions(function_choice_behavior=ToolPolicy.Auto()),
+                settings=settings,
                 kernel=runtime,
             )
         assert rejected.value.detail["code"] == "remote_provider_disabled"
@@ -1137,18 +1142,17 @@ async def test_transport_rechecks_enablement_after_initial_validation(
         control.set_enabled("openai", False)
 
     model._owned_client._client.event_hooks["request"].insert(0, disable_before_send)
+    history = ConversationHistory(system_message="fixture")
+
+    async def attempt():
+        if stream:
+            await anext(model.get_streaming_chat_message_contents(chat_history=history))
+        else:
+            await model.get_chat_message_content(chat_history=history)
+
     try:
         with pytest.raises(HTTPException) as rejected:
-            if stream:
-                await anext(
-                    model.get_streaming_chat_message_contents(
-                        chat_history=ConversationHistory(system_message="fixture")
-                    )
-                )
-            else:
-                await model.get_chat_message_content(
-                    chat_history=ConversationHistory(system_message="fixture")
-                )
+            await attempt()
         assert rejected.value.detail["code"] == "remote_provider_disabled"
         assert requests == []
         assert get_runtime_admission().snapshot()["status"] == "available"
@@ -1181,11 +1185,10 @@ async def test_disabled_provider_blocks_sdk_retry_without_erasing_uncertain_atte
     model = service(respond)
     model.operator_provider = "openai"
     model._owned_client.max_retries = 1
+    history = ConversationHistory(system_message="fixture")
     try:
         with pytest.raises(HTTPException) as rejected:
-            await model.get_chat_message_content(
-                chat_history=ConversationHistory(system_message="fixture")
-            )
+            await model.get_chat_message_content(chat_history=history)
         assert rejected.value.detail["code"] == "remote_provider_disabled"
         assert len(requests) == 1
         assert get_runtime_admission().snapshot()["status"] == (
@@ -1199,6 +1202,7 @@ async def test_disabled_provider_blocks_sdk_retry_without_erasing_uncertain_atte
 async def test_reenabled_retry_timeout_cannot_reuse_an_earlier_policy_denial(
     maf_admission,
 ):
+    from agent_framework.exceptions import ChatClientException
     from fastapi import HTTPException
 
     from venom_core.services import remote_provider_control as control
@@ -1218,11 +1222,10 @@ async def test_reenabled_retry_timeout_cannot_reuse_an_earlier_policy_denial(
         control.set_enabled("openai", len(hooks) > 1)
 
     model._owned_client._client.event_hooks["request"].insert(0, change_policy)
+    history = ConversationHistory(system_message="fixture")
     try:
-        with pytest.raises(Exception) as failed:
-            await model.get_chat_message_content(
-                chat_history=ConversationHistory(system_message="fixture")
-            )
+        with pytest.raises(ChatClientException) as failed:
+            await model.get_chat_message_content(chat_history=history)
         assert not isinstance(failed.value, HTTPException)
         assert len(requests) == 1
         assert maf_admission.snapshot()["status"] == "quarantined"

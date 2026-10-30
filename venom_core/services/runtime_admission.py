@@ -431,6 +431,28 @@ class RuntimeAdmission:
         if ancestor is not None and ancestor["kind"] in _CLEANUP_KINDS and not cleanup:
             raise RuntimeAdmissionError()  # Cleanup cannot start new generation.
 
+    @staticmethod
+    def _validate_mutation_barrier(
+        db: sqlite3.Connection,
+        *,
+        ancestor: sqlite3.Row | None,
+        nested: bool,
+        token: str | None,
+        cleanup: bool,
+    ) -> None:
+        own_token = ancestor["token"] if nested and ancestor is not None else ""
+        query = "SELECT pid,uncertain FROM operation WHERE token<>?"
+        if cleanup and token is None:
+            # A trusted host cleanup may verify uncertain daemon work.
+            # It cannot erase or interrupt a live host operation or lease.
+            query += " AND (uncertain=0 OR lease_token IS NOT NULL)"
+        conflict = db.execute(query, (own_token,)).fetchone()
+        if conflict is not None:
+            code = "runtime_busy"
+            if conflict["uncertain"] or conflict["pid"] != os.getpid():
+                code = "runtime_recovery_required"
+            raise RuntimeAdmissionError(code)
+
     def _enter(
         self,
         kind: str,
@@ -462,18 +484,9 @@ class RuntimeAdmission:
                 nested=nested,
             )
             if mutation:
-                own_token = ancestor["token"] if nested and ancestor is not None else ""
-                query = "SELECT pid,uncertain FROM operation WHERE token<>?"
-                if cleanup and token is None:
-                    # A trusted host cleanup may verify uncertain daemon work.
-                    # It cannot erase or interrupt a live host operation or lease.
-                    query += " AND (uncertain=0 OR lease_token IS NOT NULL)"
-                conflict = db.execute(query, (own_token,)).fetchone()
-                if conflict is not None:
-                    code = "runtime_busy"
-                    if conflict["uncertain"] or conflict["pid"] != os.getpid():
-                        code = "runtime_recovery_required"
-                    raise RuntimeAdmissionError(code)
+                self._validate_mutation_barrier(
+                    db, ancestor=ancestor, nested=nested, token=token, cleanup=cleanup
+                )
             if (
                 nested
                 and ancestor is not None

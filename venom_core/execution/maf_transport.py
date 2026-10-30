@@ -101,6 +101,14 @@ class _MafHttpRejection(RuntimeError, RuntimeOperationRejection):
         return self._proof.confirms_rejection(operation)
 
 
+def _transport_quiescent(evidence: _RequestEvidence) -> bool:
+    if evidence.uncertain_attempt:
+        return False
+    if evidence.request is None or evidence.rejection is not None:
+        return True
+    return _completed_response(evidence.response)
+
+
 class _MafPolicyDenial(HTTPException, RuntimeOperationRejection):
     """A local transport denial cannot hide earlier unfinished provider work."""
 
@@ -121,11 +129,7 @@ async def _observe_request(request: httpx.Request) -> None:
             try:
                 evidence.before_request()
             except HTTPException as error:
-                quiescent = not evidence.uncertain_attempt and (
-                    evidence.request is None
-                    or evidence.rejection is not None
-                    or _completed_response(evidence.response)
-                )
+                quiescent = _transport_quiescent(evidence)
                 evidence.policy_denial = _MafPolicyDenial(error, quiescent=quiescent)
                 raise evidence.policy_denial from error
         evidence.policy_denial = None

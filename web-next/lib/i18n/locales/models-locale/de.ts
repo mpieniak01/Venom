@@ -1,12 +1,14 @@
 export const models = {
   vast: {
+    "historyBillingHint": "Prüfen Sie die Instanz anhand ihrer ID in der VAST-Konsole und geben Sie sie dort frei, wenn sie nicht mehr benötigt wird. Ohne ID prüfen Sie die Instanzliste des Kontos.",
+    "historyBilling": "Kosten",
     "history": "Verlauf der Startversuche",
     "historyHint": "Frühere CLI-Versuche. Der protokollierte Status ist historisch und bestätigt keine aktuelle Verfügbarkeit.",
     "noHistory": "Keine gespeicherten Versuche.",
     "plan": "Versuchs-ID",
     "historyModel": "Modell",
     "recordedState": "Gespeichertes Ergebnis",
-    "historyStates": {"planned": "Geplant", "creating": "Host wird bestellt", "running": "Gestartet", "stopped": "Gestoppt", "destroyed": "Freigegeben", "failed": "Fehlgeschlagen", "unknown": "Unbekannt"},
+    "historyStates": {"planned": "Geplant", "creating": "Host wird bestellt", "running": "Gestartet", "stopped": "Gestoppt", "destroyed": "Freigegeben", "failed": "Fehlgeschlagen", "unknown": "Unbekannt", "submitting": "Bestellung gesendet", "created": "Instanz erstellt", "outcome_unknown": "Bestellergebnis ungewiss"},
 
     "tab": "VAST",
     "title": "VAST-Umgebungen",

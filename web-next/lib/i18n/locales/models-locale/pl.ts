@@ -1,12 +1,14 @@
 export const models = {
   vast: {
+    "historyBillingHint": "Sprawdź instancję po jej ID w konsoli VAST i zwolnij ją tam, jeśli nie jest potrzebna. Przy braku ID sprawdź listę instancji na koncie.",
+    "historyBilling": "Opłaty",
     "history": "Historia prób uruchomienia",
     "historyHint": "Zapis wcześniejszych prób CLI. Stan pochodzi z dziennika próby i nie potwierdza aktualnej dostępności instancji.",
     "noHistory": "Brak zapisanych prób.",
     "plan": "ID próby",
     "historyModel": "Model",
     "recordedState": "Zapisany wynik",
-    "historyStates": {"planned": "Zaplanowano", "creating": "Zamawianie hosta", "running": "Uruchomiono", "stopped": "Zatrzymano", "destroyed": "Zwolniono", "failed": "Niepowodzenie", "unknown": "Brak danych"},
+    "historyStates": {"planned": "Zaplanowano", "creating": "Zamawianie hosta", "running": "Uruchomiono", "stopped": "Zatrzymano", "destroyed": "Zwolniono", "failed": "Niepowodzenie", "unknown": "Brak danych", "submitting": "Wysłano zamówienie", "created": "Utworzono instancję", "outcome_unknown": "Niepewny wynik zamówienia"},
 
     "tab": "VAST",
     "title": "Środowiska VAST",

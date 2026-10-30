@@ -530,3 +530,14 @@ def test_damaged_cli_attempt_remains_visible_in_history(f):
     assert overview["history"][0]["error"] == "vast.management_journal_invalid"
     assert not overview["history"][0]["connected"]
     f.m.client_factory.assert_not_called()
+
+
+def test_attached_cli_plan_remains_history_with_observed_connection(f):
+    f.svc.journal.path(f.p.plan_id, ".management.json").unlink()
+    f.connection.attach(f.p.plan_id)
+    overview = f.m.overview()
+    assert overview["environments"] == []
+    assert overview["history"][0]["plan_id"] == f.p.plan_id
+    assert overview["history"][0]["phase"] == "planned"
+    assert overview["history"][0]["connected"] is True
+    f.m.client_factory.assert_not_called()

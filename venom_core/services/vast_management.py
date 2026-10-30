@@ -172,7 +172,7 @@ class VastManagement:
                 else:
                     entry = self.row(plan_id)
                     if historical:
-                        entry.update(connected=False, phase=entry["state"])
+                        entry.update(phase=entry["state"])
                     destination.append(entry)
             except ERRORS:
                 # A damaged historical entry is visible, but is not evidence

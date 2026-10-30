@@ -122,7 +122,9 @@ async def _observe_request(request: httpx.Request) -> None:
                 evidence.before_request()
             except HTTPException as error:
                 quiescent = not evidence.uncertain_attempt and (
-                    evidence.request is None or _completed_response(evidence.response)
+                    evidence.request is None
+                    or evidence.rejection is not None
+                    or _completed_response(evidence.response)
                 )
                 evidence.policy_denial = _MafPolicyDenial(error, quiescent=quiescent)
                 raise evidence.policy_denial from error

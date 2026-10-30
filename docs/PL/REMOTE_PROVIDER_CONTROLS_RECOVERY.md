@@ -170,3 +170,33 @@ operatora pozostają bez zmian.
 Regresja z jawnym plikiem-atrapą klucza:
 `pytest -q tests/test_openrouter_runtime.py tests/test_remote_provider_control.py tests/test_test_environment_isolation.py`
 — **111 PASS**. Pełny obowiązkowy hook pre-push jest ponawiany bez obejść.
+
+## Poprawki po recenzji PR #567
+
+Cztery uwagi recenzji i dodatkową uwagę o stanach VAST potwierdzono w kodzie:
+- Kontrola wyłączenia OpenAI/Google jest wykonywana przy każdym wyjściu
+  HTTP, również po narzędziu i w retry SDK. Lokalna odmowa zachowuje wcześniejsze
+  dowody transportu: zakończona odpowiedź lub zweryfikowane odrzucenie nie
+  tworzą fałszywej kwarantanny, ale timeout/niepewne 500 nie mogą zostać ukryte.
+  Ponowne włączenie API podczas retry unieważnia wcześniejszą lokalną odmowę.
+- 401/403 są klasyfikowane jako problem uwierzytelniania; 429 i błędy serwera
+  jako niedostępność dostawcy.
+- Plan CLI pozostaje w historii, lecz zachowuje obserwowane połączenie.
+  Odświeżanie katalogu czatu uwzględnia połączenia w obu listach.
+- Historia pokazuje możliwe opłaty i wskazówkę sprawdzenia/zwolnienia instancji
+  w konsoli VAST. Nie dodano automatycznych działań na dawnych hostach.
+- Stany `submitting`, `created` i `outcome_unknown` mają tłumaczenia PL/EN/DE;
+  inne nierozpoznane stany pozostają widoczne w oryginalnej postaci.
+
+Regresje używają prawdziwego SDK z MockTransport, bez sieci i generacji modeli.
+Sprawdzają brak wysyłki wyniku narzędzia po wyłączeniu API, wyścig między
+walidacją i wysłaniem, retry, zachowanie kwarantanny oraz jej niewymaganie
+po zakończonej operacji. Testy VAST obejmują zmianę połączenia CLI, ostrzeżenia
+o opłatach i czytelne wyniki, bez żądań POST przy samym odczycie historii.
+
+Walidacja: 162 testy backendu PASS; 12 testów komponentu VAST PASS;
+`make test-ci-lite` (895 testów) PASS; `make test-web-unit`, katalog/grupy
+i diagnostyka pokrycia PASS; mypy czterech modułów, TypeScript i Ruff PASS.
+Pełne `make pr-fast` wykonuje obowiązkowy hook pre-push bez obejść.
+Poprzednie zdalne CI, oba E2E i bramka Sonara dla `1f6d9225` są zielone;
+po aktualizacji wymagają ponownego potwierdzenia dla nowego SHA.

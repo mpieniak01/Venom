@@ -1156,9 +1156,11 @@ async def test_transport_rechecks_enablement_after_initial_validation(
         await model.aclose()
 
 
+@pytest.mark.parametrize("status", [401, 500])
 @pytest.mark.asyncio
 async def test_disabled_provider_blocks_sdk_retry_without_erasing_uncertain_attempt(
     maf_admission,
+    status,
 ):
     from fastapi import HTTPException
 
@@ -1170,7 +1172,11 @@ async def test_disabled_provider_blocks_sdk_retry_without_erasing_uncertain_atte
     def respond(request):
         requests.append(request)
         control.set_enabled("openai", False)
-        return httpx.Response(500, json={"error": {"message": "failed"}})
+        return httpx.Response(
+            status,
+            headers={"x-should-retry": "true"},
+            json={"error": {"message": "failed"}},
+        )
 
     model = service(respond)
     model.operator_provider = "openai"
@@ -1182,7 +1188,9 @@ async def test_disabled_provider_blocks_sdk_retry_without_erasing_uncertain_atte
             )
         assert rejected.value.detail["code"] == "remote_provider_disabled"
         assert len(requests) == 1
-        assert get_runtime_admission().snapshot()["status"] == "quarantined"
+        assert get_runtime_admission().snapshot()["status"] == (
+            "available" if status == 401 else "quarantined"
+        )
     finally:
         await model.aclose()
 

@@ -49,6 +49,11 @@ class Confirmation(BaseModel):
     confirmed: Literal[True]
 
 
+class BillingRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    reconcile: bool = False
+
+
 class OrderRequest(Confirmation):
     accept_new_host_key: bool = False
 
@@ -72,6 +77,11 @@ def invoke(method, *args):
 @router.get("", responses=ERROR_RESPONSES)
 def overview():
     return invoke(vast_management.manager().overview)
+
+
+@router.post("/billing/sync", responses=ERROR_RESPONSES)
+def sync_billing(request: BillingRequest):
+    return invoke(vast_management.manager().sync_billing, request.reconcile)
 
 
 @router.post("/search", responses=ERROR_RESPONSES)

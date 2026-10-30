@@ -446,6 +446,7 @@ tests/test_update_sonar_scope_group.py
 tests/test_url_policy.py
 tests/test_ux_analyst.py
 tests/test_validate_sonar_architecture.py
+tests/test_vast_account_billing.py
 tests/test_vast_chat_cli.py
 tests/test_vast_chat_connection.py
 tests/test_vast_chat_runtime.py

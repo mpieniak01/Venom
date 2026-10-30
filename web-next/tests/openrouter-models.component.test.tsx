@@ -247,3 +247,23 @@ describe("OpenRouter model comparison tables", () => {
     for (const locale of [pl, en, de]) assert.deepEqual(Object.keys(locale.models.openrouter.table).sort(), Object.keys(en.models.openrouter.table).sort());
   });
 });
+
+
+it("makes prices concise without rounding tiny nonzero rates to zero", () => {
+  const rows = [
+    model("vendor/exact", { input_price_per_million: "0.03000000", output_price_per_million: "0.0000001000" }),
+    model("vendor/whole", { input_price_per_million: "2.000", output_price_per_million: "1e-9" }),
+    model("vendor/invalid", { input_price_per_million: "", output_price_per_million: "Infinity" }),
+  ];
+  render(<OpenRouterModelTable models={rows} connected={[]} pending={{}} manage={async () => {}} caption="Prices" t={t} />);
+  const table = screen.getByRole("table", { name: "Prices" });
+  const exact = within(table).getByRole("row", { name: /vendor\/exact/ });
+  assert.ok(within(exact).getByText("0.03"));
+  assert.ok(within(exact).getByText("0.0000001"));
+  assert.equal(within(exact).queryByText("Free"), null);
+  const whole = within(table).getByRole("row", { name: /vendor\/whole/ });
+  assert.ok(within(whole).getByText("2"));
+  assert.ok(within(whole).getByText("1e-9"));
+  const invalid = within(table).getByRole("row", { name: /vendor\/invalid/ });
+  assert.equal(within(invalid).getAllByText("Unknown").length, 2);
+});

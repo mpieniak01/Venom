@@ -17,6 +17,18 @@ function free(model: OpenRouterModel): boolean {
   );
 }
 
+function price(value: string | null, unknown: string): string {
+  const raw = value?.trim();
+  if (!raw || !Number.isFinite(Number(raw)) || Number(raw) < 0) return unknown;
+  if (Number(raw) === 0) return "0";
+  const dot = raw.indexOf(".");
+  if (dot < 0 || raw.toLowerCase().includes("e")) return raw;
+  let end = raw.length;
+  while (end > dot && raw[end - 1] === "0") end--;
+  if (end === dot + 1) end = dot;
+  return raw.slice(0, end);
+}
+
 export function OpenRouterModelTable({ models, connected, pending, manage, caption, t }: Readonly<Props>) {
   const text = (key: string) => t("models.openrouter." + key);
   const connections = new Map(connected.map(model => [model.id, model]));
@@ -49,8 +61,8 @@ export function OpenRouterModelTable({ models, connected, pending, manage, capti
             </details>}
           </th>
           <td className={styles.tableCell + " whitespace-nowrap text-right align-top font-mono tabular-nums"}>{model.context_length?.toLocaleString() ?? text("unknown")}</td>
-          <td className={styles.tableCell + " whitespace-nowrap text-right align-top font-mono tabular-nums"}>{model.input_price_per_million ?? text("unknown")}</td>
-          <td className={styles.tableCell + " whitespace-nowrap text-right align-top font-mono tabular-nums"}>{model.output_price_per_million ?? text("unknown")}</td>
+          <td className={styles.tableCell + " whitespace-nowrap text-right align-top font-mono tabular-nums"}>{price(model.input_price_per_million, text("unknown"))}</td>
+          <td className={styles.tableCell + " whitespace-nowrap text-right align-top font-mono tabular-nums"}>{price(model.output_price_per_million, text("unknown"))}</td>
           <td className={styles.tableCell + " align-top"}><Badge tone="neutral">{text("table." + (model.supports_tools ? "yes" : "no"))}</Badge></td>
           <td className={styles.tableCell + " align-top"}><Badge tone={stale ? "warning" : statusTone}>{text(stale ? "needsRefresh" : statusKey)}</Badge></td>
           <td className={styles.tableCell + " min-w-[160px] align-top"}><div className="flex flex-col items-start gap-2">

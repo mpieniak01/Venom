@@ -159,3 +159,14 @@ Testy używają atrap i izolacji sieci/GPU/usług. Nie wykonano płatnej generac
 Test Zero ani działań na robocie. Nie obniżono progów i nie pomijano regresji
 na potrzeby wydania. Starsze lokalne zapisy niepewnego pełnego cleanupu
 pozostają blokujące: naprawa LLM nie udaje ich zweryfikowania.
+
+### Uzupełnienie izolacji po kontroli pre-push
+
+Pierwszy hook pre-push wykrył zależność testu braku klucza od prywatnego pliku
+poświadczeń operatora. Autouse fixture przydziela teraz każdemu testowi także
+odrębną ścieżkę pliku klucza OpenRouter. Produkcyjny plik i konfiguracja
+operatora pozostają bez zmian.
+
+Regresja z jawnym plikiem-atrapą klucza:
+`pytest -q tests/test_openrouter_runtime.py tests/test_remote_provider_control.py tests/test_test_environment_isolation.py`
+— **111 PASS**. Pełny obowiązkowy hook pre-push jest ponawiany bez obejść.

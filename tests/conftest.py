@@ -503,6 +503,9 @@ def _isolate_test_runtime(monkeypatch: pytest.MonkeyPatch):
     )
     monkeypatch.setattr(remote_provider_control, "_CHECKS", {})
     monkeypatch.setattr(openrouter_runtime, "_STATE", memory / "openrouter")
+    monkeypatch.setattr(
+        SETTINGS, "OPENROUTER_CREDENTIAL_FILE", str(memory / "openrouter-credential")
+    )
     monkeypatch.setattr(vast_chat_runtime, "_SELECTION", memory / "vast-selection.json")
     monkeypatch.setattr(vast_chat_runtime, "_selected", vast_chat_runtime._UNSET)
     yield

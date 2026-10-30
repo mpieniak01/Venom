@@ -2162,6 +2162,20 @@
       "rationale": "Default release-lane regression coverage."
     },
     {
+      "path": "tests/test_embedding_resource_lifecycle.py",
+      "domain": "memory",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Concurrent embedding first-use ownership, client release and no-import cleanup regressions."
+    },
+    {
       "path": "tests/test_embedding_service.py",
       "domain": "core",
       "test_type": "service_contract",

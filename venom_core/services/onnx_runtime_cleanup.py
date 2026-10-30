@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import importlib
+import sys
 from typing import Any
 
 from venom_core.utils.logger import get_logger
@@ -12,7 +12,10 @@ logger = get_logger(__name__)
 
 def _safe_call(module_name: str, function_name: str, **kwargs: Any) -> bool:
     try:
-        module = importlib.import_module(module_name)
+        # Cleanup must never initialize a route/service merely to free it.
+        module = sys.modules.get(module_name)
+        if module is None:
+            return False
         func = getattr(module, function_name, None)
         if not callable(func):
             return False

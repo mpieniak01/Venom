@@ -282,51 +282,43 @@ def test_release_onnx_runtime_best_effort_paths(
 def test_onnx_safe_call_covers_success_and_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    import sys
+
     call_kwargs: list[dict[str, object]] = []
     module_ok = types.SimpleNamespace(
         release_onnx_task_runtime=lambda **kwargs: call_kwargs.append(kwargs)
     )
-
-    monkeypatch.setattr(
-        "venom_core.services.onnx_runtime_cleanup.importlib.import_module",
-        lambda _name: module_ok,
-    )
+    monkeypatch.setitem(sys.modules, "venom_core.api.routes.tasks", module_ok)
     assert (
         onnx_runtime_cleanup._safe_call(
-            "venom_core.api.routes.tasks",
-            "release_onnx_task_runtime",
-            wait=True,
+            "venom_core.api.routes.tasks", "release_onnx_task_runtime", wait=True
         )
         is True
     )
     assert call_kwargs == [{"wait": True}]
-
-    module_missing = types.SimpleNamespace(release_onnx_task_runtime="x")
-    monkeypatch.setattr(
-        "venom_core.services.onnx_runtime_cleanup.importlib.import_module",
-        lambda _name: module_missing,
+    monkeypatch.setitem(
+        sys.modules,
+        "venom_core.api.routes.tasks",
+        types.SimpleNamespace(release_onnx_task_runtime="x"),
     )
     assert (
         onnx_runtime_cleanup._safe_call(
-            "venom_core.api.routes.tasks",
-            "release_onnx_task_runtime",
-            wait=False,
+            "venom_core.api.routes.tasks", "release_onnx_task_runtime", wait=False
         )
         is False
     )
 
-    def _raise(_name: str):
+    def fail(**_kwargs):
         raise RuntimeError("boom")
 
-    monkeypatch.setattr(
-        "venom_core.services.onnx_runtime_cleanup.importlib.import_module",
-        _raise,
+    monkeypatch.setitem(
+        sys.modules,
+        "venom_core.api.routes.tasks",
+        types.SimpleNamespace(release_onnx_task_runtime=fail),
     )
     assert (
         onnx_runtime_cleanup._safe_call(
-            "venom_core.api.routes.tasks",
-            "release_onnx_task_runtime",
-            wait=False,
+            "venom_core.api.routes.tasks", "release_onnx_task_runtime", wait=False
         )
         is False
     )

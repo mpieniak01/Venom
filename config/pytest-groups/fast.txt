@@ -135,6 +135,7 @@ tests/test_docker_launcher_contracts.py
 tests/test_docs_skill.py
 tests/test_documenter.py
 tests/test_dream_engine.py
+tests/test_embedding_resource_lifecycle.py
 tests/test_embedding_service.py
 tests/test_energy_manager.py
 tests/test_ensure_env_file_script.py

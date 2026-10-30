@@ -241,7 +241,13 @@ def get_startup_local_server(settings=None) -> str:
         return "onnx"
     if runtime.service_type != "local":
         return "none"
-    return MULTI_RUNTIME_ID if is_multi_runtime(runtime.provider) else runtime.provider
+    if is_multi_runtime(runtime.provider):
+        return MULTI_RUNTIME_ID
+    # A custom OpenAI-compatible endpoint is usable by the API but is not a
+    # managed daemon name understood by the startup dispatcher.
+    return (
+        runtime.provider if runtime.provider in {"ollama", "vllm", "onnx"} else "none"
+    )
 
 
 def _resolve_local_runtime(

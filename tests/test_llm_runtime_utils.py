@@ -804,7 +804,8 @@ def test_onnx_active_runtime_and_health_use_same_url_policy(
         ("onnx", "onnx", "onnx"),
         ("openrouter", "openrouter", "none"),
         ("openai", "openai", "none"),
-        ("local", "vast_ollama", "vast_ollama"),
+        ("local", "vast_ollama", "none"),
+        ("local", "local", "none"),
     ],
 )
 def test_startup_server_uses_effective_selection(

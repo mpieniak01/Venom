@@ -221,7 +221,8 @@ class DocumenterAgent:
         if self._stopping:
             return
         await self._update_documentation(file_path, diff)
-        if self._stopping:
+        # stop() may change this state while the previous await drains I/O.
+        if not self._can_commit_update():
             return
         await self._commit_documentation_changes(file_name)
         await self._broadcast_if_available(
@@ -230,6 +231,10 @@ class DocumenterAgent:
             data={"file_path": file_path},
         )
         logger.info(f"Dokumentacja zaktualizowana dla {file_path}")
+
+    def _can_commit_update(self) -> bool:
+        """Read current lifecycle state after an await, not a cached decision."""
+        return not self._stopping
 
     async def _get_file_diff(self, file_path: str) -> str:
         """

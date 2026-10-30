@@ -196,7 +196,8 @@ async def test_failed_stale_refresh_keeps_good_sample_and_retries(monkeypatch):
     retry = AsyncMock(return_value=3)
     stale = await cache.get_or_refresh(retry, owner=owner)
     assert stale.value == 1
-    assert stale.stale and stale.refresh_failed
+    assert stale.stale
+    assert stale.refresh_failed
     await asyncio.gather(*cache._pending)
     assert (await cache.get_or_refresh(retry, owner=owner)).value == 3
 

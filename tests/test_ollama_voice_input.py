@@ -452,5 +452,6 @@ def test_resampler_runtime_error_does_not_silently_select_fallback(
     monkeypatch.setattr(
         audio, "import_module", lambda _name: SimpleNamespace(resample_poly=fail)
     )
+    path = wav_file(tmp_path)
     with pytest.raises(AttributeError, match="resampler implementation failed"):
-        audio.encode_audio_input(wav_file(tmp_path))
+        audio.encode_audio_input(path)

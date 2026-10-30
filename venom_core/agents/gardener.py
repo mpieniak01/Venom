@@ -76,6 +76,8 @@ class GardenerAgent:
 
         # API readiness must not wait for an optional workspace scan.
         self._task = asyncio.create_task(self._monitoring_loop())
+        # Give the service its first turn without awaiting the filesystem scan.
+        await asyncio.sleep(0)
         logger.info("GardenerAgent uruchomiony")
 
     async def stop(self) -> None:
@@ -100,7 +102,10 @@ class GardenerAgent:
 
     async def _monitoring_loop(self) -> None:
         """Pętla monitorowania zmian w plikach i idle mode."""
-        await self._scan_when_idle()
+        try:
+            await self._scan_when_idle()
+        except Exception as exc:
+            logger.error(f"Błąd podczas początkowego skanowania: {exc}")
         while self.is_running:
             try:
                 # Czekaj określony interwał

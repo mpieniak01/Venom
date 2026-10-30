@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable, Mapping
+from contextlib import suppress
 from typing import Any
 
 from venom_core.services.runtime_admission import get_runtime_admission
@@ -23,12 +24,13 @@ async def run_drainable_thread[T](
         return await asyncio.shield(worker)
     except asyncio.CancelledError:
         while not worker.done():
-            try:
-                await asyncio.shield(worker)
-            except asyncio.CancelledError:
-                continue
-            except Exception:
-                break
+            # Only suppress additional cancellation while draining real I/O.
+            # The original cancellation is re-raised after the worker retires.
+            with suppress(asyncio.CancelledError):
+                try:
+                    await asyncio.shield(worker)
+                except Exception:
+                    break
         if not worker.cancelled():
             worker.exception()
         raise

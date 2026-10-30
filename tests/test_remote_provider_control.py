@@ -363,3 +363,49 @@ async def test_disabled_activation_does_not_create_uncertain_admission(
     assert response.json()["detail"]["code"] == "remote_provider_disabled"
     assert admission.snapshot()["active_operations"] == 0
     assert admission.snapshot()["status"] == "available"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("provider", ["openai", "google"])
+@pytest.mark.parametrize("result", ["ok", "auth", "transport", "malformed", "missing"])
+async def test_legacy_provider_check_is_metadata_only_and_sanitizes_errors(
+    monkeypatch, provider, result
+):
+    from venom_core.config import SETTINGS
+
+    monkeypatch.setattr(
+        SETTINGS, "OPENAI_API_KEY", "fixture-secret" if result != "missing" else ""
+    )
+    monkeypatch.setattr(
+        SETTINGS, "GOOGLE_API_KEY", "fixture-secret" if result != "missing" else ""
+    )
+    requests = []
+
+    def respond(request):
+        requests.append(request)
+        if result == "transport":
+            raise httpx.ConnectError("fixture-secret")
+        if result == "malformed":
+            return httpx.Response(200, text="not JSON")
+        return httpx.Response(
+            401 if result == "auth" else 200,
+            json={"data" if provider == "openai" else "models": []},
+        )
+
+    monkeypatch.setattr(
+        control.httpx,
+        "AsyncClient",
+        lambda **kw: _REAL_ASYNC_CLIENT(transport=httpx.MockTransport(respond), **kw),
+    )
+    value = await control.check(provider)
+    assert value["available"] is (result == "ok")
+    assert "fixture-secret" not in str(value)
+    assert len(requests) == (0 if result == "missing" else 1)
+    for request in requests:
+        assert request.method == "GET"
+        assert "fixture-secret" not in str(request.url)
+        assert request.url.path.endswith("/models")
+        if provider == "google":
+            assert request.headers["x-goog-api-key"] == "fixture-secret"
+        else:
+            assert request.headers["Authorization"] == "Bearer fixture-secret"

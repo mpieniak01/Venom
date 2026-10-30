@@ -258,11 +258,22 @@ it("rounds VAST quotes to four places in offers, order review and managed enviro
   await waitFor(() => assert.ok(screen.getByRole("button", { name: "Choose: 123" })));
   assert.ok(screen.getByRole("cell", { name: "0.1235" }));
   assert.ok(screen.getByRole("cell", { name: "0.9877" }));
+  const offerRow = screen.getByRole("button", { name: "Choose: 123" }).closest("tr")!;
+  const offerSummary = within(offerRow).getByText("Exact USD amounts");
+  fireEvent.click(offerSummary);
+  assert.equal(offerSummary.closest("details")!.open, true);
+  assert.ok(within(offerRow).getByText(precise.hourly_usd));
+  assert.ok(within(offerRow).getByText(precise.total_usd));
   fireEvent.click(screen.getByRole("button", { name: "Choose: 123" }));
   fireEvent.click(screen.getByRole("button", { name: "Review order" }));
   await waitFor(() => assert.ok(screen.getByText("USD / hour: 0.1235 · Estimated USD: 0.9877 · Estimated use (minutes): 30")));
+  const review = screen.getByRole("button", { name: "Order and install model" }).parentElement!;
+  const reviewSummary = within(review).getByText("Exact USD amounts");
+  fireEvent.click(reviewSummary);
+  assert.equal(reviewSummary.closest("details")!.open, true);
+  assert.ok(within(review).getByText(precise.hourly_usd));
+  assert.ok(within(review).getByText(precise.total_usd));
   assert.deepEqual(requests, [base + "/search", base + "/plans"]);
-  assert.equal(precise.hourly_usd, "0.123456789");
 });
 
 it("formats zero and missing or invalid VAST amounts distinctly", () => {

@@ -24,6 +24,7 @@ from venom_core.infrastructure.traffic_control.http_client import (
 
 ORIGIN = "https://console.vast.ai"
 INVALID_RESPONSE = "vast.invalid_response"
+MAX_OFFER_SEARCH_LIMIT = 1000
 
 
 class VastError(RuntimeError):
@@ -211,7 +212,11 @@ class VastClient:
             else "not_available",
         }
 
-    def offers(self, disk_gb: int, filters: dict[str, Any] | None = None) -> list[dict]:
+    def offers(
+        self, disk_gb: int, filters: dict[str, Any] | None = None, *, limit: int = 100
+    ) -> list[dict]:
+        if type(limit) is not int or not 1 <= limit <= MAX_OFFER_SEARCH_LIMIT:
+            raise VastError("vast.invalid_offer_limit")
         data = self._request(
             "POST",
             "/api/v0/bundles/",
@@ -221,7 +226,7 @@ class VastClient:
                 "rentable": {"eq": True},
                 "rented": {"eq": False},
                 "allocated_storage": disk_gb,
-                "limit": 100,
+                "limit": limit,
                 "order": (filters or {}).get("order", [["dph_total", "asc"]]),
             },
         )

@@ -28,6 +28,7 @@ export const models = {
     "gpu": "GPU",
     "country": "Country",
     "vram": "VRAM (MB)",
+    "exactQuote": "Exact USD amounts",
     "hourly": "USD / hour",
     "estimate": "Estimated USD",
     "selection": "Selection",

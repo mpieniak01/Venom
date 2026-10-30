@@ -606,3 +606,26 @@ def test_search_hides_unusable_offer_id(f, monkeypatch, offer_id):
         management.Environments, "search", lambda self, profile: [value]
     )
     assert f.m.search(30)["offers"] == []
+
+
+def test_search_qualifies_candidates_beyond_first_provider_hundred(f):
+    base = f.svc.client.offers.return_value[0]
+    candidates = [
+        {**base, "id": number, "cpu_arch": "incompatible"} for number in range(1, 101)
+    ]
+    candidates.append(
+        {
+            **base,
+            "id": 1001,
+            "search": {"totalHour": "0.123441", "diskHour": "0.02"},
+        }
+    )
+    f.svc.client.offers.reset_mock()
+    f.svc.client.offers.side_effect = lambda disk, filters, *, limit: candidates[:limit]
+    offers = f.m.search(30)["offers"]
+    assert [item["offer_id"] for item in offers] == [1001]
+    assert offers[0]["hourly_usd"] == "0.123441"
+    assert all(
+        call.kwargs["limit"] == 1000 for call in f.svc.client.offers.call_args_list
+    )
+    f.svc.client.create.assert_not_called()

@@ -335,18 +335,20 @@ async def test_metadata_transport_sanitizes_errors(state, monkeypatch, kind):
 
 
 @pytest.mark.asyncio
-async def test_free_endpoint_and_connection_capacity(state, monkeypatch):
-    model = row("vendor/a:free")
+@pytest.mark.parametrize("zero", ["0", "0.0", "0e0", "0.000000"])
+async def test_free_endpoint_and_connection_capacity(state, monkeypatch, zero):
+    model = {**row("vendor/a:free"), "pricing": {"prompt": zero, "completion": zero}}
     data = endpoint()
-    data["endpoints"][0]["pricing"] = {"prompt": "0", "completion": "0"}
+    data["endpoints"][0]["pricing"] = {"prompt": zero, "completion": zero}
     state.side_effect = (
         lambda path, params=None: [model, row("vendor/b")]
         if path == "/models"
         else (data if "a:free" in path else endpoint())
     )
     monkeypatch.setattr(catalog, "MAX_CONNECTED", 1)
+    assert (await catalog.search(free_only=True))["models"][0]["id"] == "vendor/a:free"
     await catalog.connect("vendor/a:free")
-    assert catalog.connected()["models"][0]["input_price_per_million"] == "0"
+    assert Decimal(catalog.connected()["models"][0]["input_price_per_million"]) == 0
     with pytest.raises(HTTPException) as failure:
         await catalog.connect("vendor/b")
     assert failure.value.detail == "openrouter_connected_limit"

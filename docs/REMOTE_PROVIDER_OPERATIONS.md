@@ -19,11 +19,16 @@ An offline or disabled selected provider remains selected. Venom can start and e
 
 See [VAST provisioning and environment lifecycle](integrations/vast.md) for the existing host preparation, installation, qualification and cleanup workflow. The integration configuration link is diagnostic/configuration UI, not a rental console.
 
+VAST retrieves up to 1000 candidates per global/preferred-country metadata query
+before local qualification and deduplication. This remains a bounded catalog
+sample, not a guarantee of every marketplace offer.
 VAST offer search displays only eligible offers with known nonnegative hourly
 and total quotes. It sorts by the exact hourly rate ascending before limiting
 results to 100; equal rates use offer ID for stable ordering. Offers, order reviews
 and managed environments display USD amounts rounded to four decimal places.
-Quote validation, budget limits and order requests retain full precision. Existing
+The “Exact USD amounts” disclosure in each offer and the order review exposes
+unrounded prices for budget entry. Quote validation, budget limits and order
+requests retain full precision. Existing
 environments and historical attempts remain visible regardless of eligibility.
 
 ## OpenRouter model connections

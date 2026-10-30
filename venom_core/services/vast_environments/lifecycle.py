@@ -9,6 +9,7 @@ from typing import Literal
 from uuid import uuid4
 
 from venom_core.infrastructure.providers.vast.client import (
+    MAX_OFFER_SEARCH_LIMIT,
     VastClient,
     VastError,
     ssh_fingerprint,
@@ -48,9 +49,13 @@ class Environments:
         self, profile: WorkloadProfile, retest: bool = False
     ) -> list[OfferAssessment]:
         filters = search_filters(profile)
-        offers = list(self.client.offers(profile.disk_gb, filters))
+        offers = list(
+            self.client.offers(profile.disk_gb, filters, limit=MAX_OFFER_SEARCH_LIMIT)
+        )
         for query in preferred_queries(profile, filters):
-            offers.extend(self.client.offers(profile.disk_gb, query))
+            offers.extend(
+                self.client.offers(profile.disk_gb, query, limit=MAX_OFFER_SEARCH_LIMIT)
+            )
         merged: dict[int | str, dict] = {}
         for row in offers:
             value = row.get("id")
@@ -103,7 +108,9 @@ class Environments:
 
     def _offer(self, profile: WorkloadProfile, offer_id: int) -> dict:
         filters = {**search_filters(profile), "ask_contract_id": {"eq": offer_id}}
-        offers = list(self.client.offers(profile.disk_gb, filters))
+        offers = list(
+            self.client.offers(profile.disk_gb, filters, limit=MAX_OFFER_SEARCH_LIMIT)
+        )
         matching = [x for x in offers if x.get("id") == offer_id]
         if len(matching) != 1:
             raise VastError("vast.offer_expired")

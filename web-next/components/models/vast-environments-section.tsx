@@ -10,6 +10,15 @@ import { remoteModelStyles as styles } from "./remote-model-styles";
 
 interface Props { t: (key: string) => string; onChanged?: () => Promise<unknown>; }
 const inputClass = styles.input;
+function ExactQuote({ hourly, total, text }: Readonly<{
+  hourly: string | null; total: string | null; text: (name: string) => string;
+}>) {
+  return <details className="mt-2 text-xs text-[color:var(--ui-muted)]">
+    <summary className="cursor-pointer">{text("exactQuote")}</summary>
+    <p className="mt-2 break-all">{text("hourly")}: <code>{hourly ?? text("unknown")}</code></p>
+    <p className="break-all">{text("estimate")}: <code>{total ?? text("unknown")}</code></p>
+  </details>;
+}
 function offerActionLabel(offer: VastOffer, selected: VastOffer | null): string {
   if (selected?.offer_id === offer.offer_id) return "chosen";
   if (offer.status === "eligible") return "choose";
@@ -54,7 +63,7 @@ export function VastEnvironmentsSection({ t, onChanged }: Readonly<Props>) {
       <h3 className={styles.heading}>{text("offers")}</h3>
       {api.offers.length === 0 ? <p>{text("noOffers")}</p> : <div className={styles.tableWrap + " max-h-96"}><table className="w-full min-w-[680px] border-collapse text-left text-sm"><thead className="sticky top-0 z-10 bg-[color:var(--ui-surface)]"><tr>{["offer", "gpu", "country", "vram", "hourly", "estimate", "selection"].map(name => <th key={name} className={styles.tableHead}>{text(name)}</th>)}</tr></thead><tbody>{api.offers.map(offer => <tr key={offer.offer_id} className={styles.tableRow}>
         <td className={styles.tableCell}>{offer.offer_id}</td><td className={styles.tableCell}>{offer.gpu_name}</td><td className={styles.tableCell}>{offer.country ?? text("unknown")}</td><td className={styles.tableCell}>{offer.gpu_ram_mb ?? text("unknown")}</td><td className={styles.tableCell}>{formatVastUsd(offer.hourly_usd, text("unknown"))}</td><td className={styles.tableCell}>{formatVastUsd(offer.total_usd, text("unknown"))}</td>
-        <td className={styles.tableCell}><Button type="button" size="sm" variant="secondary" disabled={api.pending || offer.status !== "eligible"} aria-label={`${text("choose")}: ${offer.offer_id}`} onClick={() => { api.clearDraft(); setSelected(offer); setConfirmed(false); }}>{text(offerActionLabel(offer, selected))}</Button>{offer.reasons.length > 0 && <p className="mt-1 text-xs text-[color:var(--ui-muted)]">{text("unavailableReason")}: {offer.reasons.join(", ")}</p>}</td>
+        <td className={styles.tableCell}><Button type="button" size="sm" variant="secondary" disabled={api.pending || offer.status !== "eligible"} aria-label={`${text("choose")}: ${offer.offer_id}`} onClick={() => { api.clearDraft(); setSelected(offer); setConfirmed(false); }}>{text(offerActionLabel(offer, selected))}</Button><ExactQuote hourly={offer.hourly_usd} total={offer.total_usd} text={text} />{offer.reasons.length > 0 && <p className="mt-1 text-xs text-[color:var(--ui-muted)]">{text("unavailableReason")}: {offer.reasons.join(", ")}</p>}</td>
       </tr>)}</tbody></table></div>}
       {selected && <div className="space-y-3 border-t border-[color:var(--ui-border)] pt-4">
         <p className="text-sm">{text("selectedOffer")}: {selected.offer_id}</p>
@@ -69,6 +78,7 @@ export function VastEnvironmentsSection({ t, onChanged }: Readonly<Props>) {
       <h3 className={styles.heading}>{text("orderReview")}</h3>
       <p className="text-sm break-all">{api.draft.model}</p>
       <p className="text-sm">{text("hourly")}: {formatVastUsd(api.draft.hourly_usd, text("unknown"))} · {text("estimate")}: {formatVastUsd(api.draft.total_usd, text("unknown"))} · {text("duration")}: {api.draft.duration_minutes}</p>
+      <ExactQuote hourly={api.draft.hourly_usd} total={api.draft.total_usd} text={text} />
       <p className="text-xs text-[color:var(--ui-muted)]">{text("expires")}: {formatDateTime(api.draft.expires_at)}</p>
       <label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={acceptHost} onChange={event => setAcceptHost(event.target.checked)} />{text("acceptHost")}</label>
       <label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={confirmed} onChange={event => setConfirmed(event.target.checked)} />{text("acceptCost")}</label>

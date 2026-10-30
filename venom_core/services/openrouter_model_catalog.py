@@ -18,6 +18,7 @@ import httpx
 from fastapi import HTTPException
 
 BASE = "https://openrouter.ai/api/v1"
+FREE_VARIANT_SUFFIX = ":free"
 CATEGORIES = {
     "programming",
     "roleplay",
@@ -67,7 +68,11 @@ def fixed_model(model: Any) -> bool:
         and not any(c.isspace() or ord(c) < 32 for c in model)
         and model.rsplit("/", 1)[-1] not in {"auto", "latest", "free"}
         and not model.endswith("-latest")
-        and (":" not in model or model.endswith(":free") and model.count(":") == 1)
+        and (
+            ":" not in model
+            or model.endswith(FREE_VARIANT_SUFFIX)
+            and model.count(":") == 1
+        )
     )
 
 
@@ -282,6 +287,10 @@ def _price_rank(row):
     return price, row["id"]
 
 
+def _zero_price(value) -> bool:
+    return _price(value) is not None and Decimal(str(value)) == 0
+
+
 def _free_text_model(row) -> bool:
     pricing = row.get("pricing")
     if not isinstance(pricing, dict):
@@ -289,10 +298,10 @@ def _free_text_model(row) -> bool:
     # Only explicit zero token rates qualify. A missing request rate is zero
     # only for the provider's fixed :free variants, as in endpoint validation.
     request_price = pricing.get("request")
-    if "request" not in pricing and row.get("id", "").endswith(":free"):
+    if "request" not in pricing and row.get("id", "").endswith(FREE_VARIANT_SUFFIX):
         request_price = "0"
     return all(
-        _price(value) is not None and Decimal(str(value)) == 0
+        _zero_price(value)
         for value in (pricing.get("prompt"), pricing.get("completion"), request_price)
     )
 
@@ -349,9 +358,9 @@ def _endpoint_candidate(endpoint, model_id, model, core):
         return None
     tariff = dict(endpoint["pricing"])
     if (
-        model_id.endswith(":free")
-        and tariff.get("prompt") == "0"
-        and tariff.get("completion") == "0"
+        model_id.endswith(FREE_VARIANT_SUFFIX)
+        and _zero_price(tariff.get("prompt"))
+        and _zero_price(tariff.get("completion"))
     ):
         tariff.setdefault("request", "0")
     prices = core.strict_prices(tariff)

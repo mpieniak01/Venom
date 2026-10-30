@@ -21,7 +21,7 @@ export function useOpenRouterModels(onChanged?: () => Promise<unknown>) {
   const [queryState, setQueryState] = useState("");
   const [purposeState, setPurposeState] = useState<OpenRouterPurpose>("chat");
   const [categoryState, setCategoryState] = useState("");
-  const [freeOnly, setFreeOnlyState] = useState(false);
+  const [freeOnlyState, setFreeOnlyState] = useState(false);
   const [results, setResults] = useState<OpenRouterSearchResult | null>(null);
   const [connected, setConnected] = useState<OpenRouterModel[]>([]);
   const [loading, setLoading] = useState(false);
@@ -63,7 +63,7 @@ export function useOpenRouterModels(onChanged?: () => Promise<unknown>) {
     setLoading(true); setError(null);
     const params = new URLSearchParams({ q: queryState.trim(), purpose: purposeState, offset: String(offset), limit: "25" });
     if (categoryState) params.set("category", categoryState);
-    if (freeOnly) params.set("free_only", "true");
+    if (freeOnlyState) params.set("free_only", "true");
     try {
       const data = await responseJson(await fetch(`${base}/search?${params}`));
       if (mounted.current && sequence === searchSequence.current) setResults(data);
@@ -90,5 +90,5 @@ export function useOpenRouterModels(onChanged?: () => Promise<unknown>) {
       if (mounted.current) setPending(current => ({ ...current, [id]: false }));
     }
   };
-  return { query: queryState, setQuery, purpose: purposeState, setPurpose, category: categoryState, setCategory, freeOnly, setFreeOnly, results, connected, loading, connectedLoading, error, pending, search, manage, loadConnected };
+  return { query: queryState, setQuery, purpose: purposeState, setPurpose, category: categoryState, setCategory, freeOnly: freeOnlyState, setFreeOnly, results, connected, loading, connectedLoading, error, pending, search, manage, loadConnected };
 }

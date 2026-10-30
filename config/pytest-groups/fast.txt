@@ -309,6 +309,10 @@ tests/test_ollama_voice_input.py
 tests/test_onnx_llm_client.py
 tests/test_onnx_runtime_cleanup.py
 tests/test_openai_semantic_kernel_compat.py
+tests/test_openrouter_model_catalog.py
+tests/test_openrouter_runtime.py
+tests/test_openrouter_test_zero.py
+tests/test_openrouter_wheel.py
 tests/test_operator_agent.py
 tests/test_optional_modules_contracts_guard.py
 tests/test_oracle_agent.py
@@ -356,6 +360,7 @@ tests/test_queue_governance.py
 tests/test_recorder.py
 tests/test_release_manager.py
 tests/test_remote_models_service.py
+tests/test_remote_provider_control.py
 tests/test_render_skill.py
 tests/test_research_skill.py
 tests/test_researcher_agent.py
@@ -448,6 +453,7 @@ tests/test_vast_chat_smoke.py
 tests/test_vast_cleanup_zero.py
 tests/test_vast_cli.py
 tests/test_vast_faults.py
+tests/test_vast_management.py
 tests/test_vast_operations.py
 tests/test_vast_provider.py
 tests/test_vast_qualification.py

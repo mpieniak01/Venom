@@ -325,44 +325,88 @@ def test_activate_drains_requests_and_releases_switch_on_failure(target, monkeyp
     assert remote.selection() is None
 
 
-def test_kernel_local_service_uses_selected_remote_model_and_endpoint(target):
+def test_kernel_local_service_retains_remote_identity_without_initializing_client(
+    target,
+):
     from venom_core.execution.kernel_builder import KernelBuilder
+    from venom_core.execution.maf_runtime import AgentRuntime
 
-    state, _ = target
     select()
-    builder = object.__new__(KernelBuilder)
-    from venom_core.config import SETTINGS
-
-    builder.settings = SETTINGS
+    builder = KernelBuilder()
     register = Mock()
     builder._register_local_http_service = register
-    kernel = Mock()
+    kernel = AgentRuntime()
     builder._register_local_service(kernel, "local_llm", "local-name", False)
-    register.assert_called_once_with(
-        kernel,
-        "local_llm",
-        "demo:latest",
-        state["endpoint"],
-        api_key="ollama",
-        max_retries=0,
-    )
+    assert kernel.get_service("local_llm").ai_model_id == "demo:latest"
+    register.assert_not_called()
 
 
-def test_kernel_cannot_build_local_client_for_offline_selected_target(target):
-    from venom_core.execution.kernel_builder import KernelBuilder
+@pytest.mark.parametrize("multi_service", [False, True])
+def test_kernel_offline_selected_target_defers_failure_until_generation(
+    target, monkeypatch, multi_service
+):
+    from venom_core.execution import kernel_builder
 
     state, _ = target
     select()
     state.update(available=False, endpoint=None)
-    builder = object.__new__(KernelBuilder)
-    from venom_core.config import SETTINGS
-
-    builder.settings = SETTINGS
+    client = Mock(side_effect=AssertionError("startup must not construct HTTP client"))
+    monkeypatch.setattr(kernel_builder, "AsyncOpenAI", client)
+    builder = kernel_builder.KernelBuilder(enable_multi_service=multi_service)
     builder._register_local_http_service = Mock()
-    kernel = Mock()
-    with pytest.raises(ValueError, match="vast_chat_target_unavailable"):
-        builder._register_local_service(kernel, "local_llm", "local-name", False)
+    kernel = builder.build_kernel()
+    service = kernel.get_service()
+    assert service.ai_model_id == "demo:latest"
+    assert remote.selection()["target_id"] == TARGET
     builder._register_local_http_service.assert_not_called()
+    operation_under_test = service.get_chat_message_content(chat_history=[])
+    with pytest.raises(ValueError, match="vast_chat_target_unavailable"):
+        asyncio.run(operation_under_test)
+    assert remote.selection()["target_id"] == TARGET
+    client.assert_not_called()
+
+
+def test_kernel_local_registration_retains_offline_remote_identity(target):
+    from venom_core.execution.kernel_builder import KernelBuilder
+    from venom_core.execution.maf_runtime import AgentRuntime
+
+    target[0].update(available=False, endpoint=None)
+    # Select while reachable first, then simulate an external outage.
+    target[0].update(available=True, endpoint="http://127.0.0.1:15434/v1")
+    select()
+    target[0].update(available=False, endpoint=None)
+    builder = KernelBuilder()
+    builder._register_local_http_service = Mock()
+    kernel = AgentRuntime()
+    builder._register_local_service(kernel, "local_llm", "local-name", False)
+    assert kernel.get_service("local_llm").ai_model_id == "demo:latest"
+    builder._register_local_http_service.assert_not_called()
+
+
+def test_deferred_vast_service_recovers_only_same_selected_target(target, monkeypatch):
+    from venom_core.execution import kernel_builder
+
+    select()
+    state = target[0]
+    state.update(available=False, endpoint=None)
+    service = kernel_builder.KernelBuilder().build_kernel().get_service()
+    delegate = Mock()
+    delegate.get_chat_message_content = AsyncMock(return_value="remote reply")
+    delegate.aclose = AsyncMock()
+    factory = Mock(return_value=delegate)
+    monkeypatch.setattr(kernel_builder, "MafChatService", factory)
+    monkeypatch.setattr(kernel_builder, "AsyncOpenAI", Mock())
+    state.update(available=True, endpoint="http://127.0.0.1:15434/v1")
+    assert (
+        asyncio.run(service.get_chat_message_content(chat_history=[])) == "remote reply"
+    )
+    factory.assert_called_once()
+    remote.clear_selection()
+    operation_under_test = service.get_chat_message_content(chat_history=[])
+    with pytest.raises(ValueError, match="vast_chat_target_changed"):
+        asyncio.run(operation_under_test)
+    asyncio.run(service.aclose())
+    delegate.aclose.assert_awaited_once()
 
 
 def test_kernel_remote_selection_overrides_cloud_service_configuration(
@@ -378,12 +422,10 @@ def test_kernel_remote_selection_overrides_cloud_service_configuration(
     builder = KernelBuilder(settings=SETTINGS, enable_routing=False)
     builder._register_service = Mock()
     builder._register_local_http_service = Mock()
-    builder.build_kernel()
+    kernel = builder.build_kernel()
     builder._register_service.assert_not_called()
-    assert builder._register_local_http_service.call_args.args[2] == "demo:latest"
-    assert (
-        builder._register_local_http_service.call_args.args[3] == target[0]["endpoint"]
-    )
+    builder._register_local_http_service.assert_not_called()
+    assert kernel.get_service().ai_model_id == "demo:latest"
 
 
 def test_successful_activation_uses_shared_switch_and_saves_model(target, monkeypatch):
@@ -662,3 +704,29 @@ def test_failed_activation_preserves_local_model_with_vast_selected(
     assert system_llm.SETTINGS.ACTIVE_LLM_SERVER == "ollama"
     assert system_llm.SETTINGS.LLM_CONFIG_HASH == "local-hash"
     assert remote.selection()["model"] == "demo:latest"
+
+
+def test_initialized_vast_maf_service_checks_operator_switch_before_every_call(
+    target, monkeypatch
+):
+    from venom_core.execution import kernel_builder
+    from venom_core.services import remote_provider_control
+
+    select()
+    delegate = Mock()
+    delegate.get_chat_message_content = AsyncMock(return_value="remote reply")
+    delegate.aclose = AsyncMock()
+    monkeypatch.setattr(kernel_builder, "MafChatService", Mock(return_value=delegate))
+    monkeypatch.setattr(kernel_builder, "AsyncOpenAI", Mock())
+    on = {"value": True}
+    monkeypatch.setattr(remote_provider_control, "enabled", lambda *_: on["value"])
+    service = kernel_builder.KernelBuilder().build_kernel().get_service()
+    assert (
+        asyncio.run(service.get_chat_message_content(chat_history=[])) == "remote reply"
+    )
+    on["value"] = False
+    operation_under_test = service.get_chat_message_content(chat_history=[])
+    with pytest.raises(ValueError, match="vast_chat_disabled"):
+        asyncio.run(operation_under_test)
+    assert delegate.get_chat_message_content.await_count == 1
+    asyncio.run(service.aclose())

@@ -221,7 +221,11 @@ class Environments:
                 self._event(record, "unknown")
                 raise
             record.instance = instance
-            state = instance.get("actual_status") or "unknown"
+            state = instance.get("actual_status")
+            if state is not None and not isinstance(state, str):
+                self._event(record, "unknown")
+                raise VastError("vast.instance_status_invalid")
+            state = state or "unknown"
             target = {"start": "running", "stop": "stopped"}.get(
                 record.pending_action or ""
             )

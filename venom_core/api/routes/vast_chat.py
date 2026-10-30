@@ -38,13 +38,18 @@ async def status():
     "/system/vast-chat/attach",
     dependencies=[Depends(require_localhost_request)],
     responses={
+        503: {"description": "VAST chat provider is disabled or unavailable."},
         409: {
             "description": "Select the local runtime before attaching another target."
-        }
+        },
     },
 )
 @admitted_operation("runtime_command", mutation=True)
 async def attach(request: AttachRequest):
+    from venom_core.services.remote_provider_control import enabled
+
+    if not enabled(vast_chat_runtime.SERVER):
+        raise HTTPException(503, "vast_chat_disabled")
     selected = vast_chat_runtime.selection()
     if selected is not None and not selected.get("target_id", "").startswith(
         "ollama@vast:" + request.plan_id + ":"

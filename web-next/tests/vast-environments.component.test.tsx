@@ -1,0 +1,179 @@
+import "./component-test-setup";
+import React from "react";
+import assert from "node:assert/strict";
+import { afterEach, describe, it } from "node:test";
+import { act, cleanup, fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react";
+import { VastEnvironmentsSection } from "../components/models/vast-environments-section";
+import { VastEnvironmentRow } from "../components/models/vast-environment-row";
+import { useVastEnvironments, VAST_POLL_INTERVAL, type VastEnvironment } from "../components/models/hooks/use-vast-environments";
+import { en } from "../lib/i18n/locales/en";
+import { pl } from "../lib/i18n/locales/pl";
+import { de } from "../lib/i18n/locales/de";
+
+const base = "/api/v1/vast/environments";
+const t = (key: string) => key.split(".").reduce<unknown>((value, part) => (value as Record<string, unknown>)[part], en) as string;
+const row = (extra: Partial<VastEnvironment> = {}): VastEnvironment => ({ plan_id: "a".repeat(32), model: "model:default", state: "planned", phase: "planned", instance_id: null, hourly_usd: "0.20", total_usd: "0.15", duration_minutes: 30, expires_at: "2099-10-29T23:00:00Z", connected: false, error: null, billing_possible: false, ...extra });
+const status = (environments: VastEnvironment[] = []) => ({ configured: true, enabled: true, model: "model:default", duration_minutes: 30, reason: null, environments });
+const offer = { offer_id: 123, gpu_name: "Test GPU", country: "PL", gpu_ram_mb: 24000, hourly_usd: "0.20", total_usd: "0.15", status: "eligible", reasons: [] };
+const originalFetch = globalThis.fetch;
+afterEach(() => { cleanup(); globalThis.fetch = originalFetch; });
+
+describe("VAST environment management", () => {
+  it("requires an offer, reviewed plan and explicit paid-order confirmation", async () => {
+    const posts: { path: string; body: unknown }[] = [];
+    let environments: VastEnvironment[] = [];
+    globalThis.fetch = async (input, init) => {
+      const path = String(input);
+      if (init?.method !== "POST") return Response.json(status(environments));
+      posts.push({ path, body: JSON.parse(String(init.body)) });
+      if (path.endsWith("/search")) return Response.json({ offers: [offer], model: "model:default", duration_minutes: 30 });
+      if (path.endsWith("/plans")) { environments = [row()]; return Response.json(row()); }
+      environments = [row({ phase: "provisioning", state: "running", instance_id: 77, billing_possible: true })];
+      return Response.json(environments[0], { status: 202 });
+    };
+    render(<VastEnvironmentsSection t={t} />);
+    await waitFor(() => assert.equal((screen.getByRole("button", { name: "Find environments" }) as HTMLButtonElement).disabled, false));
+    assert.equal(posts.length, 0);
+    fireEvent.click(screen.getByRole("button", { name: "Find environments" }));
+    await waitFor(() => assert.ok(screen.getByRole("button", { name: "Choose: 123" })));
+    fireEvent.click(screen.getByRole("button", { name: "Choose: 123" }));
+    fireEvent.click(screen.getByRole("button", { name: "Review order" }));
+    await waitFor(() => assert.ok(screen.getByRole("button", { name: "Order and install model" })));
+    const order = screen.getByRole("button", { name: "Order and install model" }) as HTMLButtonElement;
+    assert.equal(order.disabled, true);
+    fireEvent.click(order);
+    assert.equal(posts.some(post => post.path.endsWith("/order")), false);
+    fireEvent.click(screen.getByLabelText(/Allow the first SSH host key/));
+    fireEvent.click(screen.getByLabelText(/I confirm this paid rental/));
+    fireEvent.click(order);
+    await waitFor(() => assert.ok(screen.getByText("Installing model")));
+    assert.deepEqual(posts.map(post => post.path), [base + "/search", base + "/plans", base + "/" + "a".repeat(32) + "/order"]);
+    assert.deepEqual(posts[2].body, { confirmed: true, accept_new_host_key: true });
+    assert.equal(posts.some(post => /zero|activate|chat/.test(post.path)), false);
+  });
+
+  it("invalidates the reviewed plan when the budget or duration changes", async () => {
+    let plans = 0;
+    globalThis.fetch = async (input, init) => {
+      const path = String(input);
+      if (init?.method !== "POST") return Response.json(status());
+      if (path.endsWith("/search")) return Response.json({ offers: [offer] });
+      plans++;
+      return Response.json(row());
+    };
+    render(<VastEnvironmentsSection t={t} />);
+    await waitFor(() => assert.equal((screen.getByRole("button", { name: "Find environments" }) as HTMLButtonElement).disabled, false));
+    fireEvent.click(screen.getByRole("button", { name: "Find environments" }));
+    await waitFor(() => assert.ok(screen.getByRole("button", { name: "Choose: 123" })));
+    fireEvent.click(screen.getByRole("button", { name: "Choose: 123" }));
+    fireEvent.click(screen.getByRole("button", { name: "Review order" }));
+    await waitFor(() => assert.ok(screen.getByRole("button", { name: "Order and install model" })));
+    fireEvent.click(screen.getByLabelText(/I confirm this paid rental/));
+    fireEvent.change(screen.getByLabelText("Maximum USD / hour"), { target: { value: "0.30" } });
+    assert.equal(screen.queryByRole("button", { name: "Order and install model" }) === null, true);
+    fireEvent.click(screen.getByRole("button", { name: "Review order" }));
+    await waitFor(() => assert.ok(screen.getByRole("button", { name: "Order and install model" })));
+    assert.equal((screen.getByRole("button", { name: "Order and install model" }) as HTMLButtonElement).disabled, true);
+    fireEvent.change(screen.getByLabelText("Estimated use (minutes)"), { target: { value: "60" } });
+    assert.equal(screen.queryByRole("button", { name: "Order and install model" }) === null, true);
+    assert.equal(screen.queryByRole("button", { name: "Choose: 123" }) === null, true);
+    assert.equal(plans, 2);
+  });
+
+  it("polls GET only and publishes readiness without a repeated order or generation", async context => {
+    context.mock.timers.enable({ apis: ["setInterval"] });
+    const calls: { path: string; method: string }[] = [];
+    let ready = false; let changed = 0;
+    globalThis.fetch = async (input, init) => {
+      calls.push({ path: String(input), method: init?.method ?? "GET" });
+      return Response.json(status([row(ready ? { phase: "ready", connected: true, instance_id: 77 } : { phase: "provisioning", instance_id: 77 })]));
+    };
+    const { result } = renderHook(() => useVastEnvironments(async () => { changed++; }));
+    await act(async () => {});
+    assert.equal(result.current.loading, false);
+    ready = true;
+    await act(async () => { context.mock.timers.tick(VAST_POLL_INTERVAL); });
+    assert.equal(result.current.state?.environments[0].connected, true);
+    assert.equal(changed, 1);
+    assert.ok(calls.length >= 2);
+    assert.ok(calls.every(call => call.path === base && call.method === "GET"));
+    await act(async () => { context.mock.timers.tick(VAST_POLL_INTERVAL * 3); });
+    assert.equal(changed, 1);
+    context.mock.timers.reset();
+  });
+
+  it("treats connected plan order as irrelevant and refreshes chat only on membership changes", async () => {
+    const first = row({ plan_id: "b".repeat(32), phase: "ready", connected: true });
+    const second = row({ plan_id: "a".repeat(32), phase: "ready", connected: true });
+    let environments = [first, second];
+    let changed = 0;
+    globalThis.fetch = async () => Response.json(status(environments));
+    const { result } = renderHook(() => useVastEnvironments(async () => { changed++; }));
+    await waitFor(() => assert.equal(result.current.loading, false));
+    assert.equal(changed, 1);
+    environments = [second, first];
+    await act(async () => { await result.current.refresh(); });
+    assert.equal(changed, 1);
+    environments = [second];
+    await act(async () => { await result.current.refresh(); });
+    assert.equal(changed, 2);
+  });
+
+  it("requires separate confirmation for stop and permanent release", () => {
+    const actions: string[] = [];
+    render(<VastEnvironmentRow row={row({ phase: "ready", instance_id: 77, connected: true, billing_possible: true })} pending={false} action={async (_id, action) => { actions.push(action); }} t={t} />);
+    assert.ok(screen.getByText(/Ready for chat: choose VAST/));
+    fireEvent.click(screen.getByRole("button", { name: "Stop environment" }));
+    assert.equal(actions.length, 0);
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    assert.equal(actions.length, 0);
+    fireEvent.click(screen.getByRole("button", { name: "Release environment" }));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm release" }));
+    fireEvent.click(screen.getByRole("button", { name: "Stop environment" }));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm stop" }));
+    assert.deepEqual(actions, ["destroy", "stop"]);
+  });
+
+  it("does not search or rent when the profile or API is unavailable", async () => {
+    const posts: string[] = [];
+    globalThis.fetch = async (input, init) => { if (init?.method === "POST") posts.push(String(input)); return Response.json({ ...status(), enabled: false, configured: false, model: null }); };
+    render(<VastEnvironmentsSection t={t} />);
+    await waitFor(() => assert.ok(screen.getByText(/Enable the VAST API/)));
+    const search = screen.getByRole("button", { name: "Find environments" }) as HTMLButtonElement;
+    assert.equal(search.disabled, true);
+    fireEvent.click(search);
+    assert.deepEqual(posts, []);
+  });
+
+  it("surfaces a rejected order while retaining the provider result", async () => {
+    globalThis.fetch = async (_input, init) => init?.method === "POST" ? Response.json({ detail: "vast.price_changed" }, { status: 409 }) : Response.json(status([row()]));
+    const { result } = renderHook(() => useVastEnvironments());
+    await waitFor(() => assert.equal(result.current.loading, false));
+    await act(async () => { await result.current.action("a".repeat(32), "order"); });
+    assert.equal(result.current.error, "vast.price_changed");
+    assert.equal(result.current.state?.environments[0].phase, "planned");
+    assert.equal(result.current.pending, false);
+  });
+
+  it("deduplicates simultaneous paid-order requests before rerender", async () => {
+    let posts = 0; let finish: (value: Response) => void = () => {};
+    globalThis.fetch = async (_input, init) => {
+      if (init?.method === "POST") { posts++; return new Promise<Response>(resolve => { finish = resolve; }); }
+      return Response.json(status());
+    };
+    const { result } = renderHook(() => useVastEnvironments());
+    await waitFor(() => assert.equal(result.current.loading, false));
+    let first: Promise<void>;
+    act(() => { first = result.current.action("a".repeat(32), "order"); void result.current.action("a".repeat(32), "order"); });
+    assert.equal(posts, 1);
+    await act(async () => { finish(Response.json(row({ phase: "queued" }))); await first; });
+    assert.equal(result.current.pending, false);
+  });
+
+  it("uses matching VAST translations in all supported locales", () => {
+    for (const locale of [pl, de]) {
+      assert.deepEqual(Object.keys(locale.models.vast).sort(), Object.keys(en.models.vast).sort());
+      assert.deepEqual(Object.keys(locale.models.vast.phases).sort(), Object.keys(en.models.vast.phases).sort());
+    }
+  });
+});

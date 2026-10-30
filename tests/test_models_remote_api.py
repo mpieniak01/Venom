@@ -22,7 +22,7 @@ async def test_get_remote_providers():
     assert data["status"] == "success"
     assert "providers" in data
     assert "count" in data
-    assert data["count"] == 2  # OpenAI and Google
+    assert data["count"] == 4  # OpenAI, Google, OpenRouter, VAST
 
     # Check provider structure
     provider_names = {p["provider"] for p in data["providers"]}

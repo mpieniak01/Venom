@@ -28,14 +28,14 @@ class Journal:
         return self.root / (plan_id + suffix)
 
     @contextmanager
-    def lock(self, plan_id: str) -> Iterator[None]:
+    def lock(self, plan_id: str, *, blocking: bool = False) -> Iterator[None]:
         import fcntl
 
         target = self.path(plan_id, ".lock")
         fd = os.open(target, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
         try:
             try:
-                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                fcntl.flock(fd, fcntl.LOCK_EX | (0 if blocking else fcntl.LOCK_NB))
             except BlockingIOError:
                 raise VastError("vast.plan_busy") from None
             yield

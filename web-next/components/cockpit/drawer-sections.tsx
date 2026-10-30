@@ -1,3 +1,4 @@
+import {OpenRouterProvenance} from "./openrouter-provenance";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { MarkdownPreview } from "@/components/ui/markdown";
@@ -207,6 +208,7 @@ export function ModelInfoSection({ historyDetail, t }: Readonly<{ historyDetail:
                 {t("cockpit.requestDetails.modelInfoTitle")}
             </p>
             <div className="mt-3 grid gap-2 text-xs text-theme-secondary sm:grid-cols-2">
+                <OpenRouterProvenance detail={historyDetail} t={t}/>
                 {runtimeExecutionModel && (
                     <div className="overflow-hidden">
                         <span className="block truncate text-theme-muted">{t("cockpit.requestDetails.runtimeExecutionModelLabel")}</span>

@@ -6,9 +6,10 @@ from datetime import datetime
 from threading import Lock
 from typing import Annotated, Any
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
+from venom_core.api.routes.system_config import require_localhost_request
 from venom_core.config import SETTINGS
 from venom_core.services import remote_models_service
 from venom_core.services.audit_stream import get_audit_stream
@@ -363,6 +364,11 @@ async def get_remote_providers() -> dict[str, Any]:
         ).model_dump()
     )
 
+    from venom_core.services import remote_provider_control
+
+    providers_status.extend(
+        remote_provider_control.status(p) for p in remote_provider_control.PROVIDERS
+    )
     return {
         "status": "success",
         "providers": providers_status,
@@ -391,6 +397,23 @@ async def get_remote_catalog(
         List of available models with capabilities
     """
     provider = provider.lower()
+    from venom_core.services import remote_provider_control
+
+    if provider in remote_provider_control.PROVIDERS:
+        try:
+            external_models = remote_provider_control.catalog(provider)
+            error = None
+        except HTTPException as exc:
+            external_models, error = [], str(exc.detail)
+        return {
+            "status": "success",
+            "provider": provider,
+            "models": external_models,
+            "count": len(external_models),
+            "source": "configured" if provider == "openrouter" else "attached-instance",
+            "refreshed_at": datetime.now().isoformat(),
+            "error": error,
+        }
 
     if provider not in ("openai", "google"):
         raise HTTPException(
@@ -494,3 +517,26 @@ async def validate_provider(request: ValidationRequest) -> dict[str, Any]:
         "status": "success",
         "validation": result.model_dump(),
     }
+
+
+class ProviderEnableRequest(BaseModel):
+    enabled: bool = Field(strict=True)
+
+
+@router.post(
+    "/providers/{provider}/enable", dependencies=[Depends(require_localhost_request)]
+)
+async def set_remote_provider_enabled(provider: str, request: ProviderEnableRequest):
+    from venom_core.services import remote_provider_control
+
+    remote_provider_control.set_enabled(provider, request.enabled)
+    return remote_provider_control.status(provider)
+
+
+@router.post(
+    "/providers/{provider}/check", dependencies=[Depends(require_localhost_request)]
+)
+async def check_remote_provider(provider: str):
+    from venom_core.services import remote_provider_control
+
+    return await remote_provider_control.check(provider)

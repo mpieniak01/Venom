@@ -1,9 +1,13 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 
 export interface RemoteProviderStatus {
   provider: string;
   status: string;
-  last_check: string;
+  enabled?: boolean;
+  configured?: boolean;
+  available?: boolean | null;
+  selected?: boolean;
+  last_check: string | null;
   error: string | null;
   latency_ms: number | null;
 }
@@ -40,6 +44,7 @@ export interface RemoteCatalogResponse {
   count: number;
   refreshed_at: string;
   source: string;
+  error?: string | null;
 }
 
 export interface ConnectivityResponse {
@@ -53,6 +58,13 @@ export function useRemoteModels() {
   const [providersLoading, setProvidersLoading] = useState(true);
   const [providersError, setProvidersError] = useState<string | null>(null);
 
+  const [providerActions, setProviderActions] = useState<Record<string, boolean>>({});
+  const [providerActionError, setProviderActionError] = useState<string | null>(null);
+  const activeActions = useRef(new Set<string>());
+  const providersRequest = useRef<Promise<void> | null>(null);
+  const providersRefreshQueued = useRef(false);
+  const mounted = useRef(true);
+
   const [catalog, setCatalog] = useState<RemoteModelInfo[]>([]);
   const [catalogProvider, setCatalogProvider] = useState<string | null>(null);
   const [catalogLoading, setCatalogLoading] = useState(false);
@@ -64,25 +76,39 @@ export function useRemoteModels() {
   const [bindingsLoading, setBindingsLoading] = useState(true);
   const [bindingsError, setBindingsError] = useState<string | null>(null);
 
-  // Fetch providers
-  const fetchProviders = useCallback(async () => {
+  const readProviders = useCallback(async () => {
     try {
-      setProvidersLoading(true);
       setProvidersError(null);
       const response = await fetch("/api/v1/models/remote/providers");
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const data: RemoteProvidersResponse = await response.json();
-      setProviders(data.providers || []);
+      if (mounted.current && !providersRefreshQueued.current) setProviders(data.providers || []);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
-      setProvidersError(message);
-      setProviders([]);
-    } finally {
-      setProvidersLoading(false);
+      if (mounted.current && !providersRefreshQueued.current) {
+        setProvidersError(message); setProviders([]);
+      }
     }
   }, []);
+
+  // Mutations await a fresh read even if a poll was already in flight.
+  const fetchProviders = useCallback((): Promise<void> => {
+    providersRefreshQueued.current = true;
+    if (providersRequest.current) return providersRequest.current;
+    const readQueued = async (): Promise<void> => {
+      if (!mounted.current) {
+        providersRequest.current = null;
+        return;
+      }
+      providersRefreshQueued.current = false;
+      await readProviders();
+      if (providersRefreshQueued.current && mounted.current) return readQueued();
+      providersRequest.current = null;
+      if (mounted.current) setProvidersLoading(false);
+    };
+    providersRequest.current = Promise.resolve().then(readQueued);
+    return providersRequest.current;
+  }, [readProviders]);
 
   // Fetch catalog for a specific provider
   const fetchCatalog = useCallback(async (provider: string) => {
@@ -96,6 +122,7 @@ export function useRemoteModels() {
       }
       const data: RemoteCatalogResponse = await response.json();
       setCatalog(data.models || []);
+      setCatalogError(data.error || null);
       setCatalogRefreshedAt(data.refreshed_at || null);
       setCatalogSource(data.source || null);
     } catch (error) {
@@ -106,6 +133,40 @@ export function useRemoteModels() {
       setCatalogLoading(false);
     }
   }, []);
+
+  const providerRequest = useCallback(async (provider: string, path: string, body?: object) => {
+    if (activeActions.current.has(provider)) return;
+    activeActions.current.add(provider);
+    setProviderActions((current) => ({ ...current, [provider]: true }));
+    setProviderActionError(null);
+    try {
+      const response = await fetch(path, {
+        method: "POST",
+        ...(body === undefined ? {} : {
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        }),
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      await fetchProviders();
+      if (catalogProvider === provider) await fetchCatalog(provider);
+    } catch (error) {
+      setProviderActionError(error instanceof Error ? error.message : "Unknown error");
+    } finally {
+      activeActions.current.delete(provider);
+      setProviderActions((current) => ({ ...current, [provider]: false }));
+    }
+  }, [catalogProvider, fetchCatalog, fetchProviders]);
+
+  const manageProvider = useCallback((provider: string, enabled?: boolean) => {
+    const action = enabled === undefined ? "check" : "enable";
+    return providerRequest(provider, `/api/v1/models/remote/providers/${encodeURIComponent(provider)}/${action}`, enabled === undefined ? undefined : { enabled });
+  }, [providerRequest]);
+
+  const connectVast = useCallback((planId: string | null) => {
+    if (planId !== null && !/^[a-f0-9]{32}$/.test(planId)) return Promise.resolve();
+    return providerRequest("vast_ollama", `/api/v1/system/vast-chat/${planId === null ? "detach" : "attach"}`, planId === null ? undefined : { plan_id: planId });
+  }, [providerRequest]);
 
   // Fetch connectivity bindings
   const fetchBindings = useCallback(async () => {
@@ -129,8 +190,11 @@ export function useRemoteModels() {
 
   // Initial fetch
   useEffect(() => {
-    fetchProviders();
-    fetchBindings();
+    mounted.current = true;
+    void fetchProviders();
+    void fetchBindings();
+    const timer = setInterval(() => { void fetchProviders(); }, 10000);
+    return () => { mounted.current = false; clearInterval(timer); };
   }, [fetchProviders, fetchBindings]);
 
   return {
@@ -139,6 +203,10 @@ export function useRemoteModels() {
     providersLoading,
     providersError,
     fetchProviders,
+    providerActions,
+    providerActionError,
+    manageProvider,
+    connectVast,
 
     // Catalog
     catalog,

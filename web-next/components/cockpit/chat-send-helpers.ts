@@ -1,3 +1,5 @@
+import { pendingOpenRouterCost, readOpenRouterCost, readOpenRouterMetadata, readOpenRouterUsage } from "@/lib/openrouter-chat";
+import { isGuardedChatRuntime, isOpenRouterRuntime } from "@/lib/remote-chat";
 import { createParser } from "eventsource-parser";
 import { type GenerationParams, type HistoryRequestDetail } from "@/lib/types";
 import { type ParsedSlashCommand } from "@/lib/slash-commands";
@@ -37,7 +39,7 @@ export type ChatSendParams = {
     language: string;
     resetSession: () => string | null;
     refreshActiveServer: () => void;
-    setActiveLlmRuntime: (runtime: "openai" | "google", model: string) => Promise<{
+    setActiveLlmRuntime: (runtime: "openai" | "google" | "openrouter", model: string) => Promise<{
         config_hash?: string | null;
         runtime_id?: string | null;
     }>;
@@ -51,6 +53,7 @@ export type ChatSendParams = {
         sessionId: string | null;
         expectedRuntimeId?: string | null;
         expectedConfigHash?: string | null;
+        expectedQuoteHash?: string | null;
         history?: Array<{ role: "user" | "assistant"; content: string }>;
     }) => Promise<Response>;
     sendTask: (payload: SendTaskInput) => Promise<{ task_id?: string | null }>;
@@ -260,9 +263,9 @@ export const buildSimpleStreamRequestPayload = (
     activeServerInfo?: ActiveServerInfo,
     history?: Array<{ role: "user" | "assistant"; content: string }>,
 ) => ({
-    ...(activeServerInfo?.runtime_id?.startsWith("ollama@vast:") ? {
-        expectedRuntimeId: activeServerInfo.runtime_id,
-        expectedConfigHash: activeServerInfo.config_hash,
+    ...(isGuardedChatRuntime(activeServerInfo?.runtime_id) ? {
+        expectedRuntimeId: activeServerInfo?.runtime_id,
+        expectedConfigHash: activeServerInfo?.config_hash,
     } : {}),
     ...(history ? { history } : {}),
     content: trimmed,
@@ -276,12 +279,12 @@ function assertCompletedRemoteStream(
     activeServerInfo: ActiveServerInfo,
     streamCompleted: boolean,
 ): void {
-    if (activeServerInfo?.runtime_id?.startsWith("ollama@vast:") && !streamCompleted) {
+    if (isGuardedChatRuntime(activeServerInfo?.runtime_id) && !streamCompleted) {
         throw new Error("Remote response ended before generation completed.");
     }
 }
 
-export async function handleSimpleTaskSend(params: {
+type SimpleTaskSendParams = {
     clientId: string;
     trimmed: string;
     resolvedSession: string | null;
@@ -290,6 +293,9 @@ export async function handleSimpleTaskSend(params: {
     activeServerInfo: ActiveServerInfo;
     history?: Array<{ role: "user" | "assistant"; content: string }>;
     onCompleted?: (answer: string) => void;
+    t?: (key: string) => string;
+    expectedQuoteHash?: string;
+    initialCost?: ReturnType<typeof pendingOpenRouterCost>;
     sendSimpleChatStream: ChatSendParams["sendSimpleChatStream"];
     linkOptimisticRequest: ChatSendParams["linkOptimisticRequest"];
     setLocalSessionHistory: ChatSendParams["setLocalSessionHistory"];
@@ -304,7 +310,37 @@ export async function handleSimpleTaskSend(params: {
     clearSimpleStream: ChatSendParams["clearSimpleStream"];
     setMessage: ChatSendParams["setMessage"];
     setSending: ChatSendParams["setSending"];
-}) {
+};
+
+function failSimpleTaskSend(
+    params: SimpleTaskSendParams,
+    requestId: string,
+    error_: unknown,
+    openRouter: boolean,
+): void {
+    const error = openRouter
+        ? new Error(params.t?.("cockpit.openrouter.failure") ?? "cockpit.openrouter.failure")
+        : error_;
+    const errorText = error instanceof Error ? error.message : "Błąd trybu prostego.";
+    params.updateSimpleStream(params.clientId, {
+        text: errorText,
+        status: "FAILED",
+        done: true,
+    });
+    params.dropOptimisticRequest(params.clientId);
+    params.setMessage(error instanceof Error ? error.message : "Nie udało się wysłać zadania");
+    params.setLocalSessionHistory(previous => {
+        const next = [...previous];
+        upsertHistoryEntry(next, requestId, "assistant", errorText, new Date().toISOString(), params.resolvedSession);
+        const index = next.findIndex(entry => entry.request_id === requestId && entry.role === "assistant");
+        if (index >= 0) {
+            next[index] = { ...next[index], pending: false, status: "FAILED" };
+        }
+        return next;
+    });
+}
+
+export async function handleSimpleTaskSend(params: SimpleTaskSendParams) {
     const {
         clientId,
         trimmed,
@@ -324,10 +360,24 @@ export async function handleSimpleTaskSend(params: {
         setResponseDurations,
         dropOptimisticRequest,
         clearSimpleStream,
-        setMessage,
         setSending,
     } = params;
     let resolvedRequestId = clientId;
+    const openRouter = isOpenRouterRuntime(activeServerInfo?.runtime_id) || activeServerInfo?.active_server === "openrouter";
+    let accounting = openRouter ? params.initialCost ?? pendingOpenRouterCost() : undefined;
+    let provenance = readOpenRouterMetadata({requested_model: selectedLlmModel});
+    let actualUsage: ReturnType<typeof readOpenRouterUsage> = null;
+    const recordAccounting = (status: string) => {
+        if (!accounting) return;
+        setSimpleRequestDetails(previous => ({...previous, [resolvedRequestId]: {
+            ...previous[resolvedRequestId], request_id: resolvedRequestId, prompt: trimmed,
+            status, created_at: previous[resolvedRequestId]?.created_at ?? new Date().toISOString(), openrouter_cost: accounting,
+            session_id: resolvedSession ?? null, llm_config_hash: activeServerInfo?.config_hash ?? null,
+            openrouter_metadata: provenance, ...(actualUsage ? {openrouter_usage: actualUsage} : {}),
+            llm_provider: "openrouter", llm_model: selectedLlmModel,
+            llm_runtime_id: activeServerInfo?.runtime_id ?? null,
+        }}));
+    };
 
     try {
         const createdTimestamp = new Date().toISOString();
@@ -351,11 +401,13 @@ export async function handleSimpleTaskSend(params: {
                     trimmed, selectedLlmModel, generationParams, resolvedSession,
                     activeServerInfo, params.history,
                 ),
+                ...(params.expectedQuoteHash ? {expectedQuoteHash: params.expectedQuoteHash} : {}),
             },
         );
         const headerRequestId = response.headers.get("x-request-id");
         const simpleRequestId = headerRequestId || `simple-${clientId}`;
         resolvedRequestId = simpleRequestId;
+        recordAccounting("PROCESSING");
         linkOptimisticRequest(clientId, simpleRequestId);
         reconcileRequestId(setLocalSessionHistory, clientId, simpleRequestId);
         let lastHistoryUpdate = 0;
@@ -402,29 +454,55 @@ export async function handleSimpleTaskSend(params: {
         let firstChunkLogged = false;
         let streamCompleted = false;
 
-        const parser = createParser({
-            onEvent: (msg) => {
-                if (msg.event === "content") {
-                    const data = JSON.parse(msg.data);
-                    if (data.text) {
-                        buffer += data.text;
-                        if (!firstChunkLogged) {
-                            const ttftTiming = uiTimingsRef.current.get(simpleRequestId);
-                            if (ttftTiming && ttftTiming.ttftMs === undefined) {
-                                recordUiTiming(simpleRequestId, { ttftMs: Date.now() - ttftTiming.t0 });
-                            }
-                            firstChunkLogged = true;
-                        }
-                        updateSimpleStream(clientId, { text: buffer, status: "W toku" });
-                        upsertLocalHistory("assistant", buffer);
-                    }
-                } else if (msg.event === "done") {
-                    streamCompleted = true;
-                } else if (msg.event === "error") {
-                    const data = JSON.parse(msg.data);
-                    throw new Error(data.error || "Wystąpił błąd strumieniowania.");
+        const handleContent = (raw: string) => {
+            const data = JSON.parse(raw);
+            if (!data.text) return;
+            buffer += data.text;
+            if (!firstChunkLogged) {
+                const timing = uiTimingsRef.current.get(simpleRequestId);
+                if (timing && timing.ttftMs === undefined) {
+                    recordUiTiming(simpleRequestId, { ttftMs: Date.now() - timing.t0 });
                 }
-            },
+                firstChunkLogged = true;
+            }
+            updateSimpleStream(clientId, { text: buffer, status: "W toku" });
+            upsertLocalHistory("assistant", buffer);
+        };
+        const handleStart = (raw: string) => {
+            if (!openRouter) return;
+            provenance = readOpenRouterMetadata(JSON.parse(raw));
+            recordAccounting("PROCESSING");
+        };
+        const handleCost = (raw: string) => {
+            const cost = readOpenRouterCost(JSON.parse(raw));
+            if (cost && openRouter) {
+                accounting = cost;
+                recordAccounting("PROCESSING");
+            }
+        };
+        const handleDone = (raw: string) => {
+            const completion = openRouter ? JSON.parse(raw) : {};
+            if (openRouter) {
+                provenance = readOpenRouterMetadata(completion);
+                actualUsage = readOpenRouterUsage(completion.usage, completion.usage_source);
+            }
+            const cost = readOpenRouterCost(completion.cost);
+            if (cost && openRouter) accounting = cost;
+            streamCompleted = true;
+        };
+        const handleError = (raw: string) => {
+            const data = JSON.parse(raw);
+            throw new Error(data.error || "Wystąpił błąd strumieniowania.");
+        };
+        const eventHandlers = new Map<string, (raw: string) => void>([
+            ["content", handleContent],
+            ["start", handleStart],
+            ["cost", handleCost],
+            ["done", handleDone],
+            ["error", handleError],
+        ]);
+        const parser = createParser({
+            onEvent: message => eventHandlers.get(message.event ?? "")?.(message.data),
         });
 
         try {
@@ -481,6 +559,7 @@ export async function handleSimpleTaskSend(params: {
                 llm_endpoint: simpleEndpoint ?? null,
                 llm_config_hash: activeServerInfo?.config_hash ?? null,
                 llm_runtime_id: activeServerInfo?.runtime_id ?? null,
+                ...(accounting ? {openrouter_cost: accounting, openrouter_metadata: provenance, ...(actualUsage ? {openrouter_usage: actualUsage} : {})} : {}),
                 forced_tool: null,
                 forced_provider: null,
                 session_id: resolvedSession ?? null,
@@ -510,38 +589,9 @@ export async function handleSimpleTaskSend(params: {
             dropOptimisticRequest(clientId);
             clearSimpleStream(clientId);
         }, 200);
-    } catch (err) {
-        updateSimpleStream(clientId, {
-            text: err instanceof Error ? err.message : "Błąd trybu prostego.",
-            status: "FAILED",
-            done: true,
-        });
-        dropOptimisticRequest(clientId);
-        setMessage(err instanceof Error ? err.message : "Nie udało się wysłać zadania");
-        setLocalSessionHistory((prev) => {
-            const next = [...prev];
-            const errorText = err instanceof Error ? err.message : "Błąd trybu prostego.";
-            const requestId = resolvedRequestId;
-            upsertHistoryEntry(
-                next,
-                requestId,
-                "assistant",
-                errorText,
-                new Date().toISOString(),
-                resolvedSession,
-            );
-            const idx = next.findIndex(
-                (entry) => entry.request_id === requestId && entry.role === "assistant",
-            );
-            if (idx >= 0) {
-                next[idx] = {
-                    ...next[idx],
-                    pending: false,
-                    status: "FAILED",
-                };
-            }
-            return next;
-        });
+    } catch (error_) {
+        recordAccounting("FAILED");
+        failSimpleTaskSend(params, resolvedRequestId, error_, openRouter);
     } finally {
         setSending(false);
     }
@@ -678,7 +728,7 @@ export async function handleRuntimeSwitch(params: {
             return { success: false, runtimeOverride: null };
         }
         try {
-            const runtime = await setActiveLlmRuntime(forcedRuntimeProvider as "openai" | "google", selectedLlmModel);
+            const runtime = await setActiveLlmRuntime(forcedRuntimeProvider as "openai" | "google" | "openrouter", selectedLlmModel);
             refreshActiveServer();
             return {
                 success: true,

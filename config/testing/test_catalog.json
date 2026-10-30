@@ -4692,6 +4692,62 @@
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
+      "path": "tests/test_openrouter_model_catalog.py",
+      "domain": "providers",
+      "test_type": "service_contract",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Metadata discovery, multi-model connections and per-model quote identity."
+    },
+    {
+      "path": "tests/test_openrouter_runtime.py",
+      "domain": "misc",
+      "test_type": "service_contract",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Offline provider boundary, identity, quotes, policy and billing regressions."
+    },
+    {
+      "path": "tests/test_openrouter_test_zero.py",
+      "domain": "misc",
+      "test_type": "service_contract",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Test zero: real auth/catalog/one zero-cost completion logic tested with fake transport; live mode remains explicit."
+    },
+    {
+      "path": "tests/test_openrouter_wheel.py",
+      "domain": "misc",
+      "test_type": "service_contract",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Explicit local installed-wheel acceptance; skip reason documents unavailable private CI artifact."
+    },
+    {
       "path": "tests/test_operator_agent.py",
       "domain": "agents",
       "test_type": "unit",
@@ -5444,6 +5500,20 @@
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
+    },
+    {
+      "path": "tests/test_remote_provider_control.py",
+      "domain": "providers",
+      "test_type": "service_contract",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "External API controls, metadata-only checks and disabled-provider generation guards."
     },
     {
       "path": "tests/test_render_skill.py",
@@ -6846,6 +6916,20 @@
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
+    },
+    {
+      "path": "tests/test_vast_management.py",
+      "domain": "providers",
+      "test_type": "service_contract",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Operator-only rental, provisioning, identity readiness and automatic chat attachment with fake providers."
     },
     {
       "path": "tests/test_vast_observation.py",

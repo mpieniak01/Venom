@@ -1,4 +1,41 @@
 export const cockpitLocale = {
+    openrouter: {
+      "provenance": {"requested_model": "Requested model", "confirmed_model": "Confirmed model", "confirmed_provider": "Confirmed provider", "generation_id": "Generation ID"},
+      "upstreamUsage": "Provider-reported tokens",
+      "usageValues": "Input {{input}} · output {{output}} · total {{total}}",
+
+      "conversationTitle": "Conversation cost for this model",
+      "conversationReported": "Confirmed conversation charges: {{amount}} USD",
+      "conversationReserved": "Conversation reservations: {{amount}} USD",
+
+      "quoteFailed": "Cannot verify the OpenRouter estimate. The message was not sent to the model.",
+      "lastQuote": "Last message estimate: {{amount}} USD · input upper bound: {{input}} tokens · maximum output: {{output}} tokens",
+
+      "title": "OpenRouter chat",
+      "directOnly": "OpenRouter supports Direct chat only. Normal, Complex and tools are unavailable.",
+      "loading": "Loading approved models and prices…",
+      "unavailable": "OpenRouter is unavailable. Check configuration, cloud policy, approved models and budget.",
+      "unknown": "Unknown",
+      "configured": "API key configured",
+      "notConfigured": "API key not configured",
+      "authentication": {
+            "unknown": "Authentication not verified",
+            "true": "Authentication verified",
+            "false": "Authentication failed"
+      },
+      "prices": "Input {{input}} · output {{output}} USD / 1M tokens",
+      "requestPrice": "Additional request price: {{price}} USD",
+      "limits": "Context: {{context}} tokens · maximum output: {{output}} tokens",
+      "pricingDate": "Pricing as of: {{date}}",
+      "costNotice": "Cost includes conversation history. Missing accounting remains pending; STOP may still incur provider charges.",
+      "costTitle": "OpenRouter accounting",
+      "pending": "Awaiting accounting",
+      "settled": "Settled",
+      "estimated": "Estimated: {{amount}} USD",
+      "reserved": "Reserved: {{amount}} USD",
+      "reported": "Reported: {{amount}} USD",
+      "failure": "OpenRouter request failed or was interrupted. Check accounting before retrying."
+},
     runtime: {
       switchConfirm: "Directive requires switching runtime to {{label}}. Switch now?",
       switchCancelled: "Runtime switch cancelled.",

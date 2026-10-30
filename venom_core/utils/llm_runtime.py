@@ -172,6 +172,13 @@ def get_active_llm_runtime(settings=None) -> LLMRuntimeInfo:
     """
 
     if settings is None or settings is SETTINGS:
+        from venom_core.services.openrouter_runtime import (
+            runtime_override as openrouter_override,
+        )
+
+        chosen = openrouter_override()
+        if chosen is not None:
+            return chosen
         from venom_core.services.vast_chat_runtime import runtime_override
 
         remote = runtime_override()

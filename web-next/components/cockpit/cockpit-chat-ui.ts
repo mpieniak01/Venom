@@ -46,7 +46,7 @@ type CockpitChatUiParams = {
   language: string;
   resetSession: () => string | null;
   refreshActiveServer: () => void;
-  setActiveLlmRuntime: (runtime: "openai" | "google", model: string) => Promise<{
+  setActiveLlmRuntime: (runtime: "openai" | "google" | "openrouter", model: string) => Promise<{
     config_hash?: string | null;
     runtime_id?: string | null;
   }>;

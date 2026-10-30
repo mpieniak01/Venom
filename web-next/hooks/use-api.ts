@@ -1,3 +1,5 @@
+import { readOpenRouterQuote } from "@/lib/openrouter-chat";
+import { isGuardedChatRuntime } from "@/lib/remote-chat";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { ApiError, apiFetch } from "@/lib/api-client";
 import {
@@ -868,6 +870,7 @@ export type SimpleChatStreamRequest = {
   sessionId?: string | null;
   expectedRuntimeId?: string | null;
   expectedConfigHash?: string | null;
+  expectedQuoteHash?: string | null;
   history?: Array<{ role: "user" | "assistant"; content: string }>;
 };
 
@@ -878,9 +881,8 @@ export function cancelSimpleChatStream() {
   simpleChatController = null;
 }
 
-export async function sendSimpleChatStream(payload: SimpleChatStreamRequest) {
-  const baseUrl = getApiBaseUrl();
-  const target = baseUrl ? `${baseUrl}/api/v1/llm/simple/stream` : "/api/v1/llm/simple/stream";
+/** Serialize quote and execution from the same request contract. */
+export function buildSimpleChatApiBody(payload: SimpleChatStreamRequest) {
   const body: {
     content: string;
     model?: string;
@@ -889,6 +891,7 @@ export async function sendSimpleChatStream(payload: SimpleChatStreamRequest) {
     session_id?: string;
     expected_runtime_id?: string;
     expected_config_hash?: string;
+    expected_quote_hash?: string;
     history?: Array<{ role: "user" | "assistant"; content: string }>;
   } = {
     content: payload.content,
@@ -900,6 +903,25 @@ export async function sendSimpleChatStream(payload: SimpleChatStreamRequest) {
   if (payload.expectedRuntimeId) body.expected_runtime_id = payload.expectedRuntimeId;
   if (payload.expectedConfigHash) body.expected_config_hash = payload.expectedConfigHash;
   if (payload.history) body.history = payload.history;
+  if (payload.expectedQuoteHash) body.expected_quote_hash = payload.expectedQuoteHash;
+  return body;
+}
+
+/** Local preflight only: STOP aborts this request before any paid POST can start. */
+export async function quoteOpenRouterChat(payload: SimpleChatStreamRequest) {
+  const controller = new AbortController();
+  simpleChatController = controller;
+  const quote = await apiFetch<unknown>("/api/v1/openrouter/quote", {
+    method: "POST", body: JSON.stringify(buildSimpleChatApiBody({...payload, expectedQuoteHash: undefined})), signal: controller.signal,
+  });
+  if (controller.signal.aborted) throw new DOMException("Aborted", "AbortError");
+  return readOpenRouterQuote(quote, payload.expectedConfigHash);
+}
+
+export async function sendSimpleChatStream(payload: SimpleChatStreamRequest) {
+  const baseUrl = getApiBaseUrl();
+  const target = baseUrl ? `${baseUrl}/api/v1/llm/simple/stream` : "/api/v1/llm/simple/stream";
+  const body = buildSimpleChatApiBody(payload);
   const controller = new AbortController();
   simpleChatController = controller;
   let response: Response;
@@ -911,7 +933,7 @@ export async function sendSimpleChatStream(payload: SimpleChatStreamRequest) {
       signal: controller.signal,
     });
   } catch (error) {
-    if (controller.signal.aborted || payload.expectedRuntimeId?.startsWith("ollama@vast:")) throw error;
+    if (controller.signal.aborted || isGuardedChatRuntime(payload.expectedRuntimeId)) throw error;
     if (baseUrl) {
       response = await fetch("/api/v1/llm/simple/stream", {
         method: "POST",

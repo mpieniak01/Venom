@@ -450,3 +450,14 @@ def test_offline_singleton_uses_isolated_journal(tmp_path):
     manager = transport.get_vast_chat_connection()
     assert manager.journal.root == (tmp_path / "vast").resolve()
     assert manager.status(False)["target_id"] is None
+
+
+@pytest.mark.parametrize("expected", [("other", DIGEST), ("demo:latest", "e" * 64)])
+def test_managed_attachment_never_publishes_wrong_model(connection, expected):
+    manager, svc, plan, tunnel, requests, _ = connection
+    with pytest.raises(VastError, match="vast.management_model_not_ready"):
+        manager.attach(plan.plan_id, expected_model=expected)
+    assert not manager.status(False)["available"]
+    assert not manager.status(False)["models"]
+    assert tunnel.close_count == 1
+    assert all(r.method == "GET" for r in requests)

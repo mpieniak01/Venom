@@ -21,13 +21,14 @@ def ollama_environment(profile: WorkloadProfile) -> dict[str, str]:
 
 
 def startup(profile: WorkloadProfile, *, download_model: bool = False) -> str:
+    flock_command = "flock -w 120 9" if download_model else "flock -n 9 || exit 0"
     base = f"""#!/bin/bash
 # {STARTUP_VERSION}
 set -euo pipefail
 umask 077
 mkdir -p /workspace/venom-vast
 exec 9>/workspace/venom-vast/startup.lock
-flock -n 9 || exit 0
+{flock_command}
 trap 'echo failed > /workspace/venom-vast/startup.state' ERR
 echo provisioning > /workspace/venom-vast/startup.state
 """

@@ -162,6 +162,10 @@ def get_runtime_switch_gate_snapshot() -> RuntimeSwitchGateSnapshot:
 
 
 def assert_runtime_request_allowed(*, request_kind: str) -> None:
+    from venom_core.services.openrouter_runtime import selection as openrouter_selection
+
+    if openrouter_selection() is not None and request_kind != "simple_chat":
+        raise HTTPException(status_code=409, detail="openrouter_direct_only")
     get_runtime_admission().assert_host_available()
     with _STATE_LOCK:
         if not _STATE.in_progress:

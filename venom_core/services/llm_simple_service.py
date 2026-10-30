@@ -1116,6 +1116,16 @@ def _validate_simple_chat_runtime(runtime) -> str:
 
 async def stream_simple_chat(request: SimpleChatRequest):
     assert_runtime_request_allowed(request_kind="simple_chat")
+    from venom_core.services import openrouter_runtime
+
+    if openrouter_runtime.selection() is not None:
+        from venom_core.services.openrouter_chat import response
+
+        return await response(request)
+    return await _stream_non_openrouter_chat(request)
+
+
+async def _stream_non_openrouter_chat(request: SimpleChatRequest):
     await asyncio.sleep(0)
     from venom_core.services.vast_chat_runtime import preflight
 

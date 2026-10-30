@@ -299,6 +299,15 @@ class Settings(BaseSettings):
     PREVIOUS_ONNX_LLM_MODEL_PATH: str = (
         ""  # Poprzednia ścieżka modelu ONNX (rollback po deploy adaptera)
     )
+    OPENROUTER_ENABLED: bool = False
+    OPENROUTER_API_KEY: str = ""
+    OPENROUTER_CREDENTIAL_FILE: str = ""
+    OPENROUTER_MODELS_FILE: str = ""
+    OPENROUTER_MESSAGE_LIMIT_USD: str = "0"
+    OPENROUTER_CONVERSATION_LIMIT_USD: str = "0"
+    OPENROUTER_DAILY_LIMIT_USD: str = "0"
+    OPENROUTER_LIBRARY_VERSION: str = "0.2.0"
+
     ACTIVE_LLM_SERVER: str = ""  # Ostatnio aktywowany serwer LLM
     LLM_CONFIG_HASH: str = (
         ""  # Hash aktywnej konfiguracji LLM (endpoint+model+provider)
@@ -360,6 +369,9 @@ class Settings(BaseSettings):
     ENABLE_HF_INTEGRATION: bool = True  # Włącz integrację z Hugging Face
     HF_TOKEN: SecretStr = SecretStr("")  # Token Hugging Face API (opcjonalny)
     VAST_API_KEY: SecretStr = SecretStr("")  # Vast.ai rental API; local ENV_FILE
+    VAST_CHAT_PROFILE_FILE: str = (
+        ""  # Server-owned single-model VAST management profile
+    )
     GITHUB_TOKEN: SecretStr = SecretStr("")  # Personal Access Token do GitHub API
     GITHUB_REPO_NAME: str = ""  # Nazwa repozytorium np. "mpieniak01/Venom"
     DISCORD_WEBHOOK_URL: SecretStr = SecretStr(

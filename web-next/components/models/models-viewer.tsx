@@ -1,7 +1,9 @@
 "use client";
 
+import { VastEnvironmentsSection } from "./vast-environments-section";
+import { OpenRouterModelsSection } from "./openrouter-models-section";
 import { ModelResourcesControl } from "./model-resources-control";
-import React, { useState } from "react";
+import React, { useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { configHref } from "@/lib/config-navigation";
 import { Layers, Newspaper, Server, Cloud } from "lucide-react";
@@ -19,10 +21,22 @@ import {
   RemoteModelsSection
 } from "./models-viewer-sections";
 
+type ModelsTab = "news" | "models" | "remote" | "openrouter" | "vast";
+function subscribeToLocation(callback: () => void) {
+  window.addEventListener("popstate", callback);
+  return () => window.removeEventListener("popstate", callback);
+}
+function locationTab(): ModelsTab {
+  return new URLSearchParams(window.location.search).get("tab") === "vast" ? "vast" : "news";
+}
+const serverTab = (): ModelsTab => "news";
+
 export const ModelsViewer = () => {
   const logic = useModelsViewerLogic();
   const { t } = logic;
-  const [activeTab, setActiveTab] = useState<"news" | "models" | "remote">("news");
+  const initialTab = useSyncExternalStore(subscribeToLocation, locationTab, serverTab);
+  const [chosenTab, setChosenTab] = useState<ModelsTab | null>(null);
+  const activeTab = chosenTab ?? initialTab;
 
   return (
     <div className="space-y-6 pb-10">
@@ -48,7 +62,7 @@ export const ModelsViewer = () => {
       {/* Tabs */}
       <div className={THEME_TAB_BAR_CLASS}>
         <Button
-          onClick={() => setActiveTab("news")}
+          onClick={() => setChosenTab("news")}
           variant="ghost"
           size="sm"
           className={cn(getThemeTabClass(activeTab === "news"))}
@@ -57,7 +71,7 @@ export const ModelsViewer = () => {
           {t("models.tabs.news")}
         </Button>
         <Button
-          onClick={() => setActiveTab("models")}
+          onClick={() => setChosenTab("models")}
           variant="ghost"
           size="sm"
           className={cn(getThemeTabClass(activeTab === "models"))}
@@ -66,13 +80,19 @@ export const ModelsViewer = () => {
           {t("models.tabs.models")}
         </Button>
         <Button
-          onClick={() => setActiveTab("remote")}
+          onClick={() => setChosenTab("remote")}
           variant="ghost"
           size="sm"
           className={cn(getThemeTabClass(activeTab === "remote"))}
         >
           <Cloud className="h-4 w-4" />
           {t("models.tabs.remoteModels")}
+        </Button>
+        <Button onClick={() => setChosenTab("openrouter")} variant="ghost" size="sm" className={cn(getThemeTabClass(activeTab === "openrouter"))}>
+          <Cloud className="h-4 w-4" />OpenRouter
+        </Button>
+        <Button onClick={() => setChosenTab("vast")} variant="ghost" size="sm" className={cn(getThemeTabClass(activeTab === "vast"))}>
+          <Cloud className="h-4 w-4" />{t("models.vast.tab")}
         </Button>
       </div>
 
@@ -100,6 +120,8 @@ export const ModelsViewer = () => {
           </>
         )}
 
+        {activeTab === "vast" && <VastEnvironmentsSection t={t} onChanged={async () => { await Promise.all([logic.llmServers.refresh(), logic.fetchRemoteProviders()]); }} />}
+        {activeTab === "openrouter" && <OpenRouterModelsSection t={t} onChanged={async () => { await Promise.all([logic.llmServers.refresh(), logic.fetchRemoteProviders()]); }} />}
         {activeTab === "remote" && (
           <RemoteModelsSection {...logic} />
         )}

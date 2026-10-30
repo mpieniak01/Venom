@@ -1,6 +1,10 @@
 "use client";
 
 import { useCallback, useRef } from "react";
+import { quoteOpenRouterChat } from "@/hooks/use-api";
+import { pendingOpenRouterCost, type OpenRouterQuote } from "@/lib/openrouter-chat";
+import { publishOpenRouterQuote } from "@/lib/openrouter-quote-state";
+import { allowsOpenRouterChat, isOpenRouterRuntime } from "@/lib/remote-chat";
 import { appendVastChatTurn, vastChatHistoryKey, type VastChatTurn } from "@/lib/vast-chat-history";
 import { useTranslation } from "@/lib/i18n";
 import { parseInputCommand } from "@/lib/slash-commands";
@@ -11,6 +15,8 @@ import {
   handleRuntimeSwitch,
   handleSimpleTaskSend,
   handleStandardTaskSend,
+  buildSimpleStreamRequestPayload,
+  addInitialSimpleUserHistoryEntry,
 } from "./chat-send-helpers";
 
 function resolveSession(
@@ -28,8 +34,8 @@ function getServerSwitchErrorMessage(err: unknown, fallback: string): string {
   return err instanceof Error ? err.message : fallback;
 }
 
-function isCloudRuntimeServer(server: string): server is "openai" | "google" {
-  return server === "openai" || server === "google";
+function isCloudRuntimeServer(server: string): server is "openai" | "google" | "openrouter" {
+  return server === "openai" || server === "google" || server === "openrouter";
 }
 
 function shouldUseSimpleMode(
@@ -52,7 +58,7 @@ export function resolveEffectiveChatModelSelection(
 ): string {
   const selected = (selectedLlmModel || "").trim();
   if (selected) return selected;
-  if (selectedRuntime !== activeRuntime && [selectedRuntime, activeRuntime].includes("vast_ollama")) return "";
+  if (selectedRuntime !== activeRuntime && [selectedRuntime, activeRuntime].some(runtime => runtime === "vast_ollama" || runtime === "openrouter")) return "";
   return String(activeModel || "").trim();
 }
 
@@ -69,7 +75,12 @@ export async function syncTargetServerIfNeeded(params: {
   const targetServer = (params.selectedLlmServer || "").toLowerCase().trim();
   const activeServer = (params.activeServerInfo?.active_server || "").toLowerCase().trim();
   const sameModel = !params.selectedLlmModel || params.selectedLlmModel === params.activeServerInfo?.active_model;
-  if (!targetServer || (targetServer === activeServer && sameModel)) return params.activeServerInfo;
+  const identityReady = targetServer !== "openrouter" || Boolean(
+    params.activeServerInfo?.active_model
+    && params.activeServerInfo.runtime_id === "openrouter@" + params.activeServerInfo.active_model
+    && params.activeServerInfo.config_hash?.trim(),
+  );
+  if (!targetServer || (targetServer === activeServer && sameModel && identityReady)) return params.activeServerInfo;
   try {
     const switched = isCloudRuntimeServer(targetServer)
       ? await params.setActiveLlmRuntime(targetServer, params.selectedLlmModel)
@@ -110,6 +121,57 @@ async function executeSendFlow(params: {
     return;
   }
   await handleStandardTaskSend(params.standardParams);
+}
+
+async function prepareOpenRouterQuote(params: {
+  activeServerInfo: ChatSendParams["activeServerInfo"];
+  trimmed: string;
+  selectedModel: string;
+  generationParams: ChatSendParams["generationParams"];
+  resolvedSession: string;
+  history: VastChatTurn[] | undefined;
+  setMessage: ChatSendParams["setMessage"];
+  setSending: ChatSendParams["setSending"];
+  t: (key: string) => string;
+}): Promise<OpenRouterQuote | undefined | false> {
+  if (!isOpenRouterRuntime(params.activeServerInfo?.runtime_id) && params.activeServerInfo?.active_server !== "openrouter") {
+    return undefined;
+  }
+  try {
+    const quote = await quoteOpenRouterChat(buildSimpleStreamRequestPayload(
+      params.trimmed, params.selectedModel, params.generationParams,
+      params.resolvedSession, params.activeServerInfo, params.history,
+    ));
+    publishOpenRouterQuote(params.selectedModel, params.resolvedSession, quote);
+    return quote;
+  } catch {
+    params.setMessage(params.t("cockpit.openrouter.quoteFailed"));
+    params.setSending(false);
+    return false;
+  }
+}
+
+function recordStandardRequestHistory(params: {
+  shouldUseSimple: boolean;
+  clientId: string;
+  trimmed: string;
+  resolvedSession: string | null;
+  setLocalSessionHistory: ChatSendParams["setLocalSessionHistory"];
+  uiTimingsRef: ChatSendParams["uiTimingsRef"];
+  recordUiTiming: ChatSendParams["recordUiTiming"];
+}): void {
+  if (params.shouldUseSimple) return;
+  addInitialSimpleUserHistoryEntry(
+    params.setLocalSessionHistory,
+    params.clientId,
+    params.trimmed,
+    new Date().toISOString(),
+    params.resolvedSession,
+  );
+  const timing = params.uiTimingsRef.current.get(params.clientId);
+  if (timing && timing.historyMs === undefined) {
+    params.recordUiTiming(params.clientId, { historyMs: Date.now() - timing.t0 });
+  }
 }
 
 export function useChatSend(params: ChatSendParams) {
@@ -172,6 +234,11 @@ export function useChatSend(params: ChatSendParams) {
       return false;
     }
 
+    if (!allowsOpenRouterChat(selectedLlmServer || activeServerInfo?.active_server || "", shouldUseSimpleMode(chatMode, parsed))) {
+      setMessage(t("cockpit.openrouter.directOnly"));
+      return false;
+    }
+
     const switchResult = await handleRuntimeSwitch({
       parsed,
       activeServerInfo,
@@ -218,6 +285,20 @@ export function useChatSend(params: ChatSendParams) {
     setMessage(null);
 
     const shouldUseSimple = shouldUseSimpleMode(chatMode, parsed);
+    const historyKey = vastChatHistoryKey(effectiveActiveServerInfo?.runtime_id, effectiveSelectedModel, resolvedSession, effectiveActiveServerInfo?.config_hash);
+    const history = historyKey ? (vastHistory.current.get(historyKey) ?? []).map(turn => ({...turn})) : undefined;
+    const quote = await prepareOpenRouterQuote({
+      activeServerInfo: effectiveActiveServerInfo,
+      trimmed,
+      selectedModel: effectiveSelectedModel,
+      generationParams,
+      resolvedSession,
+      history,
+      setMessage,
+      setSending,
+      t,
+    });
+    if (quote === false) return false;
 
     const forcedIntent = chatMode === "complex" ? "COMPLEX_PLANNING" : null;
     const clientId = enqueueOptimisticRequest(trimmed, {
@@ -227,45 +308,34 @@ export function useChatSend(params: ChatSendParams) {
       simpleMode: shouldUseSimple,
     });
 
-    if (!shouldUseSimple) {
-      const timestamp = new Date().toISOString();
-      setLocalSessionHistory((prev) => {
-        if (prev.some((entry) => entry.request_id === clientId && entry.role === "user")) {
-          return prev;
-        }
-        return [
-          ...prev,
-          {
-            role: "user",
-            content: trimmed,
-            request_id: clientId,
-            timestamp,
-            session_id: resolvedSession ?? undefined,
-          },
-        ];
-      });
-      const timing = uiTimingsRef.current.get(clientId);
-      if (timing && timing.historyMs === undefined) {
-        recordUiTiming(clientId, { historyMs: Date.now() - timing.t0 });
-      }
-    }
+    recordStandardRequestHistory({
+      shouldUseSimple,
+      clientId,
+      trimmed,
+      resolvedSession,
+      setLocalSessionHistory,
+      uiTimingsRef,
+      recordUiTiming,
+    });
 
-    const historyKey = vastChatHistoryKey(effectiveActiveServerInfo?.runtime_id, effectiveSelectedModel, resolvedSession, effectiveActiveServerInfo?.config_hash);
+
     const taskParams = {
       ...(historyKey ? {
-        history: vastHistory.current.get(historyKey) ?? [],
+        history,
         onCompleted: (answer: string) => {
           const history = appendVastChatTurn(vastHistory.current.get(historyKey) ?? [], trimmed, answer);
           vastHistory.current.clear();
           vastHistory.current.set(historyKey, history);
         },
       } : {}),
+      ...(quote ? {expectedQuoteHash: quote.quote_hash, initialCost: {...pendingOpenRouterCost(), estimated_usd: quote.estimated_usd}} : {}),
       clientId,
       trimmed,
       resolvedSession,
       generationParams,
       selectedLlmModel: effectiveSelectedModel,
       activeServerInfo: effectiveActiveServerInfo,
+      t,
       sendSimpleChatStream,
       linkOptimisticRequest,
       setLocalSessionHistory,

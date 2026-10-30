@@ -2,8 +2,9 @@
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import path from "node:path";
+import { nextDistDir } from "./build-paths.mjs";
 
-const distDir = process.env.NEXT_DIST_DIR || ".next";
+const distDir = nextDistDir();
 const rootDir = process.cwd();
 const serverCandidates = [
   path.join(rootDir, distDir, "standalone", "web-next", "server.js"),

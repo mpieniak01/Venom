@@ -6,14 +6,14 @@ import { existsSync, mkdirSync, openSync, closeSync, readFileSync, writeFileSync
 import net from 'node:net';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { nextDistDir } from './build-paths.mjs';
 
 function remove(file) { if (existsSync(file)) unlinkSync(file); }
 function alive(pid) { try { process.kill(pid, 0); return true; } catch { return false; } }
 function ticks(pid) { try { return readFileSync(`/proc/${pid}/stat`, 'utf8').split(') ')[1].split(' ')[19]; } catch { return null; } }
 export function lifecycleConfig(env = process.env, cwd = process.cwd()) {
   const root = path.resolve(cwd, env.WEB_DIR || 'web-next');
-  const distName = env.NEXT_DIST_DIR || '.next';
-  if (!/^\.next(?:-[a-z0-9-]+)?$/.test(distName)) throw new Error('NEXT_DIST_DIR must be .next or .next-<environment>');
+  const distName = nextDistDir(env);
   const role = env.ENVIRONMENT_ROLE || 'dev';
   if (!['dev', 'preprod', 'prod'].includes(role)) throw new Error('Unknown ENVIRONMENT_ROLE');
   const port = Number(env.WEB_PORT || 3000);
@@ -32,10 +32,18 @@ function digestFileTree(hash, root, rel = '') {
     else if (stat.isFile()) hash.update(item).update(readFileSync(path.join(root, item)));
   }
 }
+function environmentFingerprint(env) {
+  const hash = createHash('sha256');
+  for (const key of Object.keys(env).filter((key) => key.startsWith('NEXT_PUBLIC_') || ['API_PROXY_TARGET', 'VENOM_OPERATOR_ACCESS', 'VENOM_LAN_ORIGINS'].includes(key)).sort()) {
+    hash.update(key).update('\0').update(env[key] || '').update('\0');
+  }
+  return hash.digest('hex');
+}
 export function artifactFingerprint(config, env = process.env) {
   const hash = createHash('sha256');
   const head = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: config.root, encoding: 'utf8' }).trim();
   hash.update(head).update(config.role).update(config.distName);
+  hash.update(execFileSync('git', ['diff', 'HEAD', '--', '../venom_core'], { cwd: config.root }));
   const files = execFileSync('git', ['ls-files', '-z', '--', '.'], { cwd: config.root });
   for (const file of files.toString().split('\0').filter(Boolean).sort()) {
     // Generated metadata contains a timestamp, and does not determine application compatibility.
@@ -44,9 +52,7 @@ export function artifactFingerprint(config, env = process.env) {
     hash.update(file).update(existsSync(absolute) ? readFileSync(absolute) : 'MISSING');
   }
   digestFileTree(hash, path.join(config.root, 'optional-modules'));
-  for (const key of Object.keys(env).filter((key) => key.startsWith('NEXT_PUBLIC_') || ['API_PROXY_TARGET', 'VENOM_OPERATOR_ACCESS', 'VENOM_LAN_ORIGINS'].includes(key)).sort()) {
-    hash.update(key).update(env[key] || '');
-  }
+  hash.update(environmentFingerprint(env)).update(process.versions.node);
   // Store only a digest, never configuration or credentials.
   return hash.digest('hex');
 }
@@ -58,6 +64,7 @@ export function verifyArtifact(config, env = process.env) {
   if (stamp.fingerprint !== artifactFingerprint(config, env)) throw new Error('Stale or incompatible build; run make web-build for this environment');
 }
 export function buildArtifact(config, env = process.env) {
+  if (existsSync(config.pidFile) && alive(Number(readFileSync(config.pidFile, 'utf8').trim()))) throw new Error('Stop the owning UI before rebuilding its artifact');
   remove(stampPath(config));
   const result = spawnSync(config.npm, ['run', 'build'], { cwd: config.root, env, stdio: 'inherit' });
   if (result.error) throw result.error;
@@ -67,7 +74,7 @@ export function buildArtifact(config, env = process.env) {
   writeFileSync(stampPath(config), JSON.stringify({ schema: 1, fingerprint: artifactFingerprint(config, env) }) + '\n', { mode: 0o600 });
 }
 function identityPath(config) { return `${config.pidFile}.identity.json`; }
-function launchIdentity(config, mode) { return JSON.stringify({ root: config.root, role: config.role, dist: config.dist, port: config.port, host: config.host, mode }); }
+function launchIdentity(config, mode, env) { return JSON.stringify({ root: config.root, role: config.role, dist: config.dist, port: config.port, host: config.host, mode, configuration: environmentFingerprint(env) }); }
 async function ready(config, token) {
   const host = ['0.0.0.0', '::'].includes(config.host) ? '127.0.0.1' : config.host;
   try {
@@ -83,13 +90,14 @@ async function freePort(config) {
   await new Promise((resolve) => probe.close(resolve));
 }
 async function retire(child) {
+  if (!child.pid) return;
   try { process.kill(-child.pid, 'SIGTERM'); } catch { /* already exited */ }
   for (let i = 0; i < 20 && alive(child.pid); i++) await new Promise((resolve) => setTimeout(resolve, 100));
   try { process.kill(-child.pid, 'SIGKILL'); } catch { /* already exited */ }
 }
 export async function startUI(config, mode, env = process.env) {
   if (mode === 'start') verifyArtifact(config, env);
-  const identity = launchIdentity(config, mode);
+  const identity = launchIdentity(config, mode, env);
   if (existsSync(config.pidFile)) {
     const pid = Number(readFileSync(config.pidFile, 'utf8').trim());
     if (Number.isSafeInteger(pid) && pid > 1 && alive(pid)) {
@@ -140,13 +148,40 @@ export async function startUI(config, mode, env = process.env) {
     throw error;
   }
 }
+export function uiStatus(config) {
+  if (!existsSync(config.pidFile)) return { running: false, verified: false };
+  const pid = Number(readFileSync(config.pidFile, 'utf8').trim());
+  if (!Number.isSafeInteger(pid) || pid <= 1) throw new Error('Invalid UI PID file');
+  if (!alive(pid)) return { running: false, verified: false, pid };
+  let record;
+  try { record = JSON.parse(readFileSync(identityPath(config), 'utf8')); } catch { throw new Error('Unverified UI identity; refusing process control'); }
+  const identity = JSON.parse(record.identity);
+  const verified = record.pid === pid && record.ticks === ticks(pid) && identity.root === config.root && identity.role === config.role && identity.dist === config.dist && identity.port === config.port && identity.host === config.host;
+  if (!verified) throw new Error('UI identity belongs to another environment or process');
+  return { running: true, verified: true, pid, mode: identity.mode };
+}
+export async function stopUI(config) {
+  const status = uiStatus(config);
+  if (!status.running) {
+    remove(config.pidFile); remove(identityPath(config));
+    return status;
+  }
+  await retire({ pid: status.pid });
+  // Do not remove a replacement instance's files if another launch raced with stop.
+  if (existsSync(config.pidFile) && Number(readFileSync(config.pidFile, 'utf8').trim()) === status.pid) {
+    remove(config.pidFile); remove(identityPath(config));
+  }
+  return { running: false, verified: true, pid: status.pid };
+}
 export async function main(args = process.argv.slice(2), env = process.env) {
   const config = lifecycleConfig(env);
   const childEnv = { ...env, NEXT_DIST_DIR: config.distName, ENVIRONMENT_ROLE: config.role, NEXT_MODE: args[0] === 'dev' ? 'dev' : 'prod', NEXT_TELEMETRY_DISABLED: '1' };
-  if (args[0] === 'build') buildArtifact(config, childEnv);
+  if (args[0] === 'status') console.log(JSON.stringify(uiStatus(config)));
+  else if (args[0] === 'stop') console.log(JSON.stringify(await stopUI(config)));
+  else if (args[0] === 'build') buildArtifact(config, childEnv);
   else if (args[0] === 'start') await startUI(config, 'start', childEnv);
   else if (args[0] === 'dev') await startUI(config, args[1] || 'turbo', childEnv);
-  else throw new Error('Expected build|start|dev [turbo|turbo-debug|webpack]');
+  else throw new Error('Expected build|start|stop|status|dev [turbo|turbo-debug|webpack]');
 }
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   main().catch((error) => { console.error(`[web] ${error.message}`); process.exitCode = 1; });

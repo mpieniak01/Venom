@@ -100,3 +100,26 @@ Walidacja tej korekty:
 - Chrome: tabela historii widoczna, siedem wpisów, zero błędów konsoli przy odbiorze;
   ostrzeżenia preload pozostają poza zakresem. Nie wykonano Test Zero ani
   operacji na zasobach dostawcy. Kod nadal wyłącznie lokalny.
+
+## Spójny styl zakładek OpenRouter i VAST
+
+Panele używają tła, obramowań, cieni i nagłówków odpowiadających zakładkom
+Modele / Modele zdalne. Wspólne klasy dotyczą kart, pól formularzy, etykiet
+i tabel. Formularze przechodzą do jednej kolumny na wąskich ekranach;
+historia VAST ma własne przewijanie poziome bez łamania nazw modeli.
+Zmiana obejmuje prezentację, zachowuje istniejące wywołania API i potwierdzenia.
+
+Walidacja:
+- Istniejące testy komponentów OpenRouter i VAST: **21 PASS**, zero SKIP.
+- `make test-web-unit`: PASS (4,83 s).
+- `tsc --noEmit --incremental false`: PASS (22,66 s).
+- `make pr-fast`: PASS (185,89 s); 1567 testów Python i 252 komponentów PASS.
+  Pokrycie zmian całej lokalnej gałęzi: **91,30%** (próg 80%).
+- Po wizualnej korekcie tabeli ponownie wykonano ESLint pięciu zmienionych
+  plików (PASS) i powyższe 21 testów komponentów (PASS).
+- Chrome: odbiór obu zakładek przy szerokości 1681 px i 390 px. Przy 390 px
+  panel miał 350 px szerokości i 350 px zawartości: brak poziomego przepełnienia
+  panelu; tabela historii przewija się osobno. Zero błędów konsoli podczas
+  odbioru. Pozostają ostrzeżenia preload wspólnego interfejsu.
+Nie wykonywano generacji modeli, zamówień VAST ani Test Zero.
+Kod pozostaje lokalny na tej samej gałęzi.

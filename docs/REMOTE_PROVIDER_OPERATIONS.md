@@ -110,7 +110,8 @@ the configured credential, protected by an inter-process lock and atomic writes.
 No rental, generation or test zero is triggered by billing.
 
 Daily UTC snapshots are replaced, never appended or added twice. Initial backfill
-covers at least 30 days and extends to the oldest retained local submission. Up to
+covers at least 30 days and extends to the oldest retained local submission. The
+start remains anchored to retained days as the history grows. Up to
 31 days are fetched per synchronization; longer histories continue on subsequent
 refreshes. The panel labels the exact covered period and incomplete backfill.
 Only today, yesterday, missing days and invalid amounts are fetched routinely;

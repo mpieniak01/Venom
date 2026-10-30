@@ -31,7 +31,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   window.localStorage.clear();
-  delete (window as typeof window & { __NEXT_DATA__?: unknown }).__NEXT_DATA__;
+  Reflect.deleteProperty(window, "__NEXT_DATA__");
   globalThis.fetch = originalFetch;
   mock.restoreAll();
 });
@@ -84,7 +84,7 @@ describe("SessionProvider hydration and continuity", () => {
   it("retains the existing build invalidation rule without reading storage during render", async () => {
     window.localStorage.setItem(ID_KEY, "old-build-session");
     window.localStorage.setItem(BUILD_KEY, "old-build");
-    (window as typeof window & { __NEXT_DATA__?: { buildId: string } }).__NEXT_DATA__ = { buildId: "new-build" };
+    window.__NEXT_DATA__ = { buildId: "new-build", props: {}, page: "/chat", query: {} };
     const html = renderToString(<Session />);
     assert.ok(!html.includes("old-build-session"));
     assert.equal(window.localStorage.getItem(ID_KEY), "old-build-session");

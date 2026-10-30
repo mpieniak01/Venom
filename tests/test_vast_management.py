@@ -274,6 +274,7 @@ def test_bad_profile_credentials_and_journal_do_not_break_discovery(f):
     f.m.settings.VAST_API_KEY = SecretStr("")
     assert f.m.overview()["reason"] == "vast.missing_api_key"
     f.svc.journal.path("e" * 32, ".plan.json").write_text("{}")
+    f.svc.journal.path("e" * 32, ".management.json").write_text("{}")
     f.m.settings.VAST_API_KEY = SecretStr("fake")
     overview = f.m.overview()
     assert overview["configured"]
@@ -502,3 +503,11 @@ def test_ssh_profile_cannot_probe_or_use_files_outside_private_stores(
     )
     with pytest.raises(VastError, match="vast.invalid_ssh_profile"):
         config.ssh_paths()
+
+
+def test_cli_history_is_not_presented_as_a_current_management_order(f):
+    row = f.m.plan(12, 30, Decimal("0.5"), Decimal("1"))
+    plan_id = row["plan_id"]
+    f.svc.journal.path(plan_id, ".management.json").unlink()
+    assert all(item["plan_id"] != plan_id for item in f.m.overview()["environments"])
+    assert f.svc.journal.path(plan_id, ".plan.json").exists()

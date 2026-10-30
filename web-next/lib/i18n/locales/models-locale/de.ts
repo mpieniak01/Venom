@@ -129,6 +129,8 @@ export const models = {
     remoteModels: "Remote Modelle",
   },
   resources: {
+    recoverLlm: "LLM wiederherstellen / Chat entsperren",
+    recoverLlmHint: "Gibt lokale LLM-Modelle frei und entfernt nur bestätigte verwaiste LLM-Vorgänge. Rider-Vision und Sprachmodelle bleiben aktiv.",
     categories: {"vision": "Bildanalyse", "stt": "Spracherkennung", "tts": "Sprachausgabe", "embeddings": "Embeddings", "voice_sessions": "Sprachstreams", "ollama": "Ollama", "multi_runtime": "Multi-Runtime", "vllm": "vLLM", "onnx": "ONNX"},
     title: "Modellspeicher · RAM / VRAM",
     description: "LLMs, Bildanalyse, Sprache und Embeddings. Stoppt aktive Streams und gibt Ressourcen frei.",

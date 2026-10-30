@@ -806,6 +806,9 @@ def _runtime_activate_payload(runtime) -> dict[str, Any]:
 
 
 def _assert_cloud_provider_requirements(provider_raw: str) -> None:
+    from venom_core.services.remote_provider_control import assert_enabled
+
+    assert_enabled(provider_raw)
     if provider_raw == "openai" and not SETTINGS.OPENAI_API_KEY:
         raise HTTPException(status_code=400, detail="Brak OPENAI_API_KEY")
     if provider_raw != "google":
@@ -1877,6 +1880,9 @@ async def _cloud_runtime_target(
     provider: str,
     active_runtime: Any,
 ) -> dict[str, Any]:
+    from venom_core.services.remote_provider_control import enabled
+
+    provider_enabled = enabled(provider)
     configured = (
         _check_openai_configured()
         if provider == "openai"
@@ -1885,7 +1891,9 @@ async def _cloud_runtime_target(
     status = "disabled"
     reason: str | None = None
     latency: float | None = None
-    if not configured:
+    if not provider_enabled:
+        reason = "remote_provider_disabled"
+    elif not configured:
         reason = f"{provider.upper()}_API_KEY not configured"
     else:
         probe_status, probe_error, probe_latency = await _probe_cloud_provider(provider)
@@ -1893,7 +1901,11 @@ async def _cloud_runtime_target(
         reason = probe_error
         latency = probe_latency
 
-    models_payload, _source, _live_error = await _catalog_for_cloud_provider(provider)
+    models_payload: list[dict[str, Any]] = []
+    if provider_enabled:
+        models_payload, _source, _live_error = await _catalog_for_cloud_provider(
+            provider
+        )
     active_provider = (active_runtime.provider or "").lower()
     active_model = (active_runtime.model_name or "").strip()
     models = [
@@ -1923,6 +1935,7 @@ async def _cloud_runtime_target(
         models=models,
         active_runtime=active_runtime,
     )
+    target["enabled"] = provider_enabled
     if latency is not None:
         target["latency_ms"] = latency
     return target
@@ -1991,6 +2004,9 @@ async def _resolve_runtime_options_payload() -> dict[str, Any]:
         await vast_chat_runtime.target_payload(),
     ]
     _append_optional_cloud_target(runtime_targets, active_runtime)
+    runtime_targets = [
+        target for target in runtime_targets if target.get("enabled") is not False
+    ]
     trainable_models = await _load_trainable_model_catalog(
         model_manager,
         local_models=local_models,
@@ -2308,6 +2324,28 @@ async def release_llm_runtime():
     )
 
 
+@router.post(
+    "/system/models/recover-llm",
+    dependencies=[Depends(require_localhost_request)],
+    responses={
+        403: {"description": "Local administration access required"},
+        409: {"description": "Runtime operation is still active"},
+        502: {"description": "Scoped recovery could not be verified"},
+        503: {"description": LLM_CONTROLLER_UNAVAILABLE},
+    },
+)
+async def recover_llm_runtime():
+    """Verify only LLM daemons; never stop registered vision or voice owners."""
+    from venom_core.services.runtime_release_service import release_all_runtime_models
+
+    controller = system_deps.get_llm_controller()
+    if controller is None:
+        raise HTTPException(status_code=503, detail=LLM_CONTROLLER_UNAVAILABLE)
+    return await release_all_runtime_models(
+        controller, runtime_ids=_installed_local_servers(), include_registered=False
+    )
+
+
 @router.get("/system/llm-servers/active")
 def get_active_llm_server():
     """Zwraca aktywny runtime LLM oraz zapamiętane modele."""
@@ -2422,11 +2460,27 @@ def get_llm_runtime_queue_snapshot():
     }
 
 
+def _runtime_switch_provider_preflight(request) -> bool:
+    """Reject operator-disabled APIs before creating a mutation operation."""
+    from venom_core.services.remote_provider_control import PROVIDERS, assert_enabled
+
+    provider = (
+        str(getattr(request, "provider", None) or getattr(request, "server_name", ""))
+        .strip()
+        .lower()
+    )
+    if provider in PROVIDERS:
+        assert_enabled(provider)
+    return True
+
+
 @router.post(
     "/system/llm-runtime/active",
     responses=LLM_RUNTIME_ACTIVATE_RESPONSES,
 )
-@admitted_operation("runtime_switch", mutation=True)
+@admitted_operation(
+    "runtime_switch", mutation=True, when=_runtime_switch_provider_preflight
+)
 async def set_active_llm_runtime(request: LlmRuntimeActivateRequest):
     """
     Przelacza runtime LLM na provider (openai/google/onnx).
@@ -3073,6 +3127,7 @@ async def set_active_llm_server(request: ActiveLlmServerRequest):
     """
     Ustawia aktywny runtime LLM, zatrzymuje inne serwery i aktywuje model.
     """
+    _runtime_switch_provider_preflight(request)
     server_name = normalize_runtime_id(request.server_name)
     try:
         switch_source = assert_runtime_switch_source_allowed(request.switch_source)

@@ -44,6 +44,7 @@ export function useModelsViewerLogic() {
         resourceReleaseError: runtime.resourceReleaseError,
         releasingResources: runtime.releasingResources,
         handleReleaseAllModels: runtime.handleReleaseAllModels,
+        handleRecoverLlm: runtime.handleRecoverLlm,
         installedCollapsed: runtime.installedCollapsed, setInstalledCollapsed: runtime.setInstalledCollapsed,
         operationsCollapsed: runtime.operationsCollapsed, setOperationsCollapsed: runtime.setOperationsCollapsed,
         installed: runtime.installed, operations: runtime.operations,

@@ -129,6 +129,8 @@ export const models = {
     remoteModels: "Modele zdalne",
   },
   resources: {
+    recoverLlm: "Przywróć LLM / odblokuj czat",
+    recoverLlmHint: "Zwalnia wyłącznie lokalne modele LLM i usuwa potwierdzone osierocone operacje LLM. Nie zatrzymuje wizji Ridera ani modeli głosu.",
     categories: {"vision": "Wizja", "stt": "Rozpoznawanie mowy", "tts": "Synteza mowy", "embeddings": "Embeddingi", "voice_sessions": "Strumienie głosu", "ollama": "Ollama", "multi_runtime": "Multi-Runtime", "vllm": "vLLM", "onnx": "ONNX"},
     title: "Pamięć modeli · RAM / VRAM",
     description: "LLM, wizja, głos i embeddingi. Zatrzymuje ich aktywne strumienie i zwalnia zasoby.",

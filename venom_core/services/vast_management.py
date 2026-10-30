@@ -156,6 +156,11 @@ class VastManagement:
             reverse=True,
         )
         for path in paths[:100]:
+            # CLI qualification history is not a management order from this panel.
+            if not path.with_name(
+                path.name.replace(".plan.json", MANAGEMENT_SUFFIX)
+            ).exists():
+                continue
             try:
                 plan_id = path.name.removesuffix(".plan.json")
                 if self._job(plan_id).get("phase") in {

@@ -129,6 +129,8 @@ export const models = {
     remoteModels: "Remote Models",
   },
   resources: {
+    recoverLlm: "Recover LLM / unlock chat",
+    recoverLlmHint: "Releases local LLM models and clears only verified orphaned LLM operations. Rider vision and voice models stay running.",
     categories: {"vision": "Vision", "stt": "Speech recognition", "tts": "Speech synthesis", "embeddings": "Embeddings", "voice_sessions": "Voice streams", "ollama": "Ollama", "multi_runtime": "Multi-Runtime", "vllm": "vLLM", "onnx": "ONNX"},
     title: "Model memory · RAM / VRAM",
     description: "LLMs, vision, voice and embeddings. Stops their active streams and releases resources.",

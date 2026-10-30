@@ -14,6 +14,8 @@ interface Props {
 }
 const controlsKey = "models.sections.remote.controls.";
 function providerName(provider: string): string {
+  if (provider === "openai") return "OpenAI";
+  if (provider === "google") return "Google";
   if (provider === "openrouter") return "OpenRouter";
   if (provider === "vast_ollama") return "VAST · Ollama";
   return provider;
@@ -60,7 +62,7 @@ function VastConnectionControls({ provider, pending, connectVast, t }: Readonly<
 }
 
 export function RemoteProviderCard({ provider, pending, manage, connectVast, t }: Readonly<Props>) {
-  const managed = provider.provider === "openrouter" || provider.provider === "vast_ollama";
+  const managed = ["openai", "google", "openrouter", "vast_ollama"].includes(provider.provider);
   const name = providerName(provider.provider);
   const toggleLabel = t(controlsKey + (provider.enabled ? "disable" : "enable"));
   return <div className="rounded-2xl border border-[color:var(--ui-border)] bg-[color:var(--ui-surface)] p-4">

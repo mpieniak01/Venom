@@ -462,13 +462,17 @@ class RuntimeAdmission:
             )
             if mutation:
                 own_token = ancestor["token"] if nested and ancestor is not None else ""
-                query = "SELECT 1 FROM operation WHERE token<>?"
+                query = "SELECT pid,uncertain FROM operation WHERE token<>?"
                 if cleanup and token is None:
                     # A trusted host cleanup may verify uncertain daemon work.
                     # It cannot erase or interrupt a live host operation or lease.
                     query += " AND (uncertain=0 OR lease_token IS NOT NULL)"
-                if db.execute(query, (own_token,)).fetchone():
-                    raise RuntimeAdmissionError()
+                conflict = db.execute(query, (own_token,)).fetchone()
+                if conflict is not None:
+                    code = "runtime_busy"
+                    if conflict["uncertain"] or conflict["pid"] != os.getpid():
+                        code = "runtime_recovery_required"
+                    raise RuntimeAdmissionError(code)
             if (
                 nested
                 and ancestor is not None
@@ -616,6 +620,7 @@ class RuntimeAdmission:
         *,
         confirm_quiescent: Callable[[], bool],
         expected_token: str | None = None,
+        allowed_operation_kinds: frozenset[str] | None = None,
     ) -> bool:
         """Trusted host-only recovery after verified daemon/worker quiescence.
 
@@ -645,6 +650,16 @@ class RuntimeAdmission:
                 (os.getpid(), cleanup_token),
             ).fetchone():
                 return False
+            if allowed_operation_kinds is not None:
+                if current is not None:
+                    return False
+                operations = db.execute(
+                    "SELECT kind FROM operation WHERE token<>?", (cleanup_token,)
+                ).fetchall()
+                if any(
+                    row["kind"] not in allowed_operation_kinds for row in operations
+                ):
+                    return False
             if not confirm_quiescent():
                 return False
             # Keep the cleanup barrier until its host operation actually exits.

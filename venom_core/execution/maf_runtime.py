@@ -265,6 +265,14 @@ class MafChatService:
             options["extra_body"] = extensions
         return cast("OpenAIChatCompletionOptions", options)
 
+    operator_provider: str | None = None
+
+    def _assert_operator_provider_enabled(self) -> None:
+        if self.operator_provider is not None:
+            from venom_core.services.remote_provider_control import assert_enabled
+
+            assert_enabled(self.operator_provider)
+
     async def get_chat_message_content(
         self,
         *,
@@ -277,6 +285,7 @@ class MafChatService:
         with get_runtime_admission().operation(
             kind="maf_validation", confirm_quiescent=lambda: True
         ):
+            self._assert_operator_provider_enabled()
             messages = self._messages(chat_history)
             options = self._options(settings)
         return await self._generate(
@@ -357,6 +366,7 @@ class MafChatService:
         with get_runtime_admission().operation(
             kind="maf_validation", confirm_quiescent=lambda: True
         ):
+            self._assert_operator_provider_enabled()
             messages = self._messages(chat_history)
             options = self._options(settings)
         async with aclosing(self._stream(messages, options)) as stream:

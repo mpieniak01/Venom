@@ -260,6 +260,9 @@ export const cockpitLocale = {
       toggleError: "Fehler beim Umschalten der Warteschlange.",
     },
     modelActivation: {
+      recoveryRequired: "Ein früherer LLM-Vorgang erfordert eine Wiederherstellung. Wählen Sie unter Modelle „LLM wiederherstellen / Chat entsperren“ und aktivieren Sie das Modell erneut.",
+      runtimeBusy: "Die Laufzeit führt einen anderen Vorgang aus. Warten Sie auf dessen Abschluss und aktivieren Sie das Modell erneut.",
+      providerDisabled: "Diese API ist deaktiviert. Aktivieren Sie sie unter Modelle → Remote-Modelle.",
       providerMissing: "Server für das ausgewählte Modell konnte nicht ermittelt werden.",
       activated: "Modell aktiviert: {{model}}",
       failed: "Fehler bei der Modellaktivierung: {{message}}",

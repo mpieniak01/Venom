@@ -32,6 +32,17 @@ logger = get_logger(__name__)
 
 _OLLAMA_UNLOAD_TIMEOUT = 5.0
 
+_LLM_RECOVERY_KINDS = frozenset(
+    {
+        "maf_generation",
+        "maf_stream",
+        "maf_validation",
+        "simple_chat",
+        "runtime_switch",
+        "runtime_command",
+    }
+)
+
 _LOCAL_RUNTIMES = frozenset({"ollama", "multi_runtime", "vllm", "onnx"})
 
 
@@ -103,9 +114,25 @@ def _release_error_code(error: Exception) -> str:
     return "runtime_release_" + type(error).__name__
 
 
+def _recover_uncertainty(admission, verified: bool, include_registered: bool) -> bool:
+    if not verified:
+        return False
+    if not admission.enabled:
+        return True
+    if include_registered:
+        return admission.recover(confirm_quiescent=lambda: True)
+    return admission.recover(
+        confirm_quiescent=lambda: True, allowed_operation_kinds=_LLM_RECOVERY_KINDS
+    )
+
+
 @admitted_operation("cleanup", mutation=True, cleanup=True)
 async def _release_all_models(
-    controller: Any, failures: list[dict[str, Any]], runtime_ids: set[str] | None = None
+    controller: Any,
+    failures: list[dict[str, Any]],
+    runtime_ids: set[str] | None = None,
+    *,
+    include_registered: bool = True,
 ) -> dict[str, Any]:
     """Release only under a host barrier; retain evidence on every partial failure."""
     results = []
@@ -134,7 +161,9 @@ async def _release_all_models(
             result["state"] = "failed"
             result["error"] = _release_error_code(exc)
         results.append(result)
-    local_results = await asyncio.to_thread(release_registered_models)
+    local_results = (
+        await asyncio.to_thread(release_registered_models) if include_registered else []
+    )
     results.extend(
         {
             **row,
@@ -143,11 +172,11 @@ async def _release_all_models(
         }
         for row in local_results + failures
     )
-    verified = all(row["verified"] for row in results)
+    verified = all(row["verified"] for row in results) and (
+        include_registered or bool(results)
+    )
     admission = get_runtime_admission()
-    if not verified or (
-        admission.enabled and not admission.recover(confirm_quiescent=lambda: verified)
-    ):
+    if not _recover_uncertainty(admission, verified, include_registered):
         raise HTTPException(
             status_code=502,
             detail={"code": "runtime_release_failed", "runtimes": results},
@@ -189,9 +218,15 @@ def memory_snapshot() -> dict[str, Any]:
     return result
 
 
-async def _settle_cleanup(controller, failures, runtime_ids):
+async def _settle_cleanup(
+    controller, failures, runtime_ids, *, include_registered=True
+):
     """Caller cancellation cannot reopen admission while native unload is running."""
-    task = asyncio.create_task(_release_all_models(controller, failures, runtime_ids))
+    task = asyncio.create_task(
+        _release_all_models(
+            controller, failures, runtime_ids, include_registered=include_registered
+        )
+    )
     interrupted = False
     while True:
         try:
@@ -207,7 +242,10 @@ async def _settle_cleanup(controller, failures, runtime_ids):
 
 
 async def release_all_runtime_models(
-    controller: Any, *, runtime_ids: set[str] | None = None
+    controller: Any,
+    *,
+    runtime_ids: set[str] | None = None,
+    include_registered: bool = True,
 ) -> dict[str, Any]:
     """Pause consumers and drain work before verifying global RAM/VRAM release."""
     with release_barrier():
@@ -219,17 +257,22 @@ async def release_all_runtime_models(
         )
         try:
             before = await asyncio.to_thread(memory_snapshot)
-            await prepare_registered_models()
+            if include_registered:
+                await prepare_registered_models()
             if not await wait_for_runtime_requests_to_drain():
                 raise HTTPException(
                     status_code=409, detail={"code": "runtime_release_work_not_drained"}
                 )
-            await asyncio.to_thread(wait_for_model_work)
+            if include_registered:
+                await asyncio.to_thread(wait_for_model_work)
             # Already admitted asynchronous work may have queued children while
             # the first preparation was stopping producers. Reconcile after drain.
-            failures = await prepare_registered_models()
-            await asyncio.to_thread(wait_for_model_work)
-            result = await _settle_cleanup(controller, failures, runtime_ids)
+            failures = await prepare_registered_models() if include_registered else []
+            if include_registered:
+                await asyncio.to_thread(wait_for_model_work)
+            result = await _settle_cleanup(
+                controller, failures, runtime_ids, include_registered=include_registered
+            )
             result["memory_before"] = before
             result["memory_after"] = await asyncio.to_thread(memory_snapshot)
             return result

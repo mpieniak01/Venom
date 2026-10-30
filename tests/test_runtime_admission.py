@@ -1285,3 +1285,26 @@ def test_recovery_startup_rechecks_fresh_state_and_fails_closed(admission):
     with admission._transaction() as db:
         db.execute("DELETE FROM operation")
     assert lease.recover(confirm_quiescent=lambda: True)
+
+
+def test_uncertain_host_operation_returns_recovery_code_instead_of_busy(admission):
+    with pytest.raises(RuntimeError, match="lost"):
+        with admission.operation(kind="maf_generation"):
+            raise RuntimeError("lost")
+    scope = admission.operation(kind="runtime_switch", mutation=True)
+    with pytest.raises(RuntimeAdmissionError, match="runtime_recovery_required"):
+        run_scoped(scope)
+    assert admission.snapshot()["status"] == "quarantined"
+
+
+def test_scoped_recovery_never_erases_a_module_lease(admission):
+    lease = acquire(admission)
+    assert (
+        admission.recover(
+            confirm_quiescent=lambda: True,
+            allowed_operation_kinds=frozenset({"maf_generation"}),
+        )
+        is False
+    )
+    assert admission.snapshot()["owner"] == "cooperation_lab"
+    assert lease.release()

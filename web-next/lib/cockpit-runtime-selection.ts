@@ -214,10 +214,14 @@ export function resolveCockpitSelectedRuntimeId(
   );
 }
 
+export function isCockpitRuntimeVisible(runtime: { runtime_id: string; enabled?: boolean }): boolean {
+  return runtime.enabled !== false;
+}
+
 export function isCockpitRuntimeDisabled(
-  runtime: (Pick<LlmRuntimeTargetOption, "configured" | "status" | "reason"> & Partial<Pick<LlmRuntimeTargetOption, "runtime_id" | "source_type" | "available" | "models">>) | null | undefined,
+  runtime: (Pick<LlmRuntimeTargetOption, "configured" | "status" | "reason"> & { enabled?: boolean } & Partial<Pick<LlmRuntimeTargetOption, "runtime_id" | "source_type" | "available" | "models">>) | null | undefined,
 ): boolean {
-  if (!runtime) return true;
+  if (!runtime || runtime.enabled === false) return true;
   if ((runtime.runtime_id === "vast_ollama" || runtime.runtime_id === "openrouter" || runtime.source_type === "remote")
     && (!runtime.available || !runtime.models?.length)) return true;
   return runtime.configured === false

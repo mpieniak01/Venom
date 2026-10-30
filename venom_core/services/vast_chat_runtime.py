@@ -175,10 +175,11 @@ async def select_model(model: str | None) -> dict:
 
 
 async def target_payload() -> dict:
-    state = await asyncio.to_thread(connection().status, refresh=True)
     from venom_core.services.remote_provider_control import enabled
 
-    if not enabled(SERVER):
+    provider_enabled = enabled(SERVER)
+    state = await asyncio.to_thread(connection().status, refresh=provider_enabled)
+    if not provider_enabled:
         state = {
             **state,
             "available": False,
@@ -207,6 +208,7 @@ async def target_payload() -> dict:
         if state.get("available")
     ]
     return {
+        "enabled": enabled(SERVER),
         "runtime_id": SERVER,
         "source_type": "remote",
         "label": "Ollama · Vast",

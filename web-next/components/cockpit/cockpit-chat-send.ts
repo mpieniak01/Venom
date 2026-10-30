@@ -1,5 +1,6 @@
 "use client";
 
+import { runtimeControlErrorHint } from "@/lib/runtime-control-error";
 import { useCallback, useRef } from "react";
 import { quoteOpenRouterChat } from "@/hooks/use-api";
 import { pendingOpenRouterCost, type OpenRouterQuote } from "@/lib/openrouter-chat";
@@ -30,8 +31,8 @@ function resolveSession(
   return resetSession() ?? sessionId;
 }
 
-function getServerSwitchErrorMessage(err: unknown, fallback: string): string {
-  return err instanceof Error ? err.message : fallback;
+function getServerSwitchErrorMessage(err: unknown, fallback: string, t: (key: string) => string): string {
+  return runtimeControlErrorHint(err, t) ?? (err instanceof Error ? err.message : fallback);
 }
 
 function isCloudRuntimeServer(server: string): server is "openai" | "google" | "openrouter" {
@@ -88,7 +89,7 @@ export async function syncTargetServerIfNeeded(params: {
     params.refreshActiveServer();
     return { ...params.activeServerInfo, ...switched, active_server: targetServer };
   } catch (err) {
-    params.setMessage(getServerSwitchErrorMessage(err, params.t("cockpit.chatMessages.serverSwitchError")));
+    params.setMessage(getServerSwitchErrorMessage(err, params.t("cockpit.chatMessages.serverSwitchError"), params.t));
     return false;
   }
 }

@@ -1,5 +1,6 @@
 """Testy jednostkowe dla KernelBuilder."""
 
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
@@ -215,7 +216,7 @@ def test_register_google_service_registers_connector(monkeypatch):
 
     kernel = MagicMock(spec=Kernel)
 
-    fake_service = object()
+    fake_service = SimpleNamespace()
     fake_connector = MagicMock(return_value=fake_service)
     monkeypatch.setattr(kbmod, "GOOGLE_AVAILABLE", True)
     monkeypatch.setattr(kbmod, "MafChatService", fake_connector)

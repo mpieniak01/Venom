@@ -57,6 +57,7 @@ export const ModelsViewer = () => {
         entries={logic.resourceReleaseRows}
         error={logic.resourceReleaseError}
         onRelease={logic.handleReleaseAllModels}
+        onRecoverLlm={logic.handleRecoverLlm}
         t={t}
       />
       {/* Tabs */}

@@ -1023,3 +1023,40 @@ async def test_local_option_rejection_does_not_quarantine_or_dispatch(
         assert len(requests) == 1
     finally:
         await model.aclose()
+
+
+@pytest.mark.parametrize("provider", ["openai", "google"])
+@pytest.mark.parametrize("stream", [False, True])
+@pytest.mark.asyncio
+async def test_operator_can_disable_an_existing_cloud_service_before_transport(
+    provider, stream, tmp_path, monkeypatch
+):
+    from fastapi import HTTPException
+
+    from venom_core.services import remote_provider_control as control
+    from venom_core.services.runtime_admission import get_runtime_admission
+
+    monkeypatch.setattr(control, "_STATE", tmp_path / "provider-control.json")
+    calls = []
+
+    def handler(request):
+        calls.append(request)
+        return httpx.Response(200, json=completion())
+
+    model = service(handler)
+    model.operator_provider = provider
+    history = ConversationHistory()
+    history.add_user_message("fixture")
+    control.set_enabled(provider, False)
+    with pytest.raises(HTTPException) as failure:
+        if stream:
+            await anext(model.get_streaming_chat_message_contents(chat_history=history))
+        else:
+            await model.get_chat_message_content(chat_history=history)
+    assert failure.value.detail["code"] == "remote_provider_disabled"
+    assert calls == []
+    assert get_runtime_admission().snapshot()["active_operations"] == 0
+    control.set_enabled(provider, True)
+    await model.get_chat_message_content(chat_history=history)
+    assert len(calls) == 1
+    await model.aclose()

@@ -491,6 +491,20 @@ def _isolate_test_runtime(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("MEMORY_ROOT", str(memory))
     monkeypatch.setattr(SETTINGS, "MEMORY_ROOT", str(memory))
     monkeypatch.setattr(runtime_admission, "_ADMISSION", None)
+    # Provider controls and selections are operator state, never test fixtures.
+    from venom_core.services import (
+        openrouter_runtime,
+        remote_provider_control,
+        vast_chat_runtime,
+    )
+
+    monkeypatch.setattr(
+        remote_provider_control, "_STATE", memory / "provider-control.json"
+    )
+    monkeypatch.setattr(remote_provider_control, "_CHECKS", {})
+    monkeypatch.setattr(openrouter_runtime, "_STATE", memory / "openrouter")
+    monkeypatch.setattr(vast_chat_runtime, "_SELECTION", memory / "vast-selection.json")
+    monkeypatch.setattr(vast_chat_runtime, "_selected", vast_chat_runtime._UNSET)
     yield
     # Do not rotate the test singleton while a reserved background worker can
     # still use it. An unresolved worker aborts the worker process fail-closed.

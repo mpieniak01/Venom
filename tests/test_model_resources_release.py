@@ -564,8 +564,9 @@ async def test_ollama_waits_for_delayed_inventory_after_unload(monkeypatch):
         ("127.0.0.1", {"x-venom-proxy": "1"}, 403),
     ],
 )
+@pytest.mark.parametrize("endpoint", ["release", "recover-llm"])
 async def test_global_release_obeys_transport_admin_boundary(
-    monkeypatch, peer, headers, expected
+    monkeypatch, peer, headers, expected, endpoint
 ):
     from unittest.mock import AsyncMock
 
@@ -588,9 +589,13 @@ async def test_global_release_obeys_transport_admin_boundary(
         transport=httpx.ASGITransport(app=app, client=(peer, 1234)),
         base_url="http://localhost",
     ) as client:
-        response = await client.post("/api/v1/system/models/release", headers=headers)
+        response = await client.post(
+            f"/api/v1/system/models/{endpoint}", headers=headers
+        )
     assert response.status_code == expected
     assert release.await_count == (1 if expected == 200 else 0)
+    if expected == 200 and endpoint == "recover-llm":
+        assert release.await_args.kwargs["include_registered"] is False
 
 
 def test_batch_embedding_keeps_release_barrier_until_native_encode_finishes(world):
@@ -634,3 +639,67 @@ def test_batch_embedding_keeps_release_barrier_until_native_encode_finishes(worl
     finally:
         finish.set()
         worker.join(3)
+
+
+@pytest.mark.asyncio
+async def test_llm_recovery_clears_uncertainty_without_touching_rider_or_voice(
+    world, monkeypatch
+):
+    from unittest.mock import AsyncMock, Mock
+
+    class Owner:
+        async def prepare_model_release(self):
+            pytest.fail("LLM-only recovery must not pause Rider or voice")
+
+        def release(self):
+            pytest.fail("LLM-only recovery must not unload Rider or voice")
+
+    owners = [Owner(), Owner()]
+    resources.register_model_resource(owners[0], "vision", "release")
+    resources.register_model_resource(owners[1], "voice_sessions", "release")
+    uncertain(world)
+    monkeypatch.setattr(service, "_listening", AsyncMock(return_value=True))
+    unload = AsyncMock(return_value=["fixture-model"])
+    monkeypatch.setattr(service, "_unload_ollama", unload)
+    controller = SimpleNamespace(
+        list_servers=Mock(
+            return_value=[{"name": "ollama", "endpoint": "http://127.0.0.1:11434"}]
+        )
+    )
+    result = await service.release_all_runtime_models(
+        controller, runtime_ids={"ollama"}, include_registered=False
+    )
+    assert result["released"] is True
+    assert world.snapshot()["status"] == "available"
+    assert {row["runtime"] for row in result["runtimes"]} == {"ollama"}
+    unload.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_llm_recovery_keeps_unrelated_uncertainty(world, monkeypatch):
+    from unittest.mock import Mock
+
+    with pytest.raises(RuntimeError, match="vision failed"):
+        with world.operation(kind="vision"):
+            raise RuntimeError("vision failed")
+    controller = SimpleNamespace(list_servers=Mock(return_value=[]))
+    with pytest.raises(HTTPException) as error:
+        await service.release_all_runtime_models(
+            controller, runtime_ids={"ollama"}, include_registered=False
+        )
+    assert error.value.detail["code"] == "runtime_release_failed"
+    assert world.snapshot()["status"] == "quarantined"
+
+
+@pytest.mark.asyncio
+async def test_llm_recovery_requires_an_observed_daemon_even_for_a_matching_kind(world):
+    from unittest.mock import Mock
+
+    uncertain(world)
+    with pytest.raises(HTTPException):
+        await service.release_all_runtime_models(
+            SimpleNamespace(list_servers=Mock(return_value=[])),
+            runtime_ids={"ollama"},
+            include_registered=False,
+        )
+    assert world.snapshot()["status"] == "quarantined"

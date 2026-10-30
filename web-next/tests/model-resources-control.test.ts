@@ -53,3 +53,13 @@ it("updates the live VRAM reading after release and combines repeated owner resu
   assert.equal((html.match(/models.resources.categories.vision/g) ?? []).length, 1);
   assert.match(html, /text-red-400/);
 });
+
+
+it("offers scoped LLM recovery without removing the global memory release control", () => {
+  const html = renderToStaticMarkup(React.createElement(ModelResourcesControl, {
+    releasing: false, memory, result: null, error: null, onRelease: async () => {}, onRecoverLlm: async () => {}, t,
+  }));
+  assert.match(html, /recover-llm/);
+  assert.match(html, /models.resources.recoverLlmHint/);
+  assert.match(html, /release-all-models/);
+});

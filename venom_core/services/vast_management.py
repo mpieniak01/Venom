@@ -56,7 +56,7 @@ def _billing_summary(record: EnvironmentRecord) -> dict[str, Any]:
             if isinstance(reported, dict) and costs.get("currency") == "USD"
             else None
         )
-        if billed is not None:
+        if billed is not None and isinstance(reported, dict):
             unknown = reported.get("unknown_amounts", 0)
             status = "reported" if unknown == 0 else "partial"
             return {"billing_status": status, "billed_usd": str(billed)}

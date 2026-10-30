@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { formatVastUsd } from "@/lib/vast-price";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { VastEnvironment } from "./hooks/use-vast-environments";
@@ -22,7 +23,7 @@ export function VastEnvironmentRow({ row, pending, action, t }: Readonly<Props>)
       <div className="min-w-0"><p className="break-all text-sm font-semibold text-[color:var(--text-primary)]">{row.model}</p><p className="text-xs text-[color:var(--ui-muted)] break-all">{row.plan_id}</p></div>
       <div className="flex flex-wrap gap-2"><Badge tone={row.phase === "error" || row.phase === "interrupted" ? "danger" : "neutral"}>{text("phases." + phase)}</Badge>{row.connected && <Badge tone="success">{text("connected")}</Badge>}</div>
     </div>
-    <div className="grid gap-3 text-xs text-[color:var(--ui-muted)] sm:grid-cols-3"><span>{text("instance")}: {row.instance_id ?? text("unknown")}</span><span>{text("hourly")}: {row.hourly_usd ?? text("unknown")}</span><span>{text("estimate")}: {row.total_usd ?? text("unknown")}</span></div>
+    <div className="grid gap-3 text-xs text-[color:var(--ui-muted)] sm:grid-cols-3"><span>{text("instance")}: {row.instance_id ?? text("unknown")}</span><span>{text("hourly")}: {formatVastUsd(row.hourly_usd, text("unknown"))}</span><span>{text("estimate")}: {formatVastUsd(row.total_usd, text("unknown"))}</span></div>
     {row.billing_possible && <p className="text-xs text-amber-300">{text("billingWarning")}</p>}
     {row.connected && <p className="text-sm">{text("chatReady")}</p>}
     {row.error && <p role="alert" className="text-xs text-rose-400">{text("operationError")}: <code>{row.error}</code></p>}

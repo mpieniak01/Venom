@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { formatDateTime } from "@/lib/date";
+import { formatVastUsd } from "@/lib/vast-price";
 import { useVastEnvironments, type VastOffer } from "./hooks/use-vast-environments";
 import { VastEnvironmentRow } from "./vast-environment-row";
 import { VastEnvironmentHistory } from "./vast-environment-history";
@@ -52,7 +53,7 @@ export function VastEnvironmentsSection({ t, onChanged }: Readonly<Props>) {
     {api.offers && <div className={styles.panel + " space-y-5"}>
       <h3 className={styles.heading}>{text("offers")}</h3>
       {api.offers.length === 0 ? <p>{text("noOffers")}</p> : <div className={styles.tableWrap + " max-h-96"}><table className="w-full min-w-[680px] border-collapse text-left text-sm"><thead className="sticky top-0 z-10 bg-[color:var(--ui-surface)]"><tr>{["offer", "gpu", "country", "vram", "hourly", "estimate", "selection"].map(name => <th key={name} className={styles.tableHead}>{text(name)}</th>)}</tr></thead><tbody>{api.offers.map(offer => <tr key={offer.offer_id} className={styles.tableRow}>
-        <td className={styles.tableCell}>{offer.offer_id}</td><td className={styles.tableCell}>{offer.gpu_name}</td><td className={styles.tableCell}>{offer.country ?? text("unknown")}</td><td className={styles.tableCell}>{offer.gpu_ram_mb ?? text("unknown")}</td><td className={styles.tableCell}>{offer.hourly_usd ?? text("unknown")}</td><td className={styles.tableCell}>{offer.total_usd ?? text("unknown")}</td>
+        <td className={styles.tableCell}>{offer.offer_id}</td><td className={styles.tableCell}>{offer.gpu_name}</td><td className={styles.tableCell}>{offer.country ?? text("unknown")}</td><td className={styles.tableCell}>{offer.gpu_ram_mb ?? text("unknown")}</td><td className={styles.tableCell}>{formatVastUsd(offer.hourly_usd, text("unknown"))}</td><td className={styles.tableCell}>{formatVastUsd(offer.total_usd, text("unknown"))}</td>
         <td className={styles.tableCell}><Button type="button" size="sm" variant="secondary" disabled={api.pending || offer.status !== "eligible"} aria-label={`${text("choose")}: ${offer.offer_id}`} onClick={() => { api.clearDraft(); setSelected(offer); setConfirmed(false); }}>{text(offerActionLabel(offer, selected))}</Button>{offer.reasons.length > 0 && <p className="mt-1 text-xs text-[color:var(--ui-muted)]">{text("unavailableReason")}: {offer.reasons.join(", ")}</p>}</td>
       </tr>)}</tbody></table></div>}
       {selected && <div className="space-y-3 border-t border-[color:var(--ui-border)] pt-4">
@@ -67,7 +68,7 @@ export function VastEnvironmentsSection({ t, onChanged }: Readonly<Props>) {
     {api.draft && <div className="min-w-0 space-y-4 rounded-[24px] border border-amber-500/40 bg-[color:var(--ui-surface)] p-4 text-sm text-[color:var(--text-primary)] shadow-card sm:p-6" aria-label={text("orderReview")}>
       <h3 className={styles.heading}>{text("orderReview")}</h3>
       <p className="text-sm break-all">{api.draft.model}</p>
-      <p className="text-sm">{text("hourly")}: {api.draft.hourly_usd} · {text("estimate")}: {api.draft.total_usd} · {text("duration")}: {api.draft.duration_minutes}</p>
+      <p className="text-sm">{text("hourly")}: {formatVastUsd(api.draft.hourly_usd, text("unknown"))} · {text("estimate")}: {formatVastUsd(api.draft.total_usd, text("unknown"))} · {text("duration")}: {api.draft.duration_minutes}</p>
       <p className="text-xs text-[color:var(--ui-muted)]">{text("expires")}: {formatDateTime(api.draft.expires_at)}</p>
       <label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={acceptHost} onChange={event => setAcceptHost(event.target.checked)} />{text("acceptHost")}</label>
       <label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={confirmed} onChange={event => setConfirmed(event.target.checked)} />{text("acceptCost")}</label>

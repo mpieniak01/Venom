@@ -6,6 +6,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 def _normalize_environment_role(raw: str | None) -> str:
     role = (raw or "").strip().lower()
+    if role == "prod":
+        return "prod"
     if role in {"pre-prod", "pre_prod", "staging", "stage", "preprod"}:
         return "preprod"
     return "dev"
@@ -135,7 +137,7 @@ class Settings(BaseSettings):
     ACADEMY_ADAPTER_MEMORY_MONITOR_INTERVAL_SEC: float = 0.25
 
     # Konfiguracja LLM (Local-First Brain)
-    VENOM_RUNTIME_PROFILE: str = "light"  # full|light|llm_off
+    VENOM_RUNTIME_PROFILE: str = "full"  # full|light; llm_off is a legacy alias
     UI_THEME_DEFAULT: str = "venom-dark"  # Theme ID from backend runtime whitelist
     LLM_SERVICE_TYPE: str = "local"  # Opcje: "local", "openai", "azure", "google"
     LLM_LOCAL_ENDPOINT: str = _default_url("localhost", 11434, "/v1")  # Ollama/vLLM

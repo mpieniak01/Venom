@@ -32,9 +32,10 @@ from venom_core.services.vast_environments.lifecycle import Environments
 from venom_core.services.vast_environments.operations import monitor, workload
 from venom_core.services.vast_environments.recipes import RECIPES, prepare
 from venom_core.services.vast_environments.store import Journal
+from venom_core.utils.runtime_state import runtime_state_root
 
 INVALID_INPUT = "vast.invalid_input"
-DEFAULT_STATE = ".venom_runtime/vast"
+DEFAULT_STATE = str(runtime_state_root() / "vast")
 SSH_PROFILE_ROOT = Path(__file__).resolve().parents[3] / "secrets" / "ssh"
 
 

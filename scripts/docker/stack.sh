@@ -1,189 +1,77 @@
 #!/usr/bin/env bash
 set -euo pipefail
-
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
-COMPOSE_FILE="$ROOT_DIR/compose/compose.minimal.yml"
-COMPOSE_GPU_FILE="$ROOT_DIR/compose/compose.internal.gpu-override.yml"
-MODEL_DEFAULT="gemma2:2b"
-MODEL="${OLLAMA_MODEL:-$MODEL_DEFAULT}"
-GPU_MODE="${VENOM_ENABLE_GPU:-auto}"
-RUNTIME_PROFILE="${VENOM_RUNTIME_PROFILE:-light}"
-
 usage() {
-  cat <<USAGE
-Usage: $(basename "$0") <command>
-
-Commands:
-  start      Build and start the minimal Venom stack
-  stop       Stop and remove the stack containers
-  restart    Restart the stack
-  status     Show stack status
-  pull       Pull remote images (e.g. Ollama)
-
-Environment:
-  VENOM_RUNTIME_PROFILE=light|llm_off|full (default: light)
-USAGE
-  return 0
+  echo "Usage: $0 start|stop|restart|status|pull"
+  echo "PROFILE=full|light ENVIRONMENT=dev|preprod (Docker recipe; prod remains unused)"
+  echo "ACTIVE_LLM_SERVER, model and GPU selection are independent of PROFILE."
+  echo "VENOM_DOCKER_PULL_POLICY=missing|always|never (default missing; never for explicit offline start)"
 }
-
-validate_runtime_profile() {
-  case "$RUNTIME_PROFILE" in
-    light|llm_off|full) ;;
-    *)
-      echo "[ERROR] Unsupported VENOM_RUNTIME_PROFILE='$RUNTIME_PROFILE' (expected: light|llm_off|full)." >&2
-      exit 1
-      ;;
-  esac
-}
-
-if ! command -v docker >/dev/null 2>&1; then
-  echo "[ERROR] Docker is not installed or not in PATH." >&2
-  exit 1
-fi
-
-if ! docker compose version >/dev/null 2>&1; then
-  echo "[ERROR] Docker Compose plugin ('docker compose') is not available." >&2
-  echo "[HINT] Install a newer Docker version with Compose plugin support." >&2
-  exit 1
-fi
-
-if [[ ! -f "$COMPOSE_FILE" ]]; then
-  echo "[ERROR] Missing compose file: $COMPOSE_FILE" >&2
-  exit 1
-fi
-
-gpu_runtime_available() {
-  docker info --format '{{json .Runtimes}}' 2>/dev/null | grep -q '"nvidia"'
-  return $?
-}
-
-COMPOSE_ARGS=(-f "$COMPOSE_FILE")
-enable_gpu=0
-case "$GPU_MODE" in
-  1|true|on|yes)
-    enable_gpu=1
+cmd=${1:-help}
+case "$cmd" in help|-h|--help) usage; exit 0;; start|stop|restart|status|pull) ;; *) usage >&2; exit 1;; esac
+recipe="${VENOM_DOCKER_RECIPE:-minimal}"
+case "$recipe" in minimal|release) ;; *) echo 'Unknown Docker recipe' >&2; exit 1;; esac
+role="${ENVIRONMENT:-${ENVIRONMENT_ROLE:-dev}}"
+case "$role" in dev|preprod) ;; *) echo 'Docker ENVIRONMENT must be dev|preprod; prod is unused' >&2; exit 1;; esac
+profile="${PROFILE:-${VENOM_RUNTIME_PROFILE:-light}}"
+case "$profile" in
+  full|light) ;;
+  llm_off)
+    echo '[deprecated] llm_off -> PROFILE=light ACTIVE_LLM_SERVER=none; remove alias after A10 migration.' >&2
+    profile=light
+    export ACTIVE_LLM_SERVER=none LLM_WARMUP_ON_STARTUP=false
     ;;
-  auto)
-    if gpu_runtime_available; then
-      enable_gpu=1
-    fi
-    ;;
-  0|false|off|no)
-    enable_gpu=0
-    ;;
-  *)
-    echo "[WARN] Unknown VENOM_ENABLE_GPU value '$GPU_MODE'. Falling back to auto."
-    if gpu_runtime_available; then
-      enable_gpu=1
-    fi
-    ;;
+  *) echo 'PROFILE must be full|light' >&2; exit 1;;
 esac
-
-if [[ "$enable_gpu" -eq 1 ]]; then
-  if [[ ! -f "$COMPOSE_GPU_FILE" ]]; then
-    echo "[ERROR] GPU override file not found: $COMPOSE_GPU_FILE" >&2
-    exit 1
-  fi
-  if gpu_runtime_available; then
-    COMPOSE_ARGS+=(-f "$COMPOSE_GPU_FILE")
-    echo "[INFO] GPU mode enabled for Ollama."
-  else
-    echo "[WARN] GPU mode requested, but Docker has no NVIDIA runtime. Falling back to CPU."
-  fi
+export VENOM_RUNTIME_PROFILE="$profile" ENVIRONMENT_ROLE="$role"
+# Keep old dev project/volumes untouched; another environment gets another project.
+if [[ "$role" == preprod ]]; then
+  export COMPOSE_PROJECT_NAME="venom-${recipe}-preprod"
+  export VENOM_CONTAINER_PREFIX="venom-preprod"
+  export VENOM_API_HOST_PORT=8810 VENOM_WEB_HOST_PORT=3310 VENOM_OLLAMA_HOST_PORT=11435
+  export DB_SCHEMA=preprod CACHE_NAMESPACE=preprod QUEUE_NAMESPACE=preprod STORAGE_PREFIX=preprod ALLOW_DATA_MUTATION=0
+else
+  export COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-venom-${recipe}}"
+  export VENOM_CONTAINER_PREFIX="${VENOM_CONTAINER_PREFIX:-venom}"
+  export VENOM_API_HOST_PORT="${VENOM_API_HOST_PORT:-8000}" VENOM_WEB_HOST_PORT="${VENOM_WEB_HOST_PORT:-3000}" VENOM_OLLAMA_HOST_PORT="${VENOM_OLLAMA_HOST_PORT:-11434}"
+  export DB_SCHEMA="${DB_SCHEMA:-dev}" CACHE_NAMESPACE="${CACHE_NAMESPACE:-venom}" QUEUE_NAMESPACE="${QUEUE_NAMESPACE:-venom}" STORAGE_PREFIX="${STORAGE_PREFIX:-}" ALLOW_DATA_MUTATION="${ALLOW_DATA_MUTATION:-0}"
 fi
-
-compose_cmd() {
-  local active_llm_server="ollama"
-  local warmup_on_startup="true"
-
-  if [[ "$RUNTIME_PROFILE" == "llm_off" ]]; then
-    active_llm_server="none"
-    warmup_on_startup="false"
-  elif [[ "$RUNTIME_PROFILE" == "full" ]]; then
-    active_llm_server="${ACTIVE_LLM_SERVER:-ollama}"
-  fi
-
-  OLLAMA_MODEL="$MODEL" \
-  VENOM_RUNTIME_PROFILE="$RUNTIME_PROFILE" \
-  ACTIVE_LLM_SERVER="$active_llm_server" \
-  LLM_WARMUP_ON_STARTUP="$warmup_on_startup" \
-  docker compose "${COMPOSE_ARGS[@]}" "$@"
-  return $?
-}
-
-compose_up_stack() {
-  if [[ "$RUNTIME_PROFILE" == "llm_off" ]]; then
-    compose_cmd up -d --build --no-deps backend frontend
-    return $?
-  fi
-  compose_cmd up -d --build
-  return $?
-}
-
-wait_for_ollama() {
-  if [[ "$RUNTIME_PROFILE" == "llm_off" ]]; then
-    echo "[INFO] Skipping Ollama readiness for profile: llm_off"
-    return 0
-  fi
-  local timeout=${1:-180}
-  local elapsed=0
-  local interval=5
-
-  until compose_cmd exec -T ollama ollama list >/dev/null 2>&1; do
-    sleep "$interval"
-    elapsed=$((elapsed + interval))
-    if [[ "$elapsed" -ge "$timeout" ]]; then
-      echo "[ERROR] Timeout waiting for Ollama readiness." >&2
-      return 1
+export ACTIVE_LLM_SERVER="${ACTIVE_LLM_SERVER:-ollama}" LLM_WARMUP_ON_STARTUP="${LLM_WARMUP_ON_STARTUP:-false}"
+if [[ "$profile" == light ]]; then
+  export LLM_WARMUP_ON_STARTUP=false
+  export VENOM_PAUSE_BACKGROUND_TASKS=true ENABLE_AUTO_DOCUMENTATION=false ENABLE_AUTO_GARDENING=false
+fi
+if [[ "$recipe" == release && -z "${VENOM_RELEASE_VERSION:-}" ]]; then
+  VENOM_RELEASE_VERSION=$(awk -F '"' '/^version = "/ {print $2; exit}' "$ROOT_DIR/pyproject.toml")
+  export VENOM_RELEASE_VERSION
+fi
+COMPOSE_ARGS=(-f "$ROOT_DIR/compose/compose.${recipe}.yml")
+command -v docker >/dev/null || { echo 'Docker is not installed' >&2; exit 1; }
+docker compose version >/dev/null
+# GPU acceleration is technical configuration, never a third application profile.
+case "${VENOM_ENABLE_GPU:-auto}" in
+  0|false|off|no) ;;
+  1|true|on|yes|auto)
+    if [[ "$ACTIVE_LLM_SERVER" == ollama ]] && docker info --format '{{json .Runtimes}}' 2>/dev/null | grep -q '"nvidia"'; then
+      COMPOSE_ARGS+=(-f "$ROOT_DIR/compose/compose.internal.gpu-override.yml")
     fi
-  done
-
-  return 0
+    ;;
+  *) echo 'Invalid VENOM_ENABLE_GPU' >&2; exit 1;;
+esac
+compose_cmd() { docker compose "${COMPOSE_ARGS[@]}" "$@"; }
+start_stack() {
+  local pull_policy="${VENOM_DOCKER_PULL_POLICY:-missing}"
+  case "$pull_policy" in always|missing|never) ;; *) echo 'Invalid VENOM_DOCKER_PULL_POLICY' >&2; return 1;; esac
+  local args=(up -d --pull "$pull_policy")
+  if [[ "$recipe" == minimal ]]; then args+=(--build); else args+=(--no-build); fi
+  # Only the selected local engine can be started. No implicit model pull or warmup.
+  if [[ "$ACTIVE_LLM_SERVER" != ollama ]]; then args+=(--no-deps backend frontend); fi
+  compose_cmd "${args[@]}"
 }
-
-ensure_model() {
-  if [[ "$RUNTIME_PROFILE" == "llm_off" ]]; then
-    echo "[INFO] Skipping model pull for profile: llm_off"
-    return 0
-  fi
-  if compose_cmd exec -T ollama ollama list | awk 'NR>1 {print $1}' | grep -Fxq "$MODEL"; then
-    echo "[INFO] Ollama model already present: $MODEL"
-    return 0
-  fi
-
-  echo "[INFO] Pulling default Ollama model: $MODEL"
-  compose_cmd exec -T ollama ollama pull "$MODEL"
-  return $?
-}
-
-cmd=${1:-}
-validate_runtime_profile
 case "$cmd" in
-  start)
-    compose_up_stack
-    wait_for_ollama
-    ensure_model
-    ;;
-  stop)
-    compose_cmd down --remove-orphans
-    ;;
-  restart)
-    compose_cmd down --remove-orphans
-    compose_up_stack
-    wait_for_ollama
-    ensure_model
-    ;;
-  status)
-    compose_cmd ps
-    ;;
-  pull)
-    compose_cmd pull
-    ;;
-  -h|--help|help)
-    usage
-    ;;
-  *)
-    usage >&2
-    exit 1
-    ;;
+  start) start_stack;;
+  restart) compose_cmd down --remove-orphans; start_stack;;
+  stop) compose_cmd down --remove-orphans;;
+  status) compose_cmd ps;;
+  pull) compose_cmd pull;;
 esac

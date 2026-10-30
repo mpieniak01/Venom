@@ -1,5 +1,7 @@
 #!/usr/bin/env node
-import { spawn } from "node:child_process";
+import { spawn, execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import http from "node:http";
 import net from "node:net";
 import { createTransportProxy, proxySettings } from "./transport-proxy.mjs";
@@ -20,7 +22,38 @@ const settings = proxySettings();
 const { requestHandler, upgradeHandler } = createTransportProxy({
   uiTarget: `http://127.0.0.1:${innerPort}`, settings,
 });
-const server = http.createServer(requestHandler);
+const metadata = (() => {
+  let existing = {};
+  try { existing = JSON.parse(readFileSync(path.join(process.cwd(), "public/meta.json"), "utf8")); } catch { /* Standalone metadata is optional. */ }
+  let commit = typeof existing.commit === "string" ? existing.commit : "unknown";
+  try { commit = execFileSync("git", ["rev-parse", "--short", "HEAD"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim(); } catch { /* Images may omit Git. */ }
+  return { ...existing, commit, environmentRole: process.env.ENVIRONMENT_ROLE || "dev", version: process.env.NEXT_PUBLIC_APP_VERSION || existing.version || "unknown" };
+})();
+const server = http.createServer(async (request, response) => {
+  if (request.url === "/meta.json" && ["GET", "HEAD"].includes(request.method)) {
+    response.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
+    response.end(request.method === "HEAD" ? undefined : JSON.stringify(metadata));
+    return;
+  }
+  // A per-launch token proves this entry and its actual Next child are ready.
+  // Regular browser traffic continues through the existing streaming proxy.
+  const token = process.env.VENOM_UI_START_TOKEN;
+  if (token && request.url === "/_venom/ready" && request.headers["x-venom-start-token"] === token) {
+    try {
+      const result = await fetch(`http://127.0.0.1:${innerPort}/`, { signal: AbortSignal.timeout(2000), redirect: "manual" });
+      await result.body?.cancel();
+      if (result.status >= 200 && result.status < 400) {
+        response.writeHead(200, { "content-type": "text/plain", "cache-control": "no-store" });
+        response.end(token);
+        return;
+      }
+    } catch { /* Child is still starting or has failed. */ }
+    response.writeHead(503, { "cache-control": "no-store" });
+    response.end("UI not ready");
+    return;
+  }
+  requestHandler(request, response);
+});
 const sockets = new Set();
 server.on("connection", (socket) => {
   sockets.add(socket);

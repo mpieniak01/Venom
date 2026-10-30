@@ -1,6 +1,6 @@
 # Environment Support Matrix
 
-Status snapshot date: **2026-02-28**
+Status snapshot date: **2026-10-30**
 
 This document is the source of truth for which environments are currently supported in practice.
 
@@ -19,8 +19,9 @@ Main entry points:
 ## Active Configuration Model
 
 Current operational model:
-- shared technical stack (`dev` + `preprod`)
-- logical data isolation for `preprod`
+- default Full/dev with Turbopack; Full/Light × dev/preprod are the four active combinations
+- shared source/installations, independent processes and data/log/PID/build/provider-state paths
+- prod retained but unused; [launch contract](STACK_PROFILES.md)
 
 Environment config files:
 - `dev` runtime: `.env.dev` (local, not committed)
@@ -29,8 +30,10 @@ Environment config files:
 - `preprod` template: `.env.preprod.example` (safe for Git)
 
 Selection rule:
-- active env file is selected by `Makefile` via exported `ENV_FILE`
-- runtime shell scripts resolve values with shared `scripts/lib/env_contract.sh`
+- select PROFILE=full|light and ENVIRONMENT=dev|preprod through Make
+- scripts/dev/stack_profile.py merges dotenv as data and applies profile/isolation rules once
+- Light forces background pause and no LLM warmup; preprod forces read-only
+- shell helpers retain the resolved values with dotenv --no-override
 - effective priority: `make VAR=...` / exported env > value from `ENV_FILE` > script default
 - runtime-domain keys (`ACTIVE_LLM_SERVER`, `VLLM_*`, `OLLAMA_*`) belong to `.env*` as source-of-truth
 - no bare `.env` / `.env.example` in runtime contract
@@ -107,13 +110,17 @@ Rules:
 Preprod startup commands:
 ```bash
 make ensure-preprod-env-file
-make start-preprod
-make api-preprod
-make web-preprod
-make startpre
-make apipre
-make webpre
+make stack-plan ENVIRONMENT=preprod PROFILE=full
+make start ENVIRONMENT=preprod PROFILE=full
+make start ENVIRONMENT=preprod PROFILE=light
+make status ENVIRONMENT=preprod
+make stop ENVIRONMENT=preprod
 ```
+
+Old preprod aliases delegate to this contract and are scheduled for removal after migration.
+Preprod keeps its database, cache/queue namespaces and logs. UI/API ports, PID records,
+Next dist artifacts and mutable OpenRouter/Vast state are isolated. Stop never kills the
+other environment or the shared LLM. Full and Light in the same environment share data.
 
 Preprod operation commands:
 ```bash

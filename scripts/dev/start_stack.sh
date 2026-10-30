@@ -2,8 +2,15 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+# shellcheck source=../lib/python_contract.sh
+source "$ROOT_DIR/scripts/lib/python_contract.sh"
 # shellcheck source=../lib/env_contract.sh
 source "$ROOT_DIR/scripts/lib/env_contract.sh"
+if [[ "${VENOM_STACK_RESOLVED:-0}" != "1" ]]; then
+  exec "$(venom_python_bin "$ROOT_DIR")" "$ROOT_DIR/scripts/dev/stack_profile.py" start
+fi
+cd "$ROOT_DIR"
+
 
 mk() {
   "${MAKE_BIN:-make}" --no-print-directory "$@"
@@ -73,7 +80,7 @@ fi
 
 run_with_env_file() {
   # Values such as lifecycle commands remain data; never source a dotenv file.
-  env_contract_run "$PYTHON_BIN" "$ENV_FILE" "$@"
+  "$PYTHON_BIN" -m dotenv -f "$ENV_FILE" run --no-override -- "$@"
 }
 
 extract_url_port() {
@@ -149,7 +156,7 @@ if [[ ! -x "$UVICORN" ]]; then
   exit 1
 fi
 
-mkdir -p logs
+mkdir -p "$(dirname "$BACKEND_LOG")" "$(dirname "$WEB_LOG")" "$(dirname "$PID_FILE")" "$(dirname "$WEB_PID_FILE")"
 
 START_SUCCESS=0
 BACKEND_STARTED=0
@@ -209,6 +216,9 @@ active_server="$(run_with_env_file "$PYTHON_BIN" -c 'from venom_core.utils.llm_r
 active_server="$(printf '%s' "$active_server" | tr -d '\r' | tr '[:upper:]' '[:lower:]')"
 [[ -z "$active_server" ]] && active_server="ollama"
 
+export VENOM_STARTED_LOCAL_RUNTIME="$active_server"
+"$PYTHON_BIN" "$ROOT_DIR/scripts/dev/stack_profile.py" runtime-check
+
 active_server_origin="$(env_contract_origin ACTIVE_LLM_SERVER "$ENV_FILE" "")"
 if [[ "$active_server_origin" == "empty" ]]; then
   active_server_origin="default"
@@ -230,7 +240,6 @@ start_ollama() {
   local make_bin
   make_bin="${MAKE_BIN:-make}"
   echo "▶️  Uruchamiam Ollama..."
-  mk vllm-stop >/dev/null || true
   if command -v timeout >/dev/null 2>&1; then
     if ! timeout 25s "$make_bin" --no-print-directory ollama-start >/dev/null 2>&1; then
       echo "❌ 'ollama-start' nie zakończył się poprawnie w limicie czasu (25s)."
@@ -262,7 +271,6 @@ start_ollama() {
     echo "ℹ️  Ostatnie logi Ollama:"
     tail -n 40 logs/ollama.log || true
   fi
-  mk ollama-stop >/dev/null || true
   return 1
 }
 
@@ -270,7 +278,6 @@ start_vllm() {
   local models_url
   models_url="$(vllm_models_url "$VLLM_ENDPOINT")"
   echo "▶️  Uruchamiam vLLM..."
-  mk ollama-stop >/dev/null || true
   if ! mk vllm-start; then
     echo "❌ Nie udało się uruchomić vLLM (sprawdź logi wyżej)."
     return 1
@@ -302,7 +309,6 @@ start_vllm() {
     echo "ℹ️  Ostatnie logi vLLM:"
     tail -n 40 logs/vllm.log || true
   fi
-  mk vllm-stop >/dev/null || true
   return 1
 }
 
@@ -310,8 +316,6 @@ start_multi_runtime() {
   local multi_runtime_port
   multi_runtime_port="$(env_contract_get GEMMA4_AUDIO_PORT "8014" "$ENV_FILE")"
   echo "▶️  Uruchamiam Multi-Runtime..."
-  mk vllm-stop >/dev/null || true
-  mk ollama-stop >/dev/null || true
   if ! bash scripts/llm/multi_runtime_service.sh start; then
     echo "❌ Nie udało się uruchomić Multi-Runtime (sprawdź logi wyżej)."
     return 1
@@ -331,7 +335,6 @@ start_multi_runtime() {
     echo "ℹ️  Ostatnie logi Multi-Runtime:"
     tail -n 40 logs/multi_runtime_service.log || true
   fi
-  bash scripts/llm/multi_runtime_service.sh stop >/dev/null 2>&1 || true
   return 1
 }
 
@@ -339,16 +342,12 @@ llm_ready=""
 case "$active_server" in
   onnx)
     echo "▶️  Aktywny runtime: ONNX (in-process)"
-    mk vllm-stop >/dev/null || true
-    mk ollama-stop >/dev/null || true
     llm_ready="onnx"
     ;;
   ollama)
-    mk vllm-stop >/dev/null || true
     if start_ollama; then llm_ready="ollama"; fi
     ;;
   vllm)
-    mk ollama-stop >/dev/null || true
     if start_vllm; then llm_ready="vllm"; fi
     ;;
   gemma4_audio|multi_runtime)
@@ -356,9 +355,6 @@ case "$active_server" in
     ;;
   none)
     echo "▶️  ACTIVE_LLM_SERVER=none (start bez lokalnego serwera LLM)"
-    mk vllm-stop >/dev/null || true
-    mk ollama-stop >/dev/null || true
-    bash scripts/llm/multi_runtime_service.sh stop >/dev/null 2>&1 || true
     llm_ready="none"
     ;;
   *)
@@ -385,24 +381,9 @@ echo "🧠 LLM gotowy: $llm_ready"
 
 backend_reused=""
 if curl -fsS "http://${HOST_DISPLAY}:${PORT}/api/v1/system/status" >/dev/null 2>&1; then
-  echo "⚠️  Backend już odpowiada na ${HOST_DISPLAY}:${PORT}. Pomijam drugi start backendu."
+  "$PYTHON_BIN" -c 'import os; from pathlib import Path; from scripts.dev.stack_profile import owned_pid; assert owned_pid(Path.cwd(), os.environ, "PID_FILE", reuse=True), "Unowned API listener"' || exit 1
+  echo "Backend wybranego środowiska już działa."
   backend_reused="yes"
-  if [[ -f "$PID_FILE" ]]; then
-    pid="$(cat "$PID_FILE")"
-    if ! kill -0 "$pid" 2>/dev/null; then rm -f "$PID_FILE"; fi
-  fi
-elif [[ -f "$PID_FILE" ]]; then
-  pid="$(cat "$PID_FILE")"
-  if kill -0 "$pid" 2>/dev/null; then
-    echo "⚠️  Backend PID $pid istnieje, ale /system/status jest niedostępny. Restartuję backend."
-    kill "$pid" 2>/dev/null || true
-    for _ in {1..30}; do
-      if kill -0 "$pid" 2>/dev/null; then sleep 0.2; else break; fi
-    done
-    rm -f "$PID_FILE"
-  else
-    rm -f "$PID_FILE"
-  fi
 fi
 
 if [[ -z "$backend_reused" ]]; then
@@ -416,23 +397,9 @@ if [[ -z "$backend_reused" ]]; then
     fi
   fi
 
-  if [[ "$START_MODE" == "prod" ]]; then
-    uvicorn_flags="--host ${HOST} --port ${PORT} ${UVICORN_PROD_FLAGS}"
-  else
-    if [[ "$BACKEND_RELOAD" == "1" ]]; then
-      uvicorn_flags="--host ${HOST} --port ${PORT} ${UVICORN_DEV_FLAGS}"
-      echo "ℹ️  Backend dev z autoreload (BACKEND_RELOAD=1)"
-    else
-      uvicorn_flags="--host ${HOST} --port ${PORT} ${UVICORN_PROD_FLAGS}"
-      echo "ℹ️  Backend dev w trybie stabilnym bez autoreload (BACKEND_RELOAD=0)"
-    fi
-  fi
-
   echo "▶️  Uruchamiam Venom backend (uvicorn na ${HOST}:${PORT})"
   : > "$BACKEND_LOG"
-  api_python="$("$PYTHON_BIN" "$ROOT_DIR/scripts/llm/with_gpu_libraries.py" --print-command-python "$ROOT_DIR" "$UVICORN")"
-  run_with_env_file setsid "$api_python" "$ROOT_DIR/scripts/llm/with_gpu_libraries.py" "$UVICORN" "$API_APP" $uvicorn_flags >> "$BACKEND_LOG" 2>&1 &
-  echo $! > "$PID_FILE"
+  "$PYTHON_BIN" "$ROOT_DIR/scripts/dev/stack_profile.py" launch-api
   BACKEND_STARTED=1
   echo "✅ Venom backend wystartował z PID $(cat "$PID_FILE")"
 
@@ -466,235 +433,34 @@ if [[ -z "$backend_reused" ]]; then
       rm -f "$PID_FILE"
       BACKEND_STARTED=0
     fi
-    mk vllm-stop >/dev/null || true
-    mk ollama-stop >/dev/null || true
     exit 1
   fi
 else
   echo "✅ Backend gotowy (używam już działającej instancji)"
 fi
 
-ui_skip=""
-if [[ ! -f "$WEB_PID_FILE" ]]; then
-  ext_ui_pids="$(bash scripts/dev/port_pids.sh "$WEB_PORT" || true)"
-  if [[ -n "$ext_ui_pids" ]]; then
-    echo "⚠️  Port ${WEB_PORT} zajęty przez niezarządzany proces UI ($ext_ui_pids). Czyszczę."
-    kill $ext_ui_pids 2>/dev/null || true
-    for _ in {1..30}; do
-      ext_still="$(bash scripts/dev/port_pids.sh "$WEB_PORT" || true)"
-      [[ -z "$ext_still" ]] && break
-      sleep 0.2
-    done
-    ext_still="$(bash scripts/dev/port_pids.sh "$WEB_PORT" || true)"
-    if [[ -n "$ext_still" ]]; then
-      echo "❌ Nie udało się zwolnić portu ${WEB_PORT} (PID: $ext_still). Użyj: make web-stop"
-      exit 1
-    fi
-  fi
+# All UI entrypoints share ownership, build compatibility and readiness checks.
+export WEB_DIR WEB_PORT WEB_HOST WEB_PID_FILE WEB_LOG NPM
+export NODE_PATH="$WEB_NODE_PATH"
+export NEXT_PUBLIC_APP_VERSION="$WEB_APP_VERSION"
+export NEXT_PUBLIC_ENVIRONMENT_ROLE="${ENVIRONMENT_ROLE:-dev}"
+export NEXT_PUBLIC_ENABLE_AUDIO_INTERFACE="$(env_contract_get ENABLE_AUDIO_INTERFACE "false" "$ENV_FILE")"
+export NEXT_PUBLIC_AUDIO_WS_BASE="ws://${WEB_DISPLAY}:${PORT}"
+export NEXT_TELEMETRY_DISABLED=1
+unset NEXT_DISABLE_TURBOPACK WATCHPACK_POLLING WATCHPACK_POLLING_INTERVAL CHOKIDAR_USEPOLLING
+
+if [[ "$START_MODE" == "prod" ]]; then
+  # Building is explicit and invalidates the previous stamp before any attempt.
+  run_with_env_file node "$ROOT_DIR/web-next/scripts/web-lifecycle.mjs" build
+  run_with_env_file node "$ROOT_DIR/web-next/scripts/web-lifecycle.mjs" start
+else
+  case "$START_WEB_MODE" in
+    turbo|turbo-debug) export WATCHPACK_POLLING=true WATCHPACK_POLLING_INTERVAL=1000 CHOKIDAR_USEPOLLING=1 ;;
+    webpack) export NEXT_DISABLE_TURBOPACK=1 ;;
+    *) echo "❌ Nieznany START_WEB_MODE=$START_WEB_MODE" >&2; exit 1 ;;
+  esac
+  run_with_env_file node "$ROOT_DIR/web-next/scripts/web-lifecycle.mjs" dev "$START_WEB_MODE"
 fi
-
-if [[ -f "$WEB_PID_FILE" ]]; then
-  wpid="$(cat "$WEB_PID_FILE")"
-  if kill -0 "$wpid" 2>/dev/null; then
-    if [[ "$START_MODE" == "dev" ]]; then
-      cmdline="$(tr '\0' ' ' < /proc/${wpid}/cmdline 2>/dev/null || true)"
-      want="dev --"
-      if [[ "$START_WEB_MODE" == "turbo" ]]; then
-        want="dev:turbo"
-      elif [[ "$START_WEB_MODE" == "turbo-debug" ]]; then
-        want="dev:turbo:debug"
-      fi
-      if printf '%s' "$cmdline" | grep -Fq "$want"; then
-        echo "⚠️  UI (Next.js) już działa w trybie ${START_WEB_MODE} (PID ${wpid}). Pomijam start UI."
-        ui_skip="yes"
-      else
-        echo "🔁 UI (Next.js) działa w innym trybie. Restartuję do trybu ${START_WEB_MODE}."
-        kill -TERM -"$wpid" 2>/dev/null || kill "$wpid" 2>/dev/null || true
-        for _ in {1..20}; do
-          if kill -0 "$wpid" 2>/dev/null; then sleep 0.2; else break; fi
-        done
-        if kill -0 "$wpid" 2>/dev/null; then
-          kill -KILL -"$wpid" 2>/dev/null || kill -KILL "$wpid" 2>/dev/null || true
-        fi
-        rm -f "$WEB_PID_FILE"
-      fi
-    else
-      echo "⚠️  UI (Next.js) już działa (PID ${wpid}). Pomijam start UI."
-      ui_skip="yes"
-    fi
-  else
-    rm -f "$WEB_PID_FILE"
-  fi
-fi
-
-if [[ -z "$ui_skip" ]]; then
-  start_ui_process() {
-    local mode="$1"
-    local npm_command="dev"
-    case "$mode" in
-      prod)
-        npm_command="start"
-        ;;
-      turbo)
-        npm_command="dev:turbo"
-        ;;
-      turbo-debug)
-        npm_command="dev:turbo:debug"
-        ;;
-      webpack)
-        npm_command="dev"
-        ;;
-      *)
-        echo "❌ Nieznany tryb uruchomienia UI: ${mode}" >&2
-        return 1
-        ;;
-    esac
-
-    (
-      cd "$WEB_DIR"
-      export NODE_PATH="$WEB_NODE_PATH"
-      export NEXT_PUBLIC_APP_VERSION="$WEB_APP_VERSION"
-      export NEXT_PUBLIC_ENVIRONMENT_ROLE="${ENVIRONMENT_ROLE:-dev}"
-      export NEXT_PUBLIC_ENABLE_AUDIO_INTERFACE="$(env_contract_get ENABLE_AUDIO_INTERFACE "false" "$ENV_FILE")"
-      export NEXT_PUBLIC_AUDIO_WS_BASE="ws://${WEB_DISPLAY}:${PORT}"
-      export NEXT_TELEMETRY_DISABLED=1
-      unset NEXT_DISABLE_TURBOPACK WATCHPACK_POLLING WATCHPACK_POLLING_INTERVAL CHOKIDAR_USEPOLLING
-
-      if [[ "$mode" == "prod" ]]; then
-        export NEXT_MODE=prod
-      elif [[ "$mode" == "webpack" ]]; then
-        export NEXT_MODE=dev
-        export NEXT_DISABLE_TURBOPACK=1
-      else
-        export NEXT_MODE=dev
-        export WATCHPACK_POLLING=true
-        export WATCHPACK_POLLING_INTERVAL=1000
-        export CHOKIDAR_USEPOLLING=1
-      fi
-
-      run_with_env_file setsid "$NPM" run "$npm_command" -- --hostname "$WEB_HOST" --port "$WEB_PORT" >> "../$WEB_LOG" 2>&1 &
-      echo $! > "../$WEB_PID_FILE"
-    )
-  }
-
-  wait_for_ui_ready() {
-    local pid="$1"
-    local failure_label="$2"
-    local ready=""
-    for _ in {1..40}; do
-      if kill -0 "$pid" 2>/dev/null; then
-        if curl -fsS "http://${WEB_DISPLAY}:${WEB_PORT}" >/dev/null 2>&1; then
-          ready="yes"
-          break
-        fi
-      else
-        echo "$failure_label proces $pid zakończył się przed startem" >&2
-        break
-      fi
-      sleep 1
-    done
-    printf '%s' "$ready"
-  }
-
-  : > "$WEB_LOG"
-  if [[ "$START_MODE" == "prod" ]]; then
-    echo "🛠  Buduję Next.js (npm run build)"
-    if ! (
-      cd "$WEB_DIR"
-      NODE_PATH="$WEB_NODE_PATH" NEXT_PUBLIC_APP_VERSION="$WEB_APP_VERSION" NEXT_PUBLIC_ENVIRONMENT_ROLE="${ENVIRONMENT_ROLE:-dev}" NEXT_PUBLIC_ENABLE_AUDIO_INTERFACE="$(env_contract_get ENABLE_AUDIO_INTERFACE "false" "$ENV_FILE")" NEXT_PUBLIC_AUDIO_WS_BASE="ws://${WEB_DISPLAY}:${PORT}" NEXT_MODE=prod NEXT_TELEMETRY_DISABLED=1 "$NPM" run build >/dev/null 2>&1
-    ); then
-      echo "❌ Build UI (Next.js) nie powiódł się (tryb prod)." >&2
-      if [[ -f "$PID_FILE" ]]; then
-        bpid="$(cat "$PID_FILE")"
-        kill "$bpid" 2>/dev/null || true
-        rm -f "$PID_FILE"
-      fi
-      mk vllm-stop >/dev/null || true
-      mk ollama-stop >/dev/null || true
-      exit 1
-    fi
-    echo "▶️  Uruchamiam UI (Next.js start, host ${WEB_HOST}, port ${WEB_PORT})"
-    start_ui_process "prod"
-  else
-    if [[ "$START_WEB_MODE" != "webpack" && "$START_WEB_MODE" != "turbo" && "$START_WEB_MODE" != "turbo-debug" ]]; then
-      echo "❌ Nieznany START_WEB_MODE='${START_WEB_MODE}' (dozwolone: webpack|turbo|turbo-debug)"
-      exit 1
-    fi
-    if [[ "$START_WEB_MODE" == "turbo" ]]; then
-      echo "▶️  Uruchamiam UI (Next.js dev:turbo, host ${WEB_HOST}, port ${WEB_PORT})"
-      start_ui_process "turbo"
-    elif [[ "$START_WEB_MODE" == "turbo-debug" ]]; then
-      echo "▶️  Uruchamiam UI (Next.js dev:turbo:debug, host ${WEB_HOST}, port ${WEB_PORT})"
-      start_ui_process "turbo-debug"
-    else
-      echo "▶️  Uruchamiam UI (Next.js dev, host ${WEB_HOST}, port ${WEB_PORT})"
-      start_ui_process "webpack"
-    fi
-  fi
-
-  effective_web_mode="$START_WEB_MODE"
-  ui_ready=""
-  max_attempts=$((WEB_START_RETRIES + 1))
-  for attempt in $(seq 1 "$max_attempts"); do
-    wpid="$(cat "$WEB_PID_FILE")"
-    UI_STARTED=1
-    ui_ready="$(wait_for_ui_ready "$wpid" "❌ UI (Next.js)")"
-    if [[ -n "$ui_ready" ]]; then
-      break
-    fi
-
-    echo "⚠️  UI (Next.js) nie wystartował poprawnie (próba ${attempt}/${max_attempts})."
-    kill_pid_group_graceful "$wpid" "UI"
-    rm -f "$WEB_PID_FILE"
-    UI_STARTED=0
-
-    should_retry_same_mode=0
-    if [[ "$attempt" -lt "$max_attempts" ]]; then
-      should_retry_same_mode=1
-    fi
-
-    if [[ "$START_MODE" == "dev" ]] && { [[ "$effective_web_mode" == "turbo" ]] || [[ "$effective_web_mode" == "turbo-debug" ]]; } && [[ -f "$WEB_LOG" ]] && grep -Eiq "Too many open files|Failed to allocate directory watch" "$WEB_LOG"; then
-      echo "❌ Turbopack: błąd watchera. Zachowuję wybrany bundler; sprawdź limit inotify lub użyj jawnie make start-dev-webpack."
-    fi
-
-    if [[ "$should_retry_same_mode" -eq 1 ]]; then
-      echo "🔁 Ponawiam start UI w tym samym trybie (${effective_web_mode})."
-      : > "$WEB_LOG"
-      start_ui_process "$effective_web_mode"
-      continue
-    fi
-  done
-
-  if [[ -z "$ui_ready" ]]; then
-    mk vllm-stop >/dev/null || true
-    mk ollama-stop >/dev/null || true
-    exit 1
-  fi
-
-  if [[ "$START_MODE" == "dev" ]]; then
-    expected_bundler="turbopack"
-    [[ "$effective_web_mode" == "webpack" ]] && expected_bundler="webpack"
-    bundler_line_ok=""
-    for _ in {1..15}; do
-      if [[ -f "$WEB_LOG" ]] && grep -Eiq "Next\.js .+\(${expected_bundler}\)" "$WEB_LOG"; then
-        bundler_line_ok="yes"
-        break
-      fi
-      sleep 1
-    done
-    if [[ -z "$bundler_line_ok" ]]; then
-      echo "❌ UI nie potwierdził oczekiwanego bundlera '${expected_bundler}' w logach."
-      echo "ℹ️  Ostatnie logi UI:"
-      tail -n 60 "$WEB_LOG" || true
-      kill_pid_group_graceful "$wpid" "UI"
-      rm -f "$WEB_PID_FILE"
-      UI_STARTED=0
-      exit 1
-    fi
-  fi
-
-  echo "✅ UI (Next.js) wystartował z PID $(cat "$WEB_PID_FILE")"
-fi
-
+# The lifecycle cleans up only its own failed launch. Do not claim reused UI as ours.
 echo "🚀 Gotowe: backend http://${HOST_DISPLAY}:${PORT}, dashboard http://${WEB_DISPLAY}:${WEB_PORT}"
 START_SUCCESS=1

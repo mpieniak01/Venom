@@ -1,5 +1,7 @@
 # Makefile dla Venom – rozdzielony backend FastAPI + frontend Next.js
 
+ENVIRONMENT ?= dev
+PROFILE ?= full
 VENV ?= .venv
 REPO_ROOT ?= $(CURDIR)
 PYTHON_BIN ?= $(if $(wildcard $(VENV)/bin/python),$(VENV)/bin/python,python3)
@@ -8,11 +10,11 @@ UVICORN ?= $(VENV)/bin/uvicorn
 API_APP ?= venom_core.main:app
 HOST ?= 0.0.0.0
 HOST_DISPLAY ?= 127.0.0.1
-PORT ?= 8000
+PORT ?= $(if $(filter preprod,$(ENVIRONMENT)),8100,$(if $(filter prod,$(ENVIRONMENT)),8200,8000))
 PID_FILE ?= .venom.pid
 NPM ?= npm
 WEB_DIR ?= web-next
-WEB_PORT ?= 3000
+WEB_PORT ?= $(if $(filter preprod,$(ENVIRONMENT)),3100,$(if $(filter prod,$(ENVIRONMENT)),3200,3000))
 WEB_HOST ?= 0.0.0.0
 WEB_DISPLAY ?= 127.0.0.1
 WEB_API_PROXY_TARGET ?= $(if $(strip $(API_PROXY_TARGET)),$(API_PROXY_TARGET),http://$(HOST_DISPLAY):$(PORT))
@@ -34,10 +36,10 @@ WEB_START_RETRIES ?= 1
 # and falls back to http://127.0.0.1:8001/v1 when not configured.
 VLLM_ENDPOINT ?=
 VLLM_START_TIMEOUT_SEC ?= 240
-ENV_FILE ?= .env.dev
-ENV_EXAMPLE_FILE ?= .env.dev.example
-ENV_RUN ?= $(PYTHON_BIN) -m dotenv -f "$(ENV_FILE)" run --
-ENV_RUN_ABS ?= $(abspath $(PYTHON_BIN)) -m dotenv -f "$(abspath $(ENV_FILE))" run --
+ENV_FILE ?= .env.$(ENVIRONMENT)
+ENV_EXAMPLE_FILE ?= .env.$(ENVIRONMENT).example
+ENV_RUN ?= $(PYTHON_BIN) -m dotenv -f "$(ENV_FILE)" run --no-override --
+ENV_RUN_ABS ?= $(abspath $(PYTHON_BIN)) -m dotenv -f "$(abspath $(ENV_FILE))" run --no-override --
 WEB_APP_VERSION ?= $(shell node -p "require('./web-next/package.json').version" 2>/dev/null || echo unknown)
 PREPROD_ENV_BASE := ENV_FILE=.env.preprod ENV_EXAMPLE_FILE=.env.preprod.example
 PREPROD_ENV_READONLY := $(PREPROD_ENV_BASE) ENVIRONMENT_ROLE=preprod DB_SCHEMA=preprod CACHE_NAMESPACE=preprod QUEUE_NAMESPACE=preprod STORAGE_PREFIX=preprod ALLOW_DATA_MUTATION=0
@@ -51,7 +53,7 @@ SHELL := /bin/bash
 
 PORTS_TO_CLEAN := $(PORT) $(WEB_PORT)
 
-.PHONY: lint format test test-data test-unit test-smoke test-perf test-all test-artifacts-cleanup install-hooks sync-sonar-new-code-group start start-dev start-dev-webpack start-dev-turbo start-lowmem start-prod start-prod-confirm start-preprod stop restart status clean-ports \
+.PHONY: lint format test test-data test-unit test-smoke test-perf test-all test-artifacts-cleanup install-hooks sync-sonar-new-code-group stack-plan start start-dev start-dev-webpack start-dev-turbo start-lowmem start-prod start-prod-confirm start-preprod stop restart status clean-ports \
 		pytest e2e test-optimal test-ci-lite test-fast-coverage check-new-code-coverage check-new-code-coverage-diagnostics check-new-code-coverage-local sonar-reports-backend-new-code pr-fast agent-pr-fast pr-fast-local \
 		ci-lite-preflight ci-lite-bootstrap audit-ci-lite agent-prep \
 		test-intelligence-report \
@@ -130,38 +132,28 @@ define handle_pytest_no_tests
 	fi;
 endef
 
-define start_web_turbo_target
-	@mkdir -p logs
-	$(call ensure_process_not_running,UI (Next.js),$(WEB_PID_FILE))
-	: > $(WEB_LOG)
-	@echo "▶️  Uruchamiam UI ($(1), host $(WEB_HOST), port $(WEB_PORT))"
-	cd $(WEB_DIR) && API_PROXY_TARGET="$(WEB_API_PROXY_TARGET)" NODE_PATH="$(WEB_NODE_PATH)" NEXT_PUBLIC_APP_VERSION="$(WEB_APP_VERSION)" NEXT_PUBLIC_ENVIRONMENT_ROLE="$${ENVIRONMENT_ROLE:-dev}" NEXT_MODE=dev $(NEXT_TURBO_WATCH_ENV) $(4) $(ENV_RUN_ABS) setsid $(NPM) run $(2) -- --hostname $(WEB_HOST) --port $(WEB_PORT) >> ../$(WEB_LOG) 2>&1 & \
-	echo $$! > $(WEB_PID_FILE)
-	@echo "✅ UI ($(1)) wystartował z PID $$(cat $(WEB_PID_FILE))"
-	@echo "🎨 Dashboard: http://$(WEB_DISPLAY):$(WEB_PORT)"
-	@echo "$(3)"
+define run_web_lifecycle
+	@ENVIRONMENT="$(ENVIRONMENT)" PROFILE="$(PROFILE)" ENV_FILE="$(ENV_FILE)" WEB_DIR="$(WEB_DIR)" WEB_PORT="$(WEB_PORT)" PORT="$(PORT)" WEB_HOST="$(WEB_HOST)" NPM="$(NPM)" $(if $(filter command line environment environment override,$(origin WEB_PID_FILE)),WEB_PID_FILE="$(WEB_PID_FILE)") $(if $(filter command line environment environment override,$(origin WEB_LOG)),WEB_LOG="$(WEB_LOG)") $(PYTHON_BIN) scripts/dev/stack_profile.py component $(1)
 endef
 
-start: start-dev
+# Public contract: make start PROFILE=full|light ENVIRONMENT=dev|preprod
+start: ensure-env-file _start
 
-start-dev: START_MODE=dev
-start-dev: START_WEB_MODE=turbo
-start-dev: ensure-env-file _start
+# Compatibility aliases, scheduled for removal after the next release.
+start-dev start-dev-turbo: ENVIRONMENT=dev
+start-dev start-dev-turbo: start
 
-start-dev-webpack: START_MODE=dev
 start-dev-webpack: START_WEB_MODE=webpack
-start-dev-webpack: ensure-env-file _start
+start-dev-webpack: start
 
-start-dev-turbo: START_MODE=dev
-start-dev-turbo: START_WEB_MODE=turbo
-start-dev-turbo: ensure-env-file _start
+start-lowmem: PROFILE=light
+start-lowmem: start
 
-start-lowmem: ensure-env-file
-	@echo "▶️  Uruchamiam profil low-memory (bez lokalnego runtime LLM, bez warmup, bez zadan tla)"
-	@bash scripts/dev/start_stack_low_memory.sh
+start-prod: ENVIRONMENT=prod
+start-prod: start-prod-confirm start
 
-start-prod: START_MODE=prod
-start-prod: start-prod-confirm ensure-env-file _start
+stack-plan:
+	@ENVIRONMENT="$(ENVIRONMENT)" PROFILE="$(PROFILE)" ENV_FILE="$(ENV_FILE)" PORT="$(PORT)" WEB_PORT="$(WEB_PORT)" $(PYTHON_BIN) scripts/dev/stack_profile.py plan
 
 start-prod-confirm:
 	@echo "⚠️  OSTRZEŻENIE: tryb 'prod' nie jest jeszcze oficjalnie zwalidowany/rekomendowany operacyjnie."
@@ -184,46 +176,23 @@ _start:
 	@MAKE_BIN="$${MAKE:-make}" \
 		PYTHON_BIN="$(PYTHON_BIN)" \
 		UVICORN="$(UVICORN)" API_APP="$(API_APP)" HOST="$(HOST)" HOST_DISPLAY="$(HOST_DISPLAY)" PORT="$(PORT)" \
-		PID_FILE="$(PID_FILE)" WEB_DIR="$(WEB_DIR)" WEB_PORT="$(WEB_PORT)" WEB_HOST="$(WEB_HOST)" WEB_DISPLAY="$(WEB_DISPLAY)" WEB_PID_FILE="$(WEB_PID_FILE)" \
-		START_MODE="$(START_MODE)" START_WEB_MODE="$(START_WEB_MODE)" ALLOW_DEGRADED_START="$(ALLOW_DEGRADED_START)" BACKEND_RELOAD="$(BACKEND_RELOAD)" \
-		UVICORN_DEV_FLAGS="$(UVICORN_DEV_FLAGS)" UVICORN_PROD_FLAGS="$(UVICORN_PROD_FLAGS)" BACKEND_LOG="$(BACKEND_LOG)" WEB_LOG="$(WEB_LOG)" \
+		$(if $(filter command line environment environment override,$(origin PID_FILE)),PID_FILE="$(PID_FILE)") WEB_DIR="$(WEB_DIR)" WEB_PORT="$(WEB_PORT)" WEB_HOST="$(WEB_HOST)" WEB_DISPLAY="$(WEB_DISPLAY)" $(if $(filter command line environment environment override,$(origin WEB_PID_FILE)),WEB_PID_FILE="$(WEB_PID_FILE)") \
+		ENVIRONMENT="$(ENVIRONMENT)" PROFILE="$(PROFILE)" $(if $(filter prod,$(ENVIRONMENT)),START_MODE=prod) START_WEB_MODE="$(START_WEB_MODE)" ALLOW_DEGRADED_START="$(ALLOW_DEGRADED_START)" BACKEND_RELOAD="$(BACKEND_RELOAD)" \
+		UVICORN_DEV_FLAGS="$(UVICORN_DEV_FLAGS)" UVICORN_PROD_FLAGS="$(UVICORN_PROD_FLAGS)" $(if $(filter command line environment environment override,$(origin BACKEND_LOG)),BACKEND_LOG="$(BACKEND_LOG)") $(if $(filter command line environment environment override,$(origin WEB_LOG)),WEB_LOG="$(WEB_LOG)") \
 		API_PROXY_TARGET="$(WEB_API_PROXY_TARGET)" WEB_NODE_PATH="$(WEB_NODE_PATH)" WEB_APP_VERSION="$(WEB_APP_VERSION)" WEB_START_RETRIES="$(WEB_START_RETRIES)" \
 		$(if $(VLLM_ENDPOINT),VLLM_ENDPOINT="$(VLLM_ENDPOINT)") VLLM_START_TIMEOUT_SEC="$(VLLM_START_TIMEOUT_SEC)" \
 		ENV_FILE="$(ENV_FILE)" ENV_EXAMPLE_FILE="$(ENV_EXAMPLE_FILE)" NPM="$(NPM)" \
-		bash scripts/dev/start_stack.sh
+		$(PYTHON_BIN) scripts/dev/stack_profile.py start
 
 stop:
-	@bash scripts/stop_venom.sh
+	@ENVIRONMENT="$(ENVIRONMENT)" PROFILE="$(PROFILE)" ENV_FILE="$(ENV_FILE)" $(PYTHON_BIN) scripts/dev/stack_profile.py stop
 
-restart: stop start
+restart:
+	@$(MAKE) --no-print-directory stop ENVIRONMENT="$(ENVIRONMENT)" PROFILE="$(PROFILE)"
+	@$(MAKE) --no-print-directory start ENVIRONMENT="$(ENVIRONMENT)" PROFILE="$(PROFILE)"
 
 status:
-	@if [ -f $(PID_FILE) ]; then \
-		PID=$$(cat $(PID_FILE)); \
-		if kill -0 $$PID 2>/dev/null; then \
-			echo "✅ Venom działa (PID $$PID)"; \
-		else \
-			echo "⚠️  PID_FILE istnieje, ale proces $$PID nie żyje"; \
-		fi; \
-	else \
-		echo "ℹ️  Venom nie jest uruchomiony"; \
-	fi
-	@if [ -f $(WEB_PID_FILE) ]; then \
-		WPID=$$(cat $(WEB_PID_FILE)); \
-		if kill -0 $$WPID 2>/dev/null; then \
-			echo "✅ UI (Next.js) działa (PID $$WPID)"; \
-		else \
-			echo "⚠️  WEB_PID_FILE istnieje, ale proces $$WPID nie żyje"; \
-		fi; \
-	else \
-		EXT_UI_PIDS=$$(bash scripts/dev/port_pids.sh "$(WEB_PORT)" || true); \
-		if [ -n "$$EXT_UI_PIDS" ]; then \
-			echo "⚠️  UI zajmuje port $(WEB_PORT), ale bez $(WEB_PID_FILE) (PID: $$EXT_UI_PIDS)"; \
-			echo "    Użyj: make web-stop"; \
-		else \
-			echo "ℹ️  UI (Next.js) nie jest uruchomione"; \
-		fi; \
-	fi
+	@ENVIRONMENT="$(ENVIRONMENT)" PROFILE="$(PROFILE)" ENV_FILE="$(ENV_FILE)" $(PYTHON_BIN) scripts/dev/stack_profile.py status
 
 clean-ports:
 	@for PORT_TO_CHECK in $(PORTS_TO_CLEAN); do \
@@ -240,35 +209,13 @@ clean-ports:
 
 # Backend API (tylko) - produkcyjny (bez autoreload)
 api:
-	@if [ ! -x "$(UVICORN)" ]; then \
-		echo "❌ Nie znaleziono uvicorn w $(UVICORN). Czy środowisko .venv jest zainstalowane?"; \
-		exit 1; \
-	fi
-	@mkdir -p logs
-	$(call ensure_process_not_running,Venom backend,$(PID_FILE))
-	@echo "▶️  Uruchamiam Venom API (produkcyjny, bez --reload) na $(HOST):$(PORT)"
-	: > $(BACKEND_LOG)
-	$(ENV_RUN) setsid $(UVICORN) $(API_APP) --host $(HOST) --port $(PORT) $(UVICORN_PROD_FLAGS) >> $(BACKEND_LOG) 2>&1 & \
-	echo $$! > $(PID_FILE)
-	@echo "✅ Venom API wystartował z PID $$(cat $(PID_FILE))"
-	@echo "📡 Backend: http://$(HOST):$(PORT)"
+	@ENVIRONMENT="$(ENVIRONMENT)" PROFILE="$(PROFILE)" ENV_FILE="$(ENV_FILE)" PORT="$(PORT)" WEB_PORT="$(WEB_PORT)" $(PYTHON_BIN) scripts/dev/stack_profile.py component api
 
 # Backend API (tylko) - developerski (z autoreload)
 api-dev:
-	@if [ ! -x "$(UVICORN)" ]; then \
-		echo "❌ Nie znaleziono uvicorn w $(UVICORN). Czy środowisko .venv jest zainstalowane?"; \
-		exit 1; \
-	fi
-	@mkdir -p logs
-	$(call ensure_process_not_running,Venom backend,$(PID_FILE))
-	@echo "▶️  Uruchamiam Venom API (developerski, z --reload) na $(HOST):$(PORT)"
-	: > $(BACKEND_LOG)
-	$(ENV_RUN) setsid $(UVICORN) $(API_APP) --host $(HOST) --port $(PORT) $(UVICORN_DEV_FLAGS) >> $(BACKEND_LOG) 2>&1 & \
-	echo $$! > $(PID_FILE)
-	@echo "✅ Venom API wystartował z PID $$(cat $(PID_FILE))"
-	@echo "📡 Backend: http://$(HOST):$(PORT)"
-	@echo "🔄 Autoreload: aktywny (zmiana plików → restart)"
+	@ENVIRONMENT="$(ENVIRONMENT)" PROFILE="$(PROFILE)" ENV_FILE="$(ENV_FILE)" PORT="$(PORT)" WEB_PORT="$(WEB_PORT)" $(PYTHON_BIN) scripts/dev/stack_profile.py component api-dev
 
+api-preprod: ENVIRONMENT=preprod
 api-preprod: ENV_FILE=.env.preprod
 api-preprod: ENV_EXAMPLE_FILE=.env.preprod.example
 api-preprod: export ENVIRONMENT_ROLE=preprod
@@ -281,60 +228,26 @@ api-preprod: api
 
 # Zatrzymaj tylko backend
 api-stop:
-	@trap '' TERM INT
-	@if [ -f $(PID_FILE) ]; then \
-		PID=$$(cat $(PID_FILE)); \
-		if kill -0 $$PID 2>/dev/null; then \
-			echo "⏹️  Zatrzymuję Venom API (PID $$PID)"; \
-			kill $$PID 2>/dev/null || true; \
-			for attempt in {1..20}; do \
-				if kill -0 $$PID 2>/dev/null; then \
-					sleep 0.2; \
-				else \
-					break; \
-				fi; \
-			done; \
-		else \
-			echo "⚠️  Proces ($$PID) już nie działa"; \
-		fi; \
-		rm -f $(PID_FILE); \
-	else \
-		echo "ℹ️  Venom API nie jest uruchomiony"; \
-	fi
-	@pkill -f "uvicorn[[:space:]]+$(API_APP)" 2>/dev/null || true
-	@echo "✅ Venom API zatrzymany"
+	@ENVIRONMENT="$(ENVIRONMENT)" PROFILE="$(PROFILE)" ENV_FILE="$(ENV_FILE)" $(PYTHON_BIN) scripts/dev/stack_profile.py component api-stop
 
-# Frontend Web (tylko) - produkcyjny (build + start)
+# Frontend: build explicitly, then start only a compatible prepared artifact.
+web-build:
+	$(call run_web_lifecycle,web-build)
+
 web:
-	@mkdir -p logs
-	$(call ensure_process_not_running,UI (Next.js),$(WEB_PID_FILE))
-	: > $(WEB_LOG)
-	@echo "🛠  Buduję Next.js (npm run build)..."
-	cd $(WEB_DIR) && API_PROXY_TARGET="$(WEB_API_PROXY_TARGET)" NODE_PATH="$(WEB_NODE_PATH)" NEXT_PUBLIC_APP_VERSION="$(WEB_APP_VERSION)" NEXT_PUBLIC_ENVIRONMENT_ROLE="$${ENVIRONMENT_ROLE:-dev}" $(NEXT_PROD_ENV) $(ENV_RUN_ABS) $(NPM) run build >/dev/null 2>&1
-	@echo "▶️  Uruchamiam UI (Next.js start, host $(WEB_HOST), port $(WEB_PORT))"
-	cd $(WEB_DIR) && API_PROXY_TARGET="$(WEB_API_PROXY_TARGET)" NODE_PATH="$(WEB_NODE_PATH)" NEXT_PUBLIC_APP_VERSION="$(WEB_APP_VERSION)" NEXT_PUBLIC_ENVIRONMENT_ROLE="$${ENVIRONMENT_ROLE:-dev}" $(NEXT_PROD_ENV) $(ENV_RUN_ABS) setsid $(NPM) run start -- --hostname $(WEB_HOST) --port $(WEB_PORT) >> ../$(WEB_LOG) 2>&1 & \
-	echo $$! > $(WEB_PID_FILE)
-	@echo "✅ UI (Next.js) wystartował z PID $$(cat $(WEB_PID_FILE))"
-	@echo "🎨 Dashboard: http://$(WEB_DISPLAY):$(WEB_PORT)"
+	$(call run_web_lifecycle,web)
 
-# Frontend Web (tylko) - developerski (next dev)
+# Diagnostic Webpack shares the lifecycle; the daily stack uses Turbo.
 web-dev:
-	@mkdir -p logs
-	$(call ensure_process_not_running,UI (Next.js),$(WEB_PID_FILE))
-	: > $(WEB_LOG)
-	@echo "▶️  Uruchamiam UI (Next.js dev, host $(WEB_HOST), port $(WEB_PORT))"
-	cd $(WEB_DIR) && API_PROXY_TARGET="$(WEB_API_PROXY_TARGET)" NODE_PATH="$(WEB_NODE_PATH)" NEXT_PUBLIC_APP_VERSION="$(WEB_APP_VERSION)" NEXT_PUBLIC_ENVIRONMENT_ROLE="$${ENVIRONMENT_ROLE:-dev}" $(NEXT_DEV_ENV) $(ENV_RUN_ABS) setsid $(NPM) run dev -- --hostname $(WEB_HOST) --port $(WEB_PORT) >> ../$(WEB_LOG) 2>&1 & \
-	echo $$! > $(WEB_PID_FILE)
-	@echo "✅ UI (Next.js) wystartował z PID $$(cat $(WEB_PID_FILE))"
-	@echo "🎨 Dashboard: http://$(WEB_DISPLAY):$(WEB_PORT)"
-	@echo "🔄 Hot Reload: aktywny (zmiana plików → przeładowanie)"
+	$(call run_web_lifecycle,web-dev)
 
 web-dev-turbo:
-	$(call start_web_turbo_target,Next.js dev:turbo,dev:turbo,⚡ Turbopack: domyślny bundler dev,NEXT_TELEMETRY_DISABLED=1)
+	$(call run_web_lifecycle,web-dev-turbo)
 
 web-dev-turbo-debug:
-	$(call start_web_turbo_target,Next.js dev:turbo:debug,dev:turbo:debug,🧪 Debug turbo: NEXT_DEBUG + --trace-warnings,)
+	$(call run_web_lifecycle,web-dev-turbo-debug)
 
+web-preprod: ENVIRONMENT=preprod
 web-preprod: ENV_FILE=.env.preprod
 web-preprod: ENV_EXAMPLE_FILE=.env.preprod.example
 web-preprod: export ENVIRONMENT_ROLE=preprod
@@ -344,29 +257,6 @@ web-preprod: export QUEUE_NAMESPACE=preprod
 web-preprod: export STORAGE_PREFIX=preprod
 web-preprod: export ALLOW_DATA_MUTATION=0
 web-preprod: web
-
 # Zatrzymaj tylko frontend
 web-stop:
-	@trap '' TERM INT
-	@if [ -f $(WEB_PID_FILE) ]; then \
-		WPID=$$(cat $(WEB_PID_FILE)); \
-		if kill -0 $$WPID 2>/dev/null; then \
-			echo "⏹️  Zatrzymuję UI (PID $$WPID)"; \
-			kill $$WPID 2>/dev/null || true; \
-			for attempt in {1..20}; do \
-				if kill -0 $$WPID 2>/dev/null; then \
-					sleep 0.2; \
-				else \
-					break; \
-				fi; \
-			done; \
-		else \
-			echo "⚠️  Proces UI ($$WPID) już nie działa"; \
-		fi; \
-		rm -f $(WEB_PID_FILE); \
-	else \
-		echo "ℹ️  UI (Next.js) nie jest uruchomione"; \
-	fi
-	@pkill -f "next dev" 2>/dev/null || true
-	@pkill -f "next start" 2>/dev/null || true
-	@echo "✅ UI (Next.js) zatrzymany"
+	@ENVIRONMENT="$(ENVIRONMENT)" PROFILE="$(PROFILE)" ENV_FILE="$(ENV_FILE)" $(PYTHON_BIN) scripts/dev/stack_profile.py component web-stop

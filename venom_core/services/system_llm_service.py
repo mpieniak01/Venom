@@ -30,8 +30,6 @@ def runtime_profile_name(profile_raw: str | None) -> str:
 
 
 def allowed_local_servers(*, profile: str, onnx_enabled: bool) -> set[str]:
-    if profile == "light":
-        return {"ollama"}
     if profile == "llm_off":
         return set()
     allowed = {"ollama", "vllm", "multi_runtime"}

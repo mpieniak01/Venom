@@ -1,14 +1,6 @@
-start-preprod: ENV_FILE=.env.preprod
-start-preprod: ENV_EXAMPLE_FILE=.env.preprod.example
-start-preprod: START_MODE=prod
-start-preprod: START_WEB_MODE=webpack
-start-preprod: export ENVIRONMENT_ROLE=preprod
-start-preprod: export DB_SCHEMA=preprod
-start-preprod: export CACHE_NAMESPACE=preprod
-start-preprod: export QUEUE_NAMESPACE=preprod
-start-preprod: export STORAGE_PREFIX=preprod
-start-preprod: export ALLOW_DATA_MUTATION=0
-start-preprod: ensure-env-file _start
+# Compatibility alias; new interface is make start ENVIRONMENT=preprod PROFILE=full|light.
+start-preprod: ENVIRONMENT=preprod
+start-preprod: start
 
 ensure-env-file:
 	@bash scripts/dev/ensure_env_file.sh "$(ENV_FILE)" "$(ENV_EXAMPLE_FILE)"

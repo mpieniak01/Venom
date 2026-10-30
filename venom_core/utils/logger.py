@@ -1,4 +1,5 @@
 import asyncio
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -6,7 +7,10 @@ from typing import Any
 from loguru import logger
 
 # Upewniamy się, że katalog na logi istnieje
-LOG_DIR = Path("logs")
+LOG_DIR = Path(
+    os.environ.get("VENOM_LOG_DIR")
+    or ("logs/preprod" if os.environ.get("ENVIRONMENT_ROLE") == "preprod" else "logs")
+)
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 
 # Globalna referencja do EventBroadcaster (będzie ustawiona przez main.py)

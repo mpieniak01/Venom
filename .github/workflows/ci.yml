@@ -202,6 +202,11 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Setup Node for stack component regressions
+        uses: actions/setup-node@v5
+        with:
+          node-version-file: "web-next/.nvmrc"
+
       - name: Setup Python
         uses: actions/setup-python@v6
         with:

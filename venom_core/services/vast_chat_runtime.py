@@ -14,9 +14,11 @@ from typing import Any
 
 from fastapi import HTTPException
 
+from venom_core.utils.runtime_state import runtime_state_root
+
 SERVER = "vast_ollama"
 _ROOT = Path(__file__).resolve().parents[2]
-_SELECTION = _ROOT / ".venom_runtime/vast/chat-selection.json"
+_SELECTION = runtime_state_root(_ROOT) / "vast/chat-selection.json"
 _LOCK = threading.RLock()
 _UNSET = object()
 _selected: Any = _UNSET

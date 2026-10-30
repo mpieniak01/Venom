@@ -28,7 +28,7 @@ export function ServicesProfilesCard(input: Readonly<{
   return (
     <div className="glass-panel rounded-2xl box-subtle p-6">
       <h2 className="mb-4 heading-h2">{t("config.services.profiles.title")}</h2>
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
         <Button onClick={() => void applyProfile("full")} disabled={loading} variant="primary" className="w-full">
           <Zap className="mr-2 h-4 w-4" />
           {t("config.services.profiles.full")}
@@ -37,10 +37,7 @@ export function ServicesProfilesCard(input: Readonly<{
           <Activity className="mr-2 h-4 w-4" />
           {t("config.services.profiles.light")}
         </Button>
-        <Button onClick={() => void applyProfile("llm_off")} disabled={loading} variant="secondary" className="w-full">
-          <Square className="mr-2 h-4 w-4" />
-          {t("config.services.profiles.llmOff")}
-        </Button>
+
       </div>
       <p className="mt-3 text-xs text-theme-muted">{t("config.services.profiles.description")}</p>
     </div>

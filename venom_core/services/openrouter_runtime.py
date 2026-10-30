@@ -16,11 +16,12 @@ from typing import Any
 from fastapi import HTTPException
 
 from venom_core.config import SETTINGS
+from venom_core.utils.runtime_state import runtime_state_root
 
 SERVER = "openrouter"
 ENDPOINT = "https://openrouter.ai/api/v1/chat/completions"
 _ROOT = Path(__file__).resolve().parents[2]
-_STATE = _ROOT / ".venom_runtime/openrouter"
+_STATE = runtime_state_root(_ROOT) / "openrouter"
 _LOCK = threading.RLock()
 
 

@@ -22,6 +22,10 @@ tests/test_217dc_pipeline_completion.py
 tests/test_220a_runtime_lifecycle.py
 tests/test_221b_model_introspection_scripts.py
 tests/test_221c_model_introspection_scripts.py
+tests/test_a10_docker_profiles.py
+tests/test_a10_provider_state.py
+tests/test_a10_stack_profile.py
+tests/test_a10_web_make.py
 tests/test_academy_202c_signing_coverage.py
 tests/test_academy_202d_lora_onnx_deploy.py
 tests/test_academy_adapter_runtime_service.py

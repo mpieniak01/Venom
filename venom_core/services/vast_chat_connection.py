@@ -14,7 +14,6 @@ import socket
 import subprocess
 import threading
 import time
-from pathlib import Path
 from typing import Any, Callable
 from uuid import uuid4
 
@@ -23,9 +22,10 @@ import httpx
 from venom_core.infrastructure.providers.vast.client import VastClient, VastError
 from venom_core.services.vast_environments.ssh import ssh_args
 from venom_core.services.vast_environments.store import Journal
+from venom_core.utils.runtime_state import runtime_state_root
 
 SERVER_NAME = "vast_ollama"
-ROOT = Path(__file__).resolve().parents[2] / ".venom_runtime" / "vast"
+ROOT = runtime_state_root() / "vast"
 _MAX_RESPONSE = 2_000_000
 TUNNEL_FAILED = "vast.tunnel_failed"
 CHAT_MODELS_INVALID = "vast.chat_models_invalid"

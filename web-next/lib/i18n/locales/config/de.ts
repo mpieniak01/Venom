@@ -30,12 +30,11 @@ export const configLocale = {
       title: "Dienstverwaltung",
       description: "Systemprozesse und Dienststatus steuern",
       profiles: {
-        title: "Schnellprofile",
-        full: "Full Stack",
-        light: "Light (Ollama + Gemma)",
-        llmOff: "LLM AUS",
+        title: "Anwendungsprofile",
+        full: "Full",
+        light: "Light",
         mcp: "MCP-Modelle & Tools",
-        description: "Profile konfigurieren schnell Dienstsätze",
+        description: "Full/Light erfordert einen Neustart im selben Umfeld. Anbieter und Modellauswahl bleiben erhalten.",
       },
       status: {
         running: "Läuft",

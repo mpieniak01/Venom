@@ -197,27 +197,16 @@ cp .env.dev.example .env.dev
 make start
 ```
 
-Default `requirements.txt` installs **minimal API/cloud profile**.
-If you want local runtime engines, install one of:
-- `pip install -r requirements.txt` (Ollama: no extra Python deps)
-- `pip install -r requirements-profile-web.txt` (API baseline only; web-next integration without extra Python pins)
-- `pip install -r requirements-profile-vllm.txt`
-- `pip install -r requirements-profile-onnx.txt` (runtime-only overlay on API/runtime base)
-- `pip install -r requirements-profile-onnx-cpu.txt` (CPU-only ONNX overlay on the same base)
-- `pip install -r requirements-extras-onnx.txt` (optional extras: `faster-whisper` + `piper-tts`; install after ONNX/ONNX-CPU profile)
-- `pip install -r requirements-full.txt` (legacy catch-all host exception only)
+Installation sets and launch profiles are separate concepts. The default launch is **Full/dev with Turbopack**; `requirements.txt` is an installation alias for Light. Full features require their declared dependencies. See [dependency boundaries and qualification](docs/DEPENDENCY_PROFILES.md) and [Full/Light environments](docs/STACK_PROFILES.md).
 
-### Dependency Profile Guarantees
-Use this matrix as the source of truth for "is this missing package expected or a profile bug?".
-
-| Profile | Guaranteed scope | Explicitly not included |
-|---|---|---|
-| `requirements.txt` (`requirements-profile-api.txt`) | API/cloud baseline (`fastapi`, `uvicorn`, cloud providers) | Local heavy runtime packages (`vllm`, `onnxruntime*`, `lancedb`, `sentence-transformers`) |
-| `requirements-profile-web.txt` | API baseline only, named for web-next integration | Same heavy local runtime packages as API profile; no extra Python pins beyond API baseline |
-| `requirements-profile-vllm.txt` | API baseline + `vllm` | ONNX stack, RAG/vector stack (`lancedb`, `sentence-transformers`) |
-| `requirements-profile-onnx.txt` | API/runtime base + ONNX runtime overlay | HF tooling (`transformers`, `optimum`, `accelerate`) |
-| `requirements-profile-onnx-cpu.txt` | API/runtime base + ONNX CPU-only overlay | vLLM, ONNX CUDA packages, RAG/vector stack (`lancedb`, `sentence-transformers`) |
-| `requirements-full.txt` | Legacy catch-all host exception (all-in historical stack) | n/a |
+| Installation | Scope |
+| --- | --- |
+| light | Application base; api/web requirements files are compatibility aliases |
+| full | Configured application features; external engines stay separate |
+| ci / full-ci | Application set plus developer/CI tools |
+| build | Build tools, not another running application |
+| multi-runtime-cuda | Isolated engine component |
+| ONNX LLM / vLLM / Academy manifests | Deferred installation qualification; not recommended install recipes |
 
 Rules for incident triage:
 1. If a package is missing because the corresponding profile was not installed, this is expected behavior.
@@ -241,16 +230,16 @@ Protocol policy:
 
 ### Most common commands
 ```bash
-make start       # backend + frontend (Turbopack dev, default)
-make start-dev-webpack  # explicit Webpack fallback
-make stop        # stop services
-make status      # process status
-make start-prod  # production mode
+make start                                   # Full/dev, Turbopack
+make start PROFILE=light ENVIRONMENT=dev
+make start PROFILE=full ENVIRONMENT=preprod
+make start PROFILE=light ENVIRONMENT=preprod
+make stack-plan ENVIRONMENT=preprod
+make stop ENVIRONMENT=preprod
+make status ENVIRONMENT=dev
 ```
 
-Warning:
-- `make start-prod` exists for technical compatibility, but `prod` is not yet validated/recommended for live operation.
-- Recommended environments: `dev` and `preprod`.
+Dev and preprod retain separate databases, logs and data. Prod remains unused. Legacy aliases delegate to the shared launcher and are being retired; Webpack is a diagnostic option. [Launch contract](docs/STACK_PROFILES.md).
 
 ## Frontend (Next.js - `web-next`)
 The presentation layer runs on Next.js 16 (App Router, React 19).
@@ -404,12 +393,14 @@ scripts/docker/uninstall.sh --stack both --purge-volumes --purge-images
 scripts/docker/logs.sh
 ```
 
-Runtime profile (single package, selectable mode):
+Docker uses the same two application profile names:
+
 ```bash
-export VENOM_RUNTIME_PROFILE=light   # light|llm_off|full
-scripts/docker/run-release.sh start
+PROFILE=light ENVIRONMENT=dev scripts/docker/run-release.sh start
+PROFILE=light ENVIRONMENT=preprod ACTIVE_LLM_SERVER=none scripts/docker/run-release.sh start
 ```
-`llm_off` means no local LLM runtime (Ollama/vLLM/ONNX), but backend and UI can still use external LLM APIs (for example OpenAI/Gemini) after API key configuration.
+
+The existing image installs Light dependencies; PROFILE=full alone does not qualify Full features. Provider/model selection is independent; llm_off is a deprecated alias. [Docker limits](docs/PL/DOCKER_PROFILES.md).
 
 Optional GPU mode:
 ```bash

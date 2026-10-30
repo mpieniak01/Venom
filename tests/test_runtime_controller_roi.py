@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 
 import psutil
+import pytest
 
 from venom_core.services import runtime_controller
 from venom_core.services.runtime_controller import (
@@ -152,106 +153,44 @@ def test_apply_profile_unknown():
     assert "Unknown profile" in result["message"]
 
 
-def test_apply_profile_light_starts_core_services(monkeypatch):
+@pytest.mark.parametrize(
+    "selected", ["ollama", "vllm", "none", "openrouter", "multi_runtime"]
+)
+@pytest.mark.parametrize(
+    "active,requested", [("full", "light"), ("light", "full"), ("full", "full")]
+)
+def test_apply_profile_preserves_provider_and_requires_restart(
+    monkeypatch, selected, active, requested
+):
     controller = RuntimeController()
-    started = []
-    stopped = []
-
-    def fake_start(service_type):
-        started.append(service_type)
-        return {"success": True, "message": f"started {service_type.value}"}
-
-    def fake_stop(service_type):
-        stopped.append(service_type)
-        return {"success": True, "message": f"stopped {service_type.value}"}
-
-    monkeypatch.setattr(controller, "start_service", fake_start)
-    monkeypatch.setattr(controller, "stop_service", fake_stop)
-
-    result = controller.apply_profile("light")
-    assert result["success"] is True
-    assert ServiceType.BACKEND in started
-    assert ServiceType.UI in started
-    assert ServiceType.LLM_OLLAMA in started
-    assert ServiceType.LLM_VLLM in stopped
-
-
-def test_apply_profile_llm_off_stops_all_llm_services(monkeypatch):
-    controller = RuntimeController()
-    started = []
-    stopped = []
-
-    def fake_start(service_type):
-        started.append(service_type)
-        return {"success": True, "message": f"started {service_type.value}"}
-
-    def fake_stop(service_type):
-        stopped.append(service_type)
-        return {"success": True, "message": f"stopped {service_type.value}"}
-
-    monkeypatch.setattr(controller, "start_service", fake_start)
-    monkeypatch.setattr(controller, "stop_service", fake_stop)
-
-    result = controller.apply_profile("llm_off")
-    assert result["success"] is True
-    assert ServiceType.BACKEND in started
-    assert ServiceType.UI in started
-    assert ServiceType.LLM_OLLAMA in stopped
-    assert ServiceType.LLM_VLLM in stopped
-
-
-def test_apply_profile_full_defaults_to_ollama_and_stops_vllm(monkeypatch):
-    controller = RuntimeController()
-    started = []
-    stopped = []
-
-    def fake_start(service_type):
-        started.append(service_type)
-        return {"success": True, "message": f"started {service_type.value}"}
-
-    def fake_stop(service_type):
-        stopped.append(service_type)
-        return {"success": True, "message": f"stopped {service_type.value}"}
-
-    monkeypatch.setattr(controller, "start_service", fake_start)
-    monkeypatch.setattr(controller, "stop_service", fake_stop)
     monkeypatch.setattr(
-        runtime_controller, "SETTINGS", SimpleNamespace(ACTIVE_LLM_SERVER="")
+        runtime_controller,
+        "SETTINGS",
+        SimpleNamespace(ACTIVE_LLM_SERVER=selected, VENOM_RUNTIME_PROFILE=active),
     )
-
-    result = controller.apply_profile("full")
-    assert result["success"] is True
-    assert ServiceType.BACKEND in started
-    assert ServiceType.UI in started
-    assert ServiceType.LLM_OLLAMA in started
-    assert ServiceType.LLM_VLLM in stopped
-
-
-def test_apply_profile_full_uses_vllm_when_active_server_is_vllm(monkeypatch):
-    controller = RuntimeController()
-    started = []
-    stopped = []
-
-    def fake_start(service_type):
-        started.append(service_type)
-        return {"success": True, "message": f"started {service_type.value}"}
-
-    def fake_stop(service_type):
-        stopped.append(service_type)
-        return {"success": True, "message": f"stopped {service_type.value}"}
-
-    monkeypatch.setattr(controller, "start_service", fake_start)
-    monkeypatch.setattr(controller, "stop_service", fake_stop)
     monkeypatch.setattr(
-        runtime_controller, "SETTINGS", SimpleNamespace(ACTIVE_LLM_SERVER="vllm")
+        controller, "start_service", lambda *_: pytest.fail("must not start a provider")
     )
+    monkeypatch.setattr(
+        controller,
+        "stop_service",
+        lambda *_: pytest.fail("must not stop another environment"),
+    )
+    result = controller.apply_profile(requested)
+    assert result["success"] is (active == requested)
+    if active != requested:
+        assert result["restart_required"] is True
+    assert runtime_controller.SETTINGS.ACTIVE_LLM_SERVER == selected
 
-    result = controller.apply_profile("full")
-    assert result["success"] is True
-    assert ServiceType.BACKEND in started
-    assert ServiceType.UI in started
-    assert ServiceType.LLM_VLLM in started
-    assert ServiceType.LLM_OLLAMA in stopped
+
+def test_legacy_llm_off_does_not_stop_shared_llm(monkeypatch):
+    controller = RuntimeController()
+    monkeypatch.setattr(
+        controller,
+        "stop_service",
+        lambda *_: pytest.fail("shared provider must survive"),
+    )
+    assert controller.apply_profile("llm_off")["success"] is False
 
 
 def test_update_pid_file_service_status_backend_and_ui(tmp_path):
@@ -583,3 +522,55 @@ def test_backend_and_llm_command_failure_paths(monkeypatch):
     assert controller._stop_ollama()["success"] is False
     assert controller._start_vllm()["success"] is False
     assert controller._stop_vllm()["success"] is False
+
+
+def test_backend_start_keeps_preprod_profile_in_make_command(monkeypatch):
+    controller = RuntimeController()
+    monkeypatch.setattr(
+        runtime_controller,
+        "SETTINGS",
+        SimpleNamespace(ENVIRONMENT_ROLE="preprod", VENOM_RUNTIME_PROFILE="light"),
+    )
+    launched = []
+    monkeypatch.setattr(
+        runtime_controller.subprocess,
+        "Popen",
+        lambda command, **kwargs: launched.append(command),
+    )
+    monkeypatch.setattr(runtime_controller.time, "sleep", lambda *_: None)
+    monkeypatch.setattr(
+        controller,
+        "get_service_status",
+        lambda *_: SimpleNamespace(status=ServiceStatus.RUNNING, pid=123),
+    )
+    assert controller._start_backend()["success"] is True
+    assert launched == [["make", "start", "ENVIRONMENT=preprod", "PROFILE=light"]]
+
+
+def test_runtime_paths_are_anchored_to_project_when_cwd_differs(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    overrides = {
+        "PID_FILE": "custom/api.pid",
+        "WEB_PID_FILE": "custom/ui.pid",
+        "BACKEND_LOG": "custom/api.log",
+        "WEB_LOG": "custom/ui.log",
+    }
+    for key, value in overrides.items():
+        monkeypatch.setenv(key, value)
+    controller = RuntimeController()
+    assert (
+        controller.pid_files[ServiceType.BACKEND]
+        == controller.project_root / overrides["PID_FILE"]
+    )
+    assert (
+        controller.pid_files[ServiceType.UI]
+        == controller.project_root / overrides["WEB_PID_FILE"]
+    )
+    assert (
+        controller.log_files[ServiceType.BACKEND]
+        == controller.project_root / overrides["BACKEND_LOG"]
+    )
+    assert (
+        controller.log_files[ServiceType.UI]
+        == controller.project_root / overrides["WEB_LOG"]
+    )

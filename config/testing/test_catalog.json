@@ -457,6 +457,62 @@
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
+      "path": "tests/test_a10_docker_profiles.py",
+      "domain": "docker",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "A10 Docker Full/Light adapter and dev/preprod isolation on a fake CLI."
+    },
+    {
+      "path": "tests/test_a10_provider_state.py",
+      "domain": "environment",
+      "test_type": "service_contract",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Provider selection, journals and billing state remain isolated across environments and restarts."
+    },
+    {
+      "path": "tests/test_a10_stack_profile.py",
+      "domain": "environment",
+      "test_type": "service_contract",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Full/Light environment isolation and safe lifecycle regressions."
+    },
+    {
+      "path": "tests/test_a10_web_make.py",
+      "domain": "environment",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Real Make/Python/Node build-start bridge on a fake npm; Python stack lane owns dotenv."
+    },
+    {
       "path": "tests/test_academy_202c_signing_coverage.py",
       "domain": "academy",
       "test_type": "route_contract",
@@ -5739,8 +5795,10 @@
       "domain": "runtime",
       "test_type": "service_contract",
       "intent": "contract",
-      "primary_lane": "release",
+      "primary_lane": "new-code",
       "allowed_lanes": [
+        "new-code",
+        "ci-lite",
         "release"
       ],
       "legacy_targeted": false,

@@ -9,7 +9,9 @@ def test_runtime_profile_name_and_allowed_servers():
     assert svc.runtime_profile_name("LIGHT") == "light"
     assert svc.runtime_profile_name("bad") == "full"
 
-    assert svc.allowed_local_servers(profile="light", onnx_enabled=True) == {"ollama"}
+    assert svc.allowed_local_servers(
+        profile="light", onnx_enabled=True
+    ) == svc.allowed_local_servers(profile="full", onnx_enabled=True)
     assert svc.allowed_local_servers(profile="llm_off", onnx_enabled=True) == set()
     assert svc.allowed_local_servers(profile="full", onnx_enabled=False) == {
         "ollama",

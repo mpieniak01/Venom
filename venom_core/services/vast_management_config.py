@@ -7,9 +7,12 @@ from venom_core.infrastructure.providers.vast.client import VastError
 from venom_core.infrastructure.providers.vast.models import WorkloadProfile
 from venom_core.services.vast_environments.cli import ssh_profile
 from venom_core.services.vast_environments.recipes import validate_recipe
+from venom_core.utils.runtime_state import runtime_state_root
 
 ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_PROFILE = ROOT / ".venom_runtime/vast/prepared/chat-gemma4-26b-q4-24gb.json"
+DEFAULT_PROFILE = (
+    runtime_state_root(ROOT) / "vast/prepared/chat-gemma4-26b-q4-24gb.json"
+)
 SSH_PROFILE = ROOT / "secrets/ssh/vast/connection.json"
 INVALID_SSH_PROFILE = "vast.invalid_ssh_profile"
 TRUSTED_SSH_ROOTS = (Path.home() / ".ssh", ROOT / "secrets/ssh")

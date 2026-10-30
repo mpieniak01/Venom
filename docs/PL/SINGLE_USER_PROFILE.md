@@ -6,10 +6,13 @@ jawną opcją awaryjną; błąd watchera nie zmienia bundlera automatycznie.
 
 ## Uruchamianie
 
-- `make start` lub `make start-dev`: domyślny stos z Turbopack.
-- `make start-dev-webpack`: jawny powrót do Webpack do diagnostyki.
-- `make start-dev-turbo`: jawny odpowiednik wyboru domyślnego.
-- `make status`: stan procesów; gotowość funkcji należy sprawdzić przez API i UI.
+- `make start PROFILE=full ENVIRONMENT=dev`: domyślny stos z Turbopack.
+- `make start PROFILE=light ENVIRONMENT=dev`: ten sam wybór silnika/głosu, bez zadań tła i warmupu.
+- `ENVIRONMENT=preprod`: osobne bazy, logi i dane; zapis wyłączony.
+- `make stack-plan`: bezpieczny podgląd ścieżek przed startem.
+- `make status` / `make stop` z wybranym ENVIRONMENT: kontrola tylko tego środowiska.
+
+Pełna definicja, migracja aliasów i granice izolacji: [Full/Light](STACK_PROFILES.md).
 
 Hostowy launcher `venom-full start`, jeśli został zainstalowany dla konkretnej
 instancji, deleguje do tego samego domyślnego celu Make. Zachowuje własne porty,
@@ -72,9 +75,9 @@ Warstwa telemetrii i własność zasobów API:
 ## Granice bieżącej zmiany
 
 Produkcja oraz pozostałe historyczne warianty nie są teraz domyślnym profilem.
-Znana osobna usterka komponentowego celu web przy względnym WEB_DIR/.ONESHELL
-i pełna kwalifikacja produkcyjnego UI pozostają odłożone. Nie utożsamiać ich
-statusu z odbiorem codziennego Turbo.
+Komponentowy web korzysta ze wspólnego lifecycle, osobnego buildu i sprawdzania
+zgodności artefaktu. Pełna kwalifikacja produkcyjnego UI pozostaje odłożona;
+prod nie jest używany operacyjnie.
 
 Chat 2.0 jest oddzielnym zakresem projektu powłoki. Obecna optymalizacja nie
 migruje ekranów, nie dodaje theme i nie uruchamia drugiej instancji frontendu.

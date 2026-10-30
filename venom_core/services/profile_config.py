@@ -2,9 +2,9 @@
 Profile configuration and capabilities contract for Venom runtime.
 
 Defines the explicit semantics for each runtime profile:
-- light: Local Ollama + Gemma, privacy-first, CPU/RAM limited
+- light: same selected provider and interactive features, background work paused
 - llm_off: API/cloud-only (no local LLM), minimal hardware requirements
-- full: Extended stack with optional vLLM, GPU-enabled
+- full: configured application capabilities; provider selection is independent
 """
 
 from dataclasses import dataclass, field
@@ -64,20 +64,21 @@ class ProfileCapabilities:
 PROFILE_DEFINITIONS: Dict[RuntimeProfile, ProfileCapabilities] = {
     RuntimeProfile.LIGHT: ProfileCapabilities(
         profile=RuntimeProfile.LIGHT,
-        required_services={"backend", "frontend", "ollama"},
-        disabled_services={"vllm"},
+        required_services={"backend", "frontend"},
+        disabled_services=set(),
         env_overrides={
-            "ACTIVE_LLM_SERVER": "ollama",
-            "LLM_WARMUP_ON_STARTUP": "true",
-            "OLLAMA_MODEL": "gemma2:2b",
+            "LLM_WARMUP_ON_STARTUP": "false",
+            "VENOM_PAUSE_BACKGROUND_TASKS": "true",
+            "ENABLE_AUTO_DOCUMENTATION": "false",
+            "ENABLE_AUTO_GARDENING": "false",
         },
         required_api_keys=[],
         gpu_support=True,  # Optional, but supported
         uses_local_llm=True,
         requires_onnx=False,
-        description_en="Local: Ollama + Gemma 2 2B + Next.js - Privacy First",
-        description_pl="lokalnie: Ollama + Gemma 2 2B + Next.js - Privacy First",
-        description_de="lokal: Ollama + Gemma 2 2B + Next.js - Privacy First",
+        description_en="Light: selected provider, background tasks paused",
+        description_pl="Light: wybrany silnik, zadania tła wstrzymane",
+        description_de="Light: gewählter Anbieter, Hintergrundaufgaben pausiert",
     ),
     RuntimeProfile.LLM_OFF: ProfileCapabilities(
         profile=RuntimeProfile.LLM_OFF,
@@ -102,19 +103,16 @@ PROFILE_DEFINITIONS: Dict[RuntimeProfile, ProfileCapabilities] = {
     ),
     RuntimeProfile.FULL: ProfileCapabilities(
         profile=RuntimeProfile.FULL,
-        required_services={"backend", "frontend", "ollama"},  # Default to ollama
+        required_services={"backend", "frontend"},  # Default to ollama
         disabled_services=set(),  # Can enable vllm via ACTIVE_LLM_SERVER
-        env_overrides={
-            "ACTIVE_LLM_SERVER": "ollama",  # Can be overridden to vllm
-            "LLM_WARMUP_ON_STARTUP": "true",
-        },
+        env_overrides={},
         required_api_keys=[],
         gpu_support=True,
         uses_local_llm=True,
         requires_onnx=False,  # Optional extras
-        description_en="Extended stack - The Beast",
-        description_pl="rozszerzony stack - The Beast",
-        description_de="erweiterter Stack - The Beast",
+        description_en="Full: configured application features",
+        description_pl="Full: skonfigurowane funkcje aplikacji",
+        description_de="Full: konfigurierte Anwendungsfunktionen",
     ),
 }
 

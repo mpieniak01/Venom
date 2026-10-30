@@ -240,6 +240,12 @@ export function useChatSend(params: ChatSendParams) {
       return false;
     }
 
+    const resolvedSession = resolveSession(parsed, sessionId, resetSession);
+    if (!resolvedSession) {
+      setMessage(t("cockpit.chatMessages.sessionInitializing"));
+      return false;
+    }
+
     const switchResult = await handleRuntimeSwitch({
       parsed,
       activeServerInfo,
@@ -253,12 +259,6 @@ export function useChatSend(params: ChatSendParams) {
 
     if (!switchResult.success) return false;
     const runtimeOverride: RuntimeOverride = switchResult.runtimeOverride;
-
-    const resolvedSession = resolveSession(parsed, sessionId, resetSession);
-    if (!resolvedSession) {
-      setMessage(t("cockpit.chatMessages.sessionInitializing"));
-      return false;
-    }
 
     const effectiveActiveServerInfo = await syncTargetServerIfNeeded({
       selectedLlmServer,

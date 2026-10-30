@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { POLLING } from "@/lib/ui-config";
 import { createBrowserUuid } from "@/lib/optional-modules/transport";
 
@@ -43,9 +43,13 @@ const resolveInitialSessionId = () => {
 };
 
 export function SessionProvider({ children }: Readonly<{ children: React.ReactNode }>) {
-  const [sessionId, setSessionId] = useState<string>(() => resolveInitialSessionId());
+  // The server and first browser render must use the same snapshot. Reading
+  // localStorage (or generating an ID) during render breaks hydration.
+  const [sessionId, setSessionId] = useState("");
+  const sessionRef = useRef("");
 
   const persistSessionId = useCallback((value: string) => {
+    sessionRef.current = value;
     setSessionId(value);
     if (globalThis.window === undefined) return;
     try {
@@ -56,6 +60,12 @@ export function SessionProvider({ children }: Readonly<{ children: React.ReactNo
     }
   }, []);
 
+  useEffect(() => {
+    // Preserve an explicit reset/select that happened before initialization and
+    // avoid generating two IDs when StrictMode replays the effect.
+    if (!sessionRef.current) persistSessionId(resolveInitialSessionId());
+  }, [persistSessionId]);
+
   const resetSession = useCallback(() => {
     const next = createSessionId();
     persistSessionId(next);
@@ -65,13 +75,16 @@ export function SessionProvider({ children }: Readonly<{ children: React.ReactNo
   useEffect(() => {
     if (globalThis.window === undefined) return;
     let active = true;
+    let syncing = false;
     const syncBootId = async () => {
+      if (!active || syncing || document.visibilityState === "hidden") return;
+      syncing = true;
       try {
         const response = await fetch("/api/v1/system/status");
         if (!response.ok) return;
         const data = (await response.json()) as { boot_id?: string };
         const bootId = data.boot_id;
-        if (!bootId) return;
+        if (!active || typeof bootId !== "string" || !bootId) return;
         const storedBoot = globalThis.window.localStorage.getItem(SESSION_BOOT_KEY);
         if (!storedBoot) {
           globalThis.window.localStorage.setItem(SESSION_BOOT_KEY, bootId);
@@ -83,11 +96,13 @@ export function SessionProvider({ children }: Readonly<{ children: React.ReactNo
           globalThis.window.localStorage.setItem(SESSION_BUILD_KEY, getBuildId());
           globalThis.window.localStorage.setItem(SESSION_BOOT_KEY, bootId);
           if (active) {
-            setSessionId(nextSession);
+            persistSessionId(nextSession);
           }
         }
       } catch {
         // ignore fetch failures
+      } finally {
+        syncing = false;
       }
     };
     void syncBootId();
@@ -100,15 +115,15 @@ export function SessionProvider({ children }: Readonly<{ children: React.ReactNo
       }
     };
     globalThis.window.addEventListener("focus", handleFocus);
-    globalThis.window.addEventListener("visibilitychange", handleVisibility);
+    document.addEventListener("visibilitychange", handleVisibility);
     const interval = globalThis.window.setInterval(syncBootId, POLLING.BOOT_SYNC_INTERVAL_MS);
     return () => {
       active = false;
       globalThis.window.removeEventListener("focus", handleFocus);
-      globalThis.window.removeEventListener("visibilitychange", handleVisibility);
+      document.removeEventListener("visibilitychange", handleVisibility);
       globalThis.window.clearInterval(interval);
     };
-  }, []);
+  }, [persistSessionId]);
 
   const value = useMemo(
     () => ({

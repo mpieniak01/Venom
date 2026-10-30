@@ -19,9 +19,12 @@ na bazie aktualnego `main` `8d74e9f9`. Zmiany pozostają lokalne.
   niepewności innych operacji modułów ani aktywnej dzierżawy.
 - **VAST:** siedem widocznych wcześniej pozycji stanowiło historię prób CLI,
   a nie bieżące zamówienia panelu. Odczyt konta dostawcy zwrócił zero instancji.
-  Widok zarządzania pokazuje tylko plany mające własny dziennik management;
-  błędny dziennik takiego zamówienia nadal jest widoczny jako błąd. Historyczne
-  pliki pozostają zachowane. Nie wykonano zamówień, zatrzymań ani DELETE u dostawcy.
+  Bieżące środowiska obejmują plany mające własny dziennik management.
+  Dawne próby CLI są widoczne w osobnej tabeli **Historia prób uruchomienia**:
+  ID próby, model, ID instancji, zapisany wynik i błąd. Tabela nie ma przycisków
+  operujących na dawnym hoście, a historyczny stan nie potwierdza obecnej
+  dostępności. Uszkodzony zapis próby pozostaje widoczny z informacją o błędzie.
+  Historyczne pliki pozostają zachowane. Nie wykonano zamówień, zatrzymań ani DELETE u dostawcy.
 - **Czerwony main:** CI i Simulated regression zatrzymał ten sam test
   `test_api_routes_layer_imports_are_explicitly_whitelisted`: trasa VAST
   importowała klienta infrastruktury z pominięciem serwisu. Import usunięto
@@ -75,3 +78,25 @@ nie jest to dowód odpowiedzi rzeczywistego modelu zewnętrznego.
 Konsola czatu zgłasza też niedostępny opcjonalny daemon multi_runtime na 8014;
 nie uruchamiano drugiego silnika tylko na potrzeby tego odbioru.
 Nie publikowano commitów ani nie zmieniano zdalnych bramek.
+
+## Przywrócenie historii prób VAST
+
+Po doprecyzowaniu widoku dodano tabelę **Historia prób uruchomienia** w zakładce
+Modele → VAST, pod bieżącymi środowiskami. Potwierdzono w API i rzeczywistym DOM
+siedem historycznych prób (także uszkodzony wpis) oraz zero bieżących środowisk.
+Historia jest tylko do odczytu; jej wyświetlenie nie uruchamia zamówień ani połączeń.
+
+Walidacja tej korekty:
+- `pytest -q tests/test_vast_management.py tests/test_api_routes_import_guard.py`:
+  39 PASS.
+- Testy komponentu `vast-environments.component.test.tsx`: 10 PASS, w tym
+  brak przycisków operujących na historii i brak żądań POST przy odczycie.
+- `make test-web-unit`, `make test-ci-lite` (895 PASS), katalog/grupy testów
+  i diagnostyka pokrycia: PASS.
+- `tsc --noEmit --incremental false`, `mypy venom_core/services/vast_management.py`
+  oraz hooki Ruff: PASS.
+- Końcowe `make pr-fast`: PASS (186,15 s), 1567 testów Python i 252 testy
+  komponentów; pokrycie zmian **90,43%**. Brak pominiętych testów komponentów.
+- Chrome: tabela historii widoczna, siedem wpisów, zero błędów konsoli przy odbiorze;
+  ostrzeżenia preload pozostają poza zakresem. Nie wykonano Test Zero ani
+  operacji na zasobach dostawcy. Kod nadal wyłącznie lokalny.

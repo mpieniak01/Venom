@@ -509,5 +509,24 @@ def test_cli_history_is_not_presented_as_a_current_management_order(f):
     row = f.m.plan(12, 30, Decimal("0.5"), Decimal("1"))
     plan_id = row["plan_id"]
     f.svc.journal.path(plan_id, ".management.json").unlink()
-    assert all(item["plan_id"] != plan_id for item in f.m.overview()["environments"])
+    f.m.client_factory.reset_mock()
+    overview = f.m.overview()
+    assert all(item["plan_id"] != plan_id for item in overview["environments"])
+    entry = next(item for item in overview["history"] if item["plan_id"] == plan_id)
+    assert entry["state"] == "planned"
+    assert not entry["connected"]
+    f.m.client_factory.assert_not_called()
+    f.connection.attach.assert_not_called()
     assert f.svc.journal.path(plan_id, ".plan.json").exists()
+
+
+def test_damaged_cli_attempt_remains_visible_in_history(f):
+    plan_id = f.p.plan_id
+    f.svc.journal.path(plan_id, ".management.json").unlink()
+    f.svc.journal.path(plan_id, ".record.json").write_text("{}")
+    overview = f.m.overview()
+    assert overview["environments"] == []
+    assert overview["history"][0]["plan_id"] == plan_id
+    assert overview["history"][0]["error"] == "vast.management_journal_invalid"
+    assert not overview["history"][0]["connected"]
+    f.m.client_factory.assert_not_called()

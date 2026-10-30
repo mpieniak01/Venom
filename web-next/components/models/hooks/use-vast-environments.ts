@@ -14,6 +14,7 @@ export interface VastOffer {
 export interface VastEnvironmentsState {
   configured: boolean; enabled: boolean; model: string | null;
   duration_minutes: number; reason: string | null; environments: VastEnvironment[];
+  history?: VastEnvironment[];
 }
 const base = "/api/v1/vast/environments";
 const activePhases = new Set(["queued", "creating", "waiting", "provisioning", "connecting", "stop_requested", "destroy_requested"]);

@@ -149,31 +149,35 @@ class VastManagement:
             reason = "vast.management_profile_invalid"
             if isinstance(error, VastError):
                 reason = error.code
-        rows = []
+        rows: list[dict[str, Any]] = []
+        history: list[dict[str, Any]] = []
         paths = sorted(
             self.journal.root.glob("*.plan.json"),
             key=lambda p: p.stat().st_mtime,
             reverse=True,
         )
         for path in paths[:100]:
-            # CLI qualification history is not a management order from this panel.
-            if not path.with_name(
+            # Keep CLI attempts visible as history, never as managed live orders.
+            historical = not path.with_name(
                 path.name.replace(".plan.json", MANAGEMENT_SUFFIX)
-            ).exists():
-                continue
+            ).exists()
+            destination = history if historical else rows
             try:
                 plan_id = path.name.removesuffix(".plan.json")
-                if self._job(plan_id).get("phase") in {
+                if not historical and self._job(plan_id).get("phase") in {
                     "stop_requested",
                     "destroy_requested",
                 }:
-                    rows.append(self.refresh(plan_id))
+                    destination.append(self.refresh(plan_id))
                 else:
-                    rows.append(self.row(plan_id))
+                    entry = self.row(plan_id)
+                    if historical:
+                        entry.update(connected=False, phase=entry["state"])
+                    destination.append(entry)
             except ERRORS:
                 # A damaged historical entry is visible, but is not evidence
                 # that the independent current profile/credentials are invalid.
-                rows.append(
+                destination.append(
                     {
                         "plan_id": path.name.removesuffix(".plan.json"),
                         "model": "—",
@@ -196,6 +200,7 @@ class VastManagement:
             "duration_minutes": duration,
             "reason": reason,
             "environments": rows,
+            "history": history,
         }
 
     def search(self, duration: int) -> dict[str, Any]:

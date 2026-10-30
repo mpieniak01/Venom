@@ -1,5 +1,13 @@
 export const models = {
   vast: {
+    "history": "Launch attempt history",
+    "historyHint": "Earlier CLI attempts. The recorded state is historical and does not confirm current instance availability.",
+    "noHistory": "No recorded attempts.",
+    "plan": "Attempt ID",
+    "historyModel": "Model",
+    "recordedState": "Recorded result",
+    "historyStates": {"planned": "Planned", "creating": "Ordering host", "running": "Started", "stopped": "Stopped", "destroyed": "Released", "failed": "Failed", "unknown": "Unknown"},
+
     "tab": "VAST",
     "title": "VAST environments",
     "description": "Choose an offer, review its cost and order a host with the default chat model. Installation and API connection follow automatically.",

@@ -1,5 +1,13 @@
 export const models = {
   vast: {
+    "history": "Historia prób uruchomienia",
+    "historyHint": "Zapis wcześniejszych prób CLI. Stan pochodzi z dziennika próby i nie potwierdza aktualnej dostępności instancji.",
+    "noHistory": "Brak zapisanych prób.",
+    "plan": "ID próby",
+    "historyModel": "Model",
+    "recordedState": "Zapisany wynik",
+    "historyStates": {"planned": "Zaplanowano", "creating": "Zamawianie hosta", "running": "Uruchomiono", "stopped": "Zatrzymano", "destroyed": "Zwolniono", "failed": "Niepowodzenie", "unknown": "Brak danych"},
+
     "tab": "VAST",
     "title": "Środowiska VAST",
     "description": "Wybierz ofertę, sprawdź koszt i zamów host z domyślnym modelem rozmowy. Instalacja i podpięcie API nastąpią automatycznie.",

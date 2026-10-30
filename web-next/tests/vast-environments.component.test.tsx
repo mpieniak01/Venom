@@ -2,7 +2,7 @@ import "./component-test-setup";
 import React from "react";
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
-import { act, cleanup, fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, renderHook, screen, waitFor, within } from "@testing-library/react";
 import { VastEnvironmentsSection } from "../components/models/vast-environments-section";
 import { VastEnvironmentRow } from "../components/models/vast-environment-row";
 import { useVastEnvironments, VAST_POLL_INTERVAL, type VastEnvironment } from "../components/models/hooks/use-vast-environments";
@@ -174,6 +174,25 @@ describe("VAST environment management", () => {
     for (const locale of [pl, de]) {
       assert.deepEqual(Object.keys(locale.models.vast).sort(), Object.keys(en.models.vast).sort());
       assert.deepEqual(Object.keys(locale.models.vast.phases).sort(), Object.keys(en.models.vast.phases).sort());
+      assert.deepEqual(Object.keys(locale.models.vast.historyStates).sort(), Object.keys(en.models.vast.historyStates).sort());
     }
   });
+});
+
+it("shows old CLI attempts as read-only history without making them live environments", async () => {
+  const calls: string[] = [];
+  const past = row({ state: "failed", phase: "failed", instance_id: 77, error: "vast.ssh_failed" });
+  globalThis.fetch = async (_input, init) => {
+    calls.push(init?.method ?? "GET");
+    return Response.json({ ...status(), history: [past] });
+  };
+  render(<VastEnvironmentsSection t={t} />);
+  const history = await screen.findByRole("region", { name: "Launch attempt history" });
+  await waitFor(() => assert.ok(within(history).getByText("Failed")));
+  assert.ok(within(history).getByText(past.plan_id));
+  assert.ok(within(history).getByText("77"));
+  assert.ok(within(history).getByText("vast.ssh_failed"));
+  assert.equal(within(history).queryAllByRole("button").length, 0);
+  assert.ok(screen.getByText(t("models.vast.none")));
+  assert.deepEqual(calls, ["GET"]);
 });

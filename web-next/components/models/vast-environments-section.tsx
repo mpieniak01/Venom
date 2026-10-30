@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { formatDateTime } from "@/lib/date";
 import { useVastEnvironments, type VastOffer } from "./hooks/use-vast-environments";
 import { VastEnvironmentRow } from "./vast-environment-row";
+import { VastEnvironmentHistory } from "./vast-environment-history";
 
 interface Props { t: (key: string) => string; onChanged?: () => Promise<unknown>; }
 const inputClass = "rounded-lg border border-[color:var(--ui-border)] bg-[color:var(--ui-surface)] p-2";
@@ -84,5 +85,6 @@ export function VastEnvironmentsSection({ t, onChanged }: Readonly<Props>) {
       <p className="text-xs text-[color:var(--ui-muted)]">{text("manualZero")}</p>
       {api.state?.environments.some(row => row.connected) && <Badge tone="success">{text("chatReady")}</Badge>}
     </div>
+    <VastEnvironmentHistory rows={api.state?.history ?? []} t={t} />
   </section>;
 }

@@ -235,7 +235,6 @@ start_ollama() {
   local make_bin
   make_bin="${MAKE_BIN:-make}"
   echo "▶️  Uruchamiam Ollama..."
-  mk vllm-stop >/dev/null || true
   if command -v timeout >/dev/null 2>&1; then
     if ! timeout 25s "$make_bin" --no-print-directory ollama-start >/dev/null 2>&1; then
       echo "❌ 'ollama-start' nie zakończył się poprawnie w limicie czasu (25s)."
@@ -267,7 +266,6 @@ start_ollama() {
     echo "ℹ️  Ostatnie logi Ollama:"
     tail -n 40 logs/ollama.log || true
   fi
-  mk ollama-stop >/dev/null || true
   return 1
 }
 
@@ -275,7 +273,6 @@ start_vllm() {
   local models_url
   models_url="$(vllm_models_url "$VLLM_ENDPOINT")"
   echo "▶️  Uruchamiam vLLM..."
-  mk ollama-stop >/dev/null || true
   if ! mk vllm-start; then
     echo "❌ Nie udało się uruchomić vLLM (sprawdź logi wyżej)."
     return 1
@@ -307,7 +304,6 @@ start_vllm() {
     echo "ℹ️  Ostatnie logi vLLM:"
     tail -n 40 logs/vllm.log || true
   fi
-  mk vllm-stop >/dev/null || true
   return 1
 }
 
@@ -315,8 +311,6 @@ start_multi_runtime() {
   local multi_runtime_port
   multi_runtime_port="$(env_contract_get GEMMA4_AUDIO_PORT "8014" "$ENV_FILE")"
   echo "▶️  Uruchamiam Multi-Runtime..."
-  mk vllm-stop >/dev/null || true
-  mk ollama-stop >/dev/null || true
   if ! bash scripts/llm/multi_runtime_service.sh start; then
     echo "❌ Nie udało się uruchomić Multi-Runtime (sprawdź logi wyżej)."
     return 1
@@ -344,16 +338,12 @@ llm_ready=""
 case "$active_server" in
   onnx)
     echo "▶️  Aktywny runtime: ONNX (in-process)"
-    mk vllm-stop >/dev/null || true
-    mk ollama-stop >/dev/null || true
     llm_ready="onnx"
     ;;
   ollama)
-    mk vllm-stop >/dev/null || true
     if start_ollama; then llm_ready="ollama"; fi
     ;;
   vllm)
-    mk ollama-stop >/dev/null || true
     if start_vllm; then llm_ready="vllm"; fi
     ;;
   gemma4_audio|multi_runtime)
@@ -387,7 +377,7 @@ echo "🧠 LLM gotowy: $llm_ready"
 
 backend_reused=""
 if curl -fsS "http://${HOST_DISPLAY}:${PORT}/api/v1/system/status" >/dev/null 2>&1; then
-  "$PYTHON_BIN" -c 'import os; from pathlib import Path; from scripts.dev.stack_profile import owned_pid; assert owned_pid(Path.cwd(), os.environ, "PID_FILE"), "Unowned API listener"' || exit 1
+  "$PYTHON_BIN" -c 'import os; from pathlib import Path; from scripts.dev.stack_profile import owned_pid; assert owned_pid(Path.cwd(), os.environ, "PID_FILE", reuse=True), "Unowned API listener"' || exit 1
   echo "Backend wybranego środowiska już działa."
   backend_reused="yes"
 fi
@@ -420,6 +410,7 @@ if [[ -z "$backend_reused" ]]; then
   api_python="$("$PYTHON_BIN" "$ROOT_DIR/scripts/llm/with_gpu_libraries.py" --print-command-python "$ROOT_DIR" "$UVICORN")"
   run_with_env_file setsid "$api_python" "$ROOT_DIR/scripts/llm/with_gpu_libraries.py" "$UVICORN" "$API_APP" $uvicorn_flags >> "$BACKEND_LOG" 2>&1 &
   echo $! > "$PID_FILE"
+  "$PYTHON_BIN" "$ROOT_DIR/scripts/dev/stack_profile.py" record-api
   BACKEND_STARTED=1
   echo "✅ Venom backend wystartował z PID $(cat "$PID_FILE")"
 
@@ -453,8 +444,6 @@ if [[ -z "$backend_reused" ]]; then
       rm -f "$PID_FILE"
       BACKEND_STARTED=0
     fi
-    mk vllm-stop >/dev/null || true
-    mk ollama-stop >/dev/null || true
     exit 1
   fi
 else
@@ -596,8 +585,6 @@ if [[ -z "$ui_skip" ]]; then
         kill "$bpid" 2>/dev/null || true
         rm -f "$PID_FILE"
       fi
-      mk vllm-stop >/dev/null || true
-      mk ollama-stop >/dev/null || true
       exit 1
     fi
     echo "▶️  Uruchamiam UI (Next.js start, host ${WEB_HOST}, port ${WEB_PORT})"
@@ -653,8 +640,6 @@ if [[ -z "$ui_skip" ]]; then
   done
 
   if [[ -z "$ui_ready" ]]; then
-    mk vllm-stop >/dev/null || true
-    mk ollama-stop >/dev/null || true
     exit 1
   fi
 

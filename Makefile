@@ -38,8 +38,8 @@ VLLM_ENDPOINT ?=
 VLLM_START_TIMEOUT_SEC ?= 240
 ENV_FILE ?= .env.$(ENVIRONMENT)
 ENV_EXAMPLE_FILE ?= .env.$(ENVIRONMENT).example
-ENV_RUN ?= $(PYTHON_BIN) -m dotenv -f "$(ENV_FILE)" run --
-ENV_RUN_ABS ?= $(abspath $(PYTHON_BIN)) -m dotenv -f "$(abspath $(ENV_FILE))" run --
+ENV_RUN ?= $(PYTHON_BIN) -m dotenv -f "$(ENV_FILE)" run --no-override --
+ENV_RUN_ABS ?= $(abspath $(PYTHON_BIN)) -m dotenv -f "$(abspath $(ENV_FILE))" run --no-override --
 WEB_APP_VERSION ?= $(shell node -p "require('./web-next/package.json').version" 2>/dev/null || echo unknown)
 PREPROD_ENV_BASE := ENV_FILE=.env.preprod ENV_EXAMPLE_FILE=.env.preprod.example
 PREPROD_ENV_READONLY := $(PREPROD_ENV_BASE) ENVIRONMENT_ROLE=preprod DB_SCHEMA=preprod CACHE_NAMESPACE=preprod QUEUE_NAMESPACE=preprod STORAGE_PREFIX=preprod ALLOW_DATA_MUTATION=0
@@ -217,6 +217,9 @@ clean-ports:
 
 # Backend API (tylko) - produkcyjny (bez autoreload)
 api:
+	@ENVIRONMENT="$(ENVIRONMENT)" PROFILE="$(PROFILE)" ENV_FILE="$(ENV_FILE)" PORT="$(PORT)" WEB_PORT="$(WEB_PORT)" $(PYTHON_BIN) scripts/dev/stack_profile.py component api
+
+_api:
 	@if [ ! -x "$(UVICORN)" ]; then \
 		echo "❌ Nie znaleziono uvicorn w $(UVICORN). Czy środowisko .venv jest zainstalowane?"; \
 		exit 1; \
@@ -232,6 +235,9 @@ api:
 
 # Backend API (tylko) - developerski (z autoreload)
 api-dev:
+	@ENVIRONMENT="$(ENVIRONMENT)" PROFILE="$(PROFILE)" ENV_FILE="$(ENV_FILE)" PORT="$(PORT)" WEB_PORT="$(WEB_PORT)" $(PYTHON_BIN) scripts/dev/stack_profile.py component api-dev
+
+_api-dev:
 	@if [ ! -x "$(UVICORN)" ]; then \
 		echo "❌ Nie znaleziono uvicorn w $(UVICORN). Czy środowisko .venv jest zainstalowane?"; \
 		exit 1; \
@@ -246,6 +252,7 @@ api-dev:
 	@echo "📡 Backend: http://$(HOST):$(PORT)"
 	@echo "🔄 Autoreload: aktywny (zmiana plików → restart)"
 
+api-preprod: ENVIRONMENT=preprod
 api-preprod: ENV_FILE=.env.preprod
 api-preprod: ENV_EXAMPLE_FILE=.env.preprod.example
 api-preprod: export ENVIRONMENT_ROLE=preprod
@@ -258,28 +265,7 @@ api-preprod: api
 
 # Zatrzymaj tylko backend
 api-stop:
-	@trap '' TERM INT
-	@if [ -f $(PID_FILE) ]; then \
-		PID=$$(cat $(PID_FILE)); \
-		if kill -0 $$PID 2>/dev/null; then \
-			echo "⏹️  Zatrzymuję Venom API (PID $$PID)"; \
-			kill $$PID 2>/dev/null || true; \
-			for attempt in {1..20}; do \
-				if kill -0 $$PID 2>/dev/null; then \
-					sleep 0.2; \
-				else \
-					break; \
-				fi; \
-			done; \
-		else \
-			echo "⚠️  Proces ($$PID) już nie działa"; \
-		fi; \
-		rm -f $(PID_FILE); \
-	else \
-		echo "ℹ️  Venom API nie jest uruchomiony"; \
-	fi
-	@pkill -f "uvicorn[[:space:]]+$(API_APP)" 2>/dev/null || true
-	@echo "✅ Venom API zatrzymany"
+	@ENVIRONMENT="$(ENVIRONMENT)" PROFILE="$(PROFILE)" ENV_FILE="$(ENV_FILE)" $(PYTHON_BIN) scripts/dev/stack_profile.py component api-stop
 
 # Frontend Web (tylko) - produkcyjny (build + start)
 web:

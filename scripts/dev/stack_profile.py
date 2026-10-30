@@ -6,7 +6,7 @@ import argparse
 import json
 import os
 import signal
-import subprocess
+import socket
 import sys
 import time
 from pathlib import Path
@@ -30,6 +30,7 @@ PATH_DEFAULTS = {
     "DREAMING_OUTPUT_DIR": "data/synthetic_training",
     "CHRONOS_TIMELINES_DIR": "data/timelines",
     "VENOM_TRANSPORT_IDENTITY_FILE": "data/transport",
+    "VENOM_RUNTIME_STATE_ROOT": ".venom_runtime",
 }
 LEGACY = {
     "privacy": "light",
@@ -114,6 +115,9 @@ def resolve(root: Path, overrides: Mapping[str, str]) -> dict[str, str]:
         "ASSETS_DIR": str(Path(values["WORKSPACE_ROOT"]) / "assets"),
         "SIMULATION_LOGS_DIR": str(Path(values["WORKSPACE_ROOT"]) / "simulation_logs"),
         "VENOM_LOG_DIR": "logs" if role == "dev" else f"logs/{role}",
+        "GEMMA4_AUDIO_LOG_PATH": "logs/gemma4_audio_service.log"
+        if role == "dev"
+        else f"logs/{role}/gemma4_audio_service.log",
         "PID_FILE": ".venom.pid" if role == "dev" else f".venom-{role}.pid",
         "WEB_PID_FILE": ".web-next.pid" if role == "dev" else f".web-next-{role}.pid",
     }
@@ -132,7 +136,14 @@ def resolve(root: Path, overrides: Mapping[str, str]) -> dict[str, str]:
     values.setdefault("START_MODE", "prod" if role == "prod" else "dev")
     if role != "prod" and values["START_MODE"] != "dev":
         raise ValueError("dev/preprod use the current Turbo development stack")
-    values.setdefault("API_PROXY_TARGET", f"http://127.0.0.1:{values['PORT']}")
+    own_proxy = f"http://{values.get('HOST_DISPLAY', '127.0.0.1')}:{values['PORT']}"
+    values.setdefault("API_PROXY_TARGET", own_proxy)
+    if values["API_PROXY_TARGET"].rstrip("/") != own_proxy:
+        raise ValueError("API_PROXY_TARGET must point to this environment API")
+    # Browser traffic must use the streaming same-origin proxy, not .env.local.
+    values["NEXT_PUBLIC_API_BASE"] = ""
+    values["NEXT_PUBLIC_WS_BASE"] = ""
+    values["NEXT_PUBLIC_ENVIRONMENT_ROLE"] = role
     if role != "dev":
         dev = resolve(root, {"ENVIRONMENT": "dev"})
         for key in (*PATH_DEFAULTS, *derived, "BACKEND_LOG", "WEB_LOG"):
@@ -181,68 +192,158 @@ def public_plan(values: Mapping[str, str]) -> dict[str, str]:
     return {key: values[key] for key in keys if key in values}
 
 
-def owned_pid(root: Path, values: Mapping[str, str], key: str) -> int | None:
+def process_stamp(pid: int) -> tuple[str, int]:
+    proc = Path("/proc") / str(pid)
+    stat = (proc / "stat").read_text().rsplit(")", 1)[1].split()
+    return stat[19], proc.stat().st_uid
+
+
+def record_pid(root: Path, values: Mapping[str, str], key: str) -> None:
+    path = Path(values[key])
+    pid = int(path.read_text().strip())
+    stamp, uid = process_stamp(pid)
+    record = dict(
+        pid=pid,
+        stamp=stamp,
+        uid=uid,
+        root=str(root.resolve()),
+        role=values["ENVIRONMENT"],
+        profile=values["PROFILE"],
+        env_file=values["ENV_FILE"],
+    )
+    target = Path(str(path) + ".identity.json")
+    target.write_text(json.dumps(record))
+    target.chmod(0o600)
+
+
+def owned_pid(
+    root: Path, values: Mapping[str, str], key: str, *, reuse: bool = False
+) -> int | None:
     path = Path(values[key])
     if not path.exists():
         return None
     try:
         pid = int(path.read_text().strip())
-        proc = Path("/proc") / str(pid)
-        if not proc.exists():
+        if not Path(f"/proc/{pid}").exists():
             return None
-        process_env = dict(
-            item.split("=", 1)
-            for item in (proc / "environ").read_bytes().decode().split("\0")
-            if "=" in item
+        identity = json.loads(Path(str(path) + ".identity.json").read_text())
+        stamp, uid = process_stamp(pid)
+        expected = dict(
+            pid=pid,
+            stamp=stamp,
+            uid=uid,
+            root=str(root.resolve()),
+            role=values["ENVIRONMENT"],
+            env_file=values["ENV_FILE"],
         )
-        if (proc / "cwd").resolve() not in {
-            root.resolve(),
-            (root / "web-next").resolve(),
-        }:
-            raise ValueError("PID cwd belongs to a different instance")
-        if process_env.get("ENVIRONMENT_ROLE", "dev") != values["ENVIRONMENT"]:
-            raise ValueError("PID belongs to a different environment")
-        if (
-            process_env.get("ENV_FILE")
-            and absolute(root, process_env["ENV_FILE"]) != values["ENV_FILE"]
-        ):
-            raise ValueError("PID uses a different ENV_FILE")
+        if any(identity.get(name) != value for name, value in expected.items()):
+            raise ValueError("PID identity differs; refusing to reuse or stop")
+        if reuse and identity.get("profile") != values["PROFILE"]:
+            raise ValueError(
+                "Different profile already running; stop this environment before restart"
+            )
         return pid
-    except (OSError, UnicodeError) as exc:
-        raise ValueError("Cannot verify PID ownership") from exc
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise ValueError("Cannot verify PID ownership; no automatic adoption") from exc
 
 
-def stop(root: Path, values: Mapping[str, str]) -> None:
-    # Validate all owners before stopping anything. No shared LLM/containers killed.
-    owners = [
-        (key, owned_pid(root, values, key)) for key in ("WEB_PID_FILE", "PID_FILE")
-    ]
+def descendants(pid: int) -> list[int]:
+    result = []
+    children = Path(f"/proc/{pid}/task/{pid}/children")
+    for child in children.read_text().split() if children.exists() else []:
+        result.extend(descendants(int(child)))
+        result.append(int(child))
+    return result
+
+
+def running(pid: int) -> bool:
+    try:
+        return Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()[0] != "Z"
+    except FileNotFoundError:
+        return False
+
+
+def stop(
+    root: Path,
+    values: Mapping[str, str],
+    keys: tuple[str, ...] = ("WEB_PID_FILE", "PID_FILE"),
+) -> None:
+    owners = [(key, owned_pid(root, values, key)) for key in keys]
     for key, pid in owners:
         if pid is not None:
-            # Process tree restricted to descendants of the verified owner.
-            subprocess.run(["pkill", "-TERM", "-P", str(pid)], check=False)
-            os.kill(pid, signal.SIGTERM)
+            tree = [
+                (child, process_stamp(child))
+                for child in [*descendants(pid), pid]
+                if running(child)
+            ]
+            for child, stamp in tree:
+                if running(child) and process_stamp(child) == stamp:
+                    os.kill(child, signal.SIGTERM)
             for _ in range(100):
-                if not Path(f"/proc/{pid}").exists():
+                if not any(running(child) for child, _ in tree):
                     break
                 time.sleep(0.1)
             else:
                 raise ValueError(
-                    f"PID {pid} did not stop; no global force-kill performed"
+                    "Owned process tree did not stop; no global force-kill performed"
                 )
         Path(values[key]).unlink(missing_ok=True)
+        Path(values[key] + ".identity.json").unlink(missing_ok=True)
+
+
+def component(root: Path, values: dict[str, str], name: str) -> None:
+    web = {
+        "web-build": ["build"],
+        "web": ["start"],
+        "web-dev": ["dev", "webpack"],
+        "web-dev-turbo": ["dev", "turbo"],
+        "web-dev-turbo-debug": ["dev", "turbo-debug"],
+    }
+    if name in web:
+        os.execvpe(
+            "node",
+            ["node", str(root / "web-next/scripts/web-lifecycle.mjs"), *web[name]],
+            values,
+        )
+    elif name in {"api", "api-dev"}:
+        os.execvpe("make", ["make", "--no-print-directory", "_" + name], values)
+    elif name in {"api-stop", "web-stop"}:
+        stop(root, values, ("PID_FILE",) if name == "api-stop" else ("WEB_PID_FILE",))
+    else:
+        raise ValueError("Unknown component action")
+
+
+def preflight(root: Path, values: Mapping[str, str]) -> None:
+    for key, port_key in (("PID_FILE", "PORT"), ("WEB_PID_FILE", "WEB_PORT")):
+        with socket.socket() as probe:
+            probe.settimeout(0.2)
+            if (
+                probe.connect_ex(
+                    (values.get("HOST_DISPLAY", "127.0.0.1"), int(values[port_key]))
+                )
+                == 0
+            ):
+                if not owned_pid(root, values, key, reuse=True):
+                    raise ValueError(f"{port_key} occupied by unowned listener")
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Full/Light in dev/preprod (prod reserved)"
     )
-    parser.add_argument("action", choices=("start", "stop", "status", "plan"))
+    parser.add_argument(
+        "action", choices=("start", "stop", "status", "plan", "record-api", "component")
+    )
+    parser.add_argument("component_name", nargs="?")
     args = parser.parse_args()
     try:
         values = resolve(ROOT, os.environ)
         if args.action == "plan":
             print(json.dumps(public_plan(values), indent=2))
+        elif args.action == "record-api":
+            record_pid(ROOT, values, "PID_FILE")
+        elif args.action == "component":
+            component(ROOT, values, args.component_name or "")
         elif args.action == "stop":
             stop(ROOT, values)
         elif args.action == "status":

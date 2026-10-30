@@ -58,13 +58,13 @@ class TestProfileCapabilities:
         assert caps.profile == RuntimeProfile.LIGHT
         assert "backend" in caps.required_services
         assert "frontend" in caps.required_services
-        assert "ollama" in caps.required_services
-        assert "vllm" in caps.disabled_services
+        assert "ollama" not in caps.required_services
+        assert not caps.disabled_services
         assert caps.uses_local_llm is True
         assert caps.gpu_support is True
         assert caps.requires_onnx is False
-        assert caps.env_overrides["ACTIVE_LLM_SERVER"] == "ollama"
-        assert caps.env_overrides["LLM_WARMUP_ON_STARTUP"] == "true"
+        assert "ACTIVE_LLM_SERVER" not in caps.env_overrides
+        assert caps.env_overrides["LLM_WARMUP_ON_STARTUP"] == "false"
         assert len(caps.required_api_keys) == 0
 
     def test_llm_off_capabilities(self):
@@ -91,11 +91,11 @@ class TestProfileCapabilities:
         assert caps.profile == RuntimeProfile.FULL
         assert "backend" in caps.required_services
         assert "frontend" in caps.required_services
-        assert "ollama" in caps.required_services
+        assert "ollama" not in caps.required_services
         assert caps.uses_local_llm is True
         assert caps.gpu_support is True
         assert caps.requires_onnx is False
-        assert caps.env_overrides["ACTIVE_LLM_SERVER"] == "ollama"
+        assert "ACTIVE_LLM_SERVER" not in caps.env_overrides
         assert len(caps.required_api_keys) == 0
 
 
@@ -105,21 +105,21 @@ class TestProfileDescriptions:
     def test_english_descriptions(self):
         """Test English profile descriptions."""
         light_desc = get_profile_description(RuntimeProfile.LIGHT, "en")
-        assert "Ollama" in light_desc
-        assert "Privacy First" in light_desc
+        assert "Light" in light_desc
+        assert "background" in light_desc
 
         api_desc = get_profile_description(RuntimeProfile.LLM_OFF, "en")
         assert "OpenAI" in api_desc or "Cloud" in api_desc
         assert "Low Hardware" in api_desc
 
         full_desc = get_profile_description(RuntimeProfile.FULL, "en")
-        assert "Beast" in full_desc or "Extended" in full_desc
+        assert "Full" in full_desc
 
     def test_polish_descriptions(self):
         """Test Polish profile descriptions."""
         light_desc = get_profile_description(RuntimeProfile.LIGHT, "pl")
-        assert "Ollama" in light_desc
-        assert "Privacy First" in light_desc
+        assert "Light" in light_desc
+        assert "zadania tła" in light_desc
 
         api_desc = get_profile_description(RuntimeProfile.LLM_OFF, "pl")
         assert "OpenAI" in api_desc or "cloud" in api_desc
@@ -127,15 +127,15 @@ class TestProfileDescriptions:
     def test_german_descriptions(self):
         """Test German profile descriptions."""
         light_desc = get_profile_description(RuntimeProfile.LIGHT, "de")
-        assert "Ollama" in light_desc
-        assert "Privacy First" in light_desc
+        assert "Light" in light_desc
+        assert "Hintergrundaufgaben" in light_desc
 
     def test_default_language(self):
         """Test default language fallback to English."""
         desc = get_profile_description(RuntimeProfile.LIGHT)
         assert len(desc) > 0
         # Should be English by default
-        assert "Local" in desc or "Ollama" in desc
+        assert "Light" in desc and "background" in desc
 
 
 class TestProfileValidation:
@@ -215,15 +215,15 @@ class TestProfileContract:
         llm_off = get_profile_capabilities(RuntimeProfile.LLM_OFF)
 
         # LIGHT should have ollama, disable vllm
-        assert "ollama" in light.required_services
-        assert "vllm" in light.disabled_services
+        assert "ollama" not in light.required_services
+        assert not light.disabled_services
 
         # LLM_OFF should disable both
         assert "ollama" in llm_off.disabled_services
         assert "vllm" in llm_off.disabled_services
 
         # FULL should have ollama by default
-        assert "ollama" in full.required_services
+        assert "ollama" not in full.required_services
 
     def test_onnx_requirements_consistent(self):
         """Test ONNX requirements are consistent across profiles."""

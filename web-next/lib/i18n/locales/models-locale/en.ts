@@ -104,6 +104,51 @@ export const models = {
     }
 },
   openrouter: {
+    billing: {
+    "title": "OpenRouter account and billing",
+    "available": "Available account funds",
+    "total": "Total account spend",
+    "keyRemaining": "Chat key remaining limit",
+    "keyMonth": "Key usage this month",
+    "unlimited": "No key limit",
+    "refresh": "Refresh billing",
+    "working": "Fetching billing…",
+    "requestError": "Could not refresh billing.",
+    "disabled": "API disabled or access blocked",
+    "stale": "Stale data",
+    "updated": "Account checked",
+    "account": "Account",
+    "key": "Chat key",
+    "period": "Period",
+    "from": "From (UTC)",
+    "to": "To (UTC)",
+    "invalidWindow": "End date must be on or after the start date.",
+    "models": "Spend by model",
+    "accountScope": "Whole account",
+    "partial": "Incomplete or stale data",
+    "periodTotal": "Reported usage",
+    "model": "Model",
+    "cost": "Reported cost",
+    "share": "Share",
+    "requests": "Requests",
+    "noUsage": "No usage in the retrieved period.",
+    "noData": "No model billing data.",
+    "modelsUpdated": "Models checked",
+    "periods": {
+        "7d": "Last 7 days",
+        "30d": "Last 30 days",
+        "month": "Current month",
+        "all": "All retained history"
+    },
+    "errors": {
+        "management_required": "Analytics requires a management key.",
+        "missing_credentials": "Missing credentials.",
+        "provider_unavailable": "Provider data unavailable.",
+        "invalid_response": "Invalid provider data.",
+        "analytics_truncated": "Provider returned an incomplete summary.",
+        "cache_invalid": "Cached billing needs a refresh."
+    }
+},
     outputLimit: "Maximum output (tokens, MVP budget cap)",
   categories: {
   "programming": "Programming",

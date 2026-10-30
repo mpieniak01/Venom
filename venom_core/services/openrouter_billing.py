@@ -235,6 +235,8 @@ class OpenRouterBilling:
                 headers={"Authorization": "Bearer " + key},
                 json=payload,
             )
+            if response.status_code == 404 and path == "/analytics/meta":
+                raise BillingError("analytics_unsupported")
             if response.status_code == 403:
                 raise BillingError("management_required")
             if response.status_code != 200:
@@ -360,7 +362,7 @@ class OpenRouterBilling:
             "account_observed_at": cache.account_at,
             "models_observed_at": cache.analytics_at,
             "errors": cache.errors,
-            "stale": not _fresh(cache.attempted_at, current, REFRESH_SECONDS * 2),
+            "stale": not _fresh(cache.account_at, current, REFRESH_SECONDS * 2),
             "models_stale": not _fresh(
                 cache.analytics_at, current, ANALYTICS_SECONDS * 2
             ),

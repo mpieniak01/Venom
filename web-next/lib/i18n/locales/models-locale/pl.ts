@@ -104,6 +104,51 @@ export const models = {
     }
 },
   openrouter: {
+    billing: {
+    "title": "Konto i rozliczenia OpenRouter",
+    "available": "Dostępne środki konta",
+    "total": "Wydano łącznie na koncie",
+    "keyRemaining": "Pozostały limit klucza czatu",
+    "keyMonth": "Zużycie klucza w miesiącu",
+    "unlimited": "Bez limitu klucza",
+    "refresh": "Odśwież rozliczenia",
+    "working": "Pobieranie rozliczeń…",
+    "requestError": "Nie udało się odświeżyć rozliczeń.",
+    "disabled": "API wyłączone lub dostęp zablokowany",
+    "stale": "Dane nieaktualne",
+    "updated": "Sprawdzono konto",
+    "account": "Konto",
+    "key": "Klucz czatu",
+    "period": "Okres",
+    "from": "Od (UTC)",
+    "to": "Do (UTC)",
+    "invalidWindow": "Data końcowa musi być późniejsza lub równa początkowej.",
+    "models": "Wydatki według modeli",
+    "accountScope": "Całe konto",
+    "partial": "Dane niepełne lub nieaktualne",
+    "periodTotal": "Raportowane użycie",
+    "model": "Model",
+    "cost": "Koszt raportowany",
+    "share": "Udział",
+    "requests": "Wywołania",
+    "noUsage": "Brak użycia w pobranym okresie.",
+    "noData": "Brak danych rozliczeniowych modeli.",
+    "modelsUpdated": "Sprawdzono modele",
+    "periods": {
+        "7d": "Ostatnie 7 dni",
+        "30d": "Ostatnie 30 dni",
+        "month": "Bieżący miesiąc",
+        "all": "Cała zapisana historia"
+    },
+    "errors": {
+        "management_required": "Analityka wymaga klucza zarządzającego.",
+        "missing_credentials": "Brak poświadczeń.",
+        "provider_unavailable": "Dane dostawcy niedostępne.",
+        "invalid_response": "Nieprawidłowe dane dostawcy.",
+        "analytics_truncated": "Dostawca zwrócił niepełne zestawienie.",
+        "cache_invalid": "Zapisane rozliczenia wymagają odświeżenia."
+    }
+},
     outputLimit: "Maks. odpowiedź (tokeny, limit budżetowy MVP)",
   categories: {
   "programming": "Programowanie",

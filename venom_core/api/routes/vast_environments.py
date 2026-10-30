@@ -2,22 +2,18 @@
 
 from decimal import Decimal
 from typing import Annotated, Any, Literal
-from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Request
 from pydantic import BaseModel, ConfigDict, Field
 
+from venom_core.api.operator_origin import require_operator_origin
 from venom_core.api.routes.system_config import require_localhost_request
 from venom_core.services import vast_management
 
 
 def local_operator(request: Request) -> None:
     require_localhost_request(request)
-    origin = request.headers.get("origin")
-    if request.headers.get("sec-fetch-site") == "cross-site" or (
-        origin and urlsplit(origin).hostname not in {"localhost", "127.0.0.1", "::1"}
-    ):
-        raise HTTPException(403, "vast.management_local_operator_required")
+    require_operator_origin(request, "vast.management_local_operator_required")
 
 
 ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {

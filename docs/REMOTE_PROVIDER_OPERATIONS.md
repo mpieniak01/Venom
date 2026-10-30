@@ -124,3 +124,33 @@ Account totals include resources outside local history; managed and unattributed
 amounts are shown separately. Missing data is not presented as a zero or as a final
 settlement. Errors preserve last-known values with stale/partial status. VAST does
 not document a finalization marker; retained daily data is not proof of finality.
+
+
+### OpenRouter aggregate account billing
+
+The OpenRouter tab shows account credit (`total_credits - total_usage`), lifetime
+account usage and separate chat-key limits/usage. Values from `/key` are key-scoped;
+they are not the account balance. Model spending is an account-wide aggregate,
+including models no longer connected to chat. No generation records are fetched.
+
+The optional `OPENROUTER_MANAGEMENT_API_KEY` or private
+`OPENROUTER_MANAGEMENT_CREDENTIAL_FILE` enables analytics. These credentials are
+used only for account/analytics reads, never for chat. Without analytics permission,
+retain available credit/key data and show `management_required` for model totals.
+Do not provision another credential or run test zero automatically.
+
+Private SQLite snapshots in `.venom_runtime/openrouter/billing.sqlite` are isolated
+by credential pair. Atomic writes and expiring owner leases prevent duplicate
+synchronization across workers on Linux and Windows. Opening the screen synchronizes
+account/key data at most every five minutes; model aggregates and permission denials
+are cached for an hour. Disabled/cloud-blocked providers show cached data only.
+
+Analytics metrics/dimensions are discovered before querying daily `total_usage` and
+`request_count` by model. The first refresh covers the last 30 days plus today;
+retained days extend the history over time. Provider-returned daily aggregates replace
+overlapping days rather than being added repeatedly. An incomplete/truncated response
+never replaces a valid snapshot. The legacy activity fallback covers completed UTC
+days only. Filters select 7/30 days, current month, retained history or custom UTC dates;
+missing days and stale snapshots are explicitly marked. Custom filters do not claim
+to recover data predating the retained history. Usage follows the provider metric;
+BYOK usage may differ from deductions from OpenRouter credits.

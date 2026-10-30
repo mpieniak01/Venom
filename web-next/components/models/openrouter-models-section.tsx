@@ -3,6 +3,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { remoteModelStyles as styles } from "./remote-model-styles";
 
+import { OpenRouterBillingPanel } from "./openrouter-billing-panel";
+
 const categories = ["programming", "roleplay", "marketing", "marketing/seo", "technology", "science", "translation", "legal", "finance", "health", "trivia", "academia"];
 interface Props { t: (key: string) => string; onChanged?: () => Promise<unknown>; }
 export function OpenRouterModelsSection({ t, onChanged }: Readonly<Props>) {
@@ -31,6 +33,7 @@ export function OpenRouterModelsSection({ t, onChanged }: Readonly<Props>) {
     <Button size="sm" variant="secondary" disabled={Boolean(catalog.pending[model.id])} aria-label={`${text(isConnected ? "disconnect" : "connect")}: ${model.id}`} onClick={() => void catalog.manage(model.id, !isConnected)}>{text(actionLabel(model.id, isConnected))}</Button></div>
   </li>;
   return <section className="min-w-0 space-y-6" aria-label="OpenRouter">
+    <OpenRouterBillingPanel t={t} />
     <div className={styles.panel + " space-y-4"}>
       <div className="space-y-2"><h2 className={styles.heading}>OpenRouter</h2><p className={styles.hint}>{text("description")}</p></div>
       {catalog.error && <p role="alert" className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-xs text-rose-400">{text("error")}: {catalog.error}</p>}

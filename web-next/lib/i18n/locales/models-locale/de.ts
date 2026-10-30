@@ -104,6 +104,51 @@ export const models = {
     }
 },
   openrouter: {
+    billing: {
+    "title": "OpenRouter-Konto und Abrechnung",
+    "available": "Verfügbares Kontoguthaben",
+    "total": "Gesamte Kontoausgaben",
+    "keyRemaining": "Verbleibendes Limit des Chat-Schlüssels",
+    "keyMonth": "Schlüsselnutzung diesen Monat",
+    "unlimited": "Kein Schlüssellimit",
+    "refresh": "Abrechnung aktualisieren",
+    "working": "Abrechnung wird geladen…",
+    "requestError": "Abrechnung konnte nicht aktualisiert werden.",
+    "disabled": "API deaktiviert oder Zugriff gesperrt",
+    "stale": "Veraltete Daten",
+    "updated": "Konto geprüft",
+    "account": "Konto",
+    "key": "Chat-Schlüssel",
+    "period": "Zeitraum",
+    "from": "Von (UTC)",
+    "to": "Bis (UTC)",
+    "invalidWindow": "Enddatum muss am oder nach dem Startdatum liegen.",
+    "models": "Ausgaben nach Modell",
+    "accountScope": "Gesamtes Konto",
+    "partial": "Unvollständige oder veraltete Daten",
+    "periodTotal": "Gemeldete Nutzung",
+    "model": "Modell",
+    "cost": "Gemeldete Kosten",
+    "share": "Anteil",
+    "requests": "Anfragen",
+    "noUsage": "Keine Nutzung im abgerufenen Zeitraum.",
+    "noData": "Keine Modellabrechnungsdaten.",
+    "modelsUpdated": "Modelle geprüft",
+    "periods": {
+        "7d": "Letzte 7 Tage",
+        "30d": "Letzte 30 Tage",
+        "month": "Aktueller Monat",
+        "all": "Gesamter gespeicherter Verlauf"
+    },
+    "errors": {
+        "management_required": "Analysen erfordern einen Verwaltungsschlüssel.",
+        "missing_credentials": "Anmeldedaten fehlen.",
+        "provider_unavailable": "Anbieterdaten nicht verfügbar.",
+        "invalid_response": "Ungültige Anbieterdaten.",
+        "analytics_truncated": "Anbieter lieferte eine unvollständige Übersicht.",
+        "cache_invalid": "Gespeicherte Abrechnung muss aktualisiert werden."
+    }
+},
     outputLimit: "Maximale Ausgabe (Tokens, MVP-Budgetlimit)",
   categories: {
   "programming": "Programmierung",

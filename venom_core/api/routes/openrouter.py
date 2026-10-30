@@ -3,11 +3,11 @@
 from datetime import date
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
+from venom_core.api.operator_origin import require_operator_origin
 from venom_core.api.routes.system_config import require_localhost_request
-from venom_core.api.routes.vast_environments import local_operator
 from venom_core.api.schemas.llm_simple import SimpleChatRequest
 from venom_core.services import openrouter_runtime as runtime
 from venom_core.services.runtime_admission import admitted_operation
@@ -125,7 +125,12 @@ def billing(
         raise HTTPException(422, "openrouter_invalid_billing_window") from None
 
 
-@router.post("/billing/sync", dependencies=[Depends(local_operator)])
+def billing_operator(request: Request) -> None:
+    require_localhost_request(request)
+    require_operator_origin(request, "openrouter_billing_local_operator_required")
+
+
+@router.post("/billing/sync", dependencies=[Depends(billing_operator)])
 def sync_billing():
     from venom_core.services.openrouter_billing import OpenRouterBilling
 

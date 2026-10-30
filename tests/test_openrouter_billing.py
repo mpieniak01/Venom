@@ -307,3 +307,42 @@ def test_routes_only_sync_when_enabled_and_reject_cross_site(state, monkeypatch)
         monkeypatch.setattr(billing.runtime, "is_enabled", lambda: False)
         assert client.post("/api/v1/openrouter/billing/sync").status_code == 403
         assert client.get("/api/v1/openrouter/billing").json()["period_usd"] == "0.3"
+
+
+def test_legacy_api_fallback_when_analytics_is_absent(state):
+    service, responses, calls, current = state
+    responses["/analytics/meta"] = 404
+    service.sync()
+    assert service.view()["source"] == "activity"
+    assert service.view()["period_usd"] == "0.4"
+
+
+def test_corrupt_provider_json_never_exposes_response_or_credentials(state):
+    service, responses, calls, current = state
+
+    def transport(request):
+        return httpx.Response(200, text="private invalid json")
+
+    service.client_factory = lambda **kwargs: httpx.Client(
+        transport=httpx.MockTransport(transport), **kwargs
+    )
+    service.sync()
+    view = service.view()
+    assert view["errors"]["account"] == "provider_unavailable"
+    assert "private" not in str(view) and "secret" not in str(view)
+
+
+def test_long_idle_invalid_cache_owner_and_unlimited_key(state):
+    service, responses, calls, current = state
+    responses["/key"] = {"usage": "0", "limit": None, "limit_remaining": None}
+    service.sync()
+    assert service.view()["key"]["limit"] is None
+    lease = service.store.claim(current[0].timestamp())
+    assert service.store.claim(current[0].timestamp()) is None
+    current[0] += timedelta(seconds=121)
+    new_owner = service.store.claim(current[0].timestamp())
+    service.store.save(billing.Cache(), lease)
+    assert service.view()["available_usd"] == "9.55"
+    service.store.release(new_owner)
+    current[0] += timedelta(days=100)
+    assert service.view()["models_stale"]

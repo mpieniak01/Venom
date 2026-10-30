@@ -17,7 +17,12 @@ from uuid import uuid4
 import httpx
 
 from venom_core.infrastructure.providers.vast.client import VastClient, VastError
-from venom_core.infrastructure.providers.vast.models import OfferAssessment, now
+from venom_core.infrastructure.providers.vast.models import (
+    EnvironmentRecord,
+    OfferAssessment,
+    amount,
+    now,
+)
 from venom_core.services import vast_management_config as configuration
 from venom_core.services.vast_environments.lifecycle import Environments
 from venom_core.services.vast_environments.operations import workload
@@ -36,6 +41,29 @@ ATTACH_RETRY_ERRORS = {
 
 ACTIVE = {"queued", "creating", "waiting", "provisioning", "connecting"}
 ERRORS = (VastError, OSError, ValueError, httpx.HTTPError)
+
+
+def _billing_summary(record: EnvironmentRecord) -> dict[str, Any]:
+    costs = record.reports.get("costs")
+    if isinstance(costs, dict):
+        reported = costs.get("provider_reported")
+        billed = (
+            amount(reported.get("usd"))
+            if isinstance(reported, dict) and costs.get("currency") == "USD"
+            else None
+        )
+        if billed is not None:
+            return {"billing_status": "reported", "billed_usd": str(billed)}
+        if costs.get("status") == "unavailable":
+            return {"billing_status": "unavailable", "billed_usd": None}
+    status = "unverified"
+    if (
+        record.state == "planned"
+        and record.submitted_at is None
+        and record.instance_id is None
+    ):
+        status = "not_applicable"
+    return {"billing_status": status, "billed_usd": None}
 
 
 def _selectable_offers(rows: list[OfferAssessment]) -> list[OfferAssessment]:
@@ -148,6 +176,7 @@ class VastManagement:
             "expires_at": plan.expires_at.isoformat(),
             "connected": connected,
             "error": error,
+            **_billing_summary(record),
             "billing_possible": bool(
                 record.submitted_at and record.state != "destroyed"
             ),
@@ -178,6 +207,8 @@ class VastManagement:
                 "expires_at": None,
                 "connected": False,
                 "error": "vast.management_journal_invalid",
+                "billing_status": "unverified",
+                "billed_usd": None,
                 "billing_possible": True,
             }
 

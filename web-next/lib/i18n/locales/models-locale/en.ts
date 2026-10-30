@@ -1,7 +1,8 @@
 export const models = {
   vast: {
     "historyBillingHint": "Find the instance by its ID in the VAST console and release it there if no longer needed. If the ID is unknown, check the account's instance list.",
-    "historyBilling": "Charges",
+    "historyBilling": "Billing",
+    "billingStates": {"reported": "Reported", "unverified": "Unverified", "unavailable": "Unavailable", "not_applicable": "Not applicable"},
     "history": "Launch attempt history",
     "historyHint": "Earlier CLI attempts. The recorded state is historical and does not confirm current instance availability.",
     "noHistory": "No recorded attempts.",

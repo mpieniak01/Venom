@@ -1,7 +1,8 @@
 export const models = {
   vast: {
     "historyBillingHint": "Prüfen Sie die Instanz anhand ihrer ID in der VAST-Konsole und geben Sie sie dort frei, wenn sie nicht mehr benötigt wird. Ohne ID prüfen Sie die Instanzliste des Kontos.",
-    "historyBilling": "Kosten",
+    "historyBilling": "Abrechnung",
+    "billingStates": {"reported": "Gemeldet", "unverified": "Ungeprüft", "unavailable": "Nicht verfügbar", "not_applicable": "Nicht zutreffend"},
     "history": "Verlauf der Startversuche",
     "historyHint": "Frühere CLI-Versuche. Der protokollierte Status ist historisch und bestätigt keine aktuelle Verfügbarkeit.",
     "noHistory": "Keine gespeicherten Versuche.",

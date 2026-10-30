@@ -25,14 +25,12 @@ export function ModelResourcesControl({ releasing, memory, result, entries = res
     <div className="flex flex-wrap items-center justify-between gap-3">
       <div>
         <h2 className="font-semibold">{t("models.resources.title")}</h2>
-        <p className="text-sm text-[color:var(--ui-muted)]">{t("models.resources.description")}</p>
       </div>
       {onRecoverLlm && <Button variant="secondary" size="sm" disabled={releasing} onClick={() => void onRecoverLlm()} data-testid="recover-llm">{t("models.resources.recoverLlm")}</Button>}
       <Button variant="secondary" size="sm" disabled={releasing} onClick={() => void onRelease()} data-testid="release-all-models">
         {t(releasing ? "models.resources.releasing" : "models.resources.release")}
       </Button>
     </div>
-    {onRecoverLlm && <p className="mt-2 text-xs text-[color:var(--ui-muted)]">{t("models.resources.recoverLlmHint")}</p>}
     <div className="mt-3 flex flex-wrap gap-4 text-sm" aria-live="polite">
       {observed && <span>{t("models.resources.ram")}: {observed.rss_mib.toFixed(0)} MiB</span>}
       {observed?.gpu.map(gpu => <span key={gpu.index}>GPU {gpu.index} · VRAM {gpu.used_mib} / {gpu.total_mib} MiB</span>)}

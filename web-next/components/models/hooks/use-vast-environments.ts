@@ -5,6 +5,8 @@ export interface VastEnvironment {
   instance_id: number | null; hourly_usd: string | null; total_usd: string | null;
   duration_minutes: number; expires_at: string | null; connected: boolean;
   error: string | null; billing_possible: boolean;
+  billing_status?: "reported" | "unavailable" | "unverified" | "not_applicable";
+  billed_usd?: string | null;
 }
 export interface VastOffer {
   offer_id: number; gpu_name: string; country: string | null; gpu_ram_mb: number | null;

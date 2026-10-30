@@ -218,7 +218,7 @@ it("refreshes the chat catalog when a CLI history plan connects or disconnects",
   assert.equal(changed, 2);
 });
 
-it("preserves CLI outcomes and warns about possible charges without action buttons", async () => {
+it("preserves CLI outcomes and shows compact billing statuses without instruction text", async () => {
   const calls: string[] = [];
   globalThis.fetch = async (_input, init) => {
     calls.push(init?.method ?? "GET");
@@ -234,8 +234,9 @@ it("preserves CLI outcomes and warns about possible charges without action butto
   assert.ok(within(history).getByText("Order outcome unknown"));
   assert.ok(within(history).getByText("provider_pending"));
   assert.ok(within(history).getByText("Connected"));
-  assert.equal(within(history).getAllByText(t("models.vast.billingWarning")).length, 2);
-  assert.equal(within(history).getAllByText(t("models.vast.historyBillingHint")).length, 2);
+  assert.equal(within(history).getAllByText(t("models.vast.billingStates.unverified")).length, 3);
+  assert.equal(within(history).queryByText(t("models.vast.billingWarning")), null);
+  assert.equal(within(history).queryByText(t("models.vast.historyBillingHint")), null);
   assert.equal(within(history).queryAllByRole("button").length, 0);
   assert.deepEqual(calls, ["GET"]);
 });
@@ -283,4 +284,24 @@ it("formats zero and missing or invalid VAST amounts distinctly", () => {
   for (const amount of [null, undefined, "", " ", "NaN", "Infinity", "-1", "invalid"]) {
     assert.equal(formatVastUsd(amount, "Unknown"), "Unknown");
   }
+});
+
+
+it("shows recorded VAST charges including zero and uses statuses for missing billing", async () => {
+  globalThis.fetch = async () => Response.json({ ...status(), history: [
+    row({ billing_status: "reported", billed_usd: "0" }),
+    row({ plan_id: "b".repeat(32), billing_status: "reported", billed_usd: "0.123456789" }),
+    row({ plan_id: "c".repeat(32), billing_status: "unavailable", billed_usd: null }),
+    row({ plan_id: "d".repeat(32), billing_status: "not_applicable", billed_usd: null }),
+    row({ plan_id: "e".repeat(32), billing_status: "reported", billed_usd: "NaN" }),
+  ] });
+  render(<VastEnvironmentsSection t={t} />);
+  const history = await screen.findByRole("region", { name: "Launch attempt history" });
+  await waitFor(() => assert.ok(within(history).getByText("0.0000 USD")));
+  assert.ok(within(history).getByText("0.1235 USD"));
+  assert.equal(within(history).getAllByText("Reported").length, 2);
+  assert.ok(within(history).getByText("Unavailable"));
+  assert.ok(within(history).getByText("Not applicable"));
+  assert.ok(within(history).getByText("Unverified"));
+  assert.equal(within(history).queryByText(/may still incur charges/), null);
 });

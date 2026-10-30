@@ -629,3 +629,66 @@ def test_search_qualifies_candidates_beyond_first_provider_hundred(f):
         call.kwargs["limit"] == 1000 for call in f.svc.client.offers.call_args_list
     )
     f.svc.client.create.assert_not_called()
+
+
+@pytest.mark.parametrize("usd", ["0", "0.123456789"])
+def test_billing_displays_only_recorded_provider_amounts(f, usd):
+    record = f.svc.journal.record(f.p.plan_id)
+    record.reports["costs"] = {
+        "currency": "USD",
+        "status": "provisional",
+        "provider_reported": {"usd": usd},
+        "estimate": {"usd": "999"},
+    }
+    f.svc.journal.save_record(record)
+    result = f.m.row(f.p.plan_id)
+    assert result["billing_status"] == "reported"
+    assert result["billed_usd"] == usd
+    f.m.client_factory.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "state,expected",
+    [
+        ("planned", "not_applicable"),
+        ("destroyed", "unverified"),
+        ("failed", "unverified"),
+    ],
+)
+def test_missing_billing_is_a_status_and_never_a_zero_amount(f, state, expected):
+    record = f.svc.journal.record(f.p.plan_id)
+    record.state = state
+    f.svc.journal.save_record(record)
+    result = f.m.row(f.p.plan_id)
+    assert result["billing_status"] == expected
+    assert result["billed_usd"] is None
+    f.m.client_factory.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "report",
+    [
+        {
+            "currency": "USD",
+            "status": "unavailable",
+            "provider_reported": {"usd": None},
+        },
+        {
+            "currency": "USD",
+            "status": "unavailable",
+            "provider_reported": {"usd": "NaN"},
+        },
+        {
+            "currency": "USD",
+            "status": "unavailable",
+            "provider_reported": {"usd": "-1"},
+        },
+    ],
+)
+def test_unavailable_billing_ignores_estimates_and_invalid_amounts(f, report):
+    record = f.svc.journal.record(f.p.plan_id)
+    record.reports["costs"] = {**report, "estimate": {"usd": "0.5"}}
+    f.svc.journal.save_record(record)
+    result = f.m.row(f.p.plan_id)
+    assert result["billing_status"] == "unavailable"
+    assert result["billed_usd"] is None

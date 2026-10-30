@@ -9,7 +9,10 @@ import { fileURLToPath } from 'node:url';
 import { nextDistDir } from './build-paths.mjs';
 
 function remove(file) { if (existsSync(file)) unlinkSync(file); }
-function alive(pid) { try { process.kill(pid, 0); return true; } catch { return false; } }
+export function alive(pid) {
+  if (!Number.isSafeInteger(pid) || pid <= 1) return false;
+  try { process.kill(pid, 0); return true; } catch (error) { return error?.code !== 'ESRCH'; }
+}
 function ticks(pid) { try { return readFileSync(`/proc/${pid}/stat`, 'utf8').split(') ')[1].split(' ')[19]; } catch { return null; } }
 export function lifecycleConfig(env = process.env, cwd = process.cwd()) {
   const root = path.resolve(cwd, env.WEB_DIR || 'web-next');
@@ -46,8 +49,9 @@ export function artifactFingerprint(config, env = process.env) {
   hash.update(execFileSync('git', ['diff', 'HEAD', '--', '../venom_core'], { cwd: config.root }));
   const files = execFileSync('git', ['ls-files', '-z', '--', '.'], { cwd: config.root });
   for (const file of files.toString().split('\0').filter(Boolean).sort()) {
-    // Generated metadata contains a timestamp, and does not determine application compatibility.
-    if (file === 'public/meta.json') continue;
+    // Next rewrites generated declaration imports for each distDir; neither they
+    // nor timestamp metadata determine runtime artifact compatibility.
+    if (['public/meta.json', 'next-env.d.ts'].includes(file)) continue;
     const absolute = path.join(config.root, file);
     hash.update(file).update(existsSync(absolute) ? readFileSync(absolute) : 'MISSING');
   }
@@ -58,7 +62,12 @@ export function artifactFingerprint(config, env = process.env) {
 }
 function stampPath(config) { return path.join(config.dist, 'venom-build.json'); }
 export function verifyArtifact(config, env = process.env) {
-  const stamp = JSON.parse(readFileSync(stampPath(config), 'utf8'));
+  let text;
+  try { text = readFileSync(stampPath(config), 'utf8'); } catch (error) {
+    if (error?.code === 'ENOENT') throw new Error('Missing build stamp; run make web-build for this environment', { cause: error });
+    throw error;
+  }
+  const stamp = JSON.parse(text);
   const server = [path.join(config.dist, 'standalone', 'server.js'), path.join(config.dist, 'standalone', 'web-next', 'server.js')].some(existsSync);
   if (!server || !existsSync(path.join(config.dist, 'BUILD_ID'))) throw new Error('Missing standalone build; run make web-build');
   if (stamp.fingerprint !== artifactFingerprint(config, env)) throw new Error('Stale or incompatible build; run make web-build for this environment');

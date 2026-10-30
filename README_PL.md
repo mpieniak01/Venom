@@ -199,14 +199,14 @@ make start
 
 Zestawy instalacyjne i profile uruchamiania to osobne pojęcia. Domyślny start to **Full/dev z Turbopackiem**; `requirements.txt` jest aliasem instalacji Light. Full wymaga odpowiednich zależności. Źródłem prawdy są [manifest i kwalifikacja zależności](docs/DEPENDENCY_PROFILES.md) oraz [Full/Light i środowiska](docs/PL/STACK_PROFILES.md).
 
-| Installation | Scope |
+| Zestaw instalacyjny | Zakres |
 | --- | --- |
-| light | Application base; api/web requirements files are compatibility aliases |
-| full | Configured application features; external engines stay separate |
-| ci / full-ci | Application set plus developer/CI tools |
-| build | Build tools, not another running application |
-| multi-runtime-cuda | Isolated engine component |
-| ONNX LLM / vLLM / Academy manifests | Deferred installation qualification; not recommended install recipes |
+| light | Baza aplikacji; pliki requirements api/web są aliasami zgodności |
+| full | Skonfigurowane funkcje aplikacji; zewnętrzne silniki pozostają osobno |
+| ci / full-ci | Zestaw aplikacji oraz narzędzia developerskie/CI |
+| build | Narzędzia budowania, nie osobna uruchamiana aplikacja |
+| multi-runtime-cuda | Izolowany komponent silnika |
+| Manifesty ONNX LLM / vLLM / Academy | Kwalifikacja instalacji odroczona; nie są zalecanymi recepturami |
 
 Zasady triage incydentów:
 1. Jeśli pakietu brakuje, bo nie zainstalowano właściwego profilu, to zachowanie oczekiwane.

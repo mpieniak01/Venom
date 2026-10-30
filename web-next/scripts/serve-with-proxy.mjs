@@ -25,7 +25,7 @@ const { requestHandler, upgradeHandler } = createTransportProxy({
 const metadata = (() => {
   let existing = {};
   try { existing = JSON.parse(readFileSync(path.join(process.cwd(), "public/meta.json"), "utf8")); } catch { /* Standalone metadata is optional. */ }
-  let commit = "unknown";
+  let commit = typeof existing.commit === "string" ? existing.commit : "unknown";
   try { commit = execFileSync("git", ["rev-parse", "--short", "HEAD"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim(); } catch { /* Images may omit Git. */ }
   return { ...existing, commit, environmentRole: process.env.ENVIRONMENT_ROLE || "dev", version: process.env.NEXT_PUBLIC_APP_VERSION || existing.version || "unknown" };
 })();

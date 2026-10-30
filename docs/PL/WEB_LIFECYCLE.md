@@ -12,7 +12,7 @@ Prod pozostaje nieużywany operacyjnie. Istnienie powyższych celów nie potwier
 
 `NEXT_DIST_DIR` wybiera `.next` albo nazwany katalog `.next-<środowisko>`. Next, kopiowanie standalone i start serwera korzystają z tej samej walidacji. Nie przyjmują ścieżek poza workspace.
 
-Po udanym buildzie powstaje `venom-build.json` ze skrótem zgodności: rewizja core, zmiany robocze core, źródła web, mirror modułów, publiczna konfiguracja i wersja Node. Stamp nie przechowuje wartości konfiguracji ani sekretów. Zmiana źródeł, rewizji, modułów lub konfiguracji wymaga ponownego `web-build`. Niepowodzenie budowania usuwa wcześniejszy stamp. Nie przebudowujemy artefaktu działającego UI.
+Po udanym buildzie powstaje `venom-build.json` ze skrótem zgodności: rewizja core, zmiany robocze core, źródła web, mirror modułów, publiczna konfiguracja i wersja Node. Stamp nie przechowuje wartości konfiguracji ani sekretów. Generowane next-env.d.ts i public/meta.json nie wchodzą do skrótu: Next przepisuje importy typów dla wybranego distDir, a metadata zawierają czas budowania. Konfiguracja TypeScript jawnie obejmuje katalogi typów wszystkich wspieranych środowisk; zmiany rzeczywistych źródeł i konfiguracji nadal unieważniają artefakt. Zmiana źródeł, rewizji, modułów lub konfiguracji wymaga ponownego `web-build`. Niepowodzenie budowania usuwa wcześniejszy stamp. Nie przebudowujemy artefaktu działającego UI.
 
 Ścieżki logów i PID są rozwiązywane względem repozytorium przed wejściem do katalogu web. Log jest dopisywany. Zajęty port albo niezweryfikowany PID powoduje błąd, bez zabijania właściciela. Przy pierwszym przejściu ze starego launchera potrzebne jest jawne zatrzymanie starego UI zgodnie z procedurą instancji.
 

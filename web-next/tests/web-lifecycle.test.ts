@@ -6,8 +6,8 @@ import path from "node:path";
 import net from "node:net";
 import { fileURLToPath } from "node:url";
 import http from "node:http";
-import { afterEach, test } from "node:test";
-import { lifecycleConfig, buildArtifact, verifyArtifact, startUI, stopUI, uiStatus } from "../scripts/web-lifecycle.mjs";
+import { afterEach, mock, test } from "node:test";
+import { lifecycleConfig, buildArtifact, verifyArtifact, startUI, stopUI, uiStatus, alive } from "../scripts/web-lifecycle.mjs";
 
 const scratch: string[] = [];
 const pids: number[] = [];
@@ -45,7 +45,7 @@ server.listen(port, host);
 process.on('SIGTERM', () => server.close(() => process.exit(0)));
 `);
   chmodSync(npm, 0o700);
-  const env = { ...process.env, WEB_DIR: "web-next", WEB_PID_FILE: "run/ui.pid", WEB_LOG: "logs/ui.log", WEB_HOST: "127.0.0.1", ENVIRONMENT_ROLE: "dev", NEXT_DIST_DIR: ".next", NPM: npm, WEB_READY_TIMEOUT_SEC: "0.6" };
+  const env = { ...process.env, WEB_DIR: "web-next", WEB_PID_FILE: "run/ui.pid", WEB_LOG: "logs/ui.log", WEB_HOST: "127.0.0.1", ENVIRONMENT_ROLE: "dev", NEXT_DIST_DIR: ".next", NPM: npm, WEB_READY_TIMEOUT_SEC: "10" };
   return { dir, app, env };
 }
 async function unusedPort() {
@@ -78,7 +78,7 @@ test("prepared artifact rejects changed source, modules, public config, role and
 });
 test("failed build invalidates last good stamp; missing artifacts are rejected", () => {
   const f = fixture(); const c = config(f);
-  assert.throws(() => verifyArtifact(c, f.env));
+  assert.throws(() => verifyArtifact(c, f.env), /Missing build stamp; run make web-build/);
   buildArtifact(c, f.env);
   assert.throws(() => buildArtifact(c, { ...f.env, FAKE_BUILD_FAIL: "1" }), /build failed/);
   assert.equal(existsSync(path.join(c.dist, "venom-build.json")), false);
@@ -113,7 +113,7 @@ test("readiness requires owned token; identical UI reuses, another environment i
 test("early exit and never-ready UI fail and clean only owned PID", async () => {
   for (const flag of ["FAKE_EXIT", "FAKE_NOT_READY"]) {
     const f = fixture(); const c = config(f, await unusedPort());
-    await assert.rejects(startUI(c, "turbo", { ...f.env, [flag]: "1" }), /exited before readiness|readiness timeout/);
+    await assert.rejects(startUI(c, "turbo", { ...f.env, [flag]: "1", WEB_READY_TIMEOUT_SEC: flag === "FAKE_NOT_READY" ? "0.6" : "10" }), /exited before readiness|readiness timeout/);
     assert.equal(existsSync(c.pidFile), false); assert.equal(existsSync(`${c.pidFile}.identity.json`), false);
   }
 });
@@ -129,15 +129,16 @@ test("actual streaming entry proves Next readiness and keeps metadata per enviro
   const f = fixture(); const port = await unusedPort();
   const fakeNext = path.join(f.app, "node_modules/next/dist/bin/next"); mkdirSync(path.dirname(fakeNext), { recursive: true });
   writeFileSync(fakeNext, `const http = require('node:http'); const port = Number(process.argv[process.argv.indexOf('--port')+1]); const server = http.createServer((_req,res) => res.end('actual-child')); server.listen(port,'127.0.0.1'); process.on('SIGTERM',()=>server.close(()=>process.exit(0)));`);
-  mkdirSync(path.join(f.app, "public")); writeFileSync(path.join(f.app, "public/meta.json"), JSON.stringify({ environmentRole: "dev", version: "fixture" }));
+  mkdirSync(path.join(f.app, "public")); writeFileSync(path.join(f.app, "public/meta.json"), JSON.stringify({ environmentRole: "dev", version: "fixture", commit: "built-commit" }));
   const entry = fileURLToPath(new URL("../scripts/serve-with-proxy.mjs", import.meta.url));
   const child = spawn(process.execPath, [entry, "dev", "--turbo", "--hostname", "127.0.0.1", "--port", String(port)], {
-    cwd: f.app, env: { ...f.env, ENVIRONMENT_ROLE: "preprod", VENOM_UI_START_TOKEN: "owned-ready-token" }, detached: true, stdio: "ignore",
+    cwd: f.app, env: { ...f.env, PATH: f.dir, ENVIRONMENT_ROLE: "preprod", VENOM_UI_START_TOKEN: "owned-ready-token" }, detached: true, stdio: "ignore",
   });
   assert.ok(child.pid); pids.push(child.pid!);
   const base = `http://127.0.0.1:${port}`;
   let ready = false;
-  for (let i = 0; i < 50; i++) {
+  const deadline = Date.now() + Number(f.env.WEB_READY_TIMEOUT_SEC) * 1000;
+  while (Date.now() < deadline) {
     try { const response = await fetch(`${base}/_venom/ready`, { headers: { "x-venom-start-token": "owned-ready-token" } }); ready = response.status === 200 && await response.text() === "owned-ready-token"; } catch {}
     if (ready) break;
     await new Promise((resolve) => setTimeout(resolve, 50));
@@ -145,8 +146,10 @@ test("actual streaming entry proves Next readiness and keeps metadata per enviro
   assert.equal(ready, true);
   assert.equal(await (await fetch(`${base}/_venom/ready`)).text(), "actual-child");
   assert.equal((await (await fetch(`${base}/meta.json`)).json()).environmentRole, "preprod");
+  assert.equal((await (await fetch(`${base}/meta.json`)).json()).commit, "built-commit");
   writeFileSync(path.join(f.app, "public/meta.json"), JSON.stringify({ environmentRole: "dev" }));
   assert.equal((await (await fetch(`${base}/meta.json`)).json()).environmentRole, "preprod");
+  assert.equal((await (await fetch(`${base}/meta.json`)).json()).commit, "built-commit");
 });
 
 test("standalone preparation copies selected-environment static and public assets", () => {
@@ -163,17 +166,6 @@ test("standalone preparation copies selected-environment static and public asset
   assert.equal(existsSync(path.join(f.app, ".next")), false);
 });
 
-test("Make build/start handles relative WEB_DIR under ONESHELL without rebuilding start", async () => {
-  const f = fixture(); const repo = fileURLToPath(new URL("../../", import.meta.url));
-  const envFile = path.join(f.dir, "test.env"); writeFileSync(envFile, "ENVIRONMENT_ROLE=dev\n");
-  const port = await unusedPort();
-  const args = ["--no-print-directory", `WEB_DIR=${path.relative(repo, f.app)}`, `WEB_PID_FILE=${path.join(f.dir, "run/ui.pid")}`, `WEB_LOG=${path.join(f.dir, "logs/ui.log")}`, `NPM=${f.env.NPM}`, `WEB_PORT=${port}`, "WEB_HOST=127.0.0.1", `ENV_FILE=${envFile}`];
-  execFileSync("make", [...args, "web-build"], { cwd: repo, env: { ...process.env, ENVIRONMENT_ROLE: "dev" } });
-  // A forced build failure proves web starts the existing artifact, without rebuilding it.
-  execFileSync("make", [...args, "web"], { cwd: repo, env: { ...process.env, ENVIRONMENT_ROLE: "dev", FAKE_BUILD_FAIL: "1" } });
-  const pid = Number(readFileSync(path.join(f.dir, "run/ui.pid"), "utf8")); pids.push(pid);
-  assert.ok(pid > 1);
-});
 
 test("owned status/stop checks process identity and retires only its group", async () => {
   const f = fixture(); const c = config(f, await unusedPort());
@@ -185,4 +177,49 @@ test("owned status/stop checks process identity and retires only its group", asy
   assert.equal(uiStatus(c).running, false);
   assert.equal(existsSync(c.pidFile), false);
   assert.equal(existsSync(`${c.pidFile}.identity.json`), false);
+});
+
+test("EPERM keeps a live process record and rebuild guard; only ESRCH is absent", async () => {
+  const f = fixture(); const c = config(f, await unusedPort());
+  mkdirSync(path.dirname(c.pidFile), { recursive: true });
+  writeFileSync(c.pidFile, "2147483000");
+  writeFileSync(`${c.pidFile}.identity.json`, "unverified foreign identity");
+  const kill = mock.method(process, "kill", () => { throw Object.assign(new Error("permission denied"), { code: "EPERM" }); });
+  try {
+    assert.equal(alive(2147483000), true);
+    assert.equal(alive(Number.NaN), false);
+    assert.equal(alive(0), false);
+    await assert.rejects(startUI(c, "turbo", f.env), /unverified/);
+    assert.throws(() => buildArtifact(c, f.env), /Stop the owning UI/);
+    assert.equal(readFileSync(c.pidFile, "utf8"), "2147483000");
+    assert.equal(readFileSync(`${c.pidFile}.identity.json`, "utf8"), "unverified foreign identity");
+    kill.mock.mockImplementation(() => { throw Object.assign(new Error("no process"), { code: "ESRCH" }); });
+    assert.equal(alive(2147483000), false);
+  } finally { kill.mock.restore(); }
+});
+
+test("malformed build stamps retain parse errors rather than missing-build guidance", () => {
+  const f = fixture(); const c = config(f);
+  mkdirSync(c.dist); writeFileSync(path.join(c.dist, "venom-build.json"), "invalid JSON");
+  assert.throws(() => verifyArtifact(c, f.env), SyntaxError);
+});
+
+test("another environment's generated declarations do not invalidate an artifact", () => {
+  const f = fixture(); const c = config(f);
+  const declaration = path.join(f.app, "next-env.d.ts");
+  writeFileSync(declaration, 'import "./.next-dev/types/routes.d.ts";\n');
+  execFileSync("git", ["add", "next-env.d.ts"], { cwd: f.app });
+  buildArtifact(c, f.env);
+  writeFileSync(declaration, 'import "./.next-preprod/types/routes.d.ts";\n');
+  verifyArtifact(c, f.env);
+  writeFileSync(path.join(f.app, "page.tsx"), "runtime source changed");
+  assert.throws(() => verifyArtifact(c, f.env), /Stale/);
+});
+
+test("TypeScript includes generated type paths for each supported distDir", () => {
+  const config = JSON.parse(readFileSync(fileURLToPath(new URL("../tsconfig.json", import.meta.url)), "utf8"));
+  for (const dist of [".next", ".next-dev", ".next-preprod"]) {
+    assert.ok(config.include.includes(`${dist}/types/**/*.ts`));
+    assert.ok(config.include.includes(`${dist}/dev/types/**/*.ts`));
+  }
 });

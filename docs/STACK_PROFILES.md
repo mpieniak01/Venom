@@ -25,7 +25,7 @@ runtime admission; PID control verifies identity and affects only owned processe
 The API proxy must target its own environment. Unverified old processes require
 an explicit guarded migration, not automatic adoption.
 
-Repository defaults are dev8000/3000 and preprod8100/3100. An installed host
+Repository defaults are dev 8000/3000 and preprod 8100/3100. An installed host
 launcher retains instance-specific tools/ports; use it rather than replacing
 its configuration with repository defaults.
 

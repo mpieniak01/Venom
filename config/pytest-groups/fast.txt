@@ -66,6 +66,7 @@ tests/test_audio_engine.py
 tests/test_audit_stream_api.py
 tests/test_audit_stream_service.py
 tests/test_autonomy_enforcement.py
+tests/test_background_priority.py
 tests/test_base_skill.py
 tests/test_benchmark_routes_guard.py
 tests/test_benchmark_service.py

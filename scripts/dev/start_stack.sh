@@ -203,7 +203,9 @@ cleanup_partial_start() {
 trap cleanup_partial_start EXIT INT TERM
 
 active_server=""
-active_server="$(env_contract_get ACTIVE_LLM_SERVER "" "$ENV_FILE")"
+# Persisted OpenRouter/Vast selection must take precedence over dotenv defaults,
+# exactly as it does for API requests. Resolution is offline, never a model call.
+active_server="$(run_with_env_file "$PYTHON_BIN" -c 'from venom_core.utils.llm_runtime import get_startup_local_server; print(get_startup_local_server())')"
 active_server="$(printf '%s' "$active_server" | tr -d '\r' | tr '[:upper:]' '[:lower:]')"
 [[ -z "$active_server" ]] && active_server="ollama"
 
@@ -216,7 +218,7 @@ ollama_health_origin="$(env_contract_origin OLLAMA_HEALTH_URL "$ENV_FILE" "${OLL
 
 echo "🧭 Effective config:"
 echo "  - ENV_FILE: ${ENV_FILE}"
-echo "  - ACTIVE_LLM_SERVER: ${active_server} (${active_server_origin})"
+echo "  - Effective local runtime to start: ${active_server} (persisted selection / settings)"
 echo "  - VLLM_ENDPOINT: ${VLLM_ENDPOINT} (${vllm_endpoint_origin})"
 echo "  - OLLAMA_HEALTH_URL: ${OLLAMA_HEALTH_URL} (${ollama_health_origin})"
 echo "  - START_MODE: ${START_MODE}"

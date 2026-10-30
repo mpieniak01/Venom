@@ -243,6 +243,7 @@ async def initialize_documenter_and_watcher(
     logger: Any,
     documenter_agent_cls: Any,
     file_watcher_cls: Any,
+    orchestrator: Any = None,
 ) -> Tuple[Any, Any]:
     """Initialize DocumenterAgent and FileWatcher."""
     documenter_agent = None
@@ -254,6 +255,8 @@ async def initialize_documenter_and_watcher(
             "git_skill": git_skill,
             "event_broadcaster": event_broadcaster,
         }
+        if _supports_keyword_argument(documenter_agent_cls, "orchestrator"):
+            documenter_kwargs["orchestrator"] = orchestrator
         if skill_manager is not None and _supports_keyword_argument(
             documenter_agent_cls, "skill_manager"
         ):

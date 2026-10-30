@@ -792,3 +792,67 @@ def test_onnx_active_runtime_and_health_use_same_url_policy(
     )
     assert runtime.endpoint == f"{scheme}://127.0.0.1:8068/v1"
     assert llm_runtime._build_health_url(runtime) == f"{scheme}://127.0.0.1:8068/health"
+
+
+@pytest.mark.parametrize(
+    ("service_type", "provider", "expected"),
+    [
+        ("local", "ollama", "ollama"),
+        ("local", "vllm", "vllm"),
+        ("local", "gemma4_audio", "multi_runtime"),
+        ("local", "multi_runtime", "multi_runtime"),
+        ("onnx", "onnx", "onnx"),
+        ("openrouter", "openrouter", "none"),
+        ("openai", "openai", "none"),
+        ("local", "vast_ollama", "vast_ollama"),
+    ],
+)
+def test_startup_server_uses_effective_selection(
+    monkeypatch, service_type, provider, expected
+):
+    from types import SimpleNamespace
+
+    settings = DummySettings()
+    runtime = SimpleNamespace(service_type=service_type, provider=provider)
+    selected = []
+
+    def resolve(value):
+        selected.append(value)
+        return runtime
+
+    monkeypatch.setattr(llm_runtime, "get_active_llm_runtime", resolve)
+    assert llm_runtime.get_startup_local_server(settings) == expected
+    assert selected == [settings]
+
+
+def test_llm_off_startup_does_not_resolve_or_probe(monkeypatch):
+    settings = DummySettings()
+    settings.VENOM_RUNTIME_PROFILE = "llm_off"
+
+    def unexpected(_settings):
+        raise AssertionError("llm_off must not resolve a model")
+
+    monkeypatch.setattr(llm_runtime, "get_active_llm_runtime", unexpected)
+    assert llm_runtime.get_startup_local_server(settings) == "none"
+
+
+@pytest.mark.asyncio
+async def test_remote_ollama_never_starts_host_or_runs_startup_generation(monkeypatch):
+    runtime = llm_runtime.LLMRuntimeInfo(
+        provider="ollama",
+        model_name="remote-model",
+        endpoint="https://remote.invalid/v1",
+        service_type="local",
+        mode="LOCAL",
+        host_local=False,
+    )
+    monkeypatch.setattr(
+        llm_runtime, "get_active_llm_runtime", lambda _settings=None: runtime
+    )
+    assert llm_runtime.get_startup_local_server(DummySettings()) == "none"
+
+    def unexpected_http(*_args, **_kwargs):
+        raise AssertionError("startup must never call a remote provider")
+
+    monkeypatch.setattr(llm_runtime.httpx, "AsyncClient", unexpected_http)
+    assert not await llm_runtime.warmup_local_runtime(runtime, "fixture", 1.0, 1)

@@ -9,6 +9,7 @@ from venom_core.config import SETTINGS
 from venom_core.execution.skill_manager import SkillManager
 from venom_core.execution.skills.file_skill import FileSkill
 from venom_core.execution.skills.git_skill import GitSkill
+from venom_core.services.background_priority import wait_for_interactive_idle
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -29,6 +30,7 @@ class DocumenterAgent:
         file_skill: Optional[FileSkill] = None,
         event_broadcaster: Optional[Any] = None,
         skill_manager: Optional[SkillManager] = None,
+        orchestrator: Any = None,
     ):
         """
         Inicjalizacja DocumenterAgent.
@@ -47,6 +49,8 @@ class DocumenterAgent:
         )
         self.event_broadcaster = event_broadcaster
         self.skill_manager = skill_manager
+        self.orchestrator = orchestrator
+        self._stopping = False
 
         # Tracking: ostatnie zmiany aby uniknąć pętli
         self._last_processed_files: set[str] = set()
@@ -63,6 +67,8 @@ class DocumenterAgent:
         Args:
             file_path: Ścieżka do zmienionego pliku
         """
+        if self._stopping:
+            return
         # Sprawdź czy plik był już przetwarzany (unikanie pętli)
         async with self._processing_lock:
             if file_path in self._last_processed_files:
@@ -75,9 +81,22 @@ class DocumenterAgent:
             await self._process_file_change(file_path)
         finally:
             # Odłożone czyszczenie tracking (unikanie resource leak przy cancel)
-            cleanup_task = asyncio.create_task(self._cleanup_tracking(file_path))
-            self._background_tasks.add(cleanup_task)
-            cleanup_task.add_done_callback(self._background_tasks.discard)
+            if self._stopping:
+                self._last_processed_files.discard(file_path)
+            else:
+                cleanup_task = asyncio.create_task(self._cleanup_tracking(file_path))
+                self._background_tasks.add(cleanup_task)
+                cleanup_task.add_done_callback(self._background_tasks.discard)
+
+    async def stop(self) -> None:
+        """Retire delayed tracking tasks on host shutdown."""
+        self._stopping = True
+        tasks = list(self._background_tasks)
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        self._background_tasks.clear()
+        self._last_processed_files.clear()
 
     async def _cleanup_tracking(self, file_path: str) -> None:
         """
@@ -113,7 +132,8 @@ class DocumenterAgent:
             logger.debug(f"Plik {file_path} nie jest plikiem Python, pomijam")
             return
 
-        if self._is_bot_commit_author():
+        await wait_for_interactive_idle(self.orchestrator)
+        if await asyncio.to_thread(self._is_bot_commit_author):
             logger.debug("Zmiana dokonana przez venom-bot, pomijam")
             return
 

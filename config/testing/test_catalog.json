@@ -1160,6 +1160,20 @@
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
+      "path": "tests/test_background_priority.py",
+      "domain": "runtime",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Interactive priority, cancellable maintenance and shutdown regressions."
+    },
+    {
       "path": "tests/test_base_skill.py",
       "domain": "skills",
       "test_type": "unit",
@@ -4692,6 +4706,20 @@
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
+      "path": "tests/test_openrouter_billing.py",
+      "domain": "providers",
+      "test_type": "service_contract",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "OpenRouter account billing cache, daily model aggregates and provider-response validation with provider doubles."
+    },
+    {
       "path": "tests/test_openrouter_model_catalog.py",
       "domain": "providers",
       "test_type": "service_contract",
@@ -6820,6 +6848,20 @@
       "rationale": "Default release-lane regression coverage."
     },
     {
+      "path": "tests/test_vast_account_billing.py",
+      "domain": "providers",
+      "test_type": "service_contract",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "VAST account credit, retained daily charges and historical instance billing with provider doubles."
+    },
+    {
       "path": "tests/test_vast_chat_cli.py",
       "domain": "misc",
       "test_type": "service_contract",
@@ -7214,34 +7256,6 @@
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
-    },
-    {
-      "path": "tests/test_vast_account_billing.py",
-      "domain": "providers",
-      "test_type": "service_contract",
-      "intent": "regression",
-      "primary_lane": "new-code",
-      "allowed_lanes": [
-        "new-code",
-        "ci-lite",
-        "release"
-      ],
-      "legacy_targeted": false,
-      "rationale": "VAST account credit, retained daily charges and historical instance billing with provider doubles."
-    },
-    {
-      "path": "tests/test_openrouter_billing.py",
-      "domain": "providers",
-      "test_type": "service_contract",
-      "intent": "regression",
-      "primary_lane": "new-code",
-      "allowed_lanes": [
-        "new-code",
-        "ci-lite",
-        "release"
-      ],
-      "legacy_targeted": false,
-      "rationale": "OpenRouter account billing cache, daily model aggregates and provider-response validation with provider doubles."
     }
   ]
 }

@@ -110,6 +110,7 @@ def runtime_override():
         mode="LOCAL",
         config_hash=hashlib.sha256(config.encode()).hexdigest()[:12],
         runtime_id=runtime_id,
+        host_local=False,
     )
 
 

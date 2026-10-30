@@ -79,7 +79,7 @@ describe("Sheet invoking control focus", () => {
     fireEvent.click(opener);
     await screen.findByRole("dialog");
     assert.equal((screen.getByRole("textbox", { name: "draft" }) as HTMLInputElement).value, "retained draft");
-    fireEvent.click(screen.getByRole("button", { name: "Close", exact: true }));
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
     await waitFor(() => assert.equal(screen.queryByRole("dialog"), null));
     await waitFor(() => assert.equal(document.activeElement, opener));
   });
@@ -90,7 +90,7 @@ describe("Sheet invoking control focus", () => {
     opener.focus();
     fireEvent.click(opener);
     await screen.findByRole("dialog");
-    fireEvent.click(screen.getByRole("button", { name: "Close", exact: true }));
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
     await waitFor(() => assert.equal(screen.queryByRole("dialog"), null));
     await waitFor(() => assert.equal(document.activeElement, screen.getByRole("button", { name: "custom return" })));
   });
@@ -103,7 +103,7 @@ describe("Sheet invoking control focus", () => {
     opener.focus();
     fireEvent.click(opener);
     await screen.findByRole("dialog");
-    fireEvent.click(screen.getByRole("button", { name: "Close", exact: true }));
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
     await waitFor(() => assert.equal(screen.queryByRole("dialog"), null));
     await waitFor(() => assert.equal(document.activeElement, opener));
   });

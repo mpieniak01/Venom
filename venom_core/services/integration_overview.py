@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any
 
 from venom_core.api.schemas.connection_status import ConnectionStatus
@@ -13,6 +12,7 @@ from venom_core.services.integration_catalog import core_catalog
 from venom_core.services.integration_hooks import apply_module_observations
 from venom_core.services.module_observations import module_inventory
 from venom_core.services.vast_observation import apply_vast_observation
+from venom_core.utils.runtime_state import runtime_state_root
 
 NODES_API = "Nodes API"
 
@@ -99,7 +99,7 @@ def _totals(item: IntegrationEntry):
 
 def _local_vast_records(item: IntegrationEntry):
     """Reuse the Vast journal contract without creating directories or calling API."""
-    root = Path(".venom_runtime/vast")
+    root = runtime_state_root() / "vast"
     if not root.is_dir():
         return
     from venom_core.services.vast_environments.store import Journal

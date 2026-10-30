@@ -15,11 +15,11 @@ from typing import Any
 import httpx
 from fastapi import HTTPException
 
+from venom_core.utils.runtime_state import runtime_state_root
+
 PROVIDERS = ("openai", "google", "openrouter", "vast_ollama")
 CATALOG_PROVIDERS = ("openrouter", "vast_ollama")
-_STATE = (
-    Path(__file__).resolve().parents[2] / ".venom_runtime/remote-providers/control.json"
-)
+_STATE = runtime_state_root() / "remote-providers/control.json"
 _LOCK = threading.RLock()
 _CHECKS: dict[str, dict[str, Any]] = {}
 

@@ -385,3 +385,29 @@ with startup_lock(root):
         child.wait(timeout=5)
     with stack.startup_lock(root):
         pass
+
+
+def test_api_session_leader_keeps_recorded_owner_until_server_stops(root):
+    import subprocess
+    import sys
+    import time
+
+    config = stack.resolve(root, {})
+    # A session leader forces setsid to fork; --wait must retain the owner PID.
+    child = subprocess.Popen(
+        ["setsid", "--wait", sys.executable, "-c", "import time; time.sleep(60)"],
+        start_new_session=True,
+    )
+    try:
+        Path(config["PID_FILE"]).write_text(str(child.pid))
+        stack.record_pid(root, config, "PID_FILE")
+        time.sleep(0.2)
+        assert child.poll() is None
+        assert stack.owned_pid(root, config, "PID_FILE") == child.pid
+        assert stack.descendants(child.pid)
+        stack.stop(root, config, ("PID_FILE",))
+        child.wait(timeout=5)
+    finally:
+        if child.poll() is None:
+            child.terminate()
+            child.wait(timeout=5)

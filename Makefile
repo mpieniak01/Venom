@@ -220,7 +220,7 @@ _api:
 	$(call ensure_process_not_running,Venom backend,$(PID_FILE))
 	@echo "▶️  Uruchamiam Venom API (produkcyjny, bez --reload) na $(HOST):$(PORT)"
 	: > $(BACKEND_LOG)
-	$(ENV_RUN) setsid $(UVICORN) $(API_APP) --host $(HOST) --port $(PORT) $(UVICORN_PROD_FLAGS) >> $(BACKEND_LOG) 2>&1 & \
+	$(ENV_RUN) setsid --wait $(UVICORN) $(API_APP) --host $(HOST) --port $(PORT) $(UVICORN_PROD_FLAGS) >> $(BACKEND_LOG) 2>&1 & \
 	echo $$! > $(PID_FILE)
 	@echo "✅ Venom API wystartował z PID $$(cat $(PID_FILE))"
 	@echo "📡 Backend: http://$(HOST):$(PORT)"
@@ -238,7 +238,7 @@ _api-dev:
 	$(call ensure_process_not_running,Venom backend,$(PID_FILE))
 	@echo "▶️  Uruchamiam Venom API (developerski, z --reload) na $(HOST):$(PORT)"
 	: > $(BACKEND_LOG)
-	$(ENV_RUN) setsid $(UVICORN) $(API_APP) --host $(HOST) --port $(PORT) $(UVICORN_DEV_FLAGS) >> $(BACKEND_LOG) 2>&1 & \
+	$(ENV_RUN) setsid --wait $(UVICORN) $(API_APP) --host $(HOST) --port $(PORT) $(UVICORN_DEV_FLAGS) >> $(BACKEND_LOG) 2>&1 & \
 	echo $$! > $(PID_FILE)
 	@echo "✅ Venom API wystartował z PID $$(cat $(PID_FILE))"
 	@echo "📡 Backend: http://$(HOST):$(PORT)"

@@ -410,7 +410,7 @@ if [[ -z "$backend_reused" ]]; then
   echo "▶️  Uruchamiam Venom backend (uvicorn na ${HOST}:${PORT})"
   : > "$BACKEND_LOG"
   api_python="$("$PYTHON_BIN" "$ROOT_DIR/scripts/llm/with_gpu_libraries.py" --print-command-python "$ROOT_DIR" "$UVICORN")"
-  run_with_env_file setsid "$api_python" "$ROOT_DIR/scripts/llm/with_gpu_libraries.py" "$UVICORN" "$API_APP" $uvicorn_flags >> "$BACKEND_LOG" 2>&1 &
+  run_with_env_file setsid --wait "$api_python" "$ROOT_DIR/scripts/llm/with_gpu_libraries.py" "$UVICORN" "$API_APP" $uvicorn_flags >> "$BACKEND_LOG" 2>&1 &
   echo $! > "$PID_FILE"
   "$PYTHON_BIN" "$ROOT_DIR/scripts/dev/stack_profile.py" record-api
   BACKEND_STARTED=1

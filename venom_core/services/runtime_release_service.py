@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+from contextlib import nullcontext
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -17,10 +18,7 @@ from venom_core.services.model_resources import (
     release_registered_models,
     wait_for_model_work,
 )
-from venom_core.services.runtime_admission import (
-    admitted_operation,
-    get_runtime_admission,
-)
+from venom_core.services.runtime_admission import get_runtime_admission
 from venom_core.services.runtime_switch_gate import (
     begin_runtime_switch,
     finish_runtime_switch,
@@ -40,6 +38,7 @@ _LLM_RECOVERY_KINDS = frozenset(
         "simple_chat",
         "runtime_switch",
         "runtime_command",
+        "llm_cleanup",
     }
 )
 
@@ -126,13 +125,27 @@ def _recover_uncertainty(admission, verified: bool, include_registered: bool) ->
     )
 
 
-@admitted_operation("cleanup", mutation=True, cleanup=True)
 async def _release_all_models(
     controller: Any,
     failures: list[dict[str, Any]],
     runtime_ids: set[str] | None = None,
     *,
     include_registered: bool = True,
+) -> dict[str, Any]:
+    """Keep failed LLM-only cleanup distinct from unverified global releases."""
+    kind = "cleanup" if include_registered else "llm_cleanup"
+    with get_runtime_admission().operation(kind=kind, mutation=True, _cleanup=True):
+        return await _release_models(
+            controller, failures, runtime_ids, include_registered=include_registered
+        )
+
+
+async def _release_models(
+    controller: Any,
+    failures: list[dict[str, Any]],
+    runtime_ids: set[str] | None,
+    *,
+    include_registered: bool,
 ) -> dict[str, Any]:
     """Release only under a host barrier; retain evidence on every partial failure."""
     results = []
@@ -247,8 +260,9 @@ async def release_all_runtime_models(
     runtime_ids: set[str] | None = None,
     include_registered: bool = True,
 ) -> dict[str, Any]:
-    """Pause consumers and drain work before verifying global RAM/VRAM release."""
-    with release_barrier():
+    """Serialize LLM cleanup; pause in-process owners only for global release."""
+    barrier = release_barrier() if include_registered else nullcontext()
+    with barrier:
         gate = begin_runtime_switch(
             source="models-release",
             from_runtime="local",

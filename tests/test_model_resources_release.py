@@ -703,3 +703,135 @@ async def test_llm_recovery_requires_an_observed_daemon_even_for_a_matching_kind
             include_registered=False,
         )
     assert world.snapshot()["status"] == "quarantined"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("include_registered", [False, True])
+@pytest.mark.parametrize("outcome", ["success", "failure", "cancel"])
+async def test_recovery_scope_keeps_only_llm_work_blocked_until_settled(
+    world, monkeypatch, include_registered, outcome
+):
+    from unittest.mock import AsyncMock
+
+    from venom_core.services.runtime_switch_gate import (
+        get_runtime_switch_gate_snapshot,
+        runtime_request_guard,
+    )
+
+    entered, finish = asyncio.Event(), asyncio.Event()
+
+    @resources.model_operation
+    def vision_frame():
+        return "frame"
+
+    @resources.model_operation
+    async def voice_frame():
+        return "audio"
+
+    async def unload(_endpoint):
+        entered.set()
+        await finish.wait()
+        if outcome == "failure":
+            raise ValueError("runtime_release_models_remaining")
+        return []
+
+    monkeypatch.setattr(service, "_listening", AsyncMock(return_value=True))
+    monkeypatch.setattr(service, "_unload_ollama", unload)
+    controller = SimpleNamespace(
+        list_servers=lambda: [{"name": "ollama", "endpoint": "http://127.0.0.1:11434"}]
+    )
+    recovery = asyncio.create_task(
+        service.release_all_runtime_models(
+            controller, runtime_ids={"ollama"}, include_registered=include_registered
+        )
+    )
+    try:
+        await asyncio.wait_for(entered.wait(), 3)
+        if include_registered:
+            with pytest.raises(HTTPException) as blocked:
+                vision_frame()
+            assert blocked.value.detail["code"] == "model_resources_releasing"
+            with pytest.raises(HTTPException):
+                await voice_frame()
+        else:
+            assert vision_frame() == "frame"
+            assert await voice_frame() == "audio"
+
+        with pytest.raises(RuntimeAdmissionError):
+            with world.operation(kind="maf_generation"):
+                pytest.fail("generation admitted during cleanup")
+        with pytest.raises(HTTPException):
+            async with runtime_request_guard(request_kind="simple_chat"):
+                pytest.fail("chat admitted during cleanup")
+
+        # The runtime switch gate also serializes scoped and global cleanups.
+        with pytest.raises(HTTPException):
+            await service.release_all_runtime_models(
+                controller,
+                runtime_ids={"ollama"},
+                include_registered=not include_registered,
+            )
+        if outcome == "cancel":
+            recovery.cancel()
+            await asyncio.sleep(0)
+            assert not recovery.done()
+            if not include_registered:
+                assert vision_frame() == "frame"
+                assert await voice_frame() == "audio"
+        finish.set()
+        if outcome == "cancel":
+            with pytest.raises(asyncio.CancelledError):
+                await recovery
+        elif outcome == "failure":
+            with pytest.raises(HTTPException) as failed:
+                await recovery
+            assert failed.value.detail["code"] == "runtime_release_failed"
+        else:
+            assert (await recovery)["released"] is True
+        assert vision_frame() == "frame"
+        assert await voice_frame() == "audio"
+        assert not get_runtime_switch_gate_snapshot().in_progress
+    finally:
+        finish.set()
+        await asyncio.gather(recovery, return_exceptions=True)
+
+
+@pytest.mark.asyncio
+async def test_llm_recovery_can_retry_a_failed_scoped_cleanup(world, monkeypatch):
+    from unittest.mock import AsyncMock
+
+    monkeypatch.setattr(service, "_listening", AsyncMock(return_value=True))
+    unload = AsyncMock(side_effect=[ValueError("runtime_release_models_remaining"), []])
+    monkeypatch.setattr(service, "_unload_ollama", unload)
+    controller = SimpleNamespace(
+        list_servers=lambda: [{"name": "ollama", "endpoint": "http://127.0.0.1:11434"}]
+    )
+    with pytest.raises(HTTPException):
+        await service.release_all_runtime_models(
+            controller, runtime_ids={"ollama"}, include_registered=False
+        )
+    assert world.snapshot()["status"] == "quarantined"
+    result = await service.release_all_runtime_models(
+        controller, runtime_ids={"ollama"}, include_registered=False
+    )
+    assert result["released"] is True
+    assert world.snapshot()["status"] == "available"
+
+
+@pytest.mark.asyncio
+async def test_llm_recovery_never_clears_a_failed_global_cleanup(world, monkeypatch):
+    from unittest.mock import AsyncMock
+
+    with pytest.raises(RuntimeError):
+        with world.operation(kind="cleanup", mutation=True, _cleanup=True):
+            raise RuntimeError("global release did not verify vision")
+    monkeypatch.setattr(service, "_listening", AsyncMock(return_value=True))
+    monkeypatch.setattr(service, "_unload_ollama", AsyncMock(return_value=[]))
+    controller = SimpleNamespace(
+        list_servers=lambda: [{"name": "ollama", "endpoint": "http://127.0.0.1:11434"}]
+    )
+    with pytest.raises(HTTPException):
+        await service.release_all_runtime_models(
+            controller, runtime_ids={"ollama"}, include_registered=False
+        )
+    assert world.snapshot()["status"] == "quarantined"

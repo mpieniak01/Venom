@@ -32,6 +32,7 @@ RUNTIME_ADMISSION_API_VERSION = 1
 # Only these HTTP rejections establish that generation never started.
 REJECTED_BEFORE_WORK_HTTP_STATUSES = frozenset({400, 401, 403, 404, 405, 413, 415, 422})
 _MAX_OPERATIONS = 128
+_CLEANUP_KINDS = frozenset({"cleanup", "llm_cleanup"})
 _SELECT_LEASE = "SELECT * FROM lease"
 _CURRENT_OPERATION: ContextVar[str | None] = ContextVar(
     "runtime_operation", default=None
@@ -414,20 +415,20 @@ class RuntimeAdmission:
             cleanup
             and token is None
             and ancestor is not None
-            and ancestor["kind"] != "cleanup"
+            and ancestor["kind"] not in _CLEANUP_KINDS
         ):
             raise RuntimeAdmissionError()
         own_cleanup = (
             ancestor["token"]
-            if ancestor is not None and ancestor["kind"] == "cleanup"
+            if ancestor is not None and ancestor["kind"] in _CLEANUP_KINDS
             else ""
         )
         if db.execute(
-            "SELECT 1 FROM operation WHERE kind='cleanup' AND token<>? AND uncertain=0",
+            "SELECT 1 FROM operation WHERE kind IN ('cleanup','llm_cleanup') AND token<>? AND uncertain=0",
             (own_cleanup,),
         ).fetchone():
             raise RuntimeAdmissionError()
-        if ancestor is not None and ancestor["kind"] == "cleanup" and not cleanup:
+        if ancestor is not None and ancestor["kind"] in _CLEANUP_KINDS and not cleanup:
             raise RuntimeAdmissionError()  # Cleanup cannot start new generation.
 
     def _enter(
@@ -476,7 +477,7 @@ class RuntimeAdmission:
             if (
                 nested
                 and ancestor is not None
-                and (kind != "cleanup" or ancestor["kind"] == "cleanup")
+                and (kind not in _CLEANUP_KINDS or ancestor["kind"] in _CLEANUP_KINDS)
             ):
                 return None
             if (
@@ -641,7 +642,7 @@ class RuntimeAdmission:
             cleanup_token = (
                 ancestor["token"]
                 if ancestor is not None
-                and ancestor["kind"] == "cleanup"
+                and ancestor["kind"] in _CLEANUP_KINDS
                 and ancestor["lease_token"] is None
                 else ""
             )

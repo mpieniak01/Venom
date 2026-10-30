@@ -57,7 +57,9 @@ def _billing_summary(record: EnvironmentRecord) -> dict[str, Any]:
             else None
         )
         if billed is not None:
-            return {"billing_status": "reported", "billed_usd": str(billed)}
+            unknown = reported.get("unknown_amounts", 0)
+            status = "reported" if unknown == 0 else "partial"
+            return {"billing_status": status, "billed_usd": str(billed)}
         if costs.get("status") == "unavailable":
             return {"billing_status": "unavailable", "billed_usd": None}
     status = "unverified"

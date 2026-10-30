@@ -137,10 +137,6 @@ def _management_credential() -> str:
         return ""
 
 
-def _iso(current: datetime) -> str:
-    return current.astimezone(timezone.utc).date().isoformat()
-
-
 def _text(value: Decimal | None) -> str | None:
     return str(value) if value is not None else None
 

@@ -719,3 +719,15 @@ def test_api_billing_sync_is_cached_offline_and_links_history(api, f):
     assert api.post(root + "/billing/sync", json={}).status_code == 503
     assert api.get(root).json()["billing"]["total_usd"] == "0.31"
     f.svc.client.create.assert_not_called()
+
+
+def test_legacy_billing_marks_incomplete_provider_amount_as_partial(f):
+    record = f.svc.journal.record(f.p.plan_id)
+    record.reports["costs"] = {
+        "currency": "USD",
+        "status": "provisional",
+        "provider_reported": {"usd": "0.25", "unknown_amounts": 1},
+    }
+    f.svc.journal.save_record(record)
+    assert f.m.row(f.p.plan_id)["billing_status"] == "partial"
+    assert f.m.row(f.p.plan_id)["billed_usd"] == "0.25"

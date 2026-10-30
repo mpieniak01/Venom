@@ -133,7 +133,7 @@ define handle_pytest_no_tests
 endef
 
 define run_web_lifecycle
-	@WEB_DIR="$(abspath $(WEB_DIR))" WEB_PID_FILE="$(abspath $(WEB_PID_FILE))" WEB_LOG="$(abspath $(WEB_LOG))" WEB_HOST="$(WEB_HOST)" WEB_PORT="$(WEB_PORT)" NPM="$(NPM)" API_PROXY_TARGET="$(WEB_API_PROXY_TARGET)" NODE_PATH="$(WEB_NODE_PATH)" NEXT_PUBLIC_APP_VERSION="$(WEB_APP_VERSION)" NEXT_PUBLIC_ENVIRONMENT_ROLE="${ENVIRONMENT_ROLE:-dev}" $(ENV_RUN_ABS) node "$(abspath web-next/scripts/web-lifecycle.mjs)" $(1)
+	@ENVIRONMENT="$(ENVIRONMENT)" PROFILE="$(PROFILE)" ENV_FILE="$(ENV_FILE)" WEB_DIR="$(WEB_DIR)" WEB_PORT="$(WEB_PORT)" PORT="$(PORT)" WEB_HOST="$(WEB_HOST)" NPM="$(NPM)" $(if $(filter command line environment environment override,$(origin WEB_PID_FILE)),WEB_PID_FILE="$(WEB_PID_FILE)") $(if $(filter command line environment environment override,$(origin WEB_LOG)),WEB_LOG="$(WEB_LOG)") $(PYTHON_BIN) scripts/dev/stack_profile.py component $(1)
 endef
 
 # Public contract: make start PROFILE=full|light ENVIRONMENT=dev|preprod
@@ -261,21 +261,22 @@ api-stop:
 
 # Frontend: build explicitly, then start only a compatible prepared artifact.
 web-build:
-	$(call run_web_lifecycle,build)
+	$(call run_web_lifecycle,web-build)
 
 web:
-	$(call run_web_lifecycle,start)
+	$(call run_web_lifecycle,web)
 
 # Diagnostic Webpack shares the lifecycle; the daily stack uses Turbo.
 web-dev:
-	$(call run_web_lifecycle,dev webpack)
+	$(call run_web_lifecycle,web-dev)
 
 web-dev-turbo:
-	$(call run_web_lifecycle,dev turbo)
+	$(call run_web_lifecycle,web-dev-turbo)
 
 web-dev-turbo-debug:
-	$(call run_web_lifecycle,dev turbo-debug)
+	$(call run_web_lifecycle,web-dev-turbo-debug)
 
+web-preprod: ENVIRONMENT=preprod
 web-preprod: ENV_FILE=.env.preprod
 web-preprod: ENV_EXAMPLE_FILE=.env.preprod.example
 web-preprod: export ENVIRONMENT_ROLE=preprod
@@ -287,26 +288,4 @@ web-preprod: export ALLOW_DATA_MUTATION=0
 web-preprod: web
 # Zatrzymaj tylko frontend
 web-stop:
-	@trap '' TERM INT
-	@if [ -f $(WEB_PID_FILE) ]; then \
-		WPID=$$(cat $(WEB_PID_FILE)); \
-		if kill -0 $$WPID 2>/dev/null; then \
-			echo "⏹️  Zatrzymuję UI (PID $$WPID)"; \
-			kill $$WPID 2>/dev/null || true; \
-			for attempt in {1..20}; do \
-				if kill -0 $$WPID 2>/dev/null; then \
-					sleep 0.2; \
-				else \
-					break; \
-				fi; \
-			done; \
-		else \
-			echo "⚠️  Proces UI ($$WPID) już nie działa"; \
-		fi; \
-		rm -f $(WEB_PID_FILE); \
-	else \
-		echo "ℹ️  UI (Next.js) nie jest uruchomione"; \
-	fi
-	@pkill -f "next dev" 2>/dev/null || true
-	@pkill -f "next start" 2>/dev/null || true
-	@echo "✅ UI (Next.js) zatrzymany"
+	@ENVIRONMENT="$(ENVIRONMENT)" PROFILE="$(PROFILE)" ENV_FILE="$(ENV_FILE)" $(PYTHON_BIN) scripts/dev/stack_profile.py component web-stop

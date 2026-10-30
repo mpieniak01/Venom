@@ -30,12 +30,11 @@ export const configLocale = {
       title: "Service Management",
       description: "Control system processes and service status",
       profiles: {
-        title: "Quick Profiles",
-        full: "Full Stack",
-        light: "Light (Ollama + Gemma)",
-        llmOff: "LLM OFF",
+        title: "Application profiles",
+        full: "Full",
+        light: "Light",
         mcp: "MCP Models & Tools",
-        description: "Profiles quickly configure service sets",
+        description: "Changing Full/Light requires a stack restart in the same environment. Provider and model selection are preserved.",
       },
       status: {
         running: "Running",

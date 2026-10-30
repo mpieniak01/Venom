@@ -164,3 +164,192 @@ def test_stale_pid_file_has_no_live_owner(root):
     assert stack.owned_pid(root, config, "PID_FILE") is None
     stack.stop(root, config)
     assert not Path(config["PID_FILE"]).exists()
+
+
+"""Additional lifecycle ownership regression tests use only local child processes."""
+
+
+def test_unverified_same_directory_pid_is_never_killed(root):
+    config = stack.resolve(root, {})
+    Path(config["PID_FILE"]).write_text(str(os.getpid()))
+    with pytest.raises(ValueError, match="Cannot verify"):
+        stack.owned_pid(root, config, "PID_FILE")
+
+
+def test_identity_rejects_reused_pid_and_wrong_environment(root):
+    import json
+
+    config = stack.resolve(root, {})
+    Path(config["PID_FILE"]).write_text(str(os.getpid()))
+    stack.record_pid(root, config, "PID_FILE")
+    assert stack.owned_pid(root, config, "PID_FILE") == os.getpid()
+    for changed in ({"ENVIRONMENT": "preprod"}, {"PROFILE": "light"}):
+        with pytest.raises(ValueError, match="identity|Different profile"):
+            stack.owned_pid(root, {**config, **changed}, "PID_FILE", reuse=True)
+    path = Path(config["PID_FILE"] + ".identity.json")
+    record = json.loads(path.read_text())
+    record["stamp"] = "0"
+    path.write_text(json.dumps(record))
+    with pytest.raises(ValueError, match="identity"):
+        stack.owned_pid(root, config, "PID_FILE")
+
+
+def test_stop_drains_grandchildren_without_touching_foreign_process(root):
+    import subprocess
+    import sys
+    import time
+
+    config = stack.resolve(root, {})
+    child = subprocess.Popen(
+        [
+            sys.executable,
+            "-c",
+            "import subprocess,time; subprocess.Popen(['sleep','60']); time.sleep(60)",
+        ]
+    )
+    foreign = subprocess.Popen(["sleep", "60"])
+    try:
+        Path(config["PID_FILE"]).write_text(str(child.pid))
+        stack.record_pid(root, config, "PID_FILE")
+        for _ in range(100):
+            tree = stack.descendants(child.pid)
+            if tree:
+                break
+            time.sleep(0.01)
+        assert tree
+        stack.stop(root, config, ("PID_FILE",))
+        child.wait(timeout=2)
+        assert not any(stack.running(pid) for pid in tree)
+        assert foreign.poll() is None
+    finally:
+        if child.poll() is None:
+            child.terminate()
+        foreign.terminate()
+        child.wait()
+        foreign.wait()
+
+
+def test_preprod_ui_cannot_proxy_to_dev(root):
+    with pytest.raises(ValueError, match="API_PROXY_TARGET"):
+        stack.resolve(
+            root,
+            {"ENVIRONMENT": "preprod", "API_PROXY_TARGET": "http://127.0.0.1:8000"},
+        )
+
+
+def test_preprod_overrides_legacy_browser_bypass_urls(root):
+    config = stack.resolve(
+        root,
+        {"ENVIRONMENT": "preprod", "NEXT_PUBLIC_API_BASE": "http://localhost:8000"},
+    )
+    assert config["NEXT_PUBLIC_API_BASE"] == ""
+    assert config["NEXT_PUBLIC_WS_BASE"] == ""
+
+
+@pytest.mark.parametrize("role", ["dev", "preprod"])
+@pytest.mark.parametrize("profile", ["full", "light"])
+def test_make_api_resolves_environment_before_loading_dotenv(
+    root, monkeypatch, role, profile
+):
+    import json
+    import socket
+    import subprocess
+    import sys
+
+    repo = stack.ROOT
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+    fake = root / "uvicorn"
+    fake.write_text(
+        f"#!{sys.executable}\n"
+        + """import http.server,json,os,sys
+from pathlib import Path
+Path(os.environ["CAPTURE"]).write_text(json.dumps({k:os.environ.get(k) for k in (
+"ENVIRONMENT_ROLE","VENOM_RUNTIME_PROFILE","VENOM_PAUSE_BACKGROUND_TASKS",
+"ALLOW_DATA_MUTATION","MEMORY_ROOT","VENOM_LOG_DIR")}))
+class Handler(http.server.BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200);self.end_headers();self.wfile.write(b'{}')
+    def log_message(self,*args): pass
+http.server.HTTPServer(('127.0.0.1',int(sys.argv[sys.argv.index('--port')+1])),Handler).serve_forever()
+"""
+    )
+    fake.chmod(0o700)
+    capture = root / "capture.json"
+    pid = root / "api.pid"
+    env_file = root / f".env.{role}"
+    env_file.write_text(env_file.read_text() + "VENOM_PAUSE_BACKGROUND_TASKS=false\n")
+    child_env = dict(os.environ)
+    for key in (*stack.public_plan(stack.resolve(root, {})), "API_PROXY_TARGET"):
+        child_env.pop(key, None)
+    command = [
+        "make",
+        "--no-print-directory",
+        f"ENVIRONMENT={role}",
+        f"PROFILE={profile}",
+        f"ENV_FILE={env_file}",
+        f"PORT={port}",
+        f"WEB_PORT={port + 1}",
+        f"UVICORN={fake}",
+        f"PID_FILE={pid}",
+        f"BACKEND_LOG={root}/logs/api.log",
+        f"CAPTURE={capture}",
+    ]
+    try:
+        result = subprocess.run(
+            [*command, "api"],
+            cwd=repo,
+            env=child_env,
+            check=False,
+            capture_output=True,
+            timeout=30,
+        )
+        assert result.returncode == 0, result.stderr.decode()
+        data = json.loads(capture.read_text())
+        assert data["ENVIRONMENT_ROLE"] == role
+        assert data["VENOM_RUNTIME_PROFILE"] == profile
+        assert data["VENOM_PAUSE_BACKGROUND_TASKS"] == (
+            "true" if profile == "light" else "false"
+        )
+        assert data["VENOM_LOG_DIR"].endswith(
+            "logs/preprod" if role == "preprod" else "logs"
+        )
+        if role == "preprod":
+            assert data["ALLOW_DATA_MUTATION"] == "false"
+    finally:
+        subprocess.run(
+            [*command, "api-stop"],
+            cwd=repo,
+            env=child_env,
+            check=pid.exists(),
+            capture_output=True,
+            timeout=30,
+        )
+    assert not pid.exists()
+
+
+def test_preflight_foreign_listener_is_preserved(root):
+    import socket
+
+    config = stack.resolve(root, {})
+    with socket.socket() as listener:
+        listener.bind(("127.0.0.1", 0))
+        listener.listen()
+        config["PORT"] = str(listener.getsockname()[1])
+        with pytest.raises(ValueError, match="unowned"):
+            stack.preflight(root, config)
+        assert listener.fileno() >= 0
+
+
+def test_shared_runtime_guard_rejects_second_engine(root):
+    config = stack.resolve(root, {})
+    Path(config["PID_FILE"]).write_text(str(os.getpid()))
+    stack.record_pid(
+        root, {**config, "VENOM_STARTED_LOCAL_RUNTIME": "ollama"}, "PID_FILE"
+    )
+    with pytest.raises(ValueError, match="different local runtime"):
+        stack.check_shared_runtime(
+            root, {**config, "VENOM_STARTED_LOCAL_RUNTIME": "multi_runtime"}
+        )
+    stack.check_shared_runtime(root, {**config, "VENOM_STARTED_LOCAL_RUNTIME": "none"})

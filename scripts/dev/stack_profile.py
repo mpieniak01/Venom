@@ -7,10 +7,14 @@ import json
 import os
 import signal
 import socket
+import subprocess
 import sys
 import time
+import urllib.error
+import urllib.request
 from pathlib import Path
 from typing import Mapping
+from urllib.parse import urlsplit
 
 from dotenv import dotenv_values
 
@@ -127,6 +131,13 @@ def resolve(root: Path, overrides: Mapping[str, str]) -> dict[str, str]:
         values[key] = absolute(
             root, values.get(key, str(Path(values["VENOM_LOG_DIR"]) / name))
         )
+    if role == "dev" and "PORT" not in values and values.get("API_PROXY_TARGET"):
+        configured_proxy = urlsplit(values["API_PROXY_TARGET"])
+        if (
+            configured_proxy.hostname in {"127.0.0.1", "localhost"}
+            and configured_proxy.port
+        ):
+            values["PORT"] = str(configured_proxy.port)
     values.setdefault("PORT", {"dev": "8000", "preprod": "8100", "prod": "8200"}[role])
     values.setdefault(
         "WEB_PORT", {"dev": "3000", "preprod": "3100", "prod": "3200"}[role]
@@ -210,6 +221,7 @@ def record_pid(root: Path, values: Mapping[str, str], key: str) -> None:
         role=values["ENVIRONMENT"],
         profile=values["PROFILE"],
         env_file=values["ENV_FILE"],
+        local_runtime=values.get("VENOM_STARTED_LOCAL_RUNTIME", "none"),
     )
     target = Path(str(path) + ".identity.json")
     target.write_text(json.dumps(record))
@@ -228,20 +240,37 @@ def owned_pid(
             return None
         identity = json.loads(Path(str(path) + ".identity.json").read_text())
         stamp, uid = process_stamp(pid)
-        expected = dict(
-            pid=pid,
-            stamp=stamp,
-            uid=uid,
-            root=str(root.resolve()),
-            role=values["ENVIRONMENT"],
-            env_file=values["ENV_FILE"],
-        )
-        if any(identity.get(name) != value for name, value in expected.items()):
-            raise ValueError("PID identity differs; refusing to reuse or stop")
-        if reuse and identity.get("profile") != values["PROFILE"]:
-            raise ValueError(
-                "Different profile already running; stop this environment before restart"
+        if key == "WEB_PID_FILE":
+            nested = json.loads(identity.get("identity", "{}"))
+            web_root = absolute(root, values.get("WEB_DIR", "web-next"))
+            expected = dict(
+                root=web_root,
+                role=values["ENVIRONMENT"],
+                dist=str(Path(web_root) / values["NEXT_DIST_DIR"]),
+                port=int(values["WEB_PORT"]),
+                host=values.get("WEB_HOST", "0.0.0.0"),
             )
+            valid = (
+                identity.get("pid") == pid
+                and identity.get("ticks") == stamp
+                and all(nested.get(k) == v for k, v in expected.items())
+            )
+        else:
+            expected = dict(
+                pid=pid,
+                stamp=stamp,
+                uid=uid,
+                root=str(root.resolve()),
+                role=values["ENVIRONMENT"],
+                env_file=values["ENV_FILE"],
+            )
+            valid = all(identity.get(k) == v for k, v in expected.items())
+            if reuse and identity.get("profile") != values["PROFILE"]:
+                raise ValueError(
+                    "Different profile already running; stop this environment before restart"
+                )
+        if not valid:
+            raise ValueError("PID identity differs; refusing to reuse or stop")
         return pid
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         raise ValueError("Cannot verify PID ownership; no automatic adoption") from exc
@@ -270,6 +299,14 @@ def stop(
 ) -> None:
     owners = [(key, owned_pid(root, values, key)) for key in keys]
     for key, pid in owners:
+        if pid is not None and key == "WEB_PID_FILE":
+            subprocess.run(
+                ["node", str(root / "web-next/scripts/web-lifecycle.mjs"), "stop"],
+                env=dict(values),
+                check=True,
+                timeout=30,
+            )
+            continue
         if pid is not None:
             tree = [
                 (child, process_stamp(child))
@@ -306,7 +343,30 @@ def component(root: Path, values: dict[str, str], name: str) -> None:
             values,
         )
     elif name in {"api", "api-dev"}:
-        os.execvpe("make", ["make", "--no-print-directory", "_" + name], values)
+        preflight(root, values)
+        for key in ("BACKEND_LOG", "PID_FILE"):
+            Path(values[key]).parent.mkdir(parents=True, exist_ok=True)
+        subprocess.run(
+            ["make", "--no-print-directory", "_" + name], env=values, check=True
+        )
+        record_pid(root, values, "PID_FILE")
+        url = values["API_PROXY_TARGET"] + "/api/v1/system/status"
+        try:
+            for _ in range(60):
+                pid = owned_pid(root, values, "PID_FILE")
+                if pid is None or not running(pid):
+                    raise ValueError("API process exited before readiness")
+                try:
+                    with urllib.request.urlopen(url, timeout=1) as response:
+                        if response.status == 200:
+                            print("API ready")
+                            return
+                except (OSError, urllib.error.URLError):
+                    time.sleep(0.2)
+            raise ValueError("API readiness timeout")
+        except ValueError:
+            stop(root, values, ("PID_FILE",))
+            raise
     elif name in {"api-stop", "web-stop"}:
         stop(root, values, ("PID_FILE",) if name == "api-stop" else ("WEB_PID_FILE",))
     else:
@@ -327,12 +387,36 @@ def preflight(root: Path, values: Mapping[str, str]) -> None:
                     raise ValueError(f"{port_key} occupied by unowned listener")
 
 
+def check_shared_runtime(root: Path, values: Mapping[str, str]) -> None:
+    selected = values.get("VENOM_STARTED_LOCAL_RUNTIME", "none")
+    if selected == "none":
+        return
+    for path in root.glob(".venom*.pid.identity.json"):
+        record = json.loads(path.read_text())
+        pid = record.get("pid", 0)
+        if running(pid) and process_stamp(pid)[0] == record.get("stamp"):
+            peer = record.get("local_runtime", "none")
+            if peer not in {"none", selected}:
+                raise ValueError(
+                    "Another environment owns a different local runtime; choose the same engine or a remote provider"
+                )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Full/Light in dev/preprod (prod reserved)"
     )
     parser.add_argument(
-        "action", choices=("start", "stop", "status", "plan", "record-api", "component")
+        "action",
+        choices=(
+            "start",
+            "stop",
+            "status",
+            "plan",
+            "record-api",
+            "component",
+            "runtime-check",
+        ),
     )
     parser.add_argument("component_name", nargs="?")
     args = parser.parse_args()
@@ -340,6 +424,8 @@ def main() -> None:
         values = resolve(ROOT, os.environ)
         if args.action == "plan":
             print(json.dumps(public_plan(values), indent=2))
+        elif args.action == "runtime-check":
+            check_shared_runtime(ROOT, values)
         elif args.action == "record-api":
             record_pid(ROOT, values, "PID_FILE")
         elif args.action == "component":
@@ -350,6 +436,7 @@ def main() -> None:
             for key in ("PID_FILE", "WEB_PID_FILE"):
                 print(f"{key}: {owned_pid(ROOT, values, key) or 'stopped'}")
         else:
+            preflight(ROOT, values)
             for key in (
                 "VENOM_LOG_DIR",
                 "BACKEND_LOG",

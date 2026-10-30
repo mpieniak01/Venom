@@ -214,6 +214,9 @@ active_server="$(run_with_env_file "$PYTHON_BIN" -c 'from venom_core.utils.llm_r
 active_server="$(printf '%s' "$active_server" | tr -d '\r' | tr '[:upper:]' '[:lower:]')"
 [[ -z "$active_server" ]] && active_server="ollama"
 
+export VENOM_STARTED_LOCAL_RUNTIME="$active_server"
+"$PYTHON_BIN" "$ROOT_DIR/scripts/dev/stack_profile.py" runtime-check
+
 active_server_origin="$(env_contract_origin ACTIVE_LLM_SERVER "$ENV_FILE" "")"
 if [[ "$active_server_origin" == "empty" ]]; then
   active_server_origin="default"
@@ -330,7 +333,6 @@ start_multi_runtime() {
     echo "ℹ️  Ostatnie logi Multi-Runtime:"
     tail -n 40 logs/multi_runtime_service.log || true
   fi
-  bash scripts/llm/multi_runtime_service.sh stop >/dev/null 2>&1 || true
   return 1
 }
 

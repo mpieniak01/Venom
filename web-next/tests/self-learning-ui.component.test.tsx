@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 
 import type { SelfLearningRunStatus } from "../lib/academy-api";
 import { LanguageProvider } from "../lib/i18n";
+import { en } from "../lib/i18n/locales/en";
 import {
   SelfLearningConfigurator,
   type SelfLearningConfig,
@@ -16,7 +17,8 @@ afterEach(() => {
 });
 
 function renderWithLanguage(children: ReactNode) {
-  return render(<LanguageProvider>{children}</LanguageProvider>);
+  window.localStorage.setItem("venom-language", "en");
+  return render(<LanguageProvider initialLanguage="en" initialDictionary={en}>{children}</LanguageProvider>);
 }
 
 function makeRun(overrides: Partial<SelfLearningRunStatus>): SelfLearningRunStatus {

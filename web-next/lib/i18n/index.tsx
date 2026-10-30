@@ -85,8 +85,9 @@ export function LanguageProvider({
       persistLanguage(language);
       return;
     }
-    void loadDictionary(language).then((dictionary) => {
+    void Promise.all([loadDictionary(language), loadDateLocale(language)]).then(([dictionary]) => {
       if (!mountedRef.current || request !== requestRef.current) return;
+      dayjs.locale(language);
       const next = { language, dictionary };
       currentRef.current = next;
       setSnapshot(next);

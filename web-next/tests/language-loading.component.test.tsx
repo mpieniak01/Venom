@@ -6,6 +6,7 @@ import { hydrateRoot, type Root } from "react-dom/client";
 import { LanguageProvider, useLanguage } from "../lib/i18n";
 import type { LocaleDictionary, LanguageCode } from "../lib/i18n";
 import { de } from "../lib/i18n/locales/de";
+import dayjs from "dayjs";
 
 function Probe() {
   const { language, setLanguage, t } = useLanguage();
@@ -79,8 +80,9 @@ describe("selected language loading", () => {
     fireEvent.click(screen.getByText("DE", { selector: "button" }));
     await act(async () => german.resolve({ common: { loading: "Laden..." } }));
     await act(async () => en.resolve({ common: { loading: "Loading..." } }));
-    assert.equal(screen.getByTestId("language").textContent, "de");
+    await waitFor(() => assert.equal(screen.getByTestId("language").textContent, "de"));
     assert.equal(screen.getByTestId("label").textContent, "Laden...");
+    assert.equal(dayjs.locale(), "de");
   });
 
   it("keeps the working language on a failed chunk and permits retry", async () => {

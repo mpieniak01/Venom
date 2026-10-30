@@ -11,12 +11,6 @@ interface Props {
   caption: string;
   t: (key: string) => string;
 }
-function free(model: OpenRouterModel): boolean {
-  return [model.input_price_per_million, model.output_price_per_million].every(
-    value => value != null && value.trim() !== "" && Number(value) === 0,
-  );
-}
-
 function price(value: string | null, unknown: string): string {
   const raw = value?.trim();
   if (!raw || !Number.isFinite(Number(raw)) || Number(raw) < 0) return unknown;
@@ -39,6 +33,8 @@ export function OpenRouterModelTable({ models, connected, pending, manage, capti
         {["model", "context", "input", "output", "tools", "status", "actions"].map(key => <th key={key} scope="col" className={styles.tableHead}><span className={["context", "input", "output"].includes(key) ? "block text-right" : undefined}>{text("table." + key)}</span></th>)}
       </tr></thead>
       <tbody>{models.map(model => {
+        const inputPrice = price(model.input_price_per_million, text("unknown"));
+        const outputPrice = price(model.output_price_per_million, text("unknown"));
         const connection = connections.get(model.id);
         const isConnected = Boolean(connection);
         const stale = connection?.available === false;
@@ -50,7 +46,7 @@ export function OpenRouterModelTable({ models, connected, pending, manage, capti
         if (busy) action = "saving";
         return <tr key={model.id} className={styles.tableRow}>
           <th scope="row" className={styles.tableCell + " min-w-[240px] max-w-[320px] align-top text-left font-normal"}>
-            <div className="flex flex-wrap items-center gap-2"><span className="break-words text-sm font-semibold">{model.name}</span>{free(model) && <Badge tone="success">{text("table.free")}</Badge>}</div>
+            <p className="break-words text-sm font-semibold">{model.name}</p>
             <p className="mt-1 break-all font-mono text-[11px] text-[color:var(--ui-muted)]">{model.id}</p>
             {(model.description || cap !== undefined) && <details className="mt-2 text-xs text-[color:var(--ui-muted)]">
               <summary className="w-fit cursor-pointer rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--primary)]" aria-label={`${text("table.details")}: ${model.id}`}>{text("table.details")}</summary>
@@ -61,8 +57,8 @@ export function OpenRouterModelTable({ models, connected, pending, manage, capti
             </details>}
           </th>
           <td className={styles.tableCell + " whitespace-nowrap text-right align-top font-mono tabular-nums"}>{model.context_length?.toLocaleString() ?? text("unknown")}</td>
-          <td className={styles.tableCell + " whitespace-nowrap text-right align-top font-mono tabular-nums"}>{price(model.input_price_per_million, text("unknown"))}</td>
-          <td className={styles.tableCell + " whitespace-nowrap text-right align-top font-mono tabular-nums"}>{price(model.output_price_per_million, text("unknown"))}</td>
+          <td className={styles.tableCell + " whitespace-nowrap text-right align-top font-mono tabular-nums" + (inputPrice === "0" ? " text-emerald-400" : "")}>{inputPrice}</td>
+          <td className={styles.tableCell + " whitespace-nowrap text-right align-top font-mono tabular-nums" + (outputPrice === "0" ? " text-emerald-400" : "")}>{outputPrice}</td>
           <td className={styles.tableCell + " align-top"}><Badge tone="neutral">{text("table." + (model.supports_tools ? "yes" : "no"))}</Badge></td>
           <td className={styles.tableCell + " align-top"}><Badge tone={stale ? "warning" : statusTone}>{text(stale ? "needsRefresh" : statusKey)}</Badge></td>
           <td className={styles.tableCell + " min-w-[160px] align-top"}><div className="flex flex-col items-start gap-2">

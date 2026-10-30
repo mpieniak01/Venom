@@ -112,7 +112,6 @@ export const models = {
     "tools": "Narzędzia",
     "status": "Stan",
     "actions": "Akcje",
-    "free": "Bezpłatny",
     "details": "Szczegóły",
     "yes": "Tak",
     "no": "Nie",

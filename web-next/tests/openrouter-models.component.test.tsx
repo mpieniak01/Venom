@@ -209,7 +209,7 @@ describe("OpenRouter model comparison tables", () => {
     const models = [
       model("vendor/unknown", { description: "Full description of the model", context_length: null }),
       model("vendor/free", { input_price_per_million: "0.000", output_price_per_million: "0" }),
-      model("vendor/paid", { input_price_per_million: "0.15", output_price_per_million: "0.6", supports_tools: false }),
+      model("vendor/paid", { input_price_per_million: "0.15", output_price_per_million: "0", supports_tools: false }),
     ];
     render(<OpenRouterModelTable models={models} connected={[]} pending={{}} manage={async () => {}} caption="Comparison" t={t} />);
     const table = screen.getByRole("table", { name: "Comparison" });
@@ -218,10 +218,14 @@ describe("OpenRouter model comparison tables", () => {
     assert.equal(within(unknown).getAllByText("Unknown").length, 2);
     assert.equal(within(unknown).queryByText("Free"), null);
     const free = within(table).getByRole("row", { name: /vendor\/free/ });
-    assert.ok(within(free).getByText("Free"));
+    assert.equal(within(free).queryByText("Free"), null);
+    assert.ok(within(free).getAllByText("0").every(cell => cell.classList.contains("text-emerald-400")));
     assert.ok(within(free).getByText("Yes"));
     const paid = within(table).getByRole("row", { name: /vendor\/paid/ });
     assert.ok(within(paid).getByText("No"));
+    assert.equal(within(paid).getByText("0.15").classList.contains("text-emerald-400"), false);
+    assert.ok(within(paid).getByText("0").classList.contains("text-emerald-400"));
+    assert.ok(within(unknown).getAllByText("Unknown").every(cell => !cell.classList.contains("text-emerald-400")));
     assert.ok(within(paid).getByText("Not connected"));
     const description = within(unknown).getByText("Full description of the model");
     assert.equal(description.closest("details")?.open, false);

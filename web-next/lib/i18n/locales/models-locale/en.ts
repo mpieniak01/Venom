@@ -112,7 +112,6 @@ export const models = {
     "tools": "Tools",
     "status": "Status",
     "actions": "Actions",
-    "free": "Free",
     "details": "Details",
     "yes": "Yes",
     "no": "No",

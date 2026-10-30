@@ -45,7 +45,7 @@ Venom dostarcza też własnego demona LLM dla Gemma4, więc tekst i audio są ob
 
 ## Przygotowanie v1.10.0
 
-Podzielone wydanie Light/API używa Microsoft Agent Framework oraz aktywnych profili Light, CI i build. Wersja jest spójna w API core, frontendzie, kontenerach i analizie CI. Full oraz profile silników i treningu pozostają odłożone; historyczne próby runtime nie kwalifikują ich do tego wydania. Końcowy kandydat wymaga świeżych bramek chmurowych.
+Podzielone wydanie Light/API używa Microsoft Agent Framework oraz aktywnych profili Light, CI i build. Wersja jest spójna w API core, frontendzie, kontenerach i analizie CI. Full ma oddzielny manifest zależności; kwalifikacja dodatkowych silników i treningu pozostaje odłożona; historyczne próby runtime nie kwalifikują ich do tego wydania. Końcowy kandydat wymaga świeżych bramek chmurowych.
 
 ## Co zmieniło się w 1.9.0
 - Dodano `@venom-agent`, lokalny participant VS Code z ograniczoną pętlą narzędzi dla repo-truth, wyszukiwania kodu, kontekstu plików i opcjonalnego safe exec. Wartość biznesowa: szybsze odpowiedzi repo-truth i mniej ręcznych iteracji.
@@ -197,27 +197,16 @@ cp .env.dev.example .env.dev
 make start
 ```
 
-Domyślny `requirements.txt` instaluje **minimalny profil API/cloud**.
-Jeśli chcesz lokalne silniki runtime, doinstaluj jeden z profili:
-- `pip install -r requirements.txt` (Ollama: bez dodatkowych paczek Pythona)
-- `pip install -r requirements-profile-web.txt` (sam bazowy API, nazwana ścieżka dla integracji web-next bez dodatkowych pinów Pythona)
-- `pip install -r requirements-profile-vllm.txt`
-- `pip install -r requirements-profile-onnx.txt` (overlay nad bazą API/runtime)
-- `pip install -r requirements-profile-onnx-cpu.txt` (overlay ONNX tylko dla CPU, na tej samej bazie)
-- `pip install -r requirements-extras-onnx.txt` (opcjonalne extras: `faster-whisper` + `piper-tts`; instaluj po profilu ONNX/ONNX-CPU)
-- `pip install -r requirements-full.txt` (tylko legacy catch-all host exception)
+Zestawy instalacyjne i profile uruchamiania to osobne pojęcia. Domyślny start to **Full/dev z Turbopackiem**; `requirements.txt` jest aliasem instalacji Light. Full wymaga odpowiednich zależności. Źródłem prawdy są [manifest i kwalifikacja zależności](docs/DEPENDENCY_PROFILES.md) oraz [Full/Light i środowiska](docs/PL/STACK_PROFILES.md).
 
-### Gwarancje profili zależności
-Traktuj tę tabelę jako źródło prawdy dla rozróżnienia: "to oczekiwane" vs "to błąd profilu".
-
-| Profil | Gwarantowany zakres | Jawnie nie zawiera |
-|---|---|---|
-| `requirements.txt` (`requirements-profile-api.txt`) | baseline API/cloud (`fastapi`, `uvicorn`, providerzy cloud) | ciężkie lokalne pakiety runtime (`vllm`, `onnxruntime*`, `lancedb`, `sentence-transformers`) |
-| `requirements-profile-web.txt` | sam baseline API, nazwana ścieżka dla integracji web-next | te same ciężkie lokalne pakiety runtime co profil API; brak dodatkowych pinów ponad bazę |
-| `requirements-profile-vllm.txt` | baseline API + `vllm` | stos ONNX, stos RAG/wektorowy (`lancedb`, `sentence-transformers`) |
-| `requirements-profile-onnx.txt` | baseline API/runtime + overlay ONNX | vLLM, stos RAG/wektorowy (`lancedb`, `sentence-transformers`) |
-| `requirements-profile-onnx-cpu.txt` | baseline API/runtime + overlay ONNX tylko CPU | vLLM, pakiety ONNX CUDA, stos RAG/wektorowy (`lancedb`, `sentence-transformers`) |
-| `requirements-full.txt` | legacy catch-all host exception (historyczny all-in stack) | n/a |
+| Installation | Scope |
+| --- | --- |
+| light | Application base; api/web requirements files are compatibility aliases |
+| full | Configured application features; external engines stay separate |
+| ci / full-ci | Application set plus developer/CI tools |
+| build | Build tools, not another running application |
+| multi-runtime-cuda | Isolated engine component |
+| ONNX LLM / vLLM / Academy manifests | Deferred installation qualification; not recommended install recipes |
 
 Zasady triage incydentów:
 1. Jeśli pakietu brakuje, bo nie zainstalowano właściwego profilu, to zachowanie oczekiwane.
@@ -241,16 +230,16 @@ Polityka protokołów:
 
 ### Najczęstsze komendy
 ```bash
-make start       # backend + frontend (webpack-safe dev)
-make start2      # backend + frontend (turbopack dev)
-make stop        # zatrzymanie usług
-make status      # status procesów
-make start-prod  # tryb produkcyjny
+make start                                   # Full/dev, Turbopack
+make start PROFILE=light ENVIRONMENT=dev
+make start PROFILE=full ENVIRONMENT=preprod
+make start PROFILE=light ENVIRONMENT=preprod
+make stack-plan ENVIRONMENT=preprod
+make stop ENVIRONMENT=preprod
+make status ENVIRONMENT=dev
 ```
 
-Ostrzeżenie:
-- `make start-prod` istnieje dla zgodności technicznej, ale `prod` nie jest jeszcze zwalidowane/rekomendowane do działania live.
-- Rekomendowane środowiska: `dev` i `preprod`.
+Dev i preprod zachowują osobne bazy, logi i dane. Prod pozostaje nieużywany. Starsze aliasy delegują do wspólnego launchera i są wycofywane; Webpack jest opcją diagnostyczną. [Pełny kontrakt](docs/PL/STACK_PROFILES.md).
 
 ## Frontend (Next.js - `web-next`)
 Warstwa prezentacji działa na Next.js 16 (App Router, React 19).
@@ -407,12 +396,14 @@ scripts/docker/uninstall.sh --stack both --purge-volumes --purge-images
 scripts/docker/logs.sh
 ```
 
-Profil runtime (jedna paczka, wybierany tryb):
+Docker korzysta z tych samych dwóch profili aplikacji:
+
 ```bash
-export VENOM_RUNTIME_PROFILE=light   # light|llm_off|full
-scripts/docker/run-release.sh start
+PROFILE=light ENVIRONMENT=dev scripts/docker/run-release.sh start
+PROFILE=light ENVIRONMENT=preprod ACTIVE_LLM_SERVER=none scripts/docker/run-release.sh start
 ```
-`llm_off` oznacza brak lokalnego runtime LLM (Ollama/vLLM/ONNX), ale backend i UI nadal mogą korzystać z zewnętrznych API LLM (np. OpenAI/Gemini) po konfiguracji kluczy.
+
+Obecny obraz instaluje zależności Light; samo PROFILE=full nie kwalifikuje pełnych funkcji. Provider/model jest osobnym wyborem, llm_off pozostaje wycofywanym aliasem. [Granice Dockera](docs/PL/DOCKER_PROFILES.md).
 
 Opcjonalny tryb GPU:
 ```bash

@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, it } from "node:test";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { LanguageProvider } from "../lib/i18n";
+import { en } from "../lib/i18n/locales/en";
 import { ModelIntrospectionDashboard } from "../components/inspector/model-introspection-dashboard";
 import { ModelIntrospectionMechanismProvider } from "../components/inspector/model-introspection-mechanism";
 
@@ -1463,7 +1464,7 @@ afterEach(() => {
 describe("ModelIntrospectionDashboard", () => {
   it("renders snapshot data and navigation links", async () => {
     render(
-      <LanguageProvider>
+      <LanguageProvider initialLanguage="en" initialDictionary={en}>
         <ModelIntrospectionMechanismProvider>
           <ModelIntrospectionDashboard />
         </ModelIntrospectionMechanismProvider>
@@ -1549,7 +1550,7 @@ describe("ModelIntrospectionDashboard", () => {
     };
 
     render(
-      <LanguageProvider>
+      <LanguageProvider initialLanguage="en" initialDictionary={en}>
         <ModelIntrospectionMechanismProvider>
           <ModelIntrospectionDashboard />
         </ModelIntrospectionMechanismProvider>
@@ -1613,7 +1614,7 @@ describe("ModelIntrospectionDashboard", () => {
     };
 
     const { container } = render(
-      <LanguageProvider>
+      <LanguageProvider initialLanguage="en" initialDictionary={en}>
         <ModelIntrospectionMechanismProvider>
           <ModelIntrospectionDashboard />
         </ModelIntrospectionMechanismProvider>
@@ -1679,7 +1680,7 @@ describe("ModelIntrospectionDashboard", () => {
     };
 
     render(
-      <LanguageProvider>
+      <LanguageProvider initialLanguage="en" initialDictionary={en}>
         <ModelIntrospectionMechanismProvider>
           <ModelIntrospectionDashboard />
         </ModelIntrospectionMechanismProvider>
@@ -1713,7 +1714,7 @@ describe("ModelIntrospectionDashboard", () => {
 
   it("keeps runtime fallback selectors collapsed by default and toggles them on demand", async () => {
     render(
-      <LanguageProvider>
+      <LanguageProvider initialLanguage="en" initialDictionary={en}>
         <ModelIntrospectionMechanismProvider>
           <ModelIntrospectionDashboard />
         </ModelIntrospectionMechanismProvider>
@@ -1771,7 +1772,7 @@ describe("ModelIntrospectionDashboard", () => {
 
   it("toggles normalized and raw token views in logit-lens panel", async () => {
     render(
-      <LanguageProvider>
+      <LanguageProvider initialLanguage="en" initialDictionary={en}>
         <ModelIntrospectionMechanismProvider>
           <ModelIntrospectionDashboard />
         </ModelIntrospectionMechanismProvider>
@@ -1839,7 +1840,7 @@ describe("ModelIntrospectionDashboard", () => {
     };
 
     render(
-      <LanguageProvider>
+      <LanguageProvider initialLanguage="en" initialDictionary={en}>
         <ModelIntrospectionMechanismProvider>
           <ModelIntrospectionDashboard />
         </ModelIntrospectionMechanismProvider>
@@ -1889,7 +1890,7 @@ describe("ModelIntrospectionDashboard", () => {
     };
 
     render(
-      <LanguageProvider>
+      <LanguageProvider initialLanguage="en" initialDictionary={en}>
         <ModelIntrospectionMechanismProvider>
           <ModelIntrospectionDashboard />
         </ModelIntrospectionMechanismProvider>
@@ -2061,7 +2062,7 @@ describe("ModelIntrospectionDashboard", () => {
     };
 
     render(
-      <LanguageProvider>
+      <LanguageProvider initialLanguage="en" initialDictionary={en}>
         <ModelIntrospectionMechanismProvider>
           <ModelIntrospectionDashboard />
         </ModelIntrospectionMechanismProvider>
@@ -2150,7 +2151,7 @@ describe("ModelIntrospectionDashboard", () => {
     };
 
     render(
-      <LanguageProvider>
+      <LanguageProvider initialLanguage="en" initialDictionary={en}>
         <ModelIntrospectionMechanismProvider>
           <ModelIntrospectionDashboard />
         </ModelIntrospectionMechanismProvider>

@@ -18,6 +18,7 @@ import { useTranslation } from "@/lib/i18n";
 type QuickActionsProps = Readonly<{
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  returnFocusRef?: React.RefObject<HTMLElement | null>;
 }>;
 
 const deriveQueueActionEndpoint = (paused?: boolean) =>
@@ -34,15 +35,15 @@ type QuickActionItem = {
   handler: () => Promise<unknown>;
 };
 
-export function QuickActions({ open, onOpenChange }: QuickActionsProps) {
+export function QuickActions({ open, onOpenChange, returnFocusRef }: QuickActionsProps) {
   const {
     data: queue,
     refresh: refreshQueue,
     loading: queueLoading,
     refreshing: queueRefreshing,
     error: queueError,
-  } = useQueueStatus();
-  const { refresh: refreshTasks } = useTasks();
+  } = useQueueStatus(5000, open);
+  const { refresh: refreshTasks } = useTasks(5000, open);
   const [message, setMessage] = useState<string | null>(null);
   const [running, setRunning] = useState<string | null>(null);
   const [queueRefreshPending, setQueueRefreshPending] = useState(0);
@@ -141,6 +142,7 @@ export function QuickActions({ open, onOpenChange }: QuickActionsProps) {
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
+        returnFocusRef={returnFocusRef}
         data-testid="quick-actions-sheet"
         className="glass-panel flex h-full max-w-lg flex-col gap-4 border-l border-[color:var(--ui-border)] bg-[color:var(--bg-panel)] text-[color:var(--text-primary)]"
       >

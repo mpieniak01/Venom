@@ -11,10 +11,11 @@ import { useTranslation } from "@/lib/i18n";
 type NotificationDrawerProps = Readonly<{
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  returnFocusRef?: React.RefObject<HTMLElement | null>;
 }>;
 
-export function NotificationDrawer({ open, onOpenChange }: NotificationDrawerProps) {
-  const { entries, connected } = useTelemetryFeed(100);
+export function NotificationDrawer({ open, onOpenChange, returnFocusRef }: NotificationDrawerProps) {
+  const { entries, connected } = useTelemetryFeed(100, open);
   const t = useTranslation();
 
   const notifications = useMemo(
@@ -48,6 +49,7 @@ export function NotificationDrawer({ open, onOpenChange }: NotificationDrawerPro
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
+        returnFocusRef={returnFocusRef}
         data-testid="notification-drawer"
         className="glass-panel flex h-full max-w-lg flex-col border-l border-[color:var(--ui-border)] bg-[color:var(--bg-panel)] text-[color:var(--text-primary)]"
       >

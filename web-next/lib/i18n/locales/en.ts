@@ -22,6 +22,7 @@ import { providersLocale } from "./providers/en";
 import { adminLocale } from "./admin/en";
 export const en = {
   common: {
+    close: "Close",
     switchLanguage: "Switch language",
     switchTheme: "Switch system theme",
     menu: "Menu",

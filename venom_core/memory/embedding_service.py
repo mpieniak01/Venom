@@ -3,6 +3,7 @@
 import hashlib
 import os
 from functools import lru_cache
+from threading import RLock
 from typing import Any, List, Optional
 
 from venom_core.config import SETTINGS
@@ -36,6 +37,7 @@ class EmbeddingService:
             SETTINGS.FORCE_LOCAL_MODEL or SETTINGS.AI_MODE == "LOCAL"
         ):
             self.service_type = "local"
+        self._model_load_lock = RLock()
         self._model: Optional[Any] = None
         register_model_resource(self, "embeddings", "release_model_resource")
         self._client: Optional[Any] = None
@@ -55,13 +57,26 @@ class EmbeddingService:
         )
 
     def release_model_resource(self) -> bool:
-        self._model = None
-        self._get_embedding_cached.cache_clear()
-        return self._model is None
+        with self._model_load_lock:
+            self._model = None
+            self._get_embedding_cached.cache_clear()
+            if self._client is not None:
+                try:
+                    self._client.close()
+                except Exception:
+                    logger.exception("Failed to close embedding client")
+                    return False
+                self._client = None
+            return True
 
     @model_operation
     def _ensure_model_loaded(self) -> None:
-        """Lazy loading modelu embeddingów."""
+        """Share one first-use initialization between concurrent callers."""
+        with self._model_load_lock:
+            self._load_model()
+
+    def _load_model(self) -> None:
+        """Lazy loading modelu embeddingów; caller holds the owner lock."""
         if self._model is not None or self._client is not None:
             return
 

@@ -20,14 +20,15 @@ import { useTranslation } from "@/lib/i18n";
 type CommandCenterProps = Readonly<{
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  returnFocusRef?: React.RefObject<HTMLElement | null>;
 }>;
 
-export function CommandCenter({ open, onOpenChange }: CommandCenterProps) {
+export function CommandCenter({ open, onOpenChange, returnFocusRef }: CommandCenterProps) {
   const router = useRouter();
-  const { data: queue } = useQueueStatus();
-  const { data: tasks } = useTasks();
-  const { data: metrics } = useMetrics();
-  const { data: services } = useServiceStatus();
+  const { data: queue } = useQueueStatus(5000, open);
+  const { data: tasks } = useTasks(5000, open);
+  const { data: metrics } = useMetrics(5000, open);
+  const { data: services } = useServiceStatus(15000, open);
   const t = useTranslation();
 
   const successRateRaw = metrics?.tasks?.success_rate;
@@ -90,6 +91,7 @@ export function CommandCenter({ open, onOpenChange }: CommandCenterProps) {
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
+        returnFocusRef={returnFocusRef}
         data-testid="command-center-drawer"
         className="glass-panel flex h-full max-w-2xl flex-col gap-6 overflow-y-auto border-l border-[color:var(--ui-border)] bg-[color:var(--bg-panel)] text-[color:var(--text-primary)]"
       >

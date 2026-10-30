@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { afterEach, describe, it, mock } from "node:test";
+import { afterEach, beforeEach, describe, it, mock } from "node:test";
 import type { ComponentProps } from "react";
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 
@@ -44,12 +44,69 @@ function chart(historyValue = history, loadChart: Loader) {
   return <LanguageProvider><TokenChart history={historyValue} loadChart={loadChart} /></LanguageProvider>;
 }
 
+beforeEach(() => { window.localStorage.setItem("venom-language", "pl"); });
+
 afterEach(() => {
   cleanup();
   mock.restoreAll();
 });
 
 describe("TokenChart lifecycle", () => {
+
+  it("does not import an offscreen chart and uses latest samples when visible", async () => {
+    let reveal!: IntersectionObserverCallback;
+    let disconnects = 0;
+    class Observer {
+      constructor(callback: IntersectionObserverCallback) { reveal = callback; }
+      observe() {}
+      disconnect() { disconnects++; }
+    }
+    const previous = Object.getOwnPropertyDescriptor(globalThis, "IntersectionObserver");
+    Object.defineProperty(globalThis, "IntersectionObserver", { configurable: true, value: Observer });
+    try {
+      const fake = fakeModule();
+      let imports = 0;
+      const loader = () => { imports++; return Promise.resolve(fake.module); };
+      const view = render(chart(history, loader));
+      view.rerender(chart([{ timestamp: "12:10", value: 99 }], loader));
+      assert.equal(imports, 0);
+      await act(async () => reveal([{ isIntersecting: true }] as IntersectionObserverEntry[], {} as IntersectionObserver));
+      await waitFor(() => assert.equal(fake.instances.length, 1));
+      assert.deepEqual(fake.instances[0].data.datasets[0].data, [99]);
+      assert.equal(imports, 1);
+      view.unmount();
+      assert.equal(fake.instances[0].destroys, 1);
+      assert.ok(disconnects >= 1);
+    } finally {
+      if (previous) Object.defineProperty(globalThis, "IntersectionObserver", previous);
+      else Reflect.deleteProperty(globalThis, "IntersectionObserver");
+    }
+  });
+
+  it("does not import a chart before there are samples", async () => {
+    const fake = fakeModule();
+    let imports = 0;
+    const loader = () => { imports++; return Promise.resolve(fake.module); };
+    const view = render(chart([], loader));
+    assert.equal(imports, 0);
+    view.rerender(chart(history, loader));
+    await waitFor(() => assert.equal(fake.instances.length, 1));
+    assert.equal(imports, 1);
+  });
+
+  it("shares a pending import across rapidly changing samples", async () => {
+    const fake = fakeModule();
+    const pending = deferred<ChartModule>();
+    let imports = 0;
+    const loader = () => { imports++; return pending.promise; };
+    const view = render(chart(history, loader));
+    view.rerender(chart([{ timestamp: "12:10", value: 100 }], loader));
+    assert.equal(imports, 1);
+    await act(async () => pending.resolve(fake.module));
+    await waitFor(() => assert.equal(fake.instances.length, 1));
+    assert.deepEqual(fake.instances[0].data.datasets[0].data, [100]);
+  });
+
   it("updates one chart and destroys that instance on unmount", async () => {
     const fake = fakeModule();
     let imports = 0;

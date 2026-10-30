@@ -9,6 +9,10 @@ from venom_core.config import SETTINGS
 from venom_core.execution.skill_manager import SkillManager
 from venom_core.execution.skills.file_skill import FileSkill
 from venom_core.execution.skills.git_skill import GitSkill
+from venom_core.services.background_priority import (
+    run_drainable_thread,
+    wait_for_interactive_idle,
+)
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -29,6 +33,7 @@ class DocumenterAgent:
         file_skill: Optional[FileSkill] = None,
         event_broadcaster: Optional[Any] = None,
         skill_manager: Optional[SkillManager] = None,
+        orchestrator: Any = None,
     ):
         """
         Inicjalizacja DocumenterAgent.
@@ -47,12 +52,15 @@ class DocumenterAgent:
         )
         self.event_broadcaster = event_broadcaster
         self.skill_manager = skill_manager
+        self.orchestrator = orchestrator
+        self._stopping = False
 
         # Tracking: ostatnie zmiany aby uniknąć pętli
         self._last_processed_files: set[str] = set()
         self._processing_lock = asyncio.Lock()
         self._changelog_lock = asyncio.Lock()  # Lock dla operacji na changelog
         self._background_tasks: set[asyncio.Task[Any]] = set()
+        self._active_handlers: set[asyncio.Task[Any]] = set()
 
         logger.info(f"DocumenterAgent zainicjalizowany dla: {self.workspace_root}")
 
@@ -63,21 +71,48 @@ class DocumenterAgent:
         Args:
             file_path: Ścieżka do zmienionego pliku
         """
-        # Sprawdź czy plik był już przetwarzany (unikanie pętli)
-        async with self._processing_lock:
-            if file_path in self._last_processed_files:
-                logger.debug(f"Plik {file_path} już przetwarzany, pomijam")
-                return
-
-            self._last_processed_files.add(file_path)
-
+        if self._stopping:
+            return
+        handler = asyncio.current_task()
+        if handler is not None:
+            self._active_handlers.add(handler)
+        tracked_file = False
         try:
+            async with self._processing_lock:
+                # stop() may run while this handler waits for the lock.
+                if self._stopping or file_path in self._last_processed_files:
+                    return
+                self._last_processed_files.add(file_path)
+                tracked_file = True
             await self._process_file_change(file_path)
         finally:
-            # Odłożone czyszczenie tracking (unikanie resource leak przy cancel)
-            cleanup_task = asyncio.create_task(self._cleanup_tracking(file_path))
-            self._background_tasks.add(cleanup_task)
-            cleanup_task.add_done_callback(self._background_tasks.discard)
+            if tracked_file:
+                if self._stopping:
+                    self._last_processed_files.discard(file_path)
+                else:
+                    cleanup_task = asyncio.create_task(
+                        self._cleanup_tracking(file_path)
+                    )
+                    self._background_tasks.add(cleanup_task)
+                    cleanup_task.add_done_callback(self._background_tasks.discard)
+            if handler is not None:
+                self._active_handlers.discard(handler)
+
+    async def stop(self) -> None:
+        """Reject new work and drain active handlers before retiring tracking."""
+        self._stopping = True
+        current = asyncio.current_task()
+        handlers = [task for task in self._active_handlers if task is not current]
+        for task in handlers:
+            task.cancel()
+        await asyncio.gather(*handlers, return_exceptions=True)
+        tasks = [task for task in self._background_tasks if task is not current]
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        self._background_tasks.difference_update(tasks)
+        self._active_handlers.difference_update(handlers)
+        self._last_processed_files.clear()
 
     async def _cleanup_tracking(self, file_path: str) -> None:
         """
@@ -113,10 +148,15 @@ class DocumenterAgent:
             logger.debug(f"Plik {file_path} nie jest plikiem Python, pomijam")
             return
 
-        if self._is_bot_commit_author():
+        await wait_for_interactive_idle(self.orchestrator)
+        if self._stopping:
+            return
+        if await run_drainable_thread(self._is_bot_commit_author):
             logger.debug("Zmiana dokonana przez venom-bot, pomijam")
             return
 
+        if self._stopping:
+            return
         logger.info(f"Przetwarzam zmianę w {file_path}")
         await self._broadcast_if_available(
             event_type=EventType.BACKGROUND_JOB_STARTED,
@@ -178,7 +218,12 @@ class DocumenterAgent:
     async def _apply_documentation_update(
         self, file_path: str, file_name: str, diff: str
     ) -> None:
+        if self._stopping:
+            return
         await self._update_documentation(file_path, diff)
+        # stop() may change this state while the previous await drains I/O.
+        if not self._can_commit_update():
+            return
         await self._commit_documentation_changes(file_name)
         await self._broadcast_if_available(
             event_type=EventType.DOCUMENTATION_UPDATED,
@@ -186,6 +231,10 @@ class DocumenterAgent:
             data={"file_path": file_path},
         )
         logger.info(f"Dokumentacja zaktualizowana dla {file_path}")
+
+    def _can_commit_update(self) -> bool:
+        """Read current lifecycle state after an await, not a cached decision."""
+        return not self._stopping
 
     async def _get_file_diff(self, file_path: str) -> str:
         """

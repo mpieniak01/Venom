@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { useState } from "react";
+import { isPriorityNavigation } from "@/lib/navigation-prefetch";
 import {
     Sparkles,
     Shield,
@@ -83,6 +85,7 @@ export function NavigationSection({
     t: (key: string) => string;
 }>) {
     const navigationItems = getNavigationItems(language);
+    const [intentHref, setIntentHref] = useState<string | null>(null);
     return (
         <nav className="mt-4 space-y-4">
             <div>
@@ -98,6 +101,10 @@ export function NavigationSection({
                             <Link
                                 key={item.href}
                                 href={item.href}
+                                prefetch={isPriorityNavigation(item.href) || intentHref === item.href ? null : false}
+                                onMouseEnter={() => setIntentHref(item.href)}
+                                onFocus={() => setIntentHref(item.href)}
+                                onTouchStart={() => setIntentHref(item.href)}
                                 title={label}
                                 aria-label={label}
                                 className={cn(

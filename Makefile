@@ -21,7 +21,7 @@ NEXT_DEV_ENV ?= NEXT_MODE=dev NEXT_DISABLE_TURBOPACK=1 NEXT_TELEMETRY_DISABLED=1
 NEXT_PROD_ENV ?= NEXT_MODE=prod NEXT_TELEMETRY_DISABLED=1
 NEXT_TURBO_WATCH_ENV ?= WATCHPACK_POLLING=true WATCHPACK_POLLING_INTERVAL=1000 CHOKIDAR_USEPOLLING=1
 START_MODE ?= dev
-START_WEB_MODE ?= webpack
+START_WEB_MODE ?= turbo
 ALLOW_DEGRADED_START ?= 0
 BACKEND_RELOAD ?= 0
 UVICORN_DEV_FLAGS ?= --reload --reload-dir venom_core --reload-dir scripts --reload-exclude logs/\* --reload-exclude data/\* --reload-exclude models/\* --reload-exclude web-next/\* --reload-exclude .venv/\* --reload-exclude .git/\*
@@ -145,7 +145,7 @@ endef
 start: start-dev
 
 start-dev: START_MODE=dev
-start-dev: START_WEB_MODE=webpack
+start-dev: START_WEB_MODE=turbo
 start-dev: ensure-env-file _start
 
 start-dev-webpack: START_MODE=dev
@@ -330,7 +330,7 @@ web-dev:
 	@echo "🔄 Hot Reload: aktywny (zmiana plików → przeładowanie)"
 
 web-dev-turbo:
-	$(call start_web_turbo_target,Next.js dev:turbo,dev:turbo,⚡ Turbopack: aktywny (opt-in),NEXT_TELEMETRY_DISABLED=1)
+	$(call start_web_turbo_target,Next.js dev:turbo,dev:turbo,⚡ Turbopack: domyślny bundler dev,NEXT_TELEMETRY_DISABLED=1)
 
 web-dev-turbo-debug:
 	$(call start_web_turbo_target,Next.js dev:turbo:debug,dev:turbo:debug,🧪 Debug turbo: NEXT_DEBUG + --trace-warnings,)

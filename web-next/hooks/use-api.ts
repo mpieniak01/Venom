@@ -1,6 +1,6 @@
 import { readOpenRouterQuote } from "@/lib/openrouter-chat";
 import { isGuardedChatRuntime } from "@/lib/remote-chat";
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import { ApiError, apiFetch } from "@/lib/api-client";
 import {
   getUnifiedModelCatalog,
@@ -81,6 +81,8 @@ type PollingEntry<T> = {
   fetcher: () => Promise<T>;
   interval: number;
   listeners: Set<() => void>;
+  subscriptions: Map<() => void, { interval: number; fetcher: () => Promise<T> }>;
+  onVisibilityChange?: () => void;
   timer?: ReturnType<typeof setInterval>;
   fetching: boolean;
   inFlight?: Promise<void>;
@@ -94,29 +96,18 @@ type GenerationParamValue = number | string | boolean | null | undefined;
 const OFFLINE_BACKOFF_MS = 15000;
 
 
-function ensureEntry<T>(key: string, fetcher: () => Promise<T>, interval: number): PollingEntry<T> {
+function ensureEntry<T>(key: string): PollingEntry<T> {
   const existing = pollingRegistry.get(key);
-  if (existing) {
-    const typedExisting = existing as PollingEntry<T>;
-    typedExisting.fetcher = fetcher;
-    if (interval > 0 && interval < typedExisting.interval) {
-      typedExisting.interval = interval;
-      if (typedExisting.timer) {
-        clearInterval(typedExisting.timer);
-        typedExisting.timer = undefined;
-      }
-    }
-    return typedExisting;
-  }
+  if (existing) return existing as PollingEntry<T>;
   const entry: PollingEntry<T> = {
     state: { data: null, loading: true, refreshing: false, error: null },
-    fetcher,
-    interval,
+    fetcher: () => Promise.reject(new Error("Polling entry has no subscriber.")),
+    interval: 0,
     listeners: new Set(),
+    subscriptions: new Map(),
     fetching: false,
   };
   pollingRegistry.set(key, entry);
-  void triggerFetch(entry);
   return entry;
 }
 
@@ -185,15 +176,48 @@ function notifyEntry(entry: PollingEntry<unknown>) {
   }
 }
 
+function isPollingVisible() {
+  return typeof document === "undefined" || document.visibilityState !== "hidden";
+}
+
 function startEntryTimer<T>(entry: PollingEntry<T>) {
-  if (entry.interval <= 0 || entry.timer) return;
-  entry.timer = setInterval(() => triggerFetch(entry), entry.interval);
+  if (entry.interval <= 0 || entry.timer || !isPollingVisible()) return;
+  entry.timer = setInterval(() => {
+    if (isPollingVisible()) return triggerFetch(entry);
+  }, entry.interval);
 }
 
 function stopEntryTimer<T>(entry: PollingEntry<T>) {
   if (!entry.timer) return;
   clearInterval(entry.timer);
   entry.timer = undefined;
+}
+
+function reconcileEntry<T>(entry: PollingEntry<T>) {
+  const subscriptions = Array.from(entry.subscriptions.values());
+  const intervals = subscriptions.map((subscriber) => subscriber.interval).filter((interval) => interval > 0);
+  const interval = intervals.length ? Math.min(...intervals) : 0;
+  if (entry.interval !== interval) stopEntryTimer(entry);
+  entry.interval = interval;
+  if (subscriptions[0]) entry.fetcher = subscriptions[0].fetcher;
+  if (!subscriptions.length) {
+    stopEntryTimer(entry);
+    if (entry.onVisibilityChange) document.removeEventListener("visibilitychange", entry.onVisibilityChange);
+    entry.onVisibilityChange = undefined;
+    return;
+  }
+  if (!entry.onVisibilityChange) {
+    entry.onVisibilityChange = () => {
+      if (!isPollingVisible()) {
+        stopEntryTimer(entry);
+        return;
+      }
+      startEntryTimer(entry);
+      void triggerFetch(entry);
+    };
+    document.addEventListener("visibilitychange", entry.onVisibilityChange);
+  }
+  startEntryTimer(entry);
 }
 
 function clearEntrySuspension<T>(entry: PollingEntry<T>) {
@@ -218,133 +242,75 @@ function refreshEntry<T>(entry: PollingEntry<T>): Promise<void> {
   return promise;
 }
 
-function markPollingReady(setReady: (value: boolean) => void) {
-  setReady(true);
-}
-
 function usePolling<T>(
   key: string,
   fetcher: () => Promise<T>,
   intervalMs = 5000,
   enabled = true,
 ): PollingState<T> {
-  const isBrowser = globalThis.window !== undefined;
   const pollingDisabled = process.env.NEXT_PUBLIC_DISABLE_API_POLLING === "true" || !enabled;
-  const disabledState = useMemo(
-    () => ({
-      data: null,
-      loading: false,
-      refreshing: false,
-      error: null,
-      refresh: async () => { },
-    }),
+  const initialState = useMemo<PollingSnapshot<T>>(
+    () => ({ data: null, loading: true, refreshing: false, error: null }),
     [],
   );
-  const fallbackEntry = useMemo<PollingEntry<T>>(
-    () => ({
-      state: { data: null, loading: true, refreshing: false, error: null },
-      fetcher: () => Promise.reject(new Error("Polling entry not initialized.")),
-      interval: 0,
-      listeners: new Set(),
-      fetching: false,
-    }),
+  const disabledState = useMemo<PollingSnapshot<T>>(
+    () => ({ data: null, loading: false, refreshing: false, error: null }),
     [],
-  );
-  const isClient = useSyncExternalStore(
-    () => () => { },
-    () => true,
-    () => false,
   );
   const fetcherRef = useRef(fetcher);
-  const entryRef = useRef<PollingEntry<T>>(fallbackEntry);
-  const [ready, setReady] = useState(false);
-
-  useEffect(() => {
-    if (!isBrowser || !isClient || pollingDisabled) return;
-    const actualEntry = ensureEntry(key, fetcherRef.current, intervalMs);
-    entryRef.current = actualEntry;
-    markPollingReady(setReady);
-  }, [isBrowser, isClient, pollingDisabled, key, intervalMs]);
-
-  useEffect(() => {
-    if (pollingDisabled) return;
-    fetcherRef.current = fetcher;
-    const entry = entryRef.current;
-    if (entry) {
-      entry.fetcher = fetcher;
-    }
-  }, [fetcher, pollingDisabled]);
-
-  const entry = pollingDisabled || !ready ? fallbackEntry : entryRef.current;
+  useEffect(() => { fetcherRef.current = fetcher; }, [fetcher]);
 
   const subscribe = useCallback(
     (listener: () => void) => {
-      if (pollingDisabled) return () => { };
-      if (typeof listener !== "function") return () => { };
+      if (pollingDisabled || typeof window === "undefined") return () => {};
+      const entry = ensureEntry<T>(key);
+      const firstSubscriber = entry.subscriptions.size === 0;
       entry.listeners.add(listener);
-      if (entry.listeners.size === 1) {
-        startEntryTimer(entry);
-        void Promise.resolve().then(() => {
-          void triggerFetch(entry);
-        });
-      }
+      entry.subscriptions.set(listener, { interval: intervalMs, fetcher: () => fetcherRef.current() });
+      reconcileEntry(entry);
+      // No request is issued during render or for a disabled subscriber. All
+      // live subscribers share the first fetch and every refresh boundary.
+      if (firstSubscriber && isPollingVisible()) void triggerFetch(entry);
       return () => {
         entry.listeners.delete(listener);
-        if (entry.listeners.size === 0) {
-          stopEntryTimer(entry);
-        }
+        entry.subscriptions.delete(listener);
+        reconcileEntry(entry);
       };
     },
-    [entry, pollingDisabled],
+    [key, intervalMs, pollingDisabled],
   );
-
-  const snapshot = useSyncExternalStore(
-    subscribe,
-    () => (pollingDisabled ? disabledState : entry.state),
-    () => (pollingDisabled ? disabledState : entry.state),
+  const getSnapshot = useCallback(
+    () => pollingDisabled ? disabledState : (pollingRegistry.get(key)?.state as PollingSnapshot<T> | undefined) ?? initialState,
+    [key, pollingDisabled, disabledState, initialState],
   );
-
+  const getServerSnapshot = useCallback(
+    () => pollingDisabled ? disabledState : initialState,
+    [pollingDisabled, disabledState, initialState],
+  );
+  const snapshot = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
   const refresh = useCallback(async () => {
-    if (pollingDisabled || entry === fallbackEntry) return;
-    await refreshEntry(entry);
-  }, [entry, fallbackEntry, pollingDisabled]);
-
-  return useMemo(
-    () =>
-      pollingDisabled
-        ? disabledState
-        : {
-          data: snapshot.data,
-          loading: snapshot.loading,
-          refreshing: snapshot.refreshing,
-          error: snapshot.error,
-          refresh,
-        },
-    [
-      pollingDisabled,
-      disabledState,
-      snapshot.data,
-      snapshot.loading,
-      snapshot.refreshing,
-      snapshot.error,
-      refresh,
-    ],
-  );
+    if (pollingDisabled) return;
+    const entry = pollingRegistry.get(key) as PollingEntry<T> | undefined;
+    if (entry?.subscriptions.size) await refreshEntry(entry);
+  }, [key, pollingDisabled]);
+  return useMemo(() => ({ ...snapshot, refresh }), [snapshot, refresh]);
 }
 
-export function useMetrics(intervalMs = 5000) {
+export function useMetrics(intervalMs = 5000, enabled = true) {
   return usePolling<Metrics>(
     "metrics",
     async () => normalizeMetricsRequired(await apiFetch<Metrics>("/api/v1/metrics")),
     intervalMs,
+    enabled,
   );
 }
 
-export function useTasks(intervalMs = 5000) {
+export function useTasks(intervalMs = 5000, enabled = true) {
   return usePolling<Task[]>(
     "tasks",
     () => apiFetch("/api/v1/tasks"),
     intervalMs,
+    enabled,
   );
 }
 
@@ -370,16 +336,17 @@ export async function fetchTaskDetail(taskId: string) {
   return apiFetch<Task>(`/api/v1/tasks/${taskId}`);
 }
 
-export function useQueueStatus(intervalMs = 5000) {
+export function useQueueStatus(intervalMs = 5000, enabled = true) {
   return usePolling<QueueStatus>(
     "queue",
     () =>
       apiFetch("/api/v1/queue/status"),
     intervalMs,
+    enabled,
   );
 }
 
-export function useServiceStatus(intervalMs = 15000) {
+export function useServiceStatus(intervalMs = 15000, enabled = true) {
   return usePolling<ServiceStatus[]>(
     "services",
     async () => {
@@ -395,6 +362,7 @@ export function useServiceStatus(intervalMs = 15000) {
       return [];
     },
     intervalMs,
+    enabled,
   );
 }
 
@@ -614,19 +582,21 @@ export async function unloadAllModels() {
   );
 }
 
-export function useCostMode(intervalMs = 15000) {
+export function useCostMode(intervalMs = 15000, enabled = true) {
   return usePolling<CostMode>(
     "cost-mode",
     () => apiFetch("/api/v1/system/cost-mode"),
     intervalMs,
+    enabled,
   );
 }
 
-export function useAutonomyLevel(intervalMs = 15000) {
+export function useAutonomyLevel(intervalMs = 15000, enabled = true) {
   return usePolling<AutonomyLevel>(
     "autonomy-level",
     () => apiFetch("/api/v1/system/autonomy"),
     intervalMs,
+    enabled,
   );
 }
 

@@ -84,6 +84,8 @@ class LLMRuntimeInfo:
     mode: str
     config_hash: Optional[str] = None
     runtime_id: Optional[str] = None
+    # Protocol 'local' may describe a remote Ollama; do not start host services.
+    host_local: Optional[bool] = None
 
     def to_payload(self) -> dict:
         """Wygodny format do serializacji JSON."""
@@ -215,6 +217,36 @@ def get_active_llm_runtime(settings=None) -> LLMRuntimeInfo:
         mode=mode,
         config_hash=config_hash,
         runtime_id=runtime_id,
+    )
+
+
+def get_startup_local_server(settings=None) -> str:
+    """Use the same persisted selection as HTTP consumers, without any probe.
+
+    Remote providers need no local LLM daemon. This does not change or clear the
+    operator selection, and never performs a generation or reads credentials.
+    """
+    selected_settings = settings or SETTINGS
+    if (
+        str(getattr(selected_settings, "VENOM_RUNTIME_PROFILE", "")).strip().lower()
+        == "llm_off"
+        or str(getattr(selected_settings, "ACTIVE_LLM_SERVER", "")).strip().lower()
+        == "none"
+    ):
+        return "none"
+    runtime = get_active_llm_runtime(settings)
+    if getattr(runtime, "host_local", None) is False:
+        return "none"
+    if runtime.provider == "onnx":
+        return "onnx"
+    if runtime.service_type != "local":
+        return "none"
+    if is_multi_runtime(runtime.provider):
+        return MULTI_RUNTIME_ID
+    # A custom OpenAI-compatible endpoint is usable by the API but is not a
+    # managed daemon name understood by the startup dispatcher.
+    return (
+        runtime.provider if runtime.provider in {"ollama", "vllm", "onnx"} else "none"
     )
 
 
@@ -395,7 +427,7 @@ async def warmup_local_runtime(
     """
     Wysyła krótki request do lokalnego runtime aby podnieść model (best-effort).
     """
-    if runtime.service_type != "local":
+    if runtime.service_type != "local" or runtime.host_local is False:
         return False
     warmup_url = _build_chat_completions_url(runtime)
     if not warmup_url:

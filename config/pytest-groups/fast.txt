@@ -66,6 +66,7 @@ tests/test_audio_engine.py
 tests/test_audit_stream_api.py
 tests/test_audit_stream_service.py
 tests/test_autonomy_enforcement.py
+tests/test_background_priority.py
 tests/test_base_skill.py
 tests/test_benchmark_routes_guard.py
 tests/test_benchmark_service.py
@@ -134,6 +135,7 @@ tests/test_docker_launcher_contracts.py
 tests/test_docs_skill.py
 tests/test_documenter.py
 tests/test_dream_engine.py
+tests/test_embedding_resource_lifecycle.py
 tests/test_embedding_service.py
 tests/test_energy_manager.py
 tests/test_ensure_env_file_script.py
@@ -280,6 +282,7 @@ tests/test_model_requests.py
 tests/test_model_resources_release.py
 tests/test_model_router.py
 tests/test_model_services.py
+tests/test_model_usage_telemetry.py
 tests/test_model_validators.py
 tests/test_models_install_feedback_loop.py
 tests/test_models_introspection_api.py

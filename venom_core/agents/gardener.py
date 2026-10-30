@@ -13,6 +13,10 @@ from typing import Any, Optional
 
 from venom_core.config import SETTINGS
 from venom_core.memory.graph_store import CodeGraphStore
+from venom_core.services.background_priority import (
+    run_drainable_thread,
+    wait_for_interactive_idle,
+)
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -70,11 +74,10 @@ class GardenerAgent:
         self.is_running = True
         logger.info("Uruchamianie GardenerAgent...")
 
-        # Wykonaj początkowe skanowanie
-        await asyncio.to_thread(self.scan_and_update)
-
-        # Uruchom pętlę monitorowania
+        # API readiness must not wait for an optional workspace scan.
         self._task = asyncio.create_task(self._monitoring_loop())
+        # Give the service its first turn without awaiting the filesystem scan.
+        await asyncio.sleep(0)
         logger.info("GardenerAgent uruchomiony")
 
     async def stop(self) -> None:
@@ -93,17 +96,26 @@ class GardenerAgent:
 
         logger.info("GardenerAgent zatrzymany")
 
+    async def _scan_when_idle(self) -> None:
+        await wait_for_interactive_idle(self.orchestrator)
+        await run_drainable_thread(self.scan_and_update)
+
     async def _monitoring_loop(self) -> None:
         """Pętla monitorowania zmian w plikach i idle mode."""
+        try:
+            await self._scan_when_idle()
+        except Exception as exc:
+            logger.error(f"Błąd podczas początkowego skanowania: {exc}")
         while self.is_running:
             try:
                 # Czekaj określony interwał
                 await asyncio.sleep(self.scan_interval)
 
-                # Sprawdź czy były zmiany
-                if self._check_for_changes():
+                await wait_for_interactive_idle(self.orchestrator)
+                # Walking a workspace is blocking filesystem work too.
+                if await run_drainable_thread(self._check_for_changes):
                     logger.info("Wykryto zmiany w workspace, rozpoczynam re-indeksację")
-                    await asyncio.to_thread(self.scan_and_update)
+                    await self._scan_when_idle()
                 else:
                     logger.debug("Brak zmian w workspace")
 
@@ -262,7 +274,7 @@ class GardenerAgent:
             )
             return
 
-        now = datetime.now()
+        now = datetime.now(tz=last_activity.tzinfo)
         idle_time = (now - last_activity).total_seconds() / 60
 
         idle_threshold = SETTINGS.IDLE_THRESHOLD_MINUTES
@@ -299,7 +311,8 @@ class GardenerAgent:
             logger.info("Rozpoczynam automatyczną refaktoryzację w trybie idle")
 
             # 1. Znajdź pliki o wysokiej złożoności
-            complex_files = self._find_complex_files()
+            await wait_for_interactive_idle(self.orchestrator)
+            complex_files = await run_drainable_thread(self._find_complex_files)
 
             if not complex_files:
                 logger.info("Brak plików wymagających refaktoryzacji")

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useSyncExternalStore } from "react";
+import { useMemo } from "react";
 import { Globe } from "lucide-react";
 import { useLanguage, useTranslation, type LanguageCode } from "@/lib/i18n";
 import { SelectMenu, type SelectMenuOption } from "@/components/ui/select-menu";
@@ -57,18 +57,11 @@ export function LanguageSwitcher({ className }: Readonly<{ className?: string }>
       })),
     [],
   );
-  const mounted = useSyncExternalStore(
-    () => () => { },
-    () => true,
-    () => false,
-  );
-
   const currentLanguage = useMemo(
     () => {
-      const target = mounted ? language : "pl"; // Default to PL on server/initial client
-      return options.find((option) => option.value === target) ?? options[0];
+      return options.find((option) => option.value === language) ?? options[0];
     },
-    [language, options, mounted],
+    [language, options],
   );
 
   return (

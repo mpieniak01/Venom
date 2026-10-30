@@ -1,7 +1,7 @@
-import { CockpitHome } from "@/components/cockpit/cockpit-home";
-import { fetchCockpitInitialData } from "@/lib/server-data";
+import { CockpitWrapper } from "@/components/cockpit/cockpit-wrapper";
 
-export default async function ChatPage() {
-  const initialData = await fetchCockpitInitialData();
-  return <CockpitHome initialData={initialData} variant="reference" />;
+export default function ChatPage() {
+  // Conversation controls render immediately; telemetry loads independently in
+  // its existing client subscriptions instead of blocking the route response.
+  return <CockpitWrapper variant="reference" />;
 }

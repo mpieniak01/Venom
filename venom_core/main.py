@@ -1463,6 +1463,7 @@ async def _initialize_documenter_and_watcher(workspace_path: Path) -> None:
         logger=logger,
         documenter_agent_cls=DocumenterAgent,
         file_watcher_cls=FileWatcher,
+        orchestrator=orchestrator,
     )
 
 
@@ -1565,13 +1566,13 @@ async def _ensure_local_llm_ready() -> None:
     runtime_profile = (
         (getattr(SETTINGS, "VENOM_RUNTIME_PROFILE", "") or "").strip().lower()
     )
-    if runtime_profile == "llm_off":
-        logger.info(
-            "Pomijam inicjalizację lokalnego LLM (VENOM_RUNTIME_PROFILE=llm_off)."
-        )
+    if runtime_profile == "llm_off" or (
+        str(getattr(SETTINGS, "ACTIVE_LLM_SERVER", "")).strip().lower() == "none"
+    ):
+        logger.info("Pomijam inicjalizację lokalnego LLM: wyłączony przy starcie.")
         return
     runtime = get_active_llm_runtime()
-    if runtime.service_type != "local":
+    if runtime.service_type != "local" or getattr(runtime, "host_local", None) is False:
         return
     await _synchronize_startup_local_model(runtime)
     await _start_local_runtime_if_needed(runtime)
@@ -1619,6 +1620,7 @@ async def _shutdown_optional_runtime_components() -> None:
         (node_manager, "stop", "NodeManager zatrzymany"),
         (background_scheduler, "stop", "BackgroundScheduler zatrzymany"),
         (file_watcher, "stop", "FileWatcher zatrzymany"),
+        (documenter_agent, "stop", "DocumenterAgent zatrzymany"),
         (gardener_agent, "stop", "GardenerAgent zatrzymany"),
         (hardware_bridge, "disconnect", "HardwareBridge rozłączony"),
     )

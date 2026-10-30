@@ -90,6 +90,7 @@ def test_get_models_usage_cache_hit(_models_usage_app, _models_usage_client):
     """Returns cached value without hitting model_manager."""
     _, mu_module, _ = _models_usage_app
     cached_payload = {"success": True, "usage": {"disk_gb": 1.0}}
+    _set_manager(_models_usage_app, MagicMock())
     mu_module._models_usage_cache.set(cached_payload)
 
     response = _models_usage_client.get("/api/v1/models/usage")

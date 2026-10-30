@@ -116,23 +116,15 @@ export type LayoutInitialData = {
 };
 
 export async function fetchLayoutInitialData(): Promise<LayoutInitialData> {
-  const [queue, metricsRaw, tasks, modelsUsagePayload, tokenMetrics, gitStatus] =
-    await Promise.all([
-      fetchJson<QueueStatus>("/api/v1/queue/status"),
-      fetchJson<Metrics>("/api/v1/metrics"),
-      fetchJson<Task[]>("/api/v1/tasks"),
-      fetchJson<ModelsUsageResponse | ModelsUsage>("/api/v1/models/usage"),
-      fetchJson<TokenMetrics>("/api/v1/metrics/tokens"),
-      fetchJson<GitStatus>("/api/v1/git/status"),
-    ]);
-
+  // Global chrome needs only a quick queue snapshot. Slower statistics keep
+  // their client subscriptions and must not delay navigation or hydration.
   return {
-    queue,
-    metrics: normalizeMetrics(metricsRaw),
-    tasks,
-    modelsUsage: normalizeModelsUsage(modelsUsagePayload),
-    tokenMetrics,
-    gitStatus,
+    queue: await fetchJson<QueueStatus>("/api/v1/queue/status"),
+    metrics: null,
+    tasks: null,
+    modelsUsage: null,
+    tokenMetrics: null,
+    gitStatus: null,
   };
 }
 

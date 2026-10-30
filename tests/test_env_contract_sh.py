@@ -168,3 +168,41 @@ def test_env_runner_never_falls_back_to_source_when_python_fails(tmp_path):
     )
     assert result.returncode == 13
     assert not marker.exists()
+
+
+def test_default_stack_uses_turbo_with_explicit_webpack_escape_hatch(tmp_path):
+    """Execute Make's real target/variable resolution without starting services."""
+    root = Path(__file__).resolve().parents[1]
+    fixture = tmp_path / "make-fixture.mk"
+    fixture.write_text(
+        "ensure-env-file:\n\t@true\n"
+        "_start:\n\t@printf 'mode=%s\\n' '$(START_WEB_MODE)'\n"
+    )
+    environment = os.environ.copy()
+    environment.pop("START_WEB_MODE", None)
+    expected_modes = {
+        "start": "turbo",
+        "start-dev": "turbo",
+        "start-dev-turbo": "turbo",
+        "start-dev-webpack": "webpack",
+    }
+    for target, expected in expected_modes.items():
+        result = subprocess.run(
+            [
+                "make",
+                "--no-print-directory",
+                "-f",
+                "Makefile",
+                "-f",
+                str(fixture),
+                "WEB_APP_VERSION=fixture",
+                target,
+            ],
+            cwd=root,
+            env=environment,
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        assert result.returncode == 0, result.stderr
+        assert result.stdout.strip() == f"mode={expected}", target

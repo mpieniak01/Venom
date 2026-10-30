@@ -20,10 +20,11 @@ import { useTranslation } from "@/lib/i18n";
 type AlertCenterProps = Readonly<{
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  returnFocusRef?: React.RefObject<HTMLElement | null>;
 }>;
 
-export function AlertCenter({ open, onOpenChange }: AlertCenterProps) {
-  const { entries, connected } = useTelemetryFeed(150);
+export function AlertCenter({ open, onOpenChange, returnFocusRef }: AlertCenterProps) {
+  const { entries, connected } = useTelemetryFeed(150, open);
   const t = useTranslation();
   const filterOptions = useMemo(
     () => [
@@ -62,6 +63,7 @@ export function AlertCenter({ open, onOpenChange }: AlertCenterProps) {
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
+        returnFocusRef={returnFocusRef}
         data-testid="alert-center-drawer"
         className="glass-panel flex h-full max-w-3xl flex-col gap-4 overflow-hidden border-l border-[color:var(--ui-border)] bg-[color:var(--bg-panel)] text-[color:var(--text-primary)]"
       >

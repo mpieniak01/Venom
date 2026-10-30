@@ -9,6 +9,7 @@ export class VenomWebSocket {
   private readonly onMessage: MessageHandler;
   private readonly onStatus?: StatusHandler;
   private reconnectAttempts = 0;
+  private reconnectAllowed = true;
   private readonly maxAttempts = 5;
   private reconnectTimer?: ReturnType<typeof setTimeout>;
 
@@ -19,6 +20,7 @@ export class VenomWebSocket {
   }
 
   connect() {
+    this.reconnectAllowed = true;
     if (this.ws) return;
     if (process.env.NEXT_PUBLIC_DISABLE_WS_EVENTS === "true") {
       this.onStatus?.(false);
@@ -52,20 +54,29 @@ export class VenomWebSocket {
   }
 
   disconnect() {
+    this.reconnectAllowed = false;
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
     }
-    this.ws?.close();
+    if (this.ws) {
+      this.ws.onclose = null;
+      this.ws.onmessage = null;
+      this.ws.onopen = null;
+      this.ws.onerror = null;
+      this.ws.close();
+    }
     this.ws = null;
+    this.onStatus?.(false);
   }
 
   private scheduleReconnect() {
-    if (this.reconnectAttempts >= this.maxAttempts) {
+    if (!this.reconnectAllowed || this.reconnectAttempts >= this.maxAttempts) {
       return;
     }
     const delay = Math.min(30000, 1000 * 2 ** this.reconnectAttempts);
     this.reconnectAttempts += 1;
     this.reconnectTimer = setTimeout(() => {
+      if (!this.reconnectAllowed) return;
       this.ws = null;
       this.connect();
     }, delay);

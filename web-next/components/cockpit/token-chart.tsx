@@ -1,15 +1,15 @@
 "use client";
 
-import type { Chart } from "chart.js/auto";
+import type { Chart } from "chart.js";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useTranslation } from "@/lib/i18n";
 
 import type { TokenSample } from "@/components/cockpit/token-types";
 
-type ChartModule = Pick<typeof import("chart.js/auto"), "default">;
+type ChartModule = Pick<typeof import("./token-line-chart"), "default">;
 
-const loadChartModule = () => import("chart.js/auto");
+const loadChartModule = () => import("./token-line-chart");
 
 type TokenChartProps = Readonly<{
   history: TokenSample[];
@@ -20,9 +20,23 @@ type TokenChartProps = Readonly<{
 export function TokenChart({ history, height = 220, loadChart = loadChartModule }: TokenChartProps) {
   const t = useTranslation();
   const [failed, setFailed] = useState(false);
+  const [visible, setVisible] = useState(() => typeof IntersectionObserver === "undefined");
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const chartRef = useRef<Chart | null>(null);
   const chartModuleRef = useRef<ChartModule | null>(null);
+  const chartLoadRef = useRef<Promise<ChartModule> | null>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || typeof IntersectionObserver === "undefined") return;
+    const observer = new IntersectionObserver((entries) => {
+      if (!entries.some((entry) => entry.isIntersecting)) return;
+      setVisible(true);
+      observer.disconnect();
+    });
+    observer.observe(canvas);
+    return () => observer.disconnect();
+  }, []);
 
   const destroyChart = useCallback(() => {
     const chart = chartRef.current;
@@ -41,7 +55,7 @@ export function TokenChart({ history, height = 220, loadChart = loadChartModule 
   }, [destroyChart]);
 
   useEffect(() => {
-    if (!canvasRef.current) return;
+    if (!canvasRef.current || !visible || (history.length === 0 && !chartRef.current)) return;
     if (height) {
       canvasRef.current.style.height = `${height}px`;
     }
@@ -53,7 +67,8 @@ export function TokenChart({ history, height = 220, loadChart = loadChartModule 
       if (!canvasRef.current) return;
       let chartModule = chartModuleRef.current;
       if (!chartModule) {
-        chartModule = await loadChart();
+        chartLoadRef.current ??= loadChart();
+        chartModule = await chartLoadRef.current;
         chartModuleRef.current = chartModule;
       }
       if (!isMounted) return;
@@ -62,6 +77,7 @@ export function TokenChart({ history, height = 220, loadChart = loadChartModule 
       if (chartRef.current) {
         chartRef.current.data.labels = labels;
         chartRef.current.data.datasets[0].data = dataPoints;
+        chartRef.current.data.datasets[0].label = t("cockpit.metrics.tokens.title");
         chartRef.current.update();
         return;
       }
@@ -72,7 +88,7 @@ export function TokenChart({ history, height = 220, loadChart = loadChartModule 
           labels,
           datasets: [
             {
-              label: "Total tokens",
+              label: t("cockpit.metrics.tokens.title"),
               data: dataPoints,
               borderColor: "#8b5cf6",
               backgroundColor: "rgba(139,92,246,0.2)",
@@ -114,7 +130,7 @@ export function TokenChart({ history, height = 220, loadChart = loadChartModule 
     return () => {
       isMounted = false;
     };
-  }, [history, height, loadChart, destroyChart]);
+  }, [history, height, loadChart, destroyChart, visible, t]);
 
   if (failed) {
     return (

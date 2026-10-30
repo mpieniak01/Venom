@@ -3,10 +3,11 @@ import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import path from "node:path";
 
+const distDir = process.env.NEXT_DIST_DIR || ".next";
 const rootDir = process.cwd();
 const serverCandidates = [
-  path.join(rootDir, ".next", "standalone", "web-next", "server.js"),
-  path.join(rootDir, ".next", "standalone", "server.js"),
+  path.join(rootDir, distDir, "standalone", "web-next", "server.js"),
+  path.join(rootDir, distDir, "standalone", "server.js"),
 ];
 const serverPath = serverCandidates.find((candidate) => existsSync(candidate));
 const nodeExecPath = process.execPath;

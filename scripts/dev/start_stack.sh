@@ -450,223 +450,28 @@ else
   echo "✅ Backend gotowy (używam już działającej instancji)"
 fi
 
-ui_skip=""
-if [[ ! -f "$WEB_PID_FILE" ]]; then
-  ext_ui_pids="$(bash scripts/dev/port_pids.sh "$WEB_PORT" || true)"
-  if [[ -n "$ext_ui_pids" ]]; then
-    echo "⚠️  Port ${WEB_PORT} zajęty przez niezarządzany proces UI ($ext_ui_pids). Czyszczę."
-    kill $ext_ui_pids 2>/dev/null || true
-    for _ in {1..30}; do
-      ext_still="$(bash scripts/dev/port_pids.sh "$WEB_PORT" || true)"
-      [[ -z "$ext_still" ]] && break
-      sleep 0.2
-    done
-    ext_still="$(bash scripts/dev/port_pids.sh "$WEB_PORT" || true)"
-    if [[ -n "$ext_still" ]]; then
-      echo "❌ Nie udało się zwolnić portu ${WEB_PORT} (PID: $ext_still). Użyj: make web-stop"
-      exit 1
-    fi
-  fi
+# All UI entrypoints share ownership, build compatibility and readiness checks.
+export WEB_DIR WEB_PORT WEB_HOST WEB_PID_FILE WEB_LOG NPM
+export NODE_PATH="$WEB_NODE_PATH"
+export NEXT_PUBLIC_APP_VERSION="$WEB_APP_VERSION"
+export NEXT_PUBLIC_ENVIRONMENT_ROLE="${ENVIRONMENT_ROLE:-dev}"
+export NEXT_PUBLIC_ENABLE_AUDIO_INTERFACE="$(env_contract_get ENABLE_AUDIO_INTERFACE "false" "$ENV_FILE")"
+export NEXT_PUBLIC_AUDIO_WS_BASE="ws://${WEB_DISPLAY}:${PORT}"
+export NEXT_TELEMETRY_DISABLED=1
+unset NEXT_DISABLE_TURBOPACK WATCHPACK_POLLING WATCHPACK_POLLING_INTERVAL CHOKIDAR_USEPOLLING
+
+if [[ "$START_MODE" == "prod" ]]; then
+  # Building is explicit and invalidates the previous stamp before any attempt.
+  run_with_env_file node "$ROOT_DIR/web-next/scripts/web-lifecycle.mjs" build
+  run_with_env_file node "$ROOT_DIR/web-next/scripts/web-lifecycle.mjs" start
+else
+  case "$START_WEB_MODE" in
+    turbo|turbo-debug) export WATCHPACK_POLLING=true WATCHPACK_POLLING_INTERVAL=1000 CHOKIDAR_USEPOLLING=1 ;;
+    webpack) export NEXT_DISABLE_TURBOPACK=1 ;;
+    *) echo "❌ Nieznany START_WEB_MODE=$START_WEB_MODE" >&2; exit 1 ;;
+  esac
+  run_with_env_file node "$ROOT_DIR/web-next/scripts/web-lifecycle.mjs" dev "$START_WEB_MODE"
 fi
-
-if [[ -f "$WEB_PID_FILE" ]]; then
-  wpid="$(cat "$WEB_PID_FILE")"
-  if kill -0 "$wpid" 2>/dev/null; then
-    if [[ "$START_MODE" == "dev" ]]; then
-      cmdline="$(tr '\0' ' ' < /proc/${wpid}/cmdline 2>/dev/null || true)"
-      want="dev --"
-      if [[ "$START_WEB_MODE" == "turbo" ]]; then
-        want="dev:turbo"
-      elif [[ "$START_WEB_MODE" == "turbo-debug" ]]; then
-        want="dev:turbo:debug"
-      fi
-      if printf '%s' "$cmdline" | grep -Fq "$want"; then
-        echo "⚠️  UI (Next.js) już działa w trybie ${START_WEB_MODE} (PID ${wpid}). Pomijam start UI."
-        ui_skip="yes"
-      else
-        echo "🔁 UI (Next.js) działa w innym trybie. Restartuję do trybu ${START_WEB_MODE}."
-        kill -TERM -"$wpid" 2>/dev/null || kill "$wpid" 2>/dev/null || true
-        for _ in {1..20}; do
-          if kill -0 "$wpid" 2>/dev/null; then sleep 0.2; else break; fi
-        done
-        if kill -0 "$wpid" 2>/dev/null; then
-          kill -KILL -"$wpid" 2>/dev/null || kill -KILL "$wpid" 2>/dev/null || true
-        fi
-        rm -f "$WEB_PID_FILE"
-      fi
-    else
-      echo "⚠️  UI (Next.js) już działa (PID ${wpid}). Pomijam start UI."
-      ui_skip="yes"
-    fi
-  else
-    rm -f "$WEB_PID_FILE"
-  fi
-fi
-
-if [[ -z "$ui_skip" ]]; then
-  start_ui_process() {
-    local mode="$1"
-    local npm_command="dev"
-    case "$mode" in
-      prod)
-        npm_command="start"
-        ;;
-      turbo)
-        npm_command="dev:turbo"
-        ;;
-      turbo-debug)
-        npm_command="dev:turbo:debug"
-        ;;
-      webpack)
-        npm_command="dev"
-        ;;
-      *)
-        echo "❌ Nieznany tryb uruchomienia UI: ${mode}" >&2
-        return 1
-        ;;
-    esac
-
-    (
-      cd "$WEB_DIR"
-      export NODE_PATH="$WEB_NODE_PATH"
-      export NEXT_PUBLIC_APP_VERSION="$WEB_APP_VERSION"
-      export NEXT_PUBLIC_ENVIRONMENT_ROLE="${ENVIRONMENT_ROLE:-dev}"
-      export NEXT_PUBLIC_ENABLE_AUDIO_INTERFACE="$(env_contract_get ENABLE_AUDIO_INTERFACE "false" "$ENV_FILE")"
-      export NEXT_PUBLIC_AUDIO_WS_BASE="ws://${WEB_DISPLAY}:${PORT}"
-      export NEXT_TELEMETRY_DISABLED=1
-      unset NEXT_DISABLE_TURBOPACK WATCHPACK_POLLING WATCHPACK_POLLING_INTERVAL CHOKIDAR_USEPOLLING
-
-      if [[ "$mode" == "prod" ]]; then
-        export NEXT_MODE=prod
-      elif [[ "$mode" == "webpack" ]]; then
-        export NEXT_MODE=dev
-        export NEXT_DISABLE_TURBOPACK=1
-      else
-        export NEXT_MODE=dev
-        export WATCHPACK_POLLING=true
-        export WATCHPACK_POLLING_INTERVAL=1000
-        export CHOKIDAR_USEPOLLING=1
-      fi
-
-      run_with_env_file setsid "$NPM" run "$npm_command" -- --hostname "$WEB_HOST" --port "$WEB_PORT" >> "../$WEB_LOG" 2>&1 &
-      echo $! > "../$WEB_PID_FILE"
-    )
-  }
-
-  wait_for_ui_ready() {
-    local pid="$1"
-    local failure_label="$2"
-    local ready=""
-    for _ in {1..40}; do
-      if kill -0 "$pid" 2>/dev/null; then
-        if curl -fsS "http://${WEB_DISPLAY}:${WEB_PORT}" >/dev/null 2>&1; then
-          ready="yes"
-          break
-        fi
-      else
-        echo "$failure_label proces $pid zakończył się przed startem" >&2
-        break
-      fi
-      sleep 1
-    done
-    printf '%s' "$ready"
-  }
-
-  : > "$WEB_LOG"
-  if [[ "$START_MODE" == "prod" ]]; then
-    echo "🛠  Buduję Next.js (npm run build)"
-    if ! (
-      cd "$WEB_DIR"
-      NODE_PATH="$WEB_NODE_PATH" NEXT_PUBLIC_APP_VERSION="$WEB_APP_VERSION" NEXT_PUBLIC_ENVIRONMENT_ROLE="${ENVIRONMENT_ROLE:-dev}" NEXT_PUBLIC_ENABLE_AUDIO_INTERFACE="$(env_contract_get ENABLE_AUDIO_INTERFACE "false" "$ENV_FILE")" NEXT_PUBLIC_AUDIO_WS_BASE="ws://${WEB_DISPLAY}:${PORT}" NEXT_MODE=prod NEXT_TELEMETRY_DISABLED=1 "$NPM" run build >/dev/null 2>&1
-    ); then
-      echo "❌ Build UI (Next.js) nie powiódł się (tryb prod)." >&2
-      if [[ -f "$PID_FILE" ]]; then
-        bpid="$(cat "$PID_FILE")"
-        kill "$bpid" 2>/dev/null || true
-        rm -f "$PID_FILE"
-      fi
-      exit 1
-    fi
-    echo "▶️  Uruchamiam UI (Next.js start, host ${WEB_HOST}, port ${WEB_PORT})"
-    start_ui_process "prod"
-  else
-    if [[ "$START_WEB_MODE" != "webpack" && "$START_WEB_MODE" != "turbo" && "$START_WEB_MODE" != "turbo-debug" ]]; then
-      echo "❌ Nieznany START_WEB_MODE='${START_WEB_MODE}' (dozwolone: webpack|turbo|turbo-debug)"
-      exit 1
-    fi
-    if [[ "$START_WEB_MODE" == "turbo" ]]; then
-      echo "▶️  Uruchamiam UI (Next.js dev:turbo, host ${WEB_HOST}, port ${WEB_PORT})"
-      start_ui_process "turbo"
-    elif [[ "$START_WEB_MODE" == "turbo-debug" ]]; then
-      echo "▶️  Uruchamiam UI (Next.js dev:turbo:debug, host ${WEB_HOST}, port ${WEB_PORT})"
-      start_ui_process "turbo-debug"
-    else
-      echo "▶️  Uruchamiam UI (Next.js dev, host ${WEB_HOST}, port ${WEB_PORT})"
-      start_ui_process "webpack"
-    fi
-  fi
-
-  effective_web_mode="$START_WEB_MODE"
-  ui_ready=""
-  max_attempts=$((WEB_START_RETRIES + 1))
-  for attempt in $(seq 1 "$max_attempts"); do
-    wpid="$(cat "$WEB_PID_FILE")"
-    UI_STARTED=1
-    ui_ready="$(wait_for_ui_ready "$wpid" "❌ UI (Next.js)")"
-    if [[ -n "$ui_ready" ]]; then
-      break
-    fi
-
-    echo "⚠️  UI (Next.js) nie wystartował poprawnie (próba ${attempt}/${max_attempts})."
-    kill_pid_group_graceful "$wpid" "UI"
-    rm -f "$WEB_PID_FILE"
-    UI_STARTED=0
-
-    should_retry_same_mode=0
-    if [[ "$attempt" -lt "$max_attempts" ]]; then
-      should_retry_same_mode=1
-    fi
-
-    if [[ "$START_MODE" == "dev" ]] && { [[ "$effective_web_mode" == "turbo" ]] || [[ "$effective_web_mode" == "turbo-debug" ]]; } && [[ -f "$WEB_LOG" ]] && grep -Eiq "Too many open files|Failed to allocate directory watch" "$WEB_LOG"; then
-      echo "❌ Turbopack: błąd watchera. Zachowuję wybrany bundler; sprawdź limit inotify lub użyj jawnie make start-dev-webpack."
-    fi
-
-    if [[ "$should_retry_same_mode" -eq 1 ]]; then
-      echo "🔁 Ponawiam start UI w tym samym trybie (${effective_web_mode})."
-      : > "$WEB_LOG"
-      start_ui_process "$effective_web_mode"
-      continue
-    fi
-  done
-
-  if [[ -z "$ui_ready" ]]; then
-    exit 1
-  fi
-
-  if [[ "$START_MODE" == "dev" ]]; then
-    expected_bundler="turbopack"
-    [[ "$effective_web_mode" == "webpack" ]] && expected_bundler="webpack"
-    bundler_line_ok=""
-    for _ in {1..15}; do
-      if [[ -f "$WEB_LOG" ]] && grep -Eiq "Next\.js .+\(${expected_bundler}\)" "$WEB_LOG"; then
-        bundler_line_ok="yes"
-        break
-      fi
-      sleep 1
-    done
-    if [[ -z "$bundler_line_ok" ]]; then
-      echo "❌ UI nie potwierdził oczekiwanego bundlera '${expected_bundler}' w logach."
-      echo "ℹ️  Ostatnie logi UI:"
-      tail -n 60 "$WEB_LOG" || true
-      kill_pid_group_graceful "$wpid" "UI"
-      rm -f "$WEB_PID_FILE"
-      UI_STARTED=0
-      exit 1
-    fi
-  fi
-
-  echo "✅ UI (Next.js) wystartował z PID $(cat "$WEB_PID_FILE")"
-fi
-
+# The lifecycle cleans up only its own failed launch. Do not claim reused UI as ours.
 echo "🚀 Gotowe: backend http://${HOST_DISPLAY}:${PORT}, dashboard http://${WEB_DISPLAY}:${WEB_PORT}"
 START_SUCCESS=1

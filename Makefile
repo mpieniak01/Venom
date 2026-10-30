@@ -132,16 +132,8 @@ define handle_pytest_no_tests
 	fi;
 endef
 
-define start_web_turbo_target
-	@mkdir -p logs
-	$(call ensure_process_not_running,UI (Next.js),$(WEB_PID_FILE))
-	: > $(WEB_LOG)
-	@echo "▶️  Uruchamiam UI ($(1), host $(WEB_HOST), port $(WEB_PORT))"
-	cd $(WEB_DIR) && API_PROXY_TARGET="$(WEB_API_PROXY_TARGET)" NODE_PATH="$(WEB_NODE_PATH)" NEXT_PUBLIC_APP_VERSION="$(WEB_APP_VERSION)" NEXT_PUBLIC_ENVIRONMENT_ROLE="$${ENVIRONMENT_ROLE:-dev}" NEXT_MODE=dev $(NEXT_TURBO_WATCH_ENV) $(4) $(ENV_RUN_ABS) setsid $(NPM) run $(2) -- --hostname $(WEB_HOST) --port $(WEB_PORT) >> ../$(WEB_LOG) 2>&1 & \
-	echo $$! > $(WEB_PID_FILE)
-	@echo "✅ UI ($(1)) wystartował z PID $$(cat $(WEB_PID_FILE))"
-	@echo "🎨 Dashboard: http://$(WEB_DISPLAY):$(WEB_PORT)"
-	@echo "$(3)"
+define run_web_lifecycle
+	@WEB_DIR="$(abspath $(WEB_DIR))" WEB_PID_FILE="$(abspath $(WEB_PID_FILE))" WEB_LOG="$(abspath $(WEB_LOG))" WEB_HOST="$(WEB_HOST)" WEB_PORT="$(WEB_PORT)" NPM="$(NPM)" API_PROXY_TARGET="$(WEB_API_PROXY_TARGET)" NODE_PATH="$(WEB_NODE_PATH)" NEXT_PUBLIC_APP_VERSION="$(WEB_APP_VERSION)" NEXT_PUBLIC_ENVIRONMENT_ROLE="${ENVIRONMENT_ROLE:-dev}" $(ENV_RUN_ABS) node "$(abspath web-next/scripts/web-lifecycle.mjs)" $(1)
 endef
 
 # Public contract: make start PROFILE=full|light ENVIRONMENT=dev|preprod
@@ -267,36 +259,22 @@ api-preprod: api
 api-stop:
 	@ENVIRONMENT="$(ENVIRONMENT)" PROFILE="$(PROFILE)" ENV_FILE="$(ENV_FILE)" $(PYTHON_BIN) scripts/dev/stack_profile.py component api-stop
 
-# Frontend Web (tylko) - produkcyjny (build + start)
-web:
-	@mkdir -p logs
-	$(call ensure_process_not_running,UI (Next.js),$(WEB_PID_FILE))
-	: > $(WEB_LOG)
-	@echo "🛠  Buduję Next.js (npm run build)..."
-	cd $(WEB_DIR) && API_PROXY_TARGET="$(WEB_API_PROXY_TARGET)" NODE_PATH="$(WEB_NODE_PATH)" NEXT_PUBLIC_APP_VERSION="$(WEB_APP_VERSION)" NEXT_PUBLIC_ENVIRONMENT_ROLE="$${ENVIRONMENT_ROLE:-dev}" $(NEXT_PROD_ENV) $(ENV_RUN_ABS) $(NPM) run build >/dev/null 2>&1
-	@echo "▶️  Uruchamiam UI (Next.js start, host $(WEB_HOST), port $(WEB_PORT))"
-	cd $(WEB_DIR) && API_PROXY_TARGET="$(WEB_API_PROXY_TARGET)" NODE_PATH="$(WEB_NODE_PATH)" NEXT_PUBLIC_APP_VERSION="$(WEB_APP_VERSION)" NEXT_PUBLIC_ENVIRONMENT_ROLE="$${ENVIRONMENT_ROLE:-dev}" $(NEXT_PROD_ENV) $(ENV_RUN_ABS) setsid $(NPM) run start -- --hostname $(WEB_HOST) --port $(WEB_PORT) >> ../$(WEB_LOG) 2>&1 & \
-	echo $$! > $(WEB_PID_FILE)
-	@echo "✅ UI (Next.js) wystartował z PID $$(cat $(WEB_PID_FILE))"
-	@echo "🎨 Dashboard: http://$(WEB_DISPLAY):$(WEB_PORT)"
+# Frontend: build explicitly, then start only a compatible prepared artifact.
+web-build:
+	$(call run_web_lifecycle,build)
 
-# Frontend Web (tylko) - developerski (next dev)
+web:
+	$(call run_web_lifecycle,start)
+
+# Diagnostic Webpack shares the lifecycle; the daily stack uses Turbo.
 web-dev:
-	@mkdir -p logs
-	$(call ensure_process_not_running,UI (Next.js),$(WEB_PID_FILE))
-	: > $(WEB_LOG)
-	@echo "▶️  Uruchamiam UI (Next.js dev, host $(WEB_HOST), port $(WEB_PORT))"
-	cd $(WEB_DIR) && API_PROXY_TARGET="$(WEB_API_PROXY_TARGET)" NODE_PATH="$(WEB_NODE_PATH)" NEXT_PUBLIC_APP_VERSION="$(WEB_APP_VERSION)" NEXT_PUBLIC_ENVIRONMENT_ROLE="$${ENVIRONMENT_ROLE:-dev}" $(NEXT_DEV_ENV) $(ENV_RUN_ABS) setsid $(NPM) run dev -- --hostname $(WEB_HOST) --port $(WEB_PORT) >> ../$(WEB_LOG) 2>&1 & \
-	echo $$! > $(WEB_PID_FILE)
-	@echo "✅ UI (Next.js) wystartował z PID $$(cat $(WEB_PID_FILE))"
-	@echo "🎨 Dashboard: http://$(WEB_DISPLAY):$(WEB_PORT)"
-	@echo "🔄 Hot Reload: aktywny (zmiana plików → przeładowanie)"
+	$(call run_web_lifecycle,dev webpack)
 
 web-dev-turbo:
-	$(call start_web_turbo_target,Next.js dev:turbo,dev:turbo,⚡ Turbopack: domyślny bundler dev,NEXT_TELEMETRY_DISABLED=1)
+	$(call run_web_lifecycle,dev turbo)
 
 web-dev-turbo-debug:
-	$(call start_web_turbo_target,Next.js dev:turbo:debug,dev:turbo:debug,🧪 Debug turbo: NEXT_DEBUG + --trace-warnings,)
+	$(call run_web_lifecycle,dev turbo-debug)
 
 web-preprod: ENV_FILE=.env.preprod
 web-preprod: ENV_EXAMPLE_FILE=.env.preprod.example
@@ -307,7 +285,6 @@ web-preprod: export QUEUE_NAMESPACE=preprod
 web-preprod: export STORAGE_PREFIX=preprod
 web-preprod: export ALLOW_DATA_MUTATION=0
 web-preprod: web
-
 # Zatrzymaj tylko frontend
 web-stop:
 	@trap '' TERM INT

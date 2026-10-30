@@ -5,6 +5,7 @@ const TURBOPACK_ROOT = __dirname;
 const WATCH_POLL_INTERVAL_MS = Number(process.env.NEXT_WATCH_POLL_INTERVAL_MS || "1000");
 
 const nextConfig: NextConfig = {
+  distDir: process.env.NEXT_DIST_DIR || ".next",
   allowedDevOrigins: trustedLanDevOrigins(),
   env: { NEXT_PUBLIC_TRANSPORT_PROFILE: process.env.VENOM_OPERATOR_ACCESS || "secure" },
   // Ułatwia deployment produkcyjny (docker / serverless)

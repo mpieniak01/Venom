@@ -20,7 +20,26 @@ const settings = proxySettings();
 const { requestHandler, upgradeHandler } = createTransportProxy({
   uiTarget: `http://127.0.0.1:${innerPort}`, settings,
 });
-const server = http.createServer(requestHandler);
+const server = http.createServer(async (request, response) => {
+  // A per-launch token proves this entry and its actual Next child are ready.
+  // Regular browser traffic continues through the existing streaming proxy.
+  const token = process.env.VENOM_UI_START_TOKEN;
+  if (token && request.url === "/_venom/ready" && request.headers["x-venom-start-token"] === token) {
+    try {
+      const result = await fetch(`http://127.0.0.1:${innerPort}/`, { signal: AbortSignal.timeout(2000), redirect: "manual" });
+      await result.body?.cancel();
+      if (result.status >= 200 && result.status < 400) {
+        response.writeHead(200, { "content-type": "text/plain", "cache-control": "no-store" });
+        response.end(token);
+        return;
+      }
+    } catch { /* Child is still starting or has failed. */ }
+    response.writeHead(503, { "cache-control": "no-store" });
+    response.end("UI not ready");
+    return;
+  }
+  requestHandler(request, response);
+});
 const sockets = new Set();
 server.on("connection", (socket) => {
   sockets.add(socket);

@@ -392,3 +392,19 @@ def test_historical_end_anchors_default_billing_period(state, period, expected):
     assert result["to_utc"] == "2026-09-10"
     explicit = service.view(period, start=datetime(2026, 8, 1).date(), end=end)
     assert explicit["from_utc"] == "2026-08-01"
+
+
+def test_all_period_before_retained_history_has_no_observed_cost(state):
+    service, *_ = state
+    service.sync()
+    end = datetime(2026, 8, 10).date()
+    result = service.view("all", end=end)
+    assert result["from_utc"] == "2026-08-10"
+    assert result["to_utc"] == "2026-08-10"
+    assert result["models"] == []
+    assert result["period_usd"] is None
+    assert result["covered_days"] == 0
+    assert result["expected_days"] == 1
+    explicit = datetime(2026, 10, 1).date()
+    with pytest.raises(billing.BillingError):
+        service.view("all", start=explicit, end=end)

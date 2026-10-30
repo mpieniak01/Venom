@@ -383,7 +383,7 @@ def _billing_window(
         elif period == "month":
             first = last.replace(day=1)
         elif period == "all" and cache.days:
-            first = date.fromisoformat(min(cache.days))
+            first = min(last, date.fromisoformat(min(cache.days)))
     if first > last or last > today:
         raise BillingError("invalid_window")
     return first, last

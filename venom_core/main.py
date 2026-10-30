@@ -1566,10 +1566,10 @@ async def _ensure_local_llm_ready() -> None:
     runtime_profile = (
         (getattr(SETTINGS, "VENOM_RUNTIME_PROFILE", "") or "").strip().lower()
     )
-    if runtime_profile == "llm_off":
-        logger.info(
-            "Pomijam inicjalizację lokalnego LLM (VENOM_RUNTIME_PROFILE=llm_off)."
-        )
+    if runtime_profile == "llm_off" or (
+        str(getattr(SETTINGS, "ACTIVE_LLM_SERVER", "")).strip().lower() == "none"
+    ):
+        logger.info("Pomijam inicjalizację lokalnego LLM: wyłączony przy starcie.")
         return
     runtime = get_active_llm_runtime()
     if runtime.service_type != "local" or getattr(runtime, "host_local", None) is False:

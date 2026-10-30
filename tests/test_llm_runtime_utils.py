@@ -856,3 +856,18 @@ async def test_remote_ollama_never_starts_host_or_runs_startup_generation(monkey
 
     monkeypatch.setattr(llm_runtime.httpx, "AsyncClient", unexpected_http)
     assert not await llm_runtime.warmup_local_runtime(runtime, "fixture", 1.0, 1)
+
+
+@pytest.mark.parametrize("active_server", ["none", "NONE", " none "])
+def test_explicit_none_startup_never_resolves_or_starts_local_runtime(
+    monkeypatch, active_server
+):
+    settings = DummySettings(
+        active_server=active_server, endpoint="http://localhost:11434/v1"
+    )
+
+    def unexpected(_settings):
+        raise AssertionError("explicit none must not resolve a local model")
+
+    monkeypatch.setattr(llm_runtime, "get_active_llm_runtime", unexpected)
+    assert llm_runtime.get_startup_local_server(settings) == "none"

@@ -228,8 +228,10 @@ def get_startup_local_server(settings=None) -> str:
     """
     selected_settings = settings or SETTINGS
     if (
-        str(getattr(selected_settings, "VENOM_RUNTIME_PROFILE", "")).lower()
+        str(getattr(selected_settings, "VENOM_RUNTIME_PROFILE", "")).strip().lower()
         == "llm_off"
+        or str(getattr(selected_settings, "ACTIVE_LLM_SERVER", "")).strip().lower()
+        == "none"
     ):
         return "none"
     runtime = get_active_llm_runtime(settings)

@@ -2615,3 +2615,24 @@ def test_release_identity_matches_api_frontend_and_containers():
         ]
         assert versions
         assert all(version == release for version in versions)
+
+
+@pytest.mark.asyncio
+async def test_explicit_none_skips_backend_startup_runtime_preparation(monkeypatch):
+    monkeypatch.setattr(main_module.SETTINGS, "VENOM_RUNTIME_PROFILE", "full")
+    monkeypatch.setattr(main_module.SETTINGS, "ACTIVE_LLM_SERVER", "none")
+
+    def unexpected():
+        raise AssertionError("explicit none must not resolve or probe a runtime")
+
+    monkeypatch.setattr(main_module, "get_active_llm_runtime", unexpected)
+    sync = AsyncMock()
+    start = AsyncMock()
+    warmup = AsyncMock()
+    monkeypatch.setattr(main_module, "_synchronize_startup_local_model", sync)
+    monkeypatch.setattr(main_module, "_start_local_runtime_if_needed", start)
+    monkeypatch.setattr(main_module, "warmup_local_runtime", warmup)
+    await main_module._ensure_local_llm_ready()
+    sync.assert_not_awaited()
+    start.assert_not_awaited()
+    warmup.assert_not_awaited()

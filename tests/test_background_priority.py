@@ -108,3 +108,249 @@ async def test_documenter_stops_cleanup_and_rejects_new_work(monkeypatch, tmp_pa
     assert not agent._last_processed_files
     await agent.handle_code_change("other.py")
     process.assert_awaited_once_with("example.py")
+
+
+@pytest.mark.asyncio
+async def test_drainable_thread_returns_result_and_worker_error():
+    assert (
+        await priority.run_drainable_thread(
+            lambda value, *, extra: value + extra, 2, extra=3
+        )
+        == 5
+    )
+
+    def fail():
+        raise ValueError("worker failure")
+
+    with pytest.raises(ValueError, match="worker failure"):
+        await priority.run_drainable_thread(fail)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("worker_fails", [False, True])
+async def test_drainable_thread_finishes_real_work_after_repeated_cancel(worker_fails):
+    entered = threading.Event()
+    finish = threading.Event()
+    completed = threading.Event()
+
+    def work():
+        entered.set()
+        assert finish.wait(3)
+        completed.set()
+        if worker_fails:
+            raise RuntimeError("retired worker")
+        return 1
+
+    task = asyncio.create_task(priority.run_drainable_thread(work))
+    try:
+        assert await asyncio.to_thread(entered.wait, 1)
+        task.cancel()
+        await asyncio.sleep(0)
+        task.cancel()
+        await asyncio.sleep(0)
+        assert not task.done()
+        assert not completed.is_set()
+    finally:
+        finish.set()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert completed.is_set()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("phase", ["changes", "complexity"])
+async def test_gardener_stop_drains_periodic_and_complexity_workers(
+    monkeypatch, tmp_path, phase
+):
+    from datetime import datetime, timedelta, timezone
+
+    from venom_core.agents import gardener as module
+
+    entered = threading.Event()
+    finish = threading.Event()
+    completed = threading.Event()
+
+    def work():
+        entered.set()
+        assert finish.wait(3)
+        completed.set()
+        return False if phase == "changes" else []
+
+    monkeypatch.setattr(module, "wait_for_interactive_idle", AsyncMock())
+    monkeypatch.setattr(module.SETTINGS, "ENABLE_AUTO_GARDENING", True)
+    orch = SimpleNamespace(
+        active_tasks={},
+        last_activity=datetime.now(timezone.utc) - timedelta(days=1),
+    )
+    agent = module.GardenerAgent(
+        graph_store=Mock(),
+        workspace_root=str(tmp_path),
+        scan_interval=0,
+        orchestrator=orch,
+    )
+    monkeypatch.setattr(agent, "scan_and_update", lambda: {})
+    monkeypatch.setattr(
+        agent, "_check_for_changes", work if phase == "changes" else lambda: False
+    )
+    monkeypatch.setattr(
+        agent, "_find_complex_files", work if phase == "complexity" else lambda: []
+    )
+    await agent.start()
+    stopping = None
+    try:
+        assert await asyncio.to_thread(entered.wait, 1)
+        stopping = asyncio.create_task(agent.stop())
+        await asyncio.sleep(0)
+        assert not stopping.done()
+    finally:
+        finish.set()
+    assert stopping is not None
+    await stopping
+    assert completed.is_set()
+    assert not agent.is_running
+
+
+@pytest.mark.asyncio
+async def test_documenter_stop_cancels_live_handler_without_post_stop_work(
+    monkeypatch, tmp_path
+):
+    from venom_core.agents.documenter import DocumenterAgent
+
+    agent = DocumenterAgent(workspace_root=str(tmp_path))
+    entered = asyncio.Event()
+    release = asyncio.Event()
+    writes = []
+
+    async def process(_path):
+        entered.set()
+        await release.wait()
+        writes.append("unexpected")
+
+    monkeypatch.setattr(agent, "_process_file_change", process)
+    handler = asyncio.create_task(agent.handle_code_change("fixture.py"))
+    await entered.wait()
+    await agent.stop()
+    release.set()
+    assert handler.cancelled()
+    assert not writes
+    assert not agent._active_handlers
+    assert not agent._background_tasks
+    assert not agent._last_processed_files
+
+
+@pytest.mark.asyncio
+async def test_documenter_stop_drains_git_author_thread(monkeypatch, tmp_path):
+    from venom_core.agents import documenter as module
+
+    entered = threading.Event()
+    finish = threading.Event()
+    completed = threading.Event()
+
+    def read_author():
+        entered.set()
+        assert finish.wait(3)
+        completed.set()
+        return False
+
+    monkeypatch.setattr(module.SETTINGS, "ENABLE_AUTO_DOCUMENTATION", True)
+    monkeypatch.setattr(module, "wait_for_interactive_idle", AsyncMock())
+    agent = module.DocumenterAgent(workspace_root=str(tmp_path))
+    monkeypatch.setattr(agent, "_is_bot_commit_author", read_author)
+    diff = AsyncMock(return_value="diff --git")
+    monkeypatch.setattr(agent, "_get_file_diff", diff)
+    handler = asyncio.create_task(agent.handle_code_change("fixture.py"))
+    stopping = None
+    try:
+        assert await asyncio.to_thread(entered.wait, 1)
+        stopping = asyncio.create_task(agent.stop())
+        await asyncio.sleep(0)
+        assert not stopping.done()
+    finally:
+        finish.set()
+    assert stopping is not None
+    await stopping
+    assert completed.is_set()
+    assert handler.cancelled()
+    assert not agent._active_handlers
+    diff.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_documenter_stop_does_not_cancel_its_own_handler(monkeypatch, tmp_path):
+    from venom_core.agents.documenter import DocumenterAgent
+
+    agent = DocumenterAgent(workspace_root=str(tmp_path))
+
+    async def process(_path):
+        await agent.stop()
+
+    monkeypatch.setattr(agent, "_process_file_change", process)
+    await agent.handle_code_change("fixture.py")
+    assert agent._stopping
+    assert not agent._active_handlers
+    assert not agent._background_tasks
+
+
+@pytest.mark.asyncio
+async def test_documenter_stop_retires_handler_waiting_for_processing_lock(
+    monkeypatch, tmp_path
+):
+    from venom_core.agents.documenter import DocumenterAgent
+
+    agent = DocumenterAgent(workspace_root=str(tmp_path))
+    process = AsyncMock()
+    monkeypatch.setattr(agent, "_process_file_change", process)
+    await agent._processing_lock.acquire()
+    try:
+        handler = asyncio.create_task(agent.handle_code_change("fixture.py"))
+        await asyncio.sleep(0)
+        await agent.stop()
+        assert handler.cancelled()
+        assert not agent._active_handlers
+    finally:
+        agent._processing_lock.release()
+    process.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_documenter_skips_commit_if_stopped_during_update(monkeypatch, tmp_path):
+    from venom_core.agents.documenter import DocumenterAgent
+
+    agent = DocumenterAgent(workspace_root=str(tmp_path))
+
+    async def update(*_args):
+        agent._stopping = True
+
+    commit = AsyncMock()
+    monkeypatch.setattr(agent, "_update_documentation", update)
+    monkeypatch.setattr(agent, "_commit_documentation_changes", commit)
+    await agent._apply_documentation_update("fixture.py", "fixture.py", "diff --git")
+    commit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_idle_wait_drains_inflight_admission_read_on_cancel(monkeypatch):
+    entered = threading.Event()
+    finish = threading.Event()
+    completed = threading.Event()
+
+    def snapshot():
+        entered.set()
+        assert finish.wait(3)
+        completed.set()
+        return {"status": "available"}
+
+    monkeypatch.setattr(
+        priority, "get_runtime_admission", lambda: SimpleNamespace(snapshot=snapshot)
+    )
+    waiting = asyncio.create_task(priority.wait_for_interactive_idle())
+    try:
+        assert await asyncio.to_thread(entered.wait, 1)
+        waiting.cancel()
+        await asyncio.sleep(0)
+        assert not waiting.done()
+    finally:
+        finish.set()
+    with pytest.raises(asyncio.CancelledError):
+        await waiting
+    assert completed.is_set()

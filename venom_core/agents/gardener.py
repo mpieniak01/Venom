@@ -13,7 +13,10 @@ from typing import Any, Optional
 
 from venom_core.config import SETTINGS
 from venom_core.memory.graph_store import CodeGraphStore
-from venom_core.services.background_priority import wait_for_interactive_idle
+from venom_core.services.background_priority import (
+    run_drainable_thread,
+    wait_for_interactive_idle,
+)
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -93,13 +96,7 @@ class GardenerAgent:
 
     async def _scan_when_idle(self) -> None:
         await wait_for_interactive_idle(self.orchestrator)
-        scan = asyncio.create_task(asyncio.to_thread(self.scan_and_update))
-        try:
-            await asyncio.shield(scan)
-        except asyncio.CancelledError:
-            # to_thread cannot kill a filesystem call; drain the real worker.
-            await scan
-            raise
+        await run_drainable_thread(self.scan_and_update)
 
     async def _monitoring_loop(self) -> None:
         """Pętla monitorowania zmian w plikach i idle mode."""
@@ -111,7 +108,7 @@ class GardenerAgent:
 
                 await wait_for_interactive_idle(self.orchestrator)
                 # Walking a workspace is blocking filesystem work too.
-                if await asyncio.to_thread(self._check_for_changes):
+                if await run_drainable_thread(self._check_for_changes):
                     logger.info("Wykryto zmiany w workspace, rozpoczynam re-indeksację")
                     await self._scan_when_idle()
                 else:
@@ -310,7 +307,7 @@ class GardenerAgent:
 
             # 1. Znajdź pliki o wysokiej złożoności
             await wait_for_interactive_idle(self.orchestrator)
-            complex_files = await asyncio.to_thread(self._find_complex_files)
+            complex_files = await run_drainable_thread(self._find_complex_files)
 
             if not complex_files:
                 logger.info("Brak plików wymagających refaktoryzacji")

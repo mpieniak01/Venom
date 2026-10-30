@@ -1,4 +1,7 @@
 import type { Metadata } from "next";
+import { cookies, headers } from "next/headers";
+import { isLanguageCode, languageFromHeader, LANGUAGE_COOKIE } from "@/lib/i18n/preferences";
+import { loadLocale } from "@/lib/i18n/load-locale";
 import localFont from "next/font/local";
 import { Sidebar } from "@/components/layout/sidebar";
 import { TopBarWrapper, TopBarSkeleton } from "@/components/layout/top-bar-wrapper";
@@ -35,11 +38,16 @@ export const metadata: Metadata = {
     "Next.js frontend for Venom: Cockpit, Flow Inspector, Brain and War Room.",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const cookieLanguage = (await cookies()).get(LANGUAGE_COOKIE)?.value;
+  const initialLanguage = isLanguageCode(cookieLanguage)
+    ? cookieLanguage
+    : languageFromHeader((await headers()).get("accept-language"));
+  const initialDictionary = initialLanguage === "pl" ? undefined : await loadLocale(initialLanguage);
   const serializedThemeIds = JSON.stringify(THEME_IDS);
   const serializedThemeAliases = JSON.stringify(LEGACY_THEME_ALIASES);
   const serializedAppMeta = JSON.stringify({
@@ -81,7 +89,7 @@ export default function RootLayout({
   `;
 
   return (
-    <html lang="pl" data-theme={DEFAULT_THEME} suppressHydrationWarning>
+    <html lang={initialLanguage} data-theme={DEFAULT_THEME} suppressHydrationWarning>
       <head>
         <script
           id="venom-theme-bootstrap"
@@ -95,7 +103,7 @@ export default function RootLayout({
         />
       </head>
       <body className={`${inter.variable} ${jetBrains.variable} font-sans antialiased`}>
-        <Providers>
+        <Providers initialLanguage={initialLanguage} initialDictionary={initialDictionary}>
           <div className="relative min-h-screen overflow-x-clip bg-[radial-gradient(circle_at_top,var(--app-shell-radial),_transparent_55%)] text-[color:var(--text-primary)]">
             <div className="pointer-events-none absolute inset-0 opacity-60 blur-3xl">
               <div className="absolute -left-10 top-10 h-64 w-64 rounded-full bg-[color:var(--app-orb-left)]" />

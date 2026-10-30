@@ -1,32 +1,18 @@
 "use client";
 
 import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useState,
-  useSyncExternalStore,
+  createContext, useCallback, useContext, useEffect, useMemo, useRef, useState,
   type ReactNode,
 } from "react";
-import { pl } from "./locales/pl";
-import { en } from "./locales/en";
-import { de } from "./locales/de";
 import dayjs from "dayjs";
-import "dayjs/locale/pl";
-import "dayjs/locale/en";
-import "dayjs/locale/de";
-
-const STORAGE_KEY = "venom-language";
-
-const translations = {
-  pl,
-  en,
-  de,
-} as const;
-
-export type LanguageCode = keyof typeof translations;
+import { pl } from "./locales/pl";
+import { loadDateLocale, loadLocale } from "./load-locale";
+import {
+  isLanguageCode, languageFromCookie, languageFromHeader,
+  LANGUAGE_COOKIE, LANGUAGE_STORAGE_KEY,
+  type LanguageCode, type LocaleDictionary,
+} from "./preferences";
+export type { LanguageCode, LocaleDictionary } from "./preferences";
 
 type LanguageContextValue = {
   language: LanguageCode;
@@ -36,11 +22,11 @@ type LanguageContextValue = {
 
 const LanguageContext = createContext<LanguageContextValue>({
   language: "pl",
-  setLanguage: () => { },
-  t: (path: string) => resolvePath(translations.pl, path) ?? path,
+  setLanguage: () => {},
+  t: (path: string) => resolvePath(pl, path) ?? path,
 });
 
-function resolvePath(locale: Record<string, unknown>, path: string): string | null {
+function resolvePath(locale: LocaleDictionary, path: string): string | null {
   const result = path.split(".").reduce<unknown>((acc, part) => {
     if (acc && typeof acc === "object" && part in (acc as Record<string, unknown>)) {
       return (acc as Record<string, unknown>)[part];
@@ -50,93 +36,105 @@ function resolvePath(locale: Record<string, unknown>, path: string): string | nu
   return typeof result === "string" ? result : null;
 }
 
-function escapeRegexSpecialChars(str: string): string {
-  return str.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
-}
-
 function applyReplacements(value: string, replacements?: Record<string, string | number>) {
   if (!replacements) return value;
-  return Object.entries(replacements).reduce((acc, [key, replacement]) => {
-    // Use escaped key for safer regex construction
-    const escapedKey = escapeRegexSpecialChars(key);
-    const pattern = new RegExp(String.raw`\{\{\s*${escapedKey}\s*\}\}`, "g");
-    return acc.replace(pattern, String(replacement));
-  }, value);
+  return value.replace(/\{\{\s*([^{}]+?)\s*\}\}/g, (placeholder, key: string) =>
+    Object.hasOwn(replacements, key) ? String(replacements[key]) : placeholder,
+  );
 }
 
-function resolvePreferredLanguage(): LanguageCode {
-  if (globalThis.window === undefined) return "pl";
-  const stored = globalThis.window.localStorage.getItem(STORAGE_KEY);
-  if (stored && (stored === "pl" || stored === "en" || stored === "de")) {
-    return stored;
+function preferredLanguage(): LanguageCode {
+  try {
+    const stored = globalThis.window.localStorage.getItem(LANGUAGE_STORAGE_KEY);
+    if (isLanguageCode(stored)) return stored;
+  } catch {
+    // A denied localStorage must not make the entire shell unusable.
   }
-  const browser = globalThis.window.navigator.language?.slice(0, 2).toLowerCase();
-  if (browser === "en" || browser === "de") {
-    return browser;
-  }
-  return "pl";
+  return languageFromCookie(document.cookie) ??
+    languageFromHeader(globalThis.window.navigator.language);
 }
 
-function subscribeToLanguagePreference(onStoreChange: () => void): () => void {
-  if (globalThis.window === undefined) return () => undefined;
-  const handleStorage = (event: StorageEvent) => {
-    if (event.key === STORAGE_KEY) {
-      onStoreChange();
+function persistLanguage(language: LanguageCode) {
+  try { globalThis.window.localStorage.setItem(LANGUAGE_STORAGE_KEY, language); } catch {}
+  document.cookie = `${LANGUAGE_COOKIE}=${language}; Path=/; Max-Age=31536000; SameSite=Lax${globalThis.window.location.protocol === "https:" ? "; Secure" : ""}`;
+}
+
+type LanguageProviderProps = Readonly<{
+  children: ReactNode;
+  initialLanguage?: LanguageCode;
+  initialDictionary?: LocaleDictionary;
+  loadDictionary?: typeof loadLocale;
+}>;
+
+export function LanguageProvider({
+  children, initialLanguage = "pl", initialDictionary = pl, loadDictionary = loadLocale,
+}: LanguageProviderProps) {
+  // Server and first client render use the same dictionary. A stored legacy
+  // preference is migrated after hydration; subsequent reloads use its cookie.
+  const [snapshot, setSnapshot] = useState(() => ({
+    language: initialLanguage, dictionary: initialDictionary,
+  }));
+  const requestRef = useRef(0);
+  const mountedRef = useRef(false);
+  const currentRef = useRef(snapshot);
+  currentRef.current = snapshot;
+
+  const setLanguage = useCallback((language: LanguageCode) => {
+    if (!isLanguageCode(language)) return;
+    const request = ++requestRef.current;
+    if (language === currentRef.current.language) {
+      persistLanguage(language);
+      return;
     }
-  };
-  globalThis.window.addEventListener("storage", handleStorage);
-  return () => globalThis.window.removeEventListener("storage", handleStorage);
-}
-
-export function LanguageProvider({ children }: Readonly<{ children: ReactNode }>) {
-  const preferredLanguage = useSyncExternalStore<LanguageCode>(
-    subscribeToLanguagePreference,
-    resolvePreferredLanguage,
-    (): LanguageCode => "pl",
-  );
-  const [userSelectedLanguage, setUserSelectedLanguage] = useState<LanguageCode | null>(null);
-  const language = userSelectedLanguage ?? preferredLanguage;
+    void loadDictionary(language).then((dictionary) => {
+      if (!mountedRef.current || request !== requestRef.current) return;
+      setSnapshot({ language, dictionary });
+      persistLanguage(language);
+    }).catch((error: unknown) => {
+      if (mountedRef.current && request === requestRef.current) {
+        console.warn("Language dictionary could not be loaded", error);
+      }
+    });
+  }, [loadDictionary]);
 
   useEffect(() => {
-    if (globalThis.window === undefined) return;
+    mountedRef.current = true;
     document.documentElement.dataset.hydrated = "true";
-  }, []);
+    setLanguage(preferredLanguage());
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === LANGUAGE_STORAGE_KEY || event.key === null) {
+        setLanguage(preferredLanguage());
+      }
+    };
+    globalThis.window.addEventListener("storage", onStorage);
+    return () => {
+      mountedRef.current = false;
+      ++requestRef.current;
+      globalThis.window.removeEventListener("storage", onStorage);
+    };
+  }, [setLanguage]);
 
   useEffect(() => {
-    if (globalThis.window === undefined) return;
-    globalThis.window.localStorage.setItem(STORAGE_KEY, language);
-    dayjs.locale(language);
-    document.documentElement.lang = language;
-  }, [language]);
+    // Register only the selected date locale; imported locale modules are cached.
+    let active = true;
+    void loadDateLocale(snapshot.language).then(() => {
+      if (active) dayjs.locale(snapshot.language);
+    }).catch(() => {});
+    document.documentElement.lang = snapshot.language;
+    return () => { active = false; };
+  }, [snapshot.language]);
 
-  const translate = useCallback(
-    (path: string, replacements?: Record<string, string | number>) => {
-      const value =
-        resolvePath(translations[language as LanguageCode], path) ??
-        resolvePath(translations.pl, path) ??
-        path;
-      return applyReplacements(value, replacements);
-    },
-    [language],
-  );
+  const translate = useCallback((path: string, replacements?: Record<string, string | number>) =>
+    applyReplacements(
+      resolvePath(snapshot.dictionary, path) ?? resolvePath(pl, path) ?? path,
+      replacements,
+    ), [snapshot.dictionary]);
 
-  const value = useMemo(
-    () => ({
-      language,
-      setLanguage: (code: LanguageCode) => setUserSelectedLanguage(code),
-      t: translate,
-    }),
-    [language, translate],
-  );
-
+  const value = useMemo(() => ({
+    language: snapshot.language, setLanguage, t: translate,
+  }), [snapshot.language, setLanguage, translate]);
   return <LanguageContext.Provider value={value}>{children}</LanguageContext.Provider>;
 }
 
-export function useLanguage() {
-  return useContext(LanguageContext);
-}
-
-export function useTranslation() {
-  const { t } = useLanguage();
-  return t;
-}
+export function useLanguage() { return useContext(LanguageContext); }
+export function useTranslation() { return useLanguage().t; }

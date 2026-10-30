@@ -78,3 +78,17 @@ statusu z odbiorem codziennego Turbo.
 
 Chat 2.0 jest oddzielnym zakresem projektu powłoki. Obecna optymalizacja nie
 migruje ekranów, nie dodaje theme i nie uruchamia drugiej instancji frontendu.
+
+## Biblioteki GPU z istniejącego venv
+
+Jeśli kwalifikowany profil Full dostarcza CUDA jako pakiety nvidia w venv,
+loader systemowy musi widzieć je przed startem procesu API. Lokalny launcher
+może ustalić purelib przez sysconfig i dołączyć istniejące nvidia/cu13/lib oraz
+nvidia/cudnn/lib do LD_LIBRARY_PATH, zachowując jego dotychczasową wartość.
+To ustawienie hosta dla kwalifikowanego zestawu bibliotek; nie wymaga pobrania
+nowych pakietów ani zmiany modeli.
+
+Gotowość potwierdza wynik ładowania STT i TTS, nie sam konstruktor AudioEngine.
+Niższy PSS przy tts_loaded=false nie jest optymalizacją. Brak biblioteki CUDA
+należy naprawić w środowisku uruchomienia; nie włączać po cichu CPU fallbacku
+lub słabszego modelu.

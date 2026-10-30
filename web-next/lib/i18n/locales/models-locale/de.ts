@@ -105,6 +105,7 @@ export const models = {
   "query": "Modellname oder ID",
   "purpose": "Einsatzzweck",
   "category": "Kategorie",
+  "freeOnly": "Nur kostenlose Modelle",
   "allCategories": "Alle Kategorien",
   "chat": "Chat",
   "tasks": "Aufgaben mit Werkzeugen",

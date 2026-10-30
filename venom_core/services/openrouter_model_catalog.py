@@ -32,7 +32,7 @@ CATEGORIES = {
     "trivia",
     "academia",
 }
-_CACHE: dict[str, tuple[float, str, list[dict[str, Any]]]] = {}
+_CACHE: dict[tuple[str, bool], tuple[float, str, list[dict[str, Any]]]] = {}
 _CACHE_LOCK = asyncio.Lock()
 _WRITE_LOCK = threading.RLock()
 MAX_CONNECTED = 100
@@ -91,18 +91,24 @@ async def _get(path: str, params=None) -> Any:
         raise HTTPException(502, "openrouter_catalog_unavailable") from exc
 
 
-async def _models(category: str = "", fresh=False) -> tuple[str, list[dict[str, Any]]]:
+async def _models(
+    category: str = "", fresh=False, *, free_only: bool = False
+) -> tuple[str, list[dict[str, Any]]]:
     _allowed()
     async with _CACHE_LOCK:
-        cached = _CACHE.get(category)
+        cache_key = (category, free_only)
+        cached = _CACHE.get(cache_key)
         if not fresh and cached and time.monotonic() - cached[0] < 300:
             return cached[1], cached[2]
-        # category must be sent alone: upstream rejects some combinations.
-        rows = await _get("/models", {"category": category} if category else None)
+        # Keep modality/tools filters local; upstream rejects some combinations.
+        params: dict[str, str | int] = {"category": category} if category else {}
+        if free_only:
+            params.update(max_price=0, max_output_price=0)
+        rows = await _get("/models", params or None)
         if not isinstance(rows, list) or any(not isinstance(x, dict) for x in rows):
             raise HTTPException(502, "openrouter_catalog_invalid")
         fetched = datetime.now(timezone.utc).isoformat()
-        _CACHE[category] = (time.monotonic(), fetched, rows)
+        _CACHE[cache_key] = (time.monotonic(), fetched, rows)
         return fetched, rows
 
 
@@ -276,7 +282,24 @@ def _price_rank(row):
     return price, row["id"]
 
 
-async def search(q="", purpose="chat", category="", offset=0, limit=25):
+def _free_text_model(row) -> bool:
+    pricing = row.get("pricing")
+    if not isinstance(pricing, dict):
+        return False
+    # Only explicit zero token rates qualify. A missing request rate is zero
+    # only for the provider's fixed :free variants, as in endpoint validation.
+    request_price = pricing.get("request")
+    if "request" not in pricing and row.get("id", "").endswith(":free"):
+        request_price = "0"
+    return all(
+        _price(value) is not None and Decimal(str(value)) == 0
+        for value in (pricing.get("prompt"), pricing.get("completion"), request_price)
+    )
+
+
+async def search(
+    q="", purpose="chat", category="", offset=0, limit=25, *, free_only=False
+):
     if purpose not in {"chat", "tasks", "programming"} or (
         category and category not in CATEGORIES
     ):
@@ -284,13 +307,14 @@ async def search(q="", purpose="chat", category="", offset=0, limit=25):
     if len(q) > 120 or offset < 0 or not 1 <= limit <= 100:
         raise HTTPException(400, "openrouter_search_invalid")
     category = "programming" if purpose == "programming" else category
-    fetched, rows = await _models(category)
+    fetched, rows = await _models(category, free_only=free_only)
     ids = {row["id"] for row in connected()["models"]}
     query = q.casefold()
     result = [
         _display(row, row["id"] in ids)
         for row in rows
         if _matches_search(row, query, purpose)
+        and (not free_only or _free_text_model(row))
     ]
     result.sort(key=_price_rank)
     total = len(result)

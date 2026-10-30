@@ -7,9 +7,13 @@ import base64
 import io
 import math
 import wave
+from collections.abc import Callable
+from importlib import import_module
 from pathlib import Path
+from typing import cast
 
 import numpy as np
+from numpy.typing import NDArray
 
 from venom_core.core.model_registry_clients import OllamaClient
 from venom_core.infrastructure.traffic_control import TrafficControlledHttpClient
@@ -17,6 +21,7 @@ from venom_core.infrastructure.traffic_control import TrafficControlledHttpClien
 MAX_AUDIO_BYTES = 25 * 1024 * 1024
 MIN_SAMPLE_RATE = 8000
 MAX_SAMPLE_RATE = 192000
+type _ResamplePoly = Callable[[NDArray[np.float32], int, int], NDArray[np.float32]]
 
 
 def allows_native_route(
@@ -29,6 +34,17 @@ def allows_native_route(
         and decoder_profile.strip().lower() not in {"faster_whisper", "gemma_native"}
         and not decoder_chain.strip()
     )
+
+
+def _load_resample_poly() -> _ResamplePoly:
+    """Type only the optional SciPy API used here; import it on demand."""
+    module = import_module("scipy.signal")
+    try:
+        resampler = module.resample_poly
+    except AttributeError as exc:
+        # Preserve the missing-name ImportError semantics of a direct import.
+        raise ImportError("scipy.signal.resample_poly is unavailable") from exc
+    return cast(_ResamplePoly, resampler)
 
 
 def encode_audio_input(path: Path) -> str:
@@ -53,9 +69,9 @@ def encode_audio_input(path: Path) -> str:
         raise ValueError("audio_input_empty")
     if rate != 16000:
         divisor = math.gcd(rate, 16000)
+        converted: NDArray[np.float32] | NDArray[np.float64]
         try:
-            from scipy.signal import resample_poly
-
+            resample_poly = _load_resample_poly()
             converted = resample_poly(
                 samples.astype(np.float32), 16000 // divisor, rate // divisor
             )

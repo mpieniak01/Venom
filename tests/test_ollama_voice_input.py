@@ -42,7 +42,11 @@ def test_audio_is_real_resampled_wav_not_path_or_headerless_pcm(tmp_path):
         assert wav.getnframes() == 1600
 
 
-def test_existing_16khz_input_preserves_samples(tmp_path):
+def test_existing_16khz_input_preserves_samples(monkeypatch, tmp_path):
+    def unexpected(_name):
+        raise AssertionError("16 kHz input must not import optional SciPy")
+
+    monkeypatch.setattr(audio, "import_module", unexpected)
     path = wav_file(tmp_path, rate=16000, frames=1600)
     assert base64.b64decode(audio.encode_audio_input(path)) == path.read_bytes()
 
@@ -257,16 +261,11 @@ async def test_native_transcript_uses_shared_authorized_agent_pipeline(
 
 
 def test_resampling_without_optional_scipy(monkeypatch, tmp_path):
-    import builtins
+    def without_scipy(name):
+        assert name == "scipy.signal"
+        raise ImportError("optional dependency absent")
 
-    original = builtins.__import__
-
-    def without_scipy(name, *args, **kwargs):
-        if name == "scipy.signal":
-            raise ImportError("optional dependency absent")
-        return original(name, *args, **kwargs)
-
-    monkeypatch.setattr(builtins, "__import__", without_scipy)
+    monkeypatch.setattr(audio, "import_module", without_scipy)
     with wave.open(
         io.BytesIO(base64.b64decode(audio.encode_audio_input(wav_file(tmp_path))))
     ) as result:
@@ -408,3 +407,50 @@ def test_declared_frames_cannot_allocate_beyond_the_input_file(monkeypatch, tmp_
     with pytest.raises(ValueError, match="invalid_frame_count"):
         audio.encode_audio_input(path)
     read.assert_not_called()
+
+
+def test_optional_resampler_receives_typed_samples_and_ratio(monkeypatch, tmp_path):
+    import numpy as np
+
+    calls = []
+
+    def resample(samples, up, down):
+        assert samples.dtype == np.float32
+        calls.append((up, down))
+        return np.full(1600, 3.0, dtype=np.float32)
+
+    def load(name):
+        assert name == "scipy.signal"
+        return SimpleNamespace(resample_poly=resample)
+
+    monkeypatch.setattr(audio, "import_module", load)
+    with wave.open(
+        io.BytesIO(base64.b64decode(audio.encode_audio_input(wav_file(tmp_path))))
+    ) as result:
+        assert result.getframerate() == 16000
+        samples = np.frombuffer(result.readframes(result.getnframes()), dtype="<i2")
+    assert calls == [(160, 441)]
+    assert samples.size == 1600
+    assert (samples == 3).all()
+
+
+def test_missing_optional_resampler_name_keeps_numpy_fallback(monkeypatch, tmp_path):
+    monkeypatch.setattr(audio, "import_module", lambda _name: SimpleNamespace())
+    with wave.open(
+        io.BytesIO(base64.b64decode(audio.encode_audio_input(wav_file(tmp_path))))
+    ) as result:
+        assert result.getframerate() == 16000
+        assert result.getnframes() == 1600
+
+
+def test_resampler_runtime_error_does_not_silently_select_fallback(
+    monkeypatch, tmp_path
+):
+    def fail(*_args):
+        raise AttributeError("resampler implementation failed")
+
+    monkeypatch.setattr(
+        audio, "import_module", lambda _name: SimpleNamespace(resample_poly=fail)
+    )
+    with pytest.raises(AttributeError, match="resampler implementation failed"):
+        audio.encode_audio_input(wav_file(tmp_path))

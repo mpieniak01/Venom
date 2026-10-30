@@ -74,8 +74,8 @@ never supplies executable recipes, filesystem paths, credentials or SSH options.
 5. In chat select **VAST · Ollama**, then the installed model. Attachment does not
    change the active provider or model; normal runtime selection remains explicit.
 6. Stop or destroy from the environment row. Stopped hosts may still incur storage
-   charges. The panel keeps possible billing visible until provider reconciliation
-   confirms destruction. Setup currently completes or fails before cleanup actions
+   charges. The billing column shows a recorded provider amount or a compact
+   status; destruction does not establish that earlier charges were zero. Setup currently completes or fails before cleanup actions
    become available; interrupted, never-submitted orders can be cancelled safely.
 
 Cost caps validate the rental quote, including the declared transfer allowance;
@@ -89,3 +89,13 @@ unavailable external API never blocks Venom startup.
 
 This workflow does not invoke `ready`, benchmarks or `trial-zero`: those can generate
 model output. Real Test Zero remains a separate manual operator-request-only action.
+
+
+### Billing statuses in VAST
+
+The overview reads the provider charge report already saved by the existing
+VAST CLI `costs` operation. It does not query billing when opening or refreshing
+the page. `Reported` displays the saved USD amount, including an explicit zero;
+`Unavailable` means the saved billing query was unavailable, `Unverified` means
+there is no usable provider amount, and `Not applicable` identifies a plan that
+has never been submitted. Quotes and estimates are never displayed as charges.

@@ -12,7 +12,6 @@ export function VastEnvironmentHistory({ rows, t }: Readonly<{
   const text = (name: string) => t("models.vast." + name);
   return <section className={styles.panel + " space-y-4"} aria-label={text("history")}>
     <h3 className={styles.heading}>{text("history")}</h3>
-    <p className={styles.hint}>{text("historyHint")}</p>
     {rows.length === 0 ? <p className="text-sm">{text("noHistory")}</p> :
       <div className={styles.tableWrap}><table className="w-full min-w-[720px] border-collapse whitespace-nowrap text-left text-sm">
         <caption className="sr-only">{text("history")}</caption>

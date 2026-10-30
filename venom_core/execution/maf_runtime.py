@@ -306,7 +306,7 @@ class MafChatService:
         messages: list[Any],
         options: OpenAIChatCompletionOptions,
     ):
-        with maf_transport_scope():
+        with maf_transport_scope(before_request=self._assert_operator_provider_enabled):
             response: AgentResponse[Any] | ChatResponse[Any]
             if (
                 settings is not None
@@ -377,7 +377,7 @@ class MafChatService:
     async def _stream(
         self, messages: list[Any], options: OpenAIChatCompletionOptions
     ) -> AsyncIterator[list[ConversationMessage]]:
-        with maf_transport_scope():
+        with maf_transport_scope(before_request=self._assert_operator_provider_enabled):
             async for update in self.client.get_response(
                 messages,
                 stream=True,

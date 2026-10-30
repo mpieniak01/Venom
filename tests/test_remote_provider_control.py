@@ -409,3 +409,31 @@ async def test_legacy_provider_check_is_metadata_only_and_sanitizes_errors(
             assert request.headers["x-goog-api-key"] == "fixture-secret"
         else:
             assert request.headers["Authorization"] == "Bearer fixture-secret"
+
+
+@pytest.mark.parametrize("provider", ["openai", "google"])
+@pytest.mark.parametrize("status_code", [401, 403, 429, 500, 503])
+@pytest.mark.asyncio
+async def test_legacy_check_distinguishes_authentication_from_provider_failure(
+    monkeypatch, provider, status_code
+):
+    from venom_core.config import SETTINGS
+
+    monkeypatch.setattr(SETTINGS, "OPENAI_API_KEY", "fixture")
+    monkeypatch.setattr(SETTINGS, "GOOGLE_API_KEY", "fixture")
+    monkeypatch.setattr(
+        control.httpx,
+        "AsyncClient",
+        lambda **kw: _REAL_ASYNC_CLIENT(
+            transport=httpx.MockTransport(lambda request: httpx.Response(status_code)),
+            **kw,
+        ),
+    )
+    result = await control.check(provider)
+    assert not result["available"]
+    expected = (
+        "remote_provider_authentication_failed"
+        if status_code in {401, 403}
+        else "remote_provider_connection_unavailable"
+    )
+    assert result["error"] == expected

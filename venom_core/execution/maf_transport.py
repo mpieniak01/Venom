@@ -9,9 +9,10 @@ from __future__ import annotations
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
-from typing import Iterator, cast
+from typing import Callable, Iterator, cast
 
 import httpx
+from fastapi import HTTPException
 from openai import AsyncOpenAI
 
 from venom_core.services.runtime_admission import (
@@ -22,6 +23,8 @@ from venom_core.services.runtime_admission import (
 
 @dataclass
 class _RequestEvidence:
+    before_request: Callable[[], None] | None = None
+    policy_denial: _MafPolicyDenial | None = None
     request: httpx.Request | None = None
     response: httpx.Response | None = None
     rejection: RuntimeOperationRejection | None = None
@@ -98,11 +101,32 @@ class _MafHttpRejection(RuntimeError, RuntimeOperationRejection):
         return self._proof.confirms_rejection(operation)
 
 
+class _MafPolicyDenial(HTTPException, RuntimeOperationRejection):
+    """A local transport denial cannot hide earlier unfinished provider work."""
+
+    def __init__(self, error: HTTPException, *, quiescent: bool) -> None:
+        HTTPException.__init__(self, error.status_code, error.detail, error.headers)
+        self._proof = RuntimeOperationRejection() if quiescent else None
+
+    def confirms_rejection(self, operation: str | None) -> bool:
+        return self._proof is not None and self._proof.confirms_rejection(operation)
+
+
 async def _observe_request(request: httpx.Request) -> None:
     # AsyncClient awaits event hooks, even when header bookkeeping needs no I/O.
     # https://www.python-httpx.org/advanced/event-hooks/
     evidence = _EVIDENCE.get()
     if evidence is not None:
+        if evidence.before_request is not None:
+            try:
+                evidence.before_request()
+            except HTTPException as error:
+                quiescent = not evidence.uncertain_attempt and (
+                    evidence.request is None or _completed_response(evidence.response)
+                )
+                evidence.policy_denial = _MafPolicyDenial(error, quiescent=quiescent)
+                raise evidence.policy_denial from error
+        evidence.policy_denial = None
         # A later rejection cannot erase an earlier timeout or accepted work.
         if evidence.request is not None and evidence.rejection is None:
             evidence.uncertain_attempt |= not _completed_response(evidence.response)
@@ -152,8 +176,10 @@ def install_maf_transport_observer(client: AsyncOpenAI) -> None:
 
 
 @contextmanager
-def maf_transport_scope() -> Iterator[None]:
-    evidence = _RequestEvidence()
+def maf_transport_scope(
+    before_request: Callable[[], None] | None = None,
+) -> Iterator[None]:
+    evidence = _RequestEvidence(before_request=before_request)
     context = _EVIDENCE.set(evidence)
     try:
         yield
@@ -165,6 +191,10 @@ def maf_transport_scope() -> Iterator[None]:
         if isinstance(stream, _CompletionStream) and not stream.completed:
             raise RuntimeError("upstream_stream_incomplete")
     except Exception as error:
+        if evidence.policy_denial is not None:
+            if error is evidence.policy_denial:
+                raise
+            raise evidence.policy_denial from error
         if evidence.rejection is not None and not evidence.uncertain_attempt:
             raise _MafHttpRejection(error, evidence.rejection) from error
         raise

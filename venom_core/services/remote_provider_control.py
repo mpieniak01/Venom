@@ -206,8 +206,10 @@ async def _check_legacy(provider: str, configured: bool) -> tuple[bool, str | No
     try:
         async with httpx.AsyncClient(timeout=6, follow_redirects=False) as client:
             response = await client.get(url, headers=headers)
-        if response.status_code != 200:
+        if response.status_code in {401, 403}:
             return False, "remote_provider_authentication_failed"
+        if response.status_code != 200:
+            return False, "remote_provider_connection_unavailable"
         payload = response.json()
         field = "data" if provider == "openai" else "models"
         if not isinstance(payload, dict) or not isinstance(payload.get(field), list):

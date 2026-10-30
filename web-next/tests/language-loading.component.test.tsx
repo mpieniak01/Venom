@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, it, mock } from "node:test";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { renderToString } from "react-dom/server";
+import { hydrateRoot, type Root } from "react-dom/client";
 import { LanguageProvider, useLanguage } from "../lib/i18n";
 import type { LocaleDictionary, LanguageCode } from "../lib/i18n";
 import { de } from "../lib/i18n/locales/de";
@@ -32,6 +33,26 @@ describe("selected language loading", () => {
     assert.match(html, />de</);
     assert.match(html, /Wird geladen|Laden/);
     assert.doesNotMatch(html, /Ładowanie/);
+  });
+
+  it("hydrates the selected server snapshot without a language mismatch", async () => {
+    window.localStorage.setItem("venom-language", "de");
+    document.cookie = "venom-language=de; Path=/";
+    const component = <LanguageProvider initialLanguage="de" initialDictionary={de}><Probe /></LanguageProvider>;
+    const host = document.createElement("div");
+    host.innerHTML = renderToString(component);
+    document.body.append(host);
+    const errors: unknown[] = [];
+    let client: Root | undefined;
+    try {
+      await act(async () => { client = hydrateRoot(host, component, { onRecoverableError: (error) => errors.push(error) }); });
+      assert.deepEqual(errors, []);
+      assert.equal(host.querySelector('[data-testid="language"]')?.textContent, "de");
+      assert.doesNotMatch(host.textContent ?? "", /Ładowanie/);
+    } finally {
+      await act(async () => client?.unmount());
+      host.remove();
+    }
   });
 
   it("keeps the previous whole language until a requested dictionary is ready", async () => {

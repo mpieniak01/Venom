@@ -144,6 +144,7 @@ export interface LlmRuntimeModelOption {
 }
 
 export interface LlmRuntimeTargetOption {
+  enabled?: boolean;
   runtime_id: string;
   label?: string;
   display_name?: string;

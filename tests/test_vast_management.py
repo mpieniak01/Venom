@@ -274,6 +274,7 @@ def test_bad_profile_credentials_and_journal_do_not_break_discovery(f):
     f.m.settings.VAST_API_KEY = SecretStr("")
     assert f.m.overview()["reason"] == "vast.missing_api_key"
     f.svc.journal.path("e" * 32, ".plan.json").write_text("{}")
+    f.svc.journal.path("e" * 32, ".management.json").write_text("{}")
     f.m.settings.VAST_API_KEY = SecretStr("fake")
     overview = f.m.overview()
     assert overview["configured"]
@@ -502,3 +503,41 @@ def test_ssh_profile_cannot_probe_or_use_files_outside_private_stores(
     )
     with pytest.raises(VastError, match="vast.invalid_ssh_profile"):
         config.ssh_paths()
+
+
+def test_cli_history_is_not_presented_as_a_current_management_order(f):
+    row = f.m.plan(12, 30, Decimal("0.5"), Decimal("1"))
+    plan_id = row["plan_id"]
+    f.svc.journal.path(plan_id, ".management.json").unlink()
+    f.m.client_factory.reset_mock()
+    overview = f.m.overview()
+    assert all(item["plan_id"] != plan_id for item in overview["environments"])
+    entry = next(item for item in overview["history"] if item["plan_id"] == plan_id)
+    assert entry["state"] == "planned"
+    assert not entry["connected"]
+    f.m.client_factory.assert_not_called()
+    f.connection.attach.assert_not_called()
+    assert f.svc.journal.path(plan_id, ".plan.json").exists()
+
+
+def test_damaged_cli_attempt_remains_visible_in_history(f):
+    plan_id = f.p.plan_id
+    f.svc.journal.path(plan_id, ".management.json").unlink()
+    f.svc.journal.path(plan_id, ".record.json").write_text("{}")
+    overview = f.m.overview()
+    assert overview["environments"] == []
+    assert overview["history"][0]["plan_id"] == plan_id
+    assert overview["history"][0]["error"] == "vast.management_journal_invalid"
+    assert not overview["history"][0]["connected"]
+    f.m.client_factory.assert_not_called()
+
+
+def test_attached_cli_plan_remains_history_with_observed_connection(f):
+    f.svc.journal.path(f.p.plan_id, ".management.json").unlink()
+    f.connection.attach(f.p.plan_id)
+    overview = f.m.overview()
+    assert overview["environments"] == []
+    assert overview["history"][0]["plan_id"] == f.p.plan_id
+    assert overview["history"][0]["phase"] == "planned"
+    assert overview["history"][0]["connected"] is True
+    f.m.client_factory.assert_not_called()

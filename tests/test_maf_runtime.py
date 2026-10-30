@@ -1023,3 +1023,211 @@ async def test_local_option_rejection_does_not_quarantine_or_dispatch(
         assert len(requests) == 1
     finally:
         await model.aclose()
+
+
+@pytest.mark.parametrize("provider", ["openai", "google"])
+@pytest.mark.parametrize("stream", [False, True])
+@pytest.mark.asyncio
+async def test_operator_can_disable_an_existing_cloud_service_before_transport(
+    provider, stream, tmp_path, monkeypatch
+):
+    from fastapi import HTTPException
+
+    from venom_core.services import remote_provider_control as control
+    from venom_core.services.runtime_admission import get_runtime_admission
+
+    monkeypatch.setattr(control, "_STATE", tmp_path / "provider-control.json")
+    calls = []
+
+    def handler(request):
+        calls.append(request)
+        return httpx.Response(200, json=completion())
+
+    model = service(handler)
+    model.operator_provider = provider
+    history = ConversationHistory()
+    history.add_user_message("fixture")
+    control.set_enabled(provider, False)
+
+    async def attempt():
+        if stream:
+            await anext(model.get_streaming_chat_message_contents(chat_history=history))
+        else:
+            await model.get_chat_message_content(chat_history=history)
+
+    with pytest.raises(HTTPException) as failure:
+        await attempt()
+    assert failure.value.detail["code"] == "remote_provider_disabled"
+    assert calls == []
+    assert get_runtime_admission().snapshot()["active_operations"] == 0
+    control.set_enabled(provider, True)
+    await model.get_chat_message_content(chat_history=history)
+    assert len(calls) == 1
+    await model.aclose()
+
+
+@pytest.mark.parametrize("provider", ["openai", "google"])
+@pytest.mark.asyncio
+async def test_disabling_provider_in_tool_blocks_followup_request(
+    provider, maf_admission
+):
+    from fastapi import HTTPException
+
+    from venom_core.services import remote_provider_control as control
+    from venom_core.services.runtime_admission import get_runtime_admission
+
+    requests = []
+
+    class Tools:
+        @tool_function(name="disable", description="Return local tool output")
+        async def disable(self) -> str:
+            control.set_enabled(provider, False)
+            return "private-tool-output"
+
+    def respond(request):
+        requests.append(json.loads(request.content))
+        call = {
+            "id": "call-1",
+            "type": "function",
+            "function": {"name": "Local-disable", "arguments": "{}"},
+        }
+        return httpx.Response(200, json=completion(None, [call]))
+
+    model = service(respond)
+    model.operator_provider = provider
+    runtime = AgentRuntime(permission_checker=lambda _: True)
+    runtime.add_service(model)
+    runtime.add_plugin(Tools(), "Local")
+    history = ConversationHistory()
+    history.add_user_message("run tool")
+    settings = CompletionOptions(function_choice_behavior=ToolPolicy.Auto())
+    try:
+        with pytest.raises(HTTPException) as rejected:
+            await model.get_chat_message_content(
+                chat_history=history,
+                settings=settings,
+                kernel=runtime,
+            )
+        assert rejected.value.detail["code"] == "remote_provider_disabled"
+        assert len(requests) == 1
+        assert "private-tool-output" not in json.dumps(requests)
+        assert [str(message.role) for message in history] == [
+            "user",
+            "assistant",
+            "tool",
+        ]
+        assert get_runtime_admission().snapshot()["status"] == "available"
+    finally:
+        await runtime.aclose()
+
+
+@pytest.mark.parametrize("stream", [False, True])
+@pytest.mark.asyncio
+async def test_transport_rechecks_enablement_after_initial_validation(
+    stream, maf_admission
+):
+    from fastapi import HTTPException
+
+    from venom_core.services import remote_provider_control as control
+    from venom_core.services.runtime_admission import get_runtime_admission
+
+    requests = []
+    model = service(
+        lambda request: requests.append(request)
+        or httpx.Response(200, json=completion())
+    )
+    model.operator_provider = "openai"
+
+    async def disable_before_send(_request):
+        control.set_enabled("openai", False)
+
+    model._owned_client._client.event_hooks["request"].insert(0, disable_before_send)
+    history = ConversationHistory(system_message="fixture")
+
+    async def attempt():
+        if stream:
+            await anext(model.get_streaming_chat_message_contents(chat_history=history))
+        else:
+            await model.get_chat_message_content(chat_history=history)
+
+    try:
+        with pytest.raises(HTTPException) as rejected:
+            await attempt()
+        assert rejected.value.detail["code"] == "remote_provider_disabled"
+        assert requests == []
+        assert get_runtime_admission().snapshot()["status"] == "available"
+    finally:
+        await model.aclose()
+
+
+@pytest.mark.parametrize("status", [401, 500])
+@pytest.mark.asyncio
+async def test_disabled_provider_blocks_sdk_retry_without_erasing_uncertain_attempt(
+    maf_admission,
+    status,
+):
+    from fastapi import HTTPException
+
+    from venom_core.services import remote_provider_control as control
+    from venom_core.services.runtime_admission import get_runtime_admission
+
+    requests = []
+
+    def respond(request):
+        requests.append(request)
+        control.set_enabled("openai", False)
+        return httpx.Response(
+            status,
+            headers={"x-should-retry": "true"},
+            json={"error": {"message": "failed"}},
+        )
+
+    model = service(respond)
+    model.operator_provider = "openai"
+    model._owned_client.max_retries = 1
+    history = ConversationHistory(system_message="fixture")
+    try:
+        with pytest.raises(HTTPException) as rejected:
+            await model.get_chat_message_content(chat_history=history)
+        assert rejected.value.detail["code"] == "remote_provider_disabled"
+        assert len(requests) == 1
+        assert get_runtime_admission().snapshot()["status"] == (
+            "available" if status == 401 else "quarantined"
+        )
+    finally:
+        await model.aclose()
+
+
+@pytest.mark.asyncio
+async def test_reenabled_retry_timeout_cannot_reuse_an_earlier_policy_denial(
+    maf_admission,
+):
+    from agent_framework.exceptions import ChatClientException
+    from fastapi import HTTPException
+
+    from venom_core.services import remote_provider_control as control
+
+    hooks, requests = [], []
+
+    def respond(request):
+        requests.append(request)
+        raise httpx.ReadTimeout("fixture timeout", request=request)
+
+    model = service(respond)
+    model.operator_provider = "openai"
+    model._owned_client.max_retries = 1
+
+    async def change_policy(_request):
+        hooks.append(True)
+        control.set_enabled("openai", len(hooks) > 1)
+
+    model._owned_client._client.event_hooks["request"].insert(0, change_policy)
+    history = ConversationHistory(system_message="fixture")
+    try:
+        with pytest.raises(ChatClientException) as failed:
+            await model.get_chat_message_content(chat_history=history)
+        assert not isinstance(failed.value, HTTPException)
+        assert len(requests) == 1
+        assert maf_admission.snapshot()["status"] == "quarantined"
+    finally:
+        await model.aclose()

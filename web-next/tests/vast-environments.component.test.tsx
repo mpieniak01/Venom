@@ -2,7 +2,7 @@ import "./component-test-setup";
 import React from "react";
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
-import { act, cleanup, fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, renderHook, screen, waitFor, within } from "@testing-library/react";
 import { VastEnvironmentsSection } from "../components/models/vast-environments-section";
 import { VastEnvironmentRow } from "../components/models/vast-environment-row";
 import { useVastEnvironments, VAST_POLL_INTERVAL, type VastEnvironment } from "../components/models/hooks/use-vast-environments";
@@ -174,6 +174,67 @@ describe("VAST environment management", () => {
     for (const locale of [pl, de]) {
       assert.deepEqual(Object.keys(locale.models.vast).sort(), Object.keys(en.models.vast).sort());
       assert.deepEqual(Object.keys(locale.models.vast.phases).sort(), Object.keys(en.models.vast.phases).sort());
+      assert.deepEqual(Object.keys(locale.models.vast.historyStates).sort(), Object.keys(en.models.vast.historyStates).sort());
     }
   });
+});
+
+it("shows old CLI attempts as read-only history without making them live environments", async () => {
+  const calls: string[] = [];
+  const past = row({ state: "failed", phase: "failed", instance_id: 77, error: "vast.ssh_failed" });
+  globalThis.fetch = async (_input, init) => {
+    calls.push(init?.method ?? "GET");
+    return Response.json({ ...status(), history: [past] });
+  };
+  render(<VastEnvironmentsSection t={t} />);
+  const history = await screen.findByRole("region", { name: "Launch attempt history" });
+  await waitFor(() => assert.ok(within(history).getByText("Failed")));
+  assert.ok(within(history).getByText(past.plan_id));
+  assert.ok(within(history).getByText("77"));
+  assert.ok(within(history).getByText("vast.ssh_failed"));
+  assert.equal(within(history).queryAllByRole("button").length, 0);
+  assert.ok(screen.getByText(t("models.vast.none")));
+  assert.deepEqual(calls, ["GET"]);
+});
+
+
+it("refreshes the chat catalog when a CLI history plan connects or disconnects", async () => {
+  let connected = false;
+  let changed = 0;
+  globalThis.fetch = async () => Response.json({
+    ...status(), history: [row({ connected })],
+  });
+  const { result } = renderHook(() => useVastEnvironments(async () => { changed++; }));
+  await waitFor(() => assert.equal(result.current.loading, false));
+  assert.equal(changed, 0);
+  connected = true;
+  await act(async () => { await result.current.refresh(); });
+  assert.equal(changed, 1);
+  await act(async () => { await result.current.refresh(); });
+  assert.equal(changed, 1);
+  connected = false;
+  await act(async () => { await result.current.refresh(); });
+  assert.equal(changed, 2);
+});
+
+it("preserves CLI outcomes and warns about possible charges without action buttons", async () => {
+  const calls: string[] = [];
+  globalThis.fetch = async (_input, init) => {
+    calls.push(init?.method ?? "GET");
+    return Response.json({ ...status(), history: [
+      row({ state: "created", connected: true, billing_possible: true }),
+      row({ plan_id: "b".repeat(32), state: "outcome_unknown", billing_possible: true }),
+      row({ plan_id: "c".repeat(32), state: "provider_pending", billing_possible: false }),
+    ] });
+  };
+  render(<VastEnvironmentsSection t={t} />);
+  const history = await screen.findByRole("region", { name: "Launch attempt history" });
+  await waitFor(() => assert.ok(within(history).getByText("Instance created")));
+  assert.ok(within(history).getByText("Order outcome unknown"));
+  assert.ok(within(history).getByText("provider_pending"));
+  assert.ok(within(history).getByText("Connected"));
+  assert.equal(within(history).getAllByText(t("models.vast.billingWarning")).length, 2);
+  assert.equal(within(history).getAllByText(t("models.vast.historyBillingHint")).length, 2);
+  assert.equal(within(history).queryAllByRole("button").length, 0);
+  assert.deepEqual(calls, ["GET"]);
 });

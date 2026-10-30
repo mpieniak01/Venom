@@ -317,57 +317,23 @@ async def get_remote_providers() -> dict[str, Any]:
 
     Returns provider configuration status, reachability, and last check time.
     """
-    now = datetime.now()
-    providers_status = []
-
-    # Check OpenAI
-    openai_configured = _check_openai_configured()
-    if openai_configured:
-        openai_status, openai_error, openai_latency = await _probe_provider_cached(
-            "openai"
-        )
-    else:
-        openai_status, openai_error, openai_latency = (
-            "disabled",
-            "OPENAI_API_KEY not configured",
-            None,
-        )
-    providers_status.append(
-        RemoteProviderStatus(
-            provider="openai",
-            status=openai_status,
-            last_check=now,
-            error=openai_error,
-            latency_ms=openai_latency,
-        ).model_dump()
-    )
-
-    # Check Google
-    google_configured = _check_google_configured()
-    if google_configured:
-        google_status, google_error, google_latency = await _probe_provider_cached(
-            "google"
-        )
-    else:
-        google_status, google_error, google_latency = (
-            "disabled",
-            "GOOGLE_API_KEY not configured",
-            None,
-        )
-    providers_status.append(
-        RemoteProviderStatus(
-            provider="google",
-            status=google_status,
-            last_check=now,
-            error=google_error,
-            latency_ms=google_latency,
-        ).model_dump()
-    )
-
     from venom_core.services import remote_provider_control
 
+    providers_status = []
+    for provider in ("openai", "google"):
+        value = remote_provider_control.status(provider)
+        if value["enabled"] and value["configured"]:
+            probe_status, error, latency = await _probe_provider_cached(provider)
+            value.update(
+                status=probe_status,
+                error=error,
+                latency_ms=latency,
+                available=probe_status in {"configured", "reachable", "online"},
+            )
+        providers_status.append(value)
     providers_status.extend(
-        remote_provider_control.status(p) for p in remote_provider_control.PROVIDERS
+        remote_provider_control.status(p)
+        for p in remote_provider_control.CATALOG_PROVIDERS
     )
     return {
         "status": "success",
@@ -399,7 +365,7 @@ async def get_remote_catalog(
     provider = provider.lower()
     from venom_core.services import remote_provider_control
 
-    if provider in remote_provider_control.PROVIDERS:
+    if provider in remote_provider_control.CATALOG_PROVIDERS:
         try:
             external_models = remote_provider_control.catalog(provider)
             error = None
@@ -421,6 +387,16 @@ async def get_remote_catalog(
             detail=f"Invalid provider: {provider}. Must be 'openai' or 'google'",
         )
 
+    if not remote_provider_control.enabled(provider):
+        return {
+            "status": "success",
+            "provider": provider,
+            "models": [],
+            "count": 0,
+            "refreshed_at": datetime.now().isoformat(),
+            "source": "disabled",
+            "error": "remote_provider_disabled",
+        }
     models, source, error = await _catalog_for_provider(provider)
 
     now = datetime.now()
@@ -480,6 +456,9 @@ async def validate_provider(request: ValidationRequest) -> dict[str, Any]:
             detail=f"Invalid provider: {provider}. Must be 'openai' or 'google'",
         )
 
+    from venom_core.services.remote_provider_control import assert_enabled
+
+    assert_enabled(provider)
     model = (request.model or "").strip() or None
     if provider == "openai":
         valid, message, latency = await _validate_openai_connection(model=model)

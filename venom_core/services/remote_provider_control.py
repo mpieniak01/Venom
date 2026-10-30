@@ -15,7 +15,8 @@ from typing import Any
 import httpx
 from fastapi import HTTPException
 
-PROVIDERS = ("openrouter", "vast_ollama")
+PROVIDERS = ("openai", "google", "openrouter", "vast_ollama")
+CATALOG_PROVIDERS = ("openrouter", "vast_ollama")
 _STATE = (
     Path(__file__).resolve().parents[2] / ".venom_runtime/remote-providers/control.json"
 )
@@ -69,9 +70,36 @@ def set_enabled(provider: str, value: bool) -> None:
         _CHECKS.pop(provider, None)
 
 
+def assert_enabled(provider: str) -> None:
+    """Operator disablement blocks new work without changing the selected identity."""
+    if not enabled(provider):
+        raise HTTPException(
+            503, {"code": "remote_provider_disabled", "provider": provider}
+        )
+
+
+def _legacy_metadata(provider: str) -> dict[str, Any]:
+    from venom_core.config import SETTINGS
+    from venom_core.utils.llm_runtime import get_active_llm_runtime
+
+    key = SETTINGS.OPENAI_API_KEY if provider == "openai" else SETTINGS.GOOGLE_API_KEY
+    from venom_core.services.remote_models_service import is_api_key_configured
+
+    configured = is_api_key_configured(key)
+    return {
+        "enabled": enabled(provider),
+        "configured": configured,
+        "selected": get_active_llm_runtime().provider == provider,
+        "reason": None if configured else "remote_provider_missing_credentials",
+        "connection": {},
+    }
+
+
 def _provider_metadata(provider: str) -> dict[str, Any]:
     from venom_core.services import openrouter_runtime, vast_chat_runtime
 
+    if provider in {"openai", "google"}:
+        return _legacy_metadata(provider)
     if provider == "openrouter":
         info = openrouter_runtime.status()
         return {
@@ -161,6 +189,36 @@ async def _check_openrouter(configured: bool) -> tuple[bool, str | None]:
         return False, "openrouter_connection_unavailable"
 
 
+async def _check_legacy(provider: str, configured: bool) -> tuple[bool, str | None]:
+    from venom_core.config import SETTINGS
+    from venom_core.services.remote_models_service import openai_models_url
+
+    if not configured:
+        return False, "remote_provider_missing_credentials"
+    if provider == "openai":
+        url = openai_models_url(
+            chat_completions_endpoint=SETTINGS.OPENAI_CHAT_COMPLETIONS_ENDPOINT
+        )
+        headers = {"Authorization": "Bearer " + SETTINGS.OPENAI_API_KEY}
+    else:
+        url = "https://generativelanguage.googleapis.com/v1beta/models"
+        headers = {"x-goog-api-key": SETTINGS.GOOGLE_API_KEY}
+    try:
+        async with httpx.AsyncClient(timeout=6, follow_redirects=False) as client:
+            response = await client.get(url, headers=headers)
+        if response.status_code in {401, 403}:
+            return False, "remote_provider_authentication_failed"
+        if response.status_code != 200:
+            return False, "remote_provider_connection_unavailable"
+        payload = response.json()
+        field = "data" if provider == "openai" else "models"
+        if not isinstance(payload, dict) or not isinstance(payload.get(field), list):
+            return False, "remote_provider_connection_unavailable"
+        return True, None
+    except (httpx.HTTPError, TimeoutError, ValueError):
+        return False, "remote_provider_connection_unavailable"
+
+
 async def check(provider: str) -> dict[str, Any]:
     _provider(provider)
     info = status(provider)
@@ -169,6 +227,8 @@ async def check(provider: str) -> dict[str, Any]:
     start = time.monotonic()
     if not info["enabled"]:
         error = "remote_provider_disabled"
+    elif provider in {"openai", "google"}:
+        available, error = await _check_legacy(provider, info["configured"])
     elif provider == "vast_ollama":
         from venom_core.services import vast_chat_runtime
 
@@ -191,7 +251,7 @@ async def check(provider: str) -> dict[str, Any]:
 
 def catalog(provider: str) -> list[dict[str, Any]]:
     info = status(provider)
-    if not info["enabled"]:
+    if not info["enabled"] or provider in {"openai", "google"}:
         return []
     if provider == "openrouter":
         from venom_core.services import openrouter_runtime

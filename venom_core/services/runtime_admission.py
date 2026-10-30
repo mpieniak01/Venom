@@ -32,6 +32,7 @@ RUNTIME_ADMISSION_API_VERSION = 1
 # Only these HTTP rejections establish that generation never started.
 REJECTED_BEFORE_WORK_HTTP_STATUSES = frozenset({400, 401, 403, 404, 405, 413, 415, 422})
 _MAX_OPERATIONS = 128
+_CLEANUP_KINDS = frozenset({"cleanup", "llm_cleanup"})
 _SELECT_LEASE = "SELECT * FROM lease"
 _CURRENT_OPERATION: ContextVar[str | None] = ContextVar(
     "runtime_operation", default=None
@@ -414,21 +415,43 @@ class RuntimeAdmission:
             cleanup
             and token is None
             and ancestor is not None
-            and ancestor["kind"] != "cleanup"
+            and ancestor["kind"] not in _CLEANUP_KINDS
         ):
             raise RuntimeAdmissionError()
         own_cleanup = (
             ancestor["token"]
-            if ancestor is not None and ancestor["kind"] == "cleanup"
+            if ancestor is not None and ancestor["kind"] in _CLEANUP_KINDS
             else ""
         )
         if db.execute(
-            "SELECT 1 FROM operation WHERE kind='cleanup' AND token<>? AND uncertain=0",
+            "SELECT 1 FROM operation WHERE kind IN ('cleanup','llm_cleanup') AND token<>? AND uncertain=0",
             (own_cleanup,),
         ).fetchone():
             raise RuntimeAdmissionError()
-        if ancestor is not None and ancestor["kind"] == "cleanup" and not cleanup:
+        if ancestor is not None and ancestor["kind"] in _CLEANUP_KINDS and not cleanup:
             raise RuntimeAdmissionError()  # Cleanup cannot start new generation.
+
+    @staticmethod
+    def _validate_mutation_barrier(
+        db: sqlite3.Connection,
+        *,
+        ancestor: sqlite3.Row | None,
+        nested: bool,
+        token: str | None,
+        cleanup: bool,
+    ) -> None:
+        own_token = ancestor["token"] if nested and ancestor is not None else ""
+        query = "SELECT pid,uncertain FROM operation WHERE token<>?"
+        if cleanup and token is None:
+            # A trusted host cleanup may verify uncertain daemon work.
+            # It cannot erase or interrupt a live host operation or lease.
+            query += " AND (uncertain=0 OR lease_token IS NOT NULL)"
+        conflict = db.execute(query, (own_token,)).fetchone()
+        if conflict is not None:
+            code = "runtime_busy"
+            if conflict["uncertain"] or conflict["pid"] != os.getpid():
+                code = "runtime_recovery_required"
+            raise RuntimeAdmissionError(code)
 
     def _enter(
         self,
@@ -461,18 +484,13 @@ class RuntimeAdmission:
                 nested=nested,
             )
             if mutation:
-                own_token = ancestor["token"] if nested and ancestor is not None else ""
-                query = "SELECT 1 FROM operation WHERE token<>?"
-                if cleanup and token is None:
-                    # A trusted host cleanup may verify uncertain daemon work.
-                    # It cannot erase or interrupt a live host operation or lease.
-                    query += " AND (uncertain=0 OR lease_token IS NOT NULL)"
-                if db.execute(query, (own_token,)).fetchone():
-                    raise RuntimeAdmissionError()
+                self._validate_mutation_barrier(
+                    db, ancestor=ancestor, nested=nested, token=token, cleanup=cleanup
+                )
             if (
                 nested
                 and ancestor is not None
-                and (kind != "cleanup" or ancestor["kind"] == "cleanup")
+                and (kind not in _CLEANUP_KINDS or ancestor["kind"] in _CLEANUP_KINDS)
             ):
                 return None
             if (
@@ -616,6 +634,7 @@ class RuntimeAdmission:
         *,
         confirm_quiescent: Callable[[], bool],
         expected_token: str | None = None,
+        allowed_operation_kinds: frozenset[str] | None = None,
     ) -> bool:
         """Trusted host-only recovery after verified daemon/worker quiescence.
 
@@ -636,7 +655,7 @@ class RuntimeAdmission:
             cleanup_token = (
                 ancestor["token"]
                 if ancestor is not None
-                and ancestor["kind"] == "cleanup"
+                and ancestor["kind"] in _CLEANUP_KINDS
                 and ancestor["lease_token"] is None
                 else ""
             )
@@ -645,6 +664,16 @@ class RuntimeAdmission:
                 (os.getpid(), cleanup_token),
             ).fetchone():
                 return False
+            if allowed_operation_kinds is not None:
+                if current is not None:
+                    return False
+                operations = db.execute(
+                    "SELECT kind FROM operation WHERE token<>?", (cleanup_token,)
+                ).fetchall()
+                if any(
+                    row["kind"] not in allowed_operation_kinds for row in operations
+                ):
+                    return False
             if not confirm_quiescent():
                 return False
             # Keep the cleanup barrier until its host operation actually exits.

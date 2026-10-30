@@ -21,6 +21,7 @@ import { filterRuntimeBaseModels } from "@/lib/runtime-model-filters";
 import {
   isCockpitAdapterDeployAvailable,
   isCockpitRuntimeDisabled,
+  isCockpitRuntimeVisible,
   normalizeRuntimeId,
   resolveCockpitSelectedRuntimeId,
 } from "@/lib/cockpit-runtime-selection";
@@ -172,7 +173,7 @@ export function useCockpitSectionProps() {
   );
 
   const llmServerOptions = useMemo(
-    () => runtimeTargets.map((runtime) => ({ label: runtime.label || runtime.display_name || (runtime.runtime_id === "vast_ollama" ? "Ollama · Vast" : runtime.runtime_id), value: runtime.runtime_id, disabled: isCockpitRuntimeDisabled(runtime) })),
+    () => runtimeTargets.filter(isCockpitRuntimeVisible).map((runtime) => ({ label: runtime.label || runtime.display_name || (runtime.runtime_id === "vast_ollama" ? "Ollama · Vast" : runtime.runtime_id), value: runtime.runtime_id, disabled: isCockpitRuntimeDisabled(runtime) })),
     [runtimeTargets],
   );
   const activeRuntimeModel = useMemo(

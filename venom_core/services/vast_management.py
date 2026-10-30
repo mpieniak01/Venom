@@ -25,6 +25,7 @@ from venom_core.services.vast_environments.store import Journal
 
 MANAGEMENT_DISABLED = "vast.management_disabled"
 MANAGEMENT_SUFFIX = ".management.json"
+PLAN_SUFFIX = ".plan.json"
 OPERATION_LOCKS = "management-locks"
 SSH_RETRY_ERRORS = {"vast.ssh_failed", "vast.invalid_ssh_host", "vast.invalid_ssh_port"}
 ATTACH_RETRY_ERRORS = {
@@ -134,6 +135,34 @@ class VastManagement:
             ),
         }
 
+    def _overview_entry(self, plan_id: str, *, historical: bool) -> dict[str, Any]:
+        try:
+            if not historical and self._job(plan_id).get("phase") in {
+                "stop_requested",
+                "destroy_requested",
+            }:
+                return self.refresh(plan_id)
+            entry = self.row(plan_id)
+            if historical:
+                entry["phase"] = entry["state"]
+            return entry
+        except ERRORS:
+            # A damaged entry cannot invalidate the independent current profile.
+            return {
+                "plan_id": plan_id,
+                "model": "—",
+                "state": "unknown",
+                "phase": "error",
+                "instance_id": None,
+                "hourly_usd": None,
+                "total_usd": None,
+                "duration_minutes": 0,
+                "expires_at": None,
+                "connected": False,
+                "error": "vast.management_journal_invalid",
+                "billing_possible": True,
+            }
+
     def overview(self) -> dict[str, Any]:
         model, duration, reason = None, 60, None
         try:
@@ -149,41 +178,21 @@ class VastManagement:
             reason = "vast.management_profile_invalid"
             if isinstance(error, VastError):
                 reason = error.code
-        rows = []
+        rows: list[dict[str, Any]] = []
+        history: list[dict[str, Any]] = []
         paths = sorted(
-            self.journal.root.glob("*.plan.json"),
+            self.journal.root.glob("*" + PLAN_SUFFIX),
             key=lambda p: p.stat().st_mtime,
             reverse=True,
         )
         for path in paths[:100]:
-            try:
-                plan_id = path.name.removesuffix(".plan.json")
-                if self._job(plan_id).get("phase") in {
-                    "stop_requested",
-                    "destroy_requested",
-                }:
-                    rows.append(self.refresh(plan_id))
-                else:
-                    rows.append(self.row(plan_id))
-            except ERRORS:
-                # A damaged historical entry is visible, but is not evidence
-                # that the independent current profile/credentials are invalid.
-                rows.append(
-                    {
-                        "plan_id": path.name.removesuffix(".plan.json"),
-                        "model": "—",
-                        "state": "unknown",
-                        "phase": "error",
-                        "instance_id": None,
-                        "hourly_usd": None,
-                        "total_usd": None,
-                        "duration_minutes": 0,
-                        "expires_at": None,
-                        "connected": False,
-                        "error": "vast.management_journal_invalid",
-                        "billing_possible": True,
-                    }
-                )
+            # Keep CLI attempts visible as history, never as managed live orders.
+            historical = not path.with_name(
+                path.name.replace(PLAN_SUFFIX, MANAGEMENT_SUFFIX)
+            ).exists()
+            destination = history if historical else rows
+            plan_id = path.name.removesuffix(PLAN_SUFFIX)
+            destination.append(self._overview_entry(plan_id, historical=historical))
         return {
             "configured": reason is None,
             "enabled": self.is_enabled(),
@@ -191,6 +200,7 @@ class VastManagement:
             "duration_minutes": duration,
             "reason": reason,
             "environments": rows,
+            "history": history,
         }
 
     def search(self, duration: int) -> dict[str, Any]:

@@ -14,6 +14,7 @@ export interface VastOffer {
 export interface VastEnvironmentsState {
   configured: boolean; enabled: boolean; model: string | null;
   duration_minutes: number; reason: string | null; environments: VastEnvironment[];
+  history?: VastEnvironment[];
 }
 const base = "/api/v1/vast/environments";
 const activePhases = new Set(["queued", "creating", "waiting", "provisioning", "connecting", "stop_requested", "destroy_requested"]);
@@ -56,7 +57,8 @@ export function useVastEnvironments(onChanged?: () => Promise<unknown>) {
       const value: VastEnvironmentsState = await jsonResponse(await fetch(base));
       if (!mounted.current || sequence !== readSequence.current) return;
       setState(value);
-      const signature = value.environments.filter(row => row.connected).map(row => row.plan_id).sort((left, right) => left.localeCompare(right)).join(",");
+      const connected = [...value.environments, ...(value.history ?? [])].filter(row => row.connected).map(row => row.plan_id);
+      const signature = [...new Set(connected)].sort((left, right) => left.localeCompare(right)).join(",");
       if (signature !== connectionSignature.current) {
         connectionSignature.current = signature;
         await callback.current?.();

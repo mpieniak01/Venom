@@ -57,6 +57,9 @@ export const cockpitLocale = {
       toggleError: "Błąd sterowania kolejką.",
     },
     modelActivation: {
+      recoveryRequired: "Poprzednia operacja LLM wymaga odzyskania. W Modele wybierz „Przywróć LLM / odblokuj czat”, a potem ponów aktywację.",
+      runtimeBusy: "Runtime wykonuje inną operację. Poczekaj na jej zakończenie i ponów aktywację.",
+      providerDisabled: "To API jest wyłączone. Włącz je w Modele → Modele zdalne.",
       providerMissing: "Nie można ustalić serwera dla wybranego modelu.",
       activated: "Aktywowano model: {{model}}",
       failed: "Błąd aktywacji modelu: {{message}}",

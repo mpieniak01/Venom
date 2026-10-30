@@ -1,5 +1,15 @@
 export const models = {
   vast: {
+    "historyBillingHint": "Find the instance by its ID in the VAST console and release it there if no longer needed. If the ID is unknown, check the account's instance list.",
+    "historyBilling": "Charges",
+    "history": "Launch attempt history",
+    "historyHint": "Earlier CLI attempts. The recorded state is historical and does not confirm current instance availability.",
+    "noHistory": "No recorded attempts.",
+    "plan": "Attempt ID",
+    "historyModel": "Model",
+    "recordedState": "Recorded result",
+    "historyStates": {"planned": "Planned", "creating": "Ordering host", "running": "Started", "stopped": "Stopped", "destroyed": "Released", "failed": "Failed", "unknown": "Unknown", "submitting": "Order submitted", "created": "Instance created", "outcome_unknown": "Order outcome unknown"},
+
     "tab": "VAST",
     "title": "VAST environments",
     "description": "Choose an offer, review its cost and order a host with the default chat model. Installation and API connection follow automatically.",
@@ -129,6 +139,8 @@ export const models = {
     remoteModels: "Remote Models",
   },
   resources: {
+    recoverLlm: "Recover LLM / unlock chat",
+    recoverLlmHint: "Releases local LLM models and clears only verified orphaned LLM operations. Rider vision and voice models stay running.",
     categories: {"vision": "Vision", "stt": "Speech recognition", "tts": "Speech synthesis", "embeddings": "Embeddings", "voice_sessions": "Voice streams", "ollama": "Ollama", "multi_runtime": "Multi-Runtime", "vllm": "vLLM", "onnx": "ONNX"},
     title: "Model memory · RAM / VRAM",
     description: "LLMs, vision, voice and embeddings. Stops their active streams and releases resources.",

@@ -343,6 +343,7 @@ class KernelBuilder:
             ai_model_id=model_name,
             api_key=self.settings.OPENAI_API_KEY,
         )
+        chat_service.operator_provider = "openai"
         kernel.add_service(chat_service)
 
     def _register_google_service(
@@ -364,6 +365,7 @@ class KernelBuilder:
             api_key=self.settings.GOOGLE_API_KEY,
             base_url=GEMINI_OPENAI_ENDPOINT,
         )
+        chat_service.operator_provider = "google"
         kernel.add_service(chat_service)
 
     def _register_azure_service(

@@ -325,6 +325,7 @@ def target_payload() -> dict[str, Any]:
     info = status()
     return {
         "runtime_id": SERVER,
+        "enabled": info["enabled"],
         "source_type": "cloud-api",
         "label": "OpenRouter",
         "configured": info["configured"],

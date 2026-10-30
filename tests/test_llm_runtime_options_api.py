@@ -90,7 +90,8 @@ def test_runtime_options_endpoint_returns_contract_snapshot() -> None:
         assert response.json() == payload
 
 
-def test_resolve_runtime_options_payload_mixed_modes() -> None:
+@pytest.mark.parametrize("cloud_enabled", [True, False])
+def test_resolve_runtime_options_payload_mixed_modes(cloud_enabled) -> None:
     active_runtime = SimpleNamespace(
         provider="vllm",
         model_name="Qwen2.5-7B-Instruct",
@@ -155,6 +156,7 @@ def test_resolve_runtime_options_payload_mixed_modes() -> None:
                 side_effect=[
                     {
                         "runtime_id": "openai",
+                        "enabled": cloud_enabled,
                         "source_type": "cloud-api",
                         "configured": True,
                         "available": True,
@@ -165,6 +167,7 @@ def test_resolve_runtime_options_payload_mixed_modes() -> None:
                     },
                     {
                         "runtime_id": "google",
+                        "enabled": cloud_enabled,
                         "source_type": "cloud-api",
                         "configured": False,
                         "available": False,
@@ -183,9 +186,13 @@ def test_resolve_runtime_options_payload_mixed_modes() -> None:
     assert payload["active"]["runtime_id"] == "vllm"
     runtimes = {item["runtime_id"]: item for item in payload["runtimes"]}
     assert runtimes["vllm"]["source_type"] == "local-runtime"
-    assert runtimes["openai"]["configured"] is True
-    assert runtimes["google"]["configured"] is False
-    assert runtimes["google"]["reason"] == "GOOGLE_API_KEY not configured"
+    if cloud_enabled:
+        assert runtimes["openai"]["configured"] is True
+        assert runtimes["google"]["configured"] is False
+        assert runtimes["google"]["reason"] == "GOOGLE_API_KEY not configured"
+    else:
+        assert "openai" not in runtimes
+        assert "google" not in runtimes
     assert "model_catalog" in payload
     assert payload["model_audit"]["issues_count"] == 0
     assert "trainable_models" in payload["model_catalog"]
@@ -891,3 +898,30 @@ def test_onnx_public_catalog_uses_same_worker_ids_as_activation(
         if m["runtime_id"] == "onnx"
     ] == (["served-exact"] if ready else [])
     assert calls == (["/health", "/v1/models"] if ready else ["/health"])
+
+
+@pytest.mark.parametrize("provider", ["openai", "google"])
+@pytest.mark.asyncio
+async def test_disabled_cloud_target_never_probes_or_loads_catalog(
+    provider, tmp_path, monkeypatch
+):
+    from venom_core.services import remote_provider_control as control
+
+    monkeypatch.setattr(control, "_STATE", tmp_path / "provider-control.json")
+    control.set_enabled(provider, False)
+    monkeypatch.setattr(system_llm, "_check_openai_configured", lambda: True)
+    monkeypatch.setattr(system_llm, "_check_google_configured", lambda: True)
+    probe = AsyncMock(side_effect=AssertionError("disabled probe"))
+    catalog = AsyncMock(side_effect=AssertionError("disabled catalog"))
+    monkeypatch.setattr(system_llm, "_probe_cloud_provider", probe)
+    monkeypatch.setattr(system_llm, "_catalog_for_cloud_provider", catalog)
+    runtime = SimpleNamespace(provider=provider, model_name="fixture")
+    target = await system_llm._cloud_runtime_target(
+        provider=provider, active_runtime=runtime
+    )
+    assert target["enabled"] is False
+    assert target["configured"] is True
+    assert target["status"] == "disabled"
+    assert target["models"] == []
+    probe.assert_not_called()
+    catalog.assert_not_called()

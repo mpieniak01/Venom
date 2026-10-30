@@ -579,8 +579,8 @@ export function useModelResources() {
     "model-resources", () => apiFetch("/api/v1/system/models/resources"), 5000,
   );
 }
-export function releaseAllModelResources() {
-  return apiFetch<ModelResourcesResult>("/api/v1/system/models/release", { method: "POST" });
+export function releaseAllModelResources(scope: "all" | "llm" = "all") {
+  return apiFetch<ModelResourcesResult>(scope === "llm" ? "/api/v1/system/models/recover-llm" : "/api/v1/system/models/release", { method: "POST" });
 }
 
 export async function setActiveLlmServer(serverName: string, model?: string) {

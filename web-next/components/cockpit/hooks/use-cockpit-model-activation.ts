@@ -1,5 +1,7 @@
 "use client";
 
+import { runtimeControlErrorHint } from "@/lib/runtime-control-error";
+
 export function useCockpitModelActivation(input: {
   selectedLlmServer: string;
   selectedLlmModel: string;
@@ -48,7 +50,7 @@ export function useCockpitModelActivation(input: {
       return true;
     } catch (err) {
       const message =
-        err instanceof Error ? err.message : t("cockpit.modelActivation.unknownError");
+        runtimeControlErrorHint(err, t) ?? (err instanceof Error ? err.message : t("cockpit.modelActivation.unknownError"));
       pushToast(t("cockpit.modelActivation.failed", { message }), "error");
       setSelectedLlmModel(previousModel);
       return false;

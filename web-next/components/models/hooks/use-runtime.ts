@@ -1,3 +1,4 @@
+import { runtimeControlErrorHint } from "@/lib/runtime-control-error";
 import { useState, useMemo, useEffect, useCallback } from "react";
 import { chatModelLabel, preferChatModelAliases } from "@/lib/chat-model-options";
 import { useToast } from "@/components/ui/toast";
@@ -342,14 +343,14 @@ export function useRuntime() {
         ],
     );
 
-    const handleReleaseAllModels = useCallback(async () => {
+    const handleReleaseAllModels = useCallback(async (scope: "all" | "llm" = "all") => {
         if (releasingResources) return;
         setReleasingResources(true);
         setResourceRelease(null);
         setResourceReleaseRows([]);
         setResourceReleaseError(null);
         try {
-            const result = await releaseAllModelResources();
+            const result = await releaseAllModelResources(scope);
             if (!result.released) throw new Error("model_resources_release_unconfirmed");
             setResourceRelease(result);
             setResourceReleaseRows(result.runtimes);
@@ -377,7 +378,7 @@ export function useRuntime() {
             "success",
         );
     } catch (error) {
-            pushToast(resolveRuntimeActivationErrorMessage(error, t("models.toasts.activateError")), "error");
+            pushToast(runtimeControlErrorHint(error, t) ?? resolveRuntimeActivationErrorMessage(error, t("models.toasts.activateError")), "error");
         } finally {
             setPending(key, false);
         }
@@ -411,6 +412,7 @@ export function useRuntime() {
 
     return {
         modelResources, resourceRelease, resourceReleaseRows, resourceReleaseError, releasingResources, handleReleaseAllModels,
+        handleRecoverLlm: () => handleReleaseAllModels("llm"),
         installedCollapsed,
         setInstalledCollapsed,
         operationsCollapsed,

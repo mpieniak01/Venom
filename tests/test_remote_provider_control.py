@@ -12,6 +12,8 @@ from venom_core.services import openrouter_runtime as ort
 from venom_core.services import remote_provider_control as control
 from venom_core.services import vast_chat_runtime as vrt
 
+_REAL_ASYNC_CLIENT = httpx.AsyncClient
+
 
 @pytest.fixture(autouse=True)
 def isolated(tmp_path, monkeypatch):
@@ -294,3 +296,144 @@ async def test_automatic_vast_attachment_supersedes_failed_probe(isolated):
     connection.status.assert_called_once_with(refresh=False)
     state.update(available=False, error="offline")
     assert control.status("vast_ollama")["error"] == "vast_chat_target_unavailable"
+
+
+@pytest.mark.parametrize("provider", ["openai", "google"])
+@pytest.mark.asyncio
+async def test_legacy_provider_switch_disables_catalog_validation_and_probe(
+    provider, isolated, monkeypatch
+):
+    from venom_core.config import SETTINGS
+
+    monkeypatch.setattr(SETTINGS, "OPENAI_API_KEY", "fixture-openai")
+    monkeypatch.setattr(SETTINGS, "GOOGLE_API_KEY", "fixture-google")
+    control.set_enabled(provider, False)
+    client = Mock(side_effect=AssertionError("disabled API must not probe"))
+    monkeypatch.setattr(control.httpx, "AsyncClient", client)
+    assert (await control.check(provider))["status"] == "disabled"
+    assert control.status(provider)["configured"] is True
+    app = FastAPI()
+    app.include_router(routes.router)
+    transport = httpx.ASGITransport(app=app, client=("127.0.0.1", 1234))
+    async with _REAL_ASYNC_CLIENT(
+        transport=transport, base_url="http://localhost"
+    ) as api:
+        response = await api.get(
+            "/api/v1/models/remote/catalog", params={"provider": provider}
+        )
+        assert response.json()["models"] == []
+        blocked = await api.post(
+            "/api/v1/models/remote/validate", json={"provider": provider}
+        )
+        assert blocked.status_code == 503
+        assert blocked.json()["detail"]["code"] == "remote_provider_disabled"
+    client.assert_not_called()
+    control.set_enabled(provider, True)
+    assert control.status(provider)["enabled"] is True
+
+
+@pytest.mark.parametrize("provider", ["openai", "google", "openrouter", "vast_ollama"])
+@pytest.mark.asyncio
+async def test_disabled_activation_does_not_create_uncertain_admission(
+    provider, tmp_path, monkeypatch
+):
+    from venom_core.api.routes import system_llm
+    from venom_core.services import runtime_admission
+
+    admission = runtime_admission.RuntimeAdmission(tmp_path / "admission.sqlite3")
+    monkeypatch.setattr(runtime_admission, "_ADMISSION", admission)
+    control.set_enabled(provider, False)
+    app = FastAPI()
+    app.include_router(system_llm.router)
+    path = (
+        "/api/v1/system/llm-servers/active"
+        if provider == "vast_ollama"
+        else "/api/v1/system/llm-runtime/active"
+    )
+    body = {
+        "server_name" if provider == "vast_ollama" else "provider": provider,
+        "model": "fixture/model",
+    }
+    async with _REAL_ASYNC_CLIENT(
+        transport=httpx.ASGITransport(app=app, client=("127.0.0.1", 1234)),
+        base_url="http://localhost",
+    ) as api:
+        response = await api.post(path, json=body)
+    assert response.status_code == 503
+    assert response.json()["detail"]["code"] == "remote_provider_disabled"
+    assert admission.snapshot()["active_operations"] == 0
+    assert admission.snapshot()["status"] == "available"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("provider", ["openai", "google"])
+@pytest.mark.parametrize("result", ["ok", "auth", "transport", "malformed", "missing"])
+async def test_legacy_provider_check_is_metadata_only_and_sanitizes_errors(
+    monkeypatch, provider, result
+):
+    from venom_core.config import SETTINGS
+
+    monkeypatch.setattr(
+        SETTINGS, "OPENAI_API_KEY", "fixture-secret" if result != "missing" else ""
+    )
+    monkeypatch.setattr(
+        SETTINGS, "GOOGLE_API_KEY", "fixture-secret" if result != "missing" else ""
+    )
+    requests = []
+
+    def respond(request):
+        requests.append(request)
+        if result == "transport":
+            raise httpx.ConnectError("fixture-secret")
+        if result == "malformed":
+            return httpx.Response(200, text="not JSON")
+        return httpx.Response(
+            401 if result == "auth" else 200,
+            json={"data" if provider == "openai" else "models": []},
+        )
+
+    monkeypatch.setattr(
+        control.httpx,
+        "AsyncClient",
+        lambda **kw: _REAL_ASYNC_CLIENT(transport=httpx.MockTransport(respond), **kw),
+    )
+    value = await control.check(provider)
+    assert value["available"] is (result == "ok")
+    assert "fixture-secret" not in str(value)
+    assert len(requests) == (0 if result == "missing" else 1)
+    for request in requests:
+        assert request.method == "GET"
+        assert "fixture-secret" not in str(request.url)
+        assert request.url.path.endswith("/models")
+        if provider == "google":
+            assert request.headers["x-goog-api-key"] == "fixture-secret"
+        else:
+            assert request.headers["Authorization"] == "Bearer fixture-secret"
+
+
+@pytest.mark.parametrize("provider", ["openai", "google"])
+@pytest.mark.parametrize("status_code", [401, 403, 429, 500, 503])
+@pytest.mark.asyncio
+async def test_legacy_check_distinguishes_authentication_from_provider_failure(
+    monkeypatch, provider, status_code
+):
+    from venom_core.config import SETTINGS
+
+    monkeypatch.setattr(SETTINGS, "OPENAI_API_KEY", "fixture")
+    monkeypatch.setattr(SETTINGS, "GOOGLE_API_KEY", "fixture")
+    monkeypatch.setattr(
+        control.httpx,
+        "AsyncClient",
+        lambda **kw: _REAL_ASYNC_CLIENT(
+            transport=httpx.MockTransport(lambda request: httpx.Response(status_code)),
+            **kw,
+        ),
+    )
+    result = await control.check(provider)
+    assert not result["available"]
+    expected = (
+        "remote_provider_authentication_failed"
+        if status_code in {401, 403}
+        else "remote_provider_connection_unavailable"
+    )
+    assert result["error"] == expected

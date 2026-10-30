@@ -265,6 +265,14 @@ class MafChatService:
             options["extra_body"] = extensions
         return cast("OpenAIChatCompletionOptions", options)
 
+    operator_provider: str | None = None
+
+    def _assert_operator_provider_enabled(self) -> None:
+        if self.operator_provider is not None:
+            from venom_core.services.remote_provider_control import assert_enabled
+
+            assert_enabled(self.operator_provider)
+
     async def get_chat_message_content(
         self,
         *,
@@ -277,6 +285,7 @@ class MafChatService:
         with get_runtime_admission().operation(
             kind="maf_validation", confirm_quiescent=lambda: True
         ):
+            self._assert_operator_provider_enabled()
             messages = self._messages(chat_history)
             options = self._options(settings)
         return await self._generate(
@@ -297,7 +306,7 @@ class MafChatService:
         messages: list[Any],
         options: OpenAIChatCompletionOptions,
     ):
-        with maf_transport_scope():
+        with maf_transport_scope(before_request=self._assert_operator_provider_enabled):
             response: AgentResponse[Any] | ChatResponse[Any]
             if (
                 settings is not None
@@ -357,6 +366,7 @@ class MafChatService:
         with get_runtime_admission().operation(
             kind="maf_validation", confirm_quiescent=lambda: True
         ):
+            self._assert_operator_provider_enabled()
             messages = self._messages(chat_history)
             options = self._options(settings)
         async with aclosing(self._stream(messages, options)) as stream:
@@ -367,7 +377,7 @@ class MafChatService:
     async def _stream(
         self, messages: list[Any], options: OpenAIChatCompletionOptions
     ) -> AsyncIterator[list[ConversationMessage]]:
-        with maf_transport_scope():
+        with maf_transport_scope(before_request=self._assert_operator_provider_enabled):
             async for update in self.client.get_response(
                 messages,
                 stream=True,

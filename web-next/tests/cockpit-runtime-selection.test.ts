@@ -5,6 +5,7 @@ import { performance } from "node:perf_hooks";
 import {
   isCockpitAdapterDeployAvailable,
   isCockpitRuntimeDisabled,
+  isCockpitRuntimeVisible,
   resolveCockpitActiveRuntimeInfo,
   resolveCockpitSelectedRuntimeId,
   resolveCockpitRuntimeModelSelection,
@@ -307,4 +308,11 @@ describe("empty runtime catalog model updates", () => {
       );
     });
   }
+});
+
+
+it("hides explicitly disabled APIs and preserves the selected identity", () => {
+  const targets = [{ runtime_id: "openai", enabled: false }, { runtime_id: "google", enabled: false }, { runtime_id: "openrouter", enabled: true }, { runtime_id: "ollama" }];
+  assert.deepEqual(targets.filter(isCockpitRuntimeVisible).map(item => item.runtime_id), ["openrouter", "ollama"]);
+  assert.equal(resolveCockpitSelectedRuntimeId("openai", null, { active_server: "openai" }), "openai");
 });

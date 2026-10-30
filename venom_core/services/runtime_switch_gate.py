@@ -166,6 +166,12 @@ def assert_runtime_request_allowed(*, request_kind: str) -> None:
 
     if openrouter_selection() is not None and request_kind != "simple_chat":
         raise HTTPException(status_code=409, detail="openrouter_direct_only")
+    from venom_core.services.remote_provider_control import assert_enabled
+    from venom_core.utils.llm_runtime import get_active_llm_runtime
+
+    provider = get_active_llm_runtime().provider
+    if provider in {"openai", "google"}:
+        assert_enabled(provider)
     get_runtime_admission().assert_host_available()
     with _STATE_LOCK:
         if not _STATE.in_progress:

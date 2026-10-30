@@ -128,3 +128,26 @@ it("awaits a fresh providers read when a mutation overlaps an older poll", async
   assert.equal(result.current.providerActions.vast_ollama, false);
   assert.equal(reads.length, 2);
 });
+
+
+for (const [id, label] of [["openai", "OpenAI"], ["google", "Google"]]) {
+  it(`exposes enable and disable controls for ${label}`, () => {
+    const calls: [string, boolean?][] = [];
+    const props = { provider: { ...provider, provider: id, enabled: true }, pending: false, manage: async (...args: [string, boolean?]) => { calls.push(args); }, connectVast: async () => {}, t };
+    const view = render(<RemoteProviderCard {...props} />);
+    fireEvent.click(screen.getByRole("button", { name: `${label}: Disable API` }));
+    assert.deepEqual(calls, [[id, false]]);
+    view.rerender(<RemoteProviderCard {...props} provider={{ ...props.provider, enabled: false }} />);
+    fireEvent.click(screen.getByRole("button", { name: `${label}: Enable API` }));
+    assert.deepEqual(calls, [[id, false], [id, true]]);
+  });
+}
+
+
+it("uses a separate scoped-recovery endpoint rather than an ignored query on global release", async () => {
+  const { releaseAllModelResources } = await import("../hooks/use-api");
+  const calls: string[] = [];
+  globalThis.fetch = async input => { calls.push(String(input)); return Response.json({ status: "success", released: true, runtimes: [] }); };
+  await releaseAllModelResources("llm");
+  assert.deepEqual(calls, ["/api/v1/system/models/recover-llm"]);
+});

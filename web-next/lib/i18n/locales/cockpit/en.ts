@@ -50,6 +50,9 @@ export const cockpitLocale = {
       toggleError: "Queue toggle failed.",
     },
     modelActivation: {
+      recoveryRequired: "A previous LLM operation requires recovery. In Models choose “Recover LLM / unlock chat”, then activate the model again.",
+      runtimeBusy: "The runtime is executing another operation. Wait for it to finish, then activate the model again.",
+      providerDisabled: "This API is disabled. Enable it in Models → Remote models.",
       providerMissing: "Cannot resolve server for selected model.",
       activated: "Model activated: {{model}}",
       failed: "Model activation error: {{message}}",

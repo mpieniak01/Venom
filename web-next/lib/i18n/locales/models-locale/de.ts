@@ -104,6 +104,20 @@ export const models = {
     }
 },
   openrouter: {
+    table: {
+    "model": "Modell",
+    "context": "Kontext",
+    "input": "Eingabe · USD / 1 Mio.",
+    "output": "Ausgabe · USD / 1 Mio.",
+    "tools": "Werkzeuge",
+    "status": "Status",
+    "actions": "Aktionen",
+    "free": "Kostenlos",
+    "details": "Details",
+    "yes": "Ja",
+    "no": "Nein",
+    "notConnected": "Nicht verbunden"
+},
     billing: {
     "title": "OpenRouter-Konto und Abrechnung",
     "available": "Verfügbares Kontoguthaben",

@@ -104,6 +104,20 @@ export const models = {
     }
 },
   openrouter: {
+    table: {
+    "model": "Model",
+    "context": "Context",
+    "input": "Input · USD / 1M",
+    "output": "Output · USD / 1M",
+    "tools": "Tools",
+    "status": "Status",
+    "actions": "Actions",
+    "free": "Free",
+    "details": "Details",
+    "yes": "Yes",
+    "no": "No",
+    "notConnected": "Not connected"
+},
     billing: {
     "title": "OpenRouter account and billing",
     "available": "Available account funds",

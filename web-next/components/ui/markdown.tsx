@@ -40,7 +40,11 @@ export function MarkdownPreview({
       const formatted = mode === "final" ? formatComputationContent(normalizedInput) : normalizedInput;
       const wrapped = mode === "final" ? softlyWrapMathLines(formatted) : formatted;
       const { text, tokens } = mode === "final" ? tokenizeMath(wrapped) : { text: formatted, tokens: [] };
-      const sourceText = mode === "final" && hasSources ? decorateSourcesLabel(text) : text;
+      // Keep underscore-based token IDs literal through Markdown parsing.
+      // Otherwise marked interprets them as emphasis and replacement cannot find them.
+      const literalTokens = tokens.reduce((input, token) =>
+        input.replaceAll(token.id, token.id.replaceAll("_", "\\_")), text);
+      const sourceText = mode === "final" && hasSources ? decorateSourcesLabel(literalTokens) : literalTokens;
       return { rendered: marked(sourceText, { async: false }), tokens };
     } catch (error) {
       console.error("Markdown render error:", error);

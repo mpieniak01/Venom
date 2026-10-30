@@ -23,7 +23,7 @@ WEB_HOST="${WEB_HOST:-0.0.0.0}"
 WEB_DISPLAY="${WEB_DISPLAY:-127.0.0.1}"
 WEB_PID_FILE="${WEB_PID_FILE:-.web-next.pid}"
 START_MODE="${START_MODE:-dev}"
-START_WEB_MODE="${START_WEB_MODE:-webpack}"
+START_WEB_MODE="${START_WEB_MODE:-turbo}"
 ALLOW_DEGRADED_START="${ALLOW_DEGRADED_START:-0}"
 BACKEND_RELOAD="${BACKEND_RELOAD:-0}"
 UVICORN_DEV_FLAGS="${UVICORN_DEV_FLAGS:-}"
@@ -652,11 +652,7 @@ if [[ -z "$ui_skip" ]]; then
     fi
 
     if [[ "$START_MODE" == "dev" ]] && { [[ "$effective_web_mode" == "turbo" ]] || [[ "$effective_web_mode" == "turbo-debug" ]]; } && [[ -f "$WEB_LOG" ]] && grep -Eiq "Too many open files|Failed to allocate directory watch" "$WEB_LOG"; then
-      echo "⚠️  Turbopack nie wystartował przez błąd watchera. Przełączam UI na fallback webpack."
-      : > "$WEB_LOG"
-      start_ui_process "webpack"
-      effective_web_mode="webpack"
-      continue
+      echo "❌ Turbopack: błąd watchera. Zachowuję wybrany bundler; sprawdź limit inotify lub użyj jawnie make start-dev-webpack."
     fi
 
     if [[ "$should_retry_same_mode" -eq 1 ]]; then

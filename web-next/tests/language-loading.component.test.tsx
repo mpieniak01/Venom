@@ -1,3 +1,4 @@
+import { useState } from "react";
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, it, mock } from "node:test";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
@@ -112,5 +113,37 @@ describe("selected language loading", () => {
     mock.method(Object.getPrototypeOf(window.localStorage), "setItem", () => { throw new Error("denied"); });
     render(<LanguageProvider initialLanguage="de" initialDictionary={de}><Probe /></LanguageProvider>);
     assert.equal(screen.getByTestId("language").textContent, "de");
+  });
+});
+
+describe("language readiness and interpolation", () => {
+  function FeedbackProbe() {
+    const { language, t } = useLanguage();
+    const [feedback, setFeedback] = useState("");
+    return <><span data-testid="committed-language">{language}</span>
+      <button onClick={() => setFeedback(t("common.loading"))}>Perform</button>
+      <output data-testid="feedback">{feedback}</output></>;
+  }
+  it("uses the committed Polish dictionary after deferred EN to PL storage migration", async () => {
+    window.localStorage.setItem("venom-language", "pl");
+    const pending = deferred<LocaleDictionary>();
+    render(<LanguageProvider initialLanguage="en" initialDictionary={{ common: { loading: "Loading..." } }}
+      loadDictionary={() => pending.promise}><FeedbackProbe /></LanguageProvider>);
+    assert.equal(screen.getByTestId("committed-language").textContent, "en");
+    await act(async () => pending.resolve({ common: { loading: "Ładowanie..." } }));
+    await waitFor(() => assert.equal(screen.getByTestId("committed-language").textContent, "pl"));
+    fireEvent.click(screen.getByText("Perform"));
+    assert.equal(screen.getByTestId("feedback").textContent, "Ładowanie...");
+    assert.equal(document.documentElement.lang, "pl");
+  });
+  it("trims placeholder keys and retains unknown placeholders including long whitespace", () => {
+    function ReplacementProbe() {
+      const { t } = useLanguage();
+      return <output>{t("fixture.template", { token: 7 })}</output>;
+    }
+    const unknown = "{{" + " ".repeat(10000) + "unknown }}";
+    render(<LanguageProvider initialDictionary={{ fixture: { template: "Value {{   token   }} " + unknown } }}>
+      <ReplacementProbe /></LanguageProvider>);
+    assert.equal(screen.getByRole("status", { hidden: true }).textContent, "Value 7 " + unknown);
   });
 });

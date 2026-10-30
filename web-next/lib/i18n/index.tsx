@@ -38,9 +38,10 @@ function resolvePath(locale: LocaleDictionary, path: string): string | null {
 
 function applyReplacements(value: string, replacements?: Record<string, string | number>) {
   if (!replacements) return value;
-  return value.replace(/\{\{\s*([^{}]+?)\s*\}\}/g, (placeholder, key: string) =>
-    Object.hasOwn(replacements, key) ? String(replacements[key]) : placeholder,
-  );
+  return value.replace(/\{\{([^{}]*)\}\}/g, (placeholder, rawKey: string) => {
+    const key = rawKey.trim();
+    return Object.hasOwn(replacements, key) ? String(replacements[key]) : placeholder;
+  });
 }
 
 function preferredLanguage(): LanguageCode {

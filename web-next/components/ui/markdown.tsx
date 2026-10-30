@@ -48,7 +48,7 @@ export function MarkdownPreview({
       // Keep underscore-based token IDs literal through Markdown parsing.
       // Otherwise marked interprets them as emphasis and replacement cannot find them.
       const literalTokens = tokens.reduce((input, token) =>
-        input.replaceAll(token.id, token.id.replaceAll("_", "\\_")), text);
+        input.replaceAll(token.id, token.id.replaceAll("_", String.raw`\_`)), text);
       const sourceText = mode === "final" && hasSources ? decorateSourcesLabel(literalTokens) : literalTokens;
       return { rendered: marked(sourceText, { async: false }), tokens };
     } catch (error) {

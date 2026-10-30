@@ -38,10 +38,9 @@ async def test_background_cancellation_does_not_start_work(monkeypatch):
     monkeypatch.setattr(
         priority.asyncio, "sleep", AsyncMock(side_effect=asyncio.CancelledError)
     )
+    orchestrator = SimpleNamespace(active_tasks={"task": object()})
     with pytest.raises(asyncio.CancelledError):
-        await priority.wait_for_interactive_idle(
-            SimpleNamespace(active_tasks={"task": object()})
-        )
+        await priority.wait_for_interactive_idle(orchestrator)
 
 
 @pytest.mark.asyncio
@@ -57,7 +56,8 @@ async def test_ledger_read_is_off_the_event_loop(monkeypatch):
         priority, "get_runtime_admission", lambda: SimpleNamespace(snapshot=snapshot)
     )
     await priority.wait_for_interactive_idle()
-    assert threads and threads[0] != loop_thread
+    assert threads
+    assert threads[0] != loop_thread
 
 
 @pytest.mark.asyncio
@@ -354,3 +354,35 @@ async def test_idle_wait_drains_inflight_admission_read_on_cancel(monkeypatch):
     with pytest.raises(asyncio.CancelledError):
         await waiting
     assert completed.is_set()
+
+
+@pytest.mark.asyncio
+async def test_initial_gardener_failure_does_not_terminate_monitoring(
+    monkeypatch, tmp_path
+):
+    from venom_core.agents import gardener as module
+
+    idle = AsyncMock(
+        side_effect=[RuntimeError("initial idle failure"), None, None, None]
+    )
+    monkeypatch.setattr(module, "wait_for_interactive_idle", idle)
+    gardener = module.GardenerAgent(
+        graph_store=Mock(), workspace_root=str(tmp_path), scan_interval=0.01
+    )
+    changed = Mock(return_value=True)
+    scan = Mock(return_value={})
+    monkeypatch.setattr(gardener, "_check_for_changes", changed)
+    monkeypatch.setattr(gardener, "scan_and_update", scan)
+    await gardener.start()
+    try:
+
+        async def until_scanned():
+            while not scan.called:
+                await asyncio.sleep(0.01)
+
+        await asyncio.wait_for(until_scanned(), timeout=2)
+        assert gardener.is_running
+        assert not gardener._task.done()
+    finally:
+        await gardener.stop()
+    assert scan.called

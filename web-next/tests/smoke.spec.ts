@@ -91,13 +91,15 @@ async function registerRuntimeContractRoutes(
 
 async function waitForHydration(page: Page) {
   await page.waitForFunction(
-    () => document.documentElement.dataset.hydrated === "true",
+    () => document.documentElement.dataset.hydrated === "true" && document.documentElement.lang === "pl",
     undefined,
     { timeout: 10000 },
   );
 }
 
-test.beforeEach(async ({ page }) => {
+test.beforeEach(async ({ page, context, baseURL }) => {
+  if (!baseURL) throw new Error("Smoke requires a configured baseURL");
+  await context.addCookies([{ name: "venom-language", value: "pl", url: baseURL }]);
   await page.addInitScript(() => {
     window.localStorage.setItem("venom-language", "pl");
   });

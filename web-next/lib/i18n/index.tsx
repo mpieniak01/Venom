@@ -77,7 +77,6 @@ export function LanguageProvider({
   const requestRef = useRef(0);
   const mountedRef = useRef(false);
   const currentRef = useRef(snapshot);
-  currentRef.current = snapshot;
 
   const setLanguage = useCallback((language: LanguageCode) => {
     if (!isLanguageCode(language)) return;
@@ -88,7 +87,9 @@ export function LanguageProvider({
     }
     void loadDictionary(language).then((dictionary) => {
       if (!mountedRef.current || request !== requestRef.current) return;
-      setSnapshot({ language, dictionary });
+      const next = { language, dictionary };
+      currentRef.current = next;
+      setSnapshot(next);
       persistLanguage(language);
     }).catch((error: unknown) => {
       if (mountedRef.current && request === requestRef.current) {
@@ -109,7 +110,6 @@ export function LanguageProvider({
     globalThis.window.addEventListener("storage", onStorage);
     return () => {
       mountedRef.current = false;
-      ++requestRef.current;
       globalThis.window.removeEventListener("storage", onStorage);
     };
   }, [setLanguage]);

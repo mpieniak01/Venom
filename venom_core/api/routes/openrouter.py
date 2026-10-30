@@ -111,7 +111,7 @@ async def disconnect_model(request: ModelConnectionRequest):
     return catalog.disconnect(request.model_id)
 
 
-@router.get("/billing")
+@router.get("/billing", responses={422: {"description": "Invalid billing date window"}})
 def billing(
     period: Literal["7d", "30d", "month", "all"] = "30d",
     from_utc: date | None = None,
@@ -130,7 +130,11 @@ def billing_operator(request: Request) -> None:
     require_operator_origin(request, "openrouter_billing_local_operator_required")
 
 
-@router.post("/billing/sync", dependencies=[Depends(billing_operator)])
+@router.post(
+    "/billing/sync",
+    dependencies=[Depends(billing_operator)],
+    responses={403: {"description": "Billing unavailable or operator access required"}},
+)
 def sync_billing():
     from venom_core.services.openrouter_billing import OpenRouterBilling
 

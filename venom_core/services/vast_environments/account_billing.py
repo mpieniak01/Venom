@@ -59,7 +59,9 @@ def _sum_rows(rows: list[dict], observed: datetime) -> ChargeDay:
             result.unknown_amounts += 1
         else:
             result.total += value
-        match = re.fullmatch(r"instance-([1-9][0-9]*)", str(row.get("source", "")))
+        match = re.fullmatch(
+            r"instance-([1-9]\d*)", str(row.get("source", "")), flags=re.ASCII
+        )
         if not match:
             continue
         key = match[1]

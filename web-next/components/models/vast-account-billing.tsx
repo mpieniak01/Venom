@@ -5,8 +5,8 @@ import { formatVastUsd } from "@/lib/vast-price";
 import type { VastAccountBilling } from "./hooks/use-vast-environments";
 import { remoteModelStyles as styles } from "./remote-model-styles";
 
-export function VastAccountBillingPanel({ billing, pending, enabled, sync, t }: Readonly<{
-  billing: VastAccountBilling; pending: boolean; enabled: boolean;
+export function VastAccountBillingPanel({ billing, pending, enabled, sync, error, t }: Readonly<{
+  billing: VastAccountBilling; pending: boolean; enabled: boolean; error?: string | null;
   sync: (reconcile?: boolean) => Promise<void>; t: (key: string) => string;
 }>) {
   const text = (name: string) => t("models.vast.accountBilling." + name);
@@ -24,6 +24,7 @@ export function VastAccountBillingPanel({ billing, pending, enabled, sync, t }: 
         {text("states." + (billing.account_error ? "stale" : billing.status))}
       </Badge>
     </div>
+    {error && <p role="alert" className="text-xs text-amber-400">{t("models.vast.operationError")}</p>}
     <dl className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
       {metrics.map(([name, value]) => <div key={name} className={styles.card}>
         <dt className={styles.hint}>{text(name)}</dt>

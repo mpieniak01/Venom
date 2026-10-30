@@ -46,7 +46,7 @@ export function useOpenRouterBilling() {
       if (mounted.current && id === sequence.current) setError(true);
     }
   }, [period, from, to, validDates]);
-  reload.current = refresh;
+  useEffect(() => { reload.current = refresh; }, [refresh]);
   const cancelRead = useCallback(() => { ++sequence.current; }, []);
   useEffect(() => {
     mounted.current = true;

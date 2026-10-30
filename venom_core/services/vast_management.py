@@ -112,7 +112,10 @@ class VastManagement:
         self.sleep = sleep
         self.owner = uuid4().hex
         self._guard = threading.RLock()
-        self.billing = AccountBilling(self.journal, self.settings.VAST_API_KEY)
+
+    @property
+    def billing(self) -> AccountBilling:
+        return AccountBilling(self.journal, self.settings.VAST_API_KEY)
 
     @staticmethod
     def _launch(action: Any, plan_id: str) -> None:
@@ -124,10 +127,14 @@ class VastManagement:
         ).start()
 
     @contextmanager
-    def _service(self, *, check_enabled: bool = True) -> Iterator[Environments]:
+    def _service(
+        self, *, check_enabled: bool = True, api_key: Any = None
+    ) -> Iterator[Environments]:
         if check_enabled and not self.is_enabled():
             raise VastError(MANAGEMENT_DISABLED)
-        client = self.client_factory(self.settings.VAST_API_KEY)
+        client = self.client_factory(
+            self.settings.VAST_API_KEY if api_key is None else api_key
+        )
         try:
             yield Environments(client, self.journal)
         finally:
@@ -272,8 +279,10 @@ class VastManagement:
         }
 
     def sync_billing(self, reconcile: bool = False) -> dict[str, Any]:
-        with self._service() as service:
-            result = self.billing.sync(service.client, reconcile=reconcile)
+        key = self.settings.VAST_API_KEY
+        billing = AccountBilling(self.journal, key)
+        with self._service(api_key=key) as service:
+            result = billing.sync(service.client, reconcile=reconcile)
         return {key: value for key, value in result.items() if key != "instances"}
 
     def search(self, duration: int) -> dict[str, Any]:

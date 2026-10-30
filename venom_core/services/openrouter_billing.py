@@ -148,6 +148,8 @@ def _fresh(value: datetime | None, current: datetime, seconds: int) -> bool:
 def _aggregate(
     rows: list[dict], start: date, end: date, *, analytics: bool
 ) -> dict[str, dict[str, ModelUsage]]:
+    if not isinstance(rows, list) or any(not isinstance(row, dict) for row in rows):
+        raise BillingError("invalid_response")
     days: dict[str, dict[str, ModelUsage]] = {
         (start + timedelta(days=offset)).isoformat(): {}
         for offset in range((end - start).days + 1)
@@ -255,9 +257,7 @@ class OpenRouterBilling:
                 setattr(cache, name + "_at", current)
                 cache.errors.pop(name, None)
             except ValueError as exc:
-                cache.errors[name] = (
-                    str(exc) if isinstance(exc, BillingError) else "invalid_response"
-                )
+                cache.errors[name] = _error_code(exc)
 
     def _analytics(self, client: Any, start: date, end: date) -> tuple[dict, str]:
         key = self.management or self.key
@@ -281,7 +281,11 @@ class OpenRouterBilling:
                 "limit": 10000,
             }
             result = self._request(client, "/analytics/query", key, payload)
-            if result.get("metadata", {}).get("truncated") is not False:
+            if not isinstance(result, dict) or not isinstance(
+                result.get("metadata"), dict
+            ):
+                raise BillingError("invalid_response")
+            if result["metadata"].get("truncated") is not False:
                 raise BillingError("analytics_truncated")
             return _aggregate(result["data"], start, end, analytics=True), "analytics"
         except BillingError as exc:
@@ -306,9 +310,7 @@ class OpenRouterBilling:
             cache.source, cache.analytics_at = source, current
             cache.errors.pop("models", None)
         except (ValueError, KeyError, TypeError) as exc:
-            cache.errors["models"] = (
-                str(exc) if isinstance(exc, BillingError) else "invalid_response"
-            )
+            cache.errors["models"] = _error_code(exc)
 
     def sync(self) -> None:
         current = self.clock()
@@ -333,17 +335,7 @@ class OpenRouterBilling:
     ) -> dict[str, Any]:
         cache, current = self.store.load(), self.clock()
         today = current.astimezone(timezone.utc).date()
-        last = end or today
-        first = start or today - timedelta(days=29)
-        if start is None:
-            if period == "7d":
-                first = today - timedelta(days=6)
-            elif period == "month":
-                first = today.replace(day=1)
-            elif period == "all" and cache.days:
-                first = date.fromisoformat(min(cache.days))
-        if first > last or last > today:
-            raise BillingError("invalid_window")
+        first, last = _billing_window(cache, period, start, end, today)
         rows, covered = _summarize(cache.days, first, last)
         return {
             "configured": bool(self.key or self.management),
@@ -374,3 +366,24 @@ class OpenRouterBilling:
             if covered
             else None,
         }
+
+
+def _error_code(exc: ValueError | KeyError | TypeError) -> str:
+    return str(exc) if isinstance(exc, BillingError) else "invalid_response"
+
+
+def _billing_window(
+    cache: Cache, period: str, start: date | None, end: date | None, today: date
+) -> tuple[date, date]:
+    last = end or today
+    first = start or last - timedelta(days=29)
+    if start is None:
+        if period == "7d":
+            first = last - timedelta(days=6)
+        elif period == "month":
+            first = last.replace(day=1)
+        elif period == "all" and cache.days:
+            first = date.fromisoformat(min(cache.days))
+    if first > last or last > today:
+        raise BillingError("invalid_window")
+    return first, last

@@ -354,3 +354,25 @@ describe("VAST account billing", () => {
     }
   });
 });
+
+
+for (const failed of [false, true]) {
+  it(`isolates billing ${failed ? "failure" : "success"} from an operator search error`, async () => {
+    globalThis.fetch = async (input, init) => {
+      if (init?.method !== "POST") return Response.json(status());
+      if (String(input).endsWith("/billing/sync")) return failed
+        ? Response.json({ detail: "vast.billing_unavailable" }, { status: 503 })
+        : Response.json({ ok: true });
+      return Response.json({ detail: "vast.search_failed" }, { status: 409 });
+    };
+    const { result } = renderHook(() => useVastEnvironments());
+    await waitFor(() => assert.equal(result.current.loading, false));
+    await act(async () => { await result.current.search(30); });
+    assert.equal(result.current.error, "vast.search_failed");
+    await act(async () => { await result.current.syncBilling(); });
+    assert.equal(result.current.error, "vast.search_failed");
+    assert.equal(result.current.billingError, failed ? "vast.billing_unavailable" : null);
+    await act(async () => { await result.current.search(30); });
+    assert.equal(result.current.billingError, failed ? "vast.billing_unavailable" : null);
+  });
+}

@@ -145,8 +145,9 @@ def test_period_filters_and_retained_history(state):
         service.view(start=datetime(2026, 9, 1).date())["covered_days"]
         < service.view(start=datetime(2026, 9, 1).date())["expected_days"]
     )
+    future = datetime(2027, 1, 1).date()
     with pytest.raises(billing.BillingError):
-        service.view(end=datetime(2027, 1, 1).date())
+        service.view(end=future)
 
 
 def test_permission_denial_is_cached_without_hiding_credit(state):
@@ -207,13 +208,10 @@ def test_activity_fallback_and_no_fake_current_day(state):
     ],
 )
 def test_malformed_daily_aggregates_fail_closed(rows):
+    start = datetime(2026, 10, 1).date()
+    end = datetime(2026, 10, 30).date()
     with pytest.raises(ValueError):
-        billing._aggregate(
-            rows,
-            datetime(2026, 10, 1).date(),
-            datetime(2026, 10, 30).date(),
-            analytics=False,
-        )
+        billing._aggregate(rows, start, end, analytics=False)
 
 
 def test_store_leases_and_credential_isolation(state):
@@ -329,7 +327,8 @@ def test_corrupt_provider_json_never_exposes_response_or_credentials(state):
     service.sync()
     view = service.view()
     assert view["errors"]["account"] == "provider_unavailable"
-    assert "private" not in str(view) and "secret" not in str(view)
+    assert "private" not in str(view)
+    assert "secret" not in str(view)
 
 
 def test_long_idle_invalid_cache_owner_and_unlimited_key(state):
@@ -346,3 +345,50 @@ def test_long_idle_invalid_cache_owner_and_unlimited_key(state):
     service.store.release(new_owner)
     current[0] += timedelta(days=100)
     assert service.view()["models_stale"]
+
+
+@pytest.mark.parametrize(
+    "path,bad",
+    [
+        ("/analytics/query", []),
+        ("/analytics/query", {"metadata": None}),
+        ("/analytics/query", {"metadata": {"truncated": False}, "data": [None]}),
+        ("/analytics/query", {"metadata": {"truncated": False}, "data": {}}),
+        ("/activity", {}),
+        ("/activity", [None]),
+    ],
+)
+def test_malformed_provider_shapes_are_cached_without_losing_totals(state, path, bad):
+    service, responses, calls, current = state
+    service.sync()
+    previous = service.view()["models"]
+    current[0] += timedelta(minutes=65)
+    if path == "/activity":
+        responses["/analytics/meta"] = 404
+    responses[path] = bad
+    service.sync()
+    result = service.view()
+    assert result["errors"]["models"] == "invalid_response"
+    assert result["models"] == previous
+    assert result["available_usd"] == "9.55"
+    count = len(calls)
+    service.sync()
+    assert len(calls) == count
+
+
+@pytest.mark.parametrize(
+    "period,expected",
+    [
+        ("30d", "2026-08-12"),
+        ("7d", "2026-09-04"),
+        ("month", "2026-09-01"),
+    ],
+)
+def test_historical_end_anchors_default_billing_period(state, period, expected):
+    service, *_ = state
+    end = datetime(2026, 9, 10).date()
+    result = service.view(period, end=end)
+    assert result["from_utc"] == expected
+    assert result["to_utc"] == "2026-09-10"
+    explicit = service.view(period, start=datetime(2026, 8, 1).date(), end=end)
+    assert explicit["from_utc"] == "2026-08-01"

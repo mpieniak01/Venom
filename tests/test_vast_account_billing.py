@@ -112,7 +112,8 @@ def test_failure_preserves_cached_costs_and_credit(billing, error):
     assert result["status"] == "stale"
     assert result["credit_usd"] == old["credit_usd"]
     assert result["total_usd"] == old["total_usd"]
-    assert result["error"] and result["account_error"]
+    assert result["error"]
+    assert result["account_error"]
     assert instance_summary(result, 88)["billing_status"] == "partial"
     assert b.client.charges.call_count == 32
 
@@ -123,7 +124,8 @@ def test_unavailable_account_and_invalid_numbers_do_not_fake_zero(billing):
     b.client.charges.side_effect = VastError("vast.charges_unavailable_for_host", 200)
     result = b.ledger.sync(b.client)
     assert result["status"] == "unavailable"
-    assert result["total_usd"] is None and result["credit_usd"] is None
+    assert result["total_usd"] is None
+    assert result["credit_usd"] is None
     assert b.client.charges.call_count == 1
 
 
@@ -162,12 +164,14 @@ def test_long_history_backfill_is_bounded_and_continues(billing):
     )
     (b.journal.root / ("c" * 32 + ".record.json")).write_text("broken")
     first = b.ledger.sync(b.client)
-    assert first["expected_days"] == 66 and first["status"] == "partial"
+    assert first["expected_days"] == 66
+    assert first["status"] == "partial"
     assert instance_summary(first, 88)["billing_status"] == "partial"
     for _ in range(3):
         b.current[0] += timedelta(minutes=6)
         result = b.ledger.sync(b.client)
-    assert result["covered_days"] == 66 and result["status"] == "ready"
+    assert result["covered_days"] == 66
+    assert result["status"] == "ready"
     b.current[0] += timedelta(minutes=6)
     assert b.ledger.sync(b.client, reconcile=True)["status"] == "partial"
     for _ in range(3):

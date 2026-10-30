@@ -26,7 +26,7 @@ function price(value: string | null, unknown: string): string {
 export function OpenRouterModelTable({ models, connected, pending, manage, caption, t }: Readonly<Props>) {
   const text = (key: string) => t("models.openrouter." + key);
   const connections = new Map(connected.map(model => [model.id, model]));
-  return <div className={styles.tableWrap + " max-h-[640px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--primary)]"} role="region" aria-label={caption} tabIndex={0}>
+  return <section className={styles.tableWrap + " max-h-[640px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--primary)]"} aria-label={caption} tabIndex={0}>
     <table className="w-full min-w-[960px] border-collapse text-left text-sm">
       <caption className="sr-only">{caption}</caption>
       <thead className="sticky top-0 z-10 bg-[color:var(--ui-surface)]"><tr>
@@ -68,5 +68,5 @@ export function OpenRouterModelTable({ models, connected, pending, manage, capti
         </tr>;
       })}</tbody>
     </table>
-  </div>;
+  </section>;
 }

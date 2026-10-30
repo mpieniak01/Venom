@@ -41,7 +41,7 @@ export function VastEnvironmentsSection({ t, onChanged }: Readonly<Props>) {
   const ready = Boolean(api.state?.configured && api.state?.enabled);
   const resetSelection = () => { setSelected(null); api.clearDraft(); setConfirmed(false); };
   return <section className="min-w-0 space-y-6" aria-label="VAST">
-    {api.state?.billing && <VastAccountBillingPanel billing={api.state.billing} pending={api.billingPending} enabled={api.state.enabled} sync={api.syncBilling} t={t} />}
+    {api.state?.billing && <VastAccountBillingPanel billing={api.state.billing} pending={api.billingPending} error={api.billingError} enabled={api.state.enabled} sync={api.syncBilling} t={t} />}
     <form className={styles.panel + " space-y-5"} onSubmit={event => {
       event.preventDefault();
       if (!ready || api.pending || !validDuration) {

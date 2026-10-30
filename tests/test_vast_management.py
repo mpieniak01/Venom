@@ -731,3 +731,17 @@ def test_legacy_billing_marks_incomplete_provider_amount_as_partial(f):
     f.svc.journal.save_record(record)
     assert f.m.row(f.p.plan_id)["billing_status"] == "partial"
     assert f.m.row(f.p.plan_id)["billed_usd"] == "0.25"
+
+
+def test_billing_key_rotation_isolates_reads_and_provider_writes(f):
+    f.svc.client.account.return_value = {"credit": "11"}
+    f.svc.client.charges.return_value = []
+    first_key = f.m.settings.VAST_API_KEY
+    assert f.m.sync_billing()["credit_usd"] == "11"
+    f.m.settings.VAST_API_KEY = SecretStr("replacement-fake")
+    assert f.m.overview()["billing"]["credit_usd"] is None
+    f.svc.client.account.return_value = {"credit": "22"}
+    assert f.m.sync_billing()["credit_usd"] == "22"
+    f.m.client_factory.assert_called_with(f.m.settings.VAST_API_KEY)
+    f.m.settings.VAST_API_KEY = first_key
+    assert f.m.overview()["billing"]["credit_usd"] == "11"

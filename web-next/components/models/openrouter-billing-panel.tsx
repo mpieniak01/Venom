@@ -19,7 +19,7 @@ export function OpenRouterBillingPanel({ t }: Readonly<{ t: (key: string) => str
   const metrics = [
     ["available", usd(state?.available_usd, unknown)],
     ["total", usd(state?.account?.total_usage, unknown)],
-    ["keyRemaining", state?.key && state.key.limit === null ? text("unlimited") : usd(state?.key?.limit_remaining, unknown)],
+    ["keyRemaining", state?.key?.limit === null ? text("unlimited") : usd(state?.key?.limit_remaining, unknown)],
     ["keyMonth", usd(state?.key?.usage_monthly, unknown)],
   ] as const;
   return <section className={styles.panel + " space-y-4"} aria-label={text("title")}>
@@ -43,7 +43,7 @@ export function OpenRouterBillingPanel({ t }: Readonly<{ t: (key: string) => str
     {!api.validDates && <p role="alert" className="text-xs text-amber-400">{text("invalidWindow")}</p>}
     <div className="flex flex-wrap items-center gap-3"><h3 className={styles.heading}>{text("models")}</h3><Badge tone="neutral">{text("accountScope")}</Badge>{partial && <Badge tone="warning">{text("partial")}</Badge>}</div>
     {state && <p className={styles.hint}>{state.from_utc} — {state.to_utc} UTC · {text("periodTotal")}: {usd(state.period_usd, unknown)}</p>}
-    {state?.errors.models && <p role="status" className={styles.hint}>{text("errors." + (knownErrors.has(state.errors.models) ? state.errors.models : "provider_unavailable"))}</p>}
+    {state?.errors.models && <output className={styles.hint}>{text("errors." + (knownErrors.has(state.errors.models) ? state.errors.models : "provider_unavailable"))}</output>}
     {state && state.models.length > 0 ? <div className={styles.tableWrap}><table className="w-full min-w-[480px] text-left text-sm"><caption className="sr-only">{text("models")}</caption>
       <thead><tr>{["model", "cost", "share", "requests"].map(key => <th key={key} scope="col" className={styles.tableHead}>{text(key)}</th>)}</tr></thead>
       <tbody>{state.models.map(row => <tr key={row.model} className={styles.tableRow}><td className={styles.tableCell + " break-all"}>{row.model}</td><td className={styles.tableCell}>{usd(row.usd, unknown)}</td><td className={styles.tableCell}>{Number(row.share_percent).toFixed(1)}%</td><td className={styles.tableCell}>{row.requests}</td></tr>)}</tbody>

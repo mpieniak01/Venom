@@ -55,6 +55,7 @@ export function useVastEnvironments(onChanged?: () => Promise<unknown>) {
   const [loading, setLoading] = useState(true);
   const [pending, setPending] = useState(false);
   const [billingPending, setBillingPending] = useState(false);
+  const [billingError, setBillingError] = useState<string | null>(null);
   const billingBusy = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const mounted = useRef(true);
@@ -62,7 +63,8 @@ export function useVastEnvironments(onChanged?: () => Promise<unknown>) {
   const reading = useRef(false);
   const readSequence = useRef(0);
   const refreshQueued = useRef(false);
-  const callback = useRef(onChanged); callback.current = onChanged;
+  const callback = useRef(onChanged);
+  useEffect(() => { callback.current = onChanged; }, [onChanged]);
   const connectionSignature = useRef("");
 
   const refresh = useCallback(async (): Promise<void> => {
@@ -99,9 +101,9 @@ export function useVastEnvironments(onChanged?: () => Promise<unknown>) {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ reconcile }),
       }));
-      if (mounted.current) setError(null);
+      if (mounted.current) setBillingError(null);
     } catch (e) {
-      if (mounted.current) setError(e instanceof Error ? e.message : "vast.request_failed");
+      if (mounted.current) setBillingError(e instanceof Error ? e.message : "vast.request_failed");
     } finally {
       billingBusy.current = false;
       if (mounted.current) { setBillingPending(false); await refresh(); }
@@ -163,5 +165,5 @@ export function useVastEnvironments(onChanged?: () => Promise<unknown>) {
   );
   const clearDraft = () => setDraft(null);
   const clearOffers = () => setOffers(null);
-  return { state, offers, draft, loading, pending, billingPending, syncBilling, error, search, prepare, action, refresh, clearDraft, clearOffers };
+  return { state, offers, draft, loading, pending, billingPending, billingError, syncBilling, error, search, prepare, action, refresh, clearDraft, clearOffers };
 }

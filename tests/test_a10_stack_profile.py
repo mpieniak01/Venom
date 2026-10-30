@@ -306,6 +306,12 @@ http.server.HTTPServer(('127.0.0.1',int(sys.argv[sys.argv.index('--port')+1])),H
             timeout=30,
         )
         assert result.returncode == 0, result.stderr.decode()
+        import time
+
+        time.sleep(0.3)  # Launcher has exited; the recorded API owner must persist.
+        owner = int(pid.read_text())
+        assert stack.running(owner)
+        assert json.loads(Path(str(pid) + ".identity.json").read_text())["pid"] == owner
         data = json.loads(capture.read_text())
         assert data["ENVIRONMENT_ROLE"] == role
         assert data["VENOM_RUNTIME_PROFILE"] == profile
@@ -385,29 +391,3 @@ with startup_lock(root):
         child.wait(timeout=5)
     with stack.startup_lock(root):
         pass
-
-
-def test_api_session_leader_keeps_recorded_owner_until_server_stops(root):
-    import subprocess
-    import sys
-    import time
-
-    config = stack.resolve(root, {})
-    # A session leader forces setsid to fork; --wait must retain the owner PID.
-    child = subprocess.Popen(
-        ["setsid", "--wait", sys.executable, "-c", "import time; time.sleep(60)"],
-        start_new_session=True,
-    )
-    try:
-        Path(config["PID_FILE"]).write_text(str(child.pid))
-        stack.record_pid(root, config, "PID_FILE")
-        time.sleep(0.2)
-        assert child.poll() is None
-        assert stack.owned_pid(root, config, "PID_FILE") == child.pid
-        assert stack.descendants(child.pid)
-        stack.stop(root, config, ("PID_FILE",))
-        child.wait(timeout=5)
-    finally:
-        if child.poll() is None:
-            child.terminate()
-            child.wait(timeout=5)

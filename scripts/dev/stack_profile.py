@@ -6,6 +6,7 @@ import argparse
 import fcntl
 import json
 import os
+import shlex
 import signal
 import socket
 import subprocess
@@ -339,6 +340,41 @@ def stop(
         Path(values[key] + ".identity.json").unlink(missing_ok=True)
 
 
+def spawn_api(root: Path, values: dict[str, str]) -> None:
+    from scripts.llm.with_gpu_libraries import command_python
+
+    command = values.get("UVICORN", str(root / ".venv/bin/uvicorn"))
+    python = command_python(command, root)
+    flags = (
+        values.get("UVICORN_DEV_FLAGS", "--reload")
+        if values.get("START_MODE") != "prod" and values.get("BACKEND_RELOAD") == "1"
+        else values.get("UVICORN_PROD_FLAGS", "--no-server-header")
+    )
+    for key in ("BACKEND_LOG", "PID_FILE"):
+        Path(values[key]).parent.mkdir(parents=True, exist_ok=True)
+    with Path(values["BACKEND_LOG"]).open("a") as log:
+        child = subprocess.Popen(
+            [
+                python,
+                str(root / "scripts/llm/with_gpu_libraries.py"),
+                command,
+                values.get("API_APP", "venom_core.main:app"),
+                "--host",
+                values.get("HOST", "0.0.0.0"),
+                "--port",
+                values["PORT"],
+                *shlex.split(flags),
+            ],
+            cwd=root,
+            env=values,
+            stdout=log,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+        )
+    Path(values["PID_FILE"]).write_text(str(child.pid) + "\n")
+    record_pid(root, values, "PID_FILE")
+
+
 def component(root: Path, values: dict[str, str], name: str) -> None:
     web = {
         "web-build": ["build"],
@@ -355,12 +391,9 @@ def component(root: Path, values: dict[str, str], name: str) -> None:
         )
     elif name in {"api", "api-dev"}:
         preflight(root, values)
-        for key in ("BACKEND_LOG", "PID_FILE"):
-            Path(values[key]).parent.mkdir(parents=True, exist_ok=True)
-        subprocess.run(
-            ["make", "--no-print-directory", "_" + name], env=values, check=True
-        )
-        record_pid(root, values, "PID_FILE")
+        if name == "api-dev":
+            values["BACKEND_RELOAD"] = "1"
+        spawn_api(root, values)
         url = values["API_PROXY_TARGET"] + "/api/v1/system/status"
         try:
             for _ in range(60):
@@ -453,6 +486,7 @@ def main() -> None:
             "status",
             "plan",
             "record-api",
+            "launch-api",
             "component",
             "runtime-check",
         ),
@@ -465,6 +499,8 @@ def main() -> None:
             print(json.dumps(public_plan(values), indent=2))
         elif args.action == "runtime-check":
             check_shared_runtime(ROOT, values)
+        elif args.action == "launch-api":
+            spawn_api(ROOT, values)
         elif args.action == "record-api":
             record_pid(ROOT, values, "PID_FILE")
         elif args.action == "component":

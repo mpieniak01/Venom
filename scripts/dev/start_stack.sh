@@ -395,24 +395,9 @@ if [[ -z "$backend_reused" ]]; then
     fi
   fi
 
-  if [[ "$START_MODE" == "prod" ]]; then
-    uvicorn_flags="--host ${HOST} --port ${PORT} ${UVICORN_PROD_FLAGS}"
-  else
-    if [[ "$BACKEND_RELOAD" == "1" ]]; then
-      uvicorn_flags="--host ${HOST} --port ${PORT} ${UVICORN_DEV_FLAGS}"
-      echo "ℹ️  Backend dev z autoreload (BACKEND_RELOAD=1)"
-    else
-      uvicorn_flags="--host ${HOST} --port ${PORT} ${UVICORN_PROD_FLAGS}"
-      echo "ℹ️  Backend dev w trybie stabilnym bez autoreload (BACKEND_RELOAD=0)"
-    fi
-  fi
-
   echo "▶️  Uruchamiam Venom backend (uvicorn na ${HOST}:${PORT})"
   : > "$BACKEND_LOG"
-  api_python="$("$PYTHON_BIN" "$ROOT_DIR/scripts/llm/with_gpu_libraries.py" --print-command-python "$ROOT_DIR" "$UVICORN")"
-  run_with_env_file setsid --wait "$api_python" "$ROOT_DIR/scripts/llm/with_gpu_libraries.py" "$UVICORN" "$API_APP" $uvicorn_flags >> "$BACKEND_LOG" 2>&1 &
-  echo $! > "$PID_FILE"
-  "$PYTHON_BIN" "$ROOT_DIR/scripts/dev/stack_profile.py" record-api
+  "$PYTHON_BIN" "$ROOT_DIR/scripts/dev/stack_profile.py" launch-api
   BACKEND_STARTED=1
   echo "✅ Venom backend wystartował z PID $(cat "$PID_FILE")"
 

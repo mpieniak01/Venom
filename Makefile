@@ -211,38 +211,9 @@ clean-ports:
 api:
 	@ENVIRONMENT="$(ENVIRONMENT)" PROFILE="$(PROFILE)" ENV_FILE="$(ENV_FILE)" PORT="$(PORT)" WEB_PORT="$(WEB_PORT)" $(PYTHON_BIN) scripts/dev/stack_profile.py component api
 
-_api:
-	@if [ ! -x "$(UVICORN)" ]; then \
-		echo "❌ Nie znaleziono uvicorn w $(UVICORN). Czy środowisko .venv jest zainstalowane?"; \
-		exit 1; \
-	fi
-	@mkdir -p logs
-	$(call ensure_process_not_running,Venom backend,$(PID_FILE))
-	@echo "▶️  Uruchamiam Venom API (produkcyjny, bez --reload) na $(HOST):$(PORT)"
-	: > $(BACKEND_LOG)
-	$(ENV_RUN) setsid --wait $(UVICORN) $(API_APP) --host $(HOST) --port $(PORT) $(UVICORN_PROD_FLAGS) >> $(BACKEND_LOG) 2>&1 & \
-	echo $$! > $(PID_FILE)
-	@echo "✅ Venom API wystartował z PID $$(cat $(PID_FILE))"
-	@echo "📡 Backend: http://$(HOST):$(PORT)"
-
 # Backend API (tylko) - developerski (z autoreload)
 api-dev:
 	@ENVIRONMENT="$(ENVIRONMENT)" PROFILE="$(PROFILE)" ENV_FILE="$(ENV_FILE)" PORT="$(PORT)" WEB_PORT="$(WEB_PORT)" $(PYTHON_BIN) scripts/dev/stack_profile.py component api-dev
-
-_api-dev:
-	@if [ ! -x "$(UVICORN)" ]; then \
-		echo "❌ Nie znaleziono uvicorn w $(UVICORN). Czy środowisko .venv jest zainstalowane?"; \
-		exit 1; \
-	fi
-	@mkdir -p logs
-	$(call ensure_process_not_running,Venom backend,$(PID_FILE))
-	@echo "▶️  Uruchamiam Venom API (developerski, z --reload) na $(HOST):$(PORT)"
-	: > $(BACKEND_LOG)
-	$(ENV_RUN) setsid --wait $(UVICORN) $(API_APP) --host $(HOST) --port $(PORT) $(UVICORN_DEV_FLAGS) >> $(BACKEND_LOG) 2>&1 & \
-	echo $$! > $(PID_FILE)
-	@echo "✅ Venom API wystartował z PID $$(cat $(PID_FILE))"
-	@echo "📡 Backend: http://$(HOST):$(PORT)"
-	@echo "🔄 Autoreload: aktywny (zmiana plików → restart)"
 
 api-preprod: ENVIRONMENT=preprod
 api-preprod: ENV_FILE=.env.preprod

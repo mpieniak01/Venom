@@ -19,9 +19,29 @@ An offline or disabled selected provider remains selected. Venom can start and e
 
 See [VAST provisioning and environment lifecycle](integrations/vast.md) for the existing host preparation, installation, qualification and cleanup workflow. The integration configuration link is diagnostic/configuration UI, not a rental console.
 
+VAST retrieves up to 1000 candidates per global/preferred-country metadata query
+before local qualification and deduplication. Each search reads qualification
+history and computes the workload identity once; standalone assessments still
+read fresh history. This remains a bounded catalog
+sample, not a guarantee of every marketplace offer.
+VAST offer search displays only eligible offers with known nonnegative hourly
+and total quotes. It sorts by the exact hourly rate ascending before limiting
+results to 100; equal rates use offer ID for stable ordering. Offers, order reviews
+and managed environments display USD amounts rounded to four decimal places.
+The “Exact USD amounts” disclosure in each offer and the order review exposes
+unrounded prices for budget entry. Quote validation, budget limits and order
+requests retain full precision. Existing
+environments and historical attempts remain visible regardless of eligibility.
+
 ## OpenRouter model connections
 
 The dedicated OpenRouter tab searches provider metadata by name/ID, chat/task/programming profile and category. Tools indicate task candidates, not coding-agent qualification. Discovery and connecting use metadata GET requests only. Explicit connect pins a compatible endpoint and validated prices under existing budgets. Unknown prices and dynamic aliases cannot be connected.
+
+The search checkbox “Free models only” sends `max_price=0` and
+`max_output_price=0` to the OpenRouter models API. Venom also validates zero
+prompt, completion and request prices before pagination; unknown prices are
+excluded. A missing request rate is accepted only for fixed `:free` variants.
+The filter does not change connected models or generate text.
 
 Connections persist in `.venom_runtime/openrouter/connected-models.json` (up to 100 fixed IDs). Legacy shortlist is read only until this registry exists. Disconnecting the last model leaves an empty registry. Prices expire individually after 24 hours; refresh an unavailable connected model in the tab. Connecting another model does not refresh old prices or change the selected model's quote identity.
 

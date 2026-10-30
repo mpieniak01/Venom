@@ -79,10 +79,13 @@ async def search_models(
     category: str = "",
     offset: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=100)] = 25,
+    free_only: bool = False,
 ):
     from venom_core.services import openrouter_model_catalog as catalog
 
-    return await catalog.search(q, purpose, category, offset, limit)
+    return await catalog.search(
+        q, purpose, category, offset, limit, free_only=free_only
+    )
 
 
 @router.get("/models/connected")

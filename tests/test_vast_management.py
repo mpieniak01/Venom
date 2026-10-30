@@ -541,3 +541,91 @@ def test_attached_cli_plan_remains_history_with_observed_connection(f):
     assert overview["history"][0]["phase"] == "planned"
     assert overview["history"][0]["connected"] is True
     f.m.client_factory.assert_not_called()
+
+
+def test_search_only_returns_eligible_offers_sorted_by_exact_hourly_rate_before_limit(
+    f, monkeypatch
+):
+    def assessed(offer_id, price, status="eligible"):
+        value = f.p.assessment.model_copy(deep=True)
+        value.offer["id"] = offer_id
+        value.status = status
+        value.quote.hourly_usd = Decimal(price)
+        value.quote.total_usd = Decimal(price) / 2
+        return value
+
+    rejected = [assessed(i, "0.01", "ineligible") for i in range(1, 106)]
+    rows = [
+        *rejected,
+        assessed(202, "0.123449"),
+        assessed(203, "0.123441"),
+        assessed(201, "0.2"),
+        assessed(204, "0.01", "unknown"),
+    ]
+    monkeypatch.setattr(management.Environments, "search", lambda self, profile: rows)
+    offers = f.m.search(30)["offers"]
+    assert [item["offer_id"] for item in offers] == [203, 202, 201]
+    assert offers[0]["hourly_usd"] == "0.123441"
+    assert offers[0]["total_usd"] == "0.0617205"
+    f.svc.client.create.assert_not_called()
+
+
+def test_search_limits_after_price_ordering_with_stable_id_ties(f, monkeypatch):
+    rows = []
+    for offer_id in range(105, 0, -1):
+        value = f.p.assessment.model_copy(deep=True)
+        value.offer["id"] = offer_id
+        value.quote.hourly_usd = Decimal("0.2")
+        rows.append(value)
+    monkeypatch.setattr(management.Environments, "search", lambda self, profile: rows)
+    assert [item["offer_id"] for item in f.m.search(30)["offers"]] == list(
+        range(1, 101)
+    )
+
+
+@pytest.mark.parametrize("field", ["hourly_usd", "total_usd"])
+@pytest.mark.parametrize(
+    "price", [None, Decimal("NaN"), Decimal("Infinity"), Decimal("-1")]
+)
+def test_search_hides_unusable_prices_even_if_assessment_says_eligible(
+    f, monkeypatch, field, price
+):
+    value = f.p.assessment.model_copy(deep=True)
+    setattr(value.quote, field, price)
+    monkeypatch.setattr(
+        management.Environments, "search", lambda self, profile: [value]
+    )
+    assert f.m.search(30)["offers"] == []
+
+
+@pytest.mark.parametrize("offer_id", [None, True, 0, -1])
+def test_search_hides_unusable_offer_id(f, monkeypatch, offer_id):
+    value = f.p.assessment.model_copy(deep=True)
+    value.offer["id"] = offer_id
+    monkeypatch.setattr(
+        management.Environments, "search", lambda self, profile: [value]
+    )
+    assert f.m.search(30)["offers"] == []
+
+
+def test_search_qualifies_candidates_beyond_first_provider_hundred(f):
+    base = f.svc.client.offers.return_value[0]
+    candidates = [
+        {**base, "id": number, "cpu_arch": "incompatible"} for number in range(1, 101)
+    ]
+    candidates.append(
+        {
+            **base,
+            "id": 1001,
+            "search": {"totalHour": "0.123441", "diskHour": "0.02"},
+        }
+    )
+    f.svc.client.offers.reset_mock()
+    f.svc.client.offers.side_effect = lambda disk, filters, *, limit: candidates[:limit]
+    offers = f.m.search(30)["offers"]
+    assert [item["offer_id"] for item in offers] == [1001]
+    assert offers[0]["hourly_usd"] == "0.123441"
+    assert all(
+        call.kwargs["limit"] == 1000 for call in f.svc.client.offers.call_args_list
+    )
+    f.svc.client.create.assert_not_called()

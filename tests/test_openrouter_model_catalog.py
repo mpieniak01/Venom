@@ -335,18 +335,20 @@ async def test_metadata_transport_sanitizes_errors(state, monkeypatch, kind):
 
 
 @pytest.mark.asyncio
-async def test_free_endpoint_and_connection_capacity(state, monkeypatch):
-    model = row("vendor/a:free")
+@pytest.mark.parametrize("zero", ["0", "0.0", "0e0", "0.000000"])
+async def test_free_endpoint_and_connection_capacity(state, monkeypatch, zero):
+    model = {**row("vendor/a:free"), "pricing": {"prompt": zero, "completion": zero}}
     data = endpoint()
-    data["endpoints"][0]["pricing"] = {"prompt": "0", "completion": "0"}
+    data["endpoints"][0]["pricing"] = {"prompt": zero, "completion": zero}
     state.side_effect = (
         lambda path, params=None: [model, row("vendor/b")]
         if path == "/models"
         else (data if "a:free" in path else endpoint())
     )
     monkeypatch.setattr(catalog, "MAX_CONNECTED", 1)
+    assert (await catalog.search(free_only=True))["models"][0]["id"] == "vendor/a:free"
     await catalog.connect("vendor/a:free")
-    assert catalog.connected()["models"][0]["input_price_per_million"] == "0"
+    assert Decimal(catalog.connected()["models"][0]["input_price_per_million"]) == 0
     with pytest.raises(HTTPException) as failure:
         await catalog.connect("vendor/b")
     assert failure.value.detail == "openrouter_connected_limit"
@@ -431,3 +433,98 @@ async def test_connect_does_not_select_and_reports_the_small_budget_output_cap(s
     await catalog.connect("vendor/a")
     assert rt.selection() is None
     assert catalog.connected()["models"][0]["max_output_tokens"] == 256
+
+
+@pytest.mark.asyncio
+async def test_free_search_filters_upstream_results_before_pagination_and_separates_cache(
+    state,
+):
+    free_a = {**row("vendor/a:free"), "pricing": {"prompt": "0", "completion": "0"}}
+    free_b = {
+        **row("vendor/b"),
+        "pricing": {"prompt": "0.0", "completion": "0e0", "request": "0"},
+    }
+    paid_request = {
+        **row("vendor/request"),
+        "pricing": {"prompt": "0", "completion": "0", "request": "0.01"},
+    }
+    state.side_effect = None
+    state.return_value = [row("vendor/paid"), free_b, paid_request, free_a]
+    assert (await catalog.search())["total"] == 4
+    first = await catalog.search(free_only=True, limit=1)
+    assert first["total"] == 2
+    assert first["next_offset"] == 1
+    assert first["models"][0]["id"] == "vendor/a:free"
+    state.assert_called_with("/models", {"max_price": 0, "max_output_price": 0})
+    second = await catalog.search(free_only=True, limit=1, offset=1)
+    assert second["models"][0]["id"] == "vendor/b"
+    assert second["next_offset"] is None
+    assert state.await_count == 2
+    assert (await catalog.search())["total"] == 4
+    assert state.await_count == 2
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "pricing",
+    [
+        None,
+        {},
+        {"prompt": "0"},
+        {"prompt": None, "completion": "0"},
+        {"prompt": "NaN", "completion": "0"},
+        {"prompt": "Infinity", "completion": "0"},
+        {"prompt": "-1", "completion": "0"},
+        {"prompt": "invalid", "completion": "0"},
+        {"prompt": "0", "completion": "0.001"},
+        {"prompt": "0", "completion": "0", "request": None},
+        {"prompt": "0", "completion": "0", "request": "0.01"},
+    ],
+)
+async def test_free_search_excludes_unknown_invalid_and_nonzero_prices(state, pricing):
+    state.side_effect = None
+    state.return_value = [{**row("vendor/a:free"), "pricing": pricing}]
+    assert (await catalog.search(free_only=True))["total"] == 0
+
+
+@pytest.mark.asyncio
+async def test_free_search_missing_request_price_requires_fixed_free_variant(state):
+    state.side_effect = None
+    state.return_value = [
+        {**row("vendor/a"), "pricing": {"prompt": "0", "completion": "0"}},
+        {**row("openrouter/free"), "pricing": {"prompt": "0", "completion": "0"}},
+    ]
+    assert (await catalog.search(free_only=True))["models"] == []
+
+
+@pytest.mark.asyncio
+async def test_free_search_route_combines_category_and_profile_with_upstream_prices(
+    state,
+):
+    state.side_effect = None
+    state.return_value = [
+        {**row("vendor/a:free"), "pricing": {"prompt": "0", "completion": "0"}},
+        {
+            **row("vendor/no-tools:free", tools=False),
+            "pricing": {"prompt": "0", "completion": "0"},
+        },
+    ]
+    app = FastAPI()
+    app.include_router(routes.router, prefix="/api/v1")
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app, client=("127.0.0.1", 5)),
+        base_url="http://localhost",
+    ) as client:
+        response = await client.get(
+            "/api/v1/openrouter/models/search",
+            params={"free_only": "true", "purpose": "programming", "q": "vendor/a"},
+        )
+        assert response.status_code == 200
+        assert response.json()["total"] == 1
+        state.assert_called_with(
+            "/models",
+            {"category": "programming", "max_price": 0, "max_output_price": 0},
+        )
+        assert (
+            await client.get("/api/v1/openrouter/models/search?free_only=invalid")
+        ).status_code == 422

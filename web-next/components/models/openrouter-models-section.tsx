@@ -48,6 +48,10 @@ export function OpenRouterModelsSection({ t, onChanged }: Readonly<Props>) {
         <label className={styles.label}>{text("category")}<select className={styles.input} value={catalog.purpose === "programming" ? "programming" : catalog.category} disabled={catalog.purpose === "programming"} onChange={event => catalog.setCategory(event.target.value)}><option value="">{text("allCategories")}</option>{categories.map(value => <option key={value} value={value}>{text("categories." + value)}</option>)}</select></label>
         <Button type="submit" className="h-10 justify-center" disabled={catalog.loading}>{text(catalog.loading ? "loading" : "search")}</Button>
       </div>
+      <label className="flex cursor-pointer items-center gap-2 text-sm text-[color:var(--text-primary)]">
+        <input type="checkbox" className="h-4 w-4 accent-emerald-400" checked={catalog.freeOnly} onChange={event => catalog.setFreeOnly(event.target.checked)} />
+        {text("freeOnly")}
+      </label>
       <p className={styles.hint}>{text("priceHint")}</p>
     </form>
     {catalog.results && <div className={styles.panel + " space-y-4"}>

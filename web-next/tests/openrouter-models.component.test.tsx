@@ -133,6 +133,7 @@ for (const [language, locale] of Object.entries({ pl, en, de })) {
     };
     const translate = (key: string) => key.split(".").reduce<unknown>((value, part) => (value as Record<string, unknown>)[part], locale) as string;
     render(<OpenRouterModelsSection t={translate} />);
+    assert.ok(screen.getByRole("checkbox", { name: locale.models.openrouter.freeOnly }));
     const category = screen.getByLabelText(locale.models.openrouter.category) as HTMLSelectElement;
     const option = Array.from(category.options).find(item => item.text === locale.models.openrouter.categories.programming);
     assert.equal(option?.value, "programming");
@@ -147,4 +148,51 @@ it("shows the effective budget output cap for a connected model", async () => {
   globalThis.fetch = async () => Response.json({ models: [model("vendor/a", { connected: true, available: true, max_output_tokens: 256 })] });
   render(<OpenRouterModelsSection t={t} />);
   await waitFor(() => assert.ok(screen.getByText("Maximum output (tokens, MVP budget cap): 256")));
+});
+
+
+it("submits the free-only checkbox explicitly and clears stale results on toggle", async () => {
+  const searches: URLSearchParams[] = [];
+  globalThis.fetch = async input => {
+    const path = String(input);
+    if (!path.includes("/search?")) return Response.json({ models: [] });
+    const params = new URL(path, "http://localhost").searchParams;
+    searches.push(params);
+    return Response.json(results([model("vendor/result")]));
+  };
+  render(<OpenRouterModelsSection t={t} />);
+  await waitFor(() => assert.ok(screen.getByText(/No models connected/)));
+  const checkbox = screen.getByRole("checkbox", { name: "Free models only" }) as HTMLInputElement;
+  assert.equal(checkbox.checked, false);
+  fireEvent.click(checkbox);
+  assert.equal(searches.length, 0);
+  fireEvent.click(screen.getByRole("button", { name: "Search" }));
+  await waitFor(() => assert.ok(screen.getByRole("button", { name: "Connect model: vendor/result" })));
+  assert.equal(searches[0].get("free_only"), "true");
+  fireEvent.click(screen.getByRole("button", { name: "Next" }));
+  await waitFor(() => assert.equal(searches.length, 2));
+  assert.equal(searches[1].get("free_only"), "true");
+  assert.equal(searches[1].get("offset"), "25");
+  fireEvent.click(checkbox);
+  assert.equal(screen.queryByRole("button", { name: "Connect model: vendor/result" }), null);
+  assert.equal(searches.length, 2);
+  fireEvent.click(screen.getByRole("button", { name: "Search" }));
+  await waitFor(() => assert.equal(searches.length, 3));
+  assert.equal(searches[2].has("free_only"), false);
+  assert.equal(searches[2].get("offset"), "0");
+});
+
+it("ignores an unfiltered response arriving after the free-only filter changes", async () => {
+  let finish: (response: Response) => void = () => {};
+  globalThis.fetch = async input => String(input).includes("/search?")
+    ? new Promise<Response>(resolve => { finish = resolve; })
+    : Response.json({ models: [] });
+  const { result } = renderHook(() => useOpenRouterModels());
+  await waitFor(() => assert.equal(result.current.connectedLoading, false));
+  let pending: Promise<void>;
+  act(() => { pending = result.current.search(); });
+  act(() => result.current.setFreeOnly(true));
+  await act(async () => { finish(Response.json(results([model("vendor/paid")]))); await pending; });
+  assert.equal(result.current.results, null);
+  assert.equal(result.current.loading, false);
 });

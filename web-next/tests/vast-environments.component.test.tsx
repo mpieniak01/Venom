@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
 import { act, cleanup, fireEvent, render, renderHook, screen, waitFor, within } from "@testing-library/react";
 import { VastEnvironmentsSection } from "../components/models/vast-environments-section";
+import { formatVastUsd } from "../lib/vast-price";
 import { VastEnvironmentRow } from "../components/models/vast-environment-row";
 import { useVastEnvironments, VAST_POLL_INTERVAL, type VastEnvironment } from "../components/models/hooks/use-vast-environments";
 import { en } from "../lib/i18n/locales/en";
@@ -237,4 +238,49 @@ it("preserves CLI outcomes and warns about possible charges without action butto
   assert.equal(within(history).getAllByText(t("models.vast.historyBillingHint")).length, 2);
   assert.equal(within(history).queryAllByRole("button").length, 0);
   assert.deepEqual(calls, ["GET"]);
+});
+
+
+it("rounds VAST quotes to four places in offers, order review and managed environments", async () => {
+  const precise = { hourly_usd: "0.123456789", total_usd: "0.987654321" };
+  const managed = row({ ...precise, phase: "ready", instance_id: 77 });
+  const requests: string[] = [];
+  globalThis.fetch = async (input, init) => {
+    const path = String(input);
+    if (init?.method !== "POST") return Response.json(status([managed]));
+    requests.push(path);
+    return Response.json(path.endsWith("/search") ? { offers: [{ ...offer, ...precise }] } : row(precise));
+  };
+  render(<VastEnvironmentsSection t={t} />);
+  await waitFor(() => assert.ok(screen.getByText("USD / hour: 0.1235")));
+  assert.ok(screen.getByText("Estimated USD: 0.9877"));
+  fireEvent.click(screen.getByRole("button", { name: "Find environments" }));
+  await waitFor(() => assert.ok(screen.getByRole("button", { name: "Choose: 123" })));
+  assert.ok(screen.getByRole("cell", { name: "0.1235" }));
+  assert.ok(screen.getByRole("cell", { name: "0.9877" }));
+  const offerRow = screen.getByRole("button", { name: "Choose: 123" }).closest("tr")!;
+  const offerSummary = within(offerRow).getByText("Exact USD amounts");
+  fireEvent.click(offerSummary);
+  assert.equal(offerSummary.closest("details")!.open, true);
+  assert.ok(within(offerRow).getByText(precise.hourly_usd));
+  assert.ok(within(offerRow).getByText(precise.total_usd));
+  fireEvent.click(screen.getByRole("button", { name: "Choose: 123" }));
+  fireEvent.click(screen.getByRole("button", { name: "Review order" }));
+  await waitFor(() => assert.ok(screen.getByText("USD / hour: 0.1235 · Estimated USD: 0.9877 · Estimated use (minutes): 30")));
+  const review = screen.getByRole("button", { name: "Order and install model" }).parentElement!;
+  const reviewSummary = within(review).getByText("Exact USD amounts");
+  fireEvent.click(reviewSummary);
+  assert.equal(reviewSummary.closest("details")!.open, true);
+  assert.ok(within(review).getByText(precise.hourly_usd));
+  assert.ok(within(review).getByText(precise.total_usd));
+  assert.deepEqual(requests, [base + "/search", base + "/plans"]);
+});
+
+it("formats zero and missing or invalid VAST amounts distinctly", () => {
+  assert.equal(formatVastUsd("0", "Unknown"), "0.0000");
+  assert.equal(formatVastUsd("9.87656", "Unknown"), "9.8766");
+  assert.equal(formatVastUsd("0.00001", "Unknown"), "0.0000");
+  for (const amount of [null, undefined, "", " ", "NaN", "Infinity", "-1", "invalid"]) {
+    assert.equal(formatVastUsd(amount, "Unknown"), "Unknown");
+  }
 });

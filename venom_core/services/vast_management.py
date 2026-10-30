@@ -17,7 +17,7 @@ from uuid import uuid4
 import httpx
 
 from venom_core.infrastructure.providers.vast.client import VastClient, VastError
-from venom_core.infrastructure.providers.vast.models import now
+from venom_core.infrastructure.providers.vast.models import OfferAssessment, now
 from venom_core.services import vast_management_config as configuration
 from venom_core.services.vast_environments.lifecycle import Environments
 from venom_core.services.vast_environments.operations import workload
@@ -36,6 +36,24 @@ ATTACH_RETRY_ERRORS = {
 
 ACTIVE = {"queued", "creating", "waiting", "provisioning", "connecting"}
 ERRORS = (VastError, OSError, ValueError, httpx.HTTPError)
+
+
+def _selectable_offers(rows: list[OfferAssessment]) -> list[OfferAssessment]:
+    eligible = [
+        row
+        for row in rows
+        if row.status == "eligible"
+        and type(row.offer.get("id")) is int
+        and row.offer["id"] > 0
+        and all(
+            value is not None and value.is_finite() and value >= 0
+            for value in (row.quote.hourly_usd, row.quote.total_usd)
+        )
+    ]
+    return sorted(
+        eligible,
+        key=lambda row: (row.quote.hourly_usd or Decimal(0), row.offer["id"]),
+    )[:100]
 
 
 class VastManagement:
@@ -225,8 +243,7 @@ class VastManagement:
                     "status": row.status,
                     "reasons": row.reasons + row.unknown,
                 }
-                for row in rows[:100]
-                if type(row.offer.get("id")) is int
+                for row in _selectable_offers(rows)
             ],
         }
 

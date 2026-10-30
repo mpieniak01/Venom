@@ -457,3 +457,20 @@ def test_unknown_machine_fraction_does_not_claim_ram_baseline(profile, offer):
     result = assess(row, profile)
     assert "cpu_ram" in result.unknown
     assert result.runtime["memory_allocation"]["baseline_ram_mb"] is None
+
+
+@pytest.mark.parametrize("limit", [1, 1000])
+def test_offer_search_accepts_explicit_bounded_limit(limit):
+    api, transport = client([(200, {"offers": []})])
+    assert api.offers(150, limit=limit) == []
+    assert transport.calls[0][2]["json"]["limit"] == limit
+    api.close()
+
+
+@pytest.mark.parametrize("limit", [0, -1, 1001, True])
+def test_offer_search_rejects_invalid_limit_before_network(limit):
+    api, transport = client([])
+    with pytest.raises(VastError, match="vast.invalid_offer_limit"):
+        api.offers(150, limit=limit)
+    assert not transport.calls
+    api.close()

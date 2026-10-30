@@ -153,8 +153,20 @@ def _context_match(entry: dict, offer: dict) -> bool:
     return True
 
 
-def lookup(journal: Journal, profile: WorkloadProfile, offer: dict) -> dict:
-    rows = [x for x in entries(journal) if x["workload_key"] == workload_key(profile)]
+def matching_rows(journal: Journal, profile: WorkloadProfile) -> list[dict]:
+    key = workload_key(profile)
+    return [row for row in entries(journal) if row["workload_key"] == key]
+
+
+def lookup(
+    journal: Journal,
+    profile: WorkloadProfile,
+    offer: dict,
+    *,
+    rows: list[dict] | None = None,
+) -> dict:
+    if rows is None:
+        rows = matching_rows(journal, profile)
     exact = [x for x in rows if _context_match(x, offer)]
     decisive = [row for row in exact if row["status"] != "inconclusive"]
     negatives = [row for row in decisive if row["status"] == "unsuitable"]

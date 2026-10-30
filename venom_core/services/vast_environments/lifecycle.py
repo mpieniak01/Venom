@@ -9,6 +9,7 @@ from typing import Literal
 from uuid import uuid4
 
 from venom_core.infrastructure.providers.vast.client import (
+    MAX_OFFER_SEARCH_LIMIT,
     VastClient,
     VastError,
     ssh_fingerprint,
@@ -22,7 +23,7 @@ from venom_core.infrastructure.providers.vast.models import (
     now,
 )
 from venom_core.services.vast_environments.assessment import assess, search_filters
-from venom_core.services.vast_environments.history import lookup
+from venom_core.services.vast_environments.history import lookup, matching_rows
 from venom_core.services.vast_environments.recipes import verify_template
 from venom_core.services.vast_environments.selection import preferred_queries, rank
 from venom_core.services.vast_environments.startup import ollama_environment, startup
@@ -35,10 +36,15 @@ class Environments:
         self.journal = journal
 
     def assess(
-        self, profile: WorkloadProfile, offer: dict, retest: bool = False
+        self,
+        profile: WorkloadProfile,
+        offer: dict,
+        retest: bool = False,
+        *,
+        history_rows: list[dict] | None = None,
     ) -> OfferAssessment:
         result = assess(offer, profile)
-        result.history = lookup(self.journal, profile, result.offer)
+        result.history = lookup(self.journal, profile, result.offer, rows=history_rows)
         if result.history["excluded"] and not retest:
             result.status = "ineligible"
             result.reasons.append("qualification.previous_unsuitable")
@@ -48,9 +54,13 @@ class Environments:
         self, profile: WorkloadProfile, retest: bool = False
     ) -> list[OfferAssessment]:
         filters = search_filters(profile)
-        offers = list(self.client.offers(profile.disk_gb, filters))
+        offers = list(
+            self.client.offers(profile.disk_gb, filters, limit=MAX_OFFER_SEARCH_LIMIT)
+        )
         for query in preferred_queries(profile, filters):
-            offers.extend(self.client.offers(profile.disk_gb, query))
+            offers.extend(
+                self.client.offers(profile.disk_gb, query, limit=MAX_OFFER_SEARCH_LIMIT)
+            )
         merged: dict[int | str, dict] = {}
         for row in offers:
             value = row.get("id")
@@ -58,8 +68,13 @@ class Environments:
                 value if type(value) is int and value > 0 else f"unknown-{len(merged)}"
             )
             merged[key] = row
+        history_rows = matching_rows(self.journal, profile)
         return rank(
-            [self.assess(profile, row, retest) for row in merged.values()], profile
+            [
+                self.assess(profile, row, retest, history_rows=history_rows)
+                for row in merged.values()
+            ],
+            profile,
         )
 
     def plan(
@@ -103,7 +118,9 @@ class Environments:
 
     def _offer(self, profile: WorkloadProfile, offer_id: int) -> dict:
         filters = {**search_filters(profile), "ask_contract_id": {"eq": offer_id}}
-        offers = list(self.client.offers(profile.disk_gb, filters))
+        offers = list(
+            self.client.offers(profile.disk_gb, filters, limit=MAX_OFFER_SEARCH_LIMIT)
+        )
         matching = [x for x in offers if x.get("id") == offer_id]
         if len(matching) != 1:
             raise VastError("vast.offer_expired")

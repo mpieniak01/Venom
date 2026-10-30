@@ -15,11 +15,13 @@ def start_backend(
     service_status_running: Any,
     subprocess_module: Any,
     time_module: Any,
+    environment_role: str = "dev",
+    profile: str = "full",
 ) -> dict[str, Any]:
     """Start backend via Makefile and verify process status."""
     try:
         subprocess_module.Popen(
-            ["make", "start-dev"],
+            ["make", "start", f"ENVIRONMENT={environment_role}", f"PROFILE={profile}"],
             cwd=str(project_root),
             stdout=subprocess_module.DEVNULL,
             stderr=subprocess_module.DEVNULL,

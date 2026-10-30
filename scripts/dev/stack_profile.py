@@ -19,8 +19,6 @@ from pathlib import Path
 from typing import Iterator, Mapping
 from urllib.parse import urlsplit
 
-from dotenv import dotenv_values
-
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 from venom_core.services.profile_config import (  # noqa: E402
@@ -56,21 +54,60 @@ def absolute(root: Path, raw: str) -> str:
 
 
 def file_values(path: Path) -> dict[str, str]:
+    from dotenv import dotenv_values
+
     return {
         key: value for key, value in dotenv_values(path).items() if value is not None
     }
 
 
-def resolve(root: Path, overrides: Mapping[str, str]) -> dict[str, str]:
+def http_target(value: str) -> tuple[str, int]:
+    parsed = urlsplit(value)
+    if (
+        parsed.scheme != "http"
+        or not parsed.hostname
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.path not in {"", "/"}
+        or parsed.query
+        or parsed.fragment
+        or any(char.isspace() for char in value)
+    ):
+        raise ValueError(
+            "API_PROXY_TARGET must be a plain HTTP origin without credentials"
+        )
+    host = parsed.hostname.lower()
+    if host in {"localhost", "127.0.0.1"}:
+        host = "127.0.0.1"
+    port = parsed.port if parsed.port is not None else 80
+    if port < 1:
+        raise ValueError("API_PROXY_TARGET port must be between 1 and 65535")
+    return host, port
+
+
+def resolve(
+    root: Path,
+    overrides: Mapping[str, str],
+    *,
+    require_env_file: bool = True,
+    allow_example: bool = False,
+) -> dict[str, str]:
     role = overrides.get("ENVIRONMENT", "dev").lower()
     if role not in {"dev", "preprod", "prod"}:
         raise ValueError("ENVIRONMENT must be dev|preprod|prod")
     env_file = Path(absolute(root, overrides.get("ENV_FILE", f".env.{role}")))
-    if not env_file.is_file():
+    if not env_file.is_file() and allow_example and env_file == root / f".env.{role}":
+        example = root / f".env.{role}.example"
+        if example.is_file():
+            env_file = example
+    if env_file.is_file():
+        values = file_values(env_file)
+    elif require_env_file:
         raise ValueError(
             f"Missing configuration: {env_file}; create it explicitly from its example"
         )
-    values = file_values(env_file)
+    else:
+        values = {}
     values.update(overrides)
     configured_role = values.get("ENVIRONMENT_ROLE", role)
     if configured_role != role:
@@ -150,16 +187,21 @@ def resolve(root: Path, overrides: Mapping[str, str]) -> dict[str, str]:
     values.setdefault("START_MODE", "prod" if role == "prod" else "dev")
     if role != "prod" and values["START_MODE"] != "dev":
         raise ValueError("dev/preprod use the current Turbo development stack")
-    own_proxy = f"http://{values.get('HOST_DISPLAY', '127.0.0.1')}:{values['PORT']}"
+    display = values.get("HOST_DISPLAY", "127.0.0.1")
+    display = (
+        f"[{display}]" if ":" in display and not display.startswith("[") else display
+    )
+    own_proxy = f"http://{display}:{values['PORT']}"
     values.setdefault("API_PROXY_TARGET", own_proxy)
-    if values["API_PROXY_TARGET"].rstrip("/") != own_proxy:
+    if http_target(values["API_PROXY_TARGET"]) != http_target(own_proxy):
         raise ValueError("API_PROXY_TARGET must point to this environment API")
+    values["API_PROXY_TARGET"] = own_proxy
     # Browser traffic must use the streaming same-origin proxy, not .env.local.
     values["NEXT_PUBLIC_API_BASE"] = ""
     values["NEXT_PUBLIC_WS_BASE"] = ""
     values["NEXT_PUBLIC_ENVIRONMENT_ROLE"] = role
     if role != "dev":
-        dev = resolve(root, {"ENVIRONMENT": "dev"})
+        dev = resolve(root, {"ENVIRONMENT": "dev"}, require_env_file=False)
         for key in (*PATH_DEFAULTS, *derived, "BACKEND_LOG", "WEB_LOG"):
             candidate, original = Path(values[key]), Path(dev[key])
             if candidate == original or candidate in original.parents:
@@ -391,6 +433,20 @@ def component(root: Path, values: dict[str, str], name: str) -> None:
         )
     elif name in {"api", "api-dev"}:
         preflight(root, values)
+        existing = owned_pid(root, values, "PID_FILE", reuse=True)
+        if existing is not None:
+            try:
+                with urllib.request.urlopen(
+                    values["API_PROXY_TARGET"] + "/api/v1/system/status", timeout=1
+                ) as response:
+                    if response.status == 200 and running(existing):
+                        print("API already ready; existing owner preserved")
+                        return
+            except (OSError, urllib.error.URLError):
+                pass
+            raise ValueError(
+                "Owned API is not ready; stop this environment explicitly before retry"
+            )
         if name == "api-dev":
             values["BACKEND_RELOAD"] = "1"
         spawn_api(root, values)
@@ -494,7 +550,12 @@ def main() -> None:
     parser.add_argument("component_name", nargs="?")
     args = parser.parse_args()
     try:
-        values = resolve(ROOT, os.environ)
+        values = resolve(
+            ROOT,
+            os.environ,
+            allow_example=args.action == "component"
+            and args.component_name == "web-build",
+        )
         if args.action == "plan":
             print(json.dumps(public_plan(values), indent=2))
         elif args.action == "runtime-check":

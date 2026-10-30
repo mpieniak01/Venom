@@ -522,3 +522,55 @@ def test_backend_and_llm_command_failure_paths(monkeypatch):
     assert controller._stop_ollama()["success"] is False
     assert controller._start_vllm()["success"] is False
     assert controller._stop_vllm()["success"] is False
+
+
+def test_backend_start_keeps_preprod_profile_in_make_command(monkeypatch):
+    controller = RuntimeController()
+    monkeypatch.setattr(
+        runtime_controller,
+        "SETTINGS",
+        SimpleNamespace(ENVIRONMENT_ROLE="preprod", VENOM_RUNTIME_PROFILE="light"),
+    )
+    launched = []
+    monkeypatch.setattr(
+        runtime_controller.subprocess,
+        "Popen",
+        lambda command, **kwargs: launched.append(command),
+    )
+    monkeypatch.setattr(runtime_controller.time, "sleep", lambda *_: None)
+    monkeypatch.setattr(
+        controller,
+        "get_service_status",
+        lambda *_: SimpleNamespace(status=ServiceStatus.RUNNING, pid=123),
+    )
+    assert controller._start_backend()["success"] is True
+    assert launched == [["make", "start", "ENVIRONMENT=preprod", "PROFILE=light"]]
+
+
+def test_runtime_paths_are_anchored_to_project_when_cwd_differs(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    overrides = {
+        "PID_FILE": "custom/api.pid",
+        "WEB_PID_FILE": "custom/ui.pid",
+        "BACKEND_LOG": "custom/api.log",
+        "WEB_LOG": "custom/ui.log",
+    }
+    for key, value in overrides.items():
+        monkeypatch.setenv(key, value)
+    controller = RuntimeController()
+    assert (
+        controller.pid_files[ServiceType.BACKEND]
+        == controller.project_root / overrides["PID_FILE"]
+    )
+    assert (
+        controller.pid_files[ServiceType.UI]
+        == controller.project_root / overrides["WEB_PID_FILE"]
+    )
+    assert (
+        controller.log_files[ServiceType.BACKEND]
+        == controller.project_root / overrides["BACKEND_LOG"]
+    )
+    assert (
+        controller.log_files[ServiceType.UI]
+        == controller.project_root / overrides["WEB_LOG"]
+    )

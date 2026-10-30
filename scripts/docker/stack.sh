@@ -5,6 +5,7 @@ usage() {
   echo "Usage: $0 start|stop|restart|status|pull"
   echo "PROFILE=full|light ENVIRONMENT=dev|preprod (Docker recipe; prod remains unused)"
   echo "ACTIVE_LLM_SERVER, model and GPU selection are independent of PROFILE."
+  echo "VENOM_DOCKER_PULL_POLICY=missing|always|never (default missing; never for explicit offline start)"
 }
 cmd=${1:-help}
 case "$cmd" in help|-h|--help) usage; exit 0;; start|stop|restart|status|pull) ;; *) usage >&2; exit 1;; esac
@@ -59,7 +60,9 @@ case "${VENOM_ENABLE_GPU:-auto}" in
 esac
 compose_cmd() { docker compose "${COMPOSE_ARGS[@]}" "$@"; }
 start_stack() {
-  local args=(up -d --pull never)
+  local pull_policy="${VENOM_DOCKER_PULL_POLICY:-missing}"
+  case "$pull_policy" in always|missing|never) ;; *) echo 'Invalid VENOM_DOCKER_PULL_POLICY' >&2; return 1;; esac
+  local args=(up -d --pull "$pull_policy")
   if [[ "$recipe" == minimal ]]; then args+=(--build); else args+=(--no-build); fi
   # Only the selected local engine can be started. No implicit model pull or warmup.
   if [[ "$ACTIVE_LLM_SERVER" != ollama ]]; then args+=(--no-deps backend frontend); fi

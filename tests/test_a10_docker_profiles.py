@@ -90,7 +90,8 @@ def test_four_combinations_preserve_provider_and_environment(
     assert result.returncode == 0, result.stderr
     call = calls[-1]
     assert call["args"][-3:] == ["--no-deps", "backend", "frontend"]
-    assert "--pull" in call["args"] and "never" in call["args"]
+    assert "--pull" in call["args"]
+    assert "missing" in call["args"]
     assert ("--build" in call["args"]) == (recipe == "minimal")
     assert not any("exec" in item["args"] or "pull" in item["args"] for item in calls)
     env = call["env"]
@@ -157,7 +158,8 @@ def test_llm_off_is_only_a_deprecated_light_alias(tmp_path):
     result, calls = run_recipe(
         tmp_path, VENOM_RUNTIME_PROFILE="llm_off", ACTIVE_LLM_SERVER="ollama"
     )
-    assert result.returncode == 0 and "deprecated" in result.stderr
+    assert result.returncode == 0
+    assert "deprecated" in result.stderr
     assert calls[-1]["env"]["VENOM_RUNTIME_PROFILE"] == "light"
     assert calls[-1]["env"]["ACTIVE_LLM_SERVER"] == "none"
     assert calls[-1]["args"][-3:] == ["--no-deps", "backend", "frontend"]
@@ -207,6 +209,7 @@ def test_compose_templates_preserve_dev_volume_keys_and_parameterize_isolation(r
         )
     backend = doc["services"]["backend"]
     assert backend["ports"] == ["${VENOM_API_HOST_PORT:-8000}:8000"]
+    assert doc["services"]["frontend"]["environment"]["NEXT_PUBLIC_WS_BASE"] == ""
     assert backend["environment"]["DB_SCHEMA"] == "${DB_SCHEMA:-dev}"
     assert (
         backend["environment"]["LLM_WARMUP_ON_STARTUP"]
@@ -221,3 +224,21 @@ def test_compose_templates_preserve_dev_volume_keys_and_parameterize_isolation(r
     ):
         assert name in backend["environment"]
     assert doc["services"]["frontend"]["environment"]["NEXT_PUBLIC_API_BASE"] == ""
+
+
+@pytest.mark.parametrize("recipe", ["minimal", "release"])
+@pytest.mark.parametrize("policy", ["missing", "always", "never"])
+def test_explicit_pull_policy_supports_clean_and_offline_starts(
+    tmp_path, recipe, policy
+):
+    result, calls = run_recipe(tmp_path, recipe, VENOM_DOCKER_PULL_POLICY=policy)
+    assert result.returncode == 0, result.stderr
+    args = calls[-1]["args"]
+    assert args[args.index("--pull") + 1] == policy
+    assert ("--build" in args) is (recipe == "minimal")
+
+
+def test_invalid_pull_policy_never_starts_containers(tmp_path):
+    result, calls = run_recipe(tmp_path, VENOM_DOCKER_PULL_POLICY="unsafe")
+    assert result.returncode != 0
+    assert not any("up" in call["args"] for call in calls)

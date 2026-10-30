@@ -135,7 +135,8 @@ class TestProfileDescriptions:
         desc = get_profile_description(RuntimeProfile.LIGHT)
         assert len(desc) > 0
         # Should be English by default
-        assert "Light" in desc and "background" in desc
+        assert "Light" in desc
+        assert "background" in desc
 
 
 class TestProfileValidation:

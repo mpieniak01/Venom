@@ -122,25 +122,18 @@ class RuntimeController:
     def __init__(self):
         """Inicjalizacja kontrolera."""
         self.project_root = Path(__file__).parent.parent.parent
+
+        def configured_path(key: str, default: str) -> Path:
+            path = Path(os.environ.get(key) or default).expanduser()
+            return (path if path.is_absolute() else self.project_root / path).resolve()
+
         self.pid_files = {
-            ServiceType.BACKEND: Path(
-                os.environ.get("PID_FILE", str(self.project_root / ".venom.pid"))
-            ),
-            ServiceType.UI: Path(
-                os.environ.get("WEB_PID_FILE", str(self.project_root / ".web-next.pid"))
-            ),
+            ServiceType.BACKEND: configured_path("PID_FILE", ".venom.pid"),
+            ServiceType.UI: configured_path("WEB_PID_FILE", ".web-next.pid"),
         }
         self.log_files = {
-            ServiceType.BACKEND: Path(
-                os.environ.get(
-                    "BACKEND_LOG", str(self.project_root / "logs" / "backend.log")
-                )
-            ),
-            ServiceType.UI: Path(
-                os.environ.get(
-                    "WEB_LOG", str(self.project_root / "logs" / "web-next.log")
-                )
-            ),
+            ServiceType.BACKEND: configured_path("BACKEND_LOG", "logs/backend.log"),
+            ServiceType.UI: configured_path("WEB_LOG", "logs/web-next.log"),
         }
         self.history: List[ActionHistory] = []
         self.max_history = 100
@@ -671,6 +664,8 @@ class RuntimeController:
         """Uruchamia backend (uvicorn)."""
         return start_backend_impl(
             project_root=self.project_root,
+            environment_role=str(getattr(SETTINGS, "ENVIRONMENT_ROLE", "dev")),
+            profile=str(getattr(SETTINGS, "VENOM_RUNTIME_PROFILE", "full")),
             get_service_status_fn=self.get_service_status,
             backend_service_type=ServiceType.BACKEND,
             service_status_running=ServiceStatus.RUNNING,

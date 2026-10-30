@@ -311,7 +311,27 @@ http.server.HTTPServer(('127.0.0.1',int(sys.argv[sys.argv.index('--port')+1])),H
         time.sleep(0.3)  # Launcher has exited; the recorded API owner must persist.
         owner = int(pid.read_text())
         assert stack.running(owner)
-        assert json.loads(Path(str(pid) + ".identity.json").read_text())["pid"] == owner
+        identity_path = Path(str(pid) + ".identity.json")
+        before_identity = identity_path.read_bytes()
+        assert json.loads(before_identity)["pid"] == owner
+        before_capture = capture.stat().st_mtime_ns
+        repeated = subprocess.run(
+            [*command, "api"],
+            cwd=repo,
+            env=child_env,
+            capture_output=True,
+            timeout=30,
+            check=False,
+        )
+        assert repeated.returncode == 0, repeated.stderr.decode()
+        assert int(pid.read_text()) == owner
+        assert identity_path.read_bytes() == before_identity
+        assert capture.stat().st_mtime_ns == before_capture
+        assert stack.running(owner)
+        import urllib.request
+
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/", timeout=1) as response:
+            assert response.status == 200
         data = json.loads(capture.read_text())
         assert data["ENVIRONMENT_ROLE"] == role
         assert data["VENOM_RUNTIME_PROFILE"] == profile
@@ -383,11 +403,140 @@ with startup_lock(root):
                 break
             time.sleep(0.02)
         assert marker.exists()
+        contender = stack.startup_lock(root)
         with pytest.raises(ValueError, match="startup is in progress"):
-            with stack.startup_lock(root):
-                pytest.fail("a second engine must not enter startup")
+            contender.__enter__()
     finally:
         release.touch()
         child.wait(timeout=5)
     with stack.startup_lock(root):
         pass
+
+
+@pytest.mark.parametrize(
+    "target",
+    ["http://localhost:8000", "http://LOCALHOST:8000/", "http://127.0.0.1:8000"],
+)
+def test_loopback_proxy_alias_preserves_own_listener(root, target):
+    config = stack.resolve(root, {"PORT": "8000", "API_PROXY_TARGET": target})
+    assert config["API_PROXY_TARGET"] == "http://127.0.0.1:8000"
+
+
+@pytest.mark.parametrize(
+    "target",
+    [
+        "http://other.example:8000",
+        "http://localhost:8001",
+        "https://localhost:8000",
+        "http://user:pass@localhost:8000",
+        "http://localhost:8000/api",
+        "http://localhost:8000?target=dev",
+        "http://localhost:8000#dev",
+        "http://localhost:8000/ ",
+        "http://127.0.0.1:8000@other.example",
+    ],
+)
+def test_proxy_alias_normalization_never_accepts_foreign_or_credentialed_target(
+    root, target
+):
+    with pytest.raises(ValueError, match="API_PROXY_TARGET"):
+        stack.resolve(root, {"PORT": "8000", "API_PROXY_TARGET": target})
+
+
+def test_preprod_only_configuration_uses_safe_dev_defaults_for_comparison(root):
+    (root / ".env.dev").unlink()
+    result = stack.resolve(root, {"ENVIRONMENT": "preprod"})
+    assert result["ENV_FILE"] == str(root / ".env.preprod")
+    assert result["DB_SCHEMA"] == "preprod"
+    assert result["MEMORY_ROOT"] == str(root / "data/memory/preprod")
+    with pytest.raises(ValueError, match="MEMORY_ROOT overlaps"):
+        stack.resolve(root, {"ENVIRONMENT": "preprod", "MEMORY_ROOT": "data/memory"})
+    assert not (root / ".env.dev").exists()
+
+
+def test_web_build_can_use_example_but_actual_start_requires_config(root):
+    (root / ".env.dev").unlink()
+    example = root / ".env.dev.example"
+    example.write_text("ENVIRONMENT_ROLE=dev\n")
+    build = stack.resolve(root, {}, allow_example=True)
+    assert build["ENV_FILE"] == str(example)
+    with pytest.raises(ValueError, match="Missing configuration"):
+        stack.resolve(root, {})
+    with pytest.raises(ValueError, match="Missing configuration"):
+        stack.resolve(root, {"ENV_FILE": ".env.typo"}, allow_example=True)
+    assert not (root / ".env.dev").exists()
+
+
+def test_importing_stack_contract_does_not_require_python_site_packages(tmp_path):
+    import subprocess
+    import sys
+
+    code = (
+        "from pathlib import Path; from scripts.dev.stack_profile import resolve; "
+        f"assert resolve(Path({str(tmp_path)!r}), {{'ENVIRONMENT':'dev'}}, require_env_file=False)['PROFILE']=='full'"
+    )
+    result = subprocess.run(
+        [sys.executable, "-S", "-c", code],
+        cwd=stack.ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize("script", ["start_stack.sh", "start_stack_low_memory.sh"])
+@pytest.mark.parametrize("selection", ["fallback", "venv", "explicit"])
+def test_direct_shell_delegation_selects_usable_interpreter(
+    tmp_path, script, selection
+):
+    import shutil
+    import subprocess
+
+    for relative in (f"scripts/dev/{script}", "scripts/lib/python_contract.sh"):
+        target = tmp_path / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(stack.ROOT / relative, target)
+    if script == "start_stack.sh":
+        shutil.copyfile(
+            stack.ROOT / "scripts/lib/env_contract.sh",
+            tmp_path / "scripts/lib/env_contract.sh",
+        )
+    binaries = tmp_path / "bin"
+    binaries.mkdir()
+    capture = tmp_path / "capture.txt"
+    fallback = binaries / "python3"
+    fake = '#!/bin/sh\nprintf "%s\\n" "$0" "$@" > "$CAPTURE"\n'
+    fallback.write_text(fake)
+    fallback.chmod(0o700)
+    env = dict(os.environ, PATH=f"{binaries}:/usr/bin:/bin", CAPTURE=str(capture))
+    env.pop("PYTHON_BIN", None)
+    env.pop("VENOM_STACK_RESOLVED", None)
+    expected = fallback
+    if selection != "fallback":
+        expected = tmp_path / (
+            ".venv/bin/python" if selection == "venv" else "chosen-python"
+        )
+        expected.parent.mkdir(parents=True, exist_ok=True)
+        expected.write_text(fake)
+        expected.chmod(0o700)
+        if selection == "explicit":
+            env["PYTHON_BIN"] = str(expected)
+    result = subprocess.run(
+        ["bash", str(tmp_path / "scripts/dev" / script)],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert capture.read_text().splitlines() == [
+        str(expected),
+        str(tmp_path / "scripts/dev/stack_profile.py"),
+        "start",
+    ]
+
+
+def test_proxy_port_zero_is_rejected_before_start(root):
+    with pytest.raises(ValueError, match="API_PROXY_TARGET port"):
+        stack.resolve(root, {"PORT": "0"})

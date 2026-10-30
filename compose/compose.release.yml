@@ -92,7 +92,7 @@ services:
       NEXT_PUBLIC_URL_SCHEME_POLICY: ${URL_SCHEME_POLICY:-force_http}
       API_PROXY_TARGET: ${HTTP_SCHEME:-http}://backend:8000
       NEXT_PUBLIC_API_BASE: ""
-      NEXT_PUBLIC_WS_BASE: /ws/events
+      NEXT_PUBLIC_WS_BASE: ""
     depends_on:
       backend:
         condition: service_healthy

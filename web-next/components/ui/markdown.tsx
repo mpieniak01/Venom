@@ -2,12 +2,16 @@
 
 import DOMPurify from "dompurify";
 import { marked } from "marked";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { useTranslation } from "@/lib/i18n";
 import {
   formatComputationContent, isOnlyMarkdownFenceMarkers, normalizeModelTextArtifacts,
   softlyWrapMathLines, tokenizeMath,
 } from "@/lib/markdown-format";
+
+const subscribeToClient = () => () => {};
+const clientSnapshot = () => true;
+const serverSnapshot = () => false;
 
 type MathRenderer = Pick<typeof import("katex"), "renderToString">;
 let mathModule: Promise<MathRenderer> | null = null;
@@ -30,10 +34,11 @@ export function MarkdownPreview({
   content, emptyState, mode = "final", loadMath = loadMathRenderer,
 }: MarkdownPreviewProps) {
   const t = useTranslation();
+  const client = useSyncExternalStore(subscribeToClient, clientSnapshot, serverSnapshot);
   const [mathRenderer, setMathRenderer] = useState<MathRenderer | null>(null);
   const hasSources = Boolean(content && SOURCES_LABEL_TEST.test(content));
   const prepared = useMemo(() => {
-    if (!content?.trim()) return { rendered: "", tokens: [] };
+    if (!client || !content?.trim()) return { rendered: "", tokens: [] };
     try {
       const normalizedInput = normalizeModelTextArtifacts(content);
       if (isOnlyMarkdownFenceMarkers(normalizedInput)) return { rendered: "", tokens: [] };
@@ -50,7 +55,7 @@ export function MarkdownPreview({
       console.error("Markdown render error:", error);
       return { rendered: escapeHtml(content), tokens: [] };
     }
-  }, [content, mode, hasSources]);
+  }, [content, mode, hasSources, client]);
   const needsMath = prepared.tokens.length > 0;
 
   useEffect(() => {
@@ -65,9 +70,13 @@ export function MarkdownPreview({
     return () => { active = false; };
   }, [needsMath, loadMath]);
 
-  const html = useMemo(() => DOMPurify.sanitize(
+  const html = useMemo(() => client ? DOMPurify.sanitize(
     renderMathTokens(prepared.rendered, prepared.tokens, mathRenderer),
-  ), [prepared, mathRenderer]);
+  ) : "", [prepared, mathRenderer, client]);
+
+  // DOMPurify needs a browser DOM. The server and first hydration snapshot
+  // render escaped React text; rich formatting starts only in the client.
+  if (!client) return <p className="whitespace-pre-wrap break-words text-sm">{content || emptyState || t("cockpit.chatLabels.emptyContent")}</p>;
 
   if (!html) return <p className="text-sm text-[--color-muted]">{emptyState || t("cockpit.chatLabels.emptyContent")}</p>;
 

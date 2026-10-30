@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { afterEach, describe, it, mock } from "node:test";
 import { act, cleanup, render, waitFor } from "@testing-library/react";
 import type { ComponentProps } from "react";
+import { renderToString } from "react-dom/server";
+import { hydrateRoot, type Root } from "react-dom/client";
 import { MarkdownPreview } from "../components/ui/markdown";
 
 type Loader = NonNullable<ComponentProps<typeof MarkdownPreview>["loadMath"]>;
@@ -10,6 +12,25 @@ type Renderer = Awaited<ReturnType<Loader>>;
 afterEach(() => { cleanup(); mock.restoreAll(); });
 
 describe("on demand Markdown math", () => {
+  it("hydrates escaped server history before applying sanitized rich formatting", async () => {
+    const component = <MarkdownPreview content={'**history** <img src=x onerror="alert(1)">'} />;
+    const host = document.createElement("div");
+    host.innerHTML = renderToString(component);
+    assert.equal(host.querySelector("img"), null);
+    document.body.append(host);
+    const errors: unknown[] = [];
+    let client: Root | undefined;
+    try {
+      await act(async () => { client = hydrateRoot(host, component, { onRecoverableError: (error) => errors.push(error) }); });
+      assert.deepEqual(errors, []);
+      assert.equal(host.querySelector("strong")?.textContent, "history");
+      assert.equal(host.querySelector("[onerror]"), null);
+    } finally {
+      await act(async () => client?.unmount());
+      host.remove();
+    }
+  });
+
   it("renders plain Markdown, code and sources without requesting mathematics", () => {
     let imports = 0;
     const loadMath: Loader = async () => { imports++; throw new Error("must not load"); };

@@ -1,3 +1,7 @@
+"use client";
+
+import { useId, useRef } from "react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { OpenRouterModel } from "./hooks/use-openrouter-models";
@@ -24,9 +28,20 @@ function price(value: string | null, unknown: string): string {
 }
 
 export function OpenRouterModelTable({ models, connected, pending, manage, caption, t }: Readonly<Props>) {
+  const viewport = useRef<HTMLDivElement>(null);
+  const viewportId = useId();
   const text = (key: string) => t("models.openrouter." + key);
   const connections = new Map(connected.map(model => [model.id, model]));
-  return <section className={styles.tableWrap + " max-h-[640px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--primary)]"} aria-label={caption} tabIndex={0}>
+  const scroll = (direction: -1 | 1) => {
+    const element = viewport.current;
+    if (element) element.scrollBy({ left: direction * element.clientWidth, behavior: "auto" });
+  };
+  return <section className="min-w-0 space-y-2" aria-label={caption}>
+    <div className="flex justify-end gap-1">
+      <Button size="xs" variant="ghost" aria-label={`${text("table.scrollLeft")}: ${caption}`} aria-controls={viewportId} onClick={() => scroll(-1)}><ChevronLeft size={16} aria-hidden="true" /></Button>
+      <Button size="xs" variant="ghost" aria-label={`${text("table.scrollRight")}: ${caption}`} aria-controls={viewportId} onClick={() => scroll(1)}><ChevronRight size={16} aria-hidden="true" /></Button>
+    </div>
+    <div id={viewportId} ref={viewport} className={styles.tableWrap + " max-h-[640px]"}>
     <table className="w-full min-w-[960px] border-collapse text-left text-sm">
       <caption className="sr-only">{caption}</caption>
       <thead className="sticky top-0 z-10 bg-[color:var(--ui-surface)]"><tr>
@@ -68,5 +83,6 @@ export function OpenRouterModelTable({ models, connected, pending, manage, capti
         </tr>;
       })}</tbody>
     </table>
+    </div>
   </section>;
 }

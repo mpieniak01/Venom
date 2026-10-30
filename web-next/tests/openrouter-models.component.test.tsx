@@ -231,7 +231,31 @@ describe("OpenRouter model comparison tables", () => {
     assert.equal(description.closest("details")?.open, false);
     fireEvent.click(within(unknown).getByText("Details"));
     assert.equal(description.closest("details")?.open, true);
-    assert.equal(screen.getByRole("region", { name: "Comparison" }).tabIndex, 0);
+    assert.equal(screen.getByRole("region", { name: "Comparison" }).hasAttribute("tabindex"), false);
+  });
+  it("scrolls each table through its own keyboard-focusable native controls", () => {
+    render(<><OpenRouterModelTable models={[model("vendor/a")]} connected={[]} pending={{}} manage={async () => {}} caption="Results" t={t} /><OpenRouterModelTable models={[model("vendor/b")]} connected={[]} pending={{}} manage={async () => {}} caption="Connected" t={t} /></>);
+    const resultsRegion = screen.getByRole("region", { name: "Results" });
+    const connectedRegion = screen.getByRole("region", { name: "Connected" });
+    const calls: ScrollToOptions[] = [];
+    const connectedCalls: ScrollToOptions[] = [];
+    for (const [region, recorded] of [[resultsRegion, calls], [connectedRegion, connectedCalls]] as const) {
+      const tableViewport = within(region).getByRole("table").parentElement!;
+      Object.defineProperty(tableViewport, "clientWidth", { value: 320 });
+      tableViewport.scrollBy = (options?: ScrollToOptions | number) => { if (options && typeof options !== "number") recorded.push(options); };
+      for (const button of within(region).getAllByRole("button", { name: /Scroll table/ })) {
+        assert.equal(button.tagName, "BUTTON");
+        assert.equal(button.tabIndex, 0);
+        assert.equal(button.getAttribute("aria-controls"), tableViewport.id);
+        button.focus();
+        assert.equal(document.activeElement, button);
+        fireEvent.click(button);
+        assert.equal(document.activeElement, button);
+      }
+    }
+    assert.deepEqual(calls, [{ left: -320, behavior: "auto" }, { left: 320, behavior: "auto" }]);
+    assert.deepEqual(connectedCalls, calls);
+    assert.notEqual(within(resultsRegion).getByRole("table").parentElement!.id, within(connectedRegion).getByRole("table").parentElement!.id);
   });
   it("uses connection state and effective limits in search rows and keeps row actions scoped", async () => {
     const operations: [string, boolean][] = [];

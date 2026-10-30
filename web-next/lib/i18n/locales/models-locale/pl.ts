@@ -115,7 +115,9 @@ export const models = {
     "details": "Szczegóły",
     "yes": "Tak",
     "no": "Nie",
-    "notConnected": "Niepodłączony"
+    "notConnected": "Niepodłączony",
+    "scrollLeft": "Przewiń tabelę w lewo",
+    "scrollRight": "Przewiń tabelę w prawo"
 },
     billing: {
     "title": "Konto i rozliczenia OpenRouter",

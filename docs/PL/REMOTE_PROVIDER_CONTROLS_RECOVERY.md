@@ -1,7 +1,8 @@
 # Lokalne poprawki API zdalnych — 2026-10-30
 
 Zakres przygotowano na gałęzi `codex/remote-provider-controls-recovery`,
-na bazie aktualnego `main` `8d74e9f9`. Zmiany pozostają lokalne.
+na bazie `main` `8d74e9f9`. Do wydania przez PR przygotowano nową gałąź
+`codex/remote-apis-scoped-recovery`; poniżej zachowano wyniki kolejnych etapów lokalnych.
 
 ## Diagnoza i zachowanie
 
@@ -123,3 +124,38 @@ Walidacja:
   odbioru. Pozostają ostrzeżenia preload wspólnego interfejsu.
 Nie wykonywano generacji modeli, zamówień VAST ani Test Zero.
 Kod pozostaje lokalny na tej samej gałęzi.
+
+## Przegląd przed wydaniem przez PR
+
+Zakres obejmuje wszystkie dotychczasowe poprawki, historię i styl paneli oraz
+dwie dodatkowe naprawy mechanizmu odzyskiwania LLM:
+
+1. Ścieżka LLM nie zakłada już bariery modeli działających wewnątrz procesu.
+   Wizja i lokalne operacje głosu mogą kontynuować pracę. Runtime switch gate
+   i admission nadal blokują generację LLM oraz nakładające się cleanupy.
+   Pełne zwalnianie modeli nadal zakłada globalną barierę.
+2. Nieudany cleanup LLM ma odrębny typ operacji `llm_cleanup`. Ponowienie
+   po przejściowym błędzie może usunąć tę niepewność dopiero po pozytywnej
+   weryfikacji silników. Nie kasuje niepewności pełnego cleanupu, operacji
+   innych modułów ani aktywnej dzierżawy.
+
+Nowe regresje najpierw wykazały oba błędy. Testy obejmują równoległą pracę
+synchroniczną i asynchroniczną, sukces/błąd/anulowanie, wzajemne wykluczanie
+obu zakresów cleanupu, zakaz generacji podczas odzyskiwania, bezpieczne
+ponowienie i zachowanie niepewności pełnego cleanupu.
+Przegląd wewnętrzny nie pozostawił innych zidentyfikowanych blokerów;
+recenzja zewnętrzna i bramki GitHub/Sonara pozostają osobnym etapem.
+
+Walidacja przed publikacją:
+- `pytest -q tests/test_model_resources_release.py tests/test_runtime_admission.py tests/test_llm_runtime_activation_api.py tests/test_remote_provider_control.py`: **200 PASS**.
+- `make test-ci-lite`: **895 PASS** (79,60 s).
+- `make test-web-unit`: PASS (4,87 s).
+- `make test-catalog-check test-groups-check check-new-code-coverage-diagnostics`: PASS.
+- `mypy venom_core/services/runtime_release_service.py venom_core/services/runtime_admission.py`: PASS; hooki Ruff/isort: PASS.
+- `python scripts/export_openapi.py --output <prywatny-raport>`: PASS.
+- `make pr-fast`: 1575 testów Python PASS, pokrycie zmienionych linii **92,80%** (próg 80%). Pełny wynik zapisano w opisie PR.
+
+Testy używają atrap i izolacji sieci/GPU/usług. Nie wykonano płatnej generacji,
+Test Zero ani działań na robocie. Nie obniżono progów i nie pomijano regresji
+na potrzeby wydania. Starsze lokalne zapisy niepewnego pełnego cleanupu
+pozostają blokujące: naprawa LLM nie udaje ich zweryfikowania.

@@ -109,20 +109,33 @@ async def test_nexus_uses_worker_registry_and_keeps_zero_distinct_from_unavailab
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("role", ["dev", "preprod"])
 async def test_local_vast_records_are_history_and_never_claim_complete_or_live(
-    monkeypatch, tmp_path
+    monkeypatch, tmp_path, role
 ):
+    from venom_core.config import SETTINGS
     from venom_core.infrastructure.providers.vast.models import EnvironmentRecord
     from venom_core.services.vast_environments.store import Journal
 
-    monkeypatch.chdir(tmp_path)
-    journal = Journal(tmp_path / ".venom_runtime/vast")
+    state_root = tmp_path / role / "configured-runtime"
+    monkeypatch.setenv("VENOM_RUNTIME_STATE_ROOT", str(state_root))
+    monkeypatch.setattr(SETTINGS, "ENVIRONMENT_ROLE", role)
+    monkeypatch.setattr(SETTINGS, "STORAGE_PREFIX", "" if role == "dev" else role)
+    # A foreign CWD record must not be confused with this environment's journal.
+    cwd = tmp_path / "other-checkout"
+    cwd.mkdir()
+    monkeypatch.chdir(cwd)
+    foreign = Journal(cwd / ".venom_runtime/vast")
+    foreign.save_record(
+        EnvironmentRecord(plan_id="b" * 32, instance_id=999, state="running")
+    )
+    journal = Journal(state_root / "vast")
     journal.save_record(
         EnvironmentRecord(plan_id="a" * 32, instance_id=123, state="running")
     )
     rows = await integration_overview(FastAPI(), snapshot(), settings())
     vast = by_id(rows, "core:vast")
-    assert vast.resources[0].id == "vast:123"
+    assert [resource.id for resource in vast.resources] == ["vast:123"]
     assert vast.resources[0].state == "stale"
     assert vast.resource_count is None
     assert vast.connectivity == "unknown"

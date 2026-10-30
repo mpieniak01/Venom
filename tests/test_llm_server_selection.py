@@ -757,7 +757,10 @@ async def test_set_active_llm_server_aborts_when_stopping_other_server_fails(
 
 
 @pytest.mark.asyncio
-async def test_get_llm_servers_filters_vllm_outside_full_profile(monkeypatch):
+@pytest.mark.parametrize("profile", ["full", "light"])
+async def test_get_llm_servers_preserves_provider_choices_in_full_and_light(
+    monkeypatch, profile
+):
     servers = [
         {
             "name": "ollama",
@@ -788,12 +791,18 @@ async def test_get_llm_servers_filters_vllm_outside_full_profile(monkeypatch):
     monkeypatch.setattr(system_routes, "_probe_servers", _noop_probe)
 
     original = _snapshot_settings()
-    monkeypatch.setattr(SETTINGS, "VENOM_RUNTIME_PROFILE", "light")
+    monkeypatch.setattr(SETTINGS, "VENOM_RUNTIME_PROFILE", profile)
+    monkeypatch.setattr(SETTINGS, "OPENROUTER_ENABLED", False)
+    monkeypatch.setattr(
+        system_routes.vast_chat_runtime,
+        "target_payload",
+        AsyncMock(return_value={"status": "offline", "available": False}),
+    )
     try:
         response = await system_routes.get_llm_servers()
         names = [entry["name"] for entry in response["servers"]]
-        assert names == ["ollama", system_routes.vast_chat_runtime.SERVER]
-        assert response["count"] == 2
+        assert names == ["ollama", "vllm", system_routes.vast_chat_runtime.SERVER]
+        assert response["count"] == 3
         remote = response["servers"][-1]
         assert remote["available"] is False
         assert remote["capabilities"] == {
@@ -862,22 +871,18 @@ async def test_get_llm_servers_includes_onnx_when_enabled(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_set_active_llm_server_rejects_vllm_for_light_profile(monkeypatch):
-    original = _snapshot_settings()
+async def test_light_profile_still_rejects_an_uninstalled_vllm_server(monkeypatch):
+    controller = DummyController(
+        [{"name": "vllm", "supports": {"start": True, "stop": True}, "endpoint": ""}]
+    )
+    monkeypatch.setattr(system_routes.system_deps, "_llm_controller", controller)
+    monkeypatch.setattr(system_routes, "_installed_local_servers", lambda: {"ollama"})
     monkeypatch.setattr(SETTINGS, "VENOM_RUNTIME_PROFILE", "light")
-    try:
-        request = system_routes.ActiveLlmServerRequest(server_name="vllm")
-        with pytest.raises(system_routes.HTTPException) as exc:
-            await system_routes.set_active_llm_server(request)
-        assert exc.value.status_code == 403
-        assert exc.value.detail["decision"] == "block"
-        assert exc.value.detail["reason_code"] == "PERMISSION_DENIED"
-        assert (
-            exc.value.detail["technical_context"]["operation"]
-            == "system.llm.server_allowed"
-        )
-    finally:
-        _restore_settings(original)
+    request = system_routes.ActiveLlmServerRequest(server_name="vllm")
+    with pytest.raises(system_routes.HTTPException) as exc:
+        await system_routes.set_active_llm_server(request)
+    assert exc.value.status_code == 404
+    assert controller.actions == []
 
 
 @pytest.mark.asyncio
@@ -1549,12 +1554,17 @@ def test_vllm_autofix_context_uses_runtime_provider_not_config(monkeypatch):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("profile", ["full", "light"])
 async def test_external_vllm_selection_needs_no_application_sdk_and_keeps_provider(
     monkeypatch,
+    profile,
 ):
+    probe = AsyncMock(return_value=True)
+    monkeypatch.setattr(runtime_switch_service, "probe_health_ready", probe)
+    monkeypatch.setattr(runtime_switch_service, "probe_until_shutdown", probe)
     original = _snapshot_settings()
     for key, value in {
-        "VENOM_RUNTIME_PROFILE": "full",
+        "VENOM_RUNTIME_PROFILE": profile,
         "VLLM_START_COMMAND": "/owned/component start",
         "VLLM_ENDPOINT": "http://127.0.0.1:8067/v1",
     }.items():

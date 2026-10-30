@@ -22,7 +22,7 @@ Bezpośrednie używanie pliku Compose wymaga jawnego ustawienia tych zmiennych; 
 
 Full/Light nie wybiera providera, modelu ani GPU. Light wstrzymuje zadania tła i automatyczną dokumentację/gardening; ustawienia interaktywne zachowuje aplikacja. Wybrany lokalny lub zdalny provider musi mieć odpowiednią konfigurację i poświadczenia. Przy innym wyborze niż Ollama adapter uruchamia wyłącznie backend/frontend, bez zależności Ollama.
 
-Start nie wykonuje `ollama list`, pobierania modelu ani próbnej generacji. Warmup domyślnie jest wyłączony; jawne `LLM_WARMUP_ON_STARTUP` jest niezależnym ustawieniem operatora. Alias `llm_off` jest przejściowo tłumaczony na Light i `ACTIVE_LLM_SERVER=none`, z komunikatem migracji; należy usunąć go po migracji konfiguracji A10. `pull` jest osobną operacją dla obrazów, a nie modeli.
+Start nie wykonuje `ollama list`, pobierania modelu ani próbnej generacji. Warmup domyślnie jest wyłączony; Full zachowuje jawne `LLM_WARMUP_ON_STARTUP`; Light zawsze pomija warmup, zgodnie z launcherem hostowym. Alias `llm_off` jest przejściowo tłumaczony na Light i `ACTIVE_LLM_SERVER=none`, z komunikatem migracji; należy usunąć go po migracji konfiguracji A10. `pull` jest osobną operacją dla obrazów, a nie modeli.
 
 **Nie jest to kwalifikacja uruchomionego Dockera ani pełnej funkcjonalności Full.** Obecny backend Docker instaluje lock Light; samo ustawienie Full nie dodaje pakietów głosu, RAG lub innych brakujących zależności. Obrazy Full i moduły wymagają osobnego odbioru instalacyjnego. Gotowe obrazy release muszą zawierać obsługę bieżącego kontraktu; stary obraz nie staje się zgodny przez samo przekazanie nowych zmiennych.
 

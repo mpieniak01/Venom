@@ -37,6 +37,7 @@ else
 fi
 export ACTIVE_LLM_SERVER="${ACTIVE_LLM_SERVER:-ollama}" LLM_WARMUP_ON_STARTUP="${LLM_WARMUP_ON_STARTUP:-false}"
 if [[ "$profile" == light ]]; then
+  export LLM_WARMUP_ON_STARTUP=false
   export VENOM_PAUSE_BACKGROUND_TASKS=true ENABLE_AUTO_DOCUMENTATION=false ENABLE_AUTO_GARDENING=false
 fi
 if [[ "$recipe" == release && -z "${VENOM_RELEASE_VERSION:-}" ]]; then

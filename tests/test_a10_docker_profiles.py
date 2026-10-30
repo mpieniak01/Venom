@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import json
 import os
-from pathlib import Path
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 import yaml
@@ -137,15 +137,18 @@ def test_preprod_cannot_inherit_dev_identity_ports_or_write_permission(tmp_path)
     } == {"preprod"}
 
 
-def test_local_engine_no_model_calls_and_explicit_warmup_is_independent(tmp_path):
+@pytest.mark.parametrize("profile", ["full", "light"])
+def test_local_engine_no_model_calls_and_explicit_warmup_policy(tmp_path, profile):
     result, calls = run_recipe(
         tmp_path,
-        PROFILE="light",
+        PROFILE=profile,
         ACTIVE_LLM_SERVER="ollama",
         LLM_WARMUP_ON_STARTUP="true",
     )
     assert result.returncode == 0, result.stderr
-    assert calls[-1]["env"]["LLM_WARMUP_ON_STARTUP"] == "true"
+    assert calls[-1]["env"]["LLM_WARMUP_ON_STARTUP"] == (
+        "true" if profile == "full" else "false"
+    )
     assert "--no-deps" not in calls[-1]["args"]
     assert not any("exec" in call["args"] for call in calls)
 

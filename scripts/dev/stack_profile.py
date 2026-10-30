@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import fcntl
 import json
 import os
 import signal
@@ -12,8 +13,9 @@ import sys
 import time
 import urllib.error
 import urllib.request
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Mapping
+from typing import Iterator, Mapping
 from urllib.parse import urlsplit
 
 from dotenv import dotenv_values
@@ -226,6 +228,15 @@ def record_pid(root: Path, values: Mapping[str, str], key: str) -> None:
     target = Path(str(path) + ".identity.json")
     target.write_text(json.dumps(record))
     target.chmod(0o600)
+    registry = host_file(root, ".host-api-owners.json")
+    entries = json.loads(registry.read_text()) if registry.exists() else []
+    entries = [
+        entry
+        for entry in entries
+        if entry.get("pid") != pid and running(entry.get("pid", 0))
+    ]
+    registry.write_text(json.dumps([*entries, record]))
+    private_owner(root, registry)
 
 
 def owned_pid(
@@ -387,12 +398,40 @@ def preflight(root: Path, values: Mapping[str, str]) -> None:
                     raise ValueError(f"{port_key} occupied by unowned listener")
 
 
+def private_owner(root: Path, path: Path) -> None:
+    path.chmod(0o600)
+    if os.geteuid() == 0:
+        os.chown(path, root.stat().st_uid, root.stat().st_gid)
+
+
+def host_file(root: Path, name: str) -> Path:
+    directory = root / ".venom_runtime"
+    directory.mkdir(exist_ok=True)
+    return directory / name
+
+
+@contextmanager
+def startup_lock(root: Path) -> Iterator[None]:
+    path = host_file(root, ".host-start.lock")
+    with path.open("a") as lock:
+        private_owner(root, path)
+        try:
+            fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as exc:
+            raise ValueError("Another environment startup is in progress") from exc
+        try:
+            yield
+        finally:
+            fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
+
+
 def check_shared_runtime(root: Path, values: Mapping[str, str]) -> None:
     selected = values.get("VENOM_STARTED_LOCAL_RUNTIME", "none")
     if selected == "none":
         return
-    for path in root.glob(".venom*.pid.identity.json"):
-        record = json.loads(path.read_text())
+    registry = host_file(root, ".host-api-owners.json")
+    entries = json.loads(registry.read_text()) if registry.exists() else []
+    for record in entries:
         pid = record.get("pid", 0)
         if running(pid) and process_stamp(pid)[0] == record.get("stamp"):
             peer = record.get("local_runtime", "none")
@@ -429,7 +468,22 @@ def main() -> None:
         elif args.action == "record-api":
             record_pid(ROOT, values, "PID_FILE")
         elif args.action == "component":
-            component(ROOT, values, args.component_name or "")
+            if args.component_name in {"api", "api-dev"}:
+                with startup_lock(ROOT):
+                    selected = subprocess.check_output(
+                        [
+                            sys.executable,
+                            "-c",
+                            "from venom_core.utils.llm_runtime import get_startup_local_server; print(get_startup_local_server())",
+                        ],
+                        env=values,
+                        text=True,
+                    ).strip()
+                    values["VENOM_STARTED_LOCAL_RUNTIME"] = selected
+                    check_shared_runtime(ROOT, values)
+                    component(ROOT, values, args.component_name)
+            else:
+                component(ROOT, values, args.component_name or "")
         elif args.action == "stop":
             stop(ROOT, values)
         elif args.action == "status":
@@ -446,11 +500,12 @@ def main() -> None:
             ):
                 Path(values[key]).parent.mkdir(parents=True, exist_ok=True)
             os.chdir(ROOT)
-            os.execve(
-                "/bin/bash",
-                ["bash", str(ROOT / "scripts/dev/start_stack.sh")],
-                {**values, "VENOM_STACK_RESOLVED": "1"},
-            )
+            with startup_lock(ROOT):
+                subprocess.run(
+                    ["bash", str(ROOT / "scripts/dev/start_stack.sh")],
+                    env={**values, "VENOM_STACK_RESOLVED": "1"},
+                    check=True,
+                )
     except ValueError as exc:
         parser.exit(2, f"{exc}\n")
 

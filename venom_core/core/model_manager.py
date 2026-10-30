@@ -897,20 +897,13 @@ PARAMETER top_k 40
             logger.error(f"Błąd podczas zwalniania zasobów: {e}")
             return False
 
-    async def get_usage_metrics(self) -> Dict[str, Any]:
-        """
-        Zwraca metryki użycia zasobów: zajętość dysku, CPU/RAM oraz VRAM.
-
-        Returns:
-            Słownik z metrykami
-        """
+    def _collect_host_usage_metrics(self) -> Dict[str, Any]:
+        """Blocking host sampling; run outside the HTTP event loop."""
         disk_usage_gb = self.get_models_size_gb()
         memory = psutil.virtual_memory()
         cpu_usage = psutil.cpu_percent(interval=0.1)
         disk_mount = self._resolve_models_mount()
         disk_system = psutil.disk_usage(str(disk_mount))
-        models_count = len(await self.list_local_models())
-
         metrics = {
             "disk_usage_gb": disk_usage_gb,
             "disk_limit_gb": MAX_STORAGE_GB,
@@ -925,11 +918,15 @@ PARAMETER top_k 40
             "memory_total_gb": round(memory.total / BYTES_IN_GB, 2),
             "memory_used_gb": round(memory.used / BYTES_IN_GB, 2),
             "memory_usage_percent": round(memory.percent, 2),
-            "models_count": models_count,
         }
-        metrics.update(await self._collect_gpu_metrics())
         metrics["net_usage_percent"] = round(_get_net_normalized(), 1)
+        return metrics
 
+    async def get_usage_metrics(self) -> Dict[str, Any]:
+        """Collect telemetry without blocking independent HTTP requests."""
+        metrics = await asyncio.to_thread(self._collect_host_usage_metrics)
+        metrics["models_count"] = len(await self.list_local_models())
+        metrics.update(await self._collect_gpu_metrics())
         return metrics
 
     def activate_adapter(

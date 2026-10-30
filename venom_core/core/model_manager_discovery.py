@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import time
@@ -515,19 +516,23 @@ class ModelManagerDiscoveryMixin:
             )
         return None
 
-    async def list_local_models(self) -> List[Dict[str, Any]]:
+    def _discover_local_models(self) -> Dict[str, Dict[str, Any]]:
+        """Perform filesystem discovery outside the event loop."""
         models: Dict[str, Dict[str, Any]] = {}
-
         search_dirs = self._build_search_dirs()
         self._scan_local_dirs(search_dirs, models)
         # Keep Ollama model visibility even when daemon is offline.
         self._load_ollama_cache(models)
         self._register_manifest_fallbacks(search_dirs, models)
+        return models
+
+    async def list_local_models(self) -> List[Dict[str, Any]]:
+        models = await asyncio.to_thread(self._discover_local_models)
 
         if self._should_query_ollama_runtime():
             entries = await self._fetch_ollama_runtime_entries()
             if entries is not None:
-                self._replace_ollama_entries(models, entries)
+                await asyncio.to_thread(self._replace_ollama_entries, models, entries)
         else:
             logger.debug(
                 "Pomijam aktywne odpytywanie Ollama (/api/tags), bo ACTIVE_LLM_SERVER=%s",

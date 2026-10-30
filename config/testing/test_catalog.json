@@ -4267,6 +4267,20 @@
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
+      "path": "tests/test_model_usage_telemetry.py",
+      "domain": "models",
+      "test_type": "route_contract",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Nonblocking host sampling, single-flight telemetry cache and lifecycle regressions."
+    },
+    {
       "path": "tests/test_model_validators.py",
       "domain": "models",
       "test_type": "unit",

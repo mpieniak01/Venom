@@ -1,4 +1,4 @@
-name: venom-release
+name: ${COMPOSE_PROJECT_NAME:-venom-release}
 
 # End-user profile:
 # - pulls prebuilt backend/frontend images from GHCR
@@ -7,9 +7,9 @@ name: venom-release
 services:
   ollama:
     image: ${OLLAMA_IMAGE:-ollama/ollama:0.40.11@sha256:dea72d1e22270fe095b68fdf756d2b489d615643c5a2eaebbc5f569181e322d8}
-    container_name: venom-ollama-release
+    container_name: ${VENOM_CONTAINER_PREFIX:-venom}-ollama-release
     ports:
-      - "11434:11434"
+      - "${VENOM_OLLAMA_HOST_PORT:-11434}:11434"
     environment:
       OLLAMA_HOST: ${OLLAMA_HOST:-0.0.0.0}
       OLLAMA_CONTEXT_LENGTH: ${OLLAMA_CONTEXT_LENGTH:-32768}
@@ -31,19 +31,28 @@ services:
 
   backend:
     image: ${BACKEND_IMAGE:-ghcr.io/mpieniak01/venom-backend:v${VENOM_RELEASE_VERSION:-1.8.0}}
-    container_name: venom-backend-release
+    container_name: ${VENOM_CONTAINER_PREFIX:-venom}-backend-release
     environment:
       VENOM_RUNTIME_PROFILE: ${VENOM_RUNTIME_PROFILE:-light}
       ENV: production
+      ENVIRONMENT_ROLE: ${ENVIRONMENT_ROLE:-dev}
+      DB_SCHEMA: ${DB_SCHEMA:-dev}
+      CACHE_NAMESPACE: ${CACHE_NAMESPACE:-venom}
+      QUEUE_NAMESPACE: ${QUEUE_NAMESPACE:-venom}
+      STORAGE_PREFIX: ${STORAGE_PREFIX:-}
+      ALLOW_DATA_MUTATION: ${ALLOW_DATA_MUTATION:-0}
+      VENOM_PAUSE_BACKGROUND_TASKS: ${VENOM_PAUSE_BACKGROUND_TASKS:-false}
+      ENABLE_AUTO_DOCUMENTATION: ${ENABLE_AUTO_DOCUMENTATION:-true}
+      ENABLE_AUTO_GARDENING: ${ENABLE_AUTO_GARDENING:-true}
       # Local docker mesh policy:
       # keep internal service-to-service links on HTTP by default.
       URL_SCHEME_POLICY: ${URL_SCHEME_POLICY:-force_http}
-      AI_MODE: LOCAL
+      AI_MODE: ${AI_MODE:-LOCAL}
       ACTIVE_LLM_SERVER: ${ACTIVE_LLM_SERVER:-ollama}
-      LLM_SERVICE_TYPE: local
-      LLM_LOCAL_ENDPOINT: ${LLM_HTTP_SCHEME:-http}://ollama:11434/v1
-      LLM_MODEL_NAME: ${OLLAMA_MODEL:-gemma2:2b}
-      LLM_WARMUP_ON_STARTUP: ${LLM_WARMUP_ON_STARTUP:-true}
+      LLM_SERVICE_TYPE: ${LLM_SERVICE_TYPE:-local}
+      LLM_LOCAL_ENDPOINT: ${LLM_LOCAL_ENDPOINT:-http://ollama:11434/v1}
+      LLM_MODEL_NAME: ${LLM_MODEL_NAME:-${OLLAMA_MODEL:-gemma2:2b}}
+      LLM_WARMUP_ON_STARTUP: ${LLM_WARMUP_ON_STARTUP:-false}
       VENOM_OLLAMA_PROFILE: ${VENOM_OLLAMA_PROFILE:-balanced-12-24gb}
       # Backend uses 0/empty as sentinel => resolve from VENOM_OLLAMA_PROFILE.
       # Container-level OLLAMA_* above tune the server defaults.
@@ -60,7 +69,7 @@ services:
         condition: service_started
         required: false
     ports:
-      - "8000:8000"
+      - "${VENOM_API_HOST_PORT:-8000}:8000"
     volumes:
       - venom-data:/app/data
       - venom-workspace:/app/workspace
@@ -74,19 +83,21 @@ services:
 
   frontend:
     image: ${FRONTEND_IMAGE:-ghcr.io/mpieniak01/venom-frontend:v${VENOM_RELEASE_VERSION:-1.8.0}}
-    container_name: venom-frontend-release
+    container_name: ${VENOM_CONTAINER_PREFIX:-venom}-frontend-release
     environment:
       NEXT_PUBLIC_ENV: ${ENV:-production}
+      ENVIRONMENT_ROLE: ${ENVIRONMENT_ROLE:-dev}
+      NEXT_PUBLIC_ENVIRONMENT_ROLE: ${ENVIRONMENT_ROLE:-dev}
       URL_SCHEME_POLICY: ${URL_SCHEME_POLICY:-force_http}
       NEXT_PUBLIC_URL_SCHEME_POLICY: ${URL_SCHEME_POLICY:-force_http}
       API_PROXY_TARGET: ${HTTP_SCHEME:-http}://backend:8000
-      NEXT_PUBLIC_API_BASE: ${HTTP_SCHEME:-http}://localhost:8000
-      NEXT_PUBLIC_WS_BASE: ${WS_SCHEME:-ws}://localhost:8000/ws/events
+      NEXT_PUBLIC_API_BASE: ""
+      NEXT_PUBLIC_WS_BASE: /ws/events
     depends_on:
       backend:
         condition: service_healthy
     ports:
-      - "3000:3000"
+      - "${VENOM_WEB_HOST_PORT:-3000}:3000"
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://localhost:3000').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 15s

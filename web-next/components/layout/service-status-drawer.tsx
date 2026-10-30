@@ -26,25 +26,13 @@ export function ServiceStatusDrawer({ open, onOpenChange }: ServiceStatusDrawerP
   const servicesOffline = !serviceEntries || serviceEntries.length === 0;
   const t = useTranslation();
 
-  const summary = useMemo(() => {
-    if (!serviceEntries.length) {
-      return {
-        healthy: 0,
-        degraded: 0,
-        down: 0,
-      };
-    }
-    return serviceEntries.reduce(
-      (acc, svc) => {
-        const status = (svc.status || "").toLowerCase();
-        if (status.includes("healthy")) acc.healthy += 1;
-        else if (status.includes("degraded")) acc.degraded += 1;
-        else acc.down += 1;
-        return acc;
-      },
-      { healthy: 0, degraded: 0, down: 0 },
-    );
-  }, [serviceEntries]);
+  const summary = useMemo(() => serviceEntries.reduce(
+    (acc, service) => {
+      acc[classifyServiceStatus(service.status)] += 1;
+      return acc;
+    },
+    { healthy: 0, degraded: 0, down: 0, unknown: 0 },
+  ), [serviceEntries]);
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -70,7 +58,7 @@ export function ServiceStatusDrawer({ open, onOpenChange }: ServiceStatusDrawerP
               </p>
             </div>
           </div>
-          <div className="flex gap-2 text-xs">
+          <div className="flex gap-2 text-xs" data-testid="service-status-summary">
             <Badge tone="success">
               {t("serviceStatus.badges.healthy", { count: summary.healthy })}
             </Badge>
@@ -80,6 +68,7 @@ export function ServiceStatusDrawer({ open, onOpenChange }: ServiceStatusDrawerP
             <Badge tone="danger">
               {t("serviceStatus.badges.down", { count: summary.down })}
             </Badge>
+            {summary.unknown > 0 && <Badge tone="neutral">{t("common.unknown")}: {summary.unknown}</Badge>}
           </div>
         </div>
         <div className="flex-1 space-y-2 overflow-y-auto">
@@ -107,11 +96,29 @@ export function ServiceStatusDrawer({ open, onOpenChange }: ServiceStatusDrawerP
   );
 }
 
+function classifyServiceStatus(status?: string): "healthy" | "degraded" | "down" | "unknown" {
+  switch (status?.trim().toLowerCase()) {
+    case "online":
+    case "healthy":
+      return "healthy";
+    case "degraded":
+    case "warn":
+    case "warning":
+      return "degraded";
+    case "offline":
+    case "unhealthy":
+    case "down":
+    case "error":
+      return "down";
+    default:
+      return "unknown";
+  }
+}
+
 function toneFromStatus(status?: string) {
-  if (!status) return "neutral" as const;
-  const value = status.toLowerCase();
-  if (value.includes("healthy") || value.includes("online")) return "success" as const;
-  if (value.includes("degraded") || value.includes("warn")) return "warning" as const;
-  if (value.includes("down") || value.includes("error")) return "danger" as const;
+  const category = classifyServiceStatus(status);
+  if (category === "healthy") return "success" as const;
+  if (category === "degraded") return "warning" as const;
+  if (category === "down") return "danger" as const;
   return "neutral" as const;
 }

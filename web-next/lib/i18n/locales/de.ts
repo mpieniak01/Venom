@@ -22,6 +22,7 @@ import { providersLocale } from "./providers/de";
 import { adminLocale } from "./admin/de";
 export const de = {
   common: {
+    close: "Schließen",
     switchLanguage: "Sprache wechseln",
     switchTheme: "Systemstil wechseln",
     menu: "Menü",

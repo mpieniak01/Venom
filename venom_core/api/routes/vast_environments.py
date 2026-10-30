@@ -8,7 +8,6 @@ from fastapi import APIRouter, Depends, HTTPException, Path, Request
 from pydantic import BaseModel, ConfigDict, Field
 
 from venom_core.api.routes.system_config import require_localhost_request
-from venom_core.infrastructure.providers.vast.client import VastError
 from venom_core.services import vast_management
 
 
@@ -57,7 +56,7 @@ class OrderRequest(Confirmation):
 def invoke(method, *args):
     try:
         return method(*args)
-    except VastError as error:
+    except vast_management.VastError as error:
         status = 409
         if error.code in {
             "vast.management_disabled",

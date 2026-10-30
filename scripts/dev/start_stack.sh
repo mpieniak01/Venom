@@ -4,6 +4,11 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # shellcheck source=../lib/env_contract.sh
 source "$ROOT_DIR/scripts/lib/env_contract.sh"
+if [[ "${VENOM_STACK_RESOLVED:-0}" != "1" ]]; then
+  exec "${PYTHON_BIN:-$ROOT_DIR/.venv/bin/python}" "$ROOT_DIR/scripts/dev/stack_profile.py" start
+fi
+cd "$ROOT_DIR"
+
 
 mk() {
   "${MAKE_BIN:-make}" --no-print-directory "$@"
@@ -73,7 +78,7 @@ fi
 
 run_with_env_file() {
   # Values such as lifecycle commands remain data; never source a dotenv file.
-  env_contract_run "$PYTHON_BIN" "$ENV_FILE" "$@"
+  "$PYTHON_BIN" -m dotenv -f "$ENV_FILE" run --no-override -- "$@"
 }
 
 extract_url_port() {
@@ -149,7 +154,7 @@ if [[ ! -x "$UVICORN" ]]; then
   exit 1
 fi
 
-mkdir -p logs
+mkdir -p "$(dirname "$BACKEND_LOG")" "$(dirname "$WEB_LOG")" "$(dirname "$PID_FILE")" "$(dirname "$WEB_PID_FILE")"
 
 START_SUCCESS=0
 BACKEND_STARTED=0
@@ -356,9 +361,6 @@ case "$active_server" in
     ;;
   none)
     echo "▶️  ACTIVE_LLM_SERVER=none (start bez lokalnego serwera LLM)"
-    mk vllm-stop >/dev/null || true
-    mk ollama-stop >/dev/null || true
-    bash scripts/llm/multi_runtime_service.sh stop >/dev/null 2>&1 || true
     llm_ready="none"
     ;;
   *)
@@ -385,24 +387,9 @@ echo "🧠 LLM gotowy: $llm_ready"
 
 backend_reused=""
 if curl -fsS "http://${HOST_DISPLAY}:${PORT}/api/v1/system/status" >/dev/null 2>&1; then
-  echo "⚠️  Backend już odpowiada na ${HOST_DISPLAY}:${PORT}. Pomijam drugi start backendu."
+  "$PYTHON_BIN" -c 'import os; from pathlib import Path; from scripts.dev.stack_profile import owned_pid; assert owned_pid(Path.cwd(), os.environ, "PID_FILE"), "Unowned API listener"' || exit 1
+  echo "Backend wybranego środowiska już działa."
   backend_reused="yes"
-  if [[ -f "$PID_FILE" ]]; then
-    pid="$(cat "$PID_FILE")"
-    if ! kill -0 "$pid" 2>/dev/null; then rm -f "$PID_FILE"; fi
-  fi
-elif [[ -f "$PID_FILE" ]]; then
-  pid="$(cat "$PID_FILE")"
-  if kill -0 "$pid" 2>/dev/null; then
-    echo "⚠️  Backend PID $pid istnieje, ale /system/status jest niedostępny. Restartuję backend."
-    kill "$pid" 2>/dev/null || true
-    for _ in {1..30}; do
-      if kill -0 "$pid" 2>/dev/null; then sleep 0.2; else break; fi
-    done
-    rm -f "$PID_FILE"
-  else
-    rm -f "$PID_FILE"
-  fi
 fi
 
 if [[ -z "$backend_reused" ]]; then

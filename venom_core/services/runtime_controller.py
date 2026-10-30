@@ -9,6 +9,7 @@ Odpowiada za:
 """
 
 import json
+import os
 import subprocess
 import time
 import tomllib
@@ -122,12 +123,24 @@ class RuntimeController:
         """Inicjalizacja kontrolera."""
         self.project_root = Path(__file__).parent.parent.parent
         self.pid_files = {
-            ServiceType.BACKEND: self.project_root / ".venom.pid",
-            ServiceType.UI: self.project_root / ".web-next.pid",
+            ServiceType.BACKEND: Path(
+                os.environ.get("PID_FILE", str(self.project_root / ".venom.pid"))
+            ),
+            ServiceType.UI: Path(
+                os.environ.get("WEB_PID_FILE", str(self.project_root / ".web-next.pid"))
+            ),
         }
         self.log_files = {
-            ServiceType.BACKEND: self.project_root / "logs" / "backend.log",
-            ServiceType.UI: self.project_root / "logs" / "web-next.log",
+            ServiceType.BACKEND: Path(
+                os.environ.get(
+                    "BACKEND_LOG", str(self.project_root / "logs" / "backend.log")
+                )
+            ),
+            ServiceType.UI: Path(
+                os.environ.get(
+                    "WEB_LOG", str(self.project_root / "logs" / "web-next.log")
+                )
+            ),
         }
         self.history: List[ActionHistory] = []
         self.max_history = 100
@@ -755,68 +768,23 @@ class RuntimeController:
         except ValueError as e:
             return {"success": False, "message": str(e)}
 
+        if profile == RuntimeProfile.LLM_OFF:
+            return {
+                "success": False,
+                "message": "Legacy llm_off: select provider/ACTIVE_LLM_SERVER=none independently.",
+            }
+        current = str(SETTINGS.VENOM_RUNTIME_PROFILE).lower()
+        if current != profile.value:
+            return {
+                "success": False,
+                "message": f"Profile change requires stack restart: make start PROFILE={profile.value}; keep the same ENVIRONMENT.",
+                "restart_required": True,
+            }
         capabilities = get_profile_capabilities(profile)
-        results = []
-
-        def _stop_and_record(service_type: ServiceType) -> None:
-            stop_result = self.stop_service(service_type)
-            results.append(
-                {
-                    "service": service_type.value,
-                    "success": stop_result["success"],
-                    "message": stop_result["message"],
-                }
-            )
-
-        # Stop disabled services based on profile
-        service_map = {
-            "ollama": ServiceType.LLM_OLLAMA,
-            "vllm": ServiceType.LLM_VLLM,
-        }
-
-        for disabled_svc in capabilities.disabled_services:
-            if disabled_svc in service_map:
-                _stop_and_record(service_map[disabled_svc])
-
-        # Determine which services to start
-        services_to_start = []
-        if "backend" in capabilities.required_services:
-            services_to_start.append(ServiceType.BACKEND)
-        if "frontend" in capabilities.required_services:
-            services_to_start.append(ServiceType.UI)
-
-        # Handle LLM services
-        if capabilities.uses_local_llm:
-            active_llm = str(getattr(SETTINGS, "ACTIVE_LLM_SERVER", "")).strip().lower()
-            if profile == RuntimeProfile.FULL and active_llm in {"vllm", "llm_vllm"}:
-                preferred_llm = ServiceType.LLM_VLLM
-                opposite_llm = ServiceType.LLM_OLLAMA
-            else:
-                preferred_llm = ServiceType.LLM_OLLAMA
-                opposite_llm = ServiceType.LLM_VLLM
-            services_to_start.append(preferred_llm)
-            _stop_and_record(opposite_llm)
-
-        # Start required services
-        for service_type in services_to_start:
-            result = self.start_service(service_type)
-            results.append(
-                {
-                    "service": service_type.value,
-                    "success": result["success"],
-                    "message": result["message"],
-                }
-            )
-
-        all_success = all(r["success"] for r in results)
-        message = f"Profil {profile_name} zastosowany: {len([r for r in results if r['success']])}/{len(results)} usług"
-
-        self._add_to_history("profile", profile_name, all_success, message)
-
         return {
-            "success": all_success,
-            "message": message,
-            "results": results,
+            "success": True,
+            "message": f"Profile {profile.value} already active; provider unchanged.",
+            "results": [],
             "profile_capabilities": {
                 "uses_local_llm": capabilities.uses_local_llm,
                 "gpu_support": capabilities.gpu_support,

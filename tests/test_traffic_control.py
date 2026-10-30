@@ -2,6 +2,7 @@
 
 import time
 from logging.handlers import TimedRotatingFileHandler
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -91,6 +92,23 @@ class TestTokenBucket:
         assert bucket.tokens == 100.0
 
 
+@pytest.fixture
+def circuit_clock(monkeypatch):
+    """Control only the breaker module clock, never other traffic policies."""
+    from venom_core.infrastructure.traffic_control import circuit_breaker as module
+
+    clock = SimpleNamespace(wall=1_700_000_000.0, steady=100.0)
+    monkeypatch.setattr(
+        module,
+        "time",
+        SimpleNamespace(
+            time=lambda: clock.wall,
+            monotonic=lambda: clock.steady,
+        ),
+    )
+    return clock
+
+
 class TestCircuitBreaker:
     """Testy dla Circuit Breaker pattern."""
 
@@ -113,38 +131,79 @@ class TestCircuitBreaker:
         assert breaker.state == CircuitState.OPEN
         assert breaker.is_request_allowed() is False
 
-    def test_circuit_breaker_half_open_after_timeout(self):
+    def test_circuit_breaker_half_open_after_timeout(self, circuit_clock):
         """Test przejścia do HALF_OPEN po timeout."""
         breaker = CircuitBreaker(failure_threshold=2, timeout_seconds=0.1)
         breaker.record_failure()
         breaker.record_failure()
         assert breaker.state == CircuitState.OPEN
-        time.sleep(0.2)
+        circuit_clock.steady += 0.2
+        circuit_clock.wall += 0.2
         assert breaker.is_request_allowed() is True
         assert breaker.state == CircuitState.HALF_OPEN
 
-    def test_circuit_breaker_recovery_to_closed(self):
+    def test_circuit_breaker_recovery_to_closed(self, circuit_clock):
         """Test powrotu do CLOSED po udanych requestach w HALF_OPEN."""
         breaker = CircuitBreaker(
             failure_threshold=2, success_threshold=2, timeout_seconds=0.1
         )
         breaker.record_failure()
         breaker.record_failure()
-        time.sleep(0.2)
-        breaker.is_request_allowed()  # Przejście do HALF_OPEN
+        circuit_clock.steady += 0.2
+        circuit_clock.wall += 0.2
+        assert breaker.is_request_allowed() is True  # Przejście do HALF_OPEN
         breaker.record_success()
         breaker.record_success()
         assert breaker.state == CircuitState.CLOSED
 
-    def test_circuit_breaker_failure_in_half_open(self):
+    def test_circuit_breaker_failure_in_half_open(self, circuit_clock):
         """Test że failure w HALF_OPEN wraca do OPEN."""
         breaker = CircuitBreaker(failure_threshold=2, timeout_seconds=0.1)
         breaker.record_failure()
         breaker.record_failure()
-        time.sleep(0.2)
-        breaker.is_request_allowed()  # HALF_OPEN
+        circuit_clock.steady += 0.2
+        circuit_clock.wall += 0.2
+        assert breaker.is_request_allowed() is True  # HALF_OPEN
         breaker.record_failure()
         assert breaker.state == CircuitState.OPEN
+
+    @pytest.mark.parametrize("wall_shift", [-3600.0, 3600.0])
+    def test_wall_clock_drift_does_not_change_recovery_deadline(
+        self, circuit_clock, wall_shift
+    ):
+        breaker = CircuitBreaker(
+            failure_threshold=1, success_threshold=1, timeout_seconds=10.0
+        )
+        recorded_epoch = circuit_clock.wall
+        breaker.record_failure()
+        assert breaker.last_failure_time == recorded_epoch
+        assert breaker.get_stats()["last_failure_time"] == recorded_epoch
+
+        circuit_clock.wall += wall_shift
+        circuit_clock.steady += 9.0
+        assert breaker.is_request_allowed() is False
+        assert breaker.get_state() == CircuitState.OPEN
+        circuit_clock.steady += 1.0
+        assert breaker.is_request_allowed() is True
+        assert breaker.get_state() == CircuitState.HALF_OPEN
+        breaker.record_success()
+        assert breaker.get_state() == CircuitState.CLOSED
+        assert breaker.get_stats()["last_failure_time"] == recorded_epoch
+
+    def test_half_open_failure_restarts_monotonic_timeout(self, circuit_clock):
+        breaker = CircuitBreaker(failure_threshold=1, timeout_seconds=10.0)
+        breaker.record_failure()
+        circuit_clock.steady += 10.0
+        assert breaker.is_request_allowed() is True
+
+        circuit_clock.wall -= 3600.0
+        breaker.record_failure()
+        assert breaker.get_state() == CircuitState.OPEN
+        assert breaker.get_stats()["last_failure_time"] == circuit_clock.wall
+        circuit_clock.steady += 9.0
+        assert breaker.is_request_allowed() is False
+        circuit_clock.steady += 1.0
+        assert breaker.is_request_allowed() is True
 
     def test_circuit_breaker_reset(self):
         """Test resetowania circuit breakera."""
@@ -155,6 +214,8 @@ class TestCircuitBreaker:
         breaker.reset()
         assert breaker.state == CircuitState.CLOSED
         assert breaker.failure_count == 0
+        assert breaker.last_failure_time is None
+        assert breaker.get_stats()["last_failure_time"] is None
 
     def test_circuit_breaker_get_stats(self):
         """Test zwracania statystyk."""

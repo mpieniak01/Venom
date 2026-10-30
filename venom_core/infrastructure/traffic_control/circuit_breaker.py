@@ -40,7 +40,11 @@ class CircuitBreaker:
     state: CircuitState = field(default=CircuitState.CLOSED, init=False)
     failure_count: int = field(default=0, init=False)
     success_count: int = field(default=0, init=False)
+    # Public epoch timestamp is retained for observability, not timeout math.
     last_failure_time: Optional[float] = field(default=None, init=False)
+    _last_failure_monotonic: Optional[float] = field(
+        default=None, init=False, repr=False
+    )
     half_open_calls: int = field(default=0, init=False)
     _lock: threading.Lock = field(
         default_factory=threading.Lock, init=False, repr=False
@@ -59,10 +63,10 @@ class CircuitBreaker:
 
             if self.state == CircuitState.OPEN:
                 # Sprawdź czy timeout minął
-                if self.last_failure_time is None:
+                if self._last_failure_monotonic is None:
                     return False
 
-                elapsed = time.time() - self.last_failure_time
+                elapsed = time.monotonic() - self._last_failure_monotonic
                 if elapsed >= self.timeout_seconds:
                     # Przejdź do HALF_OPEN
                     self.state = CircuitState.HALF_OPEN
@@ -99,6 +103,7 @@ class CircuitBreaker:
         """Rejestruje nieudany request."""
         with self._lock:
             self.last_failure_time = time.time()
+            self._last_failure_monotonic = time.monotonic()
 
             if self.state == CircuitState.HALF_OPEN:
                 # Failure podczas testu recovery -> wróć do OPEN
@@ -120,6 +125,7 @@ class CircuitBreaker:
             self.success_count = 0
             self.half_open_calls = 0
             self.last_failure_time = None
+            self._last_failure_monotonic = None
 
     def get_state(self) -> CircuitState:
         """Zwraca aktualny stan circuit breakera."""

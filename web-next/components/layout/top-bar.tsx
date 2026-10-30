@@ -1,29 +1,39 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
+import dynamic from "next/dynamic";
 import { Sparkles, BellRing, Cpu, Command as CommandIcon, Rows, ServerCog } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { CommandCenter } from "./command-center";
-import { AlertCenter } from "./alert-center";
 import { MobileNav } from "./mobile-nav";
 import { StatusPills, type StatusPillsInitialData } from "./status-pills";
-import { QuickActions } from "./quick-actions";
-import { CommandPalette } from "./command-palette";
-import { NotificationDrawer } from "./notification-drawer";
-import { ServiceStatusDrawer } from "./service-status-drawer";
 import { LanguageSwitcher } from "./language-switcher";
 import { ThemeSwitcher } from "./theme-switcher";
 import { ModelIntrospectionMechanismControl } from "@/components/inspector/model-introspection-mechanism";
 import { useTranslation } from "@/lib/i18n";
 
+const CommandCenter = dynamic(() => import("./command-center").then((module) => module.CommandCenter));
+const AlertCenter = dynamic(() => import("./alert-center").then((module) => module.AlertCenter));
+const QuickActions = dynamic(() => import("./quick-actions").then((module) => module.QuickActions));
+const CommandPalette = dynamic(() => import("./command-palette").then((module) => module.CommandPalette));
+const NotificationDrawer = dynamic(() => import("./notification-drawer").then((module) => module.NotificationDrawer));
+const ServiceStatusDrawer = dynamic(() => import("./service-status-drawer").then((module) => module.ServiceStatusDrawer));
+
+function useDeferredPanel() {
+  const [state, setState] = useState({ open: false, mounted: false });
+  const onOpenChange = useCallback((open: boolean) => {
+    setState((previous) => ({ open, mounted: previous.mounted || open }));
+  }, []);
+  return [state.open, state.mounted, onOpenChange] as const;
+}
+
 export function TopBar({ initialStatusData }: Readonly<{ initialStatusData?: StatusPillsInitialData }>) {
-  const [commandOpen, setCommandOpen] = useState(false);
-  const [alertsOpen, setAlertsOpen] = useState(false);
-  const [actionsOpen, setActionsOpen] = useState(false);
-  const [paletteOpen, setPaletteOpen] = useState(false);
-  const [notificationsOpen, setNotificationsOpen] = useState(false);
-  const [servicesOpen, setServicesOpen] = useState(false);
+  const [commandOpen, commandMounted, setCommandOpen] = useDeferredPanel();
+  const [alertsOpen, alertsMounted, setAlertsOpen] = useDeferredPanel();
+  const [actionsOpen, actionsMounted, setActionsOpen] = useDeferredPanel();
+  const [paletteOpen, paletteMounted, setPaletteOpen] = useDeferredPanel();
+  const [notificationsOpen, notificationsMounted, setNotificationsOpen] = useDeferredPanel();
+  const [servicesOpen, servicesMounted, setServicesOpen] = useDeferredPanel();
   const t = useTranslation();
 
   useEffect(() => {
@@ -35,7 +45,7 @@ export function TopBar({ initialStatusData }: Readonly<{ initialStatusData?: Sta
     };
     globalThis.window.addEventListener("keydown", handler);
     return () => globalThis.window.removeEventListener("keydown", handler);
-  }, []);
+  }, [setPaletteOpen]);
 
   return (
     <div className="glass-panel allow-overflow sticky top-0 z-30 border-b border-[color:var(--ui-border)] bg-[color:var(--topbar-bg)] px-4 py-4 backdrop-blur-2xl sm:px-6">
@@ -95,16 +105,16 @@ export function TopBar({ initialStatusData }: Readonly<{ initialStatusData?: Sta
           <LanguageSwitcher />
         </div>
       </div>
-      <CommandCenter open={commandOpen} onOpenChange={setCommandOpen} />
-      <AlertCenter open={alertsOpen} onOpenChange={setAlertsOpen} />
-      <QuickActions open={actionsOpen} onOpenChange={setActionsOpen} />
-      <CommandPalette
+      {commandMounted && <CommandCenter open={commandOpen} onOpenChange={setCommandOpen} />}
+      {alertsMounted && <AlertCenter open={alertsOpen} onOpenChange={setAlertsOpen} />}
+      {actionsMounted && <QuickActions open={actionsOpen} onOpenChange={setActionsOpen} />}
+      {paletteMounted && <CommandPalette
         open={paletteOpen}
         onOpenChange={setPaletteOpen}
         onOpenQuickActions={() => setActionsOpen(true)}
-      />
-      <NotificationDrawer open={notificationsOpen} onOpenChange={setNotificationsOpen} />
-      <ServiceStatusDrawer open={servicesOpen} onOpenChange={setServicesOpen} />
+      />}
+      {notificationsMounted && <NotificationDrawer open={notificationsOpen} onOpenChange={setNotificationsOpen} />}
+      {servicesMounted && <ServiceStatusDrawer open={servicesOpen} onOpenChange={setServicesOpen} />}
     </div>
   );
 }

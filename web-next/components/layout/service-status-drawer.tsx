@@ -21,7 +21,7 @@ type ServiceStatusDrawerProps = Readonly<{
 }>;
 
 export function ServiceStatusDrawer({ open, onOpenChange }: ServiceStatusDrawerProps) {
-  const { data: services } = useServiceStatus(20000);
+  const { data: services } = useServiceStatus(20000, open);
   const serviceEntries = useMemo(() => services ?? [], [services]);
   const servicesOffline = !serviceEntries || serviceEntries.length === 0;
   const t = useTranslation();

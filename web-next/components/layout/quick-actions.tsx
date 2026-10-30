@@ -41,8 +41,8 @@ export function QuickActions({ open, onOpenChange }: QuickActionsProps) {
     loading: queueLoading,
     refreshing: queueRefreshing,
     error: queueError,
-  } = useQueueStatus();
-  const { refresh: refreshTasks } = useTasks();
+  } = useQueueStatus(5000, open);
+  const { refresh: refreshTasks } = useTasks(5000, open);
   const [message, setMessage] = useState<string | null>(null);
   const [running, setRunning] = useState<string | null>(null);
   const [queueRefreshPending, setQueueRefreshPending] = useState(0);

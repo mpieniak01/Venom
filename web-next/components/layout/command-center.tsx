@@ -24,10 +24,10 @@ type CommandCenterProps = Readonly<{
 
 export function CommandCenter({ open, onOpenChange }: CommandCenterProps) {
   const router = useRouter();
-  const { data: queue } = useQueueStatus();
-  const { data: tasks } = useTasks();
-  const { data: metrics } = useMetrics();
-  const { data: services } = useServiceStatus();
+  const { data: queue } = useQueueStatus(5000, open);
+  const { data: tasks } = useTasks(5000, open);
+  const { data: metrics } = useMetrics(5000, open);
+  const { data: services } = useServiceStatus(15000, open);
   const t = useTranslation();
 
   const successRateRaw = metrics?.tasks?.success_rate;

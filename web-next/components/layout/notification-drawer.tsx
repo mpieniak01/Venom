@@ -14,7 +14,7 @@ type NotificationDrawerProps = Readonly<{
 }>;
 
 export function NotificationDrawer({ open, onOpenChange }: NotificationDrawerProps) {
-  const { entries, connected } = useTelemetryFeed(100);
+  const { entries, connected } = useTelemetryFeed(100, open);
   const t = useTranslation();
 
   const notifications = useMemo(

@@ -23,7 +23,7 @@ type AlertCenterProps = Readonly<{
 }>;
 
 export function AlertCenter({ open, onOpenChange }: AlertCenterProps) {
-  const { entries, connected } = useTelemetryFeed(150);
+  const { entries, connected } = useTelemetryFeed(150, open);
   const t = useTranslation();
   const filterOptions = useMemo(
     () => [

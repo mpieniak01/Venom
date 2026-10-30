@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { VenomWebSocket } from "@/lib/ws-client";
 import { createBrowserUuid } from "@/lib/optional-modules/transport";
 
@@ -8,12 +8,12 @@ type TelemetryEntry = {
   payload: unknown;
 };
 
-export function useTelemetryFeed(maxEntries = 100) {
+export function useTelemetryFeed(maxEntries = 100, enabled = true) {
   const [connected, setConnected] = useState(false);
   const [entries, setEntries] = useState<TelemetryEntry[]>([]);
-  const wsRef = useRef<VenomWebSocket | null>(null);
 
   useEffect(() => {
+    if (!enabled) return;
     const socket = new VenomWebSocket("/ws/events", (data) => {
       setEntries((prev) => {
         const next = [
@@ -28,10 +28,9 @@ export function useTelemetryFeed(maxEntries = 100) {
       });
     }, setConnected);
 
-    wsRef.current = socket;
     socket.connect();
     return () => socket.disconnect();
-  }, [maxEntries]);
+  }, [maxEntries, enabled]);
 
-  return { connected, entries };
+  return { connected: enabled && connected, entries };
 }

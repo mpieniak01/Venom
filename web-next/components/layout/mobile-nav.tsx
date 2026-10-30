@@ -40,11 +40,11 @@ export function MobileNav() {
   const [costLoading, setCostLoading] = useState(false);
   const [autonomyLoading, setAutonomyLoading] = useState(false);
 
-  const { data: queue } = useQueueStatus(10000);
-  const { data: metrics } = useMetrics(10000);
-  const { connected, entries } = useTelemetryFeed();
-  const { data: costMode, refresh: refreshCost } = useCostMode(15000);
-  const { data: autonomy, refresh: refreshAutonomy } = useAutonomyLevel(20000);
+  const { data: queue } = useQueueStatus(10000, open);
+  const { data: metrics } = useMetrics(10000, open);
+  const { connected, entries } = useTelemetryFeed(100, open);
+  const { data: costMode, refresh: refreshCost } = useCostMode(15000, open);
+  const { data: autonomy, refresh: refreshAutonomy } = useAutonomyLevel(20000, open);
   const t = useTranslation();
   const pathname = usePathname();
   const { language } = useLanguage();

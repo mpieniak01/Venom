@@ -66,6 +66,7 @@ export class VenomWebSocket {
       this.ws.close();
     }
     this.ws = null;
+    this.onStatus?.(false);
   }
 
   private scheduleReconnect() {

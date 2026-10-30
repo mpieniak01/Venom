@@ -135,6 +135,9 @@ describe("closed panel telemetry transport", () => {
     assert.equal(timeouts.mock.calls.length, beforeClose);
     hook.rerender({ enabled: true });
     assert.equal(sockets.length, 2);
+    assert.equal(hook.result.current.connected, false);
+    act(() => { sockets[1].onopen?.(); });
+    assert.equal(hook.result.current.connected, true);
     hook.unmount();
     assert.equal(sockets[1].closed, true);
   });

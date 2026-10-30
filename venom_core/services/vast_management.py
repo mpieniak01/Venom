@@ -17,8 +17,17 @@ from uuid import uuid4
 import httpx
 
 from venom_core.infrastructure.providers.vast.client import VastClient, VastError
-from venom_core.infrastructure.providers.vast.models import OfferAssessment, now
+from venom_core.infrastructure.providers.vast.models import (
+    EnvironmentRecord,
+    OfferAssessment,
+    amount,
+    now,
+)
 from venom_core.services import vast_management_config as configuration
+from venom_core.services.vast_environments.account_billing import (
+    AccountBilling,
+    instance_summary,
+)
 from venom_core.services.vast_environments.lifecycle import Environments
 from venom_core.services.vast_environments.operations import workload
 from venom_core.services.vast_environments.store import Journal
@@ -36,6 +45,31 @@ ATTACH_RETRY_ERRORS = {
 
 ACTIVE = {"queued", "creating", "waiting", "provisioning", "connecting"}
 ERRORS = (VastError, OSError, ValueError, httpx.HTTPError)
+
+
+def _billing_summary(record: EnvironmentRecord) -> dict[str, Any]:
+    costs = record.reports.get("costs")
+    if isinstance(costs, dict):
+        reported = costs.get("provider_reported")
+        billed = (
+            amount(reported.get("usd"))
+            if isinstance(reported, dict) and costs.get("currency") == "USD"
+            else None
+        )
+        if billed is not None and isinstance(reported, dict):
+            unknown = reported.get("unknown_amounts", 0)
+            status = "reported" if unknown == 0 else "partial"
+            return {"billing_status": status, "billed_usd": str(billed)}
+        if costs.get("status") == "unavailable":
+            return {"billing_status": "unavailable", "billed_usd": None}
+    status = "unverified"
+    if (
+        record.state == "planned"
+        and record.submitted_at is None
+        and record.instance_id is None
+    ):
+        status = "not_applicable"
+    return {"billing_status": status, "billed_usd": None}
 
 
 def _selectable_offers(rows: list[OfferAssessment]) -> list[OfferAssessment]:
@@ -79,6 +113,10 @@ class VastManagement:
         self.owner = uuid4().hex
         self._guard = threading.RLock()
 
+    @property
+    def billing(self) -> AccountBilling:
+        return AccountBilling(self.journal, self.settings.VAST_API_KEY)
+
     @staticmethod
     def _launch(action: Any, plan_id: str) -> None:
         threading.Thread(
@@ -89,10 +127,14 @@ class VastManagement:
         ).start()
 
     @contextmanager
-    def _service(self, *, check_enabled: bool = True) -> Iterator[Environments]:
+    def _service(
+        self, *, check_enabled: bool = True, api_key: Any = None
+    ) -> Iterator[Environments]:
         if check_enabled and not self.is_enabled():
             raise VastError(MANAGEMENT_DISABLED)
-        client = self.client_factory(self.settings.VAST_API_KEY)
+        client = self.client_factory(
+            self.settings.VAST_API_KEY if api_key is None else api_key
+        )
         try:
             yield Environments(client, self.journal)
         finally:
@@ -113,7 +155,7 @@ class VastManagement:
             job = {**self._job(plan_id), **values, "updated_at": now().isoformat()}
             self.journal.write(self.journal.path(plan_id, MANAGEMENT_SUFFIX), job)
 
-    def row(self, plan_id: str) -> dict[str, Any]:
+    def row(self, plan_id: str, billing: dict | None = None) -> dict[str, Any]:
         plan, record = self.journal.plan(plan_id), self.journal.record(plan_id)
         job = self._job(plan_id)
         phase = job.get("phase", record.state)
@@ -148,19 +190,26 @@ class VastManagement:
             "expires_at": plan.expires_at.isoformat(),
             "connected": connected,
             "error": error,
+            **_billing_summary(record),
+            **instance_summary(
+                billing if billing is not None else self.billing.snapshot(),
+                record.instance_id,
+            ),
             "billing_possible": bool(
                 record.submitted_at and record.state != "destroyed"
             ),
         }
 
-    def _overview_entry(self, plan_id: str, *, historical: bool) -> dict[str, Any]:
+    def _overview_entry(
+        self, plan_id: str, *, historical: bool, billing: dict
+    ) -> dict[str, Any]:
         try:
             if not historical and self._job(plan_id).get("phase") in {
                 "stop_requested",
                 "destroy_requested",
             }:
                 return self.refresh(plan_id)
-            entry = self.row(plan_id)
+            entry = self.row(plan_id, billing)
             if historical:
                 entry["phase"] = entry["state"]
             return entry
@@ -178,6 +227,8 @@ class VastManagement:
                 "expires_at": None,
                 "connected": False,
                 "error": "vast.management_journal_invalid",
+                "billing_status": "unverified",
+                "billed_usd": None,
                 "billing_possible": True,
             }
 
@@ -196,6 +247,7 @@ class VastManagement:
             reason = "vast.management_profile_invalid"
             if isinstance(error, VastError):
                 reason = error.code
+        billing = self.billing.snapshot()
         rows: list[dict[str, Any]] = []
         history: list[dict[str, Any]] = []
         paths = sorted(
@@ -210,7 +262,9 @@ class VastManagement:
             ).exists()
             destination = history if historical else rows
             plan_id = path.name.removesuffix(PLAN_SUFFIX)
-            destination.append(self._overview_entry(plan_id, historical=historical))
+            destination.append(
+                self._overview_entry(plan_id, historical=historical, billing=billing)
+            )
         return {
             "configured": reason is None,
             "enabled": self.is_enabled(),
@@ -219,7 +273,17 @@ class VastManagement:
             "reason": reason,
             "environments": rows,
             "history": history,
+            "billing": {
+                key: value for key, value in billing.items() if key != "instances"
+            },
         }
+
+    def sync_billing(self, reconcile: bool = False) -> dict[str, Any]:
+        key = self.settings.VAST_API_KEY
+        billing = AccountBilling(self.journal, key)
+        with self._service(api_key=key) as service:
+            result = billing.sync(service.client, reconcile=reconcile)
+        return {key: value for key, value in result.items() if key != "instances"}
 
     def search(self, duration: int) -> dict[str, Any]:
         profile = configuration.profile(self.settings, duration)

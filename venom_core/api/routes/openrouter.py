@@ -1,10 +1,12 @@
 """Metadata-only OpenRouter administration and admitted selection."""
 
+from datetime import date
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
+from venom_core.api.operator_origin import require_operator_origin
 from venom_core.api.routes.system_config import require_localhost_request
 from venom_core.api.schemas.llm_simple import SimpleChatRequest
 from venom_core.services import openrouter_runtime as runtime
@@ -107,3 +109,36 @@ async def disconnect_model(request: ModelConnectionRequest):
     from venom_core.services import openrouter_model_catalog as catalog
 
     return catalog.disconnect(request.model_id)
+
+
+@router.get("/billing", responses={422: {"description": "Invalid billing date window"}})
+def billing(
+    period: Literal["7d", "30d", "month", "all"] = "30d",
+    from_utc: date | None = None,
+    to_utc: date | None = None,
+):
+    from venom_core.services.openrouter_billing import BillingError, OpenRouterBilling
+
+    try:
+        return OpenRouterBilling().view(period, from_utc, to_utc)
+    except BillingError:
+        raise HTTPException(422, "openrouter_invalid_billing_window") from None
+
+
+def billing_operator(request: Request) -> None:
+    require_localhost_request(request)
+    require_operator_origin(request, "openrouter_billing_local_operator_required")
+
+
+@router.post(
+    "/billing/sync",
+    dependencies=[Depends(billing_operator)],
+    responses={403: {"description": "Billing unavailable or operator access required"}},
+)
+def sync_billing():
+    from venom_core.services.openrouter_billing import OpenRouterBilling
+
+    if not runtime.is_enabled() or not runtime.cloud_allowed():
+        raise HTTPException(403, "openrouter_billing_disabled")
+    OpenRouterBilling().sync()
+    return {"ok": True}

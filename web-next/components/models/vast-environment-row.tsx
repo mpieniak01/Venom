@@ -1,3 +1,4 @@
+import { VastBillingStatus } from "./vast-billing-status";
 import { useState } from "react";
 import { formatVastUsd } from "@/lib/vast-price";
 import { Badge } from "@/components/ui/badge";
@@ -24,7 +25,7 @@ export function VastEnvironmentRow({ row, pending, action, t }: Readonly<Props>)
       <div className="flex flex-wrap gap-2"><Badge tone={row.phase === "error" || row.phase === "interrupted" ? "danger" : "neutral"}>{text("phases." + phase)}</Badge>{row.connected && <Badge tone="success">{text("connected")}</Badge>}</div>
     </div>
     <div className="grid gap-3 text-xs text-[color:var(--ui-muted)] sm:grid-cols-3"><span>{text("instance")}: {row.instance_id ?? text("unknown")}</span><span>{text("hourly")}: {formatVastUsd(row.hourly_usd, text("unknown"))}</span><span>{text("estimate")}: {formatVastUsd(row.total_usd, text("unknown"))}</span></div>
-    {row.billing_possible && <p className="text-xs text-amber-300">{text("billingWarning")}</p>}
+    <div className="flex flex-wrap items-center gap-2 text-xs"><span>{text("historyBilling")}:</span><VastBillingStatus row={row} t={t} /></div>
     {row.connected && <p className="text-sm">{text("chatReady")}</p>}
     {row.error && <p role="alert" className="text-xs text-rose-400">{text("operationError")}: <code>{row.error}</code></p>}
     <div className="flex flex-wrap gap-2">

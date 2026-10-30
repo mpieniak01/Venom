@@ -629,3 +629,119 @@ def test_search_qualifies_candidates_beyond_first_provider_hundred(f):
         call.kwargs["limit"] == 1000 for call in f.svc.client.offers.call_args_list
     )
     f.svc.client.create.assert_not_called()
+
+
+@pytest.mark.parametrize("usd", ["0", "0.123456789"])
+def test_billing_displays_only_recorded_provider_amounts(f, usd):
+    record = f.svc.journal.record(f.p.plan_id)
+    record.reports["costs"] = {
+        "currency": "USD",
+        "status": "provisional",
+        "provider_reported": {"usd": usd},
+        "estimate": {"usd": "999"},
+    }
+    f.svc.journal.save_record(record)
+    result = f.m.row(f.p.plan_id)
+    assert result["billing_status"] == "reported"
+    assert result["billed_usd"] == usd
+    f.m.client_factory.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "state,expected",
+    [
+        ("planned", "not_applicable"),
+        ("destroyed", "unverified"),
+        ("failed", "unverified"),
+    ],
+)
+def test_missing_billing_is_a_status_and_never_a_zero_amount(f, state, expected):
+    record = f.svc.journal.record(f.p.plan_id)
+    record.state = state
+    f.svc.journal.save_record(record)
+    result = f.m.row(f.p.plan_id)
+    assert result["billing_status"] == expected
+    assert result["billed_usd"] is None
+    f.m.client_factory.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "report",
+    [
+        {
+            "currency": "USD",
+            "status": "unavailable",
+            "provider_reported": {"usd": None},
+        },
+        {
+            "currency": "USD",
+            "status": "unavailable",
+            "provider_reported": {"usd": "NaN"},
+        },
+        {
+            "currency": "USD",
+            "status": "unavailable",
+            "provider_reported": {"usd": "-1"},
+        },
+    ],
+)
+def test_unavailable_billing_ignores_estimates_and_invalid_amounts(f, report):
+    record = f.svc.journal.record(f.p.plan_id)
+    record.reports["costs"] = {**report, "estimate": {"usd": "0.5"}}
+    f.svc.journal.save_record(record)
+    result = f.m.row(f.p.plan_id)
+    assert result["billing_status"] == "unavailable"
+    assert result["billed_usd"] is None
+
+
+def test_api_billing_sync_is_cached_offline_and_links_history(api, f):
+    root = "/api/v1/vast/environments"
+    record = f.svc.journal.record(f.p.plan_id)
+    record.instance_id, record.state, record.submitted_at = 88, "destroyed", now()
+    f.svc.journal.save_record(record)
+    f.svc.client.account.return_value = {"credit": "8.9", "balance": 0}
+    f.svc.client.charges.return_value = [{"source": "instance-88", "amount": "0.01"}]
+    assert api.post(root + "/billing/sync", json={"unknown": True}).status_code == 422
+    response = api.post(root + "/billing/sync", json={})
+    assert response.status_code == 200
+    assert response.json()["credit_usd"] == "8.9"
+    assert "instances" not in response.json()
+    count = f.svc.client.charges.call_count
+    result = api.get(root).json()
+    assert result["environments"][0]["billed_usd"] == "0.31"
+    assert result["billing"]["total_usd"] == "0.31"
+    assert f.svc.client.charges.call_count == count
+    assert api.post(root + "/billing/sync", json={}).status_code == 200
+    assert f.svc.client.charges.call_count == count
+    assert api.post(root + "/billing/sync", json={"reconcile": True}).status_code == 200
+    assert f.svc.client.charges.call_count == count * 2
+    f.m.is_enabled = lambda: False
+    assert api.post(root + "/billing/sync", json={}).status_code == 503
+    assert api.get(root).json()["billing"]["total_usd"] == "0.31"
+    f.svc.client.create.assert_not_called()
+
+
+def test_legacy_billing_marks_incomplete_provider_amount_as_partial(f):
+    record = f.svc.journal.record(f.p.plan_id)
+    record.reports["costs"] = {
+        "currency": "USD",
+        "status": "provisional",
+        "provider_reported": {"usd": "0.25", "unknown_amounts": 1},
+    }
+    f.svc.journal.save_record(record)
+    assert f.m.row(f.p.plan_id)["billing_status"] == "partial"
+    assert f.m.row(f.p.plan_id)["billed_usd"] == "0.25"
+
+
+def test_billing_key_rotation_isolates_reads_and_provider_writes(f):
+    f.svc.client.account.return_value = {"credit": "11"}
+    f.svc.client.charges.return_value = []
+    first_key = f.m.settings.VAST_API_KEY
+    assert f.m.sync_billing()["credit_usd"] == "11"
+    f.m.settings.VAST_API_KEY = SecretStr("replacement-fake")
+    assert f.m.overview()["billing"]["credit_usd"] is None
+    f.svc.client.account.return_value = {"credit": "22"}
+    assert f.m.sync_billing()["credit_usd"] == "22"
+    f.m.client_factory.assert_called_with(f.m.settings.VAST_API_KEY)
+    f.m.settings.VAST_API_KEY = first_key
+    assert f.m.overview()["billing"]["credit_usd"] == "11"

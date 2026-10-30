@@ -74,8 +74,8 @@ never supplies executable recipes, filesystem paths, credentials or SSH options.
 5. In chat select **VAST · Ollama**, then the installed model. Attachment does not
    change the active provider or model; normal runtime selection remains explicit.
 6. Stop or destroy from the environment row. Stopped hosts may still incur storage
-   charges. The panel keeps possible billing visible until provider reconciliation
-   confirms destruction. Setup currently completes or fails before cleanup actions
+   charges. The billing column shows a recorded provider amount or a compact
+   status; destruction does not establish that earlier charges were zero. Setup currently completes or fails before cleanup actions
    become available; interrupted, never-submitted orders can be cancelled safely.
 
 Cost caps validate the rental quote, including the declared transfer allowance;
@@ -89,3 +89,68 @@ unavailable external API never blocks Venom startup.
 
 This workflow does not invoke `ready`, benchmarks or `trial-zero`: those can generate
 model output. Real Test Zero remains a separate manual operator-request-only action.
+
+
+### Billing statuses in VAST
+
+The overview reads the provider charge report already saved by the existing
+VAST CLI `costs` operation. It does not query billing when opening or refreshing
+the page. `Reported` displays the saved USD amount, including an explicit zero;
+`Unavailable` means the saved billing query was unavailable, `Unverified` means
+there is no usable provider amount, and `Not applicable` identifies a plan that
+has never been submitted. Quotes and estimates are never displayed as charges.
+
+
+### Persistent VAST account billing
+
+The VAST screen automatically synchronizes account credit and provider charges while
+open (five-minute minimum between ordinary synchronizations). Its GET overview is
+cache-only. Data is private in `.venom_runtime/vast/billing/`, isolated by a hash of
+the configured credential, protected by an inter-process lock and atomic writes.
+No rental, generation or test zero is triggered by billing.
+
+Daily UTC snapshots are replaced, never appended or added twice. Initial backfill
+covers at least 30 days and extends to the oldest retained local submission. The
+start remains anchored to retained days as the history grows. Up to
+31 days are fetched per synchronization; longer histories continue on subsequent
+refreshes. The panel labels the exact covered period and incomplete backfill.
+Only today, yesterday, missing days and invalid amounts are fetched routinely;
+older successful snapshots are retained across restarts. “Reconcile history again”
+explicitly schedules an archive refresh, also continued in bounded batches.
+
+Charges are linked by `instance-<ID>` independently of whether the instance still
+exists. Totals use provider parent amounts, excluding child component duplication.
+Account totals include resources outside local history; managed and unattributed
+amounts are shown separately. Missing data is not presented as a zero or as a final
+settlement. Errors preserve last-known values with stale/partial status. VAST does
+not document a finalization marker; retained daily data is not proof of finality.
+
+
+### OpenRouter aggregate account billing
+
+The OpenRouter tab shows account credit (`total_credits - total_usage`), lifetime
+account usage and separate chat-key limits/usage. Values from `/key` are key-scoped;
+they are not the account balance. Model spending is an account-wide aggregate,
+including models no longer connected to chat. No generation records are fetched.
+
+The optional `OPENROUTER_MANAGEMENT_API_KEY` or private
+`OPENROUTER_MANAGEMENT_CREDENTIAL_FILE` enables analytics. These credentials are
+used only for account/analytics reads, never for chat. Without analytics permission,
+retain available credit/key data and show `management_required` for model totals.
+Do not provision another credential or run test zero automatically.
+
+Private SQLite snapshots in `.venom_runtime/openrouter/billing.sqlite` are isolated
+by credential pair. Atomic writes and expiring owner leases prevent duplicate
+synchronization across workers on Linux and Windows. Opening the screen synchronizes
+account/key data at most every five minutes; model aggregates and permission denials
+are cached for an hour. Disabled/cloud-blocked providers show cached data only.
+
+Analytics metrics/dimensions are discovered before querying daily `total_usage` and
+`request_count` by model. The first refresh covers the last 30 days plus today;
+retained days extend the history over time. Provider-returned daily aggregates replace
+overlapping days rather than being added repeatedly. An incomplete/truncated response
+never replaces a valid snapshot. The legacy activity fallback covers completed UTC
+days only. Filters select 7/30 days, current month, retained history or custom UTC dates;
+missing days and stale snapshots are explicitly marked. Custom filters do not claim
+to recover data predating the retained history. Usage follows the provider metric;
+BYOK usage may differ from deductions from OpenRouter credits.

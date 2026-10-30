@@ -255,6 +255,7 @@ tests/test_onnx_gpu_bridge.py
 tests/test_onnx_llm_client.py
 tests/test_onnx_runtime_cleanup.py
 tests/test_openai_semantic_kernel_compat.py
+tests/test_openrouter_billing.py
 tests/test_openrouter_model_catalog.py
 tests/test_openrouter_runtime.py
 tests/test_openrouter_test_zero.py
@@ -369,6 +370,7 @@ tests/test_transport_access.py
 tests/test_transport_identity.py
 tests/test_update_sonar_scope_group.py
 tests/test_ux_analyst.py
+tests/test_vast_account_billing.py
 tests/test_vast_chat_cli.py
 tests/test_vast_chat_connection.py
 tests/test_vast_chat_runtime.py

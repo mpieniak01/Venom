@@ -1,7 +1,29 @@
 export const models = {
   vast: {
     "historyBillingHint": "Find the instance by its ID in the VAST console and release it there if no longer needed. If the ID is unknown, check the account's instance list.",
-    "historyBilling": "Charges",
+    "historyBilling": "Billing",
+    "accountBilling": {
+    "title": "VAST account and billing",
+    "credit": "Available credit",
+    "spent": "Spend in period",
+    "partialSpent": "Reported spend (incomplete)",
+    "managed": "Instances in Venom history",
+    "other": "Other / unattributed",
+    "period": "Period",
+    "updated": "Account checked",
+    "progress": "Days retrieved",
+    "working": "Fetching billing…",
+    "refresh": "Refresh billing",
+    "reconcile": "Reconcile history again",
+    "states": {
+        "empty": "Not retrieved",
+        "ready": "Retrieved",
+        "partial": "Partial data",
+        "stale": "Stale data",
+        "unavailable": "Unavailable"
+    }
+},
+    "billingStates": {"partial": "Partial", "reported": "Reported", "unverified": "Unverified", "unavailable": "Unavailable", "not_applicable": "Not applicable"},
     "history": "Launch attempt history",
     "historyHint": "Earlier CLI attempts. The recorded state is historical and does not confirm current instance availability.",
     "noHistory": "No recorded attempts.",
@@ -82,6 +104,66 @@ export const models = {
     }
 },
   openrouter: {
+    table: {
+    "model": "Model",
+    "context": "Context",
+    "input": "Input · USD / 1M",
+    "output": "Output · USD / 1M",
+    "tools": "Tools",
+    "status": "Status",
+    "actions": "Actions",
+    "details": "Details",
+    "yes": "Yes",
+    "no": "No",
+    "notConnected": "Not connected",
+    "scrollLeft": "Scroll table left",
+    "scrollRight": "Scroll table right"
+},
+    billing: {
+    "title": "OpenRouter account and billing",
+    "available": "Available account funds",
+    "total": "Total account spend",
+    "keyRemaining": "Chat key remaining limit",
+    "keyMonth": "Key usage this month",
+    "unlimited": "No key limit",
+    "refresh": "Refresh billing",
+    "working": "Fetching billing…",
+    "requestError": "Could not refresh billing.",
+    "disabled": "API disabled or access blocked",
+    "stale": "Stale data",
+    "updated": "Account checked",
+    "account": "Account",
+    "key": "Chat key",
+    "period": "Period",
+    "from": "From (UTC)",
+    "to": "To (UTC)",
+    "invalidWindow": "End date must be on or after the start date.",
+    "models": "Spend by model",
+    "accountScope": "Whole account",
+    "partial": "Incomplete or stale data",
+    "periodTotal": "Reported usage",
+    "model": "Model",
+    "cost": "Reported cost",
+    "share": "Share",
+    "requests": "Requests",
+    "noUsage": "No usage in the retrieved period.",
+    "noData": "No model billing data.",
+    "modelsUpdated": "Models checked",
+    "periods": {
+        "7d": "Last 7 days",
+        "30d": "Last 30 days",
+        "month": "Current month",
+        "all": "All retained history"
+    },
+    "errors": {
+        "management_required": "Analytics requires a management key.",
+        "missing_credentials": "Missing credentials.",
+        "provider_unavailable": "Provider data unavailable.",
+        "invalid_response": "Invalid provider data.",
+        "analytics_truncated": "Provider returned an incomplete summary.",
+        "cache_invalid": "Cached billing needs a refresh."
+    }
+},
     outputLimit: "Maximum output (tokens, MVP budget cap)",
   categories: {
   "programming": "Programming",

@@ -1,7 +1,29 @@
 export const models = {
   vast: {
     "historyBillingHint": "Sprawdź instancję po jej ID w konsoli VAST i zwolnij ją tam, jeśli nie jest potrzebna. Przy braku ID sprawdź listę instancji na koncie.",
-    "historyBilling": "Opłaty",
+    "historyBilling": "Rozliczenie",
+    "accountBilling": {
+    "title": "Konto i rozliczenia VAST",
+    "credit": "Dostępny kredyt",
+    "spent": "Wydatki w okresie",
+    "partialSpent": "Raportowane wydatki (niepełne)",
+    "managed": "Instancje w historii Venoma",
+    "other": "Pozostałe / nieprzypisane",
+    "period": "Okres",
+    "updated": "Sprawdzono konto",
+    "progress": "Pobrane dni",
+    "working": "Pobieranie rozliczeń…",
+    "refresh": "Odśwież rozliczenia",
+    "reconcile": "Uzgodnij historię ponownie",
+    "states": {
+        "empty": "Nie pobrano",
+        "ready": "Dane pobrane",
+        "partial": "Dane częściowe",
+        "stale": "Dane nieaktualne",
+        "unavailable": "Niedostępne"
+    }
+},
+    "billingStates": {"partial": "Częściowe", "reported": "Zaraportowane", "unverified": "Niezweryfikowane", "unavailable": "Niedostępne", "not_applicable": "Nie dotyczy"},
     "history": "Historia prób uruchomienia",
     "historyHint": "Zapis wcześniejszych prób CLI. Stan pochodzi z dziennika próby i nie potwierdza aktualnej dostępności instancji.",
     "noHistory": "Brak zapisanych prób.",
@@ -82,6 +104,66 @@ export const models = {
     }
 },
   openrouter: {
+    table: {
+    "model": "Model",
+    "context": "Kontekst",
+    "input": "Wejście · USD / 1 mln",
+    "output": "Wyjście · USD / 1 mln",
+    "tools": "Narzędzia",
+    "status": "Stan",
+    "actions": "Akcje",
+    "details": "Szczegóły",
+    "yes": "Tak",
+    "no": "Nie",
+    "notConnected": "Niepodłączony",
+    "scrollLeft": "Przewiń tabelę w lewo",
+    "scrollRight": "Przewiń tabelę w prawo"
+},
+    billing: {
+    "title": "Konto i rozliczenia OpenRouter",
+    "available": "Dostępne środki konta",
+    "total": "Wydano łącznie na koncie",
+    "keyRemaining": "Pozostały limit klucza czatu",
+    "keyMonth": "Zużycie klucza w miesiącu",
+    "unlimited": "Bez limitu klucza",
+    "refresh": "Odśwież rozliczenia",
+    "working": "Pobieranie rozliczeń…",
+    "requestError": "Nie udało się odświeżyć rozliczeń.",
+    "disabled": "API wyłączone lub dostęp zablokowany",
+    "stale": "Dane nieaktualne",
+    "updated": "Sprawdzono konto",
+    "account": "Konto",
+    "key": "Klucz czatu",
+    "period": "Okres",
+    "from": "Od (UTC)",
+    "to": "Do (UTC)",
+    "invalidWindow": "Data końcowa musi być późniejsza lub równa początkowej.",
+    "models": "Wydatki według modeli",
+    "accountScope": "Całe konto",
+    "partial": "Dane niepełne lub nieaktualne",
+    "periodTotal": "Raportowane użycie",
+    "model": "Model",
+    "cost": "Koszt raportowany",
+    "share": "Udział",
+    "requests": "Wywołania",
+    "noUsage": "Brak użycia w pobranym okresie.",
+    "noData": "Brak danych rozliczeniowych modeli.",
+    "modelsUpdated": "Sprawdzono modele",
+    "periods": {
+        "7d": "Ostatnie 7 dni",
+        "30d": "Ostatnie 30 dni",
+        "month": "Bieżący miesiąc",
+        "all": "Cała zapisana historia"
+    },
+    "errors": {
+        "management_required": "Analityka wymaga klucza zarządzającego.",
+        "missing_credentials": "Brak poświadczeń.",
+        "provider_unavailable": "Dane dostawcy niedostępne.",
+        "invalid_response": "Nieprawidłowe dane dostawcy.",
+        "analytics_truncated": "Dostawca zwrócił niepełne zestawienie.",
+        "cache_invalid": "Zapisane rozliczenia wymagają odświeżenia."
+    }
+},
     outputLimit: "Maks. odpowiedź (tokeny, limit budżetowy MVP)",
   categories: {
   "programming": "Programowanie",

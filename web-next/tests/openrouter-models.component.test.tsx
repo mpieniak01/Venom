@@ -2,7 +2,8 @@ import "./component-test-setup";
 import React from "react";
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
-import { act, cleanup, fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, renderHook, screen, waitFor, within } from "@testing-library/react";
+import { OpenRouterModelTable } from "../components/models/openrouter-model-table";
 import { OpenRouterModelsSection } from "../components/models/openrouter-models-section";
 import { useOpenRouterModels, type OpenRouterModel } from "../components/models/hooks/use-openrouter-models";
 import { en } from "../lib/i18n/locales/en";
@@ -46,8 +47,10 @@ describe("OpenRouter model connections", () => {
     assert.equal(calls.filter(path => path.includes("/search?")).length, 0);
     fireEvent.click(screen.getByRole("button", { name: "Search" }));
     await waitFor(() => assert.ok(screen.getByRole("button", { name: "Connect model: vendor/found" })));
-    assert.ok(screen.getByText("Output USD / 1M tokens: Unknown"));
-    assert.ok(screen.getByText("Input USD / 1M tokens: 0"));
+    const table = screen.getByRole("table", { name: en.models.openrouter.results });
+    const cells = within(within(table).getByRole("row", { name: /vendor\/found/ })).getAllByRole("cell");
+    assert.equal(cells[1].textContent, "0");
+    assert.equal(cells[2].textContent, "Unknown");
     assert.ok(calls.some(path => path.includes("q=found") && path.includes("purpose=chat")));
   });
 
@@ -147,7 +150,10 @@ for (const [language, locale] of Object.entries({ pl, en, de })) {
 it("shows the effective budget output cap for a connected model", async () => {
   globalThis.fetch = async () => Response.json({ models: [model("vendor/a", { connected: true, available: true, max_output_tokens: 256 })] });
   render(<OpenRouterModelsSection t={t} />);
-  await waitFor(() => assert.ok(screen.getByText("Maximum output (tokens, MVP budget cap): 256")));
+  await waitFor(() => assert.ok(screen.getByRole("button", { name: "Disconnect model: vendor/a" })));
+  fireEvent.click(screen.getByText("Details"));
+  assert.ok(screen.getByText(/Maximum output \(tokens, MVP budget cap\):/));
+  assert.ok(screen.getByText("256"));
 });
 
 
@@ -195,4 +201,97 @@ it("ignores an unfiltered response arriving after the free-only filter changes",
   await act(async () => { finish(Response.json(results([model("vendor/paid")]))); await pending; });
   assert.equal(result.current.results, null);
   assert.equal(result.current.loading, false);
+});
+
+
+describe("OpenRouter model comparison tables", () => {
+  it("aligns key data into rows, preserves unknown prices and keeps full details collapsed", () => {
+    const models = [
+      model("vendor/unknown", { description: "Full description of the model", context_length: null }),
+      model("vendor/free", { input_price_per_million: "0.000", output_price_per_million: "0" }),
+      model("vendor/paid", { input_price_per_million: "0.15", output_price_per_million: "0", supports_tools: false }),
+    ];
+    render(<OpenRouterModelTable models={models} connected={[]} pending={{}} manage={async () => {}} caption="Comparison" t={t} />);
+    const table = screen.getByRole("table", { name: "Comparison" });
+    assert.deepEqual(within(table).getAllByRole("columnheader").map(cell => cell.textContent), ["Model", "Context", "Input · USD / 1M", "Output · USD / 1M", "Tools", "Status", "Actions"]);
+    const unknown = within(table).getByRole("row", { name: /vendor\/unknown/ });
+    assert.equal(within(unknown).getAllByText("Unknown").length, 2);
+    assert.equal(within(unknown).queryByText("Free"), null);
+    const free = within(table).getByRole("row", { name: /vendor\/free/ });
+    assert.equal(within(free).queryByText("Free"), null);
+    assert.ok(within(free).getAllByText("0").every(cell => cell.classList.contains("text-emerald-400")));
+    assert.ok(within(free).getByText("Yes"));
+    const paid = within(table).getByRole("row", { name: /vendor\/paid/ });
+    assert.ok(within(paid).getByText("No"));
+    assert.equal(within(paid).getByText("0.15").classList.contains("text-emerald-400"), false);
+    assert.ok(within(paid).getByText("0").classList.contains("text-emerald-400"));
+    assert.ok(within(unknown).getAllByText("Unknown").every(cell => !cell.classList.contains("text-emerald-400")));
+    assert.ok(within(paid).getByText("Not connected"));
+    const description = within(unknown).getByText("Full description of the model");
+    assert.equal(description.closest("details")?.open, false);
+    fireEvent.click(within(unknown).getByText("Details"));
+    assert.equal(description.closest("details")?.open, true);
+    assert.equal(screen.getByRole("region", { name: "Comparison" }).hasAttribute("tabindex"), false);
+  });
+  it("scrolls each table through its own keyboard-focusable native controls", () => {
+    render(<><OpenRouterModelTable models={[model("vendor/a")]} connected={[]} pending={{}} manage={async () => {}} caption="Results" t={t} /><OpenRouterModelTable models={[model("vendor/b")]} connected={[]} pending={{}} manage={async () => {}} caption="Connected" t={t} /></>);
+    const resultsRegion = screen.getByRole("region", { name: "Results" });
+    const connectedRegion = screen.getByRole("region", { name: "Connected" });
+    const calls: ScrollToOptions[] = [];
+    const connectedCalls: ScrollToOptions[] = [];
+    for (const [region, recorded] of [[resultsRegion, calls], [connectedRegion, connectedCalls]] as const) {
+      const tableViewport = within(region).getByRole("table").parentElement!;
+      Object.defineProperty(tableViewport, "clientWidth", { value: 320 });
+      tableViewport.scrollBy = (options?: ScrollToOptions | number) => { if (options && typeof options !== "number") recorded.push(options); };
+      for (const button of within(region).getAllByRole("button", { name: /Scroll table/ })) {
+        assert.equal(button.tagName, "BUTTON");
+        assert.equal(button.tabIndex, 0);
+        assert.equal(button.getAttribute("aria-controls"), tableViewport.id);
+        button.focus();
+        assert.equal(document.activeElement, button);
+        fireEvent.click(button);
+        assert.equal(document.activeElement, button);
+      }
+    }
+    assert.deepEqual(calls, [{ left: -320, behavior: "auto" }, { left: 320, behavior: "auto" }]);
+    assert.deepEqual(connectedCalls, calls);
+    assert.notEqual(within(resultsRegion).getByRole("table").parentElement!.id, within(connectedRegion).getByRole("table").parentElement!.id);
+  });
+  it("uses connection state and effective limits in search rows and keeps row actions scoped", async () => {
+    const operations: [string, boolean][] = [];
+    const connected = [model("vendor/a", { connected: true, available: false, max_output_tokens: 256 })];
+    render(<OpenRouterModelTable models={[model("vendor/a"), model("vendor/b")]} connected={connected} pending={{ "vendor/b": true }} manage={async (id, connect) => { operations.push([id, connect]); }} caption="Results" t={t} />);
+    const table = screen.getByRole("table", { name: "Results" });
+    const rowA = within(table).getByRole("row", { name: /vendor\/a/ });
+    assert.ok(within(rowA).getByText(en.models.openrouter.needsRefresh));
+    assert.equal(within(rowA).queryByText(en.models.openrouter.connected), null);
+    assert.ok(within(rowA).getByText("256"));
+    fireEvent.click(within(rowA).getByRole("button", { name: "Refresh model: vendor/a" }));
+    fireEvent.click(within(rowA).getByRole("button", { name: "Disconnect model: vendor/a" }));
+    assert.deepEqual(operations, [["vendor/a", true], ["vendor/a", false]]);
+    assert.equal((screen.getByRole("button", { name: "Connect model: vendor/b" }) as HTMLButtonElement).disabled, true);
+  });
+  it("provides all table labels in Polish, English and German", () => {
+    for (const locale of [pl, en, de]) assert.deepEqual(Object.keys(locale.models.openrouter.table).sort(), Object.keys(en.models.openrouter.table).sort());
+  });
+});
+
+
+it("makes prices concise without rounding tiny nonzero rates to zero", () => {
+  const rows = [
+    model("vendor/exact", { input_price_per_million: "0.03000000", output_price_per_million: "0.0000001000" }),
+    model("vendor/whole", { input_price_per_million: "2.000", output_price_per_million: "1e-9" }),
+    model("vendor/invalid", { input_price_per_million: "", output_price_per_million: "Infinity" }),
+  ];
+  render(<OpenRouterModelTable models={rows} connected={[]} pending={{}} manage={async () => {}} caption="Prices" t={t} />);
+  const table = screen.getByRole("table", { name: "Prices" });
+  const exact = within(table).getByRole("row", { name: /vendor\/exact/ });
+  assert.ok(within(exact).getByText("0.03"));
+  assert.ok(within(exact).getByText("0.0000001"));
+  assert.equal(within(exact).queryByText("Free"), null);
+  const whole = within(table).getByRole("row", { name: /vendor\/whole/ });
+  assert.ok(within(whole).getByText("2"));
+  assert.ok(within(whole).getByText("1e-9"));
+  const invalid = within(table).getByRole("row", { name: /vendor\/invalid/ });
+  assert.equal(within(invalid).getAllByText("Unknown").length, 2);
 });

@@ -1,3 +1,4 @@
+import { VastBillingStatus } from "./vast-billing-status";
 import { Badge } from "@/components/ui/badge";
 import type { VastEnvironment } from "./hooks/use-vast-environments";
 import { remoteModelStyles as styles } from "./remote-model-styles";
@@ -11,7 +12,6 @@ export function VastEnvironmentHistory({ rows, t }: Readonly<{
   const text = (name: string) => t("models.vast." + name);
   return <section className={styles.panel + " space-y-4"} aria-label={text("history")}>
     <h3 className={styles.heading}>{text("history")}</h3>
-    <p className={styles.hint}>{text("historyHint")}</p>
     {rows.length === 0 ? <p className="text-sm">{text("noHistory")}</p> :
       <div className={styles.tableWrap}><table className="w-full min-w-[720px] border-collapse whitespace-nowrap text-left text-sm">
         <caption className="sr-only">{text("history")}</caption>
@@ -30,10 +30,7 @@ export function VastEnvironmentHistory({ rows, t }: Readonly<{
           </td>
           <td className={styles.tableCell}><code>{row.error ?? "—"}</code></td>
           <td className={styles.tableCell}>
-            {row.billing_possible ? <div className="w-64 space-y-2 whitespace-normal">
-              <p className="text-xs text-amber-400">{text("billingWarning")}</p>
-              <p className={styles.hint}>{text("historyBillingHint")}</p>
-            </div> : "—"}
+            <VastBillingStatus row={row} t={t} />
           </td>
         </tr>)}</tbody>
       </table></div>}

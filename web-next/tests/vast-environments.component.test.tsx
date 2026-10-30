@@ -5,6 +5,7 @@ import { afterEach, describe, it } from "node:test";
 import { act, cleanup, fireEvent, render, renderHook, screen, waitFor, within } from "@testing-library/react";
 import { VastEnvironmentsSection } from "../components/models/vast-environments-section";
 import { formatVastUsd } from "../lib/vast-price";
+import { VastAccountBillingPanel } from "../components/models/vast-account-billing";
 import { VastEnvironmentRow } from "../components/models/vast-environment-row";
 import { useVastEnvironments, VAST_POLL_INTERVAL, type VastEnvironment } from "../components/models/hooks/use-vast-environments";
 import { en } from "../lib/i18n/locales/en";
@@ -218,7 +219,7 @@ it("refreshes the chat catalog when a CLI history plan connects or disconnects",
   assert.equal(changed, 2);
 });
 
-it("preserves CLI outcomes and warns about possible charges without action buttons", async () => {
+it("preserves CLI outcomes and shows compact billing statuses without instruction text", async () => {
   const calls: string[] = [];
   globalThis.fetch = async (_input, init) => {
     calls.push(init?.method ?? "GET");
@@ -234,8 +235,9 @@ it("preserves CLI outcomes and warns about possible charges without action butto
   assert.ok(within(history).getByText("Order outcome unknown"));
   assert.ok(within(history).getByText("provider_pending"));
   assert.ok(within(history).getByText("Connected"));
-  assert.equal(within(history).getAllByText(t("models.vast.billingWarning")).length, 2);
-  assert.equal(within(history).getAllByText(t("models.vast.historyBillingHint")).length, 2);
+  assert.equal(within(history).getAllByText(t("models.vast.billingStates.unverified")).length, 3);
+  assert.equal(within(history).queryByText(t("models.vast.billingWarning")), null);
+  assert.equal(within(history).queryByText(t("models.vast.historyBillingHint")), null);
   assert.equal(within(history).queryAllByRole("button").length, 0);
   assert.deepEqual(calls, ["GET"]);
 });
@@ -284,3 +286,93 @@ it("formats zero and missing or invalid VAST amounts distinctly", () => {
     assert.equal(formatVastUsd(amount, "Unknown"), "Unknown");
   }
 });
+
+
+it("shows recorded VAST charges including zero and uses statuses for missing billing", async () => {
+  globalThis.fetch = async () => Response.json({ ...status(), history: [
+    row({ billing_status: "reported", billed_usd: "0" }),
+    row({ plan_id: "b".repeat(32), billing_status: "reported", billed_usd: "0.123456789" }),
+    row({ plan_id: "c".repeat(32), billing_status: "unavailable", billed_usd: null }),
+    row({ plan_id: "d".repeat(32), billing_status: "not_applicable", billed_usd: null }),
+    row({ plan_id: "e".repeat(32), billing_status: "reported", billed_usd: "NaN" }),
+  ] });
+  render(<VastEnvironmentsSection t={t} />);
+  const history = await screen.findByRole("region", { name: "Launch attempt history" });
+  await waitFor(() => assert.ok(within(history).getByText("0.0000 USD")));
+  assert.ok(within(history).getByText("0.1235 USD"));
+  assert.equal(within(history).getAllByText("Reported").length, 2);
+  assert.ok(within(history).getByText("Unavailable"));
+  assert.ok(within(history).getByText("Not applicable"));
+  assert.ok(within(history).getByText("Unverified"));
+  assert.equal(within(history).queryByText(/may still incur charges/), null);
+});
+
+
+describe("VAST account billing", () => {
+  const billing = {
+    configured: true, status: "ready" as const, error: null, account_error: null,
+    credit_usd: "8.9195945862", balance_usd: "0", account_observed_at: "2026-10-30T12:00:00Z",
+    observed_at: "2026-10-30T12:00:00Z", from_utc: "2026-09-30", to_utc: "2026-10-30",
+    total_usd: "1.080", managed_usd: "0.546", other_usd: "0.534",
+    covered_days: 31, expected_days: 31, complete: true,
+  };
+  it("shows credit, period and provider costs with explicit reconciliation", async () => {
+    const operations: boolean[] = [];
+    render(<VastAccountBillingPanel billing={billing} pending={false} enabled sync={async (reconcile = false) => { operations.push(reconcile); }} t={t} />);
+    assert.ok(screen.getByText("8.9196 USD"));
+    assert.ok(screen.getByText("1.0800 USD"));
+    assert.ok(screen.getByText(/2026-09-30/));
+    fireEvent.click(screen.getByRole("button", { name: "Refresh billing" }));
+    fireEvent.click(screen.getByRole("button", { name: "Reconcile history again" }));
+    assert.deepEqual(operations, [false, true]);
+  });
+  it("retains stale values, labels partial amounts and disables external reads when off", () => {
+    render(<VastAccountBillingPanel billing={{ ...billing, status: "stale", complete: false, account_error: "unavailable", covered_days: 10 }} pending={false} enabled={false} sync={async () => { throw Error("disabled"); }} t={t} />);
+    assert.ok(screen.getByText("Stale data"));
+    assert.ok(screen.getByText("Reported spend (incomplete)"));
+    assert.ok(screen.getByText("8.9196 USD"));
+    assert.ok(screen.getByText(/10 \/ 31/));
+    assert.equal((screen.getByRole("button", { name: "Refresh billing" }) as HTMLButtonElement).disabled, true);
+  });
+  it("automatically syncs billing only and refreshes displayed history", async () => {
+    const posts: string[] = [];
+    globalThis.fetch = async (input, init) => {
+      const path = String(input);
+      if (init?.method === "POST") { posts.push(path); return Response.json(billing); }
+      return Response.json({ ...status(), billing, history: [row({ instance_id: 88, billing_status: "reported", billed_usd: "0.403" })] });
+    };
+    render(<VastEnvironmentsSection t={t} />);
+    await waitFor(() => assert.equal(posts.length, 1));
+    await waitFor(() => assert.ok(screen.getByText("0.4030 USD")));
+    assert.deepEqual(posts, [base + "/billing/sync"]);
+    assert.ok(screen.getByText("1.0800 USD"));
+  });
+  it("keeps translation parity for account billing and partial amounts", () => {
+    for (const locale of [pl, en, de]) {
+      assert.deepEqual(Object.keys(locale.models.vast.accountBilling).sort(), Object.keys(en.models.vast.accountBilling).sort());
+      assert.ok(locale.models.vast.billingStates.partial);
+    }
+  });
+});
+
+
+for (const failed of [false, true]) {
+  it(`isolates billing ${failed ? "failure" : "success"} from an operator search error`, async () => {
+    globalThis.fetch = async (input, init) => {
+      if (init?.method !== "POST") return Response.json(status());
+      if (String(input).endsWith("/billing/sync")) return failed
+        ? Response.json({ detail: "vast.billing_unavailable" }, { status: 503 })
+        : Response.json({ ok: true });
+      return Response.json({ detail: "vast.search_failed" }, { status: 409 });
+    };
+    const { result } = renderHook(() => useVastEnvironments());
+    await waitFor(() => assert.equal(result.current.loading, false));
+    await act(async () => { await result.current.search(30); });
+    assert.equal(result.current.error, "vast.search_failed");
+    await act(async () => { await result.current.syncBilling(); });
+    assert.equal(result.current.error, "vast.search_failed");
+    assert.equal(result.current.billingError, failed ? "vast.billing_unavailable" : null);
+    await act(async () => { await result.current.search(30); });
+    assert.equal(result.current.billingError, failed ? "vast.billing_unavailable" : null);
+  });
+}

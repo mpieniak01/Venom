@@ -1,7 +1,29 @@
 export const models = {
   vast: {
     "historyBillingHint": "Prüfen Sie die Instanz anhand ihrer ID in der VAST-Konsole und geben Sie sie dort frei, wenn sie nicht mehr benötigt wird. Ohne ID prüfen Sie die Instanzliste des Kontos.",
-    "historyBilling": "Kosten",
+    "historyBilling": "Abrechnung",
+    "accountBilling": {
+    "title": "VAST-Konto und Abrechnung",
+    "credit": "Verfügbares Guthaben",
+    "spent": "Ausgaben im Zeitraum",
+    "partialSpent": "Gemeldete Ausgaben (unvollständig)",
+    "managed": "Instanzen im Venom-Verlauf",
+    "other": "Sonstige / nicht zugeordnet",
+    "period": "Zeitraum",
+    "updated": "Konto geprüft",
+    "progress": "Abgerufene Tage",
+    "working": "Abrechnung wird geladen…",
+    "refresh": "Abrechnung aktualisieren",
+    "reconcile": "Verlauf erneut abgleichen",
+    "states": {
+        "empty": "Nicht abgerufen",
+        "ready": "Abgerufen",
+        "partial": "Teilweise Daten",
+        "stale": "Veraltete Daten",
+        "unavailable": "Nicht verfügbar"
+    }
+},
+    "billingStates": {"partial": "Teilweise", "reported": "Gemeldet", "unverified": "Ungeprüft", "unavailable": "Nicht verfügbar", "not_applicable": "Nicht zutreffend"},
     "history": "Verlauf der Startversuche",
     "historyHint": "Frühere CLI-Versuche. Der protokollierte Status ist historisch und bestätigt keine aktuelle Verfügbarkeit.",
     "noHistory": "Keine gespeicherten Versuche.",
@@ -82,6 +104,66 @@ export const models = {
     }
 },
   openrouter: {
+    table: {
+    "model": "Modell",
+    "context": "Kontext",
+    "input": "Eingabe · USD / 1 Mio.",
+    "output": "Ausgabe · USD / 1 Mio.",
+    "tools": "Werkzeuge",
+    "status": "Status",
+    "actions": "Aktionen",
+    "details": "Details",
+    "yes": "Ja",
+    "no": "Nein",
+    "notConnected": "Nicht verbunden",
+    "scrollLeft": "Tabelle nach links scrollen",
+    "scrollRight": "Tabelle nach rechts scrollen"
+},
+    billing: {
+    "title": "OpenRouter-Konto und Abrechnung",
+    "available": "Verfügbares Kontoguthaben",
+    "total": "Gesamte Kontoausgaben",
+    "keyRemaining": "Verbleibendes Limit des Chat-Schlüssels",
+    "keyMonth": "Schlüsselnutzung diesen Monat",
+    "unlimited": "Kein Schlüssellimit",
+    "refresh": "Abrechnung aktualisieren",
+    "working": "Abrechnung wird geladen…",
+    "requestError": "Abrechnung konnte nicht aktualisiert werden.",
+    "disabled": "API deaktiviert oder Zugriff gesperrt",
+    "stale": "Veraltete Daten",
+    "updated": "Konto geprüft",
+    "account": "Konto",
+    "key": "Chat-Schlüssel",
+    "period": "Zeitraum",
+    "from": "Von (UTC)",
+    "to": "Bis (UTC)",
+    "invalidWindow": "Enddatum muss am oder nach dem Startdatum liegen.",
+    "models": "Ausgaben nach Modell",
+    "accountScope": "Gesamtes Konto",
+    "partial": "Unvollständige oder veraltete Daten",
+    "periodTotal": "Gemeldete Nutzung",
+    "model": "Modell",
+    "cost": "Gemeldete Kosten",
+    "share": "Anteil",
+    "requests": "Anfragen",
+    "noUsage": "Keine Nutzung im abgerufenen Zeitraum.",
+    "noData": "Keine Modellabrechnungsdaten.",
+    "modelsUpdated": "Modelle geprüft",
+    "periods": {
+        "7d": "Letzte 7 Tage",
+        "30d": "Letzte 30 Tage",
+        "month": "Aktueller Monat",
+        "all": "Gesamter gespeicherter Verlauf"
+    },
+    "errors": {
+        "management_required": "Analysen erfordern einen Verwaltungsschlüssel.",
+        "missing_credentials": "Anmeldedaten fehlen.",
+        "provider_unavailable": "Anbieterdaten nicht verfügbar.",
+        "invalid_response": "Ungültige Anbieterdaten.",
+        "analytics_truncated": "Anbieter lieferte eine unvollständige Übersicht.",
+        "cache_invalid": "Gespeicherte Abrechnung muss aktualisiert werden."
+    }
+},
     outputLimit: "Maximale Ausgabe (Tokens, MVP-Budgetlimit)",
   categories: {
   "programming": "Programmierung",

@@ -2,22 +2,18 @@
 
 from decimal import Decimal
 from typing import Annotated, Any, Literal
-from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Request
 from pydantic import BaseModel, ConfigDict, Field
 
+from venom_core.api.operator_origin import require_operator_origin
 from venom_core.api.routes.system_config import require_localhost_request
 from venom_core.services import vast_management
 
 
 def local_operator(request: Request) -> None:
     require_localhost_request(request)
-    origin = request.headers.get("origin")
-    if request.headers.get("sec-fetch-site") == "cross-site" or (
-        origin and urlsplit(origin).hostname not in {"localhost", "127.0.0.1", "::1"}
-    ):
-        raise HTTPException(403, "vast.management_local_operator_required")
+    require_operator_origin(request, "vast.management_local_operator_required")
 
 
 ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
@@ -49,6 +45,11 @@ class Confirmation(BaseModel):
     confirmed: Literal[True]
 
 
+class BillingRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    reconcile: bool = False
+
+
 class OrderRequest(Confirmation):
     accept_new_host_key: bool = False
 
@@ -72,6 +73,11 @@ def invoke(method, *args):
 @router.get("", responses=ERROR_RESPONSES)
 def overview():
     return invoke(vast_management.manager().overview)
+
+
+@router.post("/billing/sync", responses=ERROR_RESPONSES)
+def sync_billing(request: BillingRequest):
+    return invoke(vast_management.manager().sync_billing, request.reconcile)
 
 
 @router.post("/search", responses=ERROR_RESPONSES)

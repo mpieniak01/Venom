@@ -60,6 +60,7 @@ it("offers scoped LLM recovery without removing the global memory release contro
     releasing: false, memory, result: null, error: null, onRelease: async () => {}, onRecoverLlm: async () => {}, t,
   }));
   assert.match(html, /recover-llm/);
-  assert.match(html, /models.resources.recoverLlmHint/);
+  assert.doesNotMatch(html, /models.resources.recoverLlmHint/);
+  assert.doesNotMatch(html, /models.resources.description/);
   assert.match(html, /release-all-models/);
 });

@@ -4,7 +4,8 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const projectRoot = path.join(__dirname, "..");
+const studio = path.basename(process.cwd()) === "web-studio";
+const projectRoot = studio ? process.cwd() : path.join(__dirname, "..");
 
 function safeExecFile(file, args = []) {
   try {
@@ -45,4 +46,4 @@ writeFileSync(targetPath, JSON.stringify(meta, null, 2));
 console.log(`[meta] Wrote ${targetPath} -> ${meta.version} (${meta.commit})`);
 
 const modulesScript = path.join(projectRoot, "scripts", "generate-optional-modules.mjs");
-safeExecFile("node", [modulesScript]);
+if (!studio) safeExecFile("node", [modulesScript]);

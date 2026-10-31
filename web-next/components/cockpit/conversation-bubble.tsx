@@ -41,6 +41,8 @@ function resolveStatusLabel(
   if (!status) return null;
   const normalized = status.toUpperCase();
   switch (normalized) {
+    case "CANCELLED":
+      return t("chat2.cancelled");
     case "COMPLETED":
       return t("cockpit.chatStatus.completed");
     case "FAILED":

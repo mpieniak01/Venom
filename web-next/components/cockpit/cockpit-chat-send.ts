@@ -1,13 +1,15 @@
 "use client";
 
+import { apiFetch } from "@/lib/api-client";
 import { runtimeControlErrorHint } from "@/lib/runtime-control-error";
-import { useCallback, useRef } from "react";
-import { quoteOpenRouterChat } from "@/hooks/use-api";
+import { useCallback, useEffect, useRef } from "react";
+import { quoteOpenRouterChat, cancelSimpleChatStream, getSimpleChatCancellationRevision } from "@/hooks/use-api";
 import { pendingOpenRouterCost, type OpenRouterQuote } from "@/lib/openrouter-chat";
 import { publishOpenRouterQuote } from "@/lib/openrouter-quote-state";
 import { allowsOpenRouterChat, isOpenRouterRuntime } from "@/lib/remote-chat";
 import { appendVastChatTurn, vastChatHistoryKey, type VastChatTurn } from "@/lib/vast-chat-history";
 import { useTranslation } from "@/lib/i18n";
+import { boundChatHistory } from "@/components/chat/history-budget";
 import { parseInputCommand } from "@/lib/slash-commands";
 
 import {
@@ -131,8 +133,8 @@ async function prepareOpenRouterQuote(params: {
   generationParams: ChatSendParams["generationParams"];
   resolvedSession: string;
   history: VastChatTurn[] | undefined;
+  materialIds?: string[];
   setMessage: ChatSendParams["setMessage"];
-  setSending: ChatSendParams["setSending"];
   t: (key: string) => string;
 }): Promise<OpenRouterQuote | undefined | false> {
   if (!isOpenRouterRuntime(params.activeServerInfo?.runtime_id) && params.activeServerInfo?.active_server !== "openrouter") {
@@ -141,13 +143,12 @@ async function prepareOpenRouterQuote(params: {
   try {
     const quote = await quoteOpenRouterChat(buildSimpleStreamRequestPayload(
       params.trimmed, params.selectedModel, params.generationParams,
-      params.resolvedSession, params.activeServerInfo, params.history,
+      params.resolvedSession, params.activeServerInfo, params.history, params.materialIds,
     ));
     publishOpenRouterQuote(params.selectedModel, params.resolvedSession, quote);
     return quote;
   } catch {
     params.setMessage(params.t("cockpit.openrouter.quoteFailed"));
-    params.setSending(false);
     return false;
   }
 }
@@ -177,6 +178,8 @@ function recordStandardRequestHistory(params: {
 
 export function useChatSend(params: ChatSendParams) {
   const {
+    materialIds,
+    conversationHistory,
     labMode,
     chatMode,
     generationParams,
@@ -216,8 +219,21 @@ export function useChatSend(params: ChatSendParams) {
 
   const t = useTranslation();
   const vastHistory = useRef(new Map<string, VastChatTurn[]>());
+  const inFlight = useRef(false);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; cancelSimpleChatStream(); };
+  }, [sessionId]);
 
   return useCallback(async (payload: string) => {
+    if (inFlight.current) return false;
+    inFlight.current = true;
+    const revision = getSimpleChatCancellationRevision();
+    const cancelled = () => !mounted.current || revision !== getSimpleChatCancellationRevision();
+    let dispatched = false;
+    let preparing = false;
+    try {
     const parsed = parseInputCommand(payload);
     const trimmed = parsed.cleaned.trim();
     if (!trimmed) {
@@ -246,6 +262,7 @@ export function useChatSend(params: ChatSendParams) {
       return false;
     }
 
+    setSending(true); preparing = true; setMessage(null);
     const switchResult = await handleRuntimeSwitch({
       parsed,
       activeServerInfo,
@@ -257,7 +274,7 @@ export function useChatSend(params: ChatSendParams) {
       t,
     });
 
-    if (!switchResult.success) return false;
+    if (cancelled() || !switchResult.success) return false;
     const runtimeOverride: RuntimeOverride = switchResult.runtimeOverride;
 
     const effectiveActiveServerInfo = await syncTargetServerIfNeeded({
@@ -270,7 +287,7 @@ export function useChatSend(params: ChatSendParams) {
       setMessage,
       t,
     });
-    if (effectiveActiveServerInfo === false) return false;
+    if (cancelled() || effectiveActiveServerInfo === false) return false;
     const modelOk = await ensureSelectedModelIsActive({
       activeServerInfo: effectiveActiveServerInfo,
       selectedLlmModel: effectiveSelectedModel,
@@ -278,16 +295,15 @@ export function useChatSend(params: ChatSendParams) {
       setMessage,
       t,
     });
-    if (!modelOk) return false;
+    if (cancelled() || !modelOk) return false;
 
     autoScrollEnabledRef.current = true;
     scrollChatToBottom();
-    setSending(true);
-    setMessage(null);
 
     const shouldUseSimple = shouldUseSimpleMode(chatMode, parsed);
     const historyKey = vastChatHistoryKey(effectiveActiveServerInfo?.runtime_id, effectiveSelectedModel, resolvedSession, effectiveActiveServerInfo?.config_hash);
-    const history = historyKey ? (vastHistory.current.get(historyKey) ?? []).map(turn => ({...turn})) : undefined;
+    const historySource = conversationHistory ?? (historyKey ? vastHistory.current.get(historyKey) ?? [] : undefined);
+    const history = historySource ? boundChatHistory(historySource, trimmed.length) : undefined;
     const quote = await prepareOpenRouterQuote({
       activeServerInfo: effectiveActiveServerInfo,
       trimmed,
@@ -295,11 +311,11 @@ export function useChatSend(params: ChatSendParams) {
       generationParams,
       resolvedSession,
       history,
+      materialIds,
       setMessage,
-      setSending,
       t,
     });
-    if (quote === false) return false;
+    if (cancelled() || quote === false) return false;
 
     const forcedIntent = chatMode === "complex" ? "COMPLEX_PLANNING" : null;
     const clientId = enqueueOptimisticRequest(trimmed, {
@@ -320,7 +336,14 @@ export function useChatSend(params: ChatSendParams) {
     });
 
 
+    let acknowledge!: (accepted: boolean) => void;
+    const acknowledged = new Promise<boolean>(resolve => { acknowledge = resolve; });
     const taskParams = {
+      onAccepted: () => acknowledge(true),
+      isCancelled: cancelled,
+      cancelTask: async (id: string, session: string) => { await apiFetch("/api/v1/chat/tasks/" + encodeURIComponent(id) + "/cancel", { method: "POST", body: JSON.stringify({ session_id: session }) }); },
+      materialIds,
+      ...(conversationHistory ? { history } : {}),
       ...(historyKey ? {
         history,
         onCompleted: (answer: string) => {
@@ -352,6 +375,8 @@ export function useChatSend(params: ChatSendParams) {
       setMessage,
       setSending,
     };
+    if (cancelled()) return false;
+    dispatched = true;
     executeSendFlow({
       shouldUseSimple,
       taskParams,
@@ -373,11 +398,16 @@ export function useChatSend(params: ChatSendParams) {
       const message = error instanceof Error ? error.message : t("cockpit.chatMessages.serverSwitchError");
       setMessage(message);
       setSending(false);
-    });
+    }).finally(() => { inFlight.current = false; acknowledge(false); });
 
-    return true;
+    return await acknowledged;
+    } finally {
+      if (!dispatched) { inFlight.current = false; if (preparing) setSending(false); }
+    }
   }, [
     activeServerInfo,
+    materialIds,
+    conversationHistory,
     autoScrollEnabledRef,
     chatMode,
     clearSimpleStream,

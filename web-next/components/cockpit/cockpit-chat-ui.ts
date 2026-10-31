@@ -22,6 +22,8 @@ type FeedbackState = {
 };
 
 type CockpitChatUiParams = {
+  materialIds?: string[];
+  conversationHistory?: Array<{ role: "user" | "assistant"; content: string; material_ids?: string[] }>;
   chatMessages: ChatMessage[];
   chatScrollRef: React.RefObject<HTMLDivElement>;
   feedbackByRequest: Record<string, FeedbackState>;
@@ -53,6 +55,7 @@ type CockpitChatUiParams = {
   setActiveLlmServer: (server: string, model?: string) => Promise<{ status?: string; active_model?: string | null }>;
   ensureModelActive?: (model: string) => Promise<boolean>;
   sendSimpleChatStream: (payload: {
+        materialIds?: string[];
     content: string;
     model: string | null;
     maxTokens: number | null;
@@ -124,6 +127,8 @@ type CockpitChatUiParams = {
 };
 
 export function useCockpitChatUi({
+  materialIds,
+  conversationHistory,
   chatMessages,
   chatScrollRef,
   feedbackByRequest,
@@ -305,6 +310,8 @@ export function useCockpitChatUi({
         avg: (averageResponseDurationMs / 1000).toFixed(1)
       });
   const handleSend = useChatSend({
+    materialIds,
+    conversationHistory,
     labMode,
     chatMode,
     selectedLlmServer,

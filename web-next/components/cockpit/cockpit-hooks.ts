@@ -222,6 +222,7 @@ export type SessionHistoryEntry = {
 };
 
 type SessionHistoryHookArgs = {
+  backendBootId?: string | null;
   sessionId: string | null;
   sessionHistoryData?: { history?: SessionHistoryEntry[] } | null;
   refreshSessionHistory: () => void;
@@ -261,21 +262,32 @@ function mergeIncomingHistory(
 ) {
   setLocalSessionHistory((prev) => {
     if (prev.length === 0) return sessionHistory.slice(-MAX_SESSION_HISTORY_ENTRIES);
-    const keys = new Set(prev.map(sessionEntryKey));
+    const indices = new Map(prev.map((entry, index) => [sessionEntryKey(entry), index]));
     const merged = [...prev];
+    let changed = false;
     sessionHistory.forEach((entry) => {
       const key = sessionEntryKey(entry);
-      if (!keys.has(key)) {
-        keys.add(key);
+      const index = indices.get(key);
+      if (index === undefined) {
+        indices.set(key, merged.length);
         merged.push(entry);
+        changed = true;
+      } else if (!entry.pending && ["COMPLETED", "FAILED", "CANCELLED", "LOST"].includes(entry.status ?? "")) {
+        // The durable server turn can finish before its final SSE reaches the browser.
+        const settled = { ...merged[index], ...entry, pending: false };
+        if (JSON.stringify(settled) !== JSON.stringify(merged[index])) {
+          merged[index] = settled;
+          changed = true;
+        }
       }
     });
-    return merged.slice(-MAX_SESSION_HISTORY_ENTRIES);
+    return changed ? merged.slice(-MAX_SESSION_HISTORY_ENTRIES) : prev;
   });
 }
 
 export function useSessionHistoryState({
   sessionId,
+  backendBootId,
   sessionHistoryData,
   refreshSessionHistory,
   refreshHistory,
@@ -286,8 +298,9 @@ export function useSessionHistoryState({
   );
   const [localSessionHistory, setLocalSessionHistory] = useState<SessionHistoryEntry[]>([]);
   const lastSessionIdRef = useRef<string | null>(null);
+  const [loadedScope, setLoadedScope] = useState<{ sessionId: string | null; storageKey: string | null }>({ sessionId: null, storageKey: null });
   const initializedStorageKeyRef = useRef<string | null>(null);
-  const bootId = useMemo(() => {
+  const cachedBootId = useMemo(() => {
     if (globalThis.window === undefined) return null;
     try {
       return globalThis.window.localStorage.getItem("venom-backend-boot-id");
@@ -295,6 +308,7 @@ export function useSessionHistoryState({
       return null;
     }
   }, []);
+  const bootId = backendBootId ?? cachedBootId;
   const sessionHistoryStorageKey =
     sessionId && bootId ? `venom-session-history:${sessionId}:${bootId}` : null;
 
@@ -310,6 +324,9 @@ export function useSessionHistoryState({
       clearLocalHistory(setLocalSessionHistory);
     }
     lastSessionIdRef.current = sessionId;
+    // Cache hydration synchronizes an external store; mark its owner before persisting.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setLoadedScope({ sessionId, storageKey: sessionHistoryStorageKey });
     if (sessionHistoryStorageKey) {
       try {
         const cached = globalThis.window.sessionStorage.getItem(sessionHistoryStorageKey);
@@ -335,7 +352,7 @@ export function useSessionHistoryState({
   }, [sessionHistory, sessionId]);
 
   useEffect(() => {
-    if (!sessionHistoryStorageKey) return;
+    if (!sessionHistoryStorageKey || loadedScope.storageKey !== sessionHistoryStorageKey || loadedScope.sessionId !== sessionId) return;
     if (localSessionHistory.length === 0) return;
     try {
       const snapshot = localSessionHistory.slice(-200);
@@ -346,11 +363,11 @@ export function useSessionHistoryState({
     } catch {
       // ignore cache errors
     }
-  }, [localSessionHistory, sessionHistoryStorageKey]);
+  }, [localSessionHistory, sessionHistoryStorageKey, loadedScope, sessionId]);
 
   return {
     sessionHistory,
-    localSessionHistory,
+    localSessionHistory: loadedScope.sessionId === sessionId ? localSessionHistory : [],
     setLocalSessionHistory,
     sessionEntryKey,
   };
@@ -440,7 +457,7 @@ export function useHiddenPromptState({
   };
 }
 
-type OptimisticRequestLike = { requestId?: string | null };
+type OptimisticRequestLike = { requestId?: string | null; simpleMode?: boolean };
 type HistoryRequestLike = { request_id: string; status?: string | null };
 
 export function useTrackedRequestIds({
@@ -455,7 +472,7 @@ export function useTrackedRequestIds({
   return useMemo(() => {
     const ids = new Set<string>();
     optimisticRequests.forEach((entry) => {
-      if (entry.requestId) ids.add(entry.requestId);
+      if (entry.requestId && !entry.simpleMode) ids.add(entry.requestId);
     });
     (history ?? [])
       .filter((item) => item.status === "PENDING" || item.status === "PROCESSING")

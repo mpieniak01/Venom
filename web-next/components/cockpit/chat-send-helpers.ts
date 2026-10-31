@@ -1,3 +1,4 @@
+import { chatMaterialError } from "@/lib/chat-error";
 import { pendingOpenRouterCost, readOpenRouterCost, readOpenRouterMetadata, readOpenRouterUsage } from "@/lib/openrouter-chat";
 import { isGuardedChatRuntime, isOpenRouterRuntime } from "@/lib/remote-chat";
 import { createParser } from "eventsource-parser";
@@ -24,11 +25,14 @@ export type LocalHistoryEntry = {
     session_id?: string;
     request_id?: string;
     timestamp?: string;
+    material_ids?: string[];
     pending?: boolean;
     status?: string | null;
 };
 
 export type ChatSendParams = {
+    materialIds?: string[];
+    conversationHistory?: Array<{ role: "user" | "assistant"; content: string; material_ids?: string[] }>;
     labMode: boolean;
     chatMode: "normal" | "direct" | "complex";
     generationParams: GenerationParams | null;
@@ -46,6 +50,7 @@ export type ChatSendParams = {
     setActiveLlmServer: (server: string, model?: string) => Promise<NonNullable<ActiveServerInfo> & { status?: string }>;
     ensureModelActive?: (model: string) => Promise<boolean>;
     sendSimpleChatStream: (payload: {
+        materialIds?: string[];
         content: string;
         model: string | null;
         maxTokens: number | null;
@@ -54,7 +59,7 @@ export type ChatSendParams = {
         expectedRuntimeId?: string | null;
         expectedConfigHash?: string | null;
         expectedQuoteHash?: string | null;
-        history?: Array<{ role: "user" | "assistant"; content: string }>;
+        history?: Array<{ role: "user" | "assistant"; content: string; material_ids?: string[] }>;
     }) => Promise<Response>;
     sendTask: (payload: SendTaskInput) => Promise<{ task_id?: string | null }>;
     ingestMemoryEntry: (payload: {
@@ -261,13 +266,15 @@ export const buildSimpleStreamRequestPayload = (
     generationParams: GenerationParams | null,
     resolvedSession: string | null,
     activeServerInfo?: ActiveServerInfo,
-    history?: Array<{ role: "user" | "assistant"; content: string }>,
+    history?: Array<{ role: "user" | "assistant"; content: string; material_ids?: string[] }>,
+    materialIds?: string[],
 ) => ({
-    ...(isGuardedChatRuntime(activeServerInfo?.runtime_id) ? {
+    ...((isGuardedChatRuntime(activeServerInfo?.runtime_id) || materialIds?.length) ? {
         expectedRuntimeId: activeServerInfo?.runtime_id,
         expectedConfigHash: activeServerInfo?.config_hash,
     } : {}),
     ...(history ? { history } : {}),
+    ...(materialIds?.length ? { materialIds } : {}),
     content: trimmed,
     model: selectedLlmModel || null,
     maxTokens: typeof generationParams?.max_tokens === "number" ? generationParams.max_tokens : null,
@@ -285,13 +292,16 @@ function assertCompletedRemoteStream(
 }
 
 type SimpleTaskSendParams = {
+    onAccepted?: () => void;
+    isCancelled?: () => boolean;
+    materialIds?: string[];
     clientId: string;
     trimmed: string;
     resolvedSession: string | null;
     generationParams: GenerationParams | null;
     selectedLlmModel: string;
     activeServerInfo: ActiveServerInfo;
-    history?: Array<{ role: "user" | "assistant"; content: string }>;
+    history?: Array<{ role: "user" | "assistant"; content: string; material_ids?: string[] }>;
     onCompleted?: (answer: string) => void;
     t?: (key: string) => string;
     expectedQuoteHash?: string;
@@ -317,21 +327,30 @@ function failSimpleTaskSend(
     requestId: string,
     error_: unknown,
     openRouter: boolean,
+    partial = "",
 ): void {
+    if ((error_ instanceof Error && error_.name === "AbortError") || params.isCancelled?.()) {
+        params.updateSimpleStream(params.clientId, { ...(partial ? { text: partial } : {}), status: "CANCELLED", done: true });
+        params.dropOptimisticRequest(params.clientId);
+        params.setMessage(null);
+        params.setLocalSessionHistory(previous => previous.map(entry => entry.request_id === requestId
+            ? { ...entry, ...(entry.role === "assistant" && partial ? { content: partial } : {}), pending: false, status: "CANCELLED" } : entry));
+        return;
+    }
     const error = openRouter
         ? new Error(params.t?.("cockpit.openrouter.failure") ?? "cockpit.openrouter.failure")
         : error_;
-    const errorText = error instanceof Error ? error.message : "Błąd trybu prostego.";
+    const errorText = chatMaterialError(error_, params.t ?? (key => key)) ?? (error instanceof Error ? error.message : "Błąd trybu prostego.");
     params.updateSimpleStream(params.clientId, {
-        text: errorText,
+        ...(partial ? { text: partial } : {}),
         status: "FAILED",
         done: true,
     });
     params.dropOptimisticRequest(params.clientId);
-    params.setMessage(error instanceof Error ? error.message : "Nie udało się wysłać zadania");
+    params.setMessage(errorText);
     params.setLocalSessionHistory(previous => {
         const next = [...previous];
-        upsertHistoryEntry(next, requestId, "assistant", errorText, new Date().toISOString(), params.resolvedSession);
+        upsertHistoryEntry(next, requestId, "assistant", partial || next.find(entry => entry.request_id === requestId && entry.role === "assistant")?.content || errorText, new Date().toISOString(), params.resolvedSession);
         const index = next.findIndex(entry => entry.request_id === requestId && entry.role === "assistant");
         if (index >= 0) {
             next[index] = { ...next[index], pending: false, status: "FAILED" };
@@ -363,6 +382,7 @@ export async function handleSimpleTaskSend(params: SimpleTaskSendParams) {
         setSending,
     } = params;
     let resolvedRequestId = clientId;
+    let partialAnswer = "";
     const openRouter = isOpenRouterRuntime(activeServerInfo?.runtime_id) || activeServerInfo?.active_server === "openrouter";
     let accounting = openRouter ? params.initialCost ?? pendingOpenRouterCost() : undefined;
     let provenance = readOpenRouterMetadata({requested_model: selectedLlmModel});
@@ -399,11 +419,13 @@ export async function handleSimpleTaskSend(params: SimpleTaskSendParams) {
             {
                 ...buildSimpleStreamRequestPayload(
                     trimmed, selectedLlmModel, generationParams, resolvedSession,
-                    activeServerInfo, params.history,
+                    activeServerInfo, params.history, params.materialIds,
                 ),
                 ...(params.expectedQuoteHash ? {expectedQuoteHash: params.expectedQuoteHash} : {}),
             },
         );
+        if (params.isCancelled?.()) { await response.body?.cancel(); throw new DOMException("Stopped", "AbortError"); }
+        params.onAccepted?.();
         const headerRequestId = response.headers.get("x-request-id");
         const simpleRequestId = headerRequestId || `simple-${clientId}`;
         resolvedRequestId = simpleRequestId;
@@ -413,10 +435,10 @@ export async function handleSimpleTaskSend(params: SimpleTaskSendParams) {
         let lastHistoryUpdate = 0;
         const upsertLocalHistory = (role: "user" | "assistant", content: string) => {
             const now = Date.now();
-            if (role === "assistant" && now - lastHistoryUpdate < 60) {
-                return;
+            if (role === "assistant") {
+                if (now - lastHistoryUpdate < 60) return;
+                lastHistoryUpdate = now;
             }
-            lastHistoryUpdate = now;
             setLocalSessionHistory((prev) => {
                 const next = [...prev];
                 upsertHistoryEntry(next, simpleRequestId, role, content, createdTimestamp, resolvedSession);
@@ -438,6 +460,9 @@ export async function handleSimpleTaskSend(params: SimpleTaskSendParams) {
             });
         };
         upsertLocalHistory("user", trimmed);
+        if (params.materialIds?.length) setLocalSessionHistory(previous => previous.map(entry =>
+          entry.role === "user" && entry.request_id === simpleRequestId
+            ? { ...entry, material_ids: [...params.materialIds!] } : entry));
         const historyTiming = uiTimingsRef.current.get(clientId);
         if (historyTiming && historyTiming.historyMs === undefined) {
             recordUiTiming(clientId, { historyMs: Date.now() - historyTiming.t0 });
@@ -455,9 +480,11 @@ export async function handleSimpleTaskSend(params: SimpleTaskSendParams) {
         let streamCompleted = false;
 
         const handleContent = (raw: string) => {
+            if (params.isCancelled?.()) throw new DOMException("Stopped", "AbortError");
             const data = JSON.parse(raw);
             if (!data.text) return;
             buffer += data.text;
+            partialAnswer = buffer;
             if (!firstChunkLogged) {
                 const timing = uiTimingsRef.current.get(simpleRequestId);
                 if (timing && timing.ttftMs === undefined) {
@@ -591,13 +618,16 @@ export async function handleSimpleTaskSend(params: SimpleTaskSendParams) {
         }, 200);
     } catch (error_) {
         recordAccounting("FAILED");
-        failSimpleTaskSend(params, resolvedRequestId, error_, openRouter);
+        failSimpleTaskSend(params, resolvedRequestId, error_, openRouter, partialAnswer);
     } finally {
         setSending(false);
     }
 }
 
 export async function handleStandardTaskSend(params: {
+    onAccepted?: () => void;
+    isCancelled?: () => boolean;
+    cancelTask?: (id: string, session: string) => Promise<void>;
     trimmed: string;
     labMode: boolean;
     generationParams: GenerationParams | null;
@@ -655,6 +685,8 @@ export async function handleStandardTaskSend(params: {
                 {
                     role: "assistant",
                     content: "",
+                    pending: true,
+                    status: "PENDING",
                     request_id: clientId,
                     timestamp: createdTimestamp,
                     session_id: resolvedSession ?? undefined,
@@ -678,6 +710,14 @@ export async function handleStandardTaskSend(params: {
             preferenceScope: "session",
         });
         const resolvedId = res.task_id ?? null;
+        if (params.isCancelled?.()) {
+            if (resolvedId && resolvedSession) await params.cancelTask?.(resolvedId, resolvedSession);
+            setLocalSessionHistory(previous => previous.map(entry => entry.request_id === clientId
+                ? { ...entry, pending: false, status: "CANCELLED" } : entry));
+            dropOptimisticRequest(clientId);
+            return;
+        }
+        params.onAccepted?.();
         linkOptimisticRequest(clientId, resolvedId);
         if (resolvedId) {
             reconcileRequestId(setLocalSessionHistory, clientId, resolvedId);

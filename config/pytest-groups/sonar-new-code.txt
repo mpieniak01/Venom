@@ -78,6 +78,10 @@ tests/test_campaign_flow.py
 tests/test_changed_lines_quality_checker.py
 tests/test_changed_lines_quality_cli.py
 tests/test_changed_lines_quality_gate_runner.py
+tests/test_chat_audio.py
+tests/test_chat_direct_history.py
+tests/test_chat_materials.py
+tests/test_chat_task_cancellation.py
 tests/test_check_github_actions_node_runtime.py
 tests/test_chrono_skill.py
 tests/test_chronos.py
@@ -306,6 +310,7 @@ tests/test_providers_api_edges.py
 tests/test_providers_service.py
 tests/test_pytest_group_runner.py
 tests/test_qualification_process.py
+tests/test_queue_governance.py
 tests/test_release_manager.py
 tests/test_remote_models_service.py
 tests/test_remote_provider_control.py
@@ -329,6 +334,7 @@ tests/test_runtime_service_helpers.py
 tests/test_runtime_switch_gate.py
 tests/test_runtime_switch_service_branches.py
 tests/test_runtime_switch_telemetry.py
+tests/test_runtime_teardown.py
 tests/test_scheduler.py
 tests/test_scheduler_swarm_flow_streaming.py
 tests/test_security_scan.py
@@ -353,6 +359,8 @@ tests/test_source_distributions.py
 tests/test_stack_stability_audit.py
 tests/test_strategist_agent.py
 tests/test_strategy_and_routes_regression.py
+tests/test_studio_api.py
+tests/test_studio_variant.py
 tests/test_swarm_wrapper.py
 tests/test_system_connections.py
 tests/test_system_governance_runtime_contracts.py

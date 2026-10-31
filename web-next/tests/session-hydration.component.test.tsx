@@ -2,6 +2,7 @@ import "./component-test-setup";
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, it, mock } from "node:test";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { useSessionHistoryState } from "../components/cockpit/cockpit-hooks";
 import { renderToString } from "react-dom/server";
 import { hydrateRoot, type Root } from "react-dom/client";
 import { SessionProvider, useSession } from "../lib/session";
@@ -131,4 +132,27 @@ describe("SessionProvider hydration and continuity", () => {
     assert.equal(window.localStorage.getItem(ID_KEY), id);
     assert.equal(window.localStorage.getItem(BOOT_KEY), "boot-old");
   });
+});
+
+
+it("a delayed first backend boot enables pending history persistence and reload", async () => {
+  let release!: (value: Response) => void;
+  globalThis.fetch = () => new Promise<Response>(resolve => { release = resolve; });
+  const refresh = () => {};
+  function HistoryProbe() {
+    const { sessionId, bootId: backendBootId } = useSession();
+    const history = useSessionHistoryState({ sessionId, backendBootId, refreshSessionHistory: refresh, refreshHistory: refresh });
+    return <><output data-testid="pending-count">{history.localSessionHistory.length}</output><button onClick={() => history.setLocalSessionHistory([{ role: "assistant", content: "partial", request_id: "ff5fd008-4a92-4ea6-a2cb-d52a08f7614b", pending: true }])}>pending</button></>;
+  }
+  const first = render(<SessionProvider><HistoryProbe /></SessionProvider>);
+  const id = window.localStorage.getItem(ID_KEY);
+  fireEvent.click(screen.getByRole("button", { name: "pending" }));
+  await act(async () => { release(Response.json({ boot_id: "first-boot" })); });
+  const key = `venom-session-history:${id}:first-boot`;
+  await waitFor(() => assert.equal(JSON.parse(window.sessionStorage.getItem(key) ?? "[]")[0]?.pending, true));
+  first.unmount();
+  globalThis.fetch = async () => Response.json({ boot_id: "first-boot" });
+  render(<SessionProvider><HistoryProbe /></SessionProvider>);
+  await waitFor(() => assert.equal(screen.getByTestId("pending-count").textContent, "1"));
+  window.sessionStorage.removeItem(key);
 });

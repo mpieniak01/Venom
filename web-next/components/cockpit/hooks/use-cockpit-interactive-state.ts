@@ -12,8 +12,8 @@ import { LogEntryType } from "@/lib/logs";
 import type { ChatMode } from "@/components/cockpit/cockpit-chat-thread";
 import { useOptimisticRequests } from "@/components/cockpit/cockpit-chat-hooks";
 
-export function useCockpitInteractiveState() {
-    const [chatMode, setChatMode] = useState<ChatMode>("normal");
+export function useCockpitInteractiveState(initialChatMode: ChatMode = "normal") {
+    const [chatMode, setChatMode] = useState<ChatMode>(initialChatMode);
     const [sending, setSending] = useState(false);
     const [message, setMessage] = useState<string | null>(null);
     const [llmActionPending, setLlmActionPending] = useState<string | null>(

@@ -332,8 +332,8 @@ export async function fetchFlowTrace(requestId: string) {
   return apiFetch<FlowTrace>(`/api/v1/flow/${requestId}`);
 }
 
-export async function fetchTaskDetail(taskId: string) {
-  return apiFetch<Task>(`/api/v1/tasks/${taskId}`);
+export async function fetchTaskDetail(taskId: string, signal?: AbortSignal) {
+  return apiFetch<Task>(`/api/v1/tasks/${taskId}`, { signal });
 }
 
 export function useQueueStatus(intervalMs = 5000, enabled = true) {
@@ -834,6 +834,7 @@ export type SendTaskInput = {
 
 export type SimpleChatStreamRequest = {
   content: string;
+  materialIds?: string[];
   model?: string | null;
   maxTokens?: number | null;
   temperature?: number | null;
@@ -841,12 +842,15 @@ export type SimpleChatStreamRequest = {
   expectedRuntimeId?: string | null;
   expectedConfigHash?: string | null;
   expectedQuoteHash?: string | null;
-  history?: Array<{ role: "user" | "assistant"; content: string }>;
+  history?: Array<{ role: "user" | "assistant"; content: string; material_ids?: string[] }>;
 };
 
 let simpleChatController: AbortController | null = null;
+let simpleChatCancellationRevision = 0;
+export const getSimpleChatCancellationRevision = () => simpleChatCancellationRevision;
 
 export function cancelSimpleChatStream() {
+  simpleChatCancellationRevision++;
   simpleChatController?.abort();
   simpleChatController = null;
 }
@@ -855,6 +859,7 @@ export function cancelSimpleChatStream() {
 export function buildSimpleChatApiBody(payload: SimpleChatStreamRequest) {
   const body: {
     content: string;
+    material_ids?: string[];
     model?: string;
     max_tokens?: number;
     temperature?: number;
@@ -862,10 +867,11 @@ export function buildSimpleChatApiBody(payload: SimpleChatStreamRequest) {
     expected_runtime_id?: string;
     expected_config_hash?: string;
     expected_quote_hash?: string;
-    history?: Array<{ role: "user" | "assistant"; content: string }>;
+    history?: Array<{ role: "user" | "assistant"; content: string; material_ids?: string[] }>;
   } = {
     content: payload.content,
   };
+  if (payload.materialIds?.length) body.material_ids = payload.materialIds;
   if (payload.model) body.model = payload.model;
   if (typeof payload.maxTokens === "number") body.max_tokens = payload.maxTokens;
   if (typeof payload.temperature === "number") body.temperature = payload.temperature;

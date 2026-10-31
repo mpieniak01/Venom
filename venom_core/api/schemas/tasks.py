@@ -95,6 +95,11 @@ class TaskRequest(BaseModel):
         default=None, description="Forced intent (e.g. GENERAL_CHAT)"
     )
     images: list[str] | None = None
+    material_ids: list[str] = Field(
+        default_factory=list,
+        max_length=0,
+        description="Material references require Direct mode; orchestration must not silently discard them",
+    )
     store_knowledge: bool = Field(
         default=True, description="Persist lessons and insights from this task"
     )

@@ -7,7 +7,7 @@ import net from "node:net";
 import { fileURLToPath } from "node:url";
 import http from "node:http";
 import { afterEach, mock, test } from "node:test";
-import { lifecycleConfig, buildArtifact, verifyArtifact, startUI, stopUI, uiStatus, alive } from "../scripts/web-lifecycle.mjs";
+import { lifecycleConfig, buildArtifact, verifyArtifact, startUI, stopUI, rollbackUI, uiStatus, alive } from "../scripts/web-lifecycle.mjs";
 
 const scratch: string[] = [];
 const pids: number[] = [];
@@ -42,7 +42,14 @@ const server = http.createServer((req,res) => {
   else { res.statusCode = 503; res.end('starting'); }
 });
 server.listen(port, host);
-process.on('SIGTERM', () => server.close(() => process.exit(0)));
+process.on('SIGTERM', () => {
+  if (process.env.FAKE_REPLACE_RECEIPT) {
+    const file = process.env.FAKE_REPLACE_RECEIPT;
+    const record = JSON.parse(fs.readFileSync(file, 'utf8'));
+    fs.writeFileSync(file, JSON.stringify({...record, ticks: 'replacement', transaction: 'successor'}));
+  }
+  server.close(() => process.exit(0));
+});
 `);
   chmodSync(npm, 0o700);
   const env = { ...process.env, WEB_DIR: "web-next", WEB_PID_FILE: "run/ui.pid", WEB_LOG: "logs/ui.log", WEB_HOST: "127.0.0.1", ENVIRONMENT_ROLE: "dev", NEXT_DIST_DIR: ".next", NPM: npm, WEB_READY_TIMEOUT_SEC: "10" };
@@ -222,4 +229,48 @@ test("TypeScript includes generated type paths for each supported distDir", () =
     assert.ok(config.include.includes(`${dist}/types/**/*.ts`));
     assert.ok(config.include.includes(`${dist}/dev/types/**/*.ts`));
   }
+});
+
+
+test("Studio artifact uses its own app basename and fingerprints shared conversation sources", () => {
+  const f = fixture();
+  const studio = path.join(f.dir, "web-studio"); mkdirSync(studio);
+  writeFileSync(path.join(studio, "page.tsx"), "studio");
+  execFileSync("git", ["add", "web-studio/page.tsx"], { cwd: f.dir });
+  execFileSync("git", ["-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "-qm", "studio"], { cwd: f.dir });
+  const compiler = path.join(f.dir, "studio-build");
+  writeFileSync(compiler, `#!${process.execPath}\nconst fs=require('node:fs');fs.mkdirSync('.next/standalone/web-studio',{recursive:true});fs.writeFileSync('.next/standalone/web-studio/server.js','server');fs.writeFileSync('.next/BUILD_ID','id');`);
+  chmodSync(compiler, 0o700);
+  const env = { ...f.env, WEB_DIR: "web-studio", NPM: compiler, VENOM_VARIANT: "studio", VENOM_UI_READY_PATH: "/chat2" };
+  const config = lifecycleConfig(env, f.dir);
+  mkdirSync(path.join(f.app, "components/chat"), { recursive: true });
+  const shared = path.join(f.app, "components/chat/shared.tsx"); writeFileSync(shared, "version one");
+  buildArtifact(config, env); verifyArtifact(config, env);
+  writeFileSync(shared, "version two");
+  assert.throws(() => verifyArtifact(config, env), /Stale/);
+  assert.equal(config.root, studio);
+});
+
+
+test("stop preserves replacement identity even when its PID file retains the old numeric PID", async () => {
+  const f = fixture(); const c = config(f, await unusedPort());
+  const started = await startUI(c, "turbo", { ...f.env, FAKE_REPLACE_RECEIPT: `${c.pidFile}.identity.json` });
+  pids.push(started.pid);
+  await assert.rejects(stopUI(c), /ownership receipt changed/);
+  assert.equal(Number(readFileSync(c.pidFile, "utf8")), started.pid);
+  assert.equal(JSON.parse(readFileSync(`${c.pidFile}.identity.json`, "utf8")).transaction, "successor");
+});
+
+test("failed-start rollback retires only UI created by its startup transaction and preserves reused UI", async () => {
+  const f = fixture(); const c = config(f, await unusedPort());
+  const started = await startUI(c, "turbo", { ...f.env, VENOM_UI_TRANSACTION: "original-start" });
+  pids.push(started.pid);
+  const reused = await startUI(c, "turbo", { ...f.env, VENOM_UI_TRANSACTION: "later-start" });
+  assert.equal(reused.reused, true);
+  assert.equal((await rollbackUI(c, "later-start")).skipped, true);
+  assert.equal(uiStatus(c).running, true);
+  await assert.rejects(rollbackUI(c, ""), /Missing UI startup transaction/);
+  await rollbackUI(c, "original-start");
+  assert.equal(uiStatus(c).running, false);
+  assert.equal(existsSync(`${c.pidFile}.identity.json`), false);
 });

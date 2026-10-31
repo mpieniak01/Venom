@@ -204,6 +204,7 @@ async def submit_task(orch: "Orchestrator", request: TaskRequest) -> TaskRespons
         task.id,
         {
             "llm_runtime": runtime_context,
+            "session": {"session_id": request.session_id} if request.session_id else {},
             "routing_decision": routing_payload,
             "execution_mode": execution_mode_decision.execution_mode,
             "fallback_reason": execution_mode_decision.fallback_reason,
@@ -261,12 +262,18 @@ async def run_task_with_queue(
 ) -> None:
     """Queue-aware wrapper around _run_task."""
     while True:
+        task = orch.state_manager.get_task(task_id)
+        if task is None or task.status in {TaskStatus.COMPLETED, TaskStatus.FAILED}:
+            return
         if orch.task_manager.is_paused:
             await asyncio.sleep(0.5)
             continue
 
         has_capacity, _ = await orch.task_manager.check_capacity()
         if has_capacity:
+            task = orch.state_manager.get_task(task_id)
+            if task is None or task.status in {TaskStatus.COMPLETED, TaskStatus.FAILED}:
+                return
             task_handle = asyncio.current_task()
             if task_handle is None:
                 logger.error("Nie można uzyskać task handle dla %s", task_id)
@@ -282,7 +289,12 @@ async def run_task_with_queue(
         await asyncio.sleep(0.5)
 
     try:
-        await orch._run_task(task_id, request, fast_path=False)
+        task = orch.state_manager.get_task(task_id)
+        if task is not None and task.status not in {
+            TaskStatus.COMPLETED,
+            TaskStatus.FAILED,
+        }:
+            await orch._run_task(task_id, request, fast_path=False)
     finally:
         await orch.task_manager.unregister_task(task_id)
 
@@ -291,6 +303,9 @@ async def run_task_fastpath(
     orch: "Orchestrator", task_id: UUID, request: TaskRequest
 ) -> None:
     """Fast-path execution without queue delay."""
+    task = orch.state_manager.get_task(task_id)
+    if task is None or task.status in {TaskStatus.COMPLETED, TaskStatus.FAILED}:
+        return
     task_handle = asyncio.current_task()
     if task_handle is None:
         logger.error("Nie można uzyskać task handle dla %s", task_id)
@@ -302,7 +317,12 @@ async def run_task_fastpath(
         return
     await orch.task_manager.register_task(task_id, task_handle)
     try:
-        await orch._run_task(task_id, request, fast_path=True)
+        task = orch.state_manager.get_task(task_id)
+        if task is not None and task.status not in {
+            TaskStatus.COMPLETED,
+            TaskStatus.FAILED,
+        }:
+            await orch._run_task(task_id, request, fast_path=True)
     finally:
         await orch.task_manager.unregister_task(task_id)
 

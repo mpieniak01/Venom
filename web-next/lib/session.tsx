@@ -6,6 +6,7 @@ import { createBrowserUuid } from "@/lib/optional-modules/transport";
 
 type SessionContextValue = {
   sessionId: string;
+  bootId?: string | null;
   resetSession: () => string;
   setSessionId: (value: string) => void;
 };
@@ -47,6 +48,7 @@ export function SessionProvider({ children }: Readonly<{ children: React.ReactNo
   // localStorage (or generating an ID) during render breaks hydration.
   const [sessionId, setSessionId] = useState("");
   const sessionRef = useRef("");
+  const [backendBootId, setBackendBootId] = useState<string | null>(null);
 
   const persistSessionId = useCallback((value: string) => {
     sessionRef.current = value;
@@ -85,6 +87,7 @@ export function SessionProvider({ children }: Readonly<{ children: React.ReactNo
         const data = (await response.json()) as { boot_id?: string };
         const bootId = data.boot_id;
         if (!active || typeof bootId !== "string" || !bootId) return;
+        setBackendBootId(bootId);
         const storedBoot = globalThis.window.localStorage.getItem(SESSION_BOOT_KEY);
         if (!storedBoot) {
           globalThis.window.localStorage.setItem(SESSION_BOOT_KEY, bootId);
@@ -128,13 +131,18 @@ export function SessionProvider({ children }: Readonly<{ children: React.ReactNo
   const value = useMemo(
     () => ({
       sessionId,
+      bootId: backendBootId,
       resetSession,
       setSessionId: persistSessionId,
     }),
-    [sessionId, resetSession, persistSessionId],
+    [sessionId, backendBootId, resetSession, persistSessionId],
   );
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
+}
+
+export function useOptionalSession() {
+  return useContext(SessionContext);
 }
 
 export function useSession() {

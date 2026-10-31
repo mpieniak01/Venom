@@ -459,6 +459,7 @@ async def test_submit_task_returns_queued_response_when_paused(monkeypatch):
     assert response.llm_endpoint == "http://localhost:11434"
 
     assert state_manager.context_updates
+    assert state_manager.context_updates[0][1]["session"] == {"session_id": "s-1"}
     llm_payload = state_manager.context_updates[0][1]["llm_runtime"]
     assert llm_payload["status"] == "ready"
     assert llm_payload["expected_config_hash"] == "cfg-1"
@@ -556,7 +557,10 @@ async def test_run_task_with_queue_marks_failed_when_no_task_handle(monkeypatch)
         register_task=AsyncMock(),
         unregister_task=AsyncMock(),
     )
-    state_manager = SimpleNamespace(update_status=AsyncMock())
+    state_manager = SimpleNamespace(
+        update_status=AsyncMock(),
+        get_task=lambda _id: SimpleNamespace(status="PENDING"),
+    )
     orch = SimpleNamespace(
         task_manager=task_manager,
         state_manager=state_manager,
@@ -583,7 +587,10 @@ async def test_run_task_fastpath_marks_failed_when_no_task_handle(monkeypatch):
             register_task=AsyncMock(),
             unregister_task=AsyncMock(),
         ),
-        state_manager=SimpleNamespace(update_status=AsyncMock()),
+        state_manager=SimpleNamespace(
+            update_status=AsyncMock(),
+            get_task=lambda _id: SimpleNamespace(status="PENDING"),
+        ),
         _run_task=AsyncMock(),
     )
     monkeypatch.setattr(

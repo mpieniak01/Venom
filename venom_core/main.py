@@ -22,6 +22,27 @@ from venom_core.api.audio_stream import (
     AudioStreamHandler,
     collect_latest_voice_session_record,
 )
+from venom_core.api.middleware.http_audit import (
+    _AUDIT_CHANNEL_BY_PATH_PREFIX as _AUDIT_CHANNEL_BY_PATH_PREFIX,
+)
+from venom_core.api.middleware.http_audit import (
+    _resolve_audit_actor as _resolve_audit_actor,
+)
+from venom_core.api.middleware.http_audit import (
+    _resolve_audit_autonomy_snapshot as _resolve_audit_autonomy_snapshot,
+)
+from venom_core.api.middleware.http_audit import (
+    _resolve_audit_channel_for_path as _resolve_audit_channel_for_path,
+)
+from venom_core.api.middleware.http_audit import (
+    _resolve_audit_status as _resolve_audit_status,
+)
+from venom_core.api.middleware.http_audit import (
+    _resolve_http_autonomy_policy as _resolve_http_autonomy_policy,
+)
+from venom_core.api.middleware.http_audit import (
+    audit_http_requests as shared_http_audit,
+)
 from venom_core.api.middleware.traffic_control import TrafficControlMiddleware
 
 # Import routers
@@ -33,6 +54,9 @@ from venom_core.api.routes import audit_stream as audit_stream_routes
 from venom_core.api.routes import benchmark as benchmark_routes
 from venom_core.api.routes import benchmark_coding as benchmark_coding_routes
 from venom_core.api.routes import calendar as calendar_routes
+from venom_core.api.routes import chat_audio as chat_audio_routes
+from venom_core.api.routes import chat_materials as chat_materials_routes
+from venom_core.api.routes import chat_tasks as chat_tasks_routes
 from venom_core.api.routes import feedback as feedback_routes
 from venom_core.api.routes import flow as flow_routes
 from venom_core.api.routes import git as git_routes
@@ -62,8 +86,10 @@ from venom_core.api.routes import system_storage as system_storage_routes
 from venom_core.api.routes import tasks as tasks_routes
 from venom_core.api.routes import traffic_control as traffic_control_routes
 from venom_core.api.routes import transport as transport_routes
+from venom_core.api.routes import vast_environments as vast_environment_routes
 from venom_core.api.routes import workflow_control as workflow_control_routes
 from venom_core.api.routes import workflow_operations as workflow_operations_routes
+from venom_core.api.routes.health import healthz
 from venom_core.api.stream import EventType, connection_manager, event_broadcaster
 from venom_core.api.transport_access import (
     TransportAccessMiddleware,
@@ -1712,122 +1738,9 @@ app.add_middleware(
 )
 
 
-_AUDIT_CHANNEL_BY_PATH_PREFIX: tuple[tuple[str, str], ...] = (
-    ("/api/v1/system/status", "System Status API"),
-    ("/api/v1/system/services", "System Services API"),
-    ("/api/v1/system/runtime", "System Runtime API"),
-    ("/api/v1/system/storage", "System Storage API"),
-    ("/api/v1/system/iot", "System IoT API"),
-    ("/api/v1/tasks", "Tasks API"),
-    ("/api/v1/queue", "Queue API"),
-    ("/api/v1/agents", "Agents API"),
-    ("/api/roadmap", "Strategy API"),
-    ("/api/v1/governance", "Governance API"),
-    ("/api/v1/providers", "Governance API"),
-    ("/api/v1/memory", "Memory API"),
-    ("/api/v1/nodes", "Nodes API"),
-    ("/api/v1/feedback", "Feedback API"),
-    ("/api/v1/chat", "Frontend (Next.js)"),
-    ("/api/v1/models", "Frontend (Next.js)"),
-)
-
-
-def _resolve_audit_channel_for_path(path: str) -> str:
-    for prefix, channel in _AUDIT_CHANNEL_BY_PATH_PREFIX:
-        if path.startswith(prefix):
-            return channel
-    return "System Services API"
-
-
-def _resolve_audit_actor(request: Request) -> str:
-    for header_name in ("X-Authenticated-User", "X-User", "X-Admin-User"):
-        header_value = (request.headers.get(header_name) or "").strip()
-        if header_value:
-            return header_value
-    if hasattr(request, "state") and hasattr(request.state, "user"):
-        state_user = str(getattr(request.state, "user", "")).strip()
-        if state_user:
-            return state_user
-    if request.client and request.client.host:
-        return request.client.host
-    return "unknown"
-
-
-def _resolve_audit_status(status_code: int) -> str:
-    if status_code >= 500:
-        return "failure"
-    if status_code >= 400:
-        return "warning"
-    return "success"
-
-
-def _resolve_audit_autonomy_snapshot() -> tuple[int, str]:
-    try:
-        return (
-            permission_guard.get_current_level(),
-            permission_guard.get_current_level_name(),
-        )
-    except Exception:
-        return (-1, "UNKNOWN")
-
-
-def _resolve_http_autonomy_policy(
-    method: str, status_code: int
-) -> tuple[str, bool | None]:
-    read_only_methods = {"GET"}
-    mutating_methods = {"POST", "PUT", "PATCH", "DELETE"}
-    normalized_method = method.upper()
-
-    if normalized_method in read_only_methods:
-        return ("not_applicable_read_only", True)
-    if normalized_method in mutating_methods and status_code in {401, 403}:
-        return ("blocked", False)
-    if normalized_method in mutating_methods and 200 <= status_code < 400:
-        return ("allowed", True)
-    return ("unknown", None)
-
-
 @app.middleware("http")
 async def audit_http_requests(request: Request, call_next):
-    response = await call_next(request)
-
-    try:
-        path = request.url.path or ""
-        if not path.startswith("/api/"):
-            return response
-        if path.startswith("/api/v1/audit/stream"):
-            return response
-        if request.method.upper() in {"OPTIONS", "HEAD"}:
-            return response
-
-        api_channel = _resolve_audit_channel_for_path(path)
-        method = request.method.upper()
-        status = _resolve_audit_status(response.status_code)
-        current_level, current_level_name = _resolve_audit_autonomy_snapshot()
-        autonomy_policy_check, autonomy_policy_compliant = (
-            _resolve_http_autonomy_policy(method, response.status_code)
-        )
-        get_audit_stream().publish(
-            source="core.http",
-            action=f"http.{method.lower()}",
-            actor=_resolve_audit_actor(request),
-            status=status,
-            context=path,
-            details={
-                "api_channel": api_channel,
-                "http_method": method,
-                "http_path": path,
-                "status_code": response.status_code,
-                "current_autonomy_level": current_level,
-                "current_autonomy_level_name": current_level_name,
-                "autonomy_policy_check": autonomy_policy_check,
-                "autonomy_policy_compliant": autonomy_policy_compliant,
-            },
-        )
-    except Exception:
-        logger.debug("HTTP audit mirror skipped due to runtime error", exc_info=True)
-
-    return response
+    return await shared_http_audit(request, call_next, stream_factory=get_audit_stream)
 
 
 # Funkcja do ustawienia zależności routerów - wywoływana po inicjalizacji w lifespan
@@ -1975,11 +1888,15 @@ app.include_router(learning_routes.router)
 app.include_router(academy_routes.router)
 app.include_router(academy_self_learning_routes.router)
 app.include_router(llm_simple_routes.router)
+app.include_router(chat_audio_routes.router)
+app.include_router(chat_materials_routes.router)
+app.include_router(chat_tasks_routes.router)
 app.include_router(knowledge_routes.router)
 app.include_router(agents_routes.router)
 app.include_router(system_scheduler_routes.router)
 app.include_router(system_services_routes.router)
 app.include_router(system_llm_routes.router)
+app.include_router(vast_environment_routes.router, prefix="/api/v1", tags=["system"])
 app.include_router(system_runtime_routes.router)
 app.include_router(system_config_routes.router)
 app.include_router(system_governance_routes.router)
@@ -2439,10 +2356,7 @@ async def nodes_websocket_endpoint(websocket: WebSocket):
             )
 
 
-@app.get("/healthz")
-def healthz():
-    """Prosty endpoint zdrowia – do sprawdzenia, czy Venom żyje."""
-    return {"status": "ok", "component": "venom-core"}
+app.get("/healthz")(healthz)
 
 
 # Tasks endpoints moved to venom_core/api/routes/tasks.py

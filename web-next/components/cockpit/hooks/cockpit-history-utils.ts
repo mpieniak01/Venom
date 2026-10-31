@@ -1,6 +1,7 @@
 "use client";
 
 type HistoryEntryLike = {
+  material_ids?: string[];
   role?: string;
   content?: string;
   request_id?: string;
@@ -205,10 +206,10 @@ export function mergeStreamsIntoHistory(
           status: stream.status,
           contextUsed: stream.contextUsed ?? deduped[index].contextUsed,
         };
-      } else if (isPending && !deduped[index].pending) {
+      } else if (stream.status && (deduped[index].pending !== isPending || deduped[index].status !== stream.status)) {
         deduped[index] = {
           ...deduped[index],
-          pending: true,
+          pending: isPending,
           status: stream.status,
           contextUsed: stream.contextUsed ?? deduped[index].contextUsed,
         };
@@ -237,6 +238,7 @@ export function toHistoryMessages(entries: HistoryEntryLike[]) {
       ? `${entry.request_id}-${entry.role}`
       : fallbackId;
     return {
+      ...(entry.material_ids?.length ? { materialIds: [...entry.material_ids] } : {}),
       bubbleId: uniqueId,
       role: mapRole(entry.role),
       text: entry.content || "",

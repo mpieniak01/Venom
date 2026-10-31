@@ -7,14 +7,15 @@ import fcntl
 import json
 import os
 import shlex
-import signal
 import socket
+import stat
 import subprocess
 import sys
 import time
 import urllib.error
 import urllib.request
 from contextlib import contextmanager
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterator, Mapping
 from urllib.parse import urlsplit
@@ -218,6 +219,9 @@ def resolve(
                 raise ValueError(f"{key} overlaps dev resources")
     if values["PORT"] == values["WEB_PORT"]:
         raise ValueError("API and UI ports must differ")
+    from scripts.dev.stack_variant import apply_variant
+
+    apply_variant(root, values, overrides)
     return values
 
 
@@ -225,6 +229,10 @@ def public_plan(values: Mapping[str, str]) -> dict[str, str]:
     # Never print the merged environment or credentials.
     keys = (
         "PROFILE",
+        "VENOM_VARIANT",
+        "API_APP",
+        "WEB_DIR",
+        "VENOM_UI_READY_PATH",
         "ENVIRONMENT",
         "ENV_FILE",
         "DB_SCHEMA",
@@ -265,6 +273,7 @@ def record_pid(root: Path, values: Mapping[str, str], key: str) -> None:
         root=str(root.resolve()),
         role=values["ENVIRONMENT"],
         profile=values["PROFILE"],
+        variant=values.get("VENOM_VARIANT", "venom"),
         env_file=values["ENV_FILE"],
         local_runtime=values.get("VENOM_STARTED_LOCAL_RUNTIME", "none"),
     )
@@ -319,6 +328,10 @@ def owned_pid(
                 env_file=values["ENV_FILE"],
             )
             valid = all(identity.get(k) == v for k, v in expected.items())
+            if identity.get("variant", "venom") != values.get("VENOM_VARIANT", "venom"):
+                raise ValueError(
+                    "Different application variant owns API; stop its owning variant first"
+                )
             if reuse and identity.get("profile") != values["PROFILE"]:
                 raise ValueError(
                     "Different profile already running; stop this environment before restart"
@@ -346,13 +359,115 @@ def running(pid: int) -> bool:
         return False
 
 
+@dataclass(frozen=True)
+class _StopReceipt:
+    payload: bytes
+    fingerprint: tuple[int, int, int, int, int]
+
+
+def _stop_receipt(path: Path) -> _StopReceipt | None:
+    def fingerprint(info: os.stat_result) -> tuple[int, int, int, int, int]:
+        return (
+            info.st_dev,
+            info.st_ino,
+            info.st_size,
+            info.st_mtime_ns,
+            info.st_ctime_ns,
+        )
+
+    try:
+        with os.fdopen(
+            os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK), "rb"
+        ) as source:
+            before = os.fstat(source.fileno())
+            if not stat.S_ISREG(before.st_mode):
+                raise ValueError("Stop receipt must be a regular file")
+            payload = source.read()
+            after = os.fstat(source.fileno())
+            if fingerprint(before) != fingerprint(after):
+                raise ValueError("Stop receipt changed during snapshot")
+            return _StopReceipt(payload, fingerprint(after))
+    except FileNotFoundError:
+        return None
+    except OSError as exc:
+        raise ValueError("Cannot verify stop receipt") from exc
+
+
+def _assert_stop_receipts(
+    receipts: tuple[tuple[Path, _StopReceipt | None], ...],
+) -> None:
+    for path, captured in receipts:
+        if _stop_receipt(path) != captured:
+            raise ValueError("Stop receipt changed; preserving current owner records")
+
+
+def _remove_stop_receipts(
+    receipts: tuple[tuple[Path, _StopReceipt | None], ...],
+) -> None:
+    # Launchers serialize writers with startup_lock. Revalidate after awaited
+    # process retirement and before each unlink; do not claim atomic file CAS.
+    _assert_stop_receipts(receipts)
+    for path, captured in receipts:
+        _assert_stop_receipts(((path, captured),))
+        if captured is not None:
+            try:
+                path.unlink()
+            except FileNotFoundError as exc:
+                raise ValueError("Stop receipt disappeared during cleanup") from exc
+
+
+def _assert_expected_stop_owner(
+    receipts: tuple[tuple[Path, _StopReceipt | None], ...],
+    pid: int | None,
+    expected: tuple[int, str],
+) -> None:
+    pid_receipt, identity_receipt = receipts[0][1], receipts[1][1]
+    if pid_receipt is None or identity_receipt is None:
+        raise ValueError("Expected stop owner has no captured receipts")
+    try:
+        record = json.loads(identity_receipt.payload)
+        observed_owner = (
+            int(pid_receipt.payload.strip()),
+            str(record.get("stamp", record.get("ticks"))),
+        )
+        record_pid = record.get("pid")
+    except (ValueError, TypeError, AttributeError) as exc:
+        raise ValueError("Cannot verify expected stop owner") from exc
+    if (
+        observed_owner != expected
+        or record_pid != expected[0]
+        or (pid is not None and pid != expected[0])
+    ):
+        raise ValueError(
+            "Expected stop owner changed; preserving current owner records"
+        )
+
+
 def stop(
     root: Path,
     values: Mapping[str, str],
     keys: tuple[str, ...] = ("WEB_PID_FILE", "PID_FILE"),
+    *,
+    expected: Mapping[str, tuple[int, str]] | None = None,
 ) -> None:
+    receipts = {
+        key: tuple(
+            (path, _stop_receipt(path))
+            for path in (Path(values[key]), Path(values[key] + ".identity.json"))
+        )
+        for key in keys
+    }
+    # Validate every owner before signalling any process, then bind that result
+    # to the exact file pair captured before owned_pid read it.
     owners = [(key, owned_pid(root, values, key)) for key in keys]
+    for captured in receipts.values():
+        _assert_stop_receipts(captured)
     for key, pid in owners:
+        if expected is not None and key in expected:
+            _assert_expected_stop_owner(receipts[key], pid, expected[key])
+    for key, pid in owners:
+        captured = receipts[key]
+        _assert_stop_receipts(captured)
         if pid is not None and key == "WEB_PID_FILE":
             subprocess.run(
                 ["node", str(root / "web-next/scripts/web-lifecycle.mjs"), "stop"],
@@ -362,27 +477,26 @@ def stop(
             )
             continue
         if pid is not None:
-            tree = [
-                (child, process_stamp(child))
-                for child in [*descendants(pid), pid]
-                if running(child)
-            ]
-            for child, stamp in tree:
-                if running(child) and process_stamp(child) == stamp:
-                    os.kill(child, signal.SIGTERM)
-            for _ in range(100):
-                if not any(running(child) for child, _ in tree):
-                    break
-                time.sleep(0.1)
-            else:
-                raise ValueError(
-                    "Owned process tree did not stop; no global force-kill performed"
-                )
-        Path(values[key]).unlink(missing_ok=True)
-        Path(values[key] + ".identity.json").unlink(missing_ok=True)
+            from scripts.dev.qualification_process import identity
+            from scripts.dev.runtime_teardown import EngineOwner, stop_engines
+
+            observed = identity(pid)
+            pid_receipt, identity_receipt = captured[0][1], captured[1][1]
+            if pid_receipt is None or identity_receipt is None:
+                raise ValueError("API owner has no captured stop receipts")
+            record = json.loads(identity_receipt.payload)
+            if (
+                int(pid_receipt.payload.strip()) != pid
+                or record["pid"] != pid
+                or observed["start_ticks"] != record["stamp"]
+            ):
+                raise ValueError("API PID identity changed before stop")
+            _assert_stop_receipts(captured)
+            stop_engines([EngineOwner("api", pid, observed)])
+        _remove_stop_receipts(captured)
 
 
-def spawn_api(root: Path, values: dict[str, str]) -> None:
+def spawn_api(root: Path, values: dict[str, str]) -> dict[str, int | str]:
     from scripts.llm.with_gpu_libraries import command_python
 
     command = values.get("UVICORN", str(root / ".venv/bin/uvicorn"))
@@ -392,6 +506,9 @@ def spawn_api(root: Path, values: dict[str, str]) -> None:
         if values.get("START_MODE") != "prod" and values.get("BACKEND_RELOAD") == "1"
         else values.get("UVICORN_PROD_FLAGS", "--no-server-header")
     )
+    extra_flags = shlex.split(flags)
+    if values.get("VENOM_VARIANT") and "--timeout-graceful-shutdown" not in extra_flags:
+        extra_flags += ["--timeout-graceful-shutdown", "10"]
     for key in ("BACKEND_LOG", "PID_FILE"):
         Path(values[key]).parent.mkdir(parents=True, exist_ok=True)
     with Path(values["BACKEND_LOG"]).open("a") as log:
@@ -405,7 +522,7 @@ def spawn_api(root: Path, values: dict[str, str]) -> None:
                 values.get("HOST", "0.0.0.0"),
                 "--port",
                 values["PORT"],
-                *shlex.split(flags),
+                *extra_flags,
             ],
             cwd=root,
             env=values,
@@ -413,8 +530,18 @@ def spawn_api(root: Path, values: dict[str, str]) -> None:
             stderr=subprocess.STDOUT,
             start_new_session=True,
         )
-    Path(values["PID_FILE"]).write_text(str(child.pid) + "\n")
-    record_pid(root, values, "PID_FILE")
+    # Capture creation identity from this Popen, not from a later mutable PID file.
+    stamp, _ = process_stamp(child.pid)
+    receipt: dict[str, int | str] = {"pid": child.pid, "stamp": stamp}
+    try:
+        Path(values["PID_FILE"]).write_text(str(child.pid) + "\n")
+        record_pid(root, values, "PID_FILE")
+    except Exception:
+        from scripts.dev.startup_rollback import retire_unrecorded_api
+
+        retire_unrecorded_api(root, receipt)
+        raise
+    return receipt
 
 
 def component(root: Path, values: dict[str, str], name: str) -> None:
@@ -449,13 +576,15 @@ def component(root: Path, values: dict[str, str], name: str) -> None:
             )
         if name == "api-dev":
             values["BACKEND_RELOAD"] = "1"
-        spawn_api(root, values)
+        receipt = spawn_api(root, values)
         url = values["API_PROXY_TARGET"] + "/api/v1/system/status"
         try:
             for _ in range(60):
                 pid = owned_pid(root, values, "PID_FILE")
                 if pid is None or not running(pid):
                     raise ValueError("API process exited before readiness")
+                if pid != receipt["pid"] or process_stamp(pid)[0] != receipt["stamp"]:
+                    raise ValueError("Original API startup owner changed")
                 try:
                     with urllib.request.urlopen(url, timeout=1) as response:
                         if response.status == 200:
@@ -464,8 +593,10 @@ def component(root: Path, values: dict[str, str], name: str) -> None:
                 except (OSError, urllib.error.URLError):
                     time.sleep(0.2)
             raise ValueError("API readiness timeout")
-        except ValueError:
-            stop(root, values, ("PID_FILE",))
+        except BaseException:
+            from scripts.dev.startup_rollback import rollback_api
+
+            rollback_api(root, values, receipt)
             raise
     elif name in {"api-stop", "web-stop"}:
         stop(root, values, ("PID_FILE",) if name == "api-stop" else ("WEB_PID_FILE",))
@@ -512,6 +643,18 @@ def startup_lock(root: Path) -> Iterator[None]:
             yield
         finally:
             fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
+
+
+def check_variant_peers(root: Path, values: Mapping[str, str]) -> None:
+    registry = host_file(root, ".host-api-owners.json")
+    entries = json.loads(registry.read_text()) if registry.exists() else []
+    own = owned_pid(root, values, "PID_FILE", reuse=True)
+    for record in entries:
+        pid = record.get("pid", 0)
+        if pid != own and running(pid) and process_stamp(pid)[0] == record.get("stamp"):
+            raise ValueError(
+                "Another environment owns shared runtime resources; stop it before switching variants"
+            )
 
 
 def check_shared_runtime(root: Path, values: Mapping[str, str]) -> None:
@@ -561,7 +704,7 @@ def main() -> None:
         elif args.action == "runtime-check":
             check_shared_runtime(ROOT, values)
         elif args.action == "launch-api":
-            spawn_api(ROOT, values)
+            print(json.dumps(spawn_api(ROOT, values)))
         elif args.action == "record-api":
             record_pid(ROOT, values, "PID_FILE")
         elif args.action == "component":
@@ -582,7 +725,20 @@ def main() -> None:
             else:
                 component(ROOT, values, args.component_name or "")
         elif args.action == "stop":
-            stop(ROOT, values)
+            if "VENOM_VARIANT" in os.environ:
+                from scripts.dev.runtime_teardown import engine_owners, stop_engines
+
+                with startup_lock(ROOT):
+                    check_variant_peers(ROOT, values)
+                    engines = engine_owners(ROOT, values)
+                    stop(ROOT, values)
+                    stop_engines(engines)
+                    if engine_owners(ROOT, values):
+                        raise ValueError(
+                            "Owned engines remain; variant stop incomplete"
+                        )
+            else:
+                stop(ROOT, values)
         elif args.action == "status":
             for key in ("PID_FILE", "WEB_PID_FILE"):
                 print(f"{key}: {owned_pid(ROOT, values, key) or 'stopped'}")
@@ -598,10 +754,22 @@ def main() -> None:
                 Path(values[key]).parent.mkdir(parents=True, exist_ok=True)
             os.chdir(ROOT)
             with startup_lock(ROOT):
-                subprocess.run(
-                    ["bash", str(ROOT / "scripts/dev/start_stack.sh")],
-                    env={**values, "VENOM_STACK_RESOLVED": "1"},
-                    check=True,
+                if "VENOM_VARIANT" in os.environ:
+                    from scripts.dev.runtime_teardown import engine_owners
+
+                    check_variant_peers(ROOT, values)
+                    engines = engine_owners(ROOT, values)
+                    if (
+                        engines
+                        and owned_pid(ROOT, values, "PID_FILE", reuse=True) is None
+                    ):
+                        raise ValueError(
+                            "Owned local engines remain; run stop-venom or stop-studio before starting a variant"
+                        )
+                from scripts.dev.startup_rollback import run_start_stack
+
+                run_start_stack(
+                    ROOT, values, engines if "VENOM_VARIANT" in os.environ else None
                 )
     except ValueError as exc:
         parser.exit(2, f"{exc}\n")

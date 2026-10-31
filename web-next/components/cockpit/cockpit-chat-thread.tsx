@@ -1,5 +1,8 @@
 "use client";
 
+import { useOptionalSession } from "@/lib/session";
+import { useSessionDraft } from "@/components/chat/use-session-draft";
+
 import {
   forwardRef,
   memo,
@@ -37,6 +40,7 @@ import { Settings, ThumbsDown, ThumbsUp } from "lucide-react";
 export type ChatMode = "direct" | "normal" | "complex";
 
 export type ChatMessage = {
+  materialIds?: string[];
   bubbleId: string;
   requestId: string | null;
   role: "user" | "assistant";
@@ -647,7 +651,8 @@ export const ChatComposer = memo(
     ref,
   ) {
     const t = useTranslation();
-    const [draft, setDraft] = useState("");
+    const session = useOptionalSession();
+    const [draft, setDraft] = useSessionDraft(session?.sessionId);
     const [slashSuggestions, setSlashSuggestions] = useState<SlashCommand[]>([]);
     const [slashIndex, setSlashIndex] = useState(0);
     const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -708,9 +713,9 @@ export const ChatComposer = memo(
     const handleSendClick = useCallback(async () => {
       const ok = await onSend(draft);
       if (ok) {
-        setDraft("");
+        setDraft(current => current === draft ? "" : current);
       }
-    }, [draft, onSend]);
+    }, [draft, onSend, setDraft]);
 
     const applySlashSuggestion = useCallback((suggestion: SlashCommand) => {
       setDraft((current) => {
@@ -723,7 +728,7 @@ export const ChatComposer = memo(
       setSlashSuggestions([]);
       setSlashIndex(0);
       requestAnimationFrame(() => textareaRef.current?.focus());
-    }, []);
+    }, [setDraft]);
 
     const handleDraftChange = useCallback((value: string) => {
       setDraft(value);
@@ -731,7 +736,7 @@ export const ChatComposer = memo(
       const matches = agentMatches.length > 0 ? agentMatches : filterSlashSuggestions(value, 3);
       setSlashSuggestions(matches);
       setSlashIndex(0);
-    }, []);
+    }, [setDraft]);
 
     const handleTextareaKeyDown = useCallback(
       (event: KeyboardEvent<HTMLTextAreaElement>) => {

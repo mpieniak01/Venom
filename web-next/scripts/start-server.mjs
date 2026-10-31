@@ -7,7 +7,7 @@ import { nextDistDir } from "./build-paths.mjs";
 const distDir = nextDistDir();
 const rootDir = process.cwd();
 const serverCandidates = [
-  path.join(rootDir, distDir, "standalone", "web-next", "server.js"),
+  path.join(rootDir, distDir, "standalone", path.basename(rootDir), "server.js"),
   path.join(rootDir, distDir, "standalone", "server.js"),
 ];
 const serverPath = serverCandidates.find((candidate) => existsSync(candidate));
@@ -29,8 +29,15 @@ const child = spawn(nodeExecPath, [serverPath], {
   env: process.env,
 });
 
+let requestedStop = false;
+for (const signal of ["SIGINT", "SIGTERM"]) {
+  process.on(signal, () => {
+    requestedStop = true;
+    child.kill(signal);
+  });
+}
 child.on("exit", (code) => {
-  process.exit(code ?? 0);
+  process.exit(code ?? (requestedStop ? 0 : 1));
 });
 child.on("error", (err) => {
   console.error("[start-server] Nie udało się uruchomić standalone server:", err);

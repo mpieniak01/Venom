@@ -1,6 +1,16 @@
 @import "tailwindcss";
 @import "katex/dist/katex.min.css";
 
+/* These shared conversation sources also render from the standalone Studio app. */
+@source "../components/chat";
+@source "../components/cockpit/conversation-bubble.tsx";
+@source "../components/cockpit/openrouter-cost.tsx";
+@source "../components/cockpit/openrouter-model-status.tsx";
+@source "../components/ui/badge.tsx";
+@source "../components/ui/markdown.tsx";
+@source "../components/ui/toast.tsx";
+
+
 /* =========================================
    1. KONFIGURACJA (VENOM TECH)
    ========================================= */

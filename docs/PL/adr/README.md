@@ -15,6 +15,8 @@ Architecture Decision Record (ADR) dokumentuje pojedynczą decyzję architektoni
 | ID | Tytuł | Status | Data |
 |----|-------|--------|------|
 | [ADR-001](./ADR-001-runtime-strategy-llm-first.md) | Strategia Runtime: LLM-First z ONNX Fallback | Zaakceptowany | 2026-02-18 |
+| [ADR-003](./ADR-003-chat-2-shell.md) | Chat 2.0 jako osobna powłoka | Wdrożenie częściowo zastąpione przez ADR-004 | 2026-10-30 |
+| [ADR-004](./ADR-004-studio-runtime-composition.md) | Osobne kompozycje aplikacji Venom i Studio | Decyzja implementacyjna | 2026-10-31 |
 
 ## Konwencja nazewnictwa ADR
 

@@ -93,6 +93,7 @@ if [[ "$backend_changed" -eq 1 ]]; then
   fi
   "${PYTHON_BIN}" -m compileall -q venom_core scripts tests
   make architecture-drift-check
+  "${PYTHON_BIN}" -m pytest -q tests/test_api_routes_import_guard.py
   make optional-modules-contracts-check
   make test-lane-contracts-check
   make test-catalog-check

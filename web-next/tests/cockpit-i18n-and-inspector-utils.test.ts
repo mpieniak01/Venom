@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { sanitizeMermaidDiagram } from "../app/inspector/inspector-utils";
+import { sanitizeMermaidDiagram } from "../app/(console)/inspector/inspector-utils";
 import { formatUptime } from "../components/config/services-panel-utils";
 import { cockpitLocale as cockpitPl } from "../lib/i18n/locales/cockpit/pl";
 import { cockpitLocale as cockpitEn } from "../lib/i18n/locales/cockpit/en";

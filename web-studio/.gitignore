@@ -1,0 +1,6 @@
+node_modules
+.next*/
+next-env.d.ts
+*.tsbuildinfo
+public/meta.json
+public/chat2-capture-worklet.js

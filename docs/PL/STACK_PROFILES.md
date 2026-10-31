@@ -12,6 +12,13 @@ make status ENVIRONMENT=preprod
 make stop ENVIRONMENT=preprod
 ```
 
+Wariant aplikacji jest osobnym wyborem: `make start-venom` wybiera obecny
+frontend i pełne API, a `make start-studio` — osobny Chat 2.0 i podzbiór wspólnych
+handlerów. Przed zmianą użyj odpowiedniego `stop-venom` lub `stop-studio`.
+Te jawne polecenia zatrzymują także zweryfikowane własne lokalne silniki;
+historyczne `make stop` nadal dotyczy API/UI. [Instrukcja wariantów](STUDIO.md)
+opisuje własność, wspólne dane, osobne artefakty web i inicjalizację na żądanie.
+
 Full/dev pozostaje domyślny. Oba profile używają obecnego stosu i Turbopacka.
 Środowisko prod pozostaje zarezerwowane i nieużywane; nie jest kwalifikowane
 przez samą obecność celu start-prod.
@@ -46,8 +53,8 @@ Plan pokazuje wyłącznie dozwolone pola konfiguracji, bez kluczy API.
 Nie kopiuje danych ani plików z sekretami. Stare wspólne ścieżki w prywatnym
 .env.preprod wymagają jawnej korekty przed startem; resolver ich nie przenosi.
 
-Stop dotyczy wyłącznie procesów wybranego środowiska, zweryfikowanych po
-tożsamości i czasie utworzenia PID. Nie zatrzymuje współdzielonego LLM,
+Historyczne `make stop` dotyczy wyłącznie procesów API/UI wybranego środowiska,
+zweryfikowanych po tożsamości i czasie utworzenia PID. Nie zatrzymuje współdzielonego LLM,
 kontenerów ani innego środowiska. Dwa starty korzystają ze wspólnej blokady
 od sprawdzenia silnika do gotowości stosu, a rejestr właścicieli uwzględnia
 również niestandardowe ścieżki PID. Inny aktywny lokalny silnik powoduje błąd.

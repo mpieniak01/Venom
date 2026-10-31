@@ -14,7 +14,7 @@ import {
   formatErrorDetails,
   formatTimestamp,
   autoFitDiagram,
-} from "@/app/inspector/inspector-utils";
+} from "@/app/(console)/inspector/inspector-utils";
 import {
   ListFilter,
   Loader2,

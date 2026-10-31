@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { afterEach, describe, it, mock } from "node:test";
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 
-import { useInspectorState } from "../app/inspector/use-inspector-state";
+import { useInspectorState } from "../app/(console)/inspector/use-inspector-state";
 import { useGemma4Daemon } from "../hooks/use-gemma4-daemon";
 import { useAppMeta } from "../lib/app-meta";
 

@@ -175,6 +175,7 @@ jobs:
       - name: Architecture contracts guard
         run: |
           make architecture-drift-check
+          python -m pytest -q tests/test_api_routes_import_guard.py
 
       - name: Export Sonar architecture summary
         run: |
@@ -324,6 +325,13 @@ jobs:
       - name: Unit Tests
         timeout-minutes: 5
         run: npm --prefix web-next run test:unit:ci-lite
+
+      - name: Validate standalone Studio with shared dependencies
+        run: |
+          npm --prefix web-studio run prepare
+          npm --prefix web-studio run lint
+          npm --prefix web-studio run typecheck
+          npm --prefix web-studio run test:unit
 
   openapi-contract:
     name: OpenAPI Contract (export + TS codegen)

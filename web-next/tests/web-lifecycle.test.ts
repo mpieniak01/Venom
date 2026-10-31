@@ -267,7 +267,8 @@ test("failed-start rollback retires only UI created by its startup transaction a
   pids.push(started.pid);
   const reused = await startUI(c, "turbo", { ...f.env, VENOM_UI_TRANSACTION: "later-start" });
   assert.equal(reused.reused, true);
-  assert.equal((await rollbackUI(c, "later-start")).skipped, true);
+  const ignored = await rollbackUI(c, "later-start");
+  assert.ok("skipped" in ignored && ignored.skipped);
   assert.equal(uiStatus(c).running, true);
   await assert.rejects(rollbackUI(c, ""), /Missing UI startup transaction/);
   await rollbackUI(c, "original-start");

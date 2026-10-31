@@ -1,6 +1,6 @@
 """On-demand audio building blocks for the shared text conversation controller."""
 
-from typing import Literal
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field
@@ -16,9 +16,18 @@ from venom_core.services.chat_audio import (
     transcribe_pcm,
 )
 
+AUDIO_ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
+    403: {"description": "Operator access or audio request origin denied"},
+    409: {"description": "Shared runtime admission is busy or unavailable"},
+    503: {
+        "description": "Configured audio is unavailable, processing failed, or synthesized output is invalid"
+    },
+}
+
 router = APIRouter(
     prefix="/api/v1/chat/audio",
     tags=["chat-audio"],
+    responses=AUDIO_ERROR_RESPONSES,
     dependencies=[Depends(require_operator_request)],
 )
 
@@ -37,11 +46,24 @@ def _engine(request: Request):
     return engine
 
 
-@router.post("/transcribe")
+@router.post(
+    "/transcribe",
+    responses={
+        **AUDIO_ERROR_RESPONSES,
+        413: {
+            "description": "PCM exceeds the upload byte limit or recording duration limit"
+        },
+        415: {"description": "Raw PCM requires application/octet-stream content type"},
+        422: {
+            "description": "Invalid request parameters or empty/unaligned signed 16-bit PCM"
+        },
+        499: {"description": "Client disconnected before transcription was submitted"},
+    },
+)
 async def transcribe(
     request: Request,
-    session_id: str = Query(min_length=1, max_length=256),
-    sample_rate: int = Query(default=16000, ge=8000, le=96000),
+    session_id: Annotated[str, Query(min_length=1, max_length=256)],
+    sample_rate: Annotated[int, Query(ge=8000, le=96000)] = 16000,
     language: Literal["pl", "en", "de"] = "pl",
 ):
     engine = _engine(request)
@@ -64,7 +86,15 @@ async def transcribe(
     return {"session_id": session_id, "text": text, "pipeline": "host_stt"}
 
 
-@router.post("/speak")
+@router.post(
+    "/speak",
+    responses={
+        **AUDIO_ERROR_RESPONSES,
+        422: {
+            "description": "Invalid speech request or text containing only whitespace"
+        },
+    },
+)
 async def speak(request: Request, payload: ChatSpeechRequest):
     engine = _engine(request)
     if not payload.text.strip():

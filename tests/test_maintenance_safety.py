@@ -18,10 +18,13 @@ def test_container_has_only_trial_mount_and_no_network(tmp_path):
     habitat._active_container_name = lambda: "trial"
     habitat._run_container("unused", tmp_path)
     kwargs = habitat.client.containers.run.call_args.kwargs
-    assert kwargs["network_mode"] == "none" and kwargs["read_only"]
-    assert kwargs["cap_drop"] == ["ALL"] and kwargs["pids_limit"] == 64
+    assert kwargs["network_mode"] == "none"
+    assert kwargs["read_only"]
+    assert kwargs["cap_drop"] == ["ALL"]
+    assert kwargs["pids_limit"] == 64
     assert list(kwargs["volumes"]) == [str(tmp_path)]
-    assert "devices" not in kwargs and "privileged" not in kwargs
+    assert "devices" not in kwargs
+    assert "privileged" not in kwargs
 
 
 def test_actual_exit_stdout_stderr_are_separate_and_output_is_bounded():
@@ -40,7 +43,8 @@ def test_actual_exit_stdout_stderr_are_separate_and_output_is_bounded():
     assert h.client.api.exec_create.call_args.args[1][0] == "timeout"
     h.client.api.exec_start.return_value = iter([(b"x" * 1_048_577, None)])
     result = h.structured("spam", 1)
-    assert len(result["stdout"]) == 1_048_576 and result["output_truncated"]
+    assert len(result["stdout"]) == 1048576
+    assert result["output_truncated"]
     h.container.kill.assert_called_once()
 
 
@@ -55,8 +59,9 @@ def test_invalid_image_and_arguments_never_execute(tmp_path):
         ("Unknown", {}),
         ("Finish", {"status": "success", "summary": "ok"}),
     ]:
+        pending = tools.invoke_tool(name, arguments)
         with pytest.raises(ValueError):
-            asyncio.run(tools.invoke_tool(name, arguments))
+            asyncio.run(pending)
     h.structured.assert_not_called()
     asyncio.run(
         tools.invoke_tool(
@@ -168,3 +173,79 @@ def test_oracle_setup_uses_root_owned_read_only_file():
     kwargs = container.exec_run.call_args.kwargs
     assert kwargs["user"] == "0:0"
     assert "chmod(0o444)" in container.exec_run.call_args.args[0][2]
+
+
+@pytest.mark.parametrize(
+    "observed", ["paused", "exited", "dead", "running", "restarting"]
+)
+def test_freeze_accepts_pause_failure_only_after_confirming_quiescence(observed):
+    habitat = sandbox.TrialHabitat.__new__(sandbox.TrialHabitat)
+    container = MagicMock()
+    container.status = "running"
+
+    def racing_pause():
+        container.status = observed
+        raise RuntimeError("pause raced with container state")
+
+    container.pause.side_effect = racing_pause
+    habitat.container = container
+    if observed in {"paused", "exited", "dead"}:
+        habitat.freeze()
+    else:
+        with pytest.raises(RuntimeError, match="pause raced"):
+            habitat.freeze()
+    assert container.reload.call_count == 2
+
+
+@pytest.mark.parametrize("observed", ["paused", "exited", "dead"])
+def test_freeze_does_not_pause_an_already_quiescent_container(observed):
+    habitat = sandbox.TrialHabitat.__new__(sandbox.TrialHabitat)
+    container = MagicMock()
+    container.status = observed
+    habitat.container = container
+    habitat.freeze()
+    container.pause.assert_not_called()
+
+
+@pytest.mark.parametrize("observed", ["exited", "running"])
+def test_output_cap_closes_stream_before_kill_and_preserves_unknown_exit(
+    monkeypatch, observed
+):
+    events = []
+
+    class Stream:
+        def __iter__(self):
+            yield (b"x" * 1_048_577, None)
+
+        def close(self):
+            events.append("close")
+
+    habitat = sandbox.TrialHabitat.__new__(sandbox.TrialHabitat)
+    habitat.container = MagicMock(id="container", status=observed)
+    habitat.container.kill.side_effect = lambda: events.append("kill")
+    api = MagicMock()
+    api.exec_create.return_value = {"Id": "exec"}
+    api.exec_start.return_value = Stream()
+    api.exec_inspect.side_effect = RuntimeError("transport lost after kill")
+    habitat.client = SimpleNamespace(api=api)
+    monkeypatch.setattr(sandbox.threading, "Timer", MagicMock())
+    if observed == "running":
+        with pytest.raises(RuntimeError, match="transport lost"):
+            habitat.structured("bounded output", 1)
+    else:
+        result = habitat.structured("bounded output", 1)
+        assert result["exit_code"] is None
+        assert result["output_truncated"] is True
+        assert len(result["stdout"]) == 1_048_576
+        assert result["transport_error"] == "RuntimeError"
+    assert events.index("close") < events.index("kill")
+
+
+def test_trial_closes_owned_docker_client_even_when_removal_fails():
+    habitat = sandbox.TrialHabitat.__new__(sandbox.TrialHabitat)
+    habitat.container = MagicMock()
+    habitat.client = MagicMock()
+    habitat.container.remove.side_effect = RuntimeError("remove failed")
+    with pytest.raises(RuntimeError, match="remove failed"):
+        habitat.close()
+    habitat.client.close.assert_called_once()

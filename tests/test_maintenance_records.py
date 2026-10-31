@@ -62,6 +62,11 @@ async def test_complete_schedule_and_finalist_repeats_have_300_held_out_records(
 
     models, _ = load_catalog(ROOT / "config/maintenance_comparison")
     monkeypatch.setattr(worker, "require_host_owner", lambda: None)
+    monkeypatch.setattr(
+        worker,
+        "validate_worker_paths",
+        lambda arguments: (ROOT, tmp_path, tmp_path / "state.json"),
+    )
     monkeypatch.setattr(permission_guard, "set_level", lambda _: True)
     monkeypatch.setattr(worker.importlib.metadata, "version", lambda _: "test")
     monkeypatch.setattr(
@@ -124,9 +129,11 @@ async def test_complete_schedule_and_finalist_repeats_have_300_held_out_records(
     await worker.execute(args)
     rows = json.loads((tmp_path / "attempts.json").read_text())
     export = json.loads((tmp_path / "training-records.json").read_text())
-    assert len(rows) == 300 and sum(r["repetition"] == 0 for r in rows) == 180
-    assert len(export) == 300 and all(
-        r["training_allowed"] is False and r["split"] == "test" for r in export
+    assert len(rows) == 300
+    assert sum((r["repetition"] == 0 for r in rows)) == 180
+    assert len(export) == 300
+    assert all(
+        (r["training_allowed"] is False and r["split"] == "test" for r in export)
     )
     assert all(
         r["revision"] and r["repo_sha"] and r["purpose"] == "held_out_evaluation"
@@ -134,7 +141,9 @@ async def test_complete_schedule_and_finalist_repeats_have_300_held_out_records(
     )
     assert len(json.loads((tmp_path / "plan.json").read_text())) == 300
     report = (tmp_path / "REPORT.md").read_text()
-    assert "180/180" in report and "100.0%" in report and "N/A" in report
+    assert "180/180" in report
+    assert "100.0%" in report
+    assert "N/A" in report
 
 
 def test_finalists_require_complete_unblocked_baseline():
@@ -177,8 +186,9 @@ def test_rss_sample_is_measured_or_explicitly_missing(monkeypatch):
 
 
 @pytest.mark.parametrize("parameters,quantized", [(100, False), (3_000_000_000, True)])
+@pytest.mark.parametrize("protocol", ["lfm2_tool", "gemma4_tool", "qwen35_xml"])
 def test_inference_pins_checkpoint_and_preserves_native_tokens(
-    tmp_path, monkeypatch, parameters, quantized
+    tmp_path, monkeypatch, parameters, quantized, protocol
 ):
     import sys
 
@@ -230,7 +240,7 @@ def test_inference_pins_checkpoint_and_preserves_native_tokens(
         "hf_id": "public/test",
         "revision": "a" * 40,
         "parameters": parameters,
-        "protocol": "lfm2_tool",
+        "protocol": protocol,
         "profile": {
             "context_tokens": 128,
             "temperature": 0,
@@ -238,6 +248,10 @@ def test_inference_pins_checkpoint_and_preserves_native_tokens(
             "seed": 17,
         },
     }
+    if protocol != "lfm2_tool":
+        profile["profile"].update(
+            temperature=0.7, top_p=0.8, top_k=20, presence_penalty=1.5
+        )
     local = inference.LocalModel(profile, tmp_path)
     assert factory.from_pretrained.call_args.kwargs["revision"] == "a" * 40
     assert factory.from_pretrained.call_args.kwargs["trust_remote_code"] is False
@@ -250,10 +264,17 @@ def test_inference_pins_checkpoint_and_preserves_native_tokens(
         == "<tool_call>native</tool_call>"
     )
     assert tokenizer.call_args.kwargs["add_special_tokens"] is False
-    assert local.last_generation_finish == "eos" and local.output_tokens == 2
-    assert tokenizer.apply_chat_template.call_args.kwargs["tools"] == [
-        {"name": "Terminal"}
-    ]
+    assert local.last_generation_finish == "eos"
+    assert local.output_tokens == 2
+    expected_tools = (
+        [{"name": "Terminal"}]
+        if protocol == "lfm2_tool"
+        else [{"function": {"name": "Terminal"}}]
+    )
+    assert tokenizer.apply_chat_template.call_args.kwargs["tools"] == expected_tools
+    if protocol != "lfm2_tool":
+        assert model.generate.call_args.kwargs["top_k"] == 20
+        assert len(model.generate.call_args.kwargs["logits_processor"]) == 2
     local.context = 4
     with pytest.raises(ValueError, match="context_limit"):
         local.generate([], [], 1)
@@ -289,3 +310,165 @@ def test_backend_nonfinite_scores_are_infrastructure_errors(nonfinite):
     else:
         scores = []
         assert processor([], scores) is scores
+
+
+@pytest.mark.parametrize("field", ["repo", "out", "state_file"])
+def test_worker_rejects_paths_outside_host_issued_run(tmp_path, monkeypatch, field):
+    run_id = "62dc6041-a732-4f9c-adf1-446700df60f9"
+    monkeypatch.setenv("VENOM_MAINTENANCE_RUN_ID", run_id)
+    monkeypatch.setattr(
+        worker,
+        "__file__",
+        str(tmp_path / "venom_core/services/maintenance_comparison/worker.py"),
+    )
+    output = tmp_path / "data/benchmarks/coding" / run_id
+    arguments = SimpleNamespace(
+        repo=str(tmp_path),
+        out=str(output),
+        state_file=str(output / "scheduler_state.json"),
+    )
+    worker.validate_worker_paths(arguments)
+    setattr(arguments, field, str(tmp_path / "outside.json"))
+    with pytest.raises(ValueError, match="worker_path_mismatch"):
+        worker.validate_worker_paths(arguments)
+
+
+def test_worker_rejects_symlinked_output(tmp_path, monkeypatch):
+    run_id = "62dc6041-a732-4f9c-adf1-446700df60f9"
+    monkeypatch.setenv("VENOM_MAINTENANCE_RUN_ID", run_id)
+    monkeypatch.setattr(
+        worker,
+        "__file__",
+        str(tmp_path / "venom_core/services/maintenance_comparison/worker.py"),
+    )
+    root = tmp_path / "data/benchmarks/coding"
+    root.mkdir(parents=True)
+    output = root / run_id
+    output.symlink_to(tmp_path, target_is_directory=True)
+    arguments = SimpleNamespace(
+        repo=str(tmp_path),
+        out=str(output),
+        state_file=str(output / "scheduler_state.json"),
+    )
+    with pytest.raises(ValueError, match="output_path_invalid"):
+        worker.validate_worker_paths(arguments)
+
+
+def test_worker_uses_host_storage_root_without_trusting_cli_destination(
+    tmp_path, monkeypatch
+):
+    run_id = "62dc6041-a732-4f9c-adf1-446700df60f9"
+    monkeypatch.setenv("VENOM_MAINTENANCE_RUN_ID", run_id)
+    monkeypatch.setattr(
+        worker,
+        "__file__",
+        str(tmp_path / "venom_core/services/maintenance_comparison/worker.py"),
+    )
+    root = tmp_path / "operator-storage"
+    monkeypatch.setenv("VENOM_MAINTENANCE_OUTPUT_ROOT", str(root))
+    output = root / run_id
+    arguments = SimpleNamespace(
+        repo=str(tmp_path),
+        out=str(output),
+        state_file=str(output / "scheduler_state.json"),
+    )
+    assert worker.validate_worker_paths(arguments) == (
+        tmp_path,
+        output,
+        output / "scheduler_state.json",
+    )
+    monkeypatch.setenv("VENOM_MAINTENANCE_OUTPUT_ROOT", "relative-root")
+    with pytest.raises(ValueError, match="output_root_invalid"):
+        worker.validate_worker_paths(arguments)
+
+
+def test_gemma4_history_preserves_named_actual_tool_results():
+    messages = [
+        {
+            "role": "assistant",
+            "content": "",
+            "tool_calls": [
+                {"function": {"name": "Terminal", "arguments": {"command": "false"}}}
+            ],
+        },
+        {
+            "role": "tool",
+            "name": "Terminal",
+            "content": '{"stdout":"","stderr":"actual error","exit_code":1}',
+        },
+        {"role": "tool", "name": "Other", "content": "tool_not_available"},
+        {"role": "user", "content": "next"},
+    ]
+    native = inference._gemma4_history(messages)
+    assert native[0]["tool_responses"] == [
+        {
+            "name": "Terminal",
+            "response": {"stdout": "", "stderr": "actual error", "exit_code": 1},
+        },
+        {"name": "Other", "response": "tool_not_available"},
+    ]
+    assert "tool_responses" not in messages[0]
+    assert native[1:] == messages[1:]
+
+
+def test_presence_penalty_ignores_prompt_and_counts_repetition_once():
+    import numpy as np
+
+    class Mask(np.ndarray):
+        def scatter_(self, dim, indices, value):
+            np.put_along_axis(self, indices, value, axis=dim)
+            return self
+
+    torch = SimpleNamespace(zeros_like=lambda values: np.zeros_like(values).view(Mask))
+    penalty = inference._PresencePenalty(torch, 2, 1.5)
+    scores = np.array([[4.0, 3.0, 2.0, 1.0]])
+    ids = np.array([[0, 1, 2, 2, 3]])
+    np.testing.assert_allclose(penalty(ids, scores), [[4.0, 3.0, 0.5, -0.5]])
+    np.testing.assert_allclose(penalty(ids[:, :2], scores), scores)
+
+
+@pytest.mark.parametrize("value", [float("nan"), float("inf")])
+def test_presence_penalty_rejects_nonfinite_settings(value):
+    with pytest.raises(ValueError, match="finite"):
+        inference._PresencePenalty(None, 1, value)
+
+
+@pytest.mark.asyncio
+async def test_additional_baseline_plans_sixty_cases_without_repeats(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(
+        worker, "_runtime_environment", lambda: {"packages": {}, "gpu": None}
+    )
+    args = SimpleNamespace(
+        repo=str(ROOT),
+        out=str(tmp_path),
+        models="gemma-4-e2b-it,qwen3.5-9b",
+        tasks="maintenance_operator,maintenance_repair,maintenance_localization",
+        phase="baseline",
+        timeout=180,
+        state_file=str(tmp_path / "state.json"),
+    )
+    experiment = worker.Experiment(args)
+    seen = []
+
+    async def complete(profile, cases, repetition):
+        seen.append((profile["id"], repetition))
+        for case in cases:
+            experiment.rows.append(
+                {
+                    "model": profile["id"],
+                    "role": case.role,
+                    "scenario": case.id,
+                    "repetition": repetition,
+                    "passed": True,
+                    "status": "model_finished",
+                    "seconds": 1.0,
+                }
+            )
+
+    experiment._model = complete
+    await experiment.run()
+    assert len(experiment.planned) == 60
+    assert len(experiment.rows) == 60
+    assert seen == [("gemma-4-e2b-it", 0), ("qwen3.5-9b", 0)]

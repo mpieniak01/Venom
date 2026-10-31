@@ -138,7 +138,12 @@ def _example(rows: list[dict], role: str, success: bool) -> list[str]:
 
 
 def render(
-    models: list[dict], rows: list[dict], output: Path, roles: list[str] | None = None
+    models: list[dict],
+    rows: list[dict],
+    output: Path,
+    roles: list[str] | None = None,
+    *,
+    phase: str = "comparison",
 ) -> str:
     selected_roles = roles if roles is not None else ROLES
     lines = [
@@ -158,20 +163,29 @@ def render(
     lines.extend(_measurements(models, rows))
     planned = sum(len(set(m["roles"]) & set(selected_roles)) * 10 for m in models)
     base_count = sum(r["repetition"] == 0 for r in rows)
+    maximum = planned
+    if phase == "comparison":
+        maximum += sum(
+            20 * min(2, sum(role in model["roles"] for model in models))
+            for role in selected_roles
+        )
     lines += [
         "",
         "## Pokrycie planu i rekomendacje",
         "",
-        f"Baseline: {base_count}/{planned} pozycji; wszystkie wykonania: {len(rows)} (limit 300).",
+        f"Baseline: {base_count}/{planned} pozycji; wszystkie wykonania: {len(rows)} (limit {maximum}).",
     ]
     lines.extend(_recommendation(models, rows, role) for role in selected_roles)
-    lines += [
-        "",
-        "Powtórzenia otrzymuje do dwóch finalistów roli z kompletnym baseline bez blokad i co najmniej jednym sukcesem. Pozostałe wyniki są wstępne. Greedy/seed=17 pozostaje identyczny w powtórzeniach; to nie jest pomiar wariancji między seedami.",
-        "",
-        "## Blokady i przykłady",
-        "",
-    ]
+    if phase == "baseline":
+        lines.append(
+            "Tryb baseline: po jednym wykonaniu przypadku; powtórzenia finalistów nie są uruchamiane. Wyniki pozostają wstępne."
+        )
+    if phase == "comparison":
+        lines += [
+            "",
+            "Powtórzenia otrzymuje do dwóch finalistów roli z kompletnym baseline bez blokad i co najmniej jednym sukcesem. Pozostałe wyniki są wstępne. Seed=17 pozostaje identyczny w powtórzeniach; to nie jest pomiar wariancji między seedami.",
+        ]
+    lines += ["", "## Blokady i przykłady", ""]
     lines.extend(_blockers(rows))
     for role in ROLES:
         for success in [True, False]:

@@ -12,6 +12,7 @@ from .catalog import ROLES
 from .protocol import (
     ProtocolError,
     bash_call,
+    gemma4_calls,
     gemma_calls,
     granite_calls,
     lfm_calls,
@@ -91,13 +92,14 @@ def tool_schemas(role: str, protocol: str | None = None) -> list[dict]:
 def decode(protocol: str, response: str):
     if protocol == "bash":
         return [bash_call(response)]
-    if protocol == "lfm2_tool":
-        return lfm_calls(response)
-    if protocol == "functiongemma":
-        return gemma_calls(response)
-    if protocol == "granite_xml":
-        return granite_calls(response)
-    return native_calls(response)
+    decoders = {
+        "lfm2_tool": lfm_calls,
+        "functiongemma": gemma_calls,
+        "gemma4_tool": gemma4_calls,
+        "granite_xml": granite_calls,
+        "qwen35_xml": granite_calls,
+    }
+    return decoders.get(protocol, native_calls)(response)
 
 
 def _system_prompt(protocol: str, scenario) -> str:
@@ -407,16 +409,20 @@ def _result(
         "final": tools.finished,
         "tool_call_count": len(tools.calls),
         "model_turn_count": sum(m["role"] == "assistant" for m in messages),
-        "termination_source": "model"
-        if finished
-        else "orchestrator"
-        if status.startswith("orchestrator_") or status == "context_limit"
-        else "infrastructure"
-        if status.startswith("infrastructure_")
-        else "model_error",
+        "termination_source": _termination_source(finished, status),
         "redundant_repetitions": sum(
             action_signature(a) == action_signature(b)
             and a.get("before") == a.get("after")
             for a, b in zip(tools.calls, tools.calls[1:])
         ),
     }
+
+
+def _termination_source(finished: bool, status: str) -> str:
+    if finished:
+        return "model"
+    if status.startswith("orchestrator_") or status == "context_limit":
+        return "orchestrator"
+    if status.startswith("infrastructure_"):
+        return "infrastructure"
+    return "model_error"

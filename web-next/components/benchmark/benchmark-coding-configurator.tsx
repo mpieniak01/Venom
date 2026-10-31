@@ -39,7 +39,12 @@ export function BenchmarkCodingConfigurator({
   useEffect(() => {
     const controller = new AbortController();
     void fetch(`${getApiBaseUrl() || ""}/api/v1/benchmark/coding/maintenance/models`, {signal: controller.signal})
-      .then(response => { if (!response.ok) throw new Error("catalog_unavailable"); return response.json(); })
+      .then(response => {
+        if (!response.ok) {
+          throw new Error("catalog_unavailable");
+        }
+        return response.json();
+      })
       .then(value => { if (value && !controller.signal.aborted && typeof value.enabled === "boolean" && Array.isArray(value.models)) setComparison(value); })
       .catch(() => {if (!controller.signal.aborted) setCatalogError(true);});
     return () => controller.abort();
@@ -82,6 +87,13 @@ export function BenchmarkCodingConfigurator({
 
   const canStart = selectedModels.length > 0 && selectedTasks.length > 0 && !disabled && (!maintenance || comparison.enabled);
 
+  let maintenanceHelp = "benchmark.coding.config.maintenanceDisabled";
+  if (catalogError) {
+    maintenanceHelp = "benchmark.coding.config.maintenanceUnavailable";
+  } else if (comparison.enabled) {
+    maintenanceHelp = "benchmark.coding.config.maintenanceHelp";
+  }
+
   return (
     <div className="space-y-5">
       <label className="flex items-center gap-2 text-sm">
@@ -92,7 +104,7 @@ export function BenchmarkCodingConfigurator({
           setLoopTask(enabled ? "" : "python_complex_bugfix"); setMaxRounds(3); setStopOnFailure(false);
         }} />{t("benchmark.coding.config.maintenanceLabel")}
       </label>
-      <p className="text-xs text-[color:var(--ui-muted)]">{t(catalogError ? "benchmark.coding.config.maintenanceUnavailable" : comparison.enabled ? "benchmark.coding.config.maintenanceHelp" : "benchmark.coding.config.maintenanceDisabled")}</p>
+      <p className="text-xs text-[color:var(--ui-muted)]">{t(maintenanceHelp)}</p>
       {/* Modele Ollama */}
       <div className="space-y-2">
         <p className="text-xs font-medium text-[color:var(--text-secondary)] uppercase tracking-wider">

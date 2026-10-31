@@ -2,6 +2,8 @@
 
 import gc
 import importlib.metadata
+import json
+import math
 import time
 from pathlib import Path
 from typing import Any
@@ -24,6 +26,50 @@ class _FiniteScores:
         if invalid.item():
             raise InferenceNumericalError("backend_nonfinite_logits")
         return scores
+
+
+class _PresencePenalty:
+    """Penalize each generated token once, excluding the supplied prompt."""
+
+    def __init__(self, torch, prompt_tokens: int, penalty: float):
+        if not math.isfinite(penalty):
+            raise ValueError("presence_penalty_must_be_finite")
+        self.torch, self.prompt_tokens, self.penalty = torch, prompt_tokens, penalty
+
+    def __call__(self, input_ids, scores):
+        penalties = self.torch.zeros_like(scores)
+        penalties.scatter_(1, input_ids[:, self.prompt_tokens :], self.penalty)
+        return scores - penalties
+
+
+def _tool_response_body(body):
+    if not isinstance(body, str):
+        return body
+    try:
+        return json.loads(body)
+    except json.JSONDecodeError:
+        return body
+
+
+def _gemma4_history(messages: list[dict]) -> list[dict]:
+    """Use the pinned template's native named tool_responses without inventing IDs."""
+    native = [dict(message) for message in messages]
+    for index, message in enumerate(native):
+        if message.get("role") != "assistant" or not message.get("tool_calls"):
+            continue
+        responses = []
+        for following in native[index + 1 :]:
+            if following.get("role") != "tool":
+                break
+            responses.append(
+                {
+                    "name": following["name"],
+                    "response": _tool_response_body(following["content"]),
+                }
+            )
+        if responses:
+            message["tool_responses"] = responses
+    return native
 
 
 class LocalModel:
@@ -77,6 +123,9 @@ class LocalModel:
             "gpu_total_memory_bytes": gpu_memory,
             "backend": "transformers",
             "backend_version": importlib.metadata.version("transformers"),
+            "model_class": type(self.model).__name__,
+            "tokenizer_class": type(self.tokenizer).__name__,
+            "modality": "text",
             "torch_version": torch.__version__,
             "quantization": "bnb-nf4" if quantized else dtype_name,
             "bitsandbytes_version": importlib.metadata.version("bitsandbytes")
@@ -90,6 +139,8 @@ class LocalModel:
         if self.profile["protocol"] == "lfm2_tool":
             tools = [tool["function"] for tool in tools]
         tool_payload: Any = tools if native else None
+        if self.profile["protocol"] == "gemma4_tool":
+            messages = _gemma4_history(messages)
         text = self.tokenizer.apply_chat_template(
             messages,
             tools=tool_payload,
@@ -110,11 +161,20 @@ class LocalModel:
             raise ValueError("context_limit")
         self.input_tokens += count
         self.torch.manual_seed(self.profile["profile"]["seed"])
+        processors: list[Any] = [_FiniteScores(self.torch)]
+        presence = self.profile["profile"].get("presence_penalty", 0)
+        if presence:
+            processors.append(_PresencePenalty(self.torch, count, presence))
+        sampling = {
+            key: self.profile["profile"][key]
+            for key in ("top_k", "min_p", "repetition_penalty")
+            if key in self.profile["profile"]
+        }
         with self.torch.inference_mode():
             output = self.model.generate(
                 **inputs,
                 max_new_tokens=maximum,
-                logits_processor=[_FiniteScores(self.torch)],
+                logits_processor=processors,
                 max_time=max(1.0, seconds),
                 do_sample=self.temperature > 0,
                 temperature=self.temperature if self.temperature > 0 else None,
@@ -122,17 +182,17 @@ class LocalModel:
                 if self.temperature > 0
                 else None,
                 pad_token_id=self.tokenizer.eos_token_id,
+                **sampling,
             )
         generated = output[0, count:]
         eos = self.model.generation_config.eos_token_id
         eos_ids = eos if isinstance(eos, list) else [eos]
-        self.last_generation_finish = (
-            "eos"
-            if len(generated) and int(generated[-1]) in eos_ids
-            else "length"
-            if len(generated) >= maximum
-            else "time"
-        )
+        if len(generated) and int(generated[-1]) in eos_ids:
+            self.last_generation_finish = "eos"
+        elif len(generated) >= maximum:
+            self.last_generation_finish = "length"
+        else:
+            self.last_generation_finish = "time"
         self.output_tokens += len(generated)
         decoded = self.tokenizer.decode(generated, skip_special_tokens=False)
         if not isinstance(decoded, str):

@@ -7,6 +7,10 @@ import json
 from dataclasses import dataclass
 from typing import Any
 
+TOOL_CALL_OPEN = "<tool_call>"
+TOOL_CALL_CLOSE = "</tool_call>"
+GEMMA_ESCAPE = "<escape>"
+
 
 class ProtocolError(ValueError):
     """A model response does not conform to the selected protocol."""
@@ -96,13 +100,13 @@ def _literal_call(node: ast.expr) -> Call:
 
 def native_calls(text: str) -> list[Call]:
     """Only documented explicit envelopes or a complete JSON value are accepted."""
-    if "<tool_call>" in text:
-        parts = text.split("<tool_call>")[1:]
-        if any(part.count("</tool_call>") != 1 for part in parts):
+    if TOOL_CALL_OPEN in text:
+        parts = text.split(TOOL_CALL_OPEN)[1:]
+        if any(part.count(TOOL_CALL_CLOSE) != 1 for part in parts):
             raise ProtocolError("invalid_tool_envelope")
         try:
             return [
-                json_call(strict_json(part.split("</tool_call>", 1)[0]))
+                json_call(strict_json(part.split(TOOL_CALL_CLOSE, 1)[0]))
                 for part in parts
             ]
         except json.JSONDecodeError as exc:
@@ -121,8 +125,9 @@ def native_calls(text: str) -> list[Call]:
 
 
 class _GemmaLiteral:
-    def __init__(self, text: str):
+    def __init__(self, text: str, string_marker: str = GEMMA_ESCAPE):
         self.text, self.position = text, 0
+        self.string_marker = string_marker
 
     def whitespace(self) -> None:
         while self.position < len(self.text) and self.text[self.position].isspace():
@@ -135,12 +140,12 @@ class _GemmaLiteral:
         self.position += len(token)
 
     def _string(self) -> str:
-        self.position += len("<escape>")
-        end = self.text.find("<escape>", self.position)
+        self.position += len(self.string_marker)
+        end = self.text.find(self.string_marker, self.position)
         if end < 0:
             raise ProtocolError("unterminated_gemma_string")
         value = self.text[self.position : end]
-        self.position = end + len("<escape>")
+        self.position = end + len(self.string_marker)
         return value
 
     def _primitive(self):
@@ -152,13 +157,18 @@ class _GemmaLiteral:
         return value
 
     def _pair(self, values: dict, depth: int) -> None:
-        start = self.position
-        while self.position < len(self.text) and (
-            self.text[self.position].isalnum() or self.text[self.position] == "_"
-        ):
-            self.position += 1
-        key = self.text[start : self.position]
-        if not key or key in values:
+        if self.text.startswith(self.string_marker, self.position):
+            key = self._string()
+        elif self.text.startswith('"', self.position):
+            key = self._primitive()
+        else:
+            start = self.position
+            while self.position < len(self.text) and (
+                self.text[self.position].isalnum() or self.text[self.position] == "_"
+            ):
+                self.position += 1
+            key = self.text[start : self.position]
+        if not isinstance(key, str) or not key or key in values:
             raise ProtocolError("invalid_gemma_key")
         self.consume(":")
         values[key] = self.literal(depth + 1)
@@ -187,17 +197,17 @@ class _GemmaLiteral:
         self.whitespace()
         if depth > 16 or self.position >= len(self.text):
             raise ProtocolError("invalid_gemma_literal")
-        if self.text.startswith("<escape>", self.position):
+        if self.text.startswith(self.string_marker, self.position):
             return self._string()
         char = self.text[self.position]
         return self._collection(char, depth) if char in "[{" else self._primitive()
 
 
-def _gemma_call(body: str) -> Call:
+def _gemma_call(body: str, string_marker: str = GEMMA_ESCAPE) -> Call:
     name, separator, rest = body.partition("{")
     if not separator or not name.isidentifier():
         raise ProtocolError("invalid_gemma_function")
-    parser = _GemmaLiteral("{" + rest)
+    parser = _GemmaLiteral("{" + rest, string_marker)
     arguments = parser.literal()
     parser.whitespace()
     if parser.position != len(parser.text):
@@ -211,6 +221,15 @@ def gemma_calls(text: str) -> list[Call]:
     if not parts or text.count(end) != len(parts):
         raise ProtocolError("invalid_gemma_call_envelopes")
     return [_gemma_call(part.split(end, 1)[0]) for part in parts]
+
+
+def gemma4_calls(text: str) -> list[Call]:
+    """Pinned Gemma 4 tool markers; literal values remain unchanged."""
+    start, end = "<|tool_call>call:", "<tool_call|>"
+    parts = text.split(start)[1:]
+    if not parts or text.count(end) != len(parts):
+        raise ProtocolError("invalid_gemma4_call_envelopes")
+    return [_gemma_call(part.split(end, 1)[0], '<|"|>') for part in parts]
 
 
 def _granite_arguments(parameters: str) -> dict:
@@ -233,12 +252,12 @@ def _granite_arguments(parameters: str) -> dict:
 
 def granite_calls(text: str) -> list[Call]:
     """Granite 4.2's pinned native function/parameter envelope."""
-    parts = text.split("<tool_call>")[1:]
-    if not parts or text.count("</tool_call>") != len(parts):
+    parts = text.split(TOOL_CALL_OPEN)[1:]
+    if not parts or text.count(TOOL_CALL_CLOSE) != len(parts):
         raise ProtocolError("invalid_granite_envelope")
     result = []
     for part in parts:
-        body = part.split("</tool_call>", 1)[0].strip()
+        body = part.split(TOOL_CALL_CLOSE, 1)[0].strip()
         if not body.startswith("<function=") or not body.endswith("</function>"):
             raise ProtocolError("invalid_granite_function")
         name, separator, parameters = body[len("<function=") :].partition(">")

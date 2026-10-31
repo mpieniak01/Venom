@@ -195,3 +195,27 @@ Błędy backendu/generacji lub transportu narzędzia są blokadami infrastruktur
 a wcześniejsze rzeczywiste wywołania pozostają w śladzie. Przy niepotwierdzonym
 wykonaniu nie dopisujemy kodu zakończenia; częściowe artefakty pozostają jawnie
 niezweryfikowane. Zmieniona obserwacja narzędzia nie jest identycznym powtórzeniem.
+
+
+## Lokalne rozszerzenie: Gemma 4 i Qwen3.5
+
+Na polecenie operatora kolejne zmiany i wyniki pozostają lokalne; nie aktualizujemy
+istniejącego Draft PR. Dodatkowe profile w `additional_models.json` zachowują
+oryginalny katalog ośmiu modeli. Gemma 4 E2B i Qwen3.5-9B wykonują po tych samych
+30 przypadkach, na tym samym commicie wejściowym i z budżetami 8/20/12 wywołań,
+8192 tokenów kontekstu, 1024 generacji, 45 s na generację i 180 s na zadanie.
+
+W API dodaj `options: {"maintenance_phase": "baseline"}` i wybierz
+`gemma-4-e2b-it,qwen3.5-9b` oraz trzy role. Tryb baseline wykonuje 60 pozycji;
+nie uruchamia automatycznych powtórzeń finalistów. Te wyniki są wstępne.
+Gemma 4 korzysta z natywnych znaczników i odpowiedzi narzędzi nazwanych według
+przypiętego szablonu Google. Qwen3.5 używa natywnego XML i nieaktywnego myślenia.
+Parametry próbkowania są zapisane w profilach; presence penalty dotyczy tokenów
+wygenerowanych w bieżącej odpowiedzi, bez prefiksu wejściowego.
+
+Pierwszy przebieg CodeScout ujawnił błąd infrastruktury: po odczycie całego kodu
+limit wyjścia zbiegał się z timeoutem API Dockera i wyścigiem pause/stop.
+Zablokowana próba zachowuje niezweryfikowany ślad. Po poprawce strumień jest
+zamykany przed zabiciem kontenera, stan spoczynku jest ponownie potwierdzany,
+a niedostępny kod wyjścia pozostaje brakiem danych. Osobny pełny przebieg roli
+CodeScout służy sprawdzeniu poprawki; konfiguracji i wyników nie mieszamy po cichu.

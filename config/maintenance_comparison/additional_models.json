@@ -1,0 +1,118 @@
+{
+  "schema_version": 1,
+  "experiment": "gemma4-qwen35-local-extension",
+  "expected_model_count": 2,
+  "models": [
+    {
+      "id": "gemma-4-e2b-it",
+      "hf_id": "google/gemma-4-E2B-it",
+      "revision": "3e22461f65e89153144f8adb70e3b8c2cc9845a7",
+      "source": "https://huggingface.co/google/gemma-4-E2B-it/tree/3e22461f65e89153144f8adb70e3b8c2cc9845a7",
+      "license": "apache-2.0",
+      "architecture": [
+        "Gemma4ForConditionalGeneration"
+      ],
+      "parameters": 5123178051,
+      "roles": [
+        "operator",
+        "repair",
+        "localization"
+      ],
+      "protocol": "gemma4_tool",
+      "integration_status": "experimental_adapter_available",
+      "training_status": "technical_possibility_requires_validation",
+      "training_evidence": null,
+      "upstream_context": 131072,
+      "profile": {
+        "hardware": "rtx3060-12gb",
+        "backend": "transformers",
+        "backend_version": "5.17.0",
+        "quantization": "bnb-nf4",
+        "context_tokens": 8192,
+        "temperature": 1.0,
+        "seed": 17,
+        "max_new_tokens": 1024,
+        "chat_template_revision": "3e22461f65e89153144f8adb70e3b8c2cc9845a7",
+        "parser": "gemma4_tool",
+        "compute_dtype": "bfloat16",
+        "completion": "structured_finish",
+        "top_p": 0.95,
+        "top_k": 64,
+        "enable_thinking": false
+      },
+      "gated": false,
+      "training": {
+        "lora": {
+          "status": "technical_possibility_requires_validation",
+          "reason": "Architecture and license recorded; no training run performed on this hardware."
+        },
+        "qlora": {
+          "status": "technical_possibility_requires_validation",
+          "reason": "Architecture and license recorded; no training run performed on this hardware."
+        },
+        "full_finetuning": {
+          "status": "blocked_in_tested_hardware_profile",
+          "reason": "BF16 full-parameter Adam training exceeds 12 GB without a separately qualified offload/distributed configuration."
+        }
+      },
+      "usage": "Text-only operator, repair and localization on the same frozen thirty scenarios."
+    },
+    {
+      "id": "qwen3.5-9b",
+      "hf_id": "Qwen/Qwen3.5-9B",
+      "revision": "c202236235762e1c871ad0ccb60c8ee5ba337b9a",
+      "source": "https://huggingface.co/Qwen/Qwen3.5-9B/tree/c202236235762e1c871ad0ccb60c8ee5ba337b9a",
+      "license": "apache-2.0",
+      "architecture": [
+        "Qwen3_5ForConditionalGeneration"
+      ],
+      "parameters": 9653104368,
+      "roles": [
+        "operator",
+        "repair",
+        "localization"
+      ],
+      "protocol": "qwen35_xml",
+      "integration_status": "experimental_adapter_available",
+      "training_status": "technical_possibility_requires_validation",
+      "training_evidence": null,
+      "upstream_context": 262144,
+      "profile": {
+        "hardware": "rtx3060-12gb",
+        "backend": "transformers",
+        "backend_version": "5.17.0",
+        "quantization": "bnb-nf4",
+        "context_tokens": 8192,
+        "temperature": 0.7,
+        "seed": 17,
+        "max_new_tokens": 1024,
+        "chat_template_revision": "c202236235762e1c871ad0ccb60c8ee5ba337b9a",
+        "parser": "qwen35_xml",
+        "compute_dtype": "bfloat16",
+        "completion": "structured_finish",
+        "top_p": 0.8,
+        "top_k": 20,
+        "enable_thinking": false,
+        "min_p": 0.0,
+        "repetition_penalty": 1.0,
+        "presence_penalty": 1.5
+      },
+      "gated": false,
+      "training": {
+        "lora": {
+          "status": "blocked_in_tested_hardware_profile",
+          "reason": "The unquantized base alone exceeds 12 GB; quantized adapters are assessed separately as QLoRA."
+        },
+        "qlora": {
+          "status": "technical_possibility_requires_validation",
+          "reason": "Architecture and license recorded; no training run performed on this hardware."
+        },
+        "full_finetuning": {
+          "status": "blocked_in_tested_hardware_profile",
+          "reason": "BF16 full-parameter Adam training exceeds 12 GB without a separately qualified offload/distributed configuration."
+        }
+      },
+      "usage": "Text-only operator, repair and localization on the same frozen thirty scenarios."
+    }
+  ]
+}

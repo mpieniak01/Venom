@@ -1,6 +1,7 @@
 """The host owns the GPU lease and cleanup; request routing never starts a second stack."""
 
 import asyncio
+import threading
 from contextlib import nullcontext
 from pathlib import Path
 from types import SimpleNamespace
@@ -52,7 +53,7 @@ async def test_owned_start_uses_exclusive_lease_not_ollama_scheduler(
     run_id = await service.start_maintenance(
         models=["mini-coder-1.7b"],
         tasks=["maintenance_operator"],
-        timeout=180,
+        trial_seconds=180,
         controller=object(),
     )
     await asyncio.sleep(0)
@@ -82,14 +83,14 @@ async def test_failed_preflight_releases_lease_without_spawning(service, monkeyp
         await service.start_maintenance(
             models=["mini-coder-1.7b"],
             tasks=["maintenance_operator"],
-            timeout=180,
+            trial_seconds=180,
             controller=object(),
         )
     lease.release.assert_called_once()
     assert not service._runs
 
 
-@pytest.mark.parametrize("mode", ["success", "spawn_error", "cancel"])
+@pytest.mark.parametrize("mode", ["success", "spawn_error", "cancel", "cancel_spawn"])
 @pytest.mark.asyncio
 async def test_owned_process_releases_resources_before_lease(
     service, monkeypatch, mode
@@ -122,6 +123,17 @@ async def test_owned_process_releases_resources_before_lease(
     popen = MagicMock(return_value=process)
     if mode == "spawn_error":
         popen.side_effect = OSError("cannot start")
+    entered = threading.Event()
+    release = threading.Event()
+    if mode == "cancel_spawn":
+
+        def spawning(*_args, **_kwargs):
+            entered.set()
+            if not release.wait(3):
+                raise TimeoutError("spawn control was not released")
+            return process
+
+        popen.side_effect = spawning
     monkeypatch.setattr(service_module.subprocess, "Popen", popen)
     monkeypatch.setattr(
         service,
@@ -130,7 +142,18 @@ async def test_owned_process_releases_resources_before_lease(
     )
     cleanup = MagicMock(return_value=True)
     monkeypatch.setattr(sandbox, "cleanup_run_containers", cleanup)
-    if mode == "cancel":
+    if mode == "cancel_spawn":
+        active = asyncio.create_task(service._run_owned_maintenance(run, lease))
+        try:
+            assert await asyncio.to_thread(entered.wait, 2)
+            active.cancel()
+            await asyncio.sleep(0)
+            lease.release.assert_not_called()
+        finally:
+            release.set()
+        with pytest.raises(asyncio.CancelledError):
+            await active
+    elif mode == "cancel":
         with pytest.raises(asyncio.CancelledError):
             await service._run_owned_maintenance(run, lease)
     else:
@@ -162,7 +185,8 @@ def test_maintenance_profile_validation_and_child_only_sandbox(
     cfg = SimpleNamespace(tasks=["maintenance_operator"])
     run = SimpleNamespace(config=cfg, run_id="run")
     env = service._scheduler_environment(run)
-    assert env["ENABLE_SANDBOX"] == "true" and env["VENOM_MAINTENANCE_RUN_ID"] == "run"
+    assert env["ENABLE_SANDBOX"] == "true"
+    assert env["VENOM_MAINTENANCE_RUN_ID"] == "run"
     run.config.tasks = ["python_simple"]
     assert service._scheduler_environment(run) is None
 
@@ -215,8 +239,10 @@ async def test_trial_records_real_patch_verification_and_removes_copy(
         0,
         180,
     )
-    assert row["passed"] and row["verification"]["reason"] == "operator_contract"
-    assert row["seconds"] >= row["setup_seconds"] and row["training_allowed"] is False
+    assert row["passed"]
+    assert row["verification"]["reason"] == "operator_contract"
+    assert row["seconds"] >= row["setup_seconds"]
+    assert row["training_allowed"] is False
     habitat.freeze.assert_called_once()
     habitat.close.assert_called_once()
     assert list((tmp_path / "workspaces").iterdir()) == []
@@ -239,10 +265,8 @@ async def test_api_selects_owned_runner_and_ignores_legacy_default_options(monke
     )
     response = await routes.start_coding_benchmark(request)
     assert response.run_id == "11111111-1111-4111-8111-111111111111"
-    assert (
-        method.call_args.kwargs["options"] == {}
-        and method.call_args.kwargs["controller"] is controller
-    )
+    assert method.call_args.kwargs["options"] == {}
+    assert method.call_args.kwargs["controller"] is controller
     request.max_rounds = 1
     from fastapi import HTTPException
 
@@ -256,4 +280,5 @@ def test_profile_endpoint_preserves_all_eight_models_when_disabled(monkeypatch):
 
     monkeypatch.setattr(SETTINGS, "ENABLE_MAINTENANCE_COMPARISON", False)
     response = maintenance_model_profiles()
-    assert response["enabled"] is False and len(response["models"]) == 8
+    assert response["enabled"] is False
+    assert len(response["models"]) == 8

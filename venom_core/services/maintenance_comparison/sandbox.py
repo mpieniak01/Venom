@@ -11,6 +11,8 @@ from typing import Any
 
 from venom_core.infrastructure.docker_habitat import DockerHabitat
 
+CONTAINER_WORKSPACE = "/workspace"
+
 PYTEST_PROFILE = "-o addopts= -o filterwarnings= --noconftest"
 
 
@@ -40,11 +42,11 @@ class TrialHabitat(DockerHabitat):
             command=["sleep", "infinity"],
             volumes={
                 str(workspace_path): {
-                    "bind": "/workspace",
+                    "bind": CONTAINER_WORKSPACE,
                     "mode": "ro" if self.trial_readonly_workspace else "rw",
                 }
             },
-            working_dir="/workspace",
+            working_dir=CONTAINER_WORKSPACE,
             environment={"PYTEST_ADDOPTS": PYTEST_PROFILE},
             detach=True,
             remove=False,
@@ -57,7 +59,7 @@ class TrialHabitat(DockerHabitat):
             pids_limit=64,
             mem_limit="1g",
             nano_cpus=2_000_000_000,
-            tmpfs={"/tmp": "rw,noexec,nosuid,size=128m,mode=1777"},
+            tmpfs={"/tmp": "rw,noexec,nosuid,size=128m,uid=0,gid=1000,mode=1770"},
             labels={
                 "venom.experiment": "maintenance-comparison",
                 "venom.run_id": os.environ.get(
@@ -66,47 +68,74 @@ class TrialHabitat(DockerHabitat):
             },
         )
 
+    @staticmethod
+    def _close_exec_stream(stream) -> None:
+        close = getattr(stream, "close", None)
+        if close is not None:
+            close()
+
+    def _stopped_after_output_cap(self, truncated: bool) -> bool:
+        if not truncated:
+            return False
+        self.container.reload()
+        return self.container.status in {"paused", "exited", "dead"}
+
     def structured(self, command: str, timeout: int) -> dict[str, Any]:
         started = time.monotonic()
         execution = self.client.api.exec_create(
             self.container.id,
             ["timeout", "-k", "1", str(timeout), "bash", "-lc", command],
             user="1000:1000",
-            workdir="/workspace",
+            workdir=CONTAINER_WORKSPACE,
         )
         chunks: list[list[bytes]] = [[], []]
-        total = 0
-        truncated = False
+        total, truncated = 0, False
         deadline_hit = threading.Event()
         watchdog = threading.Timer(
             timeout + 2, self._stop_overdue, args=(deadline_hit,)
         )
         watchdog.daemon = True
         watchdog.start()
+        transport_error = None
         try:
-            for pair in self.client.api.exec_start(
+            stream = self.client.api.exec_start(
                 execution["Id"], stream=True, demux=True
-            ):
-                for index, chunk in enumerate(pair):
-                    if chunk:
-                        remaining = max(0, 1_048_576 - total)
-                        chunks[index].append(chunk[:remaining])
-                        total += len(chunk)
-                if total > 1_048_576:
-                    truncated = True
-                    self.container.kill()
-                    break
+            )
+            try:
+                for pair in stream:
+                    for index, chunk in enumerate(pair):
+                        if chunk:
+                            remaining = max(0, 1_048_576 - total)
+                            chunks[index].append(chunk[:remaining])
+                            total += len(chunk)
+                    if total > 1_048_576:
+                        truncated = True
+                        # Release the hijacked output socket before asking Docker to kill.
+                        self._close_exec_stream(stream)
+                        self.container.kill()
+                        break
+            finally:
+                self._close_exec_stream(stream)
+            exit_code = self.client.api.exec_inspect(execution["Id"])["ExitCode"]
+        except Exception as exc:
+            if not self._stopped_after_output_cap(truncated):
+                raise
+            # A known output violation is still a failure; an unavailable exit is never invented.
+            exit_code = None
+            transport_error = type(exc).__name__
         finally:
             watchdog.cancel()
-        observed = self.client.api.exec_inspect(execution["Id"])
-        return {
+        result = {
             "stdout": b"".join(chunks[0]).decode("utf-8", errors="replace"),
             "stderr": b"".join(chunks[1]).decode("utf-8", errors="replace"),
-            "exit_code": observed["ExitCode"],
+            "exit_code": exit_code,
             "output_truncated": truncated,
-            "execution_timed_out": deadline_hit.is_set() or observed["ExitCode"] == 124,
+            "execution_timed_out": deadline_hit.is_set() or exit_code == 124,
             "seconds": time.monotonic() - started,
         }
+        if transport_error is not None:
+            result["transport_error"] = transport_error
+        return result
 
     def _stop_overdue(self, deadline_hit: threading.Event) -> None:
         deadline_hit.set()
@@ -117,13 +146,23 @@ class TrialHabitat(DockerHabitat):
 
     def freeze(self) -> None:
         self.container.reload()
+        quiescent = {"paused", "exited", "dead"}
         if self.container.status == "running":
-            self.container.pause()
-        elif self.container.status not in {"exited", "dead"}:
+            try:
+                self.container.pause()
+            except Exception:
+                # A watchdog may stop the container between reload and pause.
+                self.container.reload()
+                if self.container.status not in quiescent:
+                    raise
+        elif self.container.status not in quiescent:
             raise RuntimeError("sandbox_state_not_quiescent")
 
     def close(self) -> None:
-        self.container.remove(force=True)
+        try:
+            self.container.remove(force=True)
+        finally:
+            self.client.close()
 
 
 class TrialTools:
@@ -220,17 +259,19 @@ class TrialTools:
         ):
             raise ValueError("localization_evidence_required")
         if self.role == "localization":
-            for location in arguments["locations"]:
-                if not isinstance(location, dict) or set(location) != {
-                    "path",
-                    "symbol",
-                    "evidence",
-                }:
-                    raise ValueError("localization_location_invalid")
-                if not all(
-                    isinstance(value, str) and value for value in location.values()
-                ):
-                    raise ValueError("localization_location_invalid")
+            self._validate_locations(arguments["locations"])
+
+    @staticmethod
+    def _validate_locations(locations: list) -> None:
+        for location in locations:
+            if not isinstance(location, dict) or set(location) != {
+                "path",
+                "symbol",
+                "evidence",
+            }:
+                raise ValueError("localization_location_invalid")
+            if not all(isinstance(value, str) and value for value in location.values()):
+                raise ValueError("localization_location_invalid")
 
     def fingerprint(self) -> str:
         digest = hashlib.sha256()

@@ -14,9 +14,9 @@ import subprocess
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from uuid import uuid4
+from uuid import UUID, uuid4
 
-from .catalog import load_catalog
+from .catalog import load_all_models
 from .grading import grade
 from .inference import LocalModel
 from .metrics import MemorySampler
@@ -25,6 +25,9 @@ from .runner import drive
 from .sandbox import PYTEST_PROFILE, TrialHabitat, TrialTools
 from .scenarios import Scenario, build_scenarios
 from .workspace import changed_files, patch, prepare, snapshot
+
+JSON_SUFFIX = ".json"
+PROGRESS_FILE = "progress.json"
 
 SANDBOX_IMAGE = (
     "sha256:7b287d691d67f06c5e4e13ef0e9c939139466e5fb23e48ee70ae44866b37f278"
@@ -90,7 +93,7 @@ def _state(
                     else "completed"
                     if row["passed"]
                     else "failed",
-                    "artifact": str(output / (row["id"] + ".json")),
+                    "artifact": str(output / (row["id"] + JSON_SUFFIX)),
                     "rc": None
                     if row["status"] == "blocked"
                     else 0
@@ -146,7 +149,7 @@ async def trial(
         with MemorySampler() as memory:
             run = await drive(model, case, tools, seconds)
         _write(
-            output / (identifier + ".json"),
+            output / (identifier + JSON_SUFFIX),
             {"id": identifier, "phase": "partial_trace_unverified", "run": run},
         )
         verification_started = time.monotonic()
@@ -212,7 +215,7 @@ async def trial(
             row["termination_status"] = run["status"]
             if run.get("infrastructure_error", {}).get("phase") == "generation":
                 row["output_tokens"] = None
-        _write(output / (identifier + ".json"), row)
+        _write(output / (identifier + JSON_SUFFIX), row)
         return row
     finally:
         if habitat is not None:
@@ -311,7 +314,7 @@ class Experiment:
         self.output.mkdir(parents=True, exist_ok=True, mode=0o700)
         self.output.chmod(0o700)
         self.phase = arguments.phase
-        models, _ = load_catalog(self.repo / "config/maintenance_comparison")
+        models, _ = load_all_models(self.repo / "config/maintenance_comparison")
         requested = arguments.models.split(",")
         self.models = [
             m for m in models if m["id"] in requested or m["hf_id"] in requested
@@ -355,7 +358,7 @@ class Experiment:
             f
             for root in roots
             for f in root.rglob("*")
-            if f.is_file() and f.suffix in {".py", ".json"}
+            if f.is_file() and f.suffix in {".py", JSON_SUFFIX}
         ]
         fingerprints = {
             str(f.relative_to(self.repo)): hashlib.sha256(f.read_bytes()).hexdigest()
@@ -406,7 +409,7 @@ class Experiment:
         _state(self.rows, self.output, Path(self.arguments.state_file), self.planned)
 
     def _extend_plan(self, repetition: int, finalists) -> None:
-        if self.phase != "comparison":
+        if self.phase not in {"comparison", "baseline"}:
             return
         for model in self.models:
             for case in self._model_cases(model, finalists):
@@ -431,7 +434,7 @@ class Experiment:
     def _append(self, row) -> None:
         row.update(configuration_id=self.configuration_id, repo_sha=self.sha)
         self.rows.append(row)
-        _write(self.output / (row["id"] + ".json"), row)
+        _write(self.output / (row["id"] + JSON_SUFFIX), row)
         self._save()
         print(
             json.dumps(
@@ -448,7 +451,7 @@ class Experiment:
 
     async def _attempt(self, model, profile, case, repetition):
         _write(
-            self.output / "progress.json",
+            self.output / PROGRESS_FILE,
             {
                 "stage": "attempt_running",
                 "model": profile["id"],
@@ -474,7 +477,7 @@ class Experiment:
                 profile, case, "trial_infrastructure:" + type(exc).__name__, repetition
             )
             row["infrastructure_detail"] = str(exc)[:2000]
-            artifact = self.output / (identifier + ".json")
+            artifact = self.output / f"{identifier}{JSON_SUFFIX}"
             if artifact.exists():
                 row["partial_artifact"] = str(artifact)
             return row
@@ -511,7 +514,7 @@ class Experiment:
         )
         probe["passed"] = passed
         probe["verification"] = {"passed": passed, "reason": "technical_round_trip"}
-        _write(self.output / (probe["id"] + ".json"), probe)
+        _write(self.output / (probe["id"] + JSON_SUFFIX), probe)
         _write(
             self.output / (profile["id"] + "-protocol-qualification.json"),
             {"phase": probe["phase"], "passed": passed, "artifact": probe["id"]},
@@ -529,7 +532,7 @@ class Experiment:
             except Exception as exc:
                 qualified = False
                 _write(
-                    self.output / (profile["id"] + "-qualification-error.json"),
+                    self.output / f"{profile['id']}-qualification-error.json",
                     {"error_class": type(exc).__name__, "detail": str(exc)[:2000]},
                 )
         if self.phase == "qualification":
@@ -564,7 +567,7 @@ class Experiment:
     async def _model(self, profile, cases, repetition) -> None:
         require_host_owner()
         _write(
-            self.output / "progress.json",
+            self.output / PROGRESS_FILE,
             {
                 "stage": "model_loading",
                 "model": profile["id"],
@@ -648,7 +651,7 @@ class Experiment:
                     "model": r["hf_id"],
                     "revision": r["revision"],
                     "purpose": "held_out_evaluation"
-                    if self.phase == "comparison"
+                    if self.phase in {"comparison", "baseline"}
                     else self.phase,
                     "status": r["status"],
                     "repo_sha": r["repo_sha"],
@@ -659,19 +662,20 @@ class Experiment:
             ],
         )
         _write(
-            self.output / "progress.json",
+            self.output / PROGRESS_FILE,
             {
                 "stage": "interrupted" if interrupted else "finished",
                 "attempts": len(self.rows),
                 "phase": self.phase,
             },
         )
-        if self.phase == "comparison":
+        if self.phase in {"comparison", "baseline"}:
             render(
                 self.models,
                 self.rows,
                 self.output,
                 sorted({c.role for c in self.cases}),
+                phase=self.phase,
             )
         elif self.phase == "flaky_diagnostic":
             (self.output / "FLAKY_DIAGNOSTIC.md").write_text(
@@ -687,10 +691,45 @@ class Experiment:
             )
 
 
+def validate_worker_paths(arguments) -> tuple[Path, Path, Path]:
+    """CLI paths must match the host-issued run under this installed repository."""
+    repo = Path(__file__).resolve().parents[3]
+    run_id = str(UUID(os.environ["VENOM_MAINTENANCE_RUN_ID"]))
+    root = Path(
+        os.environ.get(
+            "VENOM_MAINTENANCE_OUTPUT_ROOT", str(repo / "data/benchmarks/coding")
+        )
+    )
+    if not root.is_absolute():
+        raise ValueError("maintenance_output_root_invalid")
+    output = root / run_id
+    if output.is_symlink() or not output.resolve().is_relative_to(root.resolve()):
+        raise ValueError("maintenance_output_path_invalid")
+    expected = {
+        "repo": repo,
+        "out": output,
+        "state_file": output / "scheduler_state.json",
+    }
+    for key, path in expected.items():
+        if Path(getattr(arguments, key)).resolve() != path.resolve():
+            raise ValueError("maintenance_worker_path_mismatch")
+    return repo, output, output / "scheduler_state.json"
+
+
 async def execute(arguments) -> None:
     require_host_owner()
-    _configure_worker(Path(arguments.repo))
-    experiment = Experiment(arguments)
+    repo, output, state = validate_worker_paths(arguments)
+    trusted = argparse.Namespace(
+        repo=str(repo),
+        out=str(output),
+        state_file=str(state),
+        models=arguments.models,
+        tasks=arguments.tasks,
+        timeout=arguments.timeout,
+        phase=arguments.phase,
+    )
+    _configure_worker(repo)
+    experiment = Experiment(trusted)
     interrupted = None
     try:
         await experiment.run()
@@ -711,7 +750,7 @@ def main() -> None:
         parser.add_argument("--" + name, required=True)
     parser.add_argument(
         "--phase",
-        choices=["comparison", "qualification", "flaky_diagnostic"],
+        choices=["comparison", "baseline", "qualification", "flaky_diagnostic"],
         default="comparison",
     )
     parser.add_argument("--timeout", type=int, default=120)

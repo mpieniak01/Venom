@@ -114,3 +114,51 @@ def test_duplicate_json_arguments_are_rejected():
         native_calls(
             '{"name":"Terminal","arguments":{"command":"safe","command":"other"}}'
         )
+
+
+@pytest.mark.parametrize("key", ["command", '<|"|>command<|"|>', '"command"'])
+def test_gemma4_native_function_values_and_tool_handoff(key):
+    from venom_core.services.maintenance_comparison.runner import decode
+
+    text = (
+        "<|tool_call>call:Terminal{"
+        + key
+        + ':<|"|>printf "quoted"\nline<|"|>}<tool_call|><|tool_response>'
+    )
+    calls = decode("gemma4_tool", text)
+    assert calls[0].name == "Terminal"
+    assert calls[0].arguments == {"command": 'printf "quoted"\nline'}
+
+
+def test_gemma4_native_nested_localization_submission():
+    from venom_core.services.maintenance_comparison.runner import decode
+
+    text = '<|tool_call>call:LocalizationFinish{status:<|"|>success<|"|>,summary:<|"|>Found<|"|>,locations:[{path:<|"|>app.py<|"|>,symbol:<|"|>run<|"|>,evidence:<|"|>def run():<|"|>}]}<tool_call|>'
+    call = decode("gemma4_tool", text)[0]
+    assert call.arguments["locations"] == [
+        {"path": "app.py", "symbol": "run", "evidence": "def run():"}
+    ]
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        '<|tool_call>call:Terminal{command:<|"|>missing close}<tool_call|>',
+        '<|tool_call>call:Terminal{command:<|"|>one<|"|>,command:<|"|>two<|"|>}<tool_call|>',
+        "<|tool_call>call:Terminal{command:run_dangerous()}<tool_call|>",
+    ],
+)
+def test_gemma4_rejects_missing_delimiters_duplicate_arguments_and_expressions(text):
+    from venom_core.services.maintenance_comparison.runner import decode
+
+    with pytest.raises(ProtocolError):
+        decode("gemma4_tool", text)
+
+
+def test_qwen35_preserves_native_xml_command_quotes():
+    from venom_core.services.maintenance_comparison.runner import decode
+
+    text = '<tool_call><function=Terminal><parameter=command>grep -n "def run" app.py</parameter></function></tool_call>'
+    assert decode("qwen35_xml", text)[0].arguments == {
+        "command": 'grep -n "def run" app.py'
+    }

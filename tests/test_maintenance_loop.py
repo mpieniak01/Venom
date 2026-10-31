@@ -164,7 +164,8 @@ def test_step_budget_is_independent_of_no_progress_detection(tools):
     model = Model([f"```bash\nprintf {i}\n```" for i in range(8)])
     result = asyncio.run(drive(model, case(), tools))
     assert result["status"] == "orchestrator_step_limit"
-    assert result["termination_source"] == "orchestrator" and len(tools.calls) == 8
+    assert result["termination_source"] == "orchestrator"
+    assert len(tools.calls) == 8
 
 
 def test_native_lfm_final_report_does_not_invent_a_finish_call(tools):
@@ -176,8 +177,10 @@ def test_native_lfm_final_report_does_not_invent_a_finish_call(tools):
     )
     model.profile = {"protocol": "lfm2_tool"}
     result = asyncio.run(drive(model, case(), tools))
-    assert result["model_finished"] and result["final"]["kind"] == "native_text"
-    assert "status" not in result["final"] and result["tool_call_count"] == 1
+    assert result["model_finished"]
+    assert result["final"]["kind"] == "native_text"
+    assert "status" not in result["final"]
+    assert result["tool_call_count"] == 1
 
 
 def test_explicit_flaky_mode_allows_three_identical_test_calls(tools):
@@ -204,7 +207,8 @@ def test_explicit_flaky_mode_allows_three_identical_test_calls(tools):
             tools,
         )
     )
-    assert result["model_finished"] and result["tool_call_count"] == 4
+    assert result["model_finished"]
+    assert result["tool_call_count"] == 4
 
 
 def test_gemma_receives_native_response_mapping(tools):
@@ -236,7 +240,8 @@ def test_probe_cannot_call_unadvertised_finish_in_same_turn(tools):
             tools,
         )
     )
-    assert result["status"] == "model_argument_error" and not result["model_finished"]
+    assert result["status"] == "model_argument_error"
+    assert not result["model_finished"]
     assert result["calls"][-1]["result"]["executed"] is False
 
 
@@ -252,7 +257,8 @@ def test_native_mini_swe_echo_ends_without_invented_finish_arguments(tools):
         ]
     )
     result = asyncio.run(drive(model, case(), tools))
-    assert result["model_finished"] and result["final"]["kind"] == "native_bash"
+    assert result["model_finished"]
+    assert result["final"]["kind"] == "native_bash"
     assert "status" not in result["final"]
 
 
@@ -261,8 +267,10 @@ def test_context_view_is_explicitly_abridged_without_mutating_raw_result():
 
     raw = {"stdout": "a" * 20000, "stderr": "error", "exit_code": 0}
     view = _model_view(raw)
-    assert len(raw["stdout"]) == 20000 and "model_view_abridged" not in raw
-    assert view["model_view_abridged"] and "characters omitted" in view["stdout"]
+    assert len(raw["stdout"]) == 20000
+    assert "model_view_abridged" not in raw
+    assert view["model_view_abridged"]
+    assert "characters omitted" in view["stdout"]
 
 
 def test_tool_timeout_is_orchestrator_stop_not_model_format_error(tools):
@@ -273,10 +281,8 @@ def test_tool_timeout_is_orchestrator_stop_not_model_format_error(tools):
         "execution_timed_out": True,
     }
     result = asyncio.run(drive(Model(["```bash\nsleep 60\n```"]), case(), tools))
-    assert (
-        result["status"] == "orchestrator_tool_time_limit"
-        and not result["model_finished"]
-    )
+    assert result["status"] == "orchestrator_tool_time_limit"
+    assert not result["model_finished"]
 
 
 def test_codescout_uses_native_names_and_submission_without_added_arguments(tools):
@@ -290,14 +296,10 @@ def test_codescout_uses_native_names_and_submission_without_added_arguments(tool
     result = asyncio.run(
         drive(model, SimpleNamespace(role="localization", prompt="find absent"), tools)
     )
-    assert result["model_finished"] and result["final"] == {
-        "kind": "codescout_native",
-        "locations": [],
-    }
-    assert (
-        result["calls"][0]["name"] == "Terminal"
-        and result["calls"][0]["wire_name"] == "terminal"
-    )
+    assert result["model_finished"]
+    assert result["final"] == {"kind": "codescout_native", "locations": []}
+    assert result["calls"][0]["name"] == "Terminal"
+    assert result["calls"][0]["wire_name"] == "terminal"
     assert result["calls"][-1]["arguments"] == {"locations": []}
 
 
@@ -326,7 +328,8 @@ def test_changed_tool_observation_is_progress_even_when_files_are_unchanged(tool
 
     tools.habitat.structured = execute
     result = asyncio.run(drive(model, case(), tools))
-    assert result["model_finished"] and result["redundant_repetitions"] == 0
+    assert result["model_finished"]
+    assert result["redundant_repetitions"] == 0
 
 
 def test_backend_failure_retains_previous_real_tool_observation(tools):

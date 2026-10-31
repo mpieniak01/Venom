@@ -80,10 +80,9 @@ def repairs() -> list[RepairFixture]:
 
 
 def _visible_test(source: str) -> str:
-    imports: list[str] = []
-    body: list[str] = []
-    for line in source.splitlines():
-        (imports if line.startswith(("from ", "import ")) else body).append(line)
+    lines = source.splitlines()
+    imports = [line for line in lines if line.startswith(("from ", "import "))]
+    body = [line for line in lines if not line.startswith(("from ", "import "))]
     return (
         "from maintenance_fixture import *\n"
         + "\n".join(imports)

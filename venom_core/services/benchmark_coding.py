@@ -18,6 +18,7 @@ import threading
 import uuid
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
+from functools import partial
 from pathlib import Path
 from typing import Any, Optional
 
@@ -347,13 +348,17 @@ class CodingBenchmarkService:
             raise ValueError("Lista zadań nie może być pusta")
         if set(tasks) & _MAINTENANCE_TASKS:
             from venom_core.config import SETTINGS
-            from venom_core.services.maintenance_comparison.catalog import load_catalog
+            from venom_core.services.maintenance_comparison.catalog import (
+                load_all_models,
+            )
 
             if not SETTINGS.ENABLE_MAINTENANCE_COMPARISON:
                 raise ValueError("maintenance_comparison_disabled")
             if not set(tasks) <= _MAINTENANCE_TASKS:
                 raise ValueError("maintenance_tasks_must_be_separate")
-            profiles, _ = load_catalog(self.repo_root / "config/maintenance_comparison")
+            profiles, _ = load_all_models(
+                self.repo_root / "config/maintenance_comparison"
+            )
             known = {
                 alias: m["id"] for m in profiles for alias in [m["id"], m["hf_id"]]
             }
@@ -487,7 +492,7 @@ class CodingBenchmarkService:
         *,
         models: list[str],
         tasks: list[str],
-        timeout: int,
+        trial_seconds: int,
         controller,
         options: dict | None = None,
     ) -> str:
@@ -505,6 +510,7 @@ class CodingBenchmarkService:
             raise ValueError("maintenance_flaky_operator_only")
         if options.get("maintenance_phase", "comparison") not in {
             "comparison",
+            "baseline",
             "qualification",
             "flaky_diagnostic",
         }:
@@ -528,7 +534,7 @@ class CodingBenchmarkService:
                     tasks=tasks,
                     loop_task="",
                     first_sieve_task="",
-                    timeout=timeout,
+                    timeout=trial_seconds,
                     max_rounds=3,
                     endpoint="local-transformers",
                     stop_on_failure=False,
@@ -549,7 +555,7 @@ class CodingBenchmarkService:
             return run_id
         except BaseException:
             with lease.cleanup(confirm_quiescent=lambda: True):
-                pass
+                logger.debug("Maintenance startup cleanup complete")
             lease.release()
             raise
 
@@ -575,6 +581,28 @@ class CodingBenchmarkService:
                 return False
         return process.poll() is not None
 
+    async def _spawn_maintenance_process(self, run, command):
+        pending = asyncio.get_running_loop().run_in_executor(
+            None,
+            partial(
+                subprocess.Popen,
+                command,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                cwd=str(self.repo_root),
+                env=self._scheduler_environment(run),
+            ),
+        )
+        cancelled = None
+        while not pending.done():
+            try:
+                await asyncio.shield(pending)
+            except asyncio.CancelledError as exc:
+                # The caller must retire a child created during cancellation.
+                cancelled = exc
+        return pending.result(), cancelled
+
     async def _run_owned_maintenance(self, run, lease) -> None:
         process = None
         try:
@@ -590,14 +618,9 @@ class CodingBenchmarkService:
                     "TERM",
                     *self._build_scheduler_command(run),
                 ]
-                process = subprocess.Popen(
-                    command,
-                    text=True,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    cwd=str(self.repo_root),
-                    env=self._scheduler_environment(run),
-                )
+                process, cancelled = await self._spawn_maintenance_process(run, command)
+                if cancelled is not None:
+                    raise cancelled
                 with self._lock:
                     self._active_procs[run.run_id] = process
                 _, stderr = await asyncio.to_thread(process.communicate)
@@ -628,7 +651,7 @@ class CodingBenchmarkService:
             with lease.cleanup(
                 confirm_quiescent=lambda: containers_stopped and stopped
             ):
-                pass
+                logger.debug("Maintenance worker cleanup complete")
             lease.release()
             with self._lock:
                 self._active_procs.pop(run.run_id, None)
@@ -645,6 +668,7 @@ class CodingBenchmarkService:
             "ENABLE_SANDBOX": "true",
             "VENOM_MAINTENANCE_ADMISSION_DB": str(get_runtime_admission().database),
             "VENOM_MAINTENANCE_RUN_ID": run.run_id,
+            "VENOM_MAINTENANCE_OUTPUT_ROOT": str(self.storage_dir.resolve()),
             "HF_XET_CACHE": component + "/xet",
             "HF_HUB_DOWNLOAD_TIMEOUT": "60",
             "PYTHONPATH": component + "/python:" + str(self.repo_root),

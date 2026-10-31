@@ -42,6 +42,30 @@ def set_dependencies(
     _benchmark_service = benchmark_service
 
 
+async def _start_maintenance_benchmark(request: CodingBenchmarkStartRequest, service):
+    from venom_core.api.routes import system_deps
+
+    if (
+        request.max_rounds != 3
+        or request.stop_on_failure
+        or request.model_timeout_overrides
+    ):
+        raise HTTPException(status_code=400, detail="maintenance_fixed_schedule")
+    try:
+        run_id = await service.start_maintenance(
+            models=request.models,
+            tasks=request.tasks,
+            trial_seconds=request.timeout,
+            controller=system_deps.get_llm_controller(),
+            options=request.options if "options" in request.model_fields_set else {},
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return CodingBenchmarkStartResponse(
+        run_id=run_id, message="benchmark.coding.maintenanceStarted"
+    )
+
+
 @router.post(
     "/start",
     response_model=CodingBenchmarkStartResponse,
@@ -78,29 +102,7 @@ async def start_coding_benchmark(request: CodingBenchmarkStartRequest):
         "maintenance_repair",
         "maintenance_localization",
     }:
-        from venom_core.api.routes import system_deps
-
-        if (
-            request.max_rounds != 3
-            or request.stop_on_failure
-            or request.model_timeout_overrides
-        ):
-            raise HTTPException(status_code=400, detail="maintenance_fixed_schedule")
-        try:
-            run_id = await _coding_benchmark_service.start_maintenance(
-                models=request.models,
-                tasks=request.tasks,
-                timeout=request.timeout,
-                controller=system_deps.get_llm_controller(),
-                options=request.options
-                if "options" in request.model_fields_set
-                else {},
-            )
-        except ValueError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-        return CodingBenchmarkStartResponse(
-            run_id=run_id, message="benchmark.coding.maintenanceStarted"
-        )
+        return await _start_maintenance_benchmark(request, _coding_benchmark_service)
 
     lock_owner = f"benchmark-coding:{uuid4()}"
     if _runtime_exclusive_guard is not None:
@@ -309,9 +311,9 @@ def maintenance_model_profiles():
     from pathlib import Path
 
     from venom_core.config import SETTINGS
-    from venom_core.services.maintenance_comparison.catalog import load_catalog
+    from venom_core.services.maintenance_comparison.catalog import load_all_models
 
-    profiles, _ = load_catalog(
+    profiles, _ = load_all_models(
         Path(__file__).resolve().parents[3] / "config/maintenance_comparison"
     )
     return {

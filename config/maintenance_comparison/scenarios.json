@@ -1,0 +1,275 @@
+{
+  "schema_version": 1,
+  "cases": [
+    {
+      "id": "operator-01",
+      "role": "operator",
+      "description": "Uruchom wskazany test Pythona",
+      "repairable": false,
+      "max_tool_calls": 8,
+      "max_patch_test_cycles": 0,
+      "status": "pending_fixture_qualification"
+    },
+    {
+      "id": "operator-02",
+      "role": "operator",
+      "description": "Odczytaj i zinterpretuj stan Git",
+      "repairable": false,
+      "max_tool_calls": 8,
+      "max_patch_test_cycles": 0,
+      "status": "pending_fixture_qualification"
+    },
+    {
+      "id": "operator-03",
+      "role": "operator",
+      "description": "Pobierz diff wskazanego pliku",
+      "repairable": false,
+      "max_tool_calls": 8,
+      "max_patch_test_cycles": 0,
+      "status": "pending_fixture_qualification"
+    },
+    {
+      "id": "operator-04",
+      "role": "operator",
+      "description": "Sprawdź informacje Python/Linux",
+      "repairable": false,
+      "max_tool_calls": 8,
+      "max_patch_test_cycles": 0,
+      "status": "pending_fixture_qualification"
+    },
+    {
+      "id": "operator-05",
+      "role": "operator",
+      "description": "Znajdź konfigurację i ustawienie",
+      "repairable": false,
+      "max_tool_calls": 8,
+      "max_patch_test_cycles": 0,
+      "status": "pending_fixture_qualification"
+    },
+    {
+      "id": "operator-06",
+      "role": "operator",
+      "description": "Obsłuż niedostępny plik",
+      "repairable": false,
+      "max_tool_calls": 8,
+      "max_patch_test_cycles": 0,
+      "status": "pending_fixture_qualification"
+    },
+    {
+      "id": "operator-07",
+      "role": "operator",
+      "description": "Rozpoznaj brakujący argument",
+      "repairable": false,
+      "max_tool_calls": 8,
+      "max_patch_test_cycles": 0,
+      "status": "pending_fixture_qualification"
+    },
+    {
+      "id": "operator-08",
+      "role": "operator",
+      "description": "Rozpoznaj niedostępną operację",
+      "repairable": false,
+      "max_tool_calls": 8,
+      "max_patch_test_cycles": 0,
+      "status": "pending_fixture_qualification"
+    },
+    {
+      "id": "operator-09",
+      "role": "operator",
+      "description": "Zakończ powtarzanie identycznego błędu",
+      "repairable": false,
+      "max_tool_calls": 8,
+      "max_patch_test_cycles": 0,
+      "status": "pending_fixture_qualification"
+    },
+    {
+      "id": "operator-10",
+      "role": "operator",
+      "description": "Odczyt → test → raport",
+      "repairable": false,
+      "max_tool_calls": 8,
+      "max_patch_test_cycles": 0,
+      "status": "pending_fixture_qualification"
+    },
+    {
+      "id": "repair-01",
+      "role": "repair",
+      "description": "Napraw traceback",
+      "repairable": true,
+      "max_tool_calls": 20,
+      "max_patch_test_cycles": 3,
+      "status": "pending_fixture_qualification"
+    },
+    {
+      "id": "repair-02",
+      "role": "repair",
+      "description": "Napraw przypadek brzegowy",
+      "repairable": true,
+      "max_tool_calls": 20,
+      "max_patch_test_cycles": 3,
+      "status": "pending_fixture_qualification"
+    },
+    {
+      "id": "repair-03",
+      "role": "repair",
+      "description": "Rozróżnij zależność i implementację",
+      "repairable": true,
+      "max_tool_calls": 20,
+      "max_patch_test_cycles": 3,
+      "status": "pending_fixture_qualification"
+    },
+    {
+      "id": "repair-04",
+      "role": "repair",
+      "description": "Napraw import lub konfigurację testu",
+      "repairable": true,
+      "max_tool_calls": 20,
+      "max_patch_test_cycles": 3,
+      "status": "pending_fixture_qualification"
+    },
+    {
+      "id": "repair-05",
+      "role": "repair",
+      "description": "Napraw fixture lub mock",
+      "repairable": true,
+      "max_tool_calls": 20,
+      "max_patch_test_cycles": 3,
+      "status": "pending_fixture_qualification"
+    },
+    {
+      "id": "repair-06",
+      "role": "repair",
+      "description": "Napraw regresję kontraktu",
+      "repairable": true,
+      "max_tool_calls": 20,
+      "max_patch_test_cycles": 3,
+      "status": "pending_fixture_qualification"
+    },
+    {
+      "id": "repair-07",
+      "role": "repair",
+      "description": "Dodaj test regresyjny i napraw",
+      "repairable": true,
+      "max_tool_calls": 20,
+      "max_patch_test_cycles": 3,
+      "status": "pending_fixture_qualification"
+    },
+    {
+      "id": "repair-08",
+      "role": "repair",
+      "description": "Zdiagnozuj awarię zasobu",
+      "repairable": false,
+      "max_tool_calls": 20,
+      "max_patch_test_cycles": 3,
+      "status": "pending_fixture_qualification"
+    },
+    {
+      "id": "repair-09",
+      "role": "repair",
+      "description": "Napraw pod niezależnymi testami",
+      "repairable": true,
+      "max_tool_calls": 20,
+      "max_patch_test_cycles": 3,
+      "status": "pending_fixture_qualification"
+    },
+    {
+      "id": "repair-10",
+      "role": "repair",
+      "description": "Zakończ z powodu braku danych",
+      "repairable": false,
+      "max_tool_calls": 20,
+      "max_patch_test_cycles": 3,
+      "status": "pending_fixture_qualification"
+    },
+    {
+      "id": "localization-01",
+      "role": "localization",
+      "description": "Funkcja z tracebacku",
+      "repairable": false,
+      "max_tool_calls": 12,
+      "max_patch_test_cycles": 0,
+      "status": "pending_fixture_qualification"
+    },
+    {
+      "id": "localization-02",
+      "role": "localization",
+      "description": "Testy zachowania",
+      "repairable": false,
+      "max_tool_calls": 12,
+      "max_patch_test_cycles": 0,
+      "status": "pending_fixture_qualification"
+    },
+    {
+      "id": "localization-03",
+      "role": "localization",
+      "description": "Odczyt konfiguracji",
+      "repairable": false,
+      "max_tool_calls": 12,
+      "max_patch_test_cycles": 0,
+      "status": "pending_fixture_qualification"
+    },
+    {
+      "id": "localization-04",
+      "role": "localization",
+      "description": "Implementacja po objawie",
+      "repairable": false,
+      "max_tool_calls": 12,
+      "max_patch_test_cycles": 0,
+      "status": "pending_fixture_qualification"
+    },
+    {
+      "id": "localization-05",
+      "role": "localization",
+      "description": "Argument między modułami",
+      "repairable": false,
+      "max_tool_calls": 12,
+      "max_patch_test_cycles": 0,
+      "status": "pending_fixture_qualification"
+    },
+    {
+      "id": "localization-06",
+      "role": "localization",
+      "description": "Fixture lub mock",
+      "repairable": false,
+      "max_tool_calls": 12,
+      "max_patch_test_cycles": 0,
+      "status": "pending_fixture_qualification"
+    },
+    {
+      "id": "localization-07",
+      "role": "localization",
+      "description": "Podobnie nazwane funkcje",
+      "repairable": false,
+      "max_tool_calls": 12,
+      "max_patch_test_cycles": 0,
+      "status": "pending_fixture_qualification"
+    },
+    {
+      "id": "localization-08",
+      "role": "localization",
+      "description": "Użytkownicy kontraktu",
+      "repairable": false,
+      "max_tool_calls": 12,
+      "max_patch_test_cycles": 0,
+      "status": "pending_fixture_qualification"
+    },
+    {
+      "id": "localization-09",
+      "role": "localization",
+      "description": "Minimalny zestaw plików",
+      "repairable": false,
+      "max_tool_calls": 12,
+      "max_patch_test_cycles": 0,
+      "status": "pending_fixture_qualification"
+    },
+    {
+      "id": "localization-10",
+      "role": "localization",
+      "description": "Brak funkcjonalności",
+      "repairable": false,
+      "max_tool_calls": 12,
+      "max_patch_test_cycles": 0,
+      "status": "pending_fixture_qualification"
+    }
+  ]
+}

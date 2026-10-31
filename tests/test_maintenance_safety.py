@@ -139,12 +139,14 @@ async def test_preflight_rejects_existing_local_model_and_running_worker(monkeyp
         await preflight.require_local_llms_empty(controller)
 
 
-@pytest.mark.parametrize("status", ["running", "exited", "dead", "paused"])
+@pytest.mark.parametrize(
+    "status", ["running", "exited", "dead", "paused", "restarting"]
+)
 def test_frozen_verification_accepts_only_quiescent_container_states(status):
     habitat = object.__new__(TrialHabitat)
     habitat.container = MagicMock()
     habitat.container.status = status
-    if status == "paused":
+    if status == "restarting":
         with pytest.raises(RuntimeError, match="quiescent"):
             habitat.freeze()
     else:
@@ -239,6 +241,7 @@ def test_output_cap_closes_stream_before_kill_and_preserves_unknown_exit(
         assert len(result["stdout"]) == 1_048_576
         assert result["transport_error"] == "RuntimeError"
     assert events.index("close") < events.index("kill")
+    assert events.count("close") == 1
 
 
 def test_trial_closes_owned_docker_client_even_when_removal_fails():

@@ -112,6 +112,7 @@ class TrialHabitat(DockerHabitat):
                         truncated = True
                         # Release the hijacked output socket before asking Docker to kill.
                         self._close_exec_stream(stream)
+                        stream = None
                         self.container.kill()
                         break
             finally:

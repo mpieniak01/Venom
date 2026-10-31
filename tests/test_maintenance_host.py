@@ -275,10 +275,14 @@ async def test_api_selects_owned_runner_and_ignores_legacy_default_options(monke
     assert error.value.status_code == 400
 
 
-def test_profile_endpoint_preserves_all_eight_models_when_disabled(monkeypatch):
+def test_profile_endpoint_preserves_original_and_additional_models_when_disabled(
+    monkeypatch,
+):
     from venom_core.api.routes.benchmark_coding import maintenance_model_profiles
 
     monkeypatch.setattr(SETTINGS, "ENABLE_MAINTENANCE_COMPARISON", False)
     response = maintenance_model_profiles()
     assert response["enabled"] is False
-    assert len(response["models"]) == 8
+    assert len(response["models"]) == 10
+    names = {model["name"] for model in response["models"]}
+    assert {"gemma-4-e2b-it", "qwen3.5-9b", "mini-coder-1.7b", "codescout-4b"} <= names

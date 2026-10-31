@@ -11132,15 +11132,26 @@
               }
             }
           },
+          "403": {
+            "description": "Operator access or audio request origin denied"
+          },
+          "409": {
+            "description": "Shared runtime admission is busy or unavailable"
+          },
+          "503": {
+            "description": "Configured audio is unavailable, processing failed, or synthesized output is invalid"
+          },
+          "413": {
+            "description": "PCM exceeds the upload byte limit or recording duration limit"
+          },
+          "415": {
+            "description": "Raw PCM requires application/octet-stream content type"
+          },
           "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
+            "description": "Invalid request parameters or empty/unaligned signed 16-bit PCM"
+          },
+          "499": {
+            "description": "Client disconnected before transcription was submitted"
           }
         }
       }
@@ -11171,15 +11182,17 @@
               }
             }
           },
+          "403": {
+            "description": "Operator access or audio request origin denied"
+          },
+          "409": {
+            "description": "Shared runtime admission is busy or unavailable"
+          },
+          "503": {
+            "description": "Configured audio is unavailable, processing failed, or synthesized output is invalid"
+          },
           "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
+            "description": "Invalid speech request or text containing only whitespace"
           }
         }
       }
@@ -11225,6 +11238,21 @@
                 }
               }
             }
+          },
+          "400": {
+            "description": "Invalid material session/name, empty content, invalid UTF-8 or image data"
+          },
+          "403": {
+            "description": "Operator access, request origin or environment mutation policy denied"
+          },
+          "404": {
+            "description": "Existing session material metadata or content is unavailable"
+          },
+          "413": {
+            "description": "Upload bytes, document text or session storage limits exceeded"
+          },
+          "415": {
+            "description": "Material content type is not supported"
           },
           "422": {
             "description": "Validation Error",
@@ -11516,6 +11544,15 @@
                 }
               }
             }
+          },
+          "403": {
+            "description": "Operator access denied"
+          },
+          "404": {
+            "description": "Task does not exist or does not belong to the supplied session"
+          },
+          "409": {
+            "description": "Task is not active and cancellation could not be confirmed"
           },
           "422": {
             "description": "Validation Error",

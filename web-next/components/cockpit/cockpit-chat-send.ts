@@ -214,6 +214,17 @@ function resolveChatSendContext(payload: string, params: SendContextParams, t: (
     return { parsed, trimmed, effectiveSelectedModel, resolvedSession };
 }
 
+function releaseSendPreparation(
+  dispatched: boolean,
+  preparing: boolean,
+  inFlight: { current: boolean },
+  setSending: ChatSendParams["setSending"],
+): void {
+  if (dispatched) return;
+  inFlight.current = false;
+  if (preparing) setSending(false);
+}
+
 export function useChatSend(params: ChatSendParams) {
   const {
     materialIds,
@@ -418,7 +429,7 @@ export function useChatSend(params: ChatSendParams) {
 
     return await acknowledged;
     } finally {
-      if (!dispatched) { inFlight.current = false; if (preparing) setSending(false); }
+      releaseSendPreparation(dispatched, preparing, inFlight, setSending);
     }
   }, [
     activeServerInfo,

@@ -674,7 +674,8 @@ def test_stop_rejects_different_expected_owner_before_signalling(
     before = (pid_path.read_bytes(), receipt.read_bytes())
     with pytest.raises(ValueError, match="Expected stop owner changed"):
         stack.stop(root, config, ("PID_FILE",), expected={"PID_FILE": expected})
-    assert (pid_path.read_bytes(), receipt.read_bytes()) == before
+    after = (pid_path.read_bytes(), receipt.read_bytes())
+    assert after == before
     retire.assert_not_called()
 
 

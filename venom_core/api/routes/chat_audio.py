@@ -40,16 +40,15 @@ class ChatSpeechRequest(BaseModel):
 def _engine(request: Request):
     if is_localhost_request(request):
         require_operator_origin(request, "audio_origin_denied")
-    engine = getattr(request.app.state, "audio_engine", None)
-    if engine is None:
-        raise HTTPException(503, {"reason_code": "audio_not_ready"})
-    return engine
+    return getattr(request.app.state, "audio_engine", None)
 
 
 @router.post(
     "/transcribe",
     responses={
-        **AUDIO_ERROR_RESPONSES,
+        403: AUDIO_ERROR_RESPONSES[403],
+        409: AUDIO_ERROR_RESPONSES[409],
+        503: AUDIO_ERROR_RESPONSES[503],
         413: {
             "description": "PCM exceeds the upload byte limit or recording duration limit"
         },
@@ -67,6 +66,8 @@ async def transcribe(
     language: Literal["pl", "en", "de"] = "pl",
 ):
     engine = _engine(request)
+    if engine is None:
+        raise HTTPException(503, {"reason_code": "audio_not_ready"})
     if (
         request.headers.get("content-type", "").split(";", 1)[0]
         != "application/octet-stream"
@@ -89,7 +90,9 @@ async def transcribe(
 @router.post(
     "/speak",
     responses={
-        **AUDIO_ERROR_RESPONSES,
+        403: AUDIO_ERROR_RESPONSES[403],
+        409: AUDIO_ERROR_RESPONSES[409],
+        503: AUDIO_ERROR_RESPONSES[503],
         422: {
             "description": "Invalid speech request or text containing only whitespace"
         },
@@ -97,6 +100,8 @@ async def transcribe(
 )
 async def speak(request: Request, payload: ChatSpeechRequest):
     engine = _engine(request)
+    if engine is None:
+        raise HTTPException(503, {"reason_code": "audio_not_ready"})
     if not payload.text.strip():
         raise HTTPException(422, {"reason_code": "audio_empty_text"})
     content = await synthesize_wav(engine, payload.text)

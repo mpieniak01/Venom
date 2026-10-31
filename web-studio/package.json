@@ -1,0 +1,52 @@
+{
+  "name": "web-studio",
+  "version": "1.10.0",
+  "private": true,
+  "engines": {
+    "node": ">=24.22.0 <25",
+    "npm": ">=11.19.1 <12"
+  },
+  "packageManager": "npm@11.19.1",
+  "scripts": {
+    "prepare": "node scripts/prepare-studio.mjs",
+    "predev": "node scripts/prepare-studio.mjs",
+    "dev": "node ../web-next/scripts/serve-with-proxy.mjs dev --turbo",
+    "predev:turbo": "node scripts/prepare-studio.mjs",
+    "dev:turbo": "node ../web-next/scripts/serve-with-proxy.mjs dev --turbo",
+    "predev:turbo:debug": "node scripts/prepare-studio.mjs",
+    "dev:turbo:debug": "NEXT_TELEMETRY_DISABLED=1 NEXT_DEBUG=true NODE_OPTIONS=--trace-warnings node ../web-next/scripts/serve-with-proxy.mjs dev --turbo",
+    "prebuild": "node scripts/prepare-studio.mjs",
+    "build": "next build",
+    "postbuild": "node ../web-next/scripts/prepare-standalone.mjs",
+    "start": "node ../web-next/scripts/serve-with-proxy.mjs start",
+    "lint": "eslint . --ext .js,.jsx,.ts,.tsx --max-warnings 0",
+    "typecheck": "tsc --noEmit",
+    "test:unit": "node --import tsx --test tests/*.test.ts"
+  },
+  "dependencies": {
+    "next": "^16.2.10",
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
+    "lucide-react": "^0.561.0",
+    "marked": "^16.3.0",
+    "dompurify": "^3.4.11",
+    "katex": "0.18.2",
+    "eventsource-parser": "^3.0.6",
+    "clsx": "^2.1.1",
+    "tailwind-merge": "^3.4.0",
+    "framer-motion": "^12.23.26",
+    "@radix-ui/react-select": "^2.2.6"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "^3",
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^24.19.2",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "^16.2.10",
+    "tailwindcss": "^4",
+    "typescript": "^5",
+    "tsx": "^4.21.0"
+  }
+}

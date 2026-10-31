@@ -184,6 +184,18 @@ _start:
 		ENV_FILE="$(ENV_FILE)" ENV_EXAMPLE_FILE="$(ENV_EXAMPLE_FILE)" NPM="$(NPM)" \
 		$(PYTHON_BIN) scripts/dev/stack_profile.py start
 
+
+# Explicit application composition; persisted data remains environment-scoped.
+.PHONY: start-venom stop-venom start-studio stop-studio status-venom status-studio
+start-venom start-studio:
+	@$(MAKE) --no-print-directory start VENOM_VARIANT=$(if $(filter start-studio,$@),studio,venom)
+
+stop-venom stop-studio:
+	@VENOM_VARIANT=$(if $(filter stop-studio,$@),studio,venom) ENVIRONMENT="$(ENVIRONMENT)" PROFILE="$(PROFILE)" ENV_FILE="$(ENV_FILE)" $(PYTHON_BIN) scripts/dev/stack_profile.py stop
+
+status-venom status-studio:
+	@VENOM_VARIANT=$(if $(filter status-studio,$@),studio,venom) ENVIRONMENT="$(ENVIRONMENT)" PROFILE="$(PROFILE)" ENV_FILE="$(ENV_FILE)" $(PYTHON_BIN) scripts/dev/stack_profile.py status
+
 stop:
 	@ENVIRONMENT="$(ENVIRONMENT)" PROFILE="$(PROFILE)" ENV_FILE="$(ENV_FILE)" $(PYTHON_BIN) scripts/dev/stack_profile.py stop
 

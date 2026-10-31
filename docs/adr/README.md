@@ -16,6 +16,8 @@ An Architecture Decision Record captures a single architecture decision such as 
 |----|-------|--------|------|
 | [ADR-001](./ADR-001-runtime-strategy-llm-first.md) | Runtime Strategy: LLM-First with ONNX Fallback | Accepted | 2026-02-18 |
 | [ADR-002](./ADR-002-skills-mcp-convergence.md) | Skills/MCP Convergence via Local MCP-like Adapter | Accepted | 2026-02-27 |
+| [ADR-003](./ADR-003-chat-2-shell.md) | Chat 2.0 as an isolated shell | Deployment partly superseded by ADR-004 | 2026-10-30 |
+| [ADR-004](./ADR-004-studio-runtime-composition.md) | Separate Venom and Studio application compositions | Accepted for implementation | 2026-10-31 |
 
 ## ADR Naming Convention
 

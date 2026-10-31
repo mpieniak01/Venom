@@ -12,6 +12,13 @@ make status ENVIRONMENT=preprod
 make stop ENVIRONMENT=preprod
 ```
 
+The application variant is a separate choice: `make start-venom` selects the
+existing frontend/Full API; `make start-studio` selects standalone Chat 2.0 and
+the shared-handler API subset. Use the matching `stop-venom` or `stop-studio`
+before switching. These explicit stops also retire verified owned local engines;
+the legacy `make stop` remains API/UI-only. See [variant instructions](STUDIO.md)
+for ownership checks, shared data, separate web artifacts and lazy services.
+
 Dev and preprod retain separate databases, logs, data, cache/queue namespaces,
 PID records, Next artifacts and mutable provider state. Full and Light within
 one environment share its data. Preprod is read-only. Prod remains unused.

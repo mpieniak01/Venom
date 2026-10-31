@@ -165,6 +165,10 @@ class LocalModel:
         presence = self.profile["profile"].get("presence_penalty", 0)
         if presence:
             processors.append(_PresencePenalty(self.torch, count, presence))
+        stopping = {}
+        eos = self.profile["profile"].get("eos_token_ids")
+        if eos is not None:
+            stopping["eos_token_id"] = eos
         sampling = {
             key: self.profile["profile"][key]
             for key in ("top_k", "min_p", "repetition_penalty")
@@ -183,9 +187,12 @@ class LocalModel:
                 else None,
                 pad_token_id=self.tokenizer.eos_token_id,
                 **sampling,
+                **stopping,
             )
         generated = output[0, count:]
-        eos = self.model.generation_config.eos_token_id
+        eos = self.profile["profile"].get(
+            "eos_token_ids", self.model.generation_config.eos_token_id
+        )
         eos_ids = eos if isinstance(eos, list) else [eos]
         if len(generated) and int(generated[-1]) in eos_ids:
             self.last_generation_finish = "eos"

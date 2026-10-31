@@ -219,3 +219,10 @@ Zablokowana próba zachowuje niezweryfikowany ślad. Po poprawce strumień jest
 zamykany przed zabiciem kontenera, stan spoczynku jest ponownie potwierdzany,
 a niedostępny kod wyjścia pozostaje brakiem danych. Osobny pełny przebieg roli
 CodeScout służy sprawdzeniu poprawki; konfiguracji i wyników nie mieszamy po cichu.
+
+Kwalifikacja Qwen3.5 ujawniła brak zatrzymania na `<|im_end|>`: checkpoint
+ma w konfiguracji tekstowej wyłącznie `<|endoftext|>`, a nie ma osobnego
+`generation_config.json`. Profil jawnie ustawia oba natywne tokeny EOS
+(248044 i 248046). Zapobiega to generowaniu kolejnych fikcyjnych tur użytkownika
+i narzędzi; nie dopisuje ani nie poprawia argumentów modelu. Nieudaną próbę
+techniczną zachowujemy oddzielnie od właściwego baseline.

@@ -95,7 +95,11 @@
         "enable_thinking": false,
         "min_p": 0.0,
         "repetition_penalty": 1.0,
-        "presence_penalty": 1.5
+        "presence_penalty": 1.5,
+        "eos_token_ids": [
+          248044,
+          248046
+        ]
       },
       "gated": false,
       "training": {

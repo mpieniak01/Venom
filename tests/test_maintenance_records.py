@@ -196,7 +196,8 @@ def test_inference_pins_checkpoint_and_preserves_native_tokens(
     model.eval.return_value = model
     model.device = "cuda"
     model.generation_config.eos_token_id = 99
-    generated = [7, 99]
+    final_id = 98 if protocol == "qwen35_xml" else 99
+    generated = [7, final_id]
     output = MagicMock()
     output.__getitem__.return_value = generated
     model.generate.return_value = output
@@ -252,6 +253,8 @@ def test_inference_pins_checkpoint_and_preserves_native_tokens(
         profile["profile"].update(
             temperature=0.7, top_p=0.8, top_k=20, presence_penalty=1.5
         )
+    if protocol == "qwen35_xml":
+        profile["profile"]["eos_token_ids"] = [98, 99]
     local = inference.LocalModel(profile, tmp_path)
     assert factory.from_pretrained.call_args.kwargs["revision"] == "a" * 40
     assert factory.from_pretrained.call_args.kwargs["trust_remote_code"] is False
@@ -265,6 +268,10 @@ def test_inference_pins_checkpoint_and_preserves_native_tokens(
     )
     assert tokenizer.call_args.kwargs["add_special_tokens"] is False
     assert local.last_generation_finish == "eos"
+    if protocol == "qwen35_xml":
+        assert model.generate.call_args.kwargs["eos_token_id"] == [98, 99]
+    else:
+        assert "eos_token_id" not in model.generate.call_args.kwargs
     assert local.output_tokens == 2
     expected_tools = (
         [{"name": "Terminal"}]

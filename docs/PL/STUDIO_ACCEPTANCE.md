@@ -1,8 +1,11 @@
 # Studio: odbiór lokalny
 
-2026-10-31. Kod aplikacji `c446c262`; gałąź dostawy `codex/group-b-venom-chat-2`.
+2026-10-31. Historyczny lokalny odbiór kodu aplikacji `c446c262`; gałąź dostawy `codex/group-b-venom-chat-2`.
 S01–S04 odebrane lokalnie. Recenzja wewnętrzna zamknęła potwierdzone P1/P2.
-Publikacji GH, zewnętrznego CI i Sonara nie wykonano. [Instrukcja](STUDIO.md),
+W chwili tego odbioru nie wykonano publikacji GH, zewnętrznego CI i Sonara.
+Poniższe pomiary są historycznym zapisem, a nie ponowną kwalifikacją późniejszego kodu.
+Dalszą kwalifikację wydania zapisano w [PR #574](https://github.com/mpieniak01/Venom/pull/574).
+[Instrukcja](STUDIO.md),
 [ADR-004](adr/ADR-004-studio-runtime-composition.md).
 
 ## Zakres i weryfikacja

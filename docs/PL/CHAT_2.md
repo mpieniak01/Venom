@@ -29,7 +29,7 @@ i `web-next/.env.local.example`. Stosuj launcher właściciela instancji i zacho
 ustawienia środowiska. Bez kopiowania prywatnej konfiguracji i przebudowywania
 artefaktu aktywnego UI.
 
-W Full wyłączone `/chat2` zwraca 404 i nie ma pozycji menu, a `/chat` pozostaje
+W profilu Full wyłączona trasa `/chat2` zwraca 404 i nie ma pozycji menu, a `/chat` pozostaje
 dostępny; **Dotychczasowy Venom** prowadzi do niego. Wyłączenie tego wejścia albo
 zatrzymanie Studio i powrót do Venoma nie kasują historii serwera, materiałów
 ani wyboru dostawcy. Szkice używają wspólnych kluczy na tym samym originie.

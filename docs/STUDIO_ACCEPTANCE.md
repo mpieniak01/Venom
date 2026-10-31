@@ -1,8 +1,10 @@
 # Studio: local acceptance
 
-2026-10-31. Application code: `c446c262`; delivery branch: `codex/group-b-venom-chat-2`.
+2026-10-31. Historical local acceptance for application code `c446c262`; delivery branch: `codex/group-b-venom-chat-2`.
 S01–S04 accepted locally. Internal review closed the confirmed P1/P2 findings.
-GitHub publication, external CI and Sonar qualification have not been performed.
+At that time, GitHub publication, external CI and Sonar qualification had not been performed.
+The measurements below are this historical snapshot, not a requalification of later code.
+Subsequent release qualification is recorded in [PR #574](https://github.com/mpieniak01/Venom/pull/574).
 See [runtime guide](STUDIO.md) and [ADR-004](adr/ADR-004-studio-runtime-composition.md).
 
 ## Delivered behavior

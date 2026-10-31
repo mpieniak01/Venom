@@ -41,7 +41,8 @@ export function StudioMaterials({ materialState, selected, onToggle, onUpload, o
     }).catch(() => { if (!request.signal.aborted) setFailed(true); });
     return () => { request.abort(); if (url) URL.revokeObjectURL(url); };
   }, [preview]);
-  const openPreview = (item: ChatMaterial) => { setFailed(false); setPreview(item); };
+  // Each explicit open starts a fresh request, including a click on the current item.
+  const openPreview = (item: ChatMaterial) => { setFailed(false); setContent(null); setPreview({ ...item }); };
   let imageStatus = "chat2.unknown";
   if (materialState.capabilities) {
     imageStatus = materialState.capabilities.image ? "chat2.ready" : "chat2.unsupported";

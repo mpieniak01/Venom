@@ -6,10 +6,11 @@ Implementation branch: `codex/group-b-venom-chat-2`. Code reviewed and browser-t
 
 ## Outcome and rollout
 
-B01–B06 are implemented. B07 local functional, visual and frontend observations
-are accepted. This is **local acceptance, not a GitHub release**: no Group B PR
-has been published and GitHub CI/SonarCloud have not run for this branch.
-The operator's running stack remains on its existing main revision/configuration.
+At the time of this local acceptance, B01–B06 were implemented and B07 local
+functional, visual and frontend observations were accepted. This was **local
+acceptance, not a GitHub release**: no Group B PR had been published and GitHub
+CI/SonarCloud had not run for this branch. The operator's running stack remained
+on its existing main revision/configuration.
 `NEXT_PUBLIC_FEATURE_CHAT2=false` is retained in templates; enable deliberately
 according to [the operator guide](CHAT_2.md). Disabling it preserves history,
 drafts and materials and returns operators to `/chat`.
@@ -111,7 +112,9 @@ and mobile controls without forced clicks.
 Real microphone/browser-device interoperability, speech/model quality, real
 provider Test Zero and live image inference were deliberately not run. Existing
 audio services and quality settings were retained; fake success is not a quality
-claim. Rider initialization remains a separately deferred task. GitHub required
-checks and SonarCloud are still prerequisites for publishing/merging this branch.
+claim. Rider initialization remained a separately deferred task. At that time,
+GitHub required checks and SonarCloud qualification remained prerequisites for
+publishing/merging the branch. Subsequent release qualification is recorded in
+[PR #574](https://github.com/mpieniak01/Venom/pull/574).
 
 [Polish operator guide](PL/CHAT_2.md) · [ADR-003](adr/ADR-003-chat-2-shell.md)

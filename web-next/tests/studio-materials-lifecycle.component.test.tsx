@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, mock, test } from "node:test";
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { StudioMaterials } from "../components/chat/studio-materials";
 import { pl } from "../lib/i18n/locales/pl";
 import type { ChatMaterial } from "../lib/chat-materials";
@@ -93,3 +93,34 @@ test("failed removal keeps preview and selection; confirmed removal clears both"
   assert.deepEqual(toggled, ["document"]);
   assert.equal(screen.queryByText("preview context"), null);
 });
+
+
+for (const closeFirst of [true, false]) {
+  test(`opening the same image ${closeFirst ? "after closing" : "while open"} waits for a fresh URL`, async () => {
+    let calls = 0;
+    let resolveSecond!: (response: Response) => void;
+    mock.method(globalThis, "fetch", () => {
+      calls++;
+      if (calls === 1) return Promise.resolve(new Response(new Uint8Array([1])));
+      return new Promise<Response>(resolve => { resolveSecond = resolve; });
+    });
+    let urls = 0;
+    mock.method(URL, "createObjectURL", () => "blob:preview-" + ++urls);
+    const revoke = mock.method(URL, "revokeObjectURL", () => {});
+    const view = render(<StudioMaterials materialState={state([item("same", true)])} selected={[]} onToggle={() => {}} onUpload={async () => {}} onClose={() => {}} />);
+    fireEvent.click(screen.getByRole("button", { name: pl.chat2.preview }));
+    await waitFor(() => assert.equal(screen.getByRole("img", { name: "same.png" }).getAttribute("src"), "blob:preview-1"));
+    if (closeFirst) {
+      fireEvent.click(within(screen.getByRole("region", { name: pl.chat2.preview })).getByRole("button", { name: pl.chat2.close }));
+      assert.deepEqual(revoke.mock.calls.map(call => call.arguments), [["blob:preview-1"]]);
+    }
+    fireEvent.click(screen.getByRole("button", { name: pl.chat2.preview }));
+    assert.equal(screen.queryByRole("img", { name: "same.png" }) === null, true);
+    assert.equal(screen.getByRole("status").textContent, pl.chat2.loading);
+    assert.equal(calls, 2);
+    await act(async () => { resolveSecond(new Response(new Uint8Array([2]))); });
+    await waitFor(() => assert.equal(screen.getByRole("img", { name: "same.png" }).getAttribute("src"), "blob:preview-2"));
+    view.unmount();
+    assert.deepEqual(revoke.mock.calls.map(call => call.arguments), [["blob:preview-1"], ["blob:preview-2"]]);
+  });
+}

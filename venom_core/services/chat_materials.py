@@ -61,7 +61,7 @@ def validate_content(
     if mime not in IMAGE_TYPES:
         _invalid("material_type_unsupported", 415)
     # Decode structure, not just a forgeable MIME/header. Avoid huge image buffers.
-    from PIL import Image, UnidentifiedImageError
+    from PIL import Image
 
     try:
         with Image.open(io.BytesIO(data)) as image:
@@ -72,7 +72,6 @@ def validate_content(
                 _invalid("material_image_invalid")
             image.verify()
     except (
-        UnidentifiedImageError,
         OSError,
         SyntaxError,
         Image.DecompressionBombError,

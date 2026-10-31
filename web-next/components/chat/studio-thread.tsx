@@ -11,7 +11,11 @@ const Message = memo(function StudioMessage({ message, detail, onError }: Readon
 }>) {
   const { t } = useLanguage(); const [copied, setCopied] = useState(false);
   const copy = async () => {
-    try { if (!navigator.clipboard?.writeText) throw new Error("clipboard_unavailable"); await navigator.clipboard.writeText(message.text); setCopied(true); }
+    try {
+      if (!navigator.clipboard?.writeText) { throw new Error("clipboard_unavailable"); }
+      await navigator.clipboard.writeText(message.text);
+      setCopied(true);
+    }
     catch { onError(t("chat2.copyFailed")); }
   };
   return <article className={"studio-message studio-message-" + message.role} data-testid={"chat2-message-" + message.role}>
@@ -32,7 +36,7 @@ export function StudioThread({ messages, details, scrollRef, onScroll, loading, 
   const { t } = useLanguage(); const [visibleCount, setVisibleCount] = useState(60);
   const visible = messages.slice(-visibleCount);
   return <section className="studio-thread" ref={scrollRef} onScroll={onScroll} aria-label={t("chat2.session")} data-testid="chat2-thread">
-    {loading && !messages.length && <p role="status">{t("chat2.loading")}</p>}
+    {loading && !messages.length && <output>{t("chat2.loading")}</output>}
     {!loading && !messages.length && <div className="studio-welcome"><span className="studio-welcome-mark">V</span><h2>{t("chat2.emptyTitle")}</h2><p>{t("chat2.emptyHint")}</p></div>}
     {messages.length > visibleCount && <button type="button" className="studio-button" onClick={() => setVisibleCount(value => value + 60)}>{t("chat2.earlier")}</button>}
     {visible.map(message => <Message key={message.bubbleId} message={message} detail={message.requestId ? details[message.requestId] : undefined} onError={onError} />)}

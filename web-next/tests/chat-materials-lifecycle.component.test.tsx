@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, mock, test } from "node:test";
-import { act, cleanup, renderHook } from "@testing-library/react";
+import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { useChatMaterials } from "../components/chat/use-chat-materials";
 import type { ChatMaterial } from "../lib/chat-materials";
 
@@ -112,4 +112,63 @@ test("a failed old list cannot overwrite a successful upload with stale error st
   await act(async () => { list.resolve(Response.json({ detail: "old list failure" }, { status: 400 })); });
   assert.equal(hook.result.current.error, null);
   assert.deepEqual(hook.result.current.items.map(item => item.id), ["new"]);
+});
+
+
+test("uploads wait for each accepted file and preserve chooser order", async () => {
+  const first = deferred<Response>(), second = deferred<Response>();
+  const started: string[] = [];
+  mock.method(globalThis, "fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+    if (String(input).includes("/capabilities")) return capabilities();
+    if (init?.method !== "POST") return Response.json({ materials: [] });
+    const name = new URL(String(input), "http://localhost").searchParams.get("name")!;
+    started.push(name);
+    return name === "first.txt" ? first.promise : second.promise;
+  });
+  const hook = renderHook(() => useMaterials());
+  let upload!: Promise<ChatMaterial[]>;
+  act(() => { upload = hook.result.current.upload([new File(["1"], "first.txt"), new File(["2"], "second.txt")]); });
+  assert.deepEqual(started, ["first.txt"]);
+  await act(async () => { first.resolve(Response.json(material("first"))); });
+  await waitFor(() => assert.deepEqual(started, ["first.txt", "second.txt"]));
+  await act(async () => { second.resolve(Response.json(material("second"))); assert.deepEqual((await upload).map(item => item.id), ["first", "second"]); });
+  assert.deepEqual(hook.result.current.items.map(item => item.id), ["first", "second"]);
+});
+
+test("a later invalid file keeps accepted references and never starts subsequent uploads", async () => {
+  const started: string[] = [];
+  mock.method(globalThis, "fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+    if (String(input).includes("/capabilities")) return capabilities();
+    if (init?.method !== "POST") return Response.json({ materials: [] });
+    started.push(new URL(String(input), "http://localhost").searchParams.get("name")!);
+    return Response.json(material("accepted"));
+  });
+  const hook = renderHook(() => useMaterials());
+  await act(async () => {
+    const result = await hook.result.current.upload([new File(["ok"], "first.txt"), new File(["bad"], "active.html", { type: "text/html" }), new File(["later"], "third.txt")]);
+    assert.deepEqual(result.map(item => item.id), ["accepted"]);
+  });
+  assert.deepEqual(started, ["first.txt"]);
+  assert.deepEqual(hook.result.current.items.map(item => item.id), ["accepted"]);
+  assert.equal(hook.result.current.error, "fileUnsupported");
+});
+
+test("cancelled batch ignores a late accepted response and never starts its next file", async () => {
+  const pending = deferred<Response>();
+  let started = 0, signal: AbortSignal | null = null;
+  mock.method(globalThis, "fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+    if (String(input).includes("/capabilities")) return capabilities();
+    if (init?.method !== "POST") return Response.json({ materials: [] });
+    started++; signal = init.signal as AbortSignal; return pending.promise;
+  });
+  const hook = renderHook(() => useMaterials());
+  let upload!: Promise<ChatMaterial[]>;
+  act(() => { upload = hook.result.current.upload([new File(["1"], "first.txt"), new File(["2"], "second.txt")]); });
+  act(() => hook.result.current.cancelUpload());
+  assert.equal((signal as AbortSignal | null)?.aborted, true);
+  await act(async () => { pending.resolve(Response.json(material("late"))); assert.deepEqual(await upload, []); });
+  assert.equal(started, 1);
+  assert.deepEqual(hook.result.current.items, []);
+  assert.equal(hook.result.current.uploading, false);
+  assert.equal(hook.result.current.error, null);
 });

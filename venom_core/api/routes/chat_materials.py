@@ -7,8 +7,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 
 from venom_core.api.schemas.chat_materials import ChatMaterial, ChatMaterialList
 from venom_core.api.transport_access import require_operator_request
-from venom_core.core.environment_policy import ensure_data_mutation_allowed
-from venom_core.services.chat_materials import MAX_BYTES, MaterialStore
+from venom_core.services.chat_materials import (
+    MAX_BYTES,
+    MaterialStore,
+    assert_material_mutation_allowed,
+)
 
 router = APIRouter(
     prefix="/api/v1/chat/materials",
@@ -18,12 +21,7 @@ router = APIRouter(
 
 
 def _same_origin(request: Request) -> None:
-    try:
-        ensure_data_mutation_allowed("chat_materials")
-    except PermissionError as exc:
-        raise HTTPException(
-            403, {"reason_code": "material_environment_read_only"}
-        ) from exc
+    assert_material_mutation_allowed()
     origin = request.headers.get("origin")
     if origin:
         parsed = urlsplit(origin)

@@ -86,3 +86,20 @@ test("a late rejected voice turn cannot reset a new listening epoch after Stop",
   assert.equal(hook.result.current.error, null);
   assert.equal(newCaptureDisposed, false);
 });
+
+
+for (const [cause, expected] of [
+  [new DOMException("denied", "NotAllowedError"), "micDenied"],
+  [new Error("micUnavailable"), "micUnavailable"],
+  [new Error("another capture failure"), "voiceError"],
+] as const) {
+  test(`capture failure ${expected} retains its translated error category`, async () => {
+    const fixture = options();
+    const hook = renderHook(() => useStudioVoice(fixture.props, async () => { throw cause; }));
+    await act(async () => { await hook.result.current.start(); });
+    assert.equal(hook.result.current.error, expected);
+    assert.equal(hook.result.current.status, "voiceIdle");
+    assert.deepEqual(fixture.drafts, []);
+    assert.deepEqual(fixture.turns, []);
+  });
+}

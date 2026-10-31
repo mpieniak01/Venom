@@ -5,6 +5,13 @@ import { createAudioCapture, speakChatAudio, transcribeChatAudio, type AudioCapt
 export type StudioVoiceStatus = "voiceIdle" | "permission" | "listening" | "transcribing" | "generating" | "speaking" | "muted" | "voiceEnded";
 type VoiceOptions = { session: string; stopRevision?: number; mode: "dictation" | "conversation"; language: string; busy: boolean; messages: ChatMessage[];
   onDraft: (text: string) => void; onTurn: (text: string) => Promise<boolean>; onStop: () => Promise<void>; onClose: () => void };
+/** Map capture failures without treating unrelated errors as permission denial. */
+function captureError(cause: unknown): "micDenied" | "micUnavailable" | "voiceError" {
+  if (cause instanceof DOMException && cause.name === "NotAllowedError") return "micDenied";
+  if (cause instanceof Error && cause.message === "micUnavailable") return "micUnavailable";
+  return "voiceError";
+}
+
 export function useStudioVoice(options: VoiceOptions, captureFactory: typeof createAudioCapture = createAudioCapture) {
   const [status, setStatus] = useState<StudioVoiceStatus>("voiceIdle");
   const [error, setError] = useState<string | null>(null);
@@ -25,7 +32,8 @@ export function useStudioVoice(options: VoiceOptions, captureFactory: typeof cre
   }, []);
   const releaseCapture = useCallback(() => {
     capture.current?.dispose(); capture.current = null;
-    if (timer.current) clearTimeout(timer.current); timer.current = null;
+    if (timer.current) { clearTimeout(timer.current); }
+    timer.current = null;
   }, []);
   const reset = useCallback(() => {
     epoch.current++; permission.current?.abort(); permission.current = null; waiting.current = null; request.current?.abort(); request.current = null;
@@ -64,7 +72,8 @@ export function useStudioVoice(options: VoiceOptions, captureFactory: typeof cre
     finishing.current = true;
     const current = epoch.current;
     const recording = capture.current;
-    if (timer.current) clearTimeout(timer.current); timer.current = null;
+    if (timer.current) { clearTimeout(timer.current); }
+    timer.current = null;
     const controller = new AbortController(); request.current?.abort(); request.current = controller;
     setStatus("transcribing");
     try {
@@ -82,7 +91,11 @@ export function useStudioVoice(options: VoiceOptions, captureFactory: typeof cre
       if (current !== epoch.current || controller.signal.aborted) return;
       if (!accepted) { waiting.current = null; setError("voiceWait"); setStatus("voiceIdle"); }
     } catch { if (!controller.signal.aborted && current === epoch.current) { setError("voiceError"); setStatus("voiceIdle"); } }
-    finally { recording.dispose(); if (capture.current === recording) capture.current = null; if (current === epoch.current) finishing.current = false; }
+    finally {
+      recording.dispose();
+      if (capture.current === recording) { capture.current = null; }
+      if (current === epoch.current) { finishing.current = false; }
+    }
   }, []);
   const finishRef = useRef(finish);
   useEffect(() => { finishRef.current = finish; }, [finish]);
@@ -97,7 +110,10 @@ export function useStudioVoice(options: VoiceOptions, captureFactory: typeof cre
       capture.current = microphone; setStatus("listening");
       timer.current = setTimeout(() => { void finishRef.current(); }, 60000);
     } catch (cause) {
-      if (current === epoch.current) { setError(cause instanceof DOMException && cause.name === "NotAllowedError" ? "micDenied" : cause instanceof Error && cause.message === "micUnavailable" ? "micUnavailable" : "voiceError"); setStatus("voiceIdle"); }
+      if (current === epoch.current) {
+        setError(captureError(cause));
+        setStatus("voiceIdle");
+      }
     } finally { if (current === epoch.current) starting.current = false; }
   }, [captureFactory, releasePlayback]);
   const mute = useCallback(() => { reset(); setStatus("muted"); }, [reset]);

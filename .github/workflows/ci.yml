@@ -175,6 +175,7 @@ jobs:
       - name: Architecture contracts guard
         run: |
           make architecture-drift-check
+          python -m pytest -q tests/test_api_routes_import_guard.py
 
       - name: Export Sonar architecture summary
         run: |

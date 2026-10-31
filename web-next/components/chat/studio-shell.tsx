@@ -33,6 +33,15 @@ function subscribeCompact(onChange: () => void) {
 }
 function desktopSnapshot() { return !window.matchMedia(compactQuery).matches; }
 function serverDesktopSnapshot() { return false; }
+/** Preserve cancellation order and start the first operation synchronously. */
+export function cancelStudioTasksInOrder(taskIds: readonly string[], cancelTask: (id: string) => Promise<void>): Promise<void> {
+  const cancelNext = (index: number): Promise<void> => {
+    if (index >= taskIds.length) return Promise.resolve();
+    return cancelTask(taskIds[index]).then(() => cancelNext(index + 1));
+  };
+  return cancelNext(0);
+}
+
 export function StudioShell({ showLegacyLink = true }: Readonly<{ showLegacyLink?: boolean }>) {
   const { sessionId } = useSession();
   return <StudioConversation key={sessionId} showLegacyLink={showLegacyLink} />;
@@ -44,6 +53,7 @@ function StudioConversation({ showLegacyLink }: Readonly<{ showLegacyLink: boole
   const source = useConversationData();
   const interaction = useCockpitInteractiveState("direct");
   const layout = useCockpitLayout();
+  const shellRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null!);
   const textarea = useRef<HTMLTextAreaElement>(null);
   const materialButton = useRef<HTMLButtonElement>(null);
@@ -52,7 +62,7 @@ function StudioConversation({ showLegacyLink }: Readonly<{ showLegacyLink: boole
   const [selectedJson, setSelectedJson] = useSessionDraft(sessionId ? "materials:" + sessionId : "");
   const selected = useMemo(() => materialSelection(selectedJson), [selectedJson]);
   const desktop = useSyncExternalStore(subscribeCompact, desktopSnapshot, serverDesktopSnapshot);
-  const [materialsOverride, setMaterialsOpen] = useState<boolean | null>(null);
+  const [materialsOverride, setMaterialsOverride] = useState<boolean | null>(null);
   const materialsOpen = materialsOverride ?? desktop;
   const materialsLayer = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -78,14 +88,16 @@ function StudioConversation({ showLegacyLink }: Readonly<{ showLegacyLink: boole
   const activeTaskIds = conversation.historyMessages.filter(message => message.role === "assistant" && (message.pending || ["PENDING", "PROCESSING"].includes(message.status ?? "")))
     .map(message => message.requestId).filter((id): id is string => !!id && !id.startsWith("opt-"));
   const taskKey = JSON.stringify(activeTaskIds.filter(id => conversation.normalRequestIds.includes(id)));
-  const cancelKnownTasks = useCallback(async () => {
-    for (const id of JSON.parse(taskKey) as string[]) {
-      if (stoppedTasks.current.has(id)) continue;
-      stoppedTasks.current.add(id);
-      try { await apiFetch("/api/v1/chat/tasks/" + encodeURIComponent(id) + "/cancel", { method: "POST", body: JSON.stringify({ session_id: sessionId }) }); }
-      catch { stoppedTasks.current.delete(id); setters.setMessage(t("chat2.error")); }
+  const cancelKnownTasks = useCallback(() => cancelStudioTasksInOrder(JSON.parse(taskKey) as string[], async id => {
+    if (stoppedTasks.current.has(id)) return;
+    stoppedTasks.current.add(id);
+    try {
+      await apiFetch("/api/v1/chat/tasks/" + encodeURIComponent(id) + "/cancel", { method: "POST", body: JSON.stringify({ session_id: sessionId }) });
+    } catch {
+      stoppedTasks.current.delete(id);
+      setters.setMessage(t("chat2.error"));
     }
-  }, [sessionId, taskKey, setters, t]);
+  }), [sessionId, taskKey, setters, t]);
   const stop = useCallback(async () => {
     if (!pendingStop.current) setStopRevision(value => value + 1);
     pendingStop.current = true; cancelSimpleChatStream();
@@ -111,13 +123,28 @@ function StudioConversation({ showLegacyLink }: Readonly<{ showLegacyLink: boole
   };
   const sessions = historyOpen ? readChatSessions() : [];
   const chooseSession = (id: string) => { if (!active) { setSessionId(id); setHistoryOpen(false); setVoice(null); textarea.current?.focus(); } };
-  return <div className="chat2" data-testid="chat2-shell" onKeyDown={event => {
-    if (event.key !== "Escape") return;
-    if (historyOpen) { setHistoryOpen(false); historyButton.current?.focus(); }
-    else if (materialsOpen) { setMaterialsOpen(false); materialButton.current?.focus(); }
-  }}>
+  useEffect(() => {
+    const shell = shellRef.current;
+    if (!shell) return;
+    const closeContext = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      if (historyOpen) {
+        setHistoryOpen(false);
+        historyButton.current?.focus();
+      } else if (materialsOpen) {
+        setMaterialsOverride(false);
+        materialButton.current?.focus();
+      }
+    };
+    shell.addEventListener("keydown", closeContext);
+    return () => shell.removeEventListener("keydown", closeContext);
+  }, [historyOpen, materialsOpen]);
+  return <div ref={shellRef} className="chat2" data-testid="chat2-shell">
     <nav className="studio-rail" aria-label={t("chat2.title")}><span className="studio-brand" aria-hidden="true">V</span>
-      <button ref={historyButton} type="button" className="studio-icon" aria-label={t("chat2.history")} aria-expanded={historyOpen} aria-controls="studio-history" onClick={() => { if (!desktop) setMaterialsOpen(false); setHistoryOpen(!historyOpen); }}><History size={21} /></button>
+      <button ref={historyButton} type="button" className="studio-icon" aria-label={t("chat2.history")} aria-expanded={historyOpen} aria-controls="studio-history" onClick={() => {
+        if (!desktop) { setMaterialsOverride(false); }
+        setHistoryOpen(!historyOpen);
+      }}><History size={21} /></button>
       <button type="button" className="studio-icon" aria-label={t("chat2.newChat")} disabled={active || !sessionId} onClick={() => { conversation.sessionActions.handleSessionReset(); setters.setMessage(null); setVoice(null); }}><Plus size={21} /></button>
       {showLegacyLink && <Link className="studio-icon studio-back" href="/chat" prefetch={false} aria-label={t("chat2.back")}><ArrowLeft size={21} /></Link>}
       <button type="button" className={"studio-icon" + (showLegacyLink ? "" : " studio-back")} aria-label={t("chat2.theme")} onClick={() => setTheme(theme === "venom-light" ? "venom-dark" : "venom-light")}><Moon size={20} /></button>
@@ -127,7 +154,7 @@ function StudioConversation({ showLegacyLink }: Readonly<{ showLegacyLink: boole
     </aside>}
     <main className="studio-main"><header className="studio-top"><div><p className="studio-eyebrow">STUDIO</p><h1>{t("chat2.title")}</h1><p>{t("chat2.subtitle")}</p></div>
       <div className="studio-top-actions"><label className="studio-language"><span className="sr-only">{t("chat2.language")}</span><select aria-label={t("chat2.language")} value={language} onChange={event => setLanguage(event.target.value as "pl" | "en" | "de")}><option value="pl">PL</option><option value="en">EN</option><option value="de">DE</option></select></label>
-        <button ref={materialButton} type="button" className="studio-button" aria-expanded={materialsOpen} aria-controls="studio-materials" onClick={() => { setHistoryOpen(false); setMaterialsOpen(!materialsOpen); }}><Paperclip size={16} />{t("chat2.materials")}</button></div>
+        <button ref={materialButton} type="button" className="studio-button" aria-expanded={materialsOpen} aria-controls="studio-materials" onClick={() => { setHistoryOpen(false); setMaterialsOverride(!materialsOpen); }}><Paperclip size={16} />{t("chat2.materials")}</button></div>
     </header>
     <StudioModelPicker catalog={source.data.unifiedModelCatalog} interaction={interaction} session={sessionId} activeModel={source.data.activeServerInfo?.active_model} onApply={conversation.handleActivateModel} busy={active} />
     {source.error && <div className="studio-error" role="alert">{t("chat2.offline")}<button type="button" className="studio-button" onClick={() => { void source.refresh(); }}>{t("chat2.retry")}</button></div>}
@@ -139,7 +166,7 @@ function StudioConversation({ showLegacyLink }: Readonly<{ showLegacyLink: boole
         {!!selected.length && <div className="studio-attachments" aria-label={t("chat2.selectedMaterials")}>{selected.map(id => <button type="button" key={id} className="studio-chip" aria-label={t("chat2.detach") + ": " + (materials.items.find(item => item.id === id)?.name || id)} onClick={() => toggleMaterial(id)}><Paperclip size={13} />{materials.items.find(item => item.id === id)?.name || t("chat2.stale")}<X size={12} /></button>)}</div>}
         <div className="studio-compose"><textarea ref={textarea} aria-label={t("chat2.placeholder")} placeholder={t("chat2.placeholder")} value={draft} maxLength={50000} rows={3} disabled={!sessionId}
           onChange={event => setDraft(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void send(draft); } }} />
-          <div className="studio-compose-actions"><div><button type="button" className="studio-icon" aria-label={t("chat2.chooseFiles")} onClick={() => { setHistoryOpen(false); setMaterialsOpen(true); }}><Paperclip size={19} /></button>
+          <div className="studio-compose-actions"><div><button type="button" className="studio-icon" aria-label={t("chat2.chooseFiles")} onClick={() => { setHistoryOpen(false); setMaterialsOverride(true); }}><Paperclip size={19} /></button>
             <button type="button" className="studio-button studio-quiet" onClick={() => setVoice(voice === "dictation" ? null : "dictation")} disabled={active}><Mic size={17} />{t("chat2.dictate")}</button>
             <button type="button" className="studio-button studio-quiet" onClick={() => setVoice(voice === "conversation" ? null : "conversation")} disabled={active}><Headphones size={17} />{t("chat2.voice")}</button></div>
             {active ? <button type="button" className="studio-button studio-stop" onClick={() => { void stop(); }}><Square size={15} />{t("chat2.stop")}</button> : <button type="submit" className="studio-button studio-send" disabled={!sessionId || source.loading || !state.selectedLlmModel || !draft.trim() || blocked || materials.uploading}><Send size={17} />{t("chat2.send")}</button>}
@@ -147,11 +174,11 @@ function StudioConversation({ showLegacyLink }: Readonly<{ showLegacyLink: boole
         </div>
         {blocked && !!selected.length && <p className="studio-error" role="alert">{t(missing ? "chat2.stale" : "chat2.incompatible")}</p>}
         {state.message && <p className="studio-error" role="alert">{state.message}</p>}
-        <div className="studio-compose-footer"><span>{t("chat2.sendHint")}</span><span role="status" aria-live="polite">{t(active ? "chat2.generating" : "chat2.ready")}</span></div>
+        <div className="studio-compose-footer"><span>{t("chat2.sendHint")}</span><output aria-live="polite">{t(active ? "chat2.generating" : "chat2.ready")}</output></div>
       </form>
     </div>
     {materialsOpen && <div ref={materialsLayer} className="studio-materials-layer" role={desktop ? undefined : "dialog"} aria-modal={desktop ? undefined : true} aria-label={desktop ? undefined : t("chat2.materials")}
-      onClick={event => { if (!desktop && event.target === event.currentTarget) { setMaterialsOpen(false); materialButton.current?.focus(); } }}
+      onClick={event => { if (!desktop && event.target === event.currentTarget) { setMaterialsOverride(false); materialButton.current?.focus(); } }}
       onKeyDown={event => {
         if (desktop || event.key !== "Tab") return;
         const controls = [...event.currentTarget.querySelectorAll<HTMLElement>('button:not([disabled]),input:not([disabled]),select:not([disabled]),a[href],[tabindex="0"]')].filter(node => !node.hidden && node.getClientRects().length > 0);
@@ -160,7 +187,7 @@ function StudioConversation({ showLegacyLink }: Readonly<{ showLegacyLink: boole
         if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
         else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
       }}>
-      <StudioMaterials key={sessionId} materialState={materials} selected={selected} onToggle={toggleMaterial} onUpload={upload} onClose={() => { setMaterialsOpen(false); materialButton.current?.focus(); }} />
+      <StudioMaterials key={sessionId} materialState={materials} selected={selected} onToggle={toggleMaterial} onUpload={upload} onClose={() => { setMaterialsOverride(false); materialButton.current?.focus(); }} />
     </div>}
     </div></main>
   </div>;

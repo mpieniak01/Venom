@@ -1,15 +1,14 @@
 """Session-scoped Stop delegates to the existing queue; never global emergency."""
 
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
 from venom_core.api.dependencies import get_orchestrator
 from venom_core.api.transport_access import require_operator_request
-from venom_core.core.models import TaskStatus
-from venom_core.core.orchestrator import Orchestrator
+from venom_core.services.chat_tasks import cancel_session_task
 
 router = APIRouter(
     prefix="/api/v1/chat/tasks",
@@ -44,24 +43,7 @@ class ChatTaskCancellation(BaseModel):
 async def cancel_chat_task(
     task_id: UUID,
     payload: CancelChatTask,
-    orchestrator: Annotated[Orchestrator, Depends(get_orchestrator)],
+    orchestrator: Annotated[Any, Depends(get_orchestrator)],
 ):
-    task = orchestrator.state_manager.get_task(task_id)
-    if task is None:
-        raise HTTPException(404, {"reason_code": "chat_task_not_found"})
-    session = task.context_history.get("session")
-    if not isinstance(session, dict) or session.get("session_id") != payload.session_id:
-        raise HTTPException(404, {"reason_code": "chat_task_not_found"})
-    if task.status in {TaskStatus.COMPLETED, TaskStatus.FAILED}:
-        return ChatTaskCancellation(task_id=task_id, status="already_finished")
-    result = await orchestrator.abort_task(task_id)
-    if result.get("success"):
-        return ChatTaskCancellation(task_id=task_id, status="cancelled")
-    # A task can finish while Stop awaits the existing queue lock.
-    current = orchestrator.state_manager.get_task(task_id)
-    if current is not None and current.status in {
-        TaskStatus.COMPLETED,
-        TaskStatus.FAILED,
-    }:
-        return ChatTaskCancellation(task_id=task_id, status="already_finished")
-    raise HTTPException(409, {"reason_code": "chat_task_not_active"})
+    status = await cancel_session_task(task_id, payload.session_id, orchestrator)
+    return ChatTaskCancellation(task_id=task_id, status=status)

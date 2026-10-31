@@ -63,3 +63,33 @@ test("a late blob response after preview unmount never creates an orphan URL", a
   await act(async () => { resolve(new Response(new Uint8Array([1]))); });
   assert.equal(create.mock.calls.length, 0);
 });
+
+
+test("upload and list progress use native status outputs and keep cancellation separate", () => {
+  const view = render(<StudioMaterials materialState={{ ...state([]), uploading: true, loading: true }} selected={[]} onToggle={() => {}} onUpload={async () => {}} onClose={() => {}} />);
+  const statuses = screen.getAllByRole("status");
+  assert.equal(statuses.length, 2);
+  assert.ok(statuses.every(element => element.tagName === "OUTPUT"));
+  const cancel = screen.getByRole("button", { name: pl.chat2.cancelUpload });
+  assert.equal(cancel.closest("output"), null);
+  assert.ok(view.container.querySelector("aside"));
+});
+
+test("failed removal keeps preview and selection; confirmed removal clears both", async () => {
+  mock.method(globalThis, "fetch", async () => new Response("preview context"));
+  let removed = false;
+  const toggled: string[] = [];
+  const materialState = { ...state([item("document")]), remove: async () => removed };
+  const view = render(<StudioMaterials materialState={materialState} selected={["document"]} onToggle={id => toggled.push(id)} onUpload={async () => {}} onClose={() => {}} />);
+  fireEvent.click(screen.getByRole("button", { name: pl.chat2.preview }));
+  assert.equal(screen.getByRole("status").tagName, "OUTPUT");
+  await waitFor(() => assert.ok(screen.getByText("preview context")));
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: pl.chat2.remove + ": document.txt" })); });
+  assert.equal(toggled.length, 0);
+  assert.ok(screen.getByText("preview context"));
+  removed = true;
+  view.rerender(<StudioMaterials materialState={materialState} selected={["document"]} onToggle={id => toggled.push(id)} onUpload={async () => {}} onClose={() => {}} />);
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: pl.chat2.remove + ": document.txt" })); });
+  assert.deepEqual(toggled, ["document"]);
+  assert.equal(screen.queryByText("preview context"), null);
+});

@@ -17,6 +17,7 @@ from uuid import UUID, uuid4
 from fastapi import HTTPException
 
 from venom_core.api.schemas.chat_materials import ChatMaterial
+from venom_core.core.environment_policy import ensure_data_mutation_allowed
 from venom_core.utils.logger import get_logger
 from venom_core.utils.runtime_state import runtime_state_root
 
@@ -30,6 +31,16 @@ DOCUMENT_TYPES = frozenset(
 IMAGE_TYPES = {"image/png": "PNG", "image/jpeg": "JPEG", "image/webp": "WEBP"}
 _LOCK = threading.RLock()
 logger = get_logger(__name__)
+
+
+def assert_material_mutation_allowed() -> None:
+    """Translate the host environment's mutation policy into the existing chat error."""
+    try:
+        ensure_data_mutation_allowed("chat_materials")
+    except PermissionError as exc:
+        raise HTTPException(
+            403, {"reason_code": "material_environment_read_only"}
+        ) from exc
 
 
 def _invalid(reason: str, status: int = 400) -> NoReturn:

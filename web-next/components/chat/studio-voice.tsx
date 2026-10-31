@@ -12,7 +12,7 @@ export function StudioVoice(props: Readonly<{ session: string; stopRevision?: nu
   return <section className="studio-voice" aria-label={t(props.mode === "dictation" ? "chat2.dictate" : "chat2.voice")}>
     <header><h2>{t(props.mode === "dictation" ? "chat2.dictate" : "chat2.voice")}</h2><button type="button" className="studio-icon" aria-label={t("chat2.endVoice")} onClick={voice.end}><X size={17} /></button></header>
     <div className="studio-orb" data-listening={capturing}>{props.mode === "dictation" ? <Mic size={25} /> : <Headphones size={25} />}</div>
-    <p role="status" aria-live="polite">{t("chat2." + voice.status)}</p><p>{t(props.mode === "dictation" ? "chat2.dictationHint" : "chat2.voiceHint")}</p>
+    <output className="block" aria-live="polite">{t("chat2." + voice.status)}</output><p>{t(props.mode === "dictation" ? "chat2.dictationHint" : "chat2.voiceHint")}</p>
     {voice.error && <p role="alert">{t("chat2." + voice.error)}</p>}
     <div className="studio-voice-controls">
       {capturing ? <button type="button" className="studio-button" onClick={() => { void voice.finish(); }}><Square size={15} />{t("chat2.finishTurn")}</button> : <button type="button" className="studio-button" disabled={processing || props.busy} onClick={() => { void voice.start(); }}><Mic size={15} />{t(voice.status === "muted" ? "chat2.unmute" : "chat2.listen")}</button>}

@@ -120,7 +120,7 @@ function loadTsx(file: string, imports: Record<string, unknown>) {
   return loaded.exports;
 }
 
-function shell() {
+function shellExports() {
   const noCall = () => { throw new Error("No runtime/transport expected during SSR"); };
   const nullComponent = () => null;
   const imports: Record<string, unknown> = {
@@ -151,7 +151,11 @@ function shell() {
     "./studio-thread": { StudioThread: nullComponent },
     "./studio.css": {},
   };
-  return loadTsx(path.join(repositoryRoot, "web-next/components/chat/studio-shell.tsx"), imports).StudioShell as React.ComponentType<{ showLegacyLink?: boolean }>;
+  return loadTsx(path.join(repositoryRoot, "web-next/components/chat/studio-shell.tsx"), imports);
+}
+
+function shell() {
+  return shellExports().StudioShell as React.ComponentType<{ showLegacyLink?: boolean }>;
 }
 
 test("shared Full shell retains its legacy navigation by default", () => {
@@ -227,3 +231,35 @@ for (const command of ["dev:turbo", "dev:turbo:debug"]) {
     } finally { rmSync(item.repository, {recursive:true, force:true}); }
   });
 }
+
+
+test("scoped task cancellation starts one task at a time and preserves order", async () => {
+  const cancelInOrder = shellExports().cancelStudioTasksInOrder as (
+    ids: readonly string[], cancel: (id: string) => Promise<void>
+  ) => Promise<void>;
+  const started: string[] = [];
+  const releases = new Map<string, () => void>();
+  const pending = cancelInOrder(["first", "second", "third"], id => {
+    started.push(id);
+    return new Promise<void>(resolve => { releases.set(id, resolve); });
+  });
+  assert.deepEqual(started, ["first"]);
+  releases.get("first")!(); await Promise.resolve();
+  assert.deepEqual(started, ["first", "second"]);
+  releases.get("second")!(); await Promise.resolve();
+  assert.deepEqual(started, ["first", "second", "third"]);
+  releases.get("third")!(); await pending;
+  assert.deepEqual(started, ["first", "second", "third"]);
+});
+
+test("cancellation sequence does not start later tasks after an unhandled callback failure", async () => {
+  const cancelInOrder = shellExports().cancelStudioTasksInOrder as (
+    ids: readonly string[], cancel: (id: string) => Promise<void>
+  ) => Promise<void>;
+  const started: string[] = [];
+  await assert.rejects(cancelInOrder(["first", "second", "third"], async id => {
+    started.push(id);
+    if (id === "second") throw new Error("failed callback");
+  }), /failed callback/);
+  assert.deepEqual(started, ["first", "second"]);
+});

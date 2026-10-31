@@ -8,8 +8,20 @@ type MaterialScope = {
   changes: Map<string, { revision: number; item: ChatMaterial | null }>;
   requests: Set<AbortController>; uploads: Set<AbortController>;
 };
-function current(scope: MaterialScope, epoch: number, session: string) {
-  return scope.active && scope.epoch === epoch && scope.session === session;
+function current(scope: MaterialScope, epoch: number, session: string, signal?: AbortSignal): boolean {
+  return !signal?.aborted && scope.active && scope.epoch === epoch && scope.session === session;
+}
+
+/** Validate immediately before each request so earlier accepted files survive a later rejection. */
+function validateUploadFile(file: File): void {
+  if (file.size > 8 * 1024 * 1024) throw new Error("fileTooLarge");
+  if (!["text/plain", "text/markdown", "text/csv", "application/json", "image/png", "image/jpeg", "image/webp"].includes(materialMime(file))) throw new Error("fileUnsupported");
+}
+
+/** Keep local validation messages distinct from transport/session failures. */
+function uploadError(cause: unknown): string {
+  if (cause instanceof Error && ["fileTooLarge", "fileUnsupported"].includes(cause.message)) return cause.message;
+  return "error";
 }
 export function useChatMaterials(session: string, model: string, runtime: string, activeRuntime: string, identity: string, enabled: boolean) {
   const [snapshot, setSnapshot] = useState<{ session: string; items: ChatMaterial[] }>({ session: "", items: [] });
@@ -87,18 +99,17 @@ export function useChatMaterials(session: string, model: string, runtime: string
     const created: ChatMaterial[] = [];
     try {
       for (const file of files) {
-        if (file.size > 8 * 1024 * 1024) throw new Error("fileTooLarge");
-        if (!["text/plain", "text/markdown", "text/csv", "application/json", "image/png", "image/jpeg", "image/webp"].includes(materialMime(file))) throw new Error("fileUnsupported");
+        validateUploadFile(file);
         const material = await uploadChatMaterial(session, file, request.signal);
-        if (request.signal.aborted || !current(scope, epoch, session)) return [];
+        if (!current(scope, epoch, session, request.signal)) return [];
         if (material.session_id !== session) throw new Error("material_session_mismatch");
         created.push(material); scope.changes.set(material.id, { revision: ++scope.revision, item: material });
         setSnapshot(previous => ({ session, items: [...(previous.session === session ? previous.items : []).filter(item => item.id !== material.id), material] }));
       }
       return created;
     } catch (cause) {
-      if (!request.signal.aborted && current(scope, epoch, session)) setError(cause instanceof Error && ["fileTooLarge", "fileUnsupported"].includes(cause.message) ? cause.message : "error");
-      return !request.signal.aborted && current(scope, epoch, session) ? created : [];
+      if (current(scope, epoch, session, request.signal)) setError(uploadError(cause));
+      return current(scope, epoch, session, request.signal) ? created : [];
     } finally {
       scope.requests.delete(request); scope.uploads.delete(request);
       if (current(scope, epoch, session)) setUploading(scope.uploads.size > 0);
@@ -114,7 +125,10 @@ export function useChatMaterials(session: string, model: string, runtime: string
       scope.changes.set(id, { revision: ++scope.revision, item: null });
       setSnapshot(previous => ({ session, items: previous.session === session ? previous.items.filter(item => item.id !== id) : [] }));
       return true;
-    } catch { if (!request.signal.aborted && current(scope, epoch, session)) setError("error"); return false; }
+    } catch {
+      if (!request.signal.aborted && current(scope, epoch, session)) { setError("error"); }
+      return false;
+    }
     finally { scope.requests.delete(request); }
   }, [session]);
   return { items: snapshot.session === session ? snapshot.items : [], capabilities: capability?.key === capabilityKey ? capability.data : null,

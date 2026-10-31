@@ -374,3 +374,41 @@ async def test_loopback_ollama_cloud_metadata_never_grants_image_support(
         provider="ollama", endpoint="http://127.0.0.1:11434/v1", runtime_id="ollama"
     )
     assert await payload.image_capability(runtime, "looks-local") is False
+
+
+@pytest.mark.parametrize("damage", ["metadata", "missing_content", "wrong_owner"])
+def test_unreadable_material_does_not_block_list_or_upload(
+    monkeypatch, tmp_path, damage
+):
+    from venom_core.services import chat_materials
+
+    store = MaterialStore(tmp_path)
+    valid = store.save("one", "valid.txt", "text/plain", b"valid")
+    broken = store.save("one", "broken.txt", "text/plain", b"broken")
+    meta, binary = store._paths("one", broken.id)
+    if damage == "metadata":
+        meta.write_text("invalid json")
+    elif damage == "missing_content":
+        binary.unlink()
+    else:
+        import json
+
+        data = json.loads(meta.read_text())
+        data["session_id"] = "other"
+        meta.write_text(json.dumps(data))
+    from types import SimpleNamespace
+
+    warnings = []
+    monkeypatch.setattr(
+        chat_materials,
+        "logger",
+        SimpleNamespace(warning=lambda *args: warnings.append(args)),
+    )
+    monkeypatch.setattr(chat_materials, "MAX_SESSION_FILES", 2)
+    assert store.list("one") == [valid]
+    assert warnings == [("Skipping unreadable chat material {}", broken.id)]
+    uploaded = store.save("one", "new.txt", "text/plain", b"new")
+    assert {item.id for item in store.list("one")} == {valid.id, uploaded.id}
+    with pytest.raises(HTTPException) as error:
+        store.get("one", broken.id)
+    assert error.value.status_code == 404

@@ -3458,6 +3458,9 @@
                 }
               }
             }
+          },
+          "413": {
+            "description": "Conversation history or material context exceeds the runtime input limit"
           }
         }
       }

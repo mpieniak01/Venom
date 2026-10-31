@@ -100,11 +100,25 @@ start() {
   fi
 
   echo "Uruchamiam ollama serve (log: $LOG_FILE)"
-  nohup "$OLLAMA_BIN" serve >>"$LOG_FILE" 2>&1 &
-  local started_pid=$!
-  printf '%s\n' "$started_pid" >"$PID_FILE"
-  wait_for_manual_exec "$started_pid"
-  runtime_control claim-ollama
+  # A private token and new session remain provable if the launcher exits early.
+  local started_token started_pid started_stat started_ticks
+  local -a started_fields
+  started_token="$("$CONTROL_PYTHON" -c 'import secrets; print(secrets.token_hex(32))')"
+  VENOM_ENGINE_START_TOKEN="$started_token" nohup setsid "$OLLAMA_BIN" serve >>"$LOG_FILE" 2>&1 &
+  started_pid=$!
+  started_ticks=""
+  if IFS= read -r started_stat <"/proc/$started_pid/stat"; then
+    read -ra started_fields <<<"${started_stat##*) }"
+    started_ticks="${started_fields[19]:-}"
+  fi
+  if ! printf '%s\n' "$started_pid" >"$PID_FILE" || ! wait_for_manual_exec "$started_pid" || ! runtime_control claim-ollama; then
+    if "$CONTROL_PYTHON" -m scripts.dev.runtime_teardown retire-launch "$started_pid" "$started_ticks" "$ROOT_DIR" VENOM_ENGINE_START_TOKEN "$started_token"; then
+      wait "$started_pid" 2>/dev/null || true
+    else
+      echo "Nie można potwierdzić cleanup własnego startu Ollamy; zachowano dowody właściciela" >&2
+    fi
+    return 1
+  fi
   echo "Ollama start - PID $started_pid; właściciel zapisany"
 }
 

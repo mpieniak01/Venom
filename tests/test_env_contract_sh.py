@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -241,6 +242,8 @@ def ollama_shell(tmp_path):
     python = executable(
         "python3",
         """
+# Token generation uses only the real interpreter's stdlib; runtime control stays fake.
+if [ "$1" = "-c" ]; then exec "$FAKE_REAL_PYTHON" "$@"; fi
 printf 'python|%s|%s|%s\n' "$PWD" "$ENV_FILE" "$*" >>"$FAKE_CALLS"
 case "$3" in
   verify-ollama) exit "${FAKE_VERIFY_EXIT:-0}" ;;
@@ -296,6 +299,7 @@ esac
         "FAKE_ROOT": str(root),
         "FAKE_CHILD_PID": str(child),
         "FAKE_BIN": str(commands),
+        "FAKE_REAL_PYTHON": sys.executable,
     }
 
     def run(action, changes=None):

@@ -419,3 +419,134 @@ def test_startup_rollback_cli_binds_receipt_without_reading_mutable_pid_file(
     rollback.main()
     assert calls[0][0] == Path(rollback.__file__).resolve().parents[2]
     assert calls[0][2] == receipt
+
+
+@pytest.mark.parametrize("mismatch", ["token", "cwd", "user", "stamp"])
+def test_launch_cleanup_never_signals_foreign_identity(tmp_path, monkeypatch, mismatch):
+    """Kernel handles alone do not authorize stopping another launch or OS user."""
+    import subprocess
+
+    token = "a" * 32
+    child = subprocess.Popen(
+        [sys.executable, "-c", "import time;time.sleep(60)"],
+        cwd=tmp_path,
+        env={**os.environ, "VENOM_UI_START_TOKEN": token},
+        start_new_session=True,
+    )
+    try:
+        observed = identity(child.pid)
+        other = tmp_path / "other"
+        other.mkdir()
+        with monkeypatch.context() as patch:
+            if mismatch == "user":
+                original = Path.stat
+                patch.setattr(
+                    Path,
+                    "stat",
+                    lambda path, **kw: SimpleNamespace(st_uid=os.getuid() + 1)
+                    if str(path) == f"/proc/{child.pid}"
+                    else original(path, **kw),
+                )
+            patch.setattr(
+                rt.signal,
+                "pidfd_send_signal",
+                lambda *_: pytest.fail("foreign identity must never be signalled"),
+            )
+            with pytest.raises(ValueError, match="ownership differs"):
+                rt.retire_launch(
+                    child.pid,
+                    "1" if mismatch == "stamp" else observed["start_ticks"],
+                    other if mismatch == "cwd" else tmp_path,
+                    "VENOM_UI_START_TOKEN",
+                    "b" * 32 if mismatch == "token" else token,
+                )
+        assert sp.running(child.pid)
+    finally:
+        child.terminate()
+        child.wait(timeout=5)
+
+
+@pytest.mark.parametrize("failure", ["wrapper", "claim"])
+def test_failed_manual_ollama_start_retires_only_its_created_session(tmp_path, failure):
+    """Harmless doubles exercise the actual shell failure branch without a model/server."""
+    import shutil
+    import subprocess
+
+    root = Path(__file__).resolve().parents[1]
+    for relative in ("scripts/llm/ollama_service.sh", "scripts/lib/env_contract.sh"):
+        target = tmp_path / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(root / relative, target)
+    (tmp_path / ".env.dev").write_text("OLLAMA_SYSTEMD_UNIT=\n")
+    binary = tmp_path / "bin"
+    binary.mkdir()
+    capture = tmp_path / "created.pid"
+    if failure == "wrapper":
+        (binary / "ollama").write_text(
+            f"#!{sys.executable}\nimport os,time\nfrom pathlib import Path\nPath({str(capture)!r}).write_text(str(os.getpid()))\ntime.sleep(60)\n"
+        )
+        (binary / "ollama").chmod(0o700)
+    else:
+        (binary / "ollama").symlink_to(sys.executable)
+        (tmp_path / "serve").write_text("import time;time.sleep(60)\n")
+    (binary / "curl").write_text("#!/bin/sh\nexit 1\n")
+    (binary / "curl").chmod(0o700)
+    control = binary / "control-python"
+    control.write_text(
+        f"#!{sys.executable}\n"
+        + f"""
+import os,sys
+from pathlib import Path
+args=sys.argv[1:]
+if args[:3] == ['-m','scripts.dev.runtime_teardown','claim-ollama']:
+    Path({str(capture)!r}).write_text(Path({str(tmp_path / "logs/ollama.pid")!r}).read_text())
+    sys.exit(7)
+if args[:3] == ['-m','scripts.dev.runtime_teardown','retire-launch']:
+    os.execv({sys.executable!r}, [{sys.executable!r}, {str(root / "scripts/dev/runtime_teardown.py")!r}, *args[2:]])
+os.execv({sys.executable!r}, [{sys.executable!r}, *args])
+"""
+    )
+    control.chmod(0o700)
+    env = {
+        key: value for key, value in os.environ.items() if not key.startswith("OLLAMA_")
+    }
+    env.update(
+        PYTHON_BIN=str(control),
+        ENV_FILE=str(tmp_path / ".env.dev"),
+        PATH=f"{binary}:{env['PATH']}",
+    )
+    foreign = subprocess.Popen([sys.executable, "-c", "import time;time.sleep(60)"])
+    try:
+        result = subprocess.run(
+            ["bash", str(tmp_path / "scripts/llm/ollama_service.sh"), "start"],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=20,
+        )
+        assert result.returncode != 0
+        assert capture.is_file(), result.stdout + result.stderr
+        assert not sp.running(int(capture.read_text()))
+        assert not (tmp_path / "logs/ollama.pid").exists()
+        assert foreign.poll() is None
+    finally:
+        foreign.terminate()
+        foreign.wait(timeout=5)
+        if capture.exists() and sp.running(int(capture.read_text())):
+            os.kill(int(capture.read_text()), 9)
+
+
+@pytest.mark.parametrize("replacement", [False, True])
+def test_failed_manual_launch_preserves_replacement_receipts(tmp_path, replacement):
+    """An unchanged numeric PID is insufficient to delete a successor's receipt."""
+    directory = tmp_path / "logs"
+    directory.mkdir()
+    pid_file = directory / "ollama.pid"
+    receipt = directory / "ollama.pid.identity.json"
+    pid_file.write_text("42\n")
+    receipt.write_text(
+        json.dumps({"pid": 42, "start_ticks": "new" if replacement else "123"})
+    )
+    rt.discard_started_ollama_receipt(tmp_path, 42, "123")
+    assert pid_file.exists() == replacement
+    assert receipt.exists() == replacement

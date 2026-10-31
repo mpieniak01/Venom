@@ -37,6 +37,12 @@ if (process.argv[3] === 'build') {
 if (process.env.FAKE_EXIT) process.exit(6);
 const port = Number(process.argv[process.argv.indexOf('--port')+1]);
 const host = process.argv[process.argv.indexOf('--hostname')+1];
+if (process.env.FAKE_WRAPPER_EXITS) {
+  const code = "const http=require('node:http');const server=http.createServer((req,res)=>{if(process.env.FAKE_WRAPPER_READY && req.headers['x-venom-start-token']===process.env.VENOM_UI_START_TOKEN)res.end(process.env.VENOM_UI_START_TOKEN);else{res.statusCode=503;res.end('not ready')}});server.listen(Number(process.env.FAKE_CHILD_PORT),'127.0.0.1');process.on('SIGTERM',()=>server.close(()=>process.exit(0)));";
+  const child = require('node:child_process').spawn(process.execPath, ['-e', code], { env: {...process.env, FAKE_CHILD_PORT:String(port)}, stdio:'ignore' });
+  fs.writeFileSync(process.env.FAKE_CHILD_RECEIPT, JSON.stringify({pid:process.pid,child:child.pid}));
+  setTimeout(() => process.exit(9), process.env.FAKE_WRAPPER_READY ? 1000 : 150);
+} else {
 const server = http.createServer((req,res) => {
   if (!process.env.FAKE_NOT_READY && req.url === '/_venom/ready' && req.headers['x-venom-start-token'] === process.env.VENOM_UI_START_TOKEN) res.end(process.env.VENOM_UI_START_TOKEN);
   else { res.statusCode = 503; res.end('starting'); }
@@ -50,6 +56,7 @@ process.on('SIGTERM', () => {
   }
   server.close(() => process.exit(0));
 });
+}
 `);
   chmodSync(npm, 0o700);
   const env = { ...process.env, WEB_DIR: "web-next", WEB_PID_FILE: "run/ui.pid", WEB_LOG: "logs/ui.log", WEB_HOST: "127.0.0.1", ENVIRONMENT_ROLE: "dev", NEXT_DIST_DIR: ".next", NPM: npm, WEB_READY_TIMEOUT_SEC: "10" };
@@ -275,3 +282,40 @@ test("failed-start rollback retires only UI created by its startup transaction a
   assert.equal(uiStatus(c).running, false);
   assert.equal(existsSync(`${c.pidFile}.identity.json`), false);
 });
+
+for (const readyFirst of [false, true]) {
+  test(`orphaned Next is retired after npm exits ${readyFirst ? "after readiness" : "before readiness"}`, async () => {
+    const f = fixture(); const c = config(f, await unusedPort());
+    const childReceipt = path.join(f.dir, "child.json");
+    const foreign = spawn(process.execPath, ["-e", "setInterval(()=>{},1000)"], { detached:true, stdio:"ignore" });
+    assert.ok(foreign.pid); pids.push(foreign.pid!);
+    const env = { ...f.env, FAKE_WRAPPER_EXITS:"1", FAKE_CHILD_RECEIPT:childReceipt, ...(readyFirst ? { FAKE_WRAPPER_READY:"1" } : {}) };
+    try {
+    if (readyFirst) {
+      const started = await startUI(c, "turbo", env); pids.push(started.pid);
+      const deadline = Date.now()+10000;
+      while (alive(started.pid) && Date.now()<deadline) await new Promise((resolve)=>setTimeout(resolve,50));
+      assert.equal(alive(started.pid),false);
+      assert.equal(alive(JSON.parse(readFileSync(childReceipt,"utf8")).child),true);
+      await stopUI(c);
+    } else {
+      await assert.rejects(startUI(c,"turbo",env), /exited before readiness/);
+    }
+    const receipt = JSON.parse(readFileSync(childReceipt,"utf8")); pids.push(receipt.pid);
+    let running = false;
+    try { running = readFileSync(`/proc/${receipt.child}/stat`,"utf8").split(") ")[1].split(" ")[0] !== "Z"; } catch {}
+    assert.equal(running,false);
+    assert.equal(existsSync(c.pidFile),false);
+    assert.equal(existsSync(`${c.pidFile}.identity.json`),false);
+    const probe = net.createServer();
+    await new Promise<void>((resolve,reject)=>{probe.once("error",reject);probe.listen(c.port,"127.0.0.1",resolve)});
+    await new Promise<void>((resolve)=>probe.close(()=>resolve()));
+    assert.equal(foreign.exitCode,null);
+    assert.equal(alive(foreign.pid),true);
+    } finally {
+      // Register the fixture group even if an assertion or cleanup under test fails.
+      if (existsSync(childReceipt)) pids.push(JSON.parse(readFileSync(childReceipt,"utf8")).pid);
+      if (existsSync(c.pidFile)) pids.push(Number(readFileSync(c.pidFile,"utf8")));
+    }
+  });
+}

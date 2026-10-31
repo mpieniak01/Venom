@@ -46,7 +46,26 @@ def _same_origin(request: Request) -> None:
                 raise HTTPException(403, {"reason_code": "material_origin_denied"})
 
 
-@router.post("", response_model=ChatMaterial, dependencies=[Depends(_same_origin)])
+@router.post(
+    "",
+    response_model=ChatMaterial,
+    dependencies=[Depends(_same_origin)],
+    responses={
+        400: {
+            "description": "Invalid material session/name, empty content, invalid UTF-8 or image data"
+        },
+        403: {
+            "description": "Operator access, request origin or environment mutation policy denied"
+        },
+        404: {
+            "description": "Existing session material metadata or content is unavailable"
+        },
+        413: {
+            "description": "Upload bytes, document text or session storage limits exceeded"
+        },
+        415: {"description": "Material content type is not supported"},
+    },
+)
 async def upload_material(
     request: Request,
     session_id: str = Query(min_length=1, max_length=256),

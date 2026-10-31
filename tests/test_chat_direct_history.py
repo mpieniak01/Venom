@@ -289,13 +289,15 @@ def test_openrouter_history_retains_original_reservation_and_actual_cost(
     value = openrouter_fixtures.authorized_request()
     with TestClient(application(store)) as client:
         response = client.post("/api/v1/llm/simple/stream", json=value.model_dump())
-        assert response.status_code == 200 and "event: done" in response.text
+        assert response.status_code == 200
+        assert "event: done" in response.text
         history = client.get("/api/v1/memory/session/session").json()["history"]
     assert len(calls) == 1
     ledger.reserve.assert_called_once()
     identity = response.headers["x-request-id"]
     UUID(identity)
-    assert len(history) == 2 and history[-1]["request_id"] == identity
+    assert len(history) == 2
+    assert history[-1]["request_id"] == identity
     assert history[-1]["status"] == "COMPLETED"
     assert history[-1]["cost"]["reported_usd"] == ("0.0001" if settled else None)
     assert history[-1]["cost"]["state"] == ("settled" if settled else "pending")

@@ -329,7 +329,8 @@ def test_ollama_healthy_runtime_is_verified_never_adopted(ollama_shell, failure)
     result = run("start", {"FAKE_HEALTH_EXIT": "0", "FAKE_VERIFY_EXIT": str(failure)})
     assert result.returncode == failure
     records = calls.read_text().splitlines()
-    assert len(records) == 2 and records[0].startswith("curl|")
+    assert len(records) == 2
+    assert records[0].startswith("curl|")
     assert (
         records[1]
         == f"python|{root}|{root / 'fixture.env'}|-m scripts.dev.runtime_teardown verify-ollama"
@@ -362,7 +363,8 @@ def test_ollama_stop_delegates_exclusively_and_propagates_refusal(
     result = run("stop", {"FAKE_STOP_EXIT": str(failure)})
     assert result.returncode == failure
     records = calls.read_text().splitlines()
-    assert len(records) == 1 and records[0].endswith("stop-ollama")
+    assert len(records) == 1
+    assert records[0].endswith("stop-ollama")
     assert pid_file.read_text() == str(os.getpid())
 
 
@@ -374,7 +376,8 @@ def test_ollama_manual_spawn_claims_only_after_exec_and_never_discovers_unit(
     assert result.returncode == 0, result.stderr
     records = calls.read_text().splitlines()
     assert records[0].startswith("curl|")
-    assert records[1].endswith("claim-ollama") and len(records) == 2
+    assert records[1].endswith("claim-ollama")
+    assert len(records) == 2
     assert int((root / "exec-polls").read_text()) == 3
     assert (root / "logs/ollama.pid.identity.json").read_text() == "claimed\n"
     assert int((root / "logs/ollama.pid").read_text()) > 1
@@ -397,7 +400,8 @@ def test_ollama_restart_refuses_start_when_owned_stop_fails(ollama_shell):
     result = run("restart", {"FAKE_STOP_EXIT": "29"})
     assert result.returncode == 29
     records = calls.read_text().splitlines()
-    assert len(records) == 1 and records[0].endswith("stop-ollama")
+    assert len(records) == 1
+    assert records[0].endswith("stop-ollama")
 
 
 def test_ollama_control_uses_existing_venv_and_never_sources_env(

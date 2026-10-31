@@ -24,7 +24,8 @@ def root(tmp_path: Path) -> Path:
 @pytest.mark.parametrize("role", ["dev", "preprod"])
 def test_four_combinations_isolate_without_switching_model(root, profile, role):
     config = stack.resolve(root, {"PROFILE": profile, "ENVIRONMENT": role})
-    assert config["PROFILE"] == config["VENOM_RUNTIME_PROFILE"] == profile
+    assert config["PROFILE"] == profile
+    assert config["VENOM_RUNTIME_PROFILE"] == profile
     assert config["START_WEB_MODE"] == "turbo"
     assert config["ENVIRONMENT_ROLE"] == role
     assert config["DB_SCHEMA"] == role
@@ -573,7 +574,8 @@ def test_stop_preserves_receipt_replaced_while_original_api_retires(
     with pytest.raises(ValueError, match="receipt changed"):
         stack.stop(root, config, ("PID_FILE",))
     assert changed.read_bytes() == payload
-    assert pid_path.exists() and receipt.exists()
+    assert pid_path.exists()
+    assert receipt.exists()
     retire.assert_called_once()
 
 
@@ -596,7 +598,8 @@ def test_stop_detects_byte_identical_atomic_receipt_replacement(
         stack.stop(root, config, ("PID_FILE",))
     assert changed.read_bytes() == original
     assert changed.stat().st_ino != inode
-    assert pid_path.exists() and receipt.exists()
+    assert pid_path.exists()
+    assert receipt.exists()
 
 
 def test_stale_stop_preserves_records_created_during_owner_check(
@@ -632,7 +635,8 @@ def test_stop_rechecks_snapshot_after_process_identity_probe(
     monkeypatch.setattr(qualification_process, "identity", observed)
     with pytest.raises(ValueError, match="receipt changed"):
         stack.stop(root, config, ("PID_FILE",))
-    assert pid_path.exists() and "successor" in receipt.read_text()
+    assert pid_path.exists()
+    assert "successor" in receipt.read_text()
     retire.assert_not_called()
 
 
@@ -657,7 +661,8 @@ def test_stop_rechecks_remaining_receipt_before_unlink(
 def test_stop_removes_unchanged_retired_receipt_pair(root, stop_receipts):
     config, pid_path, receipt, retire = stop_receipts
     stack.stop(root, config, ("PID_FILE",), expected={"PID_FILE": (1234, "original")})
-    assert not pid_path.exists() and not receipt.exists()
+    assert not pid_path.exists()
+    assert not receipt.exists()
     retire.assert_called_once()
 
 
@@ -685,7 +690,8 @@ def test_stop_expected_owner_requires_original_receipt_pair(
         stack.stop(
             root, config, ("PID_FILE",), expected={"PID_FILE": (1234, "original")}
         )
-    assert pid_path.exists() and not receipt.exists()
+    assert pid_path.exists()
+    assert not receipt.exists()
     retire.assert_not_called()
 
 
@@ -700,7 +706,9 @@ def test_stop_rejects_symlink_receipt_before_owner_probe(
     monkeypatch.setattr(stack, "owned_pid", owner)
     with pytest.raises(ValueError, match="Cannot verify stop receipt"):
         stack.stop(root, config, ("PID_FILE",))
-    assert pid_path.exists() and target.exists() and receipt.is_symlink()
+    assert pid_path.exists()
+    assert target.exists()
+    assert receipt.is_symlink()
     owner.assert_not_called()
     retire.assert_not_called()
 
@@ -715,5 +723,6 @@ def test_stale_expected_owner_rejects_mismatched_identity_pid(
         stack.stop(
             root, config, ("PID_FILE",), expected={"PID_FILE": (1234, "original")}
         )
-    assert pid_path.exists() and "5678" in receipt.read_text()
+    assert pid_path.exists()
+    assert "5678" in receipt.read_text()
     retire.assert_not_called()

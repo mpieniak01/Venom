@@ -40,8 +40,9 @@ class LazyAudioEngine:
 
     async def close(self) -> None:
         self._closed = True
+        # Drain any constructor already holding the lock before model release.
         async with self._lock:
-            pass
+            return
 
     async def _get(self) -> Any:
         async with self._lock:

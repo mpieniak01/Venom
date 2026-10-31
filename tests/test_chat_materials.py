@@ -186,7 +186,8 @@ def test_documents_expand_current_and_history_in_original_session(
     expanded = payload.text_material_request(request)
     assert "Zażółć" in expanded.content
     assert "Zażółć" in expanded.history[0].content
-    assert expanded.material_ids == [] and expanded.history[0].material_ids == []
+    assert expanded.material_ids == []
+    assert expanded.history[0].material_ids == []
     assert request.material_ids == [item.id]
     request.session_id = "other"
     with pytest.raises(HTTPException) as error:
@@ -257,8 +258,9 @@ async def test_image_payload_reaches_native_adapter_and_never_cloud(
         payload.text_material_request(request)
     assert error.value.detail == {"reason_code": "material_image_adapter_unsupported"}
     monkeypatch.setattr(payload, "image_capability", AsyncMock(return_value=False))
+    material_runtime = SimpleNamespace()
     with pytest.raises(HTTPException) as error:
-        await payload.direct_material_messages(request, SimpleNamespace(), "text-model")
+        await payload.direct_material_messages(request, material_runtime, "text-model")
     assert error.value.detail == {"reason_code": "material_image_adapter_unsupported"}
 
 

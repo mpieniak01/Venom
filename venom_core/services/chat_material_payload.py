@@ -23,6 +23,44 @@ def has_materials(request: SimpleChatRequest) -> bool:
     )
 
 
+def _expand_turn_materials(
+    store: MaterialStore,
+    session_id: str,
+    turn: HistoryMessage | SimpleChatRequest,
+    *,
+    allow_images: bool,
+    total_bytes: int,
+) -> tuple[str, list[dict[str, Any]], int]:
+    text = turn.content
+    images: list[dict[str, Any]] = []
+    for material_id in turn.material_ids:
+        material, data = store.read(session_id, material_id)
+        total_bytes += len(data)
+        if total_bytes > MAX_CONTEXT_BYTES:
+            raise HTTPException(413, {"reason_code": "material_context_limit"})
+        if material.kind == "document":
+            text += f"\n\n[Reference material: {material.name}]\n" + data.decode(
+                "utf-8-sig"
+            )
+        elif allow_images:
+            images.append(
+                {
+                    "type": "image_url",
+                    "image_url": {
+                        "url": "data:"
+                        + material.mime_type
+                        + ";base64,"
+                        + base64.b64encode(data).decode("ascii")
+                    },
+                }
+            )
+        else:
+            raise HTTPException(
+                400, {"reason_code": "material_image_adapter_unsupported"}
+            )
+    return text, images, total_bytes
+
+
 def material_messages(
     request: SimpleChatRequest, *, allow_images: bool
 ) -> list[dict[str, Any]]:
@@ -39,33 +77,13 @@ def material_messages(
     total_bytes, text_chars = 0, 0
     turns: list[HistoryMessage | SimpleChatRequest] = [*request.history, request]
     for turn in turns:
-        text = turn.content
-        images = []
-        for material_id in turn.material_ids:
-            material, data = store.read(request.session_id, material_id)
-            total_bytes += len(data)
-            if total_bytes > MAX_CONTEXT_BYTES:
-                raise HTTPException(413, {"reason_code": "material_context_limit"})
-            if material.kind == "document":
-                text += f"\n\n[Reference material: {material.name}]\n" + data.decode(
-                    "utf-8-sig"
-                )
-            elif allow_images:
-                images.append(
-                    {
-                        "type": "image_url",
-                        "image_url": {
-                            "url": "data:"
-                            + material.mime_type
-                            + ";base64,"
-                            + base64.b64encode(data).decode("ascii")
-                        },
-                    }
-                )
-            else:
-                raise HTTPException(
-                    400, {"reason_code": "material_image_adapter_unsupported"}
-                )
+        text, images, total_bytes = _expand_turn_materials(
+            store,
+            request.session_id,
+            turn,
+            allow_images=allow_images,
+            total_bytes=total_bytes,
+        )
         text_chars += len(text)
         if text_chars > MAX_CONTEXT_TEXT or len(text) > 50000:
             raise HTTPException(413, {"reason_code": "material_context_limit"})

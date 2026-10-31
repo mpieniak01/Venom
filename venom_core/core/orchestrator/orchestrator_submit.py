@@ -257,13 +257,20 @@ async def submit_task(orch: "Orchestrator", request: TaskRequest) -> TaskRespons
     )
 
 
+def _task_can_run(orch: "Orchestrator", task_id: UUID) -> bool:
+    task = orch.state_manager.get_task(task_id)
+    return task is not None and task.status not in {
+        TaskStatus.COMPLETED,
+        TaskStatus.FAILED,
+    }
+
+
 async def run_task_with_queue(
     orch: "Orchestrator", task_id: UUID, request: TaskRequest
 ) -> None:
     """Queue-aware wrapper around _run_task."""
     while True:
-        task = orch.state_manager.get_task(task_id)
-        if task is None or task.status in {TaskStatus.COMPLETED, TaskStatus.FAILED}:
+        if not _task_can_run(orch, task_id):
             return
         if orch.task_manager.is_paused:
             await asyncio.sleep(0.5)
@@ -271,8 +278,7 @@ async def run_task_with_queue(
 
         has_capacity, _ = await orch.task_manager.check_capacity()
         if has_capacity:
-            task = orch.state_manager.get_task(task_id)
-            if task is None or task.status in {TaskStatus.COMPLETED, TaskStatus.FAILED}:
+            if not _task_can_run(orch, task_id):
                 return
             task_handle = asyncio.current_task()
             if task_handle is None:
@@ -289,11 +295,7 @@ async def run_task_with_queue(
         await asyncio.sleep(0.5)
 
     try:
-        task = orch.state_manager.get_task(task_id)
-        if task is not None and task.status not in {
-            TaskStatus.COMPLETED,
-            TaskStatus.FAILED,
-        }:
+        if _task_can_run(orch, task_id):
             await orch._run_task(task_id, request, fast_path=False)
     finally:
         await orch.task_manager.unregister_task(task_id)

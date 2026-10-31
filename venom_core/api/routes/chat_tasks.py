@@ -28,7 +28,19 @@ class ChatTaskCancellation(BaseModel):
     status: Literal["cancelled", "already_finished"]
 
 
-@router.post("/{task_id}/cancel", response_model=ChatTaskCancellation)
+@router.post(
+    "/{task_id}/cancel",
+    response_model=ChatTaskCancellation,
+    responses={
+        403: {"description": "Operator access denied"},
+        404: {
+            "description": "Task does not exist or does not belong to the supplied session"
+        },
+        409: {
+            "description": "Task is not active and cancellation could not be confirmed"
+        },
+    },
+)
 async def cancel_chat_task(
     task_id: UUID,
     payload: CancelChatTask,

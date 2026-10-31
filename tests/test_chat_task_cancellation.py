@@ -55,8 +55,9 @@ async def test_cancel_owns_one_pending_task_and_is_idempotent():
     again = await cancel_chat_task(owned.id, CancelChatTask(session_id="one"), orch)
     assert again.status == "already_finished"
     for task_id in (foreign.id, uuid4()):
+        cancel_request = CancelChatTask(session_id="one")
         with pytest.raises(HTTPException) as error:
-            await cancel_chat_task(task_id, CancelChatTask(session_id="one"), orch)
+            await cancel_chat_task(task_id, cancel_request, orch)
         assert error.value.status_code == 404
     assert foreign.status == TaskStatus.PENDING
 
@@ -160,14 +161,16 @@ async def test_task_finishing_during_abort_is_idempotent_not_an_error():
     )
     assert result.status == "already_finished"
     owned.status = TaskStatus.PROCESSING
+    cancel_request = CancelChatTask(session_id="one")
+    cancel_orchestrator = SimpleNamespace(
+        state_manager=state,
+        abort_task=AsyncMock(return_value={"success": False}),
+    )
     with pytest.raises(HTTPException) as error:
         await cancel_chat_task(
             owned.id,
-            CancelChatTask(session_id="one"),
-            SimpleNamespace(
-                state_manager=state,
-                abort_task=AsyncMock(return_value={"success": False}),
-            ),
+            cancel_request,
+            cancel_orchestrator,
         )
     assert error.value.status_code == 409
 

@@ -22,7 +22,8 @@ export async function createAudioCapture(onLimit: () => void, signal?: AbortSign
   let mute: GainNode | null = null;
   let disposed = false;
   const dispose = () => {
-    if (disposed) return; disposed = true;
+    if (disposed) return;
+    disposed = true;
     signal?.removeEventListener("abort", dispose);
     media.getTracks().forEach(track => track.stop());
     node?.disconnect(); source?.disconnect(); mute?.disconnect();

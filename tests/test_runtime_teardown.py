@@ -117,10 +117,9 @@ def test_missing_pid_visibility_is_not_green(monkeypatch):
 def test_reused_pid_is_never_signalled(monkeypatch):
     monkeypatch.setattr(rt, "identity", lambda _: {"pid": 42, "start_ticks": "new"})
     monkeypatch.setattr(os, "kill", lambda *_: pytest.fail("must not signal"))
+    owners_to_stop = [rt.EngineOwner("ollama", 42, {"pid": 42, "start_ticks": "old"})]
     with pytest.raises(ValueError, match="reused"):
-        rt.stop_engines(
-            [rt.EngineOwner("ollama", 42, {"pid": 42, "start_ticks": "old"})]
-        )
+        rt.stop_engines(owners_to_stop)
 
 
 def test_missing_engine_is_idempotent(monkeypatch):
@@ -172,10 +171,11 @@ def test_pid_reuse_between_validation_and_snapshot_never_signals(monkeypatch):
         "pidfd_send_signal",
         lambda *_: pytest.fail("foreign process must not be signalled"),
     )
+    owners_to_stop = [
+        rt.EngineOwner("test", 42, {"pid": 42, "start_ticks": "original"})
+    ]
     with pytest.raises(ValueError, match="reused"):
-        rt.stop_engines(
-            [rt.EngineOwner("test", 42, {"pid": 42, "start_ticks": "original"})]
-        )
+        rt.stop_engines(owners_to_stop)
     assert closed == [90]
 
 

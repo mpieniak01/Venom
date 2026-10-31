@@ -176,6 +176,44 @@ function recordStandardRequestHistory(params: {
   }
 }
 
+type SendContextParams = Pick<ChatSendParams,
+  "selectedLlmModel" | "activeServerInfo" | "selectedLlmServer" | "chatMode" |
+  "sessionId" | "resetSession" | "setMessage"
+>;
+
+function resolveChatSendContext(payload: string, params: SendContextParams, t: (key: string) => string) {
+  const { selectedLlmModel, activeServerInfo, selectedLlmServer, chatMode, sessionId, resetSession, setMessage } = params;
+    const parsed = parseInputCommand(payload);
+    const trimmed = parsed.cleaned.trim();
+    if (!trimmed) {
+      setMessage(t("cockpit.chatMessages.emptyPrompt"));
+      return null;
+    }
+    const effectiveSelectedModel = resolveEffectiveChatModelSelection(
+      selectedLlmModel,
+      activeServerInfo?.active_model,
+      selectedLlmServer,
+      activeServerInfo?.active_server ?? "",
+    );
+    if (selectedLlmServer && !effectiveSelectedModel) {
+      setMessage(t("cockpit.chatMessages.modelSelectionRequired"));
+      return null;
+    }
+
+    if (!allowsOpenRouterChat(selectedLlmServer || activeServerInfo?.active_server || "", shouldUseSimpleMode(chatMode, parsed))) {
+      setMessage(t("cockpit.openrouter.directOnly"));
+      return null;
+    }
+
+    const resolvedSession = resolveSession(parsed, sessionId, resetSession);
+    if (!resolvedSession) {
+      setMessage(t("cockpit.chatMessages.sessionInitializing"));
+      return null;
+    }
+
+    return { parsed, trimmed, effectiveSelectedModel, resolvedSession };
+}
+
 export function useChatSend(params: ChatSendParams) {
   const {
     materialIds,
@@ -234,33 +272,11 @@ export function useChatSend(params: ChatSendParams) {
     let dispatched = false;
     let preparing = false;
     try {
-    const parsed = parseInputCommand(payload);
-    const trimmed = parsed.cleaned.trim();
-    if (!trimmed) {
-      setMessage(t("cockpit.chatMessages.emptyPrompt"));
-      return false;
-    }
-    const effectiveSelectedModel = resolveEffectiveChatModelSelection(
-      selectedLlmModel,
-      activeServerInfo?.active_model,
-      selectedLlmServer,
-      activeServerInfo?.active_server ?? "",
-    );
-    if (selectedLlmServer && !effectiveSelectedModel) {
-      setMessage(t("cockpit.chatMessages.modelSelectionRequired"));
-      return false;
-    }
-
-    if (!allowsOpenRouterChat(selectedLlmServer || activeServerInfo?.active_server || "", shouldUseSimpleMode(chatMode, parsed))) {
-      setMessage(t("cockpit.openrouter.directOnly"));
-      return false;
-    }
-
-    const resolvedSession = resolveSession(parsed, sessionId, resetSession);
-    if (!resolvedSession) {
-      setMessage(t("cockpit.chatMessages.sessionInitializing"));
-      return false;
-    }
+    const context = resolveChatSendContext(payload, {
+      selectedLlmModel, activeServerInfo, selectedLlmServer, chatMode, sessionId, resetSession, setMessage,
+    }, t);
+    if (!context) return false;
+    const { parsed, trimmed, effectiveSelectedModel, resolvedSession } = context;
 
     setSending(true); preparing = true; setMessage(null);
     const switchResult = await handleRuntimeSwitch({

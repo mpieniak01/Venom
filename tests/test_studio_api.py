@@ -168,7 +168,8 @@ def test_minimal_start_shared_namespace_history_and_lazy_audio(studio):
     app, runtime, events = studio
     previous_state = deps._state_manager
     with TestClient(app, client=("127.0.0.1", 50000)) as client:
-        assert runtime.orchestrator is None and runtime.vector_store is None
+        assert runtime.orchestrator is None
+        assert runtime.vector_store is None
         assert events == []
         assert deps.get_state_manager() is runtime.state_manager
         assert deps.get_session_store() is runtime.session_store
@@ -193,10 +194,12 @@ def test_minimal_start_shared_namespace_history_and_lazy_audio(studio):
         speech = client.post(
             "/api/v1/chat/audio/speak", json={"session_id": "one", "text": "answer"}
         )
-        assert speech.status_code == 200 and speech.content[:4] == b"RIFF"
+        assert speech.status_code == 200
+        assert speech.content[:4] == b"RIFF"
         assert speech.headers["x-content-type-options"] == "nosniff"
         assert events == ["audio-created"]
-        assert runtime.orchestrator is None and runtime.vector_store is None
+        assert runtime.orchestrator is None
+        assert runtime.vector_store is None
     assert events[-1] == "released"
     assert deps._state_manager is previous_state
     assert not app.dependency_overrides
@@ -235,7 +238,8 @@ def test_direct_same_wire_durable_history_and_header_identity(studio, monkeypatc
             },
         )
         assert response.headers["x-request-id"] == identity
-        assert "unknown" in response.text and "event: done" in response.text
+        assert "unknown" in response.text
+        assert "event: done" in response.text
         history = client.get("/api/v1/memory/session/one").json()["history"]
         assert [item["content"] for item in history] == [
             "Original prompt",
@@ -287,7 +291,8 @@ def test_material_guard_preprod_origin_and_openrouter_quote_are_unchanged(
             "/api/v1/openrouter/quote",
             json={"content": "quote", "session_id": "one", "model": "fixture/free"},
         )
-        assert response.status_code == 200 and response.json() == quote
+        assert response.status_code == 200
+        assert response.json() == quote
 
 
 @pytest.mark.asyncio
@@ -380,7 +385,8 @@ async def test_shutdown_waits_for_audio_native_worker_and_blocks_new_capture(
     request.cancel()
     closing = asyncio.create_task(runtime.close())
     await asyncio.sleep(0.03)
-    assert not closing.done() and not released
+    assert not closing.done()
+    assert not released
     with pytest.raises(HTTPException):
         await audio.speak("new")
     retire.set()
@@ -440,10 +446,8 @@ def test_normal_and_maf_keep_original_submit_sse_and_scoped_stop(
         )
         assert response.status_code == 201
         identity = response.json()["task_id"]
-        assert (
-            calls[0].forced_intent == intent
-            and calls[0].expected_runtime_id == "expected"
-        )
+        assert calls[0].forced_intent == intent
+        assert calls[0].expected_runtime_id == "expected"
         endpoint = "/api/v1/chat/tasks/" + identity + "/cancel"
         assert client.post(endpoint, json={"session_id": "other"}).status_code == 404
         assert len(calls) == 1
@@ -505,7 +509,9 @@ async def test_cancelled_stop_and_concurrent_stop_both_drain_native_cleanup(
     first.cancel()
     second = asyncio.create_task(runtime.close())
     await asyncio.sleep(0.02)
-    assert not first.done() and not second.done() and not events
+    assert not first.done()
+    assert not second.done()
+    assert not events
     retire.set()
     with pytest.raises(asyncio.CancelledError):
         await first
@@ -521,7 +527,8 @@ async def test_disabled_audio_and_failed_lazy_constructor_are_explicit(
     app, runtime, events = studio
     monkeypatch.setattr(SETTINGS, "ENABLE_AUDIO_INTERFACE", False)
     async with app.router.lifespan_context(app):
-        assert app.state.audio_engine is None and events == []
+        assert app.state.audio_engine is None
+        assert events == []
     failed = LazyAudioEngine(lambda: None)
     with pytest.raises(HTTPException) as error:
         await failed.speak("hello")

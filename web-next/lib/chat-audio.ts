@@ -32,7 +32,7 @@ export async function createAudioCapture(onLimit: () => void, signal?: AbortSign
   };
   signal?.addEventListener("abort", dispose, { once: true });
   try {
-    context = new AudioContext({ sampleRate: 16000 });
+    context = new AudioContext();
     if (!context.audioWorklet) throw new Error("micUnavailable");
     await context.audioWorklet.addModule("/chat2-capture-worklet.js");
     if (signal?.aborted) throw new DOMException("Cancelled", "AbortError");

@@ -13199,6 +13199,13 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description Conversation history or material context exceeds the runtime input limit */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {

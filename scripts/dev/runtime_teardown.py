@@ -8,6 +8,7 @@ import re
 import select
 import signal
 import subprocess
+import sys
 import tempfile
 import time
 from dataclasses import dataclass
@@ -15,8 +16,15 @@ from pathlib import Path
 from typing import Any, Mapping
 from urllib.parse import urlsplit
 
-from scripts.dev.qualification_process import QualificationProcess, identity
-from scripts.llm.component_runtime import daemon_identity, owned_identity
+ROOT = Path(__file__).resolve().parents[2]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from scripts.dev.qualification_process import (  # noqa: E402
+    QualificationProcess,
+    identity,
+)
+from scripts.llm.component_runtime import daemon_identity, owned_identity  # noqa: E402
 
 
 @dataclass
@@ -360,8 +368,129 @@ def stop_engines(owners: list[EngineOwner]) -> None:
                 os.close(handle)
 
 
+def _validate_launch_member(
+    proc: Path, pid: int, ticks: str, root: Path, key: str, token: str
+) -> None:
+    """Check a pinned member's immutable stamp, session and inherited launch proof."""
+    observed = identity(int(proc.name))
+    environment = (proc / "environ").read_bytes().split(b"\0")
+    cwd = Path(observed["cwd"])
+    fields = (proc / "stat").read_text().rsplit(")", 1)[1].split()
+    creation_matches = not ticks or (
+        int(observed["start_ticks"]) >= int(ticks)
+        and (int(proc.name) != pid or observed["start_ticks"] == ticks)
+    )
+    if (
+        proc.stat().st_uid != os.getuid()
+        or int(fields[3]) != pid
+        or fields[19] != observed["start_ticks"]
+        or not creation_matches
+        or not (cwd == root or root in cwd.parents)
+        or f"{key}={token}".encode() not in environment
+    ):
+        raise ValueError("Launch session ownership differs; no signal sent")
+
+
+def _launch_member_handle(
+    proc: Path, pid: int, ticks: str, root: Path, key: str, token: str
+) -> int | None:
+    """Open a kernel handle before final proof; close it on every unverified path."""
+    fields = (proc / "stat").read_text().rsplit(")", 1)[1].split()
+    if fields[0] == "Z" or int(fields[3]) != pid:
+        return None
+    handle = os.pidfd_open(int(proc.name))
+    try:
+        _validate_launch_member(proc, pid, ticks, root, key, token)
+    except BaseException:
+        os.close(handle)
+        raise
+    return handle
+
+
+def _launch_handles(
+    pid: int, ticks: str, root: Path, key: str, token: str
+) -> list[int]:
+    """Pin only this launch's surviving session members, including orphaned children."""
+    handles: list[int] = []
+    try:
+        for proc in Path("/proc").iterdir():
+            if not proc.name.isdecimal():
+                continue
+            try:
+                handle = _launch_member_handle(proc, pid, ticks, root, key, token)
+            except (FileNotFoundError, ProcessLookupError):
+                continue
+            if handle is not None:
+                handles.append(handle)
+        return handles
+    except BaseException:
+        for handle in handles:
+            os.close(handle)
+        raise
+
+
+def retire_launch(pid: int, ticks: str, root: Path, key: str, token: str) -> None:
+    """Bounded pidfd retirement of a token-owned new session, even after leader exit."""
+    if (
+        isinstance(pid, bool)
+        or pid <= 1
+        or (ticks and not ticks.isdecimal())
+        or key not in {"VENOM_UI_START_TOKEN", "VENOM_ENGINE_START_TOKEN"}
+        or not re.fullmatch(r"[a-f0-9-]{32,64}", token)
+    ):
+        raise ValueError("Missing verified launch identity")
+    root = root.resolve(strict=True)
+    started = time.monotonic()
+    deadline = started + 5
+    while True:
+        handles = _launch_handles(pid, ticks, root, key, token)
+        if not handles:
+            return
+        try:
+            stop_signal = (
+                signal.SIGTERM if time.monotonic() - started < 2 else signal.SIGKILL
+            )
+            for handle in reversed(handles):
+                try:
+                    signal.pidfd_send_signal(handle, stop_signal)
+                except ProcessLookupError:
+                    pass
+            select.select(handles, [], [], 0.05)
+        finally:
+            for handle in handles:
+                os.close(handle)
+        if time.monotonic() >= deadline:
+            raise ValueError(
+                "Owned launch session did not exit within cleanup deadline"
+            )
+
+
+def discard_started_ollama_receipt(root: Path, pid: int, ticks: str) -> None:
+    """Remove only receipts still identifying the failed newly-created manual daemon."""
+    path = root / "logs/ollama.pid"
+    receipt = Path(str(path) + ".identity.json")
+    if path.is_symlink() or not path.is_file() or path.read_text().strip() != str(pid):
+        return
+    if receipt.is_symlink():
+        return
+    if receipt.is_file():
+        recorded = json.loads(receipt.read_text())
+        if recorded.get("pid") != pid or recorded.get("start_ticks") != ticks:
+            return
+        receipt.unlink()
+    path.unlink()
+
+
 def main() -> None:
     import argparse
+
+    if len(sys.argv) == 7 and sys.argv[1] == "retire-launch":
+        pid, ticks, launch_root, key, token = sys.argv[2:]
+        target = Path(launch_root)
+        retire_launch(int(pid), ticks, target, key, token)
+        if key == "VENOM_ENGINE_START_TOKEN":
+            discard_started_ollama_receipt(target, int(pid), ticks)
+        return
 
     from dotenv import dotenv_values
 

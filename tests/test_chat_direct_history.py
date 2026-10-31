@@ -366,3 +366,77 @@ async def test_stop_drains_existing_disk_worker_and_keeps_authoritative_completi
     history = SessionStore(str(tmp_path / "history.json")).get_history("one")
     assert history[-1]["status"] == "COMPLETED"
     assert history[-1]["content"] == "finished output"
+
+
+@pytest.mark.asyncio
+async def test_native_history_counts_system_and_current_prompt_in_runtime_limit(
+    monkeypatch,
+):
+    from fastapi import HTTPException
+
+    monkeypatch.setattr(
+        llm_simple_service, "_get_simple_context_char_limit", lambda _runtime: 100
+    )
+    request = SimpleChatRequest(
+        content="q" * 20, history=[{"role": "assistant", "content": "h" * 50}]
+    )
+    messages = [
+        {"role": "system", "content": "s" * 10},
+        {"role": "user", "content": request.content},
+    ]
+    runtime = SimpleNamespace(provider="vllm")
+    with pytest.raises(HTTPException) as error:
+        await llm_simple_service._include_simple_request_context(
+            request, runtime, "model", "s" * 10, messages
+        )
+    assert error.value.status_code == 413
+    assert error.value.detail == {"reason_code": "material_context_limit"}
+    schema = application(None).openapi()
+    assert "413" in schema["paths"]["/api/v1/llm/simple/stream"]["post"]["responses"]
+
+
+@pytest.mark.asyncio
+async def test_native_history_fits_exact_runtime_limit_and_keeps_global_history_ceiling(
+    monkeypatch,
+):
+    from fastapi import HTTPException
+
+    monkeypatch.setattr(
+        llm_simple_service, "_get_simple_context_char_limit", lambda _runtime: 112
+    )
+    request = SimpleChatRequest(
+        content="q" * 20, history=[{"role": "assistant", "content": "h" * 50}]
+    )
+    messages = [
+        {"role": "system", "content": "s" * 10},
+        {"role": "user", "content": request.content},
+    ]
+    actual = await llm_simple_service._include_simple_request_context(
+        request, SimpleNamespace(provider="vllm"), "model", "s" * 10, messages
+    )
+    assert actual == [
+        messages[0],
+        {"role": "assistant", "content": "h" * 50},
+        messages[1],
+    ]
+    monkeypatch.setattr(
+        llm_simple_service, "_get_simple_context_char_limit", lambda _runtime: None
+    )
+    oversized = SimpleChatRequest(
+        content="q",
+        history=[
+            {"role": "user", "content": "h" * 26000},
+            {"role": "assistant", "content": "h" * 26000},
+        ],
+    )
+    runtime = SimpleNamespace(provider="ollama")
+    with pytest.raises(HTTPException) as error:
+        await llm_simple_service._include_simple_request_context(
+            oversized,
+            runtime,
+            "model",
+            "",
+            [{"role": "user", "content": "q"}],
+        )
+    assert error.value.status_code == 400
+    assert error.value.detail == "vast_chat_history_limit"

@@ -725,7 +725,7 @@ def main() -> None:
             else:
                 component(ROOT, values, args.component_name or "")
         elif args.action == "stop":
-            if "VENOM_VARIANT" in os.environ:
+            if "VENOM_VARIANT" in values:
                 from scripts.dev.runtime_teardown import engine_owners, stop_engines
 
                 with startup_lock(ROOT):
@@ -754,7 +754,7 @@ def main() -> None:
                 Path(values[key]).parent.mkdir(parents=True, exist_ok=True)
             os.chdir(ROOT)
             with startup_lock(ROOT):
-                if "VENOM_VARIANT" in os.environ:
+                if "VENOM_VARIANT" in values:
                     from scripts.dev.runtime_teardown import engine_owners
 
                     check_variant_peers(ROOT, values)
@@ -769,7 +769,7 @@ def main() -> None:
                 from scripts.dev.startup_rollback import run_start_stack
 
                 run_start_stack(
-                    ROOT, values, engines if "VENOM_VARIANT" in os.environ else None
+                    ROOT, values, engines if "VENOM_VARIANT" in values else None
                 )
     except ValueError as exc:
         parser.exit(2, f"{exc}\n")

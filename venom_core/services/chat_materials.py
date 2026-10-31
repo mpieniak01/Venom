@@ -17,6 +17,7 @@ from uuid import UUID, uuid4
 from fastapi import HTTPException
 
 from venom_core.api.schemas.chat_materials import ChatMaterial
+from venom_core.utils.logger import get_logger
 from venom_core.utils.runtime_state import runtime_state_root
 
 MAX_BYTES = 8 * 1024 * 1024
@@ -28,6 +29,7 @@ DOCUMENT_TYPES = frozenset(
 )
 IMAGE_TYPES = {"image/png": "PNG", "image/jpeg": "JPEG", "image/webp": "WEBP"}
 _LOCK = threading.RLock()
+logger = get_logger(__name__)
 
 
 def _invalid(reason: str, status: int = 400) -> NoReturn:
@@ -100,12 +102,16 @@ class MaterialStore:
         return folder / (material_id + ".json"), folder / (material_id + ".bin")
 
     def list(self, session_id: str) -> list[ChatMaterial]:
+        """Return readable session records without letting one damaged entry block uploads."""
         folder = self._folder(session_id)
         with _LOCK:
-            return [
-                self.get(session_id, item.stem)
-                for item in sorted(folder.glob("*.json"))
-            ]
+            materials = []
+            for item in sorted(folder.glob("*.json")):
+                try:
+                    materials.append(self.get(session_id, item.stem))
+                except HTTPException:
+                    logger.warning("Skipping unreadable chat material {}", item.stem)
+            return materials
 
     def get(self, session_id: str, material_id: str) -> ChatMaterial:
         meta, binary = self._paths(session_id, material_id)

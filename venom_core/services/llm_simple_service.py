@@ -1163,10 +1163,26 @@ async def _include_simple_request_context(
         return [*messages[:-1], *turns]
     if not request.history:
         return messages
-    if sum(len(item.content) for item in request.history) > 50000:
-        raise HTTPException(status_code=400, detail="vast_chat_history_limit")
-    history = [item.model_dump(exclude={"material_ids"}) for item in request.history]
+    history = _plain_request_history(
+        request, runtime, system_prompt, messages[-1]["content"]
+    )
     return [*messages[:-1], *history, messages[-1]]
+
+
+def _plain_request_history(
+    request: SimpleChatRequest, runtime: Any, system_prompt: str, current_content: str
+) -> list[dict[str, Any]]:
+    """Reject oversized history before provider I/O without silently dropping prior turns."""
+    history_length = sum(len(item.content) for item in request.history)
+    if history_length > 50000:
+        raise HTTPException(status_code=400, detail="vast_chat_history_limit")
+    char_limit = _get_simple_context_char_limit(runtime)
+    if (
+        char_limit
+        and history_length + len(system_prompt) + len(current_content) + 32 > char_limit
+    ):
+        raise HTTPException(413, {"reason_code": "material_context_limit"})
+    return [item.model_dump(exclude={"material_ids"}) for item in request.history]
 
 
 async def _stream_non_openrouter_chat(request: SimpleChatRequest):

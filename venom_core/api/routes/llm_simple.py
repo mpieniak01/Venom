@@ -22,6 +22,9 @@ router = APIRouter(prefix="/api/v1/llm", tags=["llm"])
     "/simple/stream",
     responses={
         400: {"description": "Nieprawidłowe dane wejściowe (np. brak modelu)"},
+        413: {
+            "description": "Conversation history or material context exceeds the runtime input limit"
+        },
         503: {"description": "Brak dostępnego endpointu LLM"},
     },
 )

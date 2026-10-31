@@ -128,14 +128,15 @@ async function freePort(config) {
   await new Promise((resolve, reject) => { probe.once('error', reject); probe.listen(config.port, config.host, resolve); });
   await new Promise((resolve) => probe.close(resolve));
 }
-function retireOwned(pid, expectedTicks, root) {
-  const helper = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../scripts/dev/retire_process.py');
-  const result = spawnSync(process.env.PYTHON_BIN || 'python3', [helper, String(pid), String(expectedTicks || ''), root], { encoding: 'utf8', timeout: 35000 });
+/** Retire the token-owned session, even after npm has exited and reparented Next. */
+function retireOwned(pid, expectedTicks, root, token) {
+  const helper = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../scripts/dev/runtime_teardown.py');
+  const result = spawnSync(process.env.PYTHON_BIN || 'python3', [helper, 'retire-launch', String(pid), String(expectedTicks || ''), root, 'VENOM_UI_START_TOKEN', String(token || '')], { encoding: 'utf8', timeout: 35000 });
   if (result.error) throw result.error;
   if (result.status !== 0) throw new Error(`Owned UI stop incomplete: ${result.stderr || result.stdout}`);
 }
-async function retire(child, expectedTicks, root) {
-  if (child.pid) retireOwned(child.pid, expectedTicks, root);
+async function retire(child, expectedTicks, root, token) {
+  if (child.pid) retireOwned(child.pid, expectedTicks, root, token);
 }
 export async function startUI(config, mode, env = process.env) {
   if (mode === 'start') verifyArtifact(config, env);
@@ -187,7 +188,7 @@ export async function startUI(config, mode, env = process.env) {
     }
     throw new Error('UI readiness timeout; inspect WEB_LOG');
   } catch (error) {
-    await retire(child, childTicks, config.root);
+    await retire(child, childTicks, config.root, token);
     if (receipt) removeReceipt(config, receipt);
     throw error;
   }
@@ -196,13 +197,14 @@ export function uiStatus(config) {
   if (!existsSync(config.pidFile)) return { running: false, verified: false };
   const pid = Number(readFileSync(config.pidFile, 'utf8').trim());
   if (!Number.isSafeInteger(pid) || pid <= 1) throw new Error('Invalid UI PID file');
-  if (!alive(pid)) return { running: false, verified: false, pid };
+  const leaderAlive = alive(pid);
+  if (!leaderAlive && !existsSync(identityPath(config))) return { running: false, verified: false, pid };
   let record;
   try { record = JSON.parse(readFileSync(identityPath(config), 'utf8')); } catch { throw new Error('Unverified UI identity; refusing process control'); }
   const identity = JSON.parse(record.identity);
-  const verified = record.pid === pid && record.ticks === ticks(pid) && identity.root === config.root && identity.role === config.role && identity.dist === config.dist && identity.port === config.port && identity.host === config.host;
+  const verified = record.pid === pid && (!leaderAlive || record.ticks === ticks(pid)) && identity.root === config.root && identity.role === config.role && identity.dist === config.dist && identity.port === config.port && identity.host === config.host;
   if (!verified) throw new Error('UI identity belongs to another environment or process');
-  return { running: true, verified: true, pid, mode: identity.mode, ticks: record.ticks };
+  return { running: leaderAlive, verified: true, pid, mode: identity.mode, ticks: record.ticks };
 }
 export async function stopUI(config, expectedTransaction = null) {
   const receipt = receiptSnapshot(config);
@@ -213,11 +215,12 @@ export async function stopUI(config, expectedTransaction = null) {
   }
   const status = uiStatus(config);
   assertReceiptUnchanged(config, receipt);
-  if (!status.running) {
+  if (!status.running && !status.verified) {
     removeReceipt(config, receipt);
     return status;
   }
-  await retire({ pid: status.pid }, status.ticks, config.root);
+  const record = JSON.parse(receipt[1].text);
+  await retire({ pid: status.pid }, status.ticks, config.root, record.token);
   removeReceipt(config, receipt);
   return { running: false, verified: true, pid: status.pid };
 }

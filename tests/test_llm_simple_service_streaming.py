@@ -874,3 +874,74 @@ def test_simple_payload_normalizes_keep_alive_at_transport_boundary(
         )
         assert payload["keep_alive"] == expected
         assert type(payload["keep_alive"]) is type(expected)
+
+
+@pytest.mark.asyncio
+async def test_material_image_and_document_reach_the_selected_direct_stream(
+    monkeypatch, tmp_path
+):
+    import io
+    from unittest.mock import AsyncMock
+
+    from PIL import Image
+
+    from venom_core.api.schemas.llm_simple import HistoryMessage
+    from venom_core.services import chat_material_payload as materials
+    from venom_core.services.chat_materials import MaterialStore
+
+    store = MaterialStore(tmp_path)
+    monkeypatch.setattr(materials, "MaterialStore", lambda: store)
+    stream = io.BytesIO()
+    Image.new("RGB", (2, 2), "green").save(stream, format="PNG")
+    image = store.save("one", "image.png", "image/png", stream.getvalue())
+    document = store.save("one", "context.txt", "text/plain", b"prior material")
+    monkeypatch.setattr(materials, "image_capability", AsyncMock(return_value=True))
+    runtime = _Runtime("ollama", "selected-vision-model")
+    monkeypatch.setattr(llm_simple_service, "get_active_llm_runtime", lambda: runtime)
+    monkeypatch.setattr(
+        llm_simple_service, "_get_active_adapter_id", AsyncMock(return_value=None)
+    )
+    captured = []
+
+    @asynccontextmanager
+    async def fake_transport(**kwargs):
+        captured.append(kwargs)
+        yield _LinesResponse(
+            [
+                "data: " + json.dumps({"choices": [{"delta": {"content": "visible"}}]}),
+                "data: [DONE]",
+            ]
+        )
+
+    monkeypatch.setattr(
+        llm_simple_service.llm_simple_transport, "open_stream_response", fake_transport
+    )
+    response = await llm_simple_service.stream_simple_chat(
+        SimpleChatRequest(
+            content="Describe",
+            session_id="one",
+            model="selected-vision-model",
+            material_ids=[image.id],
+            history=[
+                HistoryMessage(
+                    role="user", content="Remember", material_ids=[document.id]
+                )
+            ],
+            expected_runtime_id=runtime.runtime_id,
+            expected_config_hash=runtime.config_hash,
+        )
+    )
+    events = await _collect_response_events(response)
+    assert [kind for kind, _ in events] == ["start", "content", "done"]
+    assert len(captured) == 1
+    wire = captured[0]["payload"]
+    assert wire["model"] == "selected-vision-model"
+    assert any(
+        "prior material" in turn["content"]
+        for turn in wire["messages"]
+        if isinstance(turn["content"], str)
+    )
+    assert wire["messages"][-1]["content"][1]["image_url"]["url"].startswith(
+        "data:image/png;base64,"
+    )
+    assert not any("material_ids" in turn for turn in wire["messages"])

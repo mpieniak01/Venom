@@ -62,7 +62,7 @@ while IFS= read -r file; do
   [[ -z "$file" ]] && continue
 
   case "$file" in
-    web-next/*|modules/*)
+    web-next/*|web-studio/*|modules/*)
       frontend_changed=1
       ;;
     *)
@@ -111,6 +111,12 @@ if [[ "$frontend_changed" -eq 1 ]]; then
   echo "▶ Frontend fast lane: lint + ci-lite unit tests"
   npm --prefix web-next run lint
   npm --prefix web-next run test:unit:ci-lite
+  if [[ -f web-studio/package.json ]]; then
+    npm --prefix web-studio run prepare
+    npm --prefix web-studio run lint
+    npm --prefix web-studio run typecheck
+    npm --prefix web-studio run test:unit
+  fi
 fi
 
 if [[ "$backend_changed" -eq 0 ]] && [[ "$frontend_changed" -eq 0 ]]; then

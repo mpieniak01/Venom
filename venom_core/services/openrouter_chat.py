@@ -54,6 +54,9 @@ def _request_limit(request, row):
 
 def prepare(request) -> dict[str, Any]:
     """Freeze the destination and reserve the entire conservative request estimate."""
+    from venom_core.services.chat_material_payload import text_material_request
+
+    request = text_material_request(request)
     row = runtime.assert_identity(request)
     maximum = _request_limit(request, row)
     from venom_core.config import SETTINGS
@@ -63,7 +66,7 @@ def prepare(request) -> dict[str, Any]:
         messages.append(
             {"role": "system", "content": SETTINGS.SIMPLE_MODE_SYSTEM_PROMPT}
         )
-    messages.extend(v.model_dump() for v in request.history)
+    messages.extend(v.model_dump(exclude={"material_ids"}) for v in request.history)
     messages.append({"role": "user", "content": request.content})
     # UTF-8 bytes plus framing is deliberately conservative; this is not usage.
     input_bound = sum(len(v["content"].encode("utf-8")) + 128 for v in messages) + 256

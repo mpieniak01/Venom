@@ -7,7 +7,7 @@ import net from "node:net";
 import { fileURLToPath } from "node:url";
 import http from "node:http";
 import { afterEach, mock, test } from "node:test";
-import { lifecycleConfig, buildArtifact, verifyArtifact, startUI, stopUI, uiStatus, alive } from "../scripts/web-lifecycle.mjs";
+import { lifecycleConfig, buildArtifact, verifyArtifact, startUI, stopUI, rollbackUI, uiStatus, alive } from "../scripts/web-lifecycle.mjs";
 
 const scratch: string[] = [];
 const pids: number[] = [];
@@ -37,12 +37,26 @@ if (process.argv[3] === 'build') {
 if (process.env.FAKE_EXIT) process.exit(6);
 const port = Number(process.argv[process.argv.indexOf('--port')+1]);
 const host = process.argv[process.argv.indexOf('--hostname')+1];
+if (process.env.FAKE_WRAPPER_EXITS) {
+  const code = "const http=require('node:http');const server=http.createServer((req,res)=>{if(process.env.FAKE_WRAPPER_READY && req.headers['x-venom-start-token']===process.env.VENOM_UI_START_TOKEN)res.end(process.env.VENOM_UI_START_TOKEN);else{res.statusCode=503;res.end('not ready')}});server.listen(Number(process.env.FAKE_CHILD_PORT),'127.0.0.1');process.on('SIGTERM',()=>server.close(()=>process.exit(0)));";
+  const child = require('node:child_process').spawn(process.execPath, ['-e', code], { env: {...process.env, FAKE_CHILD_PORT:String(port)}, stdio:'ignore' });
+  fs.writeFileSync(process.env.FAKE_CHILD_RECEIPT, JSON.stringify({pid:process.pid,child:child.pid}));
+  setTimeout(() => process.exit(9), process.env.FAKE_WRAPPER_READY ? 1000 : 150);
+} else {
 const server = http.createServer((req,res) => {
   if (!process.env.FAKE_NOT_READY && req.url === '/_venom/ready' && req.headers['x-venom-start-token'] === process.env.VENOM_UI_START_TOKEN) res.end(process.env.VENOM_UI_START_TOKEN);
   else { res.statusCode = 503; res.end('starting'); }
 });
 server.listen(port, host);
-process.on('SIGTERM', () => server.close(() => process.exit(0)));
+process.on('SIGTERM', () => {
+  if (process.env.FAKE_REPLACE_RECEIPT) {
+    const file = process.env.FAKE_REPLACE_RECEIPT;
+    const record = JSON.parse(fs.readFileSync(file, 'utf8'));
+    fs.writeFileSync(file, JSON.stringify({...record, ticks: 'replacement', transaction: 'successor'}));
+  }
+  server.close(() => process.exit(0));
+});
+}
 `);
   chmodSync(npm, 0o700);
   const env = { ...process.env, WEB_DIR: "web-next", WEB_PID_FILE: "run/ui.pid", WEB_LOG: "logs/ui.log", WEB_HOST: "127.0.0.1", ENVIRONMENT_ROLE: "dev", NEXT_DIST_DIR: ".next", NPM: npm, WEB_READY_TIMEOUT_SEC: "10" };
@@ -223,3 +237,85 @@ test("TypeScript includes generated type paths for each supported distDir", () =
     assert.ok(config.include.includes(`${dist}/dev/types/**/*.ts`));
   }
 });
+
+
+test("Studio artifact uses its own app basename and fingerprints shared conversation sources", () => {
+  const f = fixture();
+  const studio = path.join(f.dir, "web-studio"); mkdirSync(studio);
+  writeFileSync(path.join(studio, "page.tsx"), "studio");
+  execFileSync("git", ["add", "web-studio/page.tsx"], { cwd: f.dir });
+  execFileSync("git", ["-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "-qm", "studio"], { cwd: f.dir });
+  const compiler = path.join(f.dir, "studio-build");
+  writeFileSync(compiler, `#!${process.execPath}\nconst fs=require('node:fs');fs.mkdirSync('.next/standalone/web-studio',{recursive:true});fs.writeFileSync('.next/standalone/web-studio/server.js','server');fs.writeFileSync('.next/BUILD_ID','id');`);
+  chmodSync(compiler, 0o700);
+  const env = { ...f.env, WEB_DIR: "web-studio", NPM: compiler, VENOM_VARIANT: "studio", VENOM_UI_READY_PATH: "/chat2" };
+  const config = lifecycleConfig(env, f.dir);
+  mkdirSync(path.join(f.app, "components/chat"), { recursive: true });
+  const shared = path.join(f.app, "components/chat/shared.tsx"); writeFileSync(shared, "version one");
+  buildArtifact(config, env); verifyArtifact(config, env);
+  writeFileSync(shared, "version two");
+  assert.throws(() => verifyArtifact(config, env), /Stale/);
+  assert.equal(config.root, studio);
+});
+
+
+test("stop preserves replacement identity even when its PID file retains the old numeric PID", async () => {
+  const f = fixture(); const c = config(f, await unusedPort());
+  const started = await startUI(c, "turbo", { ...f.env, FAKE_REPLACE_RECEIPT: `${c.pidFile}.identity.json` });
+  pids.push(started.pid);
+  await assert.rejects(stopUI(c), /ownership receipt changed/);
+  assert.equal(Number(readFileSync(c.pidFile, "utf8")), started.pid);
+  assert.equal(JSON.parse(readFileSync(`${c.pidFile}.identity.json`, "utf8")).transaction, "successor");
+});
+
+test("failed-start rollback retires only UI created by its startup transaction and preserves reused UI", async () => {
+  const f = fixture(); const c = config(f, await unusedPort());
+  const started = await startUI(c, "turbo", { ...f.env, VENOM_UI_TRANSACTION: "original-start" });
+  pids.push(started.pid);
+  const reused = await startUI(c, "turbo", { ...f.env, VENOM_UI_TRANSACTION: "later-start" });
+  assert.equal(reused.reused, true);
+  const ignored = await rollbackUI(c, "later-start");
+  assert.ok("skipped" in ignored && ignored.skipped);
+  assert.equal(uiStatus(c).running, true);
+  await assert.rejects(rollbackUI(c, ""), /Missing UI startup transaction/);
+  await rollbackUI(c, "original-start");
+  assert.equal(uiStatus(c).running, false);
+  assert.equal(existsSync(`${c.pidFile}.identity.json`), false);
+});
+
+for (const readyFirst of [false, true]) {
+  test(`orphaned Next is retired after npm exits ${readyFirst ? "after readiness" : "before readiness"}`, async () => {
+    const f = fixture(); const c = config(f, await unusedPort());
+    const childReceipt = path.join(f.dir, "child.json");
+    const foreign = spawn(process.execPath, ["-e", "setInterval(()=>{},1000)"], { detached:true, stdio:"ignore" });
+    assert.ok(foreign.pid); pids.push(foreign.pid!);
+    const env = { ...f.env, FAKE_WRAPPER_EXITS:"1", FAKE_CHILD_RECEIPT:childReceipt, ...(readyFirst ? { FAKE_WRAPPER_READY:"1" } : {}) };
+    try {
+    if (readyFirst) {
+      const started = await startUI(c, "turbo", env); pids.push(started.pid);
+      const deadline = Date.now()+10000;
+      while (alive(started.pid) && Date.now()<deadline) await new Promise((resolve)=>setTimeout(resolve,50));
+      assert.equal(alive(started.pid),false);
+      assert.equal(alive(JSON.parse(readFileSync(childReceipt,"utf8")).child),true);
+      await stopUI(c);
+    } else {
+      await assert.rejects(startUI(c,"turbo",env), /exited before readiness/);
+    }
+    const receipt = JSON.parse(readFileSync(childReceipt,"utf8")); pids.push(receipt.pid);
+    let running = false;
+    try { running = readFileSync(`/proc/${receipt.child}/stat`,"utf8").split(") ")[1].split(" ")[0] !== "Z"; } catch {}
+    assert.equal(running,false);
+    assert.equal(existsSync(c.pidFile),false);
+    assert.equal(existsSync(`${c.pidFile}.identity.json`),false);
+    const probe = net.createServer();
+    await new Promise<void>((resolve,reject)=>{probe.once("error",reject);probe.listen(c.port,"127.0.0.1",resolve)});
+    await new Promise<void>((resolve)=>probe.close(()=>resolve()));
+    assert.equal(foreign.exitCode,null);
+    assert.equal(alive(foreign.pid),true);
+    } finally {
+      // Register the fixture group even if an assertion or cleanup under test fails.
+      if (existsSync(childReceipt)) pids.push(JSON.parse(readFileSync(childReceipt,"utf8")).pid);
+      if (existsSync(c.pidFile)) pids.push(Number(readFileSync(c.pidFile,"utf8")));
+    }
+  });
+}

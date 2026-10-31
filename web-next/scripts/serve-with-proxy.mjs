@@ -2,10 +2,14 @@
 import { spawn, execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import http from "node:http";
 import net from "node:net";
 import { createTransportProxy, proxySettings } from "./transport-proxy.mjs";
 
+const sharedScripts = path.dirname(fileURLToPath(import.meta.url));
+const readyPath = process.env.VENOM_UI_READY_PATH || "/";
+if (!["/", "/chat2"].includes(readyPath)) throw new Error("Invalid UI readiness path");
 const mode = process.argv[2];
 const args = process.argv.slice(3);
 function option(name, fallback) {
@@ -40,7 +44,7 @@ const server = http.createServer(async (request, response) => {
   const token = process.env.VENOM_UI_START_TOKEN;
   if (token && request.url === "/_venom/ready" && request.headers["x-venom-start-token"] === token) {
     try {
-      const result = await fetch(`http://127.0.0.1:${innerPort}/`, { signal: AbortSignal.timeout(2000), redirect: "manual" });
+      const result = await fetch(`http://127.0.0.1:${innerPort}${readyPath}`, { signal: AbortSignal.timeout(2000), redirect: "manual" });
       await result.body?.cancel();
       if (result.status >= 200 && result.status < 400) {
         response.writeHead(200, { "content-type": "text/plain", "cache-control": "no-store" });
@@ -61,7 +65,7 @@ server.on("connection", (socket) => {
 });
 server.on("upgrade", upgradeHandler);
 const childArgs = mode === "start"
-  ? ["scripts/start-server.mjs"]
+  ? [path.join(sharedScripts, "start-server.mjs")]
   : ["node_modules/next/dist/bin/next", "dev", args.includes("--turbo") ? "--turbo" : "--webpack", "--hostname", "127.0.0.1", "--port", String(innerPort)];
 const child = spawn(process.execPath, childArgs, {
   cwd: process.cwd(), stdio: "inherit",

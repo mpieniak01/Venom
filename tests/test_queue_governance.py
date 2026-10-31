@@ -133,15 +133,16 @@ async def test_abort_nonexistent_task(orchestrator):
 
 
 @pytest.mark.asyncio
-async def test_abort_non_processing_task(orchestrator):
+async def test_abort_pending_task_before_processing(orchestrator):
     """Test przerywania zadania które nie jest w trakcie wykonywania."""
     task = orchestrator.state_manager.create_task("Test task")
 
     # Zadanie ma status PENDING
     result = await orchestrator.abort_task(task.id)
 
-    assert not result["success"]
-    assert "nie jest aktywne" in result["message"]
+    assert result["success"]
+    assert task.status == TaskStatus.FAILED
+    assert task.id not in orchestrator.active_tasks
 
 
 @pytest.mark.asyncio

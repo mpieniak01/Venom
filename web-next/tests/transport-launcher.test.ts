@@ -67,8 +67,8 @@ async function launch(
 ) {
   const directory = await mkdtemp(path.join(os.tmpdir(), "venom-managed-entry-"));
   directories.push(directory);
-  await mkdir(path.join(directory, "scripts"));
-  await writeFile(path.join(directory, "scripts/start-server.mjs"), `
+  await mkdir(path.join(directory, ".next/standalone"), { recursive: true });
+  await writeFile(path.join(directory, ".next/standalone/server.js"), `
     console.log("fixture-child:" + process.pid);
     if (process.env.FIXTURE_CHILD_EXIT !== undefined) {
       setTimeout(() => process.exit(Number(process.env.FIXTURE_CHILD_EXIT)), 500);

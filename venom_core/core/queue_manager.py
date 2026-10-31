@@ -141,7 +141,7 @@ class QueueManager(BaseFlow):
             return {"success": False, "message": f"Zadanie {task_id} nie istnieje"}
 
         # Sprawdź czy zadanie jest aktywne
-        if task.status != TaskStatus.PROCESSING:
+        if task.status not in {TaskStatus.PENDING, TaskStatus.PROCESSING}:
             return {
                 "success": False,
                 "message": f"Zadanie {task_id} nie jest aktywne (status: {task.status})",
@@ -149,21 +149,37 @@ class QueueManager(BaseFlow):
 
         # Pobierz task handle
         async with self._queue_lock:
+            # The task may have finished while Stop waited for this lock.
+            current = self.state_manager.get_task(task_id)
+            if current is None or current.status not in {
+                TaskStatus.PENDING,
+                TaskStatus.PROCESSING,
+            }:
+                return {
+                    "success": False,
+                    "message": f"Zadanie {task_id} nie jest już aktywne",
+                }
+            task = current
             task_handle = self.active_tasks.get(task_id)
 
-        if task_handle is None:
+        if task_handle is None and task.status == TaskStatus.PROCESSING:
             # Zadanie mogło się już zakończyć
             return {
                 "success": False,
                 "message": f"Zadanie {task_id} nie jest już aktywne",
             }
 
-        # Anuluj task
-        task_handle.cancel()
+        # Pending tasks may be waiting for capacity and have no active handle.
+        # Their FAILED status is checked by the existing execution wrappers.
+        # A running task keeps its runtime admission until its own cleanup ends.
+        if task_handle is not None:
+            task_handle.cancel()
 
         # Oznacz jako FAILED
         await self.state_manager.update_status(
-            task_id, TaskStatus.FAILED, result="⛔ Zadanie przerwane przez użytkownika"
+            task_id,
+            TaskStatus.FAILED,
+            result=task.result or "⛔ Zadanie przerwane przez użytkownika",
         )
         self.state_manager.add_log(task_id, "Zadanie przerwane przez operatora (ABORT)")
 

@@ -5,157 +5,137 @@ ACTION="${1:-}"
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # shellcheck source=../lib/env_contract.sh
 source "$ROOT_DIR/scripts/lib/env_contract.sh"
+cd "$ROOT_DIR"
 
 LOG_DIR="$ROOT_DIR/logs"
 PID_FILE="$LOG_DIR/ollama.pid"
 LOG_FILE="$LOG_DIR/ollama.log"
 ENV_FILE_RAW="${ENV_FILE:-.env.dev}"
 ENV_FILE="$(env_contract_resolve_file "$ENV_FILE_RAW" "$ROOT_DIR")"
+export ENV_FILE
 OLLAMA_BASE_URL="$(env_contract_get OLLAMA_BASE_URL "http://localhost:11434" "$ENV_FILE")"
 HEALTH_URL="$(env_contract_get OLLAMA_HEALTH_URL "${OLLAMA_BASE_URL%/}/api/tags" "$ENV_FILE")"
 OLLAMA_BIN="$(command -v ollama || true)"
 SYSTEMCTL_BIN="$(command -v systemctl || true)"
-SYSTEMD_UNIT="$(env_contract_get OLLAMA_SYSTEMD_UNIT "ollama.service" "$ENV_FILE")"
-SYSTEMD_SCOPE="$(env_contract_get OLLAMA_SYSTEMD_SCOPE "system" "$ENV_FILE")"
-SYSTEMD_SCOPE_ARGS=()
-if [[ "$SYSTEMD_SCOPE" == "user" ]]; then
-  SYSTEMD_SCOPE_ARGS=(--user)
+# An installed unit is not proof that this checkout owns its daemon.
+SYSTEMD_UNIT="$(env_contract_get OLLAMA_SYSTEMD_UNIT "" "$ENV_FILE")"
+SYSTEMD_SCOPE="$(env_contract_get OLLAMA_SYSTEMD_SCOPE "user" "$ENV_FILE")"
+if [[ -n "${PYTHON_BIN:-}" ]]; then
+  CONTROL_PYTHON="$PYTHON_BIN"
+elif [[ -x "$ROOT_DIR/.venv/bin/python" ]]; then
+  CONTROL_PYTHON="$ROOT_DIR/.venv/bin/python"
+else
+  CONTROL_PYTHON="python3"
 fi
 
-USE_SYSTEMD=false
-if [[ -n "$SYSTEMCTL_BIN" ]] && (
-  "$SYSTEMCTL_BIN" "${SYSTEMD_SCOPE_ARGS[@]}" list-unit-files "$SYSTEMD_UNIT" >/dev/null 2>&1 || \
-  "$SYSTEMCTL_BIN" "${SYSTEMD_SCOPE_ARGS[@]}" status "$SYSTEMD_UNIT" >/dev/null 2>&1
-); then
-  USE_SYSTEMD=true
-fi
+runtime_control() {
+  "$CONTROL_PYTHON" -m scripts.dev.runtime_teardown "$1"
+}
 
 is_healthy() {
   curl -fsS "$HEALTH_URL" >/dev/null 2>&1
 }
 
-is_systemd_active() {
-  [[ "$USE_SYSTEMD" == "true" ]] && \
-    "$SYSTEMCTL_BIN" "${SYSTEMD_SCOPE_ARGS[@]}" is-active --quiet "$SYSTEMD_UNIT"
-}
-
-_kill_ollama_strays() {
-  local pids pid
-  pids="$(pgrep -f "ollama serve" || true)"
-  for pid in $pids; do
-    if [[ "$pid" == "$$" || "$pid" == "$PPID" ]]; then
-      continue
+wait_for_manual_exec() {
+  local pid="$1" expected observed attempt
+  expected="$(readlink -f "$OLLAMA_BIN")"
+  for attempt in {1..100}; do
+    if ! kill -0 "$pid" 2>/dev/null; then
+      echo "Ollama zakończyła start przed potwierdzeniem właściciela" >&2
+      return 1
     fi
-    kill "$pid" 2>/dev/null || true
-  done
-  sleep 1
-  pids="$(pgrep -f "ollama serve" || true)"
-  for pid in $pids; do
-    if [[ "$pid" == "$$" || "$pid" == "$PPID" ]]; then
-      continue
+    observed="$(readlink -f "/proc/$pid/exe" 2>/dev/null || true)"
+    if [[ "$observed" == "$expected" ]]; then
+      return 0
     fi
-    kill -9 "$pid" 2>/dev/null || true
+    sleep 0.05
   done
+  echo "Nie potwierdzono exec binarnego Ollamy; proces nie został przejęty" >&2
+  return 1
 }
 
 start() {
   echo "🧭 Ollama config: base_url=${OLLAMA_BASE_URL}, health_url=${HEALTH_URL}, env_file=${ENV_FILE}"
-
   if is_healthy; then
-    if [[ "$USE_SYSTEMD" == "true" ]]; then
-      echo "Ollama już odpowiada na $HEALTH_URL (systemd active, pomijam start)"
-    else
-      echo "Ollama już odpowiada na $HEALTH_URL (pomijam start)"
-    fi
+    runtime_control verify-ollama
+    echo "Ollama odpowiada; właściciel runtime potwierdzony"
     return 0
   fi
 
-  if [[ "$USE_SYSTEMD" == "true" ]]; then
-    if is_systemd_active; then
-      echo "Usługa systemd ${SYSTEMD_UNIT} już działa, czekam tylko na zdrowie runtime"
-      return 0
+  if [[ -n "$SYSTEMD_UNIT" ]]; then
+    if [[ -z "$SYSTEMCTL_BIN" ]] || [[ ! "$SYSTEMD_UNIT" =~ ^[A-Za-z0-9_][A-Za-z0-9_.@-]*\.service$ ]]; then
+      echo "Nieprawidłowa jawna konfiguracja usługi Ollamy" >&2
+      return 1
     fi
-    echo "Uruchamiam usługę systemd ${SYSTEMD_UNIT}"
-    "$SYSTEMCTL_BIN" "${SYSTEMD_SCOPE_ARGS[@]}" start "$SYSTEMD_UNIT"
+    local scope_args=()
+    case "$SYSTEMD_SCOPE" in
+      user) scope_args=(--user) ;;
+      system) ;;
+      *) echo "Nieprawidłowy OLLAMA_SYSTEMD_SCOPE" >&2; return 1 ;;
+    esac
+    echo "Uruchamiam skonfigurowaną usługę systemd ${SYSTEMD_UNIT}"
+    "$SYSTEMCTL_BIN" "${scope_args[@]}" start -- "$SYSTEMD_UNIT"
+    runtime_control verify-ollama
     return 0
   fi
 
   if [[ -z "$OLLAMA_BIN" ]]; then
     echo "Nie znaleziono polecenia 'ollama' w PATH" >&2
-    exit 1
+    return 1
   fi
-
   mkdir -p "$LOG_DIR"
-
+  if [[ -L "$PID_FILE" ]]; then
+    echo "Plik PID Ollamy nie może być symlinkiem" >&2
+    return 1
+  fi
   if [[ -f "$PID_FILE" ]]; then
     local existing_pid
     existing_pid="$(cat "$PID_FILE")"
-    if kill -0 "$existing_pid" 2>/dev/null; then
-      echo "Ollama już działa (PID $existing_pid)"
-      exit 0
-    else
-      rm -f "$PID_FILE"
-    fi
-  fi
-
-  echo "Uruchamiam ollama serve (log: $LOG_FILE)"
-  nohup "$OLLAMA_BIN" serve >>"$LOG_FILE" 2>&1 &
-  echo $! >"$PID_FILE"
-  echo "Ollama start - PID $(cat "$PID_FILE")"
-  return 0
-}
-
-stop() {
-  if [[ "$USE_SYSTEMD" == "true" ]]; then
-    echo "Zatrzymuję usługę systemd ${SYSTEMD_UNIT}"
-    "$SYSTEMCTL_BIN" "${SYSTEMD_SCOPE_ARGS[@]}" stop "$SYSTEMD_UNIT" || true
-  fi
-
-  # Explicitly unload model if Ollama is still running (e.g. managed externally)
-  if curl -s "$HEALTH_URL" >/dev/null 2>&1; then
-      echo "Zwalniam modelem z VRAM (unload)..."
-      # Pobierz listę załadowanych modeli i wyślij unload dla każdego (lub próbuj z pustym promptem)
-      # Najprostszy sposób to wysłanie pustego promptu z keep_alive: 0 do aktywnego modelu
-      # W tym systemie SETTINGS.LLM_MODEL_NAME jest źródłem prawdy.
-      # Ale skrypt bash nie ma łatwego dostępu do pydantic settings.
-      # Spróbujemy pobić wszystkie załadowane modele przez /api/generate z keep_alive:0
-      local loaded_models
-      loaded_models=$(curl -s "${OLLAMA_BASE_URL%/}/api/ps" | grep -oP '"name":"\K[^"]+' || true)
-      for m in $loaded_models; do
-          echo "Wyładowuję model: $m"
-          curl -s -X POST "${OLLAMA_BASE_URL%/}/api/generate" -d "{\"model\":\"$m\",\"keep_alive\":0}" >/dev/null 2>&1 || true
-      done
-  fi
-
-  if [[ -f "$PID_FILE" ]]; then
-    local pid
-    pid="$(cat "$PID_FILE")"
-    if kill -0 "$pid" 2>/dev/null; then
-      echo "Zatrzymuję Ollamę (PID $pid)"
-      kill "$pid" 2>/dev/null || true
+    if [[ ! "$existing_pid" =~ ^[1-9][0-9]*$ ]] || [[ -d "/proc/$existing_pid" ]]; then
+      runtime_control verify-ollama
+      echo "Istniejący właściciel procesu Ollamy potwierdzony"
+      return 0
     fi
     rm -f "$PID_FILE"
   fi
 
-  # Cleanup stray daemon processes with explicit PID filtering.
-  _kill_ollama_strays
+  echo "Uruchamiam ollama serve (log: $LOG_FILE)"
+  # A private token and new session remain provable if the launcher exits early.
+  local started_token started_pid started_stat started_ticks
+  local -a started_fields
+  started_token="$("$CONTROL_PYTHON" -c 'import secrets; print(secrets.token_hex(32))')"
+  VENOM_ENGINE_START_TOKEN="$started_token" nohup setsid "$OLLAMA_BIN" serve >>"$LOG_FILE" 2>&1 &
+  started_pid=$!
+  started_ticks=""
+  if IFS= read -r started_stat <"/proc/$started_pid/stat"; then
+    read -ra started_fields <<<"${started_stat##*) }"
+    started_ticks="${started_fields[19]:-}"
+  fi
+  if ! printf '%s\n' "$started_pid" >"$PID_FILE" || ! wait_for_manual_exec "$started_pid" || ! runtime_control claim-ollama; then
+    if "$CONTROL_PYTHON" -m scripts.dev.runtime_teardown retire-launch "$started_pid" "$started_ticks" "$ROOT_DIR" VENOM_ENGINE_START_TOKEN "$started_token"; then
+      wait "$started_pid" 2>/dev/null || true
+    else
+      echo "Nie można potwierdzić cleanup własnego startu Ollamy; zachowano dowody właściciela" >&2
+    fi
+    return 1
+  fi
+  echo "Ollama start - PID $started_pid; właściciel zapisany"
+}
 
-  echo "Ollama zatrzymana"
-  return 0
+stop() {
+  # The helper verifies PID/start-time/executable/cwd or configured MainPID and
+  # drains the owned engine. Never unload or signal a merely reachable daemon.
+  runtime_control stop-ollama
 }
 
 restart() {
   stop
   start
-  return 0
 }
 
 case "$ACTION" in
   start) start ;;
   stop) stop ;;
   restart) restart ;;
-  *)
-    echo "Użycie: $0 {start|stop|restart}" >&2
-    exit 1
-    ;;
+  *) echo "Użycie: $0 {start|stop|restart}" >&2; exit 1 ;;
 esac

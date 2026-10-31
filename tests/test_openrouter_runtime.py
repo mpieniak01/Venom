@@ -556,3 +556,34 @@ async def test_cancel_before_quote_capture_does_not_prepare_or_reserve(monkeypat
     with pytest.raises(asyncio.CancelledError):
         await operation
     prepare.assert_not_called()
+
+
+def test_document_reference_is_included_in_quote_payload_and_conservative_cost(
+    configured, tmp_path, monkeypatch
+):
+    from venom_core.services import chat_material_payload as materials
+    from venom_core.services.chat_materials import MaterialStore
+
+    core, ledger, _ = configured
+    store = MaterialStore(tmp_path / "materials")
+    monkeypatch.setattr(materials, "MaterialStore", lambda: store)
+    item = store.save(
+        "session", "context.txt", "text/plain", b"context expands the billable input"
+    )
+    value = request()
+    before = chat.prepare(value)
+    value.material_ids = [item.id]
+    after = chat.prepare(value)
+    assert (
+        "context expands the billable input"
+        in after["payload"]["messages"][-1]["content"]
+    )
+    assert after["input_bound"] > before["input_bound"]
+    assert chat.quote_hash(after) != chat.quote_hash(before)
+    assert "material_ids" not in after["payload"]["messages"][-1]
+    ledger.reserve.assert_not_called()
+    prices = core.strict_prices.return_value
+    assert prices.estimate.call_args.args == (
+        after["input_bound"],
+        after["payload"]["max_tokens"],
+    )

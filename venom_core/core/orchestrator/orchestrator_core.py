@@ -95,6 +95,7 @@ class Orchestrator:
         node_manager: Optional[Any] = None,
         session_store: Optional[Any] = None,
         request_tracer: Optional[RequestTracer] = None,
+        vector_store: Optional[Any] = None,
     ):
         """
         Inicjalizacja Orchestrator.
@@ -132,7 +133,7 @@ class Orchestrator:
 
         # Inicjalizuj Eyes dla obsługi obrazów
         self.eyes = Eyes()
-        self.memory_skill = MemorySkill()
+        self.memory_skill = MemorySkill(vector_store=vector_store)
 
         # Inicjalizuj nowe komponenty (refactored)
         self.streaming_handler = StreamingHandler(state_manager=state_manager)

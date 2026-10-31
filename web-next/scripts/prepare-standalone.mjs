@@ -13,7 +13,7 @@ const rootDir = path.join(process.cwd());
 const staticSrc = path.join(rootDir, distDir, "static");
 const standaloneTargets = [
   // Next standalone commonly expects static under standalone/<app>/.next/static
-  path.join(rootDir, distDir, "standalone", "web-next", distDir, "static"),
+  path.join(rootDir, distDir, "standalone", path.basename(rootDir), distDir, "static"),
   // Backward-compatible fallback for previously used layout
   path.join(rootDir, distDir, "standalone", distDir, "static"),
 ];

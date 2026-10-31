@@ -159,55 +159,36 @@ fi
 mkdir -p "$(dirname "$BACKEND_LOG")" "$(dirname "$WEB_LOG")" "$(dirname "$PID_FILE")" "$(dirname "$WEB_PID_FILE")"
 
 START_SUCCESS=0
-BACKEND_STARTED=0
-UI_STARTED=0
-
-kill_pid_group_graceful() {
-  local pid="${1:-}"
-  local label="${2:-process}"
-  if [[ -z "$pid" ]]; then
-    return 0
-  fi
-  if ! kill -0 "$pid" 2>/dev/null; then
-    return 0
-  fi
-  kill -TERM -"$pid" 2>/dev/null || kill "$pid" 2>/dev/null || true
-  for _ in {1..20}; do
-    if kill -0 "$pid" 2>/dev/null; then
-      sleep 0.2
-    else
-      return 0
-    fi
-  done
-  echo "⚠️  Wymuszam kill -9 dla ${label} (PID ${pid})"
-  kill -KILL -"$pid" 2>/dev/null || kill -KILL "$pid" 2>/dev/null || true
-}
+BACKEND_START_RECEIPT=""
+UI_TRANSACTION=""
 
 cleanup_partial_start() {
+  local original_status=$?
+  trap - EXIT INT TERM
   if [[ "$START_SUCCESS" == "1" ]]; then
     return 0
   fi
-  if [[ "$UI_STARTED" == "1" && -f "$WEB_PID_FILE" ]]; then
-    local wpid
-    wpid="$(cat "$WEB_PID_FILE" 2>/dev/null || true)"
-    if [[ -n "$wpid" ]]; then
-      echo "🧹 Cleanup: zatrzymuję częściowo uruchomiony UI (PID ${wpid})"
-      kill_pid_group_graceful "$wpid" "UI"
+  local cleanup_status="$original_status"
+  if [[ -n "$UI_TRANSACTION" ]]; then
+    if ! run_with_env_file node "$ROOT_DIR/web-next/scripts/web-lifecycle.mjs" rollback "$UI_TRANSACTION"; then
+      echo "❌ Rollback własnego UI nie został potwierdzony; zachowuję dowody właściciela" >&2
+      cleanup_status=1
     fi
-    rm -f "$WEB_PID_FILE"
   fi
-  if [[ "$BACKEND_STARTED" == "1" && -f "$PID_FILE" ]]; then
-    local bpid
-    bpid="$(cat "$PID_FILE" 2>/dev/null || true)"
-    if [[ -n "$bpid" ]]; then
-      echo "🧹 Cleanup: zatrzymuję częściowo uruchomiony backend (PID ${bpid})"
-      kill_pid_group_graceful "$bpid" "backend"
+  if [[ -n "$BACKEND_START_RECEIPT" ]]; then
+    echo "🧹 Cleanup: zatrzymuję tylko backend z pierwotnej próby startu"
+    export ENV_FILE PID_FILE
+    if ! "$PYTHON_BIN" -m scripts.dev.startup_rollback "$BACKEND_START_RECEIPT"; then
+      echo "❌ Rollback backendu nie został potwierdzony; zachowuję dowody właściciela" >&2
+      cleanup_status=1
     fi
-    rm -f "$PID_FILE"
   fi
+  return "$cleanup_status"
 }
 
-trap cleanup_partial_start EXIT INT TERM
+trap cleanup_partial_start EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 active_server=""
 # Persisted OpenRouter/Vast selection must take precedence over dotenv defaults,
@@ -399,8 +380,7 @@ if [[ -z "$backend_reused" ]]; then
 
   echo "▶️  Uruchamiam Venom backend (uvicorn na ${HOST}:${PORT})"
   : > "$BACKEND_LOG"
-  "$PYTHON_BIN" "$ROOT_DIR/scripts/dev/stack_profile.py" launch-api
-  BACKEND_STARTED=1
+  BACKEND_START_RECEIPT="$("$PYTHON_BIN" "$ROOT_DIR/scripts/dev/stack_profile.py" launch-api)"
   echo "✅ Venom backend wystartował z PID $(cat "$PID_FILE")"
 
   echo "⏳ Czekam na backend (/api/v1/system/status)..."
@@ -427,12 +407,7 @@ if [[ -z "$backend_reused" ]]; then
       echo "ℹ️  Ostatnie logi backendu:"
       tail -n 40 "$BACKEND_LOG" || true
     fi
-    if [[ -f "$PID_FILE" ]]; then
-      bpid="$(cat "$PID_FILE")"
-      kill "$bpid" 2>/dev/null || true
-      rm -f "$PID_FILE"
-      BACKEND_STARTED=0
-    fi
+    # EXIT rollback uses the original spawn token and pidfd ownership guard.
     exit 1
   fi
 else
@@ -448,6 +423,11 @@ export NEXT_PUBLIC_ENABLE_AUDIO_INTERFACE="$(env_contract_get ENABLE_AUDIO_INTER
 export NEXT_PUBLIC_AUDIO_WS_BASE="ws://${WEB_DISPLAY}:${PORT}"
 export NEXT_TELEMETRY_DISABLED=1
 unset NEXT_DISABLE_TURBOPACK WATCHPACK_POLLING WATCHPACK_POLLING_INTERVAL CHOKIDAR_USEPOLLING
+# The token exists before launch so rollback also covers interruption after ready.
+# A reused UI keeps its earlier token and cannot be claimed by this attempt.
+UI_TRANSACTION="$("$PYTHON_BIN" -c 'from uuid import uuid4; print(uuid4())')"
+export VENOM_UI_TRANSACTION="$UI_TRANSACTION"
+
 
 if [[ "$START_MODE" == "prod" ]]; then
   # Building is explicit and invalidates the previous stamp before any attempt.
@@ -461,6 +441,6 @@ else
   esac
   run_with_env_file node "$ROOT_DIR/web-next/scripts/web-lifecycle.mjs" dev "$START_WEB_MODE"
 fi
-# The lifecycle cleans up only its own failed launch. Do not claim reused UI as ours.
+# Only a UI with this startup transaction is eligible for failed-start rollback.
 echo "🚀 Gotowe: backend http://${HOST_DISPLAY}:${PORT}, dashboard http://${WEB_DISPLAY}:${WEB_PORT}"
 START_SUCCESS=1

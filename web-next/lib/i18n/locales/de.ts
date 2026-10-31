@@ -1,3 +1,4 @@
+import { chat2 } from "./chat2/de";
 import { workflowControl } from "./workflow-control/de";
 import { topBar } from "./top-bar/de";
 import { sidebar } from "./sidebar/de";
@@ -21,6 +22,7 @@ import { brainLocale } from "./brain/de";
 import { providersLocale } from "./providers/de";
 import { adminLocale } from "./admin/de";
 export const de = {
+  chat2,
   common: {
     close: "Schließen",
     switchLanguage: "Sprache wechseln",

@@ -248,7 +248,7 @@ test("chunked SSE dispatch preserves accounting and ignores unknown event names"
   }
 });
 
-test("SSE errors mark the reconciled remote request failed without retaining a partial answer", async () => {
+test("SSE errors retain partial output and mark the reconciled remote request failed", async () => {
   let details: Record<string, import("../lib/types").HistoryRequestDetail> = {};
   let history: import("../components/cockpit/chat-send-helpers").LocalHistoryEntry[] = [];
   let completed = false;
@@ -273,6 +273,6 @@ test("SSE errors mark the reconciled remote request failed without retaining a p
   assert.equal(assistant?.request_id, "failed-request");
   assert.equal(assistant?.pending, false);
   assert.equal(assistant?.status, "FAILED");
-  assert.equal(assistant?.content, "cockpit.openrouter.failure");
+  assert.equal(assistant?.content, "partial");
   assert.equal(JSON.stringify({ history, details }).includes("private upstream reason"), false);
 });

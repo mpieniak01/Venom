@@ -239,7 +239,7 @@ def _trace_simple_request(
     )
 
 
-def _trace_context_preview(request_id: UUID, messages: list[dict[str, str]]) -> None:
+def _trace_context_preview(request_id: UUID, messages: list[dict[str, Any]]) -> None:
     request_tracer = _get_request_tracer()
     if not request_tracer:
         return
@@ -247,6 +247,12 @@ def _trace_context_preview(request_id: UUID, messages: list[dict[str, str]]) -> 
     for message in messages:
         role = (message.get("role") or "").upper()
         content = message.get("content") or ""
+        if isinstance(content, list):
+            content = "\n".join(
+                item.get("text", "") if item.get("type") == "text" else "[image]"
+                for item in content
+                if isinstance(item, dict)
+            )
         preview_parts.append(f"{role}:\n{content}")
     full_context = "\n\n".join(preview_parts).strip()
     truncated = len(full_context) > _CONTEXT_PREVIEW_MAX_CHARS
@@ -312,7 +318,7 @@ def _build_payload(
     request: "SimpleChatRequest",
     runtime,
     model_name: str,
-    messages: list[dict[str, str]],
+    messages: list[dict[str, Any]],
     *,
     stream: bool = True,
 ) -> dict:
@@ -1125,6 +1131,60 @@ async def stream_simple_chat(request: SimpleChatRequest):
     return await _stream_non_openrouter_chat(request)
 
 
+def _material_turn_text_length(turn: dict[str, Any]) -> int:
+    content = turn["content"]
+    return (
+        len(content)
+        if isinstance(content, str)
+        else sum(len(part.get("text", "")) for part in content)
+    )
+
+
+async def _include_simple_request_context(
+    request: SimpleChatRequest,
+    runtime,
+    model_name: str,
+    system_prompt: str,
+    messages: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    from venom_core.services.chat_material_payload import (
+        direct_material_messages,
+        has_materials,
+    )
+
+    if has_materials(request):
+        # Explicit references must survive runtime trimming and quote accounting.
+        turns = await direct_material_messages(request, runtime, model_name)
+        char_limit = _get_simple_context_char_limit(runtime)
+        if char_limit:
+            text_length = sum(_material_turn_text_length(turn) for turn in turns)
+            if text_length + len(system_prompt) + 32 > char_limit:
+                raise HTTPException(413, {"reason_code": "material_context_limit"})
+        return [*messages[:-1], *turns]
+    if not request.history:
+        return messages
+    history = _plain_request_history(
+        request, runtime, system_prompt, messages[-1]["content"]
+    )
+    return [*messages[:-1], *history, messages[-1]]
+
+
+def _plain_request_history(
+    request: SimpleChatRequest, runtime: Any, system_prompt: str, current_content: str
+) -> list[dict[str, Any]]:
+    """Reject oversized history before provider I/O without silently dropping prior turns."""
+    history_length = sum(len(item.content) for item in request.history)
+    if history_length > 50000:
+        raise HTTPException(status_code=400, detail="vast_chat_history_limit")
+    char_limit = _get_simple_context_char_limit(runtime)
+    if (
+        char_limit
+        and history_length + len(system_prompt) + len(current_content) + 32 > char_limit
+    ):
+        raise HTTPException(413, {"reason_code": "material_context_limit"})
+    return [item.model_dump(exclude={"material_ids"}) for item in request.history]
+
+
 async def _stream_non_openrouter_chat(request: SimpleChatRequest):
     await asyncio.sleep(0)
     from venom_core.services.vast_chat_runtime import preflight
@@ -1154,11 +1214,9 @@ async def _stream_non_openrouter_chat(request: SimpleChatRequest):
         request.content, system_prompt, runtime, request_id
     )
     messages = _build_messages(system_prompt, user_content)
-    if is_remote(runtime) and request.history:
-        if sum(len(item.content) for item in request.history) > 50000:
-            raise HTTPException(status_code=400, detail="vast_chat_history_limit")
-        history = [item.model_dump() for item in request.history]
-        messages = [*messages[:-1], *history, messages[-1]]
+    messages = await _include_simple_request_context(
+        request, runtime, model_name, system_prompt, messages
+    )
     payload = _build_payload(request, runtime, model_name, messages)
     _trace_context_preview(request_id, messages)
     headers = _build_streaming_headers(str(request_id), request.session_id or "")

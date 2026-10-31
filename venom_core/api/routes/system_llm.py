@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import importlib.util
+import sys
 import time
 from datetime import datetime
 from pathlib import Path
@@ -14,10 +15,8 @@ import httpx
 import psutil
 from fastapi import APIRouter, Depends, HTTPException
 
-from venom_core.api.routes import academy
 from venom_core.api.routes import openrouter as openrouter_routes
-from venom_core.api.routes import system_deps, vast_chat, vast_environments
-from venom_core.api.routes.models_introspection import get_introspection_queue_metrics
+from venom_core.api.routes import system_deps, vast_chat
 from venom_core.api.routes.models_utils import infer_model_provider
 from venom_core.api.routes.permission_denied_contract import (
     raise_permission_denied_http,
@@ -89,7 +88,6 @@ router = APIRouter(prefix="/api/v1", tags=["system"])
 
 router.include_router(openrouter_routes.router)
 router.include_router(vast_chat.router)
-router.include_router(vast_environments.router)
 
 LLM_CONTROLLER_UNAVAILABLE = "LLMController nie jest dostępny"
 
@@ -122,6 +120,37 @@ _runtime_options_catalog_cache_lock = remote_models_service.Lock()
 _runtime_options_catalog_cache: dict[str, dict[str, Any]] = {}
 _runtime_options_probe_cache_lock = remote_models_service.Lock()
 _runtime_options_probe_cache: dict[str, dict[str, Any]] = {}
+
+
+class _AcademyAccess:
+    """Read already-wired Full dependencies without importing training routes."""
+
+    @staticmethod
+    def _read(name: str) -> Any:
+        module = sys.modules.get("venom_core.api.routes.academy")
+        getter = getattr(module, name, None)
+        return getter() if getter is not None else None
+
+    def _get_professor(self) -> Any:
+        return self._read("_get_professor")
+
+    def _get_dataset_curator(self) -> Any:
+        return self._read("_get_dataset_curator")
+
+    def _get_gpu_habitat(self) -> Any:
+        return self._read("_get_gpu_habitat")
+
+
+academy = _AcademyAccess()
+
+
+def get_introspection_queue_metrics() -> dict[str, int]:
+    from venom_core.api.routes.models_introspection import (
+        get_introspection_queue_metrics as get_metrics,
+    )
+
+    return get_metrics()
+
 
 _MODEL_ALIAS_TO_CANONICAL: dict[str, str] = {
     "gemma3:latest": "gemma-3-4b-it",

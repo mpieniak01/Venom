@@ -369,3 +369,19 @@ describe("ChatComposer adapter flow", () => {
     );
   });
 });
+
+
+it("a delayed ACK in the existing composer preserves a newer unsent draft", async () => {
+  installFetchMock({ activeAdapterId: null });
+  let release!: (value: boolean) => void;
+  const sent: string[] = [];
+  render(<TestHarness onSend={text => { sent.push(text); return new Promise<boolean>(resolve => { release = resolve; }); }} />);
+  await flushEffects();
+  const input = screen.getByTestId("cockpit-prompt-input") as HTMLTextAreaElement;
+  fireEvent.change(input, { target: { value: "snapshot A" } });
+  fireEvent.click(screen.getByTestId("cockpit-send-button"));
+  assert.deepEqual(sent, ["snapshot A"]);
+  fireEvent.change(input, { target: { value: "new unsent B" } });
+  await act(async () => { release(true); });
+  assert.equal(input.value, "new unsent B");
+});

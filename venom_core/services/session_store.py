@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import os
+import tempfile
 from pathlib import Path
 from threading import Lock
 from typing import Dict, List, Optional
@@ -117,6 +119,59 @@ class SessionStore:
             session["updated_at"] = get_utc_now_iso()
             self._sessions[session_id] = session
             self._save()
+
+    def append_turn_once(
+        self, session_id: str, request_id: str, entries: List[Dict[str, object]]
+    ) -> bool:
+        """Atomically persist one Direct pair; existing append error handling is unchanged."""
+        if not session_id or not request_id:
+            return False
+        with self._lock:
+            previous = self._sessions.get(session_id)
+            session = dict(previous or {})
+            raw = session.get("history")
+            history = (
+                [dict(row) for row in raw if isinstance(row, dict)]
+                if isinstance(raw, list)
+                else []
+            )
+            if any(row.get("request_id") == request_id for row in history):
+                return False
+            history.extend(dict(entry) for entry in entries)
+            session["history"] = (
+                history[-self._max_entries :] if self._max_entries else history
+            )
+            session["updated_at"] = get_utc_now_iso()
+            self._sessions[session_id] = session
+            try:
+                self._save_atomic()
+            except (OSError, ValueError, TypeError):
+                if previous is None:
+                    self._sessions.pop(session_id, None)
+                else:
+                    self._sessions[session_id] = previous
+                raise
+            return True
+
+    def _save_atomic(self) -> None:
+        """Strict durable path used only by a new Direct turn."""
+        self._store_path.parent.mkdir(parents=True, exist_ok=True)
+        fd, temporary = tempfile.mkstemp(
+            dir=self._store_path.parent, prefix=".session-turn-"
+        )
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                json.dump(
+                    {"boot_id": BOOT_ID, "sessions": self._sessions},
+                    handle,
+                    ensure_ascii=False,
+                    indent=2,
+                )
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temporary, self._store_path)
+        finally:
+            Path(temporary).unlink(missing_ok=True)
 
     def get_history(
         self, session_id: str, limit: Optional[int] = None

@@ -1440,6 +1440,62 @@
       "rationale": "Fast runner regression coverage for literal subprocess arguments."
     },
     {
+      "path": "tests/test_chat_audio.py",
+      "domain": "api",
+      "test_type": "route_contract",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "On-demand host STT/TTS, bounded PCM and drain ownership regression."
+    },
+    {
+      "path": "tests/test_chat_direct_history.py",
+      "domain": "memory",
+      "test_type": "route_contract",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Direct SSE persists original turns in the same host SessionStore before done; cancellation and paid accounting stay truthful."
+    },
+    {
+      "path": "tests/test_chat_materials.py",
+      "domain": "api",
+      "test_type": "route_contract",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Session isolation, bounded material upload, inert previews and Direct transport contracts using provider doubles."
+    },
+    {
+      "path": "tests/test_chat_task_cancellation.py",
+      "domain": "tasks",
+      "test_type": "route_contract",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Session-owned Stop, idempotency and no resurrection of cancelled queued tasks."
+    },
+    {
       "path": "tests/test_check_github_actions_node_runtime.py",
       "domain": "nodes",
       "test_type": "unit",
@@ -5542,12 +5598,13 @@
       "domain": "tasks",
       "test_type": "unit",
       "intent": "regression",
-      "primary_lane": "release",
+      "primary_lane": "new-code",
       "allowed_lanes": [
+        "new-code",
         "release"
       ],
       "legacy_targeted": false,
-      "rationale": "Default release-lane regression coverage."
+      "rationale": "Session-owned cancellation and queued task lifecycle changed-scope regressions."
     },
     {
       "path": "tests/test_rag_boost_integration.py",
@@ -5954,6 +6011,20 @@
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
+    },
+    {
+      "path": "tests/test_runtime_teardown.py",
+      "domain": "tasks",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Session-owned cancellation and queued task lifecycle changed-scope regressions."
     },
     {
       "path": "tests/test_scenario_weaver.py",
@@ -6424,6 +6495,34 @@
       ],
       "legacy_targeted": false,
       "rationale": "Default release-lane regression coverage."
+    },
+    {
+      "path": "tests/test_studio_api.py",
+      "domain": "api",
+      "test_type": "route_contract",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Standalone Studio shared-route schema/security parity, demand-driven owners and native-work lifecycle regression."
+    },
+    {
+      "path": "tests/test_studio_variant.py",
+      "domain": "tasks",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Session-owned cancellation and queued task lifecycle changed-scope regressions."
     },
     {
       "path": "tests/test_swarm_wrapper.py",

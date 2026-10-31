@@ -59,6 +59,9 @@ describe("handleStandardTaskSend", () => {
     });
 
     const history = historyStore.getHistory();
+    const pending = history.find(entry => entry.role === "assistant");
+    assert.equal(pending?.pending, true);
+    assert.equal(pending?.status, "PENDING");
     assert.ok(
       history.some((entry) => entry.request_id === "req-1" && entry.role === "user"),
     );

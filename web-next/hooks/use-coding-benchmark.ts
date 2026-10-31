@@ -169,15 +169,20 @@ export function useCodingBenchmark(): UseCodingBenchmarkReturn {
   const startBenchmark = useCallback(async (req: CodingBenchmarkStartRequest) => {
     reset();
     setStatus("pending");
-    emitPreflightLogs(addLog, {
-      preparing: t("benchmark.preflight.preparing"),
-      unloading: t("benchmark.preflight.unloading"),
-      starting: t("benchmark.preflight.starting"),
-      success: t("benchmark.preflight.success"),
-      conflict: t("benchmark.preflight.conflict"),
-      runtimeUnhealthy: t("benchmark.preflight.runtimeUnhealthy"),
-    });
-    await emitActiveLlmStateLog(buildApiUrl, addLog, translatePreflight);
+    const maintenance = req.tasks?.every(task => task.startsWith("maintenance_")) ?? false;
+    if (maintenance) {
+      addLog(t("benchmark.coding.logs.maintenancePreparing"), "info");
+    } else {
+      emitPreflightLogs(addLog, {
+        preparing: t("benchmark.preflight.preparing"),
+        unloading: t("benchmark.preflight.unloading"),
+        starting: t("benchmark.preflight.starting"),
+        success: t("benchmark.preflight.success"),
+        conflict: t("benchmark.preflight.conflict"),
+        runtimeUnhealthy: t("benchmark.preflight.runtimeUnhealthy"),
+      });
+      await emitActiveLlmStateLog(buildApiUrl, addLog, translatePreflight);
+    }
     addLog(
       t("benchmark.coding.logs.startingModels", {
         models: req.models.join(", "),

@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { CodingBenchmarkStartRequest } from "@/lib/types";
 import { useTranslation } from "@/lib/i18n";
+import { getApiBaseUrl } from "@/lib/env";
 
 const AVAILABLE_TASKS = [
   { id: "python_sanity", key: "benchmark.coding.tasks.python_sanity" },
@@ -12,6 +13,12 @@ const AVAILABLE_TASKS = [
   { id: "python_complex", key: "benchmark.coding.tasks.python_complex" },
   { id: "python_complex_bugfix", key: "benchmark.coding.tasks.python_complex_bugfix" },
 ] as const;
+const MAINTENANCE_TASKS = [
+  { id: "maintenance_operator", key: "benchmark.coding.tasks.maintenance_operator" },
+  { id: "maintenance_repair", key: "benchmark.coding.tasks.maintenance_repair" },
+  { id: "maintenance_localization", key: "benchmark.coding.tasks.maintenance_localization" },
+] as const;
+
 
 interface BenchmarkCodingConfiguratorProps {
   readonly availableModels: ReadonlyArray<{ readonly name: string; readonly provider: string }>;
@@ -26,6 +33,20 @@ export function BenchmarkCodingConfigurator({
 }: BenchmarkCodingConfiguratorProps) {
   const t = useTranslation();
   const ollamaModels = availableModels.filter((m) => m.provider === "ollama");
+  const [catalogError, setCatalogError] = useState(false);
+  const [maintenance, setMaintenance] = useState(false);
+  const [comparison, setComparison] = useState<{enabled: boolean; models: {name: string; provider: string}[]}>({enabled: false, models: []});
+  useEffect(() => {
+    const controller = new AbortController();
+    void fetch(`${getApiBaseUrl() || ""}/api/v1/benchmark/coding/maintenance/models`, {signal: controller.signal})
+      .then(response => { if (!response.ok) throw new Error("catalog_unavailable"); return response.json(); })
+      .then(value => { if (value && !controller.signal.aborted && typeof value.enabled === "boolean" && Array.isArray(value.models)) setComparison(value); })
+      .catch(() => {if (!controller.signal.aborted) setCatalogError(true);});
+    return () => controller.abort();
+  }, []);
+  const selectableModels = maintenance ? comparison.models : ollamaModels;
+  const selectableTasks = maintenance ? MAINTENANCE_TASKS : AVAILABLE_TASKS;
+
 
   const [selectedModels, setSelectedModels] = useState<string[]>([]);
   const [selectedTasks, setSelectedTasks] = useState<string[]>(["python_complex"]);
@@ -59,22 +80,31 @@ export function BenchmarkCodingConfigurator({
     });
   };
 
-  const canStart = selectedModels.length > 0 && selectedTasks.length > 0 && !disabled;
+  const canStart = selectedModels.length > 0 && selectedTasks.length > 0 && !disabled && (!maintenance || comparison.enabled);
 
   return (
     <div className="space-y-5">
+      <label className="flex items-center gap-2 text-sm">
+        <input type="checkbox" checked={maintenance} disabled={disabled || !comparison.enabled} onChange={event => {
+          const enabled = event.target.checked;
+          setMaintenance(enabled); setSelectedModels([]);
+          setSelectedTasks(enabled ? MAINTENANCE_TASKS.map(task => task.id) : ["python_complex"]);
+          setLoopTask(enabled ? "" : "python_complex_bugfix"); setMaxRounds(3); setStopOnFailure(false);
+        }} />{t("benchmark.coding.config.maintenanceLabel")}
+      </label>
+      <p className="text-xs text-[color:var(--ui-muted)]">{t(catalogError ? "benchmark.coding.config.maintenanceUnavailable" : comparison.enabled ? "benchmark.coding.config.maintenanceHelp" : "benchmark.coding.config.maintenanceDisabled")}</p>
       {/* Modele Ollama */}
       <div className="space-y-2">
         <p className="text-xs font-medium text-[color:var(--text-secondary)] uppercase tracking-wider">
-          {t("benchmark.coding.config.modelsLabel")}
+          {t(maintenance ? "benchmark.coding.config.maintenanceModels" : "benchmark.coding.config.modelsLabel")}
         </p>
-        {ollamaModels.length === 0 ? (
+        {selectableModels.length === 0 ? (
           <p className="text-xs text-[color:var(--ui-muted)]">
             {t("benchmark.coding.config.noModels")}
           </p>
         ) : (
           <div className="flex flex-wrap gap-2">
-            {ollamaModels.map((model) => (
+            {selectableModels.map((model) => (
               <button
                 key={model.name}
                 onClick={() => toggleModel(model.name)}
@@ -100,7 +130,7 @@ export function BenchmarkCodingConfigurator({
           {t("benchmark.coding.config.tasksLabel")}
         </p>
         <div className="flex flex-wrap gap-2">
-          {AVAILABLE_TASKS.map((task) => (
+          {selectableTasks.map((task) => (
             <button
               key={task.id}
               onClick={() => toggleTask(task.id)}
@@ -130,12 +160,12 @@ export function BenchmarkCodingConfigurator({
         <select
           id="coding-loop-task"
           value={loopTask}
+          disabled={disabled || maintenance}
           onChange={(e) => setLoopTask(e.target.value)}
-          disabled={disabled}
           className="w-full rounded-lg border border-[color:var(--ui-border)] bg-[color:var(--surface-muted)] px-3 py-2 text-xs text-[color:var(--text-primary)] focus:outline-none focus:border-violet-400/50 disabled:opacity-50"
         >
           <option value="">{t("benchmark.coding.config.loopTaskDisabled")}</option>
-          {AVAILABLE_TASKS.map((task) => (
+          {selectableTasks.map((task) => (
             <option key={task.id} value={task.id}>
               {t(task.key)}
             </option>
@@ -171,7 +201,7 @@ export function BenchmarkCodingConfigurator({
             max={20}
             value={maxRounds}
             onChange={(e) => setMaxRounds(Number(e.target.value))}
-            disabled={disabled}
+            disabled={disabled || maintenance}
             className="w-full rounded-lg border border-[color:var(--ui-border)] bg-[color:var(--surface-muted)] px-3 py-2 text-xs text-[color:var(--text-primary)] focus:outline-none focus:border-violet-400/50 disabled:opacity-50"
           />
         </div>
@@ -183,7 +213,7 @@ export function BenchmarkCodingConfigurator({
           type="checkbox"
           checked={stopOnFailure}
           onChange={(e) => setStopOnFailure(e.target.checked)}
-          disabled={disabled}
+          disabled={disabled || maintenance}
           className="rounded border-[color:var(--ui-border)] bg-[color:var(--surface-muted)] accent-violet-500 disabled:opacity-50"
         />
         <span className="text-xs text-[color:var(--text-secondary)]">

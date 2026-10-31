@@ -58,6 +58,9 @@ export function resolveStartFailureMessage(
     statusText: response.statusText || t("benchmark.preflight.unknownStatusText"),
   });
   if (!detail) return fallbackMessage;
+  if (detail.startsWith("maintenance_") || detail === "unknown_maintenance_model") {
+    return t(`benchmark.coding.errors.${detail}`);
+  }
   return classifyStartError(detail, {
     conflict: t("benchmark.preflight.conflict"),
     runtimeUnhealthy: t("benchmark.preflight.runtimeUnhealthy"),

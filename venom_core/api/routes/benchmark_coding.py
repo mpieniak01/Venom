@@ -52,7 +52,11 @@ def set_dependencies(
         500: {"description": "Błąd wewnętrzny podczas uruchamiania benchmarku"},
     },
 )
-@admitted_operation("benchmark_route")
+@admitted_operation(
+    "benchmark_route",
+    when=lambda request: not set(request.tasks)
+    <= {"maintenance_operator", "maintenance_repair", "maintenance_localization"},
+)
 async def start_coding_benchmark(request: CodingBenchmarkStartRequest):
     """
     Uruchamia coding benchmark dla wybranych modeli i zadań.
@@ -68,6 +72,35 @@ async def start_coding_benchmark(request: CodingBenchmarkStartRequest):
     """
     if _coding_benchmark_service is None:
         raise HTTPException(status_code=503, detail=CODING_SERVICE_UNAVAILABLE_DETAIL)
+
+    if set(request.tasks) <= {
+        "maintenance_operator",
+        "maintenance_repair",
+        "maintenance_localization",
+    }:
+        from venom_core.api.routes import system_deps
+
+        if (
+            request.max_rounds != 3
+            or request.stop_on_failure
+            or request.model_timeout_overrides
+        ):
+            raise HTTPException(status_code=400, detail="maintenance_fixed_schedule")
+        try:
+            run_id = await _coding_benchmark_service.start_maintenance(
+                models=request.models,
+                tasks=request.tasks,
+                timeout=request.timeout,
+                controller=system_deps.get_llm_controller(),
+                options=request.options
+                if "options" in request.model_fields_set
+                else {},
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return CodingBenchmarkStartResponse(
+            run_id=run_id, message="benchmark.coding.maintenanceStarted"
+        )
 
     lock_owner = f"benchmark-coding:{uuid4()}"
     if _runtime_exclusive_guard is not None:
@@ -269,3 +302,29 @@ def delete_coding_benchmark(run_id: str):
             status_code=500,
             detail="Nie udało się usunąć coding benchmark run.",
         ) from exc
+
+
+@router.get("/maintenance/models")
+def maintenance_model_profiles():
+    from pathlib import Path
+
+    from venom_core.config import SETTINGS
+    from venom_core.services.maintenance_comparison.catalog import load_catalog
+
+    profiles, _ = load_catalog(
+        Path(__file__).resolve().parents[3] / "config/maintenance_comparison"
+    )
+    return {
+        "enabled": SETTINGS.ENABLE_MAINTENANCE_COMPARISON,
+        "models": [
+            {
+                "name": model["id"],
+                "provider": "maintenance",
+                "hf_id": model["hf_id"],
+                "revision": model["revision"],
+                "roles": model["roles"],
+                "state": model["integration_status"],
+            }
+            for model in profiles
+        ],
+    }

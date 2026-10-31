@@ -146,6 +146,7 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str = ""  # Opcjonalne, wymagane tylko dla typu "openai"
     GOOGLE_API_KEY: str = ""  # Opcjonalne, wymagane dla Google Gemini
     FEATURE_COOPERATION_LAB: bool = False  # Optional external module, API ABI 1.6.
+    ENABLE_MAINTENANCE_COMPARISON: bool = False
     RUNTIME_ADMISSION_ENABLED: bool = (
         False  # Enable before host startup for runtime leases.
     )

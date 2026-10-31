@@ -1,0 +1,2 @@
+# Optional inference component; requires the qualified Full host torch/transformers profile.
+bitsandbytes==0.50.2

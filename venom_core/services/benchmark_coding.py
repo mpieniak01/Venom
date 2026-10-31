@@ -10,6 +10,7 @@ Odpowiada za:
 
 from __future__ import annotations
 
+import asyncio
 import json
 import subprocess
 import sys
@@ -29,7 +30,10 @@ from venom_core.utils.logger import get_logger
 logger = get_logger(__name__)
 
 _SCHEDULER_SCRIPT = "scripts/ollama_bench/scheduler.py"
-_VALID_TASKS = frozenset(
+_MAINTENANCE_TASKS = frozenset(
+    {"maintenance_operator", "maintenance_repair", "maintenance_localization"}
+)
+_VALID_TASKS = _MAINTENANCE_TASKS | frozenset(
     {"python_sanity", "python_simple", "python_complex", "python_complex_bugfix"}
 )
 _VALID_STATUS = frozenset(
@@ -341,6 +345,24 @@ class CodingBenchmarkService:
             raise ValueError("Lista modeli nie może być pusta")
         if not tasks:
             raise ValueError("Lista zadań nie może być pusta")
+        if set(tasks) & _MAINTENANCE_TASKS:
+            from venom_core.config import SETTINGS
+            from venom_core.services.maintenance_comparison.catalog import load_catalog
+
+            if not SETTINGS.ENABLE_MAINTENANCE_COMPARISON:
+                raise ValueError("maintenance_comparison_disabled")
+            if not set(tasks) <= _MAINTENANCE_TASKS:
+                raise ValueError("maintenance_tasks_must_be_separate")
+            profiles, _ = load_catalog(self.repo_root / "config/maintenance_comparison")
+            known = {
+                alias: m["id"] for m in profiles for alias in [m["id"], m["hf_id"]]
+            }
+            if not set(models) <= known.keys():
+                raise ValueError("unknown_maintenance_model")
+            if len({known[m] for m in models}) != len(models) or len(set(tasks)) != len(
+                tasks
+            ):
+                raise ValueError("maintenance_duplicate_selection")
         invalid_tasks = [t for t in tasks if t not in _VALID_TASKS]
         if invalid_tasks:
             raise ValueError(
@@ -363,6 +385,8 @@ class CodingBenchmarkService:
     ) -> str:
         """Uruchamia coding benchmark i zwraca run_id."""
         self._validate_start_request(models, tasks)
+        if set(tasks) & _MAINTENANCE_TASKS:
+            raise ValueError("maintenance_owned_start_required")
         run_id = str(uuid.uuid4())
         cfg = CodingRunConfig(
             models=list(models),
@@ -404,6 +428,26 @@ class CodingBenchmarkService:
     def _build_scheduler_command(self, run: CodingBenchmarkRun) -> list[str]:
         cfg = run.config
         python_bin = sys.executable or "python3"
+        if set(cfg.tasks) <= _MAINTENANCE_TASKS:
+            return [
+                python_bin,
+                "-m",
+                "venom_core.services.maintenance_comparison.worker",
+                "--repo",
+                str(self.repo_root),
+                "--out",
+                str(self._run_dir(run.run_id)),
+                "--models",
+                ",".join(cfg.models),
+                "--tasks",
+                ",".join(cfg.tasks),
+                "--state-file",
+                str(self._state_file(run.run_id)),
+                "--timeout",
+                str(cfg.timeout),
+                "--phase",
+                str(cfg.options.get("maintenance_phase", "comparison")),
+            ]
         scheduler = (self.repo_root / _SCHEDULER_SCRIPT).resolve()
         if not scheduler.exists():
             raise FileNotFoundError(f"Nie znaleziono schedulera: {scheduler}")
@@ -438,6 +482,174 @@ class CodingBenchmarkService:
             cmd.append("--stop-on-failure")
         return cmd
 
+    async def start_maintenance(
+        self,
+        *,
+        models: list[str],
+        tasks: list[str],
+        timeout: int,
+        controller,
+        options: dict | None = None,
+    ) -> str:
+        from venom_core.services.maintenance_comparison.preflight import (
+            require_local_llms_empty,
+        )
+
+        self._validate_start_request(models, tasks)
+        options = options or {}
+        if set(options) - {"maintenance_phase"}:
+            raise ValueError("maintenance_fixed_generation_profile")
+        if options.get("maintenance_phase") == "flaky_diagnostic" and set(tasks) != {
+            "maintenance_operator"
+        }:
+            raise ValueError("maintenance_flaky_operator_only")
+        if options.get("maintenance_phase", "comparison") not in {
+            "comparison",
+            "qualification",
+            "flaky_diagnostic",
+        }:
+            raise ValueError("maintenance_phase_invalid")
+        run_id = str(uuid.uuid4())
+        lease = get_runtime_admission().acquire(
+            owner="coding-maintenance",
+            run_id=run_id,
+            engine="maintenance",
+            model=",".join(models),
+        )
+        try:
+            with lease.operation(
+                kind="maintenance_preflight", confirm_quiescent=lambda: True
+            ):
+                await require_local_llms_empty(controller)
+            run = CodingBenchmarkRun(
+                run_id=run_id,
+                config=CodingRunConfig(
+                    models=models,
+                    tasks=tasks,
+                    loop_task="",
+                    first_sieve_task="",
+                    timeout=timeout,
+                    max_rounds=3,
+                    endpoint="local-transformers",
+                    stop_on_failure=False,
+                    options=options,
+                    model_timeout_overrides={},
+                ),
+                status="pending",
+                created_at=_utc_now_iso(),
+            )
+            with self._lock:
+                self._runs[run_id] = run
+            self._persist_meta(run)
+            if not hasattr(self, "_maintenance_tasks"):
+                self._maintenance_tasks = set()
+            task = asyncio.create_task(self._run_owned_maintenance(run, lease))
+            self._maintenance_tasks.add(task)
+            task.add_done_callback(self._maintenance_finished)
+            return run_id
+        except BaseException:
+            with lease.cleanup(confirm_quiescent=lambda: True):
+                pass
+            lease.release()
+            raise
+
+    def _maintenance_finished(self, task: asyncio.Task) -> None:
+        self._maintenance_tasks.discard(task)
+        if not task.cancelled() and task.exception() is not None:
+            logger.error(
+                "Maintenance cleanup failed; inspect runtime admission quarantine"
+            )
+
+    @staticmethod
+    def _retire_maintenance_process(process) -> bool:
+        if process is None or process.poll() is not None:
+            return True
+        process.terminate()
+        try:
+            process.wait(timeout=3)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            try:
+                process.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                return False
+        return process.poll() is not None
+
+    async def _run_owned_maintenance(self, run, lease) -> None:
+        process = None
+        try:
+            with lease.operation(
+                kind="maintenance_worker",
+                confirm_quiescent=lambda: process is None or process.poll() is not None,
+            ):
+                run.status, run.started_at = "running", _utc_now_iso()
+                self._persist_meta(run)
+                command = [
+                    "/usr/bin/setpriv",
+                    "--pdeathsig",
+                    "TERM",
+                    *self._build_scheduler_command(run),
+                ]
+                process = subprocess.Popen(
+                    command,
+                    text=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    cwd=str(self.repo_root),
+                    env=self._scheduler_environment(run),
+                )
+                with self._lock:
+                    self._active_procs[run.run_id] = process
+                _, stderr = await asyncio.to_thread(process.communicate)
+                if self._state_file(run.run_id).exists():
+                    run.jobs = _parse_scheduler_state(self._state_file(run.run_id))
+                self._finalize_run_status(run, process.returncode, stderr)
+        except asyncio.CancelledError:
+            await asyncio.to_thread(self._retire_maintenance_process, process)
+            run.status, run.error_message = "failed", "maintenance_cancelled"
+            raise
+        except Exception as exc:
+            run.status, run.error_message = (
+                "failed",
+                "maintenance_worker_" + type(exc).__name__,
+            )
+        finally:
+            stopped = await asyncio.to_thread(self._retire_maintenance_process, process)
+            run.finished_at = _utc_now_iso()
+            with self._lock:
+                registered = self._runs.get(run.run_id) is run
+            if registered:
+                self._persist_meta(run)
+            from venom_core.services.maintenance_comparison.sandbox import (
+                cleanup_run_containers,
+            )
+
+            containers_stopped = cleanup_run_containers(run.run_id)
+            with lease.cleanup(
+                confirm_quiescent=lambda: containers_stopped and stopped
+            ):
+                pass
+            lease.release()
+            with self._lock:
+                self._active_procs.pop(run.run_id, None)
+
+    def _scheduler_environment(self, run: CodingBenchmarkRun) -> dict[str, str] | None:
+        if not set(run.config.tasks) <= _MAINTENANCE_TASKS:
+            return None
+        import os
+
+        component = str(Path.home() / ".local/share/venom/maintenance-comparison")
+        return {
+            **os.environ,
+            "ALLOW_SANDBOX_CONTAINERS": "true",
+            "ENABLE_SANDBOX": "true",
+            "VENOM_MAINTENANCE_ADMISSION_DB": str(get_runtime_admission().database),
+            "VENOM_MAINTENANCE_RUN_ID": run.run_id,
+            "HF_XET_CACHE": component + "/xet",
+            "HF_HUB_DOWNLOAD_TIMEOUT": "60",
+            "PYTHONPATH": component + "/python:" + str(self.repo_root),
+        }
+
     @admitted_operation("coding_benchmark_worker", mutation=False)
     def _run_scheduler_thread(self, run_id: str) -> None:
         """Uruchamia scheduler w wątku i aktualizuje stan run."""
@@ -459,6 +671,7 @@ class CodingBenchmarkService:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 cwd=str(self.repo_root),
+                env=self._scheduler_environment(run),
             )
             with self._lock:
                 self._active_procs[run_id] = proc

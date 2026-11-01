@@ -118,3 +118,12 @@ PR. To zalecenie dokumentacyjne; lokalny kontrakt bramek nie ustanawia jego
 progu 80%. Nie rozszerzano napraw defektów o masowe kosmetyczne zmiany funkcji
 i testów. Nie zmieniano konfiguracji tego wskaźnika ani nie uznawano go za
 zaliczony. Zamknięcie nowych trzech zgłoszeń wymaga świeżego skanu GitHub.
+
+
+## Uzupełnienie docstrings przed scaleniem
+
+Na zlecenie operatora uzupełniono 349 docstrings w 30 plikach Pythona. Opisy obejmują kontrakty parserów, izolację i sprzątanie, niezależną ocenę napraw, metryki i raportowanie oraz intencję scenariuszy i ich atrap. Nie zmieniono konfiguracji ani progu CodeRabbit.
+
+Lokalny odczyt AST wykazał dokumentację w 378/378 funkcji objętych różnicą względem main. To lokalny pomiar obecności opisów, a nie odtworzenie algorytmu CodeRabbit. Porównanie AST po usunięciu docstrings potwierdziło brak zmian wykonywalnych względem `78e0f256`, także po formatowaniu. Końcowy wynik wskaźnika dokumentacji wymaga ponownego odczytu recenzji na opublikowanym SHA.
+
+Walidacja: ruff check/format i hooki commit PASS; 275 testów celowanych PASS; `make test-ci-lite`, `make test-catalog-check`, `make test-groups-check`, `make pr-fast` i `make check-new-code-coverage-diagnostics` PASS. `pr-fast`: 218,32 s; pokrycie zmienionych linii 88,45%, progi plików PASS. Łączna sekwencja lokalna: 310,62 s. Nie uruchamiano zadań ani generacji modeli; po lokalnej bramce dodano tylko tę sekcję raportu. PR ustawiono jako draft na czas poprawki.

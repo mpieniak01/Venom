@@ -4,6 +4,7 @@ import asyncio
 import importlib
 import json
 import os
+from decimal import Decimal
 from pathlib import Path
 
 import httpx
@@ -104,6 +105,107 @@ def test_real_wheel_unknown_cost_survives_reopen(installed, monkeypatch):
     ][0]
     assert row["status"] == "pending"
     assert row["cost"] is None
+
+
+def test_one_paid_selection_allows_two_turns_without_reapproval(installed, monkeypatch):
+    selected = rt.selection().copy()
+    select_again = boundary.Mock(
+        side_effect=AssertionError("selection must not repeat")
+    )
+    monkeypatch.setattr(rt, "select_model", select_again)
+    calls = []
+
+    def endpoint(req):
+        payload = json.loads(req.content)
+        calls.append(payload)
+        packets = [
+            {"model": "vendor/test", "choices": [{"delta": {"content": "Answer"}}]},
+            {
+                "choices": [],
+                "usage": {
+                    "prompt_tokens": 20,
+                    "completion_tokens": 3,
+                    "total_tokens": 23,
+                    "cost": "0.0001",
+                },
+            },
+        ]
+        body = "".join("data: " + json.dumps(item) + "\n\n" for item in packets)
+        return httpx.Response(200, content=(body + "data: [DONE]\n\n").encode())
+
+    monkeypatch.setattr(
+        chat,
+        "client_factory",
+        lambda **kw: httpx.AsyncClient(transport=httpx.MockTransport(endpoint), **kw),
+    )
+    for history in (
+        [],
+        [
+            {"role": "user", "content": "Hello"},
+            {"role": "assistant", "content": "Answer"},
+        ],
+    ):
+        item = boundary.SimpleChatRequest.model_validate(
+            {**boundary.request().model_dump(), "history": history}
+        )
+        quote = chat.quote(item)
+        assert Decimal(quote["estimated_usd"]) > 0
+        item.expected_quote_hash = quote["quote_hash"]
+        assert "event: done" in consume(item)
+
+    assert len(calls) == 2
+    assert all(item["model"] == selected["model"] for item in calls)
+    assert calls[1]["messages"][-3:] == [
+        {"role": "user", "content": "Hello"},
+        {"role": "assistant", "content": "Answer"},
+        {"role": "user", "content": "Hello"},
+    ]
+    rows = installed.BudgetLedger(rt._STATE / "budget.sqlite").snapshot()[
+        "reservations"
+    ]
+    assert len(rows) == 2 and len({row["request_id"] for row in rows}) == 2
+    assert all(row["status"] == "settled" for row in rows)
+    assert sum(Decimal(row["cost"]) for row in rows) == Decimal("0.0002")
+    assert rt.selection() == selected
+    select_again.assert_not_called()
+
+
+def test_one_selection_does_not_waive_pending_conversation_limit(
+    installed, monkeypatch
+):
+    estimate = Decimal(chat.quote(boundary.request())["estimated_usd"])
+    monkeypatch.setattr(
+        boundary.SETTINGS,
+        "OPENROUTER_CONVERSATION_LIMIT_USD",
+        str(estimate * Decimal("1.5")),
+    )
+    rt.select_model("vendor/test")
+    select_again = boundary.Mock(
+        side_effect=AssertionError("selection must not repeat")
+    )
+    monkeypatch.setattr(rt, "select_model", select_again)
+    calls = []
+
+    def endpoint(req):
+        calls.append(req)
+        return httpx.Response(
+            200,
+            content=b'data: {"choices":[{"delta":{"content":"A"}}]}\n\ndata: [DONE]\n\n',
+        )
+
+    monkeypatch.setattr(
+        chat,
+        "client_factory",
+        lambda **kw: httpx.AsyncClient(transport=httpx.MockTransport(endpoint), **kw),
+    )
+    assert '"state": "pending"' in consume(authorized_request())
+    assert "openrouter_budget_exceeded" in consume(authorized_request())
+    assert len(calls) == 1
+    rows = installed.BudgetLedger(rt._STATE / "budget.sqlite").snapshot()[
+        "reservations"
+    ]
+    assert len(rows) == 1 and rows[0]["status"] == "pending" and rows[0]["cost"] is None
+    select_again.assert_not_called()
 
 
 def test_real_wheel_stop_keeps_reservation(installed, monkeypatch):

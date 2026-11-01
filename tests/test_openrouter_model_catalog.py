@@ -405,6 +405,21 @@ async def test_malformed_endpoint_rejected(state, bad):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("zdr_required", [False, True])
+async def test_refresh_preserves_explicit_zdr_policy(state, zdr_required):
+    """Metadata refresh must not silently replace an operator privacy choice."""
+    await catalog.connect("vendor/a")
+    rows = catalog.raw_connected()
+    rows[0]["zdr_required"] = zdr_required
+    catalog._save(rows)
+    rt.select_model("vendor/a")
+    await catalog.connect("vendor/a")
+    assert catalog.raw_connected()[0]["zdr_required"] is zdr_required
+    assert rt.configured_catalog()[1][0].get("zdr_required", False) is zdr_required
+    assert rt.selection()["config_hash"] == rt.config_hash("vendor/a")
+
+
+@pytest.mark.asyncio
 async def test_refresh_selected_model_rebinds_identity_and_rejects_old_quote(state):
     await catalog.connect("vendor/a")
     rt.select_model("vendor/a")

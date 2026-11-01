@@ -113,6 +113,8 @@ def prepare(request) -> dict[str, Any]:
         "completion": float(prices.output_per_million),
         "request": float(prices.request),
     }
+    if row.get("zdr_required", False):
+        payload["provider"]["zdr"] = True
     if row["id"].endswith(FREE_VARIANT_SUFFIX):
         payload["provider"]["max_price"] = {"prompt": 0, "completion": 0, "request": 0}
     return {

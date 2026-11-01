@@ -417,6 +417,9 @@ async def connect(model_id: str):
         rows = raw_connected()
         if rows is None:
             rows = _legacy()
+        previous = next((item for item in rows if item["id"] == model_id), {})
+        if "zdr_required" in previous:
+            row["zdr_required"] = previous["zdr_required"]
         rows = [x for x in rows if x["id"] != model_id]
         if len(rows) >= MAX_CONNECTED:
             raise HTTPException(400, "openrouter_connected_limit")

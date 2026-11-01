@@ -128,6 +128,9 @@ def _catalog_row(row, as_of, core):
         or (not 0 < output < context)
     ):
         raise ValueError("limits")
+    zdr_required = row.get("zdr_required", False)
+    if type(zdr_required) is not bool:
+        raise ValueError("zdr_policy")
     prices = core.strict_prices(row["pricing"])
     return {
         "id": model,
@@ -142,6 +145,7 @@ def _catalog_row(row, as_of, core):
         "request_price": str(prices.request),
         "pricing_as_of": as_of,
         "provider_endpoint": provider,
+        **({"zdr_required": True} if zdr_required else {}),
         "pricing": row["pricing"],
     }
 

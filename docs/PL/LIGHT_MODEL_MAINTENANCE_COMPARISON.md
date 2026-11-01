@@ -1,6 +1,6 @@
 # Porównanie lekkich modeli do utrzymania Venoma
 
-Status: implementacja i pomiary w toku. Ten dokument nie stanowi raportu wyników.
+Status: implementacja i porównanie wykonane lokalnie. [Raport wyników 350 prób](reports/LIGHT_MODEL_MAINTENANCE_RESULTS_2026-11-01.md) rozdziela konfiguracje, blokady i ograniczenia pomiaru. Kolejne zmiany pozostają lokalne zgodnie z dyspozycją operatora.
 
 ## Kontrakt eksperymentu
 
@@ -55,7 +55,7 @@ Każdy przebieg: identyfikator, checkpoint/revizja, wersje backendu i parsera,
 kwantyzacja, kontekst, budżety, seed, commit wejściowy, wiadomości, rzeczywiste
 wyniki narzędzi (stdout/stderr/exit code), patch, weryfikacja, powtórzenia,
 czas ładowania i zadania, RAM/VRAM peak oraz dostępne tokeny. Prywatne logi i
-checkpointy nie trafiają do Git. Raport publikuje agregaty i zanonimizowane
+checkpointy nie trafiają do Git. Raport zawiera agregaty i zanonimizowane
 przykłady; liczniki bezwzględne obok procentów, wersje konfiguracji oddzielnie.
 Rekomendacje per rola: pilotaż, dostrajanie, węższa rola, odrzucenie badanej
 konfiguracji. Negatywny wynik jest poprawnym rezultatem eksperymentu.
@@ -78,8 +78,9 @@ z identycznym zestawem testowym, narzędziami i budżetem bazy.
 5. Rzeczywisty baseline 180 pozycji, jawne wyniki lub dowody blokad.
 6. Finaliści/powtórzenia, raport, eksport do szkolenia, kwalifikacja CI.
 
-PR pozostaje Draft do rzeczywistego wykonania porównania i rozliczenia całej
-macierzy. Same testy jednostkowe lub dostępny checkpoint nie są wynikiem modelu.
+Macierz została rozliczona w raporcie A/B/C. Istniejący Draft PR nie został
+zaktualizowany po dyspozycji pracy wyłącznie lokalnej. Publikacja jest osobnym
+krokiem operatora. Same testy jednostkowe lub dostępny checkpoint nie są wynikiem modelu.
 
 ## Uruchomienie profilu i próby
 
@@ -107,7 +108,7 @@ zaakceptowanej licencji i dostępu HF operatora; brak dostępu to blokada w rapo
 Nie akceptujemy licencji automatycznie i nie zapisujemy sekretów w artefaktach.
 
 Na `/benchmark` wybierz benchmark kodowania i zaznacz „Porównanie modeli
-utrzymania”. Katalog ośmiu modeli pochodzi z
+utrzymania”. Katalog dziesięciu modeli (osiem bazowych i dwa dodatkowe) pochodzi z
 `GET /api/v1/benchmark/coding/maintenance/models`. Zaznacz modele i trzy role.
 Przycisk Start używa istniejącego `POST /api/v1/benchmark/coding/start`.
 W nowym trybie nie uruchamia się Ollama; host sprawdza brak lokalnego LLM,
@@ -218,7 +219,8 @@ limit wyjścia zbiegał się z timeoutem API Dockera i wyścigiem pause/stop.
 Zablokowana próba zachowuje niezweryfikowany ślad. Po poprawce strumień jest
 zamykany przed zabiciem kontenera, stan spoczynku jest ponownie potwierdzany,
 a niedostępny kod wyjścia pozostaje brakiem danych. Osobny pełny przebieg roli
-CodeScout służy sprawdzeniu poprawki; konfiguracji i wyników nie mieszamy po cichu.
+CodeScout zakończył 30 ocenionych prób bez blokad infrastruktury. Wyniki A/B
+pozostają oddzielne; historyczna blokada nie jest usuwana.
 
 Kwalifikacja Qwen3.5 ujawniła brak zatrzymania na `<|im_end|>`: checkpoint
 ma w konfiguracji tekstowej wyłącznie `<|endoftext|>`, a nie ma osobnego
@@ -226,3 +228,35 @@ ma w konfiguracji tekstowej wyłącznie `<|endoftext|>`, a nie ma osobnego
 (248044 i 248046). Zapobiega to generowaniu kolejnych fikcyjnych tur użytkownika
 i narzędzi; nie dopisuje ani nie poprawia argumentów modelu. Nieudaną próbę
 techniczną zachowujemy oddzielnie od właściwego baseline.
+
+Przykład odtworzenia nowego baseline przez istniejące API:
+
+```json
+{
+  "models": ["gemma-4-e2b-it", "qwen3.5-9b"],
+  "tasks": ["maintenance_operator", "maintenance_repair", "maintenance_localization"],
+  "loop_task": "",
+  "first_sieve_task": "",
+  "timeout": 180,
+  "max_rounds": 3,
+  "stop_on_failure": false,
+  "options": {"maintenance_phase": "baseline"}
+}
+```
+
+Wybór wszystkich dziesięciu modeli w trybie comparison planuje 240 pozycji
+baseline i do 120 powtórzeń; limit wynosi wtedy 360. Pierwotny katalog ośmiu
+zachowuje plan 180/do 300. W przeprowadzonym rozszerzeniu obu nowych modeli
+użyto wyłącznie baseline, bez automatycznych powtórzeń.
+
+Pole `peak_vram_bytes` zachowuje licznik `torch.cuda.max_memory_reserved`:
+rezerwację alokatora, nie szczyt fizycznego dedicated/shared VRAM. W raporcie
+nazywamy go rezerwacją CUDA; niewykonany pomiar sterownika oznacza brak danych.
+Qwen osiągnął 13,18 GiB rezerwacji na karcie 12 GiB, więc profil GPU-only nie
+jest potwierdzony. Backend Qwena używał referencyjnych operacji PyTorch bez
+opcjonalnych szybkich kerneli; kwalifikacja szybszego profilu jest osobnym pomiarem.
+
+Przy przygotowywaniu danych treningowych z kodu repo wyklucz definicje/gold
+tego eksperymentu, odpowiadające im testy i wszystkie surowe rekordy held-out.
+Zmiana commita nie zmienia grupy problemu i nie uprawnia do przeniesienia testu
+do train/validation. W tym porównaniu nie wykonywano dostrajania.

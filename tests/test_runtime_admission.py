@@ -652,23 +652,30 @@ async def test_nested_mutation_still_respects_independent_active_generation(admi
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "tasks",
+    [["python_complex"], ["python_complex", "maintenance_operator"]],
+    ids=["legacy", "mixed"],
+)
 async def test_benchmark_route_conflict_survives_legacy_generic_error_handlers(
     admission,
+    tasks,
 ):
+    """A valid non-maintenance request must retain the host admission conflict."""
     from venom_core.api.routes import benchmark, benchmark_coding
 
-    lease = acquire(admission)
-    with pytest.raises(RuntimeAdmissionError, match="runtime_busy"):
-        await benchmark.start_benchmark(None)
-    # Coding start returns before its worker; admission is outside legacy catches.
-    function = next(
-        value
-        for name, value in vars(benchmark_coding).items()
-        if name.startswith("start_") and callable(value)
+    request = benchmark_coding.CodingBenchmarkStartRequest(
+        models=["fixture-model"], tasks=tasks
     )
-    with pytest.raises(RuntimeAdmissionError, match="runtime_busy"):
-        await function(None)
-    assert lease.release()
+    lease = acquire(admission)
+    try:
+        with pytest.raises(RuntimeAdmissionError, match="runtime_busy"):
+            await benchmark.start_benchmark(None)
+        # Use the actual endpoint and schema, including its task-based admission gate.
+        with pytest.raises(RuntimeAdmissionError, match="runtime_busy"):
+            await benchmark_coding.start_coding_benchmark(request)
+    finally:
+        assert lease.release()
 
 
 @pytest.mark.skipif(

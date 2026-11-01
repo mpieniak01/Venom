@@ -1,0 +1,21 @@
+# Minimal native Granite coordinator/verification control dependencies.
+# Linux x86_64 / CPython 3.14.8; exact published wheel SHA256 from PyPI.
+# Install together with requirements/locks/granite-operator-training-linux-py314.txt
+# using pip --require-hashes. Shared transitive dependencies remain pinned there.
+# No API server, uvicorn, voice, ONNX, browser or whole application requirements.
+fastapi==0.136.3 \
+    --hash=sha256:3d2a69bdf04b7e9f3afa292c3bc7a98816bbfafa10bc9b45f3f3700d2f761620
+starlette==1.3.1 \
+    --hash=sha256:c7372aae11c3c3f26a42df7bd626cec2f47d03483d261d369516a615a53714c6
+pydantic==2.13.4 \
+    --hash=sha256:45a282cde31d808236fd7ea9d919b128653c8b38b393d1c4ab335c62924d9aba
+pydantic-core==2.46.4 \
+    --hash=sha256:7a5f930472650a82629163023e630d160863fce524c616f4e5186e5de9d9a49b
+pydantic-settings==2.16.0 \
+    --hash=sha256:7e73acf7f61936a15e5a3b6eedaea29f133357faf7272f2607ba479b049dd7f2
+python-dotenv==1.2.2 \
+    --hash=sha256:1d8214789a24de455a8b8bd8ae6fe3c6b69a5e3d64aa8a8e5d68e694bbcb285a
+typing-inspection==0.4.4 \
+    --hash=sha256:65b8397ba37ccbce054456aaccddfc91e6e3083c92824df348d96ca832f3f147
+annotated-types==0.8.0 \
+    --hash=sha256:f072f4d804ea359e4eaf198b1af7a8b0943881a87f31bb764f8bf219bb9419e0

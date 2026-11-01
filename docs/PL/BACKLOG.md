@@ -2,7 +2,9 @@
 
 ## REMOTE-TRAINING-01 — kompletna pętla treningu na zdalnym hoście
 
-**Status:** zaplanowane, osobny PR po lokalnym eksperymencie Granite.
+**Status:** implementacja na `feat/remote-training-01`, zależna od G01. Kwalifikacja rzeczywistego hosta pozostaje osobnym etapem.
+
+Instrukcje: [zdalny trening](ZDALNY_TRENING.md).
 **Proponowany tytuł PR:** `feat(training): complete remote training lifecycle and artifact collection`
 
 ### Cel

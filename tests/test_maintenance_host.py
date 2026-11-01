@@ -441,3 +441,21 @@ async def test_failed_container_cleanup_preserves_run_and_artifacts(
     assert service._run_dir(run_id).exists()
     assert run_id in service._runs
     lease.release.assert_not_called()
+
+    completed_id = "22222222-2222-4222-8222-222222222222"
+    completed = service_module.CodingBenchmarkRun(
+        run_id=completed_id,
+        config=service._runs[run_id].config,
+        status="completed",
+        created_at="now",
+    )
+    service._runs[completed_id] = completed
+    service._persist_meta(completed)
+    completed_dir = service._run_dir(completed_id)
+    assert completed_dir.exists()
+    with pytest.raises(RuntimeError, match="maintenance_cleanup_unconfirmed"):
+        await asyncio.to_thread(service.clear_all_runs)
+    assert run_id in service._runs
+    assert service._run_dir(run_id).exists()
+    assert completed_id not in service._runs
+    assert not completed_dir.exists()

@@ -624,8 +624,10 @@ class CodingBenchmarkService:
         if started and not cleaning and not task.done() and not task.cancelling():
             task.cancel()
         await asyncio.wait({task})
-        if not task.cancelled() and task.exception() is not None:
-            raise RuntimeError(_MAINTENANCE_CLEANUP_UNCONFIRMED) from task.exception()
+        if not task.cancelled():
+            error = task.exception()
+            if isinstance(error, BaseException):
+                raise RuntimeError(_MAINTENANCE_CLEANUP_UNCONFIRMED) from error
         with self._lock:
             if run_id in self._maintenance_pending_cleanup:
                 raise RuntimeError(_MAINTENANCE_CLEANUP_UNCONFIRMED)
@@ -909,4 +911,14 @@ class CodingBenchmarkService:
         """Delete only after each run's worker, containers and lease are retired."""
         with self._lock:
             run_ids = list(self._runs)
-        return sum(self.delete_run(run_id) for run_id in run_ids)
+        deleted = 0
+        first_error: RuntimeError | None = None
+        for run_id in run_ids:
+            try:
+                deleted += self.delete_run(run_id)
+            except RuntimeError as error:
+                if first_error is None:
+                    first_error = error
+        if first_error is not None:
+            raise first_error
+        return deleted

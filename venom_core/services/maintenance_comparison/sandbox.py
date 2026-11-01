@@ -13,7 +13,7 @@ from venom_core.infrastructure.docker_habitat import DockerHabitat
 
 CONTAINER_WORKSPACE = "/workspace"
 RUNTIME_DIRECTORY = "/run/venom-maintenance"
-TEMP_DIRECTORY = RUNTIME_DIRECTORY + "/tmp"
+TEMP_DIRECTORY = RUNTIME_DIRECTORY + "/temporary"
 ORACLE_PATH = RUNTIME_DIRECTORY + "/oracle.py"
 
 PYTEST_PROFILE = "-o addopts= -o filterwarnings= --noconftest"

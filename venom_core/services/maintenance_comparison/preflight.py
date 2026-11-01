@@ -22,7 +22,7 @@ async def require_local_llms_empty(controller) -> None:
             continue  # An unconfigured optional engine has no worker endpoint.
         try:
             listening = await _listening(endpoint)
-        except (ValueError, OSError, TimeoutError) as exc:
+        except (ValueError, OSError) as exc:
             raise ValueError("maintenance_local_llm_runtime_unverified") from exc
         if not listening:
             continue

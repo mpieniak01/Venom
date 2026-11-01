@@ -402,6 +402,7 @@ def _select_endpoint(data, model_id, model):
 
 
 async def connect(model_id: str):
+    """Connect a catalog model while preserving its explicitly selected ZDR policy on metadata refresh."""
     _allowed()
     if not fixed_model(model_id):
         raise HTTPException(400, "openrouter_model_identity_invalid")
@@ -417,6 +418,9 @@ async def connect(model_id: str):
         rows = raw_connected()
         if rows is None:
             rows = _legacy()
+        previous = next((item for item in rows if item["id"] == model_id), {})
+        if "zdr_required" in previous:
+            row["zdr_required"] = previous["zdr_required"]
         rows = [x for x in rows if x["id"] != model_id]
         if len(rows) >= MAX_CONNECTED:
             raise HTTPException(400, "openrouter_connected_limit")

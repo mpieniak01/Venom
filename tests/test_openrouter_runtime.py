@@ -183,6 +183,68 @@ def test_invalid_request_fails_before_reservation(configured, change):
     ledger.reserve.assert_not_called()
 
 
+def test_zdr_is_optional_by_default(configured):
+    """Keep omitted or disabled ZDR compatible with an existing main model selection."""
+    provider = chat.prepare(request())["payload"]["provider"]
+    assert "zdr" not in provider
+    assert provider["data_collection"] == "deny"
+
+
+@pytest.mark.parametrize("explicit_false", [False, True])
+def test_default_zdr_keeps_existing_main_selection_usable(
+    configured, monkeypatch, explicit_false
+):
+    """Adding an unused policy must not invalidate a working main selection."""
+    _, ledger, path = configured
+    if explicit_false:
+        data = json.loads(path.read_text())
+        data["models"][0]["zdr_required"] = False
+        path.write_text(json.dumps(data))
+    stamp, rows = rt.configured_catalog()
+    old_row = {k: v for k, v in rows[0].items() if k != "zdr_required"}
+    with monkeypatch.context() as legacy:
+        legacy.setattr(rt, "configured_catalog", lambda: (stamp, [old_row]))
+        previous_hash = rt.config_hash("vendor/test")
+    rt.save_selection({"model": "vendor/test", "config_hash": previous_hash})
+    assert rt.assert_identity(request())["id"] == "vendor/test"
+    assert "zdr" not in chat.prepare(request())["payload"]["provider"]
+    ledger.reserve.assert_not_called()
+
+
+@pytest.mark.parametrize("zdr_required", [False, True])
+def test_catalog_controls_optional_zdr(configured, zdr_required):
+    """Preserve the selected ZDR policy and price cap in provider routing parameters."""
+    _, ledger, path = configured
+    old_request = request()
+    data = json.loads(path.read_text())
+    data["models"][0]["zdr_required"] = zdr_required
+    path.write_text(json.dumps(data))
+    if zdr_required:
+        with pytest.raises(HTTPException) as changed:
+            chat.prepare(old_request)
+        assert changed.value.status_code == 409
+    rt.select_model("vendor/test")
+    provider = chat.prepare(request())["payload"]["provider"]
+    assert provider.get("zdr", False) is zdr_required
+    assert ("zdr" in provider) is zdr_required
+    assert provider["data_collection"] == "deny"
+    assert provider["max_price"] == {"prompt": 0.3, "completion": 1.5, "request": 0.0}
+    ledger.reserve.assert_not_called()
+
+
+@pytest.mark.parametrize("zdr_required", ["false", 1, None])
+def test_invalid_zdr_policy_rejected_before_reservation(configured, zdr_required):
+    """Reject non-boolean ZDR values before reserving any request budget."""
+    _, ledger, path = configured
+    data = json.loads(path.read_text())
+    data["models"][0]["zdr_required"] = zdr_required
+    path.write_text(json.dumps(data))
+    with pytest.raises(HTTPException) as invalid:
+        rt.configured_catalog()
+    assert invalid.value.status_code == 503
+    ledger.reserve.assert_not_called()
+
+
 def test_stale_and_duplicate_catalog_rejected(configured):
     _, _, path = configured
     data = json.loads(path.read_text())

@@ -34,6 +34,7 @@ from venom_core.core.queue_manager import QueueManager
 from venom_core.execution.skills.chrono_skill import ChronoSkill
 from venom_core.execution.skills.complexity_skill import ComplexitySkill
 from venom_core.memory.lessons_store import Lesson, LessonsStore
+from venom_core.utils.llm_runtime import LLMRuntimeInfo
 from venom_core.utils.ttl_cache import TTLCache
 
 
@@ -344,24 +345,48 @@ async def test_complexity_skill_new_code_paths() -> None:
 
 
 @pytest.mark.asyncio
-async def test_models_install_marks_active_model_by_basename(
+@pytest.mark.parametrize(
+    "observed_names, expected_loaded, other_loaded",
+    [
+        (["gemma3:1b"], True, False),
+        ([], False, False),
+        (None, None, None),
+        (["other"], False, True),
+    ],
+    ids=["selected-loaded", "empty", "unavailable", "other-loaded"],
+)
+async def test_models_install_separates_selection_from_observed_loading(
     monkeypatch: pytest.MonkeyPatch,
+    observed_names,
+    expected_loaded,
+    other_loaded,
 ) -> None:
+    """Selection by unique basename never substitutes for observed engine loading."""
     manager = MagicMock()
+    manager._resolve_ollama_tags_url.return_value = "http://127.0.0.1:11434/api/tags"
     manager.list_local_models = AsyncMock(
         return_value=[
-            {"name": "custom", "path": "/models/gemma3:1b"},
-            {"name": "other", "path": "/models/other:1b"},
+            {"name": "custom", "path": "/models/gemma3:1b", "provider": "ollama"},
+            {"name": "other", "path": "/models/other:1b", "provider": "ollama"},
         ]
     )
+    runtime = LLMRuntimeInfo(
+        provider="ollama",
+        model_name="gemma3:1b",
+        endpoint="http://127.0.0.1:11434",
+        service_type="local",
+        mode="local",
+    )
+    observation = {
+        "status": "unavailable" if observed_names is None else "ok",
+        "models": observed_names,
+    }
+    inventory = AsyncMock(return_value={"ollama": observation})
     monkeypatch.setattr(models_install_routes, "get_model_manager", lambda: manager)
     monkeypatch.setattr(
-        models_install_routes,
-        "get_active_llm_runtime",
-        lambda: SimpleNamespace(
-            provider="ollama", to_payload=lambda: {"provider": "ollama"}
-        ),
+        models_install_routes, "get_active_llm_runtime", lambda: runtime
     )
+    monkeypatch.setattr(models_install_routes, "runtime_inventory", inventory)
     monkeypatch.setattr(
         models_install_routes,
         "probe_runtime_status",
@@ -373,10 +398,16 @@ async def test_models_install_marks_active_model_by_basename(
     payload = await models_install_routes.list_models()
 
     assert payload["success"] is True
-    active_models = [model for model in payload["models"] if model.get("active")]
-    assert len(active_models) == 1
-    assert active_models[0]["name"] == "custom"
-    assert active_models[0]["source"] == "ollama"
+    selected, other = payload["models"]
+    assert selected["name"] == "custom"
+    assert selected["selected"] is True
+    assert selected["loaded"] is expected_loaded
+    assert selected["active"] is (expected_loaded is True)
+    assert selected["runtime_status"] == observation["status"]
+    assert other["selected"] is False
+    assert other["loaded"] is other_loaded
+    assert other["active"] is (other_loaded is True)
+    inventory.assert_awaited_once()
 
 
 @pytest.mark.asyncio

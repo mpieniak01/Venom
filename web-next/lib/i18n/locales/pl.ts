@@ -351,6 +351,7 @@ export const pl = {
         maintenance_controller_unavailable: "Kontroler lokalnych modeli jest niedostępny.",
         maintenance_local_llm_still_loaded: "Zwolnij lokalny model LLM przed rozpoczęciem porównania.",
         maintenance_local_llm_runtime_running: "Zatrzymaj lokalny serwer LLM przed rozpoczęciem porównania.",
+        maintenance_local_llm_runtime_unverified: "Nie można potwierdzić stanu lokalnego silnika LLM. Sprawdź jego adres i dostępność.",
         maintenance_owned_start_required: "Uruchom porównanie przez wspólnego wykonawcę eksperymentu.",
       },
       tasks: {

@@ -538,13 +538,13 @@ def test_selected_configuration_does_not_imply_loaded_or_cross_engine_activity()
         "ollama",
         "same",
     )
-    assert (
-        models[0]["selected"]
-        and models[0]["loaded"] is None
-        and not models[0]["active"]
-    )
-    assert models[1]["loaded"] and not models[1]["selected"]
-    assert models[2]["loaded"] is None and not models[2]["active"]
+    assert models[0]["selected"]
+    assert models[0]["loaded"] is None
+    assert not models[0]["active"]
+    assert models[1]["loaded"]
+    assert not models[1]["selected"]
+    assert models[2]["loaded"] is None
+    assert not models[2]["active"]
 
 
 def test_sharded_checkpoints_without_index_require_every_shard(tmp_path):
@@ -594,11 +594,9 @@ async def test_inventory_metadata_aggregation_has_no_inference_requests(monkeypa
     snapshot = await runtime_inventory({"ollama": "http://localhost:11434"})
     assert snapshot["ollama"]["status"] == "online"
     assert snapshot["ollama"]["checked_at"]
-    assert (
-        len(requests) == 1
-        and requests[0].method == "GET"
-        and requests[0].url.path == "/api/ps"
-    )
+    assert len(requests) == 1
+    assert requests[0].method == "GET"
+    assert requests[0].url.path == "/api/ps"
 
 
 @pytest.mark.asyncio
@@ -685,3 +683,63 @@ async def test_invalid_runtime_url_cannot_break_other_engine_observations():
     assert invalid == {"status": "unverified", "models": None}
     assert valid == {"status": "online", "models": []}
     assert len(requests) == 1
+
+
+def test_runtime_identifiers_do_not_cross_namespaces_or_guess_revisions():
+    from venom_core.services.model_runtime_inventory import annotate_runtime_models
+
+    models = [
+        {"name": "org-a/model:latest", "provider": "ollama"},
+        {"name": "org-b/model:latest", "provider": "ollama"},
+        {"name": "org/model", "path": "/models/rev-a", "provider": "vllm"},
+        {"name": "org/model", "path": "/models/rev-b", "provider": "vllm"},
+    ]
+    observations = {
+        "ollama": {"status": "online", "models": ["org-a/model:latest"]},
+        "vllm": {"status": "online", "models": ["org/model"]},
+    }
+    annotate_runtime_models(models, observations, "ollama", "org-a/model:latest")
+    assert models[0]["loaded"] is True
+    assert models[0]["selected"] is True
+    assert models[1]["loaded"] is False
+    assert models[1]["selected"] is False
+    assert models[2]["loaded"] is None
+    assert models[3]["loaded"] is None
+    observations["vllm"]["models"] = ["/models/rev-a"]
+    annotate_runtime_models(models, observations, "vllm", "/models/rev-a")
+    assert models[2]["loaded"] is True
+    assert models[2]["selected"] is True
+    assert models[3]["loaded"] is False
+    observations["ollama"]["models"] = ["model:latest"]
+    annotate_runtime_models(models, observations, "ollama", "model:latest")
+    assert models[0]["loaded"] is None
+    assert models[1]["loaded"] is None
+    assert not any(m["selected"] for m in models)
+
+
+def test_corrupted_snapshot_registration_does_not_hide_other_models(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    mgr = _Discovery(tmp_path)
+    for name in ["bad", "good"]:
+        model = (
+            tmp_path
+            / f".local/share/venom/maintenance-comparison/hub/models--org--{name}/snapshots/revision"
+        )
+        model.mkdir(parents=True)
+        (model / "config.json").write_text("{}")
+        (model / "model.safetensors").write_bytes(b"weights")
+    original = mgr._register_local_entry
+
+    def register(models, path, *args, **kwargs):
+        if "org--bad" in str(path):
+            raise OSError("snapshot disappeared during registration")
+        return original(models, path, *args, **kwargs)
+
+    monkeypatch.setattr(mgr, "_register_local_entry", register)
+    models = {}
+    discovery.ModelManagerDiscoveryMixin._discover_other_models(
+        mgr, [mgr.models_dir], models
+    )
+    assert [m["name"] for m in models.values()] == ["org/good"]

@@ -51,7 +51,7 @@ spełnionego zestawu zadań i porównywalnych konfiguracji, nie tylko małej lat
 
 ## Artefakty i raport
 
-Każdy przebieg: identyfikator, checkpoint/revizja, wersje backendu i parsera,
+Każdy przebieg: identyfikator, checkpoint/rewizja, wersje backendu i parsera,
 kwantyzacja, kontekst, budżety, seed, commit wejściowy, wiadomości, rzeczywiste
 wyniki narzędzi (stdout/stderr/exit code), patch, weryfikacja, powtórzenia,
 czas ładowania i zadania, RAM/VRAM peak oraz dostępne tokeny. Prywatne logi i

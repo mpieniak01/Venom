@@ -69,27 +69,64 @@ async def runtime_inventory(endpoints: dict[str, str]) -> dict:
     }
 
 
+def _matching_model_indexes(models: list[dict], name: str) -> set[int]:
+    def identifiers(model: dict) -> set[str]:
+        values = {model.get("name")}
+        path = model.get("path")
+        if isinstance(path, str) and not path.startswith("ollama://"):
+            values.add(path)
+        return {value for value in values if isinstance(value, str) and value}
+
+    exact = {i for i, model in enumerate(models) if name in identifiers(model)}
+    if exact or "/" in name or "\\" in name:
+        return exact
+    return {
+        i
+        for i, model in enumerate(models)
+        if any(Path(value).name == name for value in identifiers(model))
+    }
+
+
+def _loaded_states(models: list[dict], names: list[str] | None) -> list[bool | None]:
+    if names is None:
+        return [None] * len(models)
+    confirmed: set[int] = set()
+    ambiguous: set[int] = set()
+    for name in names:
+        matches = _matching_model_indexes(models, name)
+        if len(matches) == 1:
+            confirmed.update(matches)
+        else:
+            ambiguous.update(matches)
+    states: list[bool | None] = [False] * len(models)
+    for i in ambiguous:
+        states[i] = None
+    for i in confirmed:
+        states[i] = True
+    return states
+
+
 def annotate_runtime_models(
     models: list[dict], observations: dict, selected_provider: str, selected_name: str
 ) -> None:
-    for model in models:
-        provider = model.get("provider")
-        names = {model.get("name"), model.get("path")}
-        names.update(Path(name).name for name in list(names) if isinstance(name, str))
+    providers = {model.get("provider") for model in models}
+    for provider in providers:
+        entries = [model for model in models if model.get("provider") == provider]
         observation = observations.get(
             provider, {"status": "unverified", "models": None}
         )
-        loaded_names = observation["models"]
-        loaded = (
-            None
-            if loaded_names is None
-            else any(name in names or Path(name).name in names for name in loaded_names)
+        selected = (
+            _matching_model_indexes(entries, selected_name)
+            if provider == selected_provider
+            else set()
         )
-        model.update(
-            installed=True,
-            loaded=loaded,
-            active=loaded is True,
-            selected=provider == selected_provider
-            and (selected_name in names or Path(selected_name).name in names),
-            runtime_status=observation["status"],
-        )
+        for i, (model, loaded) in enumerate(
+            zip(entries, _loaded_states(entries, observation["models"]))
+        ):
+            model.update(
+                installed=True,
+                loaded=loaded,
+                active=loaded is True,
+                selected=len(selected) == 1 and i in selected,
+                runtime_status=observation["status"],
+            )

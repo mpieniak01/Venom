@@ -237,6 +237,8 @@ class TrialTools:
         return {"accepted": True}
 
     def validate_completion(self, arguments: dict) -> None:
+        if not isinstance(arguments, dict):
+            raise ValueError("finish_arguments_not_object")
         allowed = (
             {"status", "summary", "locations"}
             if self.role == "localization"

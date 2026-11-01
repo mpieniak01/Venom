@@ -510,50 +510,64 @@ class ModelManagerDiscoveryMixin:
             if not str(m["path"]).startswith("ollama://")
         }
         for name, path in cached_model_paths(hub_roots):
-            if path.resolve() in known_paths:
-                continue
-            known_paths.add(path.resolve())
-            config = json.loads((path / "config.json").read_text())
-            provider = (
-                "ctranslate2"
-                if (path / "model.bin").is_file() and not config.get("model_type")
-                else "transformers"
-            )
-            key = provider + "::" + name + "@" + path.name
+            try:
+                resolved = path.resolve()
+                if resolved not in known_paths:
+                    self._register_cached_model(models, name, path)
+                    known_paths.add(resolved)
+            except (OSError, ValueError, TypeError) as exc:
+                logger.warning("Skipping unavailable model snapshot %s: %s", path, exc)
+        for base in search_dirs:
+            for path in (base / "research").glob("*/*"):
+                try:
+                    self._register_research_models(models, path)
+                except (OSError, ValueError, TypeError) as exc:
+                    logger.warning(
+                        "Skipping unavailable research model %s: %s", path, exc
+                    )
+
+    def _register_cached_model(self, models, name, path) -> None:
+        config = json.loads((path / "config.json").read_text())
+        if not isinstance(config, dict):
+            raise ValueError("model_config_not_object")
+        provider = (
+            "ctranslate2"
+            if (path / "model.bin").is_file() and not config.get("model_type")
+            else "transformers"
+        )
+        key = provider + "::" + name + "@" + path.name
+        self._register_local_entry(
+            models,
+            path,
+            "huggingface-cache",
+            provider=provider,
+            model_name=name,
+            model_key=key,
+        )
+        models[key]["revision"] = path.name
+
+    def _register_research_models(self, models, path) -> None:
+        if not path.is_dir():
+            return
+        if is_hf_model_dir(path):
             self._register_local_entry(
                 models,
                 path,
-                "huggingface-cache",
-                provider=provider,
-                model_name=name,
-                model_key=key,
+                "research",
+                provider="research",
+                model_name=path.parent.name,
+                model_key="research::" + str(path.resolve()),
             )
-            models[key]["revision"] = path.name
-        for base in search_dirs:
-            research = base / "research"
-            for path in research.glob("*/*"):
-                if not path.is_dir():
-                    continue
-                provider = "research"
-                if is_hf_model_dir(path):
-                    self._register_local_entry(
-                        models,
-                        path,
-                        "research",
-                        provider=provider,
-                        model_name=path.parent.name,
-                        model_key="research::" + str(path.resolve()),
-                    )
-                for checkpoint in path.glob("*.pth"):
-                    if nonempty_file(checkpoint):
-                        self._register_local_entry(
-                            models,
-                            checkpoint,
-                            "research",
-                            provider="rwkv",
-                            model_name=checkpoint.stem,
-                            model_key="rwkv::" + str(checkpoint.resolve()),
-                        )
+        for checkpoint in path.glob("*.pth"):
+            if nonempty_file(checkpoint):
+                self._register_local_entry(
+                    models,
+                    checkpoint,
+                    "research",
+                    provider="rwkv",
+                    model_name=checkpoint.stem,
+                    model_key="rwkv::" + str(checkpoint.resolve()),
+                )
 
     async def list_local_models(self) -> List[Dict[str, Any]]:
         models = await asyncio.to_thread(self._discover_local_models)

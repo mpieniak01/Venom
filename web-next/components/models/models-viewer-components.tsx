@@ -215,6 +215,8 @@ export const InstalledCard = ({
     const providerLabel = model.provider ?? model.source ?? "—";
     const canActivate = model.activation_supported !== false && model.chat_compatible !== false && ["ollama", "vllm", "onnx"].includes(providerLabel);
     const loaded = model.loaded ?? false;
+    let loadedLabel = loaded ? "models.status.loaded" : "models.status.unloaded";
+    if (model.loaded == null) loadedLabel = "models.status.loadedUnknown";
     return (
         <div className="rounded-2xl box-base px-3 py-3 text-[color:var(--text-primary)] shadow-card">
             <div className="flex flex-wrap items-start justify-between gap-2">
@@ -227,7 +229,7 @@ export const InstalledCard = ({
                 </div>
                 <div className="flex flex-wrap gap-1">
                     <Badge tone="neutral" className="text-[10px]">{t("models.status.installed")}</Badge>
-                    <Badge tone={loaded ? "success" : "neutral"} className="text-[10px]">{t(model.loaded == null ? "models.status.loadedUnknown" : loaded ? "models.status.loaded" : "models.status.unloaded")}</Badge>
+                    <Badge tone={loaded ? "success" : "neutral"} className="text-[10px]">{t(loadedLabel)}</Badge>
                     {model.selected && <Badge tone="neutral" className="text-[10px]">{t("models.status.selected")}</Badge>}
                 </div>
             </div>

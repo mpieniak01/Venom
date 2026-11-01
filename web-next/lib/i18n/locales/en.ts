@@ -350,6 +350,7 @@ export const en = {
         maintenance_controller_unavailable: "The local model controller is unavailable.",
         maintenance_local_llm_still_loaded: "Unload the local LLM before starting the comparison.",
         maintenance_local_llm_runtime_running: "Stop the local LLM server before starting the comparison.",
+        maintenance_local_llm_runtime_unverified: "Cannot verify the local LLM runtime. Check its endpoint and availability.",
         maintenance_owned_start_required: "Start the comparison through the shared experiment runner.",
       },
       tasks: {

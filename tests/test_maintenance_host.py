@@ -286,12 +286,12 @@ def test_profile_endpoint_lists_only_retained_models_when_disabled(
     assert response["enabled"] is False
     assert len(response["models"]) == 4
     names = {model["name"] for model in response["models"]}
-    assert {
+    assert names == {
         "gemma-4-e2b-it",
         "qwen3.5-9b",
         "mini-coder-1.7b",
         "granite-4.2-3b",
-    } == names
+    }
 
 
 def test_retired_model_is_rejected_before_worker_spawn(service):

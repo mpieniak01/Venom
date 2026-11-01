@@ -350,6 +350,7 @@ export const de = {
         maintenance_controller_unavailable: "Die lokale Modellsteuerung ist nicht verfügbar.",
         maintenance_local_llm_still_loaded: "Das lokale LLM vor dem Vergleich entladen.",
         maintenance_local_llm_runtime_running: "Den lokalen LLM-Server vor dem Vergleich stoppen.",
+        maintenance_local_llm_runtime_unverified: "Der lokale LLM-Status ist nicht überprüfbar. Adresse und Erreichbarkeit prüfen.",
         maintenance_owned_start_required: "Den Vergleich über den gemeinsamen Experimentstarter starten.",
       },
       tasks: {

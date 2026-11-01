@@ -267,7 +267,9 @@ class LocalModel:
                 **sampling,
                 **stopping,
             )
-        generated = output[0, count:]
+        return self._decode_generated(output[0, count:], maximum)
+
+    def _decode_generated(self, generated, maximum: int) -> str:
         eos = self.profile["profile"].get(
             "eos_token_ids", self.model.generation_config.eos_token_id
         )

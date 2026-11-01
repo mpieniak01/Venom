@@ -252,3 +252,29 @@ def test_trial_closes_owned_docker_client_even_when_removal_fails():
     with pytest.raises(RuntimeError, match="remove failed"):
         habitat.close()
     habitat.client.close.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    "error", [ValueError("remote"), TimeoutError("timed out"), OSError("unreachable")]
+)
+@pytest.mark.asyncio
+async def test_preflight_runtime_probe_errors_are_controlled(monkeypatch, error):
+    from unittest.mock import AsyncMock
+
+    monkeypatch.setattr(preflight, "resource_snapshot", lambda: [])
+    monkeypatch.setattr(preflight, "_listening", AsyncMock(side_effect=error))
+    controller = SimpleNamespace(
+        list_servers=lambda: [{"name": "vllm", "endpoint": "http://invalid"}]
+    )
+    with pytest.raises(
+        ValueError, match="maintenance_local_llm_runtime_unverified"
+    ) as observed:
+        await preflight.require_local_llms_empty(controller)
+    assert observed.value.__cause__ is error
+
+
+@pytest.mark.parametrize("value", [[], ["status"], "success", None, 1])
+def test_finish_rejects_non_object_reports(value, tmp_path):
+    tools = TrialTools(SimpleNamespace(workspace_path=tmp_path), "operator")
+    with pytest.raises(ValueError, match="finish_arguments_not_object"):
+        tools.validate_completion(value)

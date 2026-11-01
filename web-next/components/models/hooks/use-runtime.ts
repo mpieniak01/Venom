@@ -103,7 +103,9 @@ export function buildInstalledBuckets(
     });
     (Array.isArray(data.models) ? data.models : []).forEach((model) => add(model));
 
-    Object.values(buckets).forEach((list) => list.sort((a, b) => Number(b.loaded === true) - Number(a.loaded === true) || Number(b.selected === true) - Number(a.selected === true) || a.name.localeCompare(b.name)));
+    Object.values(buckets).forEach((list) => {
+        list.sort((a, b) => Number(b.loaded === true) - Number(a.loaded === true) || Number(b.selected === true) - Number(a.selected === true) || a.name.localeCompare(b.name));
+    });
     return buckets;
 }
 

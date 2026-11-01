@@ -6,7 +6,10 @@ from pathlib import Path
 
 
 def nonempty_file(path: Path) -> bool:
-    return path.is_file() and path.stat().st_size > 0
+    try:
+        return path.is_file() and path.stat().st_size > 0
+    except OSError:
+        return False
 
 
 def is_onnx_model_dir(path: Path) -> bool:
@@ -21,40 +24,51 @@ def is_hf_model_dir(path: Path) -> bool:
             return False
     except (ValueError, OSError):
         return False
-    indexes = list(path.glob("*.index.json"))
-    for index in indexes:
-        try:
-            weight_map = json.loads(index.read_text())["weight_map"]
-            if not isinstance(weight_map, dict):
-                return False
-            names = set(weight_map.values())
-            if not names or not all(
-                isinstance(name, str)
-                and not Path(name).is_absolute()
-                and ".." not in Path(name).parts
-                and nonempty_file(path / name)
-                for name in names
-            ):
-                return False
-        except (ValueError, KeyError, TypeError, OSError):
-            return False
+    if not all(_valid_weight_index(path, index) for index in path.glob("*.index.json")):
+        return False
     weights = [
         *path.glob("*.safetensors"),
         *path.glob("pytorch_model*.bin"),
         *path.glob("model*.bin"),
     ]
+    return (
+        bool(weights)
+        and all(nonempty_file(p) for p in weights)
+        and _complete_shards(path, weights)
+    )
+
+
+def _valid_weight_index(path: Path, index: Path) -> bool:
+    try:
+        weight_map = json.loads(index.read_text())["weight_map"]
+        if not isinstance(weight_map, dict):
+            return False
+        names = set(weight_map.values())
+        return bool(names) and all(
+            isinstance(name, str)
+            and not Path(name).is_absolute()
+            and ".." not in Path(name).parts
+            and nonempty_file(path / name)
+            for name in names
+        )
+    except (ValueError, KeyError, TypeError, OSError):
+        return False
+
+
+def _complete_shards(path: Path, weights: list[Path]) -> bool:
     for weight in weights:
         shard = re.fullmatch(r"(.+)-(\d+)-of-(\d+)\.(safetensors|bin)", weight.name)
-        if shard:
-            prefix, number, count, extension = shard.groups()
-            if not all(
-                nonempty_file(
-                    path / f"{prefix}-{part:0{len(number)}d}-of-{count}.{extension}"
-                )
-                for part in range(1, int(count) + 1)
-            ):
-                return False
-    return bool(weights) and all(nonempty_file(p) for p in weights)
+        if shard is None:
+            continue
+        prefix, number, count, extension = shard.groups()
+        if not all(
+            nonempty_file(
+                path / f"{prefix}-{part:0{len(number)}d}-of-{count}.{extension}"
+            )
+            for part in range(1, int(count) + 1)
+        ):
+            return False
+    return True
 
 
 def manifest_size(manifest: Path) -> int:

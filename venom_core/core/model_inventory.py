@@ -24,7 +24,10 @@ def is_hf_model_dir(path: Path) -> bool:
     indexes = list(path.glob("*.index.json"))
     for index in indexes:
         try:
-            names = set(json.loads(index.read_text())["weight_map"].values())
+            weight_map = json.loads(index.read_text())["weight_map"]
+            if not isinstance(weight_map, dict):
+                return False
+            names = set(weight_map.values())
             if not names or not all(
                 isinstance(name, str)
                 and not Path(name).is_absolute()

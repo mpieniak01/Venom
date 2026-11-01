@@ -10,15 +10,15 @@ async def observe_runtime_models(provider: str, endpoint: str, client) -> dict:
     import httpx
 
     result = {"status": "unverified", "models": None}
-    parsed = urlsplit(endpoint)
-    if parsed.hostname not in {
-        "localhost",
-        "127.0.0.1",
-        "::1",
-    } or parsed.scheme not in {"http", "https"}:
-        return result
-    origin = urlunsplit((parsed.scheme, parsed.netloc, "", "", ""))
     try:
+        parsed = urlsplit(endpoint)
+        if parsed.hostname not in {
+            "localhost",
+            "127.0.0.1",
+            "::1",
+        } or parsed.scheme not in {"http", "https"}:
+            return result
+        origin = urlunsplit((parsed.scheme, parsed.netloc, "", "", ""))
         if provider == "onnx":
             health = await client.get(origin + "/health")
             payload = health.json()

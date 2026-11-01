@@ -653,3 +653,35 @@ async def test_models_endpoint_does_not_mark_remembered_hybrid_model_active(
         routes.runtime_inventory.call_args.args[0]["ollama"]
         == "http://localhost:11435/api/tags"
     )
+
+
+@pytest.mark.parametrize("weight_map", [None, [], "invalid", 42])
+def test_invalid_checkpoint_weight_map_is_not_an_installation(tmp_path, weight_map):
+    from venom_core.core.model_inventory import is_hf_model_dir
+
+    (tmp_path / "config.json").write_text("{}")
+    (tmp_path / "model.safetensors").write_bytes(b"weights")
+    (tmp_path / "model.safetensors.index.json").write_text(
+        json.dumps({"weight_map": weight_map})
+    )
+    assert not is_hf_model_dir(tmp_path)
+
+
+@pytest.mark.asyncio
+async def test_invalid_runtime_url_cannot_break_other_engine_observations():
+    import httpx
+
+    from venom_core.services.model_runtime_inventory import observe_runtime_models
+
+    requests = []
+
+    def transport(request):
+        requests.append(request)
+        return httpx.Response(200, json={"models": []})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(transport)) as client:
+        invalid = await observe_runtime_models("vllm", "http://[::1", client)
+        valid = await observe_runtime_models("ollama", "http://localhost:11434", client)
+    assert invalid == {"status": "unverified", "models": None}
+    assert valid == {"status": "online", "models": []}
+    assert len(requests) == 1

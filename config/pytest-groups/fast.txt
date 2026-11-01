@@ -129,6 +129,7 @@ tests/test_css_unused_audit.py
 tests/test_dashboard_api.py
 tests/test_dataset_curator.py
 tests/test_dead_code_audit.py
+tests/test_default_question_setup.py
 tests/test_designer_agent.py
 tests/test_desktop_sensor.py
 tests/test_desktop_sensor_roi.py

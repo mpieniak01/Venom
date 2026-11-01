@@ -232,3 +232,7 @@ odczytu, a zweryfikowany eksport regularnych plików odtwarza stan zadania na
 hoście. Snapshot sprawdza liczbę i logiczny rozmiar plików przed ich hashowaniem.
 Verifier nadal używa bind-mountu tylko do odczytu. Zmiana sandboxu wymaga nowego
 porównania; nie łączymy jego prób ze starszymi wynikami.
+
+Profile JSON można czytać z katalogu config repozytorium lub spod
+GRANITE_DATA_ROOT ustawionego przez operatora. Ścieżki poza tymi korzeniami
+i symlinki profili są odrzucane. Dotyczy to również własnego --profile.

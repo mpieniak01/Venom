@@ -492,3 +492,22 @@ def test_json_writer_treats_path_shaped_content_as_data_and_does_not_follow_fixe
         write_json(target, invalid)
     assert json.loads(target.read_text()) == payload
     assert not list(tmp_path.glob("result.json.*.tmp"))
+
+
+def test_profile_cannot_read_outside_operator_approved_roots(tmp_path, monkeypatch):
+    from venom_core.services.granite_operator.contract import load_profile
+
+    allowed = tmp_path / "allowed"
+    allowed.mkdir()
+    inside_profile = allowed / "profile.json"
+    outside = tmp_path / "outside.json"
+    write_json(inside_profile, TrainingProfile().identity())
+    write_json(outside, TrainingProfile().identity())
+    monkeypatch.setenv("GRANITE_DATA_ROOT", str(allowed))
+    assert load_profile(inside_profile) == TrainingProfile()
+    with pytest.raises(ValueError, match="outside_allowed_roots"):
+        load_profile(outside)
+    link = allowed / "link.json"
+    link.symlink_to(outside)
+    with pytest.raises(ValueError, match="path_invalid"):
+        load_profile(link)

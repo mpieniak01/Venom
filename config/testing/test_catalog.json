@@ -7625,6 +7625,20 @@
       ],
       "legacy_targeted": false,
       "rationale": "Offline Vast kit configuration and dry-run isolation; no provider API, GPU or training."
+    },
+    {
+      "path": "tests/test_default_question_setup.py",
+      "domain": "academy",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Explicit pinned default question setup, idempotency and checksum guards without network."
     }
   ]
 }

@@ -637,6 +637,7 @@ def test_coordinator_owns_children_until_exit(
             return 0
 
     monkeypatch.setattr(cli.subprocess, "Popen", Child)
+    monkeypatch.setenv("GRANITE_DATA_ROOT", str(tmp_path))
     profile = tmp_path / "profile.json"
     write_json(profile, TrainingProfile().identity())
     manifest = tmp_path / "manifest.json"

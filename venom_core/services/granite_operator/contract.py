@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import os
 from dataclasses import asdict, dataclass
 from itertools import zip_longest
 from pathlib import Path
@@ -93,8 +94,21 @@ class TrainingProfile:
 
 
 def load_profile(path: Path) -> TrainingProfile:
-    """Read and validate the same profile for preparation, intake and training."""
-    data = json.loads(path.read_text())
+    """Read a profile only from project config or the operator-approved data root."""
+    roots = [Path(__file__).resolve().parents[3] / "config"]
+    approved_data = os.environ.get("GRANITE_DATA_ROOT")
+    if approved_data:
+        roots.append(Path(approved_data))
+    target = path.resolve(strict=True)
+    if path.is_symlink() or target.suffix != ".json":
+        raise ValueError("granite_profile_path_invalid")
+    approved = next(
+        (root.resolve() for root in roots if target.is_relative_to(root.resolve())),
+        None,
+    )
+    if approved is None:
+        raise ValueError("granite_profile_outside_allowed_roots")
+    data = json.loads(inside(approved, str(target.relative_to(approved))).read_text())
     data.pop("schema_version", None)
     profile = TrainingProfile(**data)
     profile.validate()
@@ -183,7 +197,7 @@ def validate_conversation(row: dict[str, Any], split: str) -> None:
     """Require structured calls and matched observations without repairing labels."""
     names = _validate_header(row, split)
     pending: dict[str, str] = {}
-    seen = set()
+    seen: set[str] = set()
     for message in row["messages"]:
         role = message.get("role")
         if role not in {"system", "user", "assistant", "tool"}:

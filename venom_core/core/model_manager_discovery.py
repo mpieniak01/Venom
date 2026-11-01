@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import os
 import time
@@ -12,6 +13,13 @@ from urllib.parse import urlparse, urlunparse
 
 import httpx
 
+from venom_core.core.model_inventory import (
+    cached_model_paths,
+    is_hf_model_dir,
+    is_onnx_model_dir,
+    manifest_size,
+    nonempty_file,
+)
 from venom_core.infrastructure.traffic_control import TrafficControlledHttpClient
 from venom_core.utils.logger import get_logger
 from venom_core.utils.url_policy import apply_http_policy_to_url, build_http_url
@@ -120,15 +128,13 @@ class ModelManagerDiscoveryMixin:
         model_name: str | None = None,
         model_key: str | None = None,
     ) -> None:
+        """Register one installation with its actual path, provider and measured size."""
         size_bytes = self._calculate_model_size_bytes(model_path)
         onnx_metadata = self._load_onnx_metadata(model_path)
-        metadata_provider = str(onnx_metadata.get("provider", "")).lower()
         model_type, provider = self._detect_model_type_and_provider(
             model_path=model_path,
             provider=provider,
         )
-        if metadata_provider == "onnx":
-            provider = "onnx"
 
         onnx_payload: Dict[str, Any] = {}
         if provider == "onnx":
@@ -147,6 +153,7 @@ class ModelManagerDiscoveryMixin:
             "source": source,
             "provider": provider,
             "active": False,
+            "installed": True,
             **onnx_payload,
         }
 
@@ -166,23 +173,11 @@ class ModelManagerDiscoveryMixin:
         model_path: Path,
         provider: str,
     ) -> tuple[str, str]:
-        lower_path = str(model_path).lower()
-        if ".gguf" in lower_path:
+        """Classify the installed payload using explicit provider and path evidence."""
+        if model_path.suffix.lower() == ".gguf":
             return "gguf", provider
-        if model_path.suffix in {".onnx", ".bin"}:
+        if model_path.suffix.lower() == ".onnx" or is_onnx_model_dir(model_path):
             return "onnx", "onnx"
-        if model_path.is_dir():
-            resolved_provider = (
-                "onnx"
-                if (
-                    "onnx" in model_path.name.lower()
-                    or (model_path / ONNX_METADATA_FILENAME).exists()
-                    or (model_path / "genai_config.json").exists()
-                    or any(model_path.glob("*.onnx"))
-                )
-                else provider
-            )
-            return "folder", resolved_provider
         return "folder", provider
 
     def _build_search_dirs(self) -> List[Path]:
@@ -194,29 +189,13 @@ class ModelManagerDiscoveryMixin:
 
     @staticmethod
     def _looks_like_onnx_runtime_dir(model_path: Path) -> bool:
-        if not model_path.is_dir():
-            return False
-        if (model_path / ONNX_METADATA_FILENAME).exists():
-            return True
-        if (model_path / "genai_config.json").exists():
-            return True
-        if (model_path / "model.onnx").exists():
-            return True
-        return any(model_path.glob("*.onnx"))
+        """Recognize a directory containing actual ONNX model payloads."""
+        return is_onnx_model_dir(model_path)
 
     @staticmethod
     def _looks_like_hf_runtime_dir(model_path: Path) -> bool:
-        if not model_path.is_dir():
-            return False
-        if not (model_path / "config.json").exists():
-            return False
-        if any(model_path.glob("*.safetensors")):
-            return True
-        if any(model_path.glob("pytorch_model*.bin")):
-            return True
-        if any(model_path.glob("model*.bin")):
-            return True
-        return False
+        """Recognize a complete Hugging Face installation rather than a working directory."""
+        return is_hf_model_dir(model_path)
 
     @staticmethod
     def _is_academy_artifact_dir(model_path: Path) -> bool:
@@ -265,12 +244,10 @@ class ModelManagerDiscoveryMixin:
             if not base_dir.exists():
                 continue
             self._register_academy_runtime_vllm_entries(models, base_dir)
-            allow_workspace_fallback = base_dir.name == "models"
             for model_path in base_dir.iterdir():
                 if not self._is_local_model_candidate(
                     model_path,
                     skip_dirs,
-                    allow_workspace_fallback=allow_workspace_fallback,
                 ):
                     continue
                 self._try_register_local_entry(models, model_path, base_dir.name)
@@ -279,13 +256,12 @@ class ModelManagerDiscoveryMixin:
     def _is_local_model_candidate(
         model_path: Path,
         skip_dirs: set[str],
-        *,
-        allow_workspace_fallback: bool = False,
     ) -> bool:
+        """Reject excluded or incomplete directories before registering model payloads."""
         if model_path.name in skip_dirs:
             return False
-        if model_path.suffix in {".onnx", ".gguf", ".bin"}:
-            return True
+        if model_path.suffix.lower() in {".onnx", ".gguf"}:
+            return nonempty_file(model_path)
         if not model_path.is_dir():
             return False
         if ModelManagerDiscoveryMixin._is_academy_artifact_dir(model_path):
@@ -293,8 +269,6 @@ class ModelManagerDiscoveryMixin:
         if ModelManagerDiscoveryMixin._looks_like_onnx_runtime_dir(model_path):
             return True
         if ModelManagerDiscoveryMixin._looks_like_hf_runtime_dir(model_path):
-            return True
-        if allow_workspace_fallback:
             return True
         return False
 
@@ -306,13 +280,15 @@ class ModelManagerDiscoveryMixin:
         *,
         model_name: str | None = None,
         model_key: str | None = None,
+        provider: str = "vllm",
     ) -> None:
+        """Register one candidate and isolate filesystem or metadata errors to that entry."""
         try:
             self._register_local_entry(
                 models,
                 model_path,
                 source=source_name,
-                provider="vllm",
+                provider=provider,
                 model_name=model_name,
                 model_key=model_key,
             )
@@ -323,6 +299,7 @@ class ModelManagerDiscoveryMixin:
         self,
         manifests_dir: Path,
     ) -> List[Dict[str, Any]]:
+        """Enumerate only manifests whose referenced model blobs are present."""
         entries: List[Dict[str, Any]] = []
         if not manifests_dir.exists():
             return entries
@@ -338,11 +315,14 @@ class ModelManagerDiscoveryMixin:
             registry = relative_parts[0]
             entry_name = self._build_ollama_manifest_entry_name(relative_parts)
             size_bytes = self._read_manifest_size_bytes(manifest_path)
+            if not size_bytes:
+                continue
             entries.append(
                 {
                     "name": entry_name,
                     "size_gb": size_bytes / (1024**3) if size_bytes else None,
                     "type": "ollama",
+                    "digest": hashlib.sha256(manifest_path.read_bytes()).hexdigest(),
                     "quantization": "unknown",
                     "path": f"ollama://{registry}",
                     "source": "ollama",
@@ -373,21 +353,18 @@ class ModelManagerDiscoveryMixin:
 
     @staticmethod
     def _read_manifest_size_bytes(manifest_path: Path) -> int:
-        size_bytes = 0
+        """Return verified manifest payload size or zero when its blobs are incomplete."""
         try:
-            manifest_payload = json.loads(manifest_path.read_text("utf-8"))
-            layers = manifest_payload.get("layers") or []
-            size_bytes = sum(
-                layer.get("size", 0) for layer in layers if isinstance(layer, dict)
-            )
-            config = manifest_payload.get("config") or {}
-            if isinstance(config, dict):
-                size_bytes += config.get("size", 0) or 0
-        except Exception as exc:
-            logger.warning(
-                "Nie udało się odczytać manifestu %s: %s", manifest_path, exc
-            )
-        return size_bytes
+            return manifest_size(manifest_path)
+        except (
+            ValueError,
+            TypeError,
+            KeyError,
+            OSError,
+            StopIteration,
+            AttributeError,
+        ):
+            return 0
 
     def _collect_ollama_entries(
         self,
@@ -446,16 +423,20 @@ class ModelManagerDiscoveryMixin:
             logger.warning("Nie udało się zapisać cache modeli Ollama: %s", exc)
 
     def _load_ollama_cache(self, models: Dict[str, Dict[str, Any]]) -> None:
+        """Enrich current manifests only; cached presence/activity is never evidence."""
         try:
             if not self.ollama_cache_path.exists():
                 return
-            cached_entries = json.loads(self.ollama_cache_path.read_text("utf-8"))
-            for entry in cached_entries:
-                entry_name = entry.get("name")
-                if entry_name:
-                    models.setdefault(f"ollama::{entry_name}", entry)
-        except Exception as cache_error:
-            logger.warning("Nie udało się wczytać cache modeli Ollama: %s", cache_error)
+            for entry in json.loads(self.ollama_cache_path.read_text("utf-8")):
+                current = models.get("ollama::" + str(entry.get("name", "")))
+                if (
+                    current
+                    and current.get("digest")
+                    and current["digest"] == entry.get("digest")
+                ):
+                    current["quantization"] = entry.get("quantization", "unknown")
+        except (OSError, ValueError, TypeError, AttributeError):
+            logger.debug("Ignoring unavailable historical Ollama metadata")
 
     def _register_manifest_fallbacks(
         self,
@@ -521,10 +502,84 @@ class ModelManagerDiscoveryMixin:
         models: Dict[str, Dict[str, Any]] = {}
         search_dirs = self._build_search_dirs()
         self._scan_local_dirs(search_dirs, models)
-        # Keep Ollama model visibility even when daemon is offline.
-        self._load_ollama_cache(models)
+        # Offline evidence is the current manifests AND blobs, never a historical cache.
         self._register_manifest_fallbacks(search_dirs, models)
+        self._load_ollama_cache(models)
+        self._discover_other_models(search_dirs, models)
         return models
+
+    def _discover_other_models(self, search_dirs, models) -> None:
+        """Discover complete cache snapshots and research payloads without loading inference engines."""
+        hub_roots = [Path.home() / ".local/share/venom/maintenance-comparison/hub"]
+        hub_roots.extend(base / "cache/huggingface/hub" for base in search_dirs)
+        hub_roots.extend(base / "hf_cache" for base in search_dirs)
+        hub_roots.append(Path.home() / ".cache/huggingface/hub")
+        known_paths = {
+            Path(m["path"]).resolve()
+            for m in models.values()
+            if not str(m["path"]).startswith("ollama://")
+        }
+        for name, path in cached_model_paths(hub_roots):
+            try:
+                resolved = path.resolve()
+                if resolved not in known_paths:
+                    self._register_cached_model(models, name, path)
+                    known_paths.add(resolved)
+            except (OSError, ValueError, TypeError) as exc:
+                logger.warning("Skipping unavailable model snapshot %s: %s", path, exc)
+        for base in search_dirs:
+            for path in (base / "research").glob("*/*"):
+                try:
+                    self._register_research_models(models, path)
+                except (OSError, ValueError, TypeError) as exc:
+                    logger.warning(
+                        "Skipping unavailable research model %s: %s", path, exc
+                    )
+
+    def _register_cached_model(self, models, name, path) -> None:
+        """Register one pinned cache snapshot and its revision, skipping invalid entries."""
+        config = json.loads((path / "config.json").read_text())
+        if not isinstance(config, dict):
+            raise ValueError("model_config_not_object")
+        provider = (
+            "ctranslate2"
+            if (path / "model.bin").is_file() and not config.get("model_type")
+            else "transformers"
+        )
+        key = provider + "::" + name + "@" + path.name
+        self._register_local_entry(
+            models,
+            path,
+            "huggingface-cache",
+            provider=provider,
+            model_name=name,
+            model_key=key,
+        )
+        models[key]["revision"] = path.name
+
+    def _register_research_models(self, models, path) -> None:
+        """Register one research payload while isolating per-directory metadata errors."""
+        if not path.is_dir():
+            return
+        if is_hf_model_dir(path):
+            self._try_register_local_entry(
+                models,
+                path,
+                "research",
+                provider="research",
+                model_name=path.parent.name,
+                model_key="research::" + str(path.resolve()),
+            )
+        for checkpoint in path.glob("*.pth"):
+            if nonempty_file(checkpoint):
+                self._try_register_local_entry(
+                    models,
+                    checkpoint,
+                    "research",
+                    provider="rwkv",
+                    model_name=checkpoint.stem,
+                    model_key="rwkv::" + str(checkpoint.resolve()),
+                )
 
     async def list_local_models(self) -> List[Dict[str, Any]]:
         models = await asyncio.to_thread(self._discover_local_models)

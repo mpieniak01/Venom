@@ -10,6 +10,7 @@ Odpowiada za:
 
 from __future__ import annotations
 
+import asyncio
 import json
 import subprocess
 import sys
@@ -17,6 +18,7 @@ import threading
 import uuid
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
+from functools import partial
 from pathlib import Path
 from typing import Any, Optional
 
@@ -28,8 +30,13 @@ from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
+_MAINTENANCE_CLEANUP_UNCONFIRMED = "maintenance_cleanup_unconfirmed"
+
 _SCHEDULER_SCRIPT = "scripts/ollama_bench/scheduler.py"
-_VALID_TASKS = frozenset(
+_MAINTENANCE_TASKS = frozenset(
+    {"maintenance_operator", "maintenance_repair", "maintenance_localization"}
+)
+_VALID_TASKS = _MAINTENANCE_TASKS | frozenset(
     {"python_sanity", "python_simple", "python_complex", "python_complex_bugfix"}
 )
 _VALID_STATUS = frozenset(
@@ -215,6 +222,7 @@ class CodingBenchmarkService:
     """
 
     def __init__(self, storage_dir: str, repo_root: Optional[str] = None) -> None:
+        """Initialize run storage, the scheduler and maintenance lifecycle registries."""
         self.storage_dir = Path(storage_dir)
         self.storage_dir.mkdir(parents=True, exist_ok=True)
         self.repo_root = (
@@ -224,6 +232,11 @@ class CodingBenchmarkService:
         )
         self._runs: dict[str, CodingBenchmarkRun] = {}
         self._active_procs: dict[str, subprocess.Popen[str]] = {}
+        self._maintenance_tasks: dict[str, asyncio.Task[None]] = {}
+        self._maintenance_pending_cleanup: set[str] = set()
+        self._maintenance_cancel_requests: set[str] = set()
+        self._maintenance_started: set[str] = set()
+        self._maintenance_cleanup_started: set[str] = set()
         self._lock = threading.Lock()
         self._load_persisted_runs()
 
@@ -337,10 +350,33 @@ class CodingBenchmarkService:
             run.status = "completed_with_failures"
 
     def _validate_start_request(self, models: list[str], tasks: list[str]) -> None:
+        """Reject missing models, unknown tasks and invalid benchmark selections."""
         if not models:
             raise ValueError("Lista modeli nie może być pusta")
         if not tasks:
             raise ValueError("Lista zadań nie może być pusta")
+        if set(tasks) & _MAINTENANCE_TASKS:
+            from venom_core.config import SETTINGS
+            from venom_core.services.maintenance_comparison.catalog import (
+                load_all_models,
+            )
+
+            if not SETTINGS.ENABLE_MAINTENANCE_COMPARISON:
+                raise ValueError("maintenance_comparison_disabled")
+            if not set(tasks) <= _MAINTENANCE_TASKS:
+                raise ValueError("maintenance_tasks_must_be_separate")
+            profiles, _ = load_all_models(
+                self.repo_root / "config/maintenance_comparison"
+            )
+            known = {
+                alias: m["id"] for m in profiles for alias in [m["id"], m["hf_id"]]
+            }
+            if not set(models) <= known.keys():
+                raise ValueError("unknown_maintenance_model")
+            if len({known[m] for m in models}) != len(models) or len(set(tasks)) != len(
+                tasks
+            ):
+                raise ValueError("maintenance_duplicate_selection")
         invalid_tasks = [t for t in tasks if t not in _VALID_TASKS]
         if invalid_tasks:
             raise ValueError(
@@ -363,6 +399,8 @@ class CodingBenchmarkService:
     ) -> str:
         """Uruchamia coding benchmark i zwraca run_id."""
         self._validate_start_request(models, tasks)
+        if set(tasks) & _MAINTENANCE_TASKS:
+            raise ValueError("maintenance_owned_start_required")
         run_id = str(uuid.uuid4())
         cfg = CodingRunConfig(
             models=list(models),
@@ -402,8 +440,29 @@ class CodingBenchmarkService:
         return run_id
 
     def _build_scheduler_command(self, run: CodingBenchmarkRun) -> list[str]:
+        """Build the legacy scheduler command using explicit run paths and options."""
         cfg = run.config
         python_bin = sys.executable or "python3"
+        if set(cfg.tasks) <= _MAINTENANCE_TASKS:
+            return [
+                python_bin,
+                "-m",
+                "venom_core.services.maintenance_comparison.worker",
+                "--repo",
+                str(self.repo_root),
+                "--out",
+                str(self._run_dir(run.run_id)),
+                "--models",
+                ",".join(cfg.models),
+                "--tasks",
+                ",".join(cfg.tasks),
+                "--state-file",
+                str(self._state_file(run.run_id)),
+                "--timeout",
+                str(cfg.timeout),
+                "--phase",
+                str(cfg.options.get("maintenance_phase", "comparison")),
+            ]
         scheduler = (self.repo_root / _SCHEDULER_SCRIPT).resolve()
         if not scheduler.exists():
             raise FileNotFoundError(f"Nie znaleziono schedulera: {scheduler}")
@@ -438,6 +497,266 @@ class CodingBenchmarkService:
             cmd.append("--stop-on-failure")
         return cmd
 
+    async def start_maintenance(
+        self,
+        *,
+        models: list[str],
+        tasks: list[str],
+        trial_seconds: int,
+        controller,
+        options: dict | None = None,
+    ) -> str:
+        """Validate the manual comparison and reserve host runtime before registering its worker."""
+        from venom_core.services.maintenance_comparison.preflight import (
+            require_local_llms_empty,
+        )
+
+        self._validate_start_request(models, tasks)
+        options = options or {}
+        if set(options) - {"maintenance_phase"}:
+            raise ValueError("maintenance_fixed_generation_profile")
+        if options.get("maintenance_phase") == "flaky_diagnostic" and set(tasks) != {
+            "maintenance_operator"
+        }:
+            raise ValueError("maintenance_flaky_operator_only")
+        if options.get("maintenance_phase", "comparison") not in {
+            "comparison",
+            "baseline",
+            "qualification",
+            "flaky_diagnostic",
+        }:
+            raise ValueError("maintenance_phase_invalid")
+        run_id = str(uuid.uuid4())
+        lease = get_runtime_admission().acquire(
+            owner="coding-maintenance",
+            run_id=run_id,
+            engine="maintenance",
+            model=",".join(models),
+        )
+        try:
+            with lease.operation(
+                kind="maintenance_preflight", confirm_quiescent=lambda: True
+            ):
+                await require_local_llms_empty(controller)
+            run = CodingBenchmarkRun(
+                run_id=run_id,
+                config=CodingRunConfig(
+                    models=models,
+                    tasks=tasks,
+                    loop_task="",
+                    first_sieve_task="",
+                    timeout=trial_seconds,
+                    max_rounds=3,
+                    endpoint="local-transformers",
+                    stop_on_failure=False,
+                    options=options,
+                    model_timeout_overrides={},
+                ),
+                status="pending",
+                created_at=_utc_now_iso(),
+            )
+            with self._lock:
+                self._runs[run_id] = run
+                self._maintenance_pending_cleanup.add(run_id)
+                self._persist_meta(run)
+                task = asyncio.create_task(self._run_owned_maintenance(run, lease))
+                self._maintenance_tasks[run_id] = task
+                task.add_done_callback(partial(self._maintenance_finished, run_id))
+            return run_id
+        except BaseException:
+            with lease.cleanup(confirm_quiescent=lambda: True):
+                logger.debug("Maintenance startup cleanup complete")
+            lease.release()
+            raise
+
+    def _maintenance_finished(self, run_id: str, task: asyncio.Task) -> None:
+        """Retire task bookkeeping and surface any background worker exception."""
+        with self._lock:
+            if self._maintenance_tasks.get(run_id) is task:
+                self._maintenance_tasks.pop(run_id, None)
+        if not task.cancelled() and task.exception() is not None:
+            logger.error(
+                "Maintenance cleanup failed; inspect runtime admission quarantine"
+            )
+
+    @staticmethod
+    def _retire_maintenance_process(process) -> bool:
+        """Terminate the owned child, escalating to kill if it does not exit."""
+        if process is None or process.poll() is not None:
+            return True
+        process.terminate()
+        try:
+            process.wait(timeout=3)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            try:
+                process.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                return False
+        return process.poll() is not None
+
+    def _spawn_maintenance_child(self, run, command):
+        """Create and register the child under the lifecycle lock before cancellation can hide it."""
+        process = subprocess.Popen(
+            command,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            cwd=str(self.repo_root),
+            env=self._scheduler_environment(run),
+        )
+        with self._lock:
+            self._active_procs[run.run_id] = process
+        return process
+
+    async def _spawn_maintenance_process(self, run, command):
+        """Shield spawn registration, then propagate caller cancellation after the child is tracked."""
+        pending = asyncio.get_running_loop().run_in_executor(
+            None, self._spawn_maintenance_child, run, command
+        )
+        try:
+            return await asyncio.shield(pending)
+        except asyncio.CancelledError:
+            # Spawning cannot be cancelled in its thread. Retain the actual child
+            # in _active_procs before propagating cancellation to owned cleanup.
+            try:
+                await asyncio.shield(pending)
+            except Exception:
+                logger.debug("Maintenance spawn failed while its owner was cancelling")
+            raise
+
+    async def _cancel_maintenance_task(self, run_id: str, task: asyncio.Task) -> None:
+        """Cancel the worker and wait for cleanup without swallowing caller cancellation."""
+        with self._lock:
+            started = run_id in self._maintenance_started
+            cleaning = run_id in self._maintenance_cleanup_started
+        if started and not cleaning and not task.done() and not task.cancelling():
+            task.cancel()
+        await asyncio.wait({task})
+        if not task.cancelled():
+            error = task.exception()
+            if isinstance(error, BaseException):
+                raise RuntimeError(_MAINTENANCE_CLEANUP_UNCONFIRMED) from error
+        with self._lock:
+            if run_id in self._maintenance_pending_cleanup:
+                raise RuntimeError(_MAINTENANCE_CLEANUP_UNCONFIRMED)
+
+    def _stop_maintenance_task(self, run_id: str) -> None:
+        """Coordinate queued or running task cancellation before deleting run artifacts."""
+        with self._lock:
+            if run_id not in self._maintenance_pending_cleanup:
+                return
+            task = self._maintenance_tasks.get(run_id)
+            self._maintenance_cancel_requests.add(run_id)
+        if task is None or not task.get_loop().is_running():
+            raise RuntimeError(_MAINTENANCE_CLEANUP_UNCONFIRMED)
+        try:
+            caller_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            caller_loop = None
+        if caller_loop is task.get_loop():
+            raise RuntimeError("maintenance_cleanup_pending")
+        pending = asyncio.run_coroutine_threadsafe(
+            self._cancel_maintenance_task(run_id, task), task.get_loop()
+        )
+        try:
+            pending.result(timeout=30)
+        except TimeoutError as exc:
+            # The cleanup remains owned by its loop; artifacts remain intact.
+            raise RuntimeError("maintenance_cleanup_pending") from exc
+
+    def _maintenance_process_quiescent(self, run_id: str) -> bool:
+        """Confirm that the registered child is absent or has exited."""
+        with self._lock:
+            process = self._active_procs.get(run_id)
+        return process is None or process.poll() is not None
+
+    async def _run_owned_maintenance(self, run, lease) -> None:
+        """Run the worker and release its lease only after process and container cleanup is confirmed."""
+        process = None
+        with self._lock:
+            self._maintenance_started.add(run.run_id)
+        try:
+            if run.run_id in self._maintenance_cancel_requests:
+                raise asyncio.CancelledError()
+            with lease.operation(
+                kind="maintenance_worker",
+                confirm_quiescent=lambda: self._maintenance_process_quiescent(
+                    run.run_id
+                ),
+            ):
+                run.status, run.started_at = "running", _utc_now_iso()
+                self._persist_meta(run)
+                command = [
+                    "/usr/bin/setpriv",
+                    "--pdeathsig",
+                    "TERM",
+                    *self._build_scheduler_command(run),
+                ]
+                process = await self._spawn_maintenance_process(run, command)
+                _, stderr = await asyncio.to_thread(process.communicate)
+                if self._state_file(run.run_id).exists():
+                    run.jobs = _parse_scheduler_state(self._state_file(run.run_id))
+                self._finalize_run_status(run, process.returncode, stderr)
+        except asyncio.CancelledError:
+            run.status, run.error_message = "failed", "maintenance_cancelled"
+            raise
+        except Exception as exc:
+            run.status, run.error_message = (
+                "failed",
+                "maintenance_worker_" + type(exc).__name__,
+            )
+        finally:
+            with self._lock:
+                self._maintenance_cleanup_started.add(run.run_id)
+                if process is None:
+                    process = self._active_procs.get(run.run_id)
+            stopped = await asyncio.to_thread(self._retire_maintenance_process, process)
+            run.finished_at = _utc_now_iso()
+            with self._lock:
+                registered = self._runs.get(run.run_id) is run
+            if registered:
+                self._persist_meta(run)
+            from venom_core.services.maintenance_comparison.sandbox import (
+                cleanup_run_containers,
+            )
+
+            containers_stopped = await asyncio.to_thread(
+                cleanup_run_containers, run.run_id
+            )
+            with lease.cleanup(
+                confirm_quiescent=lambda: containers_stopped and stopped
+            ):
+                logger.debug("Maintenance worker cleanup complete")
+            if lease.release() is False:
+                raise RuntimeError("maintenance_release_unconfirmed")
+            with self._lock:
+                self._active_procs.pop(run.run_id, None)
+                self._maintenance_pending_cleanup.discard(run.run_id)
+                self._maintenance_started.discard(run.run_id)
+                self._maintenance_cleanup_started.discard(run.run_id)
+                self._maintenance_cancel_requests.discard(run.run_id)
+
+    def _scheduler_environment(self, run: CodingBenchmarkRun) -> dict[str, str] | None:
+        """Build child environment settings while keeping host defaults unchanged."""
+        if not set(run.config.tasks) <= _MAINTENANCE_TASKS:
+            return None
+        import os
+
+        component = str(Path.home() / ".local/share/venom/maintenance-comparison")
+        return {
+            **os.environ,
+            "ALLOW_SANDBOX_CONTAINERS": "true",
+            "ENABLE_SANDBOX": "true",
+            "VENOM_MAINTENANCE_ADMISSION_DB": str(get_runtime_admission().database),
+            "VENOM_MAINTENANCE_RUN_ID": run.run_id,
+            "VENOM_MAINTENANCE_OUTPUT_ROOT": str(self.storage_dir.resolve()),
+            "HF_XET_CACHE": component + "/xet",
+            "HF_HUB_CACHE": component + "/kernels",
+            "HF_HUB_DOWNLOAD_TIMEOUT": "60",
+            "PYTHONPATH": component + "/python:" + str(self.repo_root),
+        }
+
     @admitted_operation("coding_benchmark_worker", mutation=False)
     def _run_scheduler_thread(self, run_id: str) -> None:
         """Uruchamia scheduler w wątku i aktualizuje stan run."""
@@ -459,6 +778,7 @@ class CodingBenchmarkService:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 cwd=str(self.repo_root),
+                env=self._scheduler_environment(run),
             )
             with self._lock:
                 self._active_procs[run_id] = proc
@@ -582,6 +902,7 @@ class CodingBenchmarkService:
         """Usuwa run. Zwraca True jeśli usunięto, False jeśli nie znaleziono."""
         if not _is_valid_run_id(run_id):
             return False
+        self._stop_maintenance_task(run_id)
         self._stop_active_process(run_id)
         with self._lock:
             run = self._runs.pop(run_id, None)
@@ -600,20 +921,17 @@ class CodingBenchmarkService:
         return True
 
     def clear_all_runs(self) -> int:
-        """Usuwa wszystkie run. Zwraca liczbę usuniętych."""
+        """Delete only after each run's worker, containers and lease are retired."""
         with self._lock:
-            run_ids = list(self._runs.keys())
-            self._runs.clear()
-        for run_id in run_ids:
-            self._stop_active_process(run_id)
-        count = len(run_ids)
+            run_ids = list(self._runs)
+        deleted = 0
+        first_error: RuntimeError | None = None
         for run_id in run_ids:
             try:
-                import shutil
-
-                run_dir = self._run_dir(run_id)
-                if run_dir.exists():
-                    shutil.rmtree(run_dir)
-            except Exception as exc:
-                logger.warning(f"Nie można usunąć katalogu run {run_id}: {exc}")
-        return count
+                deleted += self.delete_run(run_id)
+            except RuntimeError as error:
+                if first_error is None:
+                    first_error = error
+        if first_error is not None:
+            raise first_error
+        return deleted

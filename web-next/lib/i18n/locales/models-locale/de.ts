@@ -271,6 +271,12 @@ export const models = {
     run: "Starten",
   },
   status: {
+    loaded: "Geladen",
+    unloaded: "Nicht geladen",
+    loadedUnknown: "Speicherzustand unbestätigt",
+    selected: "Ausgewählt",
+    dedicatedRuntime: "Verwaltung im zuständigen Modul",
+    engine: { online: "Engine verfügbar", offline: "Engine nicht erreichbar", unverified: "Engine-Zustand unbestätigt" },
     active: "Aktiv",
     installed: "Installiert",
     size: "Größe",
@@ -327,7 +333,10 @@ export const models = {
     },
     installed: {
       title: "INSTALLIERT",
-      subtitle: "Lokale Modelle bereit zur Verwendung.",
+      subtitle: "Installierte Dateien und bestätigte Engine-Zustände.",
+      other: "Andere Modelle",
+      fetchError: "Die Liste konnte nicht aktualisiert werden. Der vorherige Stand ist möglicherweise veraltet.",
+      count: "Einträge: {{count}}",
       noModels: "Keine installierten Modelle.",
     },
     operations: {

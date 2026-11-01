@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "profile": "retained-models-rtx3060-v2",
+  "models": {
+    "mini-coder-1.7b": {
+      "attention_implementation": "sdpa",
+      "use_cache": true
+    },
+    "granite-4.2-3b": {
+      "attention_implementation": "sdpa",
+      "use_cache": true
+    },
+    "gemma-4-e2b-it": {
+      "attention_implementation": "sdpa",
+      "use_cache": true
+    },
+    "qwen3.5-9b": {
+      "attention_implementation": "sdpa",
+      "use_cache": true,
+      "kernel_profile": "qwen35-deltanet-v1"
+    }
+  }
+}

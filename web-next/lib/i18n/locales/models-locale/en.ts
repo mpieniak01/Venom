@@ -271,6 +271,12 @@ export const models = {
     run: "Run",
   },
   status: {
+    loaded: "Loaded",
+    unloaded: "Not loaded",
+    loadedUnknown: "Memory state unverified",
+    selected: "Selected",
+    dedicatedRuntime: "Managed in its dedicated module",
+    engine: { online: "Engine online", offline: "Engine unavailable", unverified: "Engine state unverified" },
     active: "Active",
     installed: "Installed",
     size: "Size",
@@ -335,7 +341,10 @@ export const models = {
     },
     installed: {
       title: "INSTALLED",
-      subtitle: "Local models ready to run.",
+      subtitle: "Installed files and observed engine states.",
+      other: "Other models",
+      fetchError: "Could not refresh the inventory. The previous reading may be out of date.",
+      count: "Entries: {{count}}",
       noModels: "No installed models.",
     },
     operations: {

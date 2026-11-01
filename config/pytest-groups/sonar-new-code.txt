@@ -204,6 +204,14 @@ tests/test_logger_utils.py
 tests/test_maf_runtime.py
 tests/test_main_internal_helpers.py
 tests/test_main_setup_router_dependencies.py
+tests/test_maintenance_catalog.py
+tests/test_maintenance_checks.py
+tests/test_maintenance_fixtures.py
+tests/test_maintenance_host.py
+tests/test_maintenance_loop.py
+tests/test_maintenance_protocol.py
+tests/test_maintenance_records.py
+tests/test_maintenance_safety.py
 tests/test_markdown_blocks.py
 tests/test_mcp_manager.py
 tests/test_mcp_manager_skill.py

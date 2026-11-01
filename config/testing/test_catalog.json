@@ -7441,6 +7441,118 @@
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
+    },
+    {
+      "path": "tests/test_maintenance_protocol.py",
+      "domain": "providers",
+      "test_type": "service_contract",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Strict maintenance-model wire formats without GPU or inference dependencies."
+    },
+    {
+      "path": "tests/test_maintenance_fixtures.py",
+      "domain": "providers",
+      "test_type": "service_contract",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Actual independent fail-to-pass validation of the eight synthetic maintenance repair controls."
+    },
+    {
+      "path": "tests/test_maintenance_catalog.py",
+      "domain": "providers",
+      "test_type": "service_contract",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Immutable checkpoint identities and exact role-specific baseline denominators."
+    },
+    {
+      "path": "tests/test_maintenance_loop.py",
+      "domain": "providers",
+      "test_type": "service_contract",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Model/tool round trip, structured finishing, strict arguments and orchestrator no-progress stops with scripted transport."
+    },
+    {
+      "path": "tests/test_maintenance_checks.py",
+      "domain": "providers",
+      "test_type": "service_contract",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Independent evidence and fail-closed experiment execution without live model generation."
+    },
+    {
+      "path": "tests/test_maintenance_safety.py",
+      "domain": "providers",
+      "test_type": "service_contract",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Independent evidence and fail-closed experiment execution without live model generation."
+    },
+    {
+      "path": "tests/test_maintenance_records.py",
+      "domain": "providers",
+      "test_type": "service_contract",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Scheduling denominators, held-out provenance and optional inference boundaries without live model inference."
+    },
+    {
+      "path": "tests/test_maintenance_host.py",
+      "domain": "providers",
+      "test_type": "service_contract",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Exclusive host lease, cleanup, admission rejection and the existing API/service path without physical inference."
     }
   ]
 }

@@ -212,31 +212,38 @@ export const InstalledCard = ({
     allowRemoveProviders: Set<string>;
 }) => {
     const { t } = useLanguage();
-    const providerLabel = model.provider ?? model.source ?? "vllm";
+    const providerLabel = model.provider ?? model.source ?? "—";
+    const canActivate = model.activation_supported !== false && model.chat_compatible !== false && ["ollama", "vllm", "onnx"].includes(providerLabel);
+    const loaded = model.loaded ?? false;
+    let loadedLabel = loaded ? "models.status.loaded" : "models.status.unloaded";
+    if (model.loaded == null) loadedLabel = "models.status.loadedUnknown";
     return (
         <div className="rounded-2xl box-base px-3 py-3 text-[color:var(--text-primary)] shadow-card">
-            <div className="flex items-start justify-between gap-4">
-                <div>
-                    <p className="text-sm font-medium leading-tight">{model.name}</p>
+            <div className="flex flex-wrap items-start justify-between gap-2">
+                <div className="min-w-0 flex-1 basis-32">
+                    <p className="break-words text-sm font-medium leading-tight">{model.name}</p>
                     <p className="mt-1 text-[11px] text-[color:var(--ui-muted)]">
                         {getInstalledModelSizeLabel(t, model.size_gb)}{" "}
-                        • {providerLabel}
+                        • {providerLabel}{model.revision ? ` · ${model.revision.slice(0, 8)}` : ""}
                     </p>
                 </div>
-                <Badge tone={model.active ? "success" : "neutral"} className="text-[10px]">
-                    {model.active ? t("models.status.active") : t("models.status.installed")}
-                </Badge>
+                <div className="flex flex-wrap gap-1">
+                    <Badge tone="neutral" className="text-[10px]">{t("models.status.installed")}</Badge>
+                    <Badge tone={loaded ? "success" : "neutral"} className="text-[10px]">{t(loadedLabel)}</Badge>
+                    {model.selected && <Badge tone="neutral" className="text-[10px]">{t("models.status.selected")}</Badge>}
+                </div>
             </div>
             <div className="mt-3 flex flex-wrap gap-2">
-                <Button
+                {canActivate && <Button
                     className="rounded-full px-3 text-[11px]"
                     size="sm"
-                    variant={model.active ? "secondary" : "outline"}
-                    disabled={model.active || pendingActivate}
+                    variant={loaded && model.selected ? "secondary" : "outline"}
+                    disabled={(loaded && model.selected) || pendingActivate}
                     onClick={onActivate}
                 >
                     {pendingActivate ? t("models.actions.activating") : t("models.actions.activate")}
-                </Button>
+                </Button>}
+                {!canActivate && <span className="text-[11px] text-[color:var(--ui-muted)]">{t("models.status.dedicatedRuntime")}</span>}
                 {onRemove && allowRemoveProviders.has(model.provider ?? model.source ?? "") && (
                     <Button
                         className="rounded-full px-3 text-[11px]"

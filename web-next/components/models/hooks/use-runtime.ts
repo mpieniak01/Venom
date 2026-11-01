@@ -90,33 +90,22 @@ export function buildInstalledBuckets(
     data: ModelsResponse | null,
 ): Record<string, ModelInfo[]> {
     if (!data) return {};
-    const buckets: Record<string, ModelInfo[]> = {};
-    const providers = data.providers ?? {};
-
-    Object.entries(providers).forEach(([provider, list]) => {
-        const normalized = normalizeProvider(provider);
-        if (!normalized) return;
-        if (!buckets[normalized]) {
-            buckets[normalized] = [];
-        }
-        if (Array.isArray(list)) {
-            buckets[normalized].push(...list);
-        }
+    const buckets: Record<string, ModelInfo[]> = { vllm: [], onnx: [], ollama: [], other: [] };
+    const add = (model: ModelInfo, providerHint?: string) => {
+        const provider = normalizeProvider(model.provider ?? providerHint ?? model.source);
+        const key = ["vllm", "onnx", "ollama"].includes(provider) ? provider : "other";
+        if (model.installed === false) return;
+        const identity = (entry: ModelInfo) => `${normalizeProvider(entry.provider ?? provider)}:${entry.name}:${entry.path ?? ""}:${entry.revision ?? ""}`;
+        if (!buckets[key].some((entry) => identity(entry) === identity(model))) buckets[key].push(model);
+    };
+    Object.entries(data.providers ?? {}).forEach(([provider, list]) => {
+        if (Array.isArray(list)) list.forEach((model) => add(model, provider));
     });
+    (Array.isArray(data.models) ? data.models : []).forEach((model) => add(model));
 
-    const fallback = Array.isArray(data.models) ? data.models : [];
-    fallback.forEach((model) => {
-        const provider = normalizeProvider(model.provider ?? model.source);
-        if (!provider) return;
-        if (!buckets[provider]) {
-            buckets[provider] = [];
-        }
-        const exists = buckets[provider].some((candidate) => candidate.name === model.name);
-        if (!exists) {
-            buckets[provider].push(model);
-        }
+    Object.values(buckets).forEach((list) => {
+        list.sort((a, b) => Number(b.loaded === true) - Number(a.loaded === true) || Number(b.selected === true) - Number(a.selected === true) || a.name.localeCompare(b.name));
     });
-
     return buckets;
 }
 
@@ -127,7 +116,8 @@ export function resolveModelsForServer(input: {
     installedModels: ModelInfo[];
     selectedModel?: string | null;
 }) {
-    const { selectedServer, runtimeModels, installedBuckets, installedModels } = input;
+    const { selectedServer, runtimeModels, installedBuckets } = input;
+    const installedModels = input.installedModels.filter((model) => model.chat_compatible !== false && model.activation_supported !== false);
     if (!selectedServer) return preferChatModelAliases(installedModels, input.selectedModel);
     if (runtimeModels.length > 0) {
         return preferChatModelAliases(runtimeModels, input.selectedModel).map((model) => ({
@@ -138,7 +128,7 @@ export function resolveModelsForServer(input: {
     }
     const targetProvider = normalizeProvider(selectedServer);
     if (!targetProvider) return preferChatModelAliases(installedModels, input.selectedModel);
-    return preferChatModelAliases(installedBuckets[targetProvider] ?? [], input.selectedModel);
+    return preferChatModelAliases((installedBuckets[targetProvider] ?? []).filter((model) => model.chat_compatible !== false && model.activation_supported !== false), input.selectedModel);
 }
 
 export function useRuntime() {
@@ -153,7 +143,7 @@ export function useRuntime() {
     const [resourceReleaseError, setResourceReleaseError] = useState<string | null>(null);
     const [resourceReleaseRows, setResourceReleaseRows] = useState<ModelResourcesResult["runtimes"]>([]);
     const [releasingResources, setReleasingResources] = useState(false);
-    const installed = useModels(0);
+    const installed = useModels(15000);
     const operations = useModelOperations(10, 0);
     const runtimeOptions = useLlmRuntimeOptions(0);
     const activeServer = useActiveLlmServer(0);

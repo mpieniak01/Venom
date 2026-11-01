@@ -23,7 +23,7 @@ describe("use-runtime helpers", () => {
 
     assert.deepStrictEqual(
       Object.keys(buckets).sort(),
-      ["ollama", "onnx"],
+      ["ollama", "onnx", "other", "vllm"],
     );
     assert.ok(buckets.ollama.some((model) => model.name === "llama3:8b"));
     assert.ok(buckets.onnx.some((model) => model.name === "phi3.onnx"));
@@ -63,4 +63,35 @@ describe("use-runtime helpers", () => {
       "activation failed (HTTP 500).",
     );
   });
+});
+
+
+describe("installed inventory evidence", () => {
+  it("groups actual external checkpoints under Other without reassigning their engine", () => {
+    const buckets = buildInstalledBuckets({models: [
+      {name: "Qwen/Qwen3.5-9B", provider: "transformers", installed: true, activation_supported: false},
+      {name: "rwkv", provider: "rwkv", installed: true},
+      {name: "deleted", provider: "ollama", installed: false},
+    ],count: 3});
+    assert.equal(buckets.other.length,2);
+    assert.equal(buckets.other[0].provider,"transformers");
+    assert.equal(buckets.vllm.length,0);
+    assert.equal(buckets.ollama.length,0);
+  });
+  it("does not duplicate a filesystem entry received through both response shapes", () => {
+    const model = {name: "qwen", provider: "transformers", path:"/weights/qwen"};
+    const buckets = buildInstalledBuckets({models:[model],providers:{transformers:[model]},count:1});
+    assert.equal(buckets.other.length,1);
+  });
+  it("excludes models without a supported chat path from engine selection", () => {
+    const models = resolveModelsForServer({selectedServer:null,runtimeModels:[],installedBuckets:{other:[]},installedModels:[{name:"custom",provider:"research",activation_supported:false},{name:"chat",provider:"ollama"}]});
+    assert.deepEqual(models.map(m=>m.name),["chat"]);
+  });
+});
+
+
+it("retains distinct Ollama tags that share the registry URI", () => {
+  const models=[{name:"first:latest",provider:"ollama",path:"ollama://registry.ollama.ai"},{name:"second:latest",provider:"ollama",path:"ollama://registry.ollama.ai"}];
+  const buckets=buildInstalledBuckets({models,providers:{ollama:models},count:2});
+  assert.equal(buckets.ollama.length,2);
 });

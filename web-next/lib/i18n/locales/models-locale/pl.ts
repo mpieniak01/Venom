@@ -271,6 +271,12 @@ export const models = {
     run: "Uruchom",
   },
   status: {
+    loaded: "Załadowany",
+    unloaded: "Niezaładowany",
+    loadedUnknown: "Stan pamięci niepotwierdzony",
+    selected: "Wybrany",
+    dedicatedRuntime: "Obsługa w dedykowanym module",
+    engine: { online: "Silnik dostępny", offline: "Silnik niedostępny", unverified: "Stan silnika niepotwierdzony" },
     active: "Aktywny",
     installed: "Zainstalowany",
     size: "Rozmiar",
@@ -327,7 +333,10 @@ export const models = {
     },
     installed: {
       title: "ZAINSTALOWANE",
-      subtitle: "Lokalne modele gotowe do użycia.",
+      subtitle: "Instalacje na dysku oraz potwierdzone stany silników.",
+      other: "Inne modele",
+      fetchError: "Nie udało się odświeżyć listy. Poprzedni odczyt może być nieaktualny.",
+      count: "Pozycje: {{count}}",
       noModels: "Brak zainstalowanych modeli.",
     },
     operations: {

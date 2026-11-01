@@ -16,6 +16,14 @@ class _Discovery(discovery.ModelManagerDiscoveryMixin):
         self.ollama_cache_path = base / "ollama-cache.json"
         self._last_ollama_warning = 0.0
 
+    def _build_search_dirs(self):
+        """Limit discovery to the temporary model roots owned by this test."""
+        return [self.models_dir]
+
+    def _discover_other_models(self, *_):
+        """Disable ambient cache discovery in this isolated test double."""
+        pass
+
 
 class _Response:
     def __init__(self, status_code: int, payload: dict[str, Any]) -> None:
@@ -52,6 +60,7 @@ class _RaisingClient:
 
 
 def test_detect_model_type_and_provider_variants(tmp_path: Path) -> None:
+    """Verify detect model type and provider variants."""
     gguf = tmp_path / "m.gguf"
     gguf.write_text("x", encoding="utf-8")
     onnx = tmp_path / "m.onnx"
@@ -67,7 +76,7 @@ def test_detect_model_type_and_provider_variants(tmp_path: Path) -> None:
     ) == ("onnx", "onnx")
     assert discovery.ModelManagerDiscoveryMixin._detect_model_type_and_provider(
         model_path=onnx_dir, provider="vllm"
-    ) == ("folder", "onnx")
+    ) == ("folder", "vllm")
 
 
 def test_onnx_metadata_helpers(tmp_path: Path) -> None:
@@ -86,15 +95,30 @@ def test_onnx_metadata_helpers(tmp_path: Path) -> None:
 
 
 def test_manifest_and_cache_helpers(tmp_path: Path) -> None:
+    """Verify manifest and cache helpers."""
     mgr = _Discovery(tmp_path)
     manifests = (
         mgr.models_dir / "manifests" / "registry.ollama.ai" / "library" / "mistral"
     )
     manifests.mkdir(parents=True)
     manifest_file = manifests / "latest"
+    blob_dir = mgr.models_dir / "blobs"
+    blob_dir.mkdir()
+    digest = "sha256:" + "a" * 64
+    (blob_dir / digest.replace(":", "-")).write_bytes(b"weights")
     manifest_file.write_text(
-        json.dumps({"layers": [{"size": 2}, {"size": 3}], "config": {"size": 5}}),
-        encoding="utf-8",
+        json.dumps(
+            {
+                "layers": [
+                    {
+                        "mediaType": "application/vnd.ollama.image.model",
+                        "digest": digest,
+                        "size": 7,
+                    }
+                ],
+                "config": {"digest": digest, "size": 7},
+            }
+        )
     )
 
     entries = mgr._load_ollama_manifest_entries(mgr.models_dir / "manifests")
@@ -110,7 +134,25 @@ def test_manifest_and_cache_helpers(tmp_path: Path) -> None:
     mgr._save_ollama_cache(cache_entries)
     loaded_models: dict[str, dict[str, Any]] = {}
     mgr._load_ollama_cache(loaded_models)
-    assert "ollama::qwen:latest" in loaded_models
+    assert "ollama::qwen:latest" not in loaded_models
+    mgr._save_ollama_cache(
+        [
+            {
+                "name": "qwen:latest",
+                "digest": "current",
+                "quantization": "q4",
+                "active": True,
+            }
+        ]
+    )
+    loaded_models["ollama::qwen:latest"] = {
+        "name": "qwen:latest",
+        "digest": "current",
+        "active": False,
+    }
+    mgr._load_ollama_cache(loaded_models)
+    assert loaded_models["ollama::qwen:latest"]["quantization"] == "q4"
+    assert loaded_models["ollama::qwen:latest"]["active"] is False
 
 
 def test_collect_ollama_entries_prefers_latest(tmp_path: Path) -> None:
@@ -209,6 +251,7 @@ def test_local_model_candidate_filters_academy_artifacts(tmp_path: Path) -> None
 
 
 def test_local_model_candidate_workspace_fallback(tmp_path: Path) -> None:
+    """Verify local model candidate workspace fallback."""
     plain_dir = tmp_path / "gemma-3"
     plain_dir.mkdir()
 
@@ -216,7 +259,6 @@ def test_local_model_candidate_workspace_fallback(tmp_path: Path) -> None:
         discovery.ModelManagerDiscoveryMixin._is_local_model_candidate(
             plain_dir,
             set(),
-            allow_workspace_fallback=False,
         )
         is False
     )
@@ -224,27 +266,27 @@ def test_local_model_candidate_workspace_fallback(tmp_path: Path) -> None:
         discovery.ModelManagerDiscoveryMixin._is_local_model_candidate(
             plain_dir,
             set(),
-            allow_workspace_fallback=True,
         )
-        is True
+        is False
     )
 
 
 def test_looks_like_runtime_dir_helpers(tmp_path: Path) -> None:
+    """Verify looks like runtime dir helpers."""
     onnx_by_metadata = tmp_path / "onnx-meta"
     onnx_by_metadata.mkdir()
     (onnx_by_metadata / discovery.ONNX_METADATA_FILENAME).write_text(
         "{}",
         encoding="utf-8",
     )
-    assert discovery.ModelManagerDiscoveryMixin._looks_like_onnx_runtime_dir(
+    assert not discovery.ModelManagerDiscoveryMixin._looks_like_onnx_runtime_dir(
         onnx_by_metadata
     )
 
     onnx_by_genai = tmp_path / "onnx-genai"
     onnx_by_genai.mkdir()
     (onnx_by_genai / "genai_config.json").write_text("{}", encoding="utf-8")
-    assert discovery.ModelManagerDiscoveryMixin._looks_like_onnx_runtime_dir(
+    assert not discovery.ModelManagerDiscoveryMixin._looks_like_onnx_runtime_dir(
         onnx_by_genai
     )
 
@@ -371,3 +413,370 @@ async def test_list_local_models_network_error_paths(
     )
     models = await mgr.list_local_models()
     assert any(model["name"] == "tiny.gguf" for model in models)
+
+
+def test_payload_evidence_rejects_incomplete_shards_and_accepts_cache_links(tmp_path):
+    """Verify payload evidence rejects incomplete shards and accepts cache links."""
+    from venom_core.core.model_inventory import is_hf_model_dir
+
+    (tmp_path / "config.json").write_text("{}")
+    index = tmp_path / "model.safetensors.index.json"
+    index.write_text(
+        json.dumps(
+            {"weight_map": {"a": "part.safetensors", "b": "missing.safetensors"}}
+        )
+    )
+    blob = tmp_path.parent / (tmp_path.name + "-blob")
+    blob.write_bytes(b"weights")
+    (tmp_path / "part.safetensors").symlink_to(blob)
+    assert not is_hf_model_dir(tmp_path)
+    index.write_text(json.dumps({"weight_map": {"a": "part.safetensors"}}))
+    assert is_hf_model_dir(tmp_path)
+    index.write_text(json.dumps({"weight_map": {"a": "../outside"}}))
+    assert not is_hf_model_dir(tmp_path)
+
+
+def test_workspaces_metadata_and_empty_weights_are_not_installed_models(tmp_path):
+    """Verify workspaces metadata and empty weights are not installed models."""
+    mgr = _Discovery(tmp_path)
+    for name in [
+        "cache",
+        "metadata",
+        "preprod",
+        "research",
+        "manifests-v2",
+        "empty-onnx",
+    ]:
+        path = mgr.models_dir / name
+        path.mkdir()
+        (path / "genai_config.json").write_text("{}")
+        (path / "venom_onnx_metadata.json").write_text("{}")
+    (mgr.models_dir / "empty-onnx/model.onnx").touch()
+    models = mgr._discover_local_models()
+    assert not any(
+        m["provider"] == "vllm" or m["provider"] == "onnx" for m in models.values()
+    )
+
+
+def test_stale_ollama_cache_does_not_resurrect_removed_models(tmp_path, monkeypatch):
+    """Verify stale ollama cache does not resurrect removed models."""
+    mgr = _Discovery(tmp_path)
+    mgr.ollama_cache_path.write_text(
+        json.dumps([{"name": "deleted:latest", "provider": "ollama"}])
+    )
+    monkeypatch.setattr(mgr, "_discover_other_models", lambda *_: None)
+    assert mgr._discover_local_models() == {}
+
+
+def test_model_cache_enumerates_only_complete_snapshots_once(tmp_path):
+    """Verify model cache enumerates only complete snapshots once."""
+    from venom_core.core.model_inventory import cached_model_paths
+
+    path = tmp_path / "models--org--kept/snapshots/sha"
+    path.mkdir(parents=True)
+    (path / "config.json").write_text("{}")
+    (path / "model.safetensors").write_bytes(b"weights")
+    partial = tmp_path / "models--org--partial/snapshots/sha"
+    partial.mkdir(parents=True)
+    (partial / "config.json").write_text("{}")
+    assert list(cached_model_paths([tmp_path, tmp_path])) == [("org/kept", path)]
+
+
+@pytest.mark.parametrize("provider", ["ollama", "vllm", "onnx"])
+@pytest.mark.asyncio
+async def test_runtime_metadata_reports_loaded_models_without_generation(provider):
+    """Verify runtime metadata reports loaded models without generation."""
+    import httpx
+
+    from venom_core.services.model_runtime_inventory import observe_runtime_models
+
+    requests = []
+
+    def transport(request):
+        """Serve only the metadata request expected by this test."""
+        requests.append((request.method, request.url.path))
+        if request.url.path == "/health":
+            return httpx.Response(200, json={"status": "ok", "engine": "onnx-gpu"})
+        return httpx.Response(
+            200, json={"models": [{"name": "served"}], "data": [{"id": "served"}]}
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(transport)) as client:
+        result = await observe_runtime_models(
+            provider, "http://127.0.0.1:11434/v1", client
+        )
+    assert result == {"status": "online", "models": ["served"]}
+    assert all(method == "GET" for method, _ in requests)
+
+
+@pytest.mark.asyncio
+async def test_offline_and_malformed_metadata_are_distinct():
+    """Verify offline and malformed metadata are distinct."""
+    import httpx
+
+    from venom_core.services.model_runtime_inventory import observe_runtime_models
+
+    def offline(request):
+        """Simulate an unavailable metadata transport without making network calls."""
+        raise httpx.ConnectError("refused", request=request)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(offline)) as client:
+        assert await observe_runtime_models(
+            "ollama", "http://localhost:11434", client
+        ) == {"status": "offline", "models": None}
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(lambda _: httpx.Response(200, json={}))
+    ) as client:
+        assert await observe_runtime_models(
+            "vllm", "http://localhost:8001", client
+        ) == {"status": "unverified", "models": None}
+        assert await observe_runtime_models(
+            "vllm", "https://remote.example", client
+        ) == {"status": "unverified", "models": None}
+
+
+def test_selected_configuration_does_not_imply_loaded_or_cross_engine_activity():
+    """Verify selected configuration does not imply loaded or cross engine activity."""
+    from venom_core.services.model_runtime_inventory import annotate_runtime_models
+
+    models = [
+        {"name": "same", "provider": "ollama"},
+        {"name": "same", "provider": "vllm"},
+        {"name": "other", "provider": "transformers"},
+    ]
+    annotate_runtime_models(
+        models,
+        {
+            "ollama": {"status": "offline", "models": None},
+            "vllm": {"status": "online", "models": ["same"]},
+        },
+        "ollama",
+        "same",
+    )
+    assert models[0]["selected"]
+    assert models[0]["loaded"] is None
+    assert not models[0]["active"]
+    assert models[1]["loaded"]
+    assert not models[1]["selected"]
+    assert models[2]["loaded"] is None
+    assert not models[2]["active"]
+
+
+def test_sharded_checkpoints_without_index_require_every_shard(tmp_path):
+    """Verify sharded checkpoints without index require every shard."""
+    from venom_core.core.model_inventory import is_hf_model_dir
+
+    (tmp_path / "config.json").write_text("{}")
+    (tmp_path / "model-00001-of-00002.safetensors").write_bytes(b"weight")
+    assert not is_hf_model_dir(tmp_path)
+    (tmp_path / "model-00002-of-00002.safetensors").write_bytes(b"weight")
+    assert is_hf_model_dir(tmp_path)
+
+
+def test_other_runtimes_are_discovered_without_loading_them(tmp_path, monkeypatch):
+    """Verify other runtimes are discovered without loading them."""
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    mgr = _Discovery(tmp_path)
+    hf = (
+        tmp_path
+        / ".local/share/venom/maintenance-comparison/hub/models--org--kept/snapshots/revision"
+    )
+    hf.mkdir(parents=True)
+    (hf / "config.json").write_text("{}")
+    (hf / "model.safetensors").write_bytes(b"weights")
+    research = mgr.models_dir / "research/rwkv/revision"
+    research.mkdir(parents=True)
+    (research / "small.pth").write_bytes(b"weights")
+    models = {}
+    discovery.ModelManagerDiscoveryMixin._discover_other_models(
+        mgr, [mgr.models_dir], models
+    )
+    assert {m["provider"] for m in models.values()} == {"transformers", "rwkv"}
+
+
+@pytest.mark.asyncio
+async def test_inventory_metadata_aggregation_has_no_inference_requests(monkeypatch):
+    """Verify inventory metadata aggregation has no inference requests."""
+    import httpx
+
+    from venom_core.services.model_runtime_inventory import runtime_inventory
+
+    requests = []
+
+    def transport(request):
+        """Serve only the metadata request expected by this test."""
+        requests.append(request)
+        return httpx.Response(200, json={"models": []})
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(transport))
+    monkeypatch.setattr(httpx, "AsyncClient", lambda **_: client)
+    snapshot = await runtime_inventory({"ollama": "http://localhost:11434"})
+    assert snapshot["ollama"]["status"] == "online"
+    assert snapshot["ollama"]["checked_at"]
+    assert len(requests) == 1
+    assert requests[0].method == "GET"
+    assert requests[0].url.path == "/api/ps"
+
+
+@pytest.mark.asyncio
+async def test_models_endpoint_does_not_mark_remembered_hybrid_model_active(
+    monkeypatch,
+):
+    """Verify models endpoint does not mark remembered hybrid model active."""
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+
+    from venom_core.api.routes import models_install as routes
+
+    models = [
+        {"name": "old-hybrid", "provider": "ollama"},
+        {"name": "Qwen/Qwen3.5-9B", "provider": "transformers"},
+    ]
+    monkeypatch.setattr(
+        routes,
+        "get_model_manager",
+        lambda: SimpleNamespace(
+            list_local_models=AsyncMock(return_value=models),
+            _resolve_ollama_tags_url=lambda: "http://localhost:11435/api/tags",
+        ),
+    )
+    runtime = SimpleNamespace(
+        provider="openrouter",
+        model_name="remote",
+        to_payload=lambda: {"provider": "openrouter", "model": "remote"},
+    )
+    monkeypatch.setattr(routes, "get_active_llm_runtime", lambda: runtime)
+    monkeypatch.setattr(
+        routes.config_manager,
+        "get_runtime_snapshot",
+        lambda **_: {
+            "config": {"HYBRID_LOCAL_MODEL": "old-hybrid"},
+            "active_model_id": "remote",
+        },
+    )
+    monkeypatch.setattr(
+        routes, "probe_runtime_status", AsyncMock(return_value=("ready", None))
+    )
+    monkeypatch.setattr(
+        routes,
+        "runtime_inventory",
+        AsyncMock(return_value={"ollama": {"status": "offline", "models": None}}),
+    )
+    result = await routes.list_models()
+    assert not any(m["active"] or m["selected"] for m in result["models"])
+    assert result["models"][1]["activation_supported"] is False
+    assert result["models"][1]["chat_compatible"] is False
+    assert "transformers" in result["providers"]
+    assert (
+        routes.runtime_inventory.call_args.args[0]["ollama"]
+        == "http://localhost:11435/api/tags"
+    )
+
+
+@pytest.mark.parametrize("weight_map", [None, [], "invalid", 42])
+def test_invalid_checkpoint_weight_map_is_not_an_installation(tmp_path, weight_map):
+    """Verify invalid checkpoint weight map is not an installation."""
+    from venom_core.core.model_inventory import is_hf_model_dir
+
+    (tmp_path / "config.json").write_text("{}")
+    (tmp_path / "model.safetensors").write_bytes(b"weights")
+    (tmp_path / "model.safetensors.index.json").write_text(
+        json.dumps({"weight_map": weight_map})
+    )
+    assert not is_hf_model_dir(tmp_path)
+
+
+@pytest.mark.asyncio
+async def test_invalid_runtime_url_cannot_break_other_engine_observations():
+    """Verify invalid runtime url cannot break other engine observations."""
+    import httpx
+
+    from venom_core.services.model_runtime_inventory import observe_runtime_models
+
+    requests = []
+
+    def transport(request):
+        """Serve only the metadata request expected by this test."""
+        requests.append(request)
+        return httpx.Response(200, json={"models": []})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(transport)) as client:
+        invalid = await observe_runtime_models("vllm", "http://[::1", client)
+        valid = await observe_runtime_models("ollama", "http://localhost:11434", client)
+    assert invalid == {"status": "unverified", "models": None}
+    assert valid == {"status": "online", "models": []}
+    assert len(requests) == 1
+
+
+def test_runtime_identifiers_do_not_cross_namespaces_or_guess_revisions():
+    """Verify runtime identifiers do not cross namespaces or guess revisions."""
+    from venom_core.services.model_runtime_inventory import annotate_runtime_models
+
+    models = [
+        {"name": "org-a/model:latest", "provider": "ollama"},
+        {"name": "org-b/model:latest", "provider": "ollama"},
+        {"name": "org/model", "path": "/models/rev-a", "provider": "vllm"},
+        {"name": "org/model", "path": "/models/rev-b", "provider": "vllm"},
+    ]
+    observations = {
+        "ollama": {"status": "online", "models": ["org-a/model:latest"]},
+        "vllm": {"status": "online", "models": ["org/model"]},
+    }
+    annotate_runtime_models(models, observations, "ollama", "org-a/model:latest")
+    assert models[0]["loaded"] is True
+    assert models[0]["selected"] is True
+    assert models[1]["loaded"] is False
+    assert models[1]["selected"] is False
+    assert models[2]["loaded"] is None
+    assert models[3]["loaded"] is None
+    observations["vllm"]["models"] = ["/models/rev-a"]
+    annotate_runtime_models(models, observations, "vllm", "/models/rev-a")
+    assert models[2]["loaded"] is True
+    assert models[2]["selected"] is True
+    assert models[3]["loaded"] is False
+    observations["ollama"]["models"] = ["model:latest"]
+    annotate_runtime_models(models, observations, "ollama", "model:latest")
+    assert models[0]["loaded"] is None
+    assert models[1]["loaded"] is None
+    assert not any(m["selected"] for m in models)
+
+
+def test_corrupted_snapshot_registration_does_not_hide_other_models(
+    tmp_path, monkeypatch
+):
+    """Verify corrupted snapshot registration does not hide other models."""
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    mgr = _Discovery(tmp_path)
+    for name in ["bad", "good"]:
+        model = (
+            tmp_path
+            / f".local/share/venom/maintenance-comparison/hub/models--org--{name}/snapshots/revision"
+        )
+        model.mkdir(parents=True)
+        (model / "config.json").write_text("{}")
+        (model / "model.safetensors").write_bytes(b"weights")
+    original = mgr._register_local_entry
+
+    def register(models, path, *args, **kwargs):
+        """Inject a per-snapshot registration failure while retaining other models."""
+        if "org--bad" in str(path):
+            raise OSError("snapshot disappeared during registration")
+        return original(models, path, *args, **kwargs)
+
+    monkeypatch.setattr(mgr, "_register_local_entry", register)
+    models = {}
+    discovery.ModelManagerDiscoveryMixin._discover_other_models(
+        mgr, [mgr.models_dir], models
+    )
+    assert [m["name"] for m in models.values()] == ["org/good"]
+
+
+@pytest.mark.parametrize("selected", [None, ""])
+def test_absent_model_selection_remains_unselected(selected):
+    """Verify absent model selection remains unselected."""
+    from venom_core.services.model_runtime_inventory import annotate_runtime_models
+
+    models = [{"name": "org/model", "provider": "ollama"}]
+    annotate_runtime_models(models, {}, "ollama", selected)
+    assert models[0]["selected"] is False
+    assert models[0]["loaded"] is None

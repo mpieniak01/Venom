@@ -1,0 +1,426 @@
+{
+  "schema_version": 1,
+  "status": "experimental_profiles_ready_for_comparison",
+  "models": [
+    {
+      "id": "mini-coder-1.7b",
+      "hf_id": "ricdomolm/mini-coder-1.7b",
+      "revision": "5b7fbc90b6c4684c546de7f811865cff4414a96c",
+      "source": "https://huggingface.co/ricdomolm/mini-coder-1.7b/tree/5b7fbc90b6c4684c546de7f811865cff4414a96c",
+      "license": "mit",
+      "architecture": [
+        "Qwen3ForCausalLM"
+      ],
+      "parameters": 1720574976,
+      "roles": [
+        "operator",
+        "repair",
+        "localization"
+      ],
+      "protocol": "bash",
+      "integration_status": "experimental_adapter_available",
+      "training_status": "technical_possibility_requires_validation",
+      "training_evidence": null,
+      "upstream_context": 40960,
+      "profile": {
+        "hardware": "rtx3060-12gb",
+        "backend": "transformers",
+        "backend_version": "5.17.0",
+        "quantization": "bfloat16",
+        "context_tokens": 8192,
+        "temperature": 0,
+        "seed": 17,
+        "max_new_tokens": 1024,
+        "chat_template_revision": "5b7fbc90b6c4684c546de7f811865cff4414a96c",
+        "parser": "bash",
+        "compute_dtype": "bfloat16",
+        "completion": "native_bash_sentinel_or_json_report"
+      },
+      "gated": false,
+      "training": {
+        "lora": {
+          "status": "technical_possibility_requires_validation",
+          "reason": "Architecture and license recorded; no training run performed on this hardware."
+        },
+        "qlora": {
+          "status": "technical_possibility_requires_validation",
+          "reason": "Architecture and license recorded; no training run performed on this hardware."
+        },
+        "full_finetuning": {
+          "status": "blocked_in_tested_hardware_profile",
+          "reason": "BF16 full-parameter Adam training exceeds 12 GB without a separately qualified offload/distributed configuration."
+        }
+      }
+    },
+    {
+      "id": "mini-coder-4b",
+      "hf_id": "ricdomolm/mini-coder-4b",
+      "revision": "c87892d046a62415a349a6b3aa244bb630fb7417",
+      "source": "https://huggingface.co/ricdomolm/mini-coder-4b/tree/c87892d046a62415a349a6b3aa244bb630fb7417",
+      "license": "mit",
+      "architecture": [
+        "Qwen3ForCausalLM"
+      ],
+      "parameters": 4022468096,
+      "roles": [
+        "operator",
+        "repair",
+        "localization"
+      ],
+      "protocol": "bash",
+      "integration_status": "experimental_adapter_available",
+      "training_status": "technical_possibility_requires_validation",
+      "training_evidence": null,
+      "upstream_context": 262144,
+      "profile": {
+        "hardware": "rtx3060-12gb",
+        "backend": "transformers",
+        "backend_version": "5.17.0",
+        "quantization": "bnb-nf4",
+        "context_tokens": 8192,
+        "temperature": 0,
+        "seed": 17,
+        "max_new_tokens": 1024,
+        "chat_template_revision": "c87892d046a62415a349a6b3aa244bb630fb7417",
+        "parser": "bash",
+        "compute_dtype": "bfloat16",
+        "completion": "native_bash_sentinel_or_json_report"
+      },
+      "gated": false,
+      "training": {
+        "lora": {
+          "status": "technical_possibility_requires_validation",
+          "reason": "Architecture and license recorded; no training run performed on this hardware."
+        },
+        "qlora": {
+          "status": "technical_possibility_requires_validation",
+          "reason": "Architecture and license recorded; no training run performed on this hardware."
+        },
+        "full_finetuning": {
+          "status": "blocked_in_tested_hardware_profile",
+          "reason": "BF16 full-parameter Adam training exceeds 12 GB without a separately qualified offload/distributed configuration."
+        }
+      }
+    },
+    {
+      "id": "granite-4.2-3b",
+      "hf_id": "ibm-granite/granite-4.2-3b",
+      "revision": "4e9c275e232f10211ec88644d106a1f6a1b60e06",
+      "source": "https://huggingface.co/ibm-granite/granite-4.2-3b/tree/4e9c275e232f10211ec88644d106a1f6a1b60e06",
+      "license": "apache-2.0",
+      "architecture": [
+        "GraniteForCausalLM"
+      ],
+      "parameters": 3659737600,
+      "roles": [
+        "operator",
+        "repair",
+        "localization"
+      ],
+      "protocol": "granite_xml",
+      "integration_status": "experimental_adapter_available",
+      "training_status": "technical_possibility_requires_validation",
+      "training_evidence": null,
+      "upstream_context": 131072,
+      "profile": {
+        "hardware": "rtx3060-12gb",
+        "backend": "transformers",
+        "backend_version": "5.17.0",
+        "quantization": "bnb-nf4",
+        "context_tokens": 8192,
+        "temperature": 1.0,
+        "seed": 17,
+        "max_new_tokens": 1024,
+        "chat_template_revision": "4e9c275e232f10211ec88644d106a1f6a1b60e06",
+        "parser": "granite_xml",
+        "top_p": 0.95,
+        "enable_thinking": false,
+        "compute_dtype": "bfloat16",
+        "completion": "structured_finish"
+      },
+      "gated": false,
+      "training": {
+        "lora": {
+          "status": "technical_possibility_requires_validation",
+          "reason": "Architecture and license recorded; no training run performed on this hardware."
+        },
+        "qlora": {
+          "status": "technical_possibility_requires_validation",
+          "reason": "Architecture and license recorded; no training run performed on this hardware."
+        },
+        "full_finetuning": {
+          "status": "blocked_in_tested_hardware_profile",
+          "reason": "BF16 full-parameter Adam training exceeds 12 GB without a separately qualified offload/distributed configuration."
+        }
+      }
+    },
+    {
+      "id": "granite-4.2-8b",
+      "hf_id": "ibm-granite/granite-4.2-8b",
+      "revision": "a7042144125ce5ae64f89610e8289647fc000b9a",
+      "source": "https://huggingface.co/ibm-granite/granite-4.2-8b/tree/a7042144125ce5ae64f89610e8289647fc000b9a",
+      "license": "apache-2.0",
+      "architecture": [
+        "GraniteForCausalLM"
+      ],
+      "parameters": 8791592960,
+      "roles": [
+        "operator",
+        "repair",
+        "localization"
+      ],
+      "protocol": "granite_xml",
+      "integration_status": "experimental_adapter_available",
+      "training_status": "technical_possibility_requires_validation",
+      "training_evidence": null,
+      "upstream_context": 131072,
+      "profile": {
+        "hardware": "rtx3060-12gb",
+        "backend": "transformers",
+        "backend_version": "5.17.0",
+        "quantization": "bnb-nf4",
+        "context_tokens": 8192,
+        "temperature": 1.0,
+        "seed": 17,
+        "max_new_tokens": 1024,
+        "chat_template_revision": "a7042144125ce5ae64f89610e8289647fc000b9a",
+        "parser": "granite_xml",
+        "top_p": 0.95,
+        "enable_thinking": false,
+        "compute_dtype": "bfloat16",
+        "completion": "structured_finish"
+      },
+      "gated": false,
+      "training": {
+        "lora": {
+          "status": "blocked_in_tested_hardware_profile",
+          "reason": "Unquantized BF16 base exceeds GPU capacity; QLoRA requires separate qualification."
+        },
+        "qlora": {
+          "status": "technical_possibility_requires_validation",
+          "reason": "Architecture and license recorded; no training run performed on this hardware."
+        },
+        "full_finetuning": {
+          "status": "blocked_in_tested_hardware_profile",
+          "reason": "BF16 full-parameter Adam training exceeds 12 GB without a separately qualified offload/distributed configuration."
+        }
+      }
+    },
+    {
+      "id": "sera-8b",
+      "hf_id": "allenai/SERA-8B",
+      "revision": "359cef1e06dc791ac775bee5dd88073502c93434",
+      "source": "https://huggingface.co/allenai/SERA-8B/tree/359cef1e06dc791ac775bee5dd88073502c93434",
+      "license": "apache-2.0",
+      "architecture": [
+        "Qwen3ForCausalLM"
+      ],
+      "parameters": 8190735360,
+      "roles": [
+        "operator",
+        "repair",
+        "localization"
+      ],
+      "protocol": "protocol_qualification_required",
+      "integration_status": "experimental_adapter_available",
+      "training_status": "technical_possibility_requires_validation",
+      "training_evidence": null,
+      "upstream_context": 40960,
+      "profile": {
+        "hardware": "rtx3060-12gb",
+        "backend": "transformers",
+        "backend_version": "5.17.0",
+        "quantization": "bnb-nf4",
+        "context_tokens": 8192,
+        "temperature": 0,
+        "seed": 17,
+        "max_new_tokens": 1024,
+        "chat_template_revision": "359cef1e06dc791ac775bee5dd88073502c93434",
+        "parser": "protocol_qualification_required",
+        "compute_dtype": "bfloat16",
+        "completion": "structured_finish"
+      },
+      "gated": false,
+      "training": {
+        "lora": {
+          "status": "blocked_in_tested_hardware_profile",
+          "reason": "Unquantized BF16 base exceeds GPU capacity; QLoRA requires separate qualification."
+        },
+        "qlora": {
+          "status": "technical_possibility_requires_validation",
+          "reason": "Architecture and license recorded; no training run performed on this hardware."
+        },
+        "full_finetuning": {
+          "status": "blocked_in_tested_hardware_profile",
+          "reason": "BF16 full-parameter Adam training exceeds 12 GB without a separately qualified offload/distributed configuration."
+        }
+      }
+    },
+    {
+      "id": "functiongemma-270m",
+      "hf_id": "google/functiongemma-270m-it",
+      "revision": "39eccb091651513a5dfb56892d3714c1b5b8276c",
+      "source": "https://huggingface.co/google/functiongemma-270m-it/tree/39eccb091651513a5dfb56892d3714c1b5b8276c",
+      "license": "gemma",
+      "architecture": [
+        "Gemma3ForCausalLM"
+      ],
+      "parameters": 268098176,
+      "roles": [
+        "operator"
+      ],
+      "protocol": "functiongemma",
+      "integration_status": "experimental_adapter_available",
+      "training_status": "technical_possibility_requires_validation",
+      "training_evidence": null,
+      "upstream_context": null,
+      "profile": {
+        "hardware": "rtx3060-12gb",
+        "backend": "transformers",
+        "backend_version": "5.17.0",
+        "quantization": "bfloat16",
+        "context_tokens": 8192,
+        "temperature": 0,
+        "seed": 17,
+        "max_new_tokens": 1024,
+        "chat_template_revision": "39eccb091651513a5dfb56892d3714c1b5b8276c",
+        "parser": "functiongemma",
+        "compute_dtype": "bfloat16",
+        "completion": "structured_finish"
+      },
+      "gated": "manual",
+      "training": {
+        "lora": {
+          "status": "technical_possibility_requires_validation",
+          "reason": "Architecture and license recorded; no training run performed on this hardware."
+        },
+        "qlora": {
+          "status": "technical_possibility_requires_validation",
+          "reason": "Architecture and license recorded; no training run performed on this hardware."
+        },
+        "full_finetuning": {
+          "status": "technical_possibility_requires_validation",
+          "reason": "Architecture and license recorded; no training run performed on this hardware."
+        }
+      }
+    },
+    {
+      "id": "lfm2-1.2b-tool",
+      "hf_id": "LiquidAI/LFM2-1.2B-Tool",
+      "revision": "6d24c6b7471fcbcec084935e377a5302f4b84389",
+      "source": "https://huggingface.co/LiquidAI/LFM2-1.2B-Tool/tree/6d24c6b7471fcbcec084935e377a5302f4b84389",
+      "license": "lfm1.0",
+      "architecture": [
+        "Lfm2ForCausalLM"
+      ],
+      "parameters": 1170340608,
+      "roles": [
+        "operator"
+      ],
+      "protocol": "lfm2_tool",
+      "integration_status": "experimental_adapter_available",
+      "training_status": "technical_possibility_requires_validation",
+      "training_evidence": null,
+      "upstream_context": 128000,
+      "profile": {
+        "hardware": "rtx3060-12gb",
+        "backend": "transformers",
+        "backend_version": "5.17.0",
+        "quantization": "bfloat16",
+        "context_tokens": 8192,
+        "temperature": 0,
+        "seed": 17,
+        "max_new_tokens": 1024,
+        "chat_template_revision": "6d24c6b7471fcbcec084935e377a5302f4b84389",
+        "parser": "lfm2_tool",
+        "compute_dtype": "bfloat16",
+        "completion": "native_text_or_finish"
+      },
+      "gated": false,
+      "training": {
+        "lora": {
+          "status": "technical_possibility_requires_validation",
+          "reason": "Architecture and license recorded; no training run performed on this hardware."
+        },
+        "qlora": {
+          "status": "technical_possibility_requires_validation",
+          "reason": "Architecture and license recorded; no training run performed on this hardware."
+        },
+        "full_finetuning": {
+          "status": "blocked_in_tested_hardware_profile",
+          "reason": "BF16 full-parameter Adam training exceeds 12 GB without a separately qualified offload/distributed configuration."
+        }
+      }
+    },
+    {
+      "id": "codescout-4b",
+      "hf_id": "OpenHands/CodeScout-4B",
+      "revision": "eb233041350295c9ba74de5c6777e15fca0c8ddc",
+      "source": "https://huggingface.co/OpenHands/CodeScout-4B/tree/eb233041350295c9ba74de5c6777e15fca0c8ddc",
+      "license": "apache-2.0",
+      "architecture": [
+        "Qwen3ForCausalLM"
+      ],
+      "parameters": 4022468096,
+      "roles": [
+        "localization"
+      ],
+      "protocol": "localization",
+      "integration_status": "experimental_adapter_available",
+      "training_status": "technical_possibility_requires_validation",
+      "training_evidence": null,
+      "upstream_context": 262144,
+      "profile": {
+        "hardware": "rtx3060-12gb",
+        "backend": "transformers",
+        "backend_version": "5.17.0",
+        "quantization": "bnb-nf4",
+        "context_tokens": 8192,
+        "temperature": 0,
+        "seed": 17,
+        "max_new_tokens": 1024,
+        "chat_template_revision": "eb233041350295c9ba74de5c6777e15fca0c8ddc",
+        "parser": "codescout_openhands_native",
+        "compute_dtype": "bfloat16",
+        "completion": "structured_finish"
+      },
+      "gated": false,
+      "training": {
+        "lora": {
+          "status": "technical_possibility_requires_validation",
+          "reason": "Architecture and license recorded; no training run performed on this hardware."
+        },
+        "qlora": {
+          "status": "technical_possibility_requires_validation",
+          "reason": "Architecture and license recorded; no training run performed on this hardware."
+        },
+        "full_finetuning": {
+          "status": "blocked_in_tested_hardware_profile",
+          "reason": "BF16 full-parameter Adam training exceeds 12 GB without a separately qualified offload/distributed configuration."
+        }
+      },
+      "contract_source": "https://github.com/OpenHands/codescout/blob/f25decf9f7edde4fd7f4427e71a05c18aaf27eba/src/tools/localization_finish.py"
+    }
+  ],
+  "repo_sha": "1ef42d5a9e071c7c9819c500ec6be3f3f6cc8582",
+  "budgets": {
+    "operator": {
+      "calls": 8,
+      "seconds": 180
+    },
+    "localization": {
+      "calls": 12,
+      "seconds": 180
+    },
+    "repair": {
+      "calls": 20,
+      "seconds": 180,
+      "correction_test_cycles": 3
+    },
+    "generation_tokens": 1024,
+    "context_tokens": 8192,
+    "generation_seconds": 45,
+    "identical_no_progress_calls": 3,
+    "model_observation_characters": 10000
+  }
+}

@@ -1,0 +1,6 @@
+# Optional inference component; requires the qualified Full host torch/transformers profile.
+bitsandbytes==0.50.2
+# Transformers 5.17 optional precompiled CUDA kernel integration.
+kernels==0.16.2
+einops==0.8.2
+kernels-data==0.16.2

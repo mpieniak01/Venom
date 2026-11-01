@@ -16,12 +16,17 @@ def make_task_with_history():
 
 def test_summary_uses_llm_when_available(monkeypatch):
     """Persist the supplied LLM summary through an injected, model-free memory store."""
+    monkeypatch.setattr(
+        "venom_core.config.SETTINGS.SUMMARY_STRATEGY", "llm_with_fallback"
+    )
     state = MagicMock()
     task_id, task = make_task_with_history()
     state.get_task.return_value = task
     state.update_context = MagicMock()
     vector_store = MagicMock()
-    orch = Orchestrator(state_manager=state, vector_store=vector_store)
+    orch = Orchestrator(
+        state_manager=state, vector_store=vector_store, intent_manager=MagicMock()
+    )
 
     with patch.object(
         orch, "_summarize_history_llm", return_value="LLM summary"
@@ -39,12 +44,17 @@ def test_summary_uses_llm_when_available(monkeypatch):
 
 def test_summary_falls_back_to_heuristic(monkeypatch):
     """Persist a heuristic fallback without loading an embedding model."""
+    monkeypatch.setattr(
+        "venom_core.config.SETTINGS.SUMMARY_STRATEGY", "llm_with_fallback"
+    )
     state = MagicMock()
     task_id, task = make_task_with_history()
     state.get_task.return_value = task
     state.update_context = MagicMock()
     vector_store = MagicMock()
-    orch = Orchestrator(state_manager=state, vector_store=vector_store)
+    orch = Orchestrator(
+        state_manager=state, vector_store=vector_store, intent_manager=MagicMock()
+    )
 
     with patch.object(orch, "_summarize_history_llm", return_value="") as mock_llm:
         orch._ensure_session_summary(task_id, task)
@@ -63,7 +73,9 @@ def test_summary_strategy_heuristic_only(monkeypatch):
     state.get_task.return_value = task
     state.update_context = MagicMock()
     vector_store = MagicMock()
-    orch = Orchestrator(state_manager=state, vector_store=vector_store)
+    orch = Orchestrator(
+        state_manager=state, vector_store=vector_store, intent_manager=MagicMock()
+    )
 
     monkeypatch.setattr(
         "venom_core.config.SETTINGS.SUMMARY_STRATEGY", "heuristic_only", raising=False

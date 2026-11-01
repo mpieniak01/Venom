@@ -226,6 +226,7 @@ def test_catalog_controls_optional_zdr(configured, zdr_required):
     assert provider.get("zdr", False) is zdr_required
     assert ("zdr" in provider) is zdr_required
     assert provider["data_collection"] == "deny"
+    assert provider["max_price"] == {"prompt": 0.3, "completion": 1.5, "request": 0.0}
     ledger.reserve.assert_not_called()
 
 

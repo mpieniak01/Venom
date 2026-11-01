@@ -186,6 +186,7 @@ def test_maintenance_profile_validation_and_child_only_sandbox(
     run = SimpleNamespace(config=cfg, run_id="run")
     env = service._scheduler_environment(run)
     assert env["ENABLE_SANDBOX"] == "true"
+    assert env["HF_HUB_CACHE"].endswith("/maintenance-comparison/kernels")
     assert env["VENOM_MAINTENANCE_RUN_ID"] == "run"
     run.config.tasks = ["python_simple"]
     assert service._scheduler_environment(run) is None
@@ -275,7 +276,7 @@ async def test_api_selects_owned_runner_and_ignores_legacy_default_options(monke
     assert error.value.status_code == 400
 
 
-def test_profile_endpoint_preserves_original_and_additional_models_when_disabled(
+def test_profile_endpoint_lists_only_retained_models_when_disabled(
     monkeypatch,
 ):
     from venom_core.api.routes.benchmark_coding import maintenance_model_profiles
@@ -283,6 +284,16 @@ def test_profile_endpoint_preserves_original_and_additional_models_when_disabled
     monkeypatch.setattr(SETTINGS, "ENABLE_MAINTENANCE_COMPARISON", False)
     response = maintenance_model_profiles()
     assert response["enabled"] is False
-    assert len(response["models"]) == 10
+    assert len(response["models"]) == 4
     names = {model["name"] for model in response["models"]}
-    assert {"gemma-4-e2b-it", "qwen3.5-9b", "mini-coder-1.7b", "codescout-4b"} <= names
+    assert {
+        "gemma-4-e2b-it",
+        "qwen3.5-9b",
+        "mini-coder-1.7b",
+        "granite-4.2-3b",
+    } == names
+
+
+def test_retired_model_is_rejected_before_worker_spawn(service):
+    with pytest.raises(ValueError, match="unknown_maintenance"):
+        service._validate_start_request(["codescout-4b"], ["maintenance_operator"])

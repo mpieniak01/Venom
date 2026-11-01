@@ -670,6 +670,7 @@ class CodingBenchmarkService:
             "VENOM_MAINTENANCE_RUN_ID": run.run_id,
             "VENOM_MAINTENANCE_OUTPUT_ROOT": str(self.storage_dir.resolve()),
             "HF_XET_CACHE": component + "/xet",
+            "HF_HUB_CACHE": component + "/kernels",
             "HF_HUB_DOWNLOAD_TIMEOUT": "60",
             "PYTHONPATH": component + "/python:" + str(self.repo_root),
         }

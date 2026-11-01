@@ -60,7 +60,8 @@ async def test_complete_schedule_and_finalist_repeats_have_300_held_out_records(
 ):
     from venom_core.core.permission_guard import permission_guard
 
-    models, _ = load_catalog(ROOT / "config/maintenance_comparison")
+    models, cases = load_catalog(ROOT / "config/maintenance_comparison")
+    monkeypatch.setattr(worker, "load_all_models", lambda _: (models, cases))
     monkeypatch.setattr(worker, "require_host_owner", lambda: None)
     monkeypatch.setattr(
         worker,
@@ -256,6 +257,7 @@ def test_inference_pins_checkpoint_and_preserves_native_tokens(
     if protocol == "qwen35_xml":
         profile["profile"]["eos_token_ids"] = [98, 99]
     local = inference.LocalModel(profile, tmp_path)
+    assert model.generate.call_count == 0
     assert factory.from_pretrained.call_args.kwargs["revision"] == "a" * 40
     assert factory.from_pretrained.call_args.kwargs["trust_remote_code"] is False
     assert (
@@ -479,3 +481,62 @@ async def test_additional_baseline_plans_sixty_cases_without_repeats(
     assert len(experiment.planned) == 60
     assert len(experiment.rows) == 60
     assert seen == [("gemma-4-e2b-it", 0), ("qwen3.5-9b", 0)]
+
+
+def test_backend_options_pin_only_explicit_kernels(monkeypatch):
+    import sys
+
+    factory = MagicMock()
+    monkeypatch.setitem(
+        sys.modules, "transformers", SimpleNamespace(KernelConfig=factory)
+    )
+    options = inference._backend_options(
+        {
+            "id": "qwen3.5-9b",
+            "profile": {
+                "attention_implementation": "sdpa",
+                "kernel_profile": "qwen35-deltanet-v1",
+            },
+        }
+    )
+    assert options["use_kernels"] is True
+    assert options["attn_implementation"] == "sdpa"
+    assert factory.call_args.kwargs["inherit_mapping"] is False
+    mapping = factory.call_args.kwargs["kernel_mapping"]
+    assert len(mapping) == 4
+    for name, device in mapping.items():
+        repo, metadata = device["cuda"]
+        assert repo.startswith("kernels-community/")
+        expected = (
+            "recurrent_gated_delta_rule"
+            if name == "fused_recurrent_gated_delta_rule"
+            else name
+        )
+        assert repo.endswith(":" + expected)
+        assert len(metadata["revision"]) == 40
+        assert "version" not in metadata
+
+
+@pytest.mark.parametrize(
+    "name, kernel", [("other", "qwen35-deltanet-v1"), ("qwen3.5-9b", "unknown")]
+)
+def test_backend_rejects_unqualified_kernel_profiles(name, kernel):
+    with pytest.raises(ValueError, match="unsupported_kernel_profile"):
+        inference._backend_options({"id": name, "profile": {"kernel_profile": kernel}})
+
+
+def test_reference_profile_does_not_enable_hub_kernels():
+    assert inference._backend_options({"profile": {}}) == {}
+
+
+def test_kernel_bindings_report_actual_forward_implementation():
+    def optimized():
+        pass
+
+    module = SimpleNamespace(
+        _kernel_funcs={"op": SimpleNamespace(kernel_layer_name="op", forward=optimized)}
+    )
+    model = SimpleNamespace(named_modules=lambda: [("layer", module)])
+    assert inference._kernel_bindings(model) == {
+        "op": optimized.__module__ + "." + optimized.__qualname__
+    }

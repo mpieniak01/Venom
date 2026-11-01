@@ -8,6 +8,71 @@ import time
 from pathlib import Path
 from typing import Any
 
+# Full revisions are part of the execution profile, not mutable Hub defaults.
+_QWEN_KERNELS = {
+    "causal_conv1d_fn": (
+        "kernels-community/mamba-ssm",
+        "da82c7927c6caac3d8024f98a350131ffec6be85",
+    ),
+    "causal_conv1d_update": (
+        "kernels-community/mamba-ssm",
+        "da82c7927c6caac3d8024f98a350131ffec6be85",
+    ),
+    "chunk_gated_delta_rule": (
+        "kernels-community/fla",
+        "4d57fd54fa5d5c15f7438de2c7e40f603b824dd8",
+    ),
+    "fused_recurrent_gated_delta_rule": (
+        "kernels-community/fla",
+        "4d57fd54fa5d5c15f7438de2c7e40f603b824dd8",
+    ),
+}
+
+
+def _backend_options(profile: dict) -> dict:
+    settings = profile["profile"]
+    options = {}
+    if "attention_implementation" in settings:
+        options["attn_implementation"] = settings["attention_implementation"]
+    kernel_profile = settings.get("kernel_profile")
+    if kernel_profile is not None:
+        if kernel_profile != "qwen35-deltanet-v1" or profile["id"] != "qwen3.5-9b":
+            raise ValueError("unsupported_kernel_profile")
+        from transformers import KernelConfig
+
+        options.update(
+            use_kernels=True,
+            kernel_config=KernelConfig(
+                kernel_mapping={
+                    name: {
+                        "cuda": (
+                            repo
+                            + ":"
+                            + (
+                                "recurrent_gated_delta_rule"
+                                if name == "fused_recurrent_gated_delta_rule"
+                                else name
+                            ),
+                            {"revision": revision},
+                        )
+                    }
+                    for name, (repo, revision) in _QWEN_KERNELS.items()
+                },
+                inherit_mapping=False,
+            ),
+        )
+    return options
+
+
+def _kernel_bindings(model) -> dict[str, str]:
+    bindings = {}
+    for _, module in model.named_modules():
+        for function in getattr(module, "_kernel_funcs", {}).values():
+            name = function.kernel_layer_name
+            forward = function.forward
+            bindings[name] = forward.__module__ + "." + forward.__qualname__
+    return bindings
+
 
 class InferenceNumericalError(RuntimeError):
     """Invalid backend arithmetic must never become a model-quality failure."""
@@ -97,6 +162,7 @@ class LocalModel:
         self.model = AutoModelForCausalLM.from_pretrained(
             profile["hf_id"],
             **options,
+            **_backend_options(profile),
             device_map={"": 0},
             dtype=dtype,
             quantization_config=BitsAndBytesConfig(
@@ -107,6 +173,11 @@ class LocalModel:
             if quantized
             else None,
         ).eval()
+        self.kernel_bindings = (
+            _kernel_bindings(self.model)
+            if profile["profile"].get("kernel_profile")
+            else {}
+        )
         self.load_seconds = time.monotonic() - started
         torch.cuda.reset_peak_memory_stats()
         gpu_name = torch.cuda.get_device_name(0)
@@ -132,6 +203,12 @@ class LocalModel:
             if quantized
             else None,
             "context_tokens": self.context,
+            "attention_implementation_actual": self.model.config._attn_implementation,
+            "kernel_bindings": self.kernel_bindings,
+            "kernel_revisions": _QWEN_KERNELS if self.kernel_bindings else {},
+            "kernels_version": importlib.metadata.version("kernels")
+            if self.kernel_bindings
+            else None,
         }
 
     def generate(self, messages: list[dict], tools: list[dict], seconds: float) -> str:
@@ -186,6 +263,7 @@ class LocalModel:
                 if self.temperature > 0
                 else None,
                 pad_token_id=self.tokenizer.eos_token_id,
+                use_cache=self.profile["profile"].get("use_cache", True),
                 **sampling,
                 **stopping,
             )

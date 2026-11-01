@@ -52,7 +52,15 @@ def test_local_extensions_preserve_frozen_catalog_and_same_thirty_cases():
     root = Path(__file__).resolve().parents[1] / "config/maintenance_comparison"
     frozen, cases = load_catalog(root)
     models, expanded_cases = load_all_models(root)
-    assert models[:8] == frozen
+    assert len(models) == 4
+    assert {m["id"] for m in models} == {
+        "mini-coder-1.7b",
+        "granite-4.2-3b",
+        "gemma-4-e2b-it",
+        "qwen3.5-9b",
+    }
+    assert len(baseline(models, cases)) == 120
+    assert len(frozen) == 8
     assert expanded_cases == cases
     extra = [
         model for model in models if model["id"] not in {item["id"] for item in frozen}
@@ -93,3 +101,33 @@ def test_extension_catalog_rejects_inconsistent_or_duplicate_profiles(
     path.write_text(json.dumps(data))
     with pytest.raises(ValueError):
         load_all_models(tmp_path)
+
+
+@pytest.mark.parametrize("selection", [{}, {"unknown": {}}, []])
+def test_active_catalog_rejects_empty_or_unknown_models(tmp_path, selection):
+    import shutil
+
+    from venom_core.services.maintenance_comparison.catalog import load_all_models
+
+    for name in ["models.json", "scenarios.json"]:
+        shutil.copyfile(CATALOG / name, tmp_path / name)
+    (tmp_path / "active_models.json").write_text(
+        json.dumps({"schema_version": 1, "profile": "test", "models": selection})
+    )
+    with pytest.raises(ValueError, match="invalid_active_model_selection"):
+        load_all_models(tmp_path)
+
+
+def test_retirement_preserves_historical_profiles_without_enabling_downloads():
+    from venom_core.services.maintenance_comparison.catalog import load_all_models
+
+    historical, _ = load_catalog(CATALOG)
+    active, _ = load_all_models(CATALOG)
+    assert "codescout-4b" in {m["id"] for m in historical}
+    assert "codescout-4b" not in {m["id"] for m in active}
+    assert all(m["profile"]["attention_implementation"] == "sdpa" for m in active)
+    assert all(m["profile"]["use_cache"] for m in active)
+    assert (
+        next(m for m in active if m["id"] == "qwen3.5-9b")["profile"]["kernel_profile"]
+        == "qwen35-deltanet-v1"
+    )

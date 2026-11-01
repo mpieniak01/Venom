@@ -203,7 +203,11 @@ async def trial(
             "input_tokens": model.input_tokens - token_start[0],
             "output_tokens": model.output_tokens - token_start[1],
             "peak_vram_bytes": model.memory()["cuda_peak_reserved_bytes"],
-            "vram_measurement": "torch.cuda.max_memory_reserved",
+            "vram_measurement": "torch.cuda.max_memory_reserved_not_physical_vram",
+            "cuda_peak_allocated_bytes": model.memory().get(
+                "cuda_peak_allocated_bytes"
+            ),
+            "cuda_peak_reserved_bytes": model.memory()["cuda_peak_reserved_bytes"],
             "peak_ram_bytes": memory.peak,
             "ram_measurement": "model_worker_RSS_sampled_50ms",
             "split": "test",
@@ -276,7 +280,7 @@ def _release_failed_load() -> None:
 
 def _runtime_environment() -> dict:
     packages: dict[str, str | None] = {}
-    for name in ["torch", "transformers", "bitsandbytes"]:
+    for name in ["torch", "transformers", "bitsandbytes", "kernels", "einops"]:
         try:
             packages[name] = importlib.metadata.version(name)
         except importlib.metadata.PackageNotFoundError:

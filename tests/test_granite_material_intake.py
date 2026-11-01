@@ -147,16 +147,18 @@ def test_native_arguments_round_trip_without_flattening():
             text = super().apply_chat_template(*args, **kwargs)
             return text.replace("cat note", "cat invented")
 
+    _case_value_0 = Corrupt()
     with pytest.raises(ValueError, match="native_call_roundtrip_invalid"):
-        check_native_calls(sample, Corrupt())
+        check_native_calls(sample, _case_value_0)
 
     class NonPrefix(NativeTokenizer):
         def apply_chat_template(self, *args, **kwargs):
             text = super().apply_chat_template(*args, **kwargs)
             return text + ("broken" if kwargs["add_generation_prompt"] else "")
 
+    _case_value_1 = NonPrefix()
     with pytest.raises(ValueError, match="native_prefix_invalid"):
-        check_native_calls(sample, NonPrefix())
+        check_native_calls(sample, _case_value_1)
 
 
 def test_cpu_intake_checks_manifest_before_tokenizer_and_never_loads_model(
@@ -234,7 +236,8 @@ def test_cpu_intake_checks_manifest_before_tokenizer_and_never_loads_model(
     )
     result = material.inspect(tmp_path, manifest_path, tmp_path / "snapshot")
     assert result["status"] == "PASS_DATA_INTAKE_ONLY"
-    assert result["domain_train"] == 8 and result["domain_validation"] == 1
+    assert result["domain_train"] == 8
+    assert result["domain_validation"] == 1
     assert result["context_only_assistant_occurrences"] == 9
     assert result["native_tool_calls_roundtripped"] == 18
     assert result["cpu_batch_shape"] == [4, 2]
@@ -259,3 +262,53 @@ def test_cpu_intake_checks_manifest_before_tokenizer_and_never_loads_model(
     write_json(manifest_path, manifest)
     with pytest.raises(ValueError, match="receipt_count_changed"):
         material.inspect(tmp_path, manifest_path, tmp_path / "snapshot")
+
+
+def test_audit_emits_intake_receipt_descriptor_and_uses_code_repository(
+    tmp_path, monkeypatch
+):
+    import importlib
+    from pathlib import Path
+
+    from venom_core.services.granite_operator.contract import file_digest
+
+    monkeypatch.setenv("GRANITE_DATA_ROOT", str(tmp_path))
+    audit = importlib.import_module("scripts.granite_operator.audit_data")
+    monkeypatch.setattr(audit, "ROOT", tmp_path)
+    receipts = []
+    for split in ("train", "validation"):
+        sample, receipt = example()
+        sample.update(
+            record_id=split,
+            problem_group=split,
+            fixture_id=split,
+            split=split,
+            training_allowed=split == "train",
+            oracle_passed=True,
+            execution_verified=True,
+        )
+        sample["messages"][1]["content"] = split + " unique question"
+        receipt["fixture_id"] = split
+        receipts.append(receipt)
+        for dataset in ("domain", "hf"):
+            target = tmp_path / dataset / (split + ".jsonl")
+            target.parent.mkdir(exist_ok=True)
+            record = copy.deepcopy(sample)
+            if dataset == "hf":
+                record.update(execution_verified=False, source_split="train")
+            target.write_text(json.dumps(record) + "\n")
+    receipt_path = tmp_path / "domain/execution-receipts.jsonl"
+    receipt_path.write_text("".join(json.dumps(receipt) + "\n" for receipt in receipts))
+
+    def status(command, *, cwd, text):
+        assert Path(cwd) == Path(audit.__file__).resolve().parents[2]
+        return ""
+
+    monkeypatch.setattr(audit.subprocess, "check_output", status)
+    audit.main()
+    manifest = json.loads((tmp_path / "pilot-manifest.json").read_text())
+    assert manifest["execution_receipts"]["rows"] == 2
+    assert manifest["execution_receipts"]["sha256"] == file_digest(receipt_path)
+    assert manifest["context"] == 2048
+    with pytest.raises(ValueError, match="manifest_already_exists"):
+        audit.main()

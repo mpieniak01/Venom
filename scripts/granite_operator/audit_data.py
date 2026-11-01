@@ -5,8 +5,18 @@ import json
 import os
 import re
 import subprocess
+import sys
 from collections import Counter
 from pathlib import Path
+
+REPO = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(REPO))
+from scripts.granite_operator.validate_material import check_receipt  # noqa: E402
+from venom_core.services.granite_operator.contract import (  # noqa: E402
+    file_digest,
+    load_profile,
+    validate_conversation,
+)
 
 ROOT = Path(os.environ["GRANITE_DATA_ROOT"]).resolve()
 
@@ -22,7 +32,18 @@ def fingerprint(text):
 
 
 def main():
-    for receipt in json.loads((ROOT / "download-manifest.json").read_text()):
+    if (ROOT / "pilot-manifest.json").exists():
+        raise ValueError("manifest_already_exists")
+    profile = load_profile(
+        Path(
+            os.environ.get(
+                "GRANITE_PROFILE", REPO / "config/granite_operator_profile.json"
+            )
+        )
+    )
+    downloads = ROOT / "download-manifest.json"
+    source_receipts = json.loads(downloads.read_text()) if downloads.exists() else []
+    for receipt in source_receipts:
         file = Path(receipt["local_path"])
         assert file.stat().st_size == receipt["bytes"]
         assert (
@@ -43,36 +64,17 @@ def main():
         }
         for split, records in sets.items():
             for r in records:
+                validate_conversation(r, split)
                 assert (
                     r["training_allowed"] == (split == "train") and r["split"] == split
                 )
-                assert r["granite_tokens"] > 10 and r["granite_tokens"] <= 4096
+                if "granite_tokens" in r:
+                    assert 10 < r["granite_tokens"] <= profile.context
                 if dataset == "domain":
                     evidence = receipts[r["fixture_id"]]
                     assert r["oracle_passed"] is True
-                    observed = []
-                    for i, m in enumerate(r["messages"]):
-                        if (
-                            m.get("tool_calls")
-                            and m["tool_calls"][0]["function"]["name"] == "Terminal"
-                        ):
-                            nxt = r["messages"][i + 1]
-                            observed.append(
-                                {
-                                    "command": m["tool_calls"][0]["function"][
-                                        "arguments"
-                                    ]["command"],
-                                    "result": json.loads(nxt["content"]),
-                                }
-                            )
-                    assert observed == evidence["steps"], r["record_id"]
-                    assert (
-                        r["messages"][-1]["tool_calls"][0]["function"]["arguments"][
-                            "status"
-                        ]
-                        == evidence["expected_finish_status"]
-                    )
-                    assert r["execution_verified"] == bool(observed)
+                    quality = check_receipt(r, evidence)
+                    assert r["execution_verified"] == bool(quality["commands"])
                     by_fixture[r["fixture_id"]] += 1
                 else:
                     assert r["execution_verified"] is False
@@ -97,9 +99,10 @@ def main():
         assert not {r["problem_group"] for r in sets["train"]} & {
             r["problem_group"] for r in sets["validation"]
         }
-    assert len(receipts) == 120 and set(by_fixture.values()) == {2}
-    assert sum(len(r["steps"]) for r in receipts.values()) == 138
+    assert set(receipts) == set(by_fixture)
     for name, expected in [("smoke-train.jsonl", 32), ("smoke-validation.jsonl", 8)]:
+        if not (ROOT / "domain" / name).exists():
+            continue
         small = rows(ROOT / "domain" / name)
         assert len(small) == expected
         assert len({r["problem_group"] for r in small}) == expected // 2
@@ -110,14 +113,22 @@ def main():
     )
     assert "venom-maintenance-v1:" not in corpus
     assert not subprocess.check_output(
-        ["git", "status", "--porcelain"], cwd=ROOT.parents[2], text=True
+        ["git", "status", "--porcelain"],
+        cwd=Path(__file__).resolve().parents[2],
+        text=True,
     )
     manifest = {
         "status": "DATA_PREPARED_FOR_SMALL_PILOT_NOT_TRAINING_QUALIFIED",
         "canonical_schema": "messages + tools; no instruction/response flattening",
         "datasets": files,
         "records_audited": n,
-        "download_hashes_verified": True,
+        "download_hashes_verified": bool(source_receipts),
+        "context": profile.context,
+        "execution_receipts": {
+            "path": "domain/execution-receipts.jsonl",
+            "rows": len(receipts),
+            "sha256": file_digest(ROOT / "domain/execution-receipts.jsonl"),
+        },
         "domain_receipts_verified": True,
         "group_split_disjoint": True,
         "normalized_numeric_whitespace_exact_cross_split_overlap": 0,

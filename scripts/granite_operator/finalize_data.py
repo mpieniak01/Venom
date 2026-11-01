@@ -18,6 +18,7 @@ REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
 from transformers import AutoTokenizer  # noqa: E402
 
+from venom_core.services.granite_operator.contract import load_profile  # noqa: E402
 from venom_core.services.maintenance_comparison.protocol import (  # noqa: E402
     granite_calls,
 )
@@ -158,6 +159,13 @@ class ConverterChecks(unittest.TestCase):
 
 
 def main():
+    profile = load_profile(
+        Path(
+            os.environ.get(
+                "GRANITE_PROFILE", REPO / "config/granite_operator_profile.json"
+            )
+        )
+    )
     suite = unittest.defaultTestLoader.loadTestsFromTestCase(ConverterChecks)
     result = unittest.TextTestRunner(verbosity=1).run(suite)
     assert result.wasSuccessful()
@@ -254,12 +262,12 @@ def main():
                 "input_ids"
             ]
             assert tokens == len(independently_encoded)
-            if tokens > 4096:
+            if tokens > profile.context:
                 assert dataset == "hf", "Unexpected overlong domain record"
                 rejects.append(
                     {
                         "record_id": r["record_id"],
-                        "reason": "exceeds_training_context_4096",
+                        "reason": f"exceeds_training_context_{profile.context}",
                         "tokens": tokens,
                     }
                 )

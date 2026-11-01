@@ -13,6 +13,7 @@ from venom_core.services.granite_operator.contract import (
     file_digest,
     inside,
     load_dataset,
+    load_profile,
     write_json,
 )
 from venom_core.services.granite_operator.encoding import collate, encode
@@ -125,12 +126,16 @@ def check_native_calls(row: dict, tokenizer) -> int:
     return count
 
 
-def inspect(root: Path, manifest_path: Path, snapshot: Path) -> dict:
+def inspect(
+    root: Path, manifest_path: Path, snapshot: Path, context: int = 2048
+) -> dict:
     """Load complete conversations, encode native targets and batch on CPU only."""
     import torch
     from transformers import AutoTokenizer
 
     manifest = json.loads(manifest_path.read_text())
+    if manifest.get("context", context) != context:
+        raise ValueError("material_manifest_context_mismatch")
     train, validation = load_dataset(root, manifest, "domain")
     hf_train, hf_validation = load_dataset(root, manifest, "hf")
     receipt_spec = manifest["execution_receipts"]
@@ -156,7 +161,7 @@ def inspect(root: Path, manifest_path: Path, snapshot: Path) -> dict:
         quality = check_receipt(row, by_fixture[row["fixture_id"]])
         contexts += quality["context_only_assistants"]
         commands += quality["commands"]
-        item = encode(row, tokenizer, 2048)
+        item = encode(row, tokenizer, context)
         native_calls += check_native_calls(row, tokenizer)
         targets = assistant_targets(row)
         if item["labels"].count(eos) != len(targets):
@@ -182,7 +187,7 @@ def inspect(root: Path, manifest_path: Path, snapshot: Path) -> dict:
         encoded.append(item)
     # Retention data is separate: validate its native structure, do not silently mix.
     for row in hf_train + hf_validation:
-        encode(row, tokenizer, 2048)
+        encode(row, tokenizer, context)
     batch = None
     with torch.device("cpu"):
         batch = collate(encoded[:4], tokenizer.pad_token_id, torch)
@@ -196,6 +201,7 @@ def inspect(root: Path, manifest_path: Path, snapshot: Path) -> dict:
         raise ValueError("material_family_target_token_imbalance")
     return {
         "status": "PASS_DATA_INTAKE_ONLY",
+        "context": context,
         "training_started": False,
         "model_loaded": False,
         "optimizer_created": False,
@@ -223,9 +229,16 @@ def main():
     parser.add_argument("--data-root", type=Path, required=True)
     parser.add_argument("--snapshot", type=Path, required=True)
     parser.add_argument("--manifest", type=Path)
+    parser.add_argument(
+        "--profile",
+        type=Path,
+        default=Path(__file__).resolve().parents[2]
+        / "config/granite_operator_profile.json",
+    )
     args = parser.parse_args()
     manifest = args.manifest or args.data_root / "pilot-manifest.json"
-    report = inspect(args.data_root, manifest, args.snapshot)
+    profile = load_profile(args.profile)
+    report = inspect(args.data_root, manifest, args.snapshot, profile.context)
     write_json(args.data_root / "checks/intake.json", report)
     print(json.dumps(report, indent=2))
 

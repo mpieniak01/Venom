@@ -6,7 +6,9 @@ import hashlib
 import json
 import math
 from dataclasses import asdict, dataclass
+from itertools import zip_longest
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 from typing import Any
 
 MODEL = "ibm-granite/granite-4.2-3b"
@@ -30,13 +32,25 @@ def file_digest(path: Path) -> str:
 
 
 def write_json(path: Path, data: Any) -> None:
-    """Atomically replace an owned JSON artifact."""
+    """Write JSON as data through an owned temporary stream, then replace atomically."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_suffix(path.suffix + ".tmp")
-    temporary.write_text(
-        json.dumps(data, ensure_ascii=False, indent=2, allow_nan=False) + "\n"
-    )
-    temporary.replace(path)
+    temporary = None
+    try:
+        with NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            prefix=path.name + ".",
+            suffix=".tmp",
+            dir=path.parent,
+            delete=False,
+        ) as stream:
+            temporary = Path(stream.name)
+            json.dump(data, stream, ensure_ascii=False, indent=2, allow_nan=False)
+            stream.write("\n")
+        temporary.replace(path)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
 
 
 @dataclass(frozen=True)
@@ -78,6 +92,15 @@ class TrainingProfile:
         return asdict(self)
 
 
+def load_profile(path: Path) -> TrainingProfile:
+    """Read and validate the same profile for preparation, intake and training."""
+    data = json.loads(path.read_text())
+    data.pop("schema_version", None)
+    profile = TrainingProfile(**data)
+    profile.validate()
+    return profile
+
+
 def inside(root: Path, relative: str) -> Path:
     """Resolve only regular, in-root source files."""
     candidate = root / relative
@@ -114,8 +137,7 @@ def assistant_targets(row: dict[str, Any]) -> set[int]:
     return targets
 
 
-def validate_conversation(row: dict[str, Any], split: str) -> None:
-    """Require structured calls and matched observations without repairing labels."""
+def _validate_header(row: dict[str, Any], split: str) -> list[str]:
     if row.get("split") != split or row.get("training_allowed") != (split == "train"):
         raise ValueError("granite_split_not_allowed")
     if not row.get("problem_group") or str(row["problem_group"]).startswith(
@@ -129,40 +151,50 @@ def validate_conversation(row: dict[str, Any], split: str) -> None:
     names = [t["function"]["name"] for t in row["tools"]]
     if len(set(names)) != len(names) or any(not n.isidentifier() for n in names):
         raise ValueError("granite_tool_names_invalid")
+    return names
+
+
+def _consume_observation(message: dict, pending: dict) -> None:
+    ident = message.get("tool_call_id")
+    if ident not in pending or pending.pop(ident) != message.get("name"):
+        raise ValueError("granite_orphan_tool_response")
+    if not isinstance(message.get("content"), str):
+        raise ValueError("granite_tool_content_invalid")
+
+
+def _register_calls(message: dict, names: list[str], seen: set, pending: dict) -> None:
+    for call in message.get("tool_calls", []):
+        function = call["function"]
+        ident = call["id"]
+        if (
+            message["role"] != "assistant"
+            or function["name"] not in names
+            or ident in seen
+        ):
+            raise ValueError("granite_call_invalid")
+        if not isinstance(function.get("arguments"), dict):
+            raise ValueError("granite_arguments_must_be_object")
+        seen.add(ident)
+        if function["name"] != FINISH:
+            pending[ident] = function["name"]
+
+
+def validate_conversation(row: dict[str, Any], split: str) -> None:
+    """Require structured calls and matched observations without repairing labels."""
+    names = _validate_header(row, split)
     pending: dict[str, str] = {}
     seen = set()
-    assistant = False
     for message in row["messages"]:
         role = message.get("role")
         if role not in {"system", "user", "assistant", "tool"}:
             raise ValueError("granite_role_invalid")
         if role == "tool":
-            ident = message.get("tool_call_id")
-            if pending.pop(ident, None) != message.get("name"):
-                raise ValueError("granite_orphan_tool_response")
-            if not isinstance(message.get("content"), str):
-                raise ValueError("granite_tool_content_invalid")
+            _consume_observation(message, pending)
             continue
         if pending:
             raise ValueError("granite_missing_tool_response")
-        if role == "assistant":
-            assistant = True
-        for call in message.get("tool_calls", []):
-            function = call["function"]
-            ident = call["id"]
-            if role != "assistant" or function["name"] not in names or ident in seen:
-                raise ValueError("granite_call_invalid")
-            if not isinstance(function.get("arguments"), dict):
-                raise ValueError("granite_arguments_must_be_object")
-            seen.add(ident)
-            if function["name"] != FINISH:
-                pending[ident] = function["name"]
-    if (
-        pending
-        or not assistant
-        or not row["messages"]
-        or row["messages"][-1]["role"] != "assistant"
-    ):
+        _register_calls(message, names, seen, pending)
+    if pending or not row["messages"] or row["messages"][-1]["role"] != "assistant":
         raise ValueError("granite_incomplete_conversation")
     assistant_targets(row)
 
@@ -207,8 +239,44 @@ def select_dataset(
     if dataset == "hf":
         return hf
     if dataset == "mixed":
-        return domain[0] + hf[0], domain[1] + hf[1]
+        train = [
+            row
+            for pair in zip_longest(domain[0], hf[0])
+            for row in pair
+            if row is not None
+        ]
+        return train, domain[1] + hf[1]
     raise ValueError("granite_dataset_unknown")
+
+
+def snapshot_metadata(snapshot: Path) -> dict[str, str | None]:
+    """Bind tokenizer, template and generation metadata, including absent files."""
+    names = (
+        "config.json",
+        "tokenizer.json",
+        "tokenizer_config.json",
+        "generation_config.json",
+        "chat_template.jinja",
+        "special_tokens_map.json",
+        "vocab.json",
+        "vocab.txt",
+        "merges.txt",
+        "tokenizer.model",
+    )
+    return {
+        name: file_digest(snapshot / name) if (snapshot / name).is_file() else None
+        for name in names
+    }
+
+
+def final_training_stage(run: Path) -> Path:
+    """Select a completed training layout consistently for verification and eval."""
+    stage = run / "train-resume"
+    if not stage.exists():
+        stage = run / "train-first"
+    if not stage.is_dir():
+        raise ValueError("granite_training_stage_missing")
+    return stage
 
 
 def require_qualification(receipt: dict, fingerprint: str) -> None:

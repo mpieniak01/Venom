@@ -6,19 +6,48 @@ import json
 import math
 import re
 import shutil
+import stat
 import subprocess
+import tarfile
 import tempfile
 import time
 import uuid
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from venom_core.services.granite_operator.contract import file_digest, inside
 
+MAX_WORKSPACE_BYTES = 16 * 1024 * 1024
+MAX_WORKSPACE_ENTRIES = 1024
+MAX_FILE_BYTES = 1024 * 1024
+MAX_ARCHIVE_BYTES = 20 * 1024 * 1024
+
+
+class WorkspaceLimitError(ValueError):
+    """An isolated task exceeded its bounded workspace/export budget."""
+
+
+def workspace_entries(root: Path) -> list[Path]:
+    """Bound file count and logical sizes before hashing any task-controlled data."""
+    result = []
+    total = 0
+    for path in root.rglob("*"):
+        if len(result) >= MAX_WORKSPACE_ENTRIES:
+            raise WorkspaceLimitError("comparison_workspace_entries")
+        info = path.lstat()
+        if stat.S_ISREG(info.st_mode):
+            total += info.st_size
+            if info.st_size > MAX_FILE_BYTES or total > MAX_WORKSPACE_BYTES:
+                raise WorkspaceLimitError("comparison_workspace_bytes")
+        elif not (stat.S_ISDIR(info.st_mode) or stat.S_ISLNK(info.st_mode)):
+            raise WorkspaceLimitError("comparison_workspace_special_file")
+        result.append(path)
+    return result
+
 
 def snapshot(root: Path) -> dict[str, str]:
-    """Never follow model-created symlinks while inspecting workspace state."""
+    """Never follow symlinks; inspect bounded metadata before hashing file contents."""
     result = {}
-    for path in sorted(root.rglob("*")):
+    for path in sorted(workspace_entries(root)):
         relative = path.relative_to(root)
         if any(p in {".git", ".pytest_cache", "__pycache__"} for p in relative.parts):
             continue
@@ -27,6 +56,44 @@ def snapshot(root: Path) -> dict[str, str]:
         elif path.is_file():
             result[str(relative)] = file_digest(path)
     return result
+
+
+def restore_workspace(archive_file, workspace: Path) -> None:
+    """Validate a bounded Docker export before replacing an owned task directory."""
+    if archive_file.tell() > MAX_ARCHIVE_BYTES:
+        raise WorkspaceLimitError("comparison_workspace_archive")
+    archive_file.seek(0)
+    with tarfile.open(fileobj=archive_file, mode="r:") as archive:
+        members = archive.getmembers()
+        if len(members) > MAX_WORKSPACE_ENTRIES + 1:
+            raise WorkspaceLimitError("comparison_workspace_entries")
+        total = 0
+        for member in members:
+            name = PurePosixPath(member.name)
+            if (
+                name.is_absolute()
+                or ".." in name.parts
+                or not (member.isfile() or member.isdir())
+            ):
+                raise WorkspaceLimitError("comparison_workspace_unsafe_archive")
+            if member.isfile():
+                total += member.size
+                if member.size > MAX_FILE_BYTES or total > MAX_WORKSPACE_BYTES:
+                    raise WorkspaceLimitError("comparison_workspace_bytes")
+        with tempfile.TemporaryDirectory(
+            prefix="g01-export-", dir=workspace.parent
+        ) as directory:
+            staging = Path(directory)
+            archive.extractall(staging, members=members, filter="data")
+            workspace_entries(staging)
+            # The model can only write its tmpfs. This is the owned host copy.
+            for path in workspace.iterdir():
+                if path.is_dir() and not path.is_symlink():
+                    shutil.rmtree(path)
+                else:
+                    path.unlink()
+            for path in staging.iterdir():
+                shutil.move(str(path), str(workspace / path.name))
 
 
 def changed(before: dict, after: dict, allowed: list[str]) -> list[str]:
@@ -39,7 +106,9 @@ def changed(before: dict, after: dict, allowed: list[str]) -> list[str]:
 
 def load_frozen(manifest_path: Path) -> tuple[dict, list[dict]]:
     manifest = json.loads(manifest_path.read_text())
-    root = manifest_path.parent
+    root = manifest_path.parent.resolve()
+    if manifest["cases"] not in manifest["files"]:
+        raise ValueError("comparison_cases_not_in_manifest")
     for name, checksum in manifest["files"].items():
         if file_digest(inside(root, name)) != checksum:
             raise ValueError("comparison_dataset_changed:" + name)
@@ -57,6 +126,14 @@ def load_frozen(manifest_path: Path) -> tuple[dict, list[dict]]:
         folder = (root / case["fixture"]).resolve()
         if not folder.is_relative_to(root.resolve()) or not folder.is_dir():
             raise ValueError("comparison_fixture_invalid")
+        paths = list(folder.rglob("*"))
+        if any(path.is_symlink() for path in paths):
+            raise ValueError("comparison_fixture_symlink")
+        actual = {str(path.relative_to(root)) for path in paths if path.is_file()}
+        prefix = str(folder.relative_to(root)) + "/"
+        expected = {name for name in manifest["files"] if name.startswith(prefix)}
+        if actual != expected:
+            raise ValueError("comparison_fixture_inventory_changed")
     return manifest, cases
 
 
@@ -76,14 +153,16 @@ class DockerTool:
             raise ValueError("comparison_image_not_pinned")
         if not re.fullmatch(r"[a-f0-9]{32}", run_id):
             raise ValueError("comparison_run_id_invalid")
-        path = str(workspace.resolve(strict=True))
+        self.workspace = workspace.resolve(strict=True)
+        workspace_entries(self.workspace)
+        self.readonly = readonly
+        path = str(self.workspace)
         if "," in path or "\n" in path:
             raise ValueError("comparison_mount_path_invalid")
         self.name = "g01-eval-" + run_id[:12] + "-" + uuid.uuid4().hex[:12]
         self.closed = False
-        mount = "type=bind,source=" + path + ",destination=/workspace"
-        if readonly:
-            mount += ",readonly"
+        destination = "/workspace" if readonly else "/seed"
+        mount = "type=bind,source=" + path + ",destination=" + destination + ",readonly"
         command = [
             "docker",
             "run",
@@ -124,7 +203,61 @@ class DockerTool:
             image,
             "infinity",
         ]
+        if not readonly:
+            command[2:2] = [
+                "--tmpfs",
+                "/workspace:rw,exec,nosuid,nodev,size=16m,nr_inodes=1024,uid=1000,gid=1001,mode=0700",
+            ]
         subprocess.run(command, capture_output=True, check=True, timeout=20)
+        if not readonly:
+            try:
+                subprocess.run(
+                    ["docker", "exec", self.name, "cp", "-a", "/seed/.", "/workspace/"],
+                    capture_output=True,
+                    check=True,
+                    timeout=20,
+                )
+            except BaseException:
+                self.close()
+                raise
+
+    def _sync(self) -> None:
+        if self.readonly:
+            return
+        with tempfile.TemporaryFile() as archive, tempfile.TemporaryFile() as stderr:
+            try:
+                result = subprocess.run(
+                    [
+                        "prlimit",
+                        f"--fsize={MAX_ARCHIVE_BYTES}:{MAX_ARCHIVE_BYTES}",
+                        "--",
+                        "docker",
+                        "exec",
+                        self.name,
+                        "tar",
+                        "-C",
+                        "/workspace",
+                        "-cf",
+                        "-",
+                        ".",
+                    ],
+                    stdout=archive,
+                    stderr=stderr,
+                    timeout=8,
+                    check=False,
+                )
+            except subprocess.TimeoutExpired as error:
+                raise WorkspaceLimitError(
+                    "comparison_workspace_export_timeout"
+                ) from error
+            if result.returncode:
+                raise WorkspaceLimitError("comparison_workspace_export_failed")
+            try:
+                restore_workspace(archive, self.workspace)
+            except (tarfile.TarError, OSError) as error:
+                raise WorkspaceLimitError(
+                    "comparison_workspace_export_invalid"
+                ) from error
 
     def execute(self, command: str, timeout: int = 8) -> dict:
         if self.closed:
@@ -149,6 +282,8 @@ class DockerTool:
                         "--noprofile",
                         "--norc",
                         "-c",
+                        'ulimit -f 1024; exec bash --noprofile --norc -c "$1"',
+                        "limited-tool",
                         command,
                     ],
                     stdout=stdout,
@@ -157,7 +292,9 @@ class DockerTool:
                     check=False,
                 )
                 code = result.returncode
-                timed_out = code == 124
+                timed_out = code == 124 or (
+                    code == 137 and time.monotonic() - start >= timeout
+                )
             except subprocess.TimeoutExpired:
                 code = None
                 timed_out = True
@@ -167,7 +304,12 @@ class DockerTool:
             for stream in (stdout, stderr):
                 stream.seek(0)
                 outputs.append(stream.read(16_384).decode(errors="replace"))
-            if truncated or timed_out:
+            workspace_error = None
+            try:
+                self._sync()
+            except WorkspaceLimitError as error:
+                workspace_error = str(error)
+            if truncated or timed_out or code == 137 or workspace_error:
                 self.close()
         return {
             "stdout": outputs[0],
@@ -175,6 +317,8 @@ class DockerTool:
             "exit_code": code,
             "output_truncated": truncated or any(size > 16_384 for size in sizes),
             "execution_timed_out": timed_out,
+            "execution_killed": code == 137,
+            "workspace_error": workspace_error,
             "seconds": time.monotonic() - start,
         }
 

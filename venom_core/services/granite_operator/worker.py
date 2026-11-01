@@ -141,11 +141,33 @@ def tool_loop(session, row):
     return {"passed": False, "reason": "probe_step_limit", "trace": trace}
 
 
+def _training_rows(request, domain_train, domain_val, hf_train, hf_val, fingerprint):
+    stage = request["stage"]
+    if stage.startswith("smoke"):
+        train = smoke_subset(domain_train)
+        validation = smoke_subset(domain_val)
+        if (len(train), len(validation)) != (32, 8):
+            raise ValueError("granite_smoke_sample_count")
+    else:
+        qualification = json.loads(Path(request["qualification"]).read_text())
+        require_qualification(qualification, fingerprint)
+        for name, checksum in qualification["artifacts"].items():
+            artifact = inside(Path(request["qualification"]).parent, name)
+            if file_digest(artifact) != checksum:
+                raise ValueError("granite_qualification_artifact_changed")
+        train, validation = select_dataset(
+            (domain_train, domain_val), (hf_train, hf_val), request["dataset"]
+        )
+    return train, validation
+
+
 def run(request: dict):
     require_owner()
     profile = TrainingProfile(**request["profile"])
     data_root = Path(request["data_root"])
     manifest = json.loads(Path(request["manifest"]).read_text())
+    if manifest.get("context", profile.context) != profile.context:
+        raise ValueError("granite_manifest_context_mismatch")
     domain_train, domain_val = load_dataset(data_root, manifest, "domain")
     hf_train, hf_val = load_dataset(data_root, manifest, "hf")
     snapshot = Path(request["snapshot"])
@@ -169,21 +191,9 @@ def run(request: dict):
     )
     if any(not any(x != -100 for x in row["labels"]) for row in all_encoded):
         raise RuntimeError("granite_empty_corpus_mask")
-    if stage.startswith("smoke"):
-        train = smoke_subset(domain_train)
-        validation = smoke_subset(domain_val)
-        if (len(train), len(validation)) != (32, 8):
-            raise ValueError("granite_smoke_sample_count")
-    else:
-        qualification = json.loads(Path(request["qualification"]).read_text())
-        require_qualification(qualification, fingerprint)
-        for name, checksum in qualification["artifacts"].items():
-            artifact = inside(Path(request["qualification"]).parent, name)
-            if file_digest(artifact) != checksum:
-                raise ValueError("granite_qualification_artifact_changed")
-        train, validation = select_dataset(
-            (domain_train, domain_val), (hf_train, hf_val), request["dataset"]
-        )
+    train, validation = _training_rows(
+        request, domain_train, domain_val, hf_train, hf_val, fingerprint
+    )
     session = Session(profile, snapshot, adapter)
     rows = encoded_rows(train, tokenizer, profile)
     val_rows = encoded_rows(validation, tokenizer, profile)

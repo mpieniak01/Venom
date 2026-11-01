@@ -12,7 +12,7 @@ from scripts.granite_operator.comparison_support import (
     snapshot,
     summarize,
 )
-from venom_core.services.granite_operator.contract import file_digest
+from venom_core.services.granite_operator.contract import file_digest, snapshot_metadata
 
 
 def case():
@@ -272,7 +272,8 @@ def test_actual_operator_loop_requires_terminal_observation_and_finish(
     )
     row = module.run_case(session, spec, dataset, output, "image", "run", "adapter")
     assert row["oracle"]["success"]
-    assert row["terminal_calls"] == 1 and row["generated_tokens"] == 10
+    assert row["terminal_calls"] == 1
+    assert row["generated_tokens"] == 10
     assert calls[-1] == ("close",)
     assert (output / row["workspace"] / "result.txt").read_text() == "actual-marker"
 
@@ -344,3 +345,248 @@ def test_comparison_cli_requires_concrete_paths(tmp_path, monkeypatch):
     monkeypatch.setattr(sys, "argv", arguments)
     comparison.main()
     assert captured[0].output == tmp_path / "output"
+
+
+@pytest.mark.parametrize(
+    "code,elapsed,timed_out",
+    [(0, 0.1, False), (124, 8, True), (137, 9, True), (137, 0.1, False)],
+)
+def test_tool_timeout_handles_forced_kill_and_distinguishes_early_kill(
+    monkeypatch, code, elapsed, timed_out
+):
+    from types import SimpleNamespace
+
+    from scripts.granite_operator import comparison_support as support
+
+    tool = support.DockerTool.__new__(support.DockerTool)
+    tool.closed = False
+    tool.name = "fixture"
+    monkeypatch.setattr(tool, "_sync", lambda: None)
+    clock = {"now": 0.0}
+    monkeypatch.setattr(support.time, "monotonic", lambda: clock["now"])
+
+    def execute(*args, **kwargs):
+        clock["now"] = elapsed
+        return SimpleNamespace(returncode=code)
+
+    monkeypatch.setattr(support.subprocess, "run", execute)
+    monkeypatch.setattr(tool, "close", lambda: setattr(tool, "closed", True))
+    result = tool.execute("fixture", timeout=8)
+    assert result["execution_timed_out"] is timed_out
+    assert result["execution_killed"] == (code == 137)
+    assert tool.closed == (code in {124, 137})
+
+
+@pytest.mark.parametrize(
+    "timed_out,expected_failure", [(True, "tool_timeout"), (False, "tool_killed")]
+)
+def test_killed_tool_cannot_become_success(
+    tmp_path, monkeypatch, timed_out, expected_failure
+):
+    responses = [
+        native_call("Terminal", command="cat result.txt"),
+        native_call("Finish", status="success", summary="actual-marker"),
+    ]
+    module, session, spec, dataset, output, calls = evaluation_context(
+        tmp_path, monkeypatch, responses
+    )
+    original = module.DockerTool.execute
+
+    def execute(self, *args):
+        result = original(self, *args)
+        result.update(
+            exit_code=137, execution_timed_out=timed_out, execution_killed=True
+        )
+        return result
+
+    monkeypatch.setattr(module.DockerTool, "execute", execute)
+    row = module.run_case(session, spec, dataset, output, "image", "run", "adapter")
+    assert row["failure"] == expected_failure
+    assert not row["oracle"]["success"]
+    assert row["timed_out"] is timed_out
+
+
+@pytest.mark.parametrize("resumed", [False, True])
+def test_comparison_uses_verified_final_stage_before_loading_model(
+    tmp_path, monkeypatch, resumed
+):
+    from scripts.granite_operator import comparison
+    from venom_core.services.granite_operator import engine
+    from venom_core.services.granite_operator.contract import (
+        TrainingProfile,
+        write_json,
+    )
+
+    run = tmp_path / "training"
+    snapshot_path = tmp_path / "snapshot"
+    snapshot_path.mkdir()
+    (snapshot_path / "config.json").write_text("{}")
+    first = run / "train-first"
+    first.mkdir(parents=True)
+    stage = run / "train-resume" if resumed else first
+    checkpoint = stage / "checkpoint"
+    checkpoint.mkdir(parents=True)
+    (checkpoint / "adapter_model.safetensors").write_bytes(b"fixture-adapter")
+    write_json(checkpoint / "receipt.json", {"files": {}})
+    write_json(
+        run / "locations.json",
+        {"snapshot": str(snapshot_path), "profile": TrainingProfile().identity()},
+    )
+    write_json(
+        run / "checkpoint-verification.json",
+        {
+            "status": "PASS",
+            "adapter_sha256": file_digest(checkpoint / "adapter_model.safetensors"),
+        },
+    )
+    write_json(
+        first / "identity.json",
+        {
+            "checkpoint_config": file_digest(snapshot_path / "config.json"),
+            "snapshot_metadata": snapshot_metadata(snapshot_path),
+            "weights": {},
+        },
+    )
+    monkeypatch.setattr(engine, "require_owner", lambda: None)
+    monkeypatch.setattr(
+        comparison, "load_frozen", lambda _: ({"qualification": {"status": "PASS"}}, [])
+    )
+
+    def load_model(profile, snapshot, adapter):
+        assert adapter == checkpoint
+        raise RuntimeError("model_loading_boundary")
+
+    monkeypatch.setattr(engine, "Session", load_model)
+    _case_value_0 = str(tmp_path / "output")
+    _case_value_1 = str(tmp_path / "cases.json")
+    _case_value_2 = str(run)
+    with pytest.raises(RuntimeError, match="model_loading_boundary"):
+        comparison.worker(
+            {
+                "output": _case_value_0,
+                "cases": _case_value_1,
+                "training_run": _case_value_2,
+            }
+        )
+
+
+def test_frozen_manifest_rejects_added_fixture_files_and_unlisted_cases(tmp_path):
+    fixture = tmp_path / "fixture"
+    fixture.mkdir()
+    cases = tmp_path / "cases.jsonl"
+    cases.write_text(json.dumps({"id": "one", "fixture": "fixture"}) + "\n")
+    manifest = tmp_path / "manifest.json"
+    value = {
+        "cases": "cases.jsonl",
+        "case_count": 1,
+        "files": {"cases.jsonl": file_digest(cases)},
+    }
+    manifest.write_text(json.dumps(value))
+    load_frozen(manifest)
+    (fixture / "unlisted.txt").write_text("changed input")
+    with pytest.raises(ValueError, match="inventory_changed"):
+        load_frozen(manifest)
+    (fixture / "unlisted.txt").unlink()
+    value["files"] = {}
+    manifest.write_text(json.dumps(value))
+    with pytest.raises(ValueError, match="cases_not_in_manifest"):
+        load_frozen(manifest)
+
+
+def test_snapshot_checks_logical_size_before_hashing_sparse_file(tmp_path, monkeypatch):
+    from scripts.granite_operator import comparison_support as support
+
+    large = tmp_path / "sparse"
+    with large.open("wb") as stream:
+        stream.truncate(support.MAX_FILE_BYTES + 1)
+
+    def forbidden_hash(_):
+        raise AssertionError("must reject metadata before reading contents")
+
+    monkeypatch.setattr(support, "file_digest", forbidden_hash)
+    with pytest.raises(support.WorkspaceLimitError, match="workspace_bytes"):
+        support.snapshot(tmp_path)
+
+
+def test_bounded_export_preserves_deletion_and_rejects_links_and_path_escape(tmp_path):
+    import io
+    import tarfile
+
+    from scripts.granite_operator.comparison_support import (
+        WorkspaceLimitError,
+        restore_workspace,
+    )
+
+    workspace = tmp_path / "work"
+    workspace.mkdir()
+    (workspace / "removed").write_text("old")
+
+    def make_archive(name, kind=None):
+        archive = io.BytesIO()
+        with tarfile.open(fileobj=archive, mode="w") as output:
+            member = tarfile.TarInfo(name)
+            if kind:
+                member.type = kind
+                member.linkname = "../../outside"
+                output.addfile(member)
+            else:
+                member.size = 3
+                output.addfile(member, io.BytesIO(b"new"))
+        return archive
+
+    archive = make_archive("new.txt")
+    restore_workspace(archive, workspace)
+    assert not (workspace / "removed").exists()
+    assert (workspace / "new.txt").read_text() == "new"
+    for archive in (make_archive("../escape"), make_archive("link", tarfile.SYMTYPE)):
+        with pytest.raises(WorkspaceLimitError, match="unsafe_archive"):
+            restore_workspace(archive, workspace)
+        assert (workspace / "new.txt").read_text() == "new"
+
+
+def test_comparison_rejects_changed_tokenizer_before_model_loading(
+    tmp_path, monkeypatch
+):
+    from scripts.granite_operator import comparison
+    from venom_core.services.granite_operator import engine
+    from venom_core.services.granite_operator.contract import (
+        TrainingProfile,
+        write_json,
+    )
+
+    run = tmp_path / "run"
+    stage = run / "train-first"
+    checkpoint = stage / "checkpoint"
+    checkpoint.mkdir(parents=True)
+    snapshot_path = tmp_path / "snapshot"
+    snapshot_path.mkdir()
+    (snapshot_path / "config.json").write_text("{}")
+    old_metadata = snapshot_metadata(snapshot_path)
+    (snapshot_path / "tokenizer.json").write_text("{}")
+    (checkpoint / "adapter_model.safetensors").write_bytes(b"a")
+    write_json(checkpoint / "receipt.json", {"files": {}})
+    write_json(
+        run / "locations.json",
+        {"snapshot": str(snapshot_path), "profile": TrainingProfile().identity()},
+    )
+    write_json(
+        run / "checkpoint-verification.json",
+        {
+            "status": "PASS",
+            "adapter_sha256": file_digest(checkpoint / "adapter_model.safetensors"),
+        },
+    )
+    write_json(stage / "identity.json", {"snapshot_metadata": old_metadata})
+    monkeypatch.setattr(engine, "require_owner", lambda: None)
+    monkeypatch.setattr(comparison, "load_frozen", lambda _: ({}, []))
+    _case_value_0 = str(tmp_path / "out")
+    _case_value_1 = str(tmp_path / "cases")
+    _case_value_2 = str(run)
+    with pytest.raises(ValueError, match="metadata_changed"):
+        comparison.worker(
+            {
+                "output": _case_value_0,
+                "cases": _case_value_1,
+                "training_run": _case_value_2,
+            }
+        )

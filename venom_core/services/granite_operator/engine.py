@@ -11,7 +11,14 @@ import sqlite3
 import time
 from pathlib import Path
 
-from .contract import TrainingProfile, digest, file_digest, inside, write_json
+from .contract import (
+    TrainingProfile,
+    digest,
+    file_digest,
+    inside,
+    snapshot_metadata,
+    write_json,
+)
 from .encoding import collate, encode
 
 
@@ -105,6 +112,7 @@ def environment_identity(profile, manifest, tokenizer, snapshot: Path) -> dict:
         "cuda": torch.version.cuda,
         "template": digest(tokenizer.chat_template),
         "checkpoint_config": file_digest(snapshot / "config.json"),
+        "snapshot_metadata": snapshot_metadata(snapshot),
         "weights": {
             p.name: file_digest(p) for p in sorted(snapshot.glob("*.safetensors"))
         },
@@ -187,7 +195,9 @@ class Session:
             for name, p in self.model.named_parameters()
         ):
             raise RuntimeError("granite_unexpected_trainable_base")
-        self.optimizer = torch.optim.AdamW(self.parameters, lr=profile.learning_rate)
+        self.optimizer = torch.optim.AdamW(
+            self.parameters, lr=profile.learning_rate, weight_decay=0.01
+        )
         self.step = 0
         self.target_tokens = 0
         self.logs: list[dict] = []

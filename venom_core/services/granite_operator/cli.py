@@ -13,9 +13,9 @@ import uuid
 from pathlib import Path
 
 from .contract import (
-    TrainingProfile,
     file_digest,
     load_dataset,
+    load_profile,
     require_qualification,
     select_dataset,
     write_json,
@@ -58,16 +58,50 @@ def qualification(metrics: dict, first: dict, artifacts: dict) -> dict:
     return receipt
 
 
+def _execute_stages(args, profile, train, stage):
+    if args.command == "smoke":
+        first = stage("smoke-first", 16)
+        second = stage("smoke-resume", 4, args.output / "smoke-first/checkpoint")
+        artifacts = {
+            str(path.relative_to(args.output)): file_digest(path)
+            for path in args.output.rglob("*")
+            if path.is_file() and path.suffix != ".log"
+        }
+        receipt = qualification(second, first, artifacts)
+        write_json(args.output / "qualification.json", receipt)
+        require_qualification(receipt, second["fingerprint"])
+    else:
+        if not args.qualification:
+            raise ValueError("granite_smoke_required")
+        receipt = json.loads(args.qualification.read_text())
+        require_qualification(receipt, receipt.get("fingerprint"))
+        # Equal update count is explicit for comparisons; default domain one epoch.
+        updates = (
+            args.updates
+            if args.updates is not None
+            else math.ceil(len(train) / profile.accumulation)
+        )
+        if not 1 <= updates <= 128:
+            raise ValueError("granite_update_budget_invalid")
+        first_count = min(12, updates)
+        stage("train-first", first_count)
+        if updates > first_count:
+            stage(
+                "train-resume",
+                updates - first_count,
+                args.output / "train-first/checkpoint",
+            )
+
+
 def run(args):
     """Hold the lease until every worker has exited, including failure cleanup."""
     from venom_core.services.runtime_admission import RuntimeAdmission
 
     require_offline()
-    profile_data = json.loads(args.profile.read_text())
-    profile_data.pop("schema_version", None)
-    profile = TrainingProfile(**profile_data)
-    profile.validate()
+    profile = load_profile(args.profile)
     manifest = json.loads(args.manifest.read_text())
+    if manifest.get("context", profile.context) != profile.context:
+        raise ValueError("granite_manifest_context_mismatch")
     domain = load_dataset(args.data_root, manifest, "domain")
     hf = load_dataset(args.data_root, manifest, "hf")
     train, _ = select_dataset(domain, hf, args.dataset)
@@ -156,40 +190,7 @@ def run(args):
 
     try:
         with lease.operation(kind="lifecycle", confirm_quiescent=quiescent):
-            if args.command == "smoke":
-                first = stage("smoke-first", 16)
-                second = stage(
-                    "smoke-resume", 4, args.output / "smoke-first/checkpoint"
-                )
-                artifacts = {
-                    str(path.relative_to(args.output)): file_digest(path)
-                    for path in args.output.rglob("*")
-                    if path.is_file() and path.suffix != ".log"
-                }
-                receipt = qualification(second, first, artifacts)
-                write_json(args.output / "qualification.json", receipt)
-                require_qualification(receipt, second["fingerprint"])
-            else:
-                if not args.qualification:
-                    raise ValueError("granite_smoke_required")
-                receipt = json.loads(args.qualification.read_text())
-                require_qualification(receipt, receipt.get("fingerprint"))
-                # Equal update count is explicit for comparisons; default domain one epoch.
-                updates = (
-                    args.updates
-                    if args.updates is not None
-                    else math.ceil(len(train) / profile.accumulation)
-                )
-                if not 1 <= updates <= 128:
-                    raise ValueError("granite_update_budget_invalid")
-                first_count = min(12, updates)
-                stage("train-first", first_count)
-                if updates > first_count:
-                    stage(
-                        "train-resume",
-                        updates - first_count,
-                        args.output / "train-first/checkpoint",
-                    )
+            _execute_stages(args, profile, train, stage)
         write_json(args.output / "status.json", {"status": "PASS", "run_id": run_id})
     except BaseException as error:
         write_json(

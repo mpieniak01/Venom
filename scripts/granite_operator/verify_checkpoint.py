@@ -14,6 +14,7 @@ from venom_core.services.granite_operator.contract import (
     TrainingProfile,
     digest,
     file_digest,
+    final_training_stage,
     load_dataset,
     select_dataset,
     write_json,
@@ -36,7 +37,7 @@ def verify(run: Path):
     domain = load_dataset(Path(locations["data_root"]), manifest, "domain")
     hf = load_dataset(Path(locations["data_root"]), manifest, "hf")
     _, validation = select_dataset(domain, hf, locations.get("dataset", "domain"))
-    stage = run / ("train-resume" if (run / "train-resume").exists() else "train-first")
+    stage = final_training_stage(run)
     metrics = json.loads((stage / "metrics.json").read_text())
     session = Session(profile, Path(locations["snapshot"]), stage / "checkpoint")
     fingerprint = digest(

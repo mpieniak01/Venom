@@ -12,9 +12,29 @@ import sys
 from pathlib import Path
 
 
+def version_errors(config, python_version, torch_version, cuda_version, drivers):
+    """Compare observed versions against the single stack manifest without GPU work."""
+    errors = []
+    expected_python = tuple(int(part) for part in config["python"].split("."))
+    if tuple(python_version[:2]) != expected_python:
+        errors.append("Python differs from pinned stack")
+    if (
+        not torch_version.startswith(config["torch"] + ".")
+        or cuda_version != config["cuda"]
+    ):
+        errors.append("PyTorch/CUDA differ from pinned stack")
+    if any(
+        int(version.split(".")[0]) < config["minimum_driver_major"]
+        for version in drivers
+    ):
+        errors.append("NVIDIA driver is below the pinned minimum")
+    return errors
+
+
 def inspect(mode):
     import torch
 
+    config = json.loads(Path(__file__).with_name("stack.json").read_text())
     errors = []
     versions = {}
     packages = [
@@ -31,10 +51,6 @@ def inspect(mode):
     for name in packages:
         importlib.import_module(name)
         versions[name] = importlib.metadata.version(name)
-    if sys.version_info[:2] != (3, 12):
-        errors.append("Expected Python 3.12")
-    if not torch.__version__.startswith("2.13.") or torch.version.cuda != "13.0":
-        errors.append("PyTorch/CUDA differ from pinned stack")
     if not torch.cuda.is_available():
         raise RuntimeError("CUDA unavailable; refusing CPU fallback")
     devices = []
@@ -74,8 +90,11 @@ def inspect(mode):
     driver = subprocess.check_output(
         ["nvidia-smi", "--query-gpu=driver_version", "--format=csv,noheader"], text=True
     ).splitlines()
-    if any(int(version.split(".")[0]) < 580 for version in driver):
-        errors.append("CUDA 13 requires NVIDIA driver >=580")
+    errors.extend(
+        version_errors(
+            config, sys.version_info, torch.__version__, torch.version.cuda, driver
+        )
+    )
     free_disk = shutil.disk_usage("/workspace/data").free
     shm = shutil.disk_usage("/dev/shm").total
     if free_disk < 20 * 1024**3:

@@ -25,8 +25,11 @@ from scripts.granite_operator.comparison_support import (
 )
 from venom_core.services.granite_operator.contract import (
     TrainingProfile,
+    digest,
     file_digest,
+    final_training_stage,
     inside,
+    snapshot_metadata,
     write_json,
 )
 
@@ -202,6 +205,17 @@ def run_case(session, case, dataset, output, image, run_id, arm):
                         ),
                     }
                 )
+                if result.get("workspace_error"):
+                    violations.append(result["workspace_error"])
+                if result["execution_timed_out"]:
+                    failure = "tool_timeout"
+                    break
+                if result.get("workspace_error"):
+                    failure = "tool_workspace_limit"
+                    break
+                if result.get("execution_killed") and not result["execution_timed_out"]:
+                    failure = "tool_killed"
+                    break
                 if result["execution_timed_out"] or result["output_truncated"]:
                     failure = (
                         "tool_timeout"
@@ -269,7 +283,7 @@ def worker(request):
     receipt = json.loads((training_run / "checkpoint-verification.json").read_text())
     if receipt["status"] != "PASS":
         raise ValueError("comparison_unverified_adapter")
-    checkpoint = training_run / "train-resume/checkpoint"
+    checkpoint = final_training_stage(training_run) / "checkpoint"
     if (
         file_digest(checkpoint / "adapter_model.safetensors")
         != receipt["adapter_sha256"]
@@ -281,6 +295,9 @@ def worker(request):
             raise ValueError("comparison_checkpoint_changed")
     original = json.loads((training_run / "train-first/identity.json").read_text())
     snapshot_path = Path(source["snapshot"])
+    metadata = snapshot_metadata(snapshot_path)
+    if original.get("snapshot_metadata") != metadata:
+        raise ValueError("comparison_snapshot_metadata_changed")
     if file_digest(snapshot_path / "config.json") != original["checkpoint_config"]:
         raise ValueError("comparison_base_config_changed")
     for name, checksum in original["weights"].items():
@@ -302,6 +319,8 @@ def worker(request):
         "adapter_sha256": receipt["adapter_sha256"],
         "profile": profile.identity(),
         "base_snapshot": source["snapshot"],
+        "snapshot_metadata": metadata,
+        "tokenizer_template": digest(session.tokenizer.chat_template),
         "control": "same base with PEFT adapter disabled",
         "source_sha256": {
             p.name: file_digest(p)

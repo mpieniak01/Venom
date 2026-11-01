@@ -210,3 +210,25 @@ przypięty wheel Torch CPU dla Linux x86_64/Python 3.14 i Transformers.
 Profil aplikacyjny ci-lite pozostaje bez zależności treningowych.
 Testy sprawdzają obliczenia na małych tensorach CPU i atrapy granic procesów;
 nie pobierają wag i nie uruchamiają rzeczywistego modelu ani treningu GPU.
+
+## Integralność przygotowania i porównania
+
+Finalizacja i audyt czytają ten sam profil co trening (domyślnie
+config/granite_operator_profile.json; dla skryptów przygotowania można wskazać
+GRANITE_PROFILE). Intake przyjmuje opcjonalny --profile. Nowy manifest zawiera
+kontekst i deskryptor execution_receipts. Audyt używa tego samego kontraktu
+obserwacji i masek co intake oraz odmawia nadpisania istniejącego manifestu.
+Dla zamrożonego korpusu używamy intake; nie przebudowujemy historycznych danych.
+
+Tożsamość kwalifikacji obejmuje również pliki tokenizera, szablonu i konfiguracji
+generowania. Porównanie weryfikuje ich zgodność z treningiem i zapisuje ją na
+potrzeby resume. Starszy dowód bez tych pól nie jest automatycznie uzupełniany
+hashami aktualnego snapshotu. Inwentarz fixture obejmuje wszystkie pliki,
+także metadane Git; dodanie pliku lub symlinku unieważnia zamrożony zestaw.
+
+Zapisy modelu trafiają do tmpfs kontenera: 16 MiB i 1024 inody; pojedynczy plik
+ma limit 1 MiB ustawiany wewnątrz kontenera. Seed jest bind-mountem tylko do
+odczytu, a zweryfikowany eksport regularnych plików odtwarza stan zadania na
+hoście. Snapshot sprawdza liczbę i logiczny rozmiar plików przed ich hashowaniem.
+Verifier nadal używa bind-mountu tylko do odczytu. Zmiana sandboxu wymaga nowego
+porównania; nie łączymy jego prób ze starszymi wynikami.

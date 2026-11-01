@@ -20,11 +20,13 @@ def stack():
 def offer_query(profile, max_hourly):
     if not math.isfinite(max_hourly) or max_hourly <= 0:
         raise ValueError("max-hourly must be finite and positive")
+    pinned = stack()
+    driver = int(pinned["minimum_driver_major"]) * 1000000
     return (
         f"verified=True rentable=True rented=False cpu_arch=amd64 num_gpus={profile['gpus']} "
         f"gpu_ram>={profile['gpu_ram_gb']} cpu_ram>={profile['cpu_ram_gb']} "
-        f"disk_space>={profile['disk_gb']} cuda_vers>=13.0 "
-        f"driver_version>=580000000 reliability>=0.99 dph_total<={max_hourly}"
+        f"disk_space>={profile['disk_gb']} cuda_vers>={pinned['cuda']} "
+        f"driver_version>={driver} reliability>=0.99 dph_total<={max_hourly}"
     )
 
 

@@ -17,16 +17,9 @@ def _ids(value: Any) -> list:
     return result
 
 
-def encode(row: dict, tokenizer: Any, context: int) -> dict[str, list[int]]:
-    """Mask actual assistant spans; never train on system/user/tool observations."""
-    options = {
-        "tools": row["tools"],
-        "enable_thinking": False,
-        "truncate_history_thinking": False,
-    }
-    text = tokenizer.apply_chat_template(
-        row["messages"], tokenize=False, add_generation_prompt=False, **options
-    )
+def _assistant_spans(
+    row: dict, tokenizer: Any, options: dict, text: str
+) -> list[tuple[int, int]]:
     spans = []
     targets = assistant_targets(row)
     for index, message in enumerate(row["messages"]):
@@ -47,6 +40,20 @@ def encode(row: dict, tokenizer: Any, context: int) -> dict[str, list[int]]:
         if not through.startswith(prefix) or not text.startswith(through):
             raise ValueError("granite_non_prefix_template")
         spans.append((len(prefix), len(through)))
+    return spans
+
+
+def encode(row: dict, tokenizer: Any, context: int) -> dict[str, list[int]]:
+    """Mask actual assistant spans; never train on system/user/tool observations."""
+    options = {
+        "tools": row["tools"],
+        "enable_thinking": False,
+        "truncate_history_thinking": False,
+    }
+    text = tokenizer.apply_chat_template(
+        row["messages"], tokenize=False, add_generation_prompt=False, **options
+    )
+    spans = _assistant_spans(row, tokenizer, options, text)
     encoded = tokenizer(text, add_special_tokens=False, return_offsets_mapping=True)
     ids = _ids(encoded)
     offsets = encoded["offset_mapping"]

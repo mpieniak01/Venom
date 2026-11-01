@@ -10,11 +10,16 @@ from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
-import torch
 
-from venom_core.services.granite_operator import cli, engine, worker
-from venom_core.services.granite_operator.contract import TrainingProfile, write_json
-from venom_core.services.granite_operator.encoding import collate
+torch = pytest.importorskip("torch")
+pytest.importorskip("transformers")
+
+from venom_core.services.granite_operator import cli, engine, worker  # noqa: E402
+from venom_core.services.granite_operator.contract import (  # noqa: E402
+    TrainingProfile,
+    write_json,
+)
+from venom_core.services.granite_operator.encoding import collate  # noqa: E402
 
 
 class TinyModel(torch.nn.Module):
@@ -147,8 +152,10 @@ def test_nonfinite_fails(value):
 def test_empty_shifted_mask():
     row = copy.deepcopy(ROW)
     row["labels"] = [-100] * 4
+    _case_value_0 = TinyModel()
+    _case_value_1 = collate([row], 0, torch)
     with pytest.raises(ValueError, match="empty_shifted"):
-        engine.loss_for(TinyModel(), collate([row], 0, torch))
+        engine.loss_for(_case_value_0, _case_value_1)
 
 
 def test_owner_requires_real_parent_lease(tmp_path, monkeypatch):
@@ -251,7 +258,9 @@ def test_environment_fingerprint_covers_lock_code_and_weights(tmp_path, monkeypa
         SimpleNamespace(chat_template="native"),
         snapshot,
     )
-    assert identity["weights"] and identity["code"] and identity["dependency_lock"]
+    assert identity["weights"]
+    assert identity["code"]
+    assert identity["dependency_lock"]
     (package / "engine.py").write_text("changed")
     changed = engine.environment_identity(
         TrainingProfile(),
@@ -326,8 +335,9 @@ def test_session_load_preserves_precision_and_trains_only_adapter(
     )
     assert calls[0]["local_files_only"] is True
     assert ("quantization_config" in calls[0]) == (precision == "nf4")
-    assert session.parameters and all(
-        "lora_" in n for n, p in session.model.named_parameters() if p.requires_grad
+    assert session.parameters
+    assert all(
+        ("lora_" in n for n, p in session.model.named_parameters() if p.requires_grad)
     )
     assert base.config.use_cache is False
 
@@ -347,8 +357,10 @@ def test_session_refuses_missing_cuda(monkeypatch):
         ),
     )
     monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
+    _case_value_2 = TrainingProfile()
+    _case_value_3 = Path("snapshot")
     with pytest.raises(RuntimeError, match="cuda_required"):
-        engine.Session(TrainingProfile(), Path("snapshot"))
+        engine.Session(_case_value_2, _case_value_3)
 
 
 def native_call(name, **arguments):
@@ -504,7 +516,8 @@ def test_worker_smoke_end_to_end_receipt(tmp_path, monkeypatch):
     metrics = json.loads((Path(request["output"]) / "metrics.json").read_text())
     assert metrics["global_step"] == 20
     assert all(metrics["checks"].values())
-    assert metrics["training_rows"] == 32 and metrics["validation_rows"] == 8
+    assert metrics["training_rows"] == 32
+    assert metrics["validation_rows"] == 8
     assert len(created) == 1
 
 
@@ -717,8 +730,9 @@ def test_report_distinguishes_training_speed_from_operator_accuracy(tmp_path):
 
     assert percentile([1, 2, 3, 4], 0.5) == 2.5
     assert percentile([1, 2, 3, 4], 0.95) == pytest.approx(3.85)
+    _case_value_4 = float("nan")
     with pytest.raises(ValueError):
-        percentile([float("nan")], 0.5)
+        percentile([_case_value_4], 0.5)
     write_json(tmp_path / "status.json", {"status": "FAIL"})
     with pytest.raises(ValueError, match="did_not_pass"):
         summarize(tmp_path)
@@ -809,7 +823,8 @@ def test_final_checkpoint_verifier_reloads_and_checks_actual_loop(
     write_json(stage / "metrics.json", metrics)
     verify_checkpoint.verify(run)
     receipt = json.loads((run / "checkpoint-verification.json").read_text())
-    assert receipt["status"] == "PASS" and receipt["global_step"] == 16
+    assert receipt["status"] == "PASS"
+    assert receipt["global_step"] == 16
     assert evaluated[-1] == (2 if dataset == "hf" else 10 if dataset == "mixed" else 8)
     monkeypatch.setattr(worker, "tool_loop", lambda *args: {"passed": False})
     with pytest.raises(RuntimeError, match="tool_loop_failed"):
@@ -831,13 +846,13 @@ def test_final_verifier_refuses_incomplete_run_or_different_host_ledger(
 
     monkeypatch.setattr(cli, "require_offline", lambda: None)
     write_json(tmp_path / "status.json", {"status": "FAIL"})
+    _case_value_5 = Path("/python")
     with pytest.raises(ValueError, match="training_did_not_pass"):
-        verify_checkpoint.coordinate(tmp_path, tmp_path / "ledger", Path("/python"))
+        verify_checkpoint.coordinate(tmp_path, tmp_path / "ledger", _case_value_5)
     write_json(tmp_path / "status.json", {"status": "PASS"})
     write_json(
         tmp_path / "locations.json", {"admission_db": str(tmp_path / "actual-ledger")}
     )
+    _case_value_6 = Path("/python")
     with pytest.raises(ValueError, match="same_host_ledger"):
-        verify_checkpoint.coordinate(
-            tmp_path, tmp_path / "other-ledger", Path("/python")
-        )
+        verify_checkpoint.coordinate(tmp_path, tmp_path / "other-ledger", _case_value_6)

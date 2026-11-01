@@ -104,13 +104,12 @@ def test_native_mask_trains_calls_but_not_observations():
     sample = row()
     tokens = encode(sample, CharacterTokenizer(), 4096)
     target = "".join(chr(x) for x in tokens["labels"] if x != -100)
-    assert (
-        "Terminal" in target
-        and "cat note" in target
-        and "Finish" in target
-        and "DONE" in target
-    )
-    assert "ACTUAL_OBSERVATION" not in target and "rules" not in target
+    assert "Terminal" in target
+    assert "cat note" in target
+    assert "Finish" in target
+    assert "DONE" in target
+    assert "ACTUAL_OBSERVATION" not in target
+    assert "rules" not in target
     assert len(tokens["labels"]) == len(tokens["input_ids"])
 
 
@@ -132,8 +131,10 @@ def test_native_mask_trains_calls_but_not_observations():
     ],
 )
 def test_invalid_profiles_fail_before_model_load(kwargs):
+    _case_value_0 = TrainingProfile()
+    _case_value_1 = replace(_case_value_0, **kwargs)
     with pytest.raises(ValueError):
-        replace(TrainingProfile(), **kwargs).validate()
+        _case_value_1.validate()
 
 
 def test_profile_identity_is_stable():
@@ -147,8 +148,9 @@ def test_atomic_json_roundtrip_and_nonfinite_rejection(tmp_path):
     write_json(target, {"step": 16})
     assert json.loads(target.read_text()) == {"step": 16}
     assert not target.with_suffix(".json.tmp").exists()
+    _case_value_2 = float("nan")
     with pytest.raises(ValueError):
-        write_json(target, {"loss": float("nan")})
+        write_json(target, {"loss": _case_value_2})
 
 
 def test_data_paths_cannot_escape_or_be_symlinks(tmp_path):
@@ -262,12 +264,15 @@ def test_smoke_receipt_is_mandatory_and_bound_to_configuration():
 
 
 def test_encoding_rejects_truncation_and_empty_targets():
+    _case_value_3 = row()
+    _case_value_4 = CharacterTokenizer()
     with pytest.raises(ValueError, match="context"):
-        encode(row(), CharacterTokenizer(), 4)
+        encode(_case_value_3, _case_value_4, 4)
     sample = row()
     sample["messages"] = [sample["messages"][0], sample["messages"][1]]
+    _case_value_5 = CharacterTokenizer()
     with pytest.raises(ValueError, match="empty"):
-        encode(sample, CharacterTokenizer(), 4096)
+        encode(sample, _case_value_5, 4096)
 
 
 def test_encoding_rejects_non_prefix_or_changed_tokenization():
@@ -280,8 +285,10 @@ def test_encoding_rejects_non_prefix_or_changed_tokenization():
                 else result
             )
 
+    _case_value_6 = row()
+    _case_value_7 = Changed()
     with pytest.raises(ValueError, match="non_prefix"):
-        encode(row(), Changed(), 4096)
+        encode(_case_value_6, _case_value_7, 4096)
 
     class Different(CharacterTokenizer):
         def apply_chat_template(self, *args, **kwargs):
@@ -290,8 +297,10 @@ def test_encoding_rejects_non_prefix_or_changed_tokenization():
                 result["input_ids"] = [0]
             return result
 
+    _case_value_8 = row()
+    _case_value_9 = Different()
     with pytest.raises(ValueError, match="mismatch"):
-        encode(row(), Different(), 4096)
+        encode(_case_value_8, _case_value_9, 4096)
 
 
 def test_encoding_dict_and_single_batch_ids():
@@ -386,9 +395,12 @@ def test_recovery_prefix_is_context_not_a_positive_training_target():
     encoded = encode(sample, CharacterTokenizer(), 4096)
     targets = "".join(chr(x) for x in encoded["labels"] if x != -100)
     full = "".join(chr(x) for x in encoded["input_ids"])
-    assert "cat note" in full and "ACTUAL_OBSERVATION" in full
-    assert "Terminal" not in targets and "cat note" not in targets
-    assert "Finish" in targets and "DONE" in targets
+    assert "cat note" in full
+    assert "ACTUAL_OBSERVATION" in full
+    assert "Terminal" not in targets
+    assert "cat note" not in targets
+    assert "Finish" in targets
+    assert "DONE" in targets
 
 
 @pytest.mark.parametrize(
@@ -399,8 +411,9 @@ def test_bad_supervision_policy_fails_before_encoding(indices):
     sample["supervised_assistant_indices"] = indices
     with pytest.raises(ValueError, match="supervision_indices"):
         validate_conversation(sample, "train")
+    _case_value_10 = CharacterTokenizer()
     with pytest.raises(ValueError, match="supervision_indices"):
-        encode(sample, CharacterTokenizer(), 4096)
+        encode(sample, _case_value_10, 4096)
 
 
 def test_dataset_selection_preserves_validation_and_rejects_unknown():
@@ -413,3 +426,69 @@ def test_dataset_selection_preserves_validation_and_rejects_unknown():
     assert select_dataset(domain, hf, "mixed") == (domain[0] + hf[0], domain[1] + hf[1])
     with pytest.raises(ValueError, match="dataset_unknown"):
         select_dataset(domain, hf, "invalid")
+
+
+def test_mixed_short_budget_sees_both_sources_without_changing_resume_order():
+    from venom_core.services.granite_operator.contract import select_dataset
+
+    domain = ([{"id": "d" + str(i)} for i in range(8)], [{"id": "dv"}])
+    hf = ([{"id": "h" + str(i)} for i in range(2)], [{"id": "hv"}])
+    train, validation = select_dataset(domain, hf, "mixed")
+    assert [row["id"] for row in train[:4]] == ["d0", "h0", "d1", "h1"]
+    assert len(train) == 10
+    assert len({row["id"] for row in train}) == 10
+    assert train == select_dataset(domain, hf, "mixed")[0]
+    assert validation == domain[1] + hf[1]
+
+
+def test_final_training_stage_supports_first_only_and_resumed_runs(tmp_path):
+    from venom_core.services.granite_operator.contract import final_training_stage
+
+    with pytest.raises(ValueError, match="stage_missing"):
+        final_training_stage(tmp_path)
+    first = tmp_path / "train-first"
+    first.mkdir()
+    assert final_training_stage(tmp_path) == first
+    resumed = tmp_path / "train-resume"
+    resumed.mkdir()
+    assert final_training_stage(tmp_path) == resumed
+
+
+@pytest.mark.parametrize("position", [2, 4])
+def test_missing_tool_identity_is_always_orphaned(position):
+    sample = row()
+    sample["messages"].insert(position, {"role": "tool", "content": "unmatched"})
+    with pytest.raises(ValueError, match="orphan_tool_response"):
+        validate_conversation(sample, "train")
+
+
+def test_snapshot_metadata_detects_tokenizer_and_generation_changes(tmp_path):
+    from venom_core.services.granite_operator.contract import snapshot_metadata
+
+    first = snapshot_metadata(tmp_path)
+    (tmp_path / "tokenizer.json").write_text("{}")
+    second = snapshot_metadata(tmp_path)
+    assert second != first
+    (tmp_path / "generation_config.json").write_text("{}")
+    third = snapshot_metadata(tmp_path)
+    assert third != second
+    (tmp_path / "tokenizer.json").write_text('{"changed":true}')
+    assert snapshot_metadata(tmp_path) != third
+
+
+def test_json_writer_treats_path_shaped_content_as_data_and_does_not_follow_fixed_temp_symlink(
+    tmp_path,
+):
+    target = tmp_path / "result.json"
+    outside = tmp_path / "outside.txt"
+    outside.write_text("unchanged")
+    target.with_suffix(".json.tmp").symlink_to(outside)
+    payload = {"path": "../../outside.txt"}
+    write_json(target, payload)
+    assert json.loads(target.read_text()) == payload
+    assert outside.read_text() == "unchanged"
+    invalid = {"loss": float("nan")}
+    with pytest.raises(ValueError):
+        write_json(target, invalid)
+    assert json.loads(target.read_text()) == payload
+    assert not list(tmp_path.glob("result.json.*.tmp"))

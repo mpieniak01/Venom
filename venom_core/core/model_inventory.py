@@ -6,6 +6,7 @@ from pathlib import Path
 
 
 def nonempty_file(path: Path) -> bool:
+    """Return whether an accessible regular file has a nonzero payload."""
     try:
         return path.is_file() and path.stat().st_size > 0
     except OSError:
@@ -13,10 +14,12 @@ def nonempty_file(path: Path) -> bool:
 
 
 def is_onnx_model_dir(path: Path) -> bool:
+    """Require at least one nonempty ONNX payload in an existing directory."""
     return path.is_dir() and any(nonempty_file(p) for p in path.glob("*.onnx"))
 
 
 def is_hf_model_dir(path: Path) -> bool:
+    """Require valid model configuration, real weights and complete indexed or named shards."""
     if not path.is_dir() or not nonempty_file(path / "config.json"):
         return False
     try:
@@ -39,6 +42,7 @@ def is_hf_model_dir(path: Path) -> bool:
 
 
 def _valid_weight_index(path: Path, index: Path) -> bool:
+    """Require a nonempty shard map referencing existing weights without path traversal."""
     try:
         weight_map = json.loads(index.read_text())["weight_map"]
         if not isinstance(weight_map, dict):
@@ -56,6 +60,7 @@ def _valid_weight_index(path: Path, index: Path) -> bool:
 
 
 def _complete_shards(path: Path, weights: list[Path]) -> bool:
+    """Require every numbered shard declared by each sharded weight filename."""
     for weight in weights:
         shard = re.fullmatch(r"(.+)-(\d+)-of-(\d+)\.(safetensors|bin)", weight.name)
         if shard is None:

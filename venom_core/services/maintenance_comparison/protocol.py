@@ -23,7 +23,10 @@ class Call:
 
 
 def strict_json(text: str):
+    """Parse JSON while rejecting duplicate object keys and nonfinite constants."""
+
     def unique(pairs):
+        """Build an object only when every supplied JSON key is unique."""
         result = {}
         for key, value in pairs:
             if key in result:
@@ -32,6 +35,7 @@ def strict_json(text: str):
         return result
 
     def invalid_constant(_value):
+        """Reject nonfinite JSON constants instead of accepting backend-specific numbers."""
         raise ProtocolError("nonfinite_json_value")
 
     return json.loads(text, object_pairs_hook=unique, parse_constant=invalid_constant)
@@ -84,6 +88,7 @@ def lfm_calls(text: str) -> list[Call]:
 
 
 def _literal_call(node: ast.expr) -> Call:
+    """Decode a named call with literal keyword values; reject positional or expanded arguments."""
     if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Name):
         raise ProtocolError("expected_named_call")
     if node.args or any(item.arg is None for item in node.keywords):
@@ -126,20 +131,24 @@ def native_calls(text: str) -> list[Call]:
 
 class _GemmaLiteral:
     def __init__(self, text: str, string_marker: str = GEMMA_ESCAPE):
+        """Initialize the cursor and the protocol-specific escaped-string delimiter."""
         self.text, self.position = text, 0
         self.string_marker = string_marker
 
     def whitespace(self) -> None:
+        """Advance past whitespace without consuming the next literal token."""
         while self.position < len(self.text) and self.text[self.position].isspace():
             self.position += 1
 
     def consume(self, token: str) -> None:
+        """Require the next literal token after optional whitespace or raise ProtocolError."""
         self.whitespace()
         if not self.text.startswith(token, self.position):
             raise ProtocolError("invalid_gemma_literal")
         self.position += len(token)
 
     def _string(self) -> str:
+        """Read a delimited native string and reject a missing closing marker."""
         self.position += len(self.string_marker)
         end = self.text.find(self.string_marker, self.position)
         if end < 0:
@@ -149,6 +158,7 @@ class _GemmaLiteral:
         return value
 
     def _primitive(self):
+        """Decode the next JSON primitive and advance by the consumed source length."""
         try:
             value, used = json.JSONDecoder().raw_decode(self.text[self.position :])
         except json.JSONDecodeError as exc:
@@ -157,6 +167,7 @@ class _GemmaLiteral:
         return value
 
     def _pair(self, values: dict, depth: int) -> None:
+        """Read one unique object key and recursively parse its literal value."""
         if self.text.startswith(self.string_marker, self.position):
             key = self._string()
         elif self.text.startswith('"', self.position):
@@ -174,6 +185,7 @@ class _GemmaLiteral:
         values[key] = self.literal(depth + 1)
 
     def _collection(self, char: str, depth: int):
+        """Parse a list or object while rejecting missing separators and trailing commas."""
         self.position += 1
         closing = "]" if char == "[" else "}"
         values: Any = [] if char == "[" else {}
@@ -194,6 +206,7 @@ class _GemmaLiteral:
         return values
 
     def literal(self, depth: int = 0) -> Any:
+        """Parse the next native literal, rejecting exhausted input and excessive nesting."""
         self.whitespace()
         if depth > 16 or self.position >= len(self.text):
             raise ProtocolError("invalid_gemma_literal")
@@ -204,6 +217,7 @@ class _GemmaLiteral:
 
 
 def _gemma_call(body: str, string_marker: str = GEMMA_ESCAPE) -> Call:
+    """Parse an explicit function name and complete literal argument object."""
     name, separator, rest = body.partition("{")
     if not separator or not name.isidentifier():
         raise ProtocolError("invalid_gemma_function")
@@ -216,6 +230,7 @@ def _gemma_call(body: str, string_marker: str = GEMMA_ESCAPE) -> Call:
 
 
 def gemma_calls(text: str) -> list[Call]:
+    """Decode FunctionGemma envelopes with matching start and end markers."""
     start, end = "<start_function_call>call:", "<end_function_call>"
     parts = text.split(start)[1:]
     if not parts or text.count(end) != len(parts):
@@ -233,6 +248,7 @@ def gemma4_calls(text: str) -> list[Call]:
 
 
 def _granite_arguments(parameters: str) -> dict:
+    """Parse unique XML parameters, decoding only locations as strict JSON."""
     arguments = {}
     while parameters:
         if not parameters.startswith("<parameter="):

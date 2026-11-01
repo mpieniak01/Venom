@@ -27,10 +27,12 @@ CASES = {c.id: c for c in build_scenarios(ROOT)}
 
 class LocalVerifier:
     def __init__(self, workspace, image, **_kwargs):
+        """Initialize the test double with only the state required by this scenario."""
         self.workspace = workspace
         self.oracle = workspace / "oracle_private.py"
 
     def structured(self, command, timeout):
+        """Return command output from the controlled verifier transport."""
         command = command.replace(grading.ORACLE_PATH, str(self.oracle))
         result = subprocess.run(
             shlex.split(command),
@@ -47,11 +49,13 @@ class LocalVerifier:
         }
 
     def close(self):
+        """Release the test double resources without touching the live stack."""
         pass
 
 
 @pytest.fixture
 def verifier(monkeypatch):
+    """Replace only the container transport while preserving independent grading."""
     monkeypatch.setattr(grading, "TrialHabitat", LocalVerifier)
     monkeypatch.setattr(
         grading,
@@ -69,6 +73,7 @@ def verifier(monkeypatch):
 def test_gold_patch_passes_independent_checks_and_fault_is_detected(
     tmp_path, verifier, case_id
 ):
+    """Verify gold patch passes independent checks and fault is detected."""
     case = CASES["repair-" + case_id]
     for name, text in case.files.items():
         (tmp_path / name).write_text(text)
@@ -87,6 +92,7 @@ def test_gold_patch_passes_independent_checks_and_fault_is_detected(
     ],
 )
 def test_mock_fix_must_preserve_original_assertion(weak):
+    """Verify mock fix must preserve original assertion."""
     original = CASES["repair-05"].files["test_visible.py"]
     assert not grading.preserves_mock_test(original, weak)
 
@@ -133,6 +139,7 @@ def test_mock_fix_must_preserve_original_assertion(weak):
     ],
 )
 def test_operator_requires_real_evidence(id, command, stdout, stderr, status, summary):
+    """Verify operator requires real evidence."""
     calls = (
         []
         if command is None
@@ -159,7 +166,10 @@ def test_operator_requires_real_evidence(id, command, stdout, stderr, status, su
 
 
 def test_order_and_environment_must_be_observed():
+    """Verify order and environment must be observed."""
+
     def call(command, stdout=""):
+        """Build an observed terminal action with its command and output."""
         return {
             "name": "Terminal",
             "arguments": {"command": command},
@@ -182,6 +192,7 @@ def test_order_and_environment_must_be_observed():
 
 
 def test_localization_matches_existing_symbol_and_verbatim_evidence():
+    """Verify localization matches existing symbol and verbatim evidence."""
     case = CASES["localization-01"]
     source = (ROOT / case.expected_locations[0][0]).read_text()
     node = next(
@@ -208,6 +219,7 @@ def test_localization_matches_existing_symbol_and_verbatim_evidence():
 
 
 def test_diagnostic_escalation_needs_actual_asset_failure(tmp_path):
+    """Verify diagnostic escalation needs actual asset failure."""
     run = {
         "model_finished": True,
         "final": {"status": "escalated", "summary": "missing asset"},
@@ -228,6 +240,7 @@ def test_diagnostic_escalation_needs_actual_asset_failure(tmp_path):
 
 
 def test_fresh_git_copy_and_patch_isolation(tmp_path):
+    """Verify fresh git copy and patch isolation."""
     repo = tmp_path / "source"
     repo.mkdir()
     (repo / "a.py").write_text("initial")
@@ -269,6 +282,7 @@ def test_fresh_git_copy_and_patch_isolation(tmp_path):
 
 
 def test_codescout_native_locations_require_actual_source_evidence(tmp_path):
+    """Verify codescout native locations require actual source evidence."""
     from venom_core.services.maintenance_comparison.codescout import (
         grade_submission,
         validate_submission,
@@ -304,6 +318,7 @@ def test_codescout_native_locations_require_actual_source_evidence(tmp_path):
 
 
 def test_native_bash_finishing_is_not_an_unsupported_operation():
+    """Verify native bash finishing is not an unsupported operation."""
     run = {
         "model_finished": True,
         "final": {"kind": "native_bash", "summary": "Slack is unavailable."},
@@ -323,6 +338,7 @@ def test_native_bash_finishing_is_not_an_unsupported_operation():
 
 
 def test_real_test_command_may_follow_cd_but_no_tests_collected_is_not_success():
+    """Verify real test command may follow cd but no tests collected is not success."""
     run = {
         "model_finished": True,
         "final": {"status": "success", "summary": "test passed"},
@@ -347,6 +363,7 @@ def test_real_test_command_may_follow_cd_but_no_tests_collected_is_not_success()
     ["import os; os._exit(0)", "def total(items):\n    import os\n    os._exit(0)\n"],
 )
 def test_premature_process_exit_cannot_pass_repair(tmp_path, verifier, payload):
+    """Verify premature process exit cannot pass repair."""
     case = CASES["repair-01"]
     for name, text in case.files.items():
         (tmp_path / name).write_text(text)
@@ -361,6 +378,7 @@ def test_premature_process_exit_cannot_pass_repair(tmp_path, verifier, payload):
     ["", "no tests collected", "0 passed", "1 passed, 1 failed", "1 passed, 1 skipped"],
 )
 def test_pytest_requires_actual_successful_test_completion(stdout):
+    """Verify pytest requires actual successful test completion."""
     assert not grading._pytest_completed({"exit_code": 0, "stdout": stdout})
 
 
@@ -375,6 +393,7 @@ def test_pytest_requires_actual_successful_test_completion(stdout):
     ],
 )
 def test_missing_feature_search_recognizes_actual_tool(command, passed):
+    """Verify missing feature search recognizes actual tool."""
     run = {
         "calls": [
             {
@@ -392,6 +411,7 @@ def test_missing_feature_search_recognizes_actual_tool(command, passed):
 def test_successful_oracle_does_not_hide_early_exit_during_pytest_collection(
     tmp_path, verifier
 ):
+    """Verify successful oracle does not hide early exit during pytest collection."""
     case = CASES["repair-01"]
     for name, text in case.files.items():
         (tmp_path / name).write_text(text)

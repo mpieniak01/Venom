@@ -30,6 +30,7 @@ _QWEN_KERNELS = {
 
 
 def _backend_options(profile: dict) -> dict:
+    """Select explicit attention settings and pinned kernels only for the qualified Qwen profile."""
     settings = profile["profile"]
     options = {}
     if "attention_implementation" in settings:
@@ -65,6 +66,7 @@ def _backend_options(profile: dict) -> dict:
 
 
 def _kernel_bindings(model) -> dict[str, str]:
+    """Report the actual forward implementations bound to loaded kernel layers."""
     bindings = {}
     for _, module in model.named_modules():
         for function in getattr(module, "_kernel_funcs", {}).values():
@@ -80,9 +82,11 @@ class InferenceNumericalError(RuntimeError):
 
 class _FiniteScores:
     def __init__(self, torch):
+        """Store the tensor backend used to validate generation scores."""
         self.torch = torch
 
     def __call__(self, _input_ids, scores):
+        """Reject NaN, positive infinity or a row with no finite candidate scores."""
         invalid = (
             self.torch.isnan(scores).any()
             | self.torch.isposinf(scores).any()
@@ -97,17 +101,20 @@ class _PresencePenalty:
     """Penalize each generated token once, excluding the supplied prompt."""
 
     def __init__(self, torch, prompt_tokens: int, penalty: float):
+        """Validate a finite penalty and remember where generated tokens begin."""
         if not math.isfinite(penalty):
             raise ValueError("presence_penalty_must_be_finite")
         self.torch, self.prompt_tokens, self.penalty = torch, prompt_tokens, penalty
 
     def __call__(self, input_ids, scores):
+        """Subtract the penalty once per generated token, leaving prompt-only tokens alone."""
         penalties = self.torch.zeros_like(scores)
         penalties.scatter_(1, input_ids[:, self.prompt_tokens :], self.penalty)
         return scores - penalties
 
 
 def _tool_response_body(body):
+    """Decode JSON tool content when possible, preserving plain text unchanged."""
     if not isinstance(body, str):
         return body
     try:
@@ -141,6 +148,7 @@ class LocalModel:
     """Generation only: this class never executes a proposed tool call."""
 
     def __init__(self, profile: dict[str, Any], cache: Path):
+        """Load one pinned checkpoint on GPU and record actual backend and hardware settings."""
         import torch
         from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 
@@ -212,6 +220,7 @@ class LocalModel:
         }
 
     def generate(self, messages: list[dict], tools: list[dict], seconds: float) -> str:
+        """Generate one native turn within the context budget and count consumed tokens."""
         native = self.profile["protocol"] != "bash"
         if self.profile["protocol"] == "lfm2_tool":
             tools = [tool["function"] for tool in tools]
@@ -270,6 +279,7 @@ class LocalModel:
         return self._decode_generated(output[0, count:], maximum)
 
     def _decode_generated(self, generated, maximum: int) -> str:
+        """Record EOS, length or time termination while preserving native tool markers."""
         eos = self.profile["profile"].get(
             "eos_token_ids", self.model.generation_config.eos_token_id
         )
@@ -290,12 +300,14 @@ class LocalModel:
         return decoded
 
     def memory(self) -> dict[str, int]:
+        """Return allocator peaks; these values do not measure physical driver VRAM."""
         return {
             "cuda_peak_allocated_bytes": self.torch.cuda.max_memory_allocated(),
             "cuda_peak_reserved_bytes": self.torch.cuda.max_memory_reserved(),
         }
 
     def close(self) -> None:
+        """Release the model and cached CUDA allocations owned by this instance."""
         del self.model
         gc.collect()
         self.torch.cuda.empty_cache()

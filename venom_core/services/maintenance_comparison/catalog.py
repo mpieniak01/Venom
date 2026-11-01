@@ -8,6 +8,7 @@ ROLES = {"operator": 8, "repair": 20, "localization": 12}
 
 
 def load_catalog(root: Path) -> tuple[list[dict], list[dict]]:
+    """Load the frozen eight-model catalog and require ten unique cases per role."""
     models = json.loads((root / "models.json").read_text())["models"]
     cases = json.loads((root / "scenarios.json").read_text())["cases"]
     if len(models) != 8 or len({m["id"] for m in models}) != 8:
@@ -21,6 +22,7 @@ def load_catalog(root: Path) -> tuple[list[dict], list[dict]]:
 
 
 def baseline(models: list[dict], cases: list[dict]) -> list[dict]:
+    """Expand applicable model/role pairs into planned rows without claiming execution."""
     return [
         {
             "model": m["id"],
@@ -36,6 +38,7 @@ def baseline(models: list[dict], cases: list[dict]) -> list[dict]:
 
 
 def _validate_profiles(models: list[dict]) -> None:
+    """Reject duplicate model IDs, unpinned checkpoint revisions and unknown roles."""
     if len({model["id"] for model in models}) != len(models):
         raise ValueError("unique_model_ids_required")
     for model in models:

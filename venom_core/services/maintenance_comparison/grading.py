@@ -39,6 +39,7 @@ def _shell_commands(command: str) -> list[list[str]]:
 
 
 def _pytest_tokens(tokens: list[str]) -> bool:
+    """Recognize Python executables invoked with -m pytest."""
     return bool(
         tokens
         and Path(tokens[0]).name in {"python", "python3"}
@@ -47,6 +48,7 @@ def _pytest_tokens(tokens: list[str]) -> bool:
 
 
 def _python_test(command: str) -> bool:
+    """Detect a Python pytest invocation naming the visible contract test."""
     return any(
         _pytest_tokens(tokens) and VISIBLE_TEST in [Path(t).name for t in tokens[3:]]
         for tokens in _shell_commands(command)
@@ -54,6 +56,7 @@ def _python_test(command: str) -> bool:
 
 
 def _passed_visible(call: dict) -> bool:
+    """Require a real successful visible-test invocation and its completion summary."""
     stdout = call["result"].get("stdout", "")
     return (
         _python_test(call["arguments"]["command"])
@@ -63,6 +66,7 @@ def _passed_visible(call: dict) -> bool:
 
 
 def _git_status(texts, summary):
+    """Match the reported dirty file against observed Git status output."""
     observed = any(
         "git status" in command and OPERATOR_NOTES in stdout
         for command, stdout, _ in texts
@@ -74,6 +78,7 @@ def _git_status(texts, summary):
 
 
 def _git_diff(texts, summary):
+    """Require the expected old and new lines in the observed file diff."""
     observed = any(
         "git diff" in command
         and OPERATOR_NOTES in command
@@ -85,6 +90,7 @@ def _git_diff(texts, summary):
 
 
 def _environment(texts):
+    """Check that tool output contains the requested Python and Linux metadata."""
     python = any(
         "python" in command and any(c.isdigit() for c in stdout) and "." in stdout
         for command, stdout, _ in texts
@@ -96,6 +102,7 @@ def _environment(texts):
 
 
 def _missing_file(calls):
+    """Require an actual failed read of the named unavailable file."""
     return (
         bool(calls)
         and len(calls) <= 2
@@ -108,6 +115,7 @@ def _missing_file(calls):
 
 
 def _procedure(success):
+    """Check that file inspection precedes a successful visible test run."""
     events = [
         (tokens, call)
         for call in success
@@ -129,6 +137,7 @@ def _procedure(success):
 
 
 def _flaky_result(run: dict) -> bool:
+    """Evaluate the explicitly requested repeated-test diagnostic separately from repair."""
     calls = [
         c for c in run["calls"] if c["name"] == "Terminal" and "completion" not in c
     ]
@@ -199,6 +208,7 @@ def _native_completion_matches(case: Scenario, final: dict) -> bool:
 
 
 def grade_operator(case: Scenario, run: dict) -> bool:
+    """Score operator behavior using real calls and evidence for the requested case."""
     final = run.get("final") or {}
     if case.flaky_probe:
         return _flaky_result(run)
@@ -226,6 +236,7 @@ def grade_operator(case: Scenario, run: dict) -> bool:
 
 
 def _operator_decision(number, calls, success, texts, summary):
+    """Apply the case-specific operation, argument and completion criteria."""
     if number == 1:
         return any(_passed_visible(c) for c in success)
     if number == 2:
@@ -256,6 +267,7 @@ def _operator_decision(number, calls, success, texts, summary):
 
 
 def _put_oracle(habitat: TrialHabitat, source: str) -> None:
+    """Install root-owned read-only verifier source outside the writable workspace."""
     encoded = base64.b64encode(source.encode()).decode("ascii")
     result = habitat.container.exec_run(
         [
@@ -284,6 +296,7 @@ def preserves_mock_test(initial: str, proposed: str) -> bool:
 
 
 def _copy_proposed_files(case: Scenario, workspace: Path, target: Path) -> dict | None:
+    """Copy only permitted regular repair files into the independent verifier copy."""
     for name, initial in case.files.items():
         current = workspace / name
         if (
@@ -315,6 +328,7 @@ def _copy_proposed_files(case: Scenario, workspace: Path, target: Path) -> dict 
 
 
 def _pytest_completed(result: dict) -> bool:
+    """Require successful, untruncated pytest completion with passed tests and no errors."""
     stdout = result.get("stdout", "")
     return (
         result.get("exit_code") == 0
@@ -327,6 +341,7 @@ def _pytest_completed(result: dict) -> bool:
 
 
 def _verify_regression(habitat, case, target) -> dict | None:
+    """Require the added regression test to pass after repair and fail before it."""
     if case.id != "repair-07":
         return None
     regression_check = habitat.structured(f"python -m pytest -q {REGRESSION_TEST}", 15)
@@ -398,6 +413,7 @@ def verify_repair(case: Scenario, workspace: Path, image: str) -> dict:
 
 
 def _negative_search(command: str) -> bool:
+    """Recognize rg, grep or git grep searching for the absent feature identifier."""
     for tokens in _shell_commands(command):
         if not tokens:
             continue
@@ -412,6 +428,7 @@ def _negative_search(command: str) -> bool:
 def _grade_localization(
     case: Scenario, run: dict, source_repo: Path, final: dict
 ) -> dict:
+    """Check source locations and observed search evidence against the scenario contract."""
     if final.get("kind") == "codescout_native":
         from .codescout import grade_submission
 
@@ -429,6 +446,7 @@ def _grade_localization(
 
 
 def _grade_diagnostic(case: Scenario, run: dict, final: dict) -> dict:
+    """Require observed environmental failure or a justified insufficient-data escalation."""
     evidence = case.id != "repair-08" or (
         run.get("environment_checks", {}).get("external_asset_absent") is True
         and any(
@@ -457,6 +475,7 @@ def _grade_diagnostic(case: Scenario, run: dict, final: dict) -> dict:
 def grade(
     case: Scenario, run: dict, workspace: Path, source_repo: Path, image: str
 ) -> dict:
+    """Dispatch independent evaluation by role without trusting the model success claim."""
     if not run["model_finished"]:
         return {"passed": False, "reason": run["status"]}
     final = run.get("final") or {}

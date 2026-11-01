@@ -12,6 +12,7 @@ from venom_core.services.maintenance_comparison.protocol import (
 
 
 def test_bash_action_requires_one_explicit_fence():
+    """Verify bash action requires one explicit fence."""
     assert bash_call("Reason\n```bash\ngit status --short\n```") == Call(
         "Terminal", {"command": "git status --short"}
     )
@@ -21,6 +22,7 @@ def test_bash_action_requires_one_explicit_fence():
 
 
 def test_native_call_does_not_supply_missing_arguments():
+    """Verify native call does not supply missing arguments."""
     assert json_call({"function": {"name": "finish", "arguments": "{}"}}) == Call(
         "finish", {}
     )
@@ -35,6 +37,7 @@ def test_native_call_does_not_supply_missing_arguments():
 
 
 def test_pythonic_calls_accept_only_literal_keyword_arguments():
+    """Verify pythonic calls accept only literal keyword arguments."""
     assert lfm_calls(
         "<|tool_call_start|>[read(path='a.py'), finish(status='done')]<|tool_call_end|>"
     ) == [Call("read", {"path": "a.py"}), Call("finish", {"status": "done"})]
@@ -50,6 +53,7 @@ def test_pythonic_calls_accept_only_literal_keyword_arguments():
 
 
 def test_native_envelopes_and_gemma_are_literal_only():
+    """Verify native envelopes and gemma are literal only."""
     from venom_core.services.maintenance_comparison.protocol import (
         gemma_calls,
         native_calls,
@@ -81,6 +85,7 @@ def test_native_envelopes_and_gemma_are_literal_only():
 
 
 def test_granite_uses_its_pinned_xml_protocol_not_json_guessing():
+    """Verify granite uses its pinned xml protocol not json guessing."""
     from venom_core.services.maintenance_comparison.protocol import granite_calls
 
     text = "<tool_call>\n<function=Terminal>\n<parameter=command>\npython -m pytest -q test_visible.py\n</parameter>\n</function>\n</tool_call>"
@@ -96,6 +101,7 @@ def test_granite_uses_its_pinned_xml_protocol_not_json_guessing():
 
 
 def test_gemma_preserves_multiple_explicit_calls():
+    """Verify gemma preserves multiple explicit calls."""
     from venom_core.services.maintenance_comparison.protocol import gemma_calls
 
     calls = gemma_calls(
@@ -105,6 +111,7 @@ def test_gemma_preserves_multiple_explicit_calls():
 
 
 def test_duplicate_json_arguments_are_rejected():
+    """Verify duplicate json arguments are rejected."""
     from venom_core.services.maintenance_comparison.protocol import (
         ProtocolError,
         native_calls,
@@ -118,6 +125,7 @@ def test_duplicate_json_arguments_are_rejected():
 
 @pytest.mark.parametrize("key", ["command", '<|"|>command<|"|>', '"command"'])
 def test_gemma4_native_function_values_and_tool_handoff(key):
+    """Verify gemma4 native function values and tool handoff."""
     from venom_core.services.maintenance_comparison.runner import decode
 
     text = (
@@ -131,6 +139,7 @@ def test_gemma4_native_function_values_and_tool_handoff(key):
 
 
 def test_gemma4_native_nested_localization_submission():
+    """Verify gemma4 native nested localization submission."""
     from venom_core.services.maintenance_comparison.runner import decode
 
     text = '<|tool_call>call:LocalizationFinish{status:<|"|>success<|"|>,summary:<|"|>Found<|"|>,locations:[{path:<|"|>app.py<|"|>,symbol:<|"|>run<|"|>,evidence:<|"|>def run():<|"|>}]}<tool_call|>'
@@ -149,6 +158,7 @@ def test_gemma4_native_nested_localization_submission():
     ],
 )
 def test_gemma4_rejects_missing_delimiters_duplicate_arguments_and_expressions(text):
+    """Verify gemma4 rejects missing delimiters duplicate arguments and expressions."""
     from venom_core.services.maintenance_comparison.runner import decode
 
     with pytest.raises(ProtocolError):
@@ -156,6 +166,7 @@ def test_gemma4_rejects_missing_delimiters_duplicate_arguments_and_expressions(t
 
 
 def test_qwen35_preserves_native_xml_command_quotes():
+    """Verify qwen35 preserves native xml command quotes."""
     from venom_core.services.maintenance_comparison.runner import decode
 
     text = '<tool_call><function=Terminal><parameter=command>grep -n "def run" app.py</parameter></function></tool_call>'

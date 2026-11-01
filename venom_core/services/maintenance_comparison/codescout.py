@@ -7,6 +7,7 @@ SOURCE = "https://github.com/OpenHands/codescout/blob/f25decf9f7edde4fd7f4427e71
 
 
 def finish_schema() -> dict:
+    """Return the pinned native localization schema without extra semantic fields."""
     return {
         "type": "function",
         "function": {
@@ -37,6 +38,7 @@ def finish_schema() -> dict:
 
 
 def validate_submission(arguments: dict) -> None:
+    """Reject missing locations, unknown keys and non-string source identifiers."""
     if set(arguments) != {"locations"} or not isinstance(arguments["locations"], list):
         raise ValueError("codescout_locations_required")
     for location in arguments["locations"]:
@@ -57,6 +59,7 @@ def validate_submission(arguments: dict) -> None:
 
 
 def _safe_source(repo: Path, value) -> Path | None:
+    """Resolve an existing Python source inside the repository, or return None."""
     if (
         not isinstance(value, str)
         or Path(value).is_absolute()
@@ -74,6 +77,7 @@ def _safe_source(repo: Path, value) -> Path | None:
 
 
 def _nodes(tree):
+    """Yield top-level classes, functions and direct methods with their owners."""
     for top in tree.body:
         if isinstance(top, ast.ClassDef):
             yield top.name, None, top
@@ -85,6 +89,7 @@ def _nodes(tree):
 
 
 def _observed_location(repo: Path, location: dict, outputs: str):
+    """Accept a named AST location only when tool output contains its source header."""
     source = _safe_source(repo, location.get("file"))
     if source is None:
         return None
@@ -109,6 +114,7 @@ def _observed_location(repo: Path, location: dict, outputs: str):
 
 
 def grade_submission(repo: Path, case, run: dict) -> bool:
+    """Require expected locations and observed source evidence, allowing one extra location."""
     locations = run["final"].get("locations", [])
     outputs = "\n".join(
         c["result"].get("stdout", "") for c in run["calls"] if c["name"] == "Terminal"

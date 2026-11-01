@@ -17,6 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_worker_requires_real_parent_lease(tmp_path, monkeypatch):
+    """Verify worker requires real parent lease."""
     monkeypatch.delenv("VENOM_MAINTENANCE_ADMISSION_DB", raising=False)
     with pytest.raises(RuntimeError, match="admission_required"):
         worker.require_host_owner()
@@ -38,6 +39,7 @@ def test_worker_requires_real_parent_lease(tmp_path, monkeypatch):
 
 
 def test_state_keeps_pending_attempts_in_denominator(tmp_path):
+    """Verify state keeps pending attempts in denominator."""
     row = {
         "id": "a",
         "model": "m",
@@ -58,6 +60,7 @@ def test_state_keeps_pending_attempts_in_denominator(tmp_path):
 async def test_complete_schedule_and_finalist_repeats_have_300_held_out_records(
     tmp_path, monkeypatch
 ):
+    """Verify complete schedule and finalist repeats have 300 held out records."""
     from venom_core.core.permission_guard import permission_guard
 
     models, cases = load_catalog(ROOT / "config/maintenance_comparison")
@@ -78,9 +81,11 @@ async def test_complete_schedule_and_finalist_repeats_have_300_held_out_records(
 
     class Model:
         def __init__(self, profile, cache):
+            """Initialize the test double with only the state required by this scenario."""
             self.profile = profile
 
         def close(self):
+            """Release the test double resources without touching the live stack."""
             pass
 
     monkeypatch.setattr(worker, "LocalModel", Model)
@@ -88,6 +93,7 @@ async def test_complete_schedule_and_finalist_repeats_have_300_held_out_records(
     async def attempt(
         model, profile, case, repo, sha, output, repetition, seconds, **_kwargs
     ):
+        """Return a controlled completed attempt with the scheduled identifiers."""
         return {
             "id": str(worker.uuid4()),
             "model": profile["id"],
@@ -148,6 +154,7 @@ async def test_complete_schedule_and_finalist_repeats_have_300_held_out_records(
 
 
 def test_finalists_require_complete_unblocked_baseline():
+    """Verify finalists require complete unblocked baseline."""
     rows = [
         {
             "model": "m",
@@ -168,10 +175,12 @@ def test_finalists_require_complete_unblocked_baseline():
 
 
 def test_rss_sample_is_measured_or_explicitly_missing(monkeypatch):
+    """Verify rss sample is measured or explicitly missing."""
     sampler = metrics.MemorySampler()
     original = sampler.stop.wait
 
     def wait(_):
+        """Simulate unavailable memory sampling without a live process probe."""
         sampler.stop.set()
         return original(0)
 
@@ -191,6 +200,7 @@ def test_rss_sample_is_measured_or_explicitly_missing(monkeypatch):
 def test_inference_pins_checkpoint_and_preserves_native_tokens(
     tmp_path, monkeypatch, parameters, quantized, protocol
 ):
+    """Verify inference pins checkpoint and preserves native tokens."""
     import sys
 
     model = MagicMock()
@@ -294,17 +304,23 @@ def test_inference_pins_checkpoint_and_preserves_native_tokens(
 
 @pytest.mark.parametrize("nonfinite", [False, True])
 def test_backend_nonfinite_scores_are_infrastructure_errors(nonfinite):
+    """Verify backend nonfinite scores are infrastructure errors."""
+
     class Flag(int):
         def any(self):
+            """Return the configured tensor reduction used to test invalid logits."""
             return self
 
         def all(self, **_):
+            """Return the configured tensor reduction for the requested dimension."""
             return self
 
         def item(self):
+            """Return the scalar value of the fake tensor."""
             return bool(self)
 
         def __or__(self, other):
+            """Combine fake invalid-score flags without importing Torch."""
             return Flag(bool(self) or bool(other))
 
     torch = SimpleNamespace(
@@ -323,6 +339,7 @@ def test_backend_nonfinite_scores_are_infrastructure_errors(nonfinite):
 
 @pytest.mark.parametrize("field", ["repo", "out", "state_file"])
 def test_worker_rejects_paths_outside_host_issued_run(tmp_path, monkeypatch, field):
+    """Verify worker rejects paths outside host issued run."""
     run_id = "62dc6041-a732-4f9c-adf1-446700df60f9"
     monkeypatch.setenv("VENOM_MAINTENANCE_RUN_ID", run_id)
     monkeypatch.setattr(
@@ -343,6 +360,7 @@ def test_worker_rejects_paths_outside_host_issued_run(tmp_path, monkeypatch, fie
 
 
 def test_worker_rejects_symlinked_output(tmp_path, monkeypatch):
+    """Verify worker rejects symlinked output."""
     run_id = "62dc6041-a732-4f9c-adf1-446700df60f9"
     monkeypatch.setenv("VENOM_MAINTENANCE_RUN_ID", run_id)
     monkeypatch.setattr(
@@ -366,6 +384,7 @@ def test_worker_rejects_symlinked_output(tmp_path, monkeypatch):
 def test_worker_uses_host_storage_root_without_trusting_cli_destination(
     tmp_path, monkeypatch
 ):
+    """Verify worker uses host storage root without trusting cli destination."""
     run_id = "62dc6041-a732-4f9c-adf1-446700df60f9"
     monkeypatch.setenv("VENOM_MAINTENANCE_RUN_ID", run_id)
     monkeypatch.setattr(
@@ -392,6 +411,7 @@ def test_worker_uses_host_storage_root_without_trusting_cli_destination(
 
 
 def test_gemma4_history_preserves_named_actual_tool_results():
+    """Verify gemma4 history preserves named actual tool results."""
     messages = [
         {
             "role": "assistant",
@@ -421,10 +441,12 @@ def test_gemma4_history_preserves_named_actual_tool_results():
 
 
 def test_presence_penalty_ignores_prompt_and_counts_repetition_once():
+    """Verify presence penalty ignores prompt and counts repetition once."""
     import numpy as np
 
     class Mask(np.ndarray):
         def scatter_(self, dim, indices, value):
+            """Record one presence penalty per generated token in the fake score matrix."""
             np.put_along_axis(self, indices, value, axis=dim)
             return self
 
@@ -438,6 +460,7 @@ def test_presence_penalty_ignores_prompt_and_counts_repetition_once():
 
 @pytest.mark.parametrize("value", [float("nan"), float("inf")])
 def test_presence_penalty_rejects_nonfinite_settings(value):
+    """Verify presence penalty rejects nonfinite settings."""
     with pytest.raises(ValueError, match="finite"):
         inference._PresencePenalty(None, 1, value)
 
@@ -446,6 +469,7 @@ def test_presence_penalty_rejects_nonfinite_settings(value):
 async def test_additional_baseline_plans_sixty_cases_without_repeats(
     tmp_path, monkeypatch
 ):
+    """Verify additional baseline plans sixty cases without repeats."""
     monkeypatch.setattr(
         worker, "_runtime_environment", lambda: {"packages": {}, "gpu": None}
     )
@@ -462,6 +486,7 @@ async def test_additional_baseline_plans_sixty_cases_without_repeats(
     seen = []
 
     async def complete(profile, cases, repetition):
+        """Return controlled case results for baseline scheduling assertions."""
         seen.append((profile["id"], repetition))
         for case in cases:
             experiment.rows.append(
@@ -484,6 +509,7 @@ async def test_additional_baseline_plans_sixty_cases_without_repeats(
 
 
 def test_backend_options_pin_only_explicit_kernels(monkeypatch):
+    """Verify backend options pin only explicit kernels."""
     import sys
 
     factory = MagicMock()
@@ -521,16 +547,21 @@ def test_backend_options_pin_only_explicit_kernels(monkeypatch):
     "name, kernel", [("other", "qwen35-deltanet-v1"), ("qwen3.5-9b", "unknown")]
 )
 def test_backend_rejects_unqualified_kernel_profiles(name, kernel):
+    """Verify backend rejects unqualified kernel profiles."""
     with pytest.raises(ValueError, match="unsupported_kernel_profile"):
         inference._backend_options({"id": name, "profile": {"kernel_profile": kernel}})
 
 
 def test_reference_profile_does_not_enable_hub_kernels():
+    """Verify reference profile does not enable hub kernels."""
     assert inference._backend_options({"profile": {}}) == {}
 
 
 def test_kernel_bindings_report_actual_forward_implementation():
+    """Verify kernel bindings report actual forward implementation."""
+
     def optimized():
+        """Stand in for the qualified kernel forward implementation."""
         pass
 
     module = SimpleNamespace(

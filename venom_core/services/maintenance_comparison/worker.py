@@ -36,6 +36,7 @@ CACHE_ROOT = Path.home() / ".local/share/venom/maintenance-comparison"
 
 
 def _write(path: Path, value) -> None:
+    """Atomically replace a private JSON artifact using a sibling temporary file."""
     temporary = path.with_suffix(path.suffix + ".tmp")
     temporary.write_text(json.dumps(value, indent=2, default=str) + "\n")
     temporary.chmod(0o600)
@@ -43,6 +44,7 @@ def _write(path: Path, value) -> None:
 
 
 def require_host_owner() -> None:
+    """Require an active parent-process lease for this host-issued maintenance run."""
     database = os.environ.get("VENOM_MAINTENANCE_ADMISSION_DB")
     if not database:
         raise RuntimeError("host_runtime_admission_required")
@@ -56,6 +58,7 @@ def require_host_owner() -> None:
 
 
 def _blocked(profile: dict, case, reason: str, repetition: int = 0) -> dict:
+    """Create an explicit blocked record with unknown measurements and no claimed execution."""
     return {
         "id": str(uuid4()),
         "model": profile["id"],
@@ -77,6 +80,7 @@ def _blocked(profile: dict, case, reason: str, repetition: int = 0) -> dict:
 def _state(
     rows: list[dict], output: Path, state: Path, planned: list[dict] | None = None
 ) -> None:
+    """Persist completed records and retain pending attempts in the displayed plan."""
     _write(output / "attempts.json", rows)
     _write(
         state,
@@ -134,6 +138,7 @@ async def trial(
     *,
     identifier: str | None = None,
 ) -> dict:
+    """Run one isolated attempt, independently grade it and persist real trace and timing data."""
     require_host_owner()
     trial_started = time.monotonic()
     identifier = identifier or str(uuid4())
@@ -234,6 +239,7 @@ async def trial(
 
 
 def _finalist_score(group: list[dict]):
+    """Rank complete unblocked baselines by successes, then total time; reject zero-success groups."""
     if len(group) != 10 or any(r["status"] == "blocked" for r in group):
         return None
     primary = [r for r in group if r["scenario"] not in {"repair-08", "repair-10"}]
@@ -242,6 +248,7 @@ def _finalist_score(group: list[dict]):
 
 
 def choose_finalists(rows: list[dict]) -> dict[str, list[str]]:
+    """Select at most two eligible baseline models for each role."""
     finalists = {}
     for role in ["operator", "repair", "localization"]:
         baseline = [r for r in rows if r["role"] == role and r["repetition"] == 0]
@@ -255,6 +262,7 @@ def choose_finalists(rows: list[dict]) -> dict[str, list[str]]:
 
 
 def _configure_worker(repo: Path) -> None:
+    """Apply the repository ShellSkill permission profile or refuse the experiment."""
     import yaml
 
     from venom_core.core.permission_guard import permission_guard
@@ -267,6 +275,7 @@ def _configure_worker(repo: Path) -> None:
 
 
 def _release_failed_load() -> None:
+    """Collect failed-load objects and release cached CUDA memory when Torch is available."""
     import gc
 
     gc.collect()
@@ -279,6 +288,7 @@ def _release_failed_load() -> None:
 
 
 def _runtime_environment() -> dict:
+    """Record installed inference packages and available GPU metadata without inventing measurements."""
     packages: dict[str, str | None] = {}
     for name in ["torch", "transformers", "bitsandbytes", "kernels", "einops"]:
         try:
@@ -308,6 +318,7 @@ class Experiment:
     """Own one immutable configuration and its role-specific attempt ledger."""
 
     def __init__(self, arguments):
+        """Validate the requested experiment selection and initialize its reproducible execution plan."""
         self.arguments = arguments
         self.started = time.monotonic()
         self.load_events: list[dict] = []
@@ -351,6 +362,7 @@ class Experiment:
         self._extend_plan(0, None)
 
     def _manifest(self) -> str:
+        """Persist configuration and environment provenance and return their identity hash."""
         tracked = subprocess.check_output(
             ["git", "rev-parse", "HEAD"], cwd=self.repo, text=True
         ).strip()
@@ -410,9 +422,11 @@ class Experiment:
         return identity
 
     def _save(self) -> None:
+        """Persist the current rows and pending execution plan."""
         _state(self.rows, self.output, Path(self.arguments.state_file), self.planned)
 
     def _extend_plan(self, repetition: int, finalists) -> None:
+        """Append repeat attempts only for the selected finalists and their applicable cases."""
         if self.phase not in {"comparison", "baseline"}:
             return
         for model in self.models:
@@ -430,12 +444,14 @@ class Experiment:
         self._save()
 
     def _model_cases(self, profile, finalists):
+        """Select applicable cases for a model baseline or its finalist repetitions."""
         eligible = [c for c in self.cases if c.role in profile["roles"]]
         if finalists is None:
             return eligible
         return [c for c in eligible if profile["id"] in finalists.get(c.role, [])]
 
     def _append(self, row) -> None:
+        """Record one completed or blocked attempt and refresh persisted progress."""
         row.update(configuration_id=self.configuration_id, repo_sha=self.sha)
         self.rows.append(row)
         _write(self.output / (row["id"] + JSON_SUFFIX), row)
@@ -454,6 +470,7 @@ class Experiment:
         )
 
     async def _attempt(self, model, profile, case, repetition):
+        """Execute one planned attempt and attach its assigned record identifier."""
         _write(
             self.output / PROGRESS_FILE,
             {
@@ -487,6 +504,7 @@ class Experiment:
             return row
 
     async def _qualify(self, model, profile, repetition) -> bool:
+        """Exercise a protocol probe separately from scored baseline attempts."""
         role = "localization" if profile["roles"] == ["localization"] else "operator"
         finish = (
             "localization_finish with locations []"
@@ -526,6 +544,7 @@ class Experiment:
         return passed
 
     async def _loaded(self, model, profile, cases, repetition) -> None:
+        """Run selected cases using one loaded model and its recorded qualification."""
         sera_operator = profile["id"] == "sera-8b" and any(
             c.role == "operator" for c in cases
         )
@@ -551,6 +570,7 @@ class Experiment:
             self._append(row)
 
     def _load_failure(self, profile, cases, repetition, error) -> None:
+        """Persist the load failure and explicit blocked rows for affected cases."""
         _write(
             self.output / (profile["id"] + "-load-error.json"),
             {
@@ -569,6 +589,7 @@ class Experiment:
             self._append(row)
 
     async def _model(self, profile, cases, repetition) -> None:
+        """Load, qualify and evaluate one model, then release its owned inference resources."""
         require_host_owner()
         _write(
             self.output / PROGRESS_FILE,
@@ -601,6 +622,7 @@ class Experiment:
                 _release_failed_load()
 
     async def run(self) -> None:
+        """Execute baseline and allowed finalist repeats sequentially under the host lease."""
         for repetition in range(3 if self.phase == "comparison" else 1):
             finalists = choose_finalists(self.rows) if repetition else None
             if finalists is not None:
@@ -614,6 +636,7 @@ class Experiment:
                 return
 
     def finish(self, interrupted: str | None) -> None:
+        """Persist final artifacts and the report, marking unfinished attempts when interrupted."""
         _write(
             self.output / "summary.json",
             {
@@ -721,6 +744,7 @@ def validate_worker_paths(arguments) -> tuple[Path, Path, Path]:
 
 
 async def execute(arguments) -> None:
+    """Validate host-issued paths and run the experiment with final reporting on interruption."""
     require_host_owner()
     repo, output, state = validate_worker_paths(arguments)
     trusted = argparse.Namespace(
@@ -745,7 +769,10 @@ async def execute(arguments) -> None:
 
 
 def main() -> None:
+    """Parse worker arguments and run the host-owned experiment with SIGTERM handling."""
+
     def terminate(_signal, _frame):
+        """Translate SIGTERM into interruption so normal finalization can run."""
         raise KeyboardInterrupt("maintenance_worker_stopped")
 
     signal.signal(signal.SIGTERM, terminate)

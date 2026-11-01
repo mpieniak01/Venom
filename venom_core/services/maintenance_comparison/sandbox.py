@@ -25,6 +25,7 @@ class TrialHabitat(DockerHabitat):
     def __init__(
         self, workspace: Path, image: str, *, read_only_workspace: bool = False
     ):
+        """Create one isolated trial container for the supplied workspace and qualified image."""
         self.trial_readonly_workspace = read_only_workspace
         self.trial_workspace = workspace.resolve(strict=True)
         self.trial_image = image
@@ -33,12 +34,15 @@ class TrialHabitat(DockerHabitat):
         super().__init__()
 
     def _resolve_workspace_path(self) -> Path:
+        """Resolve the trial workspace path used for the container bind mount."""
         return self.trial_workspace
 
     def _ensure_image_present(self, image_name: str) -> None:
+        """Require the configured sandbox image to exist locally before execution."""
         self.client.images.get(self.trial_image)
 
     def _run_container(self, image_name: str, workspace_path: Path):
+        """Start a non-root, network-isolated container with a read-only root and private temp."""
         return self.client.containers.run(
             image=self.trial_image,
             name=self._active_container_name(),
@@ -76,17 +80,20 @@ class TrialHabitat(DockerHabitat):
 
     @staticmethod
     def _close_exec_stream(stream) -> None:
+        """Close an execution stream when supported by the Docker client."""
         close = getattr(stream, "close", None)
         if close is not None:
             close()
 
     def _stopped_after_output_cap(self, truncated: bool) -> bool:
+        """Kill on output overflow and report whether container termination is confirmed."""
         if not truncated:
             return False
         self.container.reload()
         return self.container.status in {"paused", "exited", "dead"}
 
     def structured(self, command: str, timeout: int) -> dict[str, Any]:
+        """Execute a bounded command and return separate stdout, stderr and actual exit metadata."""
         started = time.monotonic()
         execution = self.client.api.exec_create(
             self.container.id,
@@ -145,6 +152,7 @@ class TrialHabitat(DockerHabitat):
         return result
 
     def _stop_overdue(self, deadline_hit: threading.Event) -> None:
+        """Kill the trial container when the command deadline expires."""
         deadline_hit.set()
         try:
             self.container.kill()
@@ -152,6 +160,7 @@ class TrialHabitat(DockerHabitat):
             pass  # Cleanup still requires confirmed process/container termination.
 
     def freeze(self) -> None:
+        """Pause the trial before verification, accepting only confirmed quiescent states."""
         self.container.reload()
         quiescent = {"paused", "exited", "dead"}
         if self.container.status == "running":
@@ -166,6 +175,7 @@ class TrialHabitat(DockerHabitat):
             raise RuntimeError("sandbox_state_not_quiescent")
 
     def close(self) -> None:
+        """Remove the owned trial container and close its Docker client even on failure."""
         try:
             self.container.remove(force=True)
         finally:
@@ -176,6 +186,7 @@ class TrialTools:
     """The model supplies arguments; only SkillManager invokes this adapter."""
 
     def __init__(self, habitat: TrialHabitat, role: str):
+        """Initialize the role-specific tool adapter and its actual action ledger."""
         self.habitat, self.role = habitat, role
         self.finished: dict | None = None
         self.calls: list[dict] = []
@@ -185,6 +196,7 @@ class TrialTools:
         self.protocol: str | None = None
 
     def list_tools(self) -> list[str]:
+        """Advertise the role-specific operations supported by this adapter."""
         tools = [
             "Terminal",
             "LocalizationFinish" if self.role == "localization" else "Finish",
@@ -198,6 +210,7 @@ class TrialTools:
         ]
 
     async def invoke_tool(self, name: str, arguments: dict) -> dict:
+        """Validate tool arguments, execute supported operations and record their real outcomes."""
         if name not in self.list_tools():
             raise ValueError("tool_not_available")
         if name in {"Terminal", "terminal"}:
@@ -243,6 +256,7 @@ class TrialTools:
         return {"accepted": True}
 
     def validate_completion(self, arguments: dict) -> None:
+        """Reject malformed completion objects, statuses and localization arguments."""
         if not isinstance(arguments, dict):
             raise ValueError("finish_arguments_not_object")
         allowed = (
@@ -272,6 +286,7 @@ class TrialTools:
 
     @staticmethod
     def _validate_locations(locations: list) -> None:
+        """Require complete string-valued source locations without unknown fields."""
         for location in locations:
             if not isinstance(location, dict) or set(location) != {
                 "path",
@@ -283,6 +298,7 @@ class TrialTools:
                 raise ValueError("localization_location_invalid")
 
     def fingerprint(self) -> str:
+        """Hash workspace contents to distinguish edits from repeated unchanged operations."""
         digest = hashlib.sha256()
         for path in sorted(self.habitat.workspace_path.rglob("*")):
             relative = path.relative_to(self.habitat.workspace_path)
@@ -299,6 +315,7 @@ class TrialTools:
         return digest.hexdigest()
 
     def repeated_without_progress(self) -> bool:
+        """Detect repeated identical calls with unchanged files and observations."""
         if not self.no_progress_limit or len(self.calls) < self.no_progress_limit:
             return False
         signatures = [
@@ -308,6 +325,7 @@ class TrialTools:
 
 
 def action_signature(call: dict) -> str:
+    """Normalize an action name and arguments for exact repetition detection."""
     data = {key: call.get(key) for key in ("name", "arguments", "before", "after")}
     result = call.get("result", {})
     data["observation"] = {

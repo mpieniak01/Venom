@@ -19,20 +19,24 @@ ROOT = Path(__file__).resolve().parents[1]
 
 class Lease:
     def __init__(self):
+        """Initialize the test double with only the state required by this scenario."""
         self.release = MagicMock()
         self.operations = []
 
     def operation(self, **kwargs):
+        """Record a fake host lease operation for lifecycle ordering assertions."""
         self.operations.append(kwargs["kind"])
         return nullcontext()
 
     def cleanup(self, **kwargs):
+        """Record cleanup of the owned run for lifecycle ordering assertions."""
         assert kwargs["confirm_quiescent"]()
         return nullcontext()
 
 
 @pytest.fixture
 def service(tmp_path, monkeypatch):
+    """Create an isolated benchmark service using temporary run storage."""
     monkeypatch.setattr(SETTINGS, "ENABLE_MAINTENANCE_COMPARISON", True)
     return service_module.CodingBenchmarkService(str(tmp_path), str(ROOT))
 
@@ -41,6 +45,7 @@ def service(tmp_path, monkeypatch):
 async def test_owned_start_uses_exclusive_lease_not_ollama_scheduler(
     service, monkeypatch
 ):
+    """Verify owned start uses exclusive lease not ollama scheduler."""
     lease = Lease()
     acquire = MagicMock(return_value=lease)
     monkeypatch.setattr(
@@ -68,6 +73,7 @@ async def test_owned_start_uses_exclusive_lease_not_ollama_scheduler(
 
 @pytest.mark.asyncio
 async def test_failed_preflight_releases_lease_without_spawning(service, monkeypatch):
+    """Verify failed preflight releases lease without spawning."""
     lease = Lease()
     monkeypatch.setattr(
         service_module,
@@ -95,6 +101,7 @@ async def test_failed_preflight_releases_lease_without_spawning(service, monkeyp
 async def test_owned_process_releases_resources_before_lease(
     service, monkeypatch, mode
 ):
+    """Verify owned process releases resources before lease."""
     lease = Lease()
     run = service_module.CodingBenchmarkRun(
         run_id="11111111-1111-4111-8111-111111111111",
@@ -128,6 +135,7 @@ async def test_owned_process_releases_resources_before_lease(
     if mode == "cancel_spawn":
 
         def spawning(*_args, **_kwargs):
+            """Simulate the configured process-start failure without creating a real worker."""
             entered.set()
             if not release.wait(3):
                 raise TimeoutError("spawn control was not released")
@@ -168,6 +176,7 @@ async def test_owned_process_releases_resources_before_lease(
 def test_maintenance_profile_validation_and_child_only_sandbox(
     service, monkeypatch, tmp_path
 ):
+    """Verify maintenance profile validation and child only sandbox."""
     with pytest.raises(ValueError, match="separate"):
         service._validate_start_request(
             ["mini-coder-1.7b"], ["maintenance_operator", "python_simple"]
@@ -196,9 +205,11 @@ def test_maintenance_profile_validation_and_child_only_sandbox(
 async def test_trial_records_real_patch_verification_and_removes_copy(
     tmp_path, monkeypatch
 ):
+    """Verify trial records real patch verification and removes copy."""
     monkeypatch.setattr(worker, "require_host_owner", lambda: None)
 
     def prepare(repo, sha, target, case):
+        """Create the controlled trial workspace and return its initial fingerprint."""
         target.mkdir(parents=True)
         return {}
 
@@ -251,6 +262,7 @@ async def test_trial_records_real_patch_verification_and_removes_copy(
 
 @pytest.mark.asyncio
 async def test_api_selects_owned_runner_and_ignores_legacy_default_options(monkeypatch):
+    """Verify api selects owned runner and ignores legacy default options."""
     from venom_core.api.routes import benchmark_coding as routes
     from venom_core.api.routes import system_deps
     from venom_core.api.schemas.benchmark_coding import CodingBenchmarkStartRequest
@@ -279,6 +291,7 @@ async def test_api_selects_owned_runner_and_ignores_legacy_default_options(monke
 def test_profile_endpoint_lists_only_retained_models_when_disabled(
     monkeypatch,
 ):
+    """Verify profile endpoint lists only retained models when disabled."""
     from venom_core.api.routes.benchmark_coding import maintenance_model_profiles
 
     monkeypatch.setattr(SETTINGS, "ENABLE_MAINTENANCE_COMPARISON", False)
@@ -295,6 +308,7 @@ def test_profile_endpoint_lists_only_retained_models_when_disabled(
 
 
 def test_retired_model_is_rejected_before_worker_spawn(service):
+    """Verify retired model is rejected before worker spawn."""
     with pytest.raises(ValueError, match="unknown_maintenance"):
         service._validate_start_request(["codescout-4b"], ["maintenance_operator"])
 
@@ -305,6 +319,7 @@ def test_retired_model_is_rejected_before_worker_spawn(service):
 async def test_deletion_waits_for_owned_process_containers_and_lease(
     service, monkeypatch, stage, operation
 ):
+    """Verify deletion waits for owned process containers and lease."""
     lease = Lease()
     monkeypatch.setattr(
         service_module,
@@ -325,6 +340,7 @@ async def test_deletion_waits_for_owned_process_containers_and_lease(
     process.wait.return_value = 0
 
     def communicate():
+        """Model child completion using the synchronization barriers in this race test."""
         work_entered.set()
         if not retired.wait(3):
             raise TimeoutError("test process did not retire")
@@ -333,6 +349,7 @@ async def test_deletion_waits_for_owned_process_containers_and_lease(
     process.communicate.side_effect = communicate
 
     def spawn(*_args, **_kwargs):
+        """Block child creation at the test barrier before returning the fake process."""
         spawn_entered.set()
         if stage == "spawning" and not spawn_release.wait(3):
             raise TimeoutError("test spawn was not released")
@@ -342,6 +359,7 @@ async def test_deletion_waits_for_owned_process_containers_and_lease(
     monkeypatch.setattr(service_module.subprocess, "Popen", popen)
 
     def cleanup(_run_id):
+        """Record cleanup of the owned run for lifecycle ordering assertions."""
         cleanup_entered.set()
         if not cleanup_release.wait(3):
             raise TimeoutError("test cleanup was not released")
@@ -351,6 +369,7 @@ async def test_deletion_waits_for_owned_process_containers_and_lease(
 
     class SignallingSet(set):
         def add(self, value):
+            """Signal that lifecycle cleanup has begun before changing the tracked set."""
             super().add(value)
             deletion_requested.set()
 
@@ -370,6 +389,7 @@ async def test_deletion_waits_for_owned_process_containers_and_lease(
     result = {}
 
     def delete():
+        """Request run deletion from the background test thread."""
         try:
             result["value"] = (
                 service.delete_run(run_id)
@@ -414,6 +434,7 @@ async def test_deletion_waits_for_owned_process_containers_and_lease(
 async def test_failed_container_cleanup_preserves_run_and_artifacts(
     service, monkeypatch
 ):
+    """Verify failed container cleanup preserves run and artifacts."""
     lease = Lease()
     monkeypatch.setattr(
         service_module,

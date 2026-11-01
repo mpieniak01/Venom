@@ -43,6 +43,7 @@ def set_dependencies(
 
 
 async def _start_maintenance_benchmark(request: CodingBenchmarkStartRequest, service):
+    """Map API options to the owned maintenance runner and controlled HTTP errors."""
     from venom_core.api.routes import system_deps
 
     if (
@@ -308,6 +309,7 @@ def delete_coding_benchmark(run_id: str):
 
 @router.get("/maintenance/models")
 def maintenance_model_profiles():
+    """Return retained manual-comparison profiles without loading any model."""
     from pathlib import Path
 
     from venom_core.config import SETTINGS

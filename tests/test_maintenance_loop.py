@@ -14,14 +14,17 @@ class Model:
     profile = {"protocol": "bash"}
 
     def __init__(self, replies):
+        """Initialize the test double with only the state required by this scenario."""
         self.replies = iter(replies)
 
     def generate(self, *_):
+        """Return the next scripted response without loading or querying a model."""
         return next(self.replies)
 
 
 @pytest.fixture
 def tools(tmp_path, monkeypatch):
+    """Provide a trial adapter with fake transport and isolated workspace state."""
     monkeypatch.setattr(permission_guard, "check_permission", lambda *_: True)
     habitat = SimpleNamespace(
         workspace_path=tmp_path,
@@ -35,14 +38,17 @@ def tools(tmp_path, monkeypatch):
 
 
 def case():
+    """Return the bounded scenario used by the loop tests."""
     return SimpleNamespace(role="operator", prompt="Do a task")
 
 
 def test_model_tool_result_and_bash_completion_round_trip(tools):
+    """Verify model tool result and bash completion round trip."""
     model = Model(["```bash\nprintf ok\n```", "```bash\nprintf finish\n```"])
     original = tools.habitat.structured
 
     def execute(command, timeout):
+        """Execute the controlled fixture or fake command with the test-specified outcome."""
         if command == "printf finish":
             return {
                 "stdout": 'COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT\n{"status":"success","summary":"done"}',
@@ -61,6 +67,7 @@ def test_model_tool_result_and_bash_completion_round_trip(tools):
 
 
 def test_identical_action_without_progress_is_stopped_by_orchestrator(tools):
+    """Verify identical action without progress is stopped by orchestrator."""
     model = Model(["```bash\nprintf ok\n```"] * 8)
     result = asyncio.run(drive(model, case(), tools))
     assert result["status"] == "orchestrator_no_progress"
@@ -69,6 +76,7 @@ def test_identical_action_without_progress_is_stopped_by_orchestrator(tools):
 
 
 def test_native_finish_does_not_require_conversational_response(tools):
+    """Verify native finish does not require conversational response."""
     model = Model(
         [
             '<tool_call>{"name":"Finish","arguments":{"status":"success","summary":"done"}}</tool_call>'
@@ -92,6 +100,7 @@ def test_native_finish_does_not_require_conversational_response(tools):
     ],
 )
 def test_model_format_and_argument_failures_are_explicit(tools, response, status):
+    """Verify model format and argument failures are explicit."""
     model = Model([response])
     model.profile = {"protocol": "function_calling"}
     result = asyncio.run(drive(model, case(), tools))
@@ -109,6 +118,7 @@ def test_model_format_and_argument_failures_are_explicit(tools, response, status
     ],
 )
 def test_completion_validates_actual_arguments(tools, arguments):
+    """Verify completion validates actual arguments."""
     with pytest.raises(ValueError):
         tools.validate_completion(arguments)
 
@@ -116,6 +126,7 @@ def test_completion_validates_actual_arguments(tools, arguments):
 def test_total_deadline_prevents_tool_execution_after_slow_generation(
     tools, monkeypatch
 ):
+    """Verify total deadline prevents tool execution after slow generation."""
     from venom_core.services.maintenance_comparison import runner
 
     now = [0.0]
@@ -123,6 +134,7 @@ def test_total_deadline_prevents_tool_execution_after_slow_generation(
 
     class SlowModel(Model):
         def generate(self, *_):
+            """Return the next scripted response without loading or querying a model."""
             now[0] = 3
             return "```bash\nprintf ok\n```"
 
@@ -132,9 +144,11 @@ def test_total_deadline_prevents_tool_execution_after_slow_generation(
 
 
 def test_three_failed_correction_test_cycles_stop_the_attempt(tools):
+    """Verify three failed correction test cycles stop the attempt."""
     path = tools.habitat.workspace_path / "changed.py"
 
     def execute(command, timeout):
+        """Execute the controlled fixture or fake command with the test-specified outcome."""
         if command.startswith("edit"):
             path.write_text(command)
         return {"stdout": "failure", "stderr": "", "exit_code": 1}
@@ -161,6 +175,7 @@ def test_three_failed_correction_test_cycles_stop_the_attempt(tools):
 
 
 def test_step_budget_is_independent_of_no_progress_detection(tools):
+    """Verify step budget is independent of no progress detection."""
     model = Model([f"```bash\nprintf {i}\n```" for i in range(8)])
     result = asyncio.run(drive(model, case(), tools))
     assert result["status"] == "orchestrator_step_limit"
@@ -169,6 +184,7 @@ def test_step_budget_is_independent_of_no_progress_detection(tools):
 
 
 def test_native_lfm_final_report_does_not_invent_a_finish_call(tools):
+    """Verify native lfm final report does not invent a finish call."""
     model = Model(
         [
             '<|tool_call_start|>[Terminal(command="printf ok")]<|tool_call_end|>',
@@ -184,6 +200,7 @@ def test_native_lfm_final_report_does_not_invent_a_finish_call(tools):
 
 
 def test_explicit_flaky_mode_allows_three_identical_test_calls(tools):
+    """Verify explicit flaky mode allows three identical test calls."""
     model = Model(
         ["```bash\npython -m pytest -q test_visible.py\n```"] * 3
         + ["```bash\nprintf finish\n```"]
@@ -191,6 +208,7 @@ def test_explicit_flaky_mode_allows_three_identical_test_calls(tools):
     original = tools.habitat.structured
 
     def execute(command, timeout):
+        """Execute the controlled fixture or fake command with the test-specified outcome."""
         if command == "printf finish":
             return {
                 "stdout": 'COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT\n{"status":"success","summary":"three consistent passes"}',
@@ -212,6 +230,7 @@ def test_explicit_flaky_mode_allows_three_identical_test_calls(tools):
 
 
 def test_gemma_receives_native_response_mapping(tools):
+    """Verify gemma receives native response mapping."""
     model = Model(
         [
             "<start_function_call>call:Terminal{command:<escape>printf ok<escape>}<end_function_call>",
@@ -227,6 +246,7 @@ def test_gemma_receives_native_response_mapping(tools):
 
 
 def test_probe_cannot_call_unadvertised_finish_in_same_turn(tools):
+    """Verify probe cannot call unadvertised finish in same turn."""
     model = Model(
         [
             '<tool_call>{"name":"Terminal","arguments":{"command":"printf ok"}}</tool_call><tool_call>{"name":"Finish","arguments":{"status":"success","summary":"speculative"}}</tool_call>'
@@ -246,6 +266,7 @@ def test_probe_cannot_call_unadvertised_finish_in_same_turn(tools):
 
 
 def test_native_mini_swe_echo_ends_without_invented_finish_arguments(tools):
+    """Verify native mini swe echo ends without invented finish arguments."""
     tools.habitat.structured = lambda *_: {
         "stdout": "COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT\n",
         "stderr": "",
@@ -263,6 +284,7 @@ def test_native_mini_swe_echo_ends_without_invented_finish_arguments(tools):
 
 
 def test_context_view_is_explicitly_abridged_without_mutating_raw_result():
+    """Verify context view is explicitly abridged without mutating raw result."""
     from venom_core.services.maintenance_comparison.runner import _model_view
 
     raw = {"stdout": "a" * 20000, "stderr": "error", "exit_code": 0}
@@ -274,6 +296,7 @@ def test_context_view_is_explicitly_abridged_without_mutating_raw_result():
 
 
 def test_tool_timeout_is_orchestrator_stop_not_model_format_error(tools):
+    """Verify tool timeout is orchestrator stop not model format error."""
     tools.habitat.structured = lambda *_: {
         "stdout": "",
         "stderr": "",
@@ -286,6 +309,7 @@ def test_tool_timeout_is_orchestrator_stop_not_model_format_error(tools):
 
 
 def test_codescout_uses_native_names_and_submission_without_added_arguments(tools):
+    """Verify codescout uses native names and submission without added arguments."""
     model = Model(
         [
             '<tool_call>{"name":"terminal","arguments":{"command":"printf ok"}}</tool_call>',
@@ -304,6 +328,7 @@ def test_codescout_uses_native_names_and_submission_without_added_arguments(tool
 
 
 def test_changed_tool_observation_is_progress_even_when_files_are_unchanged(tools):
+    """Verify changed tool observation is progress even when files are unchanged."""
     model = Model(
         ["```bash\nprintf state\n```"] * 3
         + [
@@ -323,6 +348,7 @@ def test_changed_tool_observation_is_progress_even_when_files_are_unchanged(tool
     counter = [0]
 
     def execute(*_):
+        """Execute the controlled fixture or fake command with the test-specified outcome."""
         counter[0] += 1
         return {"stdout": str(counter[0]), "stderr": "", "exit_code": 0}
 
@@ -333,8 +359,11 @@ def test_changed_tool_observation_is_progress_even_when_files_are_unchanged(tool
 
 
 def test_backend_failure_retains_previous_real_tool_observation(tools):
+    """Verify backend failure retains previous real tool observation."""
+
     class Failing(Model):
         def generate(self, *args):
+            """Return the next scripted response without loading or querying a model."""
             if self.replies is not None:
                 self.replies = None
                 return '<tool_call>{"name":"Terminal","arguments":{"command":"printf ok"}}</tool_call>'
@@ -352,7 +381,10 @@ def test_backend_failure_retains_previous_real_tool_observation(tools):
 def test_tool_infrastructure_failure_records_unknown_execution_instead_of_fake_exit(
     tools,
 ):
+    """Verify tool infrastructure failure records unknown execution instead of fake exit."""
+
     def unavailable(*_):
+        """Raise the configured infrastructure error instead of fabricating a tool exit code."""
         raise OSError("sandbox transport unavailable")
 
     tools.habitat.structured = unavailable

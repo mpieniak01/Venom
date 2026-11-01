@@ -128,6 +128,7 @@ class ModelManagerDiscoveryMixin:
         model_name: str | None = None,
         model_key: str | None = None,
     ) -> None:
+        """Register one installation with its actual path, provider and measured size."""
         size_bytes = self._calculate_model_size_bytes(model_path)
         onnx_metadata = self._load_onnx_metadata(model_path)
         model_type, provider = self._detect_model_type_and_provider(
@@ -172,6 +173,7 @@ class ModelManagerDiscoveryMixin:
         model_path: Path,
         provider: str,
     ) -> tuple[str, str]:
+        """Classify the installed payload using explicit provider and path evidence."""
         if model_path.suffix.lower() == ".gguf":
             return "gguf", provider
         if model_path.suffix.lower() == ".onnx" or is_onnx_model_dir(model_path):
@@ -187,10 +189,12 @@ class ModelManagerDiscoveryMixin:
 
     @staticmethod
     def _looks_like_onnx_runtime_dir(model_path: Path) -> bool:
+        """Recognize a directory containing actual ONNX model payloads."""
         return is_onnx_model_dir(model_path)
 
     @staticmethod
     def _looks_like_hf_runtime_dir(model_path: Path) -> bool:
+        """Recognize a complete Hugging Face installation rather than a working directory."""
         return is_hf_model_dir(model_path)
 
     @staticmethod
@@ -253,6 +257,7 @@ class ModelManagerDiscoveryMixin:
         model_path: Path,
         skip_dirs: set[str],
     ) -> bool:
+        """Reject excluded or incomplete directories before registering model payloads."""
         if model_path.name in skip_dirs:
             return False
         if model_path.suffix.lower() in {".onnx", ".gguf"}:
@@ -277,6 +282,7 @@ class ModelManagerDiscoveryMixin:
         model_key: str | None = None,
         provider: str = "vllm",
     ) -> None:
+        """Register one candidate and isolate filesystem or metadata errors to that entry."""
         try:
             self._register_local_entry(
                 models,
@@ -293,6 +299,7 @@ class ModelManagerDiscoveryMixin:
         self,
         manifests_dir: Path,
     ) -> List[Dict[str, Any]]:
+        """Enumerate only manifests whose referenced model blobs are present."""
         entries: List[Dict[str, Any]] = []
         if not manifests_dir.exists():
             return entries
@@ -346,6 +353,7 @@ class ModelManagerDiscoveryMixin:
 
     @staticmethod
     def _read_manifest_size_bytes(manifest_path: Path) -> int:
+        """Return verified manifest payload size or zero when its blobs are incomplete."""
         try:
             return manifest_size(manifest_path)
         except (
@@ -501,6 +509,7 @@ class ModelManagerDiscoveryMixin:
         return models
 
     def _discover_other_models(self, search_dirs, models) -> None:
+        """Discover complete cache snapshots and research payloads without loading inference engines."""
         hub_roots = [Path.home() / ".local/share/venom/maintenance-comparison/hub"]
         hub_roots.extend(base / "cache/huggingface/hub" for base in search_dirs)
         hub_roots.extend(base / "hf_cache" for base in search_dirs)
@@ -528,6 +537,7 @@ class ModelManagerDiscoveryMixin:
                     )
 
     def _register_cached_model(self, models, name, path) -> None:
+        """Register one pinned cache snapshot and its revision, skipping invalid entries."""
         config = json.loads((path / "config.json").read_text())
         if not isinstance(config, dict):
             raise ValueError("model_config_not_object")
@@ -548,6 +558,7 @@ class ModelManagerDiscoveryMixin:
         models[key]["revision"] = path.name
 
     def _register_research_models(self, models, path) -> None:
+        """Register one research payload while isolating per-directory metadata errors."""
         if not path.is_dir():
             return
         if is_hf_model_dir(path):

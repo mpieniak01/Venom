@@ -14,7 +14,10 @@ from venom_core.services.maintenance_comparison.fixtures import (
 
 @pytest.mark.parametrize("case", repairs(), ids=lambda case: case.id)
 def test_controlled_fault_really_fails_then_gold_passes(tmp_path, case):
+    """Verify controlled fault really fails then gold passes."""
+
     def execute(files):
+        """Execute the controlled fixture or fake command with the test-specified outcome."""
         for name, text in files.items():
             (tmp_path / name).write_text(text)
         oracle = tmp_path.parent / (tmp_path.name + "_oracle.py")

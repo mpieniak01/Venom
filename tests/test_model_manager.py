@@ -777,6 +777,7 @@ def test_activate_adapter_switches_active(tmp_path):
 
 @pytest.fixture(autouse=True)
 def isolated_model_cache_home(tmp_path, monkeypatch):
+    """Keep tests independent of installed models in the operator home cache."""
     from pathlib import Path
 
     monkeypatch.setattr(Path, "home", lambda: tmp_path)

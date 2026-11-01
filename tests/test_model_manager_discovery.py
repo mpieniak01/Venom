@@ -17,9 +17,11 @@ class _Discovery(discovery.ModelManagerDiscoveryMixin):
         self._last_ollama_warning = 0.0
 
     def _build_search_dirs(self):
+        """Limit discovery to the temporary model roots owned by this test."""
         return [self.models_dir]
 
     def _discover_other_models(self, *_):
+        """Disable ambient cache discovery in this isolated test double."""
         pass
 
 
@@ -58,6 +60,7 @@ class _RaisingClient:
 
 
 def test_detect_model_type_and_provider_variants(tmp_path: Path) -> None:
+    """Verify detect model type and provider variants."""
     gguf = tmp_path / "m.gguf"
     gguf.write_text("x", encoding="utf-8")
     onnx = tmp_path / "m.onnx"
@@ -92,6 +95,7 @@ def test_onnx_metadata_helpers(tmp_path: Path) -> None:
 
 
 def test_manifest_and_cache_helpers(tmp_path: Path) -> None:
+    """Verify manifest and cache helpers."""
     mgr = _Discovery(tmp_path)
     manifests = (
         mgr.models_dir / "manifests" / "registry.ollama.ai" / "library" / "mistral"
@@ -247,6 +251,7 @@ def test_local_model_candidate_filters_academy_artifacts(tmp_path: Path) -> None
 
 
 def test_local_model_candidate_workspace_fallback(tmp_path: Path) -> None:
+    """Verify local model candidate workspace fallback."""
     plain_dir = tmp_path / "gemma-3"
     plain_dir.mkdir()
 
@@ -267,6 +272,7 @@ def test_local_model_candidate_workspace_fallback(tmp_path: Path) -> None:
 
 
 def test_looks_like_runtime_dir_helpers(tmp_path: Path) -> None:
+    """Verify looks like runtime dir helpers."""
     onnx_by_metadata = tmp_path / "onnx-meta"
     onnx_by_metadata.mkdir()
     (onnx_by_metadata / discovery.ONNX_METADATA_FILENAME).write_text(
@@ -410,6 +416,7 @@ async def test_list_local_models_network_error_paths(
 
 
 def test_payload_evidence_rejects_incomplete_shards_and_accepts_cache_links(tmp_path):
+    """Verify payload evidence rejects incomplete shards and accepts cache links."""
     from venom_core.core.model_inventory import is_hf_model_dir
 
     (tmp_path / "config.json").write_text("{}")
@@ -430,6 +437,7 @@ def test_payload_evidence_rejects_incomplete_shards_and_accepts_cache_links(tmp_
 
 
 def test_workspaces_metadata_and_empty_weights_are_not_installed_models(tmp_path):
+    """Verify workspaces metadata and empty weights are not installed models."""
     mgr = _Discovery(tmp_path)
     for name in [
         "cache",
@@ -451,6 +459,7 @@ def test_workspaces_metadata_and_empty_weights_are_not_installed_models(tmp_path
 
 
 def test_stale_ollama_cache_does_not_resurrect_removed_models(tmp_path, monkeypatch):
+    """Verify stale ollama cache does not resurrect removed models."""
     mgr = _Discovery(tmp_path)
     mgr.ollama_cache_path.write_text(
         json.dumps([{"name": "deleted:latest", "provider": "ollama"}])
@@ -460,6 +469,7 @@ def test_stale_ollama_cache_does_not_resurrect_removed_models(tmp_path, monkeypa
 
 
 def test_model_cache_enumerates_only_complete_snapshots_once(tmp_path):
+    """Verify model cache enumerates only complete snapshots once."""
     from venom_core.core.model_inventory import cached_model_paths
 
     path = tmp_path / "models--org--kept/snapshots/sha"
@@ -475,6 +485,7 @@ def test_model_cache_enumerates_only_complete_snapshots_once(tmp_path):
 @pytest.mark.parametrize("provider", ["ollama", "vllm", "onnx"])
 @pytest.mark.asyncio
 async def test_runtime_metadata_reports_loaded_models_without_generation(provider):
+    """Verify runtime metadata reports loaded models without generation."""
     import httpx
 
     from venom_core.services.model_runtime_inventory import observe_runtime_models
@@ -482,6 +493,7 @@ async def test_runtime_metadata_reports_loaded_models_without_generation(provide
     requests = []
 
     def transport(request):
+        """Serve only the metadata request expected by this test."""
         requests.append((request.method, request.url.path))
         if request.url.path == "/health":
             return httpx.Response(200, json={"status": "ok", "engine": "onnx-gpu"})
@@ -499,11 +511,13 @@ async def test_runtime_metadata_reports_loaded_models_without_generation(provide
 
 @pytest.mark.asyncio
 async def test_offline_and_malformed_metadata_are_distinct():
+    """Verify offline and malformed metadata are distinct."""
     import httpx
 
     from venom_core.services.model_runtime_inventory import observe_runtime_models
 
     def offline(request):
+        """Simulate an unavailable metadata transport without making network calls."""
         raise httpx.ConnectError("refused", request=request)
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(offline)) as client:
@@ -522,6 +536,7 @@ async def test_offline_and_malformed_metadata_are_distinct():
 
 
 def test_selected_configuration_does_not_imply_loaded_or_cross_engine_activity():
+    """Verify selected configuration does not imply loaded or cross engine activity."""
     from venom_core.services.model_runtime_inventory import annotate_runtime_models
 
     models = [
@@ -548,6 +563,7 @@ def test_selected_configuration_does_not_imply_loaded_or_cross_engine_activity()
 
 
 def test_sharded_checkpoints_without_index_require_every_shard(tmp_path):
+    """Verify sharded checkpoints without index require every shard."""
     from venom_core.core.model_inventory import is_hf_model_dir
 
     (tmp_path / "config.json").write_text("{}")
@@ -558,6 +574,7 @@ def test_sharded_checkpoints_without_index_require_every_shard(tmp_path):
 
 
 def test_other_runtimes_are_discovered_without_loading_them(tmp_path, monkeypatch):
+    """Verify other runtimes are discovered without loading them."""
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
     mgr = _Discovery(tmp_path)
     hf = (
@@ -579,6 +596,7 @@ def test_other_runtimes_are_discovered_without_loading_them(tmp_path, monkeypatc
 
 @pytest.mark.asyncio
 async def test_inventory_metadata_aggregation_has_no_inference_requests(monkeypatch):
+    """Verify inventory metadata aggregation has no inference requests."""
     import httpx
 
     from venom_core.services.model_runtime_inventory import runtime_inventory
@@ -586,6 +604,7 @@ async def test_inventory_metadata_aggregation_has_no_inference_requests(monkeypa
     requests = []
 
     def transport(request):
+        """Serve only the metadata request expected by this test."""
         requests.append(request)
         return httpx.Response(200, json={"models": []})
 
@@ -603,6 +622,7 @@ async def test_inventory_metadata_aggregation_has_no_inference_requests(monkeypa
 async def test_models_endpoint_does_not_mark_remembered_hybrid_model_active(
     monkeypatch,
 ):
+    """Verify models endpoint does not mark remembered hybrid model active."""
     from types import SimpleNamespace
     from unittest.mock import AsyncMock
 
@@ -655,6 +675,7 @@ async def test_models_endpoint_does_not_mark_remembered_hybrid_model_active(
 
 @pytest.mark.parametrize("weight_map", [None, [], "invalid", 42])
 def test_invalid_checkpoint_weight_map_is_not_an_installation(tmp_path, weight_map):
+    """Verify invalid checkpoint weight map is not an installation."""
     from venom_core.core.model_inventory import is_hf_model_dir
 
     (tmp_path / "config.json").write_text("{}")
@@ -667,6 +688,7 @@ def test_invalid_checkpoint_weight_map_is_not_an_installation(tmp_path, weight_m
 
 @pytest.mark.asyncio
 async def test_invalid_runtime_url_cannot_break_other_engine_observations():
+    """Verify invalid runtime url cannot break other engine observations."""
     import httpx
 
     from venom_core.services.model_runtime_inventory import observe_runtime_models
@@ -674,6 +696,7 @@ async def test_invalid_runtime_url_cannot_break_other_engine_observations():
     requests = []
 
     def transport(request):
+        """Serve only the metadata request expected by this test."""
         requests.append(request)
         return httpx.Response(200, json={"models": []})
 
@@ -686,6 +709,7 @@ async def test_invalid_runtime_url_cannot_break_other_engine_observations():
 
 
 def test_runtime_identifiers_do_not_cross_namespaces_or_guess_revisions():
+    """Verify runtime identifiers do not cross namespaces or guess revisions."""
     from venom_core.services.model_runtime_inventory import annotate_runtime_models
 
     models = [
@@ -720,6 +744,7 @@ def test_runtime_identifiers_do_not_cross_namespaces_or_guess_revisions():
 def test_corrupted_snapshot_registration_does_not_hide_other_models(
     tmp_path, monkeypatch
 ):
+    """Verify corrupted snapshot registration does not hide other models."""
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
     mgr = _Discovery(tmp_path)
     for name in ["bad", "good"]:
@@ -733,6 +758,7 @@ def test_corrupted_snapshot_registration_does_not_hide_other_models(
     original = mgr._register_local_entry
 
     def register(models, path, *args, **kwargs):
+        """Inject a per-snapshot registration failure while retaining other models."""
         if "org--bad" in str(path):
             raise OSError("snapshot disappeared during registration")
         return original(models, path, *args, **kwargs)
@@ -747,6 +773,7 @@ def test_corrupted_snapshot_registration_does_not_hide_other_models(
 
 @pytest.mark.parametrize("selected", [None, ""])
 def test_absent_model_selection_remains_unselected(selected):
+    """Verify absent model selection remains unselected."""
     from venom_core.services.model_runtime_inventory import annotate_runtime_models
 
     models = [{"name": "org/model", "provider": "ollama"}]

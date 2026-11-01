@@ -19,6 +19,7 @@ GIT_BOOKKEEPING = {
 
 
 def snapshot(root: Path) -> dict[str, str]:
+    """Hash files and symlink targets, excluding transient caches and Git bookkeeping."""
     result = {}
     for path in sorted(root.rglob("*")):
         relative = path.relative_to(root)
@@ -42,6 +43,7 @@ def snapshot(root: Path) -> dict[str, str]:
 
 
 def prepare(repo: Path, sha: str, target: Path, case) -> dict[str, str]:
+    """Export a pinned commit into a new private trial copy and apply its controlled fixture."""
     if target.exists():
         raise ValueError("trial_workspace_must_be_new")
     target.mkdir(parents=True, mode=0o700)
@@ -92,6 +94,7 @@ def prepare(repo: Path, sha: str, target: Path, case) -> dict[str, str]:
 
 
 def changed_files(before: dict[str, str], after: dict[str, str]) -> set[str]:
+    """Return paths added, removed or changed between two workspace snapshots."""
     return {
         name
         for name in before.keys() | after.keys()
@@ -100,6 +103,7 @@ def changed_files(before: dict[str, str], after: dict[str, str]) -> set[str]:
 
 
 def patch(case, root: Path) -> str:
+    """Produce diffs only for allowed small regular files, ignoring symlinks."""
     parts: list[str] = []
     for name in case.allowed_changes:
         path = root / name

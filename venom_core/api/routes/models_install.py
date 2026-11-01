@@ -263,6 +263,7 @@ def _validate_onnx_chat_compatibility(model: dict) -> tuple[bool, str | None]:
 
 
 def _annotate_chat_compatibility(models: list[dict]) -> None:
+    """Annotate discovered models with chat and activation capabilities before returning them."""
     for model in models:
         provider = str(
             infer_model_provider(model) or model.get("provider") or ""

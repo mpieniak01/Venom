@@ -39,6 +39,7 @@ REPAIR_PROMPTS = {
 
 
 def build_scenarios(repo: Path) -> list[Scenario]:
+    """Assemble ten cases per role using controlled fixtures and actual repository symbols."""
     base = {
         "maintenance_fixture.py": "def total(values):\n    return sum(values)\n",
         VISIBLE_TEST: "from maintenance_fixture import total\ndef test_contract():\n    assert total([2,3]) == 5\n",
@@ -116,6 +117,7 @@ def build_scenarios(repo: Path) -> list[Scenario]:
 
 
 def _localization(repo: Path) -> list[Scenario]:
+    """Build ten source-location cases with explicit expected symbols and evidence."""
     definitions = [
         (
             "Traceback names SkillManager.invoke_mcp_tool. Locate the executing function and its evidence.",
@@ -194,6 +196,7 @@ def _localization(repo: Path) -> list[Scenario]:
 
 
 def _source_evidence(source: Path, symbol: str, evidence: str) -> bool:
+    """Require the evidence text inside the AST source of the named symbol."""
     try:
         text = source.read_text()
         tree = ast.parse(text)
@@ -211,6 +214,7 @@ def _source_evidence(source: Path, symbol: str, evidence: str) -> bool:
 
 
 def _validated_location(repo: Path, location) -> tuple[str, str] | None:
+    """Resolve a submitted source location only when its path, symbol and evidence are valid."""
     if not isinstance(location, dict):
         return None
     path, symbol, evidence = (location.get(k) for k in ("path", "symbol", "evidence"))
@@ -238,6 +242,7 @@ def _validated_location(repo: Path, location) -> tuple[str, str] | None:
 
 
 def validate_locations(repo: Path, scenario: Scenario, final: dict[str, Any]) -> bool:
+    """Require the expected source locations while allowing bounded relevant alternatives."""
     locations = final.get("locations")
     if (
         not isinstance(locations, list)

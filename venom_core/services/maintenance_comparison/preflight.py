@@ -7,6 +7,7 @@ from venom_core.services.runtime_release_service import _listening
 
 
 async def require_local_llms_empty(controller) -> None:
+    """Reject loaded local models or active workers; never probe remote providers."""
     if controller is None:
         raise ValueError("maintenance_controller_unavailable")
     if any(
@@ -32,6 +33,7 @@ async def require_local_llms_empty(controller) -> None:
 
 
 async def _require_ollama_empty(endpoint: str) -> None:
+    """Require valid Ollama process metadata and no loaded models; fail closed on probe errors."""
     try:
         async with httpx.AsyncClient(timeout=5, follow_redirects=False) as client:
             response = await client.get(

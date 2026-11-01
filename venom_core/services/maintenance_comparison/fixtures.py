@@ -80,6 +80,7 @@ def repairs() -> list[RepairFixture]:
 
 
 def _visible_test(source: str) -> str:
+    """Build the visible contract test and its required imports from fixture source."""
     lines = source.splitlines()
     imports = [line for line in lines if line.startswith(("from ", "import "))]
     body = [line for line in lines if not line.startswith(("from ", "import "))]
@@ -93,6 +94,7 @@ def _visible_test(source: str) -> str:
 
 
 def visible_files(case: RepairFixture) -> dict[str, str]:
+    """Return the faulty implementation and visible test for a controlled repair case."""
     return {
         "maintenance_fixture.py": case.broken,
         "test_visible.py": _visible_test(case.visible_test),
@@ -100,6 +102,7 @@ def visible_files(case: RepairFixture) -> dict[str, str]:
 
 
 def gold_files(case: RepairFixture) -> dict[str, str]:
+    """Return the reference repair, correcting its mock or adding a regression test when required."""
     files = visible_files(case)
     files["maintenance_fixture.py"] = case.gold
     if case.id == "05":

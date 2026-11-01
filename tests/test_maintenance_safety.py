@@ -11,6 +11,7 @@ from venom_core.services.maintenance_comparison.sandbox import TrialHabitat, Tri
 
 
 def test_container_has_only_trial_mount_and_no_network(tmp_path):
+    """Verify container has only trial mount and no network."""
     habitat = object.__new__(TrialHabitat)
     habitat.trial_image = "sha256:" + "a" * 64
     habitat.trial_readonly_workspace = False
@@ -34,6 +35,7 @@ def test_container_has_only_trial_mount_and_no_network(tmp_path):
 
 
 def test_actual_exit_stdout_stderr_are_separate_and_output_is_bounded():
+    """Verify actual exit stdout stderr are separate and output is bounded."""
     h = object.__new__(TrialHabitat)
     h.client = MagicMock()
     h.container = MagicMock()
@@ -55,6 +57,7 @@ def test_actual_exit_stdout_stderr_are_separate_and_output_is_bounded():
 
 
 def test_invalid_image_and_arguments_never_execute(tmp_path):
+    """Verify invalid image and arguments never execute."""
     with pytest.raises(ValueError, match="immutable"):
         TrialHabitat(tmp_path, "image:latest")
     h = SimpleNamespace(workspace_path=tmp_path, structured=MagicMock())
@@ -79,6 +82,7 @@ def test_invalid_image_and_arguments_never_execute(tmp_path):
 
 
 def test_cleanup_never_removes_differently_labelled_container(monkeypatch):
+    """Verify cleanup never removes differently labelled container."""
     from venom_core.infrastructure import docker_habitat
 
     client = MagicMock()
@@ -106,10 +110,12 @@ def test_cleanup_never_removes_differently_labelled_container(monkeypatch):
 async def test_preflight_ignores_remote_providers_and_unconfigured_optional_backend(
     monkeypatch,
 ):
+    """Verify preflight ignores remote providers and unconfigured optional backend."""
     monkeypatch.setattr(preflight, "resource_snapshot", lambda: [])
     seen = []
 
     async def listening(endpoint):
+        """Return the test-specified local endpoint observation."""
         seen.append(endpoint)
         return False
 
@@ -127,6 +133,7 @@ async def test_preflight_ignores_remote_providers_and_unconfigured_optional_back
 
 @pytest.mark.asyncio
 async def test_preflight_rejects_existing_local_model_and_running_worker(monkeypatch):
+    """Verify preflight rejects existing local model and running worker."""
     with pytest.raises(ValueError, match="controller"):
         await preflight.require_local_llms_empty(None)
     monkeypatch.setattr(preflight, "resource_snapshot", lambda: [{"category": "llm"}])
@@ -135,6 +142,7 @@ async def test_preflight_rejects_existing_local_model_and_running_worker(monkeyp
     monkeypatch.setattr(preflight, "resource_snapshot", lambda: [])
 
     async def listening(_):
+        """Return the test-specified local endpoint observation."""
         return True
 
     monkeypatch.setattr(preflight, "_listening", listening)
@@ -149,6 +157,7 @@ async def test_preflight_rejects_existing_local_model_and_running_worker(monkeyp
     "status", ["running", "exited", "dead", "paused", "restarting"]
 )
 def test_frozen_verification_accepts_only_quiescent_container_states(status):
+    """Verify frozen verification accepts only quiescent container states."""
     habitat = object.__new__(TrialHabitat)
     habitat.container = MagicMock()
     habitat.container.status = status
@@ -161,6 +170,7 @@ def test_frozen_verification_accepts_only_quiescent_container_states(status):
 
 
 def test_localization_completion_rejects_malformed_nested_arguments(tmp_path):
+    """Verify localization completion rejects malformed nested arguments."""
     tools = TrialTools(SimpleNamespace(workspace_path=tmp_path), "localization")
     for location in [
         {"path": "a.py"},
@@ -173,6 +183,7 @@ def test_localization_completion_rejects_malformed_nested_arguments(tmp_path):
 
 
 def test_oracle_setup_uses_root_owned_read_only_file():
+    """Verify oracle setup uses root owned read only file."""
     from venom_core.services.maintenance_comparison.grading import _put_oracle
 
     container = MagicMock()
@@ -187,11 +198,13 @@ def test_oracle_setup_uses_root_owned_read_only_file():
     "observed", ["paused", "exited", "dead", "running", "restarting"]
 )
 def test_freeze_accepts_pause_failure_only_after_confirming_quiescence(observed):
+    """Verify freeze accepts pause failure only after confirming quiescence."""
     habitat = sandbox.TrialHabitat.__new__(sandbox.TrialHabitat)
     container = MagicMock()
     container.status = "running"
 
     def racing_pause():
+        """Simulate the container exiting between status observation and pause."""
         container.status = observed
         raise RuntimeError("pause raced with container state")
 
@@ -207,6 +220,7 @@ def test_freeze_accepts_pause_failure_only_after_confirming_quiescence(observed)
 
 @pytest.mark.parametrize("observed", ["paused", "exited", "dead"])
 def test_freeze_does_not_pause_an_already_quiescent_container(observed):
+    """Verify freeze does not pause an already quiescent container."""
     habitat = sandbox.TrialHabitat.__new__(sandbox.TrialHabitat)
     container = MagicMock()
     container.status = observed
@@ -219,13 +233,16 @@ def test_freeze_does_not_pause_an_already_quiescent_container(observed):
 def test_output_cap_closes_stream_before_kill_and_preserves_unknown_exit(
     monkeypatch, observed
 ):
+    """Verify output cap closes stream before kill and preserves unknown exit."""
     events = []
 
     class Stream:
         def __iter__(self):
+            """Yield the configured Docker execution stream chunks."""
             yield (b"x" * 1_048_577, None)
 
         def close(self):
+            """Release the test double resources without touching the live stack."""
             events.append("close")
 
     habitat = sandbox.TrialHabitat.__new__(sandbox.TrialHabitat)
@@ -251,6 +268,7 @@ def test_output_cap_closes_stream_before_kill_and_preserves_unknown_exit(
 
 
 def test_trial_closes_owned_docker_client_even_when_removal_fails():
+    """Verify trial closes owned docker client even when removal fails."""
     habitat = sandbox.TrialHabitat.__new__(sandbox.TrialHabitat)
     habitat.container = MagicMock()
     habitat.client = MagicMock()
@@ -265,6 +283,7 @@ def test_trial_closes_owned_docker_client_even_when_removal_fails():
 )
 @pytest.mark.asyncio
 async def test_preflight_runtime_probe_errors_are_controlled(monkeypatch, error):
+    """Verify preflight runtime probe errors are controlled."""
     from unittest.mock import AsyncMock
 
     monkeypatch.setattr(preflight, "resource_snapshot", lambda: [])
@@ -281,6 +300,7 @@ async def test_preflight_runtime_probe_errors_are_controlled(monkeypatch, error)
 
 @pytest.mark.parametrize("value", [[], ["status"], "success", None, 1])
 def test_finish_rejects_non_object_reports(value, tmp_path):
+    """Verify finish rejects non object reports."""
     tools = TrialTools(SimpleNamespace(workspace_path=tmp_path), "operator")
     with pytest.raises(ValueError, match="finish_arguments_not_object"):
         tools.validate_completion(value)
@@ -293,6 +313,7 @@ def test_finish_rejects_non_object_reports(value, tmp_path):
 async def test_ollama_preflight_metadata_errors_are_controlled(
     monkeypatch, status, payload
 ):
+    """Verify ollama preflight metadata errors are controlled."""
     from unittest.mock import AsyncMock
 
     import httpx

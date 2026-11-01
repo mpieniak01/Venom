@@ -12,6 +12,7 @@ CATALOG = Path(__file__).resolve().parents[1] / "config/maintenance_comparison"
 
 
 def test_baseline_has_180_planned_rows_and_correct_role_denominators():
+    """Verify baseline has 180 planned rows and correct role denominators."""
     models, cases = load_catalog(CATALOG)
     plan = baseline(models, cases)
     assert len(plan) == 180
@@ -28,6 +29,7 @@ def test_baseline_has_180_planned_rows_and_correct_role_denominators():
     "kind", ["sha", "model_count", "case_count", "duplicate_case", "role"]
 )
 def test_catalog_rejects_ambiguous_or_incomplete_configuration(tmp_path, kind):
+    """Verify catalog rejects ambiguous or incomplete configuration."""
     models = json.loads((CATALOG / "models.json").read_text())
     cases = json.loads((CATALOG / "scenarios.json").read_text())
     if kind == "sha":
@@ -47,6 +49,7 @@ def test_catalog_rejects_ambiguous_or_incomplete_configuration(tmp_path, kind):
 
 
 def test_local_extensions_preserve_frozen_catalog_and_same_thirty_cases():
+    """Verify local extensions preserve frozen catalog and same thirty cases."""
     from venom_core.services.maintenance_comparison.catalog import load_all_models
 
     root = Path(__file__).resolve().parents[1] / "config/maintenance_comparison"
@@ -71,6 +74,7 @@ def test_local_extensions_preserve_frozen_catalog_and_same_thirty_cases():
 
 
 def test_missing_optional_catalog_retains_eight_models(tmp_path):
+    """Verify missing optional catalog retains eight models."""
     import shutil
 
     from venom_core.services.maintenance_comparison.catalog import load_all_models
@@ -85,6 +89,7 @@ def test_missing_optional_catalog_retains_eight_models(tmp_path):
 def test_extension_catalog_rejects_inconsistent_or_duplicate_profiles(
     tmp_path, failure
 ):
+    """Verify extension catalog rejects inconsistent or duplicate profiles."""
     import shutil
 
     from venom_core.services.maintenance_comparison.catalog import load_all_models
@@ -105,6 +110,7 @@ def test_extension_catalog_rejects_inconsistent_or_duplicate_profiles(
 
 @pytest.mark.parametrize("selection", [{}, {"unknown": {}}, []])
 def test_active_catalog_rejects_empty_or_unknown_models(tmp_path, selection):
+    """Verify active catalog rejects empty or unknown models."""
     import shutil
 
     from venom_core.services.maintenance_comparison.catalog import load_all_models
@@ -119,6 +125,7 @@ def test_active_catalog_rejects_empty_or_unknown_models(tmp_path, selection):
 
 
 def test_retirement_preserves_historical_profiles_without_enabling_downloads():
+    """Verify retirement preserves historical profiles without enabling downloads."""
     from venom_core.services.maintenance_comparison.catalog import load_all_models
 
     historical, _ = load_catalog(CATALOG)

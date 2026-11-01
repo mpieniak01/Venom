@@ -48,6 +48,7 @@ async def observe_runtime_models(provider: str, endpoint: str, client) -> dict:
 
 
 async def runtime_inventory(endpoints: dict[str, str]) -> dict:
+    """Observe configured local runtimes through metadata GET requests without generating text."""
     import asyncio
     from datetime import datetime, timezone
 
@@ -70,10 +71,12 @@ async def runtime_inventory(endpoints: dict[str, str]) -> dict:
 
 
 def _matching_model_indexes(models: list[dict], name: str) -> set[int]:
+    """Prefer exact IDs and paths, accepting short aliases only when unambiguous per engine."""
     if not isinstance(name, str) or not name:
         return set()
 
     def identifiers(model: dict) -> set[str]:
+        """Collect installation names and real paths, excluding registry URI pseudo-paths."""
         values = {model.get("name")}
         path = model.get("path")
         if isinstance(path, str) and not path.startswith("ollama://"):
@@ -91,6 +94,7 @@ def _matching_model_indexes(models: list[dict], name: str) -> set[int]:
 
 
 def _loaded_states(models: list[dict], names: list[str] | None) -> list[bool | None]:
+    """Map observed names to loaded states, preserving ambiguity as unknown."""
     if names is None:
         return [None] * len(models)
     confirmed: set[int] = set()
@@ -112,6 +116,7 @@ def _loaded_states(models: list[dict], names: list[str] | None) -> list[bool | N
 def annotate_runtime_models(
     models: list[dict], observations: dict, selected_provider: str, selected_name: str
 ) -> None:
+    """Annotate installation, selection and observed loading independently for each engine."""
     providers = {model.get("provider") for model in models}
     for provider in providers:
         entries = [model for model in models if model.get("provider") == provider]

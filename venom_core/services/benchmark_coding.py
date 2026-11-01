@@ -222,6 +222,7 @@ class CodingBenchmarkService:
     """
 
     def __init__(self, storage_dir: str, repo_root: Optional[str] = None) -> None:
+        """Initialize run storage, the scheduler and maintenance lifecycle registries."""
         self.storage_dir = Path(storage_dir)
         self.storage_dir.mkdir(parents=True, exist_ok=True)
         self.repo_root = (
@@ -349,6 +350,7 @@ class CodingBenchmarkService:
             run.status = "completed_with_failures"
 
     def _validate_start_request(self, models: list[str], tasks: list[str]) -> None:
+        """Reject missing models, unknown tasks and invalid benchmark selections."""
         if not models:
             raise ValueError("Lista modeli nie może być pusta")
         if not tasks:
@@ -438,6 +440,7 @@ class CodingBenchmarkService:
         return run_id
 
     def _build_scheduler_command(self, run: CodingBenchmarkRun) -> list[str]:
+        """Build the legacy scheduler command using explicit run paths and options."""
         cfg = run.config
         python_bin = sys.executable or "python3"
         if set(cfg.tasks) <= _MAINTENANCE_TASKS:
@@ -503,6 +506,7 @@ class CodingBenchmarkService:
         controller,
         options: dict | None = None,
     ) -> str:
+        """Validate the manual comparison and reserve host runtime before registering its worker."""
         from venom_core.services.maintenance_comparison.preflight import (
             require_local_llms_empty,
         )
@@ -566,6 +570,7 @@ class CodingBenchmarkService:
             raise
 
     def _maintenance_finished(self, run_id: str, task: asyncio.Task) -> None:
+        """Retire task bookkeeping and surface any background worker exception."""
         with self._lock:
             if self._maintenance_tasks.get(run_id) is task:
                 self._maintenance_tasks.pop(run_id, None)
@@ -576,6 +581,7 @@ class CodingBenchmarkService:
 
     @staticmethod
     def _retire_maintenance_process(process) -> bool:
+        """Terminate the owned child, escalating to kill if it does not exit."""
         if process is None or process.poll() is not None:
             return True
         process.terminate()
@@ -590,6 +596,7 @@ class CodingBenchmarkService:
         return process.poll() is not None
 
     def _spawn_maintenance_child(self, run, command):
+        """Create and register the child under the lifecycle lock before cancellation can hide it."""
         process = subprocess.Popen(
             command,
             text=True,
@@ -603,6 +610,7 @@ class CodingBenchmarkService:
         return process
 
     async def _spawn_maintenance_process(self, run, command):
+        """Shield spawn registration, then propagate caller cancellation after the child is tracked."""
         pending = asyncio.get_running_loop().run_in_executor(
             None, self._spawn_maintenance_child, run, command
         )
@@ -618,6 +626,7 @@ class CodingBenchmarkService:
             raise
 
     async def _cancel_maintenance_task(self, run_id: str, task: asyncio.Task) -> None:
+        """Cancel the worker and wait for cleanup without swallowing caller cancellation."""
         with self._lock:
             started = run_id in self._maintenance_started
             cleaning = run_id in self._maintenance_cleanup_started
@@ -633,6 +642,7 @@ class CodingBenchmarkService:
                 raise RuntimeError(_MAINTENANCE_CLEANUP_UNCONFIRMED)
 
     def _stop_maintenance_task(self, run_id: str) -> None:
+        """Coordinate queued or running task cancellation before deleting run artifacts."""
         with self._lock:
             if run_id not in self._maintenance_pending_cleanup:
                 return
@@ -656,11 +666,13 @@ class CodingBenchmarkService:
             raise RuntimeError("maintenance_cleanup_pending") from exc
 
     def _maintenance_process_quiescent(self, run_id: str) -> bool:
+        """Confirm that the registered child is absent or has exited."""
         with self._lock:
             process = self._active_procs.get(run_id)
         return process is None or process.poll() is not None
 
     async def _run_owned_maintenance(self, run, lease) -> None:
+        """Run the worker and release its lease only after process and container cleanup is confirmed."""
         process = None
         with self._lock:
             self._maintenance_started.add(run.run_id)
@@ -726,6 +738,7 @@ class CodingBenchmarkService:
                 self._maintenance_cancel_requests.discard(run.run_id)
 
     def _scheduler_environment(self, run: CodingBenchmarkRun) -> dict[str, str] | None:
+        """Build child environment settings while keeping host defaults unchanged."""
         if not set(run.config.tasks) <= _MAINTENANCE_TASKS:
             return None
         import os

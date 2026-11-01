@@ -8,6 +8,7 @@ DIAGNOSTICS = {"repair-08", "repair-10"}
 
 
 def _ratio(rows: list[dict]) -> str:
+    """Format passed/count and percentage, keeping an empty denominator explicit."""
     correct, count = sum(bool(row["passed"]) for row in rows), len(rows)
     return (
         f"{correct}/{count} ({100 * correct / count:.1f}%)"
@@ -17,23 +18,28 @@ def _ratio(rows: list[dict]) -> str:
 
 
 def _median(rows: list[dict], key: str) -> str:
+    """Format the median of measured values, preserving missing data as unavailable."""
     values = [row[key] for row in rows if row.get(key) is not None]
     return f"{statistics.median(values):.2f}" if values else "brak danych"
 
 
 def _group(rows: list[dict], model: str, role: str) -> list[dict]:
+    """Select attempts for exactly one model and role."""
     return [r for r in rows if r["model"] == model and r["role"] == role]
 
 
 def _primary(rows: list[dict]) -> list[dict]:
+    """Exclude the two diagnostic escalation cases from repair effectiveness."""
     return [r for r in rows if r["scenario"] not in DIAGNOSTICS]
 
 
 def _scored(rows: list[dict]) -> list[dict]:
+    """Exclude blocked attempts from scored outcomes without deleting their records."""
     return [r for r in rows if r["status"] != "blocked"]
 
 
 def _role_row(model: dict, role: str, rows: list[dict]) -> list[str]:
+    """Render role outcomes with separate baseline, repeats, blockers and diagnostics."""
     name = model["id"]
     if role not in model["roles"]:
         return [f"| {name} | {role} | N/A | N/A | N/A | N/A |"]
@@ -56,6 +62,7 @@ def _role_row(model: dict, role: str, rows: list[dict]) -> list[str]:
 
 
 def _measurements(models: list[dict], rows: list[dict]) -> list[str]:
+    """Render per-role measurements and keep loading time distinct from task time."""
     lines = [
         "",
         "## Pomiary",
@@ -75,6 +82,7 @@ def _measurements(models: list[dict], rows: list[dict]) -> list[str]:
 
 
 def _recommendation(models: list[dict], rows: list[dict], role: str) -> str:
+    """Recommend only from complete, scored finalists with all three executions."""
     candidates = []
     for model in models:
         primary = _primary(_group(rows, model["id"], role))
@@ -95,6 +103,7 @@ def _recommendation(models: list[dict], rows: list[dict], role: str) -> str:
 
 
 def _blockers(rows: list[dict]) -> list[str]:
+    """Group recorded blocking reasons and list the affected models."""
     lines = []
     for reason in sorted(
         {r["blocked_reason"] for r in rows if r["status"] == "blocked"}
@@ -107,6 +116,7 @@ def _blockers(rows: list[dict]) -> list[str]:
 
 
 def _example(rows: list[dict], role: str, success: bool) -> list[str]:
+    """Render one observed success or failure with its real terminal result."""
     example = next(
         (
             r
@@ -145,6 +155,7 @@ def render(
     *,
     phase: str = "comparison",
 ) -> str:
+    """Write a role-separated Markdown report with denominators and measurement limitations."""
     selected_roles = roles if roles is not None else ROLES
     lines = [
         "# Porównanie lokalnych modeli utrzymania Venoma",

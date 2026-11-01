@@ -60,9 +60,9 @@ def _measurements(models: list[dict], rows: list[dict]) -> list[str]:
         "",
         "## Pomiary",
         "",
-        "RAM/VRAM w bajtach. Tokeny wejściowe obejmują ponowne przekazanie kontekstu. Mediana zadania obejmuje przygotowanie kopii, pracę modelu i niezależną weryfikację; ładowanie modelu jest oddzielne.",
+        "Rezerwacja alokatora CUDA i RSS w bajtach; rezerwacja nie jest pomiarem fizycznego VRAM. Tokeny wejściowe obejmują ponowne przekazanie kontekstu. Mediana zadania obejmuje przygotowanie kopii, pracę modelu i niezależną weryfikację; ładowanie modelu jest oddzielne.",
         "",
-        "| Model | Rola | Ładowanie [s] | Kroki | VRAM | RSS | Tokeny wejścia / wyjścia | Zbędne powtórzenia |",
+        "| Model | Rola | Ładowanie [s] | Kroki | CUDA rezerwacja | RSS | Tokeny wejścia / wyjścia | Zbędne powtórzenia |",
         "|---|---|---:|---:|---:|---:|---:|---:|",
     ]
     for model in models:

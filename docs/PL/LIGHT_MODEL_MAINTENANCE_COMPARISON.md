@@ -39,7 +39,7 @@ statusy: model zakończył, limit kroków/czasu/kontekstu, brak postępu, błąd
 modelu, parsera, narzędzia lub infrastruktury, blokada konfiguracji, nie dotyczy.
 Tryb badania flaky testu musi mieć osobny identyfikator konfiguracji.
 
-## Macierz pomiarów
+## Historyczna macierz pierwszego eksperymentu
 
 Operator: 70, diagnoza/naprawa: 50, lokalizacja: 60; razem 180 pozycji baseline.
 SERA operator pozostaje w mianowniku planu nawet w razie blokady protokołu.
@@ -108,7 +108,7 @@ zaakceptowanej licencji i dostępu HF operatora; brak dostępu to blokada w rapo
 Nie akceptujemy licencji automatycznie i nie zapisujemy sekretów w artefaktach.
 
 Na `/benchmark` wybierz benchmark kodowania i zaznacz „Porównanie modeli
-utrzymania”. Katalog dziesięciu modeli (osiem bazowych i dwa dodatkowe) pochodzi z
+utrzymania”. Aktywny katalog czterech modeli pochodzi z
 `GET /api/v1/benchmark/coding/maintenance/models`. Zaznacz modele i trzy role.
 Przycisk Start używa istniejącego `POST /api/v1/benchmark/coding/start`.
 W nowym trybie nie uruchamia się Ollama; host sprawdza brak lokalnego LLM,
@@ -118,7 +118,7 @@ Przykładowe body dla pełnego pomiaru (nazwy modeli zgodne z katalogiem):
 
 ```json
 {
-  "models": ["mini-coder-1.7b", "mini-coder-4b", "granite-4.2-3b", "granite-4.2-8b", "sera-8b", "functiongemma-270m", "lfm2-1.2b-tool", "codescout-4b"],
+  "models": ["mini-coder-1.7b", "granite-4.2-3b", "gemma-4-e2b-it", "qwen3.5-9b"],
   "tasks": ["maintenance_operator", "maintenance_repair", "maintenance_localization"],
   "loop_task": "",
   "timeout": 180,
@@ -244,7 +244,7 @@ Przykład odtworzenia nowego baseline przez istniejące API:
 }
 ```
 
-Wybór wszystkich dziesięciu modeli w trybie comparison planuje 240 pozycji
+Historyczny wybór wszystkich dziesięciu modeli w trybie comparison planował 240 pozycji
 baseline i do 120 powtórzeń; limit wynosi wtedy 360. Pierwotny katalog ośmiu
 zachowuje plan 180/do 300. W przeprowadzonym rozszerzeniu obu nowych modeli
 użyto wyłącznie baseline, bez automatycznych powtórzeń.
@@ -260,3 +260,38 @@ Przy przygotowywaniu danych treningowych z kodu repo wyklucz definicje/gold
 tego eksperymentu, odpowiadające im testy i wszystkie surowe rekordy held-out.
 Zmiana commita nie zmienia grupy problemu i nie uprawnia do przeniesienia testu
 do train/validation. W tym porównaniu nie wykonywano dostrajania.
+
+
+## Aktywne modele po decyzji operatora 2026-11-01
+
+[Raport pozostawionych modeli i pomiaru nowych backendów](reports/RETAINED_MODEL_BACKENDS_2026-11-01.md).
+
+`active_models.json` ogranicza nowe uruchomienia do mini-coder-1.7b,
+Granite 4.2 3B, Gemma 4 E2B IT i Qwen3.5-9B. Panel i walidacja uruchomienia
+korzystają z tej samej listy. Pozostałych sześciu kandydatów nie można wybrać;
+ich wagi usunięto z prywatnego cache eksperymentu. Historyczne katalogi ośmiu
+modeli i rozszerzenia oraz raporty i przebiegi pozostają zachowane.
+Aktywne cztery modele mają po trzy role: 120 prób baseline, do 240 z powtórzeniami.
+Odtworzenie wycofanego profilu wymaga świadomego przywrócenia konfiguracji i wag.
+
+Profil `retained-models-rtx3060-v2` jawnie wybiera SDPA i cache generacji.
+Mini-coder zachowuje BF16, trzy większe modele NF4 z obliczeniami BF16.
+Qwen dodatkowo korzysta z `kernels==0.16.2`, `einops==0.8.2` oraz przypiętych
+pełnymi SHA kerneli społeczności Hugging Face: mamba-ssm dla causal-conv1d,
+fla dla obu operacji DeltaNet. Mapowanie nie dziedziczy nieprzypiętych domyślnych
+kerneli. Dopasowujemy nazwy klas warstw API kerneli, nie modyfikujemy odpowiedzi
+modelu. Oba natywne EOS Qwena i parametry generacji pozostają zachowane.
+
+Dodatki Python i cache kerneli są prywatne dla eksperymentu; główny venv i
+profil `.env.dev` pozostają bez zmian. Opcjonalne wymagania są w
+`requirements-maintenance-comparison.txt`; nie należy aktualizować istniejącego
+PyTorcha przy instalowaniu dodatku. Wymagana jest zgodność binarna kerneli z
+Torch/CUDA/architekturą GPU. Brak zgodnej wersji jest blokadą infrastruktury.
+Kwalifikację uruchamia operator w trybie `qualification`, przed nowym pomiarem.
+Nie jest ona automatycznym Test Zero ani częścią zwykłych bramek testowych.
+
+Artefakt zapisuje rzeczywiste implementacje attention i forward kerneli,
+rewizje źródeł i wersję pakietu. Nowe pomiary zapisują oddzielnie szczyt
+alokowanych i rezerwowanych bajtów CUDA; `peak_vram_bytes` pozostaje kompatybilnym
+aliasem rezerwacji. Żadne z tych pól nie mierzy fizycznego dedicated/shared VRAM.
+Nowy profil ma odrębny identyfikator; wyniki starych 350 prób nie są nadpisywane.

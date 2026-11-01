@@ -6165,12 +6165,14 @@
       "domain": "runtime",
       "test_type": "unit",
       "intent": "regression",
-      "primary_lane": "release",
+      "primary_lane": "new-code",
       "allowed_lanes": [
+        "new-code",
+        "ci-lite",
         "release"
       ],
       "legacy_targeted": false,
-      "rationale": "Default release-lane regression coverage."
+      "rationale": "Unit summary strategy and persistence contract with injected vector-store double; no model, network or live runtime required."
     },
     {
       "path": "tests/test_session_workflow_memory_contracts.py",

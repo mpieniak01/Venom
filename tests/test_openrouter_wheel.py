@@ -163,7 +163,8 @@ def test_one_paid_selection_allows_two_turns_without_reapproval(installed, monke
     rows = installed.BudgetLedger(rt._STATE / "budget.sqlite").snapshot()[
         "reservations"
     ]
-    assert len(rows) == 2 and len({row["request_id"] for row in rows}) == 2
+    assert len(rows) == 2
+    assert len({row["request_id"] for row in rows}) == 2
     assert all(row["status"] == "settled" for row in rows)
     assert sum(Decimal(row["cost"]) for row in rows) == Decimal("0.0002")
     assert rt.selection() == selected
@@ -204,7 +205,9 @@ def test_one_selection_does_not_waive_pending_conversation_limit(
     rows = installed.BudgetLedger(rt._STATE / "budget.sqlite").snapshot()[
         "reservations"
     ]
-    assert len(rows) == 1 and rows[0]["status"] == "pending" and rows[0]["cost"] is None
+    assert len(rows) == 1
+    assert rows[0]["status"] == "pending"
+    assert rows[0]["cost"] is None
     select_again.assert_not_called()
 
 

@@ -33,6 +33,7 @@ MINIMUM_FREE_GIB = {
     "full": 16,
     "full-ci": 20,
     "multi-runtime-cuda": 12,
+    "granite-operator-training": 14,
 }
 
 

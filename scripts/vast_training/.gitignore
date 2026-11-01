@@ -1,0 +1,8 @@
+/datasets/
+/outputs/
+/logs/
+/configs/
+/artifacts/
+/env.sh
+/environment.state
+/template-*.json

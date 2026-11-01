@@ -1,0 +1,16 @@
+{
+  "name": "venom-training-qlora",
+  "image": "axolotlai/axolotl-cloud@sha256:259b43034047cda72b261da7c20897eed354582c7530c77e401c908206daf0dc",
+  "launch_mode": "SSH direct",
+  "onstart_cmd": "set -eu; umask 077; mkdir -p /workspace/data/vast-training/datasets /workspace/data/vast-training/outputs /workspace/data/vast-training/logs; echo awaiting_upload > /workspace/data/vast-training/environment.state",
+  "environment": {
+    "JUPYTER_DISABLE": "1"
+  },
+  "requirements": {
+    "gpu_ram_gb": 24,
+    "cpu_ram_gb": 64,
+    "disk_gb": 100,
+    "gpus": 1
+  },
+  "gpu_qualified": false
+}

@@ -140,10 +140,9 @@ docs_dev/
 # Local benchmark outputs
 data/benchmarks/
 .mypy_cache/
-data/training/
 
 # Academy self-learning runtime artifacts
-data/academy/self_learning/
+/data/academy/
 data/_trash/
 MagicMock*/
 <MagicMock*/
@@ -154,3 +153,21 @@ web-next/.next-*/
 
 # Local browser inspection artifacts
 /output/playwright/
+
+# Complete local ML experiment trees: data, provenance, runs and every result.
+/data/training/
+/data/datasets/
+/data/experiments/
+/artifacts/training/
+/artifacts/datasets/
+/datasets/
+/training-data/
+/training-runs/
+/training-results/
+/checkpoints/
+/adapters/
+/wandb/
+/mlruns/
+/lightning_logs/
+# Legacy local corpus manifests, curation decisions and pilot results.
+/config/granite_operator/

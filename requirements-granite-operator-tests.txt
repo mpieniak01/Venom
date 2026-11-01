@@ -1,0 +1,5 @@
+# CPU-only test dependencies for GitHub Linux x86_64 / CPython 3.14.
+# Separate from application CI-lite and the qualified CUDA training component.
+# No model weights or training sessions are downloaded or started by this file.
+torch @ https://download-r2.pytorch.org/whl/cpu/torch-2.13.0%2Bcpu-cp314-cp314-manylinux_2_28_x86_64.whl#sha256=d20fa53ee744502fa4c69818a720b05ca0d37abd055d4f6e66cae155114bc691
+transformers==5.17.0

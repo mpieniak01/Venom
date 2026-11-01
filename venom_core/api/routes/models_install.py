@@ -31,6 +31,10 @@ from venom_core.services.feedback_loop_policy import (
     is_feedback_loop_alias,
     resolve_feedback_loop_model,
 )
+from venom_core.services.model_runtime_inventory import (
+    annotate_runtime_models,
+    runtime_inventory,
+)
 from venom_core.services.ollama_runtime_policy import enforce_single_loaded_ollama_model
 from venom_core.services.runtime_admission import admitted_operation
 from venom_core.services.runtime_switch_telemetry import (
@@ -265,7 +269,7 @@ def _annotate_chat_compatibility(models: list[dict]) -> None:
         ).lower()
         model["provider"] = provider or model.get("provider")
 
-        compatible = True
+        compatible = provider in {"onnx", "vllm", "ollama"}
         reason: str | None = None
         if provider == "onnx":
             compatible, reason = _validate_onnx_chat_compatibility(model)
@@ -281,6 +285,11 @@ def _annotate_chat_compatibility(models: list[dict]) -> None:
 
         model["chat_compatible"] = compatible
         model["chat_block_reason"] = reason
+        model["activation_supported"] = compatible and provider in {
+            "onnx",
+            "vllm",
+            "ollama",
+        }
 
 
 def _ensure_model_chat_compatible(model: dict) -> None:
@@ -533,21 +542,25 @@ async def list_models():
             "cloud": runtime_config.get("HYBRID_CLOUD_MODEL") or None,
         }
 
-        active_names = {
-            runtime_snapshot["active_model_id"],
-            runtime_config.get("HYBRID_LOCAL_MODEL"),
-        }
-        active_names = {name for name in active_names if name}
-        active_names.update({Path(name).name for name in active_names})
-
+        resolve_ollama = getattr(model_manager, "_resolve_ollama_tags_url", None)
+        ollama_endpoint = (
+            resolve_ollama()
+            if callable(resolve_ollama)
+            else str(
+                getattr(SETTINGS, "OLLAMA_ENDPOINT", "") or "http://127.0.0.1:11434"
+            )
+        )
+        observations = await runtime_inventory(
+            {
+                "ollama": ollama_endpoint,
+                "vllm": str(getattr(SETTINGS, "VLLM_ENDPOINT", "") or ""),
+                "onnx": str(getattr(SETTINGS, "ONNX_LLM_ENDPOINT", "") or ""),
+            }
+        )
+        annotate_runtime_models(
+            models, observations, runtime_info.provider, runtime_info.model_name or ""
+        )
         for model in models:
-            candidate_names = {model.get("name")}
-            path_value = model.get("path")
-            if path_value:
-                candidate_names.add(Path(path_value).name)
-            if any(name in active_names for name in candidate_names if name):
-                model["active"] = True
-                model.setdefault("source", runtime_info.provider)
             model_name = str(model.get("name") or "").strip()
             tier = classify_feedback_loop_tier(model_name)
             model["feedback_loop_ready"] = tier in {"primary", "fallback"}
@@ -562,6 +575,7 @@ async def list_models():
             "count": len(models),
             "active": runtime_payload,
             "providers": provider_buckets,
+            "engine_statuses": observations,
         }
     except Exception as exc:
         logger.error(f"Błąd podczas listowania modeli: {exc}")

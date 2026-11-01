@@ -16,6 +16,11 @@ def is_onnx_model_dir(path: Path) -> bool:
 def is_hf_model_dir(path: Path) -> bool:
     if not path.is_dir() or not nonempty_file(path / "config.json"):
         return False
+    try:
+        if not isinstance(json.loads((path / "config.json").read_text()), dict):
+            return False
+    except (ValueError, OSError):
+        return False
     indexes = list(path.glob("*.index.json"))
     for index in indexes:
         try:
@@ -35,6 +40,17 @@ def is_hf_model_dir(path: Path) -> bool:
         *path.glob("pytorch_model*.bin"),
         *path.glob("model*.bin"),
     ]
+    for weight in weights:
+        shard = re.fullmatch(r"(.+)-(\d+)-of-(\d+)\.(safetensors|bin)", weight.name)
+        if shard:
+            prefix, number, count, extension = shard.groups()
+            if not all(
+                nonempty_file(
+                    path / f"{prefix}-{part:0{len(number)}d}-of-{count}.{extension}"
+                )
+                for part in range(1, int(count) + 1)
+            ):
+                return False
     return bool(weights) and all(nonempty_file(p) for p in weights)
 
 

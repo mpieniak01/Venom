@@ -151,3 +151,6 @@ MagicMock*/
 # Per-environment Next artifacts and verified lifecycle records.
 web-next/.next-*/
 *.pid.identity.json
+
+# Local browser inspection artifacts
+/output/playwright/

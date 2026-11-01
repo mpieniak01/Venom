@@ -363,6 +363,11 @@ export type ModelTrainabilityStatus = "trainable" | "not-trainable";
 
 export interface ModelInfo {
   name: string;
+  revision?: string;
+  loaded?: boolean | null;
+  selected?: boolean;
+  activation_supported?: boolean;
+  runtime_status?: "online" | "offline" | "unverified";
   size_gb?: number;
   installed?: boolean;
   active?: boolean;
@@ -446,6 +451,7 @@ export interface ModelsResponse {
   count: number;
   active?: ActiveModelRuntime;
   providers?: Record<string, ModelInfo[]>;
+  engine_statuses?: Record<string, { status: "online" | "offline" | "unverified"; models: string[] | null; checked_at: string }>;
 }
 
 export interface ActiveModelRuntime {

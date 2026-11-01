@@ -130,7 +130,25 @@ def test_manifest_and_cache_helpers(tmp_path: Path) -> None:
     mgr._save_ollama_cache(cache_entries)
     loaded_models: dict[str, dict[str, Any]] = {}
     mgr._load_ollama_cache(loaded_models)
-    assert "ollama::qwen:latest" in loaded_models
+    assert "ollama::qwen:latest" not in loaded_models
+    mgr._save_ollama_cache(
+        [
+            {
+                "name": "qwen:latest",
+                "digest": "current",
+                "quantization": "q4",
+                "active": True,
+            }
+        ]
+    )
+    loaded_models["ollama::qwen:latest"] = {
+        "name": "qwen:latest",
+        "digest": "current",
+        "active": False,
+    }
+    mgr._load_ollama_cache(loaded_models)
+    assert loaded_models["ollama::qwen:latest"]["quantization"] == "q4"
+    assert loaded_models["ollama::qwen:latest"]["active"] is False
 
 
 def test_collect_ollama_entries_prefers_latest(tmp_path: Path) -> None:
@@ -452,3 +470,186 @@ def test_model_cache_enumerates_only_complete_snapshots_once(tmp_path):
     partial.mkdir(parents=True)
     (partial / "config.json").write_text("{}")
     assert list(cached_model_paths([tmp_path, tmp_path])) == [("org/kept", path)]
+
+
+@pytest.mark.parametrize("provider", ["ollama", "vllm", "onnx"])
+@pytest.mark.asyncio
+async def test_runtime_metadata_reports_loaded_models_without_generation(provider):
+    import httpx
+
+    from venom_core.services.model_runtime_inventory import observe_runtime_models
+
+    requests = []
+
+    def transport(request):
+        requests.append((request.method, request.url.path))
+        if request.url.path == "/health":
+            return httpx.Response(200, json={"status": "ok", "engine": "onnx-gpu"})
+        return httpx.Response(
+            200, json={"models": [{"name": "served"}], "data": [{"id": "served"}]}
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(transport)) as client:
+        result = await observe_runtime_models(
+            provider, "http://127.0.0.1:11434/v1", client
+        )
+    assert result == {"status": "online", "models": ["served"]}
+    assert all(method == "GET" for method, _ in requests)
+
+
+@pytest.mark.asyncio
+async def test_offline_and_malformed_metadata_are_distinct():
+    import httpx
+
+    from venom_core.services.model_runtime_inventory import observe_runtime_models
+
+    def offline(request):
+        raise httpx.ConnectError("refused", request=request)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(offline)) as client:
+        assert await observe_runtime_models(
+            "ollama", "http://localhost:11434", client
+        ) == {"status": "offline", "models": None}
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(lambda _: httpx.Response(200, json={}))
+    ) as client:
+        assert await observe_runtime_models(
+            "vllm", "http://localhost:8001", client
+        ) == {"status": "unverified", "models": None}
+        assert await observe_runtime_models(
+            "vllm", "https://remote.example", client
+        ) == {"status": "unverified", "models": None}
+
+
+def test_selected_configuration_does_not_imply_loaded_or_cross_engine_activity():
+    from venom_core.services.model_runtime_inventory import annotate_runtime_models
+
+    models = [
+        {"name": "same", "provider": "ollama"},
+        {"name": "same", "provider": "vllm"},
+        {"name": "other", "provider": "transformers"},
+    ]
+    annotate_runtime_models(
+        models,
+        {
+            "ollama": {"status": "offline", "models": None},
+            "vllm": {"status": "online", "models": ["same"]},
+        },
+        "ollama",
+        "same",
+    )
+    assert (
+        models[0]["selected"]
+        and models[0]["loaded"] is None
+        and not models[0]["active"]
+    )
+    assert models[1]["loaded"] and not models[1]["selected"]
+    assert models[2]["loaded"] is None and not models[2]["active"]
+
+
+def test_sharded_checkpoints_without_index_require_every_shard(tmp_path):
+    from venom_core.core.model_inventory import is_hf_model_dir
+
+    (tmp_path / "config.json").write_text("{}")
+    (tmp_path / "model-00001-of-00002.safetensors").write_bytes(b"weight")
+    assert not is_hf_model_dir(tmp_path)
+    (tmp_path / "model-00002-of-00002.safetensors").write_bytes(b"weight")
+    assert is_hf_model_dir(tmp_path)
+
+
+def test_other_runtimes_are_discovered_without_loading_them(tmp_path, monkeypatch):
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    mgr = _Discovery(tmp_path)
+    hf = (
+        tmp_path
+        / ".local/share/venom/maintenance-comparison/hub/models--org--kept/snapshots/revision"
+    )
+    hf.mkdir(parents=True)
+    (hf / "config.json").write_text("{}")
+    (hf / "model.safetensors").write_bytes(b"weights")
+    research = mgr.models_dir / "research/rwkv/revision"
+    research.mkdir(parents=True)
+    (research / "small.pth").write_bytes(b"weights")
+    models = {}
+    discovery.ModelManagerDiscoveryMixin._discover_other_models(
+        mgr, [mgr.models_dir], models
+    )
+    assert {m["provider"] for m in models.values()} == {"transformers", "rwkv"}
+
+
+@pytest.mark.asyncio
+async def test_inventory_metadata_aggregation_has_no_inference_requests(monkeypatch):
+    import httpx
+
+    from venom_core.services.model_runtime_inventory import runtime_inventory
+
+    requests = []
+
+    def transport(request):
+        requests.append(request)
+        return httpx.Response(200, json={"models": []})
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(transport))
+    monkeypatch.setattr(httpx, "AsyncClient", lambda **_: client)
+    snapshot = await runtime_inventory({"ollama": "http://localhost:11434"})
+    assert snapshot["ollama"]["status"] == "online"
+    assert snapshot["ollama"]["checked_at"]
+    assert (
+        len(requests) == 1
+        and requests[0].method == "GET"
+        and requests[0].url.path == "/api/ps"
+    )
+
+
+@pytest.mark.asyncio
+async def test_models_endpoint_does_not_mark_remembered_hybrid_model_active(
+    monkeypatch,
+):
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+
+    from venom_core.api.routes import models_install as routes
+
+    models = [
+        {"name": "old-hybrid", "provider": "ollama"},
+        {"name": "Qwen/Qwen3.5-9B", "provider": "transformers"},
+    ]
+    monkeypatch.setattr(
+        routes,
+        "get_model_manager",
+        lambda: SimpleNamespace(
+            list_local_models=AsyncMock(return_value=models),
+            _resolve_ollama_tags_url=lambda: "http://localhost:11435/api/tags",
+        ),
+    )
+    runtime = SimpleNamespace(
+        provider="openrouter",
+        model_name="remote",
+        to_payload=lambda: {"provider": "openrouter", "model": "remote"},
+    )
+    monkeypatch.setattr(routes, "get_active_llm_runtime", lambda: runtime)
+    monkeypatch.setattr(
+        routes.config_manager,
+        "get_runtime_snapshot",
+        lambda **_: {
+            "config": {"HYBRID_LOCAL_MODEL": "old-hybrid"},
+            "active_model_id": "remote",
+        },
+    )
+    monkeypatch.setattr(
+        routes, "probe_runtime_status", AsyncMock(return_value=("ready", None))
+    )
+    monkeypatch.setattr(
+        routes,
+        "runtime_inventory",
+        AsyncMock(return_value={"ollama": {"status": "offline", "models": None}}),
+    )
+    result = await routes.list_models()
+    assert not any(m["active"] or m["selected"] for m in result["models"])
+    assert result["models"][1]["activation_supported"] is False
+    assert result["models"][1]["chat_compatible"] is False
+    assert "transformers" in result["providers"]
+    assert (
+        routes.runtime_inventory.call_args.args[0]["ollama"]
+        == "http://localhost:11435/api/tags"
+    )

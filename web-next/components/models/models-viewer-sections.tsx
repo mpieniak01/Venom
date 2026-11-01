@@ -459,17 +459,14 @@ export function InstalledAndOperations({
         ollama: "Ollama",
         vllm: "vLLM",
         onnx: "ONNX",
+        other: t("models.sections.installed.other"),
     };
     const providerSections = Object.entries(installedBuckets).map(([provider, data]) => ({
         provider,
         label: runtimeLabels[provider] ?? provider.toUpperCase(),
         data,
     }));
-    let installedBadge = t("models.sections.installed.noModels");
-    if (installedModels.length) {
-        const suffix = installedModels.length > 1 ? "s" : "";
-        installedBadge = `${installedModels.length} ${t("models.runtime.model").toLowerCase()}${suffix}`;
-    }
+    const installedBadge = installed.error ? t("models.status.engine.unverified") : t("models.sections.installed.count", { count: installedModels.length });
 
     const renderOperationsBody = () => {
         if (operations.loading) {
@@ -498,22 +495,26 @@ export function InstalledAndOperations({
                 />
                 {!installedCollapsed && (
                     <div className="mt-5 space-y-6">
-                        {installed.loading ? <p className="text-xs text-[color:var(--ui-muted)]">{t("models.ui.loading")}</p> : (
+                        {installed.error && <p role="alert" className="text-sm text-amber-300">{t("models.sections.installed.fetchError")}</p>}
+                        {installed.loading && !installed.data ? <p className="text-xs text-[color:var(--ui-muted)]">{t("models.ui.loading")}</p> : (
                             <>
                                 {providerSections.length === 0 && (
                                     <p className="text-[11px] text-[color:var(--ui-muted)]">{t("models.sections.installed.noModels")}</p>
                                 )}
-                                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                                <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-4">
                                     {providerSections.map(p => (
                                         <div key={p.label} className="rounded-2xl border border-[color:var(--ui-border)] bg-[color:var(--ui-surface)] p-3">
                                             <div className="mb-2 flex items-center justify-between">
                                                 <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[color:var(--text-primary)]">{p.label}</p>
-                                                <Badge tone="neutral" className="text-[9px]">{p.data.length}</Badge>
+                                                <div className="flex items-center gap-2">
+                                                    {p.provider !== "other" && <Badge tone={installed.data?.engine_statuses?.[p.provider]?.status === "online" ? "success" : "neutral"} className="text-[9px]">{t(`models.status.engine.${installed.data?.engine_statuses?.[p.provider]?.status ?? "unverified"}`)}</Badge>}
+                                                    <Badge tone="neutral" className="text-[9px]">{p.data.length}</Badge>
+                                                </div>
                                             </div>
                                             <div className="space-y-2">
                                                 {p.data.length ? p.data.map((m: ModelInfo) => (
                                                     <InstalledCard
-                                                        key={m.name} model={m}
+                                                        key={`${m.provider}:${m.name}:${m.path ?? ""}:${m.revision ?? ""}`} model={m}
                                                         pendingActivate={pendingActions[`activate:${m.name}`]}
                                                         pendingRemove={pendingActions[`remove:${m.name}`]}
                                                         onActivate={() => handleActivate(m)}

@@ -454,6 +454,9 @@ async def test_model_manager_list_local_models_workspace_folder(tmp_path, monkey
     hf_dir = workspace / "models"
     hf_dir.mkdir()
     (hf_dir / "gemma-3").mkdir()
+    (hf_dir / "gemma-3/config.json").write_text("{}")
+    (hf_dir / "gemma-3/model.safetensors").write_bytes(b"weights")
+    (hf_dir / "empty-workspace").mkdir()
 
     _install_discovery_http_client_stub(
         monkeypatch,
@@ -462,6 +465,7 @@ async def test_model_manager_list_local_models_workspace_folder(tmp_path, monkey
     models = await manager.list_local_models()
 
     assert any(model["name"] == "gemma-3" for model in models)
+    assert not any(model["name"] == "empty-workspace" for model in models)
     assert any(model.get("source") == "models" for model in models)
 
 
@@ -769,3 +773,10 @@ def test_activate_adapter_switches_active(tmp_path):
     # Drugi adapter jest aktywny
     version2 = manager.get_version("training_002")
     assert version2.is_active is True
+
+
+@pytest.fixture(autouse=True)
+def isolated_model_cache_home(tmp_path, monkeypatch):
+    from pathlib import Path
+
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)

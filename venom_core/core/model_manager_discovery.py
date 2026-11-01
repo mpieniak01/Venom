@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import os
 import time
@@ -129,13 +130,10 @@ class ModelManagerDiscoveryMixin:
     ) -> None:
         size_bytes = self._calculate_model_size_bytes(model_path)
         onnx_metadata = self._load_onnx_metadata(model_path)
-        metadata_provider = str(onnx_metadata.get("provider", "")).lower()
         model_type, provider = self._detect_model_type_and_provider(
             model_path=model_path,
             provider=provider,
         )
-        if metadata_provider == "onnx":
-            provider = "onnx"
 
         onnx_payload: Dict[str, Any] = {}
         if provider == "onnx":
@@ -308,17 +306,7 @@ class ModelManagerDiscoveryMixin:
                 continue
             registry = relative_parts[0]
             entry_name = self._build_ollama_manifest_entry_name(relative_parts)
-            try:
-                size_bytes = manifest_size(manifest_path)
-            except (
-                ValueError,
-                TypeError,
-                KeyError,
-                OSError,
-                StopIteration,
-                AttributeError,
-            ):
-                continue
+            size_bytes = self._read_manifest_size_bytes(manifest_path)
             if not size_bytes:
                 continue
             entries.append(
@@ -326,6 +314,7 @@ class ModelManagerDiscoveryMixin:
                     "name": entry_name,
                     "size_gb": size_bytes / (1024**3) if size_bytes else None,
                     "type": "ollama",
+                    "digest": hashlib.sha256(manifest_path.read_bytes()).hexdigest(),
                     "quantization": "unknown",
                     "path": f"ollama://{registry}",
                     "source": "ollama",
@@ -356,21 +345,17 @@ class ModelManagerDiscoveryMixin:
 
     @staticmethod
     def _read_manifest_size_bytes(manifest_path: Path) -> int:
-        size_bytes = 0
         try:
-            manifest_payload = json.loads(manifest_path.read_text("utf-8"))
-            layers = manifest_payload.get("layers") or []
-            size_bytes = sum(
-                layer.get("size", 0) for layer in layers if isinstance(layer, dict)
-            )
-            config = manifest_payload.get("config") or {}
-            if isinstance(config, dict):
-                size_bytes += config.get("size", 0) or 0
-        except Exception as exc:
-            logger.warning(
-                "Nie udało się odczytać manifestu %s: %s", manifest_path, exc
-            )
-        return size_bytes
+            return manifest_size(manifest_path)
+        except (
+            ValueError,
+            TypeError,
+            KeyError,
+            OSError,
+            StopIteration,
+            AttributeError,
+        ):
+            return 0
 
     def _collect_ollama_entries(
         self,
@@ -429,16 +414,20 @@ class ModelManagerDiscoveryMixin:
             logger.warning("Nie udało się zapisać cache modeli Ollama: %s", exc)
 
     def _load_ollama_cache(self, models: Dict[str, Dict[str, Any]]) -> None:
+        """Enrich current manifests only; cached presence/activity is never evidence."""
         try:
             if not self.ollama_cache_path.exists():
                 return
-            cached_entries = json.loads(self.ollama_cache_path.read_text("utf-8"))
-            for entry in cached_entries:
-                entry_name = entry.get("name")
-                if entry_name:
-                    models.setdefault(f"ollama::{entry_name}", entry)
-        except Exception as cache_error:
-            logger.warning("Nie udało się wczytać cache modeli Ollama: %s", cache_error)
+            for entry in json.loads(self.ollama_cache_path.read_text("utf-8")):
+                current = models.get("ollama::" + str(entry.get("name", "")))
+                if (
+                    current
+                    and current.get("digest")
+                    and current["digest"] == entry.get("digest")
+                ):
+                    current["quantization"] = entry.get("quantization", "unknown")
+        except (OSError, ValueError, TypeError, AttributeError):
+            logger.debug("Ignoring unavailable historical Ollama metadata")
 
     def _register_manifest_fallbacks(
         self,
@@ -506,6 +495,7 @@ class ModelManagerDiscoveryMixin:
         self._scan_local_dirs(search_dirs, models)
         # Offline evidence is the current manifests AND blobs, never a historical cache.
         self._register_manifest_fallbacks(search_dirs, models)
+        self._load_ollama_cache(models)
         self._discover_other_models(search_dirs, models)
         return models
 

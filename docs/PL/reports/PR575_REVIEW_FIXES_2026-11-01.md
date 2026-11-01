@@ -87,3 +87,34 @@ samego PR. Wymagany hook pre-push ponownie sprawdza publikowany SHA. Zamknięcie
 13 zgłoszeń musi potwierdzić świeży skan Sonara; recenzje pozostają do ponownej
 oceny. Nie akceptowano zgłoszeń jako false positive i nie obniżano progów.
 Prywatne logi i JSON kontroli pozostają w ignorowanym test-results.
+
+
+## Uzupełnienie po świeżym skanie i pełnej ponownej recenzji
+
+Skan SHA `06d3738e` zamknął 13 poprzednich zgłoszeń, ale wskazał trzy kolejne
+uwagi. Zebrano je z jedyną nową uwagą zakończonej recenzji CodeRabbit i
+przygotowano jeden wspólny komplet, bez wysyłek dla pojedynczych uwag.
+
+| Zgłoszenie | Naprawa |
+|---|---|
+| `AaGW89vHS_nD4WvEhbh1`, S5707 | Wynik Task.exception zapisano i sprawdzono jako BaseException przed użyciem jako przyczyny wyjątku. |
+| `AaGW89qIS_nD4WvEhbhz`, S5443 | Analizator reagował na dosłowny fragment /tmp w prywatnej ścieżce. Katalog nazywa się teraz /run/venom-maintenance/temporary; uprawnienia i izolacja pozostają potwierdzone kontrolą rzeczywistą. Nie zastosowano wyłączenia reguły. |
+| `AaGW89u1S_nD4WvEhbh0`, S5713 | TimeoutError jest podklasą OSError; usunięto redundantny element except, zachowując regresję obsługi timeoutu. |
+| Rabbit `PRRT_kwDOQjrUfs6yZ44O` | clear_all_runs zachowuje przebieg w kwarantannie, usuwa pozostałe i po zakończeniu zgłasza pierwszy błąd. Test potwierdza zachowanie artefaktów kwarantanny i usunięcie niezależnego ukończonego przebiegu. |
+
+Końcowa kontrola kodu `433771d38ad3c1dc3424c1f48f7430ee753c32f4`:
+
+- Celowane pytest: **275 PASS**; mypy 20 plików: PASS; Ruff/hooki: PASS.
+- `make test-ci-lite`, `make test-catalog-check`, `make test-groups-check`: PASS.
+- `make pr-fast`: **190,18 s**, 1411 testów backendu, 358 komponentowych,
+  12 Studio i kontrole frontendu: PASS.
+- Pokrycie zmienionych linii: **88,45%**; końcowa diagnostyka PASS.
+- Prywatny katalog pod finalną nazwą: rzeczywista kontrola PASS, UID 1000,
+  prawa 0700, oracle chroniony przed zapisem/usunięciem, brak sieci i zmian
+  istniejących kontenerów. Nie wykonywano generacji modeli.
+
+CodeRabbit podaje także automatyczny wskaźnik pokrycia docstrings dla całego
+PR. To zalecenie dokumentacyjne; lokalny kontrakt bramek nie ustanawia jego
+progu 80%. Nie rozszerzano napraw defektów o masowe kosmetyczne zmiany funkcji
+i testów. Nie zmieniano konfiguracji tego wskaźnika ani nie uznawano go za
+zaliczony. Zamknięcie nowych trzech zgłoszeń wymaga świeżego skanu GitHub.

@@ -114,6 +114,7 @@ tests/test_creative_director_agent.py
 tests/test_critic_agent.py
 tests/test_dataset_curator.py
 tests/test_dead_code_audit.py
+tests/test_default_question_setup.py
 tests/test_dependency_profiles.py
 tests/test_designer_agent.py
 tests/test_devops_agent.py
@@ -158,6 +159,10 @@ tests/test_gpu_habitat.py
 tests/test_gpu_habitat_contracts.py
 tests/test_gpu_habitat_edges_contract.py
 tests/test_gpu_habitat_runtime.py
+tests/test_granite_comparison_contract.py
+tests/test_granite_material_intake.py
+tests/test_granite_operator_contract.py
+tests/test_granite_operator_training.py
 tests/test_graph_rag_service.py
 tests/test_graph_store.py
 tests/test_hardware_bridge.py
@@ -412,6 +417,7 @@ tests/test_vast_recipes.py
 tests/test_vast_runtime_contracts.py
 tests/test_vast_selection.py
 tests/test_vast_serving.py
+tests/test_vast_training_kit.py
 tests/test_venom_core_init_compat.py
 tests/test_voice_metadata.py
 tests/test_web_skill.py

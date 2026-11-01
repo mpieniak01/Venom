@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "image": "axolotlai/axolotl-cloud@sha256:259b43034047cda72b261da7c20897eed354582c7530c77e401c908206daf0dc",
+  "source_tag": "main-20261101-py3.12-cu130-2.13.0",
+  "index_digest": "sha256:1927260516dba1308e7904b6299801dc289e265bf17f0d1adb004c62796e1f83",
+  "arch": "amd64",
+  "python": "3.12",
+  "torch": "2.13",
+  "cuda": "13.0",
+  "minimum_driver_major": 580,
+  "vastai_cli": "1.10.0",
+  "verified_at": "2026-11-01",
+  "gpu_qualified": false,
+  "profiles": {
+    "qlora": {
+      "gpu_ram_gb": 24,
+      "cpu_ram_gb": 64,
+      "disk_gb": 100,
+      "gpus": 1
+    },
+    "lora": {
+      "gpu_ram_gb": 48,
+      "cpu_ram_gb": 64,
+      "disk_gb": 100,
+      "gpus": 1
+    },
+    "full": {
+      "gpu_ram_gb": 80,
+      "cpu_ram_gb": 128,
+      "disk_gb": 100,
+      "gpus": 1
+    }
+  },
+  "sources": [
+    "https://docs.axolotl.ai/docs/docker.html",
+    "https://hub.docker.com/v2/repositories/axolotlai/axolotl-cloud/tags/main-20261101-py3.12-cu130-2.13.0",
+    "https://docs.vast.ai/guides/templates/introduction",
+    "https://docs.nvidia.com/deploy/cuda-compatibility/minor-version-compatibility.html"
+  ]
+}

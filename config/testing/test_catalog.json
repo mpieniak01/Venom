@@ -7555,6 +7555,90 @@
       ],
       "legacy_targeted": false,
       "rationale": "Exclusive host lease, cleanup, admission rejection and the existing API/service path without physical inference."
+    },
+    {
+      "path": "tests/test_granite_operator_contract.py",
+      "domain": "academy",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Granite structured tool data, assistant mask and mandatory smoke qualification."
+    },
+    {
+      "path": "tests/test_granite_operator_training.py",
+      "domain": "academy",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Granite structured tool data, assistant mask and mandatory smoke qualification."
+    },
+    {
+      "path": "tests/test_granite_comparison_contract.py",
+      "domain": "academy",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Frozen comparison datasets, isolated oracle evidence and paired latency/success aggregation."
+    },
+    {
+      "path": "tests/test_granite_material_intake.py",
+      "domain": "academy",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "CPU-only material intake, grounded receipts and masked recovery prefixes."
+    },
+    {
+      "path": "tests/test_vast_training_kit.py",
+      "domain": "academy",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Offline Vast kit configuration and dry-run isolation; no provider API, GPU or training."
+    },
+    {
+      "path": "tests/test_default_question_setup.py",
+      "domain": "academy",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Explicit pinned default question setup, idempotency and checksum guards without network."
     }
   ]
 }

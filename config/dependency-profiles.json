@@ -149,6 +149,13 @@
       "loguru==0.7.3",
       "starlette==1.3.1",
       "python-multipart==0.0.31"
+    ],
+    "granite-training": [
+      "trl==1.17.1",
+      "peft==0.21.2",
+      "datasets==5.1.0",
+      "bitsandbytes==0.50.2",
+      "jsonschema>=4.26,<5"
     ]
   },
   "profiles": {
@@ -219,6 +226,16 @@
       "input": "requirements-multi-runtime-cuda.txt",
       "lock": "requirements/locks/multi-runtime-cuda-linux-py314.txt",
       "boundary": "Dedicated isolated interpreter selected by MULTI_RUNTIME_COMPONENT_PYTHON for services.multi_runtime.main. Does not extend Light or install CPU voice/floor ONNX. Existing model/device/precision and HTTP contracts remain separate from installation qualification."
+    },
+    "granite-operator-training": {
+      "kind": "component",
+      "groups": [
+        "model-runtime",
+        "granite-training"
+      ],
+      "input": "requirements-granite-operator-training.txt",
+      "lock": "requirements/locks/granite-operator-training-linux-py314.txt",
+      "boundary": "Offline Granite LoRA/QLoRA worker only; separate venv, no application, voice, ONNX or vLLM. Training is explicit and requires a matching smoke qualification."
     }
   },
   "aliases": {

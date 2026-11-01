@@ -193,9 +193,18 @@ venom/
 git clone https://github.com/mpieniak01/Venom.git
 cd Venom
 pip install -r requirements.txt
+python scripts/prepare_benchmark_questions.py --download
 cp .env.dev.example .env.dev
 make start
 ```
+The public default bank is prepared explicitly during installation and stays in
+ignored data/datasets/. The command restores a checksum-pinned historical Git
+blob, or downloads the same public file if history is unavailable. Existing
+local banks are preserved; API startup does not download data. Profile bootstrap
+can combine this step with --prepare-benchmark-questions. For Docker, run the
+same setup command inside the application container with its writable local
+data directory before using the model benchmark.
+
 
 Installation sets and launch profiles are separate concepts. The default launch is **Full/dev with Turbopack**; `requirements.txt` is an installation alias for Light. Full features require their declared dependencies. See [dependency boundaries and qualification](docs/DEPENDENCY_PROFILES.md) and [Full/Light environments](docs/STACK_PROFILES.md).
 

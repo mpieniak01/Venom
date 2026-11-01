@@ -33,6 +33,7 @@ MINIMUM_FREE_GIB = {
     "full": 16,
     "full-ci": 20,
     "multi-runtime-cuda": 12,
+    "granite-operator-training": 14,
 }
 
 
@@ -495,6 +496,11 @@ def main() -> int:
     parser.add_argument("--root", type=Path, default=ROOT)
     parser.add_argument("--update", action="store_true")
     parser.add_argument(
+        "--prepare-benchmark-questions",
+        action="store_true",
+        help="Explicitly initialize the ignored public default question bank after dependency installation",
+    )
+    parser.add_argument(
         "--storage-root",
         type=Path,
         help="Also check the physical backing volume (for WSL, e.g. /mnt/f)",
@@ -514,6 +520,17 @@ def main() -> int:
             storage_root=args.storage_root,
             minimum_free_gib=args.min_free_gib,
         )
+        if args.prepare_benchmark_questions:
+            subprocess.run(
+                [
+                    sys.executable,
+                    str(args.root / "scripts/prepare_benchmark_questions.py"),
+                    "--root",
+                    str(args.root),
+                    "--download",
+                ],
+                check=True,
+            )
     except (ValueError, KeyError, OSError, subprocess.SubprocessError) as error:
         print(f"Profile installation ERROR: {error}", file=sys.stderr)
         return 1

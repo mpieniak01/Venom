@@ -31,7 +31,7 @@ class LocalVerifier:
         self.oracle = workspace / "oracle_private.py"
 
     def structured(self, command, timeout):
-        command = command.replace("/tmp/maintenance_oracle.py", str(self.oracle))
+        command = command.replace(grading.ORACLE_PATH, str(self.oracle))
         result = subprocess.run(
             shlex.split(command),
             cwd=self.workspace,
@@ -340,3 +340,64 @@ def test_real_test_command_may_follow_cd_but_no_tests_collected_is_not_success()
     run["calls"][0]["result"]["stdout"] = "1 passed"
     assert grading.grade_operator(CASES["operator-01"], run)
     assert not grading._python_test('echo "python -m pytest -q test_visible.py"')
+
+
+@pytest.mark.parametrize(
+    "payload",
+    ["import os; os._exit(0)", "def total(items):\n    import os\n    os._exit(0)\n"],
+)
+def test_premature_process_exit_cannot_pass_repair(tmp_path, verifier, payload):
+    case = CASES["repair-01"]
+    for name, text in case.files.items():
+        (tmp_path / name).write_text(text)
+    (tmp_path / "maintenance_fixture.py").write_text(payload)
+    result = grading.verify_repair(case, tmp_path, "sha256:fixture")
+    assert result["passed"] is False
+    assert result["reason"] == "independent_test_failed"
+
+
+@pytest.mark.parametrize(
+    "stdout",
+    ["", "no tests collected", "0 passed", "1 passed, 1 failed", "1 passed, 1 skipped"],
+)
+def test_pytest_requires_actual_successful_test_completion(stdout):
+    assert not grading._pytest_completed({"exit_code": 0, "stdout": stdout})
+
+
+@pytest.mark.parametrize(
+    "command,passed",
+    [
+        ("rg '^def venom_comet_transporter_9348' venom_core", True),
+        ("grep -rn venom_comet_transporter_9348 venom_core", True),
+        ("git grep venom_comet_transporter_9348", True),
+        ("printf rg; false venom_comet_transporter_9348", False),
+        ("echo 'rg venom_comet_transporter_9348'", False),
+    ],
+)
+def test_missing_feature_search_recognizes_actual_tool(command, passed):
+    run = {
+        "calls": [
+            {
+                "name": "Terminal",
+                "arguments": {"command": command},
+                "result": {"exit_code": 1},
+            }
+        ]
+    }
+    final = {"status": "not_found", "locations": []}
+    result = grading._grade_localization(CASES["localization-10"], run, ROOT, final)
+    assert result["passed"] is passed
+
+
+def test_successful_oracle_does_not_hide_early_exit_during_pytest_collection(
+    tmp_path, verifier
+):
+    case = CASES["repair-01"]
+    for name, text in case.files.items():
+        (tmp_path / name).write_text(text)
+    implementation = case.gold["maintenance_fixture.py"]
+    implementation += "\nimport sys, os\nif 'pytest' in sys.modules:\n    os._exit(0)\n"
+    (tmp_path / "maintenance_fixture.py").write_text(implementation)
+    result = grading.verify_repair(case, tmp_path, "sha256:fixture")
+    assert result["passed"] is False
+    assert result["reason"] == "visible_test_failed"

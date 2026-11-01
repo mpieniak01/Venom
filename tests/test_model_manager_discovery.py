@@ -743,3 +743,13 @@ def test_corrupted_snapshot_registration_does_not_hide_other_models(
         mgr, [mgr.models_dir], models
     )
     assert [m["name"] for m in models.values()] == ["org/good"]
+
+
+@pytest.mark.parametrize("selected", [None, ""])
+def test_absent_model_selection_remains_unselected(selected):
+    from venom_core.services.model_runtime_inventory import annotate_runtime_models
+
+    models = [{"name": "org/model", "provider": "ollama"}]
+    annotate_runtime_models(models, {}, "ollama", selected)
+    assert models[0]["selected"] is False
+    assert models[0]["loaded"] is None

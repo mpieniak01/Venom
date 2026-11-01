@@ -3,16 +3,18 @@
 import ast
 import base64
 import re
+import secrets
 import shlex
 import tempfile
 from pathlib import Path
 
-from .sandbox import TrialHabitat
+from .sandbox import ORACLE_PATH, TrialHabitat
 from .scenarios import Scenario, validate_locations
 
 VISIBLE_TEST = "test_visible.py"
 OPERATOR_NOTES = "operator_notes.md"
 FIXTURE_MODULE = "maintenance_fixture.py"
+REGRESSION_TEST = "test_regression.py"
 
 
 def _shell_commands(command: str) -> list[list[str]]:
@@ -259,7 +261,7 @@ def _put_oracle(habitat: TrialHabitat, source: str) -> None:
         [
             "python",
             "-c",
-            "import base64,pathlib,sys; p=pathlib.Path('/tmp/maintenance_oracle.py'); p.write_bytes(base64.b64decode(sys.argv[1])); p.chmod(0o444)",
+            f"import base64,pathlib,sys; p=pathlib.Path({ORACLE_PATH!r}); p.write_bytes(base64.b64decode(sys.argv[1])); p.chmod(0o444)",
             encoded,
         ],
         user="0:0",  # Trusted setup only; model/tool execution remains UID 1000.
@@ -300,7 +302,7 @@ def _copy_proposed_files(case: Scenario, workspace: Path, target: Path) -> dict 
         if name not in case.allowed_changes and text != initial:
             return {"passed": False, "reason": "protected_test_modified"}
         (target / name).write_text(text)
-    regression = workspace / "test_regression.py"
+    regression = workspace / REGRESSION_TEST
     if case.id == "repair-07":
         if (
             regression.is_symlink()
@@ -312,8 +314,44 @@ def _copy_proposed_files(case: Scenario, workspace: Path, target: Path) -> dict 
     return None
 
 
+def _pytest_completed(result: dict) -> bool:
+    stdout = result.get("stdout", "")
+    return (
+        result.get("exit_code") == 0
+        and re.search(r"(?<!\d)[1-9]\d* passed\b", stdout) is not None
+        and re.search(r"\b(?:failed|errors?|skipped|xfailed|xpassed)\b", stdout.lower())
+        is None
+        and not result.get("output_truncated", False)
+        and not result.get("execution_timed_out", False)
+    )
+
+
+def _verify_regression(habitat, case, target) -> dict | None:
+    if case.id != "repair-07":
+        return None
+    regression_check = habitat.structured(f"python -m pytest -q {REGRESSION_TEST}", 15)
+    if not _pytest_completed(regression_check):
+        return {
+            "passed": False,
+            "reason": "regression_test_failed",
+            "check": regression_check,
+        }
+    (target / FIXTURE_MODULE).write_text(case.files[FIXTURE_MODULE])
+    fails_before = habitat.structured(f"python -m pytest -q {REGRESSION_TEST}", 15)
+    if (
+        fails_before.get("exit_code") != 1
+        or re.search(r"[1-9]\d* failed\b", fails_before.get("stdout", "")) is None
+    ):
+        return {
+            "passed": False,
+            "reason": "regression_does_not_detect_fault",
+            "check": fails_before,
+        }
+    return None
+
+
 def verify_repair(case: Scenario, workspace: Path, image: str) -> dict:
-    """Only the proposed patch and original tests enter a fresh verifier container."""
+    """Require completed assertions and tests, not merely a successful exit code."""
     with tempfile.TemporaryDirectory(prefix="venom-maintenance-check-") as temp:
         target = Path(temp)
         copy_error = _copy_proposed_files(case, workspace, target)
@@ -321,52 +359,54 @@ def verify_repair(case: Scenario, workspace: Path, image: str) -> dict:
             return copy_error
         habitat = TrialHabitat(target, image, read_only_workspace=True)
         try:
+            nonce = secrets.token_hex(24)
             _put_oracle(
                 habitat,
                 "import sys,runpy\nsys.path.insert(0, '/workspace')\nfrom maintenance_fixture import *\n"
                 + (case.oracle or "")
-                + "\nrunpy.run_path('/workspace/test_visible.py')['test_contract']()\n",
+                + "\nrunpy.run_path('/workspace/test_visible.py')['test_contract']()\n"
+                + f"print({nonce!r})\n",
             )
-            observed = habitat.structured("python -B /tmp/maintenance_oracle.py", 15)
-            if observed["exit_code"] != 0:
+            observed = habitat.structured(f"python -B {ORACLE_PATH}", 15)
+            if (
+                observed.get("exit_code") != 0
+                or nonce not in observed.get("stdout", "").splitlines()
+            ):
                 return {
                     "passed": False,
                     "reason": "independent_test_failed",
                     "check": observed,
                 }
-            visible = habitat.structured("python -m pytest -q test_visible.py", 15)
-            if visible["exit_code"] != 0:
+            visible = habitat.structured(f"python -m pytest -q {VISIBLE_TEST}", 15)
+            if not _pytest_completed(visible):
                 return {
                     "passed": False,
                     "reason": "visible_test_failed",
                     "check": visible,
                 }
-            if case.id == "repair-07":
-                regression_check = habitat.structured(
-                    "python -m pytest -q test_regression.py", 15
-                )
-                if regression_check["exit_code"] != 0:
-                    return {
-                        "passed": False,
-                        "reason": "regression_test_failed",
-                        "check": regression_check,
-                    }
-                (target / FIXTURE_MODULE).write_text(case.files[FIXTURE_MODULE])
-                fails_before = habitat.structured(
-                    "python -m pytest -q test_regression.py", 15
-                )
-                if fails_before["exit_code"] == 0:
-                    return {
-                        "passed": False,
-                        "reason": "regression_does_not_detect_fault",
-                    }
+            regression_error = _verify_regression(habitat, case, target)
+            if regression_error is not None:
+                return regression_error
             return {
                 "passed": True,
                 "reason": "independent_tests_pass",
                 "check": observed,
+                "visible_check": visible,
             }
         finally:
             habitat.close()
+
+
+def _negative_search(command: str) -> bool:
+    for tokens in _shell_commands(command):
+        if not tokens:
+            continue
+        search = Path(tokens[0]).name in {"rg", "grep"} or tokens[:2] == ["git", "grep"]
+        if search and any(
+            "venom_comet_transporter_9348" in token for token in tokens[1:]
+        ):
+            return True
+    return False
 
 
 def _grade_localization(
@@ -381,8 +421,7 @@ def _grade_localization(
     if case.id == "localization-10":
         valid = valid and any(
             c["name"] == "Terminal"
-            and "rg" in c["arguments"].get("command", "")
-            and "venom_comet_transporter_9348" in c["arguments"].get("command", "")
+            and _negative_search(c["arguments"].get("command", ""))
             and c["result"].get("exit_code") == 1
             for c in run["calls"]
         )

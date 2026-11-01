@@ -70,6 +70,9 @@ async def runtime_inventory(endpoints: dict[str, str]) -> dict:
 
 
 def _matching_model_indexes(models: list[dict], name: str) -> set[int]:
+    if not isinstance(name, str) or not name:
+        return set()
+
     def identifiers(model: dict) -> set[str]:
         values = {model.get("name")}
         path = model.get("path")

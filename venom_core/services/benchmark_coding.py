@@ -30,6 +30,8 @@ from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
+_MAINTENANCE_CLEANUP_UNCONFIRMED = "maintenance_cleanup_unconfirmed"
+
 _SCHEDULER_SCRIPT = "scripts/ollama_bench/scheduler.py"
 _MAINTENANCE_TASKS = frozenset(
     {"maintenance_operator", "maintenance_repair", "maintenance_localization"}
@@ -229,6 +231,11 @@ class CodingBenchmarkService:
         )
         self._runs: dict[str, CodingBenchmarkRun] = {}
         self._active_procs: dict[str, subprocess.Popen[str]] = {}
+        self._maintenance_tasks: dict[str, asyncio.Task[None]] = {}
+        self._maintenance_pending_cleanup: set[str] = set()
+        self._maintenance_cancel_requests: set[str] = set()
+        self._maintenance_started: set[str] = set()
+        self._maintenance_cleanup_started: set[str] = set()
         self._lock = threading.Lock()
         self._load_persisted_runs()
 
@@ -546,12 +553,11 @@ class CodingBenchmarkService:
             )
             with self._lock:
                 self._runs[run_id] = run
-            self._persist_meta(run)
-            if not hasattr(self, "_maintenance_tasks"):
-                self._maintenance_tasks = set()
-            task = asyncio.create_task(self._run_owned_maintenance(run, lease))
-            self._maintenance_tasks.add(task)
-            task.add_done_callback(self._maintenance_finished)
+                self._maintenance_pending_cleanup.add(run_id)
+                self._persist_meta(run)
+                task = asyncio.create_task(self._run_owned_maintenance(run, lease))
+                self._maintenance_tasks[run_id] = task
+                task.add_done_callback(partial(self._maintenance_finished, run_id))
             return run_id
         except BaseException:
             with lease.cleanup(confirm_quiescent=lambda: True):
@@ -559,8 +565,10 @@ class CodingBenchmarkService:
             lease.release()
             raise
 
-    def _maintenance_finished(self, task: asyncio.Task) -> None:
-        self._maintenance_tasks.discard(task)
+    def _maintenance_finished(self, run_id: str, task: asyncio.Task) -> None:
+        with self._lock:
+            if self._maintenance_tasks.get(run_id) is task:
+                self._maintenance_tasks.pop(run_id, None)
         if not task.cancelled() and task.exception() is not None:
             logger.error(
                 "Maintenance cleanup failed; inspect runtime admission quarantine"
@@ -581,34 +589,87 @@ class CodingBenchmarkService:
                 return False
         return process.poll() is not None
 
+    def _spawn_maintenance_child(self, run, command):
+        process = subprocess.Popen(
+            command,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            cwd=str(self.repo_root),
+            env=self._scheduler_environment(run),
+        )
+        with self._lock:
+            self._active_procs[run.run_id] = process
+        return process
+
     async def _spawn_maintenance_process(self, run, command):
         pending = asyncio.get_running_loop().run_in_executor(
-            None,
-            partial(
-                subprocess.Popen,
-                command,
-                text=True,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                cwd=str(self.repo_root),
-                env=self._scheduler_environment(run),
-            ),
+            None, self._spawn_maintenance_child, run, command
         )
-        cancelled = None
-        while not pending.done():
+        try:
+            return await asyncio.shield(pending)
+        except asyncio.CancelledError:
+            # Spawning cannot be cancelled in its thread. Retain the actual child
+            # in _active_procs before propagating cancellation to owned cleanup.
             try:
                 await asyncio.shield(pending)
-            except asyncio.CancelledError as exc:
-                # The caller must retire a child created during cancellation.
-                cancelled = exc
-        return pending.result(), cancelled
+            except Exception:
+                logger.debug("Maintenance spawn failed while its owner was cancelling")
+            raise
+
+    async def _cancel_maintenance_task(self, run_id: str, task: asyncio.Task) -> None:
+        with self._lock:
+            started = run_id in self._maintenance_started
+            cleaning = run_id in self._maintenance_cleanup_started
+        if started and not cleaning and not task.done() and not task.cancelling():
+            task.cancel()
+        await asyncio.wait({task})
+        if not task.cancelled() and task.exception() is not None:
+            raise RuntimeError(_MAINTENANCE_CLEANUP_UNCONFIRMED) from task.exception()
+        with self._lock:
+            if run_id in self._maintenance_pending_cleanup:
+                raise RuntimeError(_MAINTENANCE_CLEANUP_UNCONFIRMED)
+
+    def _stop_maintenance_task(self, run_id: str) -> None:
+        with self._lock:
+            if run_id not in self._maintenance_pending_cleanup:
+                return
+            task = self._maintenance_tasks.get(run_id)
+            self._maintenance_cancel_requests.add(run_id)
+        if task is None or not task.get_loop().is_running():
+            raise RuntimeError(_MAINTENANCE_CLEANUP_UNCONFIRMED)
+        try:
+            caller_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            caller_loop = None
+        if caller_loop is task.get_loop():
+            raise RuntimeError("maintenance_cleanup_pending")
+        pending = asyncio.run_coroutine_threadsafe(
+            self._cancel_maintenance_task(run_id, task), task.get_loop()
+        )
+        try:
+            pending.result(timeout=30)
+        except TimeoutError as exc:
+            # The cleanup remains owned by its loop; artifacts remain intact.
+            raise RuntimeError("maintenance_cleanup_pending") from exc
+
+    def _maintenance_process_quiescent(self, run_id: str) -> bool:
+        with self._lock:
+            process = self._active_procs.get(run_id)
+        return process is None or process.poll() is not None
 
     async def _run_owned_maintenance(self, run, lease) -> None:
         process = None
+        with self._lock:
+            self._maintenance_started.add(run.run_id)
         try:
+            if run.run_id in self._maintenance_cancel_requests:
+                raise asyncio.CancelledError()
             with lease.operation(
                 kind="maintenance_worker",
-                confirm_quiescent=lambda: process is None or process.poll() is not None,
+                confirm_quiescent=lambda: self._maintenance_process_quiescent(
+                    run.run_id
+                ),
             ):
                 run.status, run.started_at = "running", _utc_now_iso()
                 self._persist_meta(run)
@@ -618,17 +679,12 @@ class CodingBenchmarkService:
                     "TERM",
                     *self._build_scheduler_command(run),
                 ]
-                process, cancelled = await self._spawn_maintenance_process(run, command)
-                if cancelled is not None:
-                    raise cancelled
-                with self._lock:
-                    self._active_procs[run.run_id] = process
+                process = await self._spawn_maintenance_process(run, command)
                 _, stderr = await asyncio.to_thread(process.communicate)
                 if self._state_file(run.run_id).exists():
                     run.jobs = _parse_scheduler_state(self._state_file(run.run_id))
                 self._finalize_run_status(run, process.returncode, stderr)
         except asyncio.CancelledError:
-            await asyncio.to_thread(self._retire_maintenance_process, process)
             run.status, run.error_message = "failed", "maintenance_cancelled"
             raise
         except Exception as exc:
@@ -637,6 +693,10 @@ class CodingBenchmarkService:
                 "maintenance_worker_" + type(exc).__name__,
             )
         finally:
+            with self._lock:
+                self._maintenance_cleanup_started.add(run.run_id)
+                if process is None:
+                    process = self._active_procs.get(run.run_id)
             stopped = await asyncio.to_thread(self._retire_maintenance_process, process)
             run.finished_at = _utc_now_iso()
             with self._lock:
@@ -647,14 +707,21 @@ class CodingBenchmarkService:
                 cleanup_run_containers,
             )
 
-            containers_stopped = cleanup_run_containers(run.run_id)
+            containers_stopped = await asyncio.to_thread(
+                cleanup_run_containers, run.run_id
+            )
             with lease.cleanup(
                 confirm_quiescent=lambda: containers_stopped and stopped
             ):
                 logger.debug("Maintenance worker cleanup complete")
-            lease.release()
+            if lease.release() is False:
+                raise RuntimeError("maintenance_release_unconfirmed")
             with self._lock:
                 self._active_procs.pop(run.run_id, None)
+                self._maintenance_pending_cleanup.discard(run.run_id)
+                self._maintenance_started.discard(run.run_id)
+                self._maintenance_cleanup_started.discard(run.run_id)
+                self._maintenance_cancel_requests.discard(run.run_id)
 
     def _scheduler_environment(self, run: CodingBenchmarkRun) -> dict[str, str] | None:
         if not set(run.config.tasks) <= _MAINTENANCE_TASKS:
@@ -820,6 +887,7 @@ class CodingBenchmarkService:
         """Usuwa run. Zwraca True jeśli usunięto, False jeśli nie znaleziono."""
         if not _is_valid_run_id(run_id):
             return False
+        self._stop_maintenance_task(run_id)
         self._stop_active_process(run_id)
         with self._lock:
             run = self._runs.pop(run_id, None)
@@ -838,20 +906,7 @@ class CodingBenchmarkService:
         return True
 
     def clear_all_runs(self) -> int:
-        """Usuwa wszystkie run. Zwraca liczbę usuniętych."""
+        """Delete only after each run's worker, containers and lease are retired."""
         with self._lock:
-            run_ids = list(self._runs.keys())
-            self._runs.clear()
-        for run_id in run_ids:
-            self._stop_active_process(run_id)
-        count = len(run_ids)
-        for run_id in run_ids:
-            try:
-                import shutil
-
-                run_dir = self._run_dir(run_id)
-                if run_dir.exists():
-                    shutil.rmtree(run_dir)
-            except Exception as exc:
-                logger.warning(f"Nie można usunąć katalogu run {run_id}: {exc}")
-        return count
+            run_ids = list(self._runs)
+        return sum(self.delete_run(run_id) for run_id in run_ids)

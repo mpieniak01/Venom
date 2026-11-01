@@ -12,6 +12,9 @@ from typing import Any
 from venom_core.infrastructure.docker_habitat import DockerHabitat
 
 CONTAINER_WORKSPACE = "/workspace"
+RUNTIME_DIRECTORY = "/run/venom-maintenance"
+TEMP_DIRECTORY = RUNTIME_DIRECTORY + "/tmp"
+ORACLE_PATH = RUNTIME_DIRECTORY + "/oracle.py"
 
 PYTEST_PROFILE = "-o addopts= -o filterwarnings= --noconftest"
 
@@ -47,7 +50,7 @@ class TrialHabitat(DockerHabitat):
                 }
             },
             working_dir=CONTAINER_WORKSPACE,
-            environment={"PYTEST_ADDOPTS": PYTEST_PROFILE},
+            environment={"PYTEST_ADDOPTS": PYTEST_PROFILE, "TMPDIR": TEMP_DIRECTORY},
             detach=True,
             remove=False,
             network_disabled=True,
@@ -59,7 +62,10 @@ class TrialHabitat(DockerHabitat):
             pids_limit=64,
             mem_limit="1g",
             nano_cpus=2_000_000_000,
-            tmpfs={"/tmp": "rw,noexec,nosuid,size=128m,uid=0,gid=1000,mode=1770"},
+            tmpfs={
+                RUNTIME_DIRECTORY: "rw,noexec,nosuid,size=1m,uid=0,gid=1000,mode=0750",
+                TEMP_DIRECTORY: "rw,noexec,nosuid,size=128m,uid=1000,gid=1000,mode=0700",
+            },
             labels={
                 "venom.experiment": "maintenance-comparison",
                 "venom.run_id": os.environ.get(

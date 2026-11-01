@@ -275,13 +275,14 @@ class ModelManagerDiscoveryMixin:
         *,
         model_name: str | None = None,
         model_key: str | None = None,
+        provider: str = "vllm",
     ) -> None:
         try:
             self._register_local_entry(
                 models,
                 model_path,
                 source=source_name,
-                provider="vllm",
+                provider=provider,
                 model_name=model_name,
                 model_key=model_key,
             )
@@ -550,7 +551,7 @@ class ModelManagerDiscoveryMixin:
         if not path.is_dir():
             return
         if is_hf_model_dir(path):
-            self._register_local_entry(
+            self._try_register_local_entry(
                 models,
                 path,
                 "research",
@@ -560,7 +561,7 @@ class ModelManagerDiscoveryMixin:
             )
         for checkpoint in path.glob("*.pth"):
             if nonempty_file(checkpoint):
-                self._register_local_entry(
+                self._try_register_local_entry(
                     models,
                     checkpoint,
                     "research",

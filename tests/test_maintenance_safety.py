@@ -25,6 +25,12 @@ def test_container_has_only_trial_mount_and_no_network(tmp_path):
     assert list(kwargs["volumes"]) == [str(tmp_path)]
     assert "devices" not in kwargs
     assert "privileged" not in kwargs
+    assert kwargs["environment"]["TMPDIR"] == sandbox.TEMP_DIRECTORY
+    assert "/tmp" not in kwargs["tmpfs"]
+    assert "mode=0750" in kwargs["tmpfs"][sandbox.RUNTIME_DIRECTORY]
+    assert "mode=0700" in kwargs["tmpfs"][sandbox.TEMP_DIRECTORY]
+    assert "uid=1000" in kwargs["tmpfs"][sandbox.TEMP_DIRECTORY]
+    habitat.client.containers.run.return_value.exec_run.assert_not_called()
 
 
 def test_actual_exit_stdout_stderr_are_separate_and_output_is_bounded():
@@ -278,3 +284,29 @@ def test_finish_rejects_non_object_reports(value, tmp_path):
     tools = TrialTools(SimpleNamespace(workspace_path=tmp_path), "operator")
     with pytest.raises(ValueError, match="finish_arguments_not_object"):
         tools.validate_completion(value)
+
+
+@pytest.mark.parametrize(
+    "status,payload", [(500, {}), (200, {}), (200, {"models": "invalid"})]
+)
+@pytest.mark.asyncio
+async def test_ollama_preflight_metadata_errors_are_controlled(
+    monkeypatch, status, payload
+):
+    from unittest.mock import AsyncMock
+
+    import httpx
+
+    client = httpx.AsyncClient(
+        transport=httpx.MockTransport(lambda _: httpx.Response(status, json=payload))
+    )
+    monkeypatch.setattr(preflight.httpx, "AsyncClient", lambda **_: client)
+    monkeypatch.setattr(preflight, "resource_snapshot", lambda: [])
+    monkeypatch.setattr(preflight, "_listening", AsyncMock(return_value=True))
+    controller = SimpleNamespace(
+        list_servers=lambda: [
+            {"name": "ollama", "endpoint": "http://localhost:11434/v1"}
+        ]
+    )
+    with pytest.raises(ValueError, match="maintenance_local_llm_runtime_unverified"):
+        await preflight.require_local_llms_empty(controller)

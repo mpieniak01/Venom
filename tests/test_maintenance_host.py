@@ -297,3 +297,147 @@ def test_profile_endpoint_lists_only_retained_models_when_disabled(
 def test_retired_model_is_rejected_before_worker_spawn(service):
     with pytest.raises(ValueError, match="unknown_maintenance"):
         service._validate_start_request(["codescout-4b"], ["maintenance_operator"])
+
+
+@pytest.mark.parametrize("stage", ["queued", "spawning", "running"])
+@pytest.mark.parametrize("operation", ["delete", "clear"])
+@pytest.mark.asyncio
+async def test_deletion_waits_for_owned_process_containers_and_lease(
+    service, monkeypatch, stage, operation
+):
+    lease = Lease()
+    monkeypatch.setattr(
+        service_module,
+        "get_runtime_admission",
+        lambda: SimpleNamespace(acquire=lambda **_: lease),
+    )
+    monkeypatch.setattr(preflight, "require_local_llms_empty", AsyncMock())
+    monkeypatch.setattr(service, "_scheduler_environment", lambda _: {})
+    spawn_entered, spawn_release = threading.Event(), threading.Event()
+    work_entered, retired = threading.Event(), threading.Event()
+    cleanup_entered, cleanup_release = threading.Event(), threading.Event()
+    deletion_requested = threading.Event()
+    process = MagicMock()
+    process.returncode = 0
+    process.poll.side_effect = lambda: 0 if retired.is_set() else None
+    process.terminate.side_effect = retired.set
+    process.kill.side_effect = retired.set
+    process.wait.return_value = 0
+
+    def communicate():
+        work_entered.set()
+        if not retired.wait(3):
+            raise TimeoutError("test process did not retire")
+        return "", ""
+
+    process.communicate.side_effect = communicate
+
+    def spawn(*_args, **_kwargs):
+        spawn_entered.set()
+        if stage == "spawning" and not spawn_release.wait(3):
+            raise TimeoutError("test spawn was not released")
+        return process
+
+    popen = MagicMock(side_effect=spawn)
+    monkeypatch.setattr(service_module.subprocess, "Popen", popen)
+
+    def cleanup(_run_id):
+        cleanup_entered.set()
+        if not cleanup_release.wait(3):
+            raise TimeoutError("test cleanup was not released")
+        return True
+
+    monkeypatch.setattr(sandbox, "cleanup_run_containers", cleanup)
+
+    class SignallingSet(set):
+        def add(self, value):
+            super().add(value)
+            deletion_requested.set()
+
+    service._maintenance_cancel_requests = SignallingSet()
+    run_id = await service.start_maintenance(
+        models=["mini-coder-1.7b"],
+        tasks=["maintenance_operator"],
+        trial_seconds=180,
+        controller=object(),
+    )
+    run_dir = service._run_dir(run_id)
+    if stage == "spawning":
+        assert await asyncio.to_thread(spawn_entered.wait, 2)
+    elif stage == "running":
+        assert await asyncio.to_thread(work_entered.wait, 2)
+        assert not service._maintenance_process_quiescent(run_id)
+    result = {}
+
+    def delete():
+        try:
+            result["value"] = (
+                service.delete_run(run_id)
+                if operation == "delete"
+                else service.clear_all_runs()
+            )
+        except BaseException as exc:
+            result["error"] = exc
+
+    thread = threading.Thread(target=delete)
+    thread.start()
+    try:
+        # The queued case deliberately keeps the loop from starting its worker
+        # until the synchronous API thread has registered cancellation.
+        assert deletion_requested.wait(2)
+        assert run_dir.exists()
+        lease.release.assert_not_called()
+        spawn_release.set()
+        assert await asyncio.to_thread(cleanup_entered.wait, 2)
+        assert run_dir.exists()
+        lease.release.assert_not_called()
+    finally:
+        spawn_release.set()
+        cleanup_release.set()
+        retired.set()
+        await asyncio.to_thread(thread.join, 4)
+    assert not thread.is_alive()
+    assert "error" not in result
+    assert result["value"] == (True if operation == "delete" else 1)
+    assert not run_dir.exists()
+    assert run_id not in service._runs
+    assert run_id not in service._active_procs
+    assert run_id not in service._maintenance_pending_cleanup
+    lease.release.assert_called_once()
+    if stage == "queued":
+        popen.assert_not_called()
+    else:
+        process.terminate.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_failed_container_cleanup_preserves_run_and_artifacts(
+    service, monkeypatch
+):
+    lease = Lease()
+    monkeypatch.setattr(
+        service_module,
+        "get_runtime_admission",
+        lambda: SimpleNamespace(acquire=lambda **_: lease),
+    )
+    monkeypatch.setattr(preflight, "require_local_llms_empty", AsyncMock())
+    monkeypatch.setattr(service, "_scheduler_environment", lambda _: {})
+    process = MagicMock(returncode=0)
+    process.poll.return_value = 0
+    process.communicate.return_value = ("", "")
+    monkeypatch.setattr(service_module.subprocess, "Popen", lambda *_a, **_k: process)
+    monkeypatch.setattr(sandbox, "cleanup_run_containers", lambda _: False)
+    run_id = await service.start_maintenance(
+        models=["mini-coder-1.7b"],
+        tasks=["maintenance_operator"],
+        trial_seconds=180,
+        controller=object(),
+    )
+    task = service._maintenance_tasks[run_id]
+    with pytest.raises(AssertionError):
+        await task
+    with pytest.raises(RuntimeError, match="maintenance_cleanup_unconfirmed"):
+        await asyncio.to_thread(service.delete_run, run_id)
+    assert service._run_dir(run_id).exists()
+    assert run_id in service._runs
+    lease.release.assert_not_called()

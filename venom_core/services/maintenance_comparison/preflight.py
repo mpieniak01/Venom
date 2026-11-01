@@ -28,10 +28,20 @@ async def require_local_llms_empty(controller) -> None:
             continue
         if name != "ollama":
             raise ValueError("maintenance_local_llm_runtime_running")
+        await _require_ollama_empty(endpoint)
+
+
+async def _require_ollama_empty(endpoint: str) -> None:
+    try:
         async with httpx.AsyncClient(timeout=5, follow_redirects=False) as client:
             response = await client.get(
                 endpoint.rstrip("/").removesuffix("/v1") + "/api/ps"
             )
             response.raise_for_status()
-            if response.json()["models"]:
-                raise ValueError("maintenance_local_llm_still_loaded")
+            models = response.json()["models"]
+            if not isinstance(models, list):
+                raise ValueError("runtime_models_not_list")
+    except (httpx.HTTPError, ValueError, KeyError, TypeError, AttributeError) as exc:
+        raise ValueError("maintenance_local_llm_runtime_unverified") from exc
+    if models:
+        raise ValueError("maintenance_local_llm_still_loaded")

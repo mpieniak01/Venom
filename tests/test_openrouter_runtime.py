@@ -184,6 +184,7 @@ def test_invalid_request_fails_before_reservation(configured, change):
 
 
 def test_zdr_is_optional_by_default(configured):
+    """Keep omitted or disabled ZDR compatible with an existing main model selection."""
     provider = chat.prepare(request())["payload"]["provider"]
     assert "zdr" not in provider
     assert provider["data_collection"] == "deny"
@@ -212,6 +213,7 @@ def test_default_zdr_keeps_existing_main_selection_usable(
 
 @pytest.mark.parametrize("zdr_required", [False, True])
 def test_catalog_controls_optional_zdr(configured, zdr_required):
+    """Preserve the selected ZDR policy and price cap in provider routing parameters."""
     _, ledger, path = configured
     old_request = request()
     data = json.loads(path.read_text())
@@ -232,6 +234,7 @@ def test_catalog_controls_optional_zdr(configured, zdr_required):
 
 @pytest.mark.parametrize("zdr_required", ["false", 1, None])
 def test_invalid_zdr_policy_rejected_before_reservation(configured, zdr_required):
+    """Reject non-boolean ZDR values before reserving any request budget."""
     _, ledger, path = configured
     data = json.loads(path.read_text())
     data["models"][0]["zdr_required"] = zdr_required

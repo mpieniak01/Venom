@@ -108,6 +108,7 @@ def test_real_wheel_unknown_cost_survives_reopen(installed, monkeypatch):
 
 
 def test_one_paid_selection_allows_two_turns_without_reapproval(installed, monkeypatch):
+    """Reuse one paid selection across two settled turns with distinct budget reservations."""
     selected = rt.selection().copy()
     select_again = boundary.Mock(
         side_effect=AssertionError("selection must not repeat")
@@ -116,6 +117,7 @@ def test_one_paid_selection_allows_two_turns_without_reapproval(installed, monke
     calls = []
 
     def endpoint(req):
+        """Return a mock stream with a known settled request cost."""
         payload = json.loads(req.content)
         calls.append(payload)
         packets = [
@@ -174,6 +176,7 @@ def test_one_paid_selection_allows_two_turns_without_reapproval(installed, monke
 def test_one_selection_does_not_waive_pending_conversation_limit(
     installed, monkeypatch
 ):
+    """Reject the next turn before HTTP when a pending reservation would exceed the conversation limit."""
     estimate = Decimal(chat.quote(boundary.request())["estimated_usd"])
     monkeypatch.setattr(
         boundary.SETTINGS,
@@ -188,6 +191,7 @@ def test_one_selection_does_not_waive_pending_conversation_limit(
     calls = []
 
     def endpoint(req):
+        """Return a mock stream without usage cost so the reservation remains pending."""
         calls.append(req)
         return httpx.Response(
             200,

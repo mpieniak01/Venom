@@ -402,6 +402,7 @@ def _select_endpoint(data, model_id, model):
 
 
 async def connect(model_id: str):
+    """Connect a catalog model while preserving its explicitly selected ZDR policy on metadata refresh."""
     _allowed()
     if not fixed_model(model_id):
         raise HTTPException(400, "openrouter_model_identity_invalid")

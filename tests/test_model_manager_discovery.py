@@ -16,6 +16,12 @@ class _Discovery(discovery.ModelManagerDiscoveryMixin):
         self.ollama_cache_path = base / "ollama-cache.json"
         self._last_ollama_warning = 0.0
 
+    def _build_search_dirs(self):
+        return [self.models_dir]
+
+    def _discover_other_models(self, *_):
+        pass
+
 
 class _Response:
     def __init__(self, status_code: int, payload: dict[str, Any]) -> None:
@@ -67,7 +73,7 @@ def test_detect_model_type_and_provider_variants(tmp_path: Path) -> None:
     ) == ("onnx", "onnx")
     assert discovery.ModelManagerDiscoveryMixin._detect_model_type_and_provider(
         model_path=onnx_dir, provider="vllm"
-    ) == ("folder", "onnx")
+    ) == ("folder", "vllm")
 
 
 def test_onnx_metadata_helpers(tmp_path: Path) -> None:
@@ -92,9 +98,23 @@ def test_manifest_and_cache_helpers(tmp_path: Path) -> None:
     )
     manifests.mkdir(parents=True)
     manifest_file = manifests / "latest"
+    blob_dir = mgr.models_dir / "blobs"
+    blob_dir.mkdir()
+    digest = "sha256:" + "a" * 64
+    (blob_dir / digest.replace(":", "-")).write_bytes(b"weights")
     manifest_file.write_text(
-        json.dumps({"layers": [{"size": 2}, {"size": 3}], "config": {"size": 5}}),
-        encoding="utf-8",
+        json.dumps(
+            {
+                "layers": [
+                    {
+                        "mediaType": "application/vnd.ollama.image.model",
+                        "digest": digest,
+                        "size": 7,
+                    }
+                ],
+                "config": {"digest": digest, "size": 7},
+            }
+        )
     )
 
     entries = mgr._load_ollama_manifest_entries(mgr.models_dir / "manifests")
@@ -216,7 +236,6 @@ def test_local_model_candidate_workspace_fallback(tmp_path: Path) -> None:
         discovery.ModelManagerDiscoveryMixin._is_local_model_candidate(
             plain_dir,
             set(),
-            allow_workspace_fallback=False,
         )
         is False
     )
@@ -224,9 +243,8 @@ def test_local_model_candidate_workspace_fallback(tmp_path: Path) -> None:
         discovery.ModelManagerDiscoveryMixin._is_local_model_candidate(
             plain_dir,
             set(),
-            allow_workspace_fallback=True,
         )
-        is True
+        is False
     )
 
 
@@ -237,14 +255,14 @@ def test_looks_like_runtime_dir_helpers(tmp_path: Path) -> None:
         "{}",
         encoding="utf-8",
     )
-    assert discovery.ModelManagerDiscoveryMixin._looks_like_onnx_runtime_dir(
+    assert not discovery.ModelManagerDiscoveryMixin._looks_like_onnx_runtime_dir(
         onnx_by_metadata
     )
 
     onnx_by_genai = tmp_path / "onnx-genai"
     onnx_by_genai.mkdir()
     (onnx_by_genai / "genai_config.json").write_text("{}", encoding="utf-8")
-    assert discovery.ModelManagerDiscoveryMixin._looks_like_onnx_runtime_dir(
+    assert not discovery.ModelManagerDiscoveryMixin._looks_like_onnx_runtime_dir(
         onnx_by_genai
     )
 
@@ -371,3 +389,66 @@ async def test_list_local_models_network_error_paths(
     )
     models = await mgr.list_local_models()
     assert any(model["name"] == "tiny.gguf" for model in models)
+
+
+def test_payload_evidence_rejects_incomplete_shards_and_accepts_cache_links(tmp_path):
+    from venom_core.core.model_inventory import is_hf_model_dir
+
+    (tmp_path / "config.json").write_text("{}")
+    index = tmp_path / "model.safetensors.index.json"
+    index.write_text(
+        json.dumps(
+            {"weight_map": {"a": "part.safetensors", "b": "missing.safetensors"}}
+        )
+    )
+    blob = tmp_path.parent / (tmp_path.name + "-blob")
+    blob.write_bytes(b"weights")
+    (tmp_path / "part.safetensors").symlink_to(blob)
+    assert not is_hf_model_dir(tmp_path)
+    index.write_text(json.dumps({"weight_map": {"a": "part.safetensors"}}))
+    assert is_hf_model_dir(tmp_path)
+    index.write_text(json.dumps({"weight_map": {"a": "../outside"}}))
+    assert not is_hf_model_dir(tmp_path)
+
+
+def test_workspaces_metadata_and_empty_weights_are_not_installed_models(tmp_path):
+    mgr = _Discovery(tmp_path)
+    for name in [
+        "cache",
+        "metadata",
+        "preprod",
+        "research",
+        "manifests-v2",
+        "empty-onnx",
+    ]:
+        path = mgr.models_dir / name
+        path.mkdir()
+        (path / "genai_config.json").write_text("{}")
+        (path / "venom_onnx_metadata.json").write_text("{}")
+    (mgr.models_dir / "empty-onnx/model.onnx").touch()
+    models = mgr._discover_local_models()
+    assert not any(
+        m["provider"] == "vllm" or m["provider"] == "onnx" for m in models.values()
+    )
+
+
+def test_stale_ollama_cache_does_not_resurrect_removed_models(tmp_path, monkeypatch):
+    mgr = _Discovery(tmp_path)
+    mgr.ollama_cache_path.write_text(
+        json.dumps([{"name": "deleted:latest", "provider": "ollama"}])
+    )
+    monkeypatch.setattr(mgr, "_discover_other_models", lambda *_: None)
+    assert mgr._discover_local_models() == {}
+
+
+def test_model_cache_enumerates_only_complete_snapshots_once(tmp_path):
+    from venom_core.core.model_inventory import cached_model_paths
+
+    path = tmp_path / "models--org--kept/snapshots/sha"
+    path.mkdir(parents=True)
+    (path / "config.json").write_text("{}")
+    (path / "model.safetensors").write_bytes(b"weights")
+    partial = tmp_path / "models--org--partial/snapshots/sha"
+    partial.mkdir(parents=True)
+    (partial / "config.json").write_text("{}")
+    assert list(cached_model_paths([tmp_path, tmp_path])) == [("org/kept", path)]

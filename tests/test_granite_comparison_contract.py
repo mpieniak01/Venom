@@ -1015,3 +1015,35 @@ def test_rescore_suites_requires_real_results_truthful_report_and_scope():
     assert rescore_row(case, bad)["oracle"]["errors"] == ["scope_violation"]
     untouched = {**case, "family": "other"}
     assert rescore_row(untouched, row) == row
+
+
+def test_rescore_never_promotes_and_preserves_original_trials(tmp_path, monkeypatch):
+    from scripts.granite_operator import rescore_suites
+
+    case = {"id": "one", "family": "other"}
+    rows = [
+        {"case_id": "one", "arm": arm, "oracle": {"success": True, "errors": []}}
+        for arm in ("base", "adapter")
+    ]
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text("{}")
+    trials = tmp_path / "original.jsonl"
+    raw = "".join(json.dumps(row) + "\n" for row in rows)
+    trials.write_text(raw)
+    monkeypatch.setattr(rescore_suites, "load_frozen", lambda path: ({}, [case]))
+    monkeypatch.setattr(
+        rescore_suites,
+        "summarize",
+        lambda data: {"paired": {"proposed_promotion_gate_passed": True}},
+    )
+    result = rescore_suites.run(manifest, trials, tmp_path / "rescored")
+    assert result["summary"]["paired"]["proposed_promotion_gate_passed"] is False
+    assert trials.read_text() == raw
+    assert json.loads((tmp_path / "rescored/provenance.json").read_text())[
+        "original_results_unchanged"
+    ]
+    with pytest.raises(FileExistsError):
+        rescore_suites.run(manifest, trials, tmp_path / "rescored")
+    trials.write_text(json.dumps(rows[0]) + "\n")
+    with pytest.raises(ValueError, match="trials_incomplete"):
+        rescore_suites.run(manifest, trials, tmp_path / "incomplete")

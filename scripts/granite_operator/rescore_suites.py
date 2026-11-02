@@ -147,6 +147,8 @@ def run(manifest: Path, trials: Path, output: Path) -> dict:
         "".join(json.dumps(row, ensure_ascii=False) + "\n" for row in revised)
     )
     summary = summarize(revised)
+    # A diagnostic rescore is never an authorization to promote an adapter.
+    summary["paired"]["proposed_promotion_gate_passed"] = False
     write_json(output / "summary.json", summary)
     write_json(
         output / "provenance.json",

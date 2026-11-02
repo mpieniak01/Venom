@@ -201,3 +201,30 @@ Po zweryfikowanym odbiorze można osobno uruchomić
 a lokalny Docker izoluje narzędzia i ocenia rzeczywisty wynik. Parametry,
 postęp i ograniczenia interpretacji opisuje
 [instrukcja porównania](GRANITE_OPERATOR_EXPERIMENT.md#porównanie-adaptera-trenowanego-na-zdalnym-hoście).
+
+
+### Kolejność próbek i przygotowanie kolejnej generacji danych
+
+Profil może jawnie włączyć `"row_order": "family_epoch_v1"`. W każdej epoce
+każda próbka występuje raz; rodziny są przeplatane proporcjonalnie do ich
+liczebności, a kolejność wewnątrz rodzin zmienia się z numerem epoki i seedem.
+Checkpoint zapisuje politykę, seed, liczbę wykorzystanych próbek i hash kolejności
+rodzin. Wznowienie odrzuca inne metadane. Osobny generator kolejności nie zużywa
+RNG modelu. Profile bez tego pola zachowują dotychczasowy układ i tożsamość.
+
+Przy poszerzaniu danych zachowaj poprzednią generację i jej wyniki. Nowe rozmowy
+muszą mieć sprawdzone obserwacje narzędzi, zakres zmian i poprawną odpowiedź
+końcową. Warianty językowe i rozmowy z doprecyzowaniem należą do tego samego
+podziału co ich scenariusz. Sprawdź duplikaty, przecieki, maski asystenta, limit
+kontekstu oraz długość pojedynczej generacji. Zarezerwowane warianty syntetyczne
+służą diagnostyce; wspólna rodzina szablonów ogranicza niezależność takiej oceny.
+Surowe dane, prywatne receptury i dowody wykonania pozostają w ignorowanym
+`data/training/`.
+
+Budżet porównuj także przez liczbę epok i tokenów docelowych. Dla 640 próbek
+i akumulacji 4 jedna epoka oznacza 160 aktualizacji. Plan 160 → 210 → 250 jest
+planem dla koordynatora `remote_training`, który dzieli pracę na osobne procesy
+z zachowaniem limitu 128 aktualizacji na proces. Każdy punkt można osobno odebrać,
+sprawdzić i ocenić przed decyzją o kontynuacji. Samo przygotowanie planu nie
+uruchamia hosta ani treningu. Nowe dane, profil i kod wymagają nowej paczki
+wejściowej oraz nowego smoke na docelowym GPU.

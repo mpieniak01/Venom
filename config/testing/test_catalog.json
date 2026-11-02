@@ -7835,6 +7835,62 @@
       ],
       "legacy_targeted": false,
       "rationale": "Atomic training milestone targets, sealed historical attempts and independent resumable collection without provider calls."
+    },
+    {
+      "path": "tests/test_gemma4_operator_cli.py",
+      "domain": "academy",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "CPU-only Gemma preparation command integration and immutable evidence outputs."
+    },
+    {
+      "path": "tests/test_gemma4_operator_protocol.py",
+      "domain": "academy",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Pinned Gemma native tool format, schema validation and snapshot identity."
+    },
+    {
+      "path": "tests/test_gemma4_operator_material.py",
+      "domain": "academy",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Selective Gemma material supervision, experience eligibility and matched diagnostics."
+    },
+    {
+      "path": "tests/test_gemma4_operator_runtime.py",
+      "domain": "academy",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Single-model runtime evidence and deferred remote Academy training qualification."
     }
   ]
 }

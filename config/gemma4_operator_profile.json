@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "model": "google/gemma-4-12B-it",
+  "revision": "43c9d014b231474fa7212dbb48a762566c2b255d",
+  "loader": "Gemma4UnifiedForConditionalGeneration",
+  "context": 4096,
+  "enable_thinking": false,
+  "files": {
+    "config.json": "478c46e8d2c52d5c2d85bf67e3b3e8c90e7c9d91086cee27e3c267907e936bd9",
+    "tokenizer.json": "9788bdb6a021b3170357cd3587b5d622b1177561ad3c5bf43d73728fd71aeacb",
+    "tokenizer_config.json": "a62f4e85a47c0c136edaaa3a4f591fd6783717299a9def47e5ad03a49f6a5eb9",
+    "chat_template.jinja": "ae53464bf3be25802b3a5b37def7fd89667067d7577049b3b2d74c4d8de4c6d4",
+    "processor_config.json": "6b938e76555b3e9946890770e1abcd442a4718f34041a58e8139dc8ad34545c9"
+  }
+}

@@ -50,7 +50,12 @@ def fixture_profile(tmp_path):
     snapshot = tmp_path / "snapshot"
     snapshot.mkdir()
     content = {
-        name: json.dumps({"architectures": [LOADER]})
+        name: json.dumps(
+            {
+                "architectures": [LOADER],
+                "text_config": {"max_position_embeddings": 4096},
+            }
+        )
         if name == "config.json"
         else "fixture-" + name
         for name in SNAPSHOT_FILES
@@ -264,7 +269,7 @@ def test_template_delegation_preserves_native_policy(tmp_path):
     assert render_messages(Renderer(), messages, tools(), p) == "native output"
     assert seen["tools"] == tools()
     assert seen["tokenize"] is False
-    assert seen["preserve_thinking"] is True
+    assert seen["preserve_thinking"] is False
     assert seen["enable_thinking"] is False
     assert seen["add_generation_prompt"] is True
     Renderer.chat_template = "modified"
@@ -360,3 +365,28 @@ def test_renderer_rejects_untrusted_history_roles(tmp_path, messages, error):
 
     with pytest.raises(ValueError, match=error):
         render_messages(Renderer(), messages, tools(), p)
+
+
+@pytest.mark.parametrize(
+    "text_config",
+    [
+        None,
+        {},
+        {"max_position_embeddings": True},
+        {"max_position_embeddings": "4096"},
+        {"max_position_embeddings": 1024},
+    ],
+)
+def test_snapshot_requires_actual_context_budget(tmp_path, text_config):
+    p, snapshot = fixture_profile(tmp_path)
+    config = {"architectures": [LOADER]}
+    if text_config is not None:
+        config["text_config"] = text_config
+    content = json.dumps(config)
+    (snapshot / "config.json").write_text(content)
+    p = replace(
+        p,
+        files={**p.files, "config.json": hashlib.sha256(content.encode()).hexdigest()},
+    )
+    with pytest.raises(ValueError, match="snapshot_context_mismatch"):
+        p.validate_snapshot(snapshot)

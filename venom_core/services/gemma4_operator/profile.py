@@ -105,4 +105,12 @@ class GemmaProfile:
         config = json.loads((root / "config.json").read_text())
         if not isinstance(config, dict) or config.get("architectures") != [self.loader]:
             raise ValueError("gemma_snapshot_loader_mismatch")
+        text_config = config.get("text_config")
+        limit = (
+            text_config.get("max_position_embeddings")
+            if isinstance(text_config, dict)
+            else None
+        )
+        if type(limit) is not int or self.context > limit:
+            raise ValueError("gemma_snapshot_context_mismatch")
         return verified

@@ -263,7 +263,9 @@ def render_messages(
         tokenize=False,
         add_generation_prompt=add_generation_prompt,
         enable_thinking=profile.enable_thinking,
-        preserve_thinking=True,
+        # The pinned template retains thoughts after the last user message
+        # itself. False strips completed historical tool-turn reasoning.
+        preserve_thinking=False,
     )
     if not isinstance(rendered, str):
         raise ValueError("gemma_renderer_text_required")

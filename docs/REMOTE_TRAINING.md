@@ -332,3 +332,23 @@ between windows, never by changing adapter state from concurrent task threads.
 
 
 See [independent training milestones](REMOTE_TRAINING_MILESTONES.md) for separately runnable 80/125/160 training stages, historical result collection and dialogue evaluation.
+
+
+### Versioned training row order
+
+Existing profiles keep `sequential` ordering and their original serialized identity.
+New, separately qualified profiles may opt into `"row_order": "family_epoch_v1"`.
+Every epoch contains every row exactly once. Rows shuffle within each family from
+seed + epoch; proportional interleaving spreads small families through the epoch
+without duplicating them. The sampler does not consume the model/dropout RNG.
+Checkpoints bind policy, seed, family ordering and absolute consumed-sample position.
+Resume rejects changed sampling metadata. Dataset content remains covered by the
+existing environment fingerprint. New native source/profile/data require a new
+input pack and smoke qualification; existing checkpoints are not migrated.
+
+Compare training budgets by consumed rows and target tokens, not update numbers
+alone: with 640 rows and accumulation 4, one epoch is 160 updates. A preparation
+plan of 160 / 210 / 250 updates stays within the native 256-update campaign bound;
+it is not directly equivalent to the earlier 320-row 80 / 125 / 160 campaign.
+Keep validation and reserved diagnostic fixtures out of training. Private material,
+recipes and run receipts remain under ignored `data/training/`.

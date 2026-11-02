@@ -5,10 +5,35 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 import venom_core.main as main_module
+from venom_core.api import dependencies as api_dependencies
 
 
-def test_setup_router_dependencies_wires_globals(monkeypatch):
+@pytest.fixture(autouse=True)
+def isolated_api_dependencies(monkeypatch):
+    # Wiring tests use sentinels, which must never reach the shared ASGI app.
+    dependencies = SimpleNamespace(
+        **{
+            "set_" + name: MagicMock()
+            for name in (
+                "orchestrator",
+                "state_manager",
+                "vector_store",
+                "graph_store",
+                "lessons_store",
+                "session_store",
+                "request_tracer",
+            )
+        }
+    )
+    monkeypatch.setattr(main_module, "api_deps", dependencies)
+    return dependencies
+
+
+def test_setup_router_dependencies_wires_globals(
+    monkeypatch, isolated_api_dependencies
+):
     calls = {}
+    previous_store = api_dependencies._session_store
 
     def make_dummy(name):
         def set_dependencies(*args, **kwargs):
@@ -56,6 +81,13 @@ def test_setup_router_dependencies_wires_globals(monkeypatch):
 
     main_module.setup_router_dependencies()
 
+    isolated_api_dependencies.set_session_store.assert_called_once_with(
+        main_module.session_store
+    )
+    isolated_api_dependencies.set_state_manager.assert_called_once_with(
+        main_module.state_manager
+    )
+    assert api_dependencies._session_store is previous_store
     assert calls["feedback"]["args"][0] is main_module.orchestrator
     assert calls["feedback"]["args"][1] is main_module.state_manager
     assert calls["feedback"]["args"][2] is main_module.request_tracer

@@ -10,9 +10,11 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
+from venom_core.api.dependencies import get_session_store
 from venom_core.core.tracer import RequestTracer, TraceStatus
 from venom_core.main import app
 from venom_core.services import llm_simple_service
+from venom_core.services.session_store import SessionStore
 
 
 class DummyRuntime:
@@ -121,7 +123,7 @@ class SequencedAsyncClient:
 
 
 @pytest.fixture
-def simple_client(monkeypatch):
+def simple_client(monkeypatch, tmp_path):
     tracer = RequestTracer()
     monkeypatch.setattr(llm_simple_service, "get_request_tracer", lambda: tracer)
 
@@ -135,12 +137,17 @@ def simple_client(monkeypatch):
     )
     monkeypatch.setattr("httpx.AsyncClient", DummyAsyncClient)
 
+    store = SessionStore(str(tmp_path / "history.json"))
+    monkeypatch.setitem(app.dependency_overrides, get_session_store, lambda: store)
     client = TestClient(app)
-    return client, tracer
+    try:
+        yield client, tracer, store
+    finally:
+        client.close()
 
 
 def test_simple_stream_emits_chunks_and_traces(simple_client):
-    client, tracer = simple_client
+    client, tracer, store = simple_client
 
     with client.stream(
         "POST",
@@ -163,6 +170,10 @@ def test_simple_stream_emits_chunks_and_traces(simple_client):
     assert events[2]["event"] == "content"
     assert events[2]["data"]["text"] == "świecie"
     assert events[3]["event"] == "done"
+    history = store.get_history("session-123")
+    assert [entry["role"] for entry in history] == ["user", "assistant"]
+    assert [entry["content"] for entry in history] == ["Test", "Witaj świecie"]
+    assert all(entry["status"] == "COMPLETED" for entry in history)
 
     request_id = response.headers.get("x-request-id")
     assert request_id

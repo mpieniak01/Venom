@@ -230,6 +230,42 @@ def test_smoke_selection_does_not_mix_variants():
     assert {r["variant"] for r in selected} == {0}
 
 
+@pytest.mark.parametrize("train_groups,val_groups", [(16, 4), (20, 6)])
+def test_smoke_rows_bound_new_families_without_changing_corpus(
+    train_groups, val_groups
+):
+    train = [
+        {"problem_group": f"train-{group}", "language": language, "variant": variant}
+        for group in range(train_groups)
+        for variant in (0, 1)
+        for language in ("pl", "en")
+    ]
+    validation = [
+        {
+            "problem_group": f"validation-{group}",
+            "language": language,
+            "variant": variant,
+        }
+        for group in range(val_groups)
+        for variant in (0, 1)
+        for language in ("pl", "en")
+    ]
+    original = copy.deepcopy((train, validation))
+    selected, heldout = worker._training_rows(
+        {"stage": "smoke-first"}, train, validation, [], [], "unused"
+    )
+    assert (len(selected), len(heldout)) == (32, 8)
+    assert {row["variant"] for row in selected + heldout} == {0}
+    assert {row["language"] for row in selected + heldout} == {"pl", "en"}
+    assert (train, validation) == original
+
+
+def test_smoke_rows_reject_incomplete_qualification_corpus():
+    rows = [{"problem_group": "only-one", "language": "pl"}]
+    with pytest.raises(ValueError, match="granite_smoke_sample_count"):
+        worker._training_rows({"stage": "smoke-first"}, rows, rows, [], [], "unused")
+
+
 def test_environment_fingerprint_covers_lock_code_and_weights(tmp_path, monkeypatch):
     root = tmp_path / "repo"
     package = root / "venom_core/services/granite_operator"

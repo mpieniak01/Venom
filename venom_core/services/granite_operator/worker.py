@@ -144,8 +144,9 @@ def tool_loop(session, row):
 def _training_rows(request, domain_train, domain_val, hf_train, hf_val, fingerprint):
     stage = request["stage"]
     if stage.startswith("smoke"):
-        train = smoke_subset(domain_train)
-        validation = smoke_subset(domain_val)
+        # New datasets may add families; keep the qualification workload bounded.
+        train = smoke_subset(domain_train)[:32]
+        validation = smoke_subset(domain_val)[:8]
         if (len(train), len(validation)) != (32, 8):
             raise ValueError("granite_smoke_sample_count")
     else:

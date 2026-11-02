@@ -7,6 +7,21 @@ logu konkretnego kroku i testu celowego. Kod i locki repo są źródłem prawdy.
 
 ## 1. Wybór właściwego hosta przed wynajmem
 
+
+Do listowania hostów bieżącej przygotowanej kampanii używaj istniejącego skryptu:
+
+```bash
+source .venv/bin/activate
+python scripts/cloud/vast/offers_table.py --training
+```
+
+Czyta on wskaźnik `data/training/current-experiment.json` i wymagania kampanii,
+więc nie buduj przy każdym uruchomieniu jednorazowego wyszukiwania. Wymagania
+kampanii mają pierwszeństwo przed historycznym przykładem GPU poniżej.
+Polityka sterownika/CUDA jest w `config/granite_operator_host.json`, a ostatni
+odczyt w `.venom_runtime/vast/latest-training-offers.json`. Dostępność wybranej
+oferty trzeba odświeżyć przed wynajmem.
+
 - Pełna ocena używa izolowanych kontenerów narzędzi i oracle. W Vast wybierz
   **VM**, oficjalny polecany szablon Ubuntu VM i tryb SSH. Filtr wyszukiwania
   ofert musi zawierać `"vms_enabled": {"eq": true}`. Dostępność samego GPU nie wystarcza.

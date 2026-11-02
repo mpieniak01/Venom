@@ -1,5 +1,8 @@
 # Zdalny trening Granite
 
+Opis i ograniczenia G01–G04: [Katalog danych treningowych](DANE_TRENINGOWE.md).
+Przed ponownym profilowaniem sprawdź zapisane tożsamości i wyniki audytu.
+
 REMOTE-TRAINING-01 rozszerza G01 o pełny obieg zadania: pakowanie → upload →
 weryfikacja → smoke → trening → status/logi → stop/resume → odbiór → lokalny reload.
 Vast dostarcza host; kontrakt SSH działa też na innym przygotowanym Linuksie.

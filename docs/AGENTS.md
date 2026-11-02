@@ -48,6 +48,16 @@ If brief and code diverge, code remains source of truth.
 - If the same gate fails twice without a code or environment change, stop and report the blocker instead of looping.
 - Keep documentation updates concise and actionable. Capture the rule that will prevent the next mistake, not the whole debugging story.
 
+## Training data knowledge
+
+Before analyzing G01–G04, read the [training data catalog](TRAINING_DATA_CATALOG.md)
+and the canonical host's private `data/training/README.md`. Reuse the dated
+`data/training/catalog/analyses/` findings when actual file hashes and schema still
+match the recorded identities. A new model requires its own serialization, mask
+and protocol checks, not a new full profile of unchanged source data. Audit only
+the changed scope when inputs differ, and preserve frozen data and historical
+proofs. Dataset preparation status is separate from training/deployment status.
+
 ## Remote training operations
 
 For Vast training plus evaluation, follow [the startup/recovery checklist](PL/VAST_START_I_ODZYSKIWANIE.md).

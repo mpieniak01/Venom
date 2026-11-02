@@ -1,5 +1,8 @@
 # Remote Granite training
 
+For G01–G04 descriptions, lineage and reusable audit evidence, start with the
+[training data catalog](TRAINING_DATA_CATALOG.md).
+
 This manual operator workflow extends G01. Vast supplies a host; the job controller
 uses an existing verified SSH connection and does not rent, stop or destroy instances.
 No application startup, API request or CI job starts model training. Remote commands

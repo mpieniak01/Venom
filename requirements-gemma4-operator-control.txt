@@ -1,0 +1,3 @@
+# Optional CPU-only Gemma preparation commands; no GPU trainer dependencies.
+# Install into an isolated control environment with the project's base requirements.
+jsonschema>=4.26,<5

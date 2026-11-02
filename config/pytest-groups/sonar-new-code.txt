@@ -146,6 +146,10 @@ tests/test_forge_flow.py
 tests/test_forge_integration.py
 tests/test_gemma4_audio_models.py
 tests/test_gemma4_audio_runtime_main.py
+tests/test_gemma4_operator_cli.py
+tests/test_gemma4_operator_material.py
+tests/test_gemma4_operator_protocol.py
+tests/test_gemma4_operator_runtime.py
 tests/test_generation_params_adapter.py
 tests/test_generation_params_integration.py
 tests/test_ghost_agent.py

@@ -266,7 +266,7 @@ każdego pośredniego adaptera jako osobnego modelu.
 Każda metoda ma osobne `input.zip`, `plan.json`, `operator-commands.json` i `READY.json`.
 `suite.json` powstaje po sprawdzeniu obu metod. Jeżeli przygotowanie drugiej się
 nie uda, pierwsza nadal jest gotowa; ponowne wywołanie przyjmuje niezmienione
-pliki. Treningi uruchamiamy kolejno na tym samym hoście VM, planując 48 GB VRAM,
+pliki. Treningi uruchamiamy kolejno na tym samym hoście VM, planując 24 GB VRAM,
 64 GB RAM i 100 GB dysku. Każdy musi przejść własny smoke. Skrypt nie wynajmuje
 hosta, nie uruchamia treningu i nie usuwa zasobów.
 

@@ -257,7 +257,7 @@ def prepare_pair(
             "milestones": [updates],
             "publish_intermediate_adapters": False,
             "common_host_requirements": {
-                "gpu_vram_gb": 48,
+                "gpu_vram_gb": 24,
                 "ram_gb": 64,
                 "disk_gb": 100,
                 "vm_required": True,

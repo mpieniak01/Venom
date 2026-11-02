@@ -386,7 +386,7 @@ source, dependencies and tokenizer identities are enforced. Each method is ready
 independently; a failed second preparation preserves the first. Repeating an
 unchanged preparation is safe; changed prepared evidence is rejected.
 
-Train methods sequentially on one VM with the same hardware (planned 48 GB VRAM,
+Train methods sequentially on one VM with the same hardware (planned 24 GB VRAM,
 64 GB RAM, 100 GB disk). Both start from the original pinned base, never the
 selected adapter or one another. New experiment outputs are not automatically
 registered or deployed. Preserve intermediate optimizer checkpoints for recovery;

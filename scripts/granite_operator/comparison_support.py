@@ -204,6 +204,17 @@ class DockerTool:
             image,
             "infinity",
         ]
+        if readonly:
+            # A root-operated VM exports fixtures owned by root. Trust only this
+            # isolated, read-only mount; never change host or wildcard Git trust.
+            command[2:2] = [
+                "--env",
+                "GIT_CONFIG_COUNT=1",
+                "--env",
+                "GIT_CONFIG_KEY_0=safe.directory",
+                "--env",
+                "GIT_CONFIG_VALUE_0=/workspace",
+            ]
         if not readonly:
             command[2:2] = [
                 "--tmpfs",

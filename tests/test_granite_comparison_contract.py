@@ -836,3 +836,36 @@ def test_syntax_oracle_checks_bindings_without_requiring_one_option_order(text, 
         == valid
     )
     assert command_syntax_matches("git status", ["git", "status"])
+
+
+@pytest.mark.parametrize("readonly", [False, True])
+def test_git_trust_is_limited_to_isolated_readonly_verifier(
+    tmp_path, monkeypatch, readonly
+):
+    from types import SimpleNamespace
+
+    from scripts.granite_operator import comparison_support as support
+
+    calls = []
+
+    def run(command, **kwargs):
+        calls.append(command)
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr(support.subprocess, "run", run)
+    support.DockerTool(tmp_path, "sha256:" + "a" * 64, "b" * 32, readonly=readonly)
+    command = calls[0]
+    environment = [command[i + 1] for i, item in enumerate(command) if item == "--env"]
+    git_settings = [item for item in environment if item.startswith("GIT_CONFIG_")]
+    if readonly:
+        assert git_settings == [
+            "GIT_CONFIG_COUNT=1",
+            "GIT_CONFIG_KEY_0=safe.directory",
+            "GIT_CONFIG_VALUE_0=/workspace",
+        ]
+    else:
+        assert git_settings == []
+    assert command[command.index("--network") + 1] == "none"
+    assert command[command.index("--cap-drop") + 1] == "ALL"
+    assert command[command.index("--user") + 1] == "1000:1001"
+    assert command[command.index("--mount") + 1].endswith(",readonly")

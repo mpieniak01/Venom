@@ -86,7 +86,12 @@ def restore_workspace(archive_file, workspace: Path) -> None:
         ) as directory:
             staging = Path(directory)
             archive.extractall(staging, members=members, filter="data")
-            workspace_entries(staging)
+            entries = workspace_entries(staging)
+            # The data filter omits directory modes; a restrictive host umask
+            # would make the exported tree unreadable to the sandbox UID.
+            for path in entries:
+                if path.is_dir():
+                    path.chmod(0o755)
             # The model can only write its tmpfs. This is the owned host copy.
             for path in workspace.iterdir():
                 if path.is_dir() and not path.is_symlink():

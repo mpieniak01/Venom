@@ -24,7 +24,9 @@ def check(manifest_path: Path) -> dict:
         with tempfile.TemporaryDirectory(prefix="venom-sandbox-check-") as temporary:
             workspace = Path(temporary) / "workspace"
             workspace.mkdir(mode=0o755)
+            workspace.chmod(0o755)
             (workspace / "probe.txt").write_text("sandbox qualification\n")
+            (workspace / "probe.txt").chmod(0o644)
             for phase, readonly, command in (
                 (
                     "writable",

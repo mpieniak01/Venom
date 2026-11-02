@@ -869,3 +869,32 @@ def test_git_trust_is_limited_to_isolated_readonly_verifier(
     assert command[command.index("--cap-drop") + 1] == "ALL"
     assert command[command.index("--user") + 1] == "1000:1001"
     assert command[command.index("--mount") + 1].endswith(",readonly")
+
+
+def test_export_directories_remain_readable_under_private_host_umask(tmp_path):
+    import io
+    import os
+    import tarfile
+
+    from scripts.granite_operator.comparison_support import restore_workspace
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    archive = io.BytesIO()
+    with tarfile.open(fileobj=archive, mode="w") as tar:
+        directory = tarfile.TarInfo(".git/")
+        directory.type = tarfile.DIRTYPE
+        directory.mode = 0o755
+        tar.addfile(directory)
+        entry = tarfile.TarInfo(".git/HEAD")
+        content = b"ref: refs/heads/main\n"
+        entry.size = len(content)
+        entry.mode = 0o644
+        tar.addfile(entry, io.BytesIO(content))
+    previous = os.umask(0o077)
+    try:
+        restore_workspace(archive, workspace)
+    finally:
+        os.umask(previous)
+    assert (workspace / ".git").stat().st_mode & 0o777 == 0o755
+    assert (workspace / ".git/HEAD").read_bytes() == content

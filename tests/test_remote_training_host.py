@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -410,9 +411,18 @@ def test_payload_hashing_supports_bootstrap_python_without_file_digest(
     }
 
 
+@pytest.fixture
+def sandbox_umask():
+    previous = os.umask(0o077)
+    try:
+        yield
+    finally:
+        os.umask(previous)
+
+
 @pytest.mark.parametrize("failure", [None, "readonly", "writable", "timeout"])
 def test_sandbox_preflight_checks_exported_git_and_cleans_up(
-    tmp_path, monkeypatch, failure
+    tmp_path, monkeypatch, failure, sandbox_umask
 ):
     from scripts.remote_training_host import check_sandbox as sandbox
 
@@ -428,6 +438,7 @@ def test_sandbox_preflight_checks_exported_git_and_cleans_up(
         def __init__(self, workspace, image, run, *, readonly):
             self.phase = "readonly" if readonly else "writable"
             assert workspace.stat().st_mode & 0o777 == 0o755
+            assert (workspace / "probe.txt").stat().st_mode & 0o777 == 0o644
             calls.append(self.phase)
 
         def execute(self, command, timeout):
@@ -470,3 +481,19 @@ def test_sandbox_preflight_rejects_failed_cleanup(tmp_path, monkeypatch):
     monkeypatch.setattr(sandbox, "DockerTool", unavailable)
     with pytest.raises(RuntimeError, match="sandbox_check_cleanup_failed"):
         sandbox.check(tmp_path / "manifest.json")
+
+
+def test_sandbox_cli_redacts_docker_failure(monkeypatch, capsys):
+    from scripts.remote_training_host import check_sandbox as sandbox
+
+    def fail(path):
+        raise subprocess.CalledProcessError(1, ["docker"], stderr="private-config")
+
+    monkeypatch.setattr(sandbox, "check", fail)
+    assert sandbox.main(["--cases", "/tmp/manifest.json"]) == 1
+    output = capsys.readouterr()
+    assert json.loads(output.out) == {
+        "status": "FAIL",
+        "error_type": "CalledProcessError",
+    }
+    assert "private-config" not in output.out + output.err

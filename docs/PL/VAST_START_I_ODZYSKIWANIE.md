@@ -9,8 +9,9 @@ logu konkretnego kroku i testu celowego. Kod i locki repo są źródłem prawdy.
 
 - Pełna ocena używa izolowanych kontenerów narzędzi i oracle. W Vast wybierz
   **VM**, oficjalny polecany szablon Ubuntu VM i tryb SSH. Filtr wyszukiwania
-  ofert musi zawierać `"vm": {"eq": true}`. Dostępność samego GPU nie wystarcza.
+  ofert musi zawierać `"vms_enabled": {"eq": true}`. Dostępność samego GPU nie wystarcza.
   Zwykły nieuprzywilejowany kontener może trenować, lecz nie uruchomić sandboxu.
+  `vms_enabled` jest filtrem ofert; `vm: true` jest odrębnym polem create.
 - Dla Granite 3B punktem odniesienia jest jeden RTX 4090 24 GB, około 64 GB RAM,
   16 efektywnych CPU i **100 GB dysku**. Sprawdź sterownik wymagany przez bieżący
   lock CUDA, szybkość dysku i pobierania modelu. Cena samego GPU nie wyznacza
@@ -97,6 +98,9 @@ Wyeksportowane `.git` należy wtedy do innego użytkownika. `DockerTool` ustawia
 `safe.directory=/workspace` wyłącznie wewnątrz kontenera oracle, przez jego
 zmienne `GIT_CONFIG_*`. Zachowuje read-only, brak sieci i odebrane capabilities.
 Nie stosuj `safe.directory=*` ani `git config --global` na hoście.
+Eksport normalizuje prawa katalogów w zweryfikowanym stagingu do `0755`, aby
+restrykcyjny `umask 077` hosta nie odciął dostępu kontenerowi oracle. Test
+wstępny ustawia jawne prawa wyłącznie własnych sztucznych plików.
 
 ## 4. Postęp, odzyskiwanie i zakończenie
 

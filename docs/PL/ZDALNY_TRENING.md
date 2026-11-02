@@ -14,7 +14,7 @@ hosta i bieżący podgląd są w `scripts/remote_training_host/prepare.py` oraz
 
 1. Dla treningu i oceny na tej samej maszynie wybierz ofertę **VM** i oficjalny
    polecany szablon Ubuntu VM Vast, z dyskiem **100 GB**. Najpierw filtruj
-   oferty przez `vm: {eq: true}`; zwykły kontener treningowy nie zapewnia
+   oferty przez `vms_enabled: {eq: true}`; zwykły kontener treningowy nie zapewnia
    wymaganej izolacji Docker. Zarejestruj używany klucz publiczny przed
    utworzeniem VM, zweryfikuj fingerprint i ustaw alias SSH `gpu-training`.
    [Lista kontroli startu i odzyskiwania](VAST_START_I_ODZYSKIWANIE.md).

@@ -234,7 +234,8 @@ def test_coordinator_spawns_fresh_process_and_releases_lease(
 
 
 @pytest.mark.parametrize(
-    "fault", [None, "nonfinite", "no-effect", "weights-changed", "wrong-abi"]
+    "fault",
+    [None, "nonfinite", "no-effect", "weights-changed", "wrong-abi", "output-escape"],
 )
 def test_fresh_worker_measures_reload_without_loading_optimizer_state(
     setup, tmp_path, monkeypatch, fault
@@ -259,6 +260,8 @@ def test_fresh_worker_measures_reload_without_loading_optimizer_state(
         "nonce": "fresh-local-nonce",
         "output": str(result_path),
     }
+    if fault == "output-escape":
+        request["output"] = str(tmp_path / "other/receipt.json")
     request_path = tmp_path / "request.json"
     request_path.write_text(json.dumps(request))
 

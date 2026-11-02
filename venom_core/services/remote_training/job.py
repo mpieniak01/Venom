@@ -13,8 +13,15 @@ from venom_core.services.granite_operator.contract import (
     load_dataset,
 )
 
-from .bundles import create_bundle, validate_identity
+from .bundles import (
+    _source,
+    create_bundle,
+    safe_relative,
+    validate_identity,
+    validate_run_id,
+)
 from .host import code_identity, dependencies_identity, tokenizer_identity
+from .paths import operator_path
 
 DATA_FILES = (
     "domain/train.jsonl",
@@ -22,6 +29,22 @@ DATA_FILES = (
     "hf/train.jsonl",
     "hf/validation.jsonl",
 )
+
+
+def _copy_inputs(source: Path, staging: Path) -> None:
+    """Constrain both read and write paths before admitting fixed split files."""
+    source_root = operator_path(source).resolve(strict=True)
+    staging_root = operator_path(staging).resolve(strict=True)
+    for name in DATA_FILES:
+        relative = safe_relative(name)
+        origin = _source(source_root, relative)
+        target = operator_path(staging_root / relative)
+        if not origin.resolve().is_relative_to(
+            source_root
+        ) or not target.is_relative_to(staging_root):
+            raise ValueError("remote_training_split_path_escape")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(origin, target)
 
 
 def prepare(
@@ -45,6 +68,12 @@ def prepare(
         raise ValueError("remote_training_budget_invalid")
     if type(max_seconds) is not int or not 1 <= max_seconds <= 86400:
         raise ValueError("remote_training_time_budget_invalid")
+    validate_run_id(run_id)
+    source = operator_path(source)
+    manifest = operator_path(manifest)
+    profile_path = operator_path(profile_path)
+    snapshot = operator_path(snapshot, allow_symlinks=True)
+    output = operator_path(output)
     document = json.loads(manifest.read_text())
     raw = json.loads(profile_path.read_text())
     raw.pop("schema_version", None)
@@ -83,10 +112,7 @@ def prepare(
         staging = Path(temporary)
         (staging / "profile.json").write_text(json.dumps(profile.identity()))
         (staging / "data-manifest.json").write_text(json.dumps(document))
-        for name in DATA_FILES:
-            target = staging / name
-            target.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(source / name, target)
+        _copy_inputs(source, staging)
         return create_bundle(
             staging,
             ["profile.json", "data-manifest.json", *DATA_FILES],

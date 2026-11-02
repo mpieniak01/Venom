@@ -169,3 +169,11 @@ idempotent, retains prior evidence and never replenishes the run time budget.
 Log offsets are logical byte positions across the bounded buffer; responses
 include base_offset and truncated/reset flags when old bytes are unavailable
 or an interrupted publication needs a cursor reset.
+
+Operator data paths are checked before I/O. Use the current workspace, home,
+temporary directory, /srv, /opt, /models, /mnt or /workspace. Parent traversal,
+private credential/configuration directories and symlink ancestors are rejected.
+The qualified Python path preserves its virtualenv spelling; model snapshot
+aliases are accepted only when their resolved target remains in allowed data roots.
+Local verification derives receipt.json beside its own request, regardless of
+any output pathname in request content.

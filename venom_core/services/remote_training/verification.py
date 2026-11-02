@@ -23,6 +23,7 @@ from venom_core.services.granite_operator.contract import (
 from .bundles import validate_identity
 from .host import code_identity, dependencies_identity, load_host, tokenizer_identity
 from .lifecycle import atomic_json, file_lock
+from .paths import operator_path
 
 
 def _metadata(root: Path, name: str) -> dict[str, Any]:
@@ -224,9 +225,13 @@ def worker(request_path: Path) -> None:
     from venom_core.services.granite_operator.engine import Session, require_owner
 
     require_owner()
+    request_path = operator_path(request_path)
     request = json.loads(request_path.read_text())
-    host = load_host(Path(request["host_root"]))
-    adapter_root = Path(request["adapter_root"])
+    host = load_host(operator_path(request["host_root"]))
+    adapter_root = operator_path(request["adapter_root"])
+    output_path = request_path.parent / "receipt.json"
+    if Path(request["output"]).absolute() != output_path:
+        raise ValueError("remote_training_local_output_path_mismatch")
     identity, profile = validate_local(adapter_root, host)
     if (
         Path(sys.executable).absolute() != Path(host["worker_python"]).absolute()
@@ -279,12 +284,12 @@ def worker(request_path: Path) -> None:
         "activation_authorized": False,
         "optimizer_resume_verified": False,
     }
-    atomic_json(Path(request["output"]), result)
+    atomic_json(output_path, result)
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--worker", required=True, type=Path)
+    parser.add_argument("--worker", required=True, type=operator_path)
     args = parser.parse_args()
     worker(args.worker)
 

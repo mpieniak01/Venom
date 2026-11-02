@@ -9,6 +9,7 @@ from pathlib import Path
 from .bundles import verify_bundle
 from .client import RemoteClient
 from .host import initialize
+from .paths import operator_path, python_path
 from .transport import SSHConfig, SSHTransport
 
 
@@ -23,16 +24,20 @@ def parser():
     sub = value.add_subparsers(dest="action", required=True)
     pack = sub.add_parser("pack")
     for flag in ("source", "manifest", "profile", "snapshot", "output"):
-        pack.add_argument("--" + flag, type=Path, required=True)
+        pack.add_argument("--" + flag, type=operator_path, required=True)
     pack.add_argument("--run-id", required=True)
     pack.add_argument("--dataset", choices=("domain", "hf", "mixed"), default="domain")
     pack.add_argument("--updates", type=int, default=100)
     pack.add_argument("--max-seconds", type=int, default=3600)
     host = sub.add_parser("host-init")
     for flag in ("root", "worker-python", "snapshot", "admission-db", "code-root"):
-        host.add_argument("--" + flag, type=Path, required=True)
+        host.add_argument(
+            "--" + flag,
+            type=python_path if flag == "worker-python" else operator_path,
+            required=True,
+        )
     upload = sub.add_parser("upload")
-    upload.add_argument("--bundle", type=Path, required=True)
+    upload.add_argument("--bundle", type=operator_path, required=True)
     for action in ("start", "status", "logs", "stop", "resume", "retry", "collect"):
         cmd = sub.add_parser(action)
         cmd.add_argument("--run-id", required=True)
@@ -45,22 +50,22 @@ def parser():
                 "--checkpoint", required=True, help="Checkpoint relative to this run"
             )
         if action == "collect":
-            cmd.add_argument("--output", type=Path, required=True)
+            cmd.add_argument("--output", type=operator_path, required=True)
             cmd.add_argument("--include-checkpoint", action="store_true")
     for action in ("inspect-result", "import-result"):
         cmd = sub.add_parser(action)
-        cmd.add_argument("--bundle", type=Path, required=True)
-        cmd.add_argument("--input-bundle", type=Path, required=True)
+        cmd.add_argument("--bundle", type=operator_path, required=True)
+        cmd.add_argument("--input-bundle", type=operator_path, required=True)
         if action == "import-result":
-            cmd.add_argument("--quarantine", type=Path, required=True)
-            cmd.add_argument("--registry", type=Path, required=True)
-            cmd.add_argument("--academy-models", type=Path)
+            cmd.add_argument("--quarantine", type=operator_path, required=True)
+            cmd.add_argument("--registry", type=operator_path, required=True)
+            cmd.add_argument("--academy-models", type=operator_path)
             cmd.add_argument(
                 "--verify-local",
                 action="store_true",
                 help="Explicit fresh local GPU reload; requires offline target",
             )
-            cmd.add_argument("--host-root", type=Path)
+            cmd.add_argument("--host-root", type=operator_path)
     return value
 
 

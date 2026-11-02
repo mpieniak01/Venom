@@ -21,6 +21,7 @@ from venom_core.services.granite_operator.contract import (
 
 from .bundles import validate_identity
 from .host import binding, load_host
+from .paths import operator_path
 from .worker_support import normalized, preflight
 
 
@@ -141,9 +142,9 @@ def proof_for(run_root: Path, host: dict, identity: dict) -> Path:
 
 def execute(request: dict) -> dict:
     """Qualification, controlled updates and resume preserve the native G01 contract."""
-    host_root = Path(request["host_root"]).resolve()
-    run_root = Path(request["run_root"]).resolve()
-    attempt = Path(request["attempt_root"]).resolve()
+    host_root = operator_path(request["host_root"])
+    run_root = operator_path(request["run_root"])
+    attempt = operator_path(request["attempt_root"])
     if not run_root.is_relative_to(host_root / "runs") or not attempt.is_relative_to(
         run_root / "attempts"
     ):
@@ -343,7 +344,10 @@ def main():
     if len(sys.argv) != 2:
         raise SystemExit(2)
     signal.signal(signal.SIGTERM, interrupted)
-    request = json.loads(Path(sys.argv[1]).read_text())
+    request_path = operator_path(sys.argv[1])
+    if request_path.name != "request.json":
+        raise ValueError("remote_training_request_path_invalid")
+    request = json.loads(request_path.read_text())
     execute(request)
 
 

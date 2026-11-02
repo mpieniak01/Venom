@@ -315,3 +315,60 @@ def test_partial_then_complete_import_preserves_both_bundles(tmp_path, package):
     assert first["quarantine_path"] != second["quarantine_path"]
     assert retry["quarantine_path"] == second["quarantine_path"]
     assert Path(first["quarantine_path"]).joinpath("status.json").is_file()
+
+
+@pytest.mark.parametrize("operation", ["registry", "academy", "import"])
+def test_registration_sinks_validate_run_id_before_io(tmp_path, operation):
+    from venom_core.services.remote_training import importer
+
+    destination = tmp_path / "registry"
+    with pytest.raises(ValueError, match="run_id_invalid"):
+        if operation == "registry":
+            importer._register(destination, {"run_id": "../escaped"})
+        elif operation == "academy":
+            importer._academy_register(
+                tmp_path, destination, {"run_id": "../escaped"}, {}
+            )
+        else:
+            import_result(
+                tmp_path / "absent.zip",
+                tmp_path / "quarantine",
+                destination,
+                {},
+                "../escaped",
+            )
+    assert not destination.exists()
+    assert not (tmp_path / "quarantine").exists()
+    assert not (tmp_path / "escaped.json").exists()
+
+
+@pytest.mark.parametrize("parameter", ["registry", "quarantine", "academy"])
+def test_import_rejects_symlink_ancestors_before_reload(tmp_path, package, parameter):
+    archive, identity, _ = package
+    alias = tmp_path / "alias"
+    alias.symlink_to(tmp_path, target_is_directory=True)
+
+    def unexpected(*_args):
+        pytest.fail("unsafe output path must fail before model reload")
+
+    registry, quarantine = tmp_path / "registry", tmp_path / "quarantine"
+    academy = None
+    if parameter == "registry":
+        registry = alias / "registry"
+    elif parameter == "quarantine":
+        quarantine = alias / "quarantine"
+    else:
+        academy = alias / "models"
+    with pytest.raises(ValueError):
+        import_result(
+            archive,
+            quarantine,
+            registry,
+            identity,
+            "run01",
+            unexpected,
+            academy_models=academy,
+        )
+    assert not (tmp_path / "registry").exists()
+    assert not (tmp_path / "quarantine").exists()
+    assert not (tmp_path / "models").exists()

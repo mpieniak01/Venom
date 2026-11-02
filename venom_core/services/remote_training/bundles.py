@@ -14,6 +14,8 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path, PurePosixPath
 from typing import Any
 
+from .paths import operator_path
+
 MAX_BYTES = 100 * 1024**3
 MAX_FILES = 10000
 MANIFEST_NAME = ".bundle-manifest.json"
@@ -41,6 +43,7 @@ def canonical(value: Any) -> bytes:
 
 def sha256(path: Path) -> str:
     """Hash large artifacts without reading them entirely into memory."""
+    path = operator_path(path)
     with path.open("rb") as stream:
         return hashlib.file_digest(stream, "sha256").hexdigest()
 
@@ -137,6 +140,7 @@ def safe_relative(name: str) -> str:
 
 
 def _source(root: Path, name: str) -> Path:
+    root = operator_path(root)
     relative = safe_relative(name)
     target = root
     for part in PurePosixPath(relative).parts:
@@ -226,7 +230,8 @@ def create_bundle(
 ) -> dict[str, Any]:
     """Pack only selected regular files; do not overwrite an existing archive."""
     validate_run_id(run_id)
-    source_root, destination = Path(source_root), Path(destination)
+    source_root = operator_path(source_root)
+    destination = operator_path(destination)
     entries = {}
     total = 0
     for name in _names(files):
@@ -344,6 +349,7 @@ def verify_bundle(
     max_bytes: int = MAX_BYTES,
 ) -> dict[str, Any]:
     """Read and authenticate every declared payload byte without extraction."""
+    archive_path = operator_path(archive_path)
     with zipfile.ZipFile(archive_path) as archive:
         manifest = _open_manifest(archive, max_bytes)
         _expected(manifest, expected_identity, expected_run_id)
@@ -354,7 +360,7 @@ def verify_bundle(
 
 def verify_directory(destination: Path, manifest: dict[str, Any]) -> dict[str, Any]:
     """An upload retry accepts only an unchanged extracted input tree."""
-    destination = Path(destination)
+    destination = operator_path(destination)
     if destination.is_symlink() or not destination.is_dir():
         raise ValueError("remote_training_existing_destination_invalid")
     marker = destination / MANIFEST_NAME
@@ -387,7 +393,7 @@ def extract_bundle(
     max_bytes: int = MAX_BYTES,
 ) -> dict[str, Any]:
     """Verify before publishing a quarantine tree; never replace prior results."""
-    destination = Path(destination)
+    destination = operator_path(destination)
     manifest = verify_bundle(
         archive_path,
         expected_identity=expected_identity,

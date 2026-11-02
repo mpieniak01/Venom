@@ -504,3 +504,62 @@ def test_partial_stage_checkpoint_and_coordinator_log_are_retained(
     ).read_text() == "native template unchanged"
     assert (extracted / "logs/coordinator.log").read_text() == coordinator.read_text()
     verify_result_bundle(archive, expected_identity=identity, expected_run_id="run-01")
+
+
+@pytest.mark.parametrize("operation", ["source", "hash", "archive", "extract"])
+def test_bundle_io_rejects_symlink_ancestors(tmp_path, source, identity, operation):
+    from venom_core.services.remote_training.bundles import sha256
+
+    archive, _ = make_archive(tmp_path, source, identity)
+    alias = tmp_path / "alias"
+    alias.symlink_to(tmp_path, target_is_directory=True)
+    with pytest.raises(ValueError):
+        if operation == "source":
+            create_bundle(
+                alias / "source",
+                ["profile.json"],
+                tmp_path / "new.zip",
+                run_id="r",
+                identity=identity,
+            )
+        elif operation == "hash":
+            sha256(alias / "source/profile.json")
+        elif operation == "archive":
+            create_bundle(
+                source,
+                ["profile.json"],
+                alias / "new.zip",
+                run_id="r",
+                identity=identity,
+            )
+        else:
+            extract_bundle(archive, alias / "new-result")
+    assert not (tmp_path / "new.zip").exists()
+    assert not (tmp_path / "new-result").exists()
+
+
+def test_job_copy_refuses_staging_symlink_before_external_write(
+    tmp_path, source, monkeypatch
+):
+    from venom_core.services.remote_training import job
+
+    staging, outside = tmp_path / "staging", tmp_path / "outside"
+    staging.mkdir()
+    outside.mkdir()
+    (staging / "data").symlink_to(outside, target_is_directory=True)
+    monkeypatch.setattr(job, "DATA_FILES", ("data/train.jsonl",))
+    with pytest.raises(ValueError):
+        job._copy_inputs(source, staging)
+    assert not list(outside.iterdir())
+
+
+def test_job_copy_cannot_escape_explicit_staging_root(tmp_path, source, monkeypatch):
+    from venom_core.services.remote_training import job
+
+    staging = tmp_path / "staging"
+    staging.mkdir()
+    monkeypatch.setattr(job, "DATA_FILES", ("../profile.json",))
+    with pytest.raises(ValueError):
+        job._copy_inputs(source, staging)
+    assert not (tmp_path / "profile.json").exists()
+    assert not list(staging.iterdir())

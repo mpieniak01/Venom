@@ -15,6 +15,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from .paths import operator_path, python_path
+
 CONTROL_REQUIREMENTS = "requirements-remote-training-control.txt"
 CONTROL_IMPORTS = (
     "fastapi",
@@ -137,6 +139,8 @@ def runtime_receipt(code_root: Path) -> dict[str, Any]:
 
 def check_control_environment(code_root: Path, python: Path) -> dict[str, Any]:
     """Probe the worker interpreter in a fresh process with no private env file."""
+    python = python_path(python)
+    code_root = operator_path(code_root)
     environment = {
         **os.environ,
         "PYTHONPATH": str(code_root.resolve()),
@@ -178,10 +182,10 @@ def check_control_environment(code_root: Path, python: Path) -> dict[str, Any]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--code-root", type=Path, required=True)
-    parser.add_argument("--python", type=Path, default=Path(sys.executable))
+    parser.add_argument("--code-root", type=operator_path, required=True)
+    parser.add_argument("--python", type=python_path, default=Path(sys.executable))
     parser.add_argument("--probe", action="store_true", help=argparse.SUPPRESS)
-    parser.add_argument("--output", type=Path)
+    parser.add_argument("--output", type=operator_path)
     args = parser.parse_args()
     try:
         result = (

@@ -20,13 +20,16 @@ from .bundles import (
     extract_bundle,
     sha256,
     validate_identity,
+    validate_run_id,
     verify_directory,
 )
+from .paths import operator_path
 
 ReloadVerifier = Callable[[Path, dict[str, Any]], dict[str, Any]]
 
 
 def _current(root: Path) -> tuple[dict[str, Any], dict[str, Any]]:
+    root = operator_path(root)
     marker = root / MANIFEST_NAME
     if root.is_symlink() or marker.is_symlink() or not marker.is_file():
         raise ValueError("remote_training_import_manifest_missing")
@@ -47,10 +50,14 @@ def _current(root: Path) -> tuple[dict[str, Any], dict[str, Any]]:
 
 
 def _register(registry: Path, record: dict[str, Any]) -> None:
+    validate_run_id(record.get("run_id"))
+    registry = operator_path(registry)
     if registry.is_symlink():
         raise ValueError("remote_training_registry_symlink")
     registry.mkdir(parents=True, exist_ok=True, mode=0o700)
-    destination = registry / (record["run_id"] + ".json")
+    destination = operator_path(registry / (record["run_id"] + ".json"))
+    if destination.parent != registry:
+        raise ValueError("remote_training_registry_path_escape")
     with tempfile.TemporaryDirectory(prefix=".remote-import-", dir=registry) as folder:
         staged = Path(folder) / "metadata.json"
         staged.write_bytes(canonical(record))
@@ -69,6 +76,9 @@ def _academy_register(
     root: Path, models: Path, manifest: dict[str, Any], proof: dict[str, Any]
 ) -> Path:
     """Publish the existing Academy directory/metadata contract, without signing chat."""
+    validate_run_id(manifest.get("run_id"))
+    root = operator_path(root)
+    models = operator_path(models)
     from venom_core.services.academy.adapter_metadata_service import (
         AdapterMetadataContext,
         build_canonical_adapter_metadata,
@@ -78,7 +88,9 @@ def _academy_register(
     if models.is_symlink():
         raise ValueError("remote_training_academy_symlink")
     models.mkdir(parents=True, exist_ok=True, mode=0o700)
-    destination = models / manifest["run_id"]
+    destination = operator_path(models / manifest["run_id"])
+    if destination.parent != models:
+        raise ValueError("remote_training_academy_path_escape")
     provenance = {
         "identity": manifest["identity"],
         "local_verification": proof,
@@ -157,7 +169,9 @@ def finalize_import(
     """Invoke a trusted function now; a receipt uploaded by the host is insufficient."""
     if not callable(verifier):
         raise ValueError("remote_training_local_reload_required")
-    root, registry = Path(root), Path(registry)
+    root, registry = operator_path(root), operator_path(registry)
+    if academy_models is not None:
+        academy_models = operator_path(academy_models)
     manifest, receipt = _current(root)
     if not receipt["complete"]:
         raise ValueError("remote_training_incomplete_import")
@@ -228,11 +242,19 @@ def import_result(
     academy_models: Path | None = None,
 ) -> dict[str, Any]:
     """Verify complete transfer even for failed runs; keep pending adapters inactive."""
+    validate_run_id(run_id)
+    archive = operator_path(archive)
+    quarantine = operator_path(quarantine)
+    registry = operator_path(registry)
+    if academy_models is not None:
+        academy_models = operator_path(academy_models)
     receipt = verify_result_bundle(
         archive, expected_identity=expected_identity, expected_run_id=run_id
     )
     # Keep every attempt immutable while deduplicating exact bundle retries.
-    root = Path(quarantine) / run_id / sha256(Path(archive))
+    root = operator_path(quarantine / run_id / sha256(archive))
+    if not root.is_relative_to(quarantine):
+        raise ValueError("remote_training_quarantine_path_escape")
     extract_bundle(
         archive, root, expected_identity=expected_identity, expected_run_id=run_id
     )

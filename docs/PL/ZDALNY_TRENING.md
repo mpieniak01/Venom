@@ -91,3 +91,10 @@ idempotentne; historia prób i zużyty budżet pozostają zachowane.
 Offset logów jest logiczny i rośnie mimo obcinania bufora. Odpowiedź zawiera
 base_offset oraz truncated/reset, gdy starsze bajty przepadły albo trzeba
 odtworzyć kursor po przerwanym zapisie.
+
+Ścieżki operatora są sprawdzane przed operacjami plikowymi. Obsługiwane miejsca
+to bieżący workspace, katalog domowy/tymczasowy oraz /srv, /opt, /models, /mnt
+i /workspace. Odrzucane są przejścia przez .., prywatne katalogi poświadczeń
+oraz symlinki w ścieżce. Interpreter zachowuje ścieżkę virtualenv; alias
+snapshotu musi wskazywać do dopuszczonego miejsca. Lokalny worker wyznacza
+receipt.json obok własnego żądania i odrzuca podmienioną ścieżkę wyniku.

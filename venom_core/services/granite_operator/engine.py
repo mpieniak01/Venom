@@ -20,6 +20,7 @@ from .contract import (
     write_json,
 )
 from .encoding import collate, encode
+from .sampling import FamilyEpochOrder
 
 
 def require_owner() -> None:
@@ -217,8 +218,19 @@ class Session:
             for k, v in collate([row], self.tokenizer.pad_token_id, self.torch).items()
         }
 
-    def train(self, rows, updates: int):
-        """Resume deterministic row order; dropout RNG is checkpointed separately."""
+    def train(self, rows, updates: int, *, families: list[str] | None = None):
+        """Resume the selected row policy; dropout RNG is checkpointed separately."""
+        if not rows or type(updates) is not int or updates < 1:
+            raise ValueError("granite_training_rows_or_updates_invalid")
+        sampler = None
+        if self.profile.row_order == FamilyEpochOrder.policy:
+            if families is None or len(families) != len(rows):
+                raise ValueError("granite_sampling_families_required")
+            sampler = FamilyEpochOrder(families, self.profile.seed)
+            expected = sampler.identity(self.step * self.profile.accumulation)
+            if getattr(self, "sampling_state", expected) != expected:
+                raise ValueError("granite_sampling_checkpoint_changed")
+            self.sampling_state = expected
         self.model.train()
         start = time.monotonic()
         for _ in range(updates):
@@ -226,7 +238,8 @@ class Session:
             total = 0.0
             tokens = 0
             for micro in range(self.profile.accumulation):
-                index = (self.step * self.profile.accumulation + micro) % len(rows)
+                position = self.step * self.profile.accumulation + micro
+                index = sampler.index(position) if sampler else position % len(rows)
                 loss, count = loss_for(self.model, self.batch(rows[index]))
                 total += finite(loss.detach(), "loss") / self.profile.accumulation
                 (loss / self.profile.accumulation).backward()
@@ -236,6 +249,10 @@ class Session:
             self.optimizer.step()
             self.step += 1
             self.target_tokens += tokens
+            if sampler:
+                self.sampling_state = sampler.identity(
+                    self.step * self.profile.accumulation
+                )
             event = {
                 "step": self.step,
                 "loss": total,
@@ -298,6 +315,8 @@ class Session:
             "cuda_rng": self.torch.cuda.get_rng_state_all(),
             "probe": self.probe(probe_row),
         }
+        if self.profile.row_order != "sequential":
+            state["sampling"] = self.sampling_state
         self.torch.save(state, path / "training-state.pt")
         write_json(
             path / "receipt.json",
@@ -329,6 +348,19 @@ class Session:
             "learning_rate": self.profile.learning_rate,
         }:
             raise RuntimeError("granite_scheduler_mismatch")
+        sampling = state.get("sampling")
+        if self.profile.row_order == "sequential":
+            if sampling is not None:
+                raise ValueError("granite_sampling_policy_mismatch")
+        elif (
+            not isinstance(sampling, dict)
+            or sampling.get("policy") != self.profile.row_order
+            or sampling.get("seed") != self.profile.seed
+            or sampling.get("samples_seen") != state["step"] * self.profile.accumulation
+        ):
+            raise ValueError("granite_sampling_checkpoint_invalid")
+        else:
+            self.sampling_state = sampling
         self.optimizer.load_state_dict(state["optimizer"])
         self.step = state["step"]
         self.target_tokens = state["target_tokens"]

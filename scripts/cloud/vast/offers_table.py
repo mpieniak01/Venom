@@ -8,16 +8,24 @@ import io
 import json
 import sys
 from contextlib import redirect_stdout
+from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT))
 
+from venom_core.config import Settings  # noqa: E402
+from venom_core.infrastructure.providers.vast.client import (  # noqa: E402
+    VastClient,
+    VastError,
+)
 from venom_core.infrastructure.providers.vast.models import amount  # noqa: E402
+from venom_core.services.granite_operator.contract import write_json  # noqa: E402
 from venom_core.services.vast_environments.cli import main as vast_main  # noqa: E402
 
 TEXT = {
     "pl": {
+        "training": "Trening: VM, VRAM ≥{gpu_vram_gb} GB, RAM instancji ≥{ram_gb} GB, dysk {disk_gb} GB; źródło: {suite}.",
         "headers": [
             "ID",
             "USD/h",
@@ -35,6 +43,7 @@ TEXT = {
         "empty": "Brak ofert spełniających profil z kompletną wyceną. Filtry nie zostały poluzowane.",
     },
     "en": {
+        "training": "Training: VM, VRAM ≥{gpu_vram_gb} GB, instance RAM ≥{ram_gb} GB, disk {disk_gb} GB; source: {suite}.",
         "headers": [
             "ID",
             "USD/h",
@@ -52,6 +61,7 @@ TEXT = {
         "empty": "No offers meet the profile with a complete quote. Filters were not relaxed.",
     },
     "de": {
+        "training": "Training: VM, VRAM ≥{gpu_vram_gb} GB, Instanz-RAM ≥{ram_gb} GB, Speicher {disk_gb} GB; Quelle: {suite}.",
         "headers": [
             "ID",
             "USD/h",
@@ -125,12 +135,99 @@ def render(rows: list[dict], count: int, locale: str) -> str:
     return "\n".join(lines)
 
 
+def training_offers(suite_path, env_file, state_dir, *, client_factory=None):
+    """Reuse the current training suite and provider client; read-only API calls."""
+    if suite_path is None:
+        pointer = json.loads(
+            (ROOT / "data/training/current-experiment.json").read_text()
+        )
+        suite_path = Path(pointer["suite"])
+    suite = json.loads(suite_path.read_text())
+    requirements = suite["common_host_requirements"]
+    for key in ("gpu_vram_gb", "ram_gb", "disk_gb"):
+        if type(requirements[key]) is not int or requirements[key] < 1:
+            raise ValueError("vast.invalid_training_requirements")
+    if requirements.get("vm_required") is not True:
+        raise ValueError("vast.training_vm_required")
+    policy = json.loads((ROOT / "config/granite_operator_host.json").read_text())
+    filters = {
+        "vms_enabled": {"eq": True},
+        "verified": {"eq": True},
+        "num_gpus": {"eq": 1},
+        "cpu_arch": {"eq": "amd64"},
+        "gpu_ram": {"gte": requirements["gpu_vram_gb"] * 1000},
+        "cpu_ram": {"gte": requirements["ram_gb"] * 1000},
+        "disk_space": {"gte": requirements["disk_gb"]},
+        "cpu_cores_effective": {"gte": policy["min_cpu_threads"]},
+        "reliability": {"gte": policy["min_reliability"]},
+        "cuda_vers": {"gte": policy["min_cuda"]},
+        "driver_version": {"gte": policy["min_driver"]},
+        "direct_port_count": {"gte": 1},
+        "order": [["dph_total", "asc"]],
+    }
+    client = (client_factory or VastClient)(Settings(_env_file=env_file).VAST_API_KEY)
+    try:
+        offers = client.offers(requirements["disk_gb"], filters, limit=100)
+    finally:
+        client.close()
+    rows = []
+    for offer in offers:
+        cpu, fraction = amount(offer.get("cpu_ram")), amount(offer.get("gpu_frac"))
+        ram = (
+            cpu * fraction
+            if cpu is not None and fraction is not None and 0 < fraction <= 1
+            else None
+        )
+        search = offer.get("search") or {}
+        hourly = amount(search.get("totalHour", offer.get("dph_total")))
+        eligible = (
+            ram is not None
+            and ram >= requirements["ram_gb"] * 1000
+            and hourly is not None
+        )
+        rows.append(
+            {
+                "offer": offer,
+                "status": "eligible" if eligible else "ineligible",
+                "quote": {"hourly_usd": str(hourly) if hourly is not None else None},
+                "runtime": {
+                    "memory_allocation": {
+                        "baseline_ram_mb": str(ram) if ram is not None else None
+                    }
+                },
+                "host": {},
+            }
+        )
+    receipt = {
+        "observed_at": datetime.now(timezone.utc).isoformat(),
+        "suite": str(suite_path.resolve()),
+        "requirements": requirements,
+        "filters": filters,
+        "disk_gb": requirements["disk_gb"],
+        "result": rows,
+        "rental_created": False,
+    }
+    state_dir.mkdir(parents=True, exist_ok=True)
+    write_json(state_dir / "latest-training-offers.json", receipt)
+    return rows, requirements, suite_path
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--profile",
         type=Path,
         default=ROOT / ".venom_runtime/vast/prepared/chat-gemma4-26b-q4-24gb.json",
+    )
+    parser.add_argument(
+        "--training",
+        action="store_true",
+        help="Use the current prepared training campaign",
+    )
+    parser.add_argument(
+        "--training-suite",
+        type=Path,
+        help="Explicit training suite; implies --training",
     )
     parser.add_argument("--env-file", type=Path, default=ROOT / ".env.dev")
     parser.add_argument("--state-dir", type=Path, default=ROOT / ".venom_runtime/vast")
@@ -139,6 +236,23 @@ def main(argv=None) -> int:
     )
     parser.add_argument("--locale", choices=list(TEXT), default="pl")
     args = parser.parse_args(argv)
+    if args.training or args.training_suite is not None:
+        try:
+            rows, requirements, suite = training_offers(
+                args.training_suite, args.env_file, args.state_dir
+            )
+        except (VastError, OSError, ValueError, KeyError, TypeError) as error:
+            code = (
+                error.code
+                if isinstance(error, VastError)
+                else "vast.training_offers_failed"
+            )
+            print(json.dumps({"error": code}), file=sys.stderr)
+            return 1
+        selected, count = select(rows, args.limit)
+        print(TEXT[args.locale]["training"].format(**requirements, suite=suite))
+        print(render(selected, count, args.locale))
+        return 0
     captured = io.StringIO()
     with redirect_stdout(captured):
         result = vast_main(

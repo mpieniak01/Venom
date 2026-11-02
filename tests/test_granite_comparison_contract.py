@@ -869,3 +869,232 @@ def test_git_trust_is_limited_to_isolated_readonly_verifier(
     assert command[command.index("--cap-drop") + 1] == "ALL"
     assert command[command.index("--user") + 1] == "1000:1001"
     assert command[command.index("--mount") + 1].endswith(",readonly")
+
+
+def test_export_directories_remain_readable_under_private_host_umask(tmp_path):
+    import io
+    import os
+    import tarfile
+
+    from scripts.granite_operator.comparison_support import restore_workspace
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    archive = io.BytesIO()
+    with tarfile.open(fileobj=archive, mode="w") as tar:
+        directory = tarfile.TarInfo(".git/")
+        directory.type = tarfile.DIRTYPE
+        directory.mode = 0o755
+        tar.addfile(directory)
+        entry = tarfile.TarInfo(".git/HEAD")
+        content = b"ref: refs/heads/main\n"
+        entry.size = len(content)
+        entry.mode = 0o644
+        tar.addfile(entry, io.BytesIO(content))
+    previous = os.umask(0o077)
+    try:
+        restore_workspace(archive, workspace)
+    finally:
+        os.umask(previous)
+    assert (workspace / ".git").stat().st_mode & 0o777 == 0o755
+    assert (workspace / ".git/HEAD").read_bytes() == content
+
+
+def test_inference_precision_override_preserves_training_profile():
+    from scripts.granite_operator.comparison_host import inference_profile
+    from venom_core.services.granite_operator.contract import TrainingProfile, digest
+
+    profile = TrainingProfile(quantization="bf16", row_order="family_epoch_v1")
+    original = digest(profile.identity())
+    evaluation = inference_profile(profile, "nf4")
+    assert evaluation.quantization == "nf4"
+    assert evaluation.rank == profile.rank
+    assert profile.quantization == "bf16"
+    assert digest(profile.identity()) == original
+    assert inference_profile(profile, "trained") is profile
+    assert inference_profile(evaluation, "bf16") == profile
+    with pytest.raises(ValueError, match="precision_invalid"):
+        inference_profile(profile, "fp32")
+
+
+@pytest.mark.parametrize("precision", ["nf4", "bf16", "trained"])
+def test_coordinate_passes_requested_precision_to_worker(
+    tmp_path, monkeypatch, precision
+):
+    from contextlib import nullcontext
+    from types import SimpleNamespace
+
+    from scripts.granite_operator import (
+        comparison,
+        comparison_host,
+        comparison_parallel,
+    )
+    from venom_core.services.granite_operator import cli
+    from venom_core.services.remote_training import lifecycle
+
+    monkeypatch.setattr(
+        comparison_parallel,
+        "execution_from_args",
+        lambda args: comparison_parallel.Execution(),
+    )
+    monkeypatch.setattr(
+        comparison_host,
+        "adapter_source",
+        lambda request: (
+            {"worker_python": "/python", "admission_db": "/db"},
+            None,
+            None,
+        ),
+    )
+    monkeypatch.setattr(cli, "require_offline", lambda: None)
+    monkeypatch.setattr(comparison, "load_frozen", lambda path: None)
+    monkeypatch.setattr(lifecycle, "file_lock", lambda *args, **kwargs: nullcontext())
+    monkeypatch.setattr(
+        comparison,
+        "_coordinate_reserved",
+        lambda args, execution, run_id, request_path: json.loads(
+            request_path.read_text()
+        ),
+    )
+    args = SimpleNamespace(
+        adapter_root=tmp_path / "adapter",
+        host_root=tmp_path / "host",
+        cases=tmp_path / "cases",
+        output=tmp_path / "output",
+        expected_adapter_sha256="a" * 64,
+        inference_precision=precision,
+        resume=False,
+    )
+    assert comparison.coordinate(args)["inference_precision"] == precision
+
+
+def test_precision_override_rejects_legacy_run_before_gpu(monkeypatch):
+    from types import SimpleNamespace
+
+    from scripts.granite_operator import comparison
+    from scripts.granite_operator.comparison_parallel import Execution
+
+    monkeypatch.setattr(
+        "scripts.granite_operator.comparison_parallel.execution_from_args",
+        lambda args: Execution(),
+    )
+    with pytest.raises(ValueError, match="requires_adapter_root"):
+        comparison.coordinate(
+            SimpleNamespace(adapter_root=None, inference_precision="bf16")
+        )
+
+
+@pytest.mark.parametrize(
+    "command,expected",
+    [
+        ("python -m pytest -q --tb=short audit/unit", True),
+        ("pytest audit/unit --tb short", True),
+        ("python -m pytest -q audit/unit/", True),
+        ("pytest --junitxml audit/unit", False),
+        ("pytest --collect-only audit/unit", False),
+        ("pytest audit/units", False),
+        ("pytest audit/unit ; echo okay", False),
+    ],
+)
+def test_rescore_semantic_pytest_target(command, expected):
+    from scripts.granite_operator.rescore_suites import pytest_target
+
+    assert pytest_target(command, "audit/unit") is expected
+
+
+def test_rescore_suites_requires_real_results_truthful_report_and_scope():
+    import copy
+
+    from scripts.granite_operator.rescore_suites import rescore_row
+
+    case = {
+        "family": "two_suites",
+        "oracle": {
+            "command_regexes": [
+                r"python\ \-m\ pytest\ \-q\ audit/unit",
+                r"python\ \-m\ pytest\ \-q\ audit/integration",
+            ],
+            "exit_codes": [0, 2],
+            "summary_regexes": [
+                "audit/unit",
+                "audit/integration",
+                r"exit\ 2",
+                "absent_willow_00",
+            ],
+        },
+    }
+    row = {
+        "tools": [
+            {
+                "command": "python -m pytest -q --tb=no audit/unit",
+                "result": {"exit_code": 0, "stdout": "1 passed", "stderr": ""},
+            },
+            {
+                "command": "python -m pytest -q --tb=short audit/integration",
+                "result": {
+                    "exit_code": 2,
+                    "stdout": "",
+                    "stderr": "ModuleNotFoundError: absent_willow_00",
+                },
+            },
+        ],
+        "finish": {
+            "status": "success",
+            "summary": "unit: 1 passed; integration: collection error absent_willow_00",
+        },
+        "oracle": {
+            "success": False,
+            "errors": ["required_command", "summary_evidence"],
+            "success_without_oracle_confirmation": True,
+        },
+    }
+    original = copy.deepcopy(row)
+    revised = rescore_row(case, row)
+    assert revised["oracle"]["success"]
+    assert revised["oracle"]["errors"] == []
+    assert row == original
+    bad = copy.deepcopy(row)
+    bad["tools"][1]["result"]["exit_code"] = 0
+    assert not rescore_row(case, bad)["oracle"]["success"]
+    bad = copy.deepcopy(row)
+    bad["finish"]["summary"] = (
+        "unit failed; integration passed; collection error absent_willow_00"
+    )
+    assert not rescore_row(case, bad)["oracle"]["success"]
+    bad = copy.deepcopy(row)
+    bad["oracle"]["errors"].append("scope_violation")
+    assert rescore_row(case, bad)["oracle"]["errors"] == ["scope_violation"]
+    untouched = {**case, "family": "other"}
+    assert rescore_row(untouched, row) == row
+
+
+def test_rescore_never_promotes_and_preserves_original_trials(tmp_path, monkeypatch):
+    from scripts.granite_operator import rescore_suites
+
+    case = {"id": "one", "family": "other"}
+    rows = [
+        {"case_id": "one", "arm": arm, "oracle": {"success": True, "errors": []}}
+        for arm in ("base", "adapter")
+    ]
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text("{}")
+    trials = tmp_path / "original.jsonl"
+    raw = "".join(json.dumps(row) + "\n" for row in rows)
+    trials.write_text(raw)
+    monkeypatch.setattr(rescore_suites, "load_frozen", lambda path: ({}, [case]))
+    monkeypatch.setattr(
+        rescore_suites,
+        "summarize",
+        lambda data: {"paired": {"proposed_promotion_gate_passed": True}},
+    )
+    result = rescore_suites.run(manifest, trials, tmp_path / "rescored")
+    assert result["summary"]["paired"]["proposed_promotion_gate_passed"] is False
+    assert trials.read_text() == raw
+    assert json.loads((tmp_path / "rescored/provenance.json").read_text())[
+        "original_results_unchanged"
+    ]
+    with pytest.raises(FileExistsError):
+        rescore_suites.run(manifest, trials, tmp_path / "rescored")
+    trials.write_text(json.dumps(rows[0]) + "\n")
+    with pytest.raises(ValueError, match="trials_incomplete"):
+        rescore_suites.run(manifest, trials, tmp_path / "incomplete")

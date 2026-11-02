@@ -528,6 +528,9 @@ def coordinate(args):
     from venom_core.services.granite_operator.cli import require_offline
 
     execution = execution_from_args(args)
+    precision = getattr(args, "inference_precision", "trained")
+    if precision != "trained" and not args.adapter_root:
+        raise ValueError("comparison_precision_override_requires_adapter_root")
     if args.adapter_root:
         from scripts.granite_operator.comparison_host import adapter_source
 
@@ -536,6 +539,7 @@ def coordinate(args):
                 "adapter_root": str(args.adapter_root),
                 "host_root": str(args.host_root),
                 "expected_adapter_sha256": args.expected_adapter_sha256,
+                "inference_precision": precision,
             }
         )
         args.worker_python = Path(host["worker_python"])
@@ -558,6 +562,7 @@ def coordinate(args):
             "resume": args.resume,
             "execution": execution.validate(),
             "expected_adapter_sha256": args.expected_adapter_sha256,
+            "inference_precision": precision,
         }
     )
     request_path = args.output / ("request-" + run_id + ".json")
@@ -649,6 +654,9 @@ def main():
     parser.add_argument("--adapter-root", type=Path)
     parser.add_argument("--host-root", type=Path)
     parser.add_argument("--expected-adapter-sha256")
+    parser.add_argument(
+        "--inference-precision", choices=("trained", "nf4", "bf16"), default="trained"
+    )
     from scripts.granite_operator.comparison_parallel import execution_options
 
     execution_options(parser)

@@ -1,0 +1,6 @@
+{
+  "min_cuda": 13.0,
+  "min_driver": 580000000,
+  "min_reliability": 0.99,
+  "min_cpu_threads": 8
+}

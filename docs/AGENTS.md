@@ -48,6 +48,26 @@ If brief and code diverge, code remains source of truth.
 - If the same gate fails twice without a code or environment change, stop and report the blocker instead of looping.
 - Keep documentation updates concise and actionable. Capture the rule that will prevent the next mistake, not the whole debugging story.
 
+## Training data knowledge
+
+Before analyzing G01–G04, read the [training data catalog](TRAINING_DATA_CATALOG.md)
+and the canonical host's private `data/training/README.md`. Reuse the dated
+`data/training/catalog/analyses/` findings when actual file hashes and schema still
+match the recorded identities. A new model requires its own serialization, mask
+and protocol checks, not a new full profile of unchanged source data. Audit only
+the changed scope when inputs differ, and preserve frozen data and historical
+proofs. Dataset preparation status is separate from training/deployment status.
+
+## Remote training operations
+
+For Vast training plus evaluation, follow [the startup/recovery checklist](PL/VAST_START_I_ODZYSKIWANIE.md).
+Select VM capability before showing offers; refresh availability before creation.
+Use the prepared RPC interpreter for project operations. Qualify writable and
+read-only sandboxes on the selected host before GPU comparison. Preserve frozen
+input identities and sealed attempt evidence. Verify local artifacts before an
+operator-requested destroy and record the confirmed closed state. Existing
+Venom/Rider local-stack instructions do not select a cloud training runtime.
+
 ## Manual provider test zero (VAST / OpenRouter)
 
 Real provider test zero is operator-request-only for each run. Never run it as part of automated tests, PR/CI/Sonar gates, startup, deployment or post-change checks. Credentials, a configured budget or completion of work do not imply authorization. Automated code tests must use fake transports/provider doubles; they do not count as a live test zero. See [provider test-zero policy](PROVIDER_TEST_ZERO_POLICY.md) and [Polish policy](PL/PROVIDER_TEST_ZERO_POLICY.md).

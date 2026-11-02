@@ -1,5 +1,8 @@
 # Remote Granite training
 
+For G01–G04 descriptions, lineage and reusable audit evidence, start with the
+[training data catalog](TRAINING_DATA_CATALOG.md).
+
 This manual operator workflow extends G01. Vast supplies a host; the job controller
 uses an existing verified SSH connection and does not rent, stop or destroy instances.
 No application startup, API request or CI job starts model training. Remote commands
@@ -9,7 +12,10 @@ are fixed RPC operations, not arbitrary command execution from a model or manife
 
 The native host helper is `scripts/remote_training_host/prepare.py`; the
 [Polish operator runbook](PL/ZDALNY_TRENING.md#prosta-ścieżka-operatora) contains the
-complete ordered workflow. On an already rented Linux amd64/NVIDIA SSH host,
+complete ordered workflow. For training plus Docker-based evaluation on one Vast
+host, select a VM-capable offer and the official Ubuntu VM template, not the
+generic Axolotl container. Follow the [startup/recovery checklist](PL/VAST_START_I_ODZYSKIWANIE.md).
+On an already rented Linux amd64/NVIDIA SSH host,
 prepare a clean reviewed checkout and invoke:
 
 ```bash
@@ -46,6 +52,22 @@ after connectivity returns; use explicit `stop` to stop the job.
 The first authorized real acceptance still needs host smoke, SSH disconnect,
 checkpoint resume, collection and fresh local GPU verification. Do not equate
 fixture tests or successful installation with GPU qualification or model quality.
+
+## Evaluation sandbox preflight (CPU only)
+
+Before GPU comparisons, load the exact frozen benchmark image on the selected
+host and run:
+
+```bash
+cd /workspace/venom
+/workspace/data/remote-training/rpc-python -m scripts.remote_training_host.check_sandbox \
+  --cases /workspace/benchmarks/dialogue/manifest.json
+```
+
+Both writable and read-only checks must pass. This exercises Git ownership after
+container export, including a root-operated VM, without loading CUDA or a model.
+Replay trusted benchmark references on that host when available; CPU sandbox
+qualification and training smoke are separate requirements.
 
 ## Runtime boundary
 
@@ -313,3 +335,68 @@ between windows, never by changing adapter state from concurrent task threads.
 
 
 See [independent training milestones](REMOTE_TRAINING_MILESTONES.md) for separately runnable 80/125/160 training stages, historical result collection and dialogue evaluation.
+
+
+### Versioned training row order
+
+Existing profiles keep `sequential` ordering and their original serialized identity.
+New, separately qualified profiles may opt into `"row_order": "family_epoch_v1"`.
+Every epoch contains every row exactly once. Rows shuffle within each family from
+seed + epoch; proportional interleaving spreads small families through the epoch
+without duplicating them. The sampler does not consume the model/dropout RNG.
+Checkpoints bind policy, seed, family ordering and absolute consumed-sample position.
+Resume rejects changed sampling metadata. Dataset content remains covered by the
+existing environment fingerprint. New native source/profile/data require a new
+input pack and smoke qualification; existing checkpoints are not migrated.
+
+Compare training budgets by consumed rows and target tokens, not update numbers
+alone: with 640 rows and accumulation 4, one epoch is 160 updates. A preparation
+plan of 160 / 210 / 250 updates stays within the native 256-update campaign bound;
+it is not directly equivalent to the earlier 320-row 80 / 125 / 160 campaign.
+Keep validation and reserved diagnostic fixtures out of training. Private material,
+recipes and run receipts remain under ignored `data/training/`.
+
+
+### Comparing QLoRA and BF16 LoRA
+
+`config/granite_operator_qlora.json` and `config/granite_operator_lora.json`
+freeze the same rank-16 q/k/v/o setup, row-order policy and optimizer controls;
+only base precision differs. Start each from the pinned base, with a separate
+smoke and run identity. Do not resume the selected production candidate as an
+experiment or resume between precisions.
+
+For collected remote adapters, `scripts.granite_operator.comparison` accepts
+`--inference-precision trained|nf4|bf16` (default `trained`). It preserves the
+original artifact/profile identity and records training and actual inference
+precision separately. Compare both training methods at the same deployment
+precision first; a second BF16 comparison isolates inference precision. Keep
+outputs separate for each precision; changed comparison identities reject resume.
+
+
+### One selected adapter and two prepared experiments
+
+Use `scripts/granite_experiments.py select` with an explicit expected archive SHA
+and checkpoint step to record a single selection in the ignored
+`data/training/selected-adapter.json`. Selection verifies the archive, extracted
+bytes and checkpoint metrics on CPU. It does not assert a local GPU reload,
+activate chat, publish Academy entries or authorize training resume.
+
+Use `prepare` with the frozen data/manifest, local model snapshot, selection file,
+output directory and run prefix. It prepares only QLoRA NF4 and LoRA BF16. Each
+gets an independent input bundle, fresh smoke, explicit operator commands and a
+single final checkpoint (250 updates by default). Equal data encoding, native
+source, dependencies and tokenizer identities are enforced. Each method is ready
+independently; a failed second preparation preserves the first. Repeating an
+unchanged preparation is safe; changed prepared evidence is rejected.
+
+Train methods sequentially on one VM with the same hardware (planned 24 GB VRAM,
+32 GB RAM, 100 GB disk). Both start from the original pinned base, never the
+selected adapter or one another. New experiment outputs are not automatically
+registered or deployed. Preserve intermediate optimizer checkpoints for recovery;
+only the final candidate per method is selected for comparison.
+
+`evaluation-commands` checks the expected final update (default 250) and qualified
+frozen benchmark inventories before printing separate commands. It uses NF4
+inference by default, four adaptive sessions on remote hosts (up to eight), or
+one local session. Optional BF16 evaluation has a separate output directory.
+See the [Polish preparation procedure](PL/ZDALNY_TRENING.md#jeden-wybrany-adapter-i-porównanie-qlora--lora).

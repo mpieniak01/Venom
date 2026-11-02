@@ -69,11 +69,14 @@ class TrainingProfile:
     accumulation: int = 4
     seed: int = 17
     gradient_checkpointing: bool = True
+    row_order: str = "sequential"
 
     def validate(self) -> None:
         """Reject unsupported configurations before touching GPU or outputs."""
         if self.model != MODEL or self.revision != REVISION:
             raise ValueError("granite_checkpoint_mismatch")
+        if self.row_order not in {"sequential", "family_epoch_v1"}:
+            raise ValueError("granite_row_order_invalid")
         if self.quantization not in {"nf4", "bf16"}:
             raise ValueError("granite_precision_invalid")
         for name in ("context", "rank", "alpha", "accumulation", "seed"):
@@ -90,7 +93,11 @@ class TrainingProfile:
     def identity(self) -> dict[str, Any]:
         """Expose reproducible configuration, never machine-local secrets."""
         self.validate()
-        return asdict(self)
+        result = asdict(self)
+        # Preserve the serialized identity of existing sequential profiles.
+        if self.row_order == "sequential":
+            result.pop("row_order")
+        return result
 
 
 def load_profile(path: Path) -> TrainingProfile:

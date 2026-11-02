@@ -48,6 +48,16 @@ Jeśli brief i kod są niespójne, źródłem prawdy pozostaje kod.
 - Jeśli ten sam gate failuje dwa razy bez zmiany kodu albo środowiska, zatrzymaj się i zgłoś bloker zamiast kręcić pętlę.
 - Aktualizacje dokumentacji mają być krótkie i użyteczne: zapisz regułę, która zapobiegnie kolejnemu błędowi, nie cały przebieg debugowania.
 
+## Wiedza o danych treningowych
+
+Przed analizą G01–G04 przeczytaj [katalog danych](DANE_TRENINGOWE.md) i lokalny
+`data/training/README.md`. Jeżeli rzeczywiste hashe plików oraz schemat zgadzają
+się z zapisem w `data/training/catalog/analyses/`, użyj istniejących ustaleń.
+Zmiana modelu wymaga sprawdzenia nowego formatu, masek i protokołu, nie ponownego
+pełnego profilowania tych samych źródeł. Przy zmianie danych audytuj zmieniony
+zakres; nie nadpisuj zamrożonych wersji ani historycznych dowodów. Status
+przygotowania materiału nie jest statusem treningu lub wdrożenia modelu.
+
 ## Domyślna Komenda Testów (zacznij od tego)
 
 Gdy zakres testów nie jest jeszcze doprecyzowany, zacznij od:

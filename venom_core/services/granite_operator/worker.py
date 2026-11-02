@@ -204,7 +204,12 @@ def run(request: dict):
     steps = request["updates"]
     if type(steps) is not int or not 1 <= steps <= 128:
         raise ValueError("granite_update_budget_invalid")
-    seconds = session.train(rows, steps)
+    if profile.row_order == "family_epoch_v1":
+        # HF rows have a source identity even when no domain family is supplied.
+        families = [row.get("family") or row.get("source_id") for row in train]
+        seconds = session.train(rows, steps, families=families)
+    else:
+        seconds = session.train(rows, steps)
     print(
         json.dumps({"event": "remote_training_stage", "phase": "finalizing"}),
         flush=True,

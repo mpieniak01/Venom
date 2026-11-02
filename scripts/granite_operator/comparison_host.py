@@ -9,6 +9,7 @@ import random
 import subprocess
 import sys
 import time
+from dataclasses import replace
 from pathlib import Path
 
 from scripts.granite_operator.comparison_parallel import Execution, TaskScheduler
@@ -135,6 +136,17 @@ def evaluate_trials(
     return rows, metrics
 
 
+def inference_profile(profile, precision):
+    """Select evaluation precision without altering training provenance or bytes."""
+    if precision not in ("trained", "nf4", "bf16"):
+        raise ValueError("comparison_inference_precision_invalid")
+    result = (
+        replace(profile, quantization=precision) if precision != "trained" else profile
+    )
+    result.validate()
+    return result
+
+
 def worker(request):
     from scripts.granite_operator.comparison import INFERENCE
     from venom_core.services.granite_operator.engine import Session, require_owner
@@ -143,6 +155,9 @@ def worker(request):
     execution = Execution(**request["execution"])
     execution.validate()
     host, portable, profile = adapter_source(request)
+    evaluation_profile = inference_profile(
+        profile, request.get("inference_precision", "trained")
+    )
     if profile.context != INFERENCE["context"]:
         raise ValueError("comparison_context_profile_mismatch")
     output = Path(request["output"])
@@ -154,6 +169,8 @@ def worker(request):
         "adapter_sha256": request["expected_adapter_sha256"],
         "portable_identity_sha256": digest(portable),
         "host_id": host["host_id"],
+        "training_precision": profile.quantization,
+        "inference_precision": evaluation_profile.quantization,
         "execution": execution.validate(),
         "placement": "model_tools_and_oracle_on_one_host",
         "python_prefix": sys.prefix,
@@ -190,7 +207,9 @@ def worker(request):
         capture_output=True,
         timeout=20,
     )
-    session = Session(profile, Path(host["snapshot"]), Path(request["adapter_root"]))
+    session = Session(
+        evaluation_profile, Path(host["snapshot"]), Path(request["adapter_root"])
+    )
     session.model.eval()
     session.model.requires_grad_(False)
     session.model.gradient_checkpointing_disable()

@@ -903,3 +903,89 @@ def test_final_verifier_refuses_incomplete_run_or_different_host_ledger(
     _case_value_6 = Path("/python")
     with pytest.raises(ValueError, match="same_host_ledger"):
         verify_checkpoint.coordinate(tmp_path, tmp_path / "other-ledger", _case_value_6)
+
+
+def test_epoch_sampling_is_proportional_unique_and_independent_of_rng():
+    from venom_core.services.granite_operator.sampling import FamilyEpochOrder
+
+    families = ["large"] * 12 + ["small"] * 4
+    sampler = FamilyEpochOrder(families, 17)
+    rng = torch.get_rng_state().clone()
+    first = [sampler.index(i) for i in range(16)]
+    second = [sampler.index(i) for i in range(16, 32)]
+    assert sorted(first) == sorted(second) == list(range(16))
+    assert first != second
+    assert [families[i] for i in first[:8]].count("small") == 2
+    assert torch.equal(torch.get_rng_state(), rng)
+    restarted = FamilyEpochOrder(families, 17)
+    assert [restarted.index(i) for i in range(11, 32)] == (first + second)[11:]
+    assert FamilyEpochOrder(families, 18)._epoch_order(0) != first
+    for bad in (-1, True, 0.5):
+        with pytest.raises(ValueError, match="position"):
+            sampler.index(bad)
+    for bad in ([], [""], [None]):
+        with pytest.raises(ValueError, match="input"):
+            FamilyEpochOrder(bad, 17)
+
+
+def test_family_sampling_resume_preserves_optimizer_and_rejects_changed_rows(
+    tmp_path, monkeypatch
+):
+    from dataclasses import replace
+
+    session = tiny_session(monkeypatch)
+    session.profile = replace(session.profile, row_order="family_epoch_v1")
+    rows = [ROW, {**ROW, "input_ids": [1, 3, 2, 4]}, ROW]
+    families = ["a", "b", "a"]
+    with pytest.raises(ValueError, match="families_required"):
+        session.train(rows, 1)
+    session.train(rows, 2, families=families)
+    checkpoint = tmp_path / "ordered"
+    session.save(checkpoint, ROW, "identity")
+    restarted = tiny_session(monkeypatch)
+    restarted.profile = session.profile
+    restarted.model.load_state_dict(session.model.state_dict())
+    assert restarted.restore(checkpoint, ROW, "identity")
+    session.train(rows, 3, families=families)
+    restarted.train(rows, 3, families=families)
+    assert restarted.adapter_hash() == session.adapter_hash()
+    assert restarted.target_tokens == session.target_tokens
+    assert restarted.sampling_state == session.sampling_state
+    with pytest.raises(ValueError, match="checkpoint_changed"):
+        restarted.train(rows, 1, families=["a", "a", "b"])
+    legacy = tiny_session(monkeypatch)
+    legacy.model.load_state_dict(torch.load(checkpoint / "tiny.pt", weights_only=True))
+    with pytest.raises(ValueError, match="policy_mismatch"):
+        legacy.restore(checkpoint, ROW, "identity")
+
+
+def test_row_order_profile_is_opt_in_and_preserves_legacy_identity():
+    from dataclasses import replace
+
+    legacy = TrainingProfile()
+    assert "row_order" not in legacy.identity()
+    assert replace(legacy, row_order="family_epoch_v1").identity()["row_order"]
+    with pytest.raises(ValueError, match="row_order"):
+        replace(legacy, row_order="unknown").validate()
+
+
+def test_worker_passes_actual_family_order_for_opt_in_profile(tmp_path, monkeypatch):
+    request, _, session_type = worker_context(tmp_path, monkeypatch)
+    request["profile"]["row_order"] = "family_epoch_v1"
+    train = [
+        {"problem_group": str(i), "language": lang, "family": f"f{i % 3}"}
+        for i in range(16)
+        for lang in ("pl", "en")
+    ]
+    validation = train[:8]
+    monkeypatch.setattr(worker, "load_dataset", lambda *args: (train, validation))
+    original = session_type.train
+    captured = []
+
+    def training(self, rows, updates, *, families):
+        captured.extend(families)
+        return original(self, rows, updates)
+
+    monkeypatch.setattr(session_type, "train", training)
+    worker.run(request)
+    assert captured == [row["family"] for row in train]

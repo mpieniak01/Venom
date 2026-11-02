@@ -12,9 +12,12 @@ Stan kodu: pętla REMOTE-TRAINING-01 scalona w PR #578. Przygotowanie natywnego
 hosta i bieżący podgląd są w `scripts/remote_training_host/prepare.py` oraz
 `remote_training.py watch`. Gotowość kodu nie oznacza kwalifikacji realnego GPU.
 
-1. Wybierz/wynajmij host istniejącym zestawem `scripts/vast_training` z dyskiem
-   **100 GB**, zweryfikuj fingerprint i ustaw alias SSH `gpu-training`.
-   Obraz Axolotl jest tylko bazą hosta, nie środowiskiem natywnego Granite.
+1. Dla treningu i oceny na tej samej maszynie wybierz ofertę **VM** i oficjalny
+   polecany szablon Ubuntu VM Vast, z dyskiem **100 GB**. Najpierw filtruj
+   oferty przez `vm: {eq: true}`; zwykły kontener treningowy nie zapewnia
+   wymaganej izolacji Docker. Zarejestruj używany klucz publiczny przed
+   utworzeniem VM, zweryfikuj fingerprint i ustaw alias SSH `gpu-training`.
+   [Lista kontroli startu i odzyskiwania](VAST_START_I_ODZYSKIWANIE.md).
 2. Na hoście przygotuj czysty checkout tego samego, zrecenzowanego commita co
    lokalnie w `/workspace/venom`. Potrzebny jest istniejący Python 3.14.8 albo
    operatorowo zainstalowany `uv`; skrypt nie pobiera instalatorów przez curl.
@@ -49,6 +52,8 @@ remote_training() {
 }
 ```
 
+Przed pierwszą oceną GPU wykonaj test CPU kontenerów opisany w
+[liście kontroli](VAST_START_I_ODZYSKIWANIE.md#kontenery-przed-oceną-gpu).
 Pakowanie danych wykonaj komendą `pack` opisaną niżej. Następnie:
 
 ```bash

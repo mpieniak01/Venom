@@ -9,7 +9,10 @@ are fixed RPC operations, not arbitrary command execution from a model or manife
 
 The native host helper is `scripts/remote_training_host/prepare.py`; the
 [Polish operator runbook](PL/ZDALNY_TRENING.md#prosta-ścieżka-operatora) contains the
-complete ordered workflow. On an already rented Linux amd64/NVIDIA SSH host,
+complete ordered workflow. For training plus Docker-based evaluation on one Vast
+host, select a VM-capable offer and the official Ubuntu VM template, not the
+generic Axolotl container. Follow the [startup/recovery checklist](PL/VAST_START_I_ODZYSKIWANIE.md).
+On an already rented Linux amd64/NVIDIA SSH host,
 prepare a clean reviewed checkout and invoke:
 
 ```bash
@@ -46,6 +49,22 @@ after connectivity returns; use explicit `stop` to stop the job.
 The first authorized real acceptance still needs host smoke, SSH disconnect,
 checkpoint resume, collection and fresh local GPU verification. Do not equate
 fixture tests or successful installation with GPU qualification or model quality.
+
+## Evaluation sandbox preflight (CPU only)
+
+Before GPU comparisons, load the exact frozen benchmark image on the selected
+host and run:
+
+```bash
+cd /workspace/venom
+/workspace/data/remote-training/rpc-python -m scripts.remote_training_host.check_sandbox \
+  --cases /workspace/benchmarks/dialogue/manifest.json
+```
+
+Both writable and read-only checks must pass. This exercises Git ownership after
+container export, including a root-operated VM, without loading CUDA or a model.
+Replay trusted benchmark references on that host when available; CPU sandbox
+qualification and training smoke are separate requirements.
 
 ## Runtime boundary
 

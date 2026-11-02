@@ -146,7 +146,28 @@ def _calls(
             pending[ident] = name
 
 
-def _conversation(row: Mapping[str, Any]) -> None:
+def _finish_boundary(
+    message: Json, index: int, messages: list[Json], targets: Sequence[int]
+) -> None:
+    calls = message.get("tool_calls", [])
+    finish = [call for call in calls if call["function"]["name"] == "Finish"]
+    if not finish:
+        return
+    if len(calls) != 1:
+        raise ValueError("gemma_material_finish_not_single_call")
+    if index == len(messages) - 1:
+        return
+    following = messages[index + 1]
+    if not isinstance(following, dict) or following.get("role") != "user":
+        raise ValueError("gemma_material_finish_requires_user_continuation")
+    if (
+        index in targets
+        and finish[0]["function"]["arguments"].get("status") != "needs_input"
+    ):
+        raise ValueError("gemma_material_intermediate_finish_not_clarification")
+
+
+def _conversation(row: Mapping[str, Any], targets: Sequence[int]) -> None:
     tools = _tools(row)
     pending: dict[str, str] = {}
     seen: set[str] = set()
@@ -179,12 +200,7 @@ def _conversation(row: Mapping[str, Any]) -> None:
                 raise ValueError("gemma_material_nonassistant_call")
             if role == "assistant":
                 _calls(message, tools, seen, pending)
-                if any(
-                    c["function"]["name"] == "Finish"
-                    for c in message.get("tool_calls", [])
-                ):
-                    if index != len(messages) - 1 or len(message["tool_calls"]) != 1:
-                        raise ValueError("gemma_material_finish_not_terminal")
+                _finish_boundary(message, index, messages, targets)
     if not any(item["role"] == "user" for item in messages):
         raise ValueError("gemma_material_user_required")
     if pending or messages[-1].get("role") != "assistant":
@@ -225,7 +241,7 @@ def _record(row: Mapping[str, Any], split: str) -> Json:
     for field in ("record_id", "problem_group", "language"):
         _text(row.get(field), field)
     targets = supervised_turn_indices(row)
-    _conversation(row)
+    _conversation(row, targets)
     if row.get("source_kind", "canonical") not in {
         "canonical",
         "synthetic",

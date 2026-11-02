@@ -526,3 +526,65 @@ def test_unresolved_or_recursive_local_schema_is_structurally_rejected(reference
         parameters["properties"]["command"] = {"$ref": reference}
     with pytest.raises(ValueError, match="arguments_invalid"):
         prepare_material({"train": [row]})
+
+
+def clarification_row():
+    row = material_row()
+    finish = copy.deepcopy(row["messages"][-1])
+    finish["tool_calls"][0]["id"] = "clarify"
+    finish["tool_calls"][0]["function"]["arguments"]["status"] = "needs_input"
+    row["messages"] = [
+        row["messages"][0],
+        finish,
+        {"role": "user", "content": "Use the supplied job id"},
+        row["messages"][3],
+        row["messages"][4],
+        row["messages"][5],
+    ]
+    row["supervised_assistant_indices"] = [1, 3, 5]
+    row["context_only_assistant_indices"] = []
+    return row
+
+
+def test_intermediate_needs_input_finish_preserves_clarify_and_continue():
+    row = clarification_row()
+    before = copy.deepcopy(row)
+    prepared = prepare_material({"train": [row]})["records"]["train"][0]
+    assert prepared["messages"] == before["messages"]
+    assert prepared["supervised_assistant_indices"] == [1, 3, 5]
+    assert prepared["context_only_assistant_indices"] == []
+    assert row == before
+
+
+def test_wrong_intermediate_success_can_remain_excluded_context():
+    row = clarification_row()
+    row["messages"][1]["tool_calls"][0]["function"]["arguments"]["status"] = "success"
+    row["supervised_assistant_indices"] = [3, 5]
+    row["context_only_assistant_indices"] = [1]
+    prepared = prepare_material({"train": [row]})["records"]["train"][0]
+    assert prepared["messages"] == row["messages"]
+    assert prepared["context_only_assistant_indices"] == [1]
+    assert prepared["supervised_assistant_indices"] == [3, 5]
+
+
+def test_wrong_intermediate_success_cannot_become_a_positive_target():
+    row = clarification_row()
+    row["messages"][1]["tool_calls"][0]["function"]["arguments"]["status"] = "success"
+    with pytest.raises(ValueError, match="intermediate_finish_not_clarification"):
+        prepare_material({"train": [row]})
+
+
+def test_intermediate_finish_requires_user_continuation():
+    row = clarification_row()
+    row["messages"][2]["role"] = "system"
+    with pytest.raises(ValueError, match="finish_requires_user_continuation"):
+        prepare_material({"train": [row]})
+
+
+def test_finish_cannot_share_a_turn_with_another_tool_call():
+    row = clarification_row()
+    row["messages"][1]["tool_calls"].append(
+        copy.deepcopy(row["messages"][3]["tool_calls"][0])
+    )
+    with pytest.raises(ValueError, match="finish_not_single_call"):
+        prepare_material({"train": [row]})

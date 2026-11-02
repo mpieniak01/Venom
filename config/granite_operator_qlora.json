@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "model": "ibm-granite/granite-4.2-3b",
+  "revision": "4e9c275e232f10211ec88644d106a1f6a1b60e06",
+  "quantization": "nf4",
+  "context": 2048,
+  "rank": 16,
+  "alpha": 32,
+  "dropout": 0.05,
+  "learning_rate": 0.0001,
+  "accumulation": 4,
+  "seed": 17,
+  "gradient_checkpointing": true,
+  "row_order": "family_epoch_v1"
+}

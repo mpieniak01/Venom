@@ -898,3 +898,36 @@ def test_export_directories_remain_readable_under_private_host_umask(tmp_path):
         os.umask(previous)
     assert (workspace / ".git").stat().st_mode & 0o777 == 0o755
     assert (workspace / ".git/HEAD").read_bytes() == content
+
+
+def test_inference_precision_override_preserves_training_profile():
+    from scripts.granite_operator.comparison_host import inference_profile
+    from venom_core.services.granite_operator.contract import TrainingProfile, digest
+
+    profile = TrainingProfile(quantization="bf16", row_order="family_epoch_v1")
+    original = digest(profile.identity())
+    evaluation = inference_profile(profile, "nf4")
+    assert evaluation.quantization == "nf4"
+    assert evaluation.rank == profile.rank
+    assert profile.quantization == "bf16"
+    assert digest(profile.identity()) == original
+    assert inference_profile(profile, "trained") is profile
+    assert inference_profile(evaluation, "bf16") == profile
+    with pytest.raises(ValueError, match="precision_invalid"):
+        inference_profile(profile, "fp32")
+
+
+def test_precision_override_rejects_legacy_run_before_gpu(monkeypatch):
+    from types import SimpleNamespace
+
+    from scripts.granite_operator import comparison
+    from scripts.granite_operator.comparison_parallel import Execution
+
+    monkeypatch.setattr(
+        "scripts.granite_operator.comparison_parallel.execution_from_args",
+        lambda args: Execution(),
+    )
+    with pytest.raises(ValueError, match="requires_adapter_root"):
+        comparison.coordinate(
+            SimpleNamespace(adapter_root=None, inference_precision="bf16")
+        )

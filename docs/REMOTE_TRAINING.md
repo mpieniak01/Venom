@@ -352,3 +352,19 @@ plan of 160 / 210 / 250 updates stays within the native 256-update campaign boun
 it is not directly equivalent to the earlier 320-row 80 / 125 / 160 campaign.
 Keep validation and reserved diagnostic fixtures out of training. Private material,
 recipes and run receipts remain under ignored `data/training/`.
+
+
+### Comparing QLoRA and BF16 LoRA
+
+`config/granite_operator_qlora.json` and `config/granite_operator_lora.json`
+freeze the same rank-16 q/k/v/o setup, row-order policy and optimizer controls;
+only base precision differs. Start each from the pinned base, with a separate
+smoke and run identity. Do not resume the selected production candidate as an
+experiment or resume between precisions.
+
+For collected remote adapters, `scripts.granite_operator.comparison` accepts
+`--inference-precision trained|nf4|bf16` (default `trained`). It preserves the
+original artifact/profile identity and records training and actual inference
+precision separately. Compare both training methods at the same deployment
+precision first; a second BF16 comparison isolates inference precision. Keep
+outputs separate for each precision; changed comparison identities reject resume.

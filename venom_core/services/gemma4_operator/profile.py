@@ -10,6 +10,8 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Mapping
 
+from .paths import checked_file
+
 MODEL = "google/gemma-4-12B-it"
 LOADER = "Gemma4UnifiedForConditionalGeneration"
 SNAPSHOT_FILES = frozenset(
@@ -44,7 +46,8 @@ class GemmaProfile:
 
     @classmethod
     def load(cls, path: Path) -> GemmaProfile:
-        data = json.loads(path.read_text(encoding="utf-8-sig"))
+        target = checked_file(path, profile=True)
+        data = json.loads(target.read_text(encoding="utf-8-sig"))
         if not isinstance(data, dict):
             raise ValueError("gemma_profile_schema_invalid")
         version = data.pop("schema_version", None)
@@ -102,7 +105,7 @@ class GemmaProfile:
             if actual != expected:
                 raise ValueError("gemma_snapshot_hash_mismatch:" + name)
             verified[name] = actual
-        config = json.loads((root / "config.json").read_text())
+        config = json.loads((root / "config.json").read_text(encoding="utf-8"))
         if not isinstance(config, dict) or config.get("architectures") != [self.loader]:
             raise ValueError("gemma_snapshot_loader_mismatch")
         text_config = config.get("text_config")

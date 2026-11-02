@@ -10,13 +10,14 @@ from dataclasses import dataclass
 from typing import Any
 
 from venom_core.services.gemma4_operator.profile import GemmaProfile
+from venom_core.services.gemma4_operator.schemas import check_schema_references
 
 CALL_START = "<|tool_call>"
 CALL_END = "<tool_call|>"
 STRING = '<|"|>'
 STOP_SEQUENCES = ("<|tool_response>", "<turn|>", "<eos>")
-_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
-_NUMBER = re.compile(r"-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?")
+_NAME = re.compile(r"[A-Za-z_]\w*", re.ASCII)
+_NUMBER = re.compile(r"-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?", re.ASCII)
 MAX_RESPONSE_CHARS = 262144
 MAX_DEPTH = 16
 
@@ -36,22 +37,13 @@ def _jsonschema() -> Any:
         ) from exc
 
 
-def _check_references(value: Any, depth: int = 0) -> None:
-    """Permit local schema references only; validation must never fetch a URL."""
-    if depth > 32:
-        raise ValueError("gemma_tool_schema_depth_exceeded")
-    if isinstance(value, dict):
-        for keyword in ("$ref", "$dynamicRef", "$recursiveRef"):
-            ref = value.get(keyword)
-            if ref is not None and (
-                not isinstance(ref, str) or not (ref == "#" or ref.startswith("#/"))
-            ):
-                raise ValueError("gemma_tool_external_schema_reference")
-        for child in value.values():
-            _check_references(child, depth + 1)
-    elif isinstance(value, list):
-        for child in value:
-            _check_references(child, depth + 1)
+def _tool_function(tool: Any) -> dict[str, Any]:
+    if not isinstance(tool, dict) or tool.get("type", "function") != "function":
+        raise ValueError("gemma_tool_invalid")
+    function = tool.get("function")
+    if not isinstance(function, dict):
+        raise ValueError("gemma_tool_invalid")
+    return function
 
 
 def validate_tools(tools: list[dict[str, Any]]) -> dict[str, Any]:
@@ -60,18 +52,14 @@ def validate_tools(tools: list[dict[str, Any]]) -> dict[str, Any]:
         raise ValueError("gemma_tools_invalid")
     validators = {}
     for tool in tools:
-        if not isinstance(tool, dict) or tool.get("type", "function") != "function":
-            raise ValueError("gemma_tool_invalid")
-        function = tool.get("function")
-        if not isinstance(function, dict):
-            raise ValueError("gemma_tool_invalid")
+        function = _tool_function(tool)
         name = function.get("name")
         if not isinstance(name, str) or not _NAME.fullmatch(name) or name in validators:
             raise ValueError("gemma_tool_name_invalid")
         parameters = function.get("parameters")
         if not isinstance(parameters, dict) or parameters.get("type") != "object":
             raise ValueError("gemma_tool_parameters_invalid")
-        _check_references(parameters)
+        check_schema_references(parameters, error_prefix="gemma_tool_")
         try:
             validator = schema_library.validators.validator_for(parameters)
             validator.check_schema(parameters)
@@ -289,7 +277,10 @@ def _history_calls(message: dict[str, Any], validators: dict[str, Any]) -> list[
         ):
             raise ValueError("gemma_history_call_invalid")
         _validate_arguments(validators[name], arguments, name)
-        names.append(name)
+        # Finish is a canonical terminal/clarification declaration, not an
+        # external operation awaiting a tool observation.
+        if name != "Finish":
+            names.append(name)
     return names
 
 

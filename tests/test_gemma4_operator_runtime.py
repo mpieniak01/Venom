@@ -135,15 +135,19 @@ def test_identity_only_evidence_does_not_claim_same_model_loop():
     ],
 )
 def test_invalid_requested_config_rejected_before_io(change):
+    configured = profile()
+    request = {**requested(), **change}
     with pytest.raises(ValueError, match="gemma_runtime_"):
-        readiness_report(profile(), {**requested(), **change})
+        readiness_report(configured, request)
 
 
 def test_unknown_or_missing_requested_fields_are_rejected():
+    configured = profile()
+    request = {**requested(), "activation_ready": True}
     with pytest.raises(ValueError, match="request_fields_invalid"):
-        expected_identity(profile(), {**requested(), "activation_ready": True})
+        expected_identity(configured, request)
     with pytest.raises(ValueError, match="request_fields_invalid"):
-        expected_identity(profile(), {})
+        expected_identity(configured, {})
 
 
 def test_profile_context_is_qualified_limit_not_advertised_maximum():
@@ -201,7 +205,8 @@ def test_existing_other_hf_models_keep_trainability_policy():
 def test_mutated_profile_is_revalidated_before_exposing_registry_or_identity():
     invalid = profile()
     object.__setattr__(invalid, "model", "unrelated/model")
+    request = requested()
     with pytest.raises(ValueError, match="gemma_profile_model_invalid"):
-        expected_identity(invalid, requested())
+        expected_identity(invalid, request)
     with pytest.raises(ValueError, match="gemma_profile_model_invalid"):
         registry_metadata(invalid)

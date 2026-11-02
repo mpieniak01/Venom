@@ -4,8 +4,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 from typing import Any
+
+from .errors import EvidenceMismatch
+from .paths import checked_directory, checked_file
 
 DEFAULT_PROFILE = (
     Path(__file__).resolve().parents[3] / "config/gemma4_operator_profile.json"
@@ -15,7 +20,8 @@ MAX_INPUT_BYTES = 32 * 1024 * 1024
 
 def read_document(path: Path) -> Any:
     """Read bounded local JSON as data; never execute material or observations."""
-    if not path.is_file() or path.stat().st_size > MAX_INPUT_BYTES:
+    path = checked_file(path)
+    if path.stat().st_size > MAX_INPUT_BYTES:
         raise ValueError("gemma_input_missing_or_too_large")
     with path.open(encoding="utf-8-sig") as stream:
         return json.load(stream)
@@ -36,10 +42,29 @@ def publish(path: Path | None, document: Any) -> None:
     if path is None:
         print(json.dumps(document, ensure_ascii=False, indent=2, allow_nan=False))
         return
+    path = checked_file(path, output=True)
     payload = json.dumps(document, ensure_ascii=False, indent=2, allow_nan=False)
     path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("x", encoding="utf-8") as stream:
-        stream.write(payload + "\n")
+    temporary = None
+    try:
+        with NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=path.parent,
+            prefix="." + path.name + ".",
+            suffix=".tmp",
+            delete=False,
+        ) as stream:
+            temporary = Path(stream.name)
+            stream.write(payload + "\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        # Hard-link publication is atomic and fails if a concurrent writer
+        # already created the target; rename/replace would overwrite it.
+        os.link(temporary, path)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
     print(
         json.dumps(
             {
@@ -129,7 +154,7 @@ def dispatch(args: argparse.Namespace) -> Any:
     if args.command == "verify-snapshot":
         return {
             "status": "METADATA_VERIFIED",
-            "files": profile.validate_snapshot(args.snapshot),
+            "files": profile.validate_snapshot(checked_directory(args.snapshot)),
             "weights_verified": False,
             "gpu_qualified": False,
         }
@@ -148,10 +173,13 @@ def main(argv: list[str] | None = None) -> int:
         result = dispatch(args)
         publish(args.output, result)
         return result_code(result)
+    except EvidenceMismatch as exc:
+        print(json.dumps({"ok": False, "status": "MISMATCH", "error": str(exc)}))
+        return 2
     except RecursionError:
         print(json.dumps({"ok": False, "error": "gemma_input_nesting_exceeded"}))
         return 1
-    except (ValueError, TypeError, OSError, KeyError) as exc:
+    except (ValueError, TypeError, OSError, KeyError, RuntimeError) as exc:
         print(json.dumps({"ok": False, "error": str(exc)}, ensure_ascii=False))
         return 1
     return 0

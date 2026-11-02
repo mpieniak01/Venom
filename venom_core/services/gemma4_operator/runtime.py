@@ -128,13 +128,12 @@ def readiness_report(
                 expected, observed.get("stages", [])
             )
             mismatches.extend(stage_errors)
-    status = (
-        "PREPARED"
-        if observed is None
-        else "MISMATCH"
-        if mismatches
-        else "IDENTITY_MATCH"
-    )
+    if observed is None:
+        status = "PREPARED"
+    elif mismatches:
+        status = "MISMATCH"
+    else:
+        status = "IDENTITY_MATCH"
     return {
         "schema_version": 1,
         "status": status,

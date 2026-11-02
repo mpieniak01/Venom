@@ -389,15 +389,17 @@ def test_unmatched_runtime_or_precision_cannot_be_ranked(field):
         identity["adapter"][field] *= 2
     else:
         identity["adapter"][field] = "2" * 40 if field == "revision" else "other"
+    prepared_arg_0 = [trial("a", "base"), trial("a", "adapter")]
     with pytest.raises(ValueError, match="unmatched_configuration"):
-        compare_trials([trial("a", "base"), trial("a", "adapter")], identities=identity)
+        compare_trials(prepared_arg_0, identities=identity)
 
 
 def test_requested_precision_is_not_evidence_of_effective_precision():
     identity = identities()
     identity["adapter"]["requested_precision"] = "bf16"
+    prepared_arg_0 = [trial("a", "base"), trial("a", "adapter")]
     with pytest.raises(ValueError, match="precision_mismatch"):
-        compare_trials([trial("a", "base"), trial("a", "adapter")], identities=identity)
+        compare_trials(prepared_arg_0, identities=identity)
 
 
 @pytest.mark.parametrize(
@@ -437,23 +439,28 @@ def test_infrastructure_error_remains_visible_and_unqualified():
     ],
 )
 def test_incomplete_or_duplicate_trials_fail(rows, error):
+    prepared_identities = identities()
     with pytest.raises(ValueError, match=error):
-        compare_trials(rows, identities=identities())
+        compare_trials(rows, identities=prepared_identities)
 
 
 @pytest.mark.parametrize("value", [float("nan"), float("inf"), -1, True, None])
 def test_invalid_timings_cannot_make_a_candidate_fast(value):
     row = trial("a", "adapter")
     row["task_seconds"] = value
+    prepared_arg_0 = [trial("a", "base"), row]
+    prepared_identities = identities()
     with pytest.raises(ValueError, match="timing_invalid"):
-        compare_trials([trial("a", "base"), row], identities=identities())
+        compare_trials(prepared_arg_0, identities=prepared_identities)
 
 
 def test_pair_identity_must_refer_to_the_same_task():
     row = trial("a", "adapter")
     row["problem_group"] = "other"
+    prepared_arg_0 = [trial("a", "base"), row]
+    prepared_identities = identities()
     with pytest.raises(ValueError, match="case_identity_mismatch"):
-        compare_trials([trial("a", "base"), row], identities=identities())
+        compare_trials(prepared_arg_0, identities=prepared_identities)
 
 
 @pytest.mark.parametrize(
@@ -469,15 +476,17 @@ def test_pair_identity_must_refer_to_the_same_task():
 def test_malformed_identity_fails_before_comparison(field, value):
     identity = identities()
     identity["adapter"][field] = value
+    prepared_arg_0 = [trial("a", "base"), trial("a", "adapter")]
     with pytest.raises(ValueError, match="gemma_evaluation_"):
-        compare_trials([trial("a", "base"), trial("a", "adapter")], identities=identity)
+        compare_trials(prepared_arg_0, identities=identity)
 
 
 def test_benchmark_identity_must_match_actual_cases_and_verifier_manifest():
     identity = identities()
     identity["adapter"]["benchmark_sha256"] = "8" * 64
+    prepared_arg_0 = [trial("a", "base"), trial("a", "adapter")]
     with pytest.raises(ValueError, match="unmatched_configuration"):
-        compare_trials([trial("a", "base"), trial("a", "adapter")], identities=identity)
+        compare_trials(prepared_arg_0, identities=identity)
 
 
 @pytest.mark.parametrize(
@@ -491,8 +500,9 @@ def test_benchmark_identity_must_match_actual_cases_and_verifier_manifest():
 def test_unpinned_or_unknown_model_configuration_is_not_comparable(field, value, error):
     identity = identities()
     identity["adapter"][field] = value
+    prepared_arg_0 = [trial("a", "base"), trial("a", "adapter")]
     with pytest.raises(ValueError, match=error):
-        compare_trials([trial("a", "base"), trial("a", "adapter")], identities=identity)
+        compare_trials(prepared_arg_0, identities=identity)
 
 
 def test_non_ascii_tool_name_does_not_create_unparseable_training_data():
@@ -587,4 +597,49 @@ def test_finish_cannot_share_a_turn_with_another_tool_call():
         copy.deepcopy(row["messages"][3]["tool_calls"][0])
     )
     with pytest.raises(ValueError, match="finish_not_single_call"):
+        prepare_material({"train": [row]})
+
+
+def test_material_supports_a_single_initial_system_instruction():
+    row = material_row()
+    row["messages"].insert(0, {"role": "system", "content": "Use only declared tools."})
+    row["supervised_assistant_indices"] = [4, 6]
+    row["context_only_assistant_indices"] = [2]
+    prepared = prepare_material({"train": [row]})["records"]["train"][0]
+    assert prepared["messages"] == row["messages"]
+
+
+def test_material_rejects_system_instruction_after_conversation_started():
+    row = material_row()
+    row["messages"][2] = {"role": "system", "content": "Change the policy"}
+    with pytest.raises(ValueError, match="system_not_first"):
+        prepare_material({"train": [row]})
+
+
+@pytest.mark.parametrize("keyword", ["$ref", "$dynamicRef", "$recursiveRef"])
+def test_material_uses_shared_offline_schema_reference_policy(keyword):
+    row = material_row()
+    parameters = row["tools"][0]["function"]["parameters"]
+    parameters["properties"]["command"] = {keyword: "https://untrusted.invalid/schema"}
+    with pytest.raises(ValueError, match="external_schema_reference"):
+        prepare_material({"train": [row]})
+
+
+def test_material_accepts_local_schema_anchor():
+    row = material_row()
+    parameters = row["tools"][0]["function"]["parameters"]
+    parameters["properties"]["command"] = {"$ref": "#command"}
+    parameters["$defs"] = {"command": {"$anchor": "command", "type": "string"}}
+    assert prepare_material({"train": [row]})["manifest"]["training_ready"] is False
+
+
+def test_material_missing_schema_dependency_explains_install_file(monkeypatch):
+    from venom_core.services.gemma4_operator import material
+
+    def unavailable(name):
+        raise ImportError(name)
+
+    monkeypatch.setattr(material.importlib, "import_module", unavailable)
+    row = material_row()
+    with pytest.raises(RuntimeError, match="requirements-gemma4-operator-control.txt"):
         prepare_material({"train": [row]})

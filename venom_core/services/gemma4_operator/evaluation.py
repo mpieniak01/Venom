@@ -11,6 +11,8 @@ from typing import Any
 from venom_core.services.gemma4_operator.material import SHA256, digest
 from venom_core.services.gemma4_operator.profile import MODEL
 
+from .errors import EvidenceMismatch
+
 ARMS = frozenset({"base", "adapter"})
 COMMON = (
     "benchmark_sha256",
@@ -40,34 +42,45 @@ HASH_FIELDS = frozenset(
 )
 
 
+IDENTITY_INVALID = "gemma_evaluation_identity_invalid:"
+
+
+def _identity_field(key: str, item: Any) -> None:
+    if key in INTEGER_FIELDS:
+        if type(item) is not int or item < (0 if key == "seed" else 1):
+            raise ValueError(IDENTITY_INVALID + key)
+        return
+    if not isinstance(item, str) or not item.strip():
+        raise ValueError(IDENTITY_INVALID + key)
+    if key in HASH_FIELDS and SHA256.fullmatch(item) is None:
+        raise ValueError(IDENTITY_INVALID + key)
+
+
+def _adapter_identity(value: Mapping[str, Any], arm: str) -> str | None:
+    adapter = value.get("adapter_sha256")
+    if arm == "adapter":
+        if not isinstance(adapter, str) or SHA256.fullmatch(adapter) is None:
+            raise ValueError("gemma_evaluation_adapter_identity_required")
+        return adapter
+    if adapter is not None:
+        raise ValueError("gemma_evaluation_base_has_adapter")
+    return None
+
+
 def _identity(value: Mapping[str, Any], arm: str) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise ValueError("gemma_evaluation_identity_required")
     for key in COMMON:
-        item = value.get(key)
-        if key in INTEGER_FIELDS:
-            if type(item) is not int or item < (0 if key == "seed" else 1):
-                raise ValueError("gemma_evaluation_identity_invalid:" + key)
-        elif not isinstance(item, str) or not item.strip():
-            raise ValueError("gemma_evaluation_identity_invalid:" + key)
-        elif key in HASH_FIELDS and SHA256.fullmatch(item) is None:
-            raise ValueError("gemma_evaluation_identity_invalid:" + key)
+        _identity_field(key, value.get(key))
     if value["model"] != MODEL or not re.fullmatch(r"[a-f0-9]{40}", value["revision"]):
         raise ValueError("gemma_evaluation_model_or_revision_invalid")
     if value["effective_precision"] not in {"nf4", "bf16"}:
         raise ValueError("gemma_evaluation_precision_unsupported")
     if value.get("requested_precision") != value["effective_precision"]:
-        raise ValueError("gemma_evaluation_precision_mismatch")
-    adapter = value.get("adapter_sha256")
-    if arm == "adapter" and (
-        not isinstance(adapter, str) or SHA256.fullmatch(adapter) is None
-    ):
-        raise ValueError("gemma_evaluation_adapter_identity_required")
-    if arm == "base" and adapter is not None:
-        raise ValueError("gemma_evaluation_base_has_adapter")
+        raise EvidenceMismatch("gemma_evaluation_precision_mismatch")
     return {key: value[key] for key in COMMON} | {
         "requested_precision": value["requested_precision"],
-        "adapter_sha256": adapter,
+        "adapter_sha256": _adapter_identity(value, arm),
     }
 
 
@@ -167,7 +180,7 @@ def compare_trials(
         raise ValueError("gemma_evaluation_identities_required")
     identity = {arm: _identity(identities[arm], arm) for arm in sorted(ARMS)}
     if any(identity["base"][key] != identity["adapter"][key] for key in COMMON):
-        raise ValueError("gemma_evaluation_unmatched_configuration")
+        raise EvidenceMismatch("gemma_evaluation_unmatched_configuration")
     if not isinstance(rows, (list, tuple)) or not rows:
         raise ValueError("gemma_evaluation_trials_required")
     pairs: dict[str, dict[str, dict[str, Any]]] = {}
@@ -184,7 +197,7 @@ def compare_trials(
             pair["base"][key] != pair["adapter"][key]
             for key in ("problem_group", "family", "language")
         ):
-            raise ValueError("gemma_evaluation_case_identity_mismatch")
+            raise EvidenceMismatch("gemma_evaluation_case_identity_mismatch")
     arm_rows = {arm: [pairs[key][arm] for key in sorted(pairs)] for arm in sorted(ARMS)}
     common = sorted(
         key for key, pair in pairs.items() if all(pair[arm]["success"] for arm in ARMS)

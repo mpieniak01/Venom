@@ -46,9 +46,17 @@ snapshot's declared metadata files:
 
 ```bash
 python scripts/gemma4_operator.py verify-snapshot \
-  --snapshot /path/to/materialized-snapshot \
+  --snapshot data/training/gemma-snapshot \
   --output .venom_runtime/gemma4/snapshot-evidence.json
 ```
+
+Inputs and evidence outputs are constrained to repository data/training and
+.venom_runtime/gemma4. Profiles may also be read from repository config.
+An operator can explicitly approve an additional absolute root with
+GEMMA_OPERATOR_DATA_ROOT (for example an isolated mounted remote workspace).
+Symlinked files and parent directories, traversal outside the approved roots and
+non-JSON input/output files are rejected. Store a materialized model snapshot
+inside an approved data root before verifying it.
 
 Existing evidence outputs are never overwritten. Use a new output path for
 each run. This check rejects symlinked files; a Hugging Face cache snapshot must

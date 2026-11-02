@@ -23,6 +23,11 @@ from venom_core.services.gemma4_operator.protocol import (
 )
 
 
+@pytest.fixture(autouse=True)
+def approved_data_root(tmp_path, monkeypatch):
+    monkeypatch.setenv("GEMMA_OPERATOR_DATA_ROOT", str(tmp_path))
+
+
 def tools():
     return [
         {
@@ -206,20 +211,26 @@ def test_multiple_calls_and_thinking_prefix():
     ],
 )
 def test_bad_model_outputs_never_become_calls(source, error):
+    catalog = tools()
     with pytest.raises(ValueError, match=error):
-        parse_response(source, tools())
+        parse_response(source, catalog)
 
 
-def test_parser_budgets_depth_calls_and_size():
-    with pytest.raises(ValueError, match="budget_exceeded"):
-        parse_response("x" * 262145, tools())
-    with pytest.raises(ValueError, match="count_exceeded"):
-        parse_response(call("name:" + string("a")) * 17, tools())
-    with pytest.raises(ValueError, match="depth_exceeded"):
-        parse_response(
+@pytest.mark.parametrize(
+    "source,error",
+    [
+        ("x" * 262145, "budget_exceeded"),
+        (call("name:" + string("a")) * 17, "count_exceeded"),
+        (
             call("name:" + string("a") + ",values:" + "[" * 18 + "0" + "]" * 18),
-            tools(),
-        )
+            "depth_exceeded",
+        ),
+    ],
+)
+def test_parser_budgets_depth_calls_and_size(source, error):
+    catalog = tools()
+    with pytest.raises(ValueError, match=error):
+        parse_response(source, catalog)
 
 
 @pytest.mark.parametrize(
@@ -273,8 +284,9 @@ def test_template_delegation_preserves_native_policy(tmp_path):
     assert seen["enable_thinking"] is False
     assert seen["add_generation_prompt"] is True
     Renderer.chat_template = "modified"
+    renderer, catalog = Renderer(), tools()
     with pytest.raises(ValueError, match="template_mismatch"):
-        render_messages(Renderer(), messages, tools(), p)
+        render_messages(renderer, messages, catalog, p)
 
 
 def test_template_rejects_empty_conversation_and_nontext_output(tmp_path):
@@ -286,10 +298,12 @@ def test_template_rejects_empty_conversation_and_nontext_output(tmp_path):
         def apply_chat_template(self, *_args, **_kwargs):
             return [1, 2]
 
+    renderer, catalog = Renderer(), tools()
+    messages = [{"role": "user", "content": "x"}]
     with pytest.raises(ValueError, match="messages_invalid"):
-        render_messages(Renderer(), [], tools(), p)
+        render_messages(renderer, [], catalog, p)
     with pytest.raises(ValueError, match="text_required"):
-        render_messages(Renderer(), [{"role": "user", "content": "x"}], tools(), p)
+        render_messages(renderer, messages, catalog, p)
 
 
 @pytest.mark.parametrize("keyword", ["$ref", "$dynamicRef", "$recursiveRef"])
@@ -325,8 +339,9 @@ def test_bad_local_schema_reference_is_structured_failure():
     catalog[0]["function"]["parameters"]["properties"]["name"] = {
         "$ref": "#/$defs/missing"
     }
+    source = call("name:" + string("x"))
     with pytest.raises(ValueError, match="schema_reference_invalid"):
-        parse_response(call("name:" + string("x")), catalog)
+        parse_response(source, catalog)
 
 
 @pytest.mark.parametrize(
@@ -363,8 +378,9 @@ def test_renderer_rejects_untrusted_history_roles(tmp_path, messages, error):
         def apply_chat_template(self, *_args, **_kwargs):
             raise AssertionError("invalid history must not reach renderer")
 
+    renderer, catalog = Renderer(), tools()
     with pytest.raises(ValueError, match=error):
-        render_messages(Renderer(), messages, tools(), p)
+        render_messages(renderer, messages, catalog, p)
 
 
 @pytest.mark.parametrize(
@@ -390,3 +406,109 @@ def test_snapshot_requires_actual_context_budget(tmp_path, text_config):
     )
     with pytest.raises(ValueError, match="snapshot_context_mismatch"):
         p.validate_snapshot(snapshot)
+
+
+@pytest.mark.parametrize("name", ["názwa", "inspect_１"])
+def test_tool_names_remain_ascii_after_regex_simplification(name):
+    catalog = tools()
+    catalog[0]["function"]["name"] = name
+    with pytest.raises(ValueError, match="name_invalid"):
+        validate_tools(catalog)
+
+
+def test_numeric_arguments_reject_unicode_digits():
+    source = call("name:" + string("x") + ",limit:１")
+    catalog = tools()
+    with pytest.raises(ValueError, match="value_invalid"):
+        parse_response(source, catalog)
+
+
+def test_local_schema_anchor_resolves_consistently():
+    catalog = tools()
+    schema = catalog[0]["function"]["parameters"]
+    schema["$defs"] = {"service": {"$anchor": "service", "type": "string"}}
+    schema["properties"]["name"] = {"$ref": "#service"}
+    parsed = parse_response(call("name:" + string("web")), catalog)
+    assert parsed[0].arguments["name"] == "web"
+
+
+@pytest.mark.parametrize("status", ["needs_input", "success"])
+def test_renderer_keeps_canonical_intermediate_finish_without_tool_result(
+    tmp_path, status
+):
+    p, snapshot = fixture_profile(tmp_path)
+    catalog = tools() + [
+        {
+            "type": "function",
+            "function": {
+                "name": "Finish",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "status": {"type": "string"},
+                        "summary": {"type": "string"},
+                    },
+                    "required": ["status", "summary"],
+                },
+            },
+        }
+    ]
+    messages = [
+        {"role": "user", "content": "Inspect the selected service"},
+        {
+            "role": "assistant",
+            "tool_calls": [
+                {
+                    "function": {
+                        "name": "Finish",
+                        "arguments": {"status": status, "summary": "Which service?"},
+                    }
+                }
+            ],
+        },
+        {"role": "user", "content": "Use web"},
+        {
+            "role": "assistant",
+            "tool_calls": [
+                {"function": {"name": "inspect", "arguments": {"name": "web"}}}
+            ],
+        },
+        {"role": "tool", "name": "inspect", "content": "running"},
+        {"role": "assistant", "content": "Web is running."},
+    ]
+    seen = {}
+
+    class Renderer:
+        chat_template = (snapshot / "chat_template.jinja").read_text()
+
+        def apply_chat_template(self, history, **_kwargs):
+            seen["history"] = history
+            return "native rendered history"
+
+    from venom_core.services.gemma4_operator.material import prepare_material
+
+    messages[1]["tool_calls"][0]["id"] = "finish-clarification"
+    messages[3]["tool_calls"][0]["id"] = "inspect-service"
+    messages[4]["tool_call_id"] = "inspect-service"
+    selected = [1, 3, 5] if status == "needs_input" else [3, 5]
+    row = {
+        "record_id": "finish-continuation",
+        "problem_group": "finish-continuation",
+        "language": "pl",
+        "split": "train",
+        "training_allowed": True,
+        "messages": messages,
+        "tools": catalog,
+        "supervised_assistant_indices": selected,
+        "context_only_assistant_indices": [] if status == "needs_input" else [1],
+    }
+    prepared = prepare_material({"train": [row]})["records"]["train"][0]
+    rendered = render_messages(
+        Renderer(),
+        prepared["messages"],
+        prepared["tools"],
+        p,
+        add_generation_prompt=False,
+    )
+    assert rendered == "native rendered history"
+    assert seen["history"] == messages

@@ -9,12 +9,15 @@ import json
 import re
 from collections import Counter
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, field
 from typing import Any
+
+from venom_core.services.gemma4_operator.schemas import check_schema_references
 
 SPLITS = frozenset({"train", "validation", "holdout"})
 SHA256 = re.compile(r"[a-f0-9]{64}")
 Json = dict[str, Any]
-_TOOL_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+_TOOL_NAME = re.compile(r"[A-Za-z_]\w*", re.ASCII)
 
 
 def digest(value: Any) -> str:
@@ -63,27 +66,13 @@ def supervised_turn_indices(row: Mapping[str, Any]) -> list[int]:
     return sorted(targets)
 
 
-def _check_references(value: Any, depth: int = 0) -> None:
-    """Keep JSON-schema validation offline, including nested schemas."""
-    if depth > 32:
-        raise ValueError("gemma_material_schema_depth_exceeded")
-    if isinstance(value, dict):
-        for key, item in value.items():
-            if key in {"$ref", "$dynamicRef", "$recursiveRef"} and (
-                not isinstance(item, str) or not item.startswith("#")
-            ):
-                raise ValueError("gemma_material_external_schema_reference")
-            _check_references(item, depth + 1)
-    elif isinstance(value, list):
-        for item in value:
-            _check_references(item, depth + 1)
-
-
 def _schema_library() -> Any:
     try:
         return importlib.import_module("jsonschema")
     except ImportError as exc:
-        raise RuntimeError("gemma_schema_dependency_missing") from exc
+        raise RuntimeError(
+            "gemma_schema_dependency_missing: install requirements-gemma4-operator-control.txt"
+        ) from exc
 
 
 def _tools(row: Mapping[str, Any]) -> dict[str, Any]:
@@ -104,7 +93,7 @@ def _tools(row: Mapping[str, Any]) -> dict[str, Any]:
         schema = function.get("parameters")
         if not isinstance(schema, dict) or schema.get("type") != "object":
             raise ValueError("gemma_material_tool_schema_invalid")
-        _check_references(schema)
+        check_schema_references(schema, error_prefix="gemma_material_")
         try:
             library.Draft202012Validator.check_schema(schema)
         except library.exceptions.SchemaError as exc:
@@ -167,40 +156,51 @@ def _finish_boundary(
         raise ValueError("gemma_material_intermediate_finish_not_clarification")
 
 
+def _message_role(message: Any, index: int) -> str:
+    if not isinstance(message, dict):
+        raise ValueError("gemma_material_message_invalid")
+    role = message.get("role")
+    if role not in {"system", "user", "assistant", "tool"}:
+        raise ValueError("gemma_material_role_invalid")
+    if role == "system" and index != 0:
+        raise ValueError("gemma_material_system_not_first")
+    content = message.get("content")
+    if content is not None and not isinstance(content, str):
+        raise ValueError("gemma_material_text_only")
+    if role in {"system", "user"} and not isinstance(content, str):
+        raise ValueError("gemma_material_message_content_invalid")
+    return role
+
+
+def _consume_tool_result(message: Json, pending: dict[str, str]) -> None:
+    ident = message.get("tool_call_id")
+    if (
+        not isinstance(ident, str)
+        or ident not in pending
+        or pending.pop(ident) != message.get("name")
+    ):
+        raise ValueError("gemma_material_orphan_tool_result")
+    if not isinstance(message.get("content"), str) or message.get("tool_calls"):
+        raise ValueError("gemma_material_tool_result_invalid")
+
+
 def _conversation(row: Mapping[str, Any], targets: Sequence[int]) -> None:
     tools = _tools(row)
     pending: dict[str, str] = {}
     seen: set[str] = set()
     messages = row["messages"]
     for index, message in enumerate(messages):
-        if not isinstance(message, dict):
-            raise ValueError("gemma_material_message_invalid")
-        role = message.get("role")
-        if role not in {"system", "user", "assistant", "tool"}:
-            raise ValueError("gemma_material_role_invalid")
-        content = message.get("content")
-        if content is not None and not isinstance(content, str):
-            raise ValueError("gemma_material_text_only")
-        if role in {"system", "user"} and not isinstance(content, str):
-            raise ValueError("gemma_material_message_content_invalid")
+        role = _message_role(message, index)
         if role == "tool":
-            ident = message.get("tool_call_id")
-            if (
-                not isinstance(ident, str)
-                or ident not in pending
-                or pending.pop(ident) != message.get("name")
-            ):
-                raise ValueError("gemma_material_orphan_tool_result")
-            if not isinstance(content, str) or message.get("tool_calls"):
-                raise ValueError("gemma_material_tool_result_invalid")
-        else:
-            if pending:
-                raise ValueError("gemma_material_missing_tool_result")
-            if role != "assistant" and message.get("tool_calls"):
-                raise ValueError("gemma_material_nonassistant_call")
-            if role == "assistant":
-                _calls(message, tools, seen, pending)
-                _finish_boundary(message, index, messages, targets)
+            _consume_tool_result(message, pending)
+            continue
+        if pending:
+            raise ValueError("gemma_material_missing_tool_result")
+        if role != "assistant" and message.get("tool_calls"):
+            raise ValueError("gemma_material_nonassistant_call")
+        if role == "assistant":
+            _calls(message, tools, seen, pending)
+            _finish_boundary(message, index, messages, targets)
     if not any(item["role"] == "user" for item in messages):
         raise ValueError("gemma_material_user_required")
     if pending or messages[-1].get("role") != "assistant":
@@ -238,8 +238,8 @@ def _record(row: Mapping[str, Any], split: str) -> Json:
         split == "train"
     ):
         raise ValueError("gemma_material_split_not_allowed")
-    for field in ("record_id", "problem_group", "language"):
-        _text(row.get(field), field)
+    for name in ("record_id", "problem_group", "language"):
+        _text(row.get(name), name)
     targets = supervised_turn_indices(row)
     _conversation(row, targets)
     if row.get("source_kind", "canonical") not in {
@@ -262,52 +262,70 @@ def _record(row: Mapping[str, Any], split: str) -> Json:
     return result
 
 
+@dataclass
+class _MaterialIndex:
+    """Track identity and split boundaries across all records in one preparation."""
+
+    groups: dict[str, str] = field(default_factory=dict)
+    contents: set[str] = field(default_factory=set)
+    prompts: dict[str, str] = field(default_factory=dict)
+    ids: set[str] = field(default_factory=set)
+
+    def add(self, row: Json, split: str) -> None:
+        ident, group = row["record_id"], row["problem_group"]
+        checksum = digest({"messages": row["messages"], "tools": row["tools"]})
+        prompt = next(m["content"] for m in row["messages"] if m["role"] == "user")
+        normalized = " ".join(re.sub(r"\d+", "<n>", prompt.casefold()).split())
+        prompt_hash = digest(normalized)
+        if prompt_hash in self.prompts and self.prompts[prompt_hash] != split:
+            raise ValueError("gemma_material_prompt_leakage")
+        if ident in self.ids:
+            raise ValueError("gemma_material_duplicate_record_id")
+        if checksum in self.contents:
+            raise ValueError("gemma_material_duplicate_conversation")
+        if group in self.groups and self.groups[group] != split:
+            raise ValueError("gemma_material_group_leakage")
+        self.prompts[prompt_hash] = split
+        self.ids.add(ident)
+        self.contents.add(checksum)
+        self.groups[group] = split
+
+
+def _prepare_split(
+    rows: Sequence[Json], split: str, index: _MaterialIndex
+) -> list[Json]:
+    if not isinstance(rows, (list, tuple)) or not rows:
+        raise ValueError("gemma_material_empty_split")
+    prepared = []
+    for raw in rows:
+        row = _record(raw, split)
+        index.add(row, split)
+        prepared.append(row)
+    return prepared
+
+
+def _split_summary(rows: Sequence[Json]) -> Json:
+    return {
+        "records": len(rows),
+        "problem_groups": len({r["problem_group"] for r in rows}),
+        "languages": dict(Counter(r["language"] for r in rows)),
+        "supervised_turns": sum(len(r["supervised_assistant_indices"]) for r in rows),
+        "context_only_turns": sum(
+            len(r["context_only_assistant_indices"]) for r in rows
+        ),
+        "records_sha256": digest(rows),
+    }
+
+
 def prepare_material(splits: Mapping[str, Sequence[Json]]) -> Json:
     """Validate and export canonical records without claiming token or GPU readiness."""
     if not isinstance(splits, Mapping) or not splits or not set(splits) <= SPLITS:
         raise ValueError("gemma_material_splits_invalid")
-    records: dict[str, list[Json]] = {}
-    groups: dict[str, str] = {}
-    contents: set[str] = set()
-    prompts: dict[str, str] = {}
-    ids: set[str] = set()
-    summary = {}
-    for split, rows in splits.items():
-        if not isinstance(rows, (list, tuple)) or not rows:
-            raise ValueError("gemma_material_empty_split")
-        records[split] = []
-        for raw in rows:
-            row = _record(raw, split)
-            ident, group = row["record_id"], row["problem_group"]
-            checksum = digest({"messages": row["messages"], "tools": row["tools"]})
-            prompt = next(m["content"] for m in row["messages"] if m["role"] == "user")
-            normalized = " ".join(re.sub(r"\d+", "<n>", prompt.casefold()).split())
-            prompt_hash = digest(normalized)
-            if prompt_hash in prompts and prompts[prompt_hash] != split:
-                raise ValueError("gemma_material_prompt_leakage")
-            if ident in ids:
-                raise ValueError("gemma_material_duplicate_record_id")
-            if checksum in contents:
-                raise ValueError("gemma_material_duplicate_conversation")
-            if group in groups and groups[group] != split:
-                raise ValueError("gemma_material_group_leakage")
-            prompts[prompt_hash] = split
-            ids.add(ident)
-            contents.add(checksum)
-            groups[group] = split
-            records[split].append(row)
-        summary[split] = {
-            "records": len(records[split]),
-            "problem_groups": len({r["problem_group"] for r in records[split]}),
-            "languages": dict(Counter(r["language"] for r in records[split])),
-            "supervised_turns": sum(
-                len(r["supervised_assistant_indices"]) for r in records[split]
-            ),
-            "context_only_turns": sum(
-                len(r["context_only_assistant_indices"]) for r in records[split]
-            ),
-            "records_sha256": digest(records[split]),
-        }
+    index = _MaterialIndex()
+    records = {
+        split: _prepare_split(rows, split, index) for split, rows in splits.items()
+    }
+    summary = {split: _split_summary(rows) for split, rows in records.items()}
     return {
         "records": records,
         "manifest": {

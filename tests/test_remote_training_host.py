@@ -408,3 +408,65 @@ def test_payload_hashing_supports_bootstrap_python_without_file_digest(
     assert prepare.payload_hashes(tmp_path) == {
         "model.safetensors": hashlib.sha256(payload).hexdigest()
     }
+
+
+@pytest.mark.parametrize("failure", [None, "readonly", "writable", "timeout"])
+def test_sandbox_preflight_checks_exported_git_and_cleans_up(
+    tmp_path, monkeypatch, failure
+):
+    from scripts.remote_training_host import check_sandbox as sandbox
+
+    calls = []
+    monkeypatch.setattr(
+        sandbox, "load_frozen", lambda path: ({"sandbox_image": "pinned"}, [])
+    )
+    monkeypatch.setattr(
+        sandbox, "cleanup_owned", lambda run: calls.append("cleanup") or True
+    )
+
+    class Tool:
+        def __init__(self, workspace, image, run, *, readonly):
+            self.phase = "readonly" if readonly else "writable"
+            assert workspace.stat().st_mode & 0o777 == 0o755
+            calls.append(self.phase)
+
+        def execute(self, command, timeout):
+            assert "git --no-optional-locks status" in command
+            return {
+                "exit_code": int(failure == self.phase),
+                "stdout": "?? probe.txt\n",
+                "workspace_error": None,
+                "execution_timed_out": failure == "timeout",
+                "execution_killed": False,
+                "output_truncated": False,
+            }
+
+        def close(self):
+            calls.append("close")
+
+    monkeypatch.setattr(sandbox, "DockerTool", Tool)
+    if failure:
+        with pytest.raises(RuntimeError, match="sandbox_check_failed"):
+            sandbox.check(tmp_path / "manifest.json")
+    else:
+        report = sandbox.check(tmp_path / "manifest.json")
+        assert report["checks"] == {"writable": "PASS", "readonly": "PASS"}
+        assert not report["gpu_used"] and not report["model_loaded"]
+    assert calls[-1] == "cleanup"
+    assert calls.count("close") == calls.count("writable") + calls.count("readonly")
+
+
+def test_sandbox_preflight_rejects_failed_cleanup(tmp_path, monkeypatch):
+    from scripts.remote_training_host import check_sandbox as sandbox
+
+    monkeypatch.setattr(
+        sandbox, "load_frozen", lambda path: ({"sandbox_image": "pinned"}, [])
+    )
+    monkeypatch.setattr(sandbox, "cleanup_owned", lambda run: False)
+
+    def unavailable(*args, **kwargs):
+        raise ValueError("no docker")
+
+    monkeypatch.setattr(sandbox, "DockerTool", unavailable)
+    with pytest.raises(RuntimeError, match="sandbox_check_cleanup_failed"):
+        sandbox.check(tmp_path / "manifest.json")

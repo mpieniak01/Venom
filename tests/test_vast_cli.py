@@ -354,3 +354,116 @@ def test_offer_table_any_gpu_preserves_other_requirements(service, tmp_path):
     expected["gpu_names"] = []
     assert result.model_dump() == expected
     assert json.loads(path.read_text(encoding="utf-8"))["gpu_names"] == ["RTX 3090"]
+
+
+def test_training_table_reuses_suite_vm_filters_and_allocated_ram(
+    tmp_path, monkeypatch
+):
+    from unittest.mock import Mock
+
+    from scripts.cloud.vast import offers_table as table
+
+    root = tmp_path
+    (root / "config").mkdir()
+    (root / "data/training").mkdir(parents=True)
+    suite = root / "suite.json"
+    suite.write_text(
+        json.dumps(
+            {
+                "common_host_requirements": {
+                    "gpu_vram_gb": 48,
+                    "ram_gb": 64,
+                    "disk_gb": 100,
+                    "vm_required": True,
+                }
+            }
+        )
+    )
+    (root / "data/training/current-experiment.json").write_text(
+        json.dumps({"suite": str(suite)})
+    )
+    (root / "config/granite_operator_host.json").write_text(
+        json.dumps(
+            {
+                "min_cpu_threads": 8,
+                "min_reliability": 0.99,
+                "min_cuda": 13.0,
+                "min_driver": 580000000,
+            }
+        )
+    )
+    monkeypatch.setattr(table, "ROOT", root)
+    monkeypatch.setattr(
+        table, "Settings", lambda **kw: Mock(VAST_API_KEY="not-a-real-key")
+    )
+    client = Mock()
+    client.offers.return_value = [
+        {"id": 1, "cpu_ram": 128000, "gpu_frac": 1, "dph_total": 1.4},
+        {"id": 2, "cpu_ram": 128000, "gpu_frac": 0.125, "dph_total": 0.4},
+        {"id": 3, "cpu_ram": 128000, "gpu_frac": 1},
+    ]
+    rows, requirements, path = table.training_offers(
+        None, root / "env", root / "state", client_factory=lambda key: client
+    )
+    assert path == suite
+    assert requirements["disk_gb"] == 100
+    assert [r["status"] for r in rows] == ["eligible", "ineligible", "ineligible"]
+    filters = client.offers.call_args.args[1]
+    assert filters["vms_enabled"] == {"eq": True}
+    assert filters["gpu_ram"] == {"gte": 48000}
+    assert client.offers.call_args.args[0] == 100
+    client.close.assert_called_once()
+    assert (
+        json.loads((root / "state/latest-training-offers.json").read_text())[
+            "rental_created"
+        ]
+        is False
+    )
+    suite.write_text(
+        json.dumps(
+            {
+                "common_host_requirements": {
+                    "gpu_vram_gb": True,
+                    "ram_gb": 64,
+                    "disk_gb": 100,
+                    "vm_required": True,
+                }
+            }
+        )
+    )
+    with pytest.raises(ValueError, match="requirements"):
+        table.training_offers(suite, root / "env", root)
+    suite.write_text(
+        json.dumps(
+            {
+                "common_host_requirements": {
+                    "gpu_vram_gb": 48,
+                    "ram_gb": 64,
+                    "disk_gb": 100,
+                    "vm_required": False,
+                }
+            }
+        )
+    )
+    with pytest.raises(ValueError, match="vm_required"):
+        table.training_offers(suite, root / "env", root)
+
+
+def test_training_table_cli_and_redacted_failure(monkeypatch, capsys, tmp_path):
+    from scripts.cloud.vast import offers_table as table
+
+    requirements = {"gpu_vram_gb": 48, "ram_gb": 64, "disk_gb": 100}
+    monkeypatch.setattr(
+        table, "training_offers", lambda *a: ([], requirements, tmp_path / "suite.json")
+    )
+    assert table.main(["--training"]) == 0
+    assert "VM" in capsys.readouterr().out
+
+    def failed(*args):
+        raise OSError("private provider details")
+
+    monkeypatch.setattr(table, "training_offers", failed)
+    assert table.main(["--training-suite", str(tmp_path / "suite.json")]) == 1
+    output = capsys.readouterr().err
+    assert "vast.training_offers_failed" in output
+    assert "private provider details" not in output

@@ -55,3 +55,22 @@ VRAM, RAM, CPU, NVIDIA/CUDA i pozostałe ograniczenia. Nie zmienia pliku profilu
 Bez `--any-gpu` zwykłe CLI stosuje `gpu_names` z profilu; pusta lista
 `"gpu_names": []` pozwala zapisać dowolny model GPU jako ustawienie profilu.
 Tabela `offers_table.py` już przekazuje `--any-gpu` automatycznie.
+
+
+## Host do przygotowanej kampanii treningowej
+
+```bash
+source .venv/bin/activate
+python scripts/cloud/vast/offers_table.py --training
+```
+
+To stałe polecenie czyta `data/training/current-experiment.json`, a następnie
+wymagania `common_host_requirements` wskazanej kampanii. Nie trzeba budować
+osobnego skryptu ani wyszukiwania. Stosuje VM, wymagany VRAM, RAM przypadający
+na instancję i dysk kampanii. Zgodność CUDA/sterownika, CPU i niezawodność są
+w `config/granite_operator_host.json`. Cena obejmuje dysk; transfer osobno.
+Ostatni odczyt zapisuje w `.venom_runtime/vast/latest-training-offers.json`.
+Nie wynajmuje hosta i nie poluzowuje wymagań przy braku ofert.
+
+Opcjonalnie: `--training-suite /path/suite.json`, `--limit 5`, `--locale en`.
+Stary tryb `--profile` pozostaje dostępny dla pozostałych obciążeń.

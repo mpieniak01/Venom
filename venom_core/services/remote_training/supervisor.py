@@ -69,6 +69,9 @@ def _finish(store: JobStore, run_id: str, attempt: int, **values) -> None:
         if values.get("status") in TERMINAL and state["status"] not in TERMINAL:
             account_elapsed(state)
         state.update(**values, updated_at=time.time())
+        from .milestones import seal_attempt
+
+        seal_attempt(directory, state)
         atomic_json(directory / "state.json", state)
 
 

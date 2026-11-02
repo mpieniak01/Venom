@@ -339,13 +339,23 @@ class Session:
     def long_context(self, row):
         """Real configured-length backward pass; synthetic stress input, never corpus."""
         padded = copy.deepcopy(row)
-        last_tool = next(m for m in reversed(padded["messages"]) if m["role"] == "tool")
-        original = last_tool["content"]
+        # A valid corpus may start with a direct answer and no tool observation.
+        # Stress only an unsupervised turn; never pad the assistant target.
+        padding = next(
+            (m for m in reversed(padded["messages"]) if m["role"] == "tool"), None
+        )
+        if padding is None:
+            padding = next(
+                (m for m in reversed(padded["messages"]) if m["role"] == "user"), None
+            )
+        if padding is None:
+            raise ValueError("granite_long_context_unsupervised_turn_missing")
+        original = padding["content"]
         low, high = 0, self.profile.context * 2
         best = None
         while low <= high:
             middle = (low + high) // 2
-            last_tool["content"] = original + " stress" * middle
+            padding["content"] = original + " stress" * middle
             try:
                 candidate = encode(padded, self.tokenizer, self.profile.context)
                 best = candidate

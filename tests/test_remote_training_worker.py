@@ -445,7 +445,10 @@ def test_stage_logs_reach_live_supervisor_stream(tmp_path, monkeypatch, capsys):
         os.close(descriptor)
     live = capsys.readouterr().out
     assert "model-progress-1" in live and "model-progress-2" in live
-    assert (result / "logs/training.log").read_text() == live
+    raw_stage_log = (result / "logs/training.log").read_text()
+    assert raw_stage_log in live
+    assert json.loads(live.splitlines()[0])["phase"] == "loading"
+    assert json.loads(live.splitlines()[-1])["phase"] == "stage_complete"
 
 
 def test_stage_timeout_reaps_child_and_retains_last_output(
@@ -465,3 +468,79 @@ def test_stage_timeout_reaps_child_and_retains_last_output(
         if child.poll() is None:
             child.kill()
             child.wait()
+
+
+@pytest.mark.parametrize("failure_at", [None, 125])
+def test_three_independent_milestones_preserve_earlier_checkpoints(
+    setup, monkeypatch, failure_at
+):
+    root, run, request, calls = setup
+    original = request()
+    original["manifest"]["identity"]["limits"]["max_updates"] = 160
+    write_json(run / "input/.bundle-manifest.json", original["manifest"])
+    worker.execute(original)
+    last = None
+    artifacts = {}
+    real = worker.run_stage
+
+    def stage(host, body, result, **kwargs):
+        if failure_at and body["updates"] == 45:
+            raise RuntimeError("fixture_interrupted")
+        return real(host, body, result, **kwargs)
+
+    monkeypatch.setattr(worker, "run_stage", stage)
+    for step in [80, 125, 160]:
+        req = request("train", last)
+        req["until_update"] = step
+        if step == failure_at:
+            with pytest.raises(RuntimeError, match="fixture_interrupted"):
+                worker.execute(req)
+            break
+        worker.execute(req)
+        result = Path(req["attempt_root"]) / "result"
+        metadata = json.loads((result / "metrics.json").read_text())
+        assert (
+            metadata["candidate_step"] == step
+            and metadata["planned_max_updates"] == 160
+        )
+        assert (
+            json.loads((result / "checkpoint/receipt.json").read_text())["step"] == step
+        )
+        last = (result / "checkpoint").relative_to(run).as_posix()
+        artifacts[step] = (
+            result / "checkpoint/receipt.json",
+            (result / "checkpoint/receipt.json").read_bytes(),
+        )
+    assert all(path.read_bytes() == content for path, content in artifacts.values())
+    if failure_at is None:
+        assert [c["updates"] for c in calls if c["stage"].startswith("train")] == [
+            12,
+            68,
+            45,
+            35,
+        ]
+    else:
+        assert set(artifacts) == {80}
+
+
+def test_full_160_update_request_keeps_native_stages_within_128(setup):
+    root, run, request, calls = setup
+    req = request()
+    req["manifest"]["identity"]["limits"]["max_updates"] = 160
+    write_json(run / "input/.bundle-manifest.json", req["manifest"])
+    worker.execute(req)
+    worker.execute(request("train"))
+    stages = [c for c in calls if c["stage"].startswith("train")]
+    assert [c["updates"] for c in stages] == [12, 128, 20]
+    assert len({c["output"] for c in stages}) == 3
+
+
+@pytest.mark.parametrize("until", [0, 161, True])
+def test_invalid_milestone_does_not_run_training_stage(setup, until):
+    root, run, request, calls = setup
+    worker.execute(request())
+    req = request("train")
+    req["until_update"] = until
+    with pytest.raises(ValueError):
+        worker.execute(req)
+    assert len(calls) == 2

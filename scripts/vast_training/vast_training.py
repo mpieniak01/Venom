@@ -23,7 +23,7 @@ def offer_query(profile, max_hourly):
     pinned = stack()
     driver = int(pinned["minimum_driver_major"]) * 1000000
     return (
-        f"verified=True rentable=True rented=False cpu_arch=amd64 num_gpus={profile['gpus']} "
+        f"verified=True rentable=True rented=False direct_port_count>=1 cpu_arch=amd64 num_gpus={profile['gpus']} "
         f"gpu_ram>={profile['gpu_ram_gb']} cpu_ram>={profile['cpu_ram_gb']} "
         f"disk_space>={profile['disk_gb']} cuda_vers>={pinned['cuda']} "
         f"driver_version>={driver} reliability>=0.99 dph_total<={max_hourly}"
@@ -47,6 +47,8 @@ def command(args):
             "search",
             "offers",
             offer_query(profile, args.max_hourly),
+            "--storage",
+            str(profile["disk_gb"]),
             "--order",
             "dph_total",
             "--limit",
@@ -67,6 +69,7 @@ def command(args):
             str(profile["disk_gb"]),
             "--ssh",
             "--direct",
+            "--cancel-unavail",
             "--label",
             "training-" + args.profile,
             "--env",
@@ -86,7 +89,7 @@ def main():
         "--max-hourly",
         type=float,
         default=1.0,
-        help="Offer compute-price filter USD/h; storage/transfer billed separately",
+        help="Offer price filter USD/h with selected storage allocation; transfer billed separately",
     )
     parser.add_argument("--offer", type=int)
     parser.add_argument(
@@ -103,6 +106,11 @@ def main():
                     "name": "venom-training-" + args.profile,
                     "image": config["image"],
                     "launch_mode": "SSH direct",
+                    "cancel_unavail": True,
+                    "pricing_storage_gb": config["profiles"][args.profile]["disk_gb"],
+                    "search_params": offer_query(
+                        config["profiles"][args.profile], args.max_hourly
+                    ),
                     "onstart_cmd": startup(),
                     "environment": {"JUPYTER_DISABLE": "1"},
                     "requirements": config["profiles"][args.profile],

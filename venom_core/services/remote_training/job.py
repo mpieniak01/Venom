@@ -63,7 +63,7 @@ def prepare(
     if (
         dataset not in {"domain", "hf", "mixed"}
         or type(updates) is not int
-        or not 1 <= updates <= 128
+        or not 1 <= updates <= 256
     ):
         raise ValueError("remote_training_budget_invalid")
     if type(max_seconds) is not int or not 1 <= max_seconds <= 86400:

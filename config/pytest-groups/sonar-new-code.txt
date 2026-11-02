@@ -163,6 +163,9 @@ tests/test_granite_comparison_contract.py
 tests/test_granite_material_intake.py
 tests/test_granite_operator_contract.py
 tests/test_granite_operator_training.py
+tests/test_granite_parallel_comparison.py
+tests/test_granite_remote_comparison.py
+tests/test_granite_remote_inference.py
 tests/test_graph_rag_service.py
 tests/test_graph_store.py
 tests/test_hardware_bridge.py
@@ -329,8 +332,11 @@ tests/test_remote_models_service.py
 tests/test_remote_provider_control.py
 tests/test_remote_training_bundles.py
 tests/test_remote_training_environment.py
+tests/test_remote_training_host.py
 tests/test_remote_training_import.py
 tests/test_remote_training_lifecycle.py
+tests/test_remote_training_milestones.py
+tests/test_remote_training_progress.py
 tests/test_remote_training_rpc.py
 tests/test_remote_training_transport.py
 tests/test_remote_training_verification.py

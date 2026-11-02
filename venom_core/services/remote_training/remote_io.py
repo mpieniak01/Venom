@@ -206,7 +206,16 @@ def collect_chunk(store: JobStore, payload: dict[str, Any]) -> dict[str, Any]:
     ):
         raise ValueError("remote_training_collect_range_invalid")
     with file_lock(directory / ".collect.lock"):
-        state = store.status(run_id)
+        selected_attempt = payload.get("attempt")
+        if "attempt" in payload and (
+            type(selected_attempt) is not int or selected_attempt < 1
+        ):
+            raise ValueError("remote_training_attempt_selector_invalid")
+        state = (
+            store.status(run_id)
+            if selected_attempt is None
+            else store.attempt_status(run_id, selected_attempt)
+        )
         if state["status"] not in TERMINAL:
             raise ValueError("remote_training_collect_requires_terminal")
         proof = {
@@ -221,6 +230,13 @@ def collect_chunk(store: JobStore, payload: dict[str, Any]) -> dict[str, Any]:
         for path in (archive, metadata):
             _plain(path)
         if not archive.exists():
+            from .milestones import read_attempt, verify_seal
+
+            outcome = (
+                directory / "attempts" / f"{state['attempt']:04d}" / "outcome.json"
+            )
+            if outcome.is_file():
+                verify_seal(directory, read_attempt(directory, state["attempt"]))
             manifest = json.loads((directory / "manifest.json").read_text())
             attempt = attempt_directory(store, run_id, state)
             result = (

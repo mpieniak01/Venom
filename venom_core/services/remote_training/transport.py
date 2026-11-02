@@ -20,6 +20,7 @@ ACTIONS = frozenset(
         "upload",
         "start",
         "status",
+        "attempts",
         "logs",
         "stop",
         "resume",

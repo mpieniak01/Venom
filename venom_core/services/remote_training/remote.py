@@ -26,13 +26,14 @@ _FIELDS = {
         "sha256",
         "final",
     },
-    "start": {"run_id", "stage", "timeout_seconds"},
+    "start": {"run_id", "stage", "timeout_seconds", "until_update"},
     "status": {"run_id"},
+    "attempts": {"run_id"},
     "logs": {"run_id", "offset", "max_bytes"},
     "stop": {"run_id"},
-    "resume": {"run_id", "checkpoint", "stage", "timeout_seconds"},
+    "resume": {"run_id", "checkpoint", "stage", "timeout_seconds", "until_update"},
     "retry": {"run_id", "from_attempt", "timeout_seconds"},
-    "collect": {"run_id", "offset", "max_bytes", "include_checkpoint"},
+    "collect": {"run_id", "offset", "max_bytes", "include_checkpoint", "attempt"},
 }
 
 
@@ -58,8 +59,13 @@ def dispatch(store: JobStore, action: str, payload: dict[str, Any]) -> dict[str,
         return log_chunk(
             store, run_id, payload.get("offset", 0), payload.get("max_bytes", 65536)
         )
+    if action == "attempts":
+        return {"run_id": run_id, "attempts": store.attempts(run_id)}
     if action == "status":
-        return store.status(run_id)
+        state = store.status(run_id)
+        from .progress import observe
+
+        return {**state, "progress": observe(store, run_id, state)}
     if action == "stop":
         return store.stop(run_id)
     if action == "retry":
@@ -75,14 +81,33 @@ def dispatch(store: JobStore, action: str, payload: dict[str, Any]) -> dict[str,
     if stage not in {"smoke", "train"}:
         raise ValueError("remote_training_stage_invalid")
     if action == "start":
-        return store.start(run_id, stage=stage, timeout_seconds=timeout)
+        return store.start(
+            run_id,
+            stage=stage,
+            timeout_seconds=timeout,
+            **(
+                {"until_update": payload["until_update"]}
+                if "until_update" in payload
+                else {}
+            ),
+        )
     checkpoint = payload.get("checkpoint")
     if not isinstance(checkpoint, str) or not checkpoint:
         raise ValueError("remote_training_checkpoint_path_invalid")
     # Resume retains its original stage unless the caller explicitly selected another.
     if "stage" not in payload:
         stage = store.status(run_id).get("stage") or "smoke"
-    return store.resume(run_id, checkpoint, stage=stage, timeout_seconds=timeout)
+    return store.resume(
+        run_id,
+        checkpoint,
+        stage=stage,
+        timeout_seconds=timeout,
+        **(
+            {"until_update": payload["until_update"]}
+            if "until_update" in payload
+            else {}
+        ),
+    )
 
 
 def response(store: JobStore, action: str, payload: dict[str, Any]) -> dict[str, Any]:

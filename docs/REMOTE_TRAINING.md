@@ -5,6 +5,48 @@ uses an existing verified SSH connection and does not rent, stop or destroy inst
 No application startup, API request or CI job starts model training. Remote commands
 are fixed RPC operations, not arbitrary command execution from a model or manifest.
 
+## Host preparation and live progress
+
+The native host helper is `scripts/remote_training_host/prepare.py`; the
+[Polish operator runbook](PL/ZDALNY_TRENING.md#prosta-ścieżka-operatora) contains the
+complete ordered workflow. On an already rented Linux amd64/NVIDIA SSH host,
+prepare a clean reviewed checkout and invoke:
+
+```bash
+python3 /workspace/venom/scripts/remote_training_host/prepare.py \
+  --code-root /workspace/venom --commit <REVIEWED_40_CHAR_SHA> --uv /usr/local/bin/uv
+# Inspect the plan, then repeat with --apply.
+```
+
+Use an existing operator-installed `uv` to install managed Python 3.14.8, or pass
+`--python /path/to/python3.14` instead. Apply creates a separate training venv,
+installs both hash-locked requirements, probes the environment, downloads the
+pinned model snapshot and initializes the host. It never rents or starts training.
+It requires NVIDIA driver/nvidia-smi, setpriv, SSH, and sufficient free space.
+`--offline-model` reuses a previously prepared, provenance/hash-verified snapshot.
+No curl installer or application venv modification is involved.
+The returned `remote_python` wrapper supplies the reviewed PYTHONPATH and model
+interpreter; pass it to **every** SSH operation:
+
+```bash
+python scripts/remote_training.py --host gpu-training \
+  --remote-python /workspace/data/remote-training/rpc-python \
+  watch --run-id granite-remote-01 --interval 5 --max-seconds 3600
+```
+
+`watch` prints attempt/state/phase, optimizer steps, percentage and loss. Add
+`--json-lines` for structured snapshots. One-shot `status` exposes the same
+`progress` object. These are actual native worker observations from the current
+attempt's bounded log, not simulated estimates. Unknown progress is null. 100%
+means optimizer updates are complete; evaluation/checkpointing may still be
+running. Only `status=succeeded` confirms completion. Ctrl+C, viewer timeout or
+SSH failure disconnect the viewer without stopping training. Retry the viewer
+after connectivity returns; use explicit `stop` to stop the job.
+
+The first authorized real acceptance still needs host smoke, SSH disconnect,
+checkpoint resume, collection and fresh local GPU verification. Do not equate
+fixture tests or successful installation with GPU qualification or model quality.
+
 ## Runtime boundary
 
 The generic `scripts/vast_training` image is Python 3.12/Axolotl. Granite uses the
@@ -177,3 +219,97 @@ The qualified Python path preserves its virtualenv spelling; model snapshot
 aliases are accepted only when their resolved target remains in allowed data roots.
 Local verification derives receipt.json beside its own request, regardless of
 any output pathname in request content.
+
+## Paired behavioral evaluation
+
+After verified collection, use `python -m scripts.granite_operator.remote_comparison`
+with the fixed local cases manifest, remote result path and confirmed adapter SHA.
+Inference stays on the SSH GPU host; existing isolated Docker tools and oracles run
+locally. See the [operator comparison workflow](PL/GRANITE_OPERATOR_EXPERIMENT.md#porównanie-adaptera-trenowanego-na-zdalnym-hoście).
+This is separately operator-started evaluation, never an automatic training step.
+
+
+### Configurable evaluation on one host
+
+Use `python -m scripts.granite_operator.comparison` for a collected training result.
+The process runs **model inference, Docker tools and independent oracles on the same
+machine**. Invoke it locally, or invoke the same command inside an SSH session on
+the training host. `--execution-host` records the operator-selected placement; it
+does not provision a host or open SSH. The earlier `remote_comparison` command
+remains a split local-tools/remote-model bridge and does not gain these flags.
+
+```bash
+source .venv/bin/activate
+python -m scripts.granite_operator.comparison \
+  --host-root /absolute/configured-host-root \
+  --adapter-root /absolute/verified-result-directory \
+  --expected-adapter-sha256 <sha256> \
+  --cases /absolute/frozen-eval/manifest.json \
+  --output /absolute/new-evaluation-directory \
+  --execution-host local --concurrency 2 --batch-size 2
+```
+
+On a remote machine use its configured Python interpreter, paths, and
+`--execution-host remote --concurrency 4 --batch-size 4`. Transfer the frozen
+benchmark including its fixtures and pinned sandbox image first. The GPU host
+must support the existing isolated Docker tools: an SSH container alone is not
+sufficient. The command checks image availability before loading the model;
+container startup must also support all existing sandbox restrictions. It never
+falls back to executing tools without isolation or back on the local machine.
+API/model services must be offline and host GPU admission must be available.
+
+| Option | Default | Contract |
+|---|---:|---|
+| `--concurrency` | local: 1; remote: 4 | Active tasks: 1, 2, 4 or 8; one model instance throughout. |
+| `--batch-size` | concurrency | Maximum same-arm requests in one GPU batch, from 1 to concurrency. |
+| `--batch-wait-ms` | 20 | Wait to gather a batch: 0–100 ms. |
+| `--task-seconds` | 60 | Per-task active budget: 1–600 s, excluding GPU queue waits. |
+| `--max-seconds` | 7200 | Entire invocation including startup/queue time: 1–14400 s. |
+| `--execution-host` | local | Placement label: local or remote; all components run on that host. |
+
+Local execution defaults to one task (two can be selected). Remote execution
+starts directly at four tasks with adaptive concurrency; it remains diagnostic
+until correctness qualification. Generation and base/adapter switching have one
+owner; each task retains a private workspace/container. Tune flags between runs,
+using a new output directory. Exact resume (`--resume`) requires the same source,
+benchmark, adapter, runtime versions, host identity and execution settings.
+
+Trial receipts distinguish `task_seconds` (wall latency), `queue_seconds` and
+`active_task_seconds`. Shared batch time is counted once in throughput summaries;
+`execution-<run-id>.json` stores GPU batch duration, invocation wall time and shared
+peak memory. Per-trial GPU peaks are null because memory belongs to the shared
+session. Resumed invocation metrics cover only newly executed work.
+
+Parallel runs remain diagnostic: `proposed_promotion_gate_passed` stays false.
+Validate oracle verdicts against serial execution on the same host/profile before
+adopting a parallel preset. Batch numerical differences and deadline effects can
+change responses. Never compare a parallel loaded task latency directly with an
+unloaded serial latency as a model promotion decision. No provider call or paid
+qualification is part of automated tests; request each live run explicitly.
+
+
+Remote concurrency policy: `--execution-host remote` defaults to four tasks and
+adaptive operation. No serial warmup benchmark is required. `--no-adaptive` fixes
+the selected limit. The model's short inference warmup still runs before timing.
+
+- `--max-concurrency 8` bounds automatic growth (local adaptive default cap: 2).
+- `--window-trials 16` selects the observation window, from 8 to 128 trials.
+- `--low-gpu-percent 50` requires at least three sampled GPU utilization readings
+  below the threshold before doubling concurrency.
+- `--high-memory-percent 80` requires all sampled VRAM occupancy readings to be
+  below this threshold as well. Missing/invalid telemetry never permits growth.
+- Recoverable CUDA OOM lowers 4→2→1, preserves completed receipts, and retries
+  only unfinished trials after worker threads stop and the allocator is cleared.
+  Task/tool timeouts lower concurrency for the next window; timed-out trial
+  results remain recorded. Other infrastructure/data errors abort for repair.
+- A level that caused OOM/timeouts is blocked for the remainder of that invocation.
+  GPU admission, host retention and diagnostic-only promotion rules still apply.
+
+Decisions are flushed immediately to `concurrency-decisions.jsonl`. Each trial
+records its actual `execution_concurrency` and `execution_batch_size`; execution
+metrics include sampled GPU/VRAM occupancy and the decision history. Batch size
+scales with concurrency while preserving its initial ratio. Adaptation occurs
+between windows, never by changing adapter state from concurrent task threads.
+
+
+See [independent training milestones](REMOTE_TRAINING_MILESTONES.md) for separately runnable 80/125/160 training stages, historical result collection and dialogue evaluation.

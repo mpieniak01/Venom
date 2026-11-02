@@ -2,6 +2,9 @@
   "name": "venom-training-lora",
   "image": "axolotlai/axolotl-cloud@sha256:259b43034047cda72b261da7c20897eed354582c7530c77e401c908206daf0dc",
   "launch_mode": "SSH direct",
+  "cancel_unavail": true,
+  "pricing_storage_gb": 100,
+  "search_params": "verified=True rentable=True rented=False direct_port_count>=1 cpu_arch=amd64 num_gpus=1 gpu_ram>=48 cpu_ram>=64 disk_space>=100 cuda_vers>=13.0 driver_version>=580000000 reliability>=0.99 dph_total<=1.0",
   "onstart_cmd": "set -eu; umask 077; mkdir -p /workspace/data/vast-training/datasets /workspace/data/vast-training/outputs /workspace/data/vast-training/logs; echo awaiting_upload > /workspace/data/vast-training/environment.state",
   "environment": {
     "JUPYTER_DISABLE": "1"

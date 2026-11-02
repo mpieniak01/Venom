@@ -7,7 +7,6 @@ import contextlib
 import importlib.metadata
 import json
 import os
-import random
 import subprocess
 import time
 import uuid
@@ -87,8 +86,21 @@ def generate(session, messages, tools, arm, deadline):
     }
 
 
-def run_case(session, case, dataset, output, image, run_id, arm):
+def run_case(
+    session,
+    case,
+    dataset,
+    output,
+    image,
+    run_id,
+    arm,
+    *,
+    generator=None,
+    task_timeout_seconds=None,
+):
     from jsonschema import Draft202012Validator
+
+    generator = generator or generate
 
     from venom_core.services.maintenance_comparison.protocol import (
         ProtocolError,
@@ -113,23 +125,43 @@ def run_case(session, case, dataset, output, image, run_id, arm):
     }
     ledger, generations, violations = [], [], []
     finish = None
+    intermediate_finishes = []
+    followups = case.get("followups", [])
+    if (
+        not isinstance(followups, list)
+        or len(followups) > 4
+        or any(not isinstance(x, str) or not x or len(x) > 8192 for x in followups)
+    ):
+        if tool:
+            tool.close()
+        raise ValueError("comparison_followups_invalid")
     failure = None
+    queue_seconds = 0.0
     started = time.monotonic()
-    deadline = started + INFERENCE["task_deadline_seconds"]
+    deadline = started + (
+        task_timeout_seconds
+        if task_timeout_seconds is not None
+        else INFERENCE["task_deadline_seconds"]
+    )
     session.torch.cuda.reset_peak_memory_stats()
     try:
         for turn in range(INFERENCE["max_turns"]):
             try:
-                generated = generate(session, messages, case["tools"], arm, deadline)
+                generated = generator(session, messages, case["tools"], arm, deadline)
                 generations.append(generated)
+                wait = generated.get("queue_seconds", 0.0)
+                queue_seconds += wait
+                deadline += wait
                 if time.monotonic() >= deadline:
                     failure = "task_timeout"
                     break
                 calls = granite_calls(generated["text"])
-            except TimeoutError:
+            except TimeoutError as error:
+                queue_seconds += getattr(error, "queue_seconds", 0.0)
                 failure = "task_timeout"
                 break
             except (ProtocolError, ValueError) as error:
+                queue_seconds += getattr(error, "queue_seconds", 0.0)
                 failure = str(error)
                 break
             if not calls or len(calls) > 4:
@@ -146,7 +178,35 @@ def run_case(session, case, dataset, output, image, run_id, arm):
                 if len(calls) != 1:
                     failure = "finish_without_observation"
                 else:
-                    finish = calls[0].arguments
+                    proposed = calls[0].arguments
+                    if proposed["status"] == "needs_input" and len(
+                        intermediate_finishes
+                    ) < len(followups):
+                        messages.append(
+                            {
+                                "role": "assistant",
+                                "content": "",
+                                "tool_calls": [
+                                    {
+                                        "id": f"clarification_{turn}",
+                                        "type": "function",
+                                        "function": {
+                                            "name": "Finish",
+                                            "arguments": proposed,
+                                        },
+                                    }
+                                ],
+                            }
+                        )
+                        messages.append(
+                            {
+                                "role": "user",
+                                "content": followups[len(intermediate_finishes)],
+                            }
+                        )
+                        intermediate_finishes.append(proposed)
+                        continue
+                    finish = proposed
                 break
             messages.append(
                 {
@@ -240,6 +300,13 @@ def run_case(session, case, dataset, output, image, run_id, arm):
         finally:
             verifier.close()
     verdict = oracle(case, workspace, before, ledger, finish, violations, verification)
+    expected_clarifications = case["oracle"].get("expected_clarifications")
+    if (
+        expected_clarifications is not None
+        and len(intermediate_finishes) != expected_clarifications
+    ):
+        verdict["success"] = False
+        verdict["errors"] = sorted(set(verdict["errors"] + ["clarification_count"]))
     if failure:
         verdict["success"] = False
         verdict["errors"] = sorted(set(verdict["errors"] + [failure]))
@@ -255,8 +322,11 @@ def run_case(session, case, dataset, output, image, run_id, arm):
         "arm": arm,
         "oracle": verdict,
         "finish": finish,
+        "intermediate_finishes": intermediate_finishes,
         "failure": failure,
         "task_seconds": task_seconds,
+        "queue_seconds": queue_seconds,
+        "active_task_seconds": max(0.0, task_seconds - queue_seconds),
         "verifier_seconds": time.monotonic() - verify_start,
         "generation_seconds": sum(g["seconds"] for g in generations),
         "tool_seconds": sum(e["result"]["seconds"] for e in ledger if e["result"]),
@@ -275,6 +345,13 @@ def worker(request):
     from venom_core.services.granite_operator.engine import Session, require_owner
 
     require_owner()
+    from scripts.granite_operator.comparison_parallel import Execution
+
+    request.setdefault("execution", Execution().validate())
+    if request.get("adapter_root"):
+        from scripts.granite_operator.comparison_host import worker as host_worker
+
+        return host_worker(request)
     output = Path(request["output"])
     manifest_path = Path(request["cases"])
     manifest, cases = load_frozen(manifest_path)
@@ -316,6 +393,7 @@ def worker(request):
     identity = {
         "dataset_sha256": file_digest(manifest_path),
         "inference": INFERENCE,
+        "execution": request["execution"],
         "adapter_sha256": receipt["adapter_sha256"],
         "profile": profile.identity(),
         "base_snapshot": source["snapshot"],
@@ -327,6 +405,9 @@ def worker(request):
             for p in [
                 Path(__file__),
                 Path(__file__).with_name("comparison_support.py"),
+                Path(__file__).with_name("comparison_parallel.py"),
+                Path(__file__).with_name("comparison_adaptive.py"),
+                Path(__file__).with_name("comparison_host.py"),
                 Path(__file__).resolve().parents[2]
                 / "venom_core/services/granite_operator/engine.py",
                 Path(__file__).resolve().parents[2]
@@ -409,51 +490,11 @@ def worker(request):
         if rows_path.exists()
         else []
     )
-    done = {(r["case_id"], r["arm"]) for r in rows}
-    if len(done) != len(rows):
-        raise ValueError("comparison_duplicate_trial")
-    ordered = cases.copy()
-    random.Random(7441).shuffle(ordered)
-    for index, case in enumerate(ordered):
-        arms = ("base", "adapter") if index % 2 == 0 else ("adapter", "base")
-        for arm in arms:
-            if (case["id"], arm) in done:
-                continue
-            row = run_case(
-                session,
-                case,
-                manifest_path.parent,
-                output,
-                manifest["sandbox_image"],
-                request["run_id"],
-                arm,
-            )
-            row["trial_sequence"] = len(rows) + 1
-            row["pair_order"] = "base-first" if arms[0] == "base" else "adapter-first"
-            with rows_path.open("a") as stream:
-                stream.write(
-                    json.dumps(row, ensure_ascii=False, allow_nan=False) + "\n"
-                )
-                stream.flush()
-                os.fsync(stream.fileno())
-            rows.append(row)
-            done.add((case["id"], arm))
-            write_json(
-                output / "progress.json",
-                {
-                    "status": "RUNNING",
-                    "completed": len(rows),
-                    "total": len(cases) * 2,
-                    "last_case": case["id"],
-                    "last_arm": arm,
-                    "successes": {
-                        key: sum(
-                            r["oracle"]["success"] for r in rows if r["arm"] == key
-                        )
-                        for key in ("base", "adapter")
-                    },
-                },
-            )
+    from scripts.granite_operator.comparison_host import evaluate_trials
+
+    rows, execution_metrics = evaluate_trials(
+        session, cases, manifest, request, output, rows=rows
+    )
     load_frozen(manifest_path)
     if len(rows) != len(cases) * 2:
         raise RuntimeError("comparison_incomplete")
@@ -469,8 +510,12 @@ def worker(request):
             "case_count": len(cases),
             "inference": INFERENCE,
             "dataset_sha256": file_digest(manifest_path),
+            "execution": request["execution"],
+            "execution_metrics": execution_metrics,
+            "qualification": "diagnostic_requires_serial_comparison",
         }
     )
+    final["paired"]["proposed_promotion_gate_passed"] = False
     write_json(output / "summary.json", final)
     write_json(
         output / "progress.json",
@@ -479,9 +524,22 @@ def worker(request):
 
 
 def coordinate(args):
+    from scripts.granite_operator.comparison_parallel import execution_from_args
     from venom_core.services.granite_operator.cli import require_offline
-    from venom_core.services.runtime_admission import RuntimeAdmission
 
+    execution = execution_from_args(args)
+    if args.adapter_root:
+        from scripts.granite_operator.comparison_host import adapter_source
+
+        host, _, _ = adapter_source(
+            {
+                "adapter_root": str(args.adapter_root),
+                "host_root": str(args.host_root),
+                "expected_adapter_sha256": args.expected_adapter_sha256,
+            }
+        )
+        args.worker_python = Path(host["worker_python"])
+        args.admission_db = Path(host["admission_db"])
     require_offline()
     load_frozen(args.cases)
     args.output.mkdir(parents=True, exist_ok=args.resume)
@@ -494,9 +552,27 @@ def coordinate(args):
         for key, value in vars(args).items()
         if isinstance(value, Path)
     }
-    request.update({"run_id": run_id, "resume": args.resume})
+    request.update(
+        {
+            "run_id": run_id,
+            "resume": args.resume,
+            "execution": execution.validate(),
+            "expected_adapter_sha256": args.expected_adapter_sha256,
+        }
+    )
     request_path = args.output / ("request-" + run_id + ".json")
     write_json(request_path, request)
+    with contextlib.ExitStack() as guards:
+        if args.adapter_root:
+            from venom_core.services.remote_training.lifecycle import file_lock
+
+            guards.enter_context(file_lock(args.host_root / "gpu.lock", blocking=False))
+        return _coordinate_reserved(args, execution, run_id, request_path)
+
+
+def _coordinate_reserved(args, execution, run_id, request_path):
+    from venom_core.services.runtime_admission import RuntimeAdmission
+
     lease = RuntimeAdmission(args.admission_db, enabled=True).acquire(
         owner="granite-training",
         run_id=run_id,
@@ -537,21 +613,21 @@ def coordinate(args):
                         env=environment,
                         stdout=log,
                         stderr=subprocess.STDOUT,
+                        start_new_session=True,
                     )
                     try:
-                        code = child.wait(timeout=14400)
+                        code = child.wait(timeout=execution.max_seconds)
                     except BaseException:
-                        child.terminate()
-                        try:
-                            child.wait(timeout=20)
-                        except subprocess.TimeoutExpired:
-                            child.kill()
-                            child.wait(timeout=20)
+                        from scripts.granite_operator.remote_inference import terminate
+
+                        terminate(child)
                         raise
                 if code:
                     raise RuntimeError("comparison_worker_failed:" + str(code))
             finally:
                 containers_clean = cleanup_owned(run_id)
+                if not containers_clean:
+                    raise RuntimeError("comparison_cleanup_failed")
         write_json(args.output / "status.json", {"status": "PASS", "run_id": run_id})
     except BaseException as error:
         write_json(
@@ -570,24 +646,32 @@ def main():
     for name in ("cases", "training-run", "output", "worker-python", "admission-db"):
         parser.add_argument("--" + name, type=Path)
     parser.add_argument("--resume", action="store_true")
+    parser.add_argument("--adapter-root", type=Path)
+    parser.add_argument("--host-root", type=Path)
+    parser.add_argument("--expected-adapter-sha256")
+    from scripts.granite_operator.comparison_parallel import execution_options
+
+    execution_options(parser)
     args = parser.parse_args()
     if args.request:
         worker(json.loads(args.request.read_text()))
     else:
-        if any(
-            getattr(args, name) is None
-            for name in (
-                "cases",
-                "training_run",
-                "output",
-                "worker_python",
-                "admission_db",
-            )
-        ):
+        imported = args.adapter_root is not None
+        required = ("cases", "output") + (
+            ("host_root", "expected_adapter_sha256")
+            if imported
+            else ("training_run", "worker_python", "admission_db")
+        )
+        if imported and args.training_run:
+            parser.error("choose adapter-root or training-run")
+        if any(getattr(args, name) is None for name in required):
             parser.error(
                 "cases, training-run, output, worker-python and admission-db are required"
             )
-        coordinate(args)
+        from scripts.granite_operator.remote_inference import termination_signals
+
+        with termination_signals():
+            coordinate(args)
 
 
 if __name__ == "__main__":

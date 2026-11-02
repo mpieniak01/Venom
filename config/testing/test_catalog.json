@@ -7751,6 +7751,90 @@
       ],
       "legacy_targeted": false,
       "rationale": "Explicit pinned default question setup, idempotency and checksum guards without network."
+    },
+    {
+      "path": "tests/test_remote_training_progress.py",
+      "domain": "academy",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Offline native host setup and read-only training progress contracts."
+    },
+    {
+      "path": "tests/test_remote_training_host.py",
+      "domain": "academy",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Offline native host setup and read-only training progress contracts."
+    },
+    {
+      "path": "tests/test_granite_remote_comparison.py",
+      "domain": "academy",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Paired remote adapter inference protocol and local sandbox orchestration without provider calls."
+    },
+    {
+      "path": "tests/test_granite_remote_inference.py",
+      "domain": "academy",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Paired remote adapter inference protocol and local sandbox orchestration without provider calls."
+    },
+    {
+      "path": "tests/test_granite_parallel_comparison.py",
+      "domain": "academy",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Bounded single-host evaluation batching, GPU ownership, queue timing and exact resume without provider calls."
+    },
+    {
+      "path": "tests/test_remote_training_milestones.py",
+      "domain": "academy",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Atomic training milestone targets, sealed historical attempts and independent resumable collection without provider calls."
     }
   ]
 }

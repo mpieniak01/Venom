@@ -22,6 +22,11 @@ def parser():
     value.add_argument("--remote-root", default="/workspace/data/remote-training")
     value.add_argument("--remote-python", default="python3")
     sub = value.add_subparsers(dest="action", required=True)
+    plan = sub.add_parser("plan")
+    plan.add_argument("--run-id", required=True)
+    plan.add_argument("--milestones", type=int, nargs="+", default=[80, 125, 160])
+    plan.add_argument("--max-seconds", type=int, default=7200)
+    plan.add_argument("--output", type=operator_path, required=True)
     pack = sub.add_parser("pack")
     for flag in ("source", "manifest", "profile", "snapshot", "output"):
         pack.add_argument("--" + flag, type=operator_path, required=True)
@@ -38,9 +43,25 @@ def parser():
         )
     upload = sub.add_parser("upload")
     upload.add_argument("--bundle", type=operator_path, required=True)
-    for action in ("start", "status", "logs", "stop", "resume", "retry", "collect"):
+    for action in (
+        "start",
+        "status",
+        "attempts",
+        "logs",
+        "stop",
+        "resume",
+        "retry",
+        "collect",
+        "watch",
+    ):
         cmd = sub.add_parser(action)
         cmd.add_argument("--run-id", required=True)
+        if action == "watch":
+            cmd.add_argument("--interval", type=float, default=5)
+            cmd.add_argument("--json-lines", action="store_true")
+            cmd.add_argument("--max-seconds", type=float, default=3600)
+        if action in {"start", "resume"}:
+            cmd.add_argument("--until-update", type=int)
         if action == "start":
             cmd.add_argument("--stage", choices=("smoke", "train"), default="smoke")
         if action == "retry":
@@ -52,6 +73,7 @@ def parser():
         if action == "collect":
             cmd.add_argument("--output", type=operator_path, required=True)
             cmd.add_argument("--include-checkpoint", action="store_true")
+            cmd.add_argument("--attempt", type=int)
     for action in ("inspect-result", "import-result"):
         cmd = sub.add_parser(action)
         cmd.add_argument("--bundle", type=operator_path, required=True)
@@ -70,6 +92,21 @@ def parser():
 
 
 def dispatch(args):
+    if args.action == "plan":
+        from .lifecycle import atomic_json, file_lock
+        from .milestones import plan
+
+        document = plan(args.run_id, args.milestones, args.max_seconds)
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        with file_lock(
+            args.output.with_name(args.output.name + ".lock"), blocking=False
+        ):
+            if args.output.exists():
+                if json.loads(args.output.read_text()) != document:
+                    raise ValueError("remote_training_plan_exists")
+            else:
+                atomic_json(args.output, document)
+        return document
     if args.action == "pack":
         from .job import prepare
 
@@ -131,21 +168,52 @@ def dispatch(args):
         args.ssh_config, args.host, args.remote_root, python=args.remote_python
     )
     client = RemoteClient(SSHTransport(config))
+    if args.action == "watch":
+        from .progress import watch
+
+        return watch(
+            client,
+            args.run_id,
+            interval=args.interval,
+            max_seconds=args.max_seconds,
+            json_lines=args.json_lines,
+        )
     if args.action == "upload":
         manifest = verify_bundle(args.bundle)
         if manifest["kind"] != "input":
             raise ValueError("remote_training_input_bundle_required")
         client.prepare(manifest)
         return client.upload(manifest["run_id"], args.bundle)
+    if args.action == "attempts":
+        return client.attempt_history(args.run_id)
     if args.action == "start":
-        return client.start(args.run_id, stage=args.stage)
+        return client.start(
+            args.run_id,
+            stage=args.stage,
+            **(
+                {"until_update": args.until_update}
+                if args.until_update is not None
+                else {}
+            ),
+        )
     if args.action == "retry":
         return client.retry(args.run_id, from_attempt=args.from_attempt)
     if args.action == "resume":
-        return client.resume(args.run_id, args.checkpoint)
+        return client.resume(
+            args.run_id,
+            args.checkpoint,
+            **(
+                {"until_update": args.until_update}
+                if args.until_update is not None
+                else {}
+            ),
+        )
     if args.action == "collect":
         return client.collect(
-            args.run_id, args.output, include_checkpoint=args.include_checkpoint
+            args.run_id,
+            args.output,
+            include_checkpoint=args.include_checkpoint,
+            **({"attempt": args.attempt} if args.attempt is not None else {}),
         )
     return getattr(client, args.action)(args.run_id)
 
@@ -166,7 +234,8 @@ def main(argv=None):
             )
         )
         return 1
-    print(json.dumps({"ok": True, "result": result}, default=str, indent=2))
+    indent = None if args.action == "watch" and args.json_lines else 2
+    print(json.dumps({"ok": True, "result": result}, default=str, indent=indent))
     return 0
 
 

@@ -590,3 +590,246 @@ def test_comparison_rejects_changed_tokenizer_before_model_loading(
                 "training_run": _case_value_2,
             }
         )
+
+
+@pytest.mark.parametrize("error_type", [None, TimeoutError, ValueError])
+def test_queue_wait_is_excluded_from_active_task_budget(
+    tmp_path, monkeypatch, error_type
+):
+    responses = [
+        native_call("Terminal", command="cat result.txt"),
+        native_call("Finish", status="success", summary="actual-marker"),
+    ]
+    module, session, spec, dataset, output, _ = evaluation_context(
+        tmp_path, monkeypatch, responses
+    )
+    from types import SimpleNamespace
+
+    clock = {"now": 0.0}
+    monkeypatch.setattr(module, "time", SimpleNamespace(monotonic=lambda: clock["now"]))
+    original = module.generate
+
+    def queued(*args):
+        clock["now"] += 4
+        if error_type:
+            error = error_type(
+                "comparison_task_deadline"
+                if error_type is TimeoutError
+                else "comparison_context_limit"
+            )
+            error.queue_seconds = 3.0
+            raise error
+        return {**original(*args), "queue_seconds": 3.0}
+
+    row = module.run_case(
+        session,
+        spec,
+        dataset,
+        output,
+        "image",
+        "run",
+        "base",
+        generator=queued,
+        task_timeout_seconds=5,
+    )
+    assert row["queue_seconds"] == (3 if error_type else 6)
+    assert row["active_task_seconds"] == (1 if error_type else 2)
+    assert row["task_seconds"] == (4 if error_type else 8)
+    assert row["oracle"]["success"] == (error_type is None)
+
+
+@pytest.mark.parametrize(
+    "kind",
+    [
+        "clarified",
+        "early_finish",
+        "wrong_argument",
+        "bad_quote",
+        "direct",
+        "still_missing",
+    ],
+)
+def test_dialogue_must_complete_with_correct_syntax_after_user_input(
+    tmp_path, monkeypatch, kind
+):
+    module, session, spec, dataset, output, _ = evaluation_context(
+        tmp_path, monkeypatch, []
+    )
+    command = (
+        "python report.py --source 'input files.json' --destination 'out files.json'"
+    )
+    spec["oracle"] = {
+        "status": "success",
+        "mutable_files": [],
+        "no_terminal": True,
+        "syntax_command_argv": [
+            "python",
+            "report.py",
+            "--source",
+            "input files.json",
+            "--destination",
+            "out files.json",
+        ],
+        "expected_clarifications": 0 if kind == "direct" else 1,
+    }
+    spec["followups"] = [] if kind == "direct" else ["Destination is out files.json."]
+    outputs = []
+    if kind not in ("direct", "early_finish"):
+        outputs.append(
+            native_call("Finish", status="needs_input", summary="Which destination?")
+        )
+    if kind == "wrong_argument":
+        command = command.replace("out files", "invented")
+    if kind == "bad_quote":
+        command += "'"
+    outputs.append(
+        native_call(
+            "Finish",
+            status="needs_input" if kind == "still_missing" else "success",
+            summary=command,
+        )
+    )
+    iterator = iter(outputs)
+    seen = []
+
+    def generate(_session, messages, *args):
+        seen.append(messages[-1].copy())
+        return {
+            "text": next(iterator),
+            "seconds": 0.01,
+            "tokens": 5,
+            "input_tokens": 10,
+        }
+
+    row = module.run_case(
+        session, spec, dataset, output, "image", "run", "adapter", generator=generate
+    )
+    assert row["oracle"]["success"] == (kind in ("clarified", "direct"))
+    if kind not in ("early_finish", "direct"):
+        assert seen[1] == {"role": "user", "content": spec["followups"][0]}
+        assert len(row["intermediate_finishes"]) == 1
+
+
+def test_invalid_followup_contract_closes_task_container(tmp_path, monkeypatch):
+    module, session, spec, dataset, output, calls = evaluation_context(
+        tmp_path, monkeypatch, []
+    )
+    spec["followups"] = [""]
+    with pytest.raises(ValueError, match="followups_invalid"):
+        module.run_case(session, spec, dataset, output, "image", "run", "adapter")
+    assert calls[-1] == ("close",)
+
+
+@pytest.mark.parametrize(
+    "kind", ["valid", "changed", "training", "unsupported", "bad_inventory"]
+)
+def test_dialogue_freeze_publishes_only_complete_verified_cases(tmp_path, kind):
+    from scripts.granite_operator.dialogue_cases import freeze
+
+    material = tmp_path / "material"
+    material.mkdir()
+    fixture = material / "holdout/fixtures/cli"
+    fixture.mkdir(parents=True)
+    (fixture / "help.txt").write_text("local parser")
+    row = {
+        "record_id": "cli-pl",
+        "tools": [
+            {
+                "type": "function",
+                "function": {"name": "Finish", "parameters": {"type": "object"}},
+            }
+        ],
+        "fixture_id": "cli",
+        "problem_group": "heldout-cli",
+        "family": "cli_clarify_complete",
+        "language": "pl",
+        "training_allowed": False,
+        "split": "holdout",
+        "messages": [
+            {"role": "system", "content": "operator"},
+            {"role": "user", "content": "Destination missing."},
+            {"role": "assistant", "content": ""},
+            {"role": "user", "content": "Destination is out.json."},
+            {
+                "role": "assistant",
+                "tool_calls": [
+                    {
+                        "function": {
+                            "arguments": {
+                                "status": "success",
+                                "summary": "python tool.py --destination out.json",
+                            }
+                        }
+                    }
+                ],
+            },
+        ],
+    }
+    if kind == "training":
+        row["training_allowed"] = True
+    if kind == "unsupported":
+        row["family"] = "unknown"
+    (material / "holdout/conversations.jsonl").write_text(json.dumps(row) + "\n")
+    (material / "holdout/execution-receipts.jsonl").write_text(
+        json.dumps(
+            {"fixture_id": "cli", "mutable_files": [], "oracle": {"passed": True}}
+        )
+        + "\n"
+    )
+    (material / "checks").mkdir()
+    (material / "checks/material-audit.json").write_text(
+        json.dumps({"status": "PASS_DATA_AUDIT_ONLY"})
+    )
+    (material / "pilot-manifest.json").write_text(
+        json.dumps({"image": "sha256:" + "a" * 64})
+    )
+    inventory = {
+        str(p.relative_to(material)): {"sha256": file_digest(p)}
+        for p in material.rglob("*")
+        if p.is_file()
+    }
+    if kind == "bad_inventory":
+        inventory.pop("pilot-manifest.json")
+    (material / "FROZEN_FILES.json").write_text(json.dumps({"files": inventory}))
+    if kind == "changed":
+        (fixture / "help.txt").write_text("tampered")
+    output = tmp_path / "benchmark"
+    if kind != "valid":
+        with pytest.raises(ValueError):
+            freeze(material, output)
+        assert not output.exists()
+    else:
+        report = freeze(material, output)
+        assert report["case_count"] == 1
+        _, cases = load_frozen(output / "manifest.json")
+        assert cases[0]["followups"] == ["Destination is out.json."]
+        assert cases[0]["oracle"]["expected_clarifications"] == 1
+        assert freeze(material, output)["status"] == "REFERENCE_DATA_FROZEN"
+        assert (fixture / "help.txt").read_text() == "local parser"
+
+
+@pytest.mark.parametrize(
+    "text,valid",
+    [
+        ("python tool.py --source in.json --destination out.json", True),
+        ("python3 ./tool.py --destination=out.json --source=in.json", True),
+        ("python tool.py --source out.json --destination in.json", False),
+        (
+            "python tool.py --source in.json --source in.json --destination out.json",
+            False,
+        ),
+        ("python tool.py --source in.json --destination", False),
+        ("python tool.py --source in.json --destination out.json extra", False),
+    ],
+)
+def test_syntax_oracle_checks_bindings_without_requiring_one_option_order(text, valid):
+    from scripts.granite_operator.comparison_support import command_syntax_matches
+
+    assert (
+        command_syntax_matches(
+            text,
+            ["python", "tool.py", "--source", "in.json", "--destination", "out.json"],
+        )
+        == valid
+    )
+    assert command_syntax_matches("git status", ["git", "status"])

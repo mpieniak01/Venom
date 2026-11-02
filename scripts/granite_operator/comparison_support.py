@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import math
 import re
+import shlex
 import shutil
 import stat
 import subprocess
@@ -373,6 +374,43 @@ def cleanup_owned(run_id: str) -> bool:
     return not remaining.stdout.strip()
 
 
+def command_syntax_matches(summary: str, expected: list[str]) -> bool:
+    """Compare supplied CLI bindings, accepting quoting and long-option reordering."""
+    try:
+        actual = shlex.split(summary)
+    except ValueError:
+        return False
+
+    def options(argv):
+        values = {}
+        index = 2
+        while index < len(argv):
+            flag, separator, value = argv[index].partition("=")
+            if not flag.startswith("--") or flag in values:
+                return None
+            if not separator:
+                index += 1
+                if index >= len(argv):
+                    return None
+                value = argv[index]
+            values[flag] = value
+            index += 1
+        return values
+
+    if (
+        len(expected) >= 2
+        and expected[0] in ("python", "python3")
+        and options(expected) is not None
+    ):
+        return (
+            len(actual) >= 2
+            and actual[0] in ("python", "python3")
+            and actual[1].removeprefix("./") == expected[1].removeprefix("./")
+            and options(actual) == options(expected)
+        )
+    return actual == expected
+
+
 def oracle(
     case: dict,
     workspace: Path,
@@ -403,6 +441,9 @@ def oracle(
     for pattern in rules.get("summary_regexes", []):
         if re.search(pattern, summary, re.IGNORECASE) is None:
             errors.append("summary_evidence")
+    expected_argv = rules.get("syntax_command_argv")
+    if expected_argv is not None and not command_syntax_matches(summary, expected_argv):
+        errors.append("command_syntax_or_arguments")
     executed = [event for event in ledger if event.get("result") is not None]
     observed = "\n".join(
         str(e["result"].get(k, "")) for e in executed for k in ("stdout", "stderr")
@@ -465,6 +506,20 @@ def percentile(values: list[float], fraction: float) -> float:
     return ordered[low] + (ordered[high] - ordered[low]) * (index - low)
 
 
+def generation_time(items):
+    """Deduplicate GPU batch durations while keeping legacy serial receipts valid."""
+    batches = {}
+    legacy = 0.0
+    for row in items:
+        generations = row.get("generations", [])
+        if not generations or any("batch_id" not in g for g in generations):
+            legacy += row["generation_seconds"]
+        else:
+            for generation in generations:
+                batches[generation["batch_id"]] = generation["seconds"]
+    return legacy + sum(batches.values())
+
+
 def summarize(rows: list[dict], *, bootstrap_samples=4000) -> dict:
     import random
 
@@ -489,7 +544,11 @@ def summarize(rows: list[dict], *, bootstrap_samples=4000) -> dict:
             "incorrect_success_status": sum(
                 r["oracle"]["incorrect_success_status"] for r in items
             ),
-            "generation_seconds": sum(r["generation_seconds"] for r in items),
+            "generation_seconds": generation_time(items),
+            "queue_seconds": sum(r.get("queue_seconds", 0.0) for r in items),
+            "active_task_p50_seconds": percentile(
+                [r.get("active_task_seconds", r["task_seconds"]) for r in items], 0.5
+            ),
             "tool_seconds": sum(r["tool_seconds"] for r in items),
             "generated_tokens": sum(r["generated_tokens"] for r in items),
         }

@@ -523,6 +523,7 @@ def test_prepare_pair_is_independent_idempotent_and_final_only(prepared_pair):
     assert ex.prepare_pair(**options) == result
     assert result["training_execution"] == "sequential_on_one_host"
     assert result["common_host_requirements"]["gpu_vram_gb"] == 24
+    assert result["common_host_requirements"]["ram_gb"] == 32
     for method in ("qlora", "lora"):
         folder = options["output"] / method
         assert (folder / "READY.json").is_file()

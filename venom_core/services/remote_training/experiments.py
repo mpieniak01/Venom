@@ -258,7 +258,7 @@ def prepare_pair(
             "publish_intermediate_adapters": False,
             "common_host_requirements": {
                 "gpu_vram_gb": 24,
-                "ram_gb": 64,
+                "ram_gb": 32,
                 "disk_gb": 100,
                 "vm_required": True,
             },

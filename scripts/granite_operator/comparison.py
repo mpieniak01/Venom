@@ -562,6 +562,7 @@ def coordinate(args):
             "resume": args.resume,
             "execution": execution.validate(),
             "expected_adapter_sha256": args.expected_adapter_sha256,
+            "inference_precision": precision,
         }
     )
     request_path = args.output / ("request-" + run_id + ".json")

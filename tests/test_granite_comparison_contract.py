@@ -917,6 +917,57 @@ def test_inference_precision_override_preserves_training_profile():
         inference_profile(profile, "fp32")
 
 
+@pytest.mark.parametrize("precision", ["nf4", "bf16", "trained"])
+def test_coordinate_passes_requested_precision_to_worker(
+    tmp_path, monkeypatch, precision
+):
+    from contextlib import nullcontext
+    from types import SimpleNamespace
+
+    from scripts.granite_operator import (
+        comparison,
+        comparison_host,
+        comparison_parallel,
+    )
+    from venom_core.services.granite_operator import cli
+    from venom_core.services.remote_training import lifecycle
+
+    monkeypatch.setattr(
+        comparison_parallel,
+        "execution_from_args",
+        lambda args: comparison_parallel.Execution(),
+    )
+    monkeypatch.setattr(
+        comparison_host,
+        "adapter_source",
+        lambda request: (
+            {"worker_python": "/python", "admission_db": "/db"},
+            None,
+            None,
+        ),
+    )
+    monkeypatch.setattr(cli, "require_offline", lambda: None)
+    monkeypatch.setattr(comparison, "load_frozen", lambda path: None)
+    monkeypatch.setattr(lifecycle, "file_lock", lambda *args, **kwargs: nullcontext())
+    monkeypatch.setattr(
+        comparison,
+        "_coordinate_reserved",
+        lambda args, execution, run_id, request_path: json.loads(
+            request_path.read_text()
+        ),
+    )
+    args = SimpleNamespace(
+        adapter_root=tmp_path / "adapter",
+        host_root=tmp_path / "host",
+        cases=tmp_path / "cases",
+        output=tmp_path / "output",
+        expected_adapter_sha256="a" * 64,
+        inference_precision=precision,
+        resume=False,
+    )
+    assert comparison.coordinate(args)["inference_precision"] == precision
+
+
 def test_precision_override_rejects_legacy_run_before_gpu(monkeypatch):
     from types import SimpleNamespace
 

@@ -784,3 +784,19 @@ def test_host_records_actual_width_and_adaptive_decisions(host_trial, monkeypatc
     assert all((r["execution_concurrency"] == 2 for r in rows))
     assert json.loads((output / "concurrency-decisions.jsonl").read_text())["to"] == 2
     assert metrics["decisions"][0]["reason"] == "initial"
+
+
+@pytest.mark.parametrize("precision", ["nf4", "bf16"])
+def test_host_worker_records_and_loads_effective_inference_precision(
+    full_host, precision
+):
+    request, output, constructor, _, _, _ = full_host
+    request["inference_precision"] = precision
+    host.worker(request)
+    assert constructor.call_args.args[0].quantization == precision
+    identity = json.loads((output / "identity.json").read_text())
+    assert identity["training_precision"] == "nf4"
+    assert identity["inference_precision"] == precision
+    request["inference_precision"] = "bf16" if precision == "nf4" else "nf4"
+    with pytest.raises(ValueError, match="identity_changed"):
+        host.worker(request)

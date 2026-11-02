@@ -287,6 +287,7 @@ def evaluation_commands(
     *,
     precision: str = "nf4",
     placement: str = "remote",
+    expected_step: int = 250,
 ) -> dict:
     """Prepare commands after collection; never load models or alter result bytes."""
     from scripts.granite_operator.comparison_support import load_frozen
@@ -297,11 +298,19 @@ def evaluation_commands(
         or not cases
     ):
         raise ValueError("experiment_evaluation_options_invalid")
+    result, host, output = map(operator_path, (result, host, output))
+    cases = [operator_path(path) for path in cases]
     identity = _read(result / "identity.json")
     run_id = _read(result / "status.json")["run_id"]
     receipt = inspect_artifacts(result, identity, run_id)
     if not receipt["complete"]:
         raise ValueError("experiment_evaluation_result_incomplete")
+    if (
+        type(expected_step) is not int
+        or expected_step < 1
+        or _read(result / "metrics.json").get("global_step") != expected_step
+    ):
+        raise ValueError("experiment_evaluation_checkpoint_mismatch")
     commands = []
     for index, path in enumerate(cases, 1):
         manifest, _ = load_frozen(path)
@@ -362,6 +371,7 @@ def parser():
     for name in ("result", "host", "output"):
         evaluate.add_argument("--" + name, type=Path, required=True)
     evaluate.add_argument("--cases", type=Path, action="append", required=True)
+    evaluate.add_argument("--expected-step", type=int, default=250)
     evaluate.add_argument("--precision", choices=("nf4", "bf16"), default="nf4")
     evaluate.add_argument("--placement", choices=("local", "remote"), default="remote")
     return value
@@ -371,9 +381,10 @@ def main(argv=None):
     args = parser().parse_args(argv)
     if args.action == "select":
         result = select_result(args.archive, args.adapter_root, args.sha256, args.step)
-        args.output.parent.mkdir(parents=True, exist_ok=True)
-        with file_lock(args.output.with_suffix(".lock"), blocking=False):
-            _publish(args.output, result)
+        destination = operator_path(args.output)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        with file_lock(destination.with_suffix(".lock"), blocking=False):
+            _publish(destination, result)
     elif args.action == "prepare":
         result = prepare_pair(
             args.source,
@@ -394,6 +405,7 @@ def main(argv=None):
             args.output,
             precision=args.precision,
             placement=args.placement,
+            expected_step=args.expected_step,
         )
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0

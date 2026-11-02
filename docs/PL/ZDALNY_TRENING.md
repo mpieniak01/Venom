@@ -228,3 +228,65 @@ z zachowaniem limitu 128 aktualizacji na proces. Każdy punkt można osobno odeb
 sprawdzić i ocenić przed decyzją o kontynuacji. Samo przygotowanie planu nie
 uruchamia hosta ani treningu. Nowe dane, profil i kod wymagają nowej paczki
 wejściowej oraz nowego smoke na docelowym GPU.
+
+
+### Jeden wybrany adapter i porównanie QLoRA / LoRA
+
+`data/training/selected-adapter.json` jest pojedynczym wyborem kandydata do
+zastosowania. Dla G03 wybrano checkpoint 125; 80 i 160 pozostają archiwum,
+bez nowych wpisów w Academy. Wybór na CPU nie oznacza lokalnego reloadu ani
+aktywacji czatu. Import nadal wymaga rzeczywistego sprawdzenia na GPU.
+
+Przykład przygotowania (wszystkie operacje są lokalne i na CPU):
+
+```bash
+source .venv/bin/activate
+python scripts/granite_experiments.py select \
+  --archive /path/candidate-125.zip --adapter-root /path/candidate-125 \
+  --sha256 EXPECTED_ARCHIVE_SHA256 --step 125 \
+  --output data/training/selected-adapter.json
+python scripts/granite_experiments.py prepare \
+  --source data/training/granite-g04-material-20261102 \
+  --manifest data/training/granite-g04-material-20261102/pilot-manifest.json \
+  --snapshot /path/to/4e9c275e232f10211ec88644d106a1f6a1b60e06 \
+  --selection data/training/selected-adapter.json \
+  --run-prefix granite-g04-ab-20261102 \
+  --output data/training/granite-g04-ab-20261102
+```
+
+Profile `config/granite_operator_qlora.json` i `config/granite_operator_lora.json`
+różnią się wyłącznie NF4/BF16. Zachowują rank 16, q/k/v/o, alpha 32, dropout 0,05,
+LR 0,0001, akumulację 4, seed 17, kontekst 2048 i family_epoch_v1. Każdy trening
+zaczyna od tej samej oryginalnej bazy z nowym adapterem, bez wznowienia 125.
+Przy 640 rozmowach 250 aktualizacji oznacza 1,5625 epoki, tyle samo przejść przez
+zbiór co 125 aktualizacji G03. Zachowujemy po jednym końcowym kandydacie metody.
+Checkpointy optymalizatora pozostają do odzyskania po awarii, bez publikowania
+każdego pośredniego adaptera jako osobnego modelu.
+
+Każda metoda ma osobne `input.zip`, `plan.json`, `operator-commands.json` i `READY.json`.
+`suite.json` powstaje po sprawdzeniu obu metod. Jeżeli przygotowanie drugiej się
+nie uda, pierwsza nadal jest gotowa; ponowne wywołanie przyjmuje niezmienione
+pliki. Treningi uruchamiamy kolejno na tym samym hoście VM, planując 48 GB VRAM,
+64 GB RAM i 100 GB dysku. Każdy musi przejść własny smoke. Skrypt nie wynajmuje
+hosta, nie uruchamia treningu i nie usuwa zasobów.
+
+Po odebraniu i sprawdzeniu wyniku wygeneruj polecenia oceny:
+
+```bash
+python scripts/granite_experiments.py evaluation-commands \
+  --result /path/verified-result --host /path/configured-host \
+  --cases /path/frozen-benchmark/manifest.json \
+  --output /path/evaluation --expected-step 250 --precision nf4
+```
+
+Oba adaptery najpierw oceniamy przy tej samej precyzji wdrożeniowej NF4. BF16
+można zmierzyć osobno, z innym katalogiem wyników. Profil i hashe historycznego
+artefaktu pozostają bez zmian. Zdalna ocena zaczyna od 4 sesji, adaptacyjnie do 8;
+lokalna od 1. Nie publikujemy i nie aktywujemy automatycznie wyników eksperymentu.
+
+Dla G03/125 przygotowany kontekst weryfikatora jest w
+`data/training/granite-selected-125-20261102/application-plan.json`.
+Używa niezmienionego oryginalnego źródła i istniejącego venv, ponieważ bieżący
+sampler zmienił hash kodu treningowego. Nie przepisuj fingerprintów. Zastosuj
+procedurę offline i wspólny rejestr GPU przed rzeczywistym reloadem. Rejestracja
+w Academy oraz aktywacja w obsługiwanym runtime są oddzielnymi krokami.

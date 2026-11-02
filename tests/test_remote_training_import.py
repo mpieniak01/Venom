@@ -593,7 +593,11 @@ def test_evaluation_commands_use_shared_precision_and_explicit_width(
         lambda p: ({"qualification": {"status": "PASS"}}, [{}]),
     )
     command = ex.evaluation_commands(
-        root, tmp_path / "host", [tmp_path / "cases.json"], tmp_path / "eval"
+        root,
+        tmp_path / "host",
+        [tmp_path / "cases.json"],
+        tmp_path / "eval",
+        expected_step=125,
     )["commands"][0]
     assert command[command.index("--inference-precision") + 1] == "nf4"
     assert command[command.index("--concurrency") + 1] == "4"
@@ -603,21 +607,28 @@ def test_evaluation_commands_use_shared_precision_and_explicit_width(
         tmp_path / "host",
         [tmp_path / "cases.json"],
         tmp_path / "eval",
+        expected_step=125,
         precision="bf16",
         placement="local",
     )["commands"][0]
     assert local[local.index("--concurrency") + 1] == "1"
     assert "--no-adaptive" in local
     with pytest.raises(ValueError, match="options_invalid"):
-        ex.evaluation_commands(root, tmp_path, [], tmp_path)
+        ex.evaluation_commands(root, tmp_path, [], tmp_path, expected_step=125)
     monkeypatch.setattr(comparison_support, "load_frozen", lambda p: ({}, []))
     with pytest.raises(ValueError, match="cases_unqualified"):
-        ex.evaluation_commands(root, tmp_path, [tmp_path], tmp_path)
+        ex.evaluation_commands(root, tmp_path, [tmp_path], tmp_path, expected_step=125)
     (root / "status.json").write_text(
         '{"state":"failed", "run_id":"run01", "exit_code":1}'
     )
     with pytest.raises(ValueError, match="result_incomplete"):
-        ex.evaluation_commands(root, tmp_path, [tmp_path], tmp_path)
+        ex.evaluation_commands(root, tmp_path, [tmp_path], tmp_path, expected_step=125)
+
+    (root / "status.json").write_text(
+        '{"state":"succeeded", "run_id":"run01", "exit_code":0}'
+    )
+    with pytest.raises(ValueError, match="checkpoint_mismatch"):
+        ex.evaluation_commands(root, tmp_path, [tmp_path], tmp_path, expected_step=250)
 
 
 def test_experiment_cli_select_prepare_and_evaluation(
@@ -653,3 +664,29 @@ def test_experiment_cli_select_prepare_and_evaluation(
     for name in ["result", "host", "cases", "output"]:
         args.extend(["--" + name, str(tmp_path)])
     assert ex.main(args) == 0
+
+
+def test_experiment_select_validates_destination_before_creating_directories(
+    tmp_path, experiment_result
+):
+    from venom_core.services.remote_training import experiments as ex
+
+    archive, root = experiment_result
+    destination = tmp_path / ".ssh" / "new" / "selected.json"
+    with pytest.raises(ValueError, match="sensitive"):
+        ex.main(
+            [
+                "select",
+                "--archive",
+                str(archive),
+                "--adapter-root",
+                str(root),
+                "--sha256",
+                sha256(archive),
+                "--step",
+                "125",
+                "--output",
+                str(destination),
+            ]
+        )
+    assert not destination.parent.exists()

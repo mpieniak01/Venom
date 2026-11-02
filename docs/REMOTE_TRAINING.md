@@ -368,3 +368,32 @@ original artifact/profile identity and records training and actual inference
 precision separately. Compare both training methods at the same deployment
 precision first; a second BF16 comparison isolates inference precision. Keep
 outputs separate for each precision; changed comparison identities reject resume.
+
+
+### One selected adapter and two prepared experiments
+
+Use `scripts/granite_experiments.py select` with an explicit expected archive SHA
+and checkpoint step to record a single selection in the ignored
+`data/training/selected-adapter.json`. Selection verifies the archive, extracted
+bytes and checkpoint metrics on CPU. It does not assert a local GPU reload,
+activate chat, publish Academy entries or authorize training resume.
+
+Use `prepare` with the frozen data/manifest, local model snapshot, selection file,
+output directory and run prefix. It prepares only QLoRA NF4 and LoRA BF16. Each
+gets an independent input bundle, fresh smoke, explicit operator commands and a
+single final checkpoint (250 updates by default). Equal data encoding, native
+source, dependencies and tokenizer identities are enforced. Each method is ready
+independently; a failed second preparation preserves the first. Repeating an
+unchanged preparation is safe; changed prepared evidence is rejected.
+
+Train methods sequentially on one VM with the same hardware (planned 48 GB VRAM,
+64 GB RAM, 100 GB disk). Both start from the original pinned base, never the
+selected adapter or one another. New experiment outputs are not automatically
+registered or deployed. Preserve intermediate optimizer checkpoints for recovery;
+only the final candidate per method is selected for comparison.
+
+`evaluation-commands` checks the expected final update (default 250) and qualified
+frozen benchmark inventories before printing separate commands. It uses NF4
+inference by default, four adaptive sessions on remote hosts (up to eight), or
+one local session. Optional BF16 evaluation has a separate output directory.
+See the [Polish preparation procedure](PL/ZDALNY_TRENING.md#jeden-wybrany-adapter-i-porównanie-qlora--lora).

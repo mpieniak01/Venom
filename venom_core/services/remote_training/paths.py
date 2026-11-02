@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import contextlib
+import os
 import re
 import sys
 import tempfile
@@ -73,3 +75,29 @@ def python_path(value: str | Path) -> Path:
         raise ValueError("remote_training_python_runtime_invalid")
     # Preserve the virtualenv path so CPython finds the matching pyvenv.cfg.
     return path
+
+
+@contextlib.contextmanager
+def data_directory(path: Path):
+    """Open an approved directory without following replaceable child symlinks."""
+    directory = operator_path(path)
+    root = next(
+        root.resolve()
+        for root in _data_roots()
+        if directory.is_relative_to(root.resolve())
+    )
+    descriptor = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        for component in directory.relative_to(root).parts:
+            if component in {".", ".."} or not re.fullmatch(r"[^/\\\x00]+", component):
+                raise ValueError("remote_training_operator_path_invalid")
+            child = os.open(
+                component,
+                os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+                dir_fd=descriptor,
+            )
+            os.close(descriptor)
+            descriptor = child
+        yield descriptor
+    finally:
+        os.close(descriptor)

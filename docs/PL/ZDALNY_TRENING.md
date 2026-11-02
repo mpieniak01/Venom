@@ -6,6 +6,96 @@ Vast dostarcza host; kontrakt SSH działa też na innym przygotowanym Linuksie.
 Wynajem, status kosztów i destroy pozostają w istniejącym kontrolerze Vast.
 Nie ma automatycznego treningu, wynajmu ani aktywacji po starcie aplikacji/CI.
 
+## Prosta ścieżka operatora
+
+Stan kodu: pętla REMOTE-TRAINING-01 scalona w PR #578. Przygotowanie natywnego
+hosta i bieżący podgląd są w `scripts/remote_training_host/prepare.py` oraz
+`remote_training.py watch`. Gotowość kodu nie oznacza kwalifikacji realnego GPU.
+
+1. Wybierz/wynajmij host istniejącym zestawem `scripts/vast_training` z dyskiem
+   **100 GB**, zweryfikuj fingerprint i ustaw alias SSH `gpu-training`.
+   Obraz Axolotl jest tylko bazą hosta, nie środowiskiem natywnego Granite.
+2. Na hoście przygotuj czysty checkout tego samego, zrecenzowanego commita co
+   lokalnie w `/workspace/venom`. Potrzebny jest istniejący Python 3.14.8 albo
+   operatorowo zainstalowany `uv`; skrypt nie pobiera instalatorów przez curl.
+3. Na hoście uruchom plan (bez instalacji i pobierania modelu):
+
+```bash
+python3 /workspace/venom/scripts/remote_training_host/prepare.py \
+  --code-root /workspace/venom --commit <PEŁNY_SHA_COMMITA> --uv /usr/local/bin/uv
+```
+
+Po sprawdzeniu planu uruchom tę samą komendę z `--apply`. Wariant `--python
+/ścieżka/bin/python3.14` zastępuje `--uv`, gdy interpreter 3.14.8 już istnieje.
+Skrypt tworzy osobny `/workspace/training-venv`, instaluje oba locki z hashami,
+sprawdza środowisko, pobiera przypiętą rewizję modelu i wykonuje `host-init`.
+Nie zmienia venv aplikacji i nie rozpoczyna treningu. `--offline-model` ponownie
+wykorzystuje snapshot z potwierdzonym pochodzeniem i hashami przygotowany przez
+skrypt; samo przemianowanie katalogu na SHA nie wystarcza. Ewentualne uprawnienia
+Hugging Face pozostają w istniejącym środowisku operatora, poza manifestem zadania.
+
+Skrypt zwraca `remote_python`: domyślnie
+`/workspace/data/remote-training/rpc-python`. Ten wrapper ustawia właściwy kod
+i interpreter dla RPC przez SSH. Nie używaj domyślnego `python3` obrazu do modelu.
+Przy innych usługach GPU przekaż `--admission-db` wskazujący ich wspólną bazę.
+Wymagane są działający sterownik NVIDIA, `nvidia-smi`, `setpriv` i dostęp SSH.
+
+Lokalnie, w repo z aktywnym venv, można skrócić powtarzane opcje:
+
+```bash
+remote_training() {
+  python scripts/remote_training.py --host gpu-training \
+    --remote-python /workspace/data/remote-training/rpc-python "$@"
+}
+```
+
+Pakowanie danych wykonaj komendą `pack` opisaną niżej. Następnie:
+
+```bash
+remote_training upload --bundle data/training/remote-01/input.zip
+remote_training start --run-id granite-remote-01 --stage smoke
+remote_training watch --run-id granite-remote-01
+# Dopiero po rzeczywistym smoke PASS dla tego hosta/danych/kodu:
+remote_training start --run-id granite-remote-01 --stage train
+remote_training watch --run-id granite-remote-01 --interval 5 --max-seconds 3600
+remote_training collect --run-id granite-remote-01 \
+  --output data/training/remote-01/result.zip --include-checkpoint
+```
+
+`watch` pokazuje numer próby, stan, fazę, wykonane/planowane kroki, procent i loss.
+Wariant `--json-lines` daje kolejne rekordy statusu do automatycznego odczytu.
+Takie same dane są w jednorazowym `status`, pod kluczem `progress`.
+Procent dotyczy **kroków optymalizatora**, nie całej operacji: przy 100% mogą
+jeszcze trwać ewaluacja, testy i zapis (`finalizing`). Sukcesem jest dopiero
+`status=succeeded`. Przed pierwszym krokiem wyświetlany jest brak pomiaru.
+Dla smoke mianownik wynosi 20; wznowienie zachowuje globalny numer kroku.
+Każda próba czyta własny log, więc retry nie pokazuje postępu poprzedniej próby.
+Odczyt jest ograniczony do końcówki logu i nie ładuje modelu.
+
+Ctrl+C, limit czasu podglądu i utrata SSH kończą tylko podgląd. Przy przejściowym
+błędzie połączenia viewer ponawia odczyt; po trzech błędach można ponownie
+wywołać `watch`. Zatrzymanie treningu wymaga osobnego `stop`.
+Zakończenie `watch` samo w sobie nie potwierdza udanego treningu.
+
+Po odbiorze wykonaj opisane niżej `inspect-result` i `import-result --verify-local
+--host-root <LOKALNA_KONFIGURACJA_HOSTA>`. Lokalny reload wymaga lokalnego
+środowiska modelowego/GPU, tego samego snapshotu i rzeczywistego admission ledger.
+Nie wystarcza samo poprawne rozpakowanie ZIP ani zdalny PASS.
+
+## Odbiór na rzeczywistym hoście — osobne zlecenie
+
+Po jawnym zleceniu próby zapisz run_id, SHA kodu, wersje/host/GPU, ofertę i koszt.
+Wykonaj smoke, uruchom krótki trening, odłącz SSH i wróć przez `status/watch`,
+sprawdź kontrolowany stop oraz resume z istniejącego checkpointu. Pobierz wynik,
+zweryfikuj hashe i kompletność, a następnie przeprowadź świeży lokalny reload.
+Zachowaj logi, metryki i lokalne potwierdzenie w ignorowanym katalogu sesji.
+Jakość adaptera oceń osobno na zamrożonym zbiorze porównawczym.
+Dopiero po potwierdzonym odbiorze można osobno zlecić zakończenie najmu.
+
+Testy offline nie wykonują tych kroków na realnym GPU. Automatyczne postawienie
+stosu również nie stanowi smoke PASS. Ta ścieżka dotyczy adapterów Granite;
+pełny trening wszystkich wag nie jest częścią natywnego REMOTE-TRAINING-01.
+
 ## Środowisko i dane
 
 Granite używa natywnego encodera i workera G01 oraz locka Linux amd64/Python
@@ -98,3 +188,11 @@ i /workspace. Odrzucane są przejścia przez .., prywatne katalogi poświadczeń
 oraz symlinki w ścieżce. Interpreter zachowuje ścieżkę virtualenv; alias
 snapshotu musi wskazywać do dopuszczonego miejsca. Lokalny worker wyznacza
 receipt.json obok własnego żądania i odrzuca podmienioną ścieżkę wyniku.
+
+## Ocena oczekiwanej zmiany zachowania
+
+Po zweryfikowanym odbiorze można osobno uruchomić
+`scripts.granite_operator.remote_comparison`: zdalne GPU wykonuje inferencję,
+a lokalny Docker izoluje narzędzia i ocenia rzeczywisty wynik. Parametry,
+postęp i ograniczenia interpretacji opisuje
+[instrukcja porównania](GRANITE_OPERATOR_EXPERIMENT.md#porównanie-adaptera-trenowanego-na-zdalnym-hoście).

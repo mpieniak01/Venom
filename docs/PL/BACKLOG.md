@@ -2,10 +2,14 @@
 
 ## REMOTE-TRAINING-01 — kompletna pętla treningu na zdalnym hoście
 
-**Status:** implementacja na `feat/remote-training-01`, zależna od G01. Kwalifikacja rzeczywistego hosta pozostaje osobnym etapem.
+**Status:** pętla zadania scalona w PR [#578](https://github.com/mpieniak01/Venom/pull/578).
+Dalsze przygotowanie hosta i podgląd postępu: `feat/remote-training-host-progress`.
+Kwalifikacja rzeczywistego hosta/GPU oraz świeży lokalny reload pozostają
+niezrealizowanym, osobno zlecanym odbiorem; checkboxy poniżej są checklistą tego odbioru.
 
 Instrukcje: [zdalny trening](ZDALNY_TRENING.md).
-**Proponowany tytuł PR:** `feat(training): complete remote training lifecycle and artifact collection`
+Przygotowanie stosu: `scripts/remote_training_host/prepare.py`; bieżący podgląd:
+`remote_training.py watch`. [Kolejność kroków](ZDALNY_TRENING.md#prosta-ścieżka-operatora).
 
 ### Cel
 

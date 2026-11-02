@@ -204,6 +204,10 @@ def run(request: dict):
     if type(steps) is not int or not 1 <= steps <= 128:
         raise ValueError("granite_update_budget_invalid")
     seconds = session.train(rows, steps)
+    print(
+        json.dumps({"event": "remote_training_stage", "phase": "finalizing"}),
+        flush=True,
+    )
     validation_result = session.evaluate(val_rows)
     checks = session.checks()
     if not all(checks.values()):

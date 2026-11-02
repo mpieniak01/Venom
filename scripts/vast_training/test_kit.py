@@ -51,6 +51,47 @@ class KitTests(unittest.TestCase):
             self.assertEqual(vast.main(), 0)
             run.assert_not_called()
 
+    def test_direct_ssh_and_disk_pricing_match_each_profile(self):
+        vast = load("vast_training")
+        for profile, settings in vast.stack()["profiles"].items():
+            with self.subTest(profile=profile):
+                search = vast.command(
+                    argparse.Namespace(action="offers", profile=profile, max_hourly=1)
+                )
+                self.assertIn("direct_port_count>=1", search[3])
+                self.assertEqual(
+                    search[search.index("--storage") + 1], str(settings["disk_gb"])
+                )
+                create = vast.command(
+                    argparse.Namespace(action="create", profile=profile, offer=123)
+                )
+                self.assertIn("--cancel-unavail", create)
+                self.assertIn("--direct", create)
+                self.assertEqual(
+                    create[create.index("--disk") + 1],
+                    search[search.index("--storage") + 1],
+                )
+        changed = vast.stack()
+        changed["profiles"]["qlora"]["disk_gb"] = 137
+        with patch.object(vast, "stack", return_value=changed):
+            search = vast.command(
+                argparse.Namespace(action="offers", profile="qlora", max_hourly=2)
+            )
+        self.assertEqual(search[search.index("--storage") + 1], "137")
+        self.assertIn("disk_space>=137", search[3])
+
+    def test_offer_search_stays_offline_without_execute(self):
+        vast = load("vast_training")
+        with (
+            patch("sys.argv", ["vast_training.py", "offers"]),
+            patch.object(vast.subprocess, "run") as execute,
+            patch("sys.stdout", io.StringIO()) as output,
+        ):
+            self.assertEqual(vast.main(), 0)
+        execute.assert_not_called()
+        self.assertIn("--storage 100", output.getvalue())
+        self.assertIn("direct_port_count>=1", output.getvalue())
+
     def test_bad_offer_and_query(self):
         vast = load("vast_training")
         with self.assertRaises(ValueError):
@@ -72,6 +113,11 @@ class KitTests(unittest.TestCase):
                 self.assertEqual(vast.main(), 0)
             saved = json.loads((ROOT / "templates" / (profile + ".json")).read_text())
             self.assertEqual(json.loads(output.getvalue()), saved)
+            self.assertTrue(saved["cancel_unavail"])
+            self.assertEqual(
+                saved["pricing_storage_gb"], saved["requirements"]["disk_gb"]
+            )
+            self.assertIn("direct_port_count>=1", saved["search_params"])
 
     def test_execute_requires_cli_and_propagates_failure_without_shell(self):
         vast = load("vast_training")
@@ -91,12 +137,100 @@ class KitTests(unittest.TestCase):
             ),
             patch.object(vast.shutil, "which", return_value="/cli/vastai"),
             patch.object(
-                vast.subprocess, "run", return_value=argparse.Namespace(returncode=3)
+                vast.subprocess,
+                "run",
+                return_value=argparse.Namespace(
+                    returncode=3, stdout="", stderr="failure"
+                ),
             ) as execute,
         ):
             self.assertEqual(vast.main(), 3)
             self.assertIsInstance(execute.call_args.args[0], list)
             self.assertNotIn("shell", execute.call_args.kwargs)
+
+    def test_raw_response_decides_success_even_if_cli_returns_zero(self):
+        vast = load("vast_training")
+        cases = [
+            ("create", '{"success": true, "new_contract": 123}', "", 0, 0),
+            ("create", '{"success": false, "msg": "unavailable"}', "", 0, 1),
+            ("create", "Failed with error 400: unavailable", "provider failure", 0, 1),
+            ("create", '{"success": true}', "", 0, 1),
+            ("create", '{"success": true, "new_contract": true}', "", 0, 1),
+            ("offers", "[]", "", 0, 0),
+            ("offers", '{"error": "denied"}', "", 0, 1),
+            ("create", "", "network error", 7, 7),
+        ]
+        for status in (401, 404):
+            preamble = (
+                f"Failed with error {status}: Your 2FA session has expired.\n"
+                "Trying again with your normal API Key from /home/operator/.config/vastai/vast_api_key...\n"
+                "To start a new 2FA session, run: vastai tfa login\n"
+            )
+            cases.append(
+                (
+                    "create",
+                    preamble
+                    + json.dumps({"success": True, "new_contract": 456}, indent=1),
+                    "",
+                    0,
+                    0,
+                )
+            )
+            cases.append(("offers", preamble + "[]", "", 0, 0))
+        cases.extend(
+            [
+                (
+                    "create",
+                    'unknown noise\n{"success":true,"new_contract":123}',
+                    "",
+                    0,
+                    1,
+                ),
+                (
+                    "create",
+                    '{"success":true,"new_contract":123}\n{"success":false}',
+                    "",
+                    0,
+                    1,
+                ),
+                (
+                    "create",
+                    "Failed with error 401: Your 2FA session has expired.\n{}",
+                    "",
+                    0,
+                    1,
+                ),
+            ]
+        )
+        for action, stdout, stderr, code, expected in cases:
+            with self.subTest(action=action, stdout=stdout, code=code):
+                with (
+                    patch(
+                        "sys.argv",
+                        ["vast_training.py", action, "--offer", "123", "--execute"],
+                    ),
+                    patch.object(vast.shutil, "which", return_value="/cli/vastai"),
+                    patch.object(
+                        vast.subprocess,
+                        "run",
+                        return_value=argparse.Namespace(
+                            returncode=code, stdout=stdout, stderr=stderr
+                        ),
+                    ) as execute,
+                    patch("sys.stdout", io.StringIO()) as out,
+                    patch("sys.stderr", io.StringIO()) as err,
+                ):
+                    self.assertEqual(vast.main(), expected)
+                self.assertIn(stdout, out.getvalue())
+                self.assertTrue(err.getvalue().startswith(stderr))
+                if (
+                    action == "create"
+                    and expected != 0
+                    and '"success": false' not in stdout
+                ):
+                    self.assertIn("vastai show instances --raw", err.getvalue())
+                self.assertTrue(execute.call_args.kwargs["capture_output"])
+                self.assertIn("--raw", execute.call_args.args[0])
 
     def test_stack_is_shared_by_doctor_and_offer_filters(self):
         vast = load("vast_training")

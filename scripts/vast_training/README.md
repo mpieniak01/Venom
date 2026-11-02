@@ -51,15 +51,33 @@ python3 vast_training.py create --profile qlora --offer NUMER_OFERTY
 ```
 
 Domyślnie oba polecenia drukują komendę i nie komunikują się z API.
-Filtr max-hourly dotyczy compute dph_total; osobno sprawdź koszt dysku, transferu,
+Filtr max-hourly dotyczy dph_total przy zadanym dysku (`--storage 100`); osobno sprawdź transfer,
 czas kontraktu, przydzielony RAM i architekturę GPU. create nie jest wyceną ani
 ponowną walidacją ceny wybranej oferty. Nie uruchamia treningu ani pobierania modelu.
-Wynajem pozostaje płatny, dopóki go nie zakończysz. Stop może zostawić płatny dysk;
+Wyszukiwanie wymaga `direct_port_count>=1` dla bezpośredniego SSH.
+Tworzenie używa `--cancel-unavail`: brak możliwości przydziału kończy się błędem
+zamiast utworzyć zatrzymaną instancję. Wrapper zwraca błąd, gdy odpowiedź `--raw` odrzuca utworzenie instancji lub nie potwierdza jego wykonania, nawet przy kodzie wyjścia CLI równym `0`. Zarejestruj publiczny klucz SSH na koncie
+Vast przed utworzeniem hosta. Wynajem pozostaje płatny, dopóki go nie zakończysz. Stop może zostawić płatny dysk;
 przed destroy pobierz checkpointy, adaptery i raporty. Brak automatycznego destroy.
 
 Możesz też użyć obrazu/parametrów z template-qlora.json w kreatorze własnego
 szablonu Vast (to opis ustawień, nie JSON do bezpośredniego POST API).
+Pola `search_params`, `pricing_storage_gb` i `cancel_unavail` opisują filtr ofert,
+wycenę dysku i zachowanie komendy CLI; nie stanowią gotowego payloadu REST.
 Dostęp do konta i jego szablonów sprawdź osobno. Nie zapisuj tokenów w profilu.
+
+Vast w trybie SSH zastępuje entrypoint obrazu i sam zapewnia SSH. Nasz on-start
+celowo przygotowuje tylko katalogi; nie uruchamia dodatkowego SSH, Jupytera ani
+treningu. Nie zakładaj wykonania `/root/cloud-entrypoint.sh` obrazu Axolotl.
+Natywny Granite wymaga osobnego `../remote_training_host/prepare.py` zgodnie z
+[instrukcją operatora](../../docs/PL/ZDALNY_TRENING.md); ten szablon uruchamia bazę
+hosta, a nie zakwalifikowane środowisko Granite.
+
+Zgodność flag sprawdzono z dokumentacją Vast.ai (2026-11-02):
+- [Create instance](https://docs.vast.ai/cli/reference/create-instance)
+- [Search offers](https://docs.vast.ai/cli/reference/search-offers)
+- [SSH i rejestracja klucza](https://docs.vast.ai/cli/hello-world)
+- [Tryb SSH i entrypoint](https://docs.vast.ai/guides/templates/template-settings)
 
 ## SSH, dane i gotowość
 
@@ -141,3 +159,10 @@ nie oznacza zgody na wynajem GPU, wysyłkę danych ani uruchomienie treningu.
 
 Dane, konfiguracje konkretnych sesji i wyniki przechowuj pod ignorowanym
 data/training/<eksperyment>/, poza katalogiem kodu.
+
+
+Wrapper rozpoznaje komunikaty o wznowieniu uwierzytelnienia 2FA poprzedzające
+JSON w przypiętym CLI 1.10.0. Jeśli wynik `create` pozostaje niejednoznaczny,
+wyświetla polecenie `vastai show instances --raw`. Przed ponownym `create`
+sprawdź listę instancji, aby uniknąć drugiego wynajmu. Wrapper sam nie ponawia
+zlecenia utworzenia hosta.

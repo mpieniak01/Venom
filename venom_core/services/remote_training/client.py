@@ -69,12 +69,24 @@ class RemoteClient:
         validate_run_id(manifest.get("run_id"))
         return self._request("prepare", {"manifest": manifest})
 
-    def start(self, run_id: str, *, stage: str = "smoke") -> dict[str, Any]:
+    def start(
+        self, run_id: str, *, stage: str = "smoke", until_update: int | None = None
+    ) -> dict[str, Any]:
         if stage not in {"smoke", "train"}:
             raise ValueError("remote_stage_invalid")
-        return self._request(
-            "start", {"run_id": validate_run_id(run_id), "stage": stage}
-        )
+        payload: dict[str, Any] = {"run_id": validate_run_id(run_id), "stage": stage}
+        if until_update is not None:
+            if (
+                stage != "train"
+                or type(until_update) is not int
+                or not 1 <= until_update <= 256
+            ):
+                raise ValueError("remote_update_target_invalid")
+            payload["until_update"] = until_update
+        return self._request("start", payload)
+
+    def attempt_history(self, run_id: str) -> dict[str, Any]:
+        return self._request("attempts", {"run_id": validate_run_id(run_id)})
 
     def status(self, run_id: str) -> dict[str, Any]:
         return self._request("status", {"run_id": validate_run_id(run_id)})
@@ -108,7 +120,9 @@ class RemoteClient:
             "retry", {"run_id": validate_run_id(run_id), "from_attempt": from_attempt}
         )
 
-    def resume(self, run_id: str, checkpoint: str) -> dict[str, Any]:
+    def resume(
+        self, run_id: str, checkpoint: str, *, until_update: int | None = None
+    ) -> dict[str, Any]:
         # The host validates the checkpoint inside this run; never a host pathname.
         if (
             not isinstance(checkpoint, str)
@@ -117,9 +131,15 @@ class RemoteClient:
             or "\x00" in checkpoint
         ):
             raise ValueError("remote_checkpoint_invalid")
-        return self._request(
-            "resume", {"run_id": validate_run_id(run_id), "checkpoint": checkpoint}
-        )
+        payload: dict[str, Any] = {
+            "run_id": validate_run_id(run_id),
+            "checkpoint": checkpoint,
+        }
+        if until_update is not None:
+            if type(until_update) is not int or not 1 <= until_update <= 256:
+                raise ValueError("remote_update_target_invalid")
+            payload["until_update"] = until_update
+        return self._request("resume", payload)
 
     def upload(self, run_id: str, bundle: Path) -> dict[str, Any]:
         """Retry each idempotent chunk using identical offsets and whole-file digest."""
@@ -144,7 +164,7 @@ class RemoteClient:
         with bundle.open("rb") as stream:
             while chunk := stream.read(self.chunk_bytes):
                 final = offset + len(chunk) == size
-                payload = {
+                payload: dict[str, Any] = {
                     "run_id": run_id,
                     "upload_id": checksum,
                     "offset": offset,
@@ -162,7 +182,11 @@ class RemoteClient:
         return result
 
     def _download_chunk(
-        self, run_id: str, offset: int, include_checkpoint: bool
+        self,
+        run_id: str,
+        offset: int,
+        include_checkpoint: bool,
+        attempt: int | None = None,
     ) -> tuple[dict[str, Any], bytes]:
         result = self._request(
             "collect",
@@ -171,6 +195,7 @@ class RemoteClient:
                 "offset": offset,
                 "max_bytes": self.chunk_bytes,
                 "include_checkpoint": include_checkpoint,
+                **({"attempt": attempt} if attempt is not None else {}),
             },
         )
         total = result.get("total_bytes")
@@ -198,10 +223,17 @@ class RemoteClient:
         return result, data
 
     def collect(
-        self, run_id: str, destination: Path, *, include_checkpoint: bool = False
+        self,
+        run_id: str,
+        destination: Path,
+        *,
+        include_checkpoint: bool = False,
+        attempt: int | None = None,
     ) -> dict[str, Any]:
         """Keep interrupted bytes; atomically publish only verified result archives."""
         validate_run_id(run_id)
+        if attempt is not None and (type(attempt) is not int or attempt < 1):
+            raise ValueError("remote_attempt_selector_invalid")
         try:
             destination = operator_path(destination)
         except ValueError:
@@ -218,21 +250,30 @@ class RemoteClient:
                 fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError:
                 raise ValueError("remote_collect_busy") from None
-            return self._collect_locked(run_id, destination, include_checkpoint)
+            return self._collect_locked(
+                run_id, destination, include_checkpoint, attempt
+            )
 
     def _collect_locked(
-        self, run_id: str, destination: Path, include_checkpoint: bool
+        self,
+        run_id: str,
+        destination: Path,
+        include_checkpoint: bool,
+        attempt: int | None = None,
     ) -> dict[str, Any]:
         destination = operator_path(destination)
-        first, data = self._download_chunk(run_id, 0, include_checkpoint)
+        first, data = self._download_chunk(run_id, 0, include_checkpoint, attempt)
         meta = {key: first[key] for key in ("sha256", "total_bytes")}
         meta.update(run_id=run_id, include_checkpoint=include_checkpoint)
+        if attempt is not None:
+            meta["attempt"] = attempt
         if destination.exists():
             if not destination.is_file() or _sha(destination) != meta["sha256"]:
                 raise ValueError("remote_collect_destination_exists")
             manifest = verify_bundle(
                 destination, expected_run_id=run_id, max_bytes=self.max_bytes
             )
+            self._verify_attempt(manifest, attempt)
             destination.chmod(0o600)
             return {
                 "path": str(destination),
@@ -270,7 +311,9 @@ class RemoteClient:
                 result, chunk = (
                     (first, data)
                     if offset == 0
-                    else self._download_chunk(run_id, offset, include_checkpoint)
+                    else self._download_chunk(
+                        run_id, offset, include_checkpoint, attempt
+                    )
                 )
                 if any(result[key] != meta[key] for key in ("sha256", "total_bytes")):
                     raise TransportError("remote_collect_changed")
@@ -285,6 +328,7 @@ class RemoteClient:
         )
         if manifest["kind"] != "result":
             raise ValueError("remote_result_bundle_required")
+        self._verify_attempt(manifest, attempt)
         os.link(partial, destination)
         partial.unlink()
         metadata.unlink()
@@ -293,3 +337,12 @@ class RemoteClient:
             "sha256": meta["sha256"],
             "manifest": manifest,
         }
+
+    @staticmethod
+    def _verify_attempt(manifest: dict, attempt: int | None) -> None:
+        if (
+            attempt is not None
+            and manifest.get("receipt", {}).get("supervisor", {}).get("attempt")
+            != attempt
+        ):
+            raise ValueError("remote_collect_attempt_mismatch")

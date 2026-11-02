@@ -30,16 +30,25 @@ def validate_run_id(run_id: str) -> None:
 
 def atomic_json(path: Path, value: Any) -> None:
     """Write a private state record without exposing intermediate JSON."""
+    from .paths import data_directory, operator_path
+
+    path = operator_path(path)
     raw = json.dumps(value, sort_keys=True, allow_nan=False, indent=2) + "\n"
-    temporary = path.with_suffix(path.suffix + ".tmp")
-    descriptor = os.open(
-        temporary, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600
-    )
-    with os.fdopen(descriptor, "w") as stream:
-        stream.write(raw)
-        stream.flush()
-        os.fsync(stream.fileno())
-    os.replace(temporary, path)
+    name = path.name
+    temporary = name + ".tmp"
+    with data_directory(path.parent) as directory_fd:
+        descriptor = os.open(
+            temporary,
+            os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW,
+            0o600,
+            dir_fd=directory_fd,
+        )
+        with os.fdopen(descriptor, "w") as stream:
+            stream.write(raw)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, name, src_dir_fd=directory_fd, dst_dir_fd=directory_fd)
+        os.fsync(directory_fd)
 
 
 @contextlib.contextmanager
@@ -224,16 +233,77 @@ class JobStore:
                     status="orphaned", error="supervisor_lost_worker_still_active"
                 )
             else:
-                account_elapsed(state)
-                state.update(status="failed", error="supervisor_lost", exit_code=None)
+                self._recover_attempt(directory, state)
             state["updated_at"] = time.time()
             atomic_json(directory / "state.json", state)
         return state
 
+    def _recover_attempt(self, directory: Path, state: dict[str, Any]) -> None:
+        from .milestones import read_attempt, verify_seal
+
+        account_elapsed(state)
+        state.update(status="failed", error="supervisor_lost", exit_code=None)
+        outcome = directory / "attempts" / f"{state['attempt']:04d}" / "outcome.json"
+        if not outcome.exists():
+            return
+        try:
+            proof = read_attempt(directory, state["attempt"])
+            verify_seal(directory, proof)
+        except (OSError, ValueError, KeyError):
+            state["error"] = "sealed_attempt_invalid"
+            return
+        state.update(
+            status=proof["status"],
+            exit_code=proof["exit_code"],
+            error=None
+            if proof["status"] == "succeeded"
+            else "recovered_terminal_attempt",
+        )
+        if proof.get("elapsed_seconds") is not None:
+            state["elapsed_seconds"] = proof["elapsed_seconds"]
+
     def status(self, run_id: str) -> dict[str, Any]:
         directory = self.directory(run_id)
         with file_lock(directory / ".state.lock"):
-            return self._refresh(directory, self._read(directory))
+            state = self._refresh(directory, self._read(directory))
+            from .milestones import seal_attempt
+
+            seal_attempt(directory, state)
+            return state
+
+    def attempt_status(self, run_id: str, attempt: int) -> dict[str, Any]:
+        from .milestones import read_attempt
+
+        state = self.status(run_id)
+        if type(attempt) is not int or attempt < 1:
+            raise ValueError("remote_training_attempt_selector_invalid")
+        if state["attempt"] == attempt:
+            return state
+        return read_attempt(self.directory(run_id), attempt)
+
+    def attempts(self, run_id: str) -> list[dict[str, Any]]:
+        from .milestones import read_attempt
+
+        self.status(run_id)
+        directory = self.directory(run_id)
+        results = []
+        for path in sorted((directory / "attempts").glob("[0-9]*")):
+            if not path.name.isdigit() or not (path / "outcome.json").is_file():
+                continue
+            attempt = int(path.name)
+            if path.name != f"{attempt:04d}":
+                continue
+            try:
+                proof = read_attempt(directory, attempt)
+            except (OSError, ValueError):
+                proof = {
+                    "run_id": run_id,
+                    "attempt": attempt,
+                    "status": "invalid",
+                    "error": "remote_training_attempt_outcome_unreadable",
+                }
+            results.append(proof)
+        return results
 
     def _timeout(self, directory: Path, requested: float) -> float:
         manifest = json.loads((directory / "manifest.json").read_text())
@@ -285,6 +355,7 @@ class JobStore:
         *,
         _resume: bool = False,
         _retry_attempt: int | None = None,
+        until_update: int | None = None,
     ) -> dict[str, Any]:
         if checkpoint is not None and not _resume:
             raise ValueError("remote_training_checkpoint_requires_resume")
@@ -293,6 +364,11 @@ class JobStore:
         directory = self.directory(run_id)
         with file_lock(directory / ".state.lock"):
             state = self._refresh(directory, self._read(directory))
+            from .milestones import seal_attempt, target_update
+
+            seal_attempt(directory, state)
+            manifest = json.loads((directory / "manifest.json").read_text())
+            until_update = target_update(manifest, stage, until_update)
             if _retry_attempt is not None:
                 if (
                     state.get("retry_from") == _retry_attempt
@@ -304,13 +380,18 @@ class JobStore:
                 ] not in TERMINAL - {"succeeded"}:
                     raise ValueError("remote_training_retry_attempt_conflict")
             if state["status"] in ACTIVE:
-                if state.get("stage") != stage or state.get("checkpoint") != checkpoint:
+                if (
+                    state.get("stage") != stage
+                    or state.get("checkpoint") != checkpoint
+                    or state.get("until_update") != until_update
+                ):
                     raise ValueError("remote_training_conflicting_active_start")
                 return state
             if state["status"] == "succeeded":
                 if (
                     state.get("stage") == stage
                     and state.get("checkpoint") == checkpoint
+                    and state.get("until_update") == until_update
                 ):
                     return state
                 if not _resume and not (
@@ -334,6 +415,7 @@ class JobStore:
                 "run_id": run_id,
                 "stage": stage,
                 "checkpoint": checkpoint,
+                "until_update": until_update,
                 "manifest": manifest,
                 "run_root": str(directory),
                 "attempt_root": str(attempt_root),
@@ -348,6 +430,7 @@ class JobStore:
                 retry_from=_retry_attempt,
                 stage=stage,
                 checkpoint=checkpoint,
+                until_update=until_update,
                 attempt_root=str(attempt_root.relative_to(self.root)),
                 supervisor=None,
                 worker=None,
@@ -410,6 +493,7 @@ class JobStore:
             timeout_seconds=timeout_seconds,
             _resume=True,
             _retry_attempt=from_attempt,
+            until_update=state.get("until_update"),
         )
 
     def resume(
@@ -418,6 +502,8 @@ class JobStore:
         checkpoint: str,
         stage: str = "train",
         timeout_seconds: float = 3600,
+        *,
+        until_update: int | None = None,
     ) -> dict[str, Any]:
         directory = self.directory(run_id)
         path = Path(checkpoint)
@@ -437,7 +523,18 @@ class JobStore:
             if p.is_relative_to(directory)
         ):
             raise ValueError("remote_training_checkpoint_symlink")
-        return self.start(run_id, stage, checkpoint, timeout_seconds, _resume=True)
+        if until_update is None:
+            state = self.status(run_id)
+            if state["status"] != "succeeded":
+                until_update = state.get("until_update")
+        return self.start(
+            run_id,
+            stage,
+            checkpoint,
+            timeout_seconds,
+            _resume=True,
+            until_update=until_update,
+        )
 
     def logs(self, run_id: str, max_bytes: int = 65536) -> str:
         if type(max_bytes) is not int or not 1 <= max_bytes <= LOG_LIMIT:

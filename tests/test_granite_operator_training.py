@@ -271,7 +271,8 @@ def test_environment_fingerprint_covers_lock_code_and_weights(tmp_path, monkeypa
     assert changed != identity
 
 
-def test_long_context_does_backward_without_optimizer_update(monkeypatch):
+@pytest.mark.parametrize("padding_role", ["tool", "user"])
+def test_long_context_does_backward_without_optimizer_update(monkeypatch, padding_role):
     session = tiny_session(monkeypatch)
 
     def encoding(row, tokenizer, context):
@@ -286,13 +287,22 @@ def test_long_context_does_backward_without_optimizer_update(monkeypatch):
 
     monkeypatch.setattr(engine, "encode", encoding)
     before = session.adapter_hash()
-    result = session.long_context(
-        {"messages": [{"role": "tool", "content": "original"}]}
-    )
+    row = {"messages": [{"role": padding_role, "content": "original"}]}
+    result = session.long_context(row)
+    assert row["messages"][0]["content"] == "original"
     assert result["tokens"] >= 2040
     assert session.adapter_hash() == before
     assert session.step == 0
     assert all(p.grad is None for p in session.parameters)
+
+
+def test_long_context_never_pads_a_supervised_assistant_target(monkeypatch):
+    session = tiny_session(monkeypatch)
+    with pytest.raises(
+        ValueError, match="granite_long_context_unsupervised_turn_missing"
+    ):
+        session.long_context({"messages": [{"role": "assistant", "content": "answer"}]})
+    assert session.step == 0
 
 
 @pytest.mark.parametrize(

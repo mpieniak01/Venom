@@ -82,6 +82,9 @@ def _wait_stage(child, timeout, log_path, offset):
 def run_stage(host, request, result, *, run_id, timeout, children):
     """Fixed reviewed worker only; retain the GPU lease fd in all descendants."""
     name = request["stage"]
+    print(
+        json.dumps({"event": "remote_training_stage", "phase": "loading"}), flush=True
+    )
     path = result / (name + ".request.json")
     write_json(path, request)
     environment = {
@@ -118,6 +121,10 @@ def run_stage(host, request, result, *, run_id, timeout, children):
         code = _wait_stage(child, timeout, log_path, offset)
     if code:
         raise RuntimeError("remote_training_stage_failed:" + name)
+    print(
+        json.dumps({"event": "remote_training_stage", "phase": "stage_complete"}),
+        flush=True,
+    )
     return json.loads((Path(request["output"]) / "metrics.json").read_text())
 
 
@@ -217,7 +224,7 @@ def execute(request: dict) -> dict:
             ),
         ):
 
-            def stage_call(name, updates, checkpoint=None):
+            def stage_call(name, updates, checkpoint=None, *, label=None):
                 remaining = timeout - (time.monotonic() - started)
                 if remaining <= 0:
                     raise TimeoutError("remote_training_budget_exhausted")
@@ -229,7 +236,7 @@ def execute(request: dict) -> dict:
                     "data_root": str(input_root),
                     "manifest": str(input_root / "data-manifest.json"),
                     "snapshot": host["snapshot"],
-                    "output": str(result / "stages" / name),
+                    "output": str(result / "stages" / (label or name)),
                     "dataset": identity["dataset"],
                     "qualification": str(qualified) if qualified else None,
                 }
@@ -279,8 +286,18 @@ def execute(request: dict) -> dict:
                 )
                 last_stage = result / "stages/smoke-resume"
             else:
-                updates = identity["limits"]["max_updates"]
-                if type(updates) is not int or not 1 <= updates <= 128:
+                from .milestones import target_update
+
+                maximum = identity["limits"]["max_updates"]
+                updates = (
+                    target_update(
+                        request["manifest"], stage, request.get("until_update")
+                    )
+                    or maximum
+                )
+                if type(updates) is not int or not 1 <= updates <= 256:
+                    raise ValueError("remote_training_update_budget_invalid")
+                if type(maximum) is not int or not updates <= maximum <= 256:
                     raise ValueError("remote_training_update_budget_invalid")
                 checkpoint = request.get("checkpoint")
                 if checkpoint:
@@ -290,20 +307,26 @@ def execute(request: dict) -> dict:
                     steps = json.loads((checkpoint / "receipt.json").read_text())[
                         "step"
                     ]
-                    remaining = updates - steps
-                    if remaining <= 0:
+                    if type(steps) is not int or steps < 1 or updates <= steps:
                         raise ValueError("remote_training_checkpoint_budget_exhausted")
-                    final = stage_call("train-resume", remaining, checkpoint)
-                    last_stage = result / "stages/train-resume"
                 else:
-                    count = min(12, updates)
-                    final = stage_call("train-first", count)
+                    steps = min(12, updates)
+                    final = stage_call("train-first", steps)
                     last_stage = result / "stages/train-first"
-                    if updates > count:
-                        final = stage_call(
-                            "train-resume", updates - count, last_stage / "checkpoint"
-                        )
-                        last_stage = result / "stages/train-resume"
+                    checkpoint = last_stage / "checkpoint"
+                first_resume = True
+                while steps < updates:
+                    count = min(128, updates - steps)
+                    label = (
+                        "train-resume"
+                        if first_resume
+                        else f"train-resume-{steps + count:04d}"
+                    )
+                    final = stage_call("train-resume", count, checkpoint, label=label)
+                    last_stage = result / "stages" / label
+                    checkpoint = last_stage / "checkpoint"
+                    steps += count
+                    first_resume = False
                 if qualified is None:
                     raise ValueError("remote_training_smoke_required")
                 shutil.copyfile(qualified, result / "qualification.json")
@@ -311,6 +334,14 @@ def execute(request: dict) -> dict:
         environment.update(
             host_binding=fingerprint, host_id=host["host_id"], qualified=True
         )
+        if stage == "train":
+            actual = json.loads((last_stage / "checkpoint/receipt.json").read_text())[
+                "step"
+            ]
+            if actual != updates:
+                raise ValueError("remote_training_candidate_step_mismatch")
+            final["candidate_step"] = actual
+            final["planned_max_updates"] = identity["limits"]["max_updates"]
         final["wall_seconds"] = time.monotonic() - started
         final["cost"] = {"status": "not_measured", "source": None, "period": None}
         normalized(

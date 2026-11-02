@@ -201,8 +201,11 @@ def main() -> int:
         }
     raw = json.dumps(result, indent=2)
     if args.output:
-        args.output.parent.mkdir(parents=True, exist_ok=True)
-        args.output.write_text(raw + "\n")
+        output = operator_path(args.output)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        with output.open("w") as stream:
+            json.dump(result, stream, indent=2)
+            stream.write("\n")
     print(raw)
     return 0 if result["ok"] else 1
 

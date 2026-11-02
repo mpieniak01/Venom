@@ -231,3 +231,17 @@ def test_python_named_payload_is_not_an_approved_interpreter(tmp_path):
     executable.chmod(0o700)
     with pytest.raises(ValueError, match="runtime_untrusted"):
         python_path(executable)
+
+
+def test_control_report_uses_validated_output_file(tmp_path, monkeypatch, capsys):
+    output = tmp_path / "reports/qualified.json"
+    monkeypatch.setattr(
+        remote_env, "check_control_environment", lambda *a: {"ok": True}
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["remote_env", "--code-root", str(tmp_path), "--output", str(output)],
+    )
+    assert remote_env.main() == 0
+    assert json.loads(output.read_text()) == {"ok": True}

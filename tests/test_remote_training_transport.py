@@ -7,6 +7,7 @@ import os
 import shlex
 import sys
 import time
+from pathlib import Path
 
 import pytest
 
@@ -398,3 +399,23 @@ def test_executor_reaps_pipe_holding_descendant_after_leader_exit(tmp_path):
     while process_identity(pid) is not None and time.monotonic() < deadline:
         time.sleep(0.01)
     assert process_identity(pid) is None
+
+
+def test_client_rejects_parent_symlinks_before_transfer(tmp_path):
+    bundle, _ = archive(tmp_path)
+    alias = tmp_path / "alias"
+    alias.symlink_to(bundle.parent, target_is_directory=True)
+    host = FakeHost()
+    client = RemoteClient(host)
+    with pytest.raises(ValueError, match="bundle_path_invalid"):
+        client.upload("run_1", alias / bundle.name)
+    with pytest.raises(ValueError, match="collect_destination_invalid"):
+        client.collect("run_1", alias / "output.zip")
+    assert host.actions == []
+
+
+def test_direct_archive_digest_cannot_read_private_paths():
+    from venom_core.services.remote_training.client import _sha
+
+    with pytest.raises(ValueError, match="outside_roots"):
+        _sha(Path("/etc/passwd"))

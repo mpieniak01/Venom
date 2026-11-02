@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from .bundles import verify_bundle
+from .paths import operator_path
 from .transport import Transport, TransportError
 
 MAX_BUNDLE_BYTES = 100 * 1024**3
@@ -28,6 +29,7 @@ def validate_run_id(value: object) -> str:
 
 
 def _sha(path: Path) -> str:
+    path = operator_path(path)
     with path.open("rb") as stream:
         return hashlib.file_digest(stream, "sha256").hexdigest()
 
@@ -122,6 +124,10 @@ class RemoteClient:
     def upload(self, run_id: str, bundle: Path) -> dict[str, Any]:
         """Retry each idempotent chunk using identical offsets and whole-file digest."""
         validate_run_id(run_id)
+        try:
+            bundle = operator_path(bundle)
+        except ValueError:
+            raise ValueError("remote_bundle_path_invalid") from None
         if bundle.is_symlink() or not bundle.is_file():
             raise ValueError("remote_bundle_path_invalid")
         size = bundle.stat().st_size
@@ -196,6 +202,10 @@ class RemoteClient:
     ) -> dict[str, Any]:
         """Keep interrupted bytes; atomically publish only verified result archives."""
         validate_run_id(run_id)
+        try:
+            destination = operator_path(destination)
+        except ValueError:
+            raise ValueError("remote_collect_destination_invalid") from None
         if type(include_checkpoint) is not bool or destination.is_symlink():
             raise ValueError("remote_collect_destination_invalid")
         destination.parent.mkdir(parents=True, exist_ok=True)
@@ -213,6 +223,7 @@ class RemoteClient:
     def _collect_locked(
         self, run_id: str, destination: Path, include_checkpoint: bool
     ) -> dict[str, Any]:
+        destination = operator_path(destination)
         first, data = self._download_chunk(run_id, 0, include_checkpoint)
         meta = {key: first[key] for key in ("sha256", "total_bytes")}
         meta.update(run_id=run_id, include_checkpoint=include_checkpoint)

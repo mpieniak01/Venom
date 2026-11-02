@@ -110,8 +110,10 @@ def prepare(
     validate_identity(identity)
     with tempfile.TemporaryDirectory(prefix="venom-training-input-") as temporary:
         staging = Path(temporary)
-        (staging / "profile.json").write_text(json.dumps(profile.identity()))
-        (staging / "data-manifest.json").write_text(json.dumps(document))
+        with (staging / "profile.json").open("w") as stream:
+            json.dump(profile.identity(), stream)
+        with (staging / "data-manifest.json").open("w") as stream:
+            json.dump(document, stream)
         _copy_inputs(source, staging)
         return create_bundle(
             staging,

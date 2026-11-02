@@ -386,6 +386,14 @@ tests/test_recorder.py
 tests/test_release_manager.py
 tests/test_remote_models_service.py
 tests/test_remote_provider_control.py
+tests/test_remote_training_bundles.py
+tests/test_remote_training_environment.py
+tests/test_remote_training_import.py
+tests/test_remote_training_lifecycle.py
+tests/test_remote_training_rpc.py
+tests/test_remote_training_transport.py
+tests/test_remote_training_verification.py
+tests/test_remote_training_worker.py
 tests/test_render_skill.py
 tests/test_research_skill.py
 tests/test_researcher_agent.py

@@ -7627,6 +7627,118 @@
       "rationale": "Offline Vast kit configuration and dry-run isolation; no provider API, GPU or training."
     },
     {
+      "path": "tests/test_remote_training_bundles.py",
+      "domain": "academy",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Offline remote training contracts, durable lifecycle and verified artifact transfer."
+    },
+    {
+      "path": "tests/test_remote_training_import.py",
+      "domain": "academy",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Offline remote training contracts, durable lifecycle and verified artifact transfer."
+    },
+    {
+      "path": "tests/test_remote_training_lifecycle.py",
+      "domain": "academy",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Offline remote training contracts, durable lifecycle and verified artifact transfer."
+    },
+    {
+      "path": "tests/test_remote_training_transport.py",
+      "domain": "academy",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Offline remote training contracts, durable lifecycle and verified artifact transfer."
+    },
+    {
+      "path": "tests/test_remote_training_environment.py",
+      "domain": "academy",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Offline remote training contracts, durable lifecycle and verified artifact transfer."
+    },
+    {
+      "path": "tests/test_remote_training_rpc.py",
+      "domain": "academy",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Offline remote training contracts, durable lifecycle and verified artifact transfer."
+    },
+    {
+      "path": "tests/test_remote_training_verification.py",
+      "domain": "academy",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Offline remote training contracts, durable lifecycle and verified artifact transfer."
+    },
+    {
+      "path": "tests/test_remote_training_worker.py",
+      "domain": "academy",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Offline remote training contracts, durable lifecycle and verified artifact transfer."
+    },
+    {
       "path": "tests/test_default_question_setup.py",
       "domain": "academy",
       "test_type": "unit",

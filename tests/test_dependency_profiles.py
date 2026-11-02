@@ -1317,6 +1317,7 @@ def test_release_profiles_keep_actual_consumers_and_defer_separate_engines():
         "full",
         "full-ci",
         "multi-runtime-cuda",
+        "granite-operator-training",
         "build",
     }
     assert set(policy["aliases"].values()) == {"light"}
@@ -2339,3 +2340,34 @@ def test_deferred_metadata_cannot_hide_active_or_generated_inputs(tmp_path, muta
     (tmp_path / profiles.POLICY).write_text(json.dumps(policy))
     with pytest.raises(ValueError):
         profiles.load_policy(tmp_path)
+
+
+def test_granite_cpu_test_overlay_preserves_hash_locked_ci_and_excludes_cuda():
+    content = (profiles.ROOT / "requirements-granite-operator-tests.txt").read_text()
+    assert "-r requirements/locks/ci-linux-py314.txt" in content
+    entries = [
+        line.strip()
+        for line in content.splitlines()
+        if line and not line.startswith(("#", "-r", " "))
+    ]
+    expected = {
+        "torch",
+        "transformers",
+        "jinja2",
+        "markupsafe",
+        "mpmath",
+        "safetensors",
+        "shellingham",
+        "sympy",
+        "tokenizers",
+        "typer",
+    }
+    assert {line.split("==")[0].split(" @ ")[0] for line in entries} == expected
+    assert content.count("--hash=sha256:") == len(expected)
+    torch = next(line for line in entries if line.startswith("torch @ "))
+    assert "/whl/cpu/" in torch and "cp314-cp314" in torch
+    assert "nvidia-" not in content and "triton==" not in content
+    assert (
+        profiles.load_policy()["profiles"]["granite-operator-training"]["kind"]
+        == "component"
+    )

@@ -223,7 +223,7 @@ jobs:
           echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
 
       - name: Install CPU-only Granite contract test dependencies
-        run: .venv/bin/python -m pip install -r requirements-granite-operator-tests.txt
+        run: .venv/bin/python -m pip install --require-hashes -r requirements-granite-operator-tests.txt
 
       - name: Install lightweight system tools
         run: |

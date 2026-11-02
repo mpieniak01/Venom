@@ -98,3 +98,15 @@ A successful reference replay proves evaluator/data consistency, not model quali
 
 All provider/GPU runs remain explicit operator actions. Automated tests use local
 fake stages and transports; no paid environment is provisioned by this flow.
+
+
+An unreadable or inconsistent sealed outcome is returned by `attempts` as an
+`invalid` entry with its attempt number. Other candidates remain listed and
+collectable; the invalid candidate still fails closed during collection.
+State and plan publication uses approved data roots and directory-relative
+file descriptors, rejecting symlinks even if a child directory is replaced
+between validation and writing.
+
+Malformed checkpoint receipts encountered before sealing produce an
+`invalid_evidence` outcome. Status and attempt listing remain available,
+while collection rejects that candidate and preserves access to older ones.

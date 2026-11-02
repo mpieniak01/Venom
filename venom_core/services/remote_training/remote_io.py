@@ -230,47 +230,10 @@ def collect_chunk(store: JobStore, payload: dict[str, Any]) -> dict[str, Any]:
         for path in (archive, metadata):
             _plain(path)
         if not archive.exists():
-            from .milestones import read_attempt, verify_seal
-
-            outcome = (
-                directory / "attempts" / f"{state['attempt']:04d}" / "outcome.json"
-            )
-            if outcome.is_file():
-                verify_seal(directory, read_attempt(directory, state["attempt"]))
-            manifest = json.loads((directory / "manifest.json").read_text())
-            attempt = attempt_directory(store, run_id, state)
-            result = (
-                attempt / "result"
-                if attempt is not None
-                else directory / "missing-result"
-            )
-            _plain(result)
-            create_result_bundle(
-                result,
-                archive,
-                run_id=run_id,
-                identity=manifest["identity"],
-                include_checkpoint=checkpoint,
-                supervisor=proof,
-                coordinator_log=attempt / "worker.log" if attempt is not None else None,
-            )
+            _create_collection(store, directory, state, archive, checkpoint, proof)
         if not metadata.is_file():
-            # Publication may have succeeded just before an SSH disconnect.
-            manifest = json.loads((directory / "manifest.json").read_text())
-            sealed = verify_bundle(
-                archive, expected_run_id=run_id, expected_identity=manifest["identity"]
-            )
-            supervisor = sealed.get("receipt", {}).get("supervisor")
-            if supervisor != proof:
-                raise ValueError("remote_training_collect_supervisor_changed")
-            atomic_json(
-                metadata,
-                {
-                    "sha256": sha256(archive),
-                    "total_bytes": archive.stat().st_size,
-                    "supervisor_sha256": proof_hash,
-                    "archive_stat": _cache_stat(archive),
-                },
+            _publish_collection_metadata(
+                directory, archive, metadata, proof, proof_hash
             )
         meta = json.loads(metadata.read_text())
         if meta.get("supervisor_sha256") != proof_hash or _cache_stat(
@@ -288,3 +251,44 @@ def collect_chunk(store: JobStore, payload: dict[str, Any]) -> dict[str, Any]:
             "data_b64": base64.b64encode(data).decode("ascii"),
             "eof": offset + len(data) == meta["total_bytes"],
         }
+
+
+def _create_collection(store, directory, state, archive, checkpoint, proof):
+    from .milestones import read_attempt, verify_seal
+
+    outcome = directory / "attempts" / f"{state['attempt']:04d}" / "outcome.json"
+    if outcome.is_file():
+        verify_seal(directory, read_attempt(directory, state["attempt"]))
+    manifest = json.loads((directory / "manifest.json").read_text())
+    attempt = attempt_directory(store, state["run_id"], state)
+    result = attempt / "result" if attempt is not None else directory / "missing-result"
+    _plain(result)
+    create_result_bundle(
+        result,
+        archive,
+        run_id=state["run_id"],
+        identity=manifest["identity"],
+        include_checkpoint=checkpoint,
+        supervisor=proof,
+        coordinator_log=attempt / "worker.log" if attempt is not None else None,
+    )
+
+
+def _publish_collection_metadata(directory, archive, metadata, proof, proof_hash):
+    # Publication may have succeeded just before an SSH disconnect.
+    manifest = json.loads((directory / "manifest.json").read_text())
+    sealed = verify_bundle(
+        archive, expected_run_id=proof["run_id"], expected_identity=manifest["identity"]
+    )
+    supervisor = sealed.get("receipt", {}).get("supervisor")
+    if supervisor != proof:
+        raise ValueError("remote_training_collect_supervisor_changed")
+    atomic_json(
+        metadata,
+        {
+            "sha256": sha256(archive),
+            "total_bytes": archive.stat().st_size,
+            "supervisor_sha256": proof_hash,
+            "archive_stat": _cache_stat(archive),
+        },
+    )

@@ -721,7 +721,8 @@ def test_invalid_followup_contract_closes_task_container(tmp_path, monkeypatch):
 
 
 @pytest.mark.parametrize(
-    "kind", ["valid", "changed", "training", "unsupported", "bad_inventory"]
+    "kind",
+    ["valid", "changed", "training", "unsupported", "bad_inventory", "extra_fixture"],
 )
 def test_dialogue_freeze_publishes_only_complete_verified_cases(tmp_path, kind):
     from scripts.granite_operator.dialogue_cases import freeze
@@ -793,6 +794,8 @@ def test_dialogue_freeze_publishes_only_complete_verified_cases(tmp_path, kind):
     (material / "FROZEN_FILES.json").write_text(json.dumps({"files": inventory}))
     if kind == "changed":
         (fixture / "help.txt").write_text("tampered")
+    if kind == "extra_fixture":
+        (fixture / "unaudited.txt").write_text("added after audit")
     output = tmp_path / "benchmark"
     if kind != "valid":
         with pytest.raises(ValueError):

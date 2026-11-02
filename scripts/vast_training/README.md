@@ -56,7 +56,7 @@ czas kontraktu, przydzielony RAM i architekturę GPU. create nie jest wyceną an
 ponowną walidacją ceny wybranej oferty. Nie uruchamia treningu ani pobierania modelu.
 Wyszukiwanie wymaga `direct_port_count>=1` dla bezpośredniego SSH.
 Tworzenie używa `--cancel-unavail`: brak możliwości przydziału kończy się błędem
-zamiast utworzyć zatrzymaną instancję. Zarejestruj publiczny klucz SSH na koncie
+zamiast utworzyć zatrzymaną instancję. Wrapper zwraca błąd, gdy odpowiedź `--raw` odrzuca utworzenie instancji lub nie potwierdza jego wykonania, nawet przy kodzie wyjścia CLI równym `0`. Zarejestruj publiczny klucz SSH na koncie
 Vast przed utworzeniem hosta. Wynajem pozostaje płatny, dopóki go nie zakończysz. Stop może zostawić płatny dysk;
 przed destroy pobierz checkpointy, adaptery i raporty. Brak automatycznego destroy.
 
@@ -159,3 +159,10 @@ nie oznacza zgody na wynajem GPU, wysyłkę danych ani uruchomienie treningu.
 
 Dane, konfiguracje konkretnych sesji i wyniki przechowuj pod ignorowanym
 data/training/<eksperyment>/, poza katalogiem kodu.
+
+
+Wrapper rozpoznaje komunikaty o wznowieniu uwierzytelnienia 2FA poprzedzające
+JSON w przypiętym CLI 1.10.0. Jeśli wynik `create` pozostaje niejednoznaczny,
+wyświetla polecenie `vastai show instances --raw`. Przed ponownym `create`
+sprawdź listę instancji, aby uniknąć drugiego wynajmu. Wrapper sam nie ponawia
+zlecenia utworzenia hosta.

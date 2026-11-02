@@ -216,7 +216,8 @@ def test_tokenizer_missing_and_explicit_host_init(tmp_path):
     snapshot.mkdir()
     (snapshot / "tokenizer_config.json").write_text('{"chat_template":"native"}')
     tokenizer, template = host.tokenizer_identity(snapshot)
-    assert len(tokenizer) == 64 and len(template) == 64
+    assert len(tokenizer) == 64
+    assert len(template) == 64
     code = tmp_path / "code"
     (code / "venom_core").mkdir(parents=True)
     result = host.initialize(
@@ -444,7 +445,8 @@ def test_stage_logs_reach_live_supervisor_stream(tmp_path, monkeypatch, capsys):
     finally:
         os.close(descriptor)
     live = capsys.readouterr().out
-    assert "model-progress-1" in live and "model-progress-2" in live
+    assert "model-progress-1" in live
+    assert "model-progress-2" in live
     raw_stage_log = (result / "logs/training.log").read_text()
     assert raw_stage_log in live
     assert json.loads(live.splitlines()[0])["phase"] == "loading"
@@ -499,10 +501,8 @@ def test_three_independent_milestones_preserve_earlier_checkpoints(
         worker.execute(req)
         result = Path(req["attempt_root"]) / "result"
         metadata = json.loads((result / "metrics.json").read_text())
-        assert (
-            metadata["candidate_step"] == step
-            and metadata["planned_max_updates"] == 160
-        )
+        assert metadata["candidate_step"] == step
+        assert metadata["planned_max_updates"] == 160
         assert (
             json.loads((result / "checkpoint/receipt.json").read_text())["step"] == step
         )

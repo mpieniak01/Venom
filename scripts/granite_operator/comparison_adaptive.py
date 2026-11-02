@@ -62,7 +62,10 @@ class AdaptiveScheduler:
         ceiling = self.execution.max_concurrency
         pending = list(enumerate(jobs))
         self._decision(None, width, "initial")
-        oom = getattr(self.session.torch, "OutOfMemoryError", ())
+        torch = self.session.torch
+        oom = getattr(torch, "OutOfMemoryError", None) or getattr(
+            getattr(torch, "cuda", None), "OutOfMemoryError", ()
+        )
         while pending:
             remaining = int(end - time.monotonic())
             if remaining < 1:

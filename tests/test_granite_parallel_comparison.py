@@ -34,8 +34,9 @@ from scripts.granite_operator.comparison_support import generation_time
     ],
 )
 def test_execution_rejects_unsupported_or_unbounded_settings(changes):
+    execution = parallel.Execution(**changes)
     with pytest.raises(ValueError, match="execution_invalid"):
-        parallel.Execution(**changes).validate()
+        execution.validate()
 
 
 def test_cli_settings_are_explicit_and_batch_size_defaults_to_task_limit():
@@ -43,7 +44,8 @@ def test_cli_settings_are_explicit_and_batch_size_defaults_to_task_limit():
     parallel.execution_options(parser)
     args = parser.parse_args(["--concurrency", "4", "--execution-host", "remote"])
     value = parallel.execution_from_args(args)
-    assert value.batch_size == 4 and value.host == "remote"
+    assert value.batch_size == 4
+    assert value.host == "remote"
     args.batch_size = 2
     assert parallel.execution_from_args(args).batch_size == 2
     assert parallel.execution_from_args(parser.parse_args([])).concurrency == 1
@@ -60,7 +62,8 @@ def test_tasks_overlap_but_all_model_calls_stay_on_one_owner(width, size):
 
     def batcher(session, requests):
         assert threading.get_ident() == owner
-        assert len(requests) <= size and len({r[2] for r in requests}) == 1
+        assert len(requests) <= size
+        assert len({r[2] for r in requests}) == 1
         calls.append(len(requests))
         return [result() for _ in requests]
 
@@ -85,8 +88,9 @@ def test_tasks_overlap_but_all_model_calls_stay_on_one_owner(width, size):
     assert scheduler.stats["batch_items"] == 4
     assert scheduler.stats["batches"] == len(calls)
     assert not scheduler.waiters
+    deadline = time.monotonic() + 5
     with pytest.raises(RuntimeError, match="scheduler_closed"):
-        scheduler.generate(None, [], [], "base", time.monotonic() + 5)
+        scheduler.generate(None, [], [], "base", deadline)
 
 
 @pytest.mark.parametrize(
@@ -188,8 +192,10 @@ def test_batch_generation_pads_left_trims_eos_and_uses_one_adapter(model, arm):
         ([4], [], arm, time.monotonic() + 5),
     ]
     rows = parallel.generate_batch(model, requests)
-    assert rows[0]["text"] == "[7, 9]" and rows[1]["input_tokens"] == 1
-    assert rows[0]["batch_id"] == rows[1]["batch_id"] and rows[0]["batch_size"] == 2
+    assert rows[0]["text"] == "[7, 9]"
+    assert rows[1]["input_tokens"] == 1
+    assert rows[0]["batch_id"] == rows[1]["batch_id"]
+    assert rows[0]["batch_size"] == 2
     assert model.tokenizer.padding_side == "right"
     assert model.model.disable_adapter.call_count == (1 if arm == "base" else 0)
 
@@ -257,16 +263,16 @@ def test_host_trials_persist_exactly_once_and_resume(host_trial):
     rows, metrics = host.evaluate_trials(
         session, cases, manifest, request, output, scheduler_factory=factory
     )
-    assert len(rows) == 2 and {r["trial_sequence"] for r in rows} == {1, 2}
-    assert metrics["peak_allocated_bytes"] == 12 and metrics["resumed_trials"] == 0
+    assert len(rows) == 2
+    assert {r["trial_sequence"] for r in rows} == {1, 2}
+    assert metrics["peak_allocated_bytes"] == 12
+    assert metrics["resumed_trials"] == 0
     original = (output / "trials.jsonl").read_text()
     rows, metrics = host.evaluate_trials(
         session, cases, manifest, request, output, rows=rows, scheduler_factory=factory
     )
-    assert (
-        metrics["resumed_trials"] == 2
-        and (output / "trials.jsonl").read_text() == original
-    )
+    assert metrics["resumed_trials"] == 2
+    assert (output / "trials.jsonl").read_text() == original
     with pytest.raises(ValueError, match="resume_trials_invalid"):
         host.evaluate_trials(
             session,
@@ -394,18 +400,15 @@ def full_host(source, tmp_path, monkeypatch):
 def test_one_host_worker_records_execution_identity_and_never_promotes(full_host):
     request, output, constructor, warmup, _, _ = full_host
     host.worker(request)
-    assert constructor.call_count == 1 and warmup.call_count == 4
+    assert constructor.call_count == 1
+    assert warmup.call_count == 4
     identity = json.loads((output / "identity.json").read_text())
     assert identity["placement"] == "model_tools_and_oracle_on_one_host"
-    assert (
-        identity["execution"]["concurrency"] == 1
-        and identity["versions"]["torch"] == "fixture-1"
-    )
+    assert identity["execution"]["concurrency"] == 1
+    assert identity["versions"]["torch"] == "fixture-1"
     summary = json.loads((output / "summary.json").read_text())
-    assert (
-        summary["status"] == "COMPLETE"
-        and not summary["paired"]["proposed_promotion_gate_passed"]
-    )
+    assert summary["status"] == "COMPLETE"
+    assert not summary["paired"]["proposed_promotion_gate_passed"]
     # Identical settings permit resume, changing them never mixes old trial results.
     host.worker(request)
     request["execution"] = parallel.Execution(2, 2).validate()
@@ -534,7 +537,8 @@ def test_imported_cli_requires_one_source_and_passes_execution_options(
     monkeypatch.setattr(comparison, "coordinate", received.append)
     monkeypatch.setattr(sys, "argv", base)
     comparison.main()
-    assert received[0].concurrency == 4 and received[0].execution_host == "remote"
+    assert received[0].concurrency == 4
+    assert received[0].execution_host == "remote"
     monkeypatch.setattr(
         sys, "argv", base + ["--training-run", str(tmp_path / "legacy")]
     )
@@ -566,7 +570,8 @@ def test_short_budget_fails_only_that_request_and_preserves_queue_timing():
     )
     with pytest.raises(TimeoutError) as caught:
         short.result()
-    assert caught.value.queue_seconds >= 0 and long.result()["text"] == "ok"
+    assert caught.value.queue_seconds >= 0
+    assert long.result()["text"] == "ok"
 
 
 @pytest.mark.parametrize("configured", [8, [8, 9]])
@@ -615,8 +620,9 @@ def test_remote_policy_starts_aggressively_without_probe(args, width, enabled, c
     ],
 )
 def test_invalid_adaptation_cannot_bypass_bounds(change):
+    execution = parallel.Execution(**change)
     with pytest.raises(ValueError):
-        parallel.Execution(**change).validate()
+        execution.validate()
 
 
 @pytest.mark.parametrize(
@@ -627,6 +633,7 @@ def test_invalid_adaptation_cannot_bypass_bounds(change):
         "memory",
         "missing",
         "oom",
+        "cuda_oom",
         "timeout",
         "fatal",
         "minimum",
@@ -655,6 +662,11 @@ def test_adaptive_policy_uses_evidence_preserves_rows_and_never_oscillates(
             OutOfMemoryError=OOM, cuda=SimpleNamespace(empty_cache=empty)
         )
     )
+    if mode == "cuda_oom":
+        del session.torch.OutOfMemoryError
+        session.torch.cuda.OutOfMemoryError = OOM
+    elif mode == "fatal":
+        del session.torch.OutOfMemoryError
     widths = []
     done = []
     events = []
@@ -692,7 +704,7 @@ def test_adaptive_policy_uses_evidence_preserves_rows_and_never_oscillates(
                         },
                     )
                 )
-                if mode in ("oom", "minimum") and not failed:
+                if mode in ("oom", "cuda_oom", "minimum") and not failed:
                     failed = True
                     raise OOM()
 
@@ -723,13 +735,16 @@ def test_adaptive_policy_uses_evidence_preserves_rows_and_never_oscillates(
         runner.run(list(range(32)), None, done.append)
         assert sorted(r["id"] for r in done) == list(range(32))
         if mode == "low":
-            assert widths[0] == 4 and 8 in widths
+            assert widths[0] == 4
+            assert 8 in widths
         elif mode in ("high", "memory", "missing"):
             assert set(widths) == {4}
         else:
-            assert widths[0] == 4 and 2 in widths and max(widths[1:]) <= 2
+            assert widths[0] == 4
+            assert 2 in widths
+            assert max(widths[1:]) <= 2
     assert events[0]["reason"] == "initial"
-    assert empty.call_count == (1 if mode == "oom" else 0)
+    assert empty.call_count == (1 if mode in ("oom", "cuda_oom") else 0)
 
 
 @pytest.mark.parametrize(
@@ -765,6 +780,7 @@ def test_host_records_actual_width_and_adaptive_decisions(host_trial, monkeypatc
     rows, metrics = host.evaluate_trials(
         session, cases, manifest, request, output, scheduler_factory=factory
     )
-    assert len(rows) == 2 and all(r["execution_concurrency"] == 2 for r in rows)
+    assert len(rows) == 2
+    assert all((r["execution_concurrency"] == 2 for r in rows))
     assert json.loads((output / "concurrency-decisions.jsonl").read_text())["to"] == 2
     assert metrics["decisions"][0]["reason"] == "initial"

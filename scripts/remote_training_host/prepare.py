@@ -187,8 +187,11 @@ def payload_hashes(snapshot):
         if path.is_symlink():
             raise ValueError("host_snapshot_payload_symlink")
         if path.is_file():
+            digest = hashlib.sha256()
             with path.open("rb") as stream:
-                files[str(relative)] = hashlib.file_digest(stream, "sha256").hexdigest()
+                for block in iter(lambda: stream.read(1024 * 1024), b""):
+                    digest.update(block)
+            files[str(relative)] = digest.hexdigest()
     return files
 
 

@@ -14,7 +14,8 @@ import pytest
 
 FILE = Path(__file__).resolve().parents[1] / "scripts/remote_training_host/prepare.py"
 spec = importlib.util.spec_from_file_location("remote_host_prepare", FILE)
-assert spec and spec.loader
+assert spec
+assert spec.loader
 prepare = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(prepare)
 
@@ -121,14 +122,17 @@ def test_plan_has_no_installs_downloads_or_filesystem_mutations(setup, monkeypat
     result = prepare.plan(args)
     assert result["python_version"] == "3.14.8"
     assert result["requirements"] == [prepare.LOCK, prepare.CONTROL]
-    assert not result["gpu_qualified"] and not result["training_started"]
-    assert not args.root.exists() and not commands
+    assert not result["gpu_qualified"]
+    assert not result["training_started"]
+    assert not args.root.exists()
+    assert not commands
 
 
 def test_offline_prepare_is_separate_hash_pinned_and_rpc_importable(setup):
     args, commands, _ = setup
     result = prepare.apply(args)
-    assert result["prepared"] and not result["gpu_qualified"]
+    assert result["prepared"]
+    assert not result["gpu_qualified"]
     install = next(c for c in commands if "--require-hashes" in c)
     assert str(args.code_root / prepare.LOCK) in install
     assert str(args.code_root / prepare.CONTROL) in install
@@ -137,8 +141,10 @@ def test_offline_prepare_is_separate_hash_pinned_and_rpc_importable(setup):
     wrapper = args.root / "rpc-python"
     text = wrapper.read_text()
     assert str(args.venv / "bin/python") in text
-    assert str(args.code_root) in text and '"$@"' in text
-    assert "ENV_FILE=/dev/null" in text and "HF_HUB_OFFLINE=1" in text
+    assert str(args.code_root) in text
+    assert '"$@"' in text
+    assert "ENV_FILE=/dev/null" in text
+    assert "HF_HUB_OFFLINE=1" in text
     assert wrapper.stat().st_mode & 0o777 == 0o700
 
 
@@ -311,7 +317,8 @@ def test_run_timeout_failure_and_environment_redaction(tmp_path, monkeypatch):
     monkeypatch.setenv("PYTHONPATH", "unsafe")
     env = prepare.environment(tmp_path)
     assert env["PYTHONPATH"] == str(tmp_path)
-    assert "PYTHONHOME" not in env and "PYTHONSTARTUP" not in env
+    assert "PYTHONHOME" not in env
+    assert "PYTHONSTARTUP" not in env
     monkeypatch.setattr(
         prepare.subprocess,
         "run",
@@ -388,3 +395,16 @@ def test_existing_online_snapshot_reuse_never_downloads_over_it(setup):
     args.offline_model = False
     prepare.apply(args)
     assert not any(prepare.DOWNLOAD in c for c in commands)
+
+
+def test_payload_hashing_supports_bootstrap_python_without_file_digest(
+    tmp_path, monkeypatch
+):
+    import hashlib
+
+    monkeypatch.delattr(hashlib, "file_digest", raising=False)
+    payload = b"blocks" * 300000
+    (tmp_path / "model.safetensors").write_bytes(payload)
+    assert prepare.payload_hashes(tmp_path) == {
+        "model.safetensors": hashlib.sha256(payload).hexdigest()
+    }

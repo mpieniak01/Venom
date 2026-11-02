@@ -12,6 +12,7 @@ import signal
 import subprocess
 import sys
 import time
+import traceback
 import uuid
 from pathlib import Path
 
@@ -332,6 +333,7 @@ def main(argv=None):
                     raise ValueError("remote_inference_arguments_missing")
                 coordinate(args)
     except Exception:
+        traceback.print_exc(file=sys.stderr)
         reply(sys.stdout, error="remote_inference_session_failed")
         return 1
     return 0

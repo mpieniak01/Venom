@@ -26,6 +26,13 @@ from venom_core.services.remote_training.paths import operator_path
 from venom_core.services.remote_training.transport import SSHConfig
 
 MAX_LINE = 1024 * 1024
+EVALUATION_ERRORS = (
+    OSError,
+    RuntimeError,
+    ValueError,
+    KeyError,
+    subprocess.SubprocessError,
+)
 
 
 class RemoteInference:
@@ -205,6 +212,20 @@ def evaluate(args, factory=RemoteInference):
     expected = {(case["id"], arm) for case in cases for arm in ("base", "adapter")}
     if len(done) != len(rows) or not done <= expected:
         raise ValueError("comparison_resume_trials_invalid")
+    try:
+        result = _evaluate_trials(args, factory, manifest, cases, rows, done)
+    except EVALUATION_ERRORS as error:
+        write_json(
+            args.output / "status.json",
+            {"status": "FAIL", "error": type(error).__name__},
+        )
+        raise
+    write_json(args.output / "status.json", {"status": "COMPLETE"})
+    return result
+
+
+def _evaluate_trials(args, factory, manifest, cases, rows, done):
+    rows_path = args.output / "trials.jsonl"
     ordered = cases.copy()
     random.Random(7441).shuffle(ordered)
     run_id = uuid.uuid4().hex
@@ -314,12 +335,7 @@ def main(argv=None):
     os.umask(0o077)
     try:
         evaluate(args)
-    except (OSError, RuntimeError, ValueError, TimeoutError) as error:
-        if args.output.exists():
-            write_json(
-                args.output / "status.json",
-                {"status": "FAIL", "error": type(error).__name__},
-            )
+    except EVALUATION_ERRORS as error:
         print(json.dumps({"ok": False, "error": type(error).__name__}), flush=True)
         return 1
     return 0

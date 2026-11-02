@@ -61,28 +61,51 @@ def seal_attempt(directory: Path, state: dict[str, Any]) -> None:
     proof["result_checkpoint"] = None
     proof["artifact_hashes"] = {}
     if state["status"] == "succeeded":
-        receipt = attempt / "result/checkpoint/receipt.json"
-        if receipt.is_file():
-            if receipt.is_symlink() or receipt.stat().st_size > 8 * 1024**2:
-                raise ValueError("remote_training_checkpoint_receipt_invalid")
-            step = json.loads(receipt.read_text()).get("step")
-            if type(step) is not int or not 1 <= step <= MAX_UPDATES:
-                raise ValueError("remote_training_checkpoint_step_invalid")
-            proof["completed_updates"] = step
-            proof["result_checkpoint"] = receipt.parent.relative_to(
-                directory
-            ).as_posix()
-        for name in (
-            "adapter_model.safetensors",
-            "checkpoint/receipt.json",
-            "identity.json",
-            "metrics.json",
-            "qualification.json",
-        ):
-            file = attempt / "result" / name
-            if file.exists():
-                proof["artifact_hashes"][name] = sha256(file)
+        try:
+            proof.update(_checkpoint_evidence(attempt, directory))
+            proof["artifact_hashes"] = _artifact_hashes(attempt)
+        except (OSError, ValueError):
+            proof.update(
+                status="invalid_evidence",
+                error="remote_training_attempt_evidence_invalid",
+                completed_updates=None,
+                result_checkpoint=None,
+                artifact_hashes={},
+            )
     atomic_json(path, proof)
+
+
+def _checkpoint_evidence(attempt: Path, directory: Path) -> dict[str, Any]:
+    receipt = attempt / "result/checkpoint/receipt.json"
+    if not receipt.is_file():
+        return {}
+    if receipt.is_symlink() or receipt.stat().st_size > 8 * 1024**2:
+        raise ValueError("remote_training_checkpoint_receipt_invalid")
+    document = json.loads(receipt.read_text())
+    if not isinstance(document, dict):
+        raise ValueError("remote_training_checkpoint_receipt_invalid")
+    step = document.get("step")
+    if type(step) is not int or not 1 <= step <= MAX_UPDATES:
+        raise ValueError("remote_training_checkpoint_step_invalid")
+    return {
+        "completed_updates": step,
+        "result_checkpoint": receipt.parent.relative_to(directory).as_posix(),
+    }
+
+
+def _artifact_hashes(attempt: Path) -> dict[str, str]:
+    names = (
+        "adapter_model.safetensors",
+        "checkpoint/receipt.json",
+        "identity.json",
+        "metrics.json",
+        "qualification.json",
+    )
+    return {
+        name: sha256(attempt / "result" / name)
+        for name in names
+        if (attempt / "result" / name).exists()
+    }
 
 
 def read_attempt(directory: Path, attempt: int) -> dict[str, Any]:
@@ -103,8 +126,9 @@ def read_attempt(directory: Path, attempt: int) -> dict[str, Any]:
         not isinstance(proof, dict)
         or not isinstance(proof.get("artifact_hashes"), dict)
         or proof.get("run_id") != directory.name
+        or type(proof.get("attempt")) is not int
         or proof.get("attempt") != attempt
-        or proof.get("status") not in TERMINAL
+        or proof.get("status") not in tuple(TERMINAL)
         or proof.get("attempt_root") != f"runs/{directory.name}/attempts/{attempt:04d}"
     ):
         raise ValueError("remote_training_attempt_outcome_invalid")

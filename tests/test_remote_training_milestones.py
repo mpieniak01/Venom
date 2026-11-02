@@ -40,17 +40,20 @@ def identity():
 
 @pytest.mark.parametrize("value", [0, -1, True, 161, "80"])
 def test_targets_cannot_exceed_frozen_budget(value):
+    manifest = {"identity": identity()}
     with pytest.raises(ValueError):
-        milestones.target_update({"identity": identity()}, "train", value)
+        milestones.target_update(manifest, "train", value)
 
 
 def test_plan_is_bounded_and_does_not_launch_anything():
     p = milestones.plan("experiment", [80, 125, 160], 7200)
-    assert p["max_updates"] == 160 and not any(s["auto_advance"] for s in p["steps"])
+    assert p["max_updates"] == 160
+    assert not any((s["auto_advance"] for s in p["steps"]))
     assert milestones.target_update({"identity": identity()}, "train", 80) == 80
     assert milestones.target_update({}, "smoke", None) is None
+    manifest = {"identity": identity()}
     with pytest.raises(ValueError):
-        milestones.target_update({"identity": identity()}, "smoke", 80)
+        milestones.target_update(manifest, "smoke", 80)
 
 
 @pytest.mark.parametrize("steps", [[125, 80], [80, 80], [], [257], [False]])
@@ -139,7 +142,8 @@ def test_collect_first_candidate_while_later_attempt_is_running(archived, tmp_pa
     receipt = verify_result_bundle(
         tmp_path / "80.zip", expected_identity=identity(), expected_run_id="job1"
     )
-    assert receipt["complete"] and receipt["supervisor"]["attempt"] == 1
+    assert receipt["complete"]
+    assert receipt["supervisor"]["attempt"] == 1
     assert (result.parent / "outcome.json").read_bytes() == sealed
     assert store.status("job1")["status"] == "running"
     assert client.attempt_history("job1")["attempts"][0]["completed_updates"] == 80
@@ -200,10 +204,8 @@ def test_target_is_part_of_idempotent_launch_identity(archived, monkeypatch):
     checkpoint = "attempts/0001/result/checkpoint"
     state = store.resume("job1", checkpoint, until_update=125)
     assert state["until_update"] == 125
-    assert (
-        store.resume("job1", checkpoint, until_update=125)["attempt"] == 2
-        and spawn.call_count == 1
-    )
+    assert store.resume("job1", checkpoint, until_update=125)["attempt"] == 2
+    assert spawn.call_count == 1
     with pytest.raises(ValueError, match="conflicting_active_start"):
         store.resume("job1", checkpoint, until_update=160)
     req = json.loads((directory / "attempts/0002/request.json").read_text())
@@ -343,3 +345,120 @@ def test_sealed_attempt_identity_is_not_taken_from_untrusted_paths(archived, cha
     file.write_text(json.dumps(proof))
     with pytest.raises(ValueError):
         milestones.read_attempt(directory, 1)
+
+
+@pytest.mark.parametrize("corruption", ["json", "oversized", "identity", "status"])
+def test_corrupt_attempt_is_reported_without_blocking_other_candidates(
+    archived, tmp_path, corruption
+):
+    store, directory, _, finish, client = archived
+    finish(2, 125)
+    outcome = directory / "attempts/0002/outcome.json"
+    proof = json.loads(outcome.read_text())
+    if corruption == "json":
+        outcome.write_text("{")
+    elif corruption == "oversized":
+        outcome.write_text(" " * (8 * 1024**2 + 1))
+    else:
+        proof["run_id" if corruption == "identity" else "status"] = (
+            "other" if corruption == "identity" else {}
+        )
+        outcome.write_text(json.dumps(proof))
+    history = store.attempts("job1")
+    assert [row["attempt"] for row in history] == [1, 2]
+    assert history[0]["completed_updates"] == 80
+    assert history[1]["status"] == "invalid"
+    assert history[1]["error"] == "remote_training_attempt_outcome_unreadable"
+    client.collect("job1", tmp_path / "candidate-80.zip", attempt=1)
+    with pytest.raises(ValueError):
+        client.collect("job1", tmp_path / "invalid.zip", attempt=2)
+
+
+def test_atomic_json_rejects_outside_roots_and_symlinks(tmp_path, monkeypatch):
+    from venom_core.services.remote_training import paths
+
+    allowed = tmp_path / "allowed"
+    allowed.mkdir()
+    monkeypatch.setattr(paths, "_data_roots", lambda: (allowed,))
+    outside = tmp_path / "outside.json"
+    with pytest.raises(ValueError, match="outside_roots"):
+        atomic_json(outside, {})
+    assert not outside.exists()
+    outside.write_text("original")
+    link = allowed / "state.json"
+    link.symlink_to(outside)
+    with pytest.raises(ValueError, match="symlink"):
+        atomic_json(link, {})
+    assert outside.read_text() == "original"
+
+
+def test_atomic_json_rejects_directory_swap_after_validation(tmp_path, monkeypatch):
+    from venom_core.services.remote_training import paths
+
+    root, outside = tmp_path / "approved", tmp_path / "outside"
+    target = root / "target"
+    target.mkdir(parents=True)
+    outside.mkdir()
+    monkeypatch.setattr(paths, "_data_roots", lambda: (root,))
+    original = paths.os.open
+    swapped = False
+
+    def replace_before_open(name, flags, *args, **kwargs):
+        nonlocal swapped
+        if name == "target" and kwargs.get("dir_fd") is not None and not swapped:
+            swapped = True
+            target.rename(root / "previous")
+            target.symlink_to(outside, target_is_directory=True)
+        return original(name, flags, *args, **kwargs)
+
+    monkeypatch.setattr(paths.os, "open", replace_before_open)
+    destination = target / "state.json"
+    with pytest.raises(OSError):
+        atomic_json(destination, {"unsafe": True})
+    assert not (outside / "state.json").exists()
+
+
+def test_atomic_json_syncs_private_descriptor_relative_state(tmp_path, monkeypatch):
+    from venom_core.services.remote_training import paths
+
+    root = tmp_path / "root"
+    nested = root / "nested"
+    nested.mkdir(parents=True)
+    monkeypatch.setattr(paths, "_data_roots", lambda: (root,))
+    target = nested / "state.json"
+    atomic_json(target, {"value": 1})
+    atomic_json(target, {"value": 2})
+    assert json.loads(target.read_text()) == {"value": 2}
+    assert target.stat().st_mode & 0o777 == 0o600
+    assert not (nested / "state.json.tmp").exists()
+    bad = root / "bad\\name"
+    bad.mkdir()
+    invalid = bad / "state.json"
+    with pytest.raises(ValueError, match="path_invalid"):
+        atomic_json(invalid, {})
+
+
+@pytest.mark.parametrize(
+    "payload", ["{", '{"step":true}', '{"step":"125"}', "[]", "null"]
+)
+def test_invalid_checkpoint_evidence_is_sealed_without_blocking_history(
+    archived, tmp_path, payload
+):
+    store, directory, _, finish, client = archived
+    result = finish(2, 125)
+    outcome = result.parent / "outcome.json"
+    outcome.unlink()
+    (result / "checkpoint/receipt.json").write_text(payload)
+    assert store.status("job1")["status"] == "succeeded"
+    invalid = json.loads(outcome.read_text())
+    assert invalid["status"] == "invalid_evidence"
+    assert invalid["result_checkpoint"] is None
+    assert invalid["artifact_hashes"] == {}
+    assert store.attempts("job1")[1]["status"] == "invalid"
+    client.collect("job1", tmp_path / "valid-80.zip", attempt=1)
+    with pytest.raises(ValueError):
+        client.collect("job1", tmp_path / "invalid-125.zip", attempt=2)
+    (result / "checkpoint/receipt.json").write_text('{"step":125}')
+    assert store.status("job1")["attempt"] == 2
+    with pytest.raises(ValueError, match="outcome_invalid"):
+        milestones.read_attempt(directory, 2)

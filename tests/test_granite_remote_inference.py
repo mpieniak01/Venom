@@ -136,8 +136,9 @@ def test_context_limit_is_case_error_but_cuda_failure_is_fatal():
         raise RuntimeError("sensitive internal details")
 
     sink = io.StringIO()
+    model, requests = session(), source()
     with pytest.raises(RuntimeError, match="remote_inference_generation_failed"):
-        rpc.serve(session(), {}, "a" * 64, source(), sink, generator=cuda_failure)
+        rpc.serve(model, {}, "a" * 64, requests, sink, generator=cuda_failure)
     assert "sensitive" not in sink.getvalue()
 
 
@@ -165,14 +166,16 @@ def test_trusted_result_requires_terminal_matching_attempt(tmp_path, monkeypatch
     value = rpc.trusted_result(root, result, rpc.file_digest(weights))
     assert value[1] == {"model": "fixture"}
     state["attempt"] = 3
+    checksum = rpc.file_digest(weights)
     with pytest.raises(ValueError, match="training_not_succeeded"):
-        rpc.trusted_result(root, result, rpc.file_digest(weights))
+        rpc.trusted_result(root, result, checksum)
     state["attempt"] = 2
     with pytest.raises(ValueError, match="adapter_mismatch"):
         rpc.trusted_result(root, result, "a" * 64)
     (result / "status.json").write_text('{"state":"failed","exit_code":1}')
+    checksum = rpc.file_digest(weights)
     with pytest.raises(ValueError, match="worker_not_succeeded"):
-        rpc.trusted_result(root, result, rpc.file_digest(weights))
+        rpc.trusted_result(root, result, checksum)
     with pytest.raises(ValueError, match="result_path_invalid"):
         rpc.trusted_result(root, root / "runs/job1/input", "a" * 64)
 
@@ -194,8 +197,9 @@ def test_group_termination_waits_before_release(monkeypatch):
 def test_signal_handlers_unwind_and_restore():
     previous = signal.getsignal(signal.SIGTERM)
     with rpc.termination_signals():
+        handler = signal.getsignal(signal.SIGTERM)
         with pytest.raises(InterruptedError, match="remote_inference_interrupted"):
-            signal.getsignal(signal.SIGTERM)(signal.SIGTERM, None)
+            handler(signal.SIGTERM, None)
     assert signal.getsignal(signal.SIGTERM) is previous
 
 
@@ -216,7 +220,10 @@ def test_cli_failure_never_exposes_exception_details(monkeypatch, capsys):
         )
         == 1
     )
-    assert json.loads(capsys.readouterr().out) == {
+    captured = capsys.readouterr()
+    assert "private detail" in captured.err
+    assert "Traceback" in captured.err
+    assert json.loads(captured.out) == {
         "ok": False,
         "error": "remote_inference_session_failed",
     }

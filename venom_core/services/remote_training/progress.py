@@ -38,7 +38,7 @@ def _events(lines, progress, total):
     for line in lines:
         try:
             event = json.loads(line)
-        except (ValueError, UnicodeError):
+        except ValueError:
             continue
         if not isinstance(event, dict):
             continue
@@ -114,6 +114,18 @@ def format_status(state: dict[str, Any]) -> str:
     )
 
 
+def _connected_message(state, json_lines):
+    if json_lines:
+        return json.dumps({"connection": "connected", **state}, allow_nan=False)
+    return format_status(state)
+
+
+def _disconnected_message(errors, json_lines):
+    if json_lines:
+        return json.dumps({"connection": "unavailable", "failures": errors})
+    return f"SSH unavailable ({errors}/3); training has not been stopped"
+
+
 def watch(
     client,
     run_id: str,
@@ -133,21 +145,13 @@ def watch(
             try:
                 state = client.status(run_id)
                 errors = 0
-                message = (
-                    json.dumps({"connection": "connected", **state}, allow_nan=False)
-                    if json_lines
-                    else format_status(state)
-                )
+                message = _connected_message(state, json_lines)
                 emit(message, flush=True)
                 if state["status"] in TERMINAL:
                     return {"watch": "finished", "status": state["status"]}
             except TransportError as error:
                 errors += 1
-                message = (
-                    json.dumps({"connection": "unavailable", "failures": errors})
-                    if json_lines
-                    else f"SSH unavailable ({errors}/3); training has not been stopped"
-                )
+                message = _disconnected_message(errors, json_lines)
                 emit(message, flush=True)
                 if not error.retryable or errors >= 3:
                     return {"watch": "disconnected", "training_stopped": False}

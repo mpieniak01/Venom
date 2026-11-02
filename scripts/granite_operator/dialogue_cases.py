@@ -163,6 +163,12 @@ def _freeze(material: Path, output: Path):
             raise ValueError("comparison_holdout_fixture_invalid")
         if any(p.is_symlink() for p in source.rglob("*")):
             raise ValueError("comparison_holdout_fixture_symlink")
+        prefix = f"holdout/fixtures/{fid}/"
+        actual = {
+            p.relative_to(material).as_posix() for p in source.rglob("*") if p.is_file()
+        }
+        if actual != {name for name in frozen if name.startswith(prefix)}:
+            raise ValueError("comparison_holdout_source_inventory_incomplete")
         shutil.copytree(source, output / "fixtures" / fid)
     write_json(
         output / "provenance.json",

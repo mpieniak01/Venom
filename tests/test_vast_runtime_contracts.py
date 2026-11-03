@@ -68,6 +68,14 @@ def test_known_runtime_mismatch_and_exact_compute_capability(service):
     assert filters["compute_cap"] == {"in": [1210]}
 
 
+def test_vm_profile_filters_for_vm_offers(service):
+    _, plan, _ = service
+    vm_profile = plan.profile.model_copy(update={"vm_required": True})
+
+    assert search_filters(vm_profile)["vms_enabled"] == {"eq": True}
+    assert "vms_enabled" not in search_filters(plan.profile)
+
+
 def test_template_constraints_are_bounded_and_do_not_export_unknown_payloads(service):
     _, plan, base = service
     raw = {

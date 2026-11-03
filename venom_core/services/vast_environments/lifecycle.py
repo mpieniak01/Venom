@@ -179,6 +179,12 @@ class Environments:
                     plan.assessment.offer["id"],
                     {
                         "image": plan.profile.image,
+                        **(
+                            {"template_hash_id": plan.profile.template_hash}
+                            if plan.profile.template_hash
+                            else {}
+                        ),
+                        **({"vm": True} if plan.profile.vm_required else {}),
                         "disk": plan.profile.disk_gb,
                         "runtype": "ssh",
                         "target_state": "running",

@@ -41,6 +41,7 @@ class WorkloadProfile(Contract):
     name: str = Field(min_length=1, max_length=80)
     runtime: RuntimeRequirements = Field(default_factory=RuntimeRequirements)
     mode: Literal["inspect", "ollama", "vllm", "pytorch"] = "inspect"
+    vm_required: bool = False
     cpu_arch: Literal["amd64", "arm64"]
     image: str
     model: str = ""

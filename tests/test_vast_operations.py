@@ -86,6 +86,44 @@ def test_create_and_recover(service):
     assert "VAST_API_KEY" not in json.dumps(payload)
 
 
+def test_vm_create_sends_vm_flag_and_template(service):
+    svc, base_plan, _ = service
+    template_hash = "ubuntu-vm-template"
+    profile = base_plan.profile.model_copy(
+        update={
+            "vm_required": True,
+            "template_hash": template_hash,
+            "template_configuration_sha256": "b" * 64,
+        }
+    )
+    svc.client.templates.return_value = [
+        {
+            "hash_id": template_hash,
+            "configuration_sha256": "b" * 64,
+            "name": "Ubuntu VM",
+            "image": "test:latest",
+            "recommended_disk_space": 16,
+            "use_ssh": True,
+            "runtime_constraints": {"constraints": {}, "unresolved": []},
+        }
+    ]
+    plan = svc.plan(
+        profile,
+        12,
+        Decimal("0.5"),
+        Decimal("1"),
+        Path(base_plan.ssh_identity_file),
+        Path(base_plan.ssh_known_hosts),
+    )
+
+    svc.create(plan.plan_id)
+
+    payload = svc.client.create.call_args.args[1]
+    assert payload["vm"] is True
+    assert payload["template_hash_id"] == template_hash
+    assert payload["runtype"] == "ssh"
+
+
 @pytest.mark.parametrize(
     "ambiguous,state", [(True, "outcome_unknown"), (False, "failed")]
 )

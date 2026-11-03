@@ -32,6 +32,8 @@ RECIPES = {
 
 
 def validate_recipe(profile: WorkloadProfile) -> None:
+    if profile.vm_required and not profile.template_hash:
+        raise VastError("vast.vm_template_required")
     if bool(profile.template_hash) != bool(profile.template_configuration_sha256):
         raise VastError("vast.template_provenance_required")
     if profile.worker_packages and (

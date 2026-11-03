@@ -24,6 +24,7 @@ def workload_key(profile: WorkloadProfile) -> str:
         {
             "policy": POLICY_VERSION,
             "mode": profile.mode,
+            "vm_required": profile.vm_required,
             "image": profile.image,
             "cpu_arch": profile.cpu_arch,
             "model": profile.model,

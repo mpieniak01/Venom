@@ -22,10 +22,12 @@ def test_budget_and_validation():
         {"dropout": float("nan")},
         {"revision": "wrong"},
     ):
+        recipe_9 = Recipe(**options)
         with pytest.raises(ValueError):
-            Recipe(**options).identity()
+            recipe_9.identity()
+    recipe_1 = Recipe()
     with pytest.raises(ValueError):
-        Recipe().budget(0)
+        recipe_1.budget(0)
     assert len(Recipe().fingerprint) == 64
 
 
@@ -55,11 +57,13 @@ def test_request(monkeypatch):
         {"stage": "resume", "qualification": "proof"},
         {"checkpoint": "unexpected"},
     ):
+        request_body_10 = request()
         with pytest.raises(ValueError):
-            worker.validate_request({**request(), **options})
+            worker.validate_request({**request_body_10, **options})
     monkeypatch.delenv("HF_HUB_OFFLINE")
+    request_body_2 = request()
     with pytest.raises(ValueError):
-        worker.validate_request(request())
+        worker.validate_request(request_body_2)
 
 
 def checkpoint(path):
@@ -194,12 +198,20 @@ def test_training_and_cuda_rejection(tmp_path, monkeypatch):
     )
     assert not result["qualified"]
     torch.cuda.is_available = lambda: False
+    request_body_3 = request()
+    recipe_4 = Recipe()
     with pytest.raises(RuntimeError, match="cuda"):
-        worker._execute(request(), Recipe(), {}, tmp_path, tmp_path / "bad", "fp", None)
+        worker._execute(
+            request_body_3, recipe_4, {}, tmp_path, tmp_path / "bad", "fp", None
+        )
     torch.cuda.is_available = lambda: True
     model.config.architectures = ["Other"]
+    request_body_5 = request()
+    recipe_6 = Recipe()
     with pytest.raises(ValueError, match="architecture"):
-        worker._execute(request(), Recipe(), {}, tmp_path, tmp_path / "bad", "fp", None)
+        worker._execute(
+            request_body_5, recipe_6, {}, tmp_path, tmp_path / "bad", "fp", None
+        )
 
 
 def test_collator_and_arguments():
@@ -266,10 +278,12 @@ def test_run_admission_and_binding(tmp_path, monkeypatch):
     assert worker.run(body) == {"ok": True}
     proof = tmp_path / "proof.json"
     proof.write_text(json.dumps({"fingerprint": "wrong", "qualified": True}))
+    path_text_7 = str(proof)
     with pytest.raises(ValueError, match="smoke_mismatch"):
-        worker.run({**body, "stage": "train", "qualification": str(proof)})
+        worker.run({**body, "stage": "train", "qualification": path_text_7})
+    path_text_8 = str(tmp_path)
     with pytest.raises(ValueError, match="pinned_snapshot"):
-        worker.run({**body, "snapshot": str(tmp_path)})
+        worker.run({**body, "snapshot": path_text_8})
 
 
 def test_parameter_and_logits_evidence(monkeypatch):

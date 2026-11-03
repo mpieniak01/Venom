@@ -176,59 +176,63 @@ def validate_encoded_release(
     groups: dict[str, str] = {}
     identifiers: set[str] = set()
     for split, rows in records.items():
-        _need(
-            isinstance(rows, list) and (split == "holdout" or bool(rows)),
-            "records_invalid",
-        )
-        for row in rows:
-            _need(
-                isinstance(row, dict)
-                and row.get("sequence_sha256") == _seal(row, "sequence_sha256"),
-                "sequence_hash_mismatch",
-            )
-            ident, group = row.get("record_id"), row.get("problem_group")
-            _need(
-                isinstance(ident, str) and ident and ident not in identifiers,
-                "record_id_invalid",
-            )
-            _need(
-                isinstance(group, str) and group and groups.get(group, split) == split,
-                "group_leakage",
-            )
-            identifiers.add(ident)
-            groups[group] = split
-            ids, mask, labels = (
-                row.get("input_ids"),
-                row.get("attention_mask"),
-                row.get("labels"),
-            )
-            _need(
-                isinstance(ids, list)
-                and 0 < len(ids) <= context
-                and all(type(v) is int and v >= 0 for v in ids),
-                "ids_invalid",
-            )
-            _need(
-                mask == [1] * len(ids)
-                and isinstance(labels, list)
-                and len(labels) == len(ids),
-                "vectors_invalid",
-            )
-            spans = row.get("assistant_token_spans")
-            _need(
-                isinstance(spans, list)
-                and len(spans) == 1
-                and isinstance(spans[0], dict),
-                "span_invalid",
-            )
-            span = spans[0]
-            start, end = span.get("start"), span.get("end")
-            _need(
-                type(start) is int
-                and type(end) is int
-                and 0 < start < end == len(ids)
-                and span.get("supervised") is True,
-                "span_invalid",
-            )
-            _need(labels == [-100] * start + ids[start:], "mask_invalid")
+        _validate_encoded_split(rows, split, context, groups, identifiers)
     return records
+
+
+def _validate_encoded_split(rows, split, context, groups, identifiers) -> None:
+    _need(
+        isinstance(rows, list) and (split == "holdout" or bool(rows)),
+        "records_invalid",
+    )
+    for row in rows:
+        _need(
+            isinstance(row, dict)
+            and row.get("sequence_sha256") == _seal(row, "sequence_sha256"),
+            "sequence_hash_mismatch",
+        )
+        ident, group = row.get("record_id"), row.get("problem_group")
+        _need(
+            isinstance(ident, str) and ident and ident not in identifiers,
+            "record_id_invalid",
+        )
+        _need(
+            isinstance(group, str) and group and groups.get(group, split) == split,
+            "group_leakage",
+        )
+        identifiers.add(ident)
+        groups[group] = split
+        _validate_encoded_sequence(row, context)
+
+
+def _validate_encoded_sequence(row, context) -> None:
+    ids, mask, labels = (
+        row.get("input_ids"),
+        row.get("attention_mask"),
+        row.get("labels"),
+    )
+    _need(
+        isinstance(ids, list)
+        and 0 < len(ids) <= context
+        and all(type(v) is int and v >= 0 for v in ids),
+        "ids_invalid",
+    )
+    _need(
+        mask == [1] * len(ids) and isinstance(labels, list) and len(labels) == len(ids),
+        "vectors_invalid",
+    )
+    spans = row.get("assistant_token_spans")
+    _need(
+        isinstance(spans, list) and len(spans) == 1 and isinstance(spans[0], dict),
+        "span_invalid",
+    )
+    span = spans[0]
+    start, end = span.get("start"), span.get("end")
+    _need(
+        type(start) is int
+        and type(end) is int
+        and 0 < start < end == len(ids)
+        and span.get("supervised") is True,
+        "span_invalid",
+    )
+    _need(labels == [-100] * start + ids[start:], "mask_invalid")

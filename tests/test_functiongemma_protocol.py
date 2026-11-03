@@ -49,8 +49,9 @@ def test_native_call_preserves_registry_name_and_string():
     ],
 )
 def test_malformed_unknown_or_fabricated_call_rejected(text):
+    tool_schema_1 = tool()
     with pytest.raises(ValueError):
-        validate_calls(text, [tool()])
+        validate_calls(text, [tool_schema_1])
 
 
 def test_template_receives_developer_activation_and_real_tool_observation():
@@ -108,8 +109,9 @@ def test_template_receives_developer_activation_and_real_tool_observation():
     ],
 )
 def test_protocol_marker_in_no_call_rejected(text):
+    tool_schema_2 = tool()
     with pytest.raises(ValueError):
-        validate_calls(text, [tool()])
+        validate_calls(text, [tool_schema_2])
 
 
 def test_native_response_stop_after_call_accepted():
@@ -146,10 +148,16 @@ def test_mismatched_real_result_id_rejected():
     class Native:
         chat_template = "native"
 
+    tokenizer_3 = Native()
+    tool_schema_4 = tool()
     with pytest.raises(ValueError, match="result_id_mismatch"):
-        render_messages(Native(), messages, [tool()])
+        render_messages(tokenizer_3, messages, [tool_schema_4])
 
 
 def test_native_template_required():
+    tokenizer_5 = object()
+    tool_schema_6 = tool()
     with pytest.raises(ValueError, match="native_template_required"):
-        render_messages(object(), [{"role": "user", "content": "x"}], [tool()])
+        render_messages(
+            tokenizer_5, [{"role": "user", "content": "x"}], [tool_schema_6]
+        )

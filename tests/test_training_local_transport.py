@@ -38,19 +38,22 @@ def test_request_uses_fixed_rpc_and_explicit_interpreter(tmp_path):
     assert "remote_training.remote" in argv[2]
     assert argv[-3:] == ["--root", str(config(tmp_path).root), "status"]
     assert json.loads(raw) == {"run_id": "test"}
-    assert timeout == 60 and limit == 2 * 1024 * 1024
+    assert timeout == 60
+    assert limit == 2 * 1024 * 1024
     assert not any(arg == "ssh" for arg in argv)
 
 
 @pytest.mark.parametrize("timeout", [0, 601, True])
 def test_config_rejects_unbounded_timeout(tmp_path, timeout):
+    local_config_1 = LocalConfig(tmp_path / "root", Path(sys.executable), timeout)
     with pytest.raises(ValueError, match="timeout_invalid"):
-        LocalConfig(tmp_path / "root", Path(sys.executable), timeout).validate()
+        local_config_1.validate()
 
 
 def test_interpreter_is_not_an_arbitrary_command(tmp_path):
+    local_config_2 = LocalConfig(tmp_path / "root", tmp_path / "run.sh")
     with pytest.raises(ValueError, match="python_path_invalid"):
-        LocalConfig(tmp_path / "root", tmp_path / "run.sh").validate()
+        local_config_2.validate()
 
 
 @pytest.mark.parametrize(
@@ -94,8 +97,9 @@ def test_request_bounds_and_reply_limit(tmp_path, monkeypatch):
     transport = LocalTransport(config(tmp_path), executor=lambda *_: (0, b"x" * 20))
     with pytest.raises(ValueError, match="action_invalid"):
         transport.request("shell", {})
+    invalid_number_3 = float("nan")
     with pytest.raises(ValueError, match="request_invalid"):
-        transport.request("status", {"x": float("nan")})
+        transport.request("status", {"x": invalid_number_3})
     with pytest.raises(ValueError, match="action_invalid"):
         transport.request("status", [])
     monkeypatch.setattr(local, "MAX_RPC_BYTES", 10)
@@ -155,12 +159,14 @@ def local_args(tmp_path, action, *extra):
 
 def test_cli_local_is_explicit_and_remote_remains_default(tmp_path, monkeypatch):
     assert cli.parser().parse_args(["status", "--run-id", "r"]).execution == "remote"
+    parsed_args_4 = cli.parser().parse_args(["status", "--run-id", "r"])
     with pytest.raises(ValueError, match="ssh_alias_required"):
-        cli.dispatch(cli.parser().parse_args(["status", "--run-id", "r"]))
+        cli.dispatch(parsed_args_4)
+    parsed_args_5 = cli.parser().parse_args(
+        ["--execution", "local", "status", "--run-id", "r"]
+    )
     with pytest.raises(ValueError, match="root_and_interpreter"):
-        cli.dispatch(
-            cli.parser().parse_args(["--execution", "local", "status", "--run-id", "r"])
-        )
+        cli.dispatch(parsed_args_5)
     args = local_args(tmp_path, "status", "--run-id", "r")
     seen = []
     monkeypatch.setattr(
@@ -191,8 +197,9 @@ def test_local_start_requires_host_readiness(tmp_path, monkeypatch, action, extr
         "venom_core.services.remote_training.local_host",
         SimpleNamespace(readiness=lambda root: {"ready": False}),
     )
+    parsed_args_6 = local_args(tmp_path, action, "--run-id", "run", *extra)
     with pytest.raises(ValueError, match="remote_training_local_host_not_ready"):
-        cli.dispatch(local_args(tmp_path, action, "--run-id", "run", *extra))
+        cli.dispatch(parsed_args_6)
 
 
 def test_local_host_check(tmp_path, monkeypatch):
@@ -205,8 +212,9 @@ def test_local_host_check(tmp_path, monkeypatch):
         ["--execution", "local", "--local-root", str(tmp_path / "host"), "host-check"]
     )
     assert cli.dispatch(args)["reason"] == "busy"
+    parsed_args_7 = cli.parser().parse_args(["host-check"])
     with pytest.raises(ValueError, match="requires_local_root"):
-        cli.dispatch(cli.parser().parse_args(["host-check"]))
+        cli.dispatch(parsed_args_7)
 
 
 def test_local_start_with_ready_host(tmp_path, monkeypatch):

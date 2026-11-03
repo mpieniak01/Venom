@@ -20,11 +20,14 @@ from .bundles import (
 )
 
 DATA_MANIFEST = "data-manifest.json"
+ADAPTER_CONFIG = "adapter_config.json"
+MODEL_WEIGHTS = "model.safetensors"
+MODEL_CONFIG = "config.json"
 
 
 REQUIRED_FILES = (
     "adapter_model.safetensors",
-    "adapter_config.json",
+    ADAPTER_CONFIG,
     "identity.json",
     "profile.json",
     DATA_MANIFEST,
@@ -36,8 +39,8 @@ REQUIRED_FILES = (
     "logs/training.log",
 )
 _EXTRA_FILES = (
-    "model.safetensors",
-    "config.json",
+    MODEL_WEIGHTS,
+    MODEL_CONFIG,
     "generation_config.json",
     "error.json",
     "metrics.jsonl",
@@ -120,8 +123,8 @@ def required_files(identity):
         return tuple(
             name
             for name in REQUIRED_FILES
-            if name not in {"adapter_model.safetensors", "adapter_config.json"}
-        ) + ("model.safetensors", "config.json")
+            if name not in {"adapter_model.safetensors", ADAPTER_CONFIG}
+        ) + (MODEL_WEIGHTS, MODEL_CONFIG)
     return REQUIRED_FILES
 
 
@@ -164,14 +167,11 @@ def inspect_artifacts(
         and (root / "adapter_model.safetensors").stat().st_size == 0
     ):
         errors.append("adapter_empty")
-    if (
-        "model.safetensors" in selected
-        and (root / "model.safetensors").stat().st_size == 0
-    ):
+    if MODEL_WEIGHTS in selected and (root / MODEL_WEIGHTS).stat().st_size == 0:
         errors.append("model_empty")
     for name in (
-        "config.json",
-        "adapter_config.json",
+        MODEL_CONFIG,
+        ADAPTER_CONFIG,
         "metrics.json",
         "environment.json",
         "profile.json",

@@ -29,7 +29,7 @@ Kontrola jest powtarzana w koordynatorze, wiec nie mozna ominac jej bezposrednim
 Zdalnie wskaz istniejacy alias SSH: `--execution remote --host ALIAS
 --remote-root /workspace/data/remote-training --remote-python python3`.
 Host przygotuj dotychczasowymi skryptami. Konfiguracja snapshotu i interpretera
-nalezy do host-init na tym hoscie. Klucze i known_hosts pozostaja w konfiguracjiSSH.
+nalezy do host-init na tym hoscie. Klucze i known_hosts pozostaja w konfiguracji SSH.
 Nie zamawiamy ani nie usuwamy hosta przy wyborze miejsca treningu.
 
 ## Przyklad lokalnej sesji
@@ -61,8 +61,8 @@ Pakowanie wspolne dla obu miejsc:
 "$control" scripts/remote_training.py pack --source /sciezka/przygotowanych/danych --manifest /sciezka/encoded.json --profile /sciezka/full-recipe.json --snapshot /sciezka/przypietej/rewizji --output /sciezka/input.zip --run-id fg-full --updates 264 --max-seconds 7200
 ```
 
-Budzet jest liczony z epok w recepcie. Dla obecnego eksportu1408 decyzji,
-batch4 i akumulacji4 to264 aktualizacje/3 epoki. Nie stosujemy limitu256
+Budzet jest liczony z epok w recepcie. Dla obecnego eksportu 1408 decyzji,
+batch 4 i akumulacji 4 to 264 aktualizacje/3 epoki. Nie stosujemy limitu 256
 historycznego trenera Granite. W tym pilocie FG nie obsluguje
 `--until-update`: wybieramy pelna recepte epok albo wznawiamy jej checkpoint.
 

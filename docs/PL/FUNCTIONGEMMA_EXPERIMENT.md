@@ -36,11 +36,12 @@ Przekroczenie kontekstu jest bledem, bez obcinania i bez packingu.
 ## Trening i smoke
 
 F1: pelny SFT BF16. L1: LoRA BF16 r8/alpha16/dropout0.05 na q/k/v/o.
-Wspolne: kontekst1024 (2048 wymaga nowego eksportu), batch4, akumulacja4,
+Wspolne: kontekst 1024, batch 4, akumulacja 4. Dla kontekstu 2048 wykonaj
+`prepare --context 2048` z nowym katalogiem `--output`; eksport pozostaje aktualny.
 LR5e-5, AdamW wd0.01, linear, warmup5%, seed42, maksymalnie3 epoki.
 Dla1408 decyzji:88 aktualizacji/epoke,264 ogolem. Ostatnia niepelna akumulacja
 jest zachowana przez Trainer. Rozproszony WORLD_SIZE>1 jest odrzucany.
-Walidacja loss co okolo pol epoki, zapis po kazdej epoce. Kod nie wybiera
+Walidacja loss co okolo pół epoki, zapis po kazdej epoce. Kod nie wybiera
 najlepszego checkpointu na podstawie loss; wybor wymaga osobnej oceny wywolan.
 
 Worker wymaga osobnego srodowiska Python3.14.8 zgodnego z istniejacym lockiem

@@ -22,6 +22,9 @@ from venom_core.services.remote_training.paths import operator_path
 
 from .profile import LOCK, Recipe
 
+RECEIPT_FILE = "receipt.json"
+TRAINER_STATE_FILE = "trainer_state.json"
+
 VERSIONS = {"torch": "2.13.0", "transformers": "5.17.0", "peft": "0.21.2"}
 
 
@@ -42,7 +45,7 @@ def tree_hashes(root: Path) -> dict[str, str]:
     for path in sorted(root.rglob("*")):
         if path.is_symlink():
             raise ValueError("functiongemma_checkpoint_symlink")
-        if path.is_file() and path.name != "receipt.json":
+        if path.is_file() and path.name != RECEIPT_FILE:
             files[str(path.relative_to(root))] = file_digest(path)
     if not files:
         raise ValueError("functiongemma_artifacts_missing")
@@ -50,12 +53,12 @@ def tree_hashes(root: Path) -> dict[str, str]:
 
 
 def verify_checkpoint(root: Path, fingerprint: str) -> dict:
-    receipt = json.loads((root / "receipt.json").read_text())
+    receipt = json.loads((root / RECEIPT_FILE).read_text())
     if receipt.get("fingerprint") != fingerprint or receipt.get("files") != tree_hashes(
         root
     ):
         raise ValueError("functiongemma_checkpoint_changed")
-    for name in ("trainer_state.json", "optimizer.pt", "scheduler.pt", "rng_state.pth"):
+    for name in (TRAINER_STATE_FILE, "optimizer.pt", "scheduler.pt", "rng_state.pth"):
         if name not in receipt["files"]:
             raise ValueError("functiongemma_resume_state_missing")
     return receipt
@@ -167,22 +170,7 @@ def run(request: dict) -> dict:
     output = operator_path(request["output"])
     if output.exists():
         raise FileExistsError("functiongemma_output_exists")
-    qualification = None
-    if request["stage"] != "smoke":
-        proof_path = operator_path(request["qualification"])
-        qualification = json.loads(proof_path.read_text())
-        if (
-            qualification.get("fingerprint") != fingerprint
-            or qualification.get("qualified") is not True
-        ):
-            raise ValueError("functiongemma_smoke_mismatch")
-        verify_checkpoint(operator_path(qualification["checkpoint"]), fingerprint)
-    resume = operator_path(request["checkpoint"]) if request.get("checkpoint") else None
-    if resume:
-        previous = verify_checkpoint(resume, fingerprint)
-        total = recipe.budget(len(records["train"]))["total_updates"]
-        if type(previous.get("step")) is not int or not 0 < previous["step"] < total:
-            raise ValueError("functiongemma_resume_budget_exhausted")
+    resume = _training_checkpoint(request, recipe, records, fingerprint)
     # The ledger must be the host's shared ledger, never a per-run substitute.
     from venom_core.services.runtime_admission import RuntimeAdmission
 
@@ -215,6 +203,25 @@ def run(request: dict) -> dict:
             )
     finally:
         lease.release()
+
+
+def _training_checkpoint(request, recipe, records, fingerprint):
+    if request["stage"] != "smoke":
+        proof_path = operator_path(request["qualification"])
+        qualification = json.loads(proof_path.read_text())
+        if (
+            qualification.get("fingerprint") != fingerprint
+            or qualification.get("qualified") is not True
+        ):
+            raise ValueError("functiongemma_smoke_mismatch")
+        verify_checkpoint(operator_path(qualification["checkpoint"]), fingerprint)
+    resume = operator_path(request["checkpoint"]) if request.get("checkpoint") else None
+    if resume:
+        previous = verify_checkpoint(resume, fingerprint)
+        total = recipe.budget(len(records["train"]))["total_updates"]
+        if type(previous.get("step")) is not int or not 0 < previous["step"] < total:
+            raise ValueError("functiongemma_resume_budget_exhausted")
+    return resume
 
 
 def parameter_evidence(model):
@@ -361,15 +368,15 @@ def _execute(request, recipe, records, snapshot, output, fingerprint, resume):
 
 
 def _seal(checkpoint, fingerprint):
-    if not (checkpoint / "trainer_state.json").is_file():
+    if not (checkpoint / TRAINER_STATE_FILE).is_file():
         raise ValueError("functiongemma_resume_state_missing")
     write_json(
-        checkpoint / "receipt.json",
+        checkpoint / RECEIPT_FILE,
         {
             "fingerprint": fingerprint,
             "files": tree_hashes(checkpoint),
             "model": Recipe().model,
-            "step": json.loads((checkpoint / "trainer_state.json").read_text())[
+            "step": json.loads((checkpoint / TRAINER_STATE_FILE).read_text())[
                 "global_step"
             ],
         },

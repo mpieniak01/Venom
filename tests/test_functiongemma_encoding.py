@@ -98,8 +98,9 @@ def test_encoded_seal_and_span_reload():
 def test_oversize_never_truncated():
     row = decision()
     row["messages"][0]["content"] = "x" * 2048
+    tokenizer_1 = Tokenizer()
     with pytest.raises(ValueError, match="sequence_exceeds_context"):
-        encode_decision(row, Tokenizer())
+        encode_decision(row, tokenizer_1)
 
 
 def test_unstable_native_prefix_fails_closed():
@@ -108,8 +109,10 @@ def test_unstable_native_prefix_fails_closed():
             result = super().apply_chat_template(messages, **kwargs)
             return "unstable" + result if kwargs["add_generation_prompt"] else result
 
+    record_2 = decision()
+    tokenizer_3 = Unstable()
     with pytest.raises(ValueError, match="native_prefix_unstable"):
-        encode_decision(decision(), Unstable())
+        encode_decision(record_2, tokenizer_3)
 
 
 def test_resealed_mask_corruption_still_rejected():
@@ -129,10 +132,13 @@ def test_resealed_mask_corruption_still_rejected():
 def test_bad_target_and_context_rejected():
     row = decision()
     row["supervised_assistant_indices"] = [1]
+    tokenizer_4 = Tokenizer()
     with pytest.raises(ValueError, match="target_invalid"):
-        encode_decision(row, Tokenizer())
+        encode_decision(row, tokenizer_4)
+    record_5 = decision()
+    tokenizer_6 = Tokenizer()
     with pytest.raises(ValueError, match="context_invalid"):
-        encode_decision(decision(), Tokenizer(), 512)
+        encode_decision(record_5, tokenizer_6, 512)
 
 
 def reseal(document):
@@ -170,8 +176,9 @@ def test_resealed_invalid_vectors_rejected(change):
         row["attention_mask"] = []
     else:
         row["input_ids"][0] = -1
+    sealed_document_7 = reseal(encoded)
     with pytest.raises(ValueError):
-        validate_encoded_release(reseal(encoded))
+        validate_encoded_release(sealed_document_7)
 
 
 def test_native_call_stops_at_function_response_boundary():
@@ -290,6 +297,7 @@ def test_cli_prepare_context_contract(
 def test_cli_prepare_rejects_unsupported_context_before_io(tmp_path):
     from venom_core.services.functiongemma.cli import main
 
+    path_text_8 = str(tmp_path / "prepared")
     with pytest.raises(SystemExit) as error:
         main(
             [
@@ -301,7 +309,7 @@ def test_cli_prepare_rejects_unsupported_context_before_io(tmp_path):
                 "--snapshot",
                 "missing",
                 "--output",
-                str(tmp_path / "prepared"),
+                path_text_8,
                 "--context",
                 "512",
             ]

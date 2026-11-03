@@ -9,7 +9,7 @@ from typing import Any
 
 from venom_core.services.granite_operator.contract import digest
 
-from .protocol import validate_calls
+from .protocol import CALL_START, validate_calls
 
 ARMS = {"B0", "F1", "L1"}
 
@@ -21,7 +21,9 @@ def score(text: str, tools: list[dict], expected: list[dict]) -> dict:
         return {
             "schema_valid": False,
             "exact": False,
-            "unexpected_call": bool(text.strip()),
+            "unexpected_call": not expected
+            and isinstance(text, str)
+            and CALL_START in text,
         }
     actual = [{"name": call.name, "arguments": call.arguments} for call in calls]
     return {
@@ -31,66 +33,70 @@ def score(text: str, tools: list[dict], expected: list[dict]) -> dict:
     }
 
 
+def _validate_trial(row: dict) -> None:
+    if (
+        row.get("arm") not in ARMS
+        or not row.get("case_id")
+        or not row.get("problem_group")
+    ):
+        raise ValueError("functiongemma_trial_identity_invalid")
+    seconds = row.get("seconds")
+    if type(seconds) not in {int, float} or not math.isfinite(seconds) or seconds < 0:
+        raise ValueError("functiongemma_timing_invalid")
+    for name in ("exact", "schema_valid", "unexpected_call"):
+        if type(row.get(name)) is not bool:
+            raise ValueError("functiongemma_score_missing:" + name)
+
+
+def _require_matched_pair(pair: dict) -> None:
+    if set(pair) != ARMS:
+        raise ValueError("functiongemma_incomplete_pairs")
+    identities = {
+        digest(
+            {
+                key: row[key]
+                for key in (
+                    "problem_group",
+                    "benchmark_sha256",
+                    "tools_sha256",
+                    "generation_sha256",
+                )
+            }
+        )
+        for row in pair.values()
+    }
+    if len(identities) != 1:
+        raise ValueError("functiongemma_unmatched_trials")
+
+
+def _arm_metrics(group: list[dict]) -> dict:
+    seconds = sorted(row["seconds"] for row in group)
+    return {
+        "trials": len(group),
+        "exact_rate": sum(row["exact"] for row in group) / len(group),
+        "schema_rate": sum(row["schema_valid"] for row in group) / len(group),
+        "unexpected_calls": sum(row["unexpected_call"] for row in group),
+        "p50_seconds": statistics.median(seconds),
+        "p95_seconds": seconds[math.ceil(0.95 * len(seconds)) - 1],
+    }
+
+
 def compare(rows: Sequence[dict[str, Any]]) -> dict:
     if not rows:
         raise ValueError("functiongemma_trials_required")
     pairs: dict[str, dict[str, dict]] = {}
     for row in rows:
-        if (
-            row.get("arm") not in ARMS
-            or not row.get("case_id")
-            or not row.get("problem_group")
-        ):
-            raise ValueError("functiongemma_trial_identity_invalid")
-        seconds = row.get("seconds")
-        if (
-            type(seconds) not in {int, float}
-            or not math.isfinite(seconds)
-            or seconds < 0
-        ):
-            raise ValueError("functiongemma_timing_invalid")
-        for name in ("exact", "schema_valid", "unexpected_call"):
-            if type(row.get(name)) is not bool:
-                raise ValueError("functiongemma_score_missing:" + name)
+        _validate_trial(row)
         pair = pairs.setdefault(row["case_id"], {})
         if row["arm"] in pair:
             raise ValueError("functiongemma_duplicate_trial")
         pair[row["arm"]] = row
     for pair in pairs.values():
-        if set(pair) != ARMS:
-            raise ValueError("functiongemma_incomplete_pairs")
-        if (
-            len(
-                {
-                    digest(
-                        {
-                            key: row[key]
-                            for key in (
-                                "problem_group",
-                                "benchmark_sha256",
-                                "tools_sha256",
-                                "generation_sha256",
-                            )
-                        }
-                    )
-                    for row in pair.values()
-                }
-            )
-            != 1
-        ):
-            raise ValueError("functiongemma_unmatched_trials")
-    arms = {}
-    for arm in sorted(ARMS):
-        group = [pair[arm] for pair in pairs.values()]
-        seconds = sorted(row["seconds"] for row in group)
-        arms[arm] = {
-            "trials": len(group),
-            "exact_rate": sum(row["exact"] for row in group) / len(group),
-            "schema_rate": sum(row["schema_valid"] for row in group) / len(group),
-            "unexpected_calls": sum(row["unexpected_call"] for row in group),
-            "p50_seconds": statistics.median(seconds),
-            "p95_seconds": seconds[math.ceil(0.95 * len(seconds)) - 1],
-        }
+        _require_matched_pair(pair)
+    arms = {
+        arm: _arm_metrics([pair[arm] for pair in pairs.values()])
+        for arm in sorted(ARMS)
+    }
     return {
         "arms": arms,
         "groups": len({row["problem_group"] for row in rows}),

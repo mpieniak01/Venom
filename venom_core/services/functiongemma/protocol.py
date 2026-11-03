@@ -17,7 +17,8 @@ ACTIVATION_PROMPT = (
 )
 CALL_START = "<start_function_call>"
 CALL_END = "<end_function_call>"
-STOP_SEQUENCES = ("<start_function_response>", "<end_of_turn>", "<eos>")
+RESPONSE_START = "<start_function_response>"
+STOP_SEQUENCES = (RESPONSE_START, "<end_of_turn>", "<eos>")
 FILE_TOOLS = frozenset(
     {
         "FileSkill-list_files",
@@ -35,14 +36,14 @@ def validate_calls(text: str, tools: list[dict[str, Any]]) -> list[ToolCall]:
     alien = ("<|tool_call>", "<tool_call|>", '<|"|>', "<|tool_response>", "<turn|>")
     if any(marker in text for marker in alien):
         raise ValueError("functiongemma_foreign_protocol")
-    if "<start_function_response>" in text:
+    if RESPONSE_START in text:
         if (
-            text.count("<start_function_response>") != 1
-            or not text.rstrip().endswith("<start_function_response>")
+            text.count(RESPONSE_START) != 1
+            or not text.rstrip().endswith(RESPONSE_START)
             or not text.lstrip().startswith(CALL_START)
         ):
             raise ValueError("functiongemma_fabricated_response")
-        text = text.rstrip().removesuffix("<start_function_response>")
+        text = text.rstrip().removesuffix(RESPONSE_START)
     if any(
         marker in text
         for marker in (
@@ -108,19 +109,23 @@ def render_messages(
     return result
 
 
+def _register_call_ids(message, pending, seen) -> None:
+    for call in message.get("tool_calls", []):
+        ident = call.get("id")
+        if not isinstance(ident, str) or not ident or ident in seen:
+            raise ValueError("functiongemma_call_id_invalid")
+        seen.add(ident)
+        if call["function"]["name"] != "Finish":
+            pending[ident] = call["function"]["name"]
+
+
 def validate_result_ids(messages: list[dict[str, Any]]) -> None:
     """Tie every observation to the original call ID, including parallel calls."""
     pending: dict[str, str] = {}
     seen: set[str] = set()
     for message in messages:
         if message["role"] == "assistant":
-            for call in message.get("tool_calls", []):
-                ident = call.get("id")
-                if not isinstance(ident, str) or not ident or ident in seen:
-                    raise ValueError("functiongemma_call_id_invalid")
-                seen.add(ident)
-                if call["function"]["name"] != "Finish":
-                    pending[ident] = call["function"]["name"]
+            _register_call_ids(message, pending, seen)
         elif message["role"] == "tool":
             ident = message.get("tool_call_id")
             if ident not in pending or pending.pop(ident) != message.get("name"):

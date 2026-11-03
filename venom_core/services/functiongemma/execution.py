@@ -24,6 +24,10 @@ from venom_core.services.remote_training.paths import operator_path
 from .encoding import validate_encoded_release
 from .profile import Recipe
 
+PROFILE_FILE = "profile.json"
+DATA_MANIFEST_FILE = "data-manifest.json"
+QUALIFICATION_FILE = "qualification.json"
+
 
 def identity_for(recipe, document, snapshot, code_root, *, max_seconds):
     tokenizer_sha, template_sha = tokenizer_identity(snapshot)
@@ -65,11 +69,11 @@ def pack(manifest, profile, snapshot, output, *, run_id, updates, max_seconds):
     validate_identity(identity)
     with tempfile.TemporaryDirectory(prefix="functiongemma-input-") as tmp:
         staging = Path(tmp)
-        write_json(staging / "profile.json", recipe.identity())
-        write_json(staging / "data-manifest.json", document)
+        write_json(staging / PROFILE_FILE, recipe.identity())
+        write_json(staging / DATA_MANIFEST_FILE, document)
         return create_bundle(
             staging,
-            ["profile.json", "data-manifest.json"],
+            [PROFILE_FILE, DATA_MANIFEST_FILE],
             output,
             run_id=run_id,
             identity=identity,
@@ -77,9 +81,9 @@ def pack(manifest, profile, snapshot, output, *, run_id, updates, max_seconds):
 
 
 def preflight(host, input_root, identity):
-    recipe = Recipe(**json.loads((input_root / "profile.json").read_text()))
+    recipe = Recipe(**json.loads((input_root / PROFILE_FILE).read_text()))
     recipe.validate()
-    document = json.loads((input_root / "data-manifest.json").read_text())
+    document = json.loads((input_root / DATA_MANIFEST_FILE).read_text())
     validate_encoded_release(document, context=recipe.context)
     if Path(__file__).resolve().parents[3] != Path(host["code_root"]).resolve():
         raise ValueError("remote_training_imported_code_mismatch")
@@ -121,7 +125,6 @@ def coordinate(
     run_root,
     result,
     recipe,
-    document,
     host_binding,
     *,
     stage_call,
@@ -138,15 +141,13 @@ def coordinate(
     else:
         proof = proof_loader(run_root, host, request["manifest"]["identity"])
     body = {
-        "stage": "smoke"
-        if stage == "smoke"
-        else ("resume" if request.get("checkpoint") else "train"),
+        "stage": _worker_stage(request),
         "profile": recipe.identity(),
         "recipe": recipe.identity(),
         "gpu_authorized": True,
         "run_id": request["run_id"],
         "snapshot": host["snapshot"],
-        "encoded_release": str(run_root / "input/data-manifest.json"),
+        "encoded_release": str(run_root / "input" / DATA_MANIFEST_FILE),
         "output": str(result / "stages" / stage),
         "qualification": str(proof) if proof else None,
     }
@@ -157,40 +158,8 @@ def coordinate(
     if not checkpoint.is_relative_to(result / "stages"):
         raise ValueError("remote_training_functiongemma_checkpoint_outside_attempt")
     shutil.copytree(checkpoint, result / "checkpoint")
-    if stage == "smoke":
-        receipt = {
-            **final,
-            "status": "PASS",
-            "kind": "functiongemma_training_qualification",
-            "binding": host_binding,
-            "artifacts": {
-                str(p.relative_to(result)): file_digest(p)
-                for p in (result / "stages").rglob("*")
-                if p.is_file()
-            },
-        }
-        require_proof(receipt, final["fingerprint"])
-        write_json(result / "qualification.json", receipt)
-        write_json(
-            run_root / "qualification-proof.json",
-            {
-                "binding": host_binding,
-                "qualification": str(
-                    (result / "qualification.json").relative_to(run_root)
-                ),
-            },
-        )
-    else:
-        shutil.copyfile(proof, result / "qualification.json")
-    source = result / "checkpoint"
-    names = (
-        ("model.safetensors", "config.json", "generation_config.json")
-        if recipe.method == "full"
-        else ("adapter_model.safetensors", "adapter_config.json")
-    )
-    for name in names:
-        if (source / name).is_file():
-            shutil.copyfile(source / name, result / name)
+    _store_qualification(stage, final, result, run_root, host_binding, proof)
+    _copy_weight_export(result, recipe.method)
     write_json(result / "metrics.json", final)
     write_json(
         result / "environment.json",
@@ -206,3 +175,51 @@ def coordinate(
         {"state": "succeeded", "run_id": request["run_id"], "exit_code": 0},
     )
     return {"status": "PASS", "result": str(result)}
+
+
+def _worker_stage(request):
+    if request["stage"] == "smoke":
+        return "smoke"
+    if request.get("checkpoint"):
+        return "resume"
+    return "train"
+
+
+def _store_qualification(stage, final, result, run_root, host_binding, proof):
+    if stage == "smoke":
+        receipt = {
+            **final,
+            "status": "PASS",
+            "kind": "functiongemma_training_qualification",
+            "binding": host_binding,
+            "artifacts": {
+                str(p.relative_to(result)): file_digest(p)
+                for p in (result / "stages").rglob("*")
+                if p.is_file()
+            },
+        }
+        require_proof(receipt, final["fingerprint"])
+        write_json(result / QUALIFICATION_FILE, receipt)
+        write_json(
+            run_root / "qualification-proof.json",
+            {
+                "binding": host_binding,
+                "qualification": str(
+                    (result / QUALIFICATION_FILE).relative_to(run_root)
+                ),
+            },
+        )
+    else:
+        shutil.copyfile(proof, result / QUALIFICATION_FILE)
+
+
+def _copy_weight_export(result, method):
+    source = result / "checkpoint"
+    names = (
+        ("model.safetensors", "config.json", "generation_config.json")
+        if method == "full"
+        else ("adapter_model.safetensors", "adapter_config.json")
+    )
+    for name in names:
+        if (source / name).is_file():
+            shutil.copyfile(source / name, result / name)

@@ -79,7 +79,7 @@ class LocalTransport:
             raise TransportError("local_training_reply_too_large")
         try:
             document = json.loads(reply)
-        except (ValueError, UnicodeError):
+        except ValueError:
             raise TransportError("local_training_reply_invalid") from None
         if not isinstance(document, dict) or type(document.get("ok")) is not bool:
             raise TransportError("local_training_reply_invalid")

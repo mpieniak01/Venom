@@ -64,10 +64,11 @@ def test_pack_and_native_preflight(tmp_path, monkeypatch):
         execution.preflight(
             configured, tmp_path, {**result["identity"], "data_sha256": "a" * 64}
         )
+    recipe_identity_1 = recipe.identity()
     with pytest.raises(ValueError, match="epoch_budget"):
         execution.pack(
             manifest,
-            recipe.identity(),
+            recipe_identity_1,
             snapshot,
             bundle,
             run_id="fg",
@@ -152,7 +153,6 @@ def test_coordinate_smoke_and_train(tmp_path, monkeypatch, method):
         run,
         result,
         Recipe(method=method),
-        {},
         "binding",
         stage_call=stage_call,
         proof_loader=lambda *a: None,
@@ -178,7 +178,6 @@ def test_coordinate_smoke_and_train(tmp_path, monkeypatch, method):
             run,
             second,
             Recipe(method=method),
-            {},
             "binding",
             stage_call=train_call,
             proof_loader=lambda *a: result / "qualification.json",
@@ -189,27 +188,27 @@ def test_coordinate_smoke_and_train(tmp_path, monkeypatch, method):
 
 def test_epoch_and_smoke_resume_rejections(tmp_path):
     req = {"stage": "smoke", "until_update": 128}
+    recipe_2 = Recipe()
     with pytest.raises(ValueError, match="epoch_budget"):
         execution.coordinate(
             req,
             {},
             tmp_path,
             tmp_path,
-            Recipe(),
-            {},
+            recipe_2,
             "fp",
             stage_call=None,
             proof_loader=None,
         )
     req = {"stage": "smoke", "checkpoint": "checkpoint"}
+    recipe_3 = Recipe()
     with pytest.raises(ValueError, match="retry_smoke"):
         execution.coordinate(
             req,
             {},
             tmp_path,
             tmp_path,
-            Recipe(),
-            {},
+            recipe_3,
             "fp",
             stage_call=None,
             proof_loader=None,

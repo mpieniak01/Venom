@@ -51,16 +51,43 @@ def test_score():
     assert evaluation.score("Need more details", TOOLS, [])["exact"]
 
 
+@pytest.mark.parametrize(
+    "text,expects_tool,unexpected",
+    [
+        ("<start_function_call>bad", True, False),
+        ("<start_function_call>bad", False, True),
+        ("<end_function_call>", False, False),
+        (None, False, False),
+    ],
+)
+def test_invalid_output_does_not_inflate_unexpected_calls(
+    text, expects_tool, unexpected
+):
+    expected = (
+        [{"name": "FileSkill-read_file", "arguments": {"file_path": "x"}}]
+        if expects_tool
+        else []
+    )
+    assert evaluation.score(text, TOOLS, expected) == {
+        "schema_valid": False,
+        "exact": False,
+        "unexpected_call": unexpected,
+    }
+
+
 def test_comparison():
     result = evaluation.compare(trials())
     assert result["arms"]["B0"]["exact_rate"] == 1
     assert result["activation_allowed"] is False
     with pytest.raises(ValueError):
         evaluation.compare([])
+    trial_rows_1 = trials()
+    trial_rows_2 = trials()
     with pytest.raises(ValueError, match="duplicate"):
-        evaluation.compare(trials() + [trials()[0]])
+        evaluation.compare(trial_rows_1 + [trial_rows_2[0]])
+    trial_rows_3 = trials()
     with pytest.raises(ValueError, match="incomplete"):
-        evaluation.compare(trials()[:-1])
+        evaluation.compare(trial_rows_3[:-1])
     for options in (
         {"arm": "X"},
         {"seconds": float("inf")},
@@ -168,16 +195,19 @@ def test_cpu_export(tmp_path, monkeypatch):
         == 0
     )
     assert output.exists()
+    path_text_4 = str(source)
+    path_text_5 = str(source)
+    path_text_6 = str(output)
     with pytest.raises(FileExistsError):
         cli.main(
             [
                 "export",
                 "--train",
-                str(source),
+                path_text_4,
                 "--validation",
-                str(source),
+                path_text_5,
                 "--output",
-                str(output),
+                path_text_6,
             ]
         )
 

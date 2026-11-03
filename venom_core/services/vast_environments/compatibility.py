@@ -77,7 +77,12 @@ def _checks(offer: dict, source: str, rules: dict):
 
 def declared_compatibility(offer: dict, profile: WorkloadProfile) -> dict:
     runtime = profile.runtime
-    failed, unknown, checks = [], list(runtime.unresolved_constraints), []
+    unresolved = [
+        item
+        for item in runtime.unresolved_constraints
+        if not (profile.vm_required and item == "vms_enabled")
+    ]
+    failed, unknown, checks = [], unresolved, []
     template = template_constraints(runtime.template_constraints)
     unknown.extend(template["unresolved"])
     for source, rules in [

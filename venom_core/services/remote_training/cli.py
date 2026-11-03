@@ -1,4 +1,4 @@
-"""Explicit operator CLI; remote execution and GPU verification are separate actions."""
+"""Explicit local or SSH training CLI; GPU execution remains operator controlled."""
 
 from __future__ import annotations
 
@@ -10,11 +10,14 @@ from .bundles import verify_bundle
 from .client import RemoteClient
 from .host import initialize
 from .paths import operator_path, python_path
-from .transport import SSHConfig, SSHTransport
+from .transport import SSHConfig, SSHTransport, Transport
 
 
 def parser():
     value = argparse.ArgumentParser(description=__doc__)
+    value.add_argument("--execution", choices=("local", "remote"), default="remote")
+    value.add_argument("--local-root", type=operator_path)
+    value.add_argument("--local-python", type=python_path)
     value.add_argument("--ssh-config", type=Path, default=Path.home() / ".ssh/config")
     value.add_argument(
         "--host", help="Existing SSH alias, with a verified known_hosts entry"
@@ -22,6 +25,7 @@ def parser():
     value.add_argument("--remote-root", default="/workspace/data/remote-training")
     value.add_argument("--remote-python", default="python3")
     sub = value.add_subparsers(dest="action", required=True)
+    sub.add_parser("host-check")
     plan = sub.add_parser("plan")
     plan.add_argument("--run-id", required=True)
     plan.add_argument("--milestones", type=int, nargs="+", default=[80, 125, 160])
@@ -92,6 +96,12 @@ def parser():
 
 
 def dispatch(args):
+    if args.action == "host-check":
+        from .local_host import readiness
+
+        if getattr(args, "execution", "remote") != "local" or args.local_root is None:
+            raise ValueError("local_training_host_check_requires_local_root")
+        return readiness(args.local_root)
     if args.action == "plan":
         from .lifecycle import atomic_json, file_lock
         from .milestones import plan
@@ -122,13 +132,19 @@ def dispatch(args):
             max_seconds=args.max_seconds,
         )
     if args.action == "host-init":
-        return initialize(
+        configured = initialize(
             args.root,
             worker_python=args.worker_python,
             snapshot=args.snapshot,
             admission_db=args.admission_db,
             code_root=args.code_root,
+            execution=args.execution,
         )
+        if getattr(args, "execution", "remote") == "local":
+            from .local_host import readiness
+
+            return {**configured, "readiness": readiness(args.root)}
+        return configured
     if args.action in {"inspect-result", "import-result"}:
         from .artifacts import verify_result_bundle
 
@@ -162,12 +178,28 @@ def dispatch(args):
             reload_verifier=verifier,
             academy_models=args.academy_models,
         )
-    if not args.host:
-        raise ValueError("remote_training_ssh_alias_required")
-    config = SSHConfig(
-        args.ssh_config, args.host, args.remote_root, python=args.remote_python
-    )
-    client = RemoteClient(SSHTransport(config))
+    transport: Transport
+    if getattr(args, "execution", "remote") == "local":
+        from .local_transport import LocalConfig, LocalTransport
+
+        if args.local_root is None or args.local_python is None:
+            raise ValueError("local_training_root_and_interpreter_required")
+        if args.host:
+            raise ValueError("local_training_ssh_alias_not_allowed")
+        if args.action in {"start", "resume", "retry"}:
+            from .local_host import readiness
+
+            if readiness(args.local_root).get("ready") is not True:
+                raise ValueError("remote_training_local_host_not_ready")
+        transport = LocalTransport(LocalConfig(args.local_root, args.local_python))
+    else:
+        if not args.host:
+            raise ValueError("remote_training_ssh_alias_required")
+        config = SSHConfig(
+            args.ssh_config, args.host, args.remote_root, python=args.remote_python
+        )
+        transport = SSHTransport(config)
+    client = RemoteClient(transport)
     if args.action == "watch":
         from .progress import watch
 

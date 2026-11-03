@@ -41,6 +41,7 @@ class WorkloadProfile(Contract):
     name: str = Field(min_length=1, max_length=80)
     runtime: RuntimeRequirements = Field(default_factory=RuntimeRequirements)
     mode: Literal["inspect", "ollama", "vllm", "pytorch"] = "inspect"
+    vm_required: bool = False
     cpu_arch: Literal["amd64", "arm64"]
     image: str
     model: str = ""
@@ -51,7 +52,7 @@ class WorkloadProfile(Contract):
     max_parallel_requests: int = Field(default=4, ge=1, le=32)
     worker_packages: list[str] = Field(default_factory=list, max_length=8)
     worker_tasks: list[Literal["vision", "audio"]] = Field(default=["vision", "audio"])
-    disk_gb: int = Field(default=150, ge=16, le=10000)
+    disk_gb: int = Field(default=100, ge=16, le=10000)
     min_free_disk_bytes: int = Field(default=10_000_000_000, ge=0)
     min_gpu_ram_mb: int = Field(default=24000, ge=0)
     min_cpu_ram_mb: int = Field(default=32000, ge=0)
@@ -194,6 +195,7 @@ INSTANCE_FIELDS = (
     "ssh_host",
     "ssh_port",
     "image_uuid",
+    "public_ipaddr",
     "image_runtype",
     "start_date",
     "disk_space",
@@ -218,6 +220,22 @@ def project(data: dict[str, Any], fields: tuple[str, ...]) -> dict[str, Any]:
         for key in fields
         if key in data and isinstance(data[key], (str, int, float, bool, type(None)))
     }
+
+
+def instance_snapshot(data: dict[str, Any]) -> dict[str, Any]:
+    result = project(data, INSTANCE_FIELDS)
+    ports = data.get("ports")
+    if isinstance(ports, dict):
+        mappings = ports.get("22/tcp")
+        if isinstance(mappings, list):
+            result["ports"] = {
+                "22/tcp": [
+                    project(row, ("HostIp", "HostPort"))
+                    for row in mappings[:16]
+                    if isinstance(row, dict)
+                ]
+            }
+    return result
 
 
 def offer_snapshot(data: dict[str, Any]) -> dict[str, Any]:

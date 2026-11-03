@@ -60,6 +60,27 @@ def prepare(
     max_seconds: int = 3600,
 ) -> dict:
     """No raw chats, model weights, test splits, Git histories or arbitrary files."""
+    from .host import is_functiongemma_model
+
+    raw_profile = json.loads(operator_path(profile_path).read_text())
+    if is_functiongemma_model(raw_profile.get("model")):
+        from venom_core.services.functiongemma.execution import pack
+
+        if (
+            dataset != "domain"
+            or type(max_seconds) is not int
+            or not 1 <= max_seconds <= 86400
+        ):
+            raise ValueError("remote_training_functiongemma_budget_invalid")
+        return pack(
+            operator_path(manifest),
+            raw_profile,
+            operator_path(snapshot, allow_symlinks=True),
+            operator_path(output),
+            run_id=run_id,
+            updates=updates,
+            max_seconds=max_seconds,
+        )
     if (
         dataset not in {"domain", "hf", "mixed"}
         or type(updates) is not int

@@ -8,6 +8,7 @@ import pytest
 
 from tests.test_vast_operations import service as source_service
 from venom_core.infrastructure.providers.vast.client import VastError
+from venom_core.infrastructure.providers.vast.models import digest
 from venom_core.infrastructure.providers.vast.runtime_contracts import (
     RuntimeRequirements,
 )
@@ -16,14 +17,65 @@ from venom_core.services.vast_environments.gpu_probe import (
     REMOTE_SCRIPT,
     probe_gpu,
 )
-from venom_core.services.vast_environments.history import entries, lookup, remember
-from venom_core.services.vast_environments.qualification import qualify
+from venom_core.services.vast_environments.history import (
+    entries,
+    lookup,
+    remember,
+    workload_key,
+)
+from venom_core.services.vast_environments.qualification import POLICY_VERSION, qualify
+from venom_core.services.vast_environments.startup import startup
 from venom_core.services.vast_environments.store import Journal
 
 
 @pytest.fixture
 def service(tmp_path):
     return source_service.__wrapped__(tmp_path)
+
+
+def test_container_history_preserves_legacy_workload_key(service):
+    svc, plan, offer = service
+    # Reconstruct the historical schema, before vm_required existed.
+    profile = plan.profile
+    legacy = {
+        field: getattr(profile, field)
+        for field in (
+            "mode",
+            "image",
+            "cpu_arch",
+            "model",
+            "model_digest",
+            "context_tokens",
+            "output_tokens",
+            "gpu_memory_utilization",
+            "max_parallel_requests",
+            "worker_packages",
+            "worker_tasks",
+            "template_hash",
+        )
+    }
+    legacy.update(
+        policy=POLICY_VERSION,
+        runtime=profile.runtime.model_dump(mode="json"),
+        template_configuration=profile.template_configuration_sha256,
+        startup=digest(startup(profile)),
+    )
+    legacy_key = digest(legacy)
+    offer.update(gpu_name="GB10", compute_cap=1210, driver_version="580.29.04")
+    failed = qualify(plan, {"reasons": ["free_disk"], "unknown": []}, gpu())
+    remember(svc.journal, plan, failed)
+    index = svc.journal.root / "qualifications.json"
+    saved = json.loads(index.read_text())
+    for row in saved["entries"].values():
+        row["workload_key"] = legacy_key
+    index.write_text(json.dumps(saved))
+
+    assert workload_key(plan.profile) == legacy_key
+    assert lookup(svc.journal, plan.profile, offer)["excluded"] is True
+    assert svc.assess(plan.profile, offer).status == "ineligible"
+    vm_profile = plan.profile.model_copy(update={"vm_required": True})
+    assert workload_key(vm_profile) != legacy_key
+    assert lookup(svc.journal, vm_profile, offer)["status"] == "not_tested"
 
 
 def gpu():

@@ -33,7 +33,7 @@ requires a model and digest.
 Examples intentionally cannot rent until edited. No engine image is declared a
 stable default after the observed CUDA errors. Template hashes are not digests.
 
-- disk_gb: native provider field labeled GB, default 150; the identical value
+- disk_gb: native provider field labeled GB, default 100; the identical value
   goes into search allocated_storage and creation disk. Historical GB/GiB
   ambiguity is not hidden by conversion: inspect actual bytes after allocation.
   Container disk cannot be resized in place.

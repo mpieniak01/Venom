@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "recipe": {
+    "method": "full",
+    "model": "google/functiongemma-270m-it",
+    "revision": "39eccb091651513a5dfb56892d3714c1b5b8276c",
+    "context": 1024,
+    "epochs": 3,
+    "batch_size": 4,
+    "accumulation": 4,
+    "learning_rate": 5e-05,
+    "weight_decay": 0.01,
+    "warmup_ratio": 0.05,
+    "seed": 42,
+    "rank": 8,
+    "alpha": 16,
+    "dropout": 0.05,
+    "max_new_tokens": 256
+  },
+  "dependency_lock": "requirements/locks/granite-operator-training-linux-py314.txt",
+  "status": "not_gpu_qualified",
+  "activation_allowed": false
+}

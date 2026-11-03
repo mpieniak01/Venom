@@ -17,6 +17,8 @@ TEMPLATE_FIELDS = (
     "recommended",
     "use_ssh",
     "runtype",
+    "vm",
+    "ssh_direct",
     "count_created",
 )
 # Only effective configuration affects the fingerprint. Popularity/name changes
@@ -27,6 +29,8 @@ CONFIGURATION_FIELDS = (
     "recommended_disk_space",
     "use_ssh",
     "runtype",
+    "vm",
+    "ssh_direct",
     "env",
     "onstart",
     "args_str",

@@ -28,6 +28,9 @@ def setup(tmp_path, monkeypatch):
         prepare.LOCK,
         prepare.CONTROL,
         "venom_core/services/remote_training/remote.py",
+        "venom_core/services/functiongemma/encoding.py",
+        "venom_core/services/functiongemma/profile.py",
+        "venom_core/services/functiongemma/worker.py",
     ):
         path = code / name
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -126,6 +129,30 @@ def test_plan_has_no_installs_downloads_or_filesystem_mutations(setup, monkeypat
     assert not result["gpu_qualified"]
     assert not result["training_started"]
     assert not args.root.exists()
+    assert not commands
+
+
+def test_functiongemma_plan_selects_pinned_model_without_mutation(setup):
+    args, commands, _ = setup
+    target = args.snapshot.parent / prepare.FUNCTIONGEMMA_REVISION
+    args.snapshot.rename(target)
+    args.snapshot = target
+    receipt = json.loads((target / prepare.MODEL_RECEIPT).read_text())
+    receipt.update(
+        model=prepare.FUNCTIONGEMMA_MODEL,
+        revision=prepare.FUNCTIONGEMMA_REVISION,
+    )
+    (target / prepare.MODEL_RECEIPT).write_text(json.dumps(receipt))
+    args.functiongemma = True
+    args.apply = False
+
+    result = prepare.plan(args)
+
+    assert result["model_kind"] == "functiongemma"
+    assert (result["model"], result["revision"]) == (
+        prepare.FUNCTIONGEMMA_MODEL,
+        prepare.FUNCTIONGEMMA_REVISION,
+    )
     assert not commands
 
 

@@ -30,6 +30,29 @@ from venom_core.services.vast_environments.startup import ollama_environment, st
 from venom_core.services.vast_environments.store import Journal
 
 
+def _create_payload(plan: EnvironmentPlan, plan_id: str) -> dict:
+    profile = plan.profile
+    payload = {
+        "disk": profile.disk_gb,
+        "runtype": "ssh_direct" if profile.vm_required else "ssh",
+        "target_state": "running",
+        "cancel_unavail": True,
+        "label": "venom-" + plan_id,
+        "onstart": startup(profile),
+    }
+    # VM images are selected by the verified VM template. A container digest
+    # override changes that launch contract.
+    if profile.vm_required:
+        payload["vm"] = True
+    else:
+        payload["image"] = profile.image
+    if profile.template_hash:
+        payload["template_hash_id"] = profile.template_hash
+    if profile.mode == "ollama":
+        payload["env"] = ollama_environment(profile)
+    return payload
+
+
 class Environments:
     def __init__(self, client: VastClient, journal: Journal):
         self.client = client
@@ -177,20 +200,7 @@ class Environments:
             try:
                 record.instance_id = self.client.create(
                     plan.assessment.offer["id"],
-                    {
-                        "image": plan.profile.image,
-                        "disk": plan.profile.disk_gb,
-                        "runtype": "ssh",
-                        "target_state": "running",
-                        "cancel_unavail": True,
-                        "label": "venom-" + plan_id,
-                        "onstart": startup(plan.profile),
-                        **(
-                            {"env": ollama_environment(plan.profile)}
-                            if plan.profile.mode == "ollama"
-                            else {}
-                        ),
-                    },
+                    _create_payload(plan, plan_id),
                 )
             except VastError as exc:
                 self._event(record, "outcome_unknown" if exc.ambiguous else "failed")

@@ -6,18 +6,94 @@ import pytest
 from pydantic import ValidationError
 
 from tests.test_vast_operations import service as source_service
-from venom_core.infrastructure.providers.vast.models import EnvironmentPlan, digest
+from venom_core.infrastructure.providers.vast.client import VastError
+from venom_core.infrastructure.providers.vast.models import (
+    EnvironmentPlan,
+    digest,
+    instance_snapshot,
+)
 from venom_core.infrastructure.providers.vast.runtime_contracts import (
     RuntimeRequirements,
     version_parts,
 )
 from venom_core.infrastructure.providers.vast.templates import template_constraints
 from venom_core.services.vast_environments.assessment import assess, search_filters
+from venom_core.services.vast_environments.ssh import ssh_args
 
 
 @pytest.fixture
 def service(tmp_path):
     return source_service.__wrapped__(tmp_path)
+
+
+@pytest.mark.parametrize(
+    "public_ip,ipv4_mapping,expected_port",
+    [
+        ("198.51.100.10", "0.0.0.0", "42021"),
+        ("198.51.100.10", "198.51.100.10", "42021"),
+        ("2001:db8::10", "0.0.0.0", "42022"),
+        ("198.51.100.10", None, "42021"),
+    ],
+)
+def test_direct_ssh_uses_mapping_matching_public_ip_family(
+    service, public_ip, ipv4_mapping, expected_port
+):
+    _, plan, _ = service
+    plan.profile.vm_required = True
+    mapping = {"HostPort": "42021"}
+    if ipv4_mapping is not None:
+        mapping["HostIp"] = ipv4_mapping
+    instance = instance_snapshot(
+        {
+            "public_ipaddr": public_ip,
+            "ports": {"22/tcp": [mapping, {"HostIp": "::", "HostPort": "42022"}]},
+        }
+    )
+
+    args = ssh_args(plan, instance)
+
+    assert instance["ports"]["22/tcp"][0] == mapping
+    assert instance["ports"]["22/tcp"][1]["HostIp"] == "::"
+    assert args[-1] == "root@" + public_ip
+    assert args[args.index("-p") + 1] == expected_port
+
+
+@pytest.mark.parametrize(
+    "public_ip,mappings",
+    [
+        (
+            "198.51.100.10",
+            [
+                {"HostIp": "0.0.0.0", "HostPort": "42021"},
+                {"HostIp": "198.51.100.10", "HostPort": "42022"},
+                {"HostIp": "::", "HostPort": "42023"},
+            ],
+        ),
+        (
+            "2001:db8::10",
+            [
+                {"HostIp": "::", "HostPort": "42021"},
+                {"HostIp": "2001:db8::10", "HostPort": "42022"},
+            ],
+        ),
+        ("198.51.100.10", [{"HostIp": "::", "HostPort": "42021"}]),
+        (
+            "198.51.100.10",
+            [{"HostPort": "42021"}, {"HostIp": "0.0.0.0", "HostPort": "42022"}],
+        ),
+    ],
+)
+def test_direct_ssh_rejects_missing_or_ambiguous_matching_ports(
+    service, public_ip, mappings
+):
+    _, plan, _ = service
+    plan.profile.vm_required = True
+    instance = instance_snapshot(
+        {"public_ipaddr": public_ip, "ports": {"22/tcp": mappings}}
+    )
+
+    with pytest.raises(VastError, match="vast.direct_ssh_not_ready"):
+        ssh_args(plan, instance)
 
 
 def test_versions_are_components_not_floats():
@@ -66,6 +142,41 @@ def test_known_runtime_mismatch_and_exact_compute_capability(service):
     filters = search_filters(profile)
     assert filters["cuda_max_good"] == {"gte": "12.10"}
     assert filters["compute_cap"] == {"in": [1210]}
+
+
+def test_vm_profile_filters_for_vm_offers(service):
+    _, plan, _ = service
+    vm_profile = plan.profile.model_copy(update={"vm_required": True})
+
+    assert search_filters(vm_profile)["vms_enabled"] == {"eq": True}
+    assert "vms_enabled" not in search_filters(plan.profile)
+
+
+def test_vm_profile_resolves_template_vm_constraint_from_offer_filter(service):
+    _, plan, offer = service
+    vm_profile = plan.profile.model_copy(
+        update={
+            "vm_required": True,
+            "runtime": RuntimeRequirements(
+                min_cuda="13.0",
+                min_driver="580",
+                template_constraints={"compute_cap": {"gte": 750}},
+                unresolved_constraints=["vms_enabled"],
+            ),
+        }
+    )
+    vm_offer = {
+        **offer,
+        "gpu_arch": "nvidia",
+        "cuda_max_good": "13.0",
+        "driver_version": "580.82.09",
+        "compute_cap": 860,
+    }
+
+    result = assess(vm_offer, vm_profile)
+
+    assert result.status == "eligible"
+    assert "runtime.vms_enabled" not in result.unknown
 
 
 def test_template_constraints_are_bounded_and_do_not_export_unknown_payloads(service):

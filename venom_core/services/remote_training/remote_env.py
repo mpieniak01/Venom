@@ -25,6 +25,7 @@ CONTROL_IMPORTS = (
     "venom_core.config",
     "venom_core.services.runtime_admission",
     "venom_core.services.granite_operator.cli",
+    "venom_core.services.functiongemma.worker",
     "venom_core.services.remote_training.worker",
     "venom_core.services.remote_training.verification",
 )

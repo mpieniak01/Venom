@@ -174,6 +174,7 @@ def parser() -> argparse.ArgumentParser:
     )
     recipe.add_argument("--recipe", choices=list(RECIPES), required=True)
     recipe.add_argument("--template-hash")
+    recipe.add_argument("--vm-required", action="store_true")
     recipe.add_argument("--output", type=Path, required=True)
     templates = sub.add_parser("templates")
     templates.add_argument("--hash")
@@ -245,6 +246,8 @@ def _prepare_action(args, service: Environments):
         if getattr(args, argument) is not None:
             values[field] = getattr(args, argument)
     values["mode"] = args.recipe
+    if args.vm_required:
+        values["vm_required"] = True
     if args.capability is not None:
         values.setdefault("runtime", {})["capabilities"] = args.capability
     if values.get("image") and "@sha256:" not in values["image"]:

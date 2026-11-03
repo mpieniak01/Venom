@@ -170,6 +170,11 @@ tests/test_flow_mermaid_generation.py
 tests/test_flow_router.py
 tests/test_foreman_agent.py
 tests/test_forge_flow.py
+tests/test_functiongemma_dataset.py
+tests/test_functiongemma_encoding.py
+tests/test_functiongemma_evaluation.py
+tests/test_functiongemma_protocol.py
+tests/test_functiongemma_training.py
 tests/test_gemma4_audio_models.py
 tests/test_gemma4_audio_runtime_main.py
 tests/test_gemma4_data_release.py
@@ -498,6 +503,9 @@ tests/test_tracer.py
 tests/test_tracer_persistence.py
 tests/test_traffic_control.py
 tests/test_traffic_control_routes.py
+tests/test_training_functiongemma_execution.py
+tests/test_training_local_host.py
+tests/test_training_local_transport.py
 tests/test_training_metrics_parser.py
 tests/test_translation_service.py
 tests/test_transport_access.py

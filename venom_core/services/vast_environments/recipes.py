@@ -32,6 +32,8 @@ RECIPES = {
 
 
 def validate_recipe(profile: WorkloadProfile) -> None:
+    if profile.vm_required and not profile.template_hash:
+        raise VastError("vast.vm_template_required")
     if bool(profile.template_hash) != bool(profile.template_configuration_sha256):
         raise VastError("vast.template_provenance_required")
     if profile.worker_packages and (
@@ -81,6 +83,10 @@ def verify_template(client: VastClient, profile: WorkloadProfile) -> None:
     row = selected_template(client, profile.template_hash)
     if row.get("configuration_sha256") != profile.template_configuration_sha256:
         raise VastError("vast.template_changed")
+    if profile.vm_required and (
+        row.get("vm") is not True or row.get("ssh_direct") is not True
+    ):
+        raise VastError("vast.vm_direct_ssh_template_required")
     if row.get("use_ssh") is not True or repository(
         str(row.get("image", ""))
     ) != repository(profile.image):
@@ -94,7 +100,10 @@ def verify_template(client: VastClient, profile: WorkloadProfile) -> None:
         or profile.runtime.unresolved_constraints != constraints["unresolved"]
     ):
         raise VastError("vast.template_constraints_changed")
-    if profile.disk_gb < disk:
+    # The reused VM template has already operated at the agreed 100 GB.
+    # Its recommended size must not replace the operator workload allocation.
+    # Offer capacity, quote and create continue to use profile.disk_gb exactly.
+    if not profile.vm_required and profile.disk_gb < disk:
         raise VastError("vast.template_disk_insufficient")
 
 

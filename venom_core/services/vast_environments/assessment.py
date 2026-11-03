@@ -174,6 +174,8 @@ def search_filters(profile: WorkloadProfile) -> dict[str, Any]:
         "order": provider_order(profile.sort_by),
         "reliability": {"gte": profile.min_reliability},
     }
+    if profile.vm_required:
+        result["vms_enabled"] = {"eq": True}
     for field, minimum in (
         ("gpu_ram", profile.min_gpu_ram_mb),
         ("cpu_ram", profile.min_cpu_ram_mb),

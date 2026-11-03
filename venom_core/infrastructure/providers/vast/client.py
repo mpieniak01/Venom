@@ -13,8 +13,8 @@ import httpx
 from pydantic import SecretStr
 
 from venom_core.infrastructure.providers.vast.models import (
-    INSTANCE_FIELDS,
     amount,
+    instance_snapshot,
     offer_snapshot,
     project,
 )
@@ -255,7 +255,7 @@ class VastClient:
 
     def instances(self) -> list[dict]:
         return [
-            project(row, INSTANCE_FIELDS)
+            instance_snapshot(row)
             for row in self._pages("/api/v1/instances/", "instances", {"limit": 25})
         ]
 
@@ -268,7 +268,7 @@ class VastClient:
         row = response.get("instances")
         if not isinstance(row, dict) or row.get("id") != instance_id:
             raise VastError(INVALID_RESPONSE)
-        return project(row, INSTANCE_FIELDS)
+        return instance_snapshot(row)
 
     def create(self, offer_id: int, payload: dict) -> int:
         data = self._request(

@@ -327,9 +327,9 @@ def snapshot_provenance(snapshot, model, revision):
         raise ValueError("host_snapshot_provenance_hash_mismatch")
 
 
-def snapshot_ready(snapshot, *, provenance=True, profile=None):
+def snapshot_ready(snapshot, *, provenance=True, profile=None, identity=None):
     data_path(snapshot)
-    model, revision = (
+    model, revision = identity or (
         (profile.model, profile.revision) if profile else (MODEL, REVISION)
     )
     if profile:
@@ -392,7 +392,7 @@ def prepare_snapshot(args, python, env):
             with (stage / MODEL_RECEIPT).open("w") as stream:
                 json.dump(receipt, stream, indent=2)
             stage.rename(args.snapshot)
-    snapshot_ready(args.snapshot, profile=profile)
+    snapshot_ready(args.snapshot, profile=profile, identity=(model, revision))
     receipt = json.loads((args.snapshot / MODEL_RECEIPT).read_text())
     if receipt.get("native_snapshot_metadata") != native_metadata(
         python, args.snapshot, args.code_root, env, profile, args.functiongemma
@@ -487,7 +487,9 @@ def prepare_component(args):
         ):
             raise ValueError("host_configuration_conflict")
     if args.offline_model or args.snapshot.exists():
-        snapshot_ready(args.snapshot, profile=model_profile(args))
+        snapshot_ready(
+            args.snapshot, profile=model_profile(args), identity=model_identity(args)
+        )
     if not args.venv.exists():
         args.venv.parent.mkdir(parents=True, exist_ok=True)
         run(

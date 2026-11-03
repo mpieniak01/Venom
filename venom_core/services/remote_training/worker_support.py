@@ -13,12 +13,21 @@ from venom_core.services.granite_operator.contract import (
     write_json,
 )
 
-from .host import code_identity, dependencies_identity, tokenizer_identity
+from .host import (
+    code_identity,
+    dependencies_identity,
+    is_gemma_model,
+    tokenizer_identity,
+)
 
 
 def preflight(
     host: dict, input_root: Path, identity: dict
 ) -> tuple[TrainingProfile, dict]:
+    if is_gemma_model(identity.get("model")):
+        from venom_core.services.gemma4_operator.training import remote_preflight
+
+        return remote_preflight(host, input_root, identity)
     from transformers import AutoTokenizer
 
     from venom_core.services.granite_operator.engine import encoded_rows

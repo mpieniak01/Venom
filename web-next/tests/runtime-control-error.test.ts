@@ -14,5 +14,6 @@ for (const locale of [pl, en, de]) {
     assert.equal(runtimeControlErrorHint(new ApiError("409", 409, { detail: { code: "runtime_busy" } }), t), locale.cockpit.modelActivation.runtimeBusy);
     assert.equal(runtimeControlErrorHint(new ApiError("503", 503, { detail: { code: "remote_provider_disabled" } }), t), locale.cockpit.modelActivation.providerDisabled);
     assert.equal(runtimeControlErrorHint(new Error("other"), t), null);
+    assert.equal(runtimeControlErrorHint(new ApiError("400", 400, { detail: { code: "gemma4_variant_unresolved" } }), t), locale.models.status.chooseGemmaVariant);
   });
 }

@@ -13,7 +13,10 @@ from venom_core.api.routes.models_dependencies import (
     get_model_manager,
     get_model_registry,
 )
-from venom_core.api.routes.models_utils import infer_model_provider
+from venom_core.api.routes.models_utils import (
+    infer_model_provider,
+    resolve_ollama_selection,
+)
 from venom_core.services.runtime_switch_telemetry import (
     assert_runtime_switch_ownership_token,
     assert_runtime_switch_source_allowed,
@@ -28,7 +31,7 @@ MODEL_REGISTRY_UNAVAILABLE_DETAIL = "ModelRegistry nie jest dostępny"
 MODEL_MANAGER_UNAVAILABLE_DETAIL = "ModelManager nie jest dostępny"
 
 
-async def _ensure_runtime_model_is_servable(*, model_name: str, runtime: str) -> None:
+async def _ensure_runtime_model_is_servable(*, model_name: str, runtime: str) -> str:
     runtime_id = runtime.strip().lower()
     if runtime_id not in {"ollama", "vllm", "onnx"}:
         raise HTTPException(status_code=400, detail=f"Unsupported runtime: {runtime}")
@@ -43,6 +46,8 @@ async def _ensure_runtime_model_is_servable(*, model_name: str, runtime: str) ->
             detail=f"Failed to load local model catalog: {exc}",
         ) from exc
 
+    if runtime_id == "ollama":
+        model_name = resolve_ollama_selection(model_name, local_models)
     matched = None
     for model in local_models:
         name = str(model.get("name") or "").strip()
@@ -69,6 +74,8 @@ async def _ensure_runtime_model_is_servable(*, model_name: str, runtime: str) ->
                 "Refresh runtime options and select a servable model."
             ),
         )
+
+    return model_name
 
 
 @router.post(
@@ -169,10 +176,11 @@ async def activate_model_endpoint(request: ModelActivateRequest):
 
     try:
         logger.info("Activate model: %s runtime=%s", request.name, request.runtime)
-        await _ensure_runtime_model_is_servable(
+        resolved = await _ensure_runtime_model_is_servable(
             model_name=request.name,
             runtime=request.runtime,
         )
+        request = request.model_copy(update={"name": resolved or request.name})
         success = await model_registry.activate_model(
             model_name=request.name, runtime=request.runtime
         )

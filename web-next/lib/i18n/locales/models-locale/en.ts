@@ -271,6 +271,8 @@ export const models = {
     run: "Run",
   },
   status: {
+    unresolvedVariant: 'unresolved variant',
+    chooseGemmaVariant: 'Choose Gemma4 E4B IT Q4_K_M or Gemma4 12B IT Q4_K_M explicitly. The latest alias variant has not been verified.',
     loaded: "Loaded",
     unloaded: "Not loaded",
     loadedUnknown: "Memory state unverified",

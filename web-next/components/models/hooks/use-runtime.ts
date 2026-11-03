@@ -122,6 +122,7 @@ export function resolveModelsForServer(input: {
     if (runtimeModels.length > 0) {
         return preferChatModelAliases(runtimeModels, input.selectedModel).map((model) => ({
             name: model.name,
+            display_name: model.display_name,
             provider: model.provider,
             source: model.source_type,
         }));
@@ -205,7 +206,7 @@ export function useRuntime() {
         [llmServers],
     );
     const modelOptions = useMemo(
-        () => availableModelsForServer.map((model) => ({ value: model.name, label: chatModelLabel(model.name) })),
+        () => availableModelsForServer.map((model) => ({ value: model.name, label: chatModelLabel(model.name, model.display_name, model.provider) })),
         [availableModelsForServer],
     );
 

@@ -157,3 +157,16 @@ do nowego katalogu audytu, aby nie nadpisać zachowanych wyników i ich hashy.
 
 Status uruchomień, wybór adaptera i wyniki modeli opisuje odrębny
 [proces treningu](ZDALNY_TRENING.md), nie niniejszy katalog danych.
+
+## G05 V2 — oba warianty Gemma 4
+
+G05 V2 zachowuje G04 i dodaje wykonane demonstracje narzędzi FileSkill.
+Eksport prywatny: `data/training/gemma-g05-v2-20261103-ready/`.
+Podział: 832 train / 224 validation / 160 diagnostycznych holdout.
+288 nowych rozmów PL/EN ma rzeczywiste odpowiedzi narzędzi i niezależne
+sprawdzenia stanu fixture'a; nie oznacza przeglądu człowieka ani wyników modelu.
+
+E4B i 12B IT mają osobne profile, loadery, procesory i tożsamości kodowania.
+Zachowano selekcję tur, holdout pozostaje poza treningiem. Osobne 24 przypadki
+kontrolują streszczanie, tłumaczenie i obrazy; nie kwalifikują audio.
+Trening i ocena modeli wymagają GPU. Zobacz [przygotowanie Gemma](../GEMMA4_OPERATOR.md).

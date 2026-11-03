@@ -18,6 +18,7 @@ from venom_core.api.routes.models_dependencies import get_model_manager
 from venom_core.api.routes.models_utils import (
     infer_model_provider,
     resolve_model_provider,
+    resolve_ollama_selection,
     update_last_model,
 )
 from venom_core.config import SETTINGS
@@ -694,10 +695,12 @@ async def switch_model(request: ModelSwitchRequest):
 
     try:
         models = await model_manager.list_local_models()
-        _ensure_model_exists(models, request.name)
-
         runtime_info = get_active_llm_runtime()
         active_provider = runtime_info.provider
+        if active_provider == "ollama":
+            canonical = resolve_ollama_selection(request.name, models)
+            request = request.model_copy(update={"name": canonical})
+        _ensure_model_exists(models, request.name)
         model_provider = _ensure_runtime_provider_match(
             model_name=request.name,
             models=models,

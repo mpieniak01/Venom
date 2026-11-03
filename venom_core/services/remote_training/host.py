@@ -17,12 +17,32 @@ from venom_core.services.granite_operator.contract import (
     write_json,
 )
 
+GEMMA_MODELS = frozenset({"google/gemma-4-12B-it", "google/gemma-4-E4B-it"})
+
+
+def is_gemma_model(model: object) -> bool:
+    return isinstance(model, str) and model in GEMMA_MODELS
+
+
 PACKAGES = ("torch", "transformers", "peft", "bitsandbytes", "trl", "datasets")
 
 
-def code_identity(code_root: Path) -> str:
+def code_identity(code_root: Path, *, model: str | None = None) -> str:
     """Only the reviewed Granite engine defines model semantics."""
     package = code_root / "venom_core/services/granite_operator"
+    if is_gemma_model(model):
+        gemma = code_root / "venom_core/services/gemma4_operator"
+        if not gemma.is_dir():
+            raise ValueError("remote_training_gemma_code_missing")
+        if not package.is_dir():
+            raise ValueError("remote_training_shared_code_missing")
+        return digest(
+            {
+                str(p.relative_to(code_root)): file_digest(p)
+                for directory in (package, gemma)
+                for p in sorted(directory.glob("*.py"))
+            }
+        )
     return digest({p.name: file_digest(p) for p in sorted(package.glob("*.py"))})
 
 
@@ -121,13 +141,19 @@ def binding(host: dict, identity: dict) -> str:
                 )
             },
             "versions": {name: importlib.metadata.version(name) for name in PACKAGES},
-            "code": code_identity(Path(host["code_root"])),
+            "code": code_identity(Path(host["code_root"]), model=identity["model"]),
         }
     )
 
 
-def dependencies_identity(code_root: Path) -> str:
+def dependencies_identity(code_root: Path, *, model: str | None = None) -> str:
     """Bind both the native model lock and minimal remote control closure."""
+    if model is not None and model not in {
+        "google/gemma-4-12B-it",
+        "google/gemma-4-E4B-it",
+        "ibm-granite/granite-4.2-3b",
+    }:
+        raise ValueError("remote_training_dependency_model_unsupported")
     return digest(
         {
             "training": file_digest(

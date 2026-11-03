@@ -17,7 +17,10 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from venom_core.api.routes import openrouter as openrouter_routes
 from venom_core.api.routes import system_deps, vast_chat
-from venom_core.api.routes.models_utils import infer_model_provider
+from venom_core.api.routes.models_utils import (
+    infer_model_provider,
+    resolve_ollama_selection,
+)
 from venom_core.api.routes.permission_denied_contract import (
     raise_permission_denied_http,
 )
@@ -1470,21 +1473,32 @@ def _runtime_payload_or_audit_issue(
         runtime_id=runtime_id,
         grouped=grouped,
     )
-    return (
-        _runtime_model_payload(
-            runtime_id=runtime_id,
-            model_id=name,
-            name=name,
-            provider=runtime_id,
-            source_type="local-runtime",
-            active=(runtime_id == active_provider and name == active_model),
-            chat_compatible=bool(model.get("chat_compatible", True)),
-            owned_by_runtime=owner,
-            ownership_status=ownership_status,
-            compatible_runtimes=[runtime_id],
-        ),
-        None,
+    payload = _runtime_model_payload(
+        runtime_id=runtime_id,
+        model_id=name,
+        name=name,
+        provider=runtime_id,
+        source_type="local-runtime",
+        active=(runtime_id == active_provider and name == active_model),
+        chat_compatible=bool(model.get("chat_compatible", True)),
+        owned_by_runtime=owner,
+        ownership_status=ownership_status,
+        compatible_runtimes=[runtime_id],
     )
+    if runtime_id == "ollama":
+        for key in (
+            "display_name",
+            "digest",
+            "quantization",
+            "aliases",
+            "selection_supported",
+            "selection_block_reason",
+            "selection_block_code",
+            "activation_supported",
+        ):
+            if key in model:
+                payload[key] = model[key]
+    return payload, None
 
 
 def _runtime_model_audit_issue(
@@ -2612,6 +2626,8 @@ def _resolve_selected_model_for_switch(
         _available_models_for_server(models=models, server_name=server_name)
     )
     requested_model = str(request.model or "").strip()
+    if server_name == "ollama":
+        requested_model = resolve_ollama_selection(requested_model, models)
     requested_last_model_key = _last_model_key_for_server(server_name)
     if requested_model:
         resolved = _validate_requested_model_available(
@@ -2871,7 +2887,8 @@ async def _resolve_ollama_selected_model(
     available_models = set(
         _available_models_for_server(models=models, server_name="ollama")
     )
-    requested_model = str(request.model or "").strip()
+    selected_model = resolve_ollama_selection(selected_model, models)
+    requested_model = resolve_ollama_selection(str(request.model or "").strip(), models)
     explicit_alias_request = bool(requested_alias) or is_feedback_loop_alias(
         requested_model
     )
@@ -3013,6 +3030,18 @@ async def _set_active_llm_server_impl(
 
     if not llm_controller.has_server(server_name):
         raise HTTPException(status_code=404, detail="Nieznany serwer LLM")
+
+    if server_name == "ollama":
+        assert model_manager is not None
+        observed_models = await model_manager.list_local_models()
+        preview, _ = _resolve_selected_model_for_switch(
+            request=request,
+            server_name=server_name,
+            config=config_manager.get_config(mask_secrets=False),
+            models=observed_models,
+        )
+        # Read-only identity checks precede stopping or starting any runtime.
+        resolve_ollama_selection(preview, observed_models)
 
     active_runtime = get_active_llm_runtime()
     from_server = str(getattr(active_runtime, "provider", "") or "").strip().lower()

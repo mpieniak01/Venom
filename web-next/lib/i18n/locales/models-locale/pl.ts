@@ -271,6 +271,8 @@ export const models = {
     run: "Uruchom",
   },
   status: {
+    unresolvedVariant: 'nierozpoznany wariant',
+    chooseGemmaVariant: 'Wybierz jawnie Gemma4 E4B IT Q4_K_M albo Gemma4 12B IT Q4_K_M. Wariant aliasu latest nie został potwierdzony.',
     loaded: "Załadowany",
     unloaded: "Niezaładowany",
     loadedUnknown: "Stan pamięci niepotwierdzony",

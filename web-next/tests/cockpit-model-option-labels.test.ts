@@ -57,3 +57,14 @@ describe("cockpit runtime model labels", () => {
     assert.equal(label, "gemma3:latest <-> gemma-3-4b-it [ollama]");
   });
 });
+
+
+describe("Gemma4 operator labels", () => {
+  it("uses explicit variant labels without changing request IDs", () => {
+    const t = (key: string) => key;
+    assert.equal(formatRuntimeModelOptionLabel({name:"gemma4:e4b",runtime_id:"ollama",display_name:"Gemma4 E4B IT Q4_K_M"},t),
+                 "Gemma4 E4B IT Q4_K_M [ollama]");
+    assert.equal(formatRuntimeModelOptionLabel({name:"gemma4:12b-it-q4_K_M",runtime_id:"ollama"},t),
+                 "Gemma4 12B IT Q4_K_M [ollama]");
+  });
+});

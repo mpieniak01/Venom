@@ -1,3 +1,4 @@
+import { chatModelLabel } from "./chat-model-options";
 import { canonicalRuntimeId } from "@/lib/runtime-id";
 
 export type VoiceRuntimeSwitchState = "idle" | "switching" | "ready" | "failed";
@@ -126,9 +127,9 @@ function resolveSwitchStateFromServerControl(
   return "idle";
 }
 
-export function formatVoiceRuntimeTuple(runtime: string | null | undefined, model: string | null | undefined): string {
+export function formatVoiceRuntimeTuple(runtime: string | null | undefined, model: string | null | undefined, unresolvedLabel?: string): string {
   const normalizedRuntime = canonicalRuntimeId(coerce(runtime));
-  const normalizedModel = coerce(model);
+  const normalizedModel = chatModelLabel(coerce(model), undefined, normalizedRuntime, unresolvedLabel);
   return `${normalizedRuntime || "—"} / ${normalizedModel || "—"}`;
 }
 

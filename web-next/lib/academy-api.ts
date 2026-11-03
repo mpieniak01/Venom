@@ -380,6 +380,12 @@ export interface TrainableModelInfo {
 }
 
 export interface RuntimeCatalogModelInfo {
+  selection_supported?: boolean;
+  selection_block_reason?: string;
+  selection_block_code?: string;
+  display_name?: string;
+  digest?: string;
+  quantization?: string;
   id: string;
   name: string;
   provider: string;

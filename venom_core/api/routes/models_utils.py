@@ -10,6 +10,7 @@ from typing import Any, Dict, List
 from fastapi import HTTPException
 
 from venom_core.config import SETTINGS
+from venom_core.services.ollama_model_identity import resolve_ollama_model_name
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -251,3 +252,14 @@ def read_vllm_generation_config(model_name: str) -> Dict[str, Any]:
             return {}
 
     return {}
+
+
+def resolve_ollama_selection(name: str, models: list[dict[str, Any]]) -> str:
+    """Reject an unresolved moving Gemma tag before runtime mutation."""
+    try:
+        return resolve_ollama_model_name(name, models, require_explicit=True)
+    except ValueError as error:
+        raise HTTPException(
+            status_code=400,
+            detail={"code": "gemma4_variant_unresolved", "message": str(error)},
+        ) from error

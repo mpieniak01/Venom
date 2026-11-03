@@ -84,14 +84,32 @@ class RemoteInference:
         self.selector.register(self.process.stdout, selectors.EVENT_READ)
         try:
             self.ready = self.receive(180)
+            from venom_core.services.remote_training.host import is_gemma_model
+
+            model = self.ready.get("model")
+            context = self.ready.get("inference", {}).get("context")
+            expected = (
+                {**INFERENCE, "context": context}
+                if is_gemma_model(model)
+                else INFERENCE
+            )
             if (
                 self.ready.get("adapter_sha256") != args.adapter_sha256
-                or self.ready.get("inference") != INFERENCE
+                or self.ready.get("inference") != expected
+                or (
+                    is_gemma_model(model)
+                    and (type(context) is not int or not 1 <= context <= 4096)
+                )
             ):
                 raise ValueError("comparison_remote_identity_mismatch")
         except BaseException:
             self.close()
             raise
+        self.profile = SimpleNamespace(
+            model=self.ready.get("model"),
+            context=self.ready["inference"]["context"],
+        )
+        self.comparison_protocol = self.ready.get("protocol", "granite_xml")
         self.torch = SimpleNamespace(cuda=self)
 
     def receive(self, timeout):

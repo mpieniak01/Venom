@@ -149,10 +149,14 @@ tests/test_gemma4_audio_runtime_main.py
 tests/test_gemma4_data_release.py
 tests/test_gemma4_operator_cases.py
 tests/test_gemma4_operator_cli.py
+tests/test_gemma4_operator_corpus.py
+tests/test_gemma4_operator_encoding.py
 tests/test_gemma4_operator_experience.py
 tests/test_gemma4_operator_identity.py
 tests/test_gemma4_operator_material.py
+tests/test_gemma4_operator_preparation.py
 tests/test_gemma4_operator_protocol.py
+tests/test_gemma4_operator_retention.py
 tests/test_gemma4_operator_runtime.py
 tests/test_generation_params_adapter.py
 tests/test_generation_params_integration.py
@@ -282,6 +286,7 @@ tests/test_nodes_init_exports.py
 tests/test_nodes_utility_contracts.py
 tests/test_notifier.py
 tests/test_ollama_agent_loop.py
+tests/test_ollama_model_identity.py
 tests/test_ollama_runtime_policy.py
 tests/test_ollama_runtime_probe.py
 tests/test_ollama_tuning.py
@@ -296,6 +301,8 @@ tests/test_openrouter_runtime.py
 tests/test_openrouter_test_zero.py
 tests/test_openrouter_wheel.py
 tests/test_operator_agent.py
+tests/test_operator_comparison_contract.py
+tests/test_operator_training_contract.py
 tests/test_optional_modules_contracts_guard.py
 tests/test_oracle_agent.py
 tests/test_orchestrator_bootstrap.py
@@ -340,7 +347,9 @@ tests/test_remote_models_service.py
 tests/test_remote_provider_control.py
 tests/test_remote_training_bundles.py
 tests/test_remote_training_environment.py
+tests/test_remote_training_gemma_dispatch.py
 tests/test_remote_training_host.py
+tests/test_remote_training_host_gemma.py
 tests/test_remote_training_import.py
 tests/test_remote_training_lifecycle.py
 tests/test_remote_training_milestones.py

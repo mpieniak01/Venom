@@ -21,6 +21,11 @@ from venom_core.core.model_inventory import (
     nonempty_file,
 )
 from venom_core.infrastructure.traffic_control import TrafficControlledHttpClient
+from venom_core.services.ollama_model_identity import (
+    EXPLICIT_GEMMA_TAGS,
+    LATEST_GEMMA_TAG,
+    canonical_ollama_entries,
+)
 from venom_core.utils.logger import get_logger
 from venom_core.utils.url_policy import apply_http_policy_to_url, build_http_url
 
@@ -372,7 +377,7 @@ class ModelManagerDiscoveryMixin:
     ) -> List[Dict[str, Any]]:
         ollama_models_by_digest: Dict[str, Dict[str, Any]] = {}
         entries: List[Dict[str, Any]] = []
-        for model in ollama_models:
+        for model in canonical_ollama_entries(ollama_models):
             size_bytes = model.get("size", 0)
             entry_name = model.get("name", "unknown")
             digest = model.get("digest", "")
@@ -389,7 +394,14 @@ class ModelManagerDiscoveryMixin:
                 "provider": "ollama",
                 "active": False,
                 "digest": digest,
+                "details": model.get("details", {}),
+                "display_name": model.get("display_name", entry_name),
+                "aliases": model.get("aliases", []),
+                "ollama_alias_evidence": model.get("ollama_alias_evidence", {}),
             }
+            if entry_name in EXPLICIT_GEMMA_TAGS or entry_name == LATEST_GEMMA_TAG:
+                entries.append(entry)
+                continue
             if not digest:
                 entries.append(entry)
                 continue
@@ -435,6 +447,7 @@ class ModelManagerDiscoveryMixin:
                     and current["digest"] == entry.get("digest")
                 ):
                     current["quantization"] = entry.get("quantization", "unknown")
+                    current["details"] = entry.get("details", {})
         except (OSError, ValueError, TypeError, AttributeError):
             logger.debug("Ignoring unavailable historical Ollama metadata")
 
@@ -594,4 +607,10 @@ class ModelManagerDiscoveryMixin:
                 os.getenv("ACTIVE_LLM_SERVER", "").strip().lower() or "unknown",
             )
 
-        return list(models.values())
+        local = [
+            model for model in models.values() if model.get("provider") != "ollama"
+        ]
+        ollama = [
+            model for model in models.values() if model.get("provider") == "ollama"
+        ]
+        return local + canonical_ollama_entries(ollama)

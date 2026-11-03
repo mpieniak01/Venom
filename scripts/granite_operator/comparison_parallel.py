@@ -96,28 +96,150 @@ def execution_from_args(args):
     return value
 
 
+def _has_images(messages):
+    return any(
+        isinstance(message, dict)
+        and isinstance(message.get("content"), list)
+        and any(
+            part.get("type") == "image"
+            for part in message["content"]
+            if isinstance(part, dict)
+        )
+        for message in messages
+    )
+
+
+def _image_items(messages):
+    for message in messages:
+        content = message.get("content")
+        if isinstance(content, list):
+            yield from (
+                item
+                for item in content
+                if isinstance(item, dict) and item.get("type") == "image"
+            )
+
+
+def _open_image(item):
+    from pathlib import Path
+
+    from PIL import Image
+
+    from venom_core.services.granite_operator.contract import file_digest
+    from venom_core.services.remote_training.paths import operator_path
+
+    path = operator_path(Path(item["path"]))
+    if file_digest(path) != item["sha256"]:
+        raise ValueError("comparison_image_hash_changed")
+    with Image.open(path) as source:
+        if source.width * source.height > 16_000_000:
+            raise ValueError("comparison_image_pixels_exceeded")
+        return source.convert("RGB")
+
+
+def _image_payload(session, messages, tools):
+    from venom_core.services.gemma4_operator.protocol import render_messages
+
+    if getattr(session, "gemma_profile", None) is None:
+        raise ValueError("comparison_image_backend_unsupported")
+    processor = getattr(session, "processor", None)
+    if processor is None:
+        from transformers import AutoProcessor
+
+        processor = AutoProcessor.from_pretrained(
+            session.snapshot,
+            local_files_only=True,
+            trust_remote_code=False,
+            use_fast=False,
+        )
+        session.processor = processor
+    images = []
+    for index, item in enumerate(_image_items(messages)):
+        if index >= 4:
+            raise ValueError("comparison_image_count_exceeded")
+        images.append(_open_image(item))
+    text = render_messages(processor, messages, tools, session.gemma_profile)
+    return processor(text=text, images=images, return_tensors="pt")
+
+
+def _generate_image(session, request, inference):
+    from scripts.granite_operator.comparison import generation_options
+
+    messages, tools, arm, deadline = request
+    payload = _image_payload(session, messages, tools)
+    length = payload["input_ids"].shape[-1]
+    if length + inference["max_new_tokens"] > inference["context"]:
+        raise ValueError("comparison_context_limit")
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise TimeoutError("comparison_task_deadline")
+    payload = payload.to("cuda", dtype=session.torch.bfloat16)
+    context = (
+        session.model.disable_adapter() if arm == "base" else contextlib.nullcontext()
+    )
+    session.torch.cuda.synchronize()
+    start = time.monotonic()
+    with context, session.torch.inference_mode():
+        output = session.model.generate(
+            **payload,
+            max_new_tokens=inference["max_new_tokens"],
+            do_sample=False,
+            use_cache=True,
+            max_time=remaining,
+            pad_token_id=session.tokenizer.pad_token_id,
+            **generation_options(session),
+        )
+    session.torch.cuda.synchronize()
+    generated = output[0, length:].tolist()
+    stops = set(generation_options(session).get("eos_token_id", []))
+    for index, token in enumerate(generated):
+        if int(token) in stops:
+            generated = generated[: index + 1]
+            break
+    return {
+        "text": session.tokenizer.decode(generated, skip_special_tokens=False),
+        "seconds": time.monotonic() - start,
+        "tokens": len(generated),
+        "input_tokens": length,
+        "batch_size": 1,
+        "modality": "image_text",
+        "execution": "serialized_on_shared_model",
+    }
+
+
 def generate_batch(session, requests):
     """Run only on the scheduler thread; never toggle PEFT from task threads."""
-    from scripts.granite_operator.comparison import INFERENCE
+    from scripts.granite_operator.comparison import (
+        encode_prompt,
+        generation_options,
+        inference_settings,
+    )
 
+    inference = inference_settings(session)
+    from venom_core.services.remote_training.host import is_gemma_model
+
+    if is_gemma_model(getattr(getattr(session, "profile", None), "model", None)):
+        from venom_core.services.gemma4_operator.training_worker import (
+            require_cuda_placement,
+        )
+
+        require_cuda_placement(session.model)
     arm = requests[0][2]
     if any(r[2] != arm for r in requests):
         raise ValueError("comparison_mixed_adapter_batch")
     tokenizer, torch = session.tokenizer, session.torch
-    encoded = [
-        tokenizer.apply_chat_template(
-            r[0],
-            tools=r[1],
-            enable_thinking=False,
-            truncate_history_thinking=False,
-            tokenize=True,
-            add_generation_prompt=True,
-            return_dict=False,
-        )
-        for r in requests
-    ]
+    if any(_has_images(request[0]) for request in requests):
+        results = [
+            _generate_image(session, request, inference)
+            if _has_images(request[0])
+            else generate_batch(session, [request])[0]
+            for request in requests
+        ]
+        results[0]["batch_total_seconds"] = sum(row["seconds"] for row in results)
+        return results
+    encoded = [encode_prompt(session, request[0], request[1]) for request in requests]
     if any(
-        len(ids) + INFERENCE["max_new_tokens"] > INFERENCE["context"] for ids in encoded
+        len(ids) + inference["max_new_tokens"] > inference["context"] for ids in encoded
     ):
         raise ValueError("comparison_context_limit")
     previous = tokenizer.padding_side
@@ -139,11 +261,12 @@ def generate_batch(session, requests):
     with context, torch.inference_mode():
         output = session.model.generate(
             **ids,
-            max_new_tokens=INFERENCE["max_new_tokens"],
+            max_new_tokens=inference["max_new_tokens"],
             do_sample=False,
             use_cache=True,
             max_time=remaining,
             pad_token_id=tokenizer.pad_token_id,
+            **generation_options(session),
         )
     torch.cuda.synchronize()
     seconds = time.monotonic() - start
@@ -157,6 +280,9 @@ def generate_batch(session, requests):
         stop_ids = set(
             configured if isinstance(configured, (list, tuple)) else [configured]
         )
+        native_stops = generation_options(session).get("eos_token_id")
+        if native_stops is not None:
+            stop_ids = set(native_stops)
         stop_ids.add(tokenizer.eos_token_id)
         for position, token in enumerate(tokens):
             if token in stop_ids:
@@ -193,13 +319,16 @@ class TaskScheduler:
         }
         # Concurrent trials cannot reset shared CUDA peaks or perform GPU RPCs.
         self.trial_session = SimpleNamespace(
+            profile=getattr(session, "profile", None),
+            gemma_profile=getattr(session, "gemma_profile", None),
+            comparison_protocol=getattr(session, "comparison_protocol", None),
             torch=SimpleNamespace(
                 cuda=SimpleNamespace(
                     reset_peak_memory_stats=lambda: None,
                     max_memory_allocated=lambda: None,
                     max_memory_reserved=lambda: None,
                 )
-            )
+            ),
         )
 
     def generate(self, _session, messages, tools, arm, deadline):
@@ -242,14 +371,16 @@ class TaskScheduler:
         if len(generated) != len(batch):
             raise RuntimeError("comparison_batch_response_invalid")
         self.stats["batch_call_seconds"] += time.monotonic() - start
-        self.stats["gpu_batch_seconds"] += generated[0]["seconds"]
+        self.stats["gpu_batch_seconds"] += generated[0].get(
+            "batch_total_seconds", generated[0]["seconds"]
+        )
         self.stats["batches"] += 1
         self.stats["batch_items"] += len(batch)
         for request, value, wait in zip(batch, generated, waits):
             if time.monotonic() >= min(request[3] + wait, self.deadline):
-                error = TimeoutError("comparison_task_deadline")
-                error.queue_seconds = wait
-                request[4].set_exception(error)
+                deadline_error = TimeoutError("comparison_task_deadline")
+                deadline_error.queue_seconds = wait
+                request[4].set_exception(deadline_error)
             else:
                 request[4].set_result({**value, "queue_seconds": wait})
 

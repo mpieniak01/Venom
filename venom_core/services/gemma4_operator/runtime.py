@@ -60,7 +60,9 @@ def registry_metadata(profile: GemmaProfile) -> dict[str, Any]:
     metadata = ModelMetadata(
         name=profile.model,
         provider=ModelProvider.HUGGINGFACE,
-        display_name="Gemma 4 12B IT",
+        display_name=(
+            "Gemma 4 E4B IT" if profile.model.endswith("E4B-it") else "Gemma 4 12B IT"
+        ),
         status=ModelStatus.AVAILABLE,
         runtime=MULTI_RUNTIME_ID,
         capabilities=ModelCapabilities(

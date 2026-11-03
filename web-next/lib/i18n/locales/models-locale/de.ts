@@ -271,6 +271,8 @@ export const models = {
     run: "Starten",
   },
   status: {
+    unresolvedVariant: 'nicht bestimmte Variante',
+    chooseGemmaVariant: 'Wählen Sie ausdrücklich Gemma4 E4B IT Q4_K_M oder Gemma4 12B IT Q4_K_M. Die Variante des latest-Alias wurde nicht bestätigt.',
     loaded: "Geladen",
     unloaded: "Nicht geladen",
     loadedUnknown: "Speicherzustand unbestätigt",

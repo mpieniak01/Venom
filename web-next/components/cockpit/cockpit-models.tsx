@@ -275,10 +275,10 @@ export function CockpitModels({
               </Button>
             </span>
             <span>
-              Aktywny: {formatVoiceRuntimeTuple(runtimeState.active.runtimeId, runtimeState.active.modelName)}
+              Aktywny: {formatVoiceRuntimeTuple(runtimeState.active.runtimeId, runtimeState.active.modelName, t("models.status.unresolvedVariant"))}
             </span>
             <span>
-              Wybrany: {formatVoiceRuntimeTuple(runtimeState.selected.runtimeId, runtimeState.selected.modelName)}
+              Wybrany: {formatVoiceRuntimeTuple(runtimeState.selected.runtimeId, runtimeState.selected.modelName, t("models.status.unresolvedVariant"))}
             </span>
             <span>
               Stan switcha: {runtimeState.switch.state}

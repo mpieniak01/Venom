@@ -10,6 +10,7 @@ export function runtimeControlErrorCode(error: unknown): string | null {
 
 export function runtimeControlErrorHint(error: unknown, t: (key: string) => string): string | null {
   const code = runtimeControlErrorCode(error);
+  if (code === "gemma4_variant_unresolved") return t("models.status.chooseGemmaVariant");
   if (code === "runtime_recovery_required") return t("cockpit.modelActivation.recoveryRequired");
   if (code === "runtime_busy") return t("cockpit.modelActivation.runtimeBusy");
   if (code === "remote_provider_disabled") return t("cockpit.modelActivation.providerDisabled");

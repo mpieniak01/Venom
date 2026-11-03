@@ -7961,6 +7961,132 @@
       ],
       "legacy_targeted": false,
       "rationale": "Explicit Ollama 12B model selection is bound to the training checkpoint without following moving aliases."
+    },
+    {
+      "path": "tests/test_gemma4_operator_corpus.py",
+      "domain": "academy",
+      "test_type": "service_contract",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Dual Gemma preparation, GPU training and explicit model choice contracts."
+    },
+    {
+      "path": "tests/test_gemma4_operator_encoding.py",
+      "domain": "academy",
+      "test_type": "service_contract",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Dual Gemma preparation, GPU training and explicit model choice contracts."
+    },
+    {
+      "path": "tests/test_gemma4_operator_preparation.py",
+      "domain": "academy",
+      "test_type": "service_contract",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Dual Gemma preparation, GPU training and explicit model choice contracts."
+    },
+    {
+      "path": "tests/test_gemma4_operator_retention.py",
+      "domain": "academy",
+      "test_type": "service_contract",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Dual Gemma preparation, GPU training and explicit model choice contracts."
+    },
+    {
+      "path": "tests/test_ollama_model_identity.py",
+      "domain": "models",
+      "test_type": "service_contract",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Dual Gemma preparation, GPU training and explicit model choice contracts."
+    },
+    {
+      "path": "tests/test_operator_comparison_contract.py",
+      "domain": "academy",
+      "test_type": "service_contract",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Dual Gemma preparation, GPU training and explicit model choice contracts."
+    },
+    {
+      "path": "tests/test_operator_training_contract.py",
+      "domain": "academy",
+      "test_type": "service_contract",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Dual Gemma preparation, GPU training and explicit model choice contracts."
+    },
+    {
+      "path": "tests/test_remote_training_gemma_dispatch.py",
+      "domain": "academy",
+      "test_type": "service_contract",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Dual Gemma preparation, GPU training and explicit model choice contracts."
+    },
+    {
+      "path": "tests/test_remote_training_host_gemma.py",
+      "domain": "academy",
+      "test_type": "service_contract",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Dual Gemma preparation, GPU training and explicit model choice contracts."
     }
   ]
 }

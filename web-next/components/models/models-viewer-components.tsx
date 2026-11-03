@@ -1,3 +1,4 @@
+import { chatModelLabel, isSelectableChatModel } from "@/lib/chat-model-options";
 import React from "react";
 import { ChevronDown } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -96,7 +97,7 @@ export const CatalogCard = ({
         <div className="rounded-3xl box-base p-5 text-[color:var(--text-primary)] shadow-card">
             <div className="flex items-start justify-between gap-4">
                 <div>
-                    <p className="text-lg font-semibold">{model.display_name}</p>
+                    <p className="text-lg font-semibold">{chatModelLabel(model.model_name, model.display_name, model.provider, t("models.status.unresolvedVariant"))}</p>
                     <p className="text-xs text-[color:var(--ui-muted)]">{model.model_name}</p>
                 </div>
                 <Badge tone="neutral">{model.runtime}</Badge>
@@ -122,7 +123,7 @@ export const CatalogCard = ({
                 className="mt-4 rounded-full px-4"
                 size="sm"
                 variant="secondary"
-                disabled={pending}
+                disabled={pending || !isSelectableChatModel({name:model.model_name,provider:model.provider})}
                 onClick={onAction}
             >
                 {pending ? t("models.actions.installing") : actionLabel}
@@ -147,8 +148,8 @@ export const EnrichedCatalogCard = ({
         <div className="rounded-3xl box-base p-5 text-[color:var(--text-primary)] shadow-card">
             <div className="flex items-start justify-between gap-4">
                 <div>
-                    <p className="text-lg font-semibold">{model.display_name || model.name}</p>
-                    <p className="text-xs text-[color:var(--ui-muted)]">{model.name}</p>
+                    <p className="text-lg font-semibold">{chatModelLabel(model.name, model.display_name, model.provider, t("models.status.unresolvedVariant"))}</p>
+                    <p className="text-xs text-[color:var(--ui-muted)]">{chatModelLabel(model.name, model.display_name, model.provider, t("models.status.unresolvedVariant"))}</p>
                 </div>
                 <Badge tone="neutral">{model.runtime || "vllm"}</Badge>
             </div>
@@ -187,7 +188,7 @@ export const EnrichedCatalogCard = ({
                 className="mt-4 rounded-full px-4"
                 size="sm"
                 variant="secondary"
-                disabled={pending}
+                disabled={pending || !isSelectableChatModel(model)}
                 onClick={onAction}
             >
                 {pending ? t("models.actions.installing") : actionLabel}
@@ -213,7 +214,7 @@ export const InstalledCard = ({
 }) => {
     const { t } = useLanguage();
     const providerLabel = model.provider ?? model.source ?? "—";
-    const canActivate = model.activation_supported !== false && model.chat_compatible !== false && ["ollama", "vllm", "onnx"].includes(providerLabel);
+    const canActivate = isSelectableChatModel({...model, provider:providerLabel}) && model.activation_supported !== false && model.chat_compatible !== false && ["ollama", "vllm", "onnx"].includes(providerLabel);
     const loaded = model.loaded ?? false;
     let loadedLabel = loaded ? "models.status.loaded" : "models.status.unloaded";
     if (model.loaded == null) loadedLabel = "models.status.loadedUnknown";
@@ -221,7 +222,7 @@ export const InstalledCard = ({
         <div className="rounded-2xl box-base px-3 py-3 text-[color:var(--text-primary)] shadow-card">
             <div className="flex flex-wrap items-start justify-between gap-2">
                 <div className="min-w-0 flex-1 basis-32">
-                    <p className="break-words text-sm font-medium leading-tight">{model.name}</p>
+                    <p className="break-words text-sm font-medium leading-tight">{chatModelLabel(model.name, model.display_name, model.provider, t("models.status.unresolvedVariant"))}</p>
                     <p className="mt-1 text-[11px] text-[color:var(--ui-muted)]">
                         {getInstalledModelSizeLabel(t, model.size_gb)}{" "}
                         • {providerLabel}{model.revision ? ` · ${model.revision.slice(0, 8)}` : ""}
@@ -243,7 +244,7 @@ export const InstalledCard = ({
                 >
                     {pendingActivate ? t("models.actions.activating") : t("models.actions.activate")}
                 </Button>}
-                {!canActivate && <span className="text-[11px] text-[color:var(--ui-muted)]">{t("models.status.dedicatedRuntime")}</span>}
+                {!canActivate && <span className="text-[11px] text-[color:var(--ui-muted)]">{model.selection_block_code === "gemma4_variant_unresolved" ? t("models.status.chooseGemmaVariant") : (model.selection_block_reason || t("models.status.dedicatedRuntime"))}</span>}
                 {onRemove && allowRemoveProviders.has(model.provider ?? model.source ?? "") && (
                     <Button
                         className="rounded-full px-3 text-[11px]"

@@ -49,7 +49,7 @@ def test_alias_does_not_select_a_different_training_model(tag):
     profile = GemmaProfile.load(PROFILE)
     model = {"name": tag, "digest": "a" * 64}
     data = observed()
-    with pytest.raises(ValueError, match="explicit_12b"):
+    with pytest.raises(ValueError, match="explicit_variant"):
         bind_ollama(profile, model, data)
 
 
@@ -76,4 +76,29 @@ def test_text_only_backend_cannot_claim_multimodal_binding():
     data = observed()
     data["capabilities"] = ["completion"]
     with pytest.raises(ValueError, match="capabilities_missing"):
+        bind_ollama(profile, model, data)
+
+
+def test_e4b_has_its_own_bound_architecture_and_training_loader():
+    from venom_core.services.gemma4_operator.profile import E4B_LOADER
+
+    profile = GemmaProfile.load(Path("config/gemma4_operator_e4b_profile.json"))
+    data = observed()
+    data["model_info"].update(
+        {
+            "general.parameter_count": 7518069290,
+            "gemma4.block_count": 42,
+            "gemma4.embedding_length": 2560,
+        }
+    )
+    result = bind_ollama(profile, {"name": "gemma4:e4b", "digest": "b" * 64}, data)
+    assert result["training_checkpoint"]["loader"] == E4B_LOADER
+    assert result["ollama"]["architecture"]["gemma4.block_count"] == 42
+
+
+def test_e4b_profile_rejects_12b_observations():
+    profile = GemmaProfile.load(Path("config/gemma4_operator_e4b_profile.json"))
+    model = {"name": "gemma4:e4b", "digest": "b" * 64}
+    data = observed()
+    with pytest.raises(ValueError, match="architecture_mismatch"):
         bind_ollama(profile, model, data)

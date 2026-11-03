@@ -15,6 +15,7 @@ from venom_core.core.model_registry_types import (
     ModelProvider,
     ModelStatus,
 )
+from venom_core.services.ollama_model_identity import canonical_ollama_entries
 from venom_core.utils.logger import get_logger
 from venom_core.utils.url_policy import build_http_url
 
@@ -107,7 +108,7 @@ class OllamaModelProvider(BaseModelProvider):
         models = []
         try:
             data = await self.client.list_tags()
-            for model in data.get("models", []):
+            for model in canonical_ollama_entries(data.get("models", [])):
                 name = model.get("name", "unknown")
                 size_bytes = model.get("size", 0)
 
@@ -125,7 +126,7 @@ class OllamaModelProvider(BaseModelProvider):
                     ModelMetadata(
                         name=name,
                         provider=ModelProvider.OLLAMA,
-                        display_name=name,
+                        display_name=model.get("display_name", name),
                         size_gb=size_bytes / (1024**3) if size_bytes else None,
                         status=ModelStatus.INSTALLED,
                         runtime="ollama",

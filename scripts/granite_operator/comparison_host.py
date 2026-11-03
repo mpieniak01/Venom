@@ -11,6 +11,7 @@ import sys
 import time
 from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
 
 from scripts.granite_operator.comparison_parallel import Execution, TaskScheduler
 from scripts.granite_operator.comparison_support import load_frozen, summarize
@@ -19,8 +20,11 @@ from venom_core.services.granite_operator.contract import (
     file_digest,
     write_json,
 )
-from venom_core.services.remote_training.host import load_host
-from venom_core.services.remote_training.verification import validate_local
+from venom_core.services.remote_training.host import is_gemma_model, load_host
+from venom_core.services.remote_training.verification import (
+    execution_backend,
+    validate_local,
+)
 
 
 def adapter_source(request):
@@ -136,6 +140,45 @@ def evaluate_trials(
     return rows, metrics
 
 
+def configure_session(session, profile, adapter_root, snapshot):
+    """Preserve the sealed variant and attach its native inference protocol."""
+    session.snapshot = Path(snapshot)
+    if is_gemma_model(getattr(profile, "model", None)):
+        from venom_core.services.gemma4_operator.profile import GemmaProfile
+
+        document = json.loads((Path(adapter_root) / "data-manifest.json").read_text())
+        session.gemma_profile = GemmaProfile(**document["model_profile"])
+        session.comparison_protocol = "gemma4"
+
+
+def image_preflight(profile, adapter_root, snapshot, cases, dataset):
+    """Qualify every frozen image input on CPU before loading GPU weights."""
+    selected = [case for case in cases if case.get("images")]
+    if not selected:
+        return None, {"image_cases": 0, "gpu_qualified": False}
+    if not is_gemma_model(profile.model):
+        raise ValueError("comparison_image_backend_unsupported")
+    from scripts.granite_operator.comparison import case_messages, inference_settings
+    from scripts.granite_operator.comparison_parallel import _image_payload
+
+    probe = SimpleNamespace(profile=profile)
+    configure_session(probe, profile, adapter_root, snapshot)
+    settings = inference_settings(probe)
+    maximum = 0
+    for case in selected:
+        payload = _image_payload(probe, case_messages(case, dataset), case["tools"])
+        count = payload["input_ids"].shape[-1]
+        if count + settings["max_new_tokens"] > settings["context"]:
+            raise ValueError("comparison_context_limit")
+        maximum = max(maximum, count)
+    return probe.processor, {
+        "image_cases": len(selected),
+        "maximum_input_tokens": maximum,
+        "processor": type(probe.processor).__name__,
+        "gpu_qualified": False,
+    }
+
+
 def inference_profile(profile, precision):
     """Select evaluation precision without altering training provenance or bytes."""
     if precision not in ("trained", "nf4", "bf16"):
@@ -147,24 +190,69 @@ def inference_profile(profile, precision):
     return result
 
 
-def worker(request):
-    from scripts.granite_operator.comparison import INFERENCE
-    from venom_core.services.granite_operator.engine import Session, require_owner
+def warmup_session(session, cases, dataset):
+    """Warm text and one frozen image equally in both arms, outside trial timing."""
+    from scripts.granite_operator.comparison import case_messages, generate
 
-    require_owner()
+    probes = [
+        (
+            "text",
+            [
+                {"role": "system", "content": cases[0]["system"]},
+                {
+                    "role": "user",
+                    "content": "Call Finish with status success and summary ready.",
+                },
+            ],
+            cases[0]["tools"],
+        )
+    ]
+    image_case = next((case for case in cases if case.get("images")), None)
+    if image_case is not None:
+        probes.append(
+            ("image_text", case_messages(image_case, dataset), image_case["tools"])
+        )
+    counts = {}
+    for modality, messages, tools in probes:
+        for arm in ("base", "adapter", "adapter", "base"):
+            generate(session, messages, tools, arm, time.monotonic() + 60)
+        counts[modality] = 4
+    return {"generations": counts, "included_in_trial_timing": False}
+
+
+def worker(request):
+    from scripts.granite_operator.comparison import inference_settings
+
     execution = Execution(**request["execution"])
     execution.validate()
     host, portable, profile = adapter_source(request)
+    session_type, owner_check, _ = execution_backend(profile.model)
+    owner_check()
     evaluation_profile = inference_profile(
         profile, request.get("inference_precision", "trained")
     )
-    if profile.context != INFERENCE["context"]:
+    inference = inference_settings(SimpleNamespace(profile=profile))
+    if not is_gemma_model(profile.model) and profile.context != inference["context"]:
         raise ValueError("comparison_context_profile_mismatch")
     output = Path(request["output"])
     manifest, cases = load_frozen(Path(request["cases"]))
     if not cases or manifest.get("qualification", {}).get("status") != "PASS":
         raise ValueError("comparison_cases_not_qualified")
+    processor, image_inputs = image_preflight(
+        profile,
+        request["adapter_root"],
+        host["snapshot"],
+        cases,
+        Path(request["cases"]).parent,
+    )
     identity = {
+        "model": profile.model,
+        "revision": profile.revision,
+        "loader": profile.identity().get("loader", "AutoModelForCausalLM"),
+        "gpu_required": True,
+        "cpu_fallback": False,
+        "model_copy_count": 1,
+        "image_input_preflight": image_inputs,
         "dataset_sha256": file_digest(Path(request["cases"])),
         "adapter_sha256": request["expected_adapter_sha256"],
         "portable_identity_sha256": digest(portable),
@@ -178,7 +266,7 @@ def worker(request):
             name: importlib.metadata.version(name)
             for name in ("torch", "transformers", "peft", "bitsandbytes")
         },
-        "inference": INFERENCE,
+        "inference": inference,
         "source_sha256": {
             p.name: file_digest(p)
             for p in [
@@ -207,29 +295,20 @@ def worker(request):
         capture_output=True,
         timeout=20,
     )
-    session = Session(
+    session = session_type(
         evaluation_profile, Path(host["snapshot"]), Path(request["adapter_root"])
     )
+    configure_session(session, profile, request["adapter_root"], host["snapshot"])
+    if processor is not None:
+        session.processor = processor
     session.model.eval()
     session.model.requires_grad_(False)
     session.model.gradient_checkpointing_disable()
     session.torch.set_num_threads(4)
-    from scripts.granite_operator.comparison import generate
-
-    for arm in ("base", "adapter", "adapter", "base"):
-        generate(
-            session,
-            [
-                {"role": "system", "content": cases[0]["system"]},
-                {
-                    "role": "user",
-                    "content": "Call Finish with status success and summary ready.",
-                },
-            ],
-            cases[0]["tools"],
-            arm,
-            time.monotonic() + 60,
-        )
+    write_json(
+        output / "warmup.json",
+        warmup_session(session, cases, Path(request["cases"]).parent),
+    )
     rows, metrics = evaluate_trials(
         session, cases, manifest, request, output, rows=rows
     )
@@ -241,7 +320,7 @@ def worker(request):
         "case_count": len(cases),
         "execution": execution.validate(),
         "execution_metrics": metrics,
-        "inference": INFERENCE,
+        "inference": inference,
         "qualification": "diagnostic_requires_serial_comparison",
         "placement": identity["placement"],
     }

@@ -111,6 +111,19 @@ def changed(before: dict, after: dict, allowed: list[str]) -> list[str]:
     )
 
 
+def validate_case_images(case: dict, root: Path, files: dict) -> None:
+    images = case.get("images", [])
+    if not isinstance(images, list) or len(images) > 4:
+        raise ValueError("comparison_case_images_invalid")
+    for image in images:
+        if not isinstance(image, dict) or set(image) != {"path", "sha256"}:
+            raise ValueError("comparison_case_images_invalid")
+        name, checksum = image["path"], image["sha256"]
+        if not isinstance(name, str) or files.get(name) != checksum:
+            raise ValueError("comparison_image_not_frozen")
+        inside(root, name)
+
+
 def load_frozen(manifest_path: Path) -> tuple[dict, list[dict]]:
     manifest = json.loads(manifest_path.read_text())
     root = manifest_path.parent.resolve()
@@ -128,6 +141,7 @@ def load_frozen(manifest_path: Path) -> tuple[dict, list[dict]]:
     ):
         raise ValueError("comparison_cases_invalid")
     for case in cases:
+        validate_case_images(case, root, manifest["files"])
         if not re.fullmatch(r"[a-z0-9_-]{1,80}", case["id"]):
             raise ValueError("comparison_case_id_invalid")
         folder = (root / case["fixture"]).resolve()

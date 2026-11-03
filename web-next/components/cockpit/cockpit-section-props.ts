@@ -34,6 +34,8 @@ export function formatRuntimeModelOptionLabel(
     "name" | "feedback_loop_tier" | "canonical_model_id"
   > & {
     runtime_id?: string;
+    provider?: string;
+    display_name?: string;
   },
   t: (key: string) => string,
 ): string {
@@ -43,7 +45,7 @@ export function formatRuntimeModelOptionLabel(
     canonicalAlias && canonicalAlias.toLowerCase() !== model.name.toLowerCase()
       ? ` <-> ${canonicalAlias}`
       : "";
-  const baseLabel = `${chatModelLabel(model.name)}${aliasSuffix}${runtimeLabel}`;
+  const baseLabel = `${chatModelLabel(model.name, model.display_name, model.provider || model.runtime_id, t("models.status.unresolvedVariant"))}${aliasSuffix}${runtimeLabel}`;
   if (model.feedback_loop_tier === "primary") {
     return `${baseLabel} · ${t("cockpit.models.feedbackLoopPrimaryBadge")}`;
   }

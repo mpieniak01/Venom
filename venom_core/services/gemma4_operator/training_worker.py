@@ -365,13 +365,14 @@ def _validate_training_qualification(
     mask_evidence: dict,
 ) -> None:
     """Verify sealed smoke evidence before constructing a model or optimizer."""
-    proof = read_json(path)
+    proof_path = operator_path(path)
+    proof = read_json(proof_path)
     require_qualification(proof, fingerprint)
     if proof["smoke_metrics"]["first"]["mask_evidence"] != mask_evidence:
         raise ValueError("gemma_training_qualification_mask_changed")
     verified_checkpoint(proof["checkpoint"], fingerprint)
     for name, checksum in proof.get("artifacts", {}).items():
-        artifact = operator_path(inside(Path(path).parent, name))
+        artifact = operator_path(inside(proof_path.parent, name))
         if file_digest(artifact) != checksum:
             raise ValueError("gemma_training_qualification_artifact_changed")
 

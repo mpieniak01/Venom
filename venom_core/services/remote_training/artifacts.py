@@ -19,12 +19,15 @@ from .bundles import (
     validate_run_id,
 )
 
+DATA_MANIFEST = "data-manifest.json"
+
+
 REQUIRED_FILES = (
     "adapter_model.safetensors",
     "adapter_config.json",
     "identity.json",
     "profile.json",
-    "data-manifest.json",
+    DATA_MANIFEST,
     "metrics.json",
     "environment.json",
     "qualification.json",
@@ -77,7 +80,11 @@ def _files(root: Path, include_checkpoint: bool) -> list[str]:
             for path in sorted(checkpoint.rglob("*")):
                 if path.is_symlink():
                     raise ValueError("remote_training_artifact_symlink")
-                if path.is_file() and path.suffix in _CHECKPOINT_SUFFIXES:
+                allowed = (
+                    path.suffix in _CHECKPOINT_SUFFIXES
+                    or path == checkpoint / "README.md"
+                )
+                if path.is_file() and allowed:
                     name = path.relative_to(root).as_posix()
                     _source(root, name)
                     selected.append(name)
@@ -89,7 +96,8 @@ def _document(root: Path, name: str, errors: list[str]) -> dict[str, Any]:
     if not path.exists():
         return {}
     try:
-        if path.stat().st_size > 8 * 1024**2:
+        limit = 64 * 1024**2 if name == DATA_MANIFEST else 8 * 1024**2
+        if path.stat().st_size > limit:
             raise ValueError("metadata_size")
         value = json.loads(path.read_text())
         if not isinstance(value, dict):
@@ -144,7 +152,7 @@ def inspect_artifacts(
         "metrics.json",
         "environment.json",
         "profile.json",
-        "data-manifest.json",
+        DATA_MANIFEST,
     ):
         if name not in missing and not documents[name]:
             errors.append("metadata_empty:" + name)

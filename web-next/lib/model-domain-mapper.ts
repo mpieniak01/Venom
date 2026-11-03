@@ -5,6 +5,7 @@
  * domain model with source_type, model_role, and academy_trainable classifications.
  */
 
+import { chatModelLabel } from "./chat-model-options";
 import type {
   ModelInfo,
   ModelCatalogEntry,
@@ -137,7 +138,7 @@ export function enrichCatalogModel(
 
   return {
     name: catalogEntry.model_name,
-    display_name: catalogEntry.display_name,
+    display_name: chatModelLabel(catalogEntry.model_name, catalogEntry.display_name, catalogEntry.provider),
     size_gb: catalogEntry.size_gb,
     provider: catalogEntry.provider,
     runtime: catalogEntry.runtime,
@@ -166,7 +167,7 @@ export function enrichInstalledModel(
 
   return {
     name: modelInfo.name,
-    display_name: modelInfo.name,
+    display_name: chatModelLabel(modelInfo.name, modelInfo.display_name, modelInfo.provider),
     size_gb: modelInfo.size_gb,
     provider: modelInfo.provider || "unknown",
     runtime: modelInfo.type,

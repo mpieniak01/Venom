@@ -1,6 +1,7 @@
-# Gemma 4 operator: CPU preparation and remote qualification
+# Gemma 4 operator: explicit variants and GPU training
 
-This release prepares `google/gemma-4-12B-it` as a candidate decision model and
+This release supports `google/gemma-4-E4B-it` and `google/gemma-4-12B-it`
+as explicitly selectable decision models and
 adds an opt-in execution path through Venom's existing guarded runtime. Model
 selection remains available for chat and other tasks. One selected model can
 conduct a task without requiring separate classifier, planner or critic models;
@@ -254,9 +255,9 @@ candidate selection.
 |---|---|
 | G4-01 identity and protocol | CPU contracts implemented; native GPU cycle deferred |
 | G4-02 selected-model execution | Opt-in guarded dispatch and native history implemented; Gemma GPU tool-loop and durable resume qualification remain |
-| G4-03 evaluation | CPU paired report and offline reference framework implemented; independent final benchmark, model runner and GPU baseline remain |
-| G4-04 material | Canonical validation and immutable release with separate reserve implemented; new G05 corpus and tokenizer masks remain |
-| G4-05 remote SFT | Actual Gemma trainer/dependency lock and training deferred |
+| G4-03 evaluation | Shared GPU comparison runner supports both variants and images; independent final benchmark and measured baselines remain |
+| G4-04 material | Canonical validation and immutable release with separate reserve implemented; G05 V2 and native masks qualified for both variants |
+| G4-05 remote SFT | Both native GPU loaders and LoRA/QLoRA workers implemented; real host qualification and training require an authorized session |
 | G4-06 deployment | Candidate identity only; reload, promotion and activation deferred |
 | G4-07 experiences | Explicit reviewed export from complete runtime traces implemented; independent replay execution remains external |
 | G4-08 DPO | Deferred until verified pairs and qualified remote training |
@@ -270,6 +271,107 @@ Use the existing [remote training lifecycle](REMOTE_TRAINING.md) and
 [Vast startup/recovery procedure](PL/VAST_START_I_ODZYSKIWANIE.md) for subsequent
 authorized remote work. The existing Granite worker must not be used for Gemma
 by merely changing a model ID.
+
+
+## Two model variants and GPU experiments
+
+| Variant | Explicit Ollama name | Profile | Native loader / layers |
+|---|---|---|---|
+| E4B IT | `gemma4:e4b` | `config/gemma4_operator_e4b_profile.json` | `Gemma4ForConditionalGeneration` / 42 |
+| 12B IT | `gemma4:12b-it-q4_K_M` | `config/gemma4_operator_profile.json` | `Gemma4UnifiedForConditionalGeneration` / 48 |
+
+Ollama remains the application inference runtime; the operator keeps model choice.
+Chat, model cards, voice, benchmarks and Academy show explicit variant names.
+A moving legacy Gemma alias resolves only from a unique matching complete
+manifest digest and architecture/precision metadata. Without this proof it is
+read-only diagnostic state and cannot activate a model. Other providers remain
+selectable. The local explicit E4B tag preserves the previously observed E4B
+manifest; creating a tag does not retrain or convert its weights.
+Each experiment binds its explicit tag/digest to a separately pinned training
+checkpoint. Vendor GGUF metadata alone does not prove an HF revision. Merge an
+adapter into its exact training base before conversion/import; arbitrary vendor
+blob adapter injection remains unqualified.
+
+Training, generation and adapter evaluation require GPU. CPU/disk offload and
+silent precision/model changes are rejected. Metadata and dataset validation do
+not load the inference model. A common host recommendation is 48 GB VRAM,
+64 GB RAM and 100 GB disk; capacity and throughput require remote measurement.
+
+G05 V2 is private at `data/training/gemma-g05-v2-20261103-ready/`:
+832 training, 224 validation and 160 diagnostic holdout conversations.
+It retains G04 unchanged and adds 288 executed PL/EN demonstrations of four
+real FileSkill functions across six families. These authored scenarios are not
+human-reviewed production incidents or coverage of every Venom tool.
+An independent 24-case reserve checks summary, translation and image behavior
+with diagnostic lexical oracles. Audio retention remains unqualified.
+
+Both native tokenizers separately encoded all 1,056 train/validation records.
+Excluded turns retain labels -100; native continuation turns receive no invented
+EOS. Packing is disabled; oversize records fail. For this text corpus the vectors
+happen to match, while model/loader/template/processor identities remain separate.
+
+### Preparation
+
+Existing outputs are immutable. Keep material, proofs and bundles outside Git.
+
+```bash
+source .venv/bin/activate
+python scripts/gemma4_operator.py prepare-corpus \
+  --source-root data/training/granite-g04-material-20261102 \
+  --destination data/training/gemma-g05-next
+
+python scripts/gemma4_operator.py prepare-session \
+  --profile config/gemma4_operator_e4b_profile.json --precision nf4 \
+  --source-root data/training/gemma-g05-v2-20261103-ready \
+  --input data/training/gemma4-dual-training-ready-20261103/e4b-it/encoded.json \
+  --binding data/training/gemma4-dual-training-ready-20261103/e4b-it/ollama-binding.json \
+  --snapshot data/training/gemma4-e4b-native-metadata-20261103 \
+  --destination data/training/gemma-session-e4b-qlora-next \
+  --evaluation-cases data/training/gemma4-retention-v2-20261103-ready/manifest.json \
+  --run-id gemma-e4b-qlora-pilot --max-updates 125 --max-seconds 3600
+```
+
+Use `bf16` for LoRA and the 12B profile/snapshot for 12B. These are four
+independent choices, not automatically scheduled jobs. Budgets are explicit
+pilot settings. `encode-material --profile ... --input release.json --snapshot
+... --output encoded.json` performs native encoding after `freeze-material`.
+`bind-ollama` validates explicitly supplied selection and observed metadata.
+
+Session preparation verifies canonical data, encoding, binding, recipe, actual
+source hashes and dependencies. Its training ZIP contains only recipe,
+encoded train/validation and binding: no holdout, retention answers or weights.
+Freeze code before final packaging. Optional report `--output` must be outside
+the self-publishing destination and is checked before any artifact creation.
+
+### Authorized remote session
+
+1. Select variant/method and approve the provider run and monetary budget.
+2. Use the existing host bootstrap with `--model-profile` and separate roots/
+   snapshots per variant; share the qualified interpreter and admission ledger.
+   Setup only occurs with explicitly requested `--apply`.
+3. Upload `input.zip` and `evaluation.zip` separately with the existing
+   `scripts/remote_training.py --host <alias> --remote-root <variant-root>
+   --remote-python <qualified-wrapper> upload --bundle <archive>` command.
+   Use the same variant root and wrapper for both. Evaluation extracts to
+   `<variant-root>/runs/<evaluation.remote_run_id>/input/<manifest_relative>`,
+   using the two fields in `preflight.json`; pass that manifest to comparison
+   `--cases`. The evaluation run is staged only and must not be started as training.
+   Materialize the exact pinned model weights.
+4. Run native GPU environment preflight. Check full CUDA placement and measured
+   memory before tuning batch/concurrency.
+5. Qualify first/resume smoke with sealed evidence from both stages. Use its
+   adapter result for paired tool-loop and retention checks; the base arm disables
+   the adapter. The comparison runner requires an existing adapter result.
+6. Train/resume within budget, seal and collect using the existing supervisor.
+7. Compare each final adapter with its own base and matched precision/case identities.
+8. Separately collect comparison trials, progress and summaries with hashes;
+   adapter collection does not include those output directories.
+9. Verify downloaded artifacts before any operator-requested host removal.
+
+Failures retain the host and checkpoints. Attachment/activation is a separate
+operator task. Source preparation and mock tests do not certify GPU performance
+or model quality. The existing shared hash lock includes the exact vision
+dependency closure as well as Torch, Transformers and PEFT.
 
 ## Public protocol sources
 

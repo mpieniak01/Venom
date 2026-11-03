@@ -1,3 +1,4 @@
+import { chatModelLabel, isSelectableChatModel } from "@/lib/chat-model-options";
 import React from "react";
 import { RemoteProviderCard } from "./remote-provider-card";
 import { Search } from "lucide-react";
@@ -651,7 +652,7 @@ export function RemoteModelsSection(props: Readonly<ModelsViewerLogic>) {
                         <div key={model.id} className="flex items-start justify-between rounded-2xl border border-[color:var(--ui-border)] bg-[color:var(--ui-surface)] p-4">
                             <div className="flex-1">
                                 <div className="flex items-center gap-3">
-                                    <span className="text-sm font-medium">{model.name}</span>
+                                    <span className="text-sm font-medium">{chatModelLabel(model.name, undefined, model.provider, t("models.status.unresolvedVariant"))}</span>
                                     <Badge tone="neutral" className="text-[10px]">{model.provider}</Badge>
                                 </div>
                                 {model.model_alias && (
@@ -669,7 +670,7 @@ export function RemoteModelsSection(props: Readonly<ModelsViewerLogic>) {
                                 size="sm"
                                 variant="secondary"
                                 className="ml-4 shrink-0 rounded-full px-4"
-                                disabled={!selectedProvider || pendingActions[`activate:${selectedProvider}:${model.id}`] || Boolean(remoteProviderActions[selectedProvider]) || ((selectedProvider === "openrouter" || selectedProvider === "vast_ollama") && !remoteProviders.some((provider) => provider.provider === selectedProvider && provider.enabled && provider.available))}
+                                disabled={!isSelectableChatModel({name:model.id,provider:model.provider}) || !selectedProvider || pendingActions[`activate:${selectedProvider}:${model.id}`] || Boolean(remoteProviderActions[selectedProvider]) || ((selectedProvider === "openrouter" || selectedProvider === "vast_ollama") && !remoteProviders.some((provider) => provider.provider === selectedProvider && provider.enabled && provider.available))}
                                 onClick={async () => {
                                     if (!selectedProvider) return;
                                     await handleActivateRuntimeModel(selectedProvider, model.id);

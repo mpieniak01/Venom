@@ -1,5 +1,7 @@
 "use client";
 
+import { chatModelLabel, isSelectableChatModel } from "@/lib/chat-model-options";
+
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -32,7 +34,7 @@ export function BenchmarkCodingConfigurator({
   disabled = false,
 }: BenchmarkCodingConfiguratorProps) {
   const t = useTranslation();
-  const ollamaModels = availableModels.filter((m) => m.provider === "ollama");
+  const ollamaModels = availableModels.filter(isSelectableChatModel).filter((m) => m.provider === "ollama");
   const [catalogError, setCatalogError] = useState(false);
   const [maintenance, setMaintenance] = useState(false);
   const [comparison, setComparison] = useState<{enabled: boolean; models: {name: string; provider: string}[]}>({enabled: false, models: []});
@@ -49,7 +51,7 @@ export function BenchmarkCodingConfigurator({
       .catch(() => {if (!controller.signal.aborted) setCatalogError(true);});
     return () => controller.abort();
   }, []);
-  const selectableModels = maintenance ? comparison.models : ollamaModels;
+  const selectableModels = maintenance ? comparison.models.filter(isSelectableChatModel) : ollamaModels;
   const selectableTasks = maintenance ? MAINTENANCE_TASKS : AVAILABLE_TASKS;
 
 
@@ -118,7 +120,7 @@ export function BenchmarkCodingConfigurator({
           <div className="flex flex-wrap gap-2">
             {selectableModels.map((model) => (
               <button
-                key={model.name}
+                key={chatModelLabel(model.name, undefined, model.provider)}
                 onClick={() => toggleModel(model.name)}
                 disabled={disabled}
                 className={cn(
@@ -129,7 +131,7 @@ export function BenchmarkCodingConfigurator({
                   disabled && "opacity-50 cursor-not-allowed",
                 )}
               >
-                {model.name}
+                {chatModelLabel(model.name, undefined, model.provider)}
               </button>
             ))}
           </div>

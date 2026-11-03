@@ -197,8 +197,14 @@ def get_model_non_trainable_reason(
     if provider_lc == "onnx":
         return "ONNX runtime artifacts are inference-only in Academy LoRA pipeline"
 
-    if model_id_lc in {"google/gemma-4-12b-it", "gemma-4-12b-it"}:
-        return "Gemma 4 12B training is deferred to remote host qualification"
+    if model_id_lc in {
+        "google/gemma-4-12b-it",
+        "gemma-4-12b-it",
+        "google/gemma-4-e4b-it",
+        "gemma-4-e4b-it",
+    }:
+        variant = "E4B" if "e4b" in model_id_lc else "12B"
+        return f"Gemma 4 {variant} training is deferred to remote host qualification"
 
     if model_metadata:
         artifact_reason = _non_trainable_reason_from_local_artifacts(

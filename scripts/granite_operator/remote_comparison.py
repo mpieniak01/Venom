@@ -84,14 +84,32 @@ class RemoteInference:
         self.selector.register(self.process.stdout, selectors.EVENT_READ)
         try:
             self.ready = self.receive(180)
+            from venom_core.services.remote_training.host import is_gemma_model
+
+            model = self.ready.get("model")
+            context = self.ready.get("inference", {}).get("context")
+            expected = (
+                {**INFERENCE, "context": context}
+                if is_gemma_model(model)
+                else INFERENCE
+            )
             if (
                 self.ready.get("adapter_sha256") != args.adapter_sha256
-                or self.ready.get("inference") != INFERENCE
+                or self.ready.get("inference") != expected
+                or (
+                    is_gemma_model(model)
+                    and (type(context) is not int or not 1 <= context <= 4096)
+                )
             ):
                 raise ValueError("comparison_remote_identity_mismatch")
         except BaseException:
             self.close()
             raise
+        self.profile = SimpleNamespace(
+            model=self.ready.get("model"),
+            context=self.ready["inference"]["context"],
+        )
+        self.comparison_protocol = self.ready.get("protocol", "granite_xml")
         self.torch = SimpleNamespace(cuda=self)
 
     def receive(self, timeout):
@@ -175,6 +193,8 @@ class RemoteInference:
 
 def evaluate(args, factory=RemoteInference):
     manifest, cases = load_frozen(args.cases)
+    if any(case.get("images") for case in cases):
+        raise ValueError("comparison_remote_images_require_same_host_runner")
     if manifest.get("qualification", {}).get("status") != "PASS":
         raise ValueError("comparison_cases_not_qualified")
     args.output.mkdir(parents=True, exist_ok=args.resume)
@@ -182,7 +202,7 @@ def evaluate(args, factory=RemoteInference):
     identity = {
         "manifest_sha256": file_digest(args.cases),
         "adapter_sha256": args.adapter_sha256,
-        "inference": INFERENCE,
+        "requested_inference": {**INFERENCE, "context": "sealed_remote_profile"},
         "host": args.host,
         "remote_result": args.remote_result,
         "benchmark_role": "diagnostic_after_G02_curation",
@@ -297,7 +317,8 @@ def _evaluate_trials(args, factory, manifest, cases, rows, done):
             **summarize(rows),
             "status": "COMPLETE",
             "case_count": len(cases),
-            "inference": INFERENCE,
+            "inference": dict(remote.ready["inference"]),
+            "inference_source": "remote_handshake",
             "benchmark_role": "diagnostic_after_G02_curation",
             "wall_seconds": time.monotonic() - started,
         }

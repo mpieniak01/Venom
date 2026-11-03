@@ -407,7 +407,7 @@ async def test_set_active_llm_server_waits_for_previous_runtime_shutdown_before_
 
 
 @pytest.mark.asyncio
-async def test_set_active_llm_server_waits_for_active_runtime_requests_to_drain(
+async def test_runtime_switch_body_waits_for_active_runtime_requests_to_drain(
     monkeypatch,
 ):
     entered = asyncio.Event()
@@ -496,8 +496,13 @@ async def test_set_active_llm_server_waits_for_active_runtime_requests_to_drain(
 
     request = system_routes.ActiveLlmServerRequest(server_name="ollama")
     try:
+        # Exercise the drain layer directly. Production admission rejects a
+        # foreign active lease before this body; that boundary has a separate
+        # regression below and is never disabled here.
         response_task = asyncio.create_task(
-            system_routes.set_active_llm_server(request)
+            system_routes._set_active_llm_server_impl.__wrapped__(
+                request=request, server_name="ollama", switch_source="test"
+            )
         )
         for _ in range(50):
             if gate.get_runtime_switch_gate_snapshot().in_progress:
@@ -1644,3 +1649,81 @@ async def test_coding_guard_returns_readable_detail_and_machine_header(
         )
     assert caught.value.detail == "Za mało pamięci RAM."
     assert caught.value.headers["X-Reason-Code"] == "feedback_loop_ram_budget_exceeded"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("readonly", [False, True])
+async def test_runtime_switch_entry_rejects_active_foreign_request_before_drain(
+    monkeypatch,
+    tmp_path,
+    readonly,
+):
+    from contextlib import nullcontext
+
+    from venom_core.services import runtime_admission
+
+    # Only this isolated ledger is exercised; ambient deployment policy is not
+    # a precondition for the writable case. The readonly case tests early refusal.
+    monkeypatch.setattr(SETTINGS, "ENVIRONMENT_ROLE", "preprod" if readonly else "dev")
+    monkeypatch.setattr(SETTINGS, "ALLOW_DATA_MUTATION", False)
+    monkeypatch.setenv("WEB_CONCURRENCY", "1")
+    monkeypatch.setenv("UVICORN_WORKERS", "1")
+    ledger = runtime_admission.RuntimeAdmission(
+        tmp_path / "admission.sqlite3", enabled=True
+    )
+    monkeypatch.setattr(runtime_admission, "_ADMISSION", ledger)
+    entered, release = asyncio.Event(), asyncio.Event()
+
+    async def active_request():
+        with ledger.operation(kind="voice_chat", confirm_quiescent=lambda: True):
+            entered.set()
+            await release.wait()
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError(
+            "runtime switch must not enter lifecycle while a foreign request is active"
+        )
+
+    monkeypatch.setattr(system_routes, "begin_runtime_switch", forbidden)
+    task = asyncio.create_task(active_request())
+    entered_wait = asyncio.create_task(entered.wait())
+    expected = (
+        pytest.raises(PermissionError, match="pre-prod") if readonly else nullcontext()
+    )
+
+    async def exercise():
+        try:
+            done, _ = await asyncio.wait(
+                {task, entered_wait}, timeout=2.0, return_when=asyncio.FIRST_COMPLETED
+            )
+            if task in done:
+                await task  # Surface refusal before entered.set(), not a hung event.
+            if entered_wait not in done:
+                raise TimeoutError("temporary admission request did not enter")
+            request = system_routes.ActiveLlmServerRequest(server_name="ollama")
+            with pytest.raises(runtime_admission.RuntimeAdmissionError) as error:
+                await system_routes._set_active_llm_server_impl(
+                    request=request,
+                    server_name="ollama",
+                    switch_source="test",
+                )
+            assert error.value.status_code == 409
+            assert error.value.detail["code"] == "runtime_busy"
+        finally:
+            release.set()
+            if not entered_wait.done():
+                entered_wait.cancel()
+            try:
+                await asyncio.wait_for(task, timeout=1.0)
+            finally:
+                if not task.done():
+                    task.cancel()
+                await asyncio.gather(task, entered_wait, return_exceptions=True)
+
+    with expected:
+        await exercise()
+    assert task.done()
+    assert entered_wait.done()
+    if readonly:
+        assert not entered.is_set()
+        assert not ledger.database.exists()

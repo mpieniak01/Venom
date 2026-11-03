@@ -8,10 +8,15 @@ from pathlib import Path
 import pytest
 
 from venom_core.services.gemma4_operator.profile import (
+    E4B_LOADER,
+    E4B_MODEL,
+    E4B_REVISION,
     LOADER,
     MODEL,
+    PINNED_REVISIONS,
     SNAPSHOT_FILES,
     GemmaProfile,
+    loader_for_model,
 )
 from venom_core.services.gemma4_operator.protocol import (
     CALL_END,
@@ -525,3 +530,31 @@ def test_native_maf_tool_name_keeps_hyphen_without_relaxing_argument_keys():
     malformed_call = call("bad-key:" + string("log"), "FileSkill-read_file")
     with pytest.raises(ValueError, match="syntax_invalid"):
         parse_response(malformed_call, catalog)
+
+
+def test_two_native_variants_have_separate_pinned_architectures():
+    large = GemmaProfile.load(Path("config/gemma4_operator_profile.json"))
+    small = GemmaProfile.load(Path("config/gemma4_operator_e4b_profile.json"))
+    assert large.model == MODEL
+    assert large.loader == LOADER
+    assert small.model == E4B_MODEL
+    assert small.loader == E4B_LOADER
+    assert small.revision == E4B_REVISION
+    assert PINNED_REVISIONS[large.model] == large.revision
+    assert PINNED_REVISIONS[small.model] == small.revision
+    assert small.files != large.files
+    assert loader_for_model(small.model) == small.loader
+    assert loader_for_model(large.model) == large.loader
+    assert small.context == large.context == 4096
+
+
+@pytest.mark.parametrize(
+    "model,loader",
+    [(MODEL, E4B_LOADER), (E4B_MODEL, LOADER), ("google/gemma-4-27B-it", LOADER)],
+)
+def test_native_variants_reject_crossed_or_unknown_model_loader_pairs(
+    tmp_path, model, loader
+):
+    profile, _ = fixture_profile(tmp_path)
+    with pytest.raises(ValueError, match="model_invalid"):
+        replace(profile, model=model, loader=loader)

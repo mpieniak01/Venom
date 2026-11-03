@@ -1,4 +1,4 @@
-"""Prepare a native Granite SSH training component; default is a read-only plan."""
+"""Prepare a pinned native SSH training component; default is a read-only plan."""
 
 from __future__ import annotations
 
@@ -12,6 +12,7 @@ import re
 import shlex
 import shutil
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
@@ -23,6 +24,12 @@ METADATA = (
     "import json,sys; from pathlib import Path; "
     "from venom_core.services.granite_operator.contract import snapshot_metadata; "
     "print(json.dumps(snapshot_metadata(Path(sys.argv[1]))))"
+)
+GEMMA_METADATA = (
+    "import json,sys; from pathlib import Path; "
+    "from venom_core.services.gemma4_operator.profile import GemmaProfile; "
+    "profile=GemmaProfile(**json.loads(sys.argv[2])); "
+    "print(json.dumps(profile.validate_snapshot(Path(sys.argv[1]))))"
 )
 LOCK = "requirements/locks/granite-operator-training-linux-py314.txt"
 CONTROL = "requirements-remote-training-control.txt"
@@ -83,7 +90,14 @@ def parser():
         "--venv", type=data_path, default=Path("/workspace/training-venv")
     )
     value.add_argument(
-        "--snapshot", type=data_path, default=Path("/workspace/models") / REVISION
+        "--model-profile",
+        type=data_path,
+        help="Pinned Gemma profile from reviewed config; omitted keeps legacy Granite",
+    )
+    value.add_argument(
+        "--snapshot",
+        type=data_path,
+        help="Materialized model directory; defaults to /workspace/models/<revision>",
     )
     value.add_argument(
         "--root", type=data_path, default=Path("/workspace/data/remote-training")
@@ -106,10 +120,54 @@ def parser():
     return value
 
 
+def model_profile(args):
+    """Read the trusted repo's CPU-only identity module, without target packages."""
+    path = getattr(args, "model_profile", None)
+    if path is None:
+        return None
+    data_path(path)
+    source = str(Path(__file__).resolve().parents[2])
+    if source not in sys.path:
+        sys.path.insert(0, source)
+    from venom_core.services.gemma4_operator.profile import (
+        PINNED_REVISIONS,
+        GemmaProfile,
+    )
+
+    profile = GemmaProfile.load(path)
+    if profile.revision != PINNED_REVISIONS[profile.model]:
+        raise ValueError("host_model_revision_unpinned")
+    return profile
+
+
+def model_identity(args):
+    profile = model_profile(args)
+    return (profile.model, profile.revision) if profile else (MODEL, REVISION)
+
+
+def validate_sources(args):
+    sources = [LOCK, CONTROL, "venom_core/services/remote_training/remote.py"]
+    if model_profile(args):
+        sources.extend(
+            (
+                "venom_core/services/gemma4_operator/profile.py",
+                "venom_core/services/gemma4_operator/training_worker.py",
+            )
+        )
+    for name in sources:
+        if (args.code_root / name).is_symlink() or not (
+            args.code_root / name
+        ).is_file():
+            raise ValueError("host_source_missing")
+
+
 def validate(args):
     if not re.fullmatch(r"[0-9a-f]{40}", args.commit):
         raise ValueError("host_commit_invalid")
-    if args.snapshot.name != REVISION:
+    _, revision = model_identity(args)
+    if args.snapshot is None:
+        args.snapshot = Path("/workspace/models") / revision
+    if args.snapshot.name != revision:
         raise ValueError("host_snapshot_revision_mismatch")
     paths = [args.code_root, args.venv, args.snapshot, args.root]
     for index, path in enumerate(paths):
@@ -119,9 +177,7 @@ def validate(args):
             for other in paths[index + 1 :]
         ):
             raise ValueError("host_component_paths_overlap")
-    for name in (LOCK, CONTROL, "venom_core/services/remote_training/remote.py"):
-        if not (args.code_root / name).is_file():
-            raise ValueError("host_source_missing")
+    validate_sources(args)
     if args.python and not re.fullmatch(
         r"python(?:3(?:[.]14(?:[.]8)?)?)?", args.python.name
     ):
@@ -133,6 +189,8 @@ def validate(args):
 def plan(args):
     validate(args)
     python = str(args.venv / "bin/python")
+    profile = model_profile(args)
+    model, revision = model_identity(args)
     return {
         "apply": args.apply,
         "code_root": str(args.code_root),
@@ -142,8 +200,9 @@ def plan(args):
         "install_managed_python": bool(args.uv),
         "venv": str(args.venv),
         "requirements": [LOCK, CONTROL],
-        "model": MODEL,
-        "revision": REVISION,
+        "model": model,
+        "revision": revision,
+        "model_profile": profile.identity() if profile else None,
         "snapshot": str(args.snapshot),
         "download_model": not args.offline_model,
         "root": str(args.root),
@@ -195,45 +254,66 @@ def payload_hashes(snapshot):
     return files
 
 
-def snapshot_ready(snapshot, *, provenance=True):
+def snapshot_weights(snapshot):
+    weights = list(snapshot.glob("*.safetensors"))
+    if not weights or any(
+        p.is_symlink() or not p.is_file() or not p.stat().st_size for p in weights
+    ):
+        raise ValueError("host_snapshot_weights_missing")
+    index = snapshot / "model.safetensors.index.json"
+    if not index.is_file():
+        return
+    value = json.loads(index.read_text())
+    shards = value.get("weight_map") if isinstance(value, dict) else None
+    if not isinstance(shards, dict) or not shards:
+        raise ValueError("host_snapshot_index_invalid")
+    for name in shards.values():
+        if (
+            not isinstance(name, str)
+            or Path(name).name != name
+            or not name.endswith(".safetensors")
+            or not (snapshot / name).is_file()
+        ):
+            raise ValueError("host_snapshot_shard_missing")
+
+
+def snapshot_provenance(snapshot, model, revision):
+    receipt = snapshot / MODEL_RECEIPT
+    if receipt.is_symlink() or not receipt.is_file():
+        raise ValueError("host_snapshot_provenance_missing")
+    value = json.loads(receipt.read_text())
+    if (
+        not isinstance(value, dict)
+        or type(value.get("schema_version")) is not int
+        or value.get("schema_version") != 1
+        or value.get("model") != model
+        or value.get("revision") != revision
+    ):
+        raise ValueError("host_snapshot_provenance_mismatch")
+    if value.get("files") != payload_hashes(snapshot):
+        raise ValueError("host_snapshot_provenance_hash_mismatch")
+
+
+def snapshot_ready(snapshot, *, provenance=True, profile=None):
+    data_path(snapshot)
+    model, revision = (
+        (profile.model, profile.revision) if profile else (MODEL, REVISION)
+    )
+    if profile:
+        profile.validate_snapshot(snapshot)
     for name in ("config.json", "tokenizer.json", "tokenizer_config.json"):
         if not (snapshot / name).is_file() or not (snapshot / name).stat().st_size:
             raise ValueError("host_snapshot_incomplete")
-    weights = list(snapshot.glob("*.safetensors"))
-    if not weights or any(not p.is_file() or not p.stat().st_size for p in weights):
-        raise ValueError("host_snapshot_weights_missing")
-    index = snapshot / "model.safetensors.index.json"
-    if index.is_file():
-        shards = json.loads(index.read_text()).get("weight_map", {})
-        if not isinstance(shards, dict) or not shards:
-            raise ValueError("host_snapshot_index_invalid")
-        for name in shards.values():
-            if (
-                not isinstance(name, str)
-                or Path(name).name != name
-                or not name.endswith(".safetensors")
-                or not (snapshot / name).is_file()
-            ):
-                raise ValueError("host_snapshot_shard_missing")
+    snapshot_weights(snapshot)
     if provenance:
-        receipt = snapshot / MODEL_RECEIPT
-        if receipt.is_symlink() or not receipt.is_file():
-            raise ValueError("host_snapshot_provenance_missing")
-        value = json.loads(receipt.read_text())
-        if (
-            value.get("schema_version") != 1
-            or value.get("model") != MODEL
-            or value.get("revision") != REVISION
-        ):
-            raise ValueError("host_snapshot_provenance_mismatch")
-        if value.get("files") != payload_hashes(snapshot):
-            raise ValueError("host_snapshot_provenance_hash_mismatch")
+        snapshot_provenance(snapshot, model, revision)
 
 
-def native_metadata(python, snapshot, code_root, env):
-    value = json.loads(
-        run([python, "-c", METADATA, str(snapshot)], cwd=code_root, env=env)
-    )
+def native_metadata(python, snapshot, code_root, env, profile=None):
+    command = [python, "-c", GEMMA_METADATA if profile else METADATA, str(snapshot)]
+    if profile:
+        command.append(json.dumps(profile.identity()))
+    value = json.loads(run(command, cwd=code_root, env=env))
     if (
         not isinstance(value, dict)
         or not value.get("config.json")
@@ -244,36 +324,38 @@ def native_metadata(python, snapshot, code_root, env):
 
 
 def prepare_snapshot(args, python, env):
+    profile = model_profile(args)
+    model, revision = model_identity(args)
     if not args.snapshot.exists():
         args.snapshot.parent.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(
             prefix=".model-stage-", dir=args.snapshot.parent
         ) as temporary:
-            stage = Path(temporary) / REVISION
+            stage = Path(temporary) / revision
             stage.mkdir(mode=0o700)
             run(
-                [python, "-c", DOWNLOAD, MODEL, REVISION, str(stage)],
+                [python, "-c", DOWNLOAD, model, revision, str(stage)],
                 cwd=args.code_root,
                 env=env,
                 timeout=7200,
             )
-            snapshot_ready(stage, provenance=False)
+            snapshot_ready(stage, provenance=False, profile=profile)
             receipt = {
                 "schema_version": 1,
-                "model": MODEL,
-                "revision": REVISION,
+                "model": model,
+                "revision": revision,
                 "files": payload_hashes(stage),
                 "native_snapshot_metadata": native_metadata(
-                    python, stage, args.code_root, env
+                    python, stage, args.code_root, env, profile
                 ),
             }
             with (stage / MODEL_RECEIPT).open("w") as stream:
                 json.dump(receipt, stream, indent=2)
             stage.rename(args.snapshot)
-    snapshot_ready(args.snapshot)
+    snapshot_ready(args.snapshot, profile=profile)
     receipt = json.loads((args.snapshot / MODEL_RECEIPT).read_text())
     if receipt.get("native_snapshot_metadata") != native_metadata(
-        python, args.snapshot, args.code_root, env
+        python, args.snapshot, args.code_root, env, profile
     ):
         raise ValueError("host_snapshot_native_metadata_mismatch")
 
@@ -365,7 +447,7 @@ def prepare_component(args):
         ):
             raise ValueError("host_configuration_conflict")
     if args.offline_model or args.snapshot.exists():
-        snapshot_ready(args.snapshot)
+        snapshot_ready(args.snapshot, profile=model_profile(args))
     if not args.venv.exists():
         args.venv.parent.mkdir(parents=True, exist_ok=True)
         run(
@@ -442,7 +524,7 @@ def prepare_component(args):
     text = (
         "#!/bin/sh\nset -eu\nexport PYTHONPATH="
         + shlex.quote(str(args.code_root))
-        + "\nexport ENV_FILE=/dev/null\nexport PYTHONNOUSERSITE=1\nexport HF_HUB_OFFLINE=1\nunset PYTHONHOME PYTHONSTARTUP\nexec "
+        + "\nexport ENV_FILE=/dev/null\nexport PYTHONNOUSERSITE=1\nexport HF_HUB_OFFLINE=1\nexport TRANSFORMERS_OFFLINE=1\nunset PYTHONHOME PYTHONSTARTUP\nexec "
         + shlex.quote(python)
         + ' "$@"\n'
     )

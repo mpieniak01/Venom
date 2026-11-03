@@ -19,6 +19,7 @@ import type { useCockpitData } from "@/components/cockpit/hooks/use-cockpit-data
 import type { useCockpitInteractiveState } from "@/components/cockpit/hooks/use-cockpit-interactive-state";
 import type { useCockpitLayout } from "@/components/cockpit/hooks/use-cockpit-layout";
 import { normalizeRuntimeId, resolveCockpitRuntimeModelSelection, resolveCockpitEmptyRuntimeModelUpdate } from "@/lib/cockpit-runtime-selection";
+import { isSelectableChatModel } from "@/lib/chat-model-options";
 import { filterRuntimeBaseModels } from "@/lib/runtime-model-filters";
 
 const taskUuid = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
@@ -301,7 +302,7 @@ export function useConversationController({ data, interactive, layout, chatScrol
             (item) => normalizeRuntimeId(item.runtime_id) === effectiveServer,
         );
         const runtimeModels = filterRuntimeBaseModels(
-            (runtime?.models ?? []).filter((model) => model.chat_compatible !== false),
+            (runtime?.models ?? []).filter((model) => model.chat_compatible !== false).filter(isSelectableChatModel),
         )
             .map((model) => model.name);
         const currentSelection = (interactive.state.selectedLlmModel || "").trim();

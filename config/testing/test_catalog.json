@@ -2075,6 +2075,20 @@
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
+      "path": "tests/test_default_question_setup.py",
+      "domain": "academy",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Explicit pinned default question setup, idempotency and checksum guards without network."
+    },
+    {
       "path": "tests/test_dependency_profiles.py",
       "domain": "environment",
       "test_type": "gate",
@@ -2715,6 +2729,174 @@
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
+      "path": "tests/test_gemma4_data_release.py",
+      "domain": "academy",
+      "test_type": "service_contract",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Immutable release separates training payload from the evaluation reserve."
+    },
+    {
+      "path": "tests/test_gemma4_operator_cases.py",
+      "domain": "academy",
+      "test_type": "service_contract",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "CPU benchmark reference qualification and bounded isolated workspaces."
+    },
+    {
+      "path": "tests/test_gemma4_operator_cli.py",
+      "domain": "academy",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "CPU-only Gemma preparation command integration and immutable evidence outputs."
+    },
+    {
+      "path": "tests/test_gemma4_operator_corpus.py",
+      "domain": "academy",
+      "test_type": "service_contract",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Dual Gemma preparation, GPU training and explicit model choice contracts."
+    },
+    {
+      "path": "tests/test_gemma4_operator_encoding.py",
+      "domain": "academy",
+      "test_type": "service_contract",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Dual Gemma preparation, GPU training and explicit model choice contracts."
+    },
+    {
+      "path": "tests/test_gemma4_operator_experience.py",
+      "domain": "academy",
+      "test_type": "service_contract",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Reviewed experience export requires bound independent verification evidence."
+    },
+    {
+      "path": "tests/test_gemma4_operator_identity.py",
+      "domain": "academy",
+      "test_type": "service_contract",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Explicit Ollama 12B model selection is bound to the training checkpoint without following moving aliases."
+    },
+    {
+      "path": "tests/test_gemma4_operator_material.py",
+      "domain": "academy",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Selective Gemma material supervision, experience eligibility and matched diagnostics."
+    },
+    {
+      "path": "tests/test_gemma4_operator_preparation.py",
+      "domain": "academy",
+      "test_type": "service_contract",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Dual Gemma preparation, GPU training and explicit model choice contracts."
+    },
+    {
+      "path": "tests/test_gemma4_operator_protocol.py",
+      "domain": "academy",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Pinned Gemma native tool format, schema validation and snapshot identity."
+    },
+    {
+      "path": "tests/test_gemma4_operator_retention.py",
+      "domain": "academy",
+      "test_type": "service_contract",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Dual Gemma preparation, GPU training and explicit model choice contracts."
+    },
+    {
+      "path": "tests/test_gemma4_operator_runtime.py",
+      "domain": "academy",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Single-model runtime evidence and deferred remote Academy training qualification."
+    },
+    {
       "path": "tests/test_generation_params_adapter.py",
       "domain": "misc",
       "test_type": "unit",
@@ -2969,6 +3151,104 @@
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
+    },
+    {
+      "path": "tests/test_granite_comparison_contract.py",
+      "domain": "academy",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Frozen comparison datasets, isolated oracle evidence and paired latency/success aggregation."
+    },
+    {
+      "path": "tests/test_granite_material_intake.py",
+      "domain": "academy",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "CPU-only material intake, grounded receipts and masked recovery prefixes."
+    },
+    {
+      "path": "tests/test_granite_operator_contract.py",
+      "domain": "academy",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Granite structured tool data, assistant mask and mandatory smoke qualification."
+    },
+    {
+      "path": "tests/test_granite_operator_training.py",
+      "domain": "academy",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Granite structured tool data, assistant mask and mandatory smoke qualification."
+    },
+    {
+      "path": "tests/test_granite_parallel_comparison.py",
+      "domain": "academy",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Bounded single-host evaluation batching, GPU ownership, queue timing and exact resume without provider calls."
+    },
+    {
+      "path": "tests/test_granite_remote_comparison.py",
+      "domain": "academy",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Paired remote adapter inference protocol and local sandbox orchestration without provider calls."
+    },
+    {
+      "path": "tests/test_granite_remote_inference.py",
+      "domain": "academy",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Paired remote adapter inference protocol and local sandbox orchestration without provider calls."
     },
     {
       "path": "tests/test_graph_rag_service.py",
@@ -3830,6 +4110,118 @@
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
+    },
+    {
+      "path": "tests/test_maintenance_catalog.py",
+      "domain": "providers",
+      "test_type": "service_contract",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Immutable checkpoint identities and exact role-specific baseline denominators."
+    },
+    {
+      "path": "tests/test_maintenance_checks.py",
+      "domain": "providers",
+      "test_type": "service_contract",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Independent evidence and fail-closed experiment execution without live model generation."
+    },
+    {
+      "path": "tests/test_maintenance_fixtures.py",
+      "domain": "providers",
+      "test_type": "service_contract",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Actual independent fail-to-pass validation of the eight synthetic maintenance repair controls."
+    },
+    {
+      "path": "tests/test_maintenance_host.py",
+      "domain": "providers",
+      "test_type": "service_contract",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Exclusive host lease, cleanup, admission rejection and the existing API/service path without physical inference."
+    },
+    {
+      "path": "tests/test_maintenance_loop.py",
+      "domain": "providers",
+      "test_type": "service_contract",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Model/tool round trip, structured finishing, strict arguments and orchestrator no-progress stops with scripted transport."
+    },
+    {
+      "path": "tests/test_maintenance_protocol.py",
+      "domain": "providers",
+      "test_type": "service_contract",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Strict maintenance-model wire formats without GPU or inference dependencies."
+    },
+    {
+      "path": "tests/test_maintenance_records.py",
+      "domain": "providers",
+      "test_type": "service_contract",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Scheduling denominators, held-out provenance and optional inference boundaries without live model inference."
+    },
+    {
+      "path": "tests/test_maintenance_safety.py",
+      "domain": "providers",
+      "test_type": "service_contract",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Independent evidence and fail-closed experiment execution without live model generation."
     },
     {
       "path": "tests/test_make_targets_audit.py",
@@ -4708,6 +5100,20 @@
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
+      "path": "tests/test_observation_cache.py",
+      "domain": "system",
+      "test_type": "service_contract",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Observation cache preserves TTL and task ownership across request event loops."
+    },
+    {
       "path": "tests/test_ollama_agent_loop.py",
       "domain": "agents",
       "test_type": "unit",
@@ -4720,6 +5126,20 @@
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
+    },
+    {
+      "path": "tests/test_ollama_model_identity.py",
+      "domain": "models",
+      "test_type": "service_contract",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Dual Gemma preparation, GPU training and explicit model choice contracts."
     },
     {
       "path": "tests/test_ollama_runtime_capabilities.py",
@@ -4928,6 +5348,34 @@
       ],
       "legacy_targeted": false,
       "rationale": "Fast deterministic regression check used by mandatory CI-lite lane."
+    },
+    {
+      "path": "tests/test_operator_comparison_contract.py",
+      "domain": "academy",
+      "test_type": "service_contract",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Dual Gemma preparation, GPU training and explicit model choice contracts."
+    },
+    {
+      "path": "tests/test_operator_training_contract.py",
+      "domain": "academy",
+      "test_type": "service_contract",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Dual Gemma preparation, GPU training and explicit model choice contracts."
     },
     {
       "path": "tests/test_optional_modules_contracts_guard.py",
@@ -5685,6 +6133,188 @@
       "rationale": "External API controls, metadata-only checks and disabled-provider generation guards."
     },
     {
+      "path": "tests/test_remote_training_bundles.py",
+      "domain": "academy",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Offline remote training contracts, durable lifecycle and verified artifact transfer."
+    },
+    {
+      "path": "tests/test_remote_training_environment.py",
+      "domain": "academy",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Offline remote training contracts, durable lifecycle and verified artifact transfer."
+    },
+    {
+      "path": "tests/test_remote_training_gemma_dispatch.py",
+      "domain": "academy",
+      "test_type": "service_contract",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Dual Gemma preparation, GPU training and explicit model choice contracts."
+    },
+    {
+      "path": "tests/test_remote_training_host.py",
+      "domain": "academy",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Offline native host setup and read-only training progress contracts."
+    },
+    {
+      "path": "tests/test_remote_training_host_gemma.py",
+      "domain": "academy",
+      "test_type": "service_contract",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Dual Gemma preparation, GPU training and explicit model choice contracts."
+    },
+    {
+      "path": "tests/test_remote_training_import.py",
+      "domain": "academy",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Offline remote training contracts, durable lifecycle and verified artifact transfer."
+    },
+    {
+      "path": "tests/test_remote_training_lifecycle.py",
+      "domain": "academy",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Offline remote training contracts, durable lifecycle and verified artifact transfer."
+    },
+    {
+      "path": "tests/test_remote_training_milestones.py",
+      "domain": "academy",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Atomic training milestone targets, sealed historical attempts and independent resumable collection without provider calls."
+    },
+    {
+      "path": "tests/test_remote_training_progress.py",
+      "domain": "academy",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Offline native host setup and read-only training progress contracts."
+    },
+    {
+      "path": "tests/test_remote_training_rpc.py",
+      "domain": "academy",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Offline remote training contracts, durable lifecycle and verified artifact transfer."
+    },
+    {
+      "path": "tests/test_remote_training_transport.py",
+      "domain": "academy",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Offline remote training contracts, durable lifecycle and verified artifact transfer."
+    },
+    {
+      "path": "tests/test_remote_training_verification.py",
+      "domain": "academy",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Offline remote training contracts, durable lifecycle and verified artifact transfer."
+    },
+    {
+      "path": "tests/test_remote_training_worker.py",
+      "domain": "academy",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Offline remote training contracts, durable lifecycle and verified artifact transfer."
+    },
+    {
       "path": "tests/test_render_skill.py",
       "domain": "skills",
       "test_type": "unit",
@@ -6257,6 +6887,20 @@
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
+    },
+    {
+      "path": "tests/test_single_model_execution.py",
+      "domain": "orchestrator",
+      "test_type": "integration",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Opt-in selected model reuses guarded runtime and captures authoritative tool history."
     },
     {
       "path": "tests/test_skill_manager.py",
@@ -7273,6 +7917,20 @@
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
+      "path": "tests/test_vast_training_kit.py",
+      "domain": "academy",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Offline Vast kit configuration and dry-run isolation; no provider API, GPU or training."
+    },
+    {
       "path": "tests/test_venom_core_init_compat.py",
       "domain": "misc",
       "test_type": "unit",
@@ -7443,510 +8101,6 @@
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
-    },
-    {
-      "path": "tests/test_maintenance_protocol.py",
-      "domain": "providers",
-      "test_type": "service_contract",
-      "intent": "regression",
-      "primary_lane": "new-code",
-      "allowed_lanes": [
-        "new-code",
-        "ci-lite",
-        "release"
-      ],
-      "legacy_targeted": false,
-      "rationale": "Strict maintenance-model wire formats without GPU or inference dependencies."
-    },
-    {
-      "path": "tests/test_maintenance_fixtures.py",
-      "domain": "providers",
-      "test_type": "service_contract",
-      "intent": "regression",
-      "primary_lane": "new-code",
-      "allowed_lanes": [
-        "new-code",
-        "ci-lite",
-        "release"
-      ],
-      "legacy_targeted": false,
-      "rationale": "Actual independent fail-to-pass validation of the eight synthetic maintenance repair controls."
-    },
-    {
-      "path": "tests/test_maintenance_catalog.py",
-      "domain": "providers",
-      "test_type": "service_contract",
-      "intent": "regression",
-      "primary_lane": "new-code",
-      "allowed_lanes": [
-        "new-code",
-        "ci-lite",
-        "release"
-      ],
-      "legacy_targeted": false,
-      "rationale": "Immutable checkpoint identities and exact role-specific baseline denominators."
-    },
-    {
-      "path": "tests/test_maintenance_loop.py",
-      "domain": "providers",
-      "test_type": "service_contract",
-      "intent": "regression",
-      "primary_lane": "new-code",
-      "allowed_lanes": [
-        "new-code",
-        "ci-lite",
-        "release"
-      ],
-      "legacy_targeted": false,
-      "rationale": "Model/tool round trip, structured finishing, strict arguments and orchestrator no-progress stops with scripted transport."
-    },
-    {
-      "path": "tests/test_maintenance_checks.py",
-      "domain": "providers",
-      "test_type": "service_contract",
-      "intent": "regression",
-      "primary_lane": "new-code",
-      "allowed_lanes": [
-        "new-code",
-        "ci-lite",
-        "release"
-      ],
-      "legacy_targeted": false,
-      "rationale": "Independent evidence and fail-closed experiment execution without live model generation."
-    },
-    {
-      "path": "tests/test_maintenance_safety.py",
-      "domain": "providers",
-      "test_type": "service_contract",
-      "intent": "regression",
-      "primary_lane": "new-code",
-      "allowed_lanes": [
-        "new-code",
-        "ci-lite",
-        "release"
-      ],
-      "legacy_targeted": false,
-      "rationale": "Independent evidence and fail-closed experiment execution without live model generation."
-    },
-    {
-      "path": "tests/test_maintenance_records.py",
-      "domain": "providers",
-      "test_type": "service_contract",
-      "intent": "regression",
-      "primary_lane": "new-code",
-      "allowed_lanes": [
-        "new-code",
-        "ci-lite",
-        "release"
-      ],
-      "legacy_targeted": false,
-      "rationale": "Scheduling denominators, held-out provenance and optional inference boundaries without live model inference."
-    },
-    {
-      "path": "tests/test_maintenance_host.py",
-      "domain": "providers",
-      "test_type": "service_contract",
-      "intent": "regression",
-      "primary_lane": "new-code",
-      "allowed_lanes": [
-        "new-code",
-        "ci-lite",
-        "release"
-      ],
-      "legacy_targeted": false,
-      "rationale": "Exclusive host lease, cleanup, admission rejection and the existing API/service path without physical inference."
-    },
-    {
-      "path": "tests/test_granite_operator_contract.py",
-      "domain": "academy",
-      "test_type": "unit",
-      "intent": "regression",
-      "primary_lane": "new-code",
-      "allowed_lanes": [
-        "new-code",
-        "ci-lite",
-        "release"
-      ],
-      "legacy_targeted": false,
-      "rationale": "Granite structured tool data, assistant mask and mandatory smoke qualification."
-    },
-    {
-      "path": "tests/test_granite_operator_training.py",
-      "domain": "academy",
-      "test_type": "unit",
-      "intent": "regression",
-      "primary_lane": "new-code",
-      "allowed_lanes": [
-        "new-code",
-        "ci-lite",
-        "release"
-      ],
-      "legacy_targeted": false,
-      "rationale": "Granite structured tool data, assistant mask and mandatory smoke qualification."
-    },
-    {
-      "path": "tests/test_granite_comparison_contract.py",
-      "domain": "academy",
-      "test_type": "unit",
-      "intent": "regression",
-      "primary_lane": "new-code",
-      "allowed_lanes": [
-        "new-code",
-        "ci-lite",
-        "release"
-      ],
-      "legacy_targeted": false,
-      "rationale": "Frozen comparison datasets, isolated oracle evidence and paired latency/success aggregation."
-    },
-    {
-      "path": "tests/test_granite_material_intake.py",
-      "domain": "academy",
-      "test_type": "unit",
-      "intent": "regression",
-      "primary_lane": "new-code",
-      "allowed_lanes": [
-        "new-code",
-        "ci-lite",
-        "release"
-      ],
-      "legacy_targeted": false,
-      "rationale": "CPU-only material intake, grounded receipts and masked recovery prefixes."
-    },
-    {
-      "path": "tests/test_vast_training_kit.py",
-      "domain": "academy",
-      "test_type": "unit",
-      "intent": "regression",
-      "primary_lane": "new-code",
-      "allowed_lanes": [
-        "new-code",
-        "ci-lite",
-        "release"
-      ],
-      "legacy_targeted": false,
-      "rationale": "Offline Vast kit configuration and dry-run isolation; no provider API, GPU or training."
-    },
-    {
-      "path": "tests/test_remote_training_bundles.py",
-      "domain": "academy",
-      "test_type": "unit",
-      "intent": "regression",
-      "primary_lane": "new-code",
-      "allowed_lanes": [
-        "new-code",
-        "ci-lite",
-        "release"
-      ],
-      "legacy_targeted": false,
-      "rationale": "Offline remote training contracts, durable lifecycle and verified artifact transfer."
-    },
-    {
-      "path": "tests/test_remote_training_import.py",
-      "domain": "academy",
-      "test_type": "unit",
-      "intent": "regression",
-      "primary_lane": "new-code",
-      "allowed_lanes": [
-        "new-code",
-        "ci-lite",
-        "release"
-      ],
-      "legacy_targeted": false,
-      "rationale": "Offline remote training contracts, durable lifecycle and verified artifact transfer."
-    },
-    {
-      "path": "tests/test_remote_training_lifecycle.py",
-      "domain": "academy",
-      "test_type": "unit",
-      "intent": "regression",
-      "primary_lane": "new-code",
-      "allowed_lanes": [
-        "new-code",
-        "ci-lite",
-        "release"
-      ],
-      "legacy_targeted": false,
-      "rationale": "Offline remote training contracts, durable lifecycle and verified artifact transfer."
-    },
-    {
-      "path": "tests/test_remote_training_transport.py",
-      "domain": "academy",
-      "test_type": "unit",
-      "intent": "regression",
-      "primary_lane": "new-code",
-      "allowed_lanes": [
-        "new-code",
-        "ci-lite",
-        "release"
-      ],
-      "legacy_targeted": false,
-      "rationale": "Offline remote training contracts, durable lifecycle and verified artifact transfer."
-    },
-    {
-      "path": "tests/test_remote_training_environment.py",
-      "domain": "academy",
-      "test_type": "unit",
-      "intent": "regression",
-      "primary_lane": "new-code",
-      "allowed_lanes": [
-        "new-code",
-        "ci-lite",
-        "release"
-      ],
-      "legacy_targeted": false,
-      "rationale": "Offline remote training contracts, durable lifecycle and verified artifact transfer."
-    },
-    {
-      "path": "tests/test_remote_training_rpc.py",
-      "domain": "academy",
-      "test_type": "unit",
-      "intent": "regression",
-      "primary_lane": "new-code",
-      "allowed_lanes": [
-        "new-code",
-        "ci-lite",
-        "release"
-      ],
-      "legacy_targeted": false,
-      "rationale": "Offline remote training contracts, durable lifecycle and verified artifact transfer."
-    },
-    {
-      "path": "tests/test_remote_training_verification.py",
-      "domain": "academy",
-      "test_type": "unit",
-      "intent": "regression",
-      "primary_lane": "new-code",
-      "allowed_lanes": [
-        "new-code",
-        "ci-lite",
-        "release"
-      ],
-      "legacy_targeted": false,
-      "rationale": "Offline remote training contracts, durable lifecycle and verified artifact transfer."
-    },
-    {
-      "path": "tests/test_remote_training_worker.py",
-      "domain": "academy",
-      "test_type": "unit",
-      "intent": "regression",
-      "primary_lane": "new-code",
-      "allowed_lanes": [
-        "new-code",
-        "ci-lite",
-        "release"
-      ],
-      "legacy_targeted": false,
-      "rationale": "Offline remote training contracts, durable lifecycle and verified artifact transfer."
-    },
-    {
-      "path": "tests/test_default_question_setup.py",
-      "domain": "academy",
-      "test_type": "unit",
-      "intent": "regression",
-      "primary_lane": "new-code",
-      "allowed_lanes": [
-        "new-code",
-        "ci-lite",
-        "release"
-      ],
-      "legacy_targeted": false,
-      "rationale": "Explicit pinned default question setup, idempotency and checksum guards without network."
-    },
-    {
-      "path": "tests/test_remote_training_progress.py",
-      "domain": "academy",
-      "test_type": "unit",
-      "intent": "regression",
-      "primary_lane": "new-code",
-      "allowed_lanes": [
-        "new-code",
-        "ci-lite",
-        "release"
-      ],
-      "legacy_targeted": false,
-      "rationale": "Offline native host setup and read-only training progress contracts."
-    },
-    {
-      "path": "tests/test_remote_training_host.py",
-      "domain": "academy",
-      "test_type": "unit",
-      "intent": "regression",
-      "primary_lane": "new-code",
-      "allowed_lanes": [
-        "new-code",
-        "ci-lite",
-        "release"
-      ],
-      "legacy_targeted": false,
-      "rationale": "Offline native host setup and read-only training progress contracts."
-    },
-    {
-      "path": "tests/test_granite_remote_comparison.py",
-      "domain": "academy",
-      "test_type": "unit",
-      "intent": "regression",
-      "primary_lane": "new-code",
-      "allowed_lanes": [
-        "new-code",
-        "ci-lite",
-        "release"
-      ],
-      "legacy_targeted": false,
-      "rationale": "Paired remote adapter inference protocol and local sandbox orchestration without provider calls."
-    },
-    {
-      "path": "tests/test_granite_remote_inference.py",
-      "domain": "academy",
-      "test_type": "unit",
-      "intent": "regression",
-      "primary_lane": "new-code",
-      "allowed_lanes": [
-        "new-code",
-        "ci-lite",
-        "release"
-      ],
-      "legacy_targeted": false,
-      "rationale": "Paired remote adapter inference protocol and local sandbox orchestration without provider calls."
-    },
-    {
-      "path": "tests/test_granite_parallel_comparison.py",
-      "domain": "academy",
-      "test_type": "unit",
-      "intent": "regression",
-      "primary_lane": "new-code",
-      "allowed_lanes": [
-        "new-code",
-        "ci-lite",
-        "release"
-      ],
-      "legacy_targeted": false,
-      "rationale": "Bounded single-host evaluation batching, GPU ownership, queue timing and exact resume without provider calls."
-    },
-    {
-      "path": "tests/test_remote_training_milestones.py",
-      "domain": "academy",
-      "test_type": "unit",
-      "intent": "regression",
-      "primary_lane": "new-code",
-      "allowed_lanes": [
-        "new-code",
-        "ci-lite",
-        "release"
-      ],
-      "legacy_targeted": false,
-      "rationale": "Atomic training milestone targets, sealed historical attempts and independent resumable collection without provider calls."
-    },
-    {
-      "path": "tests/test_gemma4_operator_cli.py",
-      "domain": "academy",
-      "test_type": "unit",
-      "intent": "regression",
-      "primary_lane": "new-code",
-      "allowed_lanes": [
-        "new-code",
-        "ci-lite",
-        "release"
-      ],
-      "legacy_targeted": false,
-      "rationale": "CPU-only Gemma preparation command integration and immutable evidence outputs."
-    },
-    {
-      "path": "tests/test_gemma4_operator_protocol.py",
-      "domain": "academy",
-      "test_type": "unit",
-      "intent": "regression",
-      "primary_lane": "new-code",
-      "allowed_lanes": [
-        "new-code",
-        "ci-lite",
-        "release"
-      ],
-      "legacy_targeted": false,
-      "rationale": "Pinned Gemma native tool format, schema validation and snapshot identity."
-    },
-    {
-      "path": "tests/test_gemma4_operator_material.py",
-      "domain": "academy",
-      "test_type": "unit",
-      "intent": "regression",
-      "primary_lane": "new-code",
-      "allowed_lanes": [
-        "new-code",
-        "ci-lite",
-        "release"
-      ],
-      "legacy_targeted": false,
-      "rationale": "Selective Gemma material supervision, experience eligibility and matched diagnostics."
-    },
-    {
-      "path": "tests/test_gemma4_operator_runtime.py",
-      "domain": "academy",
-      "test_type": "unit",
-      "intent": "regression",
-      "primary_lane": "new-code",
-      "allowed_lanes": [
-        "new-code",
-        "ci-lite",
-        "release"
-      ],
-      "legacy_targeted": false,
-      "rationale": "Single-model runtime evidence and deferred remote Academy training qualification."
-    },
-    {
-      "path": "tests/test_gemma4_data_release.py",
-      "domain": "academy",
-      "test_type": "service_contract",
-      "intent": "contract",
-      "primary_lane": "new-code",
-      "allowed_lanes": [
-        "new-code",
-        "ci-lite",
-        "release"
-      ],
-      "legacy_targeted": false,
-      "rationale": "Immutable release separates training payload from the evaluation reserve."
-    },
-    {
-      "path": "tests/test_gemma4_operator_cases.py",
-      "domain": "academy",
-      "test_type": "service_contract",
-      "intent": "contract",
-      "primary_lane": "new-code",
-      "allowed_lanes": [
-        "new-code",
-        "ci-lite",
-        "release"
-      ],
-      "legacy_targeted": false,
-      "rationale": "CPU benchmark reference qualification and bounded isolated workspaces."
-    },
-    {
-      "path": "tests/test_gemma4_operator_experience.py",
-      "domain": "academy",
-      "test_type": "service_contract",
-      "intent": "contract",
-      "primary_lane": "new-code",
-      "allowed_lanes": [
-        "new-code",
-        "ci-lite",
-        "release"
-      ],
-      "legacy_targeted": false,
-      "rationale": "Reviewed experience export requires bound independent verification evidence."
-    },
-    {
-      "path": "tests/test_single_model_execution.py",
-      "domain": "orchestrator",
-      "test_type": "integration",
-      "intent": "contract",
-      "primary_lane": "new-code",
-      "allowed_lanes": [
-        "new-code",
-        "ci-lite",
-        "release"
-      ],
-      "legacy_targeted": false,
-      "rationale": "Opt-in selected model reuses guarded runtime and captures authoritative tool history."
     }
   ]
 }

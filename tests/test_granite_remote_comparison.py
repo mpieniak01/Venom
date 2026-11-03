@@ -98,7 +98,10 @@ def evaluation(tmp_path, monkeypatch):
     class Remote:
         def __init__(self, *_):
             instances.append(self)
-            self.ready = {"adapter_sha256": "a" * 64}
+            self.ready = {
+                "adapter_sha256": "a" * 64,
+                "inference": dict(module.INFERENCE),
+            }
             self.closed = False
 
         def generate(self, *_):
@@ -235,3 +238,67 @@ def test_missing_manifest_fields_are_json_errors_without_owning_output(
     assert module.main([]) == 1
     assert json.loads(capsys.readouterr().out) == {"ok": False, "error": "KeyError"}
     assert not (options.output / "status.json").exists()
+
+
+@pytest.mark.parametrize(
+    "model,context",
+    [
+        ("google/gemma-4-12B-it", 4096),
+        ("ibm-granite/granite-4.2-3b", 2048),
+    ],
+)
+def test_summary_uses_actual_remote_context_and_separates_request_intent(
+    evaluation, model, context
+):
+    options, calls, _, factory = evaluation
+
+    class ReportedRemote(factory):
+        def __init__(self, *args):
+            super().__init__(*args)
+            self.ready.update(
+                model=model,
+                inference={**module.INFERENCE, "context": context},
+            )
+
+    result = module.evaluate(options, ReportedRemote)
+    actual = {**module.INFERENCE, "context": context}
+    assert result["inference"] == actual
+    summary = json.loads((options.output / "summary.json").read_text())
+    assert summary["inference"] == actual
+    assert summary["inference_source"] == "remote_handshake"
+    identity_path = options.output / "identity.json"
+    saved_intent = identity_path.read_bytes()
+    intent = json.loads(saved_intent)
+    assert intent["requested_inference"]["context"] == "sealed_remote_profile"
+    assert "inference" not in intent
+    binding = json.loads((options.output / "remote-identity.json").read_text())
+    assert binding["inference"] == actual
+    options.resume = True
+    resumed = module.evaluate(options, ReportedRemote)
+    assert resumed["inference"] == actual
+    assert identity_path.read_bytes() == saved_intent
+    assert len(calls) == 8
+
+
+def test_gemma_resume_rejects_changed_actual_context_before_new_trials(evaluation):
+    options, calls, instances, factory = evaluation
+
+    class ReportedRemote(factory):
+        context = 4096
+
+        def __init__(self, *args):
+            super().__init__(*args)
+            self.ready.update(
+                model="google/gemma-4-12B-it",
+                inference={**module.INFERENCE, "context": self.context},
+            )
+
+    module.evaluate(options, ReportedRemote)
+    options.resume = True
+    ReportedRemote.context = 2048
+    with pytest.raises(ValueError, match="remote_resume_identity_changed"):
+        module.evaluate(options, ReportedRemote)
+    assert len(calls) == 8
+    assert instances[-1].closed
+    binding = json.loads((options.output / "remote-identity.json").read_text())
+    assert binding["inference"]["context"] == 4096

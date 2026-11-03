@@ -1,5 +1,7 @@
 "use client";
 
+import { chatModelLabel, isSelectableChatModel } from "@/lib/chat-model-options";
+
 import { useState, useEffect, useCallback } from "react";
 import { Zap, RefreshCw, CheckCircle2, Loader2, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -84,9 +86,9 @@ export function AdaptersPanel() {
         (model) => model.runtime_id === resolvedRuntime,
       ),
     );
-    const modelSelectOptions = models.map((model) => ({
+    const modelSelectOptions = models.filter(isSelectableChatModel).map((model) => ({
       value: model.name,
-      label: model.name,
+      label: chatModelLabel(model.name, model.display_name, model.provider),
     }));
     setModelOptions(modelSelectOptions);
     setSelectedModel((current) => {

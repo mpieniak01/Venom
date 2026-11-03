@@ -14,6 +14,12 @@ from .paths import checked_file
 
 MODEL = "google/gemma-4-12B-it"
 LOADER = "Gemma4UnifiedForConditionalGeneration"
+REVISION = "43c9d014b231474fa7212dbb48a762566c2b255d"
+E4B_MODEL = "google/gemma-4-E4B-it"
+E4B_LOADER = "Gemma4ForConditionalGeneration"
+E4B_REVISION = "ee0ef6023621cff504d758262d4e04895a5af4a2"
+MODEL_LOADERS = MappingProxyType({MODEL: LOADER, E4B_MODEL: E4B_LOADER})
+PINNED_REVISIONS = MappingProxyType({MODEL: REVISION, E4B_MODEL: E4B_REVISION})
 SNAPSHOT_FILES = frozenset(
     {
         "config.json",
@@ -25,6 +31,13 @@ SNAPSHOT_FILES = frozenset(
 )
 _SHA = re.compile(r"[0-9a-f]{64}")
 _REVISION = re.compile(r"[0-9a-f]{40}")
+
+
+def loader_for_model(model: str) -> str:
+    """Return only an explicitly supported native checkpoint architecture."""
+    if not isinstance(model, str) or model not in MODEL_LOADERS:
+        raise ValueError("gemma_profile_model_invalid")
+    return MODEL_LOADERS[model]
 
 
 @dataclass(frozen=True)
@@ -59,7 +72,7 @@ class GemmaProfile:
             raise ValueError("gemma_profile_fields_invalid") from exc
 
     def validate(self) -> None:
-        if self.model != MODEL or self.loader != LOADER:
+        if self.loader != loader_for_model(self.model):
             raise ValueError("gemma_profile_model_invalid")
         if not isinstance(self.revision, str) or not _REVISION.fullmatch(self.revision):
             raise ValueError("gemma_profile_revision_unpinned")

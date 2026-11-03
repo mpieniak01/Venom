@@ -730,3 +730,98 @@ def test_initialized_vast_maf_service_checks_operator_switch_before_every_call(
         asyncio.run(operation_under_test)
     assert delegate.get_chat_message_content.await_count == 1
     asyncio.run(service.aclose())
+
+
+def _gemma_row(name, digest=DIGEST, size="8B"):
+    return {
+        "name": name,
+        "digest": digest,
+        "size": 1024,
+        "details": {
+            "family": "gemma4",
+            "format": "gguf",
+            "parameter_size": size,
+            "quantization_level": "Q4_K_M",
+        },
+    }
+
+
+def test_remote_unproven_gemma_latest_cannot_be_selected_or_persisted(target):
+    state, _ = target
+    state["models"] = [_gemma_row("gemma4:latest")]
+    operation_under_test = remote.select_model("gemma4:latest")
+    with pytest.raises(HTTPException) as error:
+        asyncio.run(operation_under_test)
+    assert error.value.status_code == 400
+    assert error.value.detail["code"] == "gemma4_variant_unresolved"
+    assert remote.selection() is None
+    assert not remote._SELECTION.exists()
+
+
+def test_remote_proven_alias_maps_to_explicit_tag_and_active_label(target):
+    state, _ = target
+    state["models"] = [
+        _gemma_row("gemma4:latest"),
+        _gemma_row("gemma4:e4b"),
+        _gemma_row("gemma4:12b-it-q4_K_M", "e" * 64, "12B"),
+    ]
+    response = asyncio.run(remote.select_model("gemma4:latest"))
+    assert response["active_model"] == "gemma4:e4b"
+    assert remote.selection()["model"] == "gemma4:e4b"
+    payload = asyncio.run(remote.target_payload())
+    assert {model["name"] for model in payload["models"]} == {
+        "gemma4:e4b",
+        "gemma4:12b-it-q4_K_M",
+    }
+    active = next(model for model in payload["models"] if model["active"])
+    assert active["display_name"] == "Gemma4 E4B IT Q4_K_M"
+    assert active["runtime_id"] == "vast_ollama"
+
+
+def test_persisted_unknown_remote_gemma_latest_fails_preflight_without_rewriting_active_identity(
+    target,
+):
+    state, _ = target
+    state["models"] = [_gemma_row("gemma4:latest")]
+    remote._save({"target_id": TARGET, "model": "gemma4:latest", "digest": DIGEST})
+    before = remote._SELECTION.read_bytes()
+    operation_under_test = remote.preflight()
+    with pytest.raises(HTTPException) as error:
+        asyncio.run(operation_under_test)
+    assert error.value.status_code == 400
+    assert remote._SELECTION.read_bytes() == before
+    assert remote.runtime_override().model_name == "gemma4:latest"
+
+
+def test_remote_transport_preserves_operator_tags_until_identity_verification():
+    from venom_core.services.vast_chat_connection import _models
+
+    rows = _models(
+        {"models": [_gemma_row("gemma4:latest"), _gemma_row("gemma4:12b-it-q4_K_M")]}
+    )
+    assert {row["name"] for row in rows} == {"gemma4:latest", "gemma4:12b-it-q4_K_M"}
+
+
+def test_remote_observed_saluki_preset_is_retained_with_readable_active_metadata(
+    target,
+):
+    from venom_core.services.ollama_model_identity import SALUKI_GGUF
+
+    state, _ = target
+    details = {
+        "family": "gemma3",
+        "format": "gguf",
+        "parameter_size": "26.9B",
+        "quantization_level": "IQ2_XS",
+    }
+    state["models"] = [
+        {"name": "saluki:latest", "digest": DIGEST, "size": 1024, "details": details},
+        {"name": SALUKI_GGUF, "digest": "e" * 64, "size": 1024, "details": details},
+    ]
+    asyncio.run(remote.select_model("saluki:latest"))
+    payload = asyncio.run(remote.target_payload())
+    assert len(payload["models"]) == 2
+    active = next(model for model in payload["models"] if model["active"])
+    assert active["name"] == "saluki:latest"
+    assert "26.9B IQ2_XS" in active["display_name"]
+    assert "dddddddd" in active["display_name"]

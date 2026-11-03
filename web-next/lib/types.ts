@@ -123,6 +123,12 @@ export interface LlmServerInfo {
 export type LlmRuntimeSourceType = "local-runtime" | "cloud-api" | "remote";
 
 export interface LlmRuntimeModelOption {
+  selection_supported?: boolean;
+  selection_block_reason?: string;
+  selection_block_code?: string;
+  display_name?: string;
+  digest?: string;
+  quantization?: string;
   id: string;
   name: string;
   provider: string;
@@ -362,6 +368,12 @@ export type ModelRole = "llm-engine" | "intent-embedding";
 export type ModelTrainabilityStatus = "trainable" | "not-trainable";
 
 export interface ModelInfo {
+  selection_supported?: boolean;
+  selection_block_reason?: string;
+  selection_block_code?: string;
+  display_name?: string;
+  digest?: string;
+  aliases?: string[];
   name: string;
   revision?: string;
   loaded?: boolean | null;

@@ -1,5 +1,6 @@
 "use client";
 
+import { chatModelLabel, isSelectableChatModel } from "@/lib/chat-model-options";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { LogEntryType } from "@/lib/logs";
 import type { ServiceStatus, Task, ContextUsed, HiddenPromptEntry } from "@/lib/types";
@@ -18,8 +19,8 @@ import type { SendTaskInput } from "@/hooks/use-api";
 const MAX_SESSION_HISTORY_ENTRIES = 500;
 
 type ModelsPayload = {
-  providers?: Record<string, Array<{ name?: string; provider?: string | null }>>;
-  models?: Array<{ name?: string; provider?: string | null }>;
+  providers?: Record<string, Array<{ name?: string; provider?: string | null; display_name?: string; selection_supported?: boolean; activation_supported?: boolean }>>;
+  models?: Array<{ name?: string; provider?: string | null; display_name?: string; selection_supported?: boolean; activation_supported?: boolean }>;
 } | null;
 
 type ActiveServerInfo = {
@@ -74,11 +75,11 @@ export function useLlmServerSelectionData({
   );
   const llmModelOptions = useMemo(
     () =>
-      availableModelsForServer.map((model) => ({
+      availableModelsForServer.filter(model => isSelectableChatModel({...model, name:model.name ?? "", provider:model.provider || selectedLlmServer})).map((model) => ({
         value: model.name ?? "",
-        label: model.name ?? "",
+        label: chatModelLabel(model.name ?? "", model.display_name, model.provider),
       })),
-    [availableModelsForServer],
+    [availableModelsForServer, selectedLlmServer],
   );
 
   return {

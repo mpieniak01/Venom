@@ -24,7 +24,10 @@ from venom_core.services.remote_training.lifecycle import (
     file_lock,
 )
 from venom_core.services.remote_training.paths import operator_path
-from venom_core.services.remote_training.verification import validate_local
+from venom_core.services.remote_training.verification import (
+    execution_backend,
+    validate_local,
+)
 
 MAX_LINE = 1024 * 1024
 
@@ -115,14 +118,20 @@ def stats(session):
 
 
 def serve(session, identity, expected_hash, source, sink, *, generator=None):
-    from scripts.granite_operator.comparison import INFERENCE, generate
+    from scripts.granite_operator.comparison import generate, inference_settings
 
     generator = generator or generate
     ready = {
         "status": "ready",
         "identity_sha256": digest(identity),
         "adapter_sha256": expected_hash,
-        "inference": INFERENCE,
+        "inference": inference_settings(session),
+        "model": identity.get("model"),
+        "revision": identity.get("revision"),
+        "protocol": getattr(session, "comparison_protocol", "granite_xml"),
+        "gpu_required": True,
+        "cpu_fallback": False,
+        "precision": getattr(getattr(session, "profile", None), "quantization", None),
         "gpu": session.torch.cuda.get_device_name(0),
         "cuda": session.torch.version.cuda,
         "control": "same base with PEFT adapter disabled",
@@ -173,16 +182,20 @@ def serve(session, identity, expected_hash, source, sink, *, generator=None):
 
 
 def worker(request_path: Path):
-    from venom_core.services.granite_operator.engine import Session, require_owner
-
-    require_owner()
     request = json.loads(operator_path(request_path).read_text())
     host, identity, profile = trusted_result(
         Path(request["host_root"]), Path(request["result"]), request["expected_hash"]
     )
+    session_type, owner_check, _ = execution_backend(
+        getattr(profile, "model", "ibm-granite/granite-4.2-3b")
+    )
+    owner_check()
     # CUDA/model libraries may print diagnostics. Only RPC records use stdout.
     with contextlib.redirect_stdout(sys.stderr):
-        session = Session(profile, Path(host["snapshot"]), Path(request["result"]))
+        from scripts.granite_operator.comparison_host import configure_session
+
+        session = session_type(profile, Path(host["snapshot"]), Path(request["result"]))
+        configure_session(session, profile, request["result"], host["snapshot"])
         session.model.eval()
         session.model.requires_grad_(False)
         session.model.gradient_checkpointing_disable()
@@ -218,6 +231,9 @@ def coordinate(args):
         args.host_root, args.result, args.expected_adapter_sha256
     )
     require_interpreter(host)
+    _, _, engine = execution_backend(
+        getattr(profile, "model", "ibm-granite/granite-4.2-3b")
+    )
     require_offline()
     with contextlib.redirect_stdout(sys.stderr):
         if not runtime_receipt(Path(host["code_root"]))["ok"]:
@@ -240,9 +256,9 @@ def coordinate(args):
     admission = RuntimeAdmission(Path(host["admission_db"]), enabled=True)
     with file_lock(args.host_root / "gpu.lock", blocking=False) as lock:
         lease = admission.acquire(
-            owner="granite-training",
+            owner=engine,
             run_id=run_id,
-            engine="granite-training",
+            engine=engine,
             model=identity["model"],
         )
 

@@ -434,3 +434,128 @@ def test_reviewed_experience_reads_and_binds_separate_evidence(tmp_path, capsys)
     assert report["status"] == "ELIGIBLE"
     assert report["record"]["supervised_assistant_indices"] == [1]
     assert json.loads(capsys.readouterr().out)["ok"] is True
+
+
+@pytest.mark.parametrize("inside_destination", [False, True])
+def test_self_publishing_output_errors_do_not_create_artifacts(
+    tmp_path, monkeypatch, capsys, inside_destination
+):
+    destination = tmp_path / "new-corpus"
+    output = (
+        destination / "manifest.json"
+        if inside_destination
+        else tmp_path / "existing.json"
+    )
+    if not inside_destination:
+        output.write_text("previous proof")
+    dispatched = []
+
+    def create_artifacts(args):
+        dispatched.append(args.command)
+        destination.mkdir()
+        return {"status": "PREPARED"}
+
+    monkeypatch.setattr(cli, "dispatch", create_artifacts)
+    result = cli.main(
+        [
+            "prepare-corpus",
+            "--source-root",
+            str(tmp_path),
+            "--destination",
+            str(destination),
+            "--output",
+            str(output),
+        ]
+    )
+    assert result == 1
+    assert dispatched == []
+    assert not destination.exists()
+    assert json.loads(capsys.readouterr().out)["ok"] is False
+    if not inside_destination:
+        assert output.read_text() == "previous proof"
+
+
+@pytest.mark.parametrize("missing", ["--precision", "--max-updates", "--max-seconds"])
+def test_session_requires_explicit_method_and_update_time_budgets(
+    tmp_path, capsys, missing
+):
+    explicit = {
+        "--profile": str(PROFILE),
+        "--precision": "nf4",
+        "--max-updates": "125",
+        "--max-seconds": "3600",
+    }
+    explicit.pop(missing)
+    args = [
+        "prepare-session",
+        "--source-root",
+        str(tmp_path),
+        "--input",
+        str(tmp_path / "encoded.json"),
+        "--binding",
+        str(tmp_path / "binding.json"),
+        "--snapshot",
+        str(tmp_path),
+        "--destination",
+        str(tmp_path / "session"),
+        "--run-id",
+        "planned",
+    ]
+    for flag, value in explicit.items():
+        args.extend((flag, value))
+    command_parser = cli.parser()
+    with pytest.raises(SystemExit) as error:
+        command_parser.parse_args(args)
+    assert error.value.code == 2
+    message = capsys.readouterr().err.rsplit("error: ", 1)[-1].strip()
+    assert message == f"the following arguments are required: {missing}"
+
+
+def test_session_cli_passes_frozen_evaluation_manifest_file(
+    tmp_path, monkeypatch, capsys
+):
+    from venom_core.services.gemma4_operator import preparation
+
+    encoded, binding, evaluation = [
+        tmp_path / name for name in ("encoded.json", "binding.json", "manifest.json")
+    ]
+    for path in (encoded, binding, evaluation):
+        path.write_text("{}")
+    observed = {}
+
+    def prepare(*args, **kwargs):
+        observed.update(kwargs)
+        return {"status": "SESSION_PACKAGE_PREPARED"}
+
+    monkeypatch.setattr(preparation, "prepare_session", prepare)
+    result = cli.main(
+        [
+            "prepare-session",
+            "--profile",
+            str(PROFILE),
+            "--source-root",
+            str(tmp_path),
+            "--input",
+            str(encoded),
+            "--binding",
+            str(binding),
+            "--snapshot",
+            str(tmp_path),
+            "--destination",
+            str(tmp_path / "session"),
+            "--evaluation-cases",
+            str(evaluation),
+            "--precision",
+            "nf4",
+            "--run-id",
+            "e4b-qlora",
+            "--max-updates",
+            "125",
+            "--max-seconds",
+            "3600",
+        ]
+    )
+    assert result == 0
+    assert observed["evaluation_cases"] == evaluation
+    assert observed["max_updates"] == 125
+    assert json.loads(capsys.readouterr().out)["status"] == "SESSION_PACKAGE_PREPARED"

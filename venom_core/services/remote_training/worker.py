@@ -20,7 +20,7 @@ from venom_core.services.granite_operator.contract import (
 )
 
 from .bundles import validate_identity
-from .host import binding, load_host
+from .host import binding, is_gemma_model, load_host
 from .paths import operator_path
 from .worker_support import normalized, preflight
 
@@ -104,7 +104,11 @@ def run_stage(host, request, result, *, run_id, timeout, children):
         "--",
         host["worker_python"],
         "-m",
-        "venom_core.services.granite_operator.worker",
+        (
+            "venom_core.services.gemma4_operator.training_worker"
+            if is_gemma_model(request["profile"].get("model"))
+            else "venom_core.services.granite_operator.worker"
+        ),
         str(path),
     ]
     log_path = result / "logs/training.log"
@@ -128,6 +132,31 @@ def run_stage(host, request, result, *, run_id, timeout, children):
     return json.loads((Path(request["output"]) / "metrics.json").read_text())
 
 
+def _stage_qualification(
+    identity: dict, final: dict, first: dict, hashes: dict
+) -> dict:
+    if is_gemma_model(identity.get("model")):
+        from venom_core.services.gemma4_operator.training import (
+            qualification as gemma_qualification,
+        )
+
+        return gemma_qualification(final, first, hashes)
+    return qualification(final, first, hashes)
+
+
+def _require_stage_qualification(
+    identity: dict, receipt: dict, fingerprint: str
+) -> None:
+    if is_gemma_model(identity.get("model")):
+        from venom_core.services.gemma4_operator.training import (
+            require_qualification as gemma_require,
+        )
+
+        gemma_require(receipt, fingerprint)
+        return
+    require_qualification(receipt, fingerprint)
+
+
 def proof_for(run_root: Path, host: dict, identity: dict) -> Path:
     """Reuse only this run's still-valid native smoke artifacts on this host."""
     proof = json.loads((run_root / "qualification-proof.json").read_text())
@@ -140,7 +169,7 @@ def proof_for(run_root: Path, host: dict, identity: dict) -> Path:
         != "succeeded"
     ):
         raise ValueError("remote_training_qualification_attempt_failed")
-    require_qualification(receipt, receipt.get("fingerprint"))
+    _require_stage_qualification(identity, receipt, receipt.get("fingerprint"))
     for name, checksum in receipt["artifacts"].items():
         if file_digest(inside(path.parent, name)) != checksum:
             raise ValueError("remote_training_qualification_changed")
@@ -211,10 +240,15 @@ def execute(request: dict) -> dict:
             raise ValueError("remote_training_time_budget_invalid")
         from venom_core.services.runtime_admission import RuntimeAdmission
 
+        engine = (
+            "gemma-training"
+            if is_gemma_model(identity["model"])
+            else "granite-training"
+        )
         lease = RuntimeAdmission(Path(host["admission_db"]), enabled=True).acquire(
-            owner="granite-training",
+            owner=engine,
             run_id=run_id,
-            engine="granite-training",
+            engine=engine,
             model=profile.model,
         )
         with lease.operation(
@@ -273,9 +307,9 @@ def execute(request: dict) -> dict:
                     for path in (result / "stages").rglob("*")
                     if path.is_file()
                 }
-                receipt = qualification(final, first, hashes)
+                receipt = _stage_qualification(identity, final, first, hashes)
                 write_json(result / "qualification.json", receipt)
-                require_qualification(receipt, final["fingerprint"])
+                _require_stage_qualification(identity, receipt, final["fingerprint"])
                 qualified = result / "qualification.json"
                 write_json(
                     run_root / "qualification-proof.json",

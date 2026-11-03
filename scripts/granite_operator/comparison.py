@@ -44,46 +44,107 @@ INFERENCE = {
 }
 
 
-def generate(session, messages, tools, arm, deadline):
-    ids = session.tokenizer.apply_chat_template(
+def inference_settings(session):
+    """One model copy serves all queued tasks; precision comes from its recipe."""
+    from venom_core.services.remote_training.host import is_gemma_model
+
+    profile = getattr(session, "profile", None)
+    if is_gemma_model(getattr(profile, "model", None)):
+        return {**INFERENCE, "context": profile.context}
+    return dict(INFERENCE)
+
+
+def encode_prompt(session, messages, tools):
+    from venom_core.services.remote_training.host import is_gemma_model
+
+    profile = getattr(session, "profile", None)
+    if is_gemma_model(getattr(profile, "model", None)):
+        from venom_core.services.gemma4_operator.protocol import render_messages
+
+        text = render_messages(
+            session.tokenizer,
+            messages,
+            tools,
+            session.gemma_profile,
+        )
+        return session.tokenizer(text, add_special_tokens=False)["input_ids"]
+    return session.tokenizer.apply_chat_template(
         messages,
         tools=tools,
         enable_thinking=False,
         truncate_history_thinking=False,
         tokenize=True,
         add_generation_prompt=True,
-        return_tensors="pt",
-        return_dict=True,
-    ).to("cuda")
-    length = ids["input_ids"].shape[-1]
-    if length + INFERENCE["max_new_tokens"] > INFERENCE["context"]:
-        raise ValueError("comparison_context_limit")
-    remaining = deadline - time.monotonic()
-    if remaining <= 0:
-        raise TimeoutError("comparison_task_deadline")
-    context = (
-        session.model.disable_adapter() if arm == "base" else contextlib.nullcontext()
+        return_dict=False,
     )
-    session.torch.cuda.synchronize()
-    start = time.monotonic()
-    with context, session.torch.inference_mode():
-        output = session.model.generate(
-            **ids,
-            max_new_tokens=INFERENCE["max_new_tokens"],
-            do_sample=False,
-            use_cache=True,
-            max_time=max(0.01, remaining),
-            pad_token_id=session.tokenizer.pad_token_id,
-        )
-    session.torch.cuda.synchronize()
-    seconds = time.monotonic() - start
-    generated = output[0, length:]
-    return {
-        "text": session.tokenizer.decode(generated, skip_special_tokens=False),
-        "seconds": seconds,
-        "tokens": len(generated),
-        "input_tokens": length,
-    }
+
+
+def generation_options(session):
+    """Pin native tool yield/end IDs; never inherit an unbound generation default."""
+    from venom_core.services.remote_training.host import is_gemma_model
+
+    if not is_gemma_model(getattr(getattr(session, "profile", None), "model", None)):
+        return {}
+    cached = getattr(session, "native_stop_ids", None)
+    if cached is None:
+        from venom_core.services.gemma4_operator.protocol import STOP_SEQUENCES
+
+        tokenizer = session.tokenizer
+        identifiers = []
+        for token in STOP_SEQUENCES:
+            ident = tokenizer.convert_tokens_to_ids(token)
+            if (
+                type(ident) is not int
+                or ident < 0
+                or ident == getattr(tokenizer, "unk_token_id", None)
+                or tokenizer.convert_ids_to_tokens(ident) != token
+            ):
+                raise ValueError("comparison_native_stop_tokens_invalid")
+            identifiers.append(ident)
+        cached = tuple(dict.fromkeys(identifiers))
+        session.native_stop_ids = cached
+    return {"eos_token_id": list(cached)}
+
+
+def parse_calls(session, text, tools):
+    from venom_core.services.remote_training.host import is_gemma_model
+
+    profile = getattr(session, "profile", None)
+    protocol = getattr(session, "comparison_protocol", None)
+    if is_gemma_model(getattr(profile, "model", None)) or protocol == "gemma4":
+        from venom_core.services.gemma4_operator.protocol import parse_response
+
+        return parse_response(text, tools)
+    from venom_core.services.maintenance_comparison.protocol import granite_calls
+
+    return granite_calls(text)
+
+
+def generate(session, messages, tools, arm, deadline):
+    from scripts.granite_operator.comparison_parallel import generate_batch
+
+    return generate_batch(session, [(messages, tools, arm, deadline)])[0]
+
+
+def case_messages(case, dataset):
+    images = case.get("images", [])
+    content = (
+        [
+            {
+                "type": "image",
+                "path": str(inside(dataset, image["path"])),
+                "sha256": image["sha256"],
+            }
+            for image in images
+        ]
+        + [{"type": "text", "text": case["prompt"]}]
+        if images
+        else case["prompt"]
+    )
+    return [
+        {"role": "system", "content": case["system"]},
+        {"role": "user", "content": content},
+    ]
 
 
 def run_case(
@@ -98,15 +159,20 @@ def run_case(
     generator=None,
     task_timeout_seconds=None,
 ):
-    from jsonschema import Draft202012Validator
+    Draft202012Validator = importlib.import_module("jsonschema").Draft202012Validator
 
     generator = generator or generate
 
-    from venom_core.services.maintenance_comparison.protocol import (
-        ProtocolError,
-        granite_calls,
-    )
+    from venom_core.services.maintenance_comparison.protocol import ProtocolError
 
+    image_inputs = case.get("images", [])
+    if image_inputs:
+        from venom_core.services.remote_training.host import is_gemma_model
+
+        if not is_gemma_model(
+            getattr(getattr(session, "profile", None), "model", None)
+        ):
+            raise ValueError("comparison_image_backend_unsupported")
     workspace = clone_fixture(
         dataset,
         case,
@@ -116,10 +182,7 @@ def run_case(
     tool = None
     if not case["oracle"].get("no_terminal"):
         tool = DockerTool(workspace, image, run_id)
-    messages = [
-        {"role": "system", "content": case["system"]},
-        {"role": "user", "content": case["prompt"]},
-    ]
+    messages = case_messages(case, dataset)
     schemas = {
         t["function"]["name"]: t["function"]["parameters"] for t in case["tools"]
     }
@@ -155,7 +218,7 @@ def run_case(
                 if time.monotonic() >= deadline:
                     failure = "task_timeout"
                     break
-                calls = granite_calls(generated["text"])
+                calls = parse_calls(session, generated["text"], case["tools"])
             except TimeoutError as error:
                 queue_seconds += getattr(error, "queue_seconds", 0.0)
                 failure = "task_timeout"
@@ -342,16 +405,15 @@ def run_case(
 
 
 def worker(request):
-    from venom_core.services.granite_operator.engine import Session, require_owner
-
-    require_owner()
     from scripts.granite_operator.comparison_parallel import Execution
+    from venom_core.services.granite_operator.engine import Session, require_owner
 
     request.setdefault("execution", Execution().validate())
     if request.get("adapter_root"):
         from scripts.granite_operator.comparison_host import worker as host_worker
 
         return host_worker(request)
+    require_owner()
     output = Path(request["output"])
     manifest_path = Path(request["cases"])
     manifest, cases = load_frozen(manifest_path)
@@ -534,13 +596,16 @@ def coordinate(args):
     if args.adapter_root:
         from scripts.granite_operator.comparison_host import adapter_source
 
-        host, _, _ = adapter_source(
+        host, _, selected_profile = adapter_source(
             {
                 "adapter_root": str(args.adapter_root),
                 "host_root": str(args.host_root),
                 "expected_adapter_sha256": args.expected_adapter_sha256,
                 "inference_precision": precision,
             }
+        )
+        args.selected_model = getattr(
+            selected_profile, "model", "ibm-granite/granite-4.2-3b"
         )
         args.worker_python = Path(host["worker_python"])
         args.admission_db = Path(host["admission_db"])
@@ -576,13 +641,16 @@ def coordinate(args):
 
 
 def _coordinate_reserved(args, execution, run_id, request_path):
+    from venom_core.services.remote_training.verification import execution_backend
     from venom_core.services.runtime_admission import RuntimeAdmission
 
+    model = getattr(args, "selected_model", "ibm-granite/granite-4.2-3b")
+    _, _, engine = execution_backend(model)
     lease = RuntimeAdmission(args.admission_db, enabled=True).acquire(
-        owner="granite-training",
+        owner=engine,
         run_id=run_id,
-        engine="granite-training",
-        model="ibm-granite/granite-4.2-3b",
+        engine=engine,
+        model=model,
     )
     child = None
     containers_clean = False

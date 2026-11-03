@@ -1,5 +1,8 @@
 [run]
 branch = True
+# Count the isolated corpus tool replay as well as its controlling pytest process.
+# https://pytest-cov.readthedocs.io/en/stable/subprocess-support.html
+patch = subprocess
 source = venom_core
 omit = tests/*
     venom_core/agents/writer.py

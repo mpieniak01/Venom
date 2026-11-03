@@ -48,7 +48,16 @@ def publish(path: Path | None, document: Any) -> None:
         print(json.dumps(document, ensure_ascii=False, indent=2, allow_nan=False))
         return
     path = checked_file(path, output=True)
-    payload = json.dumps(document, ensure_ascii=False, indent=2, allow_nan=False)
+    compact = (
+        isinstance(document, dict) and document.get("kind") == "gemma4_encoded_release"
+    )
+    payload = json.dumps(
+        document,
+        ensure_ascii=False,
+        indent=None if compact else 2,
+        separators=(",", ":") if compact else None,
+        allow_nan=False,
+    )
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = None
     try:
@@ -89,6 +98,7 @@ def preparation_plan(profile) -> dict:
         "status": "PREPARED",
         "profile": profile.identity(),
         "execution_location": "cpu_control",
+        "model_execution_policy": {"gpu_required": True, "cpu_fallback": False},
         "model_loaded": False,
         "training_started": False,
         "activation_authorized": False,
@@ -101,6 +111,10 @@ def preparation_plan(profile) -> dict:
             "freeze-material",
             "qualify-cases",
             "export-experience",
+            "bind-ollama",
+            "prepare-corpus",
+            "encode-material",
+            "prepare-session",
         ],
         "remote_gates": [
             {"stage": stage, "status": "DEFERRED_REMOTE"}
@@ -148,7 +162,94 @@ def parser() -> argparse.ArgumentParser:
         output=True,
         inputs=(("task", True), ("receipt", False), ("evidence", False)),
     )
+    _command_parser(
+        sub,
+        "bind-ollama",
+        profile=True,
+        output=True,
+        inputs=(("selection", True), ("observed", True)),
+    )
+    _command_parser(
+        sub, "prepare-corpus", inputs=(("source-root", True), ("destination", True))
+    )
+    _command_parser(
+        sub,
+        "encode-material",
+        profile=True,
+        output=True,
+        inputs=(("input", True), ("snapshot", True)),
+    )
+    session = _command_parser(
+        sub,
+        "prepare-session",
+        profile=True,
+        inputs=(
+            ("source-root", True),
+            ("input", True),
+            ("binding", True),
+            ("snapshot", True),
+            ("destination", True),
+            ("evaluation-cases", False),
+        ),
+    )
+    session.add_argument("--precision", choices=("nf4", "bf16"), required=True)
+    session.add_argument("--run-id", required=True)
+    session.add_argument("--max-updates", type=int, required=True)
+    session.add_argument("--max-seconds", type=int, required=True)
     return root
+
+
+def _prepare_session(args, profile):
+    from .preparation import prepare_session
+    from .training import GemmaTrainingRecipe
+
+    recipe = GemmaTrainingRecipe.for_profile(profile, quantization=args.precision)
+    destination = checked_file(args.destination / "preflight.json", output=True).parent
+    return prepare_session(
+        checked_directory(args.source_root),
+        checked_file(args.input),
+        checked_file(args.binding),
+        recipe,
+        destination,
+        snapshot=checked_directory(args.snapshot),
+        run_id=args.run_id,
+        max_updates=args.max_updates,
+        max_seconds=args.max_seconds,
+        evaluation_cases=(
+            checked_file(args.evaluation_cases) if args.evaluation_cases else None
+        ),
+    )
+
+
+def _prepare_training_data(args):
+    if args.command == "prepare-corpus":
+        from .corpus import build_corpus
+
+        destination = checked_file(
+            args.destination / "manifest.json", output=True
+        ).parent
+        return build_corpus(checked_directory(args.source_root), destination)
+    from .profile import GemmaProfile
+
+    profile = GemmaProfile.load(args.profile)
+    if args.command == "prepare-session":
+        return _prepare_session(args, profile)
+    if args.command == "bind-ollama":
+        from .identity import bind_ollama
+
+        return bind_ollama(
+            profile, read_document(args.selection), read_document(args.observed)
+        )
+    from transformers import AutoTokenizer
+
+    from .encoding import encode_release
+
+    snapshot = checked_directory(args.snapshot)
+    profile.validate_snapshot(snapshot)
+    tokenizer = AutoTokenizer.from_pretrained(
+        snapshot, local_files_only=True, trust_remote_code=False
+    )
+    return encode_release(read_document(args.input), tokenizer, profile)
 
 
 def _export_experience(args):
@@ -165,6 +266,13 @@ def _export_experience(args):
 
 
 def dispatch(args: argparse.Namespace) -> Any:
+    if args.command in {
+        "bind-ollama",
+        "prepare-corpus",
+        "encode-material",
+        "prepare-session",
+    }:
+        return _prepare_training_data(args)
     if args.command == "qualify-cases":
         from .benchmark import qualify_cases
 
@@ -211,9 +319,24 @@ def _dispatch_material_or_runtime(args: argparse.Namespace) -> Any:
     )
 
 
+def _validate_output_before_dispatch(args: argparse.Namespace) -> None:
+    if args.output is None:
+        return
+    output = checked_file(args.output, output=True)
+    if output.exists():
+        raise FileExistsError("gemma_output_already_exists")
+    if args.command in {"prepare-corpus", "prepare-session"}:
+        destination = checked_file(
+            args.destination / "preflight.json", output=True
+        ).parent
+        if output.is_relative_to(destination):
+            raise ValueError("gemma_receipt_must_be_outside_destination")
+
+
 def main(argv: list[str] | None = None) -> int:
     args = parser().parse_args(argv)
     try:
+        _validate_output_before_dispatch(args)
         result = dispatch(args)
         publish(args.output, result)
         return result_code(result)

@@ -78,6 +78,8 @@ def _matching_model_indexes(models: list[dict], name: str) -> set[int]:
     def identifiers(model: dict) -> set[str]:
         """Collect installation names and real paths, excluding registry URI pseudo-paths."""
         values = {model.get("name")}
+        if model.get("provider") == "ollama":
+            values.update(model.get("aliases", []))
         path = model.get("path")
         if isinstance(path, str) and not path.startswith("ollama://"):
             values.add(path)

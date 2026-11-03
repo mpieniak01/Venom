@@ -1,5 +1,7 @@
 "use client";
 
+import { chatModelLabel, isSelectableChatModel } from "@/lib/chat-model-options";
+
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -30,7 +32,7 @@ export function BenchmarkConfigurator({
   const [numQuestions, setNumQuestions] = useState(5);
 
   // Filtruj modele według wybranego runtime
-  const filteredModels = availableModels.filter((model) => {
+  const filteredModels = availableModels.filter(isSelectableChatModel).filter((model) => {
     if (runtime === "ollama") {
       return model.provider === "ollama";
     }
@@ -131,7 +133,7 @@ export function BenchmarkConfigurator({
               const checkboxId = `model-${model.name.replaceAll(/[^a-zA-Z0-9]/g, "-")}`;
               return (
                 <label
-                  key={model.name}
+                  key={chatModelLabel(model.name, undefined, model.provider)}
                   htmlFor={checkboxId}
                   className={cn(
                     "flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2 transition",
@@ -150,7 +152,7 @@ export function BenchmarkConfigurator({
                     className="h-4 w-4 rounded border-[color:var(--ui-border)] bg-[color:var(--bg-panel)] text-[color:var(--accent)] focus:ring-[color:var(--primary-glow)]"
                   />
                   <span className="flex-1 text-sm text-[color:var(--text-primary)]">
-                    {model.name}
+                    {chatModelLabel(model.name, undefined, model.provider)}
                   </span>
                 </label>
               );

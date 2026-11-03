@@ -271,6 +271,10 @@ export const models = {
     run: "Starten",
   },
   status: {
+    chooseObservedModel: 'Wählen Sie ein explizites Modell oder aktualisieren Sie den Katalog mit bestätigten Laufzeit-Metadaten.',
+    chooseSalukiSource: 'Wählen Sie das explizite Modell Underdog Saluki 27B 1.0 IQ2-mix GGUF. Die Quelle von saluki:latest wurde nicht bestätigt.',
+    unresolvedVariant: 'nicht bestimmte Variante',
+    chooseGemmaVariant: 'Wählen Sie ausdrücklich Gemma4 E4B IT Q4_K_M oder Gemma4 12B IT Q4_K_M. Die Variante des latest-Alias wurde nicht bestätigt.',
     loaded: "Geladen",
     unloaded: "Nicht geladen",
     loadedUnknown: "Speicherzustand unbestätigt",

@@ -2,15 +2,9 @@ diff --git a/model/parsers/functiongemma.go b/model/parsers/functiongemma.go
 index aeca2d4..03453b8 100644
 --- a/model/parsers/functiongemma.go
 +++ b/model/parsers/functiongemma.go
-@@ -159,7 +159,7 @@ func (p *FunctionGemmaParser) eat() ([]functionGemmaEvent, bool) {
- }
- 
- // Matches call:function_name{args}
+@@ -162 +162 @@ func (p *FunctionGemmaParser) eat() ([]functionGemmaEvent, bool) {
 -var functionGemmaCallRegex = regexp.MustCompile(`call:([^{]+)\{(.*)\}`)
 +var functionGemmaCallRegex = regexp.MustCompile(`(?s)call:([^{]+)\{(.*)\}`)
- 
- func (p *FunctionGemmaParser) parseToolCall(content string) (api.ToolCall, error) {
- 	toolCall := api.ToolCall{}
 diff --git a/model/parsers/functiongemma_multiline_venom_test.go b/model/parsers/functiongemma_multiline_venom_test.go
 new file mode 100644
 index 0000000..1e2c6db

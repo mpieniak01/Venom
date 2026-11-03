@@ -161,6 +161,7 @@ nie pelna lokalna ocena 352 przypadkow ani kwalifikacja ogolnego czatu.
 Ollama 0.40.11 ucinala argumenty na nowej linii. Celowy test odtworzyl blad;
 poprawka DOTALL i test obu trybow (calosc/strumien) sa w
 `scripts/llm/patches/ollama-0.40.11-functiongemma-multiline.patch`.
+Na czystych zrodlach tagu v0.40.11 zastosuj ja przez `git apply --unidiff-zero`.
 Sprawdzono testy FunctionGemma oraz rzeczywisty zapis JSON-a przez API.
 Usluga uzytkownika venom-ollama.service korzysta z lokalnej wersji w katalogu
 `~/.local/share/venom266/ollama-0.40.11-functiongemma-multiline/` i oryginalnych

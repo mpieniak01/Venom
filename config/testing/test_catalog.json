@@ -2701,6 +2701,76 @@
       "rationale": "Physical Forge LLM scenarios isolated from simulated hot-reload; direct runtime blocked pending host admission."
     },
     {
+      "path": "tests/test_functiongemma_dataset.py",
+      "domain": "models",
+      "test_type": "unit",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "FunctionGemma native protocol, data integrity and explicit training contracts."
+    },
+    {
+      "path": "tests/test_functiongemma_encoding.py",
+      "domain": "models",
+      "test_type": "unit",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "FunctionGemma native protocol, data integrity and explicit training contracts."
+    },
+    {
+      "path": "tests/test_functiongemma_evaluation.py",
+      "domain": "models",
+      "test_type": "unit",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "FunctionGemma native protocol, data integrity and explicit training contracts."
+    },
+    {
+      "path": "tests/test_functiongemma_protocol.py",
+      "domain": "models",
+      "test_type": "unit",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "FunctionGemma native protocol, data integrity and explicit training contracts."
+    },
+    {
+      "path": "tests/test_functiongemma_training.py",
+      "domain": "models",
+      "test_type": "unit",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "FunctionGemma native protocol, data integrity and explicit training contracts."
+    },
+    {
       "path": "tests/test_gemma4_audio_models.py",
       "domain": "runtime",
       "test_type": "unit",

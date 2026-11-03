@@ -1,0 +1,174 @@
+"""Native prefix matching and last-assistant-only loss with a CPU double."""
+
+import json
+
+import pytest
+
+from venom_core.services.functiongemma.encoding import (
+    encode_decision,
+    encode_release,
+    validate_encoded_release,
+)
+from venom_core.services.gemma4_operator.material import digest
+
+
+class Tokenizer:
+    chat_template = "native-test-template"
+
+    def __len__(self):
+        return 1000000
+
+    def apply_chat_template(self, messages, **kwargs):
+        result = ""
+        for message in messages:
+            body = message.get("content", "") or ""
+            if message.get("tool_calls"):
+                body = json.dumps(message["tool_calls"], sort_keys=True)
+            if not isinstance(body, str):
+                body = json.dumps(body, sort_keys=True)
+            result += (
+                "<start_of_turn>" + message["role"] + "\n" + body + "<end_of_turn>"
+            )
+        if kwargs["add_generation_prompt"]:
+            result += "<start_of_turn>assistant\n"
+        return result
+
+    def __call__(self, text, **kwargs):
+        assert kwargs == {
+            "add_special_tokens": False,
+            "return_offsets_mapping": True,
+            "truncation": False,
+        }
+        return {
+            "input_ids": [ord(c) for c in text],
+            "offset_mapping": [(i, i + 1) for i in range(len(text))],
+        }
+
+    def decode(self, ids, **kwargs):
+        return "".join(chr(i) for i in ids)
+
+
+def decision(split="train"):
+    return {
+        "record_id": split + "-decision",
+        "problem_group": split + "-group",
+        "language": "en",
+        "split": split,
+        "training_allowed": split == "train",
+        "tools": [],
+        "messages": [
+            {"role": "user", "content": "first"},
+            {"role": "assistant", "content": "excluded bad response"},
+            {"role": "user", "content": "corrected observation"},
+            {"role": "assistant", "content": "correct final"},
+        ],
+        "supervised_assistant_indices": [3],
+        "context_only_assistant_indices": [1],
+    }
+
+
+def release():
+    rows = {"train": [decision()], "validation": [decision("validation")]}
+    result = {
+        "schema_version": 1,
+        "kind": "functiongemma_decision_release",
+        "records": rows,
+        "records_sha256": digest(rows),
+    }
+    result["release_sha256"] = digest(result)
+    return result
+
+
+def test_labels_only_final_target_including_native_end():
+    encoded = encode_decision(decision(), Tokenizer())
+    target = [value for value in encoded["labels"] if value != -100]
+    assert Tokenizer().decode(target) == "correct final<end_of_turn>"
+    assert encoded["labels"][0] == -100
+    assert "excluded" not in Tokenizer().decode(target)
+
+
+def test_encoded_seal_and_span_reload():
+    encoded = encode_release(release(), Tokenizer())
+    assert len(validate_encoded_release(encoded)["train"]) == 1
+    encoded["records"]["train"][0]["labels"][0] = 1
+    with pytest.raises(ValueError, match="hash_mismatch"):
+        validate_encoded_release(encoded)
+
+
+def test_oversize_never_truncated():
+    row = decision()
+    row["messages"][0]["content"] = "x" * 2048
+    with pytest.raises(ValueError, match="sequence_exceeds_context"):
+        encode_decision(row, Tokenizer())
+
+
+def test_unstable_native_prefix_fails_closed():
+    class Unstable(Tokenizer):
+        def apply_chat_template(self, messages, **kwargs):
+            result = super().apply_chat_template(messages, **kwargs)
+            return "unstable" + result if kwargs["add_generation_prompt"] else result
+
+    with pytest.raises(ValueError, match="native_prefix_unstable"):
+        encode_decision(decision(), Unstable())
+
+
+def test_resealed_mask_corruption_still_rejected():
+    encoded = encode_release(release(), Tokenizer())
+    row = encoded["records"]["train"][0]
+    row["labels"][0] = 1
+    row["sequence_sha256"] = digest(
+        {k: v for k, v in row.items() if k != "sequence_sha256"}
+    )
+    encoded["encoded_release_sha256"] = digest(
+        {k: v for k, v in encoded.items() if k != "encoded_release_sha256"}
+    )
+    with pytest.raises(ValueError, match="mask_invalid"):
+        validate_encoded_release(encoded)
+
+
+def test_bad_target_and_context_rejected():
+    row = decision()
+    row["supervised_assistant_indices"] = [1]
+    with pytest.raises(ValueError, match="target_invalid"):
+        encode_decision(row, Tokenizer())
+    with pytest.raises(ValueError, match="context_invalid"):
+        encode_decision(decision(), Tokenizer(), 512)
+
+
+def reseal(document):
+    for rows in document["records"].values():
+        for row in rows:
+            row["sequence_sha256"] = digest(
+                {k: v for k, v in row.items() if k != "sequence_sha256"}
+            )
+    document["encoded_release_sha256"] = digest(
+        {k: v for k, v in document.items() if k != "encoded_release_sha256"}
+    )
+    return document
+
+
+@pytest.mark.parametrize(
+    "change",
+    ["base", "context", "empty_train", "bad_id", "bad_span", "group", "mask", "ids"],
+)
+def test_resealed_invalid_vectors_rejected(change):
+    encoded = encode_release(release(), Tokenizer())
+    row = encoded["records"]["train"][0]
+    if change == "base":
+        encoded["model"] = "other"
+    elif change == "context":
+        encoded["context"] = 2048
+    elif change == "empty_train":
+        encoded["records"]["train"] = []
+    elif change == "bad_id":
+        row["record_id"] = ""
+    elif change == "bad_span":
+        row["assistant_token_spans"][0]["start"] = 0
+    elif change == "group":
+        encoded["records"]["validation"][0]["problem_group"] = row["problem_group"]
+    elif change == "mask":
+        row["attention_mask"] = []
+    else:
+        row["input_ids"][0] = -1
+    with pytest.raises(ValueError):
+        validate_encoded_release(reseal(encoded))

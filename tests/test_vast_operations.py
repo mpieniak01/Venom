@@ -81,6 +81,7 @@ def test_create_and_recover(service):
     assert svc.client.create.call_count == 1
     payload = svc.client.create.call_args.args[1]
     assert payload["cancel_unavail"] is True
+    assert payload["image"] == plan.profile.image
     assert payload["disk"] == 100
     assert payload["label"] == "venom-" + plan.plan_id
     assert "VAST_API_KEY" not in json.dumps(payload)
@@ -122,6 +123,8 @@ def test_vm_create_sends_vm_flag_and_template(service):
 
     payload = svc.client.create.call_args.args[1]
     assert payload["vm"] is True
+    assert "image" not in payload
+    assert payload["disk"] == 100
     assert payload["template_hash_id"] == template_hash
     assert payload["runtype"] == "ssh_direct"
 

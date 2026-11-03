@@ -10,6 +10,18 @@ logu konkretnego kroku i testu celowego. Kod i locki repo są źródłem prawdy.
 
 ### Naprawa kontraktu wynajmu (2026-11-03)
 
+Porównanie z udaną Gemma 4 (instancja `58965216`, zapis
+`data/training/gemma4-pilot-session-20261103/operation.json`) potwierdziło,
+że payload miał `template_hash_id`, `vm: true`, `runtype: ssh_direct`,
+`disk: 100` i nie zawierał `image`. Ogólny klient na gałęzi FunctionGemma
+nadpisywał obraz digestem kontenera także dla VM. Dla VM przywrócono wybór
+obrazu przez zweryfikowany szablon; receptury kontenerowe zachowują digest.
+Obraz w profilu VM jest deklaracją pomocniczą, nie dowodem przypięcia obrazu
+gościa. Faktyczny system i GPU wymagają odczytu po SSH. Instancję `58992567`
+usunięto po kolejnym odrzuceniu poprawnego klucza. Zmianę payloadu ustalono
+z dowodów lokalnych; jej skuteczność wobec błędu SSH nie jest jeszcze
+potwierdzona nowym rozruchem. Nie wykonywać kolejnego wynajmu automatycznie.
+
 Udana sesja G03 `58823228` używała Ubuntu VM, `vm: true`,
 `runtype: ssh_direct` i publicznego IP z mapowaniem `22/tcp`.
 Ostatnie nieudane sesje `58989309` i `58991471` użyły Ubuntu Desktop VM,

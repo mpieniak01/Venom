@@ -178,7 +178,13 @@ class Environments:
                 record.instance_id = self.client.create(
                     plan.assessment.offer["id"],
                     {
-                        "image": plan.profile.image,
+                        # VM images are selected by the verified VM template.
+                        # A container digest override changes that launch contract.
+                        **(
+                            {}
+                            if plan.profile.vm_required
+                            else {"image": plan.profile.image}
+                        ),
                         **(
                             {"template_hash_id": plan.profile.template_hash}
                             if plan.profile.template_hash

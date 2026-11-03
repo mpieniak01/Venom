@@ -471,3 +471,25 @@ def test_image_warmup_covers_both_arms_outside_timing(monkeypatch, tmp_path):
     }
     assert [arm for _, arm in calls] == ["base", "adapter", "adapter", "base"] * 2
     assert isinstance(calls[4][0][1]["content"], list)
+
+
+def test_remote_image_evaluation_fails_before_starting_paid_model(
+    monkeypatch, tmp_path
+):
+    from scripts.granite_operator import remote_comparison
+
+    monkeypatch.setattr(
+        remote_comparison,
+        "load_frozen",
+        lambda path: ({}, [{"images": [{"path": "local.png", "sha256": "a" * 64}]}]),
+    )
+    created = []
+
+    def forbidden(*args):
+        created.append(True)
+        raise AssertionError("remote provider must not start")
+
+    options = SimpleNamespace(cases=tmp_path / "manifest.json")
+    with pytest.raises(ValueError, match="remote_images_require_same_host_runner"):
+        remote_comparison.evaluate(options, forbidden)
+    assert created == []

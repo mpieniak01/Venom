@@ -130,6 +130,7 @@ class FakeSession:
             "adapter_config.json": "{}",
             "adapter_model.safetensors": "fake",
             "training-state.pt": "fake optimizer and RNG",
+            "README.md": "PEFT model card",
         }.items():
             (path / name).write_text(value)
         write_json(
@@ -611,3 +612,288 @@ def test_gemma_runtime_reports_gpu_required_and_no_cpu_fallback():
         "disk_offload": False,
         "parameter_tensors_on_cuda": 1,
     }
+
+
+def test_collected_checkpoint_preserves_peft_card_and_full_resume_receipt(
+    prepared, tmp_path
+):
+    import shutil
+
+    from venom_core.services.remote_training.artifacts import _files
+
+    request, run = prepared
+    result = run(request)
+    source = Path(request["output"])
+    selected = _files(source, include_checkpoint=True)
+    assert "checkpoint/README.md" in selected
+    downloaded = tmp_path / "downloaded"
+    for name in selected:
+        destination = downloaded / name
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source / name, destination)
+    receipt = training.verified_checkpoint(
+        downloaded / "checkpoint", result["fingerprint"]
+    )
+    assert "README.md" in receipt["files"]
+    session = FakeSession(None, None, None)
+    assert session.restore(downloaded / "checkpoint", {}, result["fingerprint"])
+    assert session.step == result["global_step"]
+
+
+def test_checkpoint_collection_only_allows_root_peft_card_markdown(tmp_path):
+    from venom_core.services.remote_training.artifacts import _files
+
+    checkpoint = tmp_path / "checkpoint"
+    checkpoint.mkdir()
+    write_json(checkpoint / "receipt.json", {})
+    (checkpoint / "README.md").write_text("PEFT card")
+    (checkpoint / "private-notes.md").write_text("excluded")
+    (checkpoint / "nested").mkdir()
+    (checkpoint / "nested/README.md").write_text("excluded")
+    selected = _files(tmp_path, include_checkpoint=True)
+    assert "checkpoint/README.md" in selected
+    assert "checkpoint/private-notes.md" not in selected
+    assert "checkpoint/nested/README.md" not in selected
+
+
+@pytest.fixture
+def native_provider(monkeypatch):
+    """A remote-library double exercises actual loader admission and placement."""
+    import sys
+
+    from venom_core.services.granite_operator import engine
+
+    state = SimpleNamespace(
+        cuda_available=True,
+        base_device="cuda",
+        unexpected_trainable=False,
+        loaders=[],
+        lora=[],
+        prepared=[],
+        restored=[],
+        optimizers=[],
+        owners=[],
+    )
+
+    class Base:
+        def __init__(self):
+            self.parameter = SimpleNamespace(
+                requires_grad=True,
+                device=SimpleNamespace(type=state.base_device),
+            )
+            self.config = SimpleNamespace(use_cache=True)
+            self.hf_device_map = {"": 0}
+            self.checkpointing = []
+
+        def named_modules(self):
+            return [
+                ("model.language_model.layers.0.self_attn." + name, None)
+                for name in ("q_proj", "k_proj", "v_proj", "o_proj")
+            ]
+
+        def named_parameters(self):
+            return [("base.weight", self.parameter)]
+
+        def requires_grad_(self, enabled):
+            self.parameter.requires_grad = enabled
+
+        def gradient_checkpointing_enable(self, **options):
+            self.checkpointing.append(options)
+
+        def enable_input_require_grads(self):
+            self.input_gradients_enabled = True
+
+    class Adapter:
+        def __init__(self, base):
+            self.base = base
+            self.hf_device_map = base.hf_device_map
+            self.adapter_parameter = SimpleNamespace(
+                requires_grad=True,
+                device=SimpleNamespace(type="cuda"),
+            )
+
+        def named_parameters(self):
+            parameters = [
+                *self.base.named_parameters(),
+                ("text.lora_A.weight", self.adapter_parameter),
+            ]
+            if state.unexpected_trainable:
+                parameters.append(
+                    (
+                        "surprise.weight",
+                        SimpleNamespace(
+                            requires_grad=True,
+                            device=SimpleNamespace(type="cuda"),
+                        ),
+                    )
+                )
+            return parameters
+
+        def parameters(self):
+            return [parameter for _, parameter in self.named_parameters()]
+
+    def loader_for(name):
+        class Loader:
+            @staticmethod
+            def from_pretrained(snapshot, **options):
+                state.loaders.append((name, snapshot, options))
+                return Base()
+
+        return Loader
+
+    def make_lora(**options):
+        config = SimpleNamespace(**options)
+        state.lora.append(config)
+        return config
+
+    def prepare(base, **options):
+        state.prepared.append(options)
+        base.requires_grad_(False)
+        return base
+
+    def attach(base, config):
+        return Adapter(base)
+
+    def restore(base, path, **options):
+        state.restored.append((path, options))
+        return Adapter(base)
+
+    def optimizer(parameters, **options):
+        state.optimizers.append((parameters, options))
+        return SimpleNamespace()
+
+    fake_torch = SimpleNamespace(
+        bfloat16="bf16",
+        manual_seed=lambda seed: None,
+        cuda=SimpleNamespace(
+            is_available=lambda: state.cuda_available,
+            is_bf16_supported=lambda: True,
+            get_device_name=lambda index: "FAKE GPU",
+            get_device_properties=lambda index: SimpleNamespace(
+                total_memory=48 * 1024**3
+            ),
+            manual_seed_all=lambda seed: None,
+        ),
+        version=SimpleNamespace(cuda="fake"),
+        optim=SimpleNamespace(AdamW=optimizer),
+    )
+    fake_transformers = SimpleNamespace(
+        AutoTokenizer=SimpleNamespace(
+            from_pretrained=lambda *args, **kwargs: SimpleNamespace(pad_token_id=0)
+        ),
+        BitsAndBytesConfig=lambda **options: SimpleNamespace(**options),
+        Gemma4UnifiedForConditionalGeneration=loader_for(
+            "Gemma4UnifiedForConditionalGeneration"
+        ),
+        Gemma4ForConditionalGeneration=loader_for("Gemma4ForConditionalGeneration"),
+    )
+    monkeypatch.setitem(sys.modules, "torch", fake_torch)
+    monkeypatch.setitem(sys.modules, "transformers", fake_transformers)
+    monkeypatch.setitem(
+        sys.modules,
+        "peft",
+        SimpleNamespace(
+            LoraConfig=make_lora,
+            get_peft_model=attach,
+            prepare_model_for_kbit_training=prepare,
+            PeftModel=SimpleNamespace(from_pretrained=restore),
+        ),
+    )
+    monkeypatch.setattr(worker, "require_owner", lambda: state.owners.append(True))
+    monkeypatch.setattr(
+        worker, "tensor_hash", lambda parameters: "fake frozen-base hash"
+    )
+    monkeypatch.setattr(engine, "tensor_hash", lambda parameters: "fake adapter hash")
+    return state
+
+
+@pytest.mark.parametrize("precision", ["nf4", "bf16"])
+def test_actual_session_uses_selected_loader_precision_and_gpu_only(
+    profile, native_provider, tmp_path, precision
+):
+    recipe = training.GemmaTrainingRecipe.for_profile(
+        profile,
+        quantization=precision,
+        rank=32,
+        alpha=64,
+        learning_rate=0.00001,
+    )
+    session = worker.GemmaSession(recipe, tmp_path / recipe.revision)
+    loader, snapshot, options = native_provider.loaders[0]
+    assert loader == profile.loader
+    assert snapshot.name == profile.revision
+    assert options["device_map"] == {"": 0}
+    assert options["local_files_only"] is True
+    assert options["trust_remote_code"] is False
+    assert options["dtype"] == "bf16"
+    assert session.profile.quantization == precision
+    assert native_provider.owners == [True]
+    assert session.placement["gpu_required"] is True
+    assert session.placement["cpu_fallback"] is False
+    assert native_provider.lora[0].r == 32
+    assert native_provider.lora[0].lora_alpha == 64
+    assert native_provider.optimizers[0][1]["lr"] == 0.00001
+    if precision == "nf4":
+        quantization = options["quantization_config"]
+        assert quantization.bnb_4bit_quant_type == "nf4"
+        assert quantization.bnb_4bit_compute_dtype == "bf16"
+        assert native_provider.prepared[0]["use_gradient_checkpointing"] is True
+    else:
+        assert "quantization_config" not in options
+        assert native_provider.prepared == []
+        assert session.model.base.checkpointing == [
+            {"gradient_checkpointing_kwargs": {"use_reentrant": False}}
+        ]
+
+
+def test_native_session_rejects_unavailable_gpu_before_loader(
+    profile, native_provider, tmp_path
+):
+    recipe = training.GemmaTrainingRecipe.for_profile(profile)
+    native_provider.cuda_available = False
+    snapshot = tmp_path / recipe.revision
+    with pytest.raises(RuntimeError, match="cuda_bf16_required"):
+        worker.GemmaSession(recipe, snapshot)
+    assert native_provider.loaders == []
+    assert native_provider.optimizers == []
+
+
+def test_native_session_does_not_trust_provider_cpu_placement(
+    profile, native_provider, tmp_path
+):
+    recipe = training.GemmaTrainingRecipe.for_profile(profile)
+    native_provider.base_device = "cpu"
+    snapshot = tmp_path / recipe.revision
+    with pytest.raises(RuntimeError, match="cuda_placement_required"):
+        worker.GemmaSession(recipe, snapshot)
+    assert native_provider.lora == []
+    assert native_provider.optimizers == []
+
+
+def test_native_session_rejects_unexpected_trainable_base(
+    profile, native_provider, tmp_path
+):
+    recipe = training.GemmaTrainingRecipe.for_profile(profile)
+    native_provider.unexpected_trainable = True
+    snapshot = tmp_path / recipe.revision
+    with pytest.raises(RuntimeError, match="unexpected_trainable_base"):
+        worker.GemmaSession(recipe, snapshot)
+    assert native_provider.optimizers == []
+
+
+def test_loading_native_adapter_does_not_fake_optimizer_resume(
+    profile, native_provider, tmp_path
+):
+    recipe = training.GemmaTrainingRecipe.for_profile(profile)
+    checkpoint = tmp_path / "checkpoint"
+    checkpoint.mkdir()
+    write_json(
+        checkpoint / "adapter_config.json",
+        {
+            "target_modules": training.target_modules_for(recipe.model),
+        },
+    )
+    session = worker.GemmaSession(recipe, tmp_path / recipe.revision, checkpoint)
+    assert native_provider.restored == [(checkpoint, {"is_trainable": True})]
+    assert session.step == 0
+    assert session.target_tokens == 0

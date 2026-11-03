@@ -127,9 +127,9 @@ function resolveSwitchStateFromServerControl(
   return "idle";
 }
 
-export function formatVoiceRuntimeTuple(runtime: string | null | undefined, model: string | null | undefined, unresolvedLabel?: string): string {
+export function formatVoiceRuntimeTuple(runtime: string | null | undefined, model: string | null | undefined, unresolvedLabel?: string, displayName?: string): string {
   const normalizedRuntime = canonicalRuntimeId(coerce(runtime));
-  const normalizedModel = chatModelLabel(coerce(model), undefined, normalizedRuntime, unresolvedLabel);
+  const normalizedModel = chatModelLabel(coerce(model), displayName, normalizedRuntime, unresolvedLabel);
   return `${normalizedRuntime || "—"} / ${normalizedModel || "—"}`;
 }
 

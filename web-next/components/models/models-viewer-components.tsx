@@ -215,6 +215,13 @@ export const InstalledCard = ({
     const { t } = useLanguage();
     const providerLabel = model.provider ?? model.source ?? "—";
     const canActivate = isSelectableChatModel({...model, provider:providerLabel}) && model.activation_supported !== false && model.chat_compatible !== false && ["ollama", "vllm", "onnx"].includes(providerLabel);
+    const hintKeys: Record<string, string> = {
+        gemma4_variant_unresolved: "models.status.chooseGemmaVariant",
+        ollama_source_unresolved: "models.status.chooseSalukiSource",
+        ollama_identity_unresolved: "models.status.chooseObservedModel",
+    };
+    const hintKey = hintKeys[model.selection_block_code ?? ""];
+    const selectionHint = hintKey ? t(hintKey) : (model.selection_block_reason || t("models.status.dedicatedRuntime"));
     const loaded = model.loaded ?? false;
     let loadedLabel = loaded ? "models.status.loaded" : "models.status.unloaded";
     if (model.loaded == null) loadedLabel = "models.status.loadedUnknown";
@@ -244,7 +251,7 @@ export const InstalledCard = ({
                 >
                     {pendingActivate ? t("models.actions.activating") : t("models.actions.activate")}
                 </Button>}
-                {!canActivate && <span className="text-[11px] text-[color:var(--ui-muted)]">{model.selection_block_code === "gemma4_variant_unresolved" ? t("models.status.chooseGemmaVariant") : (model.selection_block_reason || t("models.status.dedicatedRuntime"))}</span>}
+                {!canActivate && <span className="text-[11px] text-[color:var(--ui-muted)]">{selectionHint}</span>}
                 {onRemove && allowRemoveProviders.has(model.provider ?? model.source ?? "") && (
                     <Button
                         className="rounded-full px-3 text-[11px]"

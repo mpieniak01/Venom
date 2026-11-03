@@ -22,8 +22,8 @@ from venom_core.core.model_inventory import (
 )
 from venom_core.infrastructure.traffic_control import TrafficControlledHttpClient
 from venom_core.services.ollama_model_identity import (
-    EXPLICIT_GEMMA_TAGS,
-    LATEST_GEMMA_TAG,
+    ALIAS_TARGETS,
+    EXPLICIT_OPERATOR_TAGS,
     canonical_ollama_entries,
 )
 from venom_core.utils.logger import get_logger
@@ -399,7 +399,7 @@ class ModelManagerDiscoveryMixin:
                 "aliases": model.get("aliases", []),
                 "ollama_alias_evidence": model.get("ollama_alias_evidence", {}),
             }
-            if entry_name in EXPLICIT_GEMMA_TAGS or entry_name == LATEST_GEMMA_TAG:
+            if entry_name in EXPLICIT_OPERATOR_TAGS or entry_name in ALIAS_TARGETS:
                 entries.append(entry)
                 continue
             if not digest:

@@ -14,6 +14,8 @@ for (const locale of [pl, en, de]) {
     assert.equal(runtimeControlErrorHint(new ApiError("409", 409, { detail: { code: "runtime_busy" } }), t), locale.cockpit.modelActivation.runtimeBusy);
     assert.equal(runtimeControlErrorHint(new ApiError("503", 503, { detail: { code: "remote_provider_disabled" } }), t), locale.cockpit.modelActivation.providerDisabled);
     assert.equal(runtimeControlErrorHint(new Error("other"), t), null);
+    assert.equal(runtimeControlErrorHint(new ApiError("400", 400, { detail: { code: "ollama_identity_unresolved" } }), t), locale.models.status.chooseObservedModel);
+    assert.equal(runtimeControlErrorHint(new ApiError("400", 400, { detail: { code: "ollama_source_unresolved" } }), t), locale.models.status.chooseSalukiSource);
     assert.equal(runtimeControlErrorHint(new ApiError("400", 400, { detail: { code: "gemma4_variant_unresolved" } }), t), locale.models.status.chooseGemmaVariant);
   });
 }

@@ -10,6 +10,8 @@ export function runtimeControlErrorCode(error: unknown): string | null {
 
 export function runtimeControlErrorHint(error: unknown, t: (key: string) => string): string | null {
   const code = runtimeControlErrorCode(error);
+  if (code === "ollama_identity_unresolved") return t("models.status.chooseObservedModel");
+  if (code === "ollama_source_unresolved") return t("models.status.chooseSalukiSource");
   if (code === "gemma4_variant_unresolved") return t("models.status.chooseGemmaVariant");
   if (code === "runtime_recovery_required") return t("cockpit.modelActivation.recoveryRequired");
   if (code === "runtime_busy") return t("cockpit.modelActivation.runtimeBusy");

@@ -333,3 +333,111 @@ async def test_unresolved_requested_or_default_variant_fails_before_lifecycle(
         )
     assert error.value.status_code == 400
     assert error.value.detail["code"] == "gemma4_variant_unresolved"
+
+
+def test_saluki_is_resolved_only_from_identical_explicit_gguf_manifest_and_metadata():
+    from venom_core.api.routes.models_utils import resolve_ollama_selection
+    from venom_core.services.ollama_model_identity import SALUKI_ALIAS, SALUKI_GGUF
+
+    rows = canonical_ollama_entries(
+        [
+            item(
+                SALUKI_ALIAS,
+                family="gemma3",
+                parameter_size="27B",
+                quantization_level="IQ2_XXS",
+            ),
+            item(
+                SALUKI_GGUF,
+                family="gemma3",
+                parameter_size="27B",
+                quantization_level="IQ2_XXS",
+            ),
+        ]
+    )
+    assert len(rows) == 1
+    assert rows[0]["name"] == SALUKI_GGUF
+    assert rows[0]["display_name"] == "Underdog Saluki 27B 1.0 IQ2-mix GGUF"
+    assert resolve_ollama_selection(SALUKI_ALIAS, rows) == SALUKI_GGUF
+
+
+def test_saluki_different_preset_or_projector_cannot_be_collapsed_by_filename():
+    from venom_core.api.routes.models_utils import resolve_ollama_selection
+    from venom_core.services.ollama_model_identity import SALUKI_ALIAS, SALUKI_GGUF
+
+    source = [
+        item(SALUKI_ALIAS, "b" * 64, family="gemma3"),
+        item(SALUKI_GGUF, "a" * 64, family="gemma3"),
+    ]
+    before = copy.deepcopy(source)
+    rows = canonical_ollama_entries(source)
+    assert source == before
+    assert len(rows) == 2
+    unresolved = next(row for row in rows if row["name"] == SALUKI_ALIAS)
+    assert unresolved["selection_supported"] is True
+    assert "sha256:bbbbbbbb" in unresolved["display_name"]
+    assert resolve_ollama_selection(SALUKI_ALIAS, rows) == SALUKI_ALIAS
+
+
+def test_saluki_discovery_does_not_restore_old_latest_digest_preference():
+    from venom_core.services.ollama_model_identity import SALUKI_ALIAS, SALUKI_GGUF
+
+    manager = ModelManagerDiscoveryMixin()
+    rows = manager._collect_ollama_entries(
+        [
+            item(SALUKI_ALIAS, family="gemma3"),
+            item(SALUKI_GGUF, family="gemma3"),
+            item("gemma4:e4b", "b" * 64),
+            item("gemma4:12b-it-q4_K_M", "c" * 64),
+        ]
+    )
+    assert {row["name"] for row in rows} == {
+        SALUKI_GGUF,
+        "gemma4:e4b",
+        "gemma4:12b-it-q4_K_M",
+    }
+    assert (
+        resolve_ollama_model_name(SALUKI_ALIAS, rows, require_explicit=True)
+        == SALUKI_GGUF
+    )
+
+
+def test_saluki_missing_source_proof_and_unrelated_providers_are_kept_distinct():
+    from fastapi import HTTPException
+
+    from venom_core.api.routes.models_utils import resolve_ollama_selection
+    from venom_core.services.ollama_model_identity import SALUKI_ALIAS
+
+    unresolved = item(SALUKI_ALIAS)
+    unresolved["provider"] = "openrouter"
+    assert resolve_ollama_model_name(SALUKI_ALIAS, [unresolved]) == SALUKI_ALIAS
+    with pytest.raises(HTTPException):
+        resolve_ollama_selection(SALUKI_ALIAS, [])
+
+
+def test_qwen_latest_maps_only_to_identical_explicit_tag_and_d1_keeps_observed_parent():
+    from venom_core.services.ollama_model_identity import QWEN_ALIAS, QWEN_EXPLICIT
+
+    rows = canonical_ollama_entries(
+        [
+            item(QWEN_ALIAS, family="qwen35", parameter_size="9B"),
+            item(QWEN_EXPLICIT, family="qwen35", parameter_size="9B"),
+            item(
+                "d1:latest",
+                "b" * 64,
+                family="qwen2",
+                parameter_size="2.7B",
+                quantization_level="Q8_0",
+                parent_model="d1:3b-q8_0",
+            ),
+        ]
+    )
+    assert {row["name"] for row in rows} == {QWEN_EXPLICIT, "d1:latest"}
+    assert (
+        resolve_ollama_model_name(QWEN_ALIAS, rows, require_explicit=True)
+        == QWEN_EXPLICIT
+    )
+    d1 = next(row for row in rows if row["name"] == "d1:latest")
+    assert "2.7B Q8_0" in d1["display_name"]
+    assert "d1:3b-q8_0" in d1["display_name"]
+    assert "sha256:bbbbbbbb" in d1["display_name"]

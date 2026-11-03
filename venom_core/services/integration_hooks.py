@@ -35,10 +35,26 @@ def _observe_done(task):
         task.exception()
 
 
+async def _completed_result(task):
+    # Reading a finished result is loop independent; awaiting its Task is not.
+    return task.result()
+
+
 def _cached_task(app, record, cache):
     key = (record["module_id"], record["integration_provider_import"])
     previous = cache.get(key)
-    if previous is None or (previous[1].done() and previous[0] < time.monotonic()):
+    now, loop = time.monotonic(), asyncio.get_running_loop()
+    if previous is not None and previous[1].get_loop() is not loop:
+        expires, task = previous
+        if task.done() and expires >= now:
+            local = asyncio.create_task(_completed_result(task))
+            local.add_done_callback(_observe_done)
+            previous = (expires, local)
+            cache[key] = previous
+        else:
+            # Another loop owns an in-flight probe and its cancellation policy.
+            previous = None
+    if previous is None or (previous[1].done() and previous[0] < now):
         task = asyncio.create_task(_read(app, record))
         task.add_done_callback(_observe_done)
         previous = (time.monotonic() + 10.0, task)
@@ -150,7 +166,7 @@ async def apply_module_observations(app: Any, entries):
         calls.append(_apply(app, record, item, cache))
     for key in cache.keys() - active:
         _, task = cache.pop(key)
-        if not task.done():
+        if not task.done() and task.get_loop() is asyncio.get_running_loop():
             task.cancel()
     if calls:
         await asyncio.gather(*calls)

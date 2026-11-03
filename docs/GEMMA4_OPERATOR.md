@@ -281,6 +281,12 @@ by merely changing a model ID.
 | 12B IT | `gemma4:12b-it-q4_K_M` | `config/gemma4_operator_profile.json` | `Gemma4UnifiedForConditionalGeneration` / 48 |
 
 Ollama remains the application inference runtime; the operator keeps model choice.
+Chat, model cards, voice, benchmarks and Academy show explicit variant names.
+A moving legacy Gemma alias resolves only from a unique matching complete
+manifest digest and architecture/precision metadata. Without this proof it is
+read-only diagnostic state and cannot activate a model. Other providers remain
+selectable. The local explicit E4B tag preserves the previously observed E4B
+manifest; creating a tag does not retrain or convert its weights.
 Each experiment binds its explicit tag/digest to a separately pinned training
 checkpoint. Vendor GGUF metadata alone does not prove an HF revision. Merge an
 adapter into its exact training base before conversion/import; arbitrary vendor
@@ -343,12 +349,21 @@ the self-publishing destination and is checked before any artifact creation.
 2. Use the existing host bootstrap with `--model-profile` and separate roots/
    snapshots per variant; share the qualified interpreter and admission ledger.
    Setup only occurs with explicitly requested `--apply`.
-3. Stage the bundle and materialize the exact pinned model weights.
-4. Run native GPU environment, tool-loop and retention baselines. Check full
-   CUDA placement and measured memory before tuning batch/concurrency.
-5. Qualify first/resume smoke with sealed evidence from both stages.
+3. Upload `input.zip` and `evaluation.zip` separately with the existing
+   `scripts/remote_training.py --host <alias> --remote-root <variant-root>
+   --remote-python <qualified-wrapper> upload --bundle <archive>` command.
+   Use the same variant root and wrapper for both. Evaluation extracts to
+   `<variant-root>/runs/<evaluation.remote_run_id>/input/<manifest_relative>`,
+   using the two fields in `preflight.json`; pass that manifest to comparison
+   `--cases`. The evaluation run is staged only and must not be started as training.
+   Materialize the exact pinned model weights.
+4. Run native GPU environment preflight. Check full CUDA placement and measured
+   memory before tuning batch/concurrency.
+5. Qualify first/resume smoke with sealed evidence from both stages. Use its
+   adapter result for paired tool-loop and retention checks; the base arm disables
+   the adapter. The comparison runner requires an existing adapter result.
 6. Train/resume within budget, seal and collect using the existing supervisor.
-7. Compare each adapter with its own base and matched precision/case identities.
+7. Compare each final adapter with its own base and matched precision/case identities.
 8. Separately collect comparison trials, progress and summaries with hashes;
    adapter collection does not include those output directories.
 9. Verify downloaded artifacts before any operator-requested host removal.

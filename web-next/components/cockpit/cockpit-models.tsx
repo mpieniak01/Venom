@@ -39,7 +39,7 @@ type CockpitModelsProps = Readonly<{
   selectedLlmModel: string;
   llmModelOptions: SelectMenuOption[];
   onSelectLlmModel: (value: string) => void;
-  availableModelsForServer: Array<{ name?: string }>;
+  availableModelsForServer: Array<{ name?: string; display_name?: string }>;
   selectedServerEntry?: LlmServerInfo | null;
   resolveServerStatus: (displayName?: string, status?: string | null) => string;
   sessionId: string;
@@ -275,10 +275,10 @@ export function CockpitModels({
               </Button>
             </span>
             <span>
-              Aktywny: {formatVoiceRuntimeTuple(runtimeState.active.runtimeId, runtimeState.active.modelName, t("models.status.unresolvedVariant"))}
+              Aktywny: {formatVoiceRuntimeTuple(runtimeState.active.runtimeId, runtimeState.active.modelName, t("models.status.unresolvedVariant"), availableModelsForServer.find(model => model.name === runtimeState.active.modelName)?.display_name)}
             </span>
             <span>
-              Wybrany: {formatVoiceRuntimeTuple(runtimeState.selected.runtimeId, runtimeState.selected.modelName, t("models.status.unresolvedVariant"))}
+              Wybrany: {formatVoiceRuntimeTuple(runtimeState.selected.runtimeId, runtimeState.selected.modelName, t("models.status.unresolvedVariant"), availableModelsForServer.find(model => model.name === runtimeState.selected.modelName)?.display_name)}
             </span>
             <span>
               Stan switcha: {runtimeState.switch.state}

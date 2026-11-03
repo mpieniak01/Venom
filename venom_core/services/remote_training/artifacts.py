@@ -77,7 +77,11 @@ def _files(root: Path, include_checkpoint: bool) -> list[str]:
             for path in sorted(checkpoint.rglob("*")):
                 if path.is_symlink():
                     raise ValueError("remote_training_artifact_symlink")
-                if path.is_file() and path.suffix in _CHECKPOINT_SUFFIXES:
+                allowed = (
+                    path.suffix in _CHECKPOINT_SUFFIXES
+                    or path == checkpoint / "README.md"
+                )
+                if path.is_file() and allowed:
                     name = path.relative_to(root).as_posix()
                     _source(root, name)
                     selected.append(name)

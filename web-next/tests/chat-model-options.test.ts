@@ -3,17 +3,17 @@ import assert from "node:assert/strict";
 import { SALUKI_GGUF, chatModelLabel, preferChatModelAliases, isSelectableChatModel } from "../lib/chat-model-options";
 const alias = { name: "saluki:latest", provider: "ollama" };
 const source = { name: SALUKI_GGUF, provider: "ollama" };
-it("prefers installed alias regardless of list order without changing model identities", () => {
+it("preserves separate Saluki preset and explicit GGUF instead of guessing identity", () => {
   for (const models of [[alias, source], [source, alias]]) {
-    assert.deepEqual(preferChatModelAliases(models), [alias]);
+    assert.deepEqual(preferChatModelAliases(models), models);
     assert.equal(models.length, 2);
   }
 });
 it("preserves selected and active GGUF variant instead of switching presets", () => {
-  assert.deepEqual(preferChatModelAliases([alias, source], SALUKI_GGUF), [source]);
+  assert.deepEqual(preferChatModelAliases([alias, source], SALUKI_GGUF), [alias,source]);
   const active = { ...source, active: true };
-  assert.deepEqual(preferChatModelAliases([alias, active]), [active]);
-  assert.deepEqual(preferChatModelAliases([alias, active], alias.name), [alias]);
+  assert.deepEqual(preferChatModelAliases([alias, active]), [alias,active]);
+  assert.deepEqual(preferChatModelAliases([alias, active], alias.name), [alias,active]);
 });
 it("keeps raw-only installations, unrelated variants and other providers", () => {
   assert.deepEqual(preferChatModelAliases([source]), [source]);
@@ -22,10 +22,10 @@ it("keeps raw-only installations, unrelated variants and other providers", () =>
   const variant = { ...source, name: SALUKI_GGUF + "-other" };
   assert.deepEqual(preferChatModelAliases([alias, other, variant]), [alias, other, variant]);
 });
-it("shortens only the exact known GGUF label, retaining its activation identifier", () => {
-  assert.equal(chatModelLabel(SALUKI_GGUF), "saluki:IQ2-mix.gguf");
+it("labels exact Saluki source with model version and quantization, retaining its identifier", () => {
+  assert.equal(chatModelLabel(SALUKI_GGUF), "Underdog Saluki 27B 1.0 IQ2-mix GGUF");
   assert.equal(source.name, SALUKI_GGUF);
-  assert.equal(chatModelLabel(alias.name), alias.name);
+  assert.equal(chatModelLabel(alias.name), "saluki:latest (unresolved variant)");
 });
 
 
@@ -64,4 +64,22 @@ it("unresolved Gemma latest is diagnostic only, never an actionable model choice
 it("localizes unresolved diagnostics while preserving the observed alias", () => {
   assert.equal(chatModelLabel("gemma4:latest", "gemma4:latest (unresolved variant)", "ollama", "nierozpoznany wariant"),
                "gemma4:latest (nierozpoznany wariant)");
+});
+
+
+it("does not infer Saluki identity for another provider or rewrite active input records", () => {
+  const observed = {...alias, active:true};
+  const otherProvider = {...alias, provider:"openrouter"};
+  assert.deepEqual(preferChatModelAliases([observed,source,otherProvider], observed.name), [observed,source,otherProvider]);
+  assert.equal(observed.name, "saluki:latest");
+  assert.equal(observed.active, true);
+  assert.equal(chatModelLabel(alias.name,undefined,"openrouter"), "saluki:latest");
+});
+
+
+it("shows observed Saluki preset metadata without attributing an unproven GGUF version", () => {
+  const label = "saluki:latest · gemma3 26.9B IQ2_XS · sha256:3497825c";
+  assert.equal(chatModelLabel("saluki:latest",label,"ollama"), label);
+  assert.equal(isSelectableChatModel({name:"saluki:latest",provider:"ollama",selection_supported:true}), true);
+  assert.equal(isSelectableChatModel({name:"saluki:latest",provider:"ollama",selection_supported:false}), false);
 });

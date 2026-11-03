@@ -10,7 +10,10 @@ from typing import Any, Dict, List
 from fastapi import HTTPException
 
 from venom_core.config import SETTINGS
-from venom_core.services.ollama_model_identity import resolve_ollama_model_name
+from venom_core.services.ollama_model_identity import (
+    UNRESOLVED_CODES,
+    resolve_ollama_model_name,
+)
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -261,5 +264,10 @@ def resolve_ollama_selection(name: str, models: list[dict[str, Any]]) -> str:
     except ValueError as error:
         raise HTTPException(
             status_code=400,
-            detail={"code": "gemma4_variant_unresolved", "message": str(error)},
+            detail={
+                "code": UNRESOLVED_CODES.get(
+                    name.casefold(), "ollama_identity_unresolved"
+                ),
+                "message": str(error),
+            },
         ) from error

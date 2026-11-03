@@ -193,6 +193,8 @@ class RemoteInference:
 
 def evaluate(args, factory=RemoteInference):
     manifest, cases = load_frozen(args.cases)
+    if any(case.get("images") for case in cases):
+        raise ValueError("comparison_remote_images_require_same_host_runner")
     if manifest.get("qualification", {}).get("status") != "PASS":
         raise ValueError("comparison_cases_not_qualified")
     args.output.mkdir(parents=True, exist_ok=args.resume)

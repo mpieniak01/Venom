@@ -12,6 +12,7 @@ export function StudioModelPicker({ catalog, interaction, session, activeModel, 
   const { state, setters } = interaction;
   const runtime = catalog?.runtimes.find(item => item.runtime_id === state.selectedLlmServer);
   const models = (runtime?.models ?? []).filter(item => item.chat_compatible !== false && item.model_kind !== "adapter_artifact" && !item.is_adapter_artifact && isSelectableChatModel(item));
+  const activeOption = runtime?.models?.find(item => item.name === activeModel);
   const remote = ["openrouter", "vast_ollama"].includes(state.selectedLlmServer);
   const openrouter = useOpenRouterCatalog(state.selectedLlmServer === "openrouter");
   let sourceLabel = "chat2.unknown";
@@ -41,7 +42,7 @@ export function StudioModelPicker({ catalog, interaction, session, activeModel, 
     </div>
     <div className="studio-model-info">
       <span className="studio-dot" /> <span>{t(sourceLabel)}</span>
-      <span>{t("chat2.activeModel")}: {chatModelLabel(activeModel || "", undefined, state.selectedLlmServer, t("models.status.unresolvedVariant")) || t("chat2.unknown")}</span>
+      <span>{t("chat2.activeModel")}: {chatModelLabel(activeModel || "", activeOption?.display_name, state.selectedLlmServer, t("models.status.unresolvedVariant")) || t("chat2.unknown")}</span>
       <details><summary>{t("chat2.costs")}</summary><div className="studio-detail-card">
         {state.selectedLlmServer === "openrouter" ? <OpenRouterModelStatus selection={openrouter} model={state.selectedLlmModel} session={session} /> : <p>{t("chat2.noPrice")}</p>}
       </div></details>

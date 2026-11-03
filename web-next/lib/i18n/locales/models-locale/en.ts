@@ -271,6 +271,8 @@ export const models = {
     run: "Run",
   },
   status: {
+    chooseObservedModel: 'Choose an explicit model or refresh the catalog with verified runtime metadata.',
+    chooseSalukiSource: 'Choose the explicit Underdog Saluki 27B 1.0 IQ2-mix GGUF model. The source of saluki:latest has not been verified.',
     unresolvedVariant: 'unresolved variant',
     chooseGemmaVariant: 'Choose Gemma4 E4B IT Q4_K_M or Gemma4 12B IT Q4_K_M explicitly. The latest alias variant has not been verified.',
     loaded: "Loaded",

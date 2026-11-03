@@ -122,6 +122,7 @@ def propose(
     marker = tokenizer.convert_tokens_to_ids("<start_function_response>")
     if type(marker) is not int or marker < 0 or marker == tokenizer.unk_token_id:
         raise ValueError("functiongemma_response_stop_missing")
+    model.eval()
     with torch.inference_mode():
         generated = model.generate(
             **inputs,

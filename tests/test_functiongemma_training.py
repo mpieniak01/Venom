@@ -98,6 +98,12 @@ def test_missing_resume_state(tmp_path):
 def fake_runtime(monkeypatch):
     import sys
 
+    counter = iter(range(100))
+    monkeypatch.setattr(
+        worker, "parameter_evidence", lambda model: {"p": next(counter)}
+    )
+    monkeypatch.setattr(worker, "probe_logits", lambda *a: "same_logits")
+
     cuda = NS(
         is_available=lambda: True,
         is_bf16_supported=lambda: True,
@@ -162,7 +168,12 @@ def test_smoke_save_reload_resume(tmp_path, monkeypatch, method):
         "fp",
         None,
     )
-    assert result["checks"] == {"save": True, "reload": True, "resume": True}
+    assert result["checks"] == {
+        "save": True,
+        "reload": True,
+        "resume": True,
+        "weights_updated": True,
+    }
     assert result["qualified"] is True
     assert result["activation_allowed"] is False
     worker.verify_checkpoint(Path(result["checkpoint"]), "fp")
@@ -257,3 +268,36 @@ def test_run_admission_and_binding(tmp_path, monkeypatch):
         worker.run({**body, "stage": "train", "qualification": str(proof)})
     with pytest.raises(ValueError, match="pinned_snapshot"):
         worker.run({**body, "snapshot": str(tmp_path)})
+
+
+def test_parameter_and_logits_evidence(monkeypatch):
+    import sys
+    from contextlib import nullcontext
+
+    import venom_core.services.granite_operator.engine as engine
+
+    monkeypatch.setattr(engine, "tensor_hash", lambda value: str(value))
+    model = NS(
+        named_parameters=lambda: [
+            ("a", NS(requires_grad=True)),
+            ("b", NS(requires_grad=False)),
+        ]
+    )
+    assert set(worker.parameter_evidence(model)) == {"a"}
+
+    class Model:
+        def eval(self):
+            pass
+
+        def __call__(self, **kwargs):
+            return NS(logits="logits")
+
+    monkeypatch.setitem(
+        sys.modules,
+        "torch",
+        NS(inference_mode=nullcontext, tensor=lambda *a, **k: "tensor"),
+    )
+    assert (
+        worker.probe_logits(Model(), {"input_ids": [1], "attention_mask": [1]})
+        == "logits"
+    )

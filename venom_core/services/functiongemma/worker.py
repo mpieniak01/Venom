@@ -107,7 +107,7 @@ def trainer_arguments(recipe: Recipe, output: Path, *, smoke: bool) -> dict:
         "gradient_accumulation_steps": recipe.accumulation,
         "learning_rate": recipe.learning_rate,
         "weight_decay": recipe.weight_decay,
-        "warmup_ratio": recipe.warmup_ratio,
+        "warmup_ratio": 0.0 if smoke else recipe.warmup_ratio,
         "lr_scheduler_type": "linear",
         "optim": "adamw_torch",
         "bf16": True,
@@ -152,12 +152,15 @@ def run(request: dict) -> dict:
     snapshot_hashes = {
         p.name: file_digest(p) for p in snapshot.iterdir() if p.is_file()
     }
+    if int(os.environ.get("WORLD_SIZE", "1")) != 1:
+        raise ValueError("functiongemma_single_gpu_required")
     fingerprint = digest(
         {
             "recipe": recipe.identity(),
             "encoded": file_digest(encoded_path),
             "snapshot": snapshot_hashes,
             "dependencies": dependencies,
+            "host": platform.node(),
         }
     )
     output = operator_path(request["output"])
@@ -195,6 +198,30 @@ def run(request: dict) -> dict:
             )
     finally:
         lease.release()
+
+
+def parameter_evidence(model):
+    from venom_core.services.granite_operator.engine import tensor_hash
+
+    return {
+        name: tensor_hash(parameter)
+        for name, parameter in model.named_parameters()
+        if parameter.requires_grad
+    }
+
+
+def probe_logits(model, row):
+    import torch
+
+    from venom_core.services.granite_operator.engine import tensor_hash
+
+    model.eval()
+    values = {
+        key: torch.tensor([row[key]], device="cuda")
+        for key in ("input_ids", "attention_mask")
+    }
+    with torch.inference_mode():
+        return tensor_hash(model(**values).logits)
 
 
 def _execute(request, recipe, records, snapshot, output, fingerprint, resume):
@@ -269,16 +296,20 @@ def _execute(request, recipe, records, snapshot, output, fingerprint, resume):
             rows, torch=torch, pad_id=tokenizer.pad_token_id
         ),
     )
+    before = parameter_evidence(model)
     trainer.train(resume_from_checkpoint=str(resume) if resume else None)
+    if not before or before == parameter_evidence(model):
+        raise RuntimeError("functiongemma_trainable_weights_unchanged")
     checkpoint = output / ("checkpoint-" + str(trainer.state.global_step))
     _seal(checkpoint, fingerprint)
-    checks = {"save": True, "reload": False, "resume": False}
+    probe = probe_logits(model, records["validation"][0])
+    checks = {"save": True, "reload": False, "resume": False, "weights_updated": True}
     if smoke:
         # Fresh model plus Trainer restores model/adapter, optimizer, scheduler and RNG.
         del trainer, model
         torch.cuda.empty_cache()
         reloaded = _resume_smoke(
-            recipe, records, snapshot, output / "reload", checkpoint
+            recipe, records, snapshot, output / "reload", checkpoint, probe
         )
         checkpoint = reloaded
         _seal(checkpoint, fingerprint)
@@ -315,7 +346,7 @@ def _seal(checkpoint, fingerprint):
     verify_checkpoint(checkpoint, fingerprint)
 
 
-def _resume_smoke(recipe, records, snapshot, output, checkpoint):
+def _resume_smoke(recipe, records, snapshot, output, checkpoint, probe):
     import torch
     from transformers import (
         AutoModelForCausalLM,
@@ -325,7 +356,7 @@ def _resume_smoke(recipe, records, snapshot, output, checkpoint):
     )
 
     model = AutoModelForCausalLM.from_pretrained(
-        snapshot,
+        snapshot if recipe.method == "lora" else checkpoint,
         dtype=torch.bfloat16,
         device_map={"": 0},
         local_files_only=True,
@@ -337,6 +368,8 @@ def _resume_smoke(recipe, records, snapshot, output, checkpoint):
         model = PeftModel.from_pretrained(
             model, checkpoint, is_trainable=True, local_files_only=True
         )
+    if probe_logits(model, records["validation"][0]) != probe:
+        raise RuntimeError("functiongemma_reload_logits_changed")
     tokenizer = AutoTokenizer.from_pretrained(
         snapshot, local_files_only=True, trust_remote_code=False
     )

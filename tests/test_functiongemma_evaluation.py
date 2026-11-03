@@ -140,3 +140,88 @@ def test_prepare(tmp_path, monkeypatch):
     args.snapshot = str(tmp_path)
     with pytest.raises(ValueError):
         cli.prepare(args)
+
+
+def test_cpu_export(tmp_path, monkeypatch):
+    from venom_core.services.functiongemma import dataset
+
+    source = tmp_path / "source.jsonl"
+    source.write_text("{}")
+    output = tmp_path / "export.json"
+    monkeypatch.setattr(
+        dataset,
+        "export_decisions",
+        lambda rows: {"manifest": {"counts": {"train": 1}}, "release_sha256": "hash"},
+    )
+    assert (
+        cli.main(
+            [
+                "export",
+                "--train",
+                str(source),
+                "--validation",
+                str(source),
+                "--output",
+                str(output),
+            ]
+        )
+        == 0
+    )
+    assert output.exists()
+    with pytest.raises(FileExistsError):
+        cli.main(
+            [
+                "export",
+                "--train",
+                str(source),
+                "--validation",
+                str(source),
+                "--output",
+                str(output),
+            ]
+        )
+
+
+def test_proposal_has_no_execution(monkeypatch):
+    import sys
+    from contextlib import nullcontext
+
+    from venom_core.services.functiongemma import protocol
+
+    class Tensor:
+        shape = (1, 2)
+
+        def to(self, device):
+            return self
+
+    monkeypatch.setitem(sys.modules, "torch", NS(inference_mode=nullcontext))
+    monkeypatch.setattr(protocol, "render_messages", lambda *a, **k: "prompt")
+    text = [
+        "<start_function_call>call:FileSkill-read_file{file_path:<escape>x<escape>}<end_function_call>"
+    ]
+
+    class Tokenizer:
+        eos_token_id = 1
+        unk_token_id = 99
+
+        def __call__(self, *a, **k):
+            return {"input_ids": Tensor()}
+
+        def convert_tokens_to_ids(self, token):
+            return 5
+
+        def decode(self, *a, **k):
+            return text[0]
+
+    model = NS(device="cuda", eval=lambda: None, generate=lambda **k: [[1, 2, 3]])
+    result = evaluation.propose(Tokenizer(), model, [], TOOLS)
+    assert result["decision"] == "propose"
+    assert result["execution_authorized"] is False
+    assert (
+        evaluation.propose(Tokenizer(), model, [], TOOLS, context=1)["reason"]
+        == "context_budget"
+    )
+    text[0] = "<start_function_call>broken"
+    assert evaluation.propose(Tokenizer(), model, [], TOOLS)["decision"] == "escalate"
+    text[0] = "Please clarify"
+    assert evaluation.propose(Tokenizer(), model, [], TOOLS)["decision"] == "no_call"

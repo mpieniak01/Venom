@@ -17,6 +17,28 @@ def read(path: str | Path):
     return json.loads(operator_path(path).read_text(encoding="utf-8-sig"))
 
 
+def export(args) -> dict:
+    from .dataset import export_decisions
+
+    output = operator_path(args.output)
+    if output.exists():
+        raise FileExistsError("functiongemma_output_exists")
+    records = {}
+    for split in ("train", "validation"):
+        path = operator_path(getattr(args, split))
+        records[split] = [
+            json.loads(line) for line in path.read_text().splitlines() if line.strip()
+        ]
+    release = export_decisions(records)
+    write_json(output, release)
+    return {
+        "status": "DECISIONS_EXPORTED",
+        "manifest": release["manifest"],
+        "release_sha256": release["release_sha256"],
+        "activation_allowed": False,
+    }
+
+
 def prepare(args) -> dict:
     from transformers import AutoTokenizer
 
@@ -69,6 +91,9 @@ def main(argv=None) -> int:
     sub = parser.add_subparsers(dest="command", required=True)
     plan = sub.add_parser("plan")
     plan.add_argument("--samples", type=int, required=True)
+    exported = sub.add_parser("export")
+    for key in ("train", "validation", "output"):
+        exported.add_argument("--" + key, required=True)
     prep = sub.add_parser("prepare")
     for key in ("train", "validation", "snapshot", "output"):
         prep.add_argument("--" + key, required=True)
@@ -83,6 +108,8 @@ def main(argv=None) -> int:
             "budget": Recipe().budget(args.samples),
             "activation_allowed": False,
         }
+    elif args.command == "export":
+        result = export(args)
     elif args.command == "prepare":
         result = prepare(args)
     elif args.command == "run":

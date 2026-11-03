@@ -237,8 +237,13 @@ def probe_logits(model, row):
         key: torch.tensor([row[key]], device="cuda")
         for key in ("input_ids", "attention_mask")
     }
-    with torch.inference_mode():
-        return tensor_hash([("logits", model(**values).logits)])
+    # Trainer/Accelerate wraps forward with BF16 autocast and FP32 output conversion.
+    # Probe freshly loaded and trained instances under that same numerical contract.
+    with (
+        torch.inference_mode(),
+        torch.autocast(device_type="cuda", dtype=torch.bfloat16),
+    ):
+        return tensor_hash([("logits", model(**values).logits.float())])
 
 
 def _execute(request, recipe, records, snapshot, output, fingerprint, resume):

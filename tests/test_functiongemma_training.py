@@ -296,12 +296,17 @@ def test_parameter_and_logits_evidence(monkeypatch):
             pass
 
         def __call__(self, **kwargs):
-            return NS(logits="logits")
+            return NS(logits=NS(float=lambda: "logits"))
 
     monkeypatch.setitem(
         sys.modules,
         "torch",
-        NS(inference_mode=nullcontext, tensor=lambda *a, **k: "tensor"),
+        NS(
+            inference_mode=nullcontext,
+            autocast=lambda **k: nullcontext(),
+            bfloat16="bf16",
+            tensor=lambda *a, **k: "tensor",
+        ),
     )
     assert (
         worker.probe_logits(Model(), {"input_ids": [1], "attention_mask": [1]})

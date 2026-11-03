@@ -103,7 +103,7 @@ def test_vm_create_sends_vm_flag_and_template(service):
             "configuration_sha256": "b" * 64,
             "name": "Ubuntu VM",
             "image": "test:latest",
-            "recommended_disk_space": 16,
+            "recommended_disk_space": 130,
             "use_ssh": True,
             "vm": True,
             "ssh_direct": True,

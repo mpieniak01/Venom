@@ -34,11 +34,15 @@ endpointem proxy. Metadane szablonu obejmują `vm` i `ssh_direct`; obie
 deklaracje muszą być prawdziwe dla profilu VM i są objęte odciskiem konfiguracji.
 Istniejące profile wymagają ponownego przygotowania po zmianie odcisku.
 
-Profil FunctionGemma przywrócono do Ubuntu 22.04 VM (historycznie sprawdzona
-rodzina szablonu). Ustalony dysk profili hostów wynosi **100 GB**.
-Pole dostawcy `recommended_disk_space=130` nie upoważnia do zwiększenia
-zamówienia. Gdy szablon nie przechodzi walidacji dla 100 GB, zgłoś konflikt
-i dobierz zgodny szablon przed create. Nie zwiększaj dysku w profilu ani planie.
+FunctionGemma używa tego samego szablonu Ubuntu 22.04 VM co udana Gemma 4:
+`2c18cabd8f2f0525c2ff8446f5d4e063`. Ustalony dysk wynosi **100 GB**.
+Nie twórz nowego szablonu infrastruktury dla kolejnego modelu. Jego profil
+dziedziczy sprawdzoną VM, tryb SSH i procedurę bootstrapu. Różnice modelu
+dotyczą snapshotu, zależności i parametrów treningu; zmiany wymagań sprzętu
+muszą wynikać z zadania lub pomiaru, a nie zapasu dodawanego przez wykonawcę.
+Pole dostawcy `recommended_disk_space=130` jest zaleceniem, nie ustaloną
+wielkością zamówienia. Dla VM walidacja zachowuje wybrane 100 GB mimo tego
+zalecenia. Nie zwiększaj dysku ani nie zmieniaj szablonu z tego powodu.
 Wyszukiwanie, wycena i create muszą używać identycznego `disk_gb`.
 Plany oraz dowody wykonanych zamówień zachowują historyczną wielkość.
 `gpu_frac`

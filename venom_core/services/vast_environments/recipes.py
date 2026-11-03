@@ -100,7 +100,10 @@ def verify_template(client: VastClient, profile: WorkloadProfile) -> None:
         or profile.runtime.unresolved_constraints != constraints["unresolved"]
     ):
         raise VastError("vast.template_constraints_changed")
-    if profile.disk_gb < disk:
+    # The reused VM template has already operated at the agreed 100 GB.
+    # Its recommended size must not replace the operator workload allocation.
+    # Offer capacity, quote and create continue to use profile.disk_gb exactly.
+    if not profile.vm_required and profile.disk_gb < disk:
         raise VastError("vast.template_disk_insufficient")
 
 

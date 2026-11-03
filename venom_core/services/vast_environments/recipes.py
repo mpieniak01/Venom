@@ -83,6 +83,10 @@ def verify_template(client: VastClient, profile: WorkloadProfile) -> None:
     row = selected_template(client, profile.template_hash)
     if row.get("configuration_sha256") != profile.template_configuration_sha256:
         raise VastError("vast.template_changed")
+    if profile.vm_required and (
+        row.get("vm") is not True or row.get("ssh_direct") is not True
+    ):
+        raise VastError("vast.vm_direct_ssh_template_required")
     if row.get("use_ssh") is not True or repository(
         str(row.get("image", ""))
     ) != repository(profile.image):

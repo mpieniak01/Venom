@@ -195,6 +195,7 @@ INSTANCE_FIELDS = (
     "ssh_host",
     "ssh_port",
     "image_uuid",
+    "public_ipaddr",
     "image_runtype",
     "start_date",
     "disk_space",
@@ -219,6 +220,22 @@ def project(data: dict[str, Any], fields: tuple[str, ...]) -> dict[str, Any]:
         for key in fields
         if key in data and isinstance(data[key], (str, int, float, bool, type(None)))
     }
+
+
+def instance_snapshot(data: dict[str, Any]) -> dict[str, Any]:
+    result = project(data, INSTANCE_FIELDS)
+    ports = data.get("ports")
+    if isinstance(ports, dict):
+        mappings = ports.get("22/tcp")
+        if isinstance(mappings, list):
+            result["ports"] = {
+                "22/tcp": [
+                    project(row, ("HostIp", "HostPort"))
+                    for row in mappings[:16]
+                    if isinstance(row, dict)
+                ]
+            }
+    return result
 
 
 def offer_snapshot(data: dict[str, Any]) -> dict[str, Any]:

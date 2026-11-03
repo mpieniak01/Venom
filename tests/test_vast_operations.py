@@ -104,6 +104,8 @@ def test_vm_create_sends_vm_flag_and_template(service):
             "image": "test:latest",
             "recommended_disk_space": 16,
             "use_ssh": True,
+            "vm": True,
+            "ssh_direct": True,
             "runtime_constraints": {"constraints": {}, "unresolved": []},
         }
     ]
@@ -121,7 +123,41 @@ def test_vm_create_sends_vm_flag_and_template(service):
     payload = svc.client.create.call_args.args[1]
     assert payload["vm"] is True
     assert payload["template_hash_id"] == template_hash
-    assert payload["runtype"] == "ssh"
+    assert payload["runtype"] == "ssh_direct"
+
+
+def test_direct_ssh_keeps_provider_mapping_and_never_uses_proxy(service):
+    from venom_core.infrastructure.providers.vast.models import instance_snapshot
+
+    _, plan, _ = service
+    instance = instance_snapshot(
+        {
+            "image_runtype": "ssh_direct",
+            "public_ipaddr": "198.51.100.10",
+            "ssh_host": "proxy.example.test",
+            "ssh_port": 10001,
+            "ports": {
+                "22/tcp": [
+                    {"HostIp": "0.0.0.0", "HostPort": "42021"},
+                    {"HostIp": "::", "HostPort": "42021"},
+                ],
+                "8080/tcp": [{"HostPort": "42022"}],
+            },
+            "secret": "must-not-leave-provider",
+        }
+    )
+    args = ssh_args(plan, instance)
+    assert args[-1] == "root@198.51.100.10"
+    assert args[args.index("-p") + 1] == "42021"
+    assert "secret" not in instance
+    assert "8080/tcp" not in instance["ports"]
+
+
+def test_vm_without_direct_mapping_does_not_fall_back_to_proxy(service):
+    _, plan, _ = service
+    plan.profile = plan.profile.model_copy(update={"vm_required": True})
+    with pytest.raises(VastError, match="vast.direct_ssh_not_ready"):
+        ssh_args(plan, {"ssh_host": "proxy.example.test", "ssh_port": 10001})
 
 
 @pytest.mark.parametrize(

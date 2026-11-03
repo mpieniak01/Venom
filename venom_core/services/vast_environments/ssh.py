@@ -59,6 +59,24 @@ def ssh_args(
 ) -> list[str]:
     host = str(instance.get("ssh_host") or "")
     port = instance.get("ssh_port")
+    direct = plan.profile.vm_required or "ssh_direc" in str(
+        instance.get("image_runtype", "")
+    )
+    if direct:
+        host = str(instance.get("public_ipaddr") or "")
+        ports = instance.get("ports")
+        mappings = ports.get("22/tcp", []) if isinstance(ports, dict) else []
+        candidates = set()
+        for mapping in mappings if isinstance(mappings, list) else []:
+            try:
+                candidate = int(mapping["HostPort"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            if 1 <= candidate <= 65535:
+                candidates.add(candidate)
+        if not host or len(candidates) != 1:
+            raise VastError("vast.direct_ssh_not_ready")
+        port = candidates.pop()
     if (
         not host
         or host.startswith("-")

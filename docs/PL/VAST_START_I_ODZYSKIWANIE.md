@@ -8,6 +8,29 @@ logu konkretnego kroku i testu celowego. Kod i locki repo są źródłem prawdy.
 ## 1. Wybór właściwego hosta przed wynajmem
 
 
+### Naprawa kontraktu wynajmu (2026-11-03)
+
+Udana sesja G03 `58823228` używała Ubuntu VM, `vm: true`,
+`runtype: ssh_direct` i publicznego IP z mapowaniem `22/tcp`.
+Ostatnie nieudane sesje `58989309` i `58991471` użyły Ubuntu Desktop VM,
+`runtype: ssh` oraz diagnostyki wyłącznie przez proxy. Obie usunięto.
+Odmowa klucza przez proxy nie potwierdza braku klucza w docelowej VM.
+
+Klient zachowuje teraz publiczny IP i wyłącznie mapowanie SSH z odpowiedzi
+instancji, dla VM żąda `ssh_direct` i nie zastępuje brakującego mapowania
+endpointem proxy. Metadane szablonu obejmują `vm` i `ssh_direct`; obie
+deklaracje muszą być prawdziwe dla profilu VM i są objęte odciskiem konfiguracji.
+Istniejące profile wymagają ponownego przygotowania po zmianie odcisku.
+
+Profil FunctionGemma przywrócono do Ubuntu 22.04 VM (historycznie sprawdzona
+rodzina szablonu). Bieżące minimum szablonu wynosi 130 GB dysku. `gpu_frac`
+opisuje udział kart maszyny, nie ułamek wydajności wynajętej karty. Nie wymagaj
+`gpu_frac=1` jako dowodu pełnej karty; kontroluj `num_gpus`, VRAM, przydział
+RAM/CPU i rzeczywiste zasoby po SSH. Cena ma pierwszeństwo po spełnieniu
+wymagań minimalnych. Zgodność profilu z API i odtworzenie historycznego
+endpointu sprawdzono bez nowego wynajmu. Nowy rozruch i trening wymagają
+oddzielnego potwierdzenia operacyjnego; nie zostały wykonane w ramach naprawy.
+
 Do listowania hostów bieżącej przygotowanej kampanii używaj istniejącego skryptu:
 
 ```bash

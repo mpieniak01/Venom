@@ -186,7 +186,7 @@ class Environments:
                         ),
                         **({"vm": True} if plan.profile.vm_required else {}),
                         "disk": plan.profile.disk_gb,
-                        "runtype": "ssh",
+                        "runtype": "ssh_direct" if plan.profile.vm_required else "ssh",
                         "target_state": "running",
                         "cancel_unavail": True,
                         "label": "venom-" + plan_id,

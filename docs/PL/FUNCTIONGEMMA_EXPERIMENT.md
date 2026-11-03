@@ -1,8 +1,9 @@
 # FunctionGemma 270M: lokalny eksperyment narzedziowy
 
-Status: pelny SFT zakonczony 2026-11-03; model pozostaje niedopuszczony do czatu.
+Status: pelny SFT i lokalny import Ollama zakonczone 2026-11-03.
+Model jest dostepny do recznych prob; automatyczny dispatcher pozostaje warunkowy.
 Porownawcza ocena jakosci jest oddzielna od sukcesu treningu i GPU smoke.
-Galaz: `codex/functiongemma-tool-training`. Zmiany pozostaja lokalne.
+Galaz wydania: `codex/functiongemma-tool-training`.
 
 Model `google/functiongemma-270m-it` jest przypiety do rewizji
 `39eccb091651513a5dfb56892d3714c1b5b8276c`. Nie korzysta z encodera Gemma4.
@@ -24,7 +25,9 @@ z prefiksem spoza tego zakresu. Diagnostyczny holdout G05 nie jest niezaleznym
 testem koncowym. Nie dodawac go do treningu.
 
 Polecenie `prepare` przyjmuje te same pliki `--train`, `--validation`, a takze
-`--snapshot` i nowy katalog `--output`. Snapshot musi byc lokalnie dostepnym
+`--snapshot`, nowy katalog `--output` i `--context {1024,2048}` (domyslnie 1024).
+Dla obecnego zestawu G05 uzyj `prepare --context 2048` z pozostalymi argumentami.
+Snapshot musi byc lokalnie dostepnym
 katalogiem przypietej rewizji HF; polecenie niczego nie pobiera. Powstaja
 release.json, encoded.json, full-recipe.json, lora-recipe.json i preparation.json.
 Maska obejmuje tylko ostatnia wybrana odpowiedz asystenta i natywny koniec tury.
@@ -163,6 +166,19 @@ Usluga uzytkownika venom-ollama.service korzysta z lokalnej wersji w katalogu
 `~/.local/share/venom266/ollama-0.40.11-functiongemma-multiline/` i oryginalnych
 bibliotek 0.40.11. Prywatne dowody importu, hashy i prob sa w
 `data/training/functiongemma-remote-results-20261103/local-models/`.
+
+### Lokalna szybkosc na probkach treningowych (2026-11-03)
+
+RTX 3060 12 GB, GGUF BF16, kontekst 2048, pojedyncze zadania przez API Ollama.
+Po pilocie 3 probek i przegladzie 6 odpowiedzi zmierzono 20 probek PL/EN
+(cztery narzedzia i brak wywolania), po dwa wywolania kazdej.
+Zimny start: 1755 ms, w tym ladowanie 1468 ms. Dla zaladowanego modelu:
+mediana 161 ms, P95 347 ms; powtorzenie tego samego promptu: mediana 137 ms.
+Mediana generowania: 284 tokeny/s. Wspoldzielone prefiksy KV moga byc uzywane.
+Poprawnosc: 18/20 probek; dwa warianty recover_missing_file-14 (PL/EN)
+zwrocily error_count=2 zamiast 3. To pomiar na danych treningowych,
+bez wykonywania narzedzi i bez pomiaru calego cyklu agenta. Surowe wyniki
+i raport sa prywatne w `data/training/functiongemma-remote-results-20261103/local-speed-20261103/`.
 
 Oficjalne podstawy: [format Google](https://ai.google.dev/gemma/docs/functiongemma/formatting-and-best-practices)
 i [pelny SFT](https://ai.google.dev/gemma/docs/functiongemma/finetuning-with-functiongemma).

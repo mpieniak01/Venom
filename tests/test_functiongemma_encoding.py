@@ -225,3 +225,86 @@ def test_native_call_stops_at_function_response_boundary():
         [value for value in encoded["labels"] if value != -100]
     )
     assert supervised.endswith(CALL_END + "<start_function_response>")
+
+
+@pytest.mark.parametrize(
+    ("context", "characters", "expected_context"),
+    [(None, 50, 1024), (1024, 1100, None), (2048, 1100, 2048)],
+)
+def test_cli_prepare_context_contract(
+    tmp_path, monkeypatch, context, characters, expected_context
+):
+    import sys
+    from types import SimpleNamespace
+
+    from venom_core.services.functiongemma.cli import main
+    from venom_core.services.functiongemma.profile import Recipe
+
+    snapshot = tmp_path / Recipe().revision
+    snapshot.mkdir()
+    monkeypatch.setitem(
+        sys.modules,
+        "transformers",
+        SimpleNamespace(
+            AutoTokenizer=SimpleNamespace(from_pretrained=lambda *a, **kw: Tokenizer())
+        ),
+    )
+    arguments = ["prepare", "--snapshot", str(snapshot)]
+    for split in ("train", "validation"):
+        source = decision(split)
+        source["messages"][0]["content"] = "x" * characters
+        source["tools"] = [
+            {
+                "type": "function",
+                "function": {
+                    "name": "FileSkill-read_file",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {"file_path": {"type": "string"}},
+                        "required": ["file_path"],
+                    },
+                },
+            }
+        ]
+        path = tmp_path / (split + ".jsonl")
+        path.write_text(json.dumps(source) + "\n")
+        arguments.extend(("--" + split, str(path)))
+    output = tmp_path / "prepared"
+    arguments.extend(("--output", str(output)))
+    if context is not None:
+        arguments.extend(("--context", str(context)))
+    if expected_context is None:
+        with pytest.raises(ValueError, match="sequence_exceeds_context"):
+            main(arguments)
+        assert not output.exists()
+    else:
+        assert main(arguments) == 0
+        document = json.loads((output / "encoded.json").read_text())
+        records = validate_encoded_release(document, context=expected_context)
+        assert len(records["train"]) == len(records["validation"]) == 1
+        for method in ("full", "lora"):
+            recipe = json.loads((output / (method + "-recipe.json")).read_text())
+            assert recipe["context"] == expected_context
+
+
+def test_cli_prepare_rejects_unsupported_context_before_io(tmp_path):
+    from venom_core.services.functiongemma.cli import main
+
+    with pytest.raises(SystemExit) as error:
+        main(
+            [
+                "prepare",
+                "--train",
+                "missing",
+                "--validation",
+                "missing",
+                "--snapshot",
+                "missing",
+                "--output",
+                str(tmp_path / "prepared"),
+                "--context",
+                "512",
+            ]
+        )
+    assert error.value.code == 2
+    assert not (tmp_path / "prepared").exists()

@@ -38,7 +38,11 @@ def code_identity(code_root: Path, *, model: str | None = None) -> str:
     """Only the reviewed Granite engine defines model semantics."""
     package = code_root / "venom_core/services/granite_operator"
     if is_functiongemma_model(model):
-        directories = (package, code_root / "venom_core/services/functiongemma")
+        directories = (
+            package,
+            code_root / "venom_core/services/functiongemma",
+            code_root / "venom_core/services/gemma4_operator",
+        )
         return digest(
             {
                 str(p.relative_to(code_root)): file_digest(p)

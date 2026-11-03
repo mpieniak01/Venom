@@ -45,7 +45,7 @@ def prepare(args) -> dict:
     from .dataset import export_decisions
     from .encoding import encode_release, validate_encoded_release
 
-    recipe = Recipe()
+    recipe = Recipe(context=getattr(args, "context", Recipe().context))
     snapshot = operator_path(args.snapshot, allow_symlinks=True)
     if snapshot.name != recipe.revision:
         raise ValueError("functiongemma_pinned_snapshot_required")
@@ -97,6 +97,12 @@ def main(argv=None) -> int:
     prep = sub.add_parser("prepare")
     for key in ("train", "validation", "snapshot", "output"):
         prep.add_argument("--" + key, required=True)
+    prep.add_argument(
+        "--context",
+        type=int,
+        choices=(1024, 2048),
+        default=Recipe().context,
+    )
     run = sub.add_parser("run")
     run.add_argument("request")
     compare = sub.add_parser("compare")

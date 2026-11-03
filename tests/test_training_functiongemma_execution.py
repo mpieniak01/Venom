@@ -218,13 +218,21 @@ def test_epoch_and_smoke_resume_rejections(tmp_path):
 
 def test_dispatch_and_code_identity(tmp_path, monkeypatch):
     assert host.is_functiongemma_model(MODEL)
-    for package in ("granite_operator", "functiongemma"):
+    for package in ("granite_operator", "functiongemma", "gemma4_operator"):
         directory = tmp_path / "venom_core/services" / package
         directory.mkdir(parents=True)
         (directory / "worker.py").write_text(package)
     first = host.code_identity(tmp_path, model=MODEL)
     (tmp_path / "venom_core/services/functiongemma/worker.py").write_text("changed")
     assert host.code_identity(tmp_path, model=MODEL) != first
+    # FunctionGemma imports the shared parser, material helpers and schemas.
+    for name in ("protocol.py", "material.py", "schemas.py"):
+        shared = tmp_path / "venom_core/services/gemma4_operator" / name
+        shared.write_text("original")
+        before = host.code_identity(tmp_path, model=MODEL)
+        shared.write_text("changed")
+        assert host.code_identity(tmp_path, model=MODEL) != before
+
     monkeypatch.setattr(execution, "preflight", lambda *a: ("recipe", "document"))
     assert worker_support.preflight({}, tmp_path, {"model": MODEL}) == (
         "recipe",

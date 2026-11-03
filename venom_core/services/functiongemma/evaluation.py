@@ -12,6 +12,7 @@ from venom_core.services.granite_operator.contract import digest
 from .protocol import CALL_START, validate_calls
 
 ARMS = {"B0", "F1", "L1"}
+TRIAL_HASH_FIELDS = ("benchmark_sha256", "tools_sha256", "generation_sha256")
 
 
 def score(text: str, tools: list[dict], expected: list[dict]) -> dict:
@@ -38,6 +39,10 @@ def _validate_trial(row: dict) -> None:
         row.get("arm") not in ARMS
         or not row.get("case_id")
         or not row.get("problem_group")
+        or any(
+            not isinstance(row.get(key), str) or not row[key].strip()
+            for key in TRIAL_HASH_FIELDS
+        )
     ):
         raise ValueError("functiongemma_trial_identity_invalid")
     seconds = row.get("seconds")
@@ -52,17 +57,7 @@ def _require_matched_pair(pair: dict) -> None:
     if set(pair) != ARMS:
         raise ValueError("functiongemma_incomplete_pairs")
     identities = {
-        digest(
-            {
-                key: row[key]
-                for key in (
-                    "problem_group",
-                    "benchmark_sha256",
-                    "tools_sha256",
-                    "generation_sha256",
-                )
-            }
-        )
+        digest({key: row[key] for key in ("problem_group", *TRIAL_HASH_FIELDS)})
         for row in pair.values()
     }
     if len(identities) != 1:

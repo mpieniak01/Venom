@@ -101,6 +101,27 @@ def test_comparison():
             evaluation.compare(rows)
 
 
+@pytest.mark.parametrize("field", evaluation.TRIAL_HASH_FIELDS)
+@pytest.mark.parametrize("value", [None, "", " ", 3, [], {}])
+def test_comparison_rejects_invalid_hash_fields_even_when_all_arms_match(field, value):
+    rows = trials()
+    for row in rows:
+        row[field] = value
+    with pytest.raises(ValueError, match="^functiongemma_trial_identity_invalid$"):
+        evaluation.compare(rows)
+
+
+@pytest.mark.parametrize("field", evaluation.TRIAL_HASH_FIELDS)
+@pytest.mark.parametrize("all_arms", [False, True])
+def test_comparison_rejects_missing_hash_fields_with_stable_error(field, all_arms):
+    rows = trials()
+    affected = rows if all_arms else rows[:1]
+    for row in affected:
+        del row[field]
+    with pytest.raises(ValueError, match="^functiongemma_trial_identity_invalid$"):
+        evaluation.compare(rows)
+
+
 def test_cli_plan(capsys):
     assert cli.main(["plan", "--samples", "832"]) == 0
     assert '"total_updates": 156' in capsys.readouterr().out

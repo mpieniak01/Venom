@@ -107,6 +107,26 @@ loss walidacyjny 0.000135300. Peak VRAM 21.84 GB. Prywatny lokalny pakiet
 ma 2209970581 bajtow; inspect-result potwierdzil complete=true, brak bledow.
 Te metryki nie zastepuja oceny poprawnosci wywolan ani niezaleznego testu koncowego.
 
+### Ponowna ocena zdalna v4 (2026-11-03)
+
+Po ponownym pilocie i przegladzie 32 odpowiedzi zakonczono pelne sparowane
+porownanie: 352 decyzje na wariant, 24 grupy, 8 workerow po 2 watki CPU.
+Trening nie byl powtarzany. B0 oznacza baze, F1 pelny SFT, nie adapter LoRA.
+
+| Wariant | Dokladna decyzja i argumenty | Wywolania narzedzi | Brak wywolania | Mediana | P95 |
+|---|---:|---:|---:|---:|---:|
+| B0 | 63/352 (17.90%) | 0/288 | 63/64 | 3.759 s | 9.471 s |
+| F1 | 350/352 (99.43%) | 286/288 | 64/64 | 1.449 s | 3.247 s |
+
+Dwa bledy F1 to przedwczesne "Gotowe" zamiast zapisu raportu w polskich
+przypadkach log_diagnosis-00 i log_diagnosis-03 (decision:9). Ocena braku
+wywolania nie ocenia prawdziwosci tekstu. Jest to syntetyczna walidacja,
+nie niezalezny test koncowy ani kwalifikacja do aktywacji.
+
+Wszystkie 704 odpowiedzi przeliczono lokalnie; 42 pliki eksportu i archiwum
+maja zgodne sumy kontrolne. Prywatne dowody: katalog
+`data/training/functiongemma-remote-results-20261103/evaluation-repeat-v4/`.
+W v4 nie odtworzono SIGSEGV; przyczyna wczesniejszych awarii pozostaje nieustalona.
 
 `compare TRIALS.json` porownuje sparowane B0/F1/L1 po case_id, problem_group
 i tych samych hashach benchmark_sha256/tools_sha256/generation_sha256.

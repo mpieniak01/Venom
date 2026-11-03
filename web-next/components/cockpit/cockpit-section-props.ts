@@ -284,7 +284,7 @@ export function useCockpitSectionProps() {
   const llmModelOptionsPanel = llmModelOptions;
 
   const availableModelsForServer = useMemo(
-    () => runtimeSelectionDisabled ? [] : selectedRuntimeModels.map((model) => ({ name: model.name, provider: model.provider })),
+    () => runtimeSelectionDisabled ? [] : selectedRuntimeModels.map((model) => ({ name: model.name, provider: model.provider, display_name: model.display_name, aliases: model.aliases })),
     [runtimeSelectionDisabled, selectedRuntimeModels],
   );
 

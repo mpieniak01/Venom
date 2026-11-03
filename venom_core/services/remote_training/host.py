@@ -148,11 +148,11 @@ def binding(host: dict, identity: dict) -> str:
 
 def dependencies_identity(code_root: Path, *, model: str | None = None) -> str:
     """Bind both the native model lock and minimal remote control closure."""
-    if model is not None and model not in {
-        "google/gemma-4-12B-it",
-        "google/gemma-4-E4B-it",
-        "ibm-granite/granite-4.2-3b",
-    }:
+    if (
+        model is not None
+        and not is_gemma_model(model)
+        and model != "ibm-granite/granite-4.2-3b"
+    ):
         raise ValueError("remote_training_dependency_model_unsupported")
     return digest(
         {

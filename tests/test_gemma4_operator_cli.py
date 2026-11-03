@@ -475,7 +475,17 @@ def test_self_publishing_output_errors_do_not_create_artifacts(
         assert output.read_text() == "previous proof"
 
 
-def test_session_requires_explicit_method_and_update_time_budgets(tmp_path):
+@pytest.mark.parametrize("missing", ["--precision", "--max-updates", "--max-seconds"])
+def test_session_requires_explicit_method_and_update_time_budgets(
+    tmp_path, capsys, missing
+):
+    explicit = {
+        "--profile": str(PROFILE),
+        "--precision": "nf4",
+        "--max-updates": "125",
+        "--max-seconds": "3600",
+    }
+    explicit.pop(missing)
     args = [
         "prepare-session",
         "--source-root",
@@ -491,9 +501,14 @@ def test_session_requires_explicit_method_and_update_time_budgets(tmp_path):
         "--run-id",
         "planned",
     ]
+    for flag, value in explicit.items():
+        args.extend((flag, value))
     command_parser = cli.parser()
-    with pytest.raises(SystemExit):
+    with pytest.raises(SystemExit) as error:
         command_parser.parse_args(args)
+    assert error.value.code == 2
+    message = capsys.readouterr().err.rsplit("error: ", 1)[-1].strip()
+    assert message == f"the following arguments are required: {missing}"
 
 
 def test_session_cli_passes_frozen_evaluation_manifest_file(

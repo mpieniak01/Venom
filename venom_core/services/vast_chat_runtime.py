@@ -14,6 +14,11 @@ from typing import Any
 
 from fastapi import HTTPException
 
+from venom_core.services.ollama_model_identity import (
+    UNRESOLVED_CODES,
+    canonical_ollama_entries,
+    resolve_ollama_model_name,
+)
 from venom_core.utils.runtime_state import runtime_state_root
 
 SERVER = "vast_ollama"
@@ -124,6 +129,27 @@ def server_name(runtime) -> str:
     return SERVER if is_remote(runtime) else runtime.provider
 
 
+def _model_catalog(state: dict) -> list[dict]:
+    return canonical_ollama_entries(
+        [{**row, "provider": "ollama"} for row in state.get("models", [])]
+    )
+
+
+def _selected_model_name(model: str, rows: list[dict]) -> str:
+    try:
+        return resolve_ollama_model_name(model, rows, require_explicit=True)
+    except ValueError as error:
+        raise HTTPException(
+            400,
+            {
+                "code": UNRESOLVED_CODES.get(
+                    model.casefold(), "ollama_identity_unresolved"
+                ),
+                "message": str(error),
+            },
+        ) from error
+
+
 async def preflight() -> None:
     selected = selection()
     if selected is None:
@@ -134,6 +160,8 @@ async def preflight() -> None:
         raise HTTPException(503, "vast_chat_disabled")
     state = await asyncio.to_thread(connection().status, refresh=True)
     models = state.get("models", [])
+    if selected.get("model"):
+        _selected_model_name(str(selected["model"]), _model_catalog(state))
     valid_model = any(
         row.get("name") == selected.get("model")
         and row.get("digest") == selected.get("digest")
@@ -155,7 +183,8 @@ async def select_model(model: str | None) -> dict:
     state = await asyncio.to_thread(connection().status, refresh=True)
     if not state.get("available"):
         raise HTTPException(status_code=503, detail="vast_chat_target_unavailable")
-    rows = state.get("models", [])
+    rows = _model_catalog(state)
+    model = _selected_model_name(str(model or ""), rows)
     match = next((row for row in rows if row.get("name") == model), None)
     if match is None:
         raise HTTPException(status_code=400, detail="vast_chat_model_unavailable")
@@ -200,14 +229,27 @@ async def target_payload() -> dict:
             "canonical_model_id": row["name"],
             "digest": row["digest"],
             "size": row.get("size"),
+            **{
+                key: row[key]
+                for key in (
+                    "display_name",
+                    "details",
+                    "selection_supported",
+                    "selection_block_reason",
+                    "selection_block_code",
+                    "aliases",
+                )
+                if key in row
+            },
             "chat_compatible": True,
             "active": bool(
                 selected
                 and selected.get("target_id") == state.get("target_id")
-                and selected.get("model") == row["name"]
+                and selected.get("model") in [row["name"], *row.get("aliases", [])]
+                and selected.get("digest") == row["digest"]
             ),
         }
-        for row in state.get("models", [])
+        for row in _model_catalog(state)
         if state.get("available")
     ]
     return {

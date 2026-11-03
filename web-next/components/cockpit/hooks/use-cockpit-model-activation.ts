@@ -1,5 +1,7 @@
 "use client";
 
+import { isSelectableChatModel } from "@/lib/chat-model-options";
+import { normalizeRuntimeId } from "@/lib/cockpit-runtime-selection";
 import { runtimeControlErrorHint } from "@/lib/runtime-control-error";
 
 export function useCockpitModelActivation(input: {
@@ -27,9 +29,12 @@ export function useCockpitModelActivation(input: {
 
   const handleActivateModel = async (model: string): Promise<boolean> => {
     const previousModel = selectedLlmModel || "";
-    setSelectedLlmModel(model);
-
     const provider = selectedLlmServer || activeServer;
+    if (!isSelectableChatModel({name:model,runtime_id:normalizeRuntimeId(provider)})) {
+      pushToast(t("models.status.chooseGemmaVariant"), "warning");
+      return false;
+    }
+    setSelectedLlmModel(model);
 
     if (!provider) {
       pushToast(t("cockpit.modelActivation.providerMissing"), "warning");

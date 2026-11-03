@@ -35,9 +35,18 @@ def _observe_done(task):
         task.exception()
 
 
-async def _completed_result(task):
+def _completed_result(task):
     # Reading a finished result is loop independent; awaiting its Task is not.
-    return task.result()
+    local = asyncio.get_running_loop().create_future()
+    if task.cancelled():
+        local.cancel()
+    else:
+        error = task.exception()
+        if error is None:
+            local.set_result(task.result())
+        else:
+            local.set_exception(error)
+    return local
 
 
 def _cached_task(app, record, cache):
@@ -47,7 +56,7 @@ def _cached_task(app, record, cache):
     if previous is not None and previous[1].get_loop() is not loop:
         expires, task = previous
         if task.done() and expires >= now:
-            local = asyncio.create_task(_completed_result(task))
+            local = _completed_result(task)
             local.add_done_callback(_observe_done)
             previous = (expires, local)
             cache[key] = previous

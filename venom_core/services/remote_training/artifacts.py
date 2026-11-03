@@ -19,12 +19,15 @@ from .bundles import (
     validate_run_id,
 )
 
+DATA_MANIFEST = "data-manifest.json"
+
+
 REQUIRED_FILES = (
     "adapter_model.safetensors",
     "adapter_config.json",
     "identity.json",
     "profile.json",
-    "data-manifest.json",
+    DATA_MANIFEST,
     "metrics.json",
     "environment.json",
     "qualification.json",
@@ -93,7 +96,7 @@ def _document(root: Path, name: str, errors: list[str]) -> dict[str, Any]:
     if not path.exists():
         return {}
     try:
-        limit = 64 * 1024**2 if name == "data-manifest.json" else 8 * 1024**2
+        limit = 64 * 1024**2 if name == DATA_MANIFEST else 8 * 1024**2
         if path.stat().st_size > limit:
             raise ValueError("metadata_size")
         value = json.loads(path.read_text())
@@ -149,7 +152,7 @@ def inspect_artifacts(
         "metrics.json",
         "environment.json",
         "profile.json",
-        "data-manifest.json",
+        DATA_MANIFEST,
     ):
         if name not in missing and not documents[name]:
             errors.append("metadata_empty:" + name)

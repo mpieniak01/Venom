@@ -1652,12 +1652,22 @@ async def test_coding_guard_returns_readable_detail_and_machine_header(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("readonly", [False, True])
 async def test_runtime_switch_entry_rejects_active_foreign_request_before_drain(
     monkeypatch,
     tmp_path,
+    readonly,
 ):
+    from contextlib import nullcontext
+
     from venom_core.services import runtime_admission
 
+    # Only this isolated ledger is exercised; ambient deployment policy is not
+    # a precondition for the writable case. The readonly case tests early refusal.
+    monkeypatch.setattr(SETTINGS, "ENVIRONMENT_ROLE", "preprod" if readonly else "dev")
+    monkeypatch.setattr(SETTINGS, "ALLOW_DATA_MUTATION", False)
+    monkeypatch.setenv("WEB_CONCURRENCY", "1")
+    monkeypatch.setenv("UVICORN_WORKERS", "1")
     ledger = runtime_admission.RuntimeAdmission(
         tmp_path / "admission.sqlite3", enabled=True
     )
@@ -1676,17 +1686,44 @@ async def test_runtime_switch_entry_rejects_active_foreign_request_before_drain(
 
     monkeypatch.setattr(system_routes, "begin_runtime_switch", forbidden)
     task = asyncio.create_task(active_request())
-    await entered.wait()
-    try:
-        request = system_routes.ActiveLlmServerRequest(server_name="ollama")
-        with pytest.raises(runtime_admission.RuntimeAdmissionError) as error:
-            await system_routes._set_active_llm_server_impl(
-                request=request,
-                server_name="ollama",
-                switch_source="test",
+    entered_wait = asyncio.create_task(entered.wait())
+    expected = (
+        pytest.raises(PermissionError, match="pre-prod") if readonly else nullcontext()
+    )
+
+    async def exercise():
+        try:
+            done, _ = await asyncio.wait(
+                {task, entered_wait}, timeout=2.0, return_when=asyncio.FIRST_COMPLETED
             )
-        assert error.value.status_code == 409
-        assert error.value.detail["code"] == "runtime_busy"
-    finally:
-        release.set()
-        await task
+            if task in done:
+                await task  # Surface refusal before entered.set(), not a hung event.
+            if entered_wait not in done:
+                raise TimeoutError("temporary admission request did not enter")
+            request = system_routes.ActiveLlmServerRequest(server_name="ollama")
+            with pytest.raises(runtime_admission.RuntimeAdmissionError) as error:
+                await system_routes._set_active_llm_server_impl(
+                    request=request,
+                    server_name="ollama",
+                    switch_source="test",
+                )
+            assert error.value.status_code == 409
+            assert error.value.detail["code"] == "runtime_busy"
+        finally:
+            release.set()
+            if not entered_wait.done():
+                entered_wait.cancel()
+            try:
+                await asyncio.wait_for(task, timeout=1.0)
+            finally:
+                if not task.done():
+                    task.cancel()
+                await asyncio.gather(task, entered_wait, return_exceptions=True)
+
+    with expected:
+        await exercise()
+    assert task.done()
+    assert entered_wait.done()
+    if readonly:
+        assert not entered.is_set()
+        assert not ledger.database.exists()

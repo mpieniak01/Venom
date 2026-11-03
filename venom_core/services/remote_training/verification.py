@@ -31,10 +31,12 @@ from .host import (
 from .lifecycle import atomic_json, file_lock
 from .paths import operator_path
 
+DATA_MANIFEST = "data-manifest.json"
+
 
 def _metadata(root: Path, name: str) -> dict[str, Any]:
     path = root / name
-    limit = 64 * 1024**2 if name == "data-manifest.json" else 8 * 1024**2
+    limit = 64 * 1024**2 if name == DATA_MANIFEST else 8 * 1024**2
     if path.is_symlink() or not path.is_file() or path.stat().st_size > limit:
         raise ValueError("remote_training_local_metadata_invalid:" + name)
     value = json.loads(path.read_text())
@@ -103,7 +105,7 @@ def _validate_gemma_local(
     )
 
     profile = recipe_from_identity(profile_data)
-    document = _metadata(adapter_root, "data-manifest.json")
+    document = _metadata(adapter_root, DATA_MANIFEST)
     native = GemmaProfile(**document["model_profile"])
     profile.validate_profile(native)
     validate_encoded_release(document, native)
@@ -187,7 +189,7 @@ def validate_local(adapter_root: Path, host: dict) -> tuple[dict, TrainingProfil
         raise ValueError("remote_training_local_imported_code_mismatch")
     expected = {
         "profile_sha256": digest(profile.identity()),
-        "data_sha256": digest(_metadata(adapter_root, "data-manifest.json")),
+        "data_sha256": digest(_metadata(adapter_root, DATA_MANIFEST)),
         "tokenizer_sha256": tokenizer_sha,
         "template_sha256": template_sha,
         "code_sha256": code_identity(code_root),
@@ -411,7 +413,7 @@ def _probe_row(adapter_root, profile, tokenizer):
         )
         from venom_core.services.gemma4_operator.profile import GemmaProfile
 
-        document = _metadata(adapter_root, "data-manifest.json")
+        document = _metadata(adapter_root, DATA_MANIFEST)
         native = GemmaProfile(**document["model_profile"])
         return validate_encoded_release(document, native)["validation"][0]
     row = {

@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import base64
 import copy
 import hashlib
+import json
 from contextlib import nullcontext
 from dataclasses import replace
 from pathlib import Path
@@ -12,7 +14,10 @@ from types import SimpleNamespace
 import pytest
 
 from scripts.granite_operator import comparison, comparison_host, comparison_parallel
-from scripts.granite_operator.comparison_support import validate_case_images
+from scripts.granite_operator.comparison_support import (
+    load_frozen,
+    validate_case_images,
+)
 from venom_core.services.gemma4_operator.profile import GemmaProfile
 from venom_core.services.gemma4_operator.training import GemmaTrainingRecipe
 from venom_core.services.granite_operator.contract import (
@@ -224,15 +229,26 @@ def test_local_artifact_validation_rejects_wrong_native_identity(artifact, chang
         verification._validate_gemma_local(adapter, host, identity, profile_data)
 
 
-def test_frozen_image_must_be_manifest_bound(tmp_path):
+@pytest.fixture
+def frozen_png(tmp_path):
     path = tmp_path / "square.png"
-    path.write_bytes(b"fixture")
+    path.write_bytes(
+        base64.b64decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8Dw"
+            "HwAFAAH/iZk9HQAAAABJRU5ErkJggg=="
+        )
+    )
+    return path
+
+
+def test_frozen_image_must_be_manifest_bound(frozen_png):
+    path = frozen_png
     checksum = file_digest(path)
     case = {"images": [{"path": path.name, "sha256": checksum}]}
-    validate_case_images(case, tmp_path, {path.name: checksum})
+    validate_case_images(case, path.parent, {path.name: checksum})
     case["images"][0]["sha256"] = "0" * 64
     with pytest.raises(ValueError, match="image_not_frozen"):
-        validate_case_images(case, tmp_path, {path.name: checksum})
+        validate_case_images(case, path.parent, {path.name: checksum})
 
 
 class Payload(dict):
@@ -493,3 +509,49 @@ def test_remote_image_evaluation_fails_before_starting_paid_model(
     with pytest.raises(ValueError, match="remote_images_require_same_host_runner"):
         remote_comparison.evaluate(options, forbidden)
     assert created == []
+
+
+@pytest.mark.parametrize("checksum", [None, "", "g" * 64, "a" * 63, False, "١" * 64])
+def test_image_identity_rejects_invalid_hash_even_if_manifest_value_matches(
+    frozen_png, checksum
+):
+    path = frozen_png
+    case = {"images": [{"path": path.name, "sha256": checksum}]}
+    with pytest.raises(ValueError, match="image_not_frozen"):
+        validate_case_images(case, path.parent, {path.name: checksum})
+
+
+def test_image_identity_requires_checksum_field(frozen_png):
+    path = frozen_png
+    case = {"images": [{"path": path.name}]}
+    files = {path.name: file_digest(path)}
+    with pytest.raises(ValueError, match="case_images_invalid"):
+        validate_case_images(case, path.parent, files)
+
+
+def test_unlisted_existing_image_with_null_hash_cannot_enter_frozen_cases(frozen_png):
+    root = frozen_png.parent
+    fixture = root / "fixture"
+    fixture.mkdir()
+    (fixture / "seed.txt").write_text("immutable", encoding="utf-8")
+    case = {
+        "id": "outside_image",
+        "fixture": fixture.name,
+        "images": [{"path": frozen_png.name, "sha256": None}],
+    }
+    cases = root / "cases.jsonl"
+    cases.write_text(json.dumps(case) + "\n", encoding="utf-8")
+    manifest = root / "manifest.json"
+    write_json(
+        manifest,
+        {
+            "cases": cases.name,
+            "case_count": 1,
+            "files": {
+                cases.name: file_digest(cases),
+                "fixture/seed.txt": file_digest(fixture / "seed.txt"),
+            },
+        },
+    )
+    with pytest.raises(ValueError, match="image_not_frozen"):
+        load_frozen(manifest)

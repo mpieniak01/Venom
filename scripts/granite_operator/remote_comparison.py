@@ -202,7 +202,7 @@ def evaluate(args, factory=RemoteInference):
     identity = {
         "manifest_sha256": file_digest(args.cases),
         "adapter_sha256": args.adapter_sha256,
-        "inference": INFERENCE,
+        "requested_inference": {**INFERENCE, "context": "sealed_remote_profile"},
         "host": args.host,
         "remote_result": args.remote_result,
         "benchmark_role": "diagnostic_after_G02_curation",
@@ -317,7 +317,8 @@ def _evaluate_trials(args, factory, manifest, cases, rows, done):
             **summarize(rows),
             "status": "COMPLETE",
             "case_count": len(cases),
-            "inference": INFERENCE,
+            "inference": dict(remote.ready["inference"]),
+            "inference_source": "remote_handshake",
             "benchmark_role": "diagnostic_after_G02_curation",
             "wall_seconds": time.monotonic() - started,
         }

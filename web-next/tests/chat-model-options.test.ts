@@ -31,7 +31,7 @@ it("labels exact Saluki source with model version and quantization, retaining it
 
 describe("explicit Gemma4 choices", () => {
   it("shows distinct E4B and12B precision labels and never infers latest", () => {
-    assert.equal(chatModelLabel("gemma4:e4b", undefined, "ollama"), "Gemma4 E4B IT Q4_K_M");
+    assert.equal(chatModelLabel("gemma4:e4b", undefined, "ollama"), "Gemma4 E4B IT");
     assert.equal(chatModelLabel("gemma4:12b-it-q4_K_M", undefined, "ollama"), "Gemma4 12B IT Q4_K_M");
     assert.equal(chatModelLabel("gemma4:latest", undefined, "ollama"), "gemma4:latest (unresolved variant)");
   });
@@ -78,8 +78,24 @@ it("does not infer Saluki identity for another provider or rewrite active input 
 
 
 it("shows observed Saluki preset metadata without attributing an unproven GGUF version", () => {
-  const label = "saluki:latest · gemma3 26.9B IQ2_XS · sha256:3497825c";
+  const label = "Saluki preset 26.9B IQ2_XS ·3497825c";
   assert.equal(chatModelLabel("saluki:latest",label,"ollama"), label);
   assert.equal(isSelectableChatModel({name:"saluki:latest",provider:"ollama",selection_supported:true}), true);
   assert.equal(isSelectableChatModel({name:"saluki:latest",provider:"ollama",selection_supported:false}), false);
+});
+
+
+it("localizes unresolved Saluki and Qwen while preserving observed preset labels", () => {
+  for (const name of ["saluki:latest","qwen3.5:latest"]) {
+    assert.equal(chatModelLabel(name,name,"ollama","nierozpoznany wariant"), name + " (nierozpoznany wariant)");
+    assert.equal(chatModelLabel(name,name + " (unresolved variant)","ollama","nierozpoznany wariant"), name + " (nierozpoznany wariant)");
+  }
+  const label = "Saluki preset 26.9B IQ2_XS ·3497825c";
+  assert.equal(chatModelLabel("saluki:latest",label,"ollama","nierozpoznany wariant"),label);
+});
+
+
+it("E4B fallback does not guess precision and observed catalog metadata remains explicit", () => {
+  assert.equal(chatModelLabel("gemma4:e4b",undefined,"ollama"),"Gemma4 E4B IT");
+  assert.equal(chatModelLabel("gemma4:e4b","Gemma4 E4B IT Q4_K_M","ollama"),"Gemma4 E4B IT Q4_K_M");
 });

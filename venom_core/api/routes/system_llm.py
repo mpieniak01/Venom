@@ -49,6 +49,7 @@ from venom_core.services.feedback_loop_policy import (
     resolve_feedback_loop_model,
 )
 from venom_core.services.multi_runtime_models import multi_runtime_available_models
+from venom_core.services.ollama_model_identity import merge_catalog_model_aliases
 from venom_core.services.ollama_runtime_policy import enforce_single_loaded_ollama_model
 from venom_core.services.runtime_admission import admitted_operation
 from venom_core.services.runtime_switch_gate import (
@@ -461,11 +462,23 @@ def _ensure_config_update_success(result: dict[str, Any] | None, context: str) -
     raise HTTPException(status_code=500, detail=f"{context}: {message}")
 
 
+def _persist_fallback_model(
+    server_name: str, last_model_key: str, previous_model: str, enabled: bool
+) -> None:
+    if not enabled:
+        return
+    result = config_manager.update_config({last_model_key: previous_model})
+    _ensure_config_update_success(
+        result, f"Nie udało się zaktualizować ostatniego modelu dla '{server_name}'"
+    )
+
+
 def _select_model_for_server(
     *,
     server_name: str,
     config: dict,
     models: list[dict],
+    persist_fallback: bool = True,
 ) -> tuple[str, str, str]:
     if server_name == "onnx":
         last_model_key = "LAST_MODEL_ONNX"
@@ -492,10 +505,8 @@ def _select_model_for_server(
     if desired_model in available:
         return desired_model, last_model_key, prev_model_key
     if previous_model and previous_model in available:
-        result = config_manager.update_config({last_model_key: previous_model})
-        _ensure_config_update_success(
-            result,
-            f"Nie udało się zaktualizować ostatniego modelu dla '{server_name}'",
+        _persist_fallback_model(
+            server_name, last_model_key, previous_model, persist_fallback
         )
         return previous_model, last_model_key, prev_model_key
     raise HTTPException(
@@ -1435,6 +1446,23 @@ def _multi_runtime_static_models(
     ]
 
 
+def _catalog_model_identity(
+    payload: dict[str, Any], model: dict[str, Any]
+) -> dict[str, Any]:
+    fields = (
+        "display_name",
+        "digest",
+        "quantization",
+        "selection_supported",
+        "selection_block_reason",
+        "selection_block_code",
+        "activation_supported",
+    )
+    payload["aliases"] = merge_catalog_model_aliases(payload.get("aliases", []), model)
+    payload.update({key: model[key] for key in fields if key in model})
+    return payload
+
+
 def _runtime_payload_or_audit_issue(
     *,
     model: dict[str, Any],
@@ -1486,18 +1514,7 @@ def _runtime_payload_or_audit_issue(
         compatible_runtimes=[runtime_id],
     )
     if runtime_id == "ollama":
-        for key in (
-            "display_name",
-            "digest",
-            "quantization",
-            "aliases",
-            "selection_supported",
-            "selection_block_reason",
-            "selection_block_code",
-            "activation_supported",
-        ):
-            if key in model:
-                payload[key] = model[key]
+        _catalog_model_identity(payload, model)
     return payload, None
 
 
@@ -2614,6 +2631,7 @@ def _resolve_selected_model_for_switch(
     server_name: str,
     config: dict[str, Any],
     models: list[dict[str, Any]],
+    persist_fallback: bool = True,
 ) -> tuple[str, str]:
     if is_multi_runtime(server_name):
         return _resolve_multi_runtime_selected_model_for_switch(
@@ -2643,6 +2661,7 @@ def _resolve_selected_model_for_switch(
             server_name=server_name,
             config=config,
             models=models,
+            persist_fallback=persist_fallback,
         )
         return selected_model, last_model_key
     except HTTPException:
@@ -3039,6 +3058,7 @@ async def _set_active_llm_server_impl(
             server_name=server_name,
             config=config_manager.get_config(mask_secrets=False),
             models=observed_models,
+            persist_fallback=False,
         )
         # Read-only identity checks precede stopping or starting any runtime.
         resolve_ollama_selection(preview, observed_models)

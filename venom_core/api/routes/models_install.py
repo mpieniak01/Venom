@@ -672,6 +672,15 @@ async def install_model(
         raise HTTPException(status_code=500, detail=f"Błąd serwera: {str(exc)}")
 
 
+def _canonical_switch_request(
+    request: ModelSwitchRequest, models: list[dict], provider: str
+) -> ModelSwitchRequest:
+    if provider != "ollama":
+        return request
+    canonical = resolve_ollama_selection(request.name, models)
+    return request.model_copy(update={"name": canonical})
+
+
 @router.post(
     "/models/switch",
     responses={
@@ -697,9 +706,7 @@ async def switch_model(request: ModelSwitchRequest):
         models = await model_manager.list_local_models()
         runtime_info = get_active_llm_runtime()
         active_provider = runtime_info.provider
-        if active_provider == "ollama":
-            canonical = resolve_ollama_selection(request.name, models)
-            request = request.model_copy(update={"name": canonical})
+        request = _canonical_switch_request(request, models, active_provider)
         _ensure_model_exists(models, request.name)
         model_provider = _ensure_runtime_provider_match(
             model_name=request.name,

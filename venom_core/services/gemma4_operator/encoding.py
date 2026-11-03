@@ -59,7 +59,7 @@ def _release_records(release: Json, profile: GemmaProfile) -> dict[str, list[Jso
     payload = _mapping(release.get("training_payload"), "training_payload_required")
     records = _mapping(payload.get("records"), "training_splits_invalid")
     _need(
-        isinstance(records, dict) and set(records) == set(SPLITS),
+        set(records) == set(SPLITS),
         "training_splits_invalid",
     )
     _need(

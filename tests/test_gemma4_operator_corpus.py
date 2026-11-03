@@ -1,6 +1,7 @@
 """G05 preparation uses executed CPU fixtures and never rents a host or model."""
 
 import copy
+import hashlib
 import json
 
 import pytest
@@ -39,7 +40,7 @@ def source(tmp_path, monkeypatch):
         }
         path = root / name
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(row) + "\n")
+        path.write_text(json.dumps(row) + "\n", encoding="utf-8")
         checksum = corpus._bytes_hash(path.read_bytes())
         identities[split] = (name, checksum)
         spec = {"rows": 1, "sha256": checksum}
@@ -47,7 +48,7 @@ def source(tmp_path, monkeypatch):
             manifest["holdout"] = spec
         else:
             manifest["datasets"][name] = spec
-    (root / "pilot-manifest.json").write_text(json.dumps(manifest))
+    (root / "pilot-manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
     monkeypatch.setattr(corpus, "G04_FILES", identities)
     return root
 
@@ -127,7 +128,10 @@ def test_build_release_records_hashes_and_keeps_retention_outside_training(
     reserve = result["capability_reserve"]
     assert reserve["included_in_training"] is False
     assert reserve["audio_qualified"] is False
-    cases = [json.loads(x) for x in (output / reserve["path"]).read_text().splitlines()]
+    cases = [
+        json.loads(x)
+        for x in (output / reserve["path"]).read_text(encoding="utf-8").splitlines()
+    ]
     assert len(cases) == 24
     assert all(row["training_allowed"] is False for row in cases)
     assert {row["family"] for row in cases} == {
@@ -145,16 +149,16 @@ def test_build_release_records_hashes_and_keeps_retention_outside_training(
 
 
 def test_parent_hash_change_is_not_silently_accepted(source):
-    (source / "domain/train.jsonl").write_text("{}\n")
+    (source / "domain/train.jsonl").write_text("{}\n", encoding="utf-8")
     with pytest.raises(ValueError, match="parent_hash_mismatch"):
         corpus.prepare_corpus(source)
 
 
 def test_parent_claim_cannot_change_the_pinned_identity(source):
     path = source / "pilot-manifest.json"
-    data = json.loads(path.read_text())
+    data = json.loads(path.read_text(encoding="utf-8"))
     data["datasets"]["domain/train.jsonl"]["sha256"] = "0" * 64
-    path.write_text(json.dumps(data))
+    path.write_text(json.dumps(data), encoding="utf-8")
     with pytest.raises(ValueError, match="parent_hash_mismatch"):
         corpus.prepare_corpus(source)
 
@@ -177,6 +181,7 @@ def test_group_budgets_are_bounded(groups):
 def test_subprocess_failure_does_not_claim_execution(monkeypatch):
     class Failure:
         returncode = 1
+        stderr = b""
 
     monkeypatch.setattr(corpus.subprocess, "run", lambda *args, **kwargs: Failure())
     with pytest.raises(ValueError, match="fixture_subprocess_failed"):
@@ -185,9 +190,9 @@ def test_subprocess_failure_does_not_claim_execution(monkeypatch):
 
 def test_parent_manifest_version_is_checked(source):
     path = source / "pilot-manifest.json"
-    data = json.loads(path.read_text())
+    data = json.loads(path.read_text(encoding="utf-8"))
     data["material_version"] = 3
-    path.write_text(json.dumps(data))
+    path.write_text(json.dumps(data), encoding="utf-8")
     with pytest.raises(ValueError, match="parent_version_invalid"):
         corpus.prepare_corpus(source)
 
@@ -198,15 +203,19 @@ def test_network_blocker_has_no_fallback():
 
 
 def test_png_fixture_is_deterministic_and_not_a_text_training_sample():
-    assert corpus._png_rectangle(255, 0, 0) == corpus._png_rectangle(255, 0, 0)
-    assert corpus._png_rectangle(255, 0, 0) != corpus._png_rectangle(0, 0, 255)
+    red = corpus._png_rectangle(255, 0, 0)
+    assert (
+        hashlib.sha256(red).hexdigest()
+        == "b122809aebbd6402a239242eb7059587a0d54a2a2cf01cba7dd40850e99fbe22"
+    )
+    assert red != corpus._png_rectangle(0, 0, 255)
 
 
 def test_parent_change_during_fixture_execution_is_rejected(
     source, executed_supplement, monkeypatch
 ):
     def mutate_source(groups):
-        (source / "domain/train.jsonl").write_text("changed")
+        (source / "domain/train.jsonl").write_text("changed", encoding="utf-8")
         return copy.deepcopy(executed_supplement)
 
     monkeypatch.setattr(corpus, "_supplement", mutate_source)
@@ -268,7 +277,9 @@ def test_retention_has_bilingual_breadth_assets_and_no_audio_claim(tmp_path):
     assert reserve["audio_qualified"] is False
     rows = [
         json.loads(line)
-        for line in (tmp_path / reserve["path"]).read_text().splitlines()
+        for line in (tmp_path / reserve["path"])
+        .read_text(encoding="utf-8")
+        .splitlines()
     ]
     assert len({row["id"] for row in rows}) == 24
     for family in reserve["families"]:
@@ -334,9 +345,9 @@ def test_previous_release_requires_same_parent(
         source, first_dir, groups={"train": 1, "validation": 1, "holdout": 1}
     )
     path = first_dir / "manifest.json"
-    doc = json.loads(path.read_text())
+    doc = json.loads(path.read_text(encoding="utf-8"))
     doc["lineage"]["files"] = {}
-    path.write_text(json.dumps(doc))
+    path.write_text(json.dumps(doc), encoding="utf-8")
     lineage = {"files": {"different": "f" * 64}}
     with pytest.raises(ValueError, match="previous_release_mismatch"):
         corpus._previous_release(path, lineage)
@@ -405,7 +416,7 @@ def test_previous_prepared_bytes_are_verified(source, executed_supplement, monke
     manifest = corpus.build_corpus(
         source, output, groups={"train": 1, "validation": 1, "holdout": 1}
     )
-    (output / "prepared.json").write_text("{}")
+    (output / "prepared.json").write_text("{}", encoding="utf-8")
     with pytest.raises(ValueError, match="previous_prepared_changed"):
         corpus._previous_release(output / "manifest.json", manifest["lineage"])
 
@@ -425,3 +436,20 @@ def test_evaluation_case_ids_cannot_be_duplicated(tmp_path):
     profiles = _profiles()
     with pytest.raises(ValueError, match="capability_cases_invalid"):
         corpus.evaluation_definition(manifest, profiles=profiles)
+
+
+def test_failed_fixture_retains_bounded_decodable_worker_diagnostics(monkeypatch):
+    class Failure:
+        returncode = 7
+        stderr = b"x" * 5000 + b"\nValueError: gemma_corpus_unexpected_tool_outcome\xff"
+
+    monkeypatch.setattr(corpus.subprocess, "run", lambda *args, **kwargs: Failure())
+    groups = {"train": 1, "validation": 1, "holdout": 1}
+    with pytest.raises(ValueError) as error:
+        corpus._supplement(groups)
+    diagnostic = str(error.value)
+    assert diagnostic.startswith("gemma_corpus_fixture_subprocess_failed:exit=7:")
+    assert "gemma_corpus_unexpected_tool_outcome" in diagnostic
+    assert "\ufffd" in diagnostic
+    assert len(diagnostic) < 2100
+    assert "x" * 2001 not in diagnostic

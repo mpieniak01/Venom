@@ -52,6 +52,7 @@ FAMILIES = (
 DEFAULT_GROUPS = {"train": 16, "validation": 4, "holdout": 4}
 SPLIT_WORDS = {"train": "cedar", "validation": "maple", "holdout": "birch"}
 CORPUS_RECIPE_VERSION = 2
+PREPARED_FILENAME = "prepared.json"
 EXPERIMENT_MODELS = frozenset({"google/gemma-4-E4B-it", "google/gemma-4-12B-it"})
 TOOL_NAMES = (
     "FileSkill-read_file",
@@ -84,7 +85,7 @@ def _parent(source: Path) -> tuple[dict[str, list[Json]], Json]:
     manifest_path = root / "pilot-manifest.json"
     if manifest_path.is_symlink() or not manifest_path.is_file():
         raise ValueError("gemma_corpus_parent_manifest_required")
-    manifest = json.loads(manifest_path.read_text())
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     if manifest.get("material_version") != 4:
         raise ValueError("gemma_corpus_parent_version_invalid")
     rows, hashes = {}, {}
@@ -144,7 +145,7 @@ def _fixture(root: Path, service: str, index: int) -> tuple[str, str, Json]:
     for name, content in files.items():
         path = root / name
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(content)
+        path.write_text(content, encoding="utf-8")
     return target, report, truth
 
 
@@ -411,7 +412,7 @@ def _worker(root: Path, groups: dict[str, int]) -> None:
     setattr(socket, "create_connection", _deny_network)
     setattr(socket, "getaddrinfo", _deny_network)
     result = asyncio.run(_generate(root, groups))
-    with (root / "generated.json").open("x") as stream:
+    with (root / "generated.json").open("x", encoding="utf-8") as stream:
         json.dump(result, stream, ensure_ascii=False, allow_nan=False)
 
 
@@ -429,8 +430,11 @@ def _supplement(groups: dict[str, int]) -> Json:
             check=False,
         )
         if result.returncode:
-            raise ValueError("gemma_corpus_fixture_subprocess_failed")
-        return json.loads((root / "generated.json").read_text())
+            detail = (result.stderr or b"")[-2000:].decode("utf-8", errors="replace")
+            raise ValueError(
+                f"gemma_corpus_fixture_subprocess_failed:exit={result.returncode}:\n{detail}"
+            )
+        return json.loads((root / "generated.json").read_text(encoding="utf-8"))
 
 
 def _execution_sources() -> dict[str, str]:
@@ -493,7 +497,7 @@ def prepare_corpus(source_root: Path, *, groups: Json | None = None) -> Json:
 
 
 def _write_lines(path: Path, rows: list[Json]) -> None:
-    with path.open("x") as stream:
+    with path.open("x", encoding="utf-8") as stream:
         for row in rows:
             stream.write(_json(row))
 
@@ -714,16 +718,16 @@ def _capability_reserve(target: Path) -> Json:
 
 def _previous_release(path: Path, lineage: Json) -> Json:
     target = checked_file(path)
-    previous = json.loads(target.read_text())
+    previous = json.loads(target.read_text(encoding="utf-8"))
     if (
         previous.get("material_version") != 5
         or previous.get("lineage", {}).get("files") != lineage["files"]
     ):
         raise ValueError("gemma_corpus_previous_release_mismatch")
-    checksum = previous.get("files", {}).get("prepared.json", {}).get("sha256")
+    checksum = previous.get("files", {}).get(PREPARED_FILENAME, {}).get("sha256")
     if not isinstance(checksum, str) or SHA256.fullmatch(checksum) is None:
         raise ValueError("gemma_corpus_previous_release_invalid")
-    prepared = checked_file(target.parent / "prepared.json")
+    prepared = checked_file(target.parent / PREPARED_FILENAME)
     if _bytes_hash(prepared.read_bytes()) != checksum:
         raise ValueError("gemma_corpus_previous_prepared_changed")
     return {
@@ -860,8 +864,8 @@ def build_corpus(
         path = target / (split + ".jsonl")
         _write_lines(path, rows)
         files[path.name] = {"rows": len(rows), "sha256": _bytes_hash(path.read_bytes())}
-    prepared_path = target / "prepared.json"
-    with prepared_path.open("x") as stream:
+    prepared_path = target / PREPARED_FILENAME
+    with prepared_path.open("x", encoding="utf-8") as stream:
         json.dump(
             result["prepared"],
             stream,
@@ -894,7 +898,7 @@ def build_corpus(
         "independent_human_review": False,
         "holdout_qualification": "synthetic_diagnostic_only",
     }
-    with (target / "manifest.json").open("x") as stream:
+    with (target / "manifest.json").open("x", encoding="utf-8") as stream:
         stream.write(_json(manifest))
     return manifest
 

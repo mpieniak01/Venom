@@ -1,6 +1,6 @@
 import { runtimeControlErrorHint } from "@/lib/runtime-control-error";
 import { useState, useMemo, useEffect, useCallback } from "react";
-import { chatModelLabel, preferChatModelAliases } from "@/lib/chat-model-options";
+import { chatModelLabel, preferChatModelAliases, isSelectableChatModel } from "@/lib/chat-model-options";
 import { useToast } from "@/components/ui/toast";
 import { useLanguage } from "@/lib/i18n";
 import { ApiError } from "@/lib/api-client";
@@ -300,6 +300,9 @@ export function useRuntime() {
             const targetServer = canonicalServer || server;
             const remote = isCloudRuntime(targetServer) || targetServer === "vast_ollama";
             const resolvedModel = remote && model ? model : resolveSelectedModelForServer(targetServer, model);
+            if (resolvedModel && !isSelectableChatModel({name:resolvedModel,runtime_id:targetServer})) {
+                throw new Error(t("models.status.chooseGemmaVariant"));
+            }
             let response: ActiveLlmServerResponse | void = undefined;
             if (isCloudRuntime(targetServer)) {
                 response = await setActiveLlmRuntime(targetServer, resolvedModel ?? model ?? undefined);
@@ -328,6 +331,7 @@ export function useRuntime() {
         },
         [
             activeServer,
+            t,
             installed,
             resolveSelectedModelForServer,
             runtimeOptions,

@@ -33,6 +33,7 @@ from .training import GemmaTrainingRecipe
 Json = dict[str, Any]
 MAX_METADATA_BYTES = 64 * 1024 * 1024
 INPUT_FILES = ("profile.json", "data-manifest.json", "ollama-binding.json")
+INPUT_ARCHIVE = "input.zip"
 
 
 def _read(path: Path) -> Json:
@@ -345,7 +346,7 @@ def prepare_session(
     bundle = create_bundle(
         staging,
         INPUT_FILES,
-        output / "input.zip",
+        output / INPUT_ARCHIVE,
         run_id=run_id,
         identity=identity,
         max_bytes=MAX_METADATA_BYTES,
@@ -362,8 +363,8 @@ def prepare_session(
         "source_training_records_sha256": release["training_payload"]["records_sha256"],
         "split_summary": encoded["split_summary"],
         "input_files": list(INPUT_FILES),
-        "transfer_archive": "input.zip",
-        "transfer_sha256": sha256(output / "input.zip"),
+        "transfer_archive": INPUT_ARCHIVE,
+        "transfer_sha256": sha256(output / INPUT_ARCHIVE),
         "bundle_manifest_sha256": bundle["manifest_sha256"],
         "ready_for_remote_session": True,
         "ready_for_complete_remote_workflow": evaluation["prepared"],

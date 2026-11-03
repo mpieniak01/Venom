@@ -102,7 +102,8 @@ def test_discovery_preserves_explicit_tag_instead_of_preferring_latest_by_digest
         "gemma4:e4b",
     )
     e4b = next(r for r in rows if r["name"] == "gemma4:e4b")
-    assert e4b["loaded"] is True and e4b["selected"] is True
+    assert e4b["loaded"] is True
+    assert e4b["selected"] is True
 
 
 def test_other_providers_and_names_are_not_canonicalized():
@@ -113,10 +114,7 @@ def test_other_providers_and_names_are_not_canonicalized():
     assert (
         resolve_ollama_model_name("qwen:latest", [item("qwen:latest")]) == "qwen:latest"
     )
-    assert (
-        ollama_display_name("gemma4:latest", "Q4_K_M")
-        == "gemma4:latest (unresolved variant)"
-    )
+    assert ollama_display_name("gemma4:latest", "Q4_K_M") == "gemma4:latest"
 
 
 @pytest.mark.parametrize("model", ["google/gemma-4-E4B-it", "google/gemma-4-12B-it"])
@@ -265,7 +263,7 @@ def test_unresolved_catalog_metadata_disables_selection_without_losing_observed_
     assert rows[0]["name"] == "gemma4:latest"
     assert rows[0]["activation_supported"] is False
     assert rows[0]["selection_supported"] is False
-    assert "unresolved" in rows[0]["display_name"]
+    assert rows[0]["display_name"] == "gemma4:latest"
 
 
 def test_case_variant_cannot_bypass_strict_latest_guard_or_borrow_other_tag_proof():
@@ -375,7 +373,7 @@ def test_saluki_different_preset_or_projector_cannot_be_collapsed_by_filename():
     assert len(rows) == 2
     unresolved = next(row for row in rows if row["name"] == SALUKI_ALIAS)
     assert unresolved["selection_supported"] is True
-    assert "sha256:bbbbbbbb" in unresolved["display_name"]
+    assert "bbbbbbbb" in unresolved["display_name"]
     assert resolve_ollama_selection(SALUKI_ALIAS, rows) == SALUKI_ALIAS
 
 
@@ -440,4 +438,63 @@ def test_qwen_latest_maps_only_to_identical_explicit_tag_and_d1_keeps_observed_p
     d1 = next(row for row in rows if row["name"] == "d1:latest")
     assert "2.7B Q8_0" in d1["display_name"]
     assert "d1:3b-q8_0" in d1["display_name"]
-    assert "sha256:bbbbbbbb" in d1["display_name"]
+    assert "bbbbbbbb" in d1["display_name"]
+
+
+def test_static_aliases_survive_empty_observed_list_but_moving_alias_needs_evidence():
+    from venom_core.api.routes.system_llm import _catalog_model_identity
+
+    result = _catalog_model_identity(
+        {"aliases": ["gemma3:latest", "gemma3:4b"]}, dict(item("gemma3:4b"), aliases=[])
+    )
+    assert result["aliases"] == ["gemma3:4b", "gemma3:latest"]
+    result = _catalog_model_identity(
+        {"aliases": ["gemma4:latest", "stable-id"]},
+        dict(item("gemma4:e4b"), aliases=[]),
+    )
+    assert result["aliases"] == ["stable-id"]
+    proved = canonical_ollama_entries([item("gemma4:latest"), item("gemma4:e4b")])[0]
+    result = _catalog_model_identity({"aliases": ["stable-id"]}, proved)
+    assert result["aliases"] == ["gemma4:latest", "stable-id"]
+
+
+def test_preview_previous_model_fallback_never_persists_before_runtime_gate(
+    monkeypatch,
+):
+    from venom_core.api.routes import system_llm as routes
+
+    config = {"LAST_MODEL_OLLAMA": "missing", "PREVIOUS_MODEL_OLLAMA": "gemma4:e4b"}
+    writes = []
+    monkeypatch.setattr(
+        routes.config_manager,
+        "get_runtime_snapshot",
+        lambda **kwargs: {"active_model_id": "missing"},
+    )
+    monkeypatch.setattr(
+        routes.config_manager,
+        "update_config",
+        lambda update: writes.append(update) or {"success": True},
+    )
+    request = routes.ActiveLlmServerRequest(server_name="ollama")
+    selected, _ = routes._resolve_selected_model_for_switch(
+        request=request,
+        server_name="ollama",
+        config=config,
+        models=[item("gemma4:e4b")],
+        persist_fallback=False,
+    )
+    assert selected == "gemma4:e4b"
+    assert writes == []
+    # The ordinary resolver retains its post-gate persistence contract.
+    routes._resolve_selected_model_for_switch(
+        request=request,
+        server_name="ollama",
+        config=config,
+        models=[item("gemma4:e4b")],
+    )
+    assert writes == [{"LAST_MODEL_OLLAMA": "gemma4:e4b"}]
+
+
+@pytest.mark.parametrize("name", ["gemma4:latest", "saluki:latest", "qwen3.5:latest"])
+def test_backend_unresolved_label_contains_no_english_explanatory_suffix(name):
+    assert ollama_display_name(name) == name

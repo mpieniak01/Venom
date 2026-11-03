@@ -149,7 +149,7 @@ export const EnrichedCatalogCard = ({
             <div className="flex items-start justify-between gap-4">
                 <div>
                     <p className="text-lg font-semibold">{chatModelLabel(model.name, model.display_name, model.provider, t("models.status.unresolvedVariant"))}</p>
-                    <p className="text-xs text-[color:var(--ui-muted)]">{chatModelLabel(model.name, model.display_name, model.provider, t("models.status.unresolvedVariant"))}</p>
+                    <p className="text-xs text-[color:var(--ui-muted)]">{model.name}</p>
                 </div>
                 <Badge tone="neutral">{model.runtime || "vllm"}</Badge>
             </div>

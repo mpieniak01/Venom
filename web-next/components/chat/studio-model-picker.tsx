@@ -2,8 +2,15 @@
 import { chatModelLabel, isSelectableChatModel } from "@/lib/chat-model-options";
 import { useLanguage } from "@/lib/i18n";
 import { useOpenRouterCatalog, OpenRouterModelStatus } from "@/components/cockpit/openrouter-model-status";
-import type { UnifiedModelCatalogResponse } from "@/lib/academy-api";
+import type { UnifiedModelCatalogResponse, RuntimeCatalogModelInfo } from "@/lib/academy-api";
 import type { ConversationInteraction } from "./use-conversation-controller";
+function selectedCatalogEntry(models: RuntimeCatalogModelInfo[], selected: string) {
+  const exact = models.find(item => item.name === selected);
+  if (exact) return exact;
+  const aliases = models.filter(item => item.aliases?.includes(selected));
+  return aliases.length === 1 ? aliases[0] : undefined;
+}
+
 export function StudioModelPicker({ catalog, interaction, session, activeModel, onApply, busy }: Readonly<{
   catalog: UnifiedModelCatalogResponse | null; interaction: ConversationInteraction; session: string;
   activeModel: string | null | undefined; onApply: (model: string) => Promise<boolean>; busy: boolean;
@@ -11,8 +18,12 @@ export function StudioModelPicker({ catalog, interaction, session, activeModel, 
   const { t } = useLanguage();
   const { state, setters } = interaction;
   const runtime = catalog?.runtimes.find(item => item.runtime_id === state.selectedLlmServer);
-  const models = (runtime?.models ?? []).filter(item => item.chat_compatible !== false && item.model_kind !== "adapter_artifact" && !item.is_adapter_artifact && isSelectableChatModel(item));
-  const activeOption = runtime?.models?.find(item => item.name === activeModel);
+  const runtimeModels = runtime?.models ?? [];
+  const models = runtimeModels.filter(item => item.chat_compatible !== false && item.model_kind !== "adapter_artifact" && !item.is_adapter_artifact && isSelectableChatModel(item));
+  const selectedEntry = selectedCatalogEntry(runtimeModels, state.selectedLlmModel);
+  const selectedSelectable = selectedEntry !== undefined && models.includes(selectedEntry);
+  const activeRuntime = catalog?.runtimes.find(item => item.runtime_id === catalog.active?.active_server) ?? runtime;
+  const activeOption = selectedCatalogEntry(activeRuntime?.models ?? [], activeModel ?? "");
   const remote = ["openrouter", "vast_ollama"].includes(state.selectedLlmServer);
   const openrouter = useOpenRouterCatalog(state.selectedLlmServer === "openrouter");
   let sourceLabel = "chat2.unknown";
@@ -28,11 +39,11 @@ export function StudioModelPicker({ catalog, interaction, session, activeModel, 
       </select></label>
       <label className="studio-model-select">{t("chat2.model")}<select aria-label={t("chat2.model")} value={state.selectedLlmModel} disabled={busy}
         onChange={event => setters.setSelectedLlmModel(event.target.value)}>
-        {!models.some(item => item.name === state.selectedLlmModel) && <option value={state.selectedLlmModel} disabled={!isSelectableChatModel({name: state.selectedLlmModel, runtime_id: state.selectedLlmServer})}>{chatModelLabel(state.selectedLlmModel, undefined, state.selectedLlmServer, t("models.status.unresolvedVariant")) || t("chat2.unknown")}</option>}
+        {!models.some(item => item.name === state.selectedLlmModel) && <option value={state.selectedLlmModel} disabled={!selectedSelectable}>{chatModelLabel(selectedEntry?.name || state.selectedLlmModel, selectedEntry?.display_name, selectedEntry?.provider || state.selectedLlmServer, t("models.status.unresolvedVariant")) || t("chat2.unknown")}</option>}
         {models.map(item => <option key={item.id} value={item.name || item.id}>{chatModelLabel(item.name || item.id, item.display_name, item.provider, t("models.status.unresolvedVariant"))}</option>)}
       </select></label>
-      <button type="button" className="studio-button" disabled={busy || !state.selectedLlmModel || !isSelectableChatModel({name: state.selectedLlmModel, runtime_id: state.selectedLlmServer})}
-        onClick={() => { void onApply(state.selectedLlmModel); }}>{t("chat2.apply")}</button>
+      <button type="button" className="studio-button" disabled={busy || !selectedSelectable}
+        onClick={() => { if (selectedSelectable && selectedEntry) void onApply(selectedEntry.name); }}>{t("chat2.apply")}</button>
       <label>{t("chat2.mode")}<select aria-label={t("chat2.mode")} value={state.chatMode} disabled={busy}
         onChange={event => setters.setChatMode(event.target.value as "direct" | "normal" | "complex")}>
         <option value="direct">{t("chat2.direct")}</option>
@@ -42,7 +53,7 @@ export function StudioModelPicker({ catalog, interaction, session, activeModel, 
     </div>
     <div className="studio-model-info">
       <span className="studio-dot" /> <span>{t(sourceLabel)}</span>
-      <span>{t("chat2.activeModel")}: {chatModelLabel(activeModel || "", activeOption?.display_name, state.selectedLlmServer, t("models.status.unresolvedVariant")) || t("chat2.unknown")}</span>
+      <span>{t("chat2.activeModel")}: {chatModelLabel(activeModel || "", activeOption?.display_name, activeOption?.provider || activeRuntime?.runtime_id, t("models.status.unresolvedVariant")) || t("chat2.unknown")}</span>
       <details><summary>{t("chat2.costs")}</summary><div className="studio-detail-card">
         {state.selectedLlmServer === "openrouter" ? <OpenRouterModelStatus selection={openrouter} model={state.selectedLlmModel} session={session} /> : <p>{t("chat2.noPrice")}</p>}
       </div></details>

@@ -20,6 +20,10 @@ from uuid import uuid4
 import httpx
 
 from venom_core.infrastructure.providers.vast.client import VastClient, VastError
+from venom_core.services.ollama_model_identity import (
+    ALIAS_TARGETS,
+    EXPLICIT_OPERATOR_TAGS,
+)
 from venom_core.services.vast_environments.ssh import ssh_args
 from venom_core.services.vast_environments.store import Journal
 from venom_core.utils.runtime_state import runtime_state_root
@@ -87,11 +91,19 @@ class ManagedTunnel:
             self.process.wait(timeout=5)
 
 
+def _prefer_short_tag(models: dict[str, dict[str, Any]], item: dict[str, Any]) -> None:
+    name, digest = item["name"], item["digest"]
+    current = models.get(digest)
+    if current is None or (len(name), name) < (len(current["name"]), current["name"]):
+        models[digest] = item
+
+
 def _models(value: Any) -> list[dict[str, Any]]:
     rows = value.get("models") if isinstance(value, dict) else None
     if not isinstance(rows, list) or len(rows) > 256:
         raise VastError(CHAT_MODELS_INVALID)
     models: dict[str, dict[str, Any]] = {}
+    operator_models: dict[str, dict[str, Any]] = {}
     for row in rows:
         if not isinstance(row, dict):
             raise VastError(CHAT_MODELS_INVALID)
@@ -116,13 +128,13 @@ def _models(value: Any) -> list[dict[str, Any]]:
             if isinstance(row.get("details"), dict)
             else {},
         }
-        current = models.get(digest)
-        if current is None or (len(name), name) < (
-            len(current["name"]),
-            current["name"],
-        ):
-            models[digest] = item
-    return sorted(models.values(), key=lambda row: row["name"])
+        if name in EXPLICIT_OPERATOR_TAGS or name in ALIAS_TARGETS:
+            operator_models[name] = item
+            continue
+        _prefer_short_tag(models, item)
+    return sorted(
+        [*models.values(), *operator_models.values()], key=lambda row: row["name"]
+    )
 
 
 class VastChatConnection:

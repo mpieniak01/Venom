@@ -33,6 +33,7 @@ VERSIONS = {
     "peft": "0.21.2",
     "bitsandbytes": "0.50.2",
 }
+CHECKPOINT_RECEIPT = "receipt.json"
 STAGES = frozenset({"preflight", "smoke", "smoke-resume", "train", "resume", "seal"})
 
 
@@ -186,7 +187,7 @@ def read_json(path: str | Path) -> dict[str, Any]:
 def verified_checkpoint(path: str | Path, fingerprint: str) -> dict[str, Any]:
     """Verify the complete sealed file set before PEFT or torch reads state."""
     checkpoint = operator_path(path)
-    receipt = read_json(checkpoint / "receipt.json")
+    receipt = read_json(checkpoint / CHECKPOINT_RECEIPT)
     files = receipt.get("files")
     if receipt.get("fingerprint") != fingerprint or not isinstance(files, dict):
         raise ValueError("gemma_checkpoint_identity_mismatch")
@@ -195,9 +196,9 @@ def verified_checkpoint(path: str | Path, fingerprint: str) -> dict[str, Any]:
         "adapter_model.safetensors",
         "training-state.pt",
     }
-    if not mandatory.issubset(files) or "receipt.json" in files:
+    if not mandatory.issubset(files) or CHECKPOINT_RECEIPT in files:
         raise ValueError("gemma_checkpoint_files_missing")
-    actual = {p.name for p in checkpoint.iterdir() if p.name != "receipt.json"}
+    actual = {p.name for p in checkpoint.iterdir() if p.name != CHECKPOINT_RECEIPT}
     if set(files) != actual:
         raise ValueError("gemma_checkpoint_file_set_changed")
     for name, checksum in files.items():

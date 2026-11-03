@@ -1,5 +1,7 @@
 "use client";
 
+import { isSelectableChatModel } from "@/lib/chat-model-options";
+import { normalizeRuntimeId } from "@/lib/cockpit-runtime-selection";
 import { apiFetch } from "@/lib/api-client";
 import { runtimeControlErrorHint } from "@/lib/runtime-control-error";
 import { useCallback, useEffect, useRef } from "react";
@@ -60,9 +62,10 @@ export function resolveEffectiveChatModelSelection(
   activeRuntime = "",
 ): string {
   const selected = (selectedLlmModel || "").trim();
-  if (selected) return selected;
+  if (selected) return isSelectableChatModel({name:selected,runtime_id:normalizeRuntimeId(selectedRuntime || activeRuntime)}) ? selected : "";
   if (selectedRuntime !== activeRuntime && [selectedRuntime, activeRuntime].some(runtime => runtime === "vast_ollama" || runtime === "openrouter")) return "";
-  return String(activeModel || "").trim();
+  const fallback = String(activeModel || "").trim();
+  return isSelectableChatModel({name:fallback,runtime_id:normalizeRuntimeId(selectedRuntime || activeRuntime)}) ? fallback : "";
 }
 
 export async function syncTargetServerIfNeeded(params: {
@@ -77,6 +80,11 @@ export async function syncTargetServerIfNeeded(params: {
 }): Promise<ChatSendParams["activeServerInfo"] | false> {
   const targetServer = (params.selectedLlmServer || "").toLowerCase().trim();
   const activeServer = (params.activeServerInfo?.active_server || "").toLowerCase().trim();
+  const candidate = params.selectedLlmModel || (targetServer === activeServer ? params.activeServerInfo?.active_model : "") || "";
+  if (!isSelectableChatModel({name:candidate,runtime_id:normalizeRuntimeId(targetServer || activeServer)})) {
+    params.setMessage(params.t("models.status.chooseGemmaVariant"));
+    return false;
+  }
   const sameModel = !params.selectedLlmModel || params.selectedLlmModel === params.activeServerInfo?.active_model;
   const identityReady = targetServer !== "openrouter" || Boolean(
     params.activeServerInfo?.active_model

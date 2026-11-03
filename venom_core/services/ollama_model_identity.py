@@ -69,7 +69,7 @@ def _matching_metadata(
 
 def ollama_display_name(name: str, quantization: str | None = None) -> str:
     if name in ALIAS_TARGETS:
-        return name + " (unresolved variant)"
+        return name
     if name == SALUKI_GGUF:
         return "Underdog Saluki 27B 1.0 IQ2-mix GGUF"
     base = EXPLICIT_GEMMA_TAGS.get(name)
@@ -162,14 +162,14 @@ def _observed_display_name(row: dict[str, Any]) -> str:
     if not _complete_observed_identity(row):
         return ollama_display_name(name)
     details = _details(row)
+    title = "Saluki preset" if name == SALUKI_ALIAS else name.removesuffix(":latest")
     facts = " ".join(
-        str(details[key]) for key in ("family", "parameter_size", "quantization_level")
+        str(details[key]) for key in ("parameter_size", "quantization_level")
     )
-    parts = [name, facts]
+    parts = [title + " " + facts, str(_digest(row))[:8]]
     parent = details.get("parent_model")
     if isinstance(parent, str) and parent and parent != name:
         parts.append("← " + parent)
-    parts.append("sha256:" + str(_digest(row))[:8])
     return " · ".join(parts)
 
 
@@ -239,3 +239,22 @@ def resolve_ollama_model_name(
     if require_explicit:
         raise ValueError(UNRESOLVED_MESSAGES[name])
     return name
+
+
+def merge_catalog_model_aliases(
+    static_aliases: list[str], model: dict[str, Any]
+) -> list[str]:
+    """Keep catalog aliases while requiring evidence for registered moving tags."""
+    checked = canonical_ollama_entries([model])[0]
+    supplied = _aliases(checked)
+    return sorted(
+        {
+            alias
+            for alias in [*static_aliases, *supplied]
+            if isinstance(alias, str)
+            and (
+                alias.casefold() not in ALIAS_TARGETS
+                or (alias in ALIAS_TARGETS and alias in supplied)
+            )
+        }
+    )

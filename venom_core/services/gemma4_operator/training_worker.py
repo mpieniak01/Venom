@@ -101,7 +101,9 @@ def require_cuda_placement(model: Any) -> dict[str, Any]:
             raise RuntimeError("gemma_runtime_device_map_invalid")
         for device in placement.values():
             is_index = type(device) is int and device >= 0
-            is_cuda = re.fullmatch(r"cuda(?::[0-9]+)?", str(device)) is not None
+            is_cuda = (
+                re.fullmatch(r"cuda(?::\d+)?", str(device), flags=re.ASCII) is not None
+            )
             if not is_index and not is_cuda:
                 raise RuntimeError("gemma_runtime_offload_forbidden")
     return {
@@ -258,7 +260,9 @@ class GemmaSession(Session):
                 lora_config(profile),
             )
         else:
-            config = json.loads((adapter / "adapter_config.json").read_text())
+            config = json.loads(
+                (adapter / "adapter_config.json").read_text(encoding="utf-8")
+            )
             if config.get("target_modules") != target_modules_for(profile.model):
                 raise ValueError("gemma_training_adapter_targets_changed")
             self.model = PeftModel.from_pretrained(base, adapter, is_trainable=True)
@@ -355,6 +359,23 @@ def mask_evidence(document: dict, records: dict) -> dict:
     }
 
 
+def _validate_training_qualification(
+    path: str | Path,
+    fingerprint: str,
+    mask_evidence: dict,
+) -> None:
+    """Verify sealed smoke evidence before constructing a model or optimizer."""
+    proof = read_json(path)
+    require_qualification(proof, fingerprint)
+    if proof["smoke_metrics"]["first"]["mask_evidence"] != mask_evidence:
+        raise ValueError("gemma_training_qualification_mask_changed")
+    verified_checkpoint(proof["checkpoint"], fingerprint)
+    for name, checksum in proof.get("artifacts", {}).items():
+        artifact = operator_path(inside(Path(path).parent, name))
+        if file_digest(artifact) != checksum:
+            raise ValueError("gemma_training_qualification_artifact_changed")
+
+
 def _training_stage(
     request: dict,
     output: Path,
@@ -371,19 +392,11 @@ def _training_stage(
     adapter = operator_path(checkpoint) if checkpoint else None
     previous = verified_checkpoint(adapter, fingerprint) if adapter else None
     if stage in {"train", "resume"}:
-        proof = read_json(request["qualification"])
-        require_qualification(proof, fingerprint)
-        if proof["smoke_metrics"]["first"]["mask_evidence"] != mask_evidence:
-            raise ValueError("gemma_training_qualification_mask_changed")
-        verified_checkpoint(proof["checkpoint"], fingerprint)
-        for name, checksum in proof.get("artifacts", {}).items():
-            if (
-                file_digest(
-                    operator_path(inside(Path(request["qualification"]).parent, name))
-                )
-                != checksum
-            ):
-                raise ValueError("gemma_training_qualification_artifact_changed")
+        _validate_training_qualification(
+            request["qualification"],
+            fingerprint,
+            mask_evidence,
+        )
     session = session_factory(recipe, snapshot, adapter)
     training = records["train"]
     validation = records["validation"]

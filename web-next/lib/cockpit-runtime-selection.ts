@@ -1,3 +1,4 @@
+import { isSelectableChatModel } from "./chat-model-options";
 import type { LlmRuntimeSourceType, LlmRuntimeTargetOption } from "./types";
 
 export function resolveCockpitRuntimeModelSelection(
@@ -20,6 +21,7 @@ export function resolveCockpitEmptyRuntimeModelUpdate(
     return currentSelection.trim() ? "" : null;
   }
   const normalizedSelection = currentSelection.trim();
+  if (!isSelectableChatModel({name: activeModel, runtime_id:normalizeRuntimeId(runtimeId)})) return normalizedSelection ? "" : null;
   const fallbackModel = (activeModel || normalizedSelection).trim();
   if (!fallbackModel) {
     return currentSelection ? "" : null;

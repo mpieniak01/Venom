@@ -1,15 +1,16 @@
 // Operator choices use explicit model identities; moving aliases remain diagnostic.
 export const SALUKI_GGUF = "hf.co/ConwayResearch/Underdog-Saluki-27B-1.0:Underdog-Saluki-27B-1.0-IQ2-mix.gguf";
 const MOVING_OPERATOR_ALIASES = new Set(["gemma4:latest"]);
+const DIAGNOSTIC_ALIASES = new Set(["gemma4:latest", "saluki:latest", "qwen3.5:latest"]);
 
 type ChatModel = { name: string; provider?: string | null; runtime_id?: string; active?: boolean; selection_supported?: boolean; activation_supported?: boolean };
 
 export function chatModelLabel(name: string, displayName?: string | null, provider?: string | null, unresolvedLabel = "unresolved variant"): string {
   if (provider && !["ollama", "vast_ollama"].includes(provider.toLowerCase())) return displayName || name;
   if (MOVING_OPERATOR_ALIASES.has(name.toLowerCase())) return name + " (" + unresolvedLabel + ")";
-  if (displayName && displayName !== name) return displayName;
-  if (name === "saluki:latest") return name + " (" + unresolvedLabel + ")";
-  if (name === "gemma4:e4b") return "Gemma4 E4B IT Q4_K_M";
+  if (displayName && displayName !== name && displayName !== name + " (unresolved variant)") return displayName;
+  if (DIAGNOSTIC_ALIASES.has(name.toLowerCase())) return name + " (" + unresolvedLabel + ")";
+  if (name === "gemma4:e4b") return "Gemma4 E4B IT";
   if (name === "gemma4:12b-it-q4_K_M") return "Gemma4 12B IT Q4_K_M";
   return name === SALUKI_GGUF ? "Underdog Saluki 27B 1.0 IQ2-mix GGUF" : name;
 }

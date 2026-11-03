@@ -17,6 +17,7 @@ from .material import digest
 from .paths import checked_directory, checked_file
 
 Json = dict[str, Any]
+MANIFEST_FILE = "manifest.json"
 FAMILIES = {"summarization", "translation", "vision_retention"}
 CONTRACTS = {
     "summarization": "semantic_fact_preservation_and_no_unsupported_claims_v1",
@@ -210,7 +211,7 @@ def _source_file(root: Path, name: Any) -> Path:
 
 
 def _source(root: Path) -> tuple[list[Json], Json, Json]:
-    manifest_path = checked_file(root / "manifest.json")
+    manifest_path = checked_file(root / MANIFEST_FILE)
     _need(manifest_path.stat().st_size <= 8 * 1024**2, "source_manifest_too_large")
     raw_manifest = manifest_path.read_bytes()
     manifest = json.loads(raw_manifest)
@@ -343,7 +344,7 @@ def prepare_retention_cases(
         "sandbox_image_unpinned",
     )
     root = checked_directory(corpus_root)
-    destination = checked_file(output / "manifest.json", output=True).parent
+    destination = checked_file(output / MANIFEST_FILE, output=True).parent
     if destination.exists():
         raise FileExistsError("gemma_retention_output_exists")
     rows, reserve, identity = _source(root)
@@ -357,13 +358,14 @@ def prepare_retention_cases(
         for row, case in zip(rows, cases, strict=True):
             folder = stage / case["fixture"]
             folder.mkdir(parents=True)
-            (folder / ".keep").write_text("")
+            (folder / ".keep").write_text("", encoding="utf-8")
             _image(row, case, root, reserve, stage)
         (stage / "cases.jsonl").write_text(
             "".join(
                 json.dumps(case, ensure_ascii=False, sort_keys=True) + "\n"
                 for case in cases
-            )
+            ),
+            encoding="utf-8",
         )
         files = {
             p.relative_to(stage).as_posix(): _hash(p.read_bytes())
@@ -395,11 +397,11 @@ def prepare_retention_cases(
                 "model_qualified": False,
             },
         }
-        (stage / "manifest.json").write_text(
-            json.dumps(manifest, ensure_ascii=False, indent=2) + "\n"
+        (stage / MANIFEST_FILE).write_text(
+            json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
         )
         from scripts.granite_operator.comparison_support import load_frozen
 
-        load_frozen(stage / "manifest.json")
+        load_frozen(stage / MANIFEST_FILE)
         stage.rename(destination)
-    return destination / "manifest.json"
+    return destination / MANIFEST_FILE

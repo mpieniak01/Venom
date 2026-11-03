@@ -3,8 +3,12 @@
 import copy
 import hashlib
 import json
+import os
 import struct
+import subprocess
+import sys
 import zlib
+from pathlib import Path
 
 import pytest
 
@@ -33,7 +37,10 @@ def png():
 
 def save_source(root, rows):
     path = root / "capability-reserve/cases.jsonl"
-    path.write_text("".join(json.dumps(row, ensure_ascii=False) + "\n" for row in rows))
+    path.write_text(
+        "".join(json.dumps(row, ensure_ascii=False) + "\n" for row in rows),
+        encoding="utf-8",
+    )
     metadata = {
         "path": "capability-reserve/cases.jsonl",
         "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
@@ -46,7 +53,9 @@ def save_source(root, rows):
             ).hexdigest()
         },
     }
-    (root / "manifest.json").write_text(json.dumps({"capability_reserve": metadata}))
+    (root / "manifest.json").write_text(
+        json.dumps({"capability_reserve": metadata}), encoding="utf-8"
+    )
 
 
 @pytest.fixture
@@ -201,7 +210,7 @@ def test_output_is_immutable_and_tampered_images_are_rejected(source):
 def test_changed_source_fails_before_publication(source):
     root, _, target = source
     path = root / "capability-reserve/cases.jsonl"
-    path.write_text(path.read_text() + " ")
+    path.write_text(path.read_text(encoding="utf-8") + " ", encoding="utf-8")
     with pytest.raises(ValueError, match="source_hash_mismatch"):
         prepare_retention_cases(root, target, sandbox_image=IMAGE)
     assert not target.exists()
@@ -254,8 +263,51 @@ def test_unpinned_sandbox_and_source_escape_are_rejected(source):
     root, _, target = source
     with pytest.raises(ValueError, match="sandbox_image_unpinned"):
         prepare_retention_cases(root, target, sandbox_image="latest")
-    manifest = json.loads((root / "manifest.json").read_text())
+    manifest = json.loads((root / "manifest.json").read_text(encoding="utf-8"))
     manifest["capability_reserve"]["path"] = "../outside.jsonl"
-    (root / "manifest.json").write_text(json.dumps(manifest))
+    (root / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
     with pytest.raises(ValueError, match="source_path_invalid"):
         prepare_retention_cases(root, target, sandbox_image=IMAGE)
+
+
+@pytest.mark.skipif(os.name != "posix", reason="Exercises the Linux ASCII C locale")
+def test_unicode_corpus_and_retention_round_trip_without_utf8_locale(source):
+    root, _, target = source
+    script = r"""
+import json
+import locale
+import sys
+from pathlib import Path
+from venom_core.services.gemma4_operator import corpus
+from venom_core.services.gemma4_operator.retention import prepare_retention_cases
+from scripts.granite_operator.comparison_support import load_frozen
+
+assert sys.flags.utf8_mode == 0
+assert "UTF" not in locale.getencoding().upper()
+root, target = map(Path, sys.argv[1:])
+payload = {"text": "za\u017c\u00f3\u0142\u0107 g\u0119\u015bl\u0105 ja\u017a\u0144"}
+path = root.parent / "unicode.jsonl"
+corpus._write_lines(path, [payload])
+assert json.loads(path.read_bytes().decode("utf-8")) == payload
+manifest_path = prepare_retention_cases(root, target, sandbox_image="sha256:" + "a" * 64)
+manifest, cases = load_frozen(manifest_path)
+assert any("Nie usuwaj pliku" in case["prompt"] for case in cases)
+print(json.dumps({"case_count": manifest["case_count"], "utf8_mode": sys.flags.utf8_mode}))
+"""
+    environment = {
+        **os.environ,
+        "LC_ALL": "C",
+        "LANG": "C",
+        "PYTHONUTF8": "0",
+        "PYTHONCOERCECLOCALE": "0",
+    }
+    result = subprocess.run(
+        [sys.executable, "-X", "utf8=0", "-c", script, str(root), str(target)],
+        cwd=Path(__file__).resolve().parents[1],
+        env=environment,
+        capture_output=True,
+        timeout=30,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr.decode("utf-8", errors="replace")
+    assert json.loads(result.stdout) == {"case_count": 3, "utf8_mode": 0}

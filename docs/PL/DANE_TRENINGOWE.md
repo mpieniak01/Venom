@@ -1,8 +1,8 @@
 # Katalog danych treningowych Venoma
 
-Stan opisu i audytu: **2026-11-02**. Zakres: cztery wersje materiału operatora
-repozytorium G01–G04 oraz zachowany podzbiór HF. To opis danych i ich ograniczeń,
-nie raport skuteczności wytrenowanych modeli.
+Stan katalogu: **2026-11-03**. Zakres: G01–G04, G05 V2 dla modelu Gemma 4 oraz
+zachowany podzbiór HF. Audyt G01–G04 pochodzi z 2026-11-02; przygotowanie G05 V2
+opisano osobno. To opis danych i ich ograniczeń, nie raport skuteczności modeli.
 
 ## Od czego zacząć
 
@@ -34,7 +34,7 @@ pochodzenia, `record_id`, `problem_group`, podziałem, językiem i uprawnieniem
 Jeden rekord nie jest jednym wywołaniem ani niezależnym problemem. Pary PL/EN i
 warianty tego samego fixture'a zachowujemy w jednym podziale.
 
-W domenie każde zadanie oferuje tylko:
+W domenie G01–G04 każde zadanie oferuje tylko:
 
 - `Terminal(command)` — polecenie Bash w izolowanym repozytorium;
 - `Finish(status, summary)` — wynik, pytanie o brak danych lub eskalację.
@@ -52,6 +52,7 @@ Liczby dotyczą rozmów domenowych; HF jest odrębnym podzbiorem.
 | G02 | 256 | 64 | brak osobnego holdout w manifeście danych | Dokładny zakres zmian, odzyskiwanie po błędach narzędzi, weryfikacja po zmianie, błędy kolekcji testów, odczyt konfiguracji |
 | G03 | 320 | 96 | 32 | Cały G02 oraz doprecyzowanie i kontynuacja, bezpośrednie wykonanie, odkrywanie testów, Git i filtrowanie logów |
 | G04 | 640 | 176 | 112 | Cały G03 oraz wiązanie parametrów i usług, dwa zestawy testów, integralność, runtime/interpreter, importy, naprawa, logi zadań, GPU/kolejka i SSH |
+| G05 V2 | 832 | 224 | 160 | Zachowany G04 oraz wykonane demonstracje czterech funkcji FileSkill; osobna retencja streszczeń, tłumaczeń i obrazów |
 
 G04 to 320 fixture'ów treningowych w parach PL/EN (320 + 320 rozmów), 88
 walidacyjnych i 56 w rezerwie. To nie 640 niezależnych zadań treningowych.

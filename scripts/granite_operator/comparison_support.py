@@ -65,7 +65,7 @@ def restore_workspace(archive_file, workspace: Path) -> None:
     if archive_file.tell() > MAX_ARCHIVE_BYTES:
         raise WorkspaceLimitError("comparison_workspace_archive")
     archive_file.seek(0)
-    with tarfile.open(fileobj=archive_file, mode="r:") as archive:
+    with tarfile.open(fileobj=archive_file, mode="r:", encoding="utf-8") as archive:
         members = archive.getmembers()
         if len(members) > MAX_WORKSPACE_ENTRIES + 1:
             raise WorkspaceLimitError("comparison_workspace_entries")
@@ -119,13 +119,19 @@ def validate_case_images(case: dict, root: Path, files: dict) -> None:
         if not isinstance(image, dict) or set(image) != {"path", "sha256"}:
             raise ValueError("comparison_case_images_invalid")
         name, checksum = image["path"], image["sha256"]
-        if not isinstance(name, str) or files.get(name) != checksum:
+        if (
+            not isinstance(name, str)
+            or name not in files
+            or not isinstance(checksum, str)
+            or re.fullmatch(r"[a-f\d]{64}", checksum, flags=re.ASCII) is None
+            or files[name] != checksum
+        ):
             raise ValueError("comparison_image_not_frozen")
         inside(root, name)
 
 
 def load_frozen(manifest_path: Path) -> tuple[dict, list[dict]]:
-    manifest = json.loads(manifest_path.read_text())
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     root = manifest_path.parent.resolve()
     if manifest["cases"] not in manifest["files"]:
         raise ValueError("comparison_cases_not_in_manifest")
@@ -134,7 +140,9 @@ def load_frozen(manifest_path: Path) -> tuple[dict, list[dict]]:
             raise ValueError("comparison_dataset_changed:" + name)
     cases = [
         json.loads(line)
-        for line in inside(root, manifest["cases"]).read_text().splitlines()
+        for line in inside(root, manifest["cases"])
+        .read_text(encoding="utf-8")
+        .splitlines()
     ]
     if len(cases) != manifest["case_count"] or len({c["id"] for c in cases}) != len(
         cases
@@ -493,7 +501,9 @@ def oracle(
             errors.append("required_exit_code")
     for expected in rules.get("json_files", []):
         try:
-            actual = json.loads(inside(workspace, expected["path"]).read_text())
+            actual = json.loads(
+                inside(workspace, expected["path"]).read_text(encoding="utf-8")
+            )
             if actual != expected["value"]:
                 errors.append("file_state")
         except (ValueError, OSError):

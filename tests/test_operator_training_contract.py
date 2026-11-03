@@ -583,7 +583,9 @@ def test_gemma_runtime_never_accepts_parameter_offload(device):
         worker.require_cuda_placement(model)
 
 
-@pytest.mark.parametrize("placement", ["cpu", "disk", "meta", "cuda:disk", False])
+@pytest.mark.parametrize(
+    "placement", ["cpu", "disk", "meta", "cuda:disk", "cuda:١", False]
+)
 def test_gemma_runtime_rejects_device_map_offload_even_with_cuda_parameters(placement):
     from types import SimpleNamespace
 
@@ -897,3 +899,24 @@ def test_loading_native_adapter_does_not_fake_optimizer_resume(
     assert native_provider.restored == [(checkpoint, {"is_trainable": True})]
     assert session.step == 0
     assert session.target_tokens == 0
+
+
+def test_changed_smoke_artifact_blocks_model_construction(prepared, tmp_path):
+    request, run = prepared
+    receipt = _smoke_receipt(request, run, tmp_path)
+    proof_path = tmp_path / "qualification.json"
+    write_json(proof_path, receipt)
+    write_json(tmp_path / "smoke-first/metrics.json", {"changed": True})
+    body = {
+        **request,
+        "stage": "train-first",
+        "updates": 1,
+        "qualification": str(proof_path),
+        "output": str(tmp_path / "changed-proof"),
+    }
+
+    def forbidden(*args):
+        raise AssertionError("changed proof must not construct a model")
+
+    with pytest.raises(ValueError, match="qualification_artifact_changed"):
+        run(body, forbidden)

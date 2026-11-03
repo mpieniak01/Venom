@@ -19,8 +19,8 @@ import type { SendTaskInput } from "@/hooks/use-api";
 const MAX_SESSION_HISTORY_ENTRIES = 500;
 
 type ModelsPayload = {
-  providers?: Record<string, Array<{ name?: string; provider?: string | null; display_name?: string }>>;
-  models?: Array<{ name?: string; provider?: string | null; display_name?: string }>;
+  providers?: Record<string, Array<{ name?: string; provider?: string | null; display_name?: string; selection_supported?: boolean; activation_supported?: boolean }>>;
+  models?: Array<{ name?: string; provider?: string | null; display_name?: string; selection_supported?: boolean; activation_supported?: boolean }>;
 } | null;
 
 type ActiveServerInfo = {
@@ -75,7 +75,7 @@ export function useLlmServerSelectionData({
   );
   const llmModelOptions = useMemo(
     () =>
-      availableModelsForServer.filter(model => isSelectableChatModel({name:model.name ?? "", provider:model.provider || selectedLlmServer})).map((model) => ({
+      availableModelsForServer.filter(model => isSelectableChatModel({...model, name:model.name ?? "", provider:model.provider || selectedLlmServer})).map((model) => ({
         value: model.name ?? "",
         label: chatModelLabel(model.name ?? "", model.display_name, model.provider),
       })),

@@ -176,6 +176,8 @@ def finalize_import(
     if not receipt["complete"]:
         raise ValueError("remote_training_incomplete_import")
     identity = manifest["identity"]
+    if identity.get("model") == "google/functiongemma-270m-it":
+        raise ValueError("remote_training_functiongemma_evaluation_required")
     identity_checksum = hashlib.sha256(canonical(identity)).hexdigest()
     adapter_checksum = sha256(root / "adapter_model.safetensors")
     proof = verifier(root, identity)

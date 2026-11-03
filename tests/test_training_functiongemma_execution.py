@@ -242,3 +242,96 @@ def test_full_step_over_legacy_limit(tmp_path):
     write_json(receipt, {"step": 264})
     with pytest.raises(ValueError, match="step_invalid"):
         milestones._checkpoint_evidence(attempt, tmp_path)
+
+
+def test_full_model_collection_is_complete_without_adapter(tmp_path, monkeypatch):
+    snapshot, recipe, document, manifest = setup_inputs(tmp_path, monkeypatch)
+    identity = execution.identity_for(
+        recipe, document, snapshot, tmp_path, max_seconds=3600
+    )
+    result = tmp_path / "result"
+    result.mkdir()
+    docs = {
+        "identity.json": identity,
+        "profile.json": recipe.identity(),
+        "data-manifest.json": document,
+        "metrics.json": {"checks": "passed"},
+        "environment.json": {"qualified": True},
+        "qualification.json": {"status": "PASS"},
+        "config.json": {"architectures": ["Gemma3ForCausalLM"]},
+        "status.json": {"state": "succeeded", "run_id": "fg", "exit_code": 0},
+        "supervisor.json": {
+            "status": "succeeded",
+            "run_id": "fg",
+            "attempt": 1,
+            "exit_code": 0,
+        },
+    }
+    for name, value in docs.items():
+        write_json(result / name, value)
+    (result / "logs").mkdir()
+    (result / "logs/training.log").write_text("native full SFT")
+    (result / "model.safetensors").write_bytes(b"model")
+    receipt = artifacts.inspect_artifacts(result, identity, "fg")
+    assert receipt["complete"], receipt
+    bundle = tmp_path / "result.zip"
+    artifacts.create_result_bundle(result, bundle, run_id="fg", identity=identity)
+    assert artifacts.verify_result_bundle(
+        bundle, expected_identity=identity, expected_run_id="fg"
+    )["complete"]
+    from venom_core.services.remote_training import importer
+
+    monkeypatch.setattr(
+        importer, "_current", lambda root: ({"identity": identity}, {"complete": True})
+    )
+    with pytest.raises(ValueError, match="evaluation_required"):
+        importer.finalize_import(result, tmp_path / "registry", lambda *a: None)
+
+
+def test_native_child_launch_uses_fixed_worker(tmp_path, monkeypatch):
+    result = tmp_path / "result"
+    (result / "logs").mkdir(parents=True)
+    output = result / "stages/smoke"
+    write_json(output / "metrics.json", {"qualified": True})
+    monkeypatch.setenv("REMOTE_TRAINING_GPU_LOCK_FD", "7")
+    calls = []
+
+    class Child:
+        def __enter__(self):
+            return self
+
+    monkeypatch.setattr(
+        worker.subprocess,
+        "Popen",
+        lambda argv, **kwargs: calls.append((argv, kwargs)) or Child(),
+    )
+    monkeypatch.setattr(worker, "_wait_stage", lambda *a: 0)
+    metrics = worker.run_stage(
+        {
+            "admission_db": str(tmp_path / "ledger"),
+            "code_root": str(tmp_path),
+            "worker_python": "/qualified/python",
+        },
+        {"stage": "smoke", "profile": {"model": MODEL}, "output": str(output)},
+        result,
+        run_id="fg",
+        timeout=30,
+        children=[],
+    )
+    assert metrics["qualified"]
+    assert "venom_core.services.functiongemma.worker" in calls[0][0]
+    assert calls[0][1]["env"]["VENOM_GRANITE_RUN_ID"] == "fg"
+
+
+def test_coordinator_forces_offline_in_both_execution_targets(tmp_path, monkeypatch):
+    from venom_core.services.remote_training import supervisor
+
+    monkeypatch.setattr(
+        supervisor,
+        "load_host",
+        lambda root: {"code_root": str(tmp_path), "worker_python": "/qualified/python"},
+    )
+    argv, environment = supervisor.worker_launch(tmp_path, tmp_path / "request.json", 7)
+    assert environment["HF_HUB_OFFLINE"] == "1"
+    assert environment["TRANSFORMERS_OFFLINE"] == "1"
+    assert "venom_core.services.remote_training.worker" in argv

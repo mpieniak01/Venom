@@ -99,6 +99,9 @@ def worker_launch(
     host = load_host(root)
     environment = os.environ.copy()
     environment["PYTHONPATH"] = host["code_root"]
+    environment["HF_HUB_OFFLINE"] = "1"
+    environment["TRANSFORMERS_OFFLINE"] = "1"
+    environment["TOKENIZERS_PARALLELISM"] = "false"
     environment["REMOTE_TRAINING_GPU_LOCK_FD"] = str(gpu_lock)
     argv = [
         "setpriv",

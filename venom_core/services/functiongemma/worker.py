@@ -179,7 +179,10 @@ def run(request: dict) -> dict:
         verify_checkpoint(operator_path(qualification["checkpoint"]), fingerprint)
     resume = operator_path(request["checkpoint"]) if request.get("checkpoint") else None
     if resume:
-        verify_checkpoint(resume, fingerprint)
+        previous = verify_checkpoint(resume, fingerprint)
+        total = recipe.budget(len(records["train"]))["total_updates"]
+        if type(previous.get("step")) is not int or not 0 < previous["step"] < total:
+            raise ValueError("functiongemma_resume_budget_exhausted")
     # The ledger must be the host's shared ledger, never a per-run substitute.
     from venom_core.services.runtime_admission import RuntimeAdmission
 

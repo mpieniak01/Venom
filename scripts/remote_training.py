@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Explicit remote Granite training CLI, with no application startup integration."""
+"""Explicit local or SSH training CLI; no automatic model or service startup."""
 
 import sys
 from pathlib import Path

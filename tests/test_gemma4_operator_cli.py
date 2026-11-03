@@ -263,3 +263,174 @@ def test_missing_optional_dependency_is_structured(monkeypatch, capsys):
         "requirements-gemma4-operator-control.txt"
         in json.loads(capsys.readouterr().out)["error"]
     )
+
+
+def test_freeze_command_preserves_source_and_excludes_holdout(tmp_path, capsys):
+    def row(split):
+        return {
+            "record_id": split,
+            "problem_group": split,
+            "split": split,
+            "language": "pl",
+            "training_allowed": split == "train",
+            "messages": [
+                {"role": "user", "content": split},
+                {"role": "assistant", "content": "Checked"},
+            ],
+            "tools": [],
+        }
+
+    source, output = tmp_path / "splits.json", tmp_path / "release.json"
+    source.write_text(
+        json.dumps({s: [row(s)] for s in ("train", "validation", "holdout")})
+    )
+    before = source.read_bytes()
+    assert (
+        cli.main(
+            [
+                "freeze-material",
+                "--input",
+                str(source),
+                "--profile",
+                str(PROFILE),
+                "--output",
+                str(output),
+            ]
+        )
+        == 0
+    )
+    report = json.loads(output.read_text())
+    assert set(report["training_payload"]["records"]) == {"train", "validation"}
+    assert report["evaluation_reserve"]["included_in_training_payload"] is False
+    assert source.read_bytes() == before
+    assert json.loads(capsys.readouterr().out)["ok"] is True
+
+
+def test_bundled_reference_command_is_not_a_model_evaluation(capsys):
+    manifest = PROFILE.parent / "gemma4_operator_benchmark/manifest.json"
+    assert cli.main(["qualify-cases", "--manifest", str(manifest)]) == 0
+    report = json.loads(capsys.readouterr().out)
+    assert report["status"] == "REFERENCE_PASS"
+    assert report["model_evaluated"] is False
+
+
+def test_reference_failure_keeps_report_and_exits_nonzero(
+    tmp_path, monkeypatch, capsys
+):
+    output = tmp_path / "failed-reference.json"
+    monkeypatch.setattr(cli, "dispatch", lambda args: {"status": "REFERENCE_FAIL"})
+    assert cli.main(["plan", "--output", str(output)]) == 3
+    assert json.loads(output.read_text())["status"] == "REFERENCE_FAIL"
+    assert json.loads(capsys.readouterr().out)["ok"] is False
+
+
+def test_unreviewed_experience_exits_four_without_exporting_private_text(
+    tmp_path, capsys
+):
+    source, output = tmp_path / "task.json", tmp_path / "experience.json"
+    source.write_text(json.dumps({"id": "task", "content": "private question"}))
+    assert (
+        cli.main(["export-experience", "--task", str(source), "--output", str(output)])
+        == 4
+    )
+    report = json.loads(output.read_text())
+    assert report["status"] == "REJECTED"
+    assert "record" not in report
+    assert "private question" not in output.read_text()
+    assert json.loads(capsys.readouterr().out)["ok"] is False
+
+
+def test_reviewed_experience_reads_and_binds_separate_evidence(tmp_path, capsys):
+    import hashlib
+
+    from venom_core.services.gemma4_operator.material import digest
+
+    task_id = "cf60c67f-bc57-4ce4-aac3-b0f05032b5bc"
+    trajectory = {
+        "messages": [
+            {"role": "user", "content": "Inspect web"},
+            {"role": "assistant", "content": "Web is running."},
+        ],
+        "tools": [],
+    }
+    trace = {
+        "schema_version": 1,
+        "task_id": task_id,
+        "execution_status": "completed",
+        "capture_complete": True,
+        **trajectory,
+        "experience_export": "requires_review",
+        "supervised_assistant_indices": [1],
+        "context_only_assistant_indices": [],
+    }
+    task = {
+        "id": task_id,
+        "status": "COMPLETED",
+        "content": "Inspect web",
+        "result": "Web is running.",
+        "context_history": {"gemma4_operator": trace},
+    }
+    trajectory_hash = digest(trajectory)
+    evidence = json.dumps(
+        {
+            "schema_version": 1,
+            "task_id": task_id,
+            "trajectory_sha256": trajectory_hash,
+            "kind": "independent_replay",
+            "status": "passed",
+            "verifier": "sandbox/replay",
+            "checks": [{"name": "service_status_matches_observation", "passed": True}],
+        }
+    ).encode()
+    receipt = {
+        "schema_version": 1,
+        "task_id": task_id,
+        "source_task_sha256": digest(task),
+        "training_consent": True,
+        "environment_revision": "a" * 40,
+        "record_id": "experience-web",
+        "problem_group": "web-incident-1",
+        "language": "pl",
+        "redaction": {
+            "status": "reviewed",
+            "source_trajectory_sha256": trajectory_hash,
+            "trajectory": trajectory,
+        },
+        "review": {
+            "status": "approved",
+            "reviewer": "operator",
+            "trajectory_sha256": trajectory_hash,
+            "selected_assistant_indices": [1],
+        },
+        "verification": {
+            "status": "passed",
+            "verifier": "sandbox/replay",
+            "trajectory_sha256": trajectory_hash,
+            "evidence_sha256": hashlib.sha256(evidence).hexdigest(),
+        },
+    }
+    task_file, receipt_file = tmp_path / "task.json", tmp_path / "receipt.json"
+    proof_file, output = tmp_path / "proof.json", tmp_path / "experience.json"
+    task_file.write_text(json.dumps(task))
+    receipt_file.write_text(json.dumps(receipt))
+    proof_file.write_bytes(evidence)
+    assert (
+        cli.main(
+            [
+                "export-experience",
+                "--task",
+                str(task_file),
+                "--receipt",
+                str(receipt_file),
+                "--evidence",
+                str(proof_file),
+                "--output",
+                str(output),
+            ]
+        )
+        == 0
+    )
+    report = json.loads(output.read_text())
+    assert report["status"] == "ELIGIBLE"
+    assert report["record"]["supervised_assistant_indices"] == [1]
+    assert json.loads(capsys.readouterr().out)["ok"] is True

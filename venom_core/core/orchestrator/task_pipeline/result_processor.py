@@ -32,14 +32,20 @@ class ResultProcessor:
         request: TaskRequest,
         tool_required: bool,
     ) -> None:
+        single_model = request.agent_mode == "single_model"
         # 1. Apply language translation if needed
-        result = await self.orch._apply_preferred_language(task_id, request, result)
+        if not single_model:
+            result = await self.orch._apply_preferred_language(task_id, request, result)
 
         # 2. Log agent usage
-        agent = self.orch.task_dispatcher.agent_map.get(intent)
+        agent = (
+            None if single_model else self.orch.task_dispatcher.agent_map.get(intent)
+        )
         agent_name = agent.__class__.__name__ if agent else "UnknownAgent"
 
-        if agent is not None:
+        if single_model:
+            await self._log_agent_action(task_id, "SelectedModel", intent, result)
+        elif agent is not None:
             await self._log_agent_action(task_id, agent_name, intent, result)
         else:
             logger.error(
@@ -49,7 +55,7 @@ class ResultProcessor:
             )
 
         # 3. Session Store Upsert (Facts)
-        if request.session_id and result:
+        if not single_model and request.session_id and result:
             self.orch.session_handler._memory_upsert(
                 str(result),
                 metadata={
@@ -94,7 +100,9 @@ class ResultProcessor:
             )
 
         # 7. Save Lessons (Knowledge)
-        if self.orch._should_store_lesson(request, intent=intent, agent=agent):
+        if not single_model and self.orch._should_store_lesson(
+            request, intent=intent, agent=agent
+        ):
             await self.orch.lessons_manager.save_task_lesson(
                 task_id=task_id,
                 context=context,
@@ -110,7 +118,7 @@ class ResultProcessor:
             )
 
         # 8. Learning Logs (RL)
-        if self.orch.lessons_manager.should_log_learning(
+        if not single_model and self.orch.lessons_manager.should_log_learning(
             request, intent=intent, tool_required=tool_required, agent=agent
         ):
             self.orch.lessons_manager.append_learning_log(

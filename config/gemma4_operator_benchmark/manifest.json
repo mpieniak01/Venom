@@ -1,0 +1,15 @@
+{
+  "case_count": 2,
+  "cases": "cases.jsonl",
+  "files": {
+    "cases.jsonl": "bc9f28d02b5d476dffa8ec04125d3effba3fcddcbc01e6eade27d31875a2f4dc",
+    "fixtures/interpreter/config/services.json": "22772995f810f3ba07859c50481643a8ef47667b63e85e0fd33ad34cf10c11f7",
+    "fixtures/interpreter/observations/task.txt": "79041a724f575dc4ae50fa18931cee1cf2a0364f656556f4d65fe9be40b8d810",
+    "fixtures/interpreter/runtime/worker.json": "2f4a9bfd291ed06f74dc0a3b042447e5989348e059311a6c063f478b72c539bc",
+    "fixtures/router/config/route.json": "81236b5219f71da53a519d9ead33908bce9b32118d3164ead77b2f0224e65dec",
+    "fixtures/router/observations/gateway.txt": "f14d20b34db664ee28fd876c53dd83053b14d60f1378f0ae768aeff4ab8e47da",
+    "fixtures/router/protected.txt": "4bcbbb71d82aa7d5edb00be81ea85b0da60744a5c2bff50b00b6b5511c6de1e2"
+  },
+  "qualification": "synthetic_sample_not_final_benchmark",
+  "schema_version": 1
+}

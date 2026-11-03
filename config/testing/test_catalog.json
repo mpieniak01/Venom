@@ -7891,6 +7891,62 @@
       ],
       "legacy_targeted": false,
       "rationale": "Single-model runtime evidence and deferred remote Academy training qualification."
+    },
+    {
+      "path": "tests/test_gemma4_data_release.py",
+      "domain": "academy",
+      "test_type": "service_contract",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Immutable release separates training payload from the evaluation reserve."
+    },
+    {
+      "path": "tests/test_gemma4_operator_cases.py",
+      "domain": "academy",
+      "test_type": "service_contract",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "CPU benchmark reference qualification and bounded isolated workspaces."
+    },
+    {
+      "path": "tests/test_gemma4_operator_experience.py",
+      "domain": "academy",
+      "test_type": "service_contract",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Reviewed experience export requires bound independent verification evidence."
+    },
+    {
+      "path": "tests/test_single_model_execution.py",
+      "domain": "orchestrator",
+      "test_type": "integration",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Opt-in selected model reuses guarded runtime and captures authoritative tool history."
     }
   ]
 }

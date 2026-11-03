@@ -36,6 +36,7 @@ class _DeferredVastChatService(MafChatService):
     def __init__(self, service_id: str, runtime: Any):
         self.service_id = service_id
         self.ai_model_id = runtime.model_name
+        self.runtime_provider = runtime.provider
         from venom_core.services.vast_chat_runtime import selection
 
         self._target_id = runtime.runtime_id.rsplit(":", 1)[0]
@@ -328,6 +329,15 @@ class KernelBuilder:
             ai_model_id=model_name,
             async_client=async_client,
         )
+        chat_service.runtime_provider = (
+            str(getattr(self.settings, "ACTIVE_LLM_SERVER", None) or "local")
+            .strip()
+            .lower()
+        )
+        chat_service.supports_function_calling = (
+            f"{service_id}|{model_name}"
+            in getattr(self.settings, "SINGLE_MODEL_TOOL_CALLING_ALLOWLIST", [])
+        )
         kernel.add_service(chat_service)
 
     def _register_openai_service(
@@ -344,6 +354,10 @@ class KernelBuilder:
             api_key=self.settings.OPENAI_API_KEY,
         )
         chat_service.operator_provider = "openai"
+        chat_service.supports_function_calling = (
+            f"{service_id}|{model_name}"
+            in getattr(self.settings, "SINGLE_MODEL_TOOL_CALLING_ALLOWLIST", [])
+        )
         kernel.add_service(chat_service)
 
     def _register_google_service(
@@ -366,6 +380,10 @@ class KernelBuilder:
             base_url=GEMINI_OPENAI_ENDPOINT,
         )
         chat_service.operator_provider = "google"
+        chat_service.supports_function_calling = (
+            f"{service_id}|{model_name}"
+            in getattr(self.settings, "SINGLE_MODEL_TOOL_CALLING_ALLOWLIST", [])
+        )
         kernel.add_service(chat_service)
 
     def _register_azure_service(

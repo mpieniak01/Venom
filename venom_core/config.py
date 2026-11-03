@@ -205,6 +205,9 @@ class Settings(BaseSettings):
     OLLAMA_RETRY_BACKOFF_SECONDS: float = 0.35
     OLLAMA_ENABLE_STRUCTURED_OUTPUTS: bool = True
     OLLAMA_ENABLE_TOOL_CALLING: bool = True
+    # Explicit qualified service/model pairs for opt-in single-model tool use.
+    SINGLE_MODEL_TOOL_CALLING_ALLOWLIST: list[str] = []
+
     OLLAMA_ENABLE_THINK: bool = False
     # Configurable coding role; model capabilities are qualified independently.
     FEEDBACK_LOOP_PRIMARY_MODEL: str = "qwen2.5-coder:3b"

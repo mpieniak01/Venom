@@ -512,3 +512,16 @@ def test_renderer_keeps_canonical_intermediate_finish_without_tool_result(
     )
     assert rendered == "native rendered history"
     assert seen["history"] == messages
+
+
+def test_native_maf_tool_name_keeps_hyphen_without_relaxing_argument_keys():
+    catalog = tools()
+    catalog[0]["function"]["name"] = "FileSkill-read_file"
+    parsed = parse_response(
+        call("name:" + string("log"), "FileSkill-read_file"), catalog
+    )
+    assert parsed[0].name == "FileSkill-read_file"
+    assert parsed[0].arguments == {"name": "log"}
+    malformed_call = call("bad-key:" + string("log"), "FileSkill-read_file")
+    with pytest.raises(ValueError, match="syntax_invalid"):
+        parse_response(malformed_call, catalog)

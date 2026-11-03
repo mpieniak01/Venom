@@ -485,6 +485,7 @@ async def test_context_builder_build_context_and_prepare_context(monkeypatch):
     task_id = "task-2"
     request = SimpleNamespace(
         content="X" * 100,
+        agent_mode="auto",
         forced_tool=None,
         images=["good", "bad"],
         extra_context=SimpleNamespace(

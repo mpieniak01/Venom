@@ -12,12 +12,15 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
-from venom_core.services.gemma4_operator.schemas import check_schema_references
+from venom_core.services.gemma4_operator.schemas import (
+    FINISH_TOOL,
+    TOOL_NAME,
+    check_schema_references,
+)
 
 SPLITS = frozenset({"train", "validation", "holdout"})
 SHA256 = re.compile(r"[a-f0-9]{64}")
 Json = dict[str, Any]
-_TOOL_NAME = re.compile(r"[A-Za-z_]\w*", re.ASCII)
 
 
 def digest(value: Any) -> str:
@@ -88,7 +91,7 @@ def _tools(row: Mapping[str, Any]) -> dict[str, Any]:
         if not isinstance(function, dict):
             raise ValueError("gemma_material_tool_invalid")
         name = _text(function.get("name"), "tool_name")
-        if not _TOOL_NAME.fullmatch(name) or name in result:
+        if not TOOL_NAME.fullmatch(name) or name in result:
             raise ValueError("gemma_material_tool_name_invalid")
         schema = function.get("parameters")
         if not isinstance(schema, dict) or schema.get("type") != "object":
@@ -131,7 +134,7 @@ def _calls(
             raise ValueError("gemma_material_arguments_invalid") from exc
         seen.add(ident)
         # Historical canonical data uses Finish as a terminal declaration.
-        if name != "Finish":
+        if name != FINISH_TOOL:
             pending[ident] = name
 
 
@@ -139,7 +142,7 @@ def _finish_boundary(
     message: Json, index: int, messages: list[Json], targets: Sequence[int]
 ) -> None:
     calls = message.get("tool_calls", [])
-    finish = [call for call in calls if call["function"]["name"] == "Finish"]
+    finish = [call for call in calls if call["function"]["name"] == FINISH_TOOL]
     if not finish:
         return
     if len(calls) != 1:

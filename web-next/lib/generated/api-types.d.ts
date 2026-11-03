@@ -9215,6 +9215,18 @@ export interface components {
             /** Content */
             content: string;
             /**
+             * Agent Mode
+             * @description Agent execution: automatic routing or one selected model
+             * @default auto
+             * @enum {string}
+             */
+            agent_mode: "auto" | "single_model";
+            /**
+             * Model Service Id
+             * @description Registered model service for single_model mode; never an endpoint or arbitrary model ID
+             */
+            model_service_id?: string | null;
+            /**
              * Preferred Language
              * @description Preferred response language (pl/en/de)
              */

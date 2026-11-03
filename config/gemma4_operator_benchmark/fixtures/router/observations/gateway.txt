@@ -1,0 +1,2 @@
+service=render path=/retired/dispatch status=404
+service=render path=/v2/tasks status=200

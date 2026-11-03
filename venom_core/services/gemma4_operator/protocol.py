@@ -10,7 +10,11 @@ from dataclasses import dataclass
 from typing import Any
 
 from venom_core.services.gemma4_operator.profile import GemmaProfile
-from venom_core.services.gemma4_operator.schemas import check_schema_references
+from venom_core.services.gemma4_operator.schemas import (
+    FINISH_TOOL,
+    TOOL_NAME,
+    check_schema_references,
+)
 
 CALL_START = "<|tool_call>"
 CALL_END = "<tool_call|>"
@@ -54,7 +58,11 @@ def validate_tools(tools: list[dict[str, Any]]) -> dict[str, Any]:
     for tool in tools:
         function = _tool_function(tool)
         name = function.get("name")
-        if not isinstance(name, str) or not _NAME.fullmatch(name) or name in validators:
+        if (
+            not isinstance(name, str)
+            or not TOOL_NAME.fullmatch(name)
+            or name in validators
+        ):
             raise ValueError("gemma_tool_name_invalid")
         parameters = function.get("parameters")
         if not isinstance(parameters, dict) or parameters.get("type") != "object":
@@ -91,9 +99,10 @@ class _Reader:
         if not self.take(token):
             raise ValueError("gemma_call_syntax_invalid")
 
-    def identifier(self) -> str:
+    def identifier(self, *, function_name: bool = False) -> str:
         self.whitespace()
-        match = _NAME.match(self.text, self.pos)
+        pattern = TOOL_NAME if function_name else _NAME
+        match = pattern.match(self.text, self.pos)
         if match is None:
             raise ValueError("gemma_call_identifier_invalid")
         self.pos = match.end()
@@ -202,7 +211,7 @@ def parse_response(text: str, tools: list[dict[str, Any]]) -> list[ToolCall]:
         if len(calls) >= 16:
             raise ValueError("gemma_call_count_exceeded")
         reader.require("call:")
-        name = reader.identifier()
+        name = reader.identifier(function_name=True)
         arguments = reader.mapping(0)
         reader.require(CALL_END)
         if name not in validators:
@@ -279,7 +288,7 @@ def _history_calls(message: dict[str, Any], validators: dict[str, Any]) -> list[
         _validate_arguments(validators[name], arguments, name)
         # Finish is a canonical terminal/clarification declaration, not an
         # external operation awaiting a tool observation.
-        if name != "Finish":
+        if name != FINISH_TOOL:
             names.append(name)
     return names
 

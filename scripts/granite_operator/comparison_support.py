@@ -14,6 +14,7 @@ import tempfile
 import time
 import uuid
 from pathlib import Path, PurePosixPath
+from typing import Any
 
 from venom_core.services.granite_operator.contract import file_digest, inside
 
@@ -29,7 +30,7 @@ class WorkspaceLimitError(ValueError):
 
 def workspace_entries(root: Path) -> list[Path]:
     """Bound file count and logical sizes before hashing any task-controlled data."""
-    result = []
+    result: list[Path] = []
     total = 0
     for path in root.rglob("*"):
         if len(result) >= MAX_WORKSPACE_ENTRIES:
@@ -573,7 +574,7 @@ def summarize(rows: list[dict], *, bootstrap_samples=4000) -> dict:
             if report[arm]["generation_seconds"]
             else 0
         )
-    pairs = {}
+    pairs: dict[str, dict[str, dict[str, Any]]] = {}
     for row in rows:
         pairs.setdefault(row["case_id"], {})[row["arm"]] = row
     complete = [p for p in pairs.values() if set(p) == {"base", "adapter"}]

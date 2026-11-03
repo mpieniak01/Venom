@@ -32,8 +32,13 @@ def result_code(document: Any) -> int:
     if isinstance(document, dict):
         if document.get("status") == "MISMATCH":
             return 2
-        if document.get("comparison_complete") is False:
+        if (
+            document.get("comparison_complete") is False
+            or document.get("status") == "REFERENCE_FAIL"
+        ):
             return 3
+        if document.get("status") == "REJECTED":
+            return 4
     return 0
 
 
@@ -93,6 +98,9 @@ def preparation_plan(profile) -> dict:
             "prepare-material",
             "readiness",
             "compare",
+            "freeze-material",
+            "qualify-cases",
+            "export-experience",
         ],
         "remote_gates": [
             {"stage": stage, "status": "DEFERRED_REMOTE"}
@@ -110,31 +118,63 @@ def preparation_plan(profile) -> dict:
     }
 
 
+def _command_parser(sub, name, *, profile=False, output=False, inputs=()):
+    item = sub.add_parser(name)
+    if profile:
+        item.add_argument("--profile", type=Path, default=DEFAULT_PROFILE)
+    item.add_argument("--output", type=Path, required=output)
+    for option, required in inputs:
+        item.add_argument("--" + option, type=Path, required=required)
+    return item
+
+
 def parser() -> argparse.ArgumentParser:
     root = argparse.ArgumentParser(description=__doc__)
     sub = root.add_subparsers(dest="command", required=True)
-    for command in (
-        "plan",
-        "verify-snapshot",
-        "prepare-material",
-        "readiness",
-        "compare",
-    ):
-        item = sub.add_parser(command)
-        if command in {"plan", "verify-snapshot", "readiness"}:
-            item.add_argument("--profile", type=Path, default=DEFAULT_PROFILE)
-        item.add_argument("--output", type=Path, required=command == "prepare-material")
-        if command == "verify-snapshot":
-            item.add_argument("--snapshot", type=Path, required=True)
-        if command in {"prepare-material", "compare"}:
-            item.add_argument("--input", type=Path, required=True)
-        if command == "readiness":
-            item.add_argument("--request", type=Path, required=True)
-            item.add_argument("--observed", type=Path)
+    _command_parser(sub, "plan", profile=True)
+    _command_parser(sub, "verify-snapshot", profile=True, inputs=(("snapshot", True),))
+    _command_parser(sub, "prepare-material", output=True, inputs=(("input", True),))
+    _command_parser(
+        sub, "readiness", profile=True, inputs=(("request", True), ("observed", False))
+    )
+    _command_parser(sub, "compare", inputs=(("input", True),))
+    _command_parser(
+        sub, "freeze-material", profile=True, output=True, inputs=(("input", True),)
+    )
+    _command_parser(sub, "qualify-cases", inputs=(("manifest", True),))
+    _command_parser(
+        sub,
+        "export-experience",
+        output=True,
+        inputs=(("task", True), ("receipt", False), ("evidence", False)),
+    )
     return root
 
 
+def _export_experience(args):
+    from .experience import build_experience
+
+    evidence = checked_file(args.evidence) if args.evidence else None
+    if evidence is not None and evidence.stat().st_size > MAX_INPUT_BYTES:
+        raise ValueError("gemma_evidence_too_large")
+    return build_experience(
+        read_document(args.task),
+        read_document(args.receipt) if args.receipt else None,
+        evidence.read_bytes() if evidence else None,
+    )
+
+
 def dispatch(args: argparse.Namespace) -> Any:
+    if args.command == "qualify-cases":
+        from .benchmark import qualify_cases
+
+        return qualify_cases(checked_file(args.manifest, profile=True))
+    if args.command == "export-experience":
+        return _export_experience(args)
+    return _dispatch_material_or_runtime(args)
+
+
+def _dispatch_material_or_runtime(args: argparse.Namespace) -> Any:
     if args.command == "prepare-material":
         from .material import prepare_material
 
@@ -151,6 +191,10 @@ def dispatch(args: argparse.Namespace) -> Any:
     profile = GemmaProfile.load(args.profile)
     if args.command == "plan":
         return preparation_plan(profile)
+    if args.command == "freeze-material":
+        from .data_release import build_release
+
+        return build_release(read_document(args.input), profile)
     if args.command == "verify-snapshot":
         return {
             "status": "METADATA_VERIFIED",

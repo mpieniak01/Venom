@@ -1,9 +1,10 @@
 """API schemas for tasks and history endpoints."""
 
 from enum import Enum
+from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from venom_core.contracts.routing import ReasonCode, RuntimeTarget
 
@@ -70,6 +71,17 @@ class TaskRequest(BaseModel):
     """Request DTO for creating a task."""
 
     content: str
+    agent_mode: Literal["auto", "single_model"] = Field(
+        default="auto",
+        description="Agent execution: automatic routing or one selected model",
+    )
+    model_service_id: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=64,
+        pattern=r"^[A-Za-z0-9_.-]+$",
+        description="Registered model service for single_model mode; never an endpoint or arbitrary model ID",
+    )
     preferred_language: str | None = Field(
         default=None, description="Preferred response language (pl/en/de)"
     )
@@ -115,6 +127,21 @@ class TaskRequest(BaseModel):
     extra_context: TaskExtraContext | None = Field(
         default=None, description="Additional context passed to task execution"
     )
+
+    @model_validator(mode="after")
+    def validate_model_service_selection(self) -> "TaskRequest":
+        if self.agent_mode == "single_model" and self.images:
+            raise ValueError("single_model_images_require_native_adapter")
+        if self.agent_mode == "single_model" and self.preferred_language not in {
+            None,
+            "pl",
+            "en",
+            "de",
+        }:
+            raise ValueError("single_model_preferred_language_unsupported")
+        if self.model_service_id is not None and self.agent_mode != "single_model":
+            raise ValueError("model_service_requires_single_model_mode")
+        return self
 
 
 class TaskResponse(BaseModel):

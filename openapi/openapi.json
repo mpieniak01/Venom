@@ -21470,6 +21470,31 @@
             "type": "string",
             "title": "Content"
           },
+          "agent_mode": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "single_model"
+            ],
+            "title": "Agent Mode",
+            "description": "Agent execution: automatic routing or one selected model",
+            "default": "auto"
+          },
+          "model_service_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9_.-]+$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Service Id",
+            "description": "Registered model service for single_model mode; never an endpoint or arbitrary model ID"
+          },
           "preferred_language": {
             "anyOf": [
               {

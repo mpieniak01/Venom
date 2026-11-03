@@ -76,6 +76,33 @@ def test_vm_profile_filters_for_vm_offers(service):
     assert "vms_enabled" not in search_filters(plan.profile)
 
 
+def test_vm_profile_resolves_template_vm_constraint_from_offer_filter(service):
+    _, plan, offer = service
+    vm_profile = plan.profile.model_copy(
+        update={
+            "vm_required": True,
+            "runtime": RuntimeRequirements(
+                min_cuda="13.0",
+                min_driver="580",
+                template_constraints={"compute_cap": {"gte": 750}},
+                unresolved_constraints=["vms_enabled"],
+            ),
+        }
+    )
+    vm_offer = {
+        **offer,
+        "gpu_arch": "nvidia",
+        "cuda_max_good": "13.0",
+        "driver_version": "580.82.09",
+        "compute_cap": 860,
+    }
+
+    result = assess(vm_offer, vm_profile)
+
+    assert result.status == "eligible"
+    assert "runtime.vms_enabled" not in result.unknown
+
+
 def test_template_constraints_are_bounded_and_do_not_export_unknown_payloads(service):
     _, plan, base = service
     raw = {

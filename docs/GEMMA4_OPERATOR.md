@@ -294,8 +294,9 @@ blob adapter injection remains unqualified.
 
 Training, generation and adapter evaluation require GPU. CPU/disk offload and
 silent precision/model changes are rejected. Metadata and dataset validation do
-not load the inference model. A common host recommendation is 48 GB VRAM,
-64 GB RAM and 100 GB disk; capacity and throughput require remote measurement.
+not load the inference model. The initial host search uses at least 24 GB VRAM, 32 GB instance RAM and 100 GB disk;
+capacity and throughput require remote measurement. In particular, 12B BF16 LoRA
+may require a larger GPU; never silently switch precision.
 
 G05 V2 is private at `data/training/gemma-g05-v2-20261103-ready/`:
 832 training, 224 validation and 160 diagnostic holdout conversations.
@@ -381,3 +382,25 @@ dependency closure as well as Torch, Transformers and PEFT.
 
 Profile updates must requalify serialization, metadata hashes, masks and runtime
 evidence; source-document support is not a hardware qualification.
+
+### First pilot host selection
+
+```bash
+source .venv/bin/activate
+python scripts/cloud/vast/offers_table.py --training-suite config/gemma4_pilot_host.json
+```
+
+This uses the native VM workflow rather than the standalone Axolotl container kit.
+Start with separate QLoRA pilots for E4B IT and 12B IT (125 updates, at most
+3600 seconds each). Qualify GPU first/resume smoke before either training.
+Compare each adapter to its own base on the frozen domain diagnostic cases as
+well as the separate retention reserve; record task correctness, tool-call
+validity, completion time and failures. The packaged retention reserve alone
+does not establish improvement in Venom maintenance tasks.
+
+Collect and hash-check adapters, exact base/revision and tokenizer/processor
+identities, receipts and comparison outputs. Local acceptance on the 12 GB RTX
+3060 is a separate GPU-only load/generation check in Ollama after merging each
+adapter with its exact training base and conversion to the intended GGUF
+quantization. Neither this pilot nor vendor GGUF metadata proves arbitrary
+adapter injection compatibility. Preserve existing models until acceptance.

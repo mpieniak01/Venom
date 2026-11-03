@@ -25,8 +25,10 @@ po sprawdzeniu zgodności modelu bazowego, jego SHA, tokenizera i runtime docelo
 | Profil | GPU VRAM | RAM hosta | Dysk | Zastosowanie początkowe |
 |---|---:|---:|---:|---|
 | qlora | 24 GB | 64 GB | 100 GB | 0.5–8B, NF4; zależy od kontekstu/modelu |
-| lora | 48 GB | 64 GB | 100 GB | BF16 adaptery, mniejsze modele/konteksty |
+| lora | 24 GB | 64 GB | 100 GB | BF16 adaptery, mniejsze modele/konteksty |
 | full | 80 GB | 128 GB | 100 GB | pełne wagi, zacznij od 0.5–3B |
+
+Próg 24 GB dla LoRA jest kryterium wyszukiwania, nie potwierdzeniem, że Gemma 4 12B BF16 zmieści się podczas treningu. Rozstrzyga próba GPU; przy braku pamięci wybierz większy GPU albo QLoRA jako osobny eksperyment.
 
 Wszystkie profile startowe wynajmują jeden GPU. Dla pełnego 8B+ potrzebny jest
 osobny dobór liczby GPU i sharding FSDP/DeepSpeed, zależnie od optymalizatora i kontekstu.

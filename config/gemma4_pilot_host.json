@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "kind": "gemma4_pilot",
+  "common_host_requirements": {
+    "gpu_vram_gb": 24,
+    "ram_gb": 32,
+    "disk_gb": 100,
+    "vm_required": true
+  },
+  "variants": [
+    "12b-it",
+    "e4b-it"
+  ],
+  "initial_method": "qlora",
+  "max_updates": 125,
+  "max_seconds": 3600,
+  "gpu_qualified": false
+}

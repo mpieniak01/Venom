@@ -19,7 +19,7 @@
       "gpus": 1
     },
     "lora": {
-      "gpu_ram_gb": 48,
+      "gpu_ram_gb": 24,
       "cpu_ram_gb": 64,
       "disk_gb": 100,
       "gpus": 1

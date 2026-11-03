@@ -383,9 +383,9 @@ def test_shared_runtime_guard_rejects_second_engine(root):
 
 
 def test_concurrent_starts_are_serialized_before_api_record(root):
+    import select
     import subprocess
     import sys
-    import time
 
     marker = root / "locked"
     release = root / "release"
@@ -395,21 +395,25 @@ from scripts.dev.stack_profile import startup_lock
 root=Path(sys.argv[1])
 with startup_lock(root):
     (root/'locked').touch()
+    print('locked', flush=True)
     while not (root/'release').exists(): time.sleep(0.01)
 """
-    child = subprocess.Popen([sys.executable, "-c", code, str(root)], cwd=stack.ROOT)
+    child = subprocess.Popen(
+        [sys.executable, "-c", code, str(root)], cwd=stack.ROOT, stdout=subprocess.PIPE
+    )
     try:
-        for _ in range(100):
-            if marker.exists():
-                break
-            time.sleep(0.02)
+        assert select.select([child.stdout], [], [], 30)[0], (
+            "lock owner did not become ready"
+        )
+        assert child.stdout.readline() == b"locked\n"
         assert marker.exists()
         contender = stack.startup_lock(root)
         with pytest.raises(ValueError, match="startup is in progress"):
             contender.__enter__()
     finally:
         release.touch()
-        child.wait(timeout=5)
+        child.wait(timeout=10)
+        child.stdout.close()
     with stack.startup_lock(root):
         pass
 

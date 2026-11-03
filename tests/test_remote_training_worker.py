@@ -249,8 +249,16 @@ def test_cli_help_and_network_boundary(monkeypatch, capsys):
 
 
 @pytest.mark.parametrize("exit_code", [0, 7])
+@pytest.mark.parametrize(
+    "model,expected_worker",
+    [
+        ("ibm-granite/granite-4.2-3b", "granite_operator.worker"),
+        ("google/gemma-4-12B-it", "gemma4_operator.training_worker"),
+        ("google/gemma-4-E4B-it", "gemma4_operator.training_worker"),
+    ],
+)
 def test_stage_subprocess_is_fixed_and_retains_host_lock(
-    tmp_path, monkeypatch, exit_code
+    tmp_path, monkeypatch, exit_code, model, expected_worker
 ):
     import os
 
@@ -277,7 +285,11 @@ def test_stage_subprocess_is_fixed_and_retains_host_lock(
             "admission_db": str(tmp_path / "ledger"),
             "code_root": str(tmp_path),
         }
-        request = {"stage": "smoke-first", "output": str(stage)}
+        request = {
+            "stage": "smoke-first",
+            "output": str(stage),
+            "profile": {"model": model},
+        }
         if exit_code:
             with pytest.raises(RuntimeError, match="stage_failed"):
                 worker.run_stage(
@@ -289,7 +301,7 @@ def test_stage_subprocess_is_fixed_and_retains_host_lock(
             ) == {"loss": 0.4}
         assert captured["pass_fds"] == (descriptor,)
         assert captured["argv"][0:3] == ["setpriv", "--pdeathsig", "TERM"]
-        assert "venom_core.services.granite_operator.worker" in captured["argv"]
+        assert "venom_core.services." + expected_worker in captured["argv"]
         assert captured["env"]["HF_HUB_OFFLINE"] == "1"
     finally:
         os.close(descriptor)
@@ -436,7 +448,11 @@ def test_stage_logs_reach_live_supervisor_stream(tmp_path, monkeypatch, capsys):
                 "code_root": str(tmp_path),
                 "worker_python": sys.executable,
             },
-            {"stage": "smoke-first", "output": str(stage)},
+            {
+                "stage": "smoke-first",
+                "output": str(stage),
+                "profile": TrainingProfile().identity(),
+            },
             result,
             run_id="fixture",
             timeout=3,

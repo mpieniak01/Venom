@@ -20,7 +20,7 @@ from venom_core.services.granite_operator.contract import (
 )
 
 from .bundles import validate_identity
-from .host import binding, is_gemma_model, load_host
+from .host import binding, is_functiongemma_model, is_gemma_model, load_host
 from .paths import operator_path
 from .worker_support import normalized, preflight
 
@@ -105,7 +105,9 @@ def run_stage(host, request, result, *, run_id, timeout, children):
         host["worker_python"],
         "-m",
         (
-            "venom_core.services.gemma4_operator.training_worker"
+            "venom_core.services.functiongemma.worker"
+            if is_functiongemma_model(request["profile"].get("model"))
+            else "venom_core.services.gemma4_operator.training_worker"
             if is_gemma_model(request["profile"].get("model"))
             else "venom_core.services.granite_operator.worker"
         ),
@@ -147,6 +149,11 @@ def _stage_qualification(
 def _require_stage_qualification(
     identity: dict, receipt: dict, fingerprint: str
 ) -> None:
+    if is_functiongemma_model(identity.get("model")):
+        from venom_core.services.functiongemma.execution import require_proof
+
+        require_proof(receipt, fingerprint)
+        return
     if is_gemma_model(identity.get("model")):
         from venom_core.services.gemma4_operator.training import (
             require_qualification as gemma_require,
@@ -201,6 +208,11 @@ def execute(request: dict) -> dict:
     lease = None
     try:
         require_interpreter(host)
+        if host.get("execution") == "local":
+            from .local_host import readiness
+
+            if not readiness(host_root)["ready"]:
+                raise ValueError("remote_training_local_host_not_ready")
         require_offline()
         if shutil.disk_usage(result).free < 10 * 1024**3:
             raise ValueError("remote_training_free_disk_insufficient")
@@ -241,7 +253,9 @@ def execute(request: dict) -> dict:
         from venom_core.services.runtime_admission import RuntimeAdmission
 
         engine = (
-            "gemma-training"
+            "functiongemma-training"
+            if is_functiongemma_model(identity["model"])
+            else "gemma-training"
             if is_gemma_model(identity["model"])
             else "granite-training"
         )
@@ -257,6 +271,33 @@ def execute(request: dict) -> dict:
                 child.poll() is not None for child in children
             ),
         ):
+            if is_functiongemma_model(identity["model"]):
+                from venom_core.services.functiongemma.execution import coordinate
+
+                def native_stage(body):
+                    remaining = timeout - (time.monotonic() - started)
+                    if remaining <= 0:
+                        raise TimeoutError("remote_training_budget_exhausted")
+                    return run_stage(
+                        host,
+                        body,
+                        result,
+                        run_id=run_id,
+                        timeout=remaining,
+                        children=children,
+                    )
+
+                return coordinate(
+                    request,
+                    host,
+                    run_root,
+                    result,
+                    profile,
+                    document,
+                    fingerprint,
+                    stage_call=native_stage,
+                    proof_loader=proof_for,
+                )
 
             def stage_call(name, updates, checkpoint=None, *, label=None):
                 remaining = timeout - (time.monotonic() - started)

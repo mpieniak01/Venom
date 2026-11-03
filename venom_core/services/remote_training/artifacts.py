@@ -36,6 +36,9 @@ REQUIRED_FILES = (
     "logs/training.log",
 )
 _EXTRA_FILES = (
+    "model.safetensors",
+    "config.json",
+    "generation_config.json",
     "error.json",
     "metrics.jsonl",
     "logs/stdout.log",
@@ -109,6 +112,19 @@ def _document(root: Path, name: str, errors: list[str]) -> dict[str, Any]:
         return {}
 
 
+def required_files(identity):
+    if (
+        identity.get("model") == "google/functiongemma-270m-it"
+        and identity.get("training_method") == "full"
+    ):
+        return tuple(
+            name
+            for name in REQUIRED_FILES
+            if name not in {"adapter_model.safetensors", "adapter_config.json"}
+        ) + ("model.safetensors", "config.json")
+    return REQUIRED_FILES
+
+
 def inspect_artifacts(
     root: Path,
     identity: dict[str, Any],
@@ -121,11 +137,12 @@ def inspect_artifacts(
     portable = validate_identity(identity)
     validate_run_id(run_id)
     selected = _files(root, include_checkpoint)
-    missing = sorted(set(REQUIRED_FILES) - set(selected))
+    required = required_files(portable)
+    missing = sorted(set(required) - set(selected))
     errors: list[str] = []
     documents = {
         name: _document(root, name, errors)
-        for name in REQUIRED_FILES
+        for name in required
         if name.endswith(".json")
     }
     actual_identity = documents["identity.json"]
@@ -147,14 +164,20 @@ def inspect_artifacts(
         and (root / "adapter_model.safetensors").stat().st_size == 0
     ):
         errors.append("adapter_empty")
+    if (
+        "model.safetensors" in selected
+        and (root / "model.safetensors").stat().st_size == 0
+    ):
+        errors.append("model_empty")
     for name in (
+        "config.json",
         "adapter_config.json",
         "metrics.json",
         "environment.json",
         "profile.json",
         DATA_MANIFEST,
     ):
-        if name not in missing and not documents[name]:
+        if name in required and name not in missing and not documents[name]:
             errors.append("metadata_empty:" + name)
     supervisor = documents["supervisor.json"]
     if supervisor and (

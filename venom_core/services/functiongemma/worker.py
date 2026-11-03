@@ -8,6 +8,7 @@ import json
 import os
 import platform
 import resource
+import sqlite3
 import time
 from pathlib import Path
 from typing import Any
@@ -185,6 +186,19 @@ def run(request: dict) -> dict:
     ledger = os.environ.get("VENOM_GRANITE_ADMISSION_DB")
     if not ledger:
         raise ValueError("functiongemma_shared_admission_required")
+    coordinator_id = os.environ.get("VENOM_GRANITE_RUN_ID")
+    if coordinator_id:
+        with sqlite3.connect(
+            "file:" + str(operator_path(ledger)) + "?mode=ro", uri=True
+        ) as db:
+            owner = db.execute(
+                "SELECT 1 FROM lease WHERE pid=? AND owner='functiongemma-training' "
+                "AND engine='functiongemma-training' AND run_id=? AND quarantine=0 AND cancelled=0",
+                (os.getppid(), coordinator_id),
+            ).fetchone()
+        if not owner or coordinator_id != request["run_id"]:
+            raise ValueError("functiongemma_parent_reservation_missing")
+        return _execute(request, recipe, records, snapshot, output, fingerprint, resume)
     lease = RuntimeAdmission(operator_path(ledger), enabled=True).acquire(
         owner="functiongemma-training",
         run_id=request["run_id"],
@@ -339,9 +353,18 @@ def _execute(request, recipe, records, snapshot, output, fingerprint, resume):
 
 
 def _seal(checkpoint, fingerprint):
+    if not (checkpoint / "trainer_state.json").is_file():
+        raise ValueError("functiongemma_resume_state_missing")
     write_json(
         checkpoint / "receipt.json",
-        {"fingerprint": fingerprint, "files": tree_hashes(checkpoint)},
+        {
+            "fingerprint": fingerprint,
+            "files": tree_hashes(checkpoint),
+            "model": Recipe().model,
+            "step": json.loads((checkpoint / "trainer_state.json").read_text())[
+                "global_step"
+            ],
+        },
     )
     verify_checkpoint(checkpoint, fingerprint)
 
@@ -387,3 +410,16 @@ def _resume_smoke(recipe, records, snapshot, output, checkpoint, probe):
     if trainer.state.global_step != 2:
         raise RuntimeError("functiongemma_resume_progress_invalid")
     return output / "checkpoint-2"
+
+
+def main():
+    import argparse
+
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("request", type=Path)
+    args = parser.parse_args()
+    run(json.loads(operator_path(args.request).read_text()))
+
+
+if __name__ == "__main__":
+    main()

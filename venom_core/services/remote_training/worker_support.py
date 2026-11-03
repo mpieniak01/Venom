@@ -16,6 +16,7 @@ from venom_core.services.granite_operator.contract import (
 from .host import (
     code_identity,
     dependencies_identity,
+    is_functiongemma_model,
     is_gemma_model,
     tokenizer_identity,
 )
@@ -24,6 +25,12 @@ from .host import (
 def preflight(
     host: dict, input_root: Path, identity: dict
 ) -> tuple[TrainingProfile, dict]:
+    if is_functiongemma_model(identity.get("model")):
+        from venom_core.services.functiongemma.execution import (
+            preflight as native_preflight,
+        )
+
+        return native_preflight(host, input_root, identity)
     if is_gemma_model(identity.get("model")):
         from venom_core.services.gemma4_operator.training import remote_preflight
 

@@ -85,7 +85,10 @@ def _checkpoint_evidence(attempt: Path, directory: Path) -> dict[str, Any]:
     if not isinstance(document, dict):
         raise ValueError("remote_training_checkpoint_receipt_invalid")
     step = document.get("step")
-    if type(step) is not int or not 1 <= step <= MAX_UPDATES:
+    maximum = (
+        4096 if document.get("model") == "google/functiongemma-270m-it" else MAX_UPDATES
+    )
+    if type(step) is not int or not 1 <= step <= maximum:
         raise ValueError("remote_training_checkpoint_step_invalid")
     return {
         "completed_updates": step,
@@ -96,6 +99,7 @@ def _checkpoint_evidence(attempt: Path, directory: Path) -> dict[str, Any]:
 def _artifact_hashes(attempt: Path) -> dict[str, str]:
     names = (
         "adapter_model.safetensors",
+        "model.safetensors",
         "checkpoint/receipt.json",
         "identity.json",
         "metrics.json",
@@ -145,6 +149,7 @@ def verify_seal(directory: Path, proof: dict[str, Any]) -> None:
             name
             not in (
                 "adapter_model.safetensors",
+                "model.safetensors",
                 "checkpoint/receipt.json",
                 "identity.json",
                 "metrics.json",

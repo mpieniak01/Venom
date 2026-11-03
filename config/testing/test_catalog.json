@@ -7640,6 +7640,48 @@
       "rationale": "Default release-lane regression coverage."
     },
     {
+      "path": "tests/test_training_functiongemma_execution.py",
+      "domain": "models",
+      "test_type": "unit",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Shared local and SSH training lifecycle, native FunctionGemma and host ownership contracts."
+    },
+    {
+      "path": "tests/test_training_local_host.py",
+      "domain": "models",
+      "test_type": "unit",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Shared local and SSH training lifecycle, native FunctionGemma and host ownership contracts."
+    },
+    {
+      "path": "tests/test_training_local_transport.py",
+      "domain": "models",
+      "test_type": "unit",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Shared local and SSH training lifecycle, native FunctionGemma and host ownership contracts."
+    },
+    {
       "path": "tests/test_training_metrics_parser.py",
       "domain": "misc",
       "test_type": "unit",

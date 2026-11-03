@@ -17,6 +17,13 @@ from venom_core.services.granite_operator.contract import (
     write_json,
 )
 
+FUNCTIONGEMMA_MODEL = "google/functiongemma-270m-it"
+
+
+def is_functiongemma_model(model: object) -> bool:
+    return model == FUNCTIONGEMMA_MODEL
+
+
 GEMMA_MODELS = frozenset({"google/gemma-4-12B-it", "google/gemma-4-E4B-it"})
 
 
@@ -30,6 +37,15 @@ PACKAGES = ("torch", "transformers", "peft", "bitsandbytes", "trl", "datasets")
 def code_identity(code_root: Path, *, model: str | None = None) -> str:
     """Only the reviewed Granite engine defines model semantics."""
     package = code_root / "venom_core/services/granite_operator"
+    if is_functiongemma_model(model):
+        directories = (package, code_root / "venom_core/services/functiongemma")
+        return digest(
+            {
+                str(p.relative_to(code_root)): file_digest(p)
+                for directory in directories
+                for p in sorted(directory.glob("*.py"))
+            }
+        )
     if is_gemma_model(model):
         gemma = code_root / "venom_core/services/gemma4_operator"
         if not gemma.is_dir():
@@ -79,8 +95,16 @@ def initialize(
     snapshot: Path,
     admission_db: Path,
     code_root: Path,
+    execution: str = "remote",
 ) -> dict:
     """Explicit operator configuration; cannot be changed by uploaded input."""
+    if execution not in {"local", "remote"}:
+        raise ValueError("remote_training_execution_invalid")
+    if execution == "local":
+        from .local_host import canonical_ledger
+
+        if admission_db.absolute() != canonical_ledger(code_root):
+            raise ValueError("remote_training_local_admission_ledger_mismatch")
     root = root.resolve()
     path = root / "host.json"
     if path.exists():
@@ -91,6 +115,7 @@ def initialize(
         raise ValueError("remote_training_host_paths_missing")
     value = {
         "schema_version": 1,
+        "execution": execution,
         "host_id": uuid.uuid4().hex,
         "worker_python": str(worker_python.absolute()),
         "snapshot": str(snapshot.resolve()),
@@ -151,6 +176,7 @@ def dependencies_identity(code_root: Path, *, model: str | None = None) -> str:
     if (
         model is not None
         and not is_gemma_model(model)
+        and not is_functiongemma_model(model)
         and model != "ibm-granite/granite-4.2-3b"
     ):
         raise ValueError("remote_training_dependency_model_unsupported")

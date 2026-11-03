@@ -71,7 +71,9 @@ def checkpoint(path):
         "rng_state.pth",
         "model.safetensors",
     ):
-        (path / name).write_text("state")
+        (path / name).write_text(
+            json.dumps({"global_step": 1}) if name == "trainer_state.json" else "state"
+        )
 
 
 def test_seal(tmp_path):

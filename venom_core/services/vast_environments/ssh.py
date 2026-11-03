@@ -7,6 +7,7 @@ import socket
 import subprocess
 import time
 from contextlib import contextmanager
+from ipaddress import ip_address
 from pathlib import Path
 from typing import Iterator
 
@@ -54,29 +55,58 @@ print(json.dumps({
 """
 
 
-def ssh_args(
-    plan: EnvironmentPlan, instance: dict, accept_new: bool = False
-) -> list[str]:
-    host = str(instance.get("ssh_host") or "")
-    port = instance.get("ssh_port")
+def _ip_version(value: object) -> int | None:
+    try:
+        return ip_address(str(value)).version
+    except ValueError:
+        return None
+
+
+def _mapping_matches_host(mapping: object, version: int | None) -> bool:
+    if not isinstance(mapping, dict):
+        return False
+    host_ip = mapping.get("HostIp")
+    if not host_ip or version is None:
+        # Unlabelled mappings retain the provider's original single-port contract.
+        return True
+    return _ip_version(host_ip) == version
+
+
+def _direct_ssh_endpoint(instance: dict) -> tuple[str, int]:
+    host = str(instance.get("public_ipaddr") or "")
+    version = _ip_version(host)
+    ports = instance.get("ports")
+    mappings = ports.get("22/tcp", []) if isinstance(ports, dict) else []
+    if not isinstance(mappings, list):
+        mappings = []
+    candidates = set()
+    for mapping in mappings:
+        if not _mapping_matches_host(mapping, version):
+            continue
+        try:
+            candidate = int(mapping["HostPort"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if 1 <= candidate <= 65535:
+            candidates.add(candidate)
+    if not host or len(candidates) != 1:
+        raise VastError("vast.direct_ssh_not_ready")
+    return host, candidates.pop()
+
+
+def _instance_ssh_endpoint(plan: EnvironmentPlan, instance: dict) -> tuple[str, object]:
     direct = plan.profile.vm_required or "ssh_direc" in str(
         instance.get("image_runtype", "")
     )
     if direct:
-        host = str(instance.get("public_ipaddr") or "")
-        ports = instance.get("ports")
-        mappings = ports.get("22/tcp", []) if isinstance(ports, dict) else []
-        candidates = set()
-        for mapping in mappings if isinstance(mappings, list) else []:
-            try:
-                candidate = int(mapping["HostPort"])
-            except (KeyError, TypeError, ValueError):
-                continue
-            if 1 <= candidate <= 65535:
-                candidates.add(candidate)
-        if not host or len(candidates) != 1:
-            raise VastError("vast.direct_ssh_not_ready")
-        port = candidates.pop()
+        return _direct_ssh_endpoint(instance)
+    return str(instance.get("ssh_host") or ""), instance.get("ssh_port")
+
+
+def ssh_args(
+    plan: EnvironmentPlan, instance: dict, accept_new: bool = False
+) -> list[str]:
+    host, port = _instance_ssh_endpoint(plan, instance)
     if (
         not host
         or host.startswith("-")

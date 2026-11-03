@@ -96,7 +96,7 @@ def test_invalid_money(value):
 
 
 def test_pinned_images(profile):
-    assert profile.disk_gb == 150
+    assert profile.disk_gb == 100
     with pytest.raises(ValidationError):
         WorkloadProfile(name="bad", cpu_arch="amd64", image="image:latest")
 
@@ -173,7 +173,7 @@ def test_offer_query_and_sanitize(profile, offer):
     api, transport = client([(200, {"offers": [{**offer, "extra_env": "secret"}]})])
     rows = api.offers(profile.disk_gb)
     assert "extra_env" not in rows[0]
-    assert transport.calls[0][2]["json"]["allocated_storage"] == 150
+    assert transport.calls[0][2]["json"]["allocated_storage"] == 100
     assert transport.calls[0][2]["json"]["type"] == "ondemand"
 
 

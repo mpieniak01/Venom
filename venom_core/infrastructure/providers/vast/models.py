@@ -52,7 +52,7 @@ class WorkloadProfile(Contract):
     max_parallel_requests: int = Field(default=4, ge=1, le=32)
     worker_packages: list[str] = Field(default_factory=list, max_length=8)
     worker_tasks: list[Literal["vision", "audio"]] = Field(default=["vision", "audio"])
-    disk_gb: int = Field(default=150, ge=16, le=10000)
+    disk_gb: int = Field(default=100, ge=16, le=10000)
     min_free_disk_bytes: int = Field(default=10_000_000_000, ge=0)
     min_gpu_ram_mb: int = Field(default=24000, ge=0)
     min_cpu_ram_mb: int = Field(default=32000, ge=0)

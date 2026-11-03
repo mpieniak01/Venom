@@ -23,7 +23,13 @@ deklaracje muszą być prawdziwe dla profilu VM i są objęte odciskiem konfigur
 Istniejące profile wymagają ponownego przygotowania po zmianie odcisku.
 
 Profil FunctionGemma przywrócono do Ubuntu 22.04 VM (historycznie sprawdzona
-rodzina szablonu). Bieżące minimum szablonu wynosi 130 GB dysku. `gpu_frac`
+rodzina szablonu). Ustalony dysk profili hostów wynosi **100 GB**.
+Pole dostawcy `recommended_disk_space=130` nie upoważnia do zwiększenia
+zamówienia. Gdy szablon nie przechodzi walidacji dla 100 GB, zgłoś konflikt
+i dobierz zgodny szablon przed create. Nie zwiększaj dysku w profilu ani planie.
+Wyszukiwanie, wycena i create muszą używać identycznego `disk_gb`.
+Plany oraz dowody wykonanych zamówień zachowują historyczną wielkość.
+`gpu_frac`
 opisuje udział kart maszyny, nie ułamek wydajności wynajętej karty. Nie wymagaj
 `gpu_frac=1` jako dowodu pełnej karty; kontroluj `num_gpus`, VRAM, przydział
 RAM/CPU i rzeczywiste zasoby po SSH. Cena ma pierwszeństwo po spełnieniu

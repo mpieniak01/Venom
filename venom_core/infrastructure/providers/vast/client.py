@@ -13,8 +13,8 @@ import httpx
 from pydantic import SecretStr
 
 from venom_core.infrastructure.providers.vast.models import (
-    instance_snapshot,
     amount,
+    instance_snapshot,
     offer_snapshot,
     project,
 )

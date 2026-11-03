@@ -131,7 +131,9 @@ def propose(
             **inputs,
             do_sample=False,
             max_new_tokens=max_new_tokens,
-            eos_token_id=list(dict.fromkeys([tokenizer.eos_token_id, marker, turn_end])),
+            eos_token_id=list(
+                dict.fromkeys([tokenizer.eos_token_id, marker, turn_end])
+            ),
         )
     output = generated[0][inputs["input_ids"].shape[-1] :]
     # A response marker is a boundary, never evidence of execution.

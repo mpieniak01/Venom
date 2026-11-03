@@ -18,6 +18,8 @@ from pathlib import Path
 
 MODEL = "ibm-granite/granite-4.2-3b"
 REVISION = "4e9c275e232f10211ec88644d106a1f6a1b60e06"
+FUNCTIONGEMMA_MODEL = "google/functiongemma-270m-it"
+FUNCTIONGEMMA_REVISION = "39eccb091651513a5dfb56892d3714c1b5b8276c"
 PYTHON = "3.14.8"
 MODEL_RECEIPT = "model-source.json"
 METADATA = (
@@ -30,6 +32,15 @@ GEMMA_METADATA = (
     "from venom_core.services.gemma4_operator.profile import GemmaProfile; "
     "profile=GemmaProfile(**json.loads(sys.argv[2])); "
     "print(json.dumps(profile.validate_snapshot(Path(sys.argv[1]))))"
+)
+FUNCTIONGEMMA_METADATA = (
+    "import hashlib,json,sys; from pathlib import Path; "
+    "from transformers import AutoTokenizer; "
+    "snapshot=Path(sys.argv[1]); tokenizer=AutoTokenizer.from_pretrained("
+    "snapshot,local_files_only=True,trust_remote_code=False); "
+    "print(json.dumps({'config.json':hashlib.sha256((snapshot/'config.json').read_bytes()).hexdigest(),"
+    "'tokenizer_config.json':hashlib.sha256((snapshot/'tokenizer_config.json').read_bytes()).hexdigest(),"
+    "'tokenizer_template_sha256':hashlib.sha256(tokenizer.chat_template.encode()).hexdigest()}))"
 )
 LOCK = "requirements/locks/granite-operator-training-linux-py314.txt"
 CONTROL = "requirements-remote-training-control.txt"
@@ -89,10 +100,14 @@ def parser():
     value.add_argument(
         "--venv", type=data_path, default=Path("/workspace/training-venv")
     )
-    value.add_argument(
+    model = value.add_mutually_exclusive_group()
+    model.add_argument(
         "--model-profile",
         type=data_path,
         help="Pinned Gemma profile from reviewed config; omitted keeps legacy Granite",
+    )
+    model.add_argument(
+        "--functiongemma", action="store_true", help="Pinned FunctionGemma 270M"
     )
     value.add_argument(
         "--snapshot",
@@ -123,6 +138,8 @@ def parser():
 def model_profile(args):
     """Read the trusted repo's CPU-only identity module, without target packages."""
     path = getattr(args, "model_profile", None)
+    if getattr(args, "functiongemma", False):
+        return None
     if path is None:
         return None
     data_path(path)
@@ -141,13 +158,23 @@ def model_profile(args):
 
 
 def model_identity(args):
+    if getattr(args, "functiongemma", False):
+        return FUNCTIONGEMMA_MODEL, FUNCTIONGEMMA_REVISION
     profile = model_profile(args)
     return (profile.model, profile.revision) if profile else (MODEL, REVISION)
 
 
 def validate_sources(args):
     sources = [LOCK, CONTROL, "venom_core/services/remote_training/remote.py"]
-    if model_profile(args):
+    if getattr(args, "functiongemma", False):
+        sources.extend(
+            (
+                "venom_core/services/functiongemma/encoding.py",
+                "venom_core/services/functiongemma/profile.py",
+                "venom_core/services/functiongemma/worker.py",
+            )
+        )
+    elif model_profile(args):
         sources.extend(
             (
                 "venom_core/services/gemma4_operator/profile.py",
@@ -191,12 +218,18 @@ def plan(args):
     python = str(args.venv / "bin/python")
     profile = model_profile(args)
     model, revision = model_identity(args)
+    model_kind = (
+        "functiongemma"
+        if getattr(args, "functiongemma", False)
+        else ("gemma" if profile else "granite")
+    )
     return {
         "apply": args.apply,
         "code_root": str(args.code_root),
         "commit": args.commit,
         "python_version": PYTHON,
         "runtime": str(args.python or args.uv),
+        "model_kind": model_kind,
         "install_managed_python": bool(args.uv),
         "venv": str(args.venv),
         "requirements": [LOCK, CONTROL],
@@ -309,8 +342,15 @@ def snapshot_ready(snapshot, *, provenance=True, profile=None):
         snapshot_provenance(snapshot, model, revision)
 
 
-def native_metadata(python, snapshot, code_root, env, profile=None):
-    command = [python, "-c", GEMMA_METADATA if profile else METADATA, str(snapshot)]
+def native_metadata(
+    python, snapshot, code_root, env, profile=None, functiongemma=False
+):
+    metadata = (
+        FUNCTIONGEMMA_METADATA
+        if functiongemma
+        else (GEMMA_METADATA if profile else METADATA)
+    )
+    command = [python, "-c", metadata, str(snapshot)]
     if profile:
         command.append(json.dumps(profile.identity()))
     value = json.loads(run(command, cwd=code_root, env=env))
@@ -346,7 +386,7 @@ def prepare_snapshot(args, python, env):
                 "revision": revision,
                 "files": payload_hashes(stage),
                 "native_snapshot_metadata": native_metadata(
-                    python, stage, args.code_root, env, profile
+                    python, stage, args.code_root, env, profile, args.functiongemma
                 ),
             }
             with (stage / MODEL_RECEIPT).open("w") as stream:
@@ -355,7 +395,7 @@ def prepare_snapshot(args, python, env):
     snapshot_ready(args.snapshot, profile=profile)
     receipt = json.loads((args.snapshot / MODEL_RECEIPT).read_text())
     if receipt.get("native_snapshot_metadata") != native_metadata(
-        python, args.snapshot, args.code_root, env, profile
+        python, args.snapshot, args.code_root, env, profile, args.functiongemma
     ):
         raise ValueError("host_snapshot_native_metadata_mismatch")
 

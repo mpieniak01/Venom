@@ -146,7 +146,10 @@ tests/test_forge_flow.py
 tests/test_forge_integration.py
 tests/test_gemma4_audio_models.py
 tests/test_gemma4_audio_runtime_main.py
+tests/test_gemma4_data_release.py
+tests/test_gemma4_operator_cases.py
 tests/test_gemma4_operator_cli.py
+tests/test_gemma4_operator_experience.py
 tests/test_gemma4_operator_material.py
 tests/test_gemma4_operator_protocol.py
 tests/test_gemma4_operator_runtime.py
@@ -380,6 +383,7 @@ tests/test_shell_skill.py
 tests/test_shell_skill_contracts.py
 tests/test_simulated_regression_workflow.py
 tests/test_simulated_user.py
+tests/test_single_model_execution.py
 tests/test_skill_manager.py
 tests/test_skills_browser_github_shell_contracts.py
 tests/test_skills_init.py

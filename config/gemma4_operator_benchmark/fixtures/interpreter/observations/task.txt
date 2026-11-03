@@ -1,0 +1,1 @@
+service=catalog module=storage error=ModuleNotFoundError interpreter=/opt/retired/bin/python

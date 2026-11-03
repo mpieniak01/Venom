@@ -26,6 +26,11 @@ class ExecutionStrategy:
         # Perf test check should be handled before strategy or inside?
         # In dispatch it is checked early. I will assume it is handled by the caller or passed here.
 
+        if getattr(request, "agent_mode", "auto") == "single_model":
+            from .single_model import execute_single_model
+
+            return await execute_single_model(self.orch, task_id, context, request)
+
         if intent == "START_CAMPAIGN":
             return await self._execute_campaign(task_id)
 

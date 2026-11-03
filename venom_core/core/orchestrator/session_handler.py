@@ -228,12 +228,19 @@ class SessionHandler:
             return ""
 
         session_id = request.session_id
-        if not self._testing_mode:
+        single_model = request.agent_mode == "single_model"
+        if not self._testing_mode and not single_model:
             self._ensure_session_summary(task_id, task)
         summary, history = self._load_session_summary_and_history(task, session_id)
-        summary = self._ensure_summary_if_needed(
-            request, task_id, session_id, summary, history
-        )
+        if not single_model:
+            summary = self._ensure_summary_if_needed(
+                request, task_id, session_id, summary, history
+            )
+        else:
+            self.state_manager.add_log(
+                task_id,
+                "Single-model context: stored history without a model summary pass",
+            )
         if summary:
             parts.append("[STRESZCZENIE SESJI]\n" + summary)
         if not self._testing_mode and include_memory:

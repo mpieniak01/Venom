@@ -266,6 +266,8 @@ class MafChatService:
         return cast("OpenAIChatCompletionOptions", options)
 
     operator_provider: str | None = None
+    supports_function_calling: bool = False
+    runtime_provider: str | None = None
 
     def _assert_operator_provider_enabled(self) -> None:
         if self.operator_provider is not None:

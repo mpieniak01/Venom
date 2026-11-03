@@ -148,7 +148,7 @@ class ContextBuilder:
             session_block = self.orch._build_session_context_block(
                 request,
                 task_id,
-                include_memory=not fast_path,
+                include_memory=not fast_path and request.agent_mode != "single_model",
             )
             if session_block:
                 full_context = session_block + "\n\n" + full_context

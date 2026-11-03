@@ -202,6 +202,16 @@ async def _handle_policy_block_global_pre_execution(
 def _resolve_planned_provider(
     orch: "Orchestrator", task_id: UUID, request: TaskRequest
 ) -> str | None:
+    if request.agent_mode == "single_model":
+        if request.forced_provider:
+            raise ValueError("single_model_provider_service_conflict")
+        service = orch.task_dispatcher.kernel.get_service(request.model_service_id)
+        provider = getattr(service, "operator_provider", None) or getattr(
+            service, "runtime_provider", None
+        )
+        if not isinstance(provider, str) or not provider.strip():
+            raise ValueError("single_model_provider_identity_missing")
+        return provider
     task = orch.state_manager.get_task(task_id)
     routing_decision = (
         getattr(task, "context_history", {}).get("routing_decision", {})
@@ -485,9 +495,10 @@ async def _run_task(
         )
 
         if intent not in orch.NON_LEARNING_INTENTS and not tool_required:
-            context = await orch.context_builder.enrich_context_with_lessons(
-                task_id, context, intent=intent
-            )
+            if request.agent_mode != "single_model":
+                context = await orch.context_builder.enrich_context_with_lessons(
+                    task_id, context, intent=intent
+                )
             context = await orch.context_builder.add_hidden_prompts(
                 task_id, context, intent
             )
@@ -609,31 +620,42 @@ async def _initialize_task_execution(orch: "Orchestrator", task_id: UUID):
     return task
 
 
+async def _resolve_task_intent(
+    orch: "Orchestrator", request: TaskRequest, request_content: str
+) -> tuple[str, dict]:
+    if request.agent_mode == "single_model":
+        intent = request.forced_intent or "GENERAL_CHAT"
+        return intent, {"source": "single_model", "intent": intent}
+    if request.forced_intent:
+        return request.forced_intent, {
+            "source": "forced",
+            "intent": request.forced_intent,
+        }
+
+    turn = current_conversation_context()
+    registry = get_conversation_registry()
+    if (
+        registry is not None
+        and turn is not None
+        and not request.forced_tool
+        and not request.forced_provider
+    ):
+        provider_id = registry.match(request_content, turn)
+        if provider_id is not None:
+            return "MODULE_CONVERSATION", {
+                "source": "template",
+                "provider_id": provider_id,
+            }
+
+    intent = await orch.intent_manager.classify_intent(request_content)
+    intent_debug = getattr(orch.intent_manager, "last_intent_debug", {})
+    return intent, intent_debug if isinstance(intent_debug, dict) else {}
+
+
 async def _classify_intent_and_log(
     orch: "Orchestrator", task_id: UUID, request: TaskRequest, request_content: str
 ) -> tuple[str, dict]:
-    if request.forced_intent:
-        intent = request.forced_intent
-        intent_debug = {"source": "forced", "intent": request.forced_intent}
-    else:
-        turn = current_conversation_context()
-        registry = get_conversation_registry()
-        provider_id = (
-            registry.match(request_content, turn)
-            if registry is not None
-            and turn is not None
-            and not request.forced_tool
-            and not request.forced_provider
-            else None
-        )
-        if provider_id is not None:
-            intent = "MODULE_CONVERSATION"
-            intent_debug = {"source": "template", "provider_id": provider_id}
-        else:
-            intent = await orch.intent_manager.classify_intent(request_content)
-            intent_debug = getattr(orch.intent_manager, "last_intent_debug", {})
-            if not isinstance(intent_debug, dict):
-                intent_debug = {}
+    intent, intent_debug = await _resolve_task_intent(orch, request, request_content)
     if intent_debug and orch.request_tracer:
         try:
             details = json.dumps(intent_debug, ensure_ascii=False)
@@ -653,6 +675,8 @@ async def _build_context_for_intent(
     intent: str,
     fast_path: bool,
 ) -> str:
+    if getattr(request, "agent_mode", "auto") == "single_model":
+        return await orch.context_builder.build_context(task_id, request, fast_path)
     template = resolve_response_template(request, intent)
     if intent == "MODULE_CONVERSATION" or template is not None:
         logger.info(f"Fast path: Skipping context build for intent {intent}")
@@ -776,7 +800,9 @@ async def _execute_with_stream_callback(
         )
         response: str | None
         with conversation_turn(turn):
-            if intent == "MODULE_CONVERSATION":
+            if request.agent_mode == "single_model":
+                response = None
+            elif intent == "MODULE_CONVERSATION":
                 task = orch.state_manager.get_task(task_id)
                 if task is None:
                     raise RuntimeError("conversation_task_missing")

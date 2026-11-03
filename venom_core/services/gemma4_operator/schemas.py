@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
+
+FINISH_TOOL = "Finish"
+TOOL_NAME = re.compile(r"[A-Za-z_][\w-]*", re.ASCII)
 
 REFERENCE_KEYS = frozenset({"$ref", "$dynamicRef", "$recursiveRef"})
 

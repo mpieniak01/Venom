@@ -1,0 +1,4 @@
+{
+  "interpreter": "/opt/retired/bin/python",
+  "service": "catalog"
+}

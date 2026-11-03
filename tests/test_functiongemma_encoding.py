@@ -172,3 +172,56 @@ def test_resealed_invalid_vectors_rejected(change):
         row["input_ids"][0] = -1
     with pytest.raises(ValueError):
         validate_encoded_release(reseal(encoded))
+
+
+def test_native_call_stops_at_function_response_boundary():
+    from venom_core.services.functiongemma.protocol import CALL_END
+
+    row = decision()
+    row["tools"] = [
+        {
+            "type": "function",
+            "function": {
+                "name": "FileSkill-read_file",
+                "parameters": {
+                    "type": "object",
+                    "properties": {"file_path": {"type": "string"}},
+                    "required": ["file_path"],
+                },
+            },
+        }
+    ]
+    row["messages"][-1] = {
+        "role": "assistant",
+        "content": None,
+        "tool_calls": [
+            {
+                "id": "one",
+                "type": "function",
+                "function": {
+                    "name": "FileSkill-read_file",
+                    "arguments": {"file_path": "x"},
+                },
+            }
+        ],
+    }
+
+    class Native(Tokenizer):
+        def apply_chat_template(self, messages, **kwargs):
+            if kwargs["add_generation_prompt"]:
+                return super().apply_chat_template(messages, **kwargs)
+            prefix = super().apply_chat_template(
+                messages[:-1], **{**kwargs, "add_generation_prompt": True}
+            )
+            return (
+                prefix
+                + "<start_function_call>call:FileSkill-read_file{file_path:<escape>x<escape>}"
+                + CALL_END
+                + "<start_function_response>"
+            )
+
+    encoded = encode_decision(row, Native())
+    supervised = Native().decode(
+        [value for value in encoded["labels"] if value != -100]
+    )
+    assert supervised.endswith(CALL_END + "<start_function_response>")

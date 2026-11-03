@@ -9,7 +9,7 @@ from venom_core.services.gemma4_operator.material import digest
 
 from .dataset import validate_release
 from .profile import MODEL, REVISION
-from .protocol import render_messages
+from .protocol import CALL_END, render_messages
 
 Json = dict[str, Any]
 
@@ -41,7 +41,13 @@ def encode_decision(record: Json, tokenizer: Any, context: int = 1024) -> Json:
     _need(full.startswith(prefix) and len(full) > len(prefix), "native_prefix_unstable")
     target_text = full[len(prefix) :]
     _need(
-        any(target_text.rstrip().endswith(stop) for stop in ("<end_of_turn>", "<eos>")),
+        any(target_text.rstrip().endswith(stop) for stop in ("<end_of_turn>", "<eos>"))
+        or (
+            bool(messages[target].get("tool_calls"))
+            and target_text.rstrip().endswith(
+                (CALL_END, CALL_END + "<start_function_response>")
+            )
+        ),
         "native_end_missing",
     )
     encoded = tokenizer(

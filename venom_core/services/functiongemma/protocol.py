@@ -95,7 +95,7 @@ def render_messages(
         if message["role"] == "tool":
             message["content"] = {
                 "name": message["name"],
-                "response": message["content"],
+                "response": {"value": message["content"]},
             }
     result = tokenizer.apply_chat_template(
         native,

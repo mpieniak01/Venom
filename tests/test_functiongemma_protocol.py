@@ -89,7 +89,7 @@ def test_template_receives_developer_activation_and_real_tool_observation():
             }
             assert native[-1]["content"] == {
                 "name": "FileSkill-read_file",
-                "response": '{"value": 4}',
+                "response": {"value": '{"value": 4}'},
             }
             assert kwargs["tools"] == [tool()]
             return "native output"

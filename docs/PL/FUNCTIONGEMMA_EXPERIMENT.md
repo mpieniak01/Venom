@@ -142,5 +142,27 @@ oraz pomiaru calego czasu routingu+eskalacji. CPU/kwantyzacja to osobna kwalifik
 FG5 pozostaje warunkowe: nie dolaczamy niezakwalifikowanego modelu do kazdego czatu.
 Nie ma nowego serwisu, portu ani autostartu.
 
+### Lokalne udostepnienie pelnego SFT w Ollama (2026-11-03)
+
+Wynik jest dostepny jako `venom-functiongemma-270m-g05-sft264-20261103:bf16`.
+Operator wybiera silnik Ollama i ten model; domyslnego modelu stosu nie zmieniono.
+To pelny SFT po 264 aktualizacjach, nie adapter LoRA. GGUF BF16 ma 542847232
+bajty, kontekst operacyjny 2048. Uzywa natywnego renderera i parsera functiongemma.
+
+Lokalny pilot GPU: 16/16 poprawnych decyzji na zamrozonych promptach oraz 4/4
+wywolania narzedzi przez API chat Ollama. Model miesci sie w calosci w VRAM.
+Sprawdzono listowanie, istnienie, odczyt i zapis pliku z JSON-em i nowa linia;
+narzedzia nie byly wykonywane. To proba zgodnosci lokalnego formatu i API,
+nie pelna lokalna ocena 352 przypadkow ani kwalifikacja ogolnego czatu.
+
+Ollama 0.40.11 ucinala argumenty na nowej linii. Celowy test odtworzyl blad;
+poprawka DOTALL i test obu trybow (calosc/strumien) sa w
+`scripts/llm/patches/ollama-0.40.11-functiongemma-multiline.patch`.
+Sprawdzono testy FunctionGemma oraz rzeczywisty zapis JSON-a przez API.
+Usluga uzytkownika venom-ollama.service korzysta z lokalnej wersji w katalogu
+`~/.local/share/venom266/ollama-0.40.11-functiongemma-multiline/` i oryginalnych
+bibliotek 0.40.11. Prywatne dowody importu, hashy i prob sa w
+`data/training/functiongemma-remote-results-20261103/local-models/`.
+
 Oficjalne podstawy: [format Google](https://ai.google.dev/gemma/docs/functiongemma/formatting-and-best-practices)
 i [pelny SFT](https://ai.google.dev/gemma/docs/functiongemma/finetuning-with-functiongemma).

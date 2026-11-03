@@ -1,0 +1,64 @@
+diff --git a/model/parsers/functiongemma.go b/model/parsers/functiongemma.go
+index aeca2d4..03453b8 100644
+--- a/model/parsers/functiongemma.go
++++ b/model/parsers/functiongemma.go
+@@ -159,7 +159,7 @@ func (p *FunctionGemmaParser) eat() ([]functionGemmaEvent, bool) {
+ }
+ 
+ // Matches call:function_name{args}
+-var functionGemmaCallRegex = regexp.MustCompile(`call:([^{]+)\{(.*)\}`)
++var functionGemmaCallRegex = regexp.MustCompile(`(?s)call:([^{]+)\{(.*)\}`)
+ 
+ func (p *FunctionGemmaParser) parseToolCall(content string) (api.ToolCall, error) {
+ 	toolCall := api.ToolCall{}
+diff --git a/model/parsers/functiongemma_multiline_venom_test.go b/model/parsers/functiongemma_multiline_venom_test.go
+new file mode 100644
+index 0000000..1e2c6db
+--- /dev/null
++++ b/model/parsers/functiongemma_multiline_venom_test.go
+@@ -0,0 +1,45 @@
++package parsers
++
++import (
++	"testing"
++
++	"github.com/ollama/ollama/api"
++)
++
++func TestFunctionGemmaMultilineVenom(t *testing.T) {
++	body := "{\"enabled\":true,\"nested\":{\"route\":\"/v2\"}}\n"
++	text := "<start_function_call>call:FileSkill-write_file{content:<escape>" + body + "<escape>,file_path:<escape>services/test/settings.json<escape>}<end_function_call>"
++	for _, streamed := range []bool{false, true} {
++		p := &FunctionGemmaParser{}
++		p.Init(nil, nil, nil)
++		chunks := []string{text}
++		if streamed {
++			chunks = nil
++			for _, char := range text {
++				chunks = append(chunks, string(char))
++			}
++		}
++		var calls []api.ToolCall
++		for i, chunk := range chunks {
++			_, _, got, err := p.Add(chunk, i == len(chunks)-1)
++			if err != nil {
++				t.Fatal(err)
++			}
++			calls = append(calls, got...)
++		}
++		if len(calls) != 1 {
++			t.Fatalf("streamed=%v: expected one call, got %d", streamed, len(calls))
++		}
++		if calls[0].Function.Name != "FileSkill-write_file" {
++			t.Fatalf("wrong function: %s", calls[0].Function.Name)
++		}
++		content, ok := calls[0].Function.Arguments.Get("content")
++		if !ok || content != body {
++			t.Errorf("streamed=%v: content=%#v, want %#v", streamed, content, body)
++		}
++		path, ok := calls[0].Function.Arguments.Get("file_path")
++		if !ok || path != "services/test/settings.json" {
++			t.Errorf("streamed=%v: file_path=%#v", streamed, path)
++		}
++	}
++}

@@ -1,6 +1,7 @@
 # FunctionGemma 270M: lokalny eksperyment narzedziowy
 
-Status: kod przygotowany; model nie jest wytrenowany ani dopuszczony do czatu.
+Status: pelny SFT zakonczony 2026-11-03; model pozostaje niedopuszczony do czatu.
+Porownawcza ocena jakosci jest oddzielna od sukcesu treningu i GPU smoke.
 Galaz: `codex/functiongemma-tool-training`. Zmiany pozostaja lokalne.
 
 Model `google/functiongemma-270m-it` jest przypiety do rewizji
@@ -69,6 +70,25 @@ Raport obejmuje czas, peakVRAM/RSS i wielkosc checkpointu. Nie jest dowodem
 jakosci narzedziowej ani zgoda na aktywacje.
 
 ## Porownanie i kolejne warunki
+### Standard zdalnej oceny i wynik pierwszego pelnego SFT
+
+Zdalna ocena korzysta z **8 rownoleglych workerow**, po 2 watki CPU na worker.
+Przed uruchomieniem odczytaj GPU/VRAM/RAM/CPU; nie zmniejszaj rownoleglosci
+bez pomiaru wskazujacego ograniczenie. Baza i wynik treningu musza miec
+identyczna liczbe workerow, te same przypadki, prompt i limity generacji.
+Jeden koordynator rezerwuje wspolny rejestr GPU na czas zycia workerow.
+Po zmianie rownoleglosci zachowaj poprzednia probe osobno; nie mieszaj
+pomiarow opoznienia z roznych konfiguracji. Ocena nie wykonuje narzedzi.
+
+Pierwszy pelny wynik: `functiongemma-full-remote-20261103-v1`, proba 2,
+264 aktualizacje / 3 epoki, 1408 decyzji treningowych i 352 walidacyjne,
+kontekst 2048, batch4/akumulacja4. GPU smoke: zapis/reload/resume/zmiana wag PASS.
+Pelny trening: succeeded; ostatni loss treningowy 0.000024993,
+loss walidacyjny 0.000135300. Peak VRAM 21.84 GB. Prywatny lokalny pakiet
+`data/training/functiongemma-remote-results-20261103/full-result.zip`
+ma 2209970581 bajtow; inspect-result potwierdzil complete=true, brak bledow.
+Te metryki nie zastepuja oceny poprawnosci wywolan ani niezaleznego testu koncowego.
+
 
 `compare TRIALS.json` porownuje sparowane B0/F1/L1 po case_id, problem_group
 i tych samych hashach benchmark_sha256/tools_sha256/generation_sha256.

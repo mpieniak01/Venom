@@ -404,3 +404,17 @@ identities, receipts and comparison outputs. Local acceptance on the 12 GB RTX
 adapter with its exact training base and conversion to the intended GGUF
 quantization. Neither this pilot nor vendor GGUF metadata proves arbitrary
 adapter injection compatibility. Preserve existing models until acceptance.
+
+### Bootstrap interpreter and image inference
+
+Run host preparation through managed Python 3.14.8, including the bootstrap
+controller. Ubuntu VM system Python 3.10 cannot validate native snapshot hashes
+(`hashlib.file_digest`). After installing the verified uv executable, use
+`uv run --no-project --python 3.14.8 python scripts/remote_training_host/prepare.py`
+with the selected profile and normal plan/apply arguments. A snapshot directory
+must be named with the pinned revision SHA, not a friendly variant alias.
+
+Image generation uses CUDA BF16 autocast: NF4 leaves vision LayerNorm weights
+in FP32, including the 12B Unified patch embedder. Casting processor pixels
+alone does not qualify this mixed-precision path. A failed image evaluation can
+be rerun under a new output identity without repeating a sealed text training.

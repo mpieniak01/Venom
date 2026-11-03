@@ -6,7 +6,7 @@ import base64
 import copy
 import hashlib
 import json
-from contextlib import nullcontext
+from contextlib import contextmanager, nullcontext
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
@@ -275,6 +275,17 @@ def test_native_image_tensor_fields_reach_generate_on_same_adapter_model(
     monkeypatch.setattr(comparison_parallel, "_image_payload", lambda *a: payload)
     calls = []
     disabled = []
+    autocast_active = [False]
+
+    @contextmanager
+    def autocast(device, *, dtype):
+        assert device == "cuda"
+        assert dtype == "bf16"
+        autocast_active[0] = True
+        try:
+            yield
+        finally:
+            autocast_active[0] = False
 
     class Tokens(list):
         def tolist(self):
@@ -286,6 +297,9 @@ def test_native_image_tensor_fields_reach_generate_on_same_adapter_model(
             return Tokens([10, 11])
 
     def generate(**kwargs):
+        assert autocast_active[0], (
+            "image generation requires mixed-precision normalization"
+        )
         calls.append(kwargs)
         return Output()
 
@@ -319,6 +333,7 @@ def test_native_image_tensor_fields_reach_generate_on_same_adapter_model(
         torch=SimpleNamespace(
             bfloat16="bf16",
             inference_mode=nullcontext,
+            autocast=autocast,
             cuda=SimpleNamespace(synchronize=lambda: None),
         ),
     )
@@ -327,6 +342,7 @@ def test_native_image_tensor_fields_reach_generate_on_same_adapter_model(
         session, [(messages, TOOLS, "base", float("inf"))]
     )
     assert len(disabled) == 1
+    assert not autocast_active[0]
     assert payload.transfer == ("cuda", {"dtype": "bf16"})
     assert calls[0]["eos_token_id"] == [90, 91, 92]
     assert calls[0]["pixel_values"] == "pixels"

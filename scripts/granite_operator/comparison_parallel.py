@@ -179,7 +179,12 @@ def _generate_image(session, request, inference):
     )
     session.torch.cuda.synchronize()
     start = time.monotonic()
-    with context, session.torch.inference_mode():
+    # NF4 keeps some vision normalization weights in FP32.
+    with (
+        context,
+        session.torch.inference_mode(),
+        session.torch.autocast("cuda", dtype=session.torch.bfloat16),
+    ):
         output = session.model.generate(
             **payload,
             max_new_tokens=inference["max_new_tokens"],

@@ -89,6 +89,11 @@ Zbuduj nowy pakiet/run_id, potwierdź identyczność zamierzonych danych i wykon
 nowe smoke. Zachowaj poprzedni pakiet i logi. Zmiana samego oracle oceny nie
 wymaga ponownego treningu; wymaga wersjonowanego dowodu nowej oceny.
 
+Dla Gemmy również sam kontroler `prepare.py` uruchamiaj przez zarządzany Python
+3.14.8: `uv run --no-project --python 3.14.8 python scripts/remote_training_host/prepare.py`.
+Systemowy Python 3.10 nie obsługuje walidacji hashy snapshotu. Katalog snapshotu
+musi kończyć się przypiętym SHA rewizji, a nie aliasem wariantu.
+
 ## Kontenery przed oceną GPU
 
 Po przygotowaniu środowiska i przesłaniu zamrożonego benchmarku oraz jego

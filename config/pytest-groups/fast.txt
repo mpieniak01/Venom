@@ -176,6 +176,7 @@ tests/test_gemma4_data_release.py
 tests/test_gemma4_operator_cases.py
 tests/test_gemma4_operator_cli.py
 tests/test_gemma4_operator_experience.py
+tests/test_gemma4_operator_identity.py
 tests/test_gemma4_operator_material.py
 tests/test_gemma4_operator_protocol.py
 tests/test_gemma4_operator_runtime.py

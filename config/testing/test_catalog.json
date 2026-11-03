@@ -7947,6 +7947,20 @@
       ],
       "legacy_targeted": false,
       "rationale": "Opt-in selected model reuses guarded runtime and captures authoritative tool history."
+    },
+    {
+      "path": "tests/test_gemma4_operator_identity.py",
+      "domain": "academy",
+      "test_type": "service_contract",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Explicit Ollama 12B model selection is bound to the training checkpoint without following moving aliases."
     }
   ]
 }

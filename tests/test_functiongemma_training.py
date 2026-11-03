@@ -276,7 +276,11 @@ def test_parameter_and_logits_evidence(monkeypatch):
 
     import venom_core.services.granite_operator.engine as engine
 
-    monkeypatch.setattr(engine, "tensor_hash", lambda value: str(value))
+    monkeypatch.setattr(
+        engine,
+        "tensor_hash",
+        lambda named: str([(name, value) for name, value in named]),
+    )
     model = NS(
         named_parameters=lambda: [
             ("a", NS(requires_grad=True)),
@@ -299,5 +303,5 @@ def test_parameter_and_logits_evidence(monkeypatch):
     )
     assert (
         worker.probe_logits(Model(), {"input_ids": [1], "attention_mask": [1]})
-        == "logits"
+        == "[('logits', 'logits')]"
     )

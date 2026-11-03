@@ -204,7 +204,7 @@ def parameter_evidence(model):
     from venom_core.services.granite_operator.engine import tensor_hash
 
     return {
-        name: tensor_hash(parameter)
+        name: tensor_hash([(name, parameter)])
         for name, parameter in model.named_parameters()
         if parameter.requires_grad
     }
@@ -221,7 +221,7 @@ def probe_logits(model, row):
         for key in ("input_ids", "attention_mask")
     }
     with torch.inference_mode():
-        return tensor_hash(model(**values).logits)
+        return tensor_hash([("logits", model(**values).logits)])
 
 
 def _execute(request, recipe, records, snapshot, output, fingerprint, resume):

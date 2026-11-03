@@ -307,3 +307,12 @@ def test_parameter_and_logits_evidence(monkeypatch):
         worker.probe_logits(Model(), {"input_ids": [1], "attention_mask": [1]})
         == "[('logits', 'logits')]"
     )
+
+
+def test_pinned_transformers_warmup_contract():
+    recipe = Recipe(context=2048)
+    full = worker.trainer_arguments(recipe, Path("out"), smoke=False)
+    smoke = worker.trainer_arguments(recipe, Path("out"), smoke=True)
+    assert "warmup_ratio" not in full
+    assert full["warmup_steps"] == 0.05
+    assert smoke["warmup_steps"] == 0.0

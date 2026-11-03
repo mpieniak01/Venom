@@ -108,7 +108,7 @@ def trainer_arguments(recipe: Recipe, output: Path, *, smoke: bool) -> dict:
         "gradient_accumulation_steps": recipe.accumulation,
         "learning_rate": recipe.learning_rate,
         "weight_decay": recipe.weight_decay,
-        "warmup_ratio": 0.0 if smoke else recipe.warmup_ratio,
+        "warmup_steps": 0.0 if smoke else recipe.warmup_ratio,
         "lr_scheduler_type": "linear",
         "optim": "adamw_torch",
         "bf16": True,

@@ -122,13 +122,16 @@ def propose(
     marker = tokenizer.convert_tokens_to_ids("<start_function_response>")
     if type(marker) is not int or marker < 0 or marker == tokenizer.unk_token_id:
         raise ValueError("functiongemma_response_stop_missing")
+    turn_end = tokenizer.convert_tokens_to_ids("<end_of_turn>")
+    if type(turn_end) is not int or turn_end < 0 or turn_end == tokenizer.unk_token_id:
+        raise ValueError("functiongemma_turn_stop_missing")
     model.eval()
     with torch.inference_mode():
         generated = model.generate(
             **inputs,
             do_sample=False,
             max_new_tokens=max_new_tokens,
-            eos_token_id=[tokenizer.eos_token_id, marker],
+            eos_token_id=list(dict.fromkeys([tokenizer.eos_token_id, marker, turn_end])),
         )
     output = generated[0][inputs["input_ids"].shape[-1] :]
     # A response marker is a boundary, never evidence of execution.

@@ -208,14 +208,21 @@ def test_proposal_has_no_execution(monkeypatch):
             return {"input_ids": Tensor()}
 
         def convert_tokens_to_ids(self, token):
-            return 5
+            return {"<start_function_response>": 5, "<end_of_turn>": 6}[token]
 
         def decode(self, *a, **k):
             return text[0]
 
-    model = NS(device="cuda", eval=lambda: None, generate=lambda **k: [[1, 2, 3]])
+    generation = []
+
+    def generate(**kwargs):
+        generation.append(kwargs)
+        return [[1, 2, 3]]
+
+    model = NS(device="cuda", eval=lambda: None, generate=generate)
     result = evaluation.propose(Tokenizer(), model, [], TOOLS)
     assert result["decision"] == "propose"
+    assert generation[-1]["eos_token_id"] == [1, 5, 6]
     assert result["execution_authorized"] is False
     assert (
         evaluation.propose(Tokenizer(), model, [], TOOLS, context=1)["reason"]

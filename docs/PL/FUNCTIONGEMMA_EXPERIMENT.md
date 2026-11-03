@@ -73,6 +73,24 @@ jakosci narzedziowej ani zgoda na aktywacje.
 ### Standard zdalnej oceny i wynik pierwszego pelnego SFT
 
 Zdalna ocena korzysta z **8 rownoleglych workerow**, po 2 watki CPU na worker.
+Przed kazdym dlugim przebiegiem obowiazuje **pilot -> przeglad surowych
+wynikow -> pelny zestaw**. Dla oceny narzedziowej pilot obejmuje co najmniej
+16 reprezentatywnych przypadkow na wariant: PL/EN, kazde narzedzie, brak
+wywolania, escapowanie i dlugi kontekst. Sprawdz rzeczywiste zakonczenie
+generacji oraz zgodnosc oceny z odpowiedzia; sam kod wyjscia 0 nie wystarcza.
+Przy nowym loaderze/treningu analogiczna bramka obejmuje smoke wag i reload.
+
+Proces oceny wprowadza domyslny tryb pilot. Tryb full wymaga review.json
+z PASS, potwierdzeniem przegladu odpowiedzi i granic zatrzymania oraz hashami
+podsumowania pilota, danych, wag obu wariantow i skryptu. Zmiana parametrow
+generacji lub rownoleglosci uniewaznia dowod. Brak review ma blokowac start
+przed utworzeniem wynikow i rezerwacja GPU; sprawdzono rzeczywiste odrzucenie
+takiego wywolania. Runner i dowody sa prywatnymi artefaktami eksperymentu.
+
+Historyczny pomiar bez stopu na <end_of_turn> jest niepoprawnym pomiarem;
+nie uzywac go jako wyniku jakosci modelu. Zachowac jako dowod bledu ewaluatora.
+Pilot po poprawce: B0 8/16, F1 16/16; przejrzano wszystkie 32 odpowiedzi.
+
 Przed uruchomieniem odczytaj GPU/VRAM/RAM/CPU; nie zmniejszaj rownoleglosci
 bez pomiaru wskazujacego ograniczenie. Baza i wynik treningu musza miec
 identyczna liczbe workerow, te same przypadki, prompt i limity generacji.

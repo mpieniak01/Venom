@@ -196,6 +196,27 @@ def assert_runtime_request_allowed(*, request_kind: str) -> None:
     )
 
 
+async def cancel_runtime_switch_for_release() -> None:
+    """Let an operator interrupt activation, without interrupting another cleanup."""
+    with _STATE_LOCK:
+        if not _STATE.in_progress:
+            return
+        owner = _STATE.owner_task
+        if _STATE.source == "models-release" or owner is asyncio.current_task():
+            raise HTTPException(
+                status_code=409, detail={"code": "model_resources_releasing"}
+            )
+        if owner is None or owner.done():
+            _clear_gate_unlocked()
+            return
+    owner.cancel()
+    _, pending = await asyncio.wait({owner}, timeout=30)
+    if pending:
+        raise HTTPException(
+            status_code=409, detail={"code": "runtime_release_work_not_drained"}
+        )
+
+
 def begin_runtime_switch(
     *,
     source: str,

@@ -848,3 +848,123 @@ async def test_llm_recovery_never_clears_a_failed_global_cleanup(world, monkeypa
             controller, runtime_ids={"ollama"}, include_registered=False
         )
     assert world.snapshot()["status"] == "quarantined"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("unload_ok", [True, False])
+async def test_operator_release_recovers_dead_training_owner_only_after_unload(
+    world, monkeypatch, unload_ok
+):
+    from unittest.mock import AsyncMock
+
+    lease = world.acquire(
+        owner="training", run_id="old", engine="training", model="fixture"
+    )
+    with world._transaction() as db:
+        db.execute("UPDATE lease SET pid=999999")
+        db.execute(
+            "INSERT INTO operation (token,lease_token,kind,pid) VALUES (?,?,?,?)",
+            ("old-work", lease._token, "lifecycle", 999999),
+        )
+
+    async def unload(endpoint):
+        assert world.snapshot()["owner"] == "training"
+        if not unload_ok:
+            raise ValueError("runtime_release_models_remaining")
+        return ["fixture"]
+
+    monkeypatch.setattr(service, "_listening", AsyncMock(return_value=True))
+    monkeypatch.setattr(service, "_unload_ollama", unload)
+    controller = SimpleNamespace(
+        list_servers=lambda: [{"name": "ollama", "endpoint": "http://127.0.0.1:11434"}]
+    )
+    if unload_ok:
+        result = await service.release_all_runtime_models(controller)
+        assert result["released"]
+        assert world.snapshot()["status"] == "available"
+    else:
+        with pytest.raises(HTTPException):
+            await service.release_all_runtime_models(controller)
+        assert world.snapshot()["owner"] == "training"
+        assert world.snapshot()["status"] == "quarantined"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("enabled", [True, False])
+async def test_operator_release_cancels_and_joins_active_chat_before_unload(
+    world, monkeypatch, enabled
+):
+    from unittest.mock import AsyncMock
+
+    world.enabled = enabled
+    entered = asyncio.Event()
+    stopped = asyncio.Event()
+
+    async def chat():
+        with world.operation(kind="simple_chat"):
+            entered.set()
+            try:
+                await asyncio.Event().wait()
+            finally:
+                stopped.set()
+
+    task = asyncio.create_task(chat())
+    await entered.wait()
+
+    async def unload(endpoint):
+        assert stopped.is_set()
+        assert task.cancelled()
+        return ["fixture"]
+
+    monkeypatch.setattr(service, "_listening", AsyncMock(return_value=True))
+    monkeypatch.setattr(service, "_unload_ollama", unload)
+    controller = SimpleNamespace(
+        list_servers=lambda: [{"name": "ollama", "endpoint": "http://127.0.0.1:11434"}]
+    )
+    try:
+        result = await service.release_all_runtime_models(controller)
+        assert result["released"]
+        assert world._operation_tasks == {}
+    finally:
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+
+
+@pytest.mark.asyncio
+async def test_operator_release_interrupts_pending_model_activation(world, monkeypatch):
+    from unittest.mock import AsyncMock
+
+    from venom_core.services.runtime_switch_gate import (
+        begin_runtime_switch,
+        finish_runtime_switch,
+    )
+
+    entered = asyncio.Event()
+    stopped = asyncio.Event()
+
+    async def activate():
+        gate = begin_runtime_switch(
+            source="model-activation", from_runtime="old", to_runtime="new"
+        )
+        try:
+            with world.operation(kind="runtime_switch", mutation=True):
+                entered.set()
+                await asyncio.Event().wait()
+        finally:
+            finish_runtime_switch(switch_id=gate.switch_id)
+            stopped.set()
+
+    task = asyncio.create_task(activate())
+    await entered.wait()
+    monkeypatch.setattr(service, "_listening", AsyncMock(return_value=False))
+    controller = SimpleNamespace(
+        list_servers=lambda: [{"name": "ollama", "endpoint": "http://127.0.0.1:11434"}]
+    )
+    try:
+        assert (await service.release_all_runtime_models(controller))["released"]
+        assert stopped.is_set()
+        assert task.cancelled()
+        assert world.snapshot()["status"] == "available"
+    finally:
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)

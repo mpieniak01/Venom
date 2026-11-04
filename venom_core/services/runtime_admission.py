@@ -52,6 +52,19 @@ _CURRENT_EVIDENCE: ContextVar[_OperationEvidence | None] = ContextVar(
     "runtime_operation_evidence", default=None
 )
 
+
+def _owner_has_exited(pid: int, identity: str | None = None) -> bool:
+    """Positive process-death evidence; unreadable metadata is not evidence."""
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return True
+    except (PermissionError, ValueError):
+        return False
+    current = process_instance_identity(pid) if identity else None
+    return current is not None and current != identity
+
+
 _HOST_LOCKS: dict[Path, tuple[int, int]] = {}
 _HOST_LOCKS_MUTEX = threading.Lock()
 
@@ -186,6 +199,7 @@ class RuntimeAdmission:
         self.database = database
         self.enabled = enabled
         self._tasks: set[asyncio.Task[Any]] = set()
+        self._operation_tasks: dict[str, tuple[asyncio.Task[Any], str]] = {}
 
     @contextmanager
     def _transaction(self) -> Iterator[sqlite3.Connection]:
@@ -380,6 +394,12 @@ class RuntimeAdmission:
             if token is not None:
                 raise RuntimeAdmissionError("runtime_lease_invalid")
             return
+        if (
+            cleanup
+            and token is None
+            and _owner_has_exited(lease["pid"], lease["process_identity"])
+        ):
+            return  # Keep the lease as evidence until verified cleanup recovers it.
         if token != lease["token"] or (
             not cleanup and (lease["quarantine"] or lease["cancelled"])
         ):
@@ -446,7 +466,15 @@ class RuntimeAdmission:
             # A trusted host cleanup may verify uncertain daemon work.
             # It cannot erase or interrupt a live host operation or lease.
             query += " AND (uncertain=0 OR lease_token IS NOT NULL)"
-        conflict = db.execute(query, (own_token,)).fetchone()
+        conflicts = db.execute(query, (own_token,)).fetchall()
+        conflict = next(
+            (
+                row
+                for row in conflicts
+                if not (cleanup and token is None and _owner_has_exited(row["pid"]))
+            ),
+            None,
+        )
         if conflict is not None:
             code = "runtime_busy"
             if conflict["uncertain"] or conflict["pid"] != os.getpid():
@@ -553,6 +581,13 @@ class RuntimeAdmission:
         context = _CURRENT_OPERATION.set(operation or _CURRENT_OPERATION.get())
         lease_context = _CURRENT_LEASE.set(token)
         execution_context = _CURRENT_EXECUTION.set(_execution_identity())
+        try:
+            task = asyncio.current_task()
+        except RuntimeError:
+            task = None
+        task_key = operation or uuid4().hex
+        if task is not None:
+            self._operation_tasks[task_key] = (task, kind)
         uncertain = False
         try:
             yield
@@ -565,6 +600,7 @@ class RuntimeAdmission:
                 uncertain = confirm_quiescent is None or not confirm_quiescent()
             raise
         finally:
+            self._operation_tasks.pop(task_key, None)
             if uncertain and operation is None:
                 self.mark_current_uncertain()
             _CURRENT_EXECUTION.reset(execution_context)
@@ -572,6 +608,26 @@ class RuntimeAdmission:
             _CURRENT_OPERATION.reset(context)
             _CURRENT_EVIDENCE.reset(evidence_context)
             self._finish(operation, uncertain=uncertain)
+
+    async def cancel_host_operations(
+        self, *, kinds: frozenset[str] | None = None
+    ) -> None:
+        """Operator cancellation joins asyncio owners; native threads remain tracked."""
+        current = asyncio.current_task()
+        tasks = {
+            task
+            for task, kind in tuple(self._operation_tasks.values())
+            if task is not current
+            and kind not in _CLEANUP_KINDS
+            and (kinds is None or kind in kinds)
+            and not task.done()
+        }
+        for task in tasks:
+            task.cancel()
+        if tasks:
+            _, pending = await asyncio.wait(tasks, timeout=30)
+            if pending:
+                raise RuntimeAdmissionError("runtime_release_work_not_drained")
 
     def mark_current_uncertain(self) -> None:
         """Keep failure evidence even if a legacy caller catches an exception."""

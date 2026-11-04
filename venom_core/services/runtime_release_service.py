@@ -21,6 +21,7 @@ from venom_core.services.model_resources import (
 from venom_core.services.runtime_admission import get_runtime_admission
 from venom_core.services.runtime_switch_gate import (
     begin_runtime_switch,
+    cancel_runtime_switch_for_release,
     finish_runtime_switch,
     wait_for_runtime_requests_to_drain,
 )
@@ -263,6 +264,7 @@ async def release_all_runtime_models(
     """Serialize LLM cleanup; pause in-process owners only for global release."""
     barrier = release_barrier() if include_registered else nullcontext()
     with barrier:
+        await cancel_runtime_switch_for_release()
         gate = begin_runtime_switch(
             source="models-release",
             from_runtime="local",
@@ -270,6 +272,9 @@ async def release_all_runtime_models(
             reason="operator_release",
         )
         try:
+            await get_runtime_admission().cancel_host_operations(
+                kinds=None if include_registered else _LLM_RECOVERY_KINDS
+            )
             before = await asyncio.to_thread(memory_snapshot)
             if include_registered:
                 await prepare_registered_models()

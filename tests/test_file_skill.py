@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from venom_core.core.permission_guard import permission_guard
+from venom_core.execution.operator_file_write import OperatorFileWrites
 from venom_core.execution.skills.file_skill import FileSkill
 from venom_core.services.audit_stream import get_audit_stream
 
@@ -684,3 +685,168 @@ async def test_list_files_returns_error_for_file_path(temp_workspace):
 
     result = skill.list_files("single.txt")
     assert "nie jest katalogiem" in result
+
+
+def test_operator_write_requires_matching_single_use_approval(tmp_path):
+    writes = OperatorFileWrites(tmp_path)
+    content = b'  line="ok"\r\n'
+    token = writes.prepare("session-a", "report.txt", content)
+    with pytest.raises(PermissionError, match="approval_required"):
+        OperatorFileWrites(tmp_path).execute(token, "session-a", "report.txt", content)
+    with pytest.raises(PermissionError, match="approval_required"):
+        writes.execute(token, "session-b", "report.txt", content)
+    assert list(tmp_path.iterdir()) == []
+    writes.execute(token, "session-a", "report.txt", content)
+    assert (tmp_path / "report.txt").read_bytes() == content
+    with pytest.raises(PermissionError, match="approval_required"):
+        writes.execute(token, "session-a", "report.txt", content)
+
+
+@pytest.mark.parametrize(
+    ("proposed_path", "proposed_bytes", "overwrite"),
+    [
+        ("guessed.txt", b"approved", False),
+        ("report.txt", b"superseded draft", False),
+        ("report.txt", b"approved", True),
+    ],
+)
+def test_operator_write_rejects_modified_model_proposal(
+    tmp_path, proposed_path, proposed_bytes, overwrite
+):
+    writes = OperatorFileWrites(tmp_path)
+    approval = writes.prepare("operator", "report.txt", b"approved")
+    with pytest.raises(PermissionError, match="approval_mismatch"):
+        writes.execute(
+            approval, "operator", proposed_path, proposed_bytes, overwrite=overwrite
+        )
+    assert list(tmp_path.iterdir()) == []
+    with pytest.raises(PermissionError, match="approval_required"):
+        writes.execute(approval, "operator", "report.txt", b"approved")
+
+
+def test_operator_write_distinguishes_missing_empty_and_overwrite(tmp_path):
+    writes = OperatorFileWrites(tmp_path)
+    with pytest.raises(ValueError, match="content_required"):
+        writes.prepare("operator", "empty.txt", None)
+    assert not (tmp_path / "empty.txt").exists()
+    token = writes.prepare("operator", "empty.txt", b"")
+    writes.execute(token, "operator", "empty.txt", b"")
+    dest = tmp_path / "empty.txt"
+    assert dest.read_bytes() == b""
+    with pytest.raises(FileExistsError, match="overwrite_confirmation_required"):
+        writes.prepare("operator", "empty.txt", b"replacement")
+    token = writes.prepare("operator", "empty.txt", b"replacement", overwrite=True)
+    writes.execute(token, "operator", "empty.txt", b"replacement", overwrite=True)
+    assert dest.read_bytes() == b"replacement"
+
+
+def test_operator_write_rejects_changed_target_and_revoked_permission(tmp_path):
+    writes = OperatorFileWrites(tmp_path)
+    token = writes.prepare("operator", "report.txt", b"approved")
+    dest = tmp_path / "report.txt"
+    dest.write_bytes(b"concurrent content")
+    with pytest.raises(PermissionError, match="target_changed"):
+        writes.execute(token, "operator", "report.txt", b"approved")
+    assert dest.read_bytes() == b"concurrent content"
+    token = writes.prepare("operator", "report.txt", b"replacement", overwrite=True)
+    permission_guard.set_level(0)
+    with pytest.raises(PermissionError, match="permission_required"):
+        writes.execute(token, "operator", "report.txt", b"replacement", overwrite=True)
+    assert dest.read_bytes() == b"concurrent content"
+    assert list(tmp_path.iterdir()) == [dest]
+
+
+def test_operator_write_confines_paths_and_symlinks(tmp_path):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    outside = tmp_path / "outside.txt"
+    outside.write_bytes(b"unchanged")
+    (workspace / "link.txt").symlink_to(outside)
+    (workspace / "outside").symlink_to(tmp_path, target_is_directory=True)
+    writes = OperatorFileWrites(workspace)
+    with pytest.raises(ValueError, match="relative_path_required"):
+        writes.prepare("operator", "../outside.txt", b"blocked")
+    with pytest.raises(PermissionError, match="regular_target_required"):
+        writes.prepare("operator", "link.txt", b"blocked", overwrite=True)
+    with pytest.raises(OSError):
+        writes.prepare("operator", "outside/outside.txt", b"blocked", overwrite=True)
+    assert outside.read_bytes() == b"unchanged"
+
+
+def test_operator_write_expired_approval_does_not_create_file(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    from venom_core.execution import operator_file_write
+
+    now = [0.0]
+    monkeypatch.setattr(
+        operator_file_write, "time", SimpleNamespace(monotonic=lambda: now[0])
+    )
+    writes = OperatorFileWrites(tmp_path)
+    token = writes.prepare("operator", "report.txt", b"approved")
+    now[0] = 121.0
+    with pytest.raises(PermissionError, match="approval_required"):
+        writes.execute(token, "operator", "report.txt", b"approved")
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_local_operator_command_rejects_model_proposal_without_mutation(
+    tmp_path, monkeypatch
+):
+    from scripts import operator_file_write as command
+
+    content = tmp_path / "body"
+    content.write_bytes(b"reviewed\n")
+    proposal = tmp_path / "proposal.json"
+    proposal.write_text('{"file_path":"approved.txt","content":"guessed"}')
+    monkeypatch.setattr(command.SETTINGS, "WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setattr(command.sys.stdin, "isatty", lambda: True)
+    monkeypatch.setattr(command.sys.stdout, "isatty", lambda: True)
+    monkeypatch.setattr(
+        command.sys,
+        "argv",
+        [
+            "operator_file_write",
+            "--session",
+            "local",
+            "--path",
+            "approved.txt",
+            "--content-file",
+            str(content),
+            "--proposal",
+            str(proposal),
+        ],
+    )
+    assert command.main() == 1
+    assert not (tmp_path / "approved.txt").exists()
+
+
+def test_local_operator_command_loads_policy_and_preserves_bytes(tmp_path, monkeypatch):
+    from scripts import operator_file_write as command
+
+    content = tmp_path / "body"
+    content.write_bytes(b"exact\r\n")
+    state_file = tmp_path / "state.json"
+    state_file.write_text('{"autonomy_level":30}')
+    monkeypatch.setattr(command.SETTINGS, "WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setattr(command.SETTINGS, "STATE_FILE_PATH", str(state_file))
+    monkeypatch.setattr(command.sys.stdin, "isatty", lambda: True)
+    monkeypatch.setattr(command.sys.stdout, "isatty", lambda: True)
+    monkeypatch.setattr(permission_guard, "_state_manager", None)
+    monkeypatch.setattr(permission_guard, "_current_level", 0)
+    monkeypatch.setattr("builtins.input", lambda _: "zapisz")
+    monkeypatch.setattr(
+        command.sys,
+        "argv",
+        [
+            "operator_file_write",
+            "--session",
+            "local",
+            "--path",
+            "approved.txt",
+            "--content-file",
+            str(content),
+        ],
+    )
+    assert command.main() == 0
+    assert (tmp_path / "approved.txt").read_bytes() == b"exact\r\n"

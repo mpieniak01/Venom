@@ -6,6 +6,8 @@ import sys
 from pathlib import Path
 
 from venom_core.config import SETTINGS
+from venom_core.core.permission_guard import permission_guard
+from venom_core.core.state_manager import StateManager
 from venom_core.execution.operator_file_write import (
     MAX_CONTENT_BYTES,
     OperatorFileWrites,
@@ -71,6 +73,9 @@ def main() -> int:
         )
         if input('Aby zatwierdzić, wpisz "zapisz": ') != "zapisz":
             return 1
+        permission_guard.set_state_manager(
+            StateManager(state_file_path=SETTINGS.STATE_FILE_PATH)
+        )
         writes.execute(
             approval,
             args.session,

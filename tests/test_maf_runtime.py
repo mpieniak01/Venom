@@ -34,14 +34,14 @@ def completion(text="odpowiedź", calls=None):
     }
 
 
-def service(handler):
+def service(handler, model_id="fixture-model"):
     client = AsyncOpenAI(
         api_key="local-fixture",
         base_url="http://fixture.invalid/v1",
         http_client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
         max_retries=0,
     )
-    return MafChatService("local", "fixture-model", async_client=client)
+    return MafChatService("local", model_id, async_client=client)
 
 
 @pytest.mark.asyncio
@@ -1231,3 +1231,53 @@ async def test_reenabled_retry_timeout_cannot_reuse_an_earlier_policy_denial(
         assert maf_admission.snapshot()["status"] == "quarantined"
     finally:
         await model.aclose()
+
+
+@pytest.mark.asyncio
+async def test_functiongemma_wire_and_executor_exclude_mutating_tools(tmp_path):
+    from venom_core.execution.skills.file_skill import FileSkill
+
+    requests = []
+
+    def respond(request):
+        requests.append(json.loads(request.content))
+        if len(requests) == 1:
+            return httpx.Response(
+                200,
+                json=completion(
+                    None,
+                    [
+                        {
+                            "id": "forged",
+                            "type": "function",
+                            "function": {
+                                "name": "FileSkill-write_file",
+                                "arguments": '{"file_path":"unexpected.txt","content":"injected"}',
+                            },
+                        }
+                    ],
+                ),
+            )
+        return httpx.Response(200, json=completion())
+
+    model = service(respond, "venom-functiongemma-270m-g07:bf16")
+    runtime = AgentRuntime(permission_checker=lambda _: True)
+    runtime.add_service(model)
+    runtime.add_plugin(FileSkill(str(tmp_path)), "FileSkill")
+    history = ConversationHistory()
+    history.add_user_message("Odczytaj notatkę z katalogu.")
+    try:
+        with pytest.raises(KeyError, match="FileSkill-write_file"):
+            await model.get_chat_message_content(
+                chat_history=history,
+                settings=CompletionOptions(function_choice_behavior=ToolPolicy.Auto()),
+                kernel=runtime,
+            )
+    finally:
+        await runtime.aclose()
+    assert {t["function"]["name"] for t in requests[0]["tools"]} == {
+        "FileSkill-file_exists",
+        "FileSkill-list_files",
+        "FileSkill-read_file",
+    }
+    assert not (tmp_path / "unexpected.txt").exists()

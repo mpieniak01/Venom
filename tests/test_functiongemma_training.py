@@ -31,6 +31,19 @@ def test_budget_and_validation():
     assert len(Recipe().fingerprint) == 64
 
 
+def test_fp32_recipe_changes_identity_and_requires_full_training():
+    assert "parameter_dtype" not in Recipe().identity()
+    recipe = Recipe(parameter_dtype="fp32")
+    assert recipe.identity()["parameter_dtype"] == "fp32"
+    assert recipe.fingerprint != Recipe().fingerprint
+    for invalid in (
+        Recipe(parameter_dtype="bf16"),
+        Recipe(method="lora", parameter_dtype="fp32"),
+    ):
+        with pytest.raises(ValueError, match="parameter_dtype"):
+            invalid.validate()
+
+
 def test_environment(monkeypatch):
     monkeypatch.setattr(worker.platform, "python_version", lambda: "3.14.8")
     monkeypatch.setattr(
@@ -101,7 +114,7 @@ def test_missing_resume_state(tmp_path):
         worker._seal(tmp_path, "fp")
 
 
-def fake_runtime(monkeypatch):
+def fake_runtime(monkeypatch, loads=None):
     import sys
 
     counter = iter(range(100))
@@ -117,19 +130,25 @@ def fake_runtime(monkeypatch):
         reset_peak_memory_stats=lambda: None,
         max_memory_allocated=lambda: 123,
     )
-    torch = NS(cuda=cuda, bfloat16="bf16", tensor=lambda value: value)
+    torch = NS(
+        cuda=cuda, bfloat16="bf16", float32="torch.float32", tensor=lambda value: value
+    )
     model = NS(
         config=NS(architectures=["Gemma3ForCausalLM"]),
         named_modules=lambda: [
             (name, None) for name in ("q_proj", "k_proj", "v_proj", "o_proj")
         ],
-        parameters=lambda: [NS(device=NS(type="cuda"))],
+        parameters=lambda: [
+            NS(device=NS(type="cuda"), requires_grad=True, dtype=torch.float32)
+        ],
     )
 
     class Trainer:
         def __init__(self, **kwargs):
             self.args = kwargs["args"]
             self.state = NS(global_step=0)
+            moment = NS(dtype=torch.float32)
+            self.optimizer = NS(state={0: {"exp_avg": moment, "exp_avg_sq": moment}})
 
         def train(self, resume_from_checkpoint=None):
             self.state.global_step = getattr(self.args, "max_steps", 3)
@@ -138,8 +157,13 @@ def fake_runtime(monkeypatch):
                 / ("checkpoint-" + str(self.state.global_step))
             )
 
+    def load_model(*args, **kwargs):
+        if loads is not None:
+            loads.append(kwargs["dtype"])
+        return model
+
     transformers = NS(
-        AutoModelForCausalLM=NS(from_pretrained=lambda *a, **k: model),
+        AutoModelForCausalLM=NS(from_pretrained=load_model),
         AutoTokenizer=NS(
             from_pretrained=lambda *a, **k: NS(pad_token_id=0, chat_template="native")
         ),
@@ -183,6 +207,35 @@ def test_smoke_save_reload_resume(tmp_path, monkeypatch, method):
     assert result["qualified"] is True
     assert result["activation_allowed"] is False
     worker.verify_checkpoint(Path(result["checkpoint"]), "fp")
+
+
+def test_full_fp32_training_uses_fp32_on_reload(tmp_path, monkeypatch):
+    loads = []
+    fake_runtime(monkeypatch, loads)
+    recipe = Recipe(parameter_dtype="fp32")
+    result = worker._execute(
+        request(),
+        recipe,
+        {"train": [{}], "validation": [{}]},
+        tmp_path,
+        tmp_path / "fp32",
+        "fingerprint",
+        None,
+    )
+    assert loads == ["torch.float32", "torch.float32"]
+    assert result["precision"] == {
+        "trainable_parameters": ["torch.float32"],
+        "optimizer_moments": ["torch.float32"],
+        "autocast": "torch.bfloat16",
+    }
+    assert result["checks"]["resume"]
+
+
+def test_fp32_rejects_bf16_moments():
+    model = NS(parameters=lambda: [NS(requires_grad=True, dtype="torch.float32")])
+    optimizer = NS(state={0: {"exp_avg": NS(dtype="torch.bfloat16")}})
+    with pytest.raises(RuntimeError, match="optimizer_precision"):
+        worker.optimizer_precision(model, optimizer)
 
 
 def test_training_and_cuda_rejection(tmp_path, monkeypatch):

@@ -387,10 +387,18 @@ def test_warm_start_uses_checkpoint_weights_and_base_tokenizer(tmp_path, monkeyp
         sys.modules["transformers"].AutoTokenizer, "from_pretrained", load_tokenizer
     )
     base, initial = tmp_path / "base", tmp_path / "warm-start"
+    transformers = sys.modules["transformers"]
+
+    class MilestoneTrainer(transformers.Trainer):
+        def train(self, resume_from_checkpoint=None):
+            super().train(resume_from_checkpoint)
+            checkpoint(Path(self.args.output_dir) / "checkpoint-1")
+
+    monkeypatch.setattr(transformers, "Trainer", MilestoneTrainer)
     records = {"train": [{}] * 48, "validation": [{}]}
     worker._execute(
         {"stage": "train"},
-        Recipe(epochs=1),
+        Recipe(epochs=1, checkpoint_interval=1),
         records,
         base,
         tmp_path / "output",
@@ -399,3 +407,6 @@ def test_warm_start_uses_checkpoint_weights_and_base_tokenizer(tmp_path, monkeyp
         model_source=initial,
     )
     assert sources == {"weights": initial, "tokenizer": base}
+    assert (
+        worker.verify_checkpoint(tmp_path / "output/checkpoint-1", "bound")["step"] == 1
+    )

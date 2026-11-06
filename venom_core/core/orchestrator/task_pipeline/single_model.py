@@ -13,6 +13,10 @@ from venom_core.execution.agent_contracts import (
     ConversationHistory,
     ToolPolicy,
 )
+from venom_core.execution.model_tool_policy import (
+    functiongemma_read_filters,
+    is_functiongemma_model,
+)
 
 _SINGLE_MODEL_PROMPT = (
     "You are Venom's selected decision model. Answer directly when no tool is "
@@ -181,7 +185,13 @@ async def execute_single_model(
     if not isinstance(service.ai_model_id, str) or not service.ai_model_id:
         raise ValueError("single_model_service_identity_missing")
     supports_tools = getattr(service, "supports_function_calling", False) is True
-    native_tools = kernel.native_tools() if supports_tools else []
+    native_tools = []
+    if supports_tools:
+        native_tools = (
+            kernel.native_tools(functiongemma_read_filters(None))
+            if is_functiongemma_model(service.ai_model_id)
+            else kernel.native_tools()
+        )
     tools = [
         {
             "type": "function",

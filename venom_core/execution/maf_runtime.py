@@ -21,6 +21,10 @@ from venom_core.execution.maf_transport import (
     install_maf_transport_observer,
     maf_transport_scope,
 )
+from venom_core.execution.model_tool_policy import (
+    functiongemma_read_filters,
+    is_functiongemma_model,
+)
 from venom_core.services.runtime_admission import (
     admitted_operation,
     get_runtime_admission,
@@ -317,7 +321,10 @@ class MafChatService:
             ):
                 from agent_framework import chat_middleware
 
-                tools = kernel.native_tools(settings.function_choice_behavior.filters)
+                filters = settings.function_choice_behavior.filters
+                if is_functiongemma_model(self.ai_model_id):
+                    filters = functiongemma_read_filters(filters)
+                tools = kernel.native_tools(filters)
                 input_count = len(messages)
                 recorded_count = 0
 

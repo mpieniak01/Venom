@@ -102,7 +102,7 @@ def _document(root: Path, name: str, errors: list[str]) -> dict[str, Any]:
     if not path.exists():
         return {}
     try:
-        limit = 64 * 1024**2 if name == DATA_MANIFEST else 8 * 1024**2
+        limit = 256 * 1024**2 if name == DATA_MANIFEST else 8 * 1024**2
         if path.stat().st_size > limit:
             raise ValueError("metadata_size")
         value = json.loads(path.read_text())

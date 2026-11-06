@@ -260,10 +260,11 @@ async def score_suite(cases, predictions=None):
     return {**stats(verdicts), "verdicts": verdicts}
 
 
-def load_predictions(raw, suite, case_hash):
+def load_predictions(raw, suite, case_hash, plan_hash):
     summary = json.loads((raw.parent / "summary.json").read_text())
     if (
-        summary["results_sha256"].get(suite) != file_digest(raw)
+        summary.get("binding", {}).get("evaluation_plan_sha256") != plan_hash
+        or summary["results_sha256"].get(suite) != file_digest(raw)
         or summary.get("case_sha256", {}).get(suite, case_hash) != case_hash
     ):
         raise ValueError("evaluation checksum mismatch")
@@ -297,7 +298,11 @@ def main():
     cases = json.loads(args.cases.read_text())["cases"]
     if len(cases) != plan["suites"][suite]["count"]:
         raise ValueError("unexpected evaluation suite size")
-    raw = load_predictions(args.raw, suite, case_hash) if args.raw else None
+    raw = (
+        load_predictions(args.raw, suite, case_hash, file_digest(args.plan))
+        if args.raw
+        else None
+    )
     result = asyncio.run(score_suite(cases, raw))
     write_json(
         args.output,

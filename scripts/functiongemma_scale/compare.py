@@ -45,13 +45,15 @@ def compare(control, candidate):
         "case_sha256"
     ):
         raise ValueError("comparison requires the same sealed cases")
-    pairs = {}
-    for document in (control, candidate):
+
+    def by_id(document):
         values = document["verdicts"]
-        pairs[len(pairs)] = {row["record_id"]: row for row in values}
-        if len(pairs[len(pairs) - 1]) != len(values):
+        indexed = {row["record_id"]: row for row in values}
+        if len(indexed) != len(values):
             raise ValueError("duplicated case IDs")
-    first, second = pairs[0], pairs[1]
+        return indexed
+
+    first, second = by_id(control), by_id(candidate)
     if first.keys() != second.keys():
         raise ValueError("comparison requires the same case IDs")
     changes = Counter()

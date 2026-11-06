@@ -283,3 +283,49 @@ def test_proposal_has_no_execution(monkeypatch):
     assert evaluation.propose(Tokenizer(), model, [], TOOLS)["decision"] == "escalate"
     text[0] = "Please clarify"
     assert evaluation.propose(Tokenizer(), model, [], TOOLS)["decision"] == "no_call"
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        '{"action":"read","action":"approval"}',
+        '{"action":"write"}',
+        '{"action":"read","path":"a"}',
+        '["read"]',
+    ],
+)
+def test_scale_decoder_accepts_only_one_allowlisted_action(raw):
+    from scripts.functiongemma_scale.score import decode_action
+
+    assert decode_action('{"action":"read"}<end_of_turn>') == "read"
+    with pytest.raises(ValueError):
+        decode_action(raw)
+
+
+def test_scale_route_keeps_empty_body_distinct_and_binds_active():
+    from scripts.functiongemma_scale.score import route
+
+    record = {"language": "pl"}
+    context = {
+        "paths": ["d/a"],
+        "body": "",
+        "recursive": None,
+        "max_depth": None,
+        "active": None,
+        "active_requested": False,
+    }
+    assert route("approval", context, record, None) == ([], "approval", None)
+    context["body"] = None
+    assert route("approval", context, record, None) == ([], "missing_body", None)
+    context.update(active="d/a", active_requested=True)
+    calls, result, _ = route(
+        "read", context, record, '{"ARCHIVE":"d/old","ACTIVE":"d/a"}'
+    )
+    assert result == "call" and calls == [
+        {"name": "FileSkill-read_file", "arguments": {"file_path": "d/a"}}
+    ]
+    assert route("read", context, record, '{"ACTIVE":"../escape"}') == (
+        [],
+        "blocked",
+        None,
+    )

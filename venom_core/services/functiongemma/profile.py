@@ -39,6 +39,7 @@ class Recipe:
     max_new_tokens: int = 256
     initial_weights: dict[str, str] | None = None
     checkpoint_interval: int | None = None
+    parameter_dtype: str | None = None
 
     def validate(self) -> None:
         if self.model != MODEL or self.revision != REVISION:
@@ -76,6 +77,11 @@ class Recipe:
                 raise ValueError("functiongemma_number_invalid:" + key)
         if self.learning_rate == 0:
             raise ValueError("functiongemma_learning_rate_zero")
+
+        if self.parameter_dtype is not None and (
+            self.parameter_dtype != "fp32" or self.method != "full"
+        ):
+            raise ValueError("functiongemma_parameter_dtype_unsupported")
 
         if self.initial_weights is not None:
             if (

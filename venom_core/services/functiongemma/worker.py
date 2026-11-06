@@ -270,6 +270,24 @@ def parameter_evidence(model):
     }
 
 
+def optimizer_precision(model, optimizer):
+    """Verify the precision that AdamW actually used for a full FP32 recipe."""
+    parameters = {str(p.dtype) for p in model.parameters() if p.requires_grad}
+    moments = {
+        str(state[key].dtype)
+        for state in optimizer.state.values()
+        for key in ("exp_avg", "exp_avg_sq")
+        if key in state
+    }
+    if parameters != {"torch.float32"} or moments != {"torch.float32"}:
+        raise RuntimeError("functiongemma_optimizer_precision_mismatch")
+    return {
+        "trainable_parameters": sorted(parameters),
+        "optimizer_moments": sorted(moments),
+        "autocast": "torch.bfloat16",
+    }
+
+
 def probe_logits(model, row):
     import torch
 
@@ -316,7 +334,7 @@ def _execute(
         model_source if model_source is not None else snapshot,
         local_files_only=True,
         trust_remote_code=False,
-        dtype=torch.bfloat16,
+        dtype=torch.float32 if recipe.parameter_dtype == "fp32" else torch.bfloat16,
         device_map={"": 0},
     )
     if model.config.architectures != ["Gemma3ForCausalLM"]:
@@ -375,6 +393,11 @@ def _execute(
     trainer.train(resume_from_checkpoint=str(resume) if resume else None)
     if not before or before == parameter_evidence(model):
         raise RuntimeError("functiongemma_trainable_weights_unchanged")
+    precision = (
+        optimizer_precision(model, trainer.optimizer)
+        if recipe.parameter_dtype == "fp32"
+        else None
+    )
     checkpoint = output / ("checkpoint-" + str(trainer.state.global_step))
     if recipe.checkpoint_interval and not smoke:
         for saved in sorted(output.glob("checkpoint-*")):
@@ -410,6 +433,8 @@ def _execute(
         "evaluation_required": True,
         "qualification_scope": "save_reload_resume_only",
     }
+    if precision is not None:
+        result["precision"] = precision
     write_json(output / "metrics.json", result)
     write_json(
         output / "status.json", {"state": "succeeded", "activation_allowed": False}
@@ -445,7 +470,7 @@ def _resume_smoke(recipe, records, snapshot, output, checkpoint, probe):
 
     model = AutoModelForCausalLM.from_pretrained(
         snapshot if recipe.method == "lora" else checkpoint,
-        dtype=torch.bfloat16,
+        dtype=torch.float32 if recipe.parameter_dtype == "fp32" else torch.bfloat16,
         device_map={"": 0},
         local_files_only=True,
         trust_remote_code=False,
@@ -472,6 +497,8 @@ def _resume_smoke(recipe, records, snapshot, output, checkpoint, probe):
         ),
     )
     trainer.train(resume_from_checkpoint=str(checkpoint))
+    if recipe.parameter_dtype == "fp32":
+        optimizer_precision(model, trainer.optimizer)
     if trainer.state.global_step != 2:
         raise RuntimeError("functiongemma_resume_progress_invalid")
     return output / "checkpoint-2"

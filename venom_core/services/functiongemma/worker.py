@@ -20,7 +20,7 @@ from venom_core.services.granite_operator.contract import (
 )
 from venom_core.services.remote_training.paths import operator_path
 
-from .profile import LOCK, Recipe
+from .profile import INITIAL_WEIGHTS_DIRECTORY, LOCK, Recipe
 
 RECEIPT_FILE = "receipt.json"
 TRAINER_STATE_FILE = "trainer_state.json"
@@ -104,6 +104,7 @@ def trainer_arguments(recipe: Recipe, output: Path, *, smoke: bool) -> dict:
             "eval_steps": 1,
         }
     )
+    interval = recipe.checkpoint_interval if not smoke else None
     return {
         "output_dir": str(output),
         "per_device_train_batch_size": recipe.batch_size,
@@ -118,8 +119,8 @@ def trainer_arguments(recipe: Recipe, output: Path, *, smoke: bool) -> dict:
         "fp16": False,
         "seed": recipe.seed,
         "data_seed": recipe.seed,
-        "save_strategy": "epoch" if not smoke else "steps",
-        "save_steps": 1,
+        "save_strategy": "steps" if smoke or interval else "epoch",
+        "save_steps": interval or 1,
         "save_only_model": False,
         "report_to": [],
         "push_to_hub": False,
@@ -128,6 +129,23 @@ def trainer_arguments(recipe: Recipe, output: Path, *, smoke: bool) -> dict:
         "logging_steps": 1,
         **budget_args,
     }
+
+
+def resolve_model_source(recipe: Recipe, snapshot: Path, run_root: Path) -> Path:
+    """Bind the independently staged weights to the recipe before model load."""
+    expected = recipe.initial_weights
+    if expected is None:
+        return snapshot
+    source = operator_path(run_root / INITIAL_WEIGHTS_DIRECTORY)
+    if (
+        not source.is_dir()
+        or {file.name for file in source.iterdir()} != expected.keys()
+    ):
+        raise ValueError("functiongemma_initial_weights_missing")
+    actual = {name: file_digest(operator_path(source / name)) for name in expected}
+    if actual != expected:
+        raise ValueError("functiongemma_initial_weights_changed")
+    return source
 
 
 def run(request: dict) -> dict:
@@ -143,8 +161,9 @@ def run(request: dict) -> dict:
     if snapshot.name != recipe.revision:
         raise ValueError("functiongemma_pinned_snapshot_required")
     weights = sorted(snapshot.glob("*.safetensors"))
-    if not weights:
+    if recipe.initial_weights is None and not weights:
         raise ValueError("functiongemma_weights_missing")
+    model_source = resolve_model_source(recipe, snapshot, encoded_path.parent.parent)
     from transformers import AutoTokenizer
 
     tokenizer = AutoTokenizer.from_pretrained(
@@ -171,6 +190,7 @@ def run(request: dict) -> dict:
     if output.exists():
         raise FileExistsError("functiongemma_output_exists")
     resume = _training_checkpoint(request, recipe, records, fingerprint)
+    source_args = {"model_source": model_source} if recipe.initial_weights else {}
     # The ledger must be the host's shared ledger, never a per-run substitute.
     from venom_core.services.runtime_admission import RuntimeAdmission
 
@@ -189,7 +209,16 @@ def run(request: dict) -> dict:
             ).fetchone()
         if not owner or coordinator_id != request["run_id"]:
             raise ValueError("functiongemma_parent_reservation_missing")
-        return _execute(request, recipe, records, snapshot, output, fingerprint, resume)
+        return _execute(
+            request,
+            recipe,
+            records,
+            snapshot,
+            output,
+            fingerprint,
+            resume,
+            **source_args,
+        )
     lease = RuntimeAdmission(operator_path(ledger), enabled=True).acquire(
         owner="functiongemma-training",
         run_id=request["run_id"],
@@ -199,7 +228,14 @@ def run(request: dict) -> dict:
     try:
         with lease.operation(kind="lifecycle"):
             return _execute(
-                request, recipe, records, snapshot, output, fingerprint, resume
+                request,
+                recipe,
+                records,
+                snapshot,
+                output,
+                fingerprint,
+                resume,
+                **source_args,
             )
     finally:
         lease.release()
@@ -253,7 +289,17 @@ def probe_logits(model, row):
         return tensor_hash([("logits", model(**values).logits.float())])
 
 
-def _execute(request, recipe, records, snapshot, output, fingerprint, resume):
+def _execute(
+    request,
+    recipe,
+    records,
+    snapshot,
+    output,
+    fingerprint,
+    resume,
+    *,
+    model_source=None,
+):
     import torch
     from transformers import (
         AutoModelForCausalLM,
@@ -267,7 +313,7 @@ def _execute(request, recipe, records, snapshot, output, fingerprint, resume):
         raise RuntimeError("functiongemma_cuda_bf16_required")
     set_seed(recipe.seed)
     model = AutoModelForCausalLM.from_pretrained(
-        snapshot,
+        model_source if model_source is not None else snapshot,
         local_files_only=True,
         trust_remote_code=False,
         dtype=torch.bfloat16,
@@ -330,6 +376,10 @@ def _execute(request, recipe, records, snapshot, output, fingerprint, resume):
     if not before or before == parameter_evidence(model):
         raise RuntimeError("functiongemma_trainable_weights_unchanged")
     checkpoint = output / ("checkpoint-" + str(trainer.state.global_step))
+    if recipe.checkpoint_interval and not smoke:
+        for saved in sorted(output.glob("checkpoint-*")):
+            if saved != checkpoint:
+                _seal(saved, fingerprint)
     _seal(checkpoint, fingerprint)
     probe = probe_logits(model, records["validation"][0])
     checks = {"save": True, "reload": False, "resume": False, "weights_updated": True}

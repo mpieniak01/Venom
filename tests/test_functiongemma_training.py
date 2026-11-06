@@ -335,3 +335,67 @@ def test_pinned_transformers_warmup_contract():
     assert "warmup_ratio" not in full
     assert full["warmup_steps"] == 0.05
     assert smoke["warmup_steps"] == 0.0
+
+
+def test_warm_start_rejects_changed_weights_and_schedules_checkpoints(tmp_path):
+    from venom_core.services.functiongemma.profile import INITIAL_WEIGHT_FILES
+    from venom_core.services.granite_operator.contract import file_digest
+
+    initial = tmp_path / "warm-start"
+    initial.mkdir()
+    for name in INITIAL_WEIGHT_FILES:
+        (initial / name).write_text(name)
+    hashes = {name: file_digest(initial / name) for name in INITIAL_WEIGHT_FILES}
+    recipe = Recipe(initial_weights=hashes, checkpoint_interval=100, epochs=1)
+    assert "initial_weights" not in Recipe().identity()
+    assert Recipe(**recipe.identity()) == recipe
+    assert recipe.budget(6396)["total_updates"] == 400
+    assert worker.resolve_model_source(recipe, tmp_path / "base", tmp_path) == initial
+    args = worker.trainer_arguments(recipe, tmp_path, smoke=False)
+    assert args["save_strategy"] == "steps"
+    assert args["save_steps"] == 100
+    (initial / "model.safetensors").write_text("changed")
+    with pytest.raises(ValueError, match="initial_weights_changed"):
+        worker.resolve_model_source(recipe, tmp_path / "base", tmp_path)
+    (initial / "model.safetensors").unlink()
+    with pytest.raises(ValueError, match="initial_weights_missing"):
+        worker.resolve_model_source(recipe, tmp_path / "base", tmp_path)
+    with pytest.raises(ValueError, match="interval_budget_mismatch"):
+        recipe.budget(16)
+
+
+def test_warm_start_uses_checkpoint_weights_and_base_tokenizer(tmp_path, monkeypatch):
+    import sys
+
+    model, _ = fake_runtime(monkeypatch)
+    sources = {}
+
+    def load_weights(path, **kwargs):
+        sources["weights"] = path
+        return model
+
+    def load_tokenizer(path, **kwargs):
+        sources["tokenizer"] = path
+        return NS(pad_token_id=0)
+
+    monkeypatch.setattr(
+        sys.modules["transformers"].AutoModelForCausalLM,
+        "from_pretrained",
+        load_weights,
+    )
+    monkeypatch.setattr(
+        sys.modules["transformers"].AutoTokenizer, "from_pretrained", load_tokenizer
+    )
+    base, initial = tmp_path / "base", tmp_path / "warm-start"
+    records = {"train": [{}] * 48, "validation": [{}]}
+    worker._execute(
+        {"stage": "train"},
+        Recipe(epochs=1),
+        records,
+        base,
+        tmp_path / "output",
+        "bound",
+        None,
+        model_source=initial,
+    )
+    assert sources == {"weights": initial, "tokenizer": base}

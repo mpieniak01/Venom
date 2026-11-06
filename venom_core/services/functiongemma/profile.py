@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import re
 from dataclasses import asdict, dataclass
 from typing import Any
 
@@ -11,6 +12,10 @@ from venom_core.services.granite_operator.contract import digest
 MODEL = "google/functiongemma-270m-it"
 REVISION = "39eccb091651513a5dfb56892d3714c1b5b8276c"
 LOCK = "requirements/locks/granite-operator-training-linux-py314.txt"
+INITIAL_WEIGHT_FILES = frozenset(
+    {"model.safetensors", "config.json", "generation_config.json"}
+)
+INITIAL_WEIGHTS_DIRECTORY = "warm-start"
 
 
 @dataclass(frozen=True)
@@ -32,6 +37,8 @@ class Recipe:
     alpha: int = 16
     dropout: float = 0.05
     max_new_tokens: int = 256
+    initial_weights: dict[str, str] | None = None
+    checkpoint_interval: int | None = None
 
     def validate(self) -> None:
         if self.model != MODEL or self.revision != REVISION:
@@ -70,9 +77,26 @@ class Recipe:
         if self.learning_rate == 0:
             raise ValueError("functiongemma_learning_rate_zero")
 
+        if self.initial_weights is not None:
+            if (
+                self.method != "full"
+                or not isinstance(self.initial_weights, dict)
+                or self.initial_weights.keys() != INITIAL_WEIGHT_FILES
+                or any(
+                    not isinstance(value, str)
+                    or re.fullmatch(r"[a-f0-9]{64}", value) is None
+                    for value in self.initial_weights.values()
+                )
+            ):
+                raise ValueError("functiongemma_initial_weights_invalid")
+        if self.checkpoint_interval is not None and (
+            type(self.checkpoint_interval) is not int or self.checkpoint_interval < 1
+        ):
+            raise ValueError("functiongemma_checkpoint_interval_invalid")
+
     def identity(self) -> dict[str, Any]:
         self.validate()
-        return asdict(self)
+        return {key: value for key, value in asdict(self).items() if value is not None}
 
     def budget(self, samples: int) -> dict[str, int]:
         self.validate()
@@ -80,11 +104,14 @@ class Recipe:
             raise ValueError("functiongemma_empty_training_split")
         batches = math.ceil(samples / self.batch_size)
         updates = math.ceil(batches / self.accumulation)
+        total = updates * self.epochs
+        if self.checkpoint_interval is not None and total % self.checkpoint_interval:
+            raise ValueError("functiongemma_checkpoint_interval_budget_mismatch")
         return {
             "samples": samples,
             "batches_per_epoch": batches,
             "updates_per_epoch": updates,
-            "total_updates": updates * self.epochs,
+            "total_updates": total,
             "effective_batch_size": self.batch_size * self.accumulation,
         }
 

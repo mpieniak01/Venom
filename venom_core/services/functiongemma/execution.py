@@ -99,6 +99,10 @@ def preflight(host, input_root, identity):
     )
     if actual != identity:
         raise ValueError("remote_training_identity_mismatch")
+    if recipe.initial_weights is not None:
+        from .worker import resolve_model_source
+
+        resolve_model_source(recipe, snapshot, input_root.parent)
     return recipe, document
 
 

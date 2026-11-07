@@ -8,7 +8,7 @@ import { useCallback, useEffect, useRef } from "react";
 import { quoteOpenRouterChat, cancelSimpleChatStream, getSimpleChatCancellationRevision } from "@/hooks/use-api";
 import { pendingOpenRouterCost, type OpenRouterQuote } from "@/lib/openrouter-chat";
 import { publishOpenRouterQuote } from "@/lib/openrouter-quote-state";
-import { allowsOpenRouterChat, isOpenRouterRuntime } from "@/lib/remote-chat";
+import { allowsOpenRouterChat, isGuardedChatRuntime, isOpenRouterRuntime } from "@/lib/remote-chat";
 import { appendVastChatTurn, vastChatHistoryKey, type VastChatTurn } from "@/lib/vast-chat-history";
 import { useTranslation } from "@/lib/i18n";
 import { boundChatHistory } from "@/components/chat/history-budget";
@@ -185,12 +185,12 @@ function recordStandardRequestHistory(params: {
 }
 
 type SendContextParams = Pick<ChatSendParams,
-  "selectedLlmModel" | "activeServerInfo" | "selectedLlmServer" | "chatMode" | "lightNormal" |
+  "selectedLlmModel" | "activeServerInfo" | "selectedLlmServer" | "chatMode" |
   "sessionId" | "resetSession" | "setMessage"
 >;
 
 function resolveChatSendContext(payload: string, params: SendContextParams, t: (key: string) => string) {
-  const { selectedLlmModel, activeServerInfo, selectedLlmServer, chatMode, lightNormal, sessionId, resetSession, setMessage } = params;
+  const { selectedLlmModel, activeServerInfo, selectedLlmServer, chatMode, sessionId, resetSession, setMessage } = params;
     const parsed = parseInputCommand(payload);
     const trimmed = parsed.cleaned.trim();
     if (!trimmed) {
@@ -208,13 +208,6 @@ function resolveChatSendContext(payload: string, params: SendContextParams, t: (
       return null;
     }
 
-    const studioNormal = Boolean(lightNormal && chatMode === "normal");
-    if (studioNormal && (parsed.forcedTool || parsed.forcedProvider
-      || (selectedLlmServer || activeServerInfo?.active_server) !== "ollama")) {
-      setMessage(t("chat2.lightNormalUnsupported"));
-      return null;
-    }
-
     if (!allowsOpenRouterChat(selectedLlmServer || activeServerInfo?.active_server || "", shouldUseSimpleMode(chatMode, parsed))) {
       setMessage(t("cockpit.openrouter.directOnly"));
       return null;
@@ -226,7 +219,7 @@ function resolveChatSendContext(payload: string, params: SendContextParams, t: (
       return null;
     }
 
-    return { parsed, trimmed, effectiveSelectedModel, resolvedSession, studioNormal };
+    return { parsed, trimmed, effectiveSelectedModel, resolvedSession };
 }
 
 function releaseSendPreparation(
@@ -300,10 +293,10 @@ export function useChatSend(params: ChatSendParams) {
     let preparing = false;
     try {
     const context = resolveChatSendContext(payload, {
-      selectedLlmModel, activeServerInfo, selectedLlmServer, chatMode, lightNormal, sessionId, resetSession, setMessage,
+      selectedLlmModel, activeServerInfo, selectedLlmServer, chatMode, sessionId, resetSession, setMessage,
     }, t);
     if (!context) return false;
-    const { parsed, trimmed, effectiveSelectedModel, resolvedSession, studioNormal } = context;
+    const { parsed, trimmed, effectiveSelectedModel, resolvedSession } = context;
 
     setSending(true); preparing = true; setMessage(null);
     const switchResult = await handleRuntimeSwitch({
@@ -343,6 +336,11 @@ export function useChatSend(params: ChatSendParams) {
     autoScrollEnabledRef.current = true;
     scrollChatToBottom();
 
+    const studioNormal = Boolean(
+      lightNormal && chatMode === "normal" && !parsed.forcedTool && !parsed.forcedProvider
+      && !materialIds?.length && effectiveActiveServerInfo?.active_server === "ollama"
+      && !isGuardedChatRuntime(effectiveActiveServerInfo.runtime_id),
+    );
     const shouldUseSimple = studioNormal || shouldUseSimpleMode(chatMode, parsed);
     const historyKey = vastChatHistoryKey(effectiveActiveServerInfo?.runtime_id, effectiveSelectedModel, resolvedSession, effectiveActiveServerInfo?.config_hash);
     const historySource = conversationHistory ?? (historyKey ? vastHistory.current.get(historyKey) ?? [] : undefined);

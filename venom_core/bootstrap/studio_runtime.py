@@ -2,8 +2,8 @@
 
 Same SETTINGS, state, SessionStore and runtime admission as Full. No new storage
 root or queue is introduced.
-Normal/MAF necessarily construct the existing heavier Orchestrator on first use.
-Legacy Direct memory ingestion similarly constructs the existing VectorStore.
+Tool and MAF requests construct the heavier Orchestrator on first use.
+Studio Normal opens the shared VectorStore only for explicit note lookup.
 """
 
 from __future__ import annotations
@@ -14,7 +14,9 @@ from contextlib import suppress
 from functools import partial
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
+import httpx
 from fastapi import FastAPI, HTTPException
 
 from venom_core.api import dependencies as api_deps
@@ -153,9 +155,64 @@ class StudioRuntime:
             else None
         )
         app.state.audio_engine = self.audio_engine
+        if SETTINGS.LLM_WARMUP_ON_STARTUP:
+            await self._preload_local_ollama()
         if self._embedding_idle_seconds:
             self._embedding_idle_task = asyncio.create_task(
                 self._expire_idle_embeddings()
+            )
+
+    @staticmethod
+    async def _preload_local_ollama() -> None:
+        from venom_core.utils.llm_runtime import get_active_llm_runtime
+        from venom_core.utils.ollama_tuning import (
+            build_ollama_runtime_options,
+            normalize_ollama_keep_alive,
+        )
+
+        if (
+            SETTINGS.ACTIVE_LLM_SERVER.strip().lower() == "none"
+            or SETTINGS.VENOM_RUNTIME_PROFILE == "llm_off"
+        ):
+            return
+        runtime = get_active_llm_runtime()
+        if (
+            runtime.provider != "ollama"
+            or runtime.service_type != "local"
+            or runtime.host_local is False
+        ):
+            return
+        try:
+            url = urlsplit(runtime.endpoint or "")
+            if (
+                url.scheme not in {"http", "https"}
+                or url.hostname not in {"localhost", "127.0.0.1", "::1"}
+                or url.username is not None
+                or not runtime.model_name
+            ):
+                return
+            keep_alive = normalize_ollama_keep_alive(SETTINGS.LLM_KEEP_ALIVE)
+            if keep_alive == 0:
+                return
+            # The stack waits 60 seconds for API readiness. Allow a cold GPU load.
+            async with (
+                asyncio.timeout(30),
+                httpx.AsyncClient(trust_env=False, timeout=None) as client,
+            ):
+                response = await client.post(
+                    url._replace(path="/api/generate", query="", fragment="").geturl(),
+                    json={
+                        "model": runtime.model_name,
+                        "stream": False,
+                        "keep_alive": keep_alive,
+                        "options": build_ollama_runtime_options(SETTINGS),
+                    },
+                )
+                response.raise_for_status()
+            logger.info("Studio: lokalny model Ollama rozgrzany")
+        except (httpx.HTTPError, TimeoutError, ValueError) as exc:
+            logger.warning(
+                "Studio: rozgrzanie Ollamy nie powiodło się ({})", type(exc).__name__
             )
 
     async def _expire_idle_embeddings(self) -> None:

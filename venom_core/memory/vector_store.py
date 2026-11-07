@@ -402,12 +402,7 @@ class VectorStore:
 
         table = self._db.open_table(col_name)
 
-        # Generuj embedding dla zapytania
-        query_embedding = self.embedding_service.get_embedding(query)
-
-        # Wyszukaj najbliższe wektory
         logger.info(f"Wyszukiwanie w kolekcji '{col_name}' z limitem {limit}")
-        search = table.search(query_embedding)
         filters = []
         if session_scope:
             condition = """metadata NOT LIKE '%"session_id":%'"""
@@ -420,8 +415,27 @@ class VectorStore:
             filters.append(f"regexp_like(text, '{quoted}')")
         if filters:
             filters.append("id != 'init'")
-            search = search.where(" AND ".join(filters), prefilter=True)
-        results = search.limit(limit).to_list()
+        where = " AND ".join(filters)
+
+        results = None
+        if text_pattern and session_scope and limit > 0:
+            # The existing phrase and scope filters already determine the answer
+            # when zero or one row matches. Rank ambiguous matches as before.
+            exact = (
+                table.search()
+                .where(where)
+                .select(["id", "text", "metadata"])
+                .limit(2)
+                .to_list()
+            )
+            if len(exact) < 2:
+                results = exact
+        if results is None:
+            query_embedding = self.embedding_service.get_embedding(query)
+            search = table.search(query_embedding)
+            if where:
+                search = search.where(where, prefilter=True)
+            results = search.limit(limit).to_list()
 
         # Przetwórz wyniki
         processed_results: list[dict[str, object]] = []

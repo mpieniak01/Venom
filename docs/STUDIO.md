@@ -92,76 +92,40 @@ A prepared artifact must match its sources/shared inputs, public configuration,
 Node version and environment. Starting it does not implicitly rebuild it. Do not
 rebuild the active UI's artifact. See [UI lifecycle](PL/WEB_LIFECYCLE.md).
 
-## Lazy services and memory
+## Studio for everyday use
 
-Studio skips unrelated Full startup services and optional-module registration.
-It adds no RAG, training, other screens, new queue or storage system. Existing
-memory behavior remains available through shared handlers.
+Studio preloads the selected local Ollama model before reporting API readiness
+when `LLM_WARMUP_ON_STARTUP` is enabled. The attempt takes up to 30 seconds.
+If the model is unavailable, startup logs the result and the user can select
+a runtime in chat. Startup does not warm remote providers.
 
-- Direct starts without constructing orchestration. Its existing successful-turn
-  memory/ingest call can initialize the existing VectorStore on demand.
-- The first supported Normal/MAF request creates the existing Orchestrator and
-  required dispatcher, memory and execution dependencies. There is no alternate MAF.
-- STT/TTS creates the configured AudioEngine on first use, without speech warmup
-  at boot. Opening the page does not request the microphone.
-- Local LLM processes/models follow existing configuration and admission rules.
-  The API composition does not introduce another automatic model loader or
-  authorize paid provider calls.
+The Studio launcher defaults to a 4096-token context, one concurrent
+generation and one resident Ollama model. Explicit settings take precedence.
+Venom also defaults to one concurrent generation and retains its context
+profile for longer tasks. Dev and preprod retain their own data and write policy.
 
-Measure startup separately from the state after ingest, Normal/MAF or voice.
-These operations can load heavier components. Smaller route counts do not prove
-RAM savings, lower latency or production readiness. Shared global CSS and the
-shared dependency installation remain explicit implementation boundaries.
-
-### Direct indexing experiment
-
-To disable automatic Direct response indexing in standalone Studio:
+| Mode | Resource usage |
+|---|---|
+| Direct | Shared response stream and SessionStore history. Images and files on attachment. Indexing through explicit note ingest. |
+| Normal | Lightweight local Ollama text chat with history. Explicit note lookup uses LanceDB, with a scoped name lookup when a source is unambiguous. Semantic search loads embeddings on demand. |
+| Voice | The first transcription or synthesis loads the AudioEngine. Later turns reuse it. |
+| MAF and tools | The first request for this path initializes the Orchestrator and agents. |
+| Venom Full | Full screens and API for multistep tasks, development and diagnostics. Notes and history are shared in the same environment. |
 
 ```bash
-NEXT_PUBLIC_STUDIO_DIRECT_AUTO_INDEX=0 make start-studio PROFILE=full ENVIRONMENT=dev
+make start-studio PROFILE=full ENVIRONMENT=dev
 ```
 
-Direct still saves the conversation in SessionStore. To test RAG, explicitly
-index a session-scoped note through the existing memory API and ask for it in
-Normal. With the flag unset, Studio continues indexing Direct responses.
-For a prebuilt web app, set the flag at build time as well.
+For comparison, `NEXT_PUBLIC_STUDIO_DIRECT_AUTO_INDEX=1` restores automatic
+indexing and `NEXT_PUBLIC_STUDIO_LIGHT_NORMAL=0` selects the previous Normal
+path. Set these variables at build time for prebuilt UI.
 
-### Lightweight Normal experiment
+### Embeddings in a separate process
 
-Use the following flags in standalone Studio to try lightweight Normal:
-
-```bash
-NEXT_PUBLIC_STUDIO_LIGHT_NORMAL=1 NEXT_PUBLIC_STUDIO_DIRECT_AUTO_INDEX=0 make start-studio PROFILE=full ENVIRONMENT=dev
-```
-
-Normal handles text through local Ollama and reads recent complete turns from
-SessionStore. A question asking about notes or a document retrieves from
-existing session and global memory. Add new sources explicitly through the
-existing memory API. Lightweight Normal uses the shared response stream and
-bypasses intent classification and agent initialization. MAF uses its existing
-path. Set the flags at build time for a prebuilt web app.
-
-### Idle embeddings experiment
-
-Set the timeout in seconds to unload Studio's local embedding model after its
-last use. The next retrieval or ingest loads it on demand. Notes in the shared
-LanceDB and chat history stay available. Ollama models have their own lifecycle.
-The default is 0. Studio checks for expiry at intervals of up to five seconds.
-
-\`\`\`bash
-STUDIO_EMBEDDING_IDLE_SECONDS=120 NEXT_PUBLIC_STUDIO_LIGHT_NORMAL=1 NEXT_PUBLIC_STUDIO_DIRECT_AUTO_INDEX=0 make start-studio PROFILE=full ENVIRONMENT=dev
-\`\`\`
-
-In Linux or WSL, set `STUDIO_EMBEDDING_PROCESS=1` to run Studio's local
-embeddings in an on-demand subprocess. It uses the same model, and Studio
-still owns LanceDB and session history. The subprocess exits after the
-configured idle interval. In this mode a zero interval selects 120 seconds.
-The next note lookup includes a fresh interpreter and model load. This option
-is disabled by default and applies to Studio's local embedding provider.
-
-```bash
-STUDIO_EMBEDDING_PROCESS=1 STUDIO_EMBEDDING_IDLE_SECONDS=120 NEXT_PUBLIC_STUDIO_LIGHT_NORMAL=1 NEXT_PUBLIC_STUDIO_DIRECT_AUTO_INDEX=0 make start-studio PROFILE=full ENVIRONMENT=dev
-```
+For occasional semantic searches on Linux or WSL, `STUDIO_EMBEDDING_PROCESS=1`
+uses an on-demand subprocess. It exits after `STUDIO_EMBEDDING_IDLE_SECONDS`.
+Zero selects 120 seconds in this mode. The next semantic search pays the
+model startup cost. The option defaults to off for smooth successive lookups.
 
 ## Verified stop
 

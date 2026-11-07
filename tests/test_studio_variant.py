@@ -36,6 +36,19 @@ def test_application_variant_shares_existing_environment_storage(tmp_path, role)
     assert full["NEXT_PUBLIC_FEATURE_CHAT2"] == "false"
     assert full["WEB_DIR"] == str(tmp_path / "web-next")
     assert public_plan(studio)["VENOM_VARIANT"] == "studio"
+    assert studio["OLLAMA_NUM_PARALLEL"] == full["OLLAMA_NUM_PARALLEL"] == "1"
+    assert studio["OLLAMA_CONTEXT_LENGTH"] == "4096"
+    assert studio["OLLAMA_MAX_LOADED_MODELS"] == "1"
+    assert "OLLAMA_CONTEXT_LENGTH" not in full
+
+
+def test_studio_respects_explicit_ollama_overrides(tmp_path):
+    (tmp_path / ".env.dev").write_text(
+        "ENVIRONMENT_ROLE=dev\nOLLAMA_CONTEXT_LENGTH=8192\nOLLAMA_NUM_PARALLEL=0\n"
+    )
+    studio = resolve(tmp_path, {"VENOM_VARIANT": "studio", "OLLAMA_NUM_PARALLEL": "2"})
+    assert studio["OLLAMA_CONTEXT_LENGTH"] == "8192"
+    assert studio["OLLAMA_NUM_PARALLEL"] == "2"
 
 
 def test_invalid_application_variant_rejected(tmp_path):

@@ -11,6 +11,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 from uuid import uuid4
 
+import httpx
 import pytest
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
@@ -117,6 +118,7 @@ def studio(monkeypatch, tmp_path):
     )
     monkeypatch.setattr(SETTINGS, "ENVIRONMENT_ROLE", "dev")
     monkeypatch.setattr(SETTINGS, "ENABLE_AUDIO_INTERFACE", True)
+    monkeypatch.setattr(SETTINGS, "LLM_WARMUP_ON_STARTUP", False)
     monkeypatch.setattr(SETTINGS, "STUDIO_EMBEDDING_PROCESS", False)
     monkeypatch.setattr(SETTINGS, "STUDIO_EMBEDDING_IDLE_SECONDS", 0)
     monkeypatch.setattr(
@@ -649,3 +651,73 @@ async def test_studio_process_embedding_owner_uses_shared_memory_path(
         assert store.db_path == Path(SETTINGS.MEMORY_ROOT) / "lancedb"
         assert isinstance(store.embedding_service, ProcessEmbeddingService)
         assert store.embedding_service._worker is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("active_server", "provider", "host_local", "endpoint", "keep_alive", "send"),
+    [
+        ("ollama", "ollama", None, "http://127.0.0.1:11434/v1", "-1", True),
+        ("ollama", "ollama", False, "http://127.0.0.1:11434/v1", "-1", False),
+        ("ollama", "ollama", None, "https://elsewhere.example/v1", "-1", False),
+        ("none", "ollama", None, "http://localhost:11434/v1", "-1", False),
+        ("openrouter", "openrouter", None, "https://example/v1", "-1", False),
+        ("ollama", "ollama", None, "http://localhost:11434/v1", "0", False),
+    ],
+)
+async def test_studio_preloads_only_the_resident_loopback_model(
+    monkeypatch, active_server, provider, host_local, endpoint, keep_alive, send
+):
+    from venom_core.utils import llm_runtime
+
+    monkeypatch.setattr(SETTINGS, "ACTIVE_LLM_SERVER", active_server)
+    monkeypatch.setattr(SETTINGS, "LLM_KEEP_ALIVE", keep_alive)
+    monkeypatch.setattr(SETTINGS, "OLLAMA_CONTEXT_LENGTH", 4096)
+    monkeypatch.setattr(
+        llm_runtime,
+        "get_active_llm_runtime",
+        lambda: llm_runtime.LLMRuntimeInfo(
+            provider=provider,
+            model_name="gemma4:e4b",
+            endpoint=endpoint,
+            service_type="local",
+            mode="LOCAL",
+            host_local=host_local,
+        ),
+    )
+    response = Mock()
+    client = AsyncMock()
+    client.__aenter__.return_value = client
+    client.post.return_value = response
+    factory = Mock(return_value=client)
+    monkeypatch.setattr(httpx, "AsyncClient", factory)
+
+    await StudioRuntime._preload_local_ollama()
+
+    if send:
+        client.post.assert_awaited_once()
+        (url,), kwargs = client.post.await_args
+        assert url == "http://127.0.0.1:11434/api/generate"
+        payload = kwargs["json"]
+        assert payload["model"] == "gemma4:e4b"
+        assert payload["keep_alive"] == -1
+        assert payload["options"]["num_ctx"] == 4096
+        assert "prompt" not in payload
+        factory.assert_called_once_with(trust_env=False, timeout=None)
+    else:
+        factory.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_studio_waits_for_model_preload_before_serving_without_warming_audio(
+    studio, monkeypatch
+):
+    app, runtime, _ = studio
+    monkeypatch.setattr(SETTINGS, "LLM_WARMUP_ON_STARTUP", True)
+    preload = AsyncMock()
+    monkeypatch.setattr(runtime, "_preload_local_ollama", preload)
+    async with app.router.lifespan_context(app):
+        preload.assert_awaited_once()
+        assert runtime.audio_engine._instance is None
+        assert runtime.vector_store is None
+        assert runtime.orchestrator is None

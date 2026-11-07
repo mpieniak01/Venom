@@ -91,76 +91,44 @@ Artefakt musi odpowiadać źródłom/wspólnym wejściom, konfiguracji publiczne
 wersji Node i środowisku. Start nie wykonuje ukrytego rebuilda. Nie przebudowuj
 artefaktu aktywnego UI. Zobacz [cykl życia UI](WEB_LIFECYCLE.md).
 
-## Inicjalizacja na żądanie i pamięć
+## Studio do codziennej pracy
 
-Studio pomija zbędne dla rozmowy usługi startowe Full i rejestrację modułów
-opcjonalnych. Nie dodaje RAG, treningu, ekranów, kolejki ani systemu danych.
-Dotychczasowa pamięć pozostaje dostępna przez wspólne handlery.
+Studio ładuje jeden wybrany lokalny model Ollamy przed zgłoszeniem gotowości
+API, jeśli `LLM_WARMUP_ON_STARTUP` jest włączone. Próba trwa maksymalnie 30 s.
+Jeżeli model jest niedostępny, start kończy się z komunikatem w logu, a silnik
+można wybrać w czacie. Uruchomienie nie rozgrzewa dostawców zdalnych.
 
-- Direct startuje bez tworzenia orkiestracji. Dotychczasowy memory/ingest po
-  zakończonej turze może na żądanie utworzyć istniejący VectorStore.
-- Pierwsze obsługiwane Normal/MAF tworzy obecny Orchestrator, dispatcher
-  i wymagane zależności pamięci/wykonania. Nie powstaje inny MAF.
-- STT/TTS tworzy skonfigurowany AudioEngine przy pierwszym użyciu, bez warmup
-  modeli mowy przy starcie. Wejście na stronę nie pyta o mikrofon.
-- Lokalne procesy LLM/modele podlegają obecnej konfiguracji i admission. Wybór
-  API nie dodaje drugiego automatycznego loadera ani zgody na płatne wywołania.
+Domyślne strojenie launchera Studio to 4096 tokenów kontekstu, jedna generacja
+naraz i jeden załadowany model Ollamy. Jawne ustawienia mają pierwszeństwo.
+Venom również zaczyna z jedną generacją naraz i korzysta ze swojego profilu
+kontekstu dla dłuższych zadań. Środowiska dev i preprod zachowują własne dane
+i zasady zapisu.
 
-Start mierz oddzielnie od stanu po ingest, Normal/MAF i głosie: te operacje mogą
-doładować cięższe komponenty. Mniejsza liczba tras nie dowodzi oszczędności RAM,
-mniejszych opóźnień ani gotowości prod. Wspólne globalne CSS i instalacja
-zależności pozostają jawnymi granicami rozwiązania.
+| Tryb | Użycie zasobów |
+|---|---|
+| Direct | Wspólny strumień i historia w SessionStore. Obrazy i pliki po dołączeniu. Indeksowanie przez jawny zapis notatki. |
+| Normal | Lekka rozmowa tekstowa z historią przez lokalną Ollamę. Notatki na żądanie, z wyszukaniem jednoznacznego źródła po nazwie w LanceDB. Dopasowanie semantyczne ładuje embeddingi. |
+| Głos | AudioEngine uruchamia się przy pierwszej transkrypcji lub syntezie. Kolejne tury korzystają z rozgrzanego audio. |
+| MAF i narzędzia | Orchestrator i agenci uruchamiają się przy pierwszym takim żądaniu. |
+| Venom Full | Pełne ekrany i API do zadań wieloetapowych, rozwoju i diagnostyki. Wspólne notatki i historia w tym samym środowisku. |
 
-### Próba Direct z indeksowaniem na żądanie
-
-W samodzielnym Studio można wyłączyć automatyczne indeksowanie odpowiedzi Direct:
-
-```bash
-NEXT_PUBLIC_STUDIO_DIRECT_AUTO_INDEX=0 make start-studio PROFILE=full ENVIRONMENT=dev
-```
-
-Direct nadal zapisuje rozmowę w SessionStore. Do próby RAG dodaj wybraną
-notatkę przez istniejące API pamięci z zakresem sesji i zadaj pytanie w Normal.
-Bez ustawienia flagi Studio indeksuje odpowiedzi jak wcześniej. Przy gotowym
-buildzie ustaw flagę także podczas budowania webu.
-
-### Próba lekkiego Normal
-
-W samodzielnym Studio ustaw poniższe flagi, aby porównać lekki Normal z dotychczasowym:
+Do codziennej pracy wystarczy:
 
 ```bash
-NEXT_PUBLIC_STUDIO_LIGHT_NORMAL=1 NEXT_PUBLIC_STUDIO_DIRECT_AUTO_INDEX=0 make start-studio PROFILE=full ENVIRONMENT=dev
+make start-studio PROFILE=full ENVIRONMENT=dev
 ```
 
-Normal obsługuje tekst przez lokalną Ollamę i czyta ostatnie pełne tury z
-SessionStore. Pytania odwołujące się do notatek lub dokumentu wyszukują źródła w
-istniejącej pamięci sesji i globalnej. Nowe źródło można jawnie dodać przez
-istniejące API pamięci. Lekki Normal używa wspólnego strumienia odpowiedzi i
-pomija klasyfikację intencji oraz inicjalizację agentów. Opcja MAF prowadzi
-dotychczasową ścieżką. Flagi ustaw też przy budowaniu gotowego webu.
+Dla porównania można jawnie przywrócić wcześniejsze zachowanie webu przez
+`NEXT_PUBLIC_STUDIO_DIRECT_AUTO_INDEX=1` lub `NEXT_PUBLIC_STUDIO_LIGHT_NORMAL=0`.
+Ustaw te flagi również podczas budowania prekompilowanego UI.
 
-### Próba zwalniania modelu embeddingów
+### Embeddingi w osobnym procesie
 
-Ustaw limit bezczynności w sekundach. Po tym czasie Studio zwolni swój lokalny
-model embeddingów, a przy kolejnym wyszukiwaniu lub zapisie załaduje go na
-żądanie. Wspólne notatki w LanceDB i historia czatu pozostają dostępne. Modele
-Ollamy mają własny cykl życia. Domyślna wartość to 0. Studio sprawdza limit
-w odstępach do pięciu sekund.
-
-\`\`\`bash
-STUDIO_EMBEDDING_IDLE_SECONDS=120 NEXT_PUBLIC_STUDIO_LIGHT_NORMAL=1 NEXT_PUBLIC_STUDIO_DIRECT_AUTO_INDEX=0 make start-studio PROFILE=full ENVIRONMENT=dev
-\`\`\`
-
-W Linuksie lub WSL ustaw `STUDIO_EMBEDDING_PROCESS=1`, aby uruchamiać lokalny
-model embeddingów Studio w osobnym procesie na żądanie. Studio nadal obsługuje
-LanceDB i historię sesji, a proces używa tego samego modelu. Proces kończy się
-po upływie limitu bezczynności. W tym trybie wartość zero wybiera 120 sekund.
-Kolejne pytanie o notatkę uruchamia interpreter i ponownie ładuje model.
-Opcja jest domyślnie wyłączona i dotyczy lokalnego dostawcy embeddingów Studio.
-
-```bash
-STUDIO_EMBEDDING_PROCESS=1 STUDIO_EMBEDDING_IDLE_SECONDS=120 NEXT_PUBLIC_STUDIO_LIGHT_NORMAL=1 NEXT_PUBLIC_STUDIO_DIRECT_AUTO_INDEX=0 make start-studio PROFILE=full ENVIRONMENT=dev
-```
+Przy sporadycznym wyszukiwaniu semantycznym można w Linuksie lub WSL wybrać
+`STUDIO_EMBEDDING_PROCESS=1`. Proces uruchamia się na żądanie i kończy po
+`STUDIO_EMBEDDING_IDLE_SECONDS`. W tym trybie zero oznacza 120 s. Po wygaśnięciu
+pierwsze wyszukiwanie semantyczne czeka na załadowanie modelu. Opcja jest
+domyślnie wyłączona, żeby kolejne wyszukania w sesji były płynne.
 
 ## Zweryfikowane zatrzymanie
 

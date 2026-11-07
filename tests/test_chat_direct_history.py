@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 from decimal import Decimal
 from threading import Event
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 from uuid import UUID, uuid4
 
 import httpx
@@ -630,3 +630,28 @@ def test_studio_normal_stream_uses_host_history_and_loads_rag_only_for_notes(
         == 400
     )
     assert client.post(url, json={**payload, "content": "x" * 50000}).status_code == 413
+
+
+def test_explicit_note_uses_scoped_exact_lookup_before_embedding(tmp_path):
+    from venom_core.memory.chat_retrieval import retrieve_chat_memory
+    from venom_core.memory.vector_store import VectorStore
+
+    embedding = Mock(embedding_dimension=3)
+    embedding.get_embeddings_batch.side_effect = lambda texts: [
+        [1.0, 0.0, 0.0] for _ in texts
+    ]
+    embedding.get_embedding.return_value = [1.0, 0.0, 0.0]
+    store = VectorStore(db_path=str(tmp_path), embedding_service=embedding)
+    store.upsert("Jasny Brzeg: własny kod", {"session_id": "own"})
+    store.upsert("Jasny Brzeg: cudzy kod", {"session_id": "foreign"})
+    query = "Według notatki projektu Jasny Brzeg, jaki jest kod?"
+    notes, _ = retrieve_chat_memory(store, query, "own")
+    assert "własny kod" in notes and "cudzy" not in notes
+    assert retrieve_chat_memory(store, query, "new-session") == ("", [])
+    embedding.get_embedding.assert_not_called()
+
+    store.upsert("Jasny Brzeg: drugi kod", {})
+    notes, _ = retrieve_chat_memory(store, query, "own")
+    assert "własny kod" in notes and "drugi kod" in notes
+    assert "cudzy" not in notes
+    embedding.get_embedding.assert_called_once_with("Jasny Brzeg")

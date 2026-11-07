@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+from textwrap import indent
 from typing import Any
 from uuid import UUID
 
@@ -16,6 +17,7 @@ from venom_core.execution.agent_contracts import (
     ToolPolicy,
 )
 from venom_core.execution.model_tool_policy import (
+    FUNCTIONGEMMA_READ_TOOLS,
     GEMMA4_E4B_MODEL_ID,
     functiongemma_read_filters,
     is_functiongemma_model,
@@ -175,12 +177,14 @@ def _record_trace(
     orch.state_manager.update_context(task_id, {"gemma4_operator": trace})
 
 
-def _listing_language(request: TaskRequest) -> str:
-    """Use the explicit language or infer it from the operator's listing request."""
+def _file_answer_language(request: TaskRequest) -> str:
+    """Use the explicit language or infer it from a short file request."""
     if request.preferred_language:
         return request.preferred_language
     prompt = request.content.strip().casefold()
-    if re.match(r"(?:please\s+|(?:can|could|would) you\s+)?(?:list|show)\b", prompt):
+    if re.match(
+        r"(?:please\s+|(?:can|could|would) you\s+)?(?:list|show|read|check)\b", prompt
+    ):
         return "en"
     if re.match(r"(?:bitte\s+)?(?:liste|zeige|zeig)\b", prompt):
         return "de"
@@ -235,6 +239,50 @@ def _fileskill_listing_answer(
         flags=re.M,
     ).replace(" bajtów)", " bytes)" if language == "en" else " Byte)")
     return f"{scope}\n{entries.rstrip()}"
+
+
+def _fileskill_result_fallback(
+    history: ConversationHistory, language: str
+) -> str | None:
+    """Surface tool evidence when the model returns no final text."""
+    messages, complete = _canonical_messages(history)
+    outputs = [row for row in messages if row["role"] == "tool"]
+    if not complete or not outputs:
+        return None
+    if any(output["name"] not in FUNCTIONGEMMA_READ_TOOLS for output in outputs):
+        return None
+
+    header, denied_text = {
+        "pl": ("Wyniki narzędzi. Model nie dokończył odpowiedzi.", "Odmowa dostępu."),
+        "en": ("Tool results. The model did not finish its answer.", "Access denied."),
+        "de": (
+            "Werkzeugergebnisse. Das Modell hat seine Antwort nicht abgeschlossen.",
+            "Zugriff verweigert.",
+        ),
+    }[language]
+    denied_calls = {
+        item.call_id
+        for message in history
+        for item in getattr(message.native_message, "contents", ())
+        if item.type == "function_result" and item.exception == "tool_permission_denied"
+    }
+    arguments = {
+        call["id"]: call["function"]["arguments"]
+        for message in messages
+        for call in message.get("tool_calls", [])
+    }
+    result_budget = max(1, 4000 // len(outputs))
+    sections = [header]
+    for output in outputs:
+        call_id = output["tool_call_id"]
+        content = denied_text if call_id in denied_calls else output["content"]
+        params = json.dumps(arguments[call_id], ensure_ascii=False)
+        excerpt = content[:result_budget]
+        if len(excerpt) < len(content):
+            excerpt += "…"
+        block = indent(f"{params[:512]}\n{excerpt or '(∅)'}", "    ")
+        sections.append(f"{output['name']}:\n\n{block}")
+    return "\n\n".join(sections)
 
 
 async def execute_single_model(
@@ -330,10 +378,20 @@ async def execute_single_model(
             )
         history.add_message(result)
         completed = True
+        answer = str(result)
         if is_e4b and request.model_tools == ["FileSkill-list_files"]:
-            return _fileskill_listing_answer(
-                history, _listing_language(request)
-            ) or str(result)
-        return str(result)
+            listing = _fileskill_listing_answer(history, _file_answer_language(request))
+            if listing:
+                return listing
+        if (
+            native_tools
+            and not answer.strip()
+            and (is_e4b or is_functiongemma_model(service.ai_model_id))
+        ):
+            return (
+                _fileskill_result_fallback(history, _file_answer_language(request))
+                or answer
+            )
+        return answer
     finally:
         _record_trace(orch, task_id, service, history, tools, completed)

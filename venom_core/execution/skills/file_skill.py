@@ -826,19 +826,12 @@ class FileSkill(BaseSkill):
         name="file_exists",
         description="Sprawdza czy plik lub katalog istnieje w workspace.",
     )
+    @safe_action
     def file_exists(
         self,
         file_path: Annotated[str, "Ścieżka do pliku/katalogu względem workspace"],
     ) -> str:
-        # Ten wrapper manualny symuluje safe_action dla synchronicznej metody
-        # (metody kernel_function w SK mogą być sync lub async)
-        try:
-            safe_path = self.validate_path(file_path)
-            exists = safe_path.exists()
-            self.logger.info(f"Sprawdzono istnienie: {safe_path} = {exists}")
-            return "True" if exists else "False"
-        except Exception as e:
-            # Używamy logiki z BaseSkill.safe_action
-            if hasattr(self, "logger"):
-                self.logger.error(f"Błąd w file_exists: {e}", exc_info=True)
-            return f"❌ Wystąpił błąd: {str(e)}"
+        safe_path = self.validate_path(file_path)
+        exists = safe_path.exists()
+        self.logger.info(f"Sprawdzono istnienie: {safe_path} = {exists}")
+        return "True" if exists else "False"

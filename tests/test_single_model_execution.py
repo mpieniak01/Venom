@@ -1034,15 +1034,148 @@ def test_fileskill_listing_reports_tool_type_and_scope(language, link_label, sco
         ("List files", "de", "de"),
     ],
 )
-def test_listing_language_uses_request_when_preference_is_absent(
+def test_file_answer_language_uses_request_when_preference_is_absent(
     content, preferred, expected
 ):
     """Detect short listing commands and honor an explicit language choice."""
     from venom_core.core.orchestrator.task_pipeline.single_model import (
-        _listing_language,
+        _file_answer_language,
     )
 
     assert (
-        _listing_language(TaskRequest(content=content, preferred_language=preferred))
+        _file_answer_language(
+            TaskRequest(content=content, preferred_language=preferred)
+        )
         == expected
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "model, tool, argument, value, allowed, model_answer, expected",
+    [
+        ("gemma4:e4b", "read_file", "file_path", "note.txt", True, "", "verified note"),
+        (
+            "gemma4:e4b",
+            "read_file",
+            "file_path",
+            "large.txt",
+            True,
+            "",
+            "x" * 4000 + "…",
+        ),
+        ("gemma4:e4b", "read_file", "file_path", "empty.txt", True, "", "(∅)"),
+        ("gemma4:e4b", "file_exists", "file_path", "absent", True, "", "False"),
+        (
+            "gemma4:e4b",
+            "read_file",
+            "file_path",
+            "../forbidden.txt",
+            True,
+            "",
+            "Odmowa dostępu",
+        ),
+        (
+            "gemma4:e4b",
+            "read_file",
+            "file_path",
+            "note.txt",
+            False,
+            "",
+            "Access denied.",
+        ),
+        ("gemma4:e4b", "read_file", "file_path", "note.txt", True, "real reply", None),
+        (
+            "functiongemma",
+            "read_file",
+            "file_path",
+            "note.txt",
+            True,
+            "",
+            "verified note",
+        ),
+    ],
+)
+async def test_single_model_surfaces_recorded_evidence_after_blank_reply(
+    tmp_path, model, tool, argument, value, allowed, model_answer, expected
+):
+    from venom_core.execution.skills.file_skill import FileSkill
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / "note.txt").write_text("verified note")
+    (workspace / "large.txt").write_text("x" * 5000)
+    (workspace / "empty.txt").touch()
+    (tmp_path / "forbidden.txt").write_text("outside workspace marker")
+    requests = []
+    name = f"FileSkill-{tool}"
+
+    def respond(request):
+        requests.append(json.loads(request.content))
+        if len(requests) > 1:
+            return httpx.Response(200, json=completion(model_answer))
+        call = {
+            "id": "observed",
+            "type": "function",
+            "function": {"name": name, "arguments": json.dumps({argument: value})},
+        }
+        return httpx.Response(200, json=completion(None, [call]))
+
+    kernel = AgentRuntime(permission_checker=lambda _: allowed)
+    kernel.add_service(service(respond, model_id=model, capable=True))
+    kernel.add_plugin(FileSkill(str(workspace)), "FileSkill")
+    orch = orchestrator(kernel)
+    task_id = uuid4()
+    request = TaskRequest(
+        content="Check the requested path",
+        agent_mode="single_model",
+        model_tools=[name] if model == "gemma4:e4b" else None,
+    )
+
+    try:
+        answer = await ExecutionStrategy(orch).execute(
+            task_id, "GENERAL_CHAT", request.content, request
+        )
+    finally:
+        await kernel.aclose()
+
+    assert len(requests) == 2
+    trace = orch.states[task_id]["gemma4_operator"]["messages"]
+    assert trace[-1]["role"] == "assistant"
+    assert trace[-1]["content"] == model_answer
+    if expected is None:
+        assert answer == model_answer
+    else:
+        assert "The model did not finish" in answer
+        assert f"{name}:\n\n    " in answer
+        assert expected in answer
+        assert "outside workspace marker" not in answer
+
+
+@pytest.mark.asyncio
+async def test_single_model_does_not_create_fallback_without_tool_evidence(tmp_path):
+    from venom_core.execution.skills.file_skill import FileSkill
+
+    kernel = AgentRuntime()
+    kernel.add_service(
+        service(
+            lambda _: httpx.Response(200, json=completion("")),
+            model_id="gemma4:e4b",
+            capable=True,
+        )
+    )
+    kernel.add_plugin(FileSkill(str(tmp_path)), "FileSkill")
+    request = TaskRequest(
+        content="Read a file",
+        agent_mode="single_model",
+        model_tools=["FileSkill-read_file"],
+    )
+    try:
+        assert (
+            await ExecutionStrategy(orchestrator(kernel)).execute(
+                uuid4(), "GENERAL_CHAT", request.content, request
+            )
+            == ""
+        )
+    finally:
+        await kernel.aclose()

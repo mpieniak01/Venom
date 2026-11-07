@@ -1,8 +1,8 @@
 """Moduł: file_skill - zarządzanie operacjami plikowymi z sandboxingiem."""
 
 import json
-import os
 import shutil
+import stat
 from pathlib import Path
 from typing import Annotated, Any, Optional
 
@@ -733,7 +733,8 @@ class FileSkill(BaseSkill):
         ]
         skipped_files = 0
 
-        for root, dirs, files in os.walk(safe_path):
+        for root_path, dirs, files in safe_path.walk(follow_symlinks=False):
+            root = str(root_path)
             depth = self._get_relative_depth(root, safe_path)
             if depth > max_depth:
                 dirs.clear()
@@ -756,10 +757,13 @@ class FileSkill(BaseSkill):
     def _list_files_flat(self, directory: str, safe_path: Path) -> str:
         items = []
         for item in sorted(safe_path.iterdir()):
-            stat_result = item.stat()
-            item_type = "katalog" if item.is_dir() else "plik"
+            entry = item.lstat()
             relative_path = item.relative_to(self.workspace_root)
-            size = str(stat_result.st_size) if item.is_file() else "-"
+            if stat.S_ISLNK(entry.st_mode):
+                items.append(f"  [dowiązanie] {relative_path}")
+                continue
+            item_type = "katalog" if stat.S_ISDIR(entry.st_mode) else "plik"
+            size = str(entry.st_size) if stat.S_ISREG(entry.st_mode) else "-"
             items.append(f"  [{item_type}] {relative_path} ({size} bajtów)")
 
         if not items:
@@ -800,10 +804,12 @@ class FileSkill(BaseSkill):
         for file_name in sorted(files):
             file_path = Path(root) / file_name
             try:
-                stat_result = file_path.stat()
-                size = str(stat_result.st_size)
+                entry = file_path.lstat()
                 rel_path = file_path.relative_to(self.workspace_root)
-                items.append(f"{indent}[plik] {rel_path} ({size} bajtów)")
+                if stat.S_ISLNK(entry.st_mode):
+                    items.append(f"{indent}[dowiązanie] {rel_path}")
+                else:
+                    items.append(f"{indent}[plik] {rel_path} ({entry.st_size} bajtów)")
             except Exception:
                 skipped += 1
         return skipped

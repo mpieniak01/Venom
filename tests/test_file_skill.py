@@ -206,6 +206,40 @@ def test_list_files_recursive_and_helper_branches(temp_workspace):
     assert skipped == 1
 
 
+@pytest.mark.parametrize("recursive", [False, True])
+def test_list_files_reports_symlinks_without_target_metadata(tmp_path, recursive):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    target = outside / "private.txt"
+    target.write_bytes(b"x" * 173)
+    visible = workspace / "visible.txt"
+    visible.write_bytes(b"local")
+    try:
+        (workspace / "file-link").symlink_to(target)
+        (workspace / "dir-link").symlink_to(outside, target_is_directory=True)
+        (workspace / "broken-link").symlink_to(outside / "missing.txt")
+        (workspace / "local-link").symlink_to(visible)
+    except (OSError, NotImplementedError):
+        pytest.skip("Symlinks are unavailable in this environment")
+
+    result = FileSkill(str(workspace)).list_files(".", recursive=recursive)
+
+    assert "[plik] visible.txt (5 bajtów)" in result
+    link_lines = {
+        line.strip() for line in result.splitlines() if "[dowiązanie]" in line
+    }
+    assert link_lines == {
+        "[dowiązanie] file-link",
+        "[dowiązanie] dir-link",
+        "[dowiązanie] broken-link",
+        "[dowiązanie] local-link",
+    }
+    assert "173 bajtów" not in result
+    assert "private.txt" not in result
+
+
 @pytest.mark.asyncio
 async def test_overwrite_file(temp_workspace):
     """Test nadpisania istniejącego pliku."""

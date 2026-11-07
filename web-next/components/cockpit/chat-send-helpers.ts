@@ -597,20 +597,19 @@ export async function handleSimpleTaskSend(params: SimpleTaskSendParams) {
                 steps,
             },
         }));
-        try {
-            await ingestMemoryEntry({
-                text: buffer,
-                category: "assistant",
-                sessionId: resolvedSession ?? null,
-                userId: "user_default",
-                pinned: true,
-                memoryType: "fact",
-                scope: "session",
-                timestamp,
-            });
-        } catch (err) {
+        // The stream already persisted the conversation. Index it without blocking the next send.
+        void ingestMemoryEntry({
+            text: buffer,
+            category: "assistant",
+            sessionId: resolvedSession ?? null,
+            userId: "user_default",
+            pinned: true,
+            memoryType: "fact",
+            scope: "session",
+            timestamp,
+        }).catch((err) => {
             console.warn("Nie udało się zapisać pamięci dla trybu prostego:", err);
-        }
+        });
         updateDurationMetrics({ duration, setLastResponseDurationMs, setResponseDurations });
         globalThis.window.setTimeout(() => {
             dropOptimisticRequest(clientId);

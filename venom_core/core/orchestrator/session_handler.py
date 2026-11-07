@@ -626,11 +626,17 @@ class SessionHandler:
     @staticmethod
     def _named_memory_subject(query: str) -> str | None:
         """Use a title-cased subject for explicit source lookups."""
+        subject = r"([A-ZĄĆĘŁŃÓŚŹŻ][^\W\d_]+(?:[ \t]+[A-ZĄĆĘŁŃÓŚŹŻ][^\W\d_]+){1,3})\b"
         match = re.search(
-            r"\b(?:projekt(?:u)?|project|stanowisk[ao]|station)\s+"
-            r"([A-ZĄĆĘŁŃÓŚŹŻ][^\W\d_]+(?:[ \t]+[A-ZĄĆĘŁŃÓŚŹŻ][^\W\d_]+){1,3})\b",
-            query,
+            r"\b(?:projekt(?:u)?|project|stanowisk[ao]|station)\s+" + subject, query
         )
+        if not match:
+            # A bare "for" can also introduce dates and other ordinary chat context.
+            match = re.search(
+                r"\b(?i:according to (?:the (?:retrieved )?notes|this session)\b"
+                r"[^.!?\n]{0,256}?\bfor)[ \t]+" + subject,
+                query,
+            )
         return match.group(1) if match else None
 
     @staticmethod

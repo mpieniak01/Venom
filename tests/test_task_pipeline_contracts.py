@@ -1164,7 +1164,17 @@ def test_memory_selection_never_falls_back_to_another_session():
     assert select([foreign, own, shared], None) == [shared]
 
 
-def test_rag_retrieval_rejects_other_subject_and_other_session():
+@pytest.mark.parametrize(
+    ("prompt", "subject"),
+    [
+        ("Przypomnij z notatki termin dla projektu Jasny Brzeg.", "Jasny Brzeg"),
+        (
+            "According to the retrieved notes, what is the code for Copper Quay?",
+            "Copper Quay",
+        ),
+    ],
+)
+def test_rag_retrieval_rejects_other_subject_and_other_session(prompt, subject):
     """Require both the requested subject and the allowed session scope."""
     from venom_core.core.orchestrator.session_handler import SessionHandler
 
@@ -1172,29 +1182,33 @@ def test_rag_retrieval_rejects_other_subject_and_other_session():
         return_value=[
             {"text": "Projekt Ciemny Brzeg: 08:50", "metadata": {"session_id": "own"}},
             {
-                "text": "Projekt Jasny Brzeg: 19:30",
+                "text": f"{subject}: 19:30",
                 "metadata": {"session_id": "foreign"},
             },
-            {"text": "Projekt Jasny Brzeg: 07:41", "metadata": {"session_id": "own"}},
+            {"text": f"{subject}: 07:41", "metadata": {"session_id": "own"}},
         ]
     )
     handler = SessionHandler(
         MagicMock(), SimpleNamespace(vector_store=SimpleNamespace(search=search))
     )
-    request = TaskRequest(
-        content="Przypomnij z notatki termin dla projektu Jasny Brzeg."
-    )
+    request = TaskRequest(content=prompt, session_id="own")
     context, _ = handler._retrieve_relevant_memory(request, "own")
+    first, last = subject.split()
     search.assert_called_once_with(
-        "Jasny Brzeg",
+        subject,
         limit=8,
         session_scope=True,
         session_id="own",
-        text_pattern=r"(?i)\bJasny[ \t]+Brzeg\b",
+        text_pattern=rf"(?i)\b{first}[ \t]+{last}\b",
     )
     assert "07:41" in context
     assert "08:50" not in context
     assert "19:30" not in context
+
+    search.return_value.pop()
+    parts = []
+    handler._attach_memory_block(uuid4(), MagicMock(), request, [], parts)
+    assert parts == ["[PAMIĘĆ] Brak źródła pasującego do wskazanej nazwy."]
 
 
 @pytest.mark.asyncio
@@ -1357,6 +1371,12 @@ def test_memory_subject_requires_explicit_named_source():
     from venom_core.core.orchestrator.session_handler import SessionHandler
 
     assert SessionHandler._named_memory_subject("Plan this for Monday Morning") is None
+    assert (
+        SessionHandler._named_memory_subject(
+            "According to the notes, this is urgent. Plan this for Monday Morning."
+        )
+        is None
+    )
     assert (
         SessionHandler._named_memory_subject("Notes for project Jasny Brzeg")
         == "Jasny Brzeg"

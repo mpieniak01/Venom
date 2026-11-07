@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { setImmediate } from "node:timers/promises";
 import { afterEach, beforeEach, describe, it } from "node:test";
 import { cancelSimpleChatStream, sendSimpleChatStream } from "../hooks/use-api";
 import { appendVastChatTurn, vastChatHistoryKey } from "../lib/vast-chat-history";
@@ -86,7 +87,9 @@ describe("Direct chat identity compatibility", () => {
     it("only attaches the full identity guard to remote Vast: " + runtime, async () => {
       let payload: Parameters<typeof sendSimpleChatStream>[0] | undefined;
       let status = "";
-      await handleSimpleTaskSend({
+      let sending = true;
+      let indexedSession: string | null | undefined;
+      const send = handleSimpleTaskSend({
         clientId: "id", trimmed: "question", resolvedSession: "session",
         generationParams: null, selectedLlmModel: "selected",
         activeServerInfo: {runtime_id: runtime, config_hash: "current-hash"},
@@ -99,12 +102,20 @@ describe("Direct chat identity compatibility", () => {
         linkOptimisticRequest: () => {}, setLocalSessionHistory: () => {},
         updateSimpleStream: (_id, update) => {status = update.status ?? status;},
         recordUiTiming: () => {}, uiTimingsRef: {current: new Map()},
-        setSimpleRequestDetails: () => {}, ingestMemoryEntry: async () => {},
+        setSimpleRequestDetails: () => {},
+        ingestMemoryEntry: ({sessionId}) => {
+          indexedSession = sessionId;
+          // Leave indexing pending to verify that it cannot hold the composer open.
+          return new Promise<void>(() => {});
+        },
         setLastResponseDurationMs: () => {}, setResponseDurations: () => {},
         dropOptimisticRequest: () => {}, clearSimpleStream: () => {},
-        setMessage: () => {}, setSending: () => {},
+        setMessage: () => {}, setSending: (value) => {sending = value;},
       });
+      assert.equal(await Promise.race([send.then(() => "sent"), setImmediate("pending")]), "sent");
       assert.equal(status, "COMPLETED");
+      assert.equal(sending, false);
+      assert.equal(indexedSession, "session");
       assert.ok(payload);
       if (runtime.startsWith("ollama@vast:")) {
         assert.equal(payload.expectedRuntimeId, runtime);

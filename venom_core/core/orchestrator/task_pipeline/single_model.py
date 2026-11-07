@@ -14,6 +14,7 @@ from venom_core.execution.agent_contracts import (
     ToolPolicy,
 )
 from venom_core.execution.model_tool_policy import (
+    GEMMA4_E4B_MODEL_ID,
     functiongemma_read_filters,
     is_functiongemma_model,
 )
@@ -185,13 +186,15 @@ async def execute_single_model(
     if not isinstance(service.ai_model_id, str) or not service.ai_model_id:
         raise ValueError("single_model_service_identity_missing")
     supports_tools = getattr(service, "supports_function_calling", False) is True
-    native_tools = []
-    if supports_tools:
-        native_tools = (
-            kernel.native_tools(functiongemma_read_filters(None))
-            if is_functiongemma_model(service.ai_model_id)
-            else kernel.native_tools()
-        )
+    is_e4b = service.ai_model_id == GEMMA4_E4B_MODEL_ID
+    if request.model_tools is not None and (not is_e4b or not supports_tools):
+        raise ValueError("model_tools_require_qualified_gemma4_e4b")
+    filters: dict[str, list[str]] | None = None
+    if is_e4b:
+        filters = {"included_functions": request.model_tools or []}
+    elif is_functiongemma_model(service.ai_model_id):
+        filters = functiongemma_read_filters(None)
+    native_tools = kernel.native_tools(filters) if supports_tools else []
     tools = [
         {
             "type": "function",
@@ -221,7 +224,9 @@ async def execute_single_model(
     if not limit_keys.intersection(generation_params):
         generation_params["max_tokens"] = 1024
     options = CompletionOptions.model_validate(generation_params)
-    options.function_choice_behavior = ToolPolicy.Auto() if native_tools else None
+    options.function_choice_behavior = (
+        ToolPolicy.Auto(filters) if native_tools else None
+    )
     if orch.request_tracer:
         orch.request_tracer.add_step(
             task_id,

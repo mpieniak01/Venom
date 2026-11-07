@@ -1,10 +1,13 @@
-"""Restrict the FunctionGemma tool surface independently of model proposals."""
+"""Restrict native tool catalogs independently of model proposals."""
 
 from collections.abc import Mapping, Sequence
+from typing import Literal, get_args
 
-FUNCTIONGEMMA_READ_TOOLS = frozenset(
-    {"FileSkill-file_exists", "FileSkill-list_files", "FileSkill-read_file"}
-)
+GEMMA4_E4B_MODEL_ID = "gemma4:e4b"
+FileReadToolName = Literal[
+    "FileSkill-file_exists", "FileSkill-list_files", "FileSkill-read_file"
+]
+FUNCTIONGEMMA_READ_TOOLS = frozenset(get_args(FileReadToolName))
 
 
 def is_functiongemma_model(model_id: str) -> bool:

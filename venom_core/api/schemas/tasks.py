@@ -7,6 +7,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field, model_validator
 
 from venom_core.contracts.routing import ReasonCode, RuntimeTarget
+from venom_core.execution.model_tool_policy import FileReadToolName
 
 
 class RoutingTarget(str, Enum):
@@ -82,6 +83,11 @@ class TaskRequest(BaseModel):
         pattern=r"^[A-Za-z0-9_.-]+$",
         description="Registered model service for single_model mode; never an endpoint or arbitrary model ID",
     )
+    model_tools: list[FileReadToolName] | None = Field(
+        default=None,
+        max_length=3,
+        description="Task-scoped read tools for gemma4:e4b in single_model mode",
+    )
     preferred_language: str | None = Field(
         default=None, description="Preferred response language (pl/en/de)"
     )
@@ -141,6 +147,8 @@ class TaskRequest(BaseModel):
             raise ValueError("single_model_preferred_language_unsupported")
         if self.model_service_id is not None and self.agent_mode != "single_model":
             raise ValueError("model_service_requires_single_model_mode")
+        if self.model_tools is not None and self.agent_mode != "single_model":
+            raise ValueError("model_tools_require_single_model_mode")
         return self
 
 

@@ -161,6 +161,13 @@ attestation, not an automatic probe. An unlisted service can answer in text but
 is not given tools. Existing runtime permission checks still apply to each
 invocation; model proposals are not permission grants.
 
+For the local `gemma4:e4b` tag, select the functions needed by the current
+`single_model` task using `model_tools`, for example
+`"model_tools": ["FileSkill-read_file"]` in the task JSON. The other available
+selections are `FileSkill-list_files` and `FileSkill-file_exists`. Omit the field
+for text-only tasks. This selection keeps the catalog small and retains the
+existing runtime permissions and workspace path validation.
+
 The path uses the existing MAF service and a 30-second execution budget. It
 records canonical native calls/results in `context_history.gemma4_operator`.
 Failures, cancellation and incomplete capture cannot qualify an experience.

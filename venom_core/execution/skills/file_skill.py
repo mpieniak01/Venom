@@ -1,6 +1,7 @@
 """Moduł: file_skill - zarządzanie operacjami plikowymi z sandboxingiem."""
 
 import json
+import os
 import shutil
 import stat
 from pathlib import Path
@@ -733,17 +734,21 @@ class FileSkill(BaseSkill):
         ]
         skipped_files = 0
 
-        for root_path, dirs, files in safe_path.walk(follow_symlinks=False):
-            root = str(root_path)
+        # os.walk rechecks a directory for symlinks after yielding its parent.
+        for root, dirs, files in os.walk(safe_path, followlinks=False):
             depth = self._get_relative_depth(root, safe_path)
             if depth > max_depth:
                 dirs.clear()
                 continue
             indent = "  " * depth
+            linked_dirs = {name for name in dirs if (Path(root) / name).is_symlink()}
+            dirs[:] = [name for name in dirs if name not in linked_dirs]
             self._append_recursive_dirs(items, dirs, root, depth, max_depth)
             if depth >= max_depth:
                 dirs.clear()
-            skipped_files += self._append_recursive_files(items, files, root, indent)
+            skipped_files += self._append_recursive_files(
+                items, [*files, *linked_dirs], root, indent
+            )
 
         if skipped_files > 0:
             self.logger.warning(f"Pominięto {skipped_files} niedostępnych plików")

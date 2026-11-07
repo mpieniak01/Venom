@@ -240,6 +240,35 @@ def test_list_files_reports_symlinks_without_target_metadata(tmp_path, recursive
     assert "private.txt" not in result
 
 
+def test_list_files_recursive_does_not_follow_directory_replaced_by_symlink(
+    tmp_path, monkeypatch
+):
+    workspace = tmp_path / "workspace"
+    child = workspace / "child"
+    child.mkdir(parents=True)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "private.txt").write_text("outside")
+    skill = FileSkill(str(workspace))
+    append_dirs = skill._append_recursive_dirs
+
+    def replace_after_listing(items, dirs, root, depth, max_depth):
+        append_dirs(items, dirs, root, depth, max_depth)
+        if Path(root) == workspace:
+            child.rmdir()
+            try:
+                child.symlink_to(outside, target_is_directory=True)
+            except (OSError, NotImplementedError):
+                pytest.skip("Symlinks are unavailable in this environment")
+
+    monkeypatch.setattr(skill, "_append_recursive_dirs", replace_after_listing)
+
+    result = skill.list_files(".", recursive=True)
+
+    assert child.is_symlink()
+    assert "private.txt" not in result
+
+
 @pytest.mark.asyncio
 async def test_overwrite_file(temp_workspace):
     """Test nadpisania istniejącego pliku."""

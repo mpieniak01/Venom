@@ -117,6 +117,11 @@ def _build_history_summary(trace) -> HistoryRequestSummary:
     )
     return HistoryRequestSummary(
         request_id=trace.request_id,
+        mode=(
+            "direct"
+            if any(step.component == "SimpleMode" for step in trace.steps)
+            else None
+        ),
         prompt=trace.prompt,
         status=trace.status,
         session_id=trace.session_id,

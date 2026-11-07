@@ -46,7 +46,7 @@ export function useCockpitLogic({
       void data.refresh.metrics(); void data.refresh.tokenMetrics();
       void data.refresh.modelsUsage(); void data.refresh.services();
     }, [data.refresh]);
-    const { sessionId, resetSession, handleActivateModel, sessionActions, sessionHistoryState, historyMessages, chatUi } = useConversationController({ data, interactive, layout, chatScrollRef, onTurnFinished });
+    const { sessionId, resetSession, handleActivateModel, sessionActions, sessionHistoryState, historyMessages, chatUi, directRequestIds } = useConversationController({ data, interactive, layout, chatScrollRef, onTurnFinished });
     // Hidden Prompts
     const [hiddenIntentFilter, setHiddenIntentFilter] = useState("all");
     const [hiddenScoreFilter, setHiddenScoreFilter] = useState(1);
@@ -76,6 +76,7 @@ export function useCockpitLogic({
     const requestDetail = useCockpitRequestDetailActions({
         findTaskMatch: data.findTaskMatch,
         simpleRequestDetails: interactive.optimistic.simpleRequestDetails,
+        directRequestIds,
         fetchHistoryDetail,
         fetchTaskDetail,
         setSelectedRequestId: interactive.setters.setSelectedRequestId,

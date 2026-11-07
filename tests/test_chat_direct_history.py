@@ -22,8 +22,9 @@ from venom_core.api.dependencies import (
     get_state_manager,
     get_vector_store,
 )
-from venom_core.api.routes import llm_simple, memory
+from venom_core.api.routes import llm_simple, memory, tasks
 from venom_core.api.schemas.llm_simple import SimpleChatRequest
+from venom_core.core.tracer import RequestTrace, TraceStatus, TraceStep
 from venom_core.services import (
     chat_material_payload,
     llm_simple_service,
@@ -520,3 +521,21 @@ async def test_native_history_fits_exact_runtime_limit_and_keeps_global_history_
         )
     assert error.value.status_code == 400
     assert error.value.detail == "vast_chat_history_limit"
+
+
+def test_history_identifies_old_processing_direct_traces_for_full():
+    direct = RequestTrace(
+        request_id=uuid4(),
+        status=TraceStatus.PROCESSING,
+        prompt="stopped Direct",
+        steps=[TraceStep(component="SimpleMode", action="request")],
+    )
+    normal = RequestTrace(
+        request_id=uuid4(), status=TraceStatus.PROCESSING, prompt="queued task"
+    )
+    tracer = SimpleNamespace(get_all_traces=lambda **kwargs: [direct, normal])
+    summary = tasks.get_request_history(tracer)
+    assert [(row.request_id, row.mode) for row in summary] == [
+        (direct.request_id, "direct"),
+        (normal.request_id, None),
+    ]

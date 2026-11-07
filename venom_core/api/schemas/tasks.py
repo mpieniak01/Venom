@@ -175,6 +175,7 @@ class HistoryRequestSummary(BaseModel):
     """Skrócony widok requestu dla listy historii."""
 
     request_id: UUID
+    mode: Literal["direct"] | None = None
     prompt: str
     status: str
     session_id: str | None = None

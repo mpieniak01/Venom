@@ -213,6 +213,7 @@ export function useTokenMetricsSummary({
 
 export type SessionHistoryEntry = {
   role?: string;
+  mode?: string | null;
   content?: string;
   session_id?: string;
   request_id?: string;
@@ -465,10 +466,12 @@ export function useTrackedRequestIds({
   optimisticRequests,
   history,
   selectedRequestId,
+  directRequestIds,
 }: {
   optimisticRequests: OptimisticRequestLike[];
   history: HistoryRequestLike[] | null;
   selectedRequestId: string | null;
+  directRequestIds: ReadonlySet<string>;
 }) {
   return useMemo(() => {
     const ids = new Set<string>();
@@ -479,8 +482,8 @@ export function useTrackedRequestIds({
       .filter((item) => item.status === "PENDING" || item.status === "PROCESSING")
       .forEach((item) => ids.add(item.request_id));
     if (selectedRequestId) ids.add(selectedRequestId);
-    return Array.from(ids);
-  }, [optimisticRequests, history, selectedRequestId]);
+    return Array.from(ids).filter(id => !directRequestIds.has(id));
+  }, [optimisticRequests, history, selectedRequestId, directRequestIds]);
 }
 
 type MacroRunContext = {

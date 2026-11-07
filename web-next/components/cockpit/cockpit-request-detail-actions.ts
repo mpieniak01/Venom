@@ -7,6 +7,7 @@ import { NOTIFICATIONS } from "@/lib/ui-config";
 type RequestDetailActionsParams = {
   findTaskMatch: (requestId?: string, prompt?: string | null) => Task | null;
   simpleRequestDetails: Record<string, HistoryRequestDetail>;
+  directRequestIds: ReadonlySet<string>;
   fetchHistoryDetail: (requestId: string) => Promise<HistoryRequestDetail>;
   fetchTaskDetail: (requestId: string) => Promise<Task>;
   setSelectedRequestId: React.Dispatch<React.SetStateAction<string | null>>;
@@ -22,6 +23,7 @@ type RequestDetailActionsParams = {
 export function useCockpitRequestDetailActions({
   findTaskMatch,
   simpleRequestDetails,
+  directRequestIds,
   fetchHistoryDetail,
   fetchTaskDetail,
   setSelectedRequestId,
@@ -49,10 +51,15 @@ export function useCockpitRequestDetailActions({
     setLoadingHistory(true);
     const fallback = findTaskMatch(requestId, prompt);
     try {
-      const [detailResult, taskResult] = await Promise.allSettled([
-        fetchHistoryDetail(requestId),
-        fetchTaskDetail(requestId),
-      ]);
+      const history = fetchHistoryDetail(requestId);
+      const task = directRequestIds.has(requestId)
+        ? Promise.resolve(null)
+        : history.then(
+          detail => detail.steps?.some(step => step.component === "SimpleMode")
+            ? null : fetchTaskDetail(requestId),
+          () => fetchTaskDetail(requestId),
+        );
+      const [detailResult, taskResult] = await Promise.allSettled([history, task]);
 
       if (detailResult.status === "fulfilled") {
         setHistoryDetail(detailResult.value);
@@ -80,6 +87,7 @@ export function useCockpitRequestDetailActions({
       setLoadingHistory(false);
     }
   }, [
+    directRequestIds,
     fetchHistoryDetail,
     fetchTaskDetail,
     findTaskMatch,

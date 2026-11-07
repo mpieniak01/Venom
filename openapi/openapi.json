@@ -16072,6 +16072,18 @@
             "format": "uuid",
             "title": "Request Id"
           },
+          "mode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "direct"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mode"
+          },
           "prompt": {
             "type": "string",
             "title": "Prompt"

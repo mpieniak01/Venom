@@ -7001,6 +7001,8 @@ export interface components {
              * Format: uuid
              */
             request_id: string;
+            /** Mode */
+            mode?: "direct" | null;
             /** Prompt */
             prompt: string;
             /** Status */

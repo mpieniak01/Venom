@@ -21,6 +21,7 @@ export type RuntimeOverride = {
 
 export type LocalHistoryEntry = {
     role?: string;
+    mode?: string | null;
     content?: string;
     session_id?: string;
     request_id?: string;
@@ -140,11 +141,12 @@ export const reconcileRequestId = (
     setLocalSessionHistory: ChatSendParams["setLocalSessionHistory"],
     fromId: string,
     toId: string,
+    mode?: "direct",
 ) => {
     setLocalSessionHistory((prev) =>
         prev.map((entry) => {
             if (entry.request_id !== fromId) return entry;
-            return { ...entry, request_id: toId };
+            return { ...entry, request_id: toId, ...(mode ? { mode } : {}) };
         }),
     );
 };
@@ -162,12 +164,14 @@ export const upsertHistoryEntry = (
         entries[idx] = {
             ...entries[idx],
             content,
+            mode: "direct",
             timestamp: entries[idx].timestamp || timestamp,
         };
         return;
     }
     entries.push({
         role,
+        mode: "direct",
         content,
         request_id: requestId,
         timestamp,
@@ -432,7 +436,7 @@ export async function handleSimpleTaskSend(params: SimpleTaskSendParams) {
         resolvedRequestId = simpleRequestId;
         recordAccounting("PROCESSING");
         linkOptimisticRequest(clientId, simpleRequestId);
-        reconcileRequestId(setLocalSessionHistory, clientId, simpleRequestId);
+        reconcileRequestId(setLocalSessionHistory, clientId, simpleRequestId, "direct");
         let lastHistoryUpdate = 0;
         const upsertLocalHistory = (role: "user" | "assistant", content: string) => {
             const now = Date.now();

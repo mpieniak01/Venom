@@ -39,7 +39,7 @@ _NOTE_POLICY = (
 def _recent_turns(
     store: SessionStore, session_id: str, budget: int
 ) -> list[HistoryMessage]:
-    history = store.get_history(session_id, limit=20)
+    history = store.get_history(session_id)
     result: list[HistoryMessage] = []
     end = len(history)
     while end > 1:
@@ -65,10 +65,13 @@ def _recent_turns(
         if cost > budget:
             break
         budget -= cost
-        result[0:0] = [
-            HistoryMessage(role="user", content=prompt),
-            HistoryMessage(role="assistant", content=reply),
-        ]
+        result.extend(
+            (
+                HistoryMessage(role="assistant", content=reply),
+                HistoryMessage(role="user", content=prompt),
+            )
+        )
+    result.reverse()
     return result
 
 

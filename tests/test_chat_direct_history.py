@@ -632,6 +632,31 @@ def test_studio_normal_stream_uses_host_history_and_loads_rag_only_for_notes(
     assert client.post(url, json={**payload, "content": "x" * 50000}).status_code == 413
 
 
+def test_studio_normal_keeps_older_complete_turns_within_the_context_budget(tmp_path):
+    from venom_core.services.studio_normal_chat import _recent_turns
+
+    store = SessionStore(str(tmp_path / "studio-long-history.json"))
+    for index in range(15):
+        rid = str(index)
+        prompt = "x" * 6000 if index == 0 else f"question {index}"
+        store.append_turn_once(
+            "own",
+            rid,
+            [
+                {"request_id": rid, "role": "user", "content": prompt},
+                {"request_id": rid, "role": "assistant", "content": f"answer {index}"},
+            ],
+        )
+
+    history = _recent_turns(store, "own", 4096)
+    assert [(message.role, message.content) for message in history] == [
+        turn
+        for index in range(1, 15)
+        for turn in (("user", f"question {index}"), ("assistant", f"answer {index}"))
+    ]
+    assert _recent_turns(store, "foreign", 4096) == []
+
+
 def test_explicit_note_uses_scoped_exact_lookup_before_embedding(tmp_path):
     from venom_core.memory.chat_retrieval import retrieve_chat_memory
     from venom_core.memory.vector_store import VectorStore

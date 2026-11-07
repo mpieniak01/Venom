@@ -623,6 +623,11 @@ def test_studio_normal_stream_uses_host_history_and_loads_rag_only_for_notes(
     miss = "Z notatki projektu Srebrny Las podaj termin."
     assert client.post(url, json={**payload, "content": miss}).status_code == 200
     assert "no matching source" in captured[-1][1] and "07:41" not in captured[-1][1]
+    english = "According to the notes for Jasny Brzeg, what is the pickup time?"
+    assert client.post(url, json={**payload, "content": english}).status_code == 200
+    context = captured[-1][1]
+    assert "07:41" in context and "08:50" not in context
+    assert "[/NOTES]\nWrite the answer in English" in context
     assert (
         client.post(
             url, json={**payload, "content": "hello", "material_ids": ["x"]}

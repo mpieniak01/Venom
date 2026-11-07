@@ -282,6 +282,9 @@ by merely changing a model ID.
 
 ## Two model variants and GPU experiments
 
+See the [local E4B pilot decision](PL/GEMMA4_E4B_PILOT.md) for the selected
+artifact, evaluation evidence and conditions for further tuning.
+
 | Variant | Explicit Ollama name | Profile | Native loader / layers |
 |---|---|---|---|
 | E4B IT | `gemma4:e4b` | `config/gemma4_operator_e4b_profile.json` | `Gemma4ForConditionalGeneration` / 42 |

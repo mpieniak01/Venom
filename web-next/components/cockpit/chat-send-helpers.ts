@@ -63,7 +63,7 @@ export type ChatSendParams = {
         history?: Array<{ role: "user" | "assistant"; content: string; material_ids?: string[] }>;
     }) => Promise<Response>;
     sendTask: (payload: SendTaskInput) => Promise<{ task_id?: string | null }>;
-    ingestMemoryEntry: (payload: {
+    ingestMemoryEntry?: (payload: {
         text: string;
         category: string;
         sessionId: string | null;
@@ -603,7 +603,7 @@ export async function handleSimpleTaskSend(params: SimpleTaskSendParams) {
             },
         }));
         // The stream already persisted the conversation. Index it without blocking the next send.
-        if (resolvedSession && headerRequestId) {
+        if (resolvedSession && headerRequestId && ingestMemoryEntry) {
             void ingestMemoryEntry({
                 text: buffer,
                 category: "assistant",

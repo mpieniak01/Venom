@@ -66,7 +66,7 @@ type CockpitChatUiParams = {
     history?: Array<{ role: "user" | "assistant"; content: string }>;
   }) => Promise<Response>;
   sendTask: (payload: SendTaskInput) => Promise<{ task_id?: string | null }>;
-  ingestMemoryEntry: (payload: {
+  ingestMemoryEntry?: (payload: {
     text: string;
     category: string;
     sessionId: string | null;

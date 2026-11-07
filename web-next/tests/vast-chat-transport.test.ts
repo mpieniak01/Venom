@@ -83,8 +83,11 @@ describe("Direct chat identity compatibility", () => {
     if (previousWindow) Object.defineProperty(globalThis, "window", previousWindow);
     else Reflect.deleteProperty(globalThis, "window");
   });
-  for (const runtime of ["ollama", "vllm", "openai", "ollama@vast:p:i:g"]) {
-    it("only attaches the full identity guard to remote Vast: " + runtime, async () => {
+  for (const [runtime, autoIndex] of [
+    ["ollama", true], ["vllm", true], ["openai", true], ["ollama@vast:p:i:g", true],
+    ["ollama", false],
+  ] as const) {
+    it(`completes Direct for ${runtime} (auto indexing ${autoIndex}) with the expected identity guard`, async () => {
       let payload: Parameters<typeof sendSimpleChatStream>[0] | undefined;
       let status = "";
       let sending = true;
@@ -105,11 +108,11 @@ describe("Direct chat identity compatibility", () => {
         updateSimpleStream: (_id, update) => {status = update.status ?? status;},
         recordUiTiming: () => {}, uiTimingsRef: {current: new Map()},
         setSimpleRequestDetails: () => {},
-        ingestMemoryEntry: ({sessionId, directRequestId}) => {
+        ingestMemoryEntry: autoIndex ? ({sessionId, directRequestId}) => {
           indexedTurn = [sessionId, directRequestId];
           // Leave indexing pending to verify that it cannot hold the composer open.
           return new Promise<void>(() => {});
-        },
+        } : undefined,
         setLastResponseDurationMs: () => {}, setResponseDurations: () => {},
         dropOptimisticRequest: () => {}, clearSimpleStream: () => {},
         setMessage: () => {}, setSending: (value) => {sending = value;},
@@ -117,7 +120,7 @@ describe("Direct chat identity compatibility", () => {
       assert.equal(await Promise.race([send.then(() => "sent"), setImmediate("pending")]), "sent");
       assert.equal(status, "COMPLETED");
       assert.equal(sending, false);
-      assert.deepEqual(indexedTurn, ["session", "server-turn"]);
+      assert.deepEqual(indexedTurn, autoIndex ? ["session", "server-turn"] : undefined);
       assert.ok(payload);
       if (runtime.startsWith("ollama@vast:")) {
         assert.equal(payload.expectedRuntimeId, runtime);

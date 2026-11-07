@@ -177,6 +177,23 @@ test("standalone entry renders the same shell without a dead classic link", () =
   assert.match(html, /chat2.send/);
 });
 
+test("standalone Studio can opt out of automatic Direct indexing", () => {
+  const key = "NEXT_PUBLIC_STUDIO_DIRECT_AUTO_INDEX";
+  const previous = process.env[key];
+  const Page = loadTsx(path.join(appRoot, "app/chat2/page.tsx"), {
+    "@/components/chat/studio-shell": { StudioShell: () => null },
+  }).default as () => React.ReactElement<{ autoIndexDirect: boolean }>;
+  try {
+    delete process.env[key];
+    assert.equal(Page().props.autoIndexDirect, true);
+    process.env[key] = "0";
+    assert.equal(Page().props.autoIndexDirect, false);
+  } finally {
+    if (previous === undefined) delete process.env[key];
+    else process.env[key] = previous;
+  }
+});
+
 test("standalone root redirects to chat2 without touching a provider", () => {
   const redirects: string[] = [];
   const Page = loadTsx(path.join(appRoot, "app/page.tsx"), {

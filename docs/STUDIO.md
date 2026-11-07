@@ -113,6 +113,19 @@ These operations can load heavier components. Smaller route counts do not prove
 RAM savings, lower latency or production readiness. Shared global CSS and the
 shared dependency installation remain explicit implementation boundaries.
 
+### Direct indexing experiment
+
+To disable automatic Direct response indexing in standalone Studio:
+
+```bash
+NEXT_PUBLIC_STUDIO_DIRECT_AUTO_INDEX=0 make start-studio PROFILE=full ENVIRONMENT=dev
+```
+
+Direct still saves the conversation in SessionStore. To test RAG, explicitly
+index a session-scoped note through the existing memory API and ask for it in
+Normal. With the flag unset, Studio continues indexing Direct responses.
+For a prebuilt web app, set the flag at build time as well.
+
 ## Verified stop
 
 Use the owning variant's stop command and environment. `stop-venom`/`stop-studio`

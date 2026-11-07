@@ -111,6 +111,19 @@ doładować cięższe komponenty. Mniejsza liczba tras nie dowodzi oszczędnośc
 mniejszych opóźnień ani gotowości prod. Wspólne globalne CSS i instalacja
 zależności pozostają jawnymi granicami rozwiązania.
 
+### Próba Direct z indeksowaniem na żądanie
+
+W samodzielnym Studio można wyłączyć automatyczne indeksowanie odpowiedzi Direct:
+
+```bash
+NEXT_PUBLIC_STUDIO_DIRECT_AUTO_INDEX=0 make start-studio PROFILE=full ENVIRONMENT=dev
+```
+
+Direct nadal zapisuje rozmowę w SessionStore. Do próby RAG dodaj wybraną
+notatkę przez istniejące API pamięci z zakresem sesji i zadaj pytanie w Normal.
+Bez ustawienia flagi Studio indeksuje odpowiedzi jak wcześniej. Przy gotowym
+buildzie ustaw flagę także podczas budowania webu.
+
 ## Zweryfikowane zatrzymanie
 
 Używaj stop właściwego wariantu i środowiska. `stop-venom`/`stop-studio` zatrzymują

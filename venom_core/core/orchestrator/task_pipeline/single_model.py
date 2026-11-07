@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 from typing import Any
 from uuid import UUID
 
@@ -12,6 +13,11 @@ from venom_core.execution.agent_contracts import (
     CompletionOptions,
     ConversationHistory,
     ToolPolicy,
+)
+from venom_core.execution.model_tool_policy import (
+    GEMMA4_E4B_MODEL_ID,
+    functiongemma_read_filters,
+    is_functiongemma_model,
 )
 
 _SINGLE_MODEL_PROMPT = (
@@ -168,6 +174,56 @@ def _record_trace(
     orch.state_manager.update_context(task_id, {"gemma4_operator": trace})
 
 
+def _fileskill_listing_answer(
+    history: ConversationHistory, language: str | None
+) -> str | None:
+    """Use the observed tool result for a successful FileSkill listing."""
+    messages, complete = _canonical_messages(history)
+    outputs = [row for row in messages if row["role"] == "tool"]
+    if not complete or len(outputs) != 1:
+        return None
+    output = outputs[0]
+    content = output["content"]
+    if output["name"] != "FileSkill-list_files" or not content.startswith(
+        "Zawartość katalogu "
+    ):
+        return None
+    header, _, entries = content.partition("\n")
+    if language not in {"en", "de"}:
+        scope = (
+            "Lista rekurencyjna w granicach podanego limitu."
+            if "(rekurencyjnie," in header
+            else "Lista bez zaglądania do podkatalogów."
+        )
+        return f"{scope}\n{entries.rstrip()}"
+    labels = (
+        {"plik": "file", "katalog": "directory", "dowiązanie": "symlink"}
+        if language == "en"
+        else {
+            "plik": "Datei",
+            "katalog": "Verzeichnis",
+            "dowiązanie": "symbolischer Link",
+        }
+    )
+    scope = {
+        "en": (
+            "Recursive listing within the requested limit.",
+            "Top-level listing only; nested contents were not inspected.",
+        ),
+        "de": (
+            "Rekursive Auflistung innerhalb des Limits.",
+            "Nur diese Ebene; Unterordner wurden nicht durchsucht.",
+        ),
+    }[language]["(rekurencyjnie," not in header]
+    entries = re.sub(
+        r"^(\s*)\[(plik|katalog|dowiązanie)\]",
+        lambda match: f"{match[1]}[{labels[match[2]]}]",
+        entries,
+        flags=re.M,
+    ).replace(" bajtów)", " bytes)" if language == "en" else " Byte)")
+    return f"{scope}\n{entries.rstrip()}"
+
+
 async def execute_single_model(
     orch: Any, task_id: UUID, context: str, request: TaskRequest
 ) -> str:
@@ -181,7 +237,15 @@ async def execute_single_model(
     if not isinstance(service.ai_model_id, str) or not service.ai_model_id:
         raise ValueError("single_model_service_identity_missing")
     supports_tools = getattr(service, "supports_function_calling", False) is True
-    native_tools = kernel.native_tools() if supports_tools else []
+    is_e4b = service.ai_model_id == GEMMA4_E4B_MODEL_ID
+    if request.model_tools is not None and (not is_e4b or not supports_tools):
+        raise ValueError("model_tools_require_qualified_gemma4_e4b")
+    filters: dict[str, list[str]] | None = None
+    if is_e4b:
+        filters = {"included_functions": request.model_tools or []}
+    elif is_functiongemma_model(service.ai_model_id):
+        filters = functiongemma_read_filters(None)
+    native_tools = kernel.native_tools(filters) if supports_tools else []
     tools = [
         {
             "type": "function",
@@ -211,7 +275,9 @@ async def execute_single_model(
     if not limit_keys.intersection(generation_params):
         generation_params["max_tokens"] = 1024
     options = CompletionOptions.model_validate(generation_params)
-    options.function_choice_behavior = ToolPolicy.Auto() if native_tools else None
+    options.function_choice_behavior = (
+        ToolPolicy.Auto(filters) if native_tools else None
+    )
     if orch.request_tracer:
         orch.request_tracer.add_step(
             task_id,
@@ -251,6 +317,10 @@ async def execute_single_model(
             )
         history.add_message(result)
         completed = True
+        if is_e4b and request.model_tools == ["FileSkill-list_files"]:
+            return _fileskill_listing_answer(
+                history, request.preferred_language
+            ) or str(result)
         return str(result)
     finally:
         _record_trace(orch, task_id, service, history, tools, completed)

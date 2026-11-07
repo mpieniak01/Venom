@@ -3,6 +3,7 @@
 import json
 import os
 import shutil
+import stat
 from pathlib import Path
 from typing import Annotated, Any, Optional
 
@@ -728,21 +729,27 @@ class FileSkill(BaseSkill):
     def _list_files_recursive(
         self, directory: str, safe_path: Path, max_depth: int
     ) -> str:
+        """List entries to the requested depth without descending through symlinks."""
         items = [
             f"Zawartość katalogu '{directory}' (rekurencyjnie, max {max_depth} poziomy):\n"
         ]
         skipped_files = 0
 
-        for root, dirs, files in os.walk(safe_path):
+        # os.walk rechecks a directory for symlinks after yielding its parent.
+        for root, dirs, files in os.walk(safe_path, followlinks=False):
             depth = self._get_relative_depth(root, safe_path)
             if depth > max_depth:
                 dirs.clear()
                 continue
             indent = "  " * depth
+            linked_dirs = {name for name in dirs if (Path(root) / name).is_symlink()}
+            dirs[:] = [name for name in dirs if name not in linked_dirs]
             self._append_recursive_dirs(items, dirs, root, depth, max_depth)
             if depth >= max_depth:
                 dirs.clear()
-            skipped_files += self._append_recursive_files(items, files, root, indent)
+            skipped_files += self._append_recursive_files(
+                items, [*files, *linked_dirs], root, indent
+            )
 
         if skipped_files > 0:
             self.logger.warning(f"Pominięto {skipped_files} niedostępnych plików")
@@ -754,12 +761,16 @@ class FileSkill(BaseSkill):
         return "\n".join(items)
 
     def _list_files_flat(self, directory: str, safe_path: Path) -> str:
+        """List immediate entries without dereferencing link metadata."""
         items = []
         for item in sorted(safe_path.iterdir()):
-            stat_result = item.stat()
-            item_type = "katalog" if item.is_dir() else "plik"
+            entry = item.lstat()
             relative_path = item.relative_to(self.workspace_root)
-            size = str(stat_result.st_size) if item.is_file() else "-"
+            if stat.S_ISLNK(entry.st_mode):
+                items.append(f"  [dowiązanie] {relative_path}")
+                continue
+            item_type = "katalog" if stat.S_ISDIR(entry.st_mode) else "plik"
+            size = str(entry.st_size) if stat.S_ISREG(entry.st_mode) else "-"
             items.append(f"  [{item_type}] {relative_path} ({size} bajtów)")
 
         if not items:
@@ -796,14 +807,17 @@ class FileSkill(BaseSkill):
     def _append_recursive_files(
         self, items: list[str], files: list[str], root: str, indent: str
     ) -> int:
+        """Render file and link entries while counting entries lost during traversal."""
         skipped = 0
         for file_name in sorted(files):
             file_path = Path(root) / file_name
             try:
-                stat_result = file_path.stat()
-                size = str(stat_result.st_size)
+                entry = file_path.lstat()
                 rel_path = file_path.relative_to(self.workspace_root)
-                items.append(f"{indent}[plik] {rel_path} ({size} bajtów)")
+                if stat.S_ISLNK(entry.st_mode):
+                    items.append(f"{indent}[dowiązanie] {rel_path}")
+                else:
+                    items.append(f"{indent}[plik] {rel_path} ({entry.st_size} bajtów)")
             except Exception:
                 skipped += 1
         return skipped

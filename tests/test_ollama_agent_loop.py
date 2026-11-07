@@ -304,3 +304,40 @@ class TestToolCallExtraction:
     def test_extract_tool_calls_handles_non_list(self):
         loop = OllamaAgentLoop()
         assert loop._extract_tool_calls({"tool_calls": "invalid"}) == []
+
+
+def test_functiongemma_ollama_hides_writes_and_blocks_forged_call(
+    monkeypatch, tmp_path
+):
+    """Keep write functions out of the Ollama catalog and reject forged calls."""
+    import io
+
+    requests = []
+    target = tmp_path / "unexpected.txt"
+    loop = OllamaAgentLoop(model="venom-functiongemma-270m:bf16")
+    loop.register_tool("FileSkill-read_file", "read", {}, lambda *_: "contents")
+    loop.register_tool(
+        "FileSkill-write_file", "write", {}, lambda *_: target.write_text("untrusted")
+    )
+
+    def request_response(req, **_):
+        """Return the simulated Ollama reply for the current exchange."""
+        requests.append(json.loads(req.data))
+        if len(requests) == 1:
+            reply = _make_tool_call_response(
+                "FileSkill-write_file", {"content": "untrusted"}
+            )
+        else:
+            reply = _make_ollama_response("Nie wykonano zapisu.")
+        return io.BytesIO(json.dumps(reply).encode())
+
+    monkeypatch.setattr(
+        "venom_core.execution.ollama_agent_loop.urllib_request.urlopen",
+        request_response,
+    )
+    result = loop.run("Odczytaj plik.")
+    assert [t["function"]["name"] for t in requests[0]["tools"]] == [
+        "FileSkill-read_file"
+    ]
+    assert result.tool_calls[0].error
+    assert not target.exists()

@@ -370,3 +370,28 @@ def test_worker_preflight_uses_configured_interpreter(tmp_path, monkeypatch):
     host = {"code_root": str(tmp_path), "worker_python": "/qualified/model/python"}
     assert verification._worker_runtime(host)["ok"]
     assert observed == [(tmp_path, Path("/qualified/model/python"))]
+
+
+def test_local_metadata_keeps_larger_manifest_limit(tmp_path, monkeypatch):
+    """Apply the same manifest and ordinary metadata limits as artifact inspection."""
+    from venom_core.services.remote_training import artifacts, verification
+
+    assert (
+        verification.DATA_MANIFEST_MAX_BYTES
+        == artifacts.DATA_MANIFEST_MAX_BYTES
+        == 256 * 1024**2
+    )
+    assert (
+        verification.METADATA_MAX_BYTES == artifacts.METADATA_MAX_BYTES == 8 * 1024**2
+    )
+    monkeypatch.setattr(verification, "DATA_MANIFEST_MAX_BYTES", 32)
+    monkeypatch.setattr(verification, "METADATA_MAX_BYTES", 8)
+    data = json.dumps({"encoded": "records"})
+    (tmp_path / artifacts.DATA_MANIFEST).write_text(data)
+    (tmp_path / "environment.json").write_text(data)
+
+    assert verification._metadata(tmp_path, artifacts.DATA_MANIFEST) == {
+        "encoded": "records"
+    }
+    with pytest.raises(ValueError, match="local_metadata_invalid:environment.json"):
+        verification._metadata(tmp_path, "environment.json")

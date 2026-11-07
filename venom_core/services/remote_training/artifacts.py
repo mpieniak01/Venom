@@ -20,6 +20,8 @@ from .bundles import (
 )
 
 DATA_MANIFEST = "data-manifest.json"
+DATA_MANIFEST_MAX_BYTES = 256 * 1024**2
+METADATA_MAX_BYTES = 8 * 1024**2
 ADAPTER_CONFIG = "adapter_config.json"
 MODEL_WEIGHTS = "model.safetensors"
 MODEL_CONFIG = "config.json"
@@ -98,11 +100,12 @@ def _files(root: Path, include_checkpoint: bool) -> list[str]:
 
 
 def _document(root: Path, name: str, errors: list[str]) -> dict[str, Any]:
+    """Read and validate bounded JSON metadata from a result directory."""
     path = root / name
     if not path.exists():
         return {}
     try:
-        limit = 64 * 1024**2 if name == DATA_MANIFEST else 8 * 1024**2
+        limit = DATA_MANIFEST_MAX_BYTES if name == DATA_MANIFEST else METADATA_MAX_BYTES
         if path.stat().st_size > limit:
             raise ValueError("metadata_size")
         value = json.loads(path.read_text())

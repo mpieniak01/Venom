@@ -1,5 +1,6 @@
 """Obsługa kontekstu sesji i historii w Orchestrator."""
 
+import re
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Protocol
 from uuid import UUID
 
@@ -304,14 +305,17 @@ class SessionHandler:
         history: list[Dict[str, Any]],
         parts: list[str],
     ) -> None:
+        """Append relevant memory for the current request and record the entries used."""
         if not self._should_include_memory(request, len(history)):
             return
         memory_block, memory_ids = self._retrieve_relevant_memory(
             request,
-            task.context_history.get("session", {}).get("session_id"),
+            request.session_id,
         )
         if memory_block:
             parts.append("[PAMIĘĆ]\n" + memory_block)
+        elif self._named_memory_subject(request.content):
+            parts.append("[PAMIĘĆ] Brak źródła pasującego do wskazanej nazwy.")
         if memory_ids:
             self._update_context_used_memory_entries(task_id, task, memory_ids)
 
@@ -356,6 +360,13 @@ class SessionHandler:
             "previous",
             "as before",
             "as earlier",
+            "według źród",
+            "z notat",
+            "w notat",
+            "w dokument",
+            "according to",
+            "in the notes",
+            "in the document",
         )
         if any(key in text for key in keywords):
             return True
@@ -403,9 +414,10 @@ class SessionHandler:
             full_history = task.context_history.get("session_history_full") or []
             if not full_history:
                 return
+            older_history = full_history[:-SESSION_HISTORY_LIMIT] or full_history
             raw_text = "\n".join(
                 f"{entry.get('role', '')}: {entry.get('content', '')}"
-                for entry in full_history
+                for entry in older_history
             )
             if (
                 len(full_history) < HISTORY_SUMMARY_TRIGGER_MSGS
@@ -415,11 +427,11 @@ class SessionHandler:
 
             strategy = getattr(SETTINGS, "SUMMARY_STRATEGY", SUMMARY_STRATEGY_DEFAULT)
             if strategy == "heuristic_only":
-                summary = self._heuristic_summary(full_history)
+                summary = self._heuristic_summary(older_history)
             else:
                 summary = self._summarize_history_llm(
                     raw_text
-                ) or self._heuristic_summary(full_history)
+                ) or self._heuristic_summary(older_history)
             if not summary:
                 return
             self.state_manager.update_context(task_id, {"session_summary": summary})
@@ -582,7 +594,15 @@ class SessionHandler:
         if not query.strip():
             return "", []
         try:
-            results = self.memory_skill.vector_store.search(query, limit=5)
+            subject = self._named_memory_subject(query)
+            results = self.memory_skill.vector_store.search(
+                subject or query, limit=8, session_scope=True, session_id=session_id
+            )
+            if subject:
+                phrase = re.compile(r"(?<!\w)" + re.escape(subject) + r"(?!\w)", re.I)
+                results = [
+                    item for item in results if phrase.search(item.get("text", ""))
+                ]
             top = self._select_relevant_memory_items(results, session_id)
             if not top:
                 return "", []
@@ -592,14 +612,22 @@ class SessionHandler:
             return "", []
 
     @staticmethod
+    def _named_memory_subject(query: str) -> str | None:
+        """Use a title-cased subject for explicit source lookups."""
+        match = re.search(
+            r"\b(?:projekt(?:u)?|project|stanowisk[ao]|station)\s+"
+            r"([A-ZĄĆĘŁŃÓŚŹŻ][^\W\d_]+(?:[ \t]+[A-ZĄĆĘŁŃÓŚŹŻ][^\W\d_]+){1,3})\b",
+            query,
+        )
+        return match.group(1) if match else None
+
+    @staticmethod
     def _select_relevant_memory_items(
         results: list[dict], session_id: Optional[str]
     ) -> list[dict]:
+        """Keep global and same-session results without falling back to other sessions."""
         if not results:
             return []
-        if not session_id:
-            return results[:3]
-
         filtered = []
         for item in results:
             meta = item.get("metadata") or {}
@@ -607,7 +635,7 @@ class SessionHandler:
             if item_session_id and item_session_id != session_id:
                 continue
             filtered.append(item)
-        return filtered[:3] if filtered else results[:3]
+        return filtered[:3]
 
     @staticmethod
     def _format_memory_context(items: list[dict]) -> tuple[str, list[str]]:

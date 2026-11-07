@@ -9227,6 +9227,11 @@ export interface components {
              */
             model_service_id?: string | null;
             /**
+             * Model Tools
+             * @description Task-scoped read tools for gemma4:e4b in single_model mode
+             */
+            model_tools?: ("FileSkill-file_exists" | "FileSkill-list_files" | "FileSkill-read_file")[] | null;
+            /**
              * Preferred Language
              * @description Preferred response language (pl/en/de)
              */

@@ -912,3 +912,114 @@ async def test_forced_intent_keeps_selected_model_context(monkeypatch, mode, int
     else:
         assert result == "question"
         builder.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "request_fields",
+    [
+        {"model_tools": ["FileSkill-read_file"]},
+        {"agent_mode": "single_model", "model_tools": ["FileSkill-write_file"]},
+    ],
+)
+def test_task_rejects_model_tools_outside_read_only_single_model(request_fields):
+    """Reject out-of-scope tools and tools on non-single-model requests."""
+    with pytest.raises(ValidationError):
+        TaskRequest(content="read", **request_fields)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "model_id,capable,requested,expected",
+    [
+        ("gemma4:e4b", True, ["FileSkill-read_file"], ["FileSkill-read_file"]),
+        ("gemma4:e4b", True, None, []),
+        ("gemma4:e4b", False, ["FileSkill-read_file"], None),
+        ("selected-model", True, ["FileSkill-read_file"], None),
+        ("selected-model", True, [], None),
+    ],
+)
+async def test_e4b_sends_only_task_tools_and_records_same_catalog(
+    tmp_path, model_id, capable, requested, expected
+):
+    """Keep the offered and recorded tool catalogs scoped to the request."""
+    from venom_core.execution.skills.file_skill import FileSkill
+
+    requests = []
+
+    def respond(request):
+        """Produce the completion returned by the fake model."""
+        requests.append(json.loads(request.content))
+        return httpx.Response(200, json=completion("response"))
+
+    kernel = AgentRuntime()
+    kernel.add_service(service(respond, model_id=model_id, capable=capable))
+    kernel.add_plugin(FileSkill(str(tmp_path)), "FileSkill")
+    kernel.add_plugin(Tools(), "Safe")
+    orch = orchestrator(kernel)
+    task_id = uuid4()
+    request = TaskRequest(
+        content="read", agent_mode="single_model", model_tools=requested
+    )
+
+    async def execute():
+        """Record the resolved tool options in the fake native runtime."""
+        return await ExecutionStrategy(orch).execute(
+            task_id, "GENERAL_CHAT", "read", request
+        )
+
+    try:
+        if expected is None:
+            with pytest.raises(ValueError, match="model_tools_require_qualified"):
+                await execute()
+            assert requests == []
+        else:
+            assert await execute() == "response"
+            assert len(requests) == 1
+            wire = requests[0].get("tools") or []
+            trace = orch.states[task_id]["gemma4_operator"]["tools"]
+            assert [tool["function"]["name"] for tool in wire] == expected
+            assert [tool["function"]["name"] for tool in trace] == expected
+    finally:
+        await kernel.aclose()
+
+
+@pytest.mark.parametrize(
+    "language,link_label,scope",
+    [
+        ("en", "[symlink]", "nested contents were not inspected"),
+        ("pl", "[dowiązanie]", "bez zaglądania do podkatalogów"),
+        ("de", "[symbolischer Link]", "Unterordner wurden nicht durchsucht"),
+    ],
+)
+def test_fileskill_listing_reports_tool_type_and_scope(language, link_label, scope):
+    """Render observed listing output with the original tool scope."""
+    from agent_framework import Content
+
+    from venom_core.core.orchestrator.task_pipeline.single_model import (
+        _fileskill_listing_answer,
+    )
+    from venom_core.execution.agent_contracts import (
+        ConversationHistory,
+        ConversationMessage,
+    )
+
+    history = ConversationHistory()
+    call = Content.from_function_call(
+        call_id="listing",
+        name="FileSkill-list_files",
+        arguments={"directory": "sample"},
+    )
+    result = Content.from_function_result(
+        call_id="listing",
+        result="Zawartość katalogu 'sample':\n  [dowiązanie] sample/incoming\n  [katalog] sample/archive",
+    )
+    for role, content in (("assistant", call), ("tool", result)):
+        history.add_message(
+            ConversationMessage(
+                role, native_message=SimpleNamespace(contents=[content])
+            )
+        )
+    answer = _fileskill_listing_answer(history, language)
+    assert answer is not None
+    assert scope in answer
+    assert f"{link_label} sample/incoming" in answer

@@ -1127,6 +1127,71 @@ class TestContextBuilderBuildContext:
         assert out.startswith("[KONTEKST SESJI]\nmeta\n\n")
         orch._build_session_context_block.assert_called_once()
 
+    async def test_short_chat_retains_question_and_recent_correction(self, monkeypatch):
+        """Keep the current question and newest correction under a tight context budget."""
+        block = MagicMock(return_value="old " * 100 + "latest correction")
+        orch = SimpleNamespace(
+            state_manager=SimpleNamespace(add_log=MagicMock()),
+            _build_session_context_block=block,
+            _get_runtime_context_char_limit=lambda _: 80,
+        )
+        monkeypatch.setattr(
+            "venom_core.core.orchestrator.task_pipeline.context_builder.get_active_llm_runtime",
+            lambda: SimpleNamespace(provider="ollama"),
+        )
+        task_id = uuid4()
+        request = TaskRequest(content="What is the final date?", session_id="a")
+
+        result = await ContextBuilder(orch).build_context(
+            task_id, request, fast_path=True
+        )
+
+        block.assert_called_once_with(request, task_id, include_memory=True)
+        assert len(result) == 80
+        assert result.endswith("latest correction\n\nWhat is the final date?")
+
+
+def test_memory_selection_never_falls_back_to_another_session():
+    """Exclude another session even when there are no matching entries."""
+    from venom_core.core.orchestrator.session_handler import SessionHandler
+
+    foreign = {"metadata": {"session_id": "other"}, "text": "foreign"}
+    own = {"metadata": {"session_id": "own"}, "text": "own"}
+    shared = {"metadata": {}, "text": "shared"}
+    select = SessionHandler._select_relevant_memory_items
+    assert select([foreign], "own") == []
+    assert select([foreign, own, shared], "own") == [own, shared]
+    assert select([foreign, own, shared], None) == [shared]
+
+
+def test_rag_retrieval_rejects_other_subject_and_other_session():
+    """Require both the requested subject and the allowed session scope."""
+    from venom_core.core.orchestrator.session_handler import SessionHandler
+
+    search = MagicMock(
+        return_value=[
+            {"text": "Projekt Ciemny Brzeg: 08:50", "metadata": {"session_id": "own"}},
+            {
+                "text": "Projekt Jasny Brzeg: 19:30",
+                "metadata": {"session_id": "foreign"},
+            },
+            {"text": "Projekt Jasny Brzeg: 07:41", "metadata": {"session_id": "own"}},
+        ]
+    )
+    handler = SessionHandler(
+        MagicMock(), SimpleNamespace(vector_store=SimpleNamespace(search=search))
+    )
+    request = TaskRequest(
+        content="Przypomnij z notatki termin dla projektu Jasny Brzeg."
+    )
+    context, _ = handler._retrieve_relevant_memory(request, "own")
+    search.assert_called_once_with(
+        "Jasny Brzeg", limit=8, session_scope=True, session_id="own"
+    )
+    assert "07:41" in context
+    assert "08:50" not in context
+    assert "19:30" not in context
+
 
 @pytest.mark.asyncio
 class TestContextBuilderUpdateForcedRouteContext:
@@ -1177,3 +1242,98 @@ class TestContextBuilderUpdateForcedRouteContext:
         tracer.set_forced_route.assert_not_called()
         # But add_step should still be called
         tracer.add_step.assert_called()
+
+
+def test_vector_search_applies_session_scope_before_limit(tmp_path):
+    """Prefilter the vector query so unrelated sessions cannot consume the result limit."""
+    from venom_core.memory.vector_store import VectorStore
+
+    pytest.importorskip("lancedb")
+
+    class Embeddings:
+        embedding_dimension = 3
+
+        def get_embedding(self, text):
+            """Return the test query embedding without calling a remote model."""
+            return [1.0, 0.0, 0.0] if "foreign" in text else [0.0, 1.0, 0.0]
+
+        def get_embeddings_batch(self, texts):
+            """Return fixed embeddings for the test records."""
+            return [self.get_embedding(text) for text in texts]
+
+    store = VectorStore(db_path=str(tmp_path), embedding_service=Embeddings())
+    store.upsert("foreign", {"session_id": "foreign"})
+    store.upsert("own", {"session_id": "own"})
+    store.upsert("shared", {})
+    assert store.search("foreign", limit=1)[0]["text"] == "foreign"
+    scoped = store.search("foreign", limit=2, session_scope=True, session_id="own")
+    assert {item["text"] for item in scoped} == {"own", "shared"}
+    global_only = store.search("foreign", limit=2, session_scope=True)
+    assert [item["text"] for item in global_only] == ["shared"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("provider_reply", "tool_required", "accepted"),
+    [("", False, True), (None, False, False), (None, True, True)],
+)
+async def test_empty_chat_result_depends_on_origin(
+    monkeypatch, provider_reply, tool_required, accepted
+):
+    """Allow an empty provider or tool result while rejecting empty model text."""
+    from venom_core.core.orchestrator import orchestrator_dispatch as dispatch
+
+    orch = _make_orch()
+    callback = MagicMock()
+    orch.streaming_handler = SimpleNamespace(create_stream_callback=lambda _: callback)
+    provider = AsyncMock(return_value=provider_reply)
+    model = AsyncMock(return_value="")
+    monkeypatch.setattr(dispatch, "handle_conversation_turn", provider)
+    monkeypatch.setattr(
+        dispatch, "ExecutionStrategy", lambda _: SimpleNamespace(execute=model)
+    )
+    monkeypatch.setattr(
+        dispatch, "get_active_llm_runtime", lambda: SimpleNamespace(provider="ollama")
+    )
+    task_id = uuid4()
+    request = TaskRequest(content="hello")
+
+    if accepted:
+        assert (
+            await dispatch._execute_with_stream_callback(
+                orch,
+                task_id,
+                "GENERAL_CHAT",
+                "context",
+                request,
+                tool_required=tool_required,
+            )
+            == ""
+        )
+    else:
+        with pytest.raises(RuntimeError, match="Model nie zwrócił treści"):
+            await dispatch._execute_with_stream_callback(
+                orch,
+                task_id,
+                "GENERAL_CHAT",
+                "context",
+                request,
+                tool_required=tool_required,
+            )
+
+    if provider_reply is not None:
+        callback.assert_called_once_with("")
+        model.assert_not_awaited()
+    else:
+        model.assert_awaited_once()
+
+
+def test_memory_subject_requires_explicit_named_source():
+    """Keep ordinary time phrases from narrowing RAG to a named subject."""
+    from venom_core.core.orchestrator.session_handler import SessionHandler
+
+    assert SessionHandler._named_memory_subject("Plan this for Monday Morning") is None
+    assert (
+        SessionHandler._named_memory_subject("Notes for project Jasny Brzeg")
+        == "Jasny Brzeg"
+    )

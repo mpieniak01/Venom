@@ -342,3 +342,36 @@ def test_coordinator_forces_offline_in_both_execution_targets(tmp_path, monkeypa
     assert environment["HF_HUB_OFFLINE"] == "1"
     assert environment["TRANSFORMERS_OFFLINE"] == "1"
     assert "venom_core.services.remote_training.worker" in argv
+
+
+def test_preflight_binds_warm_weights_to_input_profile(tmp_path, monkeypatch):
+    """Reject a warm-start directory that differs from the sealed recipe."""
+    from dataclasses import replace
+
+    from venom_core.services.functiongemma.profile import INITIAL_WEIGHT_FILES
+    from venom_core.services.granite_operator.contract import file_digest
+
+    snapshot, recipe, document, _ = setup_inputs(tmp_path, monkeypatch)
+    data = tmp_path / "input"
+    data.mkdir()
+    weights = tmp_path / "warm-start"
+    weights.mkdir()
+    for name in INITIAL_WEIGHT_FILES:
+        (weights / name).write_text(name)
+    recipe = replace(
+        recipe,
+        initial_weights={
+            name: file_digest(weights / name) for name in INITIAL_WEIGHT_FILES
+        },
+    )
+    write_json(data / "profile.json", recipe.identity())
+    write_json(data / "data-manifest.json", document)
+    root = Path(execution.__file__).resolve().parents[3]
+    host_config = {"snapshot": str(snapshot), "code_root": str(root)}
+    identity = execution.identity_for(
+        recipe, document, snapshot, root, max_seconds=1200
+    )
+    assert execution.preflight(host_config, data, identity)[0] == recipe
+    (weights / "config.json").write_text("changed")
+    with pytest.raises(ValueError, match="initial_weights_changed"):
+        execution.preflight(host_config, data, identity)

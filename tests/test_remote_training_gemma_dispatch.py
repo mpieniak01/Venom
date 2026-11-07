@@ -358,3 +358,18 @@ def test_gemma_code_identity_rejects_missing_shared_engine(tmp_path, model):
     (tmp_path / "venom_core/services/gemma4_operator").mkdir(parents=True)
     with pytest.raises(ValueError, match="shared_code_missing"):
         host.code_identity(tmp_path, model=model)
+
+
+def test_result_inspection_accepts_large_encoded_manifest(tmp_path):
+    """Accept an encoded manifest above the ordinary metadata size limit."""
+    from venom_core.services.remote_training.artifacts import _document
+
+    path = tmp_path / "data-manifest.json"
+    with path.open("wb") as stream:
+        stream.write(b'{"data":"')
+        stream.write(b"x" * (65 * 1024**2))
+        stream.write(b'"}')
+    errors = []
+    result = _document(tmp_path, path.name, errors)
+    assert len(result["data"]) == 65 * 1024**2
+    assert errors == []

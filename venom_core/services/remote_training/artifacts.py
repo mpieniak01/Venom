@@ -21,6 +21,7 @@ from .bundles import (
 
 DATA_MANIFEST = "data-manifest.json"
 DATA_MANIFEST_MAX_BYTES = 256 * 1024**2
+_LEGACY_MANIFEST_MAX_BYTES = 64 * 1024**2
 METADATA_MAX_BYTES = 8 * 1024**2
 ADAPTER_CONFIG = "adapter_config.json"
 MODEL_WEIGHTS = "model.safetensors"
@@ -99,13 +100,19 @@ def _files(root: Path, include_checkpoint: bool) -> list[str]:
     return selected
 
 
-def _document(root: Path, name: str, errors: list[str]) -> dict[str, Any]:
+def _document(
+    root: Path,
+    name: str,
+    errors: list[str],
+    *,
+    manifest_limit: int = DATA_MANIFEST_MAX_BYTES,
+) -> dict[str, Any]:
     """Read and validate bounded JSON metadata from a result directory."""
     path = root / name
     if not path.exists():
         return {}
     try:
-        limit = DATA_MANIFEST_MAX_BYTES if name == DATA_MANIFEST else METADATA_MAX_BYTES
+        limit = manifest_limit if name == DATA_MANIFEST else METADATA_MAX_BYTES
         if path.stat().st_size > limit:
             raise ValueError("metadata_size")
         value = json.loads(path.read_text())
@@ -137,6 +144,7 @@ def inspect_artifacts(
     run_id: str,
     *,
     include_checkpoint: bool = False,
+    _manifest_limit: int = DATA_MANIFEST_MAX_BYTES,
 ) -> dict[str, Any]:
     """Inventory evidence, preserving failed/incomplete outcomes and reload gate."""
     root = Path(root)
@@ -147,7 +155,7 @@ def inspect_artifacts(
     missing = sorted(set(required) - set(selected))
     errors: list[str] = []
     documents = {
-        name: _document(root, name, errors)
+        name: _document(root, name, errors, manifest_limit=_manifest_limit)
         for name in required
         if name.endswith(".json")
     }
@@ -302,6 +310,18 @@ def verify_result_bundle(
             expected_run_id,
             include_checkpoint=checkpoint,
         )
-        if manifest.get("receipt") != receipt:
-            raise ValueError("remote_training_result_receipt_mismatch")
-        return receipt
+        stored = manifest.get("receipt")
+        if stored == receipt:
+            return receipt
+        size = receipt["files"].get(DATA_MANIFEST, {}).get("size", 0)
+        if _LEGACY_MANIFEST_MAX_BYTES < size <= DATA_MANIFEST_MAX_BYTES:
+            legacy = inspect_artifacts(
+                destination,
+                expected_identity,
+                expected_run_id,
+                include_checkpoint=checkpoint,
+                _manifest_limit=_LEGACY_MANIFEST_MAX_BYTES,
+            )
+            if stored == legacy:
+                return legacy
+        raise ValueError("remote_training_result_receipt_mismatch")

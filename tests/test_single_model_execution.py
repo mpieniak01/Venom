@@ -1023,3 +1023,26 @@ def test_fileskill_listing_reports_tool_type_and_scope(language, link_label, sco
     assert answer is not None
     assert scope in answer
     assert f"{link_label} sample/incoming" in answer
+
+
+@pytest.mark.parametrize(
+    ("content", "preferred", "expected"),
+    [
+        ("List files in 'Żółty Brzeg'", None, "en"),
+        ("Bitte zeige die Dateien", None, "de"),
+        ("Wypisz pliki w katalogu", None, "pl"),
+        ("List files", "de", "de"),
+    ],
+)
+def test_listing_language_uses_request_when_preference_is_absent(
+    content, preferred, expected
+):
+    """Detect short listing commands and honor an explicit language choice."""
+    from venom_core.core.orchestrator.task_pipeline.single_model import (
+        _listing_language,
+    )
+
+    assert (
+        _listing_language(TaskRequest(content=content, preferred_language=preferred))
+        == expected
+    )

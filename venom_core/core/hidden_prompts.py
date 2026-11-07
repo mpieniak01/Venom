@@ -189,8 +189,10 @@ def build_hidden_prompts_context(
     intent: str,
     limit: int = 3,
     min_score: int = 1,
+    *,
+    max_chars: int | None = None,
 ) -> str:
-    """Buduje sekcję kontekstu z hidden prompts dla podanej intencji."""
+    """Dodaje pełne, najwyżej priorytetowane wpisy mieszczące się w budżecie."""
     active_items = get_active_hidden_prompts(intent=intent)
     aggregated = aggregate_hidden_prompts(
         limit=limit, intent=intent, min_score=min_score
@@ -204,18 +206,16 @@ def build_hidden_prompts_context(
     items = items[:limit]
     if not items:
         return ""
-    lines = ["\n\n🧠 HIDDEN PROMPTS (sprawdzone odpowiedzi):"]
+    header = "\n\n🧠 HIDDEN PROMPTS (sprawdzone odpowiedzi):"
+    context = ""
     for idx, item in enumerate(items, 1):
         prompt = (item.get("prompt") or "")[:300]
         response = (item.get("approved_response") or "")[:400]
-        lines.extend(
-            [
-                f"\n[Hidden {idx}]",
-                f"Prompt: {prompt}",
-                f"Odpowiedź: {response}",
-            ]
-        )
-    return "\n".join(lines)
+        candidate = f"{context or header}\n\n[Hidden {idx}]\nPrompt: {prompt}\nOdpowiedź: {response}"
+        if max_chars is not None and len(candidate) > max_chars:
+            break
+        context = candidate
+    return context
 
 
 def get_cached_hidden_response(

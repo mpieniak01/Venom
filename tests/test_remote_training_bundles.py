@@ -563,3 +563,51 @@ def test_job_copy_cannot_escape_explicit_staging_root(tmp_path, source, monkeypa
         job._copy_inputs(source, staging)
     assert not (tmp_path / "profile.json").exists()
     assert not list(staging.iterdir())
+
+
+@pytest.mark.parametrize("outcome", ["succeeded", "failed"])
+def test_verifies_historical_receipt_with_legacy_manifest_limit(
+    tmp_path, monkeypatch, result, identity, outcome
+):
+    """Keep old receipts exact, including incomplete outcomes and their file hashes."""
+    from venom_core.services.remote_training import artifacts
+
+    name = artifacts.DATA_MANIFEST
+    legacy_limit = (result / name).stat().st_size - 1
+    monkeypatch.setattr(artifacts, "_LEGACY_MANIFEST_MAX_BYTES", legacy_limit)
+    if outcome == "failed":
+        (result / "status.json").write_text(
+            json.dumps({"state": outcome, "run_id": "run-01", "exit_code": 1})
+        )
+    legacy = inspect_artifacts(result, identity, "run-01", _manifest_limit=legacy_limit)
+    assert not legacy["complete"]
+    assert f"invalid_metadata:{name}" in legacy["errors"]
+    archive = tmp_path / "legacy-result.zip"
+    create_bundle(
+        result,
+        list(legacy["files"]),
+        archive,
+        run_id="run-01",
+        identity=identity,
+        kind="result",
+        receipt=legacy,
+    )
+    verified = verify_result_bundle(
+        archive, expected_identity=identity, expected_run_id="run-01"
+    )
+    assert verified == legacy
+    assert verified["status"] == outcome
+    tampered = tmp_path / "tampered-result.zip"
+    create_bundle(
+        result,
+        list(legacy["files"]),
+        tampered,
+        run_id="run-01",
+        identity=identity,
+        kind="result",
+        receipt={**legacy, "complete": True},
+    )
+    with pytest.raises(ValueError, match="result_receipt_mismatch"):
+        verify_result_bundle(
+            tampered, expected_identity=identity, expected_run_id="run-01"
+        )

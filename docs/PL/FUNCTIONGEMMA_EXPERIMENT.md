@@ -213,4 +213,8 @@ O obowiązującym trybie autonomii decyduje zapisany stan Venoma.
 Udany zapis trafia do pliku `venom.log` w katalogu logów Venoma. Wpis zawiera
 identyfikator, czas, sesję, ścieżkę, skrót SHA-256 i informację o nadpisaniu.
 Treść pliku pozostaje poza logiem. Dla wpisu obowiązuje rotacja logów Venoma,
-a strumień audytu w panelu jest odrębny od procesu CLI.
+a strumień audytu w panelu jest odrębny od procesu CLI. Równoległe polecenia
+zapisu Venoma blokują wspólny katalog na czas publikacji. Jeśli katalog jest
+zajęty, ponów operację od podglądu. Przy nadpisywaniu wstrzymaj edycję tego
+samego pliku w innych programach. Procesy spoza Venoma mogą zmienić plik
+między ostatnią kontrolą jego stanu a atomową podmianą.

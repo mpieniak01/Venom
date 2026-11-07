@@ -88,7 +88,7 @@ def _parent(workspace: Path, parts: list[str]) -> Iterator[int]:
 def _publish(
     directory: int, name: str, content: bytes, expected: _SIGNATURE | None
 ) -> None:
-    """Write through a private temporary file and publish only after rechecking the target."""
+    """Publish under the operator lock. External writers need not honor that lock."""
     tmp = f".venom-write-{token_urlsafe(18)}"
     flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW
     fd = os.open(tmp, flags, 0o600, dir_fd=directory)
@@ -193,6 +193,13 @@ class OperatorFileWrites:
             raise PermissionError("file_write_permission_required")
         assert content is not None  # enforced by _content_digest
         with _parent(self._workspace, parts) as directory:
+            from fcntl import LOCK_EX, LOCK_NB, flock
+
+            # The opened directory keeps the lock tied to its inode across CLI processes.
+            try:
+                flock(directory, LOCK_EX | LOCK_NB)
+            except BlockingIOError as error:
+                raise PermissionError("file_write_target_busy") from error
             if (
                 _directory_identity(directory) != approval.parent
                 or _state(directory, parts[-1]) != approval.target

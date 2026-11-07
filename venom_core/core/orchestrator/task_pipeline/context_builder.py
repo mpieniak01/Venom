@@ -287,16 +287,14 @@ class ContextBuilder:
         if runtime_info.provider == "vllm" and max_ctx and max_ctx <= 512:
             include_hidden = False
 
+        available = max(0, runtime_limit - len(context) - 2)
         hidden_context = (
             build_hidden_prompts_context(
-                intent=intent, limit=MAX_HIDDEN_PROMPTS_IN_CONTEXT
+                intent=intent, limit=MAX_HIDDEN_PROMPTS_IN_CONTEXT, max_chars=available
             )
-            if include_hidden
+            if include_hidden and available
             else ""
         )
-
-        available = max(0, runtime_limit - len(context) - 2)
-        hidden_context = hidden_context[:available]
         if hidden_context:
             context = hidden_context + "\n\n" + context
 

@@ -941,3 +941,26 @@ def test_local_operator_command_loads_policy_and_preserves_bytes(tmp_path, monke
     )
     assert command.main() == 0
     assert (tmp_path / "approved.txt").read_bytes() == b"exact\r\n"
+
+
+def test_operator_write_preserves_target_when_directory_is_locked(tmp_path):
+    """A competing operator lock cannot change the file or reuse the approval."""
+    import os
+
+    fcntl = pytest.importorskip("fcntl")
+    target = tmp_path / "report.txt"
+    target.write_bytes(b"existing")
+    writes = OperatorFileWrites(tmp_path)
+    token = writes.prepare("operator", "report.txt", b"replacement", overwrite=True)
+    directory = os.open(tmp_path, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        fcntl.flock(directory, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        with pytest.raises(PermissionError, match="target_busy"):
+            writes.execute(
+                token, "operator", "report.txt", b"replacement", overwrite=True
+            )
+    finally:
+        os.close(directory)
+    assert target.read_bytes() == b"existing"
+    with pytest.raises(PermissionError, match="approval_required"):
+        writes.execute(token, "operator", "report.txt", b"replacement", overwrite=True)

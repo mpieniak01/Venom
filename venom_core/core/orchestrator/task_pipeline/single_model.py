@@ -8,6 +8,7 @@ import re
 from typing import Any
 from uuid import UUID
 
+from venom_core.core.intent_manager import IntentManager
 from venom_core.core.models import TaskRequest
 from venom_core.execution.agent_contracts import (
     CompletionOptions,
@@ -174,6 +175,18 @@ def _record_trace(
     orch.state_manager.update_context(task_id, {"gemma4_operator": trace})
 
 
+def _listing_language(request: TaskRequest) -> str:
+    """Use the explicit language or infer it from the operator's listing request."""
+    if request.preferred_language:
+        return request.preferred_language
+    prompt = request.content.strip().casefold()
+    if re.match(r"(?:please\s+|(?:can|could|would) you\s+)?(?:list|show)\b", prompt):
+        return "en"
+    if re.match(r"(?:bitte\s+)?(?:liste|zeige|zeig)\b", prompt):
+        return "de"
+    return IntentManager._detect_language(prompt) or "pl"
+
+
 def _fileskill_listing_answer(
     history: ConversationHistory, language: str | None
 ) -> str | None:
@@ -319,7 +332,7 @@ async def execute_single_model(
         completed = True
         if is_e4b and request.model_tools == ["FileSkill-list_files"]:
             return _fileskill_listing_answer(
-                history, request.preferred_language
+                history, _listing_language(request)
             ) or str(result)
         return str(result)
     finally:

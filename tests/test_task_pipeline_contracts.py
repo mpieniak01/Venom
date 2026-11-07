@@ -1186,7 +1186,11 @@ def test_rag_retrieval_rejects_other_subject_and_other_session():
     )
     context, _ = handler._retrieve_relevant_memory(request, "own")
     search.assert_called_once_with(
-        "Jasny Brzeg", limit=8, session_scope=True, session_id="own"
+        "Jasny Brzeg",
+        limit=8,
+        session_scope=True,
+        session_id="own",
+        text_pattern=r"(?i)\bJasny[ \t]+Brzeg\b",
     )
     assert "07:41" in context
     assert "08:50" not in context
@@ -1255,6 +1259,8 @@ def test_vector_search_applies_session_scope_before_limit(tmp_path):
 
         def get_embedding(self, text):
             """Return the test query embedding without calling a remote model."""
+            if "właściwy" in text:
+                return [0.0, 0.0, 1.0]
             return [1.0, 0.0, 0.0] if "foreign" in text else [0.0, 1.0, 0.0]
 
         def get_embeddings_batch(self, texts):
@@ -1270,6 +1276,24 @@ def test_vector_search_applies_session_scope_before_limit(tmp_path):
     assert {item["text"] for item in scoped} == {"own", "shared"}
     global_only = store.search("foreign", limit=2, session_scope=True)
     assert [item["text"] for item in global_only] == ["shared"]
+
+    for i in range(10):
+        store.upsert(f"Jasny Brzegowy wpis {i}", {"session_id": "own"})
+    matching = "JASNY BRZEG: właściwy termin"
+    store.upsert(matching, {"session_id": "own"})
+    store.upsert("Jasny Brzeg: tajny termin", {"session_id": "foreign"})
+    unfiltered = store.search(
+        "Jasny Brzeg", limit=8, session_scope=True, session_id="own"
+    )
+    assert all(item["text"] != matching for item in unfiltered)
+    scoped = store.search(
+        "Jasny Brzeg",
+        limit=8,
+        session_scope=True,
+        session_id="own",
+        text_pattern=r"(?i)\bJasny[ \t]+Brzeg\b",
+    )
+    assert [item["text"] for item in scoped] == [matching]
 
 
 @pytest.mark.asyncio

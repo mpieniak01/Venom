@@ -44,6 +44,10 @@ class MemoryStoreLike(Protocol):
         query: str,
         limit: int = 3,
         collection_name: Optional[str] = None,
+        *,
+        session_scope: bool = False,
+        session_id: str | None = None,
+        text_pattern: str | None = None,
     ): ...
 
     def upsert(self, text: str, metadata: Dict[str, Any], **kwargs: Any) -> Any: ...
@@ -595,11 +599,19 @@ class SessionHandler:
             return "", []
         try:
             subject = self._named_memory_subject(query)
-            results = self.memory_skill.vector_store.search(
-                subject or query, limit=8, session_scope=True, session_id=session_id
-            )
+            pattern = None
             if subject:
-                phrase = re.compile(r"(?<!\w)" + re.escape(subject) + r"(?!\w)", re.I)
+                words = r"[ \t]+".join(re.escape(word) for word in subject.split())
+                pattern = rf"(?i)\b{words}\b"
+            results = self.memory_skill.vector_store.search(
+                subject or query,
+                limit=8,
+                session_scope=True,
+                session_id=session_id,
+                text_pattern=pattern,
+            )
+            if pattern:
+                phrase = re.compile(pattern)
                 results = [
                     item for item in results if phrase.search(item.get("text", ""))
                 ]

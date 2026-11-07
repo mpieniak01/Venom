@@ -1,5 +1,6 @@
 """Moduł: routes/memory - Endpointy API dla pamięci wektorowej."""
 
+from contextlib import nullcontext
 from typing import Annotated, Any, cast
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -50,6 +51,7 @@ from venom_core.services.memory_graph_service import (
 from venom_core.services.memory_graph_service import (
     resolve_maybe_await as _resolve_maybe_await_svc,
 )
+from venom_core.services.memory_graph_service import session_memory_lock
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -119,12 +121,14 @@ async def _resolve_maybe_await(value: Any) -> Any:
     status_code=201,
     responses={
         400: {"description": "Nieprawidłowe dane wejściowe"},
+        409: {"description": "Tura Direct nie jest dostępna w historii sesji"},
         500: {"description": "Błąd wewnętrzny podczas zapisu do pamięci"},
     },
 )
 def ingest_to_memory(
     request: MemoryIngestRequest,
     vector_store: Annotated[Any, Depends(get_vector_store)],
+    session_store: Annotated[Any, Depends(get_session_store)] = None,
 ):
     """
     Zapisuje tekst do pamięci wektorowej.
@@ -141,12 +145,40 @@ def ingest_to_memory(
     try:
         _require_nonempty(request.text, "Tekst nie może być pusty")
         metadata = _build_ingest_metadata(request)
-        result = vector_store.upsert(
-            text=request.text,
-            metadata=metadata,
-            collection_name=request.collection,
-            chunk_text=True,
+        session_id = request.session_id
+        if request.direct_request_id and (
+            not session_id
+            or request.scope != "session"
+            or request.collection != "default"
+        ):
+            raise HTTPException(
+                400, "Indeksowanie Direct wymaga zakresu sesji i domyślnej kolekcji."
+            )
+        lock = (
+            session_memory_lock(session_id)
+            if request.direct_request_id and session_id
+            else nullcontext()
         )
+        with lock:
+            if request.direct_request_id and not (
+                session_store
+                and any(
+                    turn.get("request_id") == request.direct_request_id
+                    and turn.get("role") == "assistant"
+                    and turn.get("mode") == "direct"
+                    and turn.get("status") == "COMPLETED"
+                    for turn in session_store.get_history(session_id)
+                )
+            ):
+                raise HTTPException(
+                    409, "Tura Direct nie jest dostępna w historii sesji."
+                )
+            result = vector_store.upsert(
+                text=request.text,
+                metadata=metadata,
+                collection_name=request.collection,
+                chunk_text=True,
+            )
 
         logger.info(
             f"Ingestion pomyślny: {result['chunks_count']} fragmentów do '{request.collection}'"
@@ -242,18 +274,21 @@ def clear_session_memory(
             actor=resolve_actor_from_request(req),
         )
 
-    deleted_vectors = 0
-    try:
-        deleted_vectors = vector_store.delete_by_metadata({"session_id": session_id})
-        deleted_vectors += vector_store.delete_session(session_id)
-    except Exception as e:  # pragma: no cover
-        logger.warning(f"Nie udało się usunąć wpisów sesyjnych z pamięci: {e}")
+    with session_memory_lock(session_id):
+        deleted_vectors = 0
+        try:
+            deleted_vectors = vector_store.delete_by_metadata(
+                {"session_id": session_id}
+            )
+            deleted_vectors += vector_store.delete_session(session_id)
+        except Exception as e:  # pragma: no cover
+            logger.warning(f"Nie udało się usunąć wpisów sesyjnych z pamięci: {e}")
 
-    cleared_tasks = 0
-    if state_manager:
-        cleared_tasks = state_manager.clear_session_context(session_id)
-    if session_store:
-        session_store.clear_session(session_id)
+        cleared_tasks = 0
+        if state_manager:
+            cleared_tasks = state_manager.clear_session_context(session_id)
+        if session_store:
+            session_store.clear_session(session_id)
 
     return {
         "status": "success",

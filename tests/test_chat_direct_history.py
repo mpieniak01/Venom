@@ -2,8 +2,10 @@
 
 import asyncio
 import json
+from concurrent.futures import ThreadPoolExecutor, TimeoutError
 from contextlib import asynccontextmanager
 from decimal import Decimal
+from threading import Event
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 from uuid import UUID, uuid4
@@ -15,7 +17,11 @@ from fastapi.responses import StreamingResponse
 from fastapi.testclient import TestClient
 
 from tests import test_openrouter_runtime as openrouter_fixtures
-from venom_core.api.dependencies import get_session_store
+from venom_core.api.dependencies import (
+    get_session_store,
+    get_state_manager,
+    get_vector_store,
+)
 from venom_core.api.routes import llm_simple, memory
 from venom_core.api.schemas.llm_simple import SimpleChatRequest
 from venom_core.services import (
@@ -45,6 +51,80 @@ def event(kind, value):
 
 async def consume(response):
     return "".join([chunk async for chunk in response.body_iterator])
+
+
+def test_clear_waits_for_direct_index_and_rejects_late_replay(
+    fake_vector_store, monkeypatch, tmp_path
+):
+    """Exercise both orders through HTTP with a delayed vector upsert."""
+    session_id = "direct-clear"
+    request_id = "direct-turn"
+    store = SessionStore(str(tmp_path / "session.json"))
+    store.append_turn_once(
+        session_id,
+        request_id,
+        [
+            {
+                "role": "assistant",
+                "mode": "direct",
+                "status": "COMPLETED",
+                "request_id": request_id,
+                "content": "Direct index sentinel",
+            }
+        ],
+    )
+    app = application(store)
+    app.dependency_overrides[get_vector_store] = lambda: fake_vector_store
+    app.dependency_overrides[get_state_manager] = lambda: None
+    monkeypatch.setattr(memory, "ensure_data_mutation_allowed", lambda _: None)
+    client = TestClient(app)
+    original_upsert = fake_vector_store.upsert
+    started = Event()
+    finish = Event()
+
+    def delayed_upsert(*args, **kwargs):
+        started.set()
+        assert finish.wait(timeout=5)
+        return original_upsert(*args, **kwargs)
+
+    monkeypatch.setattr(fake_vector_store, "upsert", delayed_upsert)
+    payload = {
+        "text": "Direct index sentinel",
+        "session_id": session_id,
+        "scope": "session",
+        "direct_request_id": request_id,
+    }
+    ingest_path = "/api/v1/memory/ingest"
+    clear_path = f"/api/v1/memory/session/{session_id}"
+    for invalid in (
+        {"scope": "global"},
+        {"collection": "other"},
+        {"session_id": None},
+    ):
+        assert client.post(ingest_path, json={**payload, **invalid}).status_code == 400
+    assert (
+        client.post(
+            ingest_path, json={**payload, "session_id": "another-session"}
+        ).status_code
+        == 409
+    )
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        indexing = executor.submit(client.post, ingest_path, json=payload)
+        try:
+            assert started.wait(timeout=3)
+            clearing = executor.submit(client.delete, clear_path)
+            with pytest.raises(TimeoutError):
+                clearing.result(timeout=0.2)
+        finally:
+            finish.set()
+        assert indexing.result(timeout=3).status_code == 201
+        cleared = clearing.result(timeout=3)
+        assert cleared.status_code == 200
+        assert cleared.json()["deleted_vectors"] >= 1
+    assert client.get(clear_path).json()["history"] == []
+    assert client.post(ingest_path, json=payload).status_code == 409
+    search = client.post("/api/v1/memory/search", json={"query": payload["text"]})
+    assert all(result["text"] != payload["text"] for result in search.json()["results"])
 
 
 def test_native_direct_full_wire_reloads_from_same_host_session_store(

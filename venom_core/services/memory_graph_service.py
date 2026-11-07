@@ -21,6 +21,13 @@ _logger = logging.getLogger(__name__)
 _memory_graph_view_counters: Counter[str] = Counter()
 _memory_graph_view_counters_lock = Lock()
 
+# Fixed-size locks coordinate Direct indexing and clearing across clients in one API.
+_session_memory_locks = tuple(Lock() for _ in range(64))
+
+
+def session_memory_lock(session_id: str) -> Lock:
+    return _session_memory_locks[hash(session_id) % len(_session_memory_locks)]
+
 
 @dataclass(frozen=True)
 class MemoryGraphPayloadOptions:

@@ -7550,6 +7550,8 @@ export interface components {
             topic?: string | null;
             /** Timestamp */
             timestamp?: string | null;
+            /** Direct Request Id */
+            direct_request_id?: string | null;
         };
         /**
          * MemoryIngestResponse
@@ -10668,6 +10670,13 @@ export interface operations {
             };
             /** @description Nieprawidłowe dane wejściowe */
             400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Tura Direct nie jest dostępna w historii sesji */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

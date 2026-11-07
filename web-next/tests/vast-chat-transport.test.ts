@@ -88,7 +88,7 @@ describe("Direct chat identity compatibility", () => {
       let payload: Parameters<typeof sendSimpleChatStream>[0] | undefined;
       let status = "";
       let sending = true;
-      let indexedSession: string | null | undefined;
+      let indexedTurn: [string | null, string] | undefined;
       const send = handleSimpleTaskSend({
         clientId: "id", trimmed: "question", resolvedSession: "session",
         generationParams: null, selectedLlmModel: "selected",
@@ -97,14 +97,16 @@ describe("Direct chat identity compatibility", () => {
           payload = body;
           const completion = runtime.startsWith("ollama@vast:")
             ? 'event: done\ndata: {}\n\n' : "";
-          return new Response('event: content\ndata: {"text":"answer"}\n\n' + completion);
+          return new Response('event: content\ndata: {"text":"answer"}\n\n' + completion, {
+            headers: {"x-request-id": "server-turn"},
+          });
         },
         linkOptimisticRequest: () => {}, setLocalSessionHistory: () => {},
         updateSimpleStream: (_id, update) => {status = update.status ?? status;},
         recordUiTiming: () => {}, uiTimingsRef: {current: new Map()},
         setSimpleRequestDetails: () => {},
-        ingestMemoryEntry: ({sessionId}) => {
-          indexedSession = sessionId;
+        ingestMemoryEntry: ({sessionId, directRequestId}) => {
+          indexedTurn = [sessionId, directRequestId];
           // Leave indexing pending to verify that it cannot hold the composer open.
           return new Promise<void>(() => {});
         },
@@ -115,7 +117,7 @@ describe("Direct chat identity compatibility", () => {
       assert.equal(await Promise.race([send.then(() => "sent"), setImmediate("pending")]), "sent");
       assert.equal(status, "COMPLETED");
       assert.equal(sending, false);
-      assert.equal(indexedSession, "session");
+      assert.deepEqual(indexedTurn, ["session", "server-turn"]);
       assert.ok(payload);
       if (runtime.startsWith("ollama@vast:")) {
         assert.equal(payload.expectedRuntimeId, runtime);

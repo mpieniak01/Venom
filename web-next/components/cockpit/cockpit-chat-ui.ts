@@ -75,6 +75,7 @@ type CockpitChatUiParams = {
     memoryType: string;
     scope: string;
     timestamp: string;
+    directRequestId: string;
   }) => Promise<unknown>;
   refreshQueue: () => Promise<unknown>;
   refreshSessionHistory: () => Promise<unknown>;

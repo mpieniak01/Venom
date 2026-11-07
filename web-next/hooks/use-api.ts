@@ -788,6 +788,7 @@ export async function ingestMemoryEntry(payload: {
   scope?: string | null;
   topic?: string | null;
   timestamp?: string | null;
+  directRequestId?: string;
 }) {
   const body = {
     text: payload.text,
@@ -800,6 +801,7 @@ export async function ingestMemoryEntry(payload: {
     scope: payload.scope ?? undefined,
     topic: payload.topic ?? undefined,
     timestamp: payload.timestamp ?? undefined,
+    direct_request_id: payload.directRequestId,
   };
   return apiFetch<{ status: string; message: string; chunks_count: number }>(
     "/api/v1/memory/ingest",

@@ -42,7 +42,8 @@ lokalny artefakt inferencyjny. Mamy dwie osobne tożsamości do odtworzenia.
 - **Direct** przekazuje ostatnie pełne tury w ramach budżetu kontekstu i zwraca
   strumień bez automatycznego RAG i orkiestracji. Zapis rozmowy na hoście
   poprzedza zakończenie strumienia, a indeksowanie pamięci sesji nie blokuje
-  wysłania kolejnej wiadomości.
+  wysłania kolejnej wiadomości. Czyszczenie sesji kończy się po trwającym
+  indeksowaniu, a spóźniony zapis usuniętej tury jest odrzucany.
 - **Normal** korzysta z historii, streszczenia i pamięci RAG. Przy pytaniu
   o nazwane źródło dobiera wpisy z bieżącej sesji i pamięci globalnej.
   Jeśli brakuje pasującego wpisu, model otrzymuje informację o braku źródła.

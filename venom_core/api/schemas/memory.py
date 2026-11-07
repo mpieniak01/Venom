@@ -18,6 +18,7 @@ class MemoryIngestRequest(BaseModel):
     scope: str | None = None
     topic: str | None = None
     timestamp: str | None = None
+    direct_request_id: str | None = Field(default=None, min_length=1, max_length=64)
 
 
 class MemoryIngestResponse(BaseModel):

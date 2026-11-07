@@ -651,6 +651,9 @@
           "400": {
             "description": "Nieprawidłowe dane wejściowe"
           },
+          "409": {
+            "description": "Tura Direct nie jest dostępna w historii sesji"
+          },
           "500": {
             "description": "Błąd wewnętrzny podczas zapisu do pamięci"
           },
@@ -17690,6 +17693,19 @@
               }
             ],
             "title": "Timestamp"
+          },
+          "direct_request_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Direct Request Id"
           }
         },
         "type": "object",

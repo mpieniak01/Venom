@@ -71,6 +71,7 @@ export type ChatSendParams = {
         memoryType: string;
         scope: string;
         timestamp: string;
+        directRequestId: string;
     }) => Promise<unknown>;
     refreshTasks: () => Promise<unknown>;
     refreshQueue: () => Promise<unknown>;
@@ -598,18 +599,21 @@ export async function handleSimpleTaskSend(params: SimpleTaskSendParams) {
             },
         }));
         // The stream already persisted the conversation. Index it without blocking the next send.
-        void ingestMemoryEntry({
-            text: buffer,
-            category: "assistant",
-            sessionId: resolvedSession ?? null,
-            userId: "user_default",
-            pinned: true,
-            memoryType: "fact",
-            scope: "session",
-            timestamp,
-        }).catch((err) => {
-            console.warn("Nie udało się zapisać pamięci dla trybu prostego:", err);
-        });
+        if (resolvedSession && headerRequestId) {
+            void ingestMemoryEntry({
+                text: buffer,
+                category: "assistant",
+                sessionId: resolvedSession,
+                directRequestId: headerRequestId,
+                userId: "user_default",
+                pinned: true,
+                memoryType: "fact",
+                scope: "session",
+                timestamp,
+            }).catch((err) => {
+                console.warn("Nie udało się zapisać pamięci dla trybu prostego:", err);
+            });
+        }
         updateDurationMetrics({ duration, setLastResponseDurationMs, setResponseDurations });
         globalThis.window.setTimeout(() => {
             dropOptimisticRequest(clientId);

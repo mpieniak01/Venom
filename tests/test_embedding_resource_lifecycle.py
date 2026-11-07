@@ -125,3 +125,65 @@ def test_cleanup_loaded_module_calls_hook_without_import(monkeypatch):
         is True
     )
     hook.assert_called_once_with(wait=True)
+
+
+def test_idle_release_refreshes_on_cache_hits_and_reloads(monkeypatch):
+    now = [0.0]
+    monkeypatch.setattr("venom_core.memory.embedding_service.monotonic", lambda: now[0])
+    first = Mock()
+    second = Mock()
+    for model in (first, second):
+        model.encode.return_value.tolist.return_value = [1.0]
+    factory = Mock(side_effect=[first, second])
+    monkeypatch.setitem(
+        sys.modules,
+        "sentence_transformers",
+        SimpleNamespace(SentenceTransformer=factory),
+    )
+
+    service = EmbeddingService(service_type="local", idle_seconds=10)
+    assert not service.release_if_idle()
+    assert service.get_embedding("query") == [1.0]
+    now[0] = 9
+    assert service.get_embedding("query") == [1.0]
+    first.encode.assert_called_once()
+    now[0] = 18
+    assert not service.release_if_idle()
+    now[0] = 19
+    assert service.release_if_idle()
+    assert not service.release_if_idle()
+    assert service.get_embedding("query") == [1.0]
+    assert factory.call_count == 2
+    second.encode.assert_called_once()
+
+
+def test_idle_release_skips_active_batch_and_counts_from_completion(monkeypatch):
+    now = [0.0]
+    monkeypatch.setattr("venom_core.memory.embedding_service.monotonic", lambda: now[0])
+    encoding = threading.Event()
+    finish = threading.Event()
+
+    def encode(*_args, **_kwargs):
+        encoding.set()
+        assert finish.wait(3)
+        return [SimpleNamespace(tolist=lambda: [1.0])]
+
+    service = EmbeddingService(service_type="local", idle_seconds=10)
+    model = Mock()
+    model.encode.return_value.tolist.return_value = [1.0]
+    service._model = model
+    service.get_embedding("query")
+    model.encode.side_effect = encode
+
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        batch = executor.submit(service.get_embeddings_batch, ["note"])
+        try:
+            assert encoding.wait(1)
+            now[0] = 12
+            assert not service.release_if_idle()
+        finally:
+            finish.set()
+        assert batch.result(timeout=1) == [[1.0]]
+    assert not service.release_if_idle()
+    now[0] = 22
+    assert service.release_if_idle()

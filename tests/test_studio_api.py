@@ -8,7 +8,7 @@ import sys
 import threading
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 from uuid import uuid4
 
 import pytest
@@ -117,6 +117,7 @@ def studio(monkeypatch, tmp_path):
     )
     monkeypatch.setattr(SETTINGS, "ENVIRONMENT_ROLE", "dev")
     monkeypatch.setattr(SETTINGS, "ENABLE_AUDIO_INTERFACE", True)
+    monkeypatch.setattr(SETTINGS, "STUDIO_EMBEDDING_IDLE_SECONDS", 0)
     monkeypatch.setattr(
         llm_server_controller, "LlmServerController", lambda *args: object()
     )
@@ -598,3 +599,34 @@ def test_theme_persistence_uses_shared_config_handler_and_localhost_guard(
     assert writes == ([{"UI_THEME_DEFAULT": "venom-light"}] if expected == 200 else [])
     if expected == 200:
         assert response.json()["updated_keys"] == ["UI_THEME_DEFAULT"]
+
+
+@pytest.mark.asyncio
+async def test_studio_embedding_expiry_preserves_lazy_shared_store(studio, monkeypatch):
+    from venom_core.memory import vector_store
+
+    app, runtime, _ = studio
+    runtime._embedding_idle_seconds = 1
+    checked = asyncio.Event()
+    loop = asyncio.get_running_loop()
+    store = SimpleNamespace()
+    constructed = Mock(return_value=store)
+
+    def make_vector(embedding_service):
+        store.embedding_service = embedding_service
+        monkeypatch.setattr(
+            embedding_service,
+            "release_if_idle",
+            lambda: loop.call_soon_threadsafe(checked.set),
+        )
+        return constructed()
+
+    monkeypatch.setattr(vector_store, "VectorStore", make_vector)
+    async with app.router.lifespan_context(app):
+        constructed.assert_not_called()
+        assert await runtime.get_vector_store() is store
+        assert store.embedding_service._idle_seconds == 1
+        await asyncio.wait_for(checked.wait(), timeout=3)
+        assert await runtime.get_vector_store() is store
+        constructed.assert_called_once()
+    assert runtime._embedding_idle_task.cancelled()

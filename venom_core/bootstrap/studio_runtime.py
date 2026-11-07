@@ -1,7 +1,7 @@
 """Demand-driven wiring of existing host services for the Studio API.
 
 Same SETTINGS, state, SessionStore and runtime admission as Full. No new storage
-root, queue, model process, scheduler, watcher or optional module is introduced.
+root, queue or model process is introduced.
 Normal/MAF necessarily construct the existing heavier Orchestrator on first use.
 Legacy Direct memory ingestion similarly constructs the existing VectorStore.
 """
@@ -81,6 +81,8 @@ class StudioRuntime:
         self._closed = False
         self.audio_engine: LazyAudioEngine | None = None
         self._closing: asyncio.Task[None] | None = None
+        self._embedding_idle_task: asyncio.Task[None] | None = None
+        self._embedding_idle_seconds = SETTINGS.STUDIO_EMBEDDING_IDLE_SECONDS
         self._owned_runtime = False
         self.on_dependencies_changed: Callable[[], None] = lambda: None
 
@@ -148,6 +150,18 @@ class StudioRuntime:
             else None
         )
         app.state.audio_engine = self.audio_engine
+        if self._embedding_idle_seconds:
+            self._embedding_idle_task = asyncio.create_task(
+                self._expire_idle_embeddings()
+            )
+
+    async def _expire_idle_embeddings(self) -> None:
+        interval = min(5, self._embedding_idle_seconds)
+        while True:
+            await asyncio.sleep(interval)
+            store = self.vector_store
+            if store is not None:
+                await run_drainable_thread(store.embedding_service.release_if_idle)
 
     @staticmethod
     def _create_audio() -> Any:
@@ -161,9 +175,14 @@ class StudioRuntime:
         )
 
     def _create_vector_store(self) -> None:
+        from venom_core.memory.embedding_service import EmbeddingService
         from venom_core.memory.vector_store import VectorStore
 
-        self.vector_store = VectorStore()
+        if self._embedding_idle_seconds:
+            service = EmbeddingService(idle_seconds=self._embedding_idle_seconds)
+            self.vector_store = VectorStore(embedding_service=service)
+        else:
+            self.vector_store = VectorStore()
 
     async def get_vector_store(self) -> Any:
         async with self._lock:
@@ -217,6 +236,10 @@ class StudioRuntime:
     async def _close_once(self) -> None:
         self._closed = True
         try:
+            if self._embedding_idle_task is not None:
+                self._embedding_idle_task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await self._embedding_idle_task
             if self.audio_engine is not None:
                 await self.audio_engine.close()
             async with self._lock:

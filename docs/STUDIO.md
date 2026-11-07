@@ -141,6 +141,17 @@ existing memory API. Lightweight Normal uses the shared response stream and
 bypasses intent classification and agent initialization. MAF uses its existing
 path. Set the flags at build time for a prebuilt web app.
 
+### Idle embeddings experiment
+
+Set the timeout in seconds to unload Studio's local embedding model after its
+last use. The next retrieval or ingest loads it on demand. Notes in the shared
+LanceDB and chat history stay available. Ollama models have their own lifecycle.
+The default is 0. Studio checks for expiry at intervals of up to five seconds.
+
+\`\`\`bash
+STUDIO_EMBEDDING_IDLE_SECONDS=120 NEXT_PUBLIC_STUDIO_LIGHT_NORMAL=1 NEXT_PUBLIC_STUDIO_DIRECT_AUTO_INDEX=0 make start-studio PROFILE=full ENVIRONMENT=dev
+\`\`\`
+
 ## Verified stop
 
 Use the owning variant's stop command and environment. `stop-venom`/`stop-studio`

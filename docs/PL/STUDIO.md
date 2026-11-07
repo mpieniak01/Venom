@@ -139,6 +139,18 @@ istniejące API pamięci. Lekki Normal używa wspólnego strumienia odpowiedzi i
 pomija klasyfikację intencji oraz inicjalizację agentów. Opcja MAF prowadzi
 dotychczasową ścieżką. Flagi ustaw też przy budowaniu gotowego webu.
 
+### Próba zwalniania modelu embeddingów
+
+Ustaw limit bezczynności w sekundach. Po tym czasie Studio zwolni swój lokalny
+model embeddingów, a przy kolejnym wyszukiwaniu lub zapisie załaduje go na
+żądanie. Wspólne notatki w LanceDB i historia czatu pozostają dostępne. Modele
+Ollamy mają własny cykl życia. Domyślna wartość to 0. Studio sprawdza limit
+w odstępach do pięciu sekund.
+
+\`\`\`bash
+STUDIO_EMBEDDING_IDLE_SECONDS=120 NEXT_PUBLIC_STUDIO_LIGHT_NORMAL=1 NEXT_PUBLIC_STUDIO_DIRECT_AUTO_INDEX=0 make start-studio PROFILE=full ENVIRONMENT=dev
+\`\`\`
+
 ## Zweryfikowane zatrzymanie
 
 Używaj stop właściwego wariantu i środowiska. `stop-venom`/`stop-studio` zatrzymują

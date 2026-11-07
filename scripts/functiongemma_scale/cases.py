@@ -271,10 +271,12 @@ LABELS = {
 
 
 def quote(value):
+    """Serialize fixture values without escaping non-ASCII prompt text."""
     return json.dumps(value, ensure_ascii=False)
 
 
 def context_of(record):
+    """Decode the verified binding from the system message."""
     _, separator, tail = record["messages"][0]["content"].partition(CONTEXT)
     if not separator:
         raise ValueError("verified operator context is missing")
@@ -282,6 +284,7 @@ def context_of(record):
 
 
 def set_context(system, value):
+    """Replace the binding while preserving the source profile instructions."""
     prefix, separator, tail = system.partition(CONTEXT)
     if not separator:
         raise ValueError("source contract does not contain verified context")
@@ -290,6 +293,7 @@ def set_context(system, value):
 
 
 def action_text(action):
+    """Serialize a single action in the narrow response format."""
     return json.dumps({"action": action}, separators=(",", ":"))
 
 
@@ -344,6 +348,7 @@ def tool_result(messages, system_source, path, data):
 
 def make_case(bank, label, index, family, language, system_source):
     # Both languages share a filesystem. Adjacent cases contrast intent only.
+    """Create a bilingual contrast case with a filesystem fixture and expected effect."""
     directory = f"fg-scale-{label}/case-{index:02d}/dane"
     leaf = ("sygnał.txt", "raport A.json", "check[2].txt", "log 'beta'.md")[index % 4]
     path, other = f"{directory}/{leaf}", f"{directory}/old-{leaf}"
@@ -472,6 +477,7 @@ def make_case(bank, label, index, family, language, system_source):
 
 
 def make_suite(rows, *, acceptance=False):
+    """Build a development or acceptance split from the two original prompt profiles."""
     sources = {}
     for row in rows:
         if ":discovery-" in row["record_id"]:
@@ -495,6 +501,7 @@ def make_suite(rows, *, acceptance=False):
 
 
 def pilot(cases):
+    """Select 16 reference cases that cover different intents across both languages."""
     families = {
         "pl": (
             "read",
@@ -529,6 +536,7 @@ def pilot(cases):
 
 
 def distribution(rows):
+    """Count each language and supervised action pair in a release."""
     return dict(
         Counter(
             f"{r['language']}/{json.loads(r['messages'][-1]['content'])['action']}"
@@ -552,14 +560,20 @@ def counterfactuals(development):
         eligible = [c for c in development if c["oracle"]["family"] in families]
         # Four distinct groups and both languages per changed factor.
         groups = list(dict.fromkeys(c["record"]["problem_group"] for c in eligible))[:4]
+        family_counts = Counter()
         for group in groups:
             for language in ("pl", "en"):
-                anchor = next(
-                    c
-                    for c in eligible
-                    if c["record"]["problem_group"] == group
-                    and c["record"]["language"] == language
+                candidates = [
+                    case
+                    for case in eligible
+                    if case["record"]["problem_group"] == group
+                    and case["record"]["language"] == language
+                ]
+                anchor = min(
+                    candidates,
+                    key=lambda case: family_counts[language, case["oracle"]["family"]],
                 )
+                family_counts[language, anchor["oracle"]["family"]] += 1
                 case = deepcopy(anchor)
                 row, oracle = case["record"], case["oracle"]
                 oracle["paired_with"] = row["record_id"]

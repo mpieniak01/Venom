@@ -19,6 +19,7 @@ from .weights import hashes
 
 
 def register(root, bundle, plan_path, weights):
+    """Register a prepared arm with a verified warm start and leave execution pending."""
     root, bundle, plan_path, weights = map(
         operator_path, (root, bundle, plan_path, weights)
     )
@@ -66,6 +67,7 @@ def register(root, bundle, plan_path, weights):
 
 
 def main():
+    """Parse the verified bundle, launch plan, and checkpoint directory for registration."""
     parser = argparse.ArgumentParser(description=__doc__)
     for name in ("root", "bundle", "plan", "weights"):
         parser.add_argument("--" + name, type=Path, required=True)

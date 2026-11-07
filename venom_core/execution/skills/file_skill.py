@@ -729,6 +729,7 @@ class FileSkill(BaseSkill):
     def _list_files_recursive(
         self, directory: str, safe_path: Path, max_depth: int
     ) -> str:
+        """List entries to the requested depth without descending through symlinks."""
         items = [
             f"Zawartość katalogu '{directory}' (rekurencyjnie, max {max_depth} poziomy):\n"
         ]
@@ -760,6 +761,7 @@ class FileSkill(BaseSkill):
         return "\n".join(items)
 
     def _list_files_flat(self, directory: str, safe_path: Path) -> str:
+        """List immediate entries without dereferencing link metadata."""
         items = []
         for item in sorted(safe_path.iterdir()):
             entry = item.lstat()
@@ -805,6 +807,7 @@ class FileSkill(BaseSkill):
     def _append_recursive_files(
         self, items: list[str], files: list[str], root: str, indent: str
     ) -> int:
+        """Render file and link entries while counting entries lost during traversal."""
         skipped = 0
         for file_name in sorted(files):
             file_path = Path(root) / file_name

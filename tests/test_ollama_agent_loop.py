@@ -309,6 +309,7 @@ class TestToolCallExtraction:
 def test_functiongemma_ollama_hides_writes_and_blocks_forged_call(
     monkeypatch, tmp_path
 ):
+    """Keep write functions out of the Ollama catalog and reject forged calls."""
     import io
 
     requests = []
@@ -320,6 +321,7 @@ def test_functiongemma_ollama_hides_writes_and_blocks_forged_call(
     )
 
     def request_response(req, **_):
+        """Return the simulated Ollama reply for the current exchange."""
         requests.append(json.loads(req.data))
         if len(requests) == 1:
             reply = _make_tool_call_response(

@@ -44,10 +44,12 @@ SPACES = re.compile(r"\s+")
 
 
 def read(path):
+    """Read one JSON document from the selected local archive."""
     return json.loads(path.read_text(encoding="utf-8"))
 
 
 def release_for(train, validation):
+    """Build a split release with digests tied to its ordered decisions."""
     records = {"train": train, "validation": validation}
     release = {
         "schema_version": 1,
@@ -67,6 +69,7 @@ def release_for(train, validation):
 
 
 def signature(row, *, template):
+    """Normalize the last user prompt for exact or template overlap detection."""
     prompt = next(
         m["content"] for m in reversed(row["messages"][:-1]) if m["role"] == "user"
     )
@@ -76,6 +79,7 @@ def signature(row, *, template):
 
 
 def disjoint(left, right, *, templates):
+    """Reject shared IDs, problem groups, or prompts between evaluation and training."""
     sets = (
         [{row["record_id"] for row in rows} for rows in (left, right)],
         [{row["problem_group"] for row in rows} for rows in (left, right)],
@@ -97,6 +101,7 @@ def disjoint(left, right, *, templates):
 
 
 def archived_cases(history, historical_acceptance):
+    """Verify the prior acceptance and retention suites against their recorded digests."""
     execution = history / "execution"
     specs = read(execution / "evaluation-plan.json")["suites"]
     preserved = {}
@@ -120,6 +125,7 @@ def archived_cases(history, historical_acceptance):
 
 
 async def evaluation(history, output, tokenizer, suites):
+    """Build and verify the reference fixtures for sealed development and acceptance bundles."""
     development = output / "evaluation"
     acceptance = output / "acceptance"
     development.mkdir()
@@ -182,6 +188,7 @@ async def evaluation(history, output, tokenizer, suites):
 def prepare_run(
     output, label, seed, weights, snapshot, encoded, data, checkpoint_hashes
 ):
+    """Round-trip one training plan through the same validation used by the remote worker."""
     run_id = f"{SUITE}-{label}-{seed}"
     run_dir = output / "runs" / run_id
     run_dir.mkdir(parents=True)
@@ -245,6 +252,7 @@ def prepare_run(
 
 
 async def prepare(history, snapshot, output, *, start_weights, historical_acceptance):
+    """Prepare six matched training runs and sealed evaluations without starting training."""
     from loguru import logger
     from transformers import AutoTokenizer
 
@@ -372,6 +380,7 @@ async def prepare(history, snapshot, output, *, start_weights, historical_accept
 
 
 def main():
+    """Read explicit checkpoint and acceptance paths before preparing the experiment."""
     parser = argparse.ArgumentParser(description=__doc__)
     for name in ("history", "snapshot", "output"):
         parser.add_argument("--" + name, type=Path, required=True)

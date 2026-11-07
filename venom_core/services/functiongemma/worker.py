@@ -88,6 +88,7 @@ def validate_request(request: dict) -> Recipe:
 def collate(
     rows: list[dict], *, torch: Any, pad_id: int, retention: dict | None = None
 ) -> dict:
+    """Build the model batch and attach anchors only for protected training."""
     length = max(len(row["input_ids"]) for row in rows)
     batch = {}
     for key, pad in (("input_ids", pad_id), ("attention_mask", 0), ("labels", -100)):
@@ -107,6 +108,7 @@ def collate(
 
 
 def trainer_arguments(recipe: Recipe, output: Path, *, smoke: bool) -> dict:
+    """Build Trainer settings for the qualified recipe and current stage."""
     budget_args = (
         {"max_steps": 1, "eval_strategy": "no"}
         if smoke
@@ -336,6 +338,7 @@ def _execute(
     model_source=None,
     retention=None,
 ):
+    """Train the requested model, verify its precision, and seal the resulting checkpoint."""
     import torch
     from transformers import (
         AutoModelForCausalLM,
@@ -495,6 +498,7 @@ def _seal(checkpoint, fingerprint):
 def _resume_smoke(
     recipe, records, snapshot, output, checkpoint, probe, *, retention=None
 ):
+    """Reload a sealed checkpoint and exercise a resumed optimizer update."""
     import torch
     from transformers import (
         AutoModelForCausalLM,

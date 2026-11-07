@@ -32,6 +32,7 @@ def test_budget_and_validation():
 
 
 def test_fp32_recipe_changes_identity_and_requires_full_training():
+    """Bind precision to recipe identity and restrict it to full training."""
     assert "parameter_dtype" not in Recipe().identity()
     recipe = Recipe(parameter_dtype="fp32")
     assert recipe.identity()["parameter_dtype"] == "fp32"
@@ -115,6 +116,7 @@ def test_missing_resume_state(tmp_path):
 
 
 def fake_runtime(monkeypatch, loads=None):
+    """Substitute a minimal runtime for testing precision and optimizer state."""
     import sys
 
     counter = iter(range(100))
@@ -158,6 +160,7 @@ def fake_runtime(monkeypatch, loads=None):
             )
 
     def load_model(*args, **kwargs):
+        """Record the model load options for later assertions."""
         if loads is not None:
             loads.append(kwargs["dtype"])
         return model
@@ -210,6 +213,7 @@ def test_smoke_save_reload_resume(tmp_path, monkeypatch, method):
 
 
 def test_full_fp32_training_uses_fp32_on_reload(tmp_path, monkeypatch):
+    """Check that the full training checkpoint reloads at the requested precision."""
     loads = []
     fake_runtime(monkeypatch, loads)
     recipe = Recipe(parameter_dtype="fp32")
@@ -232,6 +236,7 @@ def test_full_fp32_training_uses_fp32_on_reload(tmp_path, monkeypatch):
 
 
 def test_fp32_rejects_bf16_moments():
+    """Reject optimizer moments that lost the requested FP32 precision."""
     model = NS(parameters=lambda: [NS(requires_grad=True, dtype="torch.float32")])
     optimizer = NS(state={0: {"exp_avg": NS(dtype="torch.bfloat16")}})
     with pytest.raises(RuntimeError, match="optimizer_precision"):
@@ -391,6 +396,7 @@ def test_pinned_transformers_warmup_contract():
 
 
 def test_warm_start_rejects_changed_weights_and_schedules_checkpoints(tmp_path):
+    """Bind checkpoint digests and validate the requested milestone interval."""
     from venom_core.services.functiongemma.profile import INITIAL_WEIGHT_FILES
     from venom_core.services.granite_operator.contract import file_digest
 
@@ -418,16 +424,19 @@ def test_warm_start_rejects_changed_weights_and_schedules_checkpoints(tmp_path):
 
 
 def test_warm_start_uses_checkpoint_weights_and_base_tokenizer(tmp_path, monkeypatch):
+    """Load warm weights while keeping the pinned tokenizer source."""
     import sys
 
     model, _ = fake_runtime(monkeypatch)
     sources = {}
 
     def load_weights(path, **kwargs):
+        """Capture the selected model weights directory."""
         sources["weights"] = path
         return model
 
     def load_tokenizer(path, **kwargs):
+        """Capture the selected tokenizer directory."""
         sources["tokenizer"] = path
         return NS(pad_token_id=0)
 
@@ -444,6 +453,7 @@ def test_warm_start_uses_checkpoint_weights_and_base_tokenizer(tmp_path, monkeyp
 
     class MilestoneTrainer(transformers.Trainer):
         def train(self, resume_from_checkpoint=None):
+            """Capture the parameters sent to the training executor."""
             super().train(resume_from_checkpoint)
             checkpoint(Path(self.args.output_dir) / "checkpoint-1")
 
@@ -466,6 +476,7 @@ def test_warm_start_uses_checkpoint_weights_and_base_tokenizer(tmp_path, monkeyp
 
 
 def test_retention_targets_bind_teacher_and_encoded_training_anchor():
+    """Reject retention targets from another teacher or encoded sample."""
     from copy import deepcopy
 
     from venom_core.services.functiongemma.profile import INITIAL_WEIGHT_FILES
@@ -514,6 +525,7 @@ def test_retention_targets_bind_teacher_and_encoded_training_anchor():
 
 
 def test_retention_penalty_is_differentiable_and_skipped_in_evaluation():
+    """Backpropagate the anchor penalty only during training."""
     torch = pytest.importorskip("torch")
     from venom_core.services.functiongemma.retention import protected_trainer
 
@@ -522,6 +534,7 @@ def test_retention_penalty_is_differentiable_and_skipped_in_evaluation():
         current_gradient_accumulation_steps = 4
 
         def compute_loss(self, model, inputs, return_outputs, num_items_in_batch):
+            """Return the stub trainer loss used as the SFT baseline."""
             assert "retention_anchors" not in inputs
             return model.bias.sum() * 0 + 2, {"stock": True}
 
@@ -531,6 +544,7 @@ def test_retention_penalty_is_differentiable_and_skipped_in_evaluation():
             self.bias = torch.nn.Parameter(torch.zeros(8))
 
         def forward(self, input_ids, attention_mask, use_cache, logits_to_keep):
+            """Return differentiable logits for the requested token positions."""
             assert not use_cache and attention_mask.shape == input_ids.shape
             return NS(
                 logits=self.bias.expand(input_ids.shape[0], len(logits_to_keep), -1)

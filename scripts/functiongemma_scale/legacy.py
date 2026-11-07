@@ -65,6 +65,7 @@ def binding_from_request(record, files):
 
 
 def adapt(case, narrow_system):
+    """Translate a historical case to the narrow action and fixture contract."""
     updated = deepcopy(case)
     record, oracle = updated["record"], updated["oracle"]
     context = binding_from_request(record, oracle["fixture"]["files"])

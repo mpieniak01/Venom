@@ -210,3 +210,7 @@ identyczne z niezależnie podaną ścieżką i treścią operatora. Komenda
 pokazuje podgląd przed zatwierdzeniem w terminalu. Zgoda wygasa po dwóch
 minutach, jest związana z sesją i workspace oraz działa jeden raz.
 O obowiązującym trybie autonomii decyduje zapisany stan Venoma.
+Udany zapis trafia do pliku `venom.log` w katalogu logów Venoma. Wpis zawiera
+identyfikator, czas, sesję, ścieżkę, skrót SHA-256 i informację o nadpisaniu.
+Treść pliku pozostaje poza logiem. Dla wpisu obowiązuje rotacja logów Venoma,
+a strumień audytu w panelu jest odrębny od procesu CLI.

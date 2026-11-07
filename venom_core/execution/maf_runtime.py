@@ -170,6 +170,7 @@ class AgentRuntime:
 def _redirect_functiongemma_listing(
     response: Any, request: str, kernel: AgentRuntime
 ) -> None:
+    """Replace a narrow read or list proposal only for a verified directory request."""
     from agent_framework import Content
 
     from venom_core.execution.skills.file_skill import FileSkill
@@ -361,6 +362,7 @@ class MafChatService:
         messages: list[Any],
         options: OpenAIChatCompletionOptions,
     ):
+        """Generate a reply with the tools and history allowed for this request."""
         with maf_transport_scope(before_request=self._assert_operator_provider_enabled):
             response: AgentResponse[Any] | ChatResponse[Any]
             if (
@@ -402,6 +404,7 @@ class MafChatService:
                 ) -> None:
                     # Each call contains the generated prefix after the original inputs.
                     # Save completed tool results before another provider await can fail.
+                    """Record completed tool calls and apply the listing rule only on the first response."""
                     record_intermediate(context.messages[input_count:])
                     await call_next()
                     if (

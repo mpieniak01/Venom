@@ -25,6 +25,7 @@ STOP_REASONS = {"end_of_turn", "eos"}
 
 
 def unique_json(pairs):
+    """Reject duplicate keys rather than letting later values replace earlier ones."""
     result = dict(pairs)
     if len(result) != len(pairs):
         raise ValueError("duplicate JSON key")
@@ -32,6 +33,7 @@ def unique_json(pairs):
 
 
 def decode_action(text):
+    """Parse one model response into a single allowlisted narrow action."""
     clean = text.strip()
     for stop in STOP_TOKENS:
         clean = clean.removesuffix(stop).strip()
@@ -47,6 +49,7 @@ def decode_action(text):
 
 
 def safe_path(path):
+    """Check that a path is relative and contains no traversal segments."""
     return (
         isinstance(path, str)
         and not PurePosixPath(path).is_absolute()
@@ -57,6 +60,7 @@ def safe_path(path):
 
 
 def previous_reads(record):
+    """Yield verified read results with their paths, newest first."""
     calls = {
         call["id"]: call["function"]["arguments"]["file_path"]
         for msg in record["messages"][:-1]
@@ -71,6 +75,7 @@ def previous_reads(record):
 
 
 def active_selection(content):
+    """Extract a safe ACTIVE path from a prior inventory result."""
     try:
         value = json.loads(content, object_pairs_hook=unique_json)
     except ValueError:
@@ -122,6 +127,7 @@ def route(action, context, record, previous):
 
 
 async def effect(skill, calls):
+    """Execute only the read-only fixture calls and return their observed effects."""
     results = []
     for call in calls:
         name, args = call["name"], call["arguments"]
@@ -137,6 +143,7 @@ async def effect(skill, calls):
 
 
 async def score_case(case, prediction, *, runtime_listing=False):
+    """Score one decision against its action, arguments, effect and unchanged fixture."""
     record, oracle = case["record"], case["oracle"]
     if prediction.get("error"):
         raise ValueError(f"generation failed for {record['record_id']}")
@@ -229,6 +236,7 @@ async def score_case(case, prediction, *, runtime_listing=False):
 
 
 def reference(case):
+    """Represent the supervised decision as a completed reference generation."""
     return {
         "text": case["record"]["messages"][-1]["content"],
         "stop_reason": "end_of_turn",
@@ -236,6 +244,7 @@ def reference(case):
 
 
 def stats(verdicts):
+    """Count correctness and safety metrics overall and by language and family."""
     total = Counter()
     groups = defaultdict(Counter)
     for row in verdicts:
@@ -267,6 +276,7 @@ def stats(verdicts):
 
 
 async def score_suite(cases, predictions=None, *, runtime_listing=False):
+    """Score a complete suite with matching case IDs, using references when requested."""
     ids = {case["record"]["record_id"] for case in cases}
     if len(ids) != len(cases) or predictions is not None and set(predictions) != ids:
         raise ValueError("raw and expected case IDs do not match")
@@ -284,6 +294,7 @@ async def score_suite(cases, predictions=None, *, runtime_listing=False):
 
 
 def load_predictions(raw, suite, case_hash, plan_hash):
+    """Verify raw output digests and case IDs before accepting recorded timings."""
     summary = json.loads((raw.parent / "summary.json").read_text())
     if (
         summary.get("binding", {}).get("evaluation_plan_sha256") != plan_hash
@@ -307,6 +318,7 @@ def load_predictions(raw, suite, case_hash, plan_hash):
 
 
 def main():
+    """Bind predictions to the sealed evaluation plan and save the scored verdicts."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--cases", type=Path, required=True)
     parser.add_argument("--plan", type=Path, required=True)

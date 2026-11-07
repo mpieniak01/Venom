@@ -922,6 +922,7 @@ async def test_forced_intent_keeps_selected_model_context(monkeypatch, mode, int
     ],
 )
 def test_task_rejects_model_tools_outside_read_only_single_model(request_fields):
+    """Reject out-of-scope tools and tools on non-single-model requests."""
     with pytest.raises(ValidationError):
         TaskRequest(content="read", **request_fields)
 
@@ -940,11 +941,13 @@ def test_task_rejects_model_tools_outside_read_only_single_model(request_fields)
 async def test_e4b_sends_only_task_tools_and_records_same_catalog(
     tmp_path, model_id, capable, requested, expected
 ):
+    """Keep the offered and recorded tool catalogs scoped to the request."""
     from venom_core.execution.skills.file_skill import FileSkill
 
     requests = []
 
     def respond(request):
+        """Produce the completion returned by the fake model."""
         requests.append(json.loads(request.content))
         return httpx.Response(200, json=completion("response"))
 
@@ -959,6 +962,7 @@ async def test_e4b_sends_only_task_tools_and_records_same_catalog(
     )
 
     async def execute():
+        """Record the resolved tool options in the fake native runtime."""
         return await ExecutionStrategy(orch).execute(
             task_id, "GENERAL_CHAT", "read", request
         )
@@ -988,6 +992,7 @@ async def test_e4b_sends_only_task_tools_and_records_same_catalog(
     ],
 )
 def test_fileskill_listing_reports_tool_type_and_scope(language, link_label, scope):
+    """Render observed listing output with the original tool scope."""
     from agent_framework import Content
 
     from venom_core.core.orchestrator.task_pipeline.single_model import (

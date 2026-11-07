@@ -18,6 +18,7 @@ NEW_WIDTH = 2944
 
 
 def hashes(weights: Path) -> dict[str, str]:
+    """Hash the expected checkpoint files, rejecting missing files and symlinks."""
     files = {name: weights / name for name in sorted(INITIAL_WEIGHT_FILES)}
     if any(path.is_symlink() or not path.is_file() for path in files.values()):
         raise ValueError("missing or linked FunctionGemma weight file")
@@ -34,6 +35,7 @@ def widen_channels(gate, up, down, width, initializer_range, generator):
     new = width - old
 
     def extend(matrix):
+        """Add initialized rows to the existing tensor without modifying its old rows."""
         extra = matrix.new_empty(new, hidden)
         extra.normal_(std=initializer_range, generator=generator)
         return torch.cat((matrix, extra), dim=0)

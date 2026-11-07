@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import stat
 import time
@@ -16,13 +17,16 @@ from threading import Lock
 from venom_core.core.environment_policy import ensure_data_mutation_allowed
 from venom_core.core.permission_guard import permission_guard
 from venom_core.services.audit_stream import get_audit_stream
+from venom_core.utils.logger import get_logger
 
 MAX_CONTENT_BYTES = 128 * 1024
 _APPROVAL_SECONDS = 120
 _SIGNATURE = tuple[int, int, int, int, int]
+logger = get_logger(__name__)
 
 
 def _parts(path: str) -> list[str]:
+    """Reject noncanonical or absolute paths before opening workspace directories."""
     parts = path.split("/")
     if (
         any(c in path for c in ("\\", ":", "\0"))
@@ -34,6 +38,7 @@ def _parts(path: str) -> list[str]:
 
 
 def _content_digest(content: bytes | None) -> str:
+    """Validate explicit UTF-8 content and bind the approval to its SHA-256."""
     if content is None:
         raise ValueError("file_write_content_required")
     if len(content) > MAX_CONTENT_BYTES:
@@ -43,6 +48,7 @@ def _content_digest(content: bytes | None) -> str:
 
 
 def _state(directory: int, name: str) -> _SIGNATURE | None:
+    """Capture the identity of a regular file without following symlinks."""
     try:
         result = os.stat(name, dir_fd=directory, follow_symlinks=False)
     except FileNotFoundError:
@@ -59,12 +65,14 @@ def _state(directory: int, name: str) -> _SIGNATURE | None:
 
 
 def _directory_identity(directory: int) -> tuple[int, int]:
+    """Identify the opened parent by device and inode."""
     current = os.fstat(directory)
     return current.st_dev, current.st_ino
 
 
 @contextmanager
 def _parent(workspace: Path, parts: list[str]) -> Iterator[int]:
+    """Open each parent relative to a verified directory without following symlinks."""
     if os.name != "posix" or not hasattr(os, "O_NOFOLLOW"):
         raise PermissionError("file_write_secure_directory_handles_required")
     flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
@@ -80,6 +88,7 @@ def _parent(workspace: Path, parts: list[str]) -> Iterator[int]:
 def _publish(
     directory: int, name: str, content: bytes, expected: _SIGNATURE | None
 ) -> None:
+    """Write through a private temporary file and publish only after rechecking the target."""
     tmp = f".venom-write-{token_urlsafe(18)}"
     flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW
     fd = os.open(tmp, flags, 0o600, dir_fd=directory)
@@ -118,6 +127,7 @@ class OperatorFileWrites:
     """One pending approval scoped to this workspace and trusted operator flow."""
 
     def __init__(self, workspace: Path):
+        """Initialize one approval slot for the selected workspace."""
         self._workspace = workspace.resolve(strict=True)
         self._approval: _Approval | None = None
         self._lock = Lock()
@@ -189,11 +199,24 @@ class OperatorFileWrites:
             ):
                 raise PermissionError("file_write_target_changed")
             _publish(directory, parts[-1], content, approval.target)
-        get_audit_stream().publish(
+        entry = get_audit_stream().publish(
             source="execution.operator_file_write",
             action="operator_file_write",
             actor="local_operator",
             status="succeeded",
             context=session,
             details={"path": path, "content_sha256": digest, "overwrite": overwrite},
+        )
+        logger.info(
+            "Operator file write: {}",
+            json.dumps(
+                {
+                    "id": entry.id,
+                    "timestamp": entry.timestamp.isoformat(),
+                    "actor": entry.actor,
+                    "status": entry.status,
+                    "session": entry.context,
+                    **entry.details,
+                }
+            ),
         )

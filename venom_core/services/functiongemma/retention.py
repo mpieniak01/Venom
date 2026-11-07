@@ -9,6 +9,7 @@ ACTIONS = ("read", "exists", "list", "clarify_read", "preview", "approval")
 
 
 def targets_for(document: dict, recipe: Any) -> dict:
+    """Validate qualified decision anchors against the encoded release and teacher weights."""
     if recipe.retention_weight is None:
         return {}
     data = document.get("retention")
@@ -110,6 +111,7 @@ def protected_trainer(
         def compute_loss(
             self, model, inputs, return_outputs=False, num_items_in_batch=None
         ):
+            """Combine SFT loss with the teacher penalty for qualified training anchors."""
             anchors = inputs.pop("retention_anchors")
             loss, outputs = super().compute_loss(
                 model,

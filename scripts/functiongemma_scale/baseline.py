@@ -17,10 +17,12 @@ from .weights import EXPANDED_PARAMS, ORIGINAL_PARAMS, hashes
 
 
 def read(path):
+    """Load a sealed experiment metadata document."""
     return json.loads(path.read_text())
 
 
 def generate(model_path, tokenizer, suites, params, *, capture_logits):
+    """Generate native responses from one warm start and optionally record logits for parity."""
     import torch
     from transformers import AutoModelForCausalLM
 
@@ -90,6 +92,7 @@ def generate(model_path, tokenizer, suites, params, *, capture_logits):
 
 
 async def run(package, output, phase, threads, pilot_receipt):
+    """Verify the pilot receipt and score the selected phase against its sealed cases."""
     import torch
     from loguru import logger
     from transformers import AutoTokenizer
@@ -203,6 +206,7 @@ async def run(package, output, phase, threads, pilot_receipt):
 
 
 def main():
+    """Parse the baseline phase and output location, then run the local evaluation."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--package", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)

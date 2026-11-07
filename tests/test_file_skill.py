@@ -208,6 +208,7 @@ def test_list_files_recursive_and_helper_branches(temp_workspace):
 
 @pytest.mark.parametrize("recursive", [False, True])
 def test_list_files_reports_symlinks_without_target_metadata(tmp_path, recursive):
+    """Report links without reading targets in either listing mode."""
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     outside = tmp_path / "outside"
@@ -243,6 +244,7 @@ def test_list_files_reports_symlinks_without_target_metadata(tmp_path, recursive
 def test_list_files_recursive_does_not_follow_directory_replaced_by_symlink(
     tmp_path, monkeypatch
 ):
+    """Keep a replaced directory from exposing the target of a newly created link."""
     workspace = tmp_path / "workspace"
     child = workspace / "child"
     child.mkdir(parents=True)
@@ -253,6 +255,7 @@ def test_list_files_recursive_does_not_follow_directory_replaced_by_symlink(
     append_dirs = skill._append_recursive_dirs
 
     def replace_after_listing(items, dirs, root, depth, max_depth):
+        """Replace the child between discovery and recursive traversal."""
         append_dirs(items, dirs, root, depth, max_depth)
         if Path(root) == workspace:
             child.rmdir()
@@ -750,7 +753,20 @@ async def test_list_files_returns_error_for_file_path(temp_workspace):
     assert "nie jest katalogiem" in result
 
 
-def test_operator_write_requires_matching_single_use_approval(tmp_path):
+def test_operator_write_requires_matching_single_use_approval(tmp_path, monkeypatch):
+    """A valid approval writes once and emits a durable-log receipt without file content."""
+    from types import SimpleNamespace
+
+    from venom_core.execution import operator_file_write
+
+    audit_records = []
+    monkeypatch.setattr(
+        operator_file_write,
+        "logger",
+        SimpleNamespace(
+            info=lambda _, payload: audit_records.append(json.loads(payload))
+        ),
+    )
     writes = OperatorFileWrites(tmp_path)
     content = b'  line="ok"\r\n'
     token = writes.prepare("session-a", "report.txt", content)
@@ -761,6 +777,11 @@ def test_operator_write_requires_matching_single_use_approval(tmp_path):
     assert list(tmp_path.iterdir()) == []
     writes.execute(token, "session-a", "report.txt", content)
     assert (tmp_path / "report.txt").read_bytes() == content
+    assert len(audit_records) == 1
+    assert audit_records[0]["status"] == "succeeded"
+    assert audit_records[0]["session"] == "session-a"
+    assert audit_records[0]["path"] == "report.txt"
+    assert "content" not in audit_records[0]
     with pytest.raises(PermissionError, match="approval_required"):
         writes.execute(token, "session-a", "report.txt", content)
 
@@ -776,6 +797,7 @@ def test_operator_write_requires_matching_single_use_approval(tmp_path):
 def test_operator_write_rejects_modified_model_proposal(
     tmp_path, proposed_path, proposed_bytes, overwrite
 ):
+    """Reject changes to the reviewed path, content, or overwrite mode."""
     writes = OperatorFileWrites(tmp_path)
     approval = writes.prepare("operator", "report.txt", b"approved")
     with pytest.raises(PermissionError, match="approval_mismatch"):
@@ -788,6 +810,7 @@ def test_operator_write_rejects_modified_model_proposal(
 
 
 def test_operator_write_distinguishes_missing_empty_and_overwrite(tmp_path):
+    """Distinguish an explicit empty file from omitted content and overwrite permission."""
     writes = OperatorFileWrites(tmp_path)
     with pytest.raises(ValueError, match="content_required"):
         writes.prepare("operator", "empty.txt", None)
@@ -804,6 +827,7 @@ def test_operator_write_distinguishes_missing_empty_and_overwrite(tmp_path):
 
 
 def test_operator_write_rejects_changed_target_and_revoked_permission(tmp_path):
+    """Recheck the target and write permission at execution time."""
     writes = OperatorFileWrites(tmp_path)
     token = writes.prepare("operator", "report.txt", b"approved")
     dest = tmp_path / "report.txt"
@@ -820,6 +844,7 @@ def test_operator_write_rejects_changed_target_and_revoked_permission(tmp_path):
 
 
 def test_operator_write_confines_paths_and_symlinks(tmp_path):
+    """Reject path traversal and writes through symlinks outside the workspace."""
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     outside = tmp_path / "outside.txt"
@@ -837,6 +862,7 @@ def test_operator_write_confines_paths_and_symlinks(tmp_path):
 
 
 def test_operator_write_expired_approval_does_not_create_file(tmp_path, monkeypatch):
+    """Leave the workspace unchanged when the approval has expired."""
     from types import SimpleNamespace
 
     from venom_core.execution import operator_file_write
@@ -856,6 +882,7 @@ def test_operator_write_expired_approval_does_not_create_file(tmp_path, monkeypa
 def test_local_operator_command_rejects_model_proposal_without_mutation(
     tmp_path, monkeypatch
 ):
+    """Reject a CLI proposal that differs from the operator request."""
     from scripts import operator_file_write as command
 
     content = tmp_path / "body"
@@ -885,6 +912,7 @@ def test_local_operator_command_rejects_model_proposal_without_mutation(
 
 
 def test_local_operator_command_loads_policy_and_preserves_bytes(tmp_path, monkeypatch):
+    """Apply saved permissions and preserve the exact reviewed file bytes."""
     from scripts import operator_file_write as command
 
     content = tmp_path / "body"

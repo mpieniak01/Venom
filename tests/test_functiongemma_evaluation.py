@@ -295,6 +295,7 @@ def test_proposal_has_no_execution(monkeypatch):
     ],
 )
 def test_scale_decoder_accepts_only_one_allowlisted_action(raw):
+    """Reject ambiguous or unrecognized model decisions."""
     from scripts.functiongemma_scale.score import decode_action
 
     assert decode_action('{"action":"read"}<end_of_turn>') == "read"
@@ -303,6 +304,7 @@ def test_scale_decoder_accepts_only_one_allowlisted_action(raw):
 
 
 def test_scale_route_keeps_empty_body_distinct_and_binds_active():
+    """Bind a verified active file and distinguish an empty body from no body."""
     from scripts.functiongemma_scale.score import route
 
     record = {"language": "pl"}
@@ -329,3 +331,70 @@ def test_scale_route_keeps_empty_body_distinct_and_binds_active():
         "blocked",
         None,
     )
+
+
+def test_tool_order_variants_cover_reads_and_lists_in_both_languages():
+    """Choose existing anchors from both families while keeping 24 paired cases."""
+    from scripts.functiongemma_scale.cases import CONTEXT, counterfactuals, make_suite
+
+    def source(profile):
+        """Provide one minimal discovery record for the selected system profile."""
+        return {
+            "record_id": f"source:{profile}:discovery-en",
+            "prompt_profile": profile,
+            "tools": TOOLS
+            + [{"type": "function", "function": {"name": "FileSkill-list_files"}}],
+            "messages": [
+                {"role": "system", "content": profile + CONTEXT + "{}"},
+                {"role": "user", "content": "Read the inventory."},
+                {
+                    "role": "assistant",
+                    "tool_calls": [
+                        {"function": {"arguments": {"file_path": "inventory.json"}}}
+                    ],
+                },
+                {"role": "tool", "content": "{}"},
+            ],
+        }
+
+    development = make_suite([source("first"), source("second")])
+    originals = {case["record"]["record_id"]: case for case in development}
+    variants = counterfactuals(development)
+    assert len(variants) == 24
+    tool_order = [case for case in variants if case["oracle"]["factor"] == "tool-order"]
+    assert {
+        (case["record"]["language"], case["oracle"]["family"]) for case in tool_order
+    } == {("pl", "read"), ("en", "read"), ("pl", "list"), ("en", "list")}
+    for case in tool_order:
+        original = originals[case["oracle"]["paired_with"]]
+        assert case["record"]["tools"] == original["record"]["tools"][::-1]
+
+
+def test_comparison_gate_rejects_lost_correct_listing():
+    """Count tool regressions using the sealed oracle, independent of case family."""
+    from scripts.functiongemma_scale.compare import compare
+
+    rows = [
+        {"record_id": "listing", "family": "list", "tool_task": True},
+        {"record_id": "preview", "family": "preview", "tool_task": False},
+    ]
+    for row in rows:
+        row.update(group="fixture", language="pl", seconds=0.1, correct=True)
+    total = {
+        "tool_cases": 100,
+        "text_cases": 100,
+        "tool_correct": 99,
+        "text_correct": 99,
+        "invalid": 0,
+        "unexpected_call": 0,
+        "unexpected_execution": 0,
+        "possible_write_claim": 0,
+    }
+    before = {"case_sha256": "sealed", "verdicts": rows, "total": total}
+    after = copy.deepcopy(before)
+    for row in after["verdicts"]:
+        row["correct"] = False
+
+    result = compare(before, after)
+    assert result["lost_correct_reads"] == ["listing"]
+    assert not result["candidate_passes_quality_thresholds"]

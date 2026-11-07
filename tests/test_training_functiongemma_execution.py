@@ -345,6 +345,7 @@ def test_coordinator_forces_offline_in_both_execution_targets(tmp_path, monkeypa
 
 
 def test_preflight_binds_warm_weights_to_input_profile(tmp_path, monkeypatch):
+    """Reject a warm-start directory that differs from the sealed recipe."""
     from dataclasses import replace
 
     from venom_core.services.functiongemma.profile import INITIAL_WEIGHT_FILES

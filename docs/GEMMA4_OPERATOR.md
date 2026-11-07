@@ -164,8 +164,11 @@ invocation; model proposals are not permission grants.
 For the local `gemma4:e4b` tag, select the functions needed by the current
 `single_model` task using `model_tools`, for example
 `"model_tools": ["FileSkill-read_file"]` in the task JSON. The other available
-selections are `FileSkill-list_files` and `FileSkill-file_exists`. Omit the field
-for text-only tasks. This selection keeps the catalog small and retains the
+selections are `FileSkill-list_files` and `FileSkill-file_exists`. The exact
+local `service_id|gemma4:e4b` pair must be in
+`SINGLE_MODEL_TOOL_CALLING_ALLOWLIST`. An explicit `model_tools` request for an
+unqualified service fails with `model_tools_require_qualified_gemma4_e4b`.
+Omit the field for text-only tasks. This selection keeps the catalog small and retains the
 existing runtime permissions and workspace path validation.
 
 The path uses the existing MAF service and a 30-second execution budget. It

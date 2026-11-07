@@ -177,6 +177,7 @@ def _record_trace(
 def _fileskill_listing_answer(
     history: ConversationHistory, language: str | None
 ) -> str | None:
+    """Use the observed tool result for a successful FileSkill listing."""
     messages, complete = _canonical_messages(history)
     outputs = [row for row in messages if row["role"] == "tool"]
     if not complete or len(outputs) != 1:

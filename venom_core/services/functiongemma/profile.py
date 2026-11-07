@@ -43,6 +43,7 @@ class Recipe:
     retention_weight: float | None = None
 
     def validate(self) -> None:
+        """Reject unsupported model, precision, checkpoint or training settings."""
         if self.model != MODEL or self.revision != REVISION:
             raise ValueError("functiongemma_base_mismatch")
         if (
@@ -109,10 +110,12 @@ class Recipe:
             raise ValueError("functiongemma_checkpoint_interval_invalid")
 
     def identity(self) -> dict[str, Any]:
+        """Serialize the validated recipe without changing the identity of older recipes."""
         self.validate()
         return {key: value for key, value in asdict(self).items() if value is not None}
 
     def budget(self, samples: int) -> dict[str, int]:
+        """Compute optimizer updates and ensure milestone checkpoints fit the epoch budget."""
         self.validate()
         if type(samples) is not int or samples < 1:
             raise ValueError("functiongemma_empty_training_split")

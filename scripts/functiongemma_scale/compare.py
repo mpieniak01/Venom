@@ -13,6 +13,7 @@ from venom_core.services.granite_operator.contract import write_json
 
 
 def eligible(totals):
+    """Check the action, text and safety thresholds before retention is considered."""
     tool = totals["tool_cases"]
     text = totals["text_cases"]
     return (
@@ -32,6 +33,7 @@ def eligible(totals):
 
 
 def timing(values):
+    """Calculate median and nearest-rank P95 when every paired timing is available."""
     if not values or any(value is None for value in values):
         return None
     return {
@@ -41,12 +43,14 @@ def timing(values):
 
 
 def compare(control, candidate):
+    """Compare verdicts for identical sealed cases and record any lost tool decisions."""
     if not control.get("case_sha256") or control["case_sha256"] != candidate.get(
         "case_sha256"
     ):
         raise ValueError("comparison requires the same sealed cases")
 
     def by_id(document):
+        """Index verdicts by record ID, rejecting duplicate evidence."""
         values = document["verdicts"]
         indexed = {row["record_id"]: row for row in values}
         if len(indexed) != len(values):
@@ -77,7 +81,7 @@ def compare(control, candidate):
         groups[before["group"]][state] += 1
         per_family[f"{before['language']}/{before['family']}"][state] += 1
         per_language[before["language"]][state] += 1
-        if state == "lost" and before["family"] in {"read", "discovery", "exists"}:
+        if state == "lost" and before["tool_task"]:
             lost_reads.append(rid)
         if state == "both":
             common_first.append(before["seconds"])
@@ -102,6 +106,7 @@ def compare(control, candidate):
 
 
 def main():
+    """Read two evaluation reports and save their paired comparison."""
     parser = argparse.ArgumentParser(description=__doc__)
     for name in ("control", "candidate", "output"):
         parser.add_argument("--" + name, type=Path, required=True)

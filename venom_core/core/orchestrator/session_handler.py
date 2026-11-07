@@ -305,6 +305,7 @@ class SessionHandler:
         history: list[Dict[str, Any]],
         parts: list[str],
     ) -> None:
+        """Append relevant memory for the current request and record the entries used."""
         if not self._should_include_memory(request, len(history)):
             return
         memory_block, memory_ids = self._retrieve_relevant_memory(
@@ -614,7 +615,7 @@ class SessionHandler:
     def _named_memory_subject(query: str) -> str | None:
         """Use a title-cased subject for explicit source lookups."""
         match = re.search(
-            r"\b(?:projekt(?:u)?|project|stanowisk[ao]|station|for)\s+"
+            r"\b(?:projekt(?:u)?|project|stanowisk[ao]|station)\s+"
             r"([A-ZĄĆĘŁŃÓŚŹŻ][^\W\d_]+(?:[ \t]+[A-ZĄĆĘŁŃÓŚŹŻ][^\W\d_]+){1,3})\b",
             query,
         )
@@ -624,6 +625,7 @@ class SessionHandler:
     def _select_relevant_memory_items(
         results: list[dict], session_id: Optional[str]
     ) -> list[dict]:
+        """Keep global and same-session results without falling back to other sessions."""
         if not results:
             return []
         filtered = []

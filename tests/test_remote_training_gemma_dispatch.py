@@ -361,6 +361,7 @@ def test_gemma_code_identity_rejects_missing_shared_engine(tmp_path, model):
 
 
 def test_result_inspection_accepts_large_encoded_manifest(tmp_path):
+    """Accept an encoded manifest above the ordinary metadata size limit."""
     from venom_core.services.remote_training.artifacts import _document
 
     path = tmp_path / "data-manifest.json"

@@ -35,6 +35,7 @@ def completion(text="odpowiedź", calls=None):
 
 
 def service(handler, model_id="fixture-model"):
+    """Build a chat service configured to use the test client."""
     client = AsyncOpenAI(
         api_key="local-fixture",
         base_url="http://fixture.invalid/v1",
@@ -1235,11 +1236,13 @@ async def test_reenabled_retry_timeout_cannot_reuse_an_earlier_policy_denial(
 
 @pytest.mark.asyncio
 async def test_functiongemma_wire_and_executor_exclude_mutating_tools(tmp_path):
+    """Verify that a mutating call is neither advertised nor executed."""
     from venom_core.execution.skills.file_skill import FileSkill
 
     requests = []
 
     def respond(request):
+        """Return a staged completion for the tool-loop scenario."""
         requests.append(json.loads(request.content))
         if len(requests) == 1:
             return httpx.Response(
@@ -1346,6 +1349,7 @@ async def test_functiongemma_wire_and_executor_exclude_mutating_tools(tmp_path):
 async def test_functiongemma_redirects_only_verified_directory_listings(
     tmp_path, user, proposal, tool, arguments
 ):
+    """Redirect explicit listing of a real directory while preserving other decisions."""
     from venom_core.execution.skills.file_skill import FileSkill
 
     (tmp_path / "records").mkdir()
@@ -1355,6 +1359,7 @@ async def test_functiongemma_redirects_only_verified_directory_listings(
     requests = []
 
     def respond(request):
+        """Return a staged completion for the tool-loop scenario."""
         body = json.loads(request.content)
         requests.append(body)
         if len(requests) > 1:

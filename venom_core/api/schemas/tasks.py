@@ -136,6 +136,7 @@ class TaskRequest(BaseModel):
 
     @model_validator(mode="after")
     def validate_model_service_selection(self) -> "TaskRequest":
+        """Validate model-specific fields against the selected execution mode."""
         if self.agent_mode == "single_model" and self.images:
             raise ValueError("single_model_images_require_native_adapter")
         if self.agent_mode == "single_model" and self.preferred_language not in {

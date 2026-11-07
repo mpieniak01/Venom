@@ -15,6 +15,7 @@ from venom_core.execution.operator_file_write import (
 
 
 def _read(path: Path, limit: int) -> bytes:
+    """Read at most one byte past the configured input limit."""
     with path.open("rb") as stream:
         data = stream.read(limit + 1)
     if len(data) > limit:
@@ -23,6 +24,7 @@ def _read(path: Path, limit: int) -> bytes:
 
 
 def _proposal(path: Path) -> tuple[str, bytes]:
+    """Validate the exact path and UTF-8 content carried by a proposal file."""
     value = json.loads(_read(path, MAX_CONTENT_BYTES * 6 + 4096))
     if (
         not isinstance(value, dict)
@@ -35,6 +37,7 @@ def _proposal(path: Path) -> tuple[str, bytes]:
 
 
 def main() -> int:
+    """Preview the exact terminal request and commit it only after operator confirmation."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--session", required=True)
     parser.add_argument("--path", required=True, help="Ścieżka w workspace Venoma")

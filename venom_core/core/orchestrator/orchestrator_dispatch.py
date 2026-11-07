@@ -453,6 +453,7 @@ async def _run_task(
     request: TaskRequest,
     fast_path: bool = False,
 ) -> None:
+    """Apply admission and execution policy, then persist the task outcome."""
     context = request.content
     tool_required = False
 
@@ -538,7 +539,7 @@ async def _run_task(
             return
 
         result = await _execute_with_stream_callback(
-            orch, task_id, intent, context, request
+            orch, task_id, intent, context, request, tool_required=tool_required
         )
 
         await orch.result_processor.process_success(
@@ -783,8 +784,15 @@ async def _broadcast_intent(orch: "Orchestrator", task_id: UUID, intent: str) ->
 
 
 async def _execute_with_stream_callback(
-    orch: "Orchestrator", task_id: UUID, intent: str, context: str, request: TaskRequest
+    orch: "Orchestrator",
+    task_id: UUID,
+    intent: str,
+    context: str,
+    request: TaskRequest,
+    *,
+    tool_required: bool = False,
 ):
+    """Stream provider and model results, checking emptiness only on model output."""
     runtime = get_active_llm_runtime()
     use_stream_callback = not is_multi_runtime(getattr(runtime, "provider", None))
     stream_token = None
@@ -833,7 +841,10 @@ async def _execute_with_stream_callback(
                     )
                 return response
             strategy = ExecutionStrategy(orch)
-            return await strategy.execute(task_id, intent, context, request)
+            result = await strategy.execute(task_id, intent, context, request)
+            if isinstance(result, str) and not result.strip() and not tool_required:
+                raise RuntimeError("Model nie zwrócił treści odpowiedzi.")
+            return result
     finally:
         if stream_token is not None:
             reset_llm_stream_callback(stream_token)

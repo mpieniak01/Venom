@@ -54,6 +54,7 @@ def identity_for(recipe, document, snapshot, code_root, *, max_seconds):
 
 
 def pack(manifest, profile, snapshot, output, *, run_id, updates, max_seconds):
+    """Validate the recipe and token release before building a sealed training bundle."""
     recipe = Recipe(**profile)
     recipe.validate()
     document = json.loads(manifest.read_text())
@@ -83,6 +84,7 @@ def pack(manifest, profile, snapshot, output, *, run_id, updates, max_seconds):
 
 
 def preflight(host, input_root, identity):
+    """Verify the imported code, data, tokenizer and warm start before running."""
     recipe = Recipe(**json.loads((input_root / PROFILE_FILE).read_text()))
     recipe.validate()
     document = json.loads((input_root / DATA_MANIFEST_FILE).read_text())

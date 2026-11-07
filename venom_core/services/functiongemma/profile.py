@@ -40,6 +40,7 @@ class Recipe:
     initial_weights: dict[str, str] | None = None
     checkpoint_interval: int | None = None
     parameter_dtype: str | None = None
+    retention_weight: float | None = None
 
     def validate(self) -> None:
         if self.model != MODEL or self.revision != REVISION:
@@ -95,6 +96,13 @@ class Recipe:
                 )
             ):
                 raise ValueError("functiongemma_initial_weights_invalid")
+        if self.retention_weight is not None and (
+            type(self.retention_weight) not in {int, float}
+            or not 0 < self.retention_weight <= 1
+            or self.initial_weights is None
+            or self.parameter_dtype != "fp32"
+        ):
+            raise ValueError("functiongemma_retention_weight_invalid")
         if self.checkpoint_interval is not None and (
             type(self.checkpoint_interval) is not int or self.checkpoint_interval < 1
         ):

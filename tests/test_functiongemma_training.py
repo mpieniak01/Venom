@@ -463,3 +463,95 @@ def test_warm_start_uses_checkpoint_weights_and_base_tokenizer(tmp_path, monkeyp
     assert (
         worker.verify_checkpoint(tmp_path / "output/checkpoint-1", "bound")["step"] == 1
     )
+
+
+def test_retention_targets_bind_teacher_and_encoded_training_anchor():
+    from copy import deepcopy
+
+    from venom_core.services.functiongemma.profile import INITIAL_WEIGHT_FILES
+    from venom_core.services.functiongemma.retention import ACTIONS, targets_for
+
+    weights = dict.fromkeys(INITIAL_WEIGHT_FILES, "a" * 64)
+    recipe = Recipe(
+        initial_weights=weights, parameter_dtype="fp32", retention_weight=0.5
+    )
+    recipe.validate()
+    targets = {
+        "anchor": {
+            "sequence_sha256": "encoded-anchor",
+            "suffixes": [[token] for token in range(6)],
+            "expected": "read",
+            "scores": [0, -1, -2, -3, -4, -5],
+        }
+    }
+    document = {
+        "records": {
+            "train": [
+                {
+                    "record_id": "anchor",
+                    "sequence_sha256": "encoded-anchor",
+                    "assistant_token_spans": [{"start": 1}],
+                    "input_ids": [9, 0],
+                }
+            ]
+        },
+        "retention": {
+            "schema_version": 1,
+            "actions": list(ACTIONS),
+            "teacher_weights": weights,
+            "targets": targets,
+        },
+    }
+    assert "retention_weight" not in Recipe().identity()
+    assert targets_for(document, Recipe()) == {}
+    assert targets_for(document, recipe) == targets
+    changed = deepcopy(document)
+    changed["retention"]["targets"]["anchor"]["scores"][0] = float("nan")
+    with pytest.raises(ValueError, match="anchor_invalid"):
+        targets_for(changed, recipe)
+    with pytest.raises(ValueError, match="targets_invalid"):
+        targets_for({"records": document["records"]}, recipe)
+
+
+def test_retention_penalty_is_differentiable_and_skipped_in_evaluation():
+    torch = pytest.importorskip("torch")
+    from venom_core.services.functiongemma.retention import protected_trainer
+
+    class StockTrainer:
+        model_accepts_loss_kwargs = True
+        current_gradient_accumulation_steps = 4
+
+        def compute_loss(self, model, inputs, return_outputs, num_items_in_batch):
+            assert "retention_anchors" not in inputs
+            return model.bias.sum() * 0 + 2, {"stock": True}
+
+    class Model(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.bias = torch.nn.Parameter(torch.zeros(8))
+
+        def forward(self, input_ids, attention_mask, use_cache, logits_to_keep):
+            assert not use_cache and attention_mask.shape == input_ids.shape
+            return NS(
+                logits=self.bias.expand(input_ids.shape[0], len(logits_to_keep), -1)
+            )
+
+    targets = {
+        "a": {
+            "suffixes": [[0], [1, 7], [2], [3], [4], [5]],
+            "scores": [3, 0, 0, 0, 0, 0],
+        }
+    }
+    trainer = protected_trainer(StockTrainer, targets, 0.5, 7)()
+    model = Model()
+    inputs = {"input_ids": torch.tensor([[6, 0]]), "retention_anchors": [("a", [6])]}
+    stock = trainer.compute_loss(model, {**inputs, "retention_anchors": []})
+    loss = trainer.compute_loss(model, dict(inputs))
+    normalized = trainer.compute_loss(model, dict(inputs), num_items_in_batch=4)
+    assert stock.item() == 2 and loss.item() > 2
+    assert normalized.item() - 2 == pytest.approx((loss.item() - 2) / 4)
+    loss.backward()
+    assert model.bias.grad[0] < 0
+    model.eval()
+    evaluated, outputs = trainer.compute_loss(model, dict(inputs), return_outputs=True)
+    assert evaluated.item() == 2 and outputs == {"stock": True}

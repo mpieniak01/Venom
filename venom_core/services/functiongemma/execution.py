@@ -23,6 +23,7 @@ from venom_core.services.remote_training.paths import operator_path
 
 from .encoding import validate_encoded_release
 from .profile import Recipe
+from .retention import targets_for
 
 PROFILE_FILE = "profile.json"
 DATA_MANIFEST_FILE = "data-manifest.json"
@@ -57,6 +58,7 @@ def pack(manifest, profile, snapshot, output, *, run_id, updates, max_seconds):
     recipe.validate()
     document = json.loads(manifest.read_text())
     records = validate_encoded_release(document, context=recipe.context)
+    targets_for(document, recipe)
     total = recipe.budget(len(records["train"]))["total_updates"]
     if updates != total or total > 4096:
         raise ValueError("remote_training_functiongemma_epoch_budget_mismatch")
@@ -85,6 +87,7 @@ def preflight(host, input_root, identity):
     recipe.validate()
     document = json.loads((input_root / DATA_MANIFEST_FILE).read_text())
     validate_encoded_release(document, context=recipe.context)
+    targets_for(document, recipe)
     if Path(__file__).resolve().parents[3] != Path(host["code_root"]).resolve():
         raise ValueError("remote_training_imported_code_mismatch")
     snapshot = Path(host["snapshot"])

@@ -21,6 +21,7 @@ from venom_core.services.granite_operator.contract import (
 from venom_core.services.remote_training.paths import operator_path
 
 from .profile import INITIAL_WEIGHTS_DIRECTORY, LOCK, Recipe
+from .retention import protected_trainer, smoke_rows, targets_for
 
 RECEIPT_FILE = "receipt.json"
 TRAINER_STATE_FILE = "trainer_state.json"
@@ -84,13 +85,24 @@ def validate_request(request: dict) -> Recipe:
     return recipe
 
 
-def collate(rows: list[dict], *, torch: Any, pad_id: int) -> dict:
+def collate(
+    rows: list[dict], *, torch: Any, pad_id: int, retention: dict | None = None
+) -> dict:
     length = max(len(row["input_ids"]) for row in rows)
     batch = {}
     for key, pad in (("input_ids", pad_id), ("attention_mask", 0), ("labels", -100)):
         batch[key] = torch.tensor(
             [row[key] + [pad] * (length - len(row[key])) for row in rows]
         )
+    if retention is not None:
+        batch["retention_anchors"] = [
+            (
+                row["record_id"],
+                row["input_ids"][: row["assistant_token_spans"][0]["start"]],
+            )
+            for row in rows
+            if row["record_id"] in retention
+        ]
     return batch
 
 
@@ -157,6 +169,7 @@ def run(request: dict) -> dict:
     from .encoding import validate_encoded_release
 
     records = validate_encoded_release(document, context=recipe.context)
+    retention = targets_for(document, recipe)
     snapshot = operator_path(request["snapshot"], allow_symlinks=True)
     if snapshot.name != recipe.revision:
         raise ValueError("functiongemma_pinned_snapshot_required")
@@ -190,7 +203,11 @@ def run(request: dict) -> dict:
     if output.exists():
         raise FileExistsError("functiongemma_output_exists")
     resume = _training_checkpoint(request, recipe, records, fingerprint)
-    source_args = {"model_source": model_source} if recipe.initial_weights else {}
+    source_args: dict[str, Any] = (
+        {"model_source": model_source} if recipe.initial_weights else {}
+    )
+    if retention:
+        source_args["retention"] = retention
     # The ledger must be the host's shared ledger, never a per-run substitute.
     from venom_core.services.runtime_admission import RuntimeAdmission
 
@@ -317,6 +334,7 @@ def _execute(
     resume,
     *,
     model_source=None,
+    retention=None,
 ):
     import torch
     from transformers import (
@@ -380,13 +398,22 @@ def _execute(
             1, (recipe.budget(len(records["train"]))["updates_per_epoch"] + 1) // 2
         )
     started = time.monotonic()
-    trainer = Trainer(
+    trainer_type = (
+        protected_trainer(
+            Trainer, retention, recipe.retention_weight, tokenizer.pad_token_id
+        )
+        if retention
+        else Trainer
+    )
+    trainer = trainer_type(
         model=model,
         args=args,
-        train_dataset=records["train"],
+        train_dataset=smoke_rows(records["train"], retention)
+        if smoke
+        else records["train"],
         eval_dataset=records["validation"],
         data_collator=lambda rows: collate(
-            rows, torch=torch, pad_id=tokenizer.pad_token_id
+            rows, torch=torch, pad_id=tokenizer.pad_token_id, retention=retention
         ),
     )
     before = parameter_evidence(model)
@@ -411,7 +438,13 @@ def _execute(
         del trainer, model
         torch.cuda.empty_cache()
         reloaded = _resume_smoke(
-            recipe, records, snapshot, output / "reload", checkpoint, probe
+            recipe,
+            records,
+            snapshot,
+            output / "reload",
+            checkpoint,
+            probe,
+            retention=retention,
         )
         checkpoint = reloaded
         _seal(checkpoint, fingerprint)
@@ -459,7 +492,9 @@ def _seal(checkpoint, fingerprint):
     verify_checkpoint(checkpoint, fingerprint)
 
 
-def _resume_smoke(recipe, records, snapshot, output, checkpoint, probe):
+def _resume_smoke(
+    recipe, records, snapshot, output, checkpoint, probe, *, retention=None
+):
     import torch
     from transformers import (
         AutoModelForCausalLM,
@@ -488,12 +523,19 @@ def _resume_smoke(recipe, records, snapshot, output, checkpoint, probe):
     )
     arguments = trainer_arguments(recipe, output, smoke=True)
     arguments["max_steps"] = 2
-    trainer = Trainer(
+    trainer_type = (
+        protected_trainer(
+            Trainer, retention, recipe.retention_weight, tokenizer.pad_token_id
+        )
+        if retention
+        else Trainer
+    )
+    trainer = trainer_type(
         model=model,
         args=TrainingArguments(**arguments),
-        train_dataset=records["train"],
+        train_dataset=smoke_rows(records["train"], retention),
         data_collator=lambda rows: collate(
-            rows, torch=torch, pad_id=tokenizer.pad_token_id
+            rows, torch=torch, pad_id=tokenizer.pad_token_id, retention=retention
         ),
     )
     trainer.train(resume_from_checkpoint=str(checkpoint))

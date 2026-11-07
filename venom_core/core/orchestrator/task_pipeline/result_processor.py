@@ -37,6 +37,9 @@ class ResultProcessor:
         if not single_model:
             result = await self.orch._apply_preferred_language(task_id, request, result)
 
+        if isinstance(result, str) and not result.strip() and not tool_required:
+            raise RuntimeError("Model nie zwrócił treści odpowiedzi.")
+
         # 2. Log agent usage
         agent = (
             None if single_model else self.orch.task_dispatcher.agent_map.get(intent)

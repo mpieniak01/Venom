@@ -1127,6 +1127,40 @@ class TestContextBuilderBuildContext:
         assert out.startswith("[KONTEKST SESJI]\nmeta\n\n")
         orch._build_session_context_block.assert_called_once()
 
+    async def test_short_chat_retains_question_and_recent_correction(self, monkeypatch):
+        block = MagicMock(return_value="old " * 100 + "latest correction")
+        orch = SimpleNamespace(
+            state_manager=SimpleNamespace(add_log=MagicMock()),
+            _build_session_context_block=block,
+            _get_runtime_context_char_limit=lambda _: 80,
+        )
+        monkeypatch.setattr(
+            "venom_core.core.orchestrator.task_pipeline.context_builder.get_active_llm_runtime",
+            lambda: SimpleNamespace(provider="ollama"),
+        )
+        task_id = uuid4()
+        request = TaskRequest(content="What is the final date?", session_id="a")
+
+        result = await ContextBuilder(orch).build_context(
+            task_id, request, fast_path=True
+        )
+
+        block.assert_called_once_with(request, task_id, include_memory=True)
+        assert len(result) == 80
+        assert result.endswith("latest correction\n\nWhat is the final date?")
+
+
+def test_memory_selection_never_falls_back_to_another_session():
+    from venom_core.core.orchestrator.session_handler import SessionHandler
+
+    foreign = {"metadata": {"session_id": "other"}, "text": "foreign"}
+    own = {"metadata": {"session_id": "own"}, "text": "own"}
+    shared = {"metadata": {}, "text": "shared"}
+    select = SessionHandler._select_relevant_memory_items
+    assert select([foreign], "own") == []
+    assert select([foreign, own, shared], "own") == [own, shared]
+    assert select([foreign, own, shared], None) == [shared]
+
 
 @pytest.mark.asyncio
 class TestContextBuilderUpdateForcedRouteContext:

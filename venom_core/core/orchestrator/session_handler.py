@@ -308,7 +308,7 @@ class SessionHandler:
             return
         memory_block, memory_ids = self._retrieve_relevant_memory(
             request,
-            task.context_history.get("session", {}).get("session_id"),
+            request.session_id,
         )
         if memory_block:
             parts.append("[PAMIĘĆ]\n" + memory_block)
@@ -356,6 +356,13 @@ class SessionHandler:
             "previous",
             "as before",
             "as earlier",
+            "według źród",
+            "z notat",
+            "w notat",
+            "w dokument",
+            "according to",
+            "in the notes",
+            "in the document",
         )
         if any(key in text for key in keywords):
             return True
@@ -403,9 +410,10 @@ class SessionHandler:
             full_history = task.context_history.get("session_history_full") or []
             if not full_history:
                 return
+            older_history = full_history[:-SESSION_HISTORY_LIMIT] or full_history
             raw_text = "\n".join(
                 f"{entry.get('role', '')}: {entry.get('content', '')}"
-                for entry in full_history
+                for entry in older_history
             )
             if (
                 len(full_history) < HISTORY_SUMMARY_TRIGGER_MSGS
@@ -415,11 +423,11 @@ class SessionHandler:
 
             strategy = getattr(SETTINGS, "SUMMARY_STRATEGY", SUMMARY_STRATEGY_DEFAULT)
             if strategy == "heuristic_only":
-                summary = self._heuristic_summary(full_history)
+                summary = self._heuristic_summary(older_history)
             else:
                 summary = self._summarize_history_llm(
                     raw_text
-                ) or self._heuristic_summary(full_history)
+                ) or self._heuristic_summary(older_history)
             if not summary:
                 return
             self.state_manager.update_context(task_id, {"session_summary": summary})
@@ -597,9 +605,6 @@ class SessionHandler:
     ) -> list[dict]:
         if not results:
             return []
-        if not session_id:
-            return results[:3]
-
         filtered = []
         for item in results:
             meta = item.get("metadata") or {}
@@ -607,7 +612,7 @@ class SessionHandler:
             if item_session_id and item_session_id != session_id:
                 continue
             filtered.append(item)
-        return filtered[:3] if filtered else results[:3]
+        return filtered[:3]
 
     @staticmethod
     def _format_memory_context(items: list[dict]) -> tuple[str, list[str]]:

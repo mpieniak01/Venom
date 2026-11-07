@@ -7,16 +7,19 @@ SDK imports are lazy so direct-to-LLM requests need not construct an agent.
 from __future__ import annotations
 
 import inspect
+import json
 from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 from contextlib import aclosing
 from functools import wraps
 from typing import TYPE_CHECKING, Any, cast
+from uuid import uuid4
 
 from venom_core.execution.agent_contracts import (
     CompletionOptions,
     ConversationHistory,
     ConversationMessage,
 )
+from venom_core.execution.listing_policy import LIST_FILES, READ_FILE, directory_listing
 from venom_core.execution.maf_transport import (
     install_maf_transport_observer,
     maf_transport_scope,
@@ -162,6 +165,52 @@ class AgentRuntime:
     async def aclose(self) -> None:
         for service in self.services.values():
             await service.aclose()
+
+
+def _redirect_functiongemma_listing(
+    response: Any, request: str, kernel: AgentRuntime
+) -> None:
+    from agent_framework import Content
+
+    from venom_core.execution.skills.file_skill import FileSkill
+
+    method = kernel.plugins.get("FileSkill", {}).get("list_files")
+    skill = getattr(method, "__self__", None)
+    if not isinstance(skill, FileSkill) or len(response.messages) != 1:
+        return
+    message = response.messages[0]
+    if message.role != "assistant" or len(message.contents) != 1:
+        return
+    content = message.contents[0]
+    proposed_path = None
+    if content.type == "function_call" and content.name == READ_FILE:
+        try:
+            arguments = content.parse_arguments()
+        except (TypeError, ValueError):
+            return
+        if not isinstance(arguments, dict) or set(arguments) != {"file_path"}:
+            return
+        proposed_path = arguments["file_path"]
+        if not isinstance(proposed_path, str) or not proposed_path:
+            return
+        call_id = content.call_id
+        if not isinstance(call_id, str) or not call_id:
+            return
+    elif content.type == "text":
+        try:
+            decision = json.loads(content.text, object_pairs_hook=list)
+        except (TypeError, ValueError):
+            return
+        if decision not in ([("action", "read")], [("action", "list")]):
+            return
+        call_id = f"listing-{uuid4().hex}"
+    else:
+        return
+    listing = directory_listing(request, skill.validate_path, proposed_path)
+    if listing is not None:
+        message.contents[:] = [
+            Content.from_function_call(call_id, LIST_FILES, arguments=listing)
+        ]
 
 
 class MafChatService:
@@ -322,11 +371,20 @@ class MafChatService:
                 from agent_framework import chat_middleware
 
                 filters = settings.function_choice_behavior.filters
-                if is_functiongemma_model(self.ai_model_id):
+                functiongemma = is_functiongemma_model(self.ai_model_id)
+                if functiongemma:
                     filters = functiongemma_read_filters(filters)
                 tools = kernel.native_tools(filters)
                 input_count = len(messages)
                 recorded_count = 0
+                listing_request = (
+                    messages[-1].text
+                    if functiongemma
+                    and any(tool.name == LIST_FILES for tool in tools)
+                    and messages
+                    and messages[-1].role == "user"
+                    else None
+                )
 
                 def record_intermediate(native_messages: Sequence[Message]) -> None:
                     nonlocal recorded_count
@@ -346,6 +404,14 @@ class MafChatService:
                     # Save completed tool results before another provider await can fail.
                     record_intermediate(context.messages[input_count:])
                     await call_next()
+                    if (
+                        listing_request
+                        and len(context.messages) == input_count
+                        and context.result is not None
+                    ):
+                        _redirect_functiongemma_listing(
+                            context.result, listing_request, kernel
+                        )
 
                 response = await self.client.as_agent(
                     tools=tools, middleware=[preserve_tool_history]

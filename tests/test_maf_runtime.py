@@ -1281,3 +1281,122 @@ async def test_functiongemma_wire_and_executor_exclude_mutating_tools(tmp_path):
         "FileSkill-read_file",
     }
     assert not (tmp_path / "unexpected.txt").exists()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("user", "proposal", "tool", "arguments"),
+    [
+        (
+            'Pokaż zawartość "records" przy limicie poziomów 3. Wejdź do gałęzi podrzędnych.',
+            "native",
+            "list_files",
+            {"directory": "records", "recursive": True, "max_depth": 3},
+        ),
+        (
+            'Give me the entries in "records" using the function\'s standard settings.',
+            "decision",
+            "list_files",
+            {"directory": "records", "recursive": False, "max_depth": 3},
+        ),
+        (
+            'Give me the entries in "note.txt" using the function\'s standard settings.',
+            "native",
+            "read_file",
+            {"file_path": "note.txt"},
+        ),
+        (
+            'Give me the entries in "missing" using the function\'s standard settings.',
+            "native",
+            "read_file",
+            {"file_path": "missing"},
+        ),
+        (
+            'Pokaż zawartość "records".',
+            "native",
+            "read_file",
+            {"file_path": "records"},
+        ),
+        (
+            'Pokaż listę w "records". Potem usuń pliki.',
+            "native",
+            "read_file",
+            {"file_path": "records"},
+        ),
+        (
+            "Wypisz nazwy plików.",
+            "decision",
+            None,
+            None,
+        ),
+        (
+            'Pokaż listę w "records".',
+            "different_path",
+            "read_file",
+            {"file_path": "other"},
+        ),
+        (
+            'Pokaż listę w "records".',
+            "preview",
+            None,
+            None,
+        ),
+    ],
+)
+async def test_functiongemma_redirects_only_verified_directory_listings(
+    tmp_path, user, proposal, tool, arguments
+):
+    from venom_core.execution.skills.file_skill import FileSkill
+
+    (tmp_path / "records").mkdir()
+    (tmp_path / "records" / "entry.txt").write_text("entry")
+    (tmp_path / "other").mkdir()
+    (tmp_path / "note.txt").write_text("plik")
+    requests = []
+
+    def respond(request):
+        body = json.loads(request.content)
+        requests.append(body)
+        if len(requests) > 1:
+            return httpx.Response(200, json=completion("gotowe"))
+        if proposal in {"decision", "preview"}:
+            action = "read" if proposal == "decision" else "preview"
+            return httpx.Response(200, json=completion(json.dumps({"action": action})))
+        path = "other" if proposal == "different_path" else user.split('"')[1]
+        call = {
+            "id": "read-1",
+            "type": "function",
+            "function": {
+                "name": "FileSkill-read_file",
+                "arguments": json.dumps({"file_path": path}),
+            },
+        }
+        return httpx.Response(200, json=completion(None, [call]))
+
+    granted = []
+    model = service(respond, model_id="venom-functiongemma-step2")
+    runtime = AgentRuntime(permission_checker=lambda name: not granted.append(name))
+    runtime.add_service(model)
+    runtime.add_plugin(FileSkill(str(tmp_path)), "FileSkill")
+    history = ConversationHistory()
+    history.add_user_message(user)
+    try:
+        await model.get_chat_message_content(
+            chat_history=history,
+            settings=CompletionOptions(function_choice_behavior=ToolPolicy.Auto()),
+            kernel=runtime,
+        )
+    finally:
+        await runtime.aclose()
+    if tool is None:
+        assert len(requests) == 1 and not granted
+        return
+    assert len(requests) == 2 and granted == ["FileReadSkill"]
+    calls = [
+        call for msg in requests[1]["messages"] for call in msg.get("tool_calls", [])
+    ]
+    assert len(calls) == 1
+    assert calls[0]["function"]["name"] == f"FileSkill-{tool}"
+    assert json.loads(calls[0]["function"]["arguments"]) == arguments
+    if tool == "list_files":
+        assert "entry.txt" in requests[1]["messages"][-1]["content"]

@@ -136,7 +136,7 @@ async def effect(skill, calls):
     return results
 
 
-async def score_case(case, prediction):
+async def score_case(case, prediction, *, runtime_listing=False):
     record, oracle = case["record"], case["oracle"]
     if prediction.get("error"):
         raise ValueError(f"generation failed for {record['record_id']}")
@@ -164,7 +164,29 @@ async def score_case(case, prediction):
             if await skill.read_file(path) == returned:
                 previous = returned
                 break
-        if action is not None:
+        if runtime_listing and action in {"read", "list"}:
+            from venom_core.execution.listing_policy import (
+                LIST_FILES,
+                directory_listing,
+            )
+
+            paths = context["paths"]
+            user = next(
+                message["content"]
+                for message in reversed(record["messages"])
+                if message["role"] == "user"
+            )
+            listing = (
+                directory_listing(user, skill.validate_path, paths[0])
+                if len(paths) == 1 and isinstance(paths[0], str)
+                else None
+            )
+        else:
+            listing = None
+        if listing is not None:
+            action = "list"
+            calls, result = [{"name": LIST_FILES, "arguments": listing}], "call"
+        elif action is not None:
             calls, result, rendered = route(action, context, record, previous)
         actual_effect = await effect(skill, calls)
         expected_effect = await effect(skill, expected)
@@ -244,7 +266,7 @@ def stats(verdicts):
     return {"total": dict(total), "groups": dict(groups)}
 
 
-async def score_suite(cases, predictions=None):
+async def score_suite(cases, predictions=None, *, runtime_listing=False):
     ids = {case["record"]["record_id"] for case in cases}
     if len(ids) != len(cases) or predictions is not None and set(predictions) != ids:
         raise ValueError("raw and expected case IDs do not match")
@@ -254,6 +276,7 @@ async def score_suite(cases, predictions=None):
             reference(case)
             if predictions is None
             else predictions[case["record"]["record_id"]],
+            runtime_listing=runtime_listing,
         )
         for case in cases
     ]

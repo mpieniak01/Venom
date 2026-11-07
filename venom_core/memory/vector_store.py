@@ -352,7 +352,13 @@ class VectorStore:
         return UpsertResult(message=message, chunks_count=len(records))
 
     def search(
-        self, query: str, limit: int = 3, collection_name: Optional[str] = None
+        self,
+        query: str,
+        limit: int = 3,
+        collection_name: Optional[str] = None,
+        *,
+        session_scope: bool = False,
+        session_id: str | None = None,
     ) -> List[Dict[str, Any]]:
         """
         Wyszukuje najbardziej podobne fragmenty do zapytania.
@@ -388,7 +394,14 @@ class VectorStore:
 
         # Wyszukaj najbliższe wektory
         logger.info(f"Wyszukiwanie w kolekcji '{col_name}' z limitem {limit}")
-        results = table.search(query_embedding).limit(limit).to_list()
+        search = table.search(query_embedding)
+        if session_scope:
+            condition = """metadata NOT LIKE '%"session_id":%'"""
+            if session_id:
+                value = _validate_filter_value("session_id", session_id)
+                condition += " OR " + _metadata_like_condition("session_id", value)
+            search = search.where(f"({condition}) AND id != 'init'", prefilter=True)
+        results = search.limit(limit).to_list()
 
         # Przetwórz wyniki
         processed_results: list[dict[str, object]] = []
@@ -406,7 +419,7 @@ class VectorStore:
             )
 
         # Fallback: gdy semantyka nic nie zwróci, spróbuj prostego dopasowania leksykalnego.
-        if not processed_results:
+        if not processed_results and not session_scope:
             processed_results = self._lexical_fallback_search(table, query, limit)
 
         logger.info(f"Znaleziono {len(processed_results)} wyników")

@@ -1,5 +1,6 @@
 """Obsługa kontekstu sesji i historii w Orchestrator."""
 
+import re
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Protocol
 from uuid import UUID
 
@@ -312,6 +313,8 @@ class SessionHandler:
         )
         if memory_block:
             parts.append("[PAMIĘĆ]\n" + memory_block)
+        elif self._named_memory_subject(request.content):
+            parts.append("[PAMIĘĆ] Brak źródła pasującego do wskazanej nazwy.")
         if memory_ids:
             self._update_context_used_memory_entries(task_id, task, memory_ids)
 
@@ -590,7 +593,15 @@ class SessionHandler:
         if not query.strip():
             return "", []
         try:
-            results = self.memory_skill.vector_store.search(query, limit=5)
+            subject = self._named_memory_subject(query)
+            results = self.memory_skill.vector_store.search(
+                subject or query, limit=8, session_scope=True, session_id=session_id
+            )
+            if subject:
+                phrase = re.compile(r"(?<!\w)" + re.escape(subject) + r"(?!\w)", re.I)
+                results = [
+                    item for item in results if phrase.search(item.get("text", ""))
+                ]
             top = self._select_relevant_memory_items(results, session_id)
             if not top:
                 return "", []
@@ -598,6 +609,16 @@ class SessionHandler:
         except Exception as exc:  # pragma: no cover
             logger.warning(f"Nie udało się pobrać pamięci: {exc}")
             return "", []
+
+    @staticmethod
+    def _named_memory_subject(query: str) -> str | None:
+        """Use a title-cased subject for explicit source lookups."""
+        match = re.search(
+            r"\b(?:projekt(?:u)?|project|stanowisk[ao]|station|for)\s+"
+            r"([A-ZĄĆĘŁŃÓŚŹŻ][^\W\d_]+(?:[ \t]+[A-ZĄĆĘŁŃÓŚŹŻ][^\W\d_]+){1,3})\b",
+            query,
+        )
+        return match.group(1) if match else None
 
     @staticmethod
     def _select_relevant_memory_items(

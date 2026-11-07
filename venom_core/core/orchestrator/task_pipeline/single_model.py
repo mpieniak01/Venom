@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 from typing import Any
 from uuid import UUID
 
@@ -173,6 +174,55 @@ def _record_trace(
     orch.state_manager.update_context(task_id, {"gemma4_operator": trace})
 
 
+def _fileskill_listing_answer(
+    history: ConversationHistory, language: str | None
+) -> str | None:
+    messages, complete = _canonical_messages(history)
+    outputs = [row for row in messages if row["role"] == "tool"]
+    if not complete or len(outputs) != 1:
+        return None
+    output = outputs[0]
+    content = output["content"]
+    if output["name"] != "FileSkill-list_files" or not content.startswith(
+        "Zawartość katalogu "
+    ):
+        return None
+    header, _, entries = content.partition("\n")
+    if language not in {"en", "de"}:
+        scope = (
+            "Lista rekurencyjna w granicach podanego limitu."
+            if "(rekurencyjnie," in header
+            else "Lista bez zaglądania do podkatalogów."
+        )
+        return f"{scope}\n{entries.rstrip()}"
+    labels = (
+        {"plik": "file", "katalog": "directory", "dowiązanie": "symlink"}
+        if language == "en"
+        else {
+            "plik": "Datei",
+            "katalog": "Verzeichnis",
+            "dowiązanie": "symbolischer Link",
+        }
+    )
+    scope = {
+        "en": (
+            "Recursive listing within the requested limit.",
+            "Top-level listing only; nested contents were not inspected.",
+        ),
+        "de": (
+            "Rekursive Auflistung innerhalb des Limits.",
+            "Nur diese Ebene; Unterordner wurden nicht durchsucht.",
+        ),
+    }[language]["(rekurencyjnie," not in header]
+    entries = re.sub(
+        r"^(\s*)\[(plik|katalog|dowiązanie)\]",
+        lambda match: f"{match[1]}[{labels[match[2]]}]",
+        entries,
+        flags=re.M,
+    ).replace(" bajtów)", " bytes)" if language == "en" else " Byte)")
+    return f"{scope}\n{entries.rstrip()}"
+
+
 async def execute_single_model(
     orch: Any, task_id: UUID, context: str, request: TaskRequest
 ) -> str:
@@ -266,6 +316,10 @@ async def execute_single_model(
             )
         history.add_message(result)
         completed = True
+        if is_e4b and request.model_tools == ["FileSkill-list_files"]:
+            return _fileskill_listing_answer(
+                history, request.preferred_language
+            ) or str(result)
         return str(result)
     finally:
         _record_trace(orch, task_id, service, history, tools, completed)

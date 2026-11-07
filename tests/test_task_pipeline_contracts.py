@@ -1162,6 +1162,34 @@ def test_memory_selection_never_falls_back_to_another_session():
     assert select([foreign, own, shared], None) == [shared]
 
 
+def test_rag_retrieval_rejects_other_subject_and_other_session():
+    from venom_core.core.orchestrator.session_handler import SessionHandler
+
+    search = MagicMock(
+        return_value=[
+            {"text": "Projekt Ciemny Brzeg: 08:50", "metadata": {"session_id": "own"}},
+            {
+                "text": "Projekt Jasny Brzeg: 19:30",
+                "metadata": {"session_id": "foreign"},
+            },
+            {"text": "Projekt Jasny Brzeg: 07:41", "metadata": {"session_id": "own"}},
+        ]
+    )
+    handler = SessionHandler(
+        MagicMock(), SimpleNamespace(vector_store=SimpleNamespace(search=search))
+    )
+    request = TaskRequest(
+        content="Przypomnij z notatki termin dla projektu Jasny Brzeg."
+    )
+    context, _ = handler._retrieve_relevant_memory(request, "own")
+    search.assert_called_once_with(
+        "Jasny Brzeg", limit=8, session_scope=True, session_id="own"
+    )
+    assert "07:41" in context
+    assert "08:50" not in context
+    assert "19:30" not in context
+
+
 @pytest.mark.asyncio
 class TestContextBuilderUpdateForcedRouteContext:
     async def test_update_forced_route_sets_context_without_tracer(self):
@@ -1211,3 +1239,28 @@ class TestContextBuilderUpdateForcedRouteContext:
         tracer.set_forced_route.assert_not_called()
         # But add_step should still be called
         tracer.add_step.assert_called()
+
+
+def test_vector_search_applies_session_scope_before_limit(tmp_path):
+    from venom_core.memory.vector_store import VectorStore
+
+    pytest.importorskip("lancedb")
+
+    class Embeddings:
+        embedding_dimension = 3
+
+        def get_embedding(self, text):
+            return [1.0, 0.0, 0.0] if "foreign" in text else [0.0, 1.0, 0.0]
+
+        def get_embeddings_batch(self, texts):
+            return [self.get_embedding(text) for text in texts]
+
+    store = VectorStore(db_path=str(tmp_path), embedding_service=Embeddings())
+    store.upsert("foreign", {"session_id": "foreign"})
+    store.upsert("own", {"session_id": "own"})
+    store.upsert("shared", {})
+    assert store.search("foreign", limit=1)[0]["text"] == "foreign"
+    scoped = store.search("foreign", limit=2, session_scope=True, session_id="own")
+    assert {item["text"] for item in scoped} == {"own", "shared"}
+    global_only = store.search("foreign", limit=2, session_scope=True)
+    assert [item["text"] for item in global_only] == ["shared"]

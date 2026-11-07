@@ -977,3 +977,44 @@ async def test_e4b_sends_only_task_tools_and_records_same_catalog(
             assert [tool["function"]["name"] for tool in trace] == expected
     finally:
         await kernel.aclose()
+
+
+@pytest.mark.parametrize(
+    "language,link_label,scope",
+    [
+        ("en", "[symlink]", "nested contents were not inspected"),
+        ("pl", "[dowiązanie]", "bez zaglądania do podkatalogów"),
+        ("de", "[symbolischer Link]", "Unterordner wurden nicht durchsucht"),
+    ],
+)
+def test_fileskill_listing_reports_tool_type_and_scope(language, link_label, scope):
+    from agent_framework import Content
+
+    from venom_core.core.orchestrator.task_pipeline.single_model import (
+        _fileskill_listing_answer,
+    )
+    from venom_core.execution.agent_contracts import (
+        ConversationHistory,
+        ConversationMessage,
+    )
+
+    history = ConversationHistory()
+    call = Content.from_function_call(
+        call_id="listing",
+        name="FileSkill-list_files",
+        arguments={"directory": "sample"},
+    )
+    result = Content.from_function_result(
+        call_id="listing",
+        result="Zawartość katalogu 'sample':\n  [dowiązanie] sample/incoming\n  [katalog] sample/archive",
+    )
+    for role, content in (("assistant", call), ("tool", result)):
+        history.add_message(
+            ConversationMessage(
+                role, native_message=SimpleNamespace(contents=[content])
+            )
+        )
+    answer = _fileskill_listing_answer(history, language)
+    assert answer is not None
+    assert scope in answer
+    assert f"{link_label} sample/incoming" in answer

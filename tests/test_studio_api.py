@@ -117,6 +117,7 @@ def studio(monkeypatch, tmp_path):
     )
     monkeypatch.setattr(SETTINGS, "ENVIRONMENT_ROLE", "dev")
     monkeypatch.setattr(SETTINGS, "ENABLE_AUDIO_INTERFACE", True)
+    monkeypatch.setattr(SETTINGS, "STUDIO_EMBEDDING_PROCESS", False)
     monkeypatch.setattr(SETTINGS, "STUDIO_EMBEDDING_IDLE_SECONDS", 0)
     monkeypatch.setattr(
         llm_server_controller, "LlmServerController", lambda *args: object()
@@ -630,3 +631,21 @@ async def test_studio_embedding_expiry_preserves_lazy_shared_store(studio, monke
         assert await runtime.get_vector_store() is store
         constructed.assert_called_once()
     assert runtime._embedding_idle_task.cancelled()
+
+
+@pytest.mark.asyncio
+async def test_studio_process_embedding_owner_uses_shared_memory_path(
+    studio, monkeypatch
+):
+    from venom_core.memory.embedding_process import ProcessEmbeddingService
+
+    monkeypatch.setattr(SETTINGS, "STUDIO_EMBEDDING_PROCESS", True)
+    monkeypatch.setattr(SETTINGS, "FORCE_LOCAL_MODEL", True)
+    runtime = StudioRuntime()
+    assert runtime._embedding_idle_seconds == 120
+    app = create_app(lambda: runtime)
+    async with app.router.lifespan_context(app):
+        store = await runtime.get_vector_store()
+        assert store.db_path == Path(SETTINGS.MEMORY_ROOT) / "lancedb"
+        assert isinstance(store.embedding_service, ProcessEmbeddingService)
+        assert store.embedding_service._worker is None

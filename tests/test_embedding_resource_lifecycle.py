@@ -1,5 +1,9 @@
 """First-use ownership and release regressions without loading real ML models."""
 
+import json
+import os
+import socket
+import subprocess
 import sys
 import threading
 from concurrent.futures import ThreadPoolExecutor
@@ -8,6 +12,7 @@ from unittest.mock import Mock
 
 import pytest
 
+from venom_core.memory import embedding_process
 from venom_core.memory.embedding_service import EmbeddingService
 
 
@@ -187,3 +192,112 @@ def test_idle_release_skips_active_batch_and_counts_from_completion(monkeypatch)
     assert not service.release_if_idle()
     now[0] = 22
     assert service.release_if_idle()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="Worker uses POSIX socket inheritance")
+def test_process_embeddings_reap_idle_worker_and_restart(tmp_path, monkeypatch):
+    fake = tmp_path / "sentence_transformers.py"
+    fake.write_text(
+        "class SentenceTransformer:\n"
+        "    def __init__(self, name): pass\n"
+        "    def encode(self, value, **options):\n"
+        "        from types import SimpleNamespace\n"
+        "        def vec(text): return SimpleNamespace(tolist=lambda: [len(text), 1.0])\n"
+        "        return [vec(text) for text in value] if isinstance(value, list) else vec(value)\n"
+    )
+    monkeypatch.setenv("PYTHONPATH", str(tmp_path))
+    now = [0.0]
+    monkeypatch.setattr(embedding_process, "monotonic", lambda: now[0])
+    service = embedding_process.ProcessEmbeddingService(idle_seconds=10)
+    assert not service.release_if_idle()
+    with pytest.raises(ValueError):
+        service.get_embedding(" ")
+    with pytest.raises(ValueError):
+        service.get_embeddings_batch([])
+    assert service._worker is None
+    try:
+        assert service.get_embedding("note") == [4, 1.0]
+        first = service._worker[0]
+        assert service.get_embeddings_batch(["x", "yy"]) == [[1, 1.0], [2, 1.0]]
+        assert service.embedding_dimension == 2
+        now[0] = 9
+        assert not service.release_if_idle()
+        now[0] = 10
+        assert service.release_if_idle()
+        assert first.returncode == 0
+        assert service._worker is None
+        assert service.embedding_dimension == 2
+        assert service._worker is None
+        assert service.get_embedding("note") == [4, 1.0]
+        second = service._worker[0]
+        assert second.pid != first.pid
+        second.kill()
+        second.wait(timeout=3)
+        assert service.get_embedding("again") == [5, 1.0]
+        assert service._worker[0].pid != second.pid
+    finally:
+        assert service.release_model_resource()
+
+
+def test_worker_dispatches_embedding_calls_and_errors(monkeypatch):
+    model = Mock(embedding_dimension=2)
+    model.get_embedding.side_effect = [[1.0, 2.0], RuntimeError("encode failed")]
+    model.get_embeddings_batch.return_value = [[2.0, 1.0]]
+    monkeypatch.setattr(embedding_process, "EmbeddingService", lambda **kwargs: model)
+    parent, worker = socket.socketpair()
+    with parent, parent.makefile("rb") as replies, ThreadPoolExecutor() as executor:
+        parent.settimeout(2)
+        serve = executor.submit(embedding_process._serve_embeddings, worker.detach())
+        try:
+            for request, expected in (
+                (("dimension", None), [True, 2]),
+                (("single", "query"), [True, [1.0, 2.0]]),
+                (("batch", ["note"]), [True, [[2.0, 1.0]]]),
+                (("single", "fails"), [False, None]),
+                (("unknown", None), [False, None]),
+            ):
+                embedding_process._send(parent, request)
+                assert json.loads(replies.readline()) == expected
+        finally:
+            parent.shutdown(socket.SHUT_WR)
+        serve.result(timeout=2)
+
+
+def test_process_embedding_timeout_retires_unresponsive_worker(monkeypatch):
+    service = embedding_process.ProcessEmbeddingService(idle_seconds=10)
+    process = Mock(pid=123)
+    process.poll.return_value = None
+    timeout = subprocess.TimeoutExpired(cmd="embedding-worker", timeout=2)
+    process.wait.side_effect = [timeout, timeout, 0]
+    channel = Mock()
+    incoming = Mock()
+    incoming.readline.side_effect = TimeoutError
+    monkeypatch.setattr(service, "_start", lambda: (process, channel, incoming))
+    with pytest.raises(RuntimeError, match="worker unavailable"):
+        service.get_embedding("note")
+    incoming.close.assert_called_once()
+    channel.close.assert_called_once()
+    process.terminate.assert_called_once()
+    process.kill.assert_called_once()
+    assert service._worker is None
+
+
+def test_process_embedding_expiry_skips_an_active_request(monkeypatch):
+    service = embedding_process.ProcessEmbeddingService(idle_seconds=10)
+    active = threading.Event()
+    finish = threading.Event()
+
+    def request(*_args):
+        active.set()
+        assert finish.wait(2)
+        return [1.0]
+
+    monkeypatch.setattr(service, "_request", request)
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        pending = executor.submit(service.get_embedding, "note")
+        try:
+            assert active.wait(1)
+            assert not service.release_if_idle()
+        finally:
+            finish.set()
+        assert pending.result(timeout=1) == [1.0]

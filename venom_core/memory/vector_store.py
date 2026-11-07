@@ -3,7 +3,7 @@
 import json
 import uuid
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Protocol
 
 from venom_core.config import SETTINGS
 from venom_core.memory.embedding_service import EmbeddingService
@@ -116,6 +116,15 @@ def _metadata_like_condition(key: str, value: str) -> str:
     return f'metadata LIKE \'%\\"{key}\\": \\"{safe_value}\\"%\''
 
 
+class _EmbeddingProvider(Protocol):
+    def get_embedding(self, text: str) -> list[float]: ...
+
+    def get_embeddings_batch(self, texts: list[str]) -> list[list[float]]: ...
+
+    @property
+    def embedding_dimension(self) -> int: ...
+
+
 class VectorStore:
     """
     Baza wektorowa do przechowywania i wyszukiwania embeddingów.
@@ -125,7 +134,7 @@ class VectorStore:
     def __init__(
         self,
         db_path: Optional[str] = None,
-        embedding_service: Optional[EmbeddingService] = None,
+        embedding_service: Optional[_EmbeddingProvider] = None,
         collection_name: str = "default",
     ):
         """

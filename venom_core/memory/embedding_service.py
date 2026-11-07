@@ -22,6 +22,12 @@ _KNOWN_LOCAL_EMBEDDING_DIMS = {
 }
 
 
+def configured_embedding_service_type() -> str:
+    if SETTINGS.FORCE_LOCAL_MODEL or SETTINGS.AI_MODE == "LOCAL":
+        return "local"
+    return SETTINGS.LLM_SERVICE_TYPE
+
+
 class EmbeddingService:
     """
     Serwis do generowania embeddingów tekstowych.
@@ -36,11 +42,11 @@ class EmbeddingService:
             service_type: Typ serwisu ("local" lub "openai"). Domyślnie z SETTINGS.
             idle_seconds: Czas bezczynności lokalnego modelu. Zero wyłącza limit.
         """
-        self.service_type = service_type or SETTINGS.LLM_SERVICE_TYPE
-        if service_type is None and (
-            SETTINGS.FORCE_LOCAL_MODEL or SETTINGS.AI_MODE == "LOCAL"
-        ):
-            self.service_type = "local"
+        self.service_type = (
+            configured_embedding_service_type()
+            if service_type is None
+            else service_type or SETTINGS.LLM_SERVICE_TYPE
+        )
         self._model_load_lock = RLock()
         self._idle_seconds = idle_seconds if self.service_type == "local" else 0
         self._last_use: float | None = None

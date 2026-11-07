@@ -151,6 +151,17 @@ w odstępach do pięciu sekund.
 STUDIO_EMBEDDING_IDLE_SECONDS=120 NEXT_PUBLIC_STUDIO_LIGHT_NORMAL=1 NEXT_PUBLIC_STUDIO_DIRECT_AUTO_INDEX=0 make start-studio PROFILE=full ENVIRONMENT=dev
 \`\`\`
 
+W Linuksie lub WSL ustaw `STUDIO_EMBEDDING_PROCESS=1`, aby uruchamiać lokalny
+model embeddingów Studio w osobnym procesie na żądanie. Studio nadal obsługuje
+LanceDB i historię sesji, a proces używa tego samego modelu. Proces kończy się
+po upływie limitu bezczynności. W tym trybie wartość zero wybiera 120 sekund.
+Kolejne pytanie o notatkę uruchamia interpreter i ponownie ładuje model.
+Opcja jest domyślnie wyłączona i dotyczy lokalnego dostawcy embeddingów Studio.
+
+```bash
+STUDIO_EMBEDDING_PROCESS=1 STUDIO_EMBEDDING_IDLE_SECONDS=120 NEXT_PUBLIC_STUDIO_LIGHT_NORMAL=1 NEXT_PUBLIC_STUDIO_DIRECT_AUTO_INDEX=0 make start-studio PROFILE=full ENVIRONMENT=dev
+```
+
 ## Zweryfikowane zatrzymanie
 
 Używaj stop właściwego wariantu i środowiska. `stop-venom`/`stop-studio` zatrzymują

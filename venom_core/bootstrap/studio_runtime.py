@@ -1,7 +1,7 @@
 """Demand-driven wiring of existing host services for the Studio API.
 
 Same SETTINGS, state, SessionStore and runtime admission as Full. No new storage
-root, queue or model process is introduced.
+root or queue is introduced.
 Normal/MAF necessarily construct the existing heavier Orchestrator on first use.
 Legacy Direct memory ingestion similarly constructs the existing VectorStore.
 """
@@ -82,7 +82,10 @@ class StudioRuntime:
         self.audio_engine: LazyAudioEngine | None = None
         self._closing: asyncio.Task[None] | None = None
         self._embedding_idle_task: asyncio.Task[None] | None = None
+        self._embedding_process = SETTINGS.STUDIO_EMBEDDING_PROCESS
         self._embedding_idle_seconds = SETTINGS.STUDIO_EMBEDDING_IDLE_SECONDS
+        if self._embedding_process and not self._embedding_idle_seconds:
+            self._embedding_idle_seconds = 120
         self._owned_runtime = False
         self.on_dependencies_changed: Callable[[], None] = lambda: None
 
@@ -175,10 +178,19 @@ class StudioRuntime:
         )
 
     def _create_vector_store(self) -> None:
-        from venom_core.memory.embedding_service import EmbeddingService
+        from venom_core.memory.embedding_service import (
+            EmbeddingService,
+            configured_embedding_service_type,
+        )
         from venom_core.memory.vector_store import VectorStore
 
-        if self._embedding_idle_seconds:
+        if self._embedding_process and configured_embedding_service_type() == "local":
+            from venom_core.memory.embedding_process import ProcessEmbeddingService
+
+            self.vector_store = VectorStore(
+                embedding_service=ProcessEmbeddingService(self._embedding_idle_seconds)
+            )
+        elif self._embedding_idle_seconds:
             service = EmbeddingService(idle_seconds=self._embedding_idle_seconds)
             self.vector_store = VectorStore(embedding_service=service)
         else:

@@ -152,6 +152,17 @@ The default is 0. Studio checks for expiry at intervals of up to five seconds.
 STUDIO_EMBEDDING_IDLE_SECONDS=120 NEXT_PUBLIC_STUDIO_LIGHT_NORMAL=1 NEXT_PUBLIC_STUDIO_DIRECT_AUTO_INDEX=0 make start-studio PROFILE=full ENVIRONMENT=dev
 \`\`\`
 
+In Linux or WSL, set `STUDIO_EMBEDDING_PROCESS=1` to run Studio's local
+embeddings in an on-demand subprocess. It uses the same model, and Studio
+still owns LanceDB and session history. The subprocess exits after the
+configured idle interval. In this mode a zero interval selects 120 seconds.
+The next note lookup includes a fresh interpreter and model load. This option
+is disabled by default and applies to Studio's local embedding provider.
+
+```bash
+STUDIO_EMBEDDING_PROCESS=1 STUDIO_EMBEDDING_IDLE_SECONDS=120 NEXT_PUBLIC_STUDIO_LIGHT_NORMAL=1 NEXT_PUBLIC_STUDIO_DIRECT_AUTO_INDEX=0 make start-studio PROFILE=full ENVIRONMENT=dev
+```
+
 ## Verified stop
 
 Use the owning variant's stop command and environment. `stop-venom`/`stop-studio`

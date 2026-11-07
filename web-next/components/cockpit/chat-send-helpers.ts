@@ -33,6 +33,7 @@ export type LocalHistoryEntry = {
 
 export type ChatSendParams = {
     materialIds?: string[];
+    lightNormal?: boolean;
     conversationHistory?: Array<{ role: "user" | "assistant"; content: string; material_ids?: string[] }>;
     labMode: boolean;
     chatMode: "normal" | "direct" | "complex";
@@ -52,6 +53,7 @@ export type ChatSendParams = {
     ensureModelActive?: (model: string) => Promise<boolean>;
     sendSimpleChatStream: (payload: {
         materialIds?: string[];
+        studioNormal?: boolean;
         content: string;
         model: string | null;
         maxTokens: number | null;
@@ -297,6 +299,7 @@ function assertCompletedRemoteStream(
 }
 
 type SimpleTaskSendParams = {
+    studioNormal?: boolean;
     onAccepted?: () => void;
     isCancelled?: () => boolean;
     materialIds?: string[];
@@ -424,8 +427,13 @@ export async function handleSimpleTaskSend(params: SimpleTaskSendParams) {
             {
                 ...buildSimpleStreamRequestPayload(
                     trimmed, selectedLlmModel, generationParams, resolvedSession,
-                    activeServerInfo, params.history, params.materialIds,
+                    activeServerInfo, params.studioNormal ? undefined : params.history, params.materialIds,
                 ),
+                ...(params.studioNormal ? {
+                    studioNormal: true,
+                    expectedRuntimeId: activeServerInfo?.runtime_id,
+                    expectedConfigHash: activeServerInfo?.config_hash,
+                } : {}),
                 ...(params.expectedQuoteHash ? {expectedQuoteHash: params.expectedQuoteHash} : {}),
             },
         );
@@ -603,7 +611,7 @@ export async function handleSimpleTaskSend(params: SimpleTaskSendParams) {
             },
         }));
         // The stream already persisted the conversation. Index it without blocking the next send.
-        if (resolvedSession && headerRequestId && ingestMemoryEntry) {
+        if (!params.studioNormal && resolvedSession && headerRequestId && ingestMemoryEntry) {
             void ingestMemoryEntry({
                 text: buffer,
                 category: "assistant",

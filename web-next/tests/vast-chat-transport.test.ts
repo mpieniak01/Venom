@@ -21,6 +21,17 @@ describe("Vast Direct transport", () => {
     assert.deepEqual(body.history, [{role: "assistant", content: "prior"}]);
   });
 
+  it("opts into the lightweight Studio Normal stream only on request", async () => {
+    const modes: Array<boolean | undefined> = [];
+    globalThis.fetch = async (_url, options) => {
+      modes.push(JSON.parse(String(options?.body)).studio_normal);
+      return new Response("event: done\\ndata: {}\\n\\n");
+    };
+    await sendSimpleChatStream({content: "plain"});
+    await sendSimpleChatStream({content: "notes", studioNormal: true});
+    assert.deepEqual(modes, [undefined, true]);
+  });
+
   it("does not repeat a remote POST after a network failure", async () => {
     let count = 0;
     globalThis.fetch = async () => {count += 1; throw new Error("connection lost");};

@@ -835,6 +835,7 @@ export type SendTaskInput = {
 };
 
 export type SimpleChatStreamRequest = {
+  studioNormal?: boolean;
   content: string;
   materialIds?: string[];
   model?: string | null;
@@ -861,6 +862,7 @@ export function cancelSimpleChatStream() {
 export function buildSimpleChatApiBody(payload: SimpleChatStreamRequest) {
   const body: {
     content: string;
+    studio_normal?: boolean;
     material_ids?: string[];
     model?: string;
     max_tokens?: number;
@@ -873,6 +875,7 @@ export function buildSimpleChatApiBody(payload: SimpleChatStreamRequest) {
   } = {
     content: payload.content,
   };
+  if (payload.studioNormal) body.studio_normal = true;
   if (payload.materialIds?.length) body.material_ids = payload.materialIds;
   if (payload.model) body.model = payload.model;
   if (typeof payload.maxTokens === "number") body.max_tokens = payload.maxTokens;

@@ -16,6 +16,7 @@ export const chat2 = {
   "apply": "Zastosuj model",
   "direct": "Direct",
   "normal": "Normal",
+  "lightNormalUnsupported": "Lekki Normal obsługuje tekst przez lokalną Ollamę bez poleceń narzędzi.",
   "complex": "MAF",
   "loading": "Ładowanie rozmowy…",
   "emptyTitle": "Nad czym dziś pracujemy?",

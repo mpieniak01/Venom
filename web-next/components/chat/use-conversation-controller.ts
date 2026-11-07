@@ -32,9 +32,10 @@ export type ConversationInteraction = ReturnType<typeof useCockpitInteractiveSta
 type ConversationLayout = Pick<ReturnType<typeof useCockpitLayout>, "labMode" | "setTuningOpen" | "setExportingPinned">;
 
 /** One owner of conversation/history/stream per mounted route, without system telemetry. */
-export function useConversationController({ data, interactive, layout, chatScrollRef, onTurnFinished, materialIds, autoIndexDirect = true }: {
+export function useConversationController({ data, interactive, layout, chatScrollRef, onTurnFinished, materialIds, autoIndexDirect = true, lightNormal = false }: {
   materialIds?: string[];
   autoIndexDirect?: boolean;
+  lightNormal?: boolean;
   data: ConversationData;
   interactive: ConversationInteraction;
   layout: ConversationLayout;
@@ -139,7 +140,8 @@ export function useConversationController({ data, interactive, layout, chatScrol
     }, [data.history, sessionId]);
     const directRequestIds = useMemo(() => new Set(
         [...(data.history ?? []), ...sessionHistory, ...localSessionHistory]
-            .flatMap(entry => entry.mode === "direct" && entry.request_id ? [entry.request_id] : []),
+            .flatMap(entry => (entry.mode === "direct" || entry.mode === "studio_normal") && entry.request_id
+                ? [entry.request_id] : []),
     ), [data.history, sessionHistory, localSessionHistory]);
     const trackedLiveRequestIds = useTrackedRequestIds({
         optimisticRequests: interactive.optimistic.optimisticRequests,
@@ -433,6 +435,7 @@ export function useConversationController({ data, interactive, layout, chatScrol
         sendSimpleChatStream,
         sendTask: sendTask, // No cast
         ingestMemoryEntry: autoIndexDirect ? ingestMemoryEntry : undefined,
+        lightNormal,
         refreshQueue: data.refresh.queue,
         refreshSessionHistory,
         enqueueOptimisticRequest: interactive.optimistic.enqueueOptimisticRequest,

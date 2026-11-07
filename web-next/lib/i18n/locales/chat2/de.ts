@@ -16,6 +16,7 @@ export const chat2 = {
   "apply": "Modell anwenden",
   "direct": "Direct",
   "normal": "Normal",
+  "lightNormalUnsupported": "Der schlanke Normal-Modus unterstützt Text über lokales Ollama ohne Werkzeugbefehle.",
   "complex": "MAF",
   "loading": "Gespräch wird geladen…",
   "emptyTitle": "Woran arbeiten wir heute?",

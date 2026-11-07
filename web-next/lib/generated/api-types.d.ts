@@ -9095,6 +9095,11 @@ export interface components {
         SimpleChatRequest: {
             /** Content */
             content: string;
+            /**
+             * Studio Normal
+             * @default false
+             */
+            studio_normal: boolean;
             /** Material Ids */
             material_ids?: string[];
             /** Model */

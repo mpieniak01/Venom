@@ -42,16 +42,18 @@ export function cancelStudioTasksInOrder(taskIds: readonly string[], cancelTask:
   return cancelNext(0);
 }
 
-export function StudioShell({ showLegacyLink = true, autoIndexDirect = true }: Readonly<{
+export function StudioShell({ showLegacyLink = true, autoIndexDirect = true, lightNormal = false }: Readonly<{
   showLegacyLink?: boolean;
   autoIndexDirect?: boolean;
+  lightNormal?: boolean;
 }>) {
   const { sessionId } = useSession();
-  return <StudioConversation key={sessionId} showLegacyLink={showLegacyLink} autoIndexDirect={autoIndexDirect} />;
+  return <StudioConversation key={sessionId} showLegacyLink={showLegacyLink} autoIndexDirect={autoIndexDirect} lightNormal={lightNormal} />;
 }
-function StudioConversation({ showLegacyLink, autoIndexDirect }: Readonly<{
+function StudioConversation({ showLegacyLink, autoIndexDirect, lightNormal }: Readonly<{
   showLegacyLink: boolean;
   autoIndexDirect: boolean;
+  lightNormal: boolean;
 }>) {
   const { t, language, setLanguage } = useLanguage();
   const { theme, setTheme } = useTheme();
@@ -82,7 +84,7 @@ function StudioConversation({ showLegacyLink, autoIndexDirect }: Readonly<{
   const [voice, setVoice] = useState<"dictation" | "conversation" | null>(null);
   const conversation = useConversationController({
     data: source.data, interactive: interaction, layout, chatScrollRef: scrollRef,
-    materialIds: selected, autoIndexDirect,
+    materialIds: selected, autoIndexDirect, lightNormal,
   });
   const { state, setters } = interaction;
   const materials = useChatMaterials(sessionId, state.selectedLlmModel, state.selectedLlmServer,

@@ -124,6 +124,21 @@ notatkę przez istniejące API pamięci z zakresem sesji i zadaj pytanie w Norma
 Bez ustawienia flagi Studio indeksuje odpowiedzi jak wcześniej. Przy gotowym
 buildzie ustaw flagę także podczas budowania webu.
 
+### Próba lekkiego Normal
+
+W samodzielnym Studio ustaw poniższe flagi, aby porównać lekki Normal z dotychczasowym:
+
+```bash
+NEXT_PUBLIC_STUDIO_LIGHT_NORMAL=1 NEXT_PUBLIC_STUDIO_DIRECT_AUTO_INDEX=0 make start-studio PROFILE=full ENVIRONMENT=dev
+```
+
+Normal obsługuje tekst przez lokalną Ollamę i czyta ostatnie pełne tury z
+SessionStore. Pytania odwołujące się do notatek lub dokumentu wyszukują źródła w
+istniejącej pamięci sesji i globalnej. Nowe źródło można jawnie dodać przez
+istniejące API pamięci. Lekki Normal używa wspólnego strumienia odpowiedzi i
+pomija klasyfikację intencji oraz inicjalizację agentów. Opcja MAF prowadzi
+dotychczasową ścieżką. Flagi ustaw też przy budowaniu gotowego webu.
+
 ## Zweryfikowane zatrzymanie
 
 Używaj stop właściwego wariantu i środowiska. `stop-venom`/`stop-studio` zatrzymują

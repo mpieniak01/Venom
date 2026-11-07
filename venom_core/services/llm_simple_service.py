@@ -1120,15 +1120,17 @@ def _validate_simple_chat_runtime(runtime) -> str:
     return runtime_provider
 
 
-async def stream_simple_chat(request: SimpleChatRequest):
+async def stream_simple_chat(request: SimpleChatRequest, *, system_context: str = ""):
     assert_runtime_request_allowed(request_kind="simple_chat")
     from venom_core.services import openrouter_runtime
 
     if openrouter_runtime.selection() is not None:
+        if request.studio_normal:
+            raise HTTPException(400, "studio_normal_requires_local_ollama")
         from venom_core.services.openrouter_chat import response
 
         return await response(request)
-    return await _stream_non_openrouter_chat(request)
+    return await _stream_non_openrouter_chat(request, system_context=system_context)
 
 
 def _material_turn_text_length(turn: dict[str, Any]) -> int:
@@ -1185,7 +1187,9 @@ def _plain_request_history(
     return [item.model_dump(exclude={"material_ids"}) for item in request.history]
 
 
-async def _stream_non_openrouter_chat(request: SimpleChatRequest):
+async def _stream_non_openrouter_chat(
+    request: SimpleChatRequest, *, system_context: str = ""
+):
     await asyncio.sleep(0)
     from venom_core.services.vast_chat_runtime import preflight
 
@@ -1193,6 +1197,8 @@ async def _stream_non_openrouter_chat(request: SimpleChatRequest):
     runtime = get_active_llm_runtime()
     from venom_core.services.vast_chat_runtime import assert_identity, is_remote
 
+    if request.studio_normal and (runtime.provider != "ollama" or is_remote(runtime)):
+        raise HTTPException(400, "studio_normal_requires_local_ollama")
     assert_identity(runtime, request.expected_runtime_id, request.expected_config_hash)
     if is_remote(runtime) and request.model not in {None, runtime.model_name}:
         raise HTTPException(status_code=409, detail="vast_chat_model_selection_changed")
@@ -1210,6 +1216,8 @@ async def _stream_non_openrouter_chat(request: SimpleChatRequest):
     _trace_simple_request(request_id, request, runtime, model_name)
 
     system_prompt = (SETTINGS.SIMPLE_MODE_SYSTEM_PROMPT or "").strip()
+    if system_context:
+        system_prompt = "\n\n".join(filter(None, (system_prompt, system_context)))
     user_content = _trim_user_content_for_runtime(
         request.content, system_prompt, runtime, request_id
     )

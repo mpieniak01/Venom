@@ -126,6 +126,21 @@ index a session-scoped note through the existing memory API and ask for it in
 Normal. With the flag unset, Studio continues indexing Direct responses.
 For a prebuilt web app, set the flag at build time as well.
 
+### Lightweight Normal experiment
+
+Use the following flags in standalone Studio to try lightweight Normal:
+
+```bash
+NEXT_PUBLIC_STUDIO_LIGHT_NORMAL=1 NEXT_PUBLIC_STUDIO_DIRECT_AUTO_INDEX=0 make start-studio PROFILE=full ENVIRONMENT=dev
+```
+
+Normal handles text through local Ollama and reads recent complete turns from
+SessionStore. A question asking about notes or a document retrieves from
+existing session and global memory. Add new sources explicitly through the
+existing memory API. Lightweight Normal uses the shared response stream and
+bypasses intent classification and agent initialization. MAF uses its existing
+path. Set the flags at build time for a prebuilt web app.
+
 ## Verified stop
 
 Use the owning variant's stop command and environment. `stop-venom`/`stop-studio`

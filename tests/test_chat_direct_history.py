@@ -539,3 +539,94 @@ def test_history_identifies_old_processing_direct_traces_for_full():
         (direct.request_id, "direct"),
         (normal.request_id, None),
     ]
+
+
+def test_studio_normal_stream_uses_host_history_and_loads_rag_only_for_notes(
+    tmp_path, monkeypatch
+):
+    store = SessionStore(str(tmp_path / "studio-normal.json"))
+    store.append_turn_once(
+        "own",
+        "previous",
+        [
+            {"request_id": "previous", "role": "user", "content": "stable user fact"},
+            {"request_id": "previous", "role": "assistant", "content": "confirmed"},
+        ],
+    )
+    store.append_turn_once(
+        "own",
+        "stopped",
+        [
+            {"request_id": "stopped", "role": "user", "content": "discarded prompt"},
+            {
+                "request_id": "stopped",
+                "role": "assistant",
+                "content": "partial",
+                "status": "CANCELLED",
+            },
+        ],
+    )
+    app = application(store)
+    captured = []
+
+    async def simple_stream(request, *, system_context=""):
+        captured.append((request, system_context))
+        return StreamingResponse(
+            consume_events(), headers={"X-Request-Id": str(uuid4())}
+        )
+
+    async def consume_events():
+        yield event("content", {"text": "reply"})
+        yield event("done", {})
+
+    monkeypatch.setattr(llm_simple, "stream_simple_chat_service", simple_stream)
+    client = TestClient(app)
+    payload = {
+        "studio_normal": True,
+        "session_id": "own",
+        "history": [{"role": "user", "content": "forged client history"}],
+    }
+    url = "/api/v1/llm/simple/stream"
+    assert client.post(url, json={**payload, "content": "hello"}).status_code == 400
+
+    vector_store = SimpleNamespace(
+        search=lambda *args, **kwargs: [
+            {"text": "Jasny Brzeg: 07:41", "metadata": {"session_id": "own"}},
+            {"text": "Jasny Brzeg: 08:50", "metadata": {"session_id": "foreign"}},
+            {"text": "Ciemny Brzeg: 09:10", "metadata": {"session_id": "own"}},
+        ]
+    )
+    get_vectors = AsyncMock(return_value=vector_store)
+    app.state.studio_runtime = SimpleNamespace(get_vector_store=get_vectors)
+    assert (
+        client.post(
+            url, json={**payload, "content": "Napisz krótką notatkę."}
+        ).status_code
+        == 200
+    )
+    get_vectors.assert_not_awaited()
+    plain, context = captured[-1]
+    assert [x.content for x in plain.history] == ["stable user fact", "confirmed"]
+    assert not context
+    assert plain.think is False
+
+    prompt = "Według notatki projektu Jasny Brzeg, o której godzinie jest odbiór?"
+    response = client.post(url, json={**payload, "content": prompt})
+    assert response.status_code == 200
+    get_vectors.assert_awaited_once()
+    context = captured[-1][1]
+    assert "07:41" in context and "08:50" not in context and "09:10" not in context
+    user, assistant = store.get_history("own")[-2:]
+    assert user["content"] == prompt and user["mode"] == "studio_normal"
+    assert assistant["content"] == "reply" and assistant["status"] == "COMPLETED"
+
+    miss = "Z notatki projektu Srebrny Las podaj termin."
+    assert client.post(url, json={**payload, "content": miss}).status_code == 200
+    assert "no matching source" in captured[-1][1] and "07:41" not in captured[-1][1]
+    assert (
+        client.post(
+            url, json={**payload, "content": "hello", "material_ids": ["x"]}
+        ).status_code
+        == 400
+    )
+    assert client.post(url, json={**payload, "content": "x" * 50000}).status_code == 413

@@ -185,12 +185,12 @@ function recordStandardRequestHistory(params: {
 }
 
 type SendContextParams = Pick<ChatSendParams,
-  "selectedLlmModel" | "activeServerInfo" | "selectedLlmServer" | "chatMode" |
+  "selectedLlmModel" | "activeServerInfo" | "selectedLlmServer" | "chatMode" | "lightNormal" |
   "sessionId" | "resetSession" | "setMessage"
 >;
 
 function resolveChatSendContext(payload: string, params: SendContextParams, t: (key: string) => string) {
-  const { selectedLlmModel, activeServerInfo, selectedLlmServer, chatMode, sessionId, resetSession, setMessage } = params;
+  const { selectedLlmModel, activeServerInfo, selectedLlmServer, chatMode, lightNormal, sessionId, resetSession, setMessage } = params;
     const parsed = parseInputCommand(payload);
     const trimmed = parsed.cleaned.trim();
     if (!trimmed) {
@@ -208,6 +208,13 @@ function resolveChatSendContext(payload: string, params: SendContextParams, t: (
       return null;
     }
 
+    const studioNormal = Boolean(lightNormal && chatMode === "normal");
+    if (studioNormal && (parsed.forcedTool || parsed.forcedProvider
+      || (selectedLlmServer || activeServerInfo?.active_server) !== "ollama")) {
+      setMessage(t("chat2.lightNormalUnsupported"));
+      return null;
+    }
+
     if (!allowsOpenRouterChat(selectedLlmServer || activeServerInfo?.active_server || "", shouldUseSimpleMode(chatMode, parsed))) {
       setMessage(t("cockpit.openrouter.directOnly"));
       return null;
@@ -219,7 +226,7 @@ function resolveChatSendContext(payload: string, params: SendContextParams, t: (
       return null;
     }
 
-    return { parsed, trimmed, effectiveSelectedModel, resolvedSession };
+    return { parsed, trimmed, effectiveSelectedModel, resolvedSession, studioNormal };
 }
 
 function releaseSendPreparation(
@@ -237,6 +244,7 @@ export function useChatSend(params: ChatSendParams) {
   const {
     materialIds,
     conversationHistory,
+    lightNormal,
     labMode,
     chatMode,
     generationParams,
@@ -292,10 +300,10 @@ export function useChatSend(params: ChatSendParams) {
     let preparing = false;
     try {
     const context = resolveChatSendContext(payload, {
-      selectedLlmModel, activeServerInfo, selectedLlmServer, chatMode, sessionId, resetSession, setMessage,
+      selectedLlmModel, activeServerInfo, selectedLlmServer, chatMode, lightNormal, sessionId, resetSession, setMessage,
     }, t);
     if (!context) return false;
-    const { parsed, trimmed, effectiveSelectedModel, resolvedSession } = context;
+    const { parsed, trimmed, effectiveSelectedModel, resolvedSession, studioNormal } = context;
 
     setSending(true); preparing = true; setMessage(null);
     const switchResult = await handleRuntimeSwitch({
@@ -335,7 +343,7 @@ export function useChatSend(params: ChatSendParams) {
     autoScrollEnabledRef.current = true;
     scrollChatToBottom();
 
-    const shouldUseSimple = shouldUseSimpleMode(chatMode, parsed);
+    const shouldUseSimple = studioNormal || shouldUseSimpleMode(chatMode, parsed);
     const historyKey = vastChatHistoryKey(effectiveActiveServerInfo?.runtime_id, effectiveSelectedModel, resolvedSession, effectiveActiveServerInfo?.config_hash);
     const historySource = conversationHistory ?? (historyKey ? vastHistory.current.get(historyKey) ?? [] : undefined);
     const history = historySource ? boundChatHistory(historySource, trimmed.length) : undefined;
@@ -402,6 +410,7 @@ export function useChatSend(params: ChatSendParams) {
       recordUiTiming,
       uiTimingsRef,
       setSimpleRequestDetails,
+      studioNormal,
       ingestMemoryEntry,
       setLastResponseDurationMs,
       setResponseDurations,
@@ -451,6 +460,7 @@ export function useChatSend(params: ChatSendParams) {
     generationParams,
     ingestMemoryEntry,
     language,
+    lightNormal,
     linkOptimisticRequest,
     recordUiTiming,
     refreshActiveServer,

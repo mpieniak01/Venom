@@ -21037,6 +21037,11 @@
             "minLength": 1,
             "title": "Content"
           },
+          "studio_normal": {
+            "type": "boolean",
+            "title": "Studio Normal",
+            "default": false
+          },
           "material_ids": {
             "items": {
               "type": "string"

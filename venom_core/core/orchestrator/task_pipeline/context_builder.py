@@ -141,40 +141,32 @@ class ContextBuilder:
     async def build_context(
         self, task_id: UUID, request: TaskRequest, fast_path: bool
     ) -> str:
-        """Buduje pełny kontekst (prompt + historia + extra context)."""
-        full_context = await self.prepare_context(task_id, request)
-        include_session_context = not bool(request.forced_tool)
-        if include_session_context:
+        """Buduje kontekst niezależnie od kolejki fast path."""
+        del fast_path
+        runtime_info = get_active_llm_runtime()
+        limit = min(
+            MAX_CONTEXT_CHARS, self.orch._get_runtime_context_char_limit(runtime_info)
+        )
+        full_context, trimmed = trim_to_char_limit(
+            await self.prepare_context(task_id, request), limit
+        )
+        if not request.forced_tool:
             session_block = self.orch._build_session_context_block(
-                request,
-                task_id,
-                include_memory=not fast_path and request.agent_mode != "single_model",
+                request, task_id, include_memory=request.agent_mode != "single_model"
             )
-            if session_block:
-                full_context = session_block + "\n\n" + full_context
+            available = max(0, limit - len(full_context) - 2)
+            if available and session_block:
+                full_context = session_block[-available:] + "\n\n" + full_context
+            trimmed = trimmed or len(session_block) > available
         else:
             self.orch.state_manager.add_log(
                 task_id,
                 "Pominięto kontekst sesji dla wymuszonego toola (/...), aby narzędzie dostało czyste zapytanie.",
             )
-
-        # Trimming
-        full_context, trimmed = trim_to_char_limit(full_context, MAX_CONTEXT_CHARS)
         if trimmed:
             self.orch.state_manager.add_log(
-                task_id,
-                f"Obcięto kontekst do {MAX_CONTEXT_CHARS} znaków (historia/przygotowanie promptu).",
+                task_id, f"Obcięto kontekst do {limit} znaków (limit runtime)."
             )
-
-        runtime_info = get_active_llm_runtime()
-        runtime_limit = self.orch._get_runtime_context_char_limit(runtime_info)
-        if runtime_limit < MAX_CONTEXT_CHARS:
-            full_context, trimmed = trim_to_char_limit(full_context, runtime_limit)
-            if trimmed:
-                self.orch.state_manager.add_log(
-                    task_id,
-                    f"Obcięto kontekst do {runtime_limit} znaków (limit runtime).",
-                )
 
         return full_context
 
@@ -295,14 +287,14 @@ class ContextBuilder:
         if runtime_info.provider == "vllm" and max_ctx and max_ctx <= 512:
             include_hidden = False
 
+        available = max(0, runtime_limit - len(context) - 2)
         hidden_context = (
             build_hidden_prompts_context(
-                intent=intent, limit=MAX_HIDDEN_PROMPTS_IN_CONTEXT
+                intent=intent, limit=MAX_HIDDEN_PROMPTS_IN_CONTEXT, max_chars=available
             )
-            if include_hidden
+            if include_hidden and available
             else ""
         )
-
         if hidden_context:
             context = hidden_context + "\n\n" + context
 
@@ -316,13 +308,12 @@ class ContextBuilder:
             )
         self.orch.state_manager.add_log(task_id, hidden_prompts_log)
 
-        if runtime_limit < MAX_CONTEXT_CHARS:
-            context, trimmed = trim_to_char_limit(context, runtime_limit)
-            if trimmed:
-                self.orch.state_manager.add_log(
-                    task_id,
-                    f"Obcięto kontekst do {runtime_limit} znaków (limit runtime).",
-                )
+        if len(context) > runtime_limit:
+            context = context[-runtime_limit:] if runtime_limit > 0 else ""
+            self.orch.state_manager.add_log(
+                task_id,
+                f"Obcięto kontekst do {runtime_limit} znaków (limit runtime).",
+            )
 
         if self.orch.request_tracer:
             self.orch.request_tracer.add_step(

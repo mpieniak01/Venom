@@ -9,6 +9,10 @@ from typing import Any, Callable, Dict, List, Optional
 from urllib import error as urllib_error
 from urllib import request as urllib_request
 
+from venom_core.execution.model_tool_policy import (
+    FUNCTIONGEMMA_READ_TOOLS,
+    is_functiongemma_model,
+)
 from venom_core.services.runtime_admission import admitted_operation
 from venom_core.utils.logger import get_logger
 
@@ -131,8 +135,15 @@ class OllamaAgentLoop:
             "messages": messages,
             "stream": False,
         }
-        if self.tools:
-            payload["tools"] = self.tools
+        tools = self.tools
+        if is_functiongemma_model(self.model):
+            tools = [
+                item
+                for item in tools
+                if item.get("function", {}).get("name") in FUNCTIONGEMMA_READ_TOOLS
+            ]
+        if tools:
+            payload["tools"] = tools
 
         body = json.dumps(payload)
         req = urllib_request.Request(
@@ -168,6 +179,8 @@ class OllamaAgentLoop:
         self, name: str, arguments: Dict[str, Any]
     ) -> tuple[str, Optional[str]]:
         """Wywołuje handler narzędzia. Zwraca (result, error)."""
+        if is_functiongemma_model(self.model) and name not in FUNCTIONGEMMA_READ_TOOLS:
+            return "", "FunctionGemma ma dostęp wyłącznie do narzędzi odczytu."
         handler = self.tool_handlers.get(name)
         if handler is None:
             return "", f"Brak handlera dla narzędzia: {name}"

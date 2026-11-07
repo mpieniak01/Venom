@@ -20,7 +20,8 @@ from venom_core.services.granite_operator.contract import (
 )
 from venom_core.services.remote_training.paths import operator_path
 
-from .profile import LOCK, Recipe
+from .profile import INITIAL_WEIGHTS_DIRECTORY, LOCK, Recipe
+from .retention import protected_trainer, smoke_rows, targets_for
 
 RECEIPT_FILE = "receipt.json"
 TRAINER_STATE_FILE = "trainer_state.json"
@@ -84,17 +85,30 @@ def validate_request(request: dict) -> Recipe:
     return recipe
 
 
-def collate(rows: list[dict], *, torch: Any, pad_id: int) -> dict:
+def collate(
+    rows: list[dict], *, torch: Any, pad_id: int, retention: dict | None = None
+) -> dict:
+    """Build the model batch and attach anchors only for protected training."""
     length = max(len(row["input_ids"]) for row in rows)
     batch = {}
     for key, pad in (("input_ids", pad_id), ("attention_mask", 0), ("labels", -100)):
         batch[key] = torch.tensor(
             [row[key] + [pad] * (length - len(row[key])) for row in rows]
         )
+    if retention is not None:
+        batch["retention_anchors"] = [
+            (
+                row["record_id"],
+                row["input_ids"][: row["assistant_token_spans"][0]["start"]],
+            )
+            for row in rows
+            if row["record_id"] in retention
+        ]
     return batch
 
 
 def trainer_arguments(recipe: Recipe, output: Path, *, smoke: bool) -> dict:
+    """Build Trainer settings for the qualified recipe and current stage."""
     budget_args = (
         {"max_steps": 1, "eval_strategy": "no"}
         if smoke
@@ -104,6 +118,7 @@ def trainer_arguments(recipe: Recipe, output: Path, *, smoke: bool) -> dict:
             "eval_steps": 1,
         }
     )
+    interval = recipe.checkpoint_interval if not smoke else None
     return {
         "output_dir": str(output),
         "per_device_train_batch_size": recipe.batch_size,
@@ -118,8 +133,8 @@ def trainer_arguments(recipe: Recipe, output: Path, *, smoke: bool) -> dict:
         "fp16": False,
         "seed": recipe.seed,
         "data_seed": recipe.seed,
-        "save_strategy": "epoch" if not smoke else "steps",
-        "save_steps": 1,
+        "save_strategy": "steps" if smoke or interval else "epoch",
+        "save_steps": interval or 1,
         "save_only_model": False,
         "report_to": [],
         "push_to_hub": False,
@@ -128,6 +143,23 @@ def trainer_arguments(recipe: Recipe, output: Path, *, smoke: bool) -> dict:
         "logging_steps": 1,
         **budget_args,
     }
+
+
+def resolve_model_source(recipe: Recipe, snapshot: Path, run_root: Path) -> Path:
+    """Bind the independently staged weights to the recipe before model load."""
+    expected = recipe.initial_weights
+    if expected is None:
+        return snapshot
+    source = operator_path(run_root / INITIAL_WEIGHTS_DIRECTORY)
+    if (
+        not source.is_dir()
+        or {file.name for file in source.iterdir()} != expected.keys()
+    ):
+        raise ValueError("functiongemma_initial_weights_missing")
+    actual = {name: file_digest(operator_path(source / name)) for name in expected}
+    if actual != expected:
+        raise ValueError("functiongemma_initial_weights_changed")
+    return source
 
 
 def run(request: dict) -> dict:
@@ -139,12 +171,14 @@ def run(request: dict) -> dict:
     from .encoding import validate_encoded_release
 
     records = validate_encoded_release(document, context=recipe.context)
+    retention = targets_for(document, recipe)
     snapshot = operator_path(request["snapshot"], allow_symlinks=True)
     if snapshot.name != recipe.revision:
         raise ValueError("functiongemma_pinned_snapshot_required")
     weights = sorted(snapshot.glob("*.safetensors"))
-    if not weights:
+    if recipe.initial_weights is None and not weights:
         raise ValueError("functiongemma_weights_missing")
+    model_source = resolve_model_source(recipe, snapshot, encoded_path.parent.parent)
     from transformers import AutoTokenizer
 
     tokenizer = AutoTokenizer.from_pretrained(
@@ -171,6 +205,11 @@ def run(request: dict) -> dict:
     if output.exists():
         raise FileExistsError("functiongemma_output_exists")
     resume = _training_checkpoint(request, recipe, records, fingerprint)
+    source_args: dict[str, Any] = (
+        {"model_source": model_source} if recipe.initial_weights else {}
+    )
+    if retention:
+        source_args["retention"] = retention
     # The ledger must be the host's shared ledger, never a per-run substitute.
     from venom_core.services.runtime_admission import RuntimeAdmission
 
@@ -189,7 +228,16 @@ def run(request: dict) -> dict:
             ).fetchone()
         if not owner or coordinator_id != request["run_id"]:
             raise ValueError("functiongemma_parent_reservation_missing")
-        return _execute(request, recipe, records, snapshot, output, fingerprint, resume)
+        return _execute(
+            request,
+            recipe,
+            records,
+            snapshot,
+            output,
+            fingerprint,
+            resume,
+            **source_args,
+        )
     lease = RuntimeAdmission(operator_path(ledger), enabled=True).acquire(
         owner="functiongemma-training",
         run_id=request["run_id"],
@@ -199,7 +247,14 @@ def run(request: dict) -> dict:
     try:
         with lease.operation(kind="lifecycle"):
             return _execute(
-                request, recipe, records, snapshot, output, fingerprint, resume
+                request,
+                recipe,
+                records,
+                snapshot,
+                output,
+                fingerprint,
+                resume,
+                **source_args,
             )
     finally:
         lease.release()
@@ -234,6 +289,24 @@ def parameter_evidence(model):
     }
 
 
+def optimizer_precision(model, optimizer):
+    """Verify the precision that AdamW actually used for a full FP32 recipe."""
+    parameters = {str(p.dtype) for p in model.parameters() if p.requires_grad}
+    moments = {
+        str(state[key].dtype)
+        for state in optimizer.state.values()
+        for key in ("exp_avg", "exp_avg_sq")
+        if key in state
+    }
+    if parameters != {"torch.float32"} or moments != {"torch.float32"}:
+        raise RuntimeError("functiongemma_optimizer_precision_mismatch")
+    return {
+        "trainable_parameters": sorted(parameters),
+        "optimizer_moments": sorted(moments),
+        "autocast": "torch.bfloat16",
+    }
+
+
 def probe_logits(model, row):
     import torch
 
@@ -253,7 +326,19 @@ def probe_logits(model, row):
         return tensor_hash([("logits", model(**values).logits.float())])
 
 
-def _execute(request, recipe, records, snapshot, output, fingerprint, resume):
+def _execute(
+    request,
+    recipe,
+    records,
+    snapshot,
+    output,
+    fingerprint,
+    resume,
+    *,
+    model_source=None,
+    retention=None,
+):
+    """Train the requested model, verify its precision, and seal the resulting checkpoint."""
     import torch
     from transformers import (
         AutoModelForCausalLM,
@@ -267,10 +352,10 @@ def _execute(request, recipe, records, snapshot, output, fingerprint, resume):
         raise RuntimeError("functiongemma_cuda_bf16_required")
     set_seed(recipe.seed)
     model = AutoModelForCausalLM.from_pretrained(
-        snapshot,
+        model_source if model_source is not None else snapshot,
         local_files_only=True,
         trust_remote_code=False,
-        dtype=torch.bfloat16,
+        dtype=torch.float32 if recipe.parameter_dtype == "fp32" else torch.bfloat16,
         device_map={"": 0},
     )
     if model.config.architectures != ["Gemma3ForCausalLM"]:
@@ -316,20 +401,38 @@ def _execute(request, recipe, records, snapshot, output, fingerprint, resume):
             1, (recipe.budget(len(records["train"]))["updates_per_epoch"] + 1) // 2
         )
     started = time.monotonic()
-    trainer = Trainer(
+    trainer_type = (
+        protected_trainer(
+            Trainer, retention, recipe.retention_weight, tokenizer.pad_token_id
+        )
+        if retention
+        else Trainer
+    )
+    trainer = trainer_type(
         model=model,
         args=args,
-        train_dataset=records["train"],
+        train_dataset=smoke_rows(records["train"], retention)
+        if smoke
+        else records["train"],
         eval_dataset=records["validation"],
         data_collator=lambda rows: collate(
-            rows, torch=torch, pad_id=tokenizer.pad_token_id
+            rows, torch=torch, pad_id=tokenizer.pad_token_id, retention=retention
         ),
     )
     before = parameter_evidence(model)
     trainer.train(resume_from_checkpoint=str(resume) if resume else None)
     if not before or before == parameter_evidence(model):
         raise RuntimeError("functiongemma_trainable_weights_unchanged")
+    precision = (
+        optimizer_precision(model, trainer.optimizer)
+        if recipe.parameter_dtype == "fp32"
+        else None
+    )
     checkpoint = output / ("checkpoint-" + str(trainer.state.global_step))
+    if recipe.checkpoint_interval and not smoke:
+        for saved in sorted(output.glob("checkpoint-*")):
+            if saved != checkpoint:
+                _seal(saved, fingerprint)
     _seal(checkpoint, fingerprint)
     probe = probe_logits(model, records["validation"][0])
     checks = {"save": True, "reload": False, "resume": False, "weights_updated": True}
@@ -338,7 +441,13 @@ def _execute(request, recipe, records, snapshot, output, fingerprint, resume):
         del trainer, model
         torch.cuda.empty_cache()
         reloaded = _resume_smoke(
-            recipe, records, snapshot, output / "reload", checkpoint, probe
+            recipe,
+            records,
+            snapshot,
+            output / "reload",
+            checkpoint,
+            probe,
+            retention=retention,
         )
         checkpoint = reloaded
         _seal(checkpoint, fingerprint)
@@ -360,6 +469,8 @@ def _execute(request, recipe, records, snapshot, output, fingerprint, resume):
         "evaluation_required": True,
         "qualification_scope": "save_reload_resume_only",
     }
+    if precision is not None:
+        result["precision"] = precision
     write_json(output / "metrics.json", result)
     write_json(
         output / "status.json", {"state": "succeeded", "activation_allowed": False}
@@ -384,7 +495,10 @@ def _seal(checkpoint, fingerprint):
     verify_checkpoint(checkpoint, fingerprint)
 
 
-def _resume_smoke(recipe, records, snapshot, output, checkpoint, probe):
+def _resume_smoke(
+    recipe, records, snapshot, output, checkpoint, probe, *, retention=None
+):
+    """Reload a sealed checkpoint and exercise a resumed optimizer update."""
     import torch
     from transformers import (
         AutoModelForCausalLM,
@@ -395,7 +509,7 @@ def _resume_smoke(recipe, records, snapshot, output, checkpoint, probe):
 
     model = AutoModelForCausalLM.from_pretrained(
         snapshot if recipe.method == "lora" else checkpoint,
-        dtype=torch.bfloat16,
+        dtype=torch.float32 if recipe.parameter_dtype == "fp32" else torch.bfloat16,
         device_map={"": 0},
         local_files_only=True,
         trust_remote_code=False,
@@ -413,15 +527,24 @@ def _resume_smoke(recipe, records, snapshot, output, checkpoint, probe):
     )
     arguments = trainer_arguments(recipe, output, smoke=True)
     arguments["max_steps"] = 2
-    trainer = Trainer(
+    trainer_type = (
+        protected_trainer(
+            Trainer, retention, recipe.retention_weight, tokenizer.pad_token_id
+        )
+        if retention
+        else Trainer
+    )
+    trainer = trainer_type(
         model=model,
         args=TrainingArguments(**arguments),
-        train_dataset=records["train"],
+        train_dataset=smoke_rows(records["train"], retention),
         data_collator=lambda rows: collate(
-            rows, torch=torch, pad_id=tokenizer.pad_token_id
+            rows, torch=torch, pad_id=tokenizer.pad_token_id, retention=retention
         ),
     )
     trainer.train(resume_from_checkpoint=str(checkpoint))
+    if recipe.parameter_dtype == "fp32":
+        optimizer_precision(model, trainer.optimizer)
     if trainer.state.global_step != 2:
         raise RuntimeError("functiongemma_resume_progress_invalid")
     return output / "checkpoint-2"

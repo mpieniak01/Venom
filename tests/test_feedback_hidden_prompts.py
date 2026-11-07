@@ -124,6 +124,7 @@ def test_hidden_prompts_aggregation_dedup(tmp_path, monkeypatch):
 
 
 def test_active_hidden_prompts_priority(tmp_path, monkeypatch):
+    """Prefer active prompts and keep complete entries within the context budget."""
     hidden_path = tmp_path / "hidden.jsonl"
     active_path = tmp_path / "active.json"
     monkeypatch.setattr(hidden_prompts, "HIDDEN_PROMPTS_PATH", hidden_path)
@@ -165,6 +166,22 @@ def test_active_hidden_prompts_priority(tmp_path, monkeypatch):
     context = hidden_prompts.build_hidden_prompts_context("GENERAL_CHAT", limit=2)
     assert "P2" in context
     assert context.index("P2") < context.index("P1")
+    first = hidden_prompts.build_hidden_prompts_context("GENERAL_CHAT", limit=1)
+    assert (
+        hidden_prompts.build_hidden_prompts_context(
+            "GENERAL_CHAT", limit=2, max_chars=len(first)
+        )
+        == first
+    )
+    assert (
+        hidden_prompts.build_hidden_prompts_context(
+            "GENERAL_CHAT", limit=2, max_chars=len(first) - 1
+        )
+        == ""
+    )
+    assert (
+        hidden_prompts.build_hidden_prompts_context("GENERAL_CHAT", max_chars=0) == ""
+    )
 
 
 def test_hidden_prompt_prepare_entry_filters():

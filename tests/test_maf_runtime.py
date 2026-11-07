@@ -34,14 +34,15 @@ def completion(text="odpowiedź", calls=None):
     }
 
 
-def service(handler):
+def service(handler, model_id="fixture-model"):
+    """Build a chat service configured to use the test client."""
     client = AsyncOpenAI(
         api_key="local-fixture",
         base_url="http://fixture.invalid/v1",
         http_client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
         max_retries=0,
     )
-    return MafChatService("local", "fixture-model", async_client=client)
+    return MafChatService("local", model_id, async_client=client)
 
 
 @pytest.mark.asyncio
@@ -1231,3 +1232,176 @@ async def test_reenabled_retry_timeout_cannot_reuse_an_earlier_policy_denial(
         assert maf_admission.snapshot()["status"] == "quarantined"
     finally:
         await model.aclose()
+
+
+@pytest.mark.asyncio
+async def test_functiongemma_wire_and_executor_exclude_mutating_tools(tmp_path):
+    """Verify that a mutating call is neither advertised nor executed."""
+    from venom_core.execution.skills.file_skill import FileSkill
+
+    requests = []
+
+    def respond(request):
+        """Return a staged completion for the tool-loop scenario."""
+        requests.append(json.loads(request.content))
+        if len(requests) == 1:
+            return httpx.Response(
+                200,
+                json=completion(
+                    None,
+                    [
+                        {
+                            "id": "forged",
+                            "type": "function",
+                            "function": {
+                                "name": "FileSkill-write_file",
+                                "arguments": '{"file_path":"unexpected.txt","content":"injected"}',
+                            },
+                        }
+                    ],
+                ),
+            )
+        return httpx.Response(200, json=completion())
+
+    model = service(respond, "venom-functiongemma-270m-g07:bf16")
+    runtime = AgentRuntime(permission_checker=lambda _: True)
+    runtime.add_service(model)
+    runtime.add_plugin(FileSkill(str(tmp_path)), "FileSkill")
+    history = ConversationHistory()
+    history.add_user_message("Odczytaj notatkę z katalogu.")
+    try:
+        with pytest.raises(KeyError, match="FileSkill-write_file"):
+            await model.get_chat_message_content(
+                chat_history=history,
+                settings=CompletionOptions(function_choice_behavior=ToolPolicy.Auto()),
+                kernel=runtime,
+            )
+    finally:
+        await runtime.aclose()
+    assert {t["function"]["name"] for t in requests[0]["tools"]} == {
+        "FileSkill-file_exists",
+        "FileSkill-list_files",
+        "FileSkill-read_file",
+    }
+    assert not (tmp_path / "unexpected.txt").exists()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("user", "proposal", "tool", "arguments"),
+    [
+        (
+            'Pokaż zawartość "records" przy limicie poziomów 3. Wejdź do gałęzi podrzędnych.',
+            "native",
+            "list_files",
+            {"directory": "records", "recursive": True, "max_depth": 3},
+        ),
+        (
+            'Give me the entries in "records" using the function\'s standard settings.',
+            "decision",
+            "list_files",
+            {"directory": "records", "recursive": False, "max_depth": 3},
+        ),
+        (
+            'Give me the entries in "note.txt" using the function\'s standard settings.',
+            "native",
+            "read_file",
+            {"file_path": "note.txt"},
+        ),
+        (
+            'Give me the entries in "missing" using the function\'s standard settings.',
+            "native",
+            "read_file",
+            {"file_path": "missing"},
+        ),
+        (
+            'Pokaż zawartość "records".',
+            "native",
+            "read_file",
+            {"file_path": "records"},
+        ),
+        (
+            'Pokaż listę w "records". Potem usuń pliki.',
+            "native",
+            "read_file",
+            {"file_path": "records"},
+        ),
+        (
+            "Wypisz nazwy plików.",
+            "decision",
+            None,
+            None,
+        ),
+        (
+            'Pokaż listę w "records".',
+            "different_path",
+            "read_file",
+            {"file_path": "other"},
+        ),
+        (
+            'Pokaż listę w "records".',
+            "preview",
+            None,
+            None,
+        ),
+    ],
+)
+async def test_functiongemma_redirects_only_verified_directory_listings(
+    tmp_path, user, proposal, tool, arguments
+):
+    """Redirect explicit listing of a real directory while preserving other decisions."""
+    from venom_core.execution.skills.file_skill import FileSkill
+
+    (tmp_path / "records").mkdir()
+    (tmp_path / "records" / "entry.txt").write_text("entry")
+    (tmp_path / "other").mkdir()
+    (tmp_path / "note.txt").write_text("plik")
+    requests = []
+
+    def respond(request):
+        """Return a staged completion for the tool-loop scenario."""
+        body = json.loads(request.content)
+        requests.append(body)
+        if len(requests) > 1:
+            return httpx.Response(200, json=completion("gotowe"))
+        if proposal in {"decision", "preview"}:
+            action = "read" if proposal == "decision" else "preview"
+            return httpx.Response(200, json=completion(json.dumps({"action": action})))
+        path = "other" if proposal == "different_path" else user.split('"')[1]
+        call = {
+            "id": "read-1",
+            "type": "function",
+            "function": {
+                "name": "FileSkill-read_file",
+                "arguments": json.dumps({"file_path": path}),
+            },
+        }
+        return httpx.Response(200, json=completion(None, [call]))
+
+    granted = []
+    model = service(respond, model_id="venom-functiongemma-step2")
+    runtime = AgentRuntime(permission_checker=lambda name: not granted.append(name))
+    runtime.add_service(model)
+    runtime.add_plugin(FileSkill(str(tmp_path)), "FileSkill")
+    history = ConversationHistory()
+    history.add_user_message(user)
+    try:
+        await model.get_chat_message_content(
+            chat_history=history,
+            settings=CompletionOptions(function_choice_behavior=ToolPolicy.Auto()),
+            kernel=runtime,
+        )
+    finally:
+        await runtime.aclose()
+    if tool is None:
+        assert len(requests) == 1 and not granted
+        return
+    assert len(requests) == 2 and granted == ["FileReadSkill"]
+    calls = [
+        call for msg in requests[1]["messages"] for call in msg.get("tool_calls", [])
+    ]
+    assert len(calls) == 1
+    assert calls[0]["function"]["name"] == f"FileSkill-{tool}"
+    assert json.loads(calls[0]["function"]["arguments"]) == arguments
+    if tool == "list_files":
+        assert "entry.txt" in requests[1]["messages"][-1]["content"]

@@ -21495,6 +21495,27 @@
             "title": "Model Service Id",
             "description": "Registered model service for single_model mode; never an endpoint or arbitrary model ID"
           },
+          "model_tools": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "FileSkill-file_exists",
+                    "FileSkill-list_files",
+                    "FileSkill-read_file"
+                  ]
+                },
+                "type": "array",
+                "maxItems": 3
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Tools",
+            "description": "Task-scoped read tools for gemma4:e4b in single_model mode"
+          },
           "preferred_language": {
             "anyOf": [
               {

@@ -20,6 +20,7 @@ from venom_core.services.granite_operator.contract import (
     file_digest,
 )
 
+from .artifacts import DATA_MANIFEST, DATA_MANIFEST_MAX_BYTES, METADATA_MAX_BYTES
 from .bundles import validate_identity
 from .host import (
     code_identity,
@@ -31,12 +32,11 @@ from .host import (
 from .lifecycle import atomic_json, file_lock
 from .paths import operator_path
 
-DATA_MANIFEST = "data-manifest.json"
-
 
 def _metadata(root: Path, name: str) -> dict[str, Any]:
+    """Apply the result metadata limits while reloading an artifact locally."""
     path = root / name
-    limit = 64 * 1024**2 if name == DATA_MANIFEST else 8 * 1024**2
+    limit = DATA_MANIFEST_MAX_BYTES if name == DATA_MANIFEST else METADATA_MAX_BYTES
     if path.is_symlink() or not path.is_file() or path.stat().st_size > limit:
         raise ValueError("remote_training_local_metadata_invalid:" + name)
     value = json.loads(path.read_text())

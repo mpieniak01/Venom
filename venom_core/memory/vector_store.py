@@ -352,7 +352,14 @@ class VectorStore:
         return UpsertResult(message=message, chunks_count=len(records))
 
     def search(
-        self, query: str, limit: int = 3, collection_name: Optional[str] = None
+        self,
+        query: str,
+        limit: int = 3,
+        collection_name: Optional[str] = None,
+        *,
+        session_scope: bool = False,
+        session_id: str | None = None,
+        text_pattern: str | None = None,
     ) -> List[Dict[str, Any]]:
         """
         Wyszukuje najbardziej podobne fragmenty do zapytania.
@@ -361,6 +368,9 @@ class VectorStore:
             query: Zapytanie tekstowe
             limit: Maksymalna liczba wyników
             collection_name: Nazwa kolekcji (domyślnie self.collection_name)
+            session_scope: Ogranicz wyniki do wpisów globalnych i bieżącej sesji
+            session_id: Bieżąca sesja, jeśli ma zostać uwzględniona
+            text_pattern: Opcjonalny wzorzec tekstu stosowany przed limitem wyników
 
         Returns:
             Lista słowników z wynikami (text, metadata, score)
@@ -388,7 +398,21 @@ class VectorStore:
 
         # Wyszukaj najbliższe wektory
         logger.info(f"Wyszukiwanie w kolekcji '{col_name}' z limitem {limit}")
-        results = table.search(query_embedding).limit(limit).to_list()
+        search = table.search(query_embedding)
+        filters = []
+        if session_scope:
+            condition = """metadata NOT LIKE '%"session_id":%'"""
+            if session_id:
+                value = _validate_filter_value("session_id", session_id)
+                condition += " OR " + _metadata_like_condition("session_id", value)
+            filters.append(f"({condition})")
+        if text_pattern is not None:
+            quoted = text_pattern.replace("'", "''")
+            filters.append(f"regexp_like(text, '{quoted}')")
+        if filters:
+            filters.append("id != 'init'")
+            search = search.where(" AND ".join(filters), prefilter=True)
+        results = search.limit(limit).to_list()
 
         # Przetwórz wyniki
         processed_results: list[dict[str, object]] = []
@@ -406,7 +430,7 @@ class VectorStore:
             )
 
         # Fallback: gdy semantyka nic nie zwróci, spróbuj prostego dopasowania leksykalnego.
-        if not processed_results:
+        if not processed_results and not filters:
             processed_results = self._lexical_fallback_search(table, query, limit)
 
         logger.info(f"Znaleziono {len(processed_results)} wyników")

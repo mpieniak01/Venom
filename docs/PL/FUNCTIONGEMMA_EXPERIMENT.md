@@ -184,3 +184,37 @@ i raport sa prywatne w `data/training/functiongemma-remote-results-20261103/loca
 
 Oficjalne podstawy: [format Google](https://ai.google.dev/gemma/docs/functiongemma/formatting-and-best-practices)
 i [pelny SFT](https://ai.google.dev/gemma/docs/functiongemma/finetuning-with-functiongemma).
+
+## Zapis plików po pilocie G07
+
+W MAF i pętli Ollama identyfikatory FunctionGemma (w tym wydane nazwy
+`venom-functiongemma-…`) dostają wyłącznie trzy narzędzia FileSkill:
+sprawdzenie istnienia, listowanie i odczyt. Nazwa modelu powinna zachować
+oznaczenie rodziny podczas rejestracji aliasu. Sfałszowane wywołanie
+zapisu nie ma wykonawcy. Zgody na zapis nie można przekazać w komunikacie
+modelu ani w treści odczytanego pliku.
+
+Operator może zatwierdzić konkretną operację z lokalnego terminala Linux/WSL:
+
+```bash
+source .venv/bin/activate
+python -m scripts.operator_file_write --session moja-sesja \
+  --path output/raport.txt --content-file /tmp/sprawdzona-tresc.txt
+```
+
+Katalog docelowy musi już istnieć w workspace Venoma. `--empty` pozwala
+jawnie utworzyć pusty plik, a `--overwrite` jawnie zatwierdzić nadpisanie.
+Jeśli operator podaje plik propozycji przez `--proposal`, jego JSON musi
+zawierać dokładnie `file_path` oraz `content`. Obie wartości muszą być
+identyczne z niezależnie podaną ścieżką i treścią operatora. Komenda
+pokazuje podgląd przed zatwierdzeniem w terminalu. Zgoda wygasa po dwóch
+minutach, jest związana z sesją i workspace oraz działa jeden raz.
+O obowiązującym trybie autonomii decyduje zapisany stan Venoma.
+Udany zapis trafia do pliku `venom.log` w katalogu logów Venoma. Wpis zawiera
+identyfikator, czas, sesję, ścieżkę, skrót SHA-256 i informację o nadpisaniu.
+Treść pliku pozostaje poza logiem. Dla wpisu obowiązuje rotacja logów Venoma,
+a strumień audytu w panelu jest odrębny od procesu CLI. Równoległe polecenia
+zapisu Venoma blokują wspólny katalog na czas publikacji. Jeśli katalog jest
+zajęty, ponów operację od podglądu. Przy nadpisywaniu wstrzymaj edycję tego
+samego pliku w innych programach. Procesy spoza Venoma mogą zmienić plik
+między ostatnią kontrolą jego stanu a atomową podmianą.

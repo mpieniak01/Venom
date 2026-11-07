@@ -23,6 +23,7 @@ from venom_core.services.remote_training.paths import operator_path
 
 from .encoding import validate_encoded_release
 from .profile import Recipe
+from .retention import targets_for
 
 PROFILE_FILE = "profile.json"
 DATA_MANIFEST_FILE = "data-manifest.json"
@@ -53,10 +54,12 @@ def identity_for(recipe, document, snapshot, code_root, *, max_seconds):
 
 
 def pack(manifest, profile, snapshot, output, *, run_id, updates, max_seconds):
+    """Validate the recipe and token release before building a sealed training bundle."""
     recipe = Recipe(**profile)
     recipe.validate()
     document = json.loads(manifest.read_text())
     records = validate_encoded_release(document, context=recipe.context)
+    targets_for(document, recipe)
     total = recipe.budget(len(records["train"]))["total_updates"]
     if updates != total or total > 4096:
         raise ValueError("remote_training_functiongemma_epoch_budget_mismatch")
@@ -81,10 +84,12 @@ def pack(manifest, profile, snapshot, output, *, run_id, updates, max_seconds):
 
 
 def preflight(host, input_root, identity):
+    """Verify the imported code, data, tokenizer and warm start before running."""
     recipe = Recipe(**json.loads((input_root / PROFILE_FILE).read_text()))
     recipe.validate()
     document = json.loads((input_root / DATA_MANIFEST_FILE).read_text())
     validate_encoded_release(document, context=recipe.context)
+    targets_for(document, recipe)
     if Path(__file__).resolve().parents[3] != Path(host["code_root"]).resolve():
         raise ValueError("remote_training_imported_code_mismatch")
     snapshot = Path(host["snapshot"])
@@ -99,6 +104,10 @@ def preflight(host, input_root, identity):
     )
     if actual != identity:
         raise ValueError("remote_training_identity_mismatch")
+    if recipe.initial_weights is not None:
+        from .worker import resolve_model_source
+
+        resolve_model_source(recipe, snapshot, input_root.parent)
     return recipe, document
 
 

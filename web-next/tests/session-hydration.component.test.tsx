@@ -25,7 +25,9 @@ function Session() {
 beforeEach(() => {
   window.localStorage.clear();
   bootId = "boot-one";
-  globalThis.fetch = async () => Response.json({ boot_id: bootId });
+  globalThis.fetch = async input => Response.json(
+    String(input).includes("/memory/session/") ? { history: [] } : { boot_id: bootId },
+  );
   Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
 });
 
@@ -90,7 +92,7 @@ describe("SessionProvider hydration and continuity", () => {
     assert.ok(!html.includes("old-build-session"));
     assert.equal(window.localStorage.getItem(ID_KEY), "old-build-session");
     render(<Session />);
-    assert.notEqual(screen.getByTestId("session").textContent, "old-build-session");
+    await waitFor(() => assert.notEqual(screen.getByTestId("session").textContent, "old-build-session"));
     assert.equal(window.localStorage.getItem(BUILD_KEY), "new-build");
   });
 
@@ -116,6 +118,22 @@ describe("SessionProvider hydration and continuity", () => {
     fireEvent.focus(window);
     await act(async () => { await Promise.resolve(); });
     assert.equal(screen.getByTestId("session").textContent, id);
+  });
+
+  it("keeps a durable chat when both the web build and the backend change", async () => {
+    window.localStorage.setItem(ID_KEY, "saved-studio-chat");
+    window.localStorage.setItem(BUILD_KEY, "studio-build");
+    window.localStorage.setItem(BOOT_KEY, "studio-boot");
+    window.__NEXT_DATA__ = { buildId: "full-build", props: {}, page: "/chat", query: {} };
+    globalThis.fetch = async input => Response.json(
+      String(input) === "/api/v1/memory/session/saved-studio-chat"
+        ? { history: [{ role: "assistant", content: "Durable answer" }] }
+        : { boot_id: "full-boot" },
+    );
+    render(<Session />);
+    await waitFor(() => assert.equal(window.localStorage.getItem(BOOT_KEY), "full-boot"));
+    assert.equal(window.localStorage.getItem(BUILD_KEY), "full-build");
+    assert.equal(screen.getByTestId("session").textContent, "saved-studio-chat");
   });
 
   it("does not write a delayed boot response after provider unmount", async () => {

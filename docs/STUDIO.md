@@ -71,9 +71,9 @@ the existing Full localhost guard; a separate configuration screen is not copied
 remain owned by the environment. Switching does not migrate, clone or erase them.
 The frontend uses the shared providers/controller and browser storage keys.
 Browser drafts and active sessions are origin-local: another UI origin has
-separate browser storage, and a new build can initialize a new current thread.
-Use the conversation list to reopen a saved session; browser storage is not a
-server-history backup.
+separate browser storage. A thread with server-side history survives a build
+change or restart. The Studio conversation list is also scoped to the browser
+origin. Browser storage is not a backup of server history.
 
 Studio shares Chat 2.0 components, fonts and global styles, but has its own route
 tree, Next build output, dev cache and public assets. It reuses the installed

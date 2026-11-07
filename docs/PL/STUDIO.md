@@ -71,8 +71,9 @@ ochroną localhost Full; nie kopiujemy osobnego ekranu konfiguracji.
 pozostają własnością środowiska. Przełączenie nie migruje, nie klonuje i nie kasuje
 danych. Frontend korzysta ze wspólnych providerów/kontrolera i kluczy przeglądarki.
 Szkice i aktywna sesja należą do originu: inny adres UI ma osobny storage,
-a nowy build może utworzyć nowy bieżący wątek. Zapisaną sesję wybierz z listy
-rozmów; storage przeglądarki nie jest kopią zapasową historii serwera.
+a zmianę buildu lub restart przeżywa wątek z historią zapisaną na serwerze.
+Lista rozmów w Studio także należy do originu przeglądarki.
+Storage przeglądarki nie jest kopią zapasową historii serwera.
 
 Studio współdzieli komponenty Chat 2.0, fonty i globalne style, lecz ma własne
 drzewo tras, artefakt Next, cache dev i zasoby publiczne. Korzysta z istniejącego

@@ -87,6 +87,9 @@ EXT_DOC = ".doc"
 EXT_DOCX = ".docx"
 
 
+DEFAULT_SIMPLE_MODE_SYSTEM_PROMPT = "Odpowiadaj po polsku."
+
+
 class Settings(BaseSettings):
     # Ignore unknown env vars in local env files without failing startup/tests.
     model_config = SettingsConfigDict(env_file=_settings_env_file(), extra="ignore")
@@ -157,7 +160,7 @@ class Settings(BaseSettings):
     LLM_WARMUP_TIMEOUT_SECONDS: float = 5.0
     LLM_WARMUP_MAX_TOKENS: int = 8
     LLM_KEEP_ALIVE: str = "-1"  # Domyślnie pinuj model Ollama w pamięci do zatrzymania stosu (`make stop`)
-    SIMPLE_MODE_SYSTEM_PROMPT: str = "Odpowiadaj po polsku."
+    SIMPLE_MODE_SYSTEM_PROMPT: str = DEFAULT_SIMPLE_MODE_SYSTEM_PROMPT
 
     # Konfiguracja Hybrid AI Mode (Local First + Cloud Options)
     AI_MODE: str = "LOCAL"  # Opcje: "LOCAL", "HYBRID", "CLOUD"

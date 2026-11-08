@@ -16,7 +16,7 @@ from fastapi import HTTPException
 from fastapi.responses import StreamingResponse
 
 from venom_core.api.schemas.llm_simple import SimpleChatRequest
-from venom_core.config import SETTINGS
+from venom_core.config import DEFAULT_SIMPLE_MODE_SYSTEM_PROMPT, SETTINGS
 from venom_core.core.metrics import get_metrics_collector
 from venom_core.core.tracer import TraceStatus
 from venom_core.services import llm_simple_transport
@@ -1216,6 +1216,8 @@ async def _stream_non_openrouter_chat(
     _trace_simple_request(request_id, request, runtime, model_name)
 
     system_prompt = (SETTINGS.SIMPLE_MODE_SYSTEM_PROMPT or "").strip()
+    if request.studio_normal and system_prompt == DEFAULT_SIMPLE_MODE_SYSTEM_PROMPT:
+        system_prompt = ""
     if system_context:
         system_prompt = "\n\n".join(filter(None, (system_prompt, system_context)))
     user_content = _trim_user_content_for_runtime(

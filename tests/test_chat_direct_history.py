@@ -607,7 +607,9 @@ def test_studio_normal_stream_uses_host_history_and_loads_rag_only_for_notes(
     get_vectors.assert_not_awaited()
     plain, context = captured[-1]
     assert [x.content for x in plain.history] == ["stable user fact", "confirmed"]
-    assert not context
+    assert "Prefer the latest user correction" in context
+    assert "language of the current question" in context
+    assert "[NOTES]" not in context
     assert plain.think is False
 
     prompt = "Według notatki projektu Jasny Brzeg, o której godzinie jest odbiór?"

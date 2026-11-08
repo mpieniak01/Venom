@@ -11,7 +11,9 @@ from venom_core.infrastructure.traffic_control.http_client import (
     TrafficControlledHttpClient,
 )
 from venom_core.memory.chat_retrieval import (
+    CHAT_NOTE_POLICY,
     named_memory_subject,
+    note_request_language,
     retrieve_chat_memory,
     select_relevant_memory_items,
 )
@@ -317,12 +319,15 @@ class SessionHandler:
         parts: list[str],
     ) -> None:
         """Append relevant memory for the current request and record the entries used."""
-        if not self._should_include_memory(request, len(history)):
+        explicit_note = note_request_language(request.content) is not None
+        if not explicit_note and not self._should_include_memory(request, len(history)):
             return
         memory_block, memory_ids = self._retrieve_relevant_memory(
             request,
             request.session_id,
         )
+        if explicit_note:
+            parts.append(CHAT_NOTE_POLICY)
         if memory_block:
             parts.append("[PAMIĘĆ]\n" + memory_block)
         elif self._named_memory_subject(request.content):

@@ -1167,7 +1167,7 @@ def test_memory_selection_never_falls_back_to_another_session():
 @pytest.mark.parametrize(
     ("prompt", "subject"),
     [
-        ("Przypomnij z notatki termin dla projektu Jasny Brzeg.", "Jasny Brzeg"),
+        ("Według notatki podaj termin dla projektu Jasny Brzeg.", "Jasny Brzeg"),
         (
             "According to the retrieved notes, what is the code for Copper Quay?",
             "Copper Quay",
@@ -1205,10 +1205,16 @@ def test_rag_retrieval_rejects_other_subject_and_other_session(prompt, subject):
     assert "08:50" not in context
     assert "19:30" not in context
 
+    parts = []
+    handler._attach_memory_block(uuid4(), MagicMock(), request, [], parts)
+    assert "reference data" in parts[0]
+    assert "07:41" in parts[1] and "19:30" not in parts[1]
+
     search.return_value.pop()
     parts = []
     handler._attach_memory_block(uuid4(), MagicMock(), request, [], parts)
-    assert parts == ["[PAMIĘĆ] Brak źródła pasującego do wskazanej nazwy."]
+    assert "no matching source" in parts[0]
+    assert parts[1:] == ["[PAMIĘĆ] Brak źródła pasującego do wskazanej nazwy."]
 
 
 @pytest.mark.asyncio

@@ -1,9 +1,9 @@
 """Demand-driven wiring of existing host services for the Studio API.
 
 Same SETTINGS, state, SessionStore and runtime admission as Full. No new storage
-root, queue, model process, scheduler, watcher or optional module is introduced.
-Normal/MAF necessarily construct the existing heavier Orchestrator on first use.
-Legacy Direct memory ingestion similarly constructs the existing VectorStore.
+root or queue is introduced.
+Tool and MAF requests construct the heavier Orchestrator on first use.
+Studio Normal opens the shared VectorStore only for explicit note lookup.
 """
 
 from __future__ import annotations
@@ -14,7 +14,9 @@ from contextlib import suppress
 from functools import partial
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
+import httpx
 from fastapi import FastAPI, HTTPException
 
 from venom_core.api import dependencies as api_deps
@@ -81,6 +83,11 @@ class StudioRuntime:
         self._closed = False
         self.audio_engine: LazyAudioEngine | None = None
         self._closing: asyncio.Task[None] | None = None
+        self._embedding_idle_task: asyncio.Task[None] | None = None
+        self._embedding_process = SETTINGS.STUDIO_EMBEDDING_PROCESS
+        self._embedding_idle_seconds = SETTINGS.STUDIO_EMBEDDING_IDLE_SECONDS
+        if self._embedding_process and not self._embedding_idle_seconds:
+            self._embedding_idle_seconds = 120
         self._owned_runtime = False
         self.on_dependencies_changed: Callable[[], None] = lambda: None
 
@@ -148,6 +155,78 @@ class StudioRuntime:
             else None
         )
         app.state.audio_engine = self.audio_engine
+        if SETTINGS.LLM_WARMUP_ON_STARTUP:
+            await self._preload_local_ollama()
+        if self._embedding_idle_seconds:
+            self._embedding_idle_task = asyncio.create_task(
+                self._expire_idle_embeddings()
+            )
+
+    @staticmethod
+    async def _preload_local_ollama() -> None:
+        from venom_core.utils.llm_runtime import get_active_llm_runtime
+        from venom_core.utils.ollama_tuning import (
+            build_ollama_runtime_options,
+            normalize_ollama_keep_alive,
+        )
+
+        if (
+            SETTINGS.ACTIVE_LLM_SERVER.strip().lower() == "none"
+            or SETTINGS.VENOM_RUNTIME_PROFILE == "llm_off"
+        ):
+            return
+        runtime = get_active_llm_runtime()
+        if (
+            runtime.provider != "ollama"
+            or runtime.service_type != "local"
+            or runtime.host_local is False
+        ):
+            return
+        try:
+            url = urlsplit(runtime.endpoint or "")
+            if (
+                url.scheme not in {"http", "https"}
+                or url.hostname not in {"localhost", "127.0.0.1", "::1"}
+                or url.username is not None
+                or not runtime.model_name
+            ):
+                return
+            keep_alive = normalize_ollama_keep_alive(SETTINGS.LLM_KEEP_ALIVE)
+            if keep_alive == 0:
+                return
+            # The stack waits 60 seconds for API readiness. Allow a cold GPU load.
+            async with (
+                asyncio.timeout(30),
+                httpx.AsyncClient(trust_env=False, timeout=None) as client,
+            ):
+                response = await client.post(
+                    url._replace(path="/api/generate", query="", fragment="").geturl(),
+                    json={
+                        "model": runtime.model_name,
+                        "stream": False,
+                        "keep_alive": keep_alive,
+                        "options": build_ollama_runtime_options(SETTINGS),
+                    },
+                )
+                response.raise_for_status()
+            logger.info("Studio: lokalny model Ollama rozgrzany")
+        except (httpx.HTTPError, TimeoutError, ValueError) as exc:
+            logger.warning(
+                "Studio: rozgrzanie Ollamy nie powiodło się ({})", type(exc).__name__
+            )
+
+    async def _expire_idle_embeddings(self) -> None:
+        interval = min(5, self._embedding_idle_seconds)
+        while True:
+            await asyncio.sleep(interval)
+            store = self.vector_store
+            if store is not None:
+                try:
+                    await run_drainable_thread(store.embedding_service.release_if_idle)
+                except Exception:
+                    logger.exception(
+                        "Studio: nie udało się zwolnić nieużywanych embeddingów"
+                    )
 
     @staticmethod
     def _create_audio() -> Any:
@@ -161,9 +240,23 @@ class StudioRuntime:
         )
 
     def _create_vector_store(self) -> None:
+        from venom_core.memory.embedding_service import (
+            EmbeddingService,
+            configured_embedding_service_type,
+        )
         from venom_core.memory.vector_store import VectorStore
 
-        self.vector_store = VectorStore()
+        if self._embedding_process and configured_embedding_service_type() == "local":
+            from venom_core.memory.embedding_process import ProcessEmbeddingService
+
+            self.vector_store = VectorStore(
+                embedding_service=ProcessEmbeddingService(self._embedding_idle_seconds)
+            )
+        elif self._embedding_idle_seconds:
+            service = EmbeddingService(idle_seconds=self._embedding_idle_seconds)
+            self.vector_store = VectorStore(embedding_service=service)
+        else:
+            self.vector_store = VectorStore()
 
     async def get_vector_store(self) -> Any:
         async with self._lock:
@@ -217,6 +310,10 @@ class StudioRuntime:
     async def _close_once(self) -> None:
         self._closed = True
         try:
+            if self._embedding_idle_task is not None:
+                self._embedding_idle_task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await self._embedding_idle_task
             if self.audio_engine is not None:
                 await self.audio_engine.close()
             async with self._lock:

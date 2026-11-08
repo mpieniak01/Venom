@@ -178,7 +178,7 @@ def test_path_traversal_attack_exists(temp_workspace):
 
     # Expect error string
     result = skill.file_exists("../../../etc/passwd")
-    assert "Odmowa dostępu" in result or "Wystąpił błąd" in result
+    assert result.startswith("⛔ Odmowa dostępu")
 
 
 def test_list_files_recursive_and_helper_branches(temp_workspace):

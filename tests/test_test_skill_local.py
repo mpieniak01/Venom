@@ -216,3 +216,23 @@ async def test_run_pytest_locally_timeout_kills_process(monkeypatch):
 
     assert "Przekroczono limit czasu" in result
     assert process.killed is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("output", "exit_code"),
+    [
+        ("/usr/local/bin/python: No module named pytest\n", None),
+        ("ERROR during collection\nModuleNotFoundError: No module named pytest", 1),
+    ],
+)
+async def test_pytest_evidence_distinguishes_startup_from_test_failure(
+    output, exit_code
+):
+    habitat = SimpleNamespace(execute=lambda *_args, **_kwargs: (1, output))
+    skill = TestSkill(habitat=habitat)
+
+    observed_code, report = await skill.run_pytest_with_evidence("tests")
+
+    assert observed_code == exit_code
+    assert report

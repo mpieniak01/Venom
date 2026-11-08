@@ -201,6 +201,18 @@ def resolve(
     values["NEXT_PUBLIC_API_BASE"] = ""
     values["NEXT_PUBLIC_WS_BASE"] = ""
     values["NEXT_PUBLIC_ENVIRONMENT_ROLE"] = role
+    # Build and stack start must fingerprint the same public configuration.
+    values["NEXT_PUBLIC_APP_VERSION"] = values.get(
+        "WEB_APP_VERSION", values.get("NEXT_PUBLIC_APP_VERSION", "unknown")
+    )
+    values.setdefault(
+        "NEXT_PUBLIC_ENABLE_AUDIO_INTERFACE",
+        values.get("ENABLE_AUDIO_INTERFACE", "false"),
+    )
+    web_display = values.get("WEB_DISPLAY", "127.0.0.1")
+    values.setdefault(
+        "NEXT_PUBLIC_AUDIO_WS_BASE", f"ws://{web_display}:{values['PORT']}"
+    )
     if role != "dev":
         dev = resolve(root, {"ENVIRONMENT": "dev"}, require_env_file=False)
         for key in (*PATH_DEFAULTS, *derived, "BACKEND_LOG", "WEB_LOG"):
@@ -222,6 +234,10 @@ def resolve(
     from scripts.dev.stack_variant import apply_variant
 
     apply_variant(root, values, overrides)
+    if values["START_WEB_MODE"] == "standalone" and (
+        role != "dev" or values["VENOM_VARIANT"] != "studio"
+    ):
+        raise ValueError("START_WEB_MODE=standalone requires Studio dev")
     return values
 
 

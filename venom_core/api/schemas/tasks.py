@@ -118,6 +118,10 @@ class TaskRequest(BaseModel):
         max_length=0,
         description="Material references require Direct mode; orchestration must not silently discard them",
     )
+    use_notes: bool | None = Field(
+        default=None,
+        description="Explicit chat note retrieval. Omit for existing task memory policy.",
+    )
     store_knowledge: bool = Field(
         default=True, description="Persist lessons and insights from this task"
     )
@@ -175,6 +179,7 @@ class HistoryRequestSummary(BaseModel):
     """Skrócony widok requestu dla listy historii."""
 
     request_id: UUID
+    mode: Literal["direct"] | None = None
     prompt: str
     status: str
     session_id: str | None = None

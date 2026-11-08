@@ -399,12 +399,19 @@ def _launch_member_handle(
     if fields[0] == "Z" or int(fields[3]) != pid:
         return None
     handle = os.pidfd_open(int(proc.name))
+    verified = False
     try:
         _validate_launch_member(proc, pid, ticks, root, key, token)
-    except BaseException:
-        os.close(handle)
+        verified = True
+        return handle
+    except PermissionError:
+        # /proc can deny environ access while the pinned process exits.
+        if select.select([handle], [], [], 0.05)[0]:
+            return None
         raise
-    return handle
+    finally:
+        if not verified:
+            os.close(handle)
 
 
 def _launch_handles(

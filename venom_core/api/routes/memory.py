@@ -1,5 +1,6 @@
 """Moduł: routes/memory - Endpointy API dla pamięci wektorowej."""
 
+from contextlib import nullcontext
 from typing import Annotated, Any, cast
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -11,6 +12,7 @@ from venom_core.api.dependencies import (
     get_vector_store,
     is_testing_mode,
 )
+from venom_core.api.operator_origin import require_operator_origin
 from venom_core.api.routes.graph_view_utils import apply_graph_view
 from venom_core.api.routes.permission_denied_contract import (
     raise_permission_denied_http,
@@ -28,9 +30,15 @@ from venom_core.api.schemas.memory import (
     MemoryIngestResponse,
     MemorySearchRequest,
     MemorySearchResponse,
+    SaveChatNoteRequest,
     SessionMemoryClearResponse,
     SessionMemoryResponse,
 )
+from venom_core.api.transport_access import (
+    is_localhost_request,
+    require_operator_request,
+)
+from venom_core.config import SETTINGS
 from venom_core.core.environment_policy import ensure_data_mutation_allowed
 from venom_core.memory.lessons_store import LessonsStore
 from venom_core.services.config_manager import config_manager as _config_manager
@@ -50,6 +58,7 @@ from venom_core.services.memory_graph_service import (
 from venom_core.services.memory_graph_service import (
     resolve_maybe_await as _resolve_maybe_await_svc,
 )
+from venom_core.services.memory_graph_service import session_memory_lock
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -119,12 +128,14 @@ async def _resolve_maybe_await(value: Any) -> Any:
     status_code=201,
     responses={
         400: {"description": "Nieprawidłowe dane wejściowe"},
+        409: {"description": "Tura Direct nie jest dostępna w historii sesji"},
         500: {"description": "Błąd wewnętrzny podczas zapisu do pamięci"},
     },
 )
 def ingest_to_memory(
     request: MemoryIngestRequest,
     vector_store: Annotated[Any, Depends(get_vector_store)],
+    session_store: Annotated[Any, Depends(get_session_store)] = None,
 ):
     """
     Zapisuje tekst do pamięci wektorowej.
@@ -141,12 +152,40 @@ def ingest_to_memory(
     try:
         _require_nonempty(request.text, "Tekst nie może być pusty")
         metadata = _build_ingest_metadata(request)
-        result = vector_store.upsert(
-            text=request.text,
-            metadata=metadata,
-            collection_name=request.collection,
-            chunk_text=True,
+        session_id = request.session_id
+        if request.direct_request_id and (
+            not session_id
+            or request.scope != "session"
+            or request.collection != "default"
+        ):
+            raise HTTPException(
+                400, "Indeksowanie Direct wymaga zakresu sesji i domyślnej kolekcji."
+            )
+        lock = (
+            session_memory_lock(session_id)
+            if request.direct_request_id and session_id
+            else nullcontext()
         )
+        with lock:
+            if request.direct_request_id and not (
+                session_store
+                and any(
+                    turn.get("request_id") == request.direct_request_id
+                    and turn.get("role") == "assistant"
+                    and turn.get("mode") == "direct"
+                    and turn.get("status") == "COMPLETED"
+                    for turn in session_store.get_history(session_id)
+                )
+            ):
+                raise HTTPException(
+                    409, "Tura Direct nie jest dostępna w historii sesji."
+                )
+            result = vector_store.upsert(
+                text=request.text,
+                metadata=metadata,
+                collection_name=request.collection,
+                chunk_text=True,
+            )
 
         logger.info(
             f"Ingestion pomyślny: {result['chunks_count']} fragmentów do '{request.collection}'"
@@ -160,6 +199,78 @@ def ingest_to_memory(
 
     except Exception as exc:
         _raise_memory_http_error(exc, context="ingestion do pamięci")
+
+
+def _require_chat_notes(http_request: Request) -> None:
+    if is_localhost_request(http_request):
+        require_operator_origin(http_request, "chat_note_origin_denied")
+    if not SETTINGS.CHAT_NOTES_ENABLED:
+        raise HTTPException(403, "chat_notes_disabled")
+
+
+@router.post(
+    "/notes",
+    status_code=201,
+    dependencies=[Depends(require_operator_request), Depends(_require_chat_notes)],
+    responses={
+        403: {"description": "Chat notes or operator access disabled"},
+        409: {
+            "description": "Completed assistant response missing from session history"
+        },
+        **INTERNAL_ERROR_RESPONSES,
+    },
+)
+def save_chat_note(
+    payload: SaveChatNoteRequest,
+    vector_store: Annotated[Any, Depends(get_vector_store)],
+    session_store: Annotated[Any, Depends(get_session_store)],
+) -> MemoryIngestResponse:
+    """Index the saved assistant response once, under the session clear lock."""
+    request_id = str(payload.request_id)
+    with session_memory_lock(payload.session_id):
+        answer = next(
+            (
+                turn["content"]
+                for turn in reversed(session_store.get_history(payload.session_id))
+                if turn.get("request_id") == request_id
+                and turn.get("role") == "assistant"
+                and turn.get("status") in {None, "COMPLETED"}
+                and not turn.get("policy_blocked")
+                and isinstance(turn.get("content"), str)
+                and turn["content"].strip()
+            ),
+            None,
+        )
+        if answer is None:
+            raise HTTPException(409, "chat_note_response_unavailable")
+        identity = {
+            "session_id": payload.session_id,
+            "provenance_request_id": request_id,
+            "provenance_source": "chat_note",
+        }
+        try:
+            if vector_store.list_entries(limit=1, metadata_filters=identity):
+                return MemoryIngestResponse(status="success", message="already_saved")
+            metadata = _build_ingest_metadata(
+                MemoryIngestRequest(
+                    text=answer,
+                    category="assistant",
+                    session_id=payload.session_id,
+                    user_id=DEFAULT_USER_ID,
+                    pinned=True,
+                    memory_type="fact",
+                    scope="session",
+                )
+            )
+            result = vector_store.upsert(
+                text=answer, metadata={**metadata, **identity}, chunk_text=True
+            )
+        except Exception as exc:
+            _raise_memory_http_error(exc, context="saving a chat note")
+            raise
+    return MemoryIngestResponse(
+        status="success", message=result["message"], chunks_count=result["chunks_count"]
+    )
 
 
 @router.post(
@@ -242,18 +353,21 @@ def clear_session_memory(
             actor=resolve_actor_from_request(req),
         )
 
-    deleted_vectors = 0
-    try:
-        deleted_vectors = vector_store.delete_by_metadata({"session_id": session_id})
-        deleted_vectors += vector_store.delete_session(session_id)
-    except Exception as e:  # pragma: no cover
-        logger.warning(f"Nie udało się usunąć wpisów sesyjnych z pamięci: {e}")
+    with session_memory_lock(session_id):
+        deleted_vectors = 0
+        try:
+            deleted_vectors = vector_store.delete_by_metadata(
+                {"session_id": session_id}
+            )
+            deleted_vectors += vector_store.delete_session(session_id)
+        except Exception as e:  # pragma: no cover
+            logger.warning(f"Nie udało się usunąć wpisów sesyjnych z pamięci: {e}")
 
-    cleared_tasks = 0
-    if state_manager:
-        cleared_tasks = state_manager.clear_session_context(session_id)
-    if session_store:
-        session_store.clear_session(session_id)
+        cleared_tasks = 0
+        if state_manager:
+            cleared_tasks = state_manager.clear_session_context(session_id)
+        if session_store:
+            session_store.clear_session(session_id)
 
     return {
         "status": "success",

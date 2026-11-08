@@ -163,6 +163,8 @@ Te dokumenty zawierają szczegóły techniczne. Ten dokument jest operacyjnym pu
 - `data/memory/state_dump.json`
 - `data/memory/lancedb`
 
+W Chat 2.0 historia wątku jest zapisywana w Studio i Full. W Normal zaznacz **Użyj notatek**, aby odczytać notatki dla bieżącego pytania. Opcja domyślnie jest wyłączona. **Zapisz jako notatkę** indeksuje wybraną ukończoną odpowiedź w Direct lub Normal.
+
 ### Toolsy czatu i konfiguracja runtime
 
 - `venom_core/memory/memory_skill.py`
@@ -217,6 +219,22 @@ Te dokumenty zawierają szczegóły techniczne. Ten dokument jest operacyjnym pu
    ```bash
    make local-first-stop
    ```
+
+### Diagnostyka Full
+
+W trybie Normal użyj **Sprawdź Venoma**, **Sprawdź Rider-Pi** lub **Sprawdź Venoma i Rider-Pi**. Odczyt wymaga dostępu operatora. Raport podaje źródło, czas pomiaru, zakres odczytu i następny krok. Końcówka logu jest ograniczona do 16 KiB. Raport zawiera liczniki ostrzeżeń i błędów.
+
+**Jak sprawdzić Venoma i Rider-Pi?** zwraca polecenia z tej sekcji. Gdy API jest niedostępne, launcher sprawdzi właścicieli procesów na hoście.
+
+```bash
+make status VENOM_VARIANT=venom PROFILE=full ENVIRONMENT=dev
+curl --fail --max-time 5 'http://127.0.0.1:8000/api/v1/system/services'
+curl --fail --max-time 5 'http://127.0.0.1:8000/api/v1/rider/status?section=overview'
+```
+
+Jeśli token dostępu Ridera jest włączony, do ręcznej sondy statusu użyj uwierzytelnionego lokalnego klienta.
+
+Dla profilu z innym portem użyj portu jego API. Jeśli stos uruchomiono z własnym plikiem środowiska, przekaż ten sam `ENV_FILE` do polecenia `make status`. Częściowy odczyt wymienia dostępne sekcje i braki. Oś `lx` opisuje składową liniową, a `az` obrotową. ACK dokumentuje przyjęcie komendy. Fizyczny skutek wymaga odrębnego pomiaru.
 
 ### Walidacja i probki
 

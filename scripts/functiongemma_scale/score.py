@@ -8,6 +8,7 @@ import json
 import math
 import re
 from collections import Counter, defaultdict
+from contextlib import contextmanager
 from pathlib import Path, PurePosixPath
 from tempfile import TemporaryDirectory
 
@@ -142,6 +143,27 @@ async def effect(skill, calls):
     return results
 
 
+@contextmanager
+def fixture_skill(files):
+    """Bind read-only evaluation to a fresh synthetic workspace."""
+    with TemporaryDirectory(prefix="fg-scale-fixture-") as tmp:
+        root = Path(tmp)
+        for name, body in files.items():
+            if not safe_path(name):
+                raise ValueError("unsafe fixture path")
+            file = root / name
+            file.parent.mkdir(parents=True, exist_ok=True)
+            file.write_text(body, encoding="utf-8")
+        yield FileSkill(workspace_root=tmp)
+        after = {
+            p.relative_to(root).as_posix(): p.read_bytes()
+            for p in root.rglob("*")
+            if p.is_file()
+        }
+        if after != {p: v.encode() for p, v in files.items()}:
+            raise RuntimeError("read-only fixture changed")
+
+
 async def score_case(case, prediction, *, runtime_listing=False):
     """Score one decision against its action, arguments, effect and unchanged fixture."""
     record, oracle = case["record"], case["oracle"]
@@ -156,15 +178,7 @@ async def score_case(case, prediction, *, runtime_listing=False):
         action = None
     calls, result, rendered = [], "invalid", None
     expected = oracle["expected_calls"]
-    with TemporaryDirectory(prefix="fg-scale-fixture-") as tmp:
-        root = Path(tmp)
-        for name, body in oracle["fixture"]["files"].items():
-            if not safe_path(name):
-                raise ValueError("unsafe fixture path")
-            file = root / name
-            file.parent.mkdir(parents=True, exist_ok=True)
-            file.write_text(body, encoding="utf-8")
-        skill = FileSkill(workspace_root=tmp)
+    with fixture_skill(oracle["fixture"]["files"]) as skill:
         context = context_of(record)
         previous = None
         for path, returned in previous_reads(record):
@@ -197,13 +211,6 @@ async def score_case(case, prediction, *, runtime_listing=False):
             calls, result, rendered = route(action, context, record, previous)
         actual_effect = await effect(skill, calls)
         expected_effect = await effect(skill, expected)
-        after = {
-            p.relative_to(root).as_posix(): p.read_bytes()
-            for p in root.rglob("*")
-            if p.is_file()
-        }
-        if after != {p: v.encode() for p, v in oracle["fixture"]["files"].items()}:
-            raise RuntimeError("read-only fixture changed")
     intent_correct = action == oracle["expected_action"]
     arguments_correct = calls == expected
     correct = (

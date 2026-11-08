@@ -21,6 +21,7 @@ export type RuntimeOverride = {
 
 export type LocalHistoryEntry = {
     role?: string;
+    mode?: string | null;
     content?: string;
     session_id?: string;
     request_id?: string;
@@ -32,6 +33,8 @@ export type LocalHistoryEntry = {
 
 export type ChatSendParams = {
     materialIds?: string[];
+    lightNormal?: boolean;
+    manualChatNotes?: boolean;
     conversationHistory?: Array<{ role: "user" | "assistant"; content: string; material_ids?: string[] }>;
     labMode: boolean;
     chatMode: "normal" | "direct" | "complex";
@@ -51,6 +54,8 @@ export type ChatSendParams = {
     ensureModelActive?: (model: string) => Promise<boolean>;
     sendSimpleChatStream: (payload: {
         materialIds?: string[];
+        studioNormal?: boolean;
+        useNotes?: boolean;
         content: string;
         model: string | null;
         maxTokens: number | null;
@@ -62,7 +67,7 @@ export type ChatSendParams = {
         history?: Array<{ role: "user" | "assistant"; content: string; material_ids?: string[] }>;
     }) => Promise<Response>;
     sendTask: (payload: SendTaskInput) => Promise<{ task_id?: string | null }>;
-    ingestMemoryEntry: (payload: {
+    ingestMemoryEntry?: (payload: {
         text: string;
         category: string;
         sessionId: string | null;
@@ -71,6 +76,7 @@ export type ChatSendParams = {
         memoryType: string;
         scope: string;
         timestamp: string;
+        directRequestId: string;
     }) => Promise<unknown>;
     refreshTasks: () => Promise<unknown>;
     refreshQueue: () => Promise<unknown>;
@@ -139,11 +145,12 @@ export const reconcileRequestId = (
     setLocalSessionHistory: ChatSendParams["setLocalSessionHistory"],
     fromId: string,
     toId: string,
+    mode?: "direct",
 ) => {
     setLocalSessionHistory((prev) =>
         prev.map((entry) => {
             if (entry.request_id !== fromId) return entry;
-            return { ...entry, request_id: toId };
+            return { ...entry, request_id: toId, ...(mode ? { mode } : {}) };
         }),
     );
 };
@@ -161,12 +168,14 @@ export const upsertHistoryEntry = (
         entries[idx] = {
             ...entries[idx],
             content,
+            mode: "direct",
             timestamp: entries[idx].timestamp || timestamp,
         };
         return;
     }
     entries.push({
         role,
+        mode: "direct",
         content,
         request_id: requestId,
         timestamp,
@@ -292,6 +301,8 @@ function assertCompletedRemoteStream(
 }
 
 type SimpleTaskSendParams = {
+    studioNormal?: boolean;
+    useNotes?: boolean;
     onAccepted?: () => void;
     isCancelled?: () => boolean;
     materialIds?: string[];
@@ -359,12 +370,28 @@ function failSimpleTaskSend(
     });
 }
 
+function buildSimpleTaskPayload(params: SimpleTaskSendParams) {
+    const { trimmed, selectedLlmModel, generationParams, resolvedSession, activeServerInfo } = params;
+    return {
+        ...buildSimpleStreamRequestPayload(
+            trimmed, selectedLlmModel, generationParams, resolvedSession, activeServerInfo,
+            params.studioNormal ? undefined : params.history, params.materialIds,
+        ),
+        ...(params.studioNormal ? {
+            studioNormal: true,
+            useNotes: params.useNotes,
+            expectedRuntimeId: activeServerInfo?.runtime_id,
+            expectedConfigHash: activeServerInfo?.config_hash,
+        } : {}),
+        ...(params.expectedQuoteHash ? { expectedQuoteHash: params.expectedQuoteHash } : {}),
+    };
+}
+
 export async function handleSimpleTaskSend(params: SimpleTaskSendParams) {
     const {
         clientId,
         trimmed,
         resolvedSession,
-        generationParams,
         selectedLlmModel,
         activeServerInfo,
         sendSimpleChatStream,
@@ -415,15 +442,7 @@ export async function handleSimpleTaskSend(params: SimpleTaskSendParams) {
             resolvedSession,
         );
         updateSimpleStream(clientId, { text: "", status: "W toku", done: false });
-        const response = await sendSimpleChatStream(
-            {
-                ...buildSimpleStreamRequestPayload(
-                    trimmed, selectedLlmModel, generationParams, resolvedSession,
-                    activeServerInfo, params.history, params.materialIds,
-                ),
-                ...(params.expectedQuoteHash ? {expectedQuoteHash: params.expectedQuoteHash} : {}),
-            },
-        );
+        const response = await sendSimpleChatStream(buildSimpleTaskPayload(params));
         if (params.isCancelled?.()) { await response.body?.cancel(); throw new DOMException("Stopped", "AbortError"); }
         params.onAccepted?.();
         const headerRequestId = response.headers.get("x-request-id");
@@ -431,7 +450,7 @@ export async function handleSimpleTaskSend(params: SimpleTaskSendParams) {
         resolvedRequestId = simpleRequestId;
         recordAccounting("PROCESSING");
         linkOptimisticRequest(clientId, simpleRequestId);
-        reconcileRequestId(setLocalSessionHistory, clientId, simpleRequestId);
+        reconcileRequestId(setLocalSessionHistory, clientId, simpleRequestId, "direct");
         let lastHistoryUpdate = 0;
         const upsertLocalHistory = (role: "user" | "assistant", content: string) => {
             const now = Date.now();
@@ -597,19 +616,21 @@ export async function handleSimpleTaskSend(params: SimpleTaskSendParams) {
                 steps,
             },
         }));
-        try {
-            await ingestMemoryEntry({
+        // The stream already persisted the conversation. Index it without blocking the next send.
+        if (!params.studioNormal && resolvedSession && headerRequestId && ingestMemoryEntry) {
+            void ingestMemoryEntry({
                 text: buffer,
                 category: "assistant",
-                sessionId: resolvedSession ?? null,
+                sessionId: resolvedSession,
+                directRequestId: headerRequestId,
                 userId: "user_default",
                 pinned: true,
                 memoryType: "fact",
                 scope: "session",
                 timestamp,
+            }).catch((err) => {
+                console.warn("Nie udało się zapisać pamięci dla trybu prostego:", err);
             });
-        } catch (err) {
-            console.warn("Nie udało się zapisać pamięci dla trybu prostego:", err);
         }
         updateDurationMetrics({ duration, setLastResponseDurationMs, setResponseDurations });
         globalThis.window.setTimeout(() => {
@@ -629,6 +650,7 @@ export async function handleStandardTaskSend(params: {
     isCancelled?: () => boolean;
     cancelTask?: (id: string, session: string) => Promise<void>;
     trimmed: string;
+    useNotes?: boolean;
     labMode: boolean;
     generationParams: GenerationParams | null;
     runtimeOverride: RuntimeOverride;
@@ -696,7 +718,8 @@ export async function handleStandardTaskSend(params: {
 
         const res = await sendTask({
             content: trimmed,
-            storeKnowledge: !labMode,
+            storeKnowledge: params.useNotes === undefined && !labMode,
+            useNotes: params.useNotes,
             generationParams,
             runtimeMeta: buildRuntimeMeta(runtimeOverride, activeServerInfo),
             extraContext: null,

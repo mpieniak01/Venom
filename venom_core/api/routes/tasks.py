@@ -5,7 +5,7 @@ import json
 from typing import Annotated, Any, AsyncGenerator, Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 
 from venom_core.api.dependencies import (
@@ -13,13 +13,22 @@ from venom_core.api.dependencies import (
     get_request_tracer,
     get_state_manager,
 )
+from venom_core.api.operator_origin import require_operator_origin
 from venom_core.api.schemas.tasks import (
     HistoryRequestDetail,
     HistoryRequestSummary,
     TaskRequest,
     TaskResponse,
 )
+from venom_core.api.transport_access import (
+    is_localhost_request,
+    require_operator_request,
+)
 from venom_core.services import tasks_service
+from venom_core.services.operator_diagnostics import (
+    DIAGNOSTICS_INTENT,
+    parse_diagnostic_task,
+)
 from venom_core.services.tasks_stream_service import (
     build_missing_task_payload as _build_missing_task_payload,
 )
@@ -117,6 +126,11 @@ def _build_history_summary(trace) -> HistoryRequestSummary:
     )
     return HistoryRequestSummary(
         request_id=trace.request_id,
+        mode=(
+            "direct"
+            if any(step.component == "SimpleMode" for step in trace.steps)
+            else None
+        ),
         prompt=trace.prompt,
         status=trace.status,
         session_id=trace.session_id,
@@ -242,6 +256,21 @@ async def _task_stream_generator(
             raise
 
 
+def _authorize_diagnostic_task(
+    request: TaskRequest, http_request: Request
+) -> TaskRequest:
+    """Check operator access before resolving the potentially lazy orchestrator."""
+    diagnostic = parse_diagnostic_task(request.content)
+    if diagnostic is not None or request.forced_intent == DIAGNOSTICS_INTENT:
+        if getattr(http_request.app.state, "studio_runtime", None) is not None:
+            raise HTTPException(409, "diagnostics_requires_full")
+        if diagnostic is None or not diagnostic.guide:
+            require_operator_request(http_request)
+            if is_localhost_request(http_request):
+                require_operator_origin(http_request, "diagnostics_origin_denied")
+    return request
+
+
 @router.post(
     "/tasks",
     response_model=TaskResponse,
@@ -249,7 +278,7 @@ async def _task_stream_generator(
     responses=TASK_CREATE_RESPONSES,
 )
 async def create_task(
-    request: TaskRequest,
+    request: Annotated[TaskRequest, Depends(_authorize_diagnostic_task)],
     orchestrator: Annotated[Orchestrator, Depends(get_orchestrator)],
 ):
     """

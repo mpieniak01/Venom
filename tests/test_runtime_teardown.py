@@ -466,6 +466,46 @@ def test_launch_cleanup_never_signals_foreign_identity(tmp_path, monkeypatch, mi
         child.wait(timeout=5)
 
 
+@pytest.mark.parametrize("exited", [True, False])
+def test_launch_cleanup_tolerates_permission_error_only_after_pinned_exit(
+    tmp_path, monkeypatch, exited
+):
+    import subprocess
+
+    child = subprocess.Popen(
+        [sys.executable, "-c", "import time; time.sleep(60)"],
+        cwd=tmp_path,
+        start_new_session=True,
+    )
+
+    def deny_environment(*_):
+        if exited:
+            child.terminate()
+            child.wait(timeout=5)
+        raise PermissionError("process environment")
+
+    try:
+        monkeypatch.setattr(rt, "_validate_launch_member", deny_environment)
+        args = (
+            Path(f"/proc/{child.pid}"),
+            child.pid,
+            "",
+            tmp_path,
+            "VENOM_UI_START_TOKEN",
+            "a" * 32,
+        )
+        if exited:
+            assert rt._launch_member_handle(*args) is None
+        else:
+            with pytest.raises(PermissionError, match="process environment"):
+                rt._launch_member_handle(*args)
+            assert child.poll() is None
+    finally:
+        if child.poll() is None:
+            child.terminate()
+            child.wait(timeout=5)
+
+
 @pytest.mark.parametrize("failure", ["wrapper", "claim"])
 def test_failed_manual_ollama_start_retires_only_its_created_session(tmp_path, failure):
     """Harmless doubles exercise the actual shell failure branch without a model/server."""

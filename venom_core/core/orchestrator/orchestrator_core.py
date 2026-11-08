@@ -332,6 +332,7 @@ class Orchestrator:
         )
 
     NON_LEARNING_INTENTS = {
+        "OPERATOR_DIAGNOSTICS",
         "TIME_REQUEST",
         "INFRA_STATUS",
         "MODULE_CONVERSATION",
@@ -339,6 +340,7 @@ class Orchestrator:
     }
 
     NON_LLM_INTENTS = {
+        "OPERATOR_DIAGNOSTICS",
         "TIME_REQUEST",
         "INFRA_STATUS",
         "UNSUPPORTED_TASK",

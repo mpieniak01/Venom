@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import TypedDict
 
 from venom_core.core.models import TaskRequest
+from venom_core.services.operator_diagnostics import DIAGNOSTICS_INTENT
 
 
 @dataclass(frozen=True, slots=True)
@@ -22,6 +23,9 @@ class ResponseTemplateDecision:
 
 # One catalogue for deterministic replies; handlers own data retrieval/rendering.
 RESPONSE_TEMPLATES = {
+    DIAGNOSTICS_INTENT: ResponseTemplateDecision(
+        "operator_diagnostics_v1", DIAGNOSTICS_INTENT, "dispatcher"
+    ),
     "HELP_REQUEST": ResponseTemplateDecision("help_v1", "HELP_REQUEST", "help"),
     "TIME_REQUEST": ResponseTemplateDecision("time_v1", "TIME_REQUEST", "dispatcher"),
     "INFRA_STATUS": ResponseTemplateDecision(

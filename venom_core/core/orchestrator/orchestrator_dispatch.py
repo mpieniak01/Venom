@@ -24,6 +24,7 @@ from venom_core.core.policy_gate import (
     policy_gate,
 )
 from venom_core.core.tracer import TraceStatus
+from venom_core.memory.chat_retrieval import is_saved_note_lookup
 from venom_core.services.audit_stream import get_audit_stream
 from venom_core.services.conversation_providers import (
     conversation_turn,
@@ -44,6 +45,10 @@ from venom_core.services.execution_template_planner import (
     resolve_browser_execution_contract,
     resolve_browser_profile,
     resolve_response_template,
+)
+from venom_core.services.operator_diagnostics import (
+    DIAGNOSTICS_INTENT,
+    parse_diagnostic_request,
 )
 from venom_core.utils.llm_runtime import get_active_llm_runtime
 from venom_core.utils.logger import get_logger
@@ -539,7 +544,13 @@ async def _run_task(
             return
 
         result = await _execute_with_stream_callback(
-            orch, task_id, intent, context, request, tool_required=tool_required
+            orch,
+            task_id,
+            intent,
+            context,
+            request,
+            tool_required=tool_required,
+            note_lookup=intent_debug.get("source") == "saved_note_lookup",
         )
 
         await orch.result_processor.process_success(
@@ -633,6 +644,10 @@ async def _resolve_task_intent(
             "intent": request.forced_intent,
         }
 
+    if not request.forced_tool and not request.forced_provider:
+        if parse_diagnostic_request(request_content) is not None:
+            return DIAGNOSTICS_INTENT, {"source": "operator_diagnostics"}
+
     turn = current_conversation_context()
     registry = get_conversation_registry()
     if (
@@ -647,6 +662,14 @@ async def _resolve_task_intent(
                 "source": "template",
                 "provider_id": provider_id,
             }
+
+    if (
+        request.use_notes is not None
+        and not request.forced_tool
+        and not request.forced_provider
+        and is_saved_note_lookup(request_content)
+    ):
+        return "GENERAL_CHAT", {"source": "saved_note_lookup", "intent": "GENERAL_CHAT"}
 
     intent = await orch.intent_manager.classify_intent(request_content)
     intent_debug = getattr(orch.intent_manager, "last_intent_debug", {})
@@ -791,6 +814,7 @@ async def _execute_with_stream_callback(
     request: TaskRequest,
     *,
     tool_required: bool = False,
+    note_lookup: bool = False,
 ):
     """Stream provider and model results, checking emptiness only on model output."""
     runtime = get_active_llm_runtime()
@@ -808,7 +832,7 @@ async def _execute_with_stream_callback(
         )
         response: str | None
         with conversation_turn(turn):
-            if request.agent_mode == "single_model":
+            if request.agent_mode == "single_model" or intent == DIAGNOSTICS_INTENT:
                 response = None
             elif intent == "MODULE_CONVERSATION":
                 task = orch.state_manager.get_task(task_id)
@@ -841,7 +865,9 @@ async def _execute_with_stream_callback(
                     )
                 return response
             strategy = ExecutionStrategy(orch)
-            result = await strategy.execute(task_id, intent, context, request)
+            result = await strategy.execute(
+                task_id, intent, context, request, note_lookup=note_lookup
+            )
             if isinstance(result, str) and not result.strip() and not tool_required:
                 raise RuntimeError("Model nie zwrócił treści odpowiedzi.")
             return result

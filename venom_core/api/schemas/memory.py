@@ -1,6 +1,7 @@
 """API schemas for memory and knowledge management endpoints."""
 
 from typing import Any
+from uuid import UUID
 
 from pydantic import BaseModel, Field
 
@@ -18,6 +19,12 @@ class MemoryIngestRequest(BaseModel):
     scope: str | None = None
     topic: str | None = None
     timestamp: str | None = None
+    direct_request_id: str | None = Field(default=None, min_length=1, max_length=64)
+
+
+class SaveChatNoteRequest(BaseModel):
+    session_id: str = Field(min_length=1, max_length=256)
+    request_id: UUID
 
 
 class MemoryIngestResponse(BaseModel):

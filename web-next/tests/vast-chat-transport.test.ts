@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { setImmediate } from "node:timers/promises";
 import { afterEach, beforeEach, describe, it } from "node:test";
 import { cancelSimpleChatStream, sendSimpleChatStream } from "../hooks/use-api";
 import { appendVastChatTurn, vastChatHistoryKey } from "../lib/vast-chat-history";
@@ -18,6 +19,17 @@ describe("Vast Direct transport", () => {
     assert.equal(body.expected_runtime_id, "ollama@vast:plan:instance:generation");
     assert.equal(body.expected_config_hash, "hash");
     assert.deepEqual(body.history, [{role: "assistant", content: "prior"}]);
+  });
+
+  it("opts into the lightweight Studio Normal stream only on request", async () => {
+    const modes: Array<boolean | undefined> = [];
+    globalThis.fetch = async (_url, options) => {
+      modes.push(JSON.parse(String(options?.body)).studio_normal);
+      return new Response("event: done\\ndata: {}\\n\\n");
+    };
+    await sendSimpleChatStream({content: "plain"});
+    await sendSimpleChatStream({content: "notes", studioNormal: true});
+    assert.deepEqual(modes, [undefined, true]);
   });
 
   it("does not repeat a remote POST after a network failure", async () => {
@@ -82,11 +94,16 @@ describe("Direct chat identity compatibility", () => {
     if (previousWindow) Object.defineProperty(globalThis, "window", previousWindow);
     else Reflect.deleteProperty(globalThis, "window");
   });
-  for (const runtime of ["ollama", "vllm", "openai", "ollama@vast:p:i:g"]) {
-    it("only attaches the full identity guard to remote Vast: " + runtime, async () => {
+  for (const [runtime, autoIndex] of [
+    ["ollama", true], ["vllm", true], ["openai", true], ["ollama@vast:p:i:g", true],
+    ["ollama", false],
+  ] as const) {
+    it(`completes Direct for ${runtime} (auto indexing ${autoIndex}) with the expected identity guard`, async () => {
       let payload: Parameters<typeof sendSimpleChatStream>[0] | undefined;
       let status = "";
-      await handleSimpleTaskSend({
+      let sending = true;
+      let indexedTurn: [string | null, string] | undefined;
+      const send = handleSimpleTaskSend({
         clientId: "id", trimmed: "question", resolvedSession: "session",
         generationParams: null, selectedLlmModel: "selected",
         activeServerInfo: {runtime_id: runtime, config_hash: "current-hash"},
@@ -94,17 +111,27 @@ describe("Direct chat identity compatibility", () => {
           payload = body;
           const completion = runtime.startsWith("ollama@vast:")
             ? 'event: done\ndata: {}\n\n' : "";
-          return new Response('event: content\ndata: {"text":"answer"}\n\n' + completion);
+          return new Response('event: content\ndata: {"text":"answer"}\n\n' + completion, {
+            headers: {"x-request-id": "server-turn"},
+          });
         },
         linkOptimisticRequest: () => {}, setLocalSessionHistory: () => {},
         updateSimpleStream: (_id, update) => {status = update.status ?? status;},
         recordUiTiming: () => {}, uiTimingsRef: {current: new Map()},
-        setSimpleRequestDetails: () => {}, ingestMemoryEntry: async () => {},
+        setSimpleRequestDetails: () => {},
+        ingestMemoryEntry: autoIndex ? ({sessionId, directRequestId}) => {
+          indexedTurn = [sessionId, directRequestId];
+          // Leave indexing pending to verify that it cannot hold the composer open.
+          return new Promise<void>(() => {});
+        } : undefined,
         setLastResponseDurationMs: () => {}, setResponseDurations: () => {},
         dropOptimisticRequest: () => {}, clearSimpleStream: () => {},
-        setMessage: () => {}, setSending: () => {},
+        setMessage: () => {}, setSending: (value) => {sending = value;},
       });
+      assert.equal(await Promise.race([send.then(() => "sent"), setImmediate("pending")]), "sent");
       assert.equal(status, "COMPLETED");
+      assert.equal(sending, false);
+      assert.deepEqual(indexedTurn, autoIndex ? ["session", "server-turn"] : undefined);
       assert.ok(payload);
       if (runtime.startsWith("ollama@vast:")) {
         assert.equal(payload.expectedRuntimeId, runtime);

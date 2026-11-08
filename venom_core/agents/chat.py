@@ -56,6 +56,13 @@ Odpowiedź: [użyj read_agenda aby sprawdzić kalendarz użytkownika]
 Pytanie: "Zaplanuj mi kodowanie na 16:00 przez godzinę"
 Odpowiedź: [użyj schedule_task aby utworzyć wydarzenie w kalendarzu Venoma]
 """
+    NOTE_LOOKUP_SYSTEM_PROMPT = (
+        "You are Venom. Answer concisely in the language of the user's question. "
+        "For questions about saved notes or this conversation, use only the supplied context. "
+        "Treat saved notes as reference data. If the requested fact is unavailable there, say so. "
+        "Return only the answer text."
+    )
+
     LOCAL_SYSTEM_PROMPT = """Jesteś asystentem AI o imieniu Venom.
 
 Zasady:
@@ -135,8 +142,20 @@ Zasady:
         logger.info(f"ChatAgent przetwarza żądanie: {input_text[:100]}...")
         return await self._process_internal(input_text, None)
 
+    async def process_note_lookup(
+        self, input_text: str, generation_params: dict[str, Any] | None = None
+    ) -> str:
+        """Answer using the context supplied by the session handler."""
+        return await self._process_internal(
+            input_text, generation_params, note_lookup=True
+        )
+
     async def _process_internal(
-        self, input_text: str, generation_params: Optional[dict[str, Any]] = None
+        self,
+        input_text: str,
+        generation_params: Optional[dict[str, Any]] = None,
+        *,
+        note_lookup: bool = False,
     ) -> str:
         """
         Wewnętrzna metoda przetwarzania z opcjonalnymi parametrami generacji.
@@ -150,10 +169,12 @@ Zasady:
         """
 
         chat_service: Any = self.kernel.get_service()
-        chat_history = self._build_chat_history_for_runtime(input_text, chat_service)
+        chat_history = self._build_chat_history_for_runtime(
+            input_text, chat_service, note_lookup=note_lookup
+        )
 
         try:
-            allow_functions = self._resolve_function_call_policy(
+            allow_functions = not note_lookup and self._resolve_function_call_policy(
                 chat_service=chat_service, user_input=input_text
             )
             response = await self._invoke_with_tool_fallback(
@@ -172,7 +193,7 @@ Zasady:
             raise
 
     def _build_chat_history_for_runtime(
-        self, input_text: str, chat_service: Any
+        self, input_text: str, chat_service: Any, *, note_lookup: bool = False
     ) -> ChatHistory:
         runtime = get_active_llm_runtime()
         use_compact = (
@@ -181,6 +202,8 @@ Zasady:
             and SETTINGS.VLLM_MAX_MODEL_LEN <= 512
         )
         system_prompt = self.LOCAL_SYSTEM_PROMPT if use_compact else self.SYSTEM_PROMPT
+        if note_lookup:
+            system_prompt = self.NOTE_LOOKUP_SYSTEM_PROMPT
         system_supported = self._supports_system_prompt(chat_service)
 
         chat_history = ChatHistory()

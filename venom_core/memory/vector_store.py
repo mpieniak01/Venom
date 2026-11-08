@@ -3,7 +3,7 @@
 import json
 import uuid
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Protocol
 
 from venom_core.config import SETTINGS
 from venom_core.memory.embedding_service import EmbeddingService
@@ -116,6 +116,15 @@ def _metadata_like_condition(key: str, value: str) -> str:
     return f'metadata LIKE \'%\\"{key}\\": \\"{safe_value}\\"%\''
 
 
+class _EmbeddingProvider(Protocol):
+    def get_embedding(self, text: str) -> list[float]: ...
+
+    def get_embeddings_batch(self, texts: list[str]) -> list[list[float]]: ...
+
+    @property
+    def embedding_dimension(self) -> int: ...
+
+
 class VectorStore:
     """
     Baza wektorowa do przechowywania i wyszukiwania embeddingów.
@@ -125,7 +134,7 @@ class VectorStore:
     def __init__(
         self,
         db_path: Optional[str] = None,
-        embedding_service: Optional[EmbeddingService] = None,
+        embedding_service: Optional[_EmbeddingProvider] = None,
         collection_name: str = "default",
     ):
         """
@@ -393,12 +402,58 @@ class VectorStore:
 
         table = self._db.open_table(col_name)
 
-        # Generuj embedding dla zapytania
-        query_embedding = self.embedding_service.get_embedding(query)
-
-        # Wyszukaj najbliższe wektory
         logger.info(f"Wyszukiwanie w kolekcji '{col_name}' z limitem {limit}")
-        search = table.search(query_embedding)
+        where = self._search_filter(session_scope, session_id, text_pattern)
+
+        exact_lookup = bool(text_pattern and session_scope and limit > 0)
+        results = self._query_search_results(table, query, where, limit, exact_lookup)
+
+        # Przetwórz wyniki
+        processed_results: list[dict[str, object]] = []
+        for result in results:
+            # Pomiń rekord inicjalizacyjny
+            if result.get("id") == "init":
+                continue
+
+            processed_results.append(
+                {
+                    "id": result.get("id"),
+                    "text": result["text"],
+                    "metadata": json.loads(result.get("metadata", "{}")),
+                    "score": result.get("_distance"),
+                }
+            )
+
+        # Fallback: gdy semantyka nic nie zwróci, spróbuj prostego dopasowania leksykalnego.
+        if not processed_results and not where:
+            processed_results = self._lexical_fallback_search(table, query, limit)
+
+        logger.info(f"Znaleziono {len(processed_results)} wyników")
+        return processed_results
+
+    def _query_search_results(
+        self, table: Any, query: str, where: str, limit: int, exact_lookup: bool
+    ) -> list[dict]:
+        if exact_lookup:
+            # Zero or one phrase match needs no embedding to decide its rank.
+            exact = (
+                table.search()
+                .where(where)
+                .select(["id", "text", "metadata"])
+                .limit(2)
+                .to_list()
+            )
+            if len(exact) < 2:
+                return exact
+        search = table.search(self.embedding_service.get_embedding(query))
+        if where:
+            search = search.where(where, prefilter=True)
+        return search.limit(limit).to_list()
+
+    @staticmethod
+    def _search_filter(
+        session_scope: bool, session_id: str | None, text_pattern: str | None
+    ) -> str:
         filters = []
         if session_scope:
             condition = """metadata NOT LIKE '%"session_id":%'"""
@@ -411,30 +466,7 @@ class VectorStore:
             filters.append(f"regexp_like(text, '{quoted}')")
         if filters:
             filters.append("id != 'init'")
-            search = search.where(" AND ".join(filters), prefilter=True)
-        results = search.limit(limit).to_list()
-
-        # Przetwórz wyniki
-        processed_results: list[dict[str, object]] = []
-        for result in results:
-            # Pomiń rekord inicjalizacyjny
-            if result.get("id") == "init":
-                continue
-
-            processed_results.append(
-                {
-                    "text": result["text"],
-                    "metadata": json.loads(result.get("metadata", "{}")),
-                    "score": result.get("_distance"),
-                }
-            )
-
-        # Fallback: gdy semantyka nic nie zwróci, spróbuj prostego dopasowania leksykalnego.
-        if not processed_results and not filters:
-            processed_results = self._lexical_fallback_search(table, query, limit)
-
-        logger.info(f"Znaleziono {len(processed_results)} wyników")
-        return processed_results
+        return " AND ".join(filters)
 
     def _lexical_fallback_search(
         self, table: Any, query: str, limit: int

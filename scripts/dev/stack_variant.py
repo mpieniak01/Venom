@@ -12,7 +12,12 @@ def apply_variant(
     if variant not in {"venom", "studio"}:
         raise ValueError("VENOM_VARIANT must be venom|studio")
     values["VENOM_VARIANT"] = variant
+    if values.get("OLLAMA_NUM_PARALLEL", "0").strip() in {"", "0"}:
+        values["OLLAMA_NUM_PARALLEL"] = "1"
     if variant == "studio":
+        if values.get("OLLAMA_CONTEXT_LENGTH", "0").strip() in {"", "0"}:
+            values["OLLAMA_CONTEXT_LENGTH"] = "4096"
+        values.setdefault("OLLAMA_MAX_LOADED_MODELS", "1")
         values["WEB_DIR"] = str(root / "web-studio")
         values["API_APP"] = "venom_core.studio_main:app"
         values["VENOM_UI_READY_PATH"] = "/chat2"

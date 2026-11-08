@@ -1,6 +1,5 @@
 """Obsługa kontekstu sesji i historii w Orchestrator."""
 
-import re
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Protocol
 from uuid import UUID
 
@@ -10,6 +9,14 @@ from venom_core.core.knowledge_ttl import compute_expires_at, resolve_ttl_days
 from venom_core.core.models import ContextUsed, TaskRequest
 from venom_core.infrastructure.traffic_control.http_client import (
     TrafficControlledHttpClient,
+)
+from venom_core.memory.chat_retrieval import (
+    CHAT_NOTE_POLICY,
+    CHAT_NOTES_DISABLED_POLICY,
+    named_memory_subject,
+    note_request_language,
+    retrieve_chat_memory,
+    select_relevant_memory_items,
 )
 from venom_core.memory.memory_skill import MemorySkill
 from venom_core.services.session_store import SessionStore
@@ -55,6 +62,9 @@ class MemoryStoreLike(Protocol):
 
 class SessionHandler:
     """Zarządza kontekstem sesji, historią i pamięcią."""
+
+    _named_memory_subject = staticmethod(named_memory_subject)
+    _select_relevant_memory_items = staticmethod(select_relevant_memory_items)
 
     def __init__(
         self,
@@ -234,7 +244,7 @@ class SessionHandler:
 
         session_id = request.session_id
         single_model = request.agent_mode == "single_model"
-        if not self._testing_mode and not single_model:
+        if not self._testing_mode and not single_model and request.use_notes is None:
             self._ensure_session_summary(task_id, task)
         summary, history = self._load_session_summary_and_history(task, session_id)
         if not single_model:
@@ -310,15 +320,27 @@ class SessionHandler:
         parts: list[str],
     ) -> None:
         """Append relevant memory for the current request and record the entries used."""
-        if not self._should_include_memory(request, len(history)):
+        if request.use_notes is False or (
+            request.use_notes is True and not SETTINGS.CHAT_NOTES_ENABLED
+        ):
+            if note_request_language(request.content):
+                parts.append(CHAT_NOTES_DISABLED_POLICY)
+            return
+        explicit_note = (
+            request.use_notes is True
+            or note_request_language(request.content) is not None
+        )
+        if not explicit_note and not self._should_include_memory(request, len(history)):
             return
         memory_block, memory_ids = self._retrieve_relevant_memory(
             request,
             request.session_id,
         )
+        if explicit_note:
+            parts.append(CHAT_NOTE_POLICY)
         if memory_block:
             parts.append("[PAMIĘĆ]\n" + memory_block)
-        elif self._named_memory_subject(request.content):
+        elif explicit_note:
             parts.append("[PAMIĘĆ] Brak źródła pasującego do wskazanej nazwy.")
         if memory_ids:
             self._update_context_used_memory_entries(task_id, task, memory_ids)
@@ -598,75 +620,12 @@ class SessionHandler:
         if not query.strip():
             return "", []
         try:
-            subject = self._named_memory_subject(query)
-            pattern = None
-            if subject:
-                words = r"[ \t]+".join(re.escape(word) for word in subject.split())
-                pattern = rf"(?i)\b{words}\b"
-            results = self.memory_skill.vector_store.search(
-                subject or query,
-                limit=8,
-                session_scope=True,
-                session_id=session_id,
-                text_pattern=pattern,
+            return retrieve_chat_memory(
+                self.memory_skill.vector_store, query, session_id
             )
-            if pattern:
-                phrase = re.compile(pattern)
-                results = [
-                    item for item in results if phrase.search(item.get("text", ""))
-                ]
-            top = self._select_relevant_memory_items(results, session_id)
-            if not top:
-                return "", []
-            return self._format_memory_context(top)
         except Exception as exc:  # pragma: no cover
             logger.warning(f"Nie udało się pobrać pamięci: {exc}")
             return "", []
-
-    @staticmethod
-    def _named_memory_subject(query: str) -> str | None:
-        """Use a title-cased subject for explicit source lookups."""
-        match = re.search(
-            r"\b(?:projekt(?:u)?|project|stanowisk[ao]|station)\s+"
-            r"([A-ZĄĆĘŁŃÓŚŹŻ][^\W\d_]+(?:[ \t]+[A-ZĄĆĘŁŃÓŚŹŻ][^\W\d_]+){1,3})\b",
-            query,
-        )
-        return match.group(1) if match else None
-
-    @staticmethod
-    def _select_relevant_memory_items(
-        results: list[dict], session_id: Optional[str]
-    ) -> list[dict]:
-        """Keep global and same-session results without falling back to other sessions."""
-        if not results:
-            return []
-        filtered = []
-        for item in results:
-            meta = item.get("metadata") or {}
-            item_session_id = meta.get("session_id")
-            if item_session_id and item_session_id != session_id:
-                continue
-            filtered.append(item)
-        return filtered[:3]
-
-    @staticmethod
-    def _format_memory_context(items: list[dict]) -> tuple[str, list[str]]:
-        lines: list[str] = []
-        ids: list[str] = []
-        for idx, item in enumerate(items, 1):
-            text = SessionHandler._truncate_memory_text(item.get("text", ""))
-            meta = item.get("metadata") or {}
-            entry_id = item.get("id") or meta.get("id")
-            if entry_id:
-                ids.append(str(entry_id))
-            lines.append(f"[{idx}] ({meta.get('type', 'fact')}) {text}")
-        return "\n".join(lines), ids
-
-    @staticmethod
-    def _truncate_memory_text(text: str, limit: int = 400) -> str:
-        if len(text) <= limit:
-            return text
-        return text[:limit] + "..."
 
     async def apply_preferred_language(
         self, task_id: UUID, request: TaskRequest, result: str, intent_manager

@@ -1,9 +1,12 @@
 """Moduł: embedding_service - Serwis do generowania embeddingów tekstowych."""
 
+import gc
 import hashlib
 import os
+from contextlib import contextmanager
 from functools import lru_cache
 from threading import RLock
+from time import monotonic
 from typing import Any, List, Optional
 
 from venom_core.config import SETTINGS
@@ -19,25 +22,34 @@ _KNOWN_LOCAL_EMBEDDING_DIMS = {
 }
 
 
+def configured_embedding_service_type() -> str:
+    if SETTINGS.FORCE_LOCAL_MODEL or SETTINGS.AI_MODE == "LOCAL":
+        return "local"
+    return SETTINGS.LLM_SERVICE_TYPE
+
+
 class EmbeddingService:
     """
     Serwis do generowania embeddingów tekstowych.
     Obsługuje tryb lokalny (sentence-transformers) oraz OpenAI API.
     """
 
-    def __init__(self, service_type: Optional[str] = None):
+    def __init__(self, service_type: Optional[str] = None, *, idle_seconds: int = 0):
         """
         Inicjalizacja serwisu embeddingów.
 
         Args:
             service_type: Typ serwisu ("local" lub "openai"). Domyślnie z SETTINGS.
+            idle_seconds: Czas bezczynności lokalnego modelu. Zero wyłącza limit.
         """
-        self.service_type = service_type or SETTINGS.LLM_SERVICE_TYPE
-        if service_type is None and (
-            SETTINGS.FORCE_LOCAL_MODEL or SETTINGS.AI_MODE == "LOCAL"
-        ):
-            self.service_type = "local"
+        self.service_type = (
+            configured_embedding_service_type()
+            if service_type is None
+            else service_type or SETTINGS.LLM_SERVICE_TYPE
+        )
         self._model_load_lock = RLock()
+        self._idle_seconds = idle_seconds if self.service_type == "local" else 0
+        self._last_use: float | None = None
         self._model: Optional[Any] = None
         register_model_resource(self, "embeddings", "release_model_resource")
         self._client: Optional[Any] = None
@@ -56,9 +68,39 @@ class EmbeddingService:
             self._get_embedding_impl_wrapper
         )
 
+    @contextmanager
+    def _record_activity(self):
+        if not self._idle_seconds:
+            yield
+            return
+        with self._model_load_lock:
+            try:
+                yield
+            finally:
+                if self._model is not None:
+                    self._last_use = monotonic()
+
+    def release_if_idle(self) -> bool:
+        if not self._idle_seconds or not self._model_load_lock.acquire(blocking=False):
+            return False
+        try:
+            if (
+                self._last_use is None
+                or monotonic() - self._last_use < self._idle_seconds
+            ):
+                return False
+            self.release_model_resource()
+        finally:
+            self._model_load_lock.release()
+        # Zbierz cykle obiektu modelu. Wagi mogą trafić do cache alokatora CUDA.
+        gc.collect()
+        logger.info("Studio: zwolniono model embeddingów po bezczynności")
+        return True
+
     def release_model_resource(self) -> bool:
         with self._model_load_lock:
             self._model = None
+            self._last_use = None
             self._get_embedding_cached.cache_clear()
             if self._client is not None:
                 try:
@@ -192,7 +234,8 @@ class EmbeddingService:
         text_normalized = text.strip()
 
         logger.debug(f"Generowanie embeddingu dla tekstu ({len(text)} znaków)")
-        return self._get_embedding_cached(text_normalized)
+        with self._record_activity():
+            return self._get_embedding_cached(text_normalized)
 
     @model_operation
     def get_embeddings_batch(self, texts: List[str]) -> List[List[float]]:
@@ -213,6 +256,10 @@ class EmbeddingService:
 
         logger.info(f"Generowanie embeddingów dla {len(texts)} tekstów")
 
+        with self._record_activity():
+            return self._encode_batch(texts)
+
+    def _encode_batch(self, texts: List[str]) -> List[List[float]]:
         self._ensure_model_loaded()
 
         if self.service_type == "local":
@@ -249,11 +296,12 @@ class EmbeddingService:
         """
         if self.service_type == "local":
             # Zwracamy znany wymiar bez ładowania modelu, aby uniknąć zależności od sieci.
-            if self._model is None:
+            model = self._model
+            if model is None:
                 return _KNOWN_LOCAL_EMBEDDING_DIMS.get(
                     self._local_model_name, LOCAL_EMBEDDING_DIMENSION
                 )
-            return self._model.get_sentence_embedding_dimension()
+            return model.get_sentence_embedding_dimension()
         elif self.service_type == "openai":
             # text-embedding-3-small ma 1536 wymiarów
             return 1536

@@ -11,16 +11,18 @@ function selectedCatalogEntry(models: RuntimeCatalogModelInfo[], selected: strin
   return aliases.length === 1 ? aliases[0] : undefined;
 }
 
-export function StudioModelPicker({ catalog, interaction, session, activeModel, onApply, busy }: Readonly<{
+export function StudioModelPicker({ catalog, interaction, session, activeModel, selectedModel, onApply, busy }: Readonly<{
   catalog: UnifiedModelCatalogResponse | null; interaction: ConversationInteraction; session: string;
+  selectedModel?: string;
   activeModel: string | null | undefined; onApply: (model: string) => Promise<boolean>; busy: boolean;
 }>) {
   const { t } = useLanguage();
   const { state, setters } = interaction;
+  const model = selectedModel ?? state.selectedLlmModel;
   const runtime = catalog?.runtimes.find(item => item.runtime_id === state.selectedLlmServer);
   const runtimeModels = runtime?.models ?? [];
   const models = runtimeModels.filter(item => item.chat_compatible !== false && item.model_kind !== "adapter_artifact" && !item.is_adapter_artifact && isSelectableChatModel(item));
-  const selectedEntry = selectedCatalogEntry(runtimeModels, state.selectedLlmModel);
+  const selectedEntry = selectedCatalogEntry(runtimeModels, model);
   const selectedSelectable = selectedEntry !== undefined && models.includes(selectedEntry);
   const activeRuntime = catalog?.runtimes.find(item => item.runtime_id === catalog.active?.active_server) ?? runtime;
   const activeOption = selectedCatalogEntry(activeRuntime?.models ?? [], activeModel ?? "");
@@ -37,9 +39,9 @@ export function StudioModelPicker({ catalog, interaction, session, activeModel, 
         {!runtime && <option value={state.selectedLlmServer}>{state.selectedLlmServer || t("chat2.unknown")}</option>}
         {catalog?.runtimes.map(item => <option key={item.runtime_id} value={item.runtime_id} disabled={!item.configured}>{item.label || item.display_name || item.runtime_id}</option>)}
       </select></label>
-      <label className="studio-model-select">{t("chat2.model")}<select aria-label={t("chat2.model")} value={state.selectedLlmModel} disabled={busy}
+      <label className="studio-model-select">{t("chat2.model")}<select aria-label={t("chat2.model")} value={model} disabled={busy}
         onChange={event => setters.setSelectedLlmModel(event.target.value)}>
-        {!models.some(item => item.name === state.selectedLlmModel) && <option value={state.selectedLlmModel} disabled={!selectedSelectable}>{chatModelLabel(selectedEntry?.name || state.selectedLlmModel, selectedEntry?.display_name, selectedEntry?.provider || state.selectedLlmServer, t("models.status.unresolvedVariant")) || t("chat2.unknown")}</option>}
+        {!models.some(item => item.name === model) && <option value={model} disabled={!selectedSelectable}>{chatModelLabel(selectedEntry?.name || model, selectedEntry?.display_name, selectedEntry?.provider || state.selectedLlmServer, t("models.status.unresolvedVariant")) || t("chat2.unknown")}</option>}
         {models.map(item => <option key={item.id} value={item.name || item.id}>{chatModelLabel(item.name || item.id, item.display_name, item.provider, t("models.status.unresolvedVariant"))}</option>)}
       </select></label>
       <button type="button" className="studio-button" disabled={busy || !selectedSelectable}
@@ -55,7 +57,7 @@ export function StudioModelPicker({ catalog, interaction, session, activeModel, 
       <span className="studio-dot" /> <span>{t(sourceLabel)}</span>
       <span>{t("chat2.activeModel")}: {chatModelLabel(activeModel || "", activeOption?.display_name, activeOption?.provider || activeRuntime?.runtime_id, t("models.status.unresolvedVariant")) || t("chat2.unknown")}</span>
       <details><summary>{t("chat2.costs")}</summary><div className="studio-detail-card">
-        {state.selectedLlmServer === "openrouter" ? <OpenRouterModelStatus selection={openrouter} model={state.selectedLlmModel} session={session} /> : <p>{t("chat2.noPrice")}</p>}
+        {state.selectedLlmServer === "openrouter" ? <OpenRouterModelStatus selection={openrouter} model={model} session={session} /> : <p>{t("chat2.noPrice")}</p>}
       </div></details>
     </div>
   </section>;

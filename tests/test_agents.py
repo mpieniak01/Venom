@@ -114,6 +114,32 @@ def test_chat_agent_initialization(mock_kernel):
 
 
 @pytest.mark.asyncio
+async def test_note_lookup_uses_supplied_context_without_agent_tools(mock_kernel):
+    from types import SimpleNamespace
+
+    from venom_core.core.dispatcher import TaskDispatcher
+
+    agent = ChatAgent(mock_kernel)
+    agent._supports_system_prompt = MagicMock(return_value=True)
+    agent._resolve_function_call_policy = MagicMock(return_value=True)
+    agent._invoke_with_tool_fallback = AsyncMock(return_value="Kod to LUNAR-6627.")
+    dispatcher = SimpleNamespace(node_manager=None, agent_map={"GENERAL_CHAT": agent})
+    context = "[PAMIĘĆ] Kod odbioru to LUNAR-6627. Jaki jest kod odbioru?"
+
+    result = await TaskDispatcher.dispatch(
+        dispatcher, "GENERAL_CHAT", context, note_lookup=True
+    )
+
+    assert result == "Kod to LUNAR-6627."
+    agent._resolve_function_call_policy.assert_not_called()
+    call = agent._invoke_with_tool_fallback.await_args.kwargs
+    assert call["allow_functions"] is False
+    system, question = call["chat_history"].messages
+    assert system.content == agent.NOTE_LOOKUP_SYSTEM_PROMPT
+    assert question.content == context
+
+
+@pytest.mark.asyncio
 async def test_chat_agent_responds_to_greeting(mock_kernel, mock_chat_service):
     """Test odpowiedzi ChatAgent na powitanie."""
     mock_response = MagicMock()

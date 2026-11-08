@@ -37,6 +37,24 @@ lokalny artefakt inferencyjny. Mamy dwie osobne tożsamości do odtworzenia.
   lokalnego MLX INT4. Porównanie z bazowym GGUF w docelowym runtime pozostaje
   otwarte. Dowód lokalny `data/training/gemma4-pilot-session-20261103/SESSION_REPORT.md`.
 
+## Tryby czatu i profil uruchomienia
+
+- **Direct** przekazuje ostatnie pełne tury w ramach budżetu kontekstu i zwraca
+  strumień bez automatycznego RAG i orkiestracji. Zapis rozmowy na hoście
+  poprzedza zakończenie strumienia, a indeksowanie pamięci sesji nie blokuje
+  wysłania kolejnej wiadomości. Czyszczenie sesji kończy się po trwającym
+  indeksowaniu, a spóźniony zapis usuniętej tury jest odrzucany.
+- **Normal** korzysta z historii. W Chat 2.0 odczyt notatek wymaga włączenia
+  opcji **Użyj notatek** dla bieżącego pytania. Domyślnie jest wyłączona.
+  Przy włączonej opcji Venom dobiera źródło z bieżącej sesji i pamięci
+  globalnej. Gdy go nie znajdzie, informuje model o braku źródła.
+  Wynik FileSkill może być pełny, częściowy albo zawierać odmowę.
+- **Complex** prowadzi zadania wymagające planowania istniejącą ścieżką
+  `COMPLEX_PLANNING`. **Full** to osobny wymiar konfiguracji i nadal określa
+  zakres usług uruchamianego stosu.
+
+[Sesje czatu](CHAT_SESSION.md) · [Profile stosu](STACK_PROFILES.md)
+
 ## Decyzja o dotrenowaniu
 
 **Odłożyć kolejny trening.** Najpierw domknąć zachowanie zwykłego czatu

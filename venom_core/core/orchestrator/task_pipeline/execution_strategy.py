@@ -6,6 +6,7 @@ from uuid import UUID
 from venom_core.core.flows.campaign import CampaignFlow
 from venom_core.core.models import TaskRequest
 from venom_core.services.execution_template_planner import resolve_response_template
+from venom_core.services.operator_diagnostics import DIAGNOSTICS_INTENT
 from venom_core.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -21,7 +22,13 @@ class ExecutionStrategy:
         self.orch = orch
 
     async def execute(
-        self, task_id: UUID, intent: str, context: str, request: TaskRequest
+        self,
+        task_id: UUID,
+        intent: str,
+        context: str,
+        request: TaskRequest,
+        *,
+        note_lookup: bool = False,
     ) -> Any:
         # Perf test check should be handled before strategy or inside?
         # In dispatch it is checked early. I will assume it is handled by the caller or passed here.
@@ -36,6 +43,14 @@ class ExecutionStrategy:
 
         elif intent == "HELP_REQUEST":
             return await self._execute_help(task_id)
+
+        elif intent == DIAGNOSTICS_INTENT:
+            return await self._execute_default(task_id, context, intent, request)
+
+        elif note_lookup:
+            return await self._execute_default(
+                task_id, context, intent, request, note_lookup=True
+            )
 
         elif self.orch._should_use_council(request.content, intent):
             return await self._execute_council(task_id, context, intent)
@@ -148,7 +163,13 @@ class ExecutionStrategy:
             return await self.orch.task_dispatcher.dispatch(intent, context)
 
     async def _execute_default(
-        self, task_id: UUID, context: str, intent: str, request: TaskRequest
+        self,
+        task_id: UUID,
+        context: str,
+        intent: str,
+        request: TaskRequest,
+        *,
+        note_lookup: bool = False,
     ) -> Any:
         if self.orch.request_tracer:
             agent = self.orch.task_dispatcher.agent_map.get(intent)
@@ -163,6 +184,18 @@ class ExecutionStrategy:
         if resolve_response_template(request, intent) is None:
             self.orch._trace_llm_start(task_id, intent)
 
+        if note_lookup or (
+            intent == "GENERAL_CHAT"
+            and request.use_notes is not None
+            and not request.forced_tool
+            and not request.forced_provider
+        ):
+            return await self.orch.task_dispatcher.dispatch(
+                intent,
+                context,
+                generation_params=request.generation_params,
+                note_lookup=True,
+            )
         if request.generation_params:
             return await self.orch.task_dispatcher.dispatch(
                 intent,

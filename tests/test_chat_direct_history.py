@@ -2,10 +2,12 @@
 
 import asyncio
 import json
+from concurrent.futures import ThreadPoolExecutor, TimeoutError
 from contextlib import asynccontextmanager
 from decimal import Decimal
+from threading import Event
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 from uuid import UUID, uuid4
 
 import httpx
@@ -15,9 +17,14 @@ from fastapi.responses import StreamingResponse
 from fastapi.testclient import TestClient
 
 from tests import test_openrouter_runtime as openrouter_fixtures
-from venom_core.api.dependencies import get_session_store
-from venom_core.api.routes import llm_simple, memory
+from venom_core.api.dependencies import (
+    get_session_store,
+    get_state_manager,
+    get_vector_store,
+)
+from venom_core.api.routes import llm_simple, memory, tasks
 from venom_core.api.schemas.llm_simple import SimpleChatRequest
+from venom_core.core.tracer import RequestTrace, TraceStatus, TraceStep
 from venom_core.services import (
     chat_material_payload,
     llm_simple_service,
@@ -45,6 +52,80 @@ def event(kind, value):
 
 async def consume(response):
     return "".join([chunk async for chunk in response.body_iterator])
+
+
+def test_clear_waits_for_direct_index_and_rejects_late_replay(
+    fake_vector_store, monkeypatch, tmp_path
+):
+    """Exercise both orders through HTTP with a delayed vector upsert."""
+    session_id = "direct-clear"
+    request_id = "direct-turn"
+    store = SessionStore(str(tmp_path / "session.json"))
+    store.append_turn_once(
+        session_id,
+        request_id,
+        [
+            {
+                "role": "assistant",
+                "mode": "direct",
+                "status": "COMPLETED",
+                "request_id": request_id,
+                "content": "Direct index sentinel",
+            }
+        ],
+    )
+    app = application(store)
+    app.dependency_overrides[get_vector_store] = lambda: fake_vector_store
+    app.dependency_overrides[get_state_manager] = lambda: None
+    monkeypatch.setattr(memory, "ensure_data_mutation_allowed", lambda _: None)
+    client = TestClient(app)
+    original_upsert = fake_vector_store.upsert
+    started = Event()
+    finish = Event()
+
+    def delayed_upsert(*args, **kwargs):
+        started.set()
+        assert finish.wait(timeout=5)
+        return original_upsert(*args, **kwargs)
+
+    monkeypatch.setattr(fake_vector_store, "upsert", delayed_upsert)
+    payload = {
+        "text": "Direct index sentinel",
+        "session_id": session_id,
+        "scope": "session",
+        "direct_request_id": request_id,
+    }
+    ingest_path = "/api/v1/memory/ingest"
+    clear_path = f"/api/v1/memory/session/{session_id}"
+    for invalid in (
+        {"scope": "global"},
+        {"collection": "other"},
+        {"session_id": None},
+    ):
+        assert client.post(ingest_path, json={**payload, **invalid}).status_code == 400
+    assert (
+        client.post(
+            ingest_path, json={**payload, "session_id": "another-session"}
+        ).status_code
+        == 409
+    )
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        indexing = executor.submit(client.post, ingest_path, json=payload)
+        try:
+            assert started.wait(timeout=3)
+            clearing = executor.submit(client.delete, clear_path)
+            with pytest.raises(TimeoutError):
+                clearing.result(timeout=0.2)
+        finally:
+            finish.set()
+        assert indexing.result(timeout=3).status_code == 201
+        cleared = clearing.result(timeout=3)
+        assert cleared.status_code == 200
+        assert cleared.json()["deleted_vectors"] >= 1
+    assert client.get(clear_path).json()["history"] == []
+    assert client.post(ingest_path, json=payload).status_code == 409
+    search = client.post("/api/v1/memory/search", json={"query": payload["text"]})
+    assert all(result["text"] != payload["text"] for result in search.json()["results"])
 
 
 def test_native_direct_full_wire_reloads_from_same_host_session_store(
@@ -440,3 +521,337 @@ async def test_native_history_fits_exact_runtime_limit_and_keeps_global_history_
         )
     assert error.value.status_code == 400
     assert error.value.detail == "vast_chat_history_limit"
+
+
+def test_history_identifies_old_processing_direct_traces_for_full():
+    direct = RequestTrace(
+        request_id=uuid4(),
+        status=TraceStatus.PROCESSING,
+        prompt="stopped Direct",
+        steps=[TraceStep(component="SimpleMode", action="request")],
+    )
+    normal = RequestTrace(
+        request_id=uuid4(), status=TraceStatus.PROCESSING, prompt="queued task"
+    )
+    tracer = SimpleNamespace(get_all_traces=lambda **kwargs: [direct, normal])
+    summary = tasks.get_request_history(tracer)
+    assert [(row.request_id, row.mode) for row in summary] == [
+        (direct.request_id, "direct"),
+        (normal.request_id, None),
+    ]
+
+
+def test_studio_history_ignores_a_persisted_reply_over_the_message_limit(tmp_path):
+    from venom_core.api.schemas.llm_simple import MAX_CHAT_MESSAGE_CHARS
+    from venom_core.services.studio_normal_chat import _recent_turns
+
+    store = SessionStore(str(tmp_path / "session.json"))
+    for request_id, question, reply in (
+        ("older", "Earlier question", "Earlier reply"),
+        ("oversize", "Latest question", "x" * (MAX_CHAT_MESSAGE_CHARS + 1)),
+    ):
+        for role, content in (("user", question), ("assistant", reply)):
+            store.append_message(
+                "own",
+                {
+                    "request_id": request_id,
+                    "role": role,
+                    "content": content,
+                },
+            )
+
+    turns = _recent_turns(store, "own", budget=MAX_CHAT_MESSAGE_CHARS * 2)
+
+    assert [turn.content for turn in turns] == ["Earlier question", "Earlier reply"]
+
+
+@pytest.mark.asyncio
+async def test_studio_normal_respects_the_total_history_limit_with_large_context(
+    tmp_path, monkeypatch
+):
+    from venom_core.services import studio_normal_chat
+
+    monkeypatch.setattr(studio_normal_chat.SETTINGS, "OLLAMA_CONTEXT_LENGTH", 32768)
+    store = SessionStore(str(tmp_path / "session.json"))
+    for request_id in ("older", "latest"):
+        store.append_message(
+            "own", {"request_id": request_id, "role": "user", "content": request_id}
+        )
+        store.append_message(
+            "own",
+            {"request_id": request_id, "role": "assistant", "content": "x" * 26000},
+        )
+    get_vectors = AsyncMock()
+
+    prepared, _ = await studio_normal_chat.prepare_studio_normal(
+        SimpleChatRequest(content="Continue", session_id="own", studio_normal=True),
+        store,
+        get_vectors,
+    )
+
+    assert [item.role for item in prepared.history] == ["user", "assistant"]
+    assert prepared.history[0].content == "latest"
+    get_vectors.assert_not_awaited()
+
+
+def test_studio_normal_stream_uses_host_history_and_loads_rag_only_for_notes(
+    tmp_path, monkeypatch
+):
+    store = SessionStore(str(tmp_path / "studio-normal.json"))
+    store.append_turn_once(
+        "own",
+        "previous",
+        [
+            {"request_id": "previous", "role": "user", "content": "stable user fact"},
+            {"request_id": "previous", "role": "assistant", "content": "confirmed"},
+        ],
+    )
+    store.append_turn_once(
+        "own",
+        "stopped",
+        [
+            {"request_id": "stopped", "role": "user", "content": "discarded prompt"},
+            {
+                "request_id": "stopped",
+                "role": "assistant",
+                "content": "partial",
+                "status": "CANCELLED",
+            },
+        ],
+    )
+    app = application(store)
+    captured = []
+
+    async def simple_stream(request, *, system_context=""):
+        captured.append((request, system_context))
+        return StreamingResponse(
+            consume_events(), headers={"X-Request-Id": str(uuid4())}
+        )
+
+    async def consume_events():
+        yield event("content", {"text": "reply"})
+        yield event("done", {})
+
+    monkeypatch.setattr(llm_simple, "stream_simple_chat_service", simple_stream)
+    client = TestClient(app)
+    payload = {
+        "studio_normal": True,
+        "session_id": "own",
+        "history": [{"role": "user", "content": "forged client history"}],
+    }
+    url = "/api/v1/llm/simple/stream"
+    assert client.post(url, json={**payload, "content": "hello"}).status_code == 400
+
+    vector_store = SimpleNamespace(
+        search=lambda *args, **kwargs: [
+            {"text": "Jasny Brzeg: 07:41", "metadata": {"session_id": "own"}},
+            {"text": "Jasny Brzeg: 08:50", "metadata": {"session_id": "foreign"}},
+            {"text": "Ciemny Brzeg: 09:10", "metadata": {"session_id": "own"}},
+        ]
+    )
+    get_vectors = AsyncMock(return_value=vector_store)
+    app.state.studio_runtime = SimpleNamespace(get_vector_store=get_vectors)
+    assert (
+        client.post(
+            url, json={**payload, "content": "Napisz krótką notatkę."}
+        ).status_code
+        == 200
+    )
+    get_vectors.assert_not_awaited()
+    plain, context = captured[-1]
+    assert [x.content for x in plain.history] == ["stable user fact", "confirmed"]
+    assert "Prefer the latest user correction" in context
+    assert "language of the current question" in context
+    assert "[NOTES]" not in context
+    assert plain.think is False
+
+    prompt = "Według notatki projektu Jasny Brzeg, o której godzinie jest odbiór?"
+    assert client.post(url, json={**payload, "content": prompt}).status_code == 200
+    get_vectors.assert_not_awaited()
+    assert "[NOTES]" not in captured[-1][1]
+
+    response = client.post(url, json={**payload, "content": prompt, "use_notes": True})
+    assert response.status_code == 200
+    get_vectors.assert_awaited_once()
+    context = captured[-1][1]
+    assert "07:41" in context
+    assert "08:50" not in context
+    assert "09:10" not in context
+    user, assistant = store.get_history("own")[-2:]
+    assert user["content"] == prompt
+    assert user["mode"] == "studio_normal"
+    assert assistant["content"] == "reply"
+    assert assistant["status"] == "COMPLETED"
+
+    miss = "Z notatki projektu Srebrny Las podaj termin."
+    assert (
+        client.post(
+            url, json={**payload, "content": miss, "use_notes": True}
+        ).status_code
+        == 200
+    )
+    assert "no matching source" in captured[-1][1]
+    assert "07:41" not in captured[-1][1]
+    english = "According to the notes for Jasny Brzeg, what is the pickup time?"
+    assert (
+        client.post(
+            url, json={**payload, "content": english, "use_notes": True}
+        ).status_code
+        == 200
+    )
+    context = captured[-1][1]
+    assert "07:41" in context
+    assert "08:50" not in context
+    assert "[/NOTES]\nWrite the answer in English" in context
+    assert (
+        client.post(
+            url, json={**payload, "content": "hello", "material_ids": ["x"]}
+        ).status_code
+        == 400
+    )
+    assert client.post(url, json={**payload, "content": "x" * 50000}).status_code == 413
+
+
+def test_studio_normal_keeps_older_complete_turns_within_the_context_budget(tmp_path):
+    from venom_core.services.studio_normal_chat import _recent_turns
+
+    store = SessionStore(str(tmp_path / "studio-long-history.json"))
+    for index in range(15):
+        rid = str(index)
+        prompt = "x" * 6000 if index == 0 else f"question {index}"
+        store.append_turn_once(
+            "own",
+            rid,
+            [
+                {"request_id": rid, "role": "user", "content": prompt},
+                {"request_id": rid, "role": "assistant", "content": f"answer {index}"},
+            ],
+        )
+
+    history = _recent_turns(store, "own", 4096)
+    assert [(message.role, message.content) for message in history] == [
+        turn
+        for index in range(1, 15)
+        for turn in (("user", f"question {index}"), ("assistant", f"answer {index}"))
+    ]
+    assert _recent_turns(store, "foreign", 4096) == []
+
+
+def test_note_lookup_embeds_only_when_exact_matches_need_ranking(tmp_path):
+    from venom_core.memory.vector_store import VectorStore
+
+    embedding = Mock()
+    embedding.get_embedding.return_value = [1.0, 0.0, 0.0]
+    store = VectorStore(db_path=str(tmp_path), embedding_service=embedding)
+    store._db = Mock()
+    store._db.table_names.return_value = ["default"]
+    table = store._db.open_table.return_value
+    exact = Mock()
+    ranked = Mock()
+    row = {"id": "note-id", "text": "Jasny Brzeg", "metadata": '{"session_id": "own"}'}
+    exact.where.return_value.select.return_value.limit.return_value.to_list.side_effect = [
+        [],
+        [row],
+        [row, row],
+    ]
+    ranked.where.return_value.limit.return_value.to_list.return_value = [row]
+    table.search.side_effect = [exact, exact, exact, ranked]
+    options = {
+        "session_scope": True,
+        "session_id": "own",
+        "text_pattern": "Jasny Brzeg",
+    }
+
+    assert store.search("Jasny Brzeg", **options) == []
+    assert store.search("Jasny Brzeg", **options)[0]["id"] == "note-id"
+    embedding.get_embedding.assert_not_called()
+
+    assert store.search("Jasny Brzeg", **options)[0]["id"] == "note-id"
+    embedding.get_embedding.assert_called_once_with("Jasny Brzeg")
+    exact_where = exact.where.call_args.args[0]
+    assert r"\"session_id\": \"own\"" in exact_where
+    assert "regexp_like(text, 'Jasny Brzeg')" in exact_where
+    ranked.where.assert_called_once_with(exact_where, prefilter=True)
+
+
+def test_explicit_note_uses_scoped_exact_lookup_before_embedding(tmp_path):
+    pytest.importorskip("lancedb")
+
+    from venom_core.memory.chat_retrieval import retrieve_chat_memory
+    from venom_core.memory.vector_store import VectorStore
+
+    embedding = Mock(embedding_dimension=3)
+    embedding.get_embeddings_batch.side_effect = lambda texts: [
+        [1.0, 0.0, 0.0] for _ in texts
+    ]
+    embedding.get_embedding.return_value = [1.0, 0.0, 0.0]
+    store = VectorStore(db_path=str(tmp_path), embedding_service=embedding)
+    store.upsert("Jasny Brzeg: własny kod", {"session_id": "own"})
+    store.upsert("Jasny Brzeg: cudzy kod", {"session_id": "foreign"})
+    query = "Według notatki projektu Jasny Brzeg, jaki jest kod?"
+    notes, _ = retrieve_chat_memory(store, query, "own")
+    assert "własny kod" in notes
+    assert "cudzy" not in notes
+    assert retrieve_chat_memory(store, query, "new-session") == ("", [])
+    embedding.get_embedding.assert_not_called()
+
+    store.upsert("Jasny Brzeg: drugi kod", {})
+    notes, _ = retrieve_chat_memory(store, query, "own")
+    assert "własny kod" in notes
+    assert "drugi kod" in notes
+    assert "cudzy" not in notes
+    embedding.get_embedding.assert_called_once_with("Jasny Brzeg")
+
+
+def test_chat_note_indexes_completed_answer_once_and_respects_session(
+    tmp_path, monkeypatch
+):
+    from venom_core.api.transport_access import require_operator_request
+
+    store = SessionStore(str(tmp_path / "notes.json"))
+    answer_id, stopped_id, missing_id = (str(uuid4()) for _ in range(3))
+    for request_id, role, content, status in (
+        (answer_id, "user", "Do not save the prompt", "COMPLETED"),
+        (answer_id, "assistant", "only the selected answer", "COMPLETED"),
+        (stopped_id, "assistant", "partial", "CANCELLED"),
+    ):
+        store.append_message(
+            "own",
+            {
+                "request_id": request_id,
+                "role": role,
+                "content": content,
+                "status": status,
+            },
+        )
+    app = application(store)
+    vectors = Mock()
+    vectors.list_entries.side_effect = [[], [{"id": "saved"}]]
+    vectors.upsert.return_value = {"message": "saved", "chunks_count": 1}
+    vector_dependency = Mock(return_value=vectors)
+    app.dependency_overrides[get_vector_store] = lambda: vector_dependency()
+    app.dependency_overrides[require_operator_request] = lambda: None
+    client = TestClient(app)
+    path = "/api/v1/memory/notes"
+    payload = {"request_id": answer_id, "session_id": "own"}
+
+    monkeypatch.setattr(memory.SETTINGS, "CHAT_NOTES_ENABLED", False)
+    assert client.post(path, json=payload).status_code == 403
+    vector_dependency.assert_not_called()
+    monkeypatch.setattr(memory.SETTINGS, "CHAT_NOTES_ENABLED", True)
+
+    for denied in (
+        {**payload, "session_id": "other"},
+        {**payload, "request_id": stopped_id},
+        {**payload, "request_id": missing_id},
+    ):
+        assert client.post(path, json=denied).status_code == 409
+    vectors.upsert.assert_not_called()
+    assert client.post(path, json=payload).status_code == 201
+    assert client.post(path, json=payload).json()["message"] == "already_saved"
+    vectors.upsert.assert_called_once()
+    assert vectors.upsert.call_args.kwargs["text"] == "only the selected answer"
+    metadata = vectors.upsert.call_args.kwargs["metadata"]
+    assert metadata["session_id"] == "own"
+    assert metadata["provenance_request_id"] == answer_id
+    assert metadata["provenance_source"] == "chat_note"

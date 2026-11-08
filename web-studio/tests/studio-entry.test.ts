@@ -146,6 +146,7 @@ function shellExports() {
     "./use-conversation-data": { useConversationData: () => ({ data: {}, loading: false, error: null, refresh: noCall }) },
     "./use-session-draft": { useSessionDraft: () => useState("") },
     "./use-chat-materials": { useChatMaterials: () => ({ items: [], capabilities: null, uploading: false, upload: noCall }) },
+    "@/components/cockpit/cockpit-chat-send": { resolveEffectiveChatModelSelection: () => "" },
     "./studio-model-picker": { StudioModelPicker: nullComponent },
     "./studio-materials": { StudioMaterials: nullComponent },
     "./studio-thread": { StudioThread: nullComponent },
@@ -175,6 +176,23 @@ test("standalone entry renders the same shell without a dead classic link", () =
   assert.match(html, /aria-label="chat2.placeholder"/);
   assert.doesNotMatch(html, /href="\/chat"/);
   assert.match(html, /chat2.send/);
+});
+
+test("standalone Studio defaults to lightweight Normal", () => {
+  const normal = "NEXT_PUBLIC_STUDIO_LIGHT_NORMAL";
+  const previous = process.env[normal];
+  const Page = loadTsx(path.join(appRoot, "app/chat2/page.tsx"), {
+    "@/components/chat/studio-shell": { StudioShell: () => null },
+  }).default as () => React.ReactElement<{ lightNormal: boolean }>;
+  try {
+    delete process.env[normal];
+    assert.equal(Page().props.lightNormal, true);
+    process.env[normal] = "0";
+    assert.equal(Page().props.lightNormal, false);
+  } finally {
+    if (previous === undefined) delete process.env[normal];
+    else process.env[normal] = previous;
+  }
 });
 
 test("standalone root redirects to chat2 without touching a provider", () => {

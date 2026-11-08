@@ -56,6 +56,8 @@ type CockpitChatUiParams = {
   ensureModelActive?: (model: string) => Promise<boolean>;
   sendSimpleChatStream: (payload: {
         materialIds?: string[];
+    studioNormal?: boolean;
+    useNotes?: boolean;
     content: string;
     model: string | null;
     maxTokens: number | null;
@@ -66,7 +68,9 @@ type CockpitChatUiParams = {
     history?: Array<{ role: "user" | "assistant"; content: string }>;
   }) => Promise<Response>;
   sendTask: (payload: SendTaskInput) => Promise<{ task_id?: string | null }>;
-  ingestMemoryEntry: (payload: {
+  lightNormal?: boolean;
+  manualChatNotes?: boolean;
+  ingestMemoryEntry?: (payload: {
     text: string;
     category: string;
     sessionId: string | null;
@@ -75,6 +79,7 @@ type CockpitChatUiParams = {
     memoryType: string;
     scope: string;
     timestamp: string;
+    directRequestId: string;
   }) => Promise<unknown>;
   refreshQueue: () => Promise<unknown>;
   refreshSessionHistory: () => Promise<unknown>;
@@ -154,6 +159,8 @@ export function useCockpitChatUi({
   ensureModelActive,
   sendSimpleChatStream,
   sendTask,
+  lightNormal,
+  manualChatNotes,
   ingestMemoryEntry,
   refreshQueue,
   refreshSessionHistory,
@@ -327,6 +334,8 @@ export function useCockpitChatUi({
     ensureModelActive,
     sendSimpleChatStream,
     sendTask,
+    lightNormal,
+    manualChatNotes,
     ingestMemoryEntry,
     refreshTasks,
     refreshQueue,

@@ -647,6 +647,24 @@ class TestResultProcessorProcessSuccess:
 
         orch.session_handler._memory_upsert.assert_called_once()
 
+    @pytest.mark.parametrize("use_notes", [True, False])
+    async def test_chat_notes_policy_saves_history_without_automatic_indexing(
+        self, use_notes
+    ):
+        orch = _make_orch(store_lesson=True)
+        request = TaskRequest(content="hi", session_id="own", use_notes=use_notes)
+        task_id = uuid4()
+
+        await ResultProcessor(orch).process_success(
+            task_id, "answer", "GENERAL_CHAT", "ctx", request, False
+        )
+
+        orch.session_handler._memory_upsert.assert_not_called()
+        orch.lessons_manager.save_task_lesson.assert_not_awaited()
+        orch._append_session_history.assert_called_once_with(
+            task_id, role="assistant", content="answer", session_id="own"
+        )
+
     async def test_log_agent_action_formats_dict_result(self):
         """_log_agent_action should JSON-format dict results in broadcast."""
         orch = _make_orch()
@@ -800,6 +818,34 @@ class TestExecutionStrategy:
 
         assert result == "dispatch_result"
         orch.task_dispatcher.dispatch.assert_awaited_once()
+
+    async def test_note_lookup_dispatches_to_chat_without_council(self):
+        orch = _make_orch(should_use_council=True)
+        request = TaskRequest(
+            content="Jaki jest kod odbioru z notatki?", use_notes=False
+        )
+
+        result = await ExecutionStrategy(orch).execute(
+            uuid4(), "GENERAL_CHAT", "ctx", request, note_lookup=True
+        )
+
+        assert result == "dispatch_result"
+        orch.task_dispatcher.dispatch.assert_awaited_once_with(
+            "GENERAL_CHAT", "ctx", generation_params=None, note_lookup=True
+        )
+
+    @pytest.mark.parametrize("use_notes", [False, True])
+    async def test_general_chat_with_explicit_notes_policy_uses_supplied_context(
+        self, use_notes
+    ):
+        orch = _make_orch(should_use_council=False)
+        request = TaskRequest(content="What is a file extension?", use_notes=use_notes)
+
+        await ExecutionStrategy(orch).execute(uuid4(), "GENERAL_CHAT", "ctx", request)
+
+        orch.task_dispatcher.dispatch.assert_awaited_once_with(
+            "GENERAL_CHAT", "ctx", generation_params=None, note_lookup=True
+        )
 
     async def test_execute_default_intent_with_generation_params(self):
         """execute should pass generation_params in default path when provided."""
@@ -1164,7 +1210,17 @@ def test_memory_selection_never_falls_back_to_another_session():
     assert select([foreign, own, shared], None) == [shared]
 
 
-def test_rag_retrieval_rejects_other_subject_and_other_session():
+@pytest.mark.parametrize(
+    ("prompt", "subject"),
+    [
+        ("Według notatki podaj termin dla projektu Jasny Brzeg.", "Jasny Brzeg"),
+        (
+            "According to the retrieved notes, what is the code for Copper Quay?",
+            "Copper Quay",
+        ),
+    ],
+)
+def test_rag_retrieval_rejects_other_subject_and_other_session(prompt, subject):
     """Require both the requested subject and the allowed session scope."""
     from venom_core.core.orchestrator.session_handler import SessionHandler
 
@@ -1172,29 +1228,40 @@ def test_rag_retrieval_rejects_other_subject_and_other_session():
         return_value=[
             {"text": "Projekt Ciemny Brzeg: 08:50", "metadata": {"session_id": "own"}},
             {
-                "text": "Projekt Jasny Brzeg: 19:30",
+                "text": f"{subject}: 19:30",
                 "metadata": {"session_id": "foreign"},
             },
-            {"text": "Projekt Jasny Brzeg: 07:41", "metadata": {"session_id": "own"}},
+            {"text": f"{subject}: 07:41", "metadata": {"session_id": "own"}},
         ]
     )
     handler = SessionHandler(
         MagicMock(), SimpleNamespace(vector_store=SimpleNamespace(search=search))
     )
-    request = TaskRequest(
-        content="Przypomnij z notatki termin dla projektu Jasny Brzeg."
-    )
+    request = TaskRequest(content=prompt, session_id="own")
     context, _ = handler._retrieve_relevant_memory(request, "own")
+    first, last = subject.split()
     search.assert_called_once_with(
-        "Jasny Brzeg",
+        subject,
         limit=8,
         session_scope=True,
         session_id="own",
-        text_pattern=r"(?i)\bJasny[ \t]+Brzeg\b",
+        text_pattern=rf"(?i)\b{first}[ \t]+{last}\b",
     )
     assert "07:41" in context
     assert "08:50" not in context
     assert "19:30" not in context
+
+    parts = []
+    handler._attach_memory_block(uuid4(), MagicMock(), request, [], parts)
+    assert "reference data" in parts[0]
+    assert "07:41" in parts[1]
+    assert "19:30" not in parts[1]
+
+    search.return_value.pop()
+    parts = []
+    handler._attach_memory_block(uuid4(), MagicMock(), request, [], parts)
+    assert "no matching source" in parts[0]
+    assert parts[1:] == ["[PAMIĘĆ] Brak źródła pasującego do wskazanej nazwy."]
 
 
 @pytest.mark.asyncio
@@ -1358,6 +1425,428 @@ def test_memory_subject_requires_explicit_named_source():
 
     assert SessionHandler._named_memory_subject("Plan this for Monday Morning") is None
     assert (
+        SessionHandler._named_memory_subject(
+            "According to the notes, this is urgent. Plan this for Monday Morning."
+        )
+        is None
+    )
+    assert (
         SessionHandler._named_memory_subject("Notes for project Jasny Brzeg")
         == "Jasny Brzeg"
     )
+
+
+@pytest.mark.parametrize(
+    ("enabled", "use_notes", "searches"),
+    [(True, False, 0), (False, True, 0), (True, True, 1)],
+)
+def test_full_chat_notes_gate_keeps_session_history(
+    tmp_path, monkeypatch, enabled, use_notes, searches
+):
+    from venom_core.config import SETTINGS
+    from venom_core.core.orchestrator.session_handler import SessionHandler
+    from venom_core.services.session_store import SessionStore
+
+    monkeypatch.setattr(SETTINGS, "CHAT_NOTES_ENABLED", enabled)
+    state, memory = MagicMock(), MagicMock()
+    state.get_task.return_value.context_history = {}
+    state.get_task.return_value.context_used = None
+    memory.vector_store.search.return_value = [
+        {
+            "id": "saved-note",
+            "text": "Jasny Brzeg: 07:41",
+            "metadata": {"session_id": "own"},
+        },
+    ]
+    store = SessionStore(str(tmp_path / "session.json"))
+    store.append_message("own", {"role": "user", "content": "earlier turn"})
+    handler = SessionHandler(
+        state_manager=state, memory_skill=memory, session_store=store
+    )
+    handler._ensure_session_summary = MagicMock()
+    result = handler.build_session_context_block(
+        TaskRequest(
+            content="Według notatki projektu Jasny Brzeg podaj termin.",
+            session_id="own",
+            use_notes=use_notes,
+        ),
+        uuid4(),
+    )
+    assert "earlier turn" in result
+    assert ("07:41" in result) == bool(searches)
+    assert ("Saved notes are disabled" in result) == (not searches)
+    if searches:
+        assert state.get_task.return_value.context_used.memory_entries == ["saved-note"]
+    assert memory.vector_store.search.call_count == searches
+    handler._ensure_session_summary.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("use_notes", [False, True])
+@pytest.mark.parametrize(
+    "prompt",
+    [
+        "Według notatki projektu Srebrny Brzeg, jaki jest kod odbioru?",
+        "Jaki jest kod odbioru według notatki projektu Srebrny Brzeg?",
+        "According to the notes for project Silver Bank, what is the pickup code?",
+    ],
+)
+async def test_full_normal_routes_saved_pickup_code_to_chat(prompt, use_notes):
+    from venom_core.core.orchestrator.orchestrator_dispatch import _resolve_task_intent
+
+    classifier = AsyncMock(return_value="CODE_GENERATION")
+    orch = SimpleNamespace(intent_manager=SimpleNamespace(classify_intent=classifier))
+    request = TaskRequest(content=prompt, session_id="own", use_notes=use_notes)
+
+    intent, debug = await _resolve_task_intent(orch, request, prompt)
+
+    assert intent == "GENERAL_CHAT"
+    assert debug["source"] == "saved_note_lookup"
+    classifier.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("prompt", "options"),
+    [
+        ("Jaki kod napisać bez notatek?", {"use_notes": False}),
+        (
+            "Według notatki projektu Srebrny Brzeg, napisz funkcję w Pythonie.",
+            {"use_notes": True},
+        ),
+        (
+            "Napisz kod do obsługi błędów z dokumentacji projektu Srebrny Brzeg.",
+            {"use_notes": False},
+        ),
+        ("Według notatki projektu Srebrny Brzeg, jaki jest kod odbioru?", {}),
+        (
+            "Według notatki projektu Srebrny Brzeg, jaki jest kod odbioru?",
+            {"use_notes": True, "forced_provider": "ollama"},
+        ),
+    ],
+)
+async def test_full_normal_saved_note_routing_preserves_explicit_and_legacy_routes(
+    prompt, options
+):
+    from venom_core.core.orchestrator.orchestrator_dispatch import _resolve_task_intent
+
+    classifier = AsyncMock(return_value="CODE_GENERATION")
+    orch = SimpleNamespace(intent_manager=SimpleNamespace(classify_intent=classifier))
+    request = TaskRequest(content=prompt, session_id="own", **options)
+
+    intent, _ = await _resolve_task_intent(orch, request, prompt)
+
+    assert intent == "CODE_GENERATION"
+    classifier.assert_awaited_once_with(prompt)
+
+
+@pytest.mark.parametrize(
+    ("prompt", "expected"),
+    [
+        ("Sprawdź Venoma i Rider-Pi", (False, True, True)),
+        ("Jak sprawdzić stan Rider-Pi?", (True, False, True)),
+        ("Check status of Venom", (False, True, False)),
+        ("Sprawdź Rider-Pi i włącz napęd", None),
+        ("Powiedział «Sprawdź Rider-Pi»", None),
+        ("Sprawdź http://192.0.2.1", None),
+    ],
+)
+def test_g5_diagnostic_commands_accept_only_complete_read_requests(prompt, expected):
+    from venom_core.services.operator_diagnostics import parse_diagnostic_request
+
+    request = parse_diagnostic_request(prompt)
+
+    assert (
+        None if request is None else (request.guide, request.venom, request.rider)
+    ) == expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("scenario", ["offline", "partial", "denied", "stale"])
+async def test_g5_rider_evidence_keeps_read_failures_and_ack_separate(
+    monkeypatch, scenario
+):
+    import time
+
+    import httpx
+
+    from venom_core.services import operator_diagnostics as diagnostics
+
+    control = {
+        "safety": {
+            "observed_at": time.time() - (60 if scenario == "stale" else 0),
+            "output": {"lx": 0.25, "az": -0.75},
+            "last_ack": {"accepted": True, "status": "executed"},
+        },
+    }
+    samples = {
+        "offline": {
+            "connection": {"status": "offline"},
+            "errors": {"health": "pi_unreachable"},
+        },
+        "partial": {
+            "connection": {"status": "degraded"},
+            "control": control,
+            "health": {"status": "ok"},
+            "errors": {"telemetry": "pi_unreachable", "settings": "forbidden"},
+        },
+        "stale": {
+            "connection": {"status": "degraded"},
+            "control": control,
+        },
+    }
+    calls = []
+
+    def endpoint(request):
+        calls.append((request.method, str(request.url)))
+        if scenario == "denied":
+            return httpx.Response(403, json={"detail": "private secret"})
+        return httpx.Response(200, json=samples[scenario])
+
+    client = httpx.AsyncClient
+    monkeypatch.setattr(
+        diagnostics.httpx,
+        "AsyncClient",
+        lambda **options: client(transport=httpx.MockTransport(endpoint), **options),
+    )
+    command = diagnostics.parse_diagnostic_request("Sprawdź Rider-Pi")
+    assert command is not None
+
+    reply = await diagnostics.run_operator_diagnostics(
+        command, "http://127.0.0.1:8000/api/v1/system/services"
+    )
+
+    assert calls == [
+        ("GET", "http://127.0.0.1:8000/api/v1/rider/status?section=overview")
+    ]
+    if scenario == "offline":
+        assert "**brak transportu**" in reply
+        assert "Odczytano: brak" in reply
+        assert "Sprawdź wybór urządzenia i stan transportu" in reply
+    elif scenario == "partial":
+        assert "**częściowy odczyt**" in reply
+        assert "Odmowa: settings." in reply
+        assert "Odczytano: control, health." in reply
+        assert "Bez danych: telemetry, system." in reply
+        assert "lx (liniowa)=0.25, az (obrotowa)=-0.75" in reply
+        assert "ACK potwierdza przyjęcie" in reply
+        assert "Brak dowodu fizycznego skutku" in reply
+    elif scenario == "stale":
+        assert "Stan sterowania przeterminowany" in reply
+        assert "0.25" not in reply
+    else:
+        assert "**odmowa**" in reply
+        assert "HTTP 403" in reply
+        assert "private secret" not in reply
+
+
+@pytest.mark.asyncio
+async def test_g5_guide_and_api_failure_use_host_runbook(monkeypatch, tmp_path):
+    import httpx
+
+    from venom_core.services import operator_diagnostics as diagnostics
+
+    log = tmp_path / "venom.log"
+    log.write_bytes(
+        b"x" * 17000 + b"\n2026-11-08 12:00:00.000 | ERROR    | password=fixture\n"
+    )
+    calls = []
+
+    def endpoint(request):
+        calls.append(request.method)
+        raise httpx.ConnectError("offline", request=request)
+
+    client = httpx.AsyncClient
+    monkeypatch.setattr(
+        diagnostics.httpx,
+        "AsyncClient",
+        lambda **options: client(transport=httpx.MockTransport(endpoint), **options),
+    )
+    guide = diagnostics.parse_diagnostic_request("Jak sprawdzić Venoma i Rider-Pi?")
+    check = diagnostics.parse_diagnostic_request("Sprawdź Venoma")
+    assert guide is not None
+    assert check is not None
+    origin = "http://127.0.0.1:8000/api/v1/system/services"
+
+    instructions = await diagnostics.run_operator_diagnostics(
+        guide, origin, log_dir=tmp_path
+    )
+    assert not calls
+    assert diagnostics.RUNBOOK in instructions
+    assert diagnostics.HOST_CHECK in instructions
+
+    reply = await diagnostics.run_operator_diagnostics(check, origin, log_dir=tmp_path)
+    assert calls == ["GET"]
+    assert "Brak odpowiedzi lokalnego API" in reply
+    assert diagnostics.HOST_CHECK in reply
+    assert "16384 B" in reply
+    assert "ERROR=1" in reply
+    assert "password" not in reply
+
+
+@pytest.mark.parametrize(
+    ("client_host", "origin", "studio", "expected"),
+    [
+        ("192.0.2.2", None, False, 403),
+        ("127.0.0.1", "https://example.invalid", False, 403),
+        ("127.0.0.1", None, True, 409),
+        ("127.0.0.1", None, False, 201),
+    ],
+)
+def test_g5_task_requires_operator_before_queueing(
+    client_host, origin, studio, expected
+):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from venom_core.api.dependencies import get_orchestrator
+    from venom_core.api.routes import tasks
+
+    app = FastAPI()
+    app.include_router(tasks.router)
+    app.state.studio_runtime = object() if studio else None
+    submit = AsyncMock(
+        return_value={"task_id": uuid4(), "status": "PENDING", "message": "queued"}
+    )
+    get_runtime = MagicMock(return_value=SimpleNamespace(submit_task=submit))
+    app.dependency_overrides[get_orchestrator] = lambda: get_runtime()
+    headers = {"Origin": origin} if origin else {}
+    response = TestClient(app, client=(client_host, 51100)).post(
+        "/api/v1/tasks",
+        json={"content": "Sprawdź Rider-Pi"},
+        headers=headers,
+    )
+
+    assert response.status_code == expected
+    assert get_runtime.call_count == submit.await_count == int(expected == 201)
+
+
+@pytest.mark.asyncio
+async def test_g5_routing_uses_full_dispatcher_without_classification(monkeypatch):
+    from venom_core.agents.system_status import SystemStatusAgent
+    from venom_core.core.dispatcher import TaskDispatcher
+    from venom_core.core.orchestrator.orchestrator_dispatch import _resolve_task_intent
+    from venom_core.services import operator_diagnostics as diagnostics
+    from venom_core.services.execution_template_planner import resolve_response_template
+
+    orch = SimpleNamespace(intent_manager=SimpleNamespace(classify_intent=AsyncMock()))
+    command = TaskRequest(content="Sprawdź Rider-Pi")
+    diagnose = AsyncMock(return_value="Dowód")
+    agent = SystemStatusAgent(
+        MagicMock(), "http://127.0.0.1:8000/api/v1/system/services"
+    )
+    monkeypatch.setattr(agent, "diagnose", diagnose)
+    dispatcher = SimpleNamespace(
+        node_manager=None,
+        system_status_agent=agent,
+        agent_map={diagnostics.DIAGNOSTICS_INTENT: agent},
+    )
+
+    intent, debug = await _resolve_task_intent(orch, command, command.content)
+    template = resolve_response_template(command, intent)
+    answer = await TaskDispatcher.dispatch(dispatcher, intent, command.content)
+
+    assert intent == diagnostics.DIAGNOSTICS_INTENT
+    assert debug["source"] == "operator_diagnostics"
+    assert template is not None
+    assert template.requires_llm is False
+    assert answer == "Dowód"
+    diagnose.assert_awaited_once_with(command.content)
+    orch.intent_manager.classify_intent.assert_not_awaited()
+
+
+def test_g5_services_reports_named_failures_without_raw_fields():
+    from datetime import UTC, datetime
+
+    from venom_core.services import operator_diagnostics as diagnostics
+
+    sample = diagnostics.ProbeResult(
+        {
+            "services": [
+                {"name": "Redis", "status": "offline", "error": "fixture secret"},
+                {"name": "Backend", "status": "online"},
+            ]
+        },
+        "odczytano",
+        "HTTP 200",
+    )
+    result = diagnostics._services_evidence(sample, datetime.now(UTC))
+    assert result.status == "częściowy odczyt"
+    assert "Redis=offline" in result.detail
+    assert "fixture secret" not in result.detail
+
+
+@pytest.mark.asyncio
+async def test_g5_rider_token_is_sent_only_to_the_local_rider_probe(
+    monkeypatch, tmp_path
+):
+    import httpx
+
+    from venom_core.services import operator_diagnostics as diagnostics
+
+    token = "fixture-rider-token"
+    monkeypatch.setenv("RIDER_ACCESS_TOKEN", token)
+    calls = []
+
+    def endpoint(request):
+        auth = request.headers.get("Authorization")
+        calls.append((request.method, request.url.path, auth))
+        if request.url.path == "/api/v1/system/services":
+            return httpx.Response(200, json={"services": []})
+        if auth != f"Bearer {token}":
+            return httpx.Response(403)
+        return httpx.Response(
+            200, json={"connection": {"status": "online"}, "health": {}}
+        )
+
+    client = httpx.AsyncClient
+    monkeypatch.setattr(
+        diagnostics.httpx,
+        "AsyncClient",
+        lambda **options: client(transport=httpx.MockTransport(endpoint), **options),
+    )
+    check = diagnostics.parse_diagnostic_request("Sprawdź Venoma i Rider-Pi")
+    assert check is not None
+    report = await diagnostics.run_operator_diagnostics(
+        check, "http://127.0.0.1:8000/api/v1/system/services", log_dir=tmp_path
+    )
+
+    assert calls == [
+        ("GET", "/api/v1/system/services", None),
+        ("GET", "/api/v1/rider/status", f"Bearer {token}"),
+    ]
+    assert "Odczytano: health." in report
+    assert token not in report
+
+
+@pytest.mark.asyncio
+async def test_g5_never_probes_nonloopback_or_follows_redirects(monkeypatch):
+    import httpx
+
+    from venom_core.services import operator_diagnostics as diagnostics
+
+    monkeypatch.setenv("RIDER_ACCESS_TOKEN", "fixture-rider-token")
+    urls = []
+
+    def endpoint(request):
+        urls.append(str(request.url))
+        return httpx.Response(302, headers={"Location": "http://192.0.2.4/other"})
+
+    client = httpx.AsyncClient
+    monkeypatch.setattr(
+        diagnostics.httpx,
+        "AsyncClient",
+        lambda **options: client(transport=httpx.MockTransport(endpoint), **options),
+    )
+    check = diagnostics.parse_diagnostic_request("Sprawdź Rider-Pi")
+    assert check is not None
+    refusal = await diagnostics.run_operator_diagnostics(
+        check, "http://192.0.2.4:8000/api/v1/system/services"
+    )
+    assert not urls
+    assert "Odmowa diagnostyki" in refusal
+    redirect = await diagnostics.run_operator_diagnostics(
+        check, "http://127.0.0.1:8000/api/v1/system/services"
+    )
+    assert urls == ["http://127.0.0.1:8000/api/v1/rider/status?section=overview"]
+    assert "HTTP 302" in redirect

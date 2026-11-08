@@ -39,6 +39,7 @@ class DirectHistory:
         self.request_id = request_id
         self.user_content = request.content
         self.material_ids = list(request.material_ids)
+        self.mode = "studio_normal" if request.studio_normal else "direct"
         self.started_at = get_utc_now_iso()
         self.store = store
         self.parts: list[str] = []
@@ -93,7 +94,7 @@ class DirectHistory:
             "session_id": self.session,
             "request_id": self.request_id,
             "status": status,
-            "mode": "direct",
+            "mode": self.mode,
         }
         user = {
             **common,

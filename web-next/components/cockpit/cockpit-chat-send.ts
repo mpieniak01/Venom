@@ -8,7 +8,7 @@ import { useCallback, useEffect, useRef } from "react";
 import { quoteOpenRouterChat, cancelSimpleChatStream, getSimpleChatCancellationRevision } from "@/hooks/use-api";
 import { pendingOpenRouterCost, type OpenRouterQuote } from "@/lib/openrouter-chat";
 import { publishOpenRouterQuote } from "@/lib/openrouter-quote-state";
-import { allowsOpenRouterChat, isOpenRouterRuntime } from "@/lib/remote-chat";
+import { allowsOpenRouterChat, isGuardedChatRuntime, isOpenRouterRuntime } from "@/lib/remote-chat";
 import { appendVastChatTurn, vastChatHistoryKey, type VastChatTurn } from "@/lib/vast-chat-history";
 import { useTranslation } from "@/lib/i18n";
 import { boundChatHistory } from "@/components/chat/history-budget";
@@ -52,6 +52,20 @@ function shouldUseSimpleMode(
     !parsed.forcedTool &&
     !parsed.forcedProvider &&
     !parsed.sessionReset
+  );
+}
+
+function shouldUseStudioNormal(
+  lightNormal: ChatSendParams["lightNormal"],
+  chatMode: ChatSendParams["chatMode"],
+  parsed: ReturnType<typeof parseInputCommand>,
+  materialIds: ChatSendParams["materialIds"],
+  activeServerInfo: ChatSendParams["activeServerInfo"],
+): boolean {
+  return Boolean(
+    lightNormal && chatMode === "normal" && !parsed.forcedTool && !parsed.forcedProvider
+    && !materialIds?.length && activeServerInfo?.active_server === "ollama"
+    && !isGuardedChatRuntime(activeServerInfo.runtime_id),
   );
 }
 
@@ -237,6 +251,8 @@ export function useChatSend(params: ChatSendParams) {
   const {
     materialIds,
     conversationHistory,
+    lightNormal,
+    manualChatNotes,
     labMode,
     chatMode,
     generationParams,
@@ -283,7 +299,7 @@ export function useChatSend(params: ChatSendParams) {
     return () => { mounted.current = false; cancelSimpleChatStream(); };
   }, [sessionId]);
 
-  return useCallback(async (payload: string) => {
+  return useCallback(async (payload: string, useNotes = false) => {
     if (inFlight.current) return false;
     inFlight.current = true;
     const revision = getSimpleChatCancellationRevision();
@@ -335,7 +351,10 @@ export function useChatSend(params: ChatSendParams) {
     autoScrollEnabledRef.current = true;
     scrollChatToBottom();
 
-    const shouldUseSimple = shouldUseSimpleMode(chatMode, parsed);
+    const studioNormal = shouldUseStudioNormal(
+      lightNormal, chatMode, parsed, materialIds, effectiveActiveServerInfo,
+    );
+    const shouldUseSimple = studioNormal || shouldUseSimpleMode(chatMode, parsed);
     const historyKey = vastChatHistoryKey(effectiveActiveServerInfo?.runtime_id, effectiveSelectedModel, resolvedSession, effectiveActiveServerInfo?.config_hash);
     const historySource = conversationHistory ?? (historyKey ? vastHistory.current.get(historyKey) ?? [] : undefined);
     const history = historySource ? boundChatHistory(historySource, trimmed.length) : undefined;
@@ -402,6 +421,8 @@ export function useChatSend(params: ChatSendParams) {
       recordUiTiming,
       uiTimingsRef,
       setSimpleRequestDetails,
+      studioNormal,
+      useNotes: manualChatNotes && chatMode === "normal" ? useNotes : undefined,
       ingestMemoryEntry,
       setLastResponseDurationMs,
       setResponseDurations,
@@ -451,6 +472,8 @@ export function useChatSend(params: ChatSendParams) {
     generationParams,
     ingestMemoryEntry,
     language,
+    lightNormal,
+    manualChatNotes,
     linkOptimisticRequest,
     recordUiTiming,
     refreshActiveServer,

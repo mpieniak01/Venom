@@ -10,7 +10,7 @@ export function useConversationData() {
   const active = useActiveLlmServer(0);
   const data = useMemo<ConversationData>(() => ({
     history: null, tasks: null, models: null, unifiedModelCatalog: catalog.data,
-    activeServerInfo: resolveCockpitActiveRuntimeInfo(active.data ? null : catalog.data, active.data),
+    activeServerInfo: active.data ?? resolveCockpitActiveRuntimeInfo(catalog.data, null),
     refresh: { history: noRefresh, tasks: noRefresh, queue: noRefresh, activeServer: active.refresh },
   }), [catalog.data, active.data, active.refresh]);
   return { data, loading: catalog.loading || active.loading, error: catalog.error || active.error,

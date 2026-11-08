@@ -29,19 +29,18 @@ const createSessionId = () => `session-${Date.now()}-${createBrowserUuid().slice
 const resolveInitialSessionId = () => {
   if (globalThis.window === undefined) return "";
   try {
-    const buildId = getBuildId();
-    const storedBuild = globalThis.window.localStorage.getItem(SESSION_BUILD_KEY);
-    let storedSession = globalThis.window.localStorage.getItem(SESSION_ID_KEY);
-    if (!storedSession || storedBuild !== buildId) {
-      storedSession = createSessionId();
-      globalThis.window.localStorage.setItem(SESSION_ID_KEY, storedSession);
-      globalThis.window.localStorage.setItem(SESSION_BUILD_KEY, buildId);
-    }
-    return storedSession;
+    return globalThis.window.localStorage.getItem(SESSION_ID_KEY) || createSessionId();
   } catch {
     return createSessionId();
   }
 };
+
+async function checkSavedSession(sessionId: string): Promise<boolean | null> {
+  const response = await fetch("/api/v1/memory/session/" + encodeURIComponent(sessionId));
+  if (!response.ok) return null;
+  const data = (await response.json()) as { history?: unknown[] };
+  return Array.isArray(data.history) ? data.history.length > 0 : null;
+}
 
 export function SessionProvider({ children }: Readonly<{ children: React.ReactNode }>) {
   // The server and first browser render must use the same snapshot. Reading
@@ -56,7 +55,6 @@ export function SessionProvider({ children }: Readonly<{ children: React.ReactNo
     if (globalThis.window === undefined) return;
     try {
       globalThis.window.localStorage.setItem(SESSION_ID_KEY, value);
-      globalThis.window.localStorage.setItem(SESSION_BUILD_KEY, getBuildId());
     } catch {
       // ignore storage issues
     }
@@ -89,19 +87,21 @@ export function SessionProvider({ children }: Readonly<{ children: React.ReactNo
         if (!active || typeof bootId !== "string" || !bootId) return;
         setBackendBootId(bootId);
         const storedBoot = globalThis.window.localStorage.getItem(SESSION_BOOT_KEY);
-        if (!storedBoot) {
-          globalThis.window.localStorage.setItem(SESSION_BOOT_KEY, bootId);
-          return;
-        }
-        if (storedBoot !== bootId) {
-          const nextSession = createSessionId();
-          globalThis.window.localStorage.setItem(SESSION_ID_KEY, nextSession);
-          globalThis.window.localStorage.setItem(SESSION_BUILD_KEY, getBuildId());
-          globalThis.window.localStorage.setItem(SESSION_BOOT_KEY, bootId);
-          if (active) {
-            persistSessionId(nextSession);
+        const storedBuild = globalThis.window.localStorage.getItem(SESSION_BUILD_KEY);
+        const buildId = getBuildId();
+        const bootChanged = storedBoot !== bootId;
+        const buildChanged = storedBuild !== buildId;
+        const sessionAtCheck = sessionRef.current;
+        if ((storedBoot && bootChanged) || (storedBuild && buildChanged)) {
+          // Both shells can reopen a session persisted on the host across a restart.
+          const hasSavedTurns = await checkSavedSession(sessionAtCheck);
+          if (!active || hasSavedTurns === null) return;
+          if (!hasSavedTurns && sessionAtCheck === sessionRef.current) {
+            persistSessionId(createSessionId());
           }
         }
+        if (bootChanged) globalThis.window.localStorage.setItem(SESSION_BOOT_KEY, bootId);
+        if (buildChanged) globalThis.window.localStorage.setItem(SESSION_BUILD_KEY, buildId);
       } catch {
         // ignore fetch failures
       } finally {

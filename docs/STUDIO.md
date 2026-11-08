@@ -71,9 +71,9 @@ the existing Full localhost guard; a separate configuration screen is not copied
 remain owned by the environment. Switching does not migrate, clone or erase them.
 The frontend uses the shared providers/controller and browser storage keys.
 Browser drafts and active sessions are origin-local: another UI origin has
-separate browser storage, and a new build can initialize a new current thread.
-Use the conversation list to reopen a saved session; browser storage is not a
-server-history backup.
+separate browser storage. A thread with server-side history survives a build
+change or restart. The Studio conversation list is also scoped to the browser
+origin. Browser storage is not a backup of server history.
 
 Studio shares Chat 2.0 components, fonts and global styles, but has its own route
 tree, Next build output, dev cache and public assets. It reuses the installed
@@ -85,33 +85,53 @@ and artifact lifecycle.
 When an explicit build is needed, run from the repository while that UI is stopped:
 
 ```bash
-make web-build VENOM_VARIANT=studio PROFILE=full ENVIRONMENT=preprod
+make web-build VENOM_VARIANT=studio PROFILE=full ENVIRONMENT=dev
+LLM_MODEL_NAME=gemma4:e4b make start-studio PROFILE=full ENVIRONMENT=dev START_WEB_MODE=standalone
 ```
+
+This option is available for Studio in dev. The regular `make start-studio`
+uses Turbopack for development. Both commands use the same dev data.
 
 A prepared artifact must match its sources/shared inputs, public configuration,
 Node version and environment. Starting it does not implicitly rebuild it. Do not
 rebuild the active UI's artifact. See [UI lifecycle](PL/WEB_LIFECYCLE.md).
 
-## Lazy services and memory
+## Studio for everyday use
 
-Studio skips unrelated Full startup services and optional-module registration.
-It adds no RAG, training, other screens, new queue or storage system. Existing
-memory behavior remains available through shared handlers.
+Studio preloads the selected local Ollama model before reporting API readiness
+when `LLM_WARMUP_ON_STARTUP` is enabled. The attempt takes up to 30 seconds.
+If the model is unavailable, startup logs the result and the user can select
+a runtime in chat. Startup does not warm remote providers.
 
-- Direct starts without constructing orchestration. Its existing successful-turn
-  memory/ingest call can initialize the existing VectorStore on demand.
-- The first supported Normal/MAF request creates the existing Orchestrator and
-  required dispatcher, memory and execution dependencies. There is no alternate MAF.
-- STT/TTS creates the configured AudioEngine on first use, without speech warmup
-  at boot. Opening the page does not request the microphone.
-- Local LLM processes/models follow existing configuration and admission rules.
-  The API composition does not introduce another automatic model loader or
-  authorize paid provider calls.
+The Studio launcher defaults to a 4096-token context, one concurrent
+generation and one resident Ollama model. Explicit settings take precedence.
+Venom also defaults to one concurrent generation and retains its context
+profile for longer tasks. Dev and preprod retain their own data and write policy.
 
-Measure startup separately from the state after ingest, Normal/MAF or voice.
-These operations can load heavier components. Smaller route counts do not prove
-RAM savings, lower latency or production readiness. Shared global CSS and the
-shared dependency installation remain explicit implementation boundaries.
+| Mode | Resource usage |
+|---|---|
+| Direct | Shared response stream and SessionStore history. Images and files on attachment. Indexing through explicit note ingest. |
+| Normal | Lightweight local Ollama text chat with history. Explicit note lookup uses LanceDB, with a scoped name lookup when a source is unambiguous. Semantic search loads embeddings on demand. |
+| Voice | The first transcription or synthesis loads the AudioEngine. Later turns reuse it. |
+| MAF and tools | The first request for this path initializes the Orchestrator and agents. |
+| Venom Full | Full screens and API for multistep tasks, development and diagnostics. Notes and history are shared in the same environment. |
+
+```bash
+make start-studio PROFILE=full ENVIRONMENT=dev
+```
+
+In Chat 2.0, enable **Use notes** in Normal for a single question. It is off by
+default. **Save as note** stores a selected response, including in Direct.
+Conversation history is saved automatically. A profile can disable these actions
+with `CHAT_NOTES_ENABLED=false`. Set `NEXT_PUBLIC_STUDIO_LIGHT_NORMAL=0` at build
+time to use the orchestration path for Normal in a standalone build.
+
+### Embeddings in a separate process
+
+For occasional semantic searches on Linux or WSL, `STUDIO_EMBEDDING_PROCESS=1`
+uses an on-demand subprocess. It exits after `STUDIO_EMBEDDING_IDLE_SECONDS`.
+Zero selects 120 seconds in this mode. The next semantic search pays the
+model startup cost. The option defaults to off for smooth successive lookups.
 
 ## Verified stop
 

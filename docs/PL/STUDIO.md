@@ -71,8 +71,9 @@ ochroną localhost Full; nie kopiujemy osobnego ekranu konfiguracji.
 pozostają własnością środowiska. Przełączenie nie migruje, nie klonuje i nie kasuje
 danych. Frontend korzysta ze wspólnych providerów/kontrolera i kluczy przeglądarki.
 Szkice i aktywna sesja należą do originu: inny adres UI ma osobny storage,
-a nowy build może utworzyć nowy bieżący wątek. Zapisaną sesję wybierz z listy
-rozmów; storage przeglądarki nie jest kopią zapasową historii serwera.
+a zmianę buildu lub restart przeżywa wątek z historią zapisaną na serwerze.
+Lista rozmów w Studio także należy do originu przeglądarki.
+Storage przeglądarki nie jest kopią zapasową historii serwera.
 
 Studio współdzieli komponenty Chat 2.0, fonty i globalne style, lecz ma własne
 drzewo tras, artefakt Next, cache dev i zasoby publiczne. Korzysta z istniejącego
@@ -83,32 +84,58 @@ po zmianie. Obie aplikacje używają wspólnego proxy i mechanizmu obsługi arte
 Jawny build wykonuj z katalogu repozytorium, gdy to UI jest zatrzymane:
 
 ```bash
-make web-build VENOM_VARIANT=studio PROFILE=full ENVIRONMENT=preprod
+make web-build VENOM_VARIANT=studio PROFILE=full ENVIRONMENT=dev
+LLM_MODEL_NAME=gemma4:e4b make start-studio PROFILE=full ENVIRONMENT=dev START_WEB_MODE=standalone
 ```
+
+Ten wybór jest dostępny dla Studio w dev. Zwykłe `make start-studio` używa
+Turbopacka do pracy nad kodem. Obie komendy korzystają z danych dev.
 
 Artefakt musi odpowiadać źródłom/wspólnym wejściom, konfiguracji publicznej,
 wersji Node i środowisku. Start nie wykonuje ukrytego rebuilda. Nie przebudowuj
 artefaktu aktywnego UI. Zobacz [cykl życia UI](WEB_LIFECYCLE.md).
 
-## Inicjalizacja na żądanie i pamięć
+## Studio do codziennej pracy
 
-Studio pomija zbędne dla rozmowy usługi startowe Full i rejestrację modułów
-opcjonalnych. Nie dodaje RAG, treningu, ekranów, kolejki ani systemu danych.
-Dotychczasowa pamięć pozostaje dostępna przez wspólne handlery.
+Studio ładuje jeden wybrany lokalny model Ollamy przed zgłoszeniem gotowości
+API, jeśli `LLM_WARMUP_ON_STARTUP` jest włączone. Próba trwa maksymalnie 30 s.
+Jeżeli model jest niedostępny, Studio zapisuje ostrzeżenie w logu i kontynuuje
+start. Silnik można wybrać w czacie. Uruchomienie nie rozgrzewa dostawców zdalnych.
 
-- Direct startuje bez tworzenia orkiestracji. Dotychczasowy memory/ingest po
-  zakończonej turze może na żądanie utworzyć istniejący VectorStore.
-- Pierwsze obsługiwane Normal/MAF tworzy obecny Orchestrator, dispatcher
-  i wymagane zależności pamięci/wykonania. Nie powstaje inny MAF.
-- STT/TTS tworzy skonfigurowany AudioEngine przy pierwszym użyciu, bez warmup
-  modeli mowy przy starcie. Wejście na stronę nie pyta o mikrofon.
-- Lokalne procesy LLM/modele podlegają obecnej konfiguracji i admission. Wybór
-  API nie dodaje drugiego automatycznego loadera ani zgody na płatne wywołania.
+Domyślne strojenie launchera Studio to 4096 tokenów kontekstu, jedna generacja
+naraz i jeden załadowany model Ollamy. Jawne ustawienia mają pierwszeństwo.
+Venom również zaczyna z jedną generacją naraz i korzysta ze swojego profilu
+kontekstu dla dłuższych zadań. Środowiska dev i preprod zachowują własne dane
+i zasady zapisu.
 
-Start mierz oddzielnie od stanu po ingest, Normal/MAF i głosie: te operacje mogą
-doładować cięższe komponenty. Mniejsza liczba tras nie dowodzi oszczędności RAM,
-mniejszych opóźnień ani gotowości prod. Wspólne globalne CSS i instalacja
-zależności pozostają jawnymi granicami rozwiązania.
+| Tryb | Użycie zasobów |
+|---|---|
+| Direct | Wspólny strumień i historia w SessionStore. Obrazy i pliki po dołączeniu. Indeksowanie przez jawny zapis notatki. |
+| Normal | Lekka rozmowa tekstowa z historią przez lokalną Ollamę. Notatki na żądanie, z wyszukaniem jednoznacznego źródła po nazwie w LanceDB. Dopasowanie semantyczne ładuje embeddingi. |
+| Głos | AudioEngine uruchamia się przy pierwszej transkrypcji lub syntezie. Kolejne tury korzystają z rozgrzanego audio. |
+| MAF i narzędzia | Orchestrator i agenci uruchamiają się przy pierwszym takim żądaniu. |
+| Venom Full | Pełne ekrany i API do zadań wieloetapowych, rozwoju i diagnostyki. Wspólne notatki i historia w tym samym środowisku. |
+
+Do codziennej pracy wystarczy:
+
+```bash
+make start-studio PROFILE=full ENVIRONMENT=dev
+```
+
+W Chat 2.0 włącz **Użyj notatek** w Normal dla pojedynczego pytania. Opcja jest
+domyślnie wyłączona. **Zapisz jako notatkę** zapisuje wybraną odpowiedź, także w
+Direct. Rozmowa trafia automatycznie do historii. Profil może wyłączyć te akcje
+przez `CHAT_NOTES_ENABLED=false`. Opcja `NEXT_PUBLIC_STUDIO_LIGHT_NORMAL=0`
+przełącza Normal na orkiestrację także w gotowym buildzie, jeśli ustawiono ją
+podczas budowania weba.
+
+### Embeddingi w osobnym procesie
+
+Przy sporadycznym wyszukiwaniu semantycznym można w Linuksie lub WSL wybrać
+`STUDIO_EMBEDDING_PROCESS=1`. Proces uruchamia się na żądanie i kończy po
+`STUDIO_EMBEDDING_IDLE_SECONDS`. W tym trybie zero oznacza 120 s. Po wygaśnięciu
+pierwsze wyszukiwanie semantyczne czeka na załadowanie modelu. Opcja jest
+domyślnie wyłączona, żeby kolejne wyszukania w sesji były płynne.
 
 ## Zweryfikowane zatrzymanie
 

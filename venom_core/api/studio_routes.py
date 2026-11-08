@@ -46,6 +46,7 @@ STUDIO_ROUTES: dict[str, frozenset[str]] = {
     "/api/v1/llm/simple/stream": frozenset({"POST"}),
     "/api/v1/memory/session/{session_id}": frozenset({"GET", "DELETE"}),
     "/api/v1/memory/ingest": frozenset({"POST"}),
+    "/api/v1/memory/notes": frozenset({"POST"}),
     "/api/v1/chat/materials": frozenset({"GET", "POST"}),
     "/api/v1/chat/materials/capabilities": frozenset({"GET"}),
     "/api/v1/chat/materials/{material_id}": frozenset({"DELETE"}),

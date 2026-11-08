@@ -566,6 +566,10 @@ test.describe("Venom Next Cockpit Smoke", () => {
       });
     });
 
+    await page.route("**/api/v1/memory/session/session-old", async (route) => {
+      await route.fulfill({ json: { history: [] } });
+    });
+
     await page.goto("/");
 
     await page.waitForFunction(() => {

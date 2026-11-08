@@ -651,8 +651,62 @@
           "400": {
             "description": "Nieprawidłowe dane wejściowe"
           },
+          "409": {
+            "description": "Tura Direct nie jest dostępna w historii sesji"
+          },
           "500": {
             "description": "Błąd wewnętrzny podczas zapisu do pamięci"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/memory/notes": {
+      "post": {
+        "tags": [
+          "memory"
+        ],
+        "summary": "Save Chat Note",
+        "description": "Index the saved assistant response once, under the session clear lock.",
+        "operationId": "save_chat_note_api_v1_memory_notes_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveChatNoteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryIngestResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Chat notes or operator access disabled"
+          },
+          "409": {
+            "description": "Completed assistant response missing from session history"
+          },
+          "500": {
+            "description": "Błąd wewnętrzny"
           },
           "422": {
             "description": "Validation Error",
@@ -16069,6 +16123,18 @@
             "format": "uuid",
             "title": "Request Id"
           },
+          "mode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "direct"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mode"
+          },
           "prompt": {
             "type": "string",
             "title": "Prompt"
@@ -17690,6 +17756,19 @@
               }
             ],
             "title": "Timestamp"
+          },
+          "direct_request_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Direct Request Id"
           }
         },
         "type": "object",
@@ -21009,6 +21088,16 @@
             "minLength": 1,
             "title": "Content"
           },
+          "studio_normal": {
+            "type": "boolean",
+            "title": "Studio Normal",
+            "default": false
+          },
+          "use_notes": {
+            "type": "boolean",
+            "title": "Use Notes",
+            "default": false
+          },
           "material_ids": {
             "items": {
               "type": "string"
@@ -21640,6 +21729,18 @@
             "title": "Store Knowledge",
             "description": "Persist lessons and insights from this task",
             "default": true
+          },
+          "use_notes": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Use Notes",
+            "description": "Explicit chat note retrieval. Omit for existing task memory policy."
           },
           "generation_params": {
             "anyOf": [
@@ -23391,6 +23492,27 @@
           "materials"
         ],
         "title": "ChatMaterialList"
+      },
+      "SaveChatNoteRequest": {
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Session Id"
+          },
+          "request_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Request Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "session_id",
+          "request_id"
+        ],
+        "title": "SaveChatNoteRequest"
       }
     }
   }

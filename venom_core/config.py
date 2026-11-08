@@ -1,6 +1,6 @@
 import os
 
-from pydantic import SecretStr
+from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -87,6 +87,9 @@ EXT_DOC = ".doc"
 EXT_DOCX = ".docx"
 
 
+DEFAULT_SIMPLE_MODE_SYSTEM_PROMPT = "Odpowiadaj po polsku."
+
+
 class Settings(BaseSettings):
     # Ignore unknown env vars in local env files without failing startup/tests.
     model_config = SettingsConfigDict(env_file=_settings_env_file(), extra="ignore")
@@ -108,6 +111,9 @@ class Settings(BaseSettings):
     WORKSPACE_ROOT: str = _storage_path("./workspace")
     REPO_ROOT: str = "."
     MEMORY_ROOT: str = _storage_path("./data/memory")
+    CHAT_NOTES_ENABLED: bool = True
+    STUDIO_EMBEDDING_PROCESS: bool = False
+    STUDIO_EMBEDDING_IDLE_SECONDS: int = Field(default=0, ge=0)
     STATE_FILE_PATH: str = f"{_storage_path('./data/memory')}/state_dump.json"
     VENOM_TRANSPORT_IDENTITY_FILE: str = (
         f"{_storage_path('./data/transport')}/identity.json"
@@ -155,7 +161,7 @@ class Settings(BaseSettings):
     LLM_WARMUP_TIMEOUT_SECONDS: float = 5.0
     LLM_WARMUP_MAX_TOKENS: int = 8
     LLM_KEEP_ALIVE: str = "-1"  # Domyślnie pinuj model Ollama w pamięci do zatrzymania stosu (`make stop`)
-    SIMPLE_MODE_SYSTEM_PROMPT: str = "Odpowiadaj po polsku."
+    SIMPLE_MODE_SYSTEM_PROMPT: str = DEFAULT_SIMPLE_MODE_SYSTEM_PROMPT
 
     # Konfiguracja Hybrid AI Mode (Local First + Cloud Options)
     AI_MODE: str = "LOCAL"  # Opcje: "LOCAL", "HYBRID", "CLOUD"

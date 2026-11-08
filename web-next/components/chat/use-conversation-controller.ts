@@ -32,8 +32,10 @@ export type ConversationInteraction = ReturnType<typeof useCockpitInteractiveSta
 type ConversationLayout = Pick<ReturnType<typeof useCockpitLayout>, "labMode" | "setTuningOpen" | "setExportingPinned">;
 
 /** One owner of conversation/history/stream per mounted route, without system telemetry. */
-export function useConversationController({ data, interactive, layout, chatScrollRef, onTurnFinished, materialIds }: {
+export function useConversationController({ data, interactive, layout, chatScrollRef, onTurnFinished, materialIds, manualChatNotes = false, lightNormal = false }: {
   materialIds?: string[];
+  manualChatNotes?: boolean;
+  lightNormal?: boolean;
   data: ConversationData;
   interactive: ConversationInteraction;
   layout: ConversationLayout;
@@ -136,10 +138,16 @@ export function useConversationController({ data, interactive, layout, chatScrol
         if (!sessionId) return [];
         return data.history.filter((entry) => entry.session_id === sessionId);
     }, [data.history, sessionId]);
+    const directRequestIds = useMemo(() => new Set(
+        [...(data.history ?? []), ...sessionHistory, ...localSessionHistory]
+            .flatMap(entry => (entry.mode === "direct" || entry.mode === "studio_normal") && entry.request_id
+                ? [entry.request_id] : []),
+    ), [data.history, sessionHistory, localSessionHistory]);
     const trackedLiveRequestIds = useTrackedRequestIds({
         optimisticRequests: interactive.optimistic.optimisticRequests,
         history: historyForTracking,
         selectedRequestId: interactive.state.selectedRequestId,
+        directRequestIds,
     });
 
     const ownedSessionTaskIds = useMemo(() => new Set([
@@ -154,8 +162,12 @@ export function useConversationController({ data, interactive, layout, chatScrol
         && (entry.pending || ["PENDING", "PROCESSING"].includes(entry.status ?? "")) && !live.has(entry.request_id) && !settled.has(entry.request_id))
         .map(entry => entry.request_id!))];
     }, [localSessionHistory, sessionHistory, interactive.optimistic.optimisticRequests]);
-    const restoredKey = JSON.stringify(restoredPending);
-    const trackedRequestIds = useMemo(() => [...new Set([...trackedLiveRequestIds, ...restoredPending.filter(id => taskUuid.test(id))])].filter(id => ownedSessionTaskIds.has(id)), [trackedLiveRequestIds, restoredPending, ownedSessionTaskIds]);
+    const restoredKey = JSON.stringify(restoredPending.map(id => [id, directRequestIds.has(id)]));
+    const trackedRequestIds = useMemo(() => [...new Set([
+        ...trackedLiveRequestIds,
+        ...restoredPending.filter(id => taskUuid.test(id) && !directRequestIds.has(id)),
+    ])].filter(id => ownedSessionTaskIds.has(id)),
+    [trackedLiveRequestIds, restoredPending, ownedSessionTaskIds, directRequestIds]);
     useEffect(() => {
       const request = new AbortController();
       const finishRestored = (id: string, status: string, content?: string | null) => {
@@ -163,8 +175,8 @@ export function useConversationController({ data, interactive, layout, chatScrol
         setLocalSessionHistory(previous => previous.map(entry => entry.request_id === id && (entry.pending || ["PENDING", "PROCESSING"].includes(entry.status ?? ""))
           ? { ...entry, pending: false, status, ...(entry.role === "assistant" && content ? { content } : {}) } : entry));
       };
-      for (const id of JSON.parse(restoredKey) as string[]) {
-        if (!taskUuid.test(id)) { finishRestored(id, "CANCELLED"); continue; }
+      for (const [id, direct] of JSON.parse(restoredKey) as [string, boolean][]) {
+        if (direct || !taskUuid.test(id)) { finishRestored(id, "CANCELLED"); continue; }
         void fetchTaskDetail(id, request.signal).then(task => {
           if (["COMPLETED", "FAILED", "LOST"].includes(task.status)) finishRestored(id, task.status, task.result);
         }).catch(error => { if (error instanceof ApiError && [404, 422].includes(error.status)) finishRestored(id, "LOST"); });
@@ -224,6 +236,7 @@ export function useConversationController({ data, interactive, layout, chatScrol
         if (!data.history) return;
         if (!sessionId) return;
         data.history.forEach((task) => {
+            if (directRequestIds.has(task.request_id)) return;
             const normalized = task as HistoryTaskLike;
             if (
                 !shouldHydrateCompletedTask(
@@ -247,7 +260,7 @@ export function useConversationController({ data, interactive, layout, chatScrol
                 console.error("Failed to hydrate completed task:", error);
             });
         });
-    }, [data.history, localSessionHistory, taskStreams, setLocalSessionHistory, sessionId]);
+    }, [data.history, localSessionHistory, taskStreams, setLocalSessionHistory, sessionId, directRequestIds]);
 
     // Sync feedback from history to local state
     useEffect(() => {
@@ -421,7 +434,9 @@ export function useConversationController({ data, interactive, layout, chatScrol
         ensureModelActive: handleActivateModel,
         sendSimpleChatStream,
         sendTask: sendTask, // No cast
-        ingestMemoryEntry,
+        ingestMemoryEntry: manualChatNotes ? undefined : ingestMemoryEntry,
+        manualChatNotes,
+        lightNormal,
         refreshQueue: data.refresh.queue,
         refreshSessionHistory,
         enqueueOptimisticRequest: interactive.optimistic.enqueueOptimisticRequest,
@@ -453,6 +468,7 @@ export function useConversationController({ data, interactive, layout, chatScrol
     return {
       sessionId, resetSession, handleActivateModel, sessionActions, historyMessages, chatUi,
       normalRequestIds: trackedRequestIds,
+      directRequestIds,
       sessionHistoryState: { sessionHistory, localSessionHistory, setLocalSessionHistory, sessionEntryKey, refreshSessionHistory },
     };
 }

@@ -15,8 +15,8 @@ from uuid import UUID, uuid4
 from fastapi import HTTPException
 from fastapi.responses import StreamingResponse
 
-from venom_core.api.schemas.llm_simple import SimpleChatRequest
-from venom_core.config import SETTINGS
+from venom_core.api.schemas.llm_simple import MAX_CHAT_HISTORY_CHARS, SimpleChatRequest
+from venom_core.config import DEFAULT_SIMPLE_MODE_SYSTEM_PROMPT, SETTINGS
 from venom_core.core.metrics import get_metrics_collector
 from venom_core.core.tracer import TraceStatus
 from venom_core.services import llm_simple_transport
@@ -1120,15 +1120,17 @@ def _validate_simple_chat_runtime(runtime) -> str:
     return runtime_provider
 
 
-async def stream_simple_chat(request: SimpleChatRequest):
+async def stream_simple_chat(request: SimpleChatRequest, *, system_context: str = ""):
     assert_runtime_request_allowed(request_kind="simple_chat")
     from venom_core.services import openrouter_runtime
 
     if openrouter_runtime.selection() is not None:
+        if request.studio_normal:
+            raise HTTPException(400, "studio_normal_requires_local_ollama")
         from venom_core.services.openrouter_chat import response
 
         return await response(request)
-    return await _stream_non_openrouter_chat(request)
+    return await _stream_non_openrouter_chat(request, system_context=system_context)
 
 
 def _material_turn_text_length(turn: dict[str, Any]) -> int:
@@ -1174,7 +1176,7 @@ def _plain_request_history(
 ) -> list[dict[str, Any]]:
     """Reject oversized history before provider I/O without silently dropping prior turns."""
     history_length = sum(len(item.content) for item in request.history)
-    if history_length > 50000:
+    if history_length > MAX_CHAT_HISTORY_CHARS:
         raise HTTPException(status_code=400, detail="vast_chat_history_limit")
     char_limit = _get_simple_context_char_limit(runtime)
     if (
@@ -1185,7 +1187,18 @@ def _plain_request_history(
     return [item.model_dump(exclude={"material_ids"}) for item in request.history]
 
 
-async def _stream_non_openrouter_chat(request: SimpleChatRequest):
+def _simple_system_prompt(request: SimpleChatRequest, system_context: str) -> str:
+    system_prompt = (SETTINGS.SIMPLE_MODE_SYSTEM_PROMPT or "").strip()
+    if request.studio_normal and system_prompt == DEFAULT_SIMPLE_MODE_SYSTEM_PROMPT:
+        system_prompt = ""
+    if system_context:
+        system_prompt = "\n\n".join(filter(None, (system_prompt, system_context)))
+    return system_prompt
+
+
+async def _stream_non_openrouter_chat(
+    request: SimpleChatRequest, *, system_context: str = ""
+):
     await asyncio.sleep(0)
     from venom_core.services.vast_chat_runtime import preflight
 
@@ -1193,6 +1206,8 @@ async def _stream_non_openrouter_chat(request: SimpleChatRequest):
     runtime = get_active_llm_runtime()
     from venom_core.services.vast_chat_runtime import assert_identity, is_remote
 
+    if request.studio_normal and (runtime.provider != "ollama" or is_remote(runtime)):
+        raise HTTPException(400, "studio_normal_requires_local_ollama")
     assert_identity(runtime, request.expected_runtime_id, request.expected_config_hash)
     if is_remote(runtime) and request.model not in {None, runtime.model_name}:
         raise HTTPException(status_code=409, detail="vast_chat_model_selection_changed")
@@ -1209,7 +1224,7 @@ async def _stream_non_openrouter_chat(request: SimpleChatRequest):
     request_id: UUID = uuid4()
     _trace_simple_request(request_id, request, runtime, model_name)
 
-    system_prompt = (SETTINGS.SIMPLE_MODE_SYSTEM_PROMPT or "").strip()
+    system_prompt = _simple_system_prompt(request, system_context)
     user_content = _trim_user_content_for_runtime(
         request.content, system_prompt, runtime, request_id
     )

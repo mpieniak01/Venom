@@ -400,29 +400,39 @@ Jeśli nie ma ścieżek plików, zwróć pustą listę targets. Jeśli nie ma ja
         # Przekaż zadanie do agenta
         try:
             logger.info(f"Agent {agent.__class__.__name__} przejmuje zadanie")
-            if intent == DIAGNOSTICS_INTENT:
-                result = await self.system_status_agent.diagnose(content)
-            elif note_lookup and isinstance(agent, ChatAgent):
-                result = await agent.process_note_lookup(content, generation_params)
-            elif intent == "STATUS_REPORT" and hasattr(agent, "generate_status_report"):
-                result = await agent.generate_status_report(
-                    include_analysis=wants_status_analysis(content)
-                )
-            else:
-                # Sprawdź czy agent wspiera generation_params
-                if generation_params and hasattr(agent, "process_with_params"):
-                    logger.debug(
-                        f"Przekazuję parametry generacji do agenta: {generation_params}"
-                    )
-                    result = await agent.process_with_params(content, generation_params)
-                else:
-                    result = await agent.process(content)
+            result = await TaskDispatcher._dispatch_to_agent(
+                self, agent, intent, content, generation_params, note_lookup=note_lookup
+            )
             logger.info(f"Agent {agent.__class__.__name__} zakończył przetwarzanie")
             return result
 
         except Exception as e:
             logger.error(f"Błąd podczas przetwarzania zadania przez agenta: {e}")
             raise
+
+    async def _dispatch_to_agent(
+        self,
+        agent: BaseAgent,
+        intent: str,
+        content: str,
+        generation_params: Optional[dict[str, object]],
+        *,
+        note_lookup: bool,
+    ) -> str:
+        if intent == DIAGNOSTICS_INTENT:
+            return await self.system_status_agent.diagnose(content)
+        if note_lookup and isinstance(agent, ChatAgent):
+            return await agent.process_note_lookup(content, generation_params)
+        if intent == "STATUS_REPORT" and hasattr(agent, "generate_status_report"):
+            return await agent.generate_status_report(
+                include_analysis=wants_status_analysis(content)
+            )
+        if generation_params and hasattr(agent, "process_with_params"):
+            logger.debug(
+                f"Przekazuję parametry generacji do agenta: {generation_params}"
+            )
+            return await agent.process_with_params(content, generation_params)
+        return await agent.process(content)
 
     async def _dispatch_to_node(
         self, content: str, node_preference: dict[str, object]

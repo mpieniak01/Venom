@@ -370,12 +370,28 @@ function failSimpleTaskSend(
     });
 }
 
+function buildSimpleTaskPayload(params: SimpleTaskSendParams) {
+    const { trimmed, selectedLlmModel, generationParams, resolvedSession, activeServerInfo } = params;
+    return {
+        ...buildSimpleStreamRequestPayload(
+            trimmed, selectedLlmModel, generationParams, resolvedSession, activeServerInfo,
+            params.studioNormal ? undefined : params.history, params.materialIds,
+        ),
+        ...(params.studioNormal ? {
+            studioNormal: true,
+            useNotes: params.useNotes,
+            expectedRuntimeId: activeServerInfo?.runtime_id,
+            expectedConfigHash: activeServerInfo?.config_hash,
+        } : {}),
+        ...(params.expectedQuoteHash ? { expectedQuoteHash: params.expectedQuoteHash } : {}),
+    };
+}
+
 export async function handleSimpleTaskSend(params: SimpleTaskSendParams) {
     const {
         clientId,
         trimmed,
         resolvedSession,
-        generationParams,
         selectedLlmModel,
         activeServerInfo,
         sendSimpleChatStream,
@@ -426,21 +442,7 @@ export async function handleSimpleTaskSend(params: SimpleTaskSendParams) {
             resolvedSession,
         );
         updateSimpleStream(clientId, { text: "", status: "W toku", done: false });
-        const response = await sendSimpleChatStream(
-            {
-                ...buildSimpleStreamRequestPayload(
-                    trimmed, selectedLlmModel, generationParams, resolvedSession,
-                    activeServerInfo, params.studioNormal ? undefined : params.history, params.materialIds,
-                ),
-                ...(params.studioNormal ? {
-                    studioNormal: true,
-                    useNotes: params.useNotes,
-                    expectedRuntimeId: activeServerInfo?.runtime_id,
-                    expectedConfigHash: activeServerInfo?.config_hash,
-                } : {}),
-                ...(params.expectedQuoteHash ? {expectedQuoteHash: params.expectedQuoteHash} : {}),
-            },
-        );
+        const response = await sendSimpleChatStream(buildSimpleTaskPayload(params));
         if (params.isCancelled?.()) { await response.body?.cancel(); throw new DOMException("Stopped", "AbortError"); }
         params.onAccepted?.();
         const headerRequestId = response.headers.get("x-request-id");

@@ -13,6 +13,11 @@ const Message = memo(function StudioMessage({ message, detail, onError, noteSess
 }>) {
   const { t } = useLanguage(); const [copied, setCopied] = useState(false);
   const [note, setNote] = useState<"idle" | "saving" | "saved">("idle");
+  const noteLabel = {
+    idle: "chat2.saveNote",
+    saving: "chat2.loading",
+    saved: "chat2.noteSaved",
+  } as const;
   const canSave = !!noteSession && message.role === "assistant" && !!message.requestId
     && !message.pending && !message.policyBlocked && !!message.text.trim()
     && (message.status == null || message.status === "COMPLETED");
@@ -39,7 +44,7 @@ const Message = memo(function StudioMessage({ message, detail, onError, noteSess
     <ConversationBubble {...message} requestId={message.requestId ?? undefined} text={message.text}
       footerActions={<><button type="button" className="studio-copy" onClick={() => { void copy(); }}>{copied ? <Check size={14} /> : <Copy size={14} />}{t(copied ? "chat2.copied" : "chat2.copy")}</button>
         {canSave && <button type="button" className="studio-copy" disabled={note !== "idle"} onClick={() => { void save(); }}>
-          <Bookmark size={14} />{t(note === "saved" ? "chat2.noteSaved" : note === "saving" ? "chat2.loading" : "chat2.saveNote")}
+          <Bookmark size={14} />{t(noteLabel[note])}
         </button>}</>} />
     {!!message.materialIds?.length && <p className="studio-muted">{t("chat2.materials")}: {message.materialIds.length}</p>}
     {message.role === "assistant" && detail?.openrouter_cost && <details className="studio-turn-cost"><summary>{t("chat2.costs")}</summary><OpenRouterCost cost={detail.openrouter_cost} t={t} /></details>}

@@ -256,7 +256,7 @@ async def _task_stream_generator(
             raise
 
 
-async def _authorize_diagnostic_task(
+def _authorize_diagnostic_task(
     request: TaskRequest, http_request: Request
 ) -> TaskRequest:
     """Check operator access before resolving the potentially lazy orchestrator."""

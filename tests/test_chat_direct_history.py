@@ -621,10 +621,14 @@ def test_studio_normal_stream_uses_host_history_and_loads_rag_only_for_notes(
     assert response.status_code == 200
     get_vectors.assert_awaited_once()
     context = captured[-1][1]
-    assert "07:41" in context and "08:50" not in context and "09:10" not in context
+    assert "07:41" in context
+    assert "08:50" not in context
+    assert "09:10" not in context
     user, assistant = store.get_history("own")[-2:]
-    assert user["content"] == prompt and user["mode"] == "studio_normal"
-    assert assistant["content"] == "reply" and assistant["status"] == "COMPLETED"
+    assert user["content"] == prompt
+    assert user["mode"] == "studio_normal"
+    assert assistant["content"] == "reply"
+    assert assistant["status"] == "COMPLETED"
 
     miss = "Z notatki projektu Srebrny Las podaj termin."
     assert (
@@ -633,7 +637,8 @@ def test_studio_normal_stream_uses_host_history_and_loads_rag_only_for_notes(
         ).status_code
         == 200
     )
-    assert "no matching source" in captured[-1][1] and "07:41" not in captured[-1][1]
+    assert "no matching source" in captured[-1][1]
+    assert "07:41" not in captured[-1][1]
     english = "According to the notes for Jasny Brzeg, what is the pickup time?"
     assert (
         client.post(
@@ -642,7 +647,8 @@ def test_studio_normal_stream_uses_host_history_and_loads_rag_only_for_notes(
         == 200
     )
     context = captured[-1][1]
-    assert "07:41" in context and "08:50" not in context
+    assert "07:41" in context
+    assert "08:50" not in context
     assert "[/NOTES]\nWrite the answer in English" in context
     assert (
         client.post(
@@ -731,13 +737,15 @@ def test_explicit_note_uses_scoped_exact_lookup_before_embedding(tmp_path):
     store.upsert("Jasny Brzeg: cudzy kod", {"session_id": "foreign"})
     query = "Według notatki projektu Jasny Brzeg, jaki jest kod?"
     notes, _ = retrieve_chat_memory(store, query, "own")
-    assert "własny kod" in notes and "cudzy" not in notes
+    assert "własny kod" in notes
+    assert "cudzy" not in notes
     assert retrieve_chat_memory(store, query, "new-session") == ("", [])
     embedding.get_embedding.assert_not_called()
 
     store.upsert("Jasny Brzeg: drugi kod", {})
     notes, _ = retrieve_chat_memory(store, query, "own")
-    assert "własny kod" in notes and "drugi kod" in notes
+    assert "własny kod" in notes
+    assert "drugi kod" in notes
     assert "cudzy" not in notes
     embedding.get_embedding.assert_called_once_with("Jasny Brzeg")
 

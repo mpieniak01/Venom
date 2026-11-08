@@ -1254,7 +1254,8 @@ def test_rag_retrieval_rejects_other_subject_and_other_session(prompt, subject):
     parts = []
     handler._attach_memory_block(uuid4(), MagicMock(), request, [], parts)
     assert "reference data" in parts[0]
-    assert "07:41" in parts[1] and "19:30" not in parts[1]
+    assert "07:41" in parts[1]
+    assert "19:30" not in parts[1]
 
     search.return_value.pop()
     parts = []
@@ -1619,27 +1620,24 @@ async def test_g5_rider_evidence_keeps_read_failures_and_ack_separate(
         ("GET", "http://127.0.0.1:8000/api/v1/rider/status?section=overview")
     ]
     if scenario == "offline":
-        assert "**brak transportu**" in reply and "Odczytano: brak" in reply
+        assert "**brak transportu**" in reply
+        assert "Odczytano: brak" in reply
         assert "Sprawdź wybór urządzenia i stan transportu" in reply
     elif scenario == "partial":
-        assert "**częściowy odczyt**" in reply and "Odmowa: settings." in reply
-        assert (
-            "Odczytano: control, health." in reply
-            and "Bez danych: telemetry, system." in reply
-        )
+        assert "**częściowy odczyt**" in reply
+        assert "Odmowa: settings." in reply
+        assert "Odczytano: control, health." in reply
+        assert "Bez danych: telemetry, system." in reply
         assert "lx (liniowa)=0.25, az (obrotowa)=-0.75" in reply
-        assert (
-            "ACK potwierdza przyjęcie" in reply
-            and "Brak dowodu fizycznego skutku" in reply
-        )
+        assert "ACK potwierdza przyjęcie" in reply
+        assert "Brak dowodu fizycznego skutku" in reply
     elif scenario == "stale":
-        assert "Stan sterowania przeterminowany" in reply and "0.25" not in reply
+        assert "Stan sterowania przeterminowany" in reply
+        assert "0.25" not in reply
     else:
-        assert (
-            "**odmowa**" in reply
-            and "HTTP 403" in reply
-            and "private secret" not in reply
-        )
+        assert "**odmowa**" in reply
+        assert "HTTP 403" in reply
+        assert "private secret" not in reply
 
 
 @pytest.mark.asyncio
@@ -1666,21 +1664,24 @@ async def test_g5_guide_and_api_failure_use_host_runbook(monkeypatch, tmp_path):
     )
     guide = diagnostics.parse_diagnostic_request("Jak sprawdzić Venoma i Rider-Pi?")
     check = diagnostics.parse_diagnostic_request("Sprawdź Venoma")
-    assert guide is not None and check is not None
+    assert guide is not None
+    assert check is not None
     origin = "http://127.0.0.1:8000/api/v1/system/services"
 
     instructions = await diagnostics.run_operator_diagnostics(
         guide, origin, log_dir=tmp_path
     )
     assert not calls
-    assert (
-        diagnostics.RUNBOOK in instructions and diagnostics.HOST_CHECK in instructions
-    )
+    assert diagnostics.RUNBOOK in instructions
+    assert diagnostics.HOST_CHECK in instructions
 
     reply = await diagnostics.run_operator_diagnostics(check, origin, log_dir=tmp_path)
     assert calls == ["GET"]
-    assert "Brak odpowiedzi lokalnego API" in reply and diagnostics.HOST_CHECK in reply
-    assert "16384 B" in reply and "ERROR=1" in reply and "password" not in reply
+    assert "Brak odpowiedzi lokalnego API" in reply
+    assert diagnostics.HOST_CHECK in reply
+    assert "16384 B" in reply
+    assert "ERROR=1" in reply
+    assert "password" not in reply
 
 
 @pytest.mark.parametrize(
@@ -1745,11 +1746,10 @@ async def test_g5_routing_uses_full_dispatcher_without_classification(monkeypatc
     template = resolve_response_template(command, intent)
     answer = await TaskDispatcher.dispatch(dispatcher, intent, command.content)
 
-    assert (
-        intent == diagnostics.DIAGNOSTICS_INTENT
-        and debug["source"] == "operator_diagnostics"
-    )
-    assert template is not None and template.requires_llm is False
+    assert intent == diagnostics.DIAGNOSTICS_INTENT
+    assert debug["source"] == "operator_diagnostics"
+    assert template is not None
+    assert template.requires_llm is False
     assert answer == "Dowód"
     diagnose.assert_awaited_once_with(command.content)
     orch.intent_manager.classify_intent.assert_not_awaited()
@@ -1772,7 +1772,8 @@ def test_g5_services_reports_named_failures_without_raw_fields():
     )
     result = diagnostics._services_evidence(sample, datetime.now(UTC))
     assert result.status == "częściowy odczyt"
-    assert "Redis=offline" in result.detail and "fixture secret" not in result.detail
+    assert "Redis=offline" in result.detail
+    assert "fixture secret" not in result.detail
 
 
 @pytest.mark.asyncio
@@ -1798,7 +1799,8 @@ async def test_g5_never_probes_nonloopback_or_follows_redirects(monkeypatch):
     refusal = await diagnostics.run_operator_diagnostics(
         check, "http://192.0.2.4:8000/api/v1/system/services"
     )
-    assert not urls and "Odmowa diagnostyki" in refusal
+    assert not urls
+    assert "Odmowa diagnostyki" in refusal
     redirect = await diagnostics.run_operator_diagnostics(
         check, "http://127.0.0.1:8000/api/v1/system/services"
     )

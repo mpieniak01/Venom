@@ -85,6 +85,10 @@ class ProbeResult:
     detail: str
 
 
+_UNAVAILABLE = "niedostępne"
+_INCOMPLETE = "niepełne"
+
+
 def _loopback_origin(endpoint: str) -> str | None:
     try:
         url = urlsplit(endpoint)
@@ -95,7 +99,7 @@ def _loopback_origin(endpoint: str) -> str | None:
             and url.password is None
             and url.port is not None
         ):
-            return f"http://{url.netloc}"
+            return url._replace(path="", query="", fragment="").geturl()
     except ValueError:
         pass
     return None
@@ -107,22 +111,22 @@ async def _read_json(client: httpx.AsyncClient, path: str) -> ProbeResult:
             if response.status_code in {401, 403}:
                 return ProbeResult(None, "odmowa", f"HTTP {response.status_code}")
             if not response.is_success:
-                return ProbeResult(None, "niedostępne", f"HTTP {response.status_code}")
+                return ProbeResult(None, _UNAVAILABLE, f"HTTP {response.status_code}")
             body = bytearray()
             async for chunk in response.aiter_bytes():
                 if len(body) + len(chunk) > _BODY_LIMIT:
                     return ProbeResult(
-                        None, "niepełne", "Przekroczono limit odpowiedzi"
+                        None, _INCOMPLETE, "Przekroczono limit odpowiedzi"
                     )
                 body.extend(chunk)
             payload = json.loads(body)
             if isinstance(payload, dict):
                 return ProbeResult(payload, "odczytano", f"HTTP {response.status_code}")
     except (httpx.RequestError, TimeoutError):
-        return ProbeResult(None, "niedostępne", "Brak odpowiedzi lokalnego API")
+        return ProbeResult(None, _UNAVAILABLE, "Brak odpowiedzi lokalnego API")
     except (ValueError, RecursionError):
         pass
-    return ProbeResult(None, "niepełne", "Nieprawidłowa odpowiedź JSON")
+    return ProbeResult(None, _INCOMPLETE, "Nieprawidłowa odpowiedź JSON")
 
 
 def _object(value: object) -> dict:
@@ -169,6 +173,20 @@ def _control_detail(control: dict, now: datetime) -> str:
     return f"Wiek stanu sterowania {max(0.0, age):.1f} s. {axes}"
 
 
+def _rider_status(
+    available: list[str], denied: list[str], failed: list[str], connection: object
+) -> str:
+    if available:
+        if failed or denied or connection != "online":
+            return "częściowy odczyt"
+        return "odczytano"
+    if denied:
+        return "odmowa"
+    if connection in ("offline", "unconfigured"):
+        return "brak transportu"
+    return _INCOMPLETE
+
+
 def _rider_evidence(read: ProbeResult, now: datetime) -> Evidence:
     if read.payload is None:
         return Evidence(_RIDER_PATH, read.status, read.detail, now)
@@ -188,20 +206,7 @@ def _rider_evidence(read: ProbeResult, now: datetime) -> Evidence:
     failed = [
         key for key in _RIDER_SECTIONS if key not in available and key not in denied
     ]
-    if not available:
-        status = (
-            "odmowa"
-            if denied
-            else "brak transportu"
-            if connection.get("status") in ("offline", "unconfigured")
-            else "niepełne"
-        )
-    else:
-        status = (
-            "częściowy odczyt"
-            if failed or denied or connection.get("status") != "online"
-            else "odczytano"
-        )
+    status = _rider_status(available, denied, failed, connection.get("status"))
     parts = [f"Odczytano: {', '.join(available) or 'brak'}."]
     if failed:
         parts.append(f"Bez danych: {', '.join(failed)}.")
@@ -217,7 +222,7 @@ def _services_evidence(read: ProbeResult, now: datetime) -> Evidence:
         return Evidence(_SERVICES_PATH, read.status, read.detail, now)
     rows = read.payload.get("services")
     if not isinstance(rows, list) or not rows:
-        return Evidence(_SERVICES_PATH, "niepełne", "Brak listy usług w sondzie", now)
+        return Evidence(_SERVICES_PATH, _INCOMPLETE, "Brak listy usług w sondzie", now)
     states: Counter[str] = Counter()
     affected = []
     for row in map(_object, rows):
@@ -266,7 +271,7 @@ def _read_log(log_dir: Path, now: datetime) -> Evidence:
     except PermissionError:
         return Evidence(source, "odmowa", "Brak dostępu do logu", now)
     except OSError:
-        return Evidence(source, "niedostępne", "Odczyt logu nie powiódł się", now)
+        return Evidence(source, _UNAVAILABLE, "Odczyt logu nie powiódł się", now)
     levels = Counter(_LOG_LEVEL.findall(data))
     detail = f"{len(data)} B · WARNING={levels[b'WARNING']}, ERROR={levels[b'ERROR']}, CRITICAL={levels[b'CRITICAL']}"
     modified = datetime.fromtimestamp(info.st_mtime, UTC).isoformat(timespec="seconds")
@@ -317,7 +322,7 @@ async def run_operator_diagnostics(
         next_step = "Sprawdź uprawnienia operatora do wskazanego odczytu."
     elif "brak transportu" in statuses:
         next_step = "Sprawdź wybór urządzenia i stan transportu w panelu Rider."
-    elif evidence[0].status == "niedostępne":
+    elif evidence[0].status == _UNAVAILABLE:
         next_step = f"`{HOST_CHECK}`"
     else:
         next_step = f"`{commands[-1]}`"

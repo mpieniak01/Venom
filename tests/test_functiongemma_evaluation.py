@@ -354,9 +354,11 @@ async def test_read_only_pilot_is_shadow_by_default(monkeypatch, pilot_read_case
     row = await pilot.assess_case(
         pilot_read_case, {"stop_reason": "eos", "text": '{"action":"read"}'}
     )
-    assert row["decision_ok"] and row["fixture_authorized"]
+    assert row["decision_ok"]
+    assert row["fixture_authorized"]
     assert row["proposed_calls"] == pilot_read_case["oracle"]["expected_calls"]
-    assert row["executed_calls"] == [] and row["observed_effects"] is None
+    assert row["executed_calls"] == []
+    assert row["observed_effects"] is None
 
 
 @pytest.mark.asyncio
@@ -371,7 +373,8 @@ async def test_read_only_pilot_replays_only_the_expected_synthetic_read(
         {"stop_reason": "eos", "text": '{"action":"read"}'},
         execute_fixtures=True,
     )
-    assert row["fixture_authorized"] and row["executed_calls"] == row["proposed_calls"]
+    assert row["fixture_authorized"]
+    assert row["executed_calls"] == row["proposed_calls"]
     assert row["observed_effects"] == ["evidence"]
 
 
@@ -414,7 +417,8 @@ async def test_read_only_pilot_blocks_read_proposed_for_preview(pilot_read_case)
         {"stop_reason": "eos", "text": '{"action":"read"}'},
         execute_fixtures=True,
     )
-    assert row["unexpected_proposal"] and row["proposed_calls"]
+    assert row["unexpected_proposal"]
+    assert row["proposed_calls"]
     assert row["executed_calls"] == []
 
 

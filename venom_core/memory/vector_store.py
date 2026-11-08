@@ -403,19 +403,7 @@ class VectorStore:
         table = self._db.open_table(col_name)
 
         logger.info(f"Wyszukiwanie w kolekcji '{col_name}' z limitem {limit}")
-        filters = []
-        if session_scope:
-            condition = """metadata NOT LIKE '%"session_id":%'"""
-            if session_id:
-                value = _validate_filter_value("session_id", session_id)
-                condition += " OR " + _metadata_like_condition("session_id", value)
-            filters.append(f"({condition})")
-        if text_pattern is not None:
-            quoted = text_pattern.replace("'", "''")
-            filters.append(f"regexp_like(text, '{quoted}')")
-        if filters:
-            filters.append("id != 'init'")
-        where = " AND ".join(filters)
+        where = self._search_filter(session_scope, session_id, text_pattern)
 
         results = None
         if text_pattern and session_scope and limit > 0:
@@ -454,11 +442,29 @@ class VectorStore:
             )
 
         # Fallback: gdy semantyka nic nie zwróci, spróbuj prostego dopasowania leksykalnego.
-        if not processed_results and not filters:
+        if not processed_results and not where:
             processed_results = self._lexical_fallback_search(table, query, limit)
 
         logger.info(f"Znaleziono {len(processed_results)} wyników")
         return processed_results
+
+    @staticmethod
+    def _search_filter(
+        session_scope: bool, session_id: str | None, text_pattern: str | None
+    ) -> str:
+        filters = []
+        if session_scope:
+            condition = """metadata NOT LIKE '%"session_id":%'"""
+            if session_id:
+                value = _validate_filter_value("session_id", session_id)
+                condition += " OR " + _metadata_like_condition("session_id", value)
+            filters.append(f"({condition})")
+        if text_pattern is not None:
+            quoted = text_pattern.replace("'", "''")
+            filters.append(f"regexp_like(text, '{quoted}')")
+        if filters:
+            filters.append("id != 'init'")
+        return " AND ".join(filters)
 
     def _lexical_fallback_search(
         self, table: Any, query: str, limit: int

@@ -210,7 +210,6 @@ def _require_chat_notes(http_request: Request) -> None:
 
 @router.post(
     "/notes",
-    response_model=MemoryIngestResponse,
     status_code=201,
     dependencies=[Depends(require_operator_request), Depends(_require_chat_notes)],
     responses={

@@ -35,6 +35,13 @@ const resolveInitialSessionId = () => {
   }
 };
 
+async function checkSavedSession(sessionId: string): Promise<boolean | null> {
+  const response = await fetch("/api/v1/memory/session/" + encodeURIComponent(sessionId));
+  if (!response.ok) return null;
+  const data = (await response.json()) as { history?: unknown[] };
+  return Array.isArray(data.history) ? data.history.length > 0 : null;
+}
+
 export function SessionProvider({ children }: Readonly<{ children: React.ReactNode }>) {
   // The server and first browser render must use the same snapshot. Reading
   // localStorage (or generating an ID) during render breaks hydration.
@@ -87,11 +94,9 @@ export function SessionProvider({ children }: Readonly<{ children: React.ReactNo
         const sessionAtCheck = sessionRef.current;
         if ((storedBoot && bootChanged) || (storedBuild && buildChanged)) {
           // Both shells can reopen a session persisted on the host across a restart.
-          const saved = await fetch("/api/v1/memory/session/" + encodeURIComponent(sessionAtCheck));
-          if (!saved.ok) return;
-          const data = (await saved.json()) as { history?: unknown[] };
-          if (!active || !Array.isArray(data.history)) return;
-          if (!data.history.length && sessionAtCheck === sessionRef.current) {
+          const hasSavedTurns = await checkSavedSession(sessionAtCheck);
+          if (!active || hasSavedTurns === null) return;
+          if (!hasSavedTurns && sessionAtCheck === sessionRef.current) {
             persistSessionId(createSessionId());
           }
         }

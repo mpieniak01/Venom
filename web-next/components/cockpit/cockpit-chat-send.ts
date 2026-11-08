@@ -55,6 +55,20 @@ function shouldUseSimpleMode(
   );
 }
 
+function shouldUseStudioNormal(
+  lightNormal: ChatSendParams["lightNormal"],
+  chatMode: ChatSendParams["chatMode"],
+  parsed: ReturnType<typeof parseInputCommand>,
+  materialIds: ChatSendParams["materialIds"],
+  activeServerInfo: ChatSendParams["activeServerInfo"],
+): boolean {
+  return Boolean(
+    lightNormal && chatMode === "normal" && !parsed.forcedTool && !parsed.forcedProvider
+    && !materialIds?.length && activeServerInfo?.active_server === "ollama"
+    && !isGuardedChatRuntime(activeServerInfo.runtime_id),
+  );
+}
+
 export function resolveEffectiveChatModelSelection(
   selectedLlmModel: string,
   activeModel: string | null | undefined,
@@ -337,10 +351,8 @@ export function useChatSend(params: ChatSendParams) {
     autoScrollEnabledRef.current = true;
     scrollChatToBottom();
 
-    const studioNormal = Boolean(
-      lightNormal && chatMode === "normal" && !parsed.forcedTool && !parsed.forcedProvider
-      && !materialIds?.length && effectiveActiveServerInfo?.active_server === "ollama"
-      && !isGuardedChatRuntime(effectiveActiveServerInfo.runtime_id),
+    const studioNormal = shouldUseStudioNormal(
+      lightNormal, chatMode, parsed, materialIds, effectiveActiveServerInfo,
     );
     const shouldUseSimple = studioNormal || shouldUseSimpleMode(chatMode, parsed);
     const historyKey = vastChatHistoryKey(effectiveActiveServerInfo?.runtime_id, effectiveSelectedModel, resolvedSession, effectiveActiveServerInfo?.config_hash);

@@ -1187,6 +1187,15 @@ def _plain_request_history(
     return [item.model_dump(exclude={"material_ids"}) for item in request.history]
 
 
+def _simple_system_prompt(request: SimpleChatRequest, system_context: str) -> str:
+    system_prompt = (SETTINGS.SIMPLE_MODE_SYSTEM_PROMPT or "").strip()
+    if request.studio_normal and system_prompt == DEFAULT_SIMPLE_MODE_SYSTEM_PROMPT:
+        system_prompt = ""
+    if system_context:
+        system_prompt = "\n\n".join(filter(None, (system_prompt, system_context)))
+    return system_prompt
+
+
 async def _stream_non_openrouter_chat(
     request: SimpleChatRequest, *, system_context: str = ""
 ):
@@ -1215,11 +1224,7 @@ async def _stream_non_openrouter_chat(
     request_id: UUID = uuid4()
     _trace_simple_request(request_id, request, runtime, model_name)
 
-    system_prompt = (SETTINGS.SIMPLE_MODE_SYSTEM_PROMPT or "").strip()
-    if request.studio_normal and system_prompt == DEFAULT_SIMPLE_MODE_SYSTEM_PROMPT:
-        system_prompt = ""
-    if system_context:
-        system_prompt = "\n\n".join(filter(None, (system_prompt, system_context)))
+    system_prompt = _simple_system_prompt(request, system_context)
     user_content = _trim_user_content_for_runtime(
         request.content, system_prompt, runtime, request_id
     )

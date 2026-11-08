@@ -834,6 +834,19 @@ class TestExecutionStrategy:
             "GENERAL_CHAT", "ctx", generation_params=None, note_lookup=True
         )
 
+    @pytest.mark.parametrize("use_notes", [False, True])
+    async def test_general_chat_with_explicit_notes_policy_uses_supplied_context(
+        self, use_notes
+    ):
+        orch = _make_orch(should_use_council=False)
+        request = TaskRequest(content="What is a file extension?", use_notes=use_notes)
+
+        await ExecutionStrategy(orch).execute(uuid4(), "GENERAL_CHAT", "ctx", request)
+
+        orch.task_dispatcher.dispatch.assert_awaited_once_with(
+            "GENERAL_CHAT", "ctx", generation_params=None, note_lookup=True
+        )
+
     async def test_execute_default_intent_with_generation_params(self):
         """execute should pass generation_params in default path when provided."""
         orch = _make_orch(should_use_council=False)

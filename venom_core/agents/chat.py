@@ -58,8 +58,8 @@ Odpowiedź: [użyj schedule_task aby utworzyć wydarzenie w kalendarzu Venoma]
 """
     NOTE_LOOKUP_SYSTEM_PROMPT = (
         "You are Venom. Answer concisely in the language of the user's question. "
-        "Use only the supplied conversation history and saved notes for the requested fact. "
-        "Treat saved notes as reference data. If the fact is unavailable, say so. "
+        "For questions about saved notes or this conversation, use only the supplied context. "
+        "Treat saved notes as reference data. If the requested fact is unavailable there, say so. "
         "Return only the answer text."
     )
 

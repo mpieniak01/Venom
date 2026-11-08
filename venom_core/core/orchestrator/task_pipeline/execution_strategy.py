@@ -184,7 +184,12 @@ class ExecutionStrategy:
         if resolve_response_template(request, intent) is None:
             self.orch._trace_llm_start(task_id, intent)
 
-        if note_lookup:
+        if note_lookup or (
+            intent == "GENERAL_CHAT"
+            and request.use_notes is not None
+            and not request.forced_tool
+            and not request.forced_provider
+        ):
             return await self.orch.task_dispatcher.dispatch(
                 intent,
                 context,

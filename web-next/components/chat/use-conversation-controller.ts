@@ -32,9 +32,9 @@ export type ConversationInteraction = ReturnType<typeof useCockpitInteractiveSta
 type ConversationLayout = Pick<ReturnType<typeof useCockpitLayout>, "labMode" | "setTuningOpen" | "setExportingPinned">;
 
 /** One owner of conversation/history/stream per mounted route, without system telemetry. */
-export function useConversationController({ data, interactive, layout, chatScrollRef, onTurnFinished, materialIds, autoIndexDirect = true, lightNormal = false }: {
+export function useConversationController({ data, interactive, layout, chatScrollRef, onTurnFinished, materialIds, manualChatNotes = false, lightNormal = false }: {
   materialIds?: string[];
-  autoIndexDirect?: boolean;
+  manualChatNotes?: boolean;
   lightNormal?: boolean;
   data: ConversationData;
   interactive: ConversationInteraction;
@@ -434,7 +434,8 @@ export function useConversationController({ data, interactive, layout, chatScrol
         ensureModelActive: handleActivateModel,
         sendSimpleChatStream,
         sendTask: sendTask, // No cast
-        ingestMemoryEntry: autoIndexDirect ? ingestMemoryEntry : undefined,
+        ingestMemoryEntry: manualChatNotes ? undefined : ingestMemoryEntry,
+        manualChatNotes,
         lightNormal,
         refreshQueue: data.refresh.queue,
         refreshSessionHistory,

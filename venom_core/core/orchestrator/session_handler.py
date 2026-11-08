@@ -243,7 +243,7 @@ class SessionHandler:
 
         session_id = request.session_id
         single_model = request.agent_mode == "single_model"
-        if not self._testing_mode and not single_model:
+        if not self._testing_mode and not single_model and request.use_notes is None:
             self._ensure_session_summary(task_id, task)
         summary, history = self._load_session_summary_and_history(task, session_id)
         if not single_model:
@@ -319,7 +319,14 @@ class SessionHandler:
         parts: list[str],
     ) -> None:
         """Append relevant memory for the current request and record the entries used."""
-        explicit_note = note_request_language(request.content) is not None
+        if request.use_notes is False or (
+            request.use_notes is True and not SETTINGS.CHAT_NOTES_ENABLED
+        ):
+            return
+        explicit_note = (
+            request.use_notes is True
+            or note_request_language(request.content) is not None
+        )
         if not explicit_note and not self._should_include_memory(request, len(history)):
             return
         memory_block, memory_ids = self._retrieve_relevant_memory(
@@ -330,7 +337,7 @@ class SessionHandler:
             parts.append(CHAT_NOTE_POLICY)
         if memory_block:
             parts.append("[PAMIĘĆ]\n" + memory_block)
-        elif self._named_memory_subject(request.content):
+        elif explicit_note:
             parts.append("[PAMIĘĆ] Brak źródła pasującego do wskazanej nazwy.")
         if memory_ids:
             self._update_context_used_memory_entries(task_id, task, memory_ids)

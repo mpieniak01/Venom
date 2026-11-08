@@ -111,6 +111,7 @@ class Settings(BaseSettings):
     WORKSPACE_ROOT: str = _storage_path("./workspace")
     REPO_ROOT: str = "."
     MEMORY_ROOT: str = _storage_path("./data/memory")
+    CHAT_NOTES_ENABLED: bool = True
     STUDIO_EMBEDDING_PROCESS: bool = False
     STUDIO_EMBEDDING_IDLE_SECONDS: int = Field(default=0, ge=0)
     STATE_FILE_PATH: str = f"{_storage_path('./data/memory')}/state_dump.json"

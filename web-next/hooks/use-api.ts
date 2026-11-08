@@ -823,6 +823,7 @@ export type ForcedRoute = {
 
 export type SendTaskInput = {
   content: string;
+  useNotes?: boolean;
   storeKnowledge?: boolean;
   generationParams?: GenerationParams | null;
   runtimeMeta?: { configHash?: string | null; runtimeId?: string | null } | null;
@@ -836,6 +837,7 @@ export type SendTaskInput = {
 
 export type SimpleChatStreamRequest = {
   studioNormal?: boolean;
+  useNotes?: boolean;
   content: string;
   materialIds?: string[];
   model?: string | null;
@@ -863,6 +865,7 @@ export function buildSimpleChatApiBody(payload: SimpleChatStreamRequest) {
   const body: {
     content: string;
     studio_normal?: boolean;
+    use_notes?: boolean;
     material_ids?: string[];
     model?: string;
     max_tokens?: number;
@@ -876,6 +879,7 @@ export function buildSimpleChatApiBody(payload: SimpleChatStreamRequest) {
     content: payload.content,
   };
   if (payload.studioNormal) body.studio_normal = true;
+  if (payload.useNotes) body.use_notes = true;
   if (payload.materialIds?.length) body.material_ids = payload.materialIds;
   if (payload.model) body.model = payload.model;
   if (typeof payload.maxTokens === "number") body.max_tokens = payload.maxTokens;
@@ -940,6 +944,7 @@ export async function sendSimpleChatStream(payload: SimpleChatStreamRequest) {
 export async function sendTask({
   content,
   storeKnowledge = true,
+  useNotes,
   generationParams,
   runtimeMeta,
   extraContext,
@@ -952,6 +957,7 @@ export async function sendTask({
   const body: {
     content: string;
     store_knowledge: boolean;
+    use_notes?: boolean;
     generation_params?: GenerationParams;
     expected_config_hash?: string;
     expected_runtime_id?: string;
@@ -967,6 +973,7 @@ export async function sendTask({
     store_knowledge: storeKnowledge,
   };
 
+  if (useNotes !== undefined) body.use_notes = useNotes;
   if (generationParams) {
     body.generation_params = generationParams;
   }

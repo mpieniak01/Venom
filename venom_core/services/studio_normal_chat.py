@@ -91,17 +91,21 @@ async def prepare_studio_normal(
     system_context = _NORMAL_HISTORY_POLICY
     if use_default_language:
         system_context += f" {_NORMAL_LANGUAGE_POLICY}"
-    note_language = note_request_language(request.content)
-    if note_language:
+    if request.use_notes and SETTINGS.CHAT_NOTES_ENABLED:
         vector_store = await get_vector_store()
         notes, _ = await run_drainable_thread(
             retrieve_chat_memory, vector_store, request.content, session_id
         )
         system_context += (
             f"\n\n{CHAT_NOTE_POLICY}\n\n[NOTES]\n{notes or '(no matching source)'}"
-            f"\n[/NOTES]\nWrite the answer in {note_language}, even if the notes "
-            "use another language. Keep names and codes as written."
+            "\n[/NOTES]"
         )
+        note_language = note_request_language(request.content)
+        if note_language:
+            system_context += (
+                f"\nWrite the answer in {note_language}, even if the notes "
+                "use another language. Keep names and codes as written."
+            )
     budget -= len(system_context)
     if budget < 0:
         raise HTTPException(413, {"reason_code": "studio_normal_context_limit"})

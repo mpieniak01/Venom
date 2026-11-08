@@ -613,7 +613,11 @@ def test_studio_normal_stream_uses_host_history_and_loads_rag_only_for_notes(
     assert plain.think is False
 
     prompt = "Według notatki projektu Jasny Brzeg, o której godzinie jest odbiór?"
-    response = client.post(url, json={**payload, "content": prompt})
+    assert client.post(url, json={**payload, "content": prompt}).status_code == 200
+    get_vectors.assert_not_awaited()
+    assert "[NOTES]" not in captured[-1][1]
+
+    response = client.post(url, json={**payload, "content": prompt, "use_notes": True})
     assert response.status_code == 200
     get_vectors.assert_awaited_once()
     context = captured[-1][1]
@@ -623,10 +627,20 @@ def test_studio_normal_stream_uses_host_history_and_loads_rag_only_for_notes(
     assert assistant["content"] == "reply" and assistant["status"] == "COMPLETED"
 
     miss = "Z notatki projektu Srebrny Las podaj termin."
-    assert client.post(url, json={**payload, "content": miss}).status_code == 200
+    assert (
+        client.post(
+            url, json={**payload, "content": miss, "use_notes": True}
+        ).status_code
+        == 200
+    )
     assert "no matching source" in captured[-1][1] and "07:41" not in captured[-1][1]
     english = "According to the notes for Jasny Brzeg, what is the pickup time?"
-    assert client.post(url, json={**payload, "content": english}).status_code == 200
+    assert (
+        client.post(
+            url, json={**payload, "content": english, "use_notes": True}
+        ).status_code
+        == 200
+    )
     context = captured[-1][1]
     assert "07:41" in context and "08:50" not in context
     assert "[/NOTES]\nWrite the answer in English" in context
@@ -687,3 +701,57 @@ def test_explicit_note_uses_scoped_exact_lookup_before_embedding(tmp_path):
     assert "własny kod" in notes and "drugi kod" in notes
     assert "cudzy" not in notes
     embedding.get_embedding.assert_called_once_with("Jasny Brzeg")
+
+
+def test_chat_note_indexes_completed_answer_once_and_respects_session(
+    tmp_path, monkeypatch
+):
+    from venom_core.api.transport_access import require_operator_request
+
+    store = SessionStore(str(tmp_path / "notes.json"))
+    answer_id, stopped_id, missing_id = (str(uuid4()) for _ in range(3))
+    for request_id, role, content, status in (
+        (answer_id, "user", "Do not save the prompt", "COMPLETED"),
+        (answer_id, "assistant", "only the selected answer", "COMPLETED"),
+        (stopped_id, "assistant", "partial", "CANCELLED"),
+    ):
+        store.append_message(
+            "own",
+            {
+                "request_id": request_id,
+                "role": role,
+                "content": content,
+                "status": status,
+            },
+        )
+    app = application(store)
+    vectors = Mock()
+    vectors.list_entries.side_effect = [[], [{"id": "saved"}]]
+    vectors.upsert.return_value = {"message": "saved", "chunks_count": 1}
+    vector_dependency = Mock(return_value=vectors)
+    app.dependency_overrides[get_vector_store] = lambda: vector_dependency()
+    app.dependency_overrides[require_operator_request] = lambda: None
+    client = TestClient(app)
+    path = "/api/v1/memory/notes"
+    payload = {"request_id": answer_id, "session_id": "own"}
+
+    monkeypatch.setattr(memory.SETTINGS, "CHAT_NOTES_ENABLED", False)
+    assert client.post(path, json=payload).status_code == 403
+    vector_dependency.assert_not_called()
+    monkeypatch.setattr(memory.SETTINGS, "CHAT_NOTES_ENABLED", True)
+
+    for denied in (
+        {**payload, "session_id": "other"},
+        {**payload, "request_id": stopped_id},
+        {**payload, "request_id": missing_id},
+    ):
+        assert client.post(path, json=denied).status_code == 409
+    vectors.upsert.assert_not_called()
+    assert client.post(path, json=payload).status_code == 201
+    assert client.post(path, json=payload).json()["message"] == "already_saved"
+    vectors.upsert.assert_called_once()
+    assert vectors.upsert.call_args.kwargs["text"] == "only the selected answer"
+    metadata = vectors.upsert.call_args.kwargs["metadata"]
+    assert metadata["session_id"] == "own"
+    assert metadata["provenance_request_id"] == answer_id
+    assert metadata["provenance_source"] == "chat_note"

@@ -42,17 +42,15 @@ export function cancelStudioTasksInOrder(taskIds: readonly string[], cancelTask:
   return cancelNext(0);
 }
 
-export function StudioShell({ showLegacyLink = true, autoIndexDirect = true, lightNormal = false }: Readonly<{
+export function StudioShell({ showLegacyLink = true, lightNormal = false }: Readonly<{
   showLegacyLink?: boolean;
-  autoIndexDirect?: boolean;
   lightNormal?: boolean;
 }>) {
   const { sessionId } = useSession();
-  return <StudioConversation key={sessionId} showLegacyLink={showLegacyLink} autoIndexDirect={autoIndexDirect} lightNormal={lightNormal} />;
+  return <StudioConversation key={sessionId} showLegacyLink={showLegacyLink} lightNormal={lightNormal} />;
 }
-function StudioConversation({ showLegacyLink, autoIndexDirect, lightNormal }: Readonly<{
+function StudioConversation({ showLegacyLink, lightNormal }: Readonly<{
   showLegacyLink: boolean;
-  autoIndexDirect: boolean;
   lightNormal: boolean;
 }>) {
   const { t, language, setLanguage } = useLanguage();
@@ -81,17 +79,22 @@ function StudioConversation({ showLegacyLink, autoIndexDirect, lightNormal }: Re
   }, [desktop, materialsOpen]);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [stopRevision, setStopRevision] = useState(0);
+  const [useNotes, setUseNotes] = useState(false);
   const [voice, setVoice] = useState<"dictation" | "conversation" | null>(null);
   const conversation = useConversationController({
     data: source.data, interactive: interaction, layout, chatScrollRef: scrollRef,
-    materialIds: selected, autoIndexDirect, lightNormal,
+    materialIds: selected, manualChatNotes: true, lightNormal,
   });
   const { state, setters } = interaction;
   const materials = useChatMaterials(sessionId, state.selectedLlmModel, state.selectedLlmServer,
     source.data.activeServerInfo?.active_server ?? "", source.data.activeServerInfo?.config_hash ?? "", materialsOpen || selected.length > 0);
+  const notesAvailable = materials.capabilities?.notes === true;
+  const voiceAvailable = materials.capabilities?.voice === true;
+  const direct = state.chatMode === "direct";
+  const notesSelected = notesAvailable && state.chatMode === "normal" && useNotes;
   const attached = materials.items.filter(item => selected.includes(item.id));
   const missing = selected.length > attached.length;
-  const blocked = missing || materialBlocked(attached, materials.capabilities, state.chatMode === "direct");
+  const blocked = missing || materialBlocked(attached, materials.capabilities, direct);
   const active = state.sending || conversation.historyMessages.some(message => message.pending || ["PENDING", "PROCESSING"].includes(message.status ?? ""));
   const sendLock = useRef(false);
   const pendingStop = useRef(false);
@@ -121,12 +124,12 @@ function StudioConversation({ showLegacyLink, autoIndexDirect, lightNormal }: Re
     if (sendLock.current || active || blocked || materials.uploading || !text.trim()) return false;
     sendLock.current = true; pendingStop.current = false; stoppedTasks.current.clear();
     try {
-      const accepted = await conversation.chatUi.handleSend(text);
-      if (accepted) { setDraft(current => current === text ? "" : current); setSelectedJson(current => current === selectedJson ? "[]" : current); textarea.current?.focus(); }
+      const accepted = await conversation.chatUi.handleSend(text, notesSelected);
+      if (accepted) { setUseNotes(false); setDraft(current => current === text ? "" : current); setSelectedJson(current => current === selectedJson ? "[]" : current); textarea.current?.focus(); }
       else sendLock.current = false;
       return accepted;
     } catch { sendLock.current = false; setters.setMessage(t("chat2.error")); return false; }
-  }, [active, blocked, materials.uploading, conversation.chatUi, setDraft, setSelectedJson, selectedJson, setters, t]);
+  }, [active, blocked, materials.uploading, notesSelected, conversation.chatUi, setDraft, setSelectedJson, selectedJson, setters, t]);
   const toggleMaterial = (id: string) => setSelectedJson(JSON.stringify(selected.includes(id) ? selected.filter(item => item !== id) : [...selected, id]));
   const upload = async (files: File[]) => {
     const created = await materials.upload(files);
@@ -170,21 +173,28 @@ function StudioConversation({ showLegacyLink, autoIndexDirect, lightNormal }: Re
     <StudioModelPicker catalog={source.data.unifiedModelCatalog} interaction={interaction} session={sessionId} activeModel={source.data.activeServerInfo?.active_model} onApply={conversation.handleActivateModel} busy={active} />
     {source.error && <div className="studio-error" role="alert">{t("chat2.offline")}<button type="button" className="studio-button" onClick={() => { void source.refresh(); }}>{t("chat2.retry")}</button></div>}
     <div className={"studio-workspace" + (materialsOpen ? " studio-with-materials" : "")}><div className="studio-conversation">
-      <StudioThread key={sessionId} messages={conversation.historyMessages} details={interaction.optimistic.simpleRequestDetails} scrollRef={scrollRef} onScroll={conversation.chatUi.handleChatScroll} loading={source.loading || !sessionId} onError={setters.setMessage} />
-      {voice && <StudioVoice key={sessionId + voice} session={sessionId} mode={voice} stopRevision={stopRevision} busy={active} messages={conversation.historyMessages}
+      <StudioThread key={sessionId} messages={conversation.historyMessages} details={interaction.optimistic.simpleRequestDetails} scrollRef={scrollRef} onScroll={conversation.chatUi.handleChatScroll} loading={source.loading || !sessionId} onError={setters.setMessage} noteSession={notesAvailable ? sessionId : undefined} />
+      {voice && voiceAvailable && <StudioVoice key={sessionId + voice} session={sessionId} mode={voice} stopRevision={stopRevision} busy={active} messages={conversation.historyMessages}
         onDraft={text => setDraft(previous => previous ? previous + " " + text : text)} onTurn={send} onStop={stop} onClose={() => setVoice(null)} />}
       <form className="studio-compose-wrap" onSubmit={event => { event.preventDefault(); void send(draft); }}>
         {!!selected.length && <div className="studio-attachments" aria-label={t("chat2.selectedMaterials")}>{selected.map(id => <button type="button" key={id} className="studio-chip" aria-label={t("chat2.detach") + ": " + (materials.items.find(item => item.id === id)?.name || id)} onClick={() => toggleMaterial(id)}><Paperclip size={13} />{materials.items.find(item => item.id === id)?.name || t("chat2.stale")}<X size={12} /></button>)}</div>}
         <div className="studio-compose"><textarea ref={textarea} aria-label={t("chat2.placeholder")} placeholder={t("chat2.placeholder")} value={draft} maxLength={50000} rows={3} disabled={!sessionId}
           onChange={event => setDraft(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void send(draft); } }} />
           <div className="studio-compose-actions"><div><button type="button" className="studio-icon" aria-label={t("chat2.chooseFiles")} onClick={() => { setHistoryOpen(false); setMaterialsOverride(true); }}><Paperclip size={19} /></button>
-            <button type="button" className="studio-button studio-quiet" onClick={() => setVoice(voice === "dictation" ? null : "dictation")} disabled={active}><Mic size={17} />{t("chat2.dictate")}</button>
-            <button type="button" className="studio-button studio-quiet" onClick={() => setVoice(voice === "conversation" ? null : "conversation")} disabled={active}><Headphones size={17} />{t("chat2.voice")}</button></div>
+            <button type="button" className="studio-button studio-quiet" onClick={() => setVoice(voice === "dictation" ? null : "dictation")} disabled={active || !voiceAvailable}><Mic size={17} />{t("chat2.dictate")}</button>
+            <button type="button" className="studio-button studio-quiet" onClick={() => setVoice(voice === "conversation" ? null : "conversation")} disabled={active || !voiceAvailable}><Headphones size={17} />{t("chat2.voice")}</button></div>
             {active ? <button type="button" className="studio-button studio-stop" onClick={() => { void stop(); }}><Square size={15} />{t("chat2.stop")}</button> : <button type="submit" className="studio-button studio-send" disabled={!sessionId || source.loading || !state.selectedLlmModel || !draft.trim() || blocked || materials.uploading}><Send size={17} />{t("chat2.send")}</button>}
           </div>
         </div>
         {blocked && !!selected.length && <p className="studio-error" role="alert">{t(missing ? "chat2.stale" : "chat2.incompatible")}</p>}
         {state.message && <p className="studio-error" role="alert">{state.message}</p>}
+        {notesAvailable && state.chatMode === "normal" && <label className="studio-note-option">
+          <input type="checkbox" checked={useNotes} disabled={active} onChange={event => setUseNotes(event.target.checked)} />
+          {t("chat2.useNotes")}
+        </label>}
+        <p className="studio-muted" aria-label={t("chat2.capabilities")}>
+          {t("chat2.text")} · {t("chat2.documents")}: {t(direct && materials.capabilities?.document ? "chat2.ready" : "chat2.unsupported")} · {t("chat2.images")}: {t(!direct ? "chat2.unsupported" : materials.capabilities ? materials.capabilities.image ? "chat2.ready" : "chat2.unsupported" : "chat2.unknown")} · {t("chat2.voice")}: {t(voiceAvailable ? "chat2.ready" : materials.capabilities ? "chat2.unsupported" : "chat2.unknown")}
+        </p>
         <div className="studio-compose-footer"><span>{t("chat2.sendHint")}</span><output aria-live="polite">{t(active ? "chat2.generating" : "chat2.ready")}</output></div>
       </form>
     </div>

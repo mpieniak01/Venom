@@ -34,6 +34,7 @@ export type LocalHistoryEntry = {
 export type ChatSendParams = {
     materialIds?: string[];
     lightNormal?: boolean;
+    manualChatNotes?: boolean;
     conversationHistory?: Array<{ role: "user" | "assistant"; content: string; material_ids?: string[] }>;
     labMode: boolean;
     chatMode: "normal" | "direct" | "complex";
@@ -54,6 +55,7 @@ export type ChatSendParams = {
     sendSimpleChatStream: (payload: {
         materialIds?: string[];
         studioNormal?: boolean;
+        useNotes?: boolean;
         content: string;
         model: string | null;
         maxTokens: number | null;
@@ -300,6 +302,7 @@ function assertCompletedRemoteStream(
 
 type SimpleTaskSendParams = {
     studioNormal?: boolean;
+    useNotes?: boolean;
     onAccepted?: () => void;
     isCancelled?: () => boolean;
     materialIds?: string[];
@@ -431,6 +434,7 @@ export async function handleSimpleTaskSend(params: SimpleTaskSendParams) {
                 ),
                 ...(params.studioNormal ? {
                     studioNormal: true,
+                    useNotes: params.useNotes,
                     expectedRuntimeId: activeServerInfo?.runtime_id,
                     expectedConfigHash: activeServerInfo?.config_hash,
                 } : {}),
@@ -644,6 +648,7 @@ export async function handleStandardTaskSend(params: {
     isCancelled?: () => boolean;
     cancelTask?: (id: string, session: string) => Promise<void>;
     trimmed: string;
+    useNotes?: boolean;
     labMode: boolean;
     generationParams: GenerationParams | null;
     runtimeOverride: RuntimeOverride;
@@ -711,7 +716,8 @@ export async function handleStandardTaskSend(params: {
 
         const res = await sendTask({
             content: trimmed,
-            storeKnowledge: !labMode,
+            storeKnowledge: params.useNotes === undefined && !labMode,
+            useNotes: params.useNotes,
             generationParams,
             runtimeMeta: buildRuntimeMeta(runtimeOverride, activeServerInfo),
             extraContext: null,

@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 
 from venom_core.api.schemas.chat_materials import ChatMaterial, ChatMaterialList
 from venom_core.api.transport_access import require_operator_request
+from venom_core.config import SETTINGS
 from venom_core.services.chat_materials import (
     MAX_BYTES,
     MaterialStore,
@@ -95,6 +96,7 @@ async def list_materials(session_id: str = Query(min_length=1, max_length=256)):
 
 @router.get("/capabilities")
 async def material_capabilities(
+    request: Request,
     model: str | None = Query(default=None, max_length=1024),
 ):
     from venom_core.services.chat_material_payload import image_capability
@@ -103,7 +105,10 @@ async def material_capabilities(
     runtime = get_active_llm_runtime()
     selected = model or runtime.model_name or ""
     return {
+        "text": True,
         "document": True,
+        "voice": getattr(request.app.state, "audio_engine", None) is not None,
+        "notes": SETTINGS.CHAT_NOTES_ENABLED,
         "image": await image_capability(runtime, selected),
         "audio": False,
         "video": False,

@@ -16,6 +16,7 @@ class SimpleChatRequest(BaseModel):
 
     content: str = Field(..., min_length=1, max_length=50000)
     studio_normal: bool = False
+    use_notes: bool = False
     material_ids: list[str] = Field(default_factory=list, max_length=4)
     model: Optional[str] = None
     expected_quote_hash: Optional[str] = Field(default=None, max_length=64)

@@ -120,9 +120,11 @@ profile for longer tasks. Dev and preprod retain their own data and write policy
 make start-studio PROFILE=full ENVIRONMENT=dev
 ```
 
-For comparison, `NEXT_PUBLIC_STUDIO_DIRECT_AUTO_INDEX=1` restores automatic
-indexing and `NEXT_PUBLIC_STUDIO_LIGHT_NORMAL=0` selects the previous Normal
-path. Set these variables at build time for prebuilt UI.
+In Chat 2.0, enable **Use notes** in Normal for a single question. It is off by
+default. **Save as note** stores a selected response, including in Direct.
+Conversation history is saved automatically. A profile can disable these actions
+with `CHAT_NOTES_ENABLED=false`. Set `NEXT_PUBLIC_STUDIO_LIGHT_NORMAL=0` at build
+time to use the orchestration path for Normal in a standalone build.
 
 ### Embeddings in a separate process
 

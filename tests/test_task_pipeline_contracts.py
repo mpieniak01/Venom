@@ -647,6 +647,24 @@ class TestResultProcessorProcessSuccess:
 
         orch.session_handler._memory_upsert.assert_called_once()
 
+    @pytest.mark.parametrize("use_notes", [True, False])
+    async def test_chat_notes_policy_saves_history_without_automatic_indexing(
+        self, use_notes
+    ):
+        orch = _make_orch(store_lesson=True)
+        request = TaskRequest(content="hi", session_id="own", use_notes=use_notes)
+        task_id = uuid4()
+
+        await ResultProcessor(orch).process_success(
+            task_id, "answer", "GENERAL_CHAT", "ctx", request, False
+        )
+
+        orch.session_handler._memory_upsert.assert_not_called()
+        orch.lessons_manager.save_task_lesson.assert_not_awaited()
+        orch._append_session_history.assert_called_once_with(
+            task_id, role="assistant", content="answer", session_id="own"
+        )
+
     async def test_log_agent_action_formats_dict_result(self):
         """_log_agent_action should JSON-format dict results in broadcast."""
         orch = _make_orch()
@@ -1387,3 +1405,41 @@ def test_memory_subject_requires_explicit_named_source():
         SessionHandler._named_memory_subject("Notes for project Jasny Brzeg")
         == "Jasny Brzeg"
     )
+
+
+@pytest.mark.parametrize(
+    ("enabled", "use_notes", "searches"),
+    [(True, False, 0), (False, True, 0), (True, True, 1)],
+)
+def test_full_chat_notes_gate_keeps_session_history(
+    tmp_path, monkeypatch, enabled, use_notes, searches
+):
+    from venom_core.config import SETTINGS
+    from venom_core.core.orchestrator.session_handler import SessionHandler
+    from venom_core.services.session_store import SessionStore
+
+    monkeypatch.setattr(SETTINGS, "CHAT_NOTES_ENABLED", enabled)
+    state, memory = MagicMock(), MagicMock()
+    state.get_task.return_value.context_history = {}
+    state.get_task.return_value.context_used = None
+    memory.vector_store.search.return_value = [
+        {"text": "Jasny Brzeg: 07:41", "metadata": {"session_id": "own"}},
+    ]
+    store = SessionStore(str(tmp_path / "session.json"))
+    store.append_message("own", {"role": "user", "content": "earlier turn"})
+    handler = SessionHandler(
+        state_manager=state, memory_skill=memory, session_store=store
+    )
+    handler._ensure_session_summary = MagicMock()
+    result = handler.build_session_context_block(
+        TaskRequest(
+            content="Według notatki projektu Jasny Brzeg podaj termin.",
+            session_id="own",
+            use_notes=use_notes,
+        ),
+        uuid4(),
+    )
+    assert "earlier turn" in result
+    assert ("07:41" in result) == bool(searches)
+    assert memory.vector_store.search.call_count == searches
+    handler._ensure_session_summary.assert_not_called()

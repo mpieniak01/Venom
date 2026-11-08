@@ -238,6 +238,7 @@ export function useChatSend(params: ChatSendParams) {
     materialIds,
     conversationHistory,
     lightNormal,
+    manualChatNotes,
     labMode,
     chatMode,
     generationParams,
@@ -284,7 +285,7 @@ export function useChatSend(params: ChatSendParams) {
     return () => { mounted.current = false; cancelSimpleChatStream(); };
   }, [sessionId]);
 
-  return useCallback(async (payload: string) => {
+  return useCallback(async (payload: string, useNotes = false) => {
     if (inFlight.current) return false;
     inFlight.current = true;
     const revision = getSimpleChatCancellationRevision();
@@ -409,6 +410,7 @@ export function useChatSend(params: ChatSendParams) {
       uiTimingsRef,
       setSimpleRequestDetails,
       studioNormal,
+      useNotes: manualChatNotes && chatMode === "normal" ? useNotes : undefined,
       ingestMemoryEntry,
       setLastResponseDurationMs,
       setResponseDurations,
@@ -459,6 +461,7 @@ export function useChatSend(params: ChatSendParams) {
     ingestMemoryEntry,
     language,
     lightNormal,
+    manualChatNotes,
     linkOptimisticRequest,
     recordUiTiming,
     refreshActiveServer,

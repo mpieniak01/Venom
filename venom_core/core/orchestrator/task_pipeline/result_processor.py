@@ -55,7 +55,12 @@ class ResultProcessor:
             )
 
         # 3. Session Store Upsert (Facts)
-        if not single_model and request.session_id and result:
+        if (
+            not single_model
+            and request.use_notes is None
+            and request.session_id
+            and result
+        ):
             self.orch.session_handler._memory_upsert(
                 str(result),
                 metadata={
@@ -100,8 +105,10 @@ class ResultProcessor:
             )
 
         # 7. Save Lessons (Knowledge)
-        if not single_model and self.orch._should_store_lesson(
-            request, intent=intent, agent=agent
+        if (
+            not single_model
+            and request.use_notes is None
+            and self.orch._should_store_lesson(request, intent=intent, agent=agent)
         ):
             await self.orch.lessons_manager.save_task_lesson(
                 task_id=task_id,

@@ -177,27 +177,20 @@ test("standalone entry renders the same shell without a dead classic link", () =
   assert.match(html, /chat2.send/);
 });
 
-test("standalone Studio defaults to lightweight Normal without Direct indexing", () => {
-  const index = "NEXT_PUBLIC_STUDIO_DIRECT_AUTO_INDEX";
+test("standalone Studio defaults to lightweight Normal", () => {
   const normal = "NEXT_PUBLIC_STUDIO_LIGHT_NORMAL";
-  const previous = [process.env[index], process.env[normal]];
+  const previous = process.env[normal];
   const Page = loadTsx(path.join(appRoot, "app/chat2/page.tsx"), {
     "@/components/chat/studio-shell": { StudioShell: () => null },
-  }).default as () => React.ReactElement<{ autoIndexDirect: boolean; lightNormal: boolean }>;
+  }).default as () => React.ReactElement<{ lightNormal: boolean }>;
   try {
-    delete process.env[index];
     delete process.env[normal];
-    assert.equal(Page().props.autoIndexDirect, false);
     assert.equal(Page().props.lightNormal, true);
-    process.env[index] = "1";
     process.env[normal] = "0";
-    assert.equal(Page().props.autoIndexDirect, true);
     assert.equal(Page().props.lightNormal, false);
   } finally {
-    [index, normal].forEach((key, i) => {
-      if (previous[i] === undefined) delete process.env[key];
-      else process.env[key] = previous[i];
-    });
+    if (previous === undefined) delete process.env[normal];
+    else process.env[normal] = previous;
   }
 });
 

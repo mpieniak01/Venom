@@ -146,7 +146,7 @@ export default async function chat2Acceptance(page, baseURL) {
       if (path === "/api/v1/openrouter/quote") return json({ estimated_usd: "0", currency: "USD", max_output_tokens: 1024, input_token_upper_bound: 200, context_length: 32768, config_hash: state.active.config_hash, quote_hash: "a".repeat(64) });
       if (path.startsWith("/api/v1/memory/session/")) { const session = decodeURIComponent(path.slice("/api/v1/memory/session/".length)); const history = state.histories[session] ?? []; return json({ status: "success", session_id: session, history, summary: null, count: history.length }); }
       if (path === "/api/v1/memory/ingest") return json({ status: "success", id: "fixture-memory" });
-      if (path === "/api/v1/chat/materials/capabilities") return json({ document: true, image: state.active.active_server === "ollama" && url.searchParams.get("model") === "fixture-vision", audio: false, video: false, max_bytes: 8388608, max_document_chars: 64000, runtime_id: state.active.runtime_id, config_hash: state.active.config_hash, model: url.searchParams.get("model") });
+      if (path === "/api/v1/chat/materials/capabilities") return json({ text: true, notes: true, voice: true, document: true, image: state.active.active_server === "ollama" && url.searchParams.get("model") === "fixture-vision", audio: false, video: false, max_bytes: 8388608, max_document_chars: 64000, runtime_id: state.active.runtime_id, config_hash: state.active.config_hash, model: url.searchParams.get("model") });
       if (path === "/api/v1/chat/materials") {
         const session = url.searchParams.get("session_id");
         if (method === "GET") return json({ materials: Object.values(state.materials).filter(item => item.session_id === session) });

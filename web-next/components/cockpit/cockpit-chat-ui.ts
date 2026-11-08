@@ -57,6 +57,7 @@ type CockpitChatUiParams = {
   sendSimpleChatStream: (payload: {
         materialIds?: string[];
     studioNormal?: boolean;
+    useNotes?: boolean;
     content: string;
     model: string | null;
     maxTokens: number | null;
@@ -68,6 +69,7 @@ type CockpitChatUiParams = {
   }) => Promise<Response>;
   sendTask: (payload: SendTaskInput) => Promise<{ task_id?: string | null }>;
   lightNormal?: boolean;
+  manualChatNotes?: boolean;
   ingestMemoryEntry?: (payload: {
     text: string;
     category: string;
@@ -158,6 +160,7 @@ export function useCockpitChatUi({
   sendSimpleChatStream,
   sendTask,
   lightNormal,
+  manualChatNotes,
   ingestMemoryEntry,
   refreshQueue,
   refreshSessionHistory,
@@ -332,7 +335,8 @@ export function useCockpitChatUi({
     sendSimpleChatStream,
     sendTask,
     lightNormal,
-  ingestMemoryEntry,
+    manualChatNotes,
+    ingestMemoryEntry,
     refreshTasks,
     refreshQueue,
     refreshHistory,

@@ -122,9 +122,12 @@ Do codziennej pracy wystarczy:
 make start-studio PROFILE=full ENVIRONMENT=dev
 ```
 
-Dla porównania można jawnie przywrócić wcześniejsze zachowanie webu przez
-`NEXT_PUBLIC_STUDIO_DIRECT_AUTO_INDEX=1` lub `NEXT_PUBLIC_STUDIO_LIGHT_NORMAL=0`.
-Ustaw te flagi również podczas budowania prekompilowanego UI.
+W Chat 2.0 włącz **Użyj notatek** w Normal dla pojedynczego pytania. Opcja jest
+domyślnie wyłączona. **Zapisz jako notatkę** zapisuje wybraną odpowiedź, także w
+Direct. Rozmowa trafia automatycznie do historii. Profil może wyłączyć te akcje
+przez `CHAT_NOTES_ENABLED=false`. Opcja `NEXT_PUBLIC_STUDIO_LIGHT_NORMAL=0`
+przełącza Normal na orkiestrację także w gotowym buildzie, jeśli ustawiono ją
+podczas budowania weba.
 
 ### Embeddingi w osobnym procesie
 

@@ -405,25 +405,8 @@ class VectorStore:
         logger.info(f"Wyszukiwanie w kolekcji '{col_name}' z limitem {limit}")
         where = self._search_filter(session_scope, session_id, text_pattern)
 
-        results = None
-        if text_pattern and session_scope and limit > 0:
-            # The existing phrase and scope filters already determine the answer
-            # when zero or one row matches. Rank ambiguous matches as before.
-            exact = (
-                table.search()
-                .where(where)
-                .select(["id", "text", "metadata"])
-                .limit(2)
-                .to_list()
-            )
-            if len(exact) < 2:
-                results = exact
-        if results is None:
-            query_embedding = self.embedding_service.get_embedding(query)
-            search = table.search(query_embedding)
-            if where:
-                search = search.where(where, prefilter=True)
-            results = search.limit(limit).to_list()
+        exact_lookup = bool(text_pattern and session_scope and limit > 0)
+        results = self._query_search_results(table, query, where, limit, exact_lookup)
 
         # Przetwórz wyniki
         processed_results: list[dict[str, object]] = []
@@ -447,6 +430,25 @@ class VectorStore:
 
         logger.info(f"Znaleziono {len(processed_results)} wyników")
         return processed_results
+
+    def _query_search_results(
+        self, table: Any, query: str, where: str, limit: int, exact_lookup: bool
+    ) -> list[dict]:
+        if exact_lookup:
+            # Zero or one phrase match needs no embedding to decide its rank.
+            exact = (
+                table.search()
+                .where(where)
+                .select(["id", "text", "metadata"])
+                .limit(2)
+                .to_list()
+            )
+            if len(exact) < 2:
+                return exact
+        search = table.search(self.embedding_service.get_embedding(query))
+        if where:
+            search = search.where(where, prefilter=True)
+        return search.limit(limit).to_list()
 
     @staticmethod
     def _search_filter(

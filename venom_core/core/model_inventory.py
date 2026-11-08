@@ -77,19 +77,54 @@ def _complete_shards(path: Path, weights: list[Path]) -> bool:
 
 
 def manifest_size(manifest: Path) -> int:
-    """A manifest/cache entry without its referenced blobs is not an installation."""
+    """Return the size of one complete installed Ollama variant."""
+    root = next(
+        parent
+        for parent in manifest.parents
+        if parent.name in {"manifests", "manifests-v2"}
+    )
+    blob_root = (root.parent / "blobs").resolve()
+    if root.name == "manifests-v2" and manifest.is_symlink():
+        target = manifest.resolve(strict=True)
+        if target.parent != blob_root or not re.fullmatch(
+            r"sha256-[0-9a-f]{64}", target.name
+        ):
+            return 0
     payload = json.loads(manifest.read_text())
+    if payload.get("mediaType") != "application/vnd.ollama.manifest.list.v2+json":
+        return _manifest_layer_size(payload, blob_root)
+
+    for variant in payload.get("manifests", []):
+        if not isinstance(variant, dict):
+            continue
+        digest = variant.get("digest", "")
+        if not isinstance(digest, str) or not re.fullmatch(
+            r"sha256:[0-9a-f]{64}", digest
+        ):
+            continue
+        child = blob_root / digest.replace(":", "-")
+        try:
+            if (
+                child.is_symlink()
+                or not child.is_file()
+                or child.stat().st_size > 8 * 1024**2
+            ):
+                continue
+            size = _manifest_layer_size(json.loads(child.read_text()), blob_root)
+        except (OSError, ValueError, TypeError, AttributeError):
+            continue
+        if size:
+            return size
+    return 0
+
+
+def _manifest_layer_size(payload: dict, blob_root: Path) -> int:
     layers = payload.get("layers", [])
     if not any(
         layer.get("mediaType") == "application/vnd.ollama.image.model"
         for layer in layers
     ):
         return 0
-    blob_root = next(
-        parent.parent / "blobs"
-        for parent in manifest.parents
-        if parent.name == "manifests"
-    )
     total = 0
     for entry in [payload.get("config", {}), *layers]:
         digest, size = entry.get("digest", ""), entry.get("size")

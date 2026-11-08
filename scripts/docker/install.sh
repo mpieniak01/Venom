@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 COMPOSE_FILE="$ROOT_DIR/compose/compose.minimal.yml"
 COMPOSE_GPU_FILE="$ROOT_DIR/compose/compose.internal.gpu-override.yml"
-MODEL_DEFAULT="gemma2:2b"
+MODEL_DEFAULT="gemma4:e4b"
 MODEL="$MODEL_DEFAULT"
 OLLAMA_IMAGE_DEFAULT="ollama/ollama:0.40.11@sha256:dea72d1e22270fe095b68fdf756d2b489d615643c5a2eaebbc5f569181e322d8"
 OLLAMA_IMAGE="${OLLAMA_IMAGE:-$OLLAMA_IMAGE_DEFAULT}"

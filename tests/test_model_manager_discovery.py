@@ -468,6 +468,68 @@ def test_stale_ollama_cache_does_not_resurrect_removed_models(tmp_path, monkeypa
     assert mgr._discover_local_models() == {}
 
 
+def test_offline_ollama_v2_loads_complete_variant_without_resurrecting_old_tag(
+    tmp_path: Path,
+) -> None:
+    mgr = _Discovery(tmp_path)
+    blobs = mgr.models_dir / "blobs"
+    blobs.mkdir()
+    layer_digest = "sha256:" + "a" * 64
+    manifest_digest = "sha256:" + "b" * 64
+    index_name = "sha256-" + "c" * 64
+    layer = {"digest": layer_digest, "size": 7}
+    weight = blobs / layer_digest.replace(":", "-")
+    weight.write_bytes(b"weights")
+    (blobs / manifest_digest.replace(":", "-")).write_text(
+        json.dumps(
+            {
+                "config": layer,
+                "layers": [
+                    {"mediaType": "application/vnd.ollama.image.model", **layer}
+                ],
+            }
+        )
+    )
+    (blobs / index_name).write_text(
+        json.dumps(
+            {
+                "mediaType": "application/vnd.ollama.manifest.list.v2+json",
+                "manifests": [
+                    {"digest": "sha256:" + "d" * 64},
+                    {"digest": manifest_digest},
+                ],
+            }
+        )
+    )
+    tags = mgr.models_dir / "manifests-v2/ollama.com/library/gemma4"
+    tags.mkdir(parents=True)
+    (tags / "e4b").symlink_to(blobs / index_name)
+    mgr._save_ollama_cache([{"name": "gemma2:2b", "provider": "ollama"}])
+    assert set(mgr._discover_local_models()) == {"ollama::gemma4:e4b"}
+    weight.unlink()
+    assert not mgr._discover_local_models()
+
+
+def test_decision_only_model_is_installed_but_not_chat_compatible(
+    tmp_path: Path,
+) -> None:
+    mgr = _Discovery(tmp_path)
+    (entry,) = mgr._collect_ollama_entries(
+        [
+            {
+                "name": "d1:latest",
+                "digest": "current",
+                "capabilities": ["decision", "vision"],
+            }
+        ]
+    )
+    assert entry["chat_compatible"] is False
+    mgr._save_ollama_cache([entry])
+    observed = {"ollama::d1:latest": {"digest": "current"}}
+    mgr._load_ollama_cache(observed)
+    assert observed["ollama::d1:latest"]["chat_compatible"] is False
+
+
 def test_model_cache_enumerates_only_complete_snapshots_once(tmp_path):
     """Verify model cache enumerates only complete snapshots once."""
     from venom_core.core.model_inventory import cached_model_paths

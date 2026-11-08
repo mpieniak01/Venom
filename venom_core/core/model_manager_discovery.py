@@ -322,12 +322,16 @@ class ModelManagerDiscoveryMixin:
             size_bytes = self._read_manifest_size_bytes(manifest_path)
             if not size_bytes:
                 continue
+            try:
+                digest = hashlib.sha256(manifest_path.read_bytes()).hexdigest()
+            except OSError:
+                continue
             entries.append(
                 {
                     "name": entry_name,
                     "size_gb": size_bytes / (1024**3) if size_bytes else None,
                     "type": "ollama",
-                    "digest": hashlib.sha256(manifest_path.read_bytes()).hexdigest(),
+                    "digest": digest,
                     "quantization": "unknown",
                     "path": f"ollama://{registry}",
                     "source": "ollama",
@@ -352,6 +356,8 @@ class ModelManagerDiscoveryMixin:
         tag = relative_parts[-1]
         model = relative_parts[-2]
         namespace = relative_parts[-3] if len(relative_parts) >= 3 else ""
+        if len(relative_parts) >= 4 and relative_parts[0] == "hf.co":
+            return f"hf.co/{namespace}/{model}:{tag}"
         if namespace and namespace != "library":
             return f"{namespace}/{model}:{tag}"
         return f"{model}:{tag}"
@@ -399,6 +405,9 @@ class ModelManagerDiscoveryMixin:
                 "aliases": model.get("aliases", []),
                 "ollama_alias_evidence": model.get("ollama_alias_evidence", {}),
             }
+            capabilities = model.get("capabilities")
+            if isinstance(capabilities, list) and capabilities:
+                entry["chat_compatible"] = "completion" in capabilities
             if entry_name in EXPLICIT_OPERATOR_TAGS or entry_name in ALIAS_TARGETS:
                 entries.append(entry)
                 continue
@@ -448,6 +457,8 @@ class ModelManagerDiscoveryMixin:
                 ):
                     current["quantization"] = entry.get("quantization", "unknown")
                     current["details"] = entry.get("details", {})
+                    if isinstance(entry.get("chat_compatible"), bool):
+                        current["chat_compatible"] = entry["chat_compatible"]
         except (OSError, ValueError, TypeError, AttributeError):
             logger.debug("Ignoring unavailable historical Ollama metadata")
 
@@ -457,11 +468,11 @@ class ModelManagerDiscoveryMixin:
         models: Dict[str, Dict[str, Any]],
     ) -> None:
         for base_dir in search_dirs:
-            manifest_root = base_dir / "manifests"
-            for entry in self._load_ollama_manifest_entries(manifest_root):
-                entry_name = entry.get("name")
-                if entry_name:
-                    models.setdefault(f"ollama::{entry_name}", entry)
+            for directory in ("manifests-v2", "manifests"):
+                for entry in self._load_ollama_manifest_entries(base_dir / directory):
+                    entry_name = entry.get("name")
+                    if entry_name:
+                        models.setdefault(f"ollama::{entry_name}", entry)
 
     def _replace_ollama_entries(
         self,

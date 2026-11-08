@@ -84,8 +84,12 @@ po zmianie. Obie aplikacje używają wspólnego proxy i mechanizmu obsługi arte
 Jawny build wykonuj z katalogu repozytorium, gdy to UI jest zatrzymane:
 
 ```bash
-make web-build VENOM_VARIANT=studio PROFILE=full ENVIRONMENT=preprod
+make web-build VENOM_VARIANT=studio PROFILE=full ENVIRONMENT=dev
+LLM_MODEL_NAME=gemma4:e4b make start-studio PROFILE=full ENVIRONMENT=dev START_WEB_MODE=standalone
 ```
+
+Ten wybór jest dostępny dla Studio w dev. Zwykłe `make start-studio` używa
+Turbopacka do pracy nad kodem. Obie komendy korzystają z danych dev.
 
 Artefakt musi odpowiadać źródłom/wspólnym wejściom, konfiguracji publicznej,
 wersji Node i środowisku. Start nie wykonuje ukrytego rebuilda. Nie przebudowuj

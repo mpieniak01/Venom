@@ -85,8 +85,12 @@ and artifact lifecycle.
 When an explicit build is needed, run from the repository while that UI is stopped:
 
 ```bash
-make web-build VENOM_VARIANT=studio PROFILE=full ENVIRONMENT=preprod
+make web-build VENOM_VARIANT=studio PROFILE=full ENVIRONMENT=dev
+LLM_MODEL_NAME=gemma4:e4b make start-studio PROFILE=full ENVIRONMENT=dev START_WEB_MODE=standalone
 ```
+
+This option is available for Studio in dev. The regular `make start-studio`
+uses Turbopack for development. Both commands use the same dev data.
 
 A prepared artifact must match its sources/shared inputs, public configuration,
 Node version and environment. Starting it does not implicitly rebuild it. Do not

@@ -38,7 +38,6 @@ UVICORN_PROD_FLAGS="${UVICORN_PROD_FLAGS:---no-server-header}"
 BACKEND_LOG="${BACKEND_LOG:-logs/backend.log}"
 WEB_LOG="${WEB_LOG:-logs/web-next.log}"
 WEB_NODE_PATH="${WEB_NODE_PATH:-}"
-WEB_APP_VERSION="${WEB_APP_VERSION:-unknown}"
 WEB_START_RETRIES="${WEB_START_RETRIES:-1}"
 ENV_FILE_RAW="${ENV_FILE:-.env.dev}"
 ENV_EXAMPLE_FILE_RAW="${ENV_EXAMPLE_FILE:-.env.dev.example}"
@@ -417,10 +416,6 @@ fi
 # All UI entrypoints share ownership, build compatibility and readiness checks.
 export WEB_DIR WEB_PORT WEB_HOST WEB_PID_FILE WEB_LOG NPM
 export NODE_PATH="$WEB_NODE_PATH"
-export NEXT_PUBLIC_APP_VERSION="$WEB_APP_VERSION"
-export NEXT_PUBLIC_ENVIRONMENT_ROLE="${ENVIRONMENT_ROLE:-dev}"
-export NEXT_PUBLIC_ENABLE_AUDIO_INTERFACE="$(env_contract_get ENABLE_AUDIO_INTERFACE "false" "$ENV_FILE")"
-export NEXT_PUBLIC_AUDIO_WS_BASE="ws://${WEB_DISPLAY}:${PORT}"
 export NEXT_TELEMETRY_DISABLED=1
 unset NEXT_DISABLE_TURBOPACK WATCHPACK_POLLING WATCHPACK_POLLING_INTERVAL CHOKIDAR_USEPOLLING
 # The token exists before launch so rollback also covers interruption after ready.
@@ -432,6 +427,8 @@ export VENOM_UI_TRANSACTION="$UI_TRANSACTION"
 if [[ "$START_MODE" == "prod" ]]; then
   # Building is explicit and invalidates the previous stamp before any attempt.
   run_with_env_file node "$ROOT_DIR/web-next/scripts/web-lifecycle.mjs" build
+  run_with_env_file node "$ROOT_DIR/web-next/scripts/web-lifecycle.mjs" start
+elif [[ "$START_WEB_MODE" == "standalone" ]]; then
   run_with_env_file node "$ROOT_DIR/web-next/scripts/web-lifecycle.mjs" start
 else
   case "$START_WEB_MODE" in

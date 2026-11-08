@@ -133,7 +133,7 @@ define handle_pytest_no_tests
 endef
 
 define run_web_lifecycle
-	@ENVIRONMENT="$(ENVIRONMENT)" PROFILE="$(PROFILE)" ENV_FILE="$(ENV_FILE)" WEB_DIR="$(WEB_DIR)" WEB_PORT="$(WEB_PORT)" PORT="$(PORT)" WEB_HOST="$(WEB_HOST)" NPM="$(NPM)" $(if $(filter command line environment environment override,$(origin WEB_PID_FILE)),WEB_PID_FILE="$(WEB_PID_FILE)") $(if $(filter command line environment environment override,$(origin WEB_LOG)),WEB_LOG="$(WEB_LOG)") $(PYTHON_BIN) scripts/dev/stack_profile.py component $(1)
+	@ENVIRONMENT="$(ENVIRONMENT)" PROFILE="$(PROFILE)" ENV_FILE="$(ENV_FILE)" WEB_DIR="$(WEB_DIR)" WEB_PORT="$(WEB_PORT)" PORT="$(PORT)" WEB_HOST="$(WEB_HOST)" WEB_DISPLAY="$(WEB_DISPLAY)" WEB_APP_VERSION="$(WEB_APP_VERSION)" NPM="$(NPM)" $(if $(filter command line environment environment override,$(origin WEB_PID_FILE)),WEB_PID_FILE="$(WEB_PID_FILE)") $(if $(filter command line environment environment override,$(origin WEB_LOG)),WEB_LOG="$(WEB_LOG)") $(PYTHON_BIN) scripts/dev/stack_profile.py component $(1)
 endef
 
 # Public contract: make start PROFILE=full|light ENVIRONMENT=dev|preprod

@@ -42,6 +42,40 @@ def test_application_variant_shares_existing_environment_storage(tmp_path, role)
     assert "OLLAMA_CONTEXT_LENGTH" not in full
 
 
+def test_studio_standalone_uses_the_public_build_configuration(tmp_path):
+    (tmp_path / ".env.dev").write_text("ENABLE_AUDIO_INTERFACE=true\n")
+    config = {
+        "VENOM_VARIANT": "studio",
+        "PORT": "18800",
+        "WEB_APP_VERSION": "1.10.0",
+    }
+    build = resolve(tmp_path, config)
+    start = resolve(tmp_path, {**config, "START_WEB_MODE": "standalone"})
+    assert build["START_WEB_MODE"] == "turbo"
+    assert public_plan(start)["START_WEB_MODE"] == "standalone"
+    for key, value in {
+        "NEXT_PUBLIC_APP_VERSION": "1.10.0",
+        "NEXT_PUBLIC_ENABLE_AUDIO_INTERFACE": "true",
+        "NEXT_PUBLIC_AUDIO_WS_BASE": "ws://127.0.0.1:18800",
+        "NEXT_PUBLIC_FEATURE_CHAT2": "true",
+    }.items():
+        assert build[key] == start[key] == value
+
+
+@pytest.mark.parametrize("variant,role", [("venom", "dev"), ("studio", "preprod")])
+def test_standalone_stack_start_requires_studio_dev(tmp_path, variant, role):
+    settings(tmp_path, variant, role)
+    with pytest.raises(ValueError, match="requires Studio dev"):
+        resolve(
+            tmp_path,
+            {
+                "VENOM_VARIANT": variant,
+                "ENVIRONMENT": role,
+                "START_WEB_MODE": "standalone",
+            },
+        )
+
+
 def test_studio_respects_explicit_ollama_overrides(tmp_path):
     (tmp_path / ".env.dev").write_text(
         "ENVIRONMENT_ROLE=dev\nOLLAMA_CONTEXT_LENGTH=8192\nOLLAMA_NUM_PARALLEL=0\n"

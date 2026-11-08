@@ -83,7 +83,7 @@ curl --fail --max-time 5 'http://127.0.0.1:8000/api/v1/system/services'
 curl --fail --max-time 5 'http://127.0.0.1:8000/api/v1/rider/status?section=overview'
 ```
 
-Dla profilu z innym portem użyj portu jego API. Częściowy odczyt wymienia dostępne sekcje i braki. Oś `lx` opisuje składową liniową, a `az` obrotową. ACK dokumentuje przyjęcie komendy. Fizyczny skutek wymaga odrębnego pomiaru.
+Dla profilu z innym portem użyj portu jego API. Jeśli stos uruchomiono z własnym plikiem środowiska, przekaż ten sam `ENV_FILE` do polecenia `make status-venom`. Częściowy odczyt wymienia dostępne sekcje i braki. Oś `lx` opisuje składową liniową, a `az` obrotową. ACK dokumentuje przyjęcie komendy. Fizyczny skutek wymaga odrębnego pomiaru.
 
 ---
 

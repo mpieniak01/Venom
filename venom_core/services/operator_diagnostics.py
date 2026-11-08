@@ -38,6 +38,7 @@ _LOG_LEVEL = re.compile(
 )
 _LOG_LIMIT = 16384
 _BODY_LIMIT = 262144
+_SERVICE_NAME = re.compile(r"[a-zA-Z0-9_. -]{1,48}")
 _STALE_AFTER = 5.0
 
 
@@ -210,17 +211,26 @@ def _services_evidence(read: ProbeResult, now: datetime) -> Evidence:
     rows = read.payload.get("services")
     if not isinstance(rows, list) or not rows:
         return Evidence(_SERVICES_PATH, "niepełne", "Brak listy usług w sondzie", now)
-    states = Counter(
-        value
-        if isinstance(value := _object(row).get("status"), str)
-        and value in {"online", "degraded", "offline"}
-        else "unknown"
-        for row in rows
-    )
+    states: Counter[str] = Counter()
+    affected = []
+    for row in map(_object, rows):
+        state = row.get("status")
+        if state not in ("online", "degraded", "offline"):
+            state = "unknown"
+        states[state] += 1
+        name = row.get("name")
+        if (
+            state != "online"
+            and isinstance(name, str)
+            and _SERVICE_NAME.fullmatch(name)
+        ):
+            affected.append(f"{name}={state}")
     detail = ", ".join(
         f"{status}={states[status]}"
         for status in ("online", "degraded", "offline", "unknown")
     )
+    if affected:
+        detail += f" · usługi do sprawdzenia: {', '.join(affected[:8])}"
     status = "odczytano" if states["online"] == len(rows) else "częściowy odczyt"
     return Evidence(_SERVICES_PATH, status, detail, now)
 
@@ -277,12 +287,12 @@ async def run_operator_diagnostics(
         return "\n".join(
             [
                 "**Instrukcja diagnostyki**",
-                *[f"- \x60{cmd}\x60" for cmd in commands],
+                *[f"- `{cmd}`" for cmd in commands],
                 source,
             ]
         )
     if origin is None:
-        return f"**Odmowa diagnostyki** · Sondy wymagają skonfigurowanego lokalnego API.\nNastępny krok · \x60{HOST_CHECK}\x60\n{source}"
+        return f"**Odmowa diagnostyki** · Sondy wymagają skonfigurowanego lokalnego API.\nNastępny krok · `{HOST_CHECK}`\n{source}"
     evidence = []
     async with httpx.AsyncClient(
         base_url=origin, timeout=3.0, follow_redirects=False, trust_env=False
@@ -295,16 +305,20 @@ async def run_operator_diagnostics(
         if request.rider:
             read = await _read_json(client, _RIDER_PATH)
             evidence.append(_rider_evidence(read, datetime.now(UTC)))
-    next_step = (
-        HOST_CHECK
-        if any(item.status == "niedostępne" for item in evidence)
-        else commands[-1]
-    )
+    statuses = {item.status for item in evidence}
+    if "odmowa" in statuses:
+        next_step = "Sprawdź uprawnienia operatora do wskazanego odczytu."
+    elif "brak transportu" in statuses:
+        next_step = "Sprawdź wybór urządzenia i stan transportu w panelu Rider."
+    elif evidence[0].status == "niedostępne":
+        next_step = f"`{HOST_CHECK}`"
+    else:
+        next_step = f"`{commands[-1]}`"
     return "\n".join(
         [
             "**Diagnostyka Full · dowody**",
             *[item.render() for item in evidence],
-            f"Następny krok · \x60{next_step}\x60",
+            f"Następny krok · {next_step}",
             source,
         ]
     )

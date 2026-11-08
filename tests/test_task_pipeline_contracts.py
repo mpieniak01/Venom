@@ -1607,6 +1607,7 @@ async def test_g5_rider_evidence_keeps_read_failures_and_ack_separate(
     ]
     if scenario == "offline":
         assert "**brak transportu**" in reply and "Odczytano: brak" in reply
+        assert "Sprawdź wybór urządzenia i stan transportu" in reply
     elif scenario == "partial":
         assert "**częściowy odczyt**" in reply and "Odmowa: settings." in reply
         assert (
@@ -1740,3 +1741,54 @@ async def test_g5_routing_uses_full_dispatcher_without_classification(monkeypatc
     assert answer == "Dowód"
     diagnose.assert_awaited_once_with(command.content)
     orch.intent_manager.classify_intent.assert_not_awaited()
+
+
+def test_g5_services_reports_named_failures_without_raw_fields():
+    from datetime import UTC, datetime
+
+    from venom_core.services import operator_diagnostics as diagnostics
+
+    sample = diagnostics.ProbeResult(
+        {
+            "services": [
+                {"name": "Redis", "status": "offline", "error": "fixture secret"},
+                {"name": "Backend", "status": "online"},
+            ]
+        },
+        "odczytano",
+        "HTTP 200",
+    )
+    result = diagnostics._services_evidence(sample, datetime.now(UTC))
+    assert result.status == "częściowy odczyt"
+    assert "Redis=offline" in result.detail and "fixture secret" not in result.detail
+
+
+@pytest.mark.asyncio
+async def test_g5_never_probes_nonloopback_or_follows_redirects(monkeypatch):
+    import httpx
+
+    from venom_core.services import operator_diagnostics as diagnostics
+
+    urls = []
+
+    def endpoint(request):
+        urls.append(str(request.url))
+        return httpx.Response(302, headers={"Location": "http://192.0.2.4/other"})
+
+    client = httpx.AsyncClient
+    monkeypatch.setattr(
+        diagnostics.httpx,
+        "AsyncClient",
+        lambda **options: client(transport=httpx.MockTransport(endpoint), **options),
+    )
+    check = diagnostics.parse_diagnostic_request("Sprawdź Rider-Pi")
+    assert check is not None
+    refusal = await diagnostics.run_operator_diagnostics(
+        check, "http://192.0.2.4:8000/api/v1/system/services"
+    )
+    assert not urls and "Odmowa diagnostyki" in refusal
+    redirect = await diagnostics.run_operator_diagnostics(
+        check, "http://127.0.0.1:8000/api/v1/system/services"
+    )
+    assert urls == ["http://127.0.0.1:8000/api/v1/rider/status?section=overview"]
+    assert "HTTP 302" in redirect

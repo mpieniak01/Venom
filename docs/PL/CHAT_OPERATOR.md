@@ -232,6 +232,8 @@ curl --fail --max-time 5 'http://127.0.0.1:8000/api/v1/system/services'
 curl --fail --max-time 5 'http://127.0.0.1:8000/api/v1/rider/status?section=overview'
 ```
 
+Jeśli token dostępu Ridera jest włączony, do ręcznej sondy statusu użyj uwierzytelnionego lokalnego klienta.
+
 Dla profilu z innym portem użyj portu jego API. Jeśli stos uruchomiono z własnym plikiem środowiska, przekaż ten sam `ENV_FILE` do polecenia `make status`. Częściowy odczyt wymienia dostępne sekcje i braki. Oś `lx` opisuje składową liniową, a `az` obrotową. ACK dokumentuje przyjęcie komendy. Fizyczny skutek wymaga odrębnego pomiaru.
 
 ### Walidacja i probki

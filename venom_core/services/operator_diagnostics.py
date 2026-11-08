@@ -106,8 +106,13 @@ def _loopback_origin(endpoint: str) -> str | None:
 
 
 async def _read_json(client: httpx.AsyncClient, path: str) -> ProbeResult:
+    token = os.getenv("RIDER_ACCESS_TOKEN") if path == _RIDER_PATH else None
+    headers = {"Authorization": f"Bearer {token}"} if token else None
     try:
-        async with asyncio.timeout(4), client.stream("GET", path) as response:
+        async with (
+            asyncio.timeout(4),
+            client.stream("GET", path, headers=headers) as response,
+        ):
             if response.status_code in {401, 403}:
                 return ProbeResult(None, "odmowa", f"HTTP {response.status_code}")
             if not response.is_success:

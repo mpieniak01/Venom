@@ -232,6 +232,8 @@ curl --fail --max-time 5 'http://127.0.0.1:8000/api/v1/system/services'
 curl --fail --max-time 5 'http://127.0.0.1:8000/api/v1/rider/status?section=overview'
 ```
 
+For manual Rider status checks, use an authenticated local client when the Rider access token is enabled.
+
 When the API is unavailable, the launcher reports process ownership on the host. A partial report identifies missing sections. The `lx` axis describes linear motion and `az` angular motion. An ACK records command receipt. A separate observation is required to verify the physical effect.
 
 ### Validation and probes

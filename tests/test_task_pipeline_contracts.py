@@ -1777,11 +1777,55 @@ def test_g5_services_reports_named_failures_without_raw_fields():
 
 
 @pytest.mark.asyncio
+async def test_g5_rider_token_is_sent_only_to_the_local_rider_probe(
+    monkeypatch, tmp_path
+):
+    import httpx
+
+    from venom_core.services import operator_diagnostics as diagnostics
+
+    token = "fixture-rider-token"
+    monkeypatch.setenv("RIDER_ACCESS_TOKEN", token)
+    calls = []
+
+    def endpoint(request):
+        auth = request.headers.get("Authorization")
+        calls.append((request.method, request.url.path, auth))
+        if request.url.path == "/api/v1/system/services":
+            return httpx.Response(200, json={"services": []})
+        if auth != f"Bearer {token}":
+            return httpx.Response(403)
+        return httpx.Response(
+            200, json={"connection": {"status": "online"}, "health": {}}
+        )
+
+    client = httpx.AsyncClient
+    monkeypatch.setattr(
+        diagnostics.httpx,
+        "AsyncClient",
+        lambda **options: client(transport=httpx.MockTransport(endpoint), **options),
+    )
+    check = diagnostics.parse_diagnostic_request("Sprawdź Venoma i Rider-Pi")
+    assert check is not None
+    report = await diagnostics.run_operator_diagnostics(
+        check, "http://127.0.0.1:8000/api/v1/system/services", log_dir=tmp_path
+    )
+
+    assert calls == [
+        ("GET", "/api/v1/system/services", None),
+        ("GET", "/api/v1/rider/status", f"Bearer {token}"),
+    ]
+    assert "Odczytano: health." in report
+    assert token not in report
+
+
+@pytest.mark.asyncio
 async def test_g5_never_probes_nonloopback_or_follows_redirects(monkeypatch):
     import httpx
 
     from venom_core.services import operator_diagnostics as diagnostics
 
+    monkeypatch.setenv("RIDER_ACCESS_TOKEN", "fixture-rider-token")
     urls = []
 
     def endpoint(request):

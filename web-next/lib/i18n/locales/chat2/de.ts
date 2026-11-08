@@ -35,6 +35,7 @@ export const chat2 = {
   "capabilities": "Funktionen des aktuellen Adapters",
   "useNotes": "Notizen verwenden",
   "saveNote": "Als Notiz speichern",
+  "noteSaving": "Notiz wird gespeichert…",
   "noteSaved": "Notiz gespeichert",
   "noteSaveFailed": "Notiz konnte nicht gespeichert werden.",
   "text": "Text",

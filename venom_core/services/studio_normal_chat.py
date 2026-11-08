@@ -6,6 +6,7 @@ from typing import Any
 from fastapi import HTTPException
 
 from venom_core.api.schemas.llm_simple import (
+    MAX_CHAT_HISTORY_CHARS,
     MAX_CHAT_MESSAGE_CHARS,
     HistoryMessage,
     SimpleChatRequest,
@@ -129,7 +130,9 @@ async def prepare_studio_normal(
         raise HTTPException(413, {"reason_code": "studio_normal_context_limit"})
     return request.model_copy(
         update={
-            "history": _recent_turns(store, session_id, budget),
+            "history": _recent_turns(
+                store, session_id, min(budget, MAX_CHAT_HISTORY_CHARS)
+            ),
             "max_tokens": output_tokens,
             "think": False,
         }

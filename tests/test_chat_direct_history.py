@@ -565,6 +565,35 @@ def test_studio_history_ignores_a_persisted_reply_over_the_message_limit(tmp_pat
     assert [turn.content for turn in turns] == ["Earlier question", "Earlier reply"]
 
 
+@pytest.mark.asyncio
+async def test_studio_normal_respects_the_total_history_limit_with_large_context(
+    tmp_path, monkeypatch
+):
+    from venom_core.services import studio_normal_chat
+
+    monkeypatch.setattr(studio_normal_chat.SETTINGS, "OLLAMA_CONTEXT_LENGTH", 32768)
+    store = SessionStore(str(tmp_path / "session.json"))
+    for request_id in ("older", "latest"):
+        store.append_message(
+            "own", {"request_id": request_id, "role": "user", "content": request_id}
+        )
+        store.append_message(
+            "own",
+            {"request_id": request_id, "role": "assistant", "content": "x" * 26000},
+        )
+    get_vectors = AsyncMock()
+
+    prepared, _ = await studio_normal_chat.prepare_studio_normal(
+        SimpleChatRequest(content="Continue", session_id="own", studio_normal=True),
+        store,
+        get_vectors,
+    )
+
+    assert [item.role for item in prepared.history] == ["user", "assistant"]
+    assert prepared.history[0].content == "latest"
+    get_vectors.assert_not_awaited()
+
+
 def test_studio_normal_stream_uses_host_history_and_loads_rag_only_for_notes(
     tmp_path, monkeypatch
 ):

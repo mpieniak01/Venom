@@ -5,6 +5,7 @@ from typing import Any, Literal, Optional
 from pydantic import BaseModel, Field
 
 MAX_CHAT_MESSAGE_CHARS = 50_000
+MAX_CHAT_HISTORY_CHARS = 50_000
 
 
 class HistoryMessage(BaseModel):

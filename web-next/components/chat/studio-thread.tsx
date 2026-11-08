@@ -15,7 +15,7 @@ const Message = memo(function StudioMessage({ message, detail, onError, noteSess
   const [note, setNote] = useState<"idle" | "saving" | "saved">("idle");
   const noteLabel = {
     idle: "chat2.saveNote",
-    saving: "chat2.loading",
+    saving: "chat2.noteSaving",
     saved: "chat2.noteSaved",
   } as const;
   const canSave = !!noteSession && message.role === "assistant" && !!message.requestId

@@ -35,6 +35,7 @@ export const chat2 = {
   "capabilities": "Możliwości bieżącego adaptera",
   "useNotes": "Użyj notatek",
   "saveNote": "Zapisz jako notatkę",
+  "noteSaving": "Zapisywanie notatki…",
   "noteSaved": "Zapisano notatkę",
   "noteSaveFailed": "Nie udało się zapisać notatki.",
   "text": "Tekst",

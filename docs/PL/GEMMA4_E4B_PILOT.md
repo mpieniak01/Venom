@@ -44,9 +44,10 @@ lokalny artefakt inferencyjny. Mamy dwie osobne tożsamości do odtworzenia.
   poprzedza zakończenie strumienia, a indeksowanie pamięci sesji nie blokuje
   wysłania kolejnej wiadomości. Czyszczenie sesji kończy się po trwającym
   indeksowaniu, a spóźniony zapis usuniętej tury jest odrzucany.
-- **Normal** korzysta z historii, streszczenia i pamięci RAG. Przy pytaniu
-  o nazwane źródło dobiera wpisy z bieżącej sesji i pamięci globalnej.
-  Jeśli brakuje pasującego wpisu, model otrzymuje informację o braku źródła.
+- **Normal** korzysta z historii. W Chat 2.0 odczyt notatek wymaga włączenia
+  opcji **Użyj notatek** dla bieżącego pytania. Domyślnie jest wyłączona.
+  Przy włączonej opcji Venom dobiera źródło z bieżącej sesji i pamięci
+  globalnej. Gdy go nie znajdzie, informuje model o braku źródła.
   Wynik FileSkill może być pełny, częściowy albo zawierać odmowę.
 - **Complex** prowadzi zadania wymagające planowania istniejącą ścieżką
   `COMPLEX_PLANNING`. **Full** to osobny wymiar konfiguracji i nadal określa

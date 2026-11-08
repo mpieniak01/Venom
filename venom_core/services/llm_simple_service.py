@@ -15,7 +15,7 @@ from uuid import UUID, uuid4
 from fastapi import HTTPException
 from fastapi.responses import StreamingResponse
 
-from venom_core.api.schemas.llm_simple import SimpleChatRequest
+from venom_core.api.schemas.llm_simple import MAX_CHAT_HISTORY_CHARS, SimpleChatRequest
 from venom_core.config import DEFAULT_SIMPLE_MODE_SYSTEM_PROMPT, SETTINGS
 from venom_core.core.metrics import get_metrics_collector
 from venom_core.core.tracer import TraceStatus
@@ -1176,7 +1176,7 @@ def _plain_request_history(
 ) -> list[dict[str, Any]]:
     """Reject oversized history before provider I/O without silently dropping prior turns."""
     history_length = sum(len(item.content) for item in request.history)
-    if history_length > 50000:
+    if history_length > MAX_CHAT_HISTORY_CHARS:
         raise HTTPException(status_code=400, detail="vast_chat_history_limit")
     char_limit = _get_simple_context_char_limit(runtime)
     if (

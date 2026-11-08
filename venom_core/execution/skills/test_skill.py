@@ -116,45 +116,10 @@ class TestSkill:
             if not re.match(r"^[a-zA-Z0-9_./\-]+$", test_path):
                 return None, f"❌ Błąd: Nieprawidłowa ścieżka testów: {test_path}"
 
-            import shlex
-
-            safe_path = shlex.quote(test_path)
-
-            # --- Tryb Docker Sandbox ---
-            if self.docker_available and self.habitat:
-                logger.info(f"Uruchamiam pytest w Dockerze dla: {test_path}")
-                command = f"python -m pytest {safe_path} -v --tb=short --color=no"
-                exit_code, output = self.habitat.execute(
-                    command, timeout=DEFAULT_PYTEST_TIMEOUT_SECONDS
-                )
-                # Graceful fallback: kontener sandbox może nie mieć pytest.
-                if exit_code == 1 and re.fullmatch(
-                    r"(?:(?:[^\r\n]*/)?python[\d.]*(?:: ))?No module named pytest",
-                    output.strip(),
-                ):
-                    if not self.allow_local_execution:
-                        return None, "❌ Pytest nie jest dostępny w kontenerze."
-                    logger.warning(
-                        "Pytest niedostępny w kontenerze - fallback do uruchomienia lokalnego."
-                    )
-                    local_result = await self._run_pytest_locally(test_path)
-                    if isinstance(local_result, str):
-                        return None, local_result
-                    exit_code, output = local_result
-
-            # --- Tryb Lokalny (Fallback) ---
-            elif self.allow_local_execution:
-                local_result = await self._run_pytest_locally(test_path)
-                if isinstance(local_result, str):
-                    return None, local_result
-                exit_code, output = local_result
-
-            # --- Tryb Niedostępny ---
-            else:
-                return (
-                    None,
-                    "⚠️ Docker sandbox jest niedostępny, a uruchamianie lokalne jest wyłączone.",
-                )
+            result = await self._execute_pytest(test_path)
+            if isinstance(result, str):
+                return None, result
+            exit_code, output = result
 
             # Sparsuj wyniki (wspólne dla obu trybów)
             report = self._parse_pytest_output(exit_code, output)
@@ -172,6 +137,32 @@ class TestSkill:
             error_msg = f"❌ Błąd podczas uruchamiania pytest: {str(e)}"
             logger.error(error_msg)
             return None, error_msg
+
+    async def _execute_pytest(self, test_path: str) -> tuple[int, str] | str:
+        import re
+        import shlex
+
+        if self.docker_available and self.habitat:
+            logger.info(f"Uruchamiam pytest w Dockerze dla: {test_path}")
+            command = (
+                f"python -m pytest {shlex.quote(test_path)} -v --tb=short --color=no"
+            )
+            exit_code, output = self.habitat.execute(
+                command, timeout=DEFAULT_PYTEST_TIMEOUT_SECONDS
+            )
+            if exit_code != 1 or not re.fullmatch(
+                r"(?:(?:[^\r\n]*/)?python[\d.]*: )?No module named pytest",
+                output.strip(),
+            ):
+                return exit_code, output
+            if not self.allow_local_execution:
+                return "❌ Pytest nie jest dostępny w kontenerze."
+            logger.warning(
+                "Pytest niedostępny w kontenerze - fallback do uruchomienia lokalnego."
+            )
+        elif not self.allow_local_execution:
+            return "⚠️ Docker sandbox jest niedostępny, a uruchamianie lokalne jest wyłączone."
+        return await self._run_pytest_locally(test_path)
 
     async def _run_pytest_locally(self, test_path: str) -> tuple[int, str] | str:
         """Uruchamia pytest lokalnie i zwraca (exit_code, output) lub komunikat błędu."""

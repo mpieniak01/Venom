@@ -128,11 +128,12 @@ class TestSkill:
                     command, timeout=DEFAULT_PYTEST_TIMEOUT_SECONDS
                 )
                 # Graceful fallback: kontener sandbox może nie mieć pytest.
-                if (
-                    exit_code != 0
-                    and self.allow_local_execution
-                    and "No module named pytest" in output
+                if exit_code == 1 and re.fullmatch(
+                    r"(?:(?:[^\r\n]*/)?python[\d.]*(?:: ))?No module named pytest",
+                    output.strip(),
                 ):
+                    if not self.allow_local_execution:
+                        return None, "❌ Pytest nie jest dostępny w kontenerze."
                     logger.warning(
                         "Pytest niedostępny w kontenerze - fallback do uruchomienia lokalnego."
                     )

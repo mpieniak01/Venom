@@ -615,12 +615,21 @@ async def test_studio_embedding_expiry_preserves_lazy_shared_store(studio, monke
     store = SimpleNamespace()
     constructed = Mock(return_value=store)
 
+    def signal_checked():
+        loop.call_soon_threadsafe(checked.set)
+
+    release = Mock(side_effect=[RuntimeError("temporarily unavailable"), None])
+
+    def release_after_idle():
+        release()
+        signal_checked()
+
     def make_vector(embedding_service):
         store.embedding_service = embedding_service
         monkeypatch.setattr(
             embedding_service,
             "release_if_idle",
-            lambda: loop.call_soon_threadsafe(checked.set),
+            release_after_idle,
         )
         return constructed()
 
@@ -632,6 +641,7 @@ async def test_studio_embedding_expiry_preserves_lazy_shared_store(studio, monke
         await asyncio.wait_for(checked.wait(), timeout=3)
         assert await runtime.get_vector_store() is store
         constructed.assert_called_once()
+        assert release.call_count == 2
     assert runtime._embedding_idle_task.cancelled()
 
 

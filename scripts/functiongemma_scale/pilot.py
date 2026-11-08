@@ -104,8 +104,8 @@ def main():
     args = parser.parse_args()
     cases = json.loads(args.cases.read_text(encoding="utf-8"))
     raw = json.loads(args.predictions.read_text(encoding="utf-8"))["raw"]
+    rows = asyncio.run(assess(cases, raw, execute_fixtures=args.execute_fixtures))
     with args.output.open("x", encoding="utf-8") as output:
-        rows = asyncio.run(assess(cases, raw, execute_fixtures=args.execute_fixtures))
         json.dump(
             {"mode": "fixtures" if args.execute_fixtures else "shadow", "rows": rows},
             output,

@@ -221,7 +221,12 @@ class StudioRuntime:
             await asyncio.sleep(interval)
             store = self.vector_store
             if store is not None:
-                await run_drainable_thread(store.embedding_service.release_if_idle)
+                try:
+                    await run_drainable_thread(store.embedding_service.release_if_idle)
+                except Exception:
+                    logger.exception(
+                        "Studio: nie udało się zwolnić nieużywanych embeddingów"
+                    )
 
     @staticmethod
     def _create_audio() -> Any:

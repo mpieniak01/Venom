@@ -21,8 +21,8 @@ from venom_core.core.slash_commands import parse_slash_command
 from venom_core.utils.logger import LOG_DIR
 
 DIAGNOSTICS_INTENT = "OPERATOR_DIAGNOSTICS"
-RUNBOOK = "docs/PL/OPERATOR_MANUAL.md#4-diagnostyka-full"
-HOST_CHECK = "make status-venom PROFILE=full ENVIRONMENT=dev"
+RUNBOOK = "docs/PL/CHAT_OPERATOR.md#diagnostyka-full"
+HOST_CHECK = "make status VENOM_VARIANT=venom PROFILE=full ENVIRONMENT=dev"
 _RIDER_PATH = "/api/v1/rider/status?section=overview"
 _SERVICES_PATH = "/api/v1/system/services"
 _COMMAND = re.compile(

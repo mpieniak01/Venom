@@ -460,6 +460,13 @@ def test_read_only_pilot_cli_records_shadow_result(
         ],
     )
 
+    valid_predictions = raw.read_text(encoding="utf-8")
+    raw.write_text('{"raw": {}}', encoding="utf-8")
+    with pytest.raises(ValueError, match="prediction IDs must match"):
+        pilot.main()
+    assert not output.exists()
+
+    raw.write_text(valid_predictions, encoding="utf-8")
     pilot.main()
 
     data = json.loads(output.read_text(encoding="utf-8"))

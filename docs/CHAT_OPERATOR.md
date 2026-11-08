@@ -163,6 +163,8 @@ Use those documents for deeper technical detail. Use this document as the operat
 - `data/memory/state_dump.json`
 - `data/memory/lancedb`
 
+Chat 2.0 saves thread history in both Studio and Full. In Normal, select **Use notes** to retrieve notes for the current question. This option is off by default. **Save as note** indexes the selected completed answer in Direct or Normal.
+
 ### Chat tools and runtime config
 
 - `venom_core/memory/memory_skill.py`
@@ -217,6 +219,20 @@ The chat surface should be managed with explicit, repeatable `make` targets inst
    ```bash
    make local-first-stop
    ```
+
+### Full diagnostics
+
+In Normal, use **Check Venom**, **Check Rider-Pi**, or **Check Venom and Rider-Pi**. Operator access is required for reads. The report includes sources, observation times, available sections, and a next step. The Venom log sample is limited to 16 KiB.
+
+**How to check Venom and Rider-Pi?** shows the commands. Use the same API port and `ENV_FILE` as the running stack.
+
+```bash
+make status VENOM_VARIANT=venom PROFILE=full ENVIRONMENT=dev
+curl --fail --max-time 5 'http://127.0.0.1:8000/api/v1/system/services'
+curl --fail --max-time 5 'http://127.0.0.1:8000/api/v1/rider/status?section=overview'
+```
+
+When the API is unavailable, the launcher reports process ownership on the host. A partial report identifies missing sections. The `lx` axis describes linear motion and `az` angular motion. An ACK records command receipt. A separate observation is required to verify the physical effect.
 
 ### Validation and probes
 

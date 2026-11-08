@@ -99,8 +99,8 @@ artefaktu aktywnego UI. Zobacz [cykl życia UI](WEB_LIFECYCLE.md).
 
 Studio ładuje jeden wybrany lokalny model Ollamy przed zgłoszeniem gotowości
 API, jeśli `LLM_WARMUP_ON_STARTUP` jest włączone. Próba trwa maksymalnie 30 s.
-Jeżeli model jest niedostępny, start kończy się z komunikatem w logu, a silnik
-można wybrać w czacie. Uruchomienie nie rozgrzewa dostawców zdalnych.
+Jeżeli model jest niedostępny, Studio zapisuje ostrzeżenie w logu i kontynuuje
+start. Silnik można wybrać w czacie. Uruchomienie nie rozgrzewa dostawców zdalnych.
 
 Domyślne strojenie launchera Studio to 4096 tokenów kontekstu, jedna generacja
 naraz i jeden załadowany model Ollamy. Jawne ustawienia mają pierwszeństwo.

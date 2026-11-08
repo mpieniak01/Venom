@@ -146,3 +146,4 @@ async def test_healing_flow_uses_last_pytest_exit_code(
     assert result["exit_code"] == reports[-1][0]
     assert dispatcher.coder_agent.calls == attempts
     assert all("poprawka zastosowana" not in log.lower() for _, log in state.logs)
+    assert all("fix applied" not in log.lower() for _, log in state.logs)

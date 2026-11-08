@@ -541,6 +541,30 @@ def test_history_identifies_old_processing_direct_traces_for_full():
     ]
 
 
+def test_studio_history_ignores_a_persisted_reply_over_the_message_limit(tmp_path):
+    from venom_core.api.schemas.llm_simple import MAX_CHAT_MESSAGE_CHARS
+    from venom_core.services.studio_normal_chat import _recent_turns
+
+    store = SessionStore(str(tmp_path / "session.json"))
+    for request_id, question, reply in (
+        ("older", "Earlier question", "Earlier reply"),
+        ("oversize", "Latest question", "x" * (MAX_CHAT_MESSAGE_CHARS + 1)),
+    ):
+        for role, content in (("user", question), ("assistant", reply)):
+            store.append_message(
+                "own",
+                {
+                    "request_id": request_id,
+                    "role": role,
+                    "content": content,
+                },
+            )
+
+    turns = _recent_turns(store, "own", budget=MAX_CHAT_MESSAGE_CHARS * 2)
+
+    assert [turn.content for turn in turns] == ["Earlier question", "Earlier reply"]
+
+
 def test_studio_normal_stream_uses_host_history_and_loads_rag_only_for_notes(
     tmp_path, monkeypatch
 ):

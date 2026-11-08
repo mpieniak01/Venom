@@ -71,20 +71,6 @@ Jeśli chcesz zacząć używać Copilot chatu w Venom, zacznij od:
 
 Używaj tych dokumentów jako źródła prawdy dla czatu. Ten podręcznik pozostaje na poziomie ogólnego użycia systemu i nie powtarza pełnego kontraktu czatu.
 
-### Diagnostyka Full
-
-W trybie Normal użyj **Sprawdź Venoma**, **Sprawdź Rider-Pi** lub **Sprawdź Venoma i Rider-Pi**. Odczyt wymaga dostępu operatora. Raport podaje źródło, czas pomiaru, zakres odczytu i następny krok. Końcówka logu jest ograniczona do 16 KiB. Raport zawiera liczniki ostrzeżeń i błędów.
-
-**Jak sprawdzić Venoma i Rider-Pi?** zwraca polecenia z tej sekcji. Gdy API jest niedostępne, launcher sprawdzi właścicieli procesów na hoście.
-
-```bash
-make status-venom PROFILE=full ENVIRONMENT=dev
-curl --fail --max-time 5 'http://127.0.0.1:8000/api/v1/system/services'
-curl --fail --max-time 5 'http://127.0.0.1:8000/api/v1/rider/status?section=overview'
-```
-
-Dla profilu z innym portem użyj portu jego API. Jeśli stos uruchomiono z własnym plikiem środowiska, przekaż ten sam `ENV_FILE` do polecenia `make status-venom`. Częściowy odczyt wymienia dostępne sekcje i braki. Oś `lx` opisuje składową liniową, a `az` obrotową. ACK dokumentuje przyjęcie komendy. Fizyczny skutek wymaga odrębnego pomiaru.
-
 ---
 
 *Dokument ten będzie rozwijany wraz z nowymi funkcjami systemu.*

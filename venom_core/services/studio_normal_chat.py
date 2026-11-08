@@ -5,7 +5,11 @@ from typing import Any
 
 from fastapi import HTTPException
 
-from venom_core.api.schemas.llm_simple import HistoryMessage, SimpleChatRequest
+from venom_core.api.schemas.llm_simple import (
+    MAX_CHAT_MESSAGE_CHARS,
+    HistoryMessage,
+    SimpleChatRequest,
+)
 from venom_core.config import DEFAULT_SIMPLE_MODE_SYSTEM_PROMPT, SETTINGS
 from venom_core.memory.chat_retrieval import (
     CHAT_NOTE_POLICY,
@@ -49,6 +53,7 @@ def _recent_turns(
             or not isinstance(reply, str)
             or not prompt
             or not reply
+            or max(len(prompt), len(reply)) > MAX_CHAT_MESSAGE_CHARS
         ):
             continue
         cost = len(prompt) + len(reply) + 64

@@ -401,9 +401,17 @@ def _launch_member_handle(
     handle = os.pidfd_open(int(proc.name))
     try:
         _validate_launch_member(proc, pid, ticks, root, key, token)
-    except BaseException:
-        os.close(handle)
-        raise
+    except BaseException as exc:
+        try:
+            # /proc can deny environ access while the pinned process exits.
+            if (
+                isinstance(exc, PermissionError)
+                and select.select([handle], [], [], 0.05)[0]
+            ):
+                return None
+            raise
+        finally:
+            os.close(handle)
     return handle
 
 

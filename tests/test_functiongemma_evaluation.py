@@ -1,6 +1,7 @@
 """Paired proposals are scored without running tools."""
 
 import copy
+import json
 from types import SimpleNamespace as NS
 
 import pytest
@@ -301,6 +302,166 @@ def test_scale_decoder_accepts_only_one_allowlisted_action(raw):
     assert decode_action('{"action":"read"}<end_of_turn>') == "read"
     with pytest.raises(ValueError):
         decode_action(raw)
+
+
+@pytest.fixture
+def pilot_read_case():
+    """Use a synthetic read with one explicit verified path."""
+    from scripts.functiongemma_scale.cases import CONTEXT
+
+    context = {
+        "paths": ["proof.txt"],
+        "body": None,
+        "active": None,
+        "active_requested": False,
+        "recursive": None,
+        "max_depth": None,
+    }
+    return {
+        "record": {
+            "record_id": "one",
+            "language": "en",
+            "messages": [
+                {"role": "system", "content": CONTEXT + json.dumps(context)},
+                {"role": "user", "content": 'Read "proof.txt".'},
+            ],
+        },
+        "oracle": {
+            "family": "read",
+            "fixture": {"files": {"proof.txt": "evidence"}},
+            "expected_action": "read",
+            "expected_calls": [
+                {
+                    "name": "FileSkill-read_file",
+                    "arguments": {"file_path": "proof.txt"},
+                }
+            ],
+            "expected_result": "call",
+            "reference_text": None,
+        },
+    }
+
+
+@pytest.mark.asyncio
+async def test_read_only_pilot_is_shadow_by_default(monkeypatch, pilot_read_case):
+    """A correct shadow proposal must not create a workspace."""
+    from scripts.functiongemma_scale import pilot
+
+    def unexpected_workspace(_files):
+        pytest.fail("Shadow mode opened a workspace")
+
+    monkeypatch.setattr(pilot, "fixture_skill", unexpected_workspace)
+    row = await pilot.assess_case(
+        pilot_read_case, {"stop_reason": "eos", "text": '{"action":"read"}'}
+    )
+    assert row["decision_ok"] and row["fixture_authorized"]
+    assert row["proposed_calls"] == pilot_read_case["oracle"]["expected_calls"]
+    assert row["executed_calls"] == [] and row["observed_effects"] is None
+
+
+@pytest.mark.asyncio
+async def test_read_only_pilot_replays_only_the_expected_synthetic_read(
+    pilot_read_case,
+):
+    """Record the real FileSkill result, separately from the proposed arguments."""
+    from scripts.functiongemma_scale import pilot
+
+    row = await pilot.assess_case(
+        pilot_read_case,
+        {"stop_reason": "eos", "text": '{"action":"read"}'},
+        execute_fixtures=True,
+    )
+    assert row["fixture_authorized"] and row["executed_calls"] == row["proposed_calls"]
+    assert row["observed_effects"] == ["evidence"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("prediction", "format_ok"),
+    [
+        ({"stop_reason": "timeout", "text": '{"action":"read"}'}, False),
+        ({"stop_reason": "eos", "text": '{"action":"read","path":"other"}'}, False),
+        ({"stop_reason": "eos", "text": '{"action":"exists"}'}, True),
+    ],
+)
+async def test_read_only_pilot_blocks_unapproved_proposals(
+    monkeypatch, pilot_read_case, prediction, format_ok
+):
+    """Even replay mode must leave the workspace untouched on a rejected proposal."""
+    from scripts.functiongemma_scale import pilot
+
+    def unexpected_workspace(_files):
+        pytest.fail("A rejected proposal opened a workspace")
+
+    monkeypatch.setattr(pilot, "fixture_skill", unexpected_workspace)
+    row = await pilot.assess_case(pilot_read_case, prediction, execute_fixtures=True)
+    assert row["format_ok"] is format_ok
+    assert row["fallback"] == (None if format_ok else "clarify")
+    assert not row["fixture_authorized"]
+    assert row["executed_calls"] == []
+
+
+@pytest.mark.asyncio
+async def test_read_only_pilot_blocks_read_proposed_for_preview(pilot_read_case):
+    """A bindable file path does not authorize executing a preview."""
+    from scripts.functiongemma_scale import pilot
+
+    pilot_read_case["oracle"].update(
+        expected_action="preview", expected_calls=[], expected_result="preview"
+    )
+    row = await pilot.assess_case(
+        pilot_read_case,
+        {"stop_reason": "eos", "text": '{"action":"read"}'},
+        execute_fixtures=True,
+    )
+    assert row["unexpected_proposal"] and row["proposed_calls"]
+    assert row["executed_calls"] == []
+
+
+@pytest.mark.asyncio
+async def test_read_only_pilot_rejects_incomplete_prediction_set(pilot_read_case):
+    """Reject unpaired results before the execution stage."""
+    from scripts.functiongemma_scale import pilot
+
+    with pytest.raises(ValueError, match="prediction IDs must match"):
+        await pilot.assess([pilot_read_case], {}, execute_fixtures=True)
+
+
+def test_read_only_pilot_cli_records_shadow_result(
+    monkeypatch, tmp_path, pilot_read_case
+):
+    """Load frozen inputs through the CLI and keep the replay opt-in."""
+    from scripts.functiongemma_scale import pilot
+
+    cases = tmp_path / "cases.json"
+    raw = tmp_path / "raw.json"
+    output = tmp_path / "shadow.json"
+    cases.write_text(json.dumps([pilot_read_case]), encoding="utf-8")
+    raw.write_text(
+        json.dumps(
+            {"raw": {"one": {"stop_reason": "eos", "text": '{"action":"read"}'}}}
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "pilot",
+            "--cases",
+            str(cases),
+            "--predictions",
+            str(raw),
+            "--output",
+            str(output),
+        ],
+    )
+
+    pilot.main()
+
+    data = json.loads(output.read_text(encoding="utf-8"))
+    assert data["mode"] == "shadow"
+    assert data["rows"][0]["proposed_calls"]
+    assert data["rows"][0]["executed_calls"] == []
 
 
 def test_scale_route_keeps_empty_body_distinct_and_binds_active():

@@ -678,7 +678,46 @@ def test_studio_normal_keeps_older_complete_turns_within_the_context_budget(tmp_
     assert _recent_turns(store, "foreign", 4096) == []
 
 
+def test_note_lookup_embeds_only_when_exact_matches_need_ranking(tmp_path):
+    from venom_core.memory.vector_store import VectorStore
+
+    embedding = Mock()
+    embedding.get_embedding.return_value = [1.0, 0.0, 0.0]
+    store = VectorStore(db_path=str(tmp_path), embedding_service=embedding)
+    store._db = Mock()
+    store._db.table_names.return_value = ["default"]
+    table = store._db.open_table.return_value
+    exact = Mock()
+    ranked = Mock()
+    row = {"id": "note-id", "text": "Jasny Brzeg", "metadata": '{"session_id": "own"}'}
+    exact.where.return_value.select.return_value.limit.return_value.to_list.side_effect = [
+        [],
+        [row],
+        [row, row],
+    ]
+    ranked.where.return_value.limit.return_value.to_list.return_value = [row]
+    table.search.side_effect = [exact, exact, exact, ranked]
+    options = {
+        "session_scope": True,
+        "session_id": "own",
+        "text_pattern": "Jasny Brzeg",
+    }
+
+    assert store.search("Jasny Brzeg", **options) == []
+    assert store.search("Jasny Brzeg", **options)[0]["id"] == "note-id"
+    embedding.get_embedding.assert_not_called()
+
+    assert store.search("Jasny Brzeg", **options)[0]["id"] == "note-id"
+    embedding.get_embedding.assert_called_once_with("Jasny Brzeg")
+    exact_where = exact.where.call_args.args[0]
+    assert r"\"session_id\": \"own\"" in exact_where
+    assert "regexp_like(text, 'Jasny Brzeg')" in exact_where
+    ranked.where.assert_called_once_with(exact_where, prefilter=True)
+
+
 def test_explicit_note_uses_scoped_exact_lookup_before_embedding(tmp_path):
+    pytest.importorskip("lancedb")
+
     from venom_core.memory.chat_retrieval import retrieve_chat_memory
     from venom_core.memory.vector_store import VectorStore
 

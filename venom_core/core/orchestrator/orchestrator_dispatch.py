@@ -24,6 +24,7 @@ from venom_core.core.policy_gate import (
     policy_gate,
 )
 from venom_core.core.tracer import TraceStatus
+from venom_core.memory.chat_retrieval import is_saved_note_lookup
 from venom_core.services.audit_stream import get_audit_stream
 from venom_core.services.conversation_providers import (
     conversation_turn,
@@ -647,6 +648,14 @@ async def _resolve_task_intent(
                 "source": "template",
                 "provider_id": provider_id,
             }
+
+    if (
+        request.use_notes is not None
+        and not request.forced_tool
+        and not request.forced_provider
+        and is_saved_note_lookup(request_content)
+    ):
+        return "GENERAL_CHAT", {"source": "saved_note_lookup", "intent": "GENERAL_CHAT"}
 
     intent = await orch.intent_manager.classify_intent(request_content)
     intent_debug = getattr(orch.intent_manager, "last_intent_debug", {})

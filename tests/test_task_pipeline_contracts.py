@@ -1450,3 +1450,62 @@ def test_full_chat_notes_gate_keeps_session_history(
         assert state.get_task.return_value.context_used.memory_entries == ["saved-note"]
     assert memory.vector_store.search.call_count == searches
     handler._ensure_session_summary.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("use_notes", [False, True])
+@pytest.mark.parametrize(
+    "prompt",
+    [
+        "Według notatki projektu Srebrny Brzeg, jaki jest kod odbioru?",
+        "Jaki jest kod odbioru według notatki projektu Srebrny Brzeg?",
+        "According to the notes for project Silver Bank, what is the pickup code?",
+    ],
+)
+async def test_full_normal_routes_saved_pickup_code_to_chat(prompt, use_notes):
+    from venom_core.core.orchestrator.orchestrator_dispatch import _resolve_task_intent
+
+    classifier = AsyncMock(return_value="CODE_GENERATION")
+    orch = SimpleNamespace(intent_manager=SimpleNamespace(classify_intent=classifier))
+    request = TaskRequest(content=prompt, session_id="own", use_notes=use_notes)
+
+    intent, debug = await _resolve_task_intent(orch, request, prompt)
+
+    assert intent == "GENERAL_CHAT"
+    assert debug["source"] == "saved_note_lookup"
+    classifier.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("prompt", "options"),
+    [
+        ("Jaki kod napisać bez notatek?", {"use_notes": False}),
+        (
+            "Według notatki projektu Srebrny Brzeg, napisz funkcję w Pythonie.",
+            {"use_notes": True},
+        ),
+        (
+            "Napisz kod do obsługi błędów z dokumentacji projektu Srebrny Brzeg.",
+            {"use_notes": False},
+        ),
+        ("Według notatki projektu Srebrny Brzeg, jaki jest kod odbioru?", {}),
+        (
+            "Według notatki projektu Srebrny Brzeg, jaki jest kod odbioru?",
+            {"use_notes": True, "forced_provider": "ollama"},
+        ),
+    ],
+)
+async def test_full_normal_saved_note_routing_preserves_explicit_and_legacy_routes(
+    prompt, options
+):
+    from venom_core.core.orchestrator.orchestrator_dispatch import _resolve_task_intent
+
+    classifier = AsyncMock(return_value="CODE_GENERATION")
+    orch = SimpleNamespace(intent_manager=SimpleNamespace(classify_intent=classifier))
+    request = TaskRequest(content=prompt, session_id="own", **options)
+
+    intent, _ = await _resolve_task_intent(orch, request, prompt)
+
+    assert intent == "CODE_GENERATION"
+    classifier.assert_awaited_once_with(prompt)

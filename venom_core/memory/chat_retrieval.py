@@ -3,16 +3,8 @@
 import re
 from typing import Any, Optional
 
-_NOTE_CUES = {
-    "Polish": (
-        "z notat",
-        "w notat",
-        "według notat",
-        "na podstawie notat",
-        "według źród",
-        "w dokument",
-        "z dokument",
-    ),
+_SAVED_NOTE_CUES = {
+    "Polish": ("z notat", "w notat", "według notat", "na podstawie notat"),
     "English": (
         "according to the notes",
         "according to the retrieved notes",
@@ -20,10 +12,23 @@ _NOTE_CUES = {
         "in the notes",
         "from the notes",
         "from my notes",
-        "in the document",
-        "from the document",
     ),
 }
+_NOTE_CUES = {
+    "Polish": (*_SAVED_NOTE_CUES["Polish"], "według źród", "w dokument", "z dokument"),
+    "English": (*_SAVED_NOTE_CUES["English"], "in the document", "from the document"),
+}
+_NOTE_SOURCE = re.compile(
+    r"\b(?:"
+    + "|".join(re.escape(cue) for cues in _SAVED_NOTE_CUES.values() for cue in cues)
+    + ")"
+)
+_NOTE_LOOKUP = re.compile(
+    r"\b(?:jaki|jaka|jakie|któr[ayoe]|co|ile|kiedy|gdzie|"
+    r"podaj|odczytaj|przypomnij|"
+    r"what|which|when|where|how many|give|retrieve|quote|tell)\b"
+)
+
 
 CHAT_NOTE_POLICY = (
     "The question explicitly asks about saved notes. Treat the notes below as "
@@ -49,6 +54,18 @@ def note_request_language(query: str) -> str | None:
             if any(cue in text for cue in cues)
         ),
         None,
+    )
+
+
+def is_saved_note_lookup(query: str) -> bool:
+    """Recognize a fact request framed as a saved-note lookup."""
+    text = query.strip().casefold().removeprefix("proszę, ").removeprefix("please ")
+    source = _NOTE_SOURCE.search(text)
+    lookup = _NOTE_LOOKUP.search(text)
+    return (
+        source is not None
+        and lookup is not None
+        and (source.start() == 0 or lookup.start() == 0)
     )
 
 

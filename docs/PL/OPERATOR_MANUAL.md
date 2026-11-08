@@ -71,7 +71,7 @@ Jeśli chcesz zacząć używać Copilot chatu w Venom, zacznij od:
 
 Używaj tych dokumentów jako źródła prawdy dla czatu. Ten podręcznik pozostaje na poziomie ogólnego użycia systemu i nie powtarza pełnego kontraktu czatu.
 
-## 4. Diagnostyka Full
+### Diagnostyka Full
 
 W trybie Normal użyj **Sprawdź Venoma**, **Sprawdź Rider-Pi** lub **Sprawdź Venoma i Rider-Pi**. Odczyt wymaga dostępu operatora. Raport podaje źródło, czas pomiaru, zakres odczytu i następny krok. Końcówka logu jest ograniczona do 16 KiB. Raport zawiera liczniki ostrzeżeń i błędów.
 

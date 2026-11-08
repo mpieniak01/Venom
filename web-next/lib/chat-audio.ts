@@ -72,13 +72,13 @@ export async function createAudioCapture(onLimit: () => void, signal?: AbortSign
     } };
   } catch (error) { dispose(); throw error; }
 }
-export function transcribeChatAudio(session: string, capture: { pcm: ArrayBuffer; sampleRate: number }, language: string, signal: AbortSignal) {
-  return apiFetch<{ session_id: string; text: string }>("/api/v1/chat/audio/transcribe?session_id=" + encodeURIComponent(session) + "&sample_rate=" + capture.sampleRate + "&language=" + encodeURIComponent(language), {
+export function transcribeChatAudio(session: string, capture: { pcm: ArrayBuffer; sampleRate: number }, language: string, signal: AbortSignal, preferNative = false) {
+  return apiFetch<{ session_id: string; text: string }>("/api/v1/chat/audio/transcribe?session_id=" + encodeURIComponent(session) + "&sample_rate=" + capture.sampleRate + "&language=" + encodeURIComponent(language) + (preferNative ? "&prefer_native=true" : ""), {
     method: "POST", body: capture.pcm, headers: { "Content-Type": "application/octet-stream" }, signal,
   });
 }
-export async function speakChatAudio(session: string, text: string, signal: AbortSignal) {
-  const response = await fetch(getApiBaseUrl() + "/api/v1/chat/audio/speak", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ session_id: session, text }), signal });
+export async function speakChatAudio(session: string, text: string, signal: AbortSignal, language = "pl") {
+  const response = await fetch(getApiBaseUrl() + "/api/v1/chat/audio/speak", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ session_id: session, text, prefer_native: true, language }), signal });
   if (!response.ok) throw new Error("voiceError");
   return response.blob();
 }

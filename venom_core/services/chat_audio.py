@@ -40,13 +40,17 @@ async def complete_audio_work[T](factory: Callable[[], Awaitable[T]]) -> T:
             raise
 
 
-async def transcribe_pcm(
-    engine: Any, content: bytes, sample_rate: int, language: str
-) -> str:
+def validate_pcm(content: bytes, sample_rate: int) -> None:
     if not content or len(content) % 2:
         raise HTTPException(422, {"reason_code": "audio_invalid_pcm"})
     if len(content) > min(MAX_AUDIO_BYTES, sample_rate * MAX_AUDIO_SECONDS * 2):
         raise HTTPException(413, {"reason_code": "audio_too_large"})
+
+
+async def transcribe_pcm(
+    engine: Any, content: bytes, sample_rate: int, language: str
+) -> str:
+    validate_pcm(content, sample_rate)
     # NumPy is imported only on an explicit audio request, not by the route registry.
     import numpy as np
 

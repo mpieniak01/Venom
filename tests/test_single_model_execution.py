@@ -933,6 +933,8 @@ def test_task_rejects_model_tools_outside_read_only_single_model(request_fields)
     [
         ("gemma4:e4b", True, ["FileSkill-read_file"], ["FileSkill-read_file"]),
         ("gemma4:e4b", True, None, []),
+        ("lfm3:1.7b", True, ["FileSkill-read_file"], ["FileSkill-read_file"]),
+        ("lfm3:1.7b", True, [], []),
         ("gemma4:e4b", False, ["FileSkill-read_file"], None),
         ("selected-model", True, ["FileSkill-read_file"], None),
         ("selected-model", True, [], None),

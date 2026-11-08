@@ -1,6 +1,7 @@
 """On-demand audio building blocks for the shared text conversation controller."""
 
 from typing import Annotated, Any, Literal
+from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field
@@ -12,9 +13,12 @@ from venom_core.api.transport_access import (
 )
 from venom_core.services.chat_audio import (
     MAX_AUDIO_BYTES,
+    complete_audio_work,
     synthesize_wav,
     transcribe_pcm,
+    validate_pcm,
 )
+from venom_core.utils.llm_runtime import LLMRuntimeInfo, get_active_llm_runtime
 
 AUDIO_ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
     403: {"description": "Operator access or audio request origin denied"},
@@ -35,12 +39,31 @@ router = APIRouter(
 class ChatSpeechRequest(BaseModel):
     session_id: str = Field(min_length=1, max_length=256)
     text: str = Field(min_length=1, max_length=6000)
+    prefer_native: bool = False
+    language: Literal["pl", "en", "de"] = "pl"
 
 
 def _engine(request: Request):
     if is_localhost_request(request):
         require_operator_origin(request, "audio_origin_denied")
     return getattr(request.app.state, "audio_engine", None)
+
+
+def _native_omni(prefer_native: bool) -> LLMRuntimeInfo | None:
+    if not prefer_native:
+        return None
+    from venom_core.services.ollama_audio import OMNI_MODEL_ID
+
+    runtime = get_active_llm_runtime()
+    if (
+        runtime.provider == "ollama"
+        and runtime.model_name == OMNI_MODEL_ID
+        and runtime.host_local is not False
+        and runtime.endpoint
+        and urlsplit(runtime.endpoint).hostname in {"localhost", "127.0.0.1", "::1"}
+    ):
+        return runtime
+    return None
 
 
 @router.post(
@@ -64,9 +87,11 @@ async def transcribe(
     session_id: Annotated[str, Query(min_length=1, max_length=256)],
     sample_rate: Annotated[int, Query(ge=8000, le=96000)] = 16000,
     language: Literal["pl", "en", "de"] = "pl",
+    prefer_native: bool = False,
 ):
     engine = _engine(request)
-    if engine is None:
+    runtime = _native_omni(prefer_native)
+    if engine is None and runtime is None:
         raise HTTPException(503, {"reason_code": "audio_not_ready"})
     if (
         request.headers.get("content-type", "").split(";", 1)[0]
@@ -83,6 +108,31 @@ async def transcribe(
         content.extend(chunk)
     if await request.is_disconnected():
         raise HTTPException(499, {"reason_code": "audio_request_cancelled"})
+    if runtime is not None:
+        from venom_core.services.ollama_audio import (
+            require_local_capability,
+            transcribe_pcm_audio,
+        )
+
+        pcm = bytes(content)
+        validate_pcm(pcm, sample_rate)
+        endpoint = runtime.endpoint or ""
+
+        async def native_transcription():
+            await require_local_capability(endpoint, runtime.model_name, "audio")
+            return await transcribe_pcm_audio(
+                endpoint, runtime.model_name, pcm, sample_rate, language
+            )
+
+        try:
+            text = await complete_audio_work(native_transcription)
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise HTTPException(
+                503, {"reason_code": "audio_transcription_failed"}
+            ) from exc
+        return {"session_id": session_id, "text": text, "pipeline": "ollama_audio"}
     text = await transcribe_pcm(engine, bytes(content), sample_rate, language)
     return {"session_id": session_id, "text": text, "pipeline": "host_stt"}
 
@@ -100,11 +150,42 @@ async def transcribe(
 )
 async def speak(request: Request, payload: ChatSpeechRequest):
     engine = _engine(request)
-    if engine is None:
+    runtime = _native_omni(payload.prefer_native)
+    if engine is None and runtime is None:
         raise HTTPException(503, {"reason_code": "audio_not_ready"})
     if not payload.text.strip():
         raise HTTPException(422, {"reason_code": "audio_empty_text"})
-    content = await synthesize_wav(engine, payload.text)
+    if runtime is None:
+        content = await synthesize_wav(engine, payload.text)
+    else:
+        from venom_core.services.ollama_audio import (
+            require_local_capability,
+            synthesize_speech,
+        )
+
+        endpoint = runtime.endpoint or ""
+        voice = {
+            "pl": "female-polish",
+            "en": "female-american-english",
+            "de": "female-german",
+        }[payload.language]
+
+        async def native_speech():
+            show = await require_local_capability(
+                endpoint, runtime.model_name, "speech"
+            )
+            if voice not in (show.get("voices") or []):
+                raise RuntimeError("ollama_speech_voice_unavailable")
+            return await synthesize_speech(
+                endpoint, runtime.model_name, payload.text, voice=voice
+            )
+
+        try:
+            content = await complete_audio_work(native_speech)
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise HTTPException(503, {"reason_code": "audio_synthesis_failed"}) from exc
     return Response(
         content,
         media_type="audio/wav",

@@ -204,3 +204,123 @@ async def test_missing_host_engine_has_readiness_error(rig):
     )
     assert response.status_code == 503
     assert response.json()["detail"]["reason_code"] == "audio_not_ready"
+
+
+@pytest.fixture
+def omni_runtime(monkeypatch):
+    from venom_core.api.routes import chat_audio as routes
+    from venom_core.services import ollama_audio
+
+    runtime = SimpleNamespace(
+        provider="ollama",
+        model_name="lfm3-omni:2b",
+        endpoint="http://127.0.0.1:11434/v1",
+        host_local=True,
+    )
+    show = AsyncMock(
+        return_value={
+            "capabilities": ["audio", "speech"],
+            "voices": ["female-polish"],
+        }
+    )
+    monkeypatch.setattr(routes, "get_active_llm_runtime", lambda: runtime)
+    monkeypatch.setattr(ollama_audio.OllamaClient, "get_model_show", show)
+    return runtime, show
+
+
+@pytest.mark.asyncio
+async def test_omni_dictation_and_conversation_use_separate_decoders(
+    rig, omni_runtime, monkeypatch
+):
+    from venom_core.services import ollama_audio
+
+    client, engine, _ = rig
+    runtime, show = omni_runtime
+    wire = AsyncMock(return_value="sprawdź szkic")
+    monkeypatch.setattr(ollama_audio, "transcribe_pcm_audio", wire)
+    base = "/api/v1/chat/audio/transcribe?session_id=one&language=pl"
+    pcm = b"\x01\x00" * 80
+    headers = {"content-type": "application/octet-stream"}
+    response = await client.post(
+        base + "&prefer_native=true", content=pcm, headers=headers
+    )
+    assert response.json() == {
+        "session_id": "one",
+        "text": "sprawdź szkic",
+        "pipeline": "ollama_audio",
+    }
+    wire.assert_awaited_once_with(
+        runtime.endpoint, runtime.model_name, pcm, 16000, "pl"
+    )
+    engine.transcribe_checked.assert_not_awaited()
+
+    response = await client.post(base, content=pcm, headers=headers)
+    assert response.json()["pipeline"] == "host_stt"
+    runtime.endpoint = "https://remote.invalid/v1"
+    response = await client.post(
+        base + "&prefer_native=true", content=pcm, headers=headers
+    )
+    assert response.json()["pipeline"] == "host_stt"
+    show.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_omni_tts_closes_streamed_wav_header(rig, omni_runtime, monkeypatch):
+    from contextlib import asynccontextmanager
+
+    from venom_core.services import ollama_audio
+
+    client, engine, _ = rig
+    output = io.BytesIO()
+    with wave.open(output, "wb") as audio:
+        audio.setparams((1, 2, 24000, 0, "NONE", "not compressed"))
+        audio.writeframes(b"\x01\x00" * 80)
+    stream = bytearray(output.getvalue())
+    stream[40:44] = b"\xfe\xff\xff\xff"
+    requests = []
+
+    async def chunks():
+        yield stream[:44]
+        yield stream[44:]
+
+    class Client:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_):
+            return False
+
+        @asynccontextmanager
+        async def astream(self, method, url, **kwargs):
+            requests.append((method, url, kwargs))
+            yield SimpleNamespace(aiter_bytes=chunks)
+
+    monkeypatch.setattr(
+        ollama_audio, "TrafficControlledHttpClient", lambda **_: Client()
+    )
+    body = {"session_id": "one", "text": "Odpowiedź", "prefer_native": True}
+    response = await client.post("/api/v1/chat/audio/speak", json=body)
+    assert response.status_code == 200
+    with wave.open(io.BytesIO(response.content), "rb") as audio:
+        assert (audio.getframerate(), audio.getnframes()) == (24000, 80)
+    assert requests == [
+        (
+            "POST",
+            "http://127.0.0.1:11434/v1/audio/speech",
+            {
+                "json": {
+                    "model": "lfm3-omni:2b",
+                    "input": "Odpowiedź",
+                    "voice": "female-polish",
+                    "response_format": "wav",
+                },
+                "disable_retry": True,
+            },
+        )
+    ]
+    engine.speak.assert_not_awaited()
+    response = await client.post(
+        "/api/v1/chat/audio/speak", json={**body, "language": "de"}
+    )
+    assert response.status_code == 503
+    assert len(requests) == 1

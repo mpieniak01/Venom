@@ -9262,7 +9262,7 @@ export interface components {
             model_service_id?: string | null;
             /**
              * Model Tools
-             * @description Task-scoped read tools for gemma4:e4b in single_model mode
+             * @description Task-scoped read tools for qualified Gemma4 E4B and LFM3 models in single_model mode
              */
             model_tools?: ("FileSkill-file_exists" | "FileSkill-list_files" | "FileSkill-read_file")[] | null;
             /**
@@ -10000,6 +10000,17 @@ export interface components {
             session_id: string;
             /** Text */
             text: string;
+            /**
+             * Prefer Native
+             * @default false
+             */
+            prefer_native: boolean;
+            /**
+             * Language
+             * @default pl
+             * @enum {string}
+             */
+            language: "pl" | "en" | "de";
         };
         /** HistoryMessage */
         HistoryMessage: {
@@ -19875,6 +19886,7 @@ export interface operations {
                 session_id: string;
                 sample_rate?: number;
                 language?: "pl" | "en" | "de";
+                prefer_native?: boolean;
             };
             header?: never;
             path?: never;

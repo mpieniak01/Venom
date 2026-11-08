@@ -11178,6 +11178,16 @@
               "default": "pl",
               "title": "Language"
             }
+          },
+          {
+            "name": "prefer_native",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Prefer Native"
+            }
           }
         ],
         "responses": {
@@ -21603,7 +21613,7 @@
               }
             ],
             "title": "Model Tools",
-            "description": "Task-scoped read tools for gemma4:e4b in single_model mode"
+            "description": "Task-scoped read tools for qualified Gemma4 E4B and LFM3 models in single_model mode"
           },
           "preferred_language": {
             "anyOf": [
@@ -23350,6 +23360,21 @@
             "maxLength": 6000,
             "minLength": 1,
             "title": "Text"
+          },
+          "prefer_native": {
+            "type": "boolean",
+            "title": "Prefer Native",
+            "default": false
+          },
+          "language": {
+            "type": "string",
+            "enum": [
+              "pl",
+              "en",
+              "de"
+            ],
+            "title": "Language",
+            "default": "pl"
           }
         },
         "type": "object",

@@ -9,6 +9,7 @@ from venom_core.api.schemas.llm_simple import HistoryMessage, SimpleChatRequest
 from venom_core.config import DEFAULT_SIMPLE_MODE_SYSTEM_PROMPT, SETTINGS
 from venom_core.memory.chat_retrieval import (
     CHAT_NOTE_POLICY,
+    CHAT_NOTES_DISABLED_POLICY,
     note_request_language,
     retrieve_chat_memory,
 )
@@ -91,6 +92,7 @@ async def prepare_studio_normal(
     system_context = _NORMAL_HISTORY_POLICY
     if use_default_language:
         system_context += f" {_NORMAL_LANGUAGE_POLICY}"
+    note_language = note_request_language(request.content)
     if request.use_notes and SETTINGS.CHAT_NOTES_ENABLED:
         vector_store = await get_vector_store()
         notes, _ = await run_drainable_thread(
@@ -100,12 +102,13 @@ async def prepare_studio_normal(
             f"\n\n{CHAT_NOTE_POLICY}\n\n[NOTES]\n{notes or '(no matching source)'}"
             "\n[/NOTES]"
         )
-        note_language = note_request_language(request.content)
         if note_language:
             system_context += (
                 f"\nWrite the answer in {note_language}, even if the notes "
                 "use another language. Keep names and codes as written."
             )
+    elif note_language:
+        system_context += f"\n\n{CHAT_NOTES_DISABLED_POLICY}"
     budget -= len(system_context)
     if budget < 0:
         raise HTTPException(413, {"reason_code": "studio_normal_context_limit"})

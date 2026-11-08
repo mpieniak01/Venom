@@ -12,6 +12,7 @@ from venom_core.infrastructure.traffic_control.http_client import (
 )
 from venom_core.memory.chat_retrieval import (
     CHAT_NOTE_POLICY,
+    CHAT_NOTES_DISABLED_POLICY,
     named_memory_subject,
     note_request_language,
     retrieve_chat_memory,
@@ -322,6 +323,8 @@ class SessionHandler:
         if request.use_notes is False or (
             request.use_notes is True and not SETTINGS.CHAT_NOTES_ENABLED
         ):
+            if note_request_language(request.content):
+                parts.append(CHAT_NOTES_DISABLED_POLICY)
             return
         explicit_note = (
             request.use_notes is True

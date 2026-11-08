@@ -446,6 +446,7 @@ class VectorStore:
 
             processed_results.append(
                 {
+                    "id": result.get("id"),
                     "text": result["text"],
                     "metadata": json.loads(result.get("metadata", "{}")),
                     "score": result.get("_distance"),

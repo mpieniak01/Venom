@@ -33,6 +33,12 @@ CHAT_NOTE_POLICY = (
 )
 
 
+CHAT_NOTES_DISABLED_POLICY = (
+    "Saved notes are disabled for this turn. Use conversation history if relevant. "
+    "Do not claim to have searched or read a saved note."
+)
+
+
 def note_request_language(query: str) -> str | None:
     """Recognize an explicit request for saved notes in both chat runtimes."""
     text = query.casefold()

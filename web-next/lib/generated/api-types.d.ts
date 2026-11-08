@@ -454,6 +454,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/memory/notes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Save Chat Note
+         * @description Index the saved assistant response once, under the session clear lock.
+         */
+        post: operations["save_chat_note_api_v1_memory_notes_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/memory/search": {
         parameters: {
             query?: never;
@@ -9100,6 +9120,11 @@ export interface components {
              * @default false
              */
             studio_normal: boolean;
+            /**
+             * Use Notes
+             * @default false
+             */
+            use_notes: boolean;
             /** Material Ids */
             material_ids?: string[];
             /** Model */
@@ -9293,6 +9318,11 @@ export interface components {
              * @default true
              */
             store_knowledge: boolean;
+            /**
+             * Use Notes
+             * @description Explicit chat note retrieval. Omit for existing task memory policy.
+             */
+            use_notes?: boolean | null;
             /**
              * Generation Params
              * @description Generation params (temperature, max_tokens, etc.)
@@ -10034,6 +10064,16 @@ export interface components {
             /** Materials */
             materials: components["schemas"]["ChatMaterial"][];
         };
+        /** SaveChatNoteRequest */
+        SaveChatNoteRequest: {
+            /** Session Id */
+            session_id: string;
+            /**
+             * Request Id
+             * Format: uuid
+             */
+            request_id: string;
+        };
     };
     responses: never;
     parameters: never;
@@ -10699,6 +10739,60 @@ export interface operations {
                 };
             };
             /** @description Błąd wewnętrzny podczas zapisu do pamięci */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    save_chat_note_api_v1_memory_notes_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaveChatNoteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemoryIngestResponse"];
+                };
+            };
+            /** @description Chat notes or operator access disabled */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Completed assistant response missing from session history */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Błąd wewnętrzny */
             500: {
                 headers: {
                     [name: string]: unknown;

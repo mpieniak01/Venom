@@ -146,6 +146,7 @@ function shellExports() {
     "./use-conversation-data": { useConversationData: () => ({ data: {}, loading: false, error: null, refresh: noCall }) },
     "./use-session-draft": { useSessionDraft: () => useState("") },
     "./use-chat-materials": { useChatMaterials: () => ({ items: [], capabilities: null, uploading: false, upload: noCall }) },
+    "@/components/cockpit/cockpit-chat-send": { resolveEffectiveChatModelSelection: () => "" },
     "./studio-model-picker": { StudioModelPicker: nullComponent },
     "./studio-materials": { StudioMaterials: nullComponent },
     "./studio-thread": { StudioThread: nullComponent },

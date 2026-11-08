@@ -1423,7 +1423,11 @@ def test_full_chat_notes_gate_keeps_session_history(
     state.get_task.return_value.context_history = {}
     state.get_task.return_value.context_used = None
     memory.vector_store.search.return_value = [
-        {"text": "Jasny Brzeg: 07:41", "metadata": {"session_id": "own"}},
+        {
+            "id": "saved-note",
+            "text": "Jasny Brzeg: 07:41",
+            "metadata": {"session_id": "own"},
+        },
     ]
     store = SessionStore(str(tmp_path / "session.json"))
     store.append_message("own", {"role": "user", "content": "earlier turn"})
@@ -1441,5 +1445,8 @@ def test_full_chat_notes_gate_keeps_session_history(
     )
     assert "earlier turn" in result
     assert ("07:41" in result) == bool(searches)
+    assert ("Saved notes are disabled" in result) == (not searches)
+    if searches:
+        assert state.get_task.return_value.context_used.memory_entries == ["saved-note"]
     assert memory.vector_store.search.call_count == searches
     handler._ensure_session_summary.assert_not_called()

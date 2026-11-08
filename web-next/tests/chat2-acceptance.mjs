@@ -34,7 +34,7 @@ export default async function chat2Acceptance(page, baseURL) {
       sttCalls: 0, ttsCalls: 0, micRequests: 0, tracksCreated: 0, tracksStopped: 0,
       contextsCreated: 0, contextsClosed: 0, playbackStarted: 0, playbackActive: 0,
       objectURLsCreated: 0, objectURLsRevoked: 0, socketAttempts: 0, hmrSockets: 0, externalAttempts: 0,
-      unexpectedWrites: [], histories: {}, materials: {}, materialBodies: {}, requests: [], normalTasks: {}, normalPosts: 0, eventSourceIds: [],
+      unexpectedWrites: [], histories: {}, materials: {}, materialBodies: {}, requests: [], notes: [], normalTasks: {}, normalPosts: 0, eventSourceIds: [],
       nextMode: "complete", speechText: "Fixture dictated turn", denyMicOnce: false,
       active: { active_server: "ollama", active_model: "fixture-vision", runtime_id: "ollama", config_hash: "fixture-vision-hash", active_endpoint: "http://fixture.invalid/v1" },
     };
@@ -131,7 +131,7 @@ export default async function chat2Acceptance(page, baseURL) {
       }
       if (path === "/api/v1/tasks" && method === "POST") {
         const id = uuid(++state.accepted); state.normalPosts++;
-        const task = { id, task_id: id, session_id: body.session_id, status: "PROCESSING", result: "Fixture Normal partial", logs: [], created_at: new Date().toISOString(), context_history: { session: { session_id: body.session_id } }, prompt: body.content, content: body.content };
+        const task = { id, task_id: id, use_notes: body.use_notes, session_id: body.session_id, status: "PROCESSING", result: "Fixture Normal partial", logs: [], created_at: new Date().toISOString(), context_history: { session: { session_id: body.session_id } }, prompt: body.content, content: body.content };
         state.normalTasks[id] = task; state.lastNormalId = id;
         remember(body, id, task.result, "PROCESSING");
         state.histories[body.session_id] = state.histories[body.session_id].filter(entry => !(entry.request_id === id && entry.role === "assistant"));
@@ -146,6 +146,9 @@ export default async function chat2Acceptance(page, baseURL) {
       if (path === "/api/v1/openrouter/quote") return json({ estimated_usd: "0", currency: "USD", max_output_tokens: 1024, input_token_upper_bound: 200, context_length: 32768, config_hash: state.active.config_hash, quote_hash: "a".repeat(64) });
       if (path.startsWith("/api/v1/memory/session/")) { const session = decodeURIComponent(path.slice("/api/v1/memory/session/".length)); const history = state.histories[session] ?? []; return json({ status: "success", session_id: session, history, summary: null, count: history.length }); }
       if (path === "/api/v1/memory/ingest") return json({ status: "success", id: "fixture-memory" });
+      if (path === "/api/v1/memory/notes" && method === "POST") {
+        state.notes.push(body); save(); return json({ status: "success" }, 201);
+      }
       if (path === "/api/v1/chat/materials/capabilities") return json({ text: true, notes: true, voice: true, document: true, image: state.active.active_server === "ollama" && url.searchParams.get("model") === "fixture-vision", audio: false, video: false, max_bytes: 8388608, max_document_chars: 64000, runtime_id: state.active.runtime_id, config_hash: state.active.config_hash, model: url.searchParams.get("model") });
       if (path === "/api/v1/chat/materials") {
         const session = url.searchParams.get("session_id");
@@ -330,6 +333,13 @@ export default async function chat2Acceptance(page, baseURL) {
     state = await fixture();
     check(state.lastAcceptedWire.history.some(turn => turn.content === "B07 synthetic turn one"), "second turn carries the same conversation history");
     check(state.lastAcceptedWire.session_id === originalSession, "text turns retain their session identity");
+    check(state.notes.length === 0, "Direct never automatically indexes the answer");
+    await lastAssistant.getByRole("button", { name: "Zapisz jako notatkę" }).click();
+    await lastAssistant.getByRole("button", { name: "Zapisano notatkę" }).waitFor();
+    const savedNote = (await fixture()).notes[0];
+    check(savedNote.session_id === originalSession && !!savedNote.request_id && !("text" in savedNote),
+      "explicit note save passes the selected response identity without posting replacement text");
+
 
     await configure({ nextMode: "partial" });
     const beforePartial = await fixture();
@@ -450,6 +460,11 @@ export default async function chat2Acceptance(page, baseURL) {
     await page.waitForFunction(expected => globalThis.__CHAT2_B07__.read().normalPosts === expected, beforeNormal.normalPosts + 1);
     await page.locator(".studio-stop").waitFor({ state: "visible" });
     const normalId = (await fixture()).lastNormalId;
+    check(!(await page.getByRole("checkbox", { name: "Użyj notatek" }).isChecked()),
+      "Normal starts with notes unchecked");
+    check((await fixture()).normalTasks[normalId].use_notes === false,
+      "ordinary Normal submits an explicit disabled notes policy");
+
     await page.waitForFunction(id => globalThis.__CHAT2_B07__.read().eventSourceIds.includes(id), normalId);
     const beforeReloadSubscriptions = (await fixture()).eventSourceIds.filter(id => id === normalId).length;
     await page.waitForFunction(id => Object.keys(sessionStorage).filter(key => key.startsWith("venom-session-history:"))
@@ -473,9 +488,15 @@ export default async function chat2Acceptance(page, baseURL) {
     await page.waitForFunction(() => document.querySelector(".studio-model-line select")?.value === "ollama");
     check(!(await page.getByTestId("chat2-thread").textContent()).includes("Fixture Normal completed after reload"), "selecting another session excludes the previous Normal stream");
     await page.getByRole("combobox", { name: "Tryb pracy", exact: true }).selectOption("normal");
+    await page.getByRole("checkbox", { name: "Użyj notatek" }).check();
     const secondNormal = await fixture();
     await input.fill("B07 Normal in second session"); await input.press("Enter");
     await page.waitForFunction(expected => globalThis.__CHAT2_B07__.read().normalPosts === expected, secondNormal.normalPosts + 1);
+    const selectedNotes = await fixture();
+    check(selectedNotes.normalTasks[selectedNotes.lastNormalId].use_notes === true,
+      "Normal sends notes only for the selected question");
+    await page.waitForFunction(() => !document.querySelector(".studio-note-option input")?.checked);
+
     await page.evaluate(() => globalThis.__CHAT2_B07__.completeNormal());
     await page.waitForFunction(() => document.querySelector(".studio-send") !== null);
     check(await page.getByTestId("chat2-message-user").filter({ hasText: "B07 Normal active across reload" }).count() === 0, "a new Normal task never reintroduces another conversation history");

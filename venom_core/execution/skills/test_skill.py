@@ -102,12 +102,19 @@ class TestSkill:
         Returns:
             Sformatowany raport z wyników testów
         """
+        _, report = await self.run_pytest_with_evidence(test_path)
+        return report
+
+    async def run_pytest_with_evidence(
+        self, test_path: str = "."
+    ) -> tuple[int | None, str]:
+        """Return pytest's exit code and report, or None if no exit code was obtained."""
         try:
             # Walidacja test_path - zapobieganie command injection (nawet lokalnie to dobra praktyka)
             import re
 
             if not re.match(r"^[a-zA-Z0-9_./\-]+$", test_path):
-                return f"❌ Błąd: Nieprawidłowa ścieżka testów: {test_path}"
+                return None, f"❌ Błąd: Nieprawidłowa ścieżka testów: {test_path}"
 
             import shlex
 
@@ -131,19 +138,22 @@ class TestSkill:
                     )
                     local_result = await self._run_pytest_locally(test_path)
                     if isinstance(local_result, str):
-                        return local_result
+                        return None, local_result
                     exit_code, output = local_result
 
             # --- Tryb Lokalny (Fallback) ---
             elif self.allow_local_execution:
                 local_result = await self._run_pytest_locally(test_path)
                 if isinstance(local_result, str):
-                    return local_result
+                    return None, local_result
                 exit_code, output = local_result
 
             # --- Tryb Niedostępny ---
             else:
-                return "⚠️ Docker sandbox jest niedostępny, a uruchamianie lokalne jest wyłączone."
+                return (
+                    None,
+                    "⚠️ Docker sandbox jest niedostępny, a uruchamianie lokalne jest wyłączone.",
+                )
 
             # Sparsuj wyniki (wspólne dla obu trybów)
             report = self._parse_pytest_output(exit_code, output)
@@ -155,12 +165,12 @@ class TestSkill:
                 f"Pytest zakończony: exit_code={exit_code}, passed={report.passed}, failed={report.failed}"
             )
 
-            return result
+            return exit_code, result
 
         except Exception as e:
             error_msg = f"❌ Błąd podczas uruchamiania pytest: {str(e)}"
             logger.error(error_msg)
-            return error_msg
+            return None, error_msg
 
     async def _run_pytest_locally(self, test_path: str) -> tuple[int, str] | str:
         """Uruchamia pytest lokalnie i zwraca (exit_code, output) lub komunikat błędu."""

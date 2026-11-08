@@ -10,7 +10,7 @@ from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-# Maksymalna liczba iteracji pętli samonaprawy
+# Maksymalna liczba prób naprawy przed końcową weryfikacją
 MAX_HEALING_ITERATIONS = 3
 
 
@@ -44,7 +44,7 @@ class HealingFlow(BaseFlow):
         2. DIAGNOSE: Przeanalizuj błędy (Guardian)
         3. FIX: Wygeneruj poprawkę (Coder)
         4. APPLY: Zapisz poprawkę (FileSkill)
-        5. LOOP: Wróć do punktu 1 (max 3 iteracje)
+        5. LOOP: Sprawdź wynik po każdej próbie naprawy (max 3 naprawy)
 
         Args:
             task_id: ID zadania
@@ -53,7 +53,8 @@ class HealingFlow(BaseFlow):
         Returns:
             Słownik z wynikami:
             - success: bool - czy testy przeszły
-            - iterations: int - liczba iteracji
+            - iterations: int - liczba uruchomień testów
+            - exit_code: int | None - kod wyjścia ostatniego uruchomienia
             - final_report: str - ostatni raport z testów
         """
         from venom_core.agents.guardian import GuardianAgent
@@ -73,7 +74,7 @@ class HealingFlow(BaseFlow):
 
             self.state_manager.add_log(
                 task_id,
-                f"🔄 Rozpoczynam pętlę samonaprawy (max {MAX_HEALING_ITERATIONS} iteracji)",
+                f"🔄 Rozpoczynam pętlę samonaprawy (max {MAX_HEALING_ITERATIONS} prób naprawy)",
             )
 
             await self._broadcast_event(
@@ -92,42 +93,28 @@ class HealingFlow(BaseFlow):
                 timeout=120,
             )
 
-            iteration = 0
-            last_test_report = ""
-
-            while iteration < MAX_HEALING_ITERATIONS:
-                iteration += 1
-
-                # PHASE 1: CHECK - Uruchom testy
+            max_checks = MAX_HEALING_ITERATIONS + 1
+            for iteration in range(1, max_checks + 1):
                 self.state_manager.add_log(
                     task_id,
-                    f"🔍 Iteracja {iteration}/{MAX_HEALING_ITERATIONS} - PHASE 1: Uruchamiam testy",
+                    f"🔍 Weryfikacja {iteration}/{max_checks} - uruchamiam testy",
                 )
 
                 await self._broadcast_event(
                     event_type="TEST_RUNNING",
-                    message=f"Próba {iteration}/{MAX_HEALING_ITERATIONS}: Uruchamiam testy",
+                    message=f"Weryfikacja {iteration}/{max_checks}: Uruchamiam testy",
                     agent="Guardian",
                     data={"task_id": str(task_id), "iteration": iteration},
                 )
 
-                test_report = await test_skill.run_pytest(test_path=test_path)
-                last_test_report = test_report
-
-                # Sprawdź czy testy przeszły - używamy wielokrotnych sprawdzeń dla niezawodności
-                test_passed = (
-                    "PRZESZŁY POMYŚLNIE" in test_report
-                    or "PASSED" in test_report.upper()
-                    or (
-                        "exit_code: 0" in test_report.lower()
-                        and "failed: 0" in test_report.lower()
-                    )
+                exit_code, test_report = await test_skill.run_pytest_with_evidence(
+                    test_path=test_path
                 )
 
-                if test_passed:
+                if exit_code == 0:
                     self.state_manager.add_log(
                         task_id,
-                        f"✅ Testy przeszły pomyślnie po {iteration} iteracji!",
+                        f"✅ Testy przeszły pomyślnie po {iteration} uruchomieniach!",
                     )
 
                     await self._broadcast_event(
@@ -138,6 +125,7 @@ class HealingFlow(BaseFlow):
                             "task_id": str(task_id),
                             "success": True,
                             "iterations": iteration,
+                            "exit_code": exit_code,
                         },
                     )
 
@@ -145,7 +133,11 @@ class HealingFlow(BaseFlow):
                         "success": True,
                         "iterations": iteration,
                         "final_report": test_report,
+                        "exit_code": exit_code,
                     }
+
+                if exit_code is None or iteration == max_checks:
+                    break
 
                 # Testy nie przeszły - diagnozuj
                 self.state_manager.add_log(
@@ -160,6 +152,7 @@ class HealingFlow(BaseFlow):
                         "task_id": str(task_id),
                         "success": False,
                         "iteration": iteration,
+                        "exit_code": exit_code,
                     },
                 )
 
@@ -222,51 +215,37 @@ WAŻNE: Użyj funkcji write_file aby zapisać poprawiony kod do pliku.
                     data={"task_id": str(task_id), "iteration": iteration},
                 )
 
-                fix_result = await coder.process(fix_prompt)
-
+                await coder.process(fix_prompt)
                 self.state_manager.add_log(
                     task_id,
-                    f"✏️ Coder zastosował poprawkę: {fix_result[:200]}...",
+                    "✏️ Coder zakończył próbę naprawy. Sprawdzam testy.",
                 )
 
-                # PHASE 4 jest zintegrowana - Coder powinien użyć write_file
-                # Zapisanie odbywa się automatycznie przez funkcje kernela
-
-                self.state_manager.add_log(
-                    task_id,
-                    "💾 PHASE 4: Poprawka zastosowana, wracam do testów",
+            message = (
+                "Brak kodu wyjścia pytest. Nie można zweryfikować naprawy."
+                if exit_code is None
+                else (
+                    f"Testy nadal nie przechodzą po {MAX_HEALING_ITERATIONS} "
+                    "próbach naprawy. Wymagana interwencja ręczna."
                 )
-
-                # Jeśli to ostatnia iteracja
-                if iteration >= MAX_HEALING_ITERATIONS:
-                    self.state_manager.add_log(
-                        task_id,
-                        f"⚠️ Osiągnięto limit iteracji ({MAX_HEALING_ITERATIONS}). Testy nadal nie przechodzą.",
-                    )
-
-                    await self._broadcast_event(
-                        event_type="HEALING_FAILED",
-                        message=f"Nie udało się naprawić kodu w {MAX_HEALING_ITERATIONS} iteracjach",
-                        data={
-                            "task_id": str(task_id),
-                            "iterations": iteration,
-                            "final_report": last_test_report[:500],
-                        },
-                    )
-
-                    return {
-                        "success": False,
-                        "iterations": iteration,
-                        "final_report": last_test_report,
-                        "message": f"⚠️ FAIL FAST: Nie udało się naprawić kodu po {MAX_HEALING_ITERATIONS} próbach. Wymagana interwencja ręczna.",
-                    }
-
-            # Nie powinno się tu dostać, ale dla bezpieczeństwa
+            )
+            self.state_manager.add_log(task_id, message)
+            await self._broadcast_event(
+                event_type="HEALING_FAILED",
+                message=message,
+                data={
+                    "task_id": str(task_id),
+                    "iterations": iteration,
+                    "exit_code": exit_code,
+                    "final_report": test_report[:500],
+                },
+            )
             return {
                 "success": False,
                 "iterations": iteration,
-                "final_report": last_test_report,
-                "message": "Nieoczekiwane zakończenie pętli naprawczej",
+                "final_report": test_report,
+                "exit_code": exit_code,
+                "message": message,
             }
 
         except Exception as e:
@@ -283,6 +262,7 @@ WAŻNE: Użyj funkcji write_file aby zapisać poprawiony kod do pliku.
             return {
                 "success": False,
                 "iterations": 0,
+                "exit_code": None,
                 "final_report": "",
                 "message": error_msg,
             }

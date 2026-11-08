@@ -182,8 +182,12 @@ def test_resolve_ollama_tags_url_and_metadata_fallbacks(
     monkeypatch.setenv("LLM_LOCAL_ENDPOINT", "http://localhost:8014/v1")
     assert mgr._resolve_ollama_tags_url() == "http://localhost:11434/api/tags"
 
-    monkeypatch.setenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434")
-    assert mgr._resolve_ollama_tags_url() == "http://127.0.0.1:11434/api/tags"
+    monkeypatch.setenv("OLLAMA_BASE_URL", "http://127.0.0.1:11435")
+    assert mgr._resolve_ollama_tags_url() == "http://127.0.0.1:11435/api/tags"
+    monkeypatch.delenv("OLLAMA_BASE_URL")
+    monkeypatch.setenv("OLLAMA_ENDPOINT", "http://127.0.0.1:11436/v1")
+    assert mgr._resolve_ollama_tags_url() == "http://127.0.0.1:11436/api/tags"
+    monkeypatch.delenv("OLLAMA_ENDPOINT")
 
     monkeypatch.setenv("LLM_LOCAL_ENDPOINT", "")
     fallback_url = mgr._resolve_ollama_tags_url()

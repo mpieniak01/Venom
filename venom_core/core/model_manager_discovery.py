@@ -96,9 +96,12 @@ class ModelManagerDiscoveryMixin:
     def _resolve_ollama_tags_url(self) -> str:
         # Prefer dedicated Ollama base URL over active runtime endpoint.
         # LLM_LOCAL_ENDPOINT can point to a different provider (e.g. multi_runtime:8014).
-        endpoint = (
+        ollama_endpoint = (
             os.getenv("OLLAMA_BASE_URL", "").strip()
             or os.getenv("OLLAMA_ENDPOINT", "").strip()
+        )
+        endpoint = (
+            ollama_endpoint
             or os.getenv("LLM_LOCAL_ENDPOINT", "").strip()
             or build_http_url("localhost", 11434, "/v1")
         )
@@ -108,7 +111,7 @@ class ModelManagerDiscoveryMixin:
             base = urlunparse((parsed.scheme, parsed.netloc, "", "", "", ""))
             host = (parsed.hostname or "").lower()
             port = parsed.port
-            if "ollama" in host or port == 11434:
+            if ollama_endpoint or "ollama" in host or port == 11434:
                 return f"{base}/api/tags"
         return build_http_url("localhost", 11434, "/api/tags")
 

@@ -3,6 +3,7 @@
 import importlib.util
 from contextlib import aclosing
 from typing import Any, Optional
+from urllib.parse import urlsplit
 
 from openai import AsyncOpenAI
 
@@ -12,6 +13,7 @@ from venom_core.core.prompt_manager import PromptManager
 from venom_core.core.token_economist import TokenEconomist
 from venom_core.execution.maf_runtime import AgentRuntime as Kernel
 from venom_core.execution.maf_runtime import MafChatService
+from venom_core.execution.model_tool_policy import LFM3_READ_MODEL_ID
 from venom_core.utils.llm_runtime import resolve_local_worker_endpoint
 from venom_core.utils.logger import get_logger
 
@@ -337,6 +339,11 @@ class KernelBuilder:
         chat_service.supports_function_calling = (
             f"{service_id}|{model_name}"
             in getattr(self.settings, "SINGLE_MODEL_TOOL_CALLING_ALLOWLIST", [])
+            or (
+                model_name == LFM3_READ_MODEL_ID
+                and chat_service.runtime_provider == "ollama"
+                and urlsplit(endpoint).hostname in {"localhost", "127.0.0.1", "::1"}
+            )
         )
         kernel.add_service(chat_service)
 

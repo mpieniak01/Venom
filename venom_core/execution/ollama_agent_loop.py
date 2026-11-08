@@ -10,8 +10,8 @@ from urllib import error as urllib_error
 from urllib import request as urllib_request
 
 from venom_core.execution.model_tool_policy import (
-    FUNCTIONGEMMA_READ_TOOLS,
-    is_functiongemma_model,
+    FILE_READ_TOOLS,
+    is_read_only_tool_model,
 )
 from venom_core.services.runtime_admission import admitted_operation
 from venom_core.utils.logger import get_logger
@@ -136,11 +136,11 @@ class OllamaAgentLoop:
             "stream": False,
         }
         tools = self.tools
-        if is_functiongemma_model(self.model):
+        if is_read_only_tool_model(self.model):
             tools = [
                 item
                 for item in tools
-                if item.get("function", {}).get("name") in FUNCTIONGEMMA_READ_TOOLS
+                if item.get("function", {}).get("name") in FILE_READ_TOOLS
             ]
         if tools:
             payload["tools"] = tools
@@ -179,8 +179,8 @@ class OllamaAgentLoop:
         self, name: str, arguments: Dict[str, Any]
     ) -> tuple[str, Optional[str]]:
         """Wywołuje handler narzędzia. Zwraca (result, error)."""
-        if is_functiongemma_model(self.model) and name not in FUNCTIONGEMMA_READ_TOOLS:
-            return "", "FunctionGemma ma dostęp wyłącznie do narzędzi odczytu."
+        if is_read_only_tool_model(self.model) and name not in FILE_READ_TOOLS:
+            return "", "Ten model ma dostęp wyłącznie do narzędzi odczytu."
         handler = self.tool_handlers.get(name)
         if handler is None:
             return "", f"Brak handlera dla narzędzia: {name}"

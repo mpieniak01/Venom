@@ -3,6 +3,8 @@
 import json
 from unittest.mock import MagicMock
 
+import pytest
+
 from venom_core.execution.ollama_agent_loop import (
     AgentLoopResult,
     OllamaAgentLoop,
@@ -306,15 +308,16 @@ class TestToolCallExtraction:
         assert loop._extract_tool_calls({"tool_calls": "invalid"}) == []
 
 
+@pytest.mark.parametrize("model_id", ["venom-functiongemma-270m:bf16", "lfm3:1.7b"])
 def test_functiongemma_ollama_hides_writes_and_blocks_forged_call(
-    monkeypatch, tmp_path
+    monkeypatch, tmp_path, model_id
 ):
     """Keep write functions out of the Ollama catalog and reject forged calls."""
     import io
 
     requests = []
     target = tmp_path / "unexpected.txt"
-    loop = OllamaAgentLoop(model="venom-functiongemma-270m:bf16")
+    loop = OllamaAgentLoop(model=model_id)
     loop.register_tool("FileSkill-read_file", "read", {}, lambda *_: "contents")
     loop.register_tool(
         "FileSkill-write_file", "write", {}, lambda *_: target.write_text("untrusted")

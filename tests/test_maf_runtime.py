@@ -1235,7 +1235,10 @@ async def test_reenabled_retry_timeout_cannot_reuse_an_earlier_policy_denial(
 
 
 @pytest.mark.asyncio
-async def test_functiongemma_wire_and_executor_exclude_mutating_tools(tmp_path):
+@pytest.mark.parametrize("model_id", ["venom-functiongemma-270m-g07:bf16", "lfm3:1.7b"])
+async def test_functiongemma_wire_and_executor_exclude_mutating_tools(
+    tmp_path, model_id
+):
     """Verify that a mutating call is neither advertised nor executed."""
     from venom_core.execution.skills.file_skill import FileSkill
 
@@ -1263,7 +1266,7 @@ async def test_functiongemma_wire_and_executor_exclude_mutating_tools(tmp_path):
             )
         return httpx.Response(200, json=completion())
 
-    model = service(respond, "venom-functiongemma-270m-g07:bf16")
+    model = service(respond, model_id)
     runtime = AgentRuntime(permission_checker=lambda _: True)
     runtime.add_service(model)
     runtime.add_plugin(FileSkill(str(tmp_path)), "FileSkill")

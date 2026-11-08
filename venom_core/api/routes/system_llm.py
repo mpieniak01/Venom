@@ -1453,6 +1453,7 @@ def _catalog_model_identity(
         "display_name",
         "digest",
         "quantization",
+        "capabilities",
         "selection_supported",
         "selection_block_reason",
         "selection_block_code",

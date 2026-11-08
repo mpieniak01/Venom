@@ -407,6 +407,7 @@ class ModelManagerDiscoveryMixin:
             }
             capabilities = model.get("capabilities")
             if isinstance(capabilities, list) and capabilities:
+                entry["capabilities"] = capabilities
                 entry["chat_compatible"] = "completion" in capabilities
             if entry_name in EXPLICIT_OPERATOR_TAGS or entry_name in ALIAS_TARGETS:
                 entries.append(entry)
@@ -457,6 +458,8 @@ class ModelManagerDiscoveryMixin:
                 ):
                     current["quantization"] = entry.get("quantization", "unknown")
                     current["details"] = entry.get("details", {})
+                    if isinstance(entry.get("capabilities"), list):
+                        current["capabilities"] = entry["capabilities"]
                     if isinstance(entry.get("chat_compatible"), bool):
                         current["chat_compatible"] = entry["chat_compatible"]
         except (OSError, ValueError, TypeError, AttributeError):

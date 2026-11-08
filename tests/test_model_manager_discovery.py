@@ -530,6 +530,36 @@ def test_decision_only_model_is_installed_but_not_chat_compatible(
     assert observed["ollama::d1:latest"]["chat_compatible"] is False
 
 
+@pytest.mark.parametrize(
+    ("name", "capabilities"),
+    [
+        ("lfm3:1.7b", ["completion", "tools", "thinking"]),
+        ("lfm3-omni:2b", ["completion", "vision", "audio", "speech", "tools"]),
+    ],
+)
+def test_ollama_catalog_preserves_reported_capabilities(
+    tmp_path: Path, name: str, capabilities: list[str]
+) -> None:
+    from venom_core.api.routes.system_llm import _catalog_model_identity
+
+    mgr = _Discovery(tmp_path)
+    (entry,) = mgr._collect_ollama_entries(
+        [{"name": name, "digest": "a" * 64, "capabilities": capabilities}]
+    )
+    assert entry["chat_compatible"] is True
+    assert _catalog_model_identity({}, entry)["capabilities"] == capabilities
+
+    mgr._save_ollama_cache([entry])
+    key = f"ollama::{name}"
+    cached = {key: {"name": name, "digest": "a" * 64}}
+    mgr._load_ollama_cache(cached)
+    assert cached[key]["capabilities"] == capabilities
+
+    stale = {key: {"name": name, "digest": "b" * 64}}
+    mgr._load_ollama_cache(stale)
+    assert "capabilities" not in stale[key]
+
+
 def test_model_cache_enumerates_only_complete_snapshots_once(tmp_path):
     """Verify model cache enumerates only complete snapshots once."""
     from venom_core.core.model_inventory import cached_model_paths

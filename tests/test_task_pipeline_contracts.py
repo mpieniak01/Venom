@@ -1694,9 +1694,8 @@ def test_g5_task_requires_operator_before_queueing(
     submit = AsyncMock(
         return_value={"task_id": uuid4(), "status": "PENDING", "message": "queued"}
     )
-    app.dependency_overrides[get_orchestrator] = lambda: SimpleNamespace(
-        submit_task=submit
-    )
+    get_runtime = MagicMock(return_value=SimpleNamespace(submit_task=submit))
+    app.dependency_overrides[get_orchestrator] = lambda: get_runtime()
     headers = {"Origin": origin} if origin else {}
     response = TestClient(app, client=(client_host, 51100)).post(
         "/api/v1/tasks",
@@ -1705,7 +1704,7 @@ def test_g5_task_requires_operator_before_queueing(
     )
 
     assert response.status_code == expected
-    assert submit.await_count == int(expected == 201)
+    assert get_runtime.call_count == submit.await_count == int(expected == 201)
 
 
 @pytest.mark.asyncio

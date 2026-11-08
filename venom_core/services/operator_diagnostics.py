@@ -17,6 +17,7 @@ from urllib.parse import urlsplit
 import httpx
 
 from venom_core.core.permission_guard import AutonomyViolation, permission_guard
+from venom_core.core.slash_commands import parse_slash_command
 from venom_core.utils.logger import LOG_DIR
 
 DIAGNOSTICS_INTENT = "OPERATOR_DIAGNOSTICS"
@@ -58,6 +59,12 @@ def parse_diagnostic_request(content: str) -> DiagnosticRequest | None:
     return DiagnosticRequest(
         bool(match["guide"]), target.startswith("venom"), "rider" in target
     )
+
+
+def parse_diagnostic_task(content: str) -> DiagnosticRequest | None:
+    """Apply the same slash normalization used before task dispatch."""
+    slash = parse_slash_command(content)
+    return parse_diagnostic_request(slash.cleaned if slash else content)
 
 
 @dataclass(frozen=True)

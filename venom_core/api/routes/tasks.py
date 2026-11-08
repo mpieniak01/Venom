@@ -24,11 +24,10 @@ from venom_core.api.transport_access import (
     is_localhost_request,
     require_operator_request,
 )
-from venom_core.core.slash_commands import parse_slash_command
 from venom_core.services import tasks_service
 from venom_core.services.operator_diagnostics import (
     DIAGNOSTICS_INTENT,
-    parse_diagnostic_request,
+    parse_diagnostic_task,
 )
 from venom_core.services.tasks_stream_service import (
     build_missing_task_payload as _build_missing_task_payload,
@@ -257,6 +256,21 @@ async def _task_stream_generator(
             raise
 
 
+async def _authorize_diagnostic_task(
+    request: TaskRequest, http_request: Request
+) -> TaskRequest:
+    """Check operator access before resolving the potentially lazy orchestrator."""
+    diagnostic = parse_diagnostic_task(request.content)
+    if diagnostic is not None or request.forced_intent == DIAGNOSTICS_INTENT:
+        if getattr(http_request.app.state, "studio_runtime", None) is not None:
+            raise HTTPException(409, "diagnostics_requires_full")
+        if diagnostic is None or not diagnostic.guide:
+            require_operator_request(http_request)
+            if is_localhost_request(http_request):
+                require_operator_origin(http_request, "diagnostics_origin_denied")
+    return request
+
+
 @router.post(
     "/tasks",
     response_model=TaskResponse,
@@ -264,8 +278,7 @@ async def _task_stream_generator(
     responses=TASK_CREATE_RESPONSES,
 )
 async def create_task(
-    request: TaskRequest,
-    http_request: Request,
+    request: Annotated[TaskRequest, Depends(_authorize_diagnostic_task)],
     orchestrator: Annotated[Orchestrator, Depends(get_orchestrator)],
 ):
     """
@@ -281,16 +294,6 @@ async def create_task(
     Raises:
         HTTPException: 400 przy błędnym body, 500 przy błędzie wewnętrznym
     """
-    slash = parse_slash_command(request.content)
-    diagnostic = parse_diagnostic_request(slash.cleaned if slash else request.content)
-    if diagnostic is not None or request.forced_intent == DIAGNOSTICS_INTENT:
-        if getattr(http_request.app.state, "studio_runtime", None) is not None:
-            raise HTTPException(409, "diagnostics_requires_full")
-        if diagnostic is None or not diagnostic.guide:
-            require_operator_request(http_request)
-            if is_localhost_request(http_request):
-                require_operator_origin(http_request, "diagnostics_origin_denied")
-
     try:
         # Inkrementuj licznik zadań
         collector = tasks_service.get_metrics_collector()

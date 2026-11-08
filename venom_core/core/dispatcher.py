@@ -34,6 +34,7 @@ from venom_core.execution.maf_runtime import AgentRuntime as Kernel
 from venom_core.execution.skill_manager import SkillManager
 from venom_core.execution.skills.assistant_skill import AssistantSkill
 from venom_core.services.execution_template_planner import wants_status_analysis
+from venom_core.services.operator_diagnostics import DIAGNOSTICS_INTENT
 from venom_core.skills.mcp.skill_adapter import (
     FileSkillMcpAdapter,
     GitSkillMcpAdapter,
@@ -219,6 +220,7 @@ class TaskDispatcher:
             "RELEASE_PROJECT": self.release_manager_agent,
             "STATUS_REPORT": self.executive_agent,
             "INFRA_STATUS": self.system_status_agent,
+            DIAGNOSTICS_INTENT: self.system_status_agent,
             "TIME_REQUEST": self.time_assistant_agent,
             "UNSUPPORTED_TASK": self.unsupported_agent,
         }
@@ -398,7 +400,9 @@ Jeśli nie ma ścieżek plików, zwróć pustą listę targets. Jeśli nie ma ja
         # Przekaż zadanie do agenta
         try:
             logger.info(f"Agent {agent.__class__.__name__} przejmuje zadanie")
-            if note_lookup and isinstance(agent, ChatAgent):
+            if intent == DIAGNOSTICS_INTENT:
+                result = await self.system_status_agent.diagnose(content)
+            elif note_lookup and isinstance(agent, ChatAgent):
                 result = await agent.process_note_lookup(content, generation_params)
             elif intent == "STATUS_REPORT" and hasattr(agent, "generate_status_report"):
                 result = await agent.generate_status_report(

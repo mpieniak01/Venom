@@ -8,6 +8,7 @@ from venom_core.core import metrics as metrics_module
 from venom_core.core.autonomy_enforcement import AutonomyPermissionDenied
 from venom_core.core.models import TaskRequest, TaskStatus
 from venom_core.core.tracer import TraceStatus
+from venom_core.services.operator_diagnostics import DIAGNOSTICS_INTENT
 from venom_core.utils.helpers import get_utc_now_iso
 from venom_core.utils.logger import get_logger
 
@@ -58,6 +59,7 @@ class ResultProcessor:
         if (
             not single_model
             and request.use_notes is None
+            and intent != DIAGNOSTICS_INTENT
             and request.session_id
             and result
         ):
@@ -125,8 +127,12 @@ class ResultProcessor:
             )
 
         # 8. Learning Logs (RL)
-        if not single_model and self.orch.lessons_manager.should_log_learning(
-            request, intent=intent, tool_required=tool_required, agent=agent
+        if (
+            not single_model
+            and intent != DIAGNOSTICS_INTENT
+            and self.orch.lessons_manager.should_log_learning(
+                request, intent=intent, tool_required=tool_required, agent=agent
+            )
         ):
             self.orch.lessons_manager.append_learning_log(
                 task_id=task_id,

@@ -5,7 +5,7 @@ import json
 from typing import Annotated, Any, AsyncGenerator, Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 
 from venom_core.api.dependencies import (
@@ -13,13 +13,23 @@ from venom_core.api.dependencies import (
     get_request_tracer,
     get_state_manager,
 )
+from venom_core.api.operator_origin import require_operator_origin
 from venom_core.api.schemas.tasks import (
     HistoryRequestDetail,
     HistoryRequestSummary,
     TaskRequest,
     TaskResponse,
 )
+from venom_core.api.transport_access import (
+    is_localhost_request,
+    require_operator_request,
+)
+from venom_core.core.slash_commands import parse_slash_command
 from venom_core.services import tasks_service
+from venom_core.services.operator_diagnostics import (
+    DIAGNOSTICS_INTENT,
+    parse_diagnostic_request,
+)
 from venom_core.services.tasks_stream_service import (
     build_missing_task_payload as _build_missing_task_payload,
 )
@@ -255,6 +265,7 @@ async def _task_stream_generator(
 )
 async def create_task(
     request: TaskRequest,
+    http_request: Request,
     orchestrator: Annotated[Orchestrator, Depends(get_orchestrator)],
 ):
     """
@@ -270,6 +281,16 @@ async def create_task(
     Raises:
         HTTPException: 400 przy błędnym body, 500 przy błędzie wewnętrznym
     """
+    slash = parse_slash_command(request.content)
+    diagnostic = parse_diagnostic_request(slash.cleaned if slash else request.content)
+    if diagnostic is not None or request.forced_intent == DIAGNOSTICS_INTENT:
+        if getattr(http_request.app.state, "studio_runtime", None) is not None:
+            raise HTTPException(409, "diagnostics_requires_full")
+        if diagnostic is None or not diagnostic.guide:
+            require_operator_request(http_request)
+            if is_localhost_request(http_request):
+                require_operator_origin(http_request, "diagnostics_origin_denied")
+
     try:
         # Inkrementuj licznik zadań
         collector = tasks_service.get_metrics_collector()

@@ -46,6 +46,10 @@ from venom_core.services.execution_template_planner import (
     resolve_browser_profile,
     resolve_response_template,
 )
+from venom_core.services.operator_diagnostics import (
+    DIAGNOSTICS_INTENT,
+    parse_diagnostic_request,
+)
 from venom_core.utils.llm_runtime import get_active_llm_runtime
 from venom_core.utils.logger import get_logger
 from venom_core.utils.runtime_names import is_multi_runtime
@@ -640,6 +644,10 @@ async def _resolve_task_intent(
             "intent": request.forced_intent,
         }
 
+    if not request.forced_tool and not request.forced_provider:
+        if parse_diagnostic_request(request_content) is not None:
+            return DIAGNOSTICS_INTENT, {"source": "operator_diagnostics"}
+
     turn = current_conversation_context()
     registry = get_conversation_registry()
     if (
@@ -824,7 +832,7 @@ async def _execute_with_stream_callback(
         )
         response: str | None
         with conversation_turn(turn):
-            if request.agent_mode == "single_model":
+            if request.agent_mode == "single_model" or intent == DIAGNOSTICS_INTENT:
                 response = None
             elif intent == "MODULE_CONVERSATION":
                 task = orch.state_manager.get_task(task_id)

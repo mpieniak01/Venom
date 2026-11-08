@@ -6,6 +6,7 @@ from uuid import UUID
 from venom_core.core.flows.campaign import CampaignFlow
 from venom_core.core.models import TaskRequest
 from venom_core.services.execution_template_planner import resolve_response_template
+from venom_core.services.operator_diagnostics import DIAGNOSTICS_INTENT
 from venom_core.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -42,6 +43,9 @@ class ExecutionStrategy:
 
         elif intent == "HELP_REQUEST":
             return await self._execute_help(task_id)
+
+        elif intent == DIAGNOSTICS_INTENT:
+            return await self._execute_default(task_id, context, intent, request)
 
         elif note_lookup:
             return await self._execute_default(

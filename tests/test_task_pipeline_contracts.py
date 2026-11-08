@@ -1524,3 +1524,219 @@ async def test_full_normal_saved_note_routing_preserves_explicit_and_legacy_rout
 
     assert intent == "CODE_GENERATION"
     classifier.assert_awaited_once_with(prompt)
+
+
+@pytest.mark.parametrize(
+    ("prompt", "expected"),
+    [
+        ("Sprawdź Venoma i Rider-Pi", (False, True, True)),
+        ("Jak sprawdzić stan Rider-Pi?", (True, False, True)),
+        ("Check status of Venom", (False, True, False)),
+        ("Sprawdź Rider-Pi i włącz napęd", None),
+        ("Powiedział «Sprawdź Rider-Pi»", None),
+        ("Sprawdź http://192.0.2.1", None),
+    ],
+)
+def test_g5_diagnostic_commands_accept_only_complete_read_requests(prompt, expected):
+    from venom_core.services.operator_diagnostics import parse_diagnostic_request
+
+    request = parse_diagnostic_request(prompt)
+
+    assert (
+        None if request is None else (request.guide, request.venom, request.rider)
+    ) == expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("scenario", ["offline", "partial", "denied", "stale"])
+async def test_g5_rider_evidence_keeps_read_failures_and_ack_separate(
+    monkeypatch, scenario
+):
+    import time
+
+    import httpx
+
+    from venom_core.services import operator_diagnostics as diagnostics
+
+    control = {
+        "safety": {
+            "observed_at": time.time() - (60 if scenario == "stale" else 0),
+            "output": {"lx": 0.25, "az": -0.75},
+            "last_ack": {"accepted": True, "status": "executed"},
+        },
+    }
+    samples = {
+        "offline": {
+            "connection": {"status": "offline"},
+            "errors": {"health": "pi_unreachable"},
+        },
+        "partial": {
+            "connection": {"status": "degraded"},
+            "control": control,
+            "health": {"status": "ok"},
+            "errors": {"telemetry": "pi_unreachable", "settings": "forbidden"},
+        },
+        "stale": {
+            "connection": {"status": "degraded"},
+            "control": control,
+        },
+    }
+    calls = []
+
+    def endpoint(request):
+        calls.append((request.method, str(request.url)))
+        if scenario == "denied":
+            return httpx.Response(403, json={"detail": "private secret"})
+        return httpx.Response(200, json=samples[scenario])
+
+    client = httpx.AsyncClient
+    monkeypatch.setattr(
+        diagnostics.httpx,
+        "AsyncClient",
+        lambda **options: client(transport=httpx.MockTransport(endpoint), **options),
+    )
+    command = diagnostics.parse_diagnostic_request("Sprawdź Rider-Pi")
+    assert command is not None
+
+    reply = await diagnostics.run_operator_diagnostics(
+        command, "http://127.0.0.1:8000/api/v1/system/services"
+    )
+
+    assert calls == [
+        ("GET", "http://127.0.0.1:8000/api/v1/rider/status?section=overview")
+    ]
+    if scenario == "offline":
+        assert "**brak transportu**" in reply and "Odczytano: brak" in reply
+    elif scenario == "partial":
+        assert "**częściowy odczyt**" in reply and "Odmowa: settings." in reply
+        assert (
+            "Odczytano: control, health." in reply
+            and "Bez danych: telemetry, system." in reply
+        )
+        assert "lx (liniowa)=0.25, az (obrotowa)=-0.75" in reply
+        assert (
+            "ACK potwierdza przyjęcie" in reply
+            and "Brak dowodu fizycznego skutku" in reply
+        )
+    elif scenario == "stale":
+        assert "Stan sterowania przeterminowany" in reply and "0.25" not in reply
+    else:
+        assert (
+            "**odmowa**" in reply
+            and "HTTP 403" in reply
+            and "private secret" not in reply
+        )
+
+
+@pytest.mark.asyncio
+async def test_g5_guide_and_api_failure_use_host_runbook(monkeypatch, tmp_path):
+    import httpx
+
+    from venom_core.services import operator_diagnostics as diagnostics
+
+    log = tmp_path / "venom.log"
+    log.write_bytes(
+        b"x" * 17000 + b"\n2026-11-08 12:00:00.000 | ERROR    | password=fixture\n"
+    )
+    calls = []
+
+    def endpoint(request):
+        calls.append(request.method)
+        raise httpx.ConnectError("offline", request=request)
+
+    client = httpx.AsyncClient
+    monkeypatch.setattr(
+        diagnostics.httpx,
+        "AsyncClient",
+        lambda **options: client(transport=httpx.MockTransport(endpoint), **options),
+    )
+    guide = diagnostics.parse_diagnostic_request("Jak sprawdzić Venoma i Rider-Pi?")
+    check = diagnostics.parse_diagnostic_request("Sprawdź Venoma")
+    assert guide is not None and check is not None
+    origin = "http://127.0.0.1:8000/api/v1/system/services"
+
+    instructions = await diagnostics.run_operator_diagnostics(
+        guide, origin, log_dir=tmp_path
+    )
+    assert not calls
+    assert (
+        diagnostics.RUNBOOK in instructions and diagnostics.HOST_CHECK in instructions
+    )
+
+    reply = await diagnostics.run_operator_diagnostics(check, origin, log_dir=tmp_path)
+    assert calls == ["GET"]
+    assert "Brak odpowiedzi lokalnego API" in reply and diagnostics.HOST_CHECK in reply
+    assert "16384 B" in reply and "ERROR=1" in reply and "password" not in reply
+
+
+@pytest.mark.parametrize(
+    ("client_host", "origin", "studio", "expected"),
+    [
+        ("192.0.2.2", None, False, 403),
+        ("127.0.0.1", "https://example.invalid", False, 403),
+        ("127.0.0.1", None, True, 409),
+        ("127.0.0.1", None, False, 201),
+    ],
+)
+def test_g5_task_requires_operator_before_queueing(
+    client_host, origin, studio, expected
+):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from venom_core.api.dependencies import get_orchestrator
+    from venom_core.api.routes import tasks
+
+    app = FastAPI()
+    app.include_router(tasks.router)
+    app.state.studio_runtime = object() if studio else None
+    submit = AsyncMock(
+        return_value={"task_id": uuid4(), "status": "PENDING", "message": "queued"}
+    )
+    app.dependency_overrides[get_orchestrator] = lambda: SimpleNamespace(
+        submit_task=submit
+    )
+    headers = {"Origin": origin} if origin else {}
+    response = TestClient(app, client=(client_host, 51100)).post(
+        "/api/v1/tasks",
+        json={"content": "Sprawdź Rider-Pi"},
+        headers=headers,
+    )
+
+    assert response.status_code == expected
+    assert submit.await_count == int(expected == 201)
+
+
+@pytest.mark.asyncio
+async def test_g5_routing_uses_full_dispatcher_without_classification(monkeypatch):
+    from venom_core.agents.system_status import SystemStatusAgent
+    from venom_core.core.dispatcher import TaskDispatcher
+    from venom_core.core.orchestrator.orchestrator_dispatch import _resolve_task_intent
+    from venom_core.services import operator_diagnostics as diagnostics
+    from venom_core.services.execution_template_planner import resolve_response_template
+
+    orch = SimpleNamespace(intent_manager=SimpleNamespace(classify_intent=AsyncMock()))
+    command = TaskRequest(content="Sprawdź Rider-Pi")
+    diagnose = AsyncMock(return_value="Dowód")
+    agent = SystemStatusAgent(
+        MagicMock(), "http://127.0.0.1:8000/api/v1/system/services"
+    )
+    monkeypatch.setattr(agent, "diagnose", diagnose)
+    dispatcher = SimpleNamespace(
+        node_manager=None,
+        system_status_agent=agent,
+        agent_map={diagnostics.DIAGNOSTICS_INTENT: agent},
+    )
+
+    intent, debug = await _resolve_task_intent(orch, command, command.content)
+    template = resolve_response_template(command, intent)
+    answer = await TaskDispatcher.dispatch(dispatcher, intent, command.content)
+
+    assert (
+        intent == diagnostics.DIAGNOSTICS_INTENT
+        and debug["source"] == "operator_diagnostics"
+    )
+    assert template is not None and template.requires_llm is False
+    assert answer == "Dowód"
+    diagnose.assert_awaited_once_with(command.content)
+    orch.intent_manager.classify_intent.assert_not_awaited()

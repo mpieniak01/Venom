@@ -7,6 +7,10 @@ import httpx
 from venom_core.agents.base import BaseAgent
 from venom_core.config import SETTINGS
 from venom_core.execution.maf_runtime import AgentRuntime as Kernel
+from venom_core.services.operator_diagnostics import (
+    parse_diagnostic_request,
+    run_operator_diagnostics,
+)
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -67,6 +71,13 @@ class SystemStatusAgent(BaseAgent):
             return "ℹ️ Brak monitorowanych usług w ServiceMonitor."
 
         return self._format_report(services)
+
+    async def diagnose(self, input_text: str) -> str:
+        """Accept only the fixed diagnostic requests resolved by the dispatcher."""
+        request = parse_diagnostic_request(input_text)
+        if request is None:
+            return "Podaj jedną z komend: Sprawdź Venoma, Sprawdź Rider-Pi lub Jak sprawdzić Venoma i Rider-Pi?"
+        return await run_operator_diagnostics(request, self.status_endpoint)
 
     def _format_report(self, services: List[dict]) -> str:
         """Buduje raport tekstowy na podstawie listy usług."""

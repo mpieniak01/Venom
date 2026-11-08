@@ -540,7 +540,13 @@ async def _run_task(
             return
 
         result = await _execute_with_stream_callback(
-            orch, task_id, intent, context, request, tool_required=tool_required
+            orch,
+            task_id,
+            intent,
+            context,
+            request,
+            tool_required=tool_required,
+            note_lookup=intent_debug.get("source") == "saved_note_lookup",
         )
 
         await orch.result_processor.process_success(
@@ -800,6 +806,7 @@ async def _execute_with_stream_callback(
     request: TaskRequest,
     *,
     tool_required: bool = False,
+    note_lookup: bool = False,
 ):
     """Stream provider and model results, checking emptiness only on model output."""
     runtime = get_active_llm_runtime()
@@ -850,7 +857,9 @@ async def _execute_with_stream_callback(
                     )
                 return response
             strategy = ExecutionStrategy(orch)
-            result = await strategy.execute(task_id, intent, context, request)
+            result = await strategy.execute(
+                task_id, intent, context, request, note_lookup=note_lookup
+            )
             if isinstance(result, str) and not result.strip() and not tool_required:
                 raise RuntimeError("Model nie zwrócił treści odpowiedzi.")
             return result

@@ -352,6 +352,8 @@ Jeśli nie ma ścieżek plików, zwróć pustą listę targets. Jeśli nie ma ja
         content: str,
         node_preference: Optional[dict[str, object]] = None,
         generation_params: Optional[dict[str, object]] = None,
+        *,
+        note_lookup: bool = False,
     ) -> str:
         """
         Kieruje zadanie do odpowiedniego agenta na podstawie intencji.
@@ -396,7 +398,9 @@ Jeśli nie ma ścieżek plików, zwróć pustą listę targets. Jeśli nie ma ja
         # Przekaż zadanie do agenta
         try:
             logger.info(f"Agent {agent.__class__.__name__} przejmuje zadanie")
-            if intent == "STATUS_REPORT" and hasattr(agent, "generate_status_report"):
+            if note_lookup and isinstance(agent, ChatAgent):
+                result = await agent.process_note_lookup(content, generation_params)
+            elif intent == "STATUS_REPORT" and hasattr(agent, "generate_status_report"):
                 result = await agent.generate_status_report(
                     include_analysis=wants_status_analysis(content)
                 )

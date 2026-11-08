@@ -819,6 +819,21 @@ class TestExecutionStrategy:
         assert result == "dispatch_result"
         orch.task_dispatcher.dispatch.assert_awaited_once()
 
+    async def test_note_lookup_dispatches_to_chat_without_council(self):
+        orch = _make_orch(should_use_council=True)
+        request = TaskRequest(
+            content="Jaki jest kod odbioru z notatki?", use_notes=False
+        )
+
+        result = await ExecutionStrategy(orch).execute(
+            uuid4(), "GENERAL_CHAT", "ctx", request, note_lookup=True
+        )
+
+        assert result == "dispatch_result"
+        orch.task_dispatcher.dispatch.assert_awaited_once_with(
+            "GENERAL_CHAT", "ctx", generation_params=None, note_lookup=True
+        )
+
     async def test_execute_default_intent_with_generation_params(self):
         """execute should pass generation_params in default path when provided."""
         orch = _make_orch(should_use_council=False)

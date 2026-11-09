@@ -5,6 +5,7 @@ import base64
 import hashlib
 import importlib.util
 import inspect
+import io
 import json
 import shutil
 import subprocess
@@ -12,9 +13,10 @@ import time
 import uuid
 import wave
 from contextlib import AbstractAsyncContextManager, asynccontextmanager, nullcontext
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, TypedDict
+from typing import Any, Dict, List, NotRequired, Optional, TypedDict
 
 import anyio
 import httpx
@@ -23,7 +25,8 @@ from fastapi import HTTPException, WebSocket, WebSocketDisconnect
 
 from venom_core.config import SETTINGS
 from venom_core.perception.audio_engine import AudioEngine
-from venom_core.services import ollama_audio
+from venom_core.services import ollama_audio, omni_pilot
+from venom_core.services.chat_audio import MAX_AUDIO_BYTES, validate_pcm
 from venom_core.services.conversation_providers import (
     conversation_turn,
     create_conversation_context,
@@ -486,6 +489,13 @@ def _create_voice_session_dir(connection_id: int) -> Path:
     raise RuntimeError("Nie udało się utworzyć unikalnego katalogu sesji voice.")
 
 
+@dataclass
+class _PilotRecording:
+    image: bytes | None
+    size: int = 0
+    failed: bool = False
+
+
 class AudioStreamHandler:
     """
     Handler do obsługi streaming audio przez WebSocket.
@@ -553,6 +563,8 @@ class AudioStreamHandler:
         mime_type: str
         audio_config: dict[str, object]
         voice_mode: str
+        pilot_recording: NotRequired[_PilotRecording]
+        pilot_history: NotRequired[list[dict[str, object]]]
 
     def get_status(self, operator_agent: object | None = None) -> dict:
         """Zwraca stan kanału audio dla healthchecków i UI."""
@@ -687,9 +699,11 @@ class AudioStreamHandler:
         try:
             data = json.loads(message)
         except json.JSONDecodeError:
-            logger.error(f"Nieprawidłowy JSON: {message}")
+            logger.warning("Nieprawidłowa wiadomość sterująca audio")
             return
 
+        if not isinstance(data, dict):
+            return
         command = data.get("command")
         if command == "start_recording":
             await self._start_recording(connection_id, data)
@@ -732,6 +746,17 @@ class AudioStreamHandler:
             "format": conn["recording_format"],
             "mime_type": conn["mime_type"],
         }
+        conn.pop("pilot_recording", None)
+        if data.get("multimodal") is True or "image" in data:
+            try:
+                image = (
+                    omni_pilot.decode_image(data["image"]) if "image" in data else None
+                )
+                conn["pilot_recording"] = _PilotRecording(image=image)
+            except ValueError:
+                conn["pilot_recording"] = _PilotRecording(image=None, failed=True)
+        else:
+            conn.pop("pilot_history", None)
         logger.info(
             "Rozpoczęto nagrywanie: %s config=%s", connection_id, conn["audio_config"]
         )
@@ -792,6 +817,10 @@ class AudioStreamHandler:
             len(conn["audio_bytes_buffer"]),
             conn["recording_format"],
         )
+        pilot = conn.pop("pilot_recording", None)
+        if pilot is not None:
+            await self._finish_pilot_recording(connection_id, conn, pilot)
+            return
         if conn["audio_bytes_buffer"] and conn["recording_format"] != "pcm16":
             await self._process_encoded_audio_buffer(
                 connection_id,
@@ -810,6 +839,105 @@ class AudioStreamHandler:
             )
             conn["audio_buffer"] = []
 
+    async def _pilot_error(self, connection_id: int) -> None:
+        await self._send_json(
+            connection_id,
+            {"type": "error", "message": "omni_pilot_failed", "multimodal": True},
+        )
+
+    async def _finish_pilot_recording(
+        self, connection_id: int, conn: _ConnectionState, pilot: _PilotRecording
+    ) -> None:
+        chunks = conn["audio_bytes_buffer"]
+        conn["audio_bytes_buffer"] = []
+        if pilot.failed or not chunks:
+            await self._pilot_error(connection_id)
+            return
+        runtime = omni_pilot.active_pilot_runtime()
+        if runtime is None:
+            await self._pilot_error(connection_id)
+            return
+        started = time.perf_counter()
+        session_dir: Path | None = None
+        try:
+            if pilot.image is not None:
+                await asyncio.to_thread(omni_pilot.validate_image, pilot.image)
+            await self._send_json(
+                connection_id, {"type": "processing", "status": "decode"}
+            )
+            if conn["recording_format"] == "pcm16":
+                pcm, rate = b"".join(chunks), conn["sample_rate"]
+            else:
+                session_dir = await asyncio.to_thread(
+                    self._persist_encoded_voice_session,
+                    connection_id,
+                    chunks,
+                    conn["mime_type"],
+                )
+                pcm_data, rate = self._load_wav_int16(
+                    session_dir / VOICE_SESSION_WAV_FILENAME
+                )
+                pcm = pcm_data.tobytes()
+            if not 8000 <= rate <= 96000:
+                raise ValueError("omni_pilot_invalid_sample_rate")
+            validate_pcm(pcm, rate)
+            history = conn.get("pilot_history", [])
+            await self._send_json(
+                connection_id, {"type": "processing", "status": "thinking"}
+            )
+            async with runtime_request_guard(
+                request_kind="voice_omni_pilot",
+                provider="ollama",
+                model=runtime.model_name,
+            ):
+                if omni_pilot.active_pilot_runtime() != runtime:
+                    raise RuntimeError("omni_pilot_runtime_changed")
+                result = await omni_pilot.answer(
+                    runtime, pcm, rate, pilot.image, history
+                )
+                wav = await ollama_audio.synthesize_speech(
+                    runtime.endpoint or "",
+                    runtime.model_name,
+                    result.text,
+                    voice="female-polish",
+                )
+            with wave.open(io.BytesIO(wav), "rb") as source:
+                audio = np.frombuffer(
+                    source.readframes(source.getnframes()), dtype="<i2"
+                )
+                output_rate = source.getframerate()
+        except Exception:
+            logger.exception("Multimodal voice turn failed")
+            await self._pilot_error(connection_id)
+            return
+
+        conn["pilot_history"] = (
+            history
+            + omni_pilot.conversation_pair(result, has_image=pilot.image is not None)
+        )[-omni_pilot.MAX_HISTORY_ROWS :]
+        if session_dir is not None:
+            self._update_voice_session_metadata(
+                session_dir,
+                {
+                    "pipeline_id": "omni_pilot",
+                    "has_image": pilot.image is not None,
+                    "documentation_code": result.code,
+                    "response_text": result.text,
+                    "timings_ms": {"total_backend_ms": self._elapsed_ms(started)},
+                },
+            )
+        await self._send_json(
+            connection_id,
+            {
+                "type": "response_text",
+                "text": result.text,
+                "sources": result.sources,
+                "multimodal": True,
+            },
+        )
+        await self._send_audio(connection_id, audio, sample_rate=output_rate)
+        await self._send_json(connection_id, {"type": "complete", "multimodal": True})
+
     def _handle_audio_data(
         self, connection_id: int, audio_bytes: bytes, operator_agent
     ):
@@ -825,6 +953,15 @@ class AudioStreamHandler:
             return
 
         conn = self.active_connections[connection_id]
+        pilot = conn.get("pilot_recording")
+        if pilot is not None:
+            pilot.size += len(audio_bytes)
+            if pilot.size > MAX_AUDIO_BYTES:
+                pilot.failed = True
+                conn["audio_bytes_buffer"] = []
+            if not pilot.failed:
+                conn["audio_bytes_buffer"].append(audio_bytes)
+            return
         if conn.get("recording_format") != "pcm16":
             conn["audio_bytes_buffer"].append(audio_bytes)
             conn["speech_detected"] = True
@@ -2642,7 +2779,13 @@ class AudioStreamHandler:
         except Exception as e:
             logger.error(f"Błąd podczas wysyłania JSON: {e}")
 
-    async def _send_audio(self, connection_id: int, audio_data: np.ndarray):
+    async def _send_audio(
+        self,
+        connection_id: int,
+        audio_data: np.ndarray,
+        *,
+        sample_rate: int | None = None,
+    ):
         """
         Wysyła audio przez WebSocket.
 
@@ -2663,7 +2806,7 @@ class AudioStreamHandler:
                 message = {
                     "type": "audio_response",
                     "audio": base64.b64encode(audio_bytes).decode("utf-8"),
-                    "sample_rate": self._get_tts_sample_rate(),
+                    "sample_rate": sample_rate or self._get_tts_sample_rate(),
                     "format": "int16",
                     "channels": 1,
                     "bytes": len(audio_bytes),

@@ -1,4 +1,8 @@
 export const chat2 = {
+  "attachVoiceImage": "Bild zur gesprochenen Frage hinzufügen",
+  "voiceImageInvalid": "Wähle ein JPEG- oder PNG-Bild aus.",
+  "voiceImageTooLarge": "Das Bild darf höchstens 2 MB groß sein.",
+  "voiceSources": "Quellen",
   "earlier": "Frühere Nachrichten anzeigen",
   "contextTooLarge": "Text und Materialien überschreiten das Kontextlimit. Kürze die Nachricht oder entferne einige Dateien.",
 

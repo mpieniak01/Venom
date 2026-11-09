@@ -1,16 +1,24 @@
 """On-demand audio building blocks for the shared text conversation controller."""
 
+import asyncio
+from collections.abc import AsyncIterator
 from typing import Annotated, Any, Literal
 from urllib.parse import urlsplit
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field
+from starlette.datastructures import FormData, UploadFile
+from starlette.formparsers import MultiPartException, MultiPartParser
 
+from venom_core.api.dependencies import get_session_store
 from venom_core.api.operator_origin import require_operator_origin
 from venom_core.api.transport_access import (
     is_localhost_request,
     require_operator_request,
 )
+from venom_core.services import omni_pilot
+from venom_core.services.background_priority import run_drainable_thread
 from venom_core.services.chat_audio import (
     MAX_AUDIO_BYTES,
     complete_audio_work,
@@ -18,6 +26,8 @@ from venom_core.services.chat_audio import (
     transcribe_pcm,
     validate_pcm,
 )
+from venom_core.services.session_store import SessionStore
+from venom_core.utils.helpers import get_utc_now_iso
 from venom_core.utils.llm_runtime import LLMRuntimeInfo, get_active_llm_runtime
 
 AUDIO_ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
@@ -135,6 +145,134 @@ async def transcribe(
         return {"session_id": session_id, "text": text, "pipeline": "ollama_audio"}
     text = await transcribe_pcm(engine, bytes(content), sample_rate, language)
     return {"session_id": session_id, "text": text, "pipeline": "host_stt"}
+
+
+class _PilotUploadTooLarge(MultiPartException):
+    pass
+
+
+async def _pilot_upload_stream(request: Request) -> AsyncIterator[bytes]:
+    limit = MAX_AUDIO_BYTES + omni_pilot.MAX_IMAGE_BYTES + 16 * 1024
+    size = 0
+    async for chunk in request.stream():
+        size += len(chunk)
+        if size > limit:
+            raise _PilotUploadTooLarge("omni_pilot_upload_too_large")
+        yield chunk
+
+
+async def _pilot_form(request: Request) -> FormData:
+    if (
+        request.headers.get("content-type", "").split(";", 1)[0]
+        != "multipart/form-data"
+    ):
+        raise HTTPException(415, {"reason_code": "omni_pilot_multipart_required"})
+    try:
+        return await MultiPartParser(
+            request.headers,
+            _pilot_upload_stream(request),
+            max_files=2,
+            max_fields=3,
+            max_part_size=1024,
+        ).parse()
+    except _PilotUploadTooLarge as exc:
+        raise HTTPException(413, {"reason_code": exc.message}) from exc
+    except MultiPartException as exc:
+        raise HTTPException(422, {"reason_code": "omni_pilot_invalid_form"}) from exc
+
+
+async def _pilot_inputs(form: FormData) -> tuple[str, int, bytes, bytes | None]:
+    session_id = form.get("session_id")
+    sample_rate = form.get("sample_rate")
+    audio = form.get("audio")
+    image = form.get("image")
+    if (
+        not isinstance(session_id, str)
+        or not 1 <= len(session_id.strip()) <= 256
+        or form.get("language", "pl") != "pl"
+        or not isinstance(sample_rate, str)
+        or not sample_rate.isascii()
+        or not sample_rate.isdecimal()
+        or not 8000 <= int(sample_rate) <= 96000
+        or not isinstance(audio, UploadFile)
+        or (image is not None and not isinstance(image, UploadFile))
+    ):
+        raise HTTPException(422, {"reason_code": "omni_pilot_invalid_form"})
+    rate = int(sample_rate)
+    pcm = await audio.read(MAX_AUDIO_BYTES + 1)
+    validate_pcm(pcm, rate)
+    image_bytes = None
+    if isinstance(image, UploadFile):
+        image_bytes = await image.read(omni_pilot.MAX_IMAGE_BYTES + 1)
+        try:
+            await asyncio.to_thread(omni_pilot.validate_image, image_bytes)
+        except ValueError as exc:
+            raise HTTPException(
+                422, {"reason_code": "omni_pilot_invalid_image"}
+            ) from exc
+    return session_id, rate, pcm, image_bytes
+
+
+@router.post(
+    "/multimodal-turn",
+    responses={
+        413: {"description": "Multimodal upload exceeds limits"},
+        415: {"description": "Multipart form required"},
+        422: {"description": "Invalid image or audio input"},
+    },
+)
+async def multimodal_turn(
+    request: Request, store: Annotated[SessionStore, Depends(get_session_store)]
+):
+    _engine(request)
+    runtime = omni_pilot.active_pilot_runtime()
+    if runtime is None:
+        raise HTTPException(503, {"reason_code": "omni_pilot_unavailable"})
+    form = await _pilot_form(request)
+    try:
+        session_id, rate, pcm, image = await _pilot_inputs(form)
+    finally:
+        await form.close()
+    if await request.is_disconnected():
+        raise HTTPException(499, {"reason_code": "audio_request_cancelled"})
+
+    async def run():
+        if omni_pilot.active_pilot_runtime() != runtime:
+            raise HTTPException(409, {"reason_code": "omni_pilot_runtime_changed"})
+        history = store.get_history(session_id, limit=omni_pilot.MAX_HISTORY_ROWS)
+        result = await omni_pilot.answer(runtime, pcm, rate, image, history)
+        request_id = str(uuid4())
+        timestamp = get_utc_now_iso()
+        entries = [
+            {
+                **entry,
+                "session_id": session_id,
+                "request_id": request_id,
+                "timestamp": timestamp,
+                "status": "COMPLETED",
+            }
+            for entry in omni_pilot.conversation_pair(
+                result, has_image=image is not None
+            )
+        ]
+        if result.sources:
+            entries[-1]["content"] = result.text + "\n\nŹródło: " + result.sources[0]
+        if not await request.is_disconnected():
+            await run_drainable_thread(
+                store.append_turn_once, session_id, request_id, entries
+            )
+        return {
+            "session_id": session_id,
+            "text": result.text,
+            "sources": result.sources,
+        }
+
+    try:
+        return await complete_audio_work(run)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(503, {"reason_code": "omni_pilot_failed"}) from exc
 
 
 @router.post(

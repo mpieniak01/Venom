@@ -66,10 +66,10 @@ def encode_audio_input(path: Path) -> str:
         if output_frames * 2 + 44 > MAX_AUDIO_BYTES:
             raise ValueError("audio_output_too_large")
         samples = np.frombuffer(source.readframes(frames), dtype="<i2")
-    return _encode_pcm(samples, rate)
+    return encode_pcm_audio(samples, rate)
 
 
-def _encode_pcm(samples: NDArray[np.int16], rate: int) -> str:
+def encode_pcm_audio(samples: NDArray[np.int16], rate: int) -> str:
     if samples.size == 0:
         raise ValueError("audio_input_empty")
     if rate != 16000:
@@ -131,7 +131,7 @@ async def transcribe_pcm_audio(
     endpoint: str, model: str, pcm: bytes, rate: int, language: str
 ) -> str:
     samples = np.frombuffer(pcm, dtype="<i2")
-    audio = await asyncio.to_thread(_encode_pcm, samples, rate)
+    audio = await asyncio.to_thread(encode_pcm_audio, samples, rate)
     language_name = {"pl": "Polish", "en": "English", "de": "German"}[language]
     return await _transcribe(
         endpoint, model, audio, f"Perform ASR in {language_name}.", 4096

@@ -1,4 +1,14 @@
 export const voice = {
+  multimodal: {
+    attachImage: "Bild zur gesprochenen Frage hinzufügen",
+    invalidImage: "Wähle ein JPEG- oder PNG-Bild aus. Das Bild darf höchstens 2 MB groß sein.",
+    removeImage: "Bild entfernen",
+    sources: "Quellen",
+    end: "Bildgespräch beenden",
+    active: "Bildgespräch",
+    spokenQuestion: "Gesprochene Frage",
+    stopPlayback: "Wiedergabe stoppen",
+  },
   page: {
     eyebrow: "// Sprachchat",
     title: "Voice Command Center",

@@ -1,7 +1,10 @@
 import asyncio
 import base64
+import io
 import json
 import os
+import wave
+from contextlib import asynccontextmanager
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
@@ -33,6 +36,7 @@ def _add_connection(handler: AudioStreamHandler, cid: int, is_speaking: bool = F
     """Register a fake connection on the handler."""
     ws = MagicMock()
     ws.send_text = AsyncMock()
+    ws.close = AsyncMock()
     handler.active_connections[cid] = {
         "websocket": ws,
         "audio_buffer": [],
@@ -587,6 +591,79 @@ async def test_send_audio_missing_connection_is_silent():
 # ---------------------------------------------------------------------------
 # _handle_control_message  (start / stop / ping / invalid JSON)
 # ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_multimodal_recording_keeps_media_and_context_scoped_to_connection(
+    monkeypatch,
+):
+    handler = _make_handler()
+    ws = _add_connection(handler, 1)
+    _add_connection(handler, 2)
+    runtime = SimpleNamespace(
+        endpoint="http://127.0.0.1:11434", model_name="lfm3-omni:2b"
+    )
+    pilot = audio_stream_mod.omni_pilot
+    monkeypatch.setattr(pilot, "active_pilot_runtime", lambda: runtime)
+    monkeypatch.setattr(pilot, "validate_image", lambda image: None)
+    seen = []
+
+    async def answer(_runtime, pcm, rate, image, history):
+        seen.append((pcm, rate, image, history))
+        return pilot.PilotAnswer("Treść", "VEN-401", ("Dokumentacja",))
+
+    @asynccontextmanager
+    async def guard(**_kwargs):
+        yield
+
+    monkeypatch.setattr(pilot, "answer", answer)
+    monkeypatch.setattr(audio_stream_mod, "runtime_request_guard", guard)
+    wav = io.BytesIO()
+    with wave.open(wav, "wb") as stream:
+        stream.setparams((1, 2, 24000, 0, "NONE", "not compressed"))
+        stream.writeframes(b"\x01\x00" * 100)
+    synthesis = AsyncMock(return_value=wav.getvalue())
+    monkeypatch.setattr(audio_stream_mod.ollama_audio, "synthesize_speech", synthesis)
+    pcm = b"\x00\x10" * 100
+
+    async def record(connection, options):
+        await handler._handle_control_message(
+            connection, json.dumps({"command": "start_recording", **options}), None
+        )
+        handler._handle_audio_data(connection, pcm, None)
+        await handler._handle_control_message(
+            connection, '{"command":"stop_recording"}', None
+        )
+
+    await record(1, {"multimodal": True, "image": "cG5n"})
+    await record(1, {"multimodal": True})
+    await record(2, {"multimodal": True})
+    assert seen[0] == (pcm, 16000, b"png", [])
+    assert seen[1][2] is None and seen[1][3][-1]["omni_pilot_code"] == "VEN-401"
+    assert seen[2][2:] == (None, [])
+    events = [json.loads(call.args[0]) for call in ws.send_text.await_args_list]
+    response = next(event for event in events if event["type"] == "response_text")
+    assert response["sources"] == ["Dokumentacja"] and response["multimodal"] is True
+    audio = next(event for event in events if event["type"] == "audio_response")
+    assert audio["sample_rate"] == 24000
+    assert events[-1]["type"] == "complete"
+    await handler._start_recording(1, {"multimodal": False})
+    assert "pilot_history" not in handler.active_connections[1]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("options", [{"multimodal": True}, {"image": "!"}])
+async def test_multimodal_empty_or_invalid_recording_finishes_with_error(options):
+    handler = _make_handler()
+    ws = _add_connection(handler, 1)
+    await handler._start_recording(1, options)
+    await handler._stop_recording(1, None)
+    assert json.loads(ws.send_text.await_args.args[0]) == {
+        "type": "error",
+        "message": "omni_pilot_failed",
+        "multimodal": True,
+    }
+    assert "pilot_recording" not in handler.active_connections[1]
 
 
 @pytest.mark.asyncio

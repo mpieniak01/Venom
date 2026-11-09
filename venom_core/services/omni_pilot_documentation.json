@@ -1,0 +1,18 @@
+{
+  "VEN-207": {
+    "title": "VEN-207 · Mikrofon niedostępny",
+    "content": "Najpierw sprawdź uprawnienie mikrofonu w przeglądarce. Jeśli jest przyznane, wybierz ponownie urządzenie wejściowe w ustawieniach dźwięku."
+  },
+  "VEN-401": {
+    "title": "VEN-401 · Sesja wygasła",
+    "content": "Najpierw otwórz ponownie sesję. Jeśli komunikat wróci, sprawdź ustawienia sesji i spróbuj zalogować się ponownie."
+  },
+  "VEN-413": {
+    "title": "VEN-413 · Obraz jest za duży",
+    "content": "Najpierw wybierz mniejszy obraz. Jeśli komunikat wróci, zmniejsz rozdzielczość obrazu przed ponownym przesłaniem."
+  },
+  "VEN-503": {
+    "title": "VEN-503 · Usługa chwilowo niedostępna",
+    "content": "Najpierw odczekaj 30 sekund. Następnie ponów żądanie tylko raz."
+  }
+}

@@ -1,9 +1,12 @@
 """Audio never generates an LLM turn and cancellation drains native work."""
 
 import asyncio
+import base64
 import io
+import json
 import wave
-from contextlib import nullcontext
+from contextlib import asynccontextmanager, nullcontext
+from copy import deepcopy
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
@@ -11,13 +14,16 @@ import httpx
 import pytest
 import pytest_asyncio
 from fastapi import FastAPI
+from PIL import Image
 
-from venom_core.api.routes.chat_audio import router
-from venom_core.services import chat_audio
+from venom_core.api.dependencies import get_session_store
+from venom_core.api.studio_routes import include_studio_routes
+from venom_core.services import chat_audio, omni_pilot
+from venom_core.services.session_store import SessionStore
 
 
 @pytest_asyncio.fixture
-async def rig(monkeypatch):
+async def rig(monkeypatch, tmp_path):
     engine = SimpleNamespace(
         transcribe_checked=AsyncMock(return_value="hello"),
         speak=AsyncMock(return_value=b"\x01\x00" * 100),
@@ -26,13 +32,142 @@ async def rig(monkeypatch):
     admission = SimpleNamespace(operation=Mock(side_effect=lambda **_: nullcontext()))
     monkeypatch.setattr(chat_audio, "get_runtime_admission", lambda: admission)
     app = FastAPI()
-    app.include_router(router)
+    include_studio_routes(app)
     app.state.audio_engine = engine
+    store = SessionStore(str(tmp_path / "history.json"))
+    app.dependency_overrides[get_session_store] = lambda: store
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app, client=("127.0.0.1", 12345)),
         base_url="http://localhost",
     ) as client:
         yield client, engine, admission
+
+
+def _pilot_image() -> bytes:
+    output = io.BytesIO()
+    Image.new("RGB", (8, 8)).save(output, format="PNG")
+    return output.getvalue()
+
+
+@pytest.mark.asyncio
+async def test_pilot_uses_image_and_raw_audio_in_one_turn_and_retains_source(
+    rig, monkeypatch
+):
+    client, engine, _ = rig
+    runtime = SimpleNamespace(
+        endpoint="http://127.0.0.1:11434", model_name="lfm3-omni:2b"
+    )
+    monkeypatch.setattr(omni_pilot, "active_pilot_runtime", lambda: runtime)
+    monkeypatch.setattr(
+        omni_pilot,
+        "require_local_capability",
+        AsyncMock(return_value={"capabilities": ["audio", "vision", "tools"]}),
+    )
+    request_payloads = []
+    lookup = json.dumps({"action": omni_pilot.TOOL_NAME, "code": "VEN-401"})
+    followup_choice = json.dumps({"action": "previous_source", "code": ""})
+    messages = iter(
+        [
+            {"content": lookup},
+            {"content": "Otwórz ponownie sesję."},
+            {"content": followup_choice},
+            {"content": "Najpierw otwórz ponownie sesję."},
+        ]
+    )
+
+    async def post(_url, *, json, **_kwargs):
+        request_payloads.append(deepcopy(json))
+        return httpx.Response(200, json={"done": True, "message": next(messages)})
+
+    @asynccontextmanager
+    async def http(**_kwargs):
+        yield SimpleNamespace(apost=post)
+
+    monkeypatch.setattr(omni_pilot, "TrafficControlledHttpClient", http)
+    data = {"session_id": "pilot", "sample_rate": "16000", "language": "pl"}
+    image = _pilot_image()
+    pcm = b"\x00\x10" * 100
+    files = {"audio": ("recording.pcm", pcm)}
+    result = await client.post(
+        "/api/v1/chat/audio/multimodal-turn",
+        data=data,
+        files={**files, "image": ("capture.png", image)},
+    )
+    assert result.status_code == 200
+    source = result.json()["sources"][0]
+    assert "VEN-401" in source
+    assert result.json()["text"].startswith("Najpierw otwórz ponownie sesję.")
+    image_b64, audio_b64 = request_payloads[0]["messages"][-1]["images"]
+    assert base64.b64decode(image_b64) == image
+    with wave.open(io.BytesIO(base64.b64decode(audio_b64))) as recorded:
+        assert recorded.readframes(100) == pcm
+    assert request_payloads[0]["format"] == omni_pilot.SELECTION_SCHEMA
+    assert "format" not in request_payloads[1]
+    assert (
+        "Najpierw otwórz ponownie sesję."
+        in request_payloads[1]["messages"][0]["content"]
+    )
+
+    followup = await client.post(
+        "/api/v1/chat/audio/multimodal-turn", data=data, files=files
+    )
+    assert followup.status_code == 200
+    assert followup.json()["sources"] == [source]
+    assert len(request_payloads[2]["messages"][-1]["images"]) == 1
+    assert "VEN-401" in request_payloads[2]["messages"][0]["content"]
+    assert source in request_payloads[3]["messages"][0]["content"]
+    engine.transcribe_checked.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    "content,previous,expected",
+    [
+        ("invalid JSON", "VEN-401", None),
+        ('{"action":"lookup_pilot_documentation","code":"../secrets"}', None, None),
+        (
+            '{"action":"lookup_pilot_documentation","code":"VEN-401","path":"/tmp"}',
+            None,
+            None,
+        ),
+        ('{"action":"shell","code":"VEN-401"}', None, None),
+        ('{"action":"clarify","code":""}', "VEN-401", None),
+        ('{"action":"previous_source","code":""}', None, None),
+        ('{"action":"previous_source","code":""}', "VEN-401", "VEN-401"),
+    ],
+)
+def test_pilot_selection_can_only_dispatch_a_valid_document_lookup(
+    content, previous, expected
+):
+    assert omni_pilot._selected_code({"content": content}, previous) == expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("error", ["invalid_image", "missing_image", "bad_type"])
+async def test_pilot_rejects_unusable_media_before_inference(rig, monkeypatch, error):
+    client, _, _ = rig
+    runtime = SimpleNamespace(
+        endpoint="http://127.0.0.1:11434", model_name="lfm3-omni:2b"
+    )
+    monkeypatch.setattr(omni_pilot, "active_pilot_runtime", lambda: runtime)
+    upstream = AsyncMock()
+    monkeypatch.setattr(omni_pilot, "require_local_capability", upstream)
+    data = {"session_id": "pilot", "sample_rate": "16000", "language": "pl"}
+    files = {"audio": ("recording.pcm", b"\x00\x10" * 100)}
+    url = "/api/v1/chat/audio/multimodal-turn"
+    if error == "bad_type":
+        result = await client.post(url, content=b"bad")
+        assert result.status_code == 415
+    elif error == "invalid_image":
+        result = await client.post(
+            url, data=data, files={**files, "image": ("bad.png", b"x")}
+        )
+        assert result.status_code == 422
+    else:
+        result = await client.post(url, data=data, files=files)
+        assert result.status_code == 200
+        assert result.json()["sources"] == []
+        assert "Dołącz obraz" in result.json()["text"]
+    upstream.assert_not_awaited()
 
 
 @pytest.mark.asyncio

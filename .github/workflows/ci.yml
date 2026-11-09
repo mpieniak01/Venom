@@ -371,31 +371,33 @@ jobs:
         run: npm --prefix web-next ci
 
       - name: Check committed OpenAPI, TypeScript types and Studio parity
+        id: openapi_check
         run: make openapi-check
 
       - name: Upload OpenAPI contract artifacts (attempt 1)
         id: upload_openapi_attempt_1
+        if: ${{ !cancelled() }}
         continue-on-error: true
         uses: actions/upload-artifact@v6
         with:
           name: openapi-contract
           path: test-results/openapi/**
-          if-no-files-found: error
+          if-no-files-found: ${{ steps.openapi_check.outcome == 'success' && 'error' || 'warn' }}
           overwrite: true
 
       - name: Upload OpenAPI contract artifacts (attempt 2)
         id: upload_openapi_attempt_2
-        if: steps.upload_openapi_attempt_1.outcome == 'failure'
+        if: ${{ !cancelled() && steps.upload_openapi_attempt_1.outcome == 'failure' }}
         continue-on-error: true
         uses: actions/upload-artifact@v6
         with:
           name: openapi-contract
           path: test-results/openapi/**
-          if-no-files-found: error
+          if-no-files-found: ${{ steps.openapi_check.outcome == 'success' && 'error' || 'warn' }}
           overwrite: true
 
       - name: Fail if artifact upload failed after retries
-        if: steps.upload_openapi_attempt_1.outcome == 'failure' && steps.upload_openapi_attempt_2.outcome == 'failure'
+        if: ${{ !cancelled() && steps.upload_openapi_attempt_1.outcome == 'failure' && steps.upload_openapi_attempt_2.outcome == 'failure' }}
         run: |
           echo "OpenAPI artifact upload failed twice (likely transient network/endpoint issue)."
           exit 1

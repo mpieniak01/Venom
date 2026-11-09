@@ -15,6 +15,7 @@ from scripts import export_openapi as exporter
 
 @pytest.fixture
 def schema():
+    """Provide a minimal HTTP contract shared by the synthetic core and Studio."""
     return {
         "openapi": "3.1.0",
         "info": {"title": "Fixture", "version": "1"},
@@ -26,6 +27,7 @@ def schema():
 def test_export_environment_drops_operator_settings_credentials_and_pytest(
     monkeypatch, tmp_path
 ):
+    """Keep operator configuration and legacy pytest startup flags out of exports."""
     monkeypatch.setenv("API_OPTIONAL_MODULES", "manifest:/operator/module.json")
     monkeypatch.setenv("ENV_FILE", "/operator/.env.dev")
     monkeypatch.setenv("OPENAI_API_KEY", "fixture-not-a-secret")
@@ -56,6 +58,7 @@ def test_export_environment_drops_operator_settings_credentials_and_pytest(
     ],
 )
 def test_non_core_exports_cannot_silently_replace_shared_contract(args):
+    """Reject ambiguous module inputs and destinations that replace the core snapshot."""
     with pytest.raises(SystemExit) as error:
         exporter.parse_args(args)
     assert error.value.code == 2
@@ -64,7 +67,10 @@ def test_non_core_exports_cannot_silently_replace_shared_contract(args):
 def test_isolated_export_uses_fresh_interpreter_and_propagates_failure(
     monkeypatch, tmp_path, schema
 ):
+    """Verify child-process isolation and preserve exporter failures as nonzero results."""
+
     def run(command, **kwargs):
+        """Validate the isolated child invocation and supply fixture metadata."""
         assert command[:2] == [sys.executable, "-I"]
         assert kwargs["check"] is True
         assert kwargs["cwd"] != exporter.REPO_ROOT
@@ -78,6 +84,7 @@ def test_isolated_export_uses_fresh_interpreter_and_propagates_failure(
     assert exporter.export_schema() == schema
 
     def fail(*args, **kwargs):
+        """Simulate failure without invoking external tools or services."""
         raise subprocess.CalledProcessError(3, args[0], stderr="fixture import failure")
 
     monkeypatch.setattr(exporter.subprocess, "run", fail)
@@ -87,6 +94,7 @@ def test_isolated_export_uses_fresh_interpreter_and_propagates_failure(
 
 
 def test_schema_serialization_preserves_registration_and_array_order(tmp_path):
+    """Keep route registration and semantically meaningful arrays intact."""
     output = tmp_path / "nested/schema.json"
     exporter.write_schema({"z": ["b", "a"], "a": {"z": 1, "a": 2}}, output)
     assert output.read_text().startswith('{\n  "z":')
@@ -95,6 +103,7 @@ def test_schema_serialization_preserves_registration_and_array_order(tmp_path):
 
 @pytest.mark.parametrize("kind", ["operation", "component", "security", "missing"])
 def test_studio_parity_rejects_contract_changes(schema, kind):
+    """Detect incompatible operations, components, security and unknown Studio paths."""
     studio = copy.deepcopy(schema)
     if kind == "operation":
         studio["paths"]["/audio"]["post"]["operationId"] = "other"
@@ -108,6 +117,7 @@ def test_studio_parity_rejects_contract_changes(schema, kind):
 
 
 def test_studio_allows_full_only_routes_and_components(schema):
+    """Allow Full to expose capabilities outside the supported Studio subset."""
     full = copy.deepcopy(schema)
     full["paths"]["/full-only"] = {"get": {}}
     full["components"]["schemas"]["Extra"] = {"type": "integer"}
@@ -118,6 +128,7 @@ def test_studio_allows_full_only_routes_and_components(schema):
 def test_contract_comparison_detects_missing_corrupt_and_stale_json(
     tmp_path, schema, content
 ):
+    """Fail contract comparison when the committed JSON is absent, invalid or stale."""
     expected = tmp_path / "expected.json"
     actual = tmp_path / "actual.json"
     actual.write_text(json.dumps(schema))
@@ -127,6 +138,7 @@ def test_contract_comparison_detects_missing_corrupt_and_stale_json(
 
 
 def test_contract_comparison_ignores_json_formatting_and_checks_types(tmp_path, schema):
+    """Ignore JSON formatting while detecting changes in TypeScript declarations."""
     expected = tmp_path / "expected.json"
     actual = tmp_path / "actual.json"
     expected.write_text(json.dumps(schema, indent=4, sort_keys=True))
@@ -142,6 +154,7 @@ def test_contract_comparison_ignores_json_formatting_and_checks_types(tmp_path, 
 def test_check_and_update_flow_detects_drift_without_modifying_tracked_files(
     monkeypatch, tmp_path, schema
 ):
+    """Preserve diagnostic artifacts on drift and update tracked files only explicitly."""
     root = tmp_path / "repo"
     (root / "openapi").mkdir(parents=True)
     (root / "web-next/lib/generated").mkdir(parents=True)
@@ -156,6 +169,11 @@ def test_check_and_update_flow_detects_drift_without_modifying_tracked_files(
     )
     output = tmp_path / "artifacts"
     assert gate.check_contract(output) == 1
+    assert {file.name for file in output.iterdir()} == {
+        "openapi.json",
+        "studio.json",
+        "api-types.d.ts",
+    }
     assert expected_schema.read_text() == "{}\n"
     assert expected_types.read_text() == "stale types\n"
     assert gate.check_contract(output, update=True) == 0
@@ -167,6 +185,7 @@ def test_check_and_update_flow_detects_drift_without_modifying_tracked_files(
 def test_parity_failure_cannot_update_contract_or_run_codegen(
     monkeypatch, tmp_path, schema
 ):
+    """Stop before code generation and tracked writes when Studio diverges from Full."""
     studio = copy.deepcopy(schema)
     studio["paths"]["/audio"]["post"]["operationId"] = "drift"
     monkeypatch.setattr(
@@ -179,7 +198,10 @@ def test_parity_failure_cannot_update_contract_or_run_codegen(
 
 
 def test_codegen_uses_local_pinned_binary_and_propagates_failure(monkeypatch, tmp_path):
+    """Use the installed generator and retain its nonzero exit status."""
+
     def fail(command, **kwargs):
+        """Simulate failure without invoking external tools or services."""
         assert command[0] == "node"
         assert "node_modules/openapi-typescript/bin/cli.js" in command[1]
         assert kwargs["check"] is True
@@ -199,7 +221,10 @@ def test_codegen_uses_local_pinned_binary_and_propagates_failure(monkeypatch, tm
     ],
 )
 def test_cli_generation_failures_are_not_green(monkeypatch, tmp_path, error):
+    """Turn missing tools, timeouts and subprocess failures into failed CLI checks."""
+
     def fail(*args, **kwargs):
+        """Simulate failure without invoking external tools or services."""
         raise error
 
     monkeypatch.setattr(gate, "check_contract", fail)
@@ -208,6 +233,7 @@ def test_cli_generation_failures_are_not_green(monkeypatch, tmp_path, error):
 
 @pytest.fixture
 def module_manifest(tmp_path, monkeypatch):
+    """Create a trusted fixture module whose endpoint must never run during export."""
     package = tmp_path / "contract_fixture.py"
     package.write_text(
         "from fastapi import APIRouter\n"
@@ -240,12 +266,14 @@ def module_manifest(tmp_path, monkeypatch):
 
 
 def test_module_export_contains_only_explicit_module(module_manifest):
+    """Export only the explicitly selected module without core or unrelated routes."""
     result = exporter.export_schema("module", module_manifest)
     assert set(result["paths"]) == {"/fixture"}
     assert result["info"]["title"] == "Venom module: contract_fixture"
 
 
 def test_module_export_fails_when_manifest_or_router_is_unavailable(module_manifest):
+    """Reject missing manifests and unavailable routers instead of partial exports."""
     with pytest.raises(ValueError):
         exporter.module_application(module_manifest.parent / "absent.json")
     payload = json.loads(module_manifest.read_text())
@@ -259,6 +287,7 @@ def test_real_core_export_is_independent_of_operator_configuration(
     monkeypatch, tmp_path
 ):
     # Importing metadata must not enter the app lifespan (models/services).
+    """Verify actual route metadata is stable despite hostile inherited configuration."""
     first = exporter.export_schema("core")
     poisoned_env = tmp_path / ".env.dev"
     poisoned_env.write_text(
@@ -288,6 +317,7 @@ def test_real_core_export_is_independent_of_operator_configuration(
 def test_check_rejects_artifacts_overlapping_tracked_files(
     monkeypatch, tmp_path, destination
 ):
+    """Prevent artifact output directories from overwriting committed contracts."""
     monkeypatch.setattr(gate, "REPO_ROOT", tmp_path)
     monkeypatch.setattr(
         gate, "export_schema", lambda *args: pytest.fail("unexpected export")
@@ -310,6 +340,7 @@ def test_check_rejects_artifacts_overlapping_tracked_files(
 def test_pr_fast_scopes_contract_changes_and_propagates_red_gate(
     tmp_path, changed_path, expected_gate
 ):
+    """Exercise real Git scope detection and stop before other lanes on contract drift."""
     root = tmp_path / "repo"
     root.mkdir()
     environment = {
@@ -317,6 +348,7 @@ def test_pr_fast_scopes_contract_changes_and_propagates_red_gate(
     }
 
     def git(*args):
+        """Run Git only in the temporary fixture repository with inherited context removed."""
         return subprocess.run(
             ["git", "-C", str(root), *args],
             env=environment,
@@ -387,6 +419,7 @@ def test_pr_fast_scopes_contract_changes_and_propagates_red_gate(
 def test_json_comparison_distinguishes_boolean_and_numeric_defaults(
     tmp_path, expected_value, actual_value
 ):
+    """Keep JSON boolean and numeric defaults distinct despite Python equality."""
     expected = tmp_path / "expected.json"
     actual = tmp_path / "actual.json"
     expected.write_text(json.dumps({"default": expected_value}))
@@ -395,6 +428,7 @@ def test_json_comparison_distinguishes_boolean_and_numeric_defaults(
 
 
 def test_artifact_symlink_cannot_overwrite_committed_schema(monkeypatch, tmp_path):
+    """Reject an artifact symlink that aliases the committed core snapshot."""
     monkeypatch.setattr(gate, "REPO_ROOT", tmp_path)
     monkeypatch.setattr(
         gate, "export_schema", lambda *args: pytest.fail("unexpected export")

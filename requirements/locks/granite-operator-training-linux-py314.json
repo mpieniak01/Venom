@@ -251,9 +251,9 @@
       "version": "13.2.86"
     },
     "packaging": {
-      "sha256": "b36f1fef9334a5588b4166f8bcd26a14e521f2b55e6b9de3aaa80d3ff7a37529",
-      "url": "https://files.pythonhosted.org/packages/b7/b9/c538f279a4e237a006a2c98387d081e9eb060d203d8ed34467cc0f0b9b53/packaging-26.0-py3-none-any.whl",
-      "version": "26.0"
+      "sha256": "d7193f7c8e4e93f444fde0262bf90af30e16fa0ad0ad44cb553c87339b23cd1c",
+      "url": "https://files.pythonhosted.org/packages/63/34/ba1c580383c9eada3711951fef0795c80b829a078d72188184bcab9dd527/packaging-26.3-py3-none-any.whl",
+      "version": "26.3"
     },
     "pandas": {
       "sha256": "326459d8a9be11b5f48c7fc1d63e38ba7cfeaebe5d41bd19e4c5f4f11dc9ac91",
@@ -336,9 +336,9 @@
       "version": "0.8.0"
     },
     "setuptools": {
-      "sha256": "29b23c360f22f414dc7336bb39178cc7bcbf6021ed2733cde173f09dba19abb3",
-      "url": "https://files.pythonhosted.org/packages/5d/40/e1e72872c6354b306daef1703549e8e83b4d43cfea356311bf722a043752/setuptools-83.0.0-py3-none-any.whl",
-      "version": "83.0.0"
+      "sha256": "ca140b45d5325a9478f880e351484f62fef15f336462e449ca0c03c873d589c2",
+      "url": "https://files.pythonhosted.org/packages/ef/55/6dc6d6bb953bdfc52519a0059592c52b6e3b8ad51cf8256dffceb55b0610/setuptools-84.2.1-py3-none-any.whl",
+      "version": "84.2.1"
     },
     "shellingham": {
       "sha256": "7ecfff8f2fd72616f7481040475a65b2bf8af90a56c89140852d1120324e8686",
@@ -421,15 +421,15 @@
       "version": "1.25.1"
     }
   },
-  "lock_sha256": "967a9e541f1902134743d6d3cfca8550f375c17a9a194b9f6c830d5f883c650c",
+  "lock_sha256": "9f4e40e50bc6ae4d34585990f336b1fdc70412ac608f44c93942b0b26d6e3c25",
   "platform": {
     "machine": "x86_64",
     "python": "3.14",
     "system": "Linux"
   },
-  "policy_sha256": "10a4757b293dd0dc92356fadfdeb1019d041368636e674334c58dd65e2d5345e",
+  "policy_sha256": "4e31d998d41e6f570f87bfe12c3d85438979bcd010cd3a91dfc347ff720e2033",
   "profile": "granite-operator-training",
-  "profile_policy_sha256": "0657fe99a41865a92426809b5312263552435298bf88b5c5764836a953d37665",
+  "profile_policy_sha256": "f324c557cae6fd6d6543bb78fb431234c7eea39b64af319c33eb8beeceb2aaf2",
   "qualification": "RESOLVED_ONLY",
   "resolver": {
     "name": "pip",

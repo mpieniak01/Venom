@@ -173,7 +173,8 @@ ONNX Runtime 1.31.1. All Hub consumers in the managed profiles use Hub 2.4.0
 and hf-xet 1.8.0, including CI; its separate httpx2, httpcore2 and truststore
 dependencies are recorded in the locks. The application still uses httpx 0.28.1.
 
-Pillow stays at 12.3.0 pending the optional Rider host qualification.
+Pillow advances to 13.0.0 after the dependency audit reported fixes unavailable
+in 12.3.0. The optional Rider host retains its separate previous environment.
 PyAV stays at 19.0.1 because the audited 19.0.2 file-input path is incompatible
 with Faster Whisper 1.2.1's metadata_errors argument. Venom's PCM flow has
 separate acceptance evidence. PEFT, Accelerate, bitsandbytes, TRL and Datasets
@@ -220,3 +221,10 @@ Publishing the code does not switch active venv symlinks or restart services.
 Retain the old checkout and complete environments for rollback. Activate each
 candidate interpreter only as a separately requested deployment, then perform
 the operator's Studio, Full voice and optional Rider acceptance flows.
+
+The migration's dependency audit also requires aiohttp 3.14.5, GitPython 3.2.1,
+filelock 4.2.10, pyasn1 >=0.6.5, pypdf 6.21.4, virtualenv 21.15.6 and the
+setuptools 84.2.1 build toolchain. OAuthlib 4.0.1 is selected transitively.
+Regenerate and qualify Light, CI and build as well as the model profiles when
+these shared security constraints change. Keep previous audit results under
+their original lock identity; do not waive findings through ignore entries.

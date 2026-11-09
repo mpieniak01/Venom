@@ -1355,7 +1355,7 @@ def test_light_preserves_consumers_without_manually_added_sdk_and_webrtc_package
     ci = profiles.requirements_for(policy, "ci")
     build = profiles.requirements_for(policy, "build")
     assert ci["rich"] == "rich==13.9.4"
-    assert ci["packaging"] == build["packaging"] == "packaging==26.0"
+    assert ci["packaging"] == build["packaging"] == "packaging==26.3"
 
 
 @pytest.mark.parametrize("profile", ["ci", "full", "full-ci"])

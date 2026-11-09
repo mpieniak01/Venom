@@ -226,14 +226,14 @@
       "version": "13.2.86"
     },
     "packaging": {
-      "sha256": "b36f1fef9334a5588b4166f8bcd26a14e521f2b55e6b9de3aaa80d3ff7a37529",
-      "url": "https://files.pythonhosted.org/packages/b7/b9/c538f279a4e237a006a2c98387d081e9eb060d203d8ed34467cc0f0b9b53/packaging-26.0-py3-none-any.whl",
-      "version": "26.0"
+      "sha256": "d7193f7c8e4e93f444fde0262bf90af30e16fa0ad0ad44cb553c87339b23cd1c",
+      "url": "https://files.pythonhosted.org/packages/63/34/ba1c580383c9eada3711951fef0795c80b829a078d72188184bcab9dd527/packaging-26.3-py3-none-any.whl",
+      "version": "26.3"
     },
     "pillow": {
-      "sha256": "251bf95b67017e27b13d82f5b326234ca62d70f9cf4c2b9032de2358a3b12c7b",
-      "url": "https://files.pythonhosted.org/packages/5c/44/c85361f65dbe00eea8576ee467c768d25129989efb76e94f205e9ca9bb46/pillow-12.3.0-cp314-cp314-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl",
-      "version": "12.3.0"
+      "sha256": "e91c2b1cbeae768c98752e67e717e283d68dae45717b41f2d91eaee648e37b7d",
+      "url": "https://files.pythonhosted.org/packages/1d/f2/1371707ce438ba9a43f9d24089828494ec6f9396e28cd7903aa704dd6306/pillow-13.0.0-cp314-cp314-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl",
+      "version": "13.0.0"
     },
     "psutil": {
       "sha256": "076a2d2f923fd4821644f5ba89f059523da90dc9014e85f8e45a5774ca5bc6f9",
@@ -306,9 +306,9 @@
       "version": "1.18.1"
     },
     "setuptools": {
-      "sha256": "29b23c360f22f414dc7336bb39178cc7bcbf6021ed2733cde173f09dba19abb3",
-      "url": "https://files.pythonhosted.org/packages/5d/40/e1e72872c6354b306daef1703549e8e83b4d43cfea356311bf722a043752/setuptools-83.0.0-py3-none-any.whl",
-      "version": "83.0.0"
+      "sha256": "ca140b45d5325a9478f880e351484f62fef15f336462e449ca0c03c873d589c2",
+      "url": "https://files.pythonhosted.org/packages/ef/55/6dc6d6bb953bdfc52519a0059592c52b6e3b8ad51cf8256dffceb55b0610/setuptools-84.2.1-py3-none-any.whl",
+      "version": "84.2.1"
     },
     "shellingham": {
       "sha256": "7ecfff8f2fd72616f7481040475a65b2bf8af90a56c89140852d1120324e8686",
@@ -401,15 +401,15 @@
       "version": "17.4"
     }
   },
-  "lock_sha256": "0a2f15e4054aa0cdf8bf628c3fc5e481f1d779526795b73b8a4b9059b6203541",
+  "lock_sha256": "10b8d9261c6900288d212c72b86f06c9c80aece9974035b21f15bedd6a8accc7",
   "platform": {
     "machine": "x86_64",
     "python": "3.14",
     "system": "Linux"
   },
-  "policy_sha256": "10a4757b293dd0dc92356fadfdeb1019d041368636e674334c58dd65e2d5345e",
+  "policy_sha256": "4e31d998d41e6f570f87bfe12c3d85438979bcd010cd3a91dfc347ff720e2033",
   "profile": "multi-runtime-cuda",
-  "profile_policy_sha256": "46c7315937dd148b0f3785c337438af14396233228625203bad5d6f48886a2d3",
+  "profile_policy_sha256": "50941d897f333eba27e9f951d3315e9263ddc5652f8ba587fbf74cc78b46d8ee",
   "qualification": "RESOLVED_ONLY",
   "resolver": {
     "name": "pip",

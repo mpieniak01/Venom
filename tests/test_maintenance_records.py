@@ -11,7 +11,10 @@ from unittest.mock import MagicMock
 import pytest
 
 from venom_core.services.maintenance_comparison import inference, metrics, worker
-from venom_core.services.maintenance_comparison.catalog import load_catalog
+from venom_core.services.maintenance_comparison.catalog import (
+    load_all_models,
+    load_catalog,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -571,3 +574,19 @@ def test_kernel_bindings_report_actual_forward_implementation():
     assert inference._kernel_bindings(model) == {
         "op": optimized.__module__ + "." + optimized.__qualname__
     }
+
+
+def test_active_gemma_e2b_uses_eager_audio_and_preserves_sdpa_text():
+    """Verify the real selected profile reaches the loader without changing baselines."""
+    catalog_root = ROOT / "config/maintenance_comparison"
+    frozen, _ = load_catalog(catalog_root)
+    assert all(model["profile"]["backend_version"] == "5.17.0" for model in frozen)
+    active, _ = load_all_models(catalog_root)
+    gemma = next(model for model in active if model["id"] == "gemma-4-e2b-it")
+    assert inference._backend_options(gemma) == {
+        "attn_implementation": {"": "sdpa", "audio_config": "eager"}
+    }
+    assert all(model["profile"]["backend_version"] == "5.22.2" for model in active)
+    assert all(
+        model["deployment_profile"] == "retained-models-rtx3060-v3" for model in active
+    )

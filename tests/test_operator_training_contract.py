@@ -813,6 +813,7 @@ def native_provider(monkeypatch):
 def test_actual_session_uses_selected_loader_precision_and_gpu_only(
     profile, native_provider, tmp_path, precision
 ):
+    """Verify loader, precision and GPU arguments using model and tensor doubles."""
     recipe = training.GemmaTrainingRecipe.for_profile(
         profile,
         quantization=precision,
@@ -828,6 +829,11 @@ def test_actual_session_uses_selected_loader_precision_and_gpu_only(
     assert options["local_files_only"] is True
     assert options["trust_remote_code"] is False
     assert options["dtype"] == "bf16"
+    assert options["attn_implementation"] == (
+        {"": "sdpa", "audio_config": "eager"}
+        if profile.model == "google/gemma-4-E4B-it"
+        else "sdpa"
+    )
     assert session.profile.quantization == precision
     assert native_provider.owners == [True]
     assert session.placement["gpu_required"] is True
@@ -920,3 +926,35 @@ def test_changed_smoke_artifact_blocks_model_construction(prepared, tmp_path):
 
     with pytest.raises(ValueError, match="qualification_artifact_changed"):
         run(body, forbidden)
+
+
+@pytest.mark.parametrize(
+    "package, version", [("torch", "2.13.0"), ("transformers", "5.17.0")]
+)
+def test_new_training_stack_rejects_previous_dependency_versions(
+    monkeypatch, package, version
+):
+    """Historical environments cannot qualify a fresh upgraded training attempt."""
+    monkeypatch.setattr(training.platform, "python_version", lambda: "3.14.8")
+    monkeypatch.setattr(training.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(training.platform, "machine", lambda: "x86_64")
+    versions = dict(training.VERSIONS)
+    monkeypatch.setattr(training.importlib.metadata, "version", versions.__getitem__)
+    result = training.inspect_dependencies()
+    assert result["status"] == "PASS"
+    assert result["gpu_qualified"] is False
+    assert result["model_loaded"] is False
+    versions[package] = version
+    result = training.inspect_dependencies()
+    assert result["status"] == "BLOCKED"
+    assert result["errors"] == ["package_version_mismatch:" + package]
+
+
+def test_training_versions_match_canonical_model_policy():
+    """Keep exact worker admission in sync with the selected profile's inputs."""
+    policy = json.loads(Path("config/dependency-profiles.json").read_text())
+    requirements = (
+        policy["groups"]["model-runtime"] + policy["groups"]["granite-training"]
+    )
+    for name, version in training.VERSIONS.items():
+        assert name + "==" + version in requirements

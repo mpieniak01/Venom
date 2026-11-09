@@ -6,7 +6,7 @@ Linux x86_64, Python **3.14.8** (`platform.python` is the minor `3.14`;
 These declarations do not establish installation, runtime or security qualification.
 The existing Python 3.12 evidence does not qualify the new interpreter or graph.
 
-## Six managed profiles
+## Seven managed profiles
 
 | Profile | Kind | Dependency boundary |
 | --- | --- | --- |
@@ -16,6 +16,7 @@ The existing Python 3.12 evidence does not qualify the new interpreter or graph.
 | `full` | Application | Extends Light with actual memory, vision, web/documents, desktop, hardware and CPU voice/floor consumers. |
 | `full-ci` | Application | Extends Full with the same CI tools; its installed inventory is distinct from exact Full. |
 | `multi-runtime-cuda` | Component | Independent minimal API/model/audio/OCR base for the CUDA daemon; does not extend Light. |
+| `granite-operator-training` | Component | Shared isolated CUDA training dependencies for Gemma 4 and FunctionGemma; historical lock name retained for checkpoint compatibility. |
 
 The five compatibility inputs `requirements.txt`, `requirements-runtime-common.txt`,
 `requirements-docker-minimal.txt`, `requirements-profile-api.txt` and
@@ -24,7 +25,7 @@ are self-contained and contain no recursive `-r` or `-c` directives.
 
 ## In-process features and the separate daemon
 
-Full retains Torch **2.13.0**, TorchVision **0.28.0** and Transformers **5.17.0**
+Full declares Torch **2.15.0**, TorchVision **0.29.2** and Transformers **5.22.2**
 for existing in-process DA2 vision and RAG/embedding consumers. Moving the HTTP
 daemon to another interpreter does not move those application consumers. Full
 also declares CPU `onnxruntime` for the existing voice and Rider floor features,
@@ -65,7 +66,7 @@ adding every historical experiment back to Full is not the profile contract.
 ONNX LLM/GenAI, standalone legacy ONNX extras, GPU ONNX, vLLM and Academy remain
 explicitly deferred. The active Full CPU voice/floor group does not activate those
 legacy installer profiles. A later ONNX LLM component needs a concrete model
-consumer and its own qualification. vLLM and training remain outside this candidate.
+consumer and its own qualification. vLLM remains outside this candidate; model training uses its isolated component.
 Legacy overlay bytes may still include a changed shared Light input; byte identity
 does not freeze their effective graph or establish compatibility.
 
@@ -163,3 +164,92 @@ Temporary Light smoke and Python-provisioning tool environments were removed
 only after their receipts were retained. The two remaining candidate environments
 occupy about 11.2 GiB together; the operator environment and existing model cache
 were preserved. The test model was unloaded and its owned process stopped.
+
+## Model stack migration (2026-11-09)
+
+The shared model group now pins Torch 2.15.0, TorchVision 0.29.2 and
+Transformers 5.22.2. The Linux locks select CUDA Toolkit 13.2.2 and Triton 3.9.0.
+Full and Full CI use Sentence Transformers 6.2.0, SciPy 1.18.1 and CPU
+ONNX Runtime 1.31.1. All Hub consumers in the managed profiles use Hub 2.4.0
+and hf-xet 1.8.0, including CI; its separate httpx2, httpcore2 and truststore
+dependencies are recorded in the locks. The application still uses httpx 0.28.1.
+
+Pillow advances to 13.0.0 after the dependency audit reported fixes unavailable
+in 12.3.0. The optional Rider host retains its separate previous environment.
+PyAV stays at 19.0.1 because the audited 19.0.2 file-input path is incompatible
+with Faster Whisper 1.2.1's metadata_errors argument. Venom's PCM flow has
+separate acceptance evidence. PEFT, Accelerate, bitsandbytes, TRL and Datasets
+retain their current declared versions. These are explicit version decisions,
+not permission to relax the exclusive ONNX distribution rule.
+
+### Optional Rider integration
+
+The host module is an independent repository. Its current CUDA perception runs
+inside its host process; installing a second venv alone does not move that code.
+Preserve the existing Rider host checkout and its complete environment until a
+companion change provides and qualifies a separate GPU process entry point.
+The retained environment is not selected automatically. The current local
+operator configuration still includes Rider in `API_OPTIONAL_MODULES`. Before
+activating the new Full interpreter, use a dedicated configuration that omits
+that manifest. If Rider remains in use, keep its previous complete Venom host
+process/checkout/environment on separately assigned addresses and ports until
+the companion GPU boundary is implemented. Do not copy the current optional
+module configuration blindly into the new interpreter; do not modify the
+physical Pi to resolve a host dependency conflict.
+
+The optional GPU profile must declare ONNX Runtime GPU and its required cuRAND,
+and demonstrate CUDA/DLPack without CPU fallback. It must never overlay CPU ORT
+in the new Full environment or force the core application back to older Torch.
+
+The device source checkout uses its own development interpreter (Python 3.12).
+The physical Rider-Pi remains on manufacturer Debian 11 and Python 3.9. Its
+deployment, Python upgrade and motion tests are separate operations. Core
+acceptance uses fixture protocol/capability/telemetry exchanges and saved frames.
+
+### Qualification and activation
+
+Create fresh candidate environments with the documented bootstrap and verify
+their exact inventories plus pip check independently, including exact Full.
+Use the candidate Full CI interpreter for code gates through
+`VENV=/absolute/candidate/path make pr-fast`. Code gates use doubles and do not
+perform model inference, GPU allocations or physical device acceptance.
+
+Gemma E4B and the active E2B profile select SDPA for text and eager attention
+for audio. Unified Gemma 12B retains SDPA. New training environments require
+new model-specific smoke receipts. Existing checkpoints must resume using their
+original checkout, interpreter, lock and receipt; never rewrite historical
+qualification identities to claim compatibility with this migration.
+
+The authorized Hub 2.4.0 download of Gemma's config succeeded. That repository
+reported `gated=false`, so this is an authenticated public read, not proof of
+private/gated model access. This limitation remains recorded for rollout.
+Prior overlay model runs are supporting evidence, not proof for freshly locked
+environments. Gemma E4B/12B training still requires a suitable GPU; the 12 GB
+host could not complete E4B preparation in the previous qualification.
+
+Publishing the code does not switch active venv symlinks or restart services.
+Retain the old checkout and complete environments for rollback. Activate each
+candidate interpreter only as a separately requested deployment, then perform
+the operator's Studio, Full voice and optional Rider acceptance flows.
+
+The migration's dependency audit also requires aiohttp 3.14.5, GitPython 3.2.1,
+filelock 4.2.10, pyasn1 >=0.6.5, pypdf 6.21.4, virtualenv 21.15.6 and the
+setuptools 84.2.1 build toolchain. OAuthlib 4.0.1 is selected transitively.
+Regenerate and qualify Light, CI and build as well as the model profiles when
+these shared security constraints change. Keep previous audit results under
+their original lock identity; do not waive findings through ignore entries.
+
+### Historical training profile name
+
+There is no active Granite model in the current operator scope. Gemma 4 and
+FunctionGemma both reference the historically named
+`granite-operator-training-linux-py314.txt` lock. Preserve that path and prior
+checkpoint identities; it identifies shared training dependencies, not a
+requirement to restore or qualify Granite weights.
+
+`requirements-granite-operator-tests.txt` belongs only to automated code
+contracts. Its CPU Torch wheel supports tiny tensor doubles for checkpoint,
+optimizer and resume logic without GPU access or model downloads. It is not a
+model-serving or training profile, and its tests do not qualify any model.
+Actual Gemma/FunctionGemma training qualification uses GPU and remains separate
+from CI, quality gates and Git hooks.

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import copy
 from collections import Counter
-from typing import Any
+from typing import Any, TypeGuard, cast
 
 from venom_core.services.gemma4_operator.material import digest, supervised_turn_indices
 from venom_core.services.gemma4_operator.protocol import (
@@ -25,7 +25,8 @@ def _text(row: Json, key: str) -> str:
     return value
 
 
-def _valid_split_mapping(records: Any) -> bool:
+def _valid_split_mapping(records: Any) -> TypeGuard[dict[str, Any]]:
+    """Narrow mappings to supported splits with required train and validation keys."""
     return (
         isinstance(records, dict)
         and {"train", "validation"} <= set(records)
@@ -98,10 +99,12 @@ def _expand_decisions(row, split, tools, targets, skipped) -> list[Json]:
 
 
 def _export_source(row, split, skipped) -> list[Json]:
+    """Validate source history and export its eligible supervised decisions."""
     tools = row.get("tools")
-    validators = validate_tools(tools)
+    validators = validate_tools(cast(list[Json], tools))
     messages = row.get("messages")
     targets = supervised_turn_indices(row)
+    messages = cast(list[Json], messages)
     _validate_history(messages, validators)
     validate_result_ids(messages)
     selected_tools = [tool for tool in tools if tool["function"]["name"] in FILE_TOOLS]
@@ -144,6 +147,7 @@ def export_decisions(records_by_split: dict[str, list[Json]]) -> Json:
 
 
 def _validate_decision(row, split, seen, groups) -> None:
+    """Validate one released decision against split, provenance and tool contracts."""
     if (
         not isinstance(row, dict)
         or row.get("split") != split
@@ -156,11 +160,12 @@ def _validate_decision(row, split, seen, groups) -> None:
     seen.add(ident)
     groups[group] = split
     tools = row.get("tools")
-    validators = validate_tools(tools)
+    validators = validate_tools(cast(list[Json], tools))
     if not set(validators) <= FILE_TOOLS:
         raise ValueError("functiongemma_release_tool_scope_invalid")
     messages = row.get("messages")
     targets = supervised_turn_indices(row)
+    messages = cast(list[Json], messages)
     if targets != [len(messages) - 1]:
         raise ValueError("functiongemma_release_target_invalid")
     _validate_history(messages, validators)

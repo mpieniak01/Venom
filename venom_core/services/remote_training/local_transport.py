@@ -50,6 +50,7 @@ class LocalTransport:
         self.executor = executor
 
     def request(self, action: str, payload: dict[str, Any]) -> dict[str, Any]:
+        """Run a bounded local RPC and translate process or protocol failures."""
         if action not in ACTIONS or not isinstance(payload, dict):
             raise ValueError("remote_action_invalid")
         try:
@@ -84,12 +85,12 @@ class LocalTransport:
         if not isinstance(document, dict) or type(document.get("ok")) is not bool:
             raise TransportError("local_training_reply_invalid")
         if not document["ok"]:
-            error = document.get("error", "")
-            if not isinstance(error, str) or not re.fullmatch(
-                r"[a-z][a-z0-9_]{0,95}", error
+            remote_error = document.get("error", "")
+            if not isinstance(remote_error, str) or not re.fullmatch(
+                r"[a-z][a-z0-9_]{0,95}", remote_error
             ):
-                error = "local_training_operation_failed"
-            raise TransportError(error)
+                remote_error = "local_training_operation_failed"
+            raise TransportError(remote_error)
         if not isinstance(document.get("result"), dict):
             raise TransportError("local_training_reply_invalid")
         return document["result"]

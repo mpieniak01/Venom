@@ -1,7 +1,7 @@
 """On-demand audio building blocks for the shared text conversation controller."""
 
 import asyncio
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from typing import Annotated, Any, Literal
 from uuid import uuid4
 
@@ -179,7 +179,7 @@ class _PilotUploadTooLarge(MultiPartException):
     pass
 
 
-async def _pilot_upload_stream(request: Request) -> AsyncIterator[bytes]:
+async def _pilot_upload_stream(request: Request) -> AsyncGenerator[bytes, None]:
     """Bound total multipart bytes before the parser spools individual parts."""
     limit = MAX_AUDIO_BYTES + omni_pilot.MAX_IMAGE_BYTES + 16 * 1024
     size = 0

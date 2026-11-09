@@ -87,6 +87,7 @@ def prepare(args) -> dict:
 
 
 def main(argv=None) -> int:
+    """Dispatch FunctionGemma operator commands and emit their JSON result."""
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
     plan = sub.add_parser("plan")
@@ -103,10 +104,10 @@ def main(argv=None) -> int:
         choices=(1024, 2048),
         default=Recipe().context,
     )
-    run = sub.add_parser("run")
-    run.add_argument("request")
-    compare = sub.add_parser("compare")
-    compare.add_argument("trials")
+    run_parser = sub.add_parser("run")
+    run_parser.add_argument("request")
+    compare_parser = sub.add_parser("compare")
+    compare_parser.add_argument("trials")
     args = parser.parse_args(argv)
     if args.command == "plan":
         result = {

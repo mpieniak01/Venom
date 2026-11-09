@@ -222,7 +222,7 @@ jobs:
           python scripts/bootstrap_dependency_profile.py --profile ci --venv "$PWD/.venv" --update
           echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
 
-      - name: Install CPU-only Granite contract test dependencies
+      - name: Install CPU-only tensor contract test dependencies
         run: .venv/bin/python -m pip install --require-hashes -r requirements-granite-operator-tests.txt
 
       - name: Install lightweight system tools

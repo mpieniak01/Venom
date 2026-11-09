@@ -305,7 +305,7 @@ async def execute_single_model(
         raise ValueError("model_tools_require_qualified_read_model")
     filters: dict[str, list[str]] | None = None
     if is_e4b:
-        filters = {"included_functions": request.model_tools or []}
+        filters = {"included_functions": list[str](request.model_tools or [])}
     elif is_read_only_tool_model(service.ai_model_id):
         filters = file_read_filters(
             {"included_functions": request.model_tools}

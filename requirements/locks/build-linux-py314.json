@@ -1,9 +1,9 @@
 {
   "artifacts": {
     "packaging": {
-      "sha256": "b36f1fef9334a5588b4166f8bcd26a14e521f2b55e6b9de3aaa80d3ff7a37529",
-      "url": "https://files.pythonhosted.org/packages/b7/b9/c538f279a4e237a006a2c98387d081e9eb060d203d8ed34467cc0f0b9b53/packaging-26.0-py3-none-any.whl",
-      "version": "26.0"
+      "sha256": "d7193f7c8e4e93f444fde0262bf90af30e16fa0ad0ad44cb553c87339b23cd1c",
+      "url": "https://files.pythonhosted.org/packages/63/34/ba1c580383c9eada3711951fef0795c80b829a078d72188184bcab9dd527/packaging-26.3-py3-none-any.whl",
+      "version": "26.3"
     },
     "pip": {
       "sha256": "71138adf1f4ca900cdb7d289c21b7494329f2332b6d85f0e1c42108c0384ed3e",
@@ -11,9 +11,9 @@
       "version": "26.2.1"
     },
     "setuptools": {
-      "sha256": "29b23c360f22f414dc7336bb39178cc7bcbf6021ed2733cde173f09dba19abb3",
-      "url": "https://files.pythonhosted.org/packages/5d/40/e1e72872c6354b306daef1703549e8e83b4d43cfea356311bf722a043752/setuptools-83.0.0-py3-none-any.whl",
-      "version": "83.0.0"
+      "sha256": "ca140b45d5325a9478f880e351484f62fef15f336462e449ca0c03c873d589c2",
+      "url": "https://files.pythonhosted.org/packages/ef/55/6dc6d6bb953bdfc52519a0059592c52b6e3b8ad51cf8256dffceb55b0610/setuptools-84.2.1-py3-none-any.whl",
+      "version": "84.2.1"
     },
     "wheel": {
       "sha256": "3217dcc807155e45db462d7ef2431f5ddda0d7273b700d05a67b271ceb1287ab",
@@ -21,15 +21,15 @@
       "version": "0.48.0"
     }
   },
-  "lock_sha256": "1a524cf5c19f482d5732a3ba47ffa98a3c4b296a2ba0486f5d71be0ac4a42f9b",
+  "lock_sha256": "8ea471e9dde4c77e95ca9023f13a02a48bdbbd890ae3505f79fdca3604dfeeaa",
   "platform": {
     "machine": "x86_64",
     "python": "3.14",
     "system": "Linux"
   },
-  "policy_sha256": "7886e5a3ed795e274cdd2c1c70646cf292ed9ccadbadd069f232ec5232c41c5b",
+  "policy_sha256": "4e31d998d41e6f570f87bfe12c3d85438979bcd010cd3a91dfc347ff720e2033",
   "profile": "build",
-  "profile_policy_sha256": "ce6d3472fa967cba8cce9c686b83a4750ef0d789f7a5720c5ec3ef07861b7fa7",
+  "profile_policy_sha256": "1b5023af80ef40dda2a1aad837eb1a83ac4a5256dc871fff9de709166955a8ca",
   "qualification": "RESOLVED_ONLY",
   "resolver": {
     "name": "pip",

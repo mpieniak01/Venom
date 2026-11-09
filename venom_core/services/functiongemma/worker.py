@@ -26,7 +26,7 @@ from .retention import protected_trainer, smoke_rows, targets_for
 RECEIPT_FILE = "receipt.json"
 TRAINER_STATE_FILE = "trainer_state.json"
 
-VERSIONS = {"torch": "2.13.0", "transformers": "5.17.0", "peft": "0.21.2"}
+VERSIONS = {"torch": "2.15.0", "transformers": "5.22.2", "peft": "0.21.2"}
 
 
 def environment() -> dict[str, Any]:

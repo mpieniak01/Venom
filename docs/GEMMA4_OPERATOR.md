@@ -387,6 +387,22 @@ operator task. Source preparation and mock tests do not certify GPU performance
 or model quality. The existing shared hash lock includes the exact vision
 dependency closure as well as Torch, Transformers and PEFT.
 
+## Training stack upgrades and retained checkpoints
+
+New attempts use the dedicated Python 3.14.8 training profile with Torch 2.15.0,
+Transformers 5.22.2, PEFT 0.21.2 and bitsandbytes 0.50.2. E4B uses SDPA for
+text and eager attention for `audio_config`; its audio tower rejects global
+SDPA even during text-only training. Unified 12B retains its SDPA setting.
+The exact lock, source hashes and installed versions remain part of execution
+identity. An upgraded environment requires a fresh first/resume qualification.
+
+Resume a historical checkpoint with its retained checkout, dependency lock,
+interpreter and matching receipts. Do not rewrite its hashes or reuse its
+qualification for the upgraded stack. Keep new attempts in separate output
+roots. Model loading, updates, save/reload/resume and full-context memory checks
+are explicit model qualification, outside code quality gates, pre-push and PR
+CI. A passed unit test does not certify E4B/12B training on a 12 GB GPU.
+
 ## Public protocol sources
 
 - [Google Gemma 4 prompt format](https://ai.google.dev/gemma/docs/core/prompt-formatting-gemma4)

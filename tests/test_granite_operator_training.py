@@ -266,7 +266,11 @@ def test_smoke_rows_reject_incomplete_qualification_corpus():
         worker._training_rows({"stage": "smoke-first"}, rows, rows, [], [], "unused")
 
 
-def test_environment_fingerprint_covers_lock_code_and_weights(tmp_path, monkeypatch):
+@pytest.mark.parametrize("changed_input", ["code", "lock", "weights", "versions"])
+def test_environment_fingerprint_covers_lock_code_and_weights(
+    tmp_path, monkeypatch, changed_input
+):
+    """Bind the environment identity to its lock, worker code and weight snapshot."""
     root = tmp_path / "repo"
     package = root / "venom_core/services/granite_operator"
     package.mkdir(parents=True)
@@ -297,7 +301,17 @@ def test_environment_fingerprint_covers_lock_code_and_weights(tmp_path, monkeypa
     assert identity["weights"]
     assert identity["code"]
     assert identity["dependency_lock"]
-    (package / "engine.py").write_text("changed")
+    if changed_input == "versions":
+        monkeypatch.setattr(
+            engine.importlib.metadata, "version", lambda name: "new-version"
+        )
+    else:
+        artifact = {
+            "code": package / "engine.py",
+            "lock": lock,
+            "weights": snapshot / "model.safetensors",
+        }[changed_input]
+        artifact.write_text("changed")
     changed = engine.environment_identity(
         TrainingProfile(),
         {"datasets": {}},

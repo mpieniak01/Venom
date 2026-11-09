@@ -28,8 +28,8 @@ TARGET_MODULES = (
 )
 LOCK = "requirements/locks/granite-operator-training-linux-py314.txt"
 VERSIONS = {
-    "torch": "2.13.0",
-    "transformers": "5.17.0",
+    "torch": "2.15.0",
+    "transformers": "5.22.2",
     "peft": "0.21.2",
     "bitsandbytes": "0.50.2",
 }

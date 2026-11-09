@@ -1097,7 +1097,10 @@ async def test_set_active_llm_server_onnx_fails_when_other_server_stop_fails(
 
 
 @pytest.mark.asyncio
-async def test_get_llm_servers_excludes_not_installed_runtime(monkeypatch):
+@pytest.mark.parametrize("openrouter_enabled", [False, True])
+async def test_get_llm_servers_excludes_not_installed_runtime(
+    monkeypatch, openrouter_enabled
+):
     servers = [
         {
             "name": "ollama",
@@ -1127,15 +1130,31 @@ async def test_get_llm_servers_excludes_not_installed_runtime(monkeypatch):
 
     monkeypatch.setattr(system_routes, "_probe_servers", _noop_probe)
 
+    monkeypatch.setattr(
+        system_routes.openrouter_runtime, "is_enabled", lambda: openrouter_enabled
+    )
+    monkeypatch.setattr(system_routes.openrouter_runtime, "selection", lambda: None)
+    monkeypatch.setattr(
+        system_routes.openrouter_runtime, "status", lambda: {"available": True}
+    )
+    monkeypatch.setattr(
+        system_routes.vast_chat_runtime,
+        "target_payload",
+        AsyncMock(return_value={"status": "offline", "available": False}),
+    )
+
     original = _snapshot_settings()
     monkeypatch.setattr(SETTINGS, "VENOM_RUNTIME_PROFILE", "full")
     monkeypatch.setattr(SETTINGS, "ONNX_LLM_ENABLED", True)
     try:
         response = await system_routes.get_llm_servers()
         names = [entry["name"] for entry in response["servers"]]
-        assert names == ["ollama", system_routes.vast_chat_runtime.SERVER]
-        assert response["count"] == 2
-        remote = response["servers"][-1]
+        expected = ["ollama", system_routes.vast_chat_runtime.SERVER]
+        if openrouter_enabled:
+            expected.append("openrouter")
+        assert names == expected
+        assert response["count"] == len(expected)
+        remote = response["servers"][1]
         assert remote["available"] is False
         assert remote["capabilities"] == {
             "can_start": False,

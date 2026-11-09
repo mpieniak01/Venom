@@ -6,7 +6,7 @@ Linux x86_64, Python **3.14.8** (`platform.python` is the minor `3.14`;
 These declarations do not establish installation, runtime or security qualification.
 The existing Python 3.12 evidence does not qualify the new interpreter or graph.
 
-## Six managed profiles
+## Seven managed profiles
 
 | Profile | Kind | Dependency boundary |
 | --- | --- | --- |
@@ -16,6 +16,7 @@ The existing Python 3.12 evidence does not qualify the new interpreter or graph.
 | `full` | Application | Extends Light with actual memory, vision, web/documents, desktop, hardware and CPU voice/floor consumers. |
 | `full-ci` | Application | Extends Full with the same CI tools; its installed inventory is distinct from exact Full. |
 | `multi-runtime-cuda` | Component | Independent minimal API/model/audio/OCR base for the CUDA daemon; does not extend Light. |
+| `granite-operator-training` | Component | Shared isolated CUDA training dependencies for Gemma 4 and FunctionGemma; historical lock name retained for checkpoint compatibility. |
 
 The five compatibility inputs `requirements.txt`, `requirements-runtime-common.txt`,
 `requirements-docker-minimal.txt`, `requirements-profile-api.txt` and
@@ -65,7 +66,7 @@ adding every historical experiment back to Full is not the profile contract.
 ONNX LLM/GenAI, standalone legacy ONNX extras, GPU ONNX, vLLM and Academy remain
 explicitly deferred. The active Full CPU voice/floor group does not activate those
 legacy installer profiles. A later ONNX LLM component needs a concrete model
-consumer and its own qualification. vLLM and training remain outside this candidate.
+consumer and its own qualification. vLLM remains outside this candidate; model training uses its isolated component.
 Legacy overlay bytes may still include a changed shared Light input; byte identity
 does not freeze their effective graph or establish compatibility.
 
@@ -237,3 +238,18 @@ setuptools 84.2.1 build toolchain. OAuthlib 4.0.1 is selected transitively.
 Regenerate and qualify Light, CI and build as well as the model profiles when
 these shared security constraints change. Keep previous audit results under
 their original lock identity; do not waive findings through ignore entries.
+
+### Historical training profile name
+
+There is no active Granite model in the current operator scope. Gemma 4 and
+FunctionGemma both reference the historically named
+`granite-operator-training-linux-py314.txt` lock. Preserve that path and prior
+checkpoint identities; it identifies shared training dependencies, not a
+requirement to restore or qualify Granite weights.
+
+`requirements-granite-operator-tests.txt` belongs only to automated code
+contracts. Its CPU Torch wheel supports tiny tensor doubles for checkpoint,
+optimizer and resume logic without GPU access or model downloads. It is not a
+model-serving or training profile, and its tests do not qualify any model.
+Actual Gemma/FunctionGemma training qualification uses GPU and remains separate
+from CI, quality gates and Git hooks.

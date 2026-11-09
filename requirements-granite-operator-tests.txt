@@ -1,4 +1,5 @@
-# CPU-only contract tests: Linux x86_64 / CPython 3.14.8.
+# Code contracts with tiny tensor doubles: Linux x86_64 / CPython 3.14.8.
+# Historical filename; no model weights, model qualification or GPU access.
 # Extend the pinned application CI environment; no CUDA training packages.
 # Shared artifact hashes come from the qualified full-ci lock.
 -r requirements/locks/ci-linux-py314.txt

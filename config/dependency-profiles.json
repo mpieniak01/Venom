@@ -239,7 +239,7 @@
       ],
       "input": "requirements-granite-operator-training.txt",
       "lock": "requirements/locks/granite-operator-training-linux-py314.txt",
-      "boundary": "Offline Granite LoRA/QLoRA worker only; separate venv, no application, voice, ONNX or vLLM. Training is explicit and requires a matching smoke qualification."
+      "boundary": "Shared isolated CUDA training stack used by Gemma 4 and FunctionGemma. Historical profile/lock name retained for checkpoint compatibility; legacy Granite code does not imply an active Granite model. No application, voice, ONNX or vLLM; model-specific training qualification is explicit and separate from code gates."
     }
   },
   "aliases": {

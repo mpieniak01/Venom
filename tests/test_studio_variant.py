@@ -42,6 +42,26 @@ def test_application_variant_shares_existing_environment_storage(tmp_path, role)
     assert "OLLAMA_CONTEXT_LENGTH" not in full
 
 
+@pytest.mark.parametrize(
+    ("endpoint", "expected"),
+    [
+        ("", "http://127.0.0.1:18800/api/v1/system/services"),
+        (
+            "http://localhost:8000/api/v1/system/services",
+            "http://127.0.0.1:18800/api/v1/system/services",
+        ),
+        (
+            "http://localhost:17700/api/v1/system/services",
+            "http://localhost:17700/api/v1/system/services",
+        ),
+    ],
+)
+def test_services_endpoint_follows_full_listener(tmp_path, endpoint, expected):
+    (tmp_path / ".env.dev").write_text(f"SYSTEM_SERVICES_ENDPOINT={endpoint}\n")
+    values = resolve(tmp_path, {"VENOM_VARIANT": "venom", "PORT": "18800"})
+    assert values["SYSTEM_SERVICES_ENDPOINT"] == expected
+
+
 def test_studio_standalone_uses_the_public_build_configuration(tmp_path):
     (tmp_path / ".env.dev").write_text("ENABLE_AUDIO_INTERFACE=true\n")
     config = {

@@ -34,7 +34,10 @@ from venom_core.execution.maf_runtime import AgentRuntime as Kernel
 from venom_core.execution.skill_manager import SkillManager
 from venom_core.execution.skills.assistant_skill import AssistantSkill
 from venom_core.services.execution_template_planner import wants_status_analysis
-from venom_core.services.operator_diagnostics import DIAGNOSTICS_INTENT
+from venom_core.services.operator_diagnostics import (
+    DIAGNOSTICS_INTENT,
+    parse_workspace_listing,
+)
 from venom_core.skills.mcp.skill_adapter import (
     FileSkillMcpAdapter,
     GitSkillMcpAdapter,
@@ -420,6 +423,9 @@ Jeśli nie ma ścieżek plików, zwróć pustą listę targets. Jeśli nie ma ja
         note_lookup: bool,
     ) -> str:
         if intent == DIAGNOSTICS_INTENT:
+            directory = parse_workspace_listing(content)
+            if directory is not None:
+                return await self.librarian_agent.list_workspace(directory)
             return await self.system_status_agent.diagnose(content)
         if note_lookup and isinstance(agent, ChatAgent):
             return await agent.process_note_lookup(content, generation_params)

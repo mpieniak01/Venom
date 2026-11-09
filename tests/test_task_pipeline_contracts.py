@@ -1755,6 +1755,62 @@ async def test_g5_routing_uses_full_dispatcher_without_classification(monkeypatc
     orch.intent_manager.classify_intent.assert_not_awaited()
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("content", "allowed", "expected"),
+    [
+        (
+            "Pokaż nazwy plików i katalogów w katalogu głównym workspace "
+            "(`.`), bez schodzenia do podkatalogów. Tylko odczyt.",
+            True,
+            "[plik] odczyt.txt",
+        ),
+        (
+            'Wypisz pliki w katalogu "notatki testowe"',
+            True,
+            "[plik] notatki testowe/proba.txt",
+        ),
+        ('Wypisz pliki w katalogu ".."', True, "Odmowa dostępu"),
+        ("Wypisz pliki", False, "Odmowa dostępu"),
+    ],
+)
+async def test_normal_workspace_listing_returns_verified_file_skill_result(
+    tmp_path, monkeypatch, content, allowed, expected
+):
+    from venom_core.agents import librarian
+    from venom_core.core.dispatcher import TaskDispatcher
+    from venom_core.core.orchestrator.orchestrator_dispatch import _resolve_task_intent
+    from venom_core.execution.skills.file_skill import FileSkill
+    from venom_core.services.operator_diagnostics import DIAGNOSTICS_INTENT
+
+    (tmp_path / "odczyt.txt").write_text("treść nie powinna trafić do listy")
+    nested = tmp_path / "notatki testowe"
+    nested.mkdir()
+    (nested / "proba.txt").touch()
+    agent = librarian.LibrarianAgent(MagicMock())
+    agent.file_skill = FileSkill(str(tmp_path))
+    monkeypatch.setattr(
+        librarian.permission_guard, "check_permission", lambda _: allowed
+    )
+    classify = AsyncMock()
+    orch = SimpleNamespace(intent_manager=SimpleNamespace(classify_intent=classify))
+    dispatcher = SimpleNamespace(
+        node_manager=None,
+        librarian_agent=agent,
+        agent_map={DIAGNOSTICS_INTENT: object()},
+    )
+
+    intent, debug = await _resolve_task_intent(
+        orch, TaskRequest(content=content), content
+    )
+    result = await TaskDispatcher.dispatch(dispatcher, intent, content)
+
+    assert debug["source"] == "workspace_listing"
+    assert expected in result
+    assert "treść nie powinna trafić do listy" not in result
+    classify.assert_not_awaited()
+
+
 def test_g5_services_reports_named_failures_without_raw_fields():
     from datetime import UTC, datetime
 

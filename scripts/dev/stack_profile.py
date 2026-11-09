@@ -197,6 +197,14 @@ def resolve(
     if http_target(values["API_PROXY_TARGET"]) != http_target(own_proxy):
         raise ValueError("API_PROXY_TARGET must point to this environment API")
     values["API_PROXY_TARGET"] = own_proxy
+    services_path = "/api/v1/system/services"
+    # Existing dotenv files may still contain the old example's fixed port.
+    if values.get("SYSTEM_SERVICES_ENDPOINT") in (
+        None,
+        "",
+        f"http://localhost:8000{services_path}",
+    ):
+        values["SYSTEM_SERVICES_ENDPOINT"] = f"{own_proxy}{services_path}"
     # Browser traffic must use the streaming same-origin proxy, not .env.local.
     values["NEXT_PUBLIC_API_BASE"] = ""
     values["NEXT_PUBLIC_WS_BASE"] = ""

@@ -12,6 +12,7 @@ from collections import Counter
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import TYPE_CHECKING
 from urllib.parse import urlsplit
 
 import httpx
@@ -19,6 +20,9 @@ import httpx
 from venom_core.core.permission_guard import AutonomyViolation, permission_guard
 from venom_core.core.slash_commands import parse_slash_command
 from venom_core.utils.logger import LOG_DIR
+
+if TYPE_CHECKING:
+    from venom_core.core.models import TaskRequest
 
 DIAGNOSTICS_INTENT = "OPERATOR_DIAGNOSTICS"
 RUNBOOK = "docs/PL/CHAT_OPERATOR.md#diagnostyka-full"
@@ -30,6 +34,15 @@ _COMMAND = re.compile(
     r"(?:(?:stan|status(?: of)?) )?"
     r"(?P<target>venom(?:a)?|rider(?:-pi|a)?|venom(?:a)? (?:i|and) rider(?:-pi|a)?)"
     r"[?.]?",
+    re.IGNORECASE,
+)
+_WORKSPACE_LIST = re.compile(
+    r"(?:wypisz|wylistuj|pokaż) (?:listę |nazwy )?"
+    r"plik(?:i|ów)(?: i (?:katalogi|katalogów))?"
+    r"(?: (?:w|z) katalogu (?P<directory>`[^`]+?`|\"[^\"]+?\"|'[^']+?'|"
+    r"głównym(?: workspace)?(?: \(\x60?\.\x60?\))?|\.))?"
+    r"(?:,? bez (?:rekurencji|podkatalogów|schodzenia do podkatalogów))?"
+    r"[.!?]?(?: tylko odczyt[.!?]?)?",
     re.IGNORECASE,
 )
 _RIDER_SECTIONS = ("control", "settings", "telemetry", "health", "system")
@@ -58,6 +71,40 @@ def parse_diagnostic_request(content: str) -> DiagnosticRequest | None:
     target = match["target"].casefold()
     return DiagnosticRequest(
         bool(match["guide"]), target.startswith("venom"), "rider" in target
+    )
+
+
+def parse_workspace_listing(content: str) -> str | None:
+    """Recognize explicit non-recursive operator listings with one literal path."""
+    content = content.strip()
+    if (
+        not content
+        or len(content) > 4096
+        or any(char in content for char in "\r\n\x00")
+    ):
+        return None
+    match = _WORKSPACE_LIST.fullmatch(content)
+    if match is None:
+        return None
+    directory = match["directory"]
+    if directory and directory[0] in "'\"`":
+        return directory[1:-1]
+    return "."
+
+
+def is_workspace_listing_task(request: TaskRequest) -> bool:
+    """Match the same read in API authorization and task routing."""
+    if request.agent_mode != "auto" or request.forced_provider:
+        return False
+    slash = parse_slash_command(request.content) if not request.forced_tool else None
+    tool = request.forced_tool or (slash.forced_tool if slash else None)
+    intent = request.forced_intent or (slash.forced_intent if slash else None)
+    return (
+        tool in (None, "file")
+        and intent in (None, "FILE_OPERATION")
+        and not (slash and slash.forced_provider)
+        and parse_workspace_listing(slash.cleaned if slash else request.content)
+        is not None
     )
 
 

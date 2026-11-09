@@ -48,6 +48,7 @@ from venom_core.services.execution_template_planner import (
 )
 from venom_core.services.operator_diagnostics import (
     DIAGNOSTICS_INTENT,
+    is_workspace_listing_task,
     parse_diagnostic_request,
 )
 from venom_core.utils.llm_runtime import get_active_llm_runtime
@@ -638,6 +639,8 @@ async def _resolve_task_intent(
     if request.agent_mode == "single_model":
         intent = request.forced_intent or "GENERAL_CHAT"
         return intent, {"source": "single_model", "intent": intent}
+    if is_workspace_listing_task(request):
+        return DIAGNOSTICS_INTENT, {"source": "workspace_listing"}
     if request.forced_intent:
         return request.forced_intent, {
             "source": "forced",

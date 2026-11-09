@@ -1,4 +1,14 @@
 export const voice = {
+  multimodal: {
+    attachImage: "Attach an image to your spoken question",
+    invalidImage: "Choose a JPEG or PNG image. The image must be 2 MB or smaller.",
+    removeImage: "Remove image",
+    sources: "Sources",
+    end: "End image conversation",
+    active: "Image conversation",
+    spokenQuestion: "Spoken question",
+    stopPlayback: "Stop playback",
+  },
   page: {
     eyebrow: "// voice chat",
     title: "Voice Command Center",

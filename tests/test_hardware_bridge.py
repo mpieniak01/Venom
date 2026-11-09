@@ -1,5 +1,10 @@
 """Testy jednostkowe dla modułu hardware_pi."""
 
+import sys
+from types import SimpleNamespace
+from unittest.mock import MagicMock, Mock
+
+import httpx
 import pytest
 
 from venom_core.infrastructure.hardware_pi import HardwareBridge
@@ -39,20 +44,29 @@ class TestHardwareBridge:
         assert bridge.port == 8888
 
     @pytest.mark.asyncio
-    async def test_connect_without_ssh(self):
-        """Test połączenia bez dostępnego SSH."""
+    async def test_connect_without_ssh(self, monkeypatch):
+        """A refused SSH connection leaves the bridge disconnected."""
+        client = Mock()
+        client.connect.side_effect = ConnectionRefusedError()
+        monkeypatch.setitem(
+            sys.modules,
+            "paramiko",
+            SimpleNamespace(SSHClient=Mock(return_value=client), WarningPolicy=Mock()),
+        )
         bridge = HardwareBridge(
-            host=TEST_DEVICE_HOST,
-            port=22,
-            username="pi",
-            protocol="ssh",
+            host=TEST_DEVICE_HOST, port=22, username="pi", protocol="ssh"
         )
 
-        # Test powinien obsłużyć brak połączenia gracefully
-        # W realnym przypadku połączenie się nie powiedzie
-        # ale kod nie powinien crashować
-        result = await bridge.connect()
-        assert isinstance(result, bool)
+        assert await bridge.connect() is False
+        assert bridge.connected is False
+        client.connect.assert_called_once_with(
+            hostname=TEST_DEVICE_HOST,
+            port=22,
+            username="pi",
+            password=None,
+            key_filename=None,
+            timeout=10,
+        )
 
     @pytest.mark.asyncio
     async def test_disconnect(self):
@@ -194,15 +208,14 @@ class TestHardwareBridgeHTTP:
         assert bridge.port == 8888
 
     @pytest.mark.asyncio
-    async def test_connect_http_unreachable(self):
-        """Test połączenia HTTP z nieosiągalnym hostem."""
-        bridge = HardwareBridge(
-            host=UNREACHABLE_TEST_HOST,
-            port=8888,
-            protocol="http",
-        )
+    async def test_connect_http_unreachable(self, monkeypatch):
+        """A failed HTTP connection leaves the bridge disconnected."""
+        transport = MagicMock()
+        client = transport.__aenter__.return_value
+        client.get.side_effect = httpx.ConnectError("connection refused")
+        monkeypatch.setattr(httpx, "AsyncClient", Mock(return_value=transport))
+        bridge = HardwareBridge(host=UNREACHABLE_TEST_HOST, port=8888, protocol="http")
 
-        result = await bridge.connect()
-        assert isinstance(result, bool)
-        # Oczekujemy że połączenie się nie powiedzie
-        # ale nie powinno crashować
+        assert await bridge.connect() is False
+        assert bridge.connected is False
+        client.get.assert_awaited_once()

@@ -164,7 +164,6 @@ tests/test_gemma4_operator_protocol.py
 tests/test_gemma4_operator_retention.py
 tests/test_gemma4_operator_runtime.py
 tests/test_generation_params_adapter.py
-tests/test_generation_params_integration.py
 tests/test_ghost_agent.py
 tests/test_git_skill.py
 tests/test_git_skill_roi.py
@@ -297,6 +296,7 @@ tests/test_ollama_runtime_policy.py
 tests/test_ollama_runtime_probe.py
 tests/test_ollama_tuning.py
 tests/test_ollama_voice_input.py
+tests/test_omni_pilot_report.py
 tests/test_onnx_gpu_bridge.py
 tests/test_onnx_llm_client.py
 tests/test_onnx_runtime_cleanup.py

@@ -1,5 +1,18 @@
 #!/usr/bin/env bash
 set -euo pipefail
+export VENOM_CODE_QUALITY_GATE=1
+
+# A surviving WSL VM can retain an old OOM counter across distro restarts.
+# systemd may then stop init.scope and kill every gate process after 90 seconds.
+if [[ -n "${WSL_DISTRO_NAME:-}" ]] && command -v systemctl >/dev/null 2>&1; then
+  init_scope_status="$(systemctl show init.scope -p ActiveState -p SubState -p Result 2>/dev/null || true)"
+  if grep -Eq '^ActiveState=(deactivating|failed)$' <<<"$init_scope_status"; then
+    echo "ERROR: WSL init.scope is shutting down; quality gates cannot finish." >&2
+    echo "$init_scope_status" >&2
+    echo "Save work in all WSL distributions, run 'wsl --shutdown' from Windows, then reopen WSL and rerun make pr-fast." >&2
+    exit 2
+  fi
+fi
 
 BASE_REF="${PR_BASE_REF:-origin/main}"
 VENV="${VENV:-.venv}"
@@ -90,6 +103,8 @@ if [[ "$backend_changed" -eq 1 ]]; then
   PYTHON_BIN="python3"
   if [[ -x "${VENV}/bin/python" ]]; then
     PYTHON_BIN="${VENV}/bin/python"
+    # Subprocesses that call python by name must use the same test environment.
+    export PATH="$(cd -- "${VENV}/bin" && pwd):$PATH"
   fi
   "${PYTHON_BIN}" -m compileall -q venom_core scripts tests
   make architecture-drift-check

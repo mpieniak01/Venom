@@ -10,6 +10,8 @@ from venom_core.core.models import TaskRequest
 from venom_core.core.orchestrator import Orchestrator
 from venom_core.core.state_manager import StateManager
 
+pytestmark = pytest.mark.usefixtures("offline_vision")
+
 
 @pytest.fixture
 def mock_kernel():

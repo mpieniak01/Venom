@@ -9,7 +9,8 @@ import { useSession } from "@/lib/session";
 import { apiFetch } from "@/lib/api-client";
 import { cancelSimpleChatStream } from "@/hooks/use-api";
 import { readChatSessions } from "@/lib/chat-sessions";
-import { materialBlocked } from "@/lib/chat-materials";
+import { materialBlocked, type MaterialCapabilities } from "@/lib/chat-materials";
+import { supportsLocalOmniVoice } from "@/lib/chat-audio";
 import { useCockpitInteractiveState } from "@/components/cockpit/hooks/use-cockpit-interactive-state";
 import { resolveEffectiveChatModelSelection } from "@/components/cockpit/cockpit-chat-send";
 import { useCockpitLayout } from "@/components/cockpit/hooks/use-cockpit-layout";
@@ -30,6 +31,25 @@ function capabilityStatus(enabled: boolean | undefined) {
   if (enabled === undefined) return "chat2.unknown";
   return enabled ? "chat2.ready" : "chat2.unsupported";
 }
+/** Resolve the controls available in the current chat mode and voice runtime. */
+function studioCapabilities(
+  materials: MaterialCapabilities | null,
+  direct: boolean,
+  language: string,
+  activeServer: Parameters<typeof supportsLocalOmniVoice>[0],
+) {
+  const voiceAvailable = materials?.voice === true;
+  const multimodalEnabled = language === "pl" && supportsLocalOmniVoice(activeServer);
+  return {
+    voiceAvailable,
+    multimodalEnabled,
+    conversationVoiceAvailable: voiceAvailable || multimodalEnabled,
+    documentStatus: direct ? capabilityStatus(materials?.document) : "chat2.unsupported",
+    imageStatus: direct ? capabilityStatus(materials?.image) : "chat2.unsupported",
+    voiceStatus: capabilityStatus(multimodalEnabled ? true : materials?.voice),
+  };
+}
+
 const compactQuery = "(max-width: 800px)";
 function subscribeCompact(onChange: () => void) {
   const query = window.matchMedia(compactQuery);
@@ -54,6 +74,7 @@ export function StudioShell({ showLegacyLink = true, lightNormal = false }: Read
   const { sessionId } = useSession();
   return <StudioConversation key={sessionId} showLegacyLink={showLegacyLink} lightNormal={lightNormal} />;
 }
+/** Render the conversation and keep its draft, materials and controls scoped to the session. */
 function StudioConversation({ showLegacyLink, lightNormal }: Readonly<{
   showLegacyLink: boolean;
   lightNormal: boolean;
@@ -86,6 +107,7 @@ function StudioConversation({ showLegacyLink, lightNormal }: Readonly<{
   const [stopRevision, setStopRevision] = useState(0);
   const [useNotes, setUseNotes] = useState(false);
   const [voice, setVoice] = useState<"dictation" | "conversation" | null>(null);
+  const [multimodalBusy, setMultimodalBusy] = useState(false);
   const conversation = useConversationController({
     data: source.data, interactive: interaction, layout, chatScrollRef: scrollRef,
     materialIds: selected, manualChatNotes: true, lightNormal,
@@ -97,17 +119,18 @@ function StudioConversation({ showLegacyLink, lightNormal }: Readonly<{
   );
   const materials = useChatMaterials(sessionId, selectedModel, state.selectedLlmServer,
     activeServer?.active_server ?? "", activeServer?.config_hash ?? "", materialsOpen || selected.length > 0);
-  const notesAvailable = materials.capabilities?.notes === true;
-  const voiceAvailable = materials.capabilities?.voice === true;
   const direct = state.chatMode === "direct";
-  const documentStatus = !direct ? "chat2.unsupported" : capabilityStatus(materials.capabilities?.document);
-  const imageStatus = !direct ? "chat2.unsupported" : capabilityStatus(materials.capabilities?.image);
-  const voiceStatus = capabilityStatus(materials.capabilities?.voice);
+  const {
+    voiceAvailable, multimodalEnabled, conversationVoiceAvailable,
+    documentStatus, imageStatus, voiceStatus,
+  } = studioCapabilities(materials.capabilities, direct, language, activeServer);
+  const notesAvailable = materials.capabilities?.notes === true;
   const notesSelected = notesAvailable && state.chatMode === "normal" && useNotes;
   const attached = materials.items.filter(item => selected.includes(item.id));
   const missing = selected.length > attached.length;
   const blocked = missing || materialBlocked(attached, materials.capabilities, direct);
-  const active = state.sending || conversation.historyMessages.some(message => message.pending || ["PENDING", "PROCESSING"].includes(message.status ?? ""));
+  const chatActive = state.sending || conversation.historyMessages.some(message => message.pending || ["PENDING", "PROCESSING"].includes(message.status ?? ""));
+  const active = chatActive || multimodalBusy;
   const sendLock = useRef(false);
   const pendingStop = useRef(false);
   const stoppedTasks = useRef(new Set<string>());
@@ -182,11 +205,20 @@ function StudioConversation({ showLegacyLink, lightNormal }: Readonly<{
       <div className="studio-top-actions"><label className="studio-language"><span className="sr-only">{t("chat2.language")}</span><select aria-label={t("chat2.language")} value={language} onChange={event => setLanguage(event.target.value as "pl" | "en" | "de")}><option value="pl">PL</option><option value="en">EN</option><option value="de">DE</option></select></label>
         <button ref={materialButton} type="button" className="studio-button" aria-expanded={materialsOpen} aria-controls="studio-materials" onClick={() => { setHistoryOpen(false); setMaterialsOverride(!materialsOpen); }}><Paperclip size={16} />{t("chat2.materials")}</button></div>
     </header>
-    <StudioModelPicker catalog={source.data.unifiedModelCatalog} interaction={interaction} session={sessionId} selectedModel={selectedModel} activeModel={activeServer?.active_model} onApply={conversation.handleActivateModel} busy={active} />
+    <StudioModelPicker catalog={source.data.unifiedModelCatalog} interaction={interaction} session={sessionId} selectedModel={selectedModel} activeModel={activeServer?.active_model} onApply={conversation.handleActivateModel} busy={active || voice != null} />
     {source.error && <div className="studio-error" role="alert">{t("chat2.offline")}<button type="button" className="studio-button" onClick={() => { void source.refresh(); }}>{t("chat2.retry")}</button></div>}
     <div className={"studio-workspace" + (materialsOpen ? " studio-with-materials" : "")}><div className="studio-conversation">
       <StudioThread key={sessionId} messages={conversation.historyMessages} details={interaction.optimistic.simpleRequestDetails} scrollRef={scrollRef} onScroll={conversation.chatUi.handleChatScroll} loading={source.loading || !sessionId} onError={setters.setMessage} noteSession={notesAvailable ? sessionId : undefined} />
-      {voice && voiceAvailable && <StudioVoice key={sessionId + voice} session={sessionId} mode={voice} stopRevision={stopRevision} busy={active} messages={conversation.historyMessages}
+      {voice && (voice === "conversation" ? conversationVoiceAvailable : voiceAvailable) && <StudioVoice
+        key={sessionId + voice + (multimodalEnabled ? ":omni" : "")} session={sessionId} mode={voice}
+        stopRevision={stopRevision} busy={chatActive} messages={conversation.historyMessages}
+        activeModel={activeServer?.active_model} onModelApplied={model => {
+          setters.setSelectedLlmServer("ollama");
+          setters.setSelectedLlmModel(model);
+          void source.refresh();
+        }}
+        multimodalEnabled={multimodalEnabled} hostAudioAvailable={voiceAvailable}
+        onMultimodalBusy={setMultimodalBusy} onMultimodalCommit={() => { void conversation.sessionHistoryState.refreshSessionHistory(); }}
         onDraft={text => setDraft(previous => previous ? previous + " " + text : text)} onTurn={send} onStop={stop} onClose={() => setVoice(null)} />}
       <form className="studio-compose-wrap" onSubmit={event => { event.preventDefault(); void send(draft); }}>
         {!!selected.length && <div className="studio-attachments" aria-label={t("chat2.selectedMaterials")}>{selected.map(id => <button type="button" key={id} className="studio-chip" aria-label={t("chat2.detach") + ": " + (materials.items.find(item => item.id === id)?.name || id)} onClick={() => toggleMaterial(id)}><Paperclip size={13} />{materials.items.find(item => item.id === id)?.name || t("chat2.stale")}<X size={12} /></button>)}</div>}
@@ -194,7 +226,7 @@ function StudioConversation({ showLegacyLink, lightNormal }: Readonly<{
           onChange={event => setDraft(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void send(draft); } }} />
           <div className="studio-compose-actions"><div><button type="button" className="studio-icon" aria-label={t("chat2.chooseFiles")} onClick={() => { setHistoryOpen(false); setMaterialsOverride(true); }}><Paperclip size={19} /></button>
             <button type="button" className="studio-button studio-quiet" onClick={() => setVoice(voice === "dictation" ? null : "dictation")} disabled={active || !voiceAvailable}><Mic size={17} />{t("chat2.dictate")}</button>
-            <button type="button" className="studio-button studio-quiet" onClick={() => setVoice(voice === "conversation" ? null : "conversation")} disabled={active || !voiceAvailable}><Headphones size={17} />{t("chat2.voice")}</button></div>
+            <button type="button" className="studio-button studio-quiet" onClick={() => setVoice(voice === "conversation" ? null : "conversation")} disabled={active || !conversationVoiceAvailable}><Headphones size={17} />{t("chat2.voice")}</button></div>
             {active ? <button type="button" className="studio-button studio-stop" onClick={() => { void stop(); }}><Square size={15} />{t("chat2.stop")}</button> : <button type="submit" className="studio-button studio-send" disabled={!sessionId || source.loading || !selectedModel || !draft.trim() || blocked || materials.uploading}><Send size={17} />{t("chat2.send")}</button>}
           </div>
         </div>

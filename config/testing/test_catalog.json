@@ -2985,14 +2985,12 @@
       "domain": "environment",
       "test_type": "integration",
       "intent": "integration",
-      "primary_lane": "new-code",
+      "primary_lane": "release",
       "allowed_lanes": [
-        "new-code",
-        "ci-lite",
         "release"
       ],
       "legacy_targeted": false,
-      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
+      "rationale": "Manual generation with a live model; outside code quality gates."
     },
     {
       "path": "tests/test_generation_schema.py",
@@ -5278,6 +5276,20 @@
       ],
       "legacy_targeted": false,
       "rationale": "Runtime model selection, native audio transport and configurable role contracts."
+    },
+    {
+      "path": "tests/test_omni_pilot_report.py",
+      "domain": "runtime",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Offline Omni acceptance report validation and paired latency and outcome aggregation."
     },
     {
       "path": "tests/test_onnx_gpu_bridge.py",

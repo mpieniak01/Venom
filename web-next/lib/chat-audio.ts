@@ -1,5 +1,6 @@
 import { getApiBaseUrl } from "./env";
 import { apiFetch } from "./api-client";
+import { normalizeRuntimeId } from "./cockpit-runtime-selection";
 export type AudioCapture = { finish: () => Promise<{ pcm: ArrayBuffer; sampleRate: number }>; dispose: () => void };
 export function encodeMonoPcm(frames: Float32Array[]): ArrayBuffer {
   const length = frames.reduce((total, frame) => total + frame.length, 0);
@@ -77,6 +78,53 @@ export function transcribeChatAudio(session: string, capture: { pcm: ArrayBuffer
     method: "POST", body: capture.pcm, headers: { "Content-Type": "application/octet-stream" }, signal,
   });
 }
+/** Limit the pilot UI to the selected Omni model on a loopback Ollama endpoint. */
+export function supportsLocalOmniVoice(runtime: {
+  active_server?: string | null;
+  active_model?: string | null;
+  active_endpoint?: string | null;
+} | null | undefined): boolean {
+  if (normalizeRuntimeId(runtime?.active_server) !== "ollama"
+    || runtime?.active_model !== "lfm3-omni:2b" || !runtime.active_endpoint) return false;
+  try {
+    const host = new URL(runtime.active_endpoint).hostname;
+    return host === "localhost" || host === "127.0.0.1" || host === "[::1]";
+  } catch {
+    return false;
+  }
+}
+
+export type MultimodalVoiceReply = { session_id: string; text: string; sources: string[] };
+
+/** Upload PCM and an optional image together, preserving the caller's cancellation signal. */
+export async function sendMultimodalVoiceTurn(
+  session: string,
+  capture: Awaited<ReturnType<AudioCapture["finish"]>>,
+  language: string,
+  image: File | null,
+  signal: AbortSignal,
+): Promise<MultimodalVoiceReply> {
+  const body = new FormData();
+  body.set("session_id", session);
+  body.set("sample_rate", String(capture.sampleRate));
+  body.set("language", language);
+  body.set("audio", new Blob([capture.pcm], { type: "application/octet-stream" }), "voice.pcm");
+  if (image) body.set("image", image);
+  const response = await fetch(getApiBaseUrl() + "/api/v1/chat/audio/multimodal-turn", {
+    method: "POST",
+    body,
+    signal,
+  });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null) as { detail?: { reason_code?: string } } | null;
+    const reason = payload?.detail?.reason_code;
+    if (reason === "omni_pilot_invalid_image") throw new Error("voiceImageInvalid");
+    throw new Error(response.status === 409 ? "voiceWait" : "voiceError");
+  }
+  return response.json() as Promise<MultimodalVoiceReply>;
+}
+
+/** Request native-preferred playback for the current conversation and language. */
 export async function speakChatAudio(session: string, text: string, signal: AbortSignal, language = "pl") {
   const response = await fetch(getApiBaseUrl() + "/api/v1/chat/audio/speak", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ session_id: session, text, prefer_native: true, language }), signal });
   if (!response.ok) throw new Error("voiceError");

@@ -15,6 +15,7 @@ import {
   type VoiceModePreset,
   type VoiceStatusUpdate,
 } from "@/components/voice/voice-command-center";
+import { VoicePipelinePicker } from "@/components/voice/voice-pipeline-picker";
 import { VoiceStatusSidebar } from "@/components/voice/voice-status-sidebar";
 import { ImageProbeCard } from "@/components/gemma4/gemma4-runtime-control";
 
@@ -56,8 +57,11 @@ type VoiceChatScreenProps = Readonly<{
   isDevMode?: boolean;
 }>;
 
+/** Coordinate pipeline switching with the active voice turn and refresh the runtime status. */
 export function VoiceChatScreen({ isDevMode = false }: VoiceChatScreenProps) {
   const [voiceModePreset, setVoiceModePreset] = useState<VoiceModePreset>("standard");
+  const [voiceBusy, setVoiceBusy] = useState(false);
+  const [pipelineSwitching, setPipelineSwitching] = useState(false);
   const [voiceStatus, setVoiceStatus] = useState<VoiceStatusUpdate | null>(null);
   const [statusRefreshSignal, setStatusRefreshSignal] = useState(0);
   const t = useTranslation();
@@ -89,10 +93,14 @@ export function VoiceChatScreen({ isDevMode = false }: VoiceChatScreenProps) {
         <VoiceCommandCenter
           voiceModePreset={voiceModePreset}
           onStatusUpdate={handleStatusUpdate}
+          onTurnBusy={setVoiceBusy}
+          pipelineSwitching={pipelineSwitching}
           statusRefreshSignal={statusRefreshSignal}
           isDevMode={isDevMode}
         />
         <div className="space-y-4">
+          <VoicePipelinePicker surface="voice" disabled={voiceBusy} onSwitching={setPipelineSwitching}
+            refreshKey={statusRefreshSignal} onApplied={() => setStatusRefreshSignal(current => current + 1)} />
           {/* Mode selector */}
           <div className="rounded-3xl box-muted p-4">
             <p className="eyebrow">{t("voice.modes.title")}</p>

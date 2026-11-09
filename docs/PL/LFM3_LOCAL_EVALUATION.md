@@ -1,6 +1,6 @@
 # Liquid AI LFM3 w Venom — kwalifikacja lokalna
 
-Pomiar z 8 listopada 2026 r. na gałęzi `codex/e4b-local-model-cleanup`. Zakres scenariuszy pochodzi z lokalnej specyfikacji `docs_dev/_to_do/lfm3_liquid_ai_integration_pr_20261108.md`.
+Pomiar z 8 listopada 2026 r. na gałęzi `codex/e4b-local-model-cleanup`. Zakres scenariuszy pochodzi z lokalnej specyfikacji `docs_dev/_done/lfm3_liquid_ai_integration_pr_20261108.md`.
 
 ## Decyzja
 

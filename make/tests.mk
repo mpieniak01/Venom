@@ -62,7 +62,7 @@ test-artifacts-cleanup:
 	fi
 
 test-unit:
-	pytest -k "not performance and not smoke"
+	pytest -k "not performance and not smoke" -m "not (manual_llm or live_model or unsafe_direct_runtime)"
 
 test-smoke:
 	pytest -m smoke
@@ -275,7 +275,7 @@ test-202d-all: test-202d-lora-onnx-deploy test-202d-lora-onnx-smoke
 
 test-llm-manual:
 	@echo "🧪 Manual LLM/runtime tests (operator-triggered only)"
-	pytest -m manual_llm
+	$(PYTEST_BIN) -n 0 --run-live-tests -m "manual_llm or live_model"
 
 test-duration-audit:
 	@echo "🕒 Duration audit (>120s) for long/heavy groups"
@@ -363,9 +363,11 @@ test-all:
 	\
 	exit $$overall_rc
 
+test-unit sonar-reports-backend test-fast-coverage test-ci-lite: export VENOM_CODE_QUALITY_GATE = 1
+
 sonar-reports-backend:
 	@mkdir -p test-results/sonar
-	pytest -n "$(SONAR_BACKEND_PYTEST_WORKERS)" -m "not performance and not smoke" -o junit_family=xunit1 --cov=venom_core --cov-report=xml:test-results/sonar/python-coverage.xml --junitxml=test-results/sonar/python-junit.xml
+	pytest -n "$(SONAR_BACKEND_PYTEST_WORKERS)" -m "not (performance or smoke or manual_llm or live_model or unsafe_direct_runtime)" -o junit_family=xunit1 --cov=venom_core --cov-report=xml:test-results/sonar/python-coverage.xml --junitxml=test-results/sonar/python-junit.xml
 
 NEW_CODE_COVERAGE_MIN ?= 0
 NEW_CODE_PYTEST_WORKERS ?= 4
@@ -377,7 +379,7 @@ NEW_CODE_COV_TARGET ?= venom_core
 NEW_CODE_COVERAGE_XML ?= test-results/sonar/python-coverage.xml
 NEW_CODE_JUNIT_XML ?= test-results/sonar/python-junit.xml
 NEW_CODE_COVERAGE_HTML ?= test-results/sonar/htmlcov-new-code
-NEW_CODE_PYTEST_MARK_EXPR ?= not requires_docker and not requires_docker_compose and not performance and not smoke
+NEW_CODE_PYTEST_MARK_EXPR ?= not (requires_docker or requires_docker_compose or performance or smoke or manual_llm or live_model or unsafe_direct_runtime)
 NEW_CODE_CHANGED_LINES_MIN ?= 80
 NEW_CODE_DIFF_BASE ?= origin/main
 NEW_CODE_AUTO_INCLUDE_CHANGED ?= 1
@@ -507,7 +509,7 @@ test-ci-lite:
 		echo "❌ Brak testów w config/pytest-groups/ci-lite.txt"; \
 		exit 1; \
 	fi; \
-	$(PYTEST_BIN) -q $$TESTS
+	$(PYTEST_BIN) -q -m "not (manual_llm or live_model or unsafe_direct_runtime)" $$TESTS
 
 audit-ci-lite:
 	@$(MAKE) --no-print-directory ci-lite-preflight

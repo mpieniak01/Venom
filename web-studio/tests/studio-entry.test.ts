@@ -134,6 +134,7 @@ function shellExports() {
     "@/hooks/use-api": { cancelSimpleChatStream: noCall },
     "@/lib/chat-sessions": { readChatSessions: () => [] },
     "@/lib/chat-materials": { materialBlocked: () => false },
+    "@/lib/chat-audio": { supportsLocalOmniVoice: () => false },
     "@/components/cockpit/hooks/use-cockpit-interactive-state": { useCockpitInteractiveState: () => ({
       state: { sending: false, chatMode: "direct", selectedLlmModel: "fixture", selectedLlmServer: "ollama" },
       setters: { setMessage: noCall, setSending: noCall }, optimistic: { simpleRequestDetails: {} },

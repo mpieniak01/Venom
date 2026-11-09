@@ -455,3 +455,83 @@ def test_resampler_runtime_error_does_not_silently_select_fallback(
     path = wav_file(tmp_path)
     with pytest.raises(AttributeError, match="resampler implementation failed"):
         audio.encode_audio_input(path)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("native_speech", [True, False])
+async def test_full_omni_sends_native_pcm_or_reports_missing_capability(
+    monkeypatch, tmp_path, native_speech
+):
+    """Deliver native audio or stop before transcription when speech is unavailable."""
+    import json
+
+    handler = object.__new__(stream.AudioStreamHandler)
+    websocket = SimpleNamespace(send_text=AsyncMock())
+    handler.active_connections = {1: {"websocket": websocket, "voice_mode": "standard"}}
+    handler.audio_engine = SimpleNamespace(speak=AsyncMock())
+    handler._update_voice_session_metadata = lambda *_: None
+    handler._build_runtime_metadata = lambda _: {"llm_provider": "ollama"}
+    runtime = SimpleNamespace(
+        provider="ollama",
+        endpoint="http://localhost:11434",
+        model_name=audio.OMNI_MODEL_ID,
+        host_local=True,
+    )
+    monkeypatch.setattr(stream, "get_active_llm_runtime", lambda: runtime)
+
+    @asynccontextmanager
+    async def guard(**_):
+        yield
+
+    monkeypatch.setattr(stream, "runtime_request_guard", guard)
+    ask = AsyncMock(return_value="Test reply.")
+    monkeypatch.setattr(stream, "_invoke_operator_agent", ask)
+    transcribe = AsyncMock(return_value="Test question.")
+    monkeypatch.setattr(audio, "transcribe_audio", transcribe)
+    monkeypatch.setattr(
+        audio,
+        "require_local_capability",
+        AsyncMock(
+            return_value={
+                "capabilities": ["audio", "speech"] if native_speech else ["audio"],
+                "voices": ["female-polish"],
+            }
+        ),
+    )
+    pcm = b"\x01\x00\x02\x00"
+    output = io.BytesIO()
+    with wave.open(output, "wb") as wav:
+        wav.setparams((1, 2, 24000, 0, "NONE", "not compressed"))
+        wav.writeframes(pcm)
+    synthesize = AsyncMock(return_value=output.getvalue())
+    monkeypatch.setattr(audio, "synthesize_speech", synthesize)
+    args = dict(
+        connection_id=1,
+        session_dir=tmp_path,
+        wav_path=tmp_path / "sample.wav",
+        timings_ms={},
+        total_started_at=0,
+        operator_agent=object(),
+        decoder_plan={"effective": "ollama_audio"},
+    )
+    if not native_speech:
+        with pytest.raises(RuntimeError, match="ollama_omni_voice_unavailable"):
+            await handler._handle_decoder_plan_pre_stt(**args)
+        transcribe.assert_not_awaited()
+        ask.assert_not_awaited()
+        synthesize.assert_not_awaited()
+    else:
+        assert await handler._handle_decoder_plan_pre_stt(**args) is True
+        transcribe.assert_awaited_once()
+        ask.assert_awaited_once()
+        synthesize.assert_awaited_once_with(
+            runtime.endpoint, runtime.model_name, "Test reply.", voice="female-polish"
+        )
+        events = [
+            json.loads(call.args[0]) for call in websocket.send_text.await_args_list
+        ]
+        assert events[-1] == {"type": "complete"}
+        assert events[-2]["type"] == "audio_response"
+        assert events[-2]["sample_rate"] == 24000
+        assert base64.b64decode(events[-2]["audio"]) == pcm
+    handler.audio_engine.speak.assert_not_awaited()

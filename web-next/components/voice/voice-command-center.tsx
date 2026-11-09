@@ -25,6 +25,7 @@ import type { VoiceOrbState } from "@/components/voice/voice-orb";
 import { useOrbEffectsConfig } from "@/components/voice/use-orb-effects-config";
 import { useOrbMetrics } from "@/components/voice/use-orb-metrics";
 import { OrbZone } from "@/components/voice/orb-zone";
+import { useVoiceImageSelection, VOICE_IMAGE_ACCEPT } from "@/components/voice/use-voice-image-selection";
 import { DevDiagnosticsDrawer } from "@/components/voice/dev-diagnostics-drawer";
 import {
   shouldTrackOrbMetrics,
@@ -819,6 +820,7 @@ const handleVoiceCompletion = (
   setProcessingStatus?.(null);
 };
 
+/** Reset playback and present a localized channel error for multimodal failures. */
 const handleVoiceError = (
   t: Translator,
   data: Record<string, unknown>,
@@ -828,11 +830,14 @@ const handleVoiceError = (
   setProcessingStatus?: (value: string | null) => void,
 ) => {
   setPlaybackState("error");
-  setStatusMessage(toPrimitiveString(data.message) ?? t("voice.status.channelError"));
+  setStatusMessage(data.multimodal === true
+    ? t("voice.status.channelError")
+    : toPrimitiveString(data.message) ?? t("voice.status.channelError"));
   setLastAudioSignal("error");
   setProcessingStatus?.(null);
 };
 
+/** Own one voice socket and release its retry timer and audio resources on teardown. */
 const connectVoiceSocket = (deps: VoiceSocketDeps): (() => void) => {
   const {
     t,
@@ -851,6 +856,7 @@ const connectVoiceSocket = (deps: VoiceSocketDeps): (() => void) => {
   } = deps;
 
   let destroyed = false;
+  /** Bind incoming events to the current socket so a replaced connection cannot update the view. */
   const connect = () => {
     if (destroyed) return;
     const ws = new WebSocket(getAudioWsUrl());
@@ -866,9 +872,12 @@ const connectVoiceSocket = (deps: VoiceSocketDeps): (() => void) => {
         setLastAudioSignal,
         refreshAudioStatus,
       });
-    ws.onmessage = (event) => handleVoiceSocketMessage({ handleAudioMessage }, event);
+    ws.onmessage = (event) => {
+      if (!destroyed && wsRef.current === ws) handleVoiceSocketMessage({ handleAudioMessage }, event);
+    };
     ws.onerror = () => handleVoiceSocketError({ t, setStatusMessage, setLastAudioSignal });
-    ws.onclose = () =>
+    ws.onclose = () => {
+      if (wsRef.current !== ws) return;
       handleVoiceSocketClose(
         {
           t,
@@ -881,6 +890,7 @@ const connectVoiceSocket = (deps: VoiceSocketDeps): (() => void) => {
         () => destroyed,
         connect,
       );
+    };
   };
 
   connect();
@@ -1015,20 +1025,20 @@ const getVoiceCaptureStartError = (
   return null;
 };
 
+/** Send recording chunks to the socket that started the capture and release it on stop. */
 const attachRecordingStreamHandlers = (
   recorder: MediaRecorder,
-  wsRef: RefObject<WebSocket | null>,
+  socket: WebSocket,
   setAudioChunkCount: (value: number | ((current: number) => number)) => void,
   setLastAudioSignal: (value: string) => void,
   sendControlMessage: (payload: Record<string, unknown>) => boolean,
   releaseRecordingResources: () => void,
 ) => {
   recorder.ondataavailable = (event) => {
-    const ws = wsRef.current;
-    if (event.data.size <= 0 || !isWebSocketOpen(ws)) {
+    if (event.data.size <= 0 || !isWebSocketOpen(socket)) {
       return;
     }
-    ws.send(event.data);
+    socket.send(event.data);
     setAudioChunkCount((current) => current + 1);
     setLastAudioSignal(`media:${event.data.size}B`);
   };
@@ -1038,6 +1048,7 @@ const attachRecordingStreamHandlers = (
   };
 };
 
+/** Start capture once permission is granted and the original socket can still accept it. */
 const startVoiceCapture = async (deps: VoiceCaptureDeps): Promise<void> => {
   const {
     t,
@@ -1065,11 +1076,12 @@ const startVoiceCapture = async (deps: VoiceCaptureDeps): Promise<void> => {
     activeWindow,
   } = deps;
 
+  const socket = wsRef.current;
   const startError = getVoiceCaptureStartError(
     t,
     audioEnabled,
     isVoiceModeEnabled,
-    Boolean(wsRef.current),
+    isWebSocketOpen(socket),
   );
   if (startError) {
     setStatusMessage(startError);
@@ -1082,6 +1094,10 @@ const startVoiceCapture = async (deps: VoiceCaptureDeps): Promise<void> => {
   recordingStartPendingRef.current = true;
   stopRequestedRef.current = false;
 
+  /** Keep recording commands on the socket that owns the audio stream. */
+  const sendForRecording = (payload: Record<string, unknown>) =>
+    wsRef.current === socket && sendControlMessage(payload);
+  let sentRecordingStart = false;
   try {
     const environment = await createVoiceCaptureEnvironment({
       activeWindow,
@@ -1098,30 +1114,35 @@ const startVoiceCapture = async (deps: VoiceCaptureDeps): Promise<void> => {
       return;
     }
 
+    if (wsRef.current !== socket || !isWebSocketOpen(socket)) {
+      releaseAudioResources();
+      setStatusMessage(t("voice.status.channelOffline"));
+      return;
+    }
+
     attachRecordingStreamHandlers(
       environment.recorder,
-      wsRef,
+      socket,
       setAudioChunkCount,
       setLastAudioSignal,
-      sendControlMessage,
+      sendForRecording,
       releaseRecordingResources,
     );
 
-    recordingRef.current = true;
-    setRecording(true);
-    setStatusMessage(t("voice.controls.recording"));
-    if (
-      !sendRecordingStartMessages(
-        { sendControlMessage, setStatusMessage, setAudioChunkCount, setLastAudioSignal },
-        environment.audioContext,
-        environment.recorder,
-        environment.mimeType,
-      )
-    ) {
+    sentRecordingStart = sendRecordingStartMessages(
+      { sendControlMessage: sendForRecording, setStatusMessage, setAudioChunkCount, setLastAudioSignal },
+      environment.audioContext,
+      environment.recorder,
+      environment.mimeType,
+    );
+    if (!sentRecordingStart) {
       releaseAudioResources();
       return;
     }
     environment.recorder.start(100);
+    recordingRef.current = true;
+    setRecording(true);
+    setStatusMessage(t("voice.controls.recording"));
     getBrowserWindow()?.setTimeout(() => {
       if (environment.recorder.state === "recording") {
         try {
@@ -1133,6 +1154,7 @@ const startVoiceCapture = async (deps: VoiceCaptureDeps): Promise<void> => {
     }, 120);
   } catch (error) {
     console.error("recording error", error);
+    if (sentRecordingStart) sendForRecording({ command: "stop_recording" });
     releaseAudioResources();
     setStatusMessage(t("voice.status.recordingFailed"));
   } finally {
@@ -1613,6 +1635,7 @@ function createEnsurePlaybackContextHandler(params: {
   };
 }
 
+/** Create a replayable audio handler that discards playback superseded during context setup. */
 function createPlayAudioResponseHandler(params: {
   ensurePlaybackContext: () => Promise<AudioContext | null>;
   releasePlaybackResources: () => void;
@@ -1622,6 +1645,7 @@ function createPlayAudioResponseHandler(params: {
   setStatusMessage: Dispatch<SetStateAction<string | null>>;
   setLastAudioSignal: Dispatch<SetStateAction<string>>;
   setHasReplayAudio: Dispatch<SetStateAction<boolean>>;
+  playbackRequestRef: MutableRefObject<number>;
   lastAudioResponseRef: MutableRefObject<{ audio: string; sampleRate: number } | null>;
   ttsAudioContextRef: MutableRefObject<AudioContext | null>;
   ttsSourceRef: MutableRefObject<AudioBufferSourceNode | null>;
@@ -1636,12 +1660,14 @@ function createPlayAudioResponseHandler(params: {
     setStatusMessage,
     setLastAudioSignal,
     setHasReplayAudio,
+    playbackRequestRef,
     lastAudioResponseRef,
     ttsAudioContextRef,
     ttsSourceRef,
     ttsAnalyserRef,
   } = params;
   return async (base64Audio: string, sampleRate: number) => {
+    const playbackRequest = ++playbackRequestRef.current;
     lastAudioResponseRef.current = { audio: base64Audio, sampleRate };
     setHasReplayAudio(true);
     if (ttsMuted) {
@@ -1652,6 +1678,7 @@ function createPlayAudioResponseHandler(params: {
     const browserWindow = getBrowserWindow();
     if (browserWindow) {
       const ctx = await ensurePlaybackContext();
+      if (playbackRequest !== playbackRequestRef.current) return;
       if (!ctx) {
         setPlaybackState("error");
         setStatusMessage(t("voice.status.playbackNoAudioContext"));
@@ -2092,11 +2119,12 @@ function useVoiceCommandCenterWarmup(params: {
   ]);
 }
 
+/** Own the voice socket and route disconnections through the panel state reset. */
 function useVoiceCommandCenterConnectionLifecycle(params: {
   debugDryRunRequested: boolean;
   audioEnabled: boolean;
   t: Translator;
-  setConnected: Dispatch<SetStateAction<boolean>>;
+  setConnected: (value: boolean) => void;
   setStatusMessage: Dispatch<SetStateAction<string | null>>;
   setIsVoiceModeEnabled: Dispatch<SetStateAction<boolean>>;
   setLastAudioSignal: Dispatch<SetStateAction<string>>;
@@ -2335,6 +2363,8 @@ type VoiceCommandCenterProps = Readonly<{
   voiceModePreset?: VoiceModePreset;
   onStatusUpdate?: (status: VoiceStatusUpdate | null) => void;
   statusRefreshSignal?: number;
+  onTurnBusy?: (busy: boolean) => void;
+  pipelineSwitching?: boolean;
   isDevMode?: boolean;
 }>;
 
@@ -2430,6 +2460,8 @@ function VoiceCommandCenterPanel({
   voiceModePreset = "standard",
   onStatusUpdate,
   statusRefreshSignal,
+  onTurnBusy,
+  pipelineSwitching = false,
 }: VoiceCommandCenterProps) {
   const t = useTranslation();
   const audioEnabled = process.env.NEXT_PUBLIC_ENABLE_AUDIO_INTERFACE === "true";
@@ -2442,6 +2474,10 @@ function VoiceCommandCenterPanel({
   const microphoneCapability = useSyncExternalStore(subscribeMicrophoneCapability, getMicrophoneCapability, () => "available");
   const [transcription, setTranscription] = useState("");
   const [response, setResponse] = useState("");
+  const [responseSources, setResponseSources] = useState<string[]>([]);
+  const [multimodalActive, setMultimodalActive] = useState(false);
+  const [multimodalPending, setMultimodalPending] = useState(false);
+  const { selection: voiceImage, chooseImage, clearImage } = useVoiceImageSelection();
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [audioStatus, setAudioStatus] = useState<AudioStatus | null>(null);
   const [ttsModelOptions, setTtsModelOptions] = useState<TtsModelOption[]>([]);
@@ -2453,6 +2489,9 @@ function VoiceCommandCenterPanel({
   const [audioChunkCount, setAudioChunkCount] = useState(0);
   const [lastAudioSignal, setLastAudioSignal] = useState("idle");
   const [processingStatus, setProcessingStatus] = useState<string | null>(null);
+  useEffect(() => {
+    onTurnBusy?.(recording || Boolean(processingStatus) || playbackState === "playing");
+  }, [onTurnBusy, playbackState, processingStatus, recording]);
   const [devDrawerOpen, setDevDrawerOpen] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectAttemptsRef = useRef(0);
@@ -2470,6 +2509,28 @@ function VoiceCommandCenterPanel({
   const stopRequestedRef = useRef(false);
   const lastAudioResponseRef = useRef<{ audio: string; sampleRate: number } | null>(null);
   const lastVoiceModeSentRef = useRef<string | null>(null);
+  const imageInFlightRef = useRef(false);
+  const playbackRequestRef = useRef(0);
+
+  const activeRuntime = buildVoiceRuntimeStateView(audioStatus).active;
+  const multimodalAvailable = !debugDryRunActive
+    && isVoiceModeEnabled
+    && activeRuntime.runtimeId === "ollama"
+    && activeRuntime.modelName.toLowerCase() === "lfm3-omni:2b";
+
+  const endMultimodal = useCallback(() => {
+    clearImage();
+    setMultimodalActive(false);
+  }, [clearImage]);
+
+  const setVoiceConnected = useCallback((value: boolean) => {
+    setConnected(value);
+    if (!value) {
+      endMultimodal();
+      setMultimodalPending(false);
+      imageInFlightRef.current = false;
+    }
+  }, [endMultimodal]);
 
   useVoiceCommandCenterCompleteReset({
     debugDryRunRequested,
@@ -2608,6 +2669,7 @@ function VoiceCommandCenterPanel({
         setStatusMessage,
         setLastAudioSignal,
         setHasReplayAudio,
+        playbackRequestRef,
         lastAudioResponseRef,
         ttsAudioContextRef,
         ttsSourceRef,
@@ -2634,7 +2696,22 @@ function VoiceCommandCenterPanel({
   }, [playAudioResponse, t, setStatusMessage]);
 
   const handleAudioMessage = useCallback(
-    (data: Record<string, unknown>) =>
+    (data: Record<string, unknown>) => {
+      if (data.type === "response_text") {
+        const sources: unknown = data.sources;
+        setResponseSources(Array.isArray(sources)
+          ? sources.filter((source): source is string => typeof source === "string" && source.trim().length > 0)
+          : []);
+        if (data.multimodal === true) {
+          setMultimodalActive(true);
+          setTranscription(t("voice.multimodal.spokenQuestion"));
+          if (imageInFlightRef.current) clearImage();
+        }
+      }
+      if (data.multimodal === true && (data.type === "complete" || data.type === "error")) {
+        setMultimodalPending(false);
+        imageInFlightRef.current = false;
+      }
       createHandleAudioMessageHandler({
         t,
         onTranscriptReady,
@@ -2646,8 +2723,10 @@ function VoiceCommandCenterPanel({
         setTranscription,
         setResponse,
         setPlaybackState,
-      })(data),
+      })(data);
+    },
     [
+      clearImage,
       onTranscriptReady,
       playAudioResponse,
       refreshAudioStatus,
@@ -2689,47 +2768,6 @@ function VoiceCommandCenterPanel({
     ensurePlaybackContext,
     getMediaRecorderMimeType,
   });
-
-  useEffect(
-    () => {
-      if (debugDryRunRequested) {
-        return undefined;
-      }
-      return bindVoiceConnectionLifecycle(
-        audioEnabled,
-        t,
-        setConnected,
-        setStatusMessage,
-        setIsVoiceModeEnabled,
-        () =>
-          connectVoiceSocket({
-            t,
-            wsRef,
-            reconnectAttemptsRef,
-            reconnectTimeoutRef,
-            lastVoiceModeSentRef,
-            setConnected,
-            setStatusMessage,
-            setLastAudioSignal,
-            releaseAudioResources,
-            releasePlaybackResources,
-            refreshAudioStatus,
-            handleAudioMessage,
-            ttsAudioContextRef,
-          }),
-      );
-    },
-    [
-      audioEnabled,
-      debugDryRunRequested,
-      handleAudioMessage,
-      isVoiceModeEnabled,
-      refreshAudioStatus,
-      releaseAudioResources,
-      releasePlaybackResources,
-      t,
-    ],
-  );
 
   const sendControlMessage = useCallback(
     (payload: Record<string, unknown>) =>
@@ -2773,8 +2811,22 @@ function VoiceCommandCenterPanel({
     ],
   );
 
+  const sendRecordingControlMessage = useCallback((payload: Record<string, unknown>) => {
+    if (payload.command !== "start_recording") return sendControlMessage(payload);
+    const image = multimodalAvailable && voiceImage?.status === "ready" ? voiceImage.base64 : undefined;
+    const multimodal = multimodalAvailable && (Boolean(image) || multimodalActive);
+    const sent = sendControlMessage({ ...payload, multimodal, image });
+    if (sent && multimodal) {
+      setMultimodalPending(true);
+      imageInFlightRef.current = Boolean(image);
+    } else if (sent && multimodalActive) {
+      endMultimodal();
+    }
+    return sent;
+  }, [endMultimodal, multimodalActive, multimodalAvailable, sendControlMessage, voiceImage]);
+
   const startRecording = useCallback(
-    () =>
+    () => pipelineSwitching ? Promise.resolve() :
       createStartRecordingHandler({
         debugDryRunRequested,
         debugMode,
@@ -2796,13 +2848,14 @@ function VoiceCommandCenterPanel({
         setLastAudioSignal,
         releaseRecordingResources,
         releaseAudioResources,
-        sendControlMessage,
+        sendControlMessage: sendRecordingControlMessage,
         getMediaRecorderMimeType,
         ensurePlaybackContext,
         stopRecording,
         activeWindow: getBrowserWindow(),
       })(),
     [
+      pipelineSwitching,
       debugDryRunRequested,
       debugMode,
       ensurePlaybackContext,
@@ -2811,7 +2864,7 @@ function VoiceCommandCenterPanel({
       isVoiceModeEnabled,
       releaseRecordingResources,
       releaseAudioResources,
-      sendControlMessage,
+      sendRecordingControlMessage,
       stopRecording,
       t,
       setRecording,
@@ -2849,7 +2902,7 @@ function VoiceCommandCenterPanel({
     debugDryRunRequested,
     audioEnabled,
     t,
-    setConnected,
+    setConnected: setVoiceConnected,
     setStatusMessage,
     setIsVoiceModeEnabled,
     setLastAudioSignal,
@@ -2922,15 +2975,21 @@ function VoiceCommandCenterPanel({
     setLastAudioSignal,
   });
 
+  const connectionBadge = viewState.effectiveConnected
+    ? { tone: "success" as const, label: "voice.status.connected" }
+    : { tone: "warning" as const, label: "voice.status.offline" };
+  const microphoneBlocked = microphoneCapability !== "available" && !debugDryRunActive;
+  const canStartRecording = !multimodalPending
+    && (!multimodalAvailable || voiceImage?.status !== "reading");
   const onRecordingPointerDown = useCallback(
     (event: ReactPointerEvent<HTMLButtonElement>) => {
       event.preventDefault();
-      if (!recording) {
+      if (!recording && canStartRecording) {
         tryCapturePointer(event.currentTarget, event.pointerId);
         startRecording().catch(() => undefined);
       }
     },
-    [recording, startRecording],
+    [canStartRecording, recording, startRecording],
   );
 
   const onRecordingPointerUp = useCallback(
@@ -2942,7 +3001,9 @@ function VoiceCommandCenterPanel({
     [stopRecording],
   );
 
+  /** Clear the attached image and multimodal state when leaving voice mode. */
   const onVoiceModeToggle = () => {
+    if (isVoiceModeEnabled) endMultimodal();
     toggleVoiceMode({
       debugDryRunActive,
       isVoiceModeEnabled,
@@ -2959,9 +3020,7 @@ function VoiceCommandCenterPanel({
         description={t("voice.page.description")}
         action={
           <div className="flex items-center gap-2">
-            <Badge tone={viewState.effectiveConnected ? "success" : "warning"}>
-              {viewState.effectiveConnected ? t("voice.status.connected") : t("voice.status.offline")}
-            </Badge>
+            <Badge tone={connectionBadge.tone}>{t(connectionBadge.label)}</Badge>
             {debugDryRunActive && <Badge tone="warning">{debugMode.badgeLabel}</Badge>}
             {viewState.showDevButton && (
               <Button
@@ -3003,10 +3062,55 @@ function VoiceCommandCenterPanel({
             </div>
           )}
 
-          {microphoneCapability !== "available" && !debugDryRunActive && (
+          {microphoneBlocked && (
             <output data-testid="microphone-capability" className="block text-sm text-amber-300">
               {t(microphoneCapability === "insecure_context" ? "voice.status.microphoneInsecure" : "voice.status.microphoneUnavailable")}
             </output>
+          )}
+
+          {responseSources.length > 0 && (
+            <div className="rounded-2xl box-muted p-3 text-sm text-zinc-300">
+              <p className="text-caption">{t("voice.multimodal.sources")}</p>
+              <ul className="mt-1 list-disc break-words pl-5">
+                {Array.from(new Set(responseSources)).map((source) => <li key={source}>{source}</li>)}
+              </ul>
+            </div>
+          )}
+
+          {multimodalAvailable && (
+            <div className="flex flex-wrap items-center gap-2 rounded-2xl box-muted p-3 text-sm">
+              <label className="flex min-w-0 flex-col gap-1">
+                {t("voice.multimodal.attachImage")}
+                <input
+                  type="file"
+                  accept={VOICE_IMAGE_ACCEPT}
+                  className="max-w-full"
+                  disabled={recording || multimodalPending}
+                  onChange={(event) => {
+                    const file = event.currentTarget.files?.[0];
+                    if (file) chooseImage(file);
+                    event.currentTarget.value = "";
+                  }}
+                />
+              </label>
+              {voiceImage && voiceImage.status !== "invalid" && (
+                <>
+                  <span className="min-w-0 break-all">{voiceImage.name}</span>
+                  <Button type="button" size="xs" variant="outline" onClick={clearImage} disabled={recording || multimodalPending}>
+                    {t("voice.multimodal.removeImage")}
+                  </Button>
+                </>
+              )}
+              {voiceImage?.status === "invalid" && <p role="alert">{t("voice.multimodal.invalidImage")}</p>}
+              {multimodalActive && (
+                <>
+                  <Badge tone="success">{t("voice.multimodal.active")}</Badge>
+                  <Button type="button" size="xs" variant="outline" onClick={endMultimodal} disabled={recording || multimodalPending}>
+                    {t("voice.multimodal.end")}
+                  </Button>
+                </>
+              )}
+            </div>
           )}
 
           <Button
@@ -3018,7 +3122,9 @@ function VoiceCommandCenterPanel({
             variant="outline"
             size="md"
             className={`w-full justify-center rounded-2xl border px-4 py-6 text-lg font-semibold transition ${viewState.recordingButtonClass}`}
-            disabled={!viewState.effectiveConnected || !viewState.effectiveIsVoiceModeEnabled || (!debugDryRunActive && microphoneCapability !== "available")}
+            disabled={!viewState.effectiveConnected || !viewState.effectiveIsVoiceModeEnabled
+              || microphoneBlocked
+              || (!viewState.effectiveRecording && !canStartRecording)}
           >
             🎙 {viewState.recordingButtonLabel}
           </Button>
@@ -3029,7 +3135,7 @@ function VoiceCommandCenterPanel({
               size="xs"
               variant={viewState.effectiveIsVoiceModeEnabled ? "primary" : "outline"}
               onClick={onVoiceModeToggle}
-              disabled={!viewState.effectiveAudioEnabled || debugDryRunActive}
+              disabled={!viewState.effectiveAudioEnabled || debugDryRunActive || multimodalPending}
             >
               {viewState.effectiveIsVoiceModeEnabled ? t("voice.controls.voice") : t("voice.controls.text")}
             </Button>
@@ -3054,6 +3160,20 @@ function VoiceCommandCenterPanel({
             >
               {t("voice.controls.replay")}
             </Button>
+            {playbackState === "playing" && (
+              <Button
+                type="button"
+                size="xs"
+                variant="outline"
+                onClick={() => {
+                  releasePlaybackResources();
+                  setPlaybackState("idle");
+                  setStatusMessage(t("voice.status.channelReady"));
+                }}
+              >
+                {t("voice.multimodal.stopPlayback")}
+              </Button>
+            )}
             <Button
               type="button"
               size="xs"
@@ -3149,7 +3269,7 @@ function VoiceCommandCenterPanel({
                     value: viewState.effectiveAudioStatus.latest_voice_session.voice_pipeline_mode
                       ?? inferVoiceSessionTimingMode(viewState.effectiveAudioStatus.latest_voice_session),
                     tone: "neutral",
-                    hint: `${t("voice.controls.nativeAudio")} ${["native_audio", "ollama_audio_llm_piper"].includes(inferVoiceSessionTimingMode(viewState.effectiveAudioStatus.latest_voice_session)) ? t("common.yes") : t("common.no")}`,
+                    hint: `${t("voice.controls.nativeAudio")} ${["native_audio", "ollama_audio_llm_piper", "ollama_omni_voice"].includes(inferVoiceSessionTimingMode(viewState.effectiveAudioStatus.latest_voice_session)) ? t("common.yes") : t("common.no")}`,
                   },
                   {
                     label: t("runtime.diagnostics.policy"),

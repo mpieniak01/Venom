@@ -343,6 +343,13 @@ def pytest_addoption(parser):
 
 
 def pytest_configure(config):
+    """Register runtime markers and reject live provider tests in code gates."""
+    if os.environ.get("VENOM_CODE_QUALITY_GATE") == "1" and config.getoption(
+        "--run-live-tests", default=False
+    ):
+        raise pytest.UsageError(
+            "Live model/runtime tests must run outside code quality gates"
+        )
     for marker in (
         "requires_docker: test wymaga istniejącego Venoma oraz Docker daemon",
         "requires_docker_compose: test wymaga istniejącego Venoma oraz Docker Compose",
@@ -705,6 +712,14 @@ class FakeVectorStore:
                 entry["metadata"].update(metadata_patch)
                 return True
         return False
+
+
+@pytest.fixture
+def offline_vision(monkeypatch):
+    """Use an unavailable local vision runtime in tests of dispatcher behavior."""
+    monkeypatch.setattr(
+        "venom_core.perception.eyes.Eyes._check_local_vision", lambda _eyes: False
+    )
 
 
 @pytest.fixture

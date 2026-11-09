@@ -10,7 +10,8 @@ import wave
 from collections.abc import Callable
 from importlib import import_module
 from pathlib import Path
-from typing import cast
+from typing import TYPE_CHECKING, cast
+from urllib.parse import urlsplit
 
 import numpy as np
 from numpy.typing import NDArray
@@ -18,7 +19,15 @@ from numpy.typing import NDArray
 from venom_core.core.model_registry_clients import OllamaClient
 from venom_core.infrastructure.traffic_control import TrafficControlledHttpClient
 
+if TYPE_CHECKING:
+    from venom_core.utils.llm_runtime import LLMRuntimeInfo
+
 OMNI_MODEL_ID = "lfm3-omni:2b"
+OMNI_VOICES = {
+    "pl": "female-polish",
+    "en": "female-american-english",
+    "de": "female-german",
+}
 MAX_AUDIO_BYTES = 25 * 1024 * 1024
 MIN_SAMPLE_RATE = 8000
 MAX_SAMPLE_RATE = 192000
@@ -66,10 +75,11 @@ def encode_audio_input(path: Path) -> str:
         if output_frames * 2 + 44 > MAX_AUDIO_BYTES:
             raise ValueError("audio_output_too_large")
         samples = np.frombuffer(source.readframes(frames), dtype="<i2")
-    return _encode_pcm(samples, rate)
+    return encode_pcm_audio(samples, rate)
 
 
-def _encode_pcm(samples: NDArray[np.int16], rate: int) -> str:
+def encode_pcm_audio(samples: NDArray[np.int16], rate: int) -> str:
+    """Encode signed PCM as bounded Base64 WAV at the model's input rate."""
     if samples.size == 0:
         raise ValueError("audio_input_empty")
     if rate != 16000:
@@ -103,12 +113,57 @@ async def supports_audio(endpoint: str, model: str) -> bool:
     return "audio" in show.get("capabilities", [])
 
 
+def is_host_ollama(runtime: LLMRuntimeInfo) -> bool:
+    """Identify Ollama runtimes bound to a loopback endpoint on this host."""
+    return bool(
+        runtime.provider == "ollama"
+        and runtime.host_local is not False
+        and runtime.endpoint
+        and urlsplit(runtime.endpoint).hostname in {"localhost", "127.0.0.1", "::1"}
+    )
+
+
+def is_local_model(show: dict) -> bool:
+    """Exclude entries whose model execution resolves to a remote host."""
+    return not (show.get("remote_model") or show.get("remote_host"))
+
+
+def supports_omni_voice(show: dict, language: str) -> bool:
+    """Check that the local model handles audio and exposes the requested voice."""
+    return (
+        is_local_model(show)
+        and {"audio", "speech"}.issubset(show.get("capabilities") or [])
+        and OMNI_VOICES[language] in (show.get("voices") or [])
+    )
+
+
+async def installed_gemma_models(endpoint: str) -> list[str]:
+    """List installed local Gemma 4 tags without loading their weights."""
+    client = OllamaClient(endpoint)
+    tags = await client.list_tags()
+    return sorted(
+        {
+            entry["name"]
+            for entry in tags.get("models", [])
+            if isinstance(entry.get("name"), str)
+            and entry["name"].lower().startswith("gemma4")
+            and not entry["name"].lower().endswith("-cloud")
+            and is_local_model(entry)
+        }
+    )
+
+
+async def has_omni_voice(endpoint: str, language: str) -> bool:
+    """Read model metadata to determine native voice availability."""
+    show = await OllamaClient(endpoint).get_model_show(OMNI_MODEL_ID)
+    return supports_omni_voice(show, language)
+
+
 async def require_local_capability(endpoint: str, model: str, capability: str) -> dict:
+    """Return model metadata only when the capability is available locally."""
     payload = await OllamaClient(endpoint).get_model_show(model)
-    if (
-        payload.get("remote_model")
-        or payload.get("remote_host")
-        or capability not in (payload.get("capabilities") or [])
+    if not is_local_model(payload) or capability not in (
+        payload.get("capabilities") or []
     ):
         raise RuntimeError("ollama_audio_capability_unavailable")
     return payload
@@ -131,7 +186,7 @@ async def transcribe_pcm_audio(
     endpoint: str, model: str, pcm: bytes, rate: int, language: str
 ) -> str:
     samples = np.frombuffer(pcm, dtype="<i2")
-    audio = await asyncio.to_thread(_encode_pcm, samples, rate)
+    audio = await asyncio.to_thread(encode_pcm_audio, samples, rate)
     language_name = {"pl": "Polish", "en": "English", "de": "German"}[language]
     return await _transcribe(
         endpoint, model, audio, f"Perform ASR in {language_name}.", 4096

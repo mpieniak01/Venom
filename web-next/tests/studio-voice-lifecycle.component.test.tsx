@@ -45,7 +45,7 @@ test("a late transcription after ending voice cannot alter a draft or send a tur
 
 test("conversation uses the same text turn once and never speaks a stopped partial", async () => {
   const fixture = options(); fixture.props.mode = "conversation"; let speech = 0;
-  globalThis.fetch = async input => { if (String(input).includes("/speak")) { speech++; return new Response(new Blob(["wav"])); } return Response.json({ session_id: "one", text: "one user turn" }); };
+  globalThis.fetch = async input => { if (String(input).includes("/speak")) { speech++; return new Response(new Blob(["wav"])); } assert.match(String(input), /[&?]prefer_native=true/); return Response.json({ session_id: "one", text: "one user turn" }); };
   const hook = renderHook(props => useStudioVoice(props, async () => ({ finish: async () => recorded(), dispose: () => {} })), { initialProps: fixture.props });
   await act(async () => { await hook.result.current.start(); }); await act(async () => { await hook.result.current.finish(); });
   assert.deepEqual(fixture.turns, ["one user turn"]);
@@ -103,3 +103,106 @@ for (const [cause, expected] of [
     assert.deepEqual(fixture.turns, []);
   });
 }
+
+test("the first image turn sends raw PCM and image together, then speaks a follow-up in the same session", async context => {
+  const fixture = options();
+  const activity: boolean[] = [];
+  const submissions: FormData[] = [];
+  const spoken: string[] = [];
+  let commits = 0;
+  let plays = 0;
+  let pauses = 0;
+  const playback = {
+    onended: null as (() => void) | null,
+    onerror: null as (() => void) | null,
+    play: async () => { plays++; },
+    pause: () => { pauses++; },
+    removeAttribute: () => {},
+  };
+  const audioDescriptor = Object.getOwnPropertyDescriptor(globalThis, "Audio");
+  Object.defineProperty(globalThis, "Audio", { configurable: true, value: function () { return playback; } });
+  context.after(() => {
+    if (audioDescriptor) Object.defineProperty(globalThis, "Audio", audioDescriptor);
+    else Reflect.deleteProperty(globalThis, "Audio");
+  });
+  globalThis.fetch = async (input, init) => {
+    if (String(input).endsWith("/multimodal-turn")) {
+      assert.ok(init?.body instanceof FormData);
+      submissions.push(init.body);
+      return Response.json({ session_id: "one", text: "Odpowiedź " + submissions.length, sources: ["Instrukcja"] });
+    }
+    assert.ok(String(input).endsWith("/speak"), "must not transcribe the input separately");
+    spoken.push(JSON.parse(String(init?.body)).text);
+    return new Response(new Blob(["waveform"]));
+  };
+  const props = {
+    ...fixture.props,
+    mode: "conversation" as const,
+    multimodalEnabled: true,
+    onMultimodalBusy: (busy: boolean) => { activity.push(busy); },
+    onMultimodalCommit: () => { commits++; },
+  };
+  const hook = renderHook(() => useStudioVoice(props, async () => ({ finish: async () => recorded(), dispose: () => {} })));
+  act(() => hook.result.current.selectImage(new File(["snapshot"], "screen.png", { type: "image/png" })));
+  await act(async () => { await hook.result.current.start(); await hook.result.current.finish(); });
+  assert.equal(submissions[0].get("session_id"), "one");
+  assert.equal(submissions[0].get("sample_rate"), "16000");
+  assert.equal(submissions[0].get("language"), "pl");
+  const clip = submissions[0].get("audio");
+  const attachment = submissions[0].get("image");
+  assert.ok(clip instanceof File);
+  assert.deepEqual(await clip.arrayBuffer(), recorded().pcm);
+  assert.ok(attachment instanceof File);
+  assert.equal(attachment.name, "screen.png");
+  assert.equal(await attachment.text(), "snapshot");
+  assert.deepEqual(hook.result.current.sources, ["Instrukcja"]);
+  assert.equal(hook.result.current.image, null);
+  assert.equal(hook.result.current.status, "speaking");
+
+  await act(async () => { await hook.result.current.stop(); });
+  assert.equal(pauses, 1);
+  assert.equal(hook.result.current.status, "voiceIdle");
+
+  await act(async () => { await hook.result.current.start(); await hook.result.current.finish(); });
+  assert.equal(submissions[1].get("session_id"), "one");
+  assert.equal(submissions[1].has("image"), false);
+  assert.deepEqual(spoken, ["Odpowiedź 1", "Odpowiedź 2"]);
+  assert.deepEqual(activity, [true, false, true, false]);
+  assert.equal(commits, 2);
+  assert.equal(plays, 2);
+  assert.deepEqual(fixture.turns, []);
+  hook.unmount();
+});
+
+test("stopping an image turn aborts the request and ignores a late response", async () => {
+  const fixture = options();
+  let resolve!: (value: Response) => void;
+  let signal: AbortSignal | null | undefined;
+  let commits = 0;
+  globalThis.fetch = async (input, init) => {
+    assert.ok(String(input).endsWith("/multimodal-turn"));
+    signal = init?.signal;
+    return new Promise<Response>(ready => { resolve = ready; });
+  };
+  const props = {
+    ...fixture.props,
+    mode: "conversation" as const,
+    multimodalEnabled: true,
+    onMultimodalCommit: () => { commits++; },
+  };
+  const hook = renderHook(() => useStudioVoice(props, async () => ({ finish: async () => recorded(), dispose: () => {} })));
+  act(() => hook.result.current.selectImage(new File(["snapshot"], "screen.png", { type: "image/png" })));
+  await act(async () => { await hook.result.current.start(); });
+  let finishing!: Promise<void>;
+  act(() => { finishing = hook.result.current.finish(); });
+  await waitFor(() => assert.ok(signal));
+  await act(async () => { await hook.result.current.stop(); });
+  assert.equal(signal?.aborted, true);
+  await act(async () => {
+    resolve(Response.json({ session_id: "one", text: "late response", sources: ["Instrukcja"] }));
+    await finishing;
+  });
+  assert.equal(commits, 0);
+  assert.deepEqual(hook.result.current.sources, []);
+  assert.equal(hook.result.current.status, "voiceIdle");
+});

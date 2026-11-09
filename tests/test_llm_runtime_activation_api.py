@@ -408,11 +408,15 @@ def test_provider_activation_obeys_shared_switch_gate(client, monkeypatch, provi
 async def test_onnx_provider_activation_waits_for_real_request_guard_to_drain(
     monkeypatch,
 ):
+    """Verify that activation waits for the in-process request guard to drain."""
     import asyncio
     from contextlib import suppress
 
     from venom_core.services import runtime_switch_gate as gate
 
+    # The separate admission ledger rejects a concurrent mutation before the
+    # switch gate starts. Keep this test on the in-process drain path.
+    monkeypatch.setattr(system_llm.SETTINGS, "RUNTIME_ADMISSION_ENABLED", False)
     entered = asyncio.Event()
     release = asyncio.Event()
     activate = AsyncMock(return_value={"status": "success", "active_server": "onnx"})

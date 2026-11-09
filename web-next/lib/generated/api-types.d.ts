@@ -4947,6 +4947,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/chat/audio/pipelines": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Voice Pipelines
+         * @description Discover installed choices without loading models or opening the microphone.
+         */
+        get: operations["voice_pipelines_api_v1_chat_audio_pipelines_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/chat/audio/transcribe": {
         parameters: {
             query?: never;
@@ -4956,8 +4976,31 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Transcribe */
+        /**
+         * Transcribe
+         * @description Transcribe bounded PCM using the selected local or host decoder.
+         */
         post: operations["transcribe_api_v1_chat_audio_transcribe_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/chat/audio/multimodal-turn": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Multimodal Turn
+         * @description Answer one pilot turn and append the completed pair to session history.
+         */
+        post: operations["multimodal_turn_api_v1_chat_audio_multimodal_turn_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4973,7 +5016,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Speak */
+        /**
+         * Speak
+         * @description Synthesize a WAV using the opted-in local voice or the host audio engine.
+         */
         post: operations["speak_api_v1_chat_audio_speak_post"];
         delete?: never;
         options?: never;
@@ -19880,6 +19926,59 @@ export interface operations {
             };
         };
     };
+    voice_pipelines_api_v1_chat_audio_pipelines_get: {
+        parameters: {
+            query?: {
+                language?: "pl" | "en" | "de";
+                surface?: "chat2" | "voice";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Operator access or audio request origin denied */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Shared runtime admission is busy or unavailable */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Configured audio is unavailable, processing failed, or synthesized output is invalid */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     transcribe_api_v1_chat_audio_transcribe_post: {
         parameters: {
             query: {
@@ -19946,6 +20045,75 @@ export interface operations {
                 content?: never;
             };
             /** @description Configured audio is unavailable, processing failed, or synthesized output is invalid */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    multimodal_turn_api_v1_chat_audio_multimodal_turn_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Operator access or audio request origin denied */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Shared runtime admission is busy or unavailable */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Multimodal upload exceeds limits */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Multipart form required */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid image or audio input */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Client disconnected before the pilot turn was submitted */
+            499: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Local Omni is unavailable or the pilot turn failed */
             503: {
                 headers: {
                     [name: string]: unknown;

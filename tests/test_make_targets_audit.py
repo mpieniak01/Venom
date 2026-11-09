@@ -8,6 +8,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 
 def _load_module():
     repo_root = Path(__file__).resolve().parents[1]
@@ -160,3 +162,50 @@ def test_prepush_gate_isolates_git_context_before_running_tests(tmp_path: Path):
     assert result.returncode == 0, result.stdout + result.stderr
     assert not local_names.intersection(json.loads(observed.read_text()))
     assert alternate.read_bytes() == before
+
+
+@pytest.mark.parametrize(
+    ("distribution", "scope_state", "expected_code"),
+    [
+        ("Ubuntu-Venom", "deactivating", 2),
+        ("Ubuntu-Venom", "failed", 2),
+        ("Ubuntu-Venom", "active", 73),
+        ("", "deactivating", 73),
+    ],
+)
+def test_pr_fast_checks_wsl_shutdown_before_starting_gates(
+    tmp_path: Path, distribution: str, scope_state: str, expected_code: int
+):
+    source = Path(__file__).resolve().parents[1]
+    binary = tmp_path / "bin"
+    binary.mkdir()
+    git_called = tmp_path / "git-called"
+    systemctl = binary / "systemctl"
+    systemctl.write_text(
+        f"#!{sys.executable}\nprint('ActiveState={scope_state}\\nResult=oom-kill')\n"
+    )
+    systemctl.chmod(0o700)
+    git = binary / "git"
+    git.write_text(
+        f"#!{sys.executable}\nfrom pathlib import Path\n"
+        f"Path({str(git_called)!r}).touch()\nraise SystemExit(73)\n"
+    )
+    git.chmod(0o700)
+    environment = {
+        **os.environ,
+        "WSL_DISTRO_NAME": distribution,
+        "PATH": str(binary) + os.pathsep + os.environ["PATH"],
+    }
+    result = subprocess.run(
+        ["bash", str(source / "scripts/pr_fast_check.sh")],
+        cwd=tmp_path,
+        env=environment,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    assert result.returncode == expected_code, result.stdout + result.stderr
+    assert git_called.exists() == (expected_code == 73)
+    if expected_code == 2:
+        assert "wsl --shutdown" in result.stderr
+        assert f"ActiveState={scope_state}" in result.stderr

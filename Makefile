@@ -83,7 +83,7 @@ PORTS_TO_CLEAN := $(PORT) $(WEB_PORT)
 		local-first-help \
 		local-first-profile-status local-first-profile-install local-first-profile-remove local-first-profile-print \
 		local-first-profile-backup local-first-profile-list-backups local-first-profile-restore \
-		monitor mcp-clean mcp-status sonar-reports sonar-reports-backend sonar-reports-frontend openapi-export openapi-codegen-types ensure-env-file \
+		monitor mcp-clean mcp-status sonar-reports sonar-reports-backend sonar-reports-frontend openapi-export openapi-codegen-types openapi-check ensure-env-file \
 		ensure-preprod-env-file \
 		env-audit audit-dead-code audit-dead-code-vulture-install audit-dead-code-full make-targets-audit chat-operator-docs-drift-audit operator-manual-docs-drift-audit the-chat-docs-drift-audit security-delta-scan security-delta-scan-strict env-clean-safe env-clean-docker-safe env-clean-deep env-report-diff stack-stability-audit llm-runtime-stability-audit llm-runtime-stability-cycle-start llm-runtime-stability-cycle-start2 test-preprod-readonly-smoke help \
 		modules-status modules-pull modules-branches modules-exec architecture-drift-check architecture-sonar-export optional-modules-contracts-check test-lane-contracts-check test-catalog-sync test-catalog-check test-groups-sync test-groups-check test-dynamic-preview check-file-coverage-floor \

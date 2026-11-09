@@ -483,8 +483,11 @@ sonar-reports: sonar-reports-backend sonar-reports-frontend
 openapi-export:
 	@$(PYTHON_BIN) scripts/export_openapi.py --output openapi/openapi.json
 
-openapi-codegen-types: openapi-export
-	npx --yes openapi-typescript@7.10.1 openapi/openapi.json -o web-next/lib/generated/api-types.d.ts
+openapi-codegen-types:
+	@$(PYTHON_BIN) scripts/check_openapi_contract.py --update
+
+openapi-check:
+	@$(PYTHON_BIN) scripts/check_openapi_contract.py
 
 pytest:
 	@set +e; \

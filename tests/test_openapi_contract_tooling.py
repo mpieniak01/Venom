@@ -282,3 +282,102 @@ def test_real_core_export_is_independent_of_operator_configuration(
     studio = exporter.export_schema("studio")
     assert gate.studio_contract_errors(first, studio) == []
     assert "/api/v1/chat/audio/multimodal-turn" in studio["paths"]
+
+
+@pytest.mark.parametrize("destination", ["openapi", "web-next/lib/generated"])
+def test_check_rejects_artifacts_overlapping_tracked_files(
+    monkeypatch, tmp_path, destination
+):
+    monkeypatch.setattr(gate, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(
+        gate, "export_schema", lambda *args: pytest.fail("unexpected export")
+    )
+    with pytest.raises(ValueError, match="overwrite"):
+        gate.check_contract(tmp_path / destination)
+
+
+@pytest.mark.parametrize(
+    "changed_path,expected_gate",
+    [
+        ("openapi/openapi.json", True),
+        ("web-next/lib/generated/api-types.d.ts", True),
+        ("venom_core/api/routes/example.py", True),
+        ("requirements/locks/ci-linux-py314.txt", True),
+        (".github/workflows/ci.yml", True),
+        ("docs/example.md", False),
+    ],
+)
+def test_pr_fast_scopes_contract_changes_and_propagates_red_gate(
+    tmp_path, changed_path, expected_gate
+):
+    root = tmp_path / "repo"
+    root.mkdir()
+    environment = {
+        key: value for key, value in os.environ.items() if not key.startswith("GIT_")
+    }
+
+    def git(*args):
+        return subprocess.run(
+            ["git", "-C", str(root), *args],
+            env=environment,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
+    git("init")
+    git(
+        "-c",
+        "user.name=Fixture",
+        "-c",
+        "user.email=fixture@example.invalid",
+        "-c",
+        "core.hooksPath=/dev/null",
+        "commit",
+        "--allow-empty",
+        "-m",
+        "base",
+    )
+    target = root / changed_path
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("fixture change\n")
+    git("add", ".")
+    git(
+        "-c",
+        "user.name=Fixture",
+        "-c",
+        "user.email=fixture@example.invalid",
+        "-c",
+        "core.hooksPath=/dev/null",
+        "commit",
+        "-m",
+        "fixture",
+    )
+    tools = tmp_path / "bin"
+    tools.mkdir()
+    make = tools / "make"
+    make.write_text('#!/bin/sh\nprintf "%s\\n" "$*" >> "$CONTRACT_CALLS"\nexit 37\n')
+    make.chmod(0o755)
+    calls = tmp_path / "calls"
+    environment.update(
+        PATH=str(tools) + os.pathsep + os.environ["PATH"],
+        PR_BASE_REF="HEAD~1",
+        VENV=str(tmp_path / "absent-venv"),
+        WSL_DISTRO_NAME="",
+        CONTRACT_CALLS=str(calls),
+    )
+    result = subprocess.run(
+        ["bash", str(exporter.REPO_ROOT / "scripts/pr_fast_check.sh")],
+        cwd=root,
+        env=environment,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    if expected_gate:
+        assert result.returncode == 37, result.stdout + result.stderr
+        assert calls.read_text().splitlines() == ["openapi-check"]
+        assert "PR fast check passed" not in result.stdout
+    else:
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert not calls.exists()

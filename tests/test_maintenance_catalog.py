@@ -132,7 +132,14 @@ def test_retirement_preserves_historical_profiles_without_enabling_downloads():
     active, _ = load_all_models(CATALOG)
     assert "codescout-4b" in {m["id"] for m in historical}
     assert "codescout-4b" not in {m["id"] for m in active}
-    assert all(m["profile"]["attention_implementation"] == "sdpa" for m in active)
+    assert next(m for m in active if m["id"] == "gemma-4-e2b-it")["profile"][
+        "attention_implementation"
+    ] == {"": "sdpa", "audio_config": "eager"}
+    assert all(
+        m["profile"]["attention_implementation"] == "sdpa"
+        for m in active
+        if m["id"] != "gemma-4-e2b-it"
+    )
     assert all(m["profile"]["use_cache"] for m in active)
     assert (
         next(m for m in active if m["id"] == "qwen3.5-9b")["profile"]["kernel_profile"]

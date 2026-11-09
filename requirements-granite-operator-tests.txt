@@ -3,8 +3,8 @@
 # Shared artifact hashes come from the qualified full-ci lock.
 -r requirements/locks/ci-linux-py314.txt
 
-torch @ https://download-r2.pytorch.org/whl/cpu/torch-2.13.0%2Bcpu-cp314-cp314-manylinux_2_28_x86_64.whl#sha256=d20fa53ee744502fa4c69818a720b05ca0d37abd055d4f6e66cae155114bc691 \
-    --hash=sha256:d20fa53ee744502fa4c69818a720b05ca0d37abd055d4f6e66cae155114bc691
+torch @ https://download-r2.pytorch.org/whl/cpu/torch-2.15.0%2Bcpu-cp314-cp314-manylinux_2_28_x86_64.whl#sha256=f089c94912c955269a20e5fee6b6a371209b610849c9ece26e908a748d87a723 \
+    --hash=sha256:f089c94912c955269a20e5fee6b6a371209b610849c9ece26e908a748d87a723
 
 jinja2==3.1.6 \
     --hash=sha256:85ece4451f492d0c13c5dd7c13a64681a86afae63a5f347908daf103ce6d2f67
@@ -27,8 +27,8 @@ sympy==1.14.0 \
 tokenizers==0.23.3 \
     --hash=sha256:376851d22bcf9d650a5c3090bb83e6cf9e895fbf0595369fa4cd43c1f69b5f87
 
-transformers==5.17.0 \
-    --hash=sha256:78ec1ce21579b38dfb83950a0658cd119f87212a2fcfdff478096ce9d6c03801
+transformers==5.22.2 \
+    --hash=sha256:829c2820aff91730b8ec45a4b8ff4be07f586a140b68a9073998b36fa35297dc
 
-typer==0.27.3 \
-    --hash=sha256:e50022f28b82a86313e54501317a1db64bf8f8d036ff8cfe5ca7e47675454aff
+typer==0.29.0 \
+    --hash=sha256:b3c3de6e06a848274dc7bd56a433499e9cf25fa1d40aa3ba4eccfec4e1624c7b

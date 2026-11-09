@@ -31,6 +31,7 @@ from venom_core.services.granite_operator.engine import (
 from venom_core.services.remote_training.paths import operator_path
 
 from .profile import (
+    E4B_MODEL,
     MODEL,
     MODEL_LOADERS,
     PINNED_REVISIONS,
@@ -235,7 +236,13 @@ class GemmaSession(Session):
             trust_remote_code=False,
             dtype=torch.bfloat16,
             device_map={"": 0},
-            attn_implementation="sdpa",
+            # E4B's audio tower rejects SDPA even for text-only training.
+            # Unified 12B keeps its native SDPA configuration.
+            attn_implementation=(
+                {"": "sdpa", "audio_config": "eager"}
+                if profile.model == E4B_MODEL
+                else "sdpa"
+            ),
             **kwargs,
         )
         require_cuda_placement(base)

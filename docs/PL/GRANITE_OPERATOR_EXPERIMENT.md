@@ -112,6 +112,18 @@ porównuje NLL i wykonuje rzeczywisty obieg narzędzi; zapisuje lokalne dowody i
 `python scripts/granite_operator/report.py LOKALNY_RUN` odczytuje zmierzone
 czasy treningu, nadzorowane tokeny/s, p50/p95 kroków, NLL i pamięć.
 
+## Aktualizacja środowiska i wznowienia
+
+Nowe próby korzystają z osobnego profilu Python 3.14.8, Torch 2.15.0 i
+Transformers 5.22.2. Tożsamość Granite automatycznie wiąże dokładny lock oraz
+zainstalowane wersje ze źródłami, wagami i sprzętem. Zmiana stosu unieważnia
+poprzednią kwalifikację dla nowych prób. Historyczne checkpointy zachowują
+oryginalne potwierdzenia i wymagają swojego checkoutu, locka oraz interpretera
+do wznowienia. Nie przepisujemy ich odcisków po aktualizacji.
+
+Próby modeli i sprzętu są oddzielnym odbiorem operatora. Bramki kodu, pre-push
+i CI PR nie uruchamiają treningu, pobierania wag ani alokacji GPU.
+
 ## Interpretacja
 
 Wyniki przebiegów i prywatne pochodzenie danych opisujemy wewnątrz ignorowanego

@@ -569,3 +569,24 @@ def test_retention_penalty_is_differentiable_and_skipped_in_evaluation():
     model.eval()
     evaluated, outputs = trainer.compute_loss(model, dict(inputs), return_outputs=True)
     assert evaluated.item() == 2 and outputs == {"stock": True}
+
+
+@pytest.mark.parametrize(
+    "package, version", [("torch", "2.13.0"), ("transformers", "5.17.0")]
+)
+def test_new_stack_rejects_old_worker_environment(monkeypatch, package, version):
+    """Require a new exact dependency identity before a training or resume run."""
+    monkeypatch.setattr(worker.platform, "python_version", lambda: "3.14.8")
+    versions = {**worker.VERSIONS, package: version}
+    monkeypatch.setattr(worker.importlib.metadata, "version", versions.__getitem__)
+    with pytest.raises(ValueError, match="functiongemma_environment_unqualified"):
+        worker.environment()
+
+
+def test_functiongemma_versions_match_canonical_model_policy():
+    policy = json.loads(Path("config/dependency-profiles.json").read_text())
+    requirements = (
+        policy["groups"]["model-runtime"] + policy["groups"]["granite-training"]
+    )
+    for name, version in worker.VERSIONS.items():
+        assert name + "==" + version in requirements

@@ -46,9 +46,15 @@ najlepszego checkpointu na podstawie loss; wybor wymaga osobnej oceny wywolan.
 
 Worker wymaga osobnego srodowiska Python3.14.8 zgodnego z istniejacym lockiem
 `requirements/locks/granite-operator-training-linux-py314.txt`
-(torch2.13.0/transformers5.17.0/peft0.21.2). Ten lock jest baza zaleznosci;
+(torch2.15.0/transformers5.22.2/peft0.21.2). Ten lock jest baza zaleznosci;
 zgodnosc FunctionGemma z GPU nadal wymaga rzeczywistego smoke.
 Nie instalowac tych zaleznosci do venv aplikacji.
+
+Aktualizacja stosu wymaga nowego smoke i nowego katalogu proby. Historyczne
+checkpointy wznawiaj w zachowanym checkoutcie i interpreterze z ich oryginalnym
+lockiem oraz potwierdzeniami. Nie zmieniaj odciskow starych artefaktow ani nie
+przenos kwalifikacji na nowy stos. Testy modeli, zapisu i wznowienia sa osobnym
+odbiorem operatora poza bramkami kodu, pre-push i CI PR.
 
 `python scripts/functiongemma.py run REQUEST.json` przyjmuje:
 

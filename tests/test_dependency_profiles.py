@@ -1370,11 +1370,11 @@ def test_full_retains_in_process_vision_memory_and_cpu_voice_consumers():
     policy = profiles.load_policy()
     full = profiles.requirements_for(policy, "full")
     for name, requirement in {
-        "torch": "torch==2.13.0",
-        "torchvision": "torchvision==0.28.0",
-        "transformers": "transformers==5.17.0",
-        "scipy": "scipy==1.17.1",
-        "onnxruntime": "onnxruntime==1.26.0",
+        "torch": "torch==2.15.0",
+        "torchvision": "torchvision==0.29.2",
+        "transformers": "transformers==5.22.2",
+        "scipy": "scipy==1.18.1",
+        "onnxruntime": "onnxruntime==1.31.1",
         "faster-whisper": "faster-whisper==1.2.1",
         "piper-tts": "piper-tts==1.8.0",
     }.items():

@@ -67,12 +67,13 @@
       "types-PyYAML",
       "types-docker",
       "ruff==0.14.8",
-      "huggingface_hub>=1.31.0,<2",
+      "huggingface_hub==1.33.0",
       "pip-audit==2.10.1",
       "flake8==7.4.1",
       "types-bleach==6.4.0.20260728",
       "rich==13.9.4",
-      "packaging==26.0"
+      "packaging==26.0",
+      "hf-xet==1.8.0"
     ],
     "build": [
       "pip==26.2.1",
@@ -81,23 +82,24 @@
       "packaging==26.0"
     ],
     "model-runtime": [
-      "torch==2.13.0",
-      "torchvision==0.28.0",
-      "transformers==5.17.0",
+      "torch==2.15.0",
+      "torchvision==0.29.2",
+      "transformers==5.22.2",
       "accelerate==1.15.0",
       "tokenizers==0.23.3",
       "safetensors==0.8.0",
-      "huggingface_hub>=1.31.0,<2"
+      "huggingface_hub==1.33.0",
+      "hf-xet==1.8.0"
     ],
     "audio-runtime": [
-      "scipy==1.17.1",
+      "scipy==1.18.1",
       "soundfile==0.14.0"
     ],
     "ocr": [
       "pytesseract"
     ],
     "full-memory": [
-      "sentence-transformers==6.1.0",
+      "sentence-transformers==6.2.0",
       "lancedb==0.25.3"
     ],
     "full-web": [
@@ -115,10 +117,11 @@
       "opencv-python-headless==4.11.0.86"
     ],
     "full-voice-floor-cpu": [
-      "onnxruntime==1.26.0",
+      "onnxruntime==1.31.1",
       "faster-whisper==1.2.1",
       "piper-tts==1.8.0",
-      "sounddevice==0.5.6"
+      "sounddevice==0.5.6",
+      "av==19.0.1"
     ],
     "full-desktop": [
       "mss==10.2.0",

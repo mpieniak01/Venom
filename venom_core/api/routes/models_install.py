@@ -275,6 +275,8 @@ def _annotate_chat_compatibility(models: list[dict]) -> None:
         reason: str | None = None
         if provider == "onnx":
             compatible, reason = _validate_onnx_chat_compatibility(model)
+        elif provider == "ollama" and model.get("chat_compatible") is False:
+            compatible = False
         elif provider == "vllm":
             raw_path = model.get("path")
             if (

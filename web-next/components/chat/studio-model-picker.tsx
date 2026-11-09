@@ -24,6 +24,8 @@ export function StudioModelPicker({ catalog, interaction, session, activeModel, 
   const models = runtimeModels.filter(item => item.chat_compatible !== false && item.model_kind !== "adapter_artifact" && !item.is_adapter_artifact && isSelectableChatModel(item));
   const selectedEntry = selectedCatalogEntry(runtimeModels, model);
   const selectedSelectable = selectedEntry !== undefined && models.includes(selectedEntry);
+  const missingLocalSelection = runtime?.source_type === "local-runtime" && !selectedEntry;
+  const selectionValue = missingLocalSelection ? "" : model;
   const activeRuntime = catalog?.runtimes.find(item => item.runtime_id === catalog.active?.active_server) ?? runtime;
   const activeOption = selectedCatalogEntry(activeRuntime?.models ?? [], activeModel ?? "");
   const remote = ["openrouter", "vast_ollama"].includes(state.selectedLlmServer);
@@ -39,9 +41,11 @@ export function StudioModelPicker({ catalog, interaction, session, activeModel, 
         {!runtime && <option value={state.selectedLlmServer}>{state.selectedLlmServer || t("chat2.unknown")}</option>}
         {catalog?.runtimes.map(item => <option key={item.runtime_id} value={item.runtime_id} disabled={!item.configured}>{item.label || item.display_name || item.runtime_id}</option>)}
       </select></label>
-      <label className="studio-model-select">{t("chat2.model")}<select aria-label={t("chat2.model")} value={model} disabled={busy}
+      <label className="studio-model-select">{t("chat2.model")}<select aria-label={t("chat2.model")} value={selectionValue} disabled={busy}
         onChange={event => setters.setSelectedLlmModel(event.target.value)}>
-        {!models.some(item => item.name === model) && <option value={model} disabled={!selectedSelectable}>{chatModelLabel(selectedEntry?.name || model, selectedEntry?.display_name, selectedEntry?.provider || state.selectedLlmServer, t("models.status.unresolvedVariant")) || t("chat2.unknown")}</option>}
+        {!models.some(item => item.name === selectionValue) && <option value={selectionValue} disabled={!selectedSelectable}>{missingLocalSelection
+          ? t("cockpit.models.chooseModel")
+          : chatModelLabel(selectedEntry?.name || selectionValue, selectedEntry?.display_name, selectedEntry?.provider || state.selectedLlmServer, t("models.status.unresolvedVariant")) || t("chat2.unknown")}</option>}
         {models.map(item => <option key={item.id} value={item.name || item.id}>{chatModelLabel(item.name || item.id, item.display_name, item.provider, t("models.status.unresolvedVariant"))}</option>)}
       </select></label>
       <button type="button" className="studio-button" disabled={busy || !selectedSelectable}

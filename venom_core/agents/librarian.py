@@ -1,9 +1,11 @@
 """Moduł: librarian - agent zarządzający wiedzą o strukturze projektu."""
 
+import asyncio
 from typing import Any
 
 from venom_core.agents.base import BaseAgent
 from venom_core.config import SETTINGS
+from venom_core.core.permission_guard import AutonomyViolation, permission_guard
 from venom_core.execution.agent_contracts import ConversationHistory as ChatHistory
 from venom_core.execution.agent_contracts import (
     ConversationMessage as ChatMessageContent,
@@ -67,14 +69,23 @@ Gdy pytanie jest ogólne, odpowiedz krótko po polsku bez narzędzi."""
         super().__init__(kernel)
 
         # Zarejestruj FileSkill
-        file_skill = FileSkill()
-        self.kernel.add_plugin(file_skill, plugin_name="FileSkill")
+        self.file_skill = FileSkill()
+        self.kernel.add_plugin(self.file_skill, plugin_name="FileSkill")
 
         # Zarejestruj MemorySkill
         memory_skill = MemorySkill()
         self.kernel.add_plugin(memory_skill, plugin_name="MemorySkill")
 
         logger.info("LibrarianAgent zainicjalizowany z FileSkill i MemorySkill")
+
+    async def list_workspace(self, directory: str) -> str:
+        try:
+            allowed = permission_guard.check_permission("FileReadSkill")
+        except AutonomyViolation:
+            allowed = False
+        if not allowed:
+            return "⛔ Odmowa dostępu do odczytu workspace."
+        return await asyncio.to_thread(self.file_skill.list_files, directory)
 
     async def process(self, input_text: str) -> str:
         """

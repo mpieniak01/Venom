@@ -49,7 +49,7 @@ export function useStudioVoice(options: VoiceOptions, captureFactory: typeof cre
     const controller = new AbortController(); request.current?.abort(); request.current = controller;
     setStatus("speaking");
     try {
-      const blob = await speakChatAudio(latest.current.session, text, controller.signal);
+      const blob = await speakChatAudio(latest.current.session, text, controller.signal, latest.current.language);
       if (controller.signal.aborted || current !== epoch.current) return;
       releasePlayback();
       const url = URL.createObjectURL(blob); const audio = new Audio(url);
@@ -80,7 +80,7 @@ export function useStudioVoice(options: VoiceOptions, captureFactory: typeof cre
       const audio = await recording.finish();
       if (capture.current === recording) capture.current = null;
       if (current !== epoch.current) return;
-      const result = await transcribeChatAudio(latest.current.session, audio, latest.current.language, controller.signal);
+      const result = await transcribeChatAudio(latest.current.session, audio, latest.current.language, controller.signal, latest.current.mode === "dictation");
       if (current !== epoch.current || controller.signal.aborted || result.session_id !== latest.current.session) return;
       const text = result.text.trim();
       if (!text) { setError("silence"); setStatus("voiceIdle"); return; }

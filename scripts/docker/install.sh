@@ -4,9 +4,9 @@ set -euo pipefail
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 COMPOSE_FILE="$ROOT_DIR/compose/compose.minimal.yml"
 COMPOSE_GPU_FILE="$ROOT_DIR/compose/compose.internal.gpu-override.yml"
-MODEL_DEFAULT="gemma2:2b"
+MODEL_DEFAULT="gemma4:e4b"
 MODEL="$MODEL_DEFAULT"
-OLLAMA_IMAGE_DEFAULT="ollama/ollama:0.40.11@sha256:dea72d1e22270fe095b68fdf756d2b489d615643c5a2eaebbc5f569181e322d8"
+OLLAMA_IMAGE_DEFAULT="ollama/ollama:0.40.14@sha256:ebaef4f4c5d93660e1f25f8ad085a112f51ccfb0e8458073e71793959dba91c9"
 OLLAMA_IMAGE="${OLLAMA_IMAGE:-$OLLAMA_IMAGE_DEFAULT}"
 GPU_MODE="${VENOM_ENABLE_GPU:-auto}"
 RUNTIME_PROFILE="${VENOM_RUNTIME_PROFILE:-light}"

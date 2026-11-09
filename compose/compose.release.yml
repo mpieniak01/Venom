@@ -6,7 +6,7 @@ name: ${COMPOSE_PROJECT_NAME:-venom-release}
 # - intended for trusted/private networks only
 services:
   ollama:
-    image: ${OLLAMA_IMAGE:-ollama/ollama:0.40.11@sha256:dea72d1e22270fe095b68fdf756d2b489d615643c5a2eaebbc5f569181e322d8}
+    image: ${OLLAMA_IMAGE:-ollama/ollama:0.40.14@sha256:ebaef4f4c5d93660e1f25f8ad085a112f51ccfb0e8458073e71793959dba91c9}
     container_name: ${VENOM_CONTAINER_PREFIX:-venom}-ollama-release
     ports:
       - "${VENOM_OLLAMA_HOST_PORT:-11434}:11434"
@@ -51,6 +51,7 @@ services:
       ACTIVE_LLM_SERVER: ${ACTIVE_LLM_SERVER:-ollama}
       LLM_SERVICE_TYPE: ${LLM_SERVICE_TYPE:-local}
       LLM_LOCAL_ENDPOINT: ${LLM_LOCAL_ENDPOINT:-http://ollama:11434/v1}
+      # Raw Compose starts with the model provisioned by older installations.
       LLM_MODEL_NAME: ${LLM_MODEL_NAME:-${OLLAMA_MODEL:-gemma2:2b}}
       LLM_WARMUP_ON_STARTUP: ${LLM_WARMUP_ON_STARTUP:-false}
       VENOM_OLLAMA_PROFILE: ${VENOM_OLLAMA_PROFILE:-balanced-12-24gb}

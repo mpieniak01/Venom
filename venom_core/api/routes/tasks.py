@@ -27,6 +27,7 @@ from venom_core.api.transport_access import (
 from venom_core.services import tasks_service
 from venom_core.services.operator_diagnostics import (
     DIAGNOSTICS_INTENT,
+    is_workspace_listing_task,
     parse_diagnostic_task,
 )
 from venom_core.services.tasks_stream_service import (
@@ -261,7 +262,11 @@ def _authorize_diagnostic_task(
 ) -> TaskRequest:
     """Check operator access before resolving the potentially lazy orchestrator."""
     diagnostic = parse_diagnostic_task(request.content)
-    if diagnostic is not None or request.forced_intent == DIAGNOSTICS_INTENT:
+    if (
+        diagnostic is not None
+        or is_workspace_listing_task(request)
+        or request.forced_intent == DIAGNOSTICS_INTENT
+    ):
         if getattr(http_request.app.state, "studio_runtime", None) is not None:
             raise HTTPException(409, "diagnostics_requires_full")
         if diagnostic is None or not diagnostic.guide:

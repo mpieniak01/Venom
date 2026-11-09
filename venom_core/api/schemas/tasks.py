@@ -86,7 +86,7 @@ class TaskRequest(BaseModel):
     model_tools: list[FileReadToolName] | None = Field(
         default=None,
         max_length=3,
-        description="Task-scoped read tools for gemma4:e4b in single_model mode",
+        description="Task-scoped read tools for qualified Gemma4 E4B and LFM3 models in single_model mode",
     )
     preferred_language: str | None = Field(
         default=None, description="Preferred response language (pl/en/de)"

@@ -142,7 +142,8 @@ it("Studio cannot apply a missing catalog entry", () => {
   const html = studioPickerMarkup({
     id:"other",name:"other",provider:"ollama",runtime_id:"ollama",source_type:"local-runtime",active:false,
   },name);
-  assert.match(html,/<option value="saluki:latest" disabled="" selected="">/);
+  assert.doesNotMatch(html,/saluki:latest/);
+  assert.match(html,/<option value="" disabled="" selected="">/);
   assert.match(html,/<button[^>]*class="studio-button"[^>]*disabled=""/);
 });
 

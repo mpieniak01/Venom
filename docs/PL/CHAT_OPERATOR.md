@@ -224,6 +224,8 @@ W Chat 2.0 historia wątku jest zapisywana w Studio i Full. W Normal zaznacz **U
 
 W trybie Normal użyj **Sprawdź Venoma**, **Sprawdź Rider-Pi** lub **Sprawdź Venoma i Rider-Pi**. Odczyt wymaga dostępu operatora. Raport podaje źródło, czas pomiaru, zakres odczytu i następny krok. Końcówka logu jest ograniczona do 16 KiB. Raport zawiera liczniki ostrzeżeń i błędów.
 
+W trybie Normal polecenie **Wypisz pliki i katalogi w katalogu głównym workspace** pokazuje aktualne pozycje z workspace Venoma. Aby wskazać podkatalog, użyj np. **Wypisz pliki w katalogu "docs"**. Odczyt dotyczy jednego poziomu i wymaga uprawnień operatora oraz odczytu plików.
+
 **Jak sprawdzić Venoma i Rider-Pi?** zwraca polecenia z tej sekcji. Gdy API jest niedostępne, launcher sprawdzi właścicieli procesów na hoście.
 
 ```bash

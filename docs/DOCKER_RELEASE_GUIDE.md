@@ -105,8 +105,20 @@ cd Venom
 scripts/docker/run-release.sh start
 ```
 
-This flow uses prebuilt backend/frontend images from GHCR and pulls local Ollama model on first start.
+The release stack uses prebuilt backend and frontend images from GHCR.
+Existing Compose installations can keep using the model already provisioned in
+their Ollama volume. To migrate a default dev release stack to Gemma 4 E4B,
+start Ollama and pull the model before selecting it:
 
+```bash
+docker compose -f compose/compose.release.yml up -d --wait ollama
+docker compose -f compose/compose.release.yml exec -T ollama ollama pull gemma4:e4b
+LLM_MODEL_NAME=gemma4:e4b scripts/docker/run-release.sh start
+```
+
+Keep `LLM_MODEL_NAME=gemma4:e4b` in the environment used for subsequent starts.
+Use the same Compose project and Ollama volume as the existing deployment.
+The installer provisions Gemma 4 E4B by default for new installations.
 ### Protocol policy (no manual tuning in default path)
 
 - Local/dev Docker stack (`run-release.sh`, `compose.release.yml`, `compose.minimal.yml`) defaults to `URL_SCHEME_POLICY=force_http`.

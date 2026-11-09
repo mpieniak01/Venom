@@ -17,10 +17,11 @@ from venom_core.execution.agent_contracts import (
     ToolPolicy,
 )
 from venom_core.execution.model_tool_policy import (
-    FUNCTIONGEMMA_READ_TOOLS,
+    FILE_READ_TOOLS,
     GEMMA4_E4B_MODEL_ID,
-    functiongemma_read_filters,
-    is_functiongemma_model,
+    LFM3_READ_MODEL_ID,
+    file_read_filters,
+    is_read_only_tool_model,
 )
 
 _SINGLE_MODEL_PROMPT = (
@@ -249,7 +250,7 @@ def _fileskill_result_fallback(
     outputs = [row for row in messages if row["role"] == "tool"]
     if not complete or not outputs:
         return None
-    if any(output["name"] not in FUNCTIONGEMMA_READ_TOOLS for output in outputs):
+    if any(output["name"] not in FILE_READ_TOOLS for output in outputs):
         return None
 
     header, denied_text = {
@@ -299,13 +300,18 @@ async def execute_single_model(
         raise ValueError("single_model_service_identity_missing")
     supports_tools = getattr(service, "supports_function_calling", False) is True
     is_e4b = service.ai_model_id == GEMMA4_E4B_MODEL_ID
-    if request.model_tools is not None and (not is_e4b or not supports_tools):
-        raise ValueError("model_tools_require_qualified_gemma4_e4b")
+    has_scoped_tools = is_e4b or service.ai_model_id == LFM3_READ_MODEL_ID
+    if request.model_tools is not None and (not has_scoped_tools or not supports_tools):
+        raise ValueError("model_tools_require_qualified_read_model")
     filters: dict[str, list[str]] | None = None
     if is_e4b:
         filters = {"included_functions": request.model_tools or []}
-    elif is_functiongemma_model(service.ai_model_id):
-        filters = functiongemma_read_filters(None)
+    elif is_read_only_tool_model(service.ai_model_id):
+        filters = file_read_filters(
+            {"included_functions": request.model_tools}
+            if request.model_tools is not None
+            else None
+        )
     native_tools = kernel.native_tools(filters) if supports_tools else []
     tools = [
         {
@@ -386,7 +392,7 @@ async def execute_single_model(
         if (
             native_tools
             and not answer.strip()
-            and (is_e4b or is_functiongemma_model(service.ai_model_id))
+            and (is_e4b or is_read_only_tool_model(service.ai_model_id))
         ):
             return (
                 _fileskill_result_fallback(history, _file_answer_language(request))

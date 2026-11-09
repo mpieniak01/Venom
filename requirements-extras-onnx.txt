@@ -13,5 +13,5 @@
 #   pip install -r requirements-extras-onnx.txt
 
 # Audio/voice ONNX-adjacent extras
-faster-whisper
-piper-tts
+faster-whisper==1.2.1
+piper-tts==1.8.0

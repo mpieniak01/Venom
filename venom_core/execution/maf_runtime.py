@@ -25,8 +25,9 @@ from venom_core.execution.maf_transport import (
     maf_transport_scope,
 )
 from venom_core.execution.model_tool_policy import (
-    functiongemma_read_filters,
+    file_read_filters,
     is_functiongemma_model,
+    is_read_only_tool_model,
 )
 from venom_core.services.runtime_admission import (
     admitted_operation,
@@ -374,8 +375,8 @@ class MafChatService:
 
                 filters = settings.function_choice_behavior.filters
                 functiongemma = is_functiongemma_model(self.ai_model_id)
-                if functiongemma:
-                    filters = functiongemma_read_filters(filters)
+                if is_read_only_tool_model(self.ai_model_id):
+                    filters = file_read_filters(filters)
                 tools = kernel.native_tools(filters)
                 input_count = len(messages)
                 recorded_count = 0

@@ -14,6 +14,7 @@ class MockSettings(BaseSettings):
     """Mockowa konfiguracja do testów."""
 
     LLM_SERVICE_TYPE: str = "local"
+    ACTIVE_LLM_SERVER: str = "local"
     LLM_LOCAL_ENDPOINT: str = LOCALHOST_11434_V1
     LLM_MODEL_NAME: str = "phi3:latest"
     LLM_LOCAL_API_KEY: str = "venom-local"
@@ -33,20 +34,24 @@ def test_kernel_builder_with_custom_settings():
     assert builder.settings == custom_settings
 
 
-def test_kernel_builder_local_configuration():
-    """Test budowania kernela z konfiguracją lokalną."""
+@pytest.mark.parametrize(
+    ("provider", "endpoint", "model", "tools"),
+    [
+        ("local", LOCALHOST_11434_V1, "phi3:latest", False),
+        ("ollama", LOCALHOST_11434_V1, "lfm3:1.7b", True),
+        ("ollama", LOCALHOST_11434_V1, "lfm3-omni:2b", False),
+        ("ollama", "https://remote.invalid/v1", "lfm3:1.7b", False),
+    ],
+)
+def test_kernel_builder_local_configuration(provider, endpoint, model, tools):
     settings = MockSettings(
         LLM_SERVICE_TYPE="local",
-        LLM_LOCAL_ENDPOINT=LOCALHOST_11434_V1,
-        LLM_MODEL_NAME="phi3:latest",
+        ACTIVE_LLM_SERVER=provider,
+        LLM_LOCAL_ENDPOINT=endpoint,
+        LLM_MODEL_NAME=model,
     )
-    builder = KernelBuilder(settings=settings)
-    kernel = builder.build_kernel()
-
-    assert kernel is not None
-    # Sprawdź czy serwis został dodany
-    services = list(kernel.services.values())
-    assert len(services) > 0
+    kernel = KernelBuilder(settings=settings).build_kernel()
+    assert kernel.get_service().supports_function_calling is tools
 
 
 def test_kernel_builder_openai_configuration():

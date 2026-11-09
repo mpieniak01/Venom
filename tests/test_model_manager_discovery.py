@@ -182,8 +182,12 @@ def test_resolve_ollama_tags_url_and_metadata_fallbacks(
     monkeypatch.setenv("LLM_LOCAL_ENDPOINT", "http://localhost:8014/v1")
     assert mgr._resolve_ollama_tags_url() == "http://localhost:11434/api/tags"
 
-    monkeypatch.setenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434")
-    assert mgr._resolve_ollama_tags_url() == "http://127.0.0.1:11434/api/tags"
+    monkeypatch.setenv("OLLAMA_BASE_URL", "http://127.0.0.1:11435")
+    assert mgr._resolve_ollama_tags_url() == "http://127.0.0.1:11435/api/tags"
+    monkeypatch.delenv("OLLAMA_BASE_URL")
+    monkeypatch.setenv("OLLAMA_ENDPOINT", "http://127.0.0.1:11436/v1")
+    assert mgr._resolve_ollama_tags_url() == "http://127.0.0.1:11436/api/tags"
+    monkeypatch.delenv("OLLAMA_ENDPOINT")
 
     monkeypatch.setenv("LLM_LOCAL_ENDPOINT", "")
     fallback_url = mgr._resolve_ollama_tags_url()
@@ -466,6 +470,98 @@ def test_stale_ollama_cache_does_not_resurrect_removed_models(tmp_path, monkeypa
     )
     monkeypatch.setattr(mgr, "_discover_other_models", lambda *_: None)
     assert mgr._discover_local_models() == {}
+
+
+def test_offline_ollama_v2_loads_complete_variant_without_resurrecting_old_tag(
+    tmp_path: Path,
+) -> None:
+    mgr = _Discovery(tmp_path)
+    blobs = mgr.models_dir / "blobs"
+    blobs.mkdir()
+    layer_digest = "sha256:" + "a" * 64
+    manifest_digest = "sha256:" + "b" * 64
+    index_name = "sha256-" + "c" * 64
+    layer = {"digest": layer_digest, "size": 7}
+    weight = blobs / layer_digest.replace(":", "-")
+    weight.write_bytes(b"weights")
+    (blobs / manifest_digest.replace(":", "-")).write_text(
+        json.dumps(
+            {
+                "config": layer,
+                "layers": [
+                    {"mediaType": "application/vnd.ollama.image.model", **layer}
+                ],
+            }
+        )
+    )
+    (blobs / index_name).write_text(
+        json.dumps(
+            {
+                "mediaType": "application/vnd.ollama.manifest.list.v2+json",
+                "manifests": [
+                    {"digest": "sha256:" + "d" * 64},
+                    {"digest": manifest_digest},
+                ],
+            }
+        )
+    )
+    tags = mgr.models_dir / "manifests-v2/ollama.com/library/gemma4"
+    tags.mkdir(parents=True)
+    (tags / "e4b").symlink_to(blobs / index_name)
+    mgr._save_ollama_cache([{"name": "gemma2:2b", "provider": "ollama"}])
+    assert set(mgr._discover_local_models()) == {"ollama::gemma4:e4b"}
+    weight.unlink()
+    assert not mgr._discover_local_models()
+
+
+def test_decision_only_model_is_installed_but_not_chat_compatible(
+    tmp_path: Path,
+) -> None:
+    mgr = _Discovery(tmp_path)
+    (entry,) = mgr._collect_ollama_entries(
+        [
+            {
+                "name": "d1:latest",
+                "digest": "current",
+                "capabilities": ["decision", "vision"],
+            }
+        ]
+    )
+    assert entry["chat_compatible"] is False
+    mgr._save_ollama_cache([entry])
+    observed = {"ollama::d1:latest": {"digest": "current"}}
+    mgr._load_ollama_cache(observed)
+    assert observed["ollama::d1:latest"]["chat_compatible"] is False
+
+
+@pytest.mark.parametrize(
+    ("name", "capabilities"),
+    [
+        ("lfm3:1.7b", ["completion", "tools", "thinking"]),
+        ("lfm3-omni:2b", ["completion", "vision", "audio", "speech", "tools"]),
+    ],
+)
+def test_ollama_catalog_preserves_reported_capabilities(
+    tmp_path: Path, name: str, capabilities: list[str]
+) -> None:
+    from venom_core.api.routes.system_llm import _catalog_model_identity
+
+    mgr = _Discovery(tmp_path)
+    (entry,) = mgr._collect_ollama_entries(
+        [{"name": name, "digest": "a" * 64, "capabilities": capabilities}]
+    )
+    assert entry["chat_compatible"] is True
+    assert _catalog_model_identity({}, entry)["capabilities"] == capabilities
+
+    mgr._save_ollama_cache([entry])
+    key = f"ollama::{name}"
+    cached = {key: {"name": name, "digest": "a" * 64}}
+    mgr._load_ollama_cache(cached)
+    assert cached[key]["capabilities"] == capabilities
+
+    stale = {key: {"name": name, "digest": "b" * 64}}
+    mgr._load_ollama_cache(stale)
+    assert "capabilities" not in stale[key]
 
 
 def test_model_cache_enumerates_only_complete_snapshots_once(tmp_path):

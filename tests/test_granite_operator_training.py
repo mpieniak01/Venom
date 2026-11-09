@@ -270,6 +270,7 @@ def test_smoke_rows_reject_incomplete_qualification_corpus():
 def test_environment_fingerprint_covers_lock_code_and_weights(
     tmp_path, monkeypatch, changed_input
 ):
+    """Bind the environment identity to its lock, worker code and weight snapshot."""
     root = tmp_path / "repo"
     package = root / "venom_core/services/granite_operator"
     package.mkdir(parents=True)

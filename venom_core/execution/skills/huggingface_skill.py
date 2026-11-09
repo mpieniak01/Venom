@@ -106,6 +106,7 @@ class HuggingFaceSkill:
     def _build_model_search_params(
         task: str, query: str, sort: _HubModelSort | Literal["trending"]
     ) -> _ModelSearchParams:
+        """Build Hub search arguments and normalize the legacy trending sort alias."""
         params: _ModelSearchParams = {
             "limit": MAX_MODELS_RESULTS * FILTER_MULTIPLIER,
             "sort": "trending_score" if sort == "trending" else sort,

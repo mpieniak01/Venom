@@ -35,6 +35,7 @@ def score(text: str, tools: list[dict], expected: list[dict]) -> dict:
 
 
 def _validate_trial(row: dict) -> None:
+    """Reject incomplete trial identities, invalid timings and non-boolean scores."""
     if (
         row.get("arm") not in ARMS
         or not row.get("case_id")

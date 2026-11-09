@@ -31,6 +31,7 @@ from venom_core.services.vast_environments.store import Journal
 
 
 def _create_payload(plan: EnvironmentPlan, plan_id: str) -> dict:
+    """Build the launch payload while preserving VM and container image contracts."""
     profile = plan.profile
     payload: dict[str, Any] = {
         "disk": profile.disk_gb,

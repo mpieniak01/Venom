@@ -724,6 +724,7 @@ def test_priority_orders_optional_tests_without_making_them_mandatory():
 def test_direct_import_survives_budget_without_matching_filename(
     monkeypatch, tmp_path, statement
 ):
+    """Keep direct code tests under tight budgets while excluding live model tests."""
     module = _load_module()
     monkeypatch.chdir(tmp_path)
     Path("tests").mkdir()
@@ -758,6 +759,7 @@ def test_direct_import_survives_budget_without_matching_filename(
 
 
 def test_direct_import_requires_exact_module_and_readable_source(tmp_path):
+    """Reject textual mentions, relative imports and unreadable or unrelated sources."""
     module = _load_module()
     sources = [
         "from venom_core.services.functiongemma.dataset_extra import helper\n",

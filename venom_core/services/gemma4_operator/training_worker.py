@@ -202,6 +202,7 @@ class GemmaSession(Session):
         snapshot: Path,
         adapter: Path | None = None,
     ):
+        """Initialize the owned GPU session from a local snapshot and validated recipe."""
         require_owner()
         profile.validate()
         import torch

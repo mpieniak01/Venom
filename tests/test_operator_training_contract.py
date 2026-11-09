@@ -813,6 +813,7 @@ def native_provider(monkeypatch):
 def test_actual_session_uses_selected_loader_precision_and_gpu_only(
     profile, native_provider, tmp_path, precision
 ):
+    """Verify loader, precision and GPU arguments using model and tensor doubles."""
     recipe = training.GemmaTrainingRecipe.for_profile(
         profile,
         quantization=precision,

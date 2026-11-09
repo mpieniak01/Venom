@@ -87,6 +87,7 @@ def prepare(args) -> dict:
 
 
 def main(argv=None) -> int:
+    """Dispatch FunctionGemma operator commands and emit their JSON result."""
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
     plan = sub.add_parser("plan")

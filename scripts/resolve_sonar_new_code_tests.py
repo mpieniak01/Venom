@@ -277,6 +277,7 @@ def related_tests_for_modules(
 
 
 def _imported_modules(path: str) -> set[str]:
+    """Read exact import targets without importing or executing test code."""
     try:
         tree = ast.parse(Path(path).read_text(encoding="utf-8"), filename=path)
     except (OSError, UnicodeError, SyntaxError):
@@ -294,11 +295,14 @@ def _imported_modules(path: str) -> set[str]:
 def direct_tests_for_modules(
     changed_files: list[str], test_files: list[str]
 ) -> set[str]:
+    """Retain tests directly tied to changed modules before applying the time budget."""
     modules = {
         path[:-3].replace("/", ".")
         for path in changed_files
         if path.startswith("venom_core/") and path.endswith(".py")
     }
+    if not modules:
+        return set()
     direct_names = {f"tests/test_{name.rsplit('.', 1)[-1]}.py" for name in modules}
     # Nested modules often have package-prefixed test names. Their actual imports
     # establish a direct dependency regardless of timing history or filename.

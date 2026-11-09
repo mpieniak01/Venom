@@ -1101,6 +1101,7 @@ async def test_set_active_llm_server_onnx_fails_when_other_server_stop_fails(
 async def test_get_llm_servers_excludes_not_installed_runtime(
     monkeypatch, openrouter_enabled
 ):
+    """Filter absent runtimes independently of the configured OpenRouter provider."""
     servers = [
         {
             "name": "ollama",

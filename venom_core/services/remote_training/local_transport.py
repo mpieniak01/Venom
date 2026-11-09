@@ -50,6 +50,7 @@ class LocalTransport:
         self.executor = executor
 
     def request(self, action: str, payload: dict[str, Any]) -> dict[str, Any]:
+        """Run a bounded local RPC and translate process or protocol failures."""
         if action not in ACTIONS or not isinstance(payload, dict):
             raise ValueError("remote_action_invalid")
         try:

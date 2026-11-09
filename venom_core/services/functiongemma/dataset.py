@@ -26,6 +26,7 @@ def _text(row: Json, key: str) -> str:
 
 
 def _valid_split_mapping(records: Any) -> TypeGuard[dict[str, Any]]:
+    """Narrow mappings to supported splits with required train and validation keys."""
     return (
         isinstance(records, dict)
         and {"train", "validation"} <= set(records)
@@ -98,6 +99,7 @@ def _expand_decisions(row, split, tools, targets, skipped) -> list[Json]:
 
 
 def _export_source(row, split, skipped) -> list[Json]:
+    """Validate source history and export its eligible supervised decisions."""
     tools = row.get("tools")
     validators = validate_tools(cast(list[Json], tools))
     messages = row.get("messages")
@@ -145,6 +147,7 @@ def export_decisions(records_by_split: dict[str, list[Json]]) -> Json:
 
 
 def _validate_decision(row, split, seen, groups) -> None:
+    """Validate one released decision against split, provenance and tool contracts."""
     if (
         not isinstance(row, dict)
         or row.get("split") != split

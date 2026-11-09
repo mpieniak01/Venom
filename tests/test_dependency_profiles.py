@@ -1367,6 +1367,7 @@ def test_actual_application_extensions_preserve_shared_light_versions(profile):
 
 
 def test_full_retains_in_process_vision_memory_and_cpu_voice_consumers():
+    """Keep Full dependencies needed by existing vision, memory and voice code."""
     policy = profiles.load_policy()
     full = profiles.requirements_for(policy, "full")
     for name, requirement in {

@@ -584,6 +584,7 @@ def test_new_stack_rejects_old_worker_environment(monkeypatch, package, version)
 
 
 def test_functiongemma_versions_match_canonical_model_policy():
+    """Keep worker version checks aligned with the shared dependency policy."""
     policy = json.loads(Path("config/dependency-profiles.json").read_text())
     requirements = (
         policy["groups"]["model-runtime"] + policy["groups"]["granite-training"]

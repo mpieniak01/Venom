@@ -128,6 +128,11 @@ is a separate operator check outside code gates and pre-push.
 The audio defaults use CUDA. An explicit AUDIO_DEVICE=cpu in an existing config
 also keeps TTS on CPU unless TTS_USE_CUDA is explicitly set; an independent TTS
 override always takes precedence.
+The manually invoked scripts/dev/audio_smoke.py CLI also restarts through the
+same GPU library wrapper before native imports, preserving its arguments and
+explicit device settings. This manual model test is never part of code gates
+or pre-push; its unit tests replace the audio engine and process execution.
+
 
 The two replacement locks retain the frozen release graph, refresh only the
 declared CUDA changes from official PyPI artifacts, and validate the full

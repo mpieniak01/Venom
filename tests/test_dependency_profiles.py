@@ -1377,6 +1377,10 @@ def test_full_retains_in_process_vision_memory_and_cpu_voice_consumers():
         "onnxruntime": "onnxruntime==1.31.1",
         "faster-whisper": "faster-whisper==1.2.1",
         "piper-tts": "piper-tts==1.8.0",
+        "huggingface-hub": "huggingface_hub==2.4.0",
+        "hf-xet": "hf-xet==1.8.0",
+        "sentence-transformers": "sentence-transformers==6.2.0",
+        "av": "av==19.0.1",
     }.items():
         assert full[name] == requirement
     assert {

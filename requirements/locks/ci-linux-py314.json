@@ -235,6 +235,11 @@
       "url": "https://files.pythonhosted.org/packages/7e/f5/f66802a942d491edb555dd61e3a9961140fd64c90bce1eafd741609d334d/httpcore-1.0.9-py3-none-any.whl",
       "version": "1.0.9"
     },
+    "httpcore2": {
+      "sha256": "5c4358319f2602d984ad93182c9fee5160f22e9da7babdda870a5e7c4e2dc34f",
+      "url": "https://files.pythonhosted.org/packages/af/c2/ce417c397afa5181f0e3c6ff01a4d01639414e1adef08730d97571297151/httpcore2-2.16.0-py3-none-any.whl",
+      "version": "2.16.0"
+    },
     "httplib2": {
       "sha256": "dc6705cacdf3fb0a2aba7629fa33c90fd93e30035db0c157325826be177e4816",
       "url": "https://files.pythonhosted.org/packages/33/a0/550eec327e5f5c7b732531c489f5307efec41f047b0d703bd4ca1e5ad2db/httplib2-0.32.0-py3-none-any.whl",
@@ -255,10 +260,15 @@
       "url": "https://files.pythonhosted.org/packages/d2/fd/6668e5aec43ab844de6fc74927e155a3b37bf40d7c3790e49fc0406b6578/httpx_sse-0.4.3-py3-none-any.whl",
       "version": "0.4.3"
     },
+    "httpx2": {
+      "sha256": "fd2c5d7909e8d86fe92d53020c310ca0e4e431b838c207c5754b9bbf0308d49a",
+      "url": "https://files.pythonhosted.org/packages/7b/3d/2e4bc4fd1ef9770871669adb348d612a6e4786b303a23f9935b81c48dd60/httpx2-2.16.0-py3-none-any.whl",
+      "version": "2.16.0"
+    },
     "huggingface-hub": {
-      "sha256": "04e434b06e100eddbce9a6e817d72693a7884b10a79bd67ab48080d5c07eb899",
-      "url": "https://files.pythonhosted.org/packages/fc/16/963096d224b80909432dc16561a615fd33d2d13beef3ce4c63fa25e40867/huggingface_hub-1.33.0-py3-none-any.whl",
-      "version": "1.33.0"
+      "sha256": "42ecfd93ede47bdd333daebbf66a32d7bfe2e18752754fe4d2d4f98a0179d801",
+      "url": "https://files.pythonhosted.org/packages/d4/55/ff47f1b082ecf5f43f4bc1e3b932d68eead171dabbbd1a92666c686301d7/huggingface_hub-2.4.0-py3-none-any.whl",
+      "version": "2.4.0"
     },
     "identify": {
       "sha256": "6a16b69b93187244e0548cbfd25b3e4a6f9a7a2ad784625c3bec2b8d27b81aaa",
@@ -655,6 +665,11 @@
       "url": "https://files.pythonhosted.org/packages/d0/30/dc54f88dd4a2b5dc8a0279bdd7270e735851848b762aeb1c1184ed1f6b14/tqdm-4.67.1-py3-none-any.whl",
       "version": "4.67.1"
     },
+    "truststore": {
+      "sha256": "9aaaedaefaf06d8b206278cf8b5012bc897f485a874503501e12d776df78951c",
+      "url": "https://files.pythonhosted.org/packages/51/e9/3a7820be2bb0fe53b6bc9c3be26d3d1158004e4c3ab953aa6840b955b1e9/truststore-0.10.5-py3-none-any.whl",
+      "version": "0.10.5"
+    },
     "types-aiofiles": {
       "sha256": "1401114ecf3764eb1c0f6bb175e9ceb8d1741311394dee384d8642f5b3be9b46",
       "url": "https://files.pythonhosted.org/packages/20/e3/4d3b636b25b4e1f7fb2836e773abe8bc01890c519252eec082906cd5662b/types_aiofiles-25.1.0.20261107-py3-none-any.whl",
@@ -751,15 +766,15 @@
       "version": "1.25.1"
     }
   },
-  "lock_sha256": "ffee4749afce6a0ef3e2f44c56f0dfa72831543d90f3ebdaed347a6c889a14b3",
+  "lock_sha256": "00318ea1c0594324e0a8b31c59dad69e507b04de6119fcd1cc4095dc6e7602f9",
   "platform": {
     "machine": "x86_64",
     "python": "3.14",
     "system": "Linux"
   },
-  "policy_sha256": "f4e7507168a056b221d9c3c20d6d7b98e5f9a0a1cda47ec17c86b5cf5401ac5b",
+  "policy_sha256": "10a4757b293dd0dc92356fadfdeb1019d041368636e674334c58dd65e2d5345e",
   "profile": "ci",
-  "profile_policy_sha256": "a321a4eb18ccbc7575f439c44ada1320324655b831c66285a67651e71513697c",
+  "profile_policy_sha256": "040cfd5ecb3f3a5a0c03dca825ab09ebbefd1f166fc82a7e5e8b08e95d6b0e8f",
   "qualification": "RESOLVED_ONLY",
   "resolver": {
     "name": "pip",

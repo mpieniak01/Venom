@@ -24,7 +24,7 @@ are self-contained and contain no recursive `-r` or `-c` directives.
 
 ## In-process features and the separate daemon
 
-Full retains Torch **2.13.0**, TorchVision **0.28.0** and Transformers **5.17.0**
+Full declares Torch **2.15.0**, TorchVision **0.29.2** and Transformers **5.22.2**
 for existing in-process DA2 vision and RAG/embedding consumers. Moving the HTTP
 daemon to another interpreter does not move those application consumers. Full
 also declares CPU `onnxruntime` for the existing voice and Rider floor features,
@@ -163,3 +163,60 @@ Temporary Light smoke and Python-provisioning tool environments were removed
 only after their receipts were retained. The two remaining candidate environments
 occupy about 11.2 GiB together; the operator environment and existing model cache
 were preserved. The test model was unloaded and its owned process stopped.
+
+## Model stack migration (2026-11-09)
+
+The shared model group now pins Torch 2.15.0, TorchVision 0.29.2 and
+Transformers 5.22.2. The Linux locks select CUDA Toolkit 13.2.2 and Triton 3.9.0.
+Full and Full CI use Sentence Transformers 6.2.0, SciPy 1.18.1 and CPU
+ONNX Runtime 1.31.1. All Hub consumers in the managed profiles use Hub 2.4.0
+and hf-xet 1.8.0, including CI; its separate httpx2, httpcore2 and truststore
+dependencies are recorded in the locks. The application still uses httpx 0.28.1.
+
+Pillow stays at 12.3.0 pending the optional Rider host qualification.
+PyAV stays at 19.0.1 because the audited 19.0.2 file-input path is incompatible
+with Faster Whisper 1.2.1's metadata_errors argument. Venom's PCM flow has
+separate acceptance evidence. PEFT, Accelerate, bitsandbytes, TRL and Datasets
+retain their current declared versions. These are explicit version decisions,
+not permission to relax the exclusive ONNX distribution rule.
+
+### Optional Rider integration
+
+The host module is an independent repository. Its current CUDA perception runs
+inside its host process; installing a second venv alone does not move that code.
+Preserve the existing Rider host checkout and its complete environment until a
+companion change provides and qualifies a separate GPU process entry point.
+The optional GPU profile must declare ONNX Runtime GPU and its required cuRAND,
+and demonstrate CUDA/DLPack without CPU fallback. It must never overlay CPU ORT
+in the new Full environment or force the core application back to older Torch.
+
+The device source checkout uses its own development interpreter (Python 3.12).
+The physical Rider-Pi remains on manufacturer Debian 11 and Python 3.9. Its
+deployment, Python upgrade and motion tests are separate operations. Core
+acceptance uses fixture protocol/capability/telemetry exchanges and saved frames.
+
+### Qualification and activation
+
+Create fresh candidate environments with the documented bootstrap and verify
+their exact inventories plus pip check independently, including exact Full.
+Use the candidate Full CI interpreter for code gates through
+`VENV=/absolute/candidate/path make pr-fast`. Code gates use doubles and do not
+perform model inference, GPU allocations or physical device acceptance.
+
+Gemma E4B and the active E2B profile select SDPA for text and eager attention
+for audio. Unified Gemma 12B retains SDPA. New training environments require
+new model-specific smoke receipts. Existing checkpoints must resume using their
+original checkout, interpreter, lock and receipt; never rewrite historical
+qualification identities to claim compatibility with this migration.
+
+The authorized Hub 2.4.0 download of Gemma's config succeeded. That repository
+reported `gated=false`, so this is an authenticated public read, not proof of
+private/gated model access. This limitation remains recorded for rollout.
+Prior overlay model runs are supporting evidence, not proof for freshly locked
+environments. Gemma E4B/12B training still requires a suitable GPU; the 12 GB
+host could not complete E4B preparation in the previous qualification.
+
+Publishing the code does not switch active venv symlinks or restart services.
+Retain the old checkout and complete environments for rollback. Activate each
+candidate interpreter only as a separately requested deployment, then perform
+the operator's Studio, Full voice and optional Rider acceptance flows.

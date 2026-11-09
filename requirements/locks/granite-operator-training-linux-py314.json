@@ -45,11 +45,6 @@
       "url": "https://files.pythonhosted.org/packages/a5/6e/e4e8b75716dbe5e50964f070266e06f4e6806ce051bfb97f52ee162b9310/bitsandbytes-0.50.2-py3-none-manylinux_2_24_x86_64.whl",
       "version": "0.50.2"
     },
-    "certifi": {
-      "sha256": "e9b54de76e530bb6cf0ccd036787103acb58fd42ba930ea8bf948ddbaa2f61d1",
-      "url": "https://files.pythonhosted.org/packages/32/d1/a3652fe2c19134d0d15922177821d863cbd7e842d53a21bbe7e8e3a1b5ac/certifi-2026.10.23-py3-none-any.whl",
-      "version": "2026.10.23"
-    },
     "click": {
       "sha256": "8bb5376d2006950386f8c6427613334a2acadc5f559cb80e638d00b4df957e37",
       "url": "https://files.pythonhosted.org/packages/31/7d/164b7ffc8624fe9efb4221bf9af485d5c1e41b9ae118045d2b6dc5457d8b/click-8.5.1-py3-none-any.whl",
@@ -105,20 +100,20 @@
       "url": "https://files.pythonhosted.org/packages/f8/1e/1e8ecc05ef034e9a95c18ed32d2ec07905a7cd2ca611a9d88e25ee1f4850/hf_xet-1.8.0-cp38-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
       "version": "1.8.0"
     },
-    "httpcore": {
-      "sha256": "2d400746a40668fc9dec9810239072b40b4484b640a8c38fd654a024c7a1bf55",
-      "url": "https://files.pythonhosted.org/packages/7e/f5/f66802a942d491edb555dd61e3a9961140fd64c90bce1eafd741609d334d/httpcore-1.0.9-py3-none-any.whl",
-      "version": "1.0.9"
+    "httpcore2": {
+      "sha256": "5c4358319f2602d984ad93182c9fee5160f22e9da7babdda870a5e7c4e2dc34f",
+      "url": "https://files.pythonhosted.org/packages/af/c2/ce417c397afa5181f0e3c6ff01a4d01639414e1adef08730d97571297151/httpcore2-2.16.0-py3-none-any.whl",
+      "version": "2.16.0"
     },
-    "httpx": {
-      "sha256": "d909fcccc110f8c7faf814ca82a9a4d816bc5a6dbfea25d6591d6985b8ba59ad",
-      "url": "https://files.pythonhosted.org/packages/2a/39/e50c7c3a983047577ee07d2a9e53faf5a69493943ec3f6a384bdc792deb2/httpx-0.28.1-py3-none-any.whl",
-      "version": "0.28.1"
+    "httpx2": {
+      "sha256": "fd2c5d7909e8d86fe92d53020c310ca0e4e431b838c207c5754b9bbf0308d49a",
+      "url": "https://files.pythonhosted.org/packages/7b/3d/2e4bc4fd1ef9770871669adb348d612a6e4786b303a23f9935b81c48dd60/httpx2-2.16.0-py3-none-any.whl",
+      "version": "2.16.0"
     },
     "huggingface-hub": {
-      "sha256": "04e434b06e100eddbce9a6e817d72693a7884b10a79bd67ab48080d5c07eb899",
-      "url": "https://files.pythonhosted.org/packages/fc/16/963096d224b80909432dc16561a615fd33d2d13beef3ce4c63fa25e40867/huggingface_hub-1.33.0-py3-none-any.whl",
-      "version": "1.33.0"
+      "sha256": "42ecfd93ede47bdd333daebbf66a32d7bfe2e18752754fe4d2d4f98a0179d801",
+      "url": "https://files.pythonhosted.org/packages/d4/55/ff47f1b082ecf5f43f4bc1e3b932d68eead171dabbbd1a92666c686301d7/huggingface_hub-2.4.0-py3-none-any.whl",
+      "version": "2.4.0"
     },
     "idna": {
       "sha256": "ab7ae7122974553370f0bdb919e1a960b2cd1bc1ef0276416d896db81c14582c",
@@ -390,6 +385,11 @@
       "url": "https://files.pythonhosted.org/packages/a1/96/6305b5dc1c0f36d2178f626f7ee778377407f48ea828c6452355033c8017/trl-1.17.1-py3-none-any.whl",
       "version": "1.17.1"
     },
+    "truststore": {
+      "sha256": "9aaaedaefaf06d8b206278cf8b5012bc897f485a874503501e12d776df78951c",
+      "url": "https://files.pythonhosted.org/packages/51/e9/3a7820be2bb0fe53b6bc9c3be26d3d1158004e4c3ab953aa6840b955b1e9/truststore-0.10.5-py3-none-any.whl",
+      "version": "0.10.5"
+    },
     "typer": {
       "sha256": "b3c3de6e06a848274dc7bd56a433499e9cf25fa1d40aa3ba4eccfec4e1624c7b",
       "url": "https://files.pythonhosted.org/packages/c1/3d/cc08d3cb257764101c71c47f18e2f547782d013928edc877f155cb99229d/typer-0.29.0-py3-none-any.whl",
@@ -421,15 +421,15 @@
       "version": "1.25.1"
     }
   },
-  "lock_sha256": "23172c4ee7fafe70799d73699b3877d6d000526a2e1c5d108cad2a9cd5fb8376",
+  "lock_sha256": "967a9e541f1902134743d6d3cfca8550f375c17a9a194b9f6c830d5f883c650c",
   "platform": {
     "machine": "x86_64",
     "python": "3.14",
     "system": "Linux"
   },
-  "policy_sha256": "f4e7507168a056b221d9c3c20d6d7b98e5f9a0a1cda47ec17c86b5cf5401ac5b",
+  "policy_sha256": "10a4757b293dd0dc92356fadfdeb1019d041368636e674334c58dd65e2d5345e",
   "profile": "granite-operator-training",
-  "profile_policy_sha256": "49beb852f9e15979a618425ef648aefd2eed101dbd701fdbbad3a02818a49031",
+  "profile_policy_sha256": "0657fe99a41865a92426809b5312263552435298bf88b5c5764836a953d37665",
   "qualification": "RESOLVED_ONLY",
   "resolver": {
     "name": "pip",

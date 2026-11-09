@@ -50,8 +50,11 @@ def files_match(expected: Path, actual: Path) -> bool:
         return False
     if expected.suffix == ".json":
         try:
-            return json.loads(expected.read_text(encoding="utf-8")) == json.loads(
-                actual.read_text(encoding="utf-8")
+            expected_json = json.loads(expected.read_text(encoding="utf-8"))
+            actual_json = json.loads(actual.read_text(encoding="utf-8"))
+            # Python equality conflates JSON booleans and numbers (True == 1).
+            return json.dumps(expected_json, sort_keys=True) == json.dumps(
+                actual_json, sort_keys=True
             )
         except (ValueError, UnicodeError):
             return False
@@ -66,7 +69,10 @@ def check_contract(directory: Path, *, update: bool = False) -> int:
         (REPO_ROOT / "openapi/openapi.json").resolve(),
         (REPO_ROOT / "web-next/lib/generated/api-types.d.ts").resolve(),
     }
-    if any(path.resolve() in protected for path in (schema_path, types_path)):
+    if any(
+        path.resolve() in protected
+        for path in (schema_path, types_path, directory / "studio.json")
+    ):
         raise ValueError("Artifact directory must not overwrite committed contracts")
     core = export_schema("core")
     studio = export_schema("studio")
@@ -83,6 +89,7 @@ def check_contract(directory: Path, *, update: bool = False) -> int:
     )
     for expected, actual in targets:
         if update:
+            expected.parent.mkdir(parents=True, exist_ok=True)
             expected.write_bytes(actual.read_bytes())
         elif not files_match(expected, actual):
             errors.append(

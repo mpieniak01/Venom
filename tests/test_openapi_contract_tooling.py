@@ -381,3 +381,30 @@ def test_pr_fast_scopes_contract_changes_and_propagates_red_gate(
     else:
         assert result.returncode == 0, result.stdout + result.stderr
         assert not calls.exists()
+
+
+@pytest.mark.parametrize("expected_value,actual_value", [(True, 1), (False, 0)])
+def test_json_comparison_distinguishes_boolean_and_numeric_defaults(
+    tmp_path, expected_value, actual_value
+):
+    expected = tmp_path / "expected.json"
+    actual = tmp_path / "actual.json"
+    expected.write_text(json.dumps({"default": expected_value}))
+    actual.write_text(json.dumps({"default": actual_value}))
+    assert not gate.files_match(expected, actual)
+
+
+def test_artifact_symlink_cannot_overwrite_committed_schema(monkeypatch, tmp_path):
+    monkeypatch.setattr(gate, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(
+        gate, "export_schema", lambda *args: pytest.fail("unexpected export")
+    )
+    committed = tmp_path / "openapi/openapi.json"
+    committed.parent.mkdir()
+    committed.write_text("{}")
+    artifacts = tmp_path / "artifacts"
+    artifacts.mkdir()
+    (artifacts / "studio.json").symlink_to(committed)
+    with pytest.raises(ValueError, match="overwrite"):
+        gate.check_contract(artifacts)
+    assert committed.read_text() == "{}"

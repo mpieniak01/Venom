@@ -163,7 +163,8 @@
     ],
     "full-onnx-cuda": [
       "onnxruntime-gpu==1.31.1",
-      "nvidia-curand==10.4.2.66"
+      "nvidia-curand==10.4.2.66",
+      "nvidia-cublas-cu12==12.9.1.4"
     ]
   },
   "profiles": {
@@ -254,7 +255,7 @@
       "onnxruntime_provider": "cuda",
       "input": "requirements-full-ci-cuda.txt",
       "lock": "requirements/locks/full-ci-cuda-linux-py314.txt",
-      "boundary": "Full CI application with the CUDA ONNX provider replacing the CPU distribution. Installs exactly one ONNX runtime plus cuRAND from the same CUDA 13.2 toolkit. Piper/Faster Whisper/Magika CPU distribution metadata is validated against the explicit GPU provider; raw pip check remains reported. Independent from the retained legacy Rider host."
+      "boundary": "Full CI application with the CUDA ONNX provider replacing the CPU distribution. Installs exactly one ONNX runtime plus cuRAND from the same CUDA 13.2 toolkit and parallel CUDA 12 cuBLAS for CTranslate2. Piper/Faster Whisper/Magika CPU distribution metadata is validated against the explicit GPU provider; raw pip check remains reported. Independent from the retained legacy Rider host."
     }
   },
   "aliases": {

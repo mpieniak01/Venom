@@ -284,6 +284,7 @@ def install_profile(
     storage_root: Path | None = None,
     minimum_free_gib: float | None = None,
 ) -> None:
+    """Install and verify a hash-locked profile without starting services or models."""
     policy = json.loads((root / "config/dependency-profiles.json").read_text())
     if profile not in policy["profiles"]:
         if profile in policy.get("deferred_profiles", {}):

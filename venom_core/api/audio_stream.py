@@ -659,6 +659,10 @@ class AudioStreamHandler:
             while True:
                 # Odbierz wiadomość
                 data = await websocket.receive()
+                if data.get("type") == "websocket.disconnect":
+                    raise WebSocketDisconnect(
+                        data.get("code", 1000), data.get("reason")
+                    )
 
                 if "text" in data:
                     # Komenda sterująca (JSON)

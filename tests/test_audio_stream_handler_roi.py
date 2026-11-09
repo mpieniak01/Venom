@@ -715,16 +715,24 @@ async def test_handle_control_message_start_stop(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_handle_websocket_registers_and_cleans_up_connection():
+@pytest.mark.parametrize(
+    "disconnect",
+    [
+        audio_stream_mod.WebSocketDisconnect(),
+        {"type": "websocket.disconnect", "code": 1000},
+    ],
+)
+async def test_handle_websocket_registers_and_cleans_up_connection(disconnect):
     """handle_websocket should register connection state and clean up on disconnect."""
     handler = _make_handler()
     websocket = MagicMock()
     websocket.accept = AsyncMock()
-    websocket.receive = AsyncMock(side_effect=audio_stream_mod.WebSocketDisconnect())
+    websocket.receive = AsyncMock(side_effect=[disconnect])
 
     await handler.handle_websocket(websocket, operator_agent=None)
 
     websocket.accept.assert_awaited_once()
+    websocket.receive.assert_awaited_once()
     assert handler.active_connections == {}
 
 

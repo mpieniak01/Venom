@@ -32,9 +32,11 @@ test("switches through the shared runtime control and restores the previous Gemm
   const gemmaButton = screen.getByRole("button", { name: /Gemma \+ / });
   const omniButton = screen.getByRole("button", { name: /LFM3-Omni/ });
   await waitFor(() => assert.equal(gemmaButton.getAttribute("aria-pressed"), "true"));
+  assert.ok(screen.getByText("Active model: " + gemma));
   assert.deepEqual(changes, []);
   fireEvent.click(omniButton);
   await waitFor(() => assert.equal(omniButton.getAttribute("aria-pressed"), "true"));
+  assert.ok(screen.getByText("Active model: " + omni));
   first.unmount();
 
   render(<LanguageProvider><VoicePipelinePicker surface="voice" onApplied={model => applied.push(model)} /></LanguageProvider>);

@@ -65,7 +65,7 @@ export const chat2 = {
   "voiceOmni": "LFM3-Omni (experimental)",
   "voicePipelineHint": "This changes the active model for the whole stack. Omni uses its own speech recognition and synthesis.",
   "voiceOmniUnavailable": "Omni is unavailable for the current runtime, language, or voice settings.",
-  "voiceActiveModel": "Active model: {model}",
+  "voiceActiveModel": "Active model: {{model}}",
   "voicePipelineError": "Could not switch the voice pipeline. Try again after the current request finishes.",
   "listen": "Record a turn",
   "finishTurn": "Finish turn",

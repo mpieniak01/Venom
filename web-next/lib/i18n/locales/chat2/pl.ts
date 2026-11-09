@@ -65,7 +65,7 @@ export const chat2 = {
   "voiceOmni": "LFM3-Omni (eksperymentalny)",
   "voicePipelineHint": "Wybór zmienia aktywny model całego stosu. Omni używa własnego rozpoznawania i syntezy mowy.",
   "voiceOmniUnavailable": "Omni jest niedostępny dla obecnego środowiska, języka lub ustawień głosu.",
-  "voiceActiveModel": "Aktywny model: {model}",
+  "voiceActiveModel": "Aktywny model: {{model}}",
   "voicePipelineError": "Nie udało się przełączyć ścieżki głosu. Spróbuj ponownie po zakończeniu aktywnego żądania.",
   "listen": "Nagrywaj turę",
   "finishTurn": "Zakończ turę",

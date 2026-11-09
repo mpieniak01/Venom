@@ -278,3 +278,12 @@ def test_search_models_error_handling(hf_skill):
 
     assert "❌" in result
     assert "Wystąpił błąd" in result
+
+
+@pytest.mark.parametrize("sort", ["trending", "trending_score"])
+def test_search_models_uses_hub_trending_sort(hf_skill, sort):
+    hf_skill.api.list_models = MagicMock(return_value=[])
+
+    hf_skill.search_models(sort=sort)
+
+    hf_skill.api.list_models.assert_called_once_with(limit=15, sort="trending_score")

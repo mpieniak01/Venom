@@ -107,7 +107,7 @@ def protected_trainer(
     import torch
     from torch.nn.functional import kl_div
 
-    class ProtectedTrainer(trainer_cls):  # type: ignore[misc, valid-type]
+    class ProtectedTrainer(trainer_cls):
         def compute_loss(
             self, model, inputs, return_outputs=False, num_items_in_batch=None
         ):

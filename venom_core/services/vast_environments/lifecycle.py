@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import timedelta
 from decimal import Decimal
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 from uuid import uuid4
 
 from venom_core.infrastructure.providers.vast.client import (
@@ -32,7 +32,7 @@ from venom_core.services.vast_environments.store import Journal
 
 def _create_payload(plan: EnvironmentPlan, plan_id: str) -> dict:
     profile = plan.profile
-    payload = {
+    payload: dict[str, Any] = {
         "disk": profile.disk_gb,
         "runtype": "ssh_direct" if profile.vm_required else "ssh",
         "target_state": "running",

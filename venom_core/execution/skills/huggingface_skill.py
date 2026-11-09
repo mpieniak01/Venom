@@ -1,7 +1,7 @@
 """Moduł: huggingface_skill - Skill do wyszukiwania modeli i datasets na Hugging Face."""
 
 from pathlib import Path
-from typing import Annotated, Optional
+from typing import Annotated, Literal, NotRequired, Optional, TypedDict
 
 from huggingface_hub import HfApi, hf_hub_download
 from huggingface_hub.utils import RepositoryNotFoundError
@@ -18,6 +18,17 @@ MAX_MODEL_CARD_LENGTH = 8000
 # Mnożnik dla filtrowania modeli ONNX/GGUF
 # Pobieramy więcej wyników niż potrzeba, aby móc wyfiltrować i preferować ONNX/GGUF
 FILTER_MULTIPLIER = 3
+
+_HubModelSort = Literal[
+    "created_at", "downloads", "last_modified", "likes", "trending_score"
+]
+
+
+class _ModelSearchParams(TypedDict):
+    limit: int
+    sort: _HubModelSort
+    filter: NotRequired[str]
+    search: NotRequired[str]
 
 
 class HuggingFaceSkill:
@@ -48,7 +59,8 @@ class HuggingFaceSkill:
         ] = "",
         query: Annotated[str, "Zapytanie tekstowe (np. 'sentiment', 'polish')"] = "",
         sort: Annotated[
-            str, "Sortowanie: 'downloads', 'likes', 'trending'"
+            _HubModelSort | Literal["trending"],
+            "Sortowanie: 'downloads', 'likes', 'trending'",
         ] = "downloads",
     ) -> str:
         """
@@ -92,11 +104,11 @@ class HuggingFaceSkill:
 
     @staticmethod
     def _build_model_search_params(
-        task: str, query: str, sort: str
-    ) -> dict[str, object]:
-        params: dict[str, object] = {
+        task: str, query: str, sort: _HubModelSort | Literal["trending"]
+    ) -> _ModelSearchParams:
+        params: _ModelSearchParams = {
             "limit": MAX_MODELS_RESULTS * FILTER_MULTIPLIER,
-            "sort": sort,
+            "sort": "trending_score" if sort == "trending" else sort,
         }
         if task:
             params["filter"] = task

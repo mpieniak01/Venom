@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import hashlib
-from typing import Any
+from typing import Any, cast
 
 from venom_core.services.gemma4_operator.material import digest
 
@@ -28,6 +28,7 @@ def encode_decision(record: Json, tokenizer: Any, context: int = 1024) -> Json:
     _need(type(context) is int and context in {1024, 2048}, "context_invalid")
     messages = record.get("messages")
     _need(isinstance(messages, list) and len(messages) >= 2, "messages_invalid")
+    messages = cast(list[Json], messages)
     target = len(messages) - 1
     _need(
         messages[target].get("role") == "assistant"
@@ -119,6 +120,7 @@ def encode_release(release: Json, tokenizer: Any, context: int = 1024) -> Json:
     records = validate_release(release)
     template = getattr(tokenizer, "chat_template", None)
     _need(isinstance(template, str) and bool(template), "template_required")
+    template = cast(str, template)
     result = {
         "schema_version": 1,
         "kind": "functiongemma_encoded_release",
@@ -173,6 +175,7 @@ def validate_encoded_release(
         and set(records) <= {"train", "validation", "holdout"},
         "splits_invalid",
     )
+    records = cast(dict[str, list[Json]], records)
     groups: dict[str, str] = {}
     identifiers: set[str] = set()
     for split, rows in records.items():

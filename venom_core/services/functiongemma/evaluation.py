@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 import statistics
 from collections.abc import Sequence
-from typing import Any
+from typing import Any, cast
 
 from venom_core.services.granite_operator.contract import digest
 
@@ -46,6 +46,8 @@ def _validate_trial(row: dict) -> None:
     ):
         raise ValueError("functiongemma_trial_identity_invalid")
     seconds = row.get("seconds")
+    # Exact runtime type validation below still rejects non-numbers and booleans.
+    seconds = cast(int | float, seconds)
     if type(seconds) not in {int, float} or not math.isfinite(seconds) or seconds < 0:
         raise ValueError("functiongemma_timing_invalid")
     for name in ("exact", "schema_valid", "unexpected_call"):

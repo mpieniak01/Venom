@@ -64,7 +64,7 @@ class Recipe:
             value = getattr(self, key)
             if type(value) is not int or not 1 <= value <= upper:
                 raise ValueError("functiongemma_integer_invalid:" + key)
-        for key, upper in {
+        for key, upper_float in {
             "learning_rate": 0.001,
             "weight_decay": 1,
             "warmup_ratio": 0.5,
@@ -74,7 +74,7 @@ class Recipe:
             if (
                 type(value) not in {int, float}
                 or not math.isfinite(value)
-                or not 0 <= value <= upper
+                or not 0 <= value <= upper_float
             ):
                 raise ValueError("functiongemma_number_invalid:" + key)
         if self.learning_rate == 0:

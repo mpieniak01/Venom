@@ -29,6 +29,7 @@ def _serve_embeddings(fd: int) -> None:
     with socket.socket(fileno=fd) as channel, channel.makefile("rb") as incoming:
         for line in incoming:
             operation, payload = json.loads(line)
+            value: list[float] | list[list[float]] | int
             try:
                 if operation == "single":
                     value = service.get_embedding(payload)

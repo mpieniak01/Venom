@@ -1319,7 +1319,6 @@ def test_release_profiles_keep_actual_consumers_and_defer_separate_engines():
         "full-ci",
         "multi-runtime-cuda",
         "granite-operator-training",
-        "full-ci-cuda",
         "build",
     }
     assert set(policy["aliases"].values()) == {"light"}
@@ -1368,7 +1367,7 @@ def test_actual_application_extensions_preserve_shared_light_versions(profile):
     assert {name: extension[name] for name in light} == light
 
 
-def test_full_retains_in_process_vision_memory_and_cpu_voice_consumers():
+def test_full_retains_in_process_vision_memory_and_cuda_voice_consumers():
     """Keep Full dependencies needed by existing vision, memory and voice code."""
     policy = profiles.load_policy()
     full = profiles.requirements_for(policy, "full")
@@ -1377,7 +1376,7 @@ def test_full_retains_in_process_vision_memory_and_cpu_voice_consumers():
         "torchvision": "torchvision==0.29.2",
         "transformers": "transformers==5.22.2",
         "scipy": "scipy==1.18.1",
-        "onnxruntime": "onnxruntime==1.31.1",
+        "onnxruntime-gpu": "onnxruntime-gpu==1.31.1",
         "faster-whisper": "faster-whisper==1.2.1",
         "piper-tts": "piper-tts==1.8.0",
         "huggingface-hub": "huggingface_hub==2.4.0",
@@ -1404,7 +1403,7 @@ def test_full_retains_in_process_vision_memory_and_cpu_voice_consumers():
         "webrtcvad",
         "locust",
         "vllm",
-        "onnxruntime-gpu",
+        "onnxruntime",
         "onnxruntime-genai",
         "onnxruntime-genai-cuda",
     }.intersection(full)
@@ -2380,44 +2379,65 @@ def test_granite_cpu_test_overlay_preserves_hash_locked_ci_and_excludes_cuda():
     )
 
 
-def test_cuda_application_replaces_only_ort_and_adds_native_cuda_libraries():
-    """Preserve Full CI consumers while selecting one ORT provider and required CUDA libraries."""
+@pytest.mark.parametrize("profile", ["full", "full-ci"])
+def test_cuda_application_is_standard_with_one_ort_and_native_libraries(profile):
+    """Keep both standard Full profiles GPU-ready without a redundant CUDA variant."""
     policy = profiles.load_policy()
-    cpu = profiles.requirements_for(policy, "full-ci")
-    cuda = profiles.requirements_for(policy, "full-ci-cuda")
-    assert {
-        name: value
-        for name, value in cuda.items()
-        if name not in {"onnxruntime-gpu", "nvidia-curand", "nvidia-cublas-cu12"}
-    } == {name: value for name, value in cpu.items() if name != "onnxruntime"}
+    cuda = profiles.requirements_for(policy, profile)
+    assert "full-ci-cuda" not in policy["profiles"]
     assert cuda["onnxruntime-gpu"] == "onnxruntime-gpu==1.31.1"
     assert cuda["nvidia-curand"] == "nvidia-curand==10.4.2.66"
-    assert cuda["nvidia-cublas-cu12"] == "nvidia-cublas-cu12==12.9.1.4"
+    assert cuda["nvidia-cublas-cu12"] == "nvidia-cublas-cu12==12.9.3.13"
     assert "onnxruntime" not in cuda
     with pytest.raises(ValueError, match="Forbidden application"):
-        profiles.check_packages(policy, "full-ci", {"onnxruntime-gpu"})
+        profiles.check_packages(policy, "ci", {"onnxruntime-gpu"})
     with pytest.raises(ValueError, match="Overlapping distribution"):
-        profiles.check_packages(
-            policy, "full-ci-cuda", {"onnxruntime", "onnxruntime-gpu"}
-        )
+        profiles.check_packages(policy, profile, {"onnxruntime", "onnxruntime-gpu"})
     with pytest.raises(ValueError, match="requires only"):
-        profiles.check_packages(policy, "full-ci-cuda", {"piper-tts"})
-    generated = profiles.generated_inputs(policy)["requirements-full-ci-cuda.txt"]
-    assert "INSTALL VIA bootstrap_dependency_profile.py" in generated
+        profiles.check_packages(policy, profile, {"piper-tts"})
+    generated = profiles.generated_inputs(policy)[policy["profiles"][profile]["input"]]
+    assert (
+        f"INSTALL VIA bootstrap_dependency_profile.py --profile {profile} only"
+        in generated
+    )
+    locked = profiles.read_lock(profiles.ROOT / policy["profiles"][profile]["lock"])
+    assert locked["nvidia-cuda-nvrtc-cu12"] == "12.9.86"
+
+
+@pytest.mark.parametrize("profile", ["light", "ci", "multi-runtime-cuda"])
+def test_cuda_provider_cannot_expand_to_other_profiles(tmp_path, profile):
+    """Confine the distribution substitution to the two standard Full profiles."""
+    policy = profiles.load_policy()
+    policy["profiles"][profile]["onnxruntime_provider"] = "cuda"
+    (tmp_path / "config").mkdir()
+    (tmp_path / profiles.POLICY).write_text(json.dumps(policy))
+    with pytest.raises(ValueError, match="scoped to Full application profiles"):
+        profiles.load_policy(tmp_path)
 
 
 @pytest.fixture
 def cuda_metadata():
     """Supply a minimal installed graph with the three explicit ORT metadata consumers."""
     policy = profiles.load_policy()
-    policy["profiles"]["full-ci"] = {"kind": "application", "groups": []}
+    policy["groups"]["test-native"] = [
+        "onnxruntime-gpu==1.31.1",
+        "nvidia-curand==10.4.2.66",
+        "nvidia-cublas-cu12==12.9.3.13",
+    ]
+    policy["profiles"]["full"] = {
+        "kind": "application",
+        "groups": ["test-native"],
+        "onnxruntime_provider": "cuda",
+    }
+    policy["profiles"]["full-ci"]["groups"] = []
     packages = [
         ("onnxruntime-gpu", "1.31.1", ["numpy>=2"]),
         ("nvidia-curand", "10.4.2.66", []),
         ("piper-tts", "1.8.0", ["onnxruntime<2,>=1"]),
         ("faster-whisper", "1.2.1", ["onnxruntime<2,>=1.14"]),
         ("magika", "0.6.3", ["onnxruntime>=1.17.0"]),
-        ("nvidia-cublas-cu12", "12.9.1.4", []),
+        ("nvidia-cuda-nvrtc-cu12", "12.9.86", []),
+        ("nvidia-cublas-cu12", "12.9.3.13", ["nvidia-cuda-nvrtc-cu12"]),
         ("numpy", "2.5.4", []),
     ]
     report = {
@@ -2435,7 +2455,7 @@ def test_cuda_provider_checks_complete_graph_and_preserves_raw_pip_failure(
 ):
     """Accept declared provider substitutions without hiding raw or unrelated pip failures."""
     policy, report = cuda_metadata
-    result = profiles.check_dependency_metadata(policy, "full-ci-cuda", report)
+    result = profiles.check_dependency_metadata(policy, "full-ci", report)
     assert result["status"] == "PASS"
     assert {item["consumer"] for item in result["substitutions"]} == {
         "piper-tts",
@@ -2466,6 +2486,7 @@ def test_cuda_provider_checks_complete_graph_and_preserves_raw_pip_failure(
         "active_extra",
         "cublas_missing",
         "cublas_version",
+        "nvrtc_missing",
     ],
 )
 def test_cuda_substitution_never_masks_other_dependency_errors(cuda_metadata, change):
@@ -2482,6 +2503,8 @@ def test_cuda_substitution_never_masks_other_dependency_errors(cuda_metadata, ch
         rows[-1]["metadata"]["requires_dist"] = ["onnxruntime>=1"]
     elif change == "provider_specifier":
         rows[2]["metadata"]["requires_dist"] = ["onnxruntime<1.30"]
+    elif change == "nvrtc_missing":
+        rows.pop(-3)
     elif change == "cublas_missing":
         rows.pop(-2)
     elif change == "cublas_version":
@@ -2489,22 +2512,26 @@ def test_cuda_substitution_never_masks_other_dependency_errors(cuda_metadata, ch
     else:
         rows[2]["metadata"]["requires_dist"] = ["numpy[extra]"]
         rows[-1]["metadata"]["requires_dist"] = ["missing-extra; extra == 'extra'"]
-    result = profiles.check_dependency_metadata(policy, "full-ci-cuda", report)
+    result = profiles.check_dependency_metadata(policy, "full-ci", report)
     assert result["status"] == "FAIL"
     assert result["errors"]
 
 
+@pytest.mark.parametrize("profile", ["full", "full-ci"])
 def test_cuda_bootstrap_installs_complete_lock_without_resolving_cpu_dependency(
-    tmp_path, bootstrap_runner
+    tmp_path, bootstrap_runner, profile
 ):
     """Install the complete CUDA lock without letting voice metadata add CPU ONNX."""
     bootstrap, commands = bootstrap_runner
-    bootstrap.install_profile(profiles.ROOT, "full-ci-cuda", tmp_path / "cuda")
+    bootstrap.install_profile(profiles.ROOT, profile, tmp_path / "cuda")
     installs = [command for command in commands if "install" in command]
     assert "--no-deps" in installs[-1]
     assert "--require-hashes" in installs[-1]
     assert "--no-deps" not in installs[0]
-    assert bootstrap.required_storage_bytes("full-ci-cuda", 1) == 20 * bootstrap.GIB
+    assert (
+        bootstrap.required_storage_bytes(profile, 1)
+        == (16 if profile == "full" else 20) * bootstrap.GIB
+    )
 
 
 @pytest.mark.parametrize(
@@ -2534,5 +2561,155 @@ def test_cuda_bootstrap_rejects_cpu_namespace_before_install(
 
     monkeypatch.setattr(bootstrap, "run", run)
     with pytest.raises(ValueError, match="outside the selected profile"):
-        bootstrap.install_profile(profiles.ROOT, "full-ci-cuda", tmp_path, update=True)
+        bootstrap.install_profile(profiles.ROOT, "full-ci", tmp_path, update=True)
     assert not any("install" in command for command in commands)
+
+
+@pytest.fixture
+def retired_cuda_inventory():
+    """Reconstruct the sealed predecessor inventory and retain its immutable digest."""
+    policy = profiles.load_policy()
+    installed = profiles.read_lock(
+        profiles.ROOT / policy["profiles"]["full-ci"]["lock"]
+    )
+    installed.pop("nvidia-cuda-nvrtc-cu12")
+    installed["nvidia-cublas-cu12"] = "12.9.1.4"
+    return installed
+
+
+@pytest.mark.parametrize("wheel", [None, "0.48.0"])
+def test_retired_cuda_migration_requires_exact_source_identity(
+    retired_cuda_inventory, wheel
+):
+    """Permit the documented predecessor with only its exact optional bootstrap wheel."""
+    from scripts import bootstrap_dependency_profile as bootstrap
+
+    installed = dict(retired_cuda_inventory)
+    if wheel:
+        installed["wheel"] = wheel
+    bootstrap.check_retired_cuda_migration(
+        {
+            "profile": "full-ci-cuda",
+            "lock_sha256": bootstrap.LEGACY_FULL_CI_CUDA_LOCK_SHA256,
+        },
+        "full-ci",
+        profiles.load_policy()["profiles"]["full-ci"],
+        installed,
+    )
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [
+        "owner",
+        "lock",
+        "target",
+        "kind",
+        "provider",
+        "wheel",
+        "missing",
+        "unexpected",
+        "cpu",
+        "gpu_version",
+        "native_version",
+    ],
+)
+def test_retired_cuda_migration_rejects_other_owners_and_drift(
+    retired_cuda_inventory, failure
+):
+    """Reject every unsealed graph or ownership change before allowing an update."""
+    from scripts import bootstrap_dependency_profile as bootstrap
+
+    owner = {
+        "profile": "full-ci-cuda",
+        "lock_sha256": bootstrap.LEGACY_FULL_CI_CUDA_LOCK_SHA256,
+    }
+    spec = dict(profiles.load_policy()["profiles"]["full-ci"])
+    target = "full-ci"
+    if failure == "owner":
+        owner["profile"] = "unknown"
+    elif failure == "lock":
+        owner["lock_sha256"] = "0" * 64
+    elif failure == "target":
+        target = "full"
+    elif failure == "kind":
+        spec["kind"] = "component"
+    elif failure == "provider":
+        spec.pop("onnxruntime_provider")
+    elif failure == "wheel":
+        retired_cuda_inventory["wheel"] = "0.1.0"
+    elif failure == "missing":
+        retired_cuda_inventory.pop("numpy")
+    elif failure == "unexpected":
+        retired_cuda_inventory["unknown"] = "1"
+    elif failure == "cpu":
+        retired_cuda_inventory["onnxruntime"] = "1.31.1"
+    elif failure == "gpu_version":
+        retired_cuda_inventory["onnxruntime-gpu"] = "1.30.0"
+    else:
+        retired_cuda_inventory["nvidia-cublas-cu12"] = "12.9.3.13"
+    with pytest.raises(ValueError, match="retired CUDA|Retired CUDA"):
+        bootstrap.check_retired_cuda_migration(
+            owner, target, spec, retired_cuda_inventory
+        )
+
+
+@pytest.mark.parametrize("failure", [None, "inventory", "verify"])
+def test_bootstrap_migrates_retired_cuda_only_after_exact_preflight_and_final_verify(
+    tmp_path,
+    bootstrap_runner,
+    monkeypatch,
+    retired_cuda_inventory,
+    failure,
+):
+    """Require the exact predecessor before pip and stamp the new owner only after verify."""
+    bootstrap, commands = bootstrap_runner
+    (tmp_path / "bin").mkdir()
+    (tmp_path / "bin/python").write_text("fake")
+    (tmp_path / "pyvenv.cfg").write_text("include-system-site-packages = false")
+    owner_path = tmp_path / ".venom-dependency-profile.json"
+    old_owner = {
+        "profile": "full-ci-cuda",
+        "lock_sha256": bootstrap.LEGACY_FULL_CI_CUDA_LOCK_SHA256,
+    }
+    owner_path.write_text(json.dumps(old_owner))
+    if failure == "inventory":
+        retired_cuda_inventory["numpy"] = "1.0"
+
+    def run(command, *, capture=False):
+        """Model inventory and verifier outcomes without package or hardware operations."""
+        commands.append(command)
+        if "verify" in command and failure == "verify":
+            raise subprocess.CalledProcessError(1, command)
+        stdout = (
+            json.dumps(
+                [
+                    {"name": name, "version": version}
+                    for name, version in retired_cuda_inventory.items()
+                ]
+            )
+            if "list" in command
+            else "include-system-site-packages = false"
+        )
+        return SimpleNamespace(returncode=0, stdout=bootstrap_stdout(command, stdout))
+
+    monkeypatch.setattr(bootstrap, "run", run)
+    if failure:
+        expected = (
+            ValueError if failure == "inventory" else subprocess.CalledProcessError
+        )
+        with pytest.raises(expected):
+            bootstrap.install_profile(profiles.ROOT, "full-ci", tmp_path, update=True)
+        assert json.loads(owner_path.read_text()) == old_owner
+        if failure == "inventory":
+            assert not any("install" in command for command in commands)
+    else:
+        bootstrap.install_profile(profiles.ROOT, "full-ci", tmp_path, update=True)
+        owner = json.loads(owner_path.read_text())
+        assert owner["profile"] == "full-ci"
+        lock = profiles.ROOT / profiles.load_policy()["profiles"]["full-ci"]["lock"]
+        assert owner["lock_sha256"] == hashlib.sha256(lock.read_bytes()).hexdigest()
+        assert "--no-deps" in next(
+            command for command in reversed(commands) if "install" in command
+        )
+        assert any("verify" in command and "full-ci" in command for command in commands)

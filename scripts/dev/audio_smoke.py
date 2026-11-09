@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -13,6 +14,30 @@ import httpx
 ROOT_DIR = Path(__file__).resolve().parents[2]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
+
+from scripts.llm.with_gpu_libraries import library_path  # noqa: E402
+
+
+def _prepare_gpu_libraries() -> None:
+    """Restart the CLI once through the shared loader before native imports."""
+    inherited = os.environ.get("LD_LIBRARY_PATH", "")
+    if library_path(Path(sys.prefix), inherited) == inherited:
+        return
+    os.execv(
+        sys.executable,
+        [
+            sys.executable,
+            str(ROOT_DIR / "scripts/llm/with_gpu_libraries.py"),
+            sys.executable,
+            str(Path(__file__).resolve()),
+            *sys.argv[1:],
+        ],
+    )
+
+
+if __name__ == "__main__":
+    _prepare_gpu_libraries()
+
 
 from venom_core.config import SETTINGS  # noqa: E402
 from venom_core.perception.audio_engine import AudioEngine  # noqa: E402
@@ -83,6 +108,7 @@ def _run_local_transcribe(
         whisper_model_size=SETTINGS.WHISPER_MODEL_SIZE,
         tts_model_path=str(tts_model_path or SETTINGS.TTS_MODEL_PATH or "") or None,
         device=SETTINGS.AUDIO_DEVICE,
+        tts_use_cuda=SETTINGS.TTS_USE_CUDA,
     )
     # Warm up models before the actual transcription so the smoke test reflects
     # the real interactive path.

@@ -1,6 +1,7 @@
 import os
+from typing import Self
 
-from pydantic import Field, SecretStr
+from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -414,9 +415,9 @@ class Settings(BaseSettings):
     WHISPER_MODEL_SIZE: str = (
         "base"  # Rozmiar modelu Whisper ('tiny', 'base', 'small', 'medium', 'large')
     )
-    TTS_USE_CUDA: bool = False  # Explicit CUDA request; never silently fall back to CPU
+    TTS_USE_CUDA: bool = True  # GPU by default; never silently fall back to CPU
     TTS_MODEL_PATH: str = ""  # Ścieżka do modelu Piper TTS (ONNX), puste = mock mode
-    AUDIO_DEVICE: str = "cpu"  # Urządzenie dla modeli audio ('cpu', 'cuda')
+    AUDIO_DEVICE: str = "cuda"  # Urządzenie dla modeli audio ('cpu', 'cuda')
     VAD_THRESHOLD: float = 0.5  # Próg Voice Activity Detection (0.0-1.0)
     SILENCE_DURATION: float = 1.5  # Czas ciszy (sekundy) oznaczający koniec wypowiedzi
 
@@ -755,6 +756,16 @@ class Settings(BaseSettings):
     FOREMAN_MAX_TASKS_NORMALIZATION: int = (
         10  # Maksymalna liczba zadań dla normalizacji
     )
+
+    @model_validator(mode="after")
+    def preserve_explicit_cpu_audio(self) -> Self:
+        """Keep legacy explicit CPU audio when TTS has no independent override."""
+        if (
+            self.AUDIO_DEVICE.strip().lower() == "cpu"
+            and "TTS_USE_CUDA" not in self.model_fields_set
+        ):
+            self.TTS_USE_CUDA = False
+        return self
 
 
 SETTINGS = Settings()

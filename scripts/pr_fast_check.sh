@@ -103,6 +103,8 @@ if [[ "$backend_changed" -eq 1 ]]; then
   PYTHON_BIN="python3"
   if [[ -x "${VENV}/bin/python" ]]; then
     PYTHON_BIN="${VENV}/bin/python"
+    # Subprocesses that call python by name must use the same test environment.
+    export PATH="$(cd -- "${VENV}/bin" && pwd):$PATH"
   fi
   "${PYTHON_BIN}" -m compileall -q venom_core scripts tests
   make architecture-drift-check

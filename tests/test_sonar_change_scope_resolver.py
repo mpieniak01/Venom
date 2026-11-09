@@ -710,3 +710,70 @@ def test_priority_orders_optional_tests_without_making_them_mandatory():
         "baseline",
     ]
     assert module._apply_budget(items, 0, 0) == items
+
+
+@pytest.mark.parametrize(
+    "statement",
+    [
+        "import venom_core.services.functiongemma.dataset as subject",
+        "from venom_core.services.functiongemma.dataset import export_decisions",
+        "from venom_core.services.functiongemma import dataset as subject",
+        "def helper():\n    from venom_core.services.functiongemma import dataset",
+    ],
+)
+def test_direct_import_survives_budget_without_matching_filename(
+    monkeypatch, tmp_path, statement
+):
+    module = _load_module()
+    monkeypatch.chdir(tmp_path)
+    Path("tests").mkdir()
+    direct = "tests/test_decision_provenance.py"
+    live = "tests/test_live.py"
+    mention = "tests/test_mention.py"
+    Path(direct).write_text(statement + "\n")
+    Path(live).write_text(
+        statement + "\nimport pytest\npytestmark = pytest.mark.live_model\n"
+    )
+    Path(mention).write_text(
+        'mock_target = "venom_core.services.functiongemma.dataset"\n'
+    )
+    files = [direct, live, mention]
+    changed = ["venom_core/services/functiongemma/dataset.py"]
+    monkeypatch.setattr(module, "git_changed_files", lambda _base: changed)
+    monkeypatch.setattr(module, "all_test_files", lambda: files)
+    monkeypatch.setattr(module, "related_tests_for_modules", lambda *_args: set(files))
+    monkeypatch.setattr(module, "coverage_floor_anchor_tests", lambda *_a, **_kw: set())
+    monkeypatch.setattr(
+        module, "load_junit_timings", lambda _xml: dict.fromkeys(files, 120)
+    )
+    assert module.direct_tests_for_modules(changed, files) == {direct, live}
+    assert module.resolve_tests(
+        baseline_group=Path("absent-baseline"),
+        new_code_group=Path("absent-new-code"),
+        include_baseline=False,
+        diff_base="origin/main",
+        time_budget_sec=1,
+        max_tests=1,
+    ) == [direct]
+
+
+def test_direct_import_requires_exact_module_and_readable_source(tmp_path):
+    module = _load_module()
+    sources = [
+        "from venom_core.services.functiongemma.dataset_extra import helper\n",
+        "# from venom_core.services.functiongemma import dataset\n",
+        "from .dataset import helper\n",
+        "def invalid(:\n",
+    ]
+    paths = []
+    for index, source in enumerate(sources):
+        path = tmp_path / f"test_indirect_{index}.py"
+        path.write_text(source)
+        paths.append(str(path))
+    paths.append(str(tmp_path / "test_missing.py"))
+    assert (
+        module.direct_tests_for_modules(
+            ["venom_core/services/functiongemma/dataset.py"], paths
+        )
+        == set()
+    )

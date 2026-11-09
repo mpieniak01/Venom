@@ -276,19 +276,37 @@ def related_tests_for_modules(
     return related
 
 
+def _imported_modules(path: str) -> set[str]:
+    try:
+        tree = ast.parse(Path(path).read_text(encoding="utf-8"), filename=path)
+    except (OSError, UnicodeError, SyntaxError):
+        return set()
+    modules: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            modules.update(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.module and not node.level:
+            modules.add(node.module)
+            modules.update(f"{node.module}.{alias.name}" for alias in node.names)
+    return modules
+
+
 def direct_tests_for_modules(
     changed_files: list[str], test_files: list[str]
 ) -> set[str]:
-    direct: set[str] = set()
-    test_set = set(test_files)
-    for path in changed_files:
-        if not (path.startswith("venom_core/") and path.endswith(".py")):
-            continue
-        module_stem = Path(path).stem
-        candidate = f"tests/test_{module_stem}.py"
-        if candidate in test_set:
-            direct.add(candidate)
-    return direct
+    modules = {
+        path[:-3].replace("/", ".")
+        for path in changed_files
+        if path.startswith("venom_core/") and path.endswith(".py")
+    }
+    direct_names = {f"tests/test_{name.rsplit('.', 1)[-1]}.py" for name in modules}
+    # Nested modules often have package-prefixed test names. Their actual imports
+    # establish a direct dependency regardless of timing history or filename.
+    return {
+        path
+        for path in test_files
+        if path in direct_names or modules.intersection(_imported_modules(path))
+    }
 
 
 def is_light_test(path: str) -> bool:

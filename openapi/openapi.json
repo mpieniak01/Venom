@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Venom Core",
-    "version": "1.5.0"
+    "version": "1.10.0"
   },
   "paths": {
     "/api/v1/tasks": {
@@ -3500,6 +3500,9 @@
           "400": {
             "description": "Nieprawidłowe dane wejściowe (np. brak modelu)"
           },
+          "413": {
+            "description": "Conversation history or material context exceeds the runtime input limit"
+          },
           "503": {
             "description": "Brak dostępnego endpointu LLM"
           },
@@ -3512,9 +3515,620 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/v1/chat/audio/pipelines": {
+      "get": {
+        "tags": [
+          "chat-audio"
+        ],
+        "summary": "Voice Pipelines",
+        "description": "Discover installed choices without loading models or opening the microphone.",
+        "operationId": "voice_pipelines_api_v1_chat_audio_pipelines_get",
+        "parameters": [
+          {
+            "name": "language",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "pl",
+                "en",
+                "de"
+              ],
+              "type": "string",
+              "default": "pl",
+              "title": "Language"
+            }
+          },
+          {
+            "name": "surface",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "chat2",
+                "voice"
+              ],
+              "type": "string",
+              "default": "chat2",
+              "title": "Surface"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "403": {
+            "description": "Operator access or audio request origin denied"
+          },
+          "409": {
+            "description": "Shared runtime admission is busy or unavailable"
+          },
+          "503": {
+            "description": "Configured audio is unavailable, processing failed, or synthesized output is invalid"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/chat/audio/transcribe": {
+      "post": {
+        "tags": [
+          "chat-audio"
+        ],
+        "summary": "Transcribe",
+        "description": "Transcribe bounded PCM using the selected local or host decoder.",
+        "operationId": "transcribe_api_v1_chat_audio_transcribe_post",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256,
+              "title": "Session Id"
+            }
+          },
+          {
+            "name": "sample_rate",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 96000,
+              "minimum": 8000,
+              "default": 16000,
+              "title": "Sample Rate"
+            }
+          },
+          {
+            "name": "language",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "pl",
+                "en",
+                "de"
+              ],
+              "type": "string",
+              "default": "pl",
+              "title": "Language"
+            }
+          },
+          {
+            "name": "prefer_native",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Prefer Native"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "403": {
+            "description": "Operator access or audio request origin denied"
+          },
+          "409": {
+            "description": "Shared runtime admission is busy or unavailable"
+          },
+          "503": {
+            "description": "Configured audio is unavailable, processing failed, or synthesized output is invalid"
           },
           "413": {
-            "description": "Conversation history or material context exceeds the runtime input limit"
+            "description": "PCM exceeds the upload byte limit or recording duration limit"
+          },
+          "415": {
+            "description": "Raw PCM requires application/octet-stream content type"
+          },
+          "422": {
+            "description": "Invalid request parameters or empty/unaligned signed 16-bit PCM"
+          },
+          "499": {
+            "description": "Client disconnected before transcription was submitted"
+          }
+        }
+      }
+    },
+    "/api/v1/chat/audio/multimodal-turn": {
+      "post": {
+        "tags": [
+          "chat-audio"
+        ],
+        "summary": "Multimodal Turn",
+        "description": "Answer one pilot turn and append the completed pair to session history.",
+        "operationId": "multimodal_turn_api_v1_chat_audio_multimodal_turn_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "403": {
+            "description": "Operator access or audio request origin denied"
+          },
+          "409": {
+            "description": "Shared runtime admission is busy or unavailable"
+          },
+          "503": {
+            "description": "Local Omni is unavailable or the pilot turn failed"
+          },
+          "413": {
+            "description": "Multimodal upload exceeds limits"
+          },
+          "415": {
+            "description": "Multipart form required"
+          },
+          "422": {
+            "description": "Invalid image or audio input"
+          },
+          "499": {
+            "description": "Client disconnected before the pilot turn was submitted"
+          }
+        }
+      }
+    },
+    "/api/v1/chat/audio/speak": {
+      "post": {
+        "tags": [
+          "chat-audio"
+        ],
+        "summary": "Speak",
+        "description": "Synthesize a WAV using the opted-in local voice or the host audio engine.",
+        "operationId": "speak_api_v1_chat_audio_speak_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatSpeechRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "403": {
+            "description": "Operator access or audio request origin denied"
+          },
+          "409": {
+            "description": "Shared runtime admission is busy or unavailable"
+          },
+          "503": {
+            "description": "Configured audio is unavailable, processing failed, or synthesized output is invalid"
+          },
+          "422": {
+            "description": "Invalid speech request or text containing only whitespace"
+          }
+        }
+      }
+    },
+    "/api/v1/chat/materials": {
+      "post": {
+        "tags": [
+          "chat-materials"
+        ],
+        "summary": "Upload Material",
+        "operationId": "upload_material_api_v1_chat_materials_post",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256,
+              "title": "Session Id"
+            }
+          },
+          {
+            "name": "name",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 180,
+              "title": "Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatMaterial"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid material session/name, empty content, invalid UTF-8 or image data"
+          },
+          "403": {
+            "description": "Operator access, request origin or environment mutation policy denied"
+          },
+          "404": {
+            "description": "Existing session material metadata or content is unavailable"
+          },
+          "413": {
+            "description": "Upload bytes, document text or session storage limits exceeded"
+          },
+          "415": {
+            "description": "Material content type is not supported"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "chat-materials"
+        ],
+        "summary": "List Materials",
+        "operationId": "list_materials_api_v1_chat_materials_get",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256,
+              "title": "Session Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatMaterialList"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/chat/materials/capabilities": {
+      "get": {
+        "tags": [
+          "chat-materials"
+        ],
+        "summary": "Material Capabilities",
+        "operationId": "material_capabilities_api_v1_chat_materials_capabilities_get",
+        "parameters": [
+          {
+            "name": "model",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 1024
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Model"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/chat/materials/{material_id}": {
+      "get": {
+        "tags": [
+          "chat-materials"
+        ],
+        "summary": "Get Material",
+        "operationId": "get_material_api_v1_chat_materials__material_id__get",
+        "parameters": [
+          {
+            "name": "material_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Material Id"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256,
+              "title": "Session Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatMaterial"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "chat-materials"
+        ],
+        "summary": "Delete Material",
+        "operationId": "delete_material_api_v1_chat_materials__material_id__delete",
+        "parameters": [
+          {
+            "name": "material_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Material Id"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256,
+              "title": "Session Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/chat/materials/{material_id}/content": {
+      "get": {
+        "tags": [
+          "chat-materials"
+        ],
+        "summary": "Preview Material",
+        "operationId": "preview_material_api_v1_chat_materials__material_id__content_get",
+        "parameters": [
+          {
+            "name": "material_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Material Id"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256,
+              "title": "Session Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/chat/tasks/{task_id}/cancel": {
+      "post": {
+        "tags": [
+          "chat-tasks"
+        ],
+        "summary": "Cancel Chat Task",
+        "operationId": "cancel_chat_task_api_v1_chat_tasks__task_id__cancel_post",
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Task Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CancelChatTask"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatTaskCancellation"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operator access denied"
+          },
+          "404": {
+            "description": "Task does not exist or does not belong to the supplied session"
+          },
+          "409": {
+            "description": "Task is not active and cancellation could not be confirmed"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
           }
         }
       }
@@ -4865,6 +5479,486 @@
         }
       }
     },
+    "/api/v1/openrouter/status": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Status",
+        "operationId": "status_api_v1_openrouter_status_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/openrouter/catalog": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Catalog",
+        "operationId": "catalog_api_v1_openrouter_catalog_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/openrouter/quote": {
+      "post": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Quote",
+        "operationId": "quote_api_v1_openrouter_quote_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SimpleChatRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/openrouter/models/search": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Search Models",
+        "operationId": "search_models_api_v1_openrouter_models_search_get",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 120,
+              "default": "",
+              "title": "Q"
+            }
+          },
+          {
+            "name": "purpose",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "chat",
+                "tasks",
+                "programming"
+              ],
+              "type": "string",
+              "default": "chat",
+              "title": "Purpose"
+            }
+          },
+          {
+            "name": "category",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Category"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 25,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "free_only",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Free Only"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/openrouter/models/connected": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Connected Models",
+        "operationId": "connected_models_api_v1_openrouter_models_connected_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/openrouter/models/connect": {
+      "post": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Connect Model",
+        "operationId": "connect_model_api_v1_openrouter_models_connect_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModelConnectionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/openrouter/models/disconnect": {
+      "post": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Disconnect Model",
+        "operationId": "disconnect_model_api_v1_openrouter_models_disconnect_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModelConnectionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/openrouter/billing": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Billing",
+        "operationId": "billing_api_v1_openrouter_billing_get",
+        "parameters": [
+          {
+            "name": "period",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "7d",
+                "30d",
+                "month",
+                "all"
+              ],
+              "type": "string",
+              "default": "30d",
+              "title": "Period"
+            }
+          },
+          {
+            "name": "from_utc",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "From Utc"
+            }
+          },
+          {
+            "name": "to_utc",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "To Utc"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid billing date window"
+          }
+        }
+      }
+    },
+    "/api/v1/openrouter/billing/sync": {
+      "post": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Sync Billing",
+        "operationId": "sync_billing_api_v1_openrouter_billing_sync_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "403": {
+            "description": "Billing unavailable or operator access required"
+          }
+        }
+      }
+    },
+    "/api/v1/system/vast-chat": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Status",
+        "operationId": "status_api_v1_system_vast_chat_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/system/vast-chat/attach": {
+      "post": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Attach",
+        "operationId": "attach_api_v1_system_vast_chat_attach_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AttachRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "503": {
+            "description": "VAST chat provider is disabled or unavailable."
+          },
+          "409": {
+            "description": "Select the local runtime before attaching another target."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/system/vast-chat/detach": {
+      "post": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Detach",
+        "operationId": "detach_api_v1_system_vast_chat_detach_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/DetachRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Request"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/system/llm-servers": {
       "get": {
         "tags": [
@@ -4943,6 +6037,90 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/v1/system/models/resources": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Get Model Resources",
+        "description": "Read host RAM/VRAM and the registered local model owners without loading them.",
+        "operationId": "get_model_resources_api_v1_system_models_resources_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/system/models/release": {
+      "post": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Release Llm Runtime",
+        "description": "Unload local LLMs and verify resource release before clearing uncertainty.",
+        "operationId": "release_llm_runtime_api_v1_system_models_release_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "503": {
+            "description": "LLMController nie jest dostępny"
+          },
+          "403": {
+            "description": "Local administration access required"
+          },
+          "409": {
+            "description": "Model work could not be drained"
+          },
+          "502": {
+            "description": "Resource release could not be verified"
+          }
+        }
+      }
+    },
+    "/api/v1/system/models/recover-llm": {
+      "post": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Recover Llm Runtime",
+        "description": "Verify only LLM daemons; never stop registered vision or voice owners.",
+        "operationId": "recover_llm_runtime_api_v1_system_models_recover_llm_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "403": {
+            "description": "Local administration access required"
+          },
+          "409": {
+            "description": "Runtime operation is still active"
+          },
+          "502": {
+            "description": "Scoped recovery could not be verified"
+          },
+          "503": {
+            "description": "LLMController nie jest dostępny"
           }
         }
       }
@@ -5115,6 +6293,408 @@
             "content": {
               "application/json": {
                 "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/vast/environments": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Overview",
+        "operationId": "overview_api_v1_vast_environments_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "403": {
+            "description": "Local operator request required."
+          },
+          "409": {
+            "description": "Conflicting or invalid environment operation."
+          },
+          "503": {
+            "description": "VAST configuration or service unavailable."
+          }
+        }
+      }
+    },
+    "/api/v1/vast/environments/billing/sync": {
+      "post": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Sync Billing",
+        "operationId": "sync_billing_api_v1_vast_environments_billing_sync_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BillingRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "403": {
+            "description": "Local operator request required."
+          },
+          "409": {
+            "description": "Conflicting or invalid environment operation."
+          },
+          "503": {
+            "description": "VAST configuration or service unavailable."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/vast/environments/search": {
+      "post": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Search",
+        "operationId": "search_api_v1_vast_environments_search_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SearchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "403": {
+            "description": "Local operator request required."
+          },
+          "409": {
+            "description": "Conflicting or invalid environment operation."
+          },
+          "503": {
+            "description": "VAST configuration or service unavailable."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/vast/environments/plans": {
+      "post": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Plan",
+        "operationId": "plan_api_v1_vast_environments_plans_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlanRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "403": {
+            "description": "Local operator request required."
+          },
+          "409": {
+            "description": "Conflicting or invalid environment operation."
+          },
+          "503": {
+            "description": "VAST configuration or service unavailable."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/vast/environments/{plan_id}/order": {
+      "post": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Order",
+        "operationId": "order_api_v1_vast_environments__plan_id__order_post",
+        "parameters": [
+          {
+            "name": "plan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{32}$",
+              "title": "Plan Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrderRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "403": {
+            "description": "Local operator request required."
+          },
+          "409": {
+            "description": "Conflicting or invalid environment operation."
+          },
+          "503": {
+            "description": "VAST configuration or service unavailable."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/vast/environments/{plan_id}/refresh": {
+      "post": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Refresh",
+        "operationId": "refresh_api_v1_vast_environments__plan_id__refresh_post",
+        "parameters": [
+          {
+            "name": "plan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{32}$",
+              "title": "Plan Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "403": {
+            "description": "Local operator request required."
+          },
+          "409": {
+            "description": "Conflicting or invalid environment operation."
+          },
+          "503": {
+            "description": "VAST configuration or service unavailable."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/vast/environments/{plan_id}/stop": {
+      "post": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Stop",
+        "operationId": "stop_api_v1_vast_environments__plan_id__stop_post",
+        "parameters": [
+          {
+            "name": "plan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{32}$",
+              "title": "Plan Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Confirmation"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "403": {
+            "description": "Local operator request required."
+          },
+          "409": {
+            "description": "Conflicting or invalid environment operation."
+          },
+          "503": {
+            "description": "VAST configuration or service unavailable."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/vast/environments/{plan_id}/destroy": {
+      "post": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Destroy",
+        "operationId": "destroy_api_v1_vast_environments__plan_id__destroy_post",
+        "parameters": [
+          {
+            "name": "plan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{32}$",
+              "title": "Plan Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Confirmation"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "403": {
+            "description": "Local operator request required."
+          },
+          "409": {
+            "description": "Conflicting or invalid environment operation."
+          },
+          "503": {
+            "description": "VAST configuration or service unavailable."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
               }
             }
           }
@@ -7303,6 +8883,22 @@
               "type": "string",
               "title": "Model Name"
             }
+          },
+          {
+            "name": "runtime",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Runtime"
+            }
           }
         ],
         "responses": {
@@ -7808,6 +9404,98 @@
           },
           "400": {
             "description": "Invalid provider. Allowed values: openai, google."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/models/remote/providers/{provider}/enable": {
+      "post": {
+        "tags": [
+          "models",
+          "remote"
+        ],
+        "summary": "Set Remote Provider Enabled",
+        "operationId": "set_remote_provider_enabled_api_v1_models_remote_providers__provider__enable_post",
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Provider"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProviderEnableRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/models/remote/providers/{provider}/check": {
+      "post": {
+        "tags": [
+          "models",
+          "remote"
+        ],
+        "summary": "Check Remote Provider",
+        "operationId": "check_remote_provider_api_v1_models_remote_providers__provider__check_post",
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Provider"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
           },
           "422": {
             "description": "Validation Error",
@@ -9786,6 +11474,26 @@
         }
       }
     },
+    "/api/v1/benchmark/coding/maintenance/models": {
+      "get": {
+        "tags": [
+          "benchmark-coding"
+        ],
+        "summary": "Maintenance Model Profiles",
+        "description": "Return retained manual-comparison profiles without loading any model.",
+        "operationId": "maintenance_model_profiles_api_v1_benchmark_coding_maintenance_models_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/calendar/events": {
       "get": {
         "tags": [
@@ -9975,980 +11683,37 @@
         }
       }
     },
-    "/api/v1/google-home/commands": {
-      "post": {
-        "tags": [
-          "google-home"
-        ],
-        "summary": "Create Command",
-        "operationId": "create_command_api_v1_google_home_commands_post",
-        "parameters": [
-          {
-            "name": "x-authenticated-user",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Authenticated-User"
-            }
-          },
-          {
-            "name": "x-user",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-User"
-            }
-          },
-          {
-            "name": "x-admin-user",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Admin-User"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CommandCreateRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CommandAcceptedResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      },
+    "/api/v1/transport/identity": {
       "get": {
         "tags": [
-          "google-home"
+          "transport"
         ],
-        "summary": "List Commands",
-        "operationId": "list_commands_api_v1_google_home_commands_get",
-        "parameters": [
-          {
-            "name": "limit",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "maximum": 500,
-              "minimum": 1,
-              "default": 100,
-              "title": "Limit"
-            }
-          },
-          {
-            "name": "x-authenticated-user",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Authenticated-User"
-            }
-          },
-          {
-            "name": "x-user",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-User"
-            }
-          },
-          {
-            "name": "x-admin-user",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Admin-User"
-            }
-          }
-        ],
+        "summary": "Get Transport Identity",
+        "operationId": "get_transport_identity_api_v1_transport_identity_get",
         "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/CommandListResponse"
+                  "additionalProperties": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "integer"
+                      }
+                    ]
+                  },
+                  "type": "object",
+                  "title": "Response Get Transport Identity Api V1 Transport Identity Get"
                 }
               }
             }
           },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/google-home/commands/{command_id}": {
-      "get": {
-        "tags": [
-          "google-home"
-        ],
-        "summary": "Get Command",
-        "operationId": "get_command_api_v1_google_home_commands__command_id__get",
-        "parameters": [
-          {
-            "name": "command_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Command Id"
-            }
-          },
-          {
-            "name": "x-authenticated-user",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Authenticated-User"
-            }
-          },
-          {
-            "name": "x-user",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-User"
-            }
-          },
-          {
-            "name": "x-admin-user",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Admin-User"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CommandAcceptedResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/google-home/commands/{command_id}/confirm": {
-      "post": {
-        "tags": [
-          "google-home"
-        ],
-        "summary": "Confirm Command",
-        "operationId": "confirm_command_api_v1_google_home_commands__command_id__confirm_post",
-        "parameters": [
-          {
-            "name": "command_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Command Id"
-            }
-          },
-          {
-            "name": "x-authenticated-user",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Authenticated-User"
-            }
-          },
-          {
-            "name": "x-user",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-User"
-            }
-          },
-          {
-            "name": "x-admin-user",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Admin-User"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CommandConfirmRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CommandAcceptedResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/google-home/devices": {
-      "get": {
-        "tags": [
-          "google-home"
-        ],
-        "summary": "List Devices",
-        "operationId": "list_devices_api_v1_google_home_devices_get",
-        "parameters": [
-          {
-            "name": "x-authenticated-user",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Authenticated-User"
-            }
-          },
-          {
-            "name": "x-user",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-User"
-            }
-          },
-          {
-            "name": "x-admin-user",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Admin-User"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/DevicesResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/google-home/audit": {
-      "get": {
-        "tags": [
-          "google-home"
-        ],
-        "summary": "List Audit",
-        "operationId": "list_audit_api_v1_google_home_audit_get",
-        "parameters": [
-          {
-            "name": "limit",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "maximum": 500,
-              "minimum": 1,
-              "default": 100,
-              "title": "Limit"
-            }
-          },
-          {
-            "name": "x-authenticated-user",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Authenticated-User"
-            }
-          },
-          {
-            "name": "x-user",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-User"
-            }
-          },
-          {
-            "name": "x-admin-user",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Admin-User"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AuditListResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/google-home/bridge/healthcheck": {
-      "post": {
-        "tags": [
-          "google-home"
-        ],
-        "summary": "Bridge Healthcheck",
-        "operationId": "bridge_healthcheck_api_v1_google_home_bridge_healthcheck_post",
-        "parameters": [
-          {
-            "name": "x-authenticated-user",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Authenticated-User"
-            }
-          },
-          {
-            "name": "x-user",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-User"
-            }
-          },
-          {
-            "name": "x-admin-user",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Admin-User"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BridgeHealthResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/google-home/ui/layout": {
-      "get": {
-        "tags": [
-          "google-home"
-        ],
-        "summary": "Get Ui Layout",
-        "operationId": "get_ui_layout_api_v1_google_home_ui_layout_get",
-        "parameters": [
-          {
-            "name": "x-authenticated-user",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Authenticated-User"
-            }
-          },
-          {
-            "name": "x-user",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-User"
-            }
-          },
-          {
-            "name": "x-admin-user",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Admin-User"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/UiLayoutResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      },
-      "put": {
-        "tags": [
-          "google-home"
-        ],
-        "summary": "Put Ui Layout",
-        "operationId": "put_ui_layout_api_v1_google_home_ui_layout_put",
-        "parameters": [
-          {
-            "name": "x-authenticated-user",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Authenticated-User"
-            }
-          },
-          {
-            "name": "x-user",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-User"
-            }
-          },
-          {
-            "name": "x-admin-user",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Admin-User"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UiLayoutConfig-Input"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/UiLayoutResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/google-home/ui/snapshot": {
-      "get": {
-        "tags": [
-          "google-home"
-        ],
-        "summary": "Get Ui Snapshot",
-        "operationId": "get_ui_snapshot_api_v1_google_home_ui_snapshot_get",
-        "parameters": [
-          {
-            "name": "x-authenticated-user",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Authenticated-User"
-            }
-          },
-          {
-            "name": "x-user",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-User"
-            }
-          },
-          {
-            "name": "x-admin-user",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Admin-User"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/UiSnapshotResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/google-home/ui/actions/{entity_id}": {
-      "post": {
-        "tags": [
-          "google-home"
-        ],
-        "summary": "Run Ui Action",
-        "operationId": "run_ui_action_api_v1_google_home_ui_actions__entity_id__post",
-        "parameters": [
-          {
-            "name": "entity_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Entity Id"
-            }
-          },
-          {
-            "name": "x-authenticated-user",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Authenticated-User"
-            }
-          },
-          {
-            "name": "x-user",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-User"
-            }
-          },
-          {
-            "name": "x-admin-user",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Admin-User"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UiActionRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/UiActionResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
+          "503": {
+            "description": "The installation identity is unavailable."
           }
         }
       }
@@ -11127,620 +11892,6 @@
             "content": {
               "application/json": {
                 "schema": {}
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/chat/audio/pipelines": {
-      "get": {
-        "tags": [
-          "chat-audio"
-        ],
-        "summary": "Voice Pipelines",
-        "description": "Discover installed choices without loading models or opening the microphone.",
-        "operationId": "voice_pipelines_api_v1_chat_audio_pipelines_get",
-        "parameters": [
-          {
-            "name": "language",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "enum": [
-                "pl",
-                "en",
-                "de"
-              ],
-              "type": "string",
-              "default": "pl",
-              "title": "Language"
-            }
-          },
-          {
-            "name": "surface",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "enum": [
-                "chat2",
-                "voice"
-              ],
-              "type": "string",
-              "default": "chat2",
-              "title": "Surface"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "403": {
-            "description": "Operator access or audio request origin denied"
-          },
-          "409": {
-            "description": "Shared runtime admission is busy or unavailable"
-          },
-          "503": {
-            "description": "Configured audio is unavailable, processing failed, or synthesized output is invalid"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/chat/audio/transcribe": {
-      "post": {
-        "tags": [
-          "chat-audio"
-        ],
-        "summary": "Transcribe",
-        "description": "Transcribe bounded PCM using the selected local or host decoder.",
-        "operationId": "transcribe_api_v1_chat_audio_transcribe_post",
-        "parameters": [
-          {
-            "name": "session_id",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 256,
-              "title": "Session Id"
-            }
-          },
-          {
-            "name": "sample_rate",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "maximum": 96000,
-              "minimum": 8000,
-              "default": 16000,
-              "title": "Sample Rate"
-            }
-          },
-          {
-            "name": "language",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "enum": [
-                "pl",
-                "en",
-                "de"
-              ],
-              "type": "string",
-              "default": "pl",
-              "title": "Language"
-            }
-          },
-          {
-            "name": "prefer_native",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "boolean",
-              "default": false,
-              "title": "Prefer Native"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "403": {
-            "description": "Operator access or audio request origin denied"
-          },
-          "409": {
-            "description": "Shared runtime admission is busy or unavailable"
-          },
-          "503": {
-            "description": "Configured audio is unavailable, processing failed, or synthesized output is invalid"
-          },
-          "413": {
-            "description": "PCM exceeds the upload byte limit or recording duration limit"
-          },
-          "415": {
-            "description": "Raw PCM requires application/octet-stream content type"
-          },
-          "422": {
-            "description": "Invalid request parameters or empty/unaligned signed 16-bit PCM"
-          },
-          "499": {
-            "description": "Client disconnected before transcription was submitted"
-          }
-        }
-      }
-    },
-    "/api/v1/chat/audio/multimodal-turn": {
-      "post": {
-        "tags": [
-          "chat-audio"
-        ],
-        "summary": "Multimodal Turn",
-        "description": "Answer one pilot turn and append the completed pair to session history.",
-        "operationId": "multimodal_turn_api_v1_chat_audio_multimodal_turn_post",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "403": {
-            "description": "Operator access or audio request origin denied"
-          },
-          "409": {
-            "description": "Shared runtime admission is busy or unavailable"
-          },
-          "503": {
-            "description": "Local Omni is unavailable or the pilot turn failed"
-          },
-          "413": {
-            "description": "Multimodal upload exceeds limits"
-          },
-          "415": {
-            "description": "Multipart form required"
-          },
-          "422": {
-            "description": "Invalid image or audio input"
-          },
-          "499": {
-            "description": "Client disconnected before the pilot turn was submitted"
-          }
-        }
-      }
-    },
-    "/api/v1/chat/audio/speak": {
-      "post": {
-        "tags": [
-          "chat-audio"
-        ],
-        "summary": "Speak",
-        "description": "Synthesize a WAV using the opted-in local voice or the host audio engine.",
-        "operationId": "speak_api_v1_chat_audio_speak_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ChatSpeechRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "403": {
-            "description": "Operator access or audio request origin denied"
-          },
-          "409": {
-            "description": "Shared runtime admission is busy or unavailable"
-          },
-          "503": {
-            "description": "Configured audio is unavailable, processing failed, or synthesized output is invalid"
-          },
-          "422": {
-            "description": "Invalid speech request or text containing only whitespace"
-          }
-        }
-      }
-    },
-    "/api/v1/chat/materials": {
-      "post": {
-        "tags": [
-          "chat-materials"
-        ],
-        "summary": "Upload Material",
-        "operationId": "upload_material_api_v1_chat_materials_post",
-        "parameters": [
-          {
-            "name": "session_id",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 256,
-              "title": "Session Id"
-            }
-          },
-          {
-            "name": "name",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 180,
-              "title": "Name"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ChatMaterial"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid material session/name, empty content, invalid UTF-8 or image data"
-          },
-          "403": {
-            "description": "Operator access, request origin or environment mutation policy denied"
-          },
-          "404": {
-            "description": "Existing session material metadata or content is unavailable"
-          },
-          "413": {
-            "description": "Upload bytes, document text or session storage limits exceeded"
-          },
-          "415": {
-            "description": "Material content type is not supported"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      },
-      "get": {
-        "tags": [
-          "chat-materials"
-        ],
-        "summary": "List Materials",
-        "operationId": "list_materials_api_v1_chat_materials_get",
-        "parameters": [
-          {
-            "name": "session_id",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 256,
-              "title": "Session Id"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ChatMaterialList"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/chat/materials/capabilities": {
-      "get": {
-        "tags": [
-          "chat-materials"
-        ],
-        "summary": "Material Capabilities",
-        "operationId": "material_capabilities_api_v1_chat_materials_capabilities_get",
-        "parameters": [
-          {
-            "name": "model",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string",
-                  "maxLength": 1024
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Model"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/chat/materials/{material_id}": {
-      "get": {
-        "tags": [
-          "chat-materials"
-        ],
-        "summary": "Get Material",
-        "operationId": "get_material_api_v1_chat_materials__material_id__get",
-        "parameters": [
-          {
-            "name": "material_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Material Id"
-            }
-          },
-          {
-            "name": "session_id",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 256,
-              "title": "Session Id"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ChatMaterial"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      },
-      "delete": {
-        "tags": [
-          "chat-materials"
-        ],
-        "summary": "Delete Material",
-        "operationId": "delete_material_api_v1_chat_materials__material_id__delete",
-        "parameters": [
-          {
-            "name": "material_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Material Id"
-            }
-          },
-          {
-            "name": "session_id",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 256,
-              "title": "Session Id"
-            }
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": "Successful Response"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/chat/materials/{material_id}/content": {
-      "get": {
-        "tags": [
-          "chat-materials"
-        ],
-        "summary": "Preview Material",
-        "operationId": "preview_material_api_v1_chat_materials__material_id__content_get",
-        "parameters": [
-          {
-            "name": "material_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Material Id"
-            }
-          },
-          {
-            "name": "session_id",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 256,
-              "title": "Session Id"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/chat/tasks/{task_id}/cancel": {
-      "post": {
-        "tags": [
-          "chat-tasks"
-        ],
-        "summary": "Cancel Chat Task",
-        "operationId": "cancel_chat_task_api_v1_chat_tasks__task_id__cancel_post",
-        "parameters": [
-          {
-            "name": "task_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid",
-              "title": "Task Id"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CancelChatTask"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ChatTaskCancellation"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Operator access denied"
-          },
-          "404": {
-            "description": "Task does not exist or does not belong to the supplied session"
-          },
-          "409": {
-            "description": "Task is not active and cancellation could not be confirmed"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
               }
             }
           }
@@ -12350,6 +12501,20 @@
         "title": "ApplyMode",
         "description": "Mode of applying configuration changes."
       },
+      "AttachRequest": {
+        "properties": {
+          "plan_id": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{32}$",
+            "title": "Plan Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "plan_id"
+        ],
+        "title": "AttachRequest"
+      },
       "AudioRouteProfileUpdateRequest": {
         "properties": {
           "voice_route_profile": {
@@ -12480,93 +12645,6 @@
         ],
         "title": "AuditEntry",
         "description": "Audit trail entry for control plane operations."
-      },
-      "AuditListResponse": {
-        "properties": {
-          "items": {
-            "items": {
-              "$ref": "#/components/schemas/AuditRecord"
-            },
-            "type": "array",
-            "title": "Items"
-          },
-          "count": {
-            "type": "integer",
-            "title": "Count"
-          }
-        },
-        "type": "object",
-        "required": [
-          "items",
-          "count"
-        ],
-        "title": "AuditListResponse"
-      },
-      "AuditRecord": {
-        "properties": {
-          "audit_id": {
-            "type": "string",
-            "title": "Audit Id"
-          },
-          "actor": {
-            "type": "string",
-            "title": "Actor"
-          },
-          "normalized_intent": {
-            "type": "string",
-            "title": "Normalized Intent"
-          },
-          "original_text": {
-            "type": "string",
-            "title": "Original Text"
-          },
-          "target_room": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Target Room"
-          },
-          "target_device": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Target Device"
-          },
-          "execution_channel": {
-            "type": "string",
-            "title": "Execution Channel"
-          },
-          "result": {
-            "type": "string",
-            "title": "Result"
-          },
-          "timestamp": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Timestamp"
-          }
-        },
-        "type": "object",
-        "required": [
-          "audit_id",
-          "actor",
-          "normalized_intent",
-          "original_text",
-          "execution_channel",
-          "result",
-          "timestamp"
-        ],
-        "title": "AuditRecord"
       },
       "AuditStreamPublishRequest": {
         "properties": {
@@ -13410,33 +13488,17 @@
         "title": "BenchmarkStatusResponse",
         "description": "Response ze statusem benchmarku."
       },
-      "BridgeHealthResponse": {
+      "BillingRequest": {
         "properties": {
-          "status": {
-            "type": "string",
-            "enum": [
-              "ok",
-              "degraded",
-              "down"
-            ],
-            "title": "Status"
-          },
-          "mode": {
-            "type": "string",
-            "title": "Mode"
-          },
-          "detail": {
-            "type": "string",
-            "title": "Detail"
+          "reconcile": {
+            "type": "boolean",
+            "title": "Reconcile",
+            "default": false
           }
         },
+        "additionalProperties": false,
         "type": "object",
-        "required": [
-          "status",
-          "mode",
-          "detail"
-        ],
-        "title": "BridgeHealthResponse"
+        "title": "BillingRequest"
       },
       "CacheFlushResponse": {
         "properties": {
@@ -13532,6 +13594,160 @@
         ],
         "title": "CalendarEvent",
         "description": "Model wydarzenia w kalendarzu."
+      },
+      "CancelChatTask": {
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Session Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "session_id"
+        ],
+        "title": "CancelChatTask"
+      },
+      "ChatMaterial": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "session_id": {
+            "type": "string",
+            "title": "Session Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "mime_type": {
+            "type": "string",
+            "title": "Mime Type"
+          },
+          "size_bytes": {
+            "type": "integer",
+            "title": "Size Bytes"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "document",
+              "image"
+            ],
+            "title": "Kind"
+          },
+          "status": {
+            "type": "string",
+            "const": "ready",
+            "title": "Status",
+            "default": "ready"
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At"
+          },
+          "preview_url": {
+            "type": "string",
+            "title": "Preview Url"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "session_id",
+          "name",
+          "mime_type",
+          "size_bytes",
+          "kind",
+          "created_at",
+          "preview_url"
+        ],
+        "title": "ChatMaterial"
+      },
+      "ChatMaterialList": {
+        "properties": {
+          "materials": {
+            "items": {
+              "$ref": "#/components/schemas/ChatMaterial"
+            },
+            "type": "array",
+            "title": "Materials"
+          }
+        },
+        "type": "object",
+        "required": [
+          "materials"
+        ],
+        "title": "ChatMaterialList"
+      },
+      "ChatSpeechRequest": {
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Session Id"
+          },
+          "text": {
+            "type": "string",
+            "maxLength": 6000,
+            "minLength": 1,
+            "title": "Text"
+          },
+          "prefer_native": {
+            "type": "boolean",
+            "title": "Prefer Native",
+            "default": false
+          },
+          "language": {
+            "type": "string",
+            "enum": [
+              "pl",
+              "en",
+              "de"
+            ],
+            "title": "Language",
+            "default": "pl"
+          }
+        },
+        "type": "object",
+        "required": [
+          "session_id",
+          "text"
+        ],
+        "title": "ChatSpeechRequest"
+      },
+      "ChatTaskCancellation": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "title": "Success",
+            "default": true
+          },
+          "task_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Task Id"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "cancelled",
+              "already_finished"
+            ],
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "task_id",
+          "status"
+        ],
+        "title": "ChatTaskCancellation"
       },
       "CodingBenchmarkDeleteResponse": {
         "properties": {
@@ -14090,214 +14306,6 @@
         "title": "CodingJobResponse",
         "description": "Stan pojedynczego joba schedulera."
       },
-      "CommandAcceptedResponse": {
-        "properties": {
-          "command": {
-            "$ref": "#/components/schemas/CommandRecord"
-          }
-        },
-        "type": "object",
-        "required": [
-          "command"
-        ],
-        "title": "CommandAcceptedResponse"
-      },
-      "CommandConfirmRequest": {
-        "properties": {
-          "confirm": {
-            "type": "boolean",
-            "title": "Confirm",
-            "default": true
-          },
-          "pin": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 32
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Pin"
-          }
-        },
-        "type": "object",
-        "title": "CommandConfirmRequest"
-      },
-      "CommandCreateRequest": {
-        "properties": {
-          "text": {
-            "type": "string",
-            "maxLength": 500,
-            "minLength": 1,
-            "title": "Text"
-          },
-          "confirm": {
-            "type": "boolean",
-            "title": "Confirm",
-            "default": false
-          },
-          "target_room": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 120
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Target Room"
-          },
-          "target_device": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 120
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Target Device"
-          }
-        },
-        "type": "object",
-        "required": [
-          "text"
-        ],
-        "title": "CommandCreateRequest"
-      },
-      "CommandListResponse": {
-        "properties": {
-          "items": {
-            "items": {
-              "$ref": "#/components/schemas/CommandRecord"
-            },
-            "type": "array",
-            "title": "Items"
-          },
-          "count": {
-            "type": "integer",
-            "title": "Count"
-          }
-        },
-        "type": "object",
-        "required": [
-          "items",
-          "count"
-        ],
-        "title": "CommandListResponse"
-      },
-      "CommandRecord": {
-        "properties": {
-          "command_id": {
-            "type": "string",
-            "title": "Command Id"
-          },
-          "actor": {
-            "type": "string",
-            "title": "Actor"
-          },
-          "original_text": {
-            "type": "string",
-            "title": "Original Text"
-          },
-          "normalized_intent": {
-            "type": "string",
-            "title": "Normalized Intent"
-          },
-          "target_room": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Target Room"
-          },
-          "target_device": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Target Device"
-          },
-          "status": {
-            "type": "string",
-            "enum": [
-              "queued",
-              "awaiting_confirmation",
-              "sent_to_gemini",
-              "acknowledged",
-              "rejected_policy",
-              "failed_bridge",
-              "timeout"
-            ],
-            "title": "Status"
-          },
-          "requires_confirmation": {
-            "type": "boolean",
-            "title": "Requires Confirmation",
-            "default": false
-          },
-          "policy_reason": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Policy Reason"
-          },
-          "bridge_channel": {
-            "type": "string",
-            "title": "Bridge Channel",
-            "default": "gemini_mobile_bridge"
-          },
-          "bridge_detail": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Bridge Detail"
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Created At"
-          },
-          "updated_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Updated At"
-          }
-        },
-        "type": "object",
-        "required": [
-          "command_id",
-          "actor",
-          "original_text",
-          "normalized_intent",
-          "status",
-          "created_at",
-          "updated_at"
-        ],
-        "title": "CommandRecord"
-      },
       "CompatibilityReport": {
         "properties": {
           "compatible": {
@@ -14401,6 +14409,21 @@
         ],
         "title": "ConfigUpdateResponse",
         "description": "Response model for configuration update."
+      },
+      "Confirmation": {
+        "properties": {
+          "confirmed": {
+            "type": "boolean",
+            "const": true,
+            "title": "Confirmed"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "confirmed"
+        ],
+        "title": "Confirmation"
       },
       "ConnectionDirection": {
         "type": "string",
@@ -15371,26 +15394,23 @@
         "title": "DatasetScopeRequest",
         "description": "Request do kuracji datasetu z wybranym scope."
       },
-      "DevicesResponse": {
+      "DetachRequest": {
         "properties": {
-          "items": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Items"
-          },
-          "count": {
-            "type": "integer",
-            "title": "Count"
+          "plan_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[a-f0-9]{32}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plan Id"
           }
         },
         "type": "object",
-        "required": [
-          "items",
-          "count"
-        ],
-        "title": "DevicesResponse"
+        "title": "DetachRequest"
       },
       "EventsResponse": {
         "properties": {
@@ -15887,6 +15907,38 @@
         },
         "type": "object",
         "title": "HTTPValidationError"
+      },
+      "HistoryMessage": {
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "user",
+              "assistant"
+            ],
+            "title": "Role"
+          },
+          "content": {
+            "type": "string",
+            "maxLength": 50000,
+            "minLength": 1,
+            "title": "Content"
+          },
+          "material_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 4,
+            "title": "Material Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "role",
+          "content"
+        ],
+        "title": "HistoryMessage"
       },
       "HistoryRequestDetail": {
         "properties": {
@@ -18284,6 +18336,21 @@
         "title": "ModelConfigUpdateRequest",
         "description": "Request do aktualizacji parametrów generacji modelu."
       },
+      "ModelConnectionRequest": {
+        "properties": {
+          "model_id": {
+            "type": "string",
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Model Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "model_id"
+        ],
+        "title": "ModelConnectionRequest"
+      },
       "ModelInstallRequest": {
         "properties": {
           "name": {
@@ -19856,6 +19923,78 @@
         "title": "OperatorRuntimeService",
         "description": "Canonical runtime service entry for operator UI."
       },
+      "OrderRequest": {
+        "properties": {
+          "confirmed": {
+            "type": "boolean",
+            "const": true,
+            "title": "Confirmed"
+          },
+          "accept_new_host_key": {
+            "type": "boolean",
+            "title": "Accept New Host Key",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "confirmed"
+        ],
+        "title": "OrderRequest"
+      },
+      "PlanRequest": {
+        "properties": {
+          "duration_minutes": {
+            "type": "integer",
+            "maximum": 1440.0,
+            "minimum": 1.0,
+            "title": "Duration Minutes"
+          },
+          "offer_id": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "Offer Id"
+          },
+          "max_hourly_usd": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 100.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              }
+            ],
+            "title": "Max Hourly Usd"
+          },
+          "max_total_usd": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1000.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              }
+            ],
+            "title": "Max Total Usd"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "duration_minutes",
+          "offer_id",
+          "max_hourly_usd",
+          "max_total_usd"
+        ],
+        "title": "PlanRequest"
+      },
       "PolicyFalsePositiveTriage": {
         "properties": {
           "candidate_count": {
@@ -20025,6 +20164,19 @@
         ],
         "title": "ProviderCredentialStatusResponse",
         "description": "Response dla statusu credentiali providera."
+      },
+      "ProviderEnableRequest": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled"
+          }
+        },
+        "type": "object",
+        "required": [
+          "enabled"
+        ],
+        "title": "ProviderEnableRequest"
       },
       "QueueActionResponse": {
         "properties": {
@@ -20478,6 +20630,43 @@
         ],
         "title": "RuntimeConfigResponse",
         "description": "Response model for runtime configuration."
+      },
+      "SaveChatNoteRequest": {
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Session Id"
+          },
+          "request_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Request Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "session_id",
+          "request_id"
+        ],
+        "title": "SaveChatNoteRequest"
+      },
+      "SearchRequest": {
+        "properties": {
+          "duration_minutes": {
+            "type": "integer",
+            "maximum": 1440.0,
+            "minimum": 1.0,
+            "title": "Duration Minutes"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "duration_minutes"
+        ],
+        "title": "SearchRequest"
       },
       "SelfLearningCapabilitiesResponse": {
         "properties": {
@@ -21847,12 +22036,6 @@
             "title": "Material Ids",
             "description": "Material references require Direct mode; orchestration must not silently discard them"
           },
-          "store_knowledge": {
-            "type": "boolean",
-            "title": "Store Knowledge",
-            "description": "Persist lessons and insights from this task",
-            "default": true
-          },
           "use_notes": {
             "anyOf": [
               {
@@ -21864,6 +22047,12 @@
             ],
             "title": "Use Notes",
             "description": "Explicit chat note retrieval. Omit for existing task memory policy."
+          },
+          "store_knowledge": {
+            "type": "boolean",
+            "title": "Store Knowledge",
+            "description": "Persist lessons and insights from this task",
+            "default": true
           },
           "generation_params": {
             "anyOf": [
@@ -22306,695 +22495,6 @@
         ],
         "title": "TranslationRequest",
         "description": "Request do tłumaczenia tekstu."
-      },
-      "UiActionRequest": {
-        "properties": {
-          "action": {
-            "type": "string",
-            "enum": [
-              "toggle",
-              "open_children",
-              "details",
-              "run_command",
-              "start",
-              "stop",
-              "return_to_base",
-              "toggle_group"
-            ],
-            "title": "Action"
-          },
-          "confirm": {
-            "type": "boolean",
-            "title": "Confirm",
-            "default": false
-          }
-        },
-        "type": "object",
-        "required": [
-          "action"
-        ],
-        "title": "UiActionRequest"
-      },
-      "UiActionResponse": {
-        "properties": {
-          "entity_id": {
-            "type": "string",
-            "title": "Entity Id"
-          },
-          "action": {
-            "type": "string",
-            "enum": [
-              "toggle",
-              "open_children",
-              "details",
-              "run_command",
-              "start",
-              "stop",
-              "return_to_base",
-              "toggle_group"
-            ],
-            "title": "Action"
-          },
-          "command": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/CommandRecord"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "status": {
-            "type": "string",
-            "enum": [
-              "accepted",
-              "ignored"
-            ],
-            "title": "Status"
-          },
-          "detail": {
-            "type": "string",
-            "title": "Detail"
-          }
-        },
-        "type": "object",
-        "required": [
-          "entity_id",
-          "action",
-          "status",
-          "detail"
-        ],
-        "title": "UiActionResponse"
-      },
-      "UiLayoutConfig-Input": {
-        "properties": {
-          "schema_version": {
-            "type": "integer",
-            "title": "Schema Version",
-            "default": 1
-          },
-          "view_id": {
-            "type": "string",
-            "const": "home_components",
-            "title": "View Id",
-            "default": "home_components"
-          },
-          "room_id": {
-            "type": "string",
-            "title": "Room Id"
-          },
-          "room_title": {
-            "type": "string",
-            "title": "Room Title"
-          },
-          "theme": {
-            "$ref": "#/components/schemas/UiThemeTokens"
-          },
-          "sections": {
-            "items": {
-              "$ref": "#/components/schemas/UiSectionLayout-Input"
-            },
-            "type": "array",
-            "title": "Sections"
-          }
-        },
-        "type": "object",
-        "required": [
-          "room_id",
-          "room_title",
-          "theme",
-          "sections"
-        ],
-        "title": "UiLayoutConfig"
-      },
-      "UiLayoutConfig-Output": {
-        "properties": {
-          "schema_version": {
-            "type": "integer",
-            "title": "Schema Version",
-            "default": 1
-          },
-          "view_id": {
-            "type": "string",
-            "const": "home_components",
-            "title": "View Id",
-            "default": "home_components"
-          },
-          "room_id": {
-            "type": "string",
-            "title": "Room Id"
-          },
-          "room_title": {
-            "type": "string",
-            "title": "Room Title"
-          },
-          "theme": {
-            "$ref": "#/components/schemas/UiThemeTokens"
-          },
-          "sections": {
-            "items": {
-              "$ref": "#/components/schemas/UiSectionLayout-Output"
-            },
-            "type": "array",
-            "title": "Sections"
-          }
-        },
-        "type": "object",
-        "required": [
-          "room_id",
-          "room_title",
-          "theme",
-          "sections"
-        ],
-        "title": "UiLayoutConfig"
-      },
-      "UiLayoutResponse": {
-        "properties": {
-          "layout": {
-            "$ref": "#/components/schemas/UiLayoutConfig-Output"
-          }
-        },
-        "type": "object",
-        "required": [
-          "layout"
-        ],
-        "title": "UiLayoutResponse"
-      },
-      "UiSectionColumns": {
-        "properties": {
-          "mobile": {
-            "type": "integer",
-            "maximum": 4.0,
-            "minimum": 1.0,
-            "title": "Mobile"
-          },
-          "tablet": {
-            "type": "integer",
-            "maximum": 6.0,
-            "minimum": 1.0,
-            "title": "Tablet"
-          },
-          "desktop": {
-            "type": "integer",
-            "maximum": 8.0,
-            "minimum": 1.0,
-            "title": "Desktop"
-          }
-        },
-        "type": "object",
-        "required": [
-          "mobile",
-          "tablet",
-          "desktop"
-        ],
-        "title": "UiSectionColumns"
-      },
-      "UiSectionLayout-Input": {
-        "properties": {
-          "id": {
-            "type": "string",
-            "title": "Id"
-          },
-          "title": {
-            "type": "string",
-            "title": "Title"
-          },
-          "layout": {
-            "type": "string",
-            "enum": [
-              "grid",
-              "stack"
-            ],
-            "title": "Layout",
-            "default": "grid"
-          },
-          "columns": {
-            "$ref": "#/components/schemas/UiSectionColumns"
-          },
-          "tiles": {
-            "items": {
-              "$ref": "#/components/schemas/UiTileLayout-Input"
-            },
-            "type": "array",
-            "title": "Tiles"
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "title",
-          "columns",
-          "tiles"
-        ],
-        "title": "UiSectionLayout"
-      },
-      "UiSectionLayout-Output": {
-        "properties": {
-          "id": {
-            "type": "string",
-            "title": "Id"
-          },
-          "title": {
-            "type": "string",
-            "title": "Title"
-          },
-          "layout": {
-            "type": "string",
-            "enum": [
-              "grid",
-              "stack"
-            ],
-            "title": "Layout",
-            "default": "grid"
-          },
-          "columns": {
-            "$ref": "#/components/schemas/UiSectionColumns"
-          },
-          "tiles": {
-            "items": {
-              "$ref": "#/components/schemas/UiTileLayout-Output"
-            },
-            "type": "array",
-            "title": "Tiles"
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "title",
-          "columns",
-          "tiles"
-        ],
-        "title": "UiSectionLayout"
-      },
-      "UiSectionSnapshot": {
-        "properties": {
-          "id": {
-            "type": "string",
-            "title": "Id"
-          },
-          "title": {
-            "type": "string",
-            "title": "Title"
-          },
-          "layout": {
-            "type": "string",
-            "enum": [
-              "grid",
-              "stack"
-            ],
-            "title": "Layout"
-          },
-          "columns": {
-            "$ref": "#/components/schemas/UiSectionColumns"
-          },
-          "tiles": {
-            "items": {
-              "$ref": "#/components/schemas/UiTileSnapshot"
-            },
-            "type": "array",
-            "title": "Tiles"
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "title",
-          "layout",
-          "columns",
-          "tiles"
-        ],
-        "title": "UiSectionSnapshot"
-      },
-      "UiSnapshotResponse": {
-        "properties": {
-          "schema_version": {
-            "type": "integer",
-            "title": "Schema Version"
-          },
-          "view_id": {
-            "type": "string",
-            "const": "home_components",
-            "title": "View Id"
-          },
-          "room_id": {
-            "type": "string",
-            "title": "Room Id"
-          },
-          "room_title": {
-            "type": "string",
-            "title": "Room Title"
-          },
-          "theme": {
-            "$ref": "#/components/schemas/UiThemeTokens"
-          },
-          "sections": {
-            "items": {
-              "$ref": "#/components/schemas/UiSectionSnapshot"
-            },
-            "type": "array",
-            "title": "Sections"
-          },
-          "generated_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Generated At"
-          }
-        },
-        "type": "object",
-        "required": [
-          "schema_version",
-          "view_id",
-          "room_id",
-          "room_title",
-          "theme",
-          "sections",
-          "generated_at"
-        ],
-        "title": "UiSnapshotResponse"
-      },
-      "UiStateMapping": {
-        "properties": {
-          "label": {
-            "type": "string",
-            "title": "Label"
-          },
-          "tone": {
-            "type": "string",
-            "enum": [
-              "success",
-              "warn",
-              "error",
-              "muted"
-            ],
-            "title": "Tone",
-            "default": "muted"
-          }
-        },
-        "type": "object",
-        "required": [
-          "label"
-        ],
-        "title": "UiStateMapping"
-      },
-      "UiThemeStateToneTokens": {
-        "properties": {
-          "success": {
-            "type": "string",
-            "title": "Success"
-          },
-          "warn": {
-            "type": "string",
-            "title": "Warn"
-          },
-          "error": {
-            "type": "string",
-            "title": "Error"
-          },
-          "muted": {
-            "type": "string",
-            "title": "Muted"
-          }
-        },
-        "type": "object",
-        "required": [
-          "success",
-          "warn",
-          "error",
-          "muted"
-        ],
-        "title": "UiThemeStateToneTokens"
-      },
-      "UiThemeTokens": {
-        "properties": {
-          "surface_token": {
-            "type": "string",
-            "title": "Surface Token"
-          },
-          "active_surface_token": {
-            "type": "string",
-            "title": "Active Surface Token"
-          },
-          "muted_surface_token": {
-            "type": "string",
-            "title": "Muted Surface Token"
-          },
-          "text_primary_token": {
-            "type": "string",
-            "title": "Text Primary Token"
-          },
-          "text_secondary_token": {
-            "type": "string",
-            "title": "Text Secondary Token"
-          },
-          "state_tone_tokens": {
-            "$ref": "#/components/schemas/UiThemeStateToneTokens"
-          }
-        },
-        "type": "object",
-        "required": [
-          "surface_token",
-          "active_surface_token",
-          "muted_surface_token",
-          "text_primary_token",
-          "text_secondary_token",
-          "state_tone_tokens"
-        ],
-        "title": "UiThemeTokens"
-      },
-      "UiTileLayout-Input": {
-        "properties": {
-          "id": {
-            "type": "string",
-            "title": "Id"
-          },
-          "entity_id": {
-            "type": "string",
-            "title": "Entity Id"
-          },
-          "kind": {
-            "type": "string",
-            "enum": [
-              "device",
-              "group",
-              "summary"
-            ],
-            "title": "Kind"
-          },
-          "title": {
-            "type": "string",
-            "title": "Title"
-          },
-          "subtitle_template": {
-            "type": "string",
-            "title": "Subtitle Template",
-            "default": "{{state_label}}"
-          },
-          "icon": {
-            "type": "string",
-            "title": "Icon"
-          },
-          "state_map": {
-            "additionalProperties": {
-              "$ref": "#/components/schemas/UiStateMapping"
-            },
-            "type": "object",
-            "title": "State Map"
-          },
-          "actions": {
-            "items": {
-              "type": "string",
-              "enum": [
-                "toggle",
-                "open_children",
-                "details",
-                "run_command",
-                "start",
-                "stop",
-                "return_to_base",
-                "toggle_group"
-              ]
-            },
-            "type": "array",
-            "title": "Actions"
-          },
-          "children": {
-            "items": {
-              "$ref": "#/components/schemas/UiTileLayout-Input"
-            },
-            "type": "array",
-            "title": "Children"
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "entity_id",
-          "kind",
-          "title",
-          "icon",
-          "state_map"
-        ],
-        "title": "UiTileLayout"
-      },
-      "UiTileLayout-Output": {
-        "properties": {
-          "id": {
-            "type": "string",
-            "title": "Id"
-          },
-          "entity_id": {
-            "type": "string",
-            "title": "Entity Id"
-          },
-          "kind": {
-            "type": "string",
-            "enum": [
-              "device",
-              "group",
-              "summary"
-            ],
-            "title": "Kind"
-          },
-          "title": {
-            "type": "string",
-            "title": "Title"
-          },
-          "subtitle_template": {
-            "type": "string",
-            "title": "Subtitle Template",
-            "default": "{{state_label}}"
-          },
-          "icon": {
-            "type": "string",
-            "title": "Icon"
-          },
-          "state_map": {
-            "additionalProperties": {
-              "$ref": "#/components/schemas/UiStateMapping"
-            },
-            "type": "object",
-            "title": "State Map"
-          },
-          "actions": {
-            "items": {
-              "type": "string",
-              "enum": [
-                "toggle",
-                "open_children",
-                "details",
-                "run_command",
-                "start",
-                "stop",
-                "return_to_base",
-                "toggle_group"
-              ]
-            },
-            "type": "array",
-            "title": "Actions"
-          },
-          "children": {
-            "items": {
-              "$ref": "#/components/schemas/UiTileLayout-Output"
-            },
-            "type": "array",
-            "title": "Children"
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "entity_id",
-          "kind",
-          "title",
-          "icon",
-          "state_map"
-        ],
-        "title": "UiTileLayout"
-      },
-      "UiTileSnapshot": {
-        "properties": {
-          "id": {
-            "type": "string",
-            "title": "Id"
-          },
-          "entity_id": {
-            "type": "string",
-            "title": "Entity Id"
-          },
-          "kind": {
-            "type": "string",
-            "enum": [
-              "device",
-              "group",
-              "summary"
-            ],
-            "title": "Kind"
-          },
-          "title": {
-            "type": "string",
-            "title": "Title"
-          },
-          "subtitle": {
-            "type": "string",
-            "title": "Subtitle"
-          },
-          "icon": {
-            "type": "string",
-            "title": "Icon"
-          },
-          "state": {
-            "type": "string",
-            "title": "State"
-          },
-          "tone": {
-            "type": "string",
-            "enum": [
-              "success",
-              "warn",
-              "error",
-              "muted"
-            ],
-            "title": "Tone"
-          },
-          "actions": {
-            "items": {
-              "type": "string",
-              "enum": [
-                "toggle",
-                "open_children",
-                "details",
-                "run_command",
-                "start",
-                "stop",
-                "return_to_base",
-                "toggle_group"
-              ]
-            },
-            "type": "array",
-            "title": "Actions"
-          },
-          "children": {
-            "items": {
-              "$ref": "#/components/schemas/UiTileSnapshot"
-            },
-            "type": "array",
-            "title": "Children"
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "entity_id",
-          "kind",
-          "title",
-          "subtitle",
-          "icon",
-          "state",
-          "tone"
-        ],
-        "title": "UiTileSnapshot"
       },
       "UpdateLimitRequest": {
         "properties": {
@@ -23444,213 +22944,6 @@
         "type": "object",
         "title": "WorkflowTargetState",
         "description": "Selected workflow request target and operation context."
-      },
-      "CancelChatTask": {
-        "properties": {
-          "session_id": {
-            "type": "string",
-            "maxLength": 256,
-            "minLength": 1,
-            "title": "Session Id"
-          }
-        },
-        "type": "object",
-        "required": [
-          "session_id"
-        ],
-        "title": "CancelChatTask"
-      },
-      "ChatSpeechRequest": {
-        "properties": {
-          "session_id": {
-            "type": "string",
-            "maxLength": 256,
-            "minLength": 1,
-            "title": "Session Id"
-          },
-          "text": {
-            "type": "string",
-            "maxLength": 6000,
-            "minLength": 1,
-            "title": "Text"
-          },
-          "prefer_native": {
-            "type": "boolean",
-            "title": "Prefer Native",
-            "default": false
-          },
-          "language": {
-            "type": "string",
-            "enum": [
-              "pl",
-              "en",
-              "de"
-            ],
-            "title": "Language",
-            "default": "pl"
-          }
-        },
-        "type": "object",
-        "required": [
-          "session_id",
-          "text"
-        ],
-        "title": "ChatSpeechRequest"
-      },
-      "HistoryMessage": {
-        "properties": {
-          "role": {
-            "type": "string",
-            "enum": [
-              "user",
-              "assistant"
-            ],
-            "title": "Role"
-          },
-          "content": {
-            "type": "string",
-            "maxLength": 50000,
-            "minLength": 1,
-            "title": "Content"
-          },
-          "material_ids": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "maxItems": 4,
-            "title": "Material Ids"
-          }
-        },
-        "type": "object",
-        "required": [
-          "role",
-          "content"
-        ],
-        "title": "HistoryMessage"
-      },
-      "ChatMaterial": {
-        "properties": {
-          "id": {
-            "type": "string",
-            "title": "Id"
-          },
-          "session_id": {
-            "type": "string",
-            "title": "Session Id"
-          },
-          "name": {
-            "type": "string",
-            "title": "Name"
-          },
-          "mime_type": {
-            "type": "string",
-            "title": "Mime Type"
-          },
-          "size_bytes": {
-            "type": "integer",
-            "title": "Size Bytes"
-          },
-          "kind": {
-            "type": "string",
-            "enum": [
-              "document",
-              "image"
-            ],
-            "title": "Kind"
-          },
-          "status": {
-            "type": "string",
-            "const": "ready",
-            "title": "Status",
-            "default": "ready"
-          },
-          "created_at": {
-            "type": "string",
-            "title": "Created At"
-          },
-          "preview_url": {
-            "type": "string",
-            "title": "Preview Url"
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "session_id",
-          "name",
-          "mime_type",
-          "size_bytes",
-          "kind",
-          "created_at",
-          "preview_url"
-        ],
-        "title": "ChatMaterial"
-      },
-      "ChatTaskCancellation": {
-        "properties": {
-          "success": {
-            "type": "boolean",
-            "title": "Success",
-            "default": true
-          },
-          "task_id": {
-            "type": "string",
-            "format": "uuid",
-            "title": "Task Id"
-          },
-          "status": {
-            "type": "string",
-            "enum": [
-              "cancelled",
-              "already_finished"
-            ],
-            "title": "Status"
-          }
-        },
-        "type": "object",
-        "required": [
-          "task_id",
-          "status"
-        ],
-        "title": "ChatTaskCancellation"
-      },
-      "ChatMaterialList": {
-        "properties": {
-          "materials": {
-            "items": {
-              "$ref": "#/components/schemas/ChatMaterial"
-            },
-            "type": "array",
-            "title": "Materials"
-          }
-        },
-        "type": "object",
-        "required": [
-          "materials"
-        ],
-        "title": "ChatMaterialList"
-      },
-      "SaveChatNoteRequest": {
-        "properties": {
-          "session_id": {
-            "type": "string",
-            "maxLength": 256,
-            "minLength": 1,
-            "title": "Session Id"
-          },
-          "request_id": {
-            "type": "string",
-            "format": "uuid",
-            "title": "Request Id"
-          }
-        },
-        "type": "object",
-        "required": [
-          "session_id",
-          "request_id"
-        ],
-        "title": "SaveChatNoteRequest"
       }
     }
   }

@@ -21,6 +21,7 @@ DIFF_BASE_REASON="explicit base ref"
 
 backend_changed=0
 frontend_changed=0
+contract_changed=0
 
 EMPTY_TREE_HASH="$(git hash-object -t tree /dev/null)"
 
@@ -75,6 +76,12 @@ while IFS= read -r file; do
   [[ -z "$file" ]] && continue
 
   case "$file" in
+    venom_core/*|scripts/*|openapi/*|web-next/lib/generated/api-types.d.ts|web-next/package*.json|requirements*|Makefile|make/*.mk|.github/workflows/ci.yml)
+      contract_changed=1
+      ;;
+  esac
+
+  case "$file" in
     web-next/*|web-studio/*|modules/*)
       frontend_changed=1
       ;;
@@ -93,19 +100,26 @@ done <<< "$CHANGED_FILES"
 
 echo "🔎 PR fast check scope:"
 echo "  - backend_changed=${backend_changed}"
+echo "  - contract_changed=${contract_changed}"
 echo "  - frontend_changed=${frontend_changed}"
 echo "  - base_ref=${BASE_REF}"
 echo "  - diff_base=${DIFF_BASE}"
 echo "  - diff_base_reason=${DIFF_BASE_REASON}"
 
+PYTHON_BIN="python3"
+if [[ -x "${VENV}/bin/python" ]]; then
+  PYTHON_BIN="${VENV}/bin/python"
+  # Subprocesses that call python by name must use the same test environment.
+  export PATH="$(cd -- "${VENV}/bin" && pwd):$PATH"
+fi
+
+if [[ "$contract_changed" -eq 1 ]]; then
+  echo "▶ OpenAPI contract: core/types drift + Studio parity"
+  make openapi-check
+fi
+
 if [[ "$backend_changed" -eq 1 ]]; then
   echo "▶ Backend fast lane: compile + architecture/lane guards + ci-lite audit + changed-lines coverage gate"
-  PYTHON_BIN="python3"
-  if [[ -x "${VENV}/bin/python" ]]; then
-    PYTHON_BIN="${VENV}/bin/python"
-    # Subprocesses that call python by name must use the same test environment.
-    export PATH="$(cd -- "${VENV}/bin" && pwd):$PATH"
-  fi
   "${PYTHON_BIN}" -m compileall -q venom_core scripts tests
   make architecture-drift-check
   "${PYTHON_BIN}" -m pytest -q tests/test_api_routes_import_guard.py
@@ -135,7 +149,7 @@ if [[ "$frontend_changed" -eq 1 ]]; then
   fi
 fi
 
-if [[ "$backend_changed" -eq 0 ]] && [[ "$frontend_changed" -eq 0 ]]; then
+if [[ "$backend_changed" -eq 0 ]] && [[ "$frontend_changed" -eq 0 ]] && [[ "$contract_changed" -eq 0 ]]; then
   echo "ℹ️ Only docs/meta changes detected. No test lane required."
 fi
 

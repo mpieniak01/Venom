@@ -1509,6 +1509,173 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/chat/audio/pipelines": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Voice Pipelines
+         * @description Discover installed choices without loading models or opening the microphone.
+         */
+        get: operations["voice_pipelines_api_v1_chat_audio_pipelines_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/chat/audio/transcribe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Transcribe
+         * @description Transcribe bounded PCM using the selected local or host decoder.
+         */
+        post: operations["transcribe_api_v1_chat_audio_transcribe_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/chat/audio/multimodal-turn": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Multimodal Turn
+         * @description Answer one pilot turn and append the completed pair to session history.
+         */
+        post: operations["multimodal_turn_api_v1_chat_audio_multimodal_turn_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/chat/audio/speak": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Speak
+         * @description Synthesize a WAV using the opted-in local voice or the host audio engine.
+         */
+        post: operations["speak_api_v1_chat_audio_speak_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/chat/materials": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Materials */
+        get: operations["list_materials_api_v1_chat_materials_get"];
+        put?: never;
+        /** Upload Material */
+        post: operations["upload_material_api_v1_chat_materials_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/chat/materials/capabilities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Material Capabilities */
+        get: operations["material_capabilities_api_v1_chat_materials_capabilities_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/chat/materials/{material_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Material */
+        get: operations["get_material_api_v1_chat_materials__material_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Material */
+        delete: operations["delete_material_api_v1_chat_materials__material_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/chat/materials/{material_id}/content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Preview Material */
+        get: operations["preview_material_api_v1_chat_materials__material_id__content_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/chat/tasks/{task_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel Chat Task */
+        post: operations["cancel_chat_task_api_v1_chat_tasks__task_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/knowledge/graph": {
         parameters: {
             query?: never;
@@ -2225,6 +2392,210 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/openrouter/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Status */
+        get: operations["status_api_v1_openrouter_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/openrouter/catalog": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Catalog */
+        get: operations["catalog_api_v1_openrouter_catalog_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/openrouter/quote": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Quote */
+        post: operations["quote_api_v1_openrouter_quote_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/openrouter/models/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Search Models */
+        get: operations["search_models_api_v1_openrouter_models_search_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/openrouter/models/connected": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Connected Models */
+        get: operations["connected_models_api_v1_openrouter_models_connected_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/openrouter/models/connect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Connect Model */
+        post: operations["connect_model_api_v1_openrouter_models_connect_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/openrouter/models/disconnect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Disconnect Model */
+        post: operations["disconnect_model_api_v1_openrouter_models_disconnect_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/openrouter/billing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Billing */
+        get: operations["billing_api_v1_openrouter_billing_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/openrouter/billing/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Sync Billing */
+        post: operations["sync_billing_api_v1_openrouter_billing_sync_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/system/vast-chat": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Status */
+        get: operations["status_api_v1_system_vast_chat_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/system/vast-chat/attach": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Attach */
+        post: operations["attach_api_v1_system_vast_chat_attach_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/system/vast-chat/detach": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Detach */
+        post: operations["detach_api_v1_system_vast_chat_detach_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/system/llm-servers": {
         parameters: {
             query?: never;
@@ -2259,6 +2630,66 @@ export interface paths {
          * @description Wykonuje akcję (start/stop/restart) na wskazanym serwerze LLM.
          */
         post: operations["control_llm_server_api_v1_system_llm_servers__server_name___action__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/system/models/resources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Model Resources
+         * @description Read host RAM/VRAM and the registered local model owners without loading them.
+         */
+        get: operations["get_model_resources_api_v1_system_models_resources_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/system/models/release": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Release Llm Runtime
+         * @description Unload local LLMs and verify resource release before clearing uncertainty.
+         */
+        post: operations["release_llm_runtime_api_v1_system_models_release_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/system/models/recover-llm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Recover Llm Runtime
+         * @description Verify only LLM daemons; never stop registered vision or voice owners.
+         */
+        post: operations["recover_llm_runtime_api_v1_system_models_recover_llm_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2350,6 +2781,142 @@ export interface paths {
         get: operations["get_llm_runtime_queue_snapshot_api_v1_system_llm_runtime_queue_snapshot_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/vast/environments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Overview */
+        get: operations["overview_api_v1_vast_environments_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/vast/environments/billing/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Sync Billing */
+        post: operations["sync_billing_api_v1_vast_environments_billing_sync_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/vast/environments/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Search */
+        post: operations["search_api_v1_vast_environments_search_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/vast/environments/plans": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Plan */
+        post: operations["plan_api_v1_vast_environments_plans_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/vast/environments/{plan_id}/order": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Order */
+        post: operations["order_api_v1_vast_environments__plan_id__order_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/vast/environments/{plan_id}/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Refresh */
+        post: operations["refresh_api_v1_vast_environments__plan_id__refresh_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/vast/environments/{plan_id}/stop": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Stop */
+        post: operations["stop_api_v1_vast_environments__plan_id__stop_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/vast/environments/{plan_id}/destroy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Destroy */
+        post: operations["destroy_api_v1_vast_environments__plan_id__destroy_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3626,6 +4193,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/models/remote/providers/{provider}/enable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Set Remote Provider Enabled */
+        post: operations["set_remote_provider_enabled_api_v1_models_remote_providers__provider__enable_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/models/remote/providers/{provider}/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Check Remote Provider */
+        post: operations["check_remote_provider_api_v1_models_remote_providers__provider__check_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/providers": {
         parameters: {
             query?: never;
@@ -4585,6 +5186,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/benchmark/coding/maintenance/models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Maintenance Model Profiles
+         * @description Return retained manual-comparison profiles without loading any model.
+         */
+        get: operations["maintenance_model_profiles_api_v1_benchmark_coding_maintenance_models_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/calendar/events": {
         parameters: {
             query?: never;
@@ -4690,155 +5311,17 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/google-home/commands": {
+    "/api/v1/transport/identity": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** List Commands */
-        get: operations["list_commands_api_v1_google_home_commands_get"];
-        put?: never;
-        /** Create Command */
-        post: operations["create_command_api_v1_google_home_commands_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/google-home/commands/{command_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Command */
-        get: operations["get_command_api_v1_google_home_commands__command_id__get"];
+        /** Get Transport Identity */
+        get: operations["get_transport_identity_api_v1_transport_identity_get"];
         put?: never;
         post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/google-home/commands/{command_id}/confirm": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Confirm Command */
-        post: operations["confirm_command_api_v1_google_home_commands__command_id__confirm_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/google-home/devices": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List Devices */
-        get: operations["list_devices_api_v1_google_home_devices_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/google-home/audit": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List Audit */
-        get: operations["list_audit_api_v1_google_home_audit_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/google-home/bridge/healthcheck": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Bridge Healthcheck */
-        post: operations["bridge_healthcheck_api_v1_google_home_bridge_healthcheck_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/google-home/ui/layout": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Ui Layout */
-        get: operations["get_ui_layout_api_v1_google_home_ui_layout_get"];
-        /** Put Ui Layout */
-        put: operations["put_ui_layout_api_v1_google_home_ui_layout_put"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/google-home/ui/snapshot": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Ui Snapshot */
-        get: operations["get_ui_snapshot_api_v1_google_home_ui_snapshot_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/google-home/ui/actions/{entity_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Run Ui Action */
-        post: operations["run_ui_action_api_v1_google_home_ui_actions__entity_id__post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4941,173 +5424,6 @@ export interface paths {
         get: operations["healthz_healthz_get"];
         put?: never;
         post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/chat/audio/pipelines": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Voice Pipelines
-         * @description Discover installed choices without loading models or opening the microphone.
-         */
-        get: operations["voice_pipelines_api_v1_chat_audio_pipelines_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/chat/audio/transcribe": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Transcribe
-         * @description Transcribe bounded PCM using the selected local or host decoder.
-         */
-        post: operations["transcribe_api_v1_chat_audio_transcribe_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/chat/audio/multimodal-turn": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Multimodal Turn
-         * @description Answer one pilot turn and append the completed pair to session history.
-         */
-        post: operations["multimodal_turn_api_v1_chat_audio_multimodal_turn_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/chat/audio/speak": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Speak
-         * @description Synthesize a WAV using the opted-in local voice or the host audio engine.
-         */
-        post: operations["speak_api_v1_chat_audio_speak_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/chat/materials": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List Materials */
-        get: operations["list_materials_api_v1_chat_materials_get"];
-        put?: never;
-        /** Upload Material */
-        post: operations["upload_material_api_v1_chat_materials_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/chat/materials/capabilities": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Material Capabilities */
-        get: operations["material_capabilities_api_v1_chat_materials_capabilities_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/chat/materials/{material_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Material */
-        get: operations["get_material_api_v1_chat_materials__material_id__get"];
-        put?: never;
-        post?: never;
-        /** Delete Material */
-        delete: operations["delete_material_api_v1_chat_materials__material_id__delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/chat/materials/{material_id}/content": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Preview Material */
-        get: operations["preview_material_api_v1_chat_materials__material_id__content_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/chat/tasks/{task_id}/cancel": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Cancel Chat Task */
-        post: operations["cancel_chat_task_api_v1_chat_tasks__task_id__cancel_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5375,6 +5691,11 @@ export interface components {
          * @enum {string}
          */
         ApplyMode: "hot_swap" | "restart_required" | "rejected";
+        /** AttachRequest */
+        AttachRequest: {
+            /** Plan Id */
+            plan_id: string;
+        };
         /** AudioRouteProfileUpdateRequest */
         AudioRouteProfileUpdateRequest: {
             /** Voice Route Profile */
@@ -5419,37 +5740,6 @@ export interface components {
             duration_ms?: number | null;
             /** Error Message */
             error_message?: string | null;
-        };
-        /** AuditListResponse */
-        AuditListResponse: {
-            /** Items */
-            items: components["schemas"]["AuditRecord"][];
-            /** Count */
-            count: number;
-        };
-        /** AuditRecord */
-        AuditRecord: {
-            /** Audit Id */
-            audit_id: string;
-            /** Actor */
-            actor: string;
-            /** Normalized Intent */
-            normalized_intent: string;
-            /** Original Text */
-            original_text: string;
-            /** Target Room */
-            target_room?: string | null;
-            /** Target Device */
-            target_device?: string | null;
-            /** Execution Channel */
-            execution_channel: string;
-            /** Result */
-            result: string;
-            /**
-             * Timestamp
-             * Format: date-time
-             */
-            timestamp: string;
         };
         /** AuditStreamPublishRequest */
         AuditStreamPublishRequest: {
@@ -5835,17 +6125,13 @@ export interface components {
             /** Error Message */
             error_message?: string | null;
         };
-        /** BridgeHealthResponse */
-        BridgeHealthResponse: {
+        /** BillingRequest */
+        BillingRequest: {
             /**
-             * Status
-             * @enum {string}
+             * Reconcile
+             * @default false
              */
-            status: "ok" | "degraded" | "down";
-            /** Mode */
-            mode: string;
-            /** Detail */
-            detail: string;
+            reconcile: boolean;
         };
         /** CacheFlushResponse */
         CacheFlushResponse: {
@@ -5890,6 +6176,80 @@ export interface components {
             location?: string | null;
             /** Status */
             status?: string | null;
+        };
+        /** CancelChatTask */
+        CancelChatTask: {
+            /** Session Id */
+            session_id: string;
+        };
+        /** ChatMaterial */
+        ChatMaterial: {
+            /** Id */
+            id: string;
+            /** Session Id */
+            session_id: string;
+            /** Name */
+            name: string;
+            /** Mime Type */
+            mime_type: string;
+            /** Size Bytes */
+            size_bytes: number;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "document" | "image";
+            /**
+             * Status
+             * @default ready
+             * @constant
+             */
+            status: "ready";
+            /** Created At */
+            created_at: string;
+            /** Preview Url */
+            preview_url: string;
+        };
+        /** ChatMaterialList */
+        ChatMaterialList: {
+            /** Materials */
+            materials: components["schemas"]["ChatMaterial"][];
+        };
+        /** ChatSpeechRequest */
+        ChatSpeechRequest: {
+            /** Session Id */
+            session_id: string;
+            /** Text */
+            text: string;
+            /**
+             * Prefer Native
+             * @default false
+             */
+            prefer_native: boolean;
+            /**
+             * Language
+             * @default pl
+             * @enum {string}
+             */
+            language: "pl" | "en" | "de";
+        };
+        /** ChatTaskCancellation */
+        ChatTaskCancellation: {
+            /**
+             * Success
+             * @default true
+             */
+            success: boolean;
+            /**
+             * Task Id
+             * Format: uuid
+             */
+            task_id: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "cancelled" | "already_finished";
         };
         /**
          * CodingBenchmarkDeleteResponse
@@ -6155,85 +6515,6 @@ export interface components {
             /** Error */
             error?: string | null;
         };
-        /** CommandAcceptedResponse */
-        CommandAcceptedResponse: {
-            command: components["schemas"]["CommandRecord"];
-        };
-        /** CommandConfirmRequest */
-        CommandConfirmRequest: {
-            /**
-             * Confirm
-             * @default true
-             */
-            confirm: boolean;
-            /** Pin */
-            pin?: string | null;
-        };
-        /** CommandCreateRequest */
-        CommandCreateRequest: {
-            /** Text */
-            text: string;
-            /**
-             * Confirm
-             * @default false
-             */
-            confirm: boolean;
-            /** Target Room */
-            target_room?: string | null;
-            /** Target Device */
-            target_device?: string | null;
-        };
-        /** CommandListResponse */
-        CommandListResponse: {
-            /** Items */
-            items: components["schemas"]["CommandRecord"][];
-            /** Count */
-            count: number;
-        };
-        /** CommandRecord */
-        CommandRecord: {
-            /** Command Id */
-            command_id: string;
-            /** Actor */
-            actor: string;
-            /** Original Text */
-            original_text: string;
-            /** Normalized Intent */
-            normalized_intent: string;
-            /** Target Room */
-            target_room?: string | null;
-            /** Target Device */
-            target_device?: string | null;
-            /**
-             * Status
-             * @enum {string}
-             */
-            status: "queued" | "awaiting_confirmation" | "sent_to_gemini" | "acknowledged" | "rejected_policy" | "failed_bridge" | "timeout";
-            /**
-             * Requires Confirmation
-             * @default false
-             */
-            requires_confirmation: boolean;
-            /** Policy Reason */
-            policy_reason?: string | null;
-            /**
-             * Bridge Channel
-             * @default gemini_mobile_bridge
-             */
-            bridge_channel: string;
-            /** Bridge Detail */
-            bridge_detail?: string | null;
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-            /**
-             * Updated At
-             * Format: date-time
-             */
-            updated_at: string;
-        };
         /**
          * CompatibilityReport
          * @description Compatibility analysis for planned changes.
@@ -6283,6 +6564,14 @@ export interface components {
             message: string;
             /** Updated Keys */
             updated_keys?: string[];
+        };
+        /** Confirmation */
+        Confirmation: {
+            /**
+             * Confirmed
+             * @constant
+             */
+            confirmed: true;
         };
         /**
          * ConnectionDirection
@@ -6753,12 +7042,10 @@ export interface components {
              */
             quality_profile: string;
         };
-        /** DevicesResponse */
-        DevicesResponse: {
-            /** Items */
-            items: string[];
-            /** Count */
-            count: number;
+        /** DetachRequest */
+        DetachRequest: {
+            /** Plan Id */
+            plan_id?: string | null;
         };
         /**
          * EventsResponse
@@ -6966,6 +7253,18 @@ export interface components {
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /** HistoryMessage */
+        HistoryMessage: {
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "user" | "assistant";
+            /** Content */
+            content: string;
+            /** Material Ids */
+            material_ids?: string[];
         };
         /**
          * HistoryRequestDetail
@@ -7776,6 +8075,11 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        /** ModelConnectionRequest */
+        ModelConnectionRequest: {
+            /** Model Id */
+            model_id: string;
+        };
         /**
          * ModelInstallRequest
          * @description Request do instalacji modelu.
@@ -8536,6 +8840,30 @@ export interface components {
             /** Dependencies */
             dependencies?: string[];
         };
+        /** OrderRequest */
+        OrderRequest: {
+            /**
+             * Confirmed
+             * @constant
+             */
+            confirmed: true;
+            /**
+             * Accept New Host Key
+             * @default false
+             */
+            accept_new_host_key: boolean;
+        };
+        /** PlanRequest */
+        PlanRequest: {
+            /** Duration Minutes */
+            duration_minutes: number;
+            /** Offer Id */
+            offer_id: number;
+            /** Max Hourly Usd */
+            max_hourly_usd: number | string;
+            /** Max Total Usd */
+            max_total_usd: number | string;
+        };
         /**
          * PolicyFalsePositiveTriage
          * @description Triage snapshot for potential false-positive policy blocks.
@@ -8607,6 +8935,11 @@ export interface components {
             credential_status: string;
             /** Message */
             message: string;
+        };
+        /** ProviderEnableRequest */
+        ProviderEnableRequest: {
+            /** Enabled */
+            enabled: boolean;
         };
         /**
          * QueueActionResponse
@@ -8794,6 +9127,21 @@ export interface components {
             config_sources: {
                 [key: string]: unknown;
             };
+        };
+        /** SaveChatNoteRequest */
+        SaveChatNoteRequest: {
+            /** Session Id */
+            session_id: string;
+            /**
+             * Request Id
+             * Format: uuid
+             */
+            request_id: string;
+        };
+        /** SearchRequest */
+        SearchRequest: {
+            /** Duration Minutes */
+            duration_minutes: number;
         };
         /**
          * SelfLearningCapabilitiesResponse
@@ -9359,16 +9707,16 @@ export interface components {
              */
             material_ids?: string[];
             /**
+             * Use Notes
+             * @description Explicit chat note retrieval. Omit for existing task memory policy.
+             */
+            use_notes?: boolean | null;
+            /**
              * Store Knowledge
              * @description Persist lessons and insights from this task
              * @default true
              */
             store_knowledge: boolean;
-            /**
-             * Use Notes
-             * @description Explicit chat note retrieval. Omit for existing task memory policy.
-             */
-            use_notes?: boolean | null;
             /**
              * Generation Params
              * @description Generation params (temperature, max_tokens, etc.)
@@ -9550,284 +9898,6 @@ export interface components {
              * @default true
              */
             use_cache: boolean;
-        };
-        /** UiActionRequest */
-        UiActionRequest: {
-            /**
-             * Action
-             * @enum {string}
-             */
-            action: "toggle" | "open_children" | "details" | "run_command" | "start" | "stop" | "return_to_base" | "toggle_group";
-            /**
-             * Confirm
-             * @default false
-             */
-            confirm: boolean;
-        };
-        /** UiActionResponse */
-        UiActionResponse: {
-            /** Entity Id */
-            entity_id: string;
-            /**
-             * Action
-             * @enum {string}
-             */
-            action: "toggle" | "open_children" | "details" | "run_command" | "start" | "stop" | "return_to_base" | "toggle_group";
-            command?: components["schemas"]["CommandRecord"] | null;
-            /**
-             * Status
-             * @enum {string}
-             */
-            status: "accepted" | "ignored";
-            /** Detail */
-            detail: string;
-        };
-        /** UiLayoutConfig */
-        "UiLayoutConfig-Input": {
-            /**
-             * Schema Version
-             * @default 1
-             */
-            schema_version: number;
-            /**
-             * View Id
-             * @default home_components
-             * @constant
-             */
-            view_id: "home_components";
-            /** Room Id */
-            room_id: string;
-            /** Room Title */
-            room_title: string;
-            theme: components["schemas"]["UiThemeTokens"];
-            /** Sections */
-            sections: components["schemas"]["UiSectionLayout-Input"][];
-        };
-        /** UiLayoutConfig */
-        "UiLayoutConfig-Output": {
-            /**
-             * Schema Version
-             * @default 1
-             */
-            schema_version: number;
-            /**
-             * View Id
-             * @default home_components
-             * @constant
-             */
-            view_id: "home_components";
-            /** Room Id */
-            room_id: string;
-            /** Room Title */
-            room_title: string;
-            theme: components["schemas"]["UiThemeTokens"];
-            /** Sections */
-            sections: components["schemas"]["UiSectionLayout-Output"][];
-        };
-        /** UiLayoutResponse */
-        UiLayoutResponse: {
-            layout: components["schemas"]["UiLayoutConfig-Output"];
-        };
-        /** UiSectionColumns */
-        UiSectionColumns: {
-            /** Mobile */
-            mobile: number;
-            /** Tablet */
-            tablet: number;
-            /** Desktop */
-            desktop: number;
-        };
-        /** UiSectionLayout */
-        "UiSectionLayout-Input": {
-            /** Id */
-            id: string;
-            /** Title */
-            title: string;
-            /**
-             * Layout
-             * @default grid
-             * @enum {string}
-             */
-            layout: "grid" | "stack";
-            columns: components["schemas"]["UiSectionColumns"];
-            /** Tiles */
-            tiles: components["schemas"]["UiTileLayout-Input"][];
-        };
-        /** UiSectionLayout */
-        "UiSectionLayout-Output": {
-            /** Id */
-            id: string;
-            /** Title */
-            title: string;
-            /**
-             * Layout
-             * @default grid
-             * @enum {string}
-             */
-            layout: "grid" | "stack";
-            columns: components["schemas"]["UiSectionColumns"];
-            /** Tiles */
-            tiles: components["schemas"]["UiTileLayout-Output"][];
-        };
-        /** UiSectionSnapshot */
-        UiSectionSnapshot: {
-            /** Id */
-            id: string;
-            /** Title */
-            title: string;
-            /**
-             * Layout
-             * @enum {string}
-             */
-            layout: "grid" | "stack";
-            columns: components["schemas"]["UiSectionColumns"];
-            /** Tiles */
-            tiles: components["schemas"]["UiTileSnapshot"][];
-        };
-        /** UiSnapshotResponse */
-        UiSnapshotResponse: {
-            /** Schema Version */
-            schema_version: number;
-            /**
-             * View Id
-             * @constant
-             */
-            view_id: "home_components";
-            /** Room Id */
-            room_id: string;
-            /** Room Title */
-            room_title: string;
-            theme: components["schemas"]["UiThemeTokens"];
-            /** Sections */
-            sections: components["schemas"]["UiSectionSnapshot"][];
-            /**
-             * Generated At
-             * Format: date-time
-             */
-            generated_at: string;
-        };
-        /** UiStateMapping */
-        UiStateMapping: {
-            /** Label */
-            label: string;
-            /**
-             * Tone
-             * @default muted
-             * @enum {string}
-             */
-            tone: "success" | "warn" | "error" | "muted";
-        };
-        /** UiThemeStateToneTokens */
-        UiThemeStateToneTokens: {
-            /** Success */
-            success: string;
-            /** Warn */
-            warn: string;
-            /** Error */
-            error: string;
-            /** Muted */
-            muted: string;
-        };
-        /** UiThemeTokens */
-        UiThemeTokens: {
-            /** Surface Token */
-            surface_token: string;
-            /** Active Surface Token */
-            active_surface_token: string;
-            /** Muted Surface Token */
-            muted_surface_token: string;
-            /** Text Primary Token */
-            text_primary_token: string;
-            /** Text Secondary Token */
-            text_secondary_token: string;
-            state_tone_tokens: components["schemas"]["UiThemeStateToneTokens"];
-        };
-        /** UiTileLayout */
-        "UiTileLayout-Input": {
-            /** Id */
-            id: string;
-            /** Entity Id */
-            entity_id: string;
-            /**
-             * Kind
-             * @enum {string}
-             */
-            kind: "device" | "group" | "summary";
-            /** Title */
-            title: string;
-            /**
-             * Subtitle Template
-             * @default {{state_label}}
-             */
-            subtitle_template: string;
-            /** Icon */
-            icon: string;
-            /** State Map */
-            state_map: {
-                [key: string]: components["schemas"]["UiStateMapping"];
-            };
-            /** Actions */
-            actions?: ("toggle" | "open_children" | "details" | "run_command" | "start" | "stop" | "return_to_base" | "toggle_group")[];
-            /** Children */
-            children?: components["schemas"]["UiTileLayout-Input"][];
-        };
-        /** UiTileLayout */
-        "UiTileLayout-Output": {
-            /** Id */
-            id: string;
-            /** Entity Id */
-            entity_id: string;
-            /**
-             * Kind
-             * @enum {string}
-             */
-            kind: "device" | "group" | "summary";
-            /** Title */
-            title: string;
-            /**
-             * Subtitle Template
-             * @default {{state_label}}
-             */
-            subtitle_template: string;
-            /** Icon */
-            icon: string;
-            /** State Map */
-            state_map: {
-                [key: string]: components["schemas"]["UiStateMapping"];
-            };
-            /** Actions */
-            actions?: ("toggle" | "open_children" | "details" | "run_command" | "start" | "stop" | "return_to_base" | "toggle_group")[];
-            /** Children */
-            children?: components["schemas"]["UiTileLayout-Output"][];
-        };
-        /** UiTileSnapshot */
-        UiTileSnapshot: {
-            /** Id */
-            id: string;
-            /** Entity Id */
-            entity_id: string;
-            /**
-             * Kind
-             * @enum {string}
-             */
-            kind: "device" | "group" | "summary";
-            /** Title */
-            title: string;
-            /** Subtitle */
-            subtitle: string;
-            /** Icon */
-            icon: string;
-            /** State */
-            state: string;
-            /**
-             * Tone
-             * @enum {string}
-             */
-            tone: "success" | "warn" | "error" | "muted";
-            /** Actions */
-            actions?: ("toggle" | "open_children" | "details" | "run_command" | "start" | "stop" | "return_to_base" | "toggle_group")[];
-            /** Children */
-            children?: components["schemas"]["UiTileSnapshot"][];
         };
         /**
          * UpdateLimitRequest
@@ -10034,102 +10104,6 @@ export interface components {
             model?: string | null;
             /** Allowed Operations */
             allowed_operations?: string[];
-        };
-        /** CancelChatTask */
-        CancelChatTask: {
-            /** Session Id */
-            session_id: string;
-        };
-        /** ChatSpeechRequest */
-        ChatSpeechRequest: {
-            /** Session Id */
-            session_id: string;
-            /** Text */
-            text: string;
-            /**
-             * Prefer Native
-             * @default false
-             */
-            prefer_native: boolean;
-            /**
-             * Language
-             * @default pl
-             * @enum {string}
-             */
-            language: "pl" | "en" | "de";
-        };
-        /** HistoryMessage */
-        HistoryMessage: {
-            /**
-             * Role
-             * @enum {string}
-             */
-            role: "user" | "assistant";
-            /** Content */
-            content: string;
-            /** Material Ids */
-            material_ids?: string[];
-        };
-        /** ChatMaterial */
-        ChatMaterial: {
-            /** Id */
-            id: string;
-            /** Session Id */
-            session_id: string;
-            /** Name */
-            name: string;
-            /** Mime Type */
-            mime_type: string;
-            /** Size Bytes */
-            size_bytes: number;
-            /**
-             * Kind
-             * @enum {string}
-             */
-            kind: "document" | "image";
-            /**
-             * Status
-             * @default ready
-             * @constant
-             */
-            status: "ready";
-            /** Created At */
-            created_at: string;
-            /** Preview Url */
-            preview_url: string;
-        };
-        /** ChatTaskCancellation */
-        ChatTaskCancellation: {
-            /**
-             * Success
-             * @default true
-             */
-            success: boolean;
-            /**
-             * Task Id
-             * Format: uuid
-             */
-            task_id: string;
-            /**
-             * Status
-             * @enum {string}
-             */
-            status: "cancelled" | "already_finished";
-        };
-        /** ChatMaterialList */
-        ChatMaterialList: {
-            /** Materials */
-            materials: components["schemas"]["ChatMaterial"][];
-        };
-        /** SaveChatNoteRequest */
-        SaveChatNoteRequest: {
-            /** Session Id */
-            session_id: string;
-            /**
-             * Request Id
-             * Format: uuid
-             */
-            request_id: string;
         };
     };
     responses: never;
@@ -13408,6 +13382,536 @@ export interface operations {
             };
         };
     };
+    voice_pipelines_api_v1_chat_audio_pipelines_get: {
+        parameters: {
+            query?: {
+                language?: "pl" | "en" | "de";
+                surface?: "chat2" | "voice";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Operator access or audio request origin denied */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Shared runtime admission is busy or unavailable */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Configured audio is unavailable, processing failed, or synthesized output is invalid */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    transcribe_api_v1_chat_audio_transcribe_post: {
+        parameters: {
+            query: {
+                session_id: string;
+                sample_rate?: number;
+                language?: "pl" | "en" | "de";
+                prefer_native?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Operator access or audio request origin denied */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Shared runtime admission is busy or unavailable */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description PCM exceeds the upload byte limit or recording duration limit */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Raw PCM requires application/octet-stream content type */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid request parameters or empty/unaligned signed 16-bit PCM */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Client disconnected before transcription was submitted */
+            499: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Configured audio is unavailable, processing failed, or synthesized output is invalid */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    multimodal_turn_api_v1_chat_audio_multimodal_turn_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Operator access or audio request origin denied */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Shared runtime admission is busy or unavailable */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Multimodal upload exceeds limits */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Multipart form required */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid image or audio input */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Client disconnected before the pilot turn was submitted */
+            499: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Local Omni is unavailable or the pilot turn failed */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    speak_api_v1_chat_audio_speak_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChatSpeechRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Operator access or audio request origin denied */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Shared runtime admission is busy or unavailable */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid speech request or text containing only whitespace */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Configured audio is unavailable, processing failed, or synthesized output is invalid */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    list_materials_api_v1_chat_materials_get: {
+        parameters: {
+            query: {
+                session_id: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatMaterialList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_material_api_v1_chat_materials_post: {
+        parameters: {
+            query: {
+                session_id: string;
+                name: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatMaterial"];
+                };
+            };
+            /** @description Invalid material session/name, empty content, invalid UTF-8 or image data */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Operator access, request origin or environment mutation policy denied */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Existing session material metadata or content is unavailable */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Upload bytes, document text or session storage limits exceeded */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Material content type is not supported */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    material_capabilities_api_v1_chat_materials_capabilities_get: {
+        parameters: {
+            query?: {
+                model?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_material_api_v1_chat_materials__material_id__get: {
+        parameters: {
+            query: {
+                session_id: string;
+            };
+            header?: never;
+            path: {
+                material_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatMaterial"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_material_api_v1_chat_materials__material_id__delete: {
+        parameters: {
+            query: {
+                session_id: string;
+            };
+            header?: never;
+            path: {
+                material_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_material_api_v1_chat_materials__material_id__content_get: {
+        parameters: {
+            query: {
+                session_id: string;
+            };
+            header?: never;
+            path: {
+                material_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_chat_task_api_v1_chat_tasks__task_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CancelChatTask"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatTaskCancellation"];
+                };
+            };
+            /** @description Operator access denied */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Task does not exist or does not belong to the supplied session */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Task is not active and cancellation could not be confirmed */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_knowledge_graph_api_v1_knowledge_graph_get: {
         parameters: {
             query?: {
@@ -14612,6 +15116,359 @@ export interface operations {
             };
         };
     };
+    status_api_v1_openrouter_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    catalog_api_v1_openrouter_catalog_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    quote_api_v1_openrouter_quote_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SimpleChatRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    search_models_api_v1_openrouter_models_search_get: {
+        parameters: {
+            query?: {
+                q?: string;
+                purpose?: "chat" | "tasks" | "programming";
+                category?: string;
+                offset?: number;
+                limit?: number;
+                free_only?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    connected_models_api_v1_openrouter_models_connected_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    connect_model_api_v1_openrouter_models_connect_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ModelConnectionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    disconnect_model_api_v1_openrouter_models_disconnect_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ModelConnectionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    billing_api_v1_openrouter_billing_get: {
+        parameters: {
+            query?: {
+                period?: "7d" | "30d" | "month" | "all";
+                from_utc?: string | null;
+                to_utc?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Invalid billing date window */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    sync_billing_api_v1_openrouter_billing_sync_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Billing unavailable or operator access required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    status_api_v1_system_vast_chat_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    attach_api_v1_system_vast_chat_attach_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AttachRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Select the local runtime before attaching another target. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description VAST chat provider is disabled or unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    detach_api_v1_system_vast_chat_detach_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["DetachRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_llm_servers_api_v1_system_llm_servers_get: {
         parameters: {
             query?: never;
@@ -14678,6 +15535,122 @@ export interface operations {
             };
             /** @description Błąd podczas wykonywania komendy serwera LLM */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description LLMController nie jest dostępny */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_model_resources_api_v1_system_models_resources_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    release_llm_runtime_api_v1_system_models_release_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Local administration access required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Model work could not be drained */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Resource release could not be verified */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description LLMController nie jest dostępny */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    recover_llm_runtime_api_v1_system_models_recover_llm_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Local administration access required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Runtime operation is still active */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Scoped recovery could not be verified */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -14877,6 +15850,429 @@ export interface operations {
                 content: {
                     "application/json": unknown;
                 };
+            };
+        };
+    };
+    overview_api_v1_vast_environments_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Local operator request required. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflicting or invalid environment operation. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description VAST configuration or service unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    sync_billing_api_v1_vast_environments_billing_sync_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BillingRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Local operator request required. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflicting or invalid environment operation. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description VAST configuration or service unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    search_api_v1_vast_environments_search_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SearchRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Local operator request required. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflicting or invalid environment operation. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description VAST configuration or service unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    plan_api_v1_vast_environments_plans_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlanRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Local operator request required. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflicting or invalid environment operation. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description VAST configuration or service unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    order_api_v1_vast_environments__plan_id__order_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                plan_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrderRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Local operator request required. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflicting or invalid environment operation. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description VAST configuration or service unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    refresh_api_v1_vast_environments__plan_id__refresh_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                plan_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Local operator request required. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflicting or invalid environment operation. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description VAST configuration or service unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    stop_api_v1_vast_environments__plan_id__stop_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                plan_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Confirmation"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Local operator request required. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflicting or invalid environment operation. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description VAST configuration or service unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    destroy_api_v1_vast_environments__plan_id__destroy_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                plan_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Confirmation"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Local operator request required. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflicting or invalid environment operation. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description VAST configuration or service unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -17033,7 +18429,9 @@ export interface operations {
     };
     get_model_runtime_capabilities_endpoint_api_v1_models__model_name__runtime_capabilities_get: {
         parameters: {
-            query?: never;
+            query?: {
+                runtime?: string | null;
+            };
             header?: never;
             path: {
                 model_name: string;
@@ -17515,6 +18913,72 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_remote_provider_enabled_api_v1_models_remote_providers__provider__enable_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                provider: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProviderEnableRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    check_remote_provider_api_v1_models_remote_providers__provider__check_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                provider: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
             };
             /** @description Validation Error */
             422: {
@@ -19132,6 +20596,26 @@ export interface operations {
             };
         };
     };
+    maintenance_model_profiles_api_v1_benchmark_coding_maintenance_models_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
     get_calendar_events_api_v1_calendar_events_get: {
         parameters: {
             query?: {
@@ -19308,16 +20792,10 @@ export interface operations {
             };
         };
     };
-    list_commands_api_v1_google_home_commands_get: {
+    get_transport_identity_api_v1_transport_identity_get: {
         parameters: {
-            query?: {
-                limit?: number;
-            };
-            header?: {
-                "x-authenticated-user"?: string | null;
-                "x-user"?: string | null;
-                "x-admin-user"?: string | null;
-            };
+            query?: never;
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -19329,371 +20807,17 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["CommandListResponse"];
+                    "application/json": {
+                        [key: string]: string | number;
+                    };
                 };
             };
-            /** @description Validation Error */
-            422: {
+            /** @description The installation identity is unavailable. */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    create_command_api_v1_google_home_commands_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                "x-authenticated-user"?: string | null;
-                "x-user"?: string | null;
-                "x-admin-user"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CommandCreateRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CommandAcceptedResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_command_api_v1_google_home_commands__command_id__get: {
-        parameters: {
-            query?: never;
-            header?: {
-                "x-authenticated-user"?: string | null;
-                "x-user"?: string | null;
-                "x-admin-user"?: string | null;
-            };
-            path: {
-                command_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CommandAcceptedResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    confirm_command_api_v1_google_home_commands__command_id__confirm_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                "x-authenticated-user"?: string | null;
-                "x-user"?: string | null;
-                "x-admin-user"?: string | null;
-            };
-            path: {
-                command_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CommandConfirmRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CommandAcceptedResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_devices_api_v1_google_home_devices_get: {
-        parameters: {
-            query?: never;
-            header?: {
-                "x-authenticated-user"?: string | null;
-                "x-user"?: string | null;
-                "x-admin-user"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DevicesResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_audit_api_v1_google_home_audit_get: {
-        parameters: {
-            query?: {
-                limit?: number;
-            };
-            header?: {
-                "x-authenticated-user"?: string | null;
-                "x-user"?: string | null;
-                "x-admin-user"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuditListResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    bridge_healthcheck_api_v1_google_home_bridge_healthcheck_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                "x-authenticated-user"?: string | null;
-                "x-user"?: string | null;
-                "x-admin-user"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["BridgeHealthResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_ui_layout_api_v1_google_home_ui_layout_get: {
-        parameters: {
-            query?: never;
-            header?: {
-                "x-authenticated-user"?: string | null;
-                "x-user"?: string | null;
-                "x-admin-user"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["UiLayoutResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    put_ui_layout_api_v1_google_home_ui_layout_put: {
-        parameters: {
-            query?: never;
-            header?: {
-                "x-authenticated-user"?: string | null;
-                "x-user"?: string | null;
-                "x-admin-user"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["UiLayoutConfig-Input"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["UiLayoutResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_ui_snapshot_api_v1_google_home_ui_snapshot_get: {
-        parameters: {
-            query?: never;
-            header?: {
-                "x-authenticated-user"?: string | null;
-                "x-user"?: string | null;
-                "x-admin-user"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["UiSnapshotResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    run_ui_action_api_v1_google_home_ui_actions__entity_id__post: {
-        parameters: {
-            query?: never;
-            header?: {
-                "x-authenticated-user"?: string | null;
-                "x-user"?: string | null;
-                "x-admin-user"?: string | null;
-            };
-            path: {
-                entity_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["UiActionRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["UiActionResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
+                content?: never;
             };
         };
     };
@@ -19922,536 +21046,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
-                };
-            };
-        };
-    };
-    voice_pipelines_api_v1_chat_audio_pipelines_get: {
-        parameters: {
-            query?: {
-                language?: "pl" | "en" | "de";
-                surface?: "chat2" | "voice";
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Operator access or audio request origin denied */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Shared runtime admission is busy or unavailable */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-            /** @description Configured audio is unavailable, processing failed, or synthesized output is invalid */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    transcribe_api_v1_chat_audio_transcribe_post: {
-        parameters: {
-            query: {
-                session_id: string;
-                sample_rate?: number;
-                language?: "pl" | "en" | "de";
-                prefer_native?: boolean;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Operator access or audio request origin denied */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Shared runtime admission is busy or unavailable */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description PCM exceeds the upload byte limit or recording duration limit */
-            413: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Raw PCM requires application/octet-stream content type */
-            415: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Invalid request parameters or empty/unaligned signed 16-bit PCM */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Client disconnected before transcription was submitted */
-            499: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Configured audio is unavailable, processing failed, or synthesized output is invalid */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    multimodal_turn_api_v1_chat_audio_multimodal_turn_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Operator access or audio request origin denied */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Shared runtime admission is busy or unavailable */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Multimodal upload exceeds limits */
-            413: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Multipart form required */
-            415: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Invalid image or audio input */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Client disconnected before the pilot turn was submitted */
-            499: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Local Omni is unavailable or the pilot turn failed */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    speak_api_v1_chat_audio_speak_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ChatSpeechRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Operator access or audio request origin denied */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Shared runtime admission is busy or unavailable */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Invalid speech request or text containing only whitespace */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Configured audio is unavailable, processing failed, or synthesized output is invalid */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    list_materials_api_v1_chat_materials_get: {
-        parameters: {
-            query: {
-                session_id: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ChatMaterialList"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    upload_material_api_v1_chat_materials_post: {
-        parameters: {
-            query: {
-                session_id: string;
-                name: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ChatMaterial"];
-                };
-            };
-            /** @description Invalid material session/name, empty content, invalid UTF-8 or image data */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Operator access, request origin or environment mutation policy denied */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Existing session material metadata or content is unavailable */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Upload bytes, document text or session storage limits exceeded */
-            413: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Material content type is not supported */
-            415: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    material_capabilities_api_v1_chat_materials_capabilities_get: {
-        parameters: {
-            query?: {
-                model?: string | null;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_material_api_v1_chat_materials__material_id__get: {
-        parameters: {
-            query: {
-                session_id: string;
-            };
-            header?: never;
-            path: {
-                material_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ChatMaterial"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    delete_material_api_v1_chat_materials__material_id__delete: {
-        parameters: {
-            query: {
-                session_id: string;
-            };
-            header?: never;
-            path: {
-                material_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    preview_material_api_v1_chat_materials__material_id__content_get: {
-        parameters: {
-            query: {
-                session_id: string;
-            };
-            header?: never;
-            path: {
-                material_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    cancel_chat_task_api_v1_chat_tasks__task_id__cancel_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                task_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CancelChatTask"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ChatTaskCancellation"];
-                };
-            };
-            /** @description Operator access denied */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Task does not exist or does not belong to the supplied session */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Task is not active and cancellation could not be confirmed */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

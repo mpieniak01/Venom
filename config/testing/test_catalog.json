@@ -5348,6 +5348,20 @@
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
+      "path": "tests/test_openapi_contract_tooling.py",
+      "domain": "testing_tooling",
+      "test_type": "gate",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Offline core/module export isolation, Studio/Full contract parity and fail-closed JSON/TypeScript drift checks."
+    },
+    {
       "path": "tests/test_openrouter_billing.py",
       "domain": "providers",
       "test_type": "service_contract",

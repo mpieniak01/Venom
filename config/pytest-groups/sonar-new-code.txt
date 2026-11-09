@@ -301,6 +301,7 @@ tests/test_onnx_gpu_bridge.py
 tests/test_onnx_llm_client.py
 tests/test_onnx_runtime_cleanup.py
 tests/test_openai_semantic_kernel_compat.py
+tests/test_openapi_contract_tooling.py
 tests/test_openrouter_billing.py
 tests/test_openrouter_model_catalog.py
 tests/test_openrouter_runtime.py

@@ -367,14 +367,11 @@ jobs:
         with:
           node-version-file: "web-next/.nvmrc"
 
-      - name: Export OpenAPI
-        run: |
-          mkdir -p test-results/openapi
-          python3 scripts/export_openapi.py --output test-results/openapi/openapi.json
+      - name: Install pinned frontend tooling
+        run: npm --prefix web-next ci
 
-      - name: Generate TypeScript types from OpenAPI
-        run: |
-          npx --yes openapi-typescript@7.10.1 test-results/openapi/openapi.json -o test-results/openapi/api-types.d.ts
+      - name: Check committed OpenAPI, TypeScript types and Studio parity
+        run: make openapi-check
 
       - name: Upload OpenAPI contract artifacts (attempt 1)
         id: upload_openapi_attempt_1

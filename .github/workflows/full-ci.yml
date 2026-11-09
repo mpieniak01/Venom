@@ -59,7 +59,9 @@ jobs:
         run: |
           make local-first-agent-state-registry-probe
       - name: Pytest (smoke)
-        run: pytest -q
+        env:
+          VENOM_CODE_QUALITY_GATE: "1"
+        run: pytest -q -m "not (manual_llm or live_model or unsafe_direct_runtime)"
 
   frontend:
     name: Frontend (Next.js)

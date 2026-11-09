@@ -18,6 +18,16 @@ def _isolate_live_target_environment(monkeypatch):
     monkeypatch.delenv("VENOM_API_BASE", raising=False)
 
 
+def test_code_quality_gate_rejects_live_runtime_opt_in(monkeypatch):
+    monkeypatch.setenv("VENOM_CODE_QUALITY_GATE", "1")
+    config = SimpleNamespace(
+        getoption=lambda name, default=False: name == "--run-live-tests"
+    )
+
+    with pytest.raises(pytest.UsageError, match="outside code quality gates"):
+        conftest.pytest_configure(config)
+
+
 def test_each_test_uses_private_runtime_ledger(monkeypatch):
     monkeypatch.setattr(SETTINGS, "RUNTIME_ADMISSION_ENABLED", True)
     memory = Path(SETTINGS.MEMORY_ROOT)
@@ -415,6 +425,7 @@ def test_live_marker_is_skipped_in_real_multiworker_collection():
         "PYTEST_XDIST_WORKER",
         "PYTEST_XDIST_WORKER_COUNT",
         "PYTEST_XDIST_TESTRUNUID",
+        "VENOM_CODE_QUALITY_GATE",
     ):
         env.pop(key, None)
     env.update(

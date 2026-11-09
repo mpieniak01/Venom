@@ -2,6 +2,8 @@
 
 Zestaw diagnostyczny zawiera 36 przypadków. Obejmuje odczyt kodu ze zrzutu ekranu, zmianę położenia i koloru, doprecyzowanie, brak wpisu w dokumentacji, błąd narzędzia i pytania uzupełniające. Zestaw służy do diagnozy i strojenia. Benchmark końcowy ma własne scenariusze.
 
+Próby z rzeczywistym modelem wykonujemy osobno od testów kodu. Bramki Gita i CI sprawdzają kontrakty przy użyciu kontrolowanych danych oraz atrap. Zestaw z oznaczeniem `manual_llm` lub `live_model` uruchamia operator przez `make test-llm-manual` na zakwalifikowanym lokalnym środowisku. Odbiór Omni z poniższych kroków jest osobnym pomiarem.
+
 ## Przygotowanie
 
 W aktywnym środowisku Venoma użyj lokalnego głosu Piper, Pillow z fontami DejaVu i FFmpeg. Jeżeli import Piper zgłosi brak biblioteki CUDA, zastosuj ścieżkę do zainstalowanej biblioteki wskazaną w [lokalnej kwalifikacji LFM3](LFM3_LOCAL_EVALUATION.md#powtórzenie).

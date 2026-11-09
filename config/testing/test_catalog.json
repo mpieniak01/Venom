@@ -2985,14 +2985,12 @@
       "domain": "environment",
       "test_type": "integration",
       "intent": "integration",
-      "primary_lane": "new-code",
+      "primary_lane": "release",
       "allowed_lanes": [
-        "new-code",
-        "ci-lite",
         "release"
       ],
       "legacy_targeted": false,
-      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
+      "rationale": "Manual generation with a live model; outside code quality gates."
     },
     {
       "path": "tests/test_generation_schema.py",

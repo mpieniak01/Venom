@@ -164,7 +164,6 @@ tests/test_gemma4_operator_protocol.py
 tests/test_gemma4_operator_retention.py
 tests/test_gemma4_operator_runtime.py
 tests/test_generation_params_adapter.py
-tests/test_generation_params_integration.py
 tests/test_ghost_agent.py
 tests/test_git_skill.py
 tests/test_git_skill_roi.py

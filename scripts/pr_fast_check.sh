@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+export VENOM_CODE_QUALITY_GATE=1
 
 BASE_REF="${PR_BASE_REF:-origin/main}"
 VENV="${VENV:-.venv}"

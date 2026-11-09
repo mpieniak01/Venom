@@ -343,6 +343,12 @@ def pytest_addoption(parser):
 
 
 def pytest_configure(config):
+    if os.environ.get("VENOM_CODE_QUALITY_GATE") == "1" and config.getoption(
+        "--run-live-tests", default=False
+    ):
+        raise pytest.UsageError(
+            "Live model/runtime tests must run outside code quality gates"
+        )
     for marker in (
         "requires_docker: test wymaga istniejącego Venoma oraz Docker daemon",
         "requires_docker_compose: test wymaga istniejącego Venoma oraz Docker Compose",

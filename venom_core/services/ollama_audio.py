@@ -10,7 +10,8 @@ import wave
 from collections.abc import Callable
 from importlib import import_module
 from pathlib import Path
-from typing import cast
+from typing import TYPE_CHECKING, cast
+from urllib.parse import urlsplit
 
 import numpy as np
 from numpy.typing import NDArray
@@ -18,7 +19,15 @@ from numpy.typing import NDArray
 from venom_core.core.model_registry_clients import OllamaClient
 from venom_core.infrastructure.traffic_control import TrafficControlledHttpClient
 
+if TYPE_CHECKING:
+    from venom_core.utils.llm_runtime import LLMRuntimeInfo
+
 OMNI_MODEL_ID = "lfm3-omni:2b"
+OMNI_VOICES = {
+    "pl": "female-polish",
+    "en": "female-american-english",
+    "de": "female-german",
+}
 MAX_AUDIO_BYTES = 25 * 1024 * 1024
 MIN_SAMPLE_RATE = 8000
 MAX_SAMPLE_RATE = 192000
@@ -103,12 +112,31 @@ async def supports_audio(endpoint: str, model: str) -> bool:
     return "audio" in show.get("capabilities", [])
 
 
+def is_host_ollama(runtime: LLMRuntimeInfo) -> bool:
+    return bool(
+        runtime.provider == "ollama"
+        and runtime.host_local is not False
+        and runtime.endpoint
+        and urlsplit(runtime.endpoint).hostname in {"localhost", "127.0.0.1", "::1"}
+    )
+
+
+def is_local_model(show: dict) -> bool:
+    return not (show.get("remote_model") or show.get("remote_host"))
+
+
+def supports_omni_voice(show: dict, language: str) -> bool:
+    return (
+        is_local_model(show)
+        and {"audio", "speech"}.issubset(show.get("capabilities") or [])
+        and OMNI_VOICES[language] in (show.get("voices") or [])
+    )
+
+
 async def require_local_capability(endpoint: str, model: str, capability: str) -> dict:
     payload = await OllamaClient(endpoint).get_model_show(model)
-    if (
-        payload.get("remote_model")
-        or payload.get("remote_host")
-        or capability not in (payload.get("capabilities") or [])
+    if not is_local_model(payload) or capability not in (
+        payload.get("capabilities") or []
     ):
         raise RuntimeError("ollama_audio_capability_unavailable")
     return payload

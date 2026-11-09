@@ -80,7 +80,7 @@ export function useStudioVoice(options: VoiceOptions, captureFactory: typeof cre
       const audio = await recording.finish();
       if (capture.current === recording) capture.current = null;
       if (current !== epoch.current) return;
-      const result = await transcribeChatAudio(latest.current.session, audio, latest.current.language, controller.signal, latest.current.mode === "dictation");
+      const result = await transcribeChatAudio(latest.current.session, audio, latest.current.language, controller.signal, true);
       if (current !== epoch.current || controller.signal.aborted || result.session_id !== latest.current.session) return;
       const text = result.text.trim();
       if (!text) { setError("silence"); setStatus("voiceIdle"); return; }

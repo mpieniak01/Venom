@@ -3149,7 +3149,7 @@ function VoiceCommandCenterPanel({
                     value: viewState.effectiveAudioStatus.latest_voice_session.voice_pipeline_mode
                       ?? inferVoiceSessionTimingMode(viewState.effectiveAudioStatus.latest_voice_session),
                     tone: "neutral",
-                    hint: `${t("voice.controls.nativeAudio")} ${["native_audio", "ollama_audio_llm_piper"].includes(inferVoiceSessionTimingMode(viewState.effectiveAudioStatus.latest_voice_session)) ? t("common.yes") : t("common.no")}`,
+                    hint: `${t("voice.controls.nativeAudio")} ${["native_audio", "ollama_audio_llm_piper", "ollama_omni_voice"].includes(inferVoiceSessionTimingMode(viewState.effectiveAudioStatus.latest_voice_session)) ? t("common.yes") : t("common.no")}`,
                   },
                   {
                     label: t("runtime.diagnostics.policy"),

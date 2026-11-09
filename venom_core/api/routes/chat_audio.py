@@ -1,7 +1,6 @@
 """On-demand audio building blocks for the shared text conversation controller."""
 
 from typing import Annotated, Any, Literal
-from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field
@@ -11,6 +10,9 @@ from venom_core.api.transport_access import (
     is_localhost_request,
     require_operator_request,
 )
+from venom_core.config import SETTINGS
+from venom_core.core.model_registry_clients import OllamaClient
+from venom_core.services import ollama_audio
 from venom_core.services.chat_audio import (
     MAX_AUDIO_BYTES,
     complete_audio_work,
@@ -52,18 +54,55 @@ def _engine(request: Request):
 def _native_omni(prefer_native: bool) -> LLMRuntimeInfo | None:
     if not prefer_native:
         return None
-    from venom_core.services.ollama_audio import OMNI_MODEL_ID
-
     runtime = get_active_llm_runtime()
-    if (
-        runtime.provider == "ollama"
-        and runtime.model_name == OMNI_MODEL_ID
-        and runtime.host_local is not False
-        and runtime.endpoint
-        and urlsplit(runtime.endpoint).hostname in {"localhost", "127.0.0.1", "::1"}
+    if runtime.model_name == ollama_audio.OMNI_MODEL_ID and ollama_audio.is_host_ollama(
+        runtime
     ):
         return runtime
     return None
+
+
+@router.get("/pipelines")
+async def voice_pipelines(
+    request: Request,
+    language: Literal["pl", "en", "de"] = "pl",
+    surface: Literal["chat2", "voice"] = "chat2",
+):
+    """Discover installed choices without loading models or opening the microphone."""
+    _engine(request)
+    runtime = get_active_llm_runtime()
+    active = runtime.model_name if ollama_audio.is_host_ollama(runtime) else None
+    result: dict[str, Any] = {
+        "active_model": active,
+        "gemma_models": [],
+        "omni_model": None,
+    }
+    if active is None:
+        return result
+    client = OllamaClient(runtime.endpoint)
+    tags = await client.list_tags()
+    result["gemma_models"] = sorted(
+        {
+            entry["name"]
+            for entry in tags.get("models", [])
+            if isinstance(entry.get("name"), str)
+            and entry["name"].lower().startswith("gemma4")
+            and not entry["name"].lower().endswith("-cloud")
+            and ollama_audio.is_local_model(entry)
+        }
+    )
+    if surface == "voice" and not ollama_audio.allows_native_route(
+        route_profile=SETTINGS.VOICE_ROUTE_PROFILE,
+        decoder_profile=SETTINGS.AUDIO_DECODER_PROFILE,
+        decoder_chain=SETTINGS.AUDIO_DECODER_CHAIN,
+    ):
+        return result
+    # Full Voice currently has a Polish transcription prompt and voice.
+    voice_language = "pl" if surface == "voice" else language
+    show = await client.get_model_show(ollama_audio.OMNI_MODEL_ID)
+    if ollama_audio.supports_omni_voice(show, voice_language):
+        result["omni_model"] = ollama_audio.OMNI_MODEL_ID
+    return result
 
 
 @router.post(
@@ -164,11 +203,7 @@ async def speak(request: Request, payload: ChatSpeechRequest):
         )
 
         endpoint = runtime.endpoint or ""
-        voice = {
-            "pl": "female-polish",
-            "en": "female-american-english",
-            "de": "female-german",
-        }[payload.language]
+        voice = ollama_audio.OMNI_VOICES[payload.language]
 
         async def native_speech():
             show = await require_local_capability(

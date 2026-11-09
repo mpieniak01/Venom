@@ -15,6 +15,7 @@ import {
   type VoiceModePreset,
   type VoiceStatusUpdate,
 } from "@/components/voice/voice-command-center";
+import { VoicePipelinePicker } from "@/components/voice/voice-pipeline-picker";
 import { VoiceStatusSidebar } from "@/components/voice/voice-status-sidebar";
 import { ImageProbeCard } from "@/components/gemma4/gemma4-runtime-control";
 
@@ -93,6 +94,8 @@ export function VoiceChatScreen({ isDevMode = false }: VoiceChatScreenProps) {
           isDevMode={isDevMode}
         />
         <div className="space-y-4">
+          <VoicePipelinePicker surface="voice" disabled={(voiceStatus?.active_recordings ?? 0) > 0}
+            refreshKey={statusRefreshSignal} onApplied={() => setStatusRefreshSignal(current => current + 1)} />
           {/* Mode selector */}
           <div className="rounded-3xl box-muted p-4">
             <p className="eyebrow">{t("voice.modes.title")}</p>

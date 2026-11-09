@@ -69,6 +69,8 @@ def requirements_for(policy: dict[str, Any], profile: str) -> dict[str, str]:
         spec = profiles[name]
         if spec.get("extends"):
             visit(spec["extends"])
+        if spec.get("onnxruntime_provider") == "cuda":
+            collected.pop("onnxruntime", None)
         for group in spec["groups"]:
             for line in policy["groups"][group]:
                 req = Requirement(line)
@@ -95,6 +97,8 @@ def profile_policy_hash(policy: dict[str, Any], profile: str) -> str:
         "requirements": requirements_for(policy, profile),
         "exclusive_distributions": policy["exclusive_distributions"],
     }
+    if provider := policy["profiles"][profile].get("onnxruntime_provider"):
+        scope["onnxruntime_provider"] = provider
     if "python_target" in policy:
         scope["python_target"] = policy["python_target"]
     if "source_distributions" in policy:
@@ -113,6 +117,10 @@ def check_packages(policy: dict[str, Any], profile: str, packages: set[str]) -> 
             raise ValueError(f"Overlapping distribution namespaces: {sorted(overlap)}")
     if policy["profiles"][profile]["kind"] == "application":
         forbidden = packages.intersection(policy["forbidden_application_packages"])
+        if policy["profiles"][profile].get("onnxruntime_provider") == "cuda":
+            forbidden.discard("onnxruntime-gpu")
+            if "onnxruntime" in packages or "onnxruntime-gpu" not in packages:
+                raise ValueError("CUDA application requires only onnxruntime-gpu")
         if forbidden:
             raise ValueError(f"Forbidden application packages: {sorted(forbidden)}")
 
@@ -148,6 +156,13 @@ def load_policy(root: Path = ROOT) -> dict[str, Any]:
     for name, spec in policy["profiles"].items():
         if spec["kind"] not in {"application", "component"}:
             raise ValueError(f"Invalid profile kind: {name}")
+        if "onnxruntime_provider" in spec and (
+            name != "full-ci-cuda"
+            or spec["kind"] != "application"
+            or spec["onnxruntime_provider"] != "cuda"
+            or spec.get("extends") != "full-ci"
+        ):
+            raise ValueError("CUDA ONNX substitution is scoped to full-ci-cuda")
         safe_path(root, spec["input"])
         safe_path(root, spec["lock"])
         requirements_for(policy, name)
@@ -192,6 +207,12 @@ def generated_inputs(policy: dict[str, Any]) -> dict[str, str]:
         lines = [header, f"# Profile: {name} ({spec['kind']})\n"]
         if spec.get("boundary"):
             lines.append(f"# {spec['boundary']}\n")
+        if spec.get("onnxruntime_provider") == "cuda":
+            lines.append(
+                "# INSTALL VIA bootstrap_dependency_profile.py --profile full-ci-cuda only.\n"
+                "# Direct pip install of this input would add conflicting CPU ONNX transitively.\n"
+                "# Bootstrap installs the complete GPU-only hash lock and validates every dependency.\n"
+            )
         # SCM scanners discard -r/-c includes. Emit the complete profile so
         # remote scans and local pip receive identical direct requirements.
         requirements = requirements_for(policy, name)
@@ -307,6 +328,98 @@ def inventory_delta(
     }
 
 
+def check_dependency_metadata(
+    policy: dict[str, Any], profile: str, report: dict[str, Any]
+) -> dict[str, Any]:
+    """Validate every active dependency, allowing only the declared upstream ORT aliases."""
+    rows = report.get("installed", report.get("install", []))
+    metadata = {
+        canonicalize_name(item["metadata"]["name"]): item["metadata"] for item in rows
+    }
+    if not rows or len(metadata) != len(rows):
+        raise ValueError("Dependency metadata must contain unique distributions")
+    packages = {name: item["version"] for name, item in metadata.items()}
+    check_packages(policy, profile, set(packages))
+    environment = report["environment"]
+    extras: dict[str, set[str]] = {name: set() for name in metadata}
+    roots = [Requirement(line) for line in requirements_for(policy, profile).values()]
+    for requirement in roots:
+        name = canonicalize_name(requirement.name)
+        if name in extras:
+            extras[name].update(requirement.extras)
+    substitutions: dict[str, dict[str, str]] = {}
+    errors: set[str] = set()
+    pending = True
+    while pending:
+        pending = False
+        dependencies = [("<profile>", requirement) for requirement in roots]
+        dependencies.extend(
+            (name, Requirement(line))
+            for name, item in metadata.items()
+            for line in item.get("requires_dist", []) or []
+        )
+        for consumer, requirement in dependencies:
+            contexts = {""} | extras.get(consumer, set())
+            if requirement.marker and not any(
+                requirement.marker.evaluate({**environment, "extra": extra})
+                for extra in contexts
+            ):
+                continue
+            required = canonicalize_name(requirement.name)
+            provider = required
+            if (
+                required == "onnxruntime"
+                and required not in packages
+                and policy["profiles"][profile].get("onnxruntime_provider") == "cuda"
+                and consumer in {"piper-tts", "faster-whisper", "magika"}
+            ):
+                provider = "onnxruntime-gpu"
+                substitutions[consumer] = {
+                    "consumer": consumer,
+                    "consumer_version": packages[consumer],
+                    "requirement": str(requirement),
+                    "provider": provider,
+                    "version": packages.get(provider, "missing"),
+                }
+            version = packages.get(provider)
+            if (
+                requirement.url
+                or version is None
+                or version not in requirement.specifier
+            ):
+                errors.add(
+                    f"{consumer}: {requirement}; provider={provider}, installed={version}"
+                )
+                continue
+            new_extras = set(requirement.extras) - extras[provider]
+            if new_extras:
+                extras[provider].update(new_extras)
+                pending = True
+    return {
+        "status": "FAIL" if errors else "PASS",
+        "errors": sorted(errors),
+        "packages": packages,
+        "substitutions": [substitutions[name] for name in sorted(substitutions)],
+    }
+
+
+def provider_pip_check_matches(
+    check: subprocess.CompletedProcess[str], result: dict[str, Any]
+) -> bool:
+    """Keep the raw failure visible and reject any discrepancy beyond declared aliases."""
+    expected = {
+        f"{item['consumer']} {item['consumer_version']} requires onnxruntime, which is not installed."
+        for item in result["substitutions"]
+    }
+    if not expected:
+        return check.returncode == 0
+    return (
+        check.returncode == 1
+        and not check.stderr.strip()
+        and set(check.stdout.strip().splitlines()) == expected
+    )
+
+
 def render_lock(
     policy: dict[str, Any], profile: str, report: dict[str, Any]
 ) -> tuple[str, dict[str, Any]]:
@@ -321,6 +434,21 @@ def render_lock(
             f"Resolver interpreter does not match lock target: {actual_target}"
         )
     check_python_target(policy, environment.get("python_full_version", ""))
+    provider_check = None
+    if policy["profiles"][profile].get("onnxruntime_provider") == "cuda":
+        report = {
+            **report,
+            "install": [
+                item
+                for item in report["install"]
+                if canonicalize_name(item["metadata"]["name"]) != "onnxruntime"
+            ],
+        }
+        provider_check = check_dependency_metadata(policy, profile, report)
+        if provider_check["status"] != "PASS":
+            raise ValueError(
+                f"CUDA provider dependency graph failed: {provider_check['errors']}"
+            )
     packages = report_packages(report, policy.get("source_distributions", {}))
     check_packages(policy, profile, set(packages))
     lines = [
@@ -350,6 +478,9 @@ def render_lock(
         "qualification": "RESOLVED_ONLY",
         "artifacts": packages,
     }
+    if provider_check is not None:
+        receipt["qualification"] = "RESOLVED_WITH_ONNX_PROVIDER_SUBSTITUTION"
+        receipt["dependency_provider_check"] = provider_check
     return content, receipt
 
 
@@ -436,6 +567,8 @@ def lock_profile(root: Path, policy: dict[str, Any], profile: str, python: str) 
                     f"Parent {base_name} lock is stale; resolve parent before extensions"
                 )
             base = read_lock(base_path)
+            if spec.get("onnxruntime_provider") == "cuda":
+                base.pop("onnxruntime", None)
             required_base = dict(base)
             # Freeze any already-qualified application lock's overlapping packages.
             # Constraints do not install CI-only packages in Full.
@@ -589,6 +722,23 @@ def verify_environment(
     check = subprocess.run(
         [python, "-m", "pip", "check"], capture_output=True, text=True, check=False
     )
+    dependency_check = None
+    dependencies_valid = check.returncode == 0
+    if policy["profiles"][profile].get("onnxruntime_provider") == "cuda":
+        inspected = subprocess.run(
+            [python, "-m", "pip", "inspect", "--local"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        dependency_check = check_dependency_metadata(
+            policy, profile, json.loads(inspected.stdout)
+        )
+        dependencies_valid = (
+            dependency_check["status"] == "PASS"
+            and dependency_check["packages"] == installed
+            and provider_pip_check_matches(check, dependency_check)
+        )
     delta = inventory_delta(expected, installed)
     # The separately pinned bootstrap toolchain is the only permitted addition.
     # A Full environment cannot masquerade as a clean Light installation.
@@ -640,7 +790,7 @@ def verify_environment(
         if not delta
         and not bootstrap_delta
         and not unexpected
-        and check.returncode == 0
+        and dependencies_valid
         and isolated
         and interpreter_matches
         else "FAIL",
@@ -650,6 +800,7 @@ def verify_environment(
         "delta": delta,
         "unexpected_packages": unexpected,
         "bootstrap_delta": bootstrap_delta,
+        "dependency_provider_check": dependency_check,
         "pip_check_exit": check.returncode,
         "pip_check": (check.stdout + check.stderr).strip(),
         "isolated_venv": isolated,

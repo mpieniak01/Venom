@@ -126,8 +126,7 @@ export function useStudioVoice(options: StudioVoiceOptions, captureFactory: type
         return;
       }
       setSources([]);
-      const preferNative = voiceOptions.mode === "dictation" || (voiceOptions.multimodalEnabled && voiceOptions.hostAudioAvailable === false);
-      const result = await transcribeChatAudio(voiceOptions.session, audio, voiceOptions.language, controller.signal, preferNative);
+      const result = await transcribeChatAudio(voiceOptions.session, audio, voiceOptions.language, controller.signal, true);
       if (current !== epoch.current || controller.signal.aborted || result.session_id !== latest.current.session) return;
       const text = result.text.trim();
       if (!text) { setError("silence"); setStatus("voiceIdle"); return; }

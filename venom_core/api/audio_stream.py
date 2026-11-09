@@ -48,7 +48,7 @@ from venom_core.services.runtime_switch_gate import (
     get_runtime_switch_gate_status,
     runtime_request_guard,
 )
-from venom_core.utils.llm_runtime import get_active_llm_runtime
+from venom_core.utils.llm_runtime import LLMRuntimeInfo, get_active_llm_runtime
 from venom_core.utils.logger import get_logger
 from venom_core.utils.mode_contracts import (
     VOICE_EXECUTION_CONTEXT,
@@ -1460,9 +1460,12 @@ class AudioStreamHandler:
         ):
             try:
                 with get_runtime_admission().operation(kind="voice_audio_selection"):
-                    native_audio = await ollama_audio.supports_audio(
-                        runtime.endpoint or "", runtime.model_name
-                    )
+                    if runtime.model_name == ollama_audio.OMNI_MODEL_ID:
+                        native_audio = ollama_audio.is_host_ollama(runtime)
+                    else:
+                        native_audio = await ollama_audio.supports_audio(
+                            runtime.endpoint or "", runtime.model_name
+                        )
             except RuntimeAdmissionError:
                 pass
         if native_audio:
@@ -1989,6 +1992,13 @@ class AudioStreamHandler:
     ) -> bool:
         if decoder_plan["effective"] == "ollama_audio":
             runtime = get_active_llm_runtime()
+            native_speech = (
+                runtime.model_name == ollama_audio.OMNI_MODEL_ID
+                and ollama_audio.is_host_ollama(runtime)
+            )
+            pipeline_id = (
+                "ollama_omni_voice" if native_speech else "ollama_audio_llm_piper"
+            )
             async with runtime_request_guard(
                 request_kind="voice_ollama_audio",
                 provider="ollama",
@@ -1996,6 +2006,12 @@ class AudioStreamHandler:
             ):
                 started_at = time.perf_counter()
                 try:
+                    if native_speech:
+                        show = await ollama_audio.require_local_capability(
+                            runtime.endpoint or "", runtime.model_name, "audio"
+                        )
+                        if not ollama_audio.supports_omni_voice(show, "pl"):
+                            raise RuntimeError("ollama_omni_voice_unavailable")
                     transcription = await ollama_audio.transcribe_audio(
                         runtime.endpoint or "", runtime.model_name, wav_path
                     )
@@ -2003,7 +2019,7 @@ class AudioStreamHandler:
                     self._update_voice_session_metadata(
                         session_dir,
                         {
-                            "pipeline_id": "ollama_audio_llm_piper",
+                            "pipeline_id": pipeline_id,
                             "audio_input_status": "failed",
                             "decoder_source": "ollama",
                             "decoder_effective": "ollama_audio",
@@ -2014,7 +2030,7 @@ class AudioStreamHandler:
                 self._update_voice_session_metadata(
                     session_dir,
                     {
-                        "pipeline_id": "ollama_audio_llm_piper",
+                        "pipeline_id": pipeline_id,
                         "voice_pipeline_mode": "native_ollama_audio",
                         "decoder_source": "ollama",
                         "decoder_selected": "ollama_audio",
@@ -2034,7 +2050,8 @@ class AudioStreamHandler:
                     timings_ms=timings_ms,
                     total_started_at=total_started_at,
                     operator_agent=operator_agent,
-                    pipeline_id="ollama_audio_llm_piper",
+                    pipeline_id=pipeline_id,
+                    native_speech_runtime=runtime if native_speech else None,
                 )
             return True
 
@@ -2420,6 +2437,7 @@ class AudioStreamHandler:
         operator_agent: object | None,
         empty_agent_response_log_suffix: str = "",
         pipeline_id: str = "whisper_llm_piper",
+        native_speech_runtime: LLMRuntimeInfo | None = None,
     ) -> None:
         """Run shared whisper->agent->tts pipeline for PCM and encoded audio."""
         if not transcription:
@@ -2512,12 +2530,27 @@ class AudioStreamHandler:
         )
         await self._send_json(connection_id, {"type": "processing", "status": "tts"})
         audio_engine = self.audio_engine
-        if audio_engine is None:
+        if audio_engine is None and native_speech_runtime is None:
             logger.warning("Brak audio_engine podczas etapu TTS; pomijam speak().")
             await self._send_json(connection_id, {"type": "complete"})
             return
         tts_started_at = time.perf_counter()
-        audio_response = await audio_engine.speak(response_text)
+        audio_response = None
+        sample_rate = None
+        if native_speech_runtime is not None:
+            wav = await ollama_audio.synthesize_speech(
+                native_speech_runtime.endpoint or "",
+                native_speech_runtime.model_name,
+                response_text,
+                voice=ollama_audio.OMNI_VOICES["pl"],
+            )
+            with wave.open(io.BytesIO(wav), "rb") as source:
+                audio_response = np.frombuffer(
+                    source.readframes(source.getnframes()), dtype="<i2"
+                )
+                sample_rate = source.getframerate()
+        elif audio_engine is not None:
+            audio_response = await audio_engine.speak(response_text)
         timings_ms["tts_ms"] = self._elapsed_ms(tts_started_at)
         timings_ms["total_backend_ms"] = self._elapsed_ms(total_started_at)
         self._update_voice_session_metadata(
@@ -2528,7 +2561,12 @@ class AudioStreamHandler:
             },
         )
         if audio_response is not None:
-            await self._send_audio(connection_id, audio_response)
+            if sample_rate is None:
+                await self._send_audio(connection_id, audio_response)
+            else:
+                await self._send_audio(
+                    connection_id, audio_response, sample_rate=sample_rate
+                )
 
         await self._send_json(connection_id, {"type": "complete"})
 

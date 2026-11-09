@@ -187,13 +187,18 @@ function StudioConversation({ showLegacyLink, lightNormal }: Readonly<{
       <div className="studio-top-actions"><label className="studio-language"><span className="sr-only">{t("chat2.language")}</span><select aria-label={t("chat2.language")} value={language} onChange={event => setLanguage(event.target.value as "pl" | "en" | "de")}><option value="pl">PL</option><option value="en">EN</option><option value="de">DE</option></select></label>
         <button ref={materialButton} type="button" className="studio-button" aria-expanded={materialsOpen} aria-controls="studio-materials" onClick={() => { setHistoryOpen(false); setMaterialsOverride(!materialsOpen); }}><Paperclip size={16} />{t("chat2.materials")}</button></div>
     </header>
-    <StudioModelPicker catalog={source.data.unifiedModelCatalog} interaction={interaction} session={sessionId} selectedModel={selectedModel} activeModel={activeServer?.active_model} onApply={conversation.handleActivateModel} busy={active} />
+    <StudioModelPicker catalog={source.data.unifiedModelCatalog} interaction={interaction} session={sessionId} selectedModel={selectedModel} activeModel={activeServer?.active_model} onApply={conversation.handleActivateModel} busy={active || voice != null} />
     {source.error && <div className="studio-error" role="alert">{t("chat2.offline")}<button type="button" className="studio-button" onClick={() => { void source.refresh(); }}>{t("chat2.retry")}</button></div>}
     <div className={"studio-workspace" + (materialsOpen ? " studio-with-materials" : "")}><div className="studio-conversation">
       <StudioThread key={sessionId} messages={conversation.historyMessages} details={interaction.optimistic.simpleRequestDetails} scrollRef={scrollRef} onScroll={conversation.chatUi.handleChatScroll} loading={source.loading || !sessionId} onError={setters.setMessage} noteSession={notesAvailable ? sessionId : undefined} />
       {voice && (voice === "conversation" ? conversationVoiceAvailable : voiceAvailable) && <StudioVoice
         key={sessionId + voice + (multimodalEnabled ? ":omni" : "")} session={sessionId} mode={voice}
         stopRevision={stopRevision} busy={chatActive} messages={conversation.historyMessages}
+        activeModel={activeServer?.active_model} onModelApplied={model => {
+          setters.setSelectedLlmServer("ollama");
+          setters.setSelectedLlmModel(model);
+          void source.refresh();
+        }}
         multimodalEnabled={multimodalEnabled} hostAudioAvailable={voiceAvailable}
         onMultimodalBusy={setMultimodalBusy} onMultimodalCommit={() => { void conversation.sessionHistoryState.refreshSessionHistory(); }}
         onDraft={text => setDraft(previous => previous ? previous + " " + text : text)} onTurn={send} onStop={stop} onClose={() => setVoice(null)} />}

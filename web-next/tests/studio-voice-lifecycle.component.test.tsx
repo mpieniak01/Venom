@@ -45,7 +45,7 @@ test("a late transcription after ending voice cannot alter a draft or send a tur
 
 test("conversation uses the same text turn once and never speaks a stopped partial", async () => {
   const fixture = options(); fixture.props.mode = "conversation"; let speech = 0;
-  globalThis.fetch = async input => { if (String(input).includes("/speak")) { speech++; return new Response(new Blob(["wav"])); } return Response.json({ session_id: "one", text: "one user turn" }); };
+  globalThis.fetch = async input => { if (String(input).includes("/speak")) { speech++; return new Response(new Blob(["wav"])); } assert.match(String(input), /[&?]prefer_native=true/); return Response.json({ session_id: "one", text: "one user turn" }); };
   const hook = renderHook(props => useStudioVoice(props, async () => ({ finish: async () => recorded(), dispose: () => {} })), { initialProps: fixture.props });
   await act(async () => { await hook.result.current.start(); }); await act(async () => { await hook.result.current.finish(); });
   assert.deepEqual(fixture.turns, ["one user turn"]);

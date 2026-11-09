@@ -51,6 +51,7 @@ STUDIO_ROUTES: dict[str, frozenset[str]] = {
     "/api/v1/chat/materials/capabilities": frozenset({"GET"}),
     "/api/v1/chat/materials/{material_id}": frozenset({"DELETE"}),
     "/api/v1/chat/materials/{material_id}/content": frozenset({"GET"}),
+    "/api/v1/chat/audio/pipelines": frozenset({"GET"}),
     "/api/v1/chat/audio/transcribe": frozenset({"POST"}),
     "/api/v1/chat/audio/multimodal-turn": frozenset({"POST"}),
     "/api/v1/chat/audio/speak": frozenset({"POST"}),

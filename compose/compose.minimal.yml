@@ -53,7 +53,8 @@ services:
       ACTIVE_LLM_SERVER: ${ACTIVE_LLM_SERVER:-ollama}
       LLM_SERVICE_TYPE: ${LLM_SERVICE_TYPE:-local}
       LLM_LOCAL_ENDPOINT: ${LLM_LOCAL_ENDPOINT:-http://ollama:11434/v1}
-      LLM_MODEL_NAME: ${LLM_MODEL_NAME:-${OLLAMA_MODEL:-gemma4:e4b}}
+      # Raw Compose starts with the model provisioned by older installations.
+      LLM_MODEL_NAME: ${LLM_MODEL_NAME:-${OLLAMA_MODEL:-gemma2:2b}}
       LLM_WARMUP_ON_STARTUP: ${LLM_WARMUP_ON_STARTUP:-false}
       VENOM_OLLAMA_PROFILE: ${VENOM_OLLAMA_PROFILE:-balanced-12-24gb}
       # Backend uses 0/empty as sentinel => resolve from VENOM_OLLAMA_PROFILE.

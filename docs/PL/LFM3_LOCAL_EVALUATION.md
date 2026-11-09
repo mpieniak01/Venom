@@ -69,6 +69,8 @@ Dla obrazu użyto PNG, a dla audio WAV mono 16 kHz przez tablicę mediów Ollamy
 
 Polski TTS sprawdzono przez `/v1/audio/speech`, używając głosów `female-polish` i `male-polish`. WAV to PCM16 mono 24 kHz, 2,24–2,72 s dźwięku. Serwer wstawiał do nagłówka strumienia otwarty licznik 2 147 483 647 ramek. Długości w raporcie pochodzą z faktycznych próbek, a skrypt zapisuje końcowy WAV z poprawionym licznikiem. Treść sprawdzono przez lokalny faster-whisper-medium na CPU. Odsłuch jest osobnym, zablokowanym etapem, ponieważ sesja nie udostępniała wejścia audio. Transkrypcja kontrolna ocenia zrozumiałość, a wymowa i naturalność wymagają odsłuchu.
 
+W tabelach przypadki oznaczone w skrypcie jako `REVIEW` oceniono ręcznie. Automatyczny próg WER w M05 mierzy zgodność słów. Tabela uwzględnia również zmianę znaczenia wypowiedzi.
+
 ## Wydajność
 
 Pomiar zimny oznacza usunięcie modelu z pamięci izolowanego serwera, a potem jedno żądanie rozgrzewające. Cache plików systemu był aktywny. Mediany tekstowe dotyczą 36 ciepłych żądań scenariuszy T01–T12 na model, a pomiary przepustowości dotyczą generowania pierwszej tury. Krótkie próby obejmują ponowne użycie prefiksu. W T05 czas całkowity zawiera obie tury.
@@ -131,14 +133,16 @@ Lokalne ślady zawierają wszystkie próby, czasy, diagnostykę i pliki audio. �
 - `test-results/lfm3/catalog-live.log` — rzeczywisty odczyt katalogu Venom.
 - `test-results/lfm3/pr-fast.log` — pełny log bramki jakości.
 
-## Walidacja gałęzi
+## Walidacja kwalifikacji LFM3
+
+Poniższe wyniki dotyczą przebiegu zapisanego w commicie `b11a1041`. Wyniki całej gałęzi podaje opis pull requesta.
 
 | Polecenie lub próba | Wynik |
 | --- | --- |
 | `ruff check` dla zmienionych plików Python | PASS |
 | `pytest -q tests/test_model_manager_discovery.py tests/test_ollama_model_identity.py tests/test_ollama_runtime_capabilities.py` | PASS, 81 testów |
 | `make test-catalog-check` i `make test-groups-check` | PASS |
-| `make pr-fast` | PASS, 1160 testów Python, 362 Web Next, 13 Studio oraz kontrole statyczne z bramki |
+| `make pr-fast` | PASS, 1160 testów Pythona, 362 testy Web Next, 13 testów Studio i kontrole statyczne |
 | `make check-new-code-coverage-diagnostics` po bramce | PASS, 39/47 zmienionych linii (83,0%) wobec `origin/main`. Pierwszy odczyt dotyczył starszego pliku pokrycia. |
 | Odczyt modeli z działającego `/api/tags` przez ModelManager i katalog Venom | PASS dla obu tagów |
 | Ponowna synteza z końcowym zapisem WAV | PASS techniczny dla obu głosów, PCM16 mono 24 kHz i poprawna długość |

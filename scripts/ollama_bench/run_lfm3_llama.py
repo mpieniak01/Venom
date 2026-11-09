@@ -10,6 +10,7 @@ import wave
 from pathlib import Path
 
 import httpx
+from websockets.exceptions import WebSocketException
 from websockets.sync.client import connect
 
 from scripts.ollama_bench.lfm3_cases import MEDIA
@@ -171,7 +172,13 @@ def main() -> None:
                 with ResourceSampler() as sample:
                     try:
                         row = video(client, case.prompt, args.fixtures / case.media[0])
-                    except (httpx.HTTPError, RuntimeError, ValueError) as exc:
+                    except (
+                        httpx.HTTPError,
+                        KeyError,
+                        OSError,
+                        RuntimeError,
+                        ValueError,
+                    ) as exc:
                         row = {"status": "BLOCKED", "error": error_text(exc)}
                 write_row(
                     results,
@@ -192,7 +199,14 @@ def main() -> None:
                     args.fixtures / "intent.wav",
                     args.output / f"realtime-{trial}.wav",
                 )
-            except (OSError, RuntimeError, ValueError) as exc:
+            except (
+                KeyError,
+                OSError,
+                RuntimeError,
+                ValueError,
+                wave.Error,
+                WebSocketException,
+            ) as exc:
                 row = {"status": "BLOCKED", "error": error_text(exc)}
         write_row(
             results,

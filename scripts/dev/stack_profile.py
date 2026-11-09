@@ -204,7 +204,10 @@ def resolve(
         "",
         f"http://localhost:8000{services_path}",
     ):
-        values["SYSTEM_SERVICES_ENDPOINT"] = f"{own_proxy}{services_path}"
+        loopback = "[::1]" if values.get("HOST") in {"::", "::1"} else "127.0.0.1"
+        values["SYSTEM_SERVICES_ENDPOINT"] = (
+            f"http://{loopback}:{values['PORT']}{services_path}"
+        )
     # Browser traffic must use the streaming same-origin proxy, not .env.local.
     values["NEXT_PUBLIC_API_BASE"] = ""
     values["NEXT_PUBLIC_WS_BASE"] = ""

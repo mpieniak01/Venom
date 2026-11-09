@@ -62,6 +62,27 @@ def test_services_endpoint_follows_full_listener(tmp_path, endpoint, expected):
     assert values["SYSTEM_SERVICES_ENDPOINT"] == expected
 
 
+@pytest.mark.parametrize(
+    ("host", "loopback"),
+    [("0.0.0.0", "127.0.0.1"), ("::", "[::1]")],
+)
+def test_services_endpoint_uses_loopback_with_lan_display(tmp_path, host, loopback):
+    (tmp_path / ".env.dev").touch()
+    values = resolve(
+        tmp_path,
+        {
+            "VENOM_VARIANT": "venom",
+            "PORT": "18800",
+            "HOST": host,
+            "HOST_DISPLAY": "192.0.2.5",
+        },
+    )
+    assert values["API_PROXY_TARGET"] == "http://192.0.2.5:18800"
+    assert values["SYSTEM_SERVICES_ENDPOINT"] == (
+        f"http://{loopback}:18800/api/v1/system/services"
+    )
+
+
 def test_studio_standalone_uses_the_public_build_configuration(tmp_path):
     (tmp_path / ".env.dev").write_text("ENABLE_AUDIO_INTERFACE=true\n")
     config = {

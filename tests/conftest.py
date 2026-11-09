@@ -714,6 +714,14 @@ class FakeVectorStore:
 
 
 @pytest.fixture
+def offline_vision(monkeypatch):
+    """Use an unavailable local vision runtime in tests of dispatcher behavior."""
+    monkeypatch.setattr(
+        "venom_core.perception.eyes.Eyes._check_local_vision", lambda _eyes: False
+    )
+
+
+@pytest.fixture
 def fake_vector_store():
     return FakeVectorStore()
 

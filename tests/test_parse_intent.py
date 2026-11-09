@@ -8,6 +8,8 @@ from venom_core.core.dispatcher import TaskDispatcher
 from venom_core.core.models import Intent
 from venom_core.execution.maf_runtime import AgentRuntime as Kernel
 
+pytestmark = pytest.mark.usefixtures("offline_vision")
+
 
 @pytest.fixture
 def mock_kernel():

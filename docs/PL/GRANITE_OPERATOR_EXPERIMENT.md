@@ -114,10 +114,14 @@ czasy treningu, nadzorowane tokeny/s, p50/p95 kroków, NLL i pamięć.
 
 ## Aktualizacja środowiska i wznowienia
 
-Nowe próby korzystają z osobnego profilu Python 3.14.8, Torch 2.15.0 i
-Transformers 5.22.2. Tożsamość Granite automatycznie wiąże dokładny lock oraz
-zainstalowane wersje ze źródłami, wagami i sprzętem. Zmiana stosu unieważnia
-poprzednią kwalifikację dla nowych prób. Historyczne checkpointy zachowują
+Granite pozostaje eksperymentem historycznym i nie jest aktywnym celem
+modelowym aktualizacji. Profil o nazwie `granite-operator-training` jest
+wspólnym stosem używanym przez Gemmę 4 i FunctionGemmę, z Pythonem 3.14.8,
+Torch 2.15.0 i Transformers 5.22.2. Zachowanie nazwy locka nie oznacza
+przywrócenia wag ani kwalifikacji modelu Granite.
+
+Historyczna tożsamość Granite wiąże lock oraz wersje ze źródłami, wagami
+i sprzętem. Historyczne checkpointy zachowują
 oryginalne potwierdzenia i wymagają swojego checkoutu, locka oraz interpretera
 do wznowienia. Nie przepisujemy ich odcisków po aktualizacji.
 

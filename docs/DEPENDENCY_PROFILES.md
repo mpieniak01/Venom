@@ -6,16 +6,15 @@ Linux x86_64, Python **3.14.8** (`platform.python` is the minor `3.14`;
 These declarations do not establish installation, runtime or security qualification.
 The existing Python 3.12 evidence does not qualify the new interpreter or graph.
 
-## Eight managed profiles
+## Seven managed profiles
 
 | Profile | Kind | Dependency boundary |
 | --- | --- | --- |
 | `light` | Application | MAF core, API, orchestration and the selected application clients; no local model engines. |
 | `ci` | Application | Extends Light with the shared test, lint and audit tools. |
 | `build` | Component | Pinned pip/setuptools/wheel/packaging toolchain used by explicit bootstrap; not a model environment. |
-| `full` | Application | Extends Light with actual memory, vision, web/documents, desktop, hardware and CPU voice/floor consumers. |
+| `full` | Application | Extends Light with actual memory, vision, web/documents, desktop, hardware and CUDA voice/floor consumers. |
 | `full-ci` | Application | Extends Full with the same CI tools; its installed inventory is distinct from exact Full. |
-| `full-ci-cuda` | Application | Extends Full CI with one CUDA ONNX distribution, cuRAND and CTranslate2 cuBLAS; preserves the application and CI tools. |
 | `multi-runtime-cuda` | Component | Independent minimal API/model/audio/OCR base for the CUDA daemon; does not extend Light. |
 | `granite-operator-training` | Component | Shared isolated CUDA training dependencies for Gemma 4 and FunctionGemma; historical lock name retained for checkpoint compatibility. |
 
@@ -29,9 +28,10 @@ are self-contained and contain no recursive `-r` or `-c` directives.
 Full declares Torch **2.15.0**, TorchVision **0.29.2** and Transformers **5.22.2**
 for existing in-process DA2 vision and RAG/embedding consumers. Moving the HTTP
 daemon to another interpreter does not move those application consumers. Full
-also declares CPU `onnxruntime` for the existing voice and Rider floor features,
-with faster-whisper, Piper and audio dependencies. It does not install GPU ONNX
-or ONNX GenAI. CPU and GPU ONNX distributions must not share a namespace.
+also declares `onnxruntime-gpu` for existing voice and floor features, with
+faster-whisper, Piper and audio dependencies. Its CPU API remains available
+through that single GPU distribution. ONNX GenAI is not installed. CPU and GPU
+ONNX distributions must not share a namespace.
 
 The CUDA daemon has its own `multi-runtime-cuda` component environment and keeps
 matching Torch/Transformers versions. `MULTI_RUNTIME_COMPONENT_PYTHON` selects
@@ -47,57 +47,89 @@ execution still supports explicit `auto`, `cuda` and `cpu` settings. This GPU
 package set is not a lightweight CPU-only installation profile. Systemd selection, service starts, model assets and device/CUDA
 acceptance remain explicit operations, not effects of profile bootstrap.
 
-## Full CI with CUDA voice
+## Standard Full CUDA voice
 
-Select `full-ci-cuda` when application voice needs `TTS_USE_CUDA=true`. It keeps
-the Full CI graph, replaces CPU `onnxruntime` with `onnxruntime-gpu==1.31.1`, and
-adds `nvidia-curand==10.4.2.66` from the CUDA 13.2.2 toolkit plus
-`nvidia-cublas-cu12==12.9.1.4` for CTranslate2 4.8.5. The CPU Full and
-Full CI profiles retain their original requirements and locks. The retained
-legacy Rider checkout has an independent environment and is not this profile.
+Both `full` and `full-ci` use `onnxruntime-gpu==1.31.1` by default.
+They include `nvidia-curand==10.4.2.66` from CUDA Toolkit 13.2.2 and
+`nvidia-cublas-cu12==12.9.3.13` for CTranslate2 4.8.5. The latter adds
+`nvidia-cuda-nvrtc-cu12==12.9.86` transitively. Full has 213 locked packages;
+Full CI adds the shared CI tools for a total of 259. The redundant
+`full-ci-cuda` profile and its install artifacts are retired. The independent
+legacy Rider checkout and its environment are outside this application profile.
 
 [ONNX Runtime upstream](https://onnxruntime.ai/docs/get-started/with-python)
 requires one runtime distribution per environment and documents that the GPU
-package also provides CPU functionality. Piper 1.8.0, Faster Whisper 1.2.1 and Magika 0.6.3
-still name the CPU distribution in package metadata. This profile explicitly
-substitutes the GPU provider for those three consumers only, checking the
-actual provider version against each original specifier. All other active
-requirements, including extras, must be satisfied without substitution.
-[cuRAND 10.4.2.66](https://pypi.org/project/nvidia-curand/10.4.2.66/) is the
-version declared by the installed CUDA 13.2.2 toolkit metadata.
+package also provides CPU functionality. Piper 1.8.0, Faster Whisper 1.2.1 and
+Magika 0.6.3 still name the CPU distribution in package metadata. The Full profiles
+substitute the GPU provider for those three consumers only, checking its actual
+version against each original specifier. All other active requirements, including
+extras, must be satisfied without substitution.
 
-CTranslate2's CUDA loader still requests `libcublas.so.12`; Torch's cuBLAS 13
-has a different SONAME and cannot satisfy it. The parallel
-[NVIDIA cuBLAS 12 wheel](https://pypi.org/project/nvidia-cublas-cu12/12.9.1.4/)
-provides this native runtime without replacing Torch's CUDA 13 packages.
-[Faster Whisper's GPU installation instructions](https://github.com/SYSTRAN/faster-whisper#gpu)
-also require CUDA 12 cuBLAS and exposing its directory before Python starts.
-CTranslate2's Python metadata only declares NumPy/PyYAML, so a green dependency
-metadata check alone does not verify these dynamically loaded GPU libraries.
+The official [CTranslate2 4.8.5 Linux wheel build](https://github.com/OpenNMT/CTranslate2/blob/v4.8.5/python/tools/prepare_build_environment_linux.sh)
+uses CUDA 12.8 and cuBLAS 12 with dynamic loading. Its
+[loader](https://github.com/OpenNMT/CTranslate2/blob/v4.8.5/src/cuda/cublas_stub.cc)
+requests `libcublas.so.12`, which Torch's cuBLAS 13 cannot supply. The parallel
+[NVIDIA cuBLAS 12 wheel](https://pypi.org/project/nvidia-cublas-cu12/12.9.3.13/)
+and [NVRTC 12 wheel](https://pypi.org/project/nvidia-cuda-nvrtc-cu12/12.9.86/)
+provide that active compatibility runtime without replacing Torch's CUDA 13
+libraries. Their directories are `nvidia/cublas/lib` and `nvidia/cuda_nvrtc/lib`;
+CUDA 13 uses `nvidia/cu13/lib`. This is not an obsolete cache or a separate
+application environment. Current upstream wheels do not offer a CUDA 13-only
+CTranslate2 replacement.
 
-Use a **fresh** environment and the profile bootstrap:
+As checked on 2026-11-09, the [NVIDIA archive](https://developer.nvidia.com/cuda-toolkit-archive/)
+lists Toolkit 13.5.0 as latest and 13.4.3 as archived; the
+[13.5.0 PyPI release](https://pypi.org/project/cuda-toolkit/13.5.0/) is dated
+November 4. The [PyTorch 2.15 support matrix](https://github.com/pytorch/pytorch/blob/v2.15.0/RELEASE.md)
+identifies CUDA 13.2 as stable and 13.4 as experimental. The selected Torch wheel
+requires Toolkit **13.2.2** and cuDNN **9.26.0.51** exactly. Keep those pins:
+installing the newest toolkit globally does not replace a wheel's required
+runtime or CTranslate2's SONAME 12. The NVIDIA driver is a separate layer and
+supports older CUDA applications through [backward compatibility](https://docs.nvidia.com/deploy/cuda-compatibility/minor-version-compatibility.html).
+
+Use the profile bootstrap for a fresh installation:
 
 ```bash
 source .venv/bin/activate
-python scripts/bootstrap_dependency_profile.py --profile full-ci-cuda --venv /explicit/path/to/full-ci-cuda
+python scripts/bootstrap_dependency_profile.py --profile full-ci --venv /explicit/path/to/full-ci
 ```
 
-Do not run plain `pip install -r requirements-full-ci-cuda.txt`; the upstream
-metadata would add the conflicting CPU wheel. Bootstrap installs the complete
-hash lock with `--no-deps`, then verifies the exact inventory and the entire
-installed dependency graph. It preserves the raw nonzero `pip check` result
-and its three missing-CPU-distribution messages in the verification report.
-Only these documented metadata mismatches are accepted by the provider check;
-any additional pip error, missing dependency, incompatible version, or a
-second ORT distribution fails verification. The CPU profiles continue to
-require a clean standard `pip check`.
+Do not run plain `pip install -r requirements-full.txt` or
+`requirements-full-ci.txt`; upstream metadata would add the conflicting CPU
+wheel. Bootstrap installs the complete hash lock with `--no-deps`, then verifies
+the exact inventory and every active dependency. It preserves the raw nonzero
+`pip check` result and its three missing-CPU-distribution messages. Only the
+documented Piper/Faster Whisper/Magika mismatches are accepted by the provider
+check. Any additional pip error, missing dependency, incompatible version or
+second ORT distribution fails verification. Other profiles retain the standard
+clean-`pip check` requirement.
 
-The launcher must expose CUDA/cuDNN/cuRAND libraries from this environment to
-the dynamic loader (for example the environment's `nvidia/cu13/lib` and
-`nvidia/cudnn/lib`, plus `nvidia/cublas/lib` for CTranslate2, via its local
-`LD_LIBRARY_PATH`). Bootstrap does not alter
-service configuration or load models. CUDA voice acceptance is a separate
-operator check, outside code gates and pre-push.
+The one supported migration accepts the exact retired `full-ci-cuda` release:
+
+```bash
+python scripts/bootstrap_dependency_profile.py --profile full-ci --venv /existing/owned/gpu-venv --update
+```
+
+Before any package mutation, bootstrap checks the old ownership receipt's lock
+hash and all 258 original package versions; only its optional pinned wheel
+bootstrap tool may be present in addition. The update advances cuBLAS and adds
+NVRTC, verifies the complete canonical Full CI graph, then writes the new owner.
+An unknown owner, modified inventory, CPU ORT or a failed final verification
+cannot receive the new ownership receipt. Existing CPU Full environments need a
+fresh GPU environment; no in-place mixed-ORT installation is permitted.
+
+The launcher must expose libraries from its own environment before Python starts:
+`nvidia/cu13/lib`, `nvidia/cudnn/lib`, `nvidia/cublas/lib` and
+`nvidia/cuda_nvrtc/lib`. The project GPU launcher discovers these directories.
+Bootstrap does not alter service configuration or load models. Voice acceptance
+is a separate operator check outside code gates and pre-push.
+
+The two replacement locks retain the frozen release graph, refresh only the
+declared CUDA changes from official PyPI artifacts, and validate the full
+dependency metadata. Their receipts explicitly record
+`METADATA_VALIDATED_WITH_ONNX_PROVIDER_SUBSTITUTION`, source lock identities
+and artifact hashes; this is not an installation or model qualification.
+The other five lock graphs remain unchanged.
 
 ## Removed declarations and retained scope
 
@@ -117,9 +149,9 @@ of the new Full runtime. Existing consumer behavior determines feature groups;
 adding every historical experiment back to Full is not the profile contract.
 
 ONNX LLM/GenAI, standalone legacy ONNX extras, vLLM and Academy remain
-explicitly deferred. GPU ONNX for application voice is available through
-`full-ci-cuda`; it does not activate the deferred ONNX LLM/GenAI installers.
-The active Full CPU voice/floor group also remains independent of those profiles. A later ONNX LLM component needs a concrete model
+explicitly deferred. GPU ONNX for application voice is standard in Full and Full CI; it does not
+activate the deferred ONNX LLM/GenAI installers. The Full voice/floor group
+remains independent of those profiles. A later ONNX LLM component needs a concrete model
 consumer and its own qualification. vLLM remains outside this candidate; model training uses its isolated component.
 Legacy overlay bytes may still include a changed shared Light input; byte identity
 does not freeze their effective graph or establish compatibility.
@@ -223,7 +255,7 @@ were preserved. The test model was unloaded and its owned process stopped.
 
 The shared model group now pins Torch 2.15.0, TorchVision 0.29.2 and
 Transformers 5.22.2. The Linux locks select CUDA Toolkit 13.2.2 and Triton 3.9.0.
-Full and Full CI use Sentence Transformers 6.2.0, SciPy 1.18.1 and CPU
+Full and Full CI use Sentence Transformers 6.2.0, SciPy 1.18.1 and GPU
 ONNX Runtime 1.31.1. All Hub consumers in the managed profiles use Hub 2.4.0
 and hf-xet 1.8.0, including CI; its separate httpx2, httpcore2 and truststore
 dependencies are recorded in the locks. The application still uses httpx 0.28.1.

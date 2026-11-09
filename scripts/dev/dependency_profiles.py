@@ -161,12 +161,14 @@ def load_policy(root: Path = ROOT) -> dict[str, Any]:
         if spec["kind"] not in {"application", "component"}:
             raise ValueError(f"Invalid profile kind: {name}")
         if "onnxruntime_provider" in spec and (
-            name != "full-ci-cuda"
+            name not in {"full", "full-ci"}
             or spec["kind"] != "application"
             or spec["onnxruntime_provider"] != "cuda"
-            or spec.get("extends") != "full-ci"
+            or spec.get("extends") != {"full": "light", "full-ci": "full"}.get(name)
         ):
-            raise ValueError("CUDA ONNX substitution is scoped to full-ci-cuda")
+            raise ValueError(
+                "CUDA ONNX substitution is scoped to Full application profiles"
+            )
         safe_path(root, spec["input"])
         safe_path(root, spec["lock"])
         requirements_for(policy, name)
@@ -214,7 +216,7 @@ def generated_inputs(policy: dict[str, Any]) -> dict[str, str]:
             lines.append(f"# {spec['boundary']}\n")
         if spec.get("onnxruntime_provider") == "cuda":
             lines.append(
-                "# INSTALL VIA bootstrap_dependency_profile.py --profile full-ci-cuda only.\n"
+                f"# INSTALL VIA bootstrap_dependency_profile.py --profile {name} only.\n"
                 "# Direct pip install of this input would add conflicting CPU ONNX transitively.\n"
                 "# Bootstrap installs the complete GPU-only hash lock and validates every dependency.\n"
             )

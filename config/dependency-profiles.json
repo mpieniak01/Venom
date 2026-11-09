@@ -117,13 +117,6 @@
     "full-vision": [
       "opencv-python-headless==4.11.0.86"
     ],
-    "full-voice-floor-cpu": [
-      "onnxruntime==1.31.1",
-      "faster-whisper==1.2.1",
-      "piper-tts==1.8.0",
-      "sounddevice==0.5.6",
-      "av==19.0.1"
-    ],
     "full-desktop": [
       "mss==10.2.0",
       "pyautogui==0.9.54",
@@ -161,10 +154,14 @@
       "bitsandbytes==0.50.2",
       "jsonschema>=4.26,<5"
     ],
-    "full-onnx-cuda": [
+    "full-voice-floor": [
+      "faster-whisper==1.2.1",
+      "piper-tts==1.8.0",
+      "sounddevice==0.5.6",
+      "av==19.0.1",
       "onnxruntime-gpu==1.31.1",
       "nvidia-curand==10.4.2.66",
-      "nvidia-cublas-cu12==12.9.1.4"
+      "nvidia-cublas-cu12==12.9.3.13"
     ]
   },
   "profiles": {
@@ -205,14 +202,15 @@
         "full-web",
         "full-documents",
         "full-vision",
-        "full-voice-floor-cpu",
+        "full-voice-floor",
         "full-desktop",
         "full-infrastructure",
         "full-code"
       ],
       "input": "requirements-full.txt",
       "lock": "requirements/locks/full-linux-py314.txt",
-      "boundary": "Application features include in-process DA2/RAG Torch and CPU ONNX voice/floor consumers. CUDA multi_runtime daemon uses its own component interpreter; Ollama stays an external HTTP service. No GPU ONNX or vLLM in this environment."
+      "boundary": "Full application with CUDA ONNX voice, in-process DA2/RAG Torch and one ONNX distribution. CUDA 13 follows Torch; CTranslate2 uses parallel CUDA 12 cuBLAS/NVRTC. The CUDA daemon and legacy Rider host retain separate interpreters.",
+      "onnxruntime_provider": "cuda"
     },
     "full-ci": {
       "kind": "application",
@@ -222,7 +220,8 @@
       ],
       "input": "requirements-full-ci.txt",
       "lock": "requirements/locks/full-ci-linux-py314.txt",
-      "boundary": "Full application plus the same CI tools; no training, GPU ONNX or vLLM component installation."
+      "boundary": "Full CUDA application plus the shared CI tools; no training, ONNX GenAI or vLLM component installation.",
+      "onnxruntime_provider": "cuda"
     },
     "multi-runtime-cuda": {
       "kind": "component",
@@ -245,17 +244,6 @@
       "input": "requirements-granite-operator-training.txt",
       "lock": "requirements/locks/granite-operator-training-linux-py314.txt",
       "boundary": "Shared isolated CUDA training stack used by Gemma 4 and FunctionGemma. Historical profile/lock name retained for checkpoint compatibility; legacy Granite code does not imply an active Granite model. No application, voice, ONNX or vLLM; model-specific training qualification is explicit and separate from code gates."
-    },
-    "full-ci-cuda": {
-      "kind": "application",
-      "extends": "full-ci",
-      "groups": [
-        "full-onnx-cuda"
-      ],
-      "onnxruntime_provider": "cuda",
-      "input": "requirements-full-ci-cuda.txt",
-      "lock": "requirements/locks/full-ci-cuda-linux-py314.txt",
-      "boundary": "Full CI application with the CUDA ONNX provider replacing the CPU distribution. Installs exactly one ONNX runtime plus cuRAND from the same CUDA 13.2 toolkit and parallel CUDA 12 cuBLAS for CTranslate2. Piper/Faster Whisper/Magika CPU distribution metadata is validated against the explicit GPU provider; raw pip check remains reported. Independent from the retained legacy Rider host."
     }
   },
   "aliases": {
@@ -304,12 +292,12 @@
     "onnx-cpu": {
       "status": "deferred",
       "manifest": "requirements-profile-onnx-cpu.txt",
-      "reason": "Legacy ONNX LLM/GenAI profile remains deferred until an explicit model consumer needs it. Full CPU voice/floor uses its own canonical group without GenAI."
+      "reason": "Legacy ONNX LLM/GenAI profile remains deferred until an explicit model consumer needs it. Full voice/floor uses the CUDA runtime package with CPU API support, without GenAI."
     },
     "onnx-extras": {
       "status": "deferred",
       "manifest": "requirements-extras-onnx.txt",
-      "reason": "Legacy standalone extras input is not a qualified install profile. Full declares its actual CPU voice/floor dependencies directly."
+      "reason": "Legacy standalone extras input is not a qualified install profile. Full declares its actual voice/floor dependencies directly."
     },
     "onnx-gpu": {
       "status": "deferred",

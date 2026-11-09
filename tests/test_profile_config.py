@@ -249,3 +249,26 @@ class TestProfileContract:
 
         # Cloud profile should require API keys
         assert len(llm_off.required_api_keys) > 0
+
+
+@pytest.mark.parametrize("profile", ["full", "light"])
+def test_audio_defaults_use_cuda_without_loading_models(monkeypatch, profile):
+    """Both entry points inherit GPU voice without a separate CUDA env file."""
+    from venom_core.config import Settings
+
+    monkeypatch.delenv("AUDIO_DEVICE", raising=False)
+    monkeypatch.delenv("TTS_USE_CUDA", raising=False)
+    settings = Settings(_env_file=None, VENOM_RUNTIME_PROFILE=profile)
+    assert settings.AUDIO_DEVICE == "cuda"
+    assert settings.TTS_USE_CUDA is True
+
+
+def test_audio_cpu_requires_explicit_operator_override(monkeypatch):
+    """A deliberate CPU choice remains possible and is never an implicit fallback."""
+    from venom_core.config import Settings
+
+    monkeypatch.setenv("AUDIO_DEVICE", "cpu")
+    monkeypatch.setenv("TTS_USE_CUDA", "false")
+    settings = Settings(_env_file=None)
+    assert settings.AUDIO_DEVICE == "cpu"
+    assert settings.TTS_USE_CUDA is False

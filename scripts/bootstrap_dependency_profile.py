@@ -32,10 +32,47 @@ MINIMUM_FREE_GIB = {
     "build": 1,
     "full": 16,
     "full-ci": 20,
-    "full-ci-cuda": 20,
     "multi-runtime-cuda": 12,
     "granite-operator-training": 14,
 }
+
+# Retired release identity; this permits one exact, explicitly requested rename.
+# Do not infer ownership from a directory name or accept another historical graph.
+LEGACY_FULL_CI_CUDA_LOCK_SHA256 = (
+    "7e886162d45283761207f584cd8565867cddb55d31d4878db7b06303ad29c466"
+)
+LEGACY_FULL_CI_CUDA_INVENTORY_SHA256 = (
+    "8406882becec563069c170e6ee7f8eb1bc9a037d57e209029d67daa5cded5236"
+)
+
+
+def check_retired_cuda_migration(
+    owner: dict[str, Any],
+    profile: str,
+    spec: dict[str, Any],
+    installed: dict[str, str],
+) -> None:
+    """Accept only the exact retired GPU graph before updating its canonical owner."""
+    if (
+        owner.get("profile") != "full-ci-cuda"
+        or profile != "full-ci"
+        or spec.get("kind") != "application"
+        or spec.get("onnxruntime_provider") != "cuda"
+        or owner.get("lock_sha256") != LEGACY_FULL_CI_CUDA_LOCK_SHA256
+    ):
+        raise ValueError("Unsupported retired CUDA profile migration")
+    source = dict(installed)
+    # The old bootstrap permitted this exact wheel tool as its only addition.
+    wheel = source.pop("wheel", None)
+    if wheel not in (None, "0.48.0"):
+        raise ValueError("Retired CUDA profile has an incompatible bootstrap tool")
+    digest = hashlib.sha256(
+        json.dumps(source, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+    if digest != LEGACY_FULL_CI_CUDA_INVENTORY_SHA256:
+        raise ValueError(
+            "Retired CUDA profile inventory differs from its exact release"
+        )
 
 
 def positive_gib(value: str) -> float:
@@ -365,10 +402,13 @@ def install_profile(
     if "include-system-site-packages = false" not in isolation.stdout.lower():
         raise ValueError("System-site-packages is forbidden for profile installations")
     owner_path = target / ".venom-dependency-profile.json"
+    owner: dict[str, Any] = {}
+    retired_cuda = False
     if owner_path.exists():
         owner = json.loads(owner_path.read_text())
+        retired_cuda = owner.get("profile") == "full-ci-cuda"
         previous = policy["profiles"].get(owner.get("profile"), {})
-        if previous.get("kind") != spec["kind"]:
+        if not retired_cuda and previous.get("kind") != spec["kind"]:
             raise ValueError(
                 "Cannot change application/component ownership of an existing venv"
             )
@@ -388,6 +428,8 @@ def install_profile(
             re.sub(r"[-_.]+", "-", item["name"]).lower(): item["version"]
             for item in json.loads(inventory.stdout)
         }
+        if retired_cuda:
+            check_retired_cuda_migration(owner, profile, spec, installed_versions)
         installed = set(installed_versions)
         if spec["kind"] == "application":
             forbidden = installed.intersection(policy["forbidden_application_packages"])

@@ -2119,11 +2119,12 @@ function useVoiceCommandCenterWarmup(params: {
   ]);
 }
 
+/** Own the voice socket and route disconnections through the panel state reset. */
 function useVoiceCommandCenterConnectionLifecycle(params: {
   debugDryRunRequested: boolean;
   audioEnabled: boolean;
   t: Translator;
-  setConnected: Dispatch<SetStateAction<boolean>>;
+  setConnected: (value: boolean) => void;
   setStatusMessage: Dispatch<SetStateAction<string | null>>;
   setIsVoiceModeEnabled: Dispatch<SetStateAction<boolean>>;
   setLastAudioSignal: Dispatch<SetStateAction<string>>;
@@ -2768,48 +2769,6 @@ function VoiceCommandCenterPanel({
     getMediaRecorderMimeType,
   });
 
-  useEffect(
-    () => {
-      if (debugDryRunRequested) {
-        return undefined;
-      }
-      return bindVoiceConnectionLifecycle(
-        audioEnabled,
-        t,
-        setVoiceConnected,
-        setStatusMessage,
-        setIsVoiceModeEnabled,
-        () =>
-          connectVoiceSocket({
-            t,
-            wsRef,
-            reconnectAttemptsRef,
-            reconnectTimeoutRef,
-            lastVoiceModeSentRef,
-            setConnected: setVoiceConnected,
-            setStatusMessage,
-            setLastAudioSignal,
-            releaseAudioResources,
-            releasePlaybackResources,
-            refreshAudioStatus,
-            handleAudioMessage,
-            ttsAudioContextRef,
-          }),
-      );
-    },
-    [
-      audioEnabled,
-      debugDryRunRequested,
-      handleAudioMessage,
-      isVoiceModeEnabled,
-      refreshAudioStatus,
-      releaseAudioResources,
-      releasePlaybackResources,
-      setVoiceConnected,
-      t,
-    ],
-  );
-
   const sendControlMessage = useCallback(
     (payload: Record<string, unknown>) =>
       createSendControlMessage({
@@ -2943,7 +2902,7 @@ function VoiceCommandCenterPanel({
     debugDryRunRequested,
     audioEnabled,
     t,
-    setConnected,
+    setConnected: setVoiceConnected,
     setStatusMessage,
     setIsVoiceModeEnabled,
     setLastAudioSignal,

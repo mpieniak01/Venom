@@ -174,6 +174,18 @@ def test_summarize_aggregates_multiturn_statuses_and_latency_by_interface(report
     }
 
 
+def test_summarize_rejects_overflowing_median(report_input):
+    """Reject an infinite median even when every timing sample is finite."""
+    _, _, results = report_input
+    results.update(build="build-1", model="omni-test", runtime="runtime-test")
+    first_turn, second_turn = results["rows"][0]["turns"]
+    _observed(first_turn, latency=1e308)
+    _observed(second_turn, latency=1e308)
+
+    with pytest.raises(ValueError, match="nonfinite median latency: studio"):
+        _summarize(report_input)
+
+
 def test_summarize_uses_nearest_rank_for_p95(tmp_path):
     """Distinguish nearest-rank p95 from the maximum and interpolated percentiles."""
     manifest = tmp_path / "manifest.json"

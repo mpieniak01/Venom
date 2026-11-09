@@ -404,11 +404,14 @@ def summarize(manifest_path: Path, results_path: Path) -> dict:
             counts[status] += 1
             by_group.setdefault(groups[key[1]], Counter())[status] += 1
         timings.sort()
+        median_ms = statistics.median(timings) if timings else None
+        if median_ms is not None and not math.isfinite(median_ms):
+            raise ValueError(f"nonfinite median latency: {target}")
         report[target] = {
             "cases": dict(counts),
             "groups": by_group,
             "latency_samples": len(timings),
-            "median_ms": statistics.median(timings) if timings else None,
+            "median_ms": median_ms,
             "p95_ms": timings[math.ceil(0.95 * len(timings)) - 1] if timings else None,
         }
     if any(status != "pending" for status in statuses.values()) and not all(

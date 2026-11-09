@@ -1,6 +1,6 @@
 import "./component-test-setup";
 import assert from "node:assert/strict";
-import { it } from "node:test";
+import { it, type TestContext } from "node:test";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { VoiceCommandCenter } from "../components/voice/voice-command-center";
 
@@ -79,7 +79,7 @@ function replaceProperty(target: object, key: string, value: unknown) {
   };
 }
 
-it("keeps the attached image, audio, sources, and follow-up on the Full voice connection", async (test) => {
+function installVoiceEnvironment(test: TestContext) {
   const restore = [
     replaceProperty(process.env, "NEXT_PUBLIC_ENABLE_AUDIO_INTERFACE", "true"),
     replaceProperty(globalThis, "WebSocket", VoiceSocket),
@@ -108,7 +108,10 @@ it("keeps the attached image, audio, sources, and follow-up on the Full voice co
     VoiceSocket.instances = [];
     VoiceAudioContext.stopped = 0;
   });
+}
 
+it("keeps the attached image, audio, sources, and follow-up on the Full voice connection", async (test) => {
+  installVoiceEnvironment(test);
   await act(async () => render(<VoiceCommandCenter />));
   const socket = VoiceSocket.instances.at(-1);
   assert.ok(socket);
@@ -172,4 +175,28 @@ it("keeps the attached image, audio, sources, and follow-up on the Full voice co
   assert.equal(regular.image, undefined);
   assert.equal(VoiceSocket.instances.length, socketCount);
 
+});
+
+it("uses one Full voice socket and unlocks a pending image turn after reconnecting", async (test) => {
+  installVoiceEnvironment(test);
+  await act(async () => render(<VoiceCommandCenter />));
+  assert.equal(VoiceSocket.instances.length, 1);
+  const [socket] = VoiceSocket.instances;
+  await act(async () => socket.open());
+
+  const imageInput = screen.getByLabelText("Dołącz obraz do pytania głosowego");
+  const image = new window.File(["screen"], "screen.png", { type: "image/png" });
+  fireEvent.change(imageInput, { target: { files: [image] } });
+  const record = screen.getByRole<HTMLButtonElement>("button", { name: /Przytrzymaj i mów/ });
+  await waitFor(() => assert.equal(record.disabled, false));
+
+  await act(async () => fireEvent.pointerDown(record));
+  await act(async () => fireEvent.pointerUp(record));
+  assert.equal(record.disabled, true);
+
+  await act(async () => socket.close(1006));
+  assert.equal(screen.queryByText("screen.png"), null);
+  await waitFor(() => assert.equal(VoiceSocket.instances.length, 2), { timeout: 2500 });
+  await act(async () => VoiceSocket.instances[1].open());
+  await waitFor(() => assert.equal(record.disabled, false));
 });

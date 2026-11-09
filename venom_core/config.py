@@ -1,6 +1,7 @@
 import os
+from typing import Self
 
-from pydantic import Field, SecretStr
+from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -755,6 +756,16 @@ class Settings(BaseSettings):
     FOREMAN_MAX_TASKS_NORMALIZATION: int = (
         10  # Maksymalna liczba zadań dla normalizacji
     )
+
+    @model_validator(mode="after")
+    def preserve_explicit_cpu_audio(self) -> Self:
+        """Keep legacy explicit CPU audio when TTS has no independent override."""
+        if (
+            self.AUDIO_DEVICE.strip().lower() == "cpu"
+            and "TTS_USE_CUDA" not in self.model_fields_set
+        ):
+            self.TTS_USE_CUDA = False
+        return self
 
 
 SETTINGS = Settings()

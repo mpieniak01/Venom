@@ -272,3 +272,35 @@ def test_audio_cpu_requires_explicit_operator_override(monkeypatch):
     settings = Settings(_env_file=None)
     assert settings.AUDIO_DEVICE == "cpu"
     assert settings.TTS_USE_CUDA is False
+
+
+@pytest.mark.parametrize("source", ["init", "env", "dotenv"])
+@pytest.mark.parametrize("tts_override", [None, False, True])
+def test_explicit_cpu_audio_preserves_tts_choice(
+    monkeypatch, tmp_path, source, tts_override
+):
+    """Legacy CPU inputs retain TTS behavior while explicit TTS values win."""
+    from venom_core.config import Settings
+
+    monkeypatch.delenv("AUDIO_DEVICE", raising=False)
+    monkeypatch.delenv("TTS_USE_CUDA", raising=False)
+    values = {"AUDIO_DEVICE": "cpu"}
+    if tts_override is not None:
+        values["TTS_USE_CUDA"] = str(tts_override).lower()
+    if source == "init":
+        settings = Settings(_env_file=None, **values)
+    elif source == "env":
+        for key, value in values.items():
+            monkeypatch.setenv(key, value)
+        settings = Settings(_env_file=None)
+    else:
+        env_file = tmp_path / ".env.dev"
+        env_file.write_text(
+            "\n".join(f"{key}={value}" for key, value in values.items())
+        )
+        settings = Settings(_env_file=env_file)
+
+    assert settings.AUDIO_DEVICE == "cpu"
+    assert settings.TTS_USE_CUDA is (
+        tts_override if tts_override is not None else False
+    )

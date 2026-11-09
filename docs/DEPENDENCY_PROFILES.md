@@ -117,12 +117,17 @@ NVRTC, verifies the complete canonical Full CI graph, then writes the new owner.
 An unknown owner, modified inventory, CPU ORT or a failed final verification
 cannot receive the new ownership receipt. Existing CPU Full environments need a
 fresh GPU environment; no in-place mixed-ORT installation is permitted.
+If an interrupted update has already changed installed packages, the old inventory
+check will reject another migration attempt; create a fresh venv instead.
 
 The launcher must expose libraries from its own environment before Python starts:
 `nvidia/cu13/lib`, `nvidia/cudnn/lib`, `nvidia/cublas/lib` and
 `nvidia/cuda_nvrtc/lib`. The project GPU launcher discovers these directories.
 Bootstrap does not alter service configuration or load models. Voice acceptance
 is a separate operator check outside code gates and pre-push.
+The audio defaults use CUDA. An explicit AUDIO_DEVICE=cpu in an existing config
+also keeps TTS on CPU unless TTS_USE_CUDA is explicitly set; an independent TTS
+override always takes precedence.
 
 The two replacement locks retain the frozen release graph, refresh only the
 declared CUDA changes from official PyPI artifacts, and validate the full

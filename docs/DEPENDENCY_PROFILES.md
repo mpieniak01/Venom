@@ -187,6 +187,15 @@ The host module is an independent repository. Its current CUDA perception runs
 inside its host process; installing a second venv alone does not move that code.
 Preserve the existing Rider host checkout and its complete environment until a
 companion change provides and qualifies a separate GPU process entry point.
+The retained environment is not selected automatically. The current local
+operator configuration still includes Rider in `API_OPTIONAL_MODULES`. Before
+activating the new Full interpreter, use a dedicated configuration that omits
+that manifest. If Rider remains in use, keep its previous complete Venom host
+process/checkout/environment on separately assigned addresses and ports until
+the companion GPU boundary is implemented. Do not copy the current optional
+module configuration blindly into the new interpreter; do not modify the
+physical Pi to resolve a host dependency conflict.
+
 The optional GPU profile must declare ONNX Runtime GPU and its required cuRAND,
 and demonstrate CUDA/DLPack without CPU fallback. It must never overlay CPU ORT
 in the new Full environment or force the core application back to older Torch.

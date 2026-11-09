@@ -343,6 +343,7 @@ def pytest_addoption(parser):
 
 
 def pytest_configure(config):
+    """Register runtime markers and reject live provider tests in code gates."""
     if os.environ.get("VENOM_CODE_QUALITY_GATE") == "1" and config.getoption(
         "--run-live-tests", default=False
     ):

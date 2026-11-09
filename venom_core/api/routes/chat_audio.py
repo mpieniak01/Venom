@@ -60,6 +60,7 @@ def _engine(request: Request):
 
 
 def _native_omni(prefer_native: bool) -> LLMRuntimeInfo | None:
+    """Return the active local Omni runtime when the caller opts in."""
     if not prefer_native:
         return None
     runtime = get_active_llm_runtime()
@@ -125,6 +126,7 @@ async def transcribe(
     language: Literal["pl", "en", "de"] = "pl",
     prefer_native: bool = False,
 ):
+    """Transcribe bounded PCM using the selected local or host decoder."""
     engine = _engine(request)
     runtime = _native_omni(prefer_native)
     if engine is None and runtime is None:
@@ -178,6 +180,7 @@ class _PilotUploadTooLarge(MultiPartException):
 
 
 async def _pilot_upload_stream(request: Request) -> AsyncIterator[bytes]:
+    """Bound total multipart bytes before the parser spools individual parts."""
     limit = MAX_AUDIO_BYTES + omni_pilot.MAX_IMAGE_BYTES + 16 * 1024
     size = 0
     async for chunk in request.stream():
@@ -188,6 +191,7 @@ async def _pilot_upload_stream(request: Request) -> AsyncIterator[bytes]:
 
 
 async def _pilot_form(request: Request) -> FormData:
+    """Parse the pilot's bounded multipart upload and classify input failures."""
     if (
         request.headers.get("content-type", "").split(";", 1)[0]
         != "multipart/form-data"
@@ -208,6 +212,7 @@ async def _pilot_form(request: Request) -> FormData:
 
 
 async def _pilot_inputs(form: FormData) -> tuple[str, int, bytes, bytes | None]:
+    """Validate the session, Polish audio format, and optional image."""
     session_id = form.get("session_id")
     sample_rate = form.get("sample_rate")
     audio = form.get("audio")
@@ -245,11 +250,14 @@ async def _pilot_inputs(form: FormData) -> tuple[str, int, bytes, bytes | None]:
         413: {"description": "Multimodal upload exceeds limits"},
         415: {"description": "Multipart form required"},
         422: {"description": "Invalid image or audio input"},
+        499: {"description": "Client disconnected before the pilot turn was submitted"},
+        503: {"description": "Local Omni is unavailable or the pilot turn failed"},
     },
 )
 async def multimodal_turn(
     request: Request, store: Annotated[SessionStore, Depends(get_session_store)]
 ):
+    """Answer one pilot turn and append the completed pair to session history."""
     _engine(request)
     runtime = omni_pilot.active_pilot_runtime()
     if runtime is None:
@@ -263,6 +271,7 @@ async def multimodal_turn(
         raise HTTPException(499, {"reason_code": "audio_request_cancelled"})
 
     async def run():
+        """Recheck the runtime under admission and persist only connected turns."""
         if omni_pilot.active_pilot_runtime() != runtime:
             raise HTTPException(409, {"reason_code": "omni_pilot_runtime_changed"})
         history = store.get_history(session_id, limit=omni_pilot.MAX_HISTORY_ROWS)
@@ -313,6 +322,7 @@ async def multimodal_turn(
     },
 )
 async def speak(request: Request, payload: ChatSpeechRequest):
+    """Synthesize a WAV using the opted-in local voice or the host audio engine."""
     engine = _engine(request)
     runtime = _native_omni(payload.prefer_native)
     if engine is None and runtime is None:
@@ -331,6 +341,7 @@ async def speak(request: Request, payload: ChatSpeechRequest):
         voice = ollama_audio.OMNI_VOICES[payload.language]
 
         async def native_speech():
+            """Check the requested voice before asking Ollama to synthesize it."""
             show = await require_local_capability(
                 endpoint, runtime.model_name, "speech"
             )

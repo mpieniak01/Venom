@@ -4,6 +4,7 @@ import { Headphones, Mic, MicOff, Paperclip, Square, X } from "lucide-react";
 import { VoicePipelinePicker } from "@/components/voice/voice-pipeline-picker";
 import { useLanguage } from "@/lib/i18n";
 import { useStudioVoice, type StudioVoiceOptions } from "./use-studio-voice";
+/** Keep recording and pipeline switching mutually exclusive in the Studio voice panel. */
 export function StudioVoice(props: Readonly<Omit<StudioVoiceOptions, "language"> & { activeModel?: string | null; onModelApplied?: (model: string) => void }>) {
   const { t, language } = useLanguage();
   const [switching, setSwitching] = useState(false);

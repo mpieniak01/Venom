@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import base64
-import binascii
 import io
 import json
 import re
@@ -65,6 +64,7 @@ class PilotAnswer:
 
 
 def local_omni(runtime: LLMRuntimeInfo) -> bool:
+    """Limit the pilot to the expected Omni model on a loopback Ollama host."""
     return (
         runtime.provider == "ollama"
         and runtime.model_name == OMNI_MODEL_ID
@@ -76,11 +76,13 @@ def local_omni(runtime: LLMRuntimeInfo) -> bool:
 
 
 def active_pilot_runtime() -> LLMRuntimeInfo | None:
+    """Return the active runtime if it meets the pilot's local-only contract."""
     runtime = get_active_llm_runtime()
     return runtime if local_omni(runtime) else None
 
 
 def validate_image(image: bytes) -> None:
+    """Verify JPEG or PNG integrity and enforce encoded and decoded size limits."""
     if not image or len(image) > MAX_IMAGE_BYTES:
         raise ValueError("omni_pilot_invalid_image")
     try:
@@ -93,15 +95,17 @@ def validate_image(image: bytes) -> None:
 
 
 def decode_image(encoded: object) -> bytes:
+    """Decode a bounded Base64 image from a WebSocket control message."""
     if not isinstance(encoded, str) or len(encoded) > MAX_IMAGE_BASE64:
         raise ValueError("omni_pilot_invalid_image")
     try:
         return base64.b64decode(encoded, validate=True)
-    except (ValueError, binascii.Error) as exc:
+    except ValueError as exc:
         raise ValueError("omni_pilot_invalid_image") from exc
 
 
 def history_rows(history: list[dict[str, object]]) -> list[dict[str, str]]:
+    """Keep bounded user and assistant text for the model context."""
     return [
         {"role": str(row["role"]), "content": str(row["content"])[:1000]}
         for row in history[-MAX_HISTORY_ROWS:]
@@ -111,6 +115,7 @@ def history_rows(history: list[dict[str, object]]) -> list[dict[str, str]]:
 
 
 def previous_code(history: list[dict[str, object]]) -> str | None:
+    """Read the source code from the latest completed pilot reply, if present."""
     for row in reversed(history):
         if row.get("mode") != "omni_pilot" or row.get("role") != "assistant":
             continue
@@ -127,6 +132,7 @@ async def _chat(
     *,
     selection: bool = False,
 ) -> dict[str, Any]:
+    """Send one bounded Ollama request and reject incomplete replies."""
     payload: dict[str, Any] = {
         "model": model,
         "messages": messages,
@@ -156,6 +162,7 @@ async def _chat(
 
 
 def _selected_code(message: dict[str, Any], prior_code: str | None) -> str | None:
+    """Accept only a valid document lookup or an explicit request for the previous source."""
     try:
         selected = json.loads(_text(message))
     except json.JSONDecodeError:
@@ -167,10 +174,11 @@ def _selected_code(message: dict[str, Any], prior_code: str | None) -> str | Non
     if selected["action"] != TOOL_NAME or not isinstance(selected["code"], str):
         return None
     code = selected["code"].strip().upper()
-    return code if re.fullmatch(r"VEN-[0-9]{3}", code) else None
+    return code if re.fullmatch(r"VEN-\d{3}", code, flags=re.ASCII) else None
 
 
 def _text(message: dict[str, Any]) -> str:
+    """Return stripped text content or an empty string for malformed replies."""
     value = message.get("content")
     return value.strip() if isinstance(value, str) else ""
 
@@ -182,6 +190,7 @@ async def answer(
     image: bytes | None,
     history: list[dict[str, object]],
 ) -> PilotAnswer:
+    """Resolve a Polish media turn against the frozen pilot documentation."""
     samples = np.frombuffer(pcm, dtype="<i2")
     if not samples.size or np.max(np.abs(samples.astype(np.int32))) < 64:
         return PilotAnswer("Nie słyszę pytania. Nagraj je jeszcze raz.")
@@ -242,6 +251,7 @@ async def answer(
 def conversation_pair(
     answer: PilotAnswer, *, has_image: bool
 ) -> list[dict[str, object]]:
+    """Store text and source context without retaining raw media."""
     user = "[Pytanie głosowe z obrazem]" if has_image else USER_LABEL
     return [
         {"role": "user", "content": user, "mode": "omni_pilot"},

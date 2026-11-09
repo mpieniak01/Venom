@@ -176,6 +176,7 @@ def test_prepush_gate_isolates_git_context_before_running_tests(tmp_path: Path):
 def test_pr_fast_checks_wsl_shutdown_before_starting_gates(
     tmp_path: Path, distribution: str, scope_state: str, expected_code: int
 ):
+    """Keep the gate from reading Git state when the WSL session is stopping."""
     source = Path(__file__).resolve().parents[1]
     binary = tmp_path / "bin"
     binary.mkdir()

@@ -462,6 +462,7 @@ def test_resampler_runtime_error_does_not_silently_select_fallback(
 async def test_full_omni_sends_native_pcm_or_reports_missing_capability(
     monkeypatch, tmp_path, native_speech
 ):
+    """Deliver native audio or stop before transcription when speech is unavailable."""
     import json
 
     handler = object.__new__(stream.AudioStreamHandler)

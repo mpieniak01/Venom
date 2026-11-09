@@ -19,6 +19,7 @@ function coerce(value: string | null | undefined): string {
   return String(value ?? "").trim().toLowerCase();
 }
 
+/** Use the recorded pipeline when available and recognize older timing metadata. */
 export function inferVoiceSessionTimingMode(
   session?: VoiceSessionTimingInput | null,
 ): VoiceSessionTimingMode {

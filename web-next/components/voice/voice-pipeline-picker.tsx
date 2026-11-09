@@ -14,6 +14,7 @@ type VoicePipelines = {
 const lastGemmaKey = "venom:voice:last-gemma";
 const gemmaFallback = "gemma4:e4b";
 
+/** Prefer the active Gemma, then the last installed choice remembered by this browser. */
 function chooseGemma(options: VoicePipelines): string | undefined {
   if (options.active_model && options.gemma_models.includes(options.active_model)) {
     return options.active_model;
@@ -24,6 +25,7 @@ function chooseGemma(options: VoicePipelines): string | undefined {
   return options.gemma_models.find(model => model === gemmaFallback) ?? options.gemma_models[0];
 }
 
+/** Offer only installed voice pipelines from the capability catalog for the current surface. */
 export function VoicePipelinePicker({
   surface, disabled, onApplied, onSwitching, refreshKey,
 }: Readonly<{
@@ -54,6 +56,7 @@ export function VoicePipelinePicker({
   const gemma = options ? chooseGemma(options) : undefined;
   const omni = options?.omni_model;
   const active = options?.active_model;
+  /** Serialize switches and keep the previous Gemma available when returning from Omni. */
   const apply = async (model: string | undefined | null) => {
     if (!model || model === active || disabled || busy.current) return;
     busy.current = true;

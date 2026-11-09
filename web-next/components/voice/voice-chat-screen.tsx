@@ -57,6 +57,7 @@ type VoiceChatScreenProps = Readonly<{
   isDevMode?: boolean;
 }>;
 
+/** Coordinate pipeline switching with the active voice turn and refresh the runtime status. */
 export function VoiceChatScreen({ isDevMode = false }: VoiceChatScreenProps) {
   const [voiceModePreset, setVoiceModePreset] = useState<VoiceModePreset>("standard");
   const [voiceBusy, setVoiceBusy] = useState(false);

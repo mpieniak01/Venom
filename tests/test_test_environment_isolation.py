@@ -415,6 +415,7 @@ def test_xdist_worker_without_count_fails_closed(monkeypatch):
 
 
 def test_live_marker_is_skipped_in_real_multiworker_collection():
+    """Ensure xdist workers skip live tests even with an explicit runtime opt-in."""
     import os
     import subprocess
     import sys

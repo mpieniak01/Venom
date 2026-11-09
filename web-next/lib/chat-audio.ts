@@ -78,6 +78,7 @@ export function transcribeChatAudio(session: string, capture: { pcm: ArrayBuffer
     method: "POST", body: capture.pcm, headers: { "Content-Type": "application/octet-stream" }, signal,
   });
 }
+/** Limit the pilot UI to the selected Omni model on a loopback Ollama endpoint. */
 export function supportsLocalOmniVoice(runtime: {
   active_server?: string | null;
   active_model?: string | null;
@@ -95,6 +96,7 @@ export function supportsLocalOmniVoice(runtime: {
 
 export type MultimodalVoiceReply = { session_id: string; text: string; sources: string[] };
 
+/** Upload PCM and an optional image together, preserving the caller's cancellation signal. */
 export async function sendMultimodalVoiceTurn(
   session: string,
   capture: Awaited<ReturnType<AudioCapture["finish"]>>,
@@ -122,6 +124,7 @@ export async function sendMultimodalVoiceTurn(
   return response.json() as Promise<MultimodalVoiceReply>;
 }
 
+/** Request native-preferred playback for the current conversation and language. */
 export async function speakChatAudio(session: string, text: string, signal: AbortSignal, language = "pl") {
   const response = await fetch(getApiBaseUrl() + "/api/v1/chat/audio/speak", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ session_id: session, text, prefer_native: true, language }), signal });
   if (!response.ok) throw new Error("voiceError");

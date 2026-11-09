@@ -50,6 +50,8 @@ SCREENS = {
 
 @dataclass(frozen=True)
 class Turn:
+    """Describe the input and expected behavior of one operator turn."""
+
     utterance: str
     screen: str | None
     code: str | None
@@ -59,6 +61,8 @@ class Turn:
 
 @dataclass(frozen=True)
 class Case:
+    """Group consecutive turns that share a session and evaluation scope."""
+
     id: str
     group: str
     turns: tuple[Turn, ...]
@@ -66,6 +70,7 @@ class Case:
 
 
 def cases() -> tuple[Case, ...]:
+    """Build stable case IDs for paired UI runs and separate control cases."""
     lookup = (
         Turn(RED_BOTTOM, "stack", "VEN-401"),
         Turn(TOP, "stack", "VEN-413"),
@@ -192,17 +197,20 @@ def cases() -> tuple[Case, ...]:
 
 
 def write_json(path: Path, value: object) -> None:
+    """Write UTF-8 JSON for hand editing and manifest hashing."""
     path.write_text(
         json.dumps(value, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
     )
 
 
 def digest(path: Path) -> str:
+    """Calculate the SHA-256 of the exact bytes in a generated artifact."""
     with path.open("rb") as stream:
         return hashlib.file_digest(stream, "sha256").hexdigest()
 
 
 def render_screens(output: Path, docs: dict) -> None:
+    """Render the controlled diagnostic layouts used for paired visual cues."""
     from PIL import Image, ImageDraw, ImageFont
 
     bold = ImageFont.truetype("DejaVuSans-Bold.ttf", 28)
@@ -225,6 +233,8 @@ def render_screens(output: Path, docs: dict) -> None:
 def render_audio(
     output: Path, cases_to_run: tuple[Case, ...], model: Path
 ) -> dict[str, str]:
+    """Render one mono WAV per distinct utterance, including silence for an empty turn."""
+
     from piper import PiperVoice
     from piper.config import SynthesisConfig
 
@@ -249,6 +259,7 @@ def render_audio(
 
 
 def turn_spec(turn: Turn, audio: dict[str, str], docs: dict) -> dict:
+    """Resolve media filenames and expected documentation evidence for a turn."""
     spec = asdict(turn)
     spec["audio"] = audio[turn.utterance]
     spec["image"] = f"{turn.screen}.png" if turn.screen else None
@@ -261,6 +272,7 @@ def turn_spec(turn: Turn, audio: dict[str, str], docs: dict) -> dict:
 
 
 def result_template(manifest: Path, suite: list[dict]) -> dict:
+    """Allocate paired results bound to the manifest bytes and the required turn checks."""
     return {
         "manifest_sha256": digest(manifest),
         "build": None,
@@ -292,6 +304,7 @@ def result_template(manifest: Path, suite: list[dict]) -> dict:
 
 
 def prepare(output: Path, voice_model: Path) -> None:
+    """Freeze media and documentation with a manifest and a blank results template."""
     docs = json.loads(DOCS.read_text(encoding="utf-8"))
     voice_config = voice_model.with_suffix(".onnx.json")
     voice_hash = digest(voice_model)
@@ -329,6 +342,7 @@ def prepare(output: Path, voice_model: Path) -> None:
 
 
 def turn_status(turn: dict) -> str:
+    """Treat errors or failed criteria as failures and ungraded turns as pending."""
     if turn["error"] or any(value is False for value in turn["checks"].values()):
         return "fail"
     return (
@@ -337,6 +351,7 @@ def turn_status(turn: dict) -> str:
 
 
 def summarize(manifest_path: Path, results_path: Path) -> dict:
+    """Validate observed turns and aggregate outcomes and latency by interface."""
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     results = json.loads(results_path.read_text(encoding="utf-8"))
     expected = result_template(manifest_path, manifest["cases"])
@@ -413,6 +428,7 @@ def summarize(manifest_path: Path, results_path: Path) -> dict:
 
 
 def main() -> None:
+    """Dispatch media preparation or emit a JSON report from completed measurements."""
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="action", required=True)
     generate = commands.add_parser("prepare")

@@ -9,7 +9,7 @@ import { useSession } from "@/lib/session";
 import { apiFetch } from "@/lib/api-client";
 import { cancelSimpleChatStream } from "@/hooks/use-api";
 import { readChatSessions } from "@/lib/chat-sessions";
-import { materialBlocked } from "@/lib/chat-materials";
+import { materialBlocked, type MaterialCapabilities } from "@/lib/chat-materials";
 import { supportsLocalOmniVoice } from "@/lib/chat-audio";
 import { useCockpitInteractiveState } from "@/components/cockpit/hooks/use-cockpit-interactive-state";
 import { resolveEffectiveChatModelSelection } from "@/components/cockpit/cockpit-chat-send";
@@ -31,6 +31,25 @@ function capabilityStatus(enabled: boolean | undefined) {
   if (enabled === undefined) return "chat2.unknown";
   return enabled ? "chat2.ready" : "chat2.unsupported";
 }
+/** Resolve the controls available in the current chat mode and voice runtime. */
+function studioCapabilities(
+  materials: MaterialCapabilities | null,
+  direct: boolean,
+  language: string,
+  activeServer: Parameters<typeof supportsLocalOmniVoice>[0],
+) {
+  const voiceAvailable = materials?.voice === true;
+  const multimodalEnabled = language === "pl" && supportsLocalOmniVoice(activeServer);
+  return {
+    voiceAvailable,
+    multimodalEnabled,
+    conversationVoiceAvailable: voiceAvailable || multimodalEnabled,
+    documentStatus: direct ? capabilityStatus(materials?.document) : "chat2.unsupported",
+    imageStatus: direct ? capabilityStatus(materials?.image) : "chat2.unsupported",
+    voiceStatus: capabilityStatus(multimodalEnabled ? true : materials?.voice),
+  };
+}
+
 const compactQuery = "(max-width: 800px)";
 function subscribeCompact(onChange: () => void) {
   const query = window.matchMedia(compactQuery);
@@ -55,6 +74,7 @@ export function StudioShell({ showLegacyLink = true, lightNormal = false }: Read
   const { sessionId } = useSession();
   return <StudioConversation key={sessionId} showLegacyLink={showLegacyLink} lightNormal={lightNormal} />;
 }
+/** Render the conversation and keep its draft, materials and controls scoped to the session. */
 function StudioConversation({ showLegacyLink, lightNormal }: Readonly<{
   showLegacyLink: boolean;
   lightNormal: boolean;
@@ -99,14 +119,12 @@ function StudioConversation({ showLegacyLink, lightNormal }: Readonly<{
   );
   const materials = useChatMaterials(sessionId, selectedModel, state.selectedLlmServer,
     activeServer?.active_server ?? "", activeServer?.config_hash ?? "", materialsOpen || selected.length > 0);
-  const notesAvailable = materials.capabilities?.notes === true;
-  const voiceAvailable = materials.capabilities?.voice === true;
-  const multimodalEnabled = language === "pl" && supportsLocalOmniVoice(activeServer);
-  const conversationVoiceAvailable = voiceAvailable || multimodalEnabled;
   const direct = state.chatMode === "direct";
-  const documentStatus = !direct ? "chat2.unsupported" : capabilityStatus(materials.capabilities?.document);
-  const imageStatus = !direct ? "chat2.unsupported" : capabilityStatus(materials.capabilities?.image);
-  const voiceStatus = capabilityStatus(multimodalEnabled ? true : materials.capabilities?.voice);
+  const {
+    voiceAvailable, multimodalEnabled, conversationVoiceAvailable,
+    documentStatus, imageStatus, voiceStatus,
+  } = studioCapabilities(materials.capabilities, direct, language, activeServer);
+  const notesAvailable = materials.capabilities?.notes === true;
   const notesSelected = notesAvailable && state.chatMode === "normal" && useNotes;
   const attached = materials.items.filter(item => selected.includes(item.id));
   const missing = selected.length > attached.length;

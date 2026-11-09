@@ -820,6 +820,7 @@ const handleVoiceCompletion = (
   setProcessingStatus?.(null);
 };
 
+/** Reset playback and present a localized channel error for multimodal failures. */
 const handleVoiceError = (
   t: Translator,
   data: Record<string, unknown>,
@@ -836,6 +837,7 @@ const handleVoiceError = (
   setProcessingStatus?.(null);
 };
 
+/** Own one voice socket and release its retry timer and audio resources on teardown. */
 const connectVoiceSocket = (deps: VoiceSocketDeps): (() => void) => {
   const {
     t,
@@ -854,6 +856,7 @@ const connectVoiceSocket = (deps: VoiceSocketDeps): (() => void) => {
   } = deps;
 
   let destroyed = false;
+  /** Bind incoming events to the current socket so a replaced connection cannot update the view. */
   const connect = () => {
     if (destroyed) return;
     const ws = new WebSocket(getAudioWsUrl());
@@ -1022,6 +1025,7 @@ const getVoiceCaptureStartError = (
   return null;
 };
 
+/** Send recording chunks to the socket that started the capture and release it on stop. */
 const attachRecordingStreamHandlers = (
   recorder: MediaRecorder,
   socket: WebSocket,
@@ -1044,6 +1048,7 @@ const attachRecordingStreamHandlers = (
   };
 };
 
+/** Start capture once permission is granted and the original socket can still accept it. */
 const startVoiceCapture = async (deps: VoiceCaptureDeps): Promise<void> => {
   const {
     t,
@@ -1089,6 +1094,7 @@ const startVoiceCapture = async (deps: VoiceCaptureDeps): Promise<void> => {
   recordingStartPendingRef.current = true;
   stopRequestedRef.current = false;
 
+  /** Keep recording commands on the socket that owns the audio stream. */
   const sendForRecording = (payload: Record<string, unknown>) =>
     wsRef.current === socket && sendControlMessage(payload);
   let sentRecordingStart = false;
@@ -1629,6 +1635,7 @@ function createEnsurePlaybackContextHandler(params: {
   };
 }
 
+/** Create a replayable audio handler that discards playback superseded during context setup. */
 function createPlayAudioResponseHandler(params: {
   ensurePlaybackContext: () => Promise<AudioContext | null>;
   releasePlaybackResources: () => void;
@@ -3009,6 +3016,10 @@ function VoiceCommandCenterPanel({
     setLastAudioSignal,
   });
 
+  const connectionBadge = viewState.effectiveConnected
+    ? { tone: "success" as const, label: "voice.status.connected" }
+    : { tone: "warning" as const, label: "voice.status.offline" };
+  const microphoneBlocked = microphoneCapability !== "available" && !debugDryRunActive;
   const canStartRecording = !multimodalPending
     && (!multimodalAvailable || voiceImage?.status !== "reading");
   const onRecordingPointerDown = useCallback(
@@ -3031,6 +3042,7 @@ function VoiceCommandCenterPanel({
     [stopRecording],
   );
 
+  /** Clear the attached image and multimodal state when leaving voice mode. */
   const onVoiceModeToggle = () => {
     if (isVoiceModeEnabled) endMultimodal();
     toggleVoiceMode({
@@ -3049,9 +3061,7 @@ function VoiceCommandCenterPanel({
         description={t("voice.page.description")}
         action={
           <div className="flex items-center gap-2">
-            <Badge tone={viewState.effectiveConnected ? "success" : "warning"}>
-              {viewState.effectiveConnected ? t("voice.status.connected") : t("voice.status.offline")}
-            </Badge>
+            <Badge tone={connectionBadge.tone}>{t(connectionBadge.label)}</Badge>
             {debugDryRunActive && <Badge tone="warning">{debugMode.badgeLabel}</Badge>}
             {viewState.showDevButton && (
               <Button
@@ -3093,7 +3103,7 @@ function VoiceCommandCenterPanel({
             </div>
           )}
 
-          {microphoneCapability !== "available" && !debugDryRunActive && (
+          {microphoneBlocked && (
             <output data-testid="microphone-capability" className="block text-sm text-amber-300">
               {t(microphoneCapability === "insecure_context" ? "voice.status.microphoneInsecure" : "voice.status.microphoneUnavailable")}
             </output>
@@ -3154,7 +3164,7 @@ function VoiceCommandCenterPanel({
             size="md"
             className={`w-full justify-center rounded-2xl border px-4 py-6 text-lg font-semibold transition ${viewState.recordingButtonClass}`}
             disabled={!viewState.effectiveConnected || !viewState.effectiveIsVoiceModeEnabled
-              || (!debugDryRunActive && microphoneCapability !== "available")
+              || microphoneBlocked
               || (!viewState.effectiveRecording && !canStartRecording)}
           >
             🎙 {viewState.recordingButtonLabel}

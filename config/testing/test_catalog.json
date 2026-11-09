@@ -5278,6 +5278,20 @@
       "rationale": "Runtime model selection, native audio transport and configurable role contracts."
     },
     {
+      "path": "tests/test_omni_pilot_report.py",
+      "domain": "runtime",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Offline Omni acceptance report validation and paired latency and outcome aggregation."
+    },
+    {
       "path": "tests/test_onnx_gpu_bridge.py",
       "domain": "runtime",
       "test_type": "gate",

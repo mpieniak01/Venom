@@ -10,6 +10,7 @@ type VoiceImageSelection =
   | { status: "ready"; name: string; base64: string }
   | { status: "invalid" };
 
+/** Read one bounded JPEG or PNG at a time and discard callbacks from replaced selections. */
 export function useVoiceImageSelection() {
   const [selection, setSelection] = useState<VoiceImageSelection | null>(null);
   const readerRef = useRef<FileReader | null>(null);
@@ -27,6 +28,7 @@ export function useVoiceImageSelection() {
     setSelection(null);
   }, [cancelRead]);
 
+  /** Replace the current image, retaining its filename while the browser reads it. */
   const chooseImage = (file: File) => {
     cancelRead();
     if (
@@ -40,6 +42,7 @@ export function useVoiceImageSelection() {
     const reader = new window.FileReader();
     readerRef.current = reader;
     setSelection({ status: "reading", name: file.name });
+    /** Commit the read only if this reader still owns the selection. */
     const finishRead = (base64: string | undefined) => {
       if (readerRef.current !== reader) return;
       readerRef.current = null;

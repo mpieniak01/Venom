@@ -725,6 +725,7 @@ class AudioStreamHandler:
             await self._send_json(connection_id, {"type": "pong"})
 
     async def _start_recording(self, connection_id: int, data: dict[str, Any]) -> None:
+        """Reset the connection buffers and capture the mode and optional pilot image."""
         conn = self.active_connections[connection_id]
         conn["audio_buffer"] = []
         conn["audio_bytes_buffer"] = []
@@ -811,6 +812,7 @@ class AudioStreamHandler:
         )
 
     async def _stop_recording(self, connection_id: int, operator_agent) -> None:
+        """Consume the pending recording using its selected voice path."""
         conn = self.active_connections[connection_id]
         conn["is_speaking"] = False
         self._cancel_silence_finalize_task(conn)
@@ -852,6 +854,7 @@ class AudioStreamHandler:
     async def _finish_pilot_recording(
         self, connection_id: int, conn: _ConnectionState, pilot: _PilotRecording
     ) -> None:
+        """Validate a pilot turn, then send its grounded response and native speech."""
         chunks = conn["audio_bytes_buffer"]
         conn["audio_bytes_buffer"] = []
         if pilot.failed or not chunks:
@@ -896,14 +899,20 @@ class AudioStreamHandler:
             ):
                 if omni_pilot.active_pilot_runtime() != runtime:
                     raise RuntimeError("omni_pilot_runtime_changed")
+                endpoint = runtime.endpoint or ""
+                show = await ollama_audio.require_local_capability(
+                    endpoint, runtime.model_name, "speech"
+                )
+                if not ollama_audio.supports_omni_voice(show, "pl"):
+                    raise RuntimeError("ollama_omni_voice_unavailable")
                 result = await omni_pilot.answer(
                     runtime, pcm, rate, pilot.image, history
                 )
                 wav = await ollama_audio.synthesize_speech(
-                    runtime.endpoint or "",
+                    endpoint,
                     runtime.model_name,
                     result.text,
-                    voice="female-polish",
+                    voice=ollama_audio.OMNI_VOICES["pl"],
                 )
             with wave.open(io.BytesIO(wav), "rb") as source:
                 audio = np.frombuffer(
@@ -1442,6 +1451,7 @@ class AudioStreamHandler:
         )
 
     async def _resolve_voice_input_decoder_plan(self) -> dict[str, Any]:
+        """Select a decoder permitted by the route profile and runtime admission."""
         plan = self._resolve_audio_decoder_plan()
         guarded = await has_voice_providers()
         runtime = get_active_llm_runtime()
@@ -1979,6 +1989,78 @@ class AudioStreamHandler:
         }
         self._update_voice_session_metadata(session_dir, payload)
 
+    async def _process_ollama_voice_pipeline(
+        self,
+        *,
+        connection_id: int,
+        session_dir: Path,
+        wav_path: Path,
+        timings_ms: dict[str, float],
+        total_started_at: float,
+        operator_agent,
+    ) -> None:
+        """Transcribe through Ollama and finish the turn within one admission guard."""
+        runtime = get_active_llm_runtime()
+        native_speech = (
+            runtime.model_name == ollama_audio.OMNI_MODEL_ID
+            and ollama_audio.is_host_ollama(runtime)
+        )
+        pipeline_id = "ollama_omni_voice" if native_speech else "ollama_audio_llm_piper"
+        async with runtime_request_guard(
+            request_kind="voice_ollama_audio",
+            provider="ollama",
+            model=runtime.model_name,
+        ):
+            started_at = time.perf_counter()
+            try:
+                if native_speech:
+                    show = await ollama_audio.require_local_capability(
+                        runtime.endpoint or "", runtime.model_name, "audio"
+                    )
+                    if not ollama_audio.supports_omni_voice(show, "pl"):
+                        raise RuntimeError("ollama_omni_voice_unavailable")
+                transcription = await ollama_audio.transcribe_audio(
+                    runtime.endpoint or "", runtime.model_name, wav_path
+                )
+            except Exception:
+                self._update_voice_session_metadata(
+                    session_dir,
+                    {
+                        "pipeline_id": pipeline_id,
+                        "audio_input_status": "failed",
+                        "decoder_source": "ollama",
+                        "decoder_effective": "ollama_audio",
+                    },
+                )
+                raise
+            timings_ms["stt_ms"] = self._elapsed_ms(started_at)
+            self._update_voice_session_metadata(
+                session_dir,
+                {
+                    "pipeline_id": pipeline_id,
+                    "voice_pipeline_mode": "native_ollama_audio",
+                    "decoder_source": "ollama",
+                    "decoder_selected": "ollama_audio",
+                    "decoder_effective": "ollama_audio",
+                    "audio_input_status": "verified" if transcription else "empty",
+                    "audio_runtime_provider": "ollama",
+                    "audio_runtime_model": runtime.model_name,
+                    "transcription": transcription,
+                    "transcription_length": len(transcription),
+                    "timings_ms": timings_ms,
+                },
+            )
+            await self._run_whisper_llm_pipeline(
+                connection_id=connection_id,
+                session_dir=session_dir,
+                transcription=transcription,
+                timings_ms=timings_ms,
+                total_started_at=total_started_at,
+                operator_agent=operator_agent,
+                pipeline_id=pipeline_id,
+                native_speech_runtime=runtime if native_speech else None,
+            )
+
     async def _handle_decoder_plan_pre_stt(
         self,
         *,
@@ -1990,69 +2072,16 @@ class AudioStreamHandler:
         operator_agent,
         decoder_plan: dict[str, Any],
     ) -> bool:
+        """Dispatch native decoder plans before falling back to shared STT."""
         if decoder_plan["effective"] == "ollama_audio":
-            runtime = get_active_llm_runtime()
-            native_speech = (
-                runtime.model_name == ollama_audio.OMNI_MODEL_ID
-                and ollama_audio.is_host_ollama(runtime)
+            await self._process_ollama_voice_pipeline(
+                connection_id=connection_id,
+                session_dir=session_dir,
+                wav_path=wav_path,
+                timings_ms=timings_ms,
+                total_started_at=total_started_at,
+                operator_agent=operator_agent,
             )
-            pipeline_id = (
-                "ollama_omni_voice" if native_speech else "ollama_audio_llm_piper"
-            )
-            async with runtime_request_guard(
-                request_kind="voice_ollama_audio",
-                provider="ollama",
-                model=runtime.model_name,
-            ):
-                started_at = time.perf_counter()
-                try:
-                    if native_speech:
-                        show = await ollama_audio.require_local_capability(
-                            runtime.endpoint or "", runtime.model_name, "audio"
-                        )
-                        if not ollama_audio.supports_omni_voice(show, "pl"):
-                            raise RuntimeError("ollama_omni_voice_unavailable")
-                    transcription = await ollama_audio.transcribe_audio(
-                        runtime.endpoint or "", runtime.model_name, wav_path
-                    )
-                except Exception:
-                    self._update_voice_session_metadata(
-                        session_dir,
-                        {
-                            "pipeline_id": pipeline_id,
-                            "audio_input_status": "failed",
-                            "decoder_source": "ollama",
-                            "decoder_effective": "ollama_audio",
-                        },
-                    )
-                    raise
-                timings_ms["stt_ms"] = self._elapsed_ms(started_at)
-                self._update_voice_session_metadata(
-                    session_dir,
-                    {
-                        "pipeline_id": pipeline_id,
-                        "voice_pipeline_mode": "native_ollama_audio",
-                        "decoder_source": "ollama",
-                        "decoder_selected": "ollama_audio",
-                        "decoder_effective": "ollama_audio",
-                        "audio_input_status": "verified" if transcription else "empty",
-                        "audio_runtime_provider": "ollama",
-                        "audio_runtime_model": runtime.model_name,
-                        "transcription": transcription,
-                        "transcription_length": len(transcription),
-                        "timings_ms": timings_ms,
-                    },
-                )
-                await self._run_whisper_llm_pipeline(
-                    connection_id=connection_id,
-                    session_dir=session_dir,
-                    transcription=transcription,
-                    timings_ms=timings_ms,
-                    total_started_at=total_started_at,
-                    operator_agent=operator_agent,
-                    pipeline_id=pipeline_id,
-                    native_speech_runtime=runtime if native_speech else None,
-                )
             return True
 
         if decoder_plan["effective"] == "none":

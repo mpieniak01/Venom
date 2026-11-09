@@ -53,6 +53,7 @@ def _pilot_image() -> bytes:
 async def test_pilot_uses_image_and_raw_audio_in_one_turn_and_retains_source(
     rig, monkeypatch
 ):
+    """Send both modalities together and use the selected source on a later turn."""
     client, engine, _ = rig
     runtime = SimpleNamespace(
         endpoint="http://127.0.0.1:11434", model_name="lfm3-omni:2b"
@@ -124,6 +125,7 @@ async def test_pilot_uses_image_and_raw_audio_in_one_turn_and_retains_source(
     [
         ("invalid JSON", "VEN-401", None),
         ('{"action":"lookup_pilot_documentation","code":"../secrets"}', None, None),
+        ('{"action":"lookup_pilot_documentation","code":"VEN-４０１"}', None, None),
         (
             '{"action":"lookup_pilot_documentation","code":"VEN-401","path":"/tmp"}',
             None,
@@ -138,12 +140,14 @@ async def test_pilot_uses_image_and_raw_audio_in_one_turn_and_retains_source(
 def test_pilot_selection_can_only_dispatch_a_valid_document_lookup(
     content, previous, expected
 ):
+    """Reject arbitrary actions and malformed documentation codes."""
     assert omni_pilot._selected_code({"content": content}, previous) == expected
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("error", ["invalid_image", "missing_image", "bad_type"])
 async def test_pilot_rejects_unusable_media_before_inference(rig, monkeypatch, error):
+    """Return validation errors or a clarification without calling the model."""
     client, _, _ = rig
     runtime = SimpleNamespace(
         endpoint="http://127.0.0.1:11434", model_name="lfm3-omni:2b"
@@ -465,6 +469,7 @@ async def test_omni_tts_closes_streamed_wav_header(rig, omni_runtime, monkeypatc
 async def test_voice_pipeline_catalog_checks_local_capabilities_without_loading(
     rig, omni_runtime, monkeypatch
 ):
+    """Advertise local model metadata without using any audio or inference endpoint."""
     from venom_core.config import SETTINGS
     from venom_core.services import ollama_audio
 

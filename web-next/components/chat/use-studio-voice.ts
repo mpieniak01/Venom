@@ -6,6 +6,12 @@ export type StudioVoiceStatus = "voiceIdle" | "permission" | "listening" | "tran
 export type StudioVoiceOptions = { session: string; stopRevision?: number; mode: "dictation" | "conversation"; language: string; busy: boolean; messages: ChatMessage[];
   onDraft: (text: string) => void; onTurn: (text: string) => Promise<boolean>; onStop: () => Promise<void>; onClose: () => void;
   multimodalEnabled?: boolean; hostAudioAvailable?: boolean; onMultimodalBusy?: (busy: boolean) => void; onMultimodalCommit?: () => void };
+type CapturedVoiceTurn = {
+  audio: Awaited<ReturnType<AudioCapture["finish"]>>;
+  options: StudioVoiceOptions;
+  signal: AbortSignal;
+  isCurrent: () => boolean;
+};
 const MAX_VOICE_IMAGE_BYTES = 2 * 1024 * 1024;
 /** Map capture failures without treating unrelated errors as permission denial. */
 function captureError(cause: unknown): "micDenied" | "micUnavailable" | "voiceError" {
@@ -14,6 +20,15 @@ function captureError(cause: unknown): "micDenied" | "micUnavailable" | "voiceEr
   return "voiceError";
 }
 
+/** Keep translated turn failures specific and use the generic key for other errors. */
+function voiceTurnError(cause: unknown): string {
+  if (cause instanceof Error && ["voiceWait", "voiceImageInvalid"].includes(cause.message)) {
+    return cause.message;
+  }
+  return "voiceError";
+}
+
+/** Keep microphone capture, response playback and cancellation bound to the Studio session. */
 export function useStudioVoice(options: StudioVoiceOptions, captureFactory: typeof createAudioCapture = createAudioCapture) {
   const [status, setStatus] = useState<StudioVoiceStatus>("voiceIdle");
   const [error, setError] = useState<string | null>(null);
@@ -93,65 +108,105 @@ export function useStudioVoice(options: StudioVoiceOptions, captureFactory: type
     setImage(file);
     setError(null);
   }, []);
+  const idleWithError = useCallback((key: string) => {
+    setError(key);
+    setStatus("voiceIdle");
+  }, []);
+  /** Publish the reply and sources only while the originating voice request is current. */
+  const submitMultimodalTurn = useCallback(async (
+    { audio, options: voiceOptions, signal, isCurrent }: CapturedVoiceTurn,
+    attachment: File | null,
+  ) => {
+    if (audio.pcm.byteLength === 0) {
+      idleWithError("silence");
+      return;
+    }
+    const reply = await sendMultimodalVoiceTurn(
+      voiceOptions.session, audio, voiceOptions.language, attachment, signal,
+    );
+    if (!isCurrent() || reply.session_id !== latest.current.session) return;
+
+    multimodalContext.current = true;
+    selectImage(null);
+    setSources(reply.sources);
+    voiceOptions.onMultimodalCommit?.();
+    await speak(reply.text);
+  }, [idleWithError, selectImage, speak]);
+
+  /** Route a transcript to the draft or start a normal chat turn. */
+  const submitTranscribedTurn = useCallback(async ({
+    audio, options: voiceOptions, signal, isCurrent,
+  }: CapturedVoiceTurn) => {
+    setSources([]);
+    const result = await transcribeChatAudio(voiceOptions.session, audio, voiceOptions.language, signal, true);
+    if (!isCurrent() || result.session_id !== latest.current.session) return;
+
+    const text = result.text.trim();
+    if (!text) {
+      idleWithError("silence");
+      return;
+    }
+    if (latest.current.mode === "dictation") {
+      latest.current.onDraft(text);
+      setStatus("voiceIdle");
+      return;
+    }
+
+    waiting.current = { previous: new Set(latest.current.messages.map(message => message.bubbleId)), observedBusy: false };
+    setStatus("generating");
+    const accepted = await latest.current.onTurn(text);
+    if (isCurrent() && !accepted) {
+      waiting.current = null;
+      idleWithError("voiceWait");
+    }
+  }, [idleWithError]);
+
+  /** Dispose this recording without resetting capture state from a newer epoch. */
+  const settleCapture = useCallback((recording: AudioCapture, current: number, usedMultimodal: boolean) => {
+    recording.dispose();
+    if (capture.current === recording) capture.current = null;
+    if (current !== epoch.current) return;
+    finishing.current = false;
+    if (usedMultimodal) setMultimodalBusy(false);
+  }, [setMultimodalBusy]);
+
+  /** Flush the active capture and dispatch it through its selected voice path. */
   const finish = useCallback(async () => {
-    if (!capture.current || finishing.current) return;
+    const recording = capture.current;
+    if (!recording || finishing.current) return;
     finishing.current = true;
     const current = epoch.current;
-    const recording = capture.current;
     const voiceOptions = latest.current;
     const attachment = selectedImage.current;
-    const useMultimodal = voiceOptions.mode === "conversation" && voiceOptions.multimodalEnabled
+    const useMultimodal = voiceOptions.mode === "conversation" && voiceOptions.multimodalEnabled === true
       && (attachment !== null || multimodalContext.current);
-    if (timer.current) { clearTimeout(timer.current); }
+    if (timer.current) clearTimeout(timer.current);
     timer.current = null;
-    const controller = new AbortController(); request.current?.abort(); request.current = controller;
+    const controller = new AbortController();
+    request.current?.abort();
+    request.current = controller;
+    const isCurrent = () => current === epoch.current && !controller.signal.aborted;
     setStatus(useMultimodal ? "generating" : "transcribing");
+
     try {
-      if (useMultimodal) {
-        if (voiceOptions.busy) { setError("voiceWait"); setStatus("voiceIdle"); return; }
-        setMultimodalBusy(true);
+      if (useMultimodal && voiceOptions.busy) {
+        idleWithError("voiceWait");
+        return;
       }
+      if (useMultimodal) setMultimodalBusy(true);
       const audio = await recording.finish();
       if (capture.current === recording) capture.current = null;
       if (current !== epoch.current) return;
-      if (useMultimodal) {
-        if (audio.pcm.byteLength === 0) { setError("silence"); setStatus("voiceIdle"); return; }
-        const reply = await sendMultimodalVoiceTurn(voiceOptions.session, audio, voiceOptions.language, attachment, controller.signal);
-        if (current !== epoch.current || controller.signal.aborted || reply.session_id !== latest.current.session) return;
-        multimodalContext.current = true;
-        selectImage(null);
-        setSources(reply.sources);
-        voiceOptions.onMultimodalCommit?.();
-        await speak(reply.text);
-        return;
-      }
-      setSources([]);
-      const result = await transcribeChatAudio(voiceOptions.session, audio, voiceOptions.language, controller.signal, true);
-      if (current !== epoch.current || controller.signal.aborted || result.session_id !== latest.current.session) return;
-      const text = result.text.trim();
-      if (!text) { setError("silence"); setStatus("voiceIdle"); return; }
-      if (latest.current.mode === "dictation") { latest.current.onDraft(text); setStatus("voiceIdle"); return; }
-      waiting.current = { previous: new Set(latest.current.messages.map(message => message.bubbleId)), observedBusy: false };
-      setStatus("generating");
-      const accepted = await latest.current.onTurn(text);
-      if (current !== epoch.current || controller.signal.aborted) return;
-      if (!accepted) { waiting.current = null; setError("voiceWait"); setStatus("voiceIdle"); }
+
+      const turn = { audio, options: voiceOptions, signal: controller.signal, isCurrent };
+      if (useMultimodal) await submitMultimodalTurn(turn, attachment);
+      else await submitTranscribedTurn(turn);
     } catch (cause) {
-      if (!controller.signal.aborted && current === epoch.current) {
-        const key = cause instanceof Error && ["voiceWait", "voiceImageInvalid"].includes(cause.message)
-          ? cause.message : "voiceError";
-        setError(key);
-        setStatus("voiceIdle");
-      }
+      if (isCurrent()) idleWithError(voiceTurnError(cause));
     } finally {
-      recording.dispose();
-      if (capture.current === recording) { capture.current = null; }
-      if (current === epoch.current) {
-        finishing.current = false;
-        if (useMultimodal) setMultimodalBusy(false);
-      }
+      settleCapture(recording, current, useMultimodal);
     }
-  }, [selectImage, setMultimodalBusy, speak]);
+  }, [idleWithError, setMultimodalBusy, settleCapture, submitMultimodalTurn, submitTranscribedTurn]);
   const finishRef = useRef(finish);
   useEffect(() => { finishRef.current = finish; }, [finish]);
   const start = useCallback(async () => {

@@ -19,7 +19,7 @@ Polecenie tworzy w nowym katalogu PNG, syntetyczne nagrania WAV mono 16 kHz, kop
 
 ## Pomiar
 
-1. Użyj osobnych sesji testowych w Studio Chat 2.0 i Full `/voice`. Ustaw ten sam wariant Omni i tę samą wersję dokumentacji. Zapisz identyfikator buildu, wersję modelu i runtime w kopii `results-template.json`.
+1. Użyj osobnych sesji testowych w Studio Chat 2.0 i Full `/voice`. Ustaw ten sam wariant Omni i tę samą wersję dokumentacji. Skopiuj `results-template.json` do `results.json` w tym samym katalogu. W `results.json` zapisz identyfikator buildu, wersję modelu i runtime oraz wyniki prób.
 2. Dla każdego przypadku `paired` dołącz PNG i przekaż WAV przez kontrolowany mikrofon. Zastosuj te same pliki w obu interfejsach i potwierdź, że ścieżka z mikrofonu rzeczywiście zawiera nagranie. Każdy przypadek zacznij w nowej sesji. W przypadku wieloturowym pozostań w tej sesji także wtedy, gdy druga tura nie ma nowego PNG.
 3. W `trace` podaj lokalny zapis próby zawierający tekst i źródło widoczne w interfejsie, kod i wynik narzędzia oraz odtworzone audio lub jego transkrypcję. Zaznacz kryteria jako `true` albo `false` na podstawie oczekiwanej intencji, kodu, instrukcji, zgodności audio i historii. Zanotuj błędy w `error`. Czas od końca wypowiedzi do pierwszego odtwarzalnego dźwięku wpisz do `latency_ms`; brak pomiaru zapisz jako `null`.
 4. Przypadek `api_control` sprawdź przez jawne wywołanie ścieżki pilota bez obrazu. Przypadki `mock_transport` wykonaj z atrapą błędu odczytu i opisz osobno. Automatyczne podsumowanie obejmuje przypadki `paired`.

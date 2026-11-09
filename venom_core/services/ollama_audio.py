@@ -79,6 +79,7 @@ def encode_audio_input(path: Path) -> str:
 
 
 def encode_pcm_audio(samples: NDArray[np.int16], rate: int) -> str:
+    """Encode signed PCM as bounded Base64 WAV at the model's input rate."""
     if samples.size == 0:
         raise ValueError("audio_input_empty")
     if rate != 16000:
@@ -113,6 +114,7 @@ async def supports_audio(endpoint: str, model: str) -> bool:
 
 
 def is_host_ollama(runtime: LLMRuntimeInfo) -> bool:
+    """Identify Ollama runtimes bound to a loopback endpoint on this host."""
     return bool(
         runtime.provider == "ollama"
         and runtime.host_local is not False
@@ -122,10 +124,12 @@ def is_host_ollama(runtime: LLMRuntimeInfo) -> bool:
 
 
 def is_local_model(show: dict) -> bool:
+    """Exclude entries whose model execution resolves to a remote host."""
     return not (show.get("remote_model") or show.get("remote_host"))
 
 
 def supports_omni_voice(show: dict, language: str) -> bool:
+    """Check that the local model handles audio and exposes the requested voice."""
     return (
         is_local_model(show)
         and {"audio", "speech"}.issubset(show.get("capabilities") or [])
@@ -134,6 +138,7 @@ def supports_omni_voice(show: dict, language: str) -> bool:
 
 
 async def installed_gemma_models(endpoint: str) -> list[str]:
+    """List installed local Gemma 4 tags without loading their weights."""
     client = OllamaClient(endpoint)
     tags = await client.list_tags()
     return sorted(
@@ -149,11 +154,13 @@ async def installed_gemma_models(endpoint: str) -> list[str]:
 
 
 async def has_omni_voice(endpoint: str, language: str) -> bool:
+    """Read model metadata to determine native voice availability."""
     show = await OllamaClient(endpoint).get_model_show(OMNI_MODEL_ID)
     return supports_omni_voice(show, language)
 
 
 async def require_local_capability(endpoint: str, model: str, capability: str) -> dict:
+    """Return model metadata only when the capability is available locally."""
     payload = await OllamaClient(endpoint).get_model_show(model)
     if not is_local_model(payload) or capability not in (
         payload.get("capabilities") or []

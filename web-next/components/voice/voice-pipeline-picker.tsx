@@ -19,7 +19,7 @@ function chooseGemma(options: VoicePipelines): string | undefined {
     return options.active_model;
   }
   let previous: string | null = null;
-  try { previous = localStorage.getItem(lastGemmaKey); } catch { /* Optional preference. */ }
+  try { previous = window.localStorage.getItem(lastGemmaKey); } catch { /* Optional preference. */ }
   if (previous && options.gemma_models.includes(previous)) return previous;
   return options.gemma_models.find(model => model === gemmaFallback) ?? options.gemma_models[0];
 }
@@ -64,7 +64,7 @@ export function VoicePipelinePicker({
       await setActiveLlmServer("ollama", model);
       const lastGemma = model === omni ? gemma : model;
       if (lastGemma) {
-        try { localStorage.setItem(lastGemmaKey, lastGemma); } catch { /* Optional preference. */ }
+        try { window.localStorage.setItem(lastGemmaKey, lastGemma); } catch { /* Optional preference. */ }
       }
       setOptions(current => current && { ...current, active_model: model });
       onApplied?.(model);

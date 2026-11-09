@@ -2335,6 +2335,8 @@ type VoiceCommandCenterProps = Readonly<{
   voiceModePreset?: VoiceModePreset;
   onStatusUpdate?: (status: VoiceStatusUpdate | null) => void;
   statusRefreshSignal?: number;
+  onTurnBusy?: (busy: boolean) => void;
+  pipelineSwitching?: boolean;
   isDevMode?: boolean;
 }>;
 
@@ -2430,6 +2432,8 @@ function VoiceCommandCenterPanel({
   voiceModePreset = "standard",
   onStatusUpdate,
   statusRefreshSignal,
+  onTurnBusy,
+  pipelineSwitching = false,
 }: VoiceCommandCenterProps) {
   const t = useTranslation();
   const audioEnabled = process.env.NEXT_PUBLIC_ENABLE_AUDIO_INTERFACE === "true";
@@ -2453,6 +2457,9 @@ function VoiceCommandCenterPanel({
   const [audioChunkCount, setAudioChunkCount] = useState(0);
   const [lastAudioSignal, setLastAudioSignal] = useState("idle");
   const [processingStatus, setProcessingStatus] = useState<string | null>(null);
+  useEffect(() => {
+    onTurnBusy?.(recording || Boolean(processingStatus) || playbackState === "playing");
+  }, [onTurnBusy, playbackState, processingStatus, recording]);
   const [devDrawerOpen, setDevDrawerOpen] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectAttemptsRef = useRef(0);
@@ -2774,7 +2781,7 @@ function VoiceCommandCenterPanel({
   );
 
   const startRecording = useCallback(
-    () =>
+    () => pipelineSwitching ? Promise.resolve() :
       createStartRecordingHandler({
         debugDryRunRequested,
         debugMode,
@@ -2803,6 +2810,7 @@ function VoiceCommandCenterPanel({
         activeWindow: getBrowserWindow(),
       })(),
     [
+      pipelineSwitching,
       debugDryRunRequested,
       debugMode,
       ensurePlaybackContext,

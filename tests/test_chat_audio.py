@@ -324,3 +324,56 @@ async def test_omni_tts_closes_streamed_wav_header(rig, omni_runtime, monkeypatc
     )
     assert response.status_code == 503
     assert len(requests) == 1
+
+
+@pytest.mark.asyncio
+async def test_voice_pipeline_catalog_checks_local_capabilities_without_loading(
+    rig, omni_runtime, monkeypatch
+):
+    from venom_core.config import SETTINGS
+    from venom_core.services import ollama_audio
+
+    client, engine, _ = rig
+    runtime, show = omni_runtime
+    runtime.model_name = "gemma4-e4b-ab-qlora85:q8_0"
+    tags = AsyncMock(
+        return_value={
+            "models": [
+                {"name": runtime.model_name},
+                {"name": "gemma4:e4b"},
+                {"name": "gemma4:remote-cloud"},
+                {"name": "gemma4:remote", "remote_host": "https://example.invalid"},
+                {"name": "other:latest"},
+            ]
+        }
+    )
+    monkeypatch.setattr(ollama_audio.OllamaClient, "list_tags", tags)
+    monkeypatch.setattr(SETTINGS, "VOICE_ROUTE_PROFILE", "auto")
+    monkeypatch.setattr(SETTINGS, "AUDIO_DECODER_PROFILE", "auto")
+    monkeypatch.setattr(SETTINGS, "AUDIO_DECODER_CHAIN", "")
+    path = "/api/v1/chat/audio/pipelines"
+    assert (await client.get(path)).json() == {
+        "active_model": runtime.model_name,
+        "gemma_models": [runtime.model_name, "gemma4:e4b"],
+        "omni_model": "lfm3-omni:2b",
+    }
+    assert (await client.get(path + "?language=de")).json()["omni_model"] is None
+    assert (await client.get(path + "?surface=voice&language=de")).json()[
+        "omni_model"
+    ] == "lfm3-omni:2b"
+    monkeypatch.setattr(SETTINGS, "AUDIO_DECODER_PROFILE", "faster_whisper")
+    assert (await client.get(path + "?surface=voice")).json()["omni_model"] is None
+    show.return_value["remote_model"] = "remote"
+    assert (await client.get(path)).json()["omni_model"] is None
+    runtime.endpoint = "https://example.invalid"
+    show.reset_mock()
+    tags.reset_mock()
+    assert (await client.get(path)).json() == {
+        "active_model": None,
+        "gemma_models": [],
+        "omni_model": None,
+    }
+    show.assert_not_awaited()
+    tags.assert_not_awaited()
+    engine.transcribe_checked.assert_not_awaited()
+    engine.speak.assert_not_awaited()

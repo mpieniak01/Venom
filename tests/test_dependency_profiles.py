@@ -1308,6 +1308,7 @@ def test_bootstrap_canonicalizes_dotted_distribution_names(
 
 
 def test_release_profiles_keep_actual_consumers_and_defer_separate_engines():
+    """Keep the managed profile inventory distinct from deferred engine installers."""
     policy = profiles.load_policy()
     assert policy["platform"]["python"] == "3.14"
     assert policy["python_target"] == "3.14.8"
@@ -1318,6 +1319,7 @@ def test_release_profiles_keep_actual_consumers_and_defer_separate_engines():
         "full-ci",
         "multi-runtime-cuda",
         "granite-operator-training",
+        "full-ci-cuda",
         "build",
     }
     assert set(policy["aliases"].values()) == {"light"}
@@ -2376,3 +2378,161 @@ def test_granite_cpu_test_overlay_preserves_hash_locked_ci_and_excludes_cuda():
         profiles.load_policy()["profiles"]["granite-operator-training"]["kind"]
         == "component"
     )
+
+
+def test_cuda_application_replaces_only_ort_and_adds_native_cuda_libraries():
+    """Preserve Full CI consumers while selecting one ORT provider and required CUDA libraries."""
+    policy = profiles.load_policy()
+    cpu = profiles.requirements_for(policy, "full-ci")
+    cuda = profiles.requirements_for(policy, "full-ci-cuda")
+    assert {
+        name: value
+        for name, value in cuda.items()
+        if name not in {"onnxruntime-gpu", "nvidia-curand", "nvidia-cublas-cu12"}
+    } == {name: value for name, value in cpu.items() if name != "onnxruntime"}
+    assert cuda["onnxruntime-gpu"] == "onnxruntime-gpu==1.31.1"
+    assert cuda["nvidia-curand"] == "nvidia-curand==10.4.2.66"
+    assert cuda["nvidia-cublas-cu12"] == "nvidia-cublas-cu12==12.9.1.4"
+    assert "onnxruntime" not in cuda
+    with pytest.raises(ValueError, match="Forbidden application"):
+        profiles.check_packages(policy, "full-ci", {"onnxruntime-gpu"})
+    with pytest.raises(ValueError, match="Overlapping distribution"):
+        profiles.check_packages(
+            policy, "full-ci-cuda", {"onnxruntime", "onnxruntime-gpu"}
+        )
+    with pytest.raises(ValueError, match="requires only"):
+        profiles.check_packages(policy, "full-ci-cuda", {"piper-tts"})
+    generated = profiles.generated_inputs(policy)["requirements-full-ci-cuda.txt"]
+    assert "INSTALL VIA bootstrap_dependency_profile.py" in generated
+
+
+@pytest.fixture
+def cuda_metadata():
+    """Supply a minimal installed graph with the three explicit ORT metadata consumers."""
+    policy = profiles.load_policy()
+    policy["profiles"]["full-ci"] = {"kind": "application", "groups": []}
+    packages = [
+        ("onnxruntime-gpu", "1.31.1", ["numpy>=2"]),
+        ("nvidia-curand", "10.4.2.66", []),
+        ("piper-tts", "1.8.0", ["onnxruntime<2,>=1"]),
+        ("faster-whisper", "1.2.1", ["onnxruntime<2,>=1.14"]),
+        ("magika", "0.6.3", ["onnxruntime>=1.17.0"]),
+        ("nvidia-cublas-cu12", "12.9.1.4", []),
+        ("numpy", "2.5.4", []),
+    ]
+    report = {
+        "environment": {},
+        "installed": [
+            {"metadata": {"name": name, "version": version, "requires_dist": requires}}
+            for name, version, requires in packages
+        ],
+    }
+    return policy, report
+
+
+def test_cuda_provider_checks_complete_graph_and_preserves_raw_pip_failure(
+    cuda_metadata,
+):
+    """Accept declared provider substitutions without hiding raw or unrelated pip failures."""
+    policy, report = cuda_metadata
+    result = profiles.check_dependency_metadata(policy, "full-ci-cuda", report)
+    assert result["status"] == "PASS"
+    assert {item["consumer"] for item in result["substitutions"]} == {
+        "piper-tts",
+        "faster-whisper",
+        "magika",
+    }
+    output = "piper-tts 1.8.0 requires onnxruntime, which is not installed.\nfaster-whisper 1.2.1 requires onnxruntime, which is not installed.\nmagika 0.6.3 requires onnxruntime, which is not installed.\n"
+    check = subprocess.CompletedProcess([], 1, output, "")
+    assert profiles.provider_pip_check_matches(check, result)
+    assert check.returncode == 1
+    assert not profiles.provider_pip_check_matches(
+        subprocess.CompletedProcess([], 1, output + "unrelated missing package\n", ""),
+        result,
+    )
+    assert not profiles.provider_pip_check_matches(
+        subprocess.CompletedProcess([], 0, "", ""), result
+    )
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        "gpu_version",
+        "other_missing",
+        "other_version",
+        "unknown_consumer",
+        "provider_specifier",
+        "active_extra",
+        "cublas_missing",
+        "cublas_version",
+    ],
+)
+def test_cuda_substitution_never_masks_other_dependency_errors(cuda_metadata, change):
+    """Reject incompatible versions, missing native libraries and undeclared substitutions."""
+    policy, report = cuda_metadata
+    rows = report["installed"]
+    if change == "gpu_version":
+        rows[0]["metadata"]["version"] = "1.27.0"
+    elif change == "other_missing":
+        rows.pop()
+    elif change == "other_version":
+        rows[-1]["metadata"]["version"] = "1.9.0"
+    elif change == "unknown_consumer":
+        rows[-1]["metadata"]["requires_dist"] = ["onnxruntime>=1"]
+    elif change == "provider_specifier":
+        rows[2]["metadata"]["requires_dist"] = ["onnxruntime<1.30"]
+    elif change == "cublas_missing":
+        rows.pop(-2)
+    elif change == "cublas_version":
+        rows[-2]["metadata"]["version"] = "12.8.4.1"
+    else:
+        rows[2]["metadata"]["requires_dist"] = ["numpy[extra]"]
+        rows[-1]["metadata"]["requires_dist"] = ["missing-extra; extra == 'extra'"]
+    result = profiles.check_dependency_metadata(policy, "full-ci-cuda", report)
+    assert result["status"] == "FAIL"
+    assert result["errors"]
+
+
+def test_cuda_bootstrap_installs_complete_lock_without_resolving_cpu_dependency(
+    tmp_path, bootstrap_runner
+):
+    """Install the complete CUDA lock without letting voice metadata add CPU ONNX."""
+    bootstrap, commands = bootstrap_runner
+    bootstrap.install_profile(profiles.ROOT, "full-ci-cuda", tmp_path / "cuda")
+    installs = [command for command in commands if "install" in command]
+    assert "--no-deps" in installs[-1]
+    assert "--require-hashes" in installs[-1]
+    assert "--no-deps" not in installs[0]
+    assert bootstrap.required_storage_bytes("full-ci-cuda", 1) == 20 * bootstrap.GIB
+
+
+@pytest.mark.parametrize(
+    "installed", [["onnxruntime"], ["onnxruntime", "onnxruntime-gpu"]]
+)
+def test_cuda_bootstrap_rejects_cpu_namespace_before_install(
+    tmp_path, bootstrap_runner, monkeypatch, installed
+):
+    """Reject an existing CPU ONNX namespace before any package installation."""
+    bootstrap, commands = bootstrap_runner
+    (tmp_path / "bin").mkdir()
+    (tmp_path / "bin/python").write_text("fake")
+    (tmp_path / "pyvenv.cfg").write_text("include-system-site-packages = false\n")
+
+    def run(command, *, capture=False):
+        """Return controlled interpreter metadata and inventory without running installation."""
+        commands.append(command)
+        return SimpleNamespace(
+            stdout=bootstrap_stdout(
+                command,
+                json.dumps([{"name": name, "version": "1.31.1"} for name in installed])
+                if "list" in command
+                else "include-system-site-packages = false\n",
+            ),
+            returncode=0,
+        )
+
+    monkeypatch.setattr(bootstrap, "run", run)
+    with pytest.raises(ValueError, match="outside the selected profile"):
+        bootstrap.install_profile(profiles.ROOT, "full-ci-cuda", tmp_path, update=True)
+    assert not any("install" in command for command in commands)

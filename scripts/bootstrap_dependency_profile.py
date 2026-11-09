@@ -32,6 +32,7 @@ MINIMUM_FREE_GIB = {
     "build": 1,
     "full": 16,
     "full-ci": 20,
+    "full-ci-cuda": 20,
     "multi-runtime-cuda": 12,
     "granite-operator-training": 14,
 }
@@ -283,6 +284,7 @@ def install_profile(
     storage_root: Path | None = None,
     minimum_free_gib: float | None = None,
 ) -> None:
+    """Install and verify a hash-locked profile without starting services or models."""
     policy = json.loads((root / "config/dependency-profiles.json").read_text())
     if profile not in policy["profiles"]:
         if profile in policy.get("deferred_profiles", {}):
@@ -389,6 +391,8 @@ def install_profile(
         installed = set(installed_versions)
         if spec["kind"] == "application":
             forbidden = installed.intersection(policy["forbidden_application_packages"])
+            if spec.get("onnxruntime_provider") == "cuda":
+                forbidden.discard("onnxruntime-gpu")
             if forbidden:
                 raise ValueError(
                     f"Existing environment contains legacy/engine packages {sorted(forbidden)}; use a fresh application venv"
@@ -452,6 +456,10 @@ def install_profile(
         "-r",
         str(lock),
     ]
+    if spec.get("onnxruntime_provider") == "cuda":
+        # The complete hash lock substitutes the upstream GPU distribution.
+        # Resolving again would install the conflicting CPU wheel through voice metadata.
+        command.append("--no-deps")
     command.extend(install_options)
     check_storage_space(target, required_bytes, storage_root=storage_root)
     run(command)

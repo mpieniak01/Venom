@@ -133,6 +133,26 @@ def supports_omni_voice(show: dict, language: str) -> bool:
     )
 
 
+async def installed_gemma_models(endpoint: str) -> list[str]:
+    client = OllamaClient(endpoint)
+    tags = await client.list_tags()
+    return sorted(
+        {
+            entry["name"]
+            for entry in tags.get("models", [])
+            if isinstance(entry.get("name"), str)
+            and entry["name"].lower().startswith("gemma4")
+            and not entry["name"].lower().endswith("-cloud")
+            and is_local_model(entry)
+        }
+    )
+
+
+async def has_omni_voice(endpoint: str, language: str) -> bool:
+    show = await OllamaClient(endpoint).get_model_show(OMNI_MODEL_ID)
+    return supports_omni_voice(show, language)
+
+
 async def require_local_capability(endpoint: str, model: str, capability: str) -> dict:
     payload = await OllamaClient(endpoint).get_model_show(model)
     if not is_local_model(payload) or capability not in (

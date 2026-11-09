@@ -11,7 +11,6 @@ from venom_core.api.transport_access import (
     require_operator_request,
 )
 from venom_core.config import SETTINGS
-from venom_core.core.model_registry_clients import OllamaClient
 from venom_core.services import ollama_audio
 from venom_core.services.chat_audio import (
     MAX_AUDIO_BYTES,
@@ -79,18 +78,8 @@ async def voice_pipelines(
     }
     if active is None:
         return result
-    client = OllamaClient(runtime.endpoint)
-    tags = await client.list_tags()
-    result["gemma_models"] = sorted(
-        {
-            entry["name"]
-            for entry in tags.get("models", [])
-            if isinstance(entry.get("name"), str)
-            and entry["name"].lower().startswith("gemma4")
-            and not entry["name"].lower().endswith("-cloud")
-            and ollama_audio.is_local_model(entry)
-        }
-    )
+    endpoint = runtime.endpoint or ""
+    result["gemma_models"] = await ollama_audio.installed_gemma_models(endpoint)
     if surface == "voice" and not ollama_audio.allows_native_route(
         route_profile=SETTINGS.VOICE_ROUTE_PROFILE,
         decoder_profile=SETTINGS.AUDIO_DECODER_PROFILE,
@@ -99,8 +88,7 @@ async def voice_pipelines(
         return result
     # Full Voice currently has a Polish transcription prompt and voice.
     voice_language = "pl" if surface == "voice" else language
-    show = await client.get_model_show(ollama_audio.OMNI_MODEL_ID)
-    if ollama_audio.supports_omni_voice(show, voice_language):
+    if await ollama_audio.has_omni_voice(endpoint, voice_language):
         result["omni_model"] = ollama_audio.OMNI_MODEL_ID
     return result
 

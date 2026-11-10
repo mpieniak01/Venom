@@ -26,7 +26,6 @@ if TYPE_CHECKING:
 
 DIAGNOSTICS_INTENT = "OPERATOR_DIAGNOSTICS"
 RUNBOOK = "docs/PL/CHAT_OPERATOR.md#diagnostyka-full"
-_REPORT_HEADING = "**Diagnostyka Full · dowody**"
 HOST_CHECK = "make status VENOM_VARIANT=venom PROFILE=full ENVIRONMENT=dev"
 _RIDER_PATH = "/api/v1/rider/status?section=overview"
 _SERVICES_PATH = "/api/v1/system/services"
@@ -62,13 +61,6 @@ class DiagnosticRequest:
     guide: bool
     venom: bool
     rider: bool
-
-
-def is_full_diagnostic_report(content: str) -> bool:
-    """Recognize saved Full evidence, including copies with extra model text."""
-    return content.lstrip().startswith(f"{_REPORT_HEADING}\n") and (
-        f"Źródło procedury · {RUNBOOK}" in content
-    )
 
 
 def parse_diagnostic_request(content: str) -> DiagnosticRequest | None:
@@ -388,7 +380,7 @@ async def run_operator_diagnostics(
         next_step = f"`{commands[-1]}`"
     return "\n".join(
         [
-            _REPORT_HEADING,
+            "**Diagnostyka Full · dowody**",
             *[item.render() for item in evidence],
             f"Następny krok · {next_step}",
             source,

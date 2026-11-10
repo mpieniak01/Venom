@@ -22,6 +22,7 @@ from venom_core.services.background_priority import run_drainable_thread
 from venom_core.services.chat_audio import (
     MAX_AUDIO_BYTES,
     complete_audio_work,
+    decode_pilot_recording,
     synthesize_wav,
     transcribe_pcm,
     validate_pcm,
@@ -29,6 +30,9 @@ from venom_core.services.chat_audio import (
 from venom_core.services.session_store import SessionStore
 from venom_core.utils.helpers import get_utc_now_iso
 from venom_core.utils.llm_runtime import LLMRuntimeInfo, get_active_llm_runtime
+from venom_core.utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 AUDIO_ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
     403: {"description": "Operator access or audio request origin denied"},
@@ -146,13 +150,13 @@ async def transcribe(
         content.extend(chunk)
     if await request.is_disconnected():
         raise HTTPException(499, {"reason_code": "audio_request_cancelled"})
+    pcm = bytes(content)
     if runtime is not None:
         from venom_core.services.ollama_audio import (
             require_local_capability,
             transcribe_pcm_audio,
         )
 
-        pcm = bytes(content)
         validate_pcm(pcm, sample_rate)
         endpoint = runtime.endpoint or ""
 
@@ -170,8 +174,15 @@ async def transcribe(
             raise HTTPException(
                 503, {"reason_code": "audio_transcription_failed"}
             ) from exc
+        has_text = bool(text.strip())
+        logger.info(
+            "chat_audio_transcription pipeline=ollama_audio has_text={}", has_text
+        )
         return {"session_id": session_id, "text": text, "pipeline": "ollama_audio"}
-    text = await transcribe_pcm(engine, bytes(content), sample_rate, language)
+    text = await transcribe_pcm(engine, pcm, sample_rate, language)
+    logger.info(
+        "chat_audio_transcription pipeline=host_stt has_text={}", bool(text.strip())
+    )
     return {"session_id": session_id, "text": text, "pipeline": "host_stt"}
 
 
@@ -211,6 +222,13 @@ async def _pilot_form(request: Request) -> FormData:
         raise HTTPException(422, {"reason_code": "omni_pilot_invalid_form"}) from exc
 
 
+_PILOT_AUDIO_FORMATS = {
+    "audio/webm": "matroska",
+    "audio/ogg": "ogg",
+    "audio/mp4": "mov",
+}
+
+
 async def _pilot_inputs(form: FormData) -> tuple[str, int, bytes, bytes | None]:
     """Validate the session, Polish audio format, and optional image."""
     session_id = form.get("session_id")
@@ -230,8 +248,6 @@ async def _pilot_inputs(form: FormData) -> tuple[str, int, bytes, bytes | None]:
     ):
         raise HTTPException(422, {"reason_code": "omni_pilot_invalid_form"})
     rate = int(sample_rate)
-    pcm = await audio.read(MAX_AUDIO_BYTES + 1)
-    validate_pcm(pcm, rate)
     image_bytes = None
     if isinstance(image, UploadFile):
         image_bytes = await image.read(omni_pilot.MAX_IMAGE_BYTES + 1)
@@ -241,6 +257,16 @@ async def _pilot_inputs(form: FormData) -> tuple[str, int, bytes, bytes | None]:
             raise HTTPException(
                 422, {"reason_code": "omni_pilot_invalid_image"}
             ) from exc
+    pcm = await audio.read(MAX_AUDIO_BYTES + 1)
+    media_type = (audio.content_type or "").split(";", 1)[0].strip().lower()
+    if media_type != "application/octet-stream":
+        input_format = _PILOT_AUDIO_FORMATS.get(media_type)
+        if input_format is None:
+            raise HTTPException(422, {"reason_code": "audio_invalid_recording"})
+        pcm, rate = await run_drainable_thread(
+            decode_pilot_recording, pcm, input_format
+        )
+    validate_pcm(pcm, rate)
     return session_id, rate, pcm, image_bytes
 
 

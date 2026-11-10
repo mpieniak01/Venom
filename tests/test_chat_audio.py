@@ -7,6 +7,7 @@ import json
 import wave
 from contextlib import asynccontextmanager, nullcontext
 from copy import deepcopy
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
@@ -50,8 +51,9 @@ def _pilot_image() -> bytes:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("encoded", [False, True])
 async def test_pilot_uses_image_and_raw_audio_in_one_turn_and_retains_source(
-    rig, monkeypatch
+    rig, monkeypatch, encoded
 ):
     """Send both modalities together and use the selected source on a later turn."""
     client, engine, _ = rig
@@ -67,6 +69,8 @@ async def test_pilot_uses_image_and_raw_audio_in_one_turn_and_retains_source(
     request_payloads = []
     lookup = json.dumps({"action": omni_pilot.TOOL_NAME, "code": "VEN-401"})
     followup_choice = json.dumps({"action": "previous_source", "code": ""})
+    if encoded:
+        lookup = json.dumps({"action": omni_pilot.TOOL_NAME, "code": "Sesja wygasła"})
     messages = iter(
         [
             {"content": lookup},
@@ -89,6 +93,20 @@ async def test_pilot_uses_image_and_raw_audio_in_one_turn_and_retains_source(
     image = _pilot_image()
     pcm = b"\x00\x10" * 100
     files = {"audio": ("recording.pcm", pcm)}
+    if encoded:
+
+        def decode(command, **_options):
+            assert command[command.index("-f") + 1] == "matroska"
+            assert command[command.index("-protocol_whitelist") + 1] == "file"
+            assert command[command.index("-t") + 1] == "61"
+            assert Path(command[command.index("-i") + 1]).read_bytes() == b"webm"
+            with wave.open(command[-1], "wb") as wav:
+                wav.setparams((1, 2, 16000, 0, "NONE", "not compressed"))
+                wav.writeframes(pcm)
+            return SimpleNamespace(returncode=0)
+
+        monkeypatch.setattr(chat_audio.subprocess, "run", decode)
+        files = {"audio": ("recording.webm", b"webm", "audio/webm;codecs=opus")}
     result = await client.post(
         "/api/v1/chat/audio/multimodal-turn",
         data=data,
@@ -141,11 +159,35 @@ def test_pilot_selection_can_only_dispatch_a_valid_document_lookup(
     content, previous, expected
 ):
     """Reject arbitrary actions and malformed documentation codes."""
-    assert omni_pilot._selected_code({"content": content}, previous) == expected
+    documents = json.loads(omni_pilot.DOCUMENTATION.read_text())
+    assert (
+        omni_pilot._selected_code({"content": content}, previous, documents) == expected
+    )
+
+
+def test_pilot_exact_title_does_not_resolve_when_two_entries_match():
+    """A duplicate label must ask for clarification instead of choosing a source."""
+    documents = {
+        "VEN-401": {"title": "VEN-401 · Sesja wygasła"},
+        "VEN-999": {"title": "VEN-999 · Sesja wygasła"},
+    }
+    content = json.dumps({"action": omni_pilot.TOOL_NAME, "code": "Sesja wygasła"})
+    assert omni_pilot._selected_code({"content": content}, None, documents) is None
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("error", ["invalid_image", "missing_image", "bad_type"])
+@pytest.mark.parametrize(
+    "error",
+    [
+        "invalid_image",
+        "missing_image",
+        "bad_type",
+        "bad_media",
+        "decode_failed",
+        "empty_recording",
+        "decoder_unavailable",
+    ],
+)
 async def test_pilot_rejects_unusable_media_before_inference(rig, monkeypatch, error):
     """Return validation errors or a clarification without calling the model."""
     client, _, _ = rig
@@ -161,6 +203,25 @@ async def test_pilot_rejects_unusable_media_before_inference(rig, monkeypatch, e
     if error == "bad_type":
         result = await client.post(url, content=b"bad")
         assert result.status_code == 415
+    elif error in {
+        "bad_media",
+        "decode_failed",
+        "empty_recording",
+        "decoder_unavailable",
+    }:
+        mime = "text/plain" if error == "bad_media" else "audio/webm"
+        recording = b"" if error == "empty_recording" else b"broken"
+
+        def decode(*_args, **_kwargs):
+            if error == "decoder_unavailable":
+                raise FileNotFoundError("ffmpeg")
+            return SimpleNamespace(returncode=1, stderr="invalid input")
+
+        monkeypatch.setattr(chat_audio.subprocess, "run", decode)
+        result = await client.post(
+            url, data=data, files={"audio": ("voice", recording, mime)}
+        )
+        assert result.status_code == (503 if error == "decoder_unavailable" else 422)
     elif error == "invalid_image":
         result = await client.post(
             url, data=data, files={**files, "image": ("bad.png", b"x")}
@@ -365,6 +426,35 @@ def omni_runtime(monkeypatch):
     monkeypatch.setattr(routes, "get_active_llm_runtime", lambda: runtime)
     monkeypatch.setattr(ollama_audio.OllamaClient, "get_model_show", show)
     return runtime, show
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("host_ready", [True, False])
+async def test_empty_omni_transcript_keeps_native_route_even_when_host_is_available(
+    rig, omni_runtime, monkeypatch, host_ready
+):
+    from venom_core.services import ollama_audio
+
+    client, engine, _ = rig
+    native = AsyncMock(return_value="")
+    monkeypatch.setattr(ollama_audio, "transcribe_pcm_audio", native)
+    if not host_ready:
+        client._transport.app.state.audio_engine = None
+
+    response = await client.post(
+        "/api/v1/chat/audio/transcribe?session_id=existing&language=pl&prefer_native=true",
+        content=b"\x01\x00" * 80,
+        headers={"content-type": "application/octet-stream"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "session_id": "existing",
+        "text": "",
+        "pipeline": "ollama_audio",
+    }
+    native.assert_awaited_once()
+    engine.transcribe_checked.assert_not_awaited()
 
 
 @pytest.mark.asyncio

@@ -597,6 +597,13 @@ async def test_studio_normal_respects_the_total_history_limit_with_large_context
 def test_studio_normal_stream_uses_host_history_and_loads_rag_only_for_notes(
     tmp_path, monkeypatch
 ):
+    from venom_core.config import DEFAULT_SIMPLE_MODE_SYSTEM_PROMPT
+
+    monkeypatch.setattr(
+        llm_simple_service.SETTINGS,
+        "SIMPLE_MODE_SYSTEM_PROMPT",
+        DEFAULT_SIMPLE_MODE_SYSTEM_PROMPT,
+    )
     store = SessionStore(str(tmp_path / "studio-normal.json"))
     store.append_turn_once(
         "own",
@@ -855,3 +862,165 @@ def test_chat_note_indexes_completed_answer_once_and_respects_session(
     assert metadata["session_id"] == "own"
     assert metadata["provenance_request_id"] == answer_id
     assert metadata["provenance_source"] == "chat_note"
+
+
+@pytest.mark.asyncio
+async def test_direct_voice_uses_text_service_and_preserves_history(monkeypatch):
+    from venom_core.api.schemas.llm_simple import HistoryMessage
+    from venom_core.services import direct_voice
+
+    history = [
+        HistoryMessage(role="user", content="poprzednie pytanie"),
+        HistoryMessage(role="assistant", content="Diagnostyka Full · dowody"),
+    ]
+    closed = []
+
+    async def packets():
+        try:
+            data = event("content", {"text": "Cztery równe boki."}) + event("done", {})
+            raw = data.encode("utf-8")
+            for byte in raw:
+                yield bytes([byte])
+        finally:
+            closed.append(True)
+
+    service = AsyncMock(return_value=StreamingResponse(packets()))
+    monkeypatch.setattr(direct_voice, "stream_simple_chat", service)
+    answer, updated = await direct_voice.complete_direct_turn(
+        "Co to jest kwadrat?", history, session_id="own-voice"
+    )
+    request = service.call_args.args[0]
+    assert request.content == "Co to jest kwadrat?"
+    assert request.history == history
+    assert request.session_id == "own-voice"
+    assert request.stream is False
+    assert request.studio_normal is False
+    assert request.tools is None
+    assert request.model is None  # Resolve the active selection in the shared service.
+    assert updated[:-2] == history
+    assert updated[-2].content == request.content
+    assert updated[-1].content == answer == "Cztery równe boki."
+    assert len(history) == 2
+    service.assert_awaited_once()
+    assert closed == [True]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "packets,reason",
+    [
+        ([event("content", {"text": "partial"})], "incomplete"),
+        ([event("error", {"message": "private details"})], "generation_failed"),
+        ([event("done", {})], "incomplete"),
+        ([event("content", {"text": 5})], "invalid_response"),
+    ],
+)
+async def test_direct_voice_rejects_failed_or_incomplete_generation(
+    monkeypatch, packets, reason
+):
+    from venom_core.services import direct_voice
+
+    async def chunks():
+        for packet in packets:
+            yield packet
+
+    monkeypatch.setattr(
+        direct_voice,
+        "stream_simple_chat",
+        AsyncMock(return_value=StreamingResponse(chunks())),
+    )
+    with pytest.raises(RuntimeError, match=reason):
+        await direct_voice.complete_direct_turn("pytanie", [], session_id="own")
+
+
+@pytest.mark.asyncio
+async def test_direct_voice_bounds_whole_turns_without_content_filtering(monkeypatch):
+    from venom_core.api.schemas.llm_simple import HistoryMessage
+    from venom_core.services import direct_voice
+
+    history = [
+        HistoryMessage(role=role, content=f"{i}-{role}")
+        for i in range(10)
+        for role in ("user", "assistant")
+    ]
+
+    async def chunks():
+        yield "comment: ignored\n\n"
+        yield event("content", {"text": "answer"}) + event("done", {})
+
+    monkeypatch.setattr(
+        direct_voice,
+        "stream_simple_chat",
+        AsyncMock(return_value=StreamingResponse(chunks())),
+    )
+    _, updated = await direct_voice.complete_direct_turn(
+        "next", history, session_id="own"
+    )
+    assert len(updated) == 20
+    assert updated[:-2] == history[2:]
+    assert updated[0].role == "user"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("packet_limit", [False, True])
+async def test_direct_voice_enforces_bounded_response(monkeypatch, packet_limit):
+    from venom_core.services import direct_voice
+
+    monkeypatch.setattr(direct_voice, "MAX_HISTORY_RESPONSE_CHARS", 100)
+
+    async def chunks():
+        if packet_limit:
+            yield "x" * 101
+        else:
+            for _ in range(3):
+                yield event("content", {"text": "x" * 40})
+
+    monkeypatch.setattr(
+        direct_voice,
+        "stream_simple_chat",
+        AsyncMock(return_value=StreamingResponse(chunks())),
+    )
+    with pytest.raises(RuntimeError, match="response_limit"):
+        await direct_voice.complete_direct_turn("pytanie", [], session_id="own")
+
+
+@pytest.mark.asyncio
+async def test_direct_voice_does_not_store_a_turn_exceeding_history_budget(monkeypatch):
+    from venom_core.services import direct_voice
+
+    monkeypatch.setattr(direct_voice, "MAX_CHAT_HISTORY_CHARS", 12)
+
+    async def chunks():
+        yield event("content", {"text": "long answer"}) + event("done", {})
+
+    monkeypatch.setattr(
+        direct_voice,
+        "stream_simple_chat",
+        AsyncMock(return_value=StreamingResponse(chunks())),
+    )
+    answer, history = await direct_voice.complete_direct_turn(
+        "question", [], session_id="own"
+    )
+    assert answer == "long answer"
+    assert history == []
+
+
+def test_direct_default_prompt_is_neutral_and_explicit_custom_prompt_is_preserved(
+    monkeypatch,
+):
+    from venom_core.config import DEFAULT_SIMPLE_MODE_SYSTEM_PROMPT
+
+    monkeypatch.setattr(
+        llm_simple_service.SETTINGS,
+        "SIMPLE_MODE_SYSTEM_PROMPT",
+        DEFAULT_SIMPLE_MODE_SYSTEM_PROMPT,
+    )
+    request = SimpleChatRequest(content="Co to jest kwadrat?")
+    assert (
+        llm_simple_service._simple_system_prompt(request, "")
+        == "You are a helpful assistant."
+    )
+    monkeypatch.setattr(
+        llm_simple_service.SETTINGS, "SIMPLE_MODE_SYSTEM_PROMPT", "Custom instruction"
+    )
+    assert llm_simple_service._simple_system_prompt(request, "") == "Custom instruction"

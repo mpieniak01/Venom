@@ -217,7 +217,7 @@ function StudioConversation({ showLegacyLink, lightNormal }: Readonly<{
           setters.setSelectedLlmModel(model);
           void source.refresh();
         }}
-        multimodalEnabled={multimodalEnabled} hostAudioAvailable={voiceAvailable}
+        multimodalEnabled={multimodalEnabled}
         onMultimodalBusy={setMultimodalBusy} onMultimodalCommit={() => { void conversation.sessionHistoryState.refreshSessionHistory(); }}
         onDraft={text => setDraft(previous => previous ? previous + " " + text : text)} onTurn={send} onStop={stop} onClose={() => setVoice(null)} />}
       <form className="studio-compose-wrap" onSubmit={event => { event.preventDefault(); void send(draft); }}>

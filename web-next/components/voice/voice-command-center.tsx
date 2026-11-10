@@ -1,5 +1,6 @@
 "use client";
 
+import { VOICE_MICROPHONE_CONSTRAINTS, voiceRecorderMimeType } from "@/lib/voice-media-recorder";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type {
   Dispatch,
@@ -811,12 +812,13 @@ const handleVoiceAudioResponse = (
 
 const handleVoiceCompletion = (
   t: Translator,
+  noTranscript: boolean,
   setStatusMessage: (value: string | null) => void,
   setLastAudioSignal: (value: string) => void,
   setProcessingStatus?: (value: string | null) => void,
 ) => {
-  setStatusMessage(t("voice.status.complete"));
-  setLastAudioSignal("complete");
+  setStatusMessage(t(noTranscript ? "voice.status.noTranscript" : "voice.status.complete"));
+  setLastAudioSignal(noTranscript ? "stt:empty" : "complete");
   setProcessingStatus?.(null);
 };
 
@@ -941,12 +943,7 @@ const createVoiceCaptureEnvironment = async (
   }
 
   const mediaStream = await navigator.mediaDevices.getUserMedia({
-    audio: {
-      channelCount: 1,
-      echoCancellation: true,
-      noiseSuppression: true,
-      autoGainControl: true,
-    },
+    audio: VOICE_MICROPHONE_CONSTRAINTS,
   });
   const audioContextCtor = getAudioContextCtor(deps.activeWindow);
   if (!audioContextCtor || typeof MediaRecorder === "undefined") {
@@ -1166,7 +1163,7 @@ const startVoiceCapture = async (deps: VoiceCaptureDeps): Promise<void> => {
   }
 };
 
-export type VoiceModePreset = "standard" | "deep_analysis" | "summary" | "action_items";
+export type VoiceModePreset = "direct" | "standard" | "deep_analysis" | "summary" | "action_items";
 export type VoiceStatusUpdate = Pick<AudioStatus,
   | "enabled" | "stt_ready" | "tts_ready" | "tts_fallback"
   | "whisper_model_size" | "stt_backend" | "tts_backend"
@@ -1176,6 +1173,7 @@ export type VoiceStatusUpdate = Pick<AudioStatus,
 >;
 
 const VOICE_MODE_TITLE_KEYS: Record<VoiceModePreset, string> = {
+  direct: "voice.modes.direct.title",
   standard: "voice.modes.standard.title",
   deep_analysis: "voice.modes.deepAnalysis.title",
   summary: "voice.modes.summary.title",
@@ -1586,19 +1584,6 @@ function createReleasePlaybackResourcesHandler(params: {
   };
 }
 
-function createGetMediaRecorderMimeTypeHandler() {
-  return () => {
-    if (typeof MediaRecorder === "undefined") return "";
-    const candidates = [
-      "audio/webm;codecs=opus",
-      "audio/webm",
-      "audio/ogg;codecs=opus",
-      "audio/ogg",
-    ];
-    return candidates.find((candidate) => MediaRecorder.isTypeSupported(candidate)) ?? "";
-  };
-}
-
 function createEnsurePlaybackContextHandler(params: {
   ttsAudioContextRef: MutableRefObject<AudioContext | null>;
   ttsSourceRef: MutableRefObject<AudioBufferSourceNode | null>;
@@ -1774,7 +1759,7 @@ function createHandleAudioMessageHandler(params: {
       return;
     }
     if (messageType === "complete") {
-      handleVoiceCompletion(t, setStatusMessage, setLastAudioSignal, setProcessingStatus);
+      handleVoiceCompletion(t, data.status === "no_transcript", setStatusMessage, setLastAudioSignal, setProcessingStatus);
       refreshAudioStatus().catch(() => undefined);
       return;
     }
@@ -2647,7 +2632,7 @@ function VoiceCommandCenterPanel({
     ],
   );
 
-  const getMediaRecorderMimeType = useCallback(() => createGetMediaRecorderMimeTypeHandler()(), []);
+  const getMediaRecorderMimeType = voiceRecorderMimeType;
 
   const ensurePlaybackContext = useCallback(
     () =>

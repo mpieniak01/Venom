@@ -28,6 +28,12 @@ type VoiceModeCard = {
 
 const VOICE_MODES: VoiceModeCard[] = [
   {
+    mode: "direct",
+    titleKey: "voice.modes.direct.title",
+    descriptionKey: "voice.modes.direct.description",
+    icon: MessageSquareText,
+  },
+  {
     mode: "standard",
     titleKey: "voice.modes.standard.title",
     descriptionKey: "voice.modes.standard.description",
@@ -59,7 +65,7 @@ type VoiceChatScreenProps = Readonly<{
 
 /** Coordinate pipeline switching with the active voice turn and refresh the runtime status. */
 export function VoiceChatScreen({ isDevMode = false }: VoiceChatScreenProps) {
-  const [voiceModePreset, setVoiceModePreset] = useState<VoiceModePreset>("standard");
+  const [voiceModePreset, setVoiceModePreset] = useState<VoiceModePreset>("direct");
   const [voiceBusy, setVoiceBusy] = useState(false);
   const [pipelineSwitching, setPipelineSwitching] = useState(false);
   const [voiceStatus, setVoiceStatus] = useState<VoiceStatusUpdate | null>(null);

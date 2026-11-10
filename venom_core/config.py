@@ -88,7 +88,7 @@ EXT_DOC = ".doc"
 EXT_DOCX = ".docx"
 
 
-DEFAULT_SIMPLE_MODE_SYSTEM_PROMPT = "Odpowiadaj po polsku."
+DEFAULT_SIMPLE_MODE_SYSTEM_PROMPT = "You are a helpful assistant."
 
 
 class Settings(BaseSettings):

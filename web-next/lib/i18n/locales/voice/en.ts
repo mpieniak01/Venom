@@ -240,6 +240,10 @@ export const voice = {
     title: "Voice modes",
     description: "Choose how the next utterance should be handled.",
     hint: "The active mode is sent to the backend as part of the voice session and changes the agent response style.",
+    direct: {
+      title: "Direct",
+      description: "Chat with the selected model and the current conversation history.",
+    },
     standard: {
       title: "Standard",
       description: "Short and direct response.",

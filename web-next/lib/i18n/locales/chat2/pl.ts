@@ -98,5 +98,6 @@ export const chat2 = {
   "offline": "Nie udało się wczytać danych. Możesz ponowić połączenie.",
   "copyFailed": "Kopiowanie jest niedostępne w tej przeglądarce.",
   "sendHint": "Enter wysyła · Shift+Enter dodaje wiersz",
+  "voiceDraftSaved": "Nie udało się wysłać pytania. Transkrypcja jest w szkicu.",
   "voiceWait": "Odpowiedź jest w toku; zaczekaj lub użyj Stop."
 };

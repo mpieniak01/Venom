@@ -3,7 +3,7 @@
 import base64
 import io
 import wave
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, nullcontext
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -121,6 +121,9 @@ async def test_native_request_separates_system_instruction_and_audio(
 
     monkeypatch.setattr(audio, "TrafficControlledHttpClient", Client)
     path = wav_file(tmp_path)
+    with wave.open(str(path), "wb") as wav:
+        wav.setparams((1, 2, 44100, 0, "NONE", "not compressed"))
+        wav.writeframes(b"\x01\x00" * 4410)
     if expected is None:
         with pytest.raises(RuntimeError):
             await audio.transcribe_audio(
@@ -141,7 +144,7 @@ async def test_native_request_separates_system_instruction_and_audio(
     assert payload["think"] is False
     assert payload["stream"] is False
     system, user = payload["messages"]
-    assert system["role"] == "system"
+    assert system == {"role": "system", "content": "Perform ASR in Polish."}
     assert user["role"] == "user"
     assert user["content"] == ""
     assert base64.b64decode(user["images"][0]).startswith(b"RIFF")
@@ -340,7 +343,10 @@ async def test_empty_transcript_finishes_voice_ui_without_generation(tmp_path):
         operator_agent=None,
         pipeline_id="ollama_audio_llm_piper",
     )
-    assert handler._send_json.await_args_list[-1].args == (1, {"type": "complete"})
+    assert handler._send_json.await_args_list[-1].args == (
+        1,
+        {"type": "complete", "status": "no_transcript"},
+    )
 
 
 @pytest.mark.parametrize("rate", [1, 7999, 192001])
@@ -535,3 +541,213 @@ async def test_full_omni_sends_native_pcm_or_reports_missing_capability(
         assert events[-2]["sample_rate"] == 24000
         assert base64.b64decode(events[-2]["audio"]) == pcm
     handler.audio_engine.speak.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("host_available", [True, False])
+async def test_omni_ordinary_voice_remains_native_when_host_is_available(
+    monkeypatch, host_available
+):
+    """Host availability must not replace the selected Omni audio pipeline."""
+    handler = object.__new__(stream.AudioStreamHandler)
+    handler.audio_engine = object() if host_available else None
+    handler._resolve_audio_decoder_plan = lambda: {
+        "effective": "faster_whisper",
+        "selected": "faster_whisper",
+        "should_try_native": False,
+        "fallback_reason": "",
+    }
+    handler._audio_decoder_profile = lambda: "auto"
+    handler._voice_route_profile = lambda: "auto"
+    monkeypatch.setattr(stream, "has_voice_providers", AsyncMock(return_value=False))
+    monkeypatch.setattr(
+        stream,
+        "get_runtime_admission",
+        lambda: SimpleNamespace(
+            operation=lambda **_: nullcontext(),
+        ),
+    )
+    monkeypatch.setattr(
+        stream,
+        "get_active_llm_runtime",
+        lambda: SimpleNamespace(
+            provider="ollama",
+            endpoint="http://127.0.0.1:11434",
+            model_name=audio.OMNI_MODEL_ID,
+            host_local=True,
+        ),
+    )
+    assert (await handler._resolve_voice_input_decoder_plan())["effective"] == (
+        "ollama_audio"
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("rate", [16000, 44100, 48000])
+async def test_full_wav_and_studio_pcm_have_identical_native_requests(
+    monkeypatch, tmp_path, rate
+):
+    import numpy as np
+
+    # Non-silent signal makes a dropped buffer or changed sample order visible.
+    samples = (np.sin(np.arange(rate // 5) * 2 * np.pi * 440 / rate) * 1200).astype(
+        "<i2"
+    )
+    path = tmp_path / "question.wav"
+    with wave.open(str(path), "wb") as wav:
+        wav.setparams((1, 2, rate, 0, "NONE", "not compressed"))
+        wav.writeframes(samples.tobytes())
+    native = AsyncMock(return_value="pytanie")
+    monkeypatch.setattr(audio, "_transcribe", native)
+    assert await audio.transcribe_audio("http://local", "omni", path) == "pytanie"
+    assert (
+        await audio.transcribe_pcm_audio(
+            "http://local", "omni", samples.tobytes(), rate, "pl"
+        )
+        == "pytanie"
+    )
+    assert native.await_args_list[0] == native.await_args_list[1]
+    with wave.open(io.BytesIO(base64.b64decode(native.call_args.args[2]))) as wav:
+        result = np.frombuffer(wav.readframes(wav.getnframes()), dtype="<i2")
+        assert wav.getframerate() == 16000
+        assert result.size in (3199, 3200)
+        # The rate conversion must preserve duration, amplitude and pitch.
+        assert 800 < np.sqrt(np.mean(result.astype(float) ** 2)) < 900
+        assert (
+            abs(np.argmax(abs(np.fft.rfft(result))) * 16000 / result.size - 440) < 0.2
+        )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("surface", ["full", "studio"])
+async def test_digital_silence_skips_native_inference(monkeypatch, tmp_path, surface):
+    native = AsyncMock(side_effect=AssertionError("silence reached model"))
+    monkeypatch.setattr(audio, "_transcribe", native)
+    if surface == "full":
+        result = await audio.transcribe_audio(
+            "http://local", "omni", wav_file(tmp_path)
+        )
+    else:
+        result = await audio.transcribe_pcm_audio(
+            "http://local", "omni", bytes(32000), 16000, "pl"
+        )
+    assert result == ""
+    native.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_quiet_nonzero_speech_is_not_discarded(monkeypatch):
+    native = AsyncMock(return_value="cichy głos")
+    monkeypatch.setattr(audio, "_transcribe", native)
+    result = await audio.transcribe_pcm_audio(
+        "http://local",
+        "omni",
+        b"\x01\x00\xff\xff" * 8000,
+        16000,
+        "pl",
+        context_length=8192,
+    )
+    assert result == "cichy głos"
+    assert native.call_args.args[-1] == 8192
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("pcm", [b"", b"\x01"])
+async def test_invalid_pcm_is_not_reported_as_silence(monkeypatch, pcm):
+    native = AsyncMock()
+    monkeypatch.setattr(audio, "_transcribe", native)
+    with pytest.raises(ValueError):
+        await audio.transcribe_pcm_audio("http://local", "omni", pcm, 16000, "pl")
+    native.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("rate", [16000, 44100, 48000])
+async def test_capture_padding_does_not_change_native_asr_request(monkeypatch, rate):
+    import numpy as np
+
+    # Keep quiet nonzero edges and an intentional pause inside the utterance.
+    speech = np.array([1, 2, -200, 400, 0, 0, 0, -30, -1], dtype="<i2")
+    native = AsyncMock(return_value="pytanie")
+    monkeypatch.setattr(audio, "_transcribe", native)
+    for leading, trailing in [(0, 0), (rate // 3, rate), (rate // 3 + 1536, rate // 2)]:
+        framed = np.pad(speech, (leading, trailing))
+        await audio.transcribe_pcm_audio(
+            "http://local", "omni", framed.tobytes(), rate, "pl"
+        )
+    assert native.await_count == 3
+    assert (
+        native.await_args_list[0]
+        == native.await_args_list[1]
+        == native.await_args_list[2]
+    )
+    assert native.call_args.args[2] == audio.encode_pcm_audio(speech, rate)
+
+
+def test_riff_boundary_truncates_pcm_even_with_trailing_file_bytes(tmp_path):
+    import struct
+
+    path = wav_file(tmp_path, rate=16000, frames=80)
+    data = bytearray(path.read_bytes())
+    # The file has enough bytes, but the RIFF chunk ends halfway through PCM.
+    data[4:8] = struct.pack("<I", 36 + 80)
+    path.write_bytes(data)
+    with pytest.raises(ValueError, match="invalid_frame_count"):
+        audio.encode_audio_input(path)
+
+
+@pytest.mark.asyncio
+async def test_full_direct_bypasses_operator_and_keeps_connection_history(
+    monkeypatch, tmp_path
+):
+    from venom_core.api.schemas.llm_simple import HistoryMessage
+    from venom_core.services import direct_voice
+
+    handler = object.__new__(stream.AudioStreamHandler)
+    websocket = SimpleNamespace(send_text=AsyncMock())
+    handler.active_connections = {
+        1: {"websocket": websocket, "voice_mode": "direct"},
+        2: {"websocket": websocket, "voice_mode": "direct"},
+    }
+    handler.audio_engine = None
+    handler._update_voice_session_metadata = lambda *_: None
+    handler._build_runtime_metadata = lambda _: {
+        "llm_provider": "ollama",
+        "llm_model": "omni",
+    }
+    calls = []
+
+    async def reply(content, history, *, session_id):
+        calls.append((content, list(history), session_id))
+        return "Cztery boki.", [
+            *history,
+            HistoryMessage(role="user", content=content),
+            HistoryMessage(role="assistant", content="Cztery boki."),
+        ]
+
+    monkeypatch.setattr(direct_voice, "complete_direct_turn", reply)
+    operator = AsyncMock(side_effect=AssertionError("Direct dispatched to Operator"))
+    monkeypatch.setattr(stream, "_invoke_operator_agent", operator)
+    for connection_id, question in [
+        (1, "Co to jest kwadrat?"),
+        (1, "Ile ma boków?"),
+        (2, "status"),
+    ]:
+        await handler._run_whisper_llm_pipeline(
+            connection_id=connection_id,
+            session_dir=tmp_path,
+            transcription=question,
+            timings_ms={},
+            total_started_at=0,
+            operator_agent=None,
+            empty_agent_response_log_suffix="",
+        )
+    assert calls[0][1] == calls[2][1] == []
+    assert [x.content for x in calls[1][1]] == ["Co to jest kwadrat?", "Cztery boki."]
+    assert calls[0][2] == calls[1][2] != calls[2][2]
+    assert handler._voice_contract_payload(1) == {
+        "execution_context": "direct",
+        "history_scope": "connection",
+        "voice_mode": "direct",
+    }
+    operator.assert_not_awaited()

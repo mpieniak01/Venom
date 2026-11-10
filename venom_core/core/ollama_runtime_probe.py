@@ -79,7 +79,12 @@ def resolve_voice_pipeline(
     if caps.get("vision_input") and vision == "disabled":
         notes.append("vision capability metadata only or probe failed")
 
-    tts = "piper"
+    tts = (
+        "ollama_speech"
+        if capabilities.model_name == "lfm3-omni:2b"
+        and "speech" in capabilities.raw_capabilities
+        else "piper"
+    )
     return VoicePipelineDecision(
         profile=capabilities.compatibility_profile,
         stt=stt,

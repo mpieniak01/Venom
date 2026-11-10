@@ -45,7 +45,7 @@ test("a late transcription after ending voice cannot alter a draft or send a tur
 
 test("conversation uses the same text turn once and never speaks a stopped partial", async () => {
   const fixture = options(); fixture.props.mode = "conversation"; let speech = 0;
-  globalThis.fetch = async input => { if (String(input).includes("/speak")) { speech++; return new Response(new Blob(["wav"])); } assert.match(String(input), /[&?]prefer_native=true/); return Response.json({ session_id: "one", text: "one user turn" }); };
+  globalThis.fetch = async input => { if (String(input).includes("/speak")) { speech++; return new Response(new Blob(["wav"])); } assert.equal(new URL(String(input), "http://localhost").searchParams.has("prefer_native"), true); return Response.json({ session_id: "one", text: "one user turn" }); };
   const hook = renderHook(props => useStudioVoice(props, async () => ({ finish: async () => recorded(), dispose: () => {} })), { initialProps: fixture.props });
   await act(async () => { await hook.result.current.start(); }); await act(async () => { await hook.result.current.finish(); });
   assert.deepEqual(fixture.turns, ["one user turn"]);
@@ -132,7 +132,9 @@ test("the first image turn sends raw PCM and image together, then speaks a follo
       return Response.json({ session_id: "one", text: "Odpowiedź " + submissions.length, sources: ["Instrukcja"] });
     }
     assert.ok(String(input).endsWith("/speak"), "must not transcribe the input separately");
-    spoken.push(JSON.parse(String(init?.body)).text);
+    const speech = JSON.parse(String(init?.body));
+    assert.equal(speech.prefer_native, true);
+    spoken.push(speech.text);
     return new Response(new Blob(["waveform"]));
   };
   const props = {
@@ -205,4 +207,130 @@ test("stopping an image turn aborts the request and ignores a late response", as
   assert.equal(commits, 0);
   assert.deepEqual(hook.result.current.sources, []);
   assert.equal(hook.result.current.status, "voiceIdle");
+});
+
+test("ordinary Omni conversation recovers after silence and keeps native ASR and TTS despite host availability", async (context) => {
+  const fixture = options();
+  const transcripts = ["", "Co to jest kwadrat?", "Ile to trzy razy trzy?"];
+  const spoken: string[] = [];
+  const playback = {
+    onended: null as (() => void) | null,
+    onerror: null as (() => void) | null,
+    play: async () => {},
+    pause: () => {},
+    removeAttribute: () => {},
+  };
+  const descriptor = Object.getOwnPropertyDescriptor(globalThis, "Audio");
+  Object.defineProperty(globalThis, "Audio", { configurable: true, value: function () { return playback; } });
+  context.after(() => {
+    if (descriptor) Object.defineProperty(globalThis, "Audio", descriptor);
+    else Reflect.deleteProperty(globalThis, "Audio");
+  });
+  globalThis.fetch = async (input, init) => {
+    const url = new URL(String(input), "http://localhost");
+    if (url.pathname.endsWith("/transcribe")) {
+      assert.equal(url.searchParams.has("prefer_native"), true);
+      return Response.json({ session_id: "one", text: transcripts.shift() });
+    }
+    assert.ok(url.pathname.endsWith("/speak"));
+    const speech = JSON.parse(String(init?.body));
+    assert.equal(speech.prefer_native, true);
+    spoken.push(speech.text);
+    return new Response(new Blob(["waveform"]));
+  };
+  const props = { ...fixture.props, mode: "conversation" as const, hostAudioAvailable: true, multimodalEnabled: true };
+  const hook = renderHook(
+    current => useStudioVoice(current, async () => ({ finish: async () => recorded(), dispose: () => {} })),
+    { initialProps: props },
+  );
+  const record = async () => {
+    await act(async () => { await hook.result.current.start(); await hook.result.current.finish(); });
+  };
+  await record();
+  assert.equal(hook.result.current.error, "silence");
+  assert.equal(hook.result.current.status, "voiceIdle");
+  assert.deepEqual(fixture.turns, []);
+
+  const messages: ChatMessage[] = [];
+  for (const [index, reply] of ["Kwadrat ma cztery równe boki i cztery kąty proste.", "Dziewięć."].entries()) {
+    await record();
+    messages.push({ bubbleId: String(index), requestId: String(index), role: "assistant", text: reply, status: "COMPLETED", pending: false, timestamp: "" });
+    await act(async () => { hook.rerender({ ...props, messages: [...messages] }); });
+    await waitFor(() => assert.equal(spoken[index], reply));
+    act(() => playback.onended?.());
+    assert.equal(hook.result.current.status, "voiceIdle");
+  }
+  assert.deepEqual(fixture.turns, ["Co to jest kwadrat?", "Ile to trzy razy trzy?"]);
+});
+
+test("a recognized question rejected by chat survives in the draft of the same session", async () => {
+  const fixture = options();
+  fixture.props.mode = "conversation";
+  fixture.props.onTurn = async () => false;
+  globalThis.fetch = async () => Response.json({ session_id: "one", text: "Ile to trzy razy trzy?" });
+  const hook = renderHook(() => useStudioVoice(fixture.props, async () => ({
+    finish: async () => recorded(),
+    dispose: () => {},
+  })));
+
+  await act(async () => { await hook.result.current.start(); await hook.result.current.finish(); });
+
+  assert.deepEqual(fixture.drafts, ["Ile to trzy razy trzy?"]);
+  assert.equal(hook.result.current.error, "voiceDraftSaved");
+  assert.equal(hook.result.current.status, "voiceIdle");
+});
+
+test("removing an image during a MediaRecorder turn keeps the audio and omits the image", async context => {
+  class PilotRecorder {
+    static isTypeSupported = () => true;
+    mimeType = "audio/webm;codecs=opus";
+    state = "inactive";
+    ondataavailable: ((event: { data: Blob }) => void) | null = null;
+    onstop: (() => void) | null = null;
+
+    start() { this.state = "recording"; }
+    stop() {
+      this.state = "inactive";
+      this.ondataavailable?.({ data: new Blob(["voice"], { type: this.mimeType }) });
+      this.onstop?.();
+    }
+  }
+
+  const recorderDescriptor = Object.getOwnPropertyDescriptor(globalThis, "MediaRecorder");
+  const mediaDescriptor = Object.getOwnPropertyDescriptor(navigator, "mediaDevices");
+  Object.defineProperty(globalThis, "MediaRecorder", { configurable: true, value: PilotRecorder });
+  Object.defineProperty(navigator, "mediaDevices", {
+    configurable: true,
+    value: { getUserMedia: async () => ({ getTracks: () => [] }) },
+  });
+  context.after(() => {
+    if (recorderDescriptor) Object.defineProperty(globalThis, "MediaRecorder", recorderDescriptor);
+    else Reflect.deleteProperty(globalThis, "MediaRecorder");
+    if (mediaDescriptor) Object.defineProperty(navigator, "mediaDevices", mediaDescriptor);
+    else Reflect.deleteProperty(navigator, "mediaDevices");
+  });
+
+  const submissions: FormData[] = [];
+  globalThis.fetch = async (input, init) => {
+    assert.ok(String(input).endsWith("/multimodal-turn"));
+    assert.ok(init?.body instanceof FormData);
+    submissions.push(init.body);
+    // A different session suppresses playback so the test can inspect the upload.
+    return Response.json({ session_id: "ignored", text: "reply", sources: [] });
+  };
+  const props = { ...options().props, mode: "conversation" as const, multimodalEnabled: true };
+  const hook = renderHook(() => useStudioVoice(props));
+  act(() => hook.result.current.selectImage(new File(["snapshot"], "screen.png", { type: "image/png" })));
+  await act(async () => hook.result.current.start());
+  assert.equal(hook.result.current.status, "listening");
+  act(() => hook.result.current.selectImage(null));
+  await act(async () => hook.result.current.finish());
+
+  assert.equal(submissions.length, 1);
+  assert.equal(submissions[0].has("image"), false);
+  const audio = submissions[0].get("audio");
+  assert.ok(audio instanceof File);
+  assert.equal(audio.type, "audio/webm;codecs=opus");
+  assert.equal(await audio.text(), "voice");
+  assert.equal(hook.result.current.error, null);
 });

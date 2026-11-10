@@ -161,8 +161,12 @@ async def _chat(
     return message
 
 
-def _selected_code(message: dict[str, Any], prior_code: str | None) -> str | None:
-    """Accept only a valid document lookup or an explicit request for the previous source."""
+def _selected_code(
+    message: dict[str, Any],
+    prior_code: str | None,
+    documents: dict[str, dict[str, str]],
+) -> str | None:
+    """Resolve a lookup by code or an exact unique title in the frozen corpus."""
     try:
         selected = json.loads(_text(message))
     except json.JSONDecodeError:
@@ -174,7 +178,15 @@ def _selected_code(message: dict[str, Any], prior_code: str | None) -> str | Non
     if selected["action"] != TOOL_NAME or not isinstance(selected["code"], str):
         return None
     code = selected["code"].strip().upper()
-    return code if re.fullmatch(r"VEN-\d{3}", code, flags=re.ASCII) else None
+    if re.fullmatch(r"VEN-\d{3}", code, flags=re.ASCII):
+        return code
+    label = selected["code"].strip().casefold()
+    matches = [
+        key
+        for key, document in documents.items()
+        if label and document["title"].partition(" · ")[2].casefold() == label
+    ]
+    return matches[0] if len(matches) == 1 else None
 
 
 def _text(message: dict[str, Any]) -> str:
@@ -218,7 +230,7 @@ async def answer(
             [{"role": "system", "content": prompt}, *history_messages, turn],
             selection=True,
         )
-        code = _selected_code(first, prior_code)
+        code = _selected_code(first, prior_code, docs)
         if code is None:
             return PilotAnswer(CLARIFY)
         document = docs.get(code)

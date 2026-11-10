@@ -147,3 +147,18 @@ def test_probe_helpers_cover_metadata_only_and_failed_paths():
     assert tools["status"] == "failed"
     assert vision["status"] == "failed"
     assert audio == {"status": "metadata_only", "reason": "recorded_audio_required"}
+
+
+def test_omni_status_reports_native_speech_from_model_capabilities():
+    from venom_core.core.ollama_runtime_capabilities import (
+        normalize_ollama_show_payload,
+    )
+
+    caps = normalize_ollama_show_payload(
+        model_name="lfm3-omni:2b",
+        endpoint="http://localhost:11434",
+        payload={"capabilities": ["audio", "speech", "completion"]},
+    )
+    assert resolve_voice_pipeline(caps).tts == "ollama_speech"
+    caps.raw_capabilities.remove("speech")
+    assert resolve_voice_pipeline(caps).tts == "piper"

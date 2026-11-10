@@ -8,7 +8,6 @@ import inspect
 import io
 import json
 import shutil
-import subprocess
 import time
 import uuid
 import wave
@@ -23,10 +22,15 @@ import httpx
 import numpy as np
 from fastapi import HTTPException, WebSocket, WebSocketDisconnect
 
+from venom_core.api.schemas.llm_simple import HistoryMessage
 from venom_core.config import SETTINGS
 from venom_core.perception.audio_engine import AudioEngine
 from venom_core.services import ollama_audio, omni_pilot
-from venom_core.services.chat_audio import MAX_AUDIO_BYTES, validate_pcm
+from venom_core.services.chat_audio import (
+    MAX_AUDIO_BYTES,
+    decode_media_recording,
+    validate_pcm,
+)
 from venom_core.services.conversation_providers import (
     conversation_turn,
     create_conversation_context,
@@ -565,6 +569,8 @@ class AudioStreamHandler:
         voice_mode: str
         pilot_recording: NotRequired[_PilotRecording]
         pilot_history: NotRequired[list[dict[str, object]]]
+        direct_history: NotRequired[list[HistoryMessage]]
+        direct_session_id: NotRequired[str]
 
     def get_status(self, operator_agent: object | None = None) -> dict:
         """Zwraca stan kanału audio dla healthchecków i UI."""
@@ -1092,10 +1098,13 @@ class AudioStreamHandler:
         return str(voice_mode).strip() or "standard"
 
     def _voice_contract_payload(self, connection_id: int) -> dict[str, str]:
+        mode = self._connection_voice_mode(connection_id)
         return {
-            "execution_context": VOICE_EXECUTION_CONTEXT,
-            "history_scope": VOICE_HISTORY_SCOPE,
-            "voice_mode": self._connection_voice_mode(connection_id),
+            "execution_context": "direct"
+            if mode == "direct"
+            else VOICE_EXECUTION_CONTEXT,
+            "history_scope": "connection" if mode == "direct" else VOICE_HISTORY_SCOPE,
+            "voice_mode": mode,
         }
 
     def _multi_runtime_runtime_snapshot(self) -> dict[str, Any]:
@@ -1461,7 +1470,7 @@ class AudioStreamHandler:
         native_audio = False
         if (
             runtime.provider == "ollama"
-            and plan.get("effective") != "none"
+            and plan.get("effective") == "faster_whisper"
             and ollama_audio.allows_native_route(
                 route_profile=self._voice_route_profile(),
                 decoder_profile=self._audio_decoder_profile(),
@@ -2455,6 +2464,58 @@ class AudioStreamHandler:
             logger.error(f"Błąd podczas przetwarzania encoded audio: {e}")
             await self._send_json(connection_id, {"type": "error", "message": str(e)})
 
+    async def _reply_to_voice_transcript(
+        self,
+        connection_id: int,
+        transcription: str,
+        *,
+        operator_agent: object | None,
+        runtime_metadata: dict[str, Any],
+        session_dir: Path,
+        pipeline_id: str,
+    ) -> str:
+        if self._connection_voice_mode(connection_id) == "direct":
+            from venom_core.services.direct_voice import complete_direct_turn
+
+            connection = self.active_connections[connection_id]
+            session_id = connection.setdefault(
+                "direct_session_id", f"voice-direct-{uuid.uuid4()}"
+            )
+            response_text, history = await complete_direct_turn(
+                transcription,
+                connection.get("direct_history", []),
+                session_id=session_id,
+            )
+            connection["direct_history"] = history
+            return response_text
+
+        voice_context = _build_voice_session_insights_payload(
+            transcript=transcription,
+            response="",
+            voice_mode=self._connection_voice_mode(connection_id),
+            pipeline_id=pipeline_id,
+            **_multi_runtime_voice_flags(),
+            raw_thinking_available=False,
+        )
+        voice_context.update(
+            {
+                "execution_context": VOICE_EXECUTION_CONTEXT,
+                "history_scope": VOICE_HISTORY_SCOPE,
+            }
+        )
+        return await _invoke_operator_agent(
+            operator_agent,
+            transcription,
+            mode=self._connection_voice_mode(connection_id),
+            voice_context=voice_context,
+            conversation_id=session_dir.name,
+            legacy_guard=runtime_request_guard(
+                request_kind="voice_fallback_llm",
+                provider=_coerce_str(runtime_metadata.get("llm_provider"), ""),
+                model=_coerce_str(runtime_metadata.get("llm_model"), ""),
+            ),
+        )
+
     async def _run_whisper_llm_pipeline(
         self,
         *,
@@ -2474,7 +2535,9 @@ class AudioStreamHandler:
                 connection_id,
                 {"type": "transcription", "text": "", "confidence": 0.0},
             )
-            await self._send_json(connection_id, {"type": "complete"})
+            await self._send_json(
+                connection_id, {"type": "complete", "status": "no_transcript"}
+            )
             return
 
         await self._send_json(
@@ -2485,32 +2548,14 @@ class AudioStreamHandler:
             connection_id, {"type": "processing", "status": "thinking"}
         )
         agent_started_at = time.perf_counter()
-        voice_context = _build_voice_session_insights_payload(
-            transcript=transcription,
-            response="",
-            voice_mode=self._connection_voice_mode(connection_id),
-            pipeline_id=pipeline_id,
-            **_multi_runtime_voice_flags(),
-            raw_thinking_available=False,
-        )
-        voice_context.update(
-            {
-                "execution_context": VOICE_EXECUTION_CONTEXT,
-                "history_scope": VOICE_HISTORY_SCOPE,
-            }
-        )
         runtime_metadata = self._build_runtime_metadata(operator_agent)
-        response_text = await _invoke_operator_agent(
-            operator_agent,
+        response_text = await self._reply_to_voice_transcript(
+            connection_id,
             transcription,
-            mode=self._connection_voice_mode(connection_id),
-            voice_context=voice_context,
-            conversation_id=session_dir.name,
-            legacy_guard=runtime_request_guard(
-                request_kind="voice_fallback_llm",
-                provider=_coerce_str(runtime_metadata.get("llm_provider"), ""),
-                model=_coerce_str(runtime_metadata.get("llm_model"), ""),
-            ),
+            operator_agent=operator_agent,
+            runtime_metadata=runtime_metadata,
+            session_dir=session_dir,
+            pipeline_id=pipeline_id,
         )
         timings_ms["llm_ms"] = self._elapsed_ms(agent_started_at)
         self._update_voice_session_metadata(
@@ -2619,37 +2664,7 @@ class AudioStreamHandler:
                     original_file.write(chunk)
         wav_path = session_dir / VOICE_SESSION_WAV_FILENAME
 
-        command = [
-            "ffmpeg",
-            "-y",
-            "-hide_banner",
-            "-loglevel",
-            "error",
-            "-fflags",
-            "+genpts",
-            "-avoid_negative_ts",
-            "make_zero",
-            "-i",
-            str(original_path),
-            "-ac",
-            "1",
-            "-ar",
-            "16000",
-            "-af",
-            "aresample=async=1:first_pts=0,highpass=f=80,lowpass=f=7600,dynaudnorm=f=150:g=8:p=0.9",
-            "-acodec",
-            "pcm_s16le",
-            str(wav_path),
-        ]
-        result = subprocess.run(
-            command,
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-        if result.returncode != 0:
-            raise RuntimeError(f"ffmpeg decode failed: {result.stderr.strip()}")
+        decode_media_recording(original_path, wav_path)
 
         audio, sample_rate = self._load_wav_int16(wav_path)
         metadata = {

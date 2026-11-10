@@ -981,6 +981,20 @@ async def test_process_audio_buffer_uses_voice_mode(monkeypatch, tmp_path):
         raising=False,
     )
 
+    monkeypatch.setattr(
+        handler,
+        "_resolve_voice_input_decoder_plan",
+        AsyncMock(
+            return_value={
+                "effective": "faster_whisper",
+                "selected": "faster_whisper",
+                "should_try_native": False,
+                "fallback_reason": "",
+                "guarded_voice": False,
+            }
+        ),
+    )
+
     audio_engine = MagicMock()
     audio_engine.whisper = None
     audio_engine.voice = None
@@ -1098,7 +1112,7 @@ def test_persist_encoded_voice_session_with_bytes_input(monkeypatch, tmp_path):
         stderr = ""
 
     monkeypatch.setattr(
-        audio_stream_mod.subprocess, "run", lambda *a, **k: DummyResult()
+        audio_stream_mod, "decode_media_recording", lambda *a, **k: DummyResult()
     )
     monkeypatch.setattr(
         handler,
@@ -1131,7 +1145,7 @@ def test_persist_encoded_voice_session_with_chunk_list(monkeypatch, tmp_path):
         stderr = ""
 
     monkeypatch.setattr(
-        audio_stream_mod.subprocess, "run", lambda *a, **k: DummyResult()
+        audio_stream_mod, "decode_media_recording", lambda *a, **k: DummyResult()
     )
     monkeypatch.setattr(
         handler,

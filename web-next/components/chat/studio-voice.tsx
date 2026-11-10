@@ -5,7 +5,7 @@ import { VoicePipelinePicker } from "@/components/voice/voice-pipeline-picker";
 import { useLanguage } from "@/lib/i18n";
 import { useStudioVoice, type StudioVoiceOptions } from "./use-studio-voice";
 /** Keep recording and pipeline switching mutually exclusive in the Studio voice panel. */
-export function StudioVoice(props: Readonly<Omit<StudioVoiceOptions, "language"> & { activeModel?: string | null; onModelApplied?: (model: string) => void }>) {
+export function StudioVoice(props: Readonly<Omit<StudioVoiceOptions, "language"> & { activeModel?: string | null; recordingAvailable: boolean; onModelApplied?: (model: string) => void }>) {
   const { t, language } = useLanguage();
   const [switching, setSwitching] = useState(false);
   const voice = useStudioVoice({ ...props, language, busy: props.busy || switching });
@@ -32,7 +32,7 @@ export function StudioVoice(props: Readonly<Omit<StudioVoiceOptions, "language">
         aria-label={t("chat2.detach") + ": " + voice.image.name} onClick={() => voice.selectImage(null)}>{voice.image.name}<X size={14} /></button>}
     </div>}
     <div className="studio-voice-controls">
-      {capturing ? <button type="button" className="studio-button" onClick={() => { void voice.finish(); }}><Square size={15} />{t("chat2.finishTurn")}</button> : <button type="button" className="studio-button" disabled={processing || props.busy || switching} onClick={() => { void voice.start(); }}><Mic size={15} />{t(voice.status === "muted" ? "chat2.unmute" : "chat2.listen")}</button>}
+      {capturing ? <button type="button" className="studio-button" onClick={() => { void voice.finish(); }}><Square size={15} />{t("chat2.finishTurn")}</button> : <button type="button" className="studio-button" disabled={!props.recordingAvailable || processing || props.busy || switching} onClick={() => { void voice.start(); }}><Mic size={15} />{t(voice.status === "muted" ? "chat2.unmute" : "chat2.listen")}</button>}
       <button type="button" className="studio-button" disabled={!capturing} onClick={voice.mute}><MicOff size={15} />{t("chat2.mute")}</button>
       <button type="button" className="studio-button" disabled={!["speaking", "generating"].includes(voice.status)} onClick={() => { void voice.stop(); }}><Square size={15} />{t("chat2.stop")}</button>
       <button type="button" className="studio-button" onClick={voice.end}>{t("chat2.endVoice")}</button>

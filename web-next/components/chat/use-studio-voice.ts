@@ -62,6 +62,14 @@ export function useStudioVoice(options: StudioVoiceOptions, captureFactory?: typ
     if (timer.current) { clearTimeout(timer.current); }
     timer.current = null;
   }, []);
+  useEffect(() => {
+    if (options.multimodalEnabled) return;
+    // Model capabilities refresh independently of the microphone lifecycle.
+    multimodalContext.current = false;
+    selectedImage.current = null;
+    setImage(null);
+    setSources([]);
+  }, [options.multimodalEnabled]);
   const setMultimodalBusy = useCallback((busy: boolean) => {
     if (multimodalPending.current === busy) return;
     multimodalPending.current = busy;

@@ -55,6 +55,28 @@ test("conversation uses the same text turn once and never speaks a stopped parti
   await act(async () => { await Promise.resolve(); }); assert.equal(speech, 0); assert.equal(hook.result.current.status, "voiceIdle");
 });
 
+test("refreshing the Omni capability keeps an ordinary voice turn in progress", async () => {
+  const fixture = options();
+  const props = { ...fixture.props, mode: "conversation" as const, multimodalEnabled: true };
+  let disposed = 0;
+  globalThis.fetch = async input => {
+    assert.ok(String(input).includes("/transcribe?"));
+    return Response.json({ session_id: "one", text: "Co to jest kwadrat?" });
+  };
+  const hook = renderHook(current => useStudioVoice(current, async () => ({
+    finish: async () => recorded(),
+    dispose: () => { disposed++; },
+  })), { initialProps: props });
+
+  await act(async () => { await hook.result.current.start(); });
+  hook.rerender({ ...props, multimodalEnabled: false });
+  assert.equal(hook.result.current.status, "listening");
+  assert.equal(disposed, 0);
+  await act(async () => { await hook.result.current.finish(); });
+  assert.deepEqual(fixture.turns, ["Co to jest kwadrat?"]);
+  assert.equal(disposed, 1);
+});
+
 test("ending during capture flush stops microphone immediately", async () => {
   const fixture = options(); let finish!: () => void; let disposed = 0;
   const hook = renderHook(() => useStudioVoice(fixture.props, async () => ({ finish: () => new Promise(ready => { finish = () => ready(recorded()); }), dispose: () => { disposed++; } })));

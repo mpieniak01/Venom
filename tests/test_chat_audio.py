@@ -198,6 +198,99 @@ async def test_pilot_retains_and_replaces_the_session_screen_for_followups(
     engine.transcribe_checked.assert_not_awaited()
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "observation, status, choice",
+    [
+        (
+            {"status": "online", "models": ["lfm3-omni:2b"]},
+            "loaded",
+            "read_local_omni_status",
+        ),
+        ({"status": "online", "models": []}, "not_loaded", "read_local_omni_status"),
+        (
+            {"status": "unverified", "models": None},
+            "unavailable",
+            "read_local_omni_status",
+        ),
+        (None, None, "clarify"),
+    ],
+)
+async def test_pilot_runtime_read_preserves_prior_document(
+    rig, monkeypatch, observation, status, choice
+):
+    client, _, _ = rig
+    runtime = SimpleNamespace(
+        endpoint="http://127.0.0.1:11434", model_name="lfm3-omni:2b"
+    )
+    monkeypatch.setattr(omni_pilot, "active_pilot_runtime", lambda: runtime)
+    monkeypatch.setattr(
+        omni_pilot,
+        "require_local_capability",
+        AsyncMock(return_value={"capabilities": ["vision"]}),
+    )
+    question = "Czy lokalny model Omni jest załadowany?"
+    monkeypatch.setattr(
+        omni_pilot,
+        "transcribe_pcm_audio",
+        AsyncMock(
+            side_effect=[
+                "Sprawdź komunikat VEN-401.",
+                question,
+                "A co, jeśli poprzedni komunikat wróci?",
+            ]
+        ),
+    )
+    inventory = AsyncMock(return_value={"ollama": observation})
+    monkeypatch.setattr(omni_pilot, "runtime_inventory", inventory)
+    replies = [
+        {
+            "content": json.dumps(
+                {"layout": "single", "cards": [{"code": "VEN-401", "color": "red"}]}
+            )
+        },
+        {"content": "Otwórz ponownie sesję."},
+        {"content": json.dumps(choice)},
+    ]
+    if status in {"loaded", "not_loaded"}:
+        # Invalid model output cannot turn a read into an invented confirmation.
+        replies.append({"content": '"Usługa została ponownie uruchomiona."'})
+    replies.extend(
+        [
+            {"content": '{"action":"previous_source","code":"VEN-401"}'},
+            {"content": "Sprawdź ustawienia sesji."},
+        ]
+    )
+    model = AsyncMock(side_effect=replies)
+    monkeypatch.setattr(omni_pilot, "_chat", model)
+    data = {"session_id": "stage8", "sample_rate": "16000", "language": "pl"}
+    audio = {"audio": ("voice.pcm", b"\x00\x10" * 100)}
+    url = "/api/v1/chat/audio/multimodal-turn"
+    document = await client.post(
+        url, data=data, files={**audio, "image": ("camera.jpg", _pilot_image())}
+    )
+    assert document.status_code == 200
+    result = await client.post(url, data=data, files=audio)
+    assert result.status_code == 200
+    if status is None:
+        inventory.assert_not_awaited()
+        assert result.json()["text"].startswith("Czy mam sprawdzić")
+    else:
+        inventory.assert_awaited_once_with({"ollama": runtime.endpoint})
+        if status == "unavailable":
+            assert result.json()["text"].startswith("Nie udało się odczytać")
+        else:
+            assert result.json()["text"] == omni_pilot._RUNTIME_REPLIES[status][0]
+    assert result.json()["sources"] == (
+        [omni_pilot.RUNTIME_SOURCE] if status in {"loaded", "not_loaded"} else []
+    )
+
+    followup = await client.post(url, data=data, files=audio)
+    assert followup.status_code == 200
+    assert followup.json()["sources"] == document.json()["sources"]
+    assert {"role": "user", "content": question} in model.await_args_list[-2].args[3]
+
+
 @pytest.mark.parametrize(
     "question, expected",
     [

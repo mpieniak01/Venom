@@ -152,17 +152,19 @@ async def test_native_request_separates_system_instruction_and_audio(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "provider,busy,profile,supported,expected",
+    "provider,model,busy,profile,supported,expected",
     [
-        ("ollama", False, "auto", True, "ollama_audio"),
-        ("ollama", False, "auto", False, "faster_whisper"),
-        ("ollama", True, "auto", True, "faster_whisper"),
-        ("ollama", False, "faster_whisper", True, "faster_whisper"),
-        ("vllm", False, "auto", True, "faster_whisper"),
+        ("ollama", "small", False, "auto", True, "ollama_audio"),
+        ("ollama", "small", False, "auto", False, "faster_whisper"),
+        ("ollama", "small", True, "auto", True, "faster_whisper"),
+        ("ollama", "small", False, "faster_whisper", True, "faster_whisper"),
+        ("vllm", "small", False, "auto", True, "faster_whisper"),
+        ("ollama", "gemma4:e4b", False, "auto", True, "faster_whisper"),
+        ("ollama", "gemma4-e4b-ab-qlora85:q8_0", False, "auto", True, "faster_whisper"),
     ],
 )
 async def test_decoder_respects_capability_explicit_choice_and_busy_runtime(
-    monkeypatch, provider, busy, profile, supported, expected
+    monkeypatch, provider, model, busy, profile, supported, expected
 ):
     handler = object.__new__(stream.AudioStreamHandler)
     handler._resolve_audio_decoder_plan = lambda: {
@@ -173,7 +175,7 @@ async def test_decoder_respects_capability_explicit_choice_and_busy_runtime(
     }
     handler._audio_decoder_profile = lambda: profile
     runtime = SimpleNamespace(
-        provider=provider, endpoint="http://local/v1", model_name="small"
+        provider=provider, endpoint="http://local/v1", model_name=model
     )
     monkeypatch.setattr(stream, "get_active_llm_runtime", lambda: runtime)
     from contextlib import contextmanager

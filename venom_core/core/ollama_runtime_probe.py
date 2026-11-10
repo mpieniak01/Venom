@@ -8,6 +8,7 @@ from typing import Any
 from venom_core.core.model_registry_clients import OllamaClient
 from venom_core.core.ollama_runtime_capabilities import (
     OllamaRuntimeCapabilities,
+    is_gemma4_model_name,
     normalize_ollama_show_payload,
 )
 from venom_core.utils.logger import get_logger
@@ -50,7 +51,7 @@ def resolve_voice_pipeline(
     probes = capabilities.probes
     notes: list[str] = []
 
-    if caps.get("audio_input"):
+    if caps.get("audio_input") and not is_gemma4_model_name(capabilities.model_name):
         stt = "ollama_audio"
         notes.append(
             "audio support declared; each voice turn validates the audio response"

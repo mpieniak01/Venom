@@ -53,3 +53,24 @@ test("keeps Omni disabled if the local runtime does not provide both audio capab
   await waitFor(() => assert.equal(screen.getByRole("button", { name: /Gemma \+ / }).getAttribute("aria-pressed"), "true"));
   assert.equal((screen.getByRole("button", { name: /LFM3-Omni/ }) as HTMLButtonElement).disabled, true);
 });
+
+for (const surface of ["chat2", "voice"] as const) {
+  test(`${surface} does not confirm a switch if Ollama reports another model`, async () => {
+    const applied: string[] = [];
+    globalThis.fetch = async input => {
+      if (String(input).includes("/pipelines?")) {
+        return Response.json({ active_model: gemma, gemma_models: [gemma], omni_model: omni });
+      }
+      assert.match(String(input), /\/llm-servers\/active$/);
+      return Response.json({ active_server: "ollama", active_model: gemma });
+    };
+    render(<LanguageProvider><VoicePipelinePicker surface={surface} onApplied={model => applied.push(model)} /></LanguageProvider>);
+    const button = screen.getByRole("button", { name: /LFM3-Omni/ });
+    await waitFor(() => assert.equal((button as HTMLButtonElement).disabled, false));
+    fireEvent.click(button);
+    await screen.findByRole("alert");
+    assert.equal(button.getAttribute("aria-pressed"), "false");
+    assert.ok(screen.getByText("Active model: " + gemma));
+    assert.deepEqual(applied, []);
+  });
+}

@@ -24,6 +24,7 @@ from fastapi import HTTPException, WebSocket, WebSocketDisconnect
 
 from venom_core.api.schemas.llm_simple import HistoryMessage
 from venom_core.config import SETTINGS
+from venom_core.core.ollama_runtime_capabilities import is_gemma4_model_name
 from venom_core.perception.audio_engine import AudioEngine
 from venom_core.services import ollama_audio, omni_pilot
 from venom_core.services.chat_audio import (
@@ -1471,6 +1472,8 @@ class AudioStreamHandler:
         if (
             runtime.provider == "ollama"
             and plan.get("effective") == "faster_whisper"
+            # The Gemma voice preset uses host STT and TTS on both surfaces.
+            and not is_gemma4_model_name(runtime.model_name)
             and ollama_audio.allows_native_route(
                 route_profile=self._voice_route_profile(),
                 decoder_profile=self._audio_decoder_profile(),

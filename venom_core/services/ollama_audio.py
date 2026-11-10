@@ -17,6 +17,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from venom_core.core.model_registry_clients import OllamaClient
+from venom_core.core.ollama_runtime_capabilities import is_gemma4_model_name
 from venom_core.infrastructure.traffic_control import TrafficControlledHttpClient
 
 if TYPE_CHECKING:
@@ -154,7 +155,7 @@ async def installed_gemma_models(endpoint: str) -> list[str]:
             entry["name"]
             for entry in tags.get("models", [])
             if isinstance(entry.get("name"), str)
-            and entry["name"].lower().startswith("gemma4")
+            and is_gemma4_model_name(entry["name"])
             and not entry["name"].lower().endswith("-cloud")
             and is_local_model(entry)
         }

@@ -1464,7 +1464,7 @@ class AudioStreamHandler:
         native_audio = False
         if (
             runtime.provider == "ollama"
-            and plan.get("effective") != "none"
+            and plan.get("effective") == "faster_whisper"
             and ollama_audio.allows_native_route(
                 route_profile=self._voice_route_profile(),
                 decoder_profile=self._audio_decoder_profile(),

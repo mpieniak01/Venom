@@ -112,6 +112,11 @@ _SSE_EVENT_START = "event: start\ndata: {}\n\n"
 _SSE_EVENT_DONE = "event: done\ndata: {}\n\n"
 _SSE_MEDIA_TYPE = "text/event-stream"
 _NON_STREAM_INVALID_RESPONSE_CODE = "llm_invalid_response"
+_OMNI_HISTORY_POLICY = (
+    "Odpowiedz na ostatnią wiadomość użytkownika. Korzystaj z historii przy dopytaniach. "
+    "Najnowsze ustalenia użytkownika mają pierwszeństwo. Wcześniejsze odpowiedzi asystenta mogą być błędne. "
+    "Zastosuj format wymagany w ostatniej wiadomości."
+)
 httpx = llm_simple_transport.httpx_module()
 
 
@@ -1208,13 +1213,15 @@ def _retry_without_previous_attempts(request: SimpleChatRequest) -> SimpleChatRe
 
 
 def _simple_system_prompt(
-    request: SimpleChatRequest, system_context: str, *, omit_default: bool = False
+    request: SimpleChatRequest, system_context: str, *, plain_omni: bool = False
 ) -> str:
     system_prompt = (SETTINGS.SIMPLE_MODE_SYSTEM_PROMPT or "").strip()
     if (
-        request.studio_normal or omit_default
+        request.studio_normal or plain_omni
     ) and system_prompt == DEFAULT_SIMPLE_MODE_SYSTEM_PROMPT:
         system_prompt = ""
+    if plain_omni and request.history and not system_prompt:
+        system_prompt = _OMNI_HISTORY_POLICY
     if system_context:
         system_prompt = "\n\n".join(filter(None, (system_prompt, system_context)))
     return system_prompt
@@ -1260,7 +1267,7 @@ async def _stream_non_openrouter_chat(
     if plain_omni:
         request = _retry_without_previous_attempts(request)
     system_prompt = _simple_system_prompt(
-        request, system_context, omit_default=plain_omni
+        request, system_context, plain_omni=plain_omni
     )
     user_content = _trim_user_content_for_runtime(
         request.content, system_prompt, runtime, request_id

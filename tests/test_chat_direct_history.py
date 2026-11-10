@@ -1076,16 +1076,34 @@ async def test_plain_omni_retry_preserves_distinct_context_and_configured_prompt
     response = await llm_simple_service.stream_simple_chat(request)
     await consume(response)
 
-    expected_system = (
-        [{"role": "system", "content": prompt}]
+    expected_prompt = (
+        prompt
         if model == "gemma4:e4b" or prompt == "Własna instrukcja"
-        else []
+        else llm_simple_service._OMNI_HISTORY_POLICY
     )
     assert captured == [
-        expected_system
+        [{"role": "system", "content": expected_prompt}]
         + history[:expected_history_size]
         + [{"role": "user", "content": content}]
     ]
     assert [
         item.model_dump(exclude={"material_ids"}) for item in request.history
     ] == history
+
+
+def test_plain_omni_history_policy_requires_remaining_context(monkeypatch):
+    monkeypatch.setattr(
+        llm_simple_service.SETTINGS,
+        "SIMPLE_MODE_SYSTEM_PROMPT",
+        "You are a helpful assistant.",
+    )
+    request = SimpleChatRequest(
+        content="Podaj kod",
+        history=[
+            {"role": "user", "content": "Podaj kod"},
+            {"role": "assistant", "content": "Błąd"},
+        ],
+    )
+    retry = llm_simple_service._retry_without_previous_attempts(request)
+    assert not retry.history
+    assert llm_simple_service._simple_system_prompt(retry, "", plain_omni=True) == ""

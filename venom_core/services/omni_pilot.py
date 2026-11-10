@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-import asyncio
 import base64
 import io
 import json
-import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -19,9 +17,17 @@ from venom_core.core.model_registry_clients import OllamaClient
 from venom_core.infrastructure.traffic_control import TrafficControlledHttpClient
 from venom_core.services.ollama_audio import (
     OMNI_MODEL_ID,
-    encode_pcm_audio,
     require_local_capability,
     transcribe_pcm_audio,
+)
+from venom_core.services.omni_pilot_screen import (
+    CODE,
+    SCREEN_PROMPT,
+    SCREEN_SCHEMA,
+    PilotScreen,
+    parse_screen,
+    previous_screen,
+    resolve_reference,
 )
 from venom_core.utils.llm_runtime import LLMRuntimeInfo, get_active_llm_runtime
 
@@ -44,7 +50,7 @@ SELECTION_SCHEMA = {
     "additionalProperties": False,
 }
 SELECT_TOOL = (
-    "Rozpoznaj polskie polecenie {input_kind}. Jeśli użytkownik wskazuje komunikat, "
+    "Rozpoznaj polskie polecenie użytkownika. Jeśli użytkownik wskazuje komunikat, "
     "użyj obrazu i odczytaj dokładny kod wskazanego komunikatu. "
     "Wtedy wybierz lookup_pilot_documentation i wpisz ten kod w polu code. "
     "Jeśli użytkownik dopytuje o poprzedni komunikat, wybierz previous_source "
@@ -65,6 +71,7 @@ class PilotAnswer:
     text: str
     code: str | None = None
     sources: tuple[str, ...] = ()
+    screen: PilotScreen | None = None
 
 
 def local_omni(runtime: LLMRuntimeInfo) -> bool:
@@ -134,7 +141,7 @@ async def _chat(
     model: str,
     messages: list[dict[str, Any]],
     *,
-    selection: bool = False,
+    schema: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Send one bounded Ollama request and reject incomplete replies."""
     payload: dict[str, Any] = {
@@ -145,11 +152,11 @@ async def _chat(
         "options": {
             "temperature": 0,
             "num_ctx": 4096,
-            "num_predict": 96 if selection else 256,
+            "num_predict": 384 if schema is SCREEN_SCHEMA else 256,
         },
     }
-    if selection:
-        payload["format"] = SELECTION_SCHEMA
+    if schema is not None:
+        payload["format"] = schema
     response = await http.apost(
         f"{endpoint}/api/chat", json=payload, disable_retry=True
     )
@@ -182,7 +189,7 @@ def _selected_code(
     if selected["action"] != TOOL_NAME or not isinstance(selected["code"], str):
         return None
     code = selected["code"].strip().upper()
-    if re.fullmatch(r"VEN-\d{3}", code, flags=re.ASCII):
+    if CODE.fullmatch(code):
         return code
     label = selected["code"].strip().casefold()
     matches = [
@@ -207,61 +214,78 @@ async def answer(
     history: list[dict[str, object]],
 ) -> PilotAnswer:
     """Resolve a Polish media turn against the frozen pilot documentation."""
+    screen = previous_screen(history) if image is None else None
     samples = np.frombuffer(pcm, dtype="<i2")
     if not samples.size or np.max(np.abs(samples.astype(np.int32))) < 64:
-        return PilotAnswer(NO_SPEECH)
+        return PilotAnswer(NO_SPEECH, screen=screen)
     if image is None and not any(row.get("mode") == "omni_pilot" for row in history):
         return PilotAnswer("Dołącz obraz komunikatu i zadaj pytanie jeszcze raz.")
 
     docs = json.loads(DOCUMENTATION.read_text(encoding="utf-8"))
     prior_code = previous_code(history) if image is None else None
-    prompt = SELECT_TOOL.format(
-        input_kind="z nagrania" if image is not None else "użytkownika"
-    )
-    if prior_code in docs:
-        prompt += (
-            f" Zweryfikowany kod poprzedniego komunikatu to {prior_code}. "
-            "Jeśli pytanie dotyczy poprzedniego komunikatu, wybierz previous_source "
-            "także wtedy, gdy użytkownik nie powtórzył jego kodu. Jeśli użytkownik "
-            "zmienia wskazany element, na przykład koryguje jego położenie, bez nowego "
-            "obrazu i bez jawnego kodu wybierz clarify."
-        )
-    history_messages = history_rows(history)
     client = OllamaClient(runtime.endpoint or "")
     show = await require_local_capability(client.endpoint, runtime.model_name, "audio")
     if "vision" not in show.get("capabilities", ()):
         raise RuntimeError("omni_pilot_capability_unavailable")
 
-    async def recognize_question() -> str:
-        return await transcribe_pcm_audio(
-            client.endpoint, runtime.model_name, pcm, rate, "pl"
-        )
-
-    question = await recognize_question() if image is None else None
-    if question == "":
-        return PilotAnswer(NO_SPEECH)
-    turn: dict[str, Any] = {"role": "user", "content": question or ""}
-    if image is not None:
-        audio = await asyncio.to_thread(encode_pcm_audio, samples, rate)
-        turn["images"] = [base64.b64encode(image).decode("ascii"), audio]
+    question = await transcribe_pcm_audio(
+        client.endpoint, runtime.model_name, pcm, rate, "pl"
+    )
+    if not question:
+        return PilotAnswer(NO_SPEECH, screen=screen)
     async with TrafficControlledHttpClient(provider="ollama", timeout=90.0) as http:
-        first = await _chat(
-            http,
-            client.endpoint,
-            runtime.model_name,
-            [{"role": "system", "content": prompt}, *history_messages, turn],
-            selection=True,
-        )
-        code = _selected_code(first, prior_code, docs)
+        if image is not None:
+            inventory = await _chat(
+                http,
+                client.endpoint,
+                runtime.model_name,
+                [
+                    {"role": "system", "content": SCREEN_PROMPT},
+                    {
+                        "role": "user",
+                        "content": "",
+                        "images": [base64.b64encode(image).decode("ascii")],
+                    },
+                ],
+                schema=SCREEN_SCHEMA,
+            )
+            try:
+                screen = parse_screen(json.loads(_text(inventory)))
+            except json.JSONDecodeError:
+                screen = None
+
+        referenced, code = resolve_reference(question, screen, docs)
+        if not referenced:
+            if image is not None:
+                if screen is not None and screen["layout"] == "single":
+                    code = screen["cards"][0]["code"]
+            elif prior_code in docs:
+                prompt = (
+                    SELECT_TOOL
+                    + f" Zweryfikowany kod poprzedniego komunikatu to {prior_code}. "
+                    "Jeśli pytanie dotyczy poprzedniego komunikatu, wybierz previous_source "
+                    "także wtedy, gdy użytkownik nie powtórzył jego kodu."
+                )
+                first = await _chat(
+                    http,
+                    client.endpoint,
+                    runtime.model_name,
+                    [
+                        {"role": "system", "content": prompt},
+                        *history_rows(history),
+                        {"role": "user", "content": question},
+                    ],
+                    schema=SELECTION_SCHEMA,
+                )
+                if _selected_code(first, prior_code, docs) == prior_code:
+                    code = prior_code
         if code is None:
-            return PilotAnswer(CLARIFY)
+            return PilotAnswer(CLARIFY, screen=screen)
         document = docs.get(code)
         if document is None:
-            return PilotAnswer(f"Dokumentacja pilotażu nie zawiera kodu {code}.")
-        if question is None:
-            question = await recognize_question()
-            if not question:
-                return PilotAnswer(NO_SPEECH)
+            return PilotAnswer(
+                f"Dokumentacja pilotażu nie zawiera kodu {code}.", screen=screen
+            )
         source_prompt = (
             ANSWER_FROM_SOURCE + "\n" + json.dumps(document, ensure_ascii=False)
         )
@@ -284,7 +308,7 @@ async def answer(
     text = _text(final)
     if not text or final.get("tool_calls"):
         text = document["content"]
-    return PilotAnswer(text, code, (document["title"],))
+    return PilotAnswer(text, code, (document["title"],), screen)
 
 
 def conversation_pair(
@@ -302,5 +326,6 @@ def conversation_pair(
             "content": text,
             "mode": "omni_pilot",
             "omni_pilot_code": answer.code,
+            "omni_pilot_screen": answer.screen,
         },
     ]

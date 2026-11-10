@@ -915,6 +915,12 @@ class AudioStreamHandler:
                 result = await omni_pilot.answer(
                     runtime, pcm, rate, pilot.image, history
                 )
+                if result.no_speech:
+                    await self._send_json(
+                        connection_id,
+                        {"type": "complete", "multimodal": True, "no_speech": True},
+                    )
+                    return
                 wav = await ollama_audio.synthesize_speech(
                     endpoint,
                     runtime.model_name,
@@ -956,6 +962,7 @@ class AudioStreamHandler:
                 "type": "response_text",
                 "text": result.text,
                 "sources": result.sources,
+                "question": result.question,
                 "multimodal": True,
             },
         )

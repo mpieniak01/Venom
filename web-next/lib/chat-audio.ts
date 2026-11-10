@@ -177,7 +177,7 @@ export function supportsLocalOmniVoice(runtime: {
   }
 }
 
-export type MultimodalVoiceReply = { session_id: string; text: string; sources: string[] };
+export type MultimodalVoiceReply = { session_id: string; text: string; sources: string[]; no_speech?: boolean };
 
 /** Upload PCM and an optional image together, preserving the caller's cancellation signal. */
 export async function sendMultimodalVoiceTurn(

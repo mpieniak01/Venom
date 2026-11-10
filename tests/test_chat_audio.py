@@ -161,6 +161,10 @@ async def test_pilot_retains_and_replaces_the_session_screen_for_followups(
         "Sprawdź ustawienia sesji i spróbuj zalogować się ponownie."
     )
     assert request_payloads[3]["messages"][1:] == request_payloads[2]["messages"][1:]
+    assert not any(
+        "Źródło:" in message["content"]
+        for message in request_payloads[3]["messages"][1:]
+    )
 
     correction = await client.post(
         "/api/v1/chat/audio/multimodal-turn", data=data, files=files
@@ -250,7 +254,7 @@ async def test_pilot_runtime_read_preserves_prior_document(
             )
         },
         {"content": "Otwórz ponownie sesję."},
-        {"content": json.dumps(choice)},
+        {"content": json.dumps({"action": choice})},
     ]
     if status in {"loaded", "not_loaded"}:
         # Invalid model output cannot turn a read into an invented confirmation.
@@ -285,6 +289,10 @@ async def test_pilot_runtime_read_preserves_prior_document(
         [omni_pilot.RUNTIME_SOURCE] if status in {"loaded", "not_loaded"} else []
     )
 
+    silence = await client.post(
+        url, data=data, files={"audio": ("silence.pcm", bytes(3200))}
+    )
+    assert silence.status_code == 200 and silence.json()["no_speech"] is True
     followup = await client.post(url, data=data, files=audio)
     assert followup.status_code == 200
     assert followup.json()["sources"] == document.json()["sources"]

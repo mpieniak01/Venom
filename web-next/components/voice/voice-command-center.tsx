@@ -2691,13 +2691,19 @@ function VoiceCommandCenterPanel({
           : []);
         if (data.multimodal === true) {
           setMultimodalActive(true);
-          setTranscription(t("voice.multimodal.spokenQuestion"));
+          setTranscription(typeof data.question === "string" && data.question.trim()
+            ? data.question : t("voice.multimodal.spokenQuestion"));
           if (imageInFlightRef.current) clearImage();
         }
       }
       if (data.multimodal === true && (data.type === "complete" || data.type === "error")) {
         setMultimodalPending(false);
         imageInFlightRef.current = false;
+        if (data.type === "complete" && data.no_speech === true) {
+          setProcessingStatus(null);
+          setStatusMessage(t("voice.status.noTranscript"));
+          return;
+        }
       }
       createHandleAudioMessageHandler({
         t,

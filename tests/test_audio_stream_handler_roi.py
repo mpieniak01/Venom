@@ -611,7 +611,11 @@ async def test_multimodal_recording_keeps_media_and_context_scoped_to_connection
 
     async def answer(_runtime, pcm, rate, image, history):
         seen.append((pcm, rate, image, history))
-        return pilot.PilotAnswer("Treść", "VEN-401", ("Dokumentacja",))
+        if not any(pcm):
+            return pilot.PilotAnswer(pilot.NO_SPEECH, no_speech=True)
+        return pilot.PilotAnswer(
+            "Treść", "VEN-401", ("Dokumentacja",), question="Co zrobić?"
+        )
 
     @asynccontextmanager
     async def guard(**_kwargs):
@@ -635,26 +639,36 @@ async def test_multimodal_recording_keeps_media_and_context_scoped_to_connection
     monkeypatch.setattr(audio_stream_mod.ollama_audio, "synthesize_speech", synthesis)
     pcm = b"\x00\x10" * 100
 
-    async def record(connection, options):
+    async def record(connection, options, samples=pcm):
         await handler._handle_control_message(
             connection, json.dumps({"command": "start_recording", **options}), None
         )
-        handler._handle_audio_data(connection, pcm, None)
+        handler._handle_audio_data(connection, samples, None)
         await handler._handle_control_message(
             connection, '{"command":"stop_recording"}', None
         )
 
     await record(1, {"multimodal": True, "image": "cG5n"})
+    before = handler.active_connections[1]["pilot_history"]
+    await record(1, {"multimodal": True}, bytes(len(pcm)))
+    assert handler.active_connections[1]["pilot_history"] == before
+    assert json.loads(ws.send_text.await_args.args[0]) == {
+        "type": "complete",
+        "multimodal": True,
+        "no_speech": True,
+    }
+    synthesis.assert_awaited_once()
     await record(1, {"multimodal": True})
     await record(2, {"multimodal": True})
     assert seen[0] == (pcm, 16000, b"png", [])
-    assert seen[1][2] is None
-    assert seen[1][3][-1]["omni_pilot_code"] == "VEN-401"
-    assert seen[2][2:] == (None, [])
+    assert seen[2][2] is None
+    assert seen[2][3][-1]["omni_pilot_code"] == "VEN-401"
+    assert seen[3][2:] == (None, [])
     events = [json.loads(call.args[0]) for call in ws.send_text.await_args_list]
     response = next(event for event in events if event["type"] == "response_text")
     assert response["sources"] == ["Dokumentacja"]
     assert response["multimodal"] is True
+    assert response["question"] == "Co zrobić?"
     audio = next(event for event in events if event["type"] == "audio_response")
     assert audio["sample_rate"] == 24000
     assert events[-1]["type"] == "complete"

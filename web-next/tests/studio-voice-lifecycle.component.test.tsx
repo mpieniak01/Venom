@@ -151,7 +151,10 @@ test("the first image turn sends raw PCM and image together, then speaks a follo
     if (String(input).endsWith("/multimodal-turn")) {
       assert.ok(init?.body instanceof FormData);
       submissions.push(init.body);
-      return Response.json({ session_id: "one", text: "Odpowiedź " + submissions.length, sources: ["Instrukcja"] });
+      if (submissions.length === 1) {
+        return Response.json({ session_id: "one", text: "Nie słyszę pytania", sources: [], no_speech: true });
+      }
+      return Response.json({ session_id: "one", text: "Odpowiedź " + (submissions.length - 1), sources: ["Instrukcja"] });
     }
     assert.ok(String(input).endsWith("/speak"), "must not transcribe the input separately");
     const speech = JSON.parse(String(init?.body));
@@ -168,6 +171,11 @@ test("the first image turn sends raw PCM and image together, then speaks a follo
   };
   const hook = renderHook(() => useStudioVoice(props, async () => ({ finish: async () => recorded(), dispose: () => {} })));
   act(() => hook.result.current.selectImage(new File(["snapshot"], "screen.png", { type: "image/png" })));
+  await act(async () => { await hook.result.current.start(); await hook.result.current.finish(); });
+  assert.equal(hook.result.current.error, "silence");
+  assert.equal(hook.result.current.image?.name, "screen.png");
+  assert.equal(commits, 0);
+  assert.deepEqual(spoken, []);
   await act(async () => { await hook.result.current.start(); await hook.result.current.finish(); });
   assert.equal(submissions[0].get("session_id"), "one");
   assert.equal(submissions[0].get("sample_rate"), "16000");
@@ -188,10 +196,11 @@ test("the first image turn sends raw PCM and image together, then speaks a follo
   assert.equal(hook.result.current.status, "voiceIdle");
 
   await act(async () => { await hook.result.current.start(); await hook.result.current.finish(); });
-  assert.equal(submissions[1].get("session_id"), "one");
-  assert.equal(submissions[1].has("image"), false);
+  assert.equal(submissions[1].has("image"), true);
+  assert.equal(submissions[2].get("session_id"), "one");
+  assert.equal(submissions[2].has("image"), false);
   assert.deepEqual(spoken, ["Odpowiedź 1", "Odpowiedź 2"]);
-  assert.deepEqual(activity, [true, false, true, false]);
+  assert.deepEqual(activity, [true, false, true, false, true, false]);
   assert.equal(commits, 2);
   assert.equal(plays, 2);
   assert.deepEqual(fixture.turns, []);

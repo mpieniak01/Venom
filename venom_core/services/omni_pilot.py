@@ -42,11 +42,21 @@ RUNTIME_TOOL_NAME = "read_local_omni_status"
 RUNTIME_SOURCE = "Lokalna Ollama · /api/ps"
 _RUNTIME_SUBJECT = re.compile(r"\b(?:omni|ollam\w*|model\w*)\b", re.I)
 _RUNTIME_STATUS = re.compile(r"\b(?:stan|status|działa|załadowan\w*)\b", re.I)
-_RUNTIME_SELECTION = {"type": "string", "enum": [RUNTIME_TOOL_NAME, "clarify"]}
+_RUNTIME_SELECTION = {
+    "type": "object",
+    "properties": {"action": {"enum": [RUNTIME_TOOL_NAME, "clarify"]}},
+    "required": ["action"],
+    "additionalProperties": False,
+}
+_RESUME_DOCUMENT = re.compile(
+    r"\b(?:wracam|wróć|wróćmy) do poprzedniego komunikatu\b", re.I
+)
 _RUNTIME_PROMPT = (
     "Wybierz read_local_omni_status tylko wtedy, gdy użytkownik prosi o odczyt "
-    "bieżącego stanu lokalnej Ollamy lub modelu Omni. W innym przypadku "
-    "wybierz clarify. Zwróć napis JSON."
+    "bieżącego stanu lokalnej Ollamy lub bieżącego modelu. W tej rozmowie bieżący "
+    "model to Omni. Pytanie, czy model jest załadowany, jest prośbą o odczyt stanu "
+    "nawet przy niedokładnie rozpoznanej nazwie. Gdy użytkownik wymienia inny "
+    "znany model albo pyta o instrukcję, wybierz clarify. Zwróć obiekt JSON z action."
 )
 _RUNTIME_REPLIES = {
     "loaded": (
@@ -84,7 +94,7 @@ ANSWER_FROM_SOURCE = (
     "pyta o konkretny szczegół, podaj go wprost. Przy pytaniu ogólnym zacznij od "
     "pierwszego zalecanego kroku. Fakty i zalecenia bierz wyłącznie z wpisu "
     "dokumentacji poniżej. Gdy wpis nie odpowiada na pytanie, powiedz, "
-    "że brakuje tej informacji. Zwróć samą treść odpowiedzi bez Markdown."
+    "że brakuje tej informacji. Źródło podaje aplikacja. Zwróć tylko odpowiedź bez Markdown."
 )
 
 
@@ -97,6 +107,7 @@ class PilotAnswer:
     question: str | None = None
     tool: str | None = None
     tool_status: str | None = None
+    no_speech: bool = False
 
 
 def local_omni(runtime: LLMRuntimeInfo) -> bool:
@@ -141,13 +152,16 @@ def decode_image(encoded: object) -> bytes:
 
 
 def history_rows(history: list[dict[str, object]]) -> list[dict[str, str]]:
-    """Keep bounded user and assistant text for the model context."""
-    return [
-        {"role": str(row["role"]), "content": str(row["content"])[:1000]}
-        for row in history[-MAX_HISTORY_ROWS:]
-        if row.get("role") in ("user", "assistant")
-        and isinstance(row.get("content"), str)
-    ]
+    """Keep bounded conversation text with source attribution out of the prompt."""
+    messages: list[dict[str, str]] = []
+    for row in history[-MAX_HISTORY_ROWS:]:
+        role, content = row.get("role"), row.get("content")
+        if role not in ("user", "assistant") or not isinstance(content, str):
+            continue
+        if role == "assistant" and row.get("mode") == "omni_pilot":
+            content = content.partition("\n\nŹródło: ")[0]
+        messages.append({"role": str(role), "content": content[:1000]})
+    return messages
 
 
 def previous_code(history: list[dict[str, object]]) -> str | None:
@@ -259,7 +273,11 @@ async def _answer_runtime_status(
         ],
         schema=_RUNTIME_SELECTION,
     )
-    if _json_string(selection) != RUNTIME_TOOL_NAME:
+    try:
+        action = json.loads(_text(selection))
+    except json.JSONDecodeError:
+        action = None
+    if action != {"action": RUNTIME_TOOL_NAME}:
         return PilotAnswer(
             "Czy mam sprawdzić stan lokalnego modelu Omni?",
             screen=screen,
@@ -316,7 +334,7 @@ async def answer(
     screen = previous_screen(history) if image is None else None
     samples = np.frombuffer(pcm, dtype="<i2")
     if not samples.size or np.max(np.abs(samples.astype(np.int32))) < 64:
-        return PilotAnswer(NO_SPEECH, screen=screen)
+        return PilotAnswer(NO_SPEECH, screen=screen, no_speech=True)
     if image is None and not any(row.get("mode") == "omni_pilot" for row in history):
         return PilotAnswer("Dołącz obraz komunikatu i zadaj pytanie jeszcze raz.")
 
@@ -331,7 +349,7 @@ async def answer(
         client.endpoint, runtime.model_name, pcm, rate, "pl"
     )
     if not question:
-        return PilotAnswer(NO_SPEECH, screen=screen)
+        return PilotAnswer(NO_SPEECH, screen=screen, no_speech=True)
     async with TrafficControlledHttpClient(provider="ollama", timeout=90.0) as http:
         if image is not None:
             inventory = await _chat(
@@ -366,6 +384,8 @@ async def answer(
             if image is not None:
                 if screen is not None and screen["layout"] == "single":
                     code = screen["cards"][0]["code"]
+            elif prior_code in docs and _RESUME_DOCUMENT.search(question):
+                code = prior_code
             elif prior_code in docs:
                 prompt = (
                     SELECT_TOOL
@@ -416,7 +436,7 @@ async def answer(
                 {"role": "user", "content": question},
             ],
         )
-    text = _text(final)
+    text = _text(final).partition("\n\nŹródło: ")[0].rstrip()
     if not text or final.get("tool_calls"):
         text = document["content"]
     return PilotAnswer(

@@ -138,6 +138,10 @@ export function useStudioVoice(options: StudioVoiceOptions, captureFactory?: typ
       voiceOptions.session, audio, voiceOptions.language, attachment, signal,
     );
     if (!isCurrent() || reply.session_id !== latest.current.session) return;
+    if (reply.no_speech) {
+      idleWithError("silence");
+      return;
+    }
 
     multimodalContext.current = true;
     selectImage(null);

@@ -302,6 +302,13 @@ async def multimodal_turn(
             raise HTTPException(409, {"reason_code": "omni_pilot_runtime_changed"})
         history = store.get_history(session_id, limit=omni_pilot.MAX_HISTORY_ROWS)
         result = await omni_pilot.answer(runtime, pcm, rate, image, history)
+        if result.no_speech:
+            return {
+                "session_id": session_id,
+                "text": result.text,
+                "sources": (),
+                "no_speech": True,
+            }
         request_id = str(uuid4())
         timestamp = get_utc_now_iso()
         entries = [

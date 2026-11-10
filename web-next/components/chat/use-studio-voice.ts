@@ -13,6 +13,10 @@ type CapturedVoiceTurn = {
   signal: AbortSignal;
   isCurrent: () => boolean;
 };
+type ActiveCapture = {
+  recording: AudioCapture<PcmCapture | Blob>;
+  useMultimodal: boolean;
+};
 const MAX_VOICE_IMAGE_BYTES = 2 * 1024 * 1024;
 /** Map capture failures without treating unrelated errors as permission denial. */
 function captureError(cause: unknown): "micDenied" | "micUnavailable" | "voiceError" {
@@ -39,7 +43,7 @@ export function useStudioVoice(options: StudioVoiceOptions, captureFactory?: typ
   const multimodalContext = useRef(false);
   const multimodalPending = useRef(false);
   const epoch = useRef(0);
-  const capture = useRef<AudioCapture<PcmCapture | Blob> | null>(null);
+  const capture = useRef<ActiveCapture | null>(null);
   const permission = useRef<AbortController | null>(null);
   const starting = useRef(false);
   const finishing = useRef(false);
@@ -54,7 +58,7 @@ export function useStudioVoice(options: StudioVoiceOptions, captureFactory?: typ
     if (current) { current.audio.onended = null; current.audio.onerror = null; current.audio.pause(); current.audio.removeAttribute("src"); URL.revokeObjectURL(current.url); }
   }, []);
   const releaseCapture = useCallback(() => {
-    capture.current?.dispose(); capture.current = null;
+    capture.current?.recording.dispose(); capture.current = null;
     if (timer.current) { clearTimeout(timer.current); }
     timer.current = null;
   }, []);
@@ -176,24 +180,23 @@ export function useStudioVoice(options: StudioVoiceOptions, captureFactory?: typ
   }, [idleWithError]);
 
   /** Dispose this recording without resetting capture state from a newer epoch. */
-  const settleCapture = useCallback((recording: AudioCapture<PcmCapture | Blob>, current: number, usedMultimodal: boolean) => {
-    recording.dispose();
-    if (capture.current === recording) capture.current = null;
+  const settleCapture = useCallback((active: ActiveCapture, current: number) => {
+    active.recording.dispose();
+    if (capture.current === active) capture.current = null;
     if (current !== epoch.current) return;
     finishing.current = false;
-    if (usedMultimodal) setMultimodalBusy(false);
+    if (active.useMultimodal) setMultimodalBusy(false);
   }, [setMultimodalBusy]);
 
   /** Flush the active capture and dispatch it through its selected voice path. */
   const finish = useCallback(async () => {
-    const recording = capture.current;
-    if (!recording || finishing.current) return;
+    const active = capture.current;
+    if (!active || finishing.current) return;
+    const { recording, useMultimodal } = active;
     finishing.current = true;
     const current = epoch.current;
     const voiceOptions = latest.current;
     const attachment = selectedImage.current;
-    const useMultimodal = voiceOptions.mode === "conversation" && voiceOptions.multimodalEnabled === true
-      && (attachment !== null || multimodalContext.current);
     if (timer.current) clearTimeout(timer.current);
     timer.current = null;
     const controller = new AbortController();
@@ -209,7 +212,7 @@ export function useStudioVoice(options: StudioVoiceOptions, captureFactory?: typ
       }
       if (useMultimodal) setMultimodalBusy(true);
       const audio = await recording.finish();
-      if (capture.current === recording) capture.current = null;
+      if (capture.current === active) capture.current = null;
       if (current !== epoch.current) return;
 
       const turn = { audio, options: voiceOptions, signal: controller.signal, isCurrent };
@@ -218,7 +221,7 @@ export function useStudioVoice(options: StudioVoiceOptions, captureFactory?: typ
     } catch (cause) {
       if (isCurrent()) idleWithError(voiceTurnError(cause));
     } finally {
-      settleCapture(recording, current, useMultimodal);
+      settleCapture(active, current);
     }
   }, [idleWithError, setMultimodalBusy, settleCapture, submitMultimodalTurn, submitTranscribedTurn]);
   const finishRef = useRef(finish);
@@ -238,7 +241,8 @@ export function useStudioVoice(options: StudioVoiceOptions, captureFactory?: typ
         ? await createPilotAudioCapture(mimeType, controller.signal, onLimit)
         : await (captureFactory ?? createAudioCapture)(onLimit, controller.signal);
       if (current !== epoch.current) { microphone.dispose(); return; }
-      capture.current = microphone; setStatus("listening");
+      capture.current = { recording: microphone, useMultimodal: pilot };
+      setStatus("listening");
       timer.current = setTimeout(() => { void finishRef.current(); }, 60000);
     } catch (cause) {
       if (current === epoch.current) {

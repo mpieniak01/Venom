@@ -279,3 +279,58 @@ test("a recognized question rejected by chat survives in the draft of the same s
   assert.equal(hook.result.current.error, "voiceDraftSaved");
   assert.equal(hook.result.current.status, "voiceIdle");
 });
+
+test("removing an image during a MediaRecorder turn keeps the audio and omits the image", async context => {
+  class PilotRecorder {
+    static isTypeSupported = () => true;
+    mimeType = "audio/webm;codecs=opus";
+    state = "inactive";
+    ondataavailable: ((event: { data: Blob }) => void) | null = null;
+    onstop: (() => void) | null = null;
+
+    start() { this.state = "recording"; }
+    stop() {
+      this.state = "inactive";
+      this.ondataavailable?.({ data: new Blob(["voice"], { type: this.mimeType }) });
+      this.onstop?.();
+    }
+  }
+
+  const recorderDescriptor = Object.getOwnPropertyDescriptor(globalThis, "MediaRecorder");
+  const mediaDescriptor = Object.getOwnPropertyDescriptor(navigator, "mediaDevices");
+  Object.defineProperty(globalThis, "MediaRecorder", { configurable: true, value: PilotRecorder });
+  Object.defineProperty(navigator, "mediaDevices", {
+    configurable: true,
+    value: { getUserMedia: async () => ({ getTracks: () => [] }) },
+  });
+  context.after(() => {
+    if (recorderDescriptor) Object.defineProperty(globalThis, "MediaRecorder", recorderDescriptor);
+    else Reflect.deleteProperty(globalThis, "MediaRecorder");
+    if (mediaDescriptor) Object.defineProperty(navigator, "mediaDevices", mediaDescriptor);
+    else Reflect.deleteProperty(navigator, "mediaDevices");
+  });
+
+  const submissions: FormData[] = [];
+  globalThis.fetch = async (input, init) => {
+    assert.ok(String(input).endsWith("/multimodal-turn"));
+    assert.ok(init?.body instanceof FormData);
+    submissions.push(init.body);
+    // A different session suppresses playback so the test can inspect the upload.
+    return Response.json({ session_id: "ignored", text: "reply", sources: [] });
+  };
+  const props = { ...options().props, mode: "conversation" as const, multimodalEnabled: true };
+  const hook = renderHook(() => useStudioVoice(props));
+  act(() => hook.result.current.selectImage(new File(["snapshot"], "screen.png", { type: "image/png" })));
+  await act(async () => hook.result.current.start());
+  assert.equal(hook.result.current.status, "listening");
+  act(() => hook.result.current.selectImage(null));
+  await act(async () => hook.result.current.finish());
+
+  assert.equal(submissions.length, 1);
+  assert.equal(submissions[0].has("image"), false);
+  const audio = submissions[0].get("audio");
+  assert.ok(audio instanceof File);
+  assert.equal(audio.type, "audio/webm;codecs=opus");
+  assert.equal(await audio.text(), "voice");
+  assert.equal(hook.result.current.error, null);
+});

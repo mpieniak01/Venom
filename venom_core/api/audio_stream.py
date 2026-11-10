@@ -1483,8 +1483,10 @@ class AudioStreamHandler:
         if (
             runtime.provider == "ollama"
             and plan.get("effective") == "faster_whisper"
-            # The Gemma voice preset uses host STT and TTS on both surfaces.
-            and not is_gemma4_model_name(runtime.model_name)
+            and (
+                not is_gemma4_model_name(runtime.model_name)
+                or ollama_audio.is_host_ollama(runtime)
+            )
             and ollama_audio.allows_native_route(
                 route_profile=self._voice_route_profile(),
                 decoder_profile=self._audio_decoder_profile(),

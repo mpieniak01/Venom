@@ -159,8 +159,11 @@ async def test_native_request_separates_system_instruction_and_audio(
         ("ollama", "small", True, "auto", True, "faster_whisper"),
         ("ollama", "small", False, "faster_whisper", True, "faster_whisper"),
         ("vllm", "small", False, "auto", True, "faster_whisper"),
-        ("ollama", "gemma4:e4b", False, "auto", True, "faster_whisper"),
-        ("ollama", "gemma4-e4b-ab-qlora85:q8_0", False, "auto", True, "faster_whisper"),
+        ("ollama", "gemma4:e4b", False, "auto", True, "ollama_audio"),
+        ("ollama", "gemma4:e4b", False, "auto", False, "faster_whisper"),
+        ("ollama", "gemma4:e4b", False, "faster_whisper", True, "faster_whisper"),
+        ("ollama", "gemma4:e4b", True, "auto", True, "faster_whisper"),
+        ("ollama", "gemma4-e4b-ab-qlora85:q8_0", False, "auto", True, "ollama_audio"),
     ],
 )
 async def test_decoder_respects_capability_explicit_choice_and_busy_runtime(
@@ -175,7 +178,10 @@ async def test_decoder_respects_capability_explicit_choice_and_busy_runtime(
     }
     handler._audio_decoder_profile = lambda: profile
     runtime = SimpleNamespace(
-        provider=provider, endpoint="http://local/v1", model_name=model
+        provider=provider,
+        endpoint="http://127.0.0.1:11434/v1",
+        model_name=model,
+        host_local=True,
     )
     monkeypatch.setattr(stream, "get_active_llm_runtime", lambda: runtime)
     from contextlib import contextmanager
@@ -854,3 +860,23 @@ async def test_gemma_asr_places_transcription_task_with_audio(monkeypatch, model
         "Transcribe the following speech segment in Polish into Polish text."
     )
     assert base64.b64decode(user["images"][0]).startswith(b"RIFF")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "show, expected",
+    [
+        ({"capabilities": ["audio"]}, True),
+        ({"capabilities": ["audio"], "remote_host": "remote.example"}, False),
+        ({"capabilities": ["completion"]}, False),
+    ],
+)
+async def test_native_audio_requires_local_model_capability(
+    monkeypatch, show, expected
+):
+    monkeypatch.setattr(
+        audio.OllamaClient, "get_model_show", AsyncMock(return_value=show)
+    )
+    assert (
+        await audio.supports_audio("http://127.0.0.1:11434", "gemma4:e4b") is expected
+    )

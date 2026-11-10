@@ -126,7 +126,7 @@ def encode_pcm_audio(samples: NDArray[np.int16], rate: int) -> str:
 async def supports_audio(endpoint: str, model: str) -> bool:
     """Read declared capabilities without loading weights or probing generation."""
     show = await OllamaClient(endpoint).get_model_show(model)
-    return "audio" in show.get("capabilities", [])
+    return is_local_model(show) and "audio" in show.get("capabilities", [])
 
 
 def is_host_ollama(runtime: LLMRuntimeInfo) -> bool:

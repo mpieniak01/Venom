@@ -13,7 +13,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING, cast
 from urllib.parse import urlsplit
 
+import httpx
 import numpy as np
+from fastapi import HTTPException
 from numpy.typing import NDArray
 
 from venom_core.core.model_registry_clients import OllamaClient
@@ -32,6 +34,11 @@ OMNI_VOICES = {
 MAX_AUDIO_BYTES = 25 * 1024 * 1024
 MIN_SAMPLE_RATE = 8000
 MAX_SAMPLE_RATE = 192000
+_POLISH_ASR_PROMPT = "Perform ASR in Polish."
+_ASR_UNCERTAIN_SCORE = -0.35
+_ASR_RETRY_MARGIN = 0.1
+_ASR_RETRY_TIMEOUT_SECONDS = 6.0
+_ASR_RETRY_INPUT_RATE = 17280  # 8% faster when resampled to 16 kHz.
 type _ResamplePoly = Callable[[NDArray[np.float32], int, int], NDArray[np.float32]]
 
 
@@ -218,6 +225,8 @@ async def _transcribe(
     endpoint: str, model: str, audio: str, prompt: str, context_length: int
 ) -> str:
     client = OllamaClient(endpoint)
+    url = f"{client.endpoint}/api/chat"
+    retry_uncertain = model == OMNI_MODEL_ID and prompt == _POLISH_ASR_PROMPT
     payload = {
         "model": model,
         "messages": [
@@ -232,10 +241,78 @@ async def _transcribe(
             "num_predict": 256,
         },
     }
+    if retry_uncertain:
+        payload["logprobs"] = True
+
     async with TrafficControlledHttpClient(provider="ollama", timeout=120.0) as http:
-        response = await http.apost(
-            f"{client.endpoint}/api/chat", json=payload, disable_retry=True
-        )
+        text, confidence = await _request_asr(http, url, payload)
+        if (
+            not retry_uncertain
+            or not text
+            or confidence is None
+            or confidence >= _ASR_UNCERTAIN_SCORE
+        ):
+            return text
+
+        # Some Polish word boundaries are sensitive to capture timing. Compare
+        # one faster decode of the same audio only when the first is uncertain.
+        try:
+            async with asyncio.timeout(_ASR_RETRY_TIMEOUT_SECONDS):
+                faster_audio = await asyncio.to_thread(_faster_asr_audio, audio)
+                retry_payload = {
+                    **payload,
+                    "messages": [
+                        payload["messages"][0],
+                        {"role": "user", "content": "", "images": [faster_audio]},
+                    ],
+                }
+                retry_text, retry_confidence = await _request_asr(
+                    http, url, retry_payload
+                )
+        except (HTTPException, httpx.HTTPError, TimeoutError, RuntimeError, ValueError):
+            return text
+
+    if (
+        retry_text
+        and retry_confidence is not None
+        and retry_confidence > confidence + _ASR_RETRY_MARGIN
+    ):
+        return retry_text
+    return text
+
+
+def _faster_asr_audio(encoded: str) -> str:
+    with wave.open(io.BytesIO(base64.b64decode(encoded)), "rb") as wav:
+        samples = np.frombuffer(wav.readframes(wav.getnframes()), dtype="<i2")
+    return encode_pcm_audio(samples, _ASR_RETRY_INPUT_RATE)
+
+
+def _asr_confidence(logprobs: object) -> float | None:
+    if not isinstance(logprobs, list):
+        return None
+    scores = []
+    for item in logprobs:
+        if not isinstance(item, dict):
+            continue
+        token, value = item.get("token"), item.get("logprob")
+        if (
+            isinstance(token, str)
+            and token.strip(" .,!?")
+            and isinstance(value, (float, int))
+            and math.isfinite(value)
+        ):
+            scores.append(float(value))
+    if not scores:
+        return None
+    # A few confidently decoded words can hide an uncertain span in the mean.
+    lowest = sorted(scores)[: max(1, len(scores) // 5)]
+    return sum(lowest) / len(lowest)
+
+
+async def _request_asr(
+    http: TrafficControlledHttpClient, url: str, payload: dict
+) -> tuple[str, float | None]:
+    response = await http.apost(url, json=payload, disable_retry=True)
     result = response.json()
     if (
         result.get("error")
@@ -246,7 +323,7 @@ async def _transcribe(
     message = result.get("message")
     if not isinstance(message, dict) or not isinstance(message.get("content"), str):
         raise RuntimeError("ollama_audio_invalid_response")
-    return message["content"].strip()
+    return message["content"].strip(), _asr_confidence(result.get("logprobs"))
 
 
 async def synthesize_speech(

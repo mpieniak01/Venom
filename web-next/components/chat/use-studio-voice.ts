@@ -142,9 +142,17 @@ export function useStudioVoice(options: StudioVoiceOptions, captureFactory?: typ
       idleWithError("voiceWait");
       return;
     }
+    if (!audio.pcm.byteLength) {
+      idleWithError("silence");
+      return;
+    }
     setSources([]);
     const result = await transcribeChatAudio(voiceOptions.session, audio, voiceOptions.language, signal, voiceOptions.hostAudioAvailable === false);
-    if (!isCurrent() || result.session_id !== latest.current.session) return;
+    if (!isCurrent()) return;
+    if (result.session_id !== voiceOptions.session) {
+      idleWithError("voiceError");
+      return;
+    }
 
     const text = result.text.trim();
     if (!text) {
@@ -162,7 +170,8 @@ export function useStudioVoice(options: StudioVoiceOptions, captureFactory?: typ
     const accepted = await latest.current.onTurn(text);
     if (isCurrent() && !accepted) {
       waiting.current = null;
-      idleWithError("voiceWait");
+      latest.current.onDraft(text);
+      idleWithError("voiceDraftSaved");
     }
   }, [idleWithError]);
 

@@ -98,5 +98,6 @@ export const chat2 = {
   "offline": "Daten konnten nicht geladen werden. Du kannst erneut verbinden.",
   "copyFailed": "Kopieren ist in diesem Browser nicht verfügbar.",
   "sendHint": "Enter sendet · Umschalt+Enter fügt eine Zeile hinzu",
+  "voiceDraftSaved": "Die Frage konnte nicht gesendet werden. Die Transkription steht im Entwurf.",
   "voiceWait": "Eine Antwort läuft; warten oder Stop verwenden."
 };

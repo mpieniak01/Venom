@@ -30,6 +30,9 @@ from venom_core.services.chat_audio import (
 from venom_core.services.session_store import SessionStore
 from venom_core.utils.helpers import get_utc_now_iso
 from venom_core.utils.llm_runtime import LLMRuntimeInfo, get_active_llm_runtime
+from venom_core.utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 AUDIO_ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
     403: {"description": "Operator access or audio request origin denied"},
@@ -147,13 +150,13 @@ async def transcribe(
         content.extend(chunk)
     if await request.is_disconnected():
         raise HTTPException(499, {"reason_code": "audio_request_cancelled"})
+    pcm = bytes(content)
     if runtime is not None:
         from venom_core.services.ollama_audio import (
             require_local_capability,
             transcribe_pcm_audio,
         )
 
-        pcm = bytes(content)
         validate_pcm(pcm, sample_rate)
         endpoint = runtime.endpoint or ""
 
@@ -171,8 +174,18 @@ async def transcribe(
             raise HTTPException(
                 503, {"reason_code": "audio_transcription_failed"}
             ) from exc
-        return {"session_id": session_id, "text": text, "pipeline": "ollama_audio"}
-    text = await transcribe_pcm(engine, bytes(content), sample_rate, language)
+        has_text = bool(text.strip())
+        logger.info(
+            "chat_audio_transcription pipeline=ollama_audio has_text={}", has_text
+        )
+        if has_text or engine is None:
+            return {"session_id": session_id, "text": text, "pipeline": "ollama_audio"}
+        if await request.is_disconnected():
+            raise HTTPException(499, {"reason_code": "audio_request_cancelled"})
+    text = await transcribe_pcm(engine, pcm, sample_rate, language)
+    logger.info(
+        "chat_audio_transcription pipeline=host_stt has_text={}", bool(text.strip())
+    )
     return {"session_id": session_id, "text": text, "pipeline": "host_stt"}
 
 

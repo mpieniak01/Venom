@@ -98,5 +98,6 @@ export const chat2 = {
   "offline": "Data could not be loaded. You can reconnect.",
   "copyFailed": "Copying is unavailable in this browser.",
   "sendHint": "Enter sends · Shift+Enter adds a line",
+  "voiceDraftSaved": "The question could not be sent. The transcript is in the draft.",
   "voiceWait": "A response is in progress; wait or use Stop."
 };

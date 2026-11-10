@@ -429,6 +429,35 @@ def omni_runtime(monkeypatch):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("host_ready", [True, False])
+async def test_empty_omni_transcript_tries_host_whisper_when_available(
+    rig, omni_runtime, monkeypatch, host_ready
+):
+    from venom_core.services import ollama_audio
+
+    client, engine, _ = rig
+    native = AsyncMock(return_value="")
+    monkeypatch.setattr(ollama_audio, "transcribe_pcm_audio", native)
+    if not host_ready:
+        client._transport.app.state.audio_engine = None
+
+    response = await client.post(
+        "/api/v1/chat/audio/transcribe?session_id=existing&language=pl&prefer_native=true",
+        content=b"\x01\x00" * 80,
+        headers={"content-type": "application/octet-stream"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "session_id": "existing",
+        "text": "hello" if host_ready else "",
+        "pipeline": "host_stt" if host_ready else "ollama_audio",
+    }
+    native.assert_awaited_once()
+    assert engine.transcribe_checked.await_count == int(host_ready)
+
+
+@pytest.mark.asyncio
 async def test_omni_dictation_and_conversation_use_separate_decoders(
     rig, omni_runtime, monkeypatch
 ):

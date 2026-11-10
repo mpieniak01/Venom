@@ -262,3 +262,20 @@ test("ordinary Omni conversation recovers after silence and speaks successive re
   }
   assert.deepEqual(fixture.turns, ["Co to jest kwadrat?", "Ile to trzy razy trzy?"]);
 });
+
+test("a recognized question rejected by chat survives in the draft of the same session", async () => {
+  const fixture = options();
+  fixture.props.mode = "conversation";
+  fixture.props.onTurn = async () => false;
+  globalThis.fetch = async () => Response.json({ session_id: "one", text: "Ile to trzy razy trzy?" });
+  const hook = renderHook(() => useStudioVoice(fixture.props, async () => ({
+    finish: async () => recorded(),
+    dispose: () => {},
+  })));
+
+  await act(async () => { await hook.result.current.start(); await hook.result.current.finish(); });
+
+  assert.deepEqual(fixture.drafts, ["Ile to trzy razy trzy?"]);
+  assert.equal(hook.result.current.error, "voiceDraftSaved");
+  assert.equal(hook.result.current.status, "voiceIdle");
+});

@@ -1107,3 +1107,55 @@ def test_plain_omni_history_policy_requires_remaining_context(monkeypatch):
     retry = llm_simple_service._retry_without_previous_attempts(request)
     assert not retry.history
     assert llm_simple_service._simple_system_prompt(retry, "", plain_omni=True) == ""
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("current", "retains_assistant"),
+    [
+        ("Jakie kwiaty kupić? Umówiliśmy się na tulipany. Podaj nazwę.", False),
+        ("Zmiana ustalenia. Zamawiamy róże.", False),
+        ("zmieniam zamówienie, teraz biorę lilie.", False),
+        ("Poprawka: kod odbioru to 914.", False),
+        ("Przypomnij, jakie kwiaty ostatecznie zamawiamy.", True),
+        ("Umówiliśmy się na róże?", True),
+        ("Jaką nazwę zaproponowałeś przed chwilą?", True),
+    ],
+)
+async def test_plain_omni_stated_updates_use_user_history_and_questions_can_recall_replies(
+    monkeypatch, current, retains_assistant
+):
+    runtime = SimpleNamespace(
+        provider="ollama",
+        model_name="lfm3-omni:2b",
+        endpoint="http://localhost:11434/v1",
+        service_type="local",
+        host_local=True,
+        runtime_id="ollama",
+        config_hash="cfg",
+    )
+    monkeypatch.setattr(llm_simple_service, "get_active_llm_runtime", lambda: runtime)
+    monkeypatch.setattr(
+        llm_simple_service, "_get_active_adapter_id", AsyncMock(return_value=None)
+    )
+    monkeypatch.setattr(
+        llm_simple_service.SETTINGS,
+        "SIMPLE_MODE_SYSTEM_PROMPT",
+        "You are a helpful assistant.",
+    )
+    captured = []
+
+    async def capture(**kwargs):
+        captured.extend(kwargs["payload"]["messages"])
+        yield event("done", {})
+
+    monkeypatch.setattr(llm_simple_service, "_stream_simple_chunks", capture)
+    user = {"role": "user", "content": "Podaj nazwę kwiatu."}
+    assistant = {"role": "assistant", "content": "Piwonia."}
+    request = SimpleChatRequest(content=current, history=[user, assistant])
+    await consume(await llm_simple_service.stream_simple_chat(request))
+    assert captured[-1] == {"role": "user", "content": current}
+    assert user in captured
+    assert (assistant in captured) is retains_assistant
+    assert (captured[0]["role"] == "system") is retains_assistant
+    assert request.history[1].content == assistant["content"]

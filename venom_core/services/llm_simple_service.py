@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import time
 from typing import Any, AsyncIterator, Optional
 from uuid import UUID, uuid4
@@ -116,6 +117,16 @@ _OMNI_HISTORY_POLICY = (
     "Odpowiedz na ostatnią wiadomość użytkownika. Korzystaj z historii przy dopytaniach. "
     "Najnowsze ustalenia użytkownika mają pierwszeństwo. Wcześniejsze odpowiedzi asystenta mogą być błędne. "
     "Zastosuj format wymagany w ostatniej wiadomości."
+)
+# A stated decision or correction is different from a question about an earlier reply.
+_OMNI_STATED_UPDATE = re.compile(
+    r"(?:^|(?<=[.!?])\s+)(?:"
+    r"ustalenie\s+(?:to|jest)|ustaliliśmy|ustalam(?:y)?|umówiliśmy\s+się"
+    r"|zmiana\s+(?:ustalenia|zamówienia|decyzji|planu)"
+    r"|zmieniam(?:y)?\s+(?:ustalenie|zamówienie|decyzję|plan)"
+    r"|(?:poprawka|korekta)(?=\s|[:.!]|$)"
+    r")\b[^.!?]*(?:[.!]|$)",
+    re.IGNORECASE,
 )
 httpx = llm_simple_transport.httpx_module()
 
@@ -1220,7 +1231,11 @@ def _simple_system_prompt(
         request.studio_normal or plain_omni
     ) and system_prompt == DEFAULT_SIMPLE_MODE_SYSTEM_PROMPT:
         system_prompt = ""
-    if plain_omni and request.history and not system_prompt:
+    if (
+        plain_omni
+        and any(turn.role == "assistant" for turn in request.history)
+        and not system_prompt
+    ):
         system_prompt = _OMNI_HISTORY_POLICY
     if system_context:
         system_prompt = "\n\n".join(filter(None, (system_prompt, system_context)))
@@ -1266,6 +1281,14 @@ async def _stream_non_openrouter_chat(
     )
     if plain_omni:
         request = _retry_without_previous_attempts(request)
+        if _OMNI_STATED_UPDATE.search(request.content):
+            # Use earlier user facts, without letting an old assistant reply
+            # act as an instruction for an explicit current decision.
+            request = request.model_copy(
+                update={
+                    "history": [turn for turn in request.history if turn.role == "user"]
+                }
+            )
     system_prompt = _simple_system_prompt(
         request, system_context, plain_omni=plain_omni
     )

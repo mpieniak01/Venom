@@ -610,10 +610,12 @@ async def test_full_wav_and_studio_pcm_have_identical_native_requests(
     with wave.open(io.BytesIO(base64.b64decode(native.call_args.args[2]))) as wav:
         result = np.frombuffer(wav.readframes(wav.getnframes()), dtype="<i2")
         assert wav.getframerate() == 16000
-        assert result.size == 3200
+        assert result.size in (3199, 3200)
         # The rate conversion must preserve duration, amplitude and pitch.
         assert 800 < np.sqrt(np.mean(result.astype(float) ** 2)) < 900
-        assert np.argmax(abs(np.fft.rfft(result))) * 16000 / result.size == 440
+        assert (
+            abs(np.argmax(abs(np.fft.rfft(result))) * 16000 / result.size - 440) < 0.2
+        )
 
 
 @pytest.mark.asyncio
@@ -657,3 +659,38 @@ async def test_invalid_pcm_is_not_reported_as_silence(monkeypatch, pcm):
     with pytest.raises(ValueError):
         await audio.transcribe_pcm_audio("http://local", "omni", pcm, 16000, "pl")
     native.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("rate", [16000, 44100, 48000])
+async def test_capture_padding_does_not_change_native_asr_request(monkeypatch, rate):
+    import numpy as np
+
+    # Keep quiet nonzero edges and an intentional pause inside the utterance.
+    speech = np.array([1, 2, -200, 400, 0, 0, 0, -30, -1], dtype="<i2")
+    native = AsyncMock(return_value="pytanie")
+    monkeypatch.setattr(audio, "_transcribe", native)
+    for leading, trailing in [(0, 0), (rate // 3, rate), (rate // 3 + 1536, rate // 2)]:
+        framed = np.pad(speech, (leading, trailing))
+        await audio.transcribe_pcm_audio(
+            "http://local", "omni", framed.tobytes(), rate, "pl"
+        )
+    assert native.await_count == 3
+    assert (
+        native.await_args_list[0]
+        == native.await_args_list[1]
+        == native.await_args_list[2]
+    )
+    assert native.call_args.args[2] == audio.encode_pcm_audio(speech, rate)
+
+
+def test_riff_boundary_truncates_pcm_even_with_trailing_file_bytes(tmp_path):
+    import struct
+
+    path = wav_file(tmp_path, rate=16000, frames=80)
+    data = bytearray(path.read_bytes())
+    # The file has enough bytes, but the RIFF chunk ends halfway through PCM.
+    data[4:8] = struct.pack("<I", 36 + 80)
+    path.write_bytes(data)
+    with pytest.raises(ValueError, match="invalid_frame_count"):
+        audio.encode_audio_input(path)

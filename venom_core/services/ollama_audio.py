@@ -197,9 +197,13 @@ async def transcribe_pcm_audio(
     context_length: int = 4096,
 ) -> str:
     samples = np.frombuffer(pcm, dtype="<i2")
-    # Digital silence contains no speech. Do not ask a generative decoder to
-    # invent a transcript; preserve every nonzero signal, including quiet speech.
-    if samples.size and not np.any(samples):
+    if not samples.size:
+        raise ValueError("audio_input_empty")
+    # Browser scheduling adds variable digital silence at the recording edges.
+    # Canonicalize it before resampling so identical speech has identical input.
+    # No energy threshold: preserve quiet speech and every pause within the clip.
+    samples = np.trim_zeros(samples)
+    if not samples.size:
         return ""
     audio = await asyncio.to_thread(encode_pcm_audio, samples, rate)
     language_name = {"pl": "Polish", "en": "English", "de": "German"}[language]

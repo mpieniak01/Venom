@@ -121,6 +121,9 @@ async def test_native_request_separates_system_instruction_and_audio(
 
     monkeypatch.setattr(audio, "TrafficControlledHttpClient", Client)
     path = wav_file(tmp_path)
+    with wave.open(str(path), "wb") as wav:
+        wav.setparams((1, 2, 44100, 0, "NONE", "not compressed"))
+        wav.writeframes(b"\x01\x00" * 4410)
     if expected is None:
         with pytest.raises(RuntimeError):
             await audio.transcribe_audio(
@@ -141,7 +144,7 @@ async def test_native_request_separates_system_instruction_and_audio(
     assert payload["think"] is False
     assert payload["stream"] is False
     system, user = payload["messages"]
-    assert system["role"] == "system"
+    assert system == {"role": "system", "content": "Perform ASR in Polish."}
     assert user["role"] == "user"
     assert user["content"] == ""
     assert base64.b64decode(user["images"][0]).startswith(b"RIFF")
@@ -577,3 +580,80 @@ async def test_omni_ordinary_voice_remains_native_when_host_is_available(
     assert (await handler._resolve_voice_input_decoder_plan())["effective"] == (
         "ollama_audio"
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("rate", [16000, 44100, 48000])
+async def test_full_wav_and_studio_pcm_have_identical_native_requests(
+    monkeypatch, tmp_path, rate
+):
+    import numpy as np
+
+    # Non-silent signal makes a dropped buffer or changed sample order visible.
+    samples = (np.sin(np.arange(rate // 5) * 2 * np.pi * 440 / rate) * 1200).astype(
+        "<i2"
+    )
+    path = tmp_path / "question.wav"
+    with wave.open(str(path), "wb") as wav:
+        wav.setparams((1, 2, rate, 0, "NONE", "not compressed"))
+        wav.writeframes(samples.tobytes())
+    native = AsyncMock(return_value="pytanie")
+    monkeypatch.setattr(audio, "_transcribe", native)
+    assert await audio.transcribe_audio("http://local", "omni", path) == "pytanie"
+    assert (
+        await audio.transcribe_pcm_audio(
+            "http://local", "omni", samples.tobytes(), rate, "pl"
+        )
+        == "pytanie"
+    )
+    assert native.await_args_list[0] == native.await_args_list[1]
+    with wave.open(io.BytesIO(base64.b64decode(native.call_args.args[2]))) as wav:
+        result = np.frombuffer(wav.readframes(wav.getnframes()), dtype="<i2")
+        assert wav.getframerate() == 16000
+        assert result.size == 3200
+        # The rate conversion must preserve duration, amplitude and pitch.
+        assert 800 < np.sqrt(np.mean(result.astype(float) ** 2)) < 900
+        assert np.argmax(abs(np.fft.rfft(result))) * 16000 / result.size == 440
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("surface", ["full", "studio"])
+async def test_digital_silence_skips_native_inference(monkeypatch, tmp_path, surface):
+    native = AsyncMock(side_effect=AssertionError("silence reached model"))
+    monkeypatch.setattr(audio, "_transcribe", native)
+    if surface == "full":
+        result = await audio.transcribe_audio(
+            "http://local", "omni", wav_file(tmp_path)
+        )
+    else:
+        result = await audio.transcribe_pcm_audio(
+            "http://local", "omni", bytes(32000), 16000, "pl"
+        )
+    assert result == ""
+    native.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_quiet_nonzero_speech_is_not_discarded(monkeypatch):
+    native = AsyncMock(return_value="cichy głos")
+    monkeypatch.setattr(audio, "_transcribe", native)
+    result = await audio.transcribe_pcm_audio(
+        "http://local",
+        "omni",
+        b"\x01\x00\xff\xff" * 8000,
+        16000,
+        "pl",
+        context_length=8192,
+    )
+    assert result == "cichy głos"
+    assert native.call_args.args[-1] == 8192
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("pcm", [b"", b"\x01"])
+async def test_invalid_pcm_is_not_reported_as_silence(monkeypatch, pcm):
+    native = AsyncMock()
+    monkeypatch.setattr(audio, "_transcribe", native)
+    with pytest.raises(ValueError):
+        await audio.transcribe_pcm_audio("http://local", "omni", pcm, 16000, "pl")
+    native.assert_not_awaited()

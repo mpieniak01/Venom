@@ -3,7 +3,7 @@
 import base64
 import io
 import wave
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, nullcontext
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -340,7 +340,10 @@ async def test_empty_transcript_finishes_voice_ui_without_generation(tmp_path):
         operator_agent=None,
         pipeline_id="ollama_audio_llm_piper",
     )
-    assert handler._send_json.await_args_list[-1].args == (1, {"type": "complete"})
+    assert handler._send_json.await_args_list[-1].args == (
+        1,
+        {"type": "complete", "status": "no_transcript"},
+    )
 
 
 @pytest.mark.parametrize("rate", [1, 7999, 192001])
@@ -535,3 +538,42 @@ async def test_full_omni_sends_native_pcm_or_reports_missing_capability(
         assert events[-2]["sample_rate"] == 24000
         assert base64.b64decode(events[-2]["audio"]) == pcm
     handler.audio_engine.speak.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("host_available", [True, False])
+async def test_omni_ordinary_voice_prefers_host_when_available(
+    monkeypatch, host_available
+):
+    """The selected Omni model can answer text without owning microphone decoding."""
+    handler = object.__new__(stream.AudioStreamHandler)
+    handler.audio_engine = object() if host_available else None
+    handler._resolve_audio_decoder_plan = lambda: {
+        "effective": "faster_whisper",
+        "selected": "faster_whisper",
+        "should_try_native": False,
+        "fallback_reason": "",
+    }
+    handler._audio_decoder_profile = lambda: "auto"
+    handler._voice_route_profile = lambda: "auto"
+    monkeypatch.setattr(stream, "has_voice_providers", AsyncMock(return_value=False))
+    monkeypatch.setattr(
+        stream,
+        "get_runtime_admission",
+        lambda: SimpleNamespace(
+            operation=lambda **_: nullcontext(),
+        ),
+    )
+    monkeypatch.setattr(
+        stream,
+        "get_active_llm_runtime",
+        lambda: SimpleNamespace(
+            provider="ollama",
+            endpoint="http://127.0.0.1:11434",
+            model_name=audio.OMNI_MODEL_ID,
+            host_local=True,
+        ),
+    )
+    assert (await handler._resolve_voice_input_decoder_plan())["effective"] == (
+        "faster_whisper" if host_available else "ollama_audio"
+    )

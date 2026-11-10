@@ -812,12 +812,13 @@ const handleVoiceAudioResponse = (
 
 const handleVoiceCompletion = (
   t: Translator,
+  noTranscript: boolean,
   setStatusMessage: (value: string | null) => void,
   setLastAudioSignal: (value: string) => void,
   setProcessingStatus?: (value: string | null) => void,
 ) => {
-  setStatusMessage(t("voice.status.complete"));
-  setLastAudioSignal("complete");
+  setStatusMessage(t(noTranscript ? "voice.status.noTranscript" : "voice.status.complete"));
+  setLastAudioSignal(noTranscript ? "stt:empty" : "complete");
   setProcessingStatus?.(null);
 };
 
@@ -1757,7 +1758,7 @@ function createHandleAudioMessageHandler(params: {
       return;
     }
     if (messageType === "complete") {
-      handleVoiceCompletion(t, setStatusMessage, setLastAudioSignal, setProcessingStatus);
+      handleVoiceCompletion(t, data.status === "no_transcript", setStatusMessage, setLastAudioSignal, setProcessingStatus);
       refreshAudioStatus().catch(() => undefined);
       return;
     }

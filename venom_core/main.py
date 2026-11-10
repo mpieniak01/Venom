@@ -161,7 +161,7 @@ from venom_core.perception.audio_engine import AudioEngine
 from venom_core.perception.watcher import FileWatcher
 from venom_core.services.audit_stream import get_audit_stream
 from venom_core.services.module_registry import include_optional_api_routers
-from venom_core.services.ollama_audio import allows_native_route
+from venom_core.services.ollama_audio import allows_native_route, prefers_host_voice
 from venom_core.services.runtime_switch_gate import get_runtime_switch_gate_status
 from venom_core.services.runtime_switch_telemetry import get_last_runtime_switch_event
 from venom_core.services.session_store import SessionStore
@@ -979,7 +979,10 @@ async def _probe_ollama_voice_runtime_snapshot(runtime: Any) -> dict[str, object
         model_name=runtime.model_name,
         endpoint=runtime.endpoint,
     )
-    voice_pipeline = resolve_voice_pipeline(runtime_capabilities)
+    voice_pipeline = resolve_voice_pipeline(
+        runtime_capabilities,
+        prefer_host_audio=audio_engine is not None and prefers_host_voice(runtime),
+    )
     return {
         "runtime_id": runtime.runtime_id,
         "provider": runtime.provider,

@@ -1471,6 +1471,10 @@ class AudioStreamHandler:
                 decoder_chain=str(_multi_runtime_setting("AUDIO_DECODER_CHAIN", "")),
             )
         ):
+            if getattr(
+                self, "audio_engine", None
+            ) is not None and ollama_audio.prefers_host_voice(runtime):
+                return {**plan, "guarded_voice": guarded, "fallback_reason": ""}
             try:
                 with get_runtime_admission().operation(kind="voice_audio_selection"):
                     if runtime.model_name == ollama_audio.OMNI_MODEL_ID:
@@ -2477,7 +2481,9 @@ class AudioStreamHandler:
                 connection_id,
                 {"type": "transcription", "text": "", "confidence": 0.0},
             )
-            await self._send_json(connection_id, {"type": "complete"})
+            await self._send_json(
+                connection_id, {"type": "complete", "status": "no_transcript"}
+            )
             return
 
         await self._send_json(

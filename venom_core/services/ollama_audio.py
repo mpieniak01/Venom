@@ -34,6 +34,11 @@ MAX_SAMPLE_RATE = 192000
 type _ResamplePoly = Callable[[NDArray[np.float32], int, int], NDArray[np.float32]]
 
 
+def prefers_host_voice(runtime: LLMRuntimeInfo) -> bool:
+    """Use host STT and TTS for ordinary voice with the local Omni model."""
+    return runtime.model_name == OMNI_MODEL_ID and is_host_ollama(runtime)
+
+
 def allows_native_route(
     *, route_profile: str, decoder_profile: str, decoder_chain: str
 ) -> bool:

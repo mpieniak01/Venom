@@ -212,9 +212,9 @@ export async function sendMultimodalVoiceTurn(
   return response.json() as Promise<MultimodalVoiceReply>;
 }
 
-/** Request native-preferred playback for the current conversation and language. */
-export async function speakChatAudio(session: string, text: string, signal: AbortSignal, language = "pl") {
-  const response = await fetch(getApiBaseUrl() + "/api/v1/chat/audio/speak", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ session_id: session, text, prefer_native: true, language }), signal });
+/** Synthesize a reply with the host voice or the explicitly selected native voice. */
+export async function speakChatAudio(session: string, text: string, signal: AbortSignal, language = "pl", preferNative = false) {
+  const response = await fetch(getApiBaseUrl() + "/api/v1/chat/audio/speak", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ session_id: session, text, prefer_native: preferNative, language }), signal });
   if (!response.ok) throw new Error("voiceError");
   return response.blob();
 }

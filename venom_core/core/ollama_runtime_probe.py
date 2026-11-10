@@ -42,7 +42,7 @@ class VoicePipelineDecision:
 
 
 def resolve_voice_pipeline(
-    capabilities: OllamaRuntimeCapabilities,
+    capabilities: OllamaRuntimeCapabilities, *, prefer_host_audio: bool = False
 ) -> VoicePipelineDecision:
     """Wybiera pipeline zgodnie z capability snapshotem."""
 
@@ -50,7 +50,7 @@ def resolve_voice_pipeline(
     probes = capabilities.probes
     notes: list[str] = []
 
-    if caps.get("audio_input"):
+    if caps.get("audio_input") and not prefer_host_audio:
         stt = "ollama_audio"
         notes.append(
             "audio support declared; each voice turn validates the audio response"

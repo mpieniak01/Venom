@@ -2464,6 +2464,58 @@ class AudioStreamHandler:
             logger.error(f"Błąd podczas przetwarzania encoded audio: {e}")
             await self._send_json(connection_id, {"type": "error", "message": str(e)})
 
+    async def _reply_to_voice_transcript(
+        self,
+        connection_id: int,
+        transcription: str,
+        *,
+        operator_agent: object | None,
+        runtime_metadata: dict[str, Any],
+        session_dir: Path,
+        pipeline_id: str,
+    ) -> str:
+        if self._connection_voice_mode(connection_id) == "direct":
+            from venom_core.services.direct_voice import complete_direct_turn
+
+            connection = self.active_connections[connection_id]
+            session_id = connection.setdefault(
+                "direct_session_id", f"voice-direct-{uuid.uuid4()}"
+            )
+            response_text, history = await complete_direct_turn(
+                transcription,
+                connection.get("direct_history", []),
+                session_id=session_id,
+            )
+            connection["direct_history"] = history
+            return response_text
+
+        voice_context = _build_voice_session_insights_payload(
+            transcript=transcription,
+            response="",
+            voice_mode=self._connection_voice_mode(connection_id),
+            pipeline_id=pipeline_id,
+            **_multi_runtime_voice_flags(),
+            raw_thinking_available=False,
+        )
+        voice_context.update(
+            {
+                "execution_context": VOICE_EXECUTION_CONTEXT,
+                "history_scope": VOICE_HISTORY_SCOPE,
+            }
+        )
+        return await _invoke_operator_agent(
+            operator_agent,
+            transcription,
+            mode=self._connection_voice_mode(connection_id),
+            voice_context=voice_context,
+            conversation_id=session_dir.name,
+            legacy_guard=runtime_request_guard(
+                request_kind="voice_fallback_llm",
+                provider=_coerce_str(runtime_metadata.get("llm_provider"), ""),
+                model=_coerce_str(runtime_metadata.get("llm_model"), ""),
+            ),
+        )
+
     async def _run_whisper_llm_pipeline(
         self,
         *,
@@ -2496,47 +2548,15 @@ class AudioStreamHandler:
             connection_id, {"type": "processing", "status": "thinking"}
         )
         agent_started_at = time.perf_counter()
-        voice_context = _build_voice_session_insights_payload(
-            transcript=transcription,
-            response="",
-            voice_mode=self._connection_voice_mode(connection_id),
-            pipeline_id=pipeline_id,
-            **_multi_runtime_voice_flags(),
-            raw_thinking_available=False,
-        )
-        voice_context.update(
-            {
-                "execution_context": VOICE_EXECUTION_CONTEXT,
-                "history_scope": VOICE_HISTORY_SCOPE,
-            }
-        )
         runtime_metadata = self._build_runtime_metadata(operator_agent)
-        if self._connection_voice_mode(connection_id) == "direct":
-            from venom_core.services.direct_voice import complete_direct_turn
-
-            connection = self.active_connections[connection_id]
-            session_id = connection.setdefault(
-                "direct_session_id", f"voice-direct-{uuid.uuid4()}"
-            )
-            response_text, history = await complete_direct_turn(
-                transcription,
-                connection.get("direct_history", []),
-                session_id=session_id,
-            )
-            connection["direct_history"] = history
-        else:
-            response_text = await _invoke_operator_agent(
-                operator_agent,
-                transcription,
-                mode=self._connection_voice_mode(connection_id),
-                voice_context=voice_context,
-                conversation_id=session_dir.name,
-                legacy_guard=runtime_request_guard(
-                    request_kind="voice_fallback_llm",
-                    provider=_coerce_str(runtime_metadata.get("llm_provider"), ""),
-                    model=_coerce_str(runtime_metadata.get("llm_model"), ""),
-                ),
-            )
+        response_text = await self._reply_to_voice_transcript(
+            connection_id,
+            transcription,
+            operator_agent=operator_agent,
+            runtime_metadata=runtime_metadata,
+            session_dir=session_dir,
+            pipeline_id=pipeline_id,
+        )
         timings_ms["llm_ms"] = self._elapsed_ms(agent_started_at)
         self._update_voice_session_metadata(
             session_dir,

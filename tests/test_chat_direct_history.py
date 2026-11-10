@@ -1001,7 +1001,8 @@ async def test_direct_voice_does_not_store_a_turn_exceeding_history_budget(monke
     answer, history = await direct_voice.complete_direct_turn(
         "question", [], session_id="own"
     )
-    assert answer == "long answer" and history == []
+    assert answer == "long answer"
+    assert history == []
 
 
 def test_direct_default_prompt_is_neutral_and_explicit_custom_prompt_is_preserved(

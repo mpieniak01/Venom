@@ -981,6 +981,20 @@ async def test_process_audio_buffer_uses_voice_mode(monkeypatch, tmp_path):
         raising=False,
     )
 
+    monkeypatch.setattr(
+        handler,
+        "_resolve_voice_input_decoder_plan",
+        AsyncMock(
+            return_value={
+                "effective": "faster_whisper",
+                "selected": "faster_whisper",
+                "should_try_native": False,
+                "fallback_reason": "",
+                "guarded_voice": False,
+            }
+        ),
+    )
+
     audio_engine = MagicMock()
     audio_engine.whisper = None
     audio_engine.voice = None

@@ -316,8 +316,6 @@ async def multimodal_turn(
                 result, has_image=image is not None
             )
         ]
-        if result.sources:
-            entries[-1]["content"] = result.text + "\n\nŹródło: " + result.sources[0]
         if not await request.is_disconnected():
             await run_drainable_thread(
                 store.append_turn_once, session_id, request_id, entries

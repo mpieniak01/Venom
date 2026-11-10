@@ -25,6 +25,7 @@ import { useTranslation } from "@/lib/i18n";
 import type { VoiceOrbState } from "@/components/voice/voice-orb";
 import { useOrbEffectsConfig } from "@/components/voice/use-orb-effects-config";
 import { useOrbMetrics } from "@/components/voice/use-orb-metrics";
+import { VoiceCameraButton } from "@/components/voice/voice-camera-button";
 import { OrbZone } from "@/components/voice/orb-zone";
 import { useVoiceImageSelection, VOICE_IMAGE_ACCEPT } from "@/components/voice/use-voice-image-selection";
 import { DevDiagnosticsDrawer } from "@/components/voice/dev-diagnostics-drawer";
@@ -2462,6 +2463,7 @@ function VoiceCommandCenterPanel({
   const [responseSources, setResponseSources] = useState<string[]>([]);
   const [multimodalActive, setMultimodalActive] = useState(false);
   const [multimodalPending, setMultimodalPending] = useState(false);
+  const [cameraBusy, setCameraBusy] = useState(false);
   const { selection: voiceImage, chooseImage, clearImage } = useVoiceImageSelection();
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [audioStatus, setAudioStatus] = useState<AudioStatus | null>(null);
@@ -2964,7 +2966,7 @@ function VoiceCommandCenterPanel({
     ? { tone: "success" as const, label: "voice.status.connected" }
     : { tone: "warning" as const, label: "voice.status.offline" };
   const microphoneBlocked = microphoneCapability !== "available" && !debugDryRunActive;
-  const canStartRecording = !multimodalPending
+  const canStartRecording = !multimodalPending && !cameraBusy
     && (!multimodalAvailable || voiceImage?.status !== "reading");
   const onRecordingPointerDown = useCallback(
     (event: ReactPointerEvent<HTMLButtonElement>) => {
@@ -3070,7 +3072,7 @@ function VoiceCommandCenterPanel({
                   type="file"
                   accept={VOICE_IMAGE_ACCEPT}
                   className="max-w-full"
-                  disabled={recording || multimodalPending}
+                  disabled={recording || multimodalPending || cameraBusy}
                   onChange={(event) => {
                     const file = event.currentTarget.files?.[0];
                     if (file) chooseImage(file);
@@ -3078,10 +3080,12 @@ function VoiceCommandCenterPanel({
                   }}
                 />
               </label>
+              <VoiceCameraButton className="inline-flex items-center gap-2 rounded border px-2 py-1 disabled:opacity-50"
+                disabled={recording || multimodalPending || pipelineSwitching} onBusy={setCameraBusy} onCapture={chooseImage} />
               {voiceImage && voiceImage.status !== "invalid" && (
                 <>
                   <span className="min-w-0 break-all">{voiceImage.name}</span>
-                  <Button type="button" size="xs" variant="outline" onClick={clearImage} disabled={recording || multimodalPending}>
+                  <Button type="button" size="xs" variant="outline" onClick={clearImage} disabled={recording || multimodalPending || cameraBusy}>
                     {t("voice.multimodal.removeImage")}
                   </Button>
                 </>

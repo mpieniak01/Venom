@@ -1,5 +1,8 @@
 export const voice = {
   multimodal: {
+    captureCamera: "Zrób zdjęcie kamerą",
+    cameraPending: "Pobieranie klatki…",
+    cameraFailed: "Nie udało się pobrać klatki z kamery.",
     attachImage: "Dołącz obraz do pytania głosowego",
     invalidImage: "Wybierz obraz JPEG lub PNG. Obraz może mieć maksymalnie 2 MB.",
     removeImage: "Usuń obraz",

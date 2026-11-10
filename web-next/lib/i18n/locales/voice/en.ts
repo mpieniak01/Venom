@@ -1,5 +1,8 @@
 export const voice = {
   multimodal: {
+    captureCamera: "Take a camera snapshot",
+    cameraPending: "Capturing a frame…",
+    cameraFailed: "Could not capture a frame from the camera.",
     attachImage: "Attach an image to your spoken question",
     invalidImage: "Choose a JPEG or PNG image. The image must be 2 MB or smaller.",
     removeImage: "Remove image",

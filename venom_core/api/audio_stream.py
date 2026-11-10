@@ -1098,10 +1098,13 @@ class AudioStreamHandler:
         return str(voice_mode).strip() or "standard"
 
     def _voice_contract_payload(self, connection_id: int) -> dict[str, str]:
+        mode = self._connection_voice_mode(connection_id)
         return {
-            "execution_context": VOICE_EXECUTION_CONTEXT,
-            "history_scope": VOICE_HISTORY_SCOPE,
-            "voice_mode": self._connection_voice_mode(connection_id),
+            "execution_context": "direct"
+            if mode == "direct"
+            else VOICE_EXECUTION_CONTEXT,
+            "history_scope": "connection" if mode == "direct" else VOICE_HISTORY_SCOPE,
+            "voice_mode": mode,
         }
 
     def _multi_runtime_runtime_snapshot(self) -> dict[str, Any]:

@@ -200,3 +200,18 @@ it("uses one Full voice socket and unlocks a pending image turn after reconnecti
   await act(async () => VoiceSocket.instances[1].open());
   await waitFor(() => assert.equal(record.disabled, false));
 });
+
+
+it("sends Direct mode before a Full voice turn and preserves explicit agent selection", async (test) => {
+  installVoiceEnvironment(test);
+  let view!: ReturnType<typeof render>;
+  await act(async () => { view = render(<VoiceCommandCenter voiceModePreset="direct" />); });
+  const socket = VoiceSocket.instances.at(-1);
+  assert.ok(socket);
+  await act(async () => socket.open());
+  const modes = () => socket.sent.filter((item): item is string => typeof item === "string")
+    .map(item => JSON.parse(item)).filter(item => item.command === "voice_mode").map(item => item.mode);
+  await waitFor(() => assert.deepEqual(modes(), ["direct"]));
+  await act(async () => view.rerender(<VoiceCommandCenter voiceModePreset="standard" />));
+  await waitFor(() => assert.deepEqual(modes(), ["direct", "standard"]));
+});

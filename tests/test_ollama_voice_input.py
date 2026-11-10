@@ -694,3 +694,60 @@ def test_riff_boundary_truncates_pcm_even_with_trailing_file_bytes(tmp_path):
     path.write_bytes(data)
     with pytest.raises(ValueError, match="invalid_frame_count"):
         audio.encode_audio_input(path)
+
+
+@pytest.mark.asyncio
+async def test_full_direct_bypasses_operator_and_keeps_connection_history(
+    monkeypatch, tmp_path
+):
+    from venom_core.api.schemas.llm_simple import HistoryMessage
+    from venom_core.services import direct_voice
+
+    handler = object.__new__(stream.AudioStreamHandler)
+    websocket = SimpleNamespace(send_text=AsyncMock())
+    handler.active_connections = {
+        1: {"websocket": websocket, "voice_mode": "direct"},
+        2: {"websocket": websocket, "voice_mode": "direct"},
+    }
+    handler.audio_engine = None
+    handler._update_voice_session_metadata = lambda *_: None
+    handler._build_runtime_metadata = lambda _: {
+        "llm_provider": "ollama",
+        "llm_model": "omni",
+    }
+    calls = []
+
+    async def reply(content, history, *, session_id):
+        calls.append((content, list(history), session_id))
+        return "Cztery boki.", [
+            *history,
+            HistoryMessage(role="user", content=content),
+            HistoryMessage(role="assistant", content="Cztery boki."),
+        ]
+
+    monkeypatch.setattr(direct_voice, "complete_direct_turn", reply)
+    operator = AsyncMock(side_effect=AssertionError("Direct dispatched to Operator"))
+    monkeypatch.setattr(stream, "_invoke_operator_agent", operator)
+    for connection_id, question in [
+        (1, "Co to jest kwadrat?"),
+        (1, "Ile ma boków?"),
+        (2, "status"),
+    ]:
+        await handler._run_whisper_llm_pipeline(
+            connection_id=connection_id,
+            session_dir=tmp_path,
+            transcription=question,
+            timings_ms={},
+            total_started_at=0,
+            operator_agent=None,
+            empty_agent_response_log_suffix="",
+        )
+    assert calls[0][1] == calls[2][1] == []
+    assert [x.content for x in calls[1][1]] == ["Co to jest kwadrat?", "Cztery boki."]
+    assert calls[0][2] == calls[1][2] != calls[2][2]
+    assert handler._voice_contract_payload(1) == {
+        "execution_context": "direct",
+        "history_scope": "connection",
+        "voice_mode": "direct",
+    }
+    operator.assert_not_awaited()

@@ -959,3 +959,67 @@ async def test_direct_voice_bounds_whole_turns_without_content_filtering(monkeyp
     assert len(updated) == 20
     assert updated[:-2] == history[2:]
     assert updated[0].role == "user"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("packet_limit", [False, True])
+async def test_direct_voice_enforces_bounded_response(monkeypatch, packet_limit):
+    from venom_core.services import direct_voice
+
+    monkeypatch.setattr(direct_voice, "MAX_HISTORY_RESPONSE_CHARS", 100)
+
+    async def chunks():
+        if packet_limit:
+            yield "x" * 101
+        else:
+            for _ in range(3):
+                yield event("content", {"text": "x" * 40})
+
+    monkeypatch.setattr(
+        direct_voice,
+        "stream_simple_chat",
+        AsyncMock(return_value=StreamingResponse(chunks())),
+    )
+    with pytest.raises(RuntimeError, match="response_limit"):
+        await direct_voice.complete_direct_turn("pytanie", [], session_id="own")
+
+
+@pytest.mark.asyncio
+async def test_direct_voice_does_not_store_a_turn_exceeding_history_budget(monkeypatch):
+    from venom_core.services import direct_voice
+
+    monkeypatch.setattr(direct_voice, "MAX_CHAT_HISTORY_CHARS", 12)
+
+    async def chunks():
+        yield event("content", {"text": "long answer"}) + event("done", {})
+
+    monkeypatch.setattr(
+        direct_voice,
+        "stream_simple_chat",
+        AsyncMock(return_value=StreamingResponse(chunks())),
+    )
+    answer, history = await direct_voice.complete_direct_turn(
+        "question", [], session_id="own"
+    )
+    assert answer == "long answer" and history == []
+
+
+def test_direct_default_prompt_is_neutral_and_explicit_custom_prompt_is_preserved(
+    monkeypatch,
+):
+    from venom_core.config import DEFAULT_SIMPLE_MODE_SYSTEM_PROMPT
+
+    monkeypatch.setattr(
+        llm_simple_service.SETTINGS,
+        "SIMPLE_MODE_SYSTEM_PROMPT",
+        DEFAULT_SIMPLE_MODE_SYSTEM_PROMPT,
+    )
+    request = SimpleChatRequest(content="Co to jest kwadrat?")
+    assert (
+        llm_simple_service._simple_system_prompt(request, "")
+        == "You are a helpful assistant."
+    )
+    monkeypatch.setattr(
+        llm_simple_service.SETTINGS, "SIMPLE_MODE_SYSTEM_PROMPT", "Custom instruction"
+    )
+    assert llm_simple_service._simple_system_prompt(request, "") == "Custom instruction"

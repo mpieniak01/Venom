@@ -31,9 +31,10 @@ python scripts/llm/with_gpu_libraries.py python -m scripts.ollama_bench.polish_b
 ```
 
 Powtórz dla `gemma4:e4b` z oddzielnym katalogiem wyników. Podaj
-`fixtures/validation` do osobnego pomiaru walidacyjnego. Narzędzie
-ogranicza model dodatkowy do zadań rozmowy i dokumentów. Uruchamiaj
-profile kolejno na lokalnym GPU poza bramkami kodu.
+`fixtures/validation` do osobnego pomiaru walidacyjnego. Omni i Gemma E4B przechodzą wszystkie grupy
+zadań. Dla pozostałych tagów skrypt uruchamia zadania rozmowy i
+dokumentów. Uruchamiaj profile kolejno na lokalnym GPU poza bramkami
+kodu.
 
 ## Wyniki
 

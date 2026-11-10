@@ -19,8 +19,8 @@ COLORS = {
     "white": r"biał\w*",
     "black": r"czarn\w*",
 }
-CODE = re.compile(r"VEN-[0-9]{3}")
-SPOKEN_CODE = re.compile(r"\b(?:ven|van|vn)[ -]*([0-9]{3})\b")
+CODE = re.compile(r"VEN-\d{3}", re.ASCII)
+SPOKEN_CODE = re.compile(r"\b(?:ven|van|vn)[ -]*((?a:\d{3}))\b")
 POSITION = (
     ("vertical", 0, r"\b(?:na górze|u góry|górn\w*)\b"),
     ("vertical", -1, r"\b(?:na dole|u dołu|doln\w*)\b"),
@@ -85,15 +85,22 @@ def parse_screen(value: object) -> PilotScreen | None:
         return None
     parsed: list[ScreenCard] = []
     for card in cards:
-        if not isinstance(card, dict) or card.keys() != {"code", "color"}:
+        checked = _parse_card(card)
+        if checked is None:
             return None
-        code, color = card["code"], card["color"]
-        if not isinstance(code, str) or not CODE.fullmatch(code):
-            return None
-        if not isinstance(color, str) or color not in (*COLORS, "other"):
-            return None
-        parsed.append({"code": code, "color": color})
+        parsed.append(checked)
     return {"layout": layout, "cards": parsed}
+
+
+def _parse_card(card: object) -> ScreenCard | None:
+    if not isinstance(card, dict) or card.keys() != {"code", "color"}:
+        return None
+    code, color = card["code"], card["color"]
+    if not isinstance(code, str) or not CODE.fullmatch(code):
+        return None
+    if not isinstance(color, str) or color not in (*COLORS, "other"):
+        return None
+    return {"code": code, "color": color}
 
 
 def previous_screen(history: list[dict[str, object]]) -> PilotScreen | None:
@@ -119,7 +126,6 @@ def resolve_reference(
         return True, f"VEN-{explicit.pop()}" if len(explicit) == 1 else None
 
     cards = screen["cards"] if screen is not None else []
-    indices = set(range(len(cards)))
     colors = {
         color
         for color, pattern in COLORS.items()
@@ -129,24 +135,9 @@ def resolve_reference(
         (axis, end) for axis, end, pattern in POSITION if re.search(pattern, text)
     ]
     ordinal = ORDINAL.search(text)
-    if len(colors) > 1:
-        return True, None
     if colors or positions or ordinal:
-        for axis, end in positions:
-            if screen is None or screen["layout"] != axis:
-                return True, None
-            indices.intersection_update({end % len(cards)})
-        if colors:
-            indices.intersection_update(
-                i for i, card in enumerate(cards) if card["color"] in colors
-            )
-        if ordinal:
-            position = next(
-                i for i, prefix in enumerate(ORDINALS) if ordinal[1].startswith(prefix)
-            )
-            ordered = sorted(indices)
-            indices = {ordered[position]} if position < len(ordered) else set()
-        return True, cards[indices.pop()]["code"] if len(indices) == 1 else None
+        layout = screen["layout"] if screen is not None else ""
+        return True, _resolve_card(layout, cards, colors, positions, ordinal)
 
     words = _keywords(text)
     matching = [
@@ -155,3 +146,30 @@ def resolve_reference(
         if words & _keywords(documents.get(card["code"], {}).get("title", ""))
     ]
     return bool(matching), matching[0] if len(matching) == 1 else None
+
+
+def _resolve_card(
+    layout: str,
+    cards: list[ScreenCard],
+    colors: set[str],
+    positions: list[tuple[str, int]],
+    ordinal: re.Match[str] | None,
+) -> str | None:
+    if not cards or len(colors) > 1:
+        return None
+    indices = set(range(len(cards)))
+    for axis, end in positions:
+        if layout != axis:
+            return None
+        indices.intersection_update({end % len(cards)})
+    if colors:
+        indices.intersection_update(
+            i for i, card in enumerate(cards) if card["color"] in colors
+        )
+    if ordinal:
+        position = next(
+            i for i, prefix in enumerate(ORDINALS) if ordinal[1].startswith(prefix)
+        )
+        ordered = sorted(indices)
+        indices = {ordered[position]} if position < len(ordered) else set()
+    return cards[indices.pop()]["code"] if len(indices) == 1 else None

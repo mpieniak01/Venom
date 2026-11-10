@@ -172,10 +172,8 @@ async def test_pilot_retains_and_replaces_the_session_screen_for_followups(
     assert correction.status_code == 200
     assert correction.json()["sources"][0].startswith("VEN-413")
     source_message, question = request_payloads[4]["messages"]
-    assert (
-        "VEN-413" in source_message["content"]
-        and "VEN-401" not in source_message["content"]
-    )
+    assert "VEN-413" in source_message["content"]
+    assert "VEN-401" not in source_message["content"]
     assert question == {"role": "user", "content": "Chodziło mi o komunikat na górze."}
 
     changed_screen = await client.post(
@@ -292,7 +290,8 @@ async def test_pilot_runtime_read_preserves_prior_document(
     silence = await client.post(
         url, data=data, files={"audio": ("silence.pcm", bytes(3200))}
     )
-    assert silence.status_code == 200 and silence.json()["no_speech"] is True
+    assert silence.status_code == 200
+    assert silence.json()["no_speech"] is True
     followup = await client.post(url, data=data, files=audio)
     assert followup.status_code == 200
     assert followup.json()["sources"] == document.json()["sources"]

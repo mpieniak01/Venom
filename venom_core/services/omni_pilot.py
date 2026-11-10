@@ -70,6 +70,7 @@ _RUNTIME_REPLIES = {
 }
 DOCUMENTATION = Path(__file__).with_name("omni_pilot_documentation.json")
 USER_LABEL = "[Pytanie głosowe]"
+SOURCE_SEPARATOR = "\n\nŹródło: "
 NO_SPEECH = "Nie słyszę pytania. Nagraj je jeszcze raz."
 CLARIFY = "Który komunikat mam sprawdzić? Wskaż go dokładniej lub podaj jego kod."
 SELECTION_SCHEMA = {
@@ -159,7 +160,7 @@ def history_rows(history: list[dict[str, object]]) -> list[dict[str, str]]:
         if role not in ("user", "assistant") or not isinstance(content, str):
             continue
         if role == "assistant" and row.get("mode") == "omni_pilot":
-            content = content.partition("\n\nŹródło: ")[0]
+            content = content.partition(SOURCE_SEPARATOR)[0]
         messages.append({"role": str(role), "content": content[:1000]})
     return messages
 
@@ -323,6 +324,116 @@ async def _answer_runtime_status(
     )
 
 
+async def _read_screen(
+    http: TrafficControlledHttpClient, endpoint: str, model: str, image: bytes
+) -> PilotScreen | None:
+    inventory = await _chat(
+        http,
+        endpoint,
+        model,
+        [
+            {"role": "system", "content": SCREEN_PROMPT},
+            {
+                "role": "user",
+                "content": "",
+                "images": [base64.b64encode(image).decode("ascii")],
+            },
+        ],
+        schema=SCREEN_SCHEMA,
+    )
+    try:
+        return parse_screen(json.loads(_text(inventory)))
+    except json.JSONDecodeError:
+        return None
+
+
+async def _select_followup_source(
+    http: TrafficControlledHttpClient,
+    endpoint: str,
+    model: str,
+    question: str,
+    history: list[dict[str, object]],
+    documents: dict[str, dict[str, str]],
+) -> str | None:
+    prior_code = previous_code(history)
+    if prior_code is None or prior_code not in documents:
+        return None
+    if _RESUME_DOCUMENT.search(question):
+        return prior_code
+    prompt = (
+        SELECT_TOOL + f" Zweryfikowany kod poprzedniego komunikatu to {prior_code}. "
+        "Jeśli pytanie dotyczy poprzedniego komunikatu, wybierz previous_source "
+        "także wtedy, gdy użytkownik nie powtórzył jego kodu."
+    )
+    selection = await _chat(
+        http,
+        endpoint,
+        model,
+        [
+            {"role": "system", "content": prompt},
+            *history_rows(history),
+            {"role": "user", "content": question},
+        ],
+        schema=SELECTION_SCHEMA,
+    )
+    return (
+        prior_code
+        if _selected_code(selection, prior_code, documents) == prior_code
+        else None
+    )
+
+
+async def _answer_from_document(
+    http: TrafficControlledHttpClient,
+    runtime: LLMRuntimeInfo,
+    question: str,
+    code: str | None,
+    documents: dict[str, dict[str, str]],
+    screen: PilotScreen | None,
+    history: list[dict[str, object]],
+) -> PilotAnswer:
+    if code is None:
+        return PilotAnswer(CLARIFY, screen=screen, question=question)
+    document = documents.get(code)
+    if document is None:
+        return PilotAnswer(
+            f"Dokumentacja pilotażu nie zawiera kodu {code}.",
+            screen=screen,
+            question=question,
+            tool=TOOL_NAME,
+            tool_status="not_found",
+        )
+    source_prompt = ANSWER_FROM_SOURCE + "\n" + json.dumps(document, ensure_ascii=False)
+    previous_turn = history[-2:]
+    answer_history = (
+        history_rows(previous_turn)
+        if previous_turn and previous_turn[-1].get("omni_pilot_code") == code
+        else []
+    )
+    final = await _chat(
+        http,
+        OllamaClient(runtime.endpoint or "").endpoint,
+        runtime.model_name,
+        [
+            {"role": "system", "content": source_prompt},
+            *answer_history,
+            {"role": "user", "content": question},
+        ],
+    )
+    text = _text(final).partition(SOURCE_SEPARATOR)[0].rstrip()
+    if not text or final.get("tool_calls"):
+        text = document["content"]
+    return PilotAnswer(
+        text,
+        code,
+        (document["title"],),
+        screen,
+        question=question,
+        tool=TOOL_NAME,
+        tool_status="ok",
+    )
+
+
 async def answer(
     runtime: LLMRuntimeInfo,
     pcm: bytes,
@@ -339,115 +450,33 @@ async def answer(
         return PilotAnswer("Dołącz obraz komunikatu i zadaj pytanie jeszcze raz.")
 
     docs = json.loads(DOCUMENTATION.read_text(encoding="utf-8"))
-    prior_code = previous_code(history) if image is None else None
-    client = OllamaClient(runtime.endpoint or "")
-    show = await require_local_capability(client.endpoint, runtime.model_name, "audio")
+    endpoint = OllamaClient(runtime.endpoint or "").endpoint
+    model = runtime.model_name
+    show = await require_local_capability(endpoint, model, "audio")
     if "vision" not in show.get("capabilities", ()):
         raise RuntimeError("omni_pilot_capability_unavailable")
-
-    question = await transcribe_pcm_audio(
-        client.endpoint, runtime.model_name, pcm, rate, "pl"
-    )
+    question = await transcribe_pcm_audio(endpoint, model, pcm, rate, "pl")
     if not question:
         return PilotAnswer(NO_SPEECH, screen=screen, no_speech=True)
     async with TrafficControlledHttpClient(provider="ollama", timeout=90.0) as http:
         if image is not None:
-            inventory = await _chat(
-                http,
-                client.endpoint,
-                runtime.model_name,
-                [
-                    {"role": "system", "content": SCREEN_PROMPT},
-                    {
-                        "role": "user",
-                        "content": "",
-                        "images": [base64.b64encode(image).decode("ascii")],
-                    },
-                ],
-                schema=SCREEN_SCHEMA,
-            )
-            try:
-                screen = parse_screen(json.loads(_text(inventory)))
-            except json.JSONDecodeError:
-                screen = None
-
+            screen = await _read_screen(http, endpoint, model, image)
         referenced, code = resolve_reference(question, screen, docs)
-        if (
-            not referenced
-            and _RUNTIME_SUBJECT.search(question)
-            and _RUNTIME_STATUS.search(question)
-        ):
-            return await _answer_runtime_status(
-                http, client.endpoint, runtime.model_name, question, screen
+        if referenced:
+            return await _answer_from_document(
+                http, runtime, question, code, docs, screen, history
             )
-        if not referenced:
-            if image is not None:
-                if screen is not None and screen["layout"] == "single":
-                    code = screen["cards"][0]["code"]
-            elif prior_code in docs and _RESUME_DOCUMENT.search(question):
-                code = prior_code
-            elif prior_code in docs:
-                prompt = (
-                    SELECT_TOOL
-                    + f" Zweryfikowany kod poprzedniego komunikatu to {prior_code}. "
-                    "Jeśli pytanie dotyczy poprzedniego komunikatu, wybierz previous_source "
-                    "także wtedy, gdy użytkownik nie powtórzył jego kodu."
-                )
-                first = await _chat(
-                    http,
-                    client.endpoint,
-                    runtime.model_name,
-                    [
-                        {"role": "system", "content": prompt},
-                        *history_rows(history),
-                        {"role": "user", "content": question},
-                    ],
-                    schema=SELECTION_SCHEMA,
-                )
-                if _selected_code(first, prior_code, docs) == prior_code:
-                    code = prior_code
-        if code is None:
-            return PilotAnswer(CLARIFY, screen=screen, question=question)
-        document = docs.get(code)
-        if document is None:
-            return PilotAnswer(
-                f"Dokumentacja pilotażu nie zawiera kodu {code}.",
-                screen=screen,
-                question=question,
-                tool=TOOL_NAME,
-                tool_status="not_found",
+        if _RUNTIME_SUBJECT.search(question) and _RUNTIME_STATUS.search(question):
+            return await _answer_runtime_status(http, endpoint, model, question, screen)
+        if image is None:
+            code = await _select_followup_source(
+                http, endpoint, model, question, history, docs
             )
-        source_prompt = (
-            ANSWER_FROM_SOURCE + "\n" + json.dumps(document, ensure_ascii=False)
+        elif screen is not None and screen["layout"] == "single":
+            code = screen["cards"][0]["code"]
+        return await _answer_from_document(
+            http, runtime, question, code, docs, screen, history
         )
-        previous_turn = history[-2:]
-        answer_history = (
-            history_rows(previous_turn)
-            if previous_turn and previous_turn[-1].get("omni_pilot_code") == code
-            else []
-        )
-        final = await _chat(
-            http,
-            client.endpoint,
-            runtime.model_name,
-            [
-                {"role": "system", "content": source_prompt},
-                *answer_history,
-                {"role": "user", "content": question},
-            ],
-        )
-    text = _text(final).partition("\n\nŹródło: ")[0].rstrip()
-    if not text or final.get("tool_calls"):
-        text = document["content"]
-    return PilotAnswer(
-        text,
-        code,
-        (document["title"],),
-        screen,
-        question=question,
-        tool=TOOL_NAME,
-        tool_status="ok",
-    )
 
 
 def conversation_pair(
@@ -459,7 +488,7 @@ def conversation_pair(
     )
     text = answer.text
     if answer.sources:
-        text += "\n\nŹródło: " + answer.sources[0]
+        text += SOURCE_SEPARATOR + answer.sources[0]
     return [
         {"role": "user", "content": user, "mode": "omni_pilot"},
         {

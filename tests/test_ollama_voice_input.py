@@ -852,7 +852,8 @@ async def test_gemma_asr_places_transcription_task_with_audio(monkeypatch, model
     )
     payload = calls[0]
     assert len(calls) == 1
-    assert payload["model"] == model and payload["think"] is False
+    assert payload["model"] == model
+    assert payload["think"] is False
     assert len(payload["messages"]) == 1
     user = payload["messages"][0]
     assert user["role"] == "user"

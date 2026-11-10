@@ -1713,6 +1713,16 @@ function createPlayAudioResponseHandler(params: {
   };
 }
 
+function voiceResponseSources(sources: unknown): string[] {
+  if (!Array.isArray(sources)) return [];
+  return sources.filter((source): source is string => typeof source === "string" && source.trim().length > 0);
+}
+
+function voiceQuestion(question: unknown, t: Translator): string {
+  return typeof question === "string" && question.trim()
+    ? question : t("voice.multimodal.spokenQuestion");
+}
+
 function createHandleAudioMessageHandler(params: {
   t: Translator;
   onTranscriptReady?: (text: string) => void;
@@ -1760,7 +1770,8 @@ function createHandleAudioMessageHandler(params: {
       return;
     }
     if (messageType === "complete") {
-      handleVoiceCompletion(t, data.status === "no_transcript", setStatusMessage, setLastAudioSignal, setProcessingStatus);
+      const noTranscript = data.status === "no_transcript" || (data.multimodal === true && data.no_speech === true);
+      handleVoiceCompletion(t, noTranscript, setStatusMessage, setLastAudioSignal, setProcessingStatus);
       refreshAudioStatus().catch(() => undefined);
       return;
     }
@@ -2685,25 +2696,16 @@ function VoiceCommandCenterPanel({
   const handleAudioMessage = useCallback(
     (data: Record<string, unknown>) => {
       if (data.type === "response_text") {
-        const sources: unknown = data.sources;
-        setResponseSources(Array.isArray(sources)
-          ? sources.filter((source): source is string => typeof source === "string" && source.trim().length > 0)
-          : []);
+        setResponseSources(voiceResponseSources(data.sources));
         if (data.multimodal === true) {
           setMultimodalActive(true);
-          setTranscription(typeof data.question === "string" && data.question.trim()
-            ? data.question : t("voice.multimodal.spokenQuestion"));
+          setTranscription(voiceQuestion(data.question, t));
           if (imageInFlightRef.current) clearImage();
         }
       }
       if (data.multimodal === true && (data.type === "complete" || data.type === "error")) {
         setMultimodalPending(false);
         imageInFlightRef.current = false;
-        if (data.type === "complete" && data.no_speech === true) {
-          setProcessingStatus(null);
-          setStatusMessage(t("voice.status.noTranscript"));
-          return;
-        }
       }
       createHandleAudioMessageHandler({
         t,

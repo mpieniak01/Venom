@@ -855,3 +855,50 @@ def test_chat_note_indexes_completed_answer_once_and_respects_session(
     assert metadata["session_id"] == "own"
     assert metadata["provenance_request_id"] == answer_id
     assert metadata["provenance_source"] == "chat_note"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("model", "endpoint", "filtered"),
+    [
+        ("lfm3-omni:2b", "http://127.0.0.1:11434/v1", True),
+        ("lfm3-omni:2b", "https://remote.invalid/v1", False),
+        ("gemma4:e4b", "http://127.0.0.1:11434/v1", False),
+    ],
+)
+async def test_omni_plain_history_does_not_replay_saved_full_diagnostics(
+    model, endpoint, filtered
+):
+    from venom_core.services.operator_diagnostics import RUNBOOK
+    from venom_core.utils.llm_runtime import LLMRuntimeInfo
+
+    original_report = (
+        "**Diagnostyka Full · dowody**\n"
+        "- /api/v1/system/services · odczytano\n"
+        f"Źródło procedury · {RUNBOOK}"
+    )
+    report_turn = [
+        {"role": "user", "content": "Sprawdź Venoma"},
+        {"role": "assistant", "content": original_report},
+    ]
+    arithmetic_turn = [
+        {"role": "user", "content": "Ile to dwa razy dwa?"},
+        {"role": "assistant", "content": "4"},
+    ]
+    copied_report_turn = [
+        {"role": "user", "content": "Co to jest kwadrat?"},
+        {"role": "assistant", "content": original_report + "\n\nDalsza odpowiedź."},
+    ]
+    history = report_turn + arithmetic_turn + copied_report_turn
+    request = SimpleChatRequest(content="A ile to trzy razy trzy?", history=history)
+    messages = [{"role": "user", "content": request.content}]
+    runtime = LLMRuntimeInfo("ollama", model, endpoint, "local", "LOCAL")
+
+    actual = await llm_simple_service._include_simple_request_context(
+        request, runtime, model, "", messages
+    )
+
+    assert actual == (arithmetic_turn if filtered else history) + messages
+    assert [
+        entry.model_dump(exclude={"material_ids"}) for entry in request.history
+    ] == history

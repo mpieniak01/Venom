@@ -1168,7 +1168,28 @@ async def _include_simple_request_context(
     history = _plain_request_history(
         request, runtime, system_prompt, messages[-1]["content"]
     )
+    if runtime.provider == "ollama":
+        from venom_core.services.ollama_audio import OMNI_MODEL_ID, is_host_ollama
+
+        if model_name == OMNI_MODEL_ID and is_host_ollama(runtime):
+            history = _without_full_diagnostic_turns(history)
     return [*messages[:-1], *history, messages[-1]]
+
+
+def _without_full_diagnostic_turns(
+    history: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Keep operator evidence on screen without prompting Omni to replay it."""
+    from venom_core.services.operator_diagnostics import is_full_diagnostic_report
+
+    kept = []
+    for index, item in enumerate(history):
+        if item["role"] == "assistant" and is_full_diagnostic_report(item["content"]):
+            if index and history[index - 1]["role"] == "user":
+                kept.pop()
+        else:
+            kept.append(item)
+    return kept
 
 
 def _plain_request_history(

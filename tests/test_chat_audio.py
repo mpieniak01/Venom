@@ -430,7 +430,7 @@ def omni_runtime(monkeypatch):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("host_ready", [True, False])
-async def test_empty_omni_transcript_tries_host_whisper_when_available(
+async def test_empty_omni_transcript_keeps_native_route_even_when_host_is_available(
     rig, omni_runtime, monkeypatch, host_ready
 ):
     from venom_core.services import ollama_audio
@@ -450,11 +450,11 @@ async def test_empty_omni_transcript_tries_host_whisper_when_available(
     assert response.status_code == 200
     assert response.json() == {
         "session_id": "existing",
-        "text": "hello" if host_ready else "",
-        "pipeline": "host_stt" if host_ready else "ollama_audio",
+        "text": "",
+        "pipeline": "ollama_audio",
     }
     native.assert_awaited_once()
-    assert engine.transcribe_checked.await_count == int(host_ready)
+    engine.transcribe_checked.assert_not_awaited()
 
 
 @pytest.mark.asyncio

@@ -92,7 +92,6 @@ def test_resolve_voice_pipeline_selects_declared_native_audio():
 
     assert decision.profile == "multimodal_audio"
     assert decision.stt == "ollama_audio"
-    assert resolve_voice_pipeline(caps, prefer_host_audio=True).stt == "faster_whisper"
     assert decision.reasoning == "think_api"
     assert decision.tools == "policy_gated_tools"
     assert decision.vision == "images_api"

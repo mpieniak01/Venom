@@ -177,7 +177,7 @@ async def test_build_voice_runtime_snapshot_returns_pipeline_snapshot(monkeypatc
     monkeypatch.setattr(
         main_module,
         "resolve_voice_pipeline",
-        lambda _caps, **_kwargs: DummyPipeline(),
+        lambda _caps: DummyPipeline(),
     )
 
     snapshot = await main_module._build_voice_runtime_snapshot()

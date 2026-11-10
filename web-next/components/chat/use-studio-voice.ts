@@ -6,7 +6,7 @@ import { voiceRecorderMimeType } from "@/lib/voice-media-recorder";
 export type StudioVoiceStatus = "voiceIdle" | "permission" | "listening" | "transcribing" | "generating" | "speaking" | "muted" | "voiceEnded";
 export type StudioVoiceOptions = { session: string; stopRevision?: number; mode: "dictation" | "conversation"; language: string; busy: boolean; messages: ChatMessage[];
   onDraft: (text: string) => void; onTurn: (text: string) => Promise<boolean>; onStop: () => Promise<void>; onClose: () => void;
-  multimodalEnabled?: boolean; hostAudioAvailable?: boolean; onMultimodalBusy?: (busy: boolean) => void; onMultimodalCommit?: () => void };
+  multimodalEnabled?: boolean; onMultimodalBusy?: (busy: boolean) => void; onMultimodalCommit?: () => void };
 type CapturedVoiceTurn = {
   audio: PcmCapture | Blob;
   options: StudioVoiceOptions;
@@ -73,7 +73,7 @@ export function useStudioVoice(options: StudioVoiceOptions, captureFactory?: typ
   useEffect(() => {
     if (options.stopRevision !== previousStop.current) { previousStop.current = options.stopRevision; reset(); setStatus("voiceIdle"); }
   }, [options.stopRevision, reset]);
-  const speak = useCallback(async (text: string, preferNative = false) => {
+  const speak = useCallback(async (text: string, preferNative = true) => {
     const current = epoch.current;
     const controller = new AbortController(); request.current?.abort(); request.current = controller;
     setStatus("speaking");
@@ -93,9 +93,9 @@ export function useStudioVoice(options: StudioVoiceOptions, captureFactory?: typ
     if (!turn) return;
     if (options.busy) turn.observedBusy = true;
     const answer = [...options.messages].reverse().find(message => message.role === "assistant" && message.text && !message.pending && !["FAILED", "CANCELLED", "LOST"].includes(message.status ?? "") && !turn.previous.has(message.bubbleId));
-    if (answer && !options.busy) { waiting.current = null; void speak(answer.text, options.hostAudioAvailable === false); }
+    if (answer && !options.busy) { waiting.current = null; void speak(answer.text); }
     else if (!options.busy && turn.observedBusy) { waiting.current = null; setError("voiceError"); setStatus("voiceIdle"); }
-  }, [options.messages, options.busy, options.hostAudioAvailable, speak]);
+  }, [options.messages, options.busy, speak]);
   const selectImage = useCallback((file: File | null) => {
     if (file && (file.size === 0 || !["image/png", "image/jpeg"].includes(file.type))) {
       setError("voiceImageInvalid");
@@ -147,7 +147,7 @@ export function useStudioVoice(options: StudioVoiceOptions, captureFactory?: typ
       return;
     }
     setSources([]);
-    const result = await transcribeChatAudio(voiceOptions.session, audio, voiceOptions.language, signal, voiceOptions.hostAudioAvailable === false);
+    const result = await transcribeChatAudio(voiceOptions.session, audio, voiceOptions.language, signal, true);
     if (!isCurrent()) return;
     if (result.session_id !== voiceOptions.session) {
       idleWithError("voiceError");

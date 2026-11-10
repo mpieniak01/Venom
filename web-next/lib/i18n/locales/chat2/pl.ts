@@ -67,7 +67,7 @@ export const chat2 = {
   "voicePipeline": "Ścieżka głosu",
   "voiceGemma": "Gemma + modele głosu",
   "voiceOmni": "LFM3-Omni (eksperymentalny)",
-  "voicePipelineHint": "Wybór zmienia aktywny model całego stosu. Zwykła rozmowa korzysta z lokalnego Whispera i Pipera, gdy są dostępne. Pilotaż z obrazem używa audio Omni.",
+  "voicePipelineHint": "Wybór zmienia aktywny model całego stosu. Omni używa własnego rozpoznawania i syntezy mowy.",
   "voiceOmniUnavailable": "Omni jest niedostępny dla obecnego środowiska, języka lub ustawień głosu.",
   "voiceActiveModel": "Aktywny model: {{model}}",
   "voicePipelineError": "Nie udało się przełączyć ścieżki głosu. Spróbuj ponownie po zakończeniu aktywnego żądania.",

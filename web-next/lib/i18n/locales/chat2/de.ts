@@ -67,7 +67,7 @@ export const chat2 = {
   "voicePipeline": "Sprachverarbeitung",
   "voiceGemma": "Gemma + Sprachmodelle",
   "voiceOmni": "LFM3-Omni (experimentell)",
-  "voicePipelineHint": "Die Auswahl ändert das aktive Modell im gesamten System. Normale Gespräche nutzen lokales Whisper und Piper, sofern verfügbar. Der Bildpilot nutzt Omni-Audio.",
+  "voicePipelineHint": "Die Auswahl ändert das aktive Modell im gesamten System. Omni nutzt eigene Spracherkennung und Sprachsynthese.",
   "voiceOmniUnavailable": "Omni ist für die aktuelle Laufzeit, Sprache oder Spracheinstellung nicht verfügbar.",
   "voiceActiveModel": "Aktives Modell: {{model}}",
   "voicePipelineError": "Die Sprachverarbeitung konnte nicht gewechselt werden. Versuche es nach Abschluss der aktuellen Anfrage erneut.",

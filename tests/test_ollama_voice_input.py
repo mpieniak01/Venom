@@ -542,10 +542,10 @@ async def test_full_omni_sends_native_pcm_or_reports_missing_capability(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("host_available", [True, False])
-async def test_omni_ordinary_voice_prefers_host_when_available(
+async def test_omni_ordinary_voice_remains_native_when_host_is_available(
     monkeypatch, host_available
 ):
-    """The selected Omni model can answer text without owning microphone decoding."""
+    """Host availability must not replace the selected Omni audio pipeline."""
     handler = object.__new__(stream.AudioStreamHandler)
     handler.audio_engine = object() if host_available else None
     handler._resolve_audio_decoder_plan = lambda: {
@@ -575,5 +575,5 @@ async def test_omni_ordinary_voice_prefers_host_when_available(
         ),
     )
     assert (await handler._resolve_voice_input_decoder_plan())["effective"] == (
-        "faster_whisper" if host_available else "ollama_audio"
+        "ollama_audio"
     )

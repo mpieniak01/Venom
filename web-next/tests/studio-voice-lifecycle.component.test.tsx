@@ -45,7 +45,7 @@ test("a late transcription after ending voice cannot alter a draft or send a tur
 
 test("conversation uses the same text turn once and never speaks a stopped partial", async () => {
   const fixture = options(); fixture.props.mode = "conversation"; let speech = 0;
-  globalThis.fetch = async input => { if (String(input).includes("/speak")) { speech++; return new Response(new Blob(["wav"])); } assert.equal(new URL(String(input), "http://localhost").searchParams.has("prefer_native"), false); return Response.json({ session_id: "one", text: "one user turn" }); };
+  globalThis.fetch = async input => { if (String(input).includes("/speak")) { speech++; return new Response(new Blob(["wav"])); } assert.equal(new URL(String(input), "http://localhost").searchParams.has("prefer_native"), true); return Response.json({ session_id: "one", text: "one user turn" }); };
   const hook = renderHook(props => useStudioVoice(props, async () => ({ finish: async () => recorded(), dispose: () => {} })), { initialProps: fixture.props });
   await act(async () => { await hook.result.current.start(); }); await act(async () => { await hook.result.current.finish(); });
   assert.deepEqual(fixture.turns, ["one user turn"]);
@@ -209,7 +209,7 @@ test("stopping an image turn aborts the request and ignores a late response", as
   assert.equal(hook.result.current.status, "voiceIdle");
 });
 
-test("ordinary Omni conversation recovers after silence and speaks successive replies with host TTS", async (context) => {
+test("ordinary Omni conversation recovers after silence and keeps native ASR and TTS despite host availability", async (context) => {
   const fixture = options();
   const transcripts = ["", "Co to jest kwadrat?", "Ile to trzy razy trzy?"];
   const spoken: string[] = [];
@@ -229,12 +229,12 @@ test("ordinary Omni conversation recovers after silence and speaks successive re
   globalThis.fetch = async (input, init) => {
     const url = new URL(String(input), "http://localhost");
     if (url.pathname.endsWith("/transcribe")) {
-      assert.equal(url.searchParams.has("prefer_native"), false);
+      assert.equal(url.searchParams.has("prefer_native"), true);
       return Response.json({ session_id: "one", text: transcripts.shift() });
     }
     assert.ok(url.pathname.endsWith("/speak"));
     const speech = JSON.parse(String(init?.body));
-    assert.equal(speech.prefer_native, false);
+    assert.equal(speech.prefer_native, true);
     spoken.push(speech.text);
     return new Response(new Blob(["waveform"]));
   };

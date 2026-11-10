@@ -178,10 +178,7 @@ async def transcribe(
         logger.info(
             "chat_audio_transcription pipeline=ollama_audio has_text={}", has_text
         )
-        if has_text or engine is None:
-            return {"session_id": session_id, "text": text, "pipeline": "ollama_audio"}
-        if await request.is_disconnected():
-            raise HTTPException(499, {"reason_code": "audio_request_cancelled"})
+        return {"session_id": session_id, "text": text, "pipeline": "ollama_audio"}
     text = await transcribe_pcm(engine, pcm, sample_rate, language)
     logger.info(
         "chat_audio_transcription pipeline=host_stt has_text={}", bool(text.strip())

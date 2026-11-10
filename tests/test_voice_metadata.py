@@ -446,7 +446,7 @@ async def test_build_voice_runtime_snapshot_covers_non_ollama_and_ollama_paths(
     monkeypatch.setattr(
         core_main,
         "resolve_voice_pipeline",
-        lambda _caps, **_kwargs: SimpleNamespace(
+        lambda _caps: SimpleNamespace(
             to_dict=lambda: {
                 "profile": "ollama_native_audio",
                 "stt": "native_audio",

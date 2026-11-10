@@ -215,6 +215,13 @@ async def transcribe_pcm_audio(
         return ""
     audio = await asyncio.to_thread(encode_pcm_audio, samples, rate)
     language_name = {"pl": "Polish", "en": "English", "de": "German"}[language]
+    if is_gemma4_model_name(model):
+        prompt = (
+            f"Transcribe the following speech segment in {language_name} into "
+            f"{language_name} text. Only output the transcription, with no newlines. "
+            "Write numbers using digits."
+        )
+        return await _transcribe(endpoint, model, audio, prompt, context_length)
     # LiquidAI's documented ASR task: system instruction + audio-only user turn.
     return await _transcribe(
         endpoint, model, audio, f"Perform ASR in {language_name}.", context_length
@@ -229,10 +236,14 @@ async def _transcribe(
     retry_uncertain = model == OMNI_MODEL_ID and prompt == _POLISH_ASR_PROMPT
     payload = {
         "model": model,
-        "messages": [
-            {"role": "system", "content": prompt},
-            {"role": "user", "content": "", "images": [audio]},
-        ],
+        "messages": (
+            [{"role": "user", "content": prompt, "images": [audio]}]
+            if is_gemma4_model_name(model)
+            else [
+                {"role": "system", "content": prompt},
+                {"role": "user", "content": "", "images": [audio]},
+            ]
+        ),
         "stream": False,
         "think": False,
         "options": {

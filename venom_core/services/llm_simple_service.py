@@ -19,6 +19,7 @@ from fastapi.responses import StreamingResponse
 from venom_core.api.schemas.llm_simple import MAX_CHAT_HISTORY_CHARS, SimpleChatRequest
 from venom_core.config import DEFAULT_SIMPLE_MODE_SYSTEM_PROMPT, SETTINGS
 from venom_core.core.metrics import get_metrics_collector
+from venom_core.core.ollama_runtime_capabilities import is_gemma4_model_name
 from venom_core.core.tracer import TraceStatus
 from venom_core.services import llm_simple_transport
 from venom_core.services.llm_simple_payload_service import (
@@ -1224,7 +1225,11 @@ def _retry_without_previous_attempts(request: SimpleChatRequest) -> SimpleChatRe
 
 
 def _simple_system_prompt(
-    request: SimpleChatRequest, system_context: str, *, plain_omni: bool = False
+    request: SimpleChatRequest,
+    system_context: str,
+    *,
+    plain_omni: bool = False,
+    plain_gemma: bool = False,
 ) -> str:
     system_prompt = (SETTINGS.SIMPLE_MODE_SYSTEM_PROMPT or "").strip()
     if (
@@ -1236,6 +1241,8 @@ def _simple_system_prompt(
         and any(turn.role == "assistant" for turn in request.history)
         and not system_prompt
     ):
+        system_prompt = _OMNI_HISTORY_POLICY
+    if plain_gemma and system_prompt in {"", DEFAULT_SIMPLE_MODE_SYSTEM_PROMPT}:
         system_prompt = _OMNI_HISTORY_POLICY
     if system_context:
         system_prompt = "\n\n".join(filter(None, (system_prompt, system_context)))
@@ -1290,7 +1297,18 @@ async def _stream_non_openrouter_chat(
                 }
             )
     system_prompt = _simple_system_prompt(
-        request, system_context, plain_omni=plain_omni
+        request,
+        system_context,
+        plain_omni=plain_omni,
+        plain_gemma=(
+            is_gemma4_model_name(model_name)
+            and is_host_ollama(runtime)
+            and not (
+                request.tools
+                or request.tool_choice is not None
+                or has_materials(request)
+            )
+        ),
     )
     user_content = _trim_user_content_for_runtime(
         request.content, system_prompt, runtime, request_id

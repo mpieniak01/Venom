@@ -1078,7 +1078,7 @@ async def test_plain_omni_retry_preserves_distinct_context_and_configured_prompt
 
     expected_prompt = (
         prompt
-        if model == "gemma4:e4b" or prompt == "Własna instrukcja"
+        if prompt == "Własna instrukcja"
         else llm_simple_service._OMNI_HISTORY_POLICY
     )
     assert captured == [
@@ -1159,3 +1159,20 @@ async def test_plain_omni_stated_updates_use_user_history_and_questions_can_reca
     assert (assistant in captured) is retains_assistant
     assert (captured[0]["role"] == "system") is retains_assistant
     assert request.history[1].content == assistant["content"]
+
+
+@pytest.mark.parametrize(
+    "custom", ["", "You are a helpful assistant.", "Custom instruction"]
+)
+def test_plain_gemma_direct_policy_preserves_custom_prompt(monkeypatch, custom):
+    monkeypatch.setattr(
+        llm_simple_service.SETTINGS, "SIMPLE_MODE_SYSTEM_PROMPT", custom
+    )
+    request = SimpleChatRequest(content="Pytanie")
+    result = llm_simple_service._simple_system_prompt(request, "", plain_gemma=True)
+    expected = (
+        custom
+        if custom == "Custom instruction"
+        else llm_simple_service._OMNI_HISTORY_POLICY
+    )
+    assert result == expected

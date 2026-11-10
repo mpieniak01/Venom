@@ -75,6 +75,25 @@ def _native_omni(prefer_native: bool) -> LLMRuntimeInfo | None:
     return None
 
 
+def _native_asr(prefer_native: bool) -> LLMRuntimeInfo | None:
+    """Use the same native Gemma ASR as Full when automatic routing is enabled."""
+    omni = _native_omni(prefer_native)
+    if omni is not None or not prefer_native:
+        return omni
+    runtime = get_active_llm_runtime()
+    if (
+        ollama_audio.is_host_ollama(runtime)
+        and ollama_audio.is_gemma4_model_name(runtime.model_name or "")
+        and ollama_audio.allows_native_route(
+            route_profile=SETTINGS.VOICE_ROUTE_PROFILE,
+            decoder_profile=SETTINGS.AUDIO_DECODER_PROFILE,
+            decoder_chain=SETTINGS.AUDIO_DECODER_CHAIN,
+        )
+    ):
+        return runtime
+    return None
+
+
 @router.get("/pipelines")
 async def voice_pipelines(
     request: Request,
@@ -132,7 +151,7 @@ async def transcribe(
 ):
     """Transcribe bounded PCM using the selected local or host decoder."""
     engine = _engine(request)
-    runtime = _native_omni(prefer_native)
+    runtime = _native_asr(prefer_native)
     if engine is None and runtime is None:
         raise HTTPException(503, {"reason_code": "audio_not_ready"})
     if (

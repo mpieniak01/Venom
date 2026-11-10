@@ -826,3 +826,33 @@ async def test_voice_pipeline_catalog_checks_local_capabilities_without_loading(
     tags.assert_not_awaited()
     engine.transcribe_checked.assert_not_awaited()
     engine.speak.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("prefer_native", [True, False])
+async def test_gemma_studio_native_asr_matches_full_without_native_tts(
+    rig, omni_runtime, monkeypatch, prefer_native
+):
+    from venom_core.api.routes import chat_audio as routes
+    from venom_core.services import ollama_audio
+
+    client, engine, _ = rig
+    runtime, _ = omni_runtime
+    runtime.model_name = "gemma4:e4b"
+    monkeypatch.setattr(routes.SETTINGS, "VOICE_ROUTE_PROFILE", "auto")
+    monkeypatch.setattr(routes.SETTINGS, "AUDIO_DECODER_PROFILE", "auto")
+    monkeypatch.setattr(routes.SETTINGS, "AUDIO_DECODER_CHAIN", "")
+    native = AsyncMock(return_value="Iga")
+    monkeypatch.setattr(ollama_audio, "transcribe_pcm_audio", native)
+    response = await client.post(
+        "/api/v1/chat/audio/transcribe",
+        params={"session_id": "gemma", "prefer_native": prefer_native},
+        headers={"Content-Type": "application/octet-stream"},
+        content=b"\x01\x00" * 160,
+    )
+    assert response.status_code == 200
+    assert response.json()["pipeline"] == (
+        "ollama_audio" if prefer_native else "host_stt"
+    )
+    assert native.await_count == int(prefer_native)
+    assert routes._native_omni(True) is None

@@ -814,3 +814,43 @@ async def test_uncertain_polish_omni_compares_one_faster_decode(
         with wave.open(io.BytesIO(base64.b64decode(encoded))) as wav:
             assert wav.getframerate() == 16000
             assert wav.getnframes() in (1481, 1482)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("model", ["gemma4:e4b", "gemma4-e4b-ab-qlora85:q8_0"])
+async def test_gemma_asr_places_transcription_task_with_audio(monkeypatch, model):
+    calls = []
+
+    class Client:
+        def __init__(self, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_):
+            return False
+
+        async def apost(self, url, **kwargs):
+            calls.append(kwargs["json"])
+            return SimpleNamespace(
+                json=lambda: {"done": True, "message": {"content": "Pytanie"}}
+            )
+
+    monkeypatch.setattr(audio, "TrafficControlledHttpClient", Client)
+    assert (
+        await audio.transcribe_pcm_audio(
+            "http://local", model, b"\x01\x00" * 160, 16000, "pl"
+        )
+        == "Pytanie"
+    )
+    payload = calls[0]
+    assert len(calls) == 1
+    assert payload["model"] == model and payload["think"] is False
+    assert len(payload["messages"]) == 1
+    user = payload["messages"][0]
+    assert user["role"] == "user"
+    assert user["content"].startswith(
+        "Transcribe the following speech segment in Polish into Polish text."
+    )
+    assert base64.b64decode(user["images"][0]).startswith(b"RIFF")

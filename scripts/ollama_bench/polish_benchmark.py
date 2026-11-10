@@ -38,6 +38,7 @@ from scripts.ollama_bench.run_lfm3 import (
 ENDPOINT = "http://127.0.0.1:11434"
 GEMMA = "gemma4:e4b"
 SPLITS = ("validation", "final")
+LOCK_PATH = Path(__file__).with_name("polish_v1.lock.json")
 OPTIONS = {"temperature": 0, "seed": 42, "num_ctx": CTX, "num_predict": 128}
 SPEECH_SAMPLES = (
     "Pani Łucja przyjedzie do Żyrardowa o siedemnastej.",
@@ -166,6 +167,8 @@ def verify(folder: Path) -> dict:
     manifest_file = folder / "manifest.json"
     freeze = json.loads((folder.parent / "freeze.json").read_text())
     manifest = json.loads(manifest_file.read_text())
+    if freeze != json.loads(LOCK_PATH.read_text()):
+        raise ValueError("Fixture manifests differ from the versioned benchmark lock")
     if freeze[manifest["split"]] != digest(manifest_file):
         raise ValueError("Manifest differs from the frozen benchmark")
     for case in manifest["cases"]:

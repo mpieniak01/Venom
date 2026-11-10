@@ -7,6 +7,7 @@ import json
 import wave
 from contextlib import asynccontextmanager, nullcontext
 from copy import deepcopy
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
@@ -50,8 +51,9 @@ def _pilot_image() -> bytes:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("encoded", [False, True])
 async def test_pilot_uses_image_and_raw_audio_in_one_turn_and_retains_source(
-    rig, monkeypatch
+    rig, monkeypatch, encoded
 ):
     """Send both modalities together and use the selected source on a later turn."""
     client, engine, _ = rig
@@ -89,6 +91,20 @@ async def test_pilot_uses_image_and_raw_audio_in_one_turn_and_retains_source(
     image = _pilot_image()
     pcm = b"\x00\x10" * 100
     files = {"audio": ("recording.pcm", pcm)}
+    if encoded:
+
+        def decode(command, **_options):
+            assert command[command.index("-f") + 1] == "matroska"
+            assert command[command.index("-protocol_whitelist") + 1] == "file"
+            assert command[command.index("-t") + 1] == "61"
+            assert Path(command[command.index("-i") + 1]).read_bytes() == b"webm"
+            with wave.open(command[-1], "wb") as wav:
+                wav.setparams((1, 2, 16000, 0, "NONE", "not compressed"))
+                wav.writeframes(pcm)
+            return SimpleNamespace(returncode=0)
+
+        monkeypatch.setattr(chat_audio.subprocess, "run", decode)
+        files = {"audio": ("recording.webm", b"webm", "audio/webm;codecs=opus")}
     result = await client.post(
         "/api/v1/chat/audio/multimodal-turn",
         data=data,
@@ -145,7 +161,18 @@ def test_pilot_selection_can_only_dispatch_a_valid_document_lookup(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("error", ["invalid_image", "missing_image", "bad_type"])
+@pytest.mark.parametrize(
+    "error",
+    [
+        "invalid_image",
+        "missing_image",
+        "bad_type",
+        "bad_media",
+        "decode_failed",
+        "empty_recording",
+        "decoder_unavailable",
+    ],
+)
 async def test_pilot_rejects_unusable_media_before_inference(rig, monkeypatch, error):
     """Return validation errors or a clarification without calling the model."""
     client, _, _ = rig
@@ -161,6 +188,25 @@ async def test_pilot_rejects_unusable_media_before_inference(rig, monkeypatch, e
     if error == "bad_type":
         result = await client.post(url, content=b"bad")
         assert result.status_code == 415
+    elif error in {
+        "bad_media",
+        "decode_failed",
+        "empty_recording",
+        "decoder_unavailable",
+    }:
+        mime = "text/plain" if error == "bad_media" else "audio/webm"
+        recording = b"" if error == "empty_recording" else b"broken"
+
+        def decode(*_args, **_kwargs):
+            if error == "decoder_unavailable":
+                raise FileNotFoundError("ffmpeg")
+            return SimpleNamespace(returncode=1, stderr="invalid input")
+
+        monkeypatch.setattr(chat_audio.subprocess, "run", decode)
+        result = await client.post(
+            url, data=data, files={"audio": ("voice", recording, mime)}
+        )
+        assert result.status_code == (503 if error == "decoder_unavailable" else 422)
     elif error == "invalid_image":
         result = await client.post(
             url, data=data, files={**files, "image": ("bad.png", b"x")}

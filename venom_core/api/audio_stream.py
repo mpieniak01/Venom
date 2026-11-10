@@ -8,7 +8,6 @@ import inspect
 import io
 import json
 import shutil
-import subprocess
 import time
 import uuid
 import wave
@@ -26,7 +25,11 @@ from fastapi import HTTPException, WebSocket, WebSocketDisconnect
 from venom_core.config import SETTINGS
 from venom_core.perception.audio_engine import AudioEngine
 from venom_core.services import ollama_audio, omni_pilot
-from venom_core.services.chat_audio import MAX_AUDIO_BYTES, validate_pcm
+from venom_core.services.chat_audio import (
+    MAX_AUDIO_BYTES,
+    decode_media_recording,
+    validate_pcm,
+)
 from venom_core.services.conversation_providers import (
     conversation_turn,
     create_conversation_context,
@@ -2619,37 +2622,7 @@ class AudioStreamHandler:
                     original_file.write(chunk)
         wav_path = session_dir / VOICE_SESSION_WAV_FILENAME
 
-        command = [
-            "ffmpeg",
-            "-y",
-            "-hide_banner",
-            "-loglevel",
-            "error",
-            "-fflags",
-            "+genpts",
-            "-avoid_negative_ts",
-            "make_zero",
-            "-i",
-            str(original_path),
-            "-ac",
-            "1",
-            "-ar",
-            "16000",
-            "-af",
-            "aresample=async=1:first_pts=0,highpass=f=80,lowpass=f=7600,dynaudnorm=f=150:g=8:p=0.9",
-            "-acodec",
-            "pcm_s16le",
-            str(wav_path),
-        ]
-        result = subprocess.run(
-            command,
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-        if result.returncode != 0:
-            raise RuntimeError(f"ffmpeg decode failed: {result.stderr.strip()}")
+        decode_media_recording(original_path, wav_path)
 
         audio, sample_rate = self._load_wav_int16(wav_path)
         metadata = {

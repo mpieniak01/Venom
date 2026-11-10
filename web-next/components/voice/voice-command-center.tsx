@@ -1,5 +1,6 @@
 "use client";
 
+import { VOICE_MICROPHONE_CONSTRAINTS, voiceRecorderMimeType } from "@/lib/voice-media-recorder";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type {
   Dispatch,
@@ -941,12 +942,7 @@ const createVoiceCaptureEnvironment = async (
   }
 
   const mediaStream = await navigator.mediaDevices.getUserMedia({
-    audio: {
-      channelCount: 1,
-      echoCancellation: true,
-      noiseSuppression: true,
-      autoGainControl: true,
-    },
+    audio: VOICE_MICROPHONE_CONSTRAINTS,
   });
   const audioContextCtor = getAudioContextCtor(deps.activeWindow);
   if (!audioContextCtor || typeof MediaRecorder === "undefined") {
@@ -1583,19 +1579,6 @@ function createReleasePlaybackResourcesHandler(params: {
     try { src?.stop(); } catch { /* ignore races with natural end */ }
     try { src?.disconnect(); } catch { /* ignore */ }
     try { analyser?.disconnect(); } catch { /* ignore */ }
-  };
-}
-
-function createGetMediaRecorderMimeTypeHandler() {
-  return () => {
-    if (typeof MediaRecorder === "undefined") return "";
-    const candidates = [
-      "audio/webm;codecs=opus",
-      "audio/webm",
-      "audio/ogg;codecs=opus",
-      "audio/ogg",
-    ];
-    return candidates.find((candidate) => MediaRecorder.isTypeSupported(candidate)) ?? "";
   };
 }
 
@@ -2647,7 +2630,7 @@ function VoiceCommandCenterPanel({
     ],
   );
 
-  const getMediaRecorderMimeType = useCallback(() => createGetMediaRecorderMimeTypeHandler()(), []);
+  const getMediaRecorderMimeType = voiceRecorderMimeType;
 
   const ensurePlaybackContext = useCallback(
     () =>

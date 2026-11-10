@@ -2,9 +2,12 @@
 
 import asyncio
 import io
+import subprocess
 import wave
 from collections.abc import Awaitable, Callable
 from contextlib import suppress
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Any
 
 from fastapi import HTTPException
@@ -45,6 +48,73 @@ def validate_pcm(content: bytes, sample_rate: int) -> None:
         raise HTTPException(422, {"reason_code": "audio_invalid_pcm"})
     if len(content) > min(MAX_AUDIO_BYTES, sample_rate * MAX_AUDIO_SECONDS * 2):
         raise HTTPException(413, {"reason_code": "audio_too_large"})
+
+
+def decode_media_recording(
+    source: Path, target: Path, *, input_format: str | None = None
+) -> None:
+    """Apply the Full microphone filters to a MediaRecorder recording."""
+    input_options = []
+    output_options = []
+    if input_format is not None:
+        # The HTTP pilot accepts only known local audio containers and bounded output.
+        input_options = ["-protocol_whitelist", "file", "-f", input_format]
+        output_options = ["-map", "0:a:0", "-t", str(MAX_AUDIO_SECONDS + 1)]
+    command = [
+        "ffmpeg",
+        "-y",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-fflags",
+        "+genpts",
+        "-avoid_negative_ts",
+        "make_zero",
+        *input_options,
+        "-i",
+        str(source),
+        *output_options,
+        "-ac",
+        "1",
+        "-ar",
+        "16000",
+        "-af",
+        "aresample=async=1:first_pts=0,highpass=f=80,lowpass=f=7600,dynaudnorm=f=150:g=8:p=0.9",
+        "-acodec",
+        "pcm_s16le",
+        str(target),
+    ]
+    result = subprocess.run(
+        command,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"ffmpeg decode failed: {result.stderr.strip()}")
+
+
+def decode_pilot_recording(content: bytes, input_format: str) -> tuple[bytes, int]:
+    """Decode bounded browser audio without retaining the uploaded recording."""
+    if not content:
+        raise HTTPException(422, {"reason_code": "audio_invalid_recording"})
+    if len(content) > MAX_AUDIO_BYTES:
+        raise HTTPException(413, {"reason_code": "audio_too_large"})
+    try:
+        with TemporaryDirectory(prefix="venom-pilot-audio-") as directory:
+            source = Path(directory) / "recording"
+            target = Path(directory) / "normalized.wav"
+            source.write_bytes(content)
+            decode_media_recording(source, target, input_format=input_format)
+            with wave.open(str(target), "rb") as recording:
+                rate = recording.getframerate()
+                pcm = recording.readframes(recording.getnframes())
+    except (RuntimeError, subprocess.TimeoutExpired, wave.Error, EOFError) as exc:
+        raise HTTPException(422, {"reason_code": "audio_invalid_recording"}) from exc
+    except OSError as exc:
+        raise HTTPException(503, {"reason_code": "audio_decoder_unavailable"}) from exc
+    return pcm, rate
 
 
 async def transcribe_pcm(

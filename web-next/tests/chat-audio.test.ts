@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { createAudioCapture } from "../lib/chat-audio";
+import { createAudioCapture, createPilotAudioCapture } from "../lib/chat-audio";
 
 for (const nativeRate of [44100, 48000]) {
   test(`capture preserves native ${nativeRate}Hz without overriding microphone rate`, async () => {
@@ -50,3 +50,48 @@ for (const nativeRate of [44100, 48000]) {
     }
   });
 }
+
+test("pilot capture flushes the final MediaRecorder chunk and releases the microphone", async (t) => {
+  let stopped = 0;
+  class Recorder {
+    state = "inactive";
+    mimeType = "audio/webm;codecs=opus";
+    ondataavailable: ((event: { data: Blob }) => void) | null = null;
+    onstop: (() => void) | null = null;
+    start(interval: number) {
+      assert.equal(interval, 100);
+      this.state = "recording";
+    }
+    stop() {
+      this.state = "inactive";
+      queueMicrotask(() => {
+        this.ondataavailable?.({ data: new Blob(["last chunk"]) });
+        this.onstop?.();
+      });
+    }
+  }
+  const saved = Object.getOwnPropertyDescriptor(navigator, "mediaDevices");
+  Object.defineProperty(navigator, "mediaDevices", { configurable: true, value: {
+    getUserMedia: async ({ audio }: MediaStreamConstraints) => {
+      assert.equal((audio as MediaTrackConstraints).autoGainControl, true);
+      return { getTracks: () => [{ stop: () => { stopped++; } }] };
+    },
+  } });
+  t.after(() => {
+    if (saved) Object.defineProperty(navigator, "mediaDevices", saved);
+    else Reflect.deleteProperty(navigator, "mediaDevices");
+  });
+  const original = Object.getOwnPropertyDescriptor(globalThis, "MediaRecorder");
+  Object.defineProperty(globalThis, "MediaRecorder", { configurable: true, value: Recorder });
+  t.after(() => {
+    if (original) Object.defineProperty(globalThis, "MediaRecorder", original);
+    else Reflect.deleteProperty(globalThis, "MediaRecorder");
+  });
+  const signal = new AbortController();
+  const capture = await createPilotAudioCapture("audio/webm;codecs=opus", signal.signal, () => {});
+  const blob = await capture.finish();
+  assert.equal(blob.type, "audio/webm;codecs=opus");
+  assert.equal(await blob.text(), "last chunk");
+  capture.dispose();
+  assert.equal(stopped, 1);
+});

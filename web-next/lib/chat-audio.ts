@@ -1,7 +1,90 @@
 import { getApiBaseUrl } from "./env";
 import { apiFetch } from "./api-client";
 import { normalizeRuntimeId } from "./cockpit-runtime-selection";
-export type AudioCapture = { finish: () => Promise<{ pcm: ArrayBuffer; sampleRate: number }>; dispose: () => void };
+import { VOICE_MICROPHONE_CONSTRAINTS } from "./voice-media-recorder";
+
+export type PcmCapture = { pcm: ArrayBuffer; sampleRate: number };
+export type AudioCapture<T = PcmCapture> = { finish: () => Promise<T>; dispose: () => void };
+
+const MAX_RECORDING_BYTES = 8 * 1024 * 1024;
+
+/** Capture the same browser media container as Full for an Omni pilot turn. */
+export async function createPilotAudioCapture(
+  mimeType: string,
+  signal: AbortSignal,
+  onLimit: () => void,
+): Promise<AudioCapture<Blob>> {
+  signal.throwIfAborted();
+  if (!navigator.mediaDevices?.getUserMedia) throw new Error("micUnavailable");
+  const media = await navigator.mediaDevices.getUserMedia({ audio: VOICE_MICROPHONE_CONSTRAINTS });
+  const releaseTracks = () => media.getTracks().forEach((track) => track.stop());
+  let recorder: MediaRecorder;
+  try {
+    signal.throwIfAborted();
+    recorder = new MediaRecorder(media, { mimeType });
+  } catch (error) {
+    releaseTracks();
+    throw error;
+  }
+
+  const chunks: Blob[] = [];
+  let size = 0;
+  let disposed = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let complete!: (blob: Blob) => void;
+  let fail!: (error: Error) => void;
+  const result = new Promise<Blob>((resolve, reject) => {
+    complete = resolve;
+    fail = reject;
+  });
+  // Errors can arrive while the user is still recording.
+  void result.catch(() => {});
+  const cleanup = () => {
+    if (disposed) return;
+    disposed = true;
+    clearTimeout(timer);
+    signal.removeEventListener("abort", dispose);
+    recorder.ondataavailable = recorder.onstop = recorder.onerror = null;
+    releaseTracks();
+  };
+  const dispose = () => {
+    cleanup();
+    if (recorder.state !== "inactive") recorder.stop();
+    fail(new DOMException("Cancelled", "AbortError"));
+  };
+  recorder.ondataavailable = (event) => {
+    size += event.data.size;
+    if (size > MAX_RECORDING_BYTES) {
+      fail(new Error("audio_too_large"));
+      dispose();
+      onLimit();
+    } else if (event.data.size > 0) {
+      chunks.push(event.data);
+    }
+  };
+  recorder.onstop = () => {
+    cleanup();
+    complete(new Blob(chunks, { type: recorder.mimeType || mimeType }));
+  };
+  recorder.onerror = () => {
+    fail(new Error("capture_failed"));
+    dispose();
+  };
+  signal.addEventListener("abort", dispose, { once: true });
+  try {
+    recorder.start(100);
+  } catch (error) {
+    dispose();
+    throw error;
+  }
+  return { dispose, finish: () => {
+    if (recorder.state !== "inactive") {
+      timer = setTimeout(dispose, 1000);
+      recorder.stop();
+    }
+    return result;
+  } };
+}
 export function encodeMonoPcm(frames: Float32Array[]): ArrayBuffer {
   const length = frames.reduce((total, frame) => total + frame.length, 0);
   const buffer = new ArrayBuffer(length * 2);
@@ -99,16 +182,21 @@ export type MultimodalVoiceReply = { session_id: string; text: string; sources: 
 /** Upload PCM and an optional image together, preserving the caller's cancellation signal. */
 export async function sendMultimodalVoiceTurn(
   session: string,
-  capture: Awaited<ReturnType<AudioCapture["finish"]>>,
+  capture: PcmCapture | Blob,
   language: string,
   image: File | null,
   signal: AbortSignal,
 ): Promise<MultimodalVoiceReply> {
   const body = new FormData();
   body.set("session_id", session);
-  body.set("sample_rate", String(capture.sampleRate));
   body.set("language", language);
-  body.set("audio", new Blob([capture.pcm], { type: "application/octet-stream" }), "voice.pcm");
+  if (capture instanceof Blob) {
+    body.set("sample_rate", "16000");
+    body.set("audio", capture, "voice-recording");
+  } else {
+    body.set("sample_rate", String(capture.sampleRate));
+    body.set("audio", new Blob([capture.pcm], { type: "application/octet-stream" }), "voice.pcm");
+  }
   if (image) body.set("image", image);
   const response = await fetch(getApiBaseUrl() + "/api/v1/chat/audio/multimodal-turn", {
     method: "POST",

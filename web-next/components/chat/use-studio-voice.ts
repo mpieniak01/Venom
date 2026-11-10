@@ -1,13 +1,14 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ChatMessage } from "@/components/cockpit/cockpit-chat-thread";
-import { createAudioCapture, sendMultimodalVoiceTurn, speakChatAudio, transcribeChatAudio, type AudioCapture } from "@/lib/chat-audio";
+import { createAudioCapture, createPilotAudioCapture, sendMultimodalVoiceTurn, speakChatAudio, transcribeChatAudio, type AudioCapture, type PcmCapture } from "@/lib/chat-audio";
+import { voiceRecorderMimeType } from "@/lib/voice-media-recorder";
 export type StudioVoiceStatus = "voiceIdle" | "permission" | "listening" | "transcribing" | "generating" | "speaking" | "muted" | "voiceEnded";
 export type StudioVoiceOptions = { session: string; stopRevision?: number; mode: "dictation" | "conversation"; language: string; busy: boolean; messages: ChatMessage[];
   onDraft: (text: string) => void; onTurn: (text: string) => Promise<boolean>; onStop: () => Promise<void>; onClose: () => void;
   multimodalEnabled?: boolean; hostAudioAvailable?: boolean; onMultimodalBusy?: (busy: boolean) => void; onMultimodalCommit?: () => void };
 type CapturedVoiceTurn = {
-  audio: Awaited<ReturnType<AudioCapture["finish"]>>;
+  audio: PcmCapture | Blob;
   options: StudioVoiceOptions;
   signal: AbortSignal;
   isCurrent: () => boolean;
@@ -29,7 +30,7 @@ function voiceTurnError(cause: unknown): string {
 }
 
 /** Keep microphone capture, response playback and cancellation bound to the Studio session. */
-export function useStudioVoice(options: StudioVoiceOptions, captureFactory: typeof createAudioCapture = createAudioCapture) {
+export function useStudioVoice(options: StudioVoiceOptions, captureFactory?: typeof createAudioCapture) {
   const [status, setStatus] = useState<StudioVoiceStatus>("voiceIdle");
   const [error, setError] = useState<string | null>(null);
   const [image, setImage] = useState<File | null>(null);
@@ -38,7 +39,7 @@ export function useStudioVoice(options: StudioVoiceOptions, captureFactory: type
   const multimodalContext = useRef(false);
   const multimodalPending = useRef(false);
   const epoch = useRef(0);
-  const capture = useRef<AudioCapture | null>(null);
+  const capture = useRef<AudioCapture<PcmCapture | Blob> | null>(null);
   const permission = useRef<AbortController | null>(null);
   const starting = useRef(false);
   const finishing = useRef(false);
@@ -117,7 +118,7 @@ export function useStudioVoice(options: StudioVoiceOptions, captureFactory: type
     { audio, options: voiceOptions, signal, isCurrent }: CapturedVoiceTurn,
     attachment: File | null,
   ) => {
-    if (audio.pcm.byteLength === 0) {
+    if ((audio instanceof Blob ? audio.size : audio.pcm.byteLength) === 0) {
       idleWithError("silence");
       return;
     }
@@ -137,6 +138,10 @@ export function useStudioVoice(options: StudioVoiceOptions, captureFactory: type
   const submitTranscribedTurn = useCallback(async ({
     audio, options: voiceOptions, signal, isCurrent,
   }: CapturedVoiceTurn) => {
+    if (audio instanceof Blob) {
+      idleWithError("voiceWait");
+      return;
+    }
     setSources([]);
     const result = await transcribeChatAudio(voiceOptions.session, audio, voiceOptions.language, signal, true);
     if (!isCurrent() || result.session_id !== latest.current.session) return;
@@ -215,7 +220,14 @@ export function useStudioVoice(options: StudioVoiceOptions, captureFactory: type
     releasePlayback(); const current = epoch.current;
     const controller = new AbortController(); permission.current = controller;
     try {
-      const microphone = await captureFactory(() => { void finishRef.current(); }, controller.signal);
+      const onLimit = () => { void finishRef.current(); };
+      const voiceOptions = latest.current;
+      const pilot = voiceOptions.mode === "conversation" && voiceOptions.multimodalEnabled === true
+        && (selectedImage.current !== null || multimodalContext.current);
+      const mimeType = pilot && !captureFactory ? voiceRecorderMimeType() : "";
+      const microphone = mimeType
+        ? await createPilotAudioCapture(mimeType, controller.signal, onLimit)
+        : await (captureFactory ?? createAudioCapture)(onLimit, controller.signal);
       if (current !== epoch.current) { microphone.dispose(); return; }
       capture.current = microphone; setStatus("listening");
       timer.current = setTimeout(() => { void finishRef.current(); }, 60000);

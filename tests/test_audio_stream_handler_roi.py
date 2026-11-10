@@ -1098,7 +1098,7 @@ def test_persist_encoded_voice_session_with_bytes_input(monkeypatch, tmp_path):
         stderr = ""
 
     monkeypatch.setattr(
-        audio_stream_mod.subprocess, "run", lambda *a, **k: DummyResult()
+        audio_stream_mod, "decode_media_recording", lambda *a, **k: DummyResult()
     )
     monkeypatch.setattr(
         handler,
@@ -1131,7 +1131,7 @@ def test_persist_encoded_voice_session_with_chunk_list(monkeypatch, tmp_path):
         stderr = ""
 
     monkeypatch.setattr(
-        audio_stream_mod.subprocess, "run", lambda *a, **k: DummyResult()
+        audio_stream_mod, "decode_media_recording", lambda *a, **k: DummyResult()
     )
     monkeypatch.setattr(
         handler,

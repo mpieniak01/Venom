@@ -80,6 +80,7 @@ from venom_core.services.llm_simple_stream_service import (
 from venom_core.services.llm_simple_stream_service import (
     update_stream_state_from_packet as _update_stream_state_from_packet_impl,
 )
+from venom_core.services.ollama_audio import OMNI_MODEL_ID, is_host_ollama
 from venom_core.services.runtime_dependencies import (
     get_model_manager,
     get_request_tracer,
@@ -1187,9 +1188,32 @@ def _plain_request_history(
     return [item.model_dump(exclude={"material_ids"}) for item in request.history]
 
 
-def _simple_system_prompt(request: SimpleChatRequest, system_context: str) -> str:
+def _retry_without_previous_attempts(request: SimpleChatRequest) -> SimpleChatRequest:
+    """Keep distinct earlier turns while retrying the same last question."""
+    history = request.history
+    end = len(history)
+    question = request.content.strip()
+    while (
+        end >= 2
+        and history[end - 2].role == "user"
+        and history[end - 1].role == "assistant"
+        and history[end - 2].content.strip() == question
+    ):
+        end -= 2
+    return (
+        request.model_copy(update={"history": history[:end]})
+        if end < len(history)
+        else request
+    )
+
+
+def _simple_system_prompt(
+    request: SimpleChatRequest, system_context: str, *, omit_default: bool = False
+) -> str:
     system_prompt = (SETTINGS.SIMPLE_MODE_SYSTEM_PROMPT or "").strip()
-    if request.studio_normal and system_prompt == DEFAULT_SIMPLE_MODE_SYSTEM_PROMPT:
+    if (
+        request.studio_normal or omit_default
+    ) and system_prompt == DEFAULT_SIMPLE_MODE_SYSTEM_PROMPT:
         system_prompt = ""
     if system_context:
         system_prompt = "\n\n".join(filter(None, (system_prompt, system_context)))
@@ -1224,7 +1248,20 @@ async def _stream_non_openrouter_chat(
     request_id: UUID = uuid4()
     _trace_simple_request(request_id, request, runtime, model_name)
 
-    system_prompt = _simple_system_prompt(request, system_context)
+    from venom_core.services.chat_material_payload import has_materials
+
+    plain_omni = (
+        model_name == OMNI_MODEL_ID
+        and is_host_ollama(runtime)
+        and not (
+            request.tools or request.tool_choice is not None or has_materials(request)
+        )
+    )
+    if plain_omni:
+        request = _retry_without_previous_attempts(request)
+    system_prompt = _simple_system_prompt(
+        request, system_context, omit_default=plain_omni
+    )
     user_content = _trim_user_content_for_runtime(
         request.content, system_prompt, runtime, request_id
     )

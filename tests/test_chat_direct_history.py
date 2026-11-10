@@ -1024,3 +1024,68 @@ def test_direct_default_prompt_is_neutral_and_explicit_custom_prompt_is_preserve
         llm_simple_service.SETTINGS, "SIMPLE_MODE_SYSTEM_PROMPT", "Custom instruction"
     )
     assert llm_simple_service._simple_system_prompt(request, "") == "Custom instruction"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("model", "stream", "content", "prompt", "expected_history_size"),
+    [
+        ("lfm3-omni:2b", False, "Pytanie", "You are a helpful assistant.", 2),
+        ("lfm3-omni:2b", True, "Pytanie", "You are a helpful assistant.", 2),
+        ("lfm3-omni:2b", True, "Dopytanie", "You are a helpful assistant.", 6),
+        ("lfm3-omni:2b", False, "Pytanie", "Własna instrukcja", 2),
+        ("gemma4:e4b", True, "Pytanie", "You are a helpful assistant.", 6),
+    ],
+)
+async def test_plain_omni_retry_preserves_distinct_context_and_configured_prompt(
+    monkeypatch, model, stream, content, prompt, expected_history_size
+):
+    runtime = SimpleNamespace(
+        provider="ollama",
+        model_name=model,
+        endpoint="http://localhost:11434/v1",
+        service_type="local",
+        host_local=True,
+        runtime_id="ollama",
+        config_hash="cfg",
+    )
+    monkeypatch.setattr(llm_simple_service, "get_active_llm_runtime", lambda: runtime)
+    monkeypatch.setattr(
+        llm_simple_service, "_get_active_adapter_id", AsyncMock(return_value=None)
+    )
+    monkeypatch.setattr(
+        llm_simple_service.SETTINGS, "SIMPLE_MODE_SYSTEM_PROMPT", prompt
+    )
+    captured = []
+
+    async def capture(**kwargs):
+        captured.append(kwargs["payload"]["messages"])
+        yield event("done", {})
+
+    monkeypatch.setattr(llm_simple_service, "_stream_simple_chunks", capture)
+    monkeypatch.setattr(llm_simple_service, "_stream_simple_chunks_non_stream", capture)
+    history = [
+        {"role": "user", "content": "Inne ustalenie"},
+        {"role": "assistant", "content": "Rozumiem"},
+        {"role": "user", "content": "Pytanie"},
+        {"role": "assistant", "content": "Stara odpowiedź"},
+        {"role": "user", "content": "Pytanie"},
+        {"role": "assistant", "content": "Kolejna stara odpowiedź"},
+    ]
+    request = SimpleChatRequest(content=content, history=history, stream=stream)
+    response = await llm_simple_service.stream_simple_chat(request)
+    await consume(response)
+
+    expected_system = (
+        [{"role": "system", "content": prompt}]
+        if model == "gemma4:e4b" or prompt == "Własna instrukcja"
+        else []
+    )
+    assert captured == [
+        expected_system
+        + history[:expected_history_size]
+        + [{"role": "user", "content": content}]
+    ]
+    assert [
+        item.model_dump(exclude={"material_ids"}) for item in request.history
+    ] == history

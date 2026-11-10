@@ -69,6 +69,8 @@ async def test_pilot_uses_image_and_raw_audio_in_one_turn_and_retains_source(
     request_payloads = []
     lookup = json.dumps({"action": omni_pilot.TOOL_NAME, "code": "VEN-401"})
     followup_choice = json.dumps({"action": "previous_source", "code": ""})
+    if encoded:
+        lookup = json.dumps({"action": omni_pilot.TOOL_NAME, "code": "Sesja wygasła"})
     messages = iter(
         [
             {"content": lookup},
@@ -157,7 +159,20 @@ def test_pilot_selection_can_only_dispatch_a_valid_document_lookup(
     content, previous, expected
 ):
     """Reject arbitrary actions and malformed documentation codes."""
-    assert omni_pilot._selected_code({"content": content}, previous) == expected
+    documents = json.loads(omni_pilot.DOCUMENTATION.read_text())
+    assert (
+        omni_pilot._selected_code({"content": content}, previous, documents) == expected
+    )
+
+
+def test_pilot_exact_title_does_not_resolve_when_two_entries_match():
+    """A duplicate label must ask for clarification instead of choosing a source."""
+    documents = {
+        "VEN-401": {"title": "VEN-401 · Sesja wygasła"},
+        "VEN-999": {"title": "VEN-999 · Sesja wygasła"},
+    }
+    content = json.dumps({"action": omni_pilot.TOOL_NAME, "code": "Sesja wygasła"})
+    assert omni_pilot._selected_code({"content": content}, None, documents) is None
 
 
 @pytest.mark.asyncio

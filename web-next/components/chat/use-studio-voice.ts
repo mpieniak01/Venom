@@ -167,7 +167,7 @@ export function useStudioVoice(options: StudioVoiceOptions, captureFactory?: typ
   }, [idleWithError]);
 
   /** Dispose this recording without resetting capture state from a newer epoch. */
-  const settleCapture = useCallback((recording: AudioCapture, current: number, usedMultimodal: boolean) => {
+  const settleCapture = useCallback((recording: AudioCapture<PcmCapture | Blob>, current: number, usedMultimodal: boolean) => {
     recording.dispose();
     if (capture.current === recording) capture.current = null;
     if (current !== epoch.current) return;

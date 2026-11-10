@@ -240,6 +240,10 @@ export const voice = {
     title: "Tryby voice",
     description: "Wybierz jak ma być traktowana kolejna wypowiedź.",
     hint: "Aktywny tryb jest wysyłany do backendu jako część sesji voice i zmienia styl odpowiedzi agenta.",
+    direct: {
+      title: "Direct",
+      description: "Rozmowa z wybranym modelem i historią bieżącej rozmowy.",
+    },
     standard: {
       title: "Standard",
       description: "Krótka i bezpośrednia odpowiedź.",

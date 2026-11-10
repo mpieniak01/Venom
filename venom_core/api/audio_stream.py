@@ -22,6 +22,7 @@ import httpx
 import numpy as np
 from fastapi import HTTPException, WebSocket, WebSocketDisconnect
 
+from venom_core.api.schemas.llm_simple import HistoryMessage
 from venom_core.config import SETTINGS
 from venom_core.perception.audio_engine import AudioEngine
 from venom_core.services import ollama_audio, omni_pilot
@@ -568,6 +569,8 @@ class AudioStreamHandler:
         voice_mode: str
         pilot_recording: NotRequired[_PilotRecording]
         pilot_history: NotRequired[list[dict[str, object]]]
+        direct_history: NotRequired[list[HistoryMessage]]
+        direct_session_id: NotRequired[str]
 
     def get_status(self, operator_agent: object | None = None) -> dict:
         """Zwraca stan kanału audio dla healthchecków i UI."""
@@ -2505,18 +2508,32 @@ class AudioStreamHandler:
             }
         )
         runtime_metadata = self._build_runtime_metadata(operator_agent)
-        response_text = await _invoke_operator_agent(
-            operator_agent,
-            transcription,
-            mode=self._connection_voice_mode(connection_id),
-            voice_context=voice_context,
-            conversation_id=session_dir.name,
-            legacy_guard=runtime_request_guard(
-                request_kind="voice_fallback_llm",
-                provider=_coerce_str(runtime_metadata.get("llm_provider"), ""),
-                model=_coerce_str(runtime_metadata.get("llm_model"), ""),
-            ),
-        )
+        if self._connection_voice_mode(connection_id) == "direct":
+            from venom_core.services.direct_voice import complete_direct_turn
+
+            connection = self.active_connections[connection_id]
+            session_id = connection.setdefault(
+                "direct_session_id", f"voice-direct-{uuid.uuid4()}"
+            )
+            response_text, history = await complete_direct_turn(
+                transcription,
+                connection.get("direct_history", []),
+                session_id=session_id,
+            )
+            connection["direct_history"] = history
+        else:
+            response_text = await _invoke_operator_agent(
+                operator_agent,
+                transcription,
+                mode=self._connection_voice_mode(connection_id),
+                voice_context=voice_context,
+                conversation_id=session_dir.name,
+                legacy_guard=runtime_request_guard(
+                    request_kind="voice_fallback_llm",
+                    provider=_coerce_str(runtime_metadata.get("llm_provider"), ""),
+                    model=_coerce_str(runtime_metadata.get("llm_model"), ""),
+                ),
+            )
         timings_ms["llm_ms"] = self._elapsed_ms(agent_started_at)
         self._update_voice_session_metadata(
             session_dir,

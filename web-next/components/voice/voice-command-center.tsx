@@ -1163,7 +1163,7 @@ const startVoiceCapture = async (deps: VoiceCaptureDeps): Promise<void> => {
   }
 };
 
-export type VoiceModePreset = "standard" | "deep_analysis" | "summary" | "action_items";
+export type VoiceModePreset = "direct" | "standard" | "deep_analysis" | "summary" | "action_items";
 export type VoiceStatusUpdate = Pick<AudioStatus,
   | "enabled" | "stt_ready" | "tts_ready" | "tts_fallback"
   | "whisper_model_size" | "stt_backend" | "tts_backend"
@@ -1173,6 +1173,7 @@ export type VoiceStatusUpdate = Pick<AudioStatus,
 >;
 
 const VOICE_MODE_TITLE_KEYS: Record<VoiceModePreset, string> = {
+  direct: "voice.modes.direct.title",
   standard: "voice.modes.standard.title",
   deep_analysis: "voice.modes.deepAnalysis.title",
   summary: "voice.modes.summary.title",

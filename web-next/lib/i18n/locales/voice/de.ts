@@ -240,6 +240,10 @@ export const voice = {
     title: "Voice-Modi",
     description: "Wähle, wie die nächste Äußerung verarbeitet werden soll.",
     hint: "Der aktive Modus wird als Teil der Voice-Sitzung an das Backend gesendet und ändert den Antwortstil des Agents.",
+    direct: {
+      title: "Direct",
+      description: "Gespräch mit dem ausgewählten Modell und dem aktuellen Gesprächsverlauf.",
+    },
     standard: {
       title: "Standard",
       description: "Kurze und direkte Antwort.",

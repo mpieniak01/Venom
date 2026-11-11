@@ -1,303 +1,138 @@
-# Deployment – FastAPI + Next.js
+# Deploy Venom 1.10.0 on Linux or WSL2
 
-> Current candidate scope: Light/API and CI, with Ollama over HTTP. Full,
-> local GPU add-ons and Academy are deferred; retained legacy instructions do not
-> qualify them for the new MAF core. Do not update an operator Full environment
-> with this package. See [dependency policy](DEPENDENCY_PROFILES.md).
+[Wersja polska](PL/DEPLOYMENT_NEXT.md) · [Project README](../README.md)
 
-This document describes Venom's new runtime architecture: **FastAPI** runs as standalone API/SSE/WS, and **Next.js (`web-next`)** serves the user interface. Both parts are run and monitored independently.
+Use `dev` for single-operator use and development. Use `preprod` for isolated, read-only acceptance checks. The `prod` environment is reserved. If you already have an instance launcher, keep its repository path, environment files, data roots and ports. See the [environment support matrix](ENVIRONMENTS_SUPPORT.md).
 
-For security operating assumptions and localhost admin policy, see `docs/SECURITY_POLICY.md`.
+## Install from source
 
-## Components
+On Linux x86-64, including an x86-64 WSL2 distribution, use the pinned Python **3.14.8**, Node.js **24.22.0**, and npm **11.19.1**. Install Git, GNU Make and curl. Full also needs a C compiler and Linux input headers to build `evdev`. On Debian or Ubuntu the system packages are `build-essential` and `linux-libc-dev`. Set up the exact Python and Node versions before running the commands below.
 
-| Component | Role | Default port | Start/stop |
-|-----------|------|---------------|------------|
-| FastAPI (`venom_core.main:app`) | REST API, SSE (`/api/v1/tasks/{id}/stream`), WebSocket `/ws/events` | `8000` | `make start-dev` / `make start-prod` (uvicorn) |
-| Next.js (`web-next`) | UI Cockpit/Brain/Strategy (React 19, App Router) | `3000` | `make start-dev` (Next dev) / `make start-prod` (Next build + start) |
-
-## Dependencies and Configuration
-
-1. **Python** – backend installation:
-   ```bash
-   python3 -m venv .venv
-   source .venv/bin/activate
-   pip install -r requirements.txt
-   ```
-   Notes:
-   - `requirements.txt` = minimal API/cloud profile (default).
-   - `requirements-profile-web.txt` = API baseline alias for web-next integration; it does not add extra Python pins.
-   - `requirements-ci-lite.txt` = lightweight CI gate built on the shared runtime base.
-   - For local runtime engines install additional profile:
-     - `pip install -r requirements.txt` (Ollama)
-   - `pip install -r requirements-profile-vllm.txt`
-   - `pip install -r requirements-profile-onnx.txt` (runtime-only overlay on the shared API/runtime base)
-   - `pip install -r requirements-profile-onnx-cpu.txt` (CPU-only overlay on the same base)
-   - optional extras (install after ONNX/ONNX-CPU profile): `pip install -r requirements-extras-onnx.txt` (`faster-whisper`, `piper-tts`)
-   - Legacy catch-all exception: `pip install -r requirements-full.txt`
-
-### Dependency Profile Contract (Important)
-
-Use these guarantees to classify issues correctly:
-
-| Canonical role | Primary files | What it guarantees | What it does not guarantee |
-|---|---|---|---|
-| Minimal | `requirements-docker-minimal.txt` | lowest shared runtime base | engine overlays, CI-only tooling, legacy all-in extras |
-| Developer/medium | `requirements.txt`, `requirements-profile-api.txt`, `requirements-profile-web.txt` | backend + cloud integrations with web alias support | local heavy stacks when no overlay is installed |
-| CI | `requirements-ci-lite.txt` | lightweight GitHub CI gate built on the shared runtime base | local heavy stacks and legacy all-in runtime |
-| Full/legacy | `requirements-full.txt` | explicit legacy catch-all exception | canonical new runtime target |
-
-Shared compromise base:
-- `requirements-runtime-common.txt` carries the pinned floor shared by the active runtime roles.
-- The shared floor now owns `fastapi`, `pydantic`, `pydantic-settings`, `semantic-kernel`, and `watchdog`.
-- Profile files should keep only role-specific deltas.
-
-Overlay rule:
-- `requirements-profile-vllm.txt` and `requirements-profile-onnx.txt` extend the developer/medium base.
-- `requirements-profile-onnx-cpu.txt` is a technical ONNX variant, not a fifth canonical role.
-- `requirements-extras-onnx.txt` is an add-on layer, not a standalone runtime root.
-Operational rule:
-- treat the local engine overlays as mutually exclusive for a given host/run; keep only one active local LLM engine at a time, and use the others only when testing a specific model path.
-
-Interpretation rules:
-1. Missing package after installing the wrong profile is expected.
-2. Missing package that is outside selected profile scope is expected.
-3. Missing package that is explicitly present in selected profile file indicates install/environment defect.
-2. **Node.js 18.19+** – frontend:
-   ```bash
-   npm --prefix web-next install
-   ```
-3. **Environment variables**:
-   | Name | Purpose | Default value |
-   |-------|---------|---------------|
-   | `NEXT_PUBLIC_API_BASE` | Base API URL used by Next (CSR). | `http://localhost:8000` |
-   | `NEXT_PUBLIC_WS_BASE` | WebSocket endpoint for `/ws/events`. | `ws://localhost:8000/ws/events` |
-   | `API_PROXY_TARGET` | Proxy target in `next.config.ts` (SSR). | `http://localhost:8000` |
-   | `NEXT_DISABLE_TURBOPACK` | Set automatically by Makefile in dev mode. | `1` |
-   | `OLLAMA_IMAGE` | Ollama container image tag used by compose profiles. | `ollama/ollama:0.40.14` |
-   | `VENOM_RUNTIME_PROFILE` | Runtime profile (`light`, `llm_off`, `full`) for single-package deployment flow (`llm_off` = no local LLM runtime, external APIs still possible after key setup). | `light` |
-   | `OLLAMA_HOST` | Bind address for Ollama inside container. | `0.0.0.0` |
-   | `VENOM_OLLAMA_PROFILE` | Venom single-user tuning profile (`balanced-12-24gb`, `low-vram-8-12gb`, `max-context-24gb-plus`). | `balanced-12-24gb` |
-   | `OLLAMA_CONTEXT_LENGTH` | Explicit context override (`0` = profile default). | `0` |
-   | `OLLAMA_NUM_PARALLEL` | Explicit parallelism override (`0` = profile default). | `0` |
-   | `OLLAMA_MAX_QUEUE` | Explicit queue override (`0` = profile default). | `0` |
-   | `OLLAMA_FLASH_ATTENTION` | Enable flash attention. | `1` |
-   | `OLLAMA_KV_CACHE_TYPE` | KV cache type override (empty = profile default). | `` |
-   | `OLLAMA_LOAD_TIMEOUT` | Model load timeout passed to Ollama runtime. | `10m` |
-   | `OLLAMA_NO_CLOUD` | Disable cloud models in Ollama (privacy-oriented local mode). | `1` |
-   | `OLLAMA_RETRY_MAX_ATTEMPTS` | Retry attempts for transient Ollama errors (429/5xx). | `2` |
-   | `OLLAMA_RETRY_BACKOFF_SECONDS` | Backoff base for Ollama retries. | `0.35` |
-
-## Launch Modes
-
-Environment selection contract:
-- `Makefile` selects active env files and exports `ENV_FILE` / `ENV_EXAMPLE_FILE` to runtime scripts.
-- Runtime scripts (`start_stack.sh`, `vllm_service.sh`, `ollama_service.sh`) use shared loader `scripts/lib/env_contract.sh`.
-- Effective value priority in runtime scripts: `make VAR=...` (or exported shell env) > value from `ENV_FILE` > script default.
-- Runtime-domain values (`ACTIVE_LLM_SERVER`, `VLLM_*`, `OLLAMA_*`) should be maintained in `.env*`; `Makefile` keeps operator/lifecycle defaults.
-- No bare `.env` / `.env.example` in runtime contract.
-
-### Development (`make start` / `make start-dev`)
-Config file:
-- runtime file: `.env.dev` (local, not committed)
-- safe template: `.env.dev.example` (committed, no secrets)
-
-1. `uvicorn` starts backend with `--reload`.
-2. `npm --prefix web-next run dev` starts Next with parameters `--hostname 0.0.0.0 --port 3000`.
-3. Makefile manages PIDs (`.venom.pid`, `.web-next.pid`) and blocks multiple starts.
-4. `make stop` kills both processes and cleans ports (8000/3000).
-
-### Production (`make start-prod`)
-Config file:
-- runtime file: `.env.dev` (local, not committed)
-- safe template: `.env.dev.example` (committed, no secrets)
-
-Warning:
-- `make start-prod` is available, but `prod` is currently not fully validated/recommended for live operation.
-- Prefer `dev` and `preprod` flows for daily work and acceptance.
-
-1. Runs `pip install`/`npm install` beforehand.
-2. Builds UI: `npm --prefix web-next run build` (standalone, telemetry disabled).
-3. Starts backend without `--reload` (`uvicorn venom_core.main:app --host 0.0.0.0 --port 8000 --no-server-header`).
-4. Starts `next start` on port 3000.
-5. `make stop` works the same way (stops `next start` also via `pkill -f`).
-
-### Pre-production (`make start-preprod`)
-1. Uses production runtime mode on shared stack (`START_MODE=prod`).
-2. Uses dedicated preprod config file:
-   - runtime file: `.env.preprod` (local, not committed)
-   - safe template: `.env.preprod.example` (committed, no secrets)
-   - helper command: `make ensure-preprod-env-file`
-3. Exports preprod isolation variables before startup:
-   - `ENVIRONMENT_ROLE=preprod`
-   - `DB_SCHEMA=preprod`
-   - `CACHE_NAMESPACE=preprod`
-   - `QUEUE_NAMESPACE=preprod`
-   - `STORAGE_PREFIX=preprod`
-   - `ALLOW_DATA_MUTATION=0`
-4. Runs same startup pipeline as `start-prod` with preprod data isolation.
-
-Useful variants:
 ```bash
-make ensure-preprod-env-file # creates .env.preprod from .env.preprod.example
-make start-preprod          # backend + frontend in preprod mode
-make api-preprod            # backend only in preprod mode
-make web-preprod            # frontend only in preprod mode
-make test-preprod-readonly-smoke
-
-# short aliases
-make ensurepreenv
-make startpre
-make stoppre
-make restartpre
-make statuspre
-make apipre
-make webpre
-make testpre
+git clone https://github.com/mpieniak01/Venom.git
+cd Venom
+python3.14 --version
+node --version
+npm --version
+python3.14 scripts/bootstrap_dependency_profile.py --profile full --venv "$PWD/.venv"
+npm --prefix web-next ci
+make ensure-env-file ENVIRONMENT=dev
 ```
 
-## Makefile Module Map and Command Catalog
+The bootstrap uses the interpreter that invokes it and creates the new virtual environment from the Full lock. It checks available storage. The Full installation requires at least 16 GiB free at its installation location. Leave additional space for Ollama models, data and web build output. Both applications use the same `web-next/node_modules` installation. For an existing deployment, validate the new profile in a separate virtual environment before switching. See the [dependency profiles and qualification status](DEPENDENCY_PROFILES.md).
 
-The root `Makefile` is now a thin entrypoint and includes dedicated modules:
+## Configure Ollama and the local model
 
-- `make/tests.mk`
-- `make/maintenance.mk`
-- `make/preprod.mk`
-- `make/runtime.mk`
-- `make/ops.mk`
+Run Ollama on the Linux host, then prepare Gemma 4 E4B. Set `OLLAMA_HOST` for the Ollama CLI if your instance uses a custom address.
 
-Public command groups:
-
-1. Core stack lifecycle
-- `make start` - full dev stack (backend + frontend webpack-safe + active LLM runtime)
-- `make start2` - full dev stack with Turbopack frontend
-- `make stop` - stop backend + frontend + active LLM runtime helpers
-- `make status` - process status (PID/ports)
-
-2. Test and quality gates (`make/tests.mk`)
-- `make test`, `make test-data`, `make test-all`
-- `make test-unit`, `make test-smoke`, `make test-perf`
-- `make test-web-unit`, `make test-web-e2e`
-- `make pr-fast` - required local PR gate
-- `make test-fast-coverage`, `make check-new-code-coverage`
-
-3. Maintenance and environment hygiene (`make/maintenance.mk`)
-- `make make-targets-audit` - validates `.PHONY` vs defined targets
-- `make audit-dead-code` - heuristic dead-code audit (Python)
-- `make audit-dead-code-vulture-install` - manual install of vulture into `.venv`
-- `make audit-dead-code-full` - heuristic dead-code audit + vulture soft-signal
-- `make stack-stability-audit` - manual diagnostics: pid files, bound ports, optional module manifests
-- `make llm-runtime-stability-audit` - manual LLM lifecycle audit on running stack (activate/switch/unload for ollama/vllm/onnx)
-- `make llm-runtime-stability-cycle-start` - cycle: `make start` -> LLM runtime lifecycle audit -> `make stop`
-- `make llm-runtime-stability-cycle-start2` - cycle: `make start2` -> LLM runtime lifecycle audit -> `make stop`
-- `make env-audit`, `make env-clean-safe`, `make env-clean-docker-safe`, `make env-clean-deep`, `make env-report-diff`
-- `make security-delta-scan`, `make security-delta-scan-strict`
-- `make mcp-clean`, `make mcp-status`
-
-4. Runtime control (`make/runtime.mk`)
-- `make vllm-start`, `make vllm-stop`, `make vllm-restart`
-- `make ollama-start`, `make ollama-stop`, `make ollama-restart`
-
-5. Preprod operations (`make/preprod.mk` + root targets)
-- `make ensure-preprod-env-file`, `make start-preprod`, `make api-preprod`, `make web-preprod`
-- aliases: `make startpre`, `make apipre`, `make webpre`, `make testpre`
-- `make preprod-backup`, `make preprod-restore TS=<timestamp>`, `make preprod-verify TS=<timestamp>`
-- `make preprod-audit`, `make preprod-drill`, `make preprod-readiness-check`
-
-Internal helper used by preprod wrappers:
-- `make ensure-env-file` delegates env file bootstrap to `scripts/dev/ensure_env_file.sh`.
-
-6. Operations and workspace tools (`make/ops.mk`)
-- `make modules-status`, `make modules-pull`, `make modules-branches`, `make modules-exec CMD='...'`
-- `make runtime-maintenance-cleanup`
-- `make runtime-log-policy-audit`, `make runtime-logrotate-install-help`
-- `make monitor`
-
-Canonical command list for operators remains available under:
-- `make help`
-
-## Monitoring and Logs
-
-- `make status` – reports if processes are alive (PID + ports).
-- `logs/` – general backend logs (controlled by `loguru`).
-- `web-next/.next/standalone` – build output (not committed).
-- `scripts/archive-perf-results.sh` – helper backup of Playwright/pytest/Locust results from `perf-artifacts/` directory.
-
-### Runtime Data/Log Retention Policy
-
-Venom runs an automatic retention cleanup job in `BackgroundScheduler` for runtime files.
-
-- **What is cleaned**: directories from `SETTINGS.RUNTIME_RETENTION_TARGETS` (default: `./logs`, `./data/timelines`, `./data/memory`, `./data/training`, `./data/synthetic_training`, `./data/learning`).
-- **Retention period**: `SETTINGS.RUNTIME_RETENTION_DAYS` (default: `7` days).
-- **Execution frequency**: one immediate run after app startup + interval from `SETTINGS.RUNTIME_RETENTION_INTERVAL_MINUTES` (default: `1440`, once per day).
-- **Feature toggle**: `SETTINGS.ENABLE_RUNTIME_RETENTION_CLEANUP` (default: `True`).
-- **Startup guard**: immediate startup run executes only when the last successful retention run is older than the configured interval (prevents repeated cleanup on frequent dev reloads).
-- **State marker**: `./.venom_runtime/runtime_retention.last_run` stores the last runtime retention execution timestamp.
-- **Safety guard**: git-tracked files are excluded from retention deletion.
-
-Implementation references:
-- job function: `venom_core/jobs/scheduler.py` (`cleanup_runtime_files`)
-- scheduler registration: `venom_core/main.py` (`cleanup_runtime_files` interval job)
-- config defaults: `venom_core/config.py` (runtime retention settings)
-
-## Docker Minimal Packages (Build and Publish)
-
-Detailed step-by-step release procedure:
-- `docs/DOCKER_RELEASE_GUIDE.md`
-
-For Docker onboarding MVP we use two workflows:
-
-1. **`docker-sanity`** (`.github/workflows/docker-sanity.yml`)
-   - runs on PRs touching Docker files,
-   - validates compose + shell scripts + image build,
-   - does **not** publish images.
-
-2. **`docker-publish`** (`.github/workflows/docker-publish.yml`)
-   - publishes GHCR images only on:
-     - git tag push matching `v*` (release mode), or
-     - manual run (`workflow_dispatch`).
-   - accidental-release guards:
-     - manual publish requires `confirm_publish=true`,
-     - manual publish is allowed only from `main`,
-     - tag publish requires strict semver tag (`vMAJOR.MINOR.PATCH`) and tag commit that belongs to `main` history.
-   - avoids package rebuild/publish on every small commit.
-
-Published images:
-- `ghcr.io/mpieniak01/venom-backend`
-- `ghcr.io/mpieniak01/venom-frontend`
-
-Security note (MVP default):
-- `compose/compose.minimal.yml` publishes ports on host interfaces to allow testing from another computer in LAN.
-- `compose/compose.spores.yml.tmp` is a temporary Spore nodes draft, currently unused and not part of the Venom minimal onboarding path.
-- Mandatory condition: run this profile only in a trusted/private network.
-- Do not expose these ports directly to public Internet. If remote/public access is needed, place a reverse proxy in front and add authentication/authorization.
-
-Default tags:
-- always: `sha-<short_sha>`
-- on release tag: `<git_tag>` + `latest`
-- manual run: optional `custom_tag` (+ optional `latest`)
-
-Example release flow (current stable: `v1.9.0`):
 ```bash
-git checkout main
-git pull --ff-only
-git tag v1.9.0
-git push origin v1.9.0
+curl -fsS http://127.0.0.1:11434/api/version
+ollama pull gemma4:e4b
+ollama list
 ```
-Note: the publish workflows validate full semver tags. `v1.9` is rejected.
 
-## Post-Deployment Tests
+Edit `.env.dev` for the default Ollama listener. Keep credentials and machine-specific settings in your private environment file.
 
-1. **Backend**: `pytest` + `pytest tests/perf/test_chat_pipeline.py -m performance`
-2. **Frontend**: `npm --prefix web-next run lint && npm --prefix web-next run build`
-3. **E2E Next**: `npm --prefix web-next run test:e2e`
-4. **Next chat latency**: `npm --prefix web-next run test:perf`
-5. **Locust (optional)**: `./scripts/run-locust.sh` and run scenario from panel (default `http://127.0.0.1:8089`)
+```dotenv
+ACTIVE_LLM_SERVER=ollama
+LLM_SERVICE_TYPE=local
+LLM_LOCAL_ENDPOINT=http://127.0.0.1:11434/v1
+LLM_MODEL_NAME=gemma4:e4b
+```
 
-## Deployment Checklist
+## Start Studio or Venom Full
 
-- [ ] `make start-prod` works and returns links to backend and UI (technical compatibility only; not recommended as active prod rollout path yet).
-- [ ] Proxy (nginx/docker-compose) redirects `/api` and `/ws` to FastAPI and rest to Next.
-- [ ] `npm --prefix web-next run test:e2e` passes on prod build.
-- [ ] `npm --prefix web-next run test:perf` shows latency < budget (default 15s).
-- [ ] `pytest tests/perf/test_chat_pipeline.py -m performance` passes (SSE task_update → task_finished < 25s).
+Studio runs a separate Next.js app (`web-studio`) and the Studio subset of the shared FastAPI API (`venom_core.studio_main:app`). Venom Full runs `web-next` and `venom_core.main:app`. Both use Turbopack in the default dev startup. For loopback-only access, export `HOST=127.0.0.1 WEB_HOST=127.0.0.1` in the shell used for start, status and stop.
+
+Run the block for the application you want. The launcher prints the UI and API addresses. Repository defaults for dev are UI `3000` and API `8000`.
+
+### Studio
+
+```bash
+make stack-plan VENOM_VARIANT=studio PROFILE=full ENVIRONMENT=dev
+make start-studio PROFILE=full ENVIRONMENT=dev
+make status-studio PROFILE=full ENVIRONMENT=dev
+curl -fsS http://127.0.0.1:8000/healthz
+```
+
+Open [Chat 2.0](http://localhost:3000/chat2) and send a short Direct message. When finished, stop Studio from the same checkout and configuration.
+
+```bash
+make stop-studio PROFILE=full ENVIRONMENT=dev
+```
+
+### Venom Full
+
+```bash
+make stack-plan VENOM_VARIANT=venom PROFILE=full ENVIRONMENT=dev
+make start-venom PROFILE=full ENVIRONMENT=dev
+make status-venom PROFILE=full ENVIRONMENT=dev
+curl -fsS http://127.0.0.1:8000/healthz
+```
+
+Open [chat](http://localhost:3000/chat) or [voice](http://localhost:3000/voice). When finished, stop Venom Full.
+
+```bash
+make stop-venom PROFILE=full ENVIRONMENT=dev
+```
+
+Stop the active variant before starting the other. The launchers preserve server-side history, materials and notes in the same environment. Browser drafts depend on the UI origin. The variant-specific stop targets also stop a local engine when that launcher owns it and can verify its identity. A separately managed Ollama service keeps running under its own lifecycle. For custom ports, paths or bind addresses, use the same overrides on status and stop. [Runtime ownership and switching](STUDIO.md)
+
+## Configure voice
+
+With the Full dependencies, set `ENABLE_AUDIO_INTERFACE=true` in `.env.dev`. For speech output on the Gemma path, set `TTS_MODEL_PATH` to the absolute path of an installed Piper `.onnx` voice and keep its `.onnx.json` alongside it. Choose the Whisper size with `WHISPER_MODEL_SIZE`. For CPU audio, set both `AUDIO_DEVICE=cpu` and `TTS_USE_CUDA=false`. For GPU audio, install the required CUDA libraries for the selected dependencies. [Audio dependencies](DEPENDENCY_PROFILES.md)
+
+To try Omni, run `ollama pull lfm3-omni:2b` against a loopback Ollama endpoint on the Venom host. Use an Ollama build with native audio input and output support for that model. Select it in Chat 2.0 or the Full voice screen. Keep automatic voice routing for the native path (`VOICE_ROUTE_PROFILE=auto`, `AUDIO_DECODER_PROFILE=auto` and an empty `AUDIO_DECODER_CHAIN`). Apply startup settings by restarting the active variant, allow microphone access in the browser, and confirm both transcription and playback. The [Gemma and Omni test report](EN/POLISH_MULTIMODAL_ASSISTANT_EXPERIMENT.md) records the Ollama version, model tags, timings and the tested voice routes.
+
+## Runtime profiles and isolated verification
+
+`PROFILE=light` pauses background work and skips model warmup. It can use the already installed Full dependencies. Use the Light dependency lock only for the API and basic chat use case. Install it into a separate virtual environment if you need both dependency sets, and pass the same `VENV` override to start, status and stop. For Studio with the Light dependency set, stop any running variant and prepare `.env.dev` and the shared web dependencies before running these commands.
+
+```bash
+python3.14 scripts/bootstrap_dependency_profile.py --profile light --venv "$PWD/.venv-light"
+make start-studio PROFILE=light ENVIRONMENT=dev VENV=.venv-light
+make status-studio PROFILE=light ENVIRONMENT=dev VENV=.venv-light
+```
+
+```bash
+make stop-studio PROFILE=light ENVIRONMENT=dev VENV=.venv-light
+```
+
+[Stack profiles](STACK_PROFILES.md) · [Dependency profiles](DEPENDENCY_PROFILES.md)
+
+For read-only checks, stop the running variant first and create `.env.preprod` from its own template.
+
+```bash
+make ensure-env-file ENVIRONMENT=preprod
+```
+
+Configure the provider in `.env.preprod` if the check requires inference. Preprod keeps separate data, cache, queues, logs and build output. The default UI/API ports are `3100`/`8100`.
+
+```bash
+make stack-plan VENOM_VARIANT=venom PROFILE=full ENVIRONMENT=preprod
+make start-venom PROFILE=full ENVIRONMENT=preprod
+make status-venom PROFILE=full ENVIRONMENT=preprod
+curl -fsS http://127.0.0.1:8100/healthz
+make stop-venom PROFILE=full ENVIRONMENT=preprod
+```
+
+For Studio preprod, use `VENOM_VARIANT=studio` in the plan and the `*-studio` targets with `ENVIRONMENT=preprod`. Use the addresses from the launcher for custom ports. [Preprod rules](ENVIRONMENTS_SUPPORT.md)
+
+## Build Studio for standalone startup
+
+Stop the UI before building. Keep the same profile, environment and public configuration between build and startup. Rebuild after changes to source, public settings or Node.js.
+
+```bash
+make web-build VENOM_VARIANT=studio PROFILE=full ENVIRONMENT=dev
+make start-studio PROFILE=full ENVIRONMENT=dev START_WEB_MODE=standalone
+```
+
+[Web build and artifact lifecycle](PL/WEB_LIFECYCLE.md)
+
+## Verify and operate
+
+- Use the matching `status` target and check `/healthz`. Send a Direct message to verify the selected provider and model. Health checks report process liveness.
+- If audio is enabled, record a short question and confirm the answer plays in the browser.
+- Use `make stack-plan` for effective ports, data and log paths. Inspect backend and web logs if a start fails. Repository defaults are under `logs/` in dev and `logs/preprod/` in preprod.
+- Use `make runtime-log-policy-audit` to review the local retention and rotation settings. [Backup and environment isolation](ENVIRONMENTS_SUPPORT.md)
+- For containers, the current images use the Light dependency set. Follow the [Docker stack profile guide](PL/DOCKER_PROFILES.md) for local builds and the [Docker release guide](DOCKER_RELEASE_GUIDE.md) for tagged images.

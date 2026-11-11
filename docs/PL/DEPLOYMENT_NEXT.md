@@ -1,301 +1,138 @@
-# Deployment – FastAPI + Next.js
+# Wdrożenie Venoma 1.10.0 w Linuksie lub WSL2
 
-> Zakres bieżącego kandydata: Light/API oraz CI, z Ollama przez HTTP. Full,
-> lokalne dodatki GPU i Academy są odłożone; zachowane instrukcje legacy nie
-> oznaczają ich kwalifikacji dla nowego core MAF. Nie aktualizuj pełnego środowiska
-> operatorskiego tą paczką. Zobacz [politykę profili](../DEPENDENCY_PROFILES.md).
+[English version](../DEPLOYMENT_NEXT.md) · [README projektu](../../README_PL.md)
 
-Ten dokument opisuje nową architekturę uruchomieniową Venoma: **FastAPI** działa jako samodzielne API/SSE/WS, a **Next.js (`web-next`)** serwuje interfejs użytkownika. Obie części są uruchamiane i monitorowane niezależnie.
+Używaj `dev` do pracy jednego operatora i rozwoju. Środowisko `preprod` służy do odizolowanego odbioru w trybie tylko do odczytu. Środowisko `prod` pozostaje zarezerwowane. Jeśli masz już launcher instancji, zachowaj jego ścieżkę do repozytorium, pliki środowiskowe, katalogi danych i porty. [Wsparcie środowisk](ENVIRONMENTS_SUPPORT.md)
 
-Założenia bezpieczeństwa operacyjnego oraz politykę localhost-admin opisuje `docs/PL/SECURITY_POLICY.md`.
+## Instalacja ze źródeł
 
-## Składniki
+W Linuksie x86-64, w tym w dystrybucji WSL2 na x86-64, użyj **Pythona 3.14.8**, **Node.js 24.22.0** i **npm 11.19.1**. Zainstaluj Git, GNU Make i curl. Full potrzebuje też kompilatora C i nagłówków wejścia Linuksa do zbudowania `evdev`. W Debianie lub Ubuntu zapewniają je pakiety `build-essential` i `linux-libc-dev`. Zainstaluj wskazane wersje Pythona i Node.js przed wykonaniem poniższych poleceń.
 
-| Komponent | Rola | Domyślny port | Start/stop |
-|-----------|------|---------------|------------|
-| FastAPI (`venom_core.main:app`) | REST API, SSE (`/api/v1/tasks/{id}/stream`), WebSocket `/ws/events` | `8000` | `make start-dev` / `make start-prod` (uvicorn) |
-| Next.js (`web-next`) | UI Cockpit/Brain/Strategy (React 19, App Router) | `3000` | `make start-dev` (Next dev) / `make start-prod` (Next build + start) |
-
-## Zależności i konfiguracja
-
-1. **Python** – instalacja backendu:
-   ```bash
-   python3 -m venv .venv
-   source .venv/bin/activate
-   pip install -r requirements.txt
-   ```
-   Uwagi:
-   - `requirements-docker-minimal.txt` = techniczny minimalny baseline.
-   - `requirements.txt` + `requirements-profile-api.txt` = developer/medium baseline dla backendu.
-   - `requirements-profile-web.txt` = alias bazowego API dla integracji web-next; nie dodaje własnych pinów Pythona.
-   - `requirements-ci-lite.txt` = lekki profil gate'ów CI oparty o wspólną bazę runtime.
-   - `requirements-profile-vllm.txt` i `requirements-profile-onnx.txt` = overlaye silnikowe nad wspólną bazą, nie osobne kanoniczne korzenie.
-   - `requirements-profile-onnx-cpu.txt` = techniczny wariant ONNX dla hostów CPU-only.
-   - opcjonalne extras (instaluj po overlayu ONNX/ONNX-CPU): `pip install -r requirements-extras-onnx.txt` (`faster-whisper`, `piper-tts`)
-   - Legacy catch-all exception: `pip install -r requirements-full.txt`
-
-### Kontrakt profili zależności (ważne)
-
-Tych gwarancji używamy do rozróżnienia "to normalne" vs "to błąd":
-
-| Kanoniczna rola | Główne pliki | Co gwarantuje | Czego nie gwarantuje |
-|---|---|---|---|
-| Minimal | `requirements-docker-minimal.txt` | najniższa wspólna baza runtime | overlaye silnikowe, narzędzia tylko dla CI, legacy all-in extras |
-| Developer/medium | `requirements.txt`, `requirements-profile-api.txt`, `requirements-profile-web.txt` | backend + integracje cloud z aliasem web | ciężkie lokalne stosy, jeśli overlay nie został doinstalowany |
-| CI | `requirements-ci-lite.txt` | lekki profil gate'ów GitHub CI z wspólną bazą runtime | ciężkie lokalne stosy i legacy all-in runtime |
-| Full/legacy | `requirements-full.txt` | jawny legacy catch-all exception | kanoniczny nowy target runtime |
-
-Wspólna baza kompromisu:
-- `requirements-runtime-common.txt` trzyma przypiętą podłogę wspólną dla aktywnych ról runtime.
-- Ta wspólna podłoga obejmuje teraz `fastapi`, `pydantic`, `pydantic-settings`, `semantic-kernel` i `watchdog`.
-- Pliki profili powinny zawierać wyłącznie delty wynikające z roli.
-
-Zasada overlay:
-- `requirements-profile-vllm.txt` i `requirements-profile-onnx.txt` rozszerzają bazę developer/medium.
-- `requirements-profile-onnx-cpu.txt` to techniczny wariant ONNX, a nie piąta kanoniczna rola.
-- `requirements-extras-onnx.txt` to warstwa add-on, a nie samodzielny root runtime.
-Reguła operacyjna:
-- traktuj overlaye silnikowe jako wzajemnie wykluczające się dla danego hosta/uruchomienia; aktywny ma być tylko jeden lokalny silnik LLM, a pozostałe uruchamia się wyłącznie do testów konkretnej ścieżki modelu.
-
-Zasady interpretacji:
-1. Brak pakietu po instalacji niewłaściwego profilu jest zachowaniem oczekiwanym.
-2. Brak pakietu, który nie należy do zakresu wybranego profilu, jest zachowaniem oczekiwanym.
-3. Brak pakietu, który jest jawnie wpisany w pliku wybranego profilu, oznacza problem instalacji/środowiska i traktujemy to jako defekt.
-2. **Node.js 18.19+** – frontend:
-   ```bash
-   npm --prefix web-next install
-   ```
-3. **Zmienne środowiskowe**:
-   | Nazwa | Przeznaczenie | Wartość domyślna |
-   |-------|---------------|------------------|
-   | `NEXT_PUBLIC_API_BASE` | Bazowy URL API używany przez Next (CSR). | `http://localhost:8000` |
-   | `NEXT_PUBLIC_WS_BASE` | Endpoint WebSocket dla `/ws/events`. | `ws://localhost:8000/ws/events` |
-   | `API_PROXY_TARGET` | Cel proxy w `next.config.ts` (SSR). | `http://localhost:8000` |
-   | `NEXT_DISABLE_TURBOPACK` | W trybie dev ustawiane automatycznie przez Makefile. | `1` |
-   | `OLLAMA_IMAGE` | Tag obrazu Ollama używany w profilach compose. | `ollama/ollama:0.40.14` |
-   | `VENOM_RUNTIME_PROFILE` | Profil runtime (`light`, `llm_off`, `full`) dla modelu jednej paczki (`llm_off` = bez lokalnego runtime LLM, ale możliwe API zewnętrzne po konfiguracji kluczy). | `light` |
-   | `OLLAMA_HOST` | Adres nasłuchu Ollama wewnątrz kontenera. | `0.0.0.0` |
-   | `VENOM_OLLAMA_PROFILE` | Profil strojenia single-user (`balanced-12-24gb`, `low-vram-8-12gb`, `max-context-24gb-plus`). | `balanced-12-24gb` |
-   | `OLLAMA_CONTEXT_LENGTH` | Jawne nadpisanie kontekstu (`0` = domyślne z profilu). | `0` |
-   | `OLLAMA_NUM_PARALLEL` | Jawne nadpisanie równoległości (`0` = domyślne z profilu). | `0` |
-   | `OLLAMA_MAX_QUEUE` | Jawne nadpisanie kolejki (`0` = domyślne z profilu). | `0` |
-   | `OLLAMA_FLASH_ATTENTION` | Włącza flash attention. | `1` |
-   | `OLLAMA_KV_CACHE_TYPE` | Nadpisanie typu KV cache (puste = domyślne z profilu). | `` |
-   | `OLLAMA_LOAD_TIMEOUT` | Timeout ładowania modelu przekazywany do runtime Ollama. | `10m` |
-   | `OLLAMA_NO_CLOUD` | Wyłącza modele cloud w Ollama (tryb privacy/local-first). | `1` |
-   | `OLLAMA_RETRY_MAX_ATTEMPTS` | Liczba prób retry dla błędów przejściowych Ollama (429/5xx). | `2` |
-   | `OLLAMA_RETRY_BACKOFF_SECONDS` | Bazowy backoff retry dla Ollama. | `0.35` |
-
-## Tryby uruchomień
-
-Kontrakt wyboru środowiska:
-- `Makefile` wybiera aktywne pliki env i eksportuje `ENV_FILE` / `ENV_EXAMPLE_FILE` do skryptów runtime.
-- Skrypty runtime (`start_stack.sh`, `vllm_service.sh`, `ollama_service.sh`) używają wspólnego loadera `scripts/lib/env_contract.sh`.
-- Priorytet wartości efektywnej w skryptach runtime: `make VAR=...` (lub eksport środowiska shella) > wartość z `ENV_FILE` > domyślny fallback skryptu.
-- Wartości runtime-domain (`ACTIVE_LLM_SERVER`, `VLLM_*`, `OLLAMA_*`) utrzymujemy w `.env*`; `Makefile` trzyma głównie domyślne parametry operatorskie/lifecycle.
-- W kontrakcie runtime nie używamy już gołego `.env` / `.env.example`.
-
-### Development (`make start` / `make start-dev`)
-Plik konfiguracji:
-- plik runtime: `.env.dev` (lokalny, niecommitowany)
-- bezpieczny szablon: `.env.dev.example` (commitowany, bez sekretów)
-
-1. `uvicorn` startuje backend z `--reload`.
-2. `npm --prefix web-next run dev` rusza Next-a z parametrami `--hostname 0.0.0.0 --port 3000`.
-3. Makefile pilnuje PID-ów (`.venom.pid`, `.web-next.pid`) i blokuje wielokrotne starty.
-4. `make stop` zabija oba procesy i czyści porty (8000/3000).
-
-### Production (`make start-prod`)
-Plik konfiguracji:
-- plik runtime: `.env.dev` (lokalny, niecommitowany)
-- bezpieczny szablon: `.env.dev.example` (commitowany, bez sekretów)
-
-Ostrzeżenie:
-- `make start-prod` jest dostępne, ale `prod` nie jest obecnie w pełni zwalidowane/rekomendowane do działania live.
-- Do codziennej pracy i akceptacji używaj przepływów `dev` oraz `preprod`.
-
-1. Uruchamia `pip install`/`npm install` wcześniej.
-2. Buduje UI: `npm --prefix web-next run build` (standalone, telemetry wyłączone).
-3. Startuje backend bez `--reload` (`uvicorn venom_core.main:app --host 0.0.0.0 --port 8000 --no-server-header`).
-4. Startuje `next start` na porcie 3000.
-5. `make stop` działa tak samo (zatrzymuje `next start` też przez `pkill -f`).
-
-### Pre-production (`make start-preprod`)
-1. Używa trybu produkcyjnego na wspólnym stacku (`START_MODE=prod`).
-2. Używa dedykowanego pliku konfiguracji preprod:
-   - plik runtime: `.env.preprod` (lokalny, niecommitowany)
-   - bezpieczny szablon: `.env.preprod.example` (commitowany, bez sekretów)
-   - komenda pomocnicza: `make ensure-preprod-env-file`
-3. Ustawia przed startem zmienne izolacji preprod:
-   - `ENVIRONMENT_ROLE=preprod`
-   - `DB_SCHEMA=preprod`
-   - `CACHE_NAMESPACE=preprod`
-   - `QUEUE_NAMESPACE=preprod`
-   - `STORAGE_PREFIX=preprod`
-   - `ALLOW_DATA_MUTATION=0`
-4. Uruchamia ten sam pipeline co `start-prod`, ale z izolacją danych preprod.
-
-Przydatne warianty:
 ```bash
-make ensure-preprod-env-file # tworzy .env.preprod na podstawie .env.preprod.example
-make start-preprod          # backend + frontend w trybie preprod
-make api-preprod            # tylko backend w trybie preprod
-make web-preprod            # tylko frontend w trybie preprod
-make test-preprod-readonly-smoke
-
-# krótkie aliasy
-make ensurepreenv
-make startpre
-make stoppre
-make restartpre
-make statuspre
-make apipre
-make webpre
-make testpre
+git clone https://github.com/mpieniak01/Venom.git
+cd Venom
+python3.14 --version
+node --version
+npm --version
+python3.14 scripts/bootstrap_dependency_profile.py --profile full --venv "$PWD/.venv"
+npm --prefix web-next ci
+make ensure-env-file ENVIRONMENT=dev
 ```
 
-## Mapa modułów Makefile i katalog komend
+Skrypt tworzy nowe środowisko wirtualne przy użyciu uruchamiającego go interpretera i instaluje zależności z locka Full. Sprawdza też wolne miejsce. Instalacja Full wymaga co najmniej 16 GiB wolnych w miejscu instalacji. Zostaw dodatkowe miejsce na modele Ollamy, dane i artefakty web. Obie aplikacje używają jednej instalacji `web-next/node_modules`. Przy aktualizacji istniejącej instancji sprawdź nowy profil w osobnym środowisku wirtualnym przed przełączeniem. [Profile zależności i stan kwalifikacji](../DEPENDENCY_PROFILES.md)
 
-Główny `Makefile` działa teraz jako cienki entrypoint i dołącza moduły:
+## Konfiguracja Ollamy i modelu lokalnego
 
-- `make/tests.mk`
-- `make/maintenance.mk`
-- `make/preprod.mk`
-- `make/runtime.mk`
-- `make/ops.mk`
+Uruchom Ollamę na hoście z Linuksem i przygotuj Gemmę 4 E4B. Jeśli Ollama używa innego adresu, ustaw `OLLAMA_HOST` dla poleceń CLI.
 
-Publiczne grupy komend:
-
-1. Lifecycle głównego stacka
-- `make start` - pełny stack dev (backend + frontend webpack-safe + aktywny runtime LLM)
-- `make start2` - pełny stack dev z frontendem Turbopack
-- `make stop` - zatrzymanie backendu + frontendu + helperów runtime
-- `make status` - status procesów (PID/porty)
-
-2. Testy i bramki jakości (`make/tests.mk`)
-- `make test`, `make test-data`, `make test-all`
-- `make test-unit`, `make test-smoke`, `make test-perf`
-- `make test-web-unit`, `make test-web-e2e`
-- `make pr-fast` - wymagany lokalny gate PR
-- `make test-fast-coverage`, `make check-new-code-coverage`
-
-3. Maintenance i higiena środowiska (`make/maintenance.mk`)
-- `make make-targets-audit` - walidacja spójności `.PHONY` vs zdefiniowane targety
-- `make audit-dead-code` - heurystyczny audyt ślepego kodu (Python)
-- `make audit-dead-code-vulture-install` - ręczna instalacja vulture do `.venv`
-- `make audit-dead-code-full` - heurystyczny audyt ślepego kodu + sygnał vulture
-- `make stack-stability-audit` - ręczna diagnostyka: pid, porty, manifesty modułów optional
-- `make llm-runtime-stability-audit` - ręczny audyt lifecycle LLM na działającym stacku (aktywacja/switch/unload dla ollama/vllm/onnx)
-- `make llm-runtime-stability-cycle-start` - cykl: `make start` -> audyt lifecycle runtime LLM -> `make stop`
-- `make llm-runtime-stability-cycle-start2` - cykl: `make start2` -> audyt lifecycle runtime LLM -> `make stop`
-- `make env-audit`, `make env-clean-safe`, `make env-clean-docker-safe`, `make env-clean-deep`, `make env-report-diff`
-- `make security-delta-scan`, `make security-delta-scan-strict`
-- `make mcp-clean`, `make mcp-status`
-
-4. Kontrola runtime (`make/runtime.mk`)
-- `make vllm-start`, `make vllm-stop`, `make vllm-restart`
-- `make ollama-start`, `make ollama-stop`, `make ollama-restart`
-
-5. Operacje preprod (`make/preprod.mk` + targety root)
-- `make ensure-preprod-env-file`, `make start-preprod`, `make api-preprod`, `make web-preprod`
-- aliasy: `make startpre`, `make apipre`, `make webpre`, `make testpre`
-- `make preprod-backup`, `make preprod-restore TS=<timestamp>`, `make preprod-verify TS=<timestamp>`
-- `make preprod-audit`, `make preprod-drill`, `make preprod-readiness-check`
-
-Wewnętrzny helper używany przez wrappery preprod:
-- `make ensure-env-file` deleguje bootstrap pliku env do `scripts/dev/ensure_env_file.sh`.
-
-6. Narzędzia operacyjne i workspace (`make/ops.mk`)
-- `make modules-status`, `make modules-pull`, `make modules-branches`, `make modules-exec CMD='...'`
-- `make runtime-maintenance-cleanup`
-- `make runtime-log-policy-audit`, `make runtime-logrotate-install-help`
-- `make monitor`
-
-Kanoniczna lista komend operatorskich pozostaje dostępna przez:
-- `make help`
-
-## Monitorowanie i logi
-
-- `make status` – informuje czy procesy żyją (PID + porty).
-- `logs/` – ogólne logi backendowe (kontrolowane przez `loguru`).
-- `web-next/.next/standalone` – output buildu (nie commitujemy).
-- `scripts/archive-perf-results.sh` – pomocniczy backup wyników Playwright/pytest/Locust z katalogu `perf-artifacts/`.
-
-### Polityka retencji danych runtime i logów
-
-Venom uruchamia automatyczne zadanie retencji w `BackgroundScheduler` dla plików runtime.
-
-- **Co jest czyszczone**: katalogi z `SETTINGS.RUNTIME_RETENTION_TARGETS` (domyślnie: `./logs`, `./data/timelines`, `./data/memory`, `./data/training`, `./data/synthetic_training`, `./data/learning`).
-- **Okres retencji**: `SETTINGS.RUNTIME_RETENTION_DAYS` (domyślnie: `7` dni).
-- **Częstotliwość uruchamiania**: jedno natychmiastowe uruchomienie po starcie aplikacji + interwał z `SETTINGS.RUNTIME_RETENTION_INTERVAL_MINUTES` (domyślnie: `1440`, raz na dobę).
-- **Przełącznik funkcji**: `SETTINGS.ENABLE_RUNTIME_RETENTION_CLEANUP` (domyślnie: `True`).
-- **Guard startowy**: jednorazowe uruchomienie po starcie wykona się tylko wtedy, gdy ostatnia udana retencja jest starsza niż ustawiony interwał (brak „mielenia” przy częstym reloadzie w dev).
-- **Marker stanu**: `./.venom_runtime/runtime_retention.last_run` zapisuje timestamp ostatniego wykonania retencji runtime.
-- **Bezpiecznik**: pliki śledzone przez Git są wykluczone z usuwania przez retencję.
-
-Referencje implementacji:
-- funkcja joba: `venom_core/jobs/scheduler.py` (`cleanup_runtime_files`)
-- rejestracja w schedulerze: `venom_core/main.py` (job interwałowy `cleanup_runtime_files`)
-- wartości domyślne konfiguracji: `venom_core/config.py` (ustawienia retencji runtime)
-
-## Paczki Docker Minimal (build i publikacja)
-
-Szczegółowa procedura wydania krok po kroku:
-- `docs/PL/DOCKER_RELEASE_GUIDE.md`
-
-Dla dockerowego onboardingu MVP używamy dwóch workflow:
-
-1. **`docker-sanity`** (`.github/workflows/docker-sanity.yml`)
-   - uruchamia się na PR-ach dotykających plików Docker,
-   - waliduje compose + skrypty shell + build obrazów,
-   - **nie** publikuje obrazów.
-
-2. **`docker-publish`** (`.github/workflows/docker-publish.yml`)
-   - publikuje obrazy do GHCR tylko gdy:
-     - wypchniesz tag `v*` (tryb release), albo
-     - uruchomisz workflow ręcznie (`workflow_dispatch`).
-   - zabezpieczenia przed przypadkowym wydaniem:
-     - manualny publish wymaga `confirm_publish=true`,
-     - manualny publish działa tylko z gałęzi `main`,
-     - publish po tagu wymaga ścisłego semver (`vMAJOR.MINOR.PATCH`) i commita należącego do historii `main`.
-   - dzięki temu nie publikujemy paczek po każdym drobnym commicie.
-
-Publikowane obrazy:
-- `ghcr.io/mpieniak01/venom-backend`
-- `ghcr.io/mpieniak01/venom-frontend`
-
-Uwaga bezpieczeństwa (domyślnie dla MVP):
-- `compose/compose.minimal.yml` publikuje porty na interfejsach hosta, aby umożliwić testy z innego komputera w LAN.
-- `compose/compose.spores.yml.tmp` to tymczasowy draft topologii Spore, obecnie nieużywany i poza ścieżką onboardingu Venom minimal.
-- Warunek konieczny: uruchamiaj ten profil wyłącznie w zaufanej/prywatnej sieci.
-- Nie wystawiaj tych portów bezpośrednio do Internetu. Dla dostępu publicznego użyj reverse proxy i dodaj uwierzytelnienie/autoryzację.
-
-Domyślne tagi:
-- zawsze: `sha-<short_sha>`
-- na tagu release: `<git_tag>` + `latest`
-- przy uruchomieniu ręcznym: opcjonalny `custom_tag` (+ opcjonalny `latest`)
-
-Przykładowy flow release (aktualny stable: `v1.9.0`):
 ```bash
-git checkout main
-git pull --ff-only
-git tag v1.9.0
-git push origin v1.9.0
+curl -fsS http://127.0.0.1:11434/api/version
+ollama pull gemma4:e4b
+ollama list
 ```
-Uwaga: workflow publikacji sprawdza pełny semver. `v1.9` zostanie odrzucony.
 
-## Testy po wdrożeniu
+Dla domyślnego adresu Ollamy wpisz poniższe ustawienia do `.env.dev`. Trzymaj dane dostępowe i ustawienia konkretnej maszyny w prywatnym pliku środowiskowym.
 
-1. **Backend**: `pytest` + `pytest tests/perf/test_chat_pipeline.py -m performance`
-2. **Frontend**: `npm --prefix web-next run lint && npm --prefix web-next run build`
-3. **E2E Next**: `npm --prefix web-next run test:e2e`
-4. **Latencja czatu Next**: `npm --prefix web-next run test:perf`
-5. **Locust (opcjonalnie)**: `./scripts/run-locust.sh` i odpalenie scenariusza z panelu (domyślnie `http://127.0.0.1:8089`)
+```dotenv
+ACTIVE_LLM_SERVER=ollama
+LLM_SERVICE_TYPE=local
+LLM_LOCAL_ENDPOINT=http://127.0.0.1:11434/v1
+LLM_MODEL_NAME=gemma4:e4b
+```
 
-## Checklist wdrożeniowy
+## Uruchomienie Studio lub Venom Full
 
-- [ ] `make start-prod` działa i zwraca linki do backendu i UI (zgodność techniczna; to nie jest jeszcze rekomendowana ścieżka aktywnego rolloutu prod).
-- [ ] Proxy (nginx/docker-compose) przekierowuje `/api` i `/ws` na FastAPI oraz resztę na Next.
-- [ ] `npm --prefix web-next run test:e2e` przechodzi na buildzie prod.
-- [ ] `npm --prefix web-next run test:perf` wykazuje latency < budżet (domyślnie 15s).
-- [ ] `pytest tests/perf/test_chat_pipeline.py -m performance` przechodzi (SSE task_update → task_finished < 25s).
+Studio uruchamia osobną aplikację Next.js (`web-studio`) i podzbiór wspólnego API FastAPI (`venom_core.studio_main:app`). Venom Full uruchamia `web-next` i `venom_core.main:app`. Oba w domyślnym starcie dev korzystają z Turbopacka. Aby ograniczyć nasłuchiwanie do interfejsu lokalnego, wykonaj `export HOST=127.0.0.1 WEB_HOST=127.0.0.1` w powłoce używanej do startu, sprawdzania statusu i zatrzymywania.
+
+Wykonaj blok dla wybranej aplikacji. Launcher wypisuje adresy interfejsu i API. Domyślne porty repozytorium dla dev to `3000` dla interfejsu i `8000` dla API.
+
+### Studio
+
+```bash
+make stack-plan VENOM_VARIANT=studio PROFILE=full ENVIRONMENT=dev
+make start-studio PROFILE=full ENVIRONMENT=dev
+make status-studio PROFILE=full ENVIRONMENT=dev
+curl -fsS http://127.0.0.1:8000/healthz
+```
+
+Otwórz [Chat 2.0](http://localhost:3000/chat2) i wyślij krótką wiadomość w Direct. Po zakończeniu zatrzymaj Studio z tego samego katalogu i z tymi samymi ustawieniami.
+
+```bash
+make stop-studio PROFILE=full ENVIRONMENT=dev
+```
+
+### Venom Full
+
+```bash
+make stack-plan VENOM_VARIANT=venom PROFILE=full ENVIRONMENT=dev
+make start-venom PROFILE=full ENVIRONMENT=dev
+make status-venom PROFILE=full ENVIRONMENT=dev
+curl -fsS http://127.0.0.1:8000/healthz
+```
+
+Otwórz [czat](http://localhost:3000/chat) lub [głos](http://localhost:3000/voice). Po zakończeniu zatrzymaj Venom Full.
+
+```bash
+make stop-venom PROFILE=full ENVIRONMENT=dev
+```
+
+Zatrzymaj działający wariant przed uruchomieniem drugiego. W tym samym środowisku launchery zachowują historię po stronie serwera, materiały i notatki. Szkice przeglądarki zależą od adresu interfejsu. Polecenia zatrzymania dla konkretnego wariantu zamykają także lokalny silnik, gdy launcher nim zarządza i może potwierdzić jego tożsamość. Osobno zarządzana Ollama działa dalej jako niezależna usługa. Jeśli zmieniasz porty, ścieżki lub adresy nasłuchiwania, podawaj te same ustawienia przy statusie i zatrzymaniu. [Własność procesów i przełączanie](STUDIO.md)
+
+## Konfiguracja głosu
+
+Po instalacji zależności Full ustaw `ENABLE_AUDIO_INTERFACE=true` w `.env.dev`. Do syntezy w ścieżce Gemmy wpisz w `TTS_MODEL_PATH` bezwzględną ścieżkę do pliku `.onnx` z głosem Piper i umieść odpowiadający mu `.onnx.json` obok. Rozmiar modelu Whispera wybierz przez `WHISPER_MODEL_SIZE`. Aby używać CPU do głosu, ustaw jednocześnie `AUDIO_DEVICE=cpu` i `TTS_USE_CUDA=false`. Do pracy na GPU zainstaluj biblioteki CUDA wymagane przez wybrane zależności. [Zależności audio](../DEPENDENCY_PROFILES.md)
+
+Aby wypróbować Omni, wykonaj `ollama pull lfm3-omni:2b` dla Ollamy nasłuchującej na interfejsie lokalnym hosta Venoma. Użyj wersji Ollamy obsługującej natywne wejście i wyjście audio dla tego modelu. Wybierz go w Chat 2.0 lub na ekranie głosu w Full. Dla natywnej ścieżki pozostaw automatyczny routing (`VOICE_ROUTE_PROFILE=auto`, `AUDIO_DECODER_PROFILE=auto` i pusty `AUDIO_DECODER_CHAIN`). Zastosuj ustawienia startowe przez ponowne uruchomienie aktywnego wariantu, zezwól przeglądarce na dostęp do mikrofonu i sprawdź transkrypcję oraz odtwarzanie. [Raport z prób Gemmy i Omni](POLISH_MULTIMODAL_ASSISTANT_EXPERIMENT.md) podaje wersję Ollamy, tagi modeli, czasy i sprawdzone ścieżki głosu.
+
+## Profile uruchomieniowe i odizolowany odbiór
+
+`PROFILE=light` wstrzymuje zadania tła i pomija rozgrzewanie modelu. Może korzystać z już zainstalowanych zależności Full. Lock Light służy do API i podstawowego czatu. Jeśli potrzebujesz obu zestawów zależności, zainstaluj Light w osobnym środowisku wirtualnym i podawaj ten sam `VENV` przy starcie, sprawdzaniu statusu i zatrzymaniu. Dla Studio z zależnościami Light zatrzymaj działający wariant i przygotuj `.env.dev` oraz wspólne zależności web, a następnie wykonaj poniższe polecenia.
+
+```bash
+python3.14 scripts/bootstrap_dependency_profile.py --profile light --venv "$PWD/.venv-light"
+make start-studio PROFILE=light ENVIRONMENT=dev VENV=.venv-light
+make status-studio PROFILE=light ENVIRONMENT=dev VENV=.venv-light
+```
+
+```bash
+make stop-studio PROFILE=light ENVIRONMENT=dev VENV=.venv-light
+```
+
+[Profile stosu](STACK_PROFILES.md) · [Profile zależności](../DEPENDENCY_PROFILES.md)
+
+Do odbioru tylko do odczytu zatrzymaj działający wariant i utwórz `.env.preprod` z jego własnego szablonu.
+
+```bash
+make ensure-env-file ENVIRONMENT=preprod
+```
+
+Skonfiguruj dostawcę w `.env.preprod`, jeśli próba wymaga inferencji. Preprod ma własne dane, cache, kolejki, logi i artefakty web. Domyślne porty interfejsu i API to `3100` i `8100`.
+
+```bash
+make stack-plan VENOM_VARIANT=venom PROFILE=full ENVIRONMENT=preprod
+make start-venom PROFILE=full ENVIRONMENT=preprod
+make status-venom PROFILE=full ENVIRONMENT=preprod
+curl -fsS http://127.0.0.1:8100/healthz
+make stop-venom PROFILE=full ENVIRONMENT=preprod
+```
+
+Dla Studio w preprod wybierz `VENOM_VARIANT=studio` w planie oraz polecenia `*-studio` z `ENVIRONMENT=preprod`. Przy niestandardowych portach korzystaj z adresów wskazanych przez launcher. [Zasady preprod](ENVIRONMENTS_SUPPORT.md)
+
+## Budowanie Studio do uruchomienia standalone
+
+Zatrzymaj interfejs przed budowaniem. Użyj tego samego profilu, środowiska i ustawień publicznych przy budowaniu i starcie. Po zmianie źródeł, ustawień publicznych lub wersji Node.js zbuduj aplikację ponownie.
+
+```bash
+make web-build VENOM_VARIANT=studio PROFILE=full ENVIRONMENT=dev
+make start-studio PROFILE=full ENVIRONMENT=dev START_WEB_MODE=standalone
+```
+
+[Cykl budowania i uruchamiania web](WEB_LIFECYCLE.md)
+
+## Odbiór i obsługa
+
+- Sprawdź status wybranego wariantu i `/healthz`. Wyślij wiadomość w Direct, aby sprawdzić model i dostawcę. Endpoint zdrowia potwierdza działanie procesu.
+- Jeśli głos jest włączony, nagraj krótkie pytanie i sprawdź, czy przeglądarka odtwarza odpowiedź.
+- Użyj `make stack-plan`, aby odczytać porty oraz ścieżki danych i logów. Przy błędzie startu sprawdź logi backendu i web. Domyślne katalogi to `logs/` w dev i `logs/preprod/` w preprod.
+- Użyj `make runtime-log-policy-audit`, aby sprawdzić ustawienia retencji i rotacji. [Kopie zapasowe i izolacja środowisk](ENVIRONMENTS_SUPPORT.md)
+- Obecne obrazy kontenerowe używają zestawu zależności Light. [Profile Dockera](DOCKER_PROFILES.md) opisują budowanie lokalne, a [przewodnik wydań Dockera](DOCKER_RELEASE_GUIDE.md) pracę z obrazami oznaczonymi tagami.

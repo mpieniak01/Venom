@@ -17,11 +17,13 @@ Venom is an open-source AI stack for a single operator. Run chat, document and i
 | What it runs | A dedicated web app and a subset of the shared API for chat, materials, voice, and model selection | The full web app and API with agent workflows, tools, configuration, and diagnostics |
 | Chat modes | Direct and Normal | Direct, Normal, and Complex |
 
-**Direct** sends the current conversation to the selected model. **Normal** adds routing and can consult saved notes when the user enables **Use notes**. Save an answer as a note explicitly. Conversation history is saved separately. **Complex** uses the full agent workflow for multi-step work. Both applications use the same server-side history and notes when run in the same environment. [Chat operator guide](docs/CHAT_OPERATOR.md) · [Studio runtime](docs/STUDIO.md)
+**Direct** sends the current conversation to the selected model. **Normal** adds routing, and **Complex** uses the full agent workflow for multi-step work. In Chat 2.0, enable **Use notes** in Normal for the current question or use **Save as note** on a selected answer. Conversation history is saved separately. Both applications share server-side data when run in the same environment. [Chat operator guide](docs/CHAT_OPERATOR.md) · [Studio runtime](docs/STUDIO.md)
+
+Agent orchestration uses Microsoft Agent Framework. The quick start uses local Ollama. Direct text chat can also use [OpenRouter](docs/OPENROUTER_LOCAL_MVP.md) or [Ollama on Vast](docs/PL/VAST_START_I_ODZYSKIWANIE.md).
 
 ## Quick start on Linux or WSL2
 
-Use Linux x86-64 with **Python 3.14.8**, **Node.js 24.22.0** and **npm 11.19.1**. Install these and a running Ollama service before starting. The [deployment guide](docs/DEPLOYMENT_NEXT.md) covers native build dependencies, audio and installed launchers.
+Use Linux x86-64 with **Python 3.14.8**, **Node.js 24.22.0** and **npm 11.19.1**. Install these tools and start Ollama before running the quick start. The [deployment guide](docs/DEPLOYMENT_NEXT.md) covers native build dependencies, audio and installed launchers.
 
 ```bash
 git clone https://github.com/mpieniak01/Venom.git
@@ -64,9 +66,9 @@ The examples use the Full dependency set so audio can be configured later. Appli
 
 ## Polish multimodal benchmark
 
-We compared baseline **Gemma 4 E4B** and **LFM3-Omni-2B** in Ollama using the frozen `pl-assistant-v1` suite. Each profile ran 200 reference-text scenarios and 80 additional runs with recordings. Both used Q4_K_M packages on the same RTX 3060 with 12 GiB of VRAM under WSL2. The Gemma profile used Whisper and Piper for this run. Omni used its native speech recognition and synthesis.
+We compared baseline **Gemma 4 E4B** and **LFM3-Omni-2B** on the frozen `pl-assistant-v1` suite. Each profile ran 200 scenarios with reference text and 80 additional runs with recordings. Both used Q4_K_M packages with Ollama 0.40.14 on the same RTX 3060 with 12 GiB of VRAM under WSL2. The Gemma profile used Whisper and Piper for this run. Omni used its native speech recognition and synthesis.
 
-| Measurement | Gemma 4 E4B | LFM3-Omni-2B |
+| Measurement | `gemma4:e4b` | `lfm3-omni:2b` |
 | --- | ---: | ---: |
 | Strict passes | **254/280 (90.71%)** | 209/280 (74.64%) |
 | Peak GPU memory across the device | 9,741 MiB | **7,962 MiB** |

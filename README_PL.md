@@ -17,7 +17,9 @@ Venom to otwarty stos AI dla jednego operatora. Pozwala lokalnie prowadzić czat
 | Co uruchamia | Osobny frontend i podzbiór wspólnego API do czatu, materiałów, głosu i wyboru modelu | Pełny frontend i API z obsługą agentów, narzędzi, konfiguracji i diagnostyki |
 | Tryby czatu | Direct i Normal | Direct, Normal i Complex |
 
-**Direct** przekazuje bieżącą rozmowę do wybranego modelu. **Normal** dodaje routing i może sięgnąć po zapisane notatki po włączeniu opcji **Użyj notatek**. Odpowiedź zapisujesz jako notatkę osobnym działaniem. Historia rozmowy zapisuje się niezależnie. **Complex** obsługuje wieloetapową pracę agentów. Obie aplikacje korzystają z tej samej historii po stronie serwera i tych samych notatek, gdy działają w tym samym środowisku. [Instrukcja operatora czatu](docs/PL/CHAT_OPERATOR.md) · [Uruchamianie Studio](docs/PL/STUDIO.md)
+**Direct** przekazuje bieżącą rozmowę do wybranego modelu. **Normal** dodaje routing, a **Complex** obsługuje wieloetapową pracę agentów. W Chat 2.0 możesz włączyć **Użyj notatek** dla bieżącego pytania w Normal lub użyć **Zapisz jako notatkę** przy wybranej odpowiedzi. Historia rozmowy zapisuje się osobno. Obie aplikacje współdzielą dane po stronie serwera w tym samym środowisku. [Instrukcja operatora czatu](docs/PL/CHAT_OPERATOR.md) · [Uruchamianie Studio](docs/PL/STUDIO.md)
+
+Orkiestracja agentów korzysta z Microsoft Agent Framework. Szybki start używa lokalnej Ollamy. Czat tekstowy w Direct może też korzystać z [OpenRoutera](docs/OPENROUTER_LOCAL_MVP.md) lub [Ollamy na Vast](docs/PL/VAST_START_I_ODZYSKIWANIE.md).
 
 ## Szybki start w Linuksie lub WSL2
 
@@ -64,9 +66,9 @@ Przykłady korzystają z pełnego zestawu zależności, żeby można było póź
 
 ## Wyniki polskiego benchmarku multimodalnego
 
-Porównaliśmy bazową **Gemmę 4 E4B** i **LFM3-Omni-2B** w Ollamie na zamrożonym zbiorze `pl-assistant-v1`. Każdy profil przeszedł 200 scenariuszy z tekstem referencyjnym i 80 dodatkowych prób z nagraniami. Oba korzystały z pakietów Q4_K_M na tej samej karcie RTX 3060 z 12 GiB VRAM pod WSL2. Gemma w tym pomiarze korzystała z Whispera i Pipera. Omni używał natywnego rozpoznawania i syntezy mowy.
+Porównaliśmy bazową **Gemmę 4 E4B** i **LFM3-Omni-2B** na zamrożonym zbiorze `pl-assistant-v1`. Każdy profil przeszedł 200 scenariuszy z tekstem referencyjnym i 80 dodatkowych prób z nagraniami. Oba korzystały z pakietów Q4_K_M w Ollamie 0.40.14 na tej samej karcie RTX 3060 z 12 GiB VRAM pod WSL2. Gemma w tym pomiarze korzystała z Whispera i Pipera. Omni używał natywnego rozpoznawania i syntezy mowy.
 
-| Pomiar | Gemma 4 E4B | LFM3-Omni-2B |
+| Pomiar | `gemma4:e4b` | `lfm3-omni:2b` |
 | --- | ---: | ---: |
 | Ściśle zaliczone próby | **254/280 (90,71%)** | 209/280 (74,64%) |
 | Szczytowe użycie pamięci całej karty | 9 741 MiB | **7 962 MiB** |

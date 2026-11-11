@@ -266,7 +266,10 @@ def run(mode: str) -> None:
         data_collator=lambda rows: _collate(rows, processor.tokenizer.pad_token_id),
         callbacks=[PilotCallback()],
     )
-    with patch.object(backbone, "can_use_lfm3_conv", return_value=False):
+    # A MagicMock would retain every CUDA tensor argument for the whole training.
+    with patch.object(
+        backbone, "can_use_lfm3_conv", new=lambda *_args, **_kwargs: False
+    ):
         trainer.train(resume_from_checkpoint=str(checkpoint) if checkpoint else None)
     expected_step = SAVE_EVERY if mode == "initial" else STEPS
     if trainer.state.global_step != expected_step:

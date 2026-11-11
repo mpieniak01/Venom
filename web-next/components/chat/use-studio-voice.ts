@@ -177,7 +177,7 @@ export function useStudioVoice(options: StudioVoiceOptions, captureFactory?: typ
         idleWithError("voiceError");
         return;
       }
-      const bytes = Uint8Array.from(atob(reply.audio_base64), character => character.charCodeAt(0));
+      const bytes = Uint8Array.from(atob(reply.audio_base64), character => character.codePointAt(0) ?? 0);
       nativeWav = new Blob([bytes], { type: "audio/wav" });
     }
     multimodalContext.current = true;

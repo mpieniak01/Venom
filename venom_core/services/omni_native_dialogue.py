@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import base64
-import binascii
 import io
 import json
 import os
@@ -109,6 +108,13 @@ def _media(pcm: bytes, sample_rate: int, image: bytes | None) -> dict[str, Any]:
     }
 
 
+def _history_sample_rate(row: dict[str, object]) -> int:
+    rate = row.get("sample_rate")
+    if type(rate) is not int or rate < 8000:
+        raise NativeDialogueError("omni_native_invalid_input")
+    return rate
+
+
 def _history(rows: list[dict[str, object]]) -> list[dict[str, Any]]:
     encoded: list[dict[str, Any]] = []
     audio_seconds = 0.0
@@ -117,9 +123,7 @@ def _history(rows: list[dict[str, object]]) -> list[dict[str, Any]]:
         if role not in ("user", "assistant"):
             continue
         if role == "user" and isinstance(pcm, bytes):
-            rate, image = row.get("sample_rate"), row.get("image")
-            if type(rate) is not int or rate < 8000:
-                raise NativeDialogueError("omni_native_invalid_input")
+            rate, image = _history_sample_rate(row), row.get("image")
             audio_seconds += len(pcm) / (2 * rate)
             if audio_seconds > _MAX_HISTORY_AUDIO_SECONDS:
                 break
@@ -255,7 +259,6 @@ def _result(output: bytes, mode: NativeMode) -> NativeDialogueResult:
         ValueError,
         EOFError,
         wave.Error,
-        binascii.Error,
     ) as exc:
         raise NativeDialogueError("omni_native_invalid_output") from exc
     return NativeDialogueResult(

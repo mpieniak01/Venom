@@ -2460,6 +2460,45 @@ function useVoiceCommandCenterMetricsRef(params: {
 
 const subscribeMicrophoneCapability = () => () => undefined;
 
+function voiceRecordingReadiness({ generationMode, voiceModePreset, multimodalAvailable, multimodalPending, cameraBusy, imageReading }: Readonly<{
+  generationMode: NativeVoiceGenerationMode | null;
+  voiceModePreset: VoiceCommandCenterProps["voiceModePreset"];
+  multimodalAvailable: boolean;
+  multimodalPending: boolean;
+  cameraBusy: boolean;
+  imageReading: boolean;
+}>) {
+  const nativeUnavailable = generationMode !== null && (!multimodalAvailable || voiceModePreset !== "direct");
+  return {
+    nativeUnavailable,
+    canStartRecording: !multimodalPending && !cameraBusy && !nativeUnavailable && (!multimodalAvailable || !imageReading),
+  };
+}
+
+function MultimodalSessionControls({ generationMode, disabled, onEnd, t }: Readonly<{
+  generationMode: NativeVoiceGenerationMode | null;
+  disabled: boolean;
+  onEnd: () => void;
+  t: Translator;
+}>) {
+  return <>
+    <Badge tone="success">{t(generationMode ? "voice.nativeDialogue." + generationMode : "voice.multimodal.active")}</Badge>
+    <Button type="button" size="xs" variant="outline" onClick={onEnd} disabled={disabled}>
+      {t(generationMode ? "voice.nativeDialogue.end" : "voice.multimodal.end")}
+    </Button>
+  </>;
+}
+
+function handleNativeCancellation(
+  data: Record<string, unknown>,
+  cancelId: string | null,
+  finish: () => void,
+): boolean {
+  if (cancelId === null) return false;
+  if (data.type === "native_dialogue_reset" && data.cancel_id === cancelId) finish();
+  return true;
+}
+
 function VoiceCommandCenterPanel({
   onTranscriptReady,
   voiceModePreset = "standard",
@@ -2722,12 +2761,7 @@ function VoiceCommandCenterPanel({
 
   const handleAudioMessage = useCallback(
     (data: Record<string, unknown>) => {
-      if (nativeCancelId.current !== null) {
-        if (data.type === "native_dialogue_reset" && data.cancel_id === nativeCancelId.current) {
-          finishNativeCancellation();
-        }
-        return;
-      }
+      if (handleNativeCancellation(data, nativeCancelId.current, finishNativeCancellation)) return;
       if (data.type === "response_text") {
         setResponseSources(voiceResponseSources(data.sources));
         if (data.multimodal === true) {
@@ -3049,9 +3083,10 @@ function VoiceCommandCenterPanel({
     ? { tone: "success" as const, label: "voice.status.connected" }
     : { tone: "warning" as const, label: "voice.status.offline" };
   const microphoneBlocked = microphoneCapability !== "available" && !debugDryRunActive;
-  const nativeUnavailable = generationMode !== null && (!multimodalAvailable || voiceModePreset !== "direct");
-  const canStartRecording = !multimodalPending && !cameraBusy && !nativeUnavailable
-    && (!multimodalAvailable || voiceImage?.status !== "reading");
+  const { nativeUnavailable, canStartRecording } = voiceRecordingReadiness({
+    generationMode, voiceModePreset, multimodalAvailable, multimodalPending,
+    cameraBusy, imageReading: voiceImage?.status === "reading",
+  });
   const onRecordingPointerDown = useCallback(
     (event: ReactPointerEvent<HTMLButtonElement>) => {
       event.preventDefault();
@@ -3139,7 +3174,7 @@ function VoiceCommandCenterPanel({
             </output>
           )}
 
-          {nativeAudioOnly && multimodalActive && <p role="status">{t("voice.nativeDialogue.audioReply")}</p>}
+          {nativeAudioOnly && multimodalActive && <output className="block">{t("voice.nativeDialogue.audioReply")}</output>}
           {nativeUnavailable && isVoiceModeEnabled && (
             <p role="alert">{t("voice.nativeDialogue.unavailable")}</p>
           )}
@@ -3180,12 +3215,8 @@ function VoiceCommandCenterPanel({
               )}
               {voiceImage?.status === "invalid" && <p role="alert">{t("voice.multimodal.invalidImage")}</p>}
               {multimodalActive && (
-                <>
-                  <Badge tone="success">{t(generationMode ? "voice.nativeDialogue." + generationMode : "voice.multimodal.active")}</Badge>
-                  <Button type="button" size="xs" variant="outline" onClick={endDialogue} disabled={recording || multimodalPending}>
-                    {t(generationMode ? "voice.nativeDialogue.end" : "voice.multimodal.end")}
-                  </Button>
-                </>
+                <MultimodalSessionControls generationMode={generationMode} onEnd={endDialogue}
+                  disabled={recording || multimodalPending} t={t} />
               )}
             </div>
           )}

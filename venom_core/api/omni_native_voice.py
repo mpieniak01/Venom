@@ -192,8 +192,10 @@ def error_code(error: HTTPException) -> str:
 
 async def wait_for_disconnect(request: Request) -> None:
     """Wait for ASGI to report that a fully uploaded request lost its client."""
-    while (await request.receive())["type"] != "http.disconnect":
-        pass
+    while True:
+        message = await request.receive()
+        if message["type"] == "http.disconnect":
+            return
 
 
 @model_operation

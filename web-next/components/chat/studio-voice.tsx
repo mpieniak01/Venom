@@ -26,7 +26,7 @@ export function StudioVoice(props: Readonly<Omit<StudioVoiceOptions, "language" 
     {!generationMode && <p>{t(props.mode === "dictation" ? "chat2.dictationHint" : "chat2.voiceHint")}</p>}
     {voice.error && <p role="alert">{t(voice.error === "voiceNativeUnavailable"
       ? "voice.nativeDialogue.unavailable" : "chat2." + voice.error)}</p>}
-    {voice.nativeAudioOnly && <p role="status">{t("voice.nativeDialogue.audioReply")}</p>}
+    {voice.nativeAudioOnly && <output className="block">{t("voice.nativeDialogue.audioReply")}</output>}
     {voice.sources.length > 0 && <p className="break-words" aria-live="polite">{t("chat2.voiceSources")}: {voice.sources.join(", ")}</p>}
     {props.mode === "conversation" && props.multimodalEnabled && <div className="studio-voice-controls">
       <input ref={imagePicker} type="file" accept="image/png,image/jpeg" hidden onChange={event => {

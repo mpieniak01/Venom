@@ -1,4 +1,17 @@
 export const voice = {
+  nativeDialogue: {
+    cancel: "Cancel Omni reply",
+    cancelling: "Cancelling reply…",
+    cancelled: "Omni reply cancelled.",
+    mode: "Omni response mode",
+    cascade: "Existing voice pipeline",
+    interleaved: "Native text and speech (experimental)",
+    audio: "Native speech (experimental)",
+    unavailable: "The selected native Omni mode is unavailable. Select the existing voice pipeline or try again.",
+    end: "End native conversation",
+    audioReply: "Audio reply",
+    busy: "Omni is busy. Wait for the current turn to finish.",
+  },
   multimodal: {
     captureCamera: "Take a camera snapshot",
     cameraPending: "Capturing a frame…",

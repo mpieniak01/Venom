@@ -222,3 +222,89 @@ it("sends Direct mode before a Full voice turn and preserves explicit agent sele
   await act(async () => view.rerender(<VoiceCommandCenter voiceModePreset="standard" />));
   await waitFor(() => assert.deepEqual(modes(), ["direct", "standard"]));
 });
+
+it("Full sends native generation modes, plays audio-only replies and resets the conversation on the same socket", async test => {
+  installVoiceEnvironment(test);
+  const onTranscriptReady = test.mock.fn();
+  let view!: ReturnType<typeof render>;
+  await act(async () => {
+    view = render(<VoiceCommandCenter voiceModePreset="direct" generationMode="interleaved" onTranscriptReady={onTranscriptReady} />);
+  });
+  const [socket] = VoiceSocket.instances;
+  assert.ok(socket);
+  await act(async () => socket.open());
+
+  const record = screen.getByRole<HTMLButtonElement>("button", { name: /Przytrzymaj i mów/ });
+  const controls = () => socket.sent
+    .filter((frame): frame is string => typeof frame === "string")
+    .map(frame => JSON.parse(frame));
+  const recordTurn = async () => {
+    await waitFor(() => assert.equal(record.disabled, false));
+    await act(async () => fireEvent.pointerDown(record));
+    await act(async () => fireEvent.pointerUp(record));
+    const [start] = controls().filter(frame => frame.command === "start_recording").slice(-1);
+    assert.equal(start.multimodal, true);
+    assert.equal(start.image, undefined);
+    assert.equal(record.disabled, true);
+    return start;
+  };
+
+  assert.equal((await recordTurn()).generation_mode, "interleaved");
+  await act(async () => {
+    socket.receive({ type: "response_text", text: "Własny tekst Omni.", multimodal: true, generation_mode: "interleaved" });
+    socket.receive({ type: "audio_response", audio: "AAABAAIAAwA=", sample_rate: 24000 });
+    socket.receive({ type: "complete", multimodal: true, generation_mode: "interleaved" });
+  });
+  await screen.findByText("Własny tekst Omni.");
+  assert.equal(screen.queryByText("Pytanie głosowe"), null);
+  await screen.findByRole("button", { name: "Zatrzymaj odtwarzanie" });
+  fireEvent.click(screen.getByRole("button", { name: "Zatrzymaj odtwarzanie" }));
+
+  await act(async () => {
+    view.rerender(<VoiceCommandCenter voiceModePreset="direct" generationMode="audio" onTranscriptReady={onTranscriptReady} />);
+  });
+  assert.equal(controls().at(-1).command, "reset_native_dialogue");
+  assert.equal((await recordTurn()).generation_mode, "audio");
+  await act(async () => {
+    socket.receive({ type: "response_text", text: null, multimodal: true, generation_mode: "audio" });
+    socket.receive({ type: "audio_response", audio: "AAABAAIAAwA=", sample_rate: 24000 });
+    socket.receive({ type: "complete", multimodal: true, generation_mode: "audio" });
+  });
+  await screen.findByText("Odpowiedź dźwiękowa");
+  assert.equal(screen.queryByText("Własny tekst Omni."), null);
+  assert.equal(screen.queryByText("Pytanie głosowe"), null);
+  assert.equal(onTranscriptReady.mock.callCount(), 0);
+  await screen.findByRole("button", { name: "Zatrzymaj odtwarzanie" });
+  fireEvent.click(screen.getByRole("button", { name: "Zatrzymaj odtwarzanie" }));
+  fireEvent.click(screen.getByRole("button", { name: "Zakończ natywną rozmowę" }));
+  assert.equal(controls().at(-1).command, "reset_native_dialogue");
+  assert.equal(screen.queryByText("Odpowiedź dźwiękowa"), null);
+  assert.equal(VoiceSocket.instances.length, 1);
+
+  assert.equal((await recordTurn()).generation_mode, "audio");
+  await act(async () => {
+    socket.receive({
+      type: "error", multimodal: true, generation_mode: "audio", reason_code: "omni_native_unavailable",
+    });
+  });
+  await screen.findByText(/Wybrany tryb natywny Omni jest niedostępny/);
+  assert.equal(record.disabled, false);
+
+  assert.equal((await recordTurn()).generation_mode, "audio");
+  fireEvent.click(screen.getByRole("button", { name: "Anuluj odpowiedź Omni" }));
+  const cancel = controls().at(-1);
+  assert.equal(cancel.command, "reset_native_dialogue");
+  assert.equal(typeof cancel.cancel_id, "string");
+  await act(async () => {
+    socket.receive({ type: "response_text", text: "Stara odpowiedź", multimodal: true, generation_mode: "audio" });
+    socket.receive({ type: "audio_response", audio: "AAABAAIAAwA=", sample_rate: 24000 });
+    socket.receive({ type: "complete", multimodal: true, generation_mode: "audio" });
+    socket.receive({ type: "native_dialogue_reset", cancel_id: "unrelated" });
+  });
+  assert.equal(screen.queryByText("Stara odpowiedź"), null);
+  assert.equal(screen.queryByRole("button", { name: "Zatrzymaj odtwarzanie" }), null);
+  assert.equal(record.disabled, true);
+  await act(async () => socket.receive({ type: "native_dialogue_reset", cancel_id: cancel.cancel_id }));
+  await screen.findByText("Odpowiedź Omni anulowana.");
+  assert.equal(record.disabled, false);
+});

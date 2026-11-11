@@ -20,6 +20,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { getAudioWsUrl } from "@/lib/env";
+import { isNativeVoiceGenerationMode, type NativeVoiceGenerationMode } from "@/lib/chat-audio";
 import { getMicrophoneCapability } from "@/lib/optional-modules/transport";
 import { useTranslation } from "@/lib/i18n";
 import type { VoiceOrbState } from "@/components/voice/voice-orb";
@@ -823,6 +824,13 @@ const handleVoiceCompletion = (
   setProcessingStatus?.(null);
 };
 
+function voiceChannelError(data: Record<string, unknown>, t: Translator): string {
+  if (data.reason_code === "omni_native_unavailable") return t("voice.nativeDialogue.unavailable");
+  if (data.reason_code === "omni_native_busy") return t("voice.nativeDialogue.busy");
+  if (data.multimodal === true) return t("voice.status.channelError");
+  return toPrimitiveString(data.message) ?? t("voice.status.channelError");
+}
+
 /** Reset playback and present a localized channel error for multimodal failures. */
 const handleVoiceError = (
   t: Translator,
@@ -833,9 +841,7 @@ const handleVoiceError = (
   setProcessingStatus?: (value: string | null) => void,
 ) => {
   setPlaybackState("error");
-  setStatusMessage(data.multimodal === true
-    ? t("voice.status.channelError")
-    : toPrimitiveString(data.message) ?? t("voice.status.channelError"));
+  setStatusMessage(voiceChannelError(data, t));
   setLastAudioSignal("error");
   setProcessingStatus?.(null);
 };
@@ -1718,9 +1724,10 @@ function voiceResponseSources(sources: unknown): string[] {
   return sources.filter((source): source is string => typeof source === "string" && source.trim().length > 0);
 }
 
-function voiceQuestion(question: unknown, t: Translator): string {
-  return typeof question === "string" && question.trim()
-    ? question : t("voice.multimodal.spokenQuestion");
+function voiceQuestion(data: Record<string, unknown>, t: Translator): string {
+  const { question, generation_mode: mode } = data;
+  if (typeof question === "string" && question.trim()) return question;
+  return isNativeVoiceGenerationMode(mode) ? "" : t("voice.multimodal.spokenQuestion");
 }
 
 function createHandleAudioMessageHandler(params: {
@@ -2362,6 +2369,7 @@ type VoiceCommandCenterProps = Readonly<{
   statusRefreshSignal?: number;
   onTurnBusy?: (busy: boolean) => void;
   pipelineSwitching?: boolean;
+  generationMode?: NativeVoiceGenerationMode | null;
   isDevMode?: boolean;
 }>;
 
@@ -2459,6 +2467,7 @@ function VoiceCommandCenterPanel({
   statusRefreshSignal,
   onTurnBusy,
   pipelineSwitching = false,
+  generationMode = null,
 }: VoiceCommandCenterProps) {
   const t = useTranslation();
   const audioEnabled = process.env.NEXT_PUBLIC_ENABLE_AUDIO_INTERFACE === "true";
@@ -2472,8 +2481,11 @@ function VoiceCommandCenterPanel({
   const [transcription, setTranscription] = useState("");
   const [response, setResponse] = useState("");
   const [responseSources, setResponseSources] = useState<string[]>([]);
-  const [multimodalActive, setMultimodalActive] = useState(false);
+  const [nativeAudioOnly, setNativeAudioOnly] = useState(false);
+  const [multimodalContextMode, setMultimodalContextMode] = useState<NativeVoiceGenerationMode | null>();
+  const multimodalActive = multimodalContextMode === generationMode;
   const [multimodalPending, setMultimodalPending] = useState(false);
+  const [nativeCancelling, setNativeCancelling] = useState(false);
   const [cameraBusy, setCameraBusy] = useState(false);
   const { selection: voiceImage, chooseImage, clearImage } = useVoiceImageSelection();
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
@@ -2488,8 +2500,8 @@ function VoiceCommandCenterPanel({
   const [lastAudioSignal, setLastAudioSignal] = useState("idle");
   const [processingStatus, setProcessingStatus] = useState<string | null>(null);
   useEffect(() => {
-    onTurnBusy?.(recording || Boolean(processingStatus) || playbackState === "playing");
-  }, [onTurnBusy, playbackState, processingStatus, recording]);
+    onTurnBusy?.(recording || multimodalPending || Boolean(processingStatus) || playbackState === "playing");
+  }, [multimodalPending, onTurnBusy, playbackState, processingStatus, recording]);
   const [devDrawerOpen, setDevDrawerOpen] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectAttemptsRef = useRef(0);
@@ -2508,6 +2520,8 @@ function VoiceCommandCenterPanel({
   const lastAudioResponseRef = useRef<{ audio: string; sampleRate: number } | null>(null);
   const lastVoiceModeSentRef = useRef<string | null>(null);
   const imageInFlightRef = useRef(false);
+  const nativeCancelId = useRef<string | null>(null);
+  const nativeCancelSequence = useRef(0);
   const playbackRequestRef = useRef(0);
 
   const activeRuntime = buildVoiceRuntimeStateView(audioStatus).active;
@@ -2518,7 +2532,8 @@ function VoiceCommandCenterPanel({
 
   const endMultimodal = useCallback(() => {
     clearImage();
-    setMultimodalActive(false);
+    setMultimodalContextMode(undefined);
+    setNativeAudioOnly(false);
   }, [clearImage]);
 
   const setVoiceConnected = useCallback((value: boolean) => {
@@ -2526,6 +2541,8 @@ function VoiceCommandCenterPanel({
     if (!value) {
       endMultimodal();
       setMultimodalPending(false);
+      setNativeCancelling(false);
+      nativeCancelId.current = null;
       imageInFlightRef.current = false;
     }
   }, [endMultimodal]);
@@ -2693,13 +2710,31 @@ function VoiceCommandCenterPanel({
     });
   }, [playAudioResponse, t, setStatusMessage]);
 
+  const finishNativeCancellation = useCallback(() => {
+    nativeCancelId.current = null;
+    imageInFlightRef.current = false;
+    setNativeCancelling(false);
+    setMultimodalPending(false);
+    setProcessingStatus(null);
+    setStatusMessage(t("voice.nativeDialogue.cancelled"));
+    endMultimodal();
+  }, [endMultimodal, t]);
+
   const handleAudioMessage = useCallback(
     (data: Record<string, unknown>) => {
+      if (nativeCancelId.current !== null) {
+        if (data.type === "native_dialogue_reset" && data.cancel_id === nativeCancelId.current) {
+          finishNativeCancellation();
+        }
+        return;
+      }
       if (data.type === "response_text") {
         setResponseSources(voiceResponseSources(data.sources));
         if (data.multimodal === true) {
-          setMultimodalActive(true);
-          setTranscription(voiceQuestion(data.question, t));
+          const mode = isNativeVoiceGenerationMode(data.generation_mode) ? data.generation_mode : null;
+          setMultimodalContextMode(mode);
+          setTranscription(voiceQuestion(data, t));
+          setNativeAudioOnly(mode !== null && !data.text);
           if (imageInFlightRef.current) clearImage();
         }
       }
@@ -2722,6 +2757,7 @@ function VoiceCommandCenterPanel({
     },
     [
       clearImage,
+      finishNativeCancellation,
       onTranscriptReady,
       playAudioResponse,
       refreshAudioStatus,
@@ -2774,6 +2810,32 @@ function VoiceCommandCenterPanel({
     [t, setStatusMessage],
   );
 
+  const resetNativeDialogue = useCallback(() => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      sendControlMessage({ command: "reset_native_dialogue" });
+    }
+  }, [sendControlMessage]);
+
+  const previousGenerationMode = useRef(generationMode);
+  useEffect(() => {
+    if (previousGenerationMode.current === generationMode) return;
+    previousGenerationMode.current = generationMode;
+    resetNativeDialogue();
+  }, [generationMode, resetNativeDialogue]);
+
+  const endDialogue = () => {
+    if (generationMode) resetNativeDialogue();
+    endMultimodal();
+  };
+
+  const cancelNativeTurn = () => {
+    if (!generationMode || !multimodalPending || nativeCancelId.current !== null) return;
+    const cancelId = String(++nativeCancelSequence.current);
+    if (!sendControlMessage({ command: "reset_native_dialogue", cancel_id: cancelId })) return;
+    nativeCancelId.current = cancelId;
+    setNativeCancelling(true);
+  };
+
   const stopRecording = useCallback(
     () =>
       createStopRecordingHandler({
@@ -2808,17 +2870,30 @@ function VoiceCommandCenterPanel({
 
   const sendRecordingControlMessage = useCallback((payload: Record<string, unknown>) => {
     if (payload.command !== "start_recording") return sendControlMessage(payload);
+    if (generationMode && (!multimodalAvailable || voiceModePreset !== "direct")) {
+      setStatusMessage(t("voice.nativeDialogue.unavailable"));
+      return false;
+    }
     const image = multimodalAvailable && voiceImage?.status === "ready" ? voiceImage.base64 : undefined;
-    const multimodal = multimodalAvailable && (Boolean(image) || multimodalActive);
-    const sent = sendControlMessage({ ...payload, multimodal, image });
+    const multimodal = multimodalAvailable && Boolean(image || multimodalActive || generationMode);
+    const sent = sendControlMessage({
+      ...payload, multimodal, image,
+      ...(generationMode ? { generation_mode: generationMode } : {}),
+    });
     if (sent && multimodal) {
       setMultimodalPending(true);
       imageInFlightRef.current = Boolean(image);
     } else if (sent && multimodalActive) {
       endMultimodal();
     }
+    if (sent && generationMode) {
+      setTranscription("");
+      setResponse("");
+      setResponseSources([]);
+      setNativeAudioOnly(false);
+    }
     return sent;
-  }, [endMultimodal, multimodalActive, multimodalAvailable, sendControlMessage, voiceImage]);
+  }, [endMultimodal, generationMode, multimodalActive, multimodalAvailable, sendControlMessage, t, voiceImage, voiceModePreset]);
 
   const startRecording = useCallback(
     () => pipelineSwitching ? Promise.resolve() :
@@ -2974,7 +3049,8 @@ function VoiceCommandCenterPanel({
     ? { tone: "success" as const, label: "voice.status.connected" }
     : { tone: "warning" as const, label: "voice.status.offline" };
   const microphoneBlocked = microphoneCapability !== "available" && !debugDryRunActive;
-  const canStartRecording = !multimodalPending && !cameraBusy
+  const nativeUnavailable = generationMode !== null && (!multimodalAvailable || voiceModePreset !== "direct");
+  const canStartRecording = !multimodalPending && !cameraBusy && !nativeUnavailable
     && (!multimodalAvailable || voiceImage?.status !== "reading");
   const onRecordingPointerDown = useCallback(
     (event: ReactPointerEvent<HTMLButtonElement>) => {
@@ -2998,7 +3074,7 @@ function VoiceCommandCenterPanel({
 
   /** Clear the attached image and multimodal state when leaving voice mode. */
   const onVoiceModeToggle = () => {
-    if (isVoiceModeEnabled) endMultimodal();
+    if (isVoiceModeEnabled) endDialogue();
     toggleVoiceMode({
       debugDryRunActive,
       isVoiceModeEnabled,
@@ -3063,6 +3139,10 @@ function VoiceCommandCenterPanel({
             </output>
           )}
 
+          {nativeAudioOnly && multimodalActive && <p role="status">{t("voice.nativeDialogue.audioReply")}</p>}
+          {nativeUnavailable && isVoiceModeEnabled && (
+            <p role="alert">{t("voice.nativeDialogue.unavailable")}</p>
+          )}
           {responseSources.length > 0 && (
             <div className="rounded-2xl box-muted p-3 text-sm text-zinc-300">
               <p className="text-caption">{t("voice.multimodal.sources")}</p>
@@ -3101,9 +3181,9 @@ function VoiceCommandCenterPanel({
               {voiceImage?.status === "invalid" && <p role="alert">{t("voice.multimodal.invalidImage")}</p>}
               {multimodalActive && (
                 <>
-                  <Badge tone="success">{t("voice.multimodal.active")}</Badge>
-                  <Button type="button" size="xs" variant="outline" onClick={endMultimodal} disabled={recording || multimodalPending}>
-                    {t("voice.multimodal.end")}
+                  <Badge tone="success">{t(generationMode ? "voice.nativeDialogue." + generationMode : "voice.multimodal.active")}</Badge>
+                  <Button type="button" size="xs" variant="outline" onClick={endDialogue} disabled={recording || multimodalPending}>
+                    {t(generationMode ? "voice.nativeDialogue.end" : "voice.multimodal.end")}
                   </Button>
                 </>
               )}
@@ -3125,6 +3205,12 @@ function VoiceCommandCenterPanel({
           >
             🎙 {viewState.recordingButtonLabel}
           </Button>
+
+          {generationMode && multimodalPending && !recording && (
+            <Button type="button" size="xs" variant="outline" onClick={cancelNativeTurn} disabled={nativeCancelling}>
+              {t(nativeCancelling ? "voice.nativeDialogue.cancelling" : "voice.nativeDialogue.cancel")}
+            </Button>
+          )}
 
           <div className="flex flex-wrap items-center gap-2" data-testid="voice-mode-toggle">
             <Button

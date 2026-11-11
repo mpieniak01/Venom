@@ -1,6 +1,7 @@
 """On-demand audio building blocks for the shared text conversation controller."""
 
 import asyncio
+import base64
 from collections.abc import AsyncGenerator
 from typing import Annotated, Any, Literal
 from uuid import uuid4
@@ -10,6 +11,7 @@ from pydantic import BaseModel, Field
 from starlette.datastructures import FormData, UploadFile
 from starlette.formparsers import MultiPartException, MultiPartParser
 
+from venom_core.api import omni_native_voice
 from venom_core.api.dependencies import get_session_store
 from venom_core.api.operator_origin import require_operator_origin
 from venom_core.api.transport_access import (
@@ -17,7 +19,7 @@ from venom_core.api.transport_access import (
     require_operator_request,
 )
 from venom_core.config import SETTINGS
-from venom_core.services import ollama_audio, omni_pilot
+from venom_core.services import ollama_audio, omni_native_dialogue, omni_pilot
 from venom_core.services.background_priority import run_drainable_thread
 from venom_core.services.chat_audio import (
     MAX_AUDIO_BYTES,
@@ -26,6 +28,11 @@ from venom_core.services.chat_audio import (
     synthesize_wav,
     transcribe_pcm,
     validate_pcm,
+)
+from venom_core.services.omni_native_dialogue import (
+    NativeDialogueError,
+    NativeDialogueResult,
+    NativeMode,
 )
 from venom_core.services.session_store import SessionStore
 from venom_core.utils.helpers import get_utc_now_iso
@@ -57,6 +64,36 @@ class ChatSpeechRequest(BaseModel):
     language: Literal["pl", "en", "de"] = "pl"
 
 
+class VoicePipelineChoices(BaseModel):
+    active_model: str | None
+    gemma_models: list[str]
+    omni_model: str | None
+    native_dialogue_modes: list[NativeMode] = Field(default_factory=list)
+
+
+class MultimodalVoiceReply(BaseModel):
+    session_id: str
+    text: str | None
+    sources: list[str]
+    no_speech: bool = False
+    generation_mode: NativeMode | None = None
+    audio_base64: str | None = None
+    model_revision: str | None = None
+    timings_ms: dict[str, int] | None = None
+    pipeline_id: str | None = None
+    generation_count: int | None = None
+    peak_reserved_mib: int | None = None
+    has_image: bool | None = None
+
+
+def _native_contexts(request: Request) -> omni_native_voice.NativeTurnContexts:
+    contexts = getattr(request.app.state, "omni_native_contexts", None)
+    if contexts is None:
+        contexts = omni_native_voice.NativeTurnContexts()
+        request.app.state.omni_native_contexts = contexts
+    return contexts
+
+
 def _engine(request: Request):
     if is_localhost_request(request):
         require_operator_origin(request, "audio_origin_denied")
@@ -75,7 +112,11 @@ def _native_omni(prefer_native: bool) -> LLMRuntimeInfo | None:
     return None
 
 
-@router.get("/pipelines")
+@router.get(
+    "/pipelines",
+    response_model=VoicePipelineChoices,
+    response_model_exclude_unset=True,
+)
 async def voice_pipelines(
     request: Request,
     language: Literal["pl", "en", "de"] = "pl",
@@ -104,6 +145,10 @@ async def voice_pipelines(
     voice_language = "pl" if surface == "voice" else language
     if await ollama_audio.has_omni_voice(endpoint, voice_language):
         result["omni_model"] = ollama_audio.OMNI_MODEL_ID
+    if voice_language == "pl" and omni_native_dialogue.native_dialogue_available(
+        runtime
+    ):
+        result["native_dialogue_modes"] = omni_native_voice.MODES
     return result
 
 
@@ -213,20 +258,13 @@ async def _pilot_form(request: Request) -> FormData:
             request.headers,
             _pilot_upload_stream(request),
             max_files=2,
-            max_fields=3,
+            max_fields=4,
             max_part_size=1024,
         ).parse()
     except _PilotUploadTooLarge as exc:
         raise HTTPException(413, {"reason_code": exc.message}) from exc
     except MultiPartException as exc:
         raise HTTPException(422, {"reason_code": "omni_pilot_invalid_form"}) from exc
-
-
-_PILOT_AUDIO_FORMATS = {
-    "audio/webm": "matroska",
-    "audio/ogg": "ogg",
-    "audio/mp4": "mov",
-}
 
 
 async def _pilot_inputs(form: FormData) -> tuple[str, int, bytes, bytes | None]:
@@ -260,7 +298,7 @@ async def _pilot_inputs(form: FormData) -> tuple[str, int, bytes, bytes | None]:
     pcm = await audio.read(MAX_AUDIO_BYTES + 1)
     media_type = (audio.content_type or "").split(";", 1)[0].strip().lower()
     if media_type != "application/octet-stream":
-        input_format = _PILOT_AUDIO_FORMATS.get(media_type)
+        input_format = omni_native_voice.PILOT_AUDIO_FORMATS.get(media_type)
         if input_format is None:
             raise HTTPException(422, {"reason_code": "audio_invalid_recording"})
         pcm, rate = await run_drainable_thread(
@@ -270,14 +308,152 @@ async def _pilot_inputs(form: FormData) -> tuple[str, int, bytes, bytes | None]:
     return session_id, rate, pcm, image_bytes
 
 
+async def _await_native_turn(
+    request: Request,
+    runtime: LLMRuntimeInfo,
+    pcm: bytes,
+    rate: int,
+    image: bytes | None,
+    history: list[dict[str, object]],
+    mode: NativeMode,
+) -> NativeDialogueResult:
+    """Cancel the owned generator and wait for cleanup if the client disappears."""
+    worker = asyncio.create_task(
+        omni_native_voice.run_turn(runtime, pcm, rate, image, history, mode)
+    )
+    disconnect = asyncio.create_task(omni_native_voice.wait_for_disconnect(request))
+    try:
+        done, _ = await asyncio.wait(
+            {worker, disconnect}, return_when=asyncio.FIRST_COMPLETED
+        )
+        if disconnect in done:
+            raise HTTPException(499, {"reason_code": "audio_request_cancelled"})
+        return worker.result()
+    finally:
+        for task in (worker, disconnect):
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(worker, disconnect, return_exceptions=True)
+
+
+async def _native_multimodal_turn(
+    request: Request,
+    store: SessionStore,
+    runtime: LLMRuntimeInfo,
+    session_id: str,
+    rate: int,
+    pcm: bytes,
+    image: bytes | None,
+    mode: NativeMode,
+) -> dict[str, Any]:
+    if not omni_native_dialogue.native_dialogue_available(runtime):
+        raise HTTPException(503, {"reason_code": "omni_native_unavailable"})
+    contexts = _native_contexts(request)
+    with contexts.turn(session_id):
+        image, retained, retained_request_id = contexts.inputs(
+            session_id, runtime, mode, image
+        )
+        history = omni_native_voice.text_context(
+            store.get_history(session_id, limit=omni_pilot.MAX_HISTORY_ROWS),
+            retained,
+            retained_request_id,
+        )
+        try:
+            result = await _await_native_turn(
+                request, runtime, pcm, rate, image, history, mode
+            )
+        except NativeDialogueError as exc:
+            status = {
+                "omni_native_gpu_busy": 409,
+                "omni_native_invalid_input": 422,
+                "omni_native_timeout": 504,
+            }.get(exc.reason_code, 503)
+            raise HTTPException(status, {"reason_code": exc.reason_code}) from exc
+        if result.no_speech:
+            return {
+                "session_id": session_id,
+                "text": None,
+                "sources": [],
+                "generation_mode": mode,
+                "no_speech": True,
+                "pipeline_id": omni_native_voice.PIPELINE,
+                "generation_count": 0,
+            }
+        if not result.wav:
+            raise HTTPException(503, {"reason_code": "omni_native_failed"})
+        if await request.is_disconnected():
+            raise HTTPException(499, {"reason_code": "audio_request_cancelled"})
+        request_id = await omni_native_voice.persist_turn(
+            store, session_id, mode, result.text
+        )
+        if mode == "interleaved" and result.text:
+            contexts.remember(
+                session_id,
+                runtime,
+                image,
+                pcm,
+                rate,
+                result.text,
+                request_id=request_id,
+            )
+        return {
+            "session_id": session_id,
+            "text": result.text,
+            "sources": [],
+            "generation_mode": mode,
+            "audio_base64": base64.b64encode(result.wav).decode("ascii"),
+            "model_revision": result.model_revision,
+            "timings_ms": result.timings_ms,
+            "pipeline_id": omni_native_voice.PIPELINE,
+            "generation_count": result.generation_count,
+            "peak_reserved_mib": result.peak_reserved_mib,
+            "has_image": image is not None,
+        }
+
+
 @router.post(
     "/multimodal-turn",
+    response_model=MultimodalVoiceReply,
+    response_model_exclude_unset=True,
+    openapi_extra={
+        "requestBody": {
+            "required": True,
+            "content": {
+                "multipart/form-data": {
+                    "schema": {
+                        "type": "object",
+                        "required": ["session_id", "sample_rate", "audio"],
+                        "properties": {
+                            "session_id": {"type": "string"},
+                            "sample_rate": {
+                                "type": "integer",
+                                "minimum": 8000,
+                                "maximum": 96000,
+                            },
+                            "language": {
+                                "type": "string",
+                                "enum": ["pl"],
+                                "default": "pl",
+                            },
+                            "audio": {"type": "string", "format": "binary"},
+                            "image": {"type": "string", "format": "binary"},
+                            "generation_mode": {
+                                "type": "string",
+                                "enum": list(omni_native_voice.MODES),
+                            },
+                        },
+                    },
+                },
+            },
+        },
+    },
     responses={
         413: {"description": "Multimodal upload exceeds limits"},
         415: {"description": "Multipart form required"},
         422: {"description": "Invalid image or audio input"},
         499: {"description": "Client disconnected before the pilot turn was submitted"},
         503: {"description": "Local Omni is unavailable or the pilot turn failed"},
+        504: {"description": "Native Omni generation timed out"},
     },
 )
 async def multimodal_turn(
@@ -286,15 +462,25 @@ async def multimodal_turn(
     """Answer one pilot turn and append the completed pair to session history."""
     _engine(request)
     runtime = omni_pilot.active_pilot_runtime()
-    if runtime is None:
-        raise HTTPException(503, {"reason_code": "omni_pilot_unavailable"})
     form = await _pilot_form(request)
     try:
+        if len(form.getlist("generation_mode")) > 1:
+            raise HTTPException(422, {"reason_code": "omni_native_invalid_input"})
+        mode = omni_native_voice.parse_mode(form.get("generation_mode"))
+        if runtime is None:
+            reason = (
+                "omni_pilot_unavailable" if mode is None else "omni_native_unavailable"
+            )
+            raise HTTPException(503, {"reason_code": reason})
         session_id, rate, pcm, image = await _pilot_inputs(form)
     finally:
         await form.close()
     if await request.is_disconnected():
         raise HTTPException(499, {"reason_code": "audio_request_cancelled"})
+    if mode is not None:
+        return await _native_multimodal_turn(
+            request, store, runtime, session_id, rate, pcm, image, mode
+        )
 
     async def run():
         """Recheck the runtime under admission and persist only connected turns."""
@@ -333,8 +519,11 @@ async def multimodal_turn(
             "sources": result.sources,
         }
 
+    contexts = _native_contexts(request)
     try:
-        return await complete_audio_work(run)
+        with contexts.turn(session_id):
+            contexts.discard(session_id)
+            return await complete_audio_work(run)
     except HTTPException:
         raise
     except Exception as exc:

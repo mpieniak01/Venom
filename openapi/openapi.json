@@ -3563,7 +3563,9 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/VoicePipelineChoices"
+                }
               }
             }
           },
@@ -3688,12 +3690,61 @@
         "summary": "Multimodal Turn",
         "description": "Answer one pilot turn and append the completed pair to session history.",
         "operationId": "multimodal_turn_api_v1_chat_audio_multimodal_turn_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "properties": {
+                  "session_id": {
+                    "type": "string"
+                  },
+                  "sample_rate": {
+                    "type": "integer",
+                    "maximum": 96000.0,
+                    "minimum": 8000.0
+                  },
+                  "language": {
+                    "type": "string",
+                    "enum": [
+                      "pl"
+                    ],
+                    "default": "pl"
+                  },
+                  "audio": {
+                    "type": "string",
+                    "format": "binary"
+                  },
+                  "image": {
+                    "type": "string",
+                    "format": "binary"
+                  },
+                  "generation_mode": {
+                    "type": "string",
+                    "enum": [
+                      "interleaved",
+                      "audio"
+                    ]
+                  }
+                },
+                "type": "object",
+                "required": [
+                  "session_id",
+                  "sample_rate",
+                  "audio"
+                ]
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/MultimodalVoiceReply"
+                }
               }
             }
           },
@@ -3717,6 +3768,9 @@
           },
           "499": {
             "description": "Client disconnected before the pilot turn was submitted"
+          },
+          "504": {
+            "description": "Native Omni generation timed out"
           }
         }
       }
@@ -19398,6 +19452,139 @@
         "title": "MultiRuntimeSupportedOptions",
         "description": "Enumerated valid values for constrained fields."
       },
+      "MultimodalVoiceReply": {
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "title": "Session Id"
+          },
+          "text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text"
+          },
+          "sources": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Sources"
+          },
+          "no_speech": {
+            "type": "boolean",
+            "title": "No Speech",
+            "default": false
+          },
+          "generation_mode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "audio",
+                  "interleaved"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Generation Mode"
+          },
+          "audio_base64": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Audio Base64"
+          },
+          "model_revision": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Revision"
+          },
+          "timings_ms": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "integer"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timings Ms"
+          },
+          "pipeline_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pipeline Id"
+          },
+          "generation_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Generation Count"
+          },
+          "peak_reserved_mib": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Peak Reserved Mib"
+          },
+          "has_image": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Has Image"
+          }
+        },
+        "type": "object",
+        "required": [
+          "session_id",
+          "text",
+          "sources"
+        ],
+        "title": "MultimodalVoiceReply"
+      },
       "NodeExecuteRequest": {
         "properties": {
           "skill_name": {
@@ -22757,6 +22944,57 @@
         ],
         "title": "VenomTask",
         "description": "Wewnętrzne przedstawienie zadania w systemie."
+      },
+      "VoicePipelineChoices": {
+        "properties": {
+          "active_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Active Model"
+          },
+          "gemma_models": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Gemma Models"
+          },
+          "omni_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Omni Model"
+          },
+          "native_dialogue_modes": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "audio",
+                "interleaved"
+              ]
+            },
+            "type": "array",
+            "title": "Native Dialogue Modes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "active_model",
+          "gemma_models",
+          "omni_model"
+        ],
+        "title": "VoicePipelineChoices"
       },
       "WorkflowOperation": {
         "type": "string",

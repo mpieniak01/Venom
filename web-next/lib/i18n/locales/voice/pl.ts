@@ -1,4 +1,17 @@
 export const voice = {
+  nativeDialogue: {
+    cancel: "Anuluj odpowiedź Omni",
+    cancelling: "Anulowanie odpowiedzi…",
+    cancelled: "Odpowiedź Omni anulowana.",
+    mode: "Sposób odpowiedzi Omni",
+    cascade: "Dotychczasowy tor głosowy",
+    interleaved: "Natywny tekst i mowa (eksperyment)",
+    audio: "Natywna mowa (eksperyment)",
+    unavailable: "Wybrany tryb natywny Omni jest niedostępny. Wybierz dotychczasowy tor albo spróbuj ponownie.",
+    end: "Zakończ natywną rozmowę",
+    audioReply: "Odpowiedź dźwiękowa",
+    busy: "Omni jest zajęty. Poczekaj na zakończenie tury.",
+  },
   multimodal: {
     captureCamera: "Zrób zdjęcie kamerą",
     cameraPending: "Pobieranie klatki…",

@@ -1,0 +1,1062 @@
+{
+  "version": "omni-dialogue-pl-v1",
+  "cases": [
+    {
+      "id": "speech-01",
+      "group": "speech",
+      "family": "climate",
+      "turns": [
+        {
+          "prompt": "Temperatura wynosi dwadzieścia cztery stopnie Celsjusza. Powtórz tylko temperaturę z jednostką."
+        }
+      ],
+      "expected": [
+        "24 stopnie Celsjusza",
+        "24°C",
+        "dwadzieścia cztery stopnie Celsjusza"
+      ]
+    },
+    {
+      "id": "speech-02",
+      "group": "speech",
+      "family": "capacity",
+      "turns": [
+        {
+          "prompt": "Zbiornik mieści trzynaście litrów. Podaj tylko pojemność z jednostką."
+        }
+      ],
+      "expected": [
+        "13 litrów",
+        "trzynaście litrów"
+      ]
+    },
+    {
+      "id": "speech-03",
+      "group": "speech",
+      "family": "distance",
+      "turns": [
+        {
+          "prompt": "Do szlabanu jest osiem metrów. Podaj wyłącznie odległość z jednostką."
+        }
+      ],
+      "expected": [
+        "8 metrów",
+        "osiem metrów"
+      ]
+    },
+    {
+      "id": "speech-04",
+      "group": "speech",
+      "family": "name",
+      "turns": [
+        {
+          "prompt": "Do protokołu wpisz Łucję. Jak ma na imię ta osoba? Odpowiedz samym imieniem."
+        }
+      ],
+      "expected": [
+        "Łucja"
+      ]
+    },
+    {
+      "id": "speech-05",
+      "group": "speech",
+      "family": "place",
+      "turns": [
+        {
+          "prompt": "Punkt zbiórki to Żyrardów. Odpowiedz wyłącznie nazwą miasta."
+        }
+      ],
+      "expected": [
+        "Żyrardów"
+      ]
+    },
+    {
+      "id": "speech-06",
+      "group": "speech",
+      "family": "negation",
+      "turns": [
+        {
+          "prompt": "Pudełko nie jest otwarte. Czy jest otwarte? Odpowiedz tylko tak lub nie."
+        }
+      ],
+      "expected": [
+        "nie"
+      ]
+    },
+    {
+      "id": "speech-07",
+      "group": "speech",
+      "family": "sequence",
+      "turns": [
+        {
+          "prompt": "Najpierw sprawdź filtr, potem zbiornik. Podaj tylko nazwę pierwszego elementu."
+        }
+      ],
+      "expected": [
+        "filtr"
+      ]
+    },
+    {
+      "id": "speech-08",
+      "group": "speech",
+      "family": "quantity",
+      "turns": [
+        {
+          "prompt": "Przygotuj trzy zestawy, chociaż zamówiono pięć. Ile przygotować? Podaj samą liczbę."
+        }
+      ],
+      "expected": [
+        "3",
+        "trzy"
+      ]
+    },
+    {
+      "id": "speech-09",
+      "group": "speech",
+      "family": "relationship",
+      "turns": [
+        {
+          "prompt": "Klucz leży pod szufladą. Czy klucz jest nad szufladą? Odpowiedz tylko tak lub nie."
+        }
+      ],
+      "expected": [
+        "nie"
+      ]
+    },
+    {
+      "id": "speech-10",
+      "group": "speech",
+      "family": "time",
+      "turns": [
+        {
+          "prompt": "Odbiór jest o siódmej trzydzieści. Podaj tylko godzinę."
+        }
+      ],
+      "expected": [
+        "07:30",
+        "7:30",
+        "siódma trzydzieści"
+      ]
+    },
+    {
+      "id": "speech-11",
+      "group": "speech",
+      "family": "choice",
+      "turns": [
+        {
+          "prompt": "Wybierz miedź, nie stal. Podaj tylko materiał."
+        }
+      ],
+      "expected": [
+        "miedź"
+      ]
+    },
+    {
+      "id": "speech-12",
+      "group": "speech",
+      "family": "name-2",
+      "turns": [
+        {
+          "prompt": "Paczka należy do Igi. Podaj samo imię w mianowniku."
+        }
+      ],
+      "expected": [
+        "Iga"
+      ]
+    },
+    {
+      "id": "vision-01",
+      "group": "vision",
+      "family": "alarm",
+      "turns": [
+        {
+          "prompt": "Przepisz tylko wartość pola Alarm.",
+          "scene": {
+            "title": "Panel magazynu",
+            "cards": [
+              [
+                "Alarm",
+                "cisza"
+              ],
+              [
+                "Tryb",
+                "serwis"
+              ]
+            ]
+          }
+        }
+      ],
+      "expected": [
+        "cisza"
+      ]
+    },
+    {
+      "id": "vision-02",
+      "group": "vision",
+      "family": "alarm",
+      "turns": [
+        {
+          "prompt": "Przepisz tylko wartość pola Alarm.",
+          "scene": {
+            "title": "Panel magazynu",
+            "cards": [
+              [
+                "Alarm",
+                "pożar"
+              ],
+              [
+                "Tryb",
+                "serwis"
+              ]
+            ]
+          }
+        }
+      ],
+      "expected": [
+        "pożar"
+      ]
+    },
+    {
+      "id": "vision-03",
+      "group": "vision",
+      "family": "ticket",
+      "turns": [
+        {
+          "prompt": "Podaj wartość pola Waga.",
+          "scene": {
+            "title": "Karta przesyłki",
+            "cards": [
+              [
+                "Waga",
+                "6 kg"
+              ],
+              [
+                "Długość",
+                "31 cm"
+              ]
+            ]
+          }
+        }
+      ],
+      "expected": [
+        "6 kg",
+        "sześć kilogramów"
+      ]
+    },
+    {
+      "id": "vision-04",
+      "group": "vision",
+      "family": "ticket",
+      "turns": [
+        {
+          "prompt": "Podaj wartość pola Długość.",
+          "scene": {
+            "title": "Karta przesyłki",
+            "cards": [
+              [
+                "Waga",
+                "6 kg"
+              ],
+              [
+                "Długość",
+                "31 cm"
+              ]
+            ]
+          }
+        }
+      ],
+      "expected": [
+        "31 cm",
+        "trzydzieści jeden centymetrów"
+      ]
+    },
+    {
+      "id": "vision-05",
+      "group": "vision",
+      "family": "garden",
+      "turns": [
+        {
+          "prompt": "Podaj wartość z górnej karty.",
+          "scene": {
+            "title": "Sadzonki",
+            "cards": [
+              [
+                "Karta A",
+                "frezje"
+              ],
+              [
+                "Karta B",
+                "piwonie"
+              ]
+            ]
+          }
+        }
+      ],
+      "expected": [
+        "frezje"
+      ]
+    },
+    {
+      "id": "vision-06",
+      "group": "vision",
+      "family": "garden",
+      "turns": [
+        {
+          "prompt": "Podaj wartość z górnej karty.",
+          "scene": {
+            "title": "Sadzonki",
+            "cards": [
+              [
+                "Karta A",
+                "piwonie"
+              ],
+              [
+                "Karta B",
+                "frezje"
+              ]
+            ]
+          }
+        }
+      ],
+      "expected": [
+        "piwonie"
+      ]
+    },
+    {
+      "id": "vision-07",
+      "group": "vision",
+      "family": "keys",
+      "turns": [
+        {
+          "prompt": "Powiedz tylko nazwę skrytki dla klucza numer jeden.",
+          "scene": {
+            "title": "Odbiór kluczy",
+            "cards": [
+              [
+                "Klucz 1",
+                "Wrzos"
+              ],
+              [
+                "Klucz 2",
+                "Zatoka"
+              ]
+            ]
+          }
+        }
+      ],
+      "expected": [
+        "Wrzos"
+      ]
+    },
+    {
+      "id": "vision-08",
+      "group": "vision",
+      "family": "keys",
+      "turns": [
+        {
+          "prompt": "Powiedz tylko nazwę skrytki dla klucza numer dwa.",
+          "scene": {
+            "title": "Odbiór kluczy",
+            "cards": [
+              [
+                "Klucz 1",
+                "Wrzos"
+              ],
+              [
+                "Klucz 2",
+                "Zatoka"
+              ]
+            ]
+          }
+        }
+      ],
+      "expected": [
+        "Zatoka"
+      ]
+    },
+    {
+      "id": "vision-09",
+      "group": "vision",
+      "family": "platform",
+      "turns": [
+        {
+          "prompt": "Z którego peronu odjeżdża skład do Lubawy? Podaj numer.",
+          "scene": {
+            "title": "Odjazdy",
+            "cards": [
+              [
+                "Lubawa",
+                "4"
+              ],
+              [
+                "Wąbrzeźno",
+                "2"
+              ]
+            ]
+          }
+        }
+      ],
+      "expected": [
+        "4",
+        "cztery"
+      ]
+    },
+    {
+      "id": "vision-10",
+      "group": "vision",
+      "family": "platform",
+      "turns": [
+        {
+          "prompt": "Z którego peronu odjeżdża skład do Lubawy? Podaj numer.",
+          "scene": {
+            "title": "Odjazdy",
+            "cards": [
+              [
+                "Lubawa",
+                "2"
+              ],
+              [
+                "Wąbrzeźno",
+                "4"
+              ]
+            ]
+          }
+        }
+      ],
+      "expected": [
+        "2",
+        "dwa"
+      ]
+    },
+    {
+      "id": "vision-11",
+      "group": "vision",
+      "family": "specimen",
+      "turns": [
+        {
+          "prompt": "Czy próba A jest gotowa? Odpowiedz tylko tak lub nie.",
+          "scene": {
+            "title": "Laboratorium",
+            "cards": [
+              [
+                "Próba A",
+                "w toku"
+              ],
+              [
+                "Próba B",
+                "gotowa"
+              ]
+            ]
+          }
+        }
+      ],
+      "expected": [
+        "nie"
+      ]
+    },
+    {
+      "id": "vision-12",
+      "group": "vision",
+      "family": "specimen",
+      "turns": [
+        {
+          "prompt": "Czy próba B jest gotowa? Odpowiedz tylko tak lub nie.",
+          "scene": {
+            "title": "Laboratorium",
+            "cards": [
+              [
+                "Próba A",
+                "w toku"
+              ],
+              [
+                "Próba B",
+                "gotowa"
+              ]
+            ]
+          }
+        }
+      ],
+      "expected": [
+        "tak"
+      ]
+    },
+    {
+      "id": "context-01",
+      "group": "context",
+      "family": "bouquet",
+      "turns": [
+        {
+          "prompt": "Do bukietu miały trafić tulipany. Odpowiedz tylko: przyjęto."
+        },
+        {
+          "prompt": "Zamów róże zamiast tulipanów. Podaj tylko nazwę aktualnie wybranych kwiatów."
+        }
+      ],
+      "expected": [
+        "róże"
+      ]
+    },
+    {
+      "id": "context-02",
+      "group": "context",
+      "family": "contact",
+      "turns": [
+        {
+          "prompt": "Opiekunem jest Maja. Potwierdź krótko."
+        },
+        {
+          "prompt": "Zmiana. Opiekunem jest Żaneta. Podaj tylko jej imię."
+        }
+      ],
+      "expected": [
+        "Żaneta"
+      ]
+    },
+    {
+      "id": "context-03",
+      "group": "context",
+      "family": "code",
+      "turns": [
+        {
+          "prompt": "Kod do skrzynki to siedemset dwadzieścia pięć. Zapamiętaj."
+        },
+        {
+          "prompt": "Jaki jest zapisany kod? Podaj tylko liczbę."
+        }
+      ],
+      "expected": [
+        "725",
+        "siedemset dwadzieścia pięć"
+      ]
+    },
+    {
+      "id": "context-04",
+      "group": "context",
+      "family": "condition",
+      "turns": [
+        {
+          "prompt": "Po kontroli wolno otworzyć bramę. Zapisz warunek."
+        },
+        {
+          "prompt": "Czy wolno otworzyć bramę przed kontrolą? Tylko tak albo nie."
+        }
+      ],
+      "expected": [
+        "nie"
+      ]
+    },
+    {
+      "id": "context-05",
+      "group": "context",
+      "family": "unit",
+      "turns": [
+        {
+          "prompt": "Zapamiętaj limit: dwanaście kilogramów. Potwierdź."
+        },
+        {
+          "prompt": "Podaj zapisany limit z jednostką."
+        }
+      ],
+      "expected": [
+        "12 kilogramów",
+        "12 kg",
+        "dwanaście kilogramów"
+      ]
+    },
+    {
+      "id": "context-06",
+      "group": "context",
+      "family": "order",
+      "turns": [
+        {
+          "prompt": "Najpierw zeskanuj paragon, a potem włóż go do teczki. Potwierdź."
+        },
+        {
+          "prompt": "Co zrobić jako drugie? Odpowiedz krótko."
+        }
+      ],
+      "expected": [
+        "włożyć paragon do teczki",
+        "włóż paragon do teczki",
+        "włożyć go do teczki",
+        "włóż go do teczki"
+      ]
+    },
+    {
+      "id": "context-07",
+      "group": "context",
+      "family": "switch-row",
+      "turns": [
+        {
+          "prompt": "Odczytaj krótko pierwszy wpis z obrazu.",
+          "scene": {
+            "title": "Trasy",
+            "cards": [
+              [
+                "Górna",
+                "Sosna"
+              ],
+              [
+                "Dolna",
+                "Olcha"
+              ]
+            ]
+          }
+        },
+        {
+          "prompt": "Chodziło o dolny wpis. Podaj tylko wartość z dolnego wpisu."
+        }
+      ],
+      "expected": [
+        "Olcha"
+      ]
+    },
+    {
+      "id": "context-08",
+      "group": "context",
+      "family": "switch-screen",
+      "turns": [
+        {
+          "prompt": "Odczytaj krótko pierwszy wpis z obrazu.",
+          "scene": {
+            "title": "Dyżury",
+            "cards": [
+              [
+                "Kontakt",
+                "Jacek"
+              ],
+              [
+                "Godzina",
+                "08:00"
+              ]
+            ]
+          }
+        },
+        {
+          "prompt": "Kto dyżuruje na nowym obrazie? Podaj tylko imię.",
+          "scene": {
+            "title": "Dyżury",
+            "cards": [
+              [
+                "Kontakt",
+                "Marta"
+              ],
+              [
+                "Godzina",
+                "08:00"
+              ]
+            ]
+          }
+        }
+      ],
+      "expected": [
+        "Marta"
+      ]
+    },
+    {
+      "id": "context-09",
+      "group": "context",
+      "family": "quantity-card",
+      "turns": [
+        {
+          "prompt": "Odczytaj krótko pierwszy wpis z obrazu.",
+          "scene": {
+            "title": "Przyjęcie",
+            "cards": [
+              [
+                "Dostarczono",
+                "9"
+              ],
+              [
+                "Odrzucono",
+                "2"
+              ]
+            ]
+          }
+        },
+        {
+          "prompt": "Ile odrzucono? Podaj samą liczbę."
+        }
+      ],
+      "expected": [
+        "2",
+        "dwa"
+      ]
+    },
+    {
+      "id": "context-10",
+      "group": "context",
+      "family": "preserve-selection",
+      "turns": [
+        {
+          "prompt": "Odczytaj krótko pierwszy wpis z obrazu.",
+          "scene": {
+            "title": "Pokój",
+            "cards": [
+              [
+                "Stan",
+                "zamknięty"
+              ],
+              [
+                "Klucz",
+                "szafka"
+              ]
+            ]
+          }
+        },
+        {
+          "prompt": "Gdzie jest klucz według tej samej kartki? Podaj tylko miejsce w mianowniku."
+        }
+      ],
+      "expected": [
+        "szafka"
+      ]
+    },
+    {
+      "id": "context-11",
+      "group": "context",
+      "family": "overwrite-code",
+      "turns": [
+        {
+          "prompt": "Odczytaj krótko pierwszy wpis z obrazu.",
+          "scene": {
+            "title": "Skrzynka",
+            "cards": [
+              [
+                "Kod",
+                "113"
+              ],
+              [
+                "Strefa",
+                "E"
+              ]
+            ]
+          }
+        },
+        {
+          "prompt": "Podaj aktualny kod, samą liczbę.",
+          "scene": {
+            "title": "Skrzynka",
+            "cards": [
+              [
+                "Kod",
+                "416"
+              ],
+              [
+                "Strefa",
+                "E"
+              ]
+            ]
+          }
+        }
+      ],
+      "expected": [
+        "416",
+        "czterysta szesnaście"
+      ]
+    },
+    {
+      "id": "context-12",
+      "group": "context",
+      "family": "relative",
+      "turns": [
+        {
+          "prompt": "Odczytaj krótko pierwszy wpis z obrazu.",
+          "scene": {
+            "title": "Wystawa",
+            "cards": [
+              [
+                "Pierwsza",
+                "Morze"
+              ],
+              [
+                "Druga",
+                "Las"
+              ]
+            ]
+          }
+        },
+        {
+          "prompt": "Podaj wartość drugiej karty z tego samego obrazu."
+        }
+      ],
+      "expected": [
+        "Las"
+      ]
+    },
+    {
+      "id": "clarify-01",
+      "group": "clarify",
+      "family": "image-absent",
+      "turns": [
+        {
+          "prompt": "Odczytaj numer stanowiska z obrazu. Jeśli go nie ma, odpowiedz: brakuje obrazu."
+        }
+      ],
+      "expected": [
+        "brakuje obrazu",
+        "nie ma obrazu",
+        "dołącz obraz"
+      ]
+    },
+    {
+      "id": "clarify-02",
+      "group": "clarify",
+      "family": "missing-unit",
+      "turns": [
+        {
+          "prompt": "Podaj temperaturę, także jednostkę. Nie masz jednostki? Powiedz: brakuje jednostki. Temperatura to dwanaście."
+        }
+      ],
+      "expected": [
+        "brakuje jednostki",
+        "podaj jednostkę"
+      ]
+    },
+    {
+      "id": "clarify-03",
+      "group": "clarify",
+      "family": "two-labels",
+      "turns": [
+        {
+          "prompt": "Podaj imię opiekuna. Jeżeli jest dwóch, powiedz: podaj stanowisko.",
+          "scene": {
+            "title": "Opiekunowie",
+            "cards": [
+              [
+                "Sala 1",
+                "Lena"
+              ],
+              [
+                "Sala 2",
+                "Witold"
+              ]
+            ]
+          }
+        }
+      ],
+      "expected": [
+        "podaj stanowisko",
+        "które stanowisko",
+        "która sala"
+      ]
+    },
+    {
+      "id": "clarify-04",
+      "group": "clarify",
+      "family": "no-price",
+      "turns": [
+        {
+          "prompt": "Podaj cenę z tej karty. Gdy ceny nie ma, powiedz: brak ceny.",
+          "scene": {
+            "title": "Bilet",
+            "cards": [
+              [
+                "Wejście",
+                "B"
+              ],
+              [
+                "Kategoria",
+                "normalny"
+              ]
+            ]
+          }
+        }
+      ],
+      "expected": [
+        "brak ceny",
+        "cena nie jest podana"
+      ]
+    },
+    {
+      "id": "clarify-05",
+      "group": "clarify",
+      "family": "unclear-target",
+      "turns": [
+        {
+          "prompt": "Przenieś tamten wpis. Jeżeli nie wiesz który, powiedz: który wpis.",
+          "scene": {
+            "title": "Wpisy",
+            "cards": [
+              [
+                "Poz. 1",
+                "Antonina"
+              ],
+              [
+                "Poz. 2",
+                "Robert"
+              ]
+            ]
+          }
+        }
+      ],
+      "expected": [
+        "który wpis",
+        "wskaż wpis"
+      ]
+    },
+    {
+      "id": "clarify-06",
+      "group": "clarify",
+      "family": "no-number",
+      "turns": [
+        {
+          "prompt": "Podaj numer telefonu z obrazu. Jeśli nie ma numeru, powiedz: brak numeru.",
+          "scene": {
+            "title": "Kontakt",
+            "cards": [
+              [
+                "Zespół",
+                "Rusałka"
+              ],
+              [
+                "Adres",
+                "Szeroka"
+              ]
+            ]
+          }
+        }
+      ],
+      "expected": [
+        "brak numeru",
+        "numer nie jest podany"
+      ]
+    },
+    {
+      "id": "clarify-07",
+      "group": "clarify",
+      "family": "ref-absent",
+      "turns": [
+        {
+          "prompt": "Podaj poprzednio ustaloną nazwę sali. Jeśli nic nie ustalono, powiedz: brak ustalenia."
+        }
+      ],
+      "expected": [
+        "brak ustalenia",
+        "nie ustalono",
+        "podaj nazwę sali"
+      ]
+    },
+    {
+      "id": "clarify-08",
+      "group": "clarify",
+      "family": "source-conflict",
+      "turns": [
+        {
+          "prompt": "Jeżeli dwa pomiary się różnią, powiedz: wyniki różne. Odczytaj oba pola z obrazu.",
+          "scene": {
+            "title": "Pomiary",
+            "cards": [
+              [
+                "Pomiar A",
+                "13 V"
+              ],
+              [
+                "Pomiar B",
+                "18 V"
+              ]
+            ]
+          }
+        }
+      ],
+      "expected": [
+        "wyniki różne",
+        "wyniki są różne"
+      ]
+    },
+    {
+      "id": "clarify-09",
+      "group": "clarify",
+      "family": "negative-missing",
+      "turns": [
+        {
+          "prompt": "Brak zgody na publikację. Czy publikować? Odpowiedz tak albo nie."
+        }
+      ],
+      "expected": [
+        "nie"
+      ]
+    },
+    {
+      "id": "clarify-10",
+      "group": "clarify",
+      "family": "empty-position",
+      "turns": [
+        {
+          "prompt": "Jaka jest wartość trzeciej karty? Gdy nie ma trzeciej, odpowiedz: brak karty.",
+          "scene": {
+            "title": "Karty",
+            "cards": [
+              [
+                "Pierwsza",
+                "Torf"
+              ],
+              [
+                "Druga",
+                "Piasek"
+              ]
+            ]
+          }
+        }
+      ],
+      "expected": [
+        "brak karty",
+        "brak trzeciej karty",
+        "nie ma trzeciej karty"
+      ]
+    },
+    {
+      "id": "clarify-11",
+      "group": "clarify",
+      "family": "only-measured",
+      "turns": [
+        {
+          "prompt": "Czy na tablicy potwierdzono wyciek? Odpowiedz tak albo nie.",
+          "scene": {
+            "title": "Odczyt",
+            "cards": [
+              [
+                "Wyciek",
+                "niepotwierdzony"
+              ],
+              [
+                "Kontrola",
+                "trwa"
+              ]
+            ]
+          }
+        }
+      ],
+      "expected": [
+        "nie"
+      ]
+    },
+    {
+      "id": "clarify-12",
+      "group": "clarify",
+      "family": "undefined-date",
+      "turns": [
+        {
+          "prompt": "Kiedy wygasa rezerwacja? Jeśli daty nie podano, powiedz: brak daty.",
+          "scene": {
+            "title": "Rezerwacja",
+            "cards": [
+              [
+                "Status",
+                "aktywny"
+              ],
+              [
+                "Sektor",
+                "C"
+              ]
+            ]
+          }
+        }
+      ],
+      "expected": [
+        "brak daty",
+        "daty nie podano"
+      ]
+    }
+  ]
+}

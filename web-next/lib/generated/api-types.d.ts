@@ -8579,6 +8579,38 @@ export interface components {
             /** Economy Mode */
             economy_mode?: string[];
         };
+        /** MultimodalVoiceReply */
+        MultimodalVoiceReply: {
+            /** Session Id */
+            session_id: string;
+            /** Text */
+            text: string | null;
+            /** Sources */
+            sources: string[];
+            /**
+             * No Speech
+             * @default false
+             */
+            no_speech: boolean;
+            /** Generation Mode */
+            generation_mode?: ("audio" | "interleaved") | null;
+            /** Audio Base64 */
+            audio_base64?: string | null;
+            /** Model Revision */
+            model_revision?: string | null;
+            /** Timings Ms */
+            timings_ms?: {
+                [key: string]: number;
+            } | null;
+            /** Pipeline Id */
+            pipeline_id?: string | null;
+            /** Generation Count */
+            generation_count?: number | null;
+            /** Peak Reserved Mib */
+            peak_reserved_mib?: number | null;
+            /** Has Image */
+            has_image?: boolean | null;
+        };
         /**
          * NodeExecuteRequest
          * @description Model żądania wykonania skilla na węźle.
@@ -10020,6 +10052,17 @@ export interface components {
             };
             /** @description Metadane użytego kontekstu (lekcje, pamięć) */
             context_used?: components["schemas"]["ContextUsed"] | null;
+        };
+        /** VoicePipelineChoices */
+        VoicePipelineChoices: {
+            /** Active Model */
+            active_model: string | null;
+            /** Gemma Models */
+            gemma_models: string[];
+            /** Omni Model */
+            omni_model: string | null;
+            /** Native Dialogue Modes */
+            native_dialogue_modes?: ("audio" | "interleaved")[];
         };
         /**
          * WorkflowOperation
@@ -13400,7 +13443,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["VoicePipelineChoices"];
                 };
             };
             /** @description Operator access or audio request origin denied */
@@ -13516,7 +13559,25 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    session_id: string;
+                    sample_rate: number;
+                    /**
+                     * @default pl
+                     * @enum {string}
+                     */
+                    language?: "pl";
+                    /** Format: binary */
+                    audio: string;
+                    /** Format: binary */
+                    image?: string;
+                    /** @enum {string} */
+                    generation_mode?: "interleaved" | "audio";
+                };
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -13524,7 +13585,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["MultimodalVoiceReply"];
                 };
             };
             /** @description Operator access or audio request origin denied */
@@ -13571,6 +13632,13 @@ export interface operations {
             };
             /** @description Local Omni is unavailable or the pilot turn failed */
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Native Omni generation timed out */
+            504: {
                 headers: {
                     [name: string]: unknown;
                 };

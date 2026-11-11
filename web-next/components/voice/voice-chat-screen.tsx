@@ -7,6 +7,7 @@ import { ArrowLeft, Brain, MessageSquareText, Sparkles, ListTodo } from "lucide-
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { SectionHeading } from "@/components/ui/section-heading";
+import type { NativeVoiceGenerationMode } from "@/lib/chat-audio";
 import { useTranslation } from "@/lib/i18n";
 import { isMultiRuntime } from "@/lib/runtime-id";
 import { buildVoiceRuntimeStateView } from "@/lib/voice-runtime-state";
@@ -68,6 +69,7 @@ export function VoiceChatScreen({ isDevMode = false }: VoiceChatScreenProps) {
   const [voiceModePreset, setVoiceModePreset] = useState<VoiceModePreset>("direct");
   const [voiceBusy, setVoiceBusy] = useState(false);
   const [pipelineSwitching, setPipelineSwitching] = useState(false);
+  const [generationMode, setGenerationMode] = useState<NativeVoiceGenerationMode | null>(null);
   const [voiceStatus, setVoiceStatus] = useState<VoiceStatusUpdate | null>(null);
   const [statusRefreshSignal, setStatusRefreshSignal] = useState(0);
   const t = useTranslation();
@@ -101,12 +103,15 @@ export function VoiceChatScreen({ isDevMode = false }: VoiceChatScreenProps) {
           onStatusUpdate={handleStatusUpdate}
           onTurnBusy={setVoiceBusy}
           pipelineSwitching={pipelineSwitching}
+          generationMode={generationMode}
           statusRefreshSignal={statusRefreshSignal}
           isDevMode={isDevMode}
         />
         <div className="space-y-4">
           <VoicePipelinePicker surface="voice" disabled={voiceBusy} onSwitching={setPipelineSwitching}
-            refreshKey={statusRefreshSignal} onApplied={() => setStatusRefreshSignal(current => current + 1)} />
+            refreshKey={statusRefreshSignal} onApplied={() => setStatusRefreshSignal(current => current + 1)}
+            nativeDialogueEnabled={voiceModePreset === "direct"} generationMode={generationMode}
+            onGenerationModeChange={setGenerationMode} />
           {/* Mode selector */}
           <div className="rounded-3xl box-muted p-4">
             <p className="eyebrow">{t("voice.modes.title")}</p>
@@ -123,7 +128,11 @@ export function VoiceChatScreen({ isDevMode = false }: VoiceChatScreenProps) {
                     type="button"
                     variant={selected ? "primary" : "outline"}
                     className="h-auto justify-start rounded-2xl px-4 py-3 text-left"
-                    onClick={() => setVoiceModePreset(item.mode)}
+                    disabled={voiceBusy && generationMode !== null}
+                    onClick={() => {
+                      if (item.mode !== "direct") setGenerationMode(null);
+                      setVoiceModePreset(item.mode);
+                    }}
                   >
                     <Icon className="h-4 w-4 shrink-0" />
                     <span className="flex flex-col items-start gap-0.5">

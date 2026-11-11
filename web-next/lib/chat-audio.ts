@@ -177,7 +177,20 @@ export function supportsLocalOmniVoice(runtime: {
   }
 }
 
-export type MultimodalVoiceReply = { session_id: string; text: string; sources: string[]; no_speech?: boolean };
+export type NativeVoiceGenerationMode = "interleaved" | "audio";
+
+export function isNativeVoiceGenerationMode(value: unknown): value is NativeVoiceGenerationMode {
+  return value === "interleaved" || value === "audio";
+}
+
+export type MultimodalVoiceReply = {
+  session_id: string;
+  text: string | null;
+  sources: string[];
+  no_speech?: boolean;
+  generation_mode?: NativeVoiceGenerationMode;
+  audio_base64?: string;
+};
 
 /** Upload PCM and an optional image together, preserving the caller's cancellation signal. */
 export async function sendMultimodalVoiceTurn(
@@ -186,6 +199,7 @@ export async function sendMultimodalVoiceTurn(
   language: string,
   image: File | null,
   signal: AbortSignal,
+  generationMode?: NativeVoiceGenerationMode,
 ): Promise<MultimodalVoiceReply> {
   const body = new FormData();
   body.set("session_id", session);
@@ -198,6 +212,7 @@ export async function sendMultimodalVoiceTurn(
     body.set("audio", new Blob([capture.pcm], { type: "application/octet-stream" }), "voice.pcm");
   }
   if (image) body.set("image", image);
+  if (generationMode) body.set("generation_mode", generationMode);
   const response = await fetch(getApiBaseUrl() + "/api/v1/chat/audio/multimodal-turn", {
     method: "POST",
     body,
@@ -207,6 +222,8 @@ export async function sendMultimodalVoiceTurn(
     const payload = await response.json().catch(() => null) as { detail?: { reason_code?: string } } | null;
     const reason = payload?.detail?.reason_code;
     if (reason === "omni_pilot_invalid_image") throw new Error("voiceImageInvalid");
+    if (reason === "omni_native_unavailable") throw new Error("voiceNativeUnavailable");
+    if (reason === "omni_native_busy") throw new Error("voiceWait");
     throw new Error(response.status === 409 ? "voiceWait" : "voiceError");
   }
   return response.json() as Promise<MultimodalVoiceReply>;

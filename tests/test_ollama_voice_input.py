@@ -1,7 +1,10 @@
 """Native speech preserves real WAV data and guarded conversation routing."""
 
+import asyncio
 import base64
 import io
+import json
+import sys
 import wave
 from contextlib import asynccontextmanager, nullcontext
 from types import SimpleNamespace
@@ -11,6 +14,8 @@ import pytest
 
 from venom_core.api import audio_stream as stream
 from venom_core.services import ollama_audio as audio
+from venom_core.services import omni_native_dialogue as native
+from venom_core.utils.llm_runtime import LLMRuntimeInfo
 
 
 @pytest.fixture(autouse=True)
@@ -881,3 +886,156 @@ async def test_native_audio_requires_local_model_capability(
     assert (
         await audio.supports_audio("http://127.0.0.1:11434", "gemma4:e4b") is expected
     )
+
+
+@pytest.fixture
+def native_runtime(monkeypatch, tmp_path):
+    snapshot = tmp_path / "snapshot"
+    (snapshot / "audio_tokenizer").mkdir(parents=True)
+    for filename in (
+        "config.json",
+        "model.safetensors",
+        "audio_tokenizer/model.safetensors",
+    ):
+        (snapshot / filename).touch()
+    monkeypatch.setenv("OMNI_NATIVE_SNAPSHOT", str(snapshot))
+    return LLMRuntimeInfo(
+        "ollama",
+        audio.OMNI_MODEL_ID,
+        "http://127.0.0.1:11434",
+        "local",
+        "dev",
+        host_local=True,
+    )
+
+
+def test_native_dialogue_only_lists_installed_local_snapshot(
+    native_runtime, monkeypatch
+):
+    assert native.native_dialogue_available(native_runtime)
+    remote = LLMRuntimeInfo(
+        "ollama",
+        audio.OMNI_MODEL_ID,
+        "http://127.0.0.1:11434",
+        "local",
+        "dev",
+        host_local=False,
+    )
+    assert not native.native_dialogue_available(remote)
+    monkeypatch.setenv("OMNI_NATIVE_SNAPSHOT", "relative")
+    assert not native.native_dialogue_available(native_runtime)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode,text", [("audio", None), ("interleaved", "Róże")])
+async def test_native_dialogue_preserves_original_media_and_one_response(
+    native_runtime, monkeypatch, tmp_path, mode, text
+):
+    raw = wav_file(tmp_path, rate=24000, frames=400).read_bytes()
+    invocation = AsyncMock(
+        return_value=json.dumps(
+            {
+                "model_revision": native.NATIVE_MODEL_REVISION,
+                "generation_count": 1,
+                "text": text,
+                "wav": base64.b64encode(raw).decode("ascii"),
+                "timings_ms": {"load": 10, "prepare": 4, "generate": 4, "decode": 4},
+                "peak_reserved_mib": 4380,
+            }
+        ).encode()
+    )
+    monkeypatch.setattr(native, "_invoke", invocation)
+    pcm = b"\x01\x01" * 400
+    image = b"image from the validated transport"
+    prior = [
+        {"role": "user", "pcm": pcm, "sample_rate": 16000},
+        {"role": "assistant", "content": "Tulipany"},
+    ]
+    result = await native.generate_native_turn(
+        native_runtime, pcm, 16000, image, prior, mode=mode
+    )
+    assert result.wav == raw
+    assert result.text == text
+    assert result.generation_count == 1
+    invocation.assert_awaited_once()
+    request = json.loads(invocation.call_args.args[1])
+    assert base64.b64decode(request["pcm"]) == pcm
+    assert base64.b64decode(request["image"]) == image
+    assert base64.b64decode(request["history"][0]["pcm"]) == pcm
+    assert request["history"][1]["content"] == "Tulipany"
+
+
+@pytest.mark.asyncio
+async def test_native_dialogue_rejects_bad_media_and_skips_silence(
+    native_runtime, monkeypatch
+):
+    invocation = AsyncMock()
+    monkeypatch.setattr(native, "_invoke", invocation)
+    with pytest.raises(native.NativeDialogueError, match="omni_native_invalid_input"):
+        await native.generate_native_turn(
+            native_runtime, b"\x00", 16000, None, [], mode="audio"
+        )
+    result = await native.generate_native_turn(
+        native_runtime, bytes(400), 16000, None, [], mode="audio"
+    )
+    assert result.no_speech
+    assert result.generation_count == 0
+    invocation.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "output, error",
+    [
+        (b'{"error":"omni_native_gpu_busy"}', "omni_native_gpu_busy"),
+        (b"not json", "omni_native_invalid_output"),
+        (b'{"model_revision":"unexpected"}', "omni_native_invalid_output"),
+    ],
+)
+async def test_native_dialogue_surfaces_worker_failure_without_fallback(
+    native_runtime, monkeypatch, output, error
+):
+    invocation = AsyncMock(return_value=output)
+    monkeypatch.setattr(native, "_invoke", invocation)
+    with pytest.raises(native.NativeDialogueError, match=error):
+        await native.generate_native_turn(
+            native_runtime, b"\x01\x01" * 400, 16000, None, [], mode="audio"
+        )
+    invocation.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"), reason="Linux sandbox lifecycle"
+)
+@pytest.mark.parametrize("cancel_during_start", [False, True])
+async def test_native_worker_is_reaped_before_returning_cancelled(
+    monkeypatch, tmp_path, cancel_during_start
+):
+    spawned = asyncio.Event()
+    release_spawn = asyncio.Event()
+    original = asyncio.create_subprocess_exec
+    workers = []
+
+    async def spawn(*_args, **kwargs):
+        worker = await original(
+            sys.executable, "-c", "import time; time.sleep(60)", **kwargs
+        )
+        workers.append(worker)
+        spawned.set()
+        if cancel_during_start:
+            await release_spawn.wait()
+        return worker
+
+    monkeypatch.setattr(native.asyncio, "create_subprocess_exec", spawn)
+    task = asyncio.create_task(native._invoke(tmp_path, b"{}"))
+    await asyncio.wait_for(spawned.wait(), timeout=5)
+    task.cancel()
+    if cancel_during_start:
+        await asyncio.sleep(0)
+        assert not task.done()
+        release_spawn.set()
+    with pytest.raises(asyncio.CancelledError):
+        await asyncio.wait_for(task, timeout=5)
+    assert len(workers) == 1
+    assert workers[0].returncode is not None

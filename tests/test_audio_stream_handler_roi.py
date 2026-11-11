@@ -2307,3 +2307,166 @@ async def test_schedule_silence_finalize_reraises_cancelled_error(monkeypatch):
         await task
 
     assert handler.active_connections[cid]["silence_finalize_task"] is None
+
+
+@pytest.mark.asyncio
+async def test_native_full_direct_sends_generated_pcm_and_retains_context(monkeypatch):
+    handler = _make_handler()
+    ws = _add_connection(handler, 1)
+    second_ws = _add_connection(handler, 2)
+    runtime = SimpleNamespace(provider="ollama", model_name="lfm3-omni:2b")
+    native = audio_stream_mod.omni_native_dialogue
+    voice = audio_stream_mod.omni_native_voice
+    monkeypatch.setattr(audio_stream_mod, "get_active_llm_runtime", lambda: runtime)
+    monkeypatch.setattr(voice, "get_active_llm_runtime", lambda: runtime)
+    monkeypatch.setattr(native, "native_dialogue_available", lambda _: True)
+    monkeypatch.setattr(audio_stream_mod.omni_pilot, "validate_image", lambda _: None)
+    synth = AsyncMock()
+    cascade = AsyncMock()
+    monkeypatch.setattr(audio_stream_mod.ollama_audio, "synthesize_speech", synth)
+    monkeypatch.setattr(audio_stream_mod.omni_pilot, "answer", cascade)
+    saved = AsyncMock()
+    monkeypatch.setattr(voice, "persist_turn", saved)
+    monkeypatch.setattr(audio_stream_mod, "get_session_store", lambda: object())
+
+    @asynccontextmanager
+    async def guard(**_kwargs):
+        yield
+
+    monkeypatch.setattr(voice, "runtime_request_guard", guard)
+    pcm = b"\x00\x10" * 100
+    wav = io.BytesIO()
+    with wave.open(wav, "wb") as stream:
+        stream.setparams((1, 2, 24000, 0, "NONE", "not compressed"))
+        stream.writeframes(pcm)
+
+    async def generate(_runtime, samples, _rate, _image, _history, *, mode):
+        if not any(samples):
+            return native.NativeDialogueResult(mode, None, None, True, {})
+        text = "Wynik" if mode == "interleaved" else None
+        return native.NativeDialogueResult(
+            mode, text, wav.getvalue(), False, {}, generation_count=1
+        )
+
+    model = AsyncMock(side_effect=generate)
+    monkeypatch.setattr(native, "generate_native_turn", model)
+
+    async def turn(connection_id, mode, samples, **options):
+        await handler._handle_control_message(
+            connection_id, '{"command":"voice_mode","mode":"direct"}', None
+        )
+        await handler._start_recording(
+            connection_id, {"generation_mode": mode, **options}
+        )
+        handler._handle_audio_data(connection_id, samples, None)
+        await handler._stop_recording(connection_id, None)
+        await handler.active_connections[connection_id]["native_task"]
+
+    await turn(1, "interleaved", pcm, image="cG5n")
+    await turn(1, "interleaved", bytes(len(pcm)))
+    await turn(1, "interleaved", pcm)
+    model.assert_awaited_with(
+        runtime,
+        pcm,
+        16000,
+        b"png",
+        [
+            {"role": "user", "pcm": pcm, "sample_rate": 16000},
+            {"role": "assistant", "content": "Wynik"},
+        ],
+        mode="interleaved",
+    )
+    await turn(2, "audio", pcm)
+    model.assert_awaited_with(runtime, pcm, 16000, None, [], mode="audio")
+    events = [json.loads(call.args[0]) for call in ws.send_text.await_args_list]
+    assert sum(event["type"] == "audio_response" for event in events) == 2
+    assert (
+        next(event for event in events if event.get("no_speech"))["generation_count"]
+        == 0
+    )
+    assert events[-1]["generation_count"] == 1
+    event = next(event for event in events if event["type"] == "audio_response")
+    assert event["sample_rate"] == 24000
+    assert base64.b64decode(event["audio"]) == pcm
+    second_events = [
+        json.loads(call.args[0]) for call in second_ws.send_text.await_args_list
+    ]
+    assert (
+        next(event for event in second_events if event["type"] == "response_text")[
+            "text"
+        ]
+        is None
+    )
+    assert saved.await_count == 3
+    cascade.assert_not_awaited()
+    synth.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_native_full_reset_drains_before_ack_and_does_not_save(monkeypatch):
+    handler = _make_handler()
+    ws = _add_connection(handler, 1)
+    runtime = SimpleNamespace(provider="ollama", model_name="lfm3-omni:2b")
+    native = audio_stream_mod.omni_native_dialogue
+    voice = audio_stream_mod.omni_native_voice
+    monkeypatch.setattr(audio_stream_mod, "get_active_llm_runtime", lambda: runtime)
+    monkeypatch.setattr(native, "native_dialogue_available", lambda _: True)
+    started = asyncio.Event()
+    drained = asyncio.Event()
+
+    async def run(*_args):
+        started.set()
+        try:
+            await asyncio.Future()
+        finally:
+            drained.set()
+
+    monkeypatch.setattr(voice, "run_turn", run)
+    saved = AsyncMock()
+    monkeypatch.setattr(voice, "persist_turn", saved)
+    await handler._apply_voice_mode(1, {"mode": "direct"})
+    await handler._start_recording(1, {"generation_mode": "audio"})
+    handler._handle_audio_data(1, b"\x00\x10" * 100, None)
+    await handler._stop_recording(1, None)
+    await asyncio.wait_for(started.wait(), timeout=1)
+    await handler._handle_control_message(
+        1, '{"command":"reset_native_dialogue","cancel_id":"one"}', None
+    )
+    assert drained.is_set()
+    assert json.loads(ws.send_text.await_args.args[0]) == {
+        "type": "native_dialogue_reset",
+        "cancel_id": "one",
+    }
+    saved.assert_not_awaited()
+    events = [json.loads(call.args[0]) for call in ws.send_text.await_args_list]
+    assert not any(event["type"] == "audio_response" for event in events)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("voice_mode", "requested", "available", "reason"),
+    [
+        ("standard", "interleaved", True, "omni_native_invalid_input"),
+        ("direct", "text", True, "omni_native_invalid_input"),
+        ("direct", "audio", False, "omni_native_unavailable"),
+    ],
+)
+async def test_native_full_rejects_unsupported_start_without_cascade(
+    monkeypatch, voice_mode, requested, available, reason
+):
+    handler = _make_handler()
+    ws = _add_connection(handler, 1)
+    native = audio_stream_mod.omni_native_dialogue
+    monkeypatch.setattr(audio_stream_mod, "get_active_llm_runtime", lambda: object())
+    monkeypatch.setattr(native, "native_dialogue_available", lambda _: available)
+    cascade = AsyncMock()
+    monkeypatch.setattr(handler, "_process_audio_buffer", cascade)
+    await handler._apply_voice_mode(1, {"mode": voice_mode})
+    await handler._start_recording(1, {"generation_mode": requested})
+    handler._handle_audio_data(1, b"\x00\x10" * 100, None)
+    await handler._stop_recording(1, None)
+    event = json.loads(ws.send_text.await_args.args[0])
+    assert event["type"] == "error"
+    assert event["reason_code"] == reason
+    assert "native_task" not in handler.active_connections[1]
+    cascade.assert_not_awaited()

@@ -1,4 +1,17 @@
 export const voice = {
+  nativeDialogue: {
+    cancel: "Omni-Antwort abbrechen",
+    cancelling: "Antwort wird abgebrochen…",
+    cancelled: "Omni-Antwort abgebrochen.",
+    mode: "Omni-Antwortmodus",
+    cascade: "Bisheriger Sprachmodus",
+    interleaved: "Nativer Text und Sprache (experimentell)",
+    audio: "Native Sprache (experimentell)",
+    unavailable: "Der gewählte native Omni-Modus ist nicht verfügbar. Wähle den bisherigen Sprachmodus oder versuche es erneut.",
+    end: "Native Unterhaltung beenden",
+    audioReply: "Audioantwort",
+    busy: "Omni ist beschäftigt. Warte auf den Abschluss der aktuellen Anfrage.",
+  },
   multimodal: {
     captureCamera: "Kamerabild aufnehmen",
     cameraPending: "Einzelbild wird aufgenommen…",

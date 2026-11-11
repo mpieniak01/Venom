@@ -365,3 +365,81 @@ test("removing an image during a MediaRecorder turn keeps the audio and omits th
   assert.equal(await audio.text(), "voice");
   assert.equal(hook.result.current.error, null);
 });
+
+for (const mode of ["interleaved", "audio"] as const) {
+  test("Studio plays native Omni " + mode + " without an ASR or TTS request", async context => {
+    const fixture = options();
+    const captured: Blob[] = [];
+    let commits = 0;
+    let plays = 0;
+    const createObjectURL = context.mock.method(URL, "createObjectURL", (blob: Blob) => {
+      captured.push(blob);
+      return "blob:native-omni";
+    });
+    context.mock.method(URL, "revokeObjectURL", () => {});
+    const audioDescriptor = Object.getOwnPropertyDescriptor(globalThis, "Audio");
+    Object.defineProperty(globalThis, "Audio", {
+      configurable: true,
+      value: function () {
+        return { play: async () => { plays++; }, pause() {}, removeAttribute() {} };
+      },
+    });
+    context.after(() => {
+      if (audioDescriptor) Object.defineProperty(globalThis, "Audio", audioDescriptor);
+      else Reflect.deleteProperty(globalThis, "Audio");
+    });
+    const requests: string[] = [];
+    globalThis.fetch = async (input, init) => {
+      requests.push(String(input));
+      assert.ok(String(input).endsWith("/multimodal-turn"));
+      assert.ok(init?.body instanceof FormData);
+      assert.equal(init.body.get("generation_mode"), mode);
+      assert.equal(init.body.has("image"), false);
+      return Response.json({
+        session_id: "one", text: mode === "audio" ? null : "Tekst modelu", sources: [],
+        generation_mode: mode, audio_base64: "UklGRg==",
+      });
+    };
+    const props = {
+      ...fixture.props, mode: "conversation" as const, multimodalEnabled: true, generationMode: mode,
+      onMultimodalCommit: () => { commits++; },
+    };
+    const hook = renderHook(() => useStudioVoice(props, async () => ({
+      finish: async () => recorded(), dispose() {},
+    })));
+    await act(async () => { await hook.result.current.start(); await hook.result.current.finish(); });
+
+    assert.equal(requests.length, 1);
+    assert.equal(commits, 1);
+    assert.equal(plays, 1);
+    assert.equal(createObjectURL.mock.callCount(), 1);
+    assert.equal(captured[0].type, "audio/wav");
+    assert.equal(await captured[0].text(), "RIFF");
+    assert.equal(hook.result.current.nativeAudioOnly, mode === "audio");
+    assert.equal(hook.result.current.status, "speaking");
+    assert.deepEqual(fixture.turns, []);
+    hook.unmount();
+  });
+}
+
+test("an unavailable native Studio turn stays in the selected mode without falling back", async () => {
+  const fixture = options();
+  const props = {
+    ...fixture.props, mode: "conversation" as const, multimodalEnabled: true, generationMode: "audio" as const,
+  };
+  let requests = 0;
+  globalThis.fetch = async (input, init) => {
+    requests++;
+    assert.ok(String(input).endsWith("/multimodal-turn"));
+    assert.ok(init?.body instanceof FormData);
+    assert.equal(init.body.get("generation_mode"), "audio");
+    return Response.json({ detail: { reason_code: "omni_native_unavailable" } }, { status: 503 });
+  };
+  const hook = renderHook(() => useStudioVoice(props, async () => ({
+    finish: async () => recorded(), dispose() {},
+  })));
+  await act(async () => { await hook.result.current.start(); await hook.result.current.finish(); });
+  assert.equal(requests, 1);
+  assert.equal(hook.result.current.error, "voiceNativeUnavailable");
+  assert.equal(hook.result.current.status, "voiceIdle");
+});

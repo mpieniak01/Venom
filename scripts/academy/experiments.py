@@ -27,6 +27,9 @@ def main(argv: list[str] | None = None) -> None:
             sub.add_argument("run_id")
     for action in ("status", "stop", "resume", "evaluate", "logs", "review", "report"):
         commands.add_parser(action).add_argument("run_id")
+    imported = commands.add_parser("import-results")
+    imported.add_argument("run_id")
+    imported.add_argument("file", type=Path)
     submit = commands.add_parser("judgments")
     submit.add_argument("run_id")
     submit.add_argument("file", type=Path)
@@ -49,6 +52,8 @@ def execute(args: argparse.Namespace):
         if args.command == "validate":
             return service.validate(args.profile_id, recipe)
         return service.start(args.profile_id, args.run_id, recipe)
+    if args.command == "import-results":
+        return service.import_results(args.run_id, args.file)
     if args.command == "judgments":
         payload = (
             rows(args.file) if args.file.suffix == ".jsonl" else read_json(args.file)

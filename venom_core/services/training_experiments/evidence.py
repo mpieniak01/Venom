@@ -121,3 +121,39 @@ def calibrated_judgments(calibration: dict, bundle: dict) -> list[dict]:
             grade = rule["outputs"].get(text, rule["fallback"])
             grades.append({**grade, "record_id": case_id, "label": label})
     return grades
+
+
+def historical_report(source: dict, source_sha256: str) -> dict:
+    """Import prior scorer output without treating a receipt as existing weights."""
+    selected = source["selected"]
+    match = CHECKPOINT_PATTERN.fullmatch(selected)
+    if match is None:
+        raise ValueError("experiment_historical_checkpoint_invalid")
+    summaries = {}
+    verdicts = {}
+    for role, name in (("base", "base"), ("candidate", selected)):
+        summaries[role] = source["summaries"][name]
+        verdicts[role] = source["verdicts"][name]
+        total = summaries[role]["total"]
+        n = total["n"]
+        if (
+            type(n) is not int
+            or n < 1
+            or any(
+                type(value) is not int or not 0 <= value <= n
+                for value in total.values()
+            )
+        ):
+            raise ValueError("experiment_historical_metrics_invalid")
+    if summaries["base"]["total"]["n"] != summaries["candidate"]["total"]["n"]:
+        raise ValueError("experiment_historical_coverage_invalid")
+    checkpoint = {"step": int(match[1])}
+    return {
+        "source_sha256": source_sha256,
+        "historical": True,
+        "summaries": summaries,
+        "verdicts": verdicts,
+        "cases": [],
+        "checkpoint": checkpoint,
+        "artifacts": [{"kind": "adapter", **checkpoint, "available": False}],
+    }

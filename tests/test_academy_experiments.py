@@ -295,3 +295,31 @@ def test_shared_worker_admission_has_exclusive_lease(tmp_path):
         assert worker.snapshot()["status"] == "owned"
     assert lease.release()
     assert app.snapshot()["status"] == "available"
+
+
+def test_campaign_owns_retries_and_history_does_not_restore_weights(setup, tmp_path):
+    svc, _, _, _, _, _, _ = setup
+    svc.start("smoke", "owned", campaign_id="batch")
+    assert svc.status("owned")["actions"]["stop"] is False
+    with pytest.raises(ValueError, match="campaign_controls_run"):
+        svc.stop("owned")
+    assert svc.stop("owned", campaign_id="batch")["stop_requested"]
+    old = tmp_path / "historic.json"
+    atomic_json(
+        old,
+        {
+            "selected": "checkpoint-62",
+            "summaries": {
+                "base": {"total": {"n": 4, "usable": 1}},
+                "checkpoint-62": {"total": {"n": 4, "usable": 2}},
+            },
+            "verdicts": {"base": {}, "checkpoint-62": {}},
+        },
+    )
+    assert svc.import_results("p6", old)["resume_available"] is False
+    assert svc.import_results("p6", old)["status"] == "succeeded"
+    assert svc.report("p6")["artifacts"][0] == {
+        "kind": "adapter",
+        "available": False,
+        "step": 62,
+    }

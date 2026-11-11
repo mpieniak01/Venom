@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shutil
 import subprocess
 import sys
 import time
@@ -20,7 +21,13 @@ from venom_core.services.remote_training.lifecycle import (
 )
 from venom_core.services.remote_training.paths import operator_path
 
-from .evidence import inspect_checkpoint, latest_checkpoint, review_data, sealed_report
+from .evidence import (
+    historical_report,
+    inspect_checkpoint,
+    latest_checkpoint,
+    review_data,
+    sealed_report,
+)
 from .profiles import (
     Profile,
     check_inputs,
@@ -203,16 +210,20 @@ class ExperimentService:
         result["checkpoint_step"] = (
             checkpoint[1]["step"] if checkpoint else state.get("checkpoint_step")
         )
-        result["resources_active"] = state["status"] in ACTIVE and (
-            identity_alive(state.get("supervisor")) or self._child_alive(state)
+        result["resources_active"] = self._child_alive(state) or (
+            state["status"] in ACTIVE and identity_alive(state.get("supervisor"))
         )
+        resume_checkpoint = self._checkpoint(run_id, resume=True) if can_retry else None
         result["resume_available"] = bool(
-            can_retry and self._checkpoint(run_id, resume=True)
+            resume_checkpoint
+            and resume_checkpoint[1]["step"] < state["recipe"]["steps"]
         )
+        operator_controls = state.get("campaign_id") is None
         result["actions"] = {
-            "stop": result["status"] in ACTIVE | {"awaiting_review"},
-            "resume": result["resume_available"],
-            "evaluate": bool(can_retry and checkpoint),
+            "stop": operator_controls
+            and result["status"] in ACTIVE | {"awaiting_review"},
+            "resume": operator_controls and result["resume_available"],
+            "evaluate": bool(operator_controls and can_retry and checkpoint),
             "review": result["status"] == "awaiting_review",
         }
         if state["status"] in ACTIVE:
@@ -330,16 +341,25 @@ class ExperimentService:
             )
 
     def _retry(
-        self, run_id: str, *, stage: str, mode: str, max_seconds: int | None
+        self,
+        run_id: str,
+        *,
+        stage: str,
+        mode: str,
+        max_seconds: int | None,
+        campaign_id: str | None,
     ) -> dict:
         ensure_data_mutation_allowed("academy_experiment_retry")
         with self.run_lock(run_id):
             state = self.store.read(run_id)
+            self._require_run_owner(state, campaign_id)
             view = self._view(state)
             if view["status"] not in RETRYABLE or self._child_alive(state):
                 raise ValueError("experiment_retry_not_allowed")
             checkpoint = self._checkpoint(run_id, resume=mode == "resume")
-            if checkpoint is None:
+            if checkpoint is None or (
+                mode == "resume" and not view["resume_available"]
+            ):
                 raise ValueError("experiment_checkpoint_unavailable")
             profile = Profile.model_validate(self._manifest(run_id)["profile"])
             check_inputs(self.root, profile)
@@ -347,26 +367,59 @@ class ExperimentService:
                 state["elapsed_seconds"] = view["elapsed_seconds"]
             return self._enqueue(state, stage=stage, mode=mode, max_seconds=max_seconds)
 
-    def resume(self, run_id: str, *, max_seconds: int | None = None) -> dict:
+    @staticmethod
+    def _require_run_owner(state: dict, campaign_id: str | None) -> None:
+        if state.get("campaign_id") != campaign_id:
+            raise ValueError("experiment_campaign_controls_run")
+
+    def resume(
+        self,
+        run_id: str,
+        *,
+        max_seconds: int | None = None,
+        campaign_id: str | None = None,
+    ) -> dict:
         return self._retry(
-            run_id, stage="train", mode="resume", max_seconds=max_seconds
+            run_id,
+            stage="train",
+            mode="resume",
+            max_seconds=max_seconds,
+            campaign_id=campaign_id,
         )
 
-    def evaluate(self, run_id: str, *, max_seconds: int | None = None) -> dict:
+    def evaluate(
+        self,
+        run_id: str,
+        *,
+        max_seconds: int | None = None,
+        campaign_id: str | None = None,
+    ) -> dict:
         return self._retry(
-            run_id, stage="generate", mode="evaluate", max_seconds=max_seconds
+            run_id,
+            stage="generate",
+            mode="evaluate",
+            max_seconds=max_seconds,
+            campaign_id=campaign_id,
         )
 
-    def stop(self, run_id: str) -> dict:
+    def stop(self, run_id: str, *, campaign_id: str | None = None) -> dict:
         ensure_data_mutation_allowed("academy_experiment_stop")
         with self.run_lock(run_id):
             state = self.store.read(run_id)
+            self._require_run_owner(state, campaign_id)
             if state["status"] in ACTIVE:
                 state["stop_requested"] = True
             elif state["status"] == "awaiting_review":
                 state.update(status="stopped", error="experiment_review_stopped")
             self._save(state)
             return self._view(state)
+
+    def free_storage_bytes(self, profile_id: str) -> int:
+        profile, _ = load_profile(self.root, profile_id)
+        paths = [self.root]
+        if profile.backing_volume is not None:
+            paths.append(resolve_input(self.root, profile.backing_volume))
+        return min(shutil.disk_usage(path).free for path in paths)
 
     def logs(self, run_id: str) -> dict:
         state = self.store.read(run_id)
@@ -443,10 +496,51 @@ class ExperimentService:
             self._commit(state, judgments)
             return self._view(state)
 
+    def import_results(self, run_id: str, source: Path) -> dict:
+        ensure_data_mutation_allowed("academy_experiment_import")
+        fingerprint = digest(source)
+        result = historical_report(read_json(source), fingerprint)
+        if digest(source) != fingerprint:
+            raise ValueError("experiment_historical_source_changed")
+        directory = self.run_dir(run_id)
+        directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+        with self.run_lock(run_id):
+            if (directory / "manifest.json").exists():
+                raise ValueError("experiment_run_identity_conflict")
+            existing = self._check_report(run_id)
+            if existing is not None and existing.get("source_sha256") != fingerprint:
+                raise ValueError("experiment_run_identity_conflict")
+            if existing is None:
+                atomic_json(directory / "result.json", {**result, "run_id": run_id})
+                atomic_json(
+                    directory / "result-seal.json",
+                    {"result_sha256": digest(directory / "result.json")},
+                )
+            if not (directory / "state.json").exists():
+                now = time.time()
+                self._save(
+                    {
+                        "schema_version": 1,
+                        "run_id": run_id,
+                        "profile_id": "historical",
+                        "profile_identity": fingerprint,
+                        "status": "succeeded",
+                        "stage": "done",
+                        "created_at": now,
+                        "attempt": 0,
+                        "recipe": {},
+                        "elapsed_seconds": 0.0,
+                        "checkpoint_step": result["checkpoint"]["step"],
+                    }
+                )
+            return self.status(run_id)
+
     def report(self, run_id: str) -> dict:
         result = self._check_report(run_id)
         if result is None:
             raise FileNotFoundError("experiment_result_missing")
+        if result.get("historical"):
+            return result
         artifact = result["artifacts"][0]
         checkpoint = (
             self.run_dir(run_id) / "training" / f"checkpoint-{artifact['step']}"

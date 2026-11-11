@@ -1,0 +1,189 @@
+"use client";
+
+import { useState, type FormEvent } from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import type { CampaignRequest } from "@/lib/academy-campaign-api";
+import type { ExperimentProfile, ExperimentRecipe } from "@/lib/academy-experiments-api";
+import { useTranslation } from "@/lib/i18n";
+
+const MIB = 1024 ** 2;
+const BUDGET_FIELDS = [
+  ["max_trials", 3, 1, 32],
+  ["max_updates", 1000, 1, 100000],
+  ["max_tokens", 2000000, 1, 1000000000],
+  ["max_seconds", 3600, 1, 604800],
+  ["trial_seconds", 1200, 1, 86400],
+  ["max_retries", 0, 0, 3],
+  ["max_artifact_mib", 4096, 1, 1048576],
+  ["min_free_mib", 8192, 0, 1048576],
+] as const;
+const VARIANT_FIELDS = [
+  ["rank", "academy.experiments.rank"],
+  ["alpha", "academy.experiments.alpha"],
+  ["learning_rate", "academy.experiments.learningRate"],
+] as const;
+const SELECT_CLASS = "h-9 w-full rounded-md border border-[color:var(--ui-border)] bg-[color:var(--ui-surface)] px-2 text-sm";
+
+function numberField(data: FormData, name: string) {
+  const value = data.get(name);
+  if (typeof value !== "string" || !value.trim() || !Number.isFinite(Number(value))) {
+    throw new Error("invalid numeric field");
+  }
+  return Number(value);
+}
+
+function variantRecipe(data: FormData, row: number): ExperimentRecipe {
+  const recipe: ExperimentRecipe = {};
+  for (const [key] of VARIANT_FIELDS) {
+    const name = `variant-${row}-${key}`;
+    if (data.get(name) !== "") recipe[key] = numberField(data, name);
+  }
+  return recipe;
+}
+
+function readPlan(data: FormData, profileId: string, rows: number[]): CampaignRequest {
+  const id = String(data.get("campaign_id") ?? "").trim();
+  if (!/^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$/.test(id)) throw new Error("invalid campaign id");
+  return {
+    campaign_id: id,
+    profile_id: profileId,
+    variants: rows.map((row) => variantRecipe(data, row)),
+    budget: {
+      max_trials: numberField(data, "max_trials"),
+      max_updates: numberField(data, "max_updates"),
+      max_tokens: numberField(data, "max_tokens"),
+      max_seconds: numberField(data, "max_seconds"),
+      trial_seconds: numberField(data, "trial_seconds"),
+      max_retries: numberField(data, "max_retries"),
+      max_artifact_bytes: numberField(data, "max_artifact_mib") * MIB,
+      min_free_bytes: numberField(data, "min_free_mib") * MIB,
+    },
+    selection: {
+      min_usable_delta: numberField(data, "min_usable_delta") / 100,
+      max_critical_delta: numberField(data, "max_critical_delta") / 100,
+    },
+    retention: data.get("retention") === "discard_rejected" ? "discard_rejected" : "keep_all",
+    review_mode: data.get("review_mode") === "automatic" ? "automatic" : "manual",
+  };
+}
+
+interface CampaignFormProps {
+  readonly profiles: ExperimentProfile[];
+  readonly disabled: boolean;
+  readonly onPlan: (request: CampaignRequest) => Promise<boolean>;
+}
+
+export function CampaignForm({ profiles, disabled, onPlan }: CampaignFormProps) {
+  const t = useTranslation();
+  const [profileId, setProfileId] = useState("");
+  const [rows, setRows] = useState([0]);
+  const [invalid, setInvalid] = useState(false);
+  const profile = profiles.find((item) => item.id === profileId) ?? profiles[0];
+  if (!profile) return <p className="text-sm text-hint">{t("academy.experiments.noProfiles")}</p>;
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (disabled || !profile) return;
+    try {
+      const request = readPlan(new FormData(event.currentTarget), profile.id, rows);
+      if (request.variants.length > request.budget.max_trials || request.budget.trial_seconds > request.budget.max_seconds) {
+        setInvalid(true);
+        return;
+      }
+      setInvalid(false);
+      await onPlan(request);
+    } catch {
+      setInvalid(true);
+    }
+  }
+
+  return (
+    <form className="space-y-4" onSubmit={(event) => void submit(event)}>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="space-y-1">
+          <Label htmlFor="campaign-profile">{t("academy.experiments.profile")}</Label>
+          <select id="campaign-profile" className={SELECT_CLASS} value={profile.id} disabled={disabled}
+            onChange={(event) => setProfileId(event.currentTarget.value)}>
+            {profiles.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
+          </select>
+        </div>
+        <div className="space-y-1">
+          <Label htmlFor="campaign-id">{t("academy.campaigns.id")}</Label>
+          <Input id="campaign-id" name="campaign_id" required maxLength={40} disabled={disabled} />
+        </div>
+      </div>
+      <p className="break-words text-sm text-hint">{profile.model} · {profile.dataset}</p>
+      <fieldset className="space-y-3">
+        <legend className="text-sm font-medium">{t("academy.campaigns.variants")}</legend>
+        {rows.map((row, index) => (
+          <div key={row} className="space-y-2 rounded-lg border border-[color:var(--ui-border)] p-3">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-sm text-hint">{t("academy.campaigns.variant")} {index + 1}</span>
+              <Button type="button" size="sm" variant="ghost" disabled={disabled || rows.length <= 1}
+                onClick={() => setRows((current) => current.filter((item) => item !== row))}>
+                {t("academy.campaigns.removeVariant")}
+              </Button>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-3">
+              {VARIANT_FIELDS.map(([field, label]) => (
+                <div className="space-y-1" key={field}>
+                  <Label htmlFor={`variant-${row}-${field}`}>{t(label)}</Label>
+                  <Input id={`variant-${row}-${field}`} name={`variant-${row}-${field}`} type="number"
+                    min={field === "learning_rate" ? undefined : 1}
+                    step={field === "learning_rate" ? "any" : 1}
+                    placeholder={profile.recipe[field]?.toString()} disabled={disabled} />
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+        <Button type="button" size="sm" variant="outline" disabled={disabled || rows.length >= 32}
+          onClick={() => setRows((current) => [...current, (current.at(-1) ?? 0) + 1])}>
+          {t("academy.campaigns.addVariant")}
+        </Button>
+      </fieldset>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="space-y-1">
+          <Label htmlFor="campaign-retention">{t("academy.campaigns.retention")}</Label>
+          <select id="campaign-retention" name="retention" className={SELECT_CLASS} disabled={disabled}>
+            <option value="keep_all">{t("academy.campaigns.keepAll")}</option>
+            <option value="discard_rejected">{t("academy.campaigns.discardRejected")}</option>
+          </select>
+        </div>
+        <div className="space-y-1">
+          <Label htmlFor="campaign-review">{t("academy.campaigns.reviewMode")}</Label>
+          <select id="campaign-review" name="review_mode" className={SELECT_CLASS} disabled={disabled}>
+            <option value="manual">{t("academy.campaigns.manualReview")}</option>
+            <option value="automatic" disabled={!profile.automatic_review}>{t("academy.campaigns.automaticReview")}</option>
+          </select>
+        </div>
+      </div>
+      <details open>
+        <summary className="cursor-pointer text-sm font-medium">{t("academy.campaigns.limits")}</summary>
+        <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {BUDGET_FIELDS.map(([field, initial, min, max]) => (
+            <div className="space-y-1" key={field}>
+              <Label htmlFor={`campaign-${field}`}>{t(`academy.campaigns.budget.${field}`)}</Label>
+              <Input id={`campaign-${field}`} name={field} type="number" step={1} min={min} max={max}
+                defaultValue={initial} required disabled={disabled} />
+            </div>
+          ))}
+          <div className="space-y-1">
+            <Label htmlFor="campaign-min-usable">{t("academy.campaigns.minUsable")}</Label>
+            <Input id="campaign-min-usable" name="min_usable_delta" type="number" min={-100} max={100} step="any"
+              defaultValue={0} required disabled={disabled} />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="campaign-max-critical">{t("academy.campaigns.maxCritical")}</Label>
+            <Input id="campaign-max-critical" name="max_critical_delta" type="number" min={0} max={100} step="any"
+              defaultValue={0} required disabled={disabled} />
+          </div>
+        </div>
+      </details>
+      {invalid && <p role="alert" className="text-sm text-red-400">{t("academy.campaigns.invalid")}</p>}
+      <Button type="submit" disabled={disabled}>{t("academy.campaigns.plan")}</Button>
+    </form>
+  );
+}

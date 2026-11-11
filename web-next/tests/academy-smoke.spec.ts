@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
+import type { Campaign, CampaignRequest } from "../lib/academy-campaign-api";
 import { buildHttpUrl } from "./utils/url";
 
 const academyStatusPayload = {
@@ -491,6 +492,16 @@ test.describe("Academy smoke", () => {
       });
     });
 
+    await page.route("**/api/v1/academy/self-learning/evaluation/baseline", async (route) => {
+      const baseline = {
+        repo_qa_accuracy: 0.7,
+        code_localization_accuracy: 0.7,
+        fix_success_rate: 0.6,
+        hallucination_rate_max: 0.1,
+      };
+      await route.fulfill({ json: { llm_finetune: baseline, rag_index: baseline } });
+    });
+
     await page.route("**/api/v1/academy/self-learning/list**", async (route) => {
       await route.fulfill({
         status: 200,
@@ -598,6 +609,88 @@ test.describe("Academy smoke", () => {
 
   });
 
+  test("plans and starts an Omni campaign and refreshes trial status", async ({ page }) => {
+    const api = "**/api/v1/academy/experiments";
+    const campaigns = `${api}/campaigns`;
+    const campaignId = "omni-e2e";
+    const runId = `${campaignId}-01`;
+    const profile = {
+      id: "polski-czat",
+      label: "Polski czat Omni",
+      model: "LiquidAI/LFM3-Omni-2B",
+      dataset: "Polskie dialogi dev",
+      recipe: { rank: 4, alpha: 8, learning_rate: 0.0002 },
+      automatic_review: false,
+    };
+    const planSha256 = "a".repeat(64);
+    const mock: { current?: Campaign } = {};
+    let planRequest: CampaignRequest | undefined;
+    let startRequest: { plan_sha256: string } | undefined;
+
+    await page.route(`${api}/profiles`, (route) =>
+      route.fulfill({ json: { profiles: [{ ...profile, id: "other-profile", label: "Drugi profil" }, profile] } }),
+    );
+    await page.route(campaigns, (route) =>
+      route.fulfill({ json: { campaigns: mock.current ? [mock.current] : [] } }),
+    );
+    await page.route(`${campaigns}/plan`, async (route) => {
+      planRequest = route.request().postDataJSON() as CampaignRequest;
+      mock.current = {
+        campaign_id: campaignId,
+        plan: {
+          ...planRequest,
+          plan_sha256: planSha256,
+          variants: [
+            {
+              run_id: runId,
+              recipe: { ...profile.recipe, ...planRequest.variants[0] },
+              workload: { updates: 8, tokens: 8192 },
+            },
+          ],
+        },
+        status: "planned",
+        trial_index: 0,
+        trials: [{ run_id: runId, status: "pending" }],
+        elapsed_seconds: 0,
+        used_updates: 0,
+        used_tokens: 0,
+        retries: 0,
+        artifact_bytes: 0,
+      };
+      await route.fulfill({ json: mock.current });
+    });
+    await page.route(`${campaigns}/${campaignId}/start`, async (route) => {
+      startRequest = route.request().postDataJSON() as { plan_sha256: string };
+      if (!mock.current) throw new Error("Campaign plan has not been created");
+      mock.current = { ...mock.current, status: "running", trials: [{ run_id: runId, status: "running" }] };
+      await route.fulfill({ json: mock.current });
+    });
+
+    await page.goto(buildHttpUrl(host, port, "/academy"));
+    await page.getByRole("button", { name: "Trening", exact: true }).click();
+    await page.getByRole("button", { name: "Kampania", exact: true }).click();
+    await page.locator("#campaign-profile").selectOption(profile.id);
+    await page.getByLabel("Identyfikator kampanii").fill(campaignId);
+    await page.getByRole("button", { name: "Przygotuj plan kampanii" }).click();
+    const start = page.getByRole("button", { name: "Uruchom zaplanowaną kampanię" });
+    await expect(start).toBeEnabled();
+    expect(planRequest).toMatchObject({ campaign_id: campaignId, profile_id: profile.id, review_mode: "manual" });
+    expect(startRequest).toBeUndefined();
+
+    await start.click();
+    await expect(page.getByRole("button", { name: "Zatrzymaj kampanię" })).toBeEnabled();
+    expect(startRequest).toEqual({ plan_sha256: planSha256 });
+
+    if (!mock.current) throw new Error("Campaign did not start");
+    mock.current = {
+      ...mock.current,
+      status: "awaiting_review",
+      trials: [{ run_id: runId, status: "awaiting_review" }],
+    };
+    const trial = page.getByRole("row").filter({ has: page.getByRole("button", { name: runId, exact: true }) });
+    await expect(trial).toContainText("Oczekuje na ocenę");
+  });
+
   test("status + start training + activate adapter flow", async ({ page }) => {
     await page.goto(buildHttpUrl(host, port, "/academy"));
 
@@ -630,7 +723,7 @@ test.describe("Academy smoke", () => {
     await page.getByText("Kod źródłowy (venom_core, web-next, scripts)").click();
     await page.getByRole("button", { name: "Uruchom samokształcenie" }).click();
 
-    await expect(page.getByText("selflearn")).toBeVisible();
+    await expect(page.getByText(selfLearningRunId.slice(0, 8), { exact: true })).toBeVisible();
     await expect(page.getByText("Zakończony").first()).toBeVisible();
     expect(selfLearningStartPayload).not.toBeNull();
     expect((selfLearningStartPayload?.sources as string[]) ?? []).toEqual([
@@ -867,7 +960,7 @@ test.describe("Academy smoke", () => {
     await page.getByText("Dokumentacja repozytorium (/docs)").click();
     await page.getByRole("button", { name: "Uruchom samokształcenie" }).click();
 
-    await expect(page.getByText("selflearn")).toBeVisible();
+    await expect(page.getByText(selfLearningRunId.slice(0, 8), { exact: true })).toBeVisible();
     await expect(page.getByText("Zakończony").first()).toBeVisible();
     expect(selfLearningStartPayload).not.toBeNull();
     expect(selfLearningStartPayload?.mode).toBe("llm_finetune");
@@ -919,7 +1012,7 @@ test.describe("Academy smoke", () => {
     await page.getByText("Tylko README z root repo (/README.md, /README_PL.md)").click();
     await page.getByRole("button", { name: "Uruchom samokształcenie" }).click();
 
-    await expect(page.getByText("selflearn")).toBeVisible();
+    await expect(page.getByText(selfLearningRunId.slice(0, 8), { exact: true })).toBeVisible();
     await expect(page.getByText("Zakończony").first()).toBeVisible();
 
     await page.getByRole("button", { name: "Adaptery" }).click();

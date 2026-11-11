@@ -47,6 +47,9 @@ from venom_core.api.middleware.traffic_control import TrafficControlMiddleware
 
 # Import routers
 from venom_core.api.routes import academy as academy_routes
+from venom_core.api.routes import (
+    academy_experiment_campaigns as academy_experiment_campaign_routes,
+)
 from venom_core.api.routes import academy_experiments as academy_experiments_routes
 from venom_core.api.routes import academy_models as academy_models_routes
 from venom_core.api.routes import academy_self_learning as academy_self_learning_routes
@@ -1888,6 +1891,7 @@ app.include_router(feedback_routes.router)
 app.include_router(learning_routes.router)
 app.include_router(academy_routes.router)
 app.include_router(academy_experiments_routes.router)
+app.include_router(academy_experiment_campaign_routes.router)
 app.include_router(academy_self_learning_routes.router)
 app.include_router(llm_simple_routes.router)
 app.include_router(chat_audio_routes.router)

@@ -7736,6 +7736,20 @@
       "rationale": "Shared local and SSH training lifecycle, native FunctionGemma and host ownership contracts."
     },
     {
+      "path": "tests/test_training_experiment_campaign.py",
+      "domain": "runtime",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Durable experiment campaign transitions, resource budgets and protected checkpoint retention."
+    },
+    {
       "path": "tests/test_training_local_host.py",
       "domain": "models",
       "test_type": "unit",

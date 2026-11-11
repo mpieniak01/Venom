@@ -508,6 +508,7 @@ tests/test_tracer.py
 tests/test_tracer_persistence.py
 tests/test_traffic_control.py
 tests/test_traffic_control_routes.py
+tests/test_training_experiment_campaign.py
 tests/test_training_functiongemma_execution.py
 tests/test_training_local_host.py
 tests/test_training_local_transport.py

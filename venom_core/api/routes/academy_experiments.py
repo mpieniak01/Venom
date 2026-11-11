@@ -79,7 +79,7 @@ def call_experiment(operation: Callable[..., dict], *args, **kwargs) -> dict:
         reason = str(exc)
         code = (
             reason
-            if reason.startswith("experiment_") and reason.isidentifier()
+            if reason.startswith(("experiment_", "campaign_")) and reason.isidentifier()
             else "experiment_invalid_request"
         )
         raise HTTPException(status_code=409, detail={"code": code}) from exc

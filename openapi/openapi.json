@@ -3587,6 +3587,412 @@
         }
       }
     },
+    "/api/v1/academy/experiments/campaigns": {
+      "get": {
+        "tags": [
+          "academy"
+        ],
+        "summary": "List Campaigns",
+        "operationId": "list_campaigns_api_v1_academy_experiments_campaigns_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response List Campaigns Api V1 Academy Experiments Campaigns Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/academy/experiments/campaigns/plan": {
+      "post": {
+        "tags": [
+          "academy"
+        ],
+        "summary": "Plan Campaign",
+        "operationId": "plan_campaign_api_v1_academy_experiments_campaigns_plan_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CampaignSpec"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Plan Campaign Api V1 Academy Experiments Campaigns Plan Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/academy/experiments/campaigns/{campaign_id}": {
+      "get": {
+        "tags": [
+          "academy"
+        ],
+        "summary": "Status",
+        "operationId": "status_api_v1_academy_experiments_campaigns__campaign_id__get",
+        "parameters": [
+          {
+            "name": "campaign_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 40,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$",
+              "title": "Campaign Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Status Api V1 Academy Experiments Campaigns  Campaign Id  Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/academy/experiments/campaigns/{campaign_id}/start": {
+      "post": {
+        "tags": [
+          "academy"
+        ],
+        "summary": "Start",
+        "operationId": "start_api_v1_academy_experiments_campaigns__campaign_id__start_post",
+        "parameters": [
+          {
+            "name": "campaign_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 40,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$",
+              "title": "Campaign Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CampaignPlanReference"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Start Api V1 Academy Experiments Campaigns  Campaign Id  Start Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/academy/experiments/campaigns/{campaign_id}/stop": {
+      "post": {
+        "tags": [
+          "academy"
+        ],
+        "summary": "Stop",
+        "operationId": "stop_api_v1_academy_experiments_campaigns__campaign_id__stop_post",
+        "parameters": [
+          {
+            "name": "campaign_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 40,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$",
+              "title": "Campaign Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Stop Api V1 Academy Experiments Campaigns  Campaign Id  Stop Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/academy/experiments/campaigns/{campaign_id}/resume": {
+      "post": {
+        "tags": [
+          "academy"
+        ],
+        "summary": "Resume",
+        "operationId": "resume_api_v1_academy_experiments_campaigns__campaign_id__resume_post",
+        "parameters": [
+          {
+            "name": "campaign_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 40,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$",
+              "title": "Campaign Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Resume Api V1 Academy Experiments Campaigns  Campaign Id  Resume Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/academy/experiments/campaigns/{campaign_id}/report": {
+      "get": {
+        "tags": [
+          "academy"
+        ],
+        "summary": "Report",
+        "operationId": "report_api_v1_academy_experiments_campaigns__campaign_id__report_get",
+        "parameters": [
+          {
+            "name": "campaign_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 40,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$",
+              "title": "Campaign Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Report Api V1 Academy Experiments Campaigns  Campaign Id  Report Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/academy/experiments/campaigns/{campaign_id}/retention": {
+      "get": {
+        "tags": [
+          "academy"
+        ],
+        "summary": "Retention Plan",
+        "operationId": "retention_plan_api_v1_academy_experiments_campaigns__campaign_id__retention_get",
+        "parameters": [
+          {
+            "name": "campaign_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 40,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$",
+              "title": "Campaign Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Retention Plan Api V1 Academy Experiments Campaigns  Campaign Id  Retention Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "academy"
+        ],
+        "summary": "Retention Apply",
+        "operationId": "retention_apply_api_v1_academy_experiments_campaigns__campaign_id__retention_post",
+        "parameters": [
+          {
+            "name": "campaign_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 40,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$",
+              "title": "Campaign Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CampaignPlanReference"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Retention Apply Api V1 Academy Experiments Campaigns  Campaign Id  Retention Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/academy/self-learning/start": {
       "post": {
         "tags": [
@@ -14102,6 +14508,174 @@
         ],
         "title": "CalendarEvent",
         "description": "Model wydarzenia w kalendarzu."
+      },
+      "CampaignBudget": {
+        "properties": {
+          "max_trials": {
+            "type": "integer",
+            "maximum": 32.0,
+            "minimum": 1.0,
+            "title": "Max Trials"
+          },
+          "max_updates": {
+            "type": "integer",
+            "maximum": 100000.0,
+            "minimum": 1.0,
+            "title": "Max Updates"
+          },
+          "max_tokens": {
+            "type": "integer",
+            "maximum": 1000000000.0,
+            "minimum": 1.0,
+            "title": "Max Tokens"
+          },
+          "max_seconds": {
+            "type": "integer",
+            "maximum": 604800.0,
+            "minimum": 1.0,
+            "title": "Max Seconds"
+          },
+          "trial_seconds": {
+            "type": "integer",
+            "maximum": 86400.0,
+            "minimum": 1.0,
+            "title": "Trial Seconds"
+          },
+          "max_retries": {
+            "type": "integer",
+            "maximum": 3.0,
+            "minimum": 0.0,
+            "title": "Max Retries"
+          },
+          "max_artifact_bytes": {
+            "type": "integer",
+            "maximum": 1099511627776.0,
+            "minimum": 1.0,
+            "title": "Max Artifact Bytes"
+          },
+          "min_free_bytes": {
+            "type": "integer",
+            "maximum": 1099511627776.0,
+            "minimum": 0.0,
+            "title": "Min Free Bytes"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "max_trials",
+          "max_updates",
+          "max_tokens",
+          "max_seconds",
+          "trial_seconds",
+          "max_retries",
+          "max_artifact_bytes",
+          "min_free_bytes"
+        ],
+        "title": "CampaignBudget"
+      },
+      "CampaignPlanReference": {
+        "properties": {
+          "plan_sha256": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 64,
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Plan Sha256"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "plan_sha256"
+        ],
+        "title": "CampaignPlanReference"
+      },
+      "CampaignSelection": {
+        "properties": {
+          "min_usable_delta": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": -1.0,
+            "title": "Min Usable Delta",
+            "default": 0.0
+          },
+          "max_critical_delta": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Max Critical Delta",
+            "default": 0.0
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "CampaignSelection"
+      },
+      "CampaignSpec": {
+        "properties": {
+          "schema_version": {
+            "type": "integer",
+            "const": 1,
+            "title": "Schema Version",
+            "default": 1
+          },
+          "campaign_id": {
+            "type": "string",
+            "maxLength": 40,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$",
+            "title": "Campaign Id"
+          },
+          "profile_id": {
+            "type": "string",
+            "maxLength": 64,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$",
+            "title": "Profile Id"
+          },
+          "variants": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "maxItems": 32,
+            "minItems": 1,
+            "title": "Variants"
+          },
+          "budget": {
+            "$ref": "#/components/schemas/CampaignBudget"
+          },
+          "selection": {
+            "$ref": "#/components/schemas/CampaignSelection"
+          },
+          "retention": {
+            "type": "string",
+            "enum": [
+              "keep_all",
+              "discard_rejected"
+            ],
+            "title": "Retention",
+            "default": "keep_all"
+          },
+          "review_mode": {
+            "type": "string",
+            "enum": [
+              "manual",
+              "automatic"
+            ],
+            "title": "Review Mode",
+            "default": "manual"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "campaign_id",
+          "profile_id",
+          "variants",
+          "budget"
+        ],
+        "title": "CampaignSpec"
       },
       "CancelChatTask": {
         "properties": {

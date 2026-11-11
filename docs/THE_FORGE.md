@@ -322,15 +322,6 @@ pytest tests/test_forge_integration.py -v -m integration
 4. **Type hints**: Required for all parameters
 5. **Serialization**: Return string, not dict/list (LLM compatibility)
 
-## Roadmap
-
-- [ ] Dashboard UI: Active skills list, reload button
-- [ ] Skill marketplace: Sharing skills between Venom instances
-- [ ] Auto-update: Automatic skill updates when API changes
-- [ ] Versioning: `weather_skill_v1.py`, `weather_skill_v2.py`
-- [ ] Dependency management: Auto-install required packages
-- [ ] Skill metrics: Usage statistics, performance
-
 ## FAQ
 
 **Q: Can I manually create a skill?**

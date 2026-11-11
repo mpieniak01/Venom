@@ -141,9 +141,6 @@ This is an expected transitional state. The answer may be correct even while int
 
 ## 8. Related documents
 
-- [223DA implementation plan](../docs_dev/_to_do/223DA_pr_plan_realizacji_attention_saliency_dev.md)
-- [223E gap analysis](../docs_dev/_to_do/223E_pr_analiza_gap_live_analysis_dev.md)
-- [225 target direction](../docs_dev/_to_do/225_pr_docelowy_kierunek_introspection_dev.md)
 - [README](../README.md)
 - [Frontend Next.js](./FRONTEND_NEXT_GUIDE.md)
 - [Dashboard Guide](./DASHBOARD_GUIDE.md)

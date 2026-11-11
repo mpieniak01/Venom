@@ -350,15 +350,6 @@ DAILY_STANDUP_MINUTE = 0
 - **Budget control:** User controls token budget
 - **Validation:** Guardian verifies each task
 
-## Future Extensions
-
-- **GitHub Issues sync:** Automatic synchronization with GitHub Issues
-- **Slack notifications:** Progress notifications
-- **Multi-project support:** Managing multiple projects
-- **Team collaboration:** Sharing roadmaps between team members
-- **Advanced KPIs:** Code quality metrics, performance, coverage
-- **AI-powered estimation:** Automatic execution time estimation
-
 ## See Also
 
 - [THE_COUNCIL.md](THE_COUNCIL.md) - Agent collaboration

@@ -324,15 +324,6 @@ print(stats)
 graph.load_graph()
 ```
 
-## Roadmap (Przyszłe Funkcje)
-
-- [ ] **Dashboard Knowledge Explorer** - wizualizacja grafu (vis.js/cytoscape.js)
-- [ ] **Incremental Updates** - aktualizacja grafu bez przebudowy
-- [ ] **Query Expansion** - automatyczne rozszerzanie zapytań
-- [ ] **Temporal Knowledge** - śledzenie zmian w czasie
-- [ ] **Multi-Graph** - wiele grafów wiedzy (osobiste, projektowe, publiczne)
-- [ ] **Export/Import** - eksport do Neo4j, RDF, etc.
-
 ## FAQ
 
 **Q: Czy mogę używać Oracle bez GPT-4?**

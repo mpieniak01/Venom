@@ -330,22 +330,11 @@ await ghost.vision_click(
 
 In `desktop_safe` profile, fallback can be blocked (fail-closed) when visual locate fails.
 
-## Limitations and Roadmap
-
-### Current Limitations
+## Limitations
 
 - UI element recognition requires further integration with Florence-2/LLaVA
 - No OCR for automatic button text detection
 - No automatic validation of generated workflows
-
-### Planned Features
-
-- **Dashboard UI**: Web interface with REC/STOP buttons, timeline, editor
-- **Florence-2 Integration**: Better UI element recognition
-- **OCR**: Automatic button text detection
-- **Validation**: Automatic testing of generated workflows
-- **Multi-monitor Support**: Multiple monitor support
-- **Conditional Steps**: Conditional steps (if/else)
 
 ## API Reference
 

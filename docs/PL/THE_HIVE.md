@@ -705,18 +705,6 @@ W przypadku podejrzenia kompromitacji:
 4. Zweryfikuj checksumy zainstalowanego kodu
 5. Rozważ reinstalację z czystych obrazów
 
-## Roadmap
-
-### Planowane Funkcje
-- [ ] Dashboard Hive Monitor (wizualizacja klastra)
-- [ ] Auto-scaling węzłów (Kubernetes)
-- [ ] Priorytety wielopoziomowe (0-10)
-- [ ] Task dependencies (DAG)
-- [ ] Streaming results (partial results)
-- [ ] **Podpisy cyfrowe dla OTA packages**
-- [ ] **Redis TLS support**
-- [ ] **Audit logging dla security events**
-
 ## Referencje
 
 - [Redis Documentation](https://redis.io/docs/)

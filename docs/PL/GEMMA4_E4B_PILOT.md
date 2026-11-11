@@ -55,31 +55,4 @@ lokalny artefakt inferencyjny. Mamy dwie osobne tożsamości do odtworzenia.
 
 [Sesje czatu](CHAT_SESSION.md) · [Profile stosu](STACK_PROFILES.md)
 
-## Decyzja o dotrenowaniu
-
-**Odłożyć kolejny trening.** Najpierw domknąć zachowanie zwykłego czatu
-i warstwę kontekstu w Venomie. Ostatnie tury, streszczenie starszego wątku,
-pobieranie źródeł RAG, filtr sesji i budżet 4096 należą do aplikacji.
-Wiedzę z dokumentów aktualizujemy w źródłach RAG. Poprawność wykonania,
-uprawnienia i blokady nadal potwierdza kod.
-
-Następnie zmierzyć bazę na nowych, zamrożonych przypadkach PL/EN. Sprawdzić
-przyjazne odpowiedzi ogólne, dopytywanie, długą rozmowę i zmianę wcześniejszych
-ustaleń, korzystanie ze źródeł oraz rozróżnienie wyniku narzędzia od hipotezy.
-Jeśli w poprawnie złożonym kontekście zostaną powtarzalne błędy modelu,
-zakres małego SFT/QLoRA może objąć:
-
-1. Naturalną, zwięzłą odpowiedź w języku użytkownika oraz dopytanie przy
-   rzeczywistym braku informacji.
-2. Zachowanie decyzji, korekt i otwartych pytań podczas streszczania.
-3. Odpowiedź opartą na źródle, zgłoszenie braku danych i wierne objaśnienie
-   potwierdzonego wyniku narzędzia, w tym odmowy, błędu lub częściowego wyniku.
-
-Materiał czerpać ze zweryfikowanych przebiegów. Oddzielić rodziny zadań
-treningowych od zestawu końcowego. Adapter rozważać do pilotażu dopiero po
-porównaniu z bazą w tej samej konfiguracji inferencji, z oceną dokładności,
-języka, czasu do pierwszego tokenu i regresji ogólnych kompetencji. Umiejętność
-naprawiania kodu Venoma to osobna kwalifikacja na rzeczywistych usterkach.
-
-[Kontrakt modelu i treningu](../GEMMA4_OPERATOR.md) ·
-[Katalog danych treningowych](DANE_TRENINGOWE.md)
+[Kontrakt modelu i treningu](../GEMMA4_OPERATOR.md) · [Katalog danych treningowych](DANE_TRENINGOWE.md)

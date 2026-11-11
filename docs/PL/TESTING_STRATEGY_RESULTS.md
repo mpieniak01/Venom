@@ -33,7 +33,7 @@ Pamięć jest przybliżeniem z próbek co 2 sekundy: suma RSS procesów może li
 Domyślnie wybrano **4 workery** dla grupy lekkiej, aby ograniczyć obciążenie współdzielonego komputera. **6 workerów** jest opcją dla sytuacji, w których dostępne zasoby uzasadniają większe zużycie pamięci.
 
 
-## Zakres i pozostała weryfikacja
+## Zakres i ograniczenia pomiarów
 
 - Inwentarz obejmuje 520 plików testów; 500 nadal nie ma ręcznie potwierdzonej klasyfikacji. Automatyczne sygnały w inwentarzu nie zastępują audytu. Izolacja połączeń w procesie pytest nie obejmuje wszystkich procesów potomnych i dostępu do systemu plików.
 - W pierwotnych pomiarach grup nie wykonywano testów fizycznych ani E2E z istniejącym modelem. Później, przy wyłączonym Venomie, potwierdzono pominięcie profilu i testu live z powodem `stack_not_started`; stos przywrócono. Ręczny przepływ czatu i pojedynczy test live API przeszły na działającej instancji. Automatyczny lokalny profil modelowy pozostaje zablokowany przez `proxy_identity_unverified` do czasu bezpiecznego potwierdzenia powiązania panelu z API.

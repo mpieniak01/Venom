@@ -258,30 +258,6 @@ Operational runbook:
    - Image analysis through GPT-4o Vision takes 2-5 seconds
    - Ghost Agent is slower than human (intentionally, for safety)
 
-## 🔮 Future Improvements
-
-### Planned for future iterations:
-
-1. **Florence-2 Integration**
-   - Local vision model for offline action
-   - Faster element localization (< 1s)
-
-2. **DPI Auto-Compensation**
-   - Automatic scaling detection and compensation
-
-3. **Recording & Replay**
-   - Recording user action sequences
-   - Generalization to procedures/macros
-
-4. **Dashboard Update**
-   - Remote Control UI in browser
-   - Live desktop streaming (MJPEG)
-   - Emergency Stop button
-
-5. **Advanced Planning**
-   - LLM-based action planning
-   - Multi-step reasoning for complex tasks
-
 ## 📚 API Reference
 
 ### GhostAgent

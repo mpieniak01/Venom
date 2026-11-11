@@ -249,13 +249,6 @@ Wynik zapisuje pod `DATA_ROOT/checks/intake.json`.
 skuteczności modelu i nie zastępuje kwalifikacji treningowej smoke.
 Nowy materiał nie uruchamia automatycznie smoke, treningu ani wdrożenia.
 
-## Kolejny PR
-
-Zakres kompletnej pętli zdalnego treningu zapisano w
-[backlogu REMOTE-TRAINING-01](BACKLOG.md#remote-training-01--kompletna-pętla-treningu-na-zdalnym-hoście).
-Obejmuje transfer danych, obsługę sesji na hoście, odbiór i weryfikację adaptera
-oraz metryk. Zapis planu nie uruchamia usług ani treningu.
-
 ## Testy komponentu w CI
 
 Backend CI instaluje osobny plik requirements-granite-operator-tests.txt:

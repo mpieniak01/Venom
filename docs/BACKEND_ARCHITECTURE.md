@@ -32,7 +32,7 @@ Routers are composed in `venom_core/api/routes/models.py` (aggregator). Submodul
 - `models_remote.py` - /models/remote/providers, /models/remote/catalog, /models/remote/connectivity, /models/remote/validate
 - `models_translation.py` - /translate
 
-## Router Layering Contract (PR 183)
+## Router Layering Contract
 To keep API adapters thin and testable, routers in `venom_core/api/routes/*` should follow this contract:
 
 - Router = HTTP adapter only (request parsing, status codes, response mapping).
@@ -40,7 +40,7 @@ To keep API adapters thin and testable, routers in `venom_core/api/routes/*` sho
 - New direct imports from `venom_core.core.*` and `venom_core.infrastructure.*` in routers are disallowed by default.
 - Side-effect libraries in routers (`subprocess`, `httpx`, `threading`) are restricted and guarded.
 
-Reference implementations introduced during PR 183:
+Reference implementations:
 - `venom_core/services/knowledge_route_service.py`
 - `venom_core/services/knowledge_lessons_service.py`
 - `venom_core/services/tasks_service.py`

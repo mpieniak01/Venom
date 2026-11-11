@@ -111,7 +111,7 @@ If tools are skipped:
 | Calendar actions | `read_agenda()` and `schedule_task()` through `GoogleCalendarSkill` | Optional, not a primary chat topic |
 | Session lifecycle | Session continuity, reset, and persistence | Uses `session_id` and session store files |
 | Chat modes | `Direct`, `Normal`, `Complex` | See `CHAT_SESSION.md` for routing details |
-| Session hygiene | Summary and memory retention rules | See `MEMORY_IN_CHAT.md` for the memory model |
+| Session hygiene | Summary and memory retention rules | See `MEMORY_LAYER_GUIDE.md` for the memory model |
 | Repo analysis | `git status`, `git diff`, branch state, API contract scope | Default operator scenario |
 | Docs and script remodeling | Documentation and script changes aligned with the contract | Preferred analysis/remodel workflow |
 
@@ -139,8 +139,7 @@ Those concerns are routed through the dedicated tools, agents, and workflow docs
 - [TOOLS_USAGE_GUIDE.md](TOOLS_USAGE_GUIDE.md)
 - [CONFIG_PANEL.md](CONFIG_PANEL.md)
 - [RUNTIME_PROFILES.md](RUNTIME_PROFILES.md)
-- [MEMORY_IN_CHAT.md](MEMORY_IN_CHAT.md)
-- [PR240_ARTIFACT_INVENTORY.md](PR240_ARTIFACT_INVENTORY.md)
+- [MEMORY_LAYER_GUIDE.md](MEMORY_LAYER_GUIDE.md)
 
 Use those documents for deeper technical detail. Use this document as the operator entrypoint.
 

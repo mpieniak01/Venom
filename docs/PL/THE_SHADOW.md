@@ -297,18 +297,8 @@ pytest tests/test_desktop_sensor.py tests/test_shadow_agent.py tests/test_notifi
 - 10 testów Notifier
 - **42 testy total - wszystkie ✅**
 
-## Roadmap
+## Ograniczenia
 
-### Planned Features
-- [ ] Integracja z Eyes dla OCR z screenshots
-- [ ] Głębsza integracja z GoalStore (auto task updates)
-- [ ] Więcej typów sugestii (DocumentationNeeded, TestCoverage)
-- [ ] Dashboard UI dla Ghost Mode
-- [ ] Satelita WSL2 (Python service na Windows)
-- [ ] Machine Learning dla lepszego confidence scoring
-- [ ] Context window ze historią aktywności
-
-### Known Limitations
 - Shadow Agent używa prostych heurystyk + LLM (może dawać false positives)
 - Windows Toast wymaga win10toast lub PowerShell
 - WSL2 wymaga bridge/satelity dla pełnej funkcjonalności

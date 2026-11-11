@@ -307,10 +307,3 @@ POST /api/v1/tasks
 
 **Problem:** UI nie renderuje niektórych typów parametrów
 **Rozwiązanie:** Sprawdź czy typ parametru jest obsługiwany (float, int, bool, list, enum)
-
-## Roadmap
-
-1. **Faza 1** (Zrealizowana) - Backend schema + Frontend UI
-2. **Faza 2** (W toku) - Walidacja E2E efektu parametrów między runtime
-3. **Faza 3** (Przyszłość) - Profile parametrów (zapisywanie ulubionych ustawień)
-4. **Faza 4** (Przyszłość) - A/B testing parametrów

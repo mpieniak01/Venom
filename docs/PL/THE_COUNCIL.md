@@ -253,17 +253,6 @@ logging.getLogger("venom_core.core.council").setLevel(logging.DEBUG)
 logging.getLogger("venom_core.core.swarm").setLevel(logging.DEBUG)
 ```
 
-## Dalszy rozwój
-
-### Planowane funkcje:
-
-- [ ] Streaming pojedynczych wiadomości agentów (COUNCIL_AGENT_SPEAKING)
-- [ ] Możliwość przerwania rozmowy przez użytkownika
-- [ ] Zapisywanie historii rozmów Council do bazy
-- [ ] Dashboard z wizualizacją grafu rozmowy
-- [ ] Niestandardowe grafy przepływu (configurable transitions)
-- [ ] Więcej agentów specjalistycznych (Tester, DevOps, Security)
-
 ## Zobacz też
 
 - [AutoGen Documentation](https://microsoft.github.io/autogen/)

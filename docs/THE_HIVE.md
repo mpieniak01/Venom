@@ -705,18 +705,6 @@ In case of suspected compromise:
 4. Verify checksums of installed code
 5. Consider reinstallation from clean images
 
-## Roadmap
-
-### Planned Features
-- [ ] Hive Monitor dashboard (cluster visualization)
-- [ ] Auto-scaling nodes (Kubernetes)
-- [ ] Multi-level priorities (0-10)
-- [ ] Task dependencies (DAG)
-- [ ] Streaming results (partial results)
-- [ ] **Digital signatures for OTA packages**
-- [ ] **Redis TLS support**
-- [ ] **Audit logging for security events**
-
 ## References
 
 - [Redis Documentation](https://redis.io/docs/)

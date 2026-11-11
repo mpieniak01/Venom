@@ -42,9 +42,7 @@ Użycie capabilities runtime w integracji Venom:
 2. tool calling: `tools` / `tool_choice`,
 3. opcjonalny kanał reasoning: `think` (feature-gated).
 
-Referencje operacyjne:
-1. zmienne deploymentowe i przykłady: `docs/PL/DEPLOYMENT_NEXT.md`,
-2. zakres implementacji i evidence closure (COMPLETE): `docs_dev/_done/152_aktualizacja_ollama_0_16_i_adaptacja_funkcji.md`.
+Zmienne wdrożeniowe i przykłady opisuje [instrukcja wdrożenia](DEPLOYMENT_NEXT.md).
 
 ## Architektura
 
@@ -806,16 +804,3 @@ System śledzi metryki dla każdej interakcji z providerem:
 - **Wskaźnik Sukcesu**: Śledzenie błędów ze standardowym `reason_code`.
 - **Śledzenie Kosztów**: Zużycie tokenów i estymacja kosztów w czasie rzeczywistym.
 - **Health Score**: Automatyczne wykrywanie degradacji usług.
-
-## Future Enhancements
-
-- [ ] Auto-discovery modeli z katalogu `./models`
-- [ ] Integracja z HuggingFace Hub API (search, ratings)
-- [ ] Model benchmarking (speed, quality metrics)
-- [ ] Automatic model selection based on task complexity
-- [ ] Model versioning i rollback
-- [ ] Distributed model storage (CDN/S3)
-- [ ] Model compression i quantization automation
-- [ ] Health monitoring z alertami
-- [ ] WebSocket streaming dla install progress
-- [ ] Model usage statistics i analytics

@@ -303,10 +303,3 @@ POST /api/v1/tasks
 
 **Problem:** UI doesn't render some parameter types
 **Solution:** Check if parameter type is supported (float, int, bool, list, enum)
-
-## Roadmap
-
-1. **Phase 1** (Completed) - Backend schema + Frontend UI
-2. **Phase 2** (In progress) - Cross-runtime E2E validation of parameter effects
-3. **Phase 3** (Future) - Parameter profiles (saving favorite settings)
-4. **Phase 4** (Future) - A/B testing of parameters

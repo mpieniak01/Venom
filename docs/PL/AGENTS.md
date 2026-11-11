@@ -493,7 +493,6 @@ pytest -q
 
 ## Referencje Architektury
 
-- Wizja systemu: `docs/PL/VENOM_MASTER_VISION_V1.md`
 - Architektura backendu: `docs/PL/BACKEND_ARCHITECTURE.md`
 - Mapa katalogów / drzewo repo: `docs/PL/TREE.md`
 
@@ -501,3 +500,7 @@ pytest -q
 
 - Katalog funkcjonalny agentów runtime Venom jest w `SYSTEM_AGENTS_CATALOG.md`.
 - Instrukcje implementacyjne/procesowe dla agentów kodowania są w tym pliku.
+
+## Miejsce dokumentacji
+
+W `docs/` opisuj działające funkcje, konfigurację, utrzymanie, architekturę i wyniki pomiarów. Zakresy PR, notatki z recenzji, roadmapy i plany realizacji trzymaj lokalnie w `docs_dev/`.

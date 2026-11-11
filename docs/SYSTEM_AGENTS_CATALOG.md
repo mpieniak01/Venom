@@ -191,5 +191,3 @@ User: "Add weather checking capability"
 
 - [BACKEND_ARCHITECTURE.md](BACKEND_ARCHITECTURE.md) - Backend architecture
 - [INTENT_RECOGNITION.md](INTENT_RECOGNITION.md) - Intent classification
-
-*Note: Additional documentation files (VENOM_MASTER_VISION_V1.md, THE_HIVE.md) are currently being translated.*

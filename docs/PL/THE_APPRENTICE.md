@@ -330,22 +330,11 @@ await ghost.vision_click(
 
 W profilu `desktop_safe` fallback może zostać zablokowany (fail-closed), jeśli locate nie znajdzie elementu.
 
-## Ograniczenia i Roadmap
-
-### Aktualne Ograniczenia
+## Ograniczenia
 
 - Rozpoznawanie elementów UI wymaga dalszej integracji z Florence-2/LLaVA
 - Brak OCR dla automatycznego wykrywania tekstu na przyciskach
 - Brak automatycznej walidacji wygenerowanych workflow
-
-### Planowane Funkcje
-
-- **Dashboard UI**: Web interface z przyciskami REC/STOP, timeline, edytor
-- **Florence-2 Integration**: Lepsze rozpoznawanie elementów UI
-- **OCR**: Automatyczne wykrywanie tekstu na przyciskach
-- **Walidacja**: Automatyczne testy wygenerowanych workflow
-- **Multi-monitor Support**: Obsługa wielu monitorów
-- **Conditional Steps**: Kroki warunkowe (if/else)
 
 ## API Reference
 

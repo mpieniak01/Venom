@@ -304,22 +304,6 @@ pytest tests/test_chrono*.py tests/test_historian*.py -v
 - ✅ Integracja z LessonsStore
 - ✅ Pełne cykle życia checkpointów
 
-## 🔮 Przyszłe Rozszerzenia
-
-### W Planach
-1. **Inteligentne Merge** linii czasowych z konfliktami (przez LLM)
-2. **Automatyczna kompresja** starych snapshotów
-3. **Garbage Collection** nieużywanych checkpointów
-4. **Dashboard** wizualizacji linii czasowych (Web UI)
-5. **Git Worktree** dla fizycznej izolacji branchy
-6. **Docker Volume Snapshots** dla pełnej izolacji kontenerów
-
-### Zaawansowane Scenariusze
-- **A/B Testing**: Dwie timelines, porównanie wyników
-- **Chaos Engineering**: Testowanie odporności z automatycznym rollback
-- **Training Pipelines**: Timeline per eksperyment treningowy
-- **Production Rollback**: Szybkie cofnięcie deploymentu
-
 ## 📝 Best Practices
 
 1. **Nazywaj checkpointy opisowo**: Zamiast "cp1" użyj "before_migration_v1"

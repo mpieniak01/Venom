@@ -231,31 +231,14 @@ Template: `workspace/MARKETING_KIT_TEMPLATE.md`
 
 ---
 
-## Roadmap
+## Implemented features
 
-### Implemented (v1.0):
 - ✅ CloudProvisioner (SSH, Docker, deployment)
 - ✅ MediaSkill (placeholder generation with Pillow)
 - ✅ Creative Director Agent
 - ✅ DevOps Agent
 - ✅ Marketing Kit Template
 - ✅ 32 unit tests
-
-### Planned (v1.1):
-- ⏳ DALL-E 3 integration (requires OPENAI_API_KEY)
-- ⏳ Stable Diffusion locally (ONNX + GPU)
-- ❌ DNS configuration (Cloudflare API) - **REMOVED**: Replaced by mDNS (venom.local)
-- ⏳ SSL certificates (Let's Encrypt/Certbot automation)
-- ⏳ Kubernetes deployment
-- ⏳ Dashboard: Deployments view (web UI)
-
-### Planned (v2.0):
-- ⏳ CI/CD pipeline generation (GitHub Actions, GitLab CI)
-- ⏳ Monitoring & alerting (Prometheus, Grafana)
-- ⏳ Video generation (Gemini API)
-- ⏳ Landing page generator (automatic HTML/CSS)
-
----
 
 ## Usage Examples
 

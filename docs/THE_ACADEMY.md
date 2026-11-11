@@ -769,7 +769,7 @@ Academy dashboard is available at **http://localhost:3000/academy**
   - `npm --prefix web-next run test:dev:turbo:smoke:clean`
 - Keep one active dev instance to avoid `.next/dev/lock` conflicts.
 
-## Roadmap
+## Implemented features
 
 - [x] REST API endpoints (v2.0)
 - [x] Web UI Dashboard (v2.0)
@@ -780,12 +780,6 @@ Academy dashboard is available at **http://localhost:3000/academy**
 - [x] **Real-time log streaming (SSE)** (v2.2)
 - [x] **Training metrics parsing** (v2.3)
 - [x] **Progress indicators** (v2.3)
-- [ ] ETA calculation
-- [ ] Full Arena implementation (automated evaluation)
-- [ ] PEFT integration for KernelBuilder
-- [ ] Multi-modal learning (images, audio)
-- [ ] Distributed training (multiple GPUs)
-- [ ] A/B testing for models
 
 ## References
 

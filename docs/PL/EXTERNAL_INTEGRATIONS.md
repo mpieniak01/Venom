@@ -291,22 +291,12 @@ Repository nie istnieje lub brak dostępu:
 - Sprawdź nazwę repozytorium w `GITHUB_REPO_NAME`
 - Sprawdź uprawnienia tokena
 
-## Roadmap
+## Wdrożone funkcje
 
-### Zaimplementowane (v1.0)
 - ✅ PlatformSkill (GitHub + Discord/Slack)
 - ✅ IntegratorAgent 1.0 (Issue handling)
 - ✅ Orchestrator pipeline (Issue-to-PR)
 - ✅ Konfiguracja i maskowanie sekretów
-
-### Planowane (v1.0)
-- ⏳ Background task dla auto-pollingu Issues
-- ⏳ Webhook support (alternatywa dla pollingu)
-- ⏳ Dashboard panel "External Integrations"
-- ⏳ Obsługa GitHub Projects
-- ⏳ Obsługa GitHub Actions (trigger workflows)
-- ⏳ Slack interactive messages (buttons, selects)
-- ⏳ MS Teams integration
 
 ## Autorzy
 

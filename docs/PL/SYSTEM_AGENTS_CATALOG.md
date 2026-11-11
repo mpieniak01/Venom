@@ -188,7 +188,6 @@ User: "Dodaj możliwość sprawdzania pogody"
 
 ## Zobacz też
 
-- [VENOM_MASTER_VISION_V1.md](VENOM_MASTER_VISION_V1.md) - Wizja systemu
 - [BACKEND_ARCHITECTURE.md](BACKEND_ARCHITECTURE.md) - Architektura backendu
 - [INTENT_RECOGNITION.md](INTENT_RECOGNITION.md) - Klasyfikacja intencji
 - [THE_HIVE.md](THE_HIVE.md) - Architektura rozproszona

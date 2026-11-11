@@ -388,16 +388,6 @@ Rozważ:
 2. Okresowe czyszczenie grafu
 3. Zapisywanie tylko najważniejszych metadanych
 
-## Dalszy rozwój
-
-Planowane rozszerzenia:
-
-1. **Wizualizacja grafu** - Interaktywna wizualizacja z `vis.js` lub `d3.js`
-2. **Export grafu** - Do formatów GraphML, GEXF
-3. **Zaawansowane query** - Cypher-like query language dla grafu
-4. **Clustering lekcji** - Automatyczne grupowanie podobnych lekcji
-5. **Confidence scoring** - Ocena pewności lekcji na podstawie liczby użyć
-
 ## Licencja
 
 Ten moduł jest częścią projektu Venom i podlega tej samej licencji co główny projekt.

@@ -111,7 +111,7 @@ Gdy tool jest pomijany:
 | Akcje kalendarza | `read_agenda()` i `schedule_task()` przez `GoogleCalendarSkill` | Opcjonalne, nie jest to główny temat czatu |
 | Cykl życia sesji | Ciągłość, reset i utrwalanie sesji | Wykorzystuje `session_id` i pliki session store |
 | Tryby czatu | `Direct`, `Normal`, `Complex` | Szczegóły routingu są w `CHAT_SESSION.md` |
-| Higiena sesji | Zasady streszczeń i retencji pamięci | Model pamięci jest opisany w `MEMORY_IN_CHAT.md` |
+| Higiena sesji | Zasady streszczeń i retencji pamięci | Model pamięci jest opisany w `MEMORY_LAYER_GUIDE.md` |
 | Repo analiza | `git status`, `git diff`, zakres kontraktu API | Domyślny przypadek użycia |
 | Remodel dokumentacji i skryptów | Zmiana docs i skryptów pod kontrakt czatu | Preferowana forma pracy |
 
@@ -139,8 +139,7 @@ Te obszary mają własne toolsy, agentów i dokumenty workflow.
 - [TOOLS_USAGE_GUIDE.md](TOOLS_USAGE_GUIDE.md)
 - [CONFIG_PANEL.md](CONFIG_PANEL.md)
 - [RUNTIME_PROFILES.md](RUNTIME_PROFILES.md)
-- [MEMORY_IN_CHAT.md](MEMORY_IN_CHAT.md)
-- [PR240_ARTIFACT_INVENTORY.md](PR240_ARTIFACT_INVENTORY.md)
+- [MEMORY_LAYER_GUIDE.md](MEMORY_LAYER_GUIDE.md)
 
 Te dokumenty zawierają szczegóły techniczne. Ten dokument jest operacyjnym punktem wejścia.
 

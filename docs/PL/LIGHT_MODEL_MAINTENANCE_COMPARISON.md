@@ -264,7 +264,6 @@ do train/validation. W tym porównaniu nie wykonywano dostrajania.
 
 ## Aktywne modele po decyzji operatora 2026-11-01
 
-[Raport pozostawionych modeli i pomiaru nowych backendów](reports/RETAINED_MODEL_BACKENDS_2026-11-01.md).
 
 `active_models.json` ogranicza nowe uruchomienia do mini-coder-1.7b,
 Granite 4.2 3B, Gemma 4 E2B IT i Qwen3.5-9B. Panel i walidacja uruchomienia

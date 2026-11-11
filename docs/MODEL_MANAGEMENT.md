@@ -42,9 +42,7 @@ Runtime capability usage in Venom integration:
 2. tool calling: `tools` / `tool_choice`,
 3. optional reasoning channel: `think` (feature-gated).
 
-Operational reference:
-1. deployment variables and examples: `docs/DEPLOYMENT_NEXT.md`,
-2. implementation scope and evidence closure (COMPLETE): `docs_dev/_done/152_aktualizacja_ollama_0_16_i_adaptacja_funkcji.md`.
+See the [deployment guide](DEPLOYMENT_NEXT.md) for variables and examples.
 
 ## Architecture
 
@@ -796,16 +794,3 @@ The system tracks metrics for every provider interaction:
 - **Success Rate**: Error tracking with standardized `reason_code`.
 - **Cost Tracking**: Real-time token usage and cost estimation.
 - **Health Score**: Automated degradation detection.
-
-## Future Enhancements
-
-- [ ] Auto-discovery of models in `./models`
-- [ ] Integration with HuggingFace Hub API (search, ratings)
-- [ ] Model benchmarking (speed, quality metrics)
-- [ ] Automatic model selection by task complexity
-- [ ] Model versioning and rollback
-- [ ] Distributed model storage (CDN/S3)
-- [ ] Model compression and quantization automation
-- [ ] Health monitoring with alerts
-- [ ] WebSocket streaming for install progress
-- [ ] Model usage statistics and analytics

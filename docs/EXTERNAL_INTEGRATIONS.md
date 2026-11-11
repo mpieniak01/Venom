@@ -291,22 +291,12 @@ Repository doesn't exist or no access:
 - Check repository name in `GITHUB_REPO_NAME`
 - Check token permissions
 
-## Roadmap
+## Implemented features
 
-### Implemented (v1.0)
 - ✅ PlatformSkill (GitHub + Discord/Slack)
 - ✅ IntegratorAgent 1.0 (Issue handling)
 - ✅ Orchestrator pipeline (Issue-to-PR)
 - ✅ Configuration and secret masking
-
-### Planned (v1.0)
-- ⏳ Background task for auto-polling Issues
-- ⏳ Webhook support (alternative to polling)
-- ⏳ Dashboard panel "External Integrations"
-- ⏳ GitHub Projects support
-- ⏳ GitHub Actions support (trigger workflows)
-- ⏳ Slack interactive messages (buttons, selects)
-- ⏳ MS Teams integration
 
 ## Authors
 

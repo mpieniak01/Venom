@@ -461,28 +461,6 @@ curl http://localhost:8000/api/v1/documenter/status
 grep ENABLE_AUTO_DOCUMENTATION .env
 ```
 
-## Przyszłe rozszerzenia
-
-1. **Inteligentna refaktoryzacja**
-   - Użycie LLM do analizy i przepisania złożonego kodu
-   - Automatyczne testy po refaktoryzacji
-   - PR z opisem zmian
-
-2. **Konsolidacja pamięci**
-   - Analiza logów z semantic_kernel
-   - Ekstrakcja kluczowych wniosków
-   - Zapis do GraphRAG
-
-3. **Zaawansowane health checks**
-   - Sprawdzanie Docker containers
-   - Pingowanie LLM endpoints
-   - Monitorowanie użycia zasobów
-
-4. **Notyfikacje**
-   - Slack/Discord webhooks dla ważnych zdarzeń
-   - Email przy wykryciu problemów
-   - Dashboard toast notifications
-
 ## Zależności
 
 Dodane do `requirements.txt`:

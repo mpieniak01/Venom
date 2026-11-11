@@ -373,31 +373,6 @@ Immediately terminates dreaming (callback for high load).
 #### `start_monitoring() / stop_monitoring() -> None`
 Starts/stops resource monitoring in the background.
 
-## Roadmap
-
-### Planned Functions
-
-1. **Docker Isolation** (v1.1)
-   - Separate namespaces for dreams (`venom-dream-worker-X`).
-   - Automatic container cleanup after the session.
-
-2. **Dashboard "Dream Journal"** (v1.1)
-   - Section in The Academy.
-   - Night statistics: "I dreamed 42 solutions".
-   - Ability to manually approve dreams.
-
-3. **Multi-Library Scenarios** (v1.1)
-   - Combining 2+ libraries in one scenario.
-   - Realistic integrations (e.g., FastAPI + SQLAlchemy + Redis).
-
-4. **Adaptive Difficulty** (v1.2)
-   - Automatic complexity adjustment based on success rate.
-   - Progressive learning (start: simple → medium → complex).
-
-5. **Dream Replay** (v1.2)
-   - Re-execution of saved dreams for regression.
-   - Scenario benchmarks on new library versions.
-
 ## Usage Examples
 
 ### Example 1: Nightly Dreaming Session

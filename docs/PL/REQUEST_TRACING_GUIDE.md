@@ -374,12 +374,3 @@ Watchdog → timeout (Status: LOST)
 **Problem:** Za dużo requestów w bazie
 - Użyj `tracer.clear_old_traces(days=N)` regularnie
 - Rozważ dodanie scheduled job do czyszczenia
-
-## Przyszłe rozszerzenia
-
-- [ ] Export historii do CSV/JSON
-- [ ] Filtrowanie po intencji/agencie
-- [ ] Statystyki wydajności (średni czas, success rate)
-- [ ] Integracja z BaseAgent (automatyczne logowanie)
-- [ ] WebSocket real-time updates dla historii
-- [ ] Wizualizacja grafu zależności między komponentami

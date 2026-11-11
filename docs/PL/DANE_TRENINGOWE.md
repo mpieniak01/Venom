@@ -25,7 +25,7 @@ Opis przygotowania danych może historycznie mówić „nie trenowano”. Aktual
 stanu modelu szukaj w potwierdzeniach uruchomień, `selected-adapter.json` i
 `current-experiment.json`; nie wyprowadzaj go z historycznego README materiału.
 Procedura wykonania: [Zdalny trening](ZDALNY_TRENING.md).
-Wybór modelu i warunki kolejnego treningu opisuje [pilotaż E4B](GEMMA4_E4B_PILOT.md).
+Wybór modelu i wyniki oceny opisuje [pilotaż E4B](GEMMA4_E4B_PILOT.md).
 
 ## Co oznacza rekord
 

@@ -36,17 +36,6 @@ Negative:
 2. Metadata mapping from SK annotations to JSON schema is simplified in PoC.
 3. Additional adapter maintenance until full convergence.
 
-## Migration Plan (ordered)
-1. Git (PoC completed):
-   - Use `GitSkillMcpAdapter` as reference implementation.
-   - Validate command-level parity between native and MCP-like invocation.
-2. File:
-   - Introduce `FileSkillMcpAdapter`.
-   - Add policy checks for path-jail and security parity.
-3. Calendar:
-   - Introduce `GoogleCalendarSkill` adapter with graceful-degradation behavior.
-   - Align auth/credential error model with MCP-style tool errors.
-
 ## Alternatives considered
 1. Full rewrite to MCP-only now:
    - Rejected due to high regression risk and broader operational impact.

@@ -345,9 +345,8 @@ kill <PID>
 make clean-ports
 ```
 
-## Roadmap
+## Wdrożone funkcje
 
-### Zrealizowane (v1.0)
 - [x] Backend runtime controller z obsługą 7 typów usług
 - [x] Backend config manager z whitelistą 55 parametrów
 - [x] API endpoints dla runtime i config
@@ -358,23 +357,6 @@ make clean-ports
 - [x] Restart warnings
 - [x] Kanoniczny techniczny strumień audytu API (`/api/v1/audit/stream`)
 - [x] Testy jednostkowe backend
-
-### TODO (v1.1)
-- [ ] Testy E2E Playwright
-- [ ] Docker compose integration (opcjonalnie)
-- [ ] Remote nodes control (Hive/Nexus)
-- [ ] Logs viewer (tail -f w panelu UI)
-- [ ] CPU/RAM alerts (threshold warnings)
-- [ ] Service dependencies graph
-- [ ] Export/import konfiguracji
-
-### TODO (v1.0)
-- [ ] Multi-user access control (role-based)
-- [ ] Analityka audytu i polityki retencji
-- [ ] Config templates (dev/prod/test)
-- [ ] One-click deployment profiles
-- [ ] Health checks i auto-restart
-- [ ] Integracja z systemd/supervisord
 
 ## Dokumentacja API
 

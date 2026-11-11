@@ -267,27 +267,6 @@ Available via:
 - WebSocket events
 - System logs
 
-## Development
-
-### Planned improvements:
-
-1. **Intelligent caching:**
-   - Remember similar errors
-   - Faster diagnosis for known issues
-
-2. **Coverage analysis:**
-   - Check test coverage
-   - Suggest new tests
-
-3. **CI/CD integration:**
-   - Auto-run before commit
-   - Block merge when tests fail
-
-4. **Extended diagnostics:**
-   - Performance analysis
-   - Memory leak detection
-   - Security analysis
-
 ## Troubleshooting
 
 ### Problem: "Docker is not available"

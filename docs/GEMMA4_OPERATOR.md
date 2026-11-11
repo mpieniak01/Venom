@@ -259,34 +259,16 @@ separately qualified runner, independent tasks and verifier evidence. Compare
 serial and parallel behavior on a fixed subset before using parallel trials for
 candidate selection.
 
-## Delivery and deferred work
+## Remote training
 
-| Plan area | State after this release |
-|---|---|
-| G4-01 identity and protocol | CPU contracts implemented; native GPU cycle deferred |
-| G4-02 selected-model execution | Opt-in guarded dispatch and native history implemented; Gemma GPU tool-loop and durable resume qualification remain |
-| G4-03 evaluation | Shared GPU comparison runner supports both variants and images; independent final benchmark and measured baselines remain |
-| G4-04 material | Canonical validation and immutable release with separate reserve implemented; G05 V2 and native masks qualified for both variants |
-| G4-05 remote SFT | Both native GPU loaders and LoRA/QLoRA workers implemented; real host qualification and training require an authorized session |
-| G4-06 deployment | Candidate identity only; reload, promotion and activation deferred |
-| G4-07 experiences | Explicit reviewed export from complete runtime traces implemented; independent replay execution remains external |
-| G4-08 DPO | Deferred until verified pairs and qualified remote training |
-| G4-09/10 RL, full SFT, multimodal training | Conditional future remote experiments |
-
-The local worker plan is maintained in the operator's ignored `docs_dev`
-backlog. Public documentation contains the status of the shipped slice rather
-than implying every training milestone is complete.
-
-Use the existing [remote training lifecycle](REMOTE_TRAINING.md) and
-[Vast startup/recovery procedure](PL/VAST_START_I_ODZYSKIWANIE.md) for subsequent
-authorized remote work. The existing Granite worker must not be used for Gemma
-by merely changing a model ID.
-
+Use the [remote training lifecycle](REMOTE_TRAINING.md) and
+[Vast startup and recovery procedure](PL/VAST_START_I_ODZYSKIWANIE.md).
+Gemma and Granite use separate training workers.
 
 ## Two model variants and GPU experiments
 
 See the [local E4B pilot decision](PL/GEMMA4_E4B_PILOT.md) for the selected
-artifact, evaluation evidence and conditions for further tuning.
+artifact and evaluation evidence.
 
 | Variant | Explicit Ollama name | Profile | Native loader / layers |
 |---|---|---|---|

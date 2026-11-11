@@ -92,13 +92,6 @@ Katalog [ośmiu modeli](../../../config/maintenance_comparison/models.json) oraz
 
 Każdy przebieg eksportuje rzeczywiste wiadomości, narzędzia, odpowiedzi, rewizje i wyniki w `training-records.json`. Wszystkie rekordy tego eksperymentu mają `split=test`, `training_allowed=false`; nie wykonano szkolenia. Stała grupa `venom-maintenance-v1:<case_id>` blokuje przeniesienie tego samego problemu do treningu przez samą zmianę commita. Do przyszłego train/validation potrzebne są inne problemy/commity. Przy wydobywaniu korpusu z repo należy wykluczyć definicje i rozwiązania tego benchmarku oraz ich testy; jawne gold w repo również może stanowić przeciek. Przypadki poprawnego zgłoszenia braku danych i eskalacji wymagają osobnych, zweryfikowanych demonstracji.
 
-## Dalsze prace
-
-1. Zakwalifikować zoptymalizowany backend Qwena i rzeczywistą pamięć dedicated/shared; dopiero potem oceniać zmiany budżetu i potrzebę dostrajania.
-2. Uporządkować kontekst wejściowy zadania: znany test/traceback, małe wycinki kodu i wyszukiwanie symboli. Zmiany scaffolda mierzyć osobno na nowych problemach; nie zmieniać ocen powyżej.
-3. Egzekwować brakujące argumenty i eskalację w kontrakcie produkcyjnej orkiestracji. Dopasować natywne zakończenie, bez dopisywania za model brakujących statusów; oddzielnie mierzyć zgodność formatu i poprawność operacji.
-4. Zbudować oddzielne train/validation i nowy held-out; powtórzyć pomiar finalistów nowych profili. C ma po jednej próbie scenariusza i pozostaje wstępne.
-
 ## Weryfikacja kodu i odtworzenie
 
 - `pytest -q tests/test_maintenance_*.py`: 139 PASS po rozszerzeniu i po poprawce EOS; `ruff`: PASS. Mypy: 17 plików rozszerzenia PASS oraz ponownie zmieniony `inference.py` PASS.

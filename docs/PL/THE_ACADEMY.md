@@ -415,7 +415,7 @@ scheduler.add_interval_job(
   - Sprawdź jakość datasetu (czy są błędy?)
   - Użyj większego `learning_rate` (np. 3e-4)
 
-## PR 191 — Samokształcenie (`/academy/self-learning`)
+## Samokształcenie (`/academy/self-learning`)
 
 ### Zakres funkcjonalny
 Zakładka **Samokształcenie** rozszerza Academy o dwa tryby uczenia na danych repo (`docs`, `docs_dev`, `code`):
@@ -441,7 +441,7 @@ Wdrożony panel Self-Learning zapewnia:
 3. logi live, status i historię runów,
 4. preflight embedding/runtime dla trybu RAG.
 
-## PR 190E — Granica `Model runtime` vs `Adapter Academy`
+## Granica między `Model runtime` i `Adapter Academy`
 
 ### Kontrakt runtime
 1. Jedynym źródłem prawdy dla selektorów modeli jest:
@@ -483,15 +483,6 @@ Domyślne zabezpieczenia:
    - `npm --prefix web-next run test:dev:turbo:smoke:clean`
 3. Zalecenie operacyjne:
    - utrzymuj tylko jedną instancję `next dev`, aby uniknąć konfliktów `.next/dev/lock`.
-
-## Roadmap
-
-- [ ] Pełna implementacja Arena (automated evaluation)
-- [ ] Dashboard - wizualizacja w czasie rzeczywistym
-- [ ] Integracja z PEFT dla KernelBuilder
-- [ ] Multi-modal learning (obrazy, audio)
-- [ ] Distributed training (multiple GPUs)
-- [ ] A/B testing dla modeli
 
 ## Referencje
 

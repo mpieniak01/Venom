@@ -130,9 +130,6 @@ To oczekiwany stan przejsciowy. Odpowiedz moze byc poprawna, ale internals sa je
 
 ## 8. Powiazane dokumenty
 
-- [Plan realizacji 223DA](../../docs_dev/_to_do/223DA_pr_plan_realizacji_attention_saliency_dev.md)
-- [Analiza gap / live analysis 223E](../../docs_dev/_to_do/223E_pr_analiza_gap_live_analysis_dev.md)
-- [Kierunek docelowy 225](../../docs_dev/_to_do/225_pr_docelowy_kierunek_introspection_dev.md)
 - [README](../../README_PL.md)
 - [Frontend Next.js](./FRONTEND_NEXT_GUIDE.md)
 - [Dashboard Guide](./DASHBOARD_GUIDE.md)

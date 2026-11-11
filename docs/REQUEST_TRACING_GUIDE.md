@@ -374,12 +374,3 @@ Watchdog → timeout (Status: LOST)
 **Problem:** Too many requests stored
 - Use `tracer.clear_old_traces(days=N)` regularly
 - Consider adding scheduled cleanup job
-
-## Future extensions
-
-- [ ] Export history to CSV/JSON
-- [ ] Filter by intent/agent
-- [ ] Performance statistics (avg time, success rate)
-- [ ] Integration with BaseAgent (automatic logging)
-- [ ] WebSocket real-time updates for history
-- [ ] Dependency graph visualization

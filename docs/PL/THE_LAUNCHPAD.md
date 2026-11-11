@@ -231,31 +231,14 @@ Szablon: `workspace/MARKETING_KIT_TEMPLATE.md`
 
 ---
 
-## Roadmap
+## Wdrożone funkcje
 
-### Zaimplementowane (v1.0):
 - ✅ CloudProvisioner (SSH, Docker, deployment)
 - ✅ MediaSkill (placeholder generation z Pillow)
 - ✅ Creative Director Agent
 - ✅ DevOps Agent
 - ✅ Marketing Kit Template
 - ✅ 32 testy jednostkowe
-
-### Planowane (v1.1):
-- ⏳ DALL-E 3 integration (wymaga OPENAI_API_KEY)
-- ⏳ Stable Diffusion lokalnie (ONNX + GPU)
-- ❌ DNS configuration (Cloudflare API) - **USUNIĘTE**: Zastąpione przez mDNS (venom.local)
-- ⏳ SSL certificates (Let's Encrypt/Certbot automation)
-- ⏳ Kubernetes deployment
-- ⏳ Dashboard: Deployments view (web UI)
-
-### Planowane (v2.0):
-- ⏳ CI/CD pipeline generation (GitHub Actions, GitLab CI)
-- ⏳ Monitoring & alerting (Prometheus, Grafana)
-- ⏳ Video generation (Gemini API)
-- ⏳ Landing page generator (automatyczne HTML/CSS)
-
----
 
 ## Przykłady użycia
 

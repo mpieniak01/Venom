@@ -555,40 +555,56 @@ class CampaignService:
                 return "resume"
         return None
 
+    def _monitor(
+        self, directory: Path, state: dict, trial: dict, run: dict, remaining: int
+    ) -> bool:
+        if not self._artifact_budget(state):
+            state["termination"] = "blocked"
+            state["error"] = "campaign_storage_budget_exhausted"
+            self._terminate(state, run)
+            return True
+        if remaining < 1:
+            stopped = self.experiments.stop(
+                run["run_id"], campaign_id=state["campaign_id"]
+            )
+            if not _has_work(stopped):
+                self._finish_trial(
+                    directory, state, trial, {**stopped, "status": "timed_out"}
+                )
+            return True
+        if run["status"] not in _RUN_ACTIVE:
+            # An orphaned child still owns runtime resources.
+            state["status"] = "blocked"
+            state["error"] = "campaign_trial_quiescence_unconfirmed"
+            return True
+        return False
+
+    def _check_limits(
+        self,
+        directory: Path,
+        state: dict,
+        trial: dict,
+        run: dict | None,
+        remaining: int,
+    ) -> bool:
+        if state["elapsed_seconds"] >= state["plan"]["budget"]["max_seconds"]:
+            state["termination"] = "timed_out"
+        if state["termination"]:
+            self._terminate(state, run)
+            return True
+        if run is None:
+            if remaining < 1:
+                state["status"] = "timed_out"
+                return True
+            return False
+        return _has_work(run) and self._monitor(directory, state, trial, run, remaining)
+
     def _advance(self, directory: Path, state: dict) -> None:
         trial = state["trials"][state["trial_index"]]
         run = self._run(state, trial)
         remaining = self._remaining(state, trial)
-        budget = state["plan"]["budget"]
-        if state["elapsed_seconds"] >= budget["max_seconds"]:
-            state["termination"] = "timed_out"
-        if state["termination"]:
-            self._terminate(state, run)
+        if self._check_limits(directory, state, trial, run, remaining):
             return
-        if remaining < 1 and run is None:
-            state["status"] = "timed_out"
-            return
-        if run and _has_work(run):
-            if not self._artifact_budget(state):
-                state["termination"] = "blocked"
-                state["error"] = "campaign_storage_budget_exhausted"
-                self._terminate(state, run)
-                return
-            if remaining < 1:
-                stopped = self.experiments.stop(
-                    run["run_id"], campaign_id=state["campaign_id"]
-                )
-                if _has_work(stopped):
-                    return
-                self._finish_trial(
-                    directory, state, trial, {**stopped, "status": "timed_out"}
-                )
-                return
-            if run["status"] not in _RUN_ACTIVE:
-                # An orphaned child still owns runtime resources.
-                state["status"] = "blocked"
-                state["error"] = "campaign_trial_quiescence_unconfirmed"
-                return
         if trial.get("intent") and remaining >= 1:
             run = self._launch_trial(state, trial, run, remaining)
             trial.pop("intent")

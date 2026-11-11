@@ -36,6 +36,8 @@ class ExperimentArtifacts(Protocol):
 
     def status(self, run_id: str) -> dict[str, Any]: ...
 
+    def report(self, run_id: str) -> dict[str, Any]: ...
+
 
 def read_object(path: Path) -> dict[str, Any]:
     with data_directory(path.parent) as directory_fd:
@@ -151,13 +153,15 @@ class Retention:
         self.directory = directory
 
     def _eligible(self, state: dict) -> dict[str, dict]:
-        if (
-            state["plan"]["retention"] != "discard_rejected"
-            or not state["selected_run_id"]
-        ):
+        winner = state["selected_run_id"]
+        if state["plan"]["retention"] != "discard_rejected" or winner is None:
+            return {}
+        artifacts = self.experiments.report(winner).get("artifacts", ())
+        if not any(artifact.get("available") is True for artifact in artifacts):
+            # Retain alternatives if the current winner can no longer be loaded.
             return {}
         protected = protected_runs(self.experiments)
-        protected.add(state["selected_run_id"])
+        protected.add(winner)
         return {
             trial["run_id"]: trial
             for trial in state["trials"]

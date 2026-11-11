@@ -119,7 +119,11 @@ class FakeExperiments:
         )
 
     def report(self, run_id):
-        return read_object(self.run_dir(run_id) / "result.json")
+        directory = self.run_dir(run_id)
+        result = read_object(directory / "result.json")
+        artifact = directory / "training" / "checkpoint-2" / "adapter_model.safetensors"
+        result["artifacts"] = [{"available": artifact.is_file()}]
+        return result
 
     def update(self, run_id, **changes):
         return self._save({**self.status(run_id), **changes})
@@ -485,3 +489,14 @@ def test_detached_supervisor_drives_durable_state(controller, monkeypatch):
     assert result["status"] == "succeeded"
     assert result["selected_run_id"] == run_id
     assert result["worker"] is None
+
+
+def test_retention_does_not_discard_alternative_when_winner_missing(controller):
+    retention, state, rejected, winner = retained_series(controller)
+    plan = retention.plan(state)
+    assert plan["files"]
+    winner.unlink()
+    with pytest.raises(ValueError, match="retention_plan_changed"):
+        retention.apply(state, plan["plan_sha256"])
+    assert retention.plan(state)["files"] == []
+    assert rejected.exists()

@@ -667,6 +667,20 @@
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
+      "path": "tests/test_academy_experiments.py",
+      "domain": "runtime",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Academy run lifecycle, sealed blind scoring, restart and transport boundaries."
+    },
+    {
       "path": "tests/test_academy_file_resolution_service.py",
       "domain": "academy",
       "test_type": "service_contract",
@@ -5304,6 +5318,20 @@
       ],
       "legacy_targeted": false,
       "rationale": "Offline supervision, provenance and split-isolation contracts for the Polish Omni pilot."
+    },
+    {
+      "path": "tests/test_omni_pl_chat_recipe.py",
+      "domain": "runtime",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Validate bounded Omni recipes, isolated evaluation inputs and checkpoint integrity."
     },
     {
       "path": "tests/test_omni_pl_chat_scoring.py",

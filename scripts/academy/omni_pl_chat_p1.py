@@ -5,22 +5,26 @@ import hashlib
 import json
 import math
 import os
+import re
 import resource
 import sys
 from importlib import import_module
 from importlib.metadata import version
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 from time import monotonic
 from unittest.mock import patch
 
 from scripts.academy.omni_pl_chat_data import read_jsonl, sha256, validate_splits
 from scripts.academy.omni_pl_chat_masks import IGNORE, masked_example, verify_snapshot
+from scripts.academy.omni_pl_chat_recipe import (
+    DEFAULT_RECIPE,
+    load_recipe,
+    validate_recipe,
+)
 
-STEPS = 8
-SAVE_EVERY = 2
-SEED = 42
-MAX_TOKENS = 1024
-LR = 2e-4
+STEPS = DEFAULT_RECIPE["steps"]
+_RECIPE_PATH = Path("/inputs/recipe.json")
 CHECKPOINT_FILES = (
     "adapter_config.json",
     "adapter_model.safetensors",
@@ -33,16 +37,72 @@ CHECKPOINT_FILES = (
 
 
 def _write_json(path: Path, data: dict) -> None:
-    with path.open("x", encoding="utf-8") as stream:
-        json.dump(data, stream, ensure_ascii=False, indent=2)
-        stream.write("\n")
+    """Publish a complete receipt exactly once."""
+    with NamedTemporaryFile(
+        mode="w", encoding="utf-8", dir=path.parent, prefix=".receipt-", delete=False
+    ) as stream:
+        temporary = Path(stream.name)
+        try:
+            json.dump(data, stream, ensure_ascii=False, indent=2, allow_nan=False)
+            stream.write("\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+            os.link(temporary, path)
+            descriptor = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
+            try:
+                os.fsync(descriptor)
+            finally:
+                os.close(descriptor)
+        finally:
+            temporary.unlink()
 
 
 def _checkpoint_hashes(path: Path) -> dict[str, str]:
-    return {name: sha256(path / name) for name in CHECKPOINT_FILES}
+    if path.is_symlink() or not path.is_dir():
+        raise ValueError("checkpoint must be a real directory")
+    files = {name: path / name for name in CHECKPOINT_FILES}
+    if any(file.is_symlink() or not file.is_file() for file in files.values()):
+        raise ValueError("checkpoint is missing verified training state")
+    return {name: sha256(file) for name, file in files.items()}
 
 
-def _verify_boundary() -> None:
+def verify_checkpoint(path: Path) -> dict[str, str]:
+    receipt = path / "hashes.json"
+    if receipt.is_symlink() or not receipt.is_file():
+        raise ValueError("checkpoint is missing its hash receipt")
+    hashes = _checkpoint_hashes(path)
+    if json.loads(receipt.read_text(encoding="utf-8")) != hashes:
+        raise ValueError("checkpoint files differ from the saved receipt")
+    return hashes
+
+
+def _resume_checkpoint(output: Path, step_limit: int) -> Path:
+    sealed: list[tuple[int, Path]] = []
+    for entry in output.iterdir():
+        match = re.fullmatch(r"checkpoint-([1-9][0-9]*)", entry.name)
+        if match is not None:
+            if entry.is_symlink() or not entry.is_dir():
+                raise ValueError("checkpoint must be a real directory")
+            receipt = entry / "hashes.json"
+            if receipt.is_symlink():
+                raise ValueError("checkpoint receipt must be a regular file")
+            if receipt.exists():
+                sealed.append((int(match[1]), entry))
+    if not sealed:
+        raise ValueError("no sealed checkpoint is available")
+    step, latest = max(sealed)
+    if step > step_limit:
+        raise ValueError("checkpoint exceeds the planned step budget")
+    verify_checkpoint(latest)
+    trainer_state = json.loads(
+        (latest / "trainer_state.json").read_text(encoding="utf-8")
+    )
+    if trainer_state.get("global_step") != step:
+        raise ValueError("checkpoint step differs from the verified trainer state")
+    return latest
+
+
+def _verify_boundary(extra_read_only: tuple[str, ...] = ()) -> None:
     status = Path("/proc/self/status").read_text()
     fields = dict(line.split(":\t", 1) for line in status.splitlines() if ":\t" in line)
     if any(
@@ -56,7 +116,7 @@ def _verify_boundary() -> None:
         or Path("/home/ubuntu/venom").exists()
     ):
         raise RuntimeError("training worker requires the isolated pilot launcher")
-    for path in ("/job", "/inputs/model", "/inputs/train.jsonl"):
+    for path in ("/job", "/inputs/model", "/inputs/train.jsonl", *extra_read_only):
         if not os.statvfs(path).f_flag & os.ST_RDONLY:
             raise RuntimeError(f"{path} must be mounted read-only")
     if any(
@@ -79,117 +139,166 @@ def _collate(rows: list[dict], pad_token: int) -> dict:
     }
 
 
+def _prepare_inputs(
+    snapshot: Path, train_path: Path, recipe: dict, *, legacy: bool, preflight: bool
+):
+    pin = verify_snapshot(snapshot, full=True)
+    train_hash = sha256(train_path)
+    if recipe.get("train_sha256", train_hash) != train_hash:
+        raise ValueError("training data differs from the recipe digest")
+    records = read_jsonl(train_path)
+    validate_splits(records)
+    lower, upper = (8, 16) if legacy else (1, 2048)
+    if not lower <= len(records) <= upper or any(
+        row["split"] != "train" for row in records
+    ):
+        raise ValueError(f"expected {lower} to {upper} reviewed training records")
+
+    if preflight:
+        from transformers import AutoTokenizer
+
+        tokenizer = AutoTokenizer.from_pretrained(
+            snapshot, local_files_only=True, trust_remote_code=False
+        )
+        processor = None
+    else:
+        from transformers import AutoProcessor
+
+        processor = AutoProcessor.from_pretrained(
+            snapshot, local_files_only=True, trust_remote_code=True
+        )
+        tokenizer = processor.tokenizer
+    template = (snapshot / "chat_template.jinja").read_text(encoding="utf-8")
+    encoded = [
+        masked_example(tokenizer, template, row, recipe["max_tokens"])
+        for row in records
+    ]
+    counts = []
+    for row, item in zip(records, encoded, strict=True):
+        if processor is not None:
+            canonical = processor.apply_chat_template(
+                row["messages"],
+                tokenize=True,
+                return_dict=True,
+                return_tensors="pt",
+                add_generation_prompt=False,
+                enable_thinking=False,
+            )
+            if canonical["input_ids"][0].tolist() != item["input_ids"]:
+                raise ValueError(
+                    f"{row['record_id']}: training tokens differ from the vendor processor"
+                )
+        supervised = sum(label != IGNORE for label in item["labels"])
+        if not supervised:
+            raise ValueError(f"{row['record_id']}: training mask is empty")
+        counts.append(supervised)
+    upper_bound = (
+        max(counts)
+        * recipe["microbatch"]
+        * recipe["gradient_accumulation_steps"]
+        * recipe["steps"]
+    )
+    if upper_bound > recipe.get("max_supervised_tokens", upper_bound):
+        raise ValueError("training supervision could exceed the recipe token budget")
+    observations = {
+        "train_sha256": train_hash,
+        "records": len(records),
+        "supervised_tokens": sum(counts),
+        "supervised_token_exposure_upper_bound": upper_bound,
+    }
+    return pin, processor, encoded, observations
+
+
 def run(mode: str) -> None:
-    _verify_boundary()
+    legacy = not _RECIPE_PATH.exists()
+    _verify_boundary(() if legacy else (str(_RECIPE_PATH),))
     started = monotonic()
     snapshot = Path("/inputs/model")
     train_path = Path("/inputs/train.jsonl")
     output = Path("/out")
-    pin = verify_snapshot(snapshot, full=True)
-    records = read_jsonl(train_path)
-    validate_splits(records)
-    if not 8 <= len(records) <= 16 or any(row["split"] != "train" for row in records):
-        raise ValueError("P1 requires 8–16 reviewed training records")
+    recipe = validate_recipe({}) if legacy else load_recipe(_RECIPE_PATH)
+    pin, processor, encoded, observations = _prepare_inputs(
+        snapshot, train_path, recipe, legacy=legacy, preflight=mode == "preflight"
+    )
+    environment = {
+        name: version(name)
+        for name in (
+            "torch",
+            "transformers",
+            "tokenizers",
+            "peft",
+            "accelerate",
+            "numpy",
+            "safetensors",
+        )
+    }
+    if mode == "preflight":
+        _write_json(
+            output / "preflight.json",
+            {
+                "model": pin["repo"],
+                "revision": pin["revision"],
+                "environment": environment,
+                "recipe": recipe,
+                **observations,
+            },
+        )
+        return
 
     import torch
     from peft import LoraConfig, get_peft_model, get_peft_model_state_dict
     from transformers import (
         AutoModelForMultimodalLM,
-        AutoProcessor,
         Trainer,
         TrainerCallback,
         TrainingArguments,
         enable_full_determinism,
     )
 
-    enable_full_determinism(SEED)
+    enable_full_determinism(recipe["seed"])
     mib = 2**20
     if not torch.cuda.is_available() or not torch.cuda.is_bf16_supported():
-        raise RuntimeError("P1 requires a CUDA device with BF16 support")
+        raise RuntimeError("Omni training requires a CUDA device with BF16 support")
     free, total = torch.cuda.mem_get_info()
     if free < 6500 * mib:
         raise RuntimeError(f"only {free // mib} MiB free on the GPU")
     torch.cuda.set_per_process_memory_fraction(min(1.0, (free - 1000 * mib) / total))
     torch.cuda.reset_peak_memory_stats()
 
+    targets = "|".join(recipe["target_modules"])
     profile = {
+        **recipe,
         "model": pin["repo"],
         "revision": pin["revision"],
         "snapshot_manifest_sha256": sha256(
             Path("/job/scripts/llm/omni_native_snapshot.json")
         ),
-        "train_sha256": sha256(train_path),
+        "train_sha256": observations["train_sha256"],
         "script_sha256": {
             name: sha256(Path("/job/scripts/academy") / name)
             for name in (
                 "omni_pl_chat_p1.py",
                 "omni_pl_chat_masks.py",
                 "omni_pl_chat_data.py",
+                "omni_pl_chat_recipe.py",
             )
         },
-        "environment": {
-            name: version(name)
-            for name in (
-                "torch",
-                "transformers",
-                "tokenizers",
-                "peft",
-                "accelerate",
-                "numpy",
-                "safetensors",
-            )
-        },
+        "environment": environment,
         "python": sys.version.split()[0],
         "cuda": torch.version.cuda,
         "gpu": torch.cuda.get_device_name(),
-        "seed": SEED,
         "full_determinism": True,
         "dtype": "bf16",
-        "rank": 4,
-        "alpha": 8,
-        "dropout": 0.0,
-        "target_modules": r"model\.language_model\..*\.(q_proj|v_proj)",
-        "steps": STEPS,
-        "save_every": SAVE_EVERY,
-        "warmup_steps": 1,
-        "learning_rate": LR,
-        "max_tokens": MAX_TOKENS,
-        "microbatch": 1,
+        "target_modules": rf"model\.language_model\..*\.({targets})",
     }
 
     checkpoint = None
     if mode == "resume":
-        checkpoint = output / f"checkpoint-{SAVE_EVERY}"
-        if json.loads((output / "profile.json").read_text()) != profile:
+        if json.loads((output / "profile.json").read_text(encoding="utf-8")) != profile:
             raise ValueError("resume profile differs from the original run")
-        if json.loads((checkpoint / "hashes.json").read_text()) != _checkpoint_hashes(
-            checkpoint
-        ):
-            raise ValueError("checkpoint files differ from the saved receipt")
+        checkpoint = _resume_checkpoint(output, recipe["steps"])
     else:
         _write_json(output / "profile.json", profile)
-
-    processor = AutoProcessor.from_pretrained(
-        snapshot, local_files_only=True, trust_remote_code=True
-    )
-    template = (snapshot / "chat_template.jinja").read_text(encoding="utf-8")
-    encoded = [
-        masked_example(processor.tokenizer, template, row, MAX_TOKENS)
-        for row in records
-    ]
-    for row, item in zip(records, encoded, strict=True):
-        canonical = processor.apply_chat_template(
-            row["messages"],
-            tokenize=True,
-            return_dict=True,
-            return_tensors="pt",
-            add_generation_prompt=False,
-            enable_thinking=False,
-        )
-        if canonical["input_ids"][0].tolist() != item["input_ids"]:
-            raise ValueError(
-                f"{row['record_id']}: training tokens differ from the vendor processor"
-            )
 
     base = AutoModelForMultimodalLM.from_pretrained(
         snapshot,
@@ -231,7 +340,9 @@ def run(mode: str) -> None:
         def on_step_end(self, args, state, control, **kwargs):
             if torch.cuda.mem_get_info()[0] < 600 * mib:
                 raise RuntimeError("stopped at the GPU headroom threshold")
-            if mode == "initial" and state.global_step == SAVE_EVERY:
+            if state.global_step == recipe["steps"]:
+                control.should_save = True
+            if mode == "initial" and state.global_step == recipe["save_every"]:
                 control.should_training_stop = True
 
         def on_save(self, args, state, control, **kwargs):
@@ -240,19 +351,20 @@ def run(mode: str) -> None:
 
     args = TrainingArguments(
         output_dir=str(output),
-        max_steps=STEPS,
-        per_device_train_batch_size=1,
-        learning_rate=LR,
+        max_steps=recipe["steps"],
+        per_device_train_batch_size=recipe["microbatch"],
+        gradient_accumulation_steps=recipe["gradient_accumulation_steps"],
+        learning_rate=recipe["learning_rate"],
         warmup_steps=profile["warmup_steps"],
-        lr_scheduler_type="linear",
+        lr_scheduler_type=recipe["lr_scheduler_type"],
         bf16=True,
         optim="adamw_torch",
-        seed=SEED,
-        data_seed=SEED,
+        seed=recipe["seed"],
+        data_seed=recipe["seed"],
         full_determinism=True,
         dataloader_num_workers=0,
         save_strategy="steps",
-        save_steps=SAVE_EVERY,
+        save_steps=recipe["save_every"],
         logging_steps=1,
         logging_nan_inf_filter=False,
         report_to="none",
@@ -271,7 +383,7 @@ def run(mode: str) -> None:
         backbone, "can_use_lfm3_conv", new=lambda *_args, **_kwargs: False
     ):
         trainer.train(resume_from_checkpoint=str(checkpoint) if checkpoint else None)
-    expected_step = SAVE_EVERY if mode == "initial" else STEPS
+    expected_step = recipe["save_every"] if mode == "initial" else recipe["steps"]
     if trainer.state.global_step != expected_step:
         raise RuntimeError("unexpected final optimizer step")
     step_logs = [item for item in trainer.state.log_history if "loss" in item]
@@ -296,10 +408,7 @@ def run(mode: str) -> None:
         "trainable": trainable,
         "trainable_count": sum(trainable.values()),
         "changed_tensors": changed,
-        "records": len(records),
-        "supervised_tokens": sum(
-            label != IGNORE for item in encoded for label in item["labels"]
-        ),
+        **observations,
         "step_logs": step_logs,
         "checkpoint": f"checkpoint-{expected_step}",
         "initial_gpu_free_mib": free // mib,
@@ -310,6 +419,9 @@ def run(mode: str) -> None:
         ),
         "elapsed_seconds": round(monotonic() - started, 3),
     }
+    receipt["checkpoint_sha256"] = verify_checkpoint(output / receipt["checkpoint"])[
+        "adapter_model.safetensors"
+    ]
     _write_json(output / f"{mode}.json", receipt)
     print(json.dumps(receipt, ensure_ascii=False, indent=2))
 
@@ -336,16 +448,17 @@ def compare(control: Path, resumed: Path) -> None:
                 digest.update(value.tobytes())
         return digest.hexdigest()
 
-    files = [
-        root / f"checkpoint-{STEPS}" / "adapter_model.safetensors"
-        for root in (control, resumed)
-    ]
+    steps = json.loads(profiles[0])["steps"]
+    checkpoints = [root / f"checkpoint-{steps}" for root in (control, resumed)]
+    for checkpoint in checkpoints:
+        verify_checkpoint(checkpoint)
+    files = [checkpoint / "adapter_model.safetensors" for checkpoint in checkpoints]
     result = [adapter_digest(path) for path in files]
     if result[0] != result[1]:
         raise ValueError("control and resumed final adapter tensors differ")
     print(
         json.dumps(
-            {"status": "PASS", "steps": STEPS, "adapter_tensor_sha256": result[0]},
+            {"status": "PASS", "steps": steps, "adapter_tensor_sha256": result[0]},
             indent=2,
         )
     )
@@ -353,7 +466,9 @@ def compare(control: Path, resumed: Path) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("mode", choices=("control", "initial", "resume", "compare"))
+    parser.add_argument(
+        "mode", choices=("preflight", "control", "initial", "resume", "compare")
+    )
     parser.add_argument("directories", type=Path, nargs="*")
     args = parser.parse_args()
     if args.mode == "compare" and len(args.directories) == 2:

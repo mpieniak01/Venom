@@ -151,7 +151,13 @@ def test_conversion_is_loadable_has_no_visible_answer_files_and_never_claims_mod
         assert case["prompt"] == row["prompt"] + (
             "\n\n" + row["input"] if "input" in row else ""
         )
-    assert cases[2]["images"][0]["path"] in manifest["files"]
+    image_path = "fixtures/vision-en/image.png"
+    checksum = rows[2]["image_sha256"]
+    assert cases[2]["images"] == [{"path": image_path, "sha256": checksum}]
+    assert manifest["files"][image_path] == checksum
+    assert (target / image_path).read_bytes() == (
+        root / "capability-reserve/shape.png"
+    ).read_bytes()
 
 
 @pytest.mark.parametrize(

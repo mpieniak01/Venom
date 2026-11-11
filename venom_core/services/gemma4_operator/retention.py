@@ -18,6 +18,7 @@ from .paths import checked_directory, checked_file
 
 Json = dict[str, Any]
 MANIFEST_FILE = "manifest.json"
+IMAGE_FILE = "image.png"
 FAMILIES = {"summarization", "translation", "vision_retention"}
 CONTRACTS = {
     "summarization": "semantic_fact_preservation_and_no_unsupported_claims_v1",
@@ -312,7 +313,7 @@ def _case(row: Json) -> Json:
     }
 
 
-def _image(row: Json, case: Json, source: Path, reserve: Json, target: Path) -> None:
+def _image(row: Json, case: Json, source: Path, reserve: Json, folder: Path) -> None:
     if row["family"] != "vision_retention":
         return
     _need(row.get("requires_multimodal_processor") is True, "image_processor_required")
@@ -329,8 +330,9 @@ def _image(row: Json, case: Json, source: Path, reserve: Json, target: Path) -> 
         _hash(raw) == checksum and raw.startswith(b"\x89PNG\r\n\x1a\n"),
         "image_hash_mismatch",
     )
-    destination = case["fixture"] + "/image.png"
-    (target / destination).write_bytes(raw)
+    with (folder / IMAGE_FILE).open("xb") as output:
+        output.write(raw)
+    destination = f"{case['fixture']}/{IMAGE_FILE}"
     case["images"] = [{"path": destination, "sha256": checksum}]
 
 
@@ -359,7 +361,7 @@ def prepare_retention_cases(
             folder = stage / case["fixture"]
             folder.mkdir(parents=True)
             (folder / ".keep").write_text("", encoding="utf-8")
-            _image(row, case, root, reserve, stage)
+            _image(row, case, root, reserve, folder)
         (stage / "cases.jsonl").write_text(
             "".join(
                 json.dumps(case, ensure_ascii=False, sort_keys=True) + "\n"

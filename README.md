@@ -7,7 +7,13 @@
 
 [Wersja polska](README_PL.md) · [Published releases](https://github.com/mpieniak01/Venom/releases)
 
-Venom is an open-source AI stack for a single operator. Run chat, document and image analysis, and voice locally. Use the full application for agent workflows, tools, and diagnostics. The `main` branch uses version **1.10.0**. Tagged downloads and release notes are listed under Published releases.
+**Venom** is an open-source AI assistant for everyday technical work and automation. It brings chat, saved notes, and agents that can use tools into one environment. Ask about an attached text file or image, continue the conversation by voice in Polish, and save a useful answer as a note you can look up later.
+
+Venom is designed for one operator. With local Ollama, the model and conversation data can stay on your machine. In 1.10, **Studio** runs Chat 2.0 as a separate app for text, attachments, and voice in a single thread. Studio and Full share server-side history when you run them in the same environment.
+
+**Venom Full** adds agent workflows and diagnostics for tasks such as inspecting a repository or checking services. Its Workflow panel lets you review proposed configuration changes and see which ones need a restart before you apply them. [Workflow guide](docs/THE_WORKFLOW_CONTROL.md)
+
+The `main` branch uses version **1.10.0**. Tagged downloads and release notes are listed under Published releases.
 
 ## Choose an application
 

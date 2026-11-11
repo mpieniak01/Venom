@@ -7,7 +7,13 @@
 
 [English version](README.md) · [Opublikowane wydania](https://github.com/mpieniak01/Venom/releases)
 
-Venom to otwarty stos AI dla jednego operatora. Pozwala lokalnie prowadzić czat, analizować dokumenty i obrazy oraz rozmawiać głosowo. Pełna aplikacja obsługuje również pracę agentów, narzędzia i diagnostykę. Gałąź `main` używa wersji **1.10.0**. Paczki oznaczone tagami i opis zmian znajdziesz w opublikowanych wydaniach.
+**Venom** to otwarty asystent AI do codziennej pracy technicznej i automatyzacji. W jednym środowisku łączy czat, pamięć w postaci notatek i agentów korzystających z narzędzi. Możesz zapytać o załączony plik tekstowy lub obraz, kontynuować rozmowę głosowo po polsku i zapisać przydatną odpowiedź jako notatkę, do której wrócisz później.
+
+Venom jest projektowany dla jednego operatora. Z lokalną Ollamą model i dane rozmowy mogą pozostać na własnym komputerze. W wersji 1.10 **Studio** uruchamia Chat 2.0 jako osobną aplikację, w której tekst, załączniki i głos trafiają do jednego wątku. Studio i Full korzystają z tej samej historii po stronie serwera, gdy działają w tym samym środowisku.
+
+**Venom Full** dodaje zadania wykonywane przez agentów i diagnostykę. Możesz na przykład przeanalizować repozytorium albo sprawdzić stan usług. W panelu Workflow przejrzysz plan zmian konfiguracji i sprawdzisz, które z nich wymagają restartu, zanim je zastosujesz. [Instrukcja panelu Workflow](docs/PL/THE_WORKFLOW_CONTROL.md)
+
+Gałąź `main` używa wersji **1.10.0**. Paczki oznaczone tagami i opis zmian znajdziesz w opublikowanych wydaniach.
 
 ## Wybór aplikacji
 

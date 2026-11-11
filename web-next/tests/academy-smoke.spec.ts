@@ -492,6 +492,16 @@ test.describe("Academy smoke", () => {
       });
     });
 
+    await page.route("**/api/v1/academy/self-learning/evaluation/baseline", async (route) => {
+      const baseline = {
+        repo_qa_accuracy: 0.7,
+        code_localization_accuracy: 0.7,
+        fix_success_rate: 0.6,
+        hallucination_rate_max: 0.1,
+      };
+      await route.fulfill({ json: { llm_finetune: baseline, rag_index: baseline } });
+    });
+
     await page.route("**/api/v1/academy/self-learning/list**", async (route) => {
       await route.fulfill({
         status: 200,
@@ -713,7 +723,7 @@ test.describe("Academy smoke", () => {
     await page.getByText("Kod źródłowy (venom_core, web-next, scripts)").click();
     await page.getByRole("button", { name: "Uruchom samokształcenie" }).click();
 
-    await expect(page.getByText("selflearn")).toBeVisible();
+    await expect(page.getByText(selfLearningRunId.slice(0, 8), { exact: true })).toBeVisible();
     await expect(page.getByText("Zakończony").first()).toBeVisible();
     expect(selfLearningStartPayload).not.toBeNull();
     expect((selfLearningStartPayload?.sources as string[]) ?? []).toEqual([
@@ -950,7 +960,7 @@ test.describe("Academy smoke", () => {
     await page.getByText("Dokumentacja repozytorium (/docs)").click();
     await page.getByRole("button", { name: "Uruchom samokształcenie" }).click();
 
-    await expect(page.getByText("selflearn")).toBeVisible();
+    await expect(page.getByText(selfLearningRunId.slice(0, 8), { exact: true })).toBeVisible();
     await expect(page.getByText("Zakończony").first()).toBeVisible();
     expect(selfLearningStartPayload).not.toBeNull();
     expect(selfLearningStartPayload?.mode).toBe("llm_finetune");
@@ -1002,7 +1012,7 @@ test.describe("Academy smoke", () => {
     await page.getByText("Tylko README z root repo (/README.md, /README_PL.md)").click();
     await page.getByRole("button", { name: "Uruchom samokształcenie" }).click();
 
-    await expect(page.getByText("selflearn")).toBeVisible();
+    await expect(page.getByText(selfLearningRunId.slice(0, 8), { exact: true })).toBeVisible();
     await expect(page.getByText("Zakończony").first()).toBeVisible();
 
     await page.getByRole("button", { name: "Adaptery" }).click();

@@ -11,6 +11,7 @@ on:
         options:
           - smoke
           - functional
+          - academy
           - simulated
           - full
   pull_request:
@@ -108,6 +109,7 @@ jobs:
             case "$profile" in
               smoke) run_profile "test-results/e2e/results-smoke.json" test:e2e:smoke -- --reporter=json,line ;;
               functional) run_profile "test-results/e2e/results-functional.json" test:e2e:functional -- --reporter=json,line ;;
+              academy) run_profile "" test:e2e:smoke:academy -- --reporter=line ;;
               simulated|full) run_profile "" test:e2e ;;
               *) echo "Unsupported E2E_PROFILE=$profile" >&2; exit 2 ;;
             esac

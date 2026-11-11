@@ -89,3 +89,23 @@ Dla przypadków o określonych odpowiedziach możesz przygotować `profiles/pols
 Zweryfikuj mapowania i `fallback` na przykładach ocenionych przez operatora przed dodaniem hasha do profilu. Dla zadań wymagających oceny znaczenia otwartej wypowiedzi użyj ślepej oceny ręcznej. Recepturę i zestaw kryteriów porównuj w ramach tej samej wersji danych. [Agregacja ocen](../../scripts/academy/omni_pl_chat_scoring.py) · [Wykonanie kalibracji](../../venom_core/services/training_experiments/evidence.py)
 
 Import zachowanego raportu pilota: `import-results historyczny-01 sciezka/do/scores.json`. Zachowane metryki można przeglądać w historii. Stan artefaktu wskazuje brak dostępnych wag i wznowienia.
+
+
+## Kampania na stałej liście wariantów
+
+W Academy otwórz **Trening → Kampania**. Wybierz profil i przygotuj warianty receptury, limity czasu, aktualizacji, tokenów, ponowień i miejsca. Podgląd planu zawiera listę prób. Start wiąże ją z zapisanym hashem planu.
+
+Kampania wykonuje po jednej próbie. W trybie ręcznym otwórz oczekującą próbę i wczytaj anonimowe oceny. Po ich przyjęciu kampania przechodzi do kolejnego wariantu. Tryb automatyczny używa profilu z hashowaną kalibracją. Ranking porównuje zmiany użyteczności i błędów krytycznych względem bazy na tym samym dev.
+
+Polityka `discard_rejected` obejmuje zarządzane pliki checkpointów odrzuconych, zakończonych prób. Zachowuje raporty i wybrany adapter. Panel udostępnia też plan retencji z rozmiarem plików i jego hash. Brak wybranego artefaktu wstrzymuje sprzątanie alternatyw. Ustaw `keep_all`, jeśli potrzebujesz zachować wagi do analizy.
+
+CLI korzysta z tego samego katalogu. Podaj plik z kontraktem CampaignSpec do `plan`, a odczytany `plan.plan_sha256` do `start`.
+
+```bash
+python -m scripts.academy.campaigns --root "$experiment_root" plan kampania.json
+python -m scripts.academy.campaigns --root "$experiment_root" start polski-czat PLAN_SHA256
+python -m scripts.academy.campaigns --root "$experiment_root" status polski-czat
+python -m scripts.academy.campaigns --root "$experiment_root" report polski-czat
+```
+
+`stop` zatrzymuje kampanię. `resume` podejmuje ją z zachowanym stanem oraz pozostałym budżetem. [Kontrakt kampanii](../../venom_core/services/training_experiments/campaign_schema.py) · [CLI kampanii](../../scripts/academy/campaigns.py)

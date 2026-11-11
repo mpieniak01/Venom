@@ -162,7 +162,7 @@ function RunDetail({ run, disabled, onAction, onJudgments }: RunDetailProps) {
   );
 }
 
-export function ExperimentsPanel() {
+export function ExperimentsPanel({ initialRunId = "" }: { readonly initialRunId?: string }) {
   const t = useTranslation();
   const [profiles, setProfiles] = useState<ExperimentProfile[]>([]);
   const [runs, setRuns] = useState<ExperimentRun[]>([]);
@@ -172,7 +172,7 @@ export function ExperimentsPanel() {
   const [runsFailed, setRunsFailed] = useState(false);
   const [actionError, setActionError] = useState<"conflict" | "failed" | null>(null);
   const [busy, setBusy] = useState(false);
-  const [selectedId, setSelectedId] = useState("");
+  const [selectedId, setSelectedId] = useState(initialRunId);
   const [refresh, setRefresh] = useState(0);
 
   useEffect(() => {

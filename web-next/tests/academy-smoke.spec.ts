@@ -613,7 +613,7 @@ test.describe("Academy smoke", () => {
       automatic_review: false,
     };
     const planSha256 = "a".repeat(64);
-    let current: Campaign | undefined;
+    const mock: { current?: Campaign } = {};
     let planRequest: CampaignRequest | undefined;
     let startRequest: { plan_sha256: string } | undefined;
 
@@ -621,11 +621,11 @@ test.describe("Academy smoke", () => {
       route.fulfill({ json: { profiles: [{ ...profile, id: "other-profile", label: "Drugi profil" }, profile] } }),
     );
     await page.route(campaigns, (route) =>
-      route.fulfill({ json: { campaigns: current ? [current] : [] } }),
+      route.fulfill({ json: { campaigns: mock.current ? [mock.current] : [] } }),
     );
     await page.route(`${campaigns}/plan`, async (route) => {
       planRequest = route.request().postDataJSON() as CampaignRequest;
-      current = {
+      mock.current = {
         campaign_id: campaignId,
         plan: {
           ...planRequest,
@@ -647,13 +647,13 @@ test.describe("Academy smoke", () => {
         retries: 0,
         artifact_bytes: 0,
       };
-      await route.fulfill({ json: current });
+      await route.fulfill({ json: mock.current });
     });
     await page.route(`${campaigns}/${campaignId}/start`, async (route) => {
       startRequest = route.request().postDataJSON() as { plan_sha256: string };
-      if (!current) throw new Error("Campaign plan has not been created");
-      current = { ...current, status: "running", trials: [{ run_id: runId, status: "running" }] };
-      await route.fulfill({ json: current });
+      if (!mock.current) throw new Error("Campaign plan has not been created");
+      mock.current = { ...mock.current, status: "running", trials: [{ run_id: runId, status: "running" }] };
+      await route.fulfill({ json: mock.current });
     });
 
     await page.goto(buildHttpUrl(host, port, "/academy"));
@@ -671,9 +671,9 @@ test.describe("Academy smoke", () => {
     await expect(page.getByRole("button", { name: "Zatrzymaj kampanię" })).toBeEnabled();
     expect(startRequest).toEqual({ plan_sha256: planSha256 });
 
-    if (!current) throw new Error("Campaign did not start");
-    current = {
-      ...current,
+    if (!mock.current) throw new Error("Campaign did not start");
+    mock.current = {
+      ...mock.current,
       status: "awaiting_review",
       trials: [{ run_id: runId, status: "awaiting_review" }],
     };

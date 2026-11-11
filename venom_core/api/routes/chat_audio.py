@@ -365,6 +365,7 @@ async def _native_multimodal_turn(
         except NativeDialogueError as exc:
             status = {
                 "omni_native_gpu_busy": 409,
+                "audio_too_large": 413,
                 "omni_native_invalid_input": 422,
                 "omni_native_timeout": 504,
             }.get(exc.reason_code, 503)

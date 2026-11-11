@@ -6,6 +6,11 @@ import { VoicePipelinePicker } from "@/components/voice/voice-pipeline-picker";
 import type { NativeVoiceGenerationMode } from "@/lib/chat-audio";
 import { useLanguage } from "@/lib/i18n";
 import { useStudioVoice, type StudioVoiceOptions } from "./use-studio-voice";
+const NATIVE_VOICE_ERRORS: Partial<Record<string, string>> = {
+  voiceNativeUnavailable: "voice.nativeDialogue.unavailable",
+  voiceNativeAudioTooLong: "voice.nativeDialogue.audioTooLong",
+};
+
 /** Keep recording and pipeline switching mutually exclusive in the Studio voice panel. */
 export function StudioVoice(props: Readonly<Omit<StudioVoiceOptions, "language" | "generationMode"> & { activeModel?: string | null; recordingAvailable: boolean; onModelApplied?: (model: string) => void }>) {
   const { t, language } = useLanguage();
@@ -24,8 +29,7 @@ export function StudioVoice(props: Readonly<Omit<StudioVoiceOptions, "language" 
     <div className="studio-orb" data-listening={capturing}>{props.mode === "dictation" ? <Mic size={25} /> : <Headphones size={25} />}</div>
     <output className="block" aria-live="polite">{t("chat2." + voice.status)}</output>
     {!generationMode && <p>{t(props.mode === "dictation" ? "chat2.dictationHint" : "chat2.voiceHint")}</p>}
-    {voice.error && <p role="alert">{t(voice.error === "voiceNativeUnavailable"
-      ? "voice.nativeDialogue.unavailable" : "chat2." + voice.error)}</p>}
+    {voice.error && <p role="alert">{t(NATIVE_VOICE_ERRORS[voice.error] ?? "chat2." + voice.error)}</p>}
     {voice.nativeAudioOnly && <output className="block">{t("voice.nativeDialogue.audioReply")}</output>}
     {voice.sources.length > 0 && <p className="break-words" aria-live="polite">{t("chat2.voiceSources")}: {voice.sources.join(", ")}</p>}
     {props.mode === "conversation" && props.multimodalEnabled && <div className="studio-voice-controls">

@@ -223,6 +223,7 @@ export async function sendMultimodalVoiceTurn(
     const reason = payload?.detail?.reason_code;
     if (reason === "omni_pilot_invalid_image") throw new Error("voiceImageInvalid");
     if (reason === "omni_native_unavailable") throw new Error("voiceNativeUnavailable");
+    if (generationMode && reason === "audio_too_large") throw new Error("voiceNativeAudioTooLong");
     if (reason === "omni_native_busy") throw new Error("voiceWait");
     throw new Error(response.status === 409 ? "voiceWait" : "voiceError");
   }

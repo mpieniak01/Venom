@@ -827,6 +827,9 @@ const handleVoiceCompletion = (
 function voiceChannelError(data: Record<string, unknown>, t: Translator): string {
   if (data.reason_code === "omni_native_unavailable") return t("voice.nativeDialogue.unavailable");
   if (data.reason_code === "omni_native_busy") return t("voice.nativeDialogue.busy");
+  if (data.reason_code === "audio_too_large" && isNativeVoiceGenerationMode(data.generation_mode)) {
+    return t("voice.nativeDialogue.audioTooLong");
+  }
   if (data.multimodal === true) return t("voice.status.channelError");
   return toPrimitiveString(data.message) ?? t("voice.status.channelError");
 }
@@ -2522,6 +2525,12 @@ function VoiceCommandCenterPanel({
   const [responseSources, setResponseSources] = useState<string[]>([]);
   const [nativeAudioOnly, setNativeAudioOnly] = useState(false);
   const [multimodalContextMode, setMultimodalContextMode] = useState<NativeVoiceGenerationMode | null>();
+  const [previousGenerationMode, setPreviousGenerationMode] = useState(generationMode);
+  if (previousGenerationMode !== generationMode) {
+    setPreviousGenerationMode(generationMode);
+    setMultimodalContextMode(undefined);
+    setNativeAudioOnly(false);
+  }
   const multimodalActive = multimodalContextMode === generationMode;
   const [multimodalPending, setMultimodalPending] = useState(false);
   const [nativeCancelling, setNativeCancelling] = useState(false);
@@ -2850,15 +2859,15 @@ function VoiceCommandCenterPanel({
     }
   }, [sendControlMessage]);
 
-  const previousGenerationMode = useRef(generationMode);
+  const lastSyncedGenerationMode = useRef(generationMode);
   useEffect(() => {
-    if (previousGenerationMode.current === generationMode) return;
-    previousGenerationMode.current = generationMode;
+    if (lastSyncedGenerationMode.current === generationMode) return;
+    lastSyncedGenerationMode.current = generationMode;
     resetNativeDialogue();
   }, [generationMode, resetNativeDialogue]);
 
   const endDialogue = () => {
-    if (generationMode) resetNativeDialogue();
+    if (generationMode && !sendControlMessage({ command: "end_native_dialogue" })) return;
     endMultimodal();
   };
 
@@ -2867,6 +2876,11 @@ function VoiceCommandCenterPanel({
     const cancelId = String(++nativeCancelSequence.current);
     if (!sendControlMessage({ command: "reset_native_dialogue", cancel_id: cancelId })) return;
     nativeCancelId.current = cancelId;
+    playbackRequestRef.current += 1;
+    releasePlaybackResources();
+    lastAudioResponseRef.current = null;
+    setHasReplayAudio(false);
+    setPlaybackState("idle");
     setNativeCancelling(true);
   };
 

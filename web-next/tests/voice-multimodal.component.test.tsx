@@ -264,6 +264,13 @@ it("Full sends native generation modes, plays audio-only replies and resets the 
     view.rerender(<VoiceCommandCenter voiceModePreset="direct" generationMode="audio" onTranscriptReady={onTranscriptReady} />);
   });
   assert.equal(controls().at(-1).command, "reset_native_dialogue");
+  await act(async () => {
+    view.rerender(<VoiceCommandCenter voiceModePreset="direct" generationMode="interleaved" onTranscriptReady={onTranscriptReady} />);
+  });
+  assert.equal(screen.queryByRole("button", { name: "Zakończ natywną rozmowę" }), null);
+  await act(async () => {
+    view.rerender(<VoiceCommandCenter voiceModePreset="direct" generationMode="audio" onTranscriptReady={onTranscriptReady} />);
+  });
   assert.equal((await recordTurn()).generation_mode, "audio");
   await act(async () => {
     socket.receive({ type: "response_text", text: null, multimodal: true, generation_mode: "audio" });
@@ -277,7 +284,7 @@ it("Full sends native generation modes, plays audio-only replies and resets the 
   await screen.findByRole("button", { name: "Zatrzymaj odtwarzanie" });
   fireEvent.click(screen.getByRole("button", { name: "Zatrzymaj odtwarzanie" }));
   fireEvent.click(screen.getByRole("button", { name: "Zakończ natywną rozmowę" }));
-  assert.equal(controls().at(-1).command, "reset_native_dialogue");
+  assert.equal(controls().at(-1).command, "end_native_dialogue");
   assert.equal(screen.queryByText("Odpowiedź dźwiękowa"), null);
   assert.equal(VoiceSocket.instances.length, 1);
 
@@ -291,7 +298,11 @@ it("Full sends native generation modes, plays audio-only replies and resets the 
   assert.equal(record.disabled, false);
 
   assert.equal((await recordTurn()).generation_mode, "audio");
+  await act(async () => socket.receive({ type: "audio_response", audio: "AAABAAIAAwA=", sample_rate: 24000 }));
+  await screen.findByRole("button", { name: "Zatrzymaj odtwarzanie" });
+  const stoppedBeforeCancel = VoiceAudioContext.stopped;
   fireEvent.click(screen.getByRole("button", { name: "Anuluj odpowiedź Omni" }));
+  assert.equal(VoiceAudioContext.stopped, stoppedBeforeCancel + 1);
   const cancel = controls().at(-1);
   assert.equal(cancel.command, "reset_native_dialogue");
   assert.equal(typeof cancel.cancel_id, "string");

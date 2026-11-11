@@ -1,5 +1,6 @@
 export const voice = {
   nativeDialogue: {
+    audioTooLong: "A recording in native Omni mode can be up to 30 seconds long.",
     cancel: "Cancel Omni reply",
     cancelling: "Cancelling reply…",
     cancelled: "Omni reply cancelled.",

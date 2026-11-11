@@ -2433,6 +2433,9 @@ async def test_native_full_reset_drains_before_ack_and_does_not_save(monkeypatch
         1, '{"command":"reset_native_dialogue","cancel_id":"one"}', None
     )
     assert drained.is_set()
+    conn = handler.active_connections[1]
+    assert conn["direct_session_id"]
+    conn["direct_history"] = []
     assert json.loads(ws.send_text.await_args.args[0]) == {
         "type": "native_dialogue_reset",
         "cancel_id": "one",
@@ -2440,6 +2443,9 @@ async def test_native_full_reset_drains_before_ack_and_does_not_save(monkeypatch
     saved.assert_not_awaited()
     events = [json.loads(call.args[0]) for call in ws.send_text.await_args_list]
     assert not any(event["type"] == "audio_response" for event in events)
+    await handler._handle_control_message(1, '{"command":"end_native_dialogue"}', None)
+    assert "direct_session_id" not in conn
+    assert "direct_history" not in conn
 
 
 @pytest.mark.asyncio

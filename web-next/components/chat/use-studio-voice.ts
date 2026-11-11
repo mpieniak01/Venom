@@ -29,7 +29,7 @@ function captureError(cause: unknown): "micDenied" | "micUnavailable" | "voiceEr
 
 /** Keep translated turn failures specific and use the generic key for other errors. */
 function voiceTurnError(cause: unknown): string {
-  if (cause instanceof Error && ["voiceWait", "voiceImageInvalid", "voiceNativeUnavailable"].includes(cause.message)) {
+  if (cause instanceof Error && ["voiceWait", "voiceImageInvalid", "voiceNativeUnavailable", "voiceNativeAudioTooLong"].includes(cause.message)) {
     return cause.message;
   }
   return "voiceError";

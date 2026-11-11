@@ -740,10 +740,12 @@ class AudioStreamHandler:
         if command == "stop_recording":
             await self._stop_recording(connection_id, operator_agent)
             return
-        if command == "reset_native_dialogue":
-            await self._cancel_native_dialogue(
-                connection_id, self.active_connections[connection_id]
-            )
+        if command in ("reset_native_dialogue", "end_native_dialogue"):
+            conn = self.active_connections[connection_id]
+            await self._cancel_native_dialogue(connection_id, conn)
+            if command == "end_native_dialogue":
+                conn.pop("direct_history", None)
+                conn.pop("direct_session_id", None)
             cancel_id = data.get("cancel_id")
             if isinstance(cancel_id, str) and 1 <= len(cancel_id) <= 128:
                 await self._send_json(

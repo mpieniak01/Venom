@@ -891,13 +891,10 @@ async def test_native_audio_requires_local_model_capability(
 @pytest.fixture
 def native_runtime(monkeypatch, tmp_path):
     snapshot = tmp_path / "snapshot"
-    (snapshot / "audio_tokenizer").mkdir(parents=True)
-    for filename in (
-        "config.json",
-        "model.safetensors",
-        "audio_tokenizer/model.safetensors",
-    ):
-        (snapshot / filename).touch()
+    for filename in native._snapshot_files():
+        path = snapshot / filename
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.touch()
     monkeypatch.setenv("OMNI_NATIVE_SNAPSHOT", str(snapshot))
     return LLMRuntimeInfo(
         "ollama",
@@ -910,9 +907,17 @@ def native_runtime(monkeypatch, tmp_path):
 
 
 def test_native_dialogue_only_lists_installed_local_snapshot(
-    native_runtime, monkeypatch
+    native_runtime, monkeypatch, tmp_path
 ):
     assert native.native_dialogue_available(native_runtime)
+    config = tmp_path / "snapshot" / "config.json"
+    blob = tmp_path / "blob"
+    config.rename(blob)
+    assert not native.native_dialogue_available(native_runtime)
+    config.symlink_to(blob)
+    assert not native.native_dialogue_available(native_runtime)
+    config.unlink()
+    blob.rename(config)
     remote = LLMRuntimeInfo(
         "ollama",
         audio.OMNI_MODEL_ID,
@@ -975,8 +980,12 @@ async def test_native_dialogue_rejects_bad_media_and_skips_silence(
         await native.generate_native_turn(
             native_runtime, b"\x00", 16000, None, [], mode="audio"
         )
+    with pytest.raises(native.NativeDialogueError, match="audio_too_large"):
+        await native.generate_native_turn(
+            native_runtime, bytes(16000 * 30 * 2 + 2), 16000, None, [], mode="audio"
+        )
     result = await native.generate_native_turn(
-        native_runtime, bytes(400), 16000, None, [], mode="audio"
+        native_runtime, bytes(16000 * 30 * 2), 16000, None, [], mode="audio"
     )
     assert result.no_speech
     assert result.generation_count == 0

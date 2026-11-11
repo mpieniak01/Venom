@@ -244,14 +244,19 @@ def _cascade(client, session_id, recording, image, history, attachments):
 
 def _transport(client, surface, arm):
     if surface == "full" and arm != "cascade":
-        endpoint = str(client.base_url).rstrip("/").replace("http://", "ws://", 1)
-        return connect(
-            endpoint + "/ws/audio",
-            origin=str(client.base_url).rstrip("/"),
-            open_timeout=10,
-            close_timeout=5,
-            max_size=35_000_000,
-        )
+        scheme = "wss" if client.base_url.scheme == "https" else "ws"
+        endpoint = str(client.base_url.copy_with(scheme=scheme)).rstrip("/")
+        try:
+            return connect(
+                endpoint + "/ws/audio",
+                origin=str(client.base_url).rstrip("/"),
+                proxy=None,
+                open_timeout=10,
+                close_timeout=5,
+                max_size=35_000_000,
+            )
+        except OSError as exc:
+            raise RuntimeError(f"Full WebSocket connection failed: {exc}") from exc
     return nullcontext()
 
 

@@ -12,6 +12,7 @@ import sys
 import wave
 from contextlib import suppress
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any, Literal
@@ -28,6 +29,7 @@ NATIVE_MODEL_REVISION = "21d75123f86c1f7ffb4bef1ea202710c4e7ebe67"
 _WORKER_SCRIPT = (
     Path(__file__).resolve().parents[2] / "scripts" / "llm" / "omni_native_sandbox.sh"
 )
+_SNAPSHOT_MANIFEST = _WORKER_SCRIPT.with_name("omni_native_snapshot.json")
 _WORKER_TIMEOUT_SECONDS = 90
 _MAX_TURN_SECONDS = 30
 _MAX_HISTORY_ROWS = 6
@@ -65,6 +67,11 @@ class NativeDialogueResult:
     peak_reserved_mib: int | None = None
 
 
+@lru_cache(maxsize=1)
+def _snapshot_files() -> tuple[str, ...]:
+    return tuple(json.loads(_SNAPSHOT_MANIFEST.read_text(encoding="utf-8"))["files"])
+
+
 def _configured_snapshot(runtime: LLMRuntimeInfo) -> Path | None:
     setting = os.getenv("OMNI_NATIVE_SNAPSHOT")
     if (
@@ -75,14 +82,16 @@ def _configured_snapshot(runtime: LLMRuntimeInfo) -> Path | None:
     ):
         return None
     snapshot = Path(setting)
-    if not snapshot.is_absolute() or not all(
-        (snapshot / name).is_file()
-        for name in (
-            "config.json",
-            "model.safetensors",
-            "audio_tokenizer/model.safetensors",
-        )
-    ):
+    if not snapshot.is_absolute():
+        return None
+    try:
+        snapshot = snapshot.resolve(strict=True)
+        # Match the sandbox mount rules. A Hub cache snapshot needs to be materialized.
+        for name in _snapshot_files():
+            path = snapshot / name
+            if path.resolve(strict=True) != path or not path.is_file():
+                return None
+    except (OSError, RuntimeError):
         return None
     return snapshot
 
@@ -97,10 +106,11 @@ def _media(pcm: bytes, sample_rate: int, image: bytes | None) -> dict[str, Any]:
         not 8000 <= sample_rate <= 96000
         or not pcm
         or len(pcm) % 2
-        or len(pcm) > sample_rate * _MAX_TURN_SECONDS * 2
         or (image is not None and len(image) > MAX_IMAGE_BYTES)
     ):
         raise NativeDialogueError("omni_native_invalid_input")
+    if len(pcm) > sample_rate * _MAX_TURN_SECONDS * 2:
+        raise NativeDialogueError("audio_too_large")
     return {
         "pcm": base64.b64encode(pcm).decode("ascii"),
         "sample_rate": sample_rate,

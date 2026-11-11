@@ -889,6 +889,7 @@ async def test_native_studio_returns_one_wav_and_retains_only_its_session_contex
             omni_native_dialogue.NativeDialogueResult(
                 "audio", None, wav, False, {}, generation_count=1
             ),
+            omni_native_dialogue.NativeDialogueError("audio_too_large"),
         ]
     )
     monkeypatch.setattr(omni_native_dialogue, "generate_native_turn", generated)
@@ -935,6 +936,9 @@ async def test_native_studio_returns_one_wav_and_retains_only_its_session_contex
     assert audio_only.json()["text"] is None
     assert base64.b64decode(audio_only.json()["audio_base64"]) == wav
     generated.assert_awaited_with(native_runtime, pcm, 16000, None, [], mode="audio")
+    too_long = await turn("native-two", "audio", bytes(16000 * 30 * 2 + 2))
+    assert too_long.status_code == 413
+    assert too_long.json()["detail"]["reason_code"] == "audio_too_large"
     assert [row["content"] for row in store.get_history("native-one")] == [
         "Kontekst operatora",
         "[Nagranie głosowe]",

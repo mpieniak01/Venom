@@ -1,510 +1,87 @@
-# Venom v1.10.0 🐍
+# Venom 1.10.0
+
 [![GitGuardian](https://img.shields.io/badge/security-GitGuardian-blue)](https://www.gitguardian.com/)
 [![OpenAPI Contract](https://img.shields.io/github/actions/workflow/status/mpieniak01/Venom/ci.yml?branch=main&logo=swagger&logoColor=white&label=OpenAPI%20Contract)](https://github.com/mpieniak01/Venom/actions/workflows/ci.yml)
 [![SonarCloud Quality](https://sonarcloud.io/api/project_badges/measure?project=mpieniak01_Venom&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=mpieniak01_Venom)
 [![Known Vulnerabilities](https://snyk.io/test/github/mpieniak01/Venom/badge.svg)](https://snyk.io/test/github/mpieniak01/Venom)
 
-**Sygnały jakości**
-- *GitGuardian:* wykrywanie sekretów i zapobieganie wyciekom w historii repo i pull requestach.
-- *OpenAPI Contract:* weryfikuje eksport OpenAPI i synchronizację codegen typów TypeScript.
-- *SonarCloud Quality:* aktualny stan kontroli jakości kodu w SonarCloud.
-- *Snyk Vulnerabilities:* aktualny status podatności zależności dla tego repozytorium GitHub.
+[English version](README.md) · [Opublikowane wydania](https://github.com/mpieniak01/Venom/releases)
 
-> **| [English Documentation Available](README.md)**
+Venom to otwarty stos AI dla jednego operatora. Pozwala lokalnie prowadzić czat, analizować dokumenty i obrazy oraz rozmawiać głosowo. Pełna aplikacja obsługuje również pracę agentów, narzędzia i diagnostykę. Gałąź `main` używa wersji **1.10.0**. Paczki oznaczone tagami i opis zmian znajdziesz w opublikowanych wydaniach.
 
-**Venom** to open-source'owy, local-first stack AI do realnej automatyzacji pracy inżynierskiej. Łączy orkiestrację agentów, wykonywanie narzędzi i pamięć długoterminową w jednym środowisku, które możesz uruchomić i rozwijać lokalnie.
+## Wybór aplikacji
 
-Aktualna rekomendacja środowiskowa: używaj `dev` i `preprod`. `prod` jest nadal etapem planowanym i nie jest jeszcze zwalidowane/rekomendowane do działania live.
+| | Venom Studio | Venom Full |
+| --- | --- | --- |
+| Gdzie zacząć | Chat 2.0 pod `/chat2` | Czat pod `/chat`, głos pod `/voice` |
+| Co uruchamia | Osobny frontend i podzbiór wspólnego API do czatu, materiałów, głosu i wyboru modelu | Pełny frontend i API z obsługą agentów, narzędzi, konfiguracji i diagnostyki |
+| Tryby czatu | Direct i Normal | Direct, Normal i Complex |
 
-Aktualna linia rozwoju: v1.10.0 (lokalne przygotowanie wydania). v1.8 pozostaje ostatnią stabilną linią, a historia 1.9 poniżej pozostaje dostarczoną bazą.
+**Direct** przekazuje bieżącą rozmowę do wybranego modelu. **Normal** dodaje routing i może sięgnąć po zapisane notatki po włączeniu opcji **Użyj notatek**. Odpowiedź zapisujesz jako notatkę osobnym działaniem. Historia rozmowy zapisuje się niezależnie. **Complex** obsługuje wieloetapową pracę agentów. Obie aplikacje korzystają z tej samej historii po stronie serwera i tych samych notatek, gdy działają w tym samym środowisku. [Instrukcja operatora czatu](docs/PL/CHAT_OPERATOR.md) · [Uruchamianie Studio](docs/PL/STUDIO.md)
 
-To nie jest "czarna skrzynka". W praktyce dostajesz jawne sterowanie procesem (Workflow Control Plane), przejrzyste decyzje runtime i pełny ślad audytowy requestów. Do tego 3 stosy modeli do wyboru: `ONNX`, `vLLM`, `Ollama` - zależnie od sprzętu, kosztu i celu.
+## Szybki start w Linuksie lub WSL2
 
-Venom dostarcza też własnego demona LLM dla Gemma4, więc tekst i audio są obsługiwane w jednym kontrolowanym runtime zamiast być rozrzucone po kilku narzędziach. Operacyjnie daje to jedną multimodalną ścieżkę voice, spójne zasady dla podsumowań i formatowania odpowiedzi oraz bezpieczny fallback do stabilnego toru Whisper/LLM/Piper, gdy natywne audio nie jest dostępne.
+Potrzebujesz Linuksa x86-64, **Pythona 3.14.8**, **Node.js 24.22.0**, **npm 11.19.1** oraz działającej usługi Ollama. [Przewodnik wdrożeniowy](docs/PL/DEPLOYMENT_NEXT.md) opisuje zależności systemowe, uruchamianie głosu i obsługę zainstalowanej instancji.
 
-## Dlaczego Venom
-- Local-first z opcją cloud: dane i inferencja mogą zostać lokalnie, a nie w zewnętrznym SaaS.
-- Trzy runtime do wyboru (`ONNX` / `vLLM` / `Ollama`): dobierasz stos pod sprzęt i wymagany latency/cost.
-- Własny demon LLM dla Gemma4: jedna multimodalna ścieżka dla tekstu i audio, prostsza operacja i czytelniejszy produkt voice z deterministycznym fallbackiem.
-- Sterowanie procesem zamiast "magii": Workflow Control Plane pokazuje co działa, co jest aktywne i co się zmienia.
-- Transparentność i audyt: request tracing pokazuje decyzje, kroki i wyniki end-to-end.
-- Pamięć i lessons learned: wiedza nie znika po jednym czacie, tylko wraca w kolejnych zadaniach.
-- Otwarta baza kodu i dokumentacji: łatwiej debugować, rozszerzać i utrzymać własny fork.
-- Mierzalne bramki jakości w CI: SonarCloud, Snyk i kontrakt OpenAPI działają jako jawne sygnały jakości.
+```bash
+git clone https://github.com/mpieniak01/Venom.git
+cd Venom
+python3.14 scripts/bootstrap_dependency_profile.py --profile full --venv "$PWD/.venv"
+npm --prefix web-next ci
+make ensure-env-file ENVIRONMENT=dev
+ollama pull gemma4:e4b
+```
 
-## Kluczowe możliwości
-- 🤖 **Orkiestracja agentów i lane operatora** - planowanie, wykonanie oraz lokalne pętle agentowe VS Code.
-- 🖥️ **Dedykowane ekrany operatora** - voice i model-introspection rozdzielają interakcję multimodalną od diagnostyki.
-- 🧭 **Hybrydowy runtime modeli (3-stack)** - przełączanie Ollama / vLLM / ONNX + cloud z podejściem local-first.
-- 🔎 **Introspekcja modelu** - osobny ekran dla odpowiedzi, internals, `analysis_capabilities` i gates gotowosci probe.
-- 💾 **Pamięć i wiedza** - utrwalanie kontekstu, lessons learned i ponowne użycie wiedzy.
-- 🎓 **Uczenie workflow** - budowa automatyzacji przez demonstrację działań użytkownika.
-- 🛠️ **Operacje i governance** - panel usług, policy gate i kontrola kosztów providerów.
-- 🔍 **Transparentność i pełna audytowalność** - śledzenie end-to-end decyzji, działań i wyników dla zaufania operacyjnego, compliance oraz szybszej analizy incydentów.
-- 🔌 **Rozszerzalność** - narzędzia lokalne i import MCP z repozytoriów Git.
+Ustaw poniższe wartości w `.env.dev` dla Ollamy działającej na tym samym hoście z Linuksem.
 
-## Przygotowanie v1.10.0
+```dotenv
+ACTIVE_LLM_SERVER=ollama
+LLM_SERVICE_TYPE=local
+LLM_LOCAL_ENDPOINT=http://127.0.0.1:11434/v1
+LLM_MODEL_NAME=gemma4:e4b
+```
 
-Podzielone wydanie Light/API używa Microsoft Agent Framework oraz aktywnych profili Light, CI i build. Wersja jest spójna w API core, frontendzie, kontenerach i analizie CI. Full ma oddzielny manifest zależności; kwalifikacja dodatkowych silników i treningu pozostaje odłożona; historyczne próby runtime nie kwalifikują ich do tego wydania. Końcowy kandydat wymaga świeżych bramek chmurowych.
+Uruchom **Studio** i otwórz `/chat2` pod adresem interfejsu wypisanym przez launcher. Domyślna konfiguracja repozytorium używa [http://localhost:3000/chat2](http://localhost:3000/chat2).
 
-## Co zmieniło się w 1.9.0
-- Dodano `@venom-agent`, lokalny participant VS Code z ograniczoną pętlą narzędzi dla repo-truth, wyszukiwania kodu, kontekstu plików i opcjonalnego safe exec. Wartość biznesowa: szybsze odpowiedzi repo-truth i mniej ręcznych iteracji.
-- Dodano `LocalAgentCLI`, `OllamaAgentLoop` i `CodeIndexSkill`, żeby lokalne wykonanie agenta i routing intencji były powtarzalne z kodu i targetów `make`. Wartość biznesowa: operacyjne flow ma trwały, skryptowalny panel sterowania.
-- Dodano dwa dedykowane ekrany: `/voice` dla multimodalnej pracy głosowej i `/inspector/model-introspection` dla rozdzielonego review odpowiedzi i internals. Wartość biznesowa: mniej przełączania kontekstu i czytelniejsza diagnostyka.
-- Dodano kontrakt pełnego agenta, handoffy do subagenta, oczekiwania dla debug logów / Chat Debug View i gate'y pętli tool-loop dla read/search/edit/terminal. Wartość biznesowa: ograniczone handoffy i lepsze evidence przy błędach.
-- Dodano podział operator/utility model, probe'owanie workspace context, rejestr stanu agenta i finalne decision gates. Wartość biznesowa: mniej błędów routingu i bardziej przewidywalny dobór modeli.
-- Rozszerzono introspekcję modelu o osobne verdicty dla odpowiedzi i internals, `analysis_capabilities` oraz progi gotowości/SLO. Wartość biznesowa: szybszy triage i jasne kryteria pass/fail.
-- Uszczelniono zarządzanie runtime/profile oraz diagnostykę voice/multimodal, żeby local-first workflow był bardziej deterministyczny i prostszy do walidacji. Wartość biznesowa: mniej tarcia przy setupie i odzyskiwaniu.
+```bash
+make start-studio PROFILE=full ENVIRONMENT=dev
+make status-studio PROFILE=full ENVIRONMENT=dev
+```
+
+Aby uruchomić **Venom Full**, najpierw zatrzymaj Studio. Otwórz [czat](http://localhost:3000/chat) lub [głos](http://localhost:3000/voice) pod adresem wskazanym przez launcher.
+
+```bash
+make stop-studio PROFILE=full ENVIRONMENT=dev
+make start-venom PROFILE=full ENVIRONMENT=dev
+make status-venom PROFILE=full ENVIRONMENT=dev
+```
+
+```bash
+make stop-venom PROFILE=full ENVIRONMENT=dev
+```
+
+Przykłady korzystają z pełnego zestawu zależności, żeby można było później skonfigurować głos. Wariant aplikacji, profil uruchomieniowy Full/Light i środowisko dev/preprod to trzy osobne wybory. Do pracy lokalnej służy `dev`, a do odizolowanej weryfikacji tylko do odczytu `preprod`. [Profile stosu](docs/PL/STACK_PROFILES.md) · [Profile zależności](docs/DEPENDENCY_PROFILES.md)
+
+## Wyniki polskiego benchmarku multimodalnego
+
+Porównaliśmy bazową **Gemmę 4 E4B** i **LFM3-Omni-2B** w Ollamie na zamrożonym zbiorze `pl-assistant-v1`. Każdy profil przeszedł 200 scenariuszy z tekstem referencyjnym i 80 dodatkowych prób z nagraniami. Oba korzystały z pakietów Q4_K_M na tej samej karcie RTX 3060 z 12 GiB VRAM pod WSL2. Gemma w tym pomiarze korzystała z Whispera i Pipera. Omni używał natywnego rozpoznawania i syntezy mowy.
+
+| Pomiar | Gemma 4 E4B | LFM3-Omni-2B |
+| --- | ---: | ---: |
+| Ściśle zaliczone próby | **254/280 (90,71%)** | 209/280 (74,64%) |
+| Szczytowe użycie pamięci całej karty | 9 741 MiB | **7 962 MiB** |
+| Mediana czasu do gotowego WAV dla ośmiu nagranych poleceń | 0,951 s | **0,511 s** |
+
+Gemma częściej spełniała ścisłe kryteria odpowiedzi. Omni w tym pomiarze zużył mniej VRAM i szybciej zwracał plik WAV. Raport zawiera też wyniki według rodzaju zadania, czasy rozpoczęcia odtwarzania w przeglądarce i osobny odbiór Full po zmianach w natywnym rozpoznawaniu mowy Gemmy. [Raport PL](docs/PL/POLISH_MULTIMODAL_ASSISTANT_EXPERIMENT.md) · [Raport EN](docs/EN/POLISH_MULTIMODAL_ASSISTANT_EXPERIMENT.md)
 
 ## Dokumentacja
-### Start i operacje
-- [Deployment + uruchamianie](docs/PL/DEPLOYMENT_NEXT.md) - Kroki startu środowiska dev/prod oraz wymagania runtime.
-- [Macierz wsparcia środowisk](docs/PL/ENVIRONMENTS_SUPPORT.md) - Aktualny status wsparcia `dev`/`preprod`/`prod` oraz wymagany model konfiguracji.
-- [Przewodnik Dashboard](docs/PL/DASHBOARD_GUIDE.md) - Uruchamianie panelu web, skrypty i przegląd cockpitu operacyjnego.
-- [Przewodnik introspekcji modelu](docs/PL/MODEL_INTROSPECTION_GUIDE.md) - Stan przejsciowy vs docelowy, `analysis_capabilities`, verdicty i gates SLO.
-- [Przewodnik użycia tooli](docs/PL/TOOLS_USAGE_GUIDE.md) - Routing slash tooli, zachowanie `forced_tool` i wymagania web-search w `.venv`.
-- [Workflow operatora czatu](docs/PL/CHAT_OPERATOR.md) - Local-first lane operatora, repo-truth, tool-loop i zasady safe exec.
-- [Panel konfiguracji](docs/PL/CONFIG_PANEL.md) - Zakres ustawień dostępnych w UI i zasady bezpiecznej edycji.
-- [Frontend Next.js](docs/PL/FRONTEND_NEXT_GUIDE.md) - Struktura aplikacji `web-next`, widoki i standardy implementacyjne.
-- [Kontrola ruchu API](docs/PL/API_TRAFFIC_CONTROL.md) - Globalny model anti-spam/anti-ban dla ruchu inbound i outbound.
 
-### Architektura
-- [Wizja systemu](docs/PL/VENOM_MASTER_VISION_V1.md) - Docelowy kierunek rozwoju platformy i główne założenia produktowe.
-- [Architektura backendu](docs/PL/BACKEND_ARCHITECTURE.md) - Moduły backendu, odpowiedzialności i przepływy między komponentami.
-- [Silnik hybrydowy AI](docs/PL/HYBRID_AI_ENGINE.md) - Zasady routingu LOCAL/HYBRID/CLOUD i polityki local-first.
-- [Workflow Control](docs/PL/THE_WORKFLOW_CONTROL.md) - Model sterowania workflow, operacje i reguły kontroli wykonania.
-- [Możliwości runtime voice](docs/PL/VOICE_RUNTIME_CAPABILITIES.md) - Aktualny status pętli głosowej, w tym stabilny fallback Whisper/LLM/Piper oraz dwuetapowa ścieżka natywna Gemma4.
-- [Eksperyment z polskim asystentem multimodalnym](docs/PL/POLISH_MULTIMODAL_ASSISTANT_EXPERIMENT.md) - Porównanie Omni i Gemmy 4 E4B pod kątem jakości, opóźnień i pamięci w Venom Studio i Full.
+- **Obsługa i wdrożenie** · [Przewodnik wdrożeniowy](docs/PL/DEPLOYMENT_NEXT.md) · [Chat 2.0](docs/PL/CHAT_2.md) · [Wsparcie środowisk](docs/PL/ENVIRONMENTS_SUPPORT.md) · [Wydania Dockera](docs/PL/DOCKER_RELEASE_GUIDE.md)
+- **Obsługa pełnej aplikacji** · [Kokpit](docs/PL/DASHBOARD_GUIDE.md) · [Panel konfiguracji](docs/PL/CONFIG_PANEL.md) · [Instrukcja operatora czatu](docs/PL/CHAT_OPERATOR.md)
+- **Modele i dostawcy** · [OpenRouter](docs/OPENROUTER_LOCAL_MVP.md) · [Vast i Ollama](docs/PL/VAST_START_I_ODZYSKIWANIE.md) · [Introspekcja modeli](docs/PL/MODEL_INTROSPECTION_GUIDE.md) · [Pilot Gemmy E4B](docs/PL/GEMMA4_E4B_PILOT.md)
+- **Narzędzia i rozwój** · [Użycie narzędzi](docs/PL/TOOLS_USAGE_GUIDE.md) · [Integracje](docs/PL/INTEGRATIONS_OVERVIEW.md) · [Architektura backendu](docs/PL/BACKEND_ARCHITECTURE.md) · [Przewodnik po frontendzie](docs/PL/FRONTEND_NEXT_GUIDE.md) · [Akademia](docs/PL/THE_ACADEMY.md)
+- **Współtworzenie** · [Zasady współpracy](docs/PL/CONTRIBUTING.md) · [GitHub Actions](https://github.com/mpieniak01/Venom/actions)
 
-### Agenci i funkcje
-- [Katalog agentów systemu](docs/PL/SYSTEM_AGENTS_CATALOG.md) - Opis ról agentów, ich wejść/wyjść i współpracy w runtime.
-- [The Academy](docs/PL/THE_ACADEMY.md) - Mechanizmy uczenia, strojenia i operacjonalizacji danych treningowych.
-- [Warstwa pamięci](docs/PL/MEMORY_LAYER_GUIDE.md) - Organizacja pamięci wektorowej/grafowej i zasady retrievalu wiedzy.
-- [Integracje zewnętrzne](docs/PL/EXTERNAL_INTEGRATIONS.md) - Konfiguracja i użycie integracji typu GitHub, Slack i inne usługi.
+## Licencja i współtwórcy
 
-### Jakość i współpraca
-- [Wytyczne dla coding-agentów](docs/PL/AGENTS.md) - Obowiązkowe zasady pracy agentów i wymagane bramki jakości.
-- [Przewodnik modułów opcjonalnych](docs/PL/MODULES_OPTIONAL_REGISTRY.md) - Jak tworzyć, rejestrować i włączać zewnętrzne moduły Venom.
-- [Contributing](docs/PL/CONTRIBUTING.md) - Proces współpracy, standard zmian i oczekiwania do PR.
-- [Polityka testów](docs/PL/TESTING_POLICY.md) - Zakres testów, komendy walidacyjne i wymagania jakościowe.
-- [QA Delivery Guide](docs/PL/QA_DELIVERY_GUIDE.md) - Checklista dostarczenia zmian od walidacji do gotowości release.
-- [Baseline benchmarku LLM 3-stack](docs/PL/LLM_RUNTIME_3STACK_BENCHMARK_BASELINE.md) - Zamrożone metryki referencyjne dla `ollama`/`vllm`/`onnx` i porównania E2E.
-
-## Podgląd interfejsu
-<table>
-  <tr>
-    <td align="center" width="50%">
-      <img src="./docs/assets/wiedza.jpeg" width="100%" alt="Knowledge Grid" />
-      <br />
-      <strong>Knowledge Grid</strong><br />
-      Widok pamięci i relacji wiedzy.
-    </td>
-    <td align="center" width="50%">
-      <img src="./docs/assets/diagram.jpeg" width="100%" alt="Trace Analysis" />
-      <br />
-      <strong>Trace Analysis</strong><br />
-      Analiza przepływu żądań i orkiestracji.
-    </td>
-  </tr>
-  <tr>
-    <td align="center" width="50%">
-      <img src="./docs/assets/konfiguracja.jpg" width="100%" alt="Konfiguracja" />
-      <br />
-      <strong>Konfiguracja</strong><br />
-      Zarządzanie runtime i usługami.
-    </td>
-    <td align="center" width="50%">
-      <img src="./docs/assets/chat.jpeg" width="100%" alt="AI Command Center" />
-      <br />
-      <strong>AI Command Center</strong><br />
-      Konsola operacyjna i historia pracy.
-    </td>
-  </tr>
-</table>
-
-## Architektura
-### Struktura projektu
-```text
-venom/
-├── venom_core/
-│   ├── api/routes/          # Endpointy REST API (agenci, zadania, pamięć, węzły)
-│   ├── core/flows/          # Przepływy biznesowe i orkiestracja
-│   ├── agents/              # Wyspecjalizowani agenci AI
-│   ├── execution/           # Warstwa wykonawcza i routing modeli
-│   ├── perception/          # Percepcja (desktop_sensor, audio)
-│   ├── memory/              # Pamięć długoterminowa (wektory, graf, workflow)
-│   └── infrastructure/      # Infrastruktura (sprzęt, chmura, broker wiadomości)
-├── web-next/                # Dashboard frontendowy (Next.js)
-└── modules/                 # Workspace modułów opcjonalnych (osobne repo modułów)
-```
-
-### Główne komponenty
-#### 1) Warstwa strategiczna
-- **ArchitectAgent** - rozbija złożone zadania na plan wykonania.
-- **ExecutionPlan** - model planu z krokami i zależnościami.
-
-#### 2) Ekspansja wiedzy
-- **ResearcherAgent** - zbiera i syntetyzuje wiedzę z Internetu.
-- **WebSearchSkill** - wyszukiwanie i ekstrakcja treści.
-- **MemorySkill** - pamięć długoterminowa (LanceDB).
-
-#### 3) Warstwa wykonawcza
-- **CoderAgent** - generuje kod z wykorzystaniem wiedzy.
-- **CriticAgent** - weryfikuje jakość kodu.
-- **LibrarianAgent** - zarządza plikami i strukturą projektu.
-- **ChatAgent** - asystent konwersacyjny.
-- **GhostAgent** - automatyzacja GUI (RPA).
-- **ApprenticeAgent** - uczenie przepływów przez obserwację.
-
-#### 4) Silnik hybrydowy AI
-- **HybridModelRouter** (`venom_core/execution/model_router.py`) - routing lokalny/chmura.
-- **Tryby**: LOCAL, HYBRID, CLOUD.
-- **Local-first**: priorytet prywatności i kontroli kosztów.
-- **Providerzy**: Ollama/vLLM/ONNX (lokalne), Gemini, OpenAI.
-- Wrażliwe dane mogą być blokowane przed wyjściem do chmury.
-
-#### 5) Uczenie przez demonstrację
-- **DemonstrationRecorder** - nagrywanie akcji użytkownika (mysz, klawiatura, ekran).
-- **DemonstrationAnalyzer** - analiza behawioralna i mapowanie piksel → semantyka.
-- **WorkflowStore** - magazyn procedur z możliwością edycji.
-- **Integracja z GhostAgent** - wykonanie wygenerowanych workflow.
-
-#### 6) Orkiestracja i kontrola
-- **Orchestrator** - główny koordynator systemu.
-- **IntentManager** - klasyfikacja intencji i dobór ścieżki.
-- **TaskDispatcher** - routing zadań do agentów.
-- **Workflow Control Plane** - wizualne sterowanie przepływami.
-
-#### 7) The Academy
-- **LessonStore** - baza doświadczeń i korekt.
-- **Training Pipeline** - dostrajanie LoRA/QLoRA.
-- **Adapter Management** - hot-swapping adapterów modeli.
-- **Genealogy** - śledzenie ewolucji modeli i metryk.
-
-#### 8) Usługi runtime
-- Backend API (FastAPI/uvicorn) i Next.js UI.
-- Serwery LLM: Ollama, vLLM, ONNX (in-process).
-- LanceDB (embedded), Redis (opcjonalnie).
-- Nexus i Background Tasks jako procesy opcjonalne.
-
-
-## Szybki start
-### Ścieżka A: instalacja ręczna z Git (dev)
-```bash
-git clone https://github.com/mpieniak01/Venom.git
-cd Venom
-pip install -r requirements.txt
-python scripts/prepare_benchmark_questions.py --download
-cp .env.dev.example .env.dev
-make start
-```
-Publiczny domyślny bank benchmarku przygotowujemy jawnie podczas instalacji
-w ignorowanym data/datasets/. Polecenie odtwarza przypięty historyczny blob Git
-albo pobiera ten sam publiczny plik ze sprawdzeniem SHA-256, gdy brak historii.
-Zachowuje istniejący lokalny bank; start API nie pobiera danych. Bootstrap
-profilu może połączyć kroki opcją --prepare-benchmark-questions. Dla Dockera
-wykonaj to samo polecenie w kontenerze aplikacji z jego zapisywalnym katalogiem
-danych przed użyciem benchmarku modeli.
-
-
-Zestawy instalacyjne i profile uruchamiania to osobne pojęcia. Domyślny start to **Full/dev z Turbopackiem**; `requirements.txt` jest aliasem instalacji Light. Full wymaga odpowiednich zależności. Źródłem prawdy są [manifest i kwalifikacja zależności](docs/DEPENDENCY_PROFILES.md) oraz [Full/Light i środowiska](docs/PL/STACK_PROFILES.md).
-
-| Zestaw instalacyjny | Zakres |
-| --- | --- |
-| light | Baza aplikacji; pliki requirements api/web są aliasami zgodności |
-| full | Skonfigurowane funkcje aplikacji; zewnętrzne silniki pozostają osobno |
-| ci / full-ci | Zestaw aplikacji oraz narzędzia developerskie/CI |
-| build | Narzędzia budowania, nie osobna uruchamiana aplikacja |
-| multi-runtime-cuda | Izolowany komponent silnika |
-| Manifesty ONNX LLM / vLLM / Academy | Kwalifikacja instalacji odroczona; nie są zalecanymi recepturami |
-
-Zasady triage incydentów:
-1. Jeśli pakietu brakuje, bo nie zainstalowano właściwego profilu, to zachowanie oczekiwane.
-2. Jeśli pakiet nie jest gwarantowany przez aktywny profil, to zachowanie oczekiwane.
-3. Jeśli pakiet jest wpisany w wybranym profilu, ale nadal go brakuje po instalacji, to problem instalacji/środowiska i traktujemy to jako defekt.
-
-### Ścieżka B: instalacja przez skrypt Docker (jedna komenda)
-```bash
-git clone https://github.com/mpieniak01/Venom.git
-cd Venom
-scripts/docker/venom.sh
-```
-
-Po uruchomieniu:
-- API: `http://localhost:8000`
-- UI: `http://localhost:3000`
-
-Polityka protokołów:
-- Stos dev/lokalny działa domyślnie po HTTP (`URL_SCHEME_POLICY=force_http` w profilach docker).
-- Publiczny production powinien działać po HTTPS na reverse proxy/ingress (TLS na brzegu).
-
-### Najczęstsze komendy
-```bash
-make start                                   # Full/dev, Turbopack
-make start PROFILE=light ENVIRONMENT=dev
-make start PROFILE=full ENVIRONMENT=preprod
-make start PROFILE=light ENVIRONMENT=preprod
-make stack-plan ENVIRONMENT=preprod
-make stop ENVIRONMENT=preprod
-make status ENVIRONMENT=dev
-```
-
-Dev i preprod zachowują osobne bazy, logi i dane. Prod pozostaje nieużywany. Starsze aliasy delegują do wspólnego launchera i są wycofywane; Webpack jest opcją diagnostyczną. [Pełny kontrakt](docs/PL/STACK_PROFILES.md).
-
-## Frontend (Next.js - `web-next`)
-Warstwa prezentacji działa na Next.js 16 (App Router, React 19).
-- Wymagane środowisko: Node.js `>=20.9.0` oraz npm `>=10.0.0` (zob. `web-next/.nvmrc`).
-- **SCC (server/client components)** - komponenty serwerowe domyślne, interaktywne oznaczone jako client.
-- **Wspólny layout** (`components/layout/*`) - TopBar, Sidebar, status bar i overlaye.
-
-### Komendy frontendu
-```bash
-npm --prefix web-next install
-npm --prefix web-next run dev
-npm --prefix web-next run build
-npm --prefix web-next run test:e2e
-npm --prefix web-next run lint:locales
-```
-
-### Zmienne do pracy lokalnej z API
-```bash
-NEXT_PUBLIC_API_BASE=http://localhost:8000
-NEXT_PUBLIC_WS_BASE=ws://localhost:8000/ws/events
-API_PROXY_TARGET=http://localhost:8000
-```
-
-### Slash commands w Cockpit
-- Wymuszenie narzędzia: `/<tool>` (np. `/git`, `/web`).
-- Wymuszenie providerów: `/gpt` (OpenAI) i `/gem` (Gemini).
-- UI pokazuje etykietę `Forced` po wykryciu prefiksu.
-- Język UI trafia jako `preferred_language` w `/api/v1/tasks`.
-- Strategia streszczeń (`SUMMARY_STRATEGY`): `llm_with_fallback` lub `heuristic_only`.
-
-## Instalacja i zależności
-### Wymagania
-```text
-Python 3.12+ (zalecane 3.12)
-```
-
-### Kluczowe pakiety
-- `agent-framework-core` - orkiestracja agentów (kontrakty Direct / Normal / Complex).
-- `ddgs>=1.0` - wyszukiwarka.
-- `trafilatura` - ekstrakcja tekstu ze stron WWW.
-- `beautifulsoup4` - parsowanie HTML.
-- `lancedb` - baza wektorowa pamięci.
-- `fastapi` - API serwera.
-- `zeroconf` - wykrywanie usług mDNS.
-- `pynput` - nagrywanie akcji użytkownika.
-- `google-genai` - Gemini (opcjonalnie).
-- `openai` / `anthropic` - modele LLM (opcjonalnie).
-
-Profile:
-- [requirements.txt](requirements.txt) - domyślny minimalny profil API/cloud
-- [requirements-profile-web.txt](requirements-profile-web.txt) - alias bazowego API dla integracji web-next
-- [requirements-profile-vllm.txt](requirements-profile-vllm.txt) - profil API + vLLM
-- [requirements-profile-onnx.txt](requirements-profile-onnx.txt) - baseline API/runtime + overlay ONNX
-- [requirements-profile-onnx-cpu.txt](requirements-profile-onnx-cpu.txt) - baseline API/runtime + overlay ONNX tylko CPU
-- [requirements-extras-onnx.txt](requirements-extras-onnx.txt) - opcjonalne extras (`faster-whisper`, `piper-tts`), instalowane po profilu ONNX LLM lub ONNX CPU
-- [requirements-full.txt](requirements-full.txt) - legacy catch-all host exception
-
-## Uruchamianie (FastAPI + Next.js)
-Pełna checklista: [`docs/PL/DEPLOYMENT_NEXT.md`](docs/PL/DEPLOYMENT_NEXT.md).
-
-### Tryb developerski
-```bash
-make start
-make stop
-make status
-```
-
-### Tryb produkcyjny
-```bash
-make start-prod
-make stop
-```
-
-Ostrzeżenie:
-- Na obecnym etapie ten tryb traktujemy jako nierekomendowany (brak pełnej walidacji produkcyjnej).
-
-
-### Konfiguracje o najniższym zużyciu pamięci
-| Konfiguracja | Komendy | Szacunkowy RAM | Zastosowanie |
-|-------------|---------|----------------|--------------|
-| Minimalna | `make api` | ~50 MB | Testy API / backend-only |
-| Lekka z lokalnym LLM | `make api` + `make ollama-start` | ~450 MB | API + lokalny model bez UI |
-| Lekka z UI | `make api` + `make web` | ~550 MB | Demo i szybka walidacja UI |
-| Zbalansowana | `make api` + `make web` + `make ollama-start` | ~950 MB | Codzienna praca bez dev autoreload |
-| Najcięższa (dev) | `make api-dev` + `make web-dev` + `make vllm-start` | ~2.8 GB | Pełny development i testy lokalnych modeli |
-
-
-## Kluczowe zmienne środowiskowe
-Szablon dev: [.env.dev.example](.env.dev.example)
-Szablon preprod: [.env.preprod.example](.env.preprod.example)
-
-
-## Panel konfiguracji (UI)
-Panel pod adresem `http://localhost:3000/config` umożliwia:
-- monitorowanie statusu backendu, UI, LLM, Hive, Nexus,
-- start/stop/restart usług z poziomu UI,
-- metryki czasu rzeczywistego (PID, port, CPU, RAM, uptime),
-- profile szybkie: `Full Stack`, `Light`, `LLM OFF`.
-
-### Edycja parametrów
-- walidacja zakresów i typów,
-- maskowanie sekretów,
-- backup aktywnego pliku env (`.env.dev` lub `.env.preprod`) do `config/env-history/`,
-- informacja o usługach wymagających restartu.
-
-### Bezpieczeństwo panelu
-- biała lista edytowalnych parametrów,
-- walidacja zależności między usługami,
-- historia zmian z timestampem.
-
-## Monitoring i higiena środowiska
-### Monitoring zasobów
-```bash
-make monitor
-bash scripts/diagnostics/system_snapshot.sh
-```
-
-Raport (`logs/diag-YYYYMMDD-HHMMSS.txt`) zawiera:
-- uptime i load average,
-- zużycie pamięci,
-- top procesy CPU/RAM,
-- status procesów Venom,
-- otwarte porty (8000, 3000, 8001, 11434).
-
-### Higiena środowiska dev (repo + Docker)
-```bash
-make env-audit
-make env-clean-safe
-make env-clean-docker-safe
-CONFIRM_DEEP_CLEAN=1 make env-clean-deep
-make env-report-diff
-```
-
-## Paczka Docker (użytkownik końcowy)
-Uruchomienie z gotowych obrazów:
-```bash
-git clone https://github.com/mpieniak01/Venom.git
-cd Venom
-scripts/docker/venom.sh
-```
-
-Profile compose:
-- `compose/compose.release.yml` - profil użytkownika końcowego (pull gotowych obrazów).
-- `compose/compose.minimal.yml` - profil developerski (lokalny build).
-- `compose/compose.spores.yml.tmp` - szkic dla Spore, obecnie nieaktywny.
-
-Przydatne komendy:
-```bash
-scripts/docker/venom.sh
-scripts/docker/run-release.sh status
-scripts/docker/run-release.sh restart
-scripts/docker/run-release.sh stop
-scripts/docker/uninstall.sh --stack both --purge-volumes --purge-images
-scripts/docker/logs.sh
-```
-
-Docker korzysta z tych samych dwóch profili aplikacji:
-
-```bash
-PROFILE=light ENVIRONMENT=dev scripts/docker/run-release.sh start
-PROFILE=light ENVIRONMENT=preprod ACTIVE_LLM_SERVER=none scripts/docker/run-release.sh start
-```
-
-Obecny obraz instaluje zależności Light; samo PROFILE=full nie kwalifikuje pełnych funkcji. Provider/model jest osobnym wyborem, llm_off pozostaje wycofywanym aliasem. [Granice Dockera](docs/PL/DOCKER_PROFILES.md).
-
-Opcjonalny tryb GPU:
-```bash
-export VENOM_ENABLE_GPU=auto
-scripts/docker/run-release.sh restart
-```
-
-## Jakość i bezpieczeństwo
-- CI: Quick Validate + OpenAPI Contract + SonarCloud.
-- Security: GitGuardian + skany zależności Snyk.
-- SonarCloud = jakość kodu i pokrycie nowego kodu (maintainability, reliability, coverage).
-- Snyk = podatności pakietów/zależności (ryzyko third-party w ekosystemie Python i npm).
-- `pre-commit run --all-files` uruchamia: `block-docs-dev-staged`, `end-of-file-fixer`, `trailing-whitespace`, `check-added-large-files`, `check-yaml`, `debug-statements`, `ruff-check --fix`, `ruff-format`, `isort`.
-- Dodatkowe hooki poza tą komendą: `block-docs-dev-tracked` (stage `pre-push`) oraz `update-sonar-new-code-group` (stage `manual`).
-- `pre-commit` może modyfikować pliki (autofix), wtedy uruchom go ponownie aż wszystkie hooki będą `Passed`.
-- `mypy venom_core` traktuj jako pełny audyt typów; backlog typowania może zawierać problemy niezwiązane z Twoją zmianą.
-- Lokalnie przed PR:
-
-```bash
-test -f .venv/bin/activate || { echo "Brak .venv/bin/activate. Najpierw utwórz .venv."; exit 1; }
-source .venv/bin/activate
-pre-commit run --all-files
-make pr-fast
-make check-new-code-coverage
-```
-
-
-## Mapa drogowa
-### ✅ v1.5
-- [x] Funkcje v1.4 (planowanie, wiedza, pamięć, integracje).
-- [x] The Academy (LoRA/QLoRA).
-- [x] Workflow Control Plane.
-- [x] Provider Governance.
-- [x] Academy Hardening.
-
-### ✅ v1.6
-- [x] Utwardzenie kontraktu API (Wave-1 + Wave-2 MVP) wraz z synchronizacją OpenAPI/FE.
-- [x] Integracja ONNX Runtime jako trzeciego lokalnego silnika LLM (3-stack: Ollama + vLLM + ONNX).
-- [x] Aktualizacja strategii profili runtime i instalacji (minimum API-first + opcjonalne stosy lokalne).
-
-### ✅ v1.7
-- [x] Dowieziono obsługę modeli zdalnych (`/models` remote tab + status providerów, katalog, mapa spięć, walidacja dla ścieżek GPT/Gemini).
-- [x] Utwardzono globalną kontrolę ruchu inbound/outbound (limity, retry/circuit-breaker, bezpieczniejsze zachowanie pod obciążeniem).
-- [x] Rozszerzono obserwowalność konfiguracji i audytu (kanoniczny audit stream i lepsza widoczność zmian config/runtime).
-- [x] Domknięto falę hardeningu Academy/API (dekompozycja modułów, spójność kontraktów, bezpieczniejsze ścieżki upload/trening/historia).
-- [x] Sfinalizowano model pracy pre-prod na wspólnym stacku (separacja danych, podział `.env.dev`/`.env.preprod`, sterowanie Makefile, guard rails, backup/restore/smoke).
-
-### ✅ v1.8 (fundament)
-- [x] Zmniejszono ryzyko nieautoryzowanego wykonania zadań i kosztów błędów operacyjnych dzięki jednolitym zasadom decyzji runtime.
-- [x] Skrócono czas diagnozy incydentów i blokad dzięki spójnemu feedbackowi, lepszej widoczności powodów decyzji i pełniejszemu audytowi.
-- [x] Zwiększono bezpieczeństwo automatyzacji działań na plikach i desktopie, co ogranicza liczbę awarii oraz ręcznych interwencji operatora.
-- [x] Podniesiono jakość odpowiedzi i powtarzalność pracy przez spójny model wiedzy oraz stabilniejszą ścieżkę uczenia systemu.
-- [x] Zwiększono przewidywalność wydań i wdrożeń dzięki mocniejszym bramkom jakości oraz operacyjnej walidacji gotowości rollout.
-- [x] Ułatwiono skalowanie pracy zespołu: mniej wyjątków ad-hoc, bardziej jednolite procesy i szybsze przekazywanie odpowiedzialności między rolami.
-
-### ✅ v1.9.0 (dostarczone)
-- [x] Lokalny lane operatora czatu z `@venom-agent`, repo-truth, search/read i safe exec.
-- [x] Kontrakt pełnego agenta dla handoffów i wieloetapowych pętli narzędzi.
-- [x] Decision gates, probe'y workspace context i podział operator/utility model.
-- [x] Dedykowane ekrany voice i model-introspection.
-- [x] Gotowość introspekcji modelu, rozdzielone verdicty i gates SLO.
-- [x] Utwardzenie runtime/profile oraz diagnostyki voice/multimodal.
-
-### 🔮 v2.0 (w przyszłości)
-- [ ] Obsługa webhooków GitHub.
-- [ ] Integracja MS Teams.
-- [ ] Weryfikacja wieloźródłowa.
-- [ ] Integracja Google Search API.
-- [ ] Równoległe wykonanie kroków planu.
-- [ ] Cache planów dla podobnych zadań.
-- [ ] Integracja GraphRAG.
-
-
-### Konwencje
-- Kod i komentarze: polski lub angielski.
-- Wiadomości commitów: Conventional Commits (`feat`, `fix`, `docs`, `test`, `refactor`).
-- Styl: Black + Ruff + isort (automatyczne przez pre-commit).
-- Testy: wymagane dla nowych funkcjonalności.
-- Bramki jakości: SonarCloud musi przejść na PR.
-
-## Zespół
-- **Lider rozwoju:** mpieniak01.
-- **Architektura:** Venom Core Team.
-- **Współautorzy:** [Lista kontrybutorów](https://github.com/mpieniak01/Venom/graphs/contributors).
-
-## Podziękowania
-- Microsoft Semantic Kernel, Microsoft AutoGen, OpenAI / Anthropic / Google AI, pytest, społeczność Open Source.
-
----
-**Venom** - *Autonomiczny system agentów AI dla następnej generacji automatyzacji*
-
-## Licencja
-Projekt jest udostępniany na licencji MIT. Zobacz plik [`LICENSE`](LICENSE).
-Copyright (c) 2025-2026 Maciej Pieniak
+Venom jest udostępniany na [licencji MIT](LICENSE). Copyright © 2025–2026 Maciej Pieniak. [Współtwórcy](https://github.com/mpieniak01/Venom/graphs/contributors)

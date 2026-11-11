@@ -24,6 +24,7 @@ from fastapi import HTTPException, WebSocket, WebSocketDisconnect
 
 from venom_core.api.schemas.llm_simple import HistoryMessage
 from venom_core.config import SETTINGS
+from venom_core.core.ollama_runtime_capabilities import is_gemma4_model_name
 from venom_core.perception.audio_engine import AudioEngine
 from venom_core.services import ollama_audio, omni_pilot
 from venom_core.services.chat_audio import (
@@ -914,6 +915,12 @@ class AudioStreamHandler:
                 result = await omni_pilot.answer(
                     runtime, pcm, rate, pilot.image, history
                 )
+                if result.no_speech:
+                    await self._send_json(
+                        connection_id,
+                        {"type": "complete", "multimodal": True, "no_speech": True},
+                    )
+                    return
                 wav = await ollama_audio.synthesize_speech(
                     endpoint,
                     runtime.model_name,
@@ -941,6 +948,10 @@ class AudioStreamHandler:
                     "pipeline_id": "omni_pilot",
                     "has_image": pilot.image is not None,
                     "documentation_code": result.code,
+                    "question": result.question,
+                    "tool": result.tool,
+                    "tool_status": result.tool_status,
+                    "sources": result.sources,
                     "response_text": result.text,
                     "timings_ms": {"total_backend_ms": self._elapsed_ms(started)},
                 },
@@ -951,6 +962,7 @@ class AudioStreamHandler:
                 "type": "response_text",
                 "text": result.text,
                 "sources": result.sources,
+                "question": result.question,
                 "multimodal": True,
             },
         )
@@ -1471,6 +1483,10 @@ class AudioStreamHandler:
         if (
             runtime.provider == "ollama"
             and plan.get("effective") == "faster_whisper"
+            and (
+                not is_gemma4_model_name(runtime.model_name)
+                or ollama_audio.is_host_ollama(runtime)
+            )
             and ollama_audio.allows_native_route(
                 route_profile=self._voice_route_profile(),
                 decoder_profile=self._audio_decoder_profile(),

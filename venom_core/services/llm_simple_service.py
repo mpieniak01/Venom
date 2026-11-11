@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import time
 from typing import Any, AsyncIterator, Optional
 from uuid import UUID, uuid4
@@ -18,6 +19,7 @@ from fastapi.responses import StreamingResponse
 from venom_core.api.schemas.llm_simple import MAX_CHAT_HISTORY_CHARS, SimpleChatRequest
 from venom_core.config import DEFAULT_SIMPLE_MODE_SYSTEM_PROMPT, SETTINGS
 from venom_core.core.metrics import get_metrics_collector
+from venom_core.core.ollama_runtime_capabilities import is_gemma4_model_name
 from venom_core.core.tracer import TraceStatus
 from venom_core.services import llm_simple_transport
 from venom_core.services.llm_simple_payload_service import (
@@ -80,6 +82,7 @@ from venom_core.services.llm_simple_stream_service import (
 from venom_core.services.llm_simple_stream_service import (
     update_stream_state_from_packet as _update_stream_state_from_packet_impl,
 )
+from venom_core.services.ollama_audio import OMNI_MODEL_ID, is_host_ollama
 from venom_core.services.runtime_dependencies import (
     get_model_manager,
     get_request_tracer,
@@ -89,6 +92,7 @@ from venom_core.services.runtime_switch_gate import (
     runtime_request_guard,
 )
 from venom_core.utils.llm_runtime import (
+    LLMRuntimeInfo,
     _build_chat_completions_url,
     get_active_llm_runtime,
 )
@@ -111,6 +115,21 @@ _SSE_EVENT_START = "event: start\ndata: {}\n\n"
 _SSE_EVENT_DONE = "event: done\ndata: {}\n\n"
 _SSE_MEDIA_TYPE = "text/event-stream"
 _NON_STREAM_INVALID_RESPONSE_CODE = "llm_invalid_response"
+_OMNI_HISTORY_POLICY = (
+    "Odpowiedz na ostatnią wiadomość użytkownika. Korzystaj z historii przy dopytaniach. "
+    "Najnowsze ustalenia użytkownika mają pierwszeństwo. Wcześniejsze odpowiedzi asystenta mogą być błędne. "
+    "Zastosuj format wymagany w ostatniej wiadomości."
+)
+# A stated decision or correction is different from a question about an earlier reply.
+_OMNI_STATED_UPDATE = re.compile(
+    r"(?:^|(?<=[.!?])\s+)(?:"
+    r"ustalenie\s+(?:to|jest)|ustaliliśmy|ustalam(?:y)?|umówiliśmy\s+się"
+    r"|zmiana\s+(?:ustalenia|zamówienia|decyzji|planu)"
+    r"|zmieniam(?:y)?\s+(?:ustalenie|zamówienie|decyzję|plan)"
+    r"|(?:poprawka|korekta)(?=\s|[:.!]|$)"
+    r")\b[^.!?]*(?:[.!]|$)",
+    re.IGNORECASE,
+)
 httpx = llm_simple_transport.httpx_module()
 
 
@@ -1187,13 +1206,83 @@ def _plain_request_history(
     return [item.model_dump(exclude={"material_ids"}) for item in request.history]
 
 
-def _simple_system_prompt(request: SimpleChatRequest, system_context: str) -> str:
+def _retry_without_previous_attempts(request: SimpleChatRequest) -> SimpleChatRequest:
+    """Keep distinct earlier turns while retrying the same last question."""
+    history = request.history
+    end = len(history)
+    question = request.content.strip()
+    while (
+        end >= 2
+        and history[end - 2].role == "user"
+        and history[end - 1].role == "assistant"
+        and history[end - 2].content.strip() == question
+    ):
+        end -= 2
+    return (
+        request.model_copy(update={"history": history[:end]})
+        if end < len(history)
+        else request
+    )
+
+
+def _simple_system_prompt(
+    request: SimpleChatRequest,
+    system_context: str,
+    *,
+    plain_omni: bool = False,
+    plain_gemma: bool = False,
+) -> str:
     system_prompt = (SETTINGS.SIMPLE_MODE_SYSTEM_PROMPT or "").strip()
-    if request.studio_normal and system_prompt == DEFAULT_SIMPLE_MODE_SYSTEM_PROMPT:
+    if (
+        request.studio_normal or plain_omni
+    ) and system_prompt == DEFAULT_SIMPLE_MODE_SYSTEM_PROMPT:
         system_prompt = ""
+    if (
+        plain_omni
+        and any(turn.role == "assistant" for turn in request.history)
+        and not system_prompt
+    ):
+        system_prompt = _OMNI_HISTORY_POLICY
+    if plain_gemma and system_prompt in {"", DEFAULT_SIMPLE_MODE_SYSTEM_PROMPT}:
+        system_prompt = _OMNI_HISTORY_POLICY
     if system_context:
         system_prompt = "\n\n".join(filter(None, (system_prompt, system_context)))
     return system_prompt
+
+
+def _prepare_local_direct_prompt(
+    request: SimpleChatRequest,
+    runtime: LLMRuntimeInfo,
+    model_name: str,
+    system_context: str,
+) -> tuple[SimpleChatRequest, str]:
+    from venom_core.services.chat_material_payload import has_materials
+
+    omni = model_name == OMNI_MODEL_ID
+    gemma = is_gemma4_model_name(model_name)
+    plain_local = (
+        (omni or gemma)
+        and is_host_ollama(runtime)
+        and not (
+            request.tools or request.tool_choice is not None or has_materials(request)
+        )
+    )
+    plain_omni = plain_local and omni
+    if plain_omni:
+        request = _retry_without_previous_attempts(request)
+        if _OMNI_STATED_UPDATE.search(request.content):
+            # Earlier assistant replies can contradict an explicit current decision.
+            request = request.model_copy(
+                update={
+                    "history": [turn for turn in request.history if turn.role == "user"]
+                }
+            )
+    return request, _simple_system_prompt(
+        request,
+        system_context,
+        plain_omni=plain_omni,
+        plain_gemma=plain_local and gemma,
+    )
 
 
 async def _stream_non_openrouter_chat(
@@ -1224,7 +1313,9 @@ async def _stream_non_openrouter_chat(
     request_id: UUID = uuid4()
     _trace_simple_request(request_id, request, runtime, model_name)
 
-    system_prompt = _simple_system_prompt(request, system_context)
+    request, system_prompt = _prepare_local_direct_prompt(
+        request, runtime, model_name, system_context
+    )
     user_content = _trim_user_content_for_runtime(
         request.content, system_prompt, runtime, request_id
     )

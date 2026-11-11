@@ -148,13 +148,20 @@ it("keeps the attached image, audio, sources, and follow-up on the Full voice co
   assert.equal(record.disabled, true);
   await act(async () => socket.receive({ type: "complete" }));
   assert.equal(record.disabled, true);
+  await act(async () => socket.receive({ type: "complete", multimodal: true, no_speech: true }));
+  assert.equal(record.disabled, false);
+  assert.ok(screen.getByText("screen.png"));
+  await screen.findByText("Nie rozpoznano mowy.");
+  const retry = await recordTurn();
+  assert.equal(retry.image, "c2NyZWVu");
   await act(async () => {
-    socket.receive({ type: "response_text", text: "Sprawdź kod błędu.", sources: ["Instrukcja E42"], multimodal: true });
+    socket.receive({ type: "response_text", text: "Sprawdź kod błędu.", question: "Co zrobić z błędem?", sources: ["Instrukcja E42"], multimodal: true });
     socket.receive({ type: "audio_response", audio: "AAABAAIAAwA=", sample_rate: 24000 });
     socket.receive({ type: "complete", multimodal: true });
   });
   assert.ok(screen.getByText("Instrukcja E42"));
   await screen.findByText("Sprawdź kod błędu.");
+  assert.ok(screen.getByText("Co zrobić z błędem?"));
   assert.equal(screen.queryByText("screen.png"), null);
   fireEvent.click(screen.getByRole("button", { name: "Zatrzymaj odtwarzanie" }));
   assert.equal(VoiceAudioContext.stopped, 1);

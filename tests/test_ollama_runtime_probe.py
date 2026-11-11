@@ -83,7 +83,7 @@ def test_resolve_voice_pipeline_selects_declared_native_audio():
     caps = asyncio.run(
         probe_ollama_runtime_capabilities(
             client=client,
-            model_name="gemma4:latest",
+            model_name="audio-model:latest",
             endpoint=client.endpoint,
         )
     )
@@ -95,6 +95,23 @@ def test_resolve_voice_pipeline_selects_declared_native_audio():
     assert decision.reasoning == "think_api"
     assert decision.tools == "policy_gated_tools"
     assert decision.vision == "images_api"
+
+
+def test_resolve_gemma_voice_profile_reports_host_stt_despite_native_capability():
+    client = _DummyOllamaClient()
+    caps = asyncio.run(
+        probe_ollama_runtime_capabilities(
+            client=client,
+            model_name="gemma4:e4b",
+            endpoint=client.endpoint,
+        )
+    )
+
+    decision = resolve_voice_pipeline(caps)
+
+    assert caps.capabilities["audio_input"] is True
+    assert decision.stt == "faster_whisper"
+    assert decision.tts == "piper"
 
 
 def test_probe_audio_reports_missing_capability_without_generation():

@@ -5,11 +5,15 @@ Enforces the invariant: at most one loaded Ollama model at a time.
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 import httpx
 
 from venom_core.services.runtime_admission import admitted_operation
+
+_UNLOAD_VERIFY_TIMEOUT_SECONDS = 5.0
+_UNLOAD_VERIFY_INTERVAL_SECONDS = 0.1
 
 
 def _resolve_ollama_base_url(endpoint: str | None) -> str:
@@ -72,20 +76,27 @@ async def enforce_single_loaded_ollama_model(
                 raise RuntimeError(
                     f"ollama unload failed for {model_name} with {response.status_code}"
                 )
-        verify_response = await client.get(f"{base}/api/ps")
-        if verify_response.status_code >= 400:
+        # Ollama can acknowledge unload before the runner disappears from /api/ps.
+        after = before
+        try:
+            async with asyncio.timeout(_UNLOAD_VERIFY_TIMEOUT_SECONDS):
+                while True:
+                    verify_response = await client.get(f"{base}/api/ps")
+                    if verify_response.status_code >= 400:
+                        raise RuntimeError(
+                            f"ollama /api/ps verify failed with {verify_response.status_code}"
+                        )
+                    after = _extract_loaded_model_names(
+                        verify_response.json() if verify_response.content else {}
+                    )
+                    if all(name == keep_model for name in after):
+                        break
+                    await asyncio.sleep(_UNLOAD_VERIFY_INTERVAL_SECONDS)
+        except TimeoutError as exc:
             raise RuntimeError(
-                f"ollama /api/ps verify failed with {verify_response.status_code}"
-            )
-        after = _extract_loaded_model_names(
-            verify_response.json() if verify_response.content else {}
-        )
-    extra_loaded = [name for name in after if name != keep_model]
-    if extra_loaded:
-        raise RuntimeError(
-            "ollama single-model policy violation: "
-            f"keep={keep_model or 'none'} loaded={after}"
-        )
+                "ollama single-model policy verification timed out: "
+                f"keep={keep_model or 'none'} loaded={after}"
+            ) from exc
     return {
         "base_url": base,
         "keep_model": keep_model,

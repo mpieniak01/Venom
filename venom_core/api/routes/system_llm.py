@@ -3142,6 +3142,8 @@ async def _set_active_llm_server_impl(
             models=models,
         )
 
+        await _enforce_selected_ollama_model(server_name, endpoint, selected_model)
+
         old_last_model = config.get(last_model_key) or ""
         updates = _build_model_updates(
             server_name=server_name,
@@ -3160,8 +3162,6 @@ async def _set_active_llm_server_impl(
         )
         switch_state.mark_done(LifecycleStep.CONFIG_SAVED)
 
-        runtime = get_active_llm_runtime()
-        await _enforce_selected_ollama_model(server_name, endpoint, selected_model)
         if openrouter_runtime.selection() is not None:
             openrouter_runtime.clear_selection()
         if vast_chat_runtime.selection() is not None:

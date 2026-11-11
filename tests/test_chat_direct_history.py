@@ -1024,3 +1024,155 @@ def test_direct_default_prompt_is_neutral_and_explicit_custom_prompt_is_preserve
         llm_simple_service.SETTINGS, "SIMPLE_MODE_SYSTEM_PROMPT", "Custom instruction"
     )
     assert llm_simple_service._simple_system_prompt(request, "") == "Custom instruction"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("model", "stream", "content", "prompt", "expected_history_size"),
+    [
+        ("lfm3-omni:2b", False, "Pytanie", "You are a helpful assistant.", 2),
+        ("lfm3-omni:2b", True, "Pytanie", "You are a helpful assistant.", 2),
+        ("lfm3-omni:2b", True, "Dopytanie", "You are a helpful assistant.", 6),
+        ("lfm3-omni:2b", False, "Pytanie", "Własna instrukcja", 2),
+        ("gemma4:e4b", True, "Pytanie", "You are a helpful assistant.", 6),
+    ],
+)
+async def test_plain_omni_retry_preserves_distinct_context_and_configured_prompt(
+    monkeypatch, model, stream, content, prompt, expected_history_size
+):
+    runtime = SimpleNamespace(
+        provider="ollama",
+        model_name=model,
+        endpoint="http://localhost:11434/v1",
+        service_type="local",
+        host_local=True,
+        runtime_id="ollama",
+        config_hash="cfg",
+    )
+    monkeypatch.setattr(llm_simple_service, "get_active_llm_runtime", lambda: runtime)
+    monkeypatch.setattr(
+        llm_simple_service, "_get_active_adapter_id", AsyncMock(return_value=None)
+    )
+    monkeypatch.setattr(
+        llm_simple_service.SETTINGS, "SIMPLE_MODE_SYSTEM_PROMPT", prompt
+    )
+    captured = []
+
+    async def capture(**kwargs):
+        captured.append(kwargs["payload"]["messages"])
+        yield event("done", {})
+
+    monkeypatch.setattr(llm_simple_service, "_stream_simple_chunks", capture)
+    monkeypatch.setattr(llm_simple_service, "_stream_simple_chunks_non_stream", capture)
+    history = [
+        {"role": "user", "content": "Inne ustalenie"},
+        {"role": "assistant", "content": "Rozumiem"},
+        {"role": "user", "content": "Pytanie"},
+        {"role": "assistant", "content": "Stara odpowiedź"},
+        {"role": "user", "content": "Pytanie"},
+        {"role": "assistant", "content": "Kolejna stara odpowiedź"},
+    ]
+    request = SimpleChatRequest(content=content, history=history, stream=stream)
+    response = await llm_simple_service.stream_simple_chat(request)
+    await consume(response)
+
+    expected_prompt = (
+        prompt
+        if prompt == "Własna instrukcja"
+        else llm_simple_service._OMNI_HISTORY_POLICY
+    )
+    assert captured == [
+        [{"role": "system", "content": expected_prompt}]
+        + history[:expected_history_size]
+        + [{"role": "user", "content": content}]
+    ]
+    assert [
+        item.model_dump(exclude={"material_ids"}) for item in request.history
+    ] == history
+
+
+def test_plain_omni_history_policy_requires_remaining_context(monkeypatch):
+    monkeypatch.setattr(
+        llm_simple_service.SETTINGS,
+        "SIMPLE_MODE_SYSTEM_PROMPT",
+        "You are a helpful assistant.",
+    )
+    request = SimpleChatRequest(
+        content="Podaj kod",
+        history=[
+            {"role": "user", "content": "Podaj kod"},
+            {"role": "assistant", "content": "Błąd"},
+        ],
+    )
+    retry = llm_simple_service._retry_without_previous_attempts(request)
+    assert not retry.history
+    assert llm_simple_service._simple_system_prompt(retry, "", plain_omni=True) == ""
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("current", "retains_assistant"),
+    [
+        ("Jakie kwiaty kupić? Umówiliśmy się na tulipany. Podaj nazwę.", False),
+        ("Zmiana ustalenia. Zamawiamy róże.", False),
+        ("zmieniam zamówienie, teraz biorę lilie.", False),
+        ("Poprawka: kod odbioru to 914.", False),
+        ("Przypomnij, jakie kwiaty ostatecznie zamawiamy.", True),
+        ("Umówiliśmy się na róże?", True),
+        ("Jaką nazwę zaproponowałeś przed chwilą?", True),
+    ],
+)
+async def test_plain_omni_stated_updates_use_user_history_and_questions_can_recall_replies(
+    monkeypatch, current, retains_assistant
+):
+    runtime = SimpleNamespace(
+        provider="ollama",
+        model_name="lfm3-omni:2b",
+        endpoint="http://localhost:11434/v1",
+        service_type="local",
+        host_local=True,
+        runtime_id="ollama",
+        config_hash="cfg",
+    )
+    monkeypatch.setattr(llm_simple_service, "get_active_llm_runtime", lambda: runtime)
+    monkeypatch.setattr(
+        llm_simple_service, "_get_active_adapter_id", AsyncMock(return_value=None)
+    )
+    monkeypatch.setattr(
+        llm_simple_service.SETTINGS,
+        "SIMPLE_MODE_SYSTEM_PROMPT",
+        "You are a helpful assistant.",
+    )
+    captured = []
+
+    async def capture(**kwargs):
+        captured.extend(kwargs["payload"]["messages"])
+        yield event("done", {})
+
+    monkeypatch.setattr(llm_simple_service, "_stream_simple_chunks", capture)
+    user = {"role": "user", "content": "Podaj nazwę kwiatu."}
+    assistant = {"role": "assistant", "content": "Piwonia."}
+    request = SimpleChatRequest(content=current, history=[user, assistant])
+    await consume(await llm_simple_service.stream_simple_chat(request))
+    assert captured[-1] == {"role": "user", "content": current}
+    assert user in captured
+    assert (assistant in captured) is retains_assistant
+    assert (captured[0]["role"] == "system") is retains_assistant
+    assert request.history[1].content == assistant["content"]
+
+
+@pytest.mark.parametrize(
+    "custom", ["", "You are a helpful assistant.", "Custom instruction"]
+)
+def test_plain_gemma_direct_policy_preserves_custom_prompt(monkeypatch, custom):
+    monkeypatch.setattr(
+        llm_simple_service.SETTINGS, "SIMPLE_MODE_SYSTEM_PROMPT", custom
+    )
+    request = SimpleChatRequest(content="Pytanie")
+    result = llm_simple_service._simple_system_prompt(request, "", plain_gemma=True)
+    expected = (
+        custom
+        if custom == "Custom instruction"
+        else llm_simple_service._OMNI_HISTORY_POLICY
+    )
+    assert result == expected

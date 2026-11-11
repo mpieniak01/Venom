@@ -55,6 +55,28 @@ test("conversation uses the same text turn once and never speaks a stopped parti
   await act(async () => { await Promise.resolve(); }); assert.equal(speech, 0); assert.equal(hook.result.current.status, "voiceIdle");
 });
 
+test("refreshing the Omni capability keeps an ordinary voice turn in progress", async () => {
+  const fixture = options();
+  const props = { ...fixture.props, mode: "conversation" as const, multimodalEnabled: true };
+  let disposed = 0;
+  globalThis.fetch = async input => {
+    assert.ok(String(input).includes("/transcribe?"));
+    return Response.json({ session_id: "one", text: "Co to jest kwadrat?" });
+  };
+  const hook = renderHook(current => useStudioVoice(current, async () => ({
+    finish: async () => recorded(),
+    dispose: () => { disposed++; },
+  })), { initialProps: props });
+
+  await act(async () => { await hook.result.current.start(); });
+  hook.rerender({ ...props, multimodalEnabled: false });
+  assert.equal(hook.result.current.status, "listening");
+  assert.equal(disposed, 0);
+  await act(async () => { await hook.result.current.finish(); });
+  assert.deepEqual(fixture.turns, ["Co to jest kwadrat?"]);
+  assert.equal(disposed, 1);
+});
+
 test("ending during capture flush stops microphone immediately", async () => {
   const fixture = options(); let finish!: () => void; let disposed = 0;
   const hook = renderHook(() => useStudioVoice(fixture.props, async () => ({ finish: () => new Promise(ready => { finish = () => ready(recorded()); }), dispose: () => { disposed++; } })));
@@ -129,7 +151,10 @@ test("the first image turn sends raw PCM and image together, then speaks a follo
     if (String(input).endsWith("/multimodal-turn")) {
       assert.ok(init?.body instanceof FormData);
       submissions.push(init.body);
-      return Response.json({ session_id: "one", text: "Odpowiedź " + submissions.length, sources: ["Instrukcja"] });
+      if (submissions.length === 1) {
+        return Response.json({ session_id: "one", text: "Nie słyszę pytania", sources: [], no_speech: true });
+      }
+      return Response.json({ session_id: "one", text: "Odpowiedź " + (submissions.length - 1), sources: ["Instrukcja"] });
     }
     assert.ok(String(input).endsWith("/speak"), "must not transcribe the input separately");
     const speech = JSON.parse(String(init?.body));
@@ -146,6 +171,11 @@ test("the first image turn sends raw PCM and image together, then speaks a follo
   };
   const hook = renderHook(() => useStudioVoice(props, async () => ({ finish: async () => recorded(), dispose: () => {} })));
   act(() => hook.result.current.selectImage(new File(["snapshot"], "screen.png", { type: "image/png" })));
+  await act(async () => { await hook.result.current.start(); await hook.result.current.finish(); });
+  assert.equal(hook.result.current.error, "silence");
+  assert.equal(hook.result.current.image?.name, "screen.png");
+  assert.equal(commits, 0);
+  assert.deepEqual(spoken, []);
   await act(async () => { await hook.result.current.start(); await hook.result.current.finish(); });
   assert.equal(submissions[0].get("session_id"), "one");
   assert.equal(submissions[0].get("sample_rate"), "16000");
@@ -166,10 +196,11 @@ test("the first image turn sends raw PCM and image together, then speaks a follo
   assert.equal(hook.result.current.status, "voiceIdle");
 
   await act(async () => { await hook.result.current.start(); await hook.result.current.finish(); });
-  assert.equal(submissions[1].get("session_id"), "one");
-  assert.equal(submissions[1].has("image"), false);
+  assert.equal(submissions[1].has("image"), true);
+  assert.equal(submissions[2].get("session_id"), "one");
+  assert.equal(submissions[2].has("image"), false);
   assert.deepEqual(spoken, ["Odpowiedź 1", "Odpowiedź 2"]);
-  assert.deepEqual(activity, [true, false, true, false]);
+  assert.deepEqual(activity, [true, false, true, false, true, false]);
   assert.equal(commits, 2);
   assert.equal(plays, 2);
   assert.deepEqual(fixture.turns, []);

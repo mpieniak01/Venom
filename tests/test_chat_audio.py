@@ -19,7 +19,7 @@ from PIL import Image
 
 from venom_core.api.dependencies import get_session_store
 from venom_core.api.studio_routes import include_studio_routes
-from venom_core.services import chat_audio, omni_pilot
+from venom_core.services import chat_audio, omni_pilot, omni_pilot_screen
 from venom_core.services.session_store import SessionStore
 
 
@@ -52,10 +52,10 @@ def _pilot_image() -> bytes:
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("encoded", [False, True])
-async def test_pilot_uses_image_and_raw_audio_in_one_turn_and_retains_source(
+async def test_pilot_retains_and_replaces_the_session_screen_for_followups(
     rig, monkeypatch, encoded
 ):
-    """Send both modalities together and use the selected source on a later turn."""
+    """Resolve later speech against the last validated screen in the same session."""
     client, engine, _ = rig
     runtime = SimpleNamespace(
         endpoint="http://127.0.0.1:11434", model_name="lfm3-omni:2b"
@@ -66,17 +66,41 @@ async def test_pilot_uses_image_and_raw_audio_in_one_turn_and_retains_source(
         "require_local_capability",
         AsyncMock(return_value={"capabilities": ["audio", "vision", "tools"]}),
     )
+    recognize = AsyncMock(
+        side_effect=[
+            "Co zrobić z komunikatem na dole?",
+            "A jeśli komunikat wróci?",
+            "Chodziło mi o komunikat na górze.",
+            "Co zrobić z komunikatem po lewej?",
+            "A po prawej?",
+        ]
+    )
+    monkeypatch.setattr(omni_pilot, "transcribe_pcm_audio", recognize)
     request_payloads = []
-    lookup = json.dumps({"action": omni_pilot.TOOL_NAME, "code": "VEN-401"})
-    followup_choice = json.dumps({"action": "previous_source", "code": ""})
-    if encoded:
-        lookup = json.dumps({"action": omni_pilot.TOOL_NAME, "code": "Sesja wygasła"})
+    first_screen = {
+        "layout": "vertical",
+        "cards": [
+            {"code": "VEN-413", "color": "brown"},
+            {"code": "VEN-401", "color": "red"},
+        ],
+    }
+    next_screen = {
+        "layout": "horizontal",
+        "cards": [
+            {"code": "VEN-503", "color": "blue"},
+            {"code": "VEN-207", "color": "red"},
+        ],
+    }
     messages = iter(
         [
-            {"content": lookup},
-            {"content": "Otwórz ponownie sesję."},
-            {"content": followup_choice},
+            {"content": json.dumps(first_screen)},
             {"content": "Najpierw otwórz ponownie sesję."},
+            {"content": json.dumps({"action": "previous_source", "code": "VEN-401"})},
+            {"content": "Sprawdź ustawienia sesji i spróbuj zalogować się ponownie."},
+            {"content": "Najpierw wybierz mniejszy obraz."},
+            {"content": json.dumps(next_screen)},
+            {"content": "Najpierw odczekaj 30 sekund."},
+            {"content": "Najpierw sprawdź uprawnienie mikrofonu w przeglądarce."},
         ]
     )
 
@@ -116,26 +140,218 @@ async def test_pilot_uses_image_and_raw_audio_in_one_turn_and_retains_source(
     source = result.json()["sources"][0]
     assert "VEN-401" in source
     assert result.json()["text"].startswith("Najpierw otwórz ponownie sesję.")
-    image_b64, audio_b64 = request_payloads[0]["messages"][-1]["images"]
-    assert base64.b64decode(image_b64) == image
-    with wave.open(io.BytesIO(base64.b64decode(audio_b64))) as recorded:
-        assert recorded.readframes(100) == pcm
-    assert request_payloads[0]["format"] == omni_pilot.SELECTION_SCHEMA
-    assert "format" not in request_payloads[1]
-    assert (
-        "Najpierw otwórz ponownie sesję."
-        in request_payloads[1]["messages"][0]["content"]
+    assert request_payloads[0]["format"] == omni_pilot_screen.SCREEN_SCHEMA
+    assert request_payloads[0]["messages"][-1]["images"] == [
+        base64.b64encode(image).decode("ascii")
+    ]
+    recognize.assert_awaited_once_with(
+        runtime.endpoint, runtime.model_name, pcm, 16000, "pl"
     )
+    assert request_payloads[1]["messages"][-1] == {
+        "role": "user",
+        "content": "Co zrobić z komunikatem na dole?",
+    }
 
     followup = await client.post(
         "/api/v1/chat/audio/multimodal-turn", data=data, files=files
     )
     assert followup.status_code == 200
     assert followup.json()["sources"] == [source]
-    assert len(request_payloads[2]["messages"][-1]["images"]) == 1
-    assert "VEN-401" in request_payloads[2]["messages"][0]["content"]
-    assert source in request_payloads[3]["messages"][0]["content"]
+    assert followup.json()["text"] == (
+        "Sprawdź ustawienia sesji i spróbuj zalogować się ponownie."
+    )
+    assert request_payloads[3]["messages"][1:] == request_payloads[2]["messages"][1:]
+    assert not any(
+        "Źródło:" in message["content"]
+        for message in request_payloads[3]["messages"][1:]
+    )
+
+    correction = await client.post(
+        "/api/v1/chat/audio/multimodal-turn", data=data, files=files
+    )
+    assert correction.status_code == 200
+    assert correction.json()["sources"][0].startswith("VEN-413")
+    source_message, question = request_payloads[4]["messages"]
+    assert "VEN-413" in source_message["content"]
+    assert "VEN-401" not in source_message["content"]
+    assert question == {"role": "user", "content": "Chodziło mi o komunikat na górze."}
+
+    changed_screen = await client.post(
+        "/api/v1/chat/audio/multimodal-turn",
+        data=data,
+        files={**files, "image": ("next-capture.png", image)},
+    )
+    assert changed_screen.status_code == 200
+    assert changed_screen.json()["sources"][0].startswith("VEN-503")
+    replacement_followup = await client.post(
+        "/api/v1/chat/audio/multimodal-turn", data=data, files=files
+    )
+    assert replacement_followup.status_code == 200
+    assert replacement_followup.json()["sources"][0].startswith("VEN-207")
+
+    other_session = await client.post(
+        "/api/v1/chat/audio/multimodal-turn",
+        data={**data, "session_id": "another"},
+        files=files,
+    )
+    assert other_session.status_code == 200
+    assert other_session.json()["sources"] == []
+    assert recognize.await_count == 5
     engine.transcribe_checked.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "observation, status, choice",
+    [
+        (
+            {"status": "online", "models": ["lfm3-omni:2b"]},
+            "loaded",
+            "read_local_omni_status",
+        ),
+        ({"status": "online", "models": []}, "not_loaded", "read_local_omni_status"),
+        (
+            {"status": "unverified", "models": None},
+            "unavailable",
+            "read_local_omni_status",
+        ),
+        (None, None, "clarify"),
+    ],
+)
+async def test_pilot_runtime_read_preserves_prior_document(
+    rig, monkeypatch, observation, status, choice
+):
+    client, _, _ = rig
+    runtime = SimpleNamespace(
+        endpoint="http://127.0.0.1:11434", model_name="lfm3-omni:2b"
+    )
+    monkeypatch.setattr(omni_pilot, "active_pilot_runtime", lambda: runtime)
+    monkeypatch.setattr(
+        omni_pilot,
+        "require_local_capability",
+        AsyncMock(return_value={"capabilities": ["vision"]}),
+    )
+    question = "Czy lokalny model Omni jest załadowany?"
+    monkeypatch.setattr(
+        omni_pilot,
+        "transcribe_pcm_audio",
+        AsyncMock(
+            side_effect=[
+                "Sprawdź komunikat VEN-401.",
+                question,
+                "A co, jeśli poprzedni komunikat wróci?",
+            ]
+        ),
+    )
+    inventory = AsyncMock(return_value={"ollama": observation})
+    monkeypatch.setattr(omni_pilot, "runtime_inventory", inventory)
+    replies = [
+        {
+            "content": json.dumps(
+                {"layout": "single", "cards": [{"code": "VEN-401", "color": "red"}]}
+            )
+        },
+        {"content": "Otwórz ponownie sesję."},
+        {"content": json.dumps({"action": choice})},
+    ]
+    if status in {"loaded", "not_loaded"}:
+        # Invalid model output cannot turn a read into an invented confirmation.
+        replies.append({"content": '"Usługa została ponownie uruchomiona."'})
+    replies.extend(
+        [
+            {"content": '{"action":"previous_source","code":"VEN-401"}'},
+            {"content": "Sprawdź ustawienia sesji."},
+        ]
+    )
+    model = AsyncMock(side_effect=replies)
+    monkeypatch.setattr(omni_pilot, "_chat", model)
+    data = {"session_id": "stage8", "sample_rate": "16000", "language": "pl"}
+    audio = {"audio": ("voice.pcm", b"\x00\x10" * 100)}
+    url = "/api/v1/chat/audio/multimodal-turn"
+    document = await client.post(
+        url, data=data, files={**audio, "image": ("camera.jpg", _pilot_image())}
+    )
+    assert document.status_code == 200
+    result = await client.post(url, data=data, files=audio)
+    assert result.status_code == 200
+    if status is None:
+        inventory.assert_not_awaited()
+        assert result.json()["text"].startswith("Czy mam sprawdzić")
+    else:
+        inventory.assert_awaited_once_with({"ollama": runtime.endpoint})
+        if status == "unavailable":
+            assert result.json()["text"].startswith("Nie udało się odczytać")
+        else:
+            assert result.json()["text"] == omni_pilot._RUNTIME_REPLIES[status][0]
+    assert result.json()["sources"] == (
+        [omni_pilot.RUNTIME_SOURCE] if status in {"loaded", "not_loaded"} else []
+    )
+
+    silence = await client.post(
+        url, data=data, files={"audio": ("silence.pcm", bytes(3200))}
+    )
+    assert silence.status_code == 200
+    assert silence.json()["no_speech"] is True
+    followup = await client.post(url, data=data, files=audio)
+    assert followup.status_code == 200
+    assert followup.json()["sources"] == document.json()["sources"]
+    assert {"role": "user", "content": question} in model.await_args_list[-2].args[3]
+
+
+@pytest.mark.parametrize(
+    "question, expected",
+    [
+        ("Co zrobić z drugim komunikatem?", (True, "VEN-401")),
+        ("Który jest na górze?", (True, "VEN-413")),
+        ("Sprawdź czerwony komunikat.", (True, None)),
+        ("Sprawdź niebieski komunikat.", (True, None)),
+        ("Sprawdź czerwony i zielony komunikat.", (True, None)),
+        ("Sprawdź komunikat z prawej strony.", (True, None)),
+        ("Sprawdź ten komunikat.", (False, None)),
+        ("Wyjaśnij błąd przesyłania obrazu.", (True, "VEN-413")),
+        ("Sprawdź kod VN503.", (True, "VEN-503")),
+    ],
+)
+def test_pilot_resolves_only_an_unambiguous_screen_reference(question, expected):
+    screen = omni_pilot_screen.parse_screen(
+        {
+            "layout": "vertical",
+            "cards": [
+                {"code": "VEN-413", "color": "red"},
+                {"code": "VEN-401", "color": "red"},
+            ],
+        }
+    )
+    documents = json.loads(omni_pilot.DOCUMENTATION.read_text())
+    assert omni_pilot_screen.resolve_reference(question, screen, documents) == expected
+
+
+@pytest.mark.parametrize(
+    "inventory",
+    [
+        {"layout": "diagonal", "cards": []},
+        {"layout": "single", "cards": []},
+        {"layout": "vertical", "cards": [None, {"code": "VEN-401", "color": "red"}]},
+        {"layout": "single", "cards": [{"code": "../secret", "color": "red"}]},
+        {"layout": "single", "cards": [{"code": "VEN-401", "color": "infrared"}]},
+    ],
+)
+def test_pilot_rejects_a_malformed_screen_inventory(inventory):
+    assert omni_pilot_screen.parse_screen(inventory) is None
+
+
+def test_pilot_does_not_reuse_an_old_inventory_after_a_screen_reset():
+    history = [
+        {
+            "mode": "omni_pilot",
+            "omni_pilot_screen": {
+                "layout": "single",
+                "cards": [{"code": "VEN-401", "color": "red"}],
+            },
+        },
+        {"mode": "omni_pilot", "omni_pilot_screen": None},
+    ]
+    assert omni_pilot_screen.previous_screen(history) is None
 
 
 @pytest.mark.parametrize(
@@ -153,6 +369,8 @@ async def test_pilot_uses_image_and_raw_audio_in_one_turn_and_retains_source(
         ('{"action":"clarify","code":""}', "VEN-401", None),
         ('{"action":"previous_source","code":""}', None, None),
         ('{"action":"previous_source","code":""}', "VEN-401", "VEN-401"),
+        ('{"action":"previous_source","code":"VEN-401"}', "VEN-401", "VEN-401"),
+        ('{"action":"previous_source","code":"VEN-413"}', "VEN-401", None),
     ],
 )
 def test_pilot_selection_can_only_dispatch_a_valid_document_lookup(

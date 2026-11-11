@@ -75,6 +75,7 @@ Dependency profiles share a Microsoft Agent Framework Light/API base. Full adds 
 - [Hybrid AI engine](docs/HYBRID_AI_ENGINE.md) - LOCAL/HYBRID/CLOUD routing and local-first policy.
 - [Workflow Control](docs/THE_WORKFLOW_CONTROL.md) - Workflow control model, operations, and guardrails.
 - [Voice runtime capabilities](docs/VOICE_RUNTIME_CAPABILITIES.md) - Current voice loop status, including the stable Whisper/LLM/Piper fallback and the Gemma4 native-audio two-step path.
+- [Polish multimodal assistant experiment](docs/EN/POLISH_MULTIMODAL_ASSISTANT_EXPERIMENT.md) - Omni and Gemma 4 E4B compared on quality, latency, and memory in Venom Studio and Full.
 
 ### Agents and capabilities
 - [System agents catalog](docs/SYSTEM_AGENTS_CATALOG.md) - Agent roles, inputs/outputs, and runtime cooperation.

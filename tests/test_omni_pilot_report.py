@@ -2,7 +2,14 @@
 
 import pytest
 
-from scripts.ollama_bench.omni_pilot import result_template, summarize, write_json
+from scripts.ollama_bench import polish_benchmark
+from scripts.ollama_bench.omni_pilot import (
+    digest,
+    result_template,
+    summarize,
+    write_json,
+)
+from scripts.ollama_bench.polish_cases import build_cases
 
 
 @pytest.fixture
@@ -205,3 +212,104 @@ def test_summarize_uses_nearest_rank_for_p95(tmp_path):
     assert report["studio"]["median_ms"] == 105
     assert report["studio"]["p95_ms"] == 200
     assert report["full"]["latency_samples"] == 0
+
+
+def test_polish_benchmark_keeps_validation_families_and_spoken_inputs_separate():
+    final = build_cases("final")
+    validation = build_cases("validation")
+
+    assert len(final) == len({case.id for case in final}) == 200
+    assert len(validation) == len({case.id for case in validation}) == 48
+    assert not ({case.family for case in final} & {case.family for case in validation})
+    assert not (
+        {case.prompt for case in final if case.voice}
+        & {case.prompt for case in validation if case.voice}
+    )
+
+
+def test_polish_benchmark_rejects_changed_media(tmp_path, monkeypatch):
+    folder = tmp_path / "final"
+    folder.mkdir()
+    media = folder / "case.wav"
+    media.write_bytes(b"original")
+    manifest = folder / "manifest.json"
+    write_json(
+        manifest,
+        {"split": "final", "cases": [{"media_sha256": {media.name: digest(media)}}]},
+    )
+    freeze = {"final": digest(manifest)}
+    write_json(tmp_path / "freeze.json", freeze)
+    lock = tmp_path / "lock.json"
+    write_json(lock, freeze)
+    monkeypatch.setattr(polish_benchmark, "LOCK_PATH", lock)
+    assert polish_benchmark.verify(folder)["split"] == "final"
+
+    media.write_bytes(b"different")
+    with pytest.raises(ValueError, match="Invalid fixture"):
+        polish_benchmark.verify(folder)
+
+
+def test_polish_benchmark_does_not_supply_tool_result_after_wrong_arguments(
+    monkeypatch,
+):
+    calls = []
+
+    def chat(client, model, messages, **options):
+        calls.append(messages.copy())
+        return {
+            "message": {
+                "content": "",
+                "tool_calls": [
+                    {
+                        "function": {
+                            "name": "lookup_stock",
+                            "arguments": {"record_id": "OTHER"},
+                        }
+                    }
+                ],
+            }
+        }
+
+    monkeypatch.setattr(polish_benchmark, "chat", chat)
+    case = {
+        "group": "tools",
+        "history": [],
+        "document": "",
+        "clarify_tool": False,
+        "tool": ["lookup_stock", "MN-21"],
+        "expected": ["741"],
+        "tool_error": False,
+    }
+    row = polish_benchmark.text_result(
+        None, "example", case, "Sprawdź stan MN-21", None
+    )
+
+    assert not row["pass"]
+    assert not row["tool_call_ok"]
+    assert len(calls) == 1
+    assert all(
+        message["role"] != "tool" and "741" not in message["content"]
+        for message in calls[0]
+    )
+
+
+def test_polish_benchmark_separates_recognition_and_reference_failures():
+    report = polish_benchmark.summary(
+        [
+            {"id": "one", "group": "speech", "mode": "reference", "pass": True},
+            {
+                "id": "one",
+                "group": "speech",
+                "mode": "recording",
+                "pass": False,
+                "wer": 0.1,
+                "critical_ok": False,
+            },
+        ]
+    )
+    assert report["paired_voice"]["reference_pass_recording_fail"] == ["one"]
+    assert report["groups"]["speech/recording"]["critical_passed"] == 0
+    assert polish_benchmark.preserves("Wynik to 27.", [["27", "dwadzieścia siedem"]])
+    assert not polish_benchmark.preserves(
+        "Wynik to 127.", [["27", "dwadzieścia siedem"]]
+    )

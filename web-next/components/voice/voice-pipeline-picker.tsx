@@ -64,7 +64,11 @@ export function VoicePipelinePicker({
     onSwitching?.(true);
     setFailed(false);
     try {
-      await setActiveLlmServer("ollama", model);
+      const result = await setActiveLlmServer("ollama", model);
+      if (result.active_server !== "ollama" || result.active_model !== model) {
+        setFailed(true);
+        return;
+      }
       const lastGemma = model === omni ? gemma : model;
       if (lastGemma) {
         try { window.localStorage.setItem(lastGemmaKey, lastGemma); } catch { /* Optional preference. */ }

@@ -152,17 +152,22 @@ async def test_native_request_separates_system_instruction_and_audio(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "provider,busy,profile,supported,expected",
+    "provider,model,busy,profile,supported,expected",
     [
-        ("ollama", False, "auto", True, "ollama_audio"),
-        ("ollama", False, "auto", False, "faster_whisper"),
-        ("ollama", True, "auto", True, "faster_whisper"),
-        ("ollama", False, "faster_whisper", True, "faster_whisper"),
-        ("vllm", False, "auto", True, "faster_whisper"),
+        ("ollama", "small", False, "auto", True, "ollama_audio"),
+        ("ollama", "small", False, "auto", False, "faster_whisper"),
+        ("ollama", "small", True, "auto", True, "faster_whisper"),
+        ("ollama", "small", False, "faster_whisper", True, "faster_whisper"),
+        ("vllm", "small", False, "auto", True, "faster_whisper"),
+        ("ollama", "gemma4:e4b", False, "auto", True, "ollama_audio"),
+        ("ollama", "gemma4:e4b", False, "auto", False, "faster_whisper"),
+        ("ollama", "gemma4:e4b", False, "faster_whisper", True, "faster_whisper"),
+        ("ollama", "gemma4:e4b", True, "auto", True, "faster_whisper"),
+        ("ollama", "gemma4-e4b-ab-qlora85:q8_0", False, "auto", True, "ollama_audio"),
     ],
 )
 async def test_decoder_respects_capability_explicit_choice_and_busy_runtime(
-    monkeypatch, provider, busy, profile, supported, expected
+    monkeypatch, provider, model, busy, profile, supported, expected
 ):
     handler = object.__new__(stream.AudioStreamHandler)
     handler._resolve_audio_decoder_plan = lambda: {
@@ -173,7 +178,10 @@ async def test_decoder_respects_capability_explicit_choice_and_busy_runtime(
     }
     handler._audio_decoder_profile = lambda: profile
     runtime = SimpleNamespace(
-        provider=provider, endpoint="http://local/v1", model_name="small"
+        provider=provider,
+        endpoint="http://127.0.0.1:11434/v1",
+        model_name=model,
+        host_local=True,
     )
     monkeypatch.setattr(stream, "get_active_llm_runtime", lambda: runtime)
     from contextlib import contextmanager
@@ -751,3 +759,125 @@ async def test_full_direct_bypasses_operator_and_keeps_connection_history(
         "voice_mode": "direct",
     }
     operator.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("language", "first_score", "second_score", "expected", "calls"),
+    [
+        ("pl", -0.15, -0.05, "pierwsza", 1),
+        ("pl", None, -0.05, "pierwsza", 1),
+        ("en", -0.9, -0.1, "pierwsza", 1),
+        ("pl", -0.9, -0.2, "druga", 2),
+        ("pl", -0.9, -0.85, "pierwsza", 2),
+        ("pl", -0.9, None, "pierwsza", 2),
+        ("pl", -0.9, "timeout", "pierwsza", 2),
+    ],
+)
+async def test_uncertain_polish_omni_compares_one_faster_decode(
+    monkeypatch, language, first_score, second_score, expected, calls
+):
+    sent = []
+
+    class Client:
+        def __init__(self, **_):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_):
+            return False
+
+        async def apost(self, url, *, json, disable_retry):
+            assert url == "http://127.0.0.1:11434/api/chat"
+            assert disable_retry
+            sent.append(json)
+            score, text = (
+                (first_score, "pierwsza") if len(sent) == 1 else (second_score, "druga")
+            )
+            if score == "timeout":
+                raise TimeoutError
+            result = {"done": True, "message": {"content": text}}
+            if score is not None:
+                result["logprobs"] = [
+                    {"token": ".", "logprob": -10.0},
+                    {"token": text, "logprob": score},
+                ]
+            return SimpleNamespace(json=lambda: result)
+
+    monkeypatch.setattr(audio, "TrafficControlledHttpClient", Client)
+    pcm = b"\x01\x00\xff\xff" * 800
+    result = await audio.transcribe_pcm_audio(
+        "http://127.0.0.1:11434/v1", audio.OMNI_MODEL_ID, pcm, 16000, language
+    )
+    assert result == expected
+    assert len(sent) == calls
+    assert sent[0].get("logprobs", False) is (language == "pl")
+    if calls == 2:
+        assert sent[0]["messages"][0] == sent[1]["messages"][0]
+        encoded = sent[1]["messages"][1]["images"][0]
+        with wave.open(io.BytesIO(base64.b64decode(encoded))) as wav:
+            assert wav.getframerate() == 16000
+            assert wav.getnframes() in (1481, 1482)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("model", ["gemma4:e4b", "gemma4-e4b-ab-qlora85:q8_0"])
+async def test_gemma_asr_places_transcription_task_with_audio(monkeypatch, model):
+    calls = []
+
+    class Client:
+        def __init__(self, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_):
+            return False
+
+        async def apost(self, url, **kwargs):
+            calls.append(kwargs["json"])
+            return SimpleNamespace(
+                json=lambda: {"done": True, "message": {"content": "Pytanie"}}
+            )
+
+    monkeypatch.setattr(audio, "TrafficControlledHttpClient", Client)
+    assert (
+        await audio.transcribe_pcm_audio(
+            "http://local", model, b"\x01\x00" * 160, 16000, "pl"
+        )
+        == "Pytanie"
+    )
+    payload = calls[0]
+    assert len(calls) == 1
+    assert payload["model"] == model
+    assert payload["think"] is False
+    assert len(payload["messages"]) == 1
+    user = payload["messages"][0]
+    assert user["role"] == "user"
+    assert user["content"].startswith(
+        "Transcribe the following speech segment in Polish into Polish text."
+    )
+    assert base64.b64decode(user["images"][0]).startswith(b"RIFF")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "show, expected",
+    [
+        ({"capabilities": ["audio"]}, True),
+        ({"capabilities": ["audio"], "remote_host": "remote.example"}, False),
+        ({"capabilities": ["completion"]}, False),
+    ],
+)
+async def test_native_audio_requires_local_model_capability(
+    monkeypatch, show, expected
+):
+    monkeypatch.setattr(
+        audio.OllamaClient, "get_model_show", AsyncMock(return_value=show)
+    )
+    assert (
+        await audio.supports_audio("http://127.0.0.1:11434", "gemma4:e4b") is expected
+    )

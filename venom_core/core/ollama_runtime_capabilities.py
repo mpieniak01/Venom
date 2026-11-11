@@ -54,6 +54,11 @@ class OllamaRuntimeCapabilities:
         }
 
 
+def is_gemma4_model_name(model_name: str) -> bool:
+    """Recognize the installed Gemma voice profile, including derivative tags."""
+    return model_name.lower().startswith("gemma4")
+
+
 def _resolve_compatibility_profile(capabilities: set[str]) -> str:
     if "audio" in capabilities:
         return _MULTIMODAL_AUDIO

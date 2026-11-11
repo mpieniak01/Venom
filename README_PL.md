@@ -74,6 +74,7 @@ Podzielone wydanie Light/API używa Microsoft Agent Framework oraz aktywnych pro
 - [Silnik hybrydowy AI](docs/PL/HYBRID_AI_ENGINE.md) - Zasady routingu LOCAL/HYBRID/CLOUD i polityki local-first.
 - [Workflow Control](docs/PL/THE_WORKFLOW_CONTROL.md) - Model sterowania workflow, operacje i reguły kontroli wykonania.
 - [Możliwości runtime voice](docs/PL/VOICE_RUNTIME_CAPABILITIES.md) - Aktualny status pętli głosowej, w tym stabilny fallback Whisper/LLM/Piper oraz dwuetapowa ścieżka natywna Gemma4.
+- [Eksperyment z polskim asystentem multimodalnym](docs/PL/POLISH_MULTIMODAL_ASSISTANT_EXPERIMENT.md) - Porównanie Omni i Gemmy 4 E4B pod kątem jakości, opóźnień i pamięci w Venom Studio i Full.
 
 ### Agenci i funkcje
 - [Katalog agentów systemu](docs/PL/SYSTEM_AGENTS_CATALOG.md) - Opis ról agentów, ich wejść/wyjść i współpracy w runtime.

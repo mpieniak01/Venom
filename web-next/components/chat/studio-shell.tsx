@@ -209,8 +209,9 @@ function StudioConversation({ showLegacyLink, lightNormal }: Readonly<{
     {source.error && <div className="studio-error" role="alert">{t("chat2.offline")}<button type="button" className="studio-button" onClick={() => { void source.refresh(); }}>{t("chat2.retry")}</button></div>}
     <div className={"studio-workspace" + (materialsOpen ? " studio-with-materials" : "")}><div className="studio-conversation">
       <StudioThread key={sessionId} messages={conversation.historyMessages} details={interaction.optimistic.simpleRequestDetails} scrollRef={scrollRef} onScroll={conversation.chatUi.handleChatScroll} loading={source.loading || !sessionId} onError={setters.setMessage} noteSession={notesAvailable ? sessionId : undefined} />
-      {voice && (voice === "conversation" ? conversationVoiceAvailable : voiceAvailable) && <StudioVoice
-        key={sessionId + voice + (multimodalEnabled ? ":omni" : "")} session={sessionId} mode={voice}
+      {(voice === "conversation" || (voice === "dictation" && voiceAvailable)) && <StudioVoice
+        key={sessionId + voice} session={sessionId} mode={voice}
+        recordingAvailable={voice === "dictation" ? voiceAvailable : conversationVoiceAvailable}
         stopRevision={stopRevision} busy={chatActive} messages={conversation.historyMessages}
         activeModel={activeServer?.active_model} onModelApplied={model => {
           setters.setSelectedLlmServer("ollama");

@@ -7,13 +7,57 @@
 
 [English version](README.md) · [Opublikowane wydania](https://github.com/mpieniak01/Venom/releases)
 
-**Venom** to otwarty asystent AI do codziennej pracy technicznej i automatyzacji. W jednym środowisku łączy czat, pamięć w postaci notatek i agentów korzystających z narzędzi. Możesz zapytać o załączony plik tekstowy lub obraz, kontynuować rozmowę głosowo po polsku i zapisać przydatną odpowiedź jako notatkę, do której wrócisz później.
+**Venom** to otwarta platforma AI do pracy technicznej, automatyzacji i eksperymentów z modelami, rozwijana z myślą o jednym operatorze. Łączy rozmowę tekstową i głosową, analizę materiałów, pamięć oraz agentów wykonujących zadania przez narzędzia. Możesz przejść od pytania o dokument do analizy repozytorium, sprawdzić przebieg zadania i zachować przydatne wyniki do dalszej pracy.
 
-Venom jest projektowany dla jednego operatora. Z lokalną Ollamą model i dane rozmowy mogą pozostać na własnym komputerze. W wersji 1.10 **Studio** uruchamia Chat 2.0 jako osobną aplikację, w której tekst, załączniki i głos trafiają do jednego wątku. Studio i Full korzystają z tej samej historii po stronie serwera, gdy działają w tym samym środowisku.
+Przy lokalnej Ollamie model i dane rozmowy mogą pozostać na własnym komputerze. Pełny Venom daje dostęp do narzędzi, grafu wiedzy, diagnostyki, konfiguracji i eksperymentów z uczeniem. W wersji 1.10 **Studio** udostępnia osobny interfejs Chat 2.0 do codziennej rozmowy, materiałów i głosu. Oba warianty współdzielą dane wybranego środowiska.
 
-**Venom Full** dodaje zadania wykonywane przez agentów i diagnostykę. Możesz na przykład przeanalizować repozytorium albo sprawdzić stan usług. W panelu Workflow przejrzysz plan zmian konfiguracji i sprawdzisz, które z nich wymagają restartu, zanim je zastosujesz. [Instrukcja panelu Workflow](docs/PL/THE_WORKFLOW_CONTROL.md)
+Projekt pozwala także badać, który model rzeczywiście pomaga w pracy. Porównujemy jakość odpowiedzi, poprawność użycia narzędzi, mowę, zużycie pamięci i opóźnienia. Wyniki Gemmy i Omni oraz zakres ich kwalifikacji opisujemy w raportach dostępnych niżej.
 
-Gałąź `main` używa wersji **1.10.0**. Paczki oznaczone tagami i opis zmian znajdziesz w opublikowanych wydaniach.
+Gałąź `main` używa wersji **1.10.0**. Paczki oznaczone tagami i historia wydań są dostępne w opublikowanych wydaniach.
+
+## Możliwości Venoma
+
+| Obszar | Do czego służy | Ekran lub przewodnik |
+| --- | --- | --- |
+| Rozmowa i materiały | Tekst, załączone pliki tekstowe i obrazy, głos, historia wątku i zatrzymanie odpowiedzi. Możliwości wejścia zależą od wybranego modelu. | Studio `/chat2`, Full `/chat` i `/voice`. [Chat 2.0](docs/PL/CHAT_2.md) |
+| Agenci i narzędzia | Planowanie wieloetapowych zadań, praca z kodem i plikami, przegląd wyników oraz diagnostyka usług zgodnie z uprawnieniami operatora. | Tryby Normal i Complex w Full. [Katalog agentów](docs/PL/SYSTEM_AGENTS_CATALOG.md) |
+| Wiedza i pamięć | Notatki na żądanie, wyszukiwanie RAG, lekcje oraz graf powiązań pamięci i kodu. Można prześledzić relacje plików, funkcji i doświadczeń agentów. | `/brain`. [Warstwa pamięci](docs/PL/MEMORY_LAYER_GUIDE.md) |
+| Inspektor | Historia żądań, diagram przebiegu, kroki narzędzi i telemetria pomagające ustalić, co wykonał system. | `/inspector`. [Workflow operatora](docs/PL/CHAT_OPERATOR.md) |
+| Przepływy i konfiguracja | Graf wykonania i usług, plan zmian konfiguracji, kontrola zgodności, zastosowanie zmian i informacja o wymaganym restarcie. | `/workflow-control` i `/config`. [Workflow Control](docs/PL/THE_WORKFLOW_CONTROL.md) |
+| Modele i benchmarki | Katalog modeli i dostawców, wybór środowiska wykonawczego oraz pomiary jakości i szybkości. | `/models` i `/benchmark`. [Modele i integracje](docs/PL/INTEGRATIONS_OVERVIEW.md) |
+| Introspekcja modelu | Analiza odpowiedzi i dostępnych sygnałów wewnętrznych modelu wraz ze stanem gotowości sond. Zakres zależy od silnika i konfiguracji sond. | `/inspector/model-introspection`. [Przewodnik](docs/PL/MODEL_INTROSPECTION_GUIDE.md) |
+| Akademia i uczenie | Konwersja danych, przygotowanie datasetów, obsługa przebiegów treningowych, adapterów i samokształcenia. Trening wymaga osobnego, przygotowanego środowiska i oceny wyników. | `/academy`. [Akademia](docs/PL/THE_ACADEMY.md) |
+| Rozszerzenia i integracje | Narzędzia MCP, integracje usług oraz moduły instalowane z osobnych repozytoriów przez manifest. Przykładem lokalnego rozszerzenia jest Rider-Pi. | [Integracje](docs/PL/EXTERNAL_INTEGRATIONS.md) · [Moduły opcjonalne](docs/PL/MODULES_OPTIONAL_REGISTRY.md) |
+
+W pracy agentowej Architect rozbija zadanie na kroki, Researcher zbiera informacje, Coder przygotowuje kod, Critic go ocenia, a Librarian operuje na plikach. Repozytorium zawiera również Ghost do automatyzacji interfejsu i Apprentice do rejestrowania demonstracji. Uruchomienie tych funkcji zależy od włączonych komponentów, uprawnień i dostępnych narzędzi. [Role agentów](docs/PL/SYSTEM_AGENTS_CATALOG.md) · [Automatyzacja GUI](docs/PL/GHOST_AGENT.md) · [Uczenie przez demonstrację](docs/PL/THE_APPRENTICE.md)
+
+## Podgląd modułów
+
+Zrzuty wykonano 11 listopada 2026 w lokalnej instancji Full 1.10. Pokazują zapisane dane i scenariusze testowe. Kliknij obraz, aby obejrzeć szczegóły.
+
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <a href="docs/assets/venom-110-knowledge.jpeg"><img src="docs/assets/venom-110-knowledge.jpeg" width="100%" alt="Graf wiedzy z przykładowymi agentami, plikami i lekcjami" /></a>
+      <strong>Wiedza i zależności</strong><br />
+      Wbudowane dane demonstracyjne grafu pokazują relacje agentów, plików i lekcji.
+    </td>
+    <td width="50%" valign="top">
+      <a href="docs/assets/venom-110-inspector.jpeg"><img src="docs/assets/venom-110-inspector.jpeg" width="100%" alt="Inspektor z historią prób E4B i diagramem wybranego żądania" /></a>
+      <strong>Przebieg zadania</strong><br />
+      Zapisana próba głosowa E4B z kontekstem, pierwszym fragmentem odpowiedzi i zakończeniem żądania. Statusy dotyczą wykonania, a ocenę jakości opisuje raport.
+    </td>
+  </tr>
+</table>
+
+<details>
+<summary>Zobacz katalog modeli z instancji testowej</summary>
+
+[![Katalog zainstalowanych modeli w lokalnej instancji testowej](docs/assets/venom-110-models.jpeg)](docs/assets/venom-110-models.jpeg)
+
+**Zarządzanie modelami** pokazuje faktycznie zainstalowane modele, ich możliwości i stan. Zestaw na zrzucie pochodzi z instancji testowej.
+
+</details>
 
 ## Wybór aplikacji
 
@@ -70,6 +114,26 @@ make stop-venom PROFILE=full ENVIRONMENT=dev
 
 Przykłady korzystają z pełnego zestawu zależności, żeby można było później skonfigurować głos. Wariant aplikacji, profil uruchomieniowy Full/Light i środowisko dev/preprod to trzy osobne wybory. Do pracy lokalnej służy `dev`, a do odizolowanej weryfikacji tylko do odczytu `preprod`. [Profile stosu](docs/PL/STACK_PROFILES.md) · [Profile zależności](docs/DEPENDENCY_PROFILES.md)
 
+## Architektura i rozwój
+
+Venom 1.10 korzysta z FastAPI, Next.js i Microsoft Agent Framework. Studio ma własny frontend i podzbiór współdzielonego API. Logika rozmów, kontrakty dostawców i dane środowiska są wspólne. W Direct odpowiedź trafia przez adapter wybranego modelu, a przepływy agentowe korzystają z orkiestracji i narzędzi. [Architektura backendu](docs/PL/BACKEND_ARCHITECTURE.md) · [Kontrakt MAF](docs/MAF_RUNTIME_CONTRACT.md)
+
+```text
+venom_core/
+  api/                 API, kontrakty i kontrola dostępu
+  core/flows/          Przepływy zadań i orkiestracja
+  agents/              Wyspecjalizowane role agentów
+  execution/           Dostawcy modeli, MAF i narzędzia
+  memory/              Notatki, pamięć wektorowa, graf i lekcje
+  learning/            Przygotowanie danych i procesy uczenia
+  perception/          Audio i percepcja
+web-next/              Pełny interfejs Venoma
+web-studio/            Osobna aplikacja Chat 2.0
+modules/               Lokalnie instalowane moduły z osobnych repozytoriów
+```
+
+Pełny zakres aplikacji zależy od zainstalowanego zestawu zależności. Ollama działa jako osobna usługa, a daemon CUDA ma własne środowisko. Treningi Akademii i dodatkowe silniki wymagają odrębnej kwalifikacji. [Profile zależności i stan wdrożenia](docs/DEPENDENCY_PROFILES.md)
+
 ## Wyniki polskiego benchmarku multimodalnego
 
 Porównaliśmy bazową **Gemmę 4 E4B** i **LFM3-Omni-2B** na zamrożonym zbiorze `pl-assistant-v1`. Każdy profil przeszedł 200 scenariuszy z tekstem referencyjnym i 80 dodatkowych prób z nagraniami. Oba korzystały z pakietów Q4_K_M w Ollamie 0.40.14 na tej samej karcie RTX 3060 z 12 GiB VRAM pod WSL2. Gemma w tym pomiarze korzystała z Whispera i Pipera. Omni używał natywnego rozpoznawania i syntezy mowy.
@@ -84,11 +148,12 @@ Gemma częściej spełniała ścisłe kryteria odpowiedzi. Omni w tym pomiarze z
 
 ## Dokumentacja
 
-- **Obsługa i wdrożenie** · [Przewodnik wdrożeniowy](docs/PL/DEPLOYMENT_NEXT.md) · [Chat 2.0](docs/PL/CHAT_2.md) · [Wsparcie środowisk](docs/PL/ENVIRONMENTS_SUPPORT.md) · [Wydania Dockera](docs/PL/DOCKER_RELEASE_GUIDE.md)
-- **Obsługa pełnej aplikacji** · [Kokpit](docs/PL/DASHBOARD_GUIDE.md) · [Panel konfiguracji](docs/PL/CONFIG_PANEL.md) · [Instrukcja operatora czatu](docs/PL/CHAT_OPERATOR.md)
-- **Modele i dostawcy** · [OpenRouter](docs/OPENROUTER_LOCAL_MVP.md) · [Vast i Ollama](docs/PL/VAST_START_I_ODZYSKIWANIE.md) · [Introspekcja modeli](docs/PL/MODEL_INTROSPECTION_GUIDE.md) · [Pilot Gemmy E4B](docs/PL/GEMMA4_E4B_PILOT.md)
-- **Narzędzia i rozwój** · [Użycie narzędzi](docs/PL/TOOLS_USAGE_GUIDE.md) · [Integracje](docs/PL/INTEGRATIONS_OVERVIEW.md) · [Architektura backendu](docs/PL/BACKEND_ARCHITECTURE.md) · [Przewodnik po frontendzie](docs/PL/FRONTEND_NEXT_GUIDE.md) · [Akademia](docs/PL/THE_ACADEMY.md)
-- **Współtworzenie** · [Zasady współpracy](docs/PL/CONTRIBUTING.md) · [GitHub Actions](https://github.com/mpieniak01/Venom/actions)
+- **Uruchomienie i obsługa** · [Wdrożenie](docs/PL/DEPLOYMENT_NEXT.md) · [Studio](docs/PL/STUDIO.md) · [Profile Full/Light](docs/PL/STACK_PROFILES.md) · [Środowiska](docs/PL/ENVIRONMENTS_SUPPORT.md) · [Docker](docs/PL/DOCKER_RELEASE_GUIDE.md)
+- **Praca z Venomem** · [Kokpit](docs/PL/DASHBOARD_GUIDE.md) · [Operator czatu](docs/PL/CHAT_OPERATOR.md) · [Narzędzia](docs/PL/TOOLS_USAGE_GUIDE.md) · [Pamięć](docs/PL/MEMORY_LAYER_GUIDE.md) · [Konfiguracja](docs/PL/CONFIG_PANEL.md)
+- **Agenci i rozszerzenia** · [Katalog agentów](docs/PL/SYSTEM_AGENTS_CATALOG.md) · [Researcher](docs/PL/THE_RESEARCHER.md) · [Tworzenie narzędzi](docs/PL/THE_FORGE.md) · [Integracje](docs/PL/EXTERNAL_INTEGRATIONS.md) · [Moduły opcjonalne](docs/PL/MODULES_OPTIONAL_REGISTRY.md)
+- **Modele i eksperymenty** · [Akademia](docs/PL/THE_ACADEMY.md) · [Katalog danych treningowych](docs/TRAINING_DATA_CATALOG.md) · [Pilot E4B](docs/PL/GEMMA4_E4B_PILOT.md) · [Ocena LFM3](docs/PL/LFM3_LOCAL_EVALUATION.md) · [Benchmark polskiego asystenta](docs/PL/POLSKI_BENCHMARK_ASYSTENTA.md)
+- **Dostawcy** · [OpenRouter](docs/OPENROUTER_LOCAL_MVP.md) · [Vast i Ollama](docs/PL/VAST_START_I_ODZYSKIWANIE.md)
+- **Rozwój i jakość** · [Backend](docs/PL/BACKEND_ARCHITECTURE.md) · [Frontend](docs/PL/FRONTEND_NEXT_GUIDE.md) · [Współtworzenie](docs/PL/CONTRIBUTING.md) · [Polityka testów](docs/PL/TESTING_POLICY.md) · [GitHub Actions](https://github.com/mpieniak01/Venom/actions)
 
 ## Licencja i współtwórcy
 

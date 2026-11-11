@@ -7,13 +7,57 @@
 
 [Wersja polska](README_PL.md) · [Published releases](https://github.com/mpieniak01/Venom/releases)
 
-**Venom** is an open-source AI assistant for everyday technical work and automation. It brings chat, saved notes, and agents that can use tools into one environment. Ask about an attached text file or image, continue the conversation by voice in Polish, and save a useful answer as a note you can look up later.
+**Venom** is an open-source AI platform for technical work, automation, and model experiments, designed for a single operator. It brings together text and voice conversations, document and image analysis, memory, and agents that use tools. Start with a question about a document, inspect a repository, trace how a task ran, and keep useful results for later work.
 
-Venom is designed for one operator. With local Ollama, the model and conversation data can stay on your machine. In 1.10, **Studio** runs Chat 2.0 as a separate app for text, attachments, and voice in a single thread. Studio and Full share server-side history when you run them in the same environment.
+With local Ollama, the model and conversation data can stay on your machine. Full Venom provides tools, a knowledge graph, diagnostics, configuration, and learning experiments. In 1.10, **Studio** provides a separate Chat 2.0 app for everyday conversations, materials, and voice. Both variants share the selected environment's data.
 
-**Venom Full** adds agent workflows and diagnostics for tasks such as inspecting a repository or checking services. Its Workflow panel lets you review proposed configuration changes and see which ones need a restart before you apply them. [Workflow guide](docs/THE_WORKFLOW_CONTROL.md)
+The project also helps investigate which models are useful in practice. We compare answer quality, tool use, speech, memory use, and latency. The Gemma and Omni reports below document the results and the scope of each evaluation.
 
-The `main` branch uses version **1.10.0**. Tagged downloads and release notes are listed under Published releases.
+The `main` branch uses version **1.10.0**. Tagged downloads and release history are available under Published releases.
+
+## What Venom provides
+
+| Area | What it is for | Screen or guide |
+| --- | --- | --- |
+| Conversation and materials | Text, attached text files and images, voice, thread history, and stopping a response. Supported inputs depend on the selected model. | Studio `/chat2`, Full `/chat` and `/voice`. [Chat 2.0](docs/CHAT_2.md) |
+| Agents and tools | Planning multi-step tasks, working with code and files, reviewing results, and diagnosing services within operator permissions. | Normal and Complex in Full. [Agent catalog](docs/SYSTEM_AGENTS_CATALOG.md) |
+| Knowledge and memory | Explicit notes, RAG retrieval, lessons, and a graph of memory and code relationships. Follow connections between files, functions, and agent experience. | `/brain`. [Memory guide](docs/MEMORY_LAYER_GUIDE.md) |
+| Inspector | Request history, flow diagrams, tool steps, and telemetry to inspect what the system executed. | `/inspector`. [Operator workflow](docs/CHAT_OPERATOR.md) |
+| Workflows and configuration | Execution and service graphs, configuration plans, compatibility checks, applying changes, and restart requirements. | `/workflow-control` and `/config`. [Workflow Control](docs/THE_WORKFLOW_CONTROL.md) |
+| Models and benchmarks | Model and provider catalogs, runtime selection, and quality and speed measurements. | `/models` and `/benchmark`. [Models and integrations](docs/INTEGRATIONS_OVERVIEW.md) |
+| Model introspection | Inspect answers and available internal model signals alongside probe readiness. The scope depends on the runtime and configured probes. | `/inspector/model-introspection`. [Guide](docs/MODEL_INTROSPECTION_GUIDE.md) |
+| Academy and learning | Data conversion, dataset preparation, training run and adapter management, and self-learning workflows. Training requires a separately prepared environment and evaluation. | `/academy`. [Academy](docs/THE_ACADEMY.md) |
+| Extensions and integrations | MCP tools, service integrations, and modules installed from separate repositories through manifests. Rider-Pi is one example of a local extension. | [Integrations](docs/EXTERNAL_INTEGRATIONS.md) · [Optional modules](docs/MODULES_OPTIONAL_REGISTRY.md) |
+
+In agent workflows, Architect breaks down the task, Researcher gathers information, Coder prepares code, Critic reviews it, and Librarian works with files. The repository also includes Ghost for GUI automation and Apprentice for recording demonstrations. These functions depend on enabled components, permissions, and available tools. [Agent roles](docs/SYSTEM_AGENTS_CATALOG.md) · [GUI automation](docs/GHOST_AGENT.md) · [Learning from demonstrations](docs/THE_APPRENTICE.md)
+
+## Explore the modules
+
+These screenshots were captured on November 11, 2026 in a local Full 1.10 instance. They show stored data and test scenarios. Click an image to inspect it.
+
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <a href="docs/assets/venom-110-knowledge.jpeg"><img src="docs/assets/venom-110-knowledge.jpeg" width="100%" alt="Knowledge graph with example agents, files, and lessons" /></a>
+      <strong>Knowledge and dependencies</strong><br />
+      The built-in demonstration graph shows relationships between agents, files, and lessons.
+    </td>
+    <td width="50%" valign="top">
+      <a href="docs/assets/venom-110-inspector.jpeg"><img src="docs/assets/venom-110-inspector.jpeg" width="100%" alt="Inspector showing E4B test history and the selected request's flow" /></a>
+      <strong>Task execution</strong><br />
+      A recorded E4B voice trial shows context, the first response chunk, and request completion. Status metrics describe execution. The report evaluates answer quality.
+    </td>
+  </tr>
+</table>
+
+<details>
+<summary>View the test instance's model inventory</summary>
+
+[![Installed models in the local test instance](docs/assets/venom-110-models.jpeg)](docs/assets/venom-110-models.jpeg)
+
+**Model management** shows installed models, their capabilities, and status. The inventory in this screenshot belongs to the test instance.
+
+</details>
 
 ## Choose an application
 
@@ -70,6 +114,26 @@ make stop-venom PROFILE=full ENVIRONMENT=dev
 
 The examples use the Full dependency set so audio can be configured later. Application choice, the Full/Light runtime profile, and the dev/preprod environment are independent. Use `dev` for local operation and `preprod` for isolated, read-only verification. [Stack profiles](docs/STACK_PROFILES.md) · [Dependency profiles](docs/DEPENDENCY_PROFILES.md)
 
+## Architecture and development
+
+Venom 1.10 uses FastAPI, Next.js, and Microsoft Agent Framework. Studio has its own frontend and a subset of the shared API. Conversation logic, provider contracts, and environment data are shared. Direct sends the response through the selected model adapter. Agent workflows use orchestration and tools. [Backend architecture](docs/BACKEND_ARCHITECTURE.md) · [MAF contract](docs/MAF_RUNTIME_CONTRACT.md)
+
+```text
+venom_core/
+  api/                 API, contracts, and access control
+  core/flows/          Task flows and orchestration
+  agents/              Specialized agent roles
+  execution/           Model providers, MAF, and tools
+  memory/              Notes, vector memory, graphs, and lessons
+  learning/            Data preparation and learning workflows
+  perception/          Audio and perception
+web-next/              Full Venom interface
+web-studio/            Separate Chat 2.0 app
+modules/               Locally installed modules from separate repositories
+```
+
+Available features depend on the installed dependency set. Ollama runs as a separate service, and the CUDA daemon has its own environment. Academy training and additional model engines require separate qualification. [Dependency profiles and deployment status](docs/DEPENDENCY_PROFILES.md)
+
 ## Polish multimodal benchmark
 
 We compared baseline **Gemma 4 E4B** and **LFM3-Omni-2B** on the frozen `pl-assistant-v1` suite. Each profile ran 200 scenarios with reference text and 80 additional runs with recordings. Both used Q4_K_M packages with Ollama 0.40.14 on the same RTX 3060 with 12 GiB of VRAM under WSL2. The Gemma profile used Whisper and Piper for this run. Omni used its native speech recognition and synthesis.
@@ -84,11 +148,12 @@ Gemma led on strict accuracy. Omni used less GPU memory and returned the WAV soo
 
 ## Documentation
 
-- **Use and deploy** · [Deployment guide](docs/DEPLOYMENT_NEXT.md) · [Chat 2.0](docs/CHAT_2.md) · [Environment support](docs/ENVIRONMENTS_SUPPORT.md) · [Docker releases](docs/DOCKER_RELEASE_GUIDE.md)
-- **Operate the full app** · [Dashboard](docs/DASHBOARD_GUIDE.md) · [Configuration panel](docs/CONFIG_PANEL.md) · [Chat operator guide](docs/CHAT_OPERATOR.md)
-- **Models and providers** · [OpenRouter](docs/OPENROUTER_LOCAL_MVP.md) · [Vast and Ollama](docs/PL/VAST_START_I_ODZYSKIWANIE.md) · [Model introspection](docs/MODEL_INTROSPECTION_GUIDE.md) · [Gemma E4B pilot](docs/PL/GEMMA4_E4B_PILOT.md)
-- **Tools and development** · [Tool usage](docs/TOOLS_USAGE_GUIDE.md) · [Integrations](docs/INTEGRATIONS_OVERVIEW.md) · [Backend architecture](docs/BACKEND_ARCHITECTURE.md) · [Frontend guide](docs/FRONTEND_NEXT_GUIDE.md) · [Academy](docs/THE_ACADEMY.md)
-- **Contribute** · [Contribution guide](docs/CONTRIBUTING.md) · [GitHub Actions](https://github.com/mpieniak01/Venom/actions)
+- **Start and operate** · [Deployment](docs/DEPLOYMENT_NEXT.md) · [Studio](docs/STUDIO.md) · [Full/Light profiles](docs/STACK_PROFILES.md) · [Environments](docs/ENVIRONMENTS_SUPPORT.md) · [Docker](docs/DOCKER_RELEASE_GUIDE.md)
+- **Work with Venom** · [Dashboard](docs/DASHBOARD_GUIDE.md) · [Chat operator](docs/CHAT_OPERATOR.md) · [Tools](docs/TOOLS_USAGE_GUIDE.md) · [Memory](docs/MEMORY_LAYER_GUIDE.md) · [Configuration](docs/CONFIG_PANEL.md)
+- **Agents and extensions** · [Agent catalog](docs/SYSTEM_AGENTS_CATALOG.md) · [Researcher](docs/THE_RESEARCHER.md) · [Building tools](docs/THE_FORGE.md) · [Integrations](docs/EXTERNAL_INTEGRATIONS.md) · [Optional modules](docs/MODULES_OPTIONAL_REGISTRY.md)
+- **Models and experiments** · [Academy](docs/THE_ACADEMY.md) · [Training data catalog](docs/TRAINING_DATA_CATALOG.md) · [E4B pilot](docs/PL/GEMMA4_E4B_PILOT.md) · [LFM3 evaluation](docs/PL/LFM3_LOCAL_EVALUATION.md) · [Polish assistant benchmark](docs/PL/POLSKI_BENCHMARK_ASYSTENTA.md)
+- **Providers** · [OpenRouter](docs/OPENROUTER_LOCAL_MVP.md) · [Vast and Ollama](docs/PL/VAST_START_I_ODZYSKIWANIE.md)
+- **Development and quality** · [Backend](docs/BACKEND_ARCHITECTURE.md) · [Frontend](docs/FRONTEND_NEXT_GUIDE.md) · [Contributing](docs/CONTRIBUTING.md) · [Testing policy](docs/TESTING_POLICY.md) · [GitHub Actions](https://github.com/mpieniak01/Venom/actions)
 
 ## License and contributors
 

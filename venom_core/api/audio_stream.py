@@ -58,6 +58,7 @@ from venom_core.services.runtime_switch_gate import (
     get_runtime_switch_gate_status,
     runtime_request_guard,
 )
+from venom_core.services.session_store import SessionRevision
 from venom_core.utils.llm_runtime import LLMRuntimeInfo, get_active_llm_runtime
 from venom_core.utils.logger import get_logger
 from venom_core.utils.mode_contracts import (
@@ -587,6 +588,7 @@ class AudioStreamHandler:
         native_committed: NotRequired[bool]
         discard_native_audio: NotRequired[bool]
         direct_history: NotRequired[list[HistoryMessage]]
+        direct_history_revision: NotRequired[SessionRevision]
         direct_session_id: NotRequired[str]
 
     def get_status(self, operator_agent: object | None = None) -> dict:
@@ -955,6 +957,7 @@ class AudioStreamHandler:
         if data["command"] == "end_native_dialogue":
             await self._cancel_native_dialogue(connection_id, conn)
             conn.pop("direct_history", None)
+            conn.pop("direct_history_revision", None)
             conn.pop("direct_session_id", None)
             return
         cancel_id = data.get("cancel_id")
@@ -962,7 +965,9 @@ class AudioStreamHandler:
             await self._cancel_native_dialogue(connection_id, conn)
             return
         task = conn.get("native_task")
-        if task is not None and conn.get("native_saving"):
+        if task is not None and (
+            conn.get("native_saving") or conn.get("native_committed")
+        ):
             await asyncio.gather(task, return_exceptions=True)
         cancelled = not conn.get("native_committed", False)
         if cancelled:
@@ -1047,6 +1052,15 @@ class AudioStreamHandler:
             if conn.get("native_task") is asyncio.current_task():
                 conn.pop("native_task", None)
 
+    @staticmethod
+    def _direct_history(
+        conn: _ConnectionState, revision: SessionRevision
+    ) -> list[HistoryMessage]:
+        if conn.get("direct_history_revision") is not revision:
+            conn.pop("direct_history", None)
+            conn["direct_history_revision"] = revision
+        return conn.get("direct_history", [])
+
     async def _native_dialogue_turn(
         self,
         connection_id: int,
@@ -1060,57 +1074,55 @@ class AudioStreamHandler:
             "direct_session_id", f"voice-direct-{uuid.uuid4()}"
         )
         store = get_session_store()
-        with store.pending_turn(session_id) as pending_token:
-            pcm, rate = await self._native_pcm(pilot, chunks)
-            rows = store.get_history(session_id, limit=omni_pilot.MAX_HISTORY_ROWS)
-            image, retained, _ = self._native_contexts.inputs(
-                connection_id, runtime, mode, pilot.image, rows
-            )
-            history = [
-                {"role": turn.role, "content": turn.content}
-                for turn in conn.get("direct_history", [])[
-                    -omni_pilot.MAX_HISTORY_ROWS :
-                ]
-            ] + retained
+        revision = store.session_revision(session_id)
+        pcm, rate = await self._native_pcm(pilot, chunks)
+        rows = store.get_history(session_id, limit=omni_pilot.MAX_HISTORY_ROWS)
+        image, retained, _ = self._native_contexts.inputs(
+            connection_id, runtime, mode, pilot.image, rows
+        )
+        history = [
+            {"role": turn.role, "content": turn.content}
+            for turn in self._direct_history(conn, revision)[
+                -omni_pilot.MAX_HISTORY_ROWS :
+            ]
+        ] + retained
+        await self._send_json(
+            connection_id,
+            {"type": "processing", "status": "thinking", "generation_mode": mode},
+        )
+        result = await omni_native_voice.run_turn(
+            runtime, pcm, rate, image, history, mode
+        )
+        meta = {
+            "multimodal": True,
+            "generation_mode": mode,
+            "pipeline_id": omni_native_voice.PIPELINE,
+            "session_id": session_id,
+            "has_image": image is not None,
+            "generation_count": result.generation_count,
+        }
+        if result.no_speech:
             await self._send_json(
-                connection_id,
-                {"type": "processing", "status": "thinking", "generation_mode": mode},
+                connection_id, {"type": "complete", "no_speech": True, **meta}
             )
-            result = await omni_native_voice.run_turn(
-                runtime, pcm, rate, image, history, mode
+            return
+        if not result.wav:
+            raise NativeDialogueError("omni_native_failed")
+        with wave.open(io.BytesIO(result.wav), "rb") as output:
+            audio = np.frombuffer(output.readframes(output.getnframes()), dtype="<i2")
+            output_rate = output.getframerate()
+        conn["native_saving"] = True
+        try:
+            request_id = await omni_native_voice.persist_turn(
+                store, session_id, mode, result.text, expected_revision=revision
             )
-            meta = {
-                "multimodal": True,
-                "generation_mode": mode,
-                "pipeline_id": omni_native_voice.PIPELINE,
-                "session_id": session_id,
-                "has_image": image is not None,
-                "generation_count": result.generation_count,
-            }
-            if result.no_speech:
-                await self._send_json(
-                    connection_id, {"type": "complete", "no_speech": True, **meta}
-                )
-                return
-            if not result.wav:
-                raise NativeDialogueError("omni_native_failed")
-            with wave.open(io.BytesIO(result.wav), "rb") as output:
-                audio = np.frombuffer(
-                    output.readframes(output.getnframes()), dtype="<i2"
-                )
-                output_rate = output.getframerate()
-            conn["native_saving"] = True
-            try:
-                request_id = await omni_native_voice.persist_turn(
-                    store, session_id, mode, result.text, pending_token=pending_token
-                )
-            except HTTPException:
-                self._native_contexts.discard(connection_id)
-                conn.pop("direct_history", None)
-                raise
-            finally:
-                conn.pop("native_saving", None)
-            conn["native_committed"] = True
+        except HTTPException:
+            self._native_contexts.discard(connection_id)
+            conn.pop("direct_history", None)
+            raise
+        finally:
+            conn.pop("native_saving", None)
+        conn["native_committed"] = True
         if mode == "interleaved" and result.text:
             self._native_contexts.remember(
                 connection_id,
@@ -2787,9 +2799,10 @@ class AudioStreamHandler:
             session_id = connection.setdefault(
                 "direct_session_id", f"voice-direct-{uuid.uuid4()}"
             )
+            revision = get_session_store().session_revision(session_id)
             response_text, history = await complete_direct_turn(
                 transcription,
-                connection.get("direct_history", []),
+                self._direct_history(connection, revision),
                 session_id=session_id,
             )
             connection["direct_history"] = history

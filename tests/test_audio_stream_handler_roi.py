@@ -2425,7 +2425,34 @@ async def test_native_full_direct_sends_generated_pcm_and_retains_context(
     await turn(1, "interleaved", pcm)
     last_event = json.loads(ws.send_text.await_args.args[0])
     assert last_event["reason_code"] == "omni_native_session_cleared"
-    assert store.get_history(handler.active_connections[1]["direct_session_id"]) == []
+    conn = handler.active_connections[1]
+    session_id = conn["direct_session_id"]
+    assert store.get_history(session_id) == []
+
+    from venom_core.services import direct_voice
+
+    clear_during_generation = False
+    old_text = audio_stream_mod.HistoryMessage(
+        role="user", content="Treść sprzed resetu"
+    )
+    monkeypatch.setattr(
+        direct_voice,
+        "complete_direct_turn",
+        AsyncMock(return_value=("Direct", [old_text])),
+    )
+    await handler._reply_to_voice_transcript(
+        1,
+        old_text.content,
+        operator_agent=None,
+        runtime_metadata={},
+        session_dir=tmp_path,
+        pipeline_id="test",
+    )
+    assert conn["direct_history"] == [old_text]
+    assert not store.clear_session(session_id)
+    await turn(1, "interleaved", pcm)
+    model.assert_awaited_with(runtime, pcm, 16000, None, [], mode="interleaved")
+    assert "direct_history" not in conn
     cascade.assert_not_awaited()
     synth.assert_not_awaited()
 
@@ -2482,8 +2509,9 @@ async def test_native_full_reset_drains_before_ack_and_does_not_save(
 
 
 @pytest.mark.asyncio
-async def test_native_full_cancellation_during_persistence_keeps_committed_reply(
-    monkeypatch, tmp_path
+@pytest.mark.parametrize("phase", ["save", "send"])
+async def test_native_full_late_cancellation_waits_for_committed_reply(
+    monkeypatch, tmp_path, phase
 ):
     handler = _make_handler()
     ws = _add_connection(handler, 1)
@@ -2495,15 +2523,26 @@ async def test_native_full_cancellation_during_persistence_keeps_committed_reply
     monkeypatch.setattr(audio_stream_mod, "get_session_store", lambda: store)
     started = asyncio.Event()
     release_write = Event()
+    release_send = asyncio.Event()
     loop = asyncio.get_running_loop()
     append = store.append_turn_once
 
     def append_turn(*args, **kwargs):
-        loop.call_soon_threadsafe(started.set)
-        assert release_write.wait(timeout=5)
+        if phase == "save":
+            loop.call_soon_threadsafe(started.set)
+            assert release_write.wait(timeout=5)
         return append(*args, **kwargs)
 
+    send_audio = handler._send_audio
+
+    async def send_turn(*args, **kwargs):
+        if phase == "send":
+            started.set()
+            await release_send.wait()
+        await send_audio(*args, **kwargs)
+
     monkeypatch.setattr(store, "append_turn_once", append_turn)
+    monkeypatch.setattr(handler, "_send_audio", send_turn)
     wav = io.BytesIO()
     with wave.open(wav, "wb") as stream:
         stream.setparams((1, 2, 24000, 0, "NONE", "not compressed"))
@@ -2534,6 +2573,7 @@ async def test_native_full_cancellation_during_persistence_keeps_committed_reply
         assert not cancel.done()
     finally:
         release_write.set()
+        release_send.set()
     await asyncio.wait_for(cancel, timeout=2)
     conn = handler.active_connections[1]
     assert (

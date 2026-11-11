@@ -21,7 +21,7 @@ from venom_core.services.omni_native_dialogue import (
     NativeMode,
 )
 from venom_core.services.runtime_switch_gate import runtime_request_guard
-from venom_core.services.session_store import SessionStore
+from venom_core.services.session_store import SessionRevision, SessionStore
 from venom_core.utils.helpers import get_utc_now_iso
 from venom_core.utils.llm_runtime import LLMRuntimeInfo, get_active_llm_runtime
 
@@ -163,7 +163,7 @@ async def persist_turn(
     mode: NativeMode,
     text: str | None,
     *,
-    pending_token: object | None = None,
+    expected_revision: SessionRevision,
 ) -> str:
     request_id = str(uuid4())
     metadata = {
@@ -186,7 +186,7 @@ async def persist_turn(
                 "content": text or "[Odpowiedź głosowa]",
             },
         ],
-        pending_token=pending_token,
+        expected_revision=expected_revision,
     )
     if not saved:
         raise HTTPException(409, {"reason_code": "omni_native_session_cleared"})

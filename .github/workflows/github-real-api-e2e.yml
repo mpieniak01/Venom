@@ -64,12 +64,9 @@ jobs:
         run: python scripts/bootstrap_dependency_profile.py --profile light --venv "$GITHUB_WORKSPACE/.venv" --update
       - name: Install frontend dependencies
         run: npm --prefix web-next ci
-      - name: Install Chromium and required libraries
+      - name: Install Chromium on the Ubuntu runner
         working-directory: web-next
-        run: |
-          # Playwright's dependency installer uses the runner's APT sources.
-          sudo sed -i 's|mirror+file:/etc/apt/apt-mirrors\.txt|https://archive.ubuntu.com/ubuntu|g' /etc/apt/sources.list.d/ubuntu.sources
-          npx playwright install --with-deps chromium
+        run: npx playwright install chromium
       - name: Exercise real API with controlled fake LLM in private namespaces
         shell: bash
         run: |

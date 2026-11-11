@@ -5,11 +5,10 @@ from __future__ import annotations
 import json
 import os
 import tempfile
-from collections.abc import Iterator
-from contextlib import contextmanager
 from pathlib import Path
 from threading import Lock
 from typing import Dict, List, Optional
+from weakref import WeakValueDictionary
 
 from venom_core.config import SETTINGS
 from venom_core.utils.boot_id import BOOT_ID
@@ -17,6 +16,12 @@ from venom_core.utils.helpers import get_utc_now_iso
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+
+class SessionRevision:
+    """Identity shared by live readers and writers until the session is cleared."""
+
+    __slots__ = ("__weakref__",)
 
 
 class SessionStore:
@@ -27,7 +32,9 @@ class SessionStore:
         self._store_path = self._resolve_store_path(store_path)
         self._max_entries = max_entries
         self._sessions: Dict[str, Dict[str, object]] = {}
-        self._pending_turns: dict[str, set[object]] = {}
+        self._revisions: WeakValueDictionary[str, SessionRevision] = (
+            WeakValueDictionary()
+        )
         self._load()
 
     @staticmethod
@@ -123,21 +130,14 @@ class SessionStore:
             self._sessions[session_id] = session
             self._save()
 
-    @contextmanager
-    def pending_turn(self, session_id: str) -> Iterator[object]:
-        """Reserve a turn that clearing this session can invalidate."""
-        token = object()
+    def session_revision(self, session_id: str) -> SessionRevision:
+        """Keep the revision only while an operation or connection references it."""
         with self._lock:
-            self._pending_turns.setdefault(session_id, set()).add(token)
-        try:
-            yield token
-        finally:
-            with self._lock:
-                pending = self._pending_turns.get(session_id)
-                if pending is not None:
-                    pending.discard(token)
-                    if not pending:
-                        del self._pending_turns[session_id]
+            revision = self._revisions.get(session_id)
+            if revision is None:
+                revision = SessionRevision()
+                self._revisions[session_id] = revision
+            return revision
 
     def append_turn_once(
         self,
@@ -145,16 +145,17 @@ class SessionStore:
         request_id: str,
         entries: List[Dict[str, object]],
         *,
-        pending_token: object | None = None,
+        expected_revision: SessionRevision | None = None,
     ) -> bool:
         """Atomically persist one Direct pair; existing append error handling is unchanged."""
         if not session_id or not request_id:
             return False
         with self._lock:
-            if pending_token is not None:
-                pending = self._pending_turns.get(session_id)
-                if pending is None or pending_token not in pending:
-                    return False
+            if (
+                expected_revision is not None
+                and self._revisions.get(session_id) is not expected_revision
+            ):
+                return False
             previous = self._sessions.get(session_id)
             session = dict(previous or {})
             raw = session.get("history")
@@ -267,7 +268,7 @@ class SessionStore:
         if not session_id:
             return False
         with self._lock:
-            self._pending_turns.pop(session_id, None)
+            self._revisions.pop(session_id, None)
             existed = session_id in self._sessions
             if existed:
                 self._sessions.pop(session_id, None)
@@ -276,6 +277,6 @@ class SessionStore:
 
     def clear_all(self) -> None:
         with self._lock:
-            self._pending_turns.clear()
+            self._revisions.clear()
             self._sessions = {}
             self._save()

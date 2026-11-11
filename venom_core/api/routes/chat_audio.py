@@ -351,7 +351,8 @@ async def _native_multimodal_turn(
     if not omni_native_dialogue.native_dialogue_available(runtime):
         raise HTTPException(503, {"reason_code": "omni_native_unavailable"})
     contexts = _native_contexts(request)
-    with contexts.turn(session_id), store.pending_turn(session_id) as pending_token:
+    with contexts.turn(session_id):
+        revision = store.session_revision(session_id)
         if reset_context:
             contexts.discard(session_id)
         rows = store.get_history(session_id, limit=omni_pilot.MAX_HISTORY_ROWS)
@@ -387,7 +388,7 @@ async def _native_multimodal_turn(
             raise HTTPException(499, {"reason_code": "audio_request_cancelled"})
         try:
             request_id = await omni_native_voice.persist_turn(
-                store, session_id, mode, result.text, pending_token=pending_token
+                store, session_id, mode, result.text, expected_revision=revision
             )
         except HTTPException:
             contexts.discard(session_id)

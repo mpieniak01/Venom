@@ -446,6 +446,40 @@ async def test_audio_accept_is_blocked_during_release_and_explicitly_resumes_aft
 
 
 @pytest.mark.asyncio
+async def test_audio_handshake_started_before_release_closes_after_accept(world):
+    from unittest.mock import AsyncMock
+
+    from venom_core.api.audio_stream import AudioStreamHandler
+
+    handler = AudioStreamHandler()
+    started = asyncio.Event()
+    finish = asyncio.Event()
+
+    async def accept():
+        started.set()
+        await finish.wait()
+
+    socket = SimpleNamespace(
+        accept=AsyncMock(side_effect=accept), close=AsyncMock(), receive=AsyncMock()
+    )
+    handshake = asyncio.create_task(handler.handle_websocket(socket))
+    try:
+        await asyncio.wait_for(started.wait(), timeout=1)
+        with resources.release_barrier():
+            await handler.prepare_model_release()
+            finish.set()
+            await asyncio.wait_for(handshake, timeout=1)
+        assert not handler.active_connections
+        socket.close.assert_awaited_once_with(
+            code=1013, reason="model_resources_releasing"
+        )
+        socket.receive.assert_not_awaited()
+    finally:
+        finish.set()
+        await handshake
+
+
+@pytest.mark.asyncio
 async def test_audio_prepare_uses_a_snapshot_when_closed_connections_remove_themselves(
     world,
 ):

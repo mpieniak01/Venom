@@ -99,6 +99,7 @@ GEMMA4_AUDIO_REQUEST_TIMEOUT_SEC = 120.0
 _NATIVE_REPLY_SEND_TIMEOUT_SECONDS = 10
 _NATIVE_SOCKET_CLOSE_TIMEOUT_SECONDS = 2
 _MODEL_RELEASE_PREPARE_TIMEOUT_SECONDS = 15
+_NATIVE_DRAIN_TIMEOUT_SECONDS = 15
 _VOICE_ROUTE_PROFILES = {
     "auto",
     "gemma4",
@@ -545,6 +546,8 @@ class AudioStreamHandler:
         self.silence_duration = silence_duration
         self.active_connections: Dict[int, AudioStreamHandler._ConnectionState] = {}
         self.resources_suspended = False
+        self._voice_accept_epoch: object | None = object()
+        self._native_tasks: set[asyncio.Task[None]] = set()
         self._native_contexts = omni_native_voice.NativeTurnContexts()
         self._daemon_snapshot_meta_cache: dict[str, Any] = {
             "captured_at": 0.0,
@@ -558,8 +561,11 @@ class AudioStreamHandler:
 
     async def prepare_model_release(self) -> None:
         """Stop microphone consumers before releasing STT/TTS model objects."""
+        if self._voice_accept_epoch is None:
+            raise ModelWorkNotDrained()
         was_suspended = self.resources_suspended
         self.resources_suspended = True
+        self._voice_accept_epoch = None
         try:
             async with asyncio.timeout(_MODEL_RELEASE_PREPARE_TIMEOUT_SECONDS):
                 for connection_id, state in tuple(self.active_connections.items()):
@@ -574,16 +580,22 @@ class AudioStreamHandler:
                         await state["websocket"].close(
                             code=1012, reason="model_resources_released"
                         )
-                self.active_connections.clear()
+                    self.active_connections.pop(connection_id, None)
+                if self._native_tasks:
+                    await asyncio.wait(tuple(self._native_tasks))
         except TimeoutError as exc:
             self.resources_suspended = was_suspended
             raise ModelWorkNotDrained() from exc
-        except asyncio.CancelledError:
+        except (ModelWorkNotDrained, asyncio.CancelledError):
             self.resources_suspended = was_suspended
             raise
+        finally:
+            self._voice_accept_epoch = object()
 
     def release_model_resource(self) -> bool:
-        return not self.active_connections
+        return not self.active_connections and all(
+            task.done() for task in self._native_tasks
+        )
 
     class _ConnectionState(TypedDict):
         websocket: WebSocket
@@ -657,7 +669,10 @@ class AudioStreamHandler:
 
     @model_operation
     async def _accept_connection(self, websocket: WebSocket) -> int:
+        epoch = self._voice_accept_epoch
         await websocket.accept()
+        if epoch is None or epoch is not self._voice_accept_epoch:
+            raise HTTPException(409, detail={"code": "model_resources_releasing"})
         self.resources_suspended = False
         connection_id = id(websocket)
         self.active_connections[connection_id] = {
@@ -692,7 +707,9 @@ class AudioStreamHandler:
         try:
             connection_id = await self._accept_connection(websocket)
         except HTTPException:
-            await websocket.close(code=1013, reason="model_resources_releasing")
+            with suppress(RuntimeError, OSError, WebSocketDisconnect):
+                async with asyncio.timeout(_NATIVE_SOCKET_CLOSE_TIMEOUT_SECONDS):
+                    await websocket.close(code=1013, reason="model_resources_releasing")
             return
 
         logger.info(f"Nowe połączenie audio WebSocket: {connection_id}")
@@ -720,12 +737,18 @@ class AudioStreamHandler:
 
         except WebSocketDisconnect:
             logger.info(f"Rozłączono WebSocket audio: {connection_id}")
+        except ModelWorkNotDrained:
+            await self._close_native_delivery(
+                connection_id, self.active_connections.get(connection_id)
+            )
         except Exception as e:
             logger.error(f"Błąd w WebSocket audio: {e}")
         finally:
             conn = self.active_connections.pop(connection_id, None)
             if conn is not None:
-                await self._cancel_native_dialogue(connection_id, conn)
+                self._native_contexts.discard(connection_id)
+                with suppress(ModelWorkNotDrained):
+                    await self._cancel_native_dialogue(connection_id, conn)
 
     @model_operation
     async def _handle_control_message(
@@ -931,9 +954,12 @@ class AudioStreamHandler:
             else:
                 chunks = conn["audio_bytes_buffer"]
                 conn["audio_bytes_buffer"] = []
-                conn["native_task"] = asyncio.create_task(
+                task = asyncio.create_task(
                     self._finish_native_recording(connection_id, conn, pilot, chunks)
                 )
+                conn["native_task"] = task
+                self._native_tasks.add(task)
+                task.add_done_callback(self._native_tasks.discard)
             return
         if conn["audio_bytes_buffer"] and conn["recording_format"] != "pcm16":
             await self._process_encoded_audio_buffer(
@@ -981,11 +1007,8 @@ class AudioStreamHandler:
         if not isinstance(cancel_id, str) or not 1 <= len(cancel_id) <= 128:
             await self._cancel_native_dialogue(connection_id, conn)
             return
-        task = conn.get("native_task")
-        if task is not None and (
-            conn.get("native_saving") or conn.get("native_committed")
-        ):
-            await asyncio.shield(asyncio.gather(task, return_exceptions=True))
+        if conn.get("native_saving") or conn.get("native_committed"):
+            await self._drain_native_task(conn, cancel=False)
         cancelled = not conn.get("native_committed", False)
         if cancelled:
             await self._cancel_native_dialogue(connection_id, conn)
@@ -1006,9 +1029,11 @@ class AudioStreamHandler:
             await self._close_native_delivery(connection_id, conn)
 
     async def _close_native_delivery(
-        self, connection_id: int, conn: _ConnectionState
+        self, connection_id: int, conn: _ConnectionState | None
     ) -> None:
-        self.active_connections.pop(connection_id, None)
+        if conn is None or self.active_connections.get(connection_id) is not conn:
+            return
+        self.active_connections.pop(connection_id)
         self._native_contexts.discard(connection_id)
         with suppress(RuntimeError, OSError, WebSocketDisconnect):
             async with asyncio.timeout(_NATIVE_SOCKET_CLOSE_TIMEOUT_SECONDS):
@@ -1016,17 +1041,23 @@ class AudioStreamHandler:
                     code=1011, reason="native_reply_delivery_failed"
                 )
 
+    async def _drain_native_task(self, conn: _ConnectionState, *, cancel: bool) -> None:
+        task = conn.get("native_task")
+        if task is None:
+            return
+        if cancel and not conn.get("native_saving"):
+            task.cancel()
+        # A deadline must not cancel or forget an in-progress disk write.
+        _, pending = await asyncio.wait((task,), timeout=_NATIVE_DRAIN_TIMEOUT_SECONDS)
+        if pending:
+            raise ModelWorkNotDrained()
+        if conn.get("native_task") is task:
+            conn.pop("native_task", None)
+
     async def _cancel_native_dialogue(
         self, connection_id: int, conn: _ConnectionState
     ) -> None:
-        task = conn.get("native_task")
-        if task is not None:
-            if not conn.get("native_saving"):
-                task.cancel()
-            # A release deadline must not cancel or forget an in-progress disk write.
-            await asyncio.shield(asyncio.gather(task, return_exceptions=True))
-            if conn.get("native_task") is task:
-                conn.pop("native_task", None)
+        await self._drain_native_task(conn, cancel=True)
         conn.pop("native_committed", None)
         self._native_contexts.discard(connection_id)
         pilot = conn.get("pilot_recording")
@@ -1161,6 +1192,8 @@ class AudioStreamHandler:
         finally:
             conn.pop("native_saving", None)
         conn["native_committed"] = True
+        if self.active_connections.get(connection_id) is not conn:
+            return
         if mode == "interleaved" and result.text:
             self._native_contexts.remember(
                 connection_id,

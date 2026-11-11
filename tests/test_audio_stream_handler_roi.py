@@ -2618,6 +2618,72 @@ async def test_native_full_late_cancellation_waits_for_committed_reply(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("action", ["reset", "disconnect"])
+async def test_native_socket_stops_waiting_but_tracks_detached_write(
+    monkeypatch, action
+):
+    handler = _make_handler()
+    native = audio_stream_mod.omni_native_dialogue
+    runtime = SimpleNamespace(provider="ollama", model_name="lfm3-omni:2b")
+    monkeypatch.setattr(audio_stream_mod, "get_active_llm_runtime", lambda: runtime)
+    monkeypatch.setattr(native, "native_dialogue_available", lambda _: True)
+    monkeypatch.setattr(audio_stream_mod, "_NATIVE_DRAIN_TIMEOUT_SECONDS", 0.05)
+    monkeypatch.setattr(
+        audio_stream_mod, "_MODEL_RELEASE_PREPARE_TIMEOUT_SECONDS", 0.05
+    )
+    started = asyncio.Event()
+    finish = asyncio.Event()
+
+    async def save(_cid, conn, _pilot, _chunks):
+        conn["native_saving"] = True
+        started.set()
+        await finish.wait()
+
+    monkeypatch.setattr(handler, "_finish_native_recording", save)
+    socket = SimpleNamespace(
+        accept=AsyncMock(), close=AsyncMock(), send_text=AsyncMock()
+    )
+    connection_id = id(socket)
+
+    async def receive():
+        await handler._apply_voice_mode(connection_id, {"mode": "direct"})
+        await handler._start_recording(
+            connection_id, {"generation_mode": "interleaved"}
+        )
+        handler._handle_audio_data(connection_id, b"\\x00\\x10" * 100, None)
+        await handler._stop_recording(connection_id, None)
+        await started.wait()
+        if action == "reset":
+            return {"text": '{"command":"reset_native_dialogue","cancel_id":"late"}'}
+        return {"type": "websocket.disconnect", "code": 1006}
+
+    socket.receive = AsyncMock(side_effect=receive)
+    try:
+        await asyncio.wait_for(handler.handle_websocket(socket), timeout=1)
+        assert not handler.active_connections
+        [write] = handler._native_tasks
+        assert not write.done()
+        assert not handler.release_model_resource()
+        assert all(
+            json.loads(call.args[0])["type"] != "native_dialogue_reset"
+            for call in socket.send_text.await_args_list
+        )
+        if action == "reset":
+            socket.close.assert_awaited_once_with(
+                code=1011, reason="native_reply_delivery_failed"
+            )
+        else:
+            socket.close.assert_not_awaited()
+        with pytest.raises(HTTPException, match="model_resources_work_not_drained"):
+            await handler.prepare_model_release()
+    finally:
+        finish.set()
+        await asyncio.gather(*handler._native_tasks, return_exceptions=True)
+    await handler.prepare_model_release()
+    assert handler.release_model_resource()
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("voice_mode", "requested", "available", "reason"),
     [

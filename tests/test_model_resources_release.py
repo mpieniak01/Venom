@@ -472,6 +472,55 @@ async def test_audio_prepare_uses_a_snapshot_when_closed_connections_remove_them
 
 
 @pytest.mark.asyncio
+async def test_model_release_times_out_without_cancelling_native_history_write(
+    world, monkeypatch
+):
+    from unittest.mock import AsyncMock
+
+    from venom_core.api import audio_stream
+    from venom_core.services.background_priority import run_drainable_thread
+
+    monkeypatch.setattr(audio_stream, "_MODEL_RELEASE_PREPARE_TIMEOUT_SECONDS", 0.1)
+    handler = audio_stream.AudioStreamHandler()
+    socket = SimpleNamespace(close=AsyncMock())
+    controller = SimpleNamespace(list_servers=lambda: [])
+    started = asyncio.Event()
+    finish_write = threading.Event()
+    completed = threading.Event()
+    loop = asyncio.get_running_loop()
+
+    def save():
+        loop.call_soon_threadsafe(started.set)
+        assert finish_write.wait(timeout=4)
+        completed.set()
+
+    task = asyncio.create_task(run_drainable_thread(save))
+    conn = {"websocket": socket, "native_task": task, "native_saving": True}
+    handler.active_connections[1] = conn
+    try:
+        await asyncio.wait_for(started.wait(), timeout=1)
+        with pytest.raises(HTTPException) as caught:
+            await asyncio.wait_for(
+                service.release_all_runtime_models(controller), timeout=2
+            )
+        assert caught.value.status_code == 409
+        assert caught.value.detail == {"code": "model_resources_work_not_drained"}
+        assert not resources._RELEASING
+        assert not handler.resources_suspended
+        assert handler.active_connections[1]["native_task"] is task
+        assert not task.done()
+        socket.close.assert_not_awaited()
+    finally:
+        finish_write.set()
+        await asyncio.wait_for(task, timeout=2)
+    assert completed.is_set()
+    result = await service.release_all_runtime_models(controller)
+    assert result["released"]
+    assert handler.release_model_resource()
+    socket.close.assert_awaited_once_with(code=1012, reason="model_resources_released")
+
+
+@pytest.mark.asyncio
 async def test_cancelled_release_keeps_barrier_until_native_unload_finishes(world):
     started, finish = threading.Event(), threading.Event()
 

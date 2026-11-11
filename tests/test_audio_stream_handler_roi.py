@@ -2509,7 +2509,9 @@ async def test_native_full_reset_drains_before_ack_and_does_not_save(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("phase", ["save", "send", "send_timeout", "ack_timeout"])
+@pytest.mark.parametrize(
+    "phase", ["save", "send", "send_timeout", "ack_timeout", "ack_disconnect"]
+)
 async def test_native_full_late_cancellation_waits_for_committed_reply(
     monkeypatch, tmp_path, phase
 ):
@@ -2518,13 +2520,15 @@ async def test_native_full_late_cancellation_waits_for_committed_reply(
     conn = handler.active_connections[1]
     if phase in {"send_timeout", "ack_timeout"}:
         monkeypatch.setattr(audio_stream_mod, "_NATIVE_REPLY_SEND_TIMEOUT_SECONDS", 0.2)
-    if phase == "ack_timeout":
+    if phase in {"ack_timeout", "ack_disconnect"}:
 
-        async def block_ack(packet):
+        async def fail_ack(packet):
             if json.loads(packet)["type"] == "native_dialogue_reset":
+                if phase == "ack_disconnect":
+                    raise audio_stream_mod.WebSocketDisconnect(1006)
                 await asyncio.Future()
 
-        ws.send_text.side_effect = block_ack
+        ws.send_text.side_effect = fail_ack
     native = audio_stream_mod.omni_native_dialogue
     runtime = SimpleNamespace(provider="ollama", model_name="lfm3-omni:2b")
     monkeypatch.setattr(audio_stream_mod, "get_active_llm_runtime", lambda: runtime)
@@ -2546,7 +2550,7 @@ async def test_native_full_late_cancellation_waits_for_committed_reply(
     send_audio = handler._send_audio
 
     async def send_turn(*args, **kwargs):
-        if phase in {"send", "send_timeout", "ack_timeout"}:
+        if phase != "save":
             started.set()
             await release_send.wait()
         await send_audio(*args, **kwargs)
@@ -2591,9 +2595,9 @@ async def test_native_full_late_cancellation_waits_for_committed_reply(
         == "Zapisana odpowiedź"
     )
     events = [json.loads(call.args[0]) for call in ws.send_text.await_args_list]
-    if phase in {"send_timeout", "ack_timeout"}:
+    if phase in {"send_timeout", "ack_timeout", "ack_disconnect"}:
         ws.close.assert_awaited_once_with(
-            code=1011, reason="native_reply_delivery_timeout"
+            code=1011, reason="native_reply_delivery_failed"
         )
         assert 1 not in handler.active_connections
         if phase == "send_timeout":

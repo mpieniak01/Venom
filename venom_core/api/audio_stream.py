@@ -51,7 +51,7 @@ from venom_core.services.conversation_providers import (
     prepare_conversation_turn,
     urgent_conversation_turn,
 )
-from venom_core.services.model_resources import model_operation
+from venom_core.services.model_resources import ModelWorkNotDrained, model_operation
 from venom_core.services.multi_runtime_models import multi_runtime_available_models
 from venom_core.services.omni_native_dialogue import NativeDialogueError, NativeMode
 from venom_core.services.runtime_admission import (
@@ -98,6 +98,7 @@ GEMMA4_AUDIO_HEALTH_TIMEOUT_SEC = 5.0
 GEMMA4_AUDIO_REQUEST_TIMEOUT_SEC = 120.0
 _NATIVE_REPLY_SEND_TIMEOUT_SECONDS = 10
 _NATIVE_SOCKET_CLOSE_TIMEOUT_SECONDS = 2
+_MODEL_RELEASE_PREPARE_TIMEOUT_SECONDS = 15
 _VOICE_ROUTE_PROFILES = {
     "auto",
     "gemma4",
@@ -557,20 +558,29 @@ class AudioStreamHandler:
 
     async def prepare_model_release(self) -> None:
         """Stop microphone consumers before releasing STT/TTS model objects."""
+        was_suspended = self.resources_suspended
         self.resources_suspended = True
-        connections = tuple(self.active_connections.items())
-        for connection_id, state in connections:
-            await self._cancel_native_dialogue(connection_id, state)
-            timer = state.get("silence_finalize_task")
-            if timer is not None:
-                timer.cancel()
-                await asyncio.gather(timer, return_exceptions=True)
-            websocket = state["websocket"]
-            try:
-                await websocket.close(code=1012, reason="model_resources_released")
-            except RuntimeError:
-                pass
-        self.active_connections.clear()
+        try:
+            async with asyncio.timeout(_MODEL_RELEASE_PREPARE_TIMEOUT_SECONDS):
+                for connection_id, state in tuple(self.active_connections.items()):
+                    await self._cancel_native_dialogue(connection_id, state)
+                    timer = state.get("silence_finalize_task")
+                    if timer is not None:
+                        timer.cancel()
+                        await asyncio.shield(
+                            asyncio.gather(timer, return_exceptions=True)
+                        )
+                    with suppress(RuntimeError):
+                        await state["websocket"].close(
+                            code=1012, reason="model_resources_released"
+                        )
+                self.active_connections.clear()
+        except TimeoutError as exc:
+            self.resources_suspended = was_suspended
+            raise ModelWorkNotDrained() from exc
+        except asyncio.CancelledError:
+            self.resources_suspended = was_suspended
+            raise
 
     def release_model_resource(self) -> bool:
         return not self.active_connections
@@ -975,10 +985,12 @@ class AudioStreamHandler:
         if task is not None and (
             conn.get("native_saving") or conn.get("native_committed")
         ):
-            await asyncio.gather(task, return_exceptions=True)
+            await asyncio.shield(asyncio.gather(task, return_exceptions=True))
         cancelled = not conn.get("native_committed", False)
         if cancelled:
             await self._cancel_native_dialogue(connection_id, conn)
+        if self.active_connections.get(connection_id) is not conn:
+            return
         try:
             async with asyncio.timeout(_NATIVE_REPLY_SEND_TIMEOUT_SECONDS):
                 await self._send_json(
@@ -988,8 +1000,9 @@ class AudioStreamHandler:
                         "cancel_id": cancel_id,
                         "cancelled": cancelled,
                     },
+                    strict=True,
                 )
-        except TimeoutError:
+        except (RuntimeError, OSError, WebSocketDisconnect):
             await self._close_native_delivery(connection_id, conn)
 
     async def _close_native_delivery(
@@ -1000,17 +1013,20 @@ class AudioStreamHandler:
         with suppress(RuntimeError, OSError, WebSocketDisconnect):
             async with asyncio.timeout(_NATIVE_SOCKET_CLOSE_TIMEOUT_SECONDS):
                 await conn["websocket"].close(
-                    code=1011, reason="native_reply_delivery_timeout"
+                    code=1011, reason="native_reply_delivery_failed"
                 )
 
     async def _cancel_native_dialogue(
         self, connection_id: int, conn: _ConnectionState
     ) -> None:
-        task = conn.pop("native_task", None)
+        task = conn.get("native_task")
         if task is not None:
             if not conn.get("native_saving"):
                 task.cancel()
-            await asyncio.gather(task, return_exceptions=True)
+            # A release deadline must not cancel or forget an in-progress disk write.
+            await asyncio.shield(asyncio.gather(task, return_exceptions=True))
+            if conn.get("native_task") is task:
+                conn.pop("native_task", None)
         conn.pop("native_committed", None)
         self._native_contexts.discard(connection_id)
         pilot = conn.get("pilot_recording")
@@ -1174,8 +1190,9 @@ class AudioStreamHandler:
                         "peak_reserved_mib": result.peak_reserved_mib,
                         **meta,
                     },
+                    strict=True,
                 )
-        except TimeoutError:
+        except (RuntimeError, OSError, WebSocketDisconnect):
             await self._close_native_delivery(connection_id, conn)
 
     async def _pilot_error(self, connection_id: int) -> None:

@@ -500,3 +500,37 @@ def test_retention_does_not_discard_alternative_when_winner_missing(controller):
         retention.apply(state, plan["plan_sha256"])
     assert retention.plan(state)["files"] == []
     assert rejected.exists()
+
+
+def test_campaign_http_plan_start_and_read(tmp_path, monkeypatch):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from venom_core.api.routes import academy_experiment_campaigns as routes
+    from venom_core.api.routes import academy_experiments
+
+    service = CampaignService(
+        FakeExperiments(tmp_path), launch=lambda _: process_identity(os.getpid())
+    )
+    monkeypatch.setattr(routes, "campaign_service", lambda: service)
+    monkeypatch.setattr(academy_experiments.SETTINGS, "ENABLE_ACADEMY", True)
+    app = FastAPI()
+    app.include_router(routes.router)
+    client = TestClient(app, client=("127.0.0.1", 1234))
+    prefix = "/api/v1/academy/experiments/campaigns"
+    assert client.get(prefix).json() == {"campaigns": []}
+    plan = client.post(f"{prefix}/plan", json=make_spec().model_dump())
+    assert plan.status_code == 200, plan.text
+    digest = plan.json()["plan"]["plan_sha256"]
+    assert (
+        client.post(
+            f"{prefix}/series/start", json={"plan_sha256": "b" * 64}
+        ).status_code
+        == 409
+    )
+    result = client.post(f"{prefix}/series/start", json={"plan_sha256": digest})
+    assert result.status_code == 200, result.text
+    assert client.get(f"{prefix}/series").json()["status"] == "running"
+    assert client.get(f"{prefix}/series/report").json()["campaign_id"] == "series"
+    assert client.post(f"{prefix}/series/stop").status_code == 200
+    assert client.get(prefix).json()["campaigns"][0]["campaign_id"] == "series"

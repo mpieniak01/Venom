@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
+import type { Campaign, CampaignRequest } from "../lib/academy-campaign-api";
 import { buildHttpUrl } from "./utils/url";
 
 const academyStatusPayload = {
@@ -596,6 +597,88 @@ test.describe("Academy smoke", () => {
       });
     });
 
+  });
+
+  test("plans and starts an Omni campaign and refreshes trial status", async ({ page }) => {
+    const api = "**/api/v1/academy/experiments";
+    const campaigns = `${api}/campaigns`;
+    const campaignId = "omni-e2e";
+    const runId = `${campaignId}-01`;
+    const profile = {
+      id: "polski-czat",
+      label: "Polski czat Omni",
+      model: "LiquidAI/LFM3-Omni-2B",
+      dataset: "Polskie dialogi dev",
+      recipe: { rank: 4, alpha: 8, learning_rate: 0.0002 },
+      automatic_review: false,
+    };
+    const planSha256 = "a".repeat(64);
+    let current: Campaign | undefined;
+    let planRequest: CampaignRequest | undefined;
+    let startRequest: { plan_sha256: string } | undefined;
+
+    await page.route(`${api}/profiles`, (route) =>
+      route.fulfill({ json: { profiles: [{ ...profile, id: "other-profile", label: "Drugi profil" }, profile] } }),
+    );
+    await page.route(campaigns, (route) =>
+      route.fulfill({ json: { campaigns: current ? [current] : [] } }),
+    );
+    await page.route(`${campaigns}/plan`, async (route) => {
+      planRequest = route.request().postDataJSON() as CampaignRequest;
+      current = {
+        campaign_id: campaignId,
+        plan: {
+          ...planRequest,
+          plan_sha256: planSha256,
+          variants: [
+            {
+              run_id: runId,
+              recipe: { ...profile.recipe, ...planRequest.variants[0] },
+              workload: { updates: 8, tokens: 8192 },
+            },
+          ],
+        },
+        status: "planned",
+        trial_index: 0,
+        trials: [{ run_id: runId, status: "pending" }],
+        elapsed_seconds: 0,
+        used_updates: 0,
+        used_tokens: 0,
+        retries: 0,
+        artifact_bytes: 0,
+      };
+      await route.fulfill({ json: current });
+    });
+    await page.route(`${campaigns}/${campaignId}/start`, async (route) => {
+      startRequest = route.request().postDataJSON() as { plan_sha256: string };
+      if (!current) throw new Error("Campaign plan has not been created");
+      current = { ...current, status: "running", trials: [{ run_id: runId, status: "running" }] };
+      await route.fulfill({ json: current });
+    });
+
+    await page.goto(buildHttpUrl(host, port, "/academy"));
+    await page.getByRole("button", { name: "Trening", exact: true }).click();
+    await page.getByRole("button", { name: "Kampania", exact: true }).click();
+    await page.locator("#campaign-profile").selectOption(profile.id);
+    await page.getByLabel("Identyfikator kampanii").fill(campaignId);
+    await page.getByRole("button", { name: "Przygotuj plan kampanii" }).click();
+    const start = page.getByRole("button", { name: "Uruchom zaplanowaną kampanię" });
+    await expect(start).toBeEnabled();
+    expect(planRequest).toMatchObject({ campaign_id: campaignId, profile_id: profile.id, review_mode: "manual" });
+    expect(startRequest).toBeUndefined();
+
+    await start.click();
+    await expect(page.getByRole("button", { name: "Zatrzymaj kampanię" })).toBeEnabled();
+    expect(startRequest).toEqual({ plan_sha256: planSha256 });
+
+    if (!current) throw new Error("Campaign did not start");
+    current = {
+      ...current,
+      status: "awaiting_review",
+      trials: [{ run_id: runId, status: "awaiting_review" }],
+    };
+    const trial = page.getByRole("row").filter({ has: page.getByRole("button", { name: runId, exact: true }) });
+    await expect(trial).toContainText("Oczekuje na ocenę");
   });
 
   test("status + start training + activate adapter flow", async ({ page }) => {

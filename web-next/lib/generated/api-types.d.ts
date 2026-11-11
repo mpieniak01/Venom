@@ -13595,7 +13595,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Shared runtime admission is busy or unavailable */
+            /** @description The session or runtime changed, or runtime admission is busy or unavailable */
             409: {
                 headers: {
                     [name: string]: unknown;

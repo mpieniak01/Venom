@@ -1031,6 +1031,60 @@ async def test_native_studio_cancels_the_worker_on_http_disconnect(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("clear_all", [False, True])
+async def test_native_studio_clear_during_generation_prevents_persistence(
+    rig, native_runtime, monkeypatch, clear_all
+):
+    client, _, _ = rig
+    store = client._transport.app.dependency_overrides[get_session_store]()
+    started = asyncio.Event()
+    resume = asyncio.Event()
+    result = omni_native_dialogue.NativeDialogueResult(
+        "interleaved", "Wynik", _native_test_wav(), False, {}, generation_count=1
+    )
+
+    async def generate(*_args, **_kwargs):
+        started.set()
+        await resume.wait()
+        return result
+
+    generated = AsyncMock(side_effect=generate)
+    monkeypatch.setattr(omni_native_dialogue, "generate_native_turn", generated)
+
+    async def turn(image=None):
+        files = {"audio": ("voice.pcm", b"\\x00\\x10" * 80, "application/octet-stream")}
+        if image is not None:
+            files["image"] = ("frame.png", image, "image/png")
+        return await client.post(
+            "/api/v1/chat/audio/multimodal-turn",
+            data={
+                "session_id": "cleared",
+                "sample_rate": "16000",
+                "generation_mode": "interleaved",
+            },
+            files=files,
+        )
+
+    pending = asyncio.create_task(turn(_pilot_image()))
+    try:
+        await asyncio.wait_for(started.wait(), timeout=2)
+        if clear_all:
+            store.clear_all()
+        else:
+            assert not store.clear_session("cleared")
+    finally:
+        resume.set()
+    rejected = await asyncio.wait_for(pending, timeout=2)
+    assert rejected.status_code == 409
+    assert rejected.json()["detail"]["reason_code"] == "omni_native_session_cleared"
+    assert store.get_history("cleared") == []
+    fresh = await turn()
+    assert fresh.status_code == 200
+    assert not fresh.json()["has_image"]
+    assert generated.await_args.args[3:5] == (None, [])
+
+
+@pytest.mark.asyncio
 async def test_native_pipeline_choices_only_advertise_configured_local_polish_omni(
     rig, native_runtime, monkeypatch
 ):

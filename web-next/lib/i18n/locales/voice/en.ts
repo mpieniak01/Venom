@@ -1,5 +1,7 @@
 export const voice = {
   nativeDialogue: {
+    alreadyCompleted: "Omni finished the reply before cancellation.",
+    sessionCleared: "The session was cleared. Record the question again.",
     invalidInput: "Omni rejected the recording or image. Record the question again and check the attachment.",
     audioTooLong: "A recording in native Omni mode can be up to 30 seconds long.",
     cancel: "Cancel Omni reply",

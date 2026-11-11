@@ -2493,16 +2493,6 @@ function MultimodalSessionControls({ generationMode, disabled, onEnd, t }: Reado
   </>;
 }
 
-function handleNativeCancellation(
-  data: Record<string, unknown>,
-  cancelId: string | null,
-  finish: () => void,
-): boolean {
-  if (cancelId === null) return false;
-  if (data.type === "native_dialogue_reset" && data.cancel_id === cancelId) finish();
-  return true;
-}
-
 function useMultimodalConversation(generationMode: NativeVoiceGenerationMode | null) {
   const [nativeAudioOnly, setNativeAudioOnly] = useState(false);
   const [multimodalContextMode, setMultimodalContextMode] = useState<NativeVoiceGenerationMode | null>();
@@ -2577,6 +2567,7 @@ function VoiceCommandCenterPanel({
   const lastVoiceModeSentRef = useRef<string | null>(null);
   const imageInFlightRef = useRef(false);
   const nativeCancelId = useRef<string | null>(null);
+  const deferredNativeMessages = useRef<Record<string, unknown>[]>([]);
   const nativeCancelSequence = useRef(0);
   const playbackRequestRef = useRef(0);
 
@@ -2599,6 +2590,7 @@ function VoiceCommandCenterPanel({
       setMultimodalPending(false);
       setNativeCancelling(false);
       nativeCancelId.current = null;
+      deferredNativeMessages.current = [];
       imageInFlightRef.current = false;
     }
   }, [endMultimodal]);
@@ -2766,19 +2758,22 @@ function VoiceCommandCenterPanel({
     });
   }, [playAudioResponse, t, setStatusMessage]);
 
-  const finishNativeCancellation = useCallback(() => {
+  const finishNativeCancellation = useCallback((cancelled: boolean) => {
     nativeCancelId.current = null;
-    imageInFlightRef.current = false;
     setNativeCancelling(false);
+    if (!cancelled) {
+      setStatusMessage(t("voice.nativeDialogue.alreadyCompleted"));
+      return;
+    }
+    imageInFlightRef.current = false;
     setMultimodalPending(false);
     setProcessingStatus(null);
     setStatusMessage(t("voice.nativeDialogue.cancelled"));
     endMultimodal();
   }, [endMultimodal, t]);
 
-  const handleAudioMessage = useCallback(
+  const applyAudioMessage = useCallback(
     (data: Record<string, unknown>) => {
-      if (handleNativeCancellation(data, nativeCancelId.current, finishNativeCancellation)) return;
       if (data.type === "response_text") {
         setResponseSources(voiceResponseSources(data.sources));
         if (data.multimodal === true) {
@@ -2808,7 +2803,6 @@ function VoiceCommandCenterPanel({
     },
     [
       clearImage,
-      finishNativeCancellation,
       setMultimodalContextMode,
       setNativeAudioOnly,
       onTranscriptReady,
@@ -2823,6 +2817,23 @@ function VoiceCommandCenterPanel({
       setPlaybackState,
     ],
   );
+
+  const handleAudioMessage = useCallback((data: Record<string, unknown>) => {
+    const cancelId = nativeCancelId.current;
+    if (cancelId === null) {
+      applyAudioMessage(data);
+      return;
+    }
+    if (data.type !== "native_dialogue_reset") {
+      deferredNativeMessages.current.push(data);
+      return;
+    }
+    if (data.cancel_id !== cancelId) return;
+    const cancelled = data.cancelled !== false;
+    if (!cancelled) deferredNativeMessages.current.forEach(applyAudioMessage);
+    deferredNativeMessages.current = [];
+    finishNativeCancellation(cancelled);
+  }, [applyAudioMessage, finishNativeCancellation]);
 
   const releaseRecordingResources = useCallback(() => {
     mediaRecorderRef.current = null;

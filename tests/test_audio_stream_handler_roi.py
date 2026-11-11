@@ -6,6 +6,7 @@ import os
 import wave
 from contextlib import asynccontextmanager
 from pathlib import Path
+from threading import Event
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -16,6 +17,7 @@ from fastapi import HTTPException
 import venom_core.api.audio_stream as audio_stream_mod
 from venom_core.api.audio_stream import AudioStreamHandler, get_audio_stream_handler
 from venom_core.services import runtime_switch_gate as gate
+from venom_core.services.session_store import SessionStore
 from venom_core.utils.mode_contracts import (
     MODE_CONTRACTS,
     VOICE_EXECUTION_CONTEXT,
@@ -2453,6 +2455,7 @@ async def test_native_full_reset_drains_before_ack_and_does_not_save(monkeypatch
     assert json.loads(ws.send_text.await_args.args[0]) == {
         "type": "native_dialogue_reset",
         "cancel_id": "one",
+        "cancelled": True,
     }
     saved.assert_not_awaited()
     events = [json.loads(call.args[0]) for call in ws.send_text.await_args_list]
@@ -2460,6 +2463,79 @@ async def test_native_full_reset_drains_before_ack_and_does_not_save(monkeypatch
     await handler._handle_control_message(1, '{"command":"end_native_dialogue"}', None)
     assert "direct_session_id" not in conn
     assert "direct_history" not in conn
+
+
+@pytest.mark.asyncio
+async def test_native_full_cancellation_during_persistence_keeps_committed_reply(
+    monkeypatch, tmp_path
+):
+    handler = _make_handler()
+    ws = _add_connection(handler, 1)
+    native = audio_stream_mod.omni_native_dialogue
+    runtime = SimpleNamespace(provider="ollama", model_name="lfm3-omni:2b")
+    monkeypatch.setattr(audio_stream_mod, "get_active_llm_runtime", lambda: runtime)
+    monkeypatch.setattr(native, "native_dialogue_available", lambda _: True)
+    store = SessionStore(str(tmp_path / "native-history.json"))
+    monkeypatch.setattr(audio_stream_mod, "get_session_store", lambda: store)
+    started = asyncio.Event()
+    release_write = Event()
+    loop = asyncio.get_running_loop()
+    append = store.append_turn_once
+
+    def append_turn(*args, **kwargs):
+        loop.call_soon_threadsafe(started.set)
+        assert release_write.wait(timeout=5)
+        return append(*args, **kwargs)
+
+    monkeypatch.setattr(store, "append_turn_once", append_turn)
+    wav = io.BytesIO()
+    with wave.open(wav, "wb") as stream:
+        stream.setparams((1, 2, 24000, 0, "NONE", "not compressed"))
+        stream.writeframes(b"\\x00\\x10" * 100)
+    result = native.NativeDialogueResult(
+        "interleaved",
+        "Zapisana odpowiedź",
+        wav.getvalue(),
+        False,
+        {},
+        generation_count=1,
+    )
+    monkeypatch.setattr(
+        audio_stream_mod.omni_native_voice, "run_turn", AsyncMock(return_value=result)
+    )
+    await handler._apply_voice_mode(1, {"mode": "direct"})
+    await handler._start_recording(1, {"generation_mode": "interleaved"})
+    handler._handle_audio_data(1, b"\\x00\\x10" * 100, None)
+    await handler._stop_recording(1, None)
+    try:
+        await asyncio.wait_for(started.wait(), timeout=2)
+        cancel = asyncio.create_task(
+            handler._handle_control_message(
+                1, '{"command":"reset_native_dialogue","cancel_id":"late"}', None
+            )
+        )
+        await asyncio.sleep(0)
+        assert not cancel.done()
+    finally:
+        release_write.set()
+    await asyncio.wait_for(cancel, timeout=2)
+    conn = handler.active_connections[1]
+    assert (
+        store.get_history(conn["direct_session_id"])[-1]["content"]
+        == "Zapisana odpowiedź"
+    )
+    events = [json.loads(call.args[0]) for call in ws.send_text.await_args_list]
+    assert [event["type"] for event in events[-4:]] == [
+        "response_text",
+        "audio_response",
+        "complete",
+        "native_dialogue_reset",
+    ]
+    assert events[-1] == {
+        "type": "native_dialogue_reset",
+        "cancel_id": "late",
+        "cancelled": False,
+    }
 
 
 @pytest.mark.asyncio

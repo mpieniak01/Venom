@@ -3752,7 +3752,7 @@
             "description": "Operator access or audio request origin denied"
           },
           "409": {
-            "description": "Shared runtime admission is busy or unavailable"
+            "description": "The session or runtime changed, or runtime admission is busy or unavailable"
           },
           "503": {
             "description": "Local Omni is unavailable or the pilot turn failed"

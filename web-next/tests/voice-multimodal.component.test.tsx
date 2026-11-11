@@ -350,7 +350,19 @@ it("Full sends native generation modes, plays audio-only replies and resets the 
   assert.equal(screen.queryByText("Stara odpowiedź"), null);
   assert.equal(screen.queryByRole("button", { name: "Zatrzymaj odtwarzanie" }), null);
   assert.equal(record.disabled, true);
-  await act(async () => socket.receive({ type: "native_dialogue_reset", cancel_id: cancel.cancel_id }));
+  await act(async () => socket.receive({ type: "native_dialogue_reset", cancel_id: cancel.cancel_id, cancelled: true }));
   await screen.findByText("Odpowiedź Omni anulowana.");
+  assert.equal(record.disabled, false);
+
+  assert.equal((await recordTurn()).generation_mode, "audio");
+  fireEvent.click(screen.getByRole("button", { name: "Anuluj odpowiedź Omni" }));
+  const lateCancel = controls().at(-1);
+  await act(async () => {
+    socket.receive({ type: "response_text", text: null, multimodal: true, generation_mode: "audio" });
+    socket.receive({ type: "complete", multimodal: true, generation_mode: "audio" });
+    socket.receive({ type: "native_dialogue_reset", cancel_id: lateCancel.cancel_id, cancelled: false });
+  });
+  await screen.findByText("Omni ukończył odpowiedź przed anulowaniem.");
+  await screen.findByText("Odpowiedź dźwiękowa");
   assert.equal(record.disabled, false);
 });

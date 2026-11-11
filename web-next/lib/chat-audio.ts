@@ -196,6 +196,7 @@ const MULTIMODAL_VOICE_ERRORS = new Map([
   ["omni_pilot_invalid_image", "voiceImageInvalid"],
   ["omni_native_unavailable", "voiceNativeUnavailable"],
   ["omni_native_busy", "voiceWait"],
+  ["omni_native_session_cleared", "voiceNativeSessionCleared"],
 ]);
 
 /** Upload PCM and an optional image together, preserving the caller's cancellation signal. */

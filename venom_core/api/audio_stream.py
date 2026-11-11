@@ -583,6 +583,8 @@ class AudioStreamHandler:
         pilot_recording: NotRequired[_PilotRecording]
         pilot_history: NotRequired[list[dict[str, object]]]
         native_task: NotRequired[asyncio.Task[None]]
+        native_saving: NotRequired[bool]
+        native_committed: NotRequired[bool]
         discard_native_audio: NotRequired[bool]
         direct_history: NotRequired[list[HistoryMessage]]
         direct_session_id: NotRequired[str]
@@ -744,17 +746,7 @@ class AudioStreamHandler:
             await self._stop_recording(connection_id, operator_agent)
             return
         if command in ("reset_native_dialogue", "end_native_dialogue"):
-            conn = self.active_connections[connection_id]
-            await self._cancel_native_dialogue(connection_id, conn)
-            if command == "end_native_dialogue":
-                conn.pop("direct_history", None)
-                conn.pop("direct_session_id", None)
-            cancel_id = data.get("cancel_id")
-            if isinstance(cancel_id, str) and 1 <= len(cancel_id) <= 128:
-                await self._send_json(
-                    connection_id,
-                    {"type": "native_dialogue_reset", "cancel_id": cancel_id},
-                )
+            await self._reset_native_dialogue(connection_id, data)
             return
         if command == "ping":
             await self._send_json(connection_id, {"type": "pong"})
@@ -790,6 +782,7 @@ class AudioStreamHandler:
         conn.pop("discard_native_audio", None)
         if not await self._configure_native_recording(connection_id, conn, data):
             return
+        conn.pop("native_committed", None)
         if "generation_mode" in data:
             conn.pop("pilot_history", None)
         elif data.get("multimodal") is True or "image" in data:
@@ -955,13 +948,43 @@ class AudioStreamHandler:
             },
         )
 
+    async def _reset_native_dialogue(
+        self, connection_id: int, data: dict[str, Any]
+    ) -> None:
+        conn = self.active_connections[connection_id]
+        if data["command"] == "end_native_dialogue":
+            await self._cancel_native_dialogue(connection_id, conn)
+            conn.pop("direct_history", None)
+            conn.pop("direct_session_id", None)
+            return
+        cancel_id = data.get("cancel_id")
+        if not isinstance(cancel_id, str) or not 1 <= len(cancel_id) <= 128:
+            await self._cancel_native_dialogue(connection_id, conn)
+            return
+        task = conn.get("native_task")
+        if task is not None and conn.get("native_saving"):
+            await asyncio.gather(task, return_exceptions=True)
+        cancelled = not conn.get("native_committed", False)
+        if cancelled:
+            await self._cancel_native_dialogue(connection_id, conn)
+        await self._send_json(
+            connection_id,
+            {
+                "type": "native_dialogue_reset",
+                "cancel_id": cancel_id,
+                "cancelled": cancelled,
+            },
+        )
+
     async def _cancel_native_dialogue(
         self, connection_id: int, conn: _ConnectionState
     ) -> None:
         task = conn.pop("native_task", None)
         if task is not None:
-            task.cancel()
+            if not conn.get("native_saving"):
+                task.cancel()
             await asyncio.gather(task, return_exceptions=True)
+        conn.pop("native_committed", None)
         self._native_contexts.discard(connection_id)
         pilot = conn.get("pilot_recording")
         if pilot is not None and pilot.native_mode is not None:
@@ -1069,6 +1092,18 @@ class AudioStreamHandler:
         with wave.open(io.BytesIO(result.wav), "rb") as output:
             audio = np.frombuffer(output.readframes(output.getnframes()), dtype="<i2")
             output_rate = output.getframerate()
+        conn["native_saving"] = True
+        try:
+            await omni_native_voice.persist_turn(
+                get_session_store(), session_id, mode, result.text
+            )
+        finally:
+            conn.pop("native_saving", None)
+        conn["native_committed"] = True
+        if mode == "interleaved" and result.text:
+            self._native_contexts.remember(
+                connection_id, runtime, image, pcm, rate, result.text
+            )
         await self._send_json(
             connection_id,
             {"type": "response_text", "text": result.text, **meta},
@@ -1077,13 +1112,6 @@ class AudioStreamHandler:
         await self._send_audio(
             connection_id, audio, sample_rate=output_rate, strict=True
         )
-        await omni_native_voice.persist_turn(
-            get_session_store(), session_id, mode, result.text
-        )
-        if mode == "interleaved" and result.text:
-            self._native_contexts.remember(
-                connection_id, runtime, image, pcm, rate, result.text
-            )
         await self._send_json(
             connection_id,
             {

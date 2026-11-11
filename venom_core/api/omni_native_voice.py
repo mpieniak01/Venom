@@ -155,7 +155,12 @@ def text_context(
 
 
 async def persist_turn(
-    store: SessionStore, session_id: str, mode: NativeMode, text: str | None
+    store: SessionStore,
+    session_id: str,
+    mode: NativeMode,
+    text: str | None,
+    *,
+    pending_token: object | None = None,
 ) -> str:
     request_id = str(uuid4())
     metadata = {
@@ -166,7 +171,7 @@ async def persist_turn(
         "mode": PIPELINE,
         "generation_mode": mode,
     }
-    await run_drainable_thread(
+    saved = await run_drainable_thread(
         store.append_turn_once,
         session_id,
         request_id,
@@ -178,7 +183,10 @@ async def persist_turn(
                 "content": text or "[Odpowiedź głosowa]",
             },
         ],
+        pending_token=pending_token,
     )
+    if not saved:
+        raise HTTPException(409, {"reason_code": "omni_native_session_cleared"})
     return request_id
 
 

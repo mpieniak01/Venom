@@ -9,6 +9,7 @@ import { useStudioVoice, type StudioVoiceOptions } from "./use-studio-voice";
 const NATIVE_VOICE_ERRORS: Partial<Record<string, string>> = {
   voiceNativeUnavailable: "voice.nativeDialogue.unavailable",
   voiceNativeAudioTooLong: "voice.nativeDialogue.audioTooLong",
+  voiceNativeSessionCleared: "voice.nativeDialogue.sessionCleared",
 };
 
 /** Keep recording and pipeline switching mutually exclusive in the Studio voice panel. */

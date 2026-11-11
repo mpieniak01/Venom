@@ -349,7 +349,7 @@ async def _native_multimodal_turn(
     if not omni_native_dialogue.native_dialogue_available(runtime):
         raise HTTPException(503, {"reason_code": "omni_native_unavailable"})
     contexts = _native_contexts(request)
-    with contexts.turn(session_id):
+    with contexts.turn(session_id), store.pending_turn(session_id) as pending_token:
         retained_image, retained, retained_request_id = contexts.inputs(
             session_id, runtime, mode, image
         )
@@ -388,9 +388,13 @@ async def _native_multimodal_turn(
             raise HTTPException(503, {"reason_code": "omni_native_failed"})
         if await request.is_disconnected():
             raise HTTPException(499, {"reason_code": "audio_request_cancelled"})
-        request_id = await omni_native_voice.persist_turn(
-            store, session_id, mode, result.text
-        )
+        try:
+            request_id = await omni_native_voice.persist_turn(
+                store, session_id, mode, result.text, pending_token=pending_token
+            )
+        except HTTPException:
+            contexts.discard(session_id)
+            raise
         if mode == "interleaved" and result.text:
             contexts.remember(
                 session_id,
@@ -453,6 +457,9 @@ async def _native_multimodal_turn(
         },
     },
     responses={
+        409: {
+            "description": "The session or runtime changed, or runtime admission is busy or unavailable"
+        },
         413: {"description": "Multimodal upload exceeds limits"},
         415: {"description": "Multipart form required"},
         422: {"description": "Invalid image or audio input"},

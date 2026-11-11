@@ -177,7 +177,27 @@ export function supportsLocalOmniVoice(runtime: {
   }
 }
 
-export type MultimodalVoiceReply = { session_id: string; text: string; sources: string[]; no_speech?: boolean };
+export type NativeVoiceGenerationMode = "interleaved" | "audio";
+
+export function isNativeVoiceGenerationMode(value: unknown): value is NativeVoiceGenerationMode {
+  return value === "interleaved" || value === "audio";
+}
+
+export type MultimodalVoiceReply = {
+  session_id: string;
+  text: string | null;
+  sources: string[];
+  no_speech?: boolean;
+  generation_mode?: NativeVoiceGenerationMode;
+  audio_base64?: string;
+};
+
+const MULTIMODAL_VOICE_ERRORS = new Map([
+  ["omni_pilot_invalid_image", "voiceImageInvalid"],
+  ["omni_native_unavailable", "voiceNativeUnavailable"],
+  ["omni_native_busy", "voiceWait"],
+  ["omni_native_session_cleared", "voiceNativeSessionCleared"],
+]);
 
 /** Upload PCM and an optional image together, preserving the caller's cancellation signal. */
 export async function sendMultimodalVoiceTurn(
@@ -186,6 +206,8 @@ export async function sendMultimodalVoiceTurn(
   language: string,
   image: File | null,
   signal: AbortSignal,
+  generationMode?: NativeVoiceGenerationMode,
+  resetContext = false,
 ): Promise<MultimodalVoiceReply> {
   const body = new FormData();
   body.set("session_id", session);
@@ -198,6 +220,8 @@ export async function sendMultimodalVoiceTurn(
     body.set("audio", new Blob([capture.pcm], { type: "application/octet-stream" }), "voice.pcm");
   }
   if (image) body.set("image", image);
+  if (generationMode) body.set("generation_mode", generationMode);
+  if (resetContext) body.set("reset_context", "true");
   const response = await fetch(getApiBaseUrl() + "/api/v1/chat/audio/multimodal-turn", {
     method: "POST",
     body,
@@ -206,8 +230,9 @@ export async function sendMultimodalVoiceTurn(
   if (!response.ok) {
     const payload = await response.json().catch(() => null) as { detail?: { reason_code?: string } } | null;
     const reason = payload?.detail?.reason_code;
-    if (reason === "omni_pilot_invalid_image") throw new Error("voiceImageInvalid");
-    throw new Error(response.status === 409 ? "voiceWait" : "voiceError");
+    if (generationMode && reason === "audio_too_large") throw new Error("voiceNativeAudioTooLong");
+    const errorKey = MULTIMODAL_VOICE_ERRORS.get(reason ?? "");
+    throw new Error(errorKey ?? (response.status === 409 ? "voiceWait" : "voiceError"));
   }
   return response.json() as Promise<MultimodalVoiceReply>;
 }

@@ -1,4 +1,21 @@
 export const voice = {
+  nativeDialogue: {
+    alreadyCompleted: "Omni finished the reply before cancellation.",
+    sessionCleared: "The session was cleared. Record the question again.",
+    invalidInput: "Omni rejected the recording or image. Record the question again and check the attachment.",
+    audioTooLong: "A recording in native Omni mode can be up to 30 seconds long.",
+    cancel: "Cancel Omni reply",
+    cancelling: "Cancelling reply…",
+    cancelled: "Omni reply cancelled.",
+    mode: "Omni response mode",
+    cascade: "Existing voice pipeline",
+    interleaved: "Native text and speech (experimental)",
+    audio: "Native speech (experimental)",
+    unavailable: "The selected native Omni mode is unavailable. Select the existing voice pipeline or try again.",
+    end: "End native conversation",
+    audioReply: "Audio reply",
+    busy: "Omni is busy. Wait for the current turn to finish.",
+  },
   multimodal: {
     captureCamera: "Take a camera snapshot",
     cameraPending: "Capturing a frame…",

@@ -74,3 +74,30 @@ for (const surface of ["chat2", "voice"] as const) {
     assert.deepEqual(applied, []);
   });
 }
+
+test("offers only advertised native Omni modes and lets the operator return to the existing pipeline", async () => {
+  const selections: Array<string | null> = [];
+  let modes: string[] = ["interleaved"];
+  globalThis.fetch = async input => {
+    assert.match(String(input), /\/pipelines\?/);
+    return Response.json({
+      active_model: omni, gemma_models: [gemma], omni_model: omni, native_dialogue_modes: modes,
+    });
+  };
+  const choose = (mode: string | null) => selections.push(mode);
+  const view = render(<LanguageProvider><VoicePipelinePicker surface="voice" onGenerationModeChange={choose} /></LanguageProvider>);
+  const picker = await screen.findByRole<HTMLSelectElement>("combobox");
+  assert.equal(picker.value, "");
+  assert.deepEqual(Array.from(picker.options, option => option.value), ["", "interleaved"]);
+  fireEvent.change(picker, { target: { value: "interleaved" } });
+  assert.deepEqual(selections, ["interleaved"]);
+
+  modes = [];
+  view.rerender(<LanguageProvider><VoicePipelinePicker surface="voice" refreshKey={1}
+    generationMode="interleaved" onGenerationModeChange={choose} /></LanguageProvider>);
+  const warning = await screen.findByRole("alert");
+  assert.match(warning.textContent ?? "", /native Omni mode is unavailable|tryb natywny Omni jest niedostępny/);
+  assert.equal(picker.value, "interleaved");
+  fireEvent.change(picker, { target: { value: "" } });
+  assert.deepEqual(selections, ["interleaved", null]);
+});

@@ -17,9 +17,15 @@ import pytest_asyncio
 from fastapi import FastAPI
 from PIL import Image
 
+from venom_core.api import omni_native_voice
 from venom_core.api.dependencies import get_session_store
 from venom_core.api.studio_routes import include_studio_routes
-from venom_core.services import chat_audio, omni_pilot, omni_pilot_screen
+from venom_core.services import (
+    chat_audio,
+    omni_native_dialogue,
+    omni_pilot,
+    omni_pilot_screen,
+)
 from venom_core.services.session_store import SessionStore
 
 
@@ -825,3 +831,294 @@ async def test_voice_pipeline_catalog_checks_local_capabilities_without_loading(
     tags.assert_not_awaited()
     engine.transcribe_checked.assert_not_awaited()
     engine.speak.assert_not_awaited()
+
+
+@pytest.fixture
+def native_runtime(monkeypatch):
+    runtime = SimpleNamespace(provider="ollama", model_name="lfm3-omni:2b")
+
+    @asynccontextmanager
+    async def guard(**_kwargs):
+        yield
+
+    monkeypatch.setattr(omni_pilot, "active_pilot_runtime", lambda: runtime)
+    monkeypatch.setattr(omni_native_voice, "get_active_llm_runtime", lambda: runtime)
+    monkeypatch.setattr(omni_native_voice, "runtime_request_guard", guard)
+    monkeypatch.setattr(
+        omni_native_dialogue, "native_dialogue_available", lambda _: True
+    )
+    return runtime
+
+
+def _native_test_wav() -> bytes:
+    wav = io.BytesIO()
+    with wave.open(wav, "wb") as output:
+        output.setparams((1, 2, 24000, 0, "NONE", "not compressed"))
+        output.writeframes(b"\x10\x00" * 100)
+    return wav.getvalue()
+
+
+@pytest.mark.asyncio
+async def test_native_studio_returns_one_wav_and_retains_only_its_session_context(
+    rig, native_runtime, monkeypatch
+):
+    client, engine, _ = rig
+    store = client._transport.app.dependency_overrides[get_session_store]()
+    store.append_message(
+        "native-one", {"role": "user", "content": "Kontekst operatora"}
+    )
+    pcm = b"\x00\x10" * 80
+    wav = _native_test_wav()
+    image = _pilot_image()
+    generated = AsyncMock(
+        side_effect=[
+            omni_native_dialogue.NativeDialogueResult(
+                "interleaved",
+                "Pierwsza",
+                wav,
+                False,
+                {"generate": 25},
+                generation_count=1,
+            ),
+            omni_native_dialogue.NativeDialogueResult(
+                "interleaved", None, None, True, {}
+            ),
+            omni_native_dialogue.NativeDialogueResult(
+                "interleaved", "Druga", wav, False, {}, generation_count=1
+            ),
+            omni_native_dialogue.NativeDialogueResult(
+                "audio", None, wav, False, {}, generation_count=1
+            ),
+            omni_native_dialogue.NativeDialogueError("audio_too_large"),
+            omni_native_dialogue.NativeDialogueResult(
+                "interleaved", "Po zmianie trybu", wav, False, {}, generation_count=1
+            ),
+            omni_native_dialogue.NativeDialogueResult(
+                "interleaved", "Po resecie", wav, False, {}, generation_count=1
+            ),
+        ]
+    )
+    monkeypatch.setattr(omni_native_dialogue, "generate_native_turn", generated)
+    cascade = AsyncMock()
+    monkeypatch.setattr(omni_pilot, "answer", cascade)
+
+    async def turn(session, mode, samples, attachment=None, *, reset_context=False):
+        files = {"audio": ("question.pcm", samples, "application/octet-stream")}
+        if attachment is not None:
+            files["image"] = ("frame.png", attachment, "image/png")
+        return await client.post(
+            "/api/v1/chat/audio/multimodal-turn",
+            data={
+                "session_id": session,
+                "sample_rate": "16000",
+                "language": "pl",
+                "generation_mode": mode,
+                **({"reset_context": "true"} if reset_context else {}),
+            },
+            files=files,
+        )
+
+    first = await turn("native-one", "interleaved", pcm, image)
+    assert first.status_code == 200
+    assert first.json()["text"] == "Pierwsza"
+    assert first.json()["generation_count"] == 1
+    assert base64.b64decode(first.json()["audio_base64"]) == wav
+    silent = await turn("native-one", "interleaved", bytes(len(pcm)))
+    assert silent.status_code == 200
+    assert silent.json()["no_speech"] is True
+    assert "audio_base64" not in silent.json()
+    store.append_message("native-one", {"role": "user", "content": "Poprawka pisemna"})
+    followup = await turn("native-one", "interleaved", pcm)
+    assert followup.status_code == 200
+    assert followup.json()["text"] == "Druga"
+    assert generated.await_args_list[2].args[3] == image
+    assert generated.await_args_list[2].args[4] == [
+        {"role": "user", "content": "Kontekst operatora"},
+        {"role": "user", "pcm": pcm, "sample_rate": 16000},
+        {"role": "assistant", "content": "Pierwsza"},
+        {"role": "user", "content": "Poprawka pisemna"},
+    ]
+    audio_only = await turn("native-two", "audio", pcm)
+    assert audio_only.status_code == 200
+    assert audio_only.json()["text"] is None
+    assert base64.b64decode(audio_only.json()["audio_base64"]) == wav
+    generated.assert_awaited_with(native_runtime, pcm, 16000, None, [], mode="audio")
+    too_long = await turn("native-two", "audio", bytes(16000 * 30 * 2 + 2))
+    assert too_long.status_code == 413
+    assert too_long.json()["detail"]["reason_code"] == "audio_too_large"
+    assert [row["content"] for row in store.get_history("native-one")] == [
+        "Kontekst operatora",
+        "[Nagranie głosowe]",
+        "Pierwsza",
+        "Poprawka pisemna",
+        "[Nagranie głosowe]",
+        "Druga",
+    ]
+    assert store.get_history("native-two")[-1]["content"] == "[Odpowiedź głosowa]"
+    switched = await turn("native-one", "interleaved", pcm, reset_context=True)
+    assert switched.status_code == 200
+    assert switched.json()["has_image"] is False
+    assert generated.await_args.args[4] == [
+        {"role": "user", "content": "Kontekst operatora"},
+        {"role": "user", "content": "Poprawka pisemna"},
+    ]
+    store.clear_session("native-one")
+    after_reset = await turn("native-one", "interleaved", pcm)
+    assert after_reset.status_code == 200
+    assert after_reset.json()["has_image"] is False
+    generated.assert_awaited_with(
+        native_runtime, pcm, 16000, None, [], mode="interleaved"
+    )
+    cascade.assert_not_awaited()
+    engine.speak.assert_not_awaited()
+    engine.transcribe_checked.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("mode", "available", "status", "reason"),
+    [
+        ("text", True, 422, "omni_native_invalid_input"),
+        ("interleaved", False, 503, "omni_native_unavailable"),
+    ],
+)
+async def test_native_studio_refuses_invalid_or_unavailable_mode_without_cascade(
+    rig, native_runtime, monkeypatch, mode, available, status, reason
+):
+    client, _, _ = rig
+    monkeypatch.setattr(
+        omni_native_dialogue, "native_dialogue_available", lambda _: available
+    )
+    generate = AsyncMock()
+    cascade = AsyncMock()
+    monkeypatch.setattr(omni_native_dialogue, "generate_native_turn", generate)
+    monkeypatch.setattr(omni_pilot, "answer", cascade)
+    response = await client.post(
+        "/api/v1/chat/audio/multimodal-turn",
+        data={"session_id": "s", "sample_rate": "16000", "generation_mode": mode},
+        files={"audio": ("voice.pcm", b"\x00\x10", "application/octet-stream")},
+    )
+    assert response.status_code == status
+    assert response.json()["detail"]["reason_code"] == reason
+    generate.assert_not_awaited()
+    cascade.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_native_studio_cancels_the_worker_on_http_disconnect(
+    native_runtime, monkeypatch
+):
+    from fastapi import HTTPException, Request
+
+    from venom_core.api.routes.chat_audio import _await_native_turn
+
+    started = asyncio.Event()
+    drained = asyncio.Event()
+
+    async def generate(*_args, **_kwargs):
+        started.set()
+        try:
+            await asyncio.Future()
+        finally:
+            drained.set()
+
+    async def receive():
+        await started.wait()
+        return {"type": "http.disconnect"}
+
+    monkeypatch.setattr(omni_native_dialogue, "generate_native_turn", generate)
+    with pytest.raises(HTTPException) as failure:
+        await _await_native_turn(
+            Request({"type": "http"}, receive),
+            native_runtime,
+            b"\x00\x10",
+            16000,
+            None,
+            [],
+            "audio",
+        )
+    assert failure.value.status_code == 499
+    assert drained.is_set()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("clear_all", [False, True])
+async def test_native_studio_clear_during_generation_prevents_persistence(
+    rig, native_runtime, monkeypatch, clear_all
+):
+    client, _, _ = rig
+    store = client._transport.app.dependency_overrides[get_session_store]()
+    started = asyncio.Event()
+    resume = asyncio.Event()
+    result = omni_native_dialogue.NativeDialogueResult(
+        "interleaved", "Wynik", _native_test_wav(), False, {}, generation_count=1
+    )
+
+    async def generate(*_args, **_kwargs):
+        started.set()
+        await resume.wait()
+        return result
+
+    generated = AsyncMock(side_effect=generate)
+    monkeypatch.setattr(omni_native_dialogue, "generate_native_turn", generated)
+
+    async def turn(image=None):
+        files = {"audio": ("voice.pcm", b"\\x00\\x10" * 80, "application/octet-stream")}
+        if image is not None:
+            files["image"] = ("frame.png", image, "image/png")
+        return await client.post(
+            "/api/v1/chat/audio/multimodal-turn",
+            data={
+                "session_id": "cleared",
+                "sample_rate": "16000",
+                "generation_mode": "interleaved",
+            },
+            files=files,
+        )
+
+    pending = asyncio.create_task(turn(_pilot_image()))
+    try:
+        await asyncio.wait_for(started.wait(), timeout=2)
+        if clear_all:
+            store.clear_all()
+        else:
+            assert not store.clear_session("cleared")
+    finally:
+        resume.set()
+    rejected = await asyncio.wait_for(pending, timeout=2)
+    assert rejected.status_code == 409
+    assert rejected.json()["detail"]["reason_code"] == "omni_native_session_cleared"
+    assert store.get_history("cleared") == []
+    fresh = await turn()
+    assert fresh.status_code == 200
+    assert not fresh.json()["has_image"]
+    assert generated.await_args.args[3:5] == (None, [])
+
+
+@pytest.mark.asyncio
+async def test_native_pipeline_choices_only_advertise_configured_local_polish_omni(
+    rig, native_runtime, monkeypatch
+):
+    from venom_core.api.routes import chat_audio as routes
+
+    client, _, _ = rig
+    native_runtime.endpoint = "http://127.0.0.1:11434"
+    monkeypatch.setattr(routes, "get_active_llm_runtime", lambda: native_runtime)
+    monkeypatch.setattr(routes.ollama_audio, "is_host_ollama", lambda _: True)
+    monkeypatch.setattr(
+        routes.ollama_audio, "installed_gemma_models", AsyncMock(return_value=[])
+    )
+    monkeypatch.setattr(
+        routes.ollama_audio, "has_omni_voice", AsyncMock(return_value=True)
+    )
+    url = "/api/v1/chat/audio/pipelines"
+    polish = await client.get(url, params={"language": "pl"})
+    assert polish.json()["native_dialogue_modes"] == ["interleaved", "audio"]
+    german = await client.get(url, params={"language": "de"})
+    assert "native_dialogue_modes" not in german.json()
+    monkeypatch.setattr(
+        omni_native_dialogue, "native_dialogue_available", lambda _: False
+    )
+    disabled = await client.get(url, params={"language": "pl"})
+    assert "native_dialogue_modes" not in disabled.json()
+    assert disabled.json()["omni_model"] == "lfm3-omni:2b"

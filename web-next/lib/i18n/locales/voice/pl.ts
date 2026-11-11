@@ -1,4 +1,21 @@
 export const voice = {
+  nativeDialogue: {
+    alreadyCompleted: "Omni ukończył odpowiedź przed anulowaniem.",
+    sessionCleared: "Sesja została wyczyszczona. Nagraj pytanie ponownie.",
+    invalidInput: "Omni odrzucił nagranie lub obraz. Nagraj pytanie ponownie i sprawdź załącznik.",
+    audioTooLong: "Nagranie w trybie natywnym Omni może trwać maksymalnie 30 sekund.",
+    cancel: "Anuluj odpowiedź Omni",
+    cancelling: "Anulowanie odpowiedzi…",
+    cancelled: "Odpowiedź Omni anulowana.",
+    mode: "Sposób odpowiedzi Omni",
+    cascade: "Dotychczasowy tor głosowy",
+    interleaved: "Natywny tekst i mowa (eksperyment)",
+    audio: "Natywna mowa (eksperyment)",
+    unavailable: "Wybrany tryb natywny Omni jest niedostępny. Wybierz dotychczasowy tor albo spróbuj ponownie.",
+    end: "Zakończ natywną rozmowę",
+    audioReply: "Odpowiedź dźwiękowa",
+    busy: "Omni jest zajęty. Poczekaj na zakończenie tury.",
+  },
   multimodal: {
     captureCamera: "Zrób zdjęcie kamerą",
     cameraPending: "Pobieranie klatki…",

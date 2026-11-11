@@ -164,6 +164,8 @@ Use those documents for deeper technical detail. Use this document as the operat
 
 Chat 2.0 saves thread history in both Studio and Full. In Normal, select **Use notes** to retrieve notes for the current question. This option is off by default. **Save as note** indexes the selected completed answer in Direct or Normal.
 
+In Studio voice conversation and Full Direct Voice, the Omni response-mode picker offers experimental **Native text and speech** and **Native speech** when local Ollama uses LFM3-Omni-2B and a pinned snapshot with regular files is configured through `OMNI_NATIVE_SNAPSHOT` on a Linux CUDA host. Either mode accepts a Polish recording of up to 30 seconds, with an optional image. To return to the standard voice path after a native error, select **Existing voice pipeline**. Venom keeps the selected mode when a turn fails.
+
 ### Chat tools and runtime config
 
 - `venom_core/memory/memory_skill.py`

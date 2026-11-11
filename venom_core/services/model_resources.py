@@ -24,6 +24,13 @@ _RELEASING = False
 _ACTIVE = 0
 
 
+class ModelWorkNotDrained(HTTPException):
+    """A release must stop while admitted work is still running."""
+
+    def __init__(self) -> None:
+        super().__init__(409, detail={"code": "model_resources_work_not_drained"})
+
+
 def register_model_resource(owner: Any, category: str, release_method: str) -> None:
     """Register a weak owner reference, not another copy of its model."""
     with _CONDITION:
@@ -103,9 +110,7 @@ def wait_for_model_work(timeout: float = 30) -> None:
         while _ACTIVE:
             remaining = deadline - time.monotonic()
             if remaining <= 0:
-                raise HTTPException(
-                    status_code=409, detail={"code": "model_resources_work_not_drained"}
-                )
+                raise ModelWorkNotDrained()
             _CONDITION.wait(remaining)
 
 
@@ -157,6 +162,8 @@ async def prepare_registered_models() -> list[dict[str, Any]]:
         if prepare is not None:
             try:
                 await prepare()
+            except ModelWorkNotDrained:
+                raise
             except Exception:
                 logger.opt(exception=True).warning(
                     "Model preparation failed category={} owner={}",

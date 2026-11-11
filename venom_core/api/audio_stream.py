@@ -11,7 +11,12 @@ import shutil
 import time
 import uuid
 import wave
-from contextlib import AbstractAsyncContextManager, asynccontextmanager, nullcontext
+from contextlib import (
+    AbstractAsyncContextManager,
+    asynccontextmanager,
+    nullcontext,
+    suppress,
+)
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -22,14 +27,18 @@ import httpx
 import numpy as np
 from fastapi import HTTPException, WebSocket, WebSocketDisconnect
 
+from venom_core.api import omni_native_voice
+from venom_core.api.dependencies import get_session_store
 from venom_core.api.schemas.llm_simple import HistoryMessage
 from venom_core.config import SETTINGS
 from venom_core.core.ollama_runtime_capabilities import is_gemma4_model_name
 from venom_core.perception.audio_engine import AudioEngine
-from venom_core.services import ollama_audio, omni_pilot
+from venom_core.services import ollama_audio, omni_native_dialogue, omni_pilot
+from venom_core.services.background_priority import run_drainable_thread
 from venom_core.services.chat_audio import (
     MAX_AUDIO_BYTES,
     decode_media_recording,
+    decode_pilot_recording,
     validate_pcm,
 )
 from venom_core.services.conversation_providers import (
@@ -42,8 +51,9 @@ from venom_core.services.conversation_providers import (
     prepare_conversation_turn,
     urgent_conversation_turn,
 )
-from venom_core.services.model_resources import model_operation
+from venom_core.services.model_resources import ModelWorkNotDrained, model_operation
 from venom_core.services.multi_runtime_models import multi_runtime_available_models
+from venom_core.services.omni_native_dialogue import NativeDialogueError, NativeMode
 from venom_core.services.runtime_admission import (
     RuntimeAdmissionError,
     get_runtime_admission,
@@ -53,6 +63,7 @@ from venom_core.services.runtime_switch_gate import (
     get_runtime_switch_gate_status,
     runtime_request_guard,
 )
+from venom_core.services.session_store import SessionRevision
 from venom_core.utils.llm_runtime import LLMRuntimeInfo, get_active_llm_runtime
 from venom_core.utils.logger import get_logger
 from venom_core.utils.mode_contracts import (
@@ -85,6 +96,10 @@ VOICE_SESSION_WAV_FILENAME = "recording.wav"
 VOICE_SESSION_METADATA_FILENAME = "metadata.json"
 GEMMA4_AUDIO_HEALTH_TIMEOUT_SEC = 5.0
 GEMMA4_AUDIO_REQUEST_TIMEOUT_SEC = 120.0
+_NATIVE_REPLY_SEND_TIMEOUT_SECONDS = 10
+_NATIVE_SOCKET_CLOSE_TIMEOUT_SECONDS = 2
+_MODEL_RELEASE_PREPARE_TIMEOUT_SECONDS = 15
+_NATIVE_DRAIN_TIMEOUT_SECONDS = 15
 _VOICE_ROUTE_PROFILES = {
     "auto",
     "gemma4",
@@ -499,6 +514,11 @@ class _PilotRecording:
     image: bytes | None
     size: int = 0
     failed: bool = False
+    native_mode: NativeMode | None = None
+    native_runtime: LLMRuntimeInfo | None = None
+    sample_rate: int = 16000
+    recording_format: str = "pcm16"
+    mime_type: str = ""
 
 
 class AudioStreamHandler:
@@ -526,6 +546,9 @@ class AudioStreamHandler:
         self.silence_duration = silence_duration
         self.active_connections: Dict[int, AudioStreamHandler._ConnectionState] = {}
         self.resources_suspended = False
+        self._voice_accept_epoch: object | None = object()
+        self._native_tasks: set[asyncio.Task[None]] = set()
+        self._native_contexts = omni_native_voice.NativeTurnContexts()
         self._daemon_snapshot_meta_cache: dict[str, Any] = {
             "captured_at": 0.0,
             "payload": {},
@@ -538,22 +561,41 @@ class AudioStreamHandler:
 
     async def prepare_model_release(self) -> None:
         """Stop microphone consumers before releasing STT/TTS model objects."""
+        if self._voice_accept_epoch is None:
+            raise ModelWorkNotDrained()
+        was_suspended = self.resources_suspended
         self.resources_suspended = True
-        connections = tuple(self.active_connections.values())
-        for state in connections:
-            timer = state.get("silence_finalize_task")
-            if timer is not None:
-                timer.cancel()
-                await asyncio.gather(timer, return_exceptions=True)
-            websocket = state["websocket"]
-            try:
-                await websocket.close(code=1012, reason="model_resources_released")
-            except RuntimeError:
-                pass
-        self.active_connections.clear()
+        self._voice_accept_epoch = None
+        try:
+            async with asyncio.timeout(_MODEL_RELEASE_PREPARE_TIMEOUT_SECONDS):
+                for connection_id, state in tuple(self.active_connections.items()):
+                    await self._cancel_native_dialogue(connection_id, state)
+                    timer = state.get("silence_finalize_task")
+                    if timer is not None:
+                        timer.cancel()
+                        await asyncio.shield(
+                            asyncio.gather(timer, return_exceptions=True)
+                        )
+                    with suppress(RuntimeError):
+                        await state["websocket"].close(
+                            code=1012, reason="model_resources_released"
+                        )
+                    self.active_connections.pop(connection_id, None)
+                if self._native_tasks:
+                    await asyncio.wait(tuple(self._native_tasks))
+        except TimeoutError as exc:
+            self.resources_suspended = was_suspended
+            raise ModelWorkNotDrained() from exc
+        except (ModelWorkNotDrained, asyncio.CancelledError):
+            self.resources_suspended = was_suspended
+            raise
+        finally:
+            self._voice_accept_epoch = object()
 
     def release_model_resource(self) -> bool:
-        return not self.active_connections
+        return not self.active_connections and all(
+            task.done() for task in self._native_tasks
+        )
 
     class _ConnectionState(TypedDict):
         websocket: WebSocket
@@ -570,7 +612,12 @@ class AudioStreamHandler:
         voice_mode: str
         pilot_recording: NotRequired[_PilotRecording]
         pilot_history: NotRequired[list[dict[str, object]]]
+        native_task: NotRequired[asyncio.Task[None]]
+        native_saving: NotRequired[bool]
+        native_committed: NotRequired[bool]
+        discard_native_audio: NotRequired[bool]
         direct_history: NotRequired[list[HistoryMessage]]
+        direct_history_revision: NotRequired[SessionRevision]
         direct_session_id: NotRequired[str]
 
     def get_status(self, operator_agent: object | None = None) -> dict:
@@ -622,7 +669,10 @@ class AudioStreamHandler:
 
     @model_operation
     async def _accept_connection(self, websocket: WebSocket) -> int:
+        epoch = self._voice_accept_epoch
         await websocket.accept()
+        if epoch is None or epoch is not self._voice_accept_epoch:
+            raise HTTPException(409, detail={"code": "model_resources_releasing"})
         self.resources_suspended = False
         connection_id = id(websocket)
         self.active_connections[connection_id] = {
@@ -657,7 +707,9 @@ class AudioStreamHandler:
         try:
             connection_id = await self._accept_connection(websocket)
         except HTTPException:
-            await websocket.close(code=1013, reason="model_resources_releasing")
+            with suppress(RuntimeError, OSError, WebSocketDisconnect):
+                async with asyncio.timeout(_NATIVE_SOCKET_CLOSE_TIMEOUT_SECONDS):
+                    await websocket.close(code=1013, reason="model_resources_releasing")
             return
 
         logger.info(f"Nowe połączenie audio WebSocket: {connection_id}")
@@ -685,11 +737,18 @@ class AudioStreamHandler:
 
         except WebSocketDisconnect:
             logger.info(f"Rozłączono WebSocket audio: {connection_id}")
+        except ModelWorkNotDrained:
+            await self._close_native_delivery(
+                connection_id, self.active_connections.get(connection_id)
+            )
         except Exception as e:
             logger.error(f"Błąd w WebSocket audio: {e}")
         finally:
-            if connection_id in self.active_connections:
-                del self.active_connections[connection_id]
+            conn = self.active_connections.pop(connection_id, None)
+            if conn is not None:
+                self._native_contexts.discard(connection_id)
+                with suppress(ModelWorkNotDrained):
+                    await self._cancel_native_dialogue(connection_id, conn)
 
     @model_operation
     async def _handle_control_message(
@@ -728,6 +787,9 @@ class AudioStreamHandler:
         if command == "stop_recording":
             await self._stop_recording(connection_id, operator_agent)
             return
+        if command in ("reset_native_dialogue", "end_native_dialogue"):
+            await self._reset_native_dialogue(connection_id, data)
+            return
         if command == "ping":
             await self._send_json(connection_id, {"type": "pong"})
 
@@ -759,7 +821,13 @@ class AudioStreamHandler:
             "mime_type": conn["mime_type"],
         }
         conn.pop("pilot_recording", None)
-        if data.get("multimodal") is True or "image" in data:
+        conn.pop("discard_native_audio", None)
+        if not await self._configure_native_recording(connection_id, conn, data):
+            return
+        conn.pop("native_committed", None)
+        if "generation_mode" in data:
+            conn.pop("pilot_history", None)
+        elif data.get("multimodal") is True or "image" in data:
             try:
                 image = (
                     omni_pilot.decode_image(data["image"]) if "image" in data else None
@@ -775,6 +843,51 @@ class AudioStreamHandler:
         await self._send_json(
             connection_id, {"type": "recording_started", "status": "ok"}
         )
+
+    async def _configure_native_recording(
+        self, connection_id: int, conn: _ConnectionState, data: dict[str, Any]
+    ) -> bool:
+        """Confirm the requested native mode and bind it to the recording's model."""
+        mode = None
+        reason = None
+        if conn.get("native_task") is not None:
+            reason = "omni_native_busy"
+        elif "generation_mode" in data:
+            try:
+                mode = omni_native_voice.parse_mode(data["generation_mode"])
+                if (
+                    mode is None
+                    or conn["voice_mode"] != "direct"
+                    or conn["channels"] != 1
+                ):
+                    raise ValueError("native voice requires Direct and mono")
+                runtime = get_active_llm_runtime()
+                if not omni_native_dialogue.native_dialogue_available(runtime):
+                    reason = "omni_native_unavailable"
+                else:
+                    image = (
+                        omni_pilot.decode_image(data["image"])
+                        if "image" in data
+                        else None
+                    )
+                    conn["pilot_recording"] = _PilotRecording(
+                        image=image,
+                        native_mode=mode,
+                        native_runtime=runtime,
+                        sample_rate=conn["sample_rate"],
+                        recording_format=conn["recording_format"],
+                        mime_type=conn["mime_type"],
+                    )
+            except (HTTPException, ValueError):
+                reason = "omni_native_invalid_input"
+        else:
+            self._native_contexts.discard(connection_id)
+        if reason is None:
+            return True
+        conn["is_speaking"] = False
+        conn["discard_native_audio"] = True
+        await self._native_voice_error(connection_id, reason, mode)
+        return False
 
     async def _apply_audio_config(
         self, connection_id: int, data: dict[str, Any]
@@ -807,6 +920,8 @@ class AudioStreamHandler:
     async def _apply_voice_mode(self, connection_id: int, data: dict[str, Any]) -> None:
         conn = self.active_connections[connection_id]
         voice_mode = _coerce_str(data.get("mode"), "standard")
+        if voice_mode != "direct":
+            await self._cancel_native_dialogue(connection_id, conn)
         conn["voice_mode"] = voice_mode
         logger.info("Ustawiono voice_mode dla %s: %s", connection_id, voice_mode)
         await self._send_json(
@@ -830,9 +945,21 @@ class AudioStreamHandler:
             len(conn["audio_bytes_buffer"]),
             conn["recording_format"],
         )
+        if conn.get("discard_native_audio"):
+            return
         pilot = conn.pop("pilot_recording", None)
         if pilot is not None:
-            await self._finish_pilot_recording(connection_id, conn, pilot)
+            if pilot.native_mode is None:
+                await self._finish_pilot_recording(connection_id, conn, pilot)
+            else:
+                chunks = conn["audio_bytes_buffer"]
+                conn["audio_bytes_buffer"] = []
+                task = asyncio.create_task(
+                    self._finish_native_recording(connection_id, conn, pilot, chunks)
+                )
+                conn["native_task"] = task
+                self._native_tasks.add(task)
+                task.add_done_callback(self._native_tasks.discard)
             return
         if conn["audio_bytes_buffer"] and conn["recording_format"] != "pcm16":
             await self._process_encoded_audio_buffer(
@@ -851,6 +978,255 @@ class AudioStreamHandler:
                 sample_rate=_coerce_int(conn.get("sample_rate"), 16000),
             )
             conn["audio_buffer"] = []
+
+    async def _native_voice_error(
+        self, connection_id: int, reason: str, mode: NativeMode | None
+    ) -> None:
+        await self._send_json(
+            connection_id,
+            {
+                "type": "error",
+                "message": reason,
+                "reason_code": reason,
+                "multimodal": True,
+                "generation_mode": mode,
+            },
+        )
+
+    async def _reset_native_dialogue(
+        self, connection_id: int, data: dict[str, Any]
+    ) -> None:
+        conn = self.active_connections[connection_id]
+        if data["command"] == "end_native_dialogue":
+            await self._cancel_native_dialogue(connection_id, conn)
+            conn.pop("direct_history", None)
+            conn.pop("direct_history_revision", None)
+            conn.pop("direct_session_id", None)
+            return
+        cancel_id = data.get("cancel_id")
+        if not isinstance(cancel_id, str) or not 1 <= len(cancel_id) <= 128:
+            await self._cancel_native_dialogue(connection_id, conn)
+            return
+        if conn.get("native_saving") or conn.get("native_committed"):
+            await self._drain_native_task(conn, cancel=False)
+        cancelled = not conn.get("native_committed", False)
+        if cancelled:
+            await self._cancel_native_dialogue(connection_id, conn)
+        if self.active_connections.get(connection_id) is not conn:
+            return
+        try:
+            async with asyncio.timeout(_NATIVE_REPLY_SEND_TIMEOUT_SECONDS):
+                await self._send_json(
+                    connection_id,
+                    {
+                        "type": "native_dialogue_reset",
+                        "cancel_id": cancel_id,
+                        "cancelled": cancelled,
+                    },
+                    strict=True,
+                )
+        except (RuntimeError, OSError, WebSocketDisconnect):
+            await self._close_native_delivery(connection_id, conn)
+
+    async def _close_native_delivery(
+        self, connection_id: int, conn: _ConnectionState | None
+    ) -> None:
+        if conn is None or self.active_connections.get(connection_id) is not conn:
+            return
+        self.active_connections.pop(connection_id)
+        self._native_contexts.discard(connection_id)
+        with suppress(RuntimeError, OSError, WebSocketDisconnect):
+            async with asyncio.timeout(_NATIVE_SOCKET_CLOSE_TIMEOUT_SECONDS):
+                await conn["websocket"].close(
+                    code=1011, reason="native_reply_delivery_failed"
+                )
+
+    async def _drain_native_task(self, conn: _ConnectionState, *, cancel: bool) -> None:
+        task = conn.get("native_task")
+        if task is None:
+            return
+        if cancel and not conn.get("native_saving"):
+            task.cancel()
+        # A deadline must not cancel or forget an in-progress disk write.
+        _, pending = await asyncio.wait((task,), timeout=_NATIVE_DRAIN_TIMEOUT_SECONDS)
+        if pending:
+            raise ModelWorkNotDrained()
+        if conn.get("native_task") is task:
+            conn.pop("native_task", None)
+
+    async def _cancel_native_dialogue(
+        self, connection_id: int, conn: _ConnectionState
+    ) -> None:
+        await self._drain_native_task(conn, cancel=True)
+        conn.pop("native_committed", None)
+        self._native_contexts.discard(connection_id)
+        pilot = conn.get("pilot_recording")
+        if pilot is not None and pilot.native_mode is not None:
+            conn.pop("pilot_recording", None)
+            conn["is_speaking"] = False
+            conn["discard_native_audio"] = True
+            conn["audio_bytes_buffer"] = []
+
+    async def _native_pcm(
+        self, pilot: _PilotRecording, chunks: list[bytes]
+    ) -> tuple[bytes, int]:
+        if pilot.failed or not chunks:
+            raise NativeDialogueError("omni_native_invalid_input")
+        if pilot.image is not None:
+            await asyncio.to_thread(omni_pilot.validate_image, pilot.image)
+        content = b"".join(chunks)
+        if pilot.recording_format == "pcm16":
+            pcm, rate = content, pilot.sample_rate
+        else:
+            media_type = pilot.mime_type.split(";", 1)[0].strip().lower()
+            input_format = omni_native_voice.PILOT_AUDIO_FORMATS.get(media_type)
+            if input_format is None:
+                raise NativeDialogueError("omni_native_invalid_input")
+            pcm, rate = await run_drainable_thread(
+                decode_pilot_recording, content, input_format
+            )
+        if not 8000 <= rate <= 96000:
+            raise NativeDialogueError("omni_native_invalid_input")
+        validate_pcm(pcm, rate)
+        return pcm, rate
+
+    async def _finish_native_recording(
+        self,
+        connection_id: int,
+        conn: _ConnectionState,
+        pilot: _PilotRecording,
+        chunks: list[bytes],
+    ) -> None:
+        mode, runtime = pilot.native_mode, pilot.native_runtime
+        try:
+            if mode is None or runtime is None:
+                raise NativeDialogueError("omni_native_unavailable")
+            await self._native_dialogue_turn(
+                connection_id, conn, pilot, chunks, mode, runtime
+            )
+        except NativeDialogueError as exc:
+            await self._native_voice_error(connection_id, exc.reason_code, mode)
+        except HTTPException as exc:
+            await self._native_voice_error(
+                connection_id, omni_native_voice.error_code(exc), mode
+            )
+        except ValueError:
+            await self._native_voice_error(
+                connection_id, "omni_native_invalid_input", mode
+            )
+        except Exception:
+            logger.exception("Native Omni voice turn failed")
+            await self._native_voice_error(connection_id, "omni_native_failed", mode)
+        finally:
+            if conn.get("native_task") is asyncio.current_task():
+                conn.pop("native_task", None)
+
+    @staticmethod
+    def _direct_history(
+        conn: _ConnectionState, revision: SessionRevision
+    ) -> list[HistoryMessage]:
+        if conn.get("direct_history_revision") is not revision:
+            conn.pop("direct_history", None)
+            conn["direct_history_revision"] = revision
+        return conn.get("direct_history", [])
+
+    async def _native_dialogue_turn(
+        self,
+        connection_id: int,
+        conn: _ConnectionState,
+        pilot: _PilotRecording,
+        chunks: list[bytes],
+        mode: NativeMode,
+        runtime: LLMRuntimeInfo,
+    ) -> None:
+        session_id = conn.setdefault(
+            "direct_session_id", f"voice-direct-{uuid.uuid4()}"
+        )
+        store = get_session_store()
+        revision = store.session_revision(session_id)
+        pcm, rate = await self._native_pcm(pilot, chunks)
+        rows = store.get_history(session_id, limit=omni_pilot.MAX_HISTORY_ROWS)
+        image, retained, _ = self._native_contexts.inputs(
+            connection_id, runtime, mode, pilot.image, rows
+        )
+        history = [
+            {"role": turn.role, "content": turn.content}
+            for turn in self._direct_history(conn, revision)[
+                -omni_pilot.MAX_HISTORY_ROWS :
+            ]
+        ] + retained
+        await self._send_json(
+            connection_id,
+            {"type": "processing", "status": "thinking", "generation_mode": mode},
+        )
+        result = await omni_native_voice.run_turn(
+            runtime, pcm, rate, image, history, mode
+        )
+        meta = {
+            "multimodal": True,
+            "generation_mode": mode,
+            "pipeline_id": omni_native_voice.PIPELINE,
+            "session_id": session_id,
+            "has_image": image is not None,
+            "generation_count": result.generation_count,
+        }
+        if result.no_speech:
+            await self._send_json(
+                connection_id, {"type": "complete", "no_speech": True, **meta}
+            )
+            return
+        if not result.wav:
+            raise NativeDialogueError("omni_native_failed")
+        with wave.open(io.BytesIO(result.wav), "rb") as output:
+            audio = np.frombuffer(output.readframes(output.getnframes()), dtype="<i2")
+            output_rate = output.getframerate()
+        conn["native_saving"] = True
+        try:
+            request_id = await omni_native_voice.persist_turn(
+                store, session_id, mode, result.text, expected_revision=revision
+            )
+        except HTTPException:
+            self._native_contexts.discard(connection_id)
+            conn.pop("direct_history", None)
+            raise
+        finally:
+            conn.pop("native_saving", None)
+        conn["native_committed"] = True
+        if self.active_connections.get(connection_id) is not conn:
+            return
+        if mode == "interleaved" and result.text:
+            self._native_contexts.remember(
+                connection_id,
+                runtime,
+                image,
+                pcm,
+                rate,
+                result.text,
+                request_id=request_id,
+            )
+        try:
+            async with asyncio.timeout(_NATIVE_REPLY_SEND_TIMEOUT_SECONDS):
+                await self._send_json(
+                    connection_id,
+                    {"type": "response_text", "text": result.text, **meta},
+                    strict=True,
+                )
+                await self._send_audio(
+                    connection_id, audio, sample_rate=output_rate, strict=True
+                )
+                await self._send_json(
+                    connection_id,
+                    {
+                        "type": "complete",
+                        "model_revision": result.model_revision,
+                        "timings_ms": result.timings_ms,
+                        "peak_reserved_mib": result.peak_reserved_mib,
+                        **meta,
+                    },
+                    strict=True,
+                )
+        except (RuntimeError, OSError, WebSocketDisconnect):
+            await self._close_native_delivery(connection_id, conn)
 
     async def _pilot_error(self, connection_id: int) -> None:
         await self._send_json(
@@ -984,6 +1360,8 @@ class AudioStreamHandler:
             return
 
         conn = self.active_connections[connection_id]
+        if conn.get("discard_native_audio") or conn.get("native_task") is not None:
+            return
         pilot = conn.get("pilot_recording")
         if pilot is not None:
             pilot.size += len(audio_bytes)
@@ -2497,9 +2875,10 @@ class AudioStreamHandler:
             session_id = connection.setdefault(
                 "direct_session_id", f"voice-direct-{uuid.uuid4()}"
             )
+            revision = get_session_store().session_revision(session_id)
             response_text, history = await complete_direct_turn(
                 transcription,
-                connection.get("direct_history", []),
+                self._direct_history(connection, revision),
                 session_id=session_id,
             )
             connection["direct_history"] = history
@@ -2864,7 +3243,9 @@ class AudioStreamHandler:
             json.dumps(current, ensure_ascii=False, indent=2), encoding="utf-8"
         )
 
-    async def _send_json(self, connection_id: int, data: dict[str, Any]) -> None:
+    async def _send_json(
+        self, connection_id: int, data: dict[str, Any], *, strict: bool = False
+    ) -> None:
         """
         Wysyła JSON przez WebSocket.
 
@@ -2878,7 +3259,11 @@ class AudioStreamHandler:
             conn = self.active_connections.get(connection_id)
             if conn:
                 await conn["websocket"].send_text(json.dumps(data))
+            elif strict:
+                raise WebSocketDisconnect(1006)
         except Exception as e:
+            if strict:
+                raise
             logger.error(f"Błąd podczas wysyłania JSON: {e}")
 
     async def _send_audio(
@@ -2887,6 +3272,7 @@ class AudioStreamHandler:
         audio_data: np.ndarray,
         *,
         sample_rate: int | None = None,
+        strict: bool = False,
     ):
         """
         Wysyła audio przez WebSocket.
@@ -2915,8 +3301,12 @@ class AudioStreamHandler:
                 }
 
                 await conn["websocket"].send_text(json.dumps(message))
+            elif strict:
+                raise WebSocketDisconnect(1006)
 
         except Exception as e:
+            if strict:
+                raise
             logger.error(f"Błąd podczas wysyłania audio: {e}")
 
     def _get_tts_sample_rate(self) -> int:

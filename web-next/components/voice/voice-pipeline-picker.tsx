@@ -3,12 +3,14 @@
 import { useEffect, useRef, useState } from "react";
 import { setActiveLlmServer } from "@/hooks/use-api";
 import { apiFetch } from "@/lib/api-client";
+import { isNativeVoiceGenerationMode, type NativeVoiceGenerationMode } from "@/lib/chat-audio";
 import { useLanguage } from "@/lib/i18n";
 
 type VoicePipelines = {
   active_model: string | null;
   gemma_models: string[];
   omni_model: string | null;
+  native_dialogue_modes?: NativeVoiceGenerationMode[];
 };
 
 const lastGemmaKey = "venom:voice:last-gemma";
@@ -28,12 +30,16 @@ function chooseGemma(options: VoicePipelines): string | undefined {
 /** Offer only installed voice pipelines from the capability catalog for the current surface. */
 export function VoicePipelinePicker({
   surface, disabled, onApplied, onSwitching, refreshKey,
+  generationMode = null, onGenerationModeChange, nativeDialogueEnabled = true,
 }: Readonly<{
   surface: "chat2" | "voice";
   disabled?: boolean;
   onApplied?: (model: string) => void;
   onSwitching?: (pending: boolean) => void;
   refreshKey?: string | number | null;
+  generationMode?: NativeVoiceGenerationMode | null;
+  onGenerationModeChange?: (mode: NativeVoiceGenerationMode | null) => void;
+  nativeDialogueEnabled?: boolean;
 }>) {
   const { t, language } = useLanguage();
   const [options, setOptions] = useState<VoicePipelines | null>(null);
@@ -56,6 +62,11 @@ export function VoicePipelinePicker({
   const gemma = options ? chooseGemma(options) : undefined;
   const omni = options?.omni_model;
   const active = options?.active_model;
+  const advertisedModes = options?.native_dialogue_modes;
+  const nativeModes = nativeDialogueEnabled && active && active === omni
+    && Array.isArray(advertisedModes) ? advertisedModes.filter(isNativeVoiceGenerationMode) : [];
+  const unavailable = generationMode !== null && !nativeModes.includes(generationMode);
+
   /** Serialize switches and keep the previous Gemma available when returning from Omni. */
   const apply = async (model: string | undefined | null) => {
     if (!model || model === active || disabled || busy.current) return;
@@ -73,7 +84,8 @@ export function VoicePipelinePicker({
       if (lastGemma) {
         try { window.localStorage.setItem(lastGemmaKey, lastGemma); } catch { /* Optional preference. */ }
       }
-      setOptions(current => current && { ...current, active_model: model });
+      setOptions(current => current && { ...current, active_model: model, native_dialogue_modes: [] });
+      onGenerationModeChange?.(null);
       onApplied?.(model);
     } catch {
       setFailed(true);
@@ -95,6 +107,22 @@ export function VoicePipelinePicker({
     </div>
     <p className="text-xs opacity-75">{t(omni ? "chat2.voicePipelineHint" : "chat2.voiceOmniUnavailable")}</p>
     {active && <p className="text-xs opacity-75">{t("chat2.voiceActiveModel", { model: active })}</p>}
+    {onGenerationModeChange && (nativeModes.length > 0 || generationMode) && (
+      <label className="flex flex-col gap-1 text-sm">
+        {t("voice.nativeDialogue.mode")}
+        <select className="studio-select rounded-lg border px-2 py-1" value={generationMode ?? ""}
+          onChange={event => {
+            const mode = event.currentTarget.value;
+            if (!mode) onGenerationModeChange(null);
+            else if (isNativeVoiceGenerationMode(mode) && nativeModes.includes(mode)) onGenerationModeChange(mode);
+          }}>
+          <option value="">{t("voice.nativeDialogue.cascade")}</option>
+          {nativeModes.map(mode => <option key={mode} value={mode}>{t("voice.nativeDialogue." + mode)}</option>)}
+          {unavailable && <option value={generationMode} disabled>{t("voice.nativeDialogue." + generationMode)}</option>}
+        </select>
+      </label>
+    )}
+    {unavailable && <p role="alert" className="text-xs">{t("voice.nativeDialogue.unavailable")}</p>}
     {failed && <p role="alert" className="text-xs">{t("chat2.voicePipelineError")}</p>}
   </fieldset>;
 }

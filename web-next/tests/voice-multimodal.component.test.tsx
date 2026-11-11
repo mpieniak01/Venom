@@ -223,6 +223,41 @@ it("sends Direct mode before a Full voice turn and preserves explicit agent sele
   await waitFor(() => assert.deepEqual(modes(), ["direct", "standard"]));
 });
 
+it("keeps mode switching busy during microphone permission and rejects a stale mode", async test => {
+  installVoiceEnvironment(test);
+  let grant!: (stream: Pick<MediaStream, "getTracks">) => void;
+  const permission = new Promise<Pick<MediaStream, "getTracks">>(resolve => { grant = resolve; });
+  const getUserMedia = test.mock.fn(() => permission);
+  const restore = replaceProperty(navigator, "mediaDevices", { getUserMedia });
+  const onTurnBusy = test.mock.fn();
+  let view!: ReturnType<typeof render>;
+  try {
+    await act(async () => {
+      view = render(<VoiceCommandCenter voiceModePreset="direct" generationMode="interleaved" onTurnBusy={onTurnBusy} />);
+    });
+    const [socket] = VoiceSocket.instances;
+    assert.ok(socket);
+    await act(async () => socket.open());
+    const record = screen.getByRole<HTMLButtonElement>("button", { name: /Przytrzymaj i mów/ });
+    await waitFor(() => assert.equal(record.disabled, false));
+    const callsBeforeRecording = getUserMedia.mock.callCount();
+    await act(async () => fireEvent.pointerDown(record));
+    assert.equal(getUserMedia.mock.callCount(), callsBeforeRecording + 1);
+    assert.equal(onTurnBusy.mock.calls.at(-1)?.arguments[0], true);
+    await act(async () => {
+      view.rerender(<VoiceCommandCenter voiceModePreset="direct" generationMode="audio" onTurnBusy={onTurnBusy} />);
+    });
+    await act(async () => grant({ getTracks: () => [] }));
+    const sent = socket.sent.filter((frame): frame is string => typeof frame === "string")
+      .map(frame => JSON.parse(frame).command);
+    assert.ok(sent.includes("reset_native_dialogue"));
+    assert.ok(!sent.includes("start_recording"));
+    assert.equal(onTurnBusy.mock.calls.at(-1)?.arguments[0], false);
+  } finally {
+    restore();
+  }
+});
+
 it("Full sends native generation modes, plays audio-only replies and resets the conversation on the same socket", async test => {
   installVoiceEnvironment(test);
   const onTranscriptReady = test.mock.fn();

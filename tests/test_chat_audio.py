@@ -890,6 +890,9 @@ async def test_native_studio_returns_one_wav_and_retains_only_its_session_contex
                 "audio", None, wav, False, {}, generation_count=1
             ),
             omni_native_dialogue.NativeDialogueError("audio_too_large"),
+            omni_native_dialogue.NativeDialogueResult(
+                "interleaved", "Po resecie", wav, False, {}, generation_count=1
+            ),
         ]
     )
     monkeypatch.setattr(omni_native_dialogue, "generate_native_turn", generated)
@@ -948,6 +951,13 @@ async def test_native_studio_returns_one_wav_and_retains_only_its_session_contex
         "Druga",
     ]
     assert store.get_history("native-two")[-1]["content"] == "[Odpowiedź głosowa]"
+    store.clear_session("native-one")
+    after_reset = await turn("native-one", "interleaved", pcm)
+    assert after_reset.status_code == 200
+    assert after_reset.json()["has_image"] is False
+    generated.assert_awaited_with(
+        native_runtime, pcm, 16000, None, [], mode="interleaved"
+    )
     cascade.assert_not_awaited()
     engine.speak.assert_not_awaited()
     engine.transcribe_checked.assert_not_awaited()

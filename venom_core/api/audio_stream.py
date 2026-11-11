@@ -506,6 +506,9 @@ class _PilotRecording:
     failed: bool = False
     native_mode: NativeMode | None = None
     native_runtime: LLMRuntimeInfo | None = None
+    sample_rate: int = 16000
+    recording_format: str = "pcm16"
+    mime_type: str = ""
 
 
 class AudioStreamHandler:
@@ -833,7 +836,12 @@ class AudioStreamHandler:
                         else None
                     )
                     conn["pilot_recording"] = _PilotRecording(
-                        image=image, native_mode=mode, native_runtime=runtime
+                        image=image,
+                        native_mode=mode,
+                        native_runtime=runtime,
+                        sample_rate=conn["sample_rate"],
+                        recording_format=conn["recording_format"],
+                        mime_type=conn["mime_type"],
                     )
             except (HTTPException, ValueError):
                 reason = "omni_native_invalid_input"
@@ -963,17 +971,17 @@ class AudioStreamHandler:
             conn["audio_bytes_buffer"] = []
 
     async def _native_pcm(
-        self, conn: _ConnectionState, pilot: _PilotRecording, chunks: list[bytes]
+        self, pilot: _PilotRecording, chunks: list[bytes]
     ) -> tuple[bytes, int]:
         if pilot.failed or not chunks:
             raise NativeDialogueError("omni_native_invalid_input")
         if pilot.image is not None:
             await asyncio.to_thread(omni_pilot.validate_image, pilot.image)
         content = b"".join(chunks)
-        if conn["recording_format"] == "pcm16":
-            pcm, rate = content, conn["sample_rate"]
+        if pilot.recording_format == "pcm16":
+            pcm, rate = content, pilot.sample_rate
         else:
-            media_type = conn["mime_type"].split(";", 1)[0].strip().lower()
+            media_type = pilot.mime_type.split(";", 1)[0].strip().lower()
             input_format = omni_native_voice.PILOT_AUDIO_FORMATS.get(media_type)
             if input_format is None:
                 raise NativeDialogueError("omni_native_invalid_input")
@@ -1025,7 +1033,7 @@ class AudioStreamHandler:
         mode: NativeMode,
         runtime: LLMRuntimeInfo,
     ) -> None:
-        pcm, rate = await self._native_pcm(conn, pilot, chunks)
+        pcm, rate = await self._native_pcm(pilot, chunks)
         session_id = conn.setdefault(
             "direct_session_id", f"voice-direct-{uuid.uuid4()}"
         )

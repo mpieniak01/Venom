@@ -350,14 +350,18 @@ async def _native_multimodal_turn(
         raise HTTPException(503, {"reason_code": "omni_native_unavailable"})
     contexts = _native_contexts(request)
     with contexts.turn(session_id):
-        image, retained, retained_request_id = contexts.inputs(
+        retained_image, retained, retained_request_id = contexts.inputs(
             session_id, runtime, mode, image
         )
-        history = omni_native_voice.text_context(
-            store.get_history(session_id, limit=omni_pilot.MAX_HISTORY_ROWS),
-            retained,
-            retained_request_id,
-        )
+        rows = store.get_history(session_id, limit=omni_pilot.MAX_HISTORY_ROWS)
+        if retained_request_id is not None and not any(
+            row.get("request_id") == retained_request_id for row in rows
+        ):
+            # Both session clearing paths remove the marker for this in-memory turn.
+            contexts.discard(session_id)
+            retained_image, retained, retained_request_id = image, [], None
+        image = retained_image
+        history = omni_native_voice.text_context(rows, retained, retained_request_id)
         try:
             result = await _await_native_turn(
                 request, runtime, pcm, rate, image, history, mode

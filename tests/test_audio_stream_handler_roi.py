@@ -2351,7 +2351,7 @@ async def test_native_full_direct_sends_generated_pcm_and_retains_context(monkey
     model = AsyncMock(side_effect=generate)
     monkeypatch.setattr(native, "generate_native_turn", model)
 
-    async def turn(connection_id, mode, samples, **options):
+    async def turn(connection_id, mode, samples, *, reconfigure=False, **options):
         await handler._handle_control_message(
             connection_id, '{"command":"voice_mode","mode":"direct"}', None
         )
@@ -2360,9 +2360,23 @@ async def test_native_full_direct_sends_generated_pcm_and_retains_context(monkey
         )
         handler._handle_audio_data(connection_id, samples, None)
         await handler._stop_recording(connection_id, None)
+        if reconfigure:
+            await handler._apply_audio_config(
+                connection_id,
+                {
+                    "sample_rate": 48000,
+                    "format": "mediarecorder",
+                    "mime_type": "audio/webm",
+                },
+            )
         await handler.active_connections[connection_id]["native_task"]
+        if reconfigure:
+            await handler._apply_audio_config(
+                connection_id, {"sample_rate": 16000, "format": "pcm16"}
+            )
 
-    await turn(1, "interleaved", pcm, image="cG5n")
+    await turn(1, "interleaved", pcm, image="cG5n", reconfigure=True)
+    model.assert_awaited_with(runtime, pcm, 16000, b"png", [], mode="interleaved")
     await turn(1, "interleaved", bytes(len(pcm)))
     await turn(1, "interleaved", pcm)
     model.assert_awaited_with(

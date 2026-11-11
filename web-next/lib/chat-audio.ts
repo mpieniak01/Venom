@@ -192,6 +192,12 @@ export type MultimodalVoiceReply = {
   audio_base64?: string;
 };
 
+const MULTIMODAL_VOICE_ERRORS = new Map([
+  ["omni_pilot_invalid_image", "voiceImageInvalid"],
+  ["omni_native_unavailable", "voiceNativeUnavailable"],
+  ["omni_native_busy", "voiceWait"],
+]);
+
 /** Upload PCM and an optional image together, preserving the caller's cancellation signal. */
 export async function sendMultimodalVoiceTurn(
   session: string,
@@ -221,11 +227,9 @@ export async function sendMultimodalVoiceTurn(
   if (!response.ok) {
     const payload = await response.json().catch(() => null) as { detail?: { reason_code?: string } } | null;
     const reason = payload?.detail?.reason_code;
-    if (reason === "omni_pilot_invalid_image") throw new Error("voiceImageInvalid");
-    if (reason === "omni_native_unavailable") throw new Error("voiceNativeUnavailable");
     if (generationMode && reason === "audio_too_large") throw new Error("voiceNativeAudioTooLong");
-    if (reason === "omni_native_busy") throw new Error("voiceWait");
-    throw new Error(response.status === 409 ? "voiceWait" : "voiceError");
+    const errorKey = MULTIMODAL_VOICE_ERRORS.get(reason ?? "");
+    throw new Error(errorKey ?? (response.status === 409 ? "voiceWait" : "voiceError"));
   }
   return response.json() as Promise<MultimodalVoiceReply>;
 }

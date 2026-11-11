@@ -1,5 +1,6 @@
 export const voice = {
   nativeDialogue: {
+    invalidInput: "Omni hat die Aufnahme oder das Bild abgelehnt. Nimm die Frage erneut auf und prüfe den Anhang.",
     audioTooLong: "Eine Aufnahme im nativen Omni-Modus darf höchstens 30 Sekunden dauern.",
     cancel: "Omni-Antwort abbrechen",
     cancelling: "Antwort wird abgebrochen…",

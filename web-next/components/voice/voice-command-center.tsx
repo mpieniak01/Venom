@@ -1,7 +1,7 @@
 "use client";
 
 import { VOICE_MICROPHONE_CONSTRAINTS, voiceRecorderMimeType } from "@/lib/voice-media-recorder";
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import type {
   Dispatch,
   MutableRefObject,
@@ -827,6 +827,7 @@ const handleVoiceCompletion = (
 function voiceChannelError(data: Record<string, unknown>, t: Translator): string {
   if (data.reason_code === "omni_native_unavailable") return t("voice.nativeDialogue.unavailable");
   if (data.reason_code === "omni_native_busy") return t("voice.nativeDialogue.busy");
+  if (data.reason_code === "omni_native_invalid_input") return t("voice.nativeDialogue.invalidInput");
   if (data.reason_code === "audio_too_large" && isNativeVoiceGenerationMode(data.generation_mode)) {
     return t("voice.nativeDialogue.audioTooLong");
   }
@@ -2502,6 +2503,19 @@ function handleNativeCancellation(
   return true;
 }
 
+function useMultimodalConversation(generationMode: NativeVoiceGenerationMode | null) {
+  const [nativeAudioOnly, setNativeAudioOnly] = useState(false);
+  const [multimodalContextMode, setMultimodalContextMode] = useState<NativeVoiceGenerationMode | null>();
+  const [previousGenerationMode, setPreviousGenerationMode] = useState(generationMode);
+  if (previousGenerationMode !== generationMode) {
+    setPreviousGenerationMode(generationMode);
+    setMultimodalContextMode(undefined);
+    setNativeAudioOnly(false);
+  }
+  const multimodalActive = multimodalContextMode === generationMode;
+  return { nativeAudioOnly, setNativeAudioOnly, multimodalActive, setMultimodalContextMode };
+}
+
 function VoiceCommandCenterPanel({
   onTranscriptReady,
   voiceModePreset = "standard",
@@ -2519,19 +2533,13 @@ function VoiceCommandCenterPanel({
   const [connected, setConnected] = useState(false);
   const [isVoiceModeEnabled, setIsVoiceModeEnabled] = useState<boolean>(audioEnabled);
   const [recording, setRecording] = useState(false);
+  const [recordingStarting, setRecordingStarting] = useState(false);
   const microphoneCapability = useSyncExternalStore(subscribeMicrophoneCapability, getMicrophoneCapability, () => "available");
   const [transcription, setTranscription] = useState("");
   const [response, setResponse] = useState("");
   const [responseSources, setResponseSources] = useState<string[]>([]);
-  const [nativeAudioOnly, setNativeAudioOnly] = useState(false);
-  const [multimodalContextMode, setMultimodalContextMode] = useState<NativeVoiceGenerationMode | null>();
-  const [previousGenerationMode, setPreviousGenerationMode] = useState(generationMode);
-  if (previousGenerationMode !== generationMode) {
-    setPreviousGenerationMode(generationMode);
-    setMultimodalContextMode(undefined);
-    setNativeAudioOnly(false);
-  }
-  const multimodalActive = multimodalContextMode === generationMode;
+  const { nativeAudioOnly, setNativeAudioOnly, multimodalActive, setMultimodalContextMode } =
+    useMultimodalConversation(generationMode);
   const [multimodalPending, setMultimodalPending] = useState(false);
   const [nativeCancelling, setNativeCancelling] = useState(false);
   const [cameraBusy, setCameraBusy] = useState(false);
@@ -2548,8 +2556,8 @@ function VoiceCommandCenterPanel({
   const [lastAudioSignal, setLastAudioSignal] = useState("idle");
   const [processingStatus, setProcessingStatus] = useState<string | null>(null);
   useEffect(() => {
-    onTurnBusy?.(recording || multimodalPending || Boolean(processingStatus) || playbackState === "playing");
-  }, [multimodalPending, onTurnBusy, playbackState, processingStatus, recording]);
+    onTurnBusy?.(recordingStarting || recording || multimodalPending || Boolean(processingStatus) || playbackState === "playing");
+  }, [multimodalPending, onTurnBusy, playbackState, processingStatus, recording, recordingStarting]);
   const [devDrawerOpen, setDevDrawerOpen] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectAttemptsRef = useRef(0);
@@ -2582,7 +2590,7 @@ function VoiceCommandCenterPanel({
     clearImage();
     setMultimodalContextMode(undefined);
     setNativeAudioOnly(false);
-  }, [clearImage]);
+  }, [clearImage, setMultimodalContextMode, setNativeAudioOnly]);
 
   const setVoiceConnected = useCallback((value: boolean) => {
     setConnected(value);
@@ -2801,6 +2809,8 @@ function VoiceCommandCenterPanel({
     [
       clearImage,
       finishNativeCancellation,
+      setMultimodalContextMode,
+      setNativeAudioOnly,
       onTranscriptReady,
       playAudioResponse,
       refreshAudioStatus,
@@ -2860,7 +2870,7 @@ function VoiceCommandCenterPanel({
   }, [sendControlMessage]);
 
   const lastSyncedGenerationMode = useRef(generationMode);
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (lastSyncedGenerationMode.current === generationMode) return;
     lastSyncedGenerationMode.current = generationMode;
     resetNativeDialogue();
@@ -2918,6 +2928,7 @@ function VoiceCommandCenterPanel({
 
   const sendRecordingControlMessage = useCallback((payload: Record<string, unknown>) => {
     if (payload.command !== "start_recording") return sendControlMessage(payload);
+    if (lastSyncedGenerationMode.current !== generationMode) return false;
     if (generationMode && (!multimodalAvailable || voiceModePreset !== "direct")) {
       setStatusMessage(t("voice.nativeDialogue.unavailable"));
       return false;
@@ -2941,7 +2952,7 @@ function VoiceCommandCenterPanel({
       setNativeAudioOnly(false);
     }
     return sent;
-  }, [endMultimodal, generationMode, multimodalActive, multimodalAvailable, sendControlMessage, t, voiceImage, voiceModePreset]);
+  }, [endMultimodal, generationMode, multimodalActive, multimodalAvailable, sendControlMessage, setNativeAudioOnly, t, voiceImage, voiceModePreset]);
 
   const startRecording = useCallback(
     () => pipelineSwitching ? Promise.resolve() :
@@ -3104,9 +3115,10 @@ function VoiceCommandCenterPanel({
   const onRecordingPointerDown = useCallback(
     (event: ReactPointerEvent<HTMLButtonElement>) => {
       event.preventDefault();
-      if (!recording && canStartRecording) {
+      if (!recording && !recordingStartPendingRef.current && canStartRecording) {
         tryCapturePointer(event.currentTarget, event.pointerId);
-        startRecording().catch(() => undefined);
+        setRecordingStarting(true);
+        startRecording().catch(() => undefined).finally(() => setRecordingStarting(false));
       }
     },
     [canStartRecording, recording, startRecording],
@@ -3263,7 +3275,7 @@ function VoiceCommandCenterPanel({
               size="xs"
               variant={viewState.effectiveIsVoiceModeEnabled ? "primary" : "outline"}
               onClick={onVoiceModeToggle}
-              disabled={!viewState.effectiveAudioEnabled || debugDryRunActive || multimodalPending}
+              disabled={!viewState.effectiveAudioEnabled || debugDryRunActive || multimodalPending || recordingStarting}
             >
               {viewState.effectiveIsVoiceModeEnabled ? t("voice.controls.voice") : t("voice.controls.text")}
             </Button>

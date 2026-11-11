@@ -997,7 +997,7 @@ class AudioStreamHandler:
     ) -> None:
         self.active_connections.pop(connection_id, None)
         self._native_contexts.discard(connection_id)
-        with suppress(TimeoutError, RuntimeError, OSError, WebSocketDisconnect):
+        with suppress(RuntimeError, OSError, WebSocketDisconnect):
             async with asyncio.timeout(_NATIVE_SOCKET_CLOSE_TIMEOUT_SECONDS):
                 await conn["websocket"].close(
                     code=1011, reason="native_reply_delivery_timeout"

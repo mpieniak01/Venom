@@ -11,7 +11,12 @@ import shutil
 import time
 import uuid
 import wave
-from contextlib import AbstractAsyncContextManager, asynccontextmanager, nullcontext
+from contextlib import (
+    AbstractAsyncContextManager,
+    asynccontextmanager,
+    nullcontext,
+    suppress,
+)
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -91,6 +96,8 @@ VOICE_SESSION_WAV_FILENAME = "recording.wav"
 VOICE_SESSION_METADATA_FILENAME = "metadata.json"
 GEMMA4_AUDIO_HEALTH_TIMEOUT_SEC = 5.0
 GEMMA4_AUDIO_REQUEST_TIMEOUT_SEC = 120.0
+_NATIVE_REPLY_SEND_TIMEOUT_SECONDS = 10
+_NATIVE_SOCKET_CLOSE_TIMEOUT_SECONDS = 2
 _VOICE_ROUTE_PROFILES = {
     "auto",
     "gemma4",
@@ -972,14 +979,29 @@ class AudioStreamHandler:
         cancelled = not conn.get("native_committed", False)
         if cancelled:
             await self._cancel_native_dialogue(connection_id, conn)
-        await self._send_json(
-            connection_id,
-            {
-                "type": "native_dialogue_reset",
-                "cancel_id": cancel_id,
-                "cancelled": cancelled,
-            },
-        )
+        try:
+            async with asyncio.timeout(_NATIVE_REPLY_SEND_TIMEOUT_SECONDS):
+                await self._send_json(
+                    connection_id,
+                    {
+                        "type": "native_dialogue_reset",
+                        "cancel_id": cancel_id,
+                        "cancelled": cancelled,
+                    },
+                )
+        except TimeoutError:
+            await self._close_native_delivery(connection_id, conn)
+
+    async def _close_native_delivery(
+        self, connection_id: int, conn: _ConnectionState
+    ) -> None:
+        self.active_connections.pop(connection_id, None)
+        self._native_contexts.discard(connection_id)
+        with suppress(TimeoutError, RuntimeError, OSError, WebSocketDisconnect):
+            async with asyncio.timeout(_NATIVE_SOCKET_CLOSE_TIMEOUT_SECONDS):
+                await conn["websocket"].close(
+                    code=1011, reason="native_reply_delivery_timeout"
+                )
 
     async def _cancel_native_dialogue(
         self, connection_id: int, conn: _ConnectionState
@@ -1133,24 +1155,28 @@ class AudioStreamHandler:
                 result.text,
                 request_id=request_id,
             )
-        await self._send_json(
-            connection_id,
-            {"type": "response_text", "text": result.text, **meta},
-            strict=True,
-        )
-        await self._send_audio(
-            connection_id, audio, sample_rate=output_rate, strict=True
-        )
-        await self._send_json(
-            connection_id,
-            {
-                "type": "complete",
-                "model_revision": result.model_revision,
-                "timings_ms": result.timings_ms,
-                "peak_reserved_mib": result.peak_reserved_mib,
-                **meta,
-            },
-        )
+        try:
+            async with asyncio.timeout(_NATIVE_REPLY_SEND_TIMEOUT_SECONDS):
+                await self._send_json(
+                    connection_id,
+                    {"type": "response_text", "text": result.text, **meta},
+                    strict=True,
+                )
+                await self._send_audio(
+                    connection_id, audio, sample_rate=output_rate, strict=True
+                )
+                await self._send_json(
+                    connection_id,
+                    {
+                        "type": "complete",
+                        "model_revision": result.model_revision,
+                        "timings_ms": result.timings_ms,
+                        "peak_reserved_mib": result.peak_reserved_mib,
+                        **meta,
+                    },
+                )
+        except TimeoutError:
+            await self._close_native_delivery(connection_id, conn)
 
     async def _pilot_error(self, connection_id: int) -> None:
         await self._send_json(

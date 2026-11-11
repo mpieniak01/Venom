@@ -2509,12 +2509,22 @@ async def test_native_full_reset_drains_before_ack_and_does_not_save(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("phase", ["save", "send"])
+@pytest.mark.parametrize("phase", ["save", "send", "send_timeout", "ack_timeout"])
 async def test_native_full_late_cancellation_waits_for_committed_reply(
     monkeypatch, tmp_path, phase
 ):
     handler = _make_handler()
     ws = _add_connection(handler, 1)
+    conn = handler.active_connections[1]
+    if phase in {"send_timeout", "ack_timeout"}:
+        monkeypatch.setattr(audio_stream_mod, "_NATIVE_REPLY_SEND_TIMEOUT_SECONDS", 0.2)
+    if phase == "ack_timeout":
+
+        async def block_ack(packet):
+            if json.loads(packet)["type"] == "native_dialogue_reset":
+                await asyncio.Future()
+
+        ws.send_text.side_effect = block_ack
     native = audio_stream_mod.omni_native_dialogue
     runtime = SimpleNamespace(provider="ollama", model_name="lfm3-omni:2b")
     monkeypatch.setattr(audio_stream_mod, "get_active_llm_runtime", lambda: runtime)
@@ -2536,7 +2546,7 @@ async def test_native_full_late_cancellation_waits_for_committed_reply(
     send_audio = handler._send_audio
 
     async def send_turn(*args, **kwargs):
-        if phase == "send":
+        if phase in {"send", "send_timeout", "ack_timeout"}:
             started.set()
             await release_send.wait()
         await send_audio(*args, **kwargs)
@@ -2573,14 +2583,23 @@ async def test_native_full_late_cancellation_waits_for_committed_reply(
         assert not cancel.done()
     finally:
         release_write.set()
-        release_send.set()
+        if phase != "send_timeout":
+            release_send.set()
     await asyncio.wait_for(cancel, timeout=2)
-    conn = handler.active_connections[1]
     assert (
         store.get_history(conn["direct_session_id"])[-1]["content"]
         == "Zapisana odpowiedź"
     )
     events = [json.loads(call.args[0]) for call in ws.send_text.await_args_list]
+    if phase in {"send_timeout", "ack_timeout"}:
+        ws.close.assert_awaited_once_with(
+            code=1011, reason="native_reply_delivery_timeout"
+        )
+        assert 1 not in handler.active_connections
+        if phase == "send_timeout":
+            assert events[-1]["type"] == "response_text"
+            assert not any(event["type"] == "native_dialogue_reset" for event in events)
+            return
     assert [event["type"] for event in events[-4:]] == [
         "response_text",
         "audio_response",

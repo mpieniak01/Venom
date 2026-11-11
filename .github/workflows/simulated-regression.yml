@@ -53,12 +53,8 @@ jobs:
           python scripts/bootstrap_dependency_profile.py --profile full-ci --venv "$PWD/.venv" --update
           echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
       - name: Ensure ripgrep is available
-        run: |
-          if ! command -v rg >/dev/null; then
-            sudo apt-get update
-            sudo apt-get install -y ripgrep
-          fi
-          rg --version
+        run: bash scripts/ci/install_ripgrep.sh
+
       - name: Prepare non-secret test configuration
         run: cp .env.dev.example .env.dev
       - name: Record revision and inventory

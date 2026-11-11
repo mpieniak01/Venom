@@ -10,7 +10,6 @@ from pathlib import Path
 from venom_core.services.remote_training.lifecycle import file_lock, process_identity
 
 from .campaign import CampaignService
-from .service import ExperimentService
 
 
 def supervise(service: CampaignService, campaign_id: str) -> None:
@@ -36,6 +35,8 @@ def supervise(service: CampaignService, campaign_id: str) -> None:
 
 
 def main() -> None:
+    from .service import ExperimentService
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("root", type=Path)
     parser.add_argument("campaign_id")

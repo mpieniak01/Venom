@@ -34,6 +34,8 @@ class ExperimentArtifacts(Protocol):
 
     def list_runs(self) -> list[dict[str, Any]]: ...
 
+    def status(self, run_id: str) -> dict[str, Any]: ...
+
 
 def read_object(path: Path) -> dict[str, Any]:
     with data_directory(path.parent) as directory_fd:
@@ -59,13 +61,26 @@ def fingerprint(value: Any) -> str:
 
 
 def file_fingerprint(path: Path) -> str:
-    path = operator_path(path)
-    with path.open("rb") as stream:
-        return hashlib.file_digest(stream, "sha256").hexdigest()
+    with data_directory(path.parent) as directory_fd:
+        fd = os.open(
+            path.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=directory_fd
+        )
+        with os.fdopen(fd, "rb") as stream:
+            if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
+                raise ValueError("campaign_artifact_file_unmanaged")
+            return hashlib.file_digest(stream, "sha256").hexdigest()
 
 
 def protected_runs(experiments: ExperimentArtifacts) -> set[str]:
-    runs = experiments.list_runs()
+    runs = []
+    for view in experiments.list_runs():
+        run_dir = experiments.run_dir(view["run_id"])
+        state = read_object(run_dir / "state.json")
+        try:
+            manifest = read_object(run_dir / "manifest.json")
+        except FileNotFoundError:
+            manifest = {}
+        runs.append({**manifest, **state, "run_id": view["run_id"]})
     protected = {
         run["run_id"]
         for run in runs
@@ -82,13 +97,19 @@ def protected_runs(experiments: ExperimentArtifacts) -> set[str]:
 def _verify_run(experiments: ExperimentArtifacts, campaign: dict, trial: dict) -> Path:
     run_dir = experiments.run_dir(trial["run_id"])
     state = read_object(run_dir / "state.json")
+    view = experiments.status(trial["run_id"])
     if (
         state.get("campaign_id") != campaign["campaign_id"]
-        or state.get("status") != "succeeded"
+        or view.get("status") != "succeeded"
+        or view.get("resources_active") is True
         or any(state.get(flag) for flag in ("active", "pinned", "protected"))
     ):
         raise ValueError("campaign_artifact_run_unavailable")
-    if file_fingerprint(run_dir / "result.json") != trial["result_sha256"]:
+    seal = read_object(run_dir / "result-seal.json")
+    if (
+        seal.get("result_sha256") != trial["result_sha256"]
+        or file_fingerprint(run_dir / "result.json") != trial["result_sha256"]
+    ):
         raise ValueError("campaign_artifact_result_changed")
     return run_dir
 
@@ -114,6 +135,8 @@ def _candidate_files(run_dir: Path, run_id: str) -> Iterator[dict]:
                 continue
             if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
                 raise ValueError("campaign_artifact_file_unmanaged")
+            if file_fingerprint(path) != digest:
+                raise ValueError("campaign_artifact_file_changed")
             yield {
                 "run_id": run_id,
                 "path": str(path.relative_to(run_dir)),
@@ -197,6 +220,8 @@ class Retention:
         plan = journal["plan"]
         if (
             plan["plan_sha256"] != plan_sha256
+            or fingerprint({k: v for k, v in plan.items() if k != "plan_sha256"})
+            != plan_sha256
             or plan["selected_run_id"] != state["selected_run_id"]
         ):
             raise ValueError("campaign_retention_plan_changed")
@@ -208,17 +233,20 @@ class Retention:
             if (file["run_id"], file["path"]) not in done
         ):
             raise ValueError("campaign_retention_protection_changed")
+        remaining: dict[str, list[dict]] = {}
         for file in plan["files"]:
             run_id = file["run_id"]
-            if (run_id, file["path"]) in done:
-                continue
+            if (run_id, file["path"]) not in done:
+                remaining.setdefault(run_id, []).append(file)
+        for run_id, files in remaining.items():
             if run_id in protected_runs(self.experiments):
                 raise ValueError("campaign_retention_protection_changed")
             with self.experiments.run_lock(run_id):
                 run_dir = _verify_run(self.experiments, state, eligible[run_id])
-                outcome = _remove_file(run_dir, file, allow_absent=recovering)
-            journal["files"].append({**file, "outcome": outcome})
-            atomic_json(pending, journal)
+                for file in files:
+                    outcome = _remove_file(run_dir, file, allow_absent=recovering)
+                    journal["files"].append({**file, "outcome": outcome})
+                    atomic_json(pending, journal)
         receipt = {
             **journal,
             "status": "completed",

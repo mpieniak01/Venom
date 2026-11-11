@@ -437,6 +437,7 @@ tests/test_test_skill_local.py
 tests/test_token_economist.py
 tests/test_tool_reliability.py
 tests/test_toolmaker_agent.py
+tests/test_training_experiment_campaign.py
 tests/test_training_functiongemma_execution.py
 tests/test_training_local_host.py
 tests/test_training_local_transport.py

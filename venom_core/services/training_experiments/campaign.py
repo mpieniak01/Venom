@@ -5,7 +5,6 @@ from __future__ import annotations
 import math
 import os
 import re
-import shutil
 import stat
 import subprocess
 import sys
@@ -15,13 +14,14 @@ from pathlib import Path
 from threading import Thread
 from typing import Protocol
 
+from venom_core.core.environment_policy import ensure_data_mutation_allowed
 from venom_core.services.remote_training.lifecycle import (
     atomic_json,
     file_lock,
     identity_alive,
     process_identity,
 )
-from venom_core.services.remote_training.paths import operator_path
+from venom_core.services.remote_training.paths import data_directory, operator_path
 
 from .campaign_schema import CampaignSpec
 from .retention import (
@@ -45,6 +45,8 @@ class CampaignExperiments(ExperimentArtifacts, Protocol):
 
     def profiles(self) -> list[dict]: ...
 
+    def free_storage_bytes(self, profile_id: str) -> int: ...
+
     def status(self, run_id: str) -> dict: ...
 
     def start(
@@ -56,15 +58,32 @@ class CampaignExperiments(ExperimentArtifacts, Protocol):
         max_seconds: int | None = None,
         campaign_id: str | None = None,
         expected_identity: str | None = None,
+        review_mode: str | None = None,
     ) -> dict: ...
 
-    def stop(self, run_id: str) -> dict: ...
+    def stop(self, run_id: str, *, campaign_id: str | None = None) -> dict: ...
 
-    def resume(self, run_id: str, *, max_seconds: int | None = None) -> dict: ...
+    def resume(
+        self,
+        run_id: str,
+        *,
+        max_seconds: int | None = None,
+        campaign_id: str | None = None,
+    ) -> dict: ...
 
-    def evaluate(self, run_id: str, *, max_seconds: int | None = None) -> dict: ...
+    def evaluate(
+        self,
+        run_id: str,
+        *,
+        max_seconds: int | None = None,
+        campaign_id: str | None = None,
+    ) -> dict: ...
 
     def report(self, run_id: str) -> dict: ...
+
+
+def _has_work(run: dict) -> bool:
+    return run["status"] in _RUN_ACTIVE or run.get("resources_active") is True
 
 
 def _run_id(campaign_id: str, index: int) -> str:
@@ -215,6 +234,7 @@ class CampaignService:
         atomic_json(directory / "state.json", state)
 
     def plan(self, spec: CampaignSpec) -> dict:
+        ensure_data_mutation_allowed("academy_campaign_plan")
         plan = _plan(spec, self.experiments)
         directory = self.directory(spec.campaign_id)
         self.root.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -260,6 +280,7 @@ class CampaignService:
         return self._activate(campaign_id)
 
     def _activate(self, campaign_id: str, *, plan_sha256: str | None = None) -> dict:
+        ensure_data_mutation_allowed("academy_campaign_activate")
         directory = self.directory(campaign_id)
         with (
             file_lock(self.root / ".catalog.lock"),
@@ -300,7 +321,7 @@ class CampaignService:
                 other["trials"]
             ):
                 run = self._run(other, other["trials"][other["trial_index"]])
-                if run and run["status"] in _RUN_ACTIVE:
+                if run and _has_work(run):
                     raise ValueError("campaign_already_active")
 
     def _start_worker(self, directory: Path, state: dict) -> None:
@@ -316,7 +337,17 @@ class CampaignService:
         repository = Path(__file__).resolve().parents[3]
         env = {**os.environ, "PYTHONPATH": str(repository)}
         directory = self.directory(campaign_id)
-        with (directory / "supervisor.log").open("ab") as output:
+        with data_directory(directory) as directory_fd:
+            fd = os.open(
+                "supervisor.log",
+                os.O_CREAT | os.O_WRONLY | os.O_APPEND | os.O_NOFOLLOW | os.O_NONBLOCK,
+                0o600,
+                dir_fd=directory_fd,
+            )
+        with os.fdopen(fd, "ab") as output:
+            info = os.fstat(output.fileno())
+            if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+                raise OSError("campaign_supervisor_log_invalid")
             process = subprocess.Popen(
                 [
                     sys.executable,
@@ -337,6 +368,7 @@ class CampaignService:
         return process_identity(process.pid)
 
     def stop(self, campaign_id: str) -> dict:
+        ensure_data_mutation_allowed("academy_campaign_stop")
         directory = self.directory(campaign_id)
         with file_lock(directory / ".state.lock"):
             state = self._state(directory)
@@ -374,6 +406,7 @@ class CampaignService:
         if (
             run.get("campaign_id") != state["campaign_id"]
             or run.get("profile_id") != state["plan"]["profile_id"]
+            or run.get("profile_identity") != state["plan"]["profile_identity"]
             or run.get("recipe")
             != state["plan"]["variants"][state["trial_index"]]["recipe"]
         ):
@@ -389,7 +422,8 @@ class CampaignService:
         budget = state["plan"]["budget"]
         return (
             state["artifact_bytes"] < budget["max_artifact_bytes"]
-            and shutil.disk_usage(self.root).free >= budget["min_free_bytes"]
+            and self.experiments.free_storage_bytes(state["plan"]["profile_id"])
+            >= budget["min_free_bytes"]
         )
 
     def _remaining(self, state: dict, trial: dict) -> int:
@@ -439,18 +473,25 @@ class CampaignService:
                 state["plan"]["variants"][state["trial_index"]]["recipe"],
                 campaign_id=state["campaign_id"],
                 expected_identity=state["plan"]["profile_identity"],
+                review_mode=state["plan"]["review_mode"],
                 max_seconds=remaining,
             )
         if run is None:
             raise ValueError("campaign_trial_missing")
         if action == "evaluate":
-            return self.experiments.evaluate(run_id, max_seconds=remaining)
-        return self.experiments.resume(run_id, max_seconds=remaining)
+            return self.experiments.evaluate(
+                run_id, max_seconds=remaining, campaign_id=state["campaign_id"]
+            )
+        return self.experiments.resume(
+            run_id, max_seconds=remaining, campaign_id=state["campaign_id"]
+        )
 
     def _terminate(self, state: dict, run: dict | None) -> None:
-        if run and run["status"] in _RUN_ACTIVE:
-            stopped = self.experiments.stop(run["run_id"])
-            if stopped["status"] in _RUN_ACTIVE:
+        if run and _has_work(run):
+            stopped = self.experiments.stop(
+                run["run_id"], campaign_id=state["campaign_id"]
+            )
+            if _has_work(stopped):
                 state["status"] = "stopping"
                 return
         state["status"] = state["termination"]
@@ -467,10 +508,7 @@ class CampaignService:
         )
         trial.pop("intent", None)
         if run["status"] == "succeeded":
-            run_dir = self.experiments.run_dir(run["run_id"])
-            report = self.experiments.report(run["run_id"])
-            trial.update(_deltas(report))
-            trial["result_sha256"] = file_fingerprint(run_dir / "result.json")
+            self._record_result(state, trial, run["run_id"])
             _rank(state)
         # Persist the reviewed result and selection before touching a checkpoint.
         self._save(directory, state)
@@ -484,6 +522,21 @@ class CampaignService:
             "succeeded" if state["trial_index"] == len(state["trials"]) else "running"
         )
         self._artifact_budget(state)
+
+    def _record_result(self, state: dict, trial: dict, run_id: str) -> None:
+        with self.experiments.run_lock(run_id):
+            run_dir = self.experiments.run_dir(run_id)
+            report = self.experiments.report(run_id)
+            if report.get("profile_identity") != state["plan"]["profile_identity"]:
+                raise ValueError("campaign_evaluation_identity_changed")
+            result_sha256 = file_fingerprint(run_dir / "result.json")
+            if (
+                read_object(run_dir / "result-seal.json").get("result_sha256")
+                != result_sha256
+            ):
+                raise ValueError("campaign_evaluation_seal_changed")
+        trial.update(_deltas(report))
+        trial["result_sha256"] = result_sha256
 
     def _retry(self, state: dict, run: dict) -> str | None:
         if run["status"] not in {"failed", "stopped"}:
@@ -515,19 +568,26 @@ class CampaignService:
         if remaining < 1 and run is None:
             state["status"] = "timed_out"
             return
-        if run and run["status"] in _RUN_ACTIVE:
+        if run and _has_work(run):
             if not self._artifact_budget(state):
                 state["termination"] = "blocked"
                 state["error"] = "campaign_storage_budget_exhausted"
                 self._terminate(state, run)
                 return
             if remaining < 1:
-                stopped = self.experiments.stop(run["run_id"])
-                if stopped["status"] in _RUN_ACTIVE:
+                stopped = self.experiments.stop(
+                    run["run_id"], campaign_id=state["campaign_id"]
+                )
+                if _has_work(stopped):
                     return
                 self._finish_trial(
                     directory, state, trial, {**stopped, "status": "timed_out"}
                 )
+                return
+            if run["status"] not in _RUN_ACTIVE:
+                # An orphaned child still owns runtime resources.
+                state["status"] = "blocked"
+                state["error"] = "campaign_trial_quiescence_unconfirmed"
                 return
         if trial.get("intent") and remaining >= 1:
             run = self._launch_trial(state, trial, run, remaining)
@@ -568,6 +628,7 @@ class CampaignService:
 
     def advance(self, campaign_id: str) -> dict:
         """Advance one durable transition. Called by the detached supervisor."""
+        ensure_data_mutation_allowed("academy_campaign_advance")
         directory = self.directory(campaign_id)
         with file_lock(directory / ".state.lock"):
             state = self._state(directory)
@@ -606,6 +667,7 @@ class CampaignService:
             return Retention(self.experiments, directory).plan(self._state(directory))
 
     def retention_apply(self, campaign_id: str, plan_sha256: str) -> dict:
+        ensure_data_mutation_allowed("academy_campaign_retention")
         directory = self.directory(campaign_id)
         with file_lock(directory / ".state.lock"):
             state = self._state(directory)

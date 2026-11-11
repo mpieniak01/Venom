@@ -1,0 +1,487 @@
+"""Exercise durable campaign transitions using a local fake experiment service."""
+
+import os
+from pathlib import Path
+
+import pytest
+
+from venom_core.services.remote_training.lifecycle import (
+    atomic_json,
+    file_lock,
+    process_identity,
+)
+from venom_core.services.training_experiments.campaign import CampaignService
+from venom_core.services.training_experiments.campaign_schema import CampaignSpec
+from venom_core.services.training_experiments.retention import (
+    Retention,
+    file_fingerprint,
+    read_object,
+)
+
+
+class FakeExperiments:
+    identity = "a" * 64
+
+    def __init__(self, root: Path):
+        self.root = root
+        self.calls = []
+        self.automatic = False
+
+    def validate(self, profile_id, recipe=None):
+        assert profile_id == "fixture"
+        return {
+            "profile_id": profile_id,
+            "recipe": {"steps": 2, **(recipe or {})},
+            "identity": self.identity,
+            "automatic_review": self.automatic,
+            "workload": {"updates": 2, "tokens": 40},
+        }
+
+    def profiles(self):
+        return [
+            {
+                "id": "fixture",
+                "identity": self.identity,
+                "automatic_review": self.automatic,
+            }
+        ]
+
+    def free_storage_bytes(self, profile_id):
+        assert profile_id == "fixture"
+        return 10**9
+
+    def run_dir(self, run_id):
+        return self.root / "runs" / run_id
+
+    def run_lock(self, run_id):
+        return file_lock(self.run_dir(run_id) / ".state.lock")
+
+    def status(self, run_id):
+        return read_object(self.run_dir(run_id) / "state.json")
+
+    def list_runs(self):
+        return [self.status(path.name) for path in (self.root / "runs").glob("*")]
+
+    def _save(self, state):
+        atomic_json(self.run_dir(state["run_id"]) / "state.json", state)
+        return state
+
+    def start(
+        self,
+        profile_id,
+        run_id,
+        recipe=None,
+        *,
+        max_seconds=None,
+        campaign_id=None,
+        expected_identity=None,
+        review_mode=None,
+    ):
+        assert max_seconds > 0 and expected_identity == self.identity
+        self.calls.append(("start", run_id))
+        directory = self.run_dir(run_id)
+        directory.mkdir(parents=True)
+        return self._save(
+            {
+                "run_id": run_id,
+                "profile_id": profile_id,
+                "profile_identity": expected_identity,
+                "campaign_id": campaign_id,
+                "recipe": recipe,
+                "status": "running",
+                "stage": "train",
+                "attempt": 1,
+                "resume_available": False,
+            }
+        )
+
+    def stop(self, run_id, *, campaign_id=None):
+        assert campaign_id == self.status(run_id)["campaign_id"]
+        self.calls.append(("stop", run_id))
+        return self.update(run_id, status="stopped")
+
+    def resume(self, run_id, *, max_seconds=None, campaign_id=None):
+        assert campaign_id == self.status(run_id)["campaign_id"]
+        return self._retry(run_id, "resume", "train", max_seconds)
+
+    def evaluate(self, run_id, *, max_seconds=None, campaign_id=None):
+        assert campaign_id == self.status(run_id)["campaign_id"]
+        return self._retry(run_id, "evaluate", "generate", max_seconds)
+
+    def _retry(self, run_id, action, stage, max_seconds):
+        assert max_seconds > 0
+        self.calls.append((action, run_id))
+        return self.update(
+            run_id,
+            status="running",
+            stage=stage,
+            attempt=self.status(run_id)["attempt"] + 1,
+        )
+
+    def report(self, run_id):
+        return read_object(self.run_dir(run_id) / "result.json")
+
+    def update(self, run_id, **changes):
+        return self._save({**self.status(run_id), **changes})
+
+    def finish(self, run_id, usable, critical=0):
+        directory = self.run_dir(run_id)
+        checkpoint = directory / "training" / "checkpoint-2"
+        checkpoint.mkdir(parents=True)
+        artifact = checkpoint / "adapter_model.safetensors"
+        hashes = {}
+        for name in (
+            artifact.name,
+            "optimizer.pt",
+            "rng_state.pth",
+            "scheduler.pt",
+            "training_args.bin",
+        ):
+            path = checkpoint / name
+            path.write_text(name)
+            hashes[name] = file_fingerprint(path)
+        atomic_json(checkpoint / "hashes.json", hashes)
+        atomic_json(checkpoint / "trainer_state.json", {"global_step": 2})
+        atomic_json(
+            directory / "result.json",
+            {
+                "profile_identity": self.identity,
+                "summaries": {
+                    "base": {"total": {"n": 4, "usable": 2, "critical": 0}},
+                    "candidate": {
+                        "total": {"n": 4, "usable": usable, "critical": critical}
+                    },
+                },
+            },
+        )
+        atomic_json(
+            directory / "result-seal.json",
+            {"result_sha256": file_fingerprint(directory / "result.json")},
+        )
+        self.update(run_id, status="succeeded", stage="done", resume_available=True)
+        return artifact
+
+
+def make_spec(*, campaign_id="series", count=3, **overrides):
+    return CampaignSpec.model_validate(
+        {
+            "campaign_id": campaign_id,
+            "profile_id": "fixture",
+            "variants": [{"rank": 2 + n} for n in range(count)],
+            "budget": {
+                "max_trials": count,
+                "max_updates": 10,
+                "max_tokens": 200,
+                "max_seconds": 50,
+                "trial_seconds": 20,
+                "max_retries": 1,
+                "max_artifact_bytes": 100_000,
+                "min_free_bytes": 0,
+            },
+            "retention": "discard_rejected",
+            **overrides,
+        }
+    )
+
+
+class Clock:
+    now = 100.0
+
+    def __call__(self):
+        return self.now
+
+
+@pytest.fixture
+def controller(tmp_path):
+    experiments = FakeExperiments(tmp_path)
+    clock = Clock()
+    identity = process_identity(os.getpid())
+    service = CampaignService(
+        experiments,
+        launch=lambda _campaign: identity,
+        clock=clock,
+    )
+    return service, experiments, clock
+
+
+def start(service, spec=None):
+    spec = spec or make_spec()
+    planned = service.plan(spec)
+    assert service.plan(spec) == planned
+    return service.start(spec.campaign_id, planned["plan"]["plan_sha256"])
+
+
+def launch_next(service, campaign_id="series"):
+    state = service.advance(campaign_id)
+    trial = state["trials"][state["trial_index"]]
+    assert trial["intent"]["action"] == "start"
+    result = service.advance(campaign_id)
+    assert result["trials"][state["trial_index"]]["status"] == "running"
+    return trial["run_id"]
+
+
+def test_fixed_series_keeps_winner_report_and_failed_trial(controller):
+    service, experiments, _clock = controller
+    start(service)
+    first = launch_next(service)
+    experiments.update(first, status="awaiting_review", stage="score")
+    assert service.advance("series")["status"] == "awaiting_review"
+    assert len(experiments.calls) == 1
+    first_artifact = experiments.finish(first, usable=3)
+    state = service.advance("series")
+    assert state["selected_run_id"] == first
+    assert first_artifact.exists()
+
+    second = launch_next(service)
+    experiments.update(second, status="failed", error="invalid_masks")
+    state = service.advance("series")
+    assert state["trials"][1]["error"] == "invalid_masks"
+
+    third = launch_next(service)
+    third_artifact = experiments.finish(third, usable=4)
+    state = service.advance("series")
+    assert state["status"] == "succeeded"
+    assert state["selected_run_id"] == third
+    assert [trial["status"] for trial in state["trials"]] == [
+        "succeeded",
+        "failed",
+        "succeeded",
+    ]
+    assert third_artifact.exists()
+    assert not first_artifact.exists()
+    assert not state["trials"][0]["resume_available"]
+    assert experiments.report(first)["summaries"]["candidate"]["total"]["usable"] == 3
+    receipt = service.retention_apply(
+        "series", state["retention_receipt"]["plan_sha256"]
+    )
+    assert receipt["removed_bytes"] > 0
+    assert service.advance("series")["trial_index"] == 3
+    assert len(experiments.calls) == 3
+
+
+def test_controller_adopts_committed_launch_and_preserves_budget(controller):
+    service, experiments, clock = controller
+    planned = start(service)
+    state = service.advance("series")
+    run = state["plan"]["variants"][0]
+    experiments.start(
+        "fixture",
+        run["run_id"],
+        run["recipe"],
+        campaign_id="series",
+        max_seconds=10,
+        expected_identity=experiments.identity,
+    )
+    state["worker"] = None
+    service._save(service.directory("series"), state)
+    clock.now += 3
+    assert service.status("series")["status"] == "interrupted"
+    assert service.resume("series")["elapsed_seconds"] == 3
+    resumed = service.advance("series")
+    assert resumed["used_updates"] == 2
+    assert resumed["used_tokens"] == 40
+    assert resumed["trials"][0]["attempt"] == 1
+    assert len(experiments.calls) == 1
+    assert service.start("series", planned["plan"]["plan_sha256"]) == resumed
+
+
+def test_campaign_fails_closed_for_stale_profile_and_competing_start(controller):
+    service, experiments, _clock = controller
+    start(service)
+    alternate = service.plan(make_spec(campaign_id="another"))
+    with pytest.raises(ValueError, match="already_active"):
+        service.start("another", alternate["plan"]["plan_sha256"])
+    with pytest.raises(ValueError, match="plan_changed"):
+        service.start("series", "f" * 64)
+    service.advance("series")
+    experiments.identity = "b" * 64
+    blocked = service.advance("series")
+    assert blocked["status"] == "blocked"
+    assert blocked["error"] == "campaign_profile_changed"
+    assert experiments.calls == []
+
+
+def test_plan_bounds_and_evaluator_qualification(controller):
+    service, experiments, _clock = controller
+    with pytest.raises(ValueError, match="evaluator_not_qualified"):
+        service.plan(make_spec(review_mode="automatic"))
+    with pytest.raises(ValueError, match="duplicate_variant"):
+        service.plan(make_spec(variants=[{}, {}]))
+    spec = make_spec()
+    spec.budget.max_tokens = 100
+    with pytest.raises(ValueError, match="token_budget_exceeded"):
+        service.plan(spec)
+    experiments.automatic = True
+    assert service.plan(make_spec(review_mode="automatic"))["status"] == "planned"
+    with pytest.raises(ValueError, match="not_approved"):
+        service.resume("series")
+    with pytest.raises(ValueError, match="id_invalid"):
+        service.status("../series")
+
+
+def test_retry_and_operator_stop_preserve_allocated_budget(controller):
+    service, experiments, clock = controller
+    start(service)
+    first = launch_next(service)
+    experiments.update(first, status="failed", resume_available=True)
+    reserved = service.advance("series")
+    assert reserved["used_updates"] == 4
+    assert reserved["used_tokens"] == 80
+    assert reserved["retries"] == 1
+    assert service.advance("series")["trials"][0]["attempt"] == 2
+    assert experiments.calls[-1] == ("resume", first)
+    clock.now += 4
+    assert service.stop("series")["status"] == "stopping"
+    assert service.advance("series")["status"] == "stopped"
+    assert experiments.calls[-1] == ("stop", first)
+    clock.now += 2
+    assert service.resume("series")["elapsed_seconds"] == 6
+    assert service.advance("series")["trial_index"] == 1
+    assert service.status("series")["used_updates"] == 4
+
+
+def test_timeout_stops_only_owned_run(controller):
+    service, experiments, clock = controller
+    start(service)
+    first = launch_next(service)
+    clock.now += 22
+    state = service.advance("series")
+    assert state["trials"][0]["status"] == "timed_out"
+    assert experiments.calls[-1] == ("stop", first)
+    second = launch_next(service)
+    clock.now += 35
+    state = service.advance("series")
+    assert state["status"] == "timed_out"
+    assert experiments.calls[-1] == ("stop", second)
+    with pytest.raises(ValueError, match="resume_unavailable"):
+        service.resume("series")
+
+
+def test_artifact_budget_blocks_more_work(controller):
+    service, experiments, _clock = controller
+    spec = make_spec()
+    spec.budget.max_artifact_bytes = 1
+    start(service, spec)
+    first = launch_next(service)
+    state = service.advance("series")
+    assert state["status"] == "blocked"
+    assert state["error"] == "campaign_storage_budget_exhausted"
+    assert experiments.calls[-1] == ("stop", first)
+    assert state["trial_index"] == 0
+
+
+def retained_series(controller):
+    service, experiments, _clock = controller
+    start(service)
+    first = launch_next(service)
+    first_artifact = experiments.finish(first, usable=3)
+    service.advance("series")
+    second = launch_next(service)
+    second_artifact = experiments.finish(second, usable=4)
+    state = service.status("series")
+    state["selected_run_id"] = second
+    state["trials"][1].update(
+        status="succeeded",
+        result_sha256=file_fingerprint(experiments.run_dir(second) / "result.json"),
+    )
+    return (
+        Retention(experiments, service.directory("series")),
+        state,
+        first_artifact,
+        second_artifact,
+    )
+
+
+def test_retention_rejects_changed_protection_or_file(controller):
+    retention, state, rejected, winner = retained_series(controller)
+    plan = retention.plan(state)
+    run_id = state["trials"][0]["run_id"]
+    retention.experiments.update(run_id, pinned=True)
+    with pytest.raises(ValueError, match="retention_plan_changed"):
+        retention.apply(state, plan["plan_sha256"])
+    assert rejected.exists() and winner.exists()
+    retention.experiments.update(run_id, pinned=False)
+    original = rejected.read_text()
+    rejected.write_text("x" * len(original))
+    with pytest.raises(ValueError, match="artifact_file_changed"):
+        retention.apply(state, plan["plan_sha256"])
+    assert rejected.exists() and winner.exists()
+
+
+def test_retention_recovers_unlink_without_completion_receipt(controller, monkeypatch):
+    from venom_core.services.training_experiments import retention as module
+
+    retention, state, rejected, winner = retained_series(controller)
+    plan = retention.plan(state)
+    atomic = module.atomic_json
+
+    def interrupt_after_first_unlink(path, value):
+        if path.name == "retention-pending.json" and value["files"]:
+            raise OSError("simulated power failure")
+        atomic(path, value)
+
+    monkeypatch.setattr(module, "atomic_json", interrupt_after_first_unlink)
+    with pytest.raises(OSError, match="power failure"):
+        retention.apply(state, plan["plan_sha256"])
+    assert not rejected.exists()
+    assert winner.exists()
+    monkeypatch.setattr(module, "atomic_json", atomic)
+    receipt = retention.apply(state, plan["plan_sha256"])
+    assert receipt["files"][0]["outcome"] == "absent_on_recovery"
+    assert retention.apply(state, plan["plan_sha256"]) == receipt
+    assert winner.exists()
+
+
+def test_orphaned_runtime_blocks_next_trial_until_reaped(controller):
+    service, experiments, _clock = controller
+    start(service)
+    run_id = launch_next(service)
+    experiments.update(run_id, status="failed", resources_active=True)
+    blocked = service.advance("series")
+    assert blocked["error"] == "campaign_trial_quiescence_unconfirmed"
+    assert blocked["trial_index"] == 0
+    other = service.plan(make_spec(campaign_id="other"))
+    with pytest.raises(ValueError, match="already_active"):
+        service.start("other", other["plan"]["plan_sha256"])
+    experiments.update(run_id, resources_active=False)
+    service.resume("series")
+    assert service.advance("series")["trial_index"] == 1
+    assert experiments.calls == [("start", run_id)]
+
+
+def test_retention_preserves_referenced_parent_and_rejects_symlink(controller):
+    retention, state, rejected, winner = retained_series(controller)
+    parent_id = state["trials"][0]["run_id"]
+    reference = retention.experiments.run_dir("consumer")
+    reference.mkdir()
+    atomic_json(reference / "state.json", {"run_id": "consumer"})
+    atomic_json(reference / "manifest.json", {"parent_run_id": parent_id})
+    assert retention.plan(state)["files"] == []
+    (reference / "manifest.json").unlink()
+    original = rejected.read_bytes()
+    outside = retention.experiments.root / "protected-test-file"
+    outside.write_bytes(original)
+    rejected.unlink()
+    rejected.symlink_to(outside)
+    with pytest.raises(ValueError, match="file_unmanaged"):
+        retention.plan(state)
+    assert outside.read_bytes() == original and winner.exists()
+
+
+def test_detached_supervisor_drives_durable_state(controller, monkeypatch):
+    from venom_core.services.training_experiments import campaign_worker
+
+    service, experiments, _clock = controller
+    planned = start(service, make_spec(count=1))
+    run_id = planned["trials"][0]["run_id"]
+
+    def complete_after_launch(_seconds):
+        if experiments.calls == [("start", run_id)]:
+            experiments.finish(run_id, usable=3)
+
+    monkeypatch.setattr(campaign_worker.time, "sleep", complete_after_launch)
+    campaign_worker.supervise(service, "series")
+    result = service.status("series")
+    assert result["status"] == "succeeded"
+    assert result["selected_run_id"] == run_id
+    assert result["worker"] is None

@@ -227,6 +227,8 @@ jobs:
 
       - name: Install lightweight system tools
         run: |
+          # Use Canonical's archive directly when GitHub's mirror list can stall on Azure DNS.
+          sudo sed -i 's|mirror+file:/etc/apt/apt-mirrors\.txt|https://archive.ubuntu.com/ubuntu|g' /etc/apt/sources.list.d/ubuntu.sources
           sudo apt-get update
           sudo apt-get install -y ripgrep
 

@@ -1056,53 +1056,70 @@ class AudioStreamHandler:
         mode: NativeMode,
         runtime: LLMRuntimeInfo,
     ) -> None:
-        pcm, rate = await self._native_pcm(pilot, chunks)
         session_id = conn.setdefault(
             "direct_session_id", f"voice-direct-{uuid.uuid4()}"
         )
-        image, retained, _ = self._native_contexts.inputs(
-            connection_id, runtime, mode, pilot.image
-        )
-        history = [
-            {"role": turn.role, "content": turn.content}
-            for turn in conn.get("direct_history", [])[-omni_pilot.MAX_HISTORY_ROWS :]
-        ] + retained
-        await self._send_json(
-            connection_id,
-            {"type": "processing", "status": "thinking", "generation_mode": mode},
-        )
-        result = await omni_native_voice.run_turn(
-            runtime, pcm, rate, image, history, mode
-        )
-        meta = {
-            "multimodal": True,
-            "generation_mode": mode,
-            "pipeline_id": omni_native_voice.PIPELINE,
-            "session_id": session_id,
-            "has_image": image is not None,
-            "generation_count": result.generation_count,
-        }
-        if result.no_speech:
+        store = get_session_store()
+        with store.pending_turn(session_id) as pending_token:
+            pcm, rate = await self._native_pcm(pilot, chunks)
+            rows = store.get_history(session_id, limit=omni_pilot.MAX_HISTORY_ROWS)
+            image, retained, _ = self._native_contexts.inputs(
+                connection_id, runtime, mode, pilot.image, rows
+            )
+            history = [
+                {"role": turn.role, "content": turn.content}
+                for turn in conn.get("direct_history", [])[
+                    -omni_pilot.MAX_HISTORY_ROWS :
+                ]
+            ] + retained
             await self._send_json(
-                connection_id, {"type": "complete", "no_speech": True, **meta}
+                connection_id,
+                {"type": "processing", "status": "thinking", "generation_mode": mode},
             )
-            return
-        if not result.wav:
-            raise NativeDialogueError("omni_native_failed")
-        with wave.open(io.BytesIO(result.wav), "rb") as output:
-            audio = np.frombuffer(output.readframes(output.getnframes()), dtype="<i2")
-            output_rate = output.getframerate()
-        conn["native_saving"] = True
-        try:
-            await omni_native_voice.persist_turn(
-                get_session_store(), session_id, mode, result.text
+            result = await omni_native_voice.run_turn(
+                runtime, pcm, rate, image, history, mode
             )
-        finally:
-            conn.pop("native_saving", None)
-        conn["native_committed"] = True
+            meta = {
+                "multimodal": True,
+                "generation_mode": mode,
+                "pipeline_id": omni_native_voice.PIPELINE,
+                "session_id": session_id,
+                "has_image": image is not None,
+                "generation_count": result.generation_count,
+            }
+            if result.no_speech:
+                await self._send_json(
+                    connection_id, {"type": "complete", "no_speech": True, **meta}
+                )
+                return
+            if not result.wav:
+                raise NativeDialogueError("omni_native_failed")
+            with wave.open(io.BytesIO(result.wav), "rb") as output:
+                audio = np.frombuffer(
+                    output.readframes(output.getnframes()), dtype="<i2"
+                )
+                output_rate = output.getframerate()
+            conn["native_saving"] = True
+            try:
+                request_id = await omni_native_voice.persist_turn(
+                    store, session_id, mode, result.text, pending_token=pending_token
+                )
+            except HTTPException:
+                self._native_contexts.discard(connection_id)
+                conn.pop("direct_history", None)
+                raise
+            finally:
+                conn.pop("native_saving", None)
+            conn["native_committed"] = True
         if mode == "interleaved" and result.text:
             self._native_contexts.remember(
-                connection_id, runtime, image, pcm, rate, result.text
+                connection_id,
+                runtime,
+                image,
+                pcm,
+                rate,
+                result.text,
+                request_id=request_id,
             )
         await self._send_json(
             connection_id,

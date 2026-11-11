@@ -3724,6 +3724,11 @@
                       "interleaved",
                       "audio"
                     ]
+                  },
+                  "reset_context": {
+                    "type": "boolean",
+                    "description": "Discard retained native media before this turn",
+                    "default": false
                   }
                 },
                 "type": "object",

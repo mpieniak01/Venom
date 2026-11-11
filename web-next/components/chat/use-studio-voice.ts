@@ -76,7 +76,7 @@ export function useStudioVoice(options: StudioVoiceOptions, captureFactory?: typ
   useEffect(() => {
     multimodalContext.current = false;
     setNativeAudioOnly(false);
-  }, [options.generationMode]);
+  }, [options.generationMode, options.session]);
   const setMultimodalBusy = useCallback((busy: boolean) => {
     if (multimodalPending.current === busy) return;
     multimodalPending.current = busy;
@@ -162,8 +162,9 @@ export function useStudioVoice(options: StudioVoiceOptions, captureFactory?: typ
       idleWithError("silence");
       return;
     }
+    const resetContext = generationMode === "interleaved" && !multimodalContext.current;
     const reply = await sendMultimodalVoiceTurn(
-      voiceOptions.session, audio, voiceOptions.language, attachment, signal, generationMode,
+      voiceOptions.session, audio, voiceOptions.language, attachment, signal, generationMode, resetContext,
     );
     if (!isCurrent() || reply.session_id !== latest.current.session) return;
     if (reply.no_speech) {

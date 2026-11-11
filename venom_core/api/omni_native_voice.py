@@ -55,7 +55,7 @@ class _Context:
     image: bytes | None
     history: list[dict[str, object]]
     expiration: asyncio.TimerHandle
-    request_id: str | None
+    request_id: str
 
 
 class NativeTurnContexts:
@@ -86,6 +86,7 @@ class NativeTurnContexts:
         runtime: LLMRuntimeInfo,
         mode: NativeMode,
         image: bytes | None,
+        rows: list[dict[str, object]],
     ) -> tuple[bytes | None, list[dict[str, object]], str | None]:
         if mode == "audio":
             self.discard(key)
@@ -93,7 +94,9 @@ class NativeTurnContexts:
         entry = self._sessions.get(key)
         if entry is None:
             return image, [], None
-        if entry.runtime != runtime:
+        if entry.runtime != runtime or not any(
+            row.get("request_id") == entry.request_id for row in rows
+        ):
             self.discard(key)
             return image, [], None
         return (
@@ -111,7 +114,7 @@ class NativeTurnContexts:
         sample_rate: int,
         text: str,
         *,
-        request_id: str | None = None,
+        request_id: str,
     ) -> None:
         self.discard(key)
         if len(self._sessions) >= _MAX_CACHED_SESSIONS:

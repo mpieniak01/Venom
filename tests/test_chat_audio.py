@@ -891,6 +891,9 @@ async def test_native_studio_returns_one_wav_and_retains_only_its_session_contex
             ),
             omni_native_dialogue.NativeDialogueError("audio_too_large"),
             omni_native_dialogue.NativeDialogueResult(
+                "interleaved", "Po zmianie trybu", wav, False, {}, generation_count=1
+            ),
+            omni_native_dialogue.NativeDialogueResult(
                 "interleaved", "Po resecie", wav, False, {}, generation_count=1
             ),
         ]
@@ -899,7 +902,7 @@ async def test_native_studio_returns_one_wav_and_retains_only_its_session_contex
     cascade = AsyncMock()
     monkeypatch.setattr(omni_pilot, "answer", cascade)
 
-    async def turn(session, mode, samples, attachment=None):
+    async def turn(session, mode, samples, attachment=None, *, reset_context=False):
         files = {"audio": ("question.pcm", samples, "application/octet-stream")}
         if attachment is not None:
             files["image"] = ("frame.png", attachment, "image/png")
@@ -910,6 +913,7 @@ async def test_native_studio_returns_one_wav_and_retains_only_its_session_contex
                 "sample_rate": "16000",
                 "language": "pl",
                 "generation_mode": mode,
+                **({"reset_context": "true"} if reset_context else {}),
             },
             files=files,
         )
@@ -951,6 +955,13 @@ async def test_native_studio_returns_one_wav_and_retains_only_its_session_contex
         "Druga",
     ]
     assert store.get_history("native-two")[-1]["content"] == "[Odpowiedź głosowa]"
+    switched = await turn("native-one", "interleaved", pcm, reset_context=True)
+    assert switched.status_code == 200
+    assert switched.json()["has_image"] is False
+    assert generated.await_args.args[4] == [
+        {"role": "user", "content": "Kontekst operatora"},
+        {"role": "user", "content": "Poprawka pisemna"},
+    ]
     store.clear_session("native-one")
     after_reset = await turn("native-one", "interleaved", pcm)
     assert after_reset.status_code == 200

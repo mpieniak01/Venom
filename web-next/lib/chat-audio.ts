@@ -207,6 +207,7 @@ export async function sendMultimodalVoiceTurn(
   image: File | null,
   signal: AbortSignal,
   generationMode?: NativeVoiceGenerationMode,
+  resetContext = false,
 ): Promise<MultimodalVoiceReply> {
   const body = new FormData();
   body.set("session_id", session);
@@ -220,6 +221,7 @@ export async function sendMultimodalVoiceTurn(
   }
   if (image) body.set("image", image);
   if (generationMode) body.set("generation_mode", generationMode);
+  if (resetContext) body.set("reset_context", "true");
   const response = await fetch(getApiBaseUrl() + "/api/v1/chat/audio/multimodal-turn", {
     method: "POST",
     body,

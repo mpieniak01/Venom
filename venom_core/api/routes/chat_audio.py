@@ -258,7 +258,7 @@ async def _pilot_form(request: Request) -> FormData:
             request.headers,
             _pilot_upload_stream(request),
             max_files=2,
-            max_fields=4,
+            max_fields=5,
             max_part_size=1024,
         ).parse()
     except _PilotUploadTooLarge as exc:
@@ -345,22 +345,19 @@ async def _native_multimodal_turn(
     pcm: bytes,
     image: bytes | None,
     mode: NativeMode,
+    *,
+    reset_context: bool,
 ) -> dict[str, Any]:
     if not omni_native_dialogue.native_dialogue_available(runtime):
         raise HTTPException(503, {"reason_code": "omni_native_unavailable"})
     contexts = _native_contexts(request)
     with contexts.turn(session_id), store.pending_turn(session_id) as pending_token:
-        retained_image, retained, retained_request_id = contexts.inputs(
-            session_id, runtime, mode, image
-        )
-        rows = store.get_history(session_id, limit=omni_pilot.MAX_HISTORY_ROWS)
-        if retained_request_id is not None and not any(
-            row.get("request_id") == retained_request_id for row in rows
-        ):
-            # Both session clearing paths remove the marker for this in-memory turn.
+        if reset_context:
             contexts.discard(session_id)
-            retained_image, retained, retained_request_id = image, [], None
-        image = retained_image
+        rows = store.get_history(session_id, limit=omni_pilot.MAX_HISTORY_ROWS)
+        image, retained, retained_request_id = contexts.inputs(
+            session_id, runtime, mode, image, rows
+        )
         history = omni_native_voice.text_context(rows, retained, retained_request_id)
         try:
             result = await _await_native_turn(
@@ -450,6 +447,11 @@ async def _native_multimodal_turn(
                                 "type": "string",
                                 "enum": list(omni_native_voice.MODES),
                             },
+                            "reset_context": {
+                                "type": "boolean",
+                                "default": False,
+                                "description": "Discard retained native media before this turn",
+                            },
                         },
                     },
                 },
@@ -479,6 +481,9 @@ async def multimodal_turn(
         if len(form.getlist("generation_mode")) > 1:
             raise HTTPException(422, {"reason_code": "omni_native_invalid_input"})
         mode = omni_native_voice.parse_mode(form.get("generation_mode"))
+        reset_values = form.getlist("reset_context")
+        if reset_values not in ([], ["true"], ["false"]):
+            raise HTTPException(422, {"reason_code": "omni_native_invalid_input"})
         if runtime is None:
             reason = (
                 "omni_pilot_unavailable" if mode is None else "omni_native_unavailable"
@@ -491,7 +496,15 @@ async def multimodal_turn(
         raise HTTPException(499, {"reason_code": "audio_request_cancelled"})
     if mode is not None:
         return await _native_multimodal_turn(
-            request, store, runtime, session_id, rate, pcm, image, mode
+            request,
+            store,
+            runtime,
+            session_id,
+            rate,
+            pcm,
+            image,
+            mode,
+            reset_context=reset_values == ["true"],
         )
 
     async def run():

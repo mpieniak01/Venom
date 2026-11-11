@@ -828,6 +828,7 @@ function voiceChannelError(data: Record<string, unknown>, t: Translator): string
   if (data.reason_code === "omni_native_unavailable") return t("voice.nativeDialogue.unavailable");
   if (data.reason_code === "omni_native_busy") return t("voice.nativeDialogue.busy");
   if (data.reason_code === "omni_native_invalid_input") return t("voice.nativeDialogue.invalidInput");
+  if (data.reason_code === "omni_native_session_cleared") return t("voice.nativeDialogue.sessionCleared");
   if (data.reason_code === "audio_too_large" && isNativeVoiceGenerationMode(data.generation_mode)) {
     return t("voice.nativeDialogue.audioTooLong");
   }
@@ -2766,6 +2767,8 @@ function VoiceCommandCenterPanel({
       return;
     }
     imageInFlightRef.current = false;
+    lastAudioResponseRef.current = null;
+    setHasReplayAudio(false);
     setMultimodalPending(false);
     setProcessingStatus(null);
     setStatusMessage(t("voice.nativeDialogue.cancelled"));
@@ -2899,8 +2902,6 @@ function VoiceCommandCenterPanel({
     nativeCancelId.current = cancelId;
     playbackRequestRef.current += 1;
     releasePlaybackResources();
-    lastAudioResponseRef.current = null;
-    setHasReplayAudio(false);
     setPlaybackState("idle");
     setNativeCancelling(true);
   };
@@ -3307,7 +3308,7 @@ function VoiceCommandCenterPanel({
               size="xs"
               variant="outline"
               onClick={() => replayLastResponse().catch(() => undefined)}
-              disabled={debugDryRunActive || !viewState.effectiveAudioEnabled || !hasReplayAudio}
+              disabled={debugDryRunActive || !viewState.effectiveAudioEnabled || !hasReplayAudio || nativeCancelling}
             >
               {t("voice.controls.replay")}
             </Button>

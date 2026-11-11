@@ -13575,6 +13575,11 @@ export interface operations {
                     image?: string;
                     /** @enum {string} */
                     generation_mode?: "interleaved" | "audio";
+                    /**
+                     * @description Discard retained native media before this turn
+                     * @default false
+                     */
+                    reset_context?: boolean;
                 };
             };
         };

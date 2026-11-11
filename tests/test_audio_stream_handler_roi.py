@@ -2312,7 +2312,9 @@ async def test_schedule_silence_finalize_reraises_cancelled_error(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_native_full_direct_sends_generated_pcm_and_retains_context(monkeypatch):
+async def test_native_full_direct_sends_generated_pcm_and_retains_context(
+    monkeypatch, tmp_path
+):
     handler = _make_handler()
     ws = _add_connection(handler, 1)
     second_ws = _add_connection(handler, 2)
@@ -2327,9 +2329,10 @@ async def test_native_full_direct_sends_generated_pcm_and_retains_context(monkey
     cascade = AsyncMock()
     monkeypatch.setattr(audio_stream_mod.ollama_audio, "synthesize_speech", synth)
     monkeypatch.setattr(audio_stream_mod.omni_pilot, "answer", cascade)
-    saved = AsyncMock()
+    store = SessionStore(str(tmp_path / "native-history.json"))
+    saved = AsyncMock(wraps=voice.persist_turn)
     monkeypatch.setattr(voice, "persist_turn", saved)
-    monkeypatch.setattr(audio_stream_mod, "get_session_store", lambda: object())
+    monkeypatch.setattr(audio_stream_mod, "get_session_store", lambda: store)
 
     @asynccontextmanager
     async def guard(**_kwargs):
@@ -2342,7 +2345,11 @@ async def test_native_full_direct_sends_generated_pcm_and_retains_context(monkey
         stream.setparams((1, 2, 24000, 0, "NONE", "not compressed"))
         stream.writeframes(pcm)
 
+    clear_during_generation = False
+
     async def generate(_runtime, samples, _rate, _image, _history, *, mode):
+        if clear_during_generation:
+            store.clear_session(handler.active_connections[1]["direct_session_id"])
         if not any(samples):
             return native.NativeDialogueResult(mode, None, None, True, {})
         text = "Wynik" if mode == "interleaved" else None
@@ -2414,12 +2421,19 @@ async def test_native_full_direct_sends_generated_pcm_and_retains_context(monkey
         is None
     )
     assert saved.await_count == 3
+    clear_during_generation = True
+    await turn(1, "interleaved", pcm)
+    last_event = json.loads(ws.send_text.await_args.args[0])
+    assert last_event["reason_code"] == "omni_native_session_cleared"
+    assert store.get_history(handler.active_connections[1]["direct_session_id"]) == []
     cascade.assert_not_awaited()
     synth.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_native_full_reset_drains_before_ack_and_does_not_save(monkeypatch):
+async def test_native_full_reset_drains_before_ack_and_does_not_save(
+    monkeypatch, tmp_path
+):
     handler = _make_handler()
     ws = _add_connection(handler, 1)
     runtime = SimpleNamespace(provider="ollama", model_name="lfm3-omni:2b")
@@ -2427,6 +2441,8 @@ async def test_native_full_reset_drains_before_ack_and_does_not_save(monkeypatch
     voice = audio_stream_mod.omni_native_voice
     monkeypatch.setattr(audio_stream_mod, "get_active_llm_runtime", lambda: runtime)
     monkeypatch.setattr(native, "native_dialogue_available", lambda _: True)
+    store = SessionStore(str(tmp_path / "native-history.json"))
+    monkeypatch.setattr(audio_stream_mod, "get_session_store", lambda: store)
     started = asyncio.Event()
     drained = asyncio.Event()
 

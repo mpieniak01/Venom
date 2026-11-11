@@ -5292,6 +5292,20 @@
       "rationale": "Offline Omni acceptance report validation and paired latency and outcome aggregation."
     },
     {
+      "path": "tests/test_omni_pl_chat_preparation.py",
+      "domain": "runtime",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Offline supervision, provenance and split-isolation contracts for the Polish Omni pilot."
+    },
+    {
       "path": "tests/test_onnx_gpu_bridge.py",
       "domain": "runtime",
       "test_type": "gate",

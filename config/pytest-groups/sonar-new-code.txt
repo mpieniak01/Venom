@@ -297,6 +297,7 @@ tests/test_ollama_runtime_probe.py
 tests/test_ollama_tuning.py
 tests/test_ollama_voice_input.py
 tests/test_omni_pilot_report.py
+tests/test_omni_pl_chat_preparation.py
 tests/test_onnx_gpu_bridge.py
 tests/test_onnx_llm_client.py
 tests/test_onnx_runtime_cleanup.py

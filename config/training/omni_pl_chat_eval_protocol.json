@@ -1,0 +1,32 @@
+{
+  "dataset": "scripts/academy/omni_pl_chat_eval_cases.jsonl",
+  "sha256": "12ab2edcbaddb2d630345bfd070d3db251452645577179e5a9dd5ec0f27d0da4",
+  "language": "pl",
+  "dev_cases": 32,
+  "pilot_cases": 64,
+  "model_input": "messages",
+  "model_output": "answer to the final user turn",
+  "context_policy": "Render the complete history with the pinned Omni template. Log and retain over-limit cases, timeouts and truncated answers.",
+  "generation": {
+    "do_sample": false,
+    "max_new_tokens": 512,
+    "enable_thinking": false,
+    "seed": 42
+  },
+  "scores": {
+    "0": "incorrect or missing",
+    "1": "partially fulfilled",
+    "2": "fulfilled",
+    "null": "not applicable"
+  },
+  "dimensions": [
+    "meaning",
+    "context",
+    "usefulness",
+    "natural_polish",
+    "uncertainty"
+  ],
+  "accept": "Meaning and applicable context must score 2, every other applicable dimension must score at least 1, and no critical error may occur.",
+  "procedure": "Use case-specific expected criteria alongside the rubric. Two reviewers score paired responses in randomized order with model identities hidden. A third reviewer resolves disagreements.",
+  "report": "Keep scores, raw responses, finish reasons, failures, denominators and paired differences by group and task. Use the dev split for checkpoint selection."
+}

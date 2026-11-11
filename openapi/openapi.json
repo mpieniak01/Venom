@@ -3138,6 +3138,455 @@
         }
       }
     },
+    "/api/v1/academy/experiments/profiles": {
+      "get": {
+        "tags": [
+          "academy"
+        ],
+        "summary": "Profiles",
+        "operationId": "profiles_api_v1_academy_experiments_profiles_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Profiles Api V1 Academy Experiments Profiles Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/academy/experiments/runs": {
+      "get": {
+        "tags": [
+          "academy"
+        ],
+        "summary": "Runs",
+        "operationId": "runs_api_v1_academy_experiments_runs_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Runs Api V1 Academy Experiments Runs Get"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "academy"
+        ],
+        "summary": "Start Run",
+        "operationId": "start_run_api_v1_academy_experiments_runs_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartExperiment"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Start Run Api V1 Academy Experiments Runs Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/academy/experiments/runs/{run_id}": {
+      "get": {
+        "tags": [
+          "academy"
+        ],
+        "summary": "Run Status",
+        "operationId": "run_status_api_v1_academy_experiments_runs__run_id__get",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Run Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Run Status Api V1 Academy Experiments Runs  Run Id  Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/academy/experiments/runs/{run_id}/stop": {
+      "post": {
+        "tags": [
+          "academy"
+        ],
+        "summary": "Stop Run",
+        "operationId": "stop_run_api_v1_academy_experiments_runs__run_id__stop_post",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Run Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Stop Run Api V1 Academy Experiments Runs  Run Id  Stop Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/academy/experiments/runs/{run_id}/resume": {
+      "post": {
+        "tags": [
+          "academy"
+        ],
+        "summary": "Resume Run",
+        "operationId": "resume_run_api_v1_academy_experiments_runs__run_id__resume_post",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Run Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Resume Run Api V1 Academy Experiments Runs  Run Id  Resume Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/academy/experiments/runs/{run_id}/evaluate": {
+      "post": {
+        "tags": [
+          "academy"
+        ],
+        "summary": "Retry Evaluation",
+        "operationId": "retry_evaluation_api_v1_academy_experiments_runs__run_id__evaluate_post",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Run Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Retry Evaluation Api V1 Academy Experiments Runs  Run Id  Evaluate Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/academy/experiments/runs/{run_id}/logs": {
+      "get": {
+        "tags": [
+          "academy"
+        ],
+        "summary": "Logs",
+        "operationId": "logs_api_v1_academy_experiments_runs__run_id__logs_get",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Run Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Logs Api V1 Academy Experiments Runs  Run Id  Logs Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/academy/experiments/runs/{run_id}/review": {
+      "get": {
+        "tags": [
+          "academy"
+        ],
+        "summary": "Review",
+        "operationId": "review_api_v1_academy_experiments_runs__run_id__review_get",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Run Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Review Api V1 Academy Experiments Runs  Run Id  Review Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/academy/experiments/runs/{run_id}/judgments": {
+      "post": {
+        "tags": [
+          "academy"
+        ],
+        "summary": "Submit Judgments",
+        "operationId": "submit_judgments_api_v1_academy_experiments_runs__run_id__judgments_post",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Run Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubmitJudgments"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Submit Judgments Api V1 Academy Experiments Runs  Run Id  Judgments Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/academy/experiments/runs/{run_id}/report": {
+      "get": {
+        "tags": [
+          "academy"
+        ],
+        "summary": "Report",
+        "operationId": "report_api_v1_academy_experiments_runs__run_id__report_get",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Run Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Report Api V1 Academy Experiments Runs  Run Id  Report Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/academy/self-learning/start": {
       "post": {
         "tags": [
@@ -17139,6 +17588,59 @@
         "title": "JobStatusResponse",
         "description": "Response ze statusem joba."
       },
+      "Judgment": {
+        "properties": {
+          "record_id": {
+            "type": "string",
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Record Id"
+          },
+          "label": {
+            "type": "string",
+            "maxLength": 8,
+            "minLength": 1,
+            "title": "Label"
+          },
+          "criteria": {
+            "additionalProperties": {
+              "type": "boolean"
+            },
+            "type": "object",
+            "title": "Criteria"
+          },
+          "polish_ok": {
+            "type": "boolean",
+            "title": "Polish Ok"
+          },
+          "natural_ok": {
+            "type": "boolean",
+            "title": "Natural Ok"
+          },
+          "critical_error": {
+            "type": "boolean",
+            "title": "Critical Error"
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Reason"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "record_id",
+          "label",
+          "criteria",
+          "polish_ok",
+          "natural_ok",
+          "critical_error",
+          "reason"
+        ],
+        "title": "Judgment"
+      },
       "KnowledgeContextMapV1": {
         "properties": {
           "session_id": {
@@ -21846,6 +22348,58 @@
           "hybrid"
         ],
         "title": "SourceType"
+      },
+      "StartExperiment": {
+        "properties": {
+          "profile_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$",
+            "title": "Profile Id"
+          },
+          "run_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$",
+            "title": "Run Id"
+          },
+          "recipe": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recipe"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "profile_id",
+          "run_id"
+        ],
+        "title": "StartExperiment"
+      },
+      "SubmitJudgments": {
+        "properties": {
+          "judgments": {
+            "items": {
+              "$ref": "#/components/schemas/Judgment"
+            },
+            "type": "array",
+            "maxItems": 2048,
+            "minItems": 1,
+            "title": "Judgments"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "judgments"
+        ],
+        "title": "SubmitJudgments"
       },
       "SystemState": {
         "properties": {

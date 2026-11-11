@@ -17,7 +17,7 @@ import { cn } from "@/lib/utils";
 import { AcademyOverview } from "./academy-overview";
 import { DatasetPanel } from "./dataset-panel";
 import { DatasetConversionPanel } from "./dataset-conversion-panel";
-import { TrainingPanel } from "./training-panel";
+import { TrainingWorkspace } from "./training-workspace";
 import { AdaptersPanel } from "./adapters-panel";
 import { SelfLearningPanel } from "./self-learning-panel";
 import { getAcademyStatus, type AcademyStatus } from "@/lib/academy-api";
@@ -189,7 +189,7 @@ export function AcademyDashboard() {
         {!loading && status && activeTab === "overview" && <AcademyOverview status={status} onRefresh={loadStatus} />}
         {!loading && status && activeTab === "conversion" && <DatasetConversionPanel />}
         {!loading && status && activeTab === "dataset" && <DatasetPanel />}
-        {!loading && status && activeTab === "training" && <TrainingPanel />}
+        {!loading && status && activeTab === "training" && <TrainingWorkspace />}
         {!loading && status && activeTab === "selfLearning" && <SelfLearningPanel />}
         {!loading && status && activeTab === "adapters" && <AdaptersPanel />}
       </div>

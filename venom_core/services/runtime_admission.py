@@ -198,8 +198,21 @@ class RuntimeAdmission:
     def __init__(self, database: Path, *, enabled: bool = True) -> None:
         self.database = database
         self.enabled = enabled
+        self._standalone_training_worker = False
         self._tasks: set[asyncio.Task[Any]] = set()
         self._operation_tasks: dict[str, tuple[asyncio.Task[Any], str]] = {}
+
+    @classmethod
+    def for_training_worker(cls, database: Path) -> "RuntimeAdmission":
+        """Use the shared ledger from an isolated, single-purpose training supervisor.
+
+        Only the application owns the long-lived runtime namespace. The worker
+        must acquire an exclusive lease before loading a model. SQLite serializes
+        that lease against existing operations and other supervisors.
+        """
+        admission = cls(database)
+        admission._standalone_training_worker = True
+        return admission
 
     @contextmanager
     def _transaction(self) -> Iterator[sqlite3.Connection]:
@@ -207,7 +220,8 @@ class RuntimeAdmission:
         _assert_safe_ledger_path(self.database)
         self.database.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         _assert_safe_ledger_path(self.database)
-        _own_host_namespace(self.database)
+        if not self._standalone_training_worker:
+            _own_host_namespace(self.database)
         os.close(_open_private_file(self.database))
         connection = sqlite3.connect(self.database, timeout=5.0)
         connection.row_factory = sqlite3.Row

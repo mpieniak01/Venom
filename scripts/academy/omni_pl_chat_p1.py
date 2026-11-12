@@ -91,8 +91,8 @@ def _resume_checkpoint(output: Path, step_limit: int) -> Path:
     if not sealed:
         raise ValueError("no sealed checkpoint is available")
     step, latest = max(sealed)
-    if step > step_limit:
-        raise ValueError("checkpoint exceeds the planned step budget")
+    if step >= step_limit:
+        raise ValueError("checkpoint has reached or exceeded the planned step budget")
     verify_checkpoint(latest)
     trainer_state = json.loads(
         (latest / "trainer_state.json").read_text(encoding="utf-8")

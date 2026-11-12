@@ -180,6 +180,8 @@ def test_resume_uses_latest_sealed_step_and_rejects_tampering(tmp_path):
     assert _resume_checkpoint(tmp_path, 8) == current
     with pytest.raises(ValueError, match="step budget"):
         _resume_checkpoint(tmp_path, 3)
+    with pytest.raises(ValueError, match="step budget"):
+        _resume_checkpoint(tmp_path, 4)
     (current / "optimizer.pt").write_bytes(b"changed")
     with pytest.raises(ValueError, match="saved receipt"):
         _resume_checkpoint(tmp_path, 8)

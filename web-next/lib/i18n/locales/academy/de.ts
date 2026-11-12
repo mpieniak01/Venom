@@ -214,6 +214,9 @@ export const academy = {
   },
   campaigns: {
     quality: {
+      sourceRecord: "Quellbewertung",
+      runtime: "Laufzeitumgebung",
+      discardDraft: "Empfohlenen Entwurf verwerfen",
       hypothesis: "Hypothese",
       hypothesisText: "Wir prüfen die Auswirkung der Änderung eines einzelnen Parameters",
       title: "Erkenntnisse und nächster Versuch",
@@ -267,6 +270,7 @@ export const academy = {
       recipeJson: "Variantenparameter (JSON)",
       invalidDraft: "Prüfen Sie das Varianten-JSON, die Trainerfelder und die Kampagnenlimits.",
       policy: {
+        sourceLocked: "Der Entwurf ist an seine Quellbewertung gebunden. Verwerfen Sie ihn, um zum Standardformular zurückzukehren.",
         title: "Qualitätsregeln",
         enable: "Qualitätsregeln anwenden",
         references: "Referenzen aus dem Entwicklungsdatensatz",

@@ -16,8 +16,8 @@ function textValue(value: FormDataEntryValue | null | undefined): string {
   return value.trim();
 }
 
-export function readQualityPolicy(data: FormData): CampaignQualityPolicy | undefined {
-  if (!data.has("quality-policy-enabled")) return undefined;
+export function readQualityPolicy(data: FormData, sourceRecordId?: string): CampaignQualityPolicy | undefined {
+  if (!sourceRecordId && !data.has("quality-policy-enabled")) return undefined;
   const categories = data.getAll("quality-category").map(textValue);
   const thresholds = data.getAll("quality-minimum");
   if (new Set(categories).size !== categories.length || categories.length !== thresholds.length) {
@@ -40,6 +40,7 @@ export function readQualityPolicy(data: FormData): CampaignQualityPolicy | undef
   const hypothesis = textValue(data.get("quality-hypothesis"));
   return {
     ...(hypothesis ? { hypothesis } : {}),
+    ...(sourceRecordId ? { source_record_id: sourceRecordId } : {}),
     reference_record_ids: references,
     protected_case_ids: protectedIds,
     protect_reference_hits: data.has("quality-protect-reference-hits"),
@@ -90,7 +91,15 @@ export function CampaignPolicyFields({ disabled, initial }: {
   readonly initial?: CampaignQualityPolicy;
 }) {
   const t = useTranslation();
-  const [enabled, setEnabled] = useState(Boolean(initial));
+  const sourceLocked = Boolean(initial?.source_record_id);
+  const [operatorEnabled, setEnabled] = useState(Boolean(initial));
+  const enabled = sourceLocked || operatorEnabled;
+  const [mounted, setMounted] = useState(Boolean(initial));
+
+  function changeEnabled(checked: boolean) {
+    setEnabled(checked);
+    if (checked) setMounted(true);
+  }
   const defaults = Object.entries(initial?.min_category_usable_delta ?? {});
   const [rows, setRows] = useState(() => defaults.map((_, index) => index));
 
@@ -99,11 +108,12 @@ export function CampaignPolicyFields({ disabled, initial }: {
       <summary className="cursor-pointer text-sm font-medium">{t(QUALITY + "policy.title")}</summary>
       <Label htmlFor="quality-policy-enabled" className="flex items-center gap-2">
         <input id="quality-policy-enabled" name="quality-policy-enabled" type="checkbox" checked={enabled}
-          disabled={disabled} onChange={(event) => setEnabled(event.currentTarget.checked)} />
+          disabled={disabled || sourceLocked} onChange={(event) => changeEnabled(event.currentTarget.checked)} />
         {t(QUALITY + "policy.enable")}
       </Label>
-      {enabled && (
-        <fieldset disabled={disabled} className="space-y-3">
+      {sourceLocked && <p className="text-xs text-hint">{t(QUALITY + "policy.sourceLocked")}</p>}
+      {mounted && (
+        <fieldset hidden={!enabled} disabled={disabled || !enabled} className="space-y-3">
           <div className="space-y-1">
             <Label htmlFor="quality-hypothesis">{t(QUALITY + "hypothesis")}</Label>
             <textarea className={TEXTAREA} id="quality-hypothesis" name="quality-hypothesis" rows={2}
@@ -155,6 +165,30 @@ export function CampaignPolicyFields({ disabled, initial }: {
   );
 }
 
+export function PinnedQualitySource({ recordId, fixed }: {
+  readonly recordId: string;
+  readonly fixed?: { train_sha256: string | null; runtime: Record<string, unknown> | null };
+}) {
+  const t = useTranslation();
+
+  return (
+    <div className="space-y-1 text-sm">
+      <dl>
+        <div><dt className="text-hint">{t(QUALITY + "sourceRecord")}</dt><dd className="break-all"><code>{recordId}</code></dd></div>
+        {fixed?.train_sha256 && (
+          <div><dt className="text-hint">{t(QUALITY + "trainingHash")}</dt><dd className="break-all"><code>{fixed.train_sha256}</code></dd></div>
+        )}
+      </dl>
+      {fixed?.runtime && (
+        <details>
+          <summary className="cursor-pointer text-hint">{t(QUALITY + "runtime")}</summary>
+          <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-all">{JSON.stringify(fixed.runtime, null, 2)}</pre>
+        </details>
+      )}
+    </div>
+  );
+}
+
 export function QualityPolicySummary({ policy }: { readonly policy: CampaignQualityPolicy }) {
   const { t, language } = useLanguage();
   const format = new Intl.NumberFormat(language, { maximumFractionDigits: 2 });
@@ -168,6 +202,7 @@ export function QualityPolicySummary({ policy }: { readonly policy: CampaignQual
   return (
     <section className="space-y-2 rounded-lg border border-[color:var(--ui-border)] p-3 text-sm">
       <h4 className="font-medium">{t(QUALITY + "policy.title")}</h4>
+      {policy.source_record_id && <PinnedQualitySource recordId={policy.source_record_id} fixed={policy.source_record} />}
       {policy.hypothesis && (
         <dl>
           <dt className="text-hint">{t(QUALITY + "hypothesis")}</dt>

@@ -161,8 +161,10 @@ Przebiegi utworzone przez Academy pojawiają się po zapisaniu ocen. Wyniki spoz
 ```bash
 source .venv/bin/activate
 python -m scripts.academy.quality --root "$experiment_root" import pakiet.json
-python -m scripts.academy.quality --root "$experiment_root" analyze kandydat --reference-id porownanie
+python -m scripts.academy.quality --root "$experiment_root" analyze history:kandydat --reference-id history:porownanie
 ```
+
+Importowane identyfikatory w panelu i w poleceniu analizy mają przedrostek `history:`. Identyfikatory zapisanych przebiegów Academy zachowują pierwotną postać.
 
 Pakiet zawiera `schema_version: 1` i listę `records`. Każdy rekord zawiera identyfikator, rodzaj zbioru (`dev` albo `holdout`), tożsamość bazy, zbioru i protokołu, źródło z SHA-256 oraz przypadki z kategorią i sparowanymi ocenami `usable` i `critical`. Gdy w źródle brakuje etykiet krytyczności, zapisz `critical: null`. Można dołączyć recepturę, hash treningu, środowisko, chronione ID i decyzję operatora. [Schemat](../../venom_core/services/training_experiments/quality_schema.py)
 

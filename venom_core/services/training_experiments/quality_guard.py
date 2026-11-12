@@ -107,13 +107,43 @@ def freeze_policy(settings: dict, context: dict, fetch: EvidenceReader) -> dict:
     if protected - categories.keys():
         raise ValueError("campaign_quality_protected_case_unknown")
     payload = {
-        **settings,
+        **{key: value for key, value in settings.items() if key != "source_record_id"},
         "protected_case_ids": sorted(protected),
         "references": references,
         "identity": identity,
         "case_categories": categories,
     }
+    source_id = settings.get("source_record_id")
+    if source_id is not None:
+        source = _reference(fetch, source_id)
+        observed = _identity(source["identity"])
+        _compare_identity(identity, observed)
+        _cases(source, categories)
+        _verify_source_context(source, context)
+        payload.update(
+            source_record_id=source_id,
+            source_record={
+                "record_id": source_id,
+                "result_sha256": source["result_sha256"],
+                "train_sha256": source["train_sha256"],
+                "runtime": source["runtime"],
+            },
+            identity=observed,
+        )
     return {**payload, "policy_sha256": fingerprint(payload)}
+
+
+def _verify_source_context(source: dict, context: dict) -> None:
+    train = source.get("train_sha256")
+    if not _digest(train) or train != context.get("train_sha256"):
+        raise ValueError("campaign_quality_training_identity_changed")
+    runtime = source.get("runtime")
+    if (
+        not isinstance(runtime, dict)
+        or not runtime
+        or runtime != context.get("runtime")
+    ):
+        raise ValueError("campaign_quality_runtime_identity_changed")
 
 
 def verify_policy(policy: dict, fetch: EvidenceReader) -> None:
@@ -125,6 +155,11 @@ def verify_policy(policy: dict, fetch: EvidenceReader) -> None:
         record = _reference(fetch, ref["record_id"])
         if record["result_sha256"] != ref["result_sha256"]:
             raise ValueError("campaign_quality_reference_changed")
+    source = policy.get("source_record")
+    if source is not None:
+        observed = _reference(fetch, source["record_id"])
+        if observed["result_sha256"] != source["result_sha256"]:
+            raise ValueError("campaign_quality_source_changed")
 
 
 def verify_context(policy: dict, context: dict) -> None:
@@ -135,6 +170,8 @@ def verify_context(policy: dict, context: dict) -> None:
         raise ValueError("campaign_quality_identity_changed")
     if policy["case_categories"] != context["case_categories"]:
         raise ValueError("campaign_quality_case_coverage")
+    if policy.get("source_record") is not None:
+        _verify_source_context(policy["source_record"], context)
 
 
 def blocked(reason: str) -> dict:
@@ -177,6 +214,8 @@ def evaluate(
     """Judge exact paired dev outcomes under a pre-approved rule."""
     identity = _identity(record["identity"])
     _compare_identity(policy["identity"], identity)
+    if policy.get("source_record") is not None:
+        _verify_source_context(policy["source_record"], record)
     protocol = identity["protocol_sha256"]
     if frozen_protocol is not None and protocol != frozen_protocol:
         raise ValueError("campaign_quality_identity_changed")

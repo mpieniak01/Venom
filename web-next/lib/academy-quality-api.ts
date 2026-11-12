@@ -60,6 +60,8 @@ export interface CampaignQualityPolicy {
   min_category_usable_delta: Record<string, number>;
   no_new_critical: boolean;
   hypothesis?: string | null;
+  source_record_id?: string | null;
+  source_record?: { record_id: string; result_sha256: string } & NonNullable<QualityProposal["fixed"]>;
   references?: { record_id: string; result_sha256: string }[];
 }
 
@@ -75,7 +77,8 @@ export interface TrialQualityGuard {
 export interface QualityCampaignDraft {
   profileId?: string | null;
   variants: QualityProposal["variants"];
-  qualityPolicy: CampaignQualityPolicy;
+  fixed?: QualityProposal["fixed"];
+  qualityPolicy: CampaignQualityPolicy & { source_record_id: string };
 }
 
 export async function listQualityRecords(signal?: AbortSignal) {

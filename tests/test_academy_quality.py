@@ -220,6 +220,74 @@ def test_evidence_decisions_remain_conservative():
     assert analyze_quality(candidate)["decision"] == "REVISE"
 
 
+def test_reference_cannot_mask_a_critical_regression_from_base():
+    candidate, peer = record(), record("run-b")
+    candidate["cases"]["a"]["candidate"]["usable"] = True
+    candidate["cases"]["b"]["candidate"]["critical"] = True
+    peer["cases"]["b"]["candidate"]["critical"] = True
+
+    result = analyze_quality(candidate, peer)
+
+    assert result["comparison"][0]["gained_usable"] == 1
+    assert result["comparison"][0]["critical_delta"] == 0
+    assert result["summary"][0]["critical_delta"] == 1 / 3
+    assert result["decision"] == "STOP"
+    findings = {item["code"]: item["case_ids"] for item in result["findings"]}
+    assert findings["quality_new_critical"] == ["b"]
+
+
+def test_reference_cannot_replace_missing_base_critical_evidence():
+    candidate, peer = record(), record("run-b")
+    candidate["cases"]["a"]["candidate"]["usable"] = True
+    candidate["cases"]["b"]["base"]["critical"] = None
+    candidate["cases"]["b"]["candidate"]["critical"] = False
+    peer["cases"]["b"]["candidate"]["critical"] = False
+
+    result = analyze_quality(candidate, peer)
+
+    assert result["comparison"][0]["gained_usable"] == 1
+    assert result["comparison"][0]["critical_delta"] == 0
+    assert result["summary"][0]["critical_delta"] is None
+    assert result["decision"] == "INCOMPLETE"
+    findings = {item["code"]: item["case_ids"] for item in result["findings"]}
+    assert findings["quality_critical_unknown"] == ["b"]
+
+
+def test_changed_base_blocks_go_when_reference_comparison_improves():
+    candidate, peer = record(), record("run-b")
+    candidate["cases"]["a"]["candidate"]["usable"] = True
+    candidate["cases"]["b"]["candidate"]["critical"] = False
+    peer["cases"]["a"]["base"]["usable"] = False
+    peer["cases"]["b"]["candidate"]["critical"] = False
+
+    result = analyze_quality(candidate, peer)
+
+    assert result["comparison"][0]["gained_usable"] == 1
+    assert result["comparison"][0]["critical_delta"] == 0
+    assert result["decision"] == "INCOMPLETE"
+    findings = {item["code"]: item["case_ids"] for item in result["findings"]}
+    assert findings["quality_baseline_outcomes_changed"] == ["a"]
+
+
+def test_go_requires_every_protected_case_to_remain_usable():
+    candidate, peer = record(), record("run-b")
+    candidate["cases"]["b"]["candidate"]["critical"] = False
+    peer["cases"]["b"]["candidate"] = {"usable": False, "critical": False}
+
+    result = analyze_quality(candidate, peer)
+
+    assert result["protected_case_ids"] == ["a", "c"]
+    assert result["protected"]["evaluated"] == result["protected"]["total"] == 2
+    assert result["protected"]["passed"] == result["protected"]["base_passed"] == 1
+    assert result["protected"]["reference_passed"] == 1
+    assert result["summary"][0]["lost_usable"] == 1
+    assert result["comparison"][0]["lost_usable"] == 0
+    assert result["comparison"][0]["gained_usable"] == 1
+    assert result["decision"] == "REVISE"
+    candidate["outcome"] = "GO"
+    assert analyze_quality(candidate, peer)["decision"] == "GO"
+
+
 def test_bundle_validates_version_and_unique_ids():
     first = record()
     with pytest.raises(ValidationError, match="quality_duplicate_records"):
@@ -246,12 +314,14 @@ def test_cli_import_list_show_and_analyze(tmp_path, capsys):
     assert [
         item["record_id"] for item in json.loads(capsys.readouterr().out)["records"]
     ] == [
-        "run-a",
-        "run-b",
+        "history:run-a",
+        "history:run-b",
     ]
-    main([*prefix, "show", "run-a"])
+    main([*prefix, "show", "history:run-a"])
     assert json.loads(capsys.readouterr().out) == imported[0]
-    main([*prefix, "analyze", "run-a", "--reference-id", "run-b"])
+    main([*prefix, "analyze", "history:run-a", "--reference-id", "history:run-b"])
     analyzed = json.loads(capsys.readouterr().out)
     assert analyzed["comparable"]
+    assert analyzed["record"]["record_id"] == "history:run-a"
+    assert analyzed["reference_id"] == "history:run-b"
     assert analyzed["protected_case_ids"] == ["a", "c"]

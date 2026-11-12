@@ -6568,6 +6568,8 @@ export interface components {
              * @default true
              */
             no_new_critical: boolean;
+            /** Source Record Id */
+            source_record_id?: string | null;
             /** Hypothesis */
             hypothesis?: string | null;
         };

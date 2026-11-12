@@ -6,10 +6,14 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 
-from .profiles import SHA256_PATTERN
+from venom_core.services.training_experiments.profiles import SHA256_PATTERN
 
 Digest = Annotated[str, Field(pattern=SHA256_PATTERN)]
 RecordId = Annotated[str, Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")]
+EvidenceId = Annotated[
+    str, Field(pattern=r"^(?:history:)?[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
+]
+Category = Annotated[str, Field(min_length=1, max_length=128, pattern=r"\S")]
 CaseId = Annotated[str, Field(min_length=1, max_length=256, pattern=r"^\S+$")]
 EvidenceLabel = Annotated[str, Field(min_length=1, max_length=512, pattern=r"\S")]
 QualityDecision = Literal["GO", "REVISE", "STOP", "INCOMPLETE"]
@@ -38,7 +42,7 @@ class QualityOutcome(_QualityModel):
 
 
 class QualityCase(_QualityModel):
-    category: Annotated[str, Field(min_length=1, max_length=128, pattern=r"\S")]
+    category: Category
     base: QualityOutcome
     candidate: QualityOutcome
 

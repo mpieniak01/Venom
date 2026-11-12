@@ -149,7 +149,7 @@ export function CampaignPanel({
         {failed && <p role="alert" className="text-sm text-red-400">{t("academy.campaigns.loadError")}</p>}
         {!failed && (!profiles || !campaigns) && <p className="text-sm text-hint">{t("academy.campaigns.loading")}</p>}
         {profiles && campaigns && (
-          <CampaignForm key={draft?.revision ?? 0} draft={draft?.value} profiles={profiles}
+          <CampaignForm key={draft?.revision ?? 0} draft={draft?.value} profiles={profiles} onDiscardDraft={() => setDraft(undefined)}
             disabled={busy || failed} optunaAvailable={optunaAvailable}
             onPlan={(request) => mutate(() => planCampaign(request))} />
         )}

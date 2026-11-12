@@ -116,7 +116,9 @@ function NextTrial({ analysis, disabled, onDraft }: {
     onDraft({
       profileId: analysis.recommended_profile_id,
       variants: proposal.variants,
+      fixed: proposal.fixed,
       qualityPolicy: {
+        source_record_id: analysis.record.record_id,
         reference_record_ids: reference ? [reference] : [],
         protected_case_ids: analysis.protected_case_ids,
         protect_reference_hits: true,

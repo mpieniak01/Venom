@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 
 from venom_core.api.routes import academy_experiment_campaigns as routes
 from venom_core.services.training_experiments.profiles import MODEL, digest, stable_hash
+from venom_core.services.training_experiments.quality import QualityStore
 from venom_core.services.training_experiments.quality_native import (
     evaluation_identity,
     get_record,
@@ -34,7 +35,7 @@ def sealed_run(tmp_path):
         "dataset": "Polish",
         "model": MODEL,
         "snapshot": "/models/pin",
-        "training_venv": "/opt/train",
+        "training_venv": "trainer",
         "train": "train.jsonl",
         "dev": "dev.jsonl",
         "train_sha256": "a" * 64,
@@ -68,11 +69,15 @@ def sealed_run(tmp_path):
     mapping_hash = write(
         generation / "unblind.json", {"a": {"A": "checkpoint-1", "B": "base"}}
     )
+    raw_hash = write(generation / "raw.jsonl", {"text": "raw"})
+    blind_hash = write(generation / "blind.jsonl", {"text": "blind"})
     generation_seal = write(
         generation / "generation-seal.json",
         {
             "manifest.json": generation_hash,
             "unblind.json": mapping_hash,
+            "raw.jsonl": raw_hash,
+            "blind.jsonl": blind_hash,
         },
     )
     judgment_hash = write(
@@ -119,6 +124,8 @@ def test_sealed_result_preserves_paired_critical_evidence(sealed_run):
         "evaluation-1/manifest.json",
         "evaluation-1/unblind.json",
         "evaluation-1/generation-seal.json",
+        "evaluation-1/raw.jsonl",
+        "evaluation-1/blind.jsonl",
     ],
 )
 def test_native_result_fails_closed_if_bound_file_changes(sealed_run, relative):
@@ -147,3 +154,53 @@ def test_quality_routes_use_native_store_and_enforce_local_access(
         assert client.get(f"{base}/missing/analysis").status_code == 404
     with TestClient(app, client=("192.0.2.42", 59000)) as client:
         assert client.get(base).status_code == 403
+
+
+def test_imported_and_native_ids_do_not_shadow_each_other(sealed_run):
+    service, _ = sealed_run
+    observed = native_record(service, "test-native")
+    copy = {key: value for key, value in observed.items() if key != "result_sha256"}
+    copy["source"]["identity"] = "archived"
+    QualityStore(service.root).import_record(copy)
+    assert get_record(service, "test-native")["source"]["identity"] == "test-native"
+    assert (
+        get_record(service, "history:test-native")["source"]["identity"] == "archived"
+    )
+    assert {row["record_id"] for row in routes.list_records(service)["records"]} == {
+        "test-native",
+        "history:test-native",
+    }
+    analysis = routes.analyze_record(service, "history:test-native", "test-native")
+    assert analysis["record"]["record_id"] == "history:test-native"
+    assert analysis["reference_id"] == "test-native"
+
+
+def test_sealed_run_is_visible_before_success_state_is_saved(sealed_run):
+    service, _ = sealed_run
+    write(
+        service.run_dir("test-native") / "state.json",
+        {
+            "status": "awaiting_review",
+            "profile_id": "pilot",
+            "attempt": 1,
+        },
+    )
+    assert native_record(service, "test-native")["cases"]["a"]["base"]["usable"]
+    assert routes.list_records(service)["records"][0]["record_id"] == "test-native"
+
+
+def test_profile_context_verifies_installed_runtime_metadata(sealed_run):
+    service, _ = sealed_run
+    with pytest.raises(ValueError, match="campaign_quality_runtime_unverified"):
+        profile_context(service, "pilot", "manual", include_runtime=True)
+    sites = service.root / "trainer/lib/python3.14/site-packages"
+    for name in ("torch", "transformers", "peft"):
+        metadata = sites / f"{name}-1.0.dist-info" / "METADATA"
+        metadata.parent.mkdir(parents=True)
+        metadata.write_text(f"Name: {name}\nVersion: 1.0\n", encoding="utf-8")
+    context = profile_context(service, "pilot", "manual", include_runtime=True)
+    assert context["train_sha256"] == "a" * 64
+    assert context["runtime"] == {
+        "loss": "trainer_default",
+        "evaluation_engine": {"torch": "1.0", "transformers": "1.0", "peft": "1.0"},
+    }

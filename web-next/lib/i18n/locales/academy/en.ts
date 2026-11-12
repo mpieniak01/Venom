@@ -214,6 +214,9 @@ export const academy = {
   },
   campaigns: {
     quality: {
+      sourceRecord: "Source evaluation",
+      runtime: "Runtime environment",
+      discardDraft: "Discard recommended draft",
       hypothesis: "Hypothesis",
       hypothesisText: "We will test the effect of changing one parameter",
       title: "Findings and next trial",
@@ -267,6 +270,7 @@ export const academy = {
       recipeJson: "Variant parameters (JSON)",
       invalidDraft: "Check the variant JSON, supported trainer fields, and campaign limits.",
       policy: {
+        sourceLocked: "The draft is pinned to its source evaluation. Discard the draft to return to the standard form.",
         title: "Quality rules",
         enable: "Apply quality rules",
         references: "Development set references",

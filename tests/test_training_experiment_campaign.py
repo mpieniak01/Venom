@@ -1150,6 +1150,8 @@ def guarded_evidence(monkeypatch, controller):
             for key, category in categories.items()
         }
 
+    runtime = {"evaluation_engine": {"python": "3.14.8"}, "loss": "trainer_default"}
+    train_sha256 = "7" * 64
     references = {
         "prior": {
             "identity": dict(identity),
@@ -1157,6 +1159,8 @@ def guarded_evidence(monkeypatch, controller):
             "result_sha256": "4" * 64,
             "protected_case_ids": ["a"],
             "cases": case_rows({"c"}),
+            "runtime": runtime,
+            "train_sha256": train_sha256,
         }
     }
     records = {}
@@ -1169,6 +1173,8 @@ def guarded_evidence(monkeypatch, controller):
                 "sha256": file_fingerprint(experiments.run_dir(run_id) / "result.json")
             },
             "cases": case_rows(hits, critical),
+            "runtime": runtime,
+            "train_sha256": train_sha256,
             **overrides,
         }
         records[run_id] = data
@@ -1177,13 +1183,15 @@ def guarded_evidence(monkeypatch, controller):
     monkeypatch.setattr(
         quality_native,
         "profile_context",
-        lambda *_args: {
+        lambda *_args, include_runtime=False: {
             "identity": {
                 key: value
                 for key, value in identity.items()
                 if key != "protocol_sha256"
             },
             "case_categories": categories,
+            "train_sha256": train_sha256,
+            **({"runtime": runtime} if include_runtime else {}),
         },
     )
     monkeypatch.setattr(
@@ -1250,12 +1258,20 @@ def test_quality_guard_ranks_exact_hits_and_retains_unavailable_evidence(
     missing = record(third, {"a", "b", "c", "d"})
     missing["cases"]["a"]["candidate"]["critical"] = None
     final = service.advance("series")
+    assert final["status"] == "blocked"
+    assert final["trial_index"] == 2
     assert final["selected_run_id"] == second
     assert final["trials"][2]["quality_guard"]["status"] == "blocked"
     assert final["trials"][2]["quality_guard"]["reasons"] == [
         {"code": "campaign_quality_case_evidence_missing"}
     ]
     assert missing_artifact.exists()
+    missing["cases"]["a"]["candidate"]["critical"] = False
+    service.resume("series")
+    recovered = service.advance("series")
+    assert recovered["status"] == "succeeded"
+    assert recovered["selected_run_id"] == third
+    assert experiments.calls == [("start", first), ("start", second), ("start", third)]
 
 
 @pytest.mark.parametrize(
@@ -1337,8 +1353,17 @@ def test_optuna_guard_keeps_measured_regression_separate_from_missing_evidence(
     altered["identity"]["protocol_sha256"] = "6" * 64
     final = service.advance("series")
     assert final["selected_run_id"] is None
+    assert final["status"] == "blocked"
+    assert final["trial_index"] == 1
     assert final["trials"][1]["quality_guard"]["status"] == "blocked"
-    assert sampler.outcomes[1] == ("FAIL", None, None)
+    assert 1 not in sampler.outcomes
+    altered["identity"]["protocol_sha256"] = "3" * 64
+    service.resume("series")
+    recovered = service.advance("series")
+    assert recovered["status"] == "succeeded"
+    assert recovered["selected_run_id"] == second
+    assert sampler.outcomes[1] == ("COMPLETE", 0.5, [-0.5, -0.5])
+    assert experiments.calls == [("start", first), ("start", second)]
 
 
 def test_quality_guard_rejects_moved_critical_error_and_pins_actual_protocol(
@@ -1380,3 +1405,60 @@ def test_draft_cannot_replace_pinned_training_data(tmp_path, monkeypatch):
     service = CampaignService(experiments)
     with pytest.raises(ValueError, match="campaign_quality_training_identity_changed"):
         service.validate(spec)
+
+
+def test_pinned_source_checks_train_and_runtime_before_campaign(
+    controller, guarded_evidence
+):
+    service, experiments, _clock = controller
+    references, _record = guarded_evidence
+    source = references["prior"]
+    spec = guarded_spec(policy={"source_record_id": "prior"})
+    runtime = source["runtime"]
+    source["runtime"] = {"loss": "unmatched"}
+    with pytest.raises(ValueError, match="campaign_quality_runtime_identity_changed"):
+        service.validate(spec)
+    source["runtime"] = runtime
+    source["train_sha256"] = "8" * 64
+    with pytest.raises(ValueError, match="campaign_quality_training_identity_changed"):
+        service.validate(spec)
+    source["train_sha256"] = "7" * 64
+
+    state = service.plan(spec)
+    policy = state["plan"]["quality_policy"]
+    assert policy["source_record"] == {
+        "record_id": "prior",
+        "result_sha256": "4" * 64,
+        "train_sha256": "7" * 64,
+        "runtime": runtime,
+    }
+    digest = state["plan"]["plan_sha256"]
+    source["result_sha256"] = "8" * 64
+    with pytest.raises(ValueError, match="campaign_quality_source_changed"):
+        service.start("series", digest)
+    assert experiments.calls == []
+
+
+def test_pinned_source_rejects_mismatched_observed_runtime_and_reassesses_at_timeout(
+    controller, guarded_evidence
+):
+    service, experiments, clock = controller
+    references, record = guarded_evidence
+    start(service, guarded_spec(count=1, policy={"source_record_id": "prior"}))
+    run_id = launch_next(service)
+    experiments.finish(run_id, usable=3)
+    observed = record(run_id, {"a", "b", "c"}, runtime={"loss": "mismatch"})
+    blocked = service.advance("series")
+    assert blocked["status"] == "blocked"
+    assert blocked["error"] == "campaign_quality_runtime_identity_changed"
+    assert blocked["trial_index"] == 0
+    assert blocked["selected_run_id"] is None
+
+    clock.now += 51
+    observed["runtime"] = references["prior"]["runtime"]
+    assert service.resume("series")["status"] == "stopping"
+    settled = service.advance("series")
+    assert settled["status"] == "timed_out"
+    assert settled["trials"][0]["quality_guard"]["status"] == "passed"
+    assert settled["selected_run_id"] == run_id
+    assert experiments.calls == [("start", run_id)]

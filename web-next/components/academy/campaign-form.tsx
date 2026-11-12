@@ -8,7 +8,7 @@ import type { CampaignRequest, CampaignStrategy, OptunaSearchSpace } from "@/lib
 import type { ExperimentProfile, ExperimentRecipe } from "@/lib/academy-experiments-api";
 import { useTranslation } from "@/lib/i18n";
 import type { QualityCampaignDraft } from "@/lib/academy-quality-api";
-import { CampaignPolicyFields, readQualityPolicy } from "./campaign-quality-policy";
+import { CampaignPolicyFields, PinnedQualitySource, readQualityPolicy } from "./campaign-quality-policy";
 import { OPTUNA_PARAMETERS, OptunaFields } from "./campaign-optuna";
 
 const MIB = 1024 ** 2;
@@ -92,19 +92,19 @@ function readOptunaPlan(data: FormData): Pick<CampaignRequest, "variants" | "str
 }
 
 function readPlan(
-  data: FormData, profileId: string, rows: number[], strategy: CampaignStrategy, editableRecipe: boolean,
+  data: FormData, profileId: string, rows: number[], strategy: CampaignStrategy, draft?: QualityCampaignDraft,
 ): CampaignRequest {
   const campaignId = data.get("campaign_id");
   if (typeof campaignId !== "string") throw new Error("campaign id must be text");
   const id = campaignId.trim();
   if (!/^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$/.test(id)) throw new Error("invalid campaign id");
-  const qualityPolicy = readQualityPolicy(data);
+  const qualityPolicy = readQualityPolicy(data, draft?.qualityPolicy.source_record_id);
   return {
     campaign_id: id,
     profile_id: profileId,
     ...(strategy === "optuna"
       ? readOptunaPlan(data)
-      : { variants: rows.map((row) => variantRecipe(data, row, editableRecipe)) }),
+      : { variants: rows.map((row) => variantRecipe(data, row, Boolean(draft))) }),
     ...(qualityPolicy ? { quality_policy: qualityPolicy } : {}),
     budget: {
       max_trials: numberField(data, "max_trials"),
@@ -130,10 +130,11 @@ interface CampaignFormProps {
   readonly disabled: boolean;
   readonly optunaAvailable: boolean;
   readonly draft?: QualityCampaignDraft;
+  readonly onDiscardDraft: () => void;
   readonly onPlan: (request: CampaignRequest) => Promise<boolean>;
 }
 
-export function CampaignForm({ profiles, disabled, optunaAvailable, draft, onPlan }: CampaignFormProps) {
+export function CampaignForm({ profiles, disabled, optunaAvailable, draft, onDiscardDraft, onPlan }: CampaignFormProps) {
   const t = useTranslation();
   const [profileId, setProfileId] = useState(draft?.profileId ?? "");
   const [rows, setRows] = useState(() => draft?.variants.map((_, index) => index) ?? [0]);
@@ -150,7 +151,7 @@ export function CampaignForm({ profiles, disabled, optunaAvailable, draft, onPla
     event.preventDefault();
     if (disabled || !profile || unavailableStrategy) return;
     try {
-      const request = readPlan(new FormData(event.currentTarget), profile.id, rows, strategy, Boolean(draft));
+      const request = readPlan(new FormData(event.currentTarget), profile.id, rows, strategy, draft);
       if (request.variants.length > request.budget.max_trials || request.budget.trial_seconds > request.budget.max_seconds) {
         setInvalid(true);
         return;
@@ -164,7 +165,15 @@ export function CampaignForm({ profiles, disabled, optunaAvailable, draft, onPla
 
   return (
     <form className="space-y-4" onSubmit={(event) => void submit(event)}>
-      {draft && <output className="block text-sm text-hint">{t("academy.campaigns.quality.draftReady")}</output>}
+      {draft && (
+        <div className="space-y-2 rounded-lg border border-[color:var(--ui-border)] p-3">
+          <output className="block text-sm text-hint">{t("academy.campaigns.quality.draftReady")}</output>
+          <PinnedQualitySource recordId={draft.qualityPolicy.source_record_id} fixed={draft.fixed} />
+          <Button type="button" size="sm" variant="outline" disabled={disabled} onClick={onDiscardDraft}>
+            {t("academy.campaigns.quality.discardDraft")}
+          </Button>
+        </div>
+      )}
       {unsupportedFields.length > 0 && (
         <p className="break-all text-sm text-hint">
           {t("academy.campaigns.quality.unsupportedFields")} <code>{unsupportedFields.join(", ")}</code>

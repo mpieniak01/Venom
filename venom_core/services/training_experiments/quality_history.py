@@ -3,33 +3,35 @@
 from __future__ import annotations
 
 from .quality import QualityStore, analyze_quality
-from .quality_native import get_record
+from .quality_native import HISTORY_PREFIX, get_record
 from .service import ExperimentService
 
 
 def list_records(experiments: ExperimentService) -> dict:
-    records = {
-        item["record_id"]: item for item in QualityStore(experiments.root).list()
-    }
+    records = [
+        {**item, "record_id": HISTORY_PREFIX + item["record_id"]}
+        for item in QualityStore(experiments.root).list()
+    ]
     for run_id in experiments.store.ids():
-        if run_id in records:
-            continue
         try:
             state = experiments.store.read(run_id)
-            if state["status"] != "succeeded" or state["profile_id"] == "historical":
+            sealed = experiments.run_dir(run_id) / "result-seal.json"
+            if state["profile_id"] == "historical" or not sealed.is_file():
                 continue
-            records[run_id] = {
-                "record_id": run_id,
-                "split": "dev",
-                "outcome": None,
-                "source": {"identity": run_id},
-            }
+            records.append(
+                {
+                    "record_id": run_id,
+                    "split": "dev",
+                    "outcome": None,
+                    "source": {"identity": run_id},
+                }
+            )
         except (OSError, ValueError, KeyError, TypeError):
             continue
     return {
         "records": [
             {key: value for key, value in record.items() if key != "cases"}
-            for record in records.values()
+            for record in records
         ]
     }
 
@@ -39,4 +41,9 @@ def analyze_record(
 ) -> dict:
     record = get_record(experiments, record_id)
     reference = get_record(experiments, reference_id) if reference_id else None
-    return analyze_quality(record, reference)
+    result = analyze_quality(record, reference)
+    result["record"]["record_id"] = record_id
+    result["reference_id"] = reference_id
+    if result["proposal"]["reference_id"] is not None:
+        result["proposal"]["reference_id"] = reference_id
+    return result

@@ -3647,8 +3647,7 @@
             "required": true,
             "schema": {
               "type": "string",
-              "maxLength": 64,
-              "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$",
+              "pattern": "^(?:history:)?[A-Za-z0-9][A-Za-z0-9_-]{0,63}$",
               "title": "Record Id"
             }
           },
@@ -3660,8 +3659,7 @@
               "anyOf": [
                 {
                   "type": "string",
-                  "maxLength": 64,
-                  "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$"
+                  "pattern": "^(?:history:)?[A-Za-z0-9][A-Za-z0-9_-]{0,63}$"
                 },
                 {
                   "type": "null"
@@ -14683,8 +14681,7 @@
           "reference_record_ids": {
             "items": {
               "type": "string",
-              "maxLength": 128,
-              "minLength": 1
+              "pattern": "^(?:history:)?[A-Za-z0-9][A-Za-z0-9_-]{0,63}$"
             },
             "type": "array",
             "maxItems": 8,
@@ -14693,8 +14690,9 @@
           "protected_case_ids": {
             "items": {
               "type": "string",
-              "maxLength": 160,
-              "minLength": 1
+              "maxLength": 256,
+              "minLength": 1,
+              "pattern": "^\\S+$"
             },
             "type": "array",
             "maxItems": 2048,
@@ -14711,13 +14709,15 @@
             "default": false
           },
           "min_category_usable_delta": {
-            "additionalProperties": {
-              "type": "number",
-              "maximum": 1.0,
-              "minimum": -1.0
+            "patternProperties": {
+              "\\S": {
+                "type": "number",
+                "maximum": 1.0,
+                "minimum": -1.0
+              }
             },
             "propertyNames": {
-              "maxLength": 80,
+              "maxLength": 128,
               "minLength": 1
             },
             "type": "object",
@@ -14728,6 +14728,18 @@
             "type": "boolean",
             "title": "No New Critical",
             "default": true
+          },
+          "source_record_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?:history:)?[A-Za-z0-9][A-Za-z0-9_-]{0,63}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Record Id"
           },
           "hypothesis": {
             "anyOf": [

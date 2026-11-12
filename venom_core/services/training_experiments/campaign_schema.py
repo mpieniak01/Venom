@@ -4,6 +4,12 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from venom_core.services.training_experiments.quality_schema import (
+    CaseId,
+    Category,
+    EvidenceId,
+)
+
 CampaignId = Annotated[
     str, Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$", max_length=40)
 ]
@@ -56,27 +62,21 @@ class SearchRange(BaseModel):
         return self
 
 
-QualityRecordId = Annotated[str, Field(min_length=1, max_length=128)]
-QualityCaseId = Annotated[str, Field(min_length=1, max_length=160)]
-QualityCategory = Annotated[str, Field(min_length=1, max_length=80)]
 QualityDelta = Annotated[float, Field(ge=-1, le=1)]
 
 
 class CampaignQualityPolicy(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True, allow_inf_nan=False)
 
-    reference_record_ids: list[QualityRecordId] = Field(
-        default_factory=list, max_length=8
-    )
-    protected_case_ids: list[QualityCaseId] = Field(
-        default_factory=list, max_length=2048
-    )
+    reference_record_ids: list[EvidenceId] = Field(default_factory=list, max_length=8)
+    protected_case_ids: list[CaseId] = Field(default_factory=list, max_length=2048)
     protect_reference_hits: bool = True
     protect_base_hits: bool = False
-    min_category_usable_delta: dict[QualityCategory, QualityDelta] = Field(
+    min_category_usable_delta: dict[Category, QualityDelta] = Field(
         default_factory=dict, max_length=64
     )
     no_new_critical: bool = True
+    source_record_id: EvidenceId | None = None
     hypothesis: str | None = Field(
         default=None, min_length=1, max_length=1000, pattern=r"\S"
     )

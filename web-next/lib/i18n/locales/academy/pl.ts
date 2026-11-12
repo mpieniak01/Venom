@@ -214,6 +214,9 @@ export const academy = {
   },
   campaigns: {
     quality: {
+      sourceRecord: "Ocena źródłowa",
+      runtime: "Środowisko wykonania",
+      discardDraft: "Odrzuć szkic z rekomendacji",
       hypothesis: "Hipoteza",
       hypothesisText: "Sprawdzimy wpływ zmiany jednego parametru",
       title: "Wnioski i następna próba",
@@ -267,6 +270,7 @@ export const academy = {
       recipeJson: "Parametry wariantu (JSON)",
       invalidDraft: "Sprawdź JSON wariantów, pola trenera i limity kampanii.",
       policy: {
+        sourceLocked: "Szkic ma przypiętą ocenę źródłową. Odrzuć szkic, aby wrócić do zwykłego formularza.",
         title: "Reguły jakości",
         enable: "Stosuj reguły jakości",
         references: "Odniesienia z zestawu dev",

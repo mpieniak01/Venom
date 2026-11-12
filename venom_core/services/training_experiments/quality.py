@@ -177,7 +177,9 @@ def _finding(
     return {"code": code, "fields": sorted(fields), "case_ids": sorted(cases)}
 
 
-def _outcome_findings(paired: list[tuple[str, str, dict, dict]]) -> list[dict]:
+def _outcome_findings(
+    paired: list[tuple[str, str, dict, dict]], cases: dict
+) -> list[dict]:
     events: dict[str, list[str]] = defaultdict(list)
     for case_id, _, left, right in paired:
         if left["usable"] != right["usable"]:
@@ -185,9 +187,10 @@ def _outcome_findings(paired: list[tuple[str, str, dict, dict]]) -> list[dict]:
                 "quality_gained_usable" if right["usable"] else "quality_lost_usable"
             )
             events[result].append(case_id)
-        if left["critical"] is None or right["critical"] is None:
+        base_critical = cases[case_id]["base"]["critical"]
+        if None in (base_critical, left["critical"], right["critical"]):
             events["quality_critical_unknown"].append(case_id)
-        elif not left["critical"] and right["critical"]:
+        if base_critical is False and right["critical"] is True:
             events["quality_new_critical"].append(case_id)
     return [_finding(code, cases=cases) for code, cases in sorted(events.items())]
 
@@ -336,17 +339,15 @@ def _decision(
     if (
         issues
         or "quality_critical_unknown" in codes
+        or "quality_baseline_outcomes_changed" in codes
         or protected["missing_case_ids"]
         or any(record["identity"][field] is None for field in _IDENTITY_FIELDS)
     ):
         return "INCOMPLETE"
-    previous = protected["reference_passed"]
-    if previous is None:
-        previous = protected["base_passed"]
     if (
         score["lost_usable"]
         or not score["gained_usable"]
-        or protected["passed"] < previous
+        or protected["passed"] < protected["total"]
     ):
         return "REVISE"
     return "GO"
@@ -365,7 +366,7 @@ def analyze_quality(
     summary = _summaries(base_pairs, "base")
     pairs = _paired_rows(current, matched) if matched is not None else base_pairs
     comparison = _summaries(pairs, "reference") if matched is not None else []
-    findings = _outcome_findings(pairs)
+    findings = _outcome_findings(pairs, current["cases"])
     changes = _recipe_changes(current, matched) if matched is not None else []
     if matched is not None:
         findings.extend(_context_findings(current, matched, changes))

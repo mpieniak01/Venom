@@ -13,7 +13,6 @@ from venom_core.services.training_experiments.campaign_schema import (
     CampaignId,
     CampaignPlanReference,
     CampaignSpec,
-    ProfileId,
 )
 from venom_core.services.training_experiments.operator import campaign_service
 from venom_core.services.training_experiments.optuna_backend import require_optuna
@@ -21,6 +20,7 @@ from venom_core.services.training_experiments.quality_history import (
     analyze_record,
     list_records,
 )
+from venom_core.services.training_experiments.quality_schema import EvidenceId
 
 router = APIRouter(
     prefix="/api/v1/academy/experiments/campaigns",
@@ -54,8 +54,8 @@ def quality_records() -> dict:
 
 @router.get("/quality/{record_id}/analysis")
 def quality_analysis(
-    record_id: ProfileId,
-    reference_id: Annotated[ProfileId | None, Query()] = None,
+    record_id: EvidenceId,
+    reference_id: Annotated[EvidenceId | None, Query()] = None,
 ) -> dict:
     return call_experiment(
         analyze_record, experiment_service(), record_id, reference_id

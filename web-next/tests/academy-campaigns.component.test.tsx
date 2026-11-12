@@ -297,14 +297,15 @@ it("opens a different campaign when the Academy query changes", async () => {
 describe("Campaign quality feedback", () => {
   const qualityPath = campaignsPath + "/quality";
   const candidate = {
-    record_id: "p14-candidate",
+    record_id: "history:p14-candidate",
     split: "dev",
     source: { identity: "fixture" },
     evidence_gaps: ["quality_critical_unknown"],
   };
-  const reference = { record_id: "p13-reference", split: "dev", source: { identity: "fixture" } };
+  const reference = { record_id: "history:p13-reference", split: "dev", source: { identity: "fixture" } };
   const control = { rank: 8, target_modules: ["q_proj", "v_proj"], loss_mode: "historic" };
   const isolated = { ...control, target_modules: ["q_proj"] };
+  const sourceControls = { train_sha256: "d".repeat(64), runtime: { dtype: "bf16" } };
   const comparison = {
     record: candidate,
     decision: "REVISE",
@@ -322,6 +323,7 @@ describe("Campaign quality feedback", () => {
       kind: "isolate_recipe_factor",
       factor: "target_modules",
       reference_id: reference.record_id,
+      fixed: sourceControls,
       variants: [
         { name: "control", recipe: control },
         { name: "isolated", recipe: isolated },
@@ -336,7 +338,7 @@ describe("Campaign quality feedback", () => {
     let submitted: unknown;
     serve(() => current, {
       ["GET " + qualityPath]: () => Response.json({ records: [candidate, reference] }),
-      ["GET " + qualityPath + "/" + candidate.record_id + "/analysis"]: (init) => {
+      ["GET " + qualityPath + "/" + encodeURIComponent(candidate.record_id) + "/analysis"]: (init) => {
         assert.equal(init?.method ?? "GET", "GET");
         return Response.json(comparison);
       },
@@ -365,6 +367,13 @@ describe("Campaign quality feedback", () => {
     const draft = screen.getByLabelText("Parametry wariantu (JSON) 2") as HTMLTextAreaElement;
     assert.deepEqual(JSON.parse(draft.value), isolated);
     assert.ok(screen.getByText(/pola z rekomendacji/));
+    const draftForm = formPlan.closest("form");
+    assert.ok(draftForm?.textContent?.includes(candidate.record_id));
+    assert.ok(draftForm?.textContent?.includes(sourceControls.train_sha256));
+    assert.ok(draftForm?.textContent?.includes("bf16"));
+    const qualityToggle = screen.getByRole("checkbox", { name: "Stosuj reguły jakości" }) as HTMLInputElement;
+    assert.equal(qualityToggle.checked, true);
+    assert.equal(qualityToggle.disabled, true);
 
     fireEvent.change(screen.getByLabelText("Profil eksperymentu"), { target: { value: "omni" } });
     fireEvent.change(screen.getByLabelText("Identyfikator kampanii"), { target: { value: "pilot-campaign" } });
@@ -389,6 +398,7 @@ describe("Campaign quality feedback", () => {
       review_mode: "manual",
       quality_policy: {
         hypothesis: "Porównanie q_proj z kontrolą.",
+        source_record_id: candidate.record_id,
         reference_record_ids: [reference.record_id],
         protected_case_ids: ["lost-1"],
         protect_reference_hits: true,
@@ -397,6 +407,37 @@ describe("Campaign quality feedback", () => {
         no_new_critical: true,
       },
     });
+
+    fireEvent.click(screen.getByRole("button", { name: "Odrzuć szkic z rekomendacji" }));
+    assert.equal(screen.queryByLabelText("Parametry wariantu (JSON) 1"), null);
+    const standardForm = screen.getByRole("button", { name: "Przygotuj plan kampanii" }).closest("form");
+    assert.equal(standardForm?.textContent?.includes(candidate.record_id), false);
+  });
+
+  it("preserves edited quality values while temporarily disabling the policy", async () => {
+    serve(() => [], {
+      ["GET " + qualityPath]: () => Response.json({ records: [reference] }),
+    });
+    render(<CampaignPanel onOpenRun={() => {}} />);
+    await screen.findByLabelText("Profil eksperymentu");
+    fireEvent.click(screen.getByText("Reguły jakości"));
+    const toggle = screen.getByRole("checkbox", { name: "Stosuj reguły jakości" });
+    fireEvent.click(toggle);
+    const hypothesis = await screen.findByLabelText("Hipoteza") as HTMLTextAreaElement;
+    const protectedIds = screen.getByLabelText("Chronione przypadki") as HTMLTextAreaElement;
+    const referenceInput = await screen.findByRole("checkbox", { name: reference.record_id }) as HTMLInputElement;
+    fireEvent.change(hypothesis, { target: { value: "Chronimy dotychczasowe trafienia." } });
+    fireEvent.change(protectedIds, { target: { value: "protected-1" } });
+    fireEvent.click(referenceInput);
+    fireEvent.click(toggle);
+    const policyFields = hypothesis.closest("fieldset");
+    assert.equal(policyFields?.hidden, true);
+    assert.equal(policyFields?.disabled, true);
+    fireEvent.click(toggle);
+    assert.equal(hypothesis.value, "Chronimy dotychczasowe trafienia.");
+    assert.equal(protectedIds.value, "protected-1");
+    assert.equal(referenceInput.checked, true);
+    assert.equal(policyFields?.hidden, false);
   });
 
   it("shows a trial rejection and keeps an unknown category threshold unquantified", async () => {

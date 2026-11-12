@@ -206,7 +206,10 @@ def _plan(spec: CampaignSpec, experiments: CampaignExperiments) -> dict:
     }
     if spec.quality_policy is not None:
         context = quality_native.profile_context(
-            experiments, spec.profile_id, spec.review_mode
+            experiments,
+            spec.profile_id,
+            spec.review_mode,
+            include_runtime=spec.quality_policy.source_record_id is not None,
         )
         payload["quality_policy"] = quality_guard.freeze_policy(
             spec.quality_policy.model_dump(),
@@ -283,6 +286,28 @@ def _deltas(report: dict) -> dict:
         f"{key}_delta": (totals[1][key] - totals[0][key]) / n
         for key in ("usable", "critical")
     }
+
+
+def _reassessing_quality(state: dict) -> bool:
+    index = state["trial_index"]
+    if index >= len(state["trials"]):
+        return False
+    trial = state["trials"][index]
+    return (
+        trial["status"] == "succeeded"
+        and trial.get("quality_guard", {}).get("status") == "blocked"
+    )
+
+
+def _block_missing_quality(state: dict, trial: dict) -> bool:
+    reason = state.get("quality_policy_error")
+    guard = trial.get("quality_guard", {})
+    if reason is None and guard.get("status") == "blocked":
+        reason = guard["reasons"][0]["code"]
+    if reason is None:
+        return False
+    state.update(status="blocked", error=reason)
+    return True
 
 
 def _quality_error(exc: Exception) -> str:
@@ -474,7 +499,7 @@ class CampaignService:
         state["status"] = "running"
         self._elapsed(state)
         expired = state["elapsed_seconds"] >= plan["budget"]["max_seconds"]
-        if expired and not optimized:
+        if expired and not optimized and not _reassessing_quality(state):
             raise ValueError("campaign_time_budget_exhausted")
         state["error"] = None
         state["termination"] = "timed_out" if expired else None
@@ -569,7 +594,10 @@ class CampaignService:
                 ),
             )
             context = quality_native.profile_context(
-                self.experiments, plan["profile_id"], plan["review_mode"]
+                self.experiments,
+                plan["profile_id"],
+                plan["review_mode"],
+                include_runtime=policy.get("source_record") is not None,
             )
             quality_guard.verify_context(policy, context)
         except (OSError, ValueError, KeyError, TypeError) as exc:
@@ -681,23 +709,37 @@ class CampaignService:
             if _has_work(run):
                 state["status"] = "stopping"
                 return
-        if state["termination"] == "timed_out" and _is_optuna(state["plan"]):
-            trial = state["trials"][state["trial_index"]]
+        if state["termination"] == "timed_out" and not self._settle_timeout(
+            directory, state, run
+        ):
+            return
+        state["status"] = state["termination"]
+        state["termination"] = None
+
+    def _settle_timeout(self, directory: Path, state: dict, run: dict | None) -> bool:
+        plan = state["plan"]
+        optimized = _is_optuna(plan)
+        reviewed = plan.get("quality_policy") and run and run["status"] == "succeeded"
+        if not optimized and not reviewed:
+            return True
+        index = state["trial_index"]
+        trial = state["trials"][index]
+        if optimized:
             if "optuna_trial_number" not in trial:
-                index = state["trial_index"]
-                assignment = optuna_backend.assigned(directory, state["plan"], index)
+                assignment = optuna_backend.assigned(directory, plan, index)
                 if assignment is not None:
                     trial["optuna_trial_number"] = self._suggestion_number(
                         assignment, index
                     )
             if "optuna_trial_number" in trial:
-                self._record_timeout(directory, state, trial, run)
-        state["status"] = state["termination"]
-        state["termination"] = None
+                return self._record_timeout(directory, state, trial, run)
+        else:
+            return self._record_timeout(directory, state, trial, run)
+        return True
 
     def _record_timeout(
         self, directory: Path, state: dict, trial: dict, run: dict | None
-    ) -> None:
+    ) -> bool:
         if run and run["status"] == "succeeded":
             self._record_result(state, trial, run["run_id"])
             trial["status"] = "succeeded"
@@ -705,9 +747,10 @@ class CampaignService:
         elif "result_sha256" not in trial and trial["status"] != "skipped":
             trial.update(status="timed_out", error="campaign_time_budget_exhausted")
         self._save(directory, state)
-        if state.get("quality_policy_error"):
-            raise ValueError(state["quality_policy_error"])
+        if _block_missing_quality(state, trial):
+            return False
         self._tell_optuna(directory, state, trial)
+        return True
 
     def _finish_trial(
         self, directory: Path, state: dict, trial: dict, run: dict
@@ -724,8 +767,7 @@ class CampaignService:
             _rank(state)
         # Persist the reviewed result and selection before touching a checkpoint.
         self._save(directory, state)
-        if state.get("quality_policy_error"):
-            state.update(status="blocked", error=state["quality_policy_error"])
+        if _block_missing_quality(state, trial):
             return
         self._tell_optuna(directory, state, trial)
         self._verify_quality_retention(state)

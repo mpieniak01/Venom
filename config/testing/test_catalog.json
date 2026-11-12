@@ -625,6 +625,20 @@
       "rationale": "Fast deterministic regression check used by mandatory CI-lite lane."
     },
     {
+      "path": "tests/test_academy_campaign_capabilities.py",
+      "domain": "academy",
+      "test_type": "unit",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Academy campaign capabilities preserve fixed campaigns when the optional optimizer is unavailable."
+    },
+    {
       "path": "tests/test_academy_conversion_contracts.py",
       "domain": "academy",
       "test_type": "route_contract",
@@ -721,6 +735,20 @@
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
+    },
+    {
+      "path": "tests/test_academy_optuna_backend.py",
+      "domain": "academy",
+      "test_type": "unit",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Durable Optuna trial assignment, outcome reconciliation, and reproducible sampler replay."
     },
     {
       "path": "tests/test_academy_route_handlers_extra.py",

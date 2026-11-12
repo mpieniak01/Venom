@@ -47,6 +47,7 @@ const planned: Campaign = {
 function serve(
   campaigns: () => Campaign[],
   handlers: Record<string, (init?: RequestInit) => Response> = {},
+  optunaAvailable?: boolean,
 ) {
   globalThis.fetch = async (input, init) => {
     const path = new URL(String(input), "http://localhost").pathname;
@@ -55,7 +56,12 @@ function serve(
     if (key === `GET ${base}/profiles`) {
       return Response.json({ profiles: [{ id: "omni", label: "Omni", model: "Omni", dataset: "pilot", recipe: { rank: 8 } }] });
     }
-    if (key === `GET ${campaignsPath}`) return Response.json({ campaigns: campaigns() });
+    if (key === `GET ${campaignsPath}`) {
+      return Response.json({
+        campaigns: campaigns(),
+        ...(optunaAvailable === undefined ? {} : { capabilities: { optuna: { available: optunaAvailable } } }),
+      });
+    }
     throw new Error(`Unexpected request: ${key}`);
   };
 }
@@ -136,5 +142,114 @@ describe("Academy campaigns", () => {
     fireEvent.click(button);
     await waitFor(() => assert.deepEqual(apply, { plan_sha256: retentionHash }));
     await screen.findByText(/Zwolniono/);
+  });
+});
+
+describe("Optuna campaigns", () => {
+  const searchSpace = { learning_rate: { low: 0.0001, high: 0.001, log: true } };
+  const optunaPlan: Campaign = {
+    ...planned,
+    plan: { ...planned.plan, strategy: "optuna", search_space: searchSpace, sampler_seed: 0 },
+  };
+
+  it("keeps a saved Optuna plan visible while the controller dependency is unavailable", async () => {
+    serve(() => [optunaPlan], {}, false);
+    render(<CampaignPanel onOpenRun={() => {}} />);
+
+    const select = (await screen.findByLabelText("Strategia doboru parametrów")) as HTMLSelectElement;
+    assert.equal(select.value, "fixed");
+    assert.equal((screen.getByRole("option", { name: "Optuna" }) as HTMLOptionElement).disabled, true);
+    assert.ok(screen.getByText("Optuna jest niedostępna w środowisku sterownika kampanii."));
+    assert.ok(screen.getByText("Zapisane zakresy wyszukiwania Optuny"));
+    const start = screen.getByRole("button", { name: "Uruchom zaplanowaną kampanię" }) as HTMLButtonElement;
+    assert.equal(start.disabled, true);
+  });
+
+  it("approves saved search ranges and renders the sampled recipe and outcome", async () => {
+    globalThis.FormData = window.FormData;
+    let current: Campaign[] = [];
+    let submitted: unknown;
+    let started: unknown;
+    serve(() => current, {
+      [`POST ${campaignsPath}/plan`]: (init) => {
+        submitted = JSON.parse(String(init?.body));
+        current = [optunaPlan];
+        return Response.json(optunaPlan);
+      },
+      [`POST ${campaignsPath}/pilot-campaign/start`]: (init) => {
+        started = JSON.parse(String(init?.body));
+        current = [{
+          ...optunaPlan,
+          status: "succeeded",
+          trial_index: 1,
+          selected_run_id: runId,
+          trials: [
+            {
+              run_id: runId, status: "succeeded", optuna_trial_number: 0, optuna_trial_state: "COMPLETE",
+              recipe: { rank: 8, alpha: 16, dropout: 0.05, learning_rate: 0.000437 },
+              usable_delta: 0.125, critical_delta: 0,
+            },
+            {
+              run_id: "duplicate-run", status: "skipped", optuna_trial_number: 1, optuna_trial_state: "FAIL",
+              error: "campaign_duplicate_suggestion",
+            },
+          ],
+        }];
+        return Response.json(current[0]);
+      },
+    }, true);
+
+    render(<CampaignPanel onOpenRun={() => {}} />);
+    fireEvent.change(await screen.findByLabelText("Identyfikator kampanii"), { target: { value: "pilot-campaign" } });
+    fireEvent.change(screen.getByLabelText("Strategia doboru parametrów"), { target: { value: "optuna" } });
+    assert.equal(screen.queryByRole("button", { name: "Dodaj wariant" }), null);
+    fireEvent.change(screen.getByLabelText("Tempo uczenia · minimum"), { target: { value: "0.0001" } });
+    fireEvent.change(screen.getByLabelText("Tempo uczenia · maksimum"), { target: { value: "0.001" } });
+    fireEvent.change(screen.getByLabelText("Ziarno samplera"), { target: { value: "0" } });
+    fireEvent.click(screen.getByRole("button", { name: "Przygotuj plan kampanii" }));
+
+    const start = await screen.findByRole("button", { name: "Uruchom zaplanowaną kampanię" });
+    assert.equal(started, undefined);
+    assert.deepEqual(submitted, {
+      campaign_id: "pilot-campaign",
+      profile_id: "omni",
+      strategy: "optuna",
+      variants: [],
+      search_space: searchSpace,
+      sampler_seed: 0,
+      budget: planned.plan.budget,
+      selection: planned.plan.selection,
+      retention: "keep_all",
+      review_mode: "manual",
+    });
+    assert.ok(screen.getByText(/0,0001 – 0,001 · Skala logarytmiczna/));
+    assert.equal(screen.queryByText("0,000437"), null);
+    fireEvent.click(start);
+    await screen.findByText("Próba Optuny 0 · Ocena zakończona");
+    assert.deepEqual(started, { plan_sha256: planHash });
+    assert.ok(screen.getByText("0,000437"));
+    assert.ok(screen.getByText("Powtórzona konfiguracja"));
+    assert.equal((screen.getByRole("button", { name: "duplicate-run" }) as HTMLButtonElement).disabled, true);
+  });
+
+  it("rejects a reversed range before submitting a campaign plan", async () => {
+    globalThis.FormData = window.FormData;
+    let calls = 0;
+    serve(() => [], {
+      [`POST ${campaignsPath}/plan`]: () => {
+        calls += 1;
+        return Response.json(optunaPlan);
+      },
+    }, true);
+
+    render(<CampaignPanel onOpenRun={() => {}} />);
+    fireEvent.change(await screen.findByLabelText("Identyfikator kampanii"), { target: { value: "pilot-campaign" } });
+    fireEvent.change(screen.getByLabelText("Strategia doboru parametrów"), { target: { value: "optuna" } });
+    fireEvent.change(screen.getByLabelText("Tempo uczenia · minimum"), { target: { value: "0.001" } });
+    fireEvent.change(screen.getByLabelText("Tempo uczenia · maksimum"), { target: { value: "0.0001" } });
+    fireEvent.click(screen.getByRole("button", { name: "Przygotuj plan kampanii" }));
+
+    assert.match((await screen.findByRole("alert")).textContent ?? "", /granice/);
+    assert.equal(calls, 0);
   });
 });

@@ -13,6 +13,7 @@ from venom_core.services.training_experiments.campaign_schema import (
     CampaignPlanReference,
     CampaignSpec,
 )
+from venom_core.services.training_experiments.optuna_backend import require_optuna
 
 router = APIRouter(
     prefix="/api/v1/academy/experiments/campaigns",
@@ -25,9 +26,22 @@ def campaign_service() -> CampaignService:
     return CampaignService(experiment_service())
 
 
+def _optuna_capability() -> dict:
+    try:
+        require_optuna()
+    except ValueError as exc:
+        return {"available": False, "reason": str(exc)}
+    return {"available": True}
+
+
 @router.get("")
 def list_campaigns() -> dict:
-    return call_experiment(lambda: {"campaigns": campaign_service().list()})
+    return call_experiment(
+        lambda: {
+            "campaigns": campaign_service().list(),
+            "capabilities": {"optuna": _optuna_capability()},
+        }
+    )
 
 
 @router.post("/plan")

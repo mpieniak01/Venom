@@ -8,14 +8,16 @@ import {
   getCampaignRetentionPlan,
   type Campaign,
   type CampaignRetentionPlan,
+  type CampaignTrial,
 } from "@/lib/academy-campaign-api";
 import { useLanguage, useTranslation } from "@/lib/i18n";
+import { OPTUNA_PARAMETERS, OptunaPlanSummary } from "./campaign-optuna";
 
 const ACTIVE = new Set(["running", "awaiting_review", "stopping", "interrupted"]);
 const CAN_RESUME = new Set(["interrupted", "blocked", "stopped"]);
 const STATUSES = new Set([
   "planned", "pending", "queued", "running", "awaiting_review", "stopping",
-  "interrupted", "blocked", "stopped", "succeeded", "failed", "timed_out",
+  "interrupted", "blocked", "stopped", "succeeded", "failed", "timed_out", "skipped", "pruned", "cancelled",
 ]);
 
 export function campaignIsActive(status: string) {
@@ -102,17 +104,49 @@ function Retention({ campaignId, disabled, onChanged }: {
   );
 }
 
+function OptunaTrialSummary({ trial }: { readonly trial: CampaignTrial }) {
+  const { t, language } = useLanguage();
+  const formatter = new Intl.NumberFormat(language, { maximumSignificantDigits: 8 });
+  const duplicate = trial.error === "campaign_duplicate_suggestion";
+
+  return (
+    <div className="space-y-1 pl-3 text-xs text-hint">
+      {typeof trial.optuna_trial_number === "number" && (
+        <p>{t("academy.campaigns.optuna.trial")} {trial.optuna_trial_number}
+          {trial.optuna_trial_state && <> · {t("academy.campaigns.optuna.state." + trial.optuna_trial_state)}</>}
+        </p>
+      )}
+      {trial.recipe && (
+        <dl className="flex flex-wrap gap-x-3 gap-y-1">
+          {OPTUNA_PARAMETERS.map(({ key, label }) => {
+            const value = trial.recipe?.[key];
+            return typeof value === "number" ? (
+              <div key={key} className="flex gap-1">
+                <dt>{t(label)}</dt><dd>{formatter.format(value)}</dd>
+              </div>
+            ) : null;
+          })}
+        </dl>
+      )}
+      {duplicate && <p>{t("academy.campaigns.optuna.duplicate")}</p>}
+    </div>
+  );
+}
+
 interface CampaignDetailProps {
   readonly campaign: Campaign;
   readonly disabled: boolean;
+  readonly optunaAvailable: boolean;
   readonly onAction: (action: "start" | "stop" | "resume") => void;
   readonly onOpenRun: (runId: string) => void;
   readonly onChanged: () => void;
 }
 
-export function CampaignDetail({ campaign, disabled, onAction, onOpenRun, onChanged }: CampaignDetailProps) {
+export function CampaignDetail({ campaign, disabled, optunaAvailable, onAction, onOpenRun, onChanged }: CampaignDetailProps) {
   const { t, language } = useLanguage();
-  const { budget, selection, variants } = campaign.plan;
+  const { budget, selection, variants, strategy } = campaign.plan;
+  const optuna = strategy === "optuna";
+  const launchDisabled = disabled || (optuna && !optunaAvailable);
   const displayNumber = new Intl.NumberFormat(language, { maximumFractionDigits: 1 });
   const displayDelta = new Intl.NumberFormat(language, { maximumFractionDigits: 1, signDisplay: "exceptZero" });
   const trialLimit = `${campaign.trial_index} / ${variants.length}`;
@@ -133,6 +167,10 @@ export function CampaignDetail({ campaign, disabled, onAction, onOpenRun, onChan
       </div>
       <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
         <div><dt className="text-hint">{t("academy.experiments.profile")}</dt><dd>{campaign.plan.profile_id}</dd></div>
+        <div>
+          <dt className="text-hint">{t("academy.campaigns.strategy")}</dt>
+          <dd>{t(optuna ? "academy.campaigns.optuna.name" : "academy.campaigns.fixed")}</dd>
+        </div>
         <div><dt className="text-hint">{t("academy.campaigns.trials")}</dt><dd>{trialLimit}</dd></div>
         <div><dt className="text-hint">{t("academy.campaigns.budget.max_seconds")}</dt><dd>{displayNumber.format(campaign.elapsed_seconds)} / {displayNumber.format(budget.max_seconds)}</dd></div>
         <div><dt className="text-hint">{t("academy.campaigns.budget.max_updates")}</dt><dd>{displayNumber.format(campaign.used_updates)} / {displayNumber.format(budget.max_updates)}</dd></div>
@@ -148,14 +186,15 @@ export function CampaignDetail({ campaign, disabled, onAction, onOpenRun, onChan
         <div><dt className="text-hint">{t("academy.campaigns.reviewMode")}</dt><dd>{t(campaign.plan.review_mode === "manual" ? "academy.campaigns.manualReview" : "academy.campaigns.automaticReview")}</dd></div>
         <div><dt className="text-hint">{t("academy.campaigns.retention")}</dt><dd>{t(campaign.plan.retention === "keep_all" ? "academy.campaigns.keepAll" : "academy.campaigns.discardRejected")}</dd></div>
       </dl>
+      {optuna && <OptunaPlanSummary plan={campaign.plan} />}
       {campaign.error && <p role="alert" className="break-all text-sm text-red-400">{campaign.error}</p>}
       {campaign.selected_run_id && (
         <p className="break-all text-sm font-medium">{t("academy.campaigns.selected")} {campaign.selected_run_id}</p>
       )}
       <div className="flex flex-wrap gap-2">
-        {planned && <Button type="button" disabled={disabled} onClick={() => onAction("start")}>{t("academy.campaigns.start")}</Button>}
+        {planned && <Button type="button" disabled={launchDisabled} onClick={() => onAction("start")}>{t("academy.campaigns.start")}</Button>}
         {canStop && <Button type="button" variant="outline" disabled={disabled} onClick={() => onAction("stop")}>{t("academy.campaigns.stop")}</Button>}
-        {canResume && <Button type="button" variant="outline" disabled={disabled} onClick={() => onAction("resume")}>{t("academy.campaigns.resume")}</Button>}
+        {canResume && <Button type="button" variant="outline" disabled={launchDisabled} onClick={() => onAction("resume")}>{t("academy.campaigns.resume")}</Button>}
         <Button asChild variant="outline">
           <a href={campaignReportUrl(campaign.campaign_id)} download={`campaign-${campaign.campaign_id}.json`}>
             {t("academy.experiments.downloadReport")}
@@ -176,10 +215,11 @@ export function CampaignDetail({ campaign, disabled, onAction, onOpenRun, onChan
               return (
                 <tr key={trial.run_id} className="border-b border-[color:var(--ui-border)]">
                   <th scope="row" className="py-2 pr-3 font-normal">
-                    <Button type="button" size="sm" variant="ghost" disabled={trial.status === "pending"} onClick={() => onOpenRun(trial.run_id)}>
+                    <Button type="button" size="sm" variant="ghost" disabled={trial.status === "pending" || trial.status === "skipped"} onClick={() => onOpenRun(trial.run_id)}>
                       {trial.run_id}
                     </Button>
-                    {variant && <p className="pl-3 text-xs text-hint">
+                    {optuna && <OptunaTrialSummary trial={trial} />}
+                    {!optuna && variant && <p className="pl-3 text-xs text-hint">
                       {t("academy.experiments.rank")} {variant.recipe.rank} · {t("academy.experiments.learningRate")} {variant.recipe.learning_rate}
                       {" · "}{t("academy.campaigns.plannedWorkload")} {displayNumber.format(variant.workload.updates)} / {displayNumber.format(variant.workload.tokens)}
                     </p>}

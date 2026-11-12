@@ -17,6 +17,11 @@ import { CampaignForm } from "./campaign-form";
 
 const CARD = "space-y-4 rounded-xl border border-[color:var(--ui-border)] bg-[color:var(--ui-surface)] p-4 sm:p-5";
 const POLL_MS = 3000;
+const ACTION_ERROR = {
+  conflict: "academy.campaigns.conflict",
+  failed: "academy.campaigns.actionError",
+  optuna: "academy.campaigns.optuna.unavailable",
+} as const;
 
 export function CampaignPanel({ onOpenRun }: { readonly onOpenRun: (runId: string) => void }) {
   const t = useTranslation();
@@ -24,7 +29,8 @@ export function CampaignPanel({ onOpenRun }: { readonly onOpenRun: (runId: strin
   const [campaigns, setCampaigns] = useState<Campaign[] | null>(null);
   const [profilesFailed, setProfilesFailed] = useState(false);
   const [campaignsFailed, setCampaignsFailed] = useState(false);
-  const [operationError, setOperationError] = useState<"conflict" | "failed" | null>(null);
+  const [optunaAvailable, setOptunaAvailable] = useState(false);
+  const [operationError, setOperationError] = useState<keyof typeof ACTION_ERROR | null>(null);
   const [busy, setBusy] = useState(false);
   const [selectedId, setSelectedId] = useState("");
   const [refresh, setRefresh] = useState(0);
@@ -48,9 +54,10 @@ export function CampaignPanel({ onOpenRun }: { readonly onOpenRun: (runId: strin
       try {
         const next = await listCampaigns(signal);
         if (signal.aborted) return;
-        setCampaigns(next);
+        setCampaigns(next.campaigns);
+        setOptunaAvailable(next.capabilities?.optuna?.available === true);
         setCampaignsFailed(false);
-        active = next.some((campaign) => campaignIsActive(campaign.status));
+        active = next.campaigns.some((campaign) => campaignIsActive(campaign.status));
       } catch {
         if (!signal.aborted) setCampaignsFailed(true);
       } finally {
@@ -90,7 +97,13 @@ export function CampaignPanel({ onOpenRun }: { readonly onOpenRun: (runId: strin
       refreshData();
       return true;
     } catch (error) {
-      setOperationError(error instanceof ApiError && error.status === 409 ? "conflict" : "failed");
+      const detail = error instanceof ApiError ? (error.data as { detail?: { code?: string } } | null)?.detail : null;
+      if (detail?.code === "campaign_optuna_unavailable") {
+        setOptunaAvailable(false);
+        setOperationError("optuna");
+      } else {
+        setOperationError(error instanceof ApiError && error.status === 409 ? "conflict" : "failed");
+      }
       return false;
     } finally {
       setBusy(false);
@@ -114,8 +127,15 @@ export function CampaignPanel({ onOpenRun }: { readonly onOpenRun: (runId: strin
         </div>
         {failed && <p role="alert" className="text-sm text-red-400">{t("academy.campaigns.loadError")}</p>}
         {!failed && (!profiles || !campaigns) && <p className="text-sm text-hint">{t("academy.campaigns.loading")}</p>}
-        {profiles && campaigns && <CampaignForm profiles={profiles} disabled={busy || failed} onPlan={(request) => mutate(() => planCampaign(request))} />}
-        {operationError && <p role="alert" className="text-sm text-red-400">{t(operationError === "conflict" ? "academy.campaigns.conflict" : "academy.campaigns.actionError")}</p>}
+        {profiles && campaigns && (
+          <CampaignForm profiles={profiles} disabled={busy || failed} optunaAvailable={optunaAvailable}
+            onPlan={(request) => mutate(() => planCampaign(request))} />
+        )}
+        {operationError && (
+          <p role="alert" className="text-sm text-red-400">
+            {t(ACTION_ERROR[operationError])}
+          </p>
+        )}
       </section>
       {campaigns && (
         <section className={CARD}>
@@ -138,7 +158,7 @@ export function CampaignPanel({ onOpenRun }: { readonly onOpenRun: (runId: strin
         </section>
       )}
       {selected && <section className={CARD}>
-        <CampaignDetail key={selected.campaign_id} campaign={selected} disabled={busy || campaignsFailed}
+        <CampaignDetail key={selected.campaign_id} campaign={selected} disabled={busy || campaignsFailed} optunaAvailable={optunaAvailable}
           onAction={act} onOpenRun={onOpenRun} onChanged={refreshData} />
       </section>}
     </div>

@@ -109,3 +109,22 @@ python -m scripts.academy.campaigns --root "$experiment_root" report polski-czat
 ```
 
 `stop` zatrzymuje kampanię. `resume` podejmuje ją z zachowanym stanem oraz pozostałym budżetem. [Kontrakt kampanii](../../venom_core/services/training_experiments/campaign_schema.py) · [CLI kampanii](../../scripts/academy/campaigns.py)
+
+
+## Kampania Optuna
+
+Optuna jest opcjonalnym narzędziem uruchamianym przez kontroler kampanii. Utwórz środowisko CPU z Pythonem 3.12 i zainstaluj przypięte wersje.
+
+```bash
+python3.12 -m venv /srv/venv/academy-optuna
+/srv/venv/academy-optuna/bin/python -m pip install -r requirements/optuna.txt
+export VENOM_OPTUNA_PYTHON=/srv/venv/academy-optuna/bin/python
+```
+
+Ustaw tę samą bezwzględną ścieżkę w konfiguracji uruchomieniowej backendu, żeby opcja pojawiła się w Academy. CLI odczytuje zmienną z otoczenia. Kampanie na stałej liście działają bez tej zależności. Środowisko LoRA pozostaje zdefiniowane w profilu eksperymentu.
+
+W **Trening → Kampania** wybierz strategię **Optuna** i podaj zakresy co najmniej jednego z parametrów `rank`, `alpha`, `learning_rate` i `dropout`. W manifeście CLI ustaw `strategy` na `optuna`, `variants` na pustą listę oraz `sampler_seed` i `search_space`. Przykładowa przestrzeń to `{"rank":{"low":2,"high":8},"learning_rate":{"low":0.00001,"high":0.0001,"log":true}}`. Parametry spoza przestrzeni pochodzą z receptury profilu. Podgląd wiąże zakresy, ziarno, wersję Optuny, ocenę i limity z hashem planu.
+
+Kolejne propozycje korzystają z ukończonych ocen dev. Optuna maksymalizuje zmianę użyteczności względem bazy i osobno uwzględnia progi użyteczności i błędów krytycznych. W ocenie ręcznej kontroler czeka na komplet ocen. Błąd techniczny i pominięta powtórzona receptura nie dostają wyniku jakości. Wczesne odcinanie prób jest wyłączone, ponieważ jakość oceniamy po generacji. Kontroler nadal egzekwuje limity AUT-02 oraz chroni wybrany adapter przy retencji.
+
+Katalog kampanii zawiera prywatny dziennik SQLite z przydziałami i wynikami prób. Zachowaj go wraz ze stanem kampanii, żeby wznowienie po restarcie użyło tych samych propozycji i zapisanych ocen. Wybraną konfigurację można potwierdzić drugim ziarnem treningu i niezależnym zbiorem końcowym.

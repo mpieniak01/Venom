@@ -6,6 +6,7 @@ export interface ExperimentRecipe {
   rank?: number;
   alpha?: number;
   learning_rate?: number;
+  dropout?: number;
 }
 
 export interface ExperimentProfile {

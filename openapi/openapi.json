@@ -14639,8 +14639,45 @@
             },
             "type": "array",
             "maxItems": 32,
-            "minItems": 1,
             "title": "Variants"
+          },
+          "strategy": {
+            "type": "string",
+            "enum": [
+              "fixed",
+              "optuna"
+            ],
+            "title": "Strategy",
+            "default": "fixed"
+          },
+          "search_space": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/SearchRange"
+                },
+                "propertyNames": {
+                  "enum": [
+                    "rank",
+                    "alpha",
+                    "learning_rate",
+                    "dropout"
+                  ]
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Search Space"
+          },
+          "sampler_seed": {
+            "type": "integer",
+            "maximum": 4294967295.0,
+            "minimum": 0.0,
+            "title": "Sampler Seed",
+            "default": 42
           },
           "budget": {
             "$ref": "#/components/schemas/CampaignBudget"
@@ -14672,7 +14709,6 @@
         "required": [
           "campaign_id",
           "profile_id",
-          "variants",
           "budget"
         ],
         "title": "CampaignSpec"
@@ -21919,6 +21955,50 @@
           "request_id"
         ],
         "title": "SaveChatNoteRequest"
+      },
+      "SearchRange": {
+        "properties": {
+          "low": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "title": "Low"
+          },
+          "high": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "title": "High"
+          },
+          "log": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Log"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "low",
+          "high"
+        ],
+        "title": "SearchRange"
       },
       "SearchRequest": {
         "properties": {

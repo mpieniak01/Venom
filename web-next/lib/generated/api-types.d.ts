@@ -6535,9 +6535,24 @@ export interface components {
             /** Profile Id */
             profile_id: string;
             /** Variants */
-            variants: {
+            variants?: {
                 [key: string]: unknown;
             }[];
+            /**
+             * Strategy
+             * @default fixed
+             * @enum {string}
+             */
+            strategy: "fixed" | "optuna";
+            /** Search Space */
+            search_space?: {
+                [key: string]: components["schemas"]["SearchRange"];
+            } | null;
+            /**
+             * Sampler Seed
+             * @default 42
+             */
+            sampler_seed: number;
             budget: components["schemas"]["CampaignBudget"];
             selection?: components["schemas"]["CampaignSelection"];
             /**
@@ -9564,6 +9579,15 @@ export interface components {
              * Format: uuid
              */
             request_id: string;
+        };
+        /** SearchRange */
+        SearchRange: {
+            /** Low */
+            low: number;
+            /** High */
+            high: number;
+            /** Log */
+            log?: boolean | null;
         };
         /** SearchRequest */
         SearchRequest: {

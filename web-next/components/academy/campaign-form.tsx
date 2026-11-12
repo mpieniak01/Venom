@@ -28,6 +28,10 @@ function unsupportedDraftFields(recipe: Record<string, unknown>) {
     || !modules.length || modules.some((item) => typeof item !== "string" || !LANGUAGE_TARGET_MODULES.has(item)))) {
     fields.push("target_modules");
   }
+  if (recipe.loss_mode !== undefined
+    && recipe.loss_mode !== "model_default" && recipe.loss_mode !== "supervised_token") {
+    fields.push("loss_mode");
+  }
   return fields;
 }
 

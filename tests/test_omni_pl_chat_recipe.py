@@ -1,6 +1,7 @@
 """Offline contracts for the isolated, configurable Omni worker."""
 
 import json
+import re
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -15,6 +16,7 @@ from scripts.academy.omni_pl_chat_evaluate import (
 from scripts.academy.omni_pl_chat_p1 import (
     CHECKPOINT_FILES,
     _checkpoint_hashes,
+    _module_inventory,
     _resume_checkpoint,
     _token_trainer_type,
     _write_json,
@@ -92,6 +94,7 @@ def test_token_loss_accumulation_matches_one_pooled_batch(tmp_path):
         output_dir=str(tmp_path),
         per_device_train_batch_size=1,
         gradient_accumulation_steps=2,
+        use_cpu=True,
         report_to="none",
     )
     trainer = _token_trainer_type(Trainer)(model=model, args=args)
@@ -106,6 +109,30 @@ def test_token_loss_accumulation_matches_one_pooled_batch(tmp_path):
     pooled = _collate(rows, 0)
     reference_model(**pooled).loss.backward()
     torch.testing.assert_close(actual_gradient.cpu(), reference_model.weight.grad)
+
+
+def test_language_inventory_excludes_other_modalities():
+    from torch import nn
+
+    model = nn.Module()
+    model.model = nn.Module()
+    model.model.language_model = nn.Module()
+    model.model.language_model.layers = nn.ModuleList([nn.Module()])
+    model.model.language_model.layers[0].q_proj = nn.Linear(2, 3)
+    model.model.language_model.layers[0].w1 = nn.Linear(3, 4)
+    model.model.vision_model = nn.Module()
+    model.model.vision_model.q_proj = nn.Linear(2, 3)
+
+    inventory = _module_inventory(
+        model, re.compile(r"model\.language_model\..*\.(q_proj|w1)")
+    )
+    assert [
+        (item["name"], item["group"], item["weight_shape"]) for item in inventory
+    ] == [
+        ("model.language_model.layers.0.q_proj", "attention", [3, 2]),
+        ("model.language_model.layers.0.w1", "mlp", [4, 3]),
+    ]
+    assert sum(item["weight_parameters"] for item in inventory) == 18
 
 
 @pytest.mark.parametrize(

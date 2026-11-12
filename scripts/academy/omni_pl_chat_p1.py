@@ -186,6 +186,40 @@ def _token_trainer_type(trainer_type):
     return TokenNormalizedTrainer
 
 
+def _module_inventory(model, selector):
+    groups = {
+        "q_proj": "attention",
+        "k_proj": "attention",
+        "v_proj": "attention",
+        "o_proj": "attention",
+        "in_proj": "convolution_projection",
+        "out_proj": "convolution_projection",
+        "w1": "mlp",
+        "w2": "mlp",
+        "w3": "mlp",
+    }
+    inventory = []
+    for name, module in model.named_modules():
+        if not selector.fullmatch(name):
+            continue
+        suffix = name.rsplit(".", 1)[-1]
+        weight = getattr(module, "weight", None)
+        if suffix not in groups or weight is None or not hasattr(weight, "numel"):
+            raise RuntimeError(f"unsupported matched language module: {name}")
+        inventory.append(
+            {
+                "name": name,
+                "group": groups[suffix],
+                "type": type(module).__name__,
+                "weight_shape": list(weight.shape),
+                "weight_parameters": weight.numel(),
+            }
+        )
+    if not inventory:
+        raise RuntimeError("no language modules match the LoRA recipe")
+    return sorted(inventory, key=lambda item: item["name"])
+
+
 def _prepare_inputs(
     snapshot: Path, train_path: Path, recipe: dict, *, legacy: bool, preflight: bool
 ):
@@ -358,11 +392,8 @@ def run(mode: str) -> None:
     backbone = import_module(type(base.model.language_model).__module__)
     base.config.use_cache = False
     selector = re.compile(profile["target_modules"])
-    planned_modules = {
-        name for name, _ in base.named_modules() if selector.fullmatch(name)
-    }
-    if not planned_modules:
-        raise RuntimeError("no language modules match the LoRA recipe")
+    module_inventory = _module_inventory(base, selector)
+    planned_modules = {item["name"] for item in module_inventory}
     model = get_peft_model(
         base,
         LoraConfig(
@@ -374,15 +405,29 @@ def run(mode: str) -> None:
             target_modules=profile["target_modules"],
         ),
     )
-    adapted_modules = {
-        name for name, layer in base.named_modules() if isinstance(layer, LoraLayer)
+    adapted_layers = {
+        name: layer
+        for name, layer in base.named_modules()
+        if isinstance(layer, LoraLayer)
     }
-    if adapted_modules != planned_modules:
+    if adapted_layers.keys() != planned_modules:
         raise RuntimeError("adapted LoRA modules differ from the language recipe")
+    module_groups = {item["name"]: item["group"] for item in module_inventory}
+    adapted_groups = {
+        group: {"modules": 0, "trainable_parameters": 0}
+        for group in set(module_groups.values())
+    }
+    for name, layer in adapted_layers.items():
+        group = adapted_groups[module_groups[name]]
+        group["modules"] += 1
+        group["trainable_parameters"] += sum(
+            param.numel()
+            for param in layer.parameters(recurse=True)
+            if param.requires_grad
+        )
+    parameters = dict(model.named_parameters())
     trainable = {
-        name: param.numel()
-        for name, param in model.named_parameters()
-        if param.requires_grad
+        name: param.numel() for name, param in parameters.items() if param.requires_grad
     }
     if not trainable or any(
         ".language_model." not in name or ".lora_" not in name for name in trainable
@@ -442,6 +487,19 @@ def run(mode: str) -> None:
         data_collator=lambda rows: _collate(rows, processor.tokenizer.pad_token_id),
         callbacks=[PilotCallback()],
     )
+    trainer.create_optimizer()
+    optimized_ids = {
+        id(parameter)
+        for group in trainer.optimizer.param_groups
+        for parameter in group["params"]
+    }
+    optimized_parameters = sorted(
+        name for name, parameter in parameters.items() if id(parameter) in optimized_ids
+    )
+    if optimized_ids != {
+        id(parameter) for parameter in parameters.values() if parameter.requires_grad
+    }:
+        raise RuntimeError("optimizer parameters differ from trainable adapter tensors")
     # A MagicMock would retain every CUDA tensor argument for the whole training.
     with patch.object(
         backbone, "can_use_lfm3_conv", new=lambda *_args, **_kwargs: False
@@ -469,9 +527,17 @@ def run(mode: str) -> None:
     receipt = {
         "mode": mode,
         "final_step": trainer.state.global_step,
-        "adapted_modules": sorted(adapted_modules),
+        "module_inventory": module_inventory,
+        "adapted_modules": sorted(adapted_layers),
+        "adapted_groups": adapted_groups,
         "trainable": trainable,
         "trainable_count": sum(trainable.values()),
+        "frozen_parameter_count": sum(
+            parameter.numel()
+            for parameter in parameters.values()
+            if not parameter.requires_grad
+        ),
+        "optimizer_parameters": optimized_parameters,
         "changed_tensors": changed,
         **observations,
         "step_logs": step_logs,

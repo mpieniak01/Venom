@@ -56,6 +56,39 @@ class SearchRange(BaseModel):
         return self
 
 
+QualityRecordId = Annotated[str, Field(min_length=1, max_length=128)]
+QualityCaseId = Annotated[str, Field(min_length=1, max_length=160)]
+QualityCategory = Annotated[str, Field(min_length=1, max_length=80)]
+QualityDelta = Annotated[float, Field(ge=-1, le=1)]
+
+
+class CampaignQualityPolicy(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, allow_inf_nan=False)
+
+    reference_record_ids: list[QualityRecordId] = Field(
+        default_factory=list, max_length=8
+    )
+    protected_case_ids: list[QualityCaseId] = Field(
+        default_factory=list, max_length=2048
+    )
+    protect_reference_hits: bool = True
+    protect_base_hits: bool = False
+    min_category_usable_delta: dict[QualityCategory, QualityDelta] = Field(
+        default_factory=dict, max_length=64
+    )
+    no_new_critical: bool = True
+    hypothesis: str | None = Field(
+        default=None, min_length=1, max_length=1000, pattern=r"\S"
+    )
+
+    @model_validator(mode="after")
+    def validate_unique_ids(self) -> "CampaignQualityPolicy":
+        for values in (self.reference_record_ids, self.protected_case_ids):
+            if len(set(values)) != len(values):
+                raise ValueError("campaign_quality_duplicate_ids")
+        return self
+
+
 class CampaignSpec(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
@@ -70,6 +103,7 @@ class CampaignSpec(BaseModel):
     selection: CampaignSelection = Field(default_factory=CampaignSelection)
     retention: Literal["keep_all", "discard_rejected"] = "keep_all"
     review_mode: Literal["manual", "automatic"] = "manual"
+    quality_policy: CampaignQualityPolicy | None = None
 
     @model_validator(mode="after")
     def validate_variant_count(self) -> "CampaignSpec":

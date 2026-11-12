@@ -169,6 +169,11 @@ class Retention:
                 trial["status"] == "succeeded"
                 and trial.get("result_sha256")
                 and trial["run_id"] not in protected
+                and (
+                    not state["plan"].get("quality_policy")
+                    or trial.get("quality_guard", {}).get("status")
+                    in {"passed", "rejected"}
+                )
             )
         }
 

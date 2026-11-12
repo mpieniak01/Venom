@@ -1125,3 +1125,237 @@ async def test_academy_start_and_resume_wait_for_queue_admission(monkeypatch, co
     manager.register_task.assert_awaited_once_with(task.id, asyncio.current_task())
     orch._run_task.assert_awaited_once_with(task.id, request, fast_path=False)
     manager.unregister_task.assert_awaited_once_with(task.id)
+
+
+@pytest.fixture
+def guarded_evidence(monkeypatch, controller):
+    from venom_core.services.training_experiments import quality_native
+
+    _service, experiments, _clock = controller
+    identity = {
+        "model": "fixture-model",
+        "base_sha256": "1" * 64,
+        "dataset_sha256": "2" * 64,
+        "protocol_sha256": "3" * 64,
+    }
+    categories = {"a": "init", "b": "fallback", "c": "fallback", "d": "fallback"}
+
+    def case_rows(hits, critical=()):
+        return {
+            key: {
+                "category": category,
+                "base": {"usable": key in {"a", "c"}, "critical": False},
+                "candidate": {"usable": key in hits, "critical": key in critical},
+            }
+            for key, category in categories.items()
+        }
+
+    references = {
+        "prior": {
+            "identity": dict(identity),
+            "split": "dev",
+            "result_sha256": "4" * 64,
+            "protected_case_ids": ["a"],
+            "cases": case_rows({"c"}),
+        }
+    }
+    records = {}
+
+    def record(run_id, hits, critical=(), **overrides):
+        data = {
+            "identity": dict(identity),
+            "split": "dev",
+            "source": {
+                "sha256": file_fingerprint(experiments.run_dir(run_id) / "result.json")
+            },
+            "cases": case_rows(hits, critical),
+            **overrides,
+        }
+        records[run_id] = data
+        return data
+
+    monkeypatch.setattr(
+        quality_native,
+        "profile_context",
+        lambda *_args: {
+            "identity": {
+                key: value
+                for key, value in identity.items()
+                if key != "protocol_sha256"
+            },
+            "case_categories": categories,
+        },
+    )
+    monkeypatch.setattr(
+        quality_native, "get_record", lambda _experiments, key: references[key]
+    )
+    monkeypatch.setattr(
+        quality_native, "native_record", lambda _experiments, key: records[key]
+    )
+    return references, record
+
+
+def guarded_spec(*, count=3, policy=None, optimized=False):
+    arguments = {
+        "quality_policy": (
+            {
+                "reference_record_ids": ["prior"],
+                "min_category_usable_delta": {"init": 0.0},
+            }
+            if policy is None
+            else policy
+        ),
+        "selection": {"min_usable_delta": 0.0, "max_critical_delta": 0.5},
+    }
+    factory = optimization_spec if optimized else make_spec
+    return factory(count=count, **arguments)
+
+
+def test_quality_guard_ranks_exact_hits_and_retains_unavailable_evidence(
+    controller, guarded_evidence
+):
+    service, experiments, _clock = controller
+    _references, record = guarded_evidence
+    plan = service.validate(guarded_spec())
+    assert plan["quality_policy"]["protected_case_ids"] == ["a", "c"]
+    assert plan["quality_policy"]["references"] == [
+        {"record_id": "prior", "result_sha256": "4" * 64}
+    ]
+    state = start(service, guarded_spec())
+    assert state["plan"] == plan
+
+    first = launch_next(service)
+    worse_artifact = experiments.finish(first, usable=3, critical=1)
+    record(first, {"b", "c", "d"}, {"d"})
+    rejected = service.advance("series")
+    assert rejected["selected_run_id"] is None
+    guard = rejected["trials"][0]["quality_guard"]
+    assert guard["status"] == "rejected"
+    assert guard["lost_case_ids"] == ["a"]
+    assert guard["new_critical_case_ids"] == ["d"]
+    assert guard["category_deltas"]["init"]["usable_delta"] == -1.0
+    assert worse_artifact.exists()
+
+    second = launch_next(service)
+    best_artifact = experiments.finish(second, usable=2)
+    record(second, {"a", "c"})
+    selected = service.advance("series")
+    assert selected["selected_run_id"] == second
+    assert selected["trials"][1]["quality_guard"]["status"] == "passed"
+    assert best_artifact.exists()
+    assert not worse_artifact.exists()
+
+    third = launch_next(service)
+    missing_artifact = experiments.finish(third, usable=4)
+    missing = record(third, {"a", "b", "c", "d"})
+    missing["cases"]["a"]["candidate"]["critical"] = None
+    final = service.advance("series")
+    assert final["selected_run_id"] == second
+    assert final["trials"][2]["quality_guard"]["status"] == "blocked"
+    assert final["trials"][2]["quality_guard"]["reasons"] == [
+        {"code": "campaign_quality_case_evidence_missing"}
+    ]
+    assert missing_artifact.exists()
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("split", "holdout", "campaign_quality_dev_required"),
+        ("result_sha256", None, "campaign_quality_reference_unavailable"),
+        ("cases", {}, "campaign_quality_case_coverage"),
+    ],
+)
+def test_guard_refuses_incomparable_reference_before_campaign(
+    controller, guarded_evidence, field, value, message
+):
+    service, experiments, _clock = controller
+    references, _record = guarded_evidence
+    references["prior"][field] = value
+    with pytest.raises(ValueError, match=message):
+        service.plan(guarded_spec())
+    assert service.list() == []
+    assert experiments.calls == []
+
+
+def test_guard_rejects_unknown_case_or_category_before_work(
+    controller, guarded_evidence
+):
+    service, experiments, _clock = controller
+    with pytest.raises(ValueError, match="campaign_quality_protected_case_unknown"):
+        service.plan(guarded_spec(policy={"protected_case_ids": ["sealed-holdout"]}))
+    with pytest.raises(ValueError, match="campaign_quality_category_unknown"):
+        service.plan(guarded_spec(policy={"min_category_usable_delta": {"unknown": 0}}))
+    assert experiments.calls == []
+
+
+def test_stale_quality_reference_withdraws_winner_and_blocks_more_work(
+    controller, guarded_evidence
+):
+    service, experiments, _clock = controller
+    references, record = guarded_evidence
+    start(service, guarded_spec())
+    first = launch_next(service)
+    artifact = experiments.finish(first, usable=3)
+    record(first, {"a", "b", "c"})
+    assert service.advance("series")["selected_run_id"] == first
+    references["prior"]["result_sha256"] = "5" * 64
+    status = service.status("series")
+    assert status["selected_run_id"] is None
+    assert status["quality_policy_error"] == "campaign_quality_reference_changed"
+    with pytest.raises(ValueError, match="campaign_quality_reference_changed"):
+        service.retention_plan("series")
+    state = service.advance("series")
+    assert state["status"] == "blocked"
+    assert state["selected_run_id"] is None
+    assert state["used_updates"] == 2
+    assert artifact.exists()
+    assert experiments.calls == [("start", first)]
+
+
+def test_optuna_guard_keeps_measured_regression_separate_from_missing_evidence(
+    controller, sampler, guarded_evidence
+):
+    service, experiments, _clock = controller
+    _references, record = guarded_evidence
+    start(service, guarded_spec(count=2, optimized=True))
+    first = launch_next(service)
+    experiments.finish(first, usable=3)
+    record(first, {"b", "c", "d"})
+    ranked = service.advance("series")
+    assert ranked["selected_run_id"] is None
+    assert sampler.outcomes[0] == ("COMPLETE", 0.25, [1.0, -0.25])
+
+    second = launch_next(service)
+    experiments.finish(second, usable=4)
+    altered = record(second, {"a", "b", "c", "d"})
+    altered["identity"]["protocol_sha256"] = "6" * 64
+    final = service.advance("series")
+    assert final["selected_run_id"] is None
+    assert final["trials"][1]["quality_guard"]["status"] == "blocked"
+    assert sampler.outcomes[1] == ("FAIL", None, None)
+
+
+def test_quality_guard_rejects_moved_critical_error_and_pins_actual_protocol(
+    controller, guarded_evidence
+):
+    service, experiments, _clock = controller
+    _references, record = guarded_evidence
+    start(service, guarded_spec(count=2, policy={"protect_base_hits": True}))
+    first = launch_next(service)
+    experiments.finish(first, usable=2)
+    measured = record(first, {"a", "c"}, {"b"})
+    measured["cases"]["d"]["base"]["critical"] = True
+    state = service.advance("series")
+    guard = state["trials"][0]["quality_guard"]
+    assert guard["status"] == "rejected"
+    assert guard["new_critical_case_ids"] == ["b"]
+    assert state["quality_protocol_sha256"] == "3" * 64
+
+    second = launch_next(service)
+    experiments.finish(second, usable=4)
+    changed = record(second, {"a", "b", "c", "d"})
+    changed["identity"]["protocol_sha256"] = "9" * 64
+    completed = service.advance("series")
+    assert completed["trials"][1]["quality_guard"]["status"] == "blocked"
+    assert completed["selected_run_id"] is None

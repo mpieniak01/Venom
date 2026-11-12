@@ -15,9 +15,9 @@ const MODES = [
 ] as const;
 type Mode = (typeof MODES)[number][0];
 
-export function TrainingWorkspace() {
+export function TrainingWorkspace({ initialCampaignId }: { readonly initialCampaignId?: string }) {
   const t = useTranslation();
-  const [mode, setMode] = useState<Mode>("single");
+  const [mode, setMode] = useState<Mode>(initialCampaignId ? "campaign" : "single");
   const [runId, setRunId] = useState("");
 
   function openRun(id: string) {
@@ -43,7 +43,7 @@ export function TrainingWorkspace() {
       </div>
       {mode === "single" && <TrainingPanel />}
       {mode === "experiment" && <ExperimentsPanel initialRunId={runId} />}
-      {mode === "campaign" && <CampaignPanel onOpenRun={openRun} />}
+      {mode === "campaign" && <CampaignPanel onOpenRun={openRun} initialCampaignId={initialCampaignId} />}
     </div>
   );
 }

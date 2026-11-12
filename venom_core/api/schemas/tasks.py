@@ -4,7 +4,7 @@ from enum import Enum
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, PrivateAttr, model_validator
 
 from venom_core.contracts.routing import ReasonCode, RuntimeTarget
 from venom_core.execution.model_tool_policy import FileReadToolName
@@ -70,6 +70,8 @@ class TaskExtraContext(BaseModel):
 
 class TaskRequest(BaseModel):
     """Request DTO for creating a task."""
+
+    _academy_operator: bool = PrivateAttr(default=False)
 
     content: str
     agent_mode: Literal["auto", "single_model"] = Field(

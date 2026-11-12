@@ -16,7 +16,6 @@ import { parseInputCommand } from "@/lib/slash-commands";
 
 import {
   ChatSendParams,
-  RuntimeOverride,
   handleRuntimeSwitch,
   handleSimpleTaskSend,
   handleStandardTaskSend,
@@ -211,18 +210,19 @@ function resolveChatSendContext(payload: string, params: SendContextParams, t: (
       setMessage(t("cockpit.chatMessages.emptyPrompt"));
       return null;
     }
-    const effectiveSelectedModel = resolveEffectiveChatModelSelection(
+    const academy = parsed.forcedTool === "academy";
+    const effectiveSelectedModel = academy ? "" : resolveEffectiveChatModelSelection(
       selectedLlmModel,
       activeServerInfo?.active_model,
       selectedLlmServer,
       activeServerInfo?.active_server ?? "",
     );
-    if (selectedLlmServer && !effectiveSelectedModel) {
+    if (!academy && selectedLlmServer && !effectiveSelectedModel) {
       setMessage(t("cockpit.chatMessages.modelSelectionRequired"));
       return null;
     }
 
-    if (!allowsOpenRouterChat(selectedLlmServer || activeServerInfo?.active_server || "", shouldUseSimpleMode(chatMode, parsed))) {
+    if (!academy && !allowsOpenRouterChat(selectedLlmServer || activeServerInfo?.active_server || "", shouldUseSimpleMode(chatMode, parsed))) {
       setMessage(t("cockpit.openrouter.directOnly"));
       return null;
     }
@@ -233,7 +233,50 @@ function resolveChatSendContext(payload: string, params: SendContextParams, t: (
       return null;
     }
 
-    return { parsed, trimmed, effectiveSelectedModel, resolvedSession };
+    return { academy, parsed, trimmed, effectiveSelectedModel, resolvedSession };
+}
+
+type SendRuntimeParams = Pick<ChatSendParams,
+  "activeServerInfo" | "selectedLlmServer" | "setActiveLlmRuntime" | "setActiveLlmServer" |
+  "refreshActiveServer" | "ensureModelActive" | "setMessage"
+>;
+
+async function prepareSendRuntime(
+  context: NonNullable<ReturnType<typeof resolveChatSendContext>>,
+  params: SendRuntimeParams,
+  cancelled: () => boolean,
+  t: (key: string) => string,
+) {
+  if (context.academy) {
+    return { runtimeOverride: null, activeServerInfo: null };
+  }
+
+  const selectedLlmModel = context.effectiveSelectedModel;
+  const switched = await handleRuntimeSwitch({
+    parsed: context.parsed,
+    activeServerInfo: params.activeServerInfo,
+    selectedLlmModel,
+    setActiveLlmRuntime: params.setActiveLlmRuntime,
+    refreshActiveServer: params.refreshActiveServer,
+    setMessage: params.setMessage,
+    confirm: (message) => globalThis.window.confirm(message),
+    t,
+  });
+  if (cancelled() || !switched.success) return null;
+
+  const activeServerInfo = await syncTargetServerIfNeeded({ ...params, selectedLlmModel, t });
+  if (cancelled() || activeServerInfo === false) return null;
+
+  const modelOk = await ensureSelectedModelIsActive({
+    activeServerInfo,
+    selectedLlmModel,
+    ensureModelActive: params.ensureModelActive,
+    setMessage: params.setMessage,
+    t,
+  });
+  if (cancelled() || !modelOk) return null;
+
+  return { runtimeOverride: switched.runtimeOverride, activeServerInfo };
 }
 
 function releaseSendPreparation(
@@ -311,42 +354,15 @@ export function useChatSend(params: ChatSendParams) {
       selectedLlmModel, activeServerInfo, selectedLlmServer, chatMode, sessionId, resetSession, setMessage,
     }, t);
     if (!context) return false;
-    const { parsed, trimmed, effectiveSelectedModel, resolvedSession } = context;
+    const { academy, parsed, trimmed, effectiveSelectedModel, resolvedSession } = context;
 
     setSending(true); preparing = true; setMessage(null);
-    const switchResult = await handleRuntimeSwitch({
-      parsed,
-      activeServerInfo,
-      selectedLlmModel: effectiveSelectedModel,
-      setActiveLlmRuntime,
-      refreshActiveServer,
-      setMessage,
-      confirm: (msg) => globalThis.window.confirm(msg),
-      t,
-    });
-
-    if (cancelled() || !switchResult.success) return false;
-    const runtimeOverride: RuntimeOverride = switchResult.runtimeOverride;
-
-    const effectiveActiveServerInfo = await syncTargetServerIfNeeded({
-      selectedLlmServer,
-      selectedLlmModel: effectiveSelectedModel,
-      activeServerInfo,
-      setActiveLlmRuntime,
-      setActiveLlmServer,
-      refreshActiveServer,
-      setMessage,
-      t,
-    });
-    if (cancelled() || effectiveActiveServerInfo === false) return false;
-    const modelOk = await ensureSelectedModelIsActive({
-      activeServerInfo: effectiveActiveServerInfo,
-      selectedLlmModel: effectiveSelectedModel,
-      ensureModelActive,
-      setMessage,
-      t,
-    });
-    if (cancelled() || !modelOk) return false;
+    const runtime = await prepareSendRuntime(context, {
+      activeServerInfo, selectedLlmServer, setActiveLlmRuntime, setActiveLlmServer,
+      refreshActiveServer, ensureModelActive, setMessage,
+    }, cancelled, t);
+    if (!runtime || cancelled()) return false;
+    const { runtimeOverride, activeServerInfo: effectiveActiveServerInfo } = runtime;
 
     autoScrollEnabledRef.current = true;
     scrollChatToBottom();
@@ -371,7 +387,7 @@ export function useChatSend(params: ChatSendParams) {
     });
     if (cancelled() || quote === false) return false;
 
-    const forcedIntent = chatMode === "complex" ? "COMPLEX_PLANNING" : null;
+    const forcedIntent = !academy && chatMode === "complex" ? "COMPLEX_PLANNING" : null;
     const clientId = enqueueOptimisticRequest(trimmed, {
       tool: parsed.forcedTool,
       provider: parsed.forcedProvider,
@@ -438,7 +454,7 @@ export function useChatSend(params: ChatSendParams) {
       taskParams,
       standardParams: {
         ...taskParams,
-        labMode,
+        labMode: labMode || academy,
         runtimeOverride,
         parsed,
         forcedIntent,

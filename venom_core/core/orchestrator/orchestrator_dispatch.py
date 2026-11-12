@@ -435,6 +435,10 @@ async def run_task(
     request: TaskRequest,
     fast_path: bool = False,
 ) -> None:
+    if request._academy_operator:
+        await _run_task(orch, task_id, request, fast_path=fast_path)
+        return
+
     turn = create_conversation_context(
         "chat",
         task_id=str(task_id),
@@ -469,13 +473,21 @@ async def _run_task(
             return
 
         orch._persist_session_context(task_id, request)
+        if request._academy_operator:
+            response = await orch.task_dispatcher.dispatch_academy_campaign(
+                request.content, request.preferred_language
+            )
+            await _complete_local_conversation(
+                orch, task_id, request, response, operation="academy_campaign"
+            )
+            return
 
         turn = current_conversation_context()
         if turn is not None:
             urgent_response = await urgent_conversation_turn(request.content, turn)
             if urgent_response is not None:
-                await _complete_urgent_conversation(
-                    orch, task_id, request, urgent_response
+                await _complete_local_conversation(
+                    orch, task_id, request, urgent_response, operation="urgent"
                 )
                 return
 
@@ -562,10 +574,15 @@ async def _run_task(
         await orch.result_processor.process_error(task_id, exc, request, context)
 
 
-async def _complete_urgent_conversation(
-    orch: "Orchestrator", task_id: UUID, request: TaskRequest, response: str
+async def _complete_local_conversation(
+    orch: "Orchestrator",
+    task_id: UUID,
+    request: TaskRequest,
+    response: str,
+    *,
+    operation: str,
 ) -> None:
-    """Complete a safety response without translation, classification or learning."""
+    """Complete a trusted local operation without inference or learning."""
     orch._append_session_history(
         task_id, role="user", content=request.content, session_id=request.session_id
     )
@@ -580,7 +597,7 @@ async def _complete_urgent_conversation(
     orch.state_manager.update_context(
         task_id,
         {
-            "conversation_provider": {"operation": "urgent", "actor": "chat"},
+            "conversation_provider": {"operation": operation, "actor": "chat"},
             "llm_runtime": {
                 "status": "skipped",
                 "error": None,
@@ -595,7 +612,7 @@ async def _complete_urgent_conversation(
         orch.request_tracer.add_step(
             task_id,
             "ConversationProvider",
-            "urgent",
+            operation,
             status="ok",
             details="actor=chat",
         )

@@ -128,3 +128,23 @@ it("Stop retains the streamed answer and marks it cancelled instead of replacing
   assert.equal(fixture.history().find(entry => entry.role === "assistant")?.content, "real partial answer");
   assert.equal(fixture.history().find(entry => entry.role === "assistant")?.pending, false);
 });
+
+it("routes an Academy command through the local task path even with OpenRouter selected", async () => {
+  const fixture = chatFixture();
+  globalThis.fetch = async () => { throw new Error("Academy must bypass model preflight and quotes"); };
+  const calls: Parameters<ChatSendParams["sendTask"]>[0][] = [];
+  fixture.params.sendTask = async request => {
+    calls.push(request);
+    return { task_id: "academy-task" };
+  };
+
+  const { result } = renderHook(() => useChatSend(fixture.params));
+  await act(async () => {
+    assert.equal(await result.current("/academy status pilot-campaign"), true);
+  });
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].content, "/academy status pilot-campaign");
+  assert.equal(calls[0].forcedRoute?.tool, "academy");
+  assert.equal(calls[0].storeKnowledge, false);
+  assert.equal(fixture.calls.paid.length, 0);
+});

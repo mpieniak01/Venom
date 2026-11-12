@@ -4,15 +4,14 @@ from fastapi import APIRouter, Depends
 
 from venom_core.api.routes.academy_experiments import (
     call_experiment,
-    experiment_service,
     require_experiment_access,
 )
-from venom_core.services.training_experiments.campaign import CampaignService
 from venom_core.services.training_experiments.campaign_schema import (
     CampaignId,
     CampaignPlanReference,
     CampaignSpec,
 )
+from venom_core.services.training_experiments.operator import campaign_service
 from venom_core.services.training_experiments.optuna_backend import require_optuna
 
 router = APIRouter(
@@ -20,10 +19,6 @@ router = APIRouter(
     tags=["academy"],
     dependencies=[Depends(require_experiment_access)],
 )
-
-
-def campaign_service() -> CampaignService:
-    return CampaignService(experiment_service())
 
 
 def _optuna_capability() -> dict:

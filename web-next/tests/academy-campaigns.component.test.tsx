@@ -2,6 +2,7 @@ import "./component-test-setup";
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import AcademyPage from "../app/(console)/academy/page";
 import { CampaignPanel } from "../components/academy/campaign-panel";
 import type { Campaign } from "../lib/academy-campaign-api";
 
@@ -252,4 +253,43 @@ describe("Optuna campaigns", () => {
     assert.match((await screen.findByRole("alert")).textContent ?? "", /granice/);
     assert.equal(calls, 0);
   });
+});
+
+it("opens the campaign from the operator link and identifies a missing one", async () => {
+  const second = {
+    ...planned,
+    campaign_id: "operator-campaign",
+    plan: { ...planned.plan, campaign_id: "operator-campaign", profile_id: "operator-profile" },
+  };
+  serve(() => [planned, second]);
+  const first = render(<CampaignPanel initialCampaignId="operator-campaign" onOpenRun={() => {}} />);
+  await screen.findByText("operator-profile");
+  assert.equal(screen.queryByText("Brak kampanii o identyfikatorze"), null);
+  first.unmount();
+
+  render(<CampaignPanel initialCampaignId="missing-campaign" onOpenRun={() => {}} />);
+  const missing = await screen.findByText("Brak kampanii o identyfikatorze");
+  assert.match(missing.textContent ?? "", /missing-campaign/);
+  assert.equal(screen.queryByText("operator-profile"), null);
+});
+
+
+it("opens a different campaign when the Academy query changes", async () => {
+  const second = {
+    ...planned,
+    campaign_id: "second-campaign",
+    plan: { ...planned.plan, campaign_id: "second-campaign", profile_id: "second-profile" },
+  };
+  serve(() => [planned, second], {
+    "GET /api/v1/academy/status": () => Response.json({ enabled: true }),
+  });
+  const view = render(await AcademyPage({
+    searchParams: Promise.resolve({ campaign: planned.campaign_id }),
+  }));
+  await screen.findByText(planned.plan.profile_id, { selector: "dd" });
+  view.rerender(await AcademyPage({
+    searchParams: Promise.resolve({ campaign: second.campaign_id }),
+  }));
+  await screen.findByText("second-profile", { selector: "dd" });
+  assert.equal(screen.queryByText(planned.plan.profile_id, { selector: "dd" }), null);
 });

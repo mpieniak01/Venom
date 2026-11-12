@@ -137,3 +137,9 @@ describe("parseSlashCommand (unchanged behaviour)", () => {
     assert.equal(result.sessionReset, true);
   });
 });
+
+it("preserves the full Academy command for backend authorization", () => {
+  const command = "  /academy plan {\"campaign_id\":\"pilot\"}";
+  assert.deepEqual(parseInputCommand(command), { cleaned: command, forcedTool: "academy" });
+  assert.deepEqual(parseInputCommand("/academy-other status pilot"), { cleaned: "/academy-other status pilot" });
+});

@@ -724,6 +724,9 @@ test.describe("Academy smoke", () => {
         expect(planRequest?.variants).toEqual([{ rank: 6 }]);
       }
 
+      await page.goto(buildHttpUrl(host, port, `/academy?campaign=${campaignId}`));
+      await page.getByText("Polecenie startu w czacie", { exact: true }).click();
+      await expect(page.getByText(`/academy start ${campaignId} ${planSha256}`, { exact: true })).toBeVisible();
       await start.click();
       await expect(page.getByRole("button", { name: "Zatrzymaj kampanię" })).toBeEnabled();
       expect(startRequest).toEqual({ plan_sha256: planSha256 });

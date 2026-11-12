@@ -23,11 +23,11 @@ import { SelfLearningPanel } from "./self-learning-panel";
 import { getAcademyStatus, type AcademyStatus } from "@/lib/academy-api";
 import { useTranslation } from "@/lib/i18n";
 
-export function AcademyDashboard() {
+export function AcademyDashboard({ initialCampaignId }: { readonly initialCampaignId?: string }) {
   const t = useTranslation();
   const [activeTab, setActiveTab] = useState<
     "overview" | "dataset" | "conversion" | "training" | "adapters" | "selfLearning"
-  >("overview");
+  >(initialCampaignId ? "training" : "overview");
   const [status, setStatus] = useState<AcademyStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -189,7 +189,7 @@ export function AcademyDashboard() {
         {!loading && status && activeTab === "overview" && <AcademyOverview status={status} onRefresh={loadStatus} />}
         {!loading && status && activeTab === "conversion" && <DatasetConversionPanel />}
         {!loading && status && activeTab === "dataset" && <DatasetPanel />}
-        {!loading && status && activeTab === "training" && <TrainingWorkspace />}
+        {!loading && status && activeTab === "training" && <TrainingWorkspace initialCampaignId={initialCampaignId} />}
         {!loading && status && activeTab === "selfLearning" && <SelfLearningPanel />}
         {!loading && status && activeTab === "adapters" && <AdaptersPanel />}
       </div>

@@ -139,6 +139,53 @@ def _collate(rows: list[dict], pad_token: int) -> dict:
     }
 
 
+def _supervised_token_count(labels):
+    """Count causal-LM targets after the model's one-position label shift."""
+    return (labels[..., 1:] != IGNORE).sum()
+
+
+def _token_normalized_text_loss(outputs, labels, accumulated_tokens):
+    """Scale an Omni microbatch mean to its share of the accumulated tokens."""
+    text_loss = outputs.text_loss
+    if text_loss is None or outputs.audio_loss is not None:
+        raise ValueError("text-only training requires the Omni text loss")
+    count = _supervised_token_count(labels)
+    if int(count) <= 0 or accumulated_tokens is None or int(accumulated_tokens) <= 0:
+        raise ValueError("token-normalized training requires supervised tokens")
+    return (
+        text_loss * count.to(text_loss.device) / accumulated_tokens.to(text_loss.device)
+    )
+
+
+def _token_trainer_type(trainer_type):
+    class TokenNormalizedTrainer(trainer_type):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self.model_accepts_loss_kwargs = False
+            self.loss_is_scaled_for_ga = True
+
+        def _get_num_items_in_batch(self, batch_samples, device):
+            if self.args.world_size != 1 or self.args.n_gpu > 1:
+                raise RuntimeError("token-normalized Omni training requires one device")
+            total = sum(
+                (_supervised_token_count(batch["labels"]) for batch in batch_samples)
+            )
+            if int(total) <= 0:
+                raise ValueError("accumulated batch has no supervised tokens")
+            return total.to(device)
+
+        def compute_loss(
+            self, model, inputs, return_outputs=False, num_items_in_batch=None
+        ):
+            outputs = model(**inputs)
+            loss = _token_normalized_text_loss(
+                outputs, inputs["labels"], num_items_in_batch
+            )
+            return (loss, outputs) if return_outputs else loss
+
+    return TokenNormalizedTrainer
+
+
 def _prepare_inputs(
     snapshot: Path, train_path: Path, recipe: dict, *, legacy: bool, preflight: bool
 ):
@@ -383,7 +430,12 @@ def run(mode: str) -> None:
         disable_tqdm=True,
         remove_unused_columns=False,
     )
-    trainer = Trainer(
+    trainer_type = (
+        Trainer
+        if recipe["loss_mode"] == "model_default"
+        else _token_trainer_type(Trainer)
+    )
+    trainer = trainer_type(
         model=model,
         args=args,
         train_dataset=encoded,

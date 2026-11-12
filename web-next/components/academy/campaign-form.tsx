@@ -13,7 +13,7 @@ import { OPTUNA_PARAMETERS, OptunaFields } from "./campaign-optuna";
 
 const MIB = 1024 ** 2;
 const DRAFT_RECIPE_FIELDS = new Set([
-  "rank", "alpha", "dropout", "target_modules", "steps", "save_every", "warmup_steps", "learning_rate",
+  "rank", "alpha", "dropout", "target_modules", "loss_mode", "steps", "save_every", "warmup_steps", "learning_rate",
   "max_tokens", "microbatch", "gradient_accumulation_steps", "seed", "lr_scheduler_type",
   "train_sha256", "max_supervised_tokens",
 ]);

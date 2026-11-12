@@ -11,6 +11,7 @@ DEFAULT_RECIPE: dict[str, Any] = {
     "alpha": 8,
     "dropout": 0.0,
     "target_modules": ["q_proj", "v_proj"],
+    "loss_mode": "model_default",
     "steps": 8,
     "save_every": 2,
     "warmup_steps": 1,
@@ -89,6 +90,8 @@ def validate_recipe(value: object) -> dict[str, Any]:
             raise ValueError(f"{key} must be a finite number in [{lower}, {upper}]")
         recipe[key] = float(item)
     recipe["target_modules"] = validate_target_modules(recipe["target_modules"])
+    if recipe["loss_mode"] not in ("model_default", "supervised_token"):
+        raise ValueError("unsupported loss_mode")
     if recipe["lr_scheduler_type"] not in ("linear", "cosine", "constant"):
         raise ValueError("unsupported lr_scheduler_type")
     if "train_sha256" in recipe:

@@ -2,6 +2,7 @@
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -15,6 +16,7 @@ from scripts.academy.omni_pl_chat_p1 import (
     CHECKPOINT_FILES,
     _checkpoint_hashes,
     _resume_checkpoint,
+    _token_trainer_type,
     _write_json,
 )
 from scripts.academy.omni_pl_chat_recipe import (
@@ -42,6 +44,7 @@ def test_recipe_overrides_keep_defaults_and_canonicalize_targets(tmp_path):
     recipe = load_recipe(path)
     assert recipe["rank"] == 8
     assert recipe["alpha"] == 8
+    assert recipe["loss_mode"] == "model_default"
     assert recipe["target_modules"] == ["q_proj", "v_proj"]
     assert recipe["steps"] == 5
     assert recipe["gradient_accumulation_steps"] == 4
@@ -56,6 +59,55 @@ def test_wider_language_targets_canonicalize_without_recipe_changes():
     assert wide == control
 
 
+def test_token_loss_accumulation_matches_one_pooled_batch(tmp_path):
+    import torch
+    from torch import nn
+    from transformers import Trainer, TrainingArguments
+
+    from scripts.academy.omni_pl_chat_p1 import _collate
+
+    class TinyOmni(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.weight = nn.Parameter(torch.tensor(0.25))
+
+        def forward(self, input_ids, attention_mask, labels):
+            prediction = self.weight * input_ids[:, :-1].float()
+            target = labels[:, 1:].clamp_min(0).float()
+            mask = labels[:, 1:] != -100
+            text_loss = ((prediction - target).square() * mask).sum() / mask.sum()
+            return SimpleNamespace(loss=text_loss, text_loss=text_loss, audio_loss=None)
+
+    rows = [
+        {"input_ids": [0, 2, 3], "labels": [-100, 1, 2], "attention_mask": [1] * 3},
+        {
+            "input_ids": [0, 4, 5, 6],
+            "labels": [-100, 3, 4, 5],
+            "attention_mask": [1] * 4,
+        },
+    ]
+    batches = [_collate([row], 0) for row in rows]
+    model = TinyOmni()
+    args = TrainingArguments(
+        output_dir=str(tmp_path),
+        per_device_train_batch_size=1,
+        gradient_accumulation_steps=2,
+        report_to="none",
+    )
+    trainer = _token_trainer_type(Trainer)(model=model, args=args)
+    trainer.current_gradient_accumulation_steps = 2
+    total = trainer._get_num_items_in_batch(batches, args.device)
+    assert int(total) == 5
+    for batch in batches:
+        trainer.training_step(model, batch, num_items_in_batch=total)
+    actual_gradient = model.weight.grad.detach().clone()
+
+    reference_model = TinyOmni()
+    pooled = _collate(rows, 0)
+    reference_model(**pooled).loss.backward()
+    torch.testing.assert_close(actual_gradient.cpu(), reference_model.weight.grad)
+
+
 @pytest.mark.parametrize(
     "recipe",
     [
@@ -63,6 +115,7 @@ def test_wider_language_targets_canonicalize_without_recipe_changes():
         {"target_modules": [".*"]},
         {"target_modules": P13_LANGUAGE_SELECTOR},
         {"target_modules": ["q_proj", "q_proj"]},
+        {"loss_mode": "unknown"},
         {"rank": True},
         {"rank": 65},
         {"learning_rate": float("nan")},

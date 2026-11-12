@@ -293,3 +293,134 @@ it("opens a different campaign when the Academy query changes", async () => {
   await screen.findByText("second-profile", { selector: "dd" });
   assert.equal(screen.queryByText(planned.plan.profile_id, { selector: "dd" }), null);
 });
+
+describe("Campaign quality feedback", () => {
+  const qualityPath = campaignsPath + "/quality";
+  const candidate = {
+    record_id: "p14-candidate",
+    split: "dev",
+    source: { identity: "fixture" },
+    evidence_gaps: ["quality_critical_unknown"],
+  };
+  const reference = { record_id: "p13-reference", split: "dev", source: { identity: "fixture" } };
+  const control = { rank: 8, target_modules: ["q_proj", "v_proj"], loss_mode: "historic" };
+  const isolated = { ...control, target_modules: ["q_proj"] };
+  const comparison = {
+    record: candidate,
+    decision: "REVISE",
+    reference_id: reference.record_id,
+    comparable: true,
+    comparison_issues: [],
+    summary: [],
+    comparison: [{
+      category: "instructions", n: 9, reference_usable: 6, candidate_usable: 5, lost_usable: 3, gained_usable: 2,
+    }],
+    findings: [{ code: "quality_lost_usable", case_ids: ["lost-1"] }],
+    protected_case_ids: ["lost-1"],
+    proposal: {
+      status: "ready",
+      kind: "isolate_recipe_factor",
+      factor: "target_modules",
+      reference_id: reference.record_id,
+      variants: [
+        { name: "control", recipe: control },
+        { name: "isolated", recipe: isolated },
+      ],
+      reasons: [],
+    },
+  };
+
+  it("compares paired outcomes and fills an editable draft without creating a campaign", async () => {
+    globalThis.FormData = window.FormData;
+    let current: Campaign[] = [];
+    let submitted: unknown;
+    serve(() => current, {
+      ["GET " + qualityPath]: () => Response.json({ records: [candidate, reference] }),
+      ["GET " + qualityPath + "/" + candidate.record_id + "/analysis"]: (init) => {
+        assert.equal(init?.method ?? "GET", "GET");
+        return Response.json(comparison);
+      },
+      ["POST " + campaignsPath + "/plan"]: (init) => {
+        const body = JSON.parse(String(init?.body));
+        submitted = body;
+        const next = { ...planned, plan: { ...planned.plan, quality_policy: body.quality_policy } };
+        current = [next];
+        return Response.json(next);
+      },
+    });
+
+    render(<CampaignPanel onOpenRun={() => {}} />);
+    fireEvent.click(screen.getByText("Wnioski i następna próba"));
+    await screen.findByLabelText("Kandydat");
+    fireEvent.change(screen.getByLabelText("Odniesienie"), { target: { value: reference.record_id } });
+    fireEvent.click(screen.getByRole("button", { name: "Porównaj oceny" }));
+
+    await screen.findByText(/REVISE · Wymaga poprawki/);
+    const row = screen.getByRole("row", { name: /instructions/ });
+    assert.match(row.textContent ?? "", /instructions96532/);
+    fireEvent.click(screen.getByRole("button", { name: "Uzupełnij formularz kampanii" }));
+    assert.equal(submitted, undefined);
+    const formPlan = screen.getByRole("button", { name: "Przygotuj plan kampanii" }) as HTMLButtonElement;
+    assert.equal(formPlan.disabled, true);
+    const draft = screen.getByLabelText("Parametry wariantu (JSON) 2") as HTMLTextAreaElement;
+    assert.deepEqual(JSON.parse(draft.value), isolated);
+    assert.ok(screen.getByText(/pola z rekomendacji/));
+
+    fireEvent.change(screen.getByLabelText("Profil eksperymentu"), { target: { value: "omni" } });
+    fireEvent.change(screen.getByLabelText("Identyfikator kampanii"), { target: { value: "pilot-campaign" } });
+    fireEvent.click(formPlan);
+    await screen.findByText("Sprawdź JSON wariantów, pola trenera i limity kampanii.");
+    assert.equal(submitted, undefined);
+
+    fireEvent.change(screen.getByLabelText("Parametry wariantu (JSON) 1"), {
+      target: { value: JSON.stringify({ rank: 8, target_modules: control.target_modules }) },
+    });
+    fireEvent.change(draft, { target: { value: JSON.stringify({ rank: 8, target_modules: isolated.target_modules }) } });
+    fireEvent.change(screen.getByLabelText("Hipoteza"), { target: { value: "Porównanie q_proj z kontrolą." } });
+    fireEvent.click(formPlan);
+    await screen.findByRole("button", { name: "Uruchom zaplanowaną kampanię" });
+    assert.deepEqual(submitted, {
+      campaign_id: "pilot-campaign",
+      profile_id: "omni",
+      variants: [{ rank: 8, target_modules: control.target_modules }, { rank: 8, target_modules: isolated.target_modules }],
+      budget: planned.plan.budget,
+      selection: planned.plan.selection,
+      retention: "keep_all",
+      review_mode: "manual",
+      quality_policy: {
+        hypothesis: "Porównanie q_proj z kontrolą.",
+        reference_record_ids: [reference.record_id],
+        protected_case_ids: ["lost-1"],
+        protect_reference_hits: true,
+        protect_base_hits: false,
+        min_category_usable_delta: {},
+        no_new_critical: true,
+      },
+    });
+  });
+
+  it("shows a trial rejection and keeps an unknown category threshold unquantified", async () => {
+    serve(() => [{
+      ...planned,
+      status: "succeeded",
+      trial_index: 1,
+      trials: [{
+        run_id: runId,
+        status: "succeeded",
+        quality_guard: {
+          status: "rejected",
+          reasons: [{ code: "protected_case_lost", count: 1 }],
+          protected_count: 2,
+          lost_case_ids: ["lost-1"],
+          new_critical_case_ids: [],
+          category_deltas: { instructions: { n: 4, usable_delta: -0.25, minimum: null } },
+        },
+      }],
+    }]);
+
+    render(<CampaignPanel onOpenRun={() => {}} />);
+    fireEvent.click(await screen.findByText("Reguły jakości odrzuciły próbę"));
+    assert.ok(screen.getByText(/Utracone chronione przypadki · lost-1/));
+    assert.ok(screen.getByText("instructions · -25 / — p.p."));
+  });
+});

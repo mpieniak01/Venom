@@ -110,6 +110,9 @@ def _validate_trial(
     spec: CampaignSpec, experiments: CampaignExperiments, recipe: dict | None
 ) -> dict:
     validated = experiments.validate(spec.profile_id, recipe)
+    if recipe and "train_sha256" in recipe:
+        if recipe["train_sha256"] != validated["recipe"].get("train_sha256"):
+            raise ValueError("campaign_quality_training_identity_changed")
     if spec.review_mode == "automatic" and not validated["automatic_review"]:
         raise ValueError("campaign_evaluator_not_qualified")
     return validated
@@ -183,7 +186,7 @@ def _optimization_plan(
 
 
 def _plan(spec: CampaignSpec, experiments: CampaignExperiments) -> dict:
-    extra = {}
+    extra: dict = {}
     if spec.strategy == "optuna":
         identity, variants, extra = _optimization_plan(spec, experiments)
     else:

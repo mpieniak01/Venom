@@ -14,6 +14,8 @@ import {
 import { useTranslation } from "@/lib/i18n";
 import { CampaignDetail, CampaignStatus, campaignIsActive } from "./campaign-detail";
 import { CampaignForm } from "./campaign-form";
+import { CampaignQualityHistory } from "./campaign-quality-history";
+import type { QualityCampaignDraft } from "@/lib/academy-quality-api";
 
 const CARD = "space-y-4 rounded-xl border border-[color:var(--ui-border)] bg-[color:var(--ui-surface)] p-4 sm:p-5";
 const POLL_MS = 3000;
@@ -36,10 +38,12 @@ export function CampaignPanel({
   const [profilesFailed, setProfilesFailed] = useState(false);
   const [campaignsFailed, setCampaignsFailed] = useState(false);
   const [optunaAvailable, setOptunaAvailable] = useState(false);
-  const [operationError, setOperationError] = useState<keyof typeof ACTION_ERROR | null>(null);
+  const [operationError, setOperationError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [selectedId, setSelectedId] = useState(initialCampaignId ?? "");
   const [refresh, setRefresh] = useState(0);
+  const [qualityOpen, setQualityOpen] = useState(false);
+  const [draft, setDraft] = useState<{ value: QualityCampaignDraft; revision: number }>();
   const selected = selectedId
     ? campaigns?.find((campaign) => campaign.campaign_id === selectedId)
     : campaigns?.[0];
@@ -108,9 +112,11 @@ export function CampaignPanel({
       const detail = error instanceof ApiError ? (error.data as { detail?: { code?: string } } | null)?.detail : null;
       if (detail?.code === "campaign_optuna_unavailable") {
         setOptunaAvailable(false);
-        setOperationError("optuna");
+        setOperationError(ACTION_ERROR.optuna);
       } else {
-        setOperationError(error instanceof ApiError && error.status === 409 ? "conflict" : "failed");
+        const qualityKey = "academy.campaigns.quality.issues." + detail?.code;
+        const fallback = error instanceof ApiError && error.status === 409 ? ACTION_ERROR.conflict : ACTION_ERROR.failed;
+        setOperationError(t(qualityKey) === qualityKey ? fallback : qualityKey);
       }
       return false;
     } finally {
@@ -128,6 +134,13 @@ export function CampaignPanel({
   const failed = profilesFailed || campaignsFailed;
   return (
     <div className="space-y-4">
+      <details className={CARD} onToggle={(event) => setQualityOpen(event.currentTarget.open)}>
+        <summary className="cursor-pointer font-semibold">{t("academy.campaigns.quality.title")}</summary>
+        {qualityOpen && (
+          <CampaignQualityHistory disabled={busy || !profiles?.length || failed}
+            onDraft={(value) => setDraft((current) => ({ value, revision: (current?.revision ?? 0) + 1 }))} />
+        )}
+      </details>
       <section className={CARD}>
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h3 className="font-semibold">{t("academy.campaigns.title")}</h3>
@@ -136,12 +149,13 @@ export function CampaignPanel({
         {failed && <p role="alert" className="text-sm text-red-400">{t("academy.campaigns.loadError")}</p>}
         {!failed && (!profiles || !campaigns) && <p className="text-sm text-hint">{t("academy.campaigns.loading")}</p>}
         {profiles && campaigns && (
-          <CampaignForm profiles={profiles} disabled={busy || failed} optunaAvailable={optunaAvailable}
+          <CampaignForm key={draft?.revision ?? 0} draft={draft?.value} profiles={profiles}
+            disabled={busy || failed} optunaAvailable={optunaAvailable}
             onPlan={(request) => mutate(() => planCampaign(request))} />
         )}
         {operationError && (
           <p role="alert" className="text-sm text-red-400">
-            {t(ACTION_ERROR[operationError])}
+            {t(operationError)}
           </p>
         )}
       </section>

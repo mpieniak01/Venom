@@ -1,5 +1,6 @@
 import { apiFetch } from "./api-client";
 import type { ExperimentRecipe } from "./academy-experiments-api";
+import type { CampaignQualityPolicy, TrialQualityGuard } from "./academy-quality-api";
 
 const CAMPAIGNS = "/api/v1/academy/experiments/campaigns";
 
@@ -26,7 +27,7 @@ export type OptunaSearchSpace = Partial<Record<OptunaParameter, { low: number; h
 export interface CampaignRequest {
   campaign_id: string;
   profile_id: string;
-  variants: ExperimentRecipe[];
+  variants: Record<string, unknown>[];
   strategy?: CampaignStrategy;
   search_space?: OptunaSearchSpace;
   sampler_seed?: number;
@@ -34,6 +35,7 @@ export interface CampaignRequest {
   selection: CampaignSelection;
   retention: "keep_all" | "discard_rejected";
   review_mode: "manual" | "automatic";
+  quality_policy?: CampaignQualityPolicy | null;
 }
 
 export interface CampaignPlan extends Omit<CampaignRequest, "variants"> {
@@ -49,6 +51,7 @@ export interface CampaignTrial {
   critical_delta?: number;
   error?: string | null;
   resume_available?: boolean;
+  quality_guard?: TrialQualityGuard | null;
   recipe?: ExperimentRecipe | null;
   optuna_trial_number?: number | null;
   optuna_trial_state?: "WAITING" | "RUNNING" | "COMPLETE" | "PRUNED" | "FAIL" | null;
@@ -61,6 +64,7 @@ export interface Campaign {
   trial_index: number;
   trials: CampaignTrial[];
   selected_run_id?: string | null;
+  quality_policy_error?: string | null;
   elapsed_seconds: number;
   used_updates: number;
   used_tokens: number;

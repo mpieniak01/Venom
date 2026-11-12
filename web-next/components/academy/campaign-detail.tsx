@@ -12,6 +12,7 @@ import {
 } from "@/lib/academy-campaign-api";
 import { useLanguage, useTranslation } from "@/lib/i18n";
 import { OPTUNA_PARAMETERS, OptunaPlanSummary } from "./campaign-optuna";
+import { QualityPolicySummary, TrialQualityDecision } from "./campaign-quality-policy";
 
 const ACTIVE = new Set(["running", "awaiting_review", "stopping", "interrupted"]);
 const CAN_RESUME = new Set(["interrupted", "blocked", "stopped"]);
@@ -187,6 +188,10 @@ export function CampaignDetail({ campaign, disabled, optunaAvailable, onAction, 
         <div><dt className="text-hint">{t("academy.campaigns.retention")}</dt><dd>{t(campaign.plan.retention === "keep_all" ? "academy.campaigns.keepAll" : "academy.campaigns.discardRejected")}</dd></div>
       </dl>
       {optuna && <OptunaPlanSummary plan={campaign.plan} />}
+      {campaign.plan.quality_policy && <QualityPolicySummary policy={campaign.plan.quality_policy} />}
+      {campaign.quality_policy_error && (
+        <p role="alert" className="text-sm text-red-400">{t("academy.campaigns.quality.guard.stale")}</p>
+      )}
       {campaign.error && <p role="alert" className="break-all text-sm text-red-400">{campaign.error}</p>}
       {campaign.selected_run_id && (
         <p className="break-all text-sm font-medium">{t("academy.campaigns.selected")} {campaign.selected_run_id}</p>
@@ -225,6 +230,7 @@ export function CampaignDetail({ campaign, disabled, optunaAvailable, onAction, 
                       {trial.run_id}
                     </Button>
                     {optuna && <OptunaTrialSummary trial={trial} />}
+                    {trial.quality_guard && <TrialQualityDecision guard={trial.quality_guard} />}
                     {!optuna && variant && <p className="pl-3 text-xs text-hint">
                       {t("academy.experiments.rank")} {variant.recipe.rank} · {t("academy.experiments.learningRate")} {variant.recipe.learning_rate}
                       {" · "}{t("academy.campaigns.plannedWorkload")} {displayNumber.format(variant.workload.updates)} / {displayNumber.format(variant.workload.tokens)}

@@ -1359,3 +1359,18 @@ def test_quality_guard_rejects_moved_critical_error_and_pins_actual_protocol(
     completed = service.advance("series")
     assert completed["trials"][1]["quality_guard"]["status"] == "blocked"
     assert completed["selected_run_id"] is None
+
+
+def test_draft_cannot_replace_pinned_training_data(tmp_path, monkeypatch):
+    experiments = FakeExperiments(tmp_path)
+    original = experiments.validate
+
+    def validate(profile_id, recipe=None):
+        verified = original(profile_id, recipe)
+        verified["recipe"]["train_sha256"] = "b" * 64
+        return verified
+
+    monkeypatch.setattr(experiments, "validate", validate)
+    spec = make_spec(count=1, variants=[{"train_sha256": "a" * 64}])
+    with pytest.raises(ValueError, match="campaign_quality_training_identity_changed"):
+        CampaignService(experiments).validate(spec)

@@ -17,14 +17,29 @@ const DRAFT_RECIPE_FIELDS = new Set([
   "max_tokens", "microbatch", "gradient_accumulation_steps", "seed", "lr_scheduler_type",
   "train_sha256", "max_supervised_tokens",
 ]);
+const LANGUAGE_TARGET_MODULES = new Set([
+  "q_proj", "k_proj", "v_proj", "o_proj", "in_proj", "out_proj", "w1", "w2", "w3",
+]);
+
 function unsupportedDraftFields(recipe: Record<string, unknown>) {
   const fields = Object.keys(recipe).filter((key) => !DRAFT_RECIPE_FIELDS.has(key));
   const modules = recipe.target_modules;
   if (modules !== undefined && (!Array.isArray(modules)
-    || !modules.length || modules.some((item) => item !== "q_proj" && item !== "v_proj"))) {
+    || !modules.length || modules.some((item) => typeof item !== "string" || !LANGUAGE_TARGET_MODULES.has(item)))) {
     fields.push("target_modules");
   }
   return fields;
+}
+
+function draftTokenBudget(draft: QualityCampaignDraft | undefined) {
+  return draft?.variants.reduce((total, { recipe }) => {
+    const { steps, max_tokens, microbatch, gradient_accumulation_steps, max_supervised_tokens } = recipe;
+    if (typeof steps !== "number" || typeof max_tokens !== "number"
+      || typeof microbatch !== "number" || typeof gradient_accumulation_steps !== "number") return total;
+    const bound = steps * max_tokens * microbatch * gradient_accumulation_steps;
+    const reserved = typeof max_supervised_tokens === "number" ? Math.min(bound, max_supervised_tokens) : bound;
+    return total + reserved;
+  }, 0) ?? 0;
 }
 
 const BUDGET_FIELDS = [
@@ -272,7 +287,7 @@ export function CampaignForm({ profiles, disabled, optunaAvailable, draft, onDis
             <div className="space-y-1" key={field}>
               <Label htmlFor={`campaign-${field}`}>{t(`academy.campaigns.budget.${field}`)}</Label>
               <Input id={`campaign-${field}`} name={field} type="number" step={1} min={min} max={max}
-                defaultValue={initial} required disabled={disabled} />
+                defaultValue={field === "max_tokens" ? Math.max(initial, draftTokenBudget(draft)) : initial} required disabled={disabled} />
             </div>
           ))}
           <div className="space-y-1">

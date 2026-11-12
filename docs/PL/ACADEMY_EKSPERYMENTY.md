@@ -171,3 +171,10 @@ Pakiet zawiera `schema_version: 1` i listę `records`. Każdy rekord zawiera ide
 Przy zgodnych ocenach dev i udokumentowanej różnicy konfiguracji Academy proponuje próbę kontrolną i zmianę jednego parametru. Zbiór końcowy służy do osobnego potwierdzenia. Jeśli potrzebna zmiana wykracza poza obsługiwane parametry profilu, przygotuj odpowiedni profil i wykonawcę przed zapisaniem kampanii.
 
 Formularz kampanii może wiązać referencję, chronione przypadki, progi różnic użyteczności w kategoriach i zakaz nowych błędów krytycznych. Academy zapisuje kryteria z hashem planu. Wynik próby pokazuje utracone chronione przypadki, nowe błędy krytyczne i różnice per kategoria. Tylko kandydaci spełniający kryteria mogą zostać wybrani do retencji. Porównanie z wcześniejszym adapterem odbywa się na podstawie zapisanych ocen, więc nie wymaga załadowania jego wag.
+
+
+## Próba zakresu LoRA po P14
+
+W historii jakości porównaj `history:p14-02` z `history:p13-on-p14-dev` i przenieś rekomendację do formularza. Wybierz profil z przypiętymi danymi P14 i środowiskiem wskazanym w szkicu. Academy wstępnie uzupełnia limit tokenów dla obu wariantów. Zapisz plan, sprawdź budżet i użyj osobnego przycisku startu.
+
+Wariant kontrolny używa `q_proj` i `v_proj`. Wariant porównawczy obejmuje również `k_proj`, `o_proj`, `in_proj`, `out_proj`, `w1`, `w2` i `w3`, jeśli występują w części językowej przypiętego modelu. Academy rozpoznaje zapis tego zakresu w historycznej recepturze P13 i wystawia listę nazw do planu. Wykonawca sprawdza rzeczywiste warstwy adaptera i zapisuje ich listę w raporcie treningu. Porównanie zachowuje dane, sposób obliczania straty i pozostałe parametry P14.

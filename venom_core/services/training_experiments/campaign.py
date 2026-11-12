@@ -583,14 +583,19 @@ class CampaignService:
 
     def _terminate(self, directory: Path, state: dict, run: dict | None) -> None:
         if run and _has_work(run):
-            stopped = self.experiments.stop(
-                run["run_id"], campaign_id=state["campaign_id"]
-            )
-            if _has_work(stopped):
+            run = self.experiments.stop(run["run_id"], campaign_id=state["campaign_id"])
+            if _has_work(run):
                 state["status"] = "stopping"
                 return
         if state["termination"] == "timed_out" and _is_optuna(state["plan"]):
             trial = state["trials"][state["trial_index"]]
+            if "optuna_trial_number" not in trial:
+                index = state["trial_index"]
+                assignment = optuna_backend.assigned(directory, state["plan"], index)
+                if assignment is not None:
+                    trial["optuna_trial_number"] = self._suggestion_number(
+                        assignment, index
+                    )
             if "optuna_trial_number" in trial:
                 self._record_timeout(directory, state, trial, run)
         state["status"] = state["termination"]
@@ -684,9 +689,9 @@ class CampaignService:
                 run["run_id"], campaign_id=state["campaign_id"]
             )
             if not _has_work(stopped):
-                self._finish_trial(
-                    directory, state, trial, {**stopped, "status": "timed_out"}
-                )
+                if stopped["status"] != "succeeded":
+                    stopped = {**stopped, "status": "timed_out"}
+                self._finish_trial(directory, state, trial, stopped)
             return True
         if run["status"] not in _RUN_ACTIVE:
             # An orphaned child still owns runtime resources.
@@ -710,7 +715,8 @@ class CampaignService:
             return True
         if run is None:
             if remaining < 1:
-                state["status"] = "timed_out"
+                state["termination"] = "timed_out"
+                self._terminate(directory, state, None)
                 return True
             return False
         return _has_work(run) and self._monitor(directory, state, trial, run, remaining)
@@ -769,20 +775,23 @@ class CampaignService:
                 return
         self._reserve(directory, state, trial, "start", 0)
 
+    @staticmethod
+    def _suggestion_number(suggestion: dict, index: int) -> int:
+        number = suggestion["trial_number"]
+        if type(number) is not int or number != index:
+            raise ValueError("campaign_optuna_suggestion_invalid")
+        return number
+
     def _suggest(self, directory: Path, state: dict, trial: dict) -> None:
         plan = state["plan"]
         self._profile(plan)
         if not self._artifact_budget(state):
             raise ValueError("campaign_storage_budget_exhausted")
-        suggestion = optuna_backend.ask(directory, plan, state["trial_index"])
-        number, params = suggestion["trial_number"], suggestion["params"]
-        previous = state["trials"][: state["trial_index"]]
-        if (
-            type(number) is not int
-            or number < 0
-            or any(other.get("optuna_trial_number") == number for other in previous)
-        ):
-            raise ValueError("campaign_optuna_suggestion_invalid")
+        index = state["trial_index"]
+        suggestion = optuna_backend.ask(directory, plan, index)
+        number = self._suggestion_number(suggestion, index)
+        params = suggestion["params"]
+        previous = state["trials"][:index]
         trial.update(optuna_trial_number=number, optuna_trial_state="RUNNING")
         _check_suggestion(plan["search_space"], params)
         base = _current_variant(state)

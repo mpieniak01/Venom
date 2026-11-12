@@ -4,9 +4,10 @@ import { useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import type { CampaignRequest } from "@/lib/academy-campaign-api";
+import type { CampaignRequest, CampaignStrategy, OptunaSearchSpace } from "@/lib/academy-campaign-api";
 import type { ExperimentProfile, ExperimentRecipe } from "@/lib/academy-experiments-api";
 import { useTranslation } from "@/lib/i18n";
+import { OPTUNA_PARAMETERS, OptunaFields } from "./campaign-optuna";
 
 const MIB = 1024 ** 2;
 const BUDGET_FIELDS = [
@@ -43,13 +44,35 @@ function variantRecipe(data: FormData, row: number): ExperimentRecipe {
   return recipe;
 }
 
-function readPlan(data: FormData, profileId: string, rows: number[]): CampaignRequest {
+function readOptunaPlan(data: FormData): Pick<CampaignRequest, "variants" | "strategy" | "search_space" | "sampler_seed"> {
+  const searchSpace: OptunaSearchSpace = {};
+  for (const { key, min, max, integer } of OPTUNA_PARAMETERS) {
+    if (!data.has("optuna-" + key + "-enabled")) continue;
+    const low = numberField(data, "optuna-" + key + "-low");
+    const high = numberField(data, "optuna-" + key + "-high");
+    const log = data.has("optuna-" + key + "-log");
+    if (low < min || high > max || low >= high
+      || (integer && !(Number.isInteger(low) && Number.isInteger(high))) || (log && low <= 0)) {
+      throw new Error("invalid Optuna range");
+    }
+    searchSpace[key] = { low, high, log };
+  }
+  const seed = numberField(data, "sampler_seed");
+  if (!Object.keys(searchSpace).length || !Number.isInteger(seed) || seed < 0 || seed > 2 ** 32 - 1) {
+    throw new Error("invalid Optuna search space or seed");
+  }
+  return { strategy: "optuna", variants: [], search_space: searchSpace, sampler_seed: seed };
+}
+
+function readPlan(data: FormData, profileId: string, rows: number[], strategy: CampaignStrategy): CampaignRequest {
   const id = String(data.get("campaign_id") ?? "").trim();
   if (!/^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$/.test(id)) throw new Error("invalid campaign id");
   return {
     campaign_id: id,
     profile_id: profileId,
-    variants: rows.map((row) => variantRecipe(data, row)),
+    ...(strategy === "optuna"
+      ? readOptunaPlan(data)
+      : { variants: rows.map((row) => variantRecipe(data, row)) }),
     budget: {
       max_trials: numberField(data, "max_trials"),
       max_updates: numberField(data, "max_updates"),
@@ -72,22 +95,25 @@ function readPlan(data: FormData, profileId: string, rows: number[]): CampaignRe
 interface CampaignFormProps {
   readonly profiles: ExperimentProfile[];
   readonly disabled: boolean;
+  readonly optunaAvailable: boolean;
   readonly onPlan: (request: CampaignRequest) => Promise<boolean>;
 }
 
-export function CampaignForm({ profiles, disabled, onPlan }: CampaignFormProps) {
+export function CampaignForm({ profiles, disabled, optunaAvailable, onPlan }: CampaignFormProps) {
   const t = useTranslation();
   const [profileId, setProfileId] = useState("");
   const [rows, setRows] = useState([0]);
+  const [strategy, setStrategy] = useState<CampaignStrategy>("fixed");
+  const unavailableStrategy = strategy === "optuna" && !optunaAvailable;
   const [invalid, setInvalid] = useState(false);
   const profile = profiles.find((item) => item.id === profileId) ?? profiles[0];
   if (!profile) return <p className="text-sm text-hint">{t("academy.experiments.noProfiles")}</p>;
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (disabled || !profile) return;
+    if (disabled || !profile || unavailableStrategy) return;
     try {
-      const request = readPlan(new FormData(event.currentTarget), profile.id, rows);
+      const request = readPlan(new FormData(event.currentTarget), profile.id, rows, strategy);
       if (request.variants.length > request.budget.max_trials || request.budget.trial_seconds > request.budget.max_seconds) {
         setInvalid(true);
         return;
@@ -115,7 +141,23 @@ export function CampaignForm({ profiles, disabled, onPlan }: CampaignFormProps) 
         </div>
       </div>
       <p className="break-words text-sm text-hint">{profile.model} · {profile.dataset}</p>
-      <fieldset className="space-y-3">
+      <div className="space-y-1 sm:max-w-xs">
+        <Label htmlFor="campaign-strategy">{t("academy.campaigns.strategy")}</Label>
+        <select id="campaign-strategy" className={SELECT_CLASS} value={strategy} disabled={disabled}
+          aria-describedby={!optunaAvailable ? "campaign-optuna-unavailable" : undefined}
+          onChange={(event) => {
+            setStrategy(event.currentTarget.value === "optuna" ? "optuna" : "fixed");
+            setInvalid(false);
+          }}>
+          <option value="fixed">{t("academy.campaigns.fixed")}</option>
+          <option value="optuna" disabled={!optunaAvailable}>{t("academy.campaigns.optuna.name")}</option>
+        </select>
+        {!optunaAvailable && (
+          <p id="campaign-optuna-unavailable" className="text-sm text-hint">{t("academy.campaigns.optuna.unavailable")}</p>
+        )}
+      </div>
+      {strategy === "optuna" && <OptunaFields disabled={disabled || unavailableStrategy} />}
+      <fieldset className="space-y-3" hidden={strategy !== "fixed"} disabled={strategy !== "fixed"}>
         <legend className="text-sm font-medium">{t("academy.campaigns.variants")}</legend>
         {rows.map((row, index) => (
           <div key={row} className="space-y-2 rounded-lg border border-[color:var(--ui-border)] p-3">
@@ -182,8 +224,10 @@ export function CampaignForm({ profiles, disabled, onPlan }: CampaignFormProps) 
           </div>
         </div>
       </details>
-      {invalid && <p role="alert" className="text-sm text-red-400">{t("academy.campaigns.invalid")}</p>}
-      <Button type="submit" disabled={disabled}>{t("academy.campaigns.plan")}</Button>
+      {invalid && <p role="alert" className="text-sm text-red-400">
+        {t(strategy === "optuna" ? "academy.campaigns.optuna.invalid" : "academy.campaigns.invalid")}
+      </p>}
+      <Button type="submit" disabled={disabled || unavailableStrategy}>{t("academy.campaigns.plan")}</Button>
     </form>
   );
 }

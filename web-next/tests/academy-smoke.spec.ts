@@ -609,87 +609,149 @@ test.describe("Academy smoke", () => {
 
   });
 
-  test("plans and starts an Omni campaign and refreshes trial status", async ({ page }) => {
-    const api = "**/api/v1/academy/experiments";
-    const campaigns = `${api}/campaigns`;
-    const campaignId = "omni-e2e";
-    const runId = `${campaignId}-01`;
-    const profile = {
-      id: "polski-czat",
-      label: "Polski czat Omni",
-      model: "LiquidAI/LFM3-Omni-2B",
-      dataset: "Polskie dialogi dev",
-      recipe: { rank: 4, alpha: 8, learning_rate: 0.0002 },
-      automatic_review: false,
-    };
-    const planSha256 = "a".repeat(64);
-    const mock: { current?: Campaign } = {};
-    let planRequest: CampaignRequest | undefined;
-    let startRequest: { plan_sha256: string } | undefined;
-
-    await page.route(`${api}/profiles`, (route) =>
-      route.fulfill({ json: { profiles: [{ ...profile, id: "other-profile", label: "Drugi profil" }, profile] } }),
-    );
-    await page.route(campaigns, (route) =>
-      route.fulfill({ json: { campaigns: mock.current ? [mock.current] : [] } }),
-    );
-    await page.route(`${campaigns}/plan`, async (route) => {
-      planRequest = route.request().postDataJSON() as CampaignRequest;
-      mock.current = {
-        campaign_id: campaignId,
-        plan: {
-          ...planRequest,
-          plan_sha256: planSha256,
-          variants: [
-            {
-              run_id: runId,
-              recipe: { ...profile.recipe, ...planRequest.variants[0] },
-              workload: { updates: 8, tokens: 8192 },
-            },
-          ],
-        },
-        status: "planned",
-        trial_index: 0,
-        trials: [{ run_id: runId, status: "pending" }],
-        elapsed_seconds: 0,
-        used_updates: 0,
-        used_tokens: 0,
-        retries: 0,
-        artifact_bytes: 0,
+  for (const strategy of ["fixed", "optuna"] as const) {
+    test("plans and starts an Omni campaign with " + strategy + " strategy", async ({ page }) => {
+      const optuna = strategy === "optuna";
+      const api = "**/api/v1/academy/experiments";
+      const campaigns = `${api}/campaigns`;
+      const campaignId = "omni-e2e-" + strategy;
+      const runId = `${campaignId}-01`;
+      const profile = {
+        id: "polski-czat",
+        label: "Polski czat Omni",
+        model: "LiquidAI/LFM3-Omni-2B",
+        dataset: "Polskie dialogi dev",
+        recipe: { rank: 4, alpha: 8, learning_rate: 0.0002 },
+        automatic_review: false,
       };
-      await route.fulfill({ json: mock.current });
+      const planSha256 = "a".repeat(64);
+      const space = {
+        rank: { low: 4, high: 8, log: false },
+        learning_rate: { low: 0.0001, high: 0.001, log: true },
+      };
+      const sampled = { rank: 6, alpha: 8, learning_rate: 0.000437, dropout: 0.05 };
+      const mock: { current?: Campaign } = {};
+      let planRequest: CampaignRequest | undefined;
+      let startRequest: { plan_sha256: string } | undefined;
+
+      // All experiment calls in this scenario are fixtures, including writes.
+      await page.route(api + "/**", (route) => route.abort("blockedbyclient"));
+      await page.route(`${api}/profiles`, (route) =>
+        route.fulfill({ json: { profiles: [{ ...profile, id: "other-profile", label: "Drugi profil" }, profile] } }),
+      );
+      await page.route(campaigns, (route) =>
+        route.fulfill({
+          json: {
+            campaigns: mock.current ? [mock.current] : [],
+            capabilities: { optuna: { available: optuna } },
+          },
+        }),
+      );
+      await page.route(`${campaigns}/plan`, async (route) => {
+        planRequest = route.request().postDataJSON() as CampaignRequest;
+        mock.current = {
+          campaign_id: campaignId,
+          plan: {
+            ...planRequest,
+            plan_sha256: planSha256,
+            variants: [
+              {
+                run_id: runId,
+                recipe: { ...profile.recipe, ...planRequest.variants[0] },
+                workload: { updates: 8, tokens: 8192 },
+              },
+            ],
+          },
+          status: "planned",
+          trial_index: 0,
+          trials: [{ run_id: runId, status: "pending" }],
+          elapsed_seconds: 0,
+          used_updates: 0,
+          used_tokens: 0,
+          retries: 0,
+          artifact_bytes: 0,
+        };
+        await route.fulfill({ json: mock.current });
+      });
+      await page.route(`${campaigns}/${campaignId}/start`, async (route) => {
+        startRequest = route.request().postDataJSON() as { plan_sha256: string };
+        if (!mock.current) throw new Error("Campaign plan has not been created");
+        mock.current = {
+          ...mock.current,
+          status: "running",
+          trials: [{
+            run_id: runId,
+            status: "running",
+            ...(optuna ? { recipe: sampled, optuna_trial_number: 0, optuna_trial_state: "RUNNING" as const } : {}),
+          }],
+        };
+        await route.fulfill({ json: mock.current });
+      });
+
+      await page.goto(buildHttpUrl(host, port, "/academy"));
+      await page.getByRole("button", { name: "Trening", exact: true }).click();
+      await page.getByRole("button", { name: "Kampania", exact: true }).click();
+      await page.locator("#campaign-profile").selectOption(profile.id);
+      await page.getByLabel("Identyfikator kampanii").fill(campaignId);
+      const strategyInput = page.getByLabel("Strategia doboru parametrów");
+      await expect(strategyInput).toHaveValue("fixed");
+      if (optuna) {
+        await strategyInput.selectOption("optuna");
+        await expect(page.getByRole("button", { name: "Dodaj wariant" })).toBeHidden();
+        await page.getByRole("checkbox", { name: "Ranga LoRA", exact: true }).check();
+        await page.getByLabel("Ranga LoRA · minimum").fill("4");
+        await page.getByLabel("Ranga LoRA · maksimum").fill("8");
+        await page.getByLabel("Tempo uczenia · minimum").fill("0.0001");
+        await page.getByLabel("Tempo uczenia · maksimum").fill("0.001");
+        await page.getByLabel("Ziarno samplera").fill("0");
+      } else {
+        await expect(strategyInput.locator('option[value="optuna"]')).toBeDisabled();
+        await expect(page.getByText("Optuna jest niedostępna w środowisku sterownika kampanii.")).toBeVisible();
+        await page.locator("#variant-0-rank").fill("6");
+      }
+      await page.getByRole("button", { name: "Przygotuj plan kampanii" }).click();
+      const start = page.getByRole("button", { name: "Uruchom zaplanowaną kampanię" });
+      await expect(start).toBeEnabled();
+      expect(planRequest).toMatchObject({ campaign_id: campaignId, profile_id: profile.id, review_mode: "manual" });
+      expect(startRequest).toBeUndefined();
+      if (optuna) {
+        expect(planRequest).toMatchObject({ strategy: "optuna", variants: [], search_space: space, sampler_seed: 0 });
+        await expect(page.getByRole("heading", { name: "Zapisane zakresy wyszukiwania Optuny" })).toBeVisible();
+        await expect(page.getByText("4 – 8 · Skala liniowa")).toBeVisible();
+        await expect(page.getByText("0,0001 – 0,001 · Skala logarytmiczna")).toBeVisible();
+      } else {
+        expect(planRequest?.strategy).toBeUndefined();
+        expect(planRequest?.variants).toEqual([{ rank: 6 }]);
+      }
+
+      await start.click();
+      await expect(page.getByRole("button", { name: "Zatrzymaj kampanię" })).toBeEnabled();
+      expect(startRequest).toEqual({ plan_sha256: planSha256 });
+
+      if (!mock.current) throw new Error("Campaign did not start");
+      mock.current = {
+        ...mock.current,
+        status: "awaiting_review",
+        trials: mock.current.trials.map((item) => ({ ...item, status: "awaiting_review" })),
+      };
+      const trial = page.getByRole("row").filter({ has: page.getByRole("button", { name: runId, exact: true }) });
+      await expect(trial).toContainText("Oczekuje na ocenę");
+      if (optuna) {
+        await expect(trial).toContainText("Próba Optuny 0");
+        await expect(trial).toContainText("0,000437");
+        mock.current = {
+          ...mock.current,
+          status: "succeeded",
+          selected_run_id: runId,
+          trials: mock.current.trials.map((item) => ({
+            ...item, status: "succeeded", optuna_trial_state: "COMPLETE", usable_delta: 0.125, critical_delta: 0,
+          })),
+        };
+        await expect(trial).toContainText("Ocena zakończona");
+        await expect(trial).toContainText("+12,5");
+      }
     });
-    await page.route(`${campaigns}/${campaignId}/start`, async (route) => {
-      startRequest = route.request().postDataJSON() as { plan_sha256: string };
-      if (!mock.current) throw new Error("Campaign plan has not been created");
-      mock.current = { ...mock.current, status: "running", trials: [{ run_id: runId, status: "running" }] };
-      await route.fulfill({ json: mock.current });
-    });
-
-    await page.goto(buildHttpUrl(host, port, "/academy"));
-    await page.getByRole("button", { name: "Trening", exact: true }).click();
-    await page.getByRole("button", { name: "Kampania", exact: true }).click();
-    await page.locator("#campaign-profile").selectOption(profile.id);
-    await page.getByLabel("Identyfikator kampanii").fill(campaignId);
-    await page.getByRole("button", { name: "Przygotuj plan kampanii" }).click();
-    const start = page.getByRole("button", { name: "Uruchom zaplanowaną kampanię" });
-    await expect(start).toBeEnabled();
-    expect(planRequest).toMatchObject({ campaign_id: campaignId, profile_id: profile.id, review_mode: "manual" });
-    expect(startRequest).toBeUndefined();
-
-    await start.click();
-    await expect(page.getByRole("button", { name: "Zatrzymaj kampanię" })).toBeEnabled();
-    expect(startRequest).toEqual({ plan_sha256: planSha256 });
-
-    if (!mock.current) throw new Error("Campaign did not start");
-    mock.current = {
-      ...mock.current,
-      status: "awaiting_review",
-      trials: [{ run_id: runId, status: "awaiting_review" }],
-    };
-    const trial = page.getByRole("row").filter({ has: page.getByRole("button", { name: runId, exact: true }) });
-    await expect(trial).toContainText("Oczekuje na ocenę");
-  });
+  }
 
   test("status + start training + activate adapter flow", async ({ page }) => {
     await page.goto(buildHttpUrl(host, port, "/academy"));

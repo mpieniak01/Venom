@@ -1,0 +1,4 @@
+# Install in an optional CPU-only venv and point VENOM_OPTUNA_PYTHON at its interpreter.
+# Pin the sampler and its numerical runtime to keep campaign replay reproducible.
+optuna==4.9.0
+numpy==2.3.5

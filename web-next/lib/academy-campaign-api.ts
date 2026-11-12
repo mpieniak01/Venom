@@ -19,10 +19,17 @@ export interface CampaignSelection {
   max_critical_delta: number;
 }
 
+export type CampaignStrategy = "fixed" | "optuna";
+export type OptunaParameter = "rank" | "alpha" | "learning_rate" | "dropout";
+export type OptunaSearchSpace = Partial<Record<OptunaParameter, { low: number; high: number; log?: boolean }>>;
+
 export interface CampaignRequest {
   campaign_id: string;
   profile_id: string;
   variants: ExperimentRecipe[];
+  strategy?: CampaignStrategy;
+  search_space?: OptunaSearchSpace;
+  sampler_seed?: number;
   budget: CampaignBudget;
   selection: CampaignSelection;
   retention: "keep_all" | "discard_rejected";
@@ -42,6 +49,9 @@ export interface CampaignTrial {
   critical_delta?: number;
   error?: string | null;
   resume_available?: boolean;
+  recipe?: ExperimentRecipe | null;
+  optuna_trial_number?: number | null;
+  optuna_trial_state?: "WAITING" | "RUNNING" | "COMPLETE" | "PRUNED" | "FAIL" | null;
 }
 
 export interface Campaign {
@@ -75,8 +85,13 @@ export function campaignReportUrl(campaignId: string) {
   return `${pathFor(campaignId)}/report`;
 }
 
-export async function listCampaigns(signal?: AbortSignal) {
-  return (await apiFetch<{ campaigns: Campaign[] }>(CAMPAIGNS, { signal })).campaigns;
+interface CampaignListing {
+  campaigns: Campaign[];
+  capabilities?: { optuna?: { available: boolean; reason?: string | null } };
+}
+
+export function listCampaigns(signal?: AbortSignal) {
+  return apiFetch<CampaignListing>(CAMPAIGNS, { signal });
 }
 
 export function planCampaign(request: CampaignRequest) {

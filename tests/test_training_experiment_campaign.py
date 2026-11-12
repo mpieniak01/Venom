@@ -518,7 +518,7 @@ def test_campaign_http_plan_start_and_read(tmp_path, monkeypatch):
     app.include_router(routes.router)
     client = TestClient(app, client=("127.0.0.1", 1234))
     prefix = "/api/v1/academy/experiments/campaigns"
-    assert client.get(prefix).json() == {"campaigns": []}
+    assert client.get(prefix).json()["campaigns"] == []
     plan = client.post(f"{prefix}/plan", json=make_spec().model_dump())
     assert plan.status_code == 200, plan.text
     digest = plan.json()["plan"]["plan_sha256"]
@@ -534,3 +534,256 @@ def test_campaign_http_plan_start_and_read(tmp_path, monkeypatch):
     assert client.get(f"{prefix}/series/report").json()["campaign_id"] == "series"
     assert client.post(f"{prefix}/series/stop").status_code == 200
     assert client.get(prefix).json()["campaigns"][0]["campaign_id"] == "series"
+
+
+class FixtureSampler:
+    def __init__(self):
+        self.suggestions = [{"rank": 4}, {"rank": 5}, {"rank": 6}]
+        self.assigned = {}
+        self.outcomes = {}
+        self.ask_count = 0
+        self.tell_count = 0
+
+    def ask(self, directory, plan, index):
+        assert directory.name == plan["campaign_id"]
+        self.ask_count += 1
+        return self.assigned.setdefault(
+            index, {"trial_number": index, "params": self.suggestions[index]}
+        )
+
+    def tell(self, _directory, _plan, number, outcome, value=None, constraints=None):
+        self.tell_count += 1
+        result = (outcome, value, constraints)
+        assert self.outcomes.setdefault(number, result) == result
+
+
+@pytest.fixture
+def sampler(monkeypatch):
+    from venom_core.services.training_experiments import optuna_backend
+
+    fixture = FixtureSampler()
+    monkeypatch.setattr(optuna_backend, "require_optuna", lambda: "4.9.0")
+    monkeypatch.setattr(optuna_backend, "ask", fixture.ask)
+    monkeypatch.setattr(
+        optuna_backend, "assigned", lambda _directory, _plan, i: fixture.assigned.get(i)
+    )
+    monkeypatch.setattr(optuna_backend, "tell", fixture.tell)
+    return fixture
+
+
+def optimization_spec(*, count=3, **options):
+    return make_spec(
+        count=count,
+        **{
+            "strategy": "optuna",
+            "variants": [],
+            "search_space": {"rank": {"low": 4, "high": 6}},
+            "sampler_seed": 21,
+            **options,
+        },
+    )
+
+
+def test_optuna_reconciles_ask_and_tell_across_state_write_crash(
+    controller, sampler, monkeypatch
+):
+    service, experiments, _clock = controller
+    planned = start(service, optimization_spec(count=1))
+    original_save = service._save
+
+    def crash_after_ask(directory, state):
+        if state["trials"][0].get("intent"):
+            raise SystemExit("crash between ask and campaign publication")
+        original_save(directory, state)
+
+    monkeypatch.setattr(service, "_save", crash_after_ask)
+    with pytest.raises(SystemExit, match="publication"):
+        service.advance("series")
+    assert service.status("series")["used_updates"] == 0
+    assert experiments.calls == []
+    assert sampler.assigned.keys() == {0}
+
+    monkeypatch.setattr(service, "_save", original_save)
+    run_id = launch_next(service)
+    assert planned["trials"][0]["run_id"] == run_id
+    assert experiments.status(run_id)["recipe"]["rank"] == 4
+    assert service.status("series")["used_updates"] == 2
+    assert sampler.ask_count == 2
+    experiments.finish(run_id, usable=3)
+
+    def crash_after_tell(directory, state):
+        if state["trial_index"] == 1:
+            raise SystemExit("crash after durable outcome before cursor")
+        original_save(directory, state)
+
+    monkeypatch.setattr(service, "_save", crash_after_tell)
+    with pytest.raises(SystemExit, match="cursor"):
+        service.advance("series")
+    assert service.status("series")["trial_index"] == 0
+    assert sampler.outcomes == {0: ("COMPLETE", 0.25, [0.0, -0.25])}
+
+    monkeypatch.setattr(service, "_save", original_save)
+    recovered = service.advance("series")
+    assert recovered["status"] == "succeeded"
+    assert recovered["trials"][0]["optuna_trial_state"] == "COMPLETE"
+    assert recovered["selected_run_id"] == run_id
+    assert sampler.tell_count == 2
+    assert experiments.calls == [("start", run_id)]
+
+
+def test_optuna_distinguishes_duplicate_technical_failure_and_gate_rejection(
+    controller, sampler
+):
+    service, experiments, _clock = controller
+    sampler.suggestions[1] = sampler.suggestions[0]
+    start(service, optimization_spec())
+    rejected = launch_next(service)
+    experiments.update(rejected, status="awaiting_review", stage="score")
+    assert service.advance("series")["status"] == "awaiting_review"
+    assert sampler.outcomes == {}
+
+    experiments.finish(rejected, usable=4, critical=1)
+    observed = service.advance("series")
+    assert observed["selected_run_id"] is None
+    assert observed["trials"][0]["gate_passed"] is False
+    assert sampler.outcomes[0] == ("COMPLETE", 0.5, [0.25, -0.5])
+
+    skipped = service.advance("series")
+    assert skipped["trials"][1]["status"] == "skipped"
+    assert skipped["trials"][1]["error"] == "campaign_duplicate_suggestion"
+    assert skipped["used_tokens"] == 40
+    assert sampler.outcomes[1] == ("FAIL", None, None)
+
+    failed = launch_next(service)
+    experiments.update(failed, status="failed", error="invalid_checkpoint")
+    finished = service.advance("series")
+    assert finished["status"] == "succeeded"
+    assert finished["used_tokens"] == 80
+    assert finished["trials"][2]["optuna_trial_state"] == "FAIL"
+    assert "usable_delta" not in finished["trials"][2]
+    assert sampler.outcomes[2] == ("FAIL", None, None)
+    assert experiments.calls == [("start", rejected), ("start", failed)]
+
+
+@pytest.mark.parametrize("params", [{"rank": 7}, {"rank": 4.0}, {"steps": 4}])
+def test_optuna_blocks_unauthorized_suggestion_before_launch(
+    controller, sampler, params
+):
+    service, experiments, _clock = controller
+    sampler.suggestions[0] = params
+    start(service, optimization_spec())
+    blocked = service.advance("series")
+    assert blocked["status"] == "blocked"
+    assert blocked["error"] == "campaign_optuna_suggestion_invalid"
+    assert blocked["used_updates"] == 0
+    assert experiments.calls == []
+    assert sampler.outcomes == {}
+
+
+def test_optuna_preflight_checks_worst_case_for_every_slot(
+    controller, sampler, monkeypatch
+):
+    service, experiments, _clock = controller
+    validate = experiments.validate
+
+    def expensive_corner(profile_id, recipe=None):
+        checked = validate(profile_id, recipe)
+        if (recipe or {}).get("rank") == 6:
+            checked["workload"]["tokens"] = 90
+        return checked
+
+    monkeypatch.setattr(experiments, "validate", expensive_corner)
+    with pytest.raises(ValueError, match="token_budget_exceeded"):
+        service.plan(optimization_spec())
+    assert sampler.assigned == {}
+    assert experiments.calls == []
+
+
+def test_optuna_expired_resume_reconciles_finished_outcome_without_more_work(
+    controller, sampler
+):
+    service, experiments, clock = controller
+    start(service, optimization_spec())
+    run_id = launch_next(service)
+    experiments.finish(run_id, usable=3)
+    state = service.status("series")
+    state["worker"] = None
+    service._save(service.directory("series"), state)
+    clock.now += 51
+
+    assert service.resume("series")["status"] == "stopping"
+    settled = service.advance("series")
+    assert settled["status"] == "timed_out"
+    assert settled["trials"][0]["optuna_trial_state"] == "COMPLETE"
+    assert sampler.outcomes == {0: ("COMPLETE", 0.25, [0.0, -0.25])}
+    assert experiments.calls == [("start", run_id)]
+
+
+@pytest.mark.parametrize("elapsed", [21, 51])
+def test_optuna_preserves_evaluation_completed_at_deadline(
+    controller, sampler, monkeypatch, elapsed
+):
+    service, experiments, clock = controller
+    start(service, optimization_spec())
+    run_id = launch_next(service)
+
+    def stop_after_evaluation(run_id, *, campaign_id):
+        assert campaign_id == "series"
+        experiments.finish(run_id, usable=3)
+        return experiments.status(run_id)
+
+    monkeypatch.setattr(experiments, "stop", stop_after_evaluation)
+    clock.now += elapsed
+    result = service.advance("series")
+    assert result["trials"][0]["optuna_trial_state"] == "COMPLETE"
+    assert result["selected_run_id"] == run_id
+    assert sampler.outcomes == {0: ("COMPLETE", 0.25, [0.0, -0.25])}
+
+
+def test_optuna_expiry_reconciles_unpublished_ask_without_starting_work(
+    controller, sampler
+):
+    service, experiments, clock = controller
+    state = start(service, optimization_spec())
+    sampler.ask(service.directory("series"), state["plan"], 0)
+    clock.now += 51
+    expired = service.advance("series")
+
+    assert expired["status"] == "timed_out"
+    assert expired["trials"][0]["optuna_trial_state"] == "FAIL"
+    assert expired["used_updates"] == 0
+    assert sampler.ask_count == 1
+    assert sampler.outcomes == {0: ("FAIL", None, None)}
+    assert experiments.calls == []
+
+
+def test_optuna_expired_launch_intent_is_reconciled(controller, sampler):
+    service, experiments, clock = controller
+    start(service, optimization_spec())
+    assert service.advance("series")["trials"][0]["intent"]["action"] == "start"
+    clock.now += 21
+
+    expired = service.advance("series")
+    assert expired["status"] == "timed_out"
+    assert expired["trials"][0]["optuna_trial_state"] == "FAIL"
+    assert sampler.outcomes == {0: ("FAIL", None, None)}
+    assert experiments.calls == []
+
+
+def test_fixed_campaign_does_not_need_optuna_and_preserves_old_plan(
+    controller, monkeypatch
+):
+    from venom_core.services.training_experiments import optuna_backend
+
+    service, experiments, _clock = controller
+
+    def unavailable():
+        raise ValueError("campaign_optuna_unavailable")
+
+    monkeypatch.setattr(optuna_backend, "require_optuna", unavailable)
+    first = service.plan(make_spec())
+    assert not {"strategy", "sampler_seed", "search_space"} & first["plan"].keys()
+    assert start(service)["plan"] == first["plan"]
+    with pytest.raises(ValueError, match="optuna_unavailable"):
+        service.plan(optimization_spec(campaign_id="search"))
+    assert experiments.calls == []

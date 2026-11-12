@@ -29,6 +29,7 @@ tests/test_academy_api_contracts.py
 tests/test_academy_api_dataset_edge_cases.py
 tests/test_academy_api_dataset_routes.py
 tests/test_academy_api_edges_contract.py
+tests/test_academy_campaign_capabilities.py
 tests/test_academy_conversion_contracts.py
 tests/test_academy_conversion_light_coverage.py
 tests/test_academy_dataset_conversion.py
@@ -36,6 +37,7 @@ tests/test_academy_experiments.py
 tests/test_academy_file_resolution_service.py
 tests/test_academy_history_module.py
 tests/test_academy_models_module.py
+tests/test_academy_optuna_backend.py
 tests/test_academy_route_handlers_extra.py
 tests/test_academy_route_helpers_modules.py
 tests/test_academy_self_learning_routes.py

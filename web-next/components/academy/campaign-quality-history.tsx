@@ -9,7 +9,7 @@ import {
   type QualityAnalysis,
   type QualityCampaignDraft,
   type QualityCounts,
-  type QualityRecord,
+  type QualityListing,
 } from "@/lib/academy-quality-api";
 import { useTranslation } from "@/lib/i18n";
 
@@ -116,7 +116,7 @@ function NextTrial({ analysis, disabled, onDraft }: {
     onDraft({
       profileId: analysis.recommended_profile_id,
       variants: proposal.variants,
-      fixed: proposal.fixed,
+      ...(proposal.fixed ? { fixed: proposal.fixed } : {}),
       qualityPolicy: {
         source_record_id: analysis.record.record_id,
         reference_record_ids: reference ? [reference] : [],
@@ -168,7 +168,7 @@ export function CampaignQualityHistory({ disabled, onDraft }: {
   readonly onDraft: (draft: QualityCampaignDraft) => void;
 }) {
   const t = useTranslation();
-  const [records, setRecords] = useState<QualityRecord[] | null>(null);
+  const [listing, setListing] = useState<QualityListing | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
   const [reload, setReload] = useState(0);
   const [candidateId, setCandidateId] = useState("");
@@ -176,15 +176,16 @@ export function CampaignQualityHistory({ disabled, onDraft }: {
   const [analysis, setAnalysis] = useState<QualityAnalysis | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [analysisFailed, setAnalysisFailed] = useState(false);
+  const records = listing?.records;
   const candidate = records?.find((record) => record.record_id === candidateId) ?? records?.[0];
   const reference = referenceId === candidate?.record_id ? "" : referenceId;
 
   useEffect(() => {
     const controller = new AbortController();
     void listQualityRecords(controller.signal)
-      .then((items) => {
+      .then((nextListing) => {
         if (controller.signal.aborted) return;
-        setRecords(items);
+        setListing(nextListing);
         setLoadFailed(false);
       })
       .catch(() => { if (!controller.signal.aborted) setLoadFailed(true); });
@@ -221,11 +222,18 @@ export function CampaignQualityHistory({ disabled, onDraft }: {
     );
   }
   if (!records) return <p className="text-sm text-hint">{t(QUALITY + "loading")}</p>;
-  if (!candidate) return <p className="text-sm text-hint">{t(QUALITY + "empty")}</p>;
+  const unavailableIds = listing?.unavailable_record_ids ?? [];
+  const unavailableFeedback = unavailableIds.length > 0 ? (
+    <output className="block break-all text-sm text-hint">
+      {t(QUALITY + "unavailableRecords")} <code>{unavailableIds.join(", ")}</code>
+    </output>
+  ) : null;
+  if (!candidate) return unavailableFeedback ?? <p className="text-sm text-hint">{t(QUALITY + "empty")}</p>;
   const alignedReference = Boolean(analysis?.reference_id && analysis.comparable);
 
   return (
     <div className="space-y-4">
+      {unavailableFeedback}
       <form className="grid items-end gap-3 sm:grid-cols-[1fr_1fr_auto]" onSubmit={(event) => void compare(event)}>
         <div className="space-y-1">
           <Label htmlFor="quality-candidate">{t(QUALITY + "candidate")}</Label>

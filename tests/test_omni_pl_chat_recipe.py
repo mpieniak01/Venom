@@ -132,6 +132,9 @@ def _dev_case():
 def test_evaluation_requires_dev_and_a_defined_content_rubric():
     case = _dev_case()
     validate_dev_cases([case])
+    overlong = {**case, "task": "a" * 129}
+    with pytest.raises(ValueError, match="requires a task name"):
+        validate_dev_cases([overlong])
     with pytest.raises(ValueError, match="only the dev split"):
         validate_dev_cases([{**case, "split": "pilot"}])
     with pytest.raises(ValueError, match="requires a content criterion"):

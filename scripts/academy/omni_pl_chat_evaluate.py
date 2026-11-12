@@ -13,7 +13,12 @@ from pathlib import Path
 from time import monotonic
 from unittest.mock import patch
 
-from scripts.academy.omni_pl_chat_data import read_jsonl, sha256, validate_splits
+from scripts.academy.omni_pl_chat_data import (
+    MAX_DEV_TASK_LENGTH,
+    read_jsonl,
+    sha256,
+    validate_splits,
+)
 from scripts.academy.omni_pl_chat_masks import SNAPSHOT_PIN, verify_snapshot
 from scripts.academy.omni_pl_chat_p1 import _verify_boundary, _write_json
 
@@ -32,7 +37,12 @@ def validate_dev_cases(cases: list[dict]) -> None:
         if row["split"] != "dev":
             raise ValueError("automated evaluation accepts only the dev split")
         task = row.get("task")
-        if not isinstance(task, str) or not task.strip() or task == "total":
+        if (
+            not isinstance(task, str)
+            or not task.strip()
+            or task == "total"
+            or len(task) > MAX_DEV_TASK_LENGTH
+        ):
             raise ValueError("evaluation case requires a task name")
         criteria = row.get("criteria")
         if not isinstance(criteria, list) or not criteria:

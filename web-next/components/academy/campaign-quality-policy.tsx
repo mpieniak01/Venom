@@ -60,8 +60,8 @@ function PolicyReferences({ initial }: { readonly initial?: CampaignQualityPolic
   useEffect(() => {
     const controller = new AbortController();
     void listQualityRecords(controller.signal)
-      .then((items) => {
-        if (!controller.signal.aborted) setRecordIds(items.filter((item) => item.split === "dev").map((item) => item.record_id));
+      .then(({ records }) => {
+        if (!controller.signal.aborted) setRecordIds(records.filter((item) => item.split === "dev").map((item) => item.record_id));
       })
       .catch(() => { if (!controller.signal.aborted) setError(true); });
     return () => controller.abort();
@@ -92,12 +92,12 @@ export function CampaignPolicyFields({ disabled, initial }: {
 }) {
   const t = useTranslation();
   const sourceLocked = Boolean(initial?.source_record_id);
-  const [operatorEnabled, setEnabled] = useState(Boolean(initial));
+  const [operatorEnabled, setOperatorEnabled] = useState(Boolean(initial));
   const enabled = sourceLocked || operatorEnabled;
   const [mounted, setMounted] = useState(Boolean(initial));
 
   function changeEnabled(checked: boolean) {
-    setEnabled(checked);
+    setOperatorEnabled(checked);
     if (checked) setMounted(true);
   }
   const defaults = Object.entries(initial?.min_category_usable_delta ?? {});

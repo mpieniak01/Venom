@@ -222,6 +222,7 @@ export const academy = {
       title: "Wnioski i następna próba",
       loading: "Ładowanie historii jakości…",
       historyError: "Nie udało się pobrać historii jakości.",
+      unavailableRecords: "Nie można odczytać tych ocen.",
       empty: "Brak zapisanych ocen.",
       candidate: "Kandydat",
       reference: "Odniesienie",

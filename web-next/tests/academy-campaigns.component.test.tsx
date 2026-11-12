@@ -337,7 +337,10 @@ describe("Campaign quality feedback", () => {
     let current: Campaign[] = [];
     let submitted: unknown;
     serve(() => current, {
-      ["GET " + qualityPath]: () => Response.json({ records: [candidate, reference] }),
+      ["GET " + qualityPath]: () => Response.json({
+        records: [candidate, reference],
+        unavailable_record_ids: ["history:unreadable"],
+      }),
       ["GET " + qualityPath + "/" + encodeURIComponent(candidate.record_id) + "/analysis"]: (init) => {
         assert.equal(init?.method ?? "GET", "GET");
         return Response.json(comparison);
@@ -353,7 +356,10 @@ describe("Campaign quality feedback", () => {
 
     render(<CampaignPanel onOpenRun={() => {}} />);
     fireEvent.click(screen.getByText("Wnioski i następna próba"));
-    await screen.findByLabelText("Kandydat");
+    const candidateSelect = await screen.findByLabelText("Kandydat") as HTMLSelectElement;
+    assert.equal(candidateSelect.value, candidate.record_id);
+    assert.ok(screen.getByText("history:unreadable", { selector: "code" }));
+    assert.equal(screen.queryByRole("option", { name: /history:unreadable/ }), null);
     fireEvent.change(screen.getByLabelText("Odniesienie"), { target: { value: reference.record_id } });
     fireEvent.click(screen.getByRole("button", { name: "Porównaj oceny" }));
 
@@ -438,6 +444,46 @@ describe("Campaign quality feedback", () => {
     assert.equal(protectedIds.value, "protected-1");
     assert.equal(referenceInput.checked, true);
     assert.equal(policyFields?.hidden, false);
+  });
+
+  it("offers to reassess a blocked result after the time budget expires", async () => {
+    const expired: Campaign = {
+      ...planned,
+      status: "blocked",
+      elapsed_seconds: planned.plan.budget.max_seconds,
+      trials: [{ run_id: runId, status: "succeeded" }],
+    };
+    const guarded: Campaign = {
+      ...expired,
+      trials: [{
+        ...expired.trials[0],
+        quality_guard: {
+          status: "blocked",
+          reasons: [{ code: "campaign_quality_case_evidence_missing" }],
+          protected_count: null,
+          lost_case_ids: [],
+          new_critical_case_ids: [],
+          category_deltas: {},
+        },
+      }],
+    };
+    const unguarded = { ...expired, campaign_id: "expired-no-guard" };
+    let resumed = false;
+    serve(() => [unguarded, guarded], {
+      ["POST " + campaignsPath + "/pilot-campaign/resume"]: () => {
+        resumed = true;
+        return Response.json({ ...guarded, status: "stopping" });
+      },
+    });
+
+    render(<CampaignPanel onOpenRun={() => {}} />);
+    const unguardedButton = await screen.findByRole("button", { name: /expired-no-guard/ });
+    fireEvent.click(unguardedButton);
+    assert.equal(screen.queryByRole("button", { name: "Wznów kampanię" }), null);
+
+    fireEvent.click(screen.getByRole("button", { name: /^pilot-campaignZablokowana$/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Wznów kampanię" }));
+    await waitFor(() => assert.equal(resumed, true));
   });
 
   it("shows a trial rejection and keeps an unknown category threshold unquantified", async () => {

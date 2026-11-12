@@ -5,6 +5,7 @@ from typing import Annotated, Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from venom_core.services.training_experiments.quality_schema import (
+    MAX_QUALITY_CASES,
     CaseId,
     Category,
     EvidenceId,
@@ -69,7 +70,9 @@ class CampaignQualityPolicy(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True, allow_inf_nan=False)
 
     reference_record_ids: list[EvidenceId] = Field(default_factory=list, max_length=8)
-    protected_case_ids: list[CaseId] = Field(default_factory=list, max_length=2048)
+    protected_case_ids: list[CaseId] = Field(
+        default_factory=list, max_length=MAX_QUALITY_CASES
+    )
     protect_reference_hits: bool = True
     protect_base_hits: bool = False
     min_category_usable_delta: dict[Category, QualityDelta] = Field(

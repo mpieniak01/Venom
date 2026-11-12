@@ -14,10 +14,15 @@ from venom_core.services.training_experiments.quality import (
     analyze_quality,
     quality_record_view,
 )
+from venom_core.services.training_experiments.quality_history import (
+    analyze_record,
+    list_records,
+)
 from venom_core.services.training_experiments.quality_schema import (
     QualityBundle,
     QualityRecord,
 )
+from venom_core.services.training_experiments.service import ExperimentService
 
 
 def case(category, base, candidate, *, base_critical=False, candidate_critical=False):
@@ -63,7 +68,7 @@ def test_import_is_idempotent_and_validates_sealed_record(tmp_path):
     assert store.import_record(payload) == stored
     assert path.read_bytes() == original
     assert store.get("run-a") == stored
-    assert store.list() == [stored]
+    assert store.list() == ([stored], [])
     payload["source"]["sha256"] = "f" * 64
     with pytest.raises(ValueError, match="quality_record_identity_conflict"):
         store.import_record(payload)
@@ -74,6 +79,29 @@ def test_import_is_idempotent_and_validates_sealed_record(tmp_path):
     path.write_text(json.dumps(tampered), encoding="utf-8")
     with pytest.raises(ValueError, match="quality_record_hash_changed"):
         store.get("run-a")
+
+
+def test_corrupt_history_does_not_hide_verified_records(tmp_path):
+    experiments = ExperimentService(tmp_path)
+    store = QualityStore(experiments.root)
+    verified = store.import_record(record("run-b"))
+    tampered = store.import_record(record("run-c"))
+    (store.directory / "run-a.json").write_text("{", encoding="utf-8")
+    tampered["cases"]["a"]["candidate"]["usable"] = True
+    (store.directory / "run-c.json").write_text(json.dumps(tampered), encoding="utf-8")
+
+    result = list_records(experiments)
+
+    assert result["unavailable_record_ids"] == ["history:run-a", "history:run-c"]
+    assert [item["record_id"] for item in result["records"]] == ["history:run-b"]
+    assert result["records"][0]["result_sha256"] == verified["result_sha256"]
+    assert analyze_record(experiments, "history:run-b", None)["record"][
+        "record_id"
+    ] == ("history:run-b")
+    with pytest.raises(json.JSONDecodeError):
+        analyze_record(experiments, "history:run-a", None)
+    with pytest.raises(ValueError, match="quality_record_hash_changed"):
+        analyze_record(experiments, "history:run-b", "history:run-c")
 
 
 @pytest.mark.parametrize(

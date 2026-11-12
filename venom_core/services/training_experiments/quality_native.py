@@ -8,6 +8,7 @@ from importlib.metadata import distributions
 from pathlib import Path
 from typing import Any
 
+from scripts.academy.omni_pl_chat_data import MAX_DEV_TASK_LENGTH
 from scripts.academy.omni_pl_chat_masks import SNAPSHOT_PIN
 from venom_core.services.remote_training.paths import operator_path
 
@@ -62,7 +63,15 @@ def _dev_categories(path: Path, expected: str) -> dict[str, str]:
         record_id = case["record_id"]
         if case["split"] != "dev" or record_id in categories:
             raise ValueError("experiment_quality_dev_invalid")
-        categories[record_id] = case["task"]
+        task = case["task"]
+        if (
+            not isinstance(task, str)
+            or len(task) > MAX_DEV_TASK_LENGTH
+            or not task.strip()
+            or task == "total"
+        ):
+            raise ValueError("experiment_quality_dev_invalid")
+        categories[record_id] = task
     if not categories:
         raise ValueError("experiment_quality_dev_invalid")
     return categories

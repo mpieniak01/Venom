@@ -12,6 +12,11 @@ export interface QualityRecord {
   evidence_gaps?: string[];
 }
 
+export interface QualityListing {
+  records: QualityRecord[];
+  unavailable_record_ids?: string[];
+}
+
 export type QualityDecision = "GO" | "REVISE" | "STOP" | "INCOMPLETE";
 
 export interface QualityCounts {
@@ -77,12 +82,12 @@ export interface TrialQualityGuard {
 export interface QualityCampaignDraft {
   profileId?: string | null;
   variants: QualityProposal["variants"];
-  fixed?: QualityProposal["fixed"];
+  fixed?: NonNullable<QualityProposal["fixed"]>;
   qualityPolicy: CampaignQualityPolicy & { source_record_id: string };
 }
 
-export async function listQualityRecords(signal?: AbortSignal) {
-  return (await apiFetch<{ records: QualityRecord[] }>(QUALITY, { signal })).records;
+export function listQualityRecords(signal?: AbortSignal) {
+  return apiFetch<QualityListing>(QUALITY, { signal });
 }
 
 export function getQualityAnalysis(recordId: string, referenceId: string, signal?: AbortSignal) {

@@ -57,8 +57,16 @@ class QualityStore:
             raise ValueError("quality_record_invalid")
         return quality_record_view(payload)
 
-    def list(self) -> list[dict]:
-        return [self.get(path.stem) for path in sorted(self.directory.glob("*.json"))]
+    def list(self) -> tuple[list[dict], list[str]]:
+        """Return verified records and the IDs of unreadable entries."""
+        records = []
+        unavailable = []
+        for path in sorted(self.directory.glob("*.json")):
+            try:
+                records.append(self.get(path.stem))
+            except (OSError, ValueError, RecursionError):
+                unavailable.append(path.stem)
+        return records, unavailable
 
     def import_record(self, record: QualityRecord | dict) -> dict:
         ensure_data_mutation_allowed("academy_quality_import")

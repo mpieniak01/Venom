@@ -8,9 +8,9 @@ from .service import ExperimentService
 
 
 def list_records(experiments: ExperimentService) -> dict:
+    imported, unavailable = QualityStore(experiments.root).list()
     records = [
-        {**item, "record_id": HISTORY_PREFIX + item["record_id"]}
-        for item in QualityStore(experiments.root).list()
+        {**item, "record_id": HISTORY_PREFIX + item["record_id"]} for item in imported
     ]
     for run_id in experiments.store.ids():
         try:
@@ -32,7 +32,8 @@ def list_records(experiments: ExperimentService) -> dict:
         "records": [
             {key: value for key, value in record.items() if key != "cases"}
             for record in records
-        ]
+        ],
+        "unavailable_record_ids": [HISTORY_PREFIX + key for key in unavailable],
     }
 
 

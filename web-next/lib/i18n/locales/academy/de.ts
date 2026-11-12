@@ -222,6 +222,7 @@ export const academy = {
       title: "Erkenntnisse und nächster Versuch",
       loading: "Qualitätsverlauf wird geladen…",
       historyError: "Der Qualitätsverlauf konnte nicht geladen werden.",
+      unavailableRecords: "Diese Bewertungen konnten nicht gelesen werden.",
       empty: "Noch keine gespeicherten Bewertungen.",
       candidate: "Kandidat",
       reference: "Referenz",

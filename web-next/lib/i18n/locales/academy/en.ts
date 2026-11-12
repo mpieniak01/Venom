@@ -222,6 +222,7 @@ export const academy = {
       title: "Findings and next trial",
       loading: "Loading quality history…",
       historyError: "Could not load the quality history.",
+      unavailableRecords: "These evaluations could not be read.",
       empty: "No saved evaluations yet.",
       candidate: "Candidate",
       reference: "Reference",

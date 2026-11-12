@@ -6,14 +6,19 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 
+from scripts.academy.omni_pl_chat_data import MAX_DEV_TASK_LENGTH
 from venom_core.services.training_experiments.profiles import SHA256_PATTERN
+
+MAX_QUALITY_CASES = 4096
 
 Digest = Annotated[str, Field(pattern=SHA256_PATTERN)]
 RecordId = Annotated[str, Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")]
 EvidenceId = Annotated[
     str, Field(pattern=r"^(?:history:)?[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
 ]
-Category = Annotated[str, Field(min_length=1, max_length=128, pattern=r"\S")]
+Category = Annotated[
+    str, Field(min_length=1, max_length=MAX_DEV_TASK_LENGTH, pattern=r"\S")
+]
 CaseId = Annotated[str, Field(min_length=1, max_length=256, pattern=r"^\S+$")]
 EvidenceLabel = Annotated[str, Field(min_length=1, max_length=512, pattern=r"\S")]
 QualityDecision = Literal["GO", "REVISE", "STOP", "INCOMPLETE"]
@@ -53,12 +58,14 @@ class QualityRecord(_QualityModel):
     split: Literal["dev", "holdout"]
     identity: QualityIdentity
     source: QualitySource
-    cases: dict[CaseId, QualityCase] = Field(min_length=1, max_length=4096)
+    cases: dict[CaseId, QualityCase] = Field(min_length=1, max_length=MAX_QUALITY_CASES)
     train_sha256: Digest | None = None
     recipe: dict[str, JsonValue] | None = None
     runtime: dict[str, JsonValue] | None = None
     evidence_gaps: list[EvidenceLabel] = Field(default_factory=list, max_length=64)
-    protected_case_ids: list[CaseId] = Field(default_factory=list, max_length=4096)
+    protected_case_ids: list[CaseId] = Field(
+        default_factory=list, max_length=MAX_QUALITY_CASES
+    )
     outcome: QualityDecision | None = None
 
     @model_validator(mode="after")

@@ -154,7 +154,10 @@ export function CampaignDetail({ campaign, disabled, optunaAvailable, onAction, 
   const planned = campaign.status === "planned";
   const active = campaignIsActive(campaign.status);
   const canStop = (active && campaign.status !== "stopping") || campaign.status === "blocked";
-  const canResume = CAN_RESUME.has(campaign.status) && campaign.elapsed_seconds < budget.max_seconds;
+  const currentTrial = campaign.trials[campaign.trial_index];
+  const canReassessQuality = currentTrial?.status === "succeeded" && currentTrial.quality_guard?.status === "blocked";
+  const canResume = CAN_RESUME.has(campaign.status)
+    && (campaign.elapsed_seconds < budget.max_seconds || canReassessQuality);
 
   function delta(value?: number) {
     return typeof value === "number" ? displayDelta.format(value * 100) : t("academy.experiments.unavailable");

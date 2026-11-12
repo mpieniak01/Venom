@@ -1,8 +1,13 @@
 """The Optuna journal preserves assignments and judgments across interruptions."""
 
+import io
+import json
 import os
 import sqlite3
-from contextlib import closing
+import subprocess
+import sys
+from contextlib import closing, redirect_stdout
+from types import SimpleNamespace
 
 import pytest
 
@@ -142,6 +147,58 @@ def test_failed_or_missing_results_are_not_scored(tmp_path):
             backend._transaction(tmp_path, contract) as db,
         ):
             backend._tell(db, {"trial_number": 0, **request})
+
+
+def test_client_and_tool_exchange_versioned_requests_without_optional_packages(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv(backend.OPTUNA_PYTHON, sys.executable)
+    versions = {"optuna": backend.OPTUNA_VERSION, "numpy": backend.NUMPY_VERSION}
+    monkeypatch.setattr(backend, "version", versions.__getitem__)
+    module = SimpleNamespace(
+        logging=SimpleNamespace(WARNING=30, set_verbosity=lambda _level: None)
+    )
+    monkeypatch.setattr(backend, "import_module", lambda _name: module)
+    candidate = {"rank": 8, "alpha": 16, "dropout": 0.1, "learning_rate": 0.001}
+    monkeypatch.setattr(backend, "_sample", lambda *_args: candidate)
+
+    def run_tool(args, *, input, encoding, capture_output, timeout, check):
+        assert args == [sys.executable, "-I", backend.__file__]
+        assert encoding == "utf-8" and capture_output and timeout == 30 and not check
+        stdout = io.StringIO()
+        with monkeypatch.context() as tool, redirect_stdout(stdout):
+            tool.setattr(sys, "stdin", io.StringIO(input))
+            status = backend._main()
+        return subprocess.CompletedProcess(args, status, stdout.getvalue())
+
+    monkeypatch.setattr(backend.subprocess, "run", run_tool)
+    backend._probe.cache_clear()
+    try:
+        assert backend.require_optuna() == backend.OPTUNA_VERSION
+        assert backend.ask(tmp_path, PLAN, 0) == {
+            "trial_number": 0,
+            "params": candidate,
+        }
+        backend.tell(tmp_path, PLAN, 0, "COMPLETE", 0.25, [0.1, -0.25])
+        with pytest.raises(ValueError, match="campaign_optuna_result_conflict"):
+            backend.tell(tmp_path, PLAN, 0, "COMPLETE", 0.5)
+        # Every actual operation rechecks the interpreter's package versions.
+        versions["optuna"] = "4.0.0"
+        with pytest.raises(ValueError, match="campaign_optuna_version_mismatch"):
+            backend.ask(tmp_path, PLAN, 1)
+    finally:
+        backend._probe.cache_clear()
+
+
+@pytest.mark.parametrize("output", ["not JSON", json.dumps(["wrong", "shape"])])
+def test_client_rejects_invalid_tool_output(monkeypatch, output):
+    monkeypatch.setattr(
+        backend.subprocess,
+        "run",
+        lambda *_args, **_kwargs: subprocess.CompletedProcess([], 1, output),
+    )
+    with pytest.raises(ValueError, match="campaign_optuna_"):
+        backend._invoke(sys.executable, {"operation": "probe"})
 
 
 def test_optional_real_optuna_reproduces_tpe_sequence_after_restart(tmp_path):

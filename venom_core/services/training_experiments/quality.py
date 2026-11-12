@@ -270,6 +270,28 @@ def _context_findings(record: dict, reference: dict, changes: list[str]) -> list
     return findings
 
 
+def _proposal_reasons(
+    record: dict,
+    reference: dict | None,
+    factor: str | None,
+    reasons: list[str],
+) -> list[str]:
+    missing = list(reasons)
+    if record["split"] != "dev":
+        missing.append("quality_holdout_excluded")
+    if reference is None:
+        if not reasons:
+            missing.append("quality_reference_required")
+        return missing
+    if factor is None:
+        missing.append("quality_recipe_difference_unverified")
+    if record["train_sha256"] is None:
+        missing.append("quality_training_identity_missing")
+    if not record["runtime"]:
+        missing.append("quality_runtime_identity_missing")
+    return missing
+
+
 def _proposal(
     record: dict,
     reference: dict | None,
@@ -279,19 +301,7 @@ def _proposal(
     factor = next((field for field in _PRIORITY_FACTORS if field in changes), None)
     if factor is None and changes:
         factor = changes[0]
-    missing = list(reasons)
-    if record["split"] != "dev":
-        missing.append("quality_holdout_excluded")
-    if reference is None and not reasons:
-        missing.append("quality_reference_required")
-    if reference is not None:
-        if factor is None:
-            missing.append("quality_recipe_difference_unverified")
-        if record["train_sha256"] is None:
-            missing.append("quality_training_identity_missing")
-        if not record["runtime"]:
-            missing.append("quality_runtime_identity_missing")
-    ready = not missing and factor is not None and reference is not None
+    missing = _proposal_reasons(record, reference, factor, reasons)
     variants = []
     if not missing and factor is not None and reference is not None:
         control = record["recipe"]
@@ -303,7 +313,7 @@ def _proposal(
             },
         ]
     return {
-        "status": "ready" if ready else "insufficient_evidence",
+        "status": "ready" if variants else "insufficient_evidence",
         "kind": "isolate_recipe_factor" if factor else None,
         "factor": factor,
         "reference_id": reference["record_id"] if reference else None,

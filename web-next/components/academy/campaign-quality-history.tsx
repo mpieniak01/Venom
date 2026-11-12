@@ -256,7 +256,7 @@ export function CampaignQualityHistory({ disabled, onDraft }: {
             <dd className="font-semibold">{analysis.decision} · {t(QUALITY + "outcome." + analysis.decision)}</dd>
           </dl>
           {analysis.reference_id && !analysis.comparable && (
-            <p role="status" className="text-sm text-hint">{t(QUALITY + "notComparable")}</p>
+            <output className="block text-sm text-hint">{t(QUALITY + "notComparable")}</output>
           )}
           <QualityComparison rows={alignedReference ? analysis.comparison : analysis.summary} reference={alignedReference} />
           <QualityEvidence analysis={analysis} />

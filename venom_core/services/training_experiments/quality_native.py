@@ -21,6 +21,7 @@ from .profiles import (
 from .quality import QualityStore, quality_record_view
 from .quality_schema import QualityRecord
 
+_MANIFEST_NAME = "manifest.json"
 _PROTOCOL_FIELDS = (
     "revision",
     "max_prompt_tokens",
@@ -138,7 +139,7 @@ def native_record(experiments: Any, run_id: str) -> dict:
         or report.get("historical")
     ):
         raise ValueError("experiment_quality_result_incomplete")
-    manifest = read_json(directory / "manifest.json")
+    manifest = read_json(directory / _MANIFEST_NAME)
     if stable_hash(manifest) != report["manifest_sha256"]:
         raise ValueError("experiment_quality_evidence_changed")
     profile = manifest["profile"]
@@ -146,7 +147,7 @@ def native_record(experiments: Any, run_id: str) -> dict:
     seal = _verified_json(
         generation / "generation-seal.json", report["generation_sha256"]
     )
-    generated = _verified_json(generation / "manifest.json", seal["manifest.json"])
+    generated = _verified_json(generation / _MANIFEST_NAME, seal[_MANIFEST_NAME])
     mapping = _verified_json(generation / "unblind.json", seal["unblind.json"])
     grades = _verified_json(generation / "judgments.json", report["judgment_sha256"])
     categories = _dev_categories(

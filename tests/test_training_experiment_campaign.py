@@ -1272,8 +1272,9 @@ def test_guard_refuses_incomparable_reference_before_campaign(
     service, experiments, _clock = controller
     references, _record = guarded_evidence
     references["prior"][field] = value
+    spec = guarded_spec()
     with pytest.raises(ValueError, match=message):
-        service.plan(guarded_spec())
+        service.plan(spec)
     assert service.list() == []
     assert experiments.calls == []
 
@@ -1282,10 +1283,14 @@ def test_guard_rejects_unknown_case_or_category_before_work(
     controller, guarded_evidence
 ):
     service, experiments, _clock = controller
+    unknown_case = guarded_spec(policy={"protected_case_ids": ["sealed-holdout"]})
+    unknown_category = guarded_spec(
+        policy={"min_category_usable_delta": {"unknown": 0}}
+    )
     with pytest.raises(ValueError, match="campaign_quality_protected_case_unknown"):
-        service.plan(guarded_spec(policy={"protected_case_ids": ["sealed-holdout"]}))
+        service.plan(unknown_case)
     with pytest.raises(ValueError, match="campaign_quality_category_unknown"):
-        service.plan(guarded_spec(policy={"min_category_usable_delta": {"unknown": 0}}))
+        service.plan(unknown_category)
     assert experiments.calls == []
 
 
@@ -1372,5 +1377,6 @@ def test_draft_cannot_replace_pinned_training_data(tmp_path, monkeypatch):
 
     monkeypatch.setattr(experiments, "validate", validate)
     spec = make_spec(count=1, variants=[{"train_sha256": "a" * 64}])
+    service = CampaignService(experiments)
     with pytest.raises(ValueError, match="campaign_quality_training_identity_changed"):
-        CampaignService(experiments).validate(spec)
+        service.validate(spec)

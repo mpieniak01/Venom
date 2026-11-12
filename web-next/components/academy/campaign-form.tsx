@@ -54,7 +54,9 @@ function numberField(data: FormData, name: string) {
 
 function variantRecipe(data: FormData, row: number, editableRecipe: boolean): Record<string, unknown> {
   if (editableRecipe) {
-    const recipe: unknown = JSON.parse(String(data.get("variant-json-" + row) ?? ""));
+    const json = data.get("variant-json-" + row);
+    if (typeof json !== "string") throw new Error("draft recipe must be text");
+    const recipe: unknown = JSON.parse(json);
     if (!recipe || typeof recipe !== "object" || Array.isArray(recipe)
       || unsupportedDraftFields(recipe as Record<string, unknown>).length) {
       throw new Error("invalid draft recipe");
@@ -92,7 +94,9 @@ function readOptunaPlan(data: FormData): Pick<CampaignRequest, "variants" | "str
 function readPlan(
   data: FormData, profileId: string, rows: number[], strategy: CampaignStrategy, editableRecipe: boolean,
 ): CampaignRequest {
-  const id = String(data.get("campaign_id") ?? "").trim();
+  const campaignId = data.get("campaign_id");
+  if (typeof campaignId !== "string") throw new Error("campaign id must be text");
+  const id = campaignId.trim();
   if (!/^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$/.test(id)) throw new Error("invalid campaign id");
   const qualityPolicy = readQualityPolicy(data);
   return {
@@ -160,7 +164,7 @@ export function CampaignForm({ profiles, disabled, optunaAvailable, draft, onPla
 
   return (
     <form className="space-y-4" onSubmit={(event) => void submit(event)}>
-      {draft && <p role="status" className="text-sm text-hint">{t("academy.campaigns.quality.draftReady")}</p>}
+      {draft && <output className="block text-sm text-hint">{t("academy.campaigns.quality.draftReady")}</output>}
       {unsupportedFields.length > 0 && (
         <p className="break-all text-sm text-hint">
           {t("academy.campaigns.quality.unsupportedFields")} <code>{unsupportedFields.join(", ")}</code>

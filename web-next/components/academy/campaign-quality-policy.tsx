@@ -10,28 +10,34 @@ import { listQualityRecords, type CampaignQualityPolicy, type TrialQualityGuard 
 const QUALITY = "academy.campaigns.quality.";
 const TEXTAREA = "w-full rounded-md border border-[color:var(--ui-border)] bg-[color:var(--ui-surface)] px-3 py-2 text-sm";
 
+function textValue(value: FormDataEntryValue | null | undefined): string {
+  if (value == null) return "";
+  if (typeof value !== "string") throw new Error("quality policy field must be text");
+  return value.trim();
+}
+
 export function readQualityPolicy(data: FormData): CampaignQualityPolicy | undefined {
   if (!data.has("quality-policy-enabled")) return undefined;
-  const categories = data.getAll("quality-category").map((value) => String(value).trim());
+  const categories = data.getAll("quality-category").map(textValue);
   const thresholds = data.getAll("quality-minimum");
   if (new Set(categories).size !== categories.length || categories.length !== thresholds.length) {
     throw new Error("invalid quality category thresholds");
   }
   const deltas = categories.map((category, index) => {
-    const raw = String(thresholds[index]).trim();
+    const raw = textValue(thresholds[index]);
     const value = Number(raw);
     if (!category || !raw || !Number.isFinite(value) || value < -100 || value > 100) {
       throw new Error("invalid quality category minimum");
     }
     return [category, value / 100] as const;
   });
-  const references = data.getAll("quality-reference-record-id").map(String);
-  const protectedIds = [...new Set(String(data.get("quality-protected-cases") ?? "").split(/\r?\n/)
+  const references = data.getAll("quality-reference-record-id").map(textValue);
+  const protectedIds = [...new Set(textValue(data.get("quality-protected-cases")).split(/\r?\n/)
     .map((line) => line.trim()).filter(Boolean))];
   if (references.length > 8 || protectedIds.length > 2048 || deltas.length > 64) {
     throw new Error("quality policy exceeds its limits");
   }
-  const hypothesis = String(data.get("quality-hypothesis") ?? "").trim();
+  const hypothesis = textValue(data.get("quality-hypothesis"));
   return {
     ...(hypothesis ? { hypothesis } : {}),
     reference_record_ids: references,

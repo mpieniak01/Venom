@@ -247,6 +247,7 @@ def run(mode: str) -> None:
 
     import torch
     from peft import LoraConfig, get_peft_model, get_peft_model_state_dict
+    from peft.tuners.lora import LoraLayer
     from transformers import (
         AutoModelForMultimodalLM,
         Trainer,
@@ -309,6 +310,12 @@ def run(mode: str) -> None:
     )
     backbone = import_module(type(base.model.language_model).__module__)
     base.config.use_cache = False
+    selector = re.compile(profile["target_modules"])
+    planned_modules = {
+        name for name, _ in base.named_modules() if selector.fullmatch(name)
+    }
+    if not planned_modules:
+        raise RuntimeError("no language modules match the LoRA recipe")
     model = get_peft_model(
         base,
         LoraConfig(
@@ -320,6 +327,11 @@ def run(mode: str) -> None:
             target_modules=profile["target_modules"],
         ),
     )
+    adapted_modules = {
+        name for name, layer in base.named_modules() if isinstance(layer, LoraLayer)
+    }
+    if adapted_modules != planned_modules:
+        raise RuntimeError("adapted LoRA modules differ from the language recipe")
     trainable = {
         name: param.numel()
         for name, param in model.named_parameters()
@@ -405,6 +417,7 @@ def run(mode: str) -> None:
     receipt = {
         "mode": mode,
         "final_step": trainer.state.global_step,
+        "adapted_modules": sorted(adapted_modules),
         "trainable": trainable,
         "trainable_count": sum(trainable.values()),
         "changed_tensors": changed,

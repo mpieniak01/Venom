@@ -7,6 +7,10 @@ from collections import defaultdict
 from collections.abc import Iterable
 from pathlib import Path
 
+from scripts.academy.omni_pl_chat_recipe import (
+    LANGUAGE_TARGET_MODULES,
+    P13_LANGUAGE_SELECTOR,
+)
 from venom_core.core.environment_policy import ensure_data_mutation_allowed
 from venom_core.services.remote_training.lifecycle import (
     atomic_json,
@@ -316,11 +320,14 @@ def _proposal(
     variants = []
     if not missing and factor is not None and reference is not None:
         control = record["recipe"]
+        alternate = reference["recipe"][factor]
+        if factor == "target_modules" and alternate == P13_LANGUAGE_SELECTOR:
+            alternate = list(LANGUAGE_TARGET_MODULES)
         variants = [
             {"name": "control", "recipe": dict(control)},
             {
                 "name": "isolated",
-                "recipe": {**control, factor: reference["recipe"][factor]},
+                "recipe": {**control, factor: alternate},
             },
         ]
     return {

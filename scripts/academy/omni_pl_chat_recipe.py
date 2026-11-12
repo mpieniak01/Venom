@@ -32,7 +32,18 @@ _INTEGER_LIMITS = {
     "gradient_accumulation_steps": (1, 32),
     "seed": (0, 2**32 - 1),
 }
-_MODULES = ("q_proj", "v_proj")
+LANGUAGE_TARGET_MODULES = (
+    "q_proj",
+    "k_proj",
+    "v_proj",
+    "o_proj",
+    "in_proj",
+    "out_proj",
+    "w1",
+    "w2",
+    "w3",
+)
+P13_LANGUAGE_SELECTOR = r"model\.language_model\..*\.(q_proj|k_proj|v_proj|o_proj|in_proj|out_proj|w1|w2|w3)"
 _OPTIONAL = {"train_sha256", "max_supervised_tokens"}
 _MAX_RECIPE_BYTES = 16 * 1024
 
@@ -67,14 +78,16 @@ def validate_recipe(value: object) -> dict[str, Any]:
     modules = recipe["target_modules"]
     if (
         not isinstance(modules, list)
-        or not 1 <= len(modules) <= len(_MODULES)
-        or any(item not in _MODULES for item in modules)
+        or not 1 <= len(modules) <= len(LANGUAGE_TARGET_MODULES)
+        or any(item not in LANGUAGE_TARGET_MODULES for item in modules)
         or len(set(modules)) != len(modules)
     ):
         raise ValueError(
             "target_modules must list distinct supported language projections"
         )
-    recipe["target_modules"] = [module for module in _MODULES if module in modules]
+    recipe["target_modules"] = [
+        module for module in LANGUAGE_TARGET_MODULES if module in modules
+    ]
     if recipe["lr_scheduler_type"] not in ("linear", "cosine", "constant"):
         raise ValueError("unsupported lr_scheduler_type")
     if "train_sha256" in recipe:

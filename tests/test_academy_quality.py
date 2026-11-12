@@ -160,6 +160,24 @@ def test_p14_proposal_translates_the_p13_selector_to_a_runnable_language_scope()
     assert peer["recipe"]["target_modules"] == P13_LANGUAGE_SELECTOR
 
 
+@pytest.mark.parametrize(
+    "selector",
+    [P13_LANGUAGE_SELECTOR, list(reversed(LANGUAGE_TARGET_MODULES))],
+)
+def test_equivalent_language_scopes_do_not_propose_duplicate_trials(selector):
+    candidate, peer = record(), record("run-b")
+    candidate["recipe"] = validate_recipe(
+        {"target_modules": list(LANGUAGE_TARGET_MODULES)}
+    )
+    peer["recipe"] = {**candidate["recipe"], "target_modules": selector}
+
+    proposal = analyze_quality(candidate, peer)["proposal"]
+
+    assert proposal["status"] == "insufficient_evidence"
+    assert proposal["variants"] == []
+    assert "quality_recipe_difference_unverified" in proposal["reasons"]
+
+
 def test_case_counts_and_one_factor_proposal_use_comparable_dev_records():
     candidate, peer = record(), record("run-b")
     peer["train_sha256"] = "f" * 64

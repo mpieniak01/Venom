@@ -10,6 +10,7 @@ from pathlib import Path
 from scripts.academy.omni_pl_chat_recipe import (
     LANGUAGE_TARGET_MODULES,
     P13_LANGUAGE_SELECTOR,
+    validate_target_modules,
 )
 from venom_core.core.environment_policy import ensure_data_mutation_allowed
 from venom_core.services.remote_training.lifecycle import (
@@ -238,8 +239,20 @@ def _paired_protection(
     }
 
 
+def _normalized_recipe(record: dict) -> dict:
+    recipe = record["recipe"] or {}
+    modules = recipe.get("target_modules")
+    if modules == P13_LANGUAGE_SELECTOR:
+        modules = list(LANGUAGE_TARGET_MODULES)
+    try:
+        canonical = validate_target_modules(modules)
+    except ValueError:
+        return recipe
+    return {**recipe, "target_modules": canonical}
+
+
 def _recipe_changes(record: dict, reference: dict) -> list[str]:
-    recipe, previous = record["recipe"] or {}, reference["recipe"] or {}
+    recipe, previous = _normalized_recipe(record), _normalized_recipe(reference)
     return [
         field
         for field in sorted(recipe.keys() & previous.keys())
@@ -319,10 +332,8 @@ def _proposal(
     missing = _proposal_reasons(record, reference, factor, reasons)
     variants = []
     if not missing and factor is not None and reference is not None:
-        control = record["recipe"]
-        alternate = reference["recipe"][factor]
-        if factor == "target_modules" and alternate == P13_LANGUAGE_SELECTOR:
-            alternate = list(LANGUAGE_TARGET_MODULES)
+        control = _normalized_recipe(record)
+        alternate = _normalized_recipe(reference)[factor]
         variants = [
             {"name": "control", "recipe": dict(control)},
             {

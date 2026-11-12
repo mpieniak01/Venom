@@ -192,7 +192,10 @@ async def submit_task(orch: "Orchestrator", request: TaskRequest) -> TaskRespons
         orch.last_activity = get_utc_now()
         task = orch.state_manager.create_task(content=request.content)
         _init_request_trace(orch, task, request, {"status": "skipped"})
-        _spawn_background_task(run_task_fastpath(orch, task.id, request))
+        tokens = request.content.split(maxsplit=2)
+        starts_work = len(tokens) > 1 and tokens[1] in {"start", "resume"}
+        runner = run_task_with_queue if starts_work else run_task_fastpath
+        _spawn_background_task(runner(orch, task.id, request))
         return TaskResponse(task_id=task.id, status=task.status)
 
     await preflight()

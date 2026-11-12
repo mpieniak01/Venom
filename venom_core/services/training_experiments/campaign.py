@@ -416,25 +416,26 @@ class CampaignService:
                 return state
             self._ensure_single_campaign(campaign_id)
             if state["status"] != "stopping":
-                plan = state["plan"]
-                if (
-                    _is_optuna(plan)
-                    and optuna_backend.require_optuna() != plan["optuna_version"]
-                ):
-                    raise ValueError("campaign_optuna_version_changed")
-                state["status"] = "running"
-                self._elapsed(state)
-                expired = state["elapsed_seconds"] >= plan["budget"]["max_seconds"]
-                if expired and not _is_optuna(plan):
-                    raise ValueError("campaign_time_budget_exhausted")
-                state["error"] = None
-                state["termination"] = "timed_out" if expired else None
-                if expired:
-                    state["status"] = "stopping"
+                self._prepare_activation(state)
             if state["started_at"] is None:
                 state["started_at"] = self._clock()
             self._start_worker(directory, state)
             return state
+
+    def _prepare_activation(self, state: dict) -> None:
+        plan = state["plan"]
+        optimized = _is_optuna(plan)
+        if optimized and optuna_backend.require_optuna() != plan["optuna_version"]:
+            raise ValueError("campaign_optuna_version_changed")
+        state["status"] = "running"
+        self._elapsed(state)
+        expired = state["elapsed_seconds"] >= plan["budget"]["max_seconds"]
+        if expired and not optimized:
+            raise ValueError("campaign_time_budget_exhausted")
+        state["error"] = None
+        state["termination"] = "timed_out" if expired else None
+        if expired:
+            state["status"] = "stopping"
 
     def _ensure_single_campaign(self, campaign_id: str) -> None:
         for other in self.list():

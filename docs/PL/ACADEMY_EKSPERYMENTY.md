@@ -147,6 +147,6 @@ Po sprawdzeniu planu wpisz komendę startu, którą zwrócił Venom. W panelu za
 /academy report polski-czat
 ```
 
-Powtórzenie startu z tym samym identyfikatorem i hashem zwraca stan tej samej kampanii. Przerwanie rozmowy pozostawia kampanię pod kontrolą jej wykonawcy. Po ponownym otwarciu czatu odczytaj stan przez `status`. Aby zatrzymać pracę, użyj `stop`. Polecenia korzystają z tego samego budżetu i stanu co przyciski Academy.
+`start` i `resume` czekają na wznowienie kolejki Venoma i dostępne miejsce w ramach limitu równoległych zadań. `stop` działa także podczas pauzy kolejki. Powtórzenie startu z tym samym identyfikatorem i hashem zwraca stan tej samej kampanii. Przerwanie rozmowy pozostawia kampanię pod kontrolą jej wykonawcy. Po ponownym otwarciu czatu odczytaj stan przez `status`. Aby zatrzymać pracę, użyj `stop`. Polecenia korzystają z tego samego budżetu i stanu co przyciski Academy.
 
 `compare` i `report` odczytują zapisane oceny bazy i adapterów oraz dostępność zweryfikowanych wag. Porównanie pokazuje liczbę przypadków dev, poprawę lub regresję oraz parametry kandydata do ponownego sprawdzenia, gdy użyteczność wzrosła bez wzrostu błędów krytycznych. Nowa receptura, dane, reguły oceny lub budżet wymagają nowego identyfikatora kampanii. W strategii Optuna kolejne konfiguracje wybiera sampler z zatwierdzonej przestrzeni.

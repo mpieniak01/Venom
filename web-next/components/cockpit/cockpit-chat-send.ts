@@ -16,7 +16,6 @@ import { parseInputCommand } from "@/lib/slash-commands";
 
 import {
   ChatSendParams,
-  RuntimeOverride,
   handleRuntimeSwitch,
   handleSimpleTaskSend,
   handleStandardTaskSend,
@@ -237,6 +236,49 @@ function resolveChatSendContext(payload: string, params: SendContextParams, t: (
     return { academy, parsed, trimmed, effectiveSelectedModel, resolvedSession };
 }
 
+type SendRuntimeParams = Pick<ChatSendParams,
+  "activeServerInfo" | "selectedLlmServer" | "setActiveLlmRuntime" | "setActiveLlmServer" |
+  "refreshActiveServer" | "ensureModelActive" | "setMessage"
+>;
+
+async function prepareSendRuntime(
+  context: NonNullable<ReturnType<typeof resolveChatSendContext>>,
+  params: SendRuntimeParams,
+  cancelled: () => boolean,
+  t: (key: string) => string,
+) {
+  if (context.academy) {
+    return { runtimeOverride: null, activeServerInfo: null };
+  }
+
+  const selectedLlmModel = context.effectiveSelectedModel;
+  const switched = await handleRuntimeSwitch({
+    parsed: context.parsed,
+    activeServerInfo: params.activeServerInfo,
+    selectedLlmModel,
+    setActiveLlmRuntime: params.setActiveLlmRuntime,
+    refreshActiveServer: params.refreshActiveServer,
+    setMessage: params.setMessage,
+    confirm: (message) => globalThis.window.confirm(message),
+    t,
+  });
+  if (cancelled() || !switched.success) return null;
+
+  const activeServerInfo = await syncTargetServerIfNeeded({ ...params, selectedLlmModel, t });
+  if (cancelled() || activeServerInfo === false) return null;
+
+  const modelOk = await ensureSelectedModelIsActive({
+    activeServerInfo,
+    selectedLlmModel,
+    ensureModelActive: params.ensureModelActive,
+    setMessage: params.setMessage,
+    t,
+  });
+  if (cancelled() || !modelOk) return null;
+
+  return { runtimeOverride: switched.runtimeOverride, activeServerInfo };
+}
+
 function releaseSendPreparation(
   dispatched: boolean,
   preparing: boolean,
@@ -315,39 +357,12 @@ export function useChatSend(params: ChatSendParams) {
     const { academy, parsed, trimmed, effectiveSelectedModel, resolvedSession } = context;
 
     setSending(true); preparing = true; setMessage(null);
-    const switchResult = academy ? { success: true, runtimeOverride: null } : await handleRuntimeSwitch({
-      parsed,
-      activeServerInfo,
-      selectedLlmModel: effectiveSelectedModel,
-      setActiveLlmRuntime,
-      refreshActiveServer,
-      setMessage,
-      confirm: (msg) => globalThis.window.confirm(msg),
-      t,
-    });
-
-    if (cancelled() || !switchResult.success) return false;
-    const runtimeOverride: RuntimeOverride = switchResult.runtimeOverride;
-
-    const effectiveActiveServerInfo = academy ? null : await syncTargetServerIfNeeded({
-      selectedLlmServer,
-      selectedLlmModel: effectiveSelectedModel,
-      activeServerInfo,
-      setActiveLlmRuntime,
-      setActiveLlmServer,
-      refreshActiveServer,
-      setMessage,
-      t,
-    });
-    if (cancelled() || effectiveActiveServerInfo === false) return false;
-    const modelOk = academy || await ensureSelectedModelIsActive({
-      activeServerInfo: effectiveActiveServerInfo,
-      selectedLlmModel: effectiveSelectedModel,
-      ensureModelActive,
-      setMessage,
-      t,
-    });
-    if (cancelled() || !modelOk) return false;
+    const runtime = await prepareSendRuntime(context, {
+      activeServerInfo, selectedLlmServer, setActiveLlmRuntime, setActiveLlmServer,
+      refreshActiveServer, ensureModelActive, setMessage,
+    }, cancelled, t);
+    if (!runtime || cancelled()) return false;
+    const { runtimeOverride, activeServerInfo: effectiveActiveServerInfo } = runtime;
 
     autoScrollEnabledRef.current = true;
     scrollChatToBottom();
@@ -359,7 +374,7 @@ export function useChatSend(params: ChatSendParams) {
     const historyKey = vastChatHistoryKey(effectiveActiveServerInfo?.runtime_id, effectiveSelectedModel, resolvedSession, effectiveActiveServerInfo?.config_hash);
     const historySource = conversationHistory ?? (historyKey ? vastHistory.current.get(historyKey) ?? [] : undefined);
     const history = historySource ? boundChatHistory(historySource, trimmed.length) : undefined;
-    const quote = academy ? null : await prepareOpenRouterQuote({
+    const quote = await prepareOpenRouterQuote({
       activeServerInfo: effectiveActiveServerInfo,
       trimmed,
       selectedModel: effectiveSelectedModel,

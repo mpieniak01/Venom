@@ -115,6 +115,10 @@ Gdy tool jest pomijany:
 | Repo analiza | `git status`, `git diff`, zakres kontraktu API | Domyślny przypadek użycia |
 | Remodel dokumentacji i skryptów | Zmiana docs i skryptów pod kontrakt czatu | Preferowana forma pracy |
 
+### Kampanie Academy
+
+W lokalnym czacie pełnego Venoma wpisz `/academy`, aby zobaczyć komendy kampanii. Ta ścieżka wymaga włączonego Academy i działa lokalnie niezależnie od wybranego modelu. `start` wymaga identyfikatora i hasha zapisanego planu. `start` i `resume` czekają, gdy kolejka jest wstrzymana lub osiągnęła limit zadań. `stop` jest dostępne podczas pauzy. [Polecenia kampanii Academy](ACADEMY_EKSPERYMENTY.md#sterowanie-kampanią-z-czatu-venom)
+
 ### Czego ten operator nie obsługuje
 
 - generowania kodu i zmian w repo,

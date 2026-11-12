@@ -693,8 +693,9 @@ def test_optuna_preflight_checks_worst_case_for_every_slot(
         return checked
 
     monkeypatch.setattr(experiments, "validate", expensive_corner)
+    spec = optimization_spec()
     with pytest.raises(ValueError, match="token_budget_exceeded"):
-        service.plan(optimization_spec())
+        service.plan(spec)
     assert sampler.assigned == {}
     assert experiments.calls == []
 
@@ -784,8 +785,9 @@ def test_fixed_campaign_does_not_need_optuna_and_preserves_old_plan(
     first = service.plan(make_spec())
     assert not {"strategy", "sampler_seed", "search_space"} & first["plan"].keys()
     assert start(service)["plan"] == first["plan"]
+    spec = optimization_spec(campaign_id="search")
     with pytest.raises(ValueError, match="optuna_unavailable"):
-        service.plan(optimization_spec(campaign_id="search"))
+        service.plan(spec)
     assert experiments.calls == []
 
 
@@ -828,7 +830,8 @@ async def test_operator_commands_share_campaign_and_resume_without_duplicate_lau
     assert "/academy validate" in await run("/academy", "de")
     spec = make_spec(count=2).model_dump_json()
     preview = await run(f"/academy validate {spec}", "en")
-    assert "Validated draft plan" in preview and '"max_trials": 2' in preview
+    assert "Validated draft plan" in preview
+    assert '"max_trials": 2' in preview
     assert service.list() == []
     planned = await run(f"/academy plan {spec}", "pl")
     state = service.status("series")
@@ -847,7 +850,8 @@ async def test_operator_commands_share_campaign_and_resume_without_duplicate_lau
     start_command = f"/academy start series {digest}"
     started = await run(start_command, "en")
     repeated = await run(start_command, "en")
-    assert "Execution ID** `series`" in started and started == repeated
+    assert "Execution ID** `series`" in started
+    assert started == repeated
     assert "[Open campaign in Academy](/academy?campaign=series)" in started
     assert launches == ["series"]
     first = launch_next(service)
@@ -856,7 +860,8 @@ async def test_operator_commands_share_campaign_and_resume_without_duplicate_lau
     second = launch_next(service)
     assert "stopping" in await run("/academy stop series", "en")
     stopped = service.advance("series")
-    assert stopped["status"] == "stopped" and stopped["selected_run_id"] == first
+    assert stopped["status"] == "stopped"
+    assert stopped["selected_run_id"] == first
     assert experiments.calls[-1] == ("stop", second)
     assert "Status** `stopped`" in await run("/academy status series", "de")
     assert "running" in await run("/academy resume series", "en")
@@ -864,8 +869,10 @@ async def test_operator_commands_share_campaign_and_resume_without_duplicate_lau
     comparison = await run("/academy compare series", "pl")
     assert "2/4 → 3/4" in comparison
     assert "Receptura do potwierdzenia w nowej kampanii" in comparison
-    assert "brak danych" in comparison and "poprawa" in comparison
-    assert first in comparison and second in comparison
+    assert "brak danych" in comparison
+    assert "poprawa" in comparison
+    assert first in comparison
+    assert second in comparison
 
 
 @pytest.mark.asyncio
@@ -880,11 +887,13 @@ async def test_report_distinguishes_pruned_weights_and_missing_saved_metrics(
     second = launch_next(service)
     second_adapter = experiments.finish(second, usable=1, critical=1)
     service.advance("series")
-    assert first_adapter.exists() and not second_adapter.exists()
+    assert first_adapter.exists()
+    assert not second_adapter.exists()
     output = await academy_dispatcher.dispatch_academy_campaign(
         "/academy report series", "en"
     )
-    assert "Limits" in output and '"max_trials": 3' in output
+    assert "Limits" in output
+    assert '"max_trials": 3' in output
     assert "regression | unavailable" in output
     assert "second seed and an independent set" in output
 
@@ -906,7 +915,8 @@ async def test_operator_optuna_plan_freezes_space_without_launching(
     text = await academy_dispatcher.dispatch_academy_campaign(
         f"/academy plan {spec}", "de"
     )
-    assert '"search_space"' in text and '"sampler_seed": 21' in text
+    assert '"search_space"' in text
+    assert '"sampler_seed": 21' in text
     assert '"base_recipe"' in text
     assert service.status("series")["plan"]["strategy"] == "optuna"
     assert experiments.calls == []
@@ -938,11 +948,10 @@ async def test_operator_tools_reject_untrusted_or_incomplete_input(
             "start",
             {"command": {"action": "start", "campaign_id": "series"}},
         )
+    mismatched_command = operator.CampaignCommand("status", "series")
     with pytest.raises(PermissionError, match="campaign_operator_command_required"):
         await academy_dispatcher.skill_manager.invoke_mcp_tool(
-            "academy",
-            "start",
-            {"command": operator.CampaignCommand("status", "series")},
+            "academy", "start", {"command": mismatched_command}
         )
     assert "campaign_evidence_missing" in await run("/academy status series", "en")
     monkeypatch.setattr(operator.SETTINGS, "ENABLE_ACADEMY", False)
@@ -1004,8 +1013,9 @@ def test_campaign_chat_authorization_is_local_and_cannot_be_provided_in_json(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("action", ["status", "stop"])
 async def test_academy_task_runs_without_llm_and_persists_chat_history(
-    monkeypatch, academy_dispatcher
+    monkeypatch, academy_dispatcher, action
 ):
     from types import SimpleNamespace
     from unittest.mock import AsyncMock, MagicMock
@@ -1023,6 +1033,8 @@ async def test_academy_task_runs_without_llm_and_persists_chat_history(
     orch._broadcast_event = AsyncMock()
     orch.task_manager.register_task = AsyncMock()
     orch.task_manager.unregister_task = AsyncMock()
+    orch.task_manager.is_paused = True
+    orch.task_manager.check_capacity = AsyncMock(return_value=(False, 1))
     orch.task_dispatcher = academy_dispatcher
     orch.request_tracer = None
     orch._run_task = lambda task_id, request, fast_path: orchestrator_dispatch.run_task(
@@ -1037,16 +1049,18 @@ async def test_academy_task_runs_without_llm_and_persists_chat_history(
         orchestrator_submit, "_spawn_background_task", background.append
     )
 
-    request = TaskRequest(content="/academy status series", session_id="chat")
+    request = TaskRequest(content=f"/academy {action} series", session_id="chat")
     with pytest.raises(PermissionError, match="campaign_operator_command_required"):
         await orchestrator_submit.submit_task(orch, request)
     assert orch.state_manager.create_task.call_count == 0
 
     request._academy_operator = True
     response = await orchestrator_submit.submit_task(orch, request)
-    assert response.task_id == task.id and response.llm_provider is None
+    assert response.task_id == task.id
+    assert response.llm_provider is None
     await background.pop()
     preflight.assert_not_awaited()
+    orch.task_manager.check_capacity.assert_not_awaited()
     orch._refresh_kernel_if_needed.assert_not_called()
     assert orch._append_session_history.call_count == 2
     text = orch.state_manager.update_status.await_args.kwargs["result"]
@@ -1057,3 +1071,57 @@ async def test_academy_task_runs_without_llm_and_persists_chat_history(
         ]
         == "academy_campaign"
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("command", [f"start series {'a' * 64}", "resume series"])
+async def test_academy_start_and_resume_wait_for_queue_admission(monkeypatch, command):
+    import asyncio
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock, MagicMock
+    from uuid import uuid4
+
+    from venom_core.api.schemas.tasks import TaskRequest
+    from venom_core.core.orchestrator import orchestrator_submit
+
+    task = SimpleNamespace(id=uuid4(), status="PENDING")
+    orch = MagicMock()
+    orch.state_manager.create_task.return_value = task
+    orch.state_manager.get_task.return_value = task
+    orch.request_tracer = None
+    orch._run_task = AsyncMock()
+    manager = orch.task_manager
+    manager.is_paused = True
+    manager.check_capacity = AsyncMock(side_effect=[(False, 1), (True, 0)])
+    manager.register_task = AsyncMock()
+    manager.unregister_task = AsyncMock()
+
+    async def next_poll(_seconds):
+        orch._run_task.assert_not_awaited()
+        manager.register_task.assert_not_awaited()
+        if manager.is_paused:
+            manager.check_capacity.assert_not_awaited()
+            manager.is_paused = False
+        else:
+            manager.check_capacity.assert_awaited_once()
+
+    monkeypatch.setattr(
+        orchestrator_submit,
+        "asyncio",
+        SimpleNamespace(sleep=next_poll, current_task=asyncio.current_task),
+    )
+    background = []
+    monkeypatch.setattr(
+        orchestrator_submit, "_spawn_background_task", background.append
+    )
+
+    request = TaskRequest(content=f"/academy {command}")
+    request._academy_operator = True
+    response = await orchestrator_submit.submit_task(orch, request)
+    assert response.status == "PENDING"
+    await background.pop()
+
+    assert manager.check_capacity.await_count == 2
+    manager.register_task.assert_awaited_once_with(task.id, asyncio.current_task())
+    orch._run_task.assert_awaited_once_with(task.id, request, fast_path=False)
+    manager.unregister_task.assert_awaited_once_with(task.id)

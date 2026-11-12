@@ -115,6 +115,10 @@ If tools are skipped:
 | Repo analysis | `git status`, `git diff`, branch state, API contract scope | Default operator scenario |
 | Docs and script remodeling | Documentation and script changes aligned with the contract | Preferred analysis/remodel workflow |
 
+### Academy campaigns
+
+In the local Full Venom chat, type `/academy` to see campaign commands. Enable Academy to use this route. The commands execute locally with the selected model left idle. `start` requires the ID and hash of a saved plan. `start` and `resume` wait while the task queue is paused or at its configured capacity. `stop` is available during a pause. [Academy campaign commands](PL/ACADEMY_EKSPERYMENTY.md#sterowanie-kampanią-z-czatu-venom)
+
 ### What it does not own
 
 - code generation and repo changes,

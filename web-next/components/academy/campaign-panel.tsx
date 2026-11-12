@@ -166,7 +166,7 @@ export function CampaignPanel({
         </section>
       )}
       {campaigns && selectedId && !selected && (
-        <p role="status">{t("academy.campaigns.campaignUnavailable")} <code>{selectedId}</code></p>
+        <output>{t("academy.campaigns.campaignUnavailable")} <code>{selectedId}</code></output>
       )}
       {selected && <section className={CARD}>
         <CampaignDetail key={selected.campaign_id} campaign={selected} disabled={busy || campaignsFailed} optunaAvailable={optunaAvailable}

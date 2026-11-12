@@ -302,9 +302,9 @@ def _comparison_row(trial: dict, data: dict, labels: dict[str, str]) -> str:
     missing = labels["missing"]
     run_id, status = trial["run_id"], trial["status"]
     artifact = data.get("adapter_available")
-    available = (
-        missing if artifact is None else labels["available" if artifact else "removed"]
-    )
+    available = missing
+    if artifact is not None:
+        available = labels["available" if artifact else "removed"]
     if "base" not in data:
         return f"| `{run_id}` | `{status}` | {missing} | {missing} | {missing} | {available} |"
     base, candidate = data["base"], data["candidate"]

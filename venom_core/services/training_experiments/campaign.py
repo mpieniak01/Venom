@@ -10,6 +10,7 @@ import subprocess
 import sys
 import time
 from collections.abc import Callable
+from itertools import product
 from pathlib import Path
 from threading import Thread
 from typing import Protocol
@@ -23,6 +24,7 @@ from venom_core.services.remote_training.lifecycle import (
 )
 from venom_core.services.remote_training.paths import data_directory, operator_path
 
+from . import optuna_backend
 from .campaign_schema import CampaignSpec
 from .retention import (
     ExperimentArtifacts,
@@ -100,14 +102,27 @@ def _workload(value: dict) -> dict:
     return {key: workload[key] for key in ("updates", "tokens")}
 
 
-def _plan(spec: CampaignSpec, experiments: CampaignExperiments) -> dict:
+def _is_optuna(plan: dict) -> bool:
+    return plan.get("strategy") == "optuna"
+
+
+def _validate_trial(
+    spec: CampaignSpec, experiments: CampaignExperiments, recipe: dict | None
+) -> dict:
+    validated = experiments.validate(spec.profile_id, recipe)
+    if spec.review_mode == "automatic" and not validated["automatic_review"]:
+        raise ValueError("campaign_evaluator_not_qualified")
+    return validated
+
+
+def _fixed_variants(
+    spec: CampaignSpec, experiments: CampaignExperiments
+) -> tuple[str, list[dict]]:
     variants: list[dict] = []
     identity = None
     seen: set[str] = set()
     for index, overrides in enumerate(spec.variants):
-        validated = experiments.validate(spec.profile_id, overrides)
-        if spec.review_mode == "automatic" and not validated["automatic_review"]:
-            raise ValueError("campaign_evaluator_not_qualified")
+        validated = _validate_trial(spec, experiments, overrides)
         if identity is not None and identity != validated["identity"]:
             raise ValueError("campaign_profile_changed")
         identity = validated["identity"]
@@ -123,13 +138,64 @@ def _plan(spec: CampaignSpec, experiments: CampaignExperiments) -> dict:
                 "workload": _workload(validated),
             }
         )
+    if identity is None:
+        raise ValueError("campaign_fixed_variants_required")
+    return identity, variants
+
+
+def _optimization_plan(
+    spec: CampaignSpec, experiments: CampaignExperiments
+) -> tuple[str, list[dict], dict]:
+    space = optuna_backend.validate_search_space(
+        {
+            name: bounds.model_dump(exclude_none=True)
+            for name, bounds in (spec.search_space or {}).items()
+        }
+    )
+    version = optuna_backend.require_optuna()
+    base = _validate_trial(spec, experiments, None)
+    workload = _workload(base)
+    for values in product(*[(item["low"], item["high"]) for item in space.values()]):
+        recipe = dict(zip(space, values, strict=True))
+        corner = _validate_trial(spec, experiments, recipe)
+        if corner["identity"] != base["identity"]:
+            raise ValueError("campaign_profile_changed")
+        for metric, amount in _workload(corner).items():
+            workload[metric] = max(workload[metric], amount)
+    variants = [
+        {
+            "run_id": _run_id(spec.campaign_id, index),
+            "recipe": base["recipe"],
+            "workload": workload,
+        }
+        for index in range(spec.budget.max_trials)
+    ]
+    return (
+        base["identity"],
+        variants,
+        {
+            "strategy": "optuna",
+            "search_space": space,
+            "sampler_seed": spec.sampler_seed,
+            "optuna_version": version,
+        },
+    )
+
+
+def _plan(spec: CampaignSpec, experiments: CampaignExperiments) -> dict:
+    extra = {}
+    if spec.strategy == "optuna":
+        identity, variants, extra = _optimization_plan(spec, experiments)
+    else:
+        identity, variants = _fixed_variants(spec, experiments)
     budget = spec.budget
     if sum(v["workload"]["updates"] for v in variants) > budget.max_updates:
         raise ValueError("campaign_update_budget_exceeded")
     if sum(v["workload"]["tokens"] for v in variants) > budget.max_tokens:
         raise ValueError("campaign_token_budget_exceeded")
     payload = {
-        **spec.model_dump(),
+        **spec.model_dump(exclude={"strategy", "search_space", "sampler_seed"}),
+        **extra,
         "profile_identity": identity,
         "variants": variants,
     }
@@ -156,6 +222,14 @@ def _initial_state(plan: dict) -> dict:
         "worker": None,
         "error": None,
     }
+
+
+def _current_variant(state: dict) -> dict:
+    return state["plan"]["variants"][state["trial_index"]]
+
+
+def _actual_recipe(state: dict, trial: dict) -> dict:
+    return trial.get("recipe", _current_variant(state)["recipe"])
 
 
 def _rank(state: dict) -> None:
@@ -190,6 +264,18 @@ def _deltas(report: dict) -> dict:
         f"{key}_delta": (totals[1][key] - totals[0][key]) / n
         for key in ("usable", "critical")
     }
+
+
+def _check_suggestion(space: dict, params: dict) -> None:
+    if not isinstance(params, dict) or params.keys() != space.keys():
+        raise ValueError("campaign_optuna_suggestion_invalid")
+    for name, value in params.items():
+        allowed = (int,) if name in {"rank", "alpha"} else (int, float)
+        if (
+            type(value) not in allowed
+            or not space[name]["low"] <= value <= space[name]["high"]
+        ):
+            raise ValueError("campaign_optuna_suggestion_invalid")
 
 
 def _tree_bytes(directory: Path) -> int:
@@ -300,12 +386,21 @@ class CampaignService:
                 return state
             self._ensure_single_campaign(campaign_id)
             if state["status"] != "stopping":
+                plan = state["plan"]
+                if (
+                    _is_optuna(plan)
+                    and optuna_backend.require_optuna() != plan["optuna_version"]
+                ):
+                    raise ValueError("campaign_optuna_version_changed")
                 state["status"] = "running"
                 self._elapsed(state)
-                if state["elapsed_seconds"] >= state["plan"]["budget"]["max_seconds"]:
+                expired = state["elapsed_seconds"] >= plan["budget"]["max_seconds"]
+                if expired and not _is_optuna(plan):
                     raise ValueError("campaign_time_budget_exhausted")
                 state["error"] = None
-                state["termination"] = None
+                state["termination"] = "timed_out" if expired else None
+                if expired:
+                    state["status"] = "stopping"
             if state["started_at"] is None:
                 state["started_at"] = self._clock()
             self._start_worker(directory, state)
@@ -407,8 +502,8 @@ class CampaignService:
             run.get("campaign_id") != state["campaign_id"]
             or run.get("profile_id") != state["plan"]["profile_id"]
             or run.get("profile_identity") != state["plan"]["profile_identity"]
-            or run.get("recipe")
-            != state["plan"]["variants"][state["trial_index"]]["recipe"]
+            or (_is_optuna(state["plan"]) and "recipe" not in trial)
+            or run.get("recipe") != _actual_recipe(state, trial)
         ):
             raise ValueError("campaign_trial_conflict")
         return run
@@ -440,7 +535,7 @@ class CampaignService:
     def _reserve(
         self, directory: Path, state: dict, trial: dict, action: str, attempt: int
     ) -> None:
-        workload = state["plan"]["variants"][state["trial_index"]]["workload"]
+        workload = trial.get("workload", _current_variant(state)["workload"])
         budget = state["plan"]["budget"]
         for metric in ("updates", "tokens"):
             charge = workload[metric] if action != "evaluate" else 0
@@ -470,7 +565,7 @@ class CampaignService:
             return self.experiments.start(
                 state["plan"]["profile_id"],
                 run_id,
-                state["plan"]["variants"][state["trial_index"]]["recipe"],
+                _actual_recipe(state, trial),
                 campaign_id=state["campaign_id"],
                 expected_identity=state["plan"]["profile_identity"],
                 review_mode=state["plan"]["review_mode"],
@@ -486,7 +581,7 @@ class CampaignService:
             run_id, max_seconds=remaining, campaign_id=state["campaign_id"]
         )
 
-    def _terminate(self, state: dict, run: dict | None) -> None:
+    def _terminate(self, directory: Path, state: dict, run: dict | None) -> None:
         if run and _has_work(run):
             stopped = self.experiments.stop(
                 run["run_id"], campaign_id=state["campaign_id"]
@@ -494,8 +589,24 @@ class CampaignService:
             if _has_work(stopped):
                 state["status"] = "stopping"
                 return
+        if state["termination"] == "timed_out" and _is_optuna(state["plan"]):
+            trial = state["trials"][state["trial_index"]]
+            if "optuna_trial_number" in trial:
+                self._record_timeout(directory, state, trial, run)
         state["status"] = state["termination"]
         state["termination"] = None
+
+    def _record_timeout(
+        self, directory: Path, state: dict, trial: dict, run: dict | None
+    ) -> None:
+        if run and run["status"] == "succeeded":
+            self._record_result(state, trial, run["run_id"])
+            trial["status"] = "succeeded"
+            _rank(state)
+        elif "result_sha256" not in trial and trial["status"] != "skipped":
+            trial.update(status="timed_out", error="campaign_time_budget_exhausted")
+        self._save(directory, state)
+        self._tell_optuna(directory, state, trial)
 
     def _finish_trial(
         self, directory: Path, state: dict, trial: dict, run: dict
@@ -512,16 +623,21 @@ class CampaignService:
             _rank(state)
         # Persist the reviewed result and selection before touching a checkpoint.
         self._save(directory, state)
+        self._tell_optuna(directory, state, trial)
         retention = Retention(self.experiments, directory)
         plan = retention.plan(state)
         if plan["files"]:
             receipt = retention.apply(state, plan["plan_sha256"])
             self._record_retention(state, receipt)
+        self._next_slot(state)
+        self._artifact_budget(state)
+
+    @staticmethod
+    def _next_slot(state: dict) -> None:
         state["trial_index"] += 1
         state["status"] = (
             "succeeded" if state["trial_index"] == len(state["trials"]) else "running"
         )
-        self._artifact_budget(state)
 
     def _record_result(self, state: dict, trial: dict, run_id: str) -> None:
         with self.experiments.run_lock(run_id):
@@ -561,7 +677,7 @@ class CampaignService:
         if not self._artifact_budget(state):
             state["termination"] = "blocked"
             state["error"] = "campaign_storage_budget_exhausted"
-            self._terminate(state, run)
+            self._terminate(directory, state, run)
             return True
         if remaining < 1:
             stopped = self.experiments.stop(
@@ -590,7 +706,7 @@ class CampaignService:
         if state["elapsed_seconds"] >= state["plan"]["budget"]["max_seconds"]:
             state["termination"] = "timed_out"
         if state["termination"]:
-            self._terminate(state, run)
+            self._terminate(directory, state, run)
             return True
         if run is None:
             if remaining < 1:
@@ -609,9 +725,7 @@ class CampaignService:
             run = self._launch_trial(state, trial, run, remaining)
             trial.pop("intent")
         if run is None:
-            if trial["status"] != "pending" or "started_at" in trial:
-                raise ValueError("campaign_trial_missing")
-            self._reserve(directory, state, trial, "start", 0)
+            self._prepare_trial(directory, state, trial)
             return
         trial.update(
             {
@@ -641,6 +755,82 @@ class CampaignService:
         if run["status"] not in _RUN_ACTIVE:
             raise ValueError("campaign_trial_state_unknown")
         state["status"] = "running"
+
+    def _prepare_trial(self, directory: Path, state: dict, trial: dict) -> None:
+        if trial["status"] == "skipped" and _is_optuna(state["plan"]):
+            self._skip_duplicate(directory, state, trial)
+            return
+        if trial["status"] != "pending" or "started_at" in trial:
+            raise ValueError("campaign_trial_missing")
+        if _is_optuna(state["plan"]) and "recipe" not in trial:
+            self._suggest(directory, state, trial)
+            if trial["status"] == "skipped":
+                self._skip_duplicate(directory, state, trial)
+                return
+        self._reserve(directory, state, trial, "start", 0)
+
+    def _suggest(self, directory: Path, state: dict, trial: dict) -> None:
+        plan = state["plan"]
+        self._profile(plan)
+        if not self._artifact_budget(state):
+            raise ValueError("campaign_storage_budget_exhausted")
+        suggestion = optuna_backend.ask(directory, plan, state["trial_index"])
+        number, params = suggestion["trial_number"], suggestion["params"]
+        previous = state["trials"][: state["trial_index"]]
+        if (
+            type(number) is not int
+            or number < 0
+            or any(other.get("optuna_trial_number") == number for other in previous)
+        ):
+            raise ValueError("campaign_optuna_suggestion_invalid")
+        trial.update(optuna_trial_number=number, optuna_trial_state="RUNNING")
+        _check_suggestion(plan["search_space"], params)
+        base = _current_variant(state)
+        validated = self.experiments.validate(
+            plan["profile_id"], {**base["recipe"], **params}
+        )
+        if validated["identity"] != plan["profile_identity"]:
+            raise ValueError("campaign_profile_changed")
+        if plan["review_mode"] == "automatic" and not validated["automatic_review"]:
+            raise ValueError("campaign_evaluator_not_qualified")
+        workload = _workload(validated)
+        if any(workload[key] > base["workload"][key] for key in workload):
+            raise ValueError("campaign_optuna_workload_exceeded")
+        recipe = validated["recipe"]
+        trial.update(recipe=recipe, workload=workload)
+        if any(other.get("recipe") == recipe for other in previous):
+            trial.update(status="skipped", error="campaign_duplicate_suggestion")
+
+    def _skip_duplicate(self, directory: Path, state: dict, trial: dict) -> None:
+        self._save(directory, state)
+        self._tell_optuna(directory, state, trial)
+        self._next_slot(state)
+
+    @staticmethod
+    def _tell_optuna(directory: Path, state: dict, trial: dict) -> None:
+        if not _is_optuna(state["plan"]):
+            return
+        number = trial["optuna_trial_number"]
+        if "result_sha256" in trial:
+            selection = state["plan"]["selection"]
+            constraints = [
+                trial["critical_delta"] - selection["max_critical_delta"],
+                selection["min_usable_delta"] - trial["usable_delta"],
+            ]
+            optuna_backend.tell(
+                directory,
+                state["plan"],
+                number,
+                "COMPLETE",
+                trial["usable_delta"],
+                constraints=constraints,
+            )
+            trial.update(
+                optuna_trial_state="COMPLETE", gate_passed=max(constraints) <= 0
+            )
+        else:
+            optuna_backend.tell(directory, state["plan"], number, "FAIL")
+            trial["optuna_trial_state"] = "FAIL"
 
     def advance(self, campaign_id: str) -> dict:
         """Advance one durable transition. Called by the detached supervisor."""

@@ -39,13 +39,33 @@ class CampaignSelection(BaseModel):
     max_critical_delta: float = Field(default=0.0, ge=0, le=1)
 
 
+SearchParameter = Literal["rank", "alpha", "learning_rate", "dropout"]
+
+
+class SearchRange(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, allow_inf_nan=False)
+
+    low: int | float
+    high: int | float
+    log: bool | None = None
+
+    @model_validator(mode="after")
+    def validate_range(self) -> "SearchRange":
+        if self.low >= self.high or (self.log and self.low <= 0):
+            raise ValueError("campaign_search_range_invalid")
+        return self
+
+
 class CampaignSpec(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
     schema_version: Literal[1] = 1
     campaign_id: CampaignId
     profile_id: ProfileId
-    variants: list[dict[str, Any]] = Field(min_length=1, max_length=32)
+    variants: list[dict[str, Any]] = Field(default_factory=list, max_length=32)
+    strategy: Literal["fixed", "optuna"] = "fixed"
+    search_space: dict[SearchParameter, SearchRange] | None = None
+    sampler_seed: int = Field(default=42, ge=0, le=2**32 - 1)
     budget: CampaignBudget
     selection: CampaignSelection = Field(default_factory=CampaignSelection)
     retention: Literal["keep_all", "discard_rejected"] = "keep_all"
@@ -53,8 +73,13 @@ class CampaignSpec(BaseModel):
 
     @model_validator(mode="after")
     def validate_variant_count(self) -> "CampaignSpec":
-        if len(self.variants) > self.budget.max_trials:
-            raise ValueError("campaign_trial_budget_exceeded")
+        if self.strategy == "fixed":
+            if not self.variants or self.search_space is not None:
+                raise ValueError("campaign_fixed_variants_required")
+            if len(self.variants) > self.budget.max_trials:
+                raise ValueError("campaign_trial_budget_exceeded")
+        elif self.variants or not self.search_space:
+            raise ValueError("campaign_optuna_space_required")
         return self
 
 

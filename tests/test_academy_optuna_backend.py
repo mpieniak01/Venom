@@ -162,11 +162,16 @@ def test_client_and_tool_exchange_versioned_requests_without_optional_packages(
     candidate = {"rank": 8, "alpha": 16, "dropout": 0.1, "learning_rate": 0.001}
     monkeypatch.setattr(backend, "_sample", lambda *_args: candidate)
 
-    def run_tool(args, *, input, encoding, capture_output, timeout, check):
+    def run_tool(args, *, cwd, input, encoding, capture_output, timeout, check):
         assert args == [sys.executable, "-I", backend.__file__]
         assert encoding == "utf-8" and capture_output and timeout == 30 and not check
+        request = json.loads(input)
+        assert "directory" not in request
+        assert cwd == (None if request["operation"] == "probe" else tmp_path)
         stdout = io.StringIO()
         with monkeypatch.context() as tool, redirect_stdout(stdout):
+            if cwd is not None:
+                tool.chdir(cwd)
             tool.setattr(sys, "stdin", io.StringIO(input))
             status = backend._main()
         return subprocess.CompletedProcess(args, status, stdout.getvalue())
@@ -188,6 +193,23 @@ def test_client_and_tool_exchange_versioned_requests_without_optional_packages(
             backend.ask(tmp_path, PLAN, 1)
     finally:
         backend._probe.cache_clear()
+
+
+def test_tool_payload_cannot_select_journal_path(tmp_path, monkeypatch):
+    campaign = tmp_path / "campaign"
+    campaign.mkdir()
+    monkeypatch.chdir(campaign)
+    with pytest.raises(ValueError, match="campaign_optuna_request_invalid"):
+        backend._tool_request(
+            {
+                "operation": "ask",
+                "directory": str(tmp_path),
+                "contract": backend._contract(PLAN),
+                "trial_number": 0,
+            }
+        )
+    assert not (tmp_path / "optuna.sqlite3").exists()
+    assert not (campaign / "optuna.sqlite3").exists()
 
 
 @pytest.mark.parametrize("output", ["not JSON", json.dumps(["wrong", "shape"])])

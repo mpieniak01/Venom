@@ -127,10 +127,14 @@ def _tool_python() -> str:
     return str(path)
 
 
-def _invoke(python: str, payload: dict) -> dict:
+def _invoke(python: str, payload: dict, *, directory: Path | None = None) -> dict:
+    workdir = directory.absolute() if directory is not None else None
+    if workdir is not None:
+        _database_path(workdir)
     try:
         child = subprocess.run(
             [python, "-I", str(Path(__file__).resolve())],
+            cwd=workdir,
             input=json.dumps(payload, allow_nan=False),
             encoding="utf-8",
             capture_output=True,
@@ -173,10 +177,10 @@ def ask(directory: Path, plan: dict, index: int) -> dict:
         _tool_python(),
         {
             "operation": "ask",
-            "directory": str(directory.absolute()),
             "contract": _contract(plan),
             "trial_number": _slot(index),
         },
+        directory=directory,
     )
 
 
@@ -224,13 +228,13 @@ def tell(
         _tool_python(),
         {
             "operation": "tell",
-            "directory": str(directory.absolute()),
             "contract": _contract(plan),
             "trial_number": _slot(trial_number),
             "outcome": outcome,
             "value": score,
             "constraints": violation,
         },
+        directory=directory,
     )
 
 
@@ -373,13 +377,15 @@ def _check_versions() -> None:
 
 
 def _tool_request(request: dict) -> dict:
+    if "directory" in request:
+        raise ValueError("campaign_optuna_request_invalid")
     _check_versions()
     operation = request["operation"]
     if operation == "probe":
         return {"version": OPTUNA_VERSION}
     contract = _contract(request["contract"])
     index = _slot(request["trial_number"])
-    with _transaction(Path(request["directory"]), contract) as db:
+    with _transaction(Path.cwd(), contract) as db:
         if operation == "ask":
             optuna = import_module("optuna")
             optuna.logging.set_verbosity(optuna.logging.WARNING)

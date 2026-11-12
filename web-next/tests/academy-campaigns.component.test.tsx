@@ -303,8 +303,9 @@ describe("Campaign quality feedback", () => {
     evidence_gaps: ["quality_critical_unknown"],
   };
   const reference = { record_id: "history:p13-reference", split: "dev", source: { identity: "fixture" } };
-  const control = { rank: 8, target_modules: ["q_proj", "v_proj"], loss_mode: "historic" };
-  const isolated = { ...control, target_modules: ["q_proj"] };
+  const trial = { rank: 8, steps: 128, max_tokens: 1024, microbatch: 1, gradient_accumulation_steps: 8 };
+  const control = { ...trial, target_modules: ["q_proj", "v_proj"], loss_mode: "historic" };
+  const isolated = { ...control, target_modules: ["q_proj", "k_proj", "v_proj", "o_proj", "in_proj", "out_proj", "w1", "w2", "w3"] };
   const sourceControls = { train_sha256: "d".repeat(64), runtime: { dtype: "bf16" } };
   const comparison = {
     record: candidate,
@@ -388,22 +389,22 @@ describe("Campaign quality feedback", () => {
     assert.equal(submitted, undefined);
 
     fireEvent.change(screen.getByLabelText("Parametry wariantu (JSON) 1"), {
-      target: { value: JSON.stringify({ rank: 8, target_modules: control.target_modules }) },
+      target: { value: JSON.stringify({ ...trial, target_modules: control.target_modules }) },
     });
-    fireEvent.change(draft, { target: { value: JSON.stringify({ rank: 8, target_modules: isolated.target_modules }) } });
-    fireEvent.change(screen.getByLabelText("Hipoteza"), { target: { value: "Porównanie q_proj z kontrolą." } });
+    fireEvent.change(draft, { target: { value: JSON.stringify({ ...trial, target_modules: isolated.target_modules }) } });
+    fireEvent.change(screen.getByLabelText("Hipoteza"), { target: { value: "Porównanie szerszego zakresu z kontrolą." } });
     fireEvent.click(formPlan);
     await screen.findByRole("button", { name: "Uruchom zaplanowaną kampanię" });
     assert.deepEqual(submitted, {
       campaign_id: "pilot-campaign",
       profile_id: "omni",
-      variants: [{ rank: 8, target_modules: control.target_modules }, { rank: 8, target_modules: isolated.target_modules }],
-      budget: planned.plan.budget,
+      variants: [{ ...trial, target_modules: control.target_modules }, { ...trial, target_modules: isolated.target_modules }],
+      budget: { ...planned.plan.budget, max_tokens: 2_097_152 },
       selection: planned.plan.selection,
       retention: "keep_all",
       review_mode: "manual",
       quality_policy: {
-        hypothesis: "Porównanie q_proj z kontrolą.",
+        hypothesis: "Porównanie szerszego zakresu z kontrolą.",
         source_record_id: candidate.record_id,
         reference_record_ids: [reference.record_id],
         protected_case_ids: ["lost-1"],

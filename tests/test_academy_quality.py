@@ -8,6 +8,11 @@ from copy import deepcopy
 import pytest
 from pydantic import ValidationError
 
+from scripts.academy.omni_pl_chat_recipe import (
+    LANGUAGE_TARGET_MODULES,
+    P13_LANGUAGE_SELECTOR,
+    validate_recipe,
+)
 from scripts.academy.quality import main
 from venom_core.services.training_experiments.quality import (
     QualityStore,
@@ -135,6 +140,24 @@ def test_cases_and_categories_are_paired_exactly():
     assert analyze_quality(candidate, peer)["comparison_issues"] == [
         "quality_case_set_mismatch"
     ]
+
+
+def test_p14_proposal_translates_the_p13_selector_to_a_runnable_language_scope():
+    candidate, peer = record(), record("run-b")
+    candidate["recipe"] = validate_recipe({"steps": 128, "save_every": 128})
+    peer["recipe"] = {**candidate["recipe"], "target_modules": P13_LANGUAGE_SELECTOR}
+
+    proposal = analyze_quality(candidate, peer)["proposal"]
+
+    assert proposal["status"] == "ready"
+    assert proposal["factor"] == "target_modules"
+    control, alternate = (
+        validate_recipe(item["recipe"]) for item in proposal["variants"]
+    )
+    assert control.pop("target_modules") == ["q_proj", "v_proj"]
+    assert alternate.pop("target_modules") == list(LANGUAGE_TARGET_MODULES)
+    assert control == alternate
+    assert peer["recipe"]["target_modules"] == P13_LANGUAGE_SELECTOR
 
 
 def test_case_counts_and_one_factor_proposal_use_comparable_dev_records():

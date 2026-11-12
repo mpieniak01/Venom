@@ -17,7 +17,12 @@ from scripts.academy.omni_pl_chat_p1 import (
     _resume_checkpoint,
     _write_json,
 )
-from scripts.academy.omni_pl_chat_recipe import load_recipe, validate_recipe
+from scripts.academy.omni_pl_chat_recipe import (
+    LANGUAGE_TARGET_MODULES,
+    P13_LANGUAGE_SELECTOR,
+    load_recipe,
+    validate_recipe,
+)
 
 
 def test_recipe_overrides_keep_defaults_and_canonicalize_targets(tmp_path):
@@ -43,10 +48,20 @@ def test_recipe_overrides_keep_defaults_and_canonicalize_targets(tmp_path):
     assert recipe["learning_rate"] == 0.0001
 
 
+def test_wider_language_targets_canonicalize_without_recipe_changes():
+    control = validate_recipe({})
+    wide = validate_recipe({"target_modules": list(reversed(LANGUAGE_TARGET_MODULES))})
+    assert wide.pop("target_modules") == list(LANGUAGE_TARGET_MODULES)
+    assert control.pop("target_modules") == ["q_proj", "v_proj"]
+    assert wide == control
+
+
 @pytest.mark.parametrize(
     "recipe",
     [
         {"target_modules": ["q_proj", "lm_head"]},
+        {"target_modules": [".*"]},
+        {"target_modules": P13_LANGUAGE_SELECTOR},
         {"target_modules": ["q_proj", "q_proj"]},
         {"rank": True},
         {"rank": 65},

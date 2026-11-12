@@ -293,3 +293,221 @@ it("opens a different campaign when the Academy query changes", async () => {
   await screen.findByText("second-profile", { selector: "dd" });
   assert.equal(screen.queryByText(planned.plan.profile_id, { selector: "dd" }), null);
 });
+
+describe("Campaign quality feedback", () => {
+  const qualityPath = campaignsPath + "/quality";
+  const candidate = {
+    record_id: "history:p14-candidate",
+    split: "dev",
+    source: { identity: "fixture" },
+    evidence_gaps: ["quality_critical_unknown"],
+  };
+  const reference = { record_id: "history:p13-reference", split: "dev", source: { identity: "fixture" } };
+  const control = { rank: 8, target_modules: ["q_proj", "v_proj"], loss_mode: "historic" };
+  const isolated = { ...control, target_modules: ["q_proj"] };
+  const sourceControls = { train_sha256: "d".repeat(64), runtime: { dtype: "bf16" } };
+  const comparison = {
+    record: candidate,
+    decision: "REVISE",
+    reference_id: reference.record_id,
+    comparable: true,
+    comparison_issues: [],
+    summary: [],
+    comparison: [{
+      category: "instructions", n: 9, reference_usable: 6, candidate_usable: 5, lost_usable: 3, gained_usable: 2,
+    }],
+    findings: [{ code: "quality_lost_usable", case_ids: ["lost-1"] }],
+    protected_case_ids: ["lost-1"],
+    proposal: {
+      status: "ready",
+      kind: "isolate_recipe_factor",
+      factor: "target_modules",
+      reference_id: reference.record_id,
+      fixed: sourceControls,
+      variants: [
+        { name: "control", recipe: control },
+        { name: "isolated", recipe: isolated },
+      ],
+      reasons: [],
+    },
+  };
+
+  it("compares paired outcomes and fills an editable draft without creating a campaign", async () => {
+    globalThis.FormData = window.FormData;
+    let current: Campaign[] = [];
+    let submitted: unknown;
+    serve(() => current, {
+      ["GET " + qualityPath]: () => Response.json({
+        records: [candidate, reference],
+        unavailable_record_ids: ["history:unreadable"],
+      }),
+      ["GET " + qualityPath + "/" + encodeURIComponent(candidate.record_id) + "/analysis"]: (init) => {
+        assert.equal(init?.method ?? "GET", "GET");
+        return Response.json(comparison);
+      },
+      ["POST " + campaignsPath + "/plan"]: (init) => {
+        const body = JSON.parse(String(init?.body));
+        submitted = body;
+        const next = { ...planned, plan: { ...planned.plan, quality_policy: body.quality_policy } };
+        current = [next];
+        return Response.json(next);
+      },
+    });
+
+    render(<CampaignPanel onOpenRun={() => {}} />);
+    fireEvent.click(screen.getByText("Wnioski i następna próba"));
+    const candidateSelect = await screen.findByLabelText("Kandydat") as HTMLSelectElement;
+    assert.equal(candidateSelect.value, candidate.record_id);
+    assert.ok(screen.getByText("history:unreadable", { selector: "code" }));
+    assert.equal(screen.queryByRole("option", { name: /history:unreadable/ }), null);
+    fireEvent.change(screen.getByLabelText("Odniesienie"), { target: { value: reference.record_id } });
+    fireEvent.click(screen.getByRole("button", { name: "Porównaj oceny" }));
+
+    await screen.findByText(/REVISE · Wymaga poprawki/);
+    const row = screen.getByRole("row", { name: /instructions/ });
+    assert.match(row.textContent ?? "", /instructions96532/);
+    fireEvent.click(screen.getByRole("button", { name: "Uzupełnij formularz kampanii" }));
+    assert.equal(submitted, undefined);
+    const formPlan = screen.getByRole("button", { name: "Przygotuj plan kampanii" }) as HTMLButtonElement;
+    assert.equal(formPlan.disabled, true);
+    const draft = screen.getByLabelText("Parametry wariantu (JSON) 2") as HTMLTextAreaElement;
+    assert.deepEqual(JSON.parse(draft.value), isolated);
+    assert.ok(screen.getByText(/pola z rekomendacji/));
+    const draftForm = formPlan.closest("form");
+    assert.ok(draftForm?.textContent?.includes(candidate.record_id));
+    assert.ok(draftForm?.textContent?.includes(sourceControls.train_sha256));
+    assert.ok(draftForm?.textContent?.includes("bf16"));
+    const qualityToggle = screen.getByRole("checkbox", { name: "Stosuj reguły jakości" }) as HTMLInputElement;
+    assert.equal(qualityToggle.checked, true);
+    assert.equal(qualityToggle.disabled, true);
+
+    fireEvent.change(screen.getByLabelText("Profil eksperymentu"), { target: { value: "omni" } });
+    fireEvent.change(screen.getByLabelText("Identyfikator kampanii"), { target: { value: "pilot-campaign" } });
+    fireEvent.click(formPlan);
+    await screen.findByText("Sprawdź JSON wariantów, pola trenera i limity kampanii.");
+    assert.equal(submitted, undefined);
+
+    fireEvent.change(screen.getByLabelText("Parametry wariantu (JSON) 1"), {
+      target: { value: JSON.stringify({ rank: 8, target_modules: control.target_modules }) },
+    });
+    fireEvent.change(draft, { target: { value: JSON.stringify({ rank: 8, target_modules: isolated.target_modules }) } });
+    fireEvent.change(screen.getByLabelText("Hipoteza"), { target: { value: "Porównanie q_proj z kontrolą." } });
+    fireEvent.click(formPlan);
+    await screen.findByRole("button", { name: "Uruchom zaplanowaną kampanię" });
+    assert.deepEqual(submitted, {
+      campaign_id: "pilot-campaign",
+      profile_id: "omni",
+      variants: [{ rank: 8, target_modules: control.target_modules }, { rank: 8, target_modules: isolated.target_modules }],
+      budget: planned.plan.budget,
+      selection: planned.plan.selection,
+      retention: "keep_all",
+      review_mode: "manual",
+      quality_policy: {
+        hypothesis: "Porównanie q_proj z kontrolą.",
+        source_record_id: candidate.record_id,
+        reference_record_ids: [reference.record_id],
+        protected_case_ids: ["lost-1"],
+        protect_reference_hits: true,
+        protect_base_hits: false,
+        min_category_usable_delta: {},
+        no_new_critical: true,
+      },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Odrzuć szkic z rekomendacji" }));
+    assert.equal(screen.queryByLabelText("Parametry wariantu (JSON) 1"), null);
+    const standardForm = screen.getByRole("button", { name: "Przygotuj plan kampanii" }).closest("form");
+    assert.equal(standardForm?.textContent?.includes(candidate.record_id), false);
+  });
+
+  it("preserves edited quality values while temporarily disabling the policy", async () => {
+    serve(() => [], {
+      ["GET " + qualityPath]: () => Response.json({ records: [reference] }),
+    });
+    render(<CampaignPanel onOpenRun={() => {}} />);
+    await screen.findByLabelText("Profil eksperymentu");
+    fireEvent.click(screen.getByText("Reguły jakości"));
+    const toggle = screen.getByRole("checkbox", { name: "Stosuj reguły jakości" });
+    fireEvent.click(toggle);
+    const hypothesis = await screen.findByLabelText("Hipoteza") as HTMLTextAreaElement;
+    const protectedIds = screen.getByLabelText("Chronione przypadki") as HTMLTextAreaElement;
+    const referenceInput = await screen.findByRole("checkbox", { name: reference.record_id }) as HTMLInputElement;
+    fireEvent.change(hypothesis, { target: { value: "Chronimy dotychczasowe trafienia." } });
+    fireEvent.change(protectedIds, { target: { value: "protected-1" } });
+    fireEvent.click(referenceInput);
+    fireEvent.click(toggle);
+    const policyFields = hypothesis.closest("fieldset");
+    assert.equal(policyFields?.hidden, true);
+    assert.equal(policyFields?.disabled, true);
+    fireEvent.click(toggle);
+    assert.equal(hypothesis.value, "Chronimy dotychczasowe trafienia.");
+    assert.equal(protectedIds.value, "protected-1");
+    assert.equal(referenceInput.checked, true);
+    assert.equal(policyFields?.hidden, false);
+  });
+
+  it("offers to reassess a blocked result after the time budget expires", async () => {
+    const expired: Campaign = {
+      ...planned,
+      status: "blocked",
+      elapsed_seconds: planned.plan.budget.max_seconds,
+      trials: [{ run_id: runId, status: "succeeded" }],
+    };
+    const guarded: Campaign = {
+      ...expired,
+      trials: [{
+        ...expired.trials[0],
+        quality_guard: {
+          status: "blocked",
+          reasons: [{ code: "campaign_quality_case_evidence_missing" }],
+          protected_count: null,
+          lost_case_ids: [],
+          new_critical_case_ids: [],
+          category_deltas: {},
+        },
+      }],
+    };
+    const unguarded = { ...expired, campaign_id: "expired-no-guard" };
+    let resumed = false;
+    serve(() => [unguarded, guarded], {
+      ["POST " + campaignsPath + "/pilot-campaign/resume"]: () => {
+        resumed = true;
+        return Response.json({ ...guarded, status: "stopping" });
+      },
+    });
+
+    render(<CampaignPanel onOpenRun={() => {}} />);
+    const unguardedButton = await screen.findByRole("button", { name: /expired-no-guard/ });
+    fireEvent.click(unguardedButton);
+    assert.equal(screen.queryByRole("button", { name: "Wznów kampanię" }), null);
+
+    fireEvent.click(screen.getByRole("button", { name: /^pilot-campaignZablokowana$/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Wznów kampanię" }));
+    await waitFor(() => assert.equal(resumed, true));
+  });
+
+  it("shows a trial rejection and keeps an unknown category threshold unquantified", async () => {
+    serve(() => [{
+      ...planned,
+      status: "succeeded",
+      trial_index: 1,
+      trials: [{
+        run_id: runId,
+        status: "succeeded",
+        quality_guard: {
+          status: "rejected",
+          reasons: [{ code: "protected_case_lost", count: 1 }],
+          protected_count: 2,
+          lost_case_ids: ["lost-1"],
+          new_critical_case_ids: [],
+          category_deltas: { instructions: { n: 4, usable_delta: -0.25, minimum: null } },
+        },
+      }],
+    }]);
+
+    render(<CampaignPanel onOpenRun={() => {}} />);
+    fireEvent.click(await screen.findByText("Reguły jakości odrzuciły próbę"));
+    assert.ok(screen.getByText(/Utracone chronione przypadki · lost-1/));
+    assert.ok(screen.getByText("instructions · -25 / — p.p."));
+  });
+});

@@ -3610,6 +3610,91 @@
         }
       }
     },
+    "/api/v1/academy/experiments/campaigns/quality": {
+      "get": {
+        "tags": [
+          "academy"
+        ],
+        "summary": "Quality Records",
+        "operationId": "quality_records_api_v1_academy_experiments_campaigns_quality_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Quality Records Api V1 Academy Experiments Campaigns Quality Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/academy/experiments/campaigns/quality/{record_id}/analysis": {
+      "get": {
+        "tags": [
+          "academy"
+        ],
+        "summary": "Quality Analysis",
+        "operationId": "quality_analysis_api_v1_academy_experiments_campaigns_quality__record_id__analysis_get",
+        "parameters": [
+          {
+            "name": "record_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^(?:history:)?[A-Za-z0-9][A-Za-z0-9_-]{0,63}$",
+              "title": "Record Id"
+            }
+          },
+          {
+            "name": "reference_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^(?:history:)?[A-Za-z0-9][A-Za-z0-9_-]{0,63}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reference Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Quality Analysis Api V1 Academy Experiments Campaigns Quality  Record Id  Analysis Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/academy/experiments/campaigns/plan": {
       "post": {
         "tags": [
@@ -14591,6 +14676,90 @@
         ],
         "title": "CampaignPlanReference"
       },
+      "CampaignQualityPolicy": {
+        "properties": {
+          "reference_record_ids": {
+            "items": {
+              "type": "string",
+              "pattern": "^(?:history:)?[A-Za-z0-9][A-Za-z0-9_-]{0,63}$"
+            },
+            "type": "array",
+            "maxItems": 8,
+            "title": "Reference Record Ids"
+          },
+          "protected_case_ids": {
+            "items": {
+              "type": "string",
+              "maxLength": 256,
+              "minLength": 1,
+              "pattern": "^\\S+$"
+            },
+            "type": "array",
+            "maxItems": 4096,
+            "title": "Protected Case Ids"
+          },
+          "protect_reference_hits": {
+            "type": "boolean",
+            "title": "Protect Reference Hits",
+            "default": true
+          },
+          "protect_base_hits": {
+            "type": "boolean",
+            "title": "Protect Base Hits",
+            "default": false
+          },
+          "min_category_usable_delta": {
+            "patternProperties": {
+              "\\S": {
+                "type": "number",
+                "maximum": 1.0,
+                "minimum": -1.0
+              }
+            },
+            "propertyNames": {
+              "maxLength": 128,
+              "minLength": 1
+            },
+            "type": "object",
+            "maxProperties": 64,
+            "title": "Min Category Usable Delta"
+          },
+          "no_new_critical": {
+            "type": "boolean",
+            "title": "No New Critical",
+            "default": true
+          },
+          "source_record_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?:history:)?[A-Za-z0-9][A-Za-z0-9_-]{0,63}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Record Id"
+          },
+          "hypothesis": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000,
+                "minLength": 1,
+                "pattern": "\\S"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hypothesis"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "CampaignQualityPolicy"
+      },
       "CampaignSelection": {
         "properties": {
           "min_usable_delta": {
@@ -14702,6 +14871,16 @@
             ],
             "title": "Review Mode",
             "default": "manual"
+          },
+          "quality_policy": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CampaignQualityPolicy"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "additionalProperties": false,

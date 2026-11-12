@@ -1557,6 +1557,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/academy/experiments/campaigns/quality": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Quality Records */
+        get: operations["quality_records_api_v1_academy_experiments_campaigns_quality_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/academy/experiments/campaigns/quality/{record_id}/analysis": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Quality Analysis */
+        get: operations["quality_analysis_api_v1_academy_experiments_campaigns_quality__record_id__analysis_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/academy/experiments/campaigns/plan": {
         parameters: {
             query?: never;
@@ -6509,6 +6543,36 @@ export interface components {
             /** Plan Sha256 */
             plan_sha256: string;
         };
+        /** CampaignQualityPolicy */
+        CampaignQualityPolicy: {
+            /** Reference Record Ids */
+            reference_record_ids?: string[];
+            /** Protected Case Ids */
+            protected_case_ids?: string[];
+            /**
+             * Protect Reference Hits
+             * @default true
+             */
+            protect_reference_hits: boolean;
+            /**
+             * Protect Base Hits
+             * @default false
+             */
+            protect_base_hits: boolean;
+            /** Min Category Usable Delta */
+            min_category_usable_delta?: {
+                [key: string]: number;
+            };
+            /**
+             * No New Critical
+             * @default true
+             */
+            no_new_critical: boolean;
+            /** Source Record Id */
+            source_record_id?: string | null;
+            /** Hypothesis */
+            hypothesis?: string | null;
+        };
         /** CampaignSelection */
         CampaignSelection: {
             /**
@@ -6567,6 +6631,7 @@ export interface components {
              * @enum {string}
              */
             review_mode: "manual" | "automatic";
+            quality_policy?: components["schemas"]["CampaignQualityPolicy"] | null;
         };
         /** CancelChatTask */
         CancelChatTask: {
@@ -13812,6 +13877,63 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+        };
+    };
+    quality_records_api_v1_academy_experiments_campaigns_quality_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    quality_analysis_api_v1_academy_experiments_campaigns_quality__record_id__analysis_get: {
+        parameters: {
+            query?: {
+                reference_id?: string | null;
+            };
+            header?: never;
+            path: {
+                record_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

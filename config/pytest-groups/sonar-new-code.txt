@@ -38,6 +38,8 @@ tests/test_academy_file_resolution_service.py
 tests/test_academy_history_module.py
 tests/test_academy_models_module.py
 tests/test_academy_optuna_backend.py
+tests/test_academy_quality.py
+tests/test_academy_quality_native.py
 tests/test_academy_route_handlers_extra.py
 tests/test_academy_route_helpers_modules.py
 tests/test_academy_self_learning_routes.py

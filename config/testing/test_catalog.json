@@ -751,6 +751,34 @@
       "rationale": "Durable Optuna trial assignment, outcome reconciliation, and reproducible sampler replay."
     },
     {
+      "path": "tests/test_academy_quality.py",
+      "domain": "academy",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Verify Academy quality evidence, paired comparisons and fail-closed access."
+    },
+    {
+      "path": "tests/test_academy_quality_native.py",
+      "domain": "academy",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Verify Academy quality evidence, paired comparisons and fail-closed access."
+    },
+    {
       "path": "tests/test_academy_route_handlers_extra.py",
       "domain": "academy",
       "test_type": "service_contract",

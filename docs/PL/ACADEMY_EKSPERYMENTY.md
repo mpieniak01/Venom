@@ -150,3 +150,24 @@ Po sprawdzeniu planu wpisz komendę startu, którą zwrócił Venom. W panelu za
 `start` i `resume` czekają na wznowienie kolejki Venoma i dostępne miejsce w ramach limitu równoległych zadań. `stop` działa także podczas pauzy kolejki. Powtórzenie startu z tym samym identyfikatorem i hashem zwraca stan tej samej kampanii. Przerwanie rozmowy pozostawia kampanię pod kontrolą jej wykonawcy. Po ponownym otwarciu czatu odczytaj stan przez `status`. Aby zatrzymać pracę, użyj `stop`. Polecenia korzystają z tego samego budżetu i stanu co przyciski Academy.
 
 `compare` i `report` odczytują zapisane oceny bazy i adapterów oraz dostępność zweryfikowanych wag. Porównanie pokazuje liczbę przypadków dev, poprawę lub regresję oraz parametry kandydata do ponownego sprawdzenia, gdy użyteczność wzrosła bez wzrostu błędów krytycznych. Nowa receptura, dane, reguły oceny lub budżet wymagają nowego identyfikatora kampanii. W strategii Optuna kolejne konfiguracje wybiera sampler z zatwierdzonej przestrzeni.
+
+
+## Wnioski i następna próba
+
+W **Academy → Trening → Kampania → Wnioski i następna próba** wybierz zakończony przebieg. Dodaj przebieg referencyjny, aby zobaczyć zyski i regresje na tych samych przypadkach. Porównanie wymaga tej samej bazy, danych dev, protokołu i kategorii przypadków. Raport uwzględnia oceny zapisane przed sprzątaniem adaptera. Brak dowodów lub zmiana sum kontrolnych wstrzymuje porównanie.
+
+Przebiegi utworzone przez Academy pojawiają się po zapisaniu ocen. Wyniki spoza Academy można wczytać poleceniem:
+
+```bash
+source .venv/bin/activate
+python -m scripts.academy.quality --root "$experiment_root" import pakiet.json
+python -m scripts.academy.quality --root "$experiment_root" analyze history:kandydat --reference-id history:porownanie
+```
+
+Importowane identyfikatory w panelu i w poleceniu analizy mają przedrostek `history:`. Identyfikatory zapisanych przebiegów Academy zachowują pierwotną postać.
+
+Pakiet zawiera `schema_version: 1` i listę `records`. Każdy rekord zawiera identyfikator, rodzaj zbioru (`dev` albo `holdout`), tożsamość bazy, zbioru i protokołu, źródło z SHA-256 oraz przypadki z kategorią i sparowanymi ocenami `usable` i `critical`. Gdy w źródle brakuje etykiet krytyczności, zapisz `critical: null`. Można dołączyć recepturę, hash treningu, środowisko, chronione ID i decyzję operatora. [Schemat](../../venom_core/services/training_experiments/quality_schema.py)
+
+Przy zgodnych ocenach dev i udokumentowanej różnicy konfiguracji Academy proponuje próbę kontrolną i zmianę jednego parametru. Zbiór końcowy służy do osobnego potwierdzenia. Jeśli potrzebna zmiana wykracza poza obsługiwane parametry profilu, przygotuj odpowiedni profil i wykonawcę przed zapisaniem kampanii.
+
+Formularz kampanii może wiązać referencję, chronione przypadki, progi różnic użyteczności w kategoriach i zakaz nowych błędów krytycznych. Academy zapisuje kryteria z hashem planu. Wynik próby pokazuje utracone chronione przypadki, nowe błędy krytyczne i różnice per kategoria. Tylko kandydaci spełniający kryteria mogą zostać wybrani do retencji. Porównanie z wcześniejszym adapterem odbywa się na podstawie zapisanych ocen, więc nie wymaga załadowania jego wag.

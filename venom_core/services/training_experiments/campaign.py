@@ -24,7 +24,7 @@ from venom_core.services.remote_training.lifecycle import (
 )
 from venom_core.services.remote_training.paths import data_directory, operator_path
 
-from . import optuna_backend
+from . import optuna_backend, quality_guard, quality_native
 from .campaign_schema import CampaignSpec
 from .retention import (
     ExperimentArtifacts,
@@ -110,6 +110,9 @@ def _validate_trial(
     spec: CampaignSpec, experiments: CampaignExperiments, recipe: dict | None
 ) -> dict:
     validated = experiments.validate(spec.profile_id, recipe)
+    if recipe and "train_sha256" in recipe:
+        if recipe["train_sha256"] != validated["recipe"].get("train_sha256"):
+            raise ValueError("campaign_quality_training_identity_changed")
     if spec.review_mode == "automatic" and not validated["automatic_review"]:
         raise ValueError("campaign_evaluator_not_qualified")
     return validated
@@ -183,7 +186,7 @@ def _optimization_plan(
 
 
 def _plan(spec: CampaignSpec, experiments: CampaignExperiments) -> dict:
-    extra = {}
+    extra: dict = {}
     if spec.strategy == "optuna":
         identity, variants, extra = _optimization_plan(spec, experiments)
     else:
@@ -194,11 +197,25 @@ def _plan(spec: CampaignSpec, experiments: CampaignExperiments) -> dict:
     if sum(v["workload"]["tokens"] for v in variants) > budget.max_tokens:
         raise ValueError("campaign_token_budget_exceeded")
     payload = {
-        **spec.model_dump(exclude={"strategy", "search_space", "sampler_seed"}),
+        **spec.model_dump(
+            exclude={"strategy", "search_space", "sampler_seed", "quality_policy"}
+        ),
         **extra,
         "profile_identity": identity,
         "variants": variants,
     }
+    if spec.quality_policy is not None:
+        context = quality_native.profile_context(
+            experiments,
+            spec.profile_id,
+            spec.review_mode,
+            include_runtime=spec.quality_policy.source_record_id is not None,
+        )
+        payload["quality_policy"] = quality_guard.freeze_policy(
+            spec.quality_policy.model_dump(),
+            context,
+            lambda record_id: quality_native.get_record(experiments, record_id),
+        )
     return {**payload, "plan_sha256": fingerprint(payload)}
 
 
@@ -234,10 +251,15 @@ def _actual_recipe(state: dict, trial: dict) -> dict:
 
 def _rank(state: dict) -> None:
     selection = state["plan"]["selection"]
+    guarded = state["plan"].get("quality_policy") is not None
+    if guarded and state.get("quality_policy_error"):
+        state["selected_run_id"] = None
+        return
     candidates = [
         trial
         for trial in state["trials"]
         if trial.get("result_sha256")
+        and (not guarded or trial.get("quality_guard", {}).get("status") == "passed")
         and trial["usable_delta"] >= selection["min_usable_delta"]
         and trial["critical_delta"] <= selection["max_critical_delta"]
     ]
@@ -264,6 +286,35 @@ def _deltas(report: dict) -> dict:
         f"{key}_delta": (totals[1][key] - totals[0][key]) / n
         for key in ("usable", "critical")
     }
+
+
+def _reassessing_quality(state: dict) -> bool:
+    index = state["trial_index"]
+    if index >= len(state["trials"]):
+        return False
+    trial = state["trials"][index]
+    return (
+        trial["status"] == "succeeded"
+        and trial.get("quality_guard", {}).get("status") == "blocked"
+    )
+
+
+def _block_missing_quality(state: dict, trial: dict) -> bool:
+    reason = state.get("quality_policy_error")
+    guard = trial.get("quality_guard", {})
+    if reason is None and guard.get("status") == "blocked":
+        reason = guard["reasons"][0]["code"]
+    if reason is None:
+        return False
+    state.update(status="blocked", error=reason)
+    return True
+
+
+def _quality_error(exc: Exception) -> str:
+    code = str(exc)
+    if re.fullmatch(r"campaign_quality_[a-z0-9_]+", code):
+        return code
+    return "campaign_quality_evidence_unavailable"
 
 
 def _check_suggestion(space: dict, params: dict) -> None:
@@ -357,7 +408,23 @@ class CampaignService:
         if state["status"] in _ACTIVE and not identity_alive(state["worker"]):
             state["status"] = "interrupted"
         self._elapsed(state)
+        self._review_selection(state)
         return state
+
+    def _review_selection(self, state: dict) -> None:
+        if not state["plan"].get("quality_policy") or not state["selected_run_id"]:
+            return
+        try:
+            self._verify_quality_policy(state["plan"])
+            winner = next(
+                trial
+                for trial in state["trials"]
+                if trial["run_id"] == state["selected_run_id"]
+            )
+            self._verify_quality_winner(state, winner)
+        except (OSError, ValueError, KeyError, TypeError, StopIteration) as exc:
+            state["selected_run_id"] = None
+            state["quality_policy_error"] = _quality_error(exc)
 
     def report(self, campaign_id: str) -> dict:
         return self.status(campaign_id)
@@ -424,13 +491,15 @@ class CampaignService:
 
     def _prepare_activation(self, state: dict) -> None:
         plan = state["plan"]
+        self._verify_quality_policy(plan)
+        state.pop("quality_policy_error", None)
         optimized = _is_optuna(plan)
         if optimized and optuna_backend.require_optuna() != plan["optuna_version"]:
             raise ValueError("campaign_optuna_version_changed")
         state["status"] = "running"
         self._elapsed(state)
         expired = state["elapsed_seconds"] >= plan["budget"]["max_seconds"]
-        if expired and not optimized:
+        if expired and not optimized and not _reassessing_quality(state):
             raise ValueError("campaign_time_budget_exhausted")
         state["error"] = None
         state["termination"] = "timed_out" if expired else None
@@ -513,7 +582,29 @@ class CampaignService:
                 state["elapsed_seconds"], self._clock() - state["started_at"]
             )
 
+    def _verify_quality_policy(self, plan: dict) -> None:
+        policy = plan.get("quality_policy")
+        if policy is None:
+            return
+        try:
+            quality_guard.verify_policy(
+                policy,
+                lambda record_id: quality_native.get_record(
+                    self.experiments, record_id
+                ),
+            )
+            context = quality_native.profile_context(
+                self.experiments,
+                plan["profile_id"],
+                plan["review_mode"],
+                include_runtime=policy.get("source_record") is not None,
+            )
+            quality_guard.verify_context(policy, context)
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            raise ValueError(_quality_error(exc)) from exc
+
     def _profile(self, plan: dict) -> None:
+        self._verify_quality_policy(plan)
         for profile in self.experiments.profiles():
             if profile["id"] != plan["profile_id"]:
                 continue
@@ -618,23 +709,37 @@ class CampaignService:
             if _has_work(run):
                 state["status"] = "stopping"
                 return
-        if state["termination"] == "timed_out" and _is_optuna(state["plan"]):
-            trial = state["trials"][state["trial_index"]]
+        if state["termination"] == "timed_out" and not self._settle_timeout(
+            directory, state, run
+        ):
+            return
+        state["status"] = state["termination"]
+        state["termination"] = None
+
+    def _settle_timeout(self, directory: Path, state: dict, run: dict | None) -> bool:
+        plan = state["plan"]
+        optimized = _is_optuna(plan)
+        reviewed = plan.get("quality_policy") and run and run["status"] == "succeeded"
+        if not optimized and not reviewed:
+            return True
+        index = state["trial_index"]
+        trial = state["trials"][index]
+        if optimized:
             if "optuna_trial_number" not in trial:
-                index = state["trial_index"]
-                assignment = optuna_backend.assigned(directory, state["plan"], index)
+                assignment = optuna_backend.assigned(directory, plan, index)
                 if assignment is not None:
                     trial["optuna_trial_number"] = self._suggestion_number(
                         assignment, index
                     )
             if "optuna_trial_number" in trial:
-                self._record_timeout(directory, state, trial, run)
-        state["status"] = state["termination"]
-        state["termination"] = None
+                return self._record_timeout(directory, state, trial, run)
+        else:
+            return self._record_timeout(directory, state, trial, run)
+        return True
 
     def _record_timeout(
         self, directory: Path, state: dict, trial: dict, run: dict | None
-    ) -> None:
+    ) -> bool:
         if run and run["status"] == "succeeded":
             self._record_result(state, trial, run["run_id"])
             trial["status"] = "succeeded"
@@ -642,7 +747,10 @@ class CampaignService:
         elif "result_sha256" not in trial and trial["status"] != "skipped":
             trial.update(status="timed_out", error="campaign_time_budget_exhausted")
         self._save(directory, state)
+        if _block_missing_quality(state, trial):
+            return False
         self._tell_optuna(directory, state, trial)
+        return True
 
     def _finish_trial(
         self, directory: Path, state: dict, trial: dict, run: dict
@@ -659,7 +767,10 @@ class CampaignService:
             _rank(state)
         # Persist the reviewed result and selection before touching a checkpoint.
         self._save(directory, state)
+        if _block_missing_quality(state, trial):
+            return
         self._tell_optuna(directory, state, trial)
+        self._verify_quality_retention(state)
         retention = Retention(self.experiments, directory)
         plan = retention.plan(state)
         if plan["files"]:
@@ -695,6 +806,43 @@ class CampaignService:
         )
         trial.update(_deltas(report))
         trial["result_sha256"] = result_sha256
+        policy = state["plan"].get("quality_policy")
+        if policy is not None:
+            self._record_quality_decision(state, trial, policy)
+
+    def _record_quality_decision(self, state: dict, trial: dict, policy: dict) -> None:
+        try:
+            self._verify_quality_policy(state["plan"])
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            reason = _quality_error(exc)
+            state["quality_policy_error"] = reason
+            trial["quality_guard"] = quality_guard.blocked(reason)
+            return
+        state.pop("quality_policy_error", None)
+        try:
+            decision, protocol = self._evaluate_quality(state, trial, policy)
+            state["quality_protocol_sha256"] = protocol
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            decision = quality_guard.blocked(_quality_error(exc))
+        trial["quality_guard"] = decision
+
+    def _evaluate_quality(
+        self, state: dict, trial: dict, policy: dict
+    ) -> tuple[dict, str]:
+        with self.experiments.run_lock(trial["run_id"]):
+            record = quality_native.native_record(self.experiments, trial["run_id"])
+            if record["source"]["sha256"] != trial["result_sha256"]:
+                raise ValueError("campaign_quality_result_changed")
+        return quality_guard.evaluate(
+            policy, record, state.get("quality_protocol_sha256")
+        )
+
+    def _verify_quality_winner(self, state: dict, trial: dict) -> None:
+        decision, _ = self._evaluate_quality(
+            state, trial, state["plan"]["quality_policy"]
+        )
+        if decision != trial.get("quality_guard") or decision["status"] != "passed":
+            raise ValueError("campaign_quality_result_changed")
 
     def _retry(self, state: dict, run: dict) -> str | None:
         if run["status"] not in {"failed", "stopped"}:
@@ -805,6 +953,7 @@ class CampaignService:
             return
         if trial["status"] != "pending" or "started_at" in trial:
             raise ValueError("campaign_trial_missing")
+        self._verify_quality_policy(state["plan"])
         if _is_optuna(state["plan"]) and "recipe" not in trial:
             self._suggest(directory, state, trial)
             if trial["status"] == "skipped":
@@ -857,12 +1006,15 @@ class CampaignService:
         if not _is_optuna(state["plan"]):
             return
         number = trial["optuna_trial_number"]
-        if "result_sha256" in trial:
+        guard = trial.get("quality_guard", {})
+        if "result_sha256" in trial and guard.get("status") != "blocked":
             selection = state["plan"]["selection"]
             constraints = [
                 trial["critical_delta"] - selection["max_critical_delta"],
                 selection["min_usable_delta"] - trial["usable_delta"],
             ]
+            if guard.get("status") == "rejected":
+                constraints[0] = max(constraints[0], 1.0)
             optuna_backend.tell(
                 directory,
                 state["plan"],
@@ -892,6 +1044,10 @@ class CampaignService:
             except (ValueError, OSError, KeyError, TypeError, RuntimeError) as exc:
                 state["status"] = "blocked"
                 code = str(exc)
+                if code.startswith("campaign_quality_"):
+                    state.update(
+                        selected_run_id=None, quality_policy_error=_quality_error(exc)
+                    )
                 state["error"] = (
                     code
                     if re.fullmatch(r"campaign_[a-z0-9_]+", code)
@@ -916,7 +1072,24 @@ class CampaignService:
     def retention_plan(self, campaign_id: str) -> dict:
         directory = self.directory(campaign_id)
         with file_lock(directory / ".state.lock"):
-            return Retention(self.experiments, directory).plan(self._state(directory))
+            state = self._state(directory)
+            self._verify_quality_retention(state)
+            return Retention(self.experiments, directory).plan(state)
+
+    def _verify_quality_retention(self, state: dict) -> None:
+        self._verify_quality_policy(state["plan"])
+        if state["plan"].get("quality_policy") and state["selected_run_id"]:
+            winner = next(
+                (
+                    trial
+                    for trial in state["trials"]
+                    if trial["run_id"] == state["selected_run_id"]
+                ),
+                None,
+            )
+            if winner is None:
+                raise ValueError("campaign_quality_result_changed")
+            self._verify_quality_winner(state, winner)
 
     def retention_apply(self, campaign_id: str, plan_sha256: str) -> dict:
         ensure_data_mutation_allowed("academy_campaign_retention")
@@ -925,6 +1098,7 @@ class CampaignService:
             state = self._state(directory)
             if state["status"] in _ACTIVE:
                 raise ValueError("campaign_retention_while_active")
+            self._verify_quality_retention(state)
             receipt = Retention(self.experiments, directory).apply(state, plan_sha256)
             self._record_retention(state, receipt)
             self._artifact_budget(state)

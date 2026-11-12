@@ -7,9 +7,26 @@ import { Label } from "@/components/ui/label";
 import type { CampaignRequest, CampaignStrategy, OptunaSearchSpace } from "@/lib/academy-campaign-api";
 import type { ExperimentProfile, ExperimentRecipe } from "@/lib/academy-experiments-api";
 import { useTranslation } from "@/lib/i18n";
+import type { QualityCampaignDraft } from "@/lib/academy-quality-api";
+import { CampaignPolicyFields, PinnedQualitySource, readQualityPolicy } from "./campaign-quality-policy";
 import { OPTUNA_PARAMETERS, OptunaFields } from "./campaign-optuna";
 
 const MIB = 1024 ** 2;
+const DRAFT_RECIPE_FIELDS = new Set([
+  "rank", "alpha", "dropout", "target_modules", "steps", "save_every", "warmup_steps", "learning_rate",
+  "max_tokens", "microbatch", "gradient_accumulation_steps", "seed", "lr_scheduler_type",
+  "train_sha256", "max_supervised_tokens",
+]);
+function unsupportedDraftFields(recipe: Record<string, unknown>) {
+  const fields = Object.keys(recipe).filter((key) => !DRAFT_RECIPE_FIELDS.has(key));
+  const modules = recipe.target_modules;
+  if (modules !== undefined && (!Array.isArray(modules)
+    || !modules.length || modules.some((item) => item !== "q_proj" && item !== "v_proj"))) {
+    fields.push("target_modules");
+  }
+  return fields;
+}
+
 const BUDGET_FIELDS = [
   ["max_trials", 3, 1, 32],
   ["max_updates", 1000, 1, 100000],
@@ -35,13 +52,23 @@ function numberField(data: FormData, name: string) {
   return Number(value);
 }
 
-function variantRecipe(data: FormData, row: number): ExperimentRecipe {
+function variantRecipe(data: FormData, row: number, editableRecipe: boolean): Record<string, unknown> {
+  if (editableRecipe) {
+    const json = data.get("variant-json-" + row);
+    if (typeof json !== "string") throw new Error("draft recipe must be text");
+    const recipe: unknown = JSON.parse(json);
+    if (!recipe || typeof recipe !== "object" || Array.isArray(recipe)
+      || unsupportedDraftFields(recipe as Record<string, unknown>).length) {
+      throw new Error("invalid draft recipe");
+    }
+    return recipe as Record<string, unknown>;
+  }
   const recipe: ExperimentRecipe = {};
   for (const [key] of VARIANT_FIELDS) {
     const name = `variant-${row}-${key}`;
     if (data.get(name) !== "") recipe[key] = numberField(data, name);
   }
-  return recipe;
+  return { ...recipe };
 }
 
 function readOptunaPlan(data: FormData): Pick<CampaignRequest, "variants" | "strategy" | "search_space" | "sampler_seed"> {
@@ -64,15 +91,21 @@ function readOptunaPlan(data: FormData): Pick<CampaignRequest, "variants" | "str
   return { strategy: "optuna", variants: [], search_space: searchSpace, sampler_seed: seed };
 }
 
-function readPlan(data: FormData, profileId: string, rows: number[], strategy: CampaignStrategy): CampaignRequest {
-  const id = String(data.get("campaign_id") ?? "").trim();
+function readPlan(
+  data: FormData, profileId: string, rows: number[], strategy: CampaignStrategy, draft?: QualityCampaignDraft,
+): CampaignRequest {
+  const campaignId = data.get("campaign_id");
+  if (typeof campaignId !== "string") throw new Error("campaign id must be text");
+  const id = campaignId.trim();
   if (!/^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$/.test(id)) throw new Error("invalid campaign id");
+  const qualityPolicy = readQualityPolicy(data, draft?.qualityPolicy.source_record_id);
   return {
     campaign_id: id,
     profile_id: profileId,
     ...(strategy === "optuna"
       ? readOptunaPlan(data)
-      : { variants: rows.map((row) => variantRecipe(data, row)) }),
+      : { variants: rows.map((row) => variantRecipe(data, row, Boolean(draft))) }),
+    ...(qualityPolicy ? { quality_policy: qualityPolicy } : {}),
     budget: {
       max_trials: numberField(data, "max_trials"),
       max_updates: numberField(data, "max_updates"),
@@ -96,24 +129,29 @@ interface CampaignFormProps {
   readonly profiles: ExperimentProfile[];
   readonly disabled: boolean;
   readonly optunaAvailable: boolean;
+  readonly draft?: QualityCampaignDraft;
+  readonly onDiscardDraft: () => void;
   readonly onPlan: (request: CampaignRequest) => Promise<boolean>;
 }
 
-export function CampaignForm({ profiles, disabled, optunaAvailable, onPlan }: CampaignFormProps) {
+export function CampaignForm({ profiles, disabled, optunaAvailable, draft, onDiscardDraft, onPlan }: CampaignFormProps) {
   const t = useTranslation();
-  const [profileId, setProfileId] = useState("");
-  const [rows, setRows] = useState([0]);
+  const [profileId, setProfileId] = useState(draft?.profileId ?? "");
+  const [rows, setRows] = useState(() => draft?.variants.map((_, index) => index) ?? [0]);
   const [strategy, setStrategy] = useState<CampaignStrategy>("fixed");
   const unavailableStrategy = strategy === "optuna" && !optunaAvailable;
+  const invalidMessage = strategy === "optuna" ? "academy.campaigns.optuna.invalid" : "academy.campaigns.invalid";
   const [invalid, setInvalid] = useState(false);
-  const profile = profiles.find((item) => item.id === profileId) ?? profiles[0];
-  if (!profile) return <p className="text-sm text-hint">{t("academy.experiments.noProfiles")}</p>;
+  const profile = profiles.find((item) => item.id === profileId) ?? (draft ? undefined : profiles[0]);
+  const unsupportedFields = [...new Set(draft?.variants.flatMap((variant) =>
+    unsupportedDraftFields(variant.recipe)) ?? [])];
+  if (!profiles.length) return <p className="text-sm text-hint">{t("academy.experiments.noProfiles")}</p>;
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (disabled || !profile || unavailableStrategy) return;
     try {
-      const request = readPlan(new FormData(event.currentTarget), profile.id, rows, strategy);
+      const request = readPlan(new FormData(event.currentTarget), profile.id, rows, strategy, draft);
       if (request.variants.length > request.budget.max_trials || request.budget.trial_seconds > request.budget.max_seconds) {
         setInvalid(true);
         return;
@@ -127,11 +165,26 @@ export function CampaignForm({ profiles, disabled, optunaAvailable, onPlan }: Ca
 
   return (
     <form className="space-y-4" onSubmit={(event) => void submit(event)}>
+      {draft && (
+        <div className="space-y-2 rounded-lg border border-[color:var(--ui-border)] p-3">
+          <output className="block text-sm text-hint">{t("academy.campaigns.quality.draftReady")}</output>
+          <PinnedQualitySource recordId={draft.qualityPolicy.source_record_id} fixed={draft.fixed} />
+          <Button type="button" size="sm" variant="outline" disabled={disabled} onClick={onDiscardDraft}>
+            {t("academy.campaigns.quality.discardDraft")}
+          </Button>
+        </div>
+      )}
+      {unsupportedFields.length > 0 && (
+        <p className="break-all text-sm text-hint">
+          {t("academy.campaigns.quality.unsupportedFields")} <code>{unsupportedFields.join(", ")}</code>
+        </p>
+      )}
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="space-y-1">
           <Label htmlFor="campaign-profile">{t("academy.experiments.profile")}</Label>
-          <select id="campaign-profile" className={SELECT_CLASS} value={profile.id} disabled={disabled}
+          <select id="campaign-profile" className={SELECT_CLASS} value={profile?.id ?? ""} disabled={disabled} required
             onChange={(event) => setProfileId(event.currentTarget.value)}>
+            {draft && <option value="">{t("academy.campaigns.quality.selectProfile")}</option>}
             {profiles.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
           </select>
         </div>
@@ -140,7 +193,7 @@ export function CampaignForm({ profiles, disabled, optunaAvailable, onPlan }: Ca
           <Input id="campaign-id" name="campaign_id" required maxLength={40} disabled={disabled} />
         </div>
       </div>
-      <p className="break-words text-sm text-hint">{profile.model} · {profile.dataset}</p>
+      {profile && <p className="break-words text-sm text-hint">{profile.model} · {profile.dataset}</p>}
       <div className="space-y-1 sm:max-w-xs">
         <Label htmlFor="campaign-strategy">{t("academy.campaigns.strategy")}</Label>
         <select id="campaign-strategy" className={SELECT_CLASS} value={strategy} disabled={disabled}
@@ -168,21 +221,30 @@ export function CampaignForm({ profiles, disabled, optunaAvailable, onPlan }: Ca
                 {t("academy.campaigns.removeVariant")}
               </Button>
             </div>
-            <div className="grid gap-2 sm:grid-cols-3">
+            {draft ? (
+              <div className="space-y-1">
+                <Label htmlFor={`variant-json-${row}`}>
+                  {t("academy.campaigns.quality.recipeJson")} {index + 1}
+                </Label>
+                <textarea id={`variant-json-${row}`} name={`variant-json-${row}`} rows={8}
+                  className="w-full rounded-md border border-[color:var(--ui-border)] bg-[color:var(--ui-surface)] p-2 font-mono text-xs"
+                  defaultValue={JSON.stringify(draft.variants[row]?.recipe ?? {}, null, 2)} required disabled={disabled} />
+              </div>
+            ) : <div className="grid gap-2 sm:grid-cols-3">
               {VARIANT_FIELDS.map(([field, label]) => (
                 <div className="space-y-1" key={field}>
                   <Label htmlFor={`variant-${row}-${field}`}>{t(label)}</Label>
                   <Input id={`variant-${row}-${field}`} name={`variant-${row}-${field}`} type="number"
                     min={field === "learning_rate" ? undefined : 1}
                     step={field === "learning_rate" ? "any" : 1}
-                    placeholder={profile.recipe[field]?.toString()} disabled={disabled} />
+                    placeholder={profile?.recipe[field]?.toString()} disabled={disabled} />
                 </div>
               ))}
-            </div>
+            </div>}
           </div>
         ))}
         <Button type="button" size="sm" variant="outline" disabled={disabled || rows.length >= 32}
-          onClick={() => setRows((current) => [...current, (current.at(-1) ?? 0) + 1])}>
+          onClick={() => setRows((current) => [...current, Math.max(current.at(-1) ?? 0, (draft?.variants.length ?? 1) - 1) + 1])}>
           {t("academy.campaigns.addVariant")}
         </Button>
       </fieldset>
@@ -198,10 +260,11 @@ export function CampaignForm({ profiles, disabled, optunaAvailable, onPlan }: Ca
           <Label htmlFor="campaign-review">{t("academy.campaigns.reviewMode")}</Label>
           <select id="campaign-review" name="review_mode" className={SELECT_CLASS} disabled={disabled}>
             <option value="manual">{t("academy.campaigns.manualReview")}</option>
-            <option value="automatic" disabled={!profile.automatic_review}>{t("academy.campaigns.automaticReview")}</option>
+            <option value="automatic" disabled={!profile?.automatic_review}>{t("academy.campaigns.automaticReview")}</option>
           </select>
         </div>
       </div>
+      <CampaignPolicyFields disabled={disabled} initial={draft?.qualityPolicy} />
       <details open>
         <summary className="cursor-pointer text-sm font-medium">{t("academy.campaigns.limits")}</summary>
         <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -225,9 +288,9 @@ export function CampaignForm({ profiles, disabled, optunaAvailable, onPlan }: Ca
         </div>
       </details>
       {invalid && <p role="alert" className="text-sm text-red-400">
-        {t(strategy === "optuna" ? "academy.campaigns.optuna.invalid" : "academy.campaigns.invalid")}
+        {t(draft ? "academy.campaigns.quality.invalidDraft" : invalidMessage)}
       </p>}
-      <Button type="submit" disabled={disabled || unavailableStrategy}>{t("academy.campaigns.plan")}</Button>
+      <Button type="submit" disabled={disabled || unavailableStrategy || !profile}>{t("academy.campaigns.plan")}</Button>
     </form>
   );
 }

@@ -18,6 +18,9 @@ SOURCE_HASHES = {
 _CONTROL_TEXT = re.compile(r"<\|[^<>]*\|>|</?think>|CONTINUE_FINAL_MESSAGE_TAG")
 
 
+MAX_DEV_TASK_LENGTH = 128
+
+
 def sha256(path: Path) -> str:
     with path.open("rb") as stream:
         return hashlib.file_digest(stream, "sha256").hexdigest()

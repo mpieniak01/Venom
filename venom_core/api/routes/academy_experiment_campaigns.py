@@ -1,9 +1,12 @@
 """Academy campaign planning, observation and protected artifact retention."""
 
-from fastapi import APIRouter, Depends
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, Query
 
 from venom_core.api.routes.academy_experiments import (
     call_experiment,
+    experiment_service,
     require_experiment_access,
 )
 from venom_core.services.training_experiments.campaign_schema import (
@@ -13,6 +16,11 @@ from venom_core.services.training_experiments.campaign_schema import (
 )
 from venom_core.services.training_experiments.operator import campaign_service
 from venom_core.services.training_experiments.optuna_backend import require_optuna
+from venom_core.services.training_experiments.quality_history import (
+    analyze_record,
+    list_records,
+)
+from venom_core.services.training_experiments.quality_schema import EvidenceId
 
 router = APIRouter(
     prefix="/api/v1/academy/experiments/campaigns",
@@ -36,6 +44,21 @@ def list_campaigns() -> dict:
             "campaigns": campaign_service().list(),
             "capabilities": {"optuna": _optuna_capability()},
         }
+    )
+
+
+@router.get("/quality")
+def quality_records() -> dict:
+    return call_experiment(list_records, experiment_service())
+
+
+@router.get("/quality/{record_id}/analysis")
+def quality_analysis(
+    record_id: EvidenceId,
+    reference_id: Annotated[EvidenceId | None, Query()] = None,
+) -> dict:
+    return call_experiment(
+        analyze_record, experiment_service(), record_id, reference_id
     )
 
 

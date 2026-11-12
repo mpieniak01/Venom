@@ -77,6 +77,9 @@ InputSkill: 0
 # Skill renderowania - tylko prezentacja (bezpieczny)
 RenderSkill: 0
 
+# Academy operator commands require an authenticated local chat turn.
+AcademyCampaignOperatorSkill: 0
+
 # Media skills - zależą od kontekstu
 MediaSkill: 20  # Domyślnie wymaga płatnego API jeśli używa chmury
 

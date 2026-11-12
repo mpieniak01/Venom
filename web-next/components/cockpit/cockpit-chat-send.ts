@@ -211,18 +211,19 @@ function resolveChatSendContext(payload: string, params: SendContextParams, t: (
       setMessage(t("cockpit.chatMessages.emptyPrompt"));
       return null;
     }
-    const effectiveSelectedModel = resolveEffectiveChatModelSelection(
+    const academy = parsed.forcedTool === "academy";
+    const effectiveSelectedModel = academy ? "" : resolveEffectiveChatModelSelection(
       selectedLlmModel,
       activeServerInfo?.active_model,
       selectedLlmServer,
       activeServerInfo?.active_server ?? "",
     );
-    if (selectedLlmServer && !effectiveSelectedModel) {
+    if (!academy && selectedLlmServer && !effectiveSelectedModel) {
       setMessage(t("cockpit.chatMessages.modelSelectionRequired"));
       return null;
     }
 
-    if (!allowsOpenRouterChat(selectedLlmServer || activeServerInfo?.active_server || "", shouldUseSimpleMode(chatMode, parsed))) {
+    if (!academy && !allowsOpenRouterChat(selectedLlmServer || activeServerInfo?.active_server || "", shouldUseSimpleMode(chatMode, parsed))) {
       setMessage(t("cockpit.openrouter.directOnly"));
       return null;
     }
@@ -233,7 +234,7 @@ function resolveChatSendContext(payload: string, params: SendContextParams, t: (
       return null;
     }
 
-    return { parsed, trimmed, effectiveSelectedModel, resolvedSession };
+    return { academy, parsed, trimmed, effectiveSelectedModel, resolvedSession };
 }
 
 function releaseSendPreparation(
@@ -311,10 +312,10 @@ export function useChatSend(params: ChatSendParams) {
       selectedLlmModel, activeServerInfo, selectedLlmServer, chatMode, sessionId, resetSession, setMessage,
     }, t);
     if (!context) return false;
-    const { parsed, trimmed, effectiveSelectedModel, resolvedSession } = context;
+    const { academy, parsed, trimmed, effectiveSelectedModel, resolvedSession } = context;
 
     setSending(true); preparing = true; setMessage(null);
-    const switchResult = await handleRuntimeSwitch({
+    const switchResult = academy ? { success: true, runtimeOverride: null } : await handleRuntimeSwitch({
       parsed,
       activeServerInfo,
       selectedLlmModel: effectiveSelectedModel,
@@ -328,7 +329,7 @@ export function useChatSend(params: ChatSendParams) {
     if (cancelled() || !switchResult.success) return false;
     const runtimeOverride: RuntimeOverride = switchResult.runtimeOverride;
 
-    const effectiveActiveServerInfo = await syncTargetServerIfNeeded({
+    const effectiveActiveServerInfo = academy ? null : await syncTargetServerIfNeeded({
       selectedLlmServer,
       selectedLlmModel: effectiveSelectedModel,
       activeServerInfo,
@@ -339,7 +340,7 @@ export function useChatSend(params: ChatSendParams) {
       t,
     });
     if (cancelled() || effectiveActiveServerInfo === false) return false;
-    const modelOk = await ensureSelectedModelIsActive({
+    const modelOk = academy || await ensureSelectedModelIsActive({
       activeServerInfo: effectiveActiveServerInfo,
       selectedLlmModel: effectiveSelectedModel,
       ensureModelActive,
@@ -358,7 +359,7 @@ export function useChatSend(params: ChatSendParams) {
     const historyKey = vastChatHistoryKey(effectiveActiveServerInfo?.runtime_id, effectiveSelectedModel, resolvedSession, effectiveActiveServerInfo?.config_hash);
     const historySource = conversationHistory ?? (historyKey ? vastHistory.current.get(historyKey) ?? [] : undefined);
     const history = historySource ? boundChatHistory(historySource, trimmed.length) : undefined;
-    const quote = await prepareOpenRouterQuote({
+    const quote = academy ? null : await prepareOpenRouterQuote({
       activeServerInfo: effectiveActiveServerInfo,
       trimmed,
       selectedModel: effectiveSelectedModel,
@@ -371,7 +372,7 @@ export function useChatSend(params: ChatSendParams) {
     });
     if (cancelled() || quote === false) return false;
 
-    const forcedIntent = chatMode === "complex" ? "COMPLEX_PLANNING" : null;
+    const forcedIntent = !academy && chatMode === "complex" ? "COMPLEX_PLANNING" : null;
     const clientId = enqueueOptimisticRequest(trimmed, {
       tool: parsed.forcedTool,
       provider: parsed.forcedProvider,
@@ -438,7 +439,7 @@ export function useChatSend(params: ChatSendParams) {
       taskParams,
       standardParams: {
         ...taskParams,
-        labMode,
+        labMode: labMode || academy,
         runtimeOverride,
         parsed,
         forcedIntent,

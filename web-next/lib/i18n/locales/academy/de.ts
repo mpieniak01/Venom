@@ -264,6 +264,8 @@ export const academy = {
     actionError: "Der Kampagnenvorgang ist fehlgeschlagen.",
     conflict: "Prüfen Sie den aktuellen Kampagnenstatus und die Planeinstellungen.",
     history: "Kampagnenverlauf",
+    chatStart: "Startbefehl für den Chat",
+    campaignUnavailable: "Keine Kampagne mit der ID",
     noCampaigns: "Noch keine Kampagnen.",
     trials: "Abgeschlossene Versuche",
     artifactSize: "Speicherbedarf der Artefakte",

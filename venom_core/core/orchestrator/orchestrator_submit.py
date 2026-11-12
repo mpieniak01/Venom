@@ -10,6 +10,7 @@ from venom_core.config import SETTINGS
 from venom_core.core import routing_integration
 from venom_core.core.models import TaskRequest, TaskResponse, TaskStatus
 from venom_core.services.execution_mode_planner import decide_execution_mode
+from venom_core.services.training_experiments.operator import is_campaign_command
 from venom_core.utils.helpers import get_utc_now, get_utc_now_iso
 from venom_core.utils.llm_runtime import get_active_llm_runtime
 from venom_core.utils.logger import get_logger
@@ -184,6 +185,15 @@ def _spawn_background_task(coro: Coroutine[Any, Any, Any]) -> None:
 async def submit_task(orch: "Orchestrator", request: TaskRequest) -> TaskResponse:
     """Create task, apply queue limits, and schedule execution."""
     from venom_core.services.vast_chat_runtime import preflight
+
+    if is_campaign_command(request.content):
+        if not request._academy_operator:
+            raise PermissionError("campaign_operator_command_required")
+        orch.last_activity = get_utc_now()
+        task = orch.state_manager.create_task(content=request.content)
+        _init_request_trace(orch, task, request, {"status": "skipped"})
+        _spawn_background_task(run_task_fastpath(orch, task.id, request))
+        return TaskResponse(task_id=task.id, status=task.status)
 
     await preflight()
     orch._refresh_kernel_if_needed()

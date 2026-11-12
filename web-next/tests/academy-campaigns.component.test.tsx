@@ -253,3 +253,21 @@ describe("Optuna campaigns", () => {
     assert.equal(calls, 0);
   });
 });
+
+it("opens the campaign from the operator link and identifies a missing one", async () => {
+  const second = {
+    ...planned,
+    campaign_id: "operator-campaign",
+    plan: { ...planned.plan, campaign_id: "operator-campaign", profile_id: "operator-profile" },
+  };
+  serve(() => [planned, second]);
+  const first = render(<CampaignPanel initialCampaignId="operator-campaign" onOpenRun={() => {}} />);
+  await screen.findByText("operator-profile");
+  assert.equal(screen.queryByText("Brak kampanii o identyfikatorze"), null);
+  first.unmount();
+
+  render(<CampaignPanel initialCampaignId="missing-campaign" onOpenRun={() => {}} />);
+  const missing = await screen.findByText("Brak kampanii o identyfikatorze");
+  assert.match(missing.textContent ?? "", /missing-campaign/);
+  assert.equal(screen.queryByText("operator-profile"), null);
+});

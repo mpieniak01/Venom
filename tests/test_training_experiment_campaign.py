@@ -787,3 +787,273 @@ def test_fixed_campaign_does_not_need_optuna_and_preserves_old_plan(
     with pytest.raises(ValueError, match="optuna_unavailable"):
         service.plan(optimization_spec(campaign_id="search"))
     assert experiments.calls == []
+
+
+@pytest.fixture
+def academy_dispatcher(controller, monkeypatch, tmp_path):
+    from venom_core.core.dispatcher import TaskDispatcher
+    from venom_core.execution.maf_runtime import AgentRuntime
+    from venom_core.execution.skill_manager import SkillManager
+    from venom_core.services.training_experiments import operator
+
+    service, _, _ = controller
+    monkeypatch.setattr(operator, "campaign_service", lambda: service)
+    monkeypatch.setattr(operator.SETTINGS, "ENABLE_ACADEMY", True)
+    dispatcher = TaskDispatcher.__new__(TaskDispatcher)
+    dispatcher.skill_manager = SkillManager(
+        AgentRuntime(), custom_skills_dir=str(tmp_path / "custom")
+    )
+    dispatcher.skill_manager.register_mcp_adapter(
+        "academy",
+        operator.AcademyCampaignAdapter(),
+        skill_name="AcademyCampaignOperatorSkill",
+    )
+    return dispatcher
+
+
+@pytest.mark.asyncio
+async def test_operator_commands_share_campaign_and_resume_without_duplicate_launches(
+    controller, academy_dispatcher, monkeypatch
+):
+    service, experiments, _ = controller
+    launches = []
+    original_launch = service._launch
+
+    def launch(campaign_id):
+        launches.append(campaign_id)
+        return original_launch(campaign_id)
+
+    monkeypatch.setattr(service, "_launch", launch)
+    run = academy_dispatcher.dispatch_academy_campaign
+    assert "/academy validate" in await run("/academy", "de")
+    spec = make_spec(count=2).model_dump_json()
+    preview = await run(f"/academy validate {spec}", "en")
+    assert "Validated draft plan" in preview and '"max_trials": 2' in preview
+    assert service.list() == []
+    planned = await run(f"/academy plan {spec}", "pl")
+    state = service.status("series")
+    digest = state["plan"]["plan_sha256"]
+    assert f"/academy start series {digest}" in planned
+    assert "dev_usable_delta" in planned
+    enlarged_budget = {**state["plan"]["budget"], "max_updates": 12}
+    changed = make_spec(count=2, budget=enlarged_budget).model_dump_json()
+    assert "campaign_plan_conflict" in await run(f"/academy plan {changed}", "pl")
+    assert service.status("series")["plan"]["plan_sha256"] == digest
+    assert "campaign_plan_changed" in await run(
+        f"/academy start series {'a' * 64}", "pl"
+    )
+    assert not launches
+
+    start_command = f"/academy start series {digest}"
+    started = await run(start_command, "en")
+    repeated = await run(start_command, "en")
+    assert "Execution ID** `series`" in started and started == repeated
+    assert "[Open campaign in Academy](/academy?campaign=series)" in started
+    assert launches == ["series"]
+    first = launch_next(service)
+    experiments.finish(first, usable=3)
+    service.advance("series")
+    second = launch_next(service)
+    assert "stopping" in await run("/academy stop series", "en")
+    stopped = service.advance("series")
+    assert stopped["status"] == "stopped" and stopped["selected_run_id"] == first
+    assert experiments.calls[-1] == ("stop", second)
+    assert "Status** `stopped`" in await run("/academy status series", "de")
+    assert "running" in await run("/academy resume series", "en")
+    assert launches == ["series", "series"]
+    comparison = await run("/academy compare series", "pl")
+    assert "2/4 → 3/4" in comparison
+    assert "Receptura do potwierdzenia w nowej kampanii" in comparison
+    assert "brak danych" in comparison and "poprawa" in comparison
+    assert first in comparison and second in comparison
+
+
+@pytest.mark.asyncio
+async def test_report_distinguishes_pruned_weights_and_missing_saved_metrics(
+    controller, academy_dispatcher
+):
+    service, experiments, _ = controller
+    start(service)
+    first = launch_next(service)
+    first_adapter = experiments.finish(first, usable=3)
+    service.advance("series")
+    second = launch_next(service)
+    second_adapter = experiments.finish(second, usable=1, critical=1)
+    service.advance("series")
+    assert first_adapter.exists() and not second_adapter.exists()
+    output = await academy_dispatcher.dispatch_academy_campaign(
+        "/academy report series", "en"
+    )
+    assert "Limits" in output and '"max_trials": 3' in output
+    assert "regression | unavailable" in output
+    assert "second seed and an independent set" in output
+
+    result = experiments.run_dir(first) / "result.json"
+    result.write_text(result.read_text() + "\n")
+    stale = await academy_dispatcher.dispatch_academy_campaign(
+        "/academy report series", "en"
+    )
+    assert f"| `{first}` | `succeeded` | unavailable |" in stale
+    assert "Recipe to confirm" not in stale
+
+
+@pytest.mark.asyncio
+async def test_operator_optuna_plan_freezes_space_without_launching(
+    controller, academy_dispatcher, sampler
+):
+    service, experiments, _ = controller
+    spec = optimization_spec().model_dump_json()
+    text = await academy_dispatcher.dispatch_academy_campaign(
+        f"/academy plan {spec}", "de"
+    )
+    assert '"search_space"' in text and '"sampler_seed": 21' in text
+    assert '"base_recipe"' in text
+    assert service.status("series")["plan"]["strategy"] == "optuna"
+    assert experiments.calls == []
+
+
+@pytest.mark.asyncio
+async def test_operator_tools_reject_untrusted_or_incomplete_input(
+    controller, academy_dispatcher, monkeypatch
+):
+    from venom_core.services.training_experiments import operator
+
+    service, experiments, _ = controller
+    run = academy_dispatcher.dispatch_academy_campaign
+    for text in [
+        "/academy start series",
+        "/academy status ../../other",
+        "/academy resume series extra",
+        "/academy delete series",
+        "/academy start series " + "f" * 65,
+        "/academy plan {}",
+        "/academy validate " + "x" * 32768,
+    ]:
+        assert "campaign_command_invalid" in await run(text, "en")
+    spec = make_spec(variants=[{"max_tokens": 32}]).model_dump_json()
+    assert "campaign_parameter_unsupported" in await run(f"/academy plan {spec}", "en")
+    with pytest.raises(PermissionError, match="campaign_operator_command_required"):
+        await academy_dispatcher.skill_manager.invoke_mcp_tool(
+            "academy",
+            "start",
+            {"command": {"action": "start", "campaign_id": "series"}},
+        )
+    with pytest.raises(PermissionError, match="campaign_operator_command_required"):
+        await academy_dispatcher.skill_manager.invoke_mcp_tool(
+            "academy",
+            "start",
+            {"command": operator.CampaignCommand("status", "series")},
+        )
+    assert "campaign_evidence_missing" in await run("/academy status series", "en")
+    monkeypatch.setattr(operator.SETTINGS, "ENABLE_ACADEMY", False)
+    assert "experiment_academy_disabled" in await run("/academy status series", "en")
+    assert service.list() == []
+    assert experiments.calls == []
+
+
+def test_campaign_chat_authorization_is_local_and_cannot_be_provided_in_json(
+    monkeypatch,
+):
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+    from uuid import uuid4
+
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from venom_core.api.routes import tasks
+    from venom_core.api.routes.academy_experiments import SETTINGS
+    from venom_core.api.schemas.tasks import TaskRequest, TaskResponse
+
+    app = FastAPI()
+    app.include_router(tasks.router)
+    submit = AsyncMock(return_value=TaskResponse(task_id=uuid4(), status="PENDING"))
+    app.dependency_overrides[tasks.get_orchestrator] = lambda: SimpleNamespace(
+        submit_task=submit
+    )
+    monkeypatch.setattr(SETTINGS, "ENABLE_ACADEMY", True)
+    remote = TestClient(app)
+    local = TestClient(app, client=("127.0.0.1", 12345))
+    payload = {"content": "/academy status series"}
+    assert remote.post("/api/v1/tasks", json=payload).status_code == 403
+    assert (
+        local.post(
+            "/api/v1/tasks", json=payload, headers={"origin": "https://example.test"}
+        ).status_code
+        == 403
+    )
+    app.state.studio_runtime = object()
+    assert local.post("/api/v1/tasks", json=payload).status_code == 409
+    app.state.studio_runtime = None
+    monkeypatch.setattr(SETTINGS, "ENABLE_ACADEMY", False)
+    assert local.post("/api/v1/tasks", json=payload).status_code == 503
+    assert submit.await_count == 0
+    monkeypatch.setattr(SETTINGS, "ENABLE_ACADEMY", True)
+    assert local.post("/api/v1/tasks", json=payload).status_code == 201
+    assert submit.await_args.args[0]._academy_operator is True
+    assert not TaskRequest.model_validate(
+        {**payload, "_academy_operator": True}
+    )._academy_operator
+    assert (
+        local.post(
+            "/api/v1/tasks", json={"content": "normal", "forced_tool": "academy"}
+        ).status_code
+        == 201
+    )
+    assert not submit.await_args.args[0]._academy_operator
+
+
+@pytest.mark.asyncio
+async def test_academy_task_runs_without_llm_and_persists_chat_history(
+    monkeypatch, academy_dispatcher
+):
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock, MagicMock
+    from uuid import uuid4
+
+    from venom_core.api.schemas.tasks import TaskRequest
+    from venom_core.core.orchestrator import orchestrator_dispatch, orchestrator_submit
+    from venom_core.services import vast_chat_runtime
+
+    task = SimpleNamespace(id=uuid4(), status="PENDING")
+    orch = MagicMock()
+    orch.state_manager.create_task.return_value = task
+    orch.state_manager.get_task.return_value = task
+    orch.state_manager.update_status = AsyncMock()
+    orch._broadcast_event = AsyncMock()
+    orch.task_manager.register_task = AsyncMock()
+    orch.task_manager.unregister_task = AsyncMock()
+    orch.task_dispatcher = academy_dispatcher
+    orch.request_tracer = None
+    orch._run_task = lambda task_id, request, fast_path: orchestrator_dispatch.run_task(
+        orch, task_id, request, fast_path
+    )
+    preflight = AsyncMock(
+        side_effect=AssertionError("Campaign must avoid provider preflight")
+    )
+    monkeypatch.setattr(vast_chat_runtime, "preflight", preflight)
+    background = []
+    monkeypatch.setattr(
+        orchestrator_submit, "_spawn_background_task", background.append
+    )
+
+    request = TaskRequest(content="/academy status series", session_id="chat")
+    with pytest.raises(PermissionError, match="campaign_operator_command_required"):
+        await orchestrator_submit.submit_task(orch, request)
+    assert orch.state_manager.create_task.call_count == 0
+
+    request._academy_operator = True
+    response = await orchestrator_submit.submit_task(orch, request)
+    assert response.task_id == task.id and response.llm_provider is None
+    await background.pop()
+    preflight.assert_not_awaited()
+    orch._refresh_kernel_if_needed.assert_not_called()
+    assert orch._append_session_history.call_count == 2
+    text = orch.state_manager.update_status.await_args.kwargs["result"]
+    assert "campaign_evidence_missing" in text
+    assert (
+        orch.state_manager.update_context.call_args.args[1]["conversation_provider"][
+            "operation"
+        ]
+        == "academy_campaign"
+    )

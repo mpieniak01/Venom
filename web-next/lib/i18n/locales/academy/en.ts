@@ -264,6 +264,8 @@ export const academy = {
     actionError: "The campaign operation failed.",
     conflict: "Check the current campaign state and plan settings.",
     history: "Campaign history",
+    chatStart: "Start command for chat",
+    campaignUnavailable: "No campaign with ID",
     noCampaigns: "No campaigns yet.",
     trials: "Trials completed",
     artifactSize: "Artifact disk usage",

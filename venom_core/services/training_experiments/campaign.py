@@ -319,9 +319,12 @@ class CampaignService:
     def _save(directory: Path, state: dict) -> None:
         atomic_json(directory / "state.json", state)
 
+    def validate(self, spec: CampaignSpec) -> dict:
+        return _plan(spec, self.experiments)
+
     def plan(self, spec: CampaignSpec) -> dict:
         ensure_data_mutation_allowed("academy_campaign_plan")
-        plan = _plan(spec, self.experiments)
+        plan = self.validate(spec)
         directory = self.directory(spec.campaign_id)
         self.root.mkdir(mode=0o700, parents=True, exist_ok=True)
         with file_lock(self.root / ".catalog.lock"):
@@ -358,6 +361,33 @@ class CampaignService:
 
     def report(self, campaign_id: str) -> dict:
         return self.status(campaign_id)
+
+    def evaluations(self, state: dict) -> dict[str, dict]:
+        """Expose aggregate evidence for the exact results recorded by this campaign."""
+        evaluations = {}
+        for trial in state["trials"]:
+            expected = trial.get("result_sha256")
+            if not expected:
+                continue
+            run_id = trial["run_id"]
+            try:
+                report, observed = self._read_evaluation(
+                    run_id, state["plan"]["profile_identity"]
+                )
+                if observed != expected:
+                    continue
+                totals = report["summaries"]
+                evaluations[run_id] = {
+                    role: totals[role]["total"] for role in ("base", "candidate")
+                }
+                evaluations[run_id]["adapter_available"] = any(
+                    artifact.get("available") is True
+                    for artifact in report["artifacts"]
+                )
+            except (OSError, ValueError, TypeError, KeyError):
+                # Missing or stale evidence remains unavailable in the comparison.
+                continue
+        return evaluations
 
     def start(self, campaign_id: str, plan_sha256: str) -> dict:
         return self._activate(campaign_id, plan_sha256=plan_sha256)
@@ -644,11 +674,11 @@ class CampaignService:
             "succeeded" if state["trial_index"] == len(state["trials"]) else "running"
         )
 
-    def _record_result(self, state: dict, trial: dict, run_id: str) -> None:
+    def _read_evaluation(self, run_id: str, profile_identity: str) -> tuple[dict, str]:
         with self.experiments.run_lock(run_id):
             run_dir = self.experiments.run_dir(run_id)
             report = self.experiments.report(run_id)
-            if report.get("profile_identity") != state["plan"]["profile_identity"]:
+            if report.get("profile_identity") != profile_identity:
                 raise ValueError("campaign_evaluation_identity_changed")
             result_sha256 = file_fingerprint(run_dir / "result.json")
             if (
@@ -656,6 +686,12 @@ class CampaignService:
                 != result_sha256
             ):
                 raise ValueError("campaign_evaluation_seal_changed")
+        return report, result_sha256
+
+    def _record_result(self, state: dict, trial: dict, run_id: str) -> None:
+        report, result_sha256 = self._read_evaluation(
+            run_id, state["plan"]["profile_identity"]
+        )
         trial.update(_deltas(report))
         trial["result_sha256"] = result_sha256
 

@@ -38,6 +38,13 @@ from venom_core.services.operator_diagnostics import (
     DIAGNOSTICS_INTENT,
     parse_workspace_listing,
 )
+from venom_core.services.training_experiments.operator import (
+    AcademyCampaignAdapter,
+    campaign_error,
+    campaign_help,
+    parse_campaign_command,
+    render_campaign_result,
+)
 from venom_core.skills.mcp.skill_adapter import (
     FileSkillMcpAdapter,
     GitSkillMcpAdapter,
@@ -174,6 +181,12 @@ class TaskDispatcher:
         except Exception as e:
             logger.warning(f"Nie udało się zarejestrować adapterów MCP-like: {e}")
 
+        self.skill_manager.register_mcp_adapter(
+            "academy",
+            AcademyCampaignAdapter(),
+            skill_name="AcademyCampaignOperatorSkill",
+        )
+
         # Zarejestruj wbudowane podstawowe umiejętności asystenta
         try:
             self.kernel.add_plugin(AssistantSkill(), plugin_name="AssistantSkill")
@@ -229,6 +242,20 @@ class TaskDispatcher:
         }
 
         logger.info("TaskDispatcher zainicjalizowany z agentami (+ Executive layer)")
+
+    async def dispatch_academy_campaign(
+        self, content: str, language: str | None
+    ) -> str:
+        try:
+            command = parse_campaign_command(content)
+            if command.action == "help":
+                return campaign_help(language)
+            result = await self.skill_manager.invoke_mcp_tool(
+                "academy", command.action, {"command": command}
+            )
+            return render_campaign_result(command.action, result, language)
+        except (ValueError, OSError) as exc:
+            return campaign_error(language, exc)
 
     async def parse_intent(self, content: str) -> Intent:
         """

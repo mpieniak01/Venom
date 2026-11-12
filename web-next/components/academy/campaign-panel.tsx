@@ -23,7 +23,13 @@ const ACTION_ERROR = {
   optuna: "academy.campaigns.optuna.unavailable",
 } as const;
 
-export function CampaignPanel({ onOpenRun }: { readonly onOpenRun: (runId: string) => void }) {
+export function CampaignPanel({
+  onOpenRun,
+  initialCampaignId,
+}: {
+  readonly onOpenRun: (runId: string) => void;
+  readonly initialCampaignId?: string;
+}) {
   const t = useTranslation();
   const [profiles, setProfiles] = useState<ExperimentProfile[] | null>(null);
   const [campaigns, setCampaigns] = useState<Campaign[] | null>(null);
@@ -32,9 +38,11 @@ export function CampaignPanel({ onOpenRun }: { readonly onOpenRun: (runId: strin
   const [optunaAvailable, setOptunaAvailable] = useState(false);
   const [operationError, setOperationError] = useState<keyof typeof ACTION_ERROR | null>(null);
   const [busy, setBusy] = useState(false);
-  const [selectedId, setSelectedId] = useState("");
+  const [selectedId, setSelectedId] = useState(initialCampaignId ?? "");
   const [refresh, setRefresh] = useState(0);
-  const selected = campaigns?.find((campaign) => campaign.campaign_id === selectedId) ?? campaigns?.[0];
+  const selected = selectedId
+    ? campaigns?.find((campaign) => campaign.campaign_id === selectedId)
+    : campaigns?.[0];
 
   function refreshData() {
     setRefresh((value) => value + 1);
@@ -156,6 +164,9 @@ export function CampaignPanel({ onOpenRun }: { readonly onOpenRun: (runId: strin
             </ul>
           ) : <p className="text-sm text-hint">{t("academy.campaigns.noCampaigns")}</p>}
         </section>
+      )}
+      {campaigns && selectedId && !selected && (
+        <p role="status">{t("academy.campaigns.campaignUnavailable")} <code>{selectedId}</code></p>
       )}
       {selected && <section className={CARD}>
         <CampaignDetail key={selected.campaign_id} campaign={selected} disabled={busy || campaignsFailed} optunaAvailable={optunaAvailable}

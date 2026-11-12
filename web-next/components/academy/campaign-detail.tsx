@@ -201,6 +201,12 @@ export function CampaignDetail({ campaign, disabled, optunaAvailable, onAction, 
           </a>
         </Button>
       </div>
+      {planned && (
+        <details className="text-sm">
+          <summary className="cursor-pointer">{t("academy.campaigns.chatStart")}</summary>
+          <code className="break-all">/academy start {campaign.campaign_id} {campaign.plan.plan_sha256}</code>
+        </details>
+      )}
       <div className="overflow-x-auto">
         <table className="w-full text-left text-sm">
           <thead><tr className="border-b border-[color:var(--ui-border)]">

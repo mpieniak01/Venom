@@ -264,6 +264,8 @@ export const academy = {
     actionError: "Nie udało się wykonać operacji w kampanii.",
     conflict: "Sprawdź bieżący stan kampanii oraz parametry planu.",
     history: "Historia kampanii",
+    chatStart: "Polecenie startu w czacie",
+    campaignUnavailable: "Brak kampanii o identyfikatorze",
     noCampaigns: "Brak kampanii.",
     trials: "Próby wykonane",
     artifactSize: "Dysk na artefakty",

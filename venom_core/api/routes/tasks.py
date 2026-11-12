@@ -57,6 +57,7 @@ from venom_core.services.tasks_stream_service import (
 from venom_core.services.tasks_stream_service import (
     should_emit_stream_event as _should_emit_stream_event,
 )
+from venom_core.services.training_experiments.operator import is_campaign_command
 from venom_core.utils.logger import get_logger
 
 TaskStatus = tasks_service.TaskStatus
@@ -257,10 +258,19 @@ async def _task_stream_generator(
             raise
 
 
-def _authorize_diagnostic_task(
+def _authorize_operator_task(
     request: TaskRequest, http_request: Request
 ) -> TaskRequest:
     """Check operator access before resolving the potentially lazy orchestrator."""
+    if is_campaign_command(request.content):
+        from venom_core.api.routes.academy_experiments import require_experiment_access
+
+        if getattr(http_request.app.state, "studio_runtime", None) is not None:
+            raise HTTPException(409, "academy_campaign_requires_full")
+        require_experiment_access(http_request)
+        require_operator_origin(http_request, "academy_campaign_origin_denied")
+        request._academy_operator = True
+        return request
     diagnostic = parse_diagnostic_task(request.content)
     if (
         diagnostic is not None
@@ -283,7 +293,7 @@ def _authorize_diagnostic_task(
     responses=TASK_CREATE_RESPONSES,
 )
 async def create_task(
-    request: Annotated[TaskRequest, Depends(_authorize_diagnostic_task)],
+    request: Annotated[TaskRequest, Depends(_authorize_operator_task)],
     orchestrator: Annotated[Orchestrator, Depends(get_orchestrator)],
 ):
     """

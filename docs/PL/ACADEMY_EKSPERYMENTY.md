@@ -128,3 +128,25 @@ W **Trening → Kampania** wybierz strategię **Optuna** i podaj zakresy co najm
 Kolejne propozycje korzystają z ukończonych ocen dev. Optuna maksymalizuje zmianę użyteczności względem bazy i osobno uwzględnia progi użyteczności i błędów krytycznych. W ocenie ręcznej kontroler czeka na komplet ocen. Błąd techniczny i pominięta powtórzona receptura nie dostają wyniku jakości. Wczesne odcinanie prób jest wyłączone, ponieważ jakość oceniamy po generacji. Kontroler nadal egzekwuje limity AUT-02 oraz chroni wybrany adapter przy retencji.
 
 Katalog kampanii zawiera prywatny dziennik SQLite z przydziałami i wynikami prób. Zachowaj go wraz ze stanem kampanii, żeby wznowienie po restarcie użyło tych samych propozycji i zapisanych ocen. Wybraną konfigurację można potwierdzić drugim ziarnem treningu i niezależnym zbiorem końcowym.
+
+
+## Sterowanie kampanią z czatu Venom
+
+W lokalnym czacie pełnego Venoma wpisz `/academy`, aby zobaczyć polecenia. Czaty z wybranym modelem chmurowym wykonują te polecenia lokalnie. Odpowiedź zawiera identyfikator wykonania równy identyfikatorowi kampanii oraz odnośnik do jej widoku w Academy.
+
+`/academy validate <JSON>` sprawdza roboczy manifest. `/academy plan <JSON>` zapisuje plan i pokazuje profil, recepturę lub przestrzeń Optuny, ocenę dev, progi selekcji, limity i retencję. Wklej manifest jako JSON w treści komendy. Identyfikatory profilu i kampanii wybierz jawnie. Dla strategii stałej komendy czatu pozwalają zmieniać `rank`, `alpha`, `learning_rate` i `dropout` w wariantach. Pozostałe parametry treningu pochodzą z profilu operatora.
+
+Po sprawdzeniu planu wpisz komendę startu, którą zwrócił Venom. W panelu zapisanego planu znajdziesz ją pod **Polecenie startu w czacie**.
+
+```text
+/academy start polski-czat PLAN_SHA256
+/academy status polski-czat
+/academy stop polski-czat
+/academy resume polski-czat
+/academy compare polski-czat
+/academy report polski-czat
+```
+
+Powtórzenie startu z tym samym identyfikatorem i hashem zwraca stan tej samej kampanii. Przerwanie rozmowy pozostawia kampanię pod kontrolą jej wykonawcy. Po ponownym otwarciu czatu odczytaj stan przez `status`. Aby zatrzymać pracę, użyj `stop`. Polecenia korzystają z tego samego budżetu i stanu co przyciski Academy.
+
+`compare` i `report` odczytują zapisane oceny bazy i adapterów oraz dostępność zweryfikowanych wag. Porównanie pokazuje liczbę przypadków dev, poprawę lub regresję oraz parametry kandydata do ponownego sprawdzenia, gdy użyteczność wzrosła bez wzrostu błędów krytycznych. Nowa receptura, dane, reguły oceny lub budżet wymagają nowego identyfikatora kampanii. W strategii Optuna kolejne konfiguracje wybiera sampler z zatwierdzonej przestrzeni.

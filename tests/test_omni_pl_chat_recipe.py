@@ -2,6 +2,7 @@
 
 import json
 import re
+import sys
 from contextlib import nullcontext
 from pathlib import Path
 from types import SimpleNamespace
@@ -9,13 +10,16 @@ from unittest.mock import Mock
 
 import pytest
 
+from scripts.academy import omni_pl_chat_audit as mixture
 from scripts.academy import omni_pl_chat_evaluate as evaluator
+from scripts.academy import omni_pl_chat_masks as masks
+from scripts.academy import omni_pl_chat_p1 as trainer
 from scripts.academy.omni_pl_chat_adapter import (
     ADAPTER_CONFIG,
     ADAPTER_WEIGHTS,
     verify_initial_adapter,
 )
-from scripts.academy.omni_pl_chat_data import read_jsonl, sha256
+from scripts.academy.omni_pl_chat_data import read_jsonl, sha256, write_jsonl
 from scripts.academy.omni_pl_chat_evaluate import (
     blind_mapping,
     validate_dev_cases,
@@ -301,8 +305,6 @@ def test_blinding_requires_comparable_distinct_variants():
 def test_generation_resumes_only_missing_predictions_and_blinds_complete_result(
     tmp_path, monkeypatch
 ):
-    import sys
-
     first = _dev_case()
     second = {**first, "record_id": "dev-2", "group_id": "dev-group-2"}
     cases = [first, second]
@@ -500,3 +502,215 @@ def test_initial_adapter_checks_complete_state_shapes_values_and_actual_load(
     safe.save_file({name: tensor + 1 for name, tensor in expected.items()}, weights)
     with pytest.raises(ValueError, match="load_mismatch"):
         _load_adapter_tensors(model, weights)
+
+
+def _audit_inputs(root: Path):
+    def train_row(case_id, messages):
+        return {
+            "record_id": case_id,
+            "group_id": case_id,
+            "split": "train",
+            "language": "pl",
+            "task": "uninformative-profile-tag",
+            "messages": messages,
+            "supervision": [len(messages) - 1],
+            "quality_status": "accepted",
+            "source_repo": "fixture",
+            "source_revision": "v1",
+            "source_record_id": case_id,
+            "license": "fixture",
+            "review_note": "checked",
+        }
+
+    dev = _dev_case()
+    duplicate_conversation = [
+        {"role": "system", "content": "Instrukcja."},
+        {"role": "user", "content": "  ＰＯＤＡＪ nazwę miesiąca."},
+        {"role": "assistant", "content": "Marzec."},
+    ]
+    train = [
+        train_row("train-1", duplicate_conversation),
+        train_row("train-2", duplicate_conversation),
+        train_row(
+            "train-3",
+            [
+                {"role": "user", "content": "Wymyśl pytanie."},
+                {"role": "assistant", "content": "Podaj nazwę miesiąca."},
+                {"role": "user", "content": "Podaj rok."},
+                {"role": "assistant", "content": "2026."},
+            ],
+        ),
+    ]
+    taxonomy = {
+        "schema_version": 1,
+        "records": {
+            "train-1": {"group": "replay", "skill": "update"},
+            "train-2": {"group": "fresh", "skill": "update"},
+            "train-3": {"group": "fresh", "skill": "dialogue"},
+        },
+    }
+    train_path, dev_path, taxonomy_path = (
+        root / name for name in ("train", "dev", "taxonomy")
+    )
+    write_jsonl(train_path, train)
+    write_jsonl(dev_path, [dev])
+    _write_json(taxonomy_path, taxonomy)
+    return train_path, dev_path, taxonomy_path
+
+
+def _mask_fixture(monkeypatch):
+    class Tokenizer:
+        @staticmethod
+        def from_pretrained(*args, **kwargs):
+            assert kwargs["local_files_only"] and not kwargs["trust_remote_code"]
+            return object()
+
+    pin = json.loads(SNAPSHOT_PIN.read_text())
+    monkeypatch.setitem(
+        sys.modules, "transformers", SimpleNamespace(AutoTokenizer=Tokenizer)
+    )
+    monkeypatch.setattr(masks, "verify_snapshot", lambda _snapshot: pin)
+    monkeypatch.setattr(masks, "version", lambda _package: "fixture")
+
+    def fixture_mask(tokenizer, template, row, max_tokens):
+        assert template == "template" and max_tokens == 128
+        n = int(row["record_id"][-1])
+        return {
+            "input_ids": [1] * (8 + n),
+            "labels": [-100] * 8 + [1] * n,
+        }
+
+    monkeypatch.setattr(masks, "masked_example", fixture_mask)
+
+
+def test_mixture_audit_counts_masks_separately_from_label_and_reports_exact_matches(
+    tmp_path, monkeypatch
+):
+    _mask_fixture(monkeypatch)
+    (tmp_path / "chat_template.jinja").write_text("template", encoding="utf-8")
+    paths = _audit_inputs(tmp_path)
+    report = mixture.build_audit(tmp_path, *paths, 128)
+    assert report == mixture.build_audit(tmp_path, *paths, 128)
+    assert report["totals"] == {
+        "records": 3,
+        "supervised_tokens": 6,
+        "input_tokens": 30,
+        "max_input_tokens": 11,
+        "max_supervised_tokens": 3,
+    }
+    assert report["groups"]["replay"]["supervised_tokens"] == 1
+    assert report["groups"]["fresh"]["supervised_tokens"] == 5
+    assert report["skills"]["dialogue"]["replay"]["records"] == 0
+    assert report["skills"]["update"]["fresh"]["records"] == 1
+    assert report["leakage"] == {
+        "normalization": "nfkc_casefold_whitespace_v1",
+        "supervised_prefix_matches": 1,
+        "final_user_matches": 1,
+        "duplicate_train_records": 1,
+    }
+    without_user_match = read_jsonl(paths[0])[-1:]
+    isolated = mixture.leakage_counts(without_user_match, read_jsonl(paths[1]))
+    assert isolated["final_user_matches"] == isolated["supervised_prefix_matches"] == 0
+    assert report["taxonomy_sha256"] == sha256(paths[-1])
+    assert set(report["tokenization"]) == {
+        "template_sha256",
+        "tokenizer_sha256",
+        "tokenizer_config_sha256",
+        "model_config_sha256",
+        "transformers",
+        "tokenizers",
+        "max_tokens",
+    }
+    serialized = json.dumps(report)
+    assert all(value not in serialized for value in ("Marzec", "train-1", "dev-1"))
+
+
+@pytest.mark.parametrize(
+    "fault, message",
+    [
+        ("missing", "label exactly"),
+        ("invalid-skill", "skill slug"),
+        ("duplicate-json-key", "duplicate keys"),
+        ("holdout", "only the dev split"),
+        ("identity-overlap", "disjoint record and group IDs"),
+    ],
+)
+def test_mixture_audit_fails_before_tokenizing_invalid_sources(
+    tmp_path, monkeypatch, fault, message
+):
+    train_path, dev_path, taxonomy_path = _audit_inputs(tmp_path)
+    forbidden = Mock()
+    monkeypatch.setattr(mixture, "audit", forbidden)
+    if fault == "holdout":
+        dev_path.write_text(
+            dev_path.read_text().replace('"dev"', '"pilot"'), encoding="utf-8"
+        )
+    elif fault == "identity-overlap":
+        dev_path.write_text(
+            dev_path.read_text().replace("dev-group-1", "train-1"), encoding="utf-8"
+        )
+    else:
+        sidecar = json.loads(taxonomy_path.read_text())
+        if fault == "missing":
+            sidecar["records"].pop("train-1")
+        elif fault == "invalid-skill":
+            sidecar["records"]["train-1"]["skill"] = "This may be private text"
+        else:
+            record = json.dumps(sidecar["records"]["train-1"])
+            taxonomy_path.write_text(
+                '{"schema_version":1,"records":{"train-1":'
+                + record
+                + ',"train-1":'
+                + record
+                + "}}",
+                encoding="utf-8",
+            )
+        if fault != "duplicate-json-key":
+            taxonomy_path.write_text(json.dumps(sidecar), encoding="utf-8")
+    with pytest.raises(ValueError, match=message):
+        mixture.build_audit(tmp_path, train_path, dev_path, taxonomy_path, 128)
+    forbidden.assert_not_called()
+
+
+def test_mixture_audit_rejects_sources_changed_after_masking(tmp_path, monkeypatch):
+    _mask_fixture(monkeypatch)
+    (tmp_path / "chat_template.jinja").write_text("template", encoding="utf-8")
+    paths = _audit_inputs(tmp_path)
+    real_audit = mixture.audit
+
+    def tamper(*args):
+        result = real_audit(*args)
+        paths[-1].write_text("changed", encoding="utf-8")
+        return result
+
+    monkeypatch.setattr(mixture, "audit", tamper)
+    with pytest.raises(ValueError, match="changed during"):
+        mixture.build_audit(tmp_path, *paths, 128)
+
+
+def test_preflight_receipt_exposes_actual_mask_totals(monkeypatch):
+    monkeypatch.setattr(trainer, "_verify_boundary", Mock())
+    monkeypatch.setattr(trainer, "version", lambda package: "fixture")
+    observed = {"records": 2, "supervised_tokens": 3, "train_sha256": "fixture"}
+    encoded = [
+        {"input_ids": [0, 1, 2], "labels": [-100, 1, 2]},
+        {"input_ids": [0, 1], "labels": [-100, 1]},
+    ]
+    monkeypatch.setattr(
+        trainer,
+        "_prepare_inputs",
+        lambda *args, **kwargs: (
+            {"repo": "Omni", "revision": "fixture"},
+            None,
+            encoded,
+            observed,
+        ),
+    )
+    publish = Mock()
+    monkeypatch.setattr(trainer, "_write_json", publish)
+    trainer.run("preflight")
+    _, report = publish.call_args.args
+    assert report["input_tokens"] == 5
+    assert report["max_input_tokens"] == 3
+    assert report["max_supervised_tokens"] == 2
+    assert {name: report[name] for name in observed} == observed

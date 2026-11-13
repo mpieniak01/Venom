@@ -35,6 +35,11 @@ if [[ "${1:-}" != --inside ]]; then
                 *) exit 2 ;;
             esac
             ;;
+        audit-mix)
+            [[ $# -eq 3 && "$3" =~ ^[1-9][0-9]{1,3}$ && "$3" -ge 32 && "$3" -le 4096 ]]
+            [[ -f "$2" && ! -L "$2" && -f "$1" && ! -L "$1" ]]
+            inputs+=("$(realpath -e -- "$1")" "$(realpath -e -- "$2")" "$3")
+            ;;
         merge) [[ $# -eq 0 ]] ;;
         evaluate|evaluate-resumable)
             if [[ $# -lt 2 || $# -gt 5 ]]; then exit 2; fi
@@ -134,6 +139,12 @@ file_ro "$job/../llm/omni_native_snapshot.json" "$scratch/job/scripts/llm/omni_n
 
 worker=(scripts.academy.omni_pl_chat_p1 "$mode")
 case "$mode" in
+    audit-mix)
+        file_ro "$1" "$scratch/inputs/dev.jsonl"
+        file_ro "$2" "$scratch/inputs/taxonomy.json"
+        file_ro "$job/omni_pl_chat_audit.py" "$scratch/job/scripts/academy/omni_pl_chat_audit.py"
+        worker=(scripts.academy.omni_pl_chat_audit "$3")
+        ;;
     merge) worker=(scripts.academy.omni_pl_chat_export) ;;
     evaluate|evaluate-resumable)
         mkdir "$scratch/inputs/adapters"
@@ -170,7 +181,7 @@ mount -o remount,bind,rw,nodev,nosuid,noexec "$scratch/out"
 # NVIDIA CUDA needs writable proc in a PID namespace; the worker drops capabilities.
 mount -t proc -o nodev,nosuid,noexec proc "$scratch/proc"
 for device in null urandom dxg nvidiactl nvidia0 nvidia-uvm nvidia-uvm-tools; do
-    if [[ "$mode" == preflight && "$device" != null && "$device" != urandom ]]; then
+    if [[ ( "$mode" == preflight || "$mode" == audit-mix ) && "$device" != null && "$device" != urandom ]]; then
         continue
     fi
     if [[ -c "/dev/$device" ]]; then

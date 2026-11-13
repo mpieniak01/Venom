@@ -849,7 +849,7 @@ class CampaignService:
             return None
         if state["retries"] >= state["plan"]["budget"]["max_retries"]:
             return None
-        if run["stage"] in {"generate", "score"} and run["resume_available"]:
+        if run["stage"] in {"generate", "score"} and run["evaluation_available"]:
             return "evaluate"
         if run["stage"] == "train" and run["resume_available"]:
             pending = state["plan"]["variants"][state["trial_index"] :]

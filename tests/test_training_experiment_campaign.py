@@ -92,6 +92,7 @@ class FakeExperiments:
                 "stage": "train",
                 "attempt": 1,
                 "resume_available": False,
+                "evaluation_available": False,
             }
         )
 
@@ -342,6 +343,26 @@ def test_retry_and_operator_stop_preserve_allocated_budget(controller):
     assert service.resume("series")["elapsed_seconds"] == 6
     assert service.advance("series")["trial_index"] == 1
     assert service.status("series")["used_updates"] == 4
+
+
+def test_retry_generation_after_final_checkpoint_does_not_charge_training(controller):
+    service, experiments, _ = controller
+    start(service)
+    first = launch_next(service)
+    experiments.update(
+        first,
+        status="failed",
+        stage="generate",
+        resume_available=False,
+        evaluation_available=True,
+    )
+
+    reserved = service.advance("series")
+    assert reserved["used_updates"] == 2
+    assert reserved["used_tokens"] == 40
+    assert reserved["retries"] == 1
+    assert service.advance("series")["trials"][0]["attempt"] == 2
+    assert experiments.calls[-1] == ("evaluate", first)
 
 
 def test_timeout_stops_only_owned_run(controller):

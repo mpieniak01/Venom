@@ -38,6 +38,7 @@ from .profiles import (
     resolve_input,
     stable_hash,
 )
+from .quality import QualityStore
 from .store import RunStore
 
 REPO = Path(__file__).resolve().parents[3]
@@ -194,6 +195,50 @@ class ExperimentService:
         child = state.get("child")
         return bool(child and group_alive(child["process_group"]))
 
+    def _external_review(self, state: dict) -> dict | None:
+        """Expose external dispositions alongside an outstanding native review."""
+        run_id = state["run_id"]
+        records, _ = QualityStore(self.root).list()
+        links = [
+            record
+            for record in records
+            if (record.get("reviewed_run") or {}).get("run_id") == run_id
+            and record["outcome"] is not None
+        ]
+        if not links:
+            return None
+        generation = self.run_dir(run_id) / f"evaluation-{state['attempt']}"
+        try:
+            seal = read_json(generation / "generation-seal.json")
+            manifest = read_json(generation / "manifest.json")
+            manifest_sha256 = seal["manifest.json"]
+            files = ("blind.jsonl", "raw.jsonl", "unblind.json")
+            if (
+                any(digest(generation / name) != seal[name] for name in files)
+                or digest(generation / "manifest.json") != manifest_sha256
+                or any(manifest["outputs"][name] != seal[name] for name in files)
+            ):
+                return None
+            model = manifest["models"][f"checkpoint-{state['checkpoint_step']}"]
+            checkpoint_sha256 = model["adapter_model.safetensors"]
+        except (OSError, ValueError, KeyError, TypeError):
+            return None
+        matches = [
+            record
+            for record in links
+            if record["reviewed_run"]["generation_manifest_sha256"] == manifest_sha256
+            and record["reviewed_run"]["checkpoint_sha256"]
+            == checkpoint_sha256
+            == state.get("checkpoint_sha256")
+        ]
+        if len(matches) != 1:
+            return None
+        record = matches[0]
+        return {
+            "record_id": f"history:{record['record_id']}",
+            "outcome": record["outcome"],
+        }
+
     def _view(self, state: dict) -> dict:
         run_id = state["run_id"]
         result = {key: state.get(key) for key in PUBLIC}
@@ -218,14 +263,19 @@ class ExperimentService:
             resume_checkpoint
             and resume_checkpoint[1]["step"] < state["recipe"]["steps"]
         )
+        result["evaluation_available"] = bool(can_retry and checkpoint)
         operator_controls = state.get("campaign_id") is None
         result["actions"] = {
             "stop": operator_controls
             and result["status"] in ACTIVE | {"awaiting_review"},
             "resume": operator_controls and result["resume_available"],
-            "evaluate": bool(operator_controls and can_retry and checkpoint),
+            "evaluate": operator_controls and result["evaluation_available"],
             "review": result["status"] == "awaiting_review",
         }
+        if result["actions"]["review"]:
+            external_review = self._external_review(state)
+            if external_review:
+                result["external_review"] = external_review
         if state["status"] in ACTIVE:
             result["elapsed_seconds"] = state["elapsed_before"] + max(
                 0, time.time() - state["attempt_started_at"]

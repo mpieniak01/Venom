@@ -1094,7 +1094,9 @@ async def test_training_release_does_not_reopen_inference(world):
 
 
 @pytest.mark.asyncio
-async def test_timed_out_training_release_waits_for_cleanup_completion(world):
+async def test_timed_out_training_release_waits_for_cleanup_completion(
+    world, monkeypatch
+):
     started = asyncio.Event()
     proceed = asyncio.Event()
     lease = world.acquire(
@@ -1103,19 +1105,31 @@ async def test_timed_out_training_release_waits_for_cleanup_completion(world):
         engine="omni-training",
         model="omni",
     )
+    controller = SimpleNamespace(list_servers=lambda: [])
 
-    async def cleanup():
-        with world.training_cleanup(lease.training_cleanup_capability()):
-            started.set()
-            await proceed.wait()
+    async def prepare():
+        started.set()
+        await proceed.wait()
+        return []
 
-    task = asyncio.create_task(cleanup())
-    await started.wait()
-    assert not lease.release()
-    lease.defer_training_release()
-    with pytest.raises(RuntimeAdmissionError):
-        with world.operation(kind="generation"):
-            pass
-    proceed.set()
-    await task
-    assert world.snapshot()["status"] == "available"
+    monkeypatch.setattr(service, "prepare_registered_models", prepare)
+    task = asyncio.create_task(
+        service.release_all_runtime_models(
+            controller, training_capability=lease.training_cleanup_capability()
+        )
+    )
+    try:
+        await asyncio.wait_for(started.wait(), 2)
+        task.cancel()
+        assert not lease.release()
+        lease.defer_training_release()
+        with pytest.raises(RuntimeAdmissionError):
+            with world.operation(kind="generation"):
+                pass
+        proceed.set()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        assert world.snapshot()["status"] == "available"
+    finally:
+        proceed.set()
+        await asyncio.gather(task, return_exceptions=True)

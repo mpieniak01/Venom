@@ -87,10 +87,9 @@ def test_gpu_headroom_is_bounded_and_step_limit_stays_below_reserve():
         )
 
 
-def test_token_loss_accumulation_matches_one_pooled_batch(tmp_path):
+def test_token_loss_accumulation_matches_one_pooled_batch():
     import torch
     from torch import nn
-    from transformers import Trainer, TrainingArguments
 
     from scripts.academy.omni_pl_chat_p1 import _collate
 
@@ -116,19 +115,17 @@ def test_token_loss_accumulation_matches_one_pooled_batch(tmp_path):
     ]
     batches = [_collate([row], 0) for row in rows]
     model = TinyOmni()
-    args = TrainingArguments(
-        output_dir=str(tmp_path),
-        per_device_train_batch_size=1,
-        gradient_accumulation_steps=2,
-        use_cpu=True,
-        report_to="none",
-    )
-    trainer = _token_trainer_type(Trainer)(model=model, args=args)
-    trainer.current_gradient_accumulation_steps = 2
-    total = trainer._get_num_items_in_batch(batches, args.device)
+
+    class TrainerBase:
+        def __init__(self):
+            self.args = SimpleNamespace(world_size=1, n_gpu=0)
+
+    trainer = _token_trainer_type(TrainerBase)()
+    total = trainer._get_num_items_in_batch(batches, torch.device("cpu"))
     assert int(total) == 5
+    assert trainer.loss_is_scaled_for_ga
     for batch in batches:
-        trainer.training_step(model, batch, num_items_in_batch=total)
+        trainer.compute_loss(model, batch, num_items_in_batch=total).backward()
     actual_gradient = model.weight.grad.detach().clone()
 
     reference_model = TinyOmni()

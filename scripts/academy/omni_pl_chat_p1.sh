@@ -126,7 +126,8 @@ esac
 
 mount --bind "$output" "$scratch/out"
 mount -o remount,bind,rw,nodev,nosuid,noexec "$scratch/out"
-mount -t proc -o ro,nodev,nosuid,noexec proc "$scratch/proc"
+# NVIDIA CUDA needs writable proc in a PID namespace; the worker drops capabilities.
+mount -t proc -o nodev,nosuid,noexec proc "$scratch/proc"
 for device in null urandom dxg nvidiactl nvidia0 nvidia-uvm nvidia-uvm-tools; do
     if [[ "$mode" == preflight && "$device" != null && "$device" != urandom ]]; then
         continue

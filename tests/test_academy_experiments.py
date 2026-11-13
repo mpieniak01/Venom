@@ -708,3 +708,66 @@ def test_worker_rejects_invalid_warm_resume_receipt(setup):
     Worker._verify_initial_adapter_receipt(receipt, entry, "control")
     with pytest.raises(ValueError, match="experiment_initial_adapter_receipt_invalid"):
         Worker._verify_initial_adapter_receipt(receipt, entry, "resume")
+
+
+def test_retention_prunes_rejected_warm_checkpoint_and_preserves_catalog(
+    setup, monkeypatch
+):
+    from venom_core.services.training_experiments.adapters import runner_identity
+    from venom_core.services.training_experiments.campaign import CampaignService
+    from venom_core.services.training_experiments.campaign_schema import CampaignSpec
+
+    service, _, _, _, _, dev, _ = setup
+    source, entry = install_fixture_adapter(service.root)
+    before = {path.name: digest(path) for path in source.iterdir()}
+    campaign = CampaignService(service, launch=lambda _: process_identity(os.getpid()))
+    spec = adapter_campaign_plan()
+    spec["variants"].reverse()
+    state = campaign.plan(CampaignSpec.model_validate(spec))
+    variants = state["plan"]["variants"]
+    warm_run, fresh_run = [row["run_id"] for row in variants]
+    campaign.start("warm", state["plan"]["plan_sha256"])
+
+    fake_work(monkeypatch, service, dev)
+    original_execute = Worker.execute
+
+    def execute(worker, command, gpu_fd):
+        original_execute(worker, command, gpu_fd)
+        if worker.run_id != warm_run or not command[1].endswith("omni_pl_chat_p1.sh"):
+            return
+        target = Path(command[4])
+        receipt = {"initial_adapter": runner_identity(entry)}
+        if command[6] == "preflight":
+            atomic_json(target / "preflight.json", receipt)
+        else:
+            atomic_json(
+                target / "control.json",
+                {
+                    **receipt,
+                    "state_source": "initial_adapter",
+                    "fresh_optimizer": True,
+                    "loaded_tensors": 8,
+                },
+            )
+
+    monkeypatch.setattr(Worker, "execute", execute)
+    for run_id, candidate_good in ((warm_run, False), (fresh_run, True)):
+        campaign.advance("warm")
+        campaign.advance("warm")
+        assert service.status(run_id)["status"] == "queued"
+        Worker(service, run_id, 1).run()
+        assert campaign.advance("warm")["status"] == "awaiting_review"
+        service.submit(
+            run_id, [grade("A", candidate_good), grade("B", not candidate_good)]
+        )
+        state = campaign.advance("warm")
+
+    assert state["status"] == "succeeded"
+    assert state["selected_run_id"] == fresh_run
+    assert state["retention_receipt"]["removed_bytes"] > 0
+    warm_report = service.report(warm_run)
+    assert warm_report["artifacts"][0]["available"] is False
+    assert warm_report["initial_adapter"] == entry
+    assert service.report(fresh_run)["artifacts"][0]["available"] is True
+    assert {path.name: digest(path) for path in source.iterdir()} == before
+    assert service.adapters() == [entry]

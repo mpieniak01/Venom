@@ -209,4 +209,6 @@ Operator rejestruje adapter w `<experiment_root>/adapters/<adapter_id>/`. Katalo
 
 W manifeście kampanii CLI podaj np. `"variants": [{}, {"initial_adapter_id": "omni-p13-145"}]`. Ustaw recepturę profilu zgodną z obydwoma ramionami. Panel i CLI odczytują ten sam plan. Tryb wyboru adaptera startowego jest dostępny dla strategii stałej.
 
+Dla zarejestrowanego `omni-p13-145` ustaw w obu ramionach `rank: 4`, `alpha: 8`, `dropout: 0.05` i `target_modules: ["q_proj", "k_proj", "v_proj", "o_proj", "in_proj", "out_proj", "w1", "w2", "w3"]`. Jeśli profil ma inny zakres modułów lub inną wartość dropout, Academy odrzuci plan przy walidacji adaptera.
+
 Nowy przebieg rozpoczyna optymalizację od kroku zero. Runner sprawdza wartości wszystkich tensorów wczytanych z adaptera. Po przerwaniu przebieg kontynuuje z własnego pełnego checkpointu wraz ze stanem optymalizatora, harmonogramu i RNG. Retencja usuwa pliki wynikowe kampanii zgodnie z wybraną polityką. Katalog wejściowy jest niezależny od plików wynikowych.

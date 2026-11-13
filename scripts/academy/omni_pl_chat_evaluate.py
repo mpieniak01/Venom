@@ -263,9 +263,12 @@ class GenerationProgress:
                 ]
                 for tag in variants
             }
-            blind.append({"case": case, "answers": answers})
-        write_jsonl(root / "raw.jsonl", raw)
-        write_jsonl(root / "blind.jsonl", blind)
+            blind.append({"case": case, "answers": dict(sorted(answers.items()))})
+        for filename, rows in (("raw.jsonl", raw), ("blind.jsonl", blind)):
+            path = root / filename
+            write_jsonl(path, rows)
+            with path.open("rb") as stream:
+                os.fsync(stream.fileno())
 
 
 def _generate(
@@ -350,7 +353,16 @@ def main() -> None:
     identity = {
         **manifest,
         "python": sys.version,
-        "evaluator_sha256": sha256(Path(__file__)),
+        "evaluator_files": {
+            name: sha256(Path(__file__).with_name(name))
+            for name in (
+                "omni_pl_chat_evaluate.py",
+                "omni_pl_chat_data.py",
+                "omni_pl_chat_masks.py",
+                "omni_pl_chat_p1.py",
+                "omni_pl_chat_recipe.py",
+            )
+        },
         "cuda": torch.version.cuda,
         "gpu": torch.cuda.get_device_name(),
         "gpu_capability": torch.cuda.get_device_capability(),

@@ -300,7 +300,10 @@ def test_generation_resumes_only_missing_predictions_and_blinds_complete_result(
     second = {**first, "record_id": "dev-2", "group_id": "dev-group-2"}
     cases = [first, second]
     variants = ["base", "checkpoint-2"]
-    mapping = blind_mapping(cases, variants)
+    mapping = {
+        "dev-1": {"B": "base", "A": "checkpoint-2"},
+        "dev-2": {"A": "base", "B": "checkpoint-2"},
+    }
     identity = {"dev": "dev-hash", "base": "base-hash", "adapter": "adapter-hash"}
     progress = evaluator.GenerationProgress(tmp_path, identity, mapping)
     backbone = SimpleNamespace(can_use_lfm3_conv=lambda: True)
@@ -341,7 +344,8 @@ def test_generation_resumes_only_missing_predictions_and_blinds_complete_result(
     assert [row["case"] for row in blind] == cases
     for row in blind:
         assert set(row) == {"case", "answers"}
-        assert sorted(row["answers"]) == ["A", "B"]
+        assert list(row["answers"]) == ["A", "B"]
+    assert blind[0]["answers"]["B"] == cached["response"]
 
 
 def test_generation_progress_requires_same_identity_and_valid_seal(tmp_path):

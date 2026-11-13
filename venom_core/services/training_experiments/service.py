@@ -255,17 +255,8 @@ class ExperimentService:
             }
         }
 
-    def _view(self, state: dict) -> dict:
+    def _checkpoint_fields(self, state: dict, result: dict) -> None:
         run_id = state["run_id"]
-        result = {key: state.get(key) for key in PUBLIC}
-        if "initial_adapter" in state:
-            result["initial_adapter"] = state["initial_adapter"]
-        if self._orphaned(state):
-            result.update(status="failed", error="experiment_supervisor_exited")
-        committed = self._check_report(run_id)
-        if committed is not None and not self._child_alive(state):
-            result.update(status="succeeded", stage="done", error=None)
-            result["report"] = {"summaries": committed["summaries"]}
         can_retry = result["status"] in RETRYABLE and not self._child_alive(state)
         checkpoint = (
             self._checkpoint(run_id) if result["status"] not in ACTIVE else None
@@ -282,6 +273,19 @@ class ExperimentService:
             and resume_checkpoint[1]["step"] < state["recipe"]["steps"]
         )
         result["evaluation_available"] = bool(can_retry and checkpoint)
+
+    def _view(self, state: dict) -> dict:
+        run_id = state["run_id"]
+        result = {key: state.get(key) for key in PUBLIC}
+        if "initial_adapter" in state:
+            result["initial_adapter"] = state["initial_adapter"]
+        if self._orphaned(state):
+            result.update(status="failed", error="experiment_supervisor_exited")
+        committed = self._check_report(run_id)
+        if committed is not None and not self._child_alive(state):
+            result.update(status="succeeded", stage="done", error=None)
+            result["report"] = {"summaries": committed["summaries"]}
+        self._checkpoint_fields(state, result)
         operator_controls = state.get("campaign_id") is None
         result["actions"] = {
             "stop": operator_controls

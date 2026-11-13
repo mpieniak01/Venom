@@ -107,6 +107,14 @@ file_ro() {
     mount_ro "$1" "$2"
 }
 
+copy_initial_input() {
+    local source=$1 destination=$2 limit=$3
+    # The sandbox verifies and loads these same bytes from its private tmpfs.
+    [[ -f "$source" && ! -L "$source" ]]
+    head -c "$((limit + 1))" -- "$source" > "$destination"
+    [[ $(stat -c %s -- "$destination") -le $limit ]]
+}
+
 for directory in /usr/bin /usr/lib/x86_64-linux-gnu /usr/lib64 /usr/share /usr/lib/wsl/lib /usr/lib/wsl/drivers; do
     if [[ -d "$directory" ]]; then
         mkdir -p "$scratch$directory"
@@ -143,10 +151,11 @@ case "$mode" in
         if [[ $# -ge 1 ]]; then file_ro "$1" "$scratch/inputs/recipe.json"; fi
         if [[ $# -eq 3 ]]; then
             mkdir "$scratch/inputs/initial-adapter"
-            for name in adapter_config.json adapter_model.safetensors; do
-                file_ro "$2/$name" "$scratch/inputs/initial-adapter/$name"
-            done
-            file_ro "$3" "$scratch/inputs/initial-adapter.json"
+            copy_initial_input "$2/adapter_config.json" \
+                "$scratch/inputs/initial-adapter/adapter_config.json" $((16 * 1024))
+            copy_initial_input "$2/adapter_model.safetensors" \
+                "$scratch/inputs/initial-adapter/adapter_model.safetensors" $((512 * 1024 * 1024))
+            copy_initial_input "$3" "$scratch/inputs/initial-adapter.json" $((16 * 1024))
         fi
         ;;
 esac

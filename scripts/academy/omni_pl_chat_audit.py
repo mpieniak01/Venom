@@ -12,6 +12,7 @@ from scripts.academy.omni_pl_chat_masks import SNAPSHOT_PIN, audit
 from scripts.academy.omni_pl_chat_p1 import _verify_boundary, _write_json
 
 GROUPS = ("replay", "fresh")
+MAX_AUDIT_SKILLS = 128
 MAX_INPUT_BYTES = 8 * 1024 * 1024
 _SKILL = re.compile(r"[a-z0-9][a-z0-9_-]{0,63}")
 
@@ -50,6 +51,8 @@ def read_taxonomy(path: Path, record_ids: set[str]) -> dict[str, dict[str, str]]
             raise ValueError(
                 "audit taxonomy requires a replay/fresh group and skill slug"
             )
+    if len({label["skill"] for label in labels.values()}) > MAX_AUDIT_SKILLS:
+        raise ValueError(f"audit taxonomy supports at most {MAX_AUDIT_SKILLS} skills")
     return labels
 
 

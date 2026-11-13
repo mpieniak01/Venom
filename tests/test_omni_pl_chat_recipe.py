@@ -674,6 +674,32 @@ def test_mixture_audit_fails_before_tokenizing_invalid_sources(
     forbidden.assert_not_called()
 
 
+def test_mixture_audit_rejects_excess_distinct_skills_before_tokenization(
+    tmp_path, monkeypatch
+):
+    train_path, dev_path, taxonomy_path = _audit_inputs(tmp_path)
+    train_row = read_jsonl(train_path)[0]
+    record_ids = [f"train-{i}" for i in range(mixture.MAX_AUDIT_SKILLS + 1)]
+    labels = {
+        key: {"group": "replay", "skill": f"skill-{i}"}
+        for i, key in enumerate(record_ids)
+    }
+    train_path.unlink()
+    write_jsonl(train_path, [{**train_row, "record_id": key} for key in record_ids])
+    taxonomy = {"schema_version": 1, "records": labels}
+
+    mask_audit = Mock()
+    monkeypatch.setattr(mixture, "audit", mask_audit)
+    taxonomy_path.write_text(json.dumps(taxonomy), encoding="utf-8")
+    with pytest.raises(ValueError, match="at most 128 skills"):
+        mixture.build_audit(tmp_path, train_path, dev_path, taxonomy_path, 128)
+    mask_audit.assert_not_called()
+
+    labels[record_ids[-1]]["skill"] = labels[record_ids[0]]["skill"]
+    taxonomy_path.write_text(json.dumps(taxonomy), encoding="utf-8")
+    assert mixture.read_taxonomy(taxonomy_path, set(record_ids)) == labels
+
+
 def test_mixture_audit_rejects_sources_changed_after_masking(tmp_path, monkeypatch):
     _mask_fixture(monkeypatch)
     (tmp_path / "chat_template.jinja").write_text("template", encoding="utf-8")

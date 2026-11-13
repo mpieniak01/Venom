@@ -391,6 +391,12 @@ def run(mode: str) -> None:
     )
     backbone = import_module(type(base.model.language_model).__module__)
     base.config.use_cache = False
+    if recipe["gradient_checkpointing"]:
+        base.requires_grad_(False)
+        base.gradient_checkpointing_enable(
+            gradient_checkpointing_kwargs={"use_reentrant": False}
+        )
+        base.enable_input_require_grads()
     selector = re.compile(profile["target_modules"])
     module_inventory = _module_inventory(base, selector)
     planned_modules = {item["name"] for item in module_inventory}

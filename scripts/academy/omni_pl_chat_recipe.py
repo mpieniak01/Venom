@@ -12,6 +12,7 @@ DEFAULT_RECIPE: dict[str, Any] = {
     "dropout": 0.0,
     "target_modules": ["q_proj", "v_proj"],
     "loss_mode": "model_default",
+    "gradient_checkpointing": False,
     "steps": 8,
     "save_every": 2,
     "warmup_steps": 1,
@@ -90,6 +91,8 @@ def validate_recipe(value: object) -> dict[str, Any]:
             raise ValueError(f"{key} must be a finite number in [{lower}, {upper}]")
         recipe[key] = float(item)
     recipe["target_modules"] = validate_target_modules(recipe["target_modules"])
+    if type(recipe["gradient_checkpointing"]) is not bool:
+        raise ValueError("gradient_checkpointing must be a boolean")
     if recipe["loss_mode"] not in ("model_default", "supervised_token"):
         raise ValueError("unsupported loss_mode")
     if recipe["lr_scheduler_type"] not in ("linear", "cosine", "constant"):

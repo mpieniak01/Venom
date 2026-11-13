@@ -47,6 +47,7 @@ def test_recipe_overrides_keep_defaults_and_canonicalize_targets(tmp_path):
     assert recipe["rank"] == 8
     assert recipe["alpha"] == 8
     assert recipe["loss_mode"] == "model_default"
+    assert recipe["gradient_checkpointing"] is False
     assert recipe["target_modules"] == ["q_proj", "v_proj"]
     assert recipe["steps"] == 5
     assert recipe["gradient_accumulation_steps"] == 4
@@ -59,6 +60,13 @@ def test_wider_language_targets_canonicalize_without_recipe_changes():
     assert wide.pop("target_modules") == list(LANGUAGE_TARGET_MODULES)
     assert control.pop("target_modules") == ["q_proj", "v_proj"]
     assert wide == control
+
+
+def test_gradient_checkpointing_is_explicit_and_boolean():
+    enabled = validate_recipe({"gradient_checkpointing": True})
+    assert enabled["gradient_checkpointing"] is True
+    with pytest.raises(ValueError, match="gradient_checkpointing must be a boolean"):
+        validate_recipe({"gradient_checkpointing": "true"})
 
 
 def test_token_loss_accumulation_matches_one_pooled_batch(tmp_path):

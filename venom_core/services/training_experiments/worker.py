@@ -8,6 +8,7 @@ import os
 import subprocess
 import time
 from pathlib import Path
+from socket import socket as probe_socket
 
 import httpx
 from dotenv import dotenv_values
@@ -117,24 +118,20 @@ class Worker:
         """Unload models before CUDA starts and retain the lease for the whole job."""
         capability = lease.training_cleanup_capability()
         try:
+            port = self._local_api_port()
             if offline:
+                # An older API may be serving before it has claimed the ledger.
+                # Only use the standalone release path when the API is absent.
+                with probe_socket() as probe:
+                    probe.settimeout(1)
+                    if probe.connect_ex(("127.0.0.1", port)) == 0:
+                        raise ValueError("API listener has no host ownership")
                 receipt = asyncio.run(
                     release_all_runtime_models(
                         LlmServerController(SETTINGS), training_capability=capability
                     )
                 )
             else:
-                values = dotenv_values(_settings_env_file())
-                port = os.environ.get("PORT") or values.get("PORT")
-                if not port:
-                    proxy = os.environ.get("API_PROXY_TARGET") or values.get(
-                        "API_PROXY_TARGET"
-                    )
-                    port = httpx.URL(proxy).port if proxy else None
-                default_port = {"dev": 8000, "preprod": 8100, "prod": 8200}
-                port = int(port or default_port.get(SETTINGS.ENVIRONMENT_ROLE, 8000))
-                if not 1 <= port <= 65535:
-                    raise ValueError("invalid local API port")
                 with httpx.Client(timeout=120, trust_env=False) as client:
                     response = client.post(
                         f"http://127.0.0.1:{port}/api/v1/system/models/release",
@@ -148,9 +145,22 @@ class Worker:
                 or receipt.get("training_lease_verified") is not True
             ):
                 raise ValueError("incomplete model release")
-        except (HTTPException, httpx.HTTPError, ValueError) as exc:
+        except (HTTPException, httpx.HTTPError, OSError, ValueError) as exc:
             raise ValueError("experiment_gpu_release_failed") from exc
         atomic_json(self.directory / f"gpu-release-{self.attempt}.json", receipt)
+
+    @staticmethod
+    def _local_api_port() -> int:
+        values = dotenv_values(_settings_env_file())
+        port: str | int | None = os.environ.get("PORT") or values.get("PORT")
+        if not port:
+            proxy = os.environ.get("API_PROXY_TARGET") or values.get("API_PROXY_TARGET")
+            port = httpx.URL(proxy).port if proxy else None
+        defaults = {"dev": 8000, "preprod": 8100, "prod": 8200}
+        result = int(port or defaults.get(SETTINGS.ENVIRONMENT_ROLE, 8000))
+        if not 1 <= result <= 65535:
+            raise ValueError("invalid local API port")
+        return result
 
     def _space(self, profile: Profile) -> None:
         volumes = [self.directory]

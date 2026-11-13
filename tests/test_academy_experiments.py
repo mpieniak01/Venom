@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 
+import httpx
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -14,6 +15,7 @@ from scripts.academy.omni_pl_chat_p1 import CHECKPOINT_FILES
 from venom_core.api.routes import academy_experiments as routes
 from venom_core.services.remote_training.lifecycle import atomic_json, process_identity
 from venom_core.services.runtime_admission import RuntimeAdmission
+from venom_core.services.training_experiments import worker as worker_module
 from venom_core.services.training_experiments.evidence import latest_checkpoint
 from venom_core.services.training_experiments.profiles import digest
 from venom_core.services.training_experiments.service import ExperimentService
@@ -344,3 +346,90 @@ def test_worker_stops_before_model_load_when_release_fails(setup, monkeypatch):
     assert svc.status("release-failed")["error"] == "experiment_gpu_release_failed"
     assert not (svc.run_dir("release-failed") / "training").exists()
     assert "owner" not in host.snapshot()
+
+
+@pytest.mark.parametrize("verified", [True, False])
+def test_local_api_must_verify_training_lease(setup, monkeypatch, verified):
+    svc, _, _, _, _, _, _ = setup
+    svc.start("smoke", "gpu-release")
+    worker = Worker(svc, "gpu-release", 1)
+    host = RuntimeAdmission(svc.root / "host.sqlite3")
+    lease = host.acquire(
+        owner="academy-experiment",
+        run_id="gpu-release",
+        engine="omni-training",
+        model="omni",
+    )
+    monkeypatch.delenv("PORT", raising=False)
+    monkeypatch.delenv("API_PROXY_TARGET", raising=False)
+    monkeypatch.setattr(
+        worker_module,
+        "dotenv_values",
+        lambda path: {"API_PROXY_TARGET": "http://127.0.0.1:8800"},
+    )
+
+    def respond(request):
+        assert str(request.url) == "http://127.0.0.1:8800/api/v1/system/models/release"
+        host.validate_training_cleanup(
+            request.headers[worker_module.TRAINING_CLEANUP_HEADER]
+        )
+        receipt = {"released": True, "memory_before": {}, "memory_after": {}}
+        if verified:
+            receipt["training_lease_verified"] = True
+        return httpx.Response(200, json=receipt)
+
+    client = httpx.Client(transport=httpx.MockTransport(respond), trust_env=False)
+    monkeypatch.setattr(worker_module.httpx, "Client", lambda **kwargs: client)
+    receipt_path = worker.directory / "gpu-release-1.json"
+    if verified:
+        worker.prepare_gpu(lease, offline=False)
+        assert json.loads(receipt_path.read_text())["training_lease_verified"] is True
+    else:
+        with pytest.raises(ValueError, match="experiment_gpu_release_failed"):
+            worker.prepare_gpu(lease, offline=False)
+        assert not receipt_path.exists()
+    assert lease.release()
+
+
+def test_standalone_training_releases_under_the_lease(setup, monkeypatch):
+    svc, _, _, _, _, _, _ = setup
+    svc.start("smoke", "offline")
+    worker = Worker(svc, "offline", 1)
+    host = RuntimeAdmission(svc.root / "host.sqlite3")
+    monkeypatch.setattr(worker_module, "probe_socket", lambda: FakeSocket(111))
+    lease = host.acquire(
+        owner="academy-experiment",
+        run_id="offline",
+        engine="omni-training",
+        model="omni",
+    )
+    monkeypatch.setattr(worker_module, "LlmServerController", lambda settings: object())
+
+    async def release(controller, *, training_capability):
+        with host.training_cleanup(training_capability):
+            return {"released": True, "training_lease_verified": True}
+
+    monkeypatch.setattr(worker_module, "release_all_runtime_models", release)
+    worker.prepare_gpu(lease, offline=True)
+    assert (worker.directory / "gpu-release-1.json").exists()
+    monkeypatch.setattr(worker_module, "probe_socket", lambda: FakeSocket(0))
+    with pytest.raises(ValueError, match="experiment_gpu_release_failed"):
+        worker.prepare_gpu(lease, offline=True)
+    assert lease.release()
+
+
+class FakeSocket:
+    def __init__(self, result):
+        self.result = result
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        return None
+
+    def settimeout(self, timeout):
+        pass
+
+    def connect_ex(self, endpoint):
+        return self.result

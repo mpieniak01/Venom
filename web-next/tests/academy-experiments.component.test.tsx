@@ -164,6 +164,12 @@ describe("Academy experiments", () => {
           base: { total: metric, dialogue: { ...metric, n: 1, usable: 0 } },
           candidate: { total: { ...metric, usable: 3 }, dialogue: { ...metric, n: 1, usable: 1 } },
         },
+        initial_adapter: {
+          adapter_id: "p13-145", label: "P13 checkpoint 145", model: "Omni",
+          revision: "a".repeat(40), snapshot_sha256: "b".repeat(64),
+          config_sha256: "c".repeat(64), weights_sha256: "d".repeat(64),
+          source: { identity: "P13", sha256: "e".repeat(64) },
+        },
         cases: [{ case_id: "case-1", base: { text: "Bazowa odpowiedź" }, candidate: { text: "Odpowiedź adaptera" } }],
       }),
     });
@@ -174,6 +180,8 @@ describe("Academy experiments", () => {
     fireEvent.change(screen.getByLabelText("Kategoria wyników"), { target: { value: "dialogue" } });
     assert.match(table.textContent ?? "", /Użyteczność0 \/ 11 \/ 1/);
     assert.ok(screen.getByText("Odpowiedź adaptera"));
+    assert.ok(screen.getByText("p13-145"));
+    assert.equal(screen.getByText("d".repeat(12)).getAttribute("title"), "d".repeat(64));
     assert.ok(screen.getByRole("button", { name: "Pobierz raport JSON" }));
     fireEvent.click(screen.getByRole("button", { name: "Pokaż decyzję jakościową" }));
     assert.deepEqual(opened, [run.run_id]);

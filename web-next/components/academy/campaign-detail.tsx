@@ -12,6 +12,7 @@ import {
 } from "@/lib/academy-campaign-api";
 import { useLanguage, useTranslation } from "@/lib/i18n";
 import { OPTUNA_PARAMETERS, OptunaPlanSummary } from "./campaign-optuna";
+import { InitialAdapterSummary, useInitialAdapterError } from "./initial-adapter";
 import { QualityPolicySummary, TrialQualityDecision } from "./campaign-quality-policy";
 
 const ACTIVE = new Set(["running", "awaiting_review", "stopping", "interrupted"]);
@@ -134,6 +135,11 @@ function OptunaTrialSummary({ trial }: { readonly trial: CampaignTrial }) {
   );
 }
 
+function TrialAdapterError({ code }: { readonly code?: string | null }) {
+  const message = useInitialAdapterError(code);
+  return message && <p className="text-xs text-red-400">{message}</p>;
+}
+
 interface CampaignDetailProps {
   readonly campaign: Campaign;
   readonly disabled: boolean;
@@ -146,6 +152,7 @@ interface CampaignDetailProps {
 export function CampaignDetail({ campaign, disabled, optunaAvailable, onAction, onOpenRun, onChanged }: CampaignDetailProps) {
   const { t, language } = useLanguage();
   const { budget, selection, variants, strategy } = campaign.plan;
+  const adapterError = useInitialAdapterError(campaign.error);
   const optuna = strategy === "optuna";
   const launchDisabled = disabled || (optuna && !optunaAvailable);
   const displayNumber = new Intl.NumberFormat(language, { maximumFractionDigits: 1 });
@@ -195,7 +202,7 @@ export function CampaignDetail({ campaign, disabled, optunaAvailable, onAction, 
       {campaign.quality_policy_error && (
         <p role="alert" className="text-sm text-red-400">{t("academy.campaigns.quality.guard.stale")}</p>
       )}
-      {campaign.error && <p role="alert" className="break-all text-sm text-red-400">{campaign.error}</p>}
+      {campaign.error && <p role="alert" className="break-all text-sm text-red-400">{adapterError ?? campaign.error}</p>}
       {campaign.selected_run_id && (
         <p className="break-all text-sm font-medium">{t("academy.campaigns.selected")} {campaign.selected_run_id}</p>
       )}
@@ -234,12 +241,19 @@ export function CampaignDetail({ campaign, disabled, optunaAvailable, onAction, 
                     </Button>
                     {optuna && <OptunaTrialSummary trial={trial} />}
                     {trial.quality_guard && <TrialQualityDecision guard={trial.quality_guard} />}
-                    {!optuna && variant && <p className="pl-3 text-xs text-hint">
-                      {t("academy.experiments.rank")} {variant.recipe.rank} · {t("academy.experiments.learningRate")} {variant.recipe.learning_rate}
-                      {" · "}{t("academy.campaigns.plannedWorkload")} {displayNumber.format(variant.workload.updates)} / {displayNumber.format(variant.workload.tokens)}
-                    </p>}
+                    {!optuna && variant && (
+                      <div className="space-y-1 pl-3 text-xs text-hint">
+                        <p>{t("academy.experiments.rank")} {variant.recipe.rank} · {t("academy.experiments.learningRate")} {variant.recipe.learning_rate}
+                          {" · "}{t("academy.campaigns.plannedWorkload")} {displayNumber.format(variant.workload.updates)} / {displayNumber.format(variant.workload.tokens)}
+                        </p>
+                        <InitialAdapterSummary adapter={variant.initial_adapter} />
+                      </div>
+                    )}
                   </th>
-                  <td className="px-3 py-2"><CampaignStatus status={trial.status} /></td>
+                  <td className="px-3 py-2">
+                    <CampaignStatus status={trial.status} />
+                    <TrialAdapterError code={trial.error} />
+                  </td>
                   <td className="px-3 py-2">{delta(trial.usable_delta)}</td>
                   <td className="px-3 py-2">{delta(trial.critical_delta)}</td>
                 </tr>

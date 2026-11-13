@@ -221,6 +221,22 @@ export const academy = {
     },
   },
   campaigns: {
+    initialAdapter: {
+      label: "Źródło inicjalizacji",
+      fresh: "Nowa LoRA od modelu bazowego",
+      registered: "Start z zapisanego adaptera",
+      unavailable: "Niedostępny dla tego profilu",
+      weights: "SHA-256 wag",
+      source: "Pochodzenie",
+      loadError: "Nie udało się wczytać katalogu adapterów startowych.",
+      errors: {
+        experiment_initial_adapter_receipt_invalid: "Pokwitowanie adaptera startowego nie odpowiada zapisanym plikom.",
+        experiment_initial_adapter_invalid: "Wpis adaptera startowego jest nieprawidłowy.",
+        experiment_initial_adapter_missing: "Adaptera startowego nie ma w katalogu.",
+        experiment_initial_adapter_changed: "Adapter startowy zmienił się od chwili sprawdzenia. Zweryfikuj katalog i zaplanuj kampanię ponownie.",
+        experiment_initial_adapter_incompatible: "Adapter startowy nie pasuje do modelu bazowego lub konfiguracji LoRA.",
+      },
+    },
     quality: {
       criticalComparison: "Błędy krytyczne",
       criticalComparisonHint: "Wynik po lewej dotyczy bazy lub odniesienia, a po prawej kandydata. Kreska oznacza brak pełnej oceny błędów krytycznych.",

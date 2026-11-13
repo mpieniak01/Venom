@@ -221,6 +221,22 @@ export const academy = {
     },
   },
   campaigns: {
+    initialAdapter: {
+      label: "Initialization source",
+      fresh: "New LoRA from the base model",
+      registered: "Start from a saved adapter",
+      unavailable: "Unavailable for this profile",
+      weights: "Weights SHA-256",
+      source: "Source",
+      loadError: "The initial adapter catalog could not be loaded.",
+      errors: {
+        experiment_initial_adapter_receipt_invalid: "The initial adapter receipt does not match the saved files.",
+        experiment_initial_adapter_invalid: "The initial adapter entry is invalid.",
+        experiment_initial_adapter_missing: "The initial adapter is missing from the catalog.",
+        experiment_initial_adapter_changed: "The initial adapter changed after validation. Check the catalog and plan the campaign again.",
+        experiment_initial_adapter_incompatible: "The initial adapter is incompatible with the base model or LoRA configuration.",
+      },
+    },
     quality: {
       criticalComparison: "Critical errors",
       criticalComparisonHint: "The left value is for the baseline or reference, and the right value is for the candidate. A dash means the critical error review is incomplete.",

@@ -15,6 +15,7 @@ import {
   type ExperimentVerdict,
 } from "@/lib/academy-experiments-api";
 import { useLanguage, useTranslation } from "@/lib/i18n";
+import { InitialAdapterSummary } from "./initial-adapter";
 
 const METRICS = [
   ["semantic", "academy.experiments.semantic"],
@@ -162,6 +163,7 @@ export function ExperimentResult({ run, onOpenQuality }: {
           </Button>
         </div>
       </div>
+      {run.attempt > 0 && <InitialAdapterSummary adapter={report.initial_adapter ?? run.initial_adapter} />}
       {tasks.length > 0 && (
         <div className="flex flex-wrap items-center gap-2">
           <Label htmlFor="experiment-result-task">{t("academy.experiments.category")}</Label>

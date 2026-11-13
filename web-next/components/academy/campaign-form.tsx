@@ -5,11 +5,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { CampaignRequest, CampaignStrategy, OptunaSearchSpace } from "@/lib/academy-campaign-api";
-import type { ExperimentProfile, ExperimentRecipe } from "@/lib/academy-experiments-api";
+import type { ExperimentInitialAdapter, ExperimentProfile, ExperimentRecipe } from "@/lib/academy-experiments-api";
 import { useTranslation } from "@/lib/i18n";
 import type { QualityCampaignDraft } from "@/lib/academy-quality-api";
 import { CampaignPolicyFields, PinnedQualitySource, readQualityPolicy } from "./campaign-quality-policy";
 import { OPTUNA_PARAMETERS, OptunaFields } from "./campaign-optuna";
+import { initialAdapterField, InitialAdapterSelector } from "./initial-adapter";
 
 const MIB = 1024 ** 2;
 const DRAFT_RECIPE_FIELDS = new Set([
@@ -91,6 +92,14 @@ function variantRecipe(data: FormData, row: number, editableRecipe: boolean): Re
   return { ...recipe };
 }
 
+function fixedVariant(data: FormData, row: number, draft: boolean, adapters: ExperimentInitialAdapter[]) {
+  const recipe = variantRecipe(data, row, draft);
+  const adapter = data.get(initialAdapterField(row));
+  if (!adapter) return recipe;
+  if (!adapters.some((item) => item.adapter_id === adapter)) throw new Error("initial adapter unavailable");
+  return { ...recipe, initial_adapter_id: adapter };
+}
+
 function readOptunaPlan(data: FormData): Pick<CampaignRequest, "variants" | "strategy" | "search_space" | "sampler_seed"> {
   const searchSpace: OptunaSearchSpace = {};
   for (const { key, min, max, integer } of OPTUNA_PARAMETERS) {
@@ -112,7 +121,8 @@ function readOptunaPlan(data: FormData): Pick<CampaignRequest, "variants" | "str
 }
 
 function readPlan(
-  data: FormData, profileId: string, rows: number[], strategy: CampaignStrategy, draft?: QualityCampaignDraft,
+  data: FormData, profileId: string, rows: number[], strategy: CampaignStrategy, adapters: ExperimentInitialAdapter[],
+  draft?: QualityCampaignDraft,
 ): CampaignRequest {
   const campaignId = data.get("campaign_id");
   if (typeof campaignId !== "string") throw new Error("campaign id must be text");
@@ -124,7 +134,7 @@ function readPlan(
     profile_id: profileId,
     ...(strategy === "optuna"
       ? readOptunaPlan(data)
-      : { variants: rows.map((row) => variantRecipe(data, row, Boolean(draft))) }),
+      : { variants: rows.map((row) => fixedVariant(data, row, Boolean(draft), adapters)) }),
     ...(qualityPolicy ? { quality_policy: qualityPolicy } : {}),
     budget: {
       max_trials: numberField(data, "max_trials"),
@@ -147,6 +157,8 @@ function readPlan(
 
 interface CampaignFormProps {
   readonly profiles: ExperimentProfile[];
+  readonly adapters: ExperimentInitialAdapter[];
+  readonly adaptersFailed: boolean;
   readonly disabled: boolean;
   readonly optunaAvailable: boolean;
   readonly draft?: QualityCampaignDraft;
@@ -154,7 +166,7 @@ interface CampaignFormProps {
   readonly onPlan: (request: CampaignRequest) => Promise<boolean>;
 }
 
-export function CampaignForm({ profiles, disabled, optunaAvailable, draft, onDiscardDraft, onPlan }: CampaignFormProps) {
+export function CampaignForm({ profiles, adapters, adaptersFailed, disabled, optunaAvailable, draft, onDiscardDraft, onPlan }: CampaignFormProps) {
   const t = useTranslation();
   const [profileId, setProfileId] = useState(draft?.profileId ?? "");
   const [rows, setRows] = useState(() => draft?.variants.map((_, index) => index) ?? [0]);
@@ -163,6 +175,7 @@ export function CampaignForm({ profiles, disabled, optunaAvailable, draft, onDis
   const invalidMessage = strategy === "optuna" ? "academy.campaigns.optuna.invalid" : "academy.campaigns.invalid";
   const [invalid, setInvalid] = useState(false);
   const profile = profiles.find((item) => item.id === profileId) ?? (draft ? undefined : profiles[0]);
+  const profileAdapters = adapters.filter((item) => item.model === profile?.model);
   const unsupportedFields = [...new Set(draft?.variants.flatMap((variant) =>
     unsupportedDraftFields(variant.recipe)) ?? [])];
   if (!profiles.length) return <p className="text-sm text-hint">{t("academy.experiments.noProfiles")}</p>;
@@ -171,7 +184,7 @@ export function CampaignForm({ profiles, disabled, optunaAvailable, draft, onDis
     event.preventDefault();
     if (disabled || !profile || unavailableStrategy) return;
     try {
-      const request = readPlan(new FormData(event.currentTarget), profile.id, rows, strategy, draft);
+      const request = readPlan(new FormData(event.currentTarget), profile.id, rows, strategy, profileAdapters, draft);
       if (request.variants.length > request.budget.max_trials || request.budget.trial_seconds > request.budget.max_seconds) {
         setInvalid(true);
         return;
@@ -232,6 +245,7 @@ export function CampaignForm({ profiles, disabled, optunaAvailable, draft, onDis
       {strategy === "optuna" && <OptunaFields disabled={disabled || unavailableStrategy} />}
       <fieldset className="space-y-3" hidden={strategy !== "fixed"} disabled={strategy !== "fixed"}>
         <legend className="text-sm font-medium">{t("academy.campaigns.variants")}</legend>
+        {adaptersFailed && <output className="block text-sm text-hint">{t("academy.campaigns.initialAdapter.loadError")}</output>}
         {rows.map((row, index) => (
           <div key={row} className="space-y-2 rounded-lg border border-[color:var(--ui-border)] p-3">
             <div className="flex items-center justify-between gap-2">
@@ -261,6 +275,7 @@ export function CampaignForm({ profiles, disabled, optunaAvailable, draft, onDis
                 </div>
               ))}
             </div>}
+            <InitialAdapterSelector row={row} index={index} adapters={profileAdapters} disabled={disabled} />
           </div>
         ))}
         <Button type="button" size="sm" variant="outline" disabled={disabled || rows.length >= 32}

@@ -19,6 +19,17 @@ export interface ExperimentProfile {
   recipe: ExperimentRecipe;
 }
 
+export interface ExperimentInitialAdapter {
+  adapter_id: string;
+  label: string;
+  model: string;
+  revision: string;
+  snapshot_sha256: string;
+  config_sha256: string;
+  weights_sha256: string;
+  source: { identity: string; sha256: string };
+}
+
 export interface ExperimentRun {
   run_id: string;
   profile_id: string;
@@ -34,6 +45,7 @@ export interface ExperimentRun {
   resume_available: boolean;
   error?: string | null;
   report?: ExperimentReport | null;
+  initial_adapter?: ExperimentInitialAdapter | null;
   external_review?: { record_id: string; outcome: QualityDecision } | null;
 }
 
@@ -76,6 +88,7 @@ export interface ExperimentArtifact {
 export type ExperimentVerdict = { semantic: number; usable: number; passed: number };
 
 export interface ExperimentReport {
+  initial_adapter?: ExperimentInitialAdapter | null;
   historical?: boolean;
   summaries: {
     base: Record<string, ExperimentMetrics>;
@@ -107,6 +120,10 @@ export type ExperimentAction = "stop" | "resume" | "evaluate";
 
 function runPath(runId: string) {
   return `${EXPERIMENTS}/runs/${encodeURIComponent(runId)}`;
+}
+
+export async function listInitialAdapters(signal?: AbortSignal) {
+  return (await apiFetch<{ adapters: ExperimentInitialAdapter[] }>(`${EXPERIMENTS}/adapters`, { signal })).adapters;
 }
 
 export async function listExperimentProfiles(signal?: AbortSignal) {

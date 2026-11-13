@@ -48,6 +48,8 @@ def test_recipe_overrides_keep_defaults_and_canonicalize_targets(tmp_path):
     assert recipe["alpha"] == 8
     assert recipe["loss_mode"] == "model_default"
     assert recipe["gradient_checkpointing"] is False
+    assert recipe["gpu_allocator_reserve_mib"] == 1000
+    assert recipe["gpu_step_min_free_mib"] == 600
     assert recipe["target_modules"] == ["q_proj", "v_proj"]
     assert recipe["steps"] == 5
     assert recipe["gradient_accumulation_steps"] == 4
@@ -67,6 +69,22 @@ def test_gradient_checkpointing_is_explicit_and_boolean():
     assert enabled["gradient_checkpointing"] is True
     with pytest.raises(ValueError, match="gradient_checkpointing must be a boolean"):
         validate_recipe({"gradient_checkpointing": "true"})
+
+
+def test_gpu_headroom_is_bounded_and_step_limit_stays_below_reserve():
+    widened = validate_recipe(
+        {"gpu_allocator_reserve_mib": 768, "gpu_step_min_free_mib": 384}
+    )
+    assert (widened["gpu_allocator_reserve_mib"], widened["gpu_step_min_free_mib"]) == (
+        768,
+        384,
+    )
+    with pytest.raises(ValueError, match="gpu_allocator_reserve_mib"):
+        validate_recipe({"gpu_allocator_reserve_mib": 0})
+    with pytest.raises(ValueError, match="GPU step minimum"):
+        validate_recipe(
+            {"gpu_allocator_reserve_mib": 768, "gpu_step_min_free_mib": 768}
+        )
 
 
 def test_token_loss_accumulation_matches_one_pooled_batch(tmp_path):

@@ -344,8 +344,12 @@ def run(mode: str) -> None:
     free, total = torch.cuda.mem_get_info()
     if free < 6500 * mib:
         raise RuntimeError(f"only {free // mib} MiB free on the GPU")
-    torch.cuda.set_per_process_memory_fraction(min(1.0, (free - 1000 * mib) / total))
+    allocator_limit_mib = free // mib - recipe["gpu_allocator_reserve_mib"]
+    torch.cuda.set_per_process_memory_fraction(
+        min(1.0, (free - recipe["gpu_allocator_reserve_mib"] * mib) / total)
+    )
     torch.cuda.reset_peak_memory_stats()
+    minimum_gpu_free_mib = free // mib
 
     targets = "|".join(recipe["target_modules"])
     profile = {
@@ -448,8 +452,15 @@ def run(mode: str) -> None:
 
     class PilotCallback(TrainerCallback):
         def on_step_end(self, args, state, control, **kwargs):
-            if torch.cuda.mem_get_info()[0] < 600 * mib:
-                raise RuntimeError("stopped at the GPU headroom threshold")
+            nonlocal minimum_gpu_free_mib
+            free_now_mib = torch.cuda.mem_get_info()[0] // mib
+            minimum_gpu_free_mib = min(minimum_gpu_free_mib, free_now_mib)
+            if free_now_mib < recipe["gpu_step_min_free_mib"]:
+                raise RuntimeError(
+                    "stopped at the GPU headroom threshold: "
+                    f"{free_now_mib} MiB free below "
+                    f"{recipe['gpu_step_min_free_mib']} MiB"
+                )
             if state.global_step == recipe["steps"]:
                 control.should_save = True
             if mode == "initial" and state.global_step == recipe["save_every"]:
@@ -549,6 +560,9 @@ def run(mode: str) -> None:
         "step_logs": step_logs,
         "checkpoint": f"checkpoint-{expected_step}",
         "initial_gpu_free_mib": free // mib,
+        "gpu_total_mib": total // mib,
+        "gpu_allocator_limit_mib": allocator_limit_mib,
+        "minimum_gpu_free_mib_at_step": minimum_gpu_free_mib,
         "peak_gpu_allocated_mib": round(torch.cuda.max_memory_allocated() / mib, 1),
         "peak_gpu_reserved_mib": round(torch.cuda.max_memory_reserved() / mib, 1),
         "peak_rss_mib": round(

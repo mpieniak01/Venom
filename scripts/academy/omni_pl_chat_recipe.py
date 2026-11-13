@@ -13,6 +13,8 @@ DEFAULT_RECIPE: dict[str, Any] = {
     "target_modules": ["q_proj", "v_proj"],
     "loss_mode": "model_default",
     "gradient_checkpointing": False,
+    "gpu_allocator_reserve_mib": 1000,
+    "gpu_step_min_free_mib": 600,
     "steps": 8,
     "save_every": 2,
     "warmup_steps": 1,
@@ -33,6 +35,8 @@ _INTEGER_LIMITS = {
     "microbatch": (1, 4),
     "gradient_accumulation_steps": (1, 32),
     "seed": (0, 2**32 - 1),
+    "gpu_allocator_reserve_mib": (512, 4096),
+    "gpu_step_min_free_mib": (256, 2048),
 }
 LANGUAGE_TARGET_MODULES = (
     "q_proj",
@@ -78,6 +82,8 @@ def validate_recipe(value: object) -> dict[str, Any]:
         or recipe["warmup_steps"] >= recipe["steps"]
     ):
         raise ValueError("save interval and warmup must fit the optimizer step budget")
+    if recipe["gpu_step_min_free_mib"] >= recipe["gpu_allocator_reserve_mib"]:
+        raise ValueError("GPU step minimum must be below the allocator reserve")
     for key, lower, upper in (
         ("dropout", 0.0, 0.5),
         ("learning_rate", 1e-7, 0.01),

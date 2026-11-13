@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, type Ref } from "react";
 import { ApiError } from "@/lib/api-client";
 import {
   getExperimentLogs,
@@ -85,26 +85,56 @@ function ExperimentLogs({ run }: { readonly run: ExperimentRun }) {
   );
 }
 
+function ReviewQueue({ runs, disabled, onOpen }: {
+  readonly runs: ExperimentRun[];
+  readonly disabled: boolean;
+  readonly onOpen: (runId: string) => void;
+}) {
+  const t = useTranslation();
+  return (
+    <section className={SECTION_CLASS} aria-labelledby="experiment-review-queue">
+      <h3 id="experiment-review-queue" className="font-semibold">{t("academy.experiments.reviewQueue")}</h3>
+      {runs.length === 0 ? <p className="text-sm text-hint">{t("academy.experiments.noPendingReviews")}</p> : (
+        <ul className="divide-y divide-[color:var(--ui-border)]">
+          {runs.map((run) => (
+            <li key={run.run_id} className="flex flex-wrap items-center justify-between gap-2 py-2">
+              <span className="break-all text-sm">{run.run_id}</span>
+              <Button type="button" size="sm" variant="outline" disabled={disabled}
+                aria-label={`${t("academy.experiments.openReview")} · ${run.run_id}`}
+                onClick={() => onOpen(run.run_id)}>
+                {t("academy.experiments.openReview")}
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
 interface RunDetailProps {
   readonly run: ExperimentRun;
+  readonly headingRef: Ref<HTMLHeadingElement>;
+  readonly onOpenQuality?: (recordId: string) => void;
   readonly disabled: boolean;
   readonly onAction: (action: ExperimentAction) => void;
   readonly onJudgments: (judgments: Record<string, unknown>[]) => Promise<boolean>;
 }
 
-function RunDetail({ run, disabled, onAction, onJudgments }: RunDetailProps) {
+function RunDetail({ run, headingRef, onOpenQuality, disabled, onAction, onJudgments }: RunDetailProps) {
   const { t, language } = useLanguage();
   const [showLogs, setShowLogs] = useState(false);
   const interrupted = INTERRUPTED.has(run.status);
   const hasCheckpoint = typeof run.checkpoint_step === "number";
   const canResume = run.actions?.resume ?? (interrupted && run.resume_available);
   const elapsed = run.elapsed_seconds;
+  const externalReview = run.external_review;
 
   return (
     <section className={SECTION_CLASS}>
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className="break-all font-semibold">{run.run_id}</h3>
-        <p className="text-sm"><RunStatus run={run} /></p>
+        <h3 ref={headingRef} tabIndex={-1} className="break-all font-semibold">{run.run_id}</h3>
+        <p className="text-sm">{t("academy.experiments.technicalStatus")} · <RunStatus run={run} /></p>
       </div>
       <dl className="flex flex-wrap gap-4 text-sm">
         <div><dt className="text-hint">{t("academy.experiments.attempt")}</dt><dd>{run.attempt}</dd></div>
@@ -129,6 +159,19 @@ function RunDetail({ run, disabled, onAction, onJudgments }: RunDetailProps) {
           <dd>{t(run.resume_available ? "academy.experiments.available" : "academy.experiments.unavailable")}</dd>
         </div>
       </dl>
+      {externalReview && (
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <p>
+            {t("academy.experiments.externalDecision")} · {t("academy.campaigns.quality.outcome." + externalReview.outcome)}
+          </p>
+          {onOpenQuality && (
+            <Button type="button" size="sm" variant="outline"
+              onClick={() => onOpenQuality(externalReview.record_id)}>
+              {t("academy.experiments.openExternalDecision")}
+            </Button>
+          )}
+        </div>
+      )}
       {run.error && (
         <div className="space-y-1 text-sm text-red-400">
           <p>{t("academy.experiments.runError")}</p>
@@ -157,12 +200,15 @@ function RunDetail({ run, disabled, onAction, onJudgments }: RunDetailProps) {
       </div>
       {showLogs && <ExperimentLogs run={run} />}
       {(run.actions?.review ?? run.status === "awaiting_review") && <ExperimentReviewPanel runId={run.run_id} disabled={disabled} onSubmit={onJudgments} />}
-      {(run.status === "succeeded" || run.report) && <ExperimentResult run={run} />}
+      {(run.status === "succeeded" || run.report) && <ExperimentResult run={run} onOpenQuality={onOpenQuality} />}
     </section>
   );
 }
 
-export function ExperimentsPanel({ initialRunId = "" }: { readonly initialRunId?: string }) {
+export function ExperimentsPanel({ initialRunId = "", onOpenQuality }: {
+  readonly initialRunId?: string;
+  readonly onOpenQuality?: (recordId: string) => void;
+}) {
   const t = useTranslation();
   const [profiles, setProfiles] = useState<ExperimentProfile[]>([]);
   const [runs, setRuns] = useState<ExperimentRun[]>([]);
@@ -174,6 +220,8 @@ export function ExperimentsPanel({ initialRunId = "" }: { readonly initialRunId?
   const [busy, setBusy] = useState(false);
   const [selectedId, setSelectedId] = useState(initialRunId);
   const [refresh, setRefresh] = useState(0);
+  const detailHeading = useRef<HTMLHeadingElement>(null);
+  const focusReview = useRef(false);
 
   useEffect(() => {
     const abort = new AbortController();
@@ -243,8 +291,26 @@ export function ExperimentsPanel({ initialRunId = "" }: { readonly initialRunId?
 
   const selected = runs.find((run) => run.run_id === selectedId) ?? runs[0];
   const hasActive = runs.some((run) => ACTIVE.has(run.status));
+  const pendingReviews = runs.filter((run) => run.actions?.review ?? run.status === "awaiting_review");
+
+  useEffect(() => {
+    if (focusReview.current) {
+      detailHeading.current?.focus();
+      focusReview.current = false;
+    }
+  }, [selected?.run_id]);
+
+  function openReview(runId: string) {
+    if (runId === selected?.run_id) {
+      detailHeading.current?.focus();
+      return;
+    }
+    focusReview.current = true;
+    setSelectedId(runId);
+  }
   return (
     <div className="space-y-4">
+      {runsLoaded && <ReviewQueue runs={pendingReviews} disabled={runsFailed || busy} onOpen={openReview} />}
       <section className={SECTION_CLASS}>
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h3 className="font-semibold">{t("academy.experiments.title")}</h3>
@@ -287,6 +353,8 @@ export function ExperimentsPanel({ initialRunId = "" }: { readonly initialRunId?
         <RunDetail
           key={selected.run_id}
           run={selected}
+          headingRef={detailHeading}
+          onOpenQuality={onOpenQuality}
           disabled={busy || runsFailed}
           onAction={(action) => void mutate(() => updateExperiment(selected.run_id, action))}
           onJudgments={(judgments) => mutate(() => submitExperimentJudgments(selected.run_id, judgments))}

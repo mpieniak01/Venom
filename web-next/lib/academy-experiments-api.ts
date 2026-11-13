@@ -1,3 +1,4 @@
+import type { QualityDecision } from "./academy-quality-api";
 import { apiFetch } from "./api-client";
 
 const EXPERIMENTS = "/api/v1/academy/experiments";
@@ -33,6 +34,7 @@ export interface ExperimentRun {
   resume_available: boolean;
   error?: string | null;
   report?: ExperimentReport | null;
+  external_review?: { record_id: string; outcome: QualityDecision } | null;
 }
 
 export interface ExperimentMetrics {

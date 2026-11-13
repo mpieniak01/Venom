@@ -28,9 +28,11 @@ const ACTION_ERROR = {
 export function CampaignPanel({
   onOpenRun,
   initialCampaignId,
+  initialQualityId,
 }: {
   readonly onOpenRun: (runId: string) => void;
   readonly initialCampaignId?: string;
+  readonly initialQualityId?: string;
 }) {
   const t = useTranslation();
   const [profiles, setProfiles] = useState<ExperimentProfile[] | null>(null);
@@ -42,7 +44,7 @@ export function CampaignPanel({
   const [busy, setBusy] = useState(false);
   const [selectedId, setSelectedId] = useState(initialCampaignId ?? "");
   const [refresh, setRefresh] = useState(0);
-  const [qualityOpen, setQualityOpen] = useState(false);
+  const [qualityOpen, setQualityOpen] = useState(Boolean(initialQualityId));
   const [draft, setDraft] = useState<{ value: QualityCampaignDraft; revision: number }>();
   const selected = selectedId
     ? campaigns?.find((campaign) => campaign.campaign_id === selectedId)
@@ -134,10 +136,10 @@ export function CampaignPanel({
   const failed = profilesFailed || campaignsFailed;
   return (
     <div className="space-y-4">
-      <details className={CARD} onToggle={(event) => setQualityOpen(event.currentTarget.open)}>
+      <details className={CARD} open={qualityOpen} onToggle={(event) => setQualityOpen(event.currentTarget.open)}>
         <summary className="cursor-pointer font-semibold">{t("academy.campaigns.quality.title")}</summary>
         {qualityOpen && (
-          <CampaignQualityHistory disabled={busy || !profiles?.length || failed}
+          <CampaignQualityHistory initialRecordId={initialQualityId} disabled={busy || !profiles?.length || failed}
             onDraft={(value) => setDraft((current) => ({ value, revision: (current?.revision ?? 0) + 1 }))} />
         )}
       </details>

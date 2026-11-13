@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { ExperimentsPanel } from "../components/academy/experiments-panel";
+import { TrainingWorkspace } from "../components/academy/training-workspace";
+import { ToastProvider } from "../components/ui/toast";
 import type { ExperimentProfile, ExperimentRun } from "../lib/academy-experiments-api";
 
 const prefix = "/api/v1/academy/experiments";
@@ -90,17 +92,62 @@ describe("Academy experiments", () => {
     assert.ok(screen.getByLabelText("Plik ocen JSON lub JSONL"));
   });
 
+  it("opens the exact queued review and separates its external disposition from native scoring", async () => {
+    const pending = { ...run, run_id: "pilot-awaiting", status: "awaiting_review", stage: "score",
+      external_review: { record_id: "history:pilot", outcome: "REVISE" as const } };
+    const record = { record_id: "history:pilot", split: "dev", source: { identity: "external evaluation" } };
+    const qualityPath = `${prefix}/campaigns/quality`;
+    serve(() => [run, pending], {
+      "GET /api/v1/academy/jobs": () => Response.json({ jobs: [] }),
+      "GET /api/v1/system/llm-runtime/options": () => Response.json({}),
+      [`GET ${prefix}/campaigns`]: () => Response.json({ campaigns: [] }),
+      [`GET ${qualityPath}`]: () => Response.json({ records: [{ ...record, record_id: "history:other" }, record] }),
+      [`GET ${qualityPath}/${encodeURIComponent(record.record_id)}/analysis`]: () => Response.json({
+        record, decision: "REVISE", comparable: true, comparison_issues: [],
+        summary: [], comparison: [], findings: [], protected_case_ids: [],
+        cohorts: [
+          { category: "structured_retention", n: 8, base_usable: 3, candidate_usable: 6, base_critical: 2, candidate_critical: 0 },
+          { category: "new_dialogue", n: 5, base_usable: 2, candidate_usable: 2, base_critical: null, candidate_critical: null },
+        ],
+        proposal: { status: "insufficient_evidence", variants: [], reasons: [] },
+      }),
+      [`GET ${prefix}/runs/pilot-awaiting/review`]: () => Response.json({
+        cases: [{ record_id: "queued-case" }],
+        answers: [{ case: { record_id: "queued-case" }, answers: { A: { text: "Anonimowa odpowiedź" } } }],
+      }),
+    });
+
+    render(<ToastProvider><TrainingWorkspace /></ToastProvider>);
+    fireEvent.click(screen.getByRole("button", { name: "Eksperyment Omni" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Otwórz ocenę · pilot-awaiting" }));
+    await screen.findByText("Anonimowa odpowiedź");
+    const heading = screen.getByRole("heading", { name: "pilot-awaiting" });
+    assert.equal(document.activeElement, heading);
+    assert.ok(heading.parentElement?.textContent?.includes("Stan wykonania · Oczekuje na ocenę"));
+    assert.ok(screen.getByText(/Decyzja z oceny zewnętrznej · Wymaga poprawki/));
+    fireEvent.click(screen.getByRole("button", { name: "Pokaż ocenę zewnętrzną" }));
+    await screen.findByText(/REVISE · Wymaga poprawki/);
+    assert.equal((screen.getByLabelText("Kandydat") as HTMLSelectElement).value, record.record_id);
+    assert.ok(screen.getByRole("row", { name: /Zachowanie wcześniejszych umiejętności.*2 \/ 8 → 0 \/ 8/ }));
+    assert.ok(screen.getByRole("row", { name: /Nowe dialogi wieloturowe.*— → —/ }));
+  });
+
   it("shows the baseline and adapter counts after completed evaluation", async () => {
     const metric = { n: 3, semantic: 2, usable: 2, passed: 1, format: 3, critical: 0, runtime_or_length_failure: 1 };
     serve(() => [{ ...run, status: "succeeded" }], {
       [`GET ${prefix}/runs/pilot-1/report`]: () => Response.json({
-        summaries: { base: { total: metric }, candidate: { total: { ...metric, usable: 3 } } },
+        summaries: {
+          base: { total: metric, dialogue: { ...metric, n: 1, usable: 0 } },
+          candidate: { total: { ...metric, usable: 3 }, dialogue: { ...metric, n: 1, usable: 1 } },
+        },
         cases: [{ case_id: "case-1", base: { text: "Bazowa odpowiedź" }, candidate: { text: "Odpowiedź adaptera" } }],
       }),
     });
     render(<ExperimentsPanel />);
     const table = await screen.findByRole("table");
     assert.match(table.textContent ?? "", /Użyteczność2 \/ 33 \/ 3/);
+    fireEvent.change(screen.getByLabelText("Kategoria wyników"), { target: { value: "dialogue" } });
+    assert.match(table.textContent ?? "", /Użyteczność0 \/ 11 \/ 1/);
     assert.ok(screen.getByText("Odpowiedź adaptera"));
     assert.ok(screen.getByRole("button", { name: "Pobierz raport JSON" }));
   });

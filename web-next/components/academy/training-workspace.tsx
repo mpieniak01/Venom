@@ -19,10 +19,16 @@ export function TrainingWorkspace({ initialCampaignId }: { readonly initialCampa
   const t = useTranslation();
   const [mode, setMode] = useState<Mode>(initialCampaignId ? "campaign" : "single");
   const [runId, setRunId] = useState("");
+  const [qualityId, setQualityId] = useState("");
 
   function openRun(id: string) {
     setRunId(id);
     setMode("experiment");
+  }
+
+  function openQuality(recordId: string) {
+    setQualityId(recordId);
+    setMode("campaign");
   }
 
   return (
@@ -42,8 +48,8 @@ export function TrainingWorkspace({ initialCampaignId }: { readonly initialCampa
         ))}
       </div>
       {mode === "single" && <TrainingPanel />}
-      {mode === "experiment" && <ExperimentsPanel initialRunId={runId} />}
-      {mode === "campaign" && <CampaignPanel onOpenRun={openRun} initialCampaignId={initialCampaignId} />}
+      {mode === "experiment" && <ExperimentsPanel initialRunId={runId} onOpenQuality={openQuality} />}
+      {mode === "campaign" && <CampaignPanel onOpenRun={openRun} initialCampaignId={initialCampaignId} initialQualityId={qualityId} />}
     </div>
   );
 }

@@ -77,10 +77,10 @@ function Answer({ title, answer, verdict }: AnswerProps) {
   );
 }
 
-function Comparison({ report }: { readonly report: ExperimentReport }) {
+function Comparison({ report, task }: { readonly report: ExperimentReport; readonly task: string }) {
   const { t, language } = useLanguage();
-  const base = report.summaries.base.total;
-  const candidate = report.summaries.candidate.total;
+  const base = report.summaries.base[task];
+  const candidate = report.summaries.candidate[task];
   if (!base || !candidate) return null;
   const formatter = new Intl.NumberFormat(language, { signDisplay: "exceptZero", maximumFractionDigits: 1 });
 
@@ -112,11 +112,15 @@ function Comparison({ report }: { readonly report: ExperimentReport }) {
   );
 }
 
-export function ExperimentResult({ run }: { readonly run: ExperimentRun }) {
+export function ExperimentResult({ run, onOpenQuality }: {
+  readonly run: ExperimentRun;
+  readonly onOpenQuality?: (recordId: string) => void;
+}) {
   const t = useTranslation();
   const [report, setReport] = useState<ExperimentReport | null>(run.report ?? null);
   const [failed, setFailed] = useState(false);
   const [request, setRequest] = useState(0);
+  const [task, setTask] = useState("total");
 
   useEffect(() => {
     const abort = new AbortController();
@@ -138,20 +142,37 @@ export function ExperimentResult({ run }: { readonly run: ExperimentRun }) {
     );
   }
 
+  const tasks = Object.keys(report.summaries.base)
+    .filter((key) => key !== "total" && Object.hasOwn(report.summaries.candidate, key))
+    .sort();
+  const selectedTask = tasks.includes(task) ? task : "total";
   return (
     <section className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h4 className="font-semibold">{t("academy.experiments.comparison")}</h4>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={() => downloadJson(`experiment-${run.run_id}.json`, report)}
-        >
-          {t("academy.experiments.downloadReport")}
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          {onOpenQuality && (
+            <Button type="button" variant="outline" size="sm" onClick={() => onOpenQuality(run.run_id)}>
+              {t("academy.experiments.openQuality")}
+            </Button>
+          )}
+          <Button type="button" variant="outline" size="sm"
+            onClick={() => downloadJson(`experiment-${run.run_id}.json`, report)}>
+            {t("academy.experiments.downloadReport")}
+          </Button>
+        </div>
       </div>
-      <Comparison report={report} />
+      {tasks.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2">
+          <Label htmlFor="experiment-result-task">{t("academy.experiments.category")}</Label>
+          <select id="experiment-result-task" value={selectedTask} onChange={(event) => setTask(event.target.value)}
+            className="max-w-full rounded-md border border-[color:var(--ui-border)] bg-[color:var(--ui-surface)] p-2 text-sm">
+            <option value="total">{t("academy.campaigns.quality.total")}</option>
+            {tasks.map((key) => <option key={key} value={key}>{key}</option>)}
+          </select>
+        </div>
+      )}
+      <Comparison report={report} task={selectedTask} />
       {report.artifacts?.length ? (
         <ul className="space-y-1 text-sm">
           {report.artifacts.map((artifact, index) => (

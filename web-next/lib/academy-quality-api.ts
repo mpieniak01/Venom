@@ -26,6 +26,8 @@ export interface QualityCounts {
   base_usable?: number;
   reference_usable?: number;
   candidate_critical?: number | null;
+  base_critical?: number | null;
+  reference_critical?: number | null;
   lost_usable?: number | null;
   gained_usable?: number | null;
 }
@@ -50,6 +52,8 @@ export interface QualityAnalysis {
   comparison_issues: string[];
   summary: QualityCounts[];
   comparison: QualityCounts[];
+  cohorts?: QualityCounts[];
+  cohort_comparison?: QualityCounts[];
   findings: { code: string; fields?: string[]; case_ids?: string[] }[];
   protected_case_ids: string[];
   protected?: { total: number; evaluated: number; passed: number; missing_case_ids?: string[] };

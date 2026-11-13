@@ -47,6 +47,14 @@ export const academy = {
       "Prüfe nvidia-container-toolkit und den Docker-GPU-Zugriff.",
   },
   experiments: {
+    technicalStatus: "Ausführungsstatus",
+    reviewQueue: "Ausstehende Bewertungen",
+    noPendingReviews: "In Academy wartet kein Lauf auf eine Bewertung.",
+    openReview: "Bewertung öffnen",
+    externalDecision: "Entscheidung aus externer Bewertung",
+    openExternalDecision: "Externe Bewertung anzeigen",
+    openQuality: "Qualitätsentscheidung anzeigen",
+    category: "Ergebniskategorie",
     updated: "Letzte Aktualisierung",
     elapsed: "Ausführungszeit",
     yes: "Ja",
@@ -214,6 +222,18 @@ export const academy = {
   },
   campaigns: {
     quality: {
+      criticalComparison: "Kritische Fehler",
+      criticalComparisonHint: "Links steht der Wert für das Basismodell oder die Referenz, rechts der Wert für den Kandidaten. Ein Strich bedeutet, dass die Bewertung kritischer Fehler unvollständig ist.",
+      selectedUnavailable: "Die ausgewählte Bewertung ist im Verlauf nicht verfügbar.",
+      selectRecord: "Bewertung auswählen",
+      categoryBreakdown: "Aufschlüsselung nach Kategorie",
+      categories: {
+        retention: "Erhalt bisheriger Fähigkeiten",
+        structured_retention: "Erhalt bisheriger Fähigkeiten: strukturierte Aufgaben",
+        new_quality: "Neue Gespräche und Fragen",
+        new_dialogue: "Neue mehrstufige Dialoge",
+        new_single_turn: "Neue Einzelfragen",
+      },
       sourceRecord: "Quellbewertung",
       runtime: "Laufzeitumgebung",
       discardDraft: "Empfohlenen Entwurf verwerfen",
@@ -295,6 +315,7 @@ export const academy = {
         points: "Prozentpunkte",
       },
       issues: {
+        quality_cohort_mismatch: "Die Bewertungen verwenden unterschiedliche Vergleichsgruppen.",
         campaign_quality_evidence_unavailable: "Der für die Qualitätsregeln benötigte Bewertungsbericht fehlt.",
         quality_identity_unverified: "Die Identität der Bewertung ist unbestätigt.",
         quality_model_mismatch: "Die Bewertungen verwenden unterschiedliche Modelle.",

@@ -47,6 +47,14 @@ export const academy = {
       "Check nvidia-container-toolkit installation and Docker GPU access.",
   },
   experiments: {
+    technicalStatus: "Execution status",
+    reviewQueue: "Review queue",
+    noPendingReviews: "No runs are waiting for review in Academy.",
+    openReview: "Open review",
+    externalDecision: "External review decision",
+    openExternalDecision: "View external review",
+    openQuality: "View quality decision",
+    category: "Result category",
     updated: "Last update",
     elapsed: "Elapsed time",
     yes: "Yes",
@@ -214,6 +222,18 @@ export const academy = {
   },
   campaigns: {
     quality: {
+      criticalComparison: "Critical errors",
+      criticalComparisonHint: "The left value is for the baseline or reference, and the right value is for the candidate. A dash means the critical error review is incomplete.",
+      selectedUnavailable: "The selected review is unavailable in the history.",
+      selectRecord: "Select a review",
+      categoryBreakdown: "Breakdown by category",
+      categories: {
+        retention: "Skill retention",
+        structured_retention: "Skill retention: structured tasks",
+        new_quality: "New conversations and questions",
+        new_dialogue: "New multi-turn conversations",
+        new_single_turn: "New single-turn questions",
+      },
       sourceRecord: "Source evaluation",
       runtime: "Runtime environment",
       discardDraft: "Discard recommended draft",
@@ -295,6 +315,7 @@ export const academy = {
         points: "pp",
       },
       issues: {
+        quality_cohort_mismatch: "The reviews use different comparison cohorts.",
         campaign_quality_evidence_unavailable: "The evaluation report required by the quality rules is unavailable.",
         quality_identity_unverified: "The evaluation identity is unverified.",
         quality_model_mismatch: "The evaluations use different models.",

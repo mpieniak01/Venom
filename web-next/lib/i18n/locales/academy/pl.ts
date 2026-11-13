@@ -47,6 +47,14 @@ export const academy = {
       "Sprawdź instalację nvidia-container-toolkit i dostęp Dockera do GPU.",
   },
   experiments: {
+    technicalStatus: "Stan wykonania",
+    reviewQueue: "Kolejka ocen",
+    noPendingReviews: "Żaden przebieg nie czeka na ocenę w Academy.",
+    openReview: "Otwórz ocenę",
+    externalDecision: "Decyzja z oceny zewnętrznej",
+    openExternalDecision: "Pokaż ocenę zewnętrzną",
+    openQuality: "Pokaż decyzję jakościową",
+    category: "Kategoria wyników",
     updated: "Ostatnia aktualizacja",
     elapsed: "Czas wykonania",
     yes: "Tak",
@@ -214,6 +222,18 @@ export const academy = {
   },
   campaigns: {
     quality: {
+      criticalComparison: "Błędy krytyczne",
+      criticalComparisonHint: "Wynik po lewej dotyczy bazy lub odniesienia, a po prawej kandydata. Kreska oznacza brak pełnej oceny błędów krytycznych.",
+      selectedUnavailable: "Wybranej oceny nie ma w dostępnej historii.",
+      selectRecord: "Wybierz ocenę",
+      categoryBreakdown: "Szczegóły według kategorii",
+      categories: {
+        retention: "Zachowanie wcześniejszych umiejętności",
+        structured_retention: "Zachowanie wcześniejszych umiejętności: zadania ustrukturyzowane",
+        new_quality: "Nowe rozmowy i pytania",
+        new_dialogue: "Nowe dialogi wieloturowe",
+        new_single_turn: "Nowe pytania jednoturowe",
+      },
       sourceRecord: "Ocena źródłowa",
       runtime: "Środowisko wykonania",
       discardDraft: "Odrzuć szkic z rekomendacji",
@@ -295,6 +315,7 @@ export const academy = {
         points: "p.p.",
       },
       issues: {
+        quality_cohort_mismatch: "Oceny mają różne grupy porównawcze.",
         campaign_quality_evidence_unavailable: "Brakuje raportu oceny potrzebnego do reguł jakości.",
         quality_identity_unverified: "Brak potwierdzonej tożsamości oceny.",
         quality_model_mismatch: "Oceny dotyczą różnych modeli.",

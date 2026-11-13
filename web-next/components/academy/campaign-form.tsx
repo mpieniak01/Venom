@@ -10,6 +10,7 @@ import { useTranslation } from "@/lib/i18n";
 import type { QualityCampaignDraft } from "@/lib/academy-quality-api";
 import { CampaignPolicyFields, PinnedQualitySource, readQualityPolicy } from "./campaign-quality-policy";
 import { OPTUNA_PARAMETERS, OptunaFields } from "./campaign-optuna";
+import { DataAuditSummary } from "./data-audit-summary";
 import { initialAdapterField, InitialAdapterSelector } from "./initial-adapter";
 
 const MIB = 1024 ** 2;
@@ -178,11 +179,13 @@ export function CampaignForm({ profiles, adapters, adaptersFailed, disabled, opt
   const profileAdapters = adapters.filter((item) => item.model === profile?.model);
   const unsupportedFields = [...new Set(draft?.variants.flatMap((variant) =>
     unsupportedDraftFields(variant.recipe)) ?? [])];
+  const canPlan = Boolean(profile && profile.data_audit?.status !== "blocked");
+
   if (!profiles.length) return <p className="text-sm text-hint">{t("academy.experiments.noProfiles")}</p>;
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (disabled || !profile || unavailableStrategy) return;
+    if (disabled || !profile || !canPlan || unavailableStrategy) return;
     try {
       const request = readPlan(new FormData(event.currentTarget), profile.id, rows, strategy, profileAdapters, draft);
       if (request.variants.length > request.budget.max_trials || request.budget.trial_seconds > request.budget.max_seconds) {
@@ -227,6 +230,7 @@ export function CampaignForm({ profiles, adapters, adaptersFailed, disabled, opt
         </div>
       </div>
       {profile && <p className="break-words text-sm text-hint">{profile.model} · {profile.dataset}</p>}
+      {profile && <DataAuditSummary audit={profile.data_audit} />}
       <div className="space-y-1 sm:max-w-xs">
         <Label htmlFor="campaign-strategy">{t("academy.campaigns.strategy")}</Label>
         <select id="campaign-strategy" className={SELECT_CLASS} value={strategy} disabled={disabled}
@@ -325,7 +329,7 @@ export function CampaignForm({ profiles, adapters, adaptersFailed, disabled, opt
       {invalid && <p role="alert" className="text-sm text-red-400">
         {t(draft ? "academy.campaigns.quality.invalidDraft" : invalidMessage)}
       </p>}
-      <Button type="submit" disabled={disabled || unavailableStrategy || !profile}>{t("academy.campaigns.plan")}</Button>
+      <Button type="submit" disabled={disabled || unavailableStrategy || !canPlan}>{t("academy.campaigns.plan")}</Button>
     </form>
   );
 }

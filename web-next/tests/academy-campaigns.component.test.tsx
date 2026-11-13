@@ -2,6 +2,7 @@ import "./component-test-setup";
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { auditFixture, blockedAuditFixture } from "./fixtures/academy-data-audit";
 import AcademyPage from "../app/(console)/academy/page";
 import { CampaignPanel } from "../components/academy/campaign-panel";
 import type { Campaign, CampaignRequest } from "../lib/academy-campaign-api";
@@ -109,6 +110,55 @@ describe("Academy campaigns", () => {
     assert.deepEqual(started, { plan_sha256: planHash });
     fireEvent.click(screen.getByRole("button", { name: runId }));
     assert.deepEqual(opened, [runId]);
+  });
+
+  it("inspects mix evidence, blocks rejected profiles, and reads the audit pinned to the plan", async () => {
+    globalThis.FormData = window.FormData;
+    let current: Campaign[] = [];
+    const requests: CampaignRequest[] = [];
+    const audit = auditFixture();
+    const common = { model: "Omni", dataset: "pilot", recipe: { rank: 8 } };
+    serve(() => current, {
+      [`GET ${base}/profiles`]: () => Response.json({ profiles: [
+        { ...common, id: "omni", label: "Audited", data_audit: audit },
+        { ...common, id: "blocked", label: "Blocked", data_audit: blockedAuditFixture() },
+        { ...common, id: "legacy", label: "Legacy" },
+      ] }),
+      [`POST ${campaignsPath}/plan`]: (init) => {
+        requests.push(JSON.parse(String(init?.body)) as CampaignRequest);
+        current = [{ ...planned, plan: { ...planned.plan, data_audit: audit } }];
+        return Response.json(current[0]);
+      },
+      [`POST ${campaignsPath}/pilot-campaign/start`]: () => Response.json(
+        { detail: { code: "experiment_data_audit_incompatible" } }, { status: 409 },
+      ),
+    });
+
+    render(<CampaignPanel onOpenRun={() => {}} />);
+    fireEvent.change(await screen.findByLabelText("Identyfikator kampanii"), { target: { value: "pilot-campaign" } });
+    const profile = screen.getByLabelText("Profil eksperymentu");
+    const planButton = screen.getByRole("button", { name: "Przygotuj plan kampanii" }) as HTMLButtonElement;
+    fireEvent.click(screen.getByText("Audyt danych przeszedł"));
+    assert.ok(screen.getByRole("row", { name: /Replay.*9 \/ 12.*40 \/ 100/ }));
+    assert.ok(screen.getByRole("row", { name: /state_update.*9 \/ 40.*0 \/ 0/ }));
+
+    fireEvent.change(profile, { target: { value: "blocked" } });
+    assert.equal(planButton.disabled, true);
+    assert.match(screen.getByRole("alert").textContent ?? "", /state_update.*9 \/ minimum 10/);
+    fireEvent.submit(planButton.closest("form")!);
+    assert.equal(requests.length, 0);
+    fireEvent.change(profile, { target: { value: "legacy" } });
+    assert.equal(planButton.disabled, false);
+    assert.ok(screen.getByText("Brak przypiętego audytu danych."));
+
+    fireEvent.change(profile, { target: { value: "omni" } });
+    fireEvent.click(planButton);
+    const start = await screen.findByRole("button", { name: "Uruchom zaplanowaną kampanię" });
+    assert.equal(requests[0]?.profile_id, "omni");
+    const setup = start.closest("section");
+    assert.ok(setup?.textContent?.includes(audit.report_sha256));
+    fireEvent.click(start);
+    assert.match((await screen.findByRole("alert")).textContent ?? "", /Audyt nie pasuje do danych/);
   });
 
   it("keeps an adapter selection explicit across profile changes and pins it to the plan", async () => {

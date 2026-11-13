@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type Ref } from "react";
+import { dataAuditErrorKey } from "@/lib/academy-data-audit";
 import { ApiError } from "@/lib/api-client";
 import {
   getExperimentLogs,
@@ -16,6 +17,7 @@ import {
 import { useLanguage, useTranslation } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { ExperimentForm } from "./experiment-form";
+import { DataAuditSummary } from "./data-audit-summary";
 import { InitialAdapterSummary, useInitialAdapterError } from "./initial-adapter";
 import { ExperimentResult, ExperimentReviewPanel } from "./experiment-results";
 
@@ -131,6 +133,7 @@ function RunDetail({ run, headingRef, onOpenQuality, disabled, onAction, onJudgm
   const elapsed = run.elapsed_seconds;
   const externalReview = run.external_review;
   const adapterError = useInitialAdapterError(run.error);
+  const auditError = dataAuditErrorKey(run.error);
   const showResult = run.status === "succeeded" || Boolean(run.report);
 
   return (
@@ -163,6 +166,7 @@ function RunDetail({ run, headingRef, onOpenQuality, disabled, onAction, onJudgm
         </div>
       </dl>
       {!showResult && <InitialAdapterSummary adapter={run.initial_adapter} />}
+      {!showResult && run.data_audit && <DataAuditSummary audit={run.data_audit} />}
       {externalReview && (
         <div className="flex flex-wrap items-center gap-2 text-sm">
           <p>
@@ -179,7 +183,7 @@ function RunDetail({ run, headingRef, onOpenQuality, disabled, onAction, onJudgm
       {run.error && (
         <div className="space-y-1 text-sm text-red-400">
           <p>{t("academy.experiments.runError")}</p>
-          <pre className="max-h-28 overflow-auto whitespace-pre-wrap break-words">{adapterError ?? run.error}</pre>
+          <pre className="max-h-28 overflow-auto whitespace-pre-wrap break-words">{auditError && t(auditError) !== auditError ? t(auditError) : adapterError ?? run.error}</pre>
         </div>
       )}
       <div className="flex flex-wrap gap-2">
@@ -220,7 +224,7 @@ export function ExperimentsPanel({ initialRunId = "", onOpenQuality }: {
   const [runsLoaded, setRunsLoaded] = useState(false);
   const [profilesFailed, setProfilesFailed] = useState(false);
   const [runsFailed, setRunsFailed] = useState(false);
-  const [actionError, setActionError] = useState<"conflict" | "failed" | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [selectedId, setSelectedId] = useState(initialRunId);
   const [refresh, setRefresh] = useState(0);
@@ -286,7 +290,10 @@ export function ExperimentsPanel({ initialRunId = "", onOpenQuality }: {
       setRefresh((value) => value + 1);
       return true;
     } catch (error) {
-      setActionError(error instanceof ApiError && error.status === 409 ? "conflict" : "failed");
+      const detail = error instanceof ApiError ? (error.data as { detail?: { code?: string } } | null)?.detail : null;
+      const auditKey = dataAuditErrorKey(detail?.code);
+      const fallback = error instanceof ApiError && error.status === 409 ? "academy.experiments.conflict" : "academy.experiments.actionError";
+      setActionError(auditKey && t(auditKey) !== auditKey ? auditKey : fallback);
       return false;
     } finally {
       setBusy(false);
@@ -328,7 +335,7 @@ export function ExperimentsPanel({ initialRunId = "", onOpenQuality }: {
         ) : (
           <ExperimentForm profiles={profiles} disabled={busy || hasActive || profilesFailed || runsFailed} onStart={(request) => mutate(() => startExperiment(request))} />
         )}
-        {actionError && <p role="alert" className="text-sm text-red-400">{t(actionError === "conflict" ? "academy.experiments.conflict" : "academy.experiments.actionError")}</p>}
+        {actionError && <p role="alert" className="text-sm text-red-400">{t(actionError)}</p>}
       </section>
       {runsLoaded && (
         <section className={SECTION_CLASS}>

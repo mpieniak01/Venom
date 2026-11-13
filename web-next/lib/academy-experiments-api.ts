@@ -1,3 +1,4 @@
+import type { DataAudit, PassedDataAudit } from "./academy-data-audit";
 import type { QualityDecision } from "./academy-quality-api";
 import { apiFetch } from "./api-client";
 
@@ -16,6 +17,7 @@ export interface ExperimentProfile {
   model: string;
   dataset: string;
   automatic_review?: boolean;
+  data_audit?: DataAudit | null;
   recipe: ExperimentRecipe;
 }
 
@@ -46,6 +48,7 @@ export interface ExperimentRun {
   error?: string | null;
   report?: ExperimentReport | null;
   initial_adapter?: ExperimentInitialAdapter | null;
+  data_audit?: PassedDataAudit | null;
   external_review?: { record_id: string; outcome: QualityDecision } | null;
 }
 
@@ -89,6 +92,7 @@ export type ExperimentVerdict = { semantic: number; usable: number; passed: numb
 
 export interface ExperimentReport {
   initial_adapter?: ExperimentInitialAdapter | null;
+  data_audit?: PassedDataAudit | null;
   historical?: boolean;
   summaries: {
     base: Record<string, ExperimentMetrics>;

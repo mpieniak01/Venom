@@ -12,6 +12,8 @@ import {
 } from "@/lib/academy-campaign-api";
 import { useLanguage, useTranslation } from "@/lib/i18n";
 import { OPTUNA_PARAMETERS, OptunaPlanSummary } from "./campaign-optuna";
+import { dataAuditErrorKey } from "@/lib/academy-data-audit";
+import { DataAuditSummary } from "./data-audit-summary";
 import { InitialAdapterSummary, useInitialAdapterError } from "./initial-adapter";
 import { QualityPolicySummary, TrialQualityDecision } from "./campaign-quality-policy";
 
@@ -153,6 +155,7 @@ export function CampaignDetail({ campaign, disabled, optunaAvailable, onAction, 
   const { t, language } = useLanguage();
   const { budget, selection, variants, strategy } = campaign.plan;
   const adapterError = useInitialAdapterError(campaign.error);
+  const auditError = dataAuditErrorKey(campaign.error);
   const optuna = strategy === "optuna";
   const launchDisabled = disabled || (optuna && !optunaAvailable);
   const displayNumber = new Intl.NumberFormat(language, { maximumFractionDigits: 1 });
@@ -197,12 +200,13 @@ export function CampaignDetail({ campaign, disabled, optunaAvailable, onAction, 
         <div><dt className="text-hint">{t("academy.campaigns.reviewMode")}</dt><dd>{t(campaign.plan.review_mode === "manual" ? "academy.campaigns.manualReview" : "academy.campaigns.automaticReview")}</dd></div>
         <div><dt className="text-hint">{t("academy.campaigns.retention")}</dt><dd>{t(campaign.plan.retention === "keep_all" ? "academy.campaigns.keepAll" : "academy.campaigns.discardRejected")}</dd></div>
       </dl>
+      <DataAuditSummary audit={campaign.plan.data_audit} />
       {optuna && <OptunaPlanSummary plan={campaign.plan} />}
       {campaign.plan.quality_policy && <QualityPolicySummary policy={campaign.plan.quality_policy} />}
       {campaign.quality_policy_error && (
         <p role="alert" className="text-sm text-red-400">{t("academy.campaigns.quality.guard.stale")}</p>
       )}
-      {campaign.error && <p role="alert" className="break-all text-sm text-red-400">{adapterError ?? campaign.error}</p>}
+      {campaign.error && <p role="alert" className="break-all text-sm text-red-400">{auditError && t(auditError) !== auditError ? t(auditError) : adapterError ?? campaign.error}</p>}
       {campaign.selected_run_id && (
         <p className="break-all text-sm font-medium">{t("academy.campaigns.selected")} {campaign.selected_run_id}</p>
       )}

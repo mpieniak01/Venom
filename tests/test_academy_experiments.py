@@ -771,3 +771,318 @@ def test_retention_prunes_rejected_warm_checkpoint_and_preserves_catalog(
     assert service.report(fresh_run)["artifacts"][0]["available"] is True
     assert {path.name: digest(path) for path in source.iterdir()} == before
     assert service.adapters() == [entry]
+
+
+@pytest.fixture
+def audited_profile(setup, monkeypatch):
+    from venom_core.services.training_experiments import data_audit
+
+    service, _, _, profile, train, _, _ = setup
+    root = service.root
+    files = {
+        "chat_template.jinja": "template_sha256",
+        "tokenizer.json": "tokenizer_sha256",
+        "tokenizer_config.json": "tokenizer_config_sha256",
+        "config.json": "model_config_sha256",
+    }
+    pin_path = root / "fixture-snapshot-pin.json"
+    for name in files:
+        (root / "model" / name).write_text(name, encoding="utf-8")
+    pin = {
+        "repo": "LiquidAI/LFM3-Omni-2B",
+        "revision": "a" * 40,
+        "files": {name: {"sha256": digest(root / "model" / name)} for name in files},
+    }
+    atomic_json(pin_path, pin)
+    monkeypatch.setattr(data_audit, "SNAPSHOT_PIN", pin_path)
+
+    versions = {"transformers": "5.22.2", "tokenizers": "0.22"}
+    site = root / "runtime" / "lib" / "python3.14" / "site-packages"
+    for name, version in versions.items():
+        info = site / f"{name}-{version}.dist-info"
+        info.mkdir(parents=True)
+        (info / "METADATA").write_text(f"Name: {name}\nVersion: {version}\n")
+
+    taxonomy_path = root / "profiles" / "smoke.taxonomy.json"
+    report_path = root / "profiles" / "smoke.data-audit.json"
+    taxonomy = {
+        "schema_version": 1,
+        "records": {train["record_id"]: {"group": "replay", "skill": "state_add"}},
+    }
+    counts = {
+        "records": 1,
+        "supervised_tokens": 3,
+        "input_tokens": 12,
+        "max_input_tokens": 12,
+        "max_supervised_tokens": 3,
+    }
+    groups = {"replay": counts, "fresh": dict.fromkeys(counts, 0)}
+    report = {
+        "schema_version": 1,
+        "model": pin["repo"],
+        "revision": pin["revision"],
+        "snapshot_sha256": digest(pin_path),
+        "train_sha256": profile["train_sha256"],
+        "dev_sha256": profile["dev_sha256"],
+        "tokenization": {
+            **versions,
+            "max_tokens": 1024,
+            **{field: pin["files"][name]["sha256"] for name, field in files.items()},
+        },
+        "totals": counts,
+        "groups": groups,
+        "skills": {"state_add": groups},
+        "leakage": {
+            "normalization": "nfkc_casefold_whitespace_v1",
+            "supervised_prefix_matches": 0,
+            "final_user_matches": 0,
+            "duplicate_train_records": 0,
+        },
+    }
+    policy = {
+        "groups": {"replay": {"min_supervised_tokens": 3}},
+        "skills": {"state_add": {"replay": {"min_records": 1}}},
+    }
+
+    def seal():
+        atomic_json(taxonomy_path, taxonomy)
+        report["taxonomy_sha256"] = digest(taxonomy_path)
+        atomic_json(report_path, report)
+        atomic_json(
+            root / "profiles" / "smoke.json",
+            {
+                **profile,
+                "data_audit": {
+                    "report_sha256": digest(report_path),
+                    "taxonomy_sha256": digest(taxonomy_path),
+                    "policy": policy,
+                },
+            },
+        )
+
+    seal()
+    return report, report_path, taxonomy, taxonomy_path, policy, seal
+
+
+def revised_audit_spec():
+    spec = adapter_campaign_plan()
+    spec["campaign_id"] = "audit"
+    spec["variants"] = [{}, {"rank": 8}]
+    return spec
+
+
+def test_audit_legacy_hashes_and_http_campaign_acceptance(
+    setup, audited_profile, monkeypatch, capsys
+):
+    from scripts.academy.experiments import main as experiments_cli
+    from venom_core.api.routes import academy_experiment_campaigns
+    from venom_core.services.training_experiments.campaign import CampaignService
+    from venom_core.services.training_experiments.campaign_schema import CampaignSpec
+
+    service, client, app, profile, _, _, _ = setup
+    _, _, _, _, _, seal = audited_profile
+    campaign = CampaignService(service, launch=lambda _: process_identity(os.getpid()))
+    spec = revised_audit_spec()
+    monkeypatch.setattr(
+        academy_experiment_campaigns, "campaign_service", lambda: campaign
+    )
+    app.include_router(academy_experiment_campaigns.router)
+    prefix = "/api/v1/academy/experiments"
+
+    plan = client.post(f"{prefix}/campaigns/plan", json=spec).json()["plan"]
+    assert plan["data_audit"]["status"] == "passed"
+    assert "data_audit" not in plan["variants"][0]
+    assert (
+        client.get(f"{prefix}/profiles").json()["profiles"][0]["data_audit"]
+        == plan["data_audit"]
+    )
+    experiments_cli(["--root", str(service.root), "audit", "smoke"])
+    assert json.loads(capsys.readouterr().out) == plan["data_audit"]
+    assert client.get(f"{prefix}/campaigns/audit/report").json()["plan"] == plan
+
+    approval = {"plan_sha256": plan["plan_sha256"]}
+    assert (
+        client.post(f"{prefix}/campaigns/audit/start", json=approval).status_code == 200
+    )
+    campaign.advance("audit")
+    campaign.advance("audit")
+    run = service.status(plan["variants"][0]["run_id"])
+    assert run["data_audit"] == plan["data_audit"]
+    assert service._manifest(run["run_id"])["data_audit"] == plan["data_audit"]
+
+    atomic_json(service.root / "profiles" / "smoke.json", profile)
+    legacy = campaign.validate(CampaignSpec.model_validate(spec))
+    assert "data_audit" not in legacy
+    assert legacy["plan_sha256"] != plan["plan_sha256"]
+    legacy_run = service.start("smoke", "legacy-run")
+    assert "data_audit" not in legacy_run
+    assert "data_audit" not in service._manifest("legacy-run")["profile"]
+    assert service.start("smoke", "legacy-run")["attempt"] == 1
+    seal()
+
+
+@pytest.mark.parametrize(
+    ("mutation", "reason"),
+    [
+        ("missing", "missing"),
+        ("payload", "changed"),
+        ("taxonomy", "changed"),
+        ("train", "changed"),
+        ("dev", "changed"),
+        ("snapshot", "incompatible"),
+        ("runtime", "incompatible"),
+    ],
+)
+def test_pinned_data_audit_revalidated_before_activation(
+    setup, audited_profile, mutation, reason
+):
+    from venom_core.services.training_experiments.campaign import CampaignService
+    from venom_core.services.training_experiments.campaign_schema import CampaignSpec
+
+    service, _, _, _, _, _, launches = setup
+    _, report_path, _, taxonomy_path, _, _ = audited_profile
+    campaign = CampaignService(service)
+    planned = campaign.plan(CampaignSpec.model_validate(revised_audit_spec()))
+    targets = {
+        "payload": report_path,
+        "taxonomy": taxonomy_path,
+        "train": service.root / "train.jsonl",
+        "dev": service.root / "dev.jsonl",
+        "snapshot": service.root / "model/tokenizer.json",
+        "runtime": service.root
+        / "runtime/lib/python3.14/site-packages/tokenizers-0.22.dist-info/METADATA",
+    }
+    if mutation == "missing":
+        report_path.unlink()
+    else:
+        payload = b"changed"
+        if mutation == "runtime":
+            payload = b"Name: tokenizers\nVersion: 1.0\n"
+        targets[mutation].write_bytes(payload)
+    with pytest.raises(ValueError, match=f"^experiment_data_audit_{reason}$"):
+        campaign.start("audit", planned["plan"]["plan_sha256"])
+    assert not launches
+    assert campaign.status("audit")["status"] == "planned"
+
+
+@pytest.mark.parametrize(
+    ("mutation", "reason"),
+    [
+        ("totals", "invalid"),
+        ("taxonomy", "invalid"),
+        ("duplicate_keys", "invalid"),
+        ("skill_totals", "invalid"),
+        ("missing_skill", "invalid"),
+        ("leakage", "leakage"),
+        ("duplicates", "leakage"),
+        ("threshold", "threshold"),
+        ("provenance", "incompatible"),
+        ("max_tokens", "incompatible"),
+    ],
+)
+def test_audit_profile_remains_visible_when_planning_is_blocked(
+    setup, audited_profile, mutation, reason
+):
+    from venom_core.services.training_experiments.campaign import CampaignService
+    from venom_core.services.training_experiments.campaign_schema import CampaignSpec
+
+    service, client, _, _, _, _, launches = setup
+    report, report_path, taxonomy, taxonomy_path, policy, seal = audited_profile
+    spec = revised_audit_spec()
+    if mutation == "totals":
+        report["totals"] = {
+            **report["totals"],
+            "input_tokens": 13,
+            "max_input_tokens": 13,
+        }
+    elif mutation == "taxonomy":
+        taxonomy["records"]["train-1"]["group"] = "fresh"
+    elif mutation == "skill_totals":
+        counts = dict(report["totals"], records=2, supervised_tokens=5)
+        report["skills"]["state_add"] = {**report["groups"], "replay": counts}
+    elif mutation == "missing_skill":
+        report["skills"]["other"] = report["skills"].pop("state_add")
+    elif mutation == "leakage":
+        report["leakage"]["final_user_matches"] = 1
+    elif mutation == "duplicates":
+        report["leakage"]["duplicate_train_records"] = 1
+    elif mutation == "threshold":
+        policy["skills"]["state_sub"] = {"replay": {"min_records": 1}}
+    elif mutation == "provenance":
+        report["revision"] = "b" * 40
+    elif mutation == "max_tokens":
+        spec["variants"][1]["max_tokens"] = 2048
+    seal()
+    if mutation == "duplicate_keys":
+        profile_path = service.root / "profiles/smoke.json"
+        published = json.loads(profile_path.read_text(encoding="utf-8"))
+        taxonomy_path.write_text(
+            '{"schema_version": 1, "records": {"train-1": {"group": "fresh", '
+            '"group": "replay", "skill": "state_add"}}}',
+            encoding="utf-8",
+        )
+        published["data_audit"]["taxonomy_sha256"] = digest(taxonomy_path)
+        report["taxonomy_sha256"] = digest(taxonomy_path)
+        atomic_json(report_path, report)
+        published["data_audit"]["report_sha256"] = digest(report_path)
+        atomic_json(profile_path, published)
+    error = f"experiment_data_audit_{reason}"
+    summary = client.get("/api/v1/academy/experiments/profiles").json()["profiles"][0][
+        "data_audit"
+    ]
+    if mutation != "max_tokens":
+        assert summary["status"] == "blocked"
+        assert summary["error"] == error
+    else:
+        assert summary["status"] == "passed"
+    if mutation == "threshold":
+        assert summary["violations"] == [
+            {
+                "group": "replay",
+                "skill": "state_sub",
+                "metric": "records",
+                "actual": 0,
+                "minimum": 1,
+            }
+        ]
+    campaign = CampaignService(service)
+    candidate = CampaignSpec.model_validate(spec)
+    with pytest.raises(ValueError, match=error):
+        campaign.plan(candidate)
+    assert not launches
+
+
+@pytest.mark.parametrize("mismatch", [False, True])
+def test_run_reconciles_audit_with_real_preflight_receipt_before_training(
+    setup, audited_profile, monkeypatch, mismatch
+):
+    service, _, _, _, _, dev, _ = setup
+    report, _, _, _, _, _ = audited_profile
+    start = service.start("smoke", "audit-run")
+    assert start["data_audit"]["report"] == report
+
+    fake_work(monkeypatch, service, dev)
+    original_execute = Worker.execute
+    commands = []
+
+    def execute(worker, command, gpu_fd):
+        commands.append(command[6])
+        original_execute(worker, command, gpu_fd)
+        if command[6] == "preflight":
+            receipt = {**report["totals"], "train_sha256": report["train_sha256"]}
+            if mismatch:
+                receipt["supervised_tokens"] += 1
+            atomic_json(Path(command[4]) / "preflight.json", receipt)
+
+    monkeypatch.setattr(Worker, "execute", execute)
+    Worker(service, "audit-run", 1).run()
+    result = service.status("audit-run")
+    if mismatch:
+        assert result["status"] == "failed"
+        assert result["error"] == "experiment_data_audit_incompatible"
+        assert commands == ["preflight"]
+    else:
+        assert result["status"] == "awaiting_review"
+        assert commands[:2] == ["preflight", "control"]
+        service.submit("audit-run", [grade("A", True), grade("B", False)])
+        assert service.report("audit-run")["data_audit"] == start["data_audit"]

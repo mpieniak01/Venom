@@ -2,6 +2,7 @@ import "./component-test-setup";
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { auditFixture } from "./fixtures/academy-data-audit";
 import { ExperimentsPanel } from "../components/academy/experiments-panel";
 import { TrainingWorkspace } from "../components/academy/training-workspace";
 import { ToastProvider } from "../components/ui/toast";
@@ -164,6 +165,7 @@ describe("Academy experiments", () => {
           base: { total: metric, dialogue: { ...metric, n: 1, usable: 0 } },
           candidate: { total: { ...metric, usable: 3 }, dialogue: { ...metric, n: 1, usable: 1 } },
         },
+        data_audit: auditFixture(),
         initial_adapter: {
           adapter_id: "p13-145", label: "P13 checkpoint 145", model: "Omni",
           revision: "a".repeat(40), snapshot_sha256: "b".repeat(64),
@@ -175,12 +177,14 @@ describe("Academy experiments", () => {
     });
     const opened: string[] = [];
     render(<ExperimentsPanel onOpenQuality={(recordId) => opened.push(recordId)} />);
-    const table = await screen.findByRole("table");
+    const table = await screen.findByRole("table", { name: "Porównanie z bazą" });
     assert.match(table.textContent ?? "", /Użyteczność2 \/ 33 \/ 3/);
     fireEvent.change(screen.getByLabelText("Kategoria wyników"), { target: { value: "dialogue" } });
     assert.match(table.textContent ?? "", /Użyteczność0 \/ 11 \/ 1/);
     assert.ok(screen.getByText("Odpowiedź adaptera"));
     assert.ok(screen.getByText("p13-145"));
+    fireEvent.click(screen.getByText("Audyt danych przeszedł"));
+    assert.ok(screen.getByRole("row", { name: /Replay.*9 \/ 12.*40 \/ 100/ }));
     assert.equal(screen.getByText("d".repeat(12)).getAttribute("title"), "d".repeat(64));
     assert.ok(screen.getByRole("button", { name: "Pobierz raport JSON" }));
     fireEvent.click(screen.getByRole("button", { name: "Pokaż decyzję jakościową" }));

@@ -1,3 +1,4 @@
+import type { PassedDataAudit } from "./academy-data-audit";
 import { apiFetch } from "./api-client";
 import type { ExperimentInitialAdapter, ExperimentRecipe } from "./academy-experiments-api";
 import type { CampaignQualityPolicy, TrialQualityGuard } from "./academy-quality-api";
@@ -40,6 +41,7 @@ export interface CampaignRequest {
 
 export interface CampaignPlan extends Omit<CampaignRequest, "variants"> {
   plan_sha256: string;
+  data_audit?: PassedDataAudit | null;
   variants: {
     run_id: string;
     recipe: ExperimentRecipe;

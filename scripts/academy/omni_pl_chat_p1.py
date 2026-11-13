@@ -377,6 +377,11 @@ def run(mode: str) -> None:
                 "revision": pin["revision"],
                 "environment": environment,
                 "recipe": recipe,
+                "input_tokens": sum(len(row["input_ids"]) for row in encoded),
+                "max_input_tokens": max(len(row["input_ids"]) for row in encoded),
+                "max_supervised_tokens": max(
+                    sum(label != IGNORE for label in row["labels"]) for row in encoded
+                ),
                 **initialization,
                 **observations,
             },

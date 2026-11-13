@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 import type { Campaign, CampaignRequest } from "../lib/academy-campaign-api";
+import { auditFixture, blockedAuditFixture } from "./fixtures/academy-data-audit";
 import { buildHttpUrl } from "./utils/url";
 
 const academyStatusPayload = {
@@ -624,6 +625,7 @@ test.describe("Academy smoke", () => {
         recipe: { rank: 4, alpha: 8, learning_rate: 0.0002 },
         automatic_review: false,
       };
+      const audit = auditFixture(profile.model);
       const planSha256 = "a".repeat(64);
       const adapter = {
         adapter_id: "p13-145",
@@ -647,7 +649,11 @@ test.describe("Academy smoke", () => {
       // All experiment calls in this scenario are fixtures, including writes.
       await page.route(api + "/**", (route) => route.abort("blockedbyclient"));
       await page.route(`${api}/profiles`, (route) =>
-        route.fulfill({ json: { profiles: [{ ...profile, id: "other-profile", label: "Drugi profil" }, profile] } }),
+        route.fulfill({ json: { profiles: [
+          { ...profile, id: "other-profile", label: "Drugi profil" },
+          { ...profile, id: "blocked-profile", label: "Zablokowany profil", data_audit: blockedAuditFixture(profile.model) },
+          { ...profile, data_audit: audit },
+        ] } }),
       );
       await page.route(`${api}/adapters`, (route) => route.fulfill({ json: { adapters: [adapter] } }));
       await page.route(campaigns, (route) =>
@@ -665,6 +671,7 @@ test.describe("Academy smoke", () => {
           plan: {
             ...planRequest,
             plan_sha256: planSha256,
+            data_audit: audit,
             variants: [
               {
                 run_id: runId,
@@ -703,8 +710,22 @@ test.describe("Academy smoke", () => {
       await page.goto(buildHttpUrl(host, port, "/academy"));
       await page.getByRole("button", { name: "Trening", exact: true }).click();
       await page.getByRole("button", { name: "Kampania", exact: true }).click();
-      await page.locator("#campaign-profile").selectOption(profile.id);
+      const profileInput = page.locator("#campaign-profile");
+      const planButton = page.getByRole("button", { name: "Przygotuj plan kampanii" });
+      if (!optuna) {
+        await expect(page.getByText("Brak przypiętego audytu danych.")).toBeVisible();
+        await profileInput.selectOption("blocked-profile");
+        await expect(planButton).toBeDisabled();
+        const auditBlock = page.getByRole("alert").filter({ hasText: "Audyt danych blokuje użycie profilu." });
+        await expect(auditBlock).toContainText("state_update");
+      }
+      await profileInput.selectOption(profile.id);
       await page.getByLabel("Identyfikator kampanii").fill(campaignId);
+      if (!optuna) {
+        await page.getByText("Audyt danych przeszedł", { exact: true }).click();
+        await expect(page.getByRole("row", { name: /Replay.*9 \/ 12.*40 \/ 100/ })).toBeVisible();
+        await expect(page.getByRole("row", { name: /state_update.*9 \/ 40.*0 \/ 0/ })).toBeVisible();
+      }
       const strategyInput = page.getByLabel("Strategia doboru parametrów");
       await expect(strategyInput).toHaveValue("fixed");
       if (optuna) {
@@ -723,7 +744,7 @@ test.describe("Academy smoke", () => {
         await page.locator("#variant-0-rank").fill("6");
         await page.getByLabel("Źródło inicjalizacji 1").selectOption(adapter.adapter_id);
       }
-      await page.getByRole("button", { name: "Przygotuj plan kampanii" }).click();
+      await planButton.click();
       const start = page.getByRole("button", { name: "Uruchom zaplanowaną kampanię" });
       await expect(start).toBeEnabled();
       expect(planRequest).toMatchObject({ campaign_id: campaignId, profile_id: profile.id, review_mode: "manual" });
@@ -739,6 +760,9 @@ test.describe("Academy smoke", () => {
         const plannedTrial = page.getByRole("row").filter({ has: page.getByRole("button", { name: runId, exact: true }) });
         await expect(plannedTrial).toContainText(adapter.label);
         await expect(plannedTrial).toContainText(adapter.weights_sha256.slice(0, 12));
+        const savedPlan = start.locator("xpath=ancestor::section[1]");
+        await savedPlan.getByText("Audyt danych przeszedł", { exact: true }).click();
+        await expect(savedPlan.getByText(audit.report_sha256, { exact: true })).toBeVisible();
       }
 
       await page.goto(buildHttpUrl(host, port, `/academy?campaign=${campaignId}`));

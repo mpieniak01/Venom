@@ -212,3 +212,34 @@ W manifeście kampanii CLI podaj np. `"variants": [{}, {"initial_adapter_id": "o
 Dla zarejestrowanego `omni-p13-145` ustaw w obu ramionach `rank: 4`, `alpha: 8`, `dropout: 0.05` i `target_modules: ["q_proj", "k_proj", "v_proj", "o_proj", "in_proj", "out_proj", "w1", "w2", "w3"]`. Jeśli profil ma inny zakres modułów lub inną wartość dropout, Academy odrzuci plan przy walidacji adaptera.
 
 Nowy przebieg rozpoczyna optymalizację od kroku zero. Runner sprawdza wartości wszystkich tensorów wczytanych z adaptera. Po przerwaniu przebieg kontynuuje z własnego pełnego checkpointu wraz ze stanem optymalizatora, harmonogramu i RNG. Retencja usuwa pliki wynikowe kampanii zgodnie z wybraną polityką. Katalog wejściowy jest niezależny od plików wynikowych.
+
+
+## Audyt mieszanki danych przed treningiem
+
+Najpierw przygotuj i zrecenzuj mapę rekordów train. Plik JSON zawiera `schema_version: 1` oraz `records`. Kluczem mapy jest ID rekordu, a wartością obiekt `{"group":"replay","skill":"state_add"}`. Grupa to `replay` lub `fresh`, a nazwa umiejętności składa się z małych liter ASCII, cyfr, łączników lub podkreśleń. Przypisz dokładnie jedną parę do każdego rekordu. Dla danych strukturalnych sprawdzaj treść nadzorowanej odpowiedzi, żeby odróżnić inicjalizację od aktualizacji, nawet gdy mają wspólną etykietę zadania.
+
+Wygeneruj raport na CPU dla konkretnego limitu wejścia z receptury. Użyj train i roboczego dev właściwego dla tej kampanii.
+
+```bash
+bash scripts/academy/omni_pl_chat_audit.sh "$snapshot" "$train" "$dev" \
+  "$taxonomy" "$audit_output" "$training_venv" 1280
+```
+
+Do katalogu profili wgraj `$profile_id.data-audit.json` (wygenerowany `audit.json`) i `$profile_id.taxonomy.json` (zweryfikowaną mapę rekordów). W profilu ustaw `data_audit` z polami `report_sha256`, `taxonomy_sha256` i `policy`. Przykład progów:
+
+```json
+{
+  "groups": {
+    "replay": {"min_records": 60},
+    "fresh": {"min_supervised_tokens": 500}
+  },
+  "skills": {
+    "state_add": {"replay": {"min_records": 1}},
+    "state_sub": {"replay": {"min_records": 1}}
+  }
+}
+```
+
+Odczytaj stan przez `python -m scripts.academy.experiments --root "$experiment_root" audit "$profile_id"` lub w Academy. Raport, taksonomia, dane, przypięta baza, tokenizacja i limit wejścia muszą się zgadzać. Audyt blokuje duplikaty train, dokładnie wspólne znormalizowane pytania lub prefiksy train/dev i niespełnione progi. Porównanie tekstu używa normalizacji NFKC, składania wielkości liter i białych znaków. Nie mierzy podobieństwa semantycznego. Po zmianie plików wygeneruj nowy audyt i zapisz nowy plan.
+
+Raport pokazuje liczbę rekordów, liczbę tokenów nadzoru oraz pokrycie umiejętności. Liczniki dotyczą jednego przejścia przez plik train. Trener przed załadowaniem modelu sprawdza sumaryczne pomiary z raportu przy niezależnym kodowaniu. Budżet kroków oraz tryb `loss_mode` określają osobno ekspozycję danych i sposób ważenia straty. Zaliczenie audytu oznacza spełnienie zdefiniowanych warunków składu danych.

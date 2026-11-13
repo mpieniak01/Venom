@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { dataAuditErrorKey } from "@/lib/academy-data-audit";
 import { ApiError } from "@/lib/api-client";
 import {
   listExperimentProfiles,
@@ -130,9 +131,9 @@ export function CampaignPanel({
         setOptunaAvailable(false);
         setOperationError(ACTION_ERROR.optuna);
       } else {
-        const keys = [`academy.campaigns.initialAdapter.errors.${detail?.code}`, `academy.campaigns.quality.issues.${detail?.code}`];
+        const keys = [dataAuditErrorKey(detail?.code), `academy.campaigns.initialAdapter.errors.${detail?.code}`, `academy.campaigns.quality.issues.${detail?.code}`];
         const fallback = error instanceof ApiError && error.status === 409 ? ACTION_ERROR.conflict : ACTION_ERROR.failed;
-        setOperationError(keys.find((key) => t(key) !== key) ?? fallback);
+        setOperationError(keys.find((key) => key && t(key) !== key) ?? fallback);
       }
       return false;
     } finally {

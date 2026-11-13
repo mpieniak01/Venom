@@ -35,6 +35,11 @@ if [[ "${1:-}" != --inside ]]; then
                 *) exit 2 ;;
             esac
             ;;
+        audit-mix)
+            [[ $# -eq 3 && "$3" =~ ^[1-9][0-9]{1,3}$ && "$3" -ge 32 && "$3" -le 4096 ]]
+            [[ -f "$2" && ! -L "$2" && -f "$1" && ! -L "$1" ]]
+            inputs+=("$(realpath -e -- "$1")" "$(realpath -e -- "$2")" "$3")
+            ;;
         merge) [[ $# -eq 0 ]] ;;
         evaluate|evaluate-resumable)
             if [[ $# -lt 2 || $# -gt 5 ]]; then exit 2; fi
@@ -107,7 +112,7 @@ file_ro() {
     mount_ro "$1" "$2"
 }
 
-copy_initial_input() {
+copy_bounded_input() {
     local source=$1 destination=$2 limit=$3
     # The sandbox verifies and loads these same bytes from its private tmpfs.
     [[ -f "$source" && ! -L "$source" ]]
@@ -126,7 +131,9 @@ if [[ "$python_base" != "$venv" ]]; then
     mount_ro "$python_base" "$scratch$python_base"
 fi
 mount_ro "$snapshot" "$scratch/inputs/model"
-file_ro "$data" "$scratch/inputs/train.jsonl"
+if [[ "$mode" != audit-mix ]]; then
+    file_ro "$data" "$scratch/inputs/train.jsonl"
+fi
 for file in omni_pl_chat_data.py omni_pl_chat_masks.py omni_pl_chat_recipe.py omni_pl_chat_p1.py omni_pl_chat_adapter.py omni_pl_chat_export.py omni_pl_chat_evaluate.py; do
     file_ro "$job/$file" "$scratch/job/scripts/academy/$file"
 done
@@ -134,6 +141,14 @@ file_ro "$job/../llm/omni_native_snapshot.json" "$scratch/job/scripts/llm/omni_n
 
 worker=(scripts.academy.omni_pl_chat_p1 "$mode")
 case "$mode" in
+    audit-mix)
+        max_source_bytes=$((8 * 1024 * 1024))
+        copy_bounded_input "$data" "$scratch/inputs/train.jsonl" "$max_source_bytes"
+        copy_bounded_input "$1" "$scratch/inputs/dev.jsonl" "$max_source_bytes"
+        copy_bounded_input "$2" "$scratch/inputs/taxonomy.json" "$max_source_bytes"
+        file_ro "$job/omni_pl_chat_audit.py" "$scratch/job/scripts/academy/omni_pl_chat_audit.py"
+        worker=(scripts.academy.omni_pl_chat_audit "$3")
+        ;;
     merge) worker=(scripts.academy.omni_pl_chat_export) ;;
     evaluate|evaluate-resumable)
         mkdir "$scratch/inputs/adapters"
@@ -151,11 +166,11 @@ case "$mode" in
         if [[ $# -ge 1 ]]; then file_ro "$1" "$scratch/inputs/recipe.json"; fi
         if [[ $# -eq 3 ]]; then
             mkdir "$scratch/inputs/initial-adapter"
-            copy_initial_input "$2/adapter_config.json" \
+            copy_bounded_input "$2/adapter_config.json" \
                 "$scratch/inputs/initial-adapter/adapter_config.json" $((16 * 1024))
-            copy_initial_input "$2/adapter_model.safetensors" \
+            copy_bounded_input "$2/adapter_model.safetensors" \
                 "$scratch/inputs/initial-adapter/adapter_model.safetensors" $((512 * 1024 * 1024))
-            copy_initial_input "$3" "$scratch/inputs/initial-adapter.json" $((16 * 1024))
+            copy_bounded_input "$3" "$scratch/inputs/initial-adapter.json" $((16 * 1024))
         fi
         ;;
 esac
@@ -170,7 +185,7 @@ mount -o remount,bind,rw,nodev,nosuid,noexec "$scratch/out"
 # NVIDIA CUDA needs writable proc in a PID namespace; the worker drops capabilities.
 mount -t proc -o nodev,nosuid,noexec proc "$scratch/proc"
 for device in null urandom dxg nvidiactl nvidia0 nvidia-uvm nvidia-uvm-tools; do
-    if [[ "$mode" == preflight && "$device" != null && "$device" != urandom ]]; then
+    if [[ ( "$mode" == preflight || "$mode" == audit-mix ) && "$device" != null && "$device" != urandom ]]; then
         continue
     fi
     if [[ -c "/dev/$device" ]]; then

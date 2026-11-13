@@ -22,6 +22,7 @@ from venom_core.services.remote_training.lifecycle import (
 from venom_core.services.remote_training.paths import operator_path
 
 from .adapters import list_adapters, resolve_adapter, verify_adapter_entry
+from .data_audit import AuditError, verify_data_audit
 from .evidence import (
     historical_report,
     inspect_checkpoint,
@@ -153,6 +154,18 @@ class ExperimentService:
             )
         return profile, info, calibration
 
+    def data_audit(self, profile_id: str) -> dict | None:
+        profile, _, _ = self._validated(profile_id, None)
+        return self._audit_summary(profile_id, profile, recipe_for(profile, None))
+
+    def _audit_summary(
+        self, profile_id: str, profile: Profile, recipe: dict
+    ) -> dict | None:
+        try:
+            return verify_data_audit(self.root, profile_id, profile, recipe)
+        except AuditError as exc:
+            return {"status": "blocked", "error": str(exc), **exc.summary}
+
     def adapters(self) -> list[dict]:
         return list_adapters(self.root)
 
@@ -165,6 +178,9 @@ class ExperimentService:
                 profile, info, _ = self._validated(path.stem, None)
             except (OSError, ValueError, TypeError, KeyError, AttributeError):
                 continue
+            audit = self._audit_summary(path.stem, profile, info["recipe"])
+            if audit is not None:
+                info["data_audit"] = audit
             result.append(
                 {
                     "id": path.stem,
@@ -178,6 +194,9 @@ class ExperimentService:
 
     def validate(self, profile_id: str, recipe: dict | None = None) -> dict:
         profile, info, _ = self._validated(profile_id, recipe)
+        audit = verify_data_audit(self.root, profile_id, profile, info["recipe"])
+        if audit is not None:
+            info["data_audit"] = audit
         check_inputs(self.root, profile)
         return info
 
@@ -277,8 +296,9 @@ class ExperimentService:
     def _view(self, state: dict) -> dict:
         run_id = state["run_id"]
         result = {key: state.get(key) for key in PUBLIC}
-        if "initial_adapter" in state:
-            result["initial_adapter"] = state["initial_adapter"]
+        for key in ("initial_adapter", "data_audit"):
+            if key in state:
+                result[key] = state[key]
         if self._orphaned(state):
             result.update(status="failed", error="experiment_supervisor_exited")
         committed = self._check_report(run_id)
@@ -350,6 +370,16 @@ class ExperimentService:
         self._save(state)
         return self._view(state)
 
+    @staticmethod
+    def _select_calibration(calibration: dict | None, mode: str | None) -> dict | None:
+        if mode == "manual":
+            return None
+        if mode == "automatic" and calibration is None:
+            raise ValueError("experiment_evaluator_unqualified")
+        if mode not in {None, "automatic"}:
+            raise ValueError("experiment_review_mode_invalid")
+        return calibration
+
     def start(
         self,
         profile_id: str,
@@ -364,17 +394,13 @@ class ExperimentService:
     ) -> dict:
         ensure_data_mutation_allowed("academy_experiment_start")
         profile, info, calibration = self._validated(profile_id, recipe)
-        if review_mode == "manual":
-            calibration = None
-        elif review_mode == "automatic" and calibration is None:
-            raise ValueError("experiment_evaluator_unqualified")
-        elif review_mode not in {None, "automatic"}:
-            raise ValueError("experiment_review_mode_invalid")
+        calibration = self._select_calibration(calibration, review_mode)
         if expected_identity is not None and expected_identity != info["identity"]:
             raise ValueError("experiment_profile_changed")
         initial_adapter = info.get("initial_adapter")
         if initial_adapter != expected_initial_adapter and campaign_id is not None:
             raise ValueError("experiment_initial_adapter_changed")
+        audit = verify_data_audit(self.root, profile_id, profile, info["recipe"])
         directory = self.run_dir(run_id)
         directory.mkdir(parents=True, exist_ok=True, mode=0o700)
         manifest = {
@@ -383,12 +409,16 @@ class ExperimentService:
             "campaign_id": campaign_id,
             "profile_id": profile_id,
             "profile_identity": info["identity"],
-            "profile": profile.model_dump(),
+            "profile": profile.model_dump(
+                exclude={"data_audit"} if profile.data_audit is None else set()
+            ),
             "recipe": info["recipe"],
             "calibration": calibration,
         }
         if initial_adapter is not None:
             manifest["initial_adapter"] = initial_adapter
+        if audit is not None:
+            manifest["data_audit"] = audit
         with self.run_lock(run_id):
             if (directory / "manifest.json").exists():
                 if self._manifest(run_id) != manifest:
@@ -411,8 +441,9 @@ class ExperimentService:
                 "attempt": 0,
                 "elapsed_seconds": 0.0,
             }
-            if initial_adapter is not None:
-                state["initial_adapter"] = initial_adapter
+            for key in ("initial_adapter", "data_audit"):
+                if key in manifest:
+                    state[key] = manifest[key]
             return self._enqueue(
                 state, stage="train", mode="control", max_seconds=max_seconds
             )
@@ -441,13 +472,23 @@ class ExperimentService:
             manifest = self._manifest(run_id)
             profile = Profile.model_validate(manifest["profile"])
             check_inputs(self.root, profile)
-            if mode == "resume" and "initial_adapter" in manifest:
-                verify_adapter_entry(
-                    self.root, manifest["initial_adapter"], manifest["recipe"]
-                )
+            if mode == "resume":
+                self.verify_run_data_audit(manifest)
+                if "initial_adapter" in manifest:
+                    verify_adapter_entry(
+                        self.root, manifest["initial_adapter"], manifest["recipe"]
+                    )
             if self._orphaned(state):
                 state["elapsed_seconds"] = view["elapsed_seconds"]
             return self._enqueue(state, stage=stage, mode=mode, max_seconds=max_seconds)
+
+    def verify_run_data_audit(self, manifest: dict) -> None:
+        profile = Profile.model_validate(manifest["profile"])
+        current = verify_data_audit(
+            self.root, manifest["profile_id"], profile, manifest["recipe"]
+        )
+        if current != manifest.get("data_audit"):
+            raise AuditError("changed")
 
     @staticmethod
     def _require_run_owner(state: dict, campaign_id: str | None) -> None:
@@ -557,11 +598,12 @@ class ExperimentService:
             judgment_sha256=digest(verdict_file),
             generation_sha256=digest(generation / GENERATION_SEAL),
         )
-        if "initial_adapter" in state:
+        provenance = {"initial_adapter", "data_audit"} & state.keys()
+        if provenance:
             manifest = self._manifest(run_id)
             if stable_hash(manifest) != state["manifest_sha256"]:
                 raise ValueError("experiment_manifest_changed")
-            result["initial_adapter"] = manifest["initial_adapter"]
+            result.update({key: manifest[key] for key in provenance})
         atomic_json(directory / "result.json", result)
         atomic_json(
             directory / "result-seal.json",

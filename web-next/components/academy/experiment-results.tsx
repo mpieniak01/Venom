@@ -15,6 +15,7 @@ import {
   type ExperimentVerdict,
 } from "@/lib/academy-experiments-api";
 import { useLanguage, useTranslation } from "@/lib/i18n";
+import { DataAuditSummary } from "./data-audit-summary";
 import { InitialAdapterSummary } from "./initial-adapter";
 
 const METRICS = [
@@ -87,7 +88,7 @@ function Comparison({ report, task }: { readonly report: ExperimentReport; reado
 
   return (
     <div className="overflow-x-auto">
-      <table className="w-full text-left text-sm">
+      <table className="w-full text-left text-sm" aria-label={t("academy.experiments.comparison")}>
         <thead>
           <tr className="border-b border-[color:var(--ui-border)]">
             <th scope="col" className="py-2 pr-3">{t("academy.experiments.metric")}</th>
@@ -147,6 +148,7 @@ export function ExperimentResult({ run, onOpenQuality }: {
     .filter((key) => key !== "total" && Object.hasOwn(report.summaries.candidate, key))
     .sort((left, right) => left.localeCompare(right, language));
   const selectedTask = tasks.includes(task) ? task : "total";
+  const audit = report.data_audit ?? run.data_audit;
   return (
     <section className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -164,6 +166,7 @@ export function ExperimentResult({ run, onOpenQuality }: {
         </div>
       </div>
       {run.attempt > 0 && <InitialAdapterSummary adapter={report.initial_adapter ?? run.initial_adapter} />}
+      {audit && <DataAuditSummary audit={audit} />}
       {tasks.length > 0 && (
         <div className="flex flex-wrap items-center gap-2">
           <Label htmlFor="experiment-result-task">{t("academy.experiments.category")}</Label>

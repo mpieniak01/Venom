@@ -7,6 +7,8 @@ import { Label } from "@/components/ui/label";
 import { useTranslation } from "@/lib/i18n";
 import type { ExperimentProfile, ExperimentRecipe, ExperimentStartRequest } from "@/lib/academy-experiments-api";
 
+import { DataAuditSummary } from "./data-audit-summary";
+
 const RECIPE_FIELDS = ["rank", "alpha", "learning_rate"] as const;
 const FIELD_KEYS = {
   rank: "academy.experiments.rank",
@@ -41,11 +43,13 @@ export function ExperimentForm({ profiles, disabled, onStart }: ExperimentFormPr
   const [invalid, setInvalid] = useState(false);
   const profile = profiles.find((item) => item.id === profileId) ?? profiles[0];
 
+  const auditBlocked = profile?.data_audit?.status === "blocked";
+
   if (!profile) return <p className="text-sm text-hint">{t("academy.experiments.noProfiles")}</p>;
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!profile || disabled) return;
+    if (disabled || auditBlocked) return;
     let recipe: ExperimentRecipe;
     const id = runId.trim();
     try {
@@ -97,6 +101,7 @@ export function ExperimentForm({ profiles, disabled, onStart }: ExperimentFormPr
           <dd className="break-words">{profile.dataset}</dd>
         </div>
       </dl>
+      <DataAuditSummary audit={profile.data_audit} />
       <details>
         <summary className="cursor-pointer text-sm font-medium">{t("academy.experiments.recipe")}</summary>
         <div key={profile.id} className="mt-3 grid gap-3 sm:grid-cols-3">
@@ -117,7 +122,7 @@ export function ExperimentForm({ profiles, disabled, onStart }: ExperimentFormPr
         </div>
       </details>
       {invalid && <p role="alert" className="text-sm text-red-400">{t("academy.experiments.invalidRecipe")}</p>}
-      <Button type="submit" disabled={disabled}>{t("academy.experiments.start")}</Button>
+      <Button type="submit" disabled={disabled || auditBlocked}>{t("academy.experiments.start")}</Button>
     </form>
   );
 }

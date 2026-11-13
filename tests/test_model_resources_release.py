@@ -1091,3 +1091,31 @@ async def test_training_release_does_not_reopen_inference(world):
             pass
     assert lease.release()
     assert owner.load() == "loaded"
+
+
+@pytest.mark.asyncio
+async def test_timed_out_training_release_waits_for_cleanup_completion(world):
+    started = asyncio.Event()
+    proceed = asyncio.Event()
+    lease = world.acquire(
+        owner=admission_module.ACADEMY_TRAINING_OWNER,
+        run_id="wide-run",
+        engine="omni-training",
+        model="omni",
+    )
+
+    async def cleanup():
+        with world.training_cleanup(lease.training_cleanup_capability()):
+            started.set()
+            await proceed.wait()
+
+    task = asyncio.create_task(cleanup())
+    await started.wait()
+    assert not lease.release()
+    lease.defer_training_release()
+    with pytest.raises(RuntimeAdmissionError):
+        with world.operation(kind="generation"):
+            pass
+    proceed.set()
+    await task
+    assert world.snapshot()["status"] == "available"

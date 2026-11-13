@@ -12,6 +12,7 @@ import json
 import shutil
 import subprocess
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 from scripts.academy.omni_pl_chat_data import read_jsonl, validate_splits
 from scripts.academy.omni_pl_chat_recipe import validate_recipe
@@ -67,49 +68,71 @@ def _clean_checkout(code_root: Path) -> None:
 
 def prepare(profile_path: Path, output: Path, code_root: Path) -> dict:
     profile = _json(profile_path)
-    train = Path(profile["train"]).resolve(strict=True)
-    dev = Path(profile["dev"]).resolve(strict=True)
-    if train.is_symlink() or dev.is_symlink():
-        raise ValueError("training inputs must be regular files")
+    train = Path(profile["train"])
+    dev = Path(profile["dev"])
     for path in (train, dev):
-        if any(part.lower() in FORBIDDEN_SOURCE_PARTS for part in path.parts):
+        if path.is_symlink() or not path.is_file():
+            raise ValueError("training inputs must be regular files")
+        if any(part.lower() in FORBIDDEN_SOURCE_PARTS for part in path.resolve().parts):
             raise ValueError("reserved evaluation data cannot enter the session")
-    if digest(train) != profile["train_sha256"] or digest(dev) != profile["dev_sha256"]:
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.mkdir()
+    try:
+        with TemporaryDirectory(prefix=".omni-input-", dir=output) as temporary:
+            staging = Path(temporary)
+            manifest = _prepare_bundle(profile, train, dev, staging, code_root)
+            for name in (*FILES, "manifest.json"):
+                (staging / name).rename(output / name)
+    except BaseException:
+        for name in (*FILES, "manifest.json"):
+            (output / name).unlink(missing_ok=True)
+        output.rmdir()
+        raise
+    return manifest
+
+
+def _prepare_bundle(
+    profile: dict, train: Path, dev: Path, output: Path, code_root: Path
+) -> dict:
+    shutil.copyfile(train, output / "train.jsonl")
+    shutil.copyfile(dev, output / "dev.jsonl")
+    train_hash = digest(output / "train.jsonl")
+    dev_hash = digest(output / "dev.jsonl")
+    if train_hash != profile["train_sha256"] or dev_hash != profile["dev_sha256"]:
         raise ValueError("profile data hashes differ from files")
-    training = read_jsonl(train)
-    validation = read_jsonl(dev)
+    training = read_jsonl(output / "train.jsonl")
+    validation = read_jsonl(output / "dev.jsonl")
     validate_splits(training, validation)
     if any(row["split"] != "train" for row in training) or any(
         row["split"] != "dev" for row in validation
     ):
         raise ValueError("expected train and dev splits")
     recipe = validate_recipe(profile["recipe"])
-    recipe["train_sha256"] = digest(train)
+    recipe["train_sha256"] = train_hash
     pin = _json(code_root / "scripts/llm/omni_native_snapshot.json")
     if profile["model"] != pin["repo"]:
         raise ValueError("profile model differs from pinned Omni")
-    source_commit = _commit(code_root)
     smoke = {
         **recipe,
         "steps": 16,
         "save_every": 8,
         "warmup_steps": min(recipe["warmup_steps"], 7),
     }
-    validate_recipe(smoke)
-    output.mkdir(parents=True, exist_ok=False)
-    shutil.copyfile(train, output / "train.jsonl")
-    shutil.copyfile(dev, output / "dev.jsonl")
     _write(output / "recipe.json", recipe)
-    _write(output / "smoke-recipe.json", smoke)
+    _write(output / "smoke-recipe.json", validate_recipe(smoke))
     manifest = {
         "schema_version": 1,
         "purpose": "remote_omni_training",
-        "source_commit": source_commit,
+        "source_commit": _commit(code_root),
         "model": profile["model"],
         "revision": pin["revision"],
         "train_records": len(training),
         "dev_records": len(validation),
-        "files": {name: digest(output / name) for name in FILES},
+        "files": {
+            "train.jsonl": train_hash,
+            "dev.jsonl": dev_hash,
+            **{name: digest(output / name) for name in FILES[2:]},
+        },
         "stages": [
             "preflight",
             "smoke_initial_8",
@@ -184,14 +207,16 @@ def run_stage(
     stage: str,
 ) -> None:
     """Execute one explicit stage on an already prepared GPU host."""
+    if any(path.is_symlink() for path in (bundle, code_root, output, snapshot, venv)):
+        raise ValueError("session paths must be real directories")
+    bundle, code_root, snapshot, venv, output = (
+        path.resolve() for path in (bundle, code_root, snapshot, venv, output)
+    )
     manifest = verify(bundle, code_root)
     _clean_checkout(code_root)
-    if output.is_symlink() or snapshot.is_symlink() or venv.is_symlink():
-        raise ValueError("session paths must be real directories")
     if not snapshot.is_dir() or not (venv / "bin/python").is_file():
         raise ValueError("snapshot or training interpreter is unavailable")
-    if not output.is_dir():
-        output.mkdir(parents=True)
+    _bind_output(output, manifest, stage)
     script = code_root / "scripts/academy/omni_pl_chat_p1.sh"
     common = ["bash", str(script), str(snapshot), str(bundle / "train.jsonl")]
     smoke = output / "smoke"
@@ -266,6 +291,22 @@ def run_stage(
         raise ValueError("unknown remote qualification stage")
     if argv:
         subprocess.run(argv, cwd=code_root, check=True)
+
+
+def _bind_output(output: Path, manifest: dict, stage: str) -> None:
+    output.mkdir(parents=True, exist_ok=True)
+    identity = output / "session.json"
+    if identity.is_symlink():
+        raise ValueError("session identity must be a regular file")
+    if identity.is_file():
+        if _json(identity) != manifest:
+            raise ValueError("output belongs to a different training session")
+        return
+    if stage not in {"preflight", "full-preflight"} or any(output.iterdir()):
+        raise ValueError("start preflight in an empty session output")
+    from scripts.academy.omni_pl_chat_p1 import _write_json
+
+    _write_json(identity, manifest)
 
 
 def _full_stage_command(

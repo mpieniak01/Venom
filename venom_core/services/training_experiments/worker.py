@@ -298,6 +298,7 @@ class Worker:
                     engine="omni-training",
                     model=manifest["profile"]["model"],
                 )
+                training_started = False
                 try:
                     self.update(stage="release_gpu")
                     self.prepare_gpu(lease, offline=offline)
@@ -306,6 +307,7 @@ class Worker:
                         kind="lifecycle", confirm_quiescent=self.quiescent
                     ):
                         self.update(status="running")
+                        training_started = True
                         self.pipeline(state, manifest, gpu_fd)
                 finally:
                     if self.quiescent():
@@ -315,7 +317,10 @@ class Worker:
                                 memory_snapshot(),
                             )
                         finally:
-                            lease.release()
+                            if not lease.release():
+                                if training_started:
+                                    raise ValueError("experiment_gpu_recovery_required")
+                                lease.defer_training_release()
             with self.service.run_lock(self.run_id):
                 current = self.service.store.read(self.run_id)
                 self.check_budget()

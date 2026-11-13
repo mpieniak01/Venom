@@ -631,6 +631,18 @@ class RuntimeAdmission:
                 )
             else:
                 db.execute("DELETE FROM operation WHERE token=?", (operation,))
+                if row["lease_token"]:
+                    self._release_cancelled_training(db, row["lease_token"])
+
+    @staticmethod
+    def _release_cancelled_training(db: sqlite3.Connection, token: str) -> None:
+        # The supervisor requests deferred release only before training starts.
+        # Keep the lease until the last cleanup operation has actually exited.
+        db.execute(
+            "DELETE FROM lease WHERE token=? AND owner=? AND cancelled=1 "
+            "AND quarantine=0 AND NOT EXISTS (SELECT 1 FROM operation WHERE lease_token=?)",
+            (token, ACADEMY_TRAINING_OWNER, token),
+        )
 
     @contextmanager
     def operation(
@@ -891,6 +903,25 @@ class RuntimeLease:
         except asyncio.CancelledError:
             self.cancel()
             raise
+
+    def defer_training_release(self) -> None:
+        """Transfer release to the active cleanup if the worker never loaded weights."""
+        with self._admission._transaction() as db:
+            lease = db.execute(_SELECT_LEASE).fetchone()
+            if (
+                lease is None
+                or lease["token"] != self._token
+                or lease["owner"] != ACADEMY_TRAINING_OWNER
+                or lease["pid"] != os.getpid()
+                or lease["quarantine"]
+                or db.execute(
+                    "SELECT 1 FROM operation WHERE lease_token=? AND kind NOT IN (?, ?)",
+                    (self._token, *sorted(_CLEANUP_KINDS)),
+                ).fetchone()
+            ):
+                raise RuntimeAdmissionError("runtime_recovery_required")
+            db.execute("UPDATE lease SET cancelled=1 WHERE token=?", (self._token,))
+            self._admission._release_cancelled_training(db, self._token)
 
     def training_cleanup_capability(self) -> str:
         """Forward only through the trusted loopback administration transport."""

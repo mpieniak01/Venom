@@ -208,7 +208,7 @@ def test_full_stage_uses_original_recipe_and_final_checkpoint(tmp_path, monkeypa
     def stage(name):
         run_stage(bundle, code, snapshot, venv, output, name)
 
-    with pytest.raises(ValueError, match="full preflight"):
+    with pytest.raises(ValueError, match="preflight"):
         stage("train")
     stage("full-preflight")
     assert calls[-1][-2:] == ["preflight", str(bundle / "recipe.json")]
@@ -232,3 +232,60 @@ def test_full_stage_uses_original_recipe_and_final_checkpoint(tmp_path, monkeypa
     stage("evaluate-full")
     assert checked == [training / "checkpoint-128"]
     assert calls[-1][-2:] == ["base", f"checkpoint-128={checked[0]}"]
+
+
+def test_prepare_rejects_data_changed_during_copy(tmp_path, monkeypatch):
+    import shutil
+
+    profile, code = _fixture(tmp_path)
+    original = shutil.copyfile
+
+    def copy(source, target):
+        original(source, target)
+        if target.name == "dev.jsonl":
+            target.write_text("changed after source validation")
+
+    monkeypatch.setattr(shutil, "copyfile", copy)
+    output = tmp_path / "bundle"
+    with pytest.raises(ValueError, match="hashes differ"):
+        prepare(profile, output, code)
+    assert not output.exists()
+
+
+def test_relative_stage_paths_and_output_session_identity(tmp_path, monkeypatch):
+    profile, code = _fixture(tmp_path)
+    monkeypatch.setattr(
+        "scripts.academy.omni_remote_session._commit", lambda _: "b" * 40
+    )
+    monkeypatch.setattr(
+        "scripts.academy.omni_remote_session._clean_checkout", lambda _: None
+    )
+    monkeypatch.chdir(tmp_path)
+    bundle = Path("bundle")
+    prepare(profile, bundle, code)
+    Path("snapshot").mkdir()
+    Path("venv/bin").mkdir(parents=True)
+    Path("venv/bin/python").touch()
+    paths = (bundle, Path("code"), Path("snapshot"), Path("venv"), Path("out"))
+    calls = []
+    monkeypatch.setattr(
+        "scripts.academy.omni_remote_session.subprocess.run",
+        lambda argv, **kwargs: calls.append((argv, kwargs)),
+    )
+    run_stage(*paths, "full-preflight")
+    args, kwargs = calls[-1]
+    assert kwargs["cwd"] == code
+    assert args[1:6] == [
+        str(code / "scripts/academy/omni_pl_chat_p1.sh"),
+        str(tmp_path / "snapshot"),
+        str(tmp_path / "bundle/train.jsonl"),
+        str(tmp_path / "out/full-preflight"),
+        str(tmp_path / "venv"),
+    ]
+    monkeypatch.setattr(
+        "scripts.academy.omni_remote_session._commit", lambda _: "c" * 40
+    )
+    changed = Path("changed-bundle")
+    prepare(profile, changed, code)
+    with pytest.raises(ValueError, match="different training session"):
+        run_stage(changed, *paths[1:], "full-preflight")

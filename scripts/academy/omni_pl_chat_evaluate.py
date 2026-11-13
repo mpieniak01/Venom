@@ -1,15 +1,16 @@
 """Generate blinded dev comparisons for the pinned Omni model and PEFT adapters."""
 
+import hashlib
 import json
 import os
 import random
 import re
 import sys
-from collections import defaultdict
 from contextlib import nullcontext
 from importlib import import_module
 from importlib.metadata import version
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from time import monotonic
 from unittest.mock import patch
 
@@ -18,6 +19,7 @@ from scripts.academy.omni_pl_chat_data import (
     read_jsonl,
     sha256,
     validate_splits,
+    write_jsonl,
 )
 from scripts.academy.omni_pl_chat_masks import SNAPSHOT_PIN, verify_snapshot
 from scripts.academy.omni_pl_chat_p1 import _verify_boundary, _write_json
@@ -27,6 +29,8 @@ MAX_NEW_TOKENS = 512
 GENERATION_SEED = 42
 BLIND_SEED = 742
 _ADAPTER_FILES = ("adapter_config.json", "adapter_model.safetensors")
+_PROGRESS = Path("/progress")
+_MAX_RECEIPT_BYTES = 256 * 1024
 
 
 def validate_dev_cases(cases: list[dict]) -> None:
@@ -189,14 +193,91 @@ def _load_model(snapshot: Path, adapters: dict[str, Path]):
     return base, model, processor
 
 
+def _hash(value: object) -> str:
+    payload = json.dumps(value, sort_keys=True, allow_nan=False).encode()
+    return hashlib.sha256(payload).hexdigest()
+
+
+class GenerationProgress:
+    """Persist verified individual generations before publishing a review bundle."""
+
+    def __init__(self, root: Path, identity: dict, mapping: dict[str, dict[str, str]]):
+        self.identity = _hash(identity)
+        self.directory = root / self.identity
+        self.directory.mkdir(mode=0o700, exist_ok=True)
+        if self.directory.is_symlink():
+            raise ValueError("evaluation progress directory cannot be a symlink")
+        self.labels = {
+            (case, tag): label
+            for case, entries in mapping.items()
+            for label, tag in entries.items()
+        }
+        self.rows = {}
+        for key in self.labels:
+            stored = self._read(key)
+            if stored is not None:
+                self.rows[key] = stored
+        self.reused = len(self.rows)
+
+    def _path(self, key: tuple[str, str]) -> Path:
+        return self.directory / f"{_hash(key)}.json"
+
+    def _read(self, key: tuple[str, str]) -> dict | None:
+        path = self._path(key)
+        if path.is_symlink():
+            raise ValueError("evaluation progress receipt cannot be a symlink")
+        if not path.exists():
+            return None
+        if not path.is_file() or path.stat().st_size > _MAX_RECEIPT_BYTES:
+            raise ValueError("invalid evaluation progress receipt")
+        data = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(data, dict) or not isinstance(row := data.get("row"), dict):
+            raise ValueError("invalid evaluation progress receipt")
+        if (
+            data.get("sha256") != _hash([self.identity, row])
+            or (row.get("case"), row.get("model")) != key
+            or row.get("label") != self.labels[key]
+        ):
+            raise ValueError("evaluation progress receipt differs from its seal")
+        return row
+
+    def save(self, key: tuple[str, str], item: dict) -> None:
+        case, tag = key
+        row = {**item, "case": case, "model": tag, "label": self.labels[key]}
+        _write_json(
+            self._path(key), {"row": row, "sha256": _hash([self.identity, row])}
+        )
+        self.rows[key] = row
+
+    def missing(self, cases: list[dict], tag: str) -> list[dict]:
+        return [case for case in cases if (case["record_id"], tag) not in self.rows]
+
+    def publish(self, root: Path, cases: list[dict], variants: list[str]) -> None:
+        # Check completeness before publishing any review files.
+        raw = [self.rows[case["record_id"], tag] for tag in variants for case in cases]
+        blind = []
+        for case in cases:
+            answers = {
+                self.labels[case["record_id"], tag]: self.rows[case["record_id"], tag][
+                    "response"
+                ]
+                for tag in variants
+            }
+            blind.append({"case": case, "answers": dict(sorted(answers.items()))})
+        for filename, rows in (("raw.jsonl", raw), ("blind.jsonl", blind)):
+            path = root / filename
+            write_jsonl(path, rows)
+            with path.open("rb") as stream:
+                os.fsync(stream.fileno())
+
+
 def _generate(
-    root: Path,
+    progress: GenerationProgress,
     base,
     model,
     processor,
     cases: list[dict],
     variants: list[str],
-    mapping: dict[str, dict[str, str]],
 ) -> None:
     import torch
 
@@ -204,51 +285,45 @@ def _generate(
     eos = base.generation_config.eos_token_id or base.config.text_config.eos_token_id
     eos_ids = {eos} if isinstance(eos, int) else set(eos or ())
     eos_ids.add(base.config.text_end_token_id)
-    results: dict[str, dict] = defaultdict(dict)
     with (
-        (root / "raw.jsonl").open("x", encoding="utf-8") as raw,
-        (root / "blind.jsonl").open("x", encoding="utf-8") as blind,
         torch.inference_mode(),
         patch.object(
             backbone, "can_use_lfm3_conv", new=lambda *_args, **_kwargs: False
         ),
     ):
         for tag in variants:
+            missing = progress.missing(cases, tag)
+            if not missing:
+                continue
             if tag != "base":
                 model.set_adapter(tag)
             with model.disable_adapter() if tag == "base" else nullcontext():
-                for case in cases:
-                    cid = case["record_id"]
-                    label = next(
-                        key for key, value in mapping[cid].items() if value == tag
-                    )
+                for case in missing:
                     item = _predict(model, processor, case["messages"], eos_ids)
-                    raw.write(
-                        json.dumps(
-                            {"case": cid, "model": tag, "label": label, **item},
-                            ensure_ascii=False,
-                            allow_nan=False,
-                        )
-                        + "\n"
-                    )
-                    raw.flush()
-                    results[cid][label] = item["response"]
-                    if len(results[cid]) == len(variants):
-                        blind.write(
-                            json.dumps(
-                                {
-                                    "case": case,
-                                    "answers": dict(sorted(results.pop(cid).items())),
-                                },
-                                ensure_ascii=False,
-                                allow_nan=False,
-                            )
-                            + "\n"
-                        )
-                        blind.flush()
-            print(json.dumps({"variant": tag, "cases": len(cases)}), flush=True)
-        os.fsync(raw.fileno())
-        os.fsync(blind.fileno())
+                    progress.save((case["record_id"], tag), item)
+            print(json.dumps({"variant": tag, "cases": len(missing)}), flush=True)
+
+
+def _evaluation_manifest(
+    pin: dict, cases_hash: str, cases: list[dict], adapter_info: dict
+) -> dict:
+    return {
+        "models": {"base": {"base": True}, **adapter_info},
+        "model_repo": pin["repo"],
+        "revision": pin["revision"],
+        "snapshot_manifest_sha256": sha256(SNAPSHOT_PIN),
+        "data_sha256": cases_hash,
+        "evaluated_ids": [case["record_id"] for case in cases],
+        "max_prompt_tokens": MAX_PROMPT_TOKENS,
+        "max_new_tokens": MAX_NEW_TOKENS,
+        "seed": GENERATION_SEED,
+        "blind_seed": BLIND_SEED,
+        "engine": {name: version(name) for name in ("torch", "transformers", "peft")},
+        "template": "vendor",
+        "generation_mode": "text",
+        "do_sample": False,
+        "enable_thinking": False,
+    }
 
 
 def main() -> None:
@@ -272,31 +347,47 @@ def main() -> None:
         tag: verify_adapter(checkpoint) for tag, checkpoint in adapters.items()
     }
 
-    base, model, processor = _load_model(snapshot, adapters)
+    import torch
+
+    manifest = _evaluation_manifest(pin, cases_hash, cases, adapter_info)
+    identity = {
+        **manifest,
+        "python": sys.version,
+        "evaluator_files": {
+            name: sha256(Path(__file__).with_name(name))
+            for name in (
+                "omni_pl_chat_evaluate.py",
+                "omni_pl_chat_data.py",
+                "omni_pl_chat_masks.py",
+                "omni_pl_chat_p1.py",
+                "omni_pl_chat_recipe.py",
+            )
+        },
+        "cuda": torch.version.cuda,
+        "gpu": torch.cuda.get_device_name(),
+        "gpu_capability": torch.cuda.get_device_capability(),
+        "variants": variants,
+    }
+    shared = _PROGRESS.is_dir()
+    with (
+        TemporaryDirectory(dir=root)
+        if not shared
+        else nullcontext(_PROGRESS) as checkpoint_dir
+    ):
+        progress = GenerationProgress(Path(checkpoint_dir), identity, mapping)
+        if any(progress.missing(cases, tag) for tag in variants):
+            base, model, processor = _load_model(snapshot, adapters)
+            _generate(progress, base, model, processor, cases, variants)
+        if sha256(cases_path) != cases_hash:
+            raise ValueError("evaluation data changed during the run")
+        progress.publish(root, cases, variants)
     _write_json(root / "unblind.json", mapping)
-    _generate(root, base, model, processor, cases, variants, mapping)
-    if sha256(cases_path) != cases_hash:
-        raise ValueError("evaluation data changed during the run")
     _write_json(
         root / "manifest.json",
         {
-            "models": {"base": {"base": True}, **adapter_info},
-            "model_repo": pin["repo"],
-            "revision": pin["revision"],
-            "snapshot_manifest_sha256": sha256(SNAPSHOT_PIN),
-            "data_sha256": cases_hash,
-            "evaluated_ids": [case["record_id"] for case in cases],
-            "max_prompt_tokens": MAX_PROMPT_TOKENS,
-            "max_new_tokens": MAX_NEW_TOKENS,
-            "seed": GENERATION_SEED,
-            "blind_seed": BLIND_SEED,
-            "engine": {
-                name: version(name) for name in ("torch", "transformers", "peft")
-            },
-            "template": "vendor",
-            "generation_mode": "text",
-            "do_sample": False,
-            "enable_thinking": False,
+            **manifest,
+            "resumed_generations": progress.reused,
+            "generation_identity_sha256": progress.identity,
             "outputs": {
                 name: sha256(root / name)
                 for name in ("raw.jsonl", "blind.jsonl", "unblind.json")

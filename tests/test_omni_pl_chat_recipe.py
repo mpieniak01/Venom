@@ -2,12 +2,15 @@
 
 import json
 import re
+from contextlib import nullcontext
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import Mock
 
 import pytest
 
-from scripts.academy.omni_pl_chat_data import sha256
+from scripts.academy import omni_pl_chat_evaluate as evaluator
+from scripts.academy.omni_pl_chat_data import read_jsonl, sha256
 from scripts.academy.omni_pl_chat_evaluate import (
     blind_mapping,
     validate_dev_cases,
@@ -286,3 +289,80 @@ def test_blinding_requires_comparable_distinct_variants():
     ):
         with pytest.raises(ValueError, match="distinct checkpoint labels"):
             blind_mapping(cases, labels)
+
+
+def test_generation_resumes_only_missing_predictions_and_blinds_complete_result(
+    tmp_path, monkeypatch
+):
+    import sys
+
+    first = _dev_case()
+    second = {**first, "record_id": "dev-2", "group_id": "dev-group-2"}
+    cases = [first, second]
+    variants = ["base", "checkpoint-2"]
+    mapping = {
+        "dev-1": {"B": "base", "A": "checkpoint-2"},
+        "dev-2": {"A": "base", "B": "checkpoint-2"},
+    }
+    identity = {"dev": "dev-hash", "base": "base-hash", "adapter": "adapter-hash"}
+    progress = evaluator.GenerationProgress(tmp_path, identity, mapping)
+    backbone = SimpleNamespace(can_use_lfm3_conv=lambda: True)
+    base = SimpleNamespace(
+        model=SimpleNamespace(language_model=object()),
+        generation_config=SimpleNamespace(eos_token_id=99),
+        config=SimpleNamespace(text_end_token_id=100),
+    )
+    model = Mock()
+    model.disable_adapter.side_effect = nullcontext
+    monkeypatch.setitem(
+        sys.modules, "torch", SimpleNamespace(inference_mode=nullcontext)
+    )
+    monkeypatch.setattr(evaluator, "import_module", lambda _: backbone)
+    cached = {"response": {"text": "cached", "finish": "stop", "error": None}}
+    fresh = {"response": {"text": "fresh", "finish": "stop", "error": None}}
+    interrupted = Mock(side_effect=[cached, TimeoutError])
+    monkeypatch.setattr(evaluator, "_predict", interrupted)
+    with pytest.raises(TimeoutError):
+        evaluator._generate(progress, base, model, None, cases, variants)
+    assert not (tmp_path / "blind.jsonl").exists()
+
+    resumed = evaluator.GenerationProgress(tmp_path, identity, mapping)
+    assert resumed.reused == 1
+    assert resumed.missing(cases, "base") == [second]
+    predict = Mock(return_value=fresh)
+    monkeypatch.setattr(evaluator, "_predict", predict)
+    evaluator._generate(resumed, base, model, None, cases, variants)
+    assert predict.call_count == 3
+    resumed.publish(tmp_path, cases, variants)
+
+    raw = read_jsonl(tmp_path / "raw.jsonl")
+    assert [(row["case"], row["model"]) for row in raw] == [
+        (case["record_id"], tag) for tag in variants for case in cases
+    ]
+    assert raw[0]["response"] == cached["response"]
+    blind = read_jsonl(tmp_path / "blind.jsonl")
+    assert [row["case"] for row in blind] == cases
+    for row in blind:
+        assert set(row) == {"case", "answers"}
+        assert list(row["answers"]) == ["A", "B"]
+    assert blind[0]["answers"]["B"] == cached["response"]
+
+
+def test_generation_progress_requires_same_identity_and_valid_seal(tmp_path):
+    cases = [_dev_case()]
+    mapping = blind_mapping(cases, ["base", "checkpoint-2"])
+    identity = {"dev": "dev-hash", "protocol": "protocol-hash"}
+    progress = evaluator.GenerationProgress(tmp_path, identity, mapping)
+    progress.save(("dev-1", "base"), {"response": {"text": "original"}})
+    changed = evaluator.GenerationProgress(
+        tmp_path, {**identity, "protocol": "changed"}, mapping
+    )
+    assert changed.reused == 0
+    assert changed.missing(cases, "base") == cases
+
+    receipt = next(progress.directory.glob("*.json"))
+    data = json.loads(receipt.read_text())
+    data["row"]["response"]["text"] = "altered"
+    receipt.write_text(json.dumps(data), encoding="utf-8")
+    with pytest.raises(ValueError, match="differs from its seal"):
+        evaluator.GenerationProgress(tmp_path, identity, mapping)

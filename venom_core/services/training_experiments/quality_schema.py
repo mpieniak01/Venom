@@ -52,6 +52,12 @@ class QualityCase(_QualityModel):
     candidate: QualityOutcome
 
 
+class ReviewedRun(_QualityModel):
+    run_id: RecordId
+    checkpoint_sha256: Digest
+    generation_manifest_sha256: Digest
+
+
 class QualityRecord(_QualityModel):
     schema_version: Literal[1] = 1
     record_id: RecordId
@@ -67,6 +73,8 @@ class QualityRecord(_QualityModel):
         default_factory=list, max_length=MAX_QUALITY_CASES
     )
     outcome: QualityDecision | None = None
+    reviewed_run: ReviewedRun | None = None
+    cohorts: dict[Category, list[CaseId]] | None = None
 
     @model_validator(mode="after")
     def validate_cases(self) -> QualityRecord:
@@ -74,6 +82,19 @@ class QualityRecord(_QualityModel):
             raise ValueError("quality_reserved_category")
         if len(set(self.protected_case_ids)) != len(self.protected_case_ids):
             raise ValueError("quality_duplicate_protected_cases")
+        if self.reviewed_run is not None and (
+            self.source.kind != "historical"
+            or self.split != "dev"
+            or self.outcome not in ("GO", "REVISE", "STOP")
+        ):
+            raise ValueError("quality_external_review_invalid")
+        if self.cohorts is not None:
+            if not self.cohorts or len(self.cohorts) > 64 or "total" in self.cohorts:
+                raise ValueError("quality_cohorts_invalid")
+            for ids in self.cohorts.values():
+                unique = set(ids)
+                if not ids or len(ids) != len(unique) or unique - self.cases.keys():
+                    raise ValueError("quality_cohort_cases_invalid")
         return self
 
 

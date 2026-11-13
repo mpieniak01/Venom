@@ -204,3 +204,54 @@ def test_profile_context_verifies_installed_runtime_metadata(sealed_run):
         "loss": "trainer_default",
         "evaluation_engine": {"torch": "1.0", "transformers": "1.0", "peft": "1.0"},
     }
+
+
+def test_external_disposition_keeps_native_review_pending(sealed_run):
+    service, generation_manifest = sealed_run
+    run_id = "test-native"
+    run = service.run_dir(run_id)
+    record = native_record(service, run_id)
+    record.pop("result_sha256")
+    record.update(record_id="external-evaluation", outcome="REVISE")
+    record["source"]["kind"] = "historical"
+    checkpoint_hash = "a" * 64
+    generation = run / "evaluation-1"
+    seal = json.loads((generation / "generation-seal.json").read_text())
+    manifest = {
+        **generation_manifest,
+        "outputs": {
+            name: value for name, value in seal.items() if name != "manifest.json"
+        },
+        "models": {"checkpoint-1": {"adapter_model.safetensors": checkpoint_hash}},
+    }
+    seal["manifest.json"] = write(generation / "manifest.json", manifest)
+    write(generation / "generation-seal.json", seal)
+    (run / "result-seal.json").unlink()
+    write(
+        run / "state.json",
+        {
+            "run_id": run_id,
+            "profile_id": "pilot",
+            "status": "awaiting_review",
+            "checkpoint_step": 1,
+            "checkpoint_sha256": checkpoint_hash,
+            "attempt": 1,
+        },
+    )
+    assert "external_review" not in service.status(run_id)
+    record["reviewed_run"] = {
+        "run_id": run_id,
+        "checkpoint_sha256": checkpoint_hash,
+        "generation_manifest_sha256": seal["manifest.json"],
+    }
+    QualityStore(service.root).import_record(record)
+
+    status = service.list_runs()[0]
+    assert status["status"] == "awaiting_review"
+    assert status["actions"]["review"]
+    assert status["external_review"] == {
+        "record_id": "history:external-evaluation",
+        "outcome": "REVISE",
+    }
+    write(generation / "raw.jsonl", {})
+    assert "external_review" not in service.status(run_id)

@@ -38,9 +38,11 @@ from .profiles import (
     resolve_input,
     stable_hash,
 )
+from .quality import QualityStore
 from .store import RunStore
 
 REPO = Path(__file__).resolve().parents[3]
+GENERATION_SEAL = "generation-seal.json"
 ACTIVE = frozenset({"queued", "running"})
 RETRYABLE = frozenset({"failed", "stopped", "timed_out"})
 PUBLIC = (
@@ -194,6 +196,54 @@ class ExperimentService:
         child = state.get("child")
         return bool(child and group_alive(child["process_group"]))
 
+    def _external_review_fields(self, state: dict, status: str) -> dict:
+        """Expose external dispositions alongside an outstanding native review."""
+        if status != "awaiting_review":
+            return {}
+        run_id = state["run_id"]
+        records, _ = QualityStore(self.root).list()
+        links = [
+            record
+            for record in records
+            if (record.get("reviewed_run") or {}).get("run_id") == run_id
+            and record["outcome"] is not None
+        ]
+        if not links:
+            return {}
+        generation = self.run_dir(run_id) / f"evaluation-{state['attempt']}"
+        try:
+            seal = read_json(generation / GENERATION_SEAL)
+            manifest = read_json(generation / "manifest.json")
+            manifest_sha256 = seal["manifest.json"]
+            files = ("blind.jsonl", "raw.jsonl", "unblind.json")
+            if (
+                any(digest(generation / name) != seal[name] for name in files)
+                or digest(generation / "manifest.json") != manifest_sha256
+                or any(manifest["outputs"][name] != seal[name] for name in files)
+            ):
+                return {}
+            model = manifest["models"][f"checkpoint-{state['checkpoint_step']}"]
+            checkpoint_sha256 = model["adapter_model.safetensors"]
+        except (OSError, ValueError, KeyError, TypeError):
+            return {}
+        matches = [
+            record
+            for record in links
+            if record["reviewed_run"]["generation_manifest_sha256"] == manifest_sha256
+            and record["reviewed_run"]["checkpoint_sha256"]
+            == checkpoint_sha256
+            == state.get("checkpoint_sha256")
+        ]
+        if len(matches) != 1:
+            return {}
+        record = matches[0]
+        return {
+            "external_review": {
+                "record_id": f"history:{record['record_id']}",
+                "outcome": record["outcome"],
+            }
+        }
+
     def _view(self, state: dict) -> dict:
         run_id = state["run_id"]
         result = {key: state.get(key) for key in PUBLIC}
@@ -218,14 +268,16 @@ class ExperimentService:
             resume_checkpoint
             and resume_checkpoint[1]["step"] < state["recipe"]["steps"]
         )
+        result["evaluation_available"] = bool(can_retry and checkpoint)
         operator_controls = state.get("campaign_id") is None
         result["actions"] = {
             "stop": operator_controls
             and result["status"] in ACTIVE | {"awaiting_review"},
             "resume": operator_controls and result["resume_available"],
-            "evaluate": bool(operator_controls and can_retry and checkpoint),
+            "evaluate": operator_controls and result["evaluation_available"],
             "review": result["status"] == "awaiting_review",
         }
+        result.update(self._external_review_fields(state, result["status"]))
         if state["status"] in ACTIVE:
             result["elapsed_seconds"] = state["elapsed_before"] + max(
                 0, time.time() - state["attempt_started_at"]
@@ -435,7 +487,7 @@ class ExperimentService:
         profile = Profile.model_validate(self._manifest(run_id)["profile"])
         dev = resolve_input(self.root, profile.dev)
         generation = self.run_dir(run_id) / f"evaluation-{state['attempt']}"
-        seal = read_json(generation / "generation-seal.json")
+        seal = read_json(generation / GENERATION_SEAL)
         if digest(dev) != profile.dev_sha256 or any(
             digest(generation / name) != seal[name]
             for name in ("blind.jsonl", "unblind.json")
@@ -473,7 +525,7 @@ class ExperimentService:
             manifest_sha256=state["manifest_sha256"],
             dev_sha256=digest(dev),
             judgment_sha256=digest(verdict_file),
-            generation_sha256=digest(generation / "generation-seal.json"),
+            generation_sha256=digest(generation / GENERATION_SEAL),
         )
         atomic_json(directory / "result.json", result)
         atomic_json(

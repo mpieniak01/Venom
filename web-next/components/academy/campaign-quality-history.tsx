@@ -27,6 +27,9 @@ function QualityComparison({ rows, reference }: { readonly rows: QualityCounts[]
   const t = useTranslation();
   if (!rows.length) return <p className="text-sm text-hint">{t(QUALITY + "noCounts")}</p>;
   const value = (count?: number | null) => count ?? "—";
+  const formatCritical = (count: number | null | undefined, n: number) =>
+    count == null ? "—" : `${count} / ${n}`;
+  const peerCritical = (row: QualityCounts) => reference ? row.reference_critical : row.base_critical;
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-left text-sm">
@@ -36,21 +39,30 @@ function QualityComparison({ rows, reference }: { readonly rows: QualityCounts[]
             {["category", "sampleSize", reference ? "reference" : "base", "candidate", "lost", "gained"].map((column) => (
               <th key={column} scope="col" className="px-2 py-1">{t(QUALITY + column)}</th>
             ))}
+            <th scope="col" className="px-2 py-1">{t(QUALITY + "criticalComparison")}</th>
           </tr>
         </thead>
         <tbody>
-          {rows.map((row) => (
-            <tr key={row.category} className="border-b border-[color:var(--ui-border)]">
-              <th scope="row" className="px-2 py-1 font-normal">{row.category === "total" ? t(QUALITY + "total") : row.category}</th>
-              <td className="px-2 py-1">{value(row.n)}</td>
-              <td className="px-2 py-1">{value(reference ? row.reference_usable : row.base_usable)}</td>
-              <td className="px-2 py-1">{value(row.candidate_usable)}</td>
-              <td className="px-2 py-1">{value(row.lost_usable)}</td>
-              <td className="px-2 py-1">{value(row.gained_usable)}</td>
-            </tr>
-          ))}
+          {rows.map((row) => {
+            const categoryKey = QUALITY + "categories." + row.category;
+            const category = row.category === "total" ? t(QUALITY + "total") : t(categoryKey);
+            return (
+              <tr key={row.category} className="border-b border-[color:var(--ui-border)]">
+                <th scope="row" className="px-2 py-1 font-normal">{category === categoryKey ? row.category : category}</th>
+                <td className="px-2 py-1">{value(row.n)}</td>
+                <td className="px-2 py-1">{value(reference ? row.reference_usable : row.base_usable)}</td>
+                <td className="px-2 py-1">{value(row.candidate_usable)}</td>
+                <td className="px-2 py-1">{value(row.lost_usable)}</td>
+                <td className="px-2 py-1">{value(row.gained_usable)}</td>
+                <td className="whitespace-nowrap px-2 py-1">
+                  {formatCritical(peerCritical(row), row.n)} → {formatCritical(row.candidate_critical, row.n)}
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
+      <p className="mt-2 text-xs text-hint">{t(QUALITY + "criticalComparisonHint")}</p>
       {rows.some((row) => row.lost_usable == null || row.gained_usable == null) && (
         <p className="mt-2 text-xs text-hint">{t(QUALITY + "missingPairCounts")}</p>
       )}
@@ -163,21 +175,24 @@ function NextTrial({ analysis, disabled, onDraft }: {
   );
 }
 
-export function CampaignQualityHistory({ disabled, onDraft }: {
+export function CampaignQualityHistory({ disabled, initialRecordId = "", onDraft }: {
   readonly disabled: boolean;
+  readonly initialRecordId?: string;
   readonly onDraft: (draft: QualityCampaignDraft) => void;
 }) {
   const t = useTranslation();
   const [listing, setListing] = useState<QualityListing | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
   const [reload, setReload] = useState(0);
-  const [candidateId, setCandidateId] = useState("");
+  const [candidateId, setCandidateId] = useState(initialRecordId);
   const [referenceId, setReferenceId] = useState("");
   const [analysis, setAnalysis] = useState<QualityAnalysis | null>(null);
-  const [analyzing, setAnalyzing] = useState(false);
+  const [request, setRequest] = useState(initialRecordId ? { recordId: initialRecordId, reference: "" } : null);
   const [analysisFailed, setAnalysisFailed] = useState(false);
   const records = listing?.records;
-  const candidate = records?.find((record) => record.record_id === candidateId) ?? records?.[0];
+  const candidate = candidateId ? records?.find((record) => record.record_id === candidateId) : records?.[0];
+  const canAnalyze = Boolean(request && candidate?.record_id === request.recordId);
+  const analyzing = canAnalyze && !analysis && !analysisFailed;
   const reference = referenceId === candidate?.record_id ? "" : referenceId;
 
   useEffect(() => {
@@ -192,23 +207,26 @@ export function CampaignQualityHistory({ disabled, onDraft }: {
     return () => controller.abort();
   }, [reload]);
 
+  useEffect(() => {
+    if (!request || !canAnalyze) return;
+    const controller = new AbortController();
+    void getQualityAnalysis(request.recordId, request.reference, controller.signal)
+      .then((result) => { if (!controller.signal.aborted) setAnalysis(result); })
+      .catch(() => { if (!controller.signal.aborted) setAnalysisFailed(true); });
+    return () => controller.abort();
+  }, [request, canAnalyze]);
+
   function clearAnalysis() {
+    setRequest(null);
     setAnalysis(null);
     setAnalysisFailed(false);
   }
 
-  async function compare(event: FormEvent<HTMLFormElement>) {
+  function compare(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!candidate || analyzing) return;
     clearAnalysis();
-    setAnalyzing(true);
-    try {
-      setAnalysis(await getQualityAnalysis(candidate.record_id, reference));
-    } catch {
-      setAnalysisFailed(true);
-    } finally {
-      setAnalyzing(false);
-    }
+    setRequest({ recordId: candidate.record_id, reference });
   }
 
   if (loadFailed) {
@@ -228,21 +246,22 @@ export function CampaignQualityHistory({ disabled, onDraft }: {
       {t(QUALITY + "unavailableRecords")} <code>{unavailableIds.join(", ")}</code>
     </output>
   ) : null;
-  if (!candidate) return unavailableFeedback ?? <p className="text-sm text-hint">{t(QUALITY + "empty")}</p>;
-  const alignedReference = Boolean(analysis?.reference_id && analysis.comparable);
+  if (!candidate && !candidateId) return unavailableFeedback ?? <p className="text-sm text-hint">{t(QUALITY + "empty")}</p>;
 
   return (
     <div className="space-y-4">
       {unavailableFeedback}
-      <form className="grid items-end gap-3 sm:grid-cols-[1fr_1fr_auto]" onSubmit={(event) => void compare(event)}>
+      {!candidate && candidateId && <output className="block text-sm text-hint">{t(QUALITY + "selectedUnavailable")}</output>}
+      <form className="grid items-end gap-3 sm:grid-cols-[1fr_1fr_auto]" onSubmit={compare}>
         <div className="space-y-1">
           <Label htmlFor="quality-candidate">{t(QUALITY + "candidate")}</Label>
-          <select id="quality-candidate" className={SELECT} value={candidate.record_id} disabled={analyzing}
+          <select id="quality-candidate" className={SELECT} value={candidate?.record_id ?? ""} disabled={analyzing}
             onChange={(event) => {
               setCandidateId(event.currentTarget.value);
               if (event.currentTarget.value === reference) setReferenceId("");
               clearAnalysis();
             }}>
+            {!candidate && <option value="" disabled>{t(QUALITY + "selectRecord")}</option>}
             {records.map((item) => <option key={item.record_id} value={item.record_id}>{item.record_id} · {item.split}</option>)}
           </select>
         </div>
@@ -251,28 +270,51 @@ export function CampaignQualityHistory({ disabled, onDraft }: {
           <select id="quality-reference" className={SELECT} value={reference} disabled={analyzing}
             onChange={(event) => { setReferenceId(event.currentTarget.value); clearAnalysis(); }}>
             <option value="">{t(QUALITY + "base")}</option>
-            {records.filter((item) => item.record_id !== candidate.record_id).map((item) => (
+            {records.filter((item) => item.record_id !== candidate?.record_id).map((item) => (
               <option key={item.record_id} value={item.record_id}>{item.record_id} · {item.split}</option>
             ))}
           </select>
         </div>
-        <Button type="submit" disabled={analyzing}>{t(QUALITY + "compare")}</Button>
+        <Button type="submit" disabled={analyzing || !candidate}>{t(QUALITY + "compare")}</Button>
       </form>
       {analysisFailed && <p role="alert" className="text-sm text-red-400">{t(QUALITY + "analysisError")}</p>}
-      {analysis && (
-        <div className="space-y-4">
-          <dl className="text-sm">
-            <dt className="text-hint">{t(QUALITY + "decision")}</dt>
-            <dd className="font-semibold">{analysis.decision} · {t(QUALITY + "outcome." + analysis.decision)}</dd>
-          </dl>
-          {analysis.reference_id && !analysis.comparable && (
-            <output className="block text-sm text-hint">{t(QUALITY + "notComparable")}</output>
-          )}
-          <QualityComparison rows={alignedReference ? analysis.comparison : analysis.summary} reference={alignedReference} />
-          <QualityEvidence analysis={analysis} />
-          <NextTrial analysis={analysis} disabled={disabled} onDraft={onDraft} />
-        </div>
+      {analysis && <QualityAnalysisResult analysis={analysis} disabled={disabled} onDraft={onDraft} />}
+    </div>
+  );
+}
+
+function QualityAnalysisResult({ analysis, disabled, onDraft }: {
+  readonly analysis: QualityAnalysis;
+  readonly disabled: boolean;
+  readonly onDraft: (draft: QualityCampaignDraft) => void;
+}) {
+  const t = useTranslation();
+  const alignedReference = Boolean(analysis.reference_id && analysis.comparable);
+  const cohorts = alignedReference ? analysis.cohort_comparison : analysis.cohorts;
+  const categories = alignedReference ? analysis.comparison : analysis.summary;
+
+  return (
+    <div className="space-y-4">
+      <dl className="text-sm">
+        <dt className="text-hint">{t(QUALITY + "decision")}</dt>
+        <dd className="font-semibold">{analysis.decision} · {t(QUALITY + "outcome." + analysis.decision)}</dd>
+      </dl>
+      {analysis.reference_id && !analysis.comparable && (
+        <output className="block text-sm text-hint">{t(QUALITY + "notComparable")}</output>
       )}
+      {cohorts?.length ? (
+        <>
+          <QualityComparison rows={cohorts} reference={alignedReference} />
+          {categories.length ? (
+            <details>
+              <summary className="cursor-pointer text-sm">{t(QUALITY + "categoryBreakdown")}</summary>
+              <QualityComparison rows={categories} reference={alignedReference} />
+            </details>
+          ) : null}
+        </>
+      ) : <QualityComparison rows={categories} reference={alignedReference} />}
+      <QualityEvidence analysis={analysis} />
+      <NextTrial analysis={analysis} disabled={disabled} onDraft={onDraft} />
     </div>
   );
 }

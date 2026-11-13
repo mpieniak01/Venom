@@ -394,3 +394,79 @@ def test_cli_import_list_show_and_analyze(tmp_path, capsys):
     assert analyzed["record"]["record_id"] == "history:run-a"
     assert analyzed["reference_id"] == "history:run-b"
     assert analyzed["protected_case_ids"] == ["a", "c"]
+
+
+def test_history_cohorts_keep_overlapping_case_counts_and_compare_membership(tmp_path):
+    candidate, reference = record(), record("previous")
+    candidate["cohorts"] = {"retention": ["b", "a"], "structured_retention": ["a"]}
+    reference["cohorts"] = {"retention": ["a", "b"], "structured_retention": ["a"]}
+    store = QualityStore(tmp_path)
+    stored = store.import_record(candidate)
+    candidate["cohorts"]["retention"].reverse()
+    assert store.import_record(candidate) == stored
+    assert store.get(candidate["record_id"]) == stored
+
+    result = analyze_quality(stored, reference)
+    assert result["comparable"]
+    assert [(row["category"], row["n"]) for row in result["cohorts"]] == [
+        ("retention", 2),
+        ("structured_retention", 1),
+    ]
+    assert result["cohorts"][0]["candidate_critical"] is None
+    assert result["cohorts"][1]["candidate_critical"] == 0
+    assert result["cohort_comparison"][0]["reference_usable"] == 1
+
+    reference["cohorts"]["structured_retention"] = ["b"]
+    result = analyze_quality(stored, reference)
+    assert result["comparison_issues"] == ["quality_cohort_mismatch"]
+    assert result["cohort_comparison"] == []
+
+
+@pytest.mark.parametrize(
+    ("cohorts", "reason"),
+    [
+        ({}, "quality_cohorts_invalid"),
+        ({"total": ["a"]}, "quality_cohorts_invalid"),
+        ({"retention": []}, "quality_cohort_cases_invalid"),
+        ({"retention": ["a", "a"]}, "quality_cohort_cases_invalid"),
+        ({"retention": ["missing"]}, "quality_cohort_cases_invalid"),
+    ],
+)
+def test_quality_import_rejects_invalid_cohorts(cohorts, reason):
+    payload = {**record(), "cohorts": cohorts}
+    with pytest.raises(ValidationError, match=reason):
+        quality_record_view(payload)
+
+
+def test_external_outcome_is_historical_and_keeps_old_seals(tmp_path):
+    from venom_core.services.training_experiments.profiles import stable_hash
+
+    payload = record()
+    legacy = QualityRecord.model_validate(payload).model_dump(
+        mode="json", exclude={"cohorts", "reviewed_run"}
+    )
+    legacy["protected_case_ids"] = sorted(legacy["protected_case_ids"])
+    expected = stable_hash(legacy)
+    assert quality_record_view(payload) == {**legacy, "result_sha256": expected}
+
+    payload["reviewed_run"] = {
+        "run_id": "native-run",
+        "checkpoint_sha256": "2" * 64,
+        "generation_manifest_sha256": "3" * 64,
+    }
+    with pytest.raises(ValidationError, match="quality_external_review_invalid"):
+        quality_record_view(payload)
+
+    payload["outcome"] = "REVISE"
+    store = QualityStore(tmp_path)
+    sealed = store.import_record(payload)
+    assert sealed["result_sha256"] != expected
+    assert store.get("run-a")["reviewed_run"] == payload["reviewed_run"]
+    with pytest.raises(ValueError, match="quality_record_hash_changed"):
+        quality_record_view(
+            {**sealed, "reviewed_run": {**payload["reviewed_run"], "run_id": "other"}}
+        )
+
+    payload["source"]["kind"] = "academy"
+    with pytest.raises(ValidationError, match="quality_external_review_invalid"):
+        quality_record_view(payload)

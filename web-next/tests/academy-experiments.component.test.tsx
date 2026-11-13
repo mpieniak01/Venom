@@ -1,8 +1,10 @@
 import "./component-test-setup";
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { ExperimentsPanel } from "../components/academy/experiments-panel";
+import { TrainingWorkspace } from "../components/academy/training-workspace";
+import { ToastProvider } from "../components/ui/toast";
 import type { ExperimentProfile, ExperimentRun } from "../lib/academy-experiments-api";
 
 const prefix = "/api/v1/academy/experiments";
@@ -36,7 +38,7 @@ const run: ExperimentRun = {
 
 function serve(
   runs: () => ExperimentRun[],
-  handlers: Record<string, (init?: RequestInit) => Response> = {},
+  handlers: Record<string, (init?: RequestInit) => Response | Promise<Response>> = {},
 ) {
   globalThis.fetch = async (input, init) => {
     const path = new URL(String(input), "http://localhost").pathname;
@@ -90,19 +92,91 @@ describe("Academy experiments", () => {
     assert.ok(screen.getByLabelText("Plik ocen JSON lub JSONL"));
   });
 
+  it("opens the exact queued review and separates its external disposition from native scoring", async () => {
+    const pending = { ...run, run_id: "pilot-awaiting", status: "awaiting_review", stage: "score",
+      external_review: { record_id: "history:pilot", outcome: "REVISE" as const } };
+    const record = { record_id: "history:pilot", split: "dev", source: { identity: "external evaluation" } };
+    const qualityPath = `${prefix}/campaigns/quality`;
+    serve(() => [run, pending], {
+      "GET /api/v1/academy/jobs": () => Response.json({ jobs: [] }),
+      "GET /api/v1/system/llm-runtime/options": () => Response.json({}),
+      [`GET ${prefix}/campaigns`]: () => Response.json({ campaigns: [] }),
+      [`GET ${qualityPath}`]: () => Response.json({ records: [{ ...record, record_id: "history:other" }, record] }),
+      [`GET ${qualityPath}/${encodeURIComponent(record.record_id)}/analysis`]: () => Response.json({
+        record, decision: "REVISE", comparable: true, comparison_issues: [],
+        summary: [{ category: "total", n: 13, base_usable: 5, candidate_usable: 8, base_critical: null, candidate_critical: null }],
+        comparison: [], findings: [], protected_case_ids: [],
+        cohorts: [
+          { category: "structured_retention", n: 8, base_usable: 3, candidate_usable: 6, base_critical: 2, candidate_critical: 0 },
+          { category: "new_dialogue", n: 5, base_usable: 2, candidate_usable: 2, base_critical: null, candidate_critical: null },
+        ],
+        proposal: { status: "insufficient_evidence", variants: [], reasons: [] },
+      }),
+      [`GET ${prefix}/runs/pilot-awaiting/review`]: () => Response.json({
+        cases: [{ record_id: "queued-case" }],
+        answers: [{ case: { record_id: "queued-case" }, answers: { A: { text: "Anonimowa odpowiedź" } } }],
+      }),
+    });
+
+    render(<ToastProvider><TrainingWorkspace /></ToastProvider>);
+    fireEvent.click(screen.getByRole("button", { name: "Eksperyment Omni" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Otwórz ocenę · pilot-awaiting" }));
+    await screen.findByText("Anonimowa odpowiedź");
+    const heading = screen.getByRole("heading", { name: "pilot-awaiting" });
+    assert.equal(document.activeElement, heading);
+    assert.ok(heading.parentElement?.textContent?.includes("Stan wykonania · Oczekuje na ocenę"));
+    assert.ok(screen.getByText(/Decyzja z oceny zewnętrznej · Wymaga poprawki/));
+    fireEvent.click(screen.getByRole("button", { name: "Pokaż ocenę zewnętrzną" }));
+    await screen.findByText(/REVISE · Wymaga poprawki/);
+    assert.equal((screen.getByLabelText("Kandydat") as HTMLSelectElement).value, record.record_id);
+    assert.ok(screen.getByRole("row", { name: /Zachowanie wcześniejszych umiejętności.*2 \/ 8 → 0 \/ 8/ }));
+    assert.ok(screen.getByRole("row", { name: /Nowe dialogi wieloturowe.*— → —/ }));
+    fireEvent.click(screen.getByText("Szczegóły według kategorii"));
+    const totals = screen.getByRole("row", { name: /Łącznie.*— → —/ }).closest("table");
+    assert.ok(totals);
+    assert.ok(within(totals).getByRole("columnheader", { name: "Błędy krytyczne" }));
+  });
+
+  it("keeps an imported aggregate report available without offering a native quality decision", async () => {
+    const metric = { n: 3, semantic: 2, usable: 2, passed: 1, format: 3, critical: 0, runtime_or_length_failure: 1 };
+    const summaries = { base: { total: metric }, candidate: { total: metric } };
+    let finishReport: ((response: Response) => void) | undefined;
+    const report = new Promise<Response>((resolve) => { finishReport = resolve; });
+    serve(() => [{ ...run, status: "succeeded", profile_id: "historical", attempt: 0, report: { summaries } }], {
+      [`GET ${prefix}/runs/pilot-1/report`]: () => report,
+    });
+    render(<ExperimentsPanel onOpenQuality={() => assert.fail("Imported aggregates have no native quality record")} />);
+    await screen.findByRole("table");
+    assert.equal(screen.queryByRole("button", { name: "Pokaż decyzję jakościową" }), null);
+    await act(async () => {
+      assert.ok(finishReport);
+      finishReport(Response.json({ historical: true, summaries }));
+    });
+    assert.ok(screen.getByRole("button", { name: "Pobierz raport JSON" }));
+    assert.equal(screen.queryByRole("button", { name: "Pokaż decyzję jakościową" }), null);
+  });
+
   it("shows the baseline and adapter counts after completed evaluation", async () => {
     const metric = { n: 3, semantic: 2, usable: 2, passed: 1, format: 3, critical: 0, runtime_or_length_failure: 1 };
     serve(() => [{ ...run, status: "succeeded" }], {
       [`GET ${prefix}/runs/pilot-1/report`]: () => Response.json({
-        summaries: { base: { total: metric }, candidate: { total: { ...metric, usable: 3 } } },
+        summaries: {
+          base: { total: metric, dialogue: { ...metric, n: 1, usable: 0 } },
+          candidate: { total: { ...metric, usable: 3 }, dialogue: { ...metric, n: 1, usable: 1 } },
+        },
         cases: [{ case_id: "case-1", base: { text: "Bazowa odpowiedź" }, candidate: { text: "Odpowiedź adaptera" } }],
       }),
     });
-    render(<ExperimentsPanel />);
+    const opened: string[] = [];
+    render(<ExperimentsPanel onOpenQuality={(recordId) => opened.push(recordId)} />);
     const table = await screen.findByRole("table");
     assert.match(table.textContent ?? "", /Użyteczność2 \/ 33 \/ 3/);
+    fireEvent.change(screen.getByLabelText("Kategoria wyników"), { target: { value: "dialogue" } });
+    assert.match(table.textContent ?? "", /Użyteczność0 \/ 11 \/ 1/);
     assert.ok(screen.getByText("Odpowiedź adaptera"));
     assert.ok(screen.getByRole("button", { name: "Pobierz raport JSON" }));
+    fireEvent.click(screen.getByRole("button", { name: "Pokaż decyzję jakościową" }));
+    assert.deepEqual(opened, [run.run_id]);
   });
 
   it("keeps resume disabled for a stopped run without a checkpoint", async () => {

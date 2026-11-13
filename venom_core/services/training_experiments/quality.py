@@ -36,6 +36,12 @@ def quality_record_view(record: QualityRecord | dict) -> dict:
     view = record.model_dump(mode="json")
     view["protected_case_ids"] = sorted(view["protected_case_ids"])
     view["evidence_gaps"] = sorted(set(view["evidence_gaps"]))
+    # Preserve previously sealed v1 records when the new optional fields are absent.
+    for key in ("reviewed_run", "cohorts"):
+        if view[key] is None:
+            del view[key]
+    if "cohorts" in view:
+        view["cohorts"] = {name: sorted(ids) for name, ids in view["cohorts"].items()}
     digest = stable_hash(view)
     if supplied_digest is not None and supplied_digest != digest:
         raise ValueError("quality_record_hash_changed")
@@ -127,6 +133,8 @@ def comparison_issues(record: dict, reference: dict) -> list[str]:
         for case_id, case in cases.items()
     ):
         issues.append("quality_category_mismatch")
+    if record.get("cohorts") != reference.get("cohorts"):
+        issues.append("quality_cohort_mismatch")
     return issues
 
 
@@ -181,6 +189,18 @@ def _summaries(paired: list[tuple[str, str, dict, dict]], label: str) -> list[di
     return [
         _counts(groups[category], category, label)
         for category in ("total", *sorted(groups.keys() - {"total"}))
+    ]
+
+
+def _cohort_summaries(
+    paired: list[tuple[str, str, dict, dict]],
+    cohorts: dict[str, list[str]],
+    label: str,
+) -> list[dict]:
+    by_id = {case_id: (left, right) for case_id, _, left, right in paired}
+    return [
+        _counts([by_id[case_id] for case_id in ids], cohort, label)
+        for cohort, ids in sorted(cohorts.items())
     ]
 
 
@@ -392,6 +412,7 @@ def analyze_quality(
     summary = _summaries(base_pairs, "base")
     pairs = _paired_rows(current, matched) if matched is not None else base_pairs
     comparison = _summaries(pairs, "reference") if matched is not None else []
+    cohorts = current.get("cohorts", {})
     findings = _outcome_findings(pairs, current["cases"])
     changes = _recipe_changes(current, matched) if matched is not None else []
     if matched is not None:
@@ -412,6 +433,12 @@ def analyze_quality(
         "comparison_issues": issues,
         "summary": summary,
         "comparison": comparison,
+        "cohorts": _cohort_summaries(base_pairs, cohorts, "base"),
+        "cohort_comparison": (
+            _cohort_summaries(pairs, cohorts, "reference")
+            if matched is not None
+            else []
+        ),
         "findings": findings,
         "decision": _decision(
             current, issues, findings, (comparison or summary)[0], protected

@@ -241,6 +241,7 @@ class Worker:
                 str(dev),
                 str(generation),
                 venv,
+                "--resume-partial",
                 "base",
                 f"{checkpoint_path.name}={checkpoint_path}",
             ],

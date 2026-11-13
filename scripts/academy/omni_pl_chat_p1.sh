@@ -24,7 +24,7 @@ if [[ "${1:-}" != --inside ]]; then
             if [[ $# -eq 1 ]]; then inputs+=("$(realpath -e -- "$1")"); fi
             ;;
         merge) [[ $# -eq 0 ]] ;;
-        evaluate)
+        evaluate|evaluate-resumable)
             if [[ $# -lt 2 || $# -gt 5 ]]; then exit 2; fi
             declare -A seen=()
             for variant in "$@"; do
@@ -50,8 +50,14 @@ if [[ "${1:-}" != --inside ]]; then
         resume|merge) test -f "$output/profile.json" ;;
         *) mkdir -- "$output" ;;
     esac
+    lock_target=$output
+    if [[ "$mode" == evaluate-resumable ]]; then
+        lock_target="$(dirname -- "$output")/evaluation-progress"
+        mkdir -p -- "$lock_target"
+        [[ -d "$lock_target" && ! -L "$lock_target" ]]
+    fi
     # An open directory descriptor avoids a lockfile path controlled by run output.
-    exec {run_lock}<"$output"
+    exec {run_lock}<"$lock_target"
     flock --nonblock "$run_lock"
     scratch=$(mktemp -d)
     trap 'rmdir -- "$scratch"' EXIT
@@ -109,7 +115,7 @@ file_ro "$job/../llm/omni_native_snapshot.json" "$scratch/job/scripts/llm/omni_n
 worker=(scripts.academy.omni_pl_chat_p1 "$mode")
 case "$mode" in
     merge) worker=(scripts.academy.omni_pl_chat_export) ;;
-    evaluate)
+    evaluate|evaluate-resumable)
         mkdir "$scratch/inputs/adapters"
         worker=(scripts.academy.omni_pl_chat_evaluate)
         for variant in "$@"; do
@@ -124,6 +130,11 @@ case "$mode" in
     *) if [[ $# -eq 1 ]]; then file_ro "$1" "$scratch/inputs/recipe.json"; fi ;;
 esac
 
+if [[ "$mode" == evaluate-resumable ]]; then
+    mkdir "$scratch/progress"
+    mount --bind "$(dirname -- "$output")/evaluation-progress" "$scratch/progress"
+    mount -o remount,bind,rw,nodev,nosuid,noexec "$scratch/progress"
+fi
 mount --bind "$output" "$scratch/out"
 mount -o remount,bind,rw,nodev,nosuid,noexec "$scratch/out"
 # NVIDIA CUDA needs writable proc in a PID namespace; the worker drops capabilities.

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   applyCampaignRetention,
@@ -8,6 +8,7 @@ import {
   getCampaignRetentionPlan,
   type Campaign,
   type CampaignRetentionPlan,
+  type CampaignCheckpointEvaluation,
   type CampaignTrial,
 } from "@/lib/academy-campaign-api";
 import { useLanguage, useTranslation } from "@/lib/i18n";
@@ -142,6 +143,41 @@ function TrialAdapterError({ code }: { readonly code?: string | null }) {
   return message && <p className="text-xs text-red-400">{message}</p>;
 }
 
+function SelectedCheckpoint({ campaign }: { readonly campaign: Campaign }) {
+  const t = useTranslation();
+  if (!campaign.selected_run_id) {
+    return campaign.plan.checkpoint_steps?.length && campaign.status === "succeeded"
+      ? <p className="text-sm font-medium">{t("academy.campaigns.checkpoints.noCandidate")}</p>
+      : null;
+  }
+  return (
+    <p className="break-all text-sm font-medium">
+      {t("academy.campaigns.selected")} {campaign.selected_run_id}
+      {typeof campaign.selected_checkpoint_step === "number" && (
+        <> · {t("academy.campaigns.checkpoints.step")} {campaign.selected_checkpoint_step}</>
+      )}
+    </p>
+  );
+}
+
+function CheckpointTrialRow({ result, delta }: {
+  readonly result: CampaignCheckpointEvaluation;
+  readonly delta: (value?: number) => string;
+}) {
+  const t = useTranslation();
+  return (
+    <tr className="border-b border-[color:var(--ui-border)]">
+      <th scope="row" className="py-2 pl-4 pr-3 font-normal">
+        {t("academy.campaigns.checkpoints.step")} {result.step}
+        {result.quality_guard && <TrialQualityDecision guard={result.quality_guard} />}
+      </th>
+      <td className="px-3 py-2"><CampaignStatus status={result.status} /></td>
+      <td className="px-3 py-2">{delta(result.usable_delta)}</td>
+      <td className="px-3 py-2">{delta(result.critical_delta)}</td>
+    </tr>
+  );
+}
+
 interface CampaignDetailProps {
   readonly campaign: Campaign;
   readonly disabled: boolean;
@@ -200,6 +236,9 @@ export function CampaignDetail({ campaign, disabled, optunaAvailable, onAction, 
         <div><dt className="text-hint">{t("academy.campaigns.reviewMode")}</dt><dd>{t(campaign.plan.review_mode === "manual" ? "academy.campaigns.manualReview" : "academy.campaigns.automaticReview")}</dd></div>
         <div><dt className="text-hint">{t("academy.campaigns.retention")}</dt><dd>{t(campaign.plan.retention === "keep_all" ? "academy.campaigns.keepAll" : "academy.campaigns.discardRejected")}</dd></div>
       </dl>
+      {campaign.plan.checkpoint_steps?.length ? (
+        <p className="text-sm">{t("academy.campaigns.checkpoints.plan")} · {campaign.plan.checkpoint_steps.join(", ")}</p>
+      ) : null}
       <DataAuditSummary audit={campaign.plan.data_audit} />
       {optuna && <OptunaPlanSummary plan={campaign.plan} />}
       {campaign.plan.quality_policy && <QualityPolicySummary policy={campaign.plan.quality_policy} />}
@@ -207,9 +246,7 @@ export function CampaignDetail({ campaign, disabled, optunaAvailable, onAction, 
         <p role="alert" className="text-sm text-red-400">{t("academy.campaigns.quality.guard.stale")}</p>
       )}
       {campaign.error && <p role="alert" className="break-all text-sm text-red-400">{auditError && t(auditError) !== auditError ? t(auditError) : adapterError ?? campaign.error}</p>}
-      {campaign.selected_run_id && (
-        <p className="break-all text-sm font-medium">{t("academy.campaigns.selected")} {campaign.selected_run_id}</p>
-      )}
+      <SelectedCheckpoint campaign={campaign} />
       <div className="flex flex-wrap gap-2">
         {planned && <Button type="button" disabled={launchDisabled} onClick={() => onAction("start")}>{t("academy.campaigns.start")}</Button>}
         {canStop && <Button type="button" variant="outline" disabled={disabled} onClick={() => onAction("stop")}>{t("academy.campaigns.stop")}</Button>}
@@ -238,29 +275,34 @@ export function CampaignDetail({ campaign, disabled, optunaAvailable, onAction, 
             {campaign.trials.map((trial, index) => {
               const variant = variants[index];
               return (
-                <tr key={trial.run_id} className="border-b border-[color:var(--ui-border)]">
-                  <th scope="row" className="py-2 pr-3 font-normal">
-                    <Button type="button" size="sm" variant="ghost" disabled={trial.status === "pending" || trial.status === "skipped"} onClick={() => onOpenRun(trial.run_id)}>
-                      {trial.run_id}
-                    </Button>
-                    {optuna && <OptunaTrialSummary trial={trial} />}
-                    {trial.quality_guard && <TrialQualityDecision guard={trial.quality_guard} />}
-                    {!optuna && variant && (
-                      <div className="space-y-1 pl-3 text-xs text-hint">
-                        <p>{t("academy.experiments.rank")} {variant.recipe.rank} · {t("academy.experiments.learningRate")} {variant.recipe.learning_rate}
-                          {" · "}{t("academy.campaigns.plannedWorkload")} {displayNumber.format(variant.workload.updates)} / {displayNumber.format(variant.workload.tokens)}
-                        </p>
-                        <InitialAdapterSummary adapter={variant.initial_adapter} />
-                      </div>
-                    )}
-                  </th>
-                  <td className="px-3 py-2">
-                    <CampaignStatus status={trial.status} />
-                    <TrialAdapterError code={trial.error} />
-                  </td>
-                  <td className="px-3 py-2">{delta(trial.usable_delta)}</td>
-                  <td className="px-3 py-2">{delta(trial.critical_delta)}</td>
-                </tr>
+                <Fragment key={trial.run_id}>
+                  <tr className="border-b border-[color:var(--ui-border)]">
+                    <th scope="row" className="py-2 pr-3 font-normal">
+                      <Button type="button" size="sm" variant="ghost" disabled={trial.status === "pending" || trial.status === "skipped"} onClick={() => onOpenRun(trial.run_id)}>
+                        {trial.run_id}
+                      </Button>
+                      {optuna && <OptunaTrialSummary trial={trial} />}
+                      {trial.quality_guard && <TrialQualityDecision guard={trial.quality_guard} />}
+                      {!optuna && variant && (
+                        <div className="space-y-1 pl-3 text-xs text-hint">
+                          <p>{t("academy.experiments.rank")} {variant.recipe.rank} · {t("academy.experiments.learningRate")} {variant.recipe.learning_rate}
+                            {" · "}{t("academy.campaigns.plannedWorkload")} {displayNumber.format(variant.workload.updates)} / {displayNumber.format(variant.workload.tokens)}
+                          </p>
+                          <InitialAdapterSummary adapter={variant.initial_adapter} />
+                        </div>
+                      )}
+                    </th>
+                    <td className="px-3 py-2">
+                      <CampaignStatus status={trial.status} />
+                      <TrialAdapterError code={trial.error} />
+                    </td>
+                    <td className="px-3 py-2">{delta(trial.usable_delta)}</td>
+                    <td className="px-3 py-2">{delta(trial.critical_delta)}</td>
+                  </tr>
+                  {trial.checkpoint_evaluations?.map((result) => (
+                    <CheckpointTrialRow key={result.step} result={result} delta={delta} />
+                  ))}
+                </Fragment>
               );
             })}
           </tbody>

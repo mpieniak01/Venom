@@ -92,6 +92,9 @@ class CampaignQualityPolicy(BaseModel):
         return self
 
 
+CheckpointStep = Annotated[int, Field(ge=1, le=10000)]
+
+
 class CampaignSpec(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
@@ -107,6 +110,9 @@ class CampaignSpec(BaseModel):
     retention: Literal["keep_all", "discard_rejected"] = "keep_all"
     review_mode: Literal["manual", "automatic"] = "manual"
     quality_policy: CampaignQualityPolicy | None = None
+    checkpoint_steps: list[CheckpointStep] | None = Field(
+        default=None, min_length=1, max_length=4
+    )
 
     @model_validator(mode="after")
     def validate_variant_count(self) -> "CampaignSpec":
@@ -117,6 +123,11 @@ class CampaignSpec(BaseModel):
                 raise ValueError("campaign_trial_budget_exceeded")
         elif self.variants or not self.search_space:
             raise ValueError("campaign_optuna_space_required")
+        if self.checkpoint_steps is not None and (
+            self.strategy != "fixed"
+            or self.checkpoint_steps != sorted(set(self.checkpoint_steps))
+        ):
+            raise ValueError("campaign_checkpoint_steps_invalid")
         return self
 
 

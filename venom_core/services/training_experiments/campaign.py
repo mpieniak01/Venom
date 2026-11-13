@@ -27,6 +27,7 @@ from venom_core.services.remote_training.paths import data_directory, operator_p
 from . import optuna_backend, quality_guard, quality_native
 from .adapters import verify_adapter_entry
 from .campaign_schema import CampaignSpec
+from .checkpoint_evaluation import validate_steps
 from .retention import (
     ExperimentArtifacts,
     Retention,
@@ -63,6 +64,7 @@ class CampaignExperiments(ExperimentArtifacts, Protocol):
         expected_identity: str | None = None,
         review_mode: str | None = None,
         expected_initial_adapter: dict | None = None,
+        checkpoint_steps: list[int] | None = None,
     ) -> dict: ...
 
     def stop(self, run_id: str, *, campaign_id: str | None = None) -> dict: ...
@@ -84,6 +86,8 @@ class CampaignExperiments(ExperimentArtifacts, Protocol):
     ) -> dict: ...
 
     def report(self, run_id: str) -> dict: ...
+
+    def checkpoint_report(self, run_id: str, step: int) -> tuple[dict, str]: ...
 
 
 def _has_work(run: dict) -> bool:
@@ -132,6 +136,8 @@ def _fixed_variants(
             raise ValueError("campaign_profile_changed")
         identity = validated["identity"]
         recipe = validated["recipe"]
+        if spec.checkpoint_steps is not None:
+            validate_steps(spec.checkpoint_steps, recipe)
         audit = validated.get("data_audit")
         adapter = validated.get("initial_adapter")
         initialization = {"initial_adapter": adapter} if adapter is not None else {}
@@ -214,6 +220,13 @@ def _plan(spec: CampaignSpec, experiments: CampaignExperiments) -> dict:
         extra["data_audit"] = audit
         for variant in variants:
             variant.pop("data_audit")
+    if spec.checkpoint_steps is not None:
+        extra["checkpoint_steps"] = spec.checkpoint_steps
+        extra["checkpoint_evaluation_identity"] = (
+            quality_native.frozen_evaluation_identity(
+                experiments, spec.profile_id, spec.review_mode
+            )
+        )
     budget = spec.budget
     if sum(v["workload"]["updates"] for v in variants) > budget.max_updates:
         raise ValueError("campaign_update_budget_exceeded")
@@ -221,7 +234,13 @@ def _plan(spec: CampaignSpec, experiments: CampaignExperiments) -> dict:
         raise ValueError("campaign_token_budget_exceeded")
     payload = {
         **spec.model_dump(
-            exclude={"strategy", "search_space", "sampler_seed", "quality_policy"}
+            exclude={
+                "strategy",
+                "search_space",
+                "sampler_seed",
+                "quality_policy",
+                "checkpoint_steps",
+            }
         ),
         **extra,
         "profile_identity": identity,
@@ -234,6 +253,8 @@ def _plan(spec: CampaignSpec, experiments: CampaignExperiments) -> dict:
             spec.review_mode,
             include_runtime=spec.quality_policy.source_record_id is not None,
         )
+        if "checkpoint_evaluation_identity" in payload:
+            context["identity"] = payload["checkpoint_evaluation_identity"]
         payload["quality_policy"] = quality_guard.freeze_policy(
             spec.quality_policy.model_dump(),
             context,
@@ -252,6 +273,7 @@ def _initial_state(plan: dict) -> dict:
             {"run_id": item["run_id"], "status": "pending"} for item in plan["variants"]
         ],
         "selected_run_id": None,
+        **({"selected_checkpoint_step": None} if "checkpoint_steps" in plan else {}),
         "started_at": None,
         "elapsed_seconds": 0.0,
         "used_updates": 0,
@@ -273,6 +295,9 @@ def _actual_recipe(state: dict, trial: dict) -> dict:
 
 
 def _rank(state: dict) -> None:
+    if "checkpoint_steps" in state["plan"]:
+        _rank_checkpoints(state)
+        return
     selection = state["plan"]["selection"]
     guarded = state["plan"].get("quality_policy") is not None
     if guarded and state.get("quality_policy_error"):
@@ -292,6 +317,30 @@ def _rank(state: dict) -> None:
         default=None,
     )
     state["selected_run_id"] = winner["run_id"] if winner else None
+
+
+def _rank_checkpoints(state: dict) -> None:
+    if state.get("quality_policy_error"):
+        state["selected_run_id"] = state["selected_checkpoint_step"] = None
+        return
+    qualified = (
+        (trial["run_id"], item)
+        for trial in state["trials"]
+        if trial["status"] == "succeeded"
+        for item in trial.get("checkpoint_evaluations", ())
+        if item.get("qualified") is True
+    )
+    run_id, winner = max(
+        qualified,
+        key=lambda choice: (
+            choice[1]["usable_delta"],
+            -choice[1]["critical_delta"],
+            -choice[1]["step"],
+        ),
+        default=(None, None),
+    )
+    state["selected_run_id"] = run_id
+    state["selected_checkpoint_step"] = winner["step"] if winner else None
 
 
 def _deltas(report: dict) -> dict:
@@ -435,7 +484,10 @@ class CampaignService:
         return state
 
     def _review_selection(self, state: dict) -> None:
-        if not state["plan"].get("quality_policy") or not state["selected_run_id"]:
+        requires_verification = (
+            state["plan"].get("quality_policy") or "checkpoint_steps" in state["plan"]
+        )
+        if not requires_verification or not state["selected_run_id"]:
             return
         try:
             self._verify_quality_policy(state["plan"])
@@ -447,6 +499,8 @@ class CampaignService:
             self._verify_quality_winner(state, winner)
         except (OSError, ValueError, KeyError, TypeError, StopIteration) as exc:
             state["selected_run_id"] = None
+            if "selected_checkpoint_step" in state:
+                state["selected_checkpoint_step"] = None
             state["quality_policy_error"] = _quality_error(exc)
 
     def report(self, campaign_id: str) -> dict:
@@ -466,18 +520,48 @@ class CampaignService:
                 )
                 if observed != expected:
                     continue
-                totals = report["summaries"]
-                evaluations[run_id] = {
-                    role: totals[role]["total"] for role in ("base", "candidate")
-                }
-                evaluations[run_id]["adapter_available"] = any(
-                    artifact.get("available") is True
-                    for artifact in report["artifacts"]
-                )
-            except (OSError, ValueError, TypeError, KeyError):
+                if "checkpoint_steps" in state["plan"]:
+                    checkpoints = self._checkpoint_evaluations(trial)
+                    if not checkpoints:
+                        continue
+                    step = (
+                        state.get("selected_checkpoint_step")
+                        if run_id == state.get("selected_run_id")
+                        else checkpoints[-1]["step"]
+                    )
+                    anchor = next(item for item in checkpoints if item["step"] == step)
+                    evaluations[run_id] = {**anchor, "checkpoints": checkpoints}
+                else:
+                    evaluations[run_id] = self._evaluation_totals(report)
+            except (OSError, ValueError, TypeError, KeyError, StopIteration):
                 # Missing or stale evidence remains unavailable in the comparison.
                 continue
         return evaluations
+
+    @staticmethod
+    def _evaluation_totals(report: dict) -> dict:
+        totals = report["summaries"]
+        return {
+            "base": totals["base"]["total"],
+            "candidate": totals["candidate"]["total"],
+            "adapter_available": any(
+                artifact.get("available") is True for artifact in report["artifacts"]
+            ),
+        }
+
+    def _checkpoint_evaluations(self, trial: dict) -> list[dict]:
+        checkpoint_rows = []
+        run_id = trial["run_id"]
+        with self.experiments.run_lock(run_id):
+            for item in trial.get("checkpoint_evaluations", ()):
+                step = item["step"]
+                report, result_sha = self.experiments.checkpoint_report(run_id, step)
+                if result_sha != item.get("result_sha256"):
+                    raise ValueError("campaign_quality_result_changed")
+                checkpoint_rows.append(
+                    {"step": step, **self._evaluation_totals(report)}
+                )
+        return checkpoint_rows
 
     def start(self, campaign_id: str, plan_sha256: str) -> dict:
         return self._activate(campaign_id, plan_sha256=plan_sha256)
@@ -537,8 +621,13 @@ class CampaignService:
         warm_variants = [
             variant for variant in plan["variants"] if "initial_adapter" in variant
         ]
-        if plan.get("data_audit") or (first_start and warm_variants):
+        if (
+            plan.get("data_audit")
+            or "checkpoint_steps" in plan
+            or (first_start and warm_variants)
+        ):
             self._profile(plan)
+            self._verify_checkpoint_protocol(plan)
             if plan.get("data_audit"):
                 self._verify_data_audit(plan)
         else:
@@ -654,6 +743,17 @@ class CampaignService:
         if audit.get("data_audit") != plan["data_audit"]:
             raise ValueError("experiment_data_audit_changed")
 
+    def _verify_checkpoint_protocol(self, plan: dict) -> None:
+        expected = plan.get("checkpoint_evaluation_identity")
+        if (
+            expected is not None
+            and quality_native.frozen_evaluation_identity(
+                self.experiments, plan["profile_id"], plan["review_mode"]
+            )
+            != expected
+        ):
+            raise ValueError("campaign_checkpoint_protocol_changed")
+
     def _profile(self, plan: dict) -> None:
         self._verify_quality_policy(plan)
         for profile in self.experiments.profiles():
@@ -680,6 +780,7 @@ class CampaignService:
             or run.get("initial_adapter")
             != _current_variant(state).get("initial_adapter")
             or run.get("data_audit") != state["plan"].get("data_audit")
+            or run.get("checkpoint_steps") != state["plan"].get("checkpoint_steps")
         ):
             raise ValueError("campaign_trial_conflict")
         return run
@@ -734,6 +835,7 @@ class CampaignService:
             # The previous coordinator already committed this launch.
             return run
         self._profile(state["plan"])
+        self._verify_checkpoint_protocol(state["plan"])
         if not self._artifact_budget(state):
             raise ValueError("campaign_storage_budget_exhausted")
         run_id = trial["run_id"]
@@ -751,6 +853,11 @@ class CampaignService:
                 review_mode=state["plan"]["review_mode"],
                 max_seconds=remaining,
                 expected_initial_adapter=adapter,
+                **(
+                    {"checkpoint_steps": state["plan"]["checkpoint_steps"]}
+                    if "checkpoint_steps" in state["plan"]
+                    else {}
+                ),
             )
         if run is None:
             raise ValueError("campaign_trial_missing")
@@ -778,7 +885,11 @@ class CampaignService:
     def _settle_timeout(self, directory: Path, state: dict, run: dict | None) -> bool:
         plan = state["plan"]
         optimized = _is_optuna(plan)
-        reviewed = plan.get("quality_policy") and run and run["status"] == "succeeded"
+        reviewed = (
+            (plan.get("quality_policy") or "checkpoint_steps" in plan)
+            and run
+            and run["status"] == "succeeded"
+        )
         if not optimized and not reviewed:
             return True
         index = state["trial_index"]
@@ -866,8 +977,60 @@ class CampaignService:
         trial.update(_deltas(report))
         trial["result_sha256"] = result_sha256
         policy = state["plan"].get("quality_policy")
-        if policy is not None:
+        if "checkpoint_steps" in state["plan"]:
+            self._record_checkpoint_results(state, trial, policy)
+        elif policy is not None:
             self._record_quality_decision(state, trial, policy)
+
+    def _assess_checkpoint(
+        self, state: dict, run_id: str, step: int, policy: dict | None
+    ) -> dict:
+        expected = state["plan"]["checkpoint_evaluation_identity"]
+        with self.experiments.run_lock(run_id):
+            report, checksum = self.experiments.checkpoint_report(run_id, step)
+            record = quality_native.native_record(self.experiments, run_id, step)
+        if record["identity"] != expected or record["source"]["sha256"] != checksum:
+            raise ValueError("campaign_quality_identity_changed")
+        metrics = _deltas(report)
+        selection = state["plan"]["selection"]
+        item = {
+            "step": step,
+            "status": "succeeded",
+            "result_sha256": checksum,
+            "summaries": report["summaries"],
+            **metrics,
+            "qualified": (
+                metrics["usable_delta"] >= selection["min_usable_delta"]
+                and metrics["critical_delta"] <= selection["max_critical_delta"]
+            ),
+        }
+        if policy is not None:
+            guard, _ = quality_guard.evaluate(
+                policy, record, expected["protocol_sha256"]
+            )
+            item.update(
+                quality_guard=guard,
+                qualified=item["qualified"] and guard["status"] == "passed",
+            )
+        return item
+
+    def _record_checkpoint_results(
+        self, state: dict, trial: dict, policy: dict | None
+    ) -> None:
+        try:
+            self._verify_quality_policy(state["plan"])
+            trial["checkpoint_evaluations"] = [
+                self._assess_checkpoint(state, trial["run_id"], step, policy)
+                for step in state["plan"]["checkpoint_steps"]
+            ]
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            reason = _quality_error(exc)
+            state["quality_policy_error"] = reason
+            state["selected_run_id"] = state["selected_checkpoint_step"] = None
+            trial["quality_guard"] = quality_guard.blocked(reason)
+            return
+        state.pop("quality_policy_error", None)
+        trial.pop("quality_guard", None)
 
     def _record_quality_decision(self, state: dict, trial: dict, policy: dict) -> None:
         try:
@@ -897,6 +1060,17 @@ class CampaignService:
         )
 
     def _verify_quality_winner(self, state: dict, trial: dict) -> None:
+        if "checkpoint_steps" in state["plan"]:
+            step = state["selected_checkpoint_step"]
+            observed = self._assess_checkpoint(
+                state, trial["run_id"], step, state["plan"].get("quality_policy")
+            )
+            expected = next(
+                item for item in trial["checkpoint_evaluations"] if item["step"] == step
+            )
+            if observed != expected or not observed["qualified"]:
+                raise ValueError("campaign_quality_result_changed")
+            return
         decision, _ = self._evaluate_quality(
             state, trial, state["plan"]["quality_policy"]
         )
@@ -904,7 +1078,10 @@ class CampaignService:
             raise ValueError("campaign_quality_result_changed")
 
     def _retry(self, state: dict, run: dict) -> str | None:
-        if run["status"] not in {"failed", "stopped"}:
+        retriable = {"failed", "stopped"}
+        if "checkpoint_steps" in state["plan"]:
+            retriable.add("timed_out")
+        if run["status"] not in retriable:
             return None
         if state["retries"] >= state["plan"]["budget"]["max_retries"]:
             return None
@@ -983,6 +1160,10 @@ class CampaignService:
                 for key in ("status", "stage", "attempt", "error", "resume_available")
             }
         )
+        if "checkpoint_evaluations" in run:
+            trial.setdefault("checkpoint_evaluations", run["checkpoint_evaluations"])
+            if run["status"] != "succeeded":
+                trial["checkpoint_evaluations"] = run["checkpoint_evaluations"]
         if run["status"] == "awaiting_review":
             if remaining < 1:
                 self._finish_trial(
@@ -1140,7 +1321,9 @@ class CampaignService:
 
     def _verify_quality_retention(self, state: dict) -> None:
         self._verify_quality_policy(state["plan"])
-        if state["plan"].get("quality_policy") and state["selected_run_id"]:
+        if state["selected_run_id"] and (
+            state["plan"].get("quality_policy") or "checkpoint_steps" in state["plan"]
+        ):
             winner = next(
                 (
                     trial

@@ -8,6 +8,7 @@ import {
   getExperimentReport,
   getExperimentReview,
   type ExperimentAnswer,
+  type ExperimentCheckpointResult,
   type ExperimentMessage,
   type ExperimentReport,
   type ExperimentReview,
@@ -114,6 +115,31 @@ function Comparison({ report, task }: { readonly report: ExperimentReport; reado
   );
 }
 
+function CheckpointReports({ results, task, onOpenQuality }: {
+  readonly results: ExperimentCheckpointResult[];
+  readonly task: string;
+  readonly onOpenQuality?: (step: number) => void;
+}) {
+  const t = useTranslation();
+  return (
+    <div className="space-y-2">
+      {results.map(({ step, summaries }) => summaries && (
+        <details key={step} className="rounded-lg border border-[color:var(--ui-border)] p-3">
+          <summary className="cursor-pointer text-sm">{t("academy.campaigns.checkpoints.step")} {step}</summary>
+          <div className="mt-3 space-y-3">
+            <Comparison report={{ summaries }} task={task} />
+            {onOpenQuality && (
+              <Button type="button" size="sm" variant="outline" onClick={() => onOpenQuality(step)}>
+                {t("academy.experiments.openQuality")}
+              </Button>
+            )}
+          </div>
+        </details>
+      ))}
+    </div>
+  );
+}
+
 export function ExperimentResult({ run, onOpenQuality }: {
   readonly run: ExperimentRun;
   readonly onOpenQuality?: (recordId: string) => void;
@@ -149,12 +175,13 @@ export function ExperimentResult({ run, onOpenQuality }: {
     .sort((left, right) => left.localeCompare(right, language));
   const selectedTask = tasks.includes(task) ? task : "total";
   const audit = report.data_audit ?? run.data_audit;
+  const checkpointResults = report.checkpoint_evaluations ?? [];
   return (
     <section className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h4 className="font-semibold">{t("academy.experiments.comparison")}</h4>
         <div className="flex flex-wrap gap-2">
-          {onOpenQuality && run.attempt > 0 && !report.historical && (
+          {onOpenQuality && run.attempt > 0 && !report.historical && !checkpointResults.length && (
             <Button type="button" variant="outline" size="sm" onClick={() => onOpenQuality(run.run_id)}>
               {t("academy.experiments.openQuality")}
             </Button>
@@ -177,7 +204,10 @@ export function ExperimentResult({ run, onOpenQuality }: {
           </select>
         </div>
       )}
-      <Comparison report={report} task={selectedTask} />
+      {checkpointResults.length ? (
+        <CheckpointReports results={checkpointResults} task={selectedTask}
+          onOpenQuality={onOpenQuality && ((step) => onOpenQuality(`checkpoint:${run.run_id}:${step}`))} />
+      ) : <Comparison report={report} task={selectedTask} />}
       {report.artifacts?.length ? (
         <ul className="space-y-1 text-sm">
           {report.artifacts.map((artifact, index) => (
@@ -187,6 +217,11 @@ export function ExperimentResult({ run, onOpenQuality }: {
             </li>
           ))}
         </ul>
+      ) : null}
+      {checkpointResults.length > 0 && report.cases?.length ? (
+        <p className="text-sm text-hint">
+          {t("academy.campaigns.checkpoints.answerStep")} {checkpointResults.at(-1)?.step}
+        </p>
       ) : null}
       {report.cases?.map((item) => (
         <details className="rounded-lg border border-[color:var(--ui-border)] p-3" key={item.case_id}>
@@ -204,7 +239,26 @@ export function ExperimentResult({ run, onOpenQuality }: {
   );
 }
 
-function parseJudgments(source: string): Record<string, unknown>[] {
+function parseCheckpointJudgments(source: string, checkpointStep: number): unknown {
+  const data: unknown = JSON.parse(source);
+  if (typeof data !== "object" || data === null || !("checkpoint_step" in data)
+    || data.checkpoint_step !== checkpointStep || !("judgments" in data)) {
+    throw new Error("judgments belong to a different checkpoint");
+  }
+  return data.judgments;
+}
+
+function parseJudgments(source: string, checkpointStep?: number): Record<string, unknown>[] {
+  const data = checkpointStep === undefined
+    ? parseLegacyJudgments(source)
+    : parseCheckpointJudgments(source, checkpointStep);
+  if (!Array.isArray(data) || !data.length || data.some((item) => !item || typeof item !== "object" || Array.isArray(item))) {
+    throw new Error("expected judgment objects");
+  }
+  return data;
+}
+
+function parseLegacyJudgments(source: string): unknown {
   const text = source.trim();
   let data: unknown;
   try {
@@ -214,16 +268,13 @@ function parseJudgments(source: string): Record<string, unknown>[] {
   } catch {
     data = text.split(/\r?\n/).filter((line) => line.trim()).map((line) => JSON.parse(line));
   }
-  if (!Array.isArray(data) || !data.length || data.some((item) => !item || typeof item !== "object" || Array.isArray(item))) {
-    throw new Error("expected judgment objects");
-  }
   return data;
 }
 
 interface ReviewProps {
   readonly runId: string;
   readonly disabled: boolean;
-  readonly onSubmit: (judgments: Record<string, unknown>[]) => Promise<boolean>;
+  readonly onSubmit: (judgments: Record<string, unknown>[], checkpointStep?: number) => Promise<boolean>;
 }
 
 export function ExperimentReviewPanel({ runId, disabled, onSubmit }: ReviewProps) {
@@ -244,7 +295,7 @@ export function ExperimentReviewPanel({ runId, disabled, onSubmit }: ReviewProps
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (disabled || reading) return;
+    if (disabled || reading || !review) return;
     const file = new FormData(event.currentTarget).get("judgments");
     if (!(file instanceof File) || !file.size) {
       setFileError(true);
@@ -253,7 +304,7 @@ export function ExperimentReviewPanel({ runId, disabled, onSubmit }: ReviewProps
     setReading(true);
     setFileError(false);
     try {
-      await onSubmit(parseJudgments(await file.text()));
+      await onSubmit(parseJudgments(await file.text(), checkpointStep), checkpointStep);
     } catch {
       setFileError(true);
     } finally {
@@ -261,6 +312,7 @@ export function ExperimentReviewPanel({ runId, disabled, onSubmit }: ReviewProps
     }
   }
 
+  const checkpointStep = review?.checkpoint_step;
   if (!review && !loadError) return <p className="text-sm text-hint">{t("academy.experiments.loadingReview")}</p>;
   if (loadError) {
     return (
@@ -275,13 +327,16 @@ export function ExperimentReviewPanel({ runId, disabled, onSubmit }: ReviewProps
 
   return (
     <section className="space-y-3">
-      <h4 className="font-semibold">{t("academy.experiments.review")}</h4>
+      <h4 className="font-semibold">
+        {t("academy.experiments.review")}
+        {checkpointStep !== undefined && <> · {t("academy.campaigns.checkpoints.step")} {checkpointStep}</>}
+      </h4>
       <p className="text-sm text-hint">{t("academy.experiments.reviewHint")}</p>
       <Button
         type="button"
         size="sm"
         variant="outline"
-        onClick={() => downloadJson(`experiment-${runId}-review.json`, review)}
+        onClick={() => downloadJson(`experiment-${runId}${checkpointStep === undefined ? "" : `-${checkpointStep}`}-review.json`, review)}
       >
         {t("academy.experiments.downloadReview")}
       </Button>
@@ -302,10 +357,15 @@ export function ExperimentReviewPanel({ runId, disabled, onSubmit }: ReviewProps
       <form className="flex flex-wrap items-end gap-2" onSubmit={(event) => void submit(event)}>
         <div className="space-y-1">
           <Label htmlFor="experiment-judgments">{t("academy.experiments.judgmentsFile")}</Label>
-          <Input id="experiment-judgments" name="judgments" type="file" accept=".json,.jsonl,application/json" required disabled={disabled || reading} />
+          <Input id="experiment-judgments" name="judgments" type="file" required disabled={disabled || reading}
+            accept={checkpointStep === undefined ? ".json,.jsonl,application/json" : ".json,application/json"}
+            aria-describedby={checkpointStep === undefined ? undefined : "checkpoint-judgments-hint"} />
         </div>
         <Button type="submit" disabled={disabled || reading}>{t("academy.experiments.submitJudgments")}</Button>
       </form>
+      {checkpointStep !== undefined && (
+        <p id="checkpoint-judgments-hint" className="text-sm text-hint">{t("academy.campaigns.checkpoints.judgmentFile")}</p>
+      )}
       {fileError && <p role="alert" className="text-sm text-red-400">{t("academy.experiments.judgmentsError")}</p>}
     </section>
   );

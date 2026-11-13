@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { auditFixture } from "./fixtures/academy-data-audit";
+import { ExperimentReviewPanel } from "../components/academy/experiment-results";
 import { ExperimentsPanel } from "../components/academy/experiments-panel";
 import { TrainingWorkspace } from "../components/academy/training-workspace";
 import { ToastProvider } from "../components/ui/toast";
@@ -91,6 +92,41 @@ describe("Academy experiments", () => {
     assert.ok(screen.getByText("Druga odpowiedź"));
     assert.equal(screen.queryByText("Baza M0"), null);
     assert.ok(screen.getByLabelText("Plik ocen JSON lub JSONL"));
+  });
+
+  it("rejects a verdict file for an earlier checkpoint before posting", async () => {
+    const submit = async (_rows: Record<string, unknown>[], step?: number) => {
+      assert.equal(step, 4);
+      count += 1;
+      return true;
+    };
+    let count = 0;
+    serve(() => [], {
+      [`GET ${prefix}/runs/pilot-1/review`]: () => Response.json({
+        checkpoint_step: 4,
+        cases: [],
+        answers: [],
+      }),
+    });
+    const previousFormData = window.FormData;
+    let file: File;
+    class FileFormData extends previousFormData {
+      get() { return file; }
+    }
+    globalThis.FormData = FileFormData;
+    render(<ExperimentReviewPanel runId="pilot-1" disabled={false} onSubmit={submit} />);
+    await screen.findByRole("heading", { name: /Checkpoint w kroku 4/ });
+    const form = screen.getByRole("button", { name: "Prześlij oceny" }).closest("form")!;
+    const judgments = [{ case: "case-1", label: "A" }];
+    file = new File([JSON.stringify({ checkpoint_step: 2, judgments })], "old.json");
+    fireEvent.submit(form);
+    await screen.findByText("Nie udało się odczytać pliku ocen.");
+    assert.equal(count, 0);
+
+    file = new File([JSON.stringify({ checkpoint_step: 4, judgments })], "current.json");
+    fireEvent.submit(form);
+    await waitFor(() => assert.equal(count, 1));
+    assert.equal(screen.queryByText("Nie udało się odczytać pliku ocen."), null);
   });
 
   it("opens the exact queued review and separates its external disposition from native scoring", async () => {

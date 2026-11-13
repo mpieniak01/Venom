@@ -12,6 +12,7 @@ from scripts.academy.omni_pl_chat_data import MAX_DEV_TASK_LENGTH
 from scripts.academy.omni_pl_chat_masks import SNAPSHOT_PIN
 from venom_core.services.remote_training.paths import operator_path
 
+from .checkpoint_evaluation import step_directory
 from .profiles import (
     MAX_JSON_BYTES,
     digest,
@@ -163,23 +164,38 @@ def evaluated_cases(
     }
 
 
-def native_record(experiments: Any, run_id: str) -> dict:
+def native_record(
+    experiments: Any, run_id: str, checkpoint_step: int | None = None
+) -> dict:
     """Read a completed native run using its result seal and bound inputs."""
     directory = experiments.run_dir(run_id)
-    result_sha = read_json(directory / "result-seal.json")["result_sha256"]
-    report = _verified_json(directory / "result.json", result_sha)
     state = read_json(directory / "state.json")
+    if checkpoint_step is None:
+        generation = directory / f"evaluation-{state['attempt']}"
+        result_dir = directory
+    else:
+        if checkpoint_step not in state.get("checkpoint_steps", ()):
+            raise ValueError("experiment_checkpoint_invalid")
+        generation = step_directory(directory, checkpoint_step)
+        result_dir = generation
+    result_sha = read_json(result_dir / "result-seal.json")["result_sha256"]
+    report = _verified_json(result_dir / "result.json", result_sha)
+    if checkpoint_step is None and "checkpoint_evaluations" in report:
+        raise ValueError("experiment_checkpoint_step_required")
     if (
         experiments._child_alive(state)
         or report["run_id"] != run_id
         or report.get("historical")
+        or (
+            checkpoint_step is not None
+            and report["checkpoint"]["step"] != checkpoint_step
+        )
     ):
         raise ValueError("experiment_quality_result_incomplete")
     manifest = read_json(directory / _MANIFEST_NAME)
     if stable_hash(manifest) != report["manifest_sha256"]:
         raise ValueError("experiment_quality_evidence_changed")
     profile = manifest["profile"]
-    generation = directory / f"evaluation-{state['attempt']}"
     seal = _verified_json(
         generation / "generation-seal.json", report["generation_sha256"]
     )
@@ -206,7 +222,13 @@ def native_record(experiments: Any, run_id: str) -> dict:
             "record_id": run_id,
             "split": "dev",
             "identity": identity,
-            "source": {"identity": run_id, "sha256": result_sha, "kind": "academy"},
+            "source": {
+                "identity": run_id
+                if checkpoint_step is None
+                else f"checkpoint:{run_id}:{checkpoint_step}",
+                "sha256": result_sha,
+                "kind": "academy",
+            },
             "cases": evaluated_cases(report, categories, grades, mapping),
             "train_sha256": profile["train_sha256"],
             "recipe": manifest["recipe"],
@@ -219,9 +241,44 @@ def native_record(experiments: Any, run_id: str) -> dict:
     return quality_record_view(record)
 
 
+def frozen_evaluation_identity(
+    experiments: Any, profile_id: str, review_mode: str
+) -> dict:
+    """Compute the same identity using the installed training runtime before planning."""
+    from scripts.academy.omni_pl_chat_evaluate import (
+        GENERATION_SEED,
+        MAX_NEW_TOKENS,
+        MAX_PROMPT_TOKENS,
+    )
+
+    profile, _ = load_profile(experiments.root, profile_id)
+    runtime = _profile_runtime(resolve_input(experiments.root, profile.training_venv))
+    pin = read_json(SNAPSHOT_PIN)
+    return evaluation_identity(
+        {
+            "model_repo": profile.model,
+            "snapshot_manifest_sha256": digest(SNAPSHOT_PIN),
+            "data_sha256": profile.dev_sha256,
+            "revision": pin["revision"],
+            "max_prompt_tokens": MAX_PROMPT_TOKENS,
+            "max_new_tokens": MAX_NEW_TOKENS,
+            "seed": GENERATION_SEED,
+            "engine": runtime["evaluation_engine"],
+            "template": "vendor",
+            "generation_mode": "text",
+            "do_sample": False,
+            "enable_thinking": False,
+        },
+        profile.calibration_sha256 if review_mode == "automatic" else None,
+    )
+
+
 def get_record(experiments: Any, record_id: str) -> dict:
     if record_id.startswith(HISTORY_PREFIX):
         return QualityStore(experiments.root).get(
             record_id.removeprefix(HISTORY_PREFIX)
         )
+    if record_id.startswith("checkpoint:"):
+        _, run_id, step = record_id.split(":")
+        return native_record(experiments, run_id, int(step))
     return native_record(experiments, record_id)

@@ -1086,3 +1086,308 @@ def test_run_reconciles_audit_with_real_preflight_receipt_before_training(
         assert commands[:2] == ["preflight", "control"]
         service.submit("audit-run", [grade("A", True), grade("B", False)])
         assert service.report("audit-run")["data_audit"] == start["data_audit"]
+
+
+@pytest.fixture
+def checkpoint_campaign(setup, monkeypatch):
+    from scripts.academy.omni_pl_chat_evaluate import (
+        _evaluation_manifest,
+        blind_mapping,
+    )
+    from venom_core.services.training_experiments import quality_native
+    from venom_core.services.training_experiments.campaign import CampaignService
+    from venom_core.services.training_experiments.campaign_schema import CampaignSpec
+    from venom_core.services.training_experiments.checkpoint_evaluation import (
+        inspect_steps,
+    )
+    from venom_core.services.training_experiments.profiles import read_json
+
+    service, client, _, profile, _, dev, _ = setup
+    versions = dict.fromkeys(("torch", "transformers", "peft"), "test")
+    monkeypatch.setattr(
+        quality_native,
+        "_profile_runtime",
+        lambda _: {
+            "evaluation_engine": versions,
+            "loss": "trainer_default",
+        },
+    )
+    monkeypatch.setattr(
+        "scripts.academy.omni_pl_chat_evaluate.version", versions.__getitem__
+    )
+    campaign = CampaignService(service, launch=lambda _: process_identity(os.getpid()))
+    spec = adapter_campaign_plan("steps")
+    spec["variants"] = [{}]
+    spec["checkpoint_steps"] = [2, 4]
+    spec["budget"]["max_retries"] = 1
+    spec["quality_policy"] = {"no_new_critical": True}
+    spec["selection"] = {"min_usable_delta": 0.1}
+    frozen = CampaignSpec.model_validate(spec)
+    plan = campaign.plan(frozen)["plan"]
+    run_id = plan["variants"][0]["run_id"]
+    commands = []
+    controls = {"generation_error": False}
+
+    fake_work(monkeypatch, service, dev)
+
+    def execute(worker, command, gpu_fd):
+        output = Path(command[4])
+        output.mkdir()
+        if command[1].endswith("omni_pl_chat_p1.sh"):
+            mode = command[6]
+            commands.append(mode)
+            if mode == "control":
+                for step in (2, 4):
+                    cp = write_checkpoint(worker.directory, step)
+                    weights = cp / "adapter_model.safetensors"
+                    weights.write_text(f"step-{step}")
+                    hashes = read_json(cp / "hashes.json")
+                    hashes[weights.name] = digest(weights)
+                    atomic_json(cp / "hashes.json", hashes)
+            return
+        commands.append("evaluate")
+        assert command[6:8] == ["--resume-partial", "base"]
+        assert [item.split("=")[0] for item in command[8:]] == [
+            "checkpoint-2",
+            "checkpoint-4",
+        ]
+        if controls.pop("generation_error", False):
+            raise RuntimeError("experiment_child_failed")
+        inputs = inspect_steps(worker.directory / "training", [2, 4])
+        tags = ["base", *inputs]
+        mapping = blind_mapping([dev], tags)
+        raw = [
+            {
+                "case": "dev-1",
+                "model": tag,
+                "label": label,
+                "response": {"text": tag, "finish": "stop", "error": None},
+            }
+            for label, tag in mapping["dev-1"].items()
+        ]
+        answers = {row["label"]: row["response"] for row in raw}
+        write_rows(output / "raw.jsonl", raw)
+        write_rows(output / "blind.jsonl", [{"case": dev, "answers": answers}])
+        atomic_json(output / "unblind.json", mapping)
+        manifest = _evaluation_manifest(
+            read_json(quality_native.SNAPSHOT_PIN), profile["dev_sha256"], [dev], inputs
+        )
+        outputs = {
+            name: digest(output / name)
+            for name in ("raw.jsonl", "blind.jsonl", "unblind.json")
+        }
+        atomic_json(
+            output / "manifest.json",
+            {
+                **manifest,
+                "generation_identity_sha256": "a" * 64,
+                "outputs": outputs,
+            },
+        )
+
+    monkeypatch.setattr(Worker, "execute", execute)
+    return campaign, frozen, plan, run_id, commands, controls, service, client
+
+
+def _start_checkpoint_test(campaign, plan):
+    campaign.start("steps", plan["plan_sha256"])
+    campaign.advance("steps")
+    campaign.advance("steps")
+
+
+def _review_checkpoint_test(client, run_id, step, candidate_good):
+    from scripts.academy.omni_pl_chat_evaluate import blind_mapping
+
+    prefix = f"/api/v1/academy/experiments/runs/{run_id}"
+    bundle = client.get(prefix + "/review").json()
+    assert bundle["checkpoint_step"] == step
+    mapping = blind_mapping(bundle["cases"], ["base", f"checkpoint-{step}"])["dev-1"]
+    grades = [
+        grade(label, tag != "base" and candidate_good) for label, tag in mapping.items()
+    ]
+    # Base judgments are identical across steps. Critical errors can still be new on
+    # the candidate independently of the base's usability.
+    for item in grades:
+        item["critical_error"] = False
+    submission = {"checkpoint_step": step, "judgments": grades}
+    stale = client.post(
+        prefix + "/judgments", json={**submission, "checkpoint_step": 1}
+    )
+    assert stale.status_code == 409
+    assert stale.json()["detail"]["code"] == "experiment_checkpoint_review_changed"
+    response = client.post(prefix + "/judgments", json=submission)
+    assert response.status_code == 200, response.text
+    assert client.post(prefix + "/judgments", json=submission).status_code == 409
+
+
+@pytest.mark.parametrize("qualifying", [True, False])
+def test_checkpoint_campaign_retries_generation_and_ranks_only_qualified_steps(
+    checkpoint_campaign, qualifying
+):
+    from venom_core.services.training_experiments.quality_history import list_records
+    from venom_core.services.training_experiments.quality_native import get_record
+
+    campaign, _, plan, run_id, commands, controls, service, client = checkpoint_campaign
+    _start_checkpoint_test(campaign, plan)
+    controls["generation_error"] = True
+    Worker(service, run_id, 1).run()
+    status = service.status(run_id)
+    assert status["status"] == "failed"
+    assert status["evaluation_available"] is True
+    retry = campaign.advance("steps")
+    assert retry["trials"][0]["intent"]["action"] == "evaluate"
+    campaign.advance("steps")
+    Worker(service, run_id, 2).run()
+    assert commands == ["preflight", "control", "evaluate", "evaluate"]
+    assert campaign.advance("steps")["status"] == "awaiting_review"
+    assert service.status(run_id)["review_checkpoint_step"] == 2
+
+    _review_checkpoint_test(client, run_id, 2, qualifying)
+    assert service.status(run_id)["review_checkpoint_step"] == 4
+    assert service.checkpoint_report(run_id, 2)[0]["checkpoint"]["step"] == 2
+    assert campaign.advance("steps")["selected_run_id"] is None
+    _review_checkpoint_test(client, run_id, 4, False)
+    state = campaign.advance("steps")
+    assert state["status"] == "succeeded"
+    assert state["selected_checkpoint_step"] == (2 if qualifying else None)
+    assert state["selected_run_id"] == (run_id if qualifying else None)
+    assert state["used_updates"] == 4
+    assert state["retries"] == 1
+    assert [
+        item["step"] for item in service.report(run_id)["checkpoint_evaluations"]
+    ] == [2, 4]
+    totals = campaign.evaluations(state)[run_id]
+    expected_step = 2 if qualifying else 4
+    assert totals["step"] == expected_step
+    assert [entry["step"] for entry in totals["checkpoints"]] == [2, 4]
+    assert campaign.retention_plan("steps")["files"] == []
+    assert (
+        service.run_dir(run_id) / "training/checkpoint-2/adapter_model.safetensors"
+    ).is_file()
+    records = list_records(service)["records"]
+    assert [record["record_id"] for record in records] == [
+        f"checkpoint:{run_id}:2",
+        f"checkpoint:{run_id}:4",
+    ]
+    assert (
+        get_record(service, f"checkpoint:{run_id}:2")["source"]["identity"]
+        == f"checkpoint:{run_id}:2"
+    )
+    with pytest.raises(ValueError, match="experiment_checkpoint_step_required"):
+        get_record(service, run_id)
+
+
+def test_missing_checkpoint_report_blocks_candidate(checkpoint_campaign):
+    campaign, _, plan, run_id, _, _, service, client = checkpoint_campaign
+    _start_checkpoint_test(campaign, plan)
+    Worker(service, run_id, 1).run()
+    _review_checkpoint_test(client, run_id, 2, True)
+    _review_checkpoint_test(client, run_id, 4, False)
+    source = service.run_dir(run_id) / "checkpoint-evaluations/4/result.json"
+    source.unlink()
+    state = campaign.advance("steps")
+    assert state["status"] == "blocked"
+    assert state["selected_run_id"] is None
+    assert state["selected_checkpoint_step"] is None
+
+
+@pytest.mark.parametrize("steps", [[4, 2], [2, 2], [1, 4], [2, 6], [1, 2, 3, 4, 5]])
+def test_checkpoint_campaign_rejects_invalid_step_list(checkpoint_campaign, steps):
+    from venom_core.services.training_experiments.campaign_schema import CampaignSpec
+
+    campaign, spec, _, _, _, _, _, _ = checkpoint_campaign
+    values = spec.model_dump()
+    values["checkpoint_steps"] = steps
+    with pytest.raises(ValueError):
+        candidate = CampaignSpec.model_validate(values)
+        campaign.validate(candidate)
+
+
+def test_checkpoint_review_rejects_conflicting_baseline_flags(checkpoint_campaign):
+    from scripts.academy.omni_pl_chat_evaluate import blind_mapping
+
+    campaign, _, plan, run_id, _, _, service, client = checkpoint_campaign
+    _start_checkpoint_test(campaign, plan)
+    Worker(service, run_id, 1).run()
+    _review_checkpoint_test(client, run_id, 2, True)
+    prefix = f"/api/v1/academy/experiments/runs/{run_id}"
+    bundle = client.get(prefix + "/review").json()
+    mapping = blind_mapping(bundle["cases"], ["base", "checkpoint-4"])["dev-1"]
+    grades = [grade(label, True) for label in mapping]
+    response = client.post(
+        prefix + "/judgments", json={"checkpoint_step": 4, "judgments": grades}
+    )
+    assert response.status_code == 409
+    assert response.json()["detail"]["code"] == "experiment_checkpoint_baseline_changed"
+    assert service.status(run_id)["review_checkpoint_step"] == 4
+    _review_checkpoint_test(client, run_id, 4, False)
+
+
+def test_checkpoint_campaign_revalidates_installed_generation_protocol(
+    checkpoint_campaign, monkeypatch
+):
+    from venom_core.services.training_experiments import quality_native
+
+    campaign, _, plan, _, _, _, _, _ = checkpoint_campaign
+    monkeypatch.setattr(
+        quality_native,
+        "_profile_runtime",
+        lambda _: {
+            "evaluation_engine": dict.fromkeys(
+                ("torch", "transformers", "peft"), "changed"
+            )
+        },
+    )
+    with pytest.raises(ValueError, match="campaign_checkpoint_protocol_changed"):
+        campaign.start("steps", plan["plan_sha256"])
+
+
+@pytest.mark.parametrize("lost_winner", [False, True])
+def test_checkpoint_retention_requires_the_exact_early_selected_artifact(
+    checkpoint_campaign, lost_winner
+):
+    from venom_core.services.training_experiments.campaign_schema import CampaignSpec
+
+    campaign, spec, _, _, _, _, service, client = checkpoint_campaign
+    values = spec.model_dump()
+    values["campaign_id"] = "steps-twin"
+    values["variants"] = [{}, {"rank": 8}]
+    plan = campaign.plan(CampaignSpec.model_validate(values))["plan"]
+    campaign.start("steps-twin", plan["plan_sha256"])
+    first = plan["variants"][0]["run_id"]
+    winning_weights = (
+        service.run_dir(first) / "training/checkpoint-2/adapter_model.safetensors"
+    )
+    other_weights = (
+        service.run_dir(first) / "training/checkpoint-4/adapter_model.safetensors"
+    )
+
+    for variant in plan["variants"]:
+        run_id = variant["run_id"]
+        campaign.advance("steps-twin")
+        campaign.advance("steps-twin")
+        Worker(service, run_id, 1).run()
+        _review_checkpoint_test(client, run_id, 2, run_id == first)
+        _review_checkpoint_test(client, run_id, 4, False)
+        state = campaign.advance("steps-twin")
+        if lost_winner and run_id == first:
+            winning_weights.unlink()
+
+    second = plan["variants"][1]["run_id"]
+    alternative = (
+        service.run_dir(second) / "training/checkpoint-2/adapter_model.safetensors"
+    )
+    assert state["selected_checkpoint_step"] == 2
+    assert state["selected_run_id"] == first
+    assert other_weights.is_file()
+    if lost_winner:
+        assert alternative.is_file()
+        assert "retention_receipt" not in state
+    else:
+        assert winning_weights.is_file()
+        assert not alternative.exists()
+        assert state["retention_receipt"]["removed_bytes"] > 0
+        assert (
+            service.checkpoint_report(second, 2)[0]["artifacts"][0]["available"]
+            is False
+        )

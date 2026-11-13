@@ -37,17 +37,10 @@ from venom_core.services.runtime_release_service import (
 )
 
 from .adapters import runner_identity, verify_adapter_entry
+from .checkpoint_evaluation import bind_steps, publish_pairs, seal_generation
 from .data_audit import verify_audit_preflight
 from .evidence import calibrated_judgments, review_data
-from .profiles import (
-    Profile,
-    check_inputs,
-    digest,
-    read_json,
-    resolve_input,
-    rows,
-    stable_hash,
-)
+from .profiles import Profile, check_inputs, read_json, resolve_input, rows, stable_hash
 from .service import REPO, ExperimentService
 
 RUNNER = REPO / "scripts/academy/omni_pl_chat_p1.sh"
@@ -287,6 +280,26 @@ class Worker:
             checkpoint_step=evidence["step"],
             checkpoint_sha256=evidence["sha256"],
         )
+        self._generate_checkpoint_results(
+            profile, manifest, checkpoint_path, dev, venv, snapshot, gpu_fd
+        )
+
+    def _generate_checkpoint_results(
+        self,
+        profile: Profile,
+        manifest: dict,
+        checkpoint: Path,
+        dev: Path,
+        venv: str,
+        snapshot: str,
+        gpu_fd: int,
+    ) -> None:
+        steps = manifest.get("checkpoint_steps")
+        if steps is None:
+            variants = [f"{checkpoint.name}={checkpoint}"]
+        else:
+            inputs = bind_steps(self.directory, steps)
+            variants = [f"{tag}={self.directory / 'training' / tag}" for tag in inputs]
         generation = self.directory / f"evaluation-{self.attempt}"
         self._space(profile)
         self.execute(
@@ -299,24 +312,25 @@ class Worker:
                 venv,
                 "--resume-partial",
                 "base",
-                f"{checkpoint_path.name}={checkpoint_path}",
+                *variants,
             ],
             gpu_fd,
         )
         check_inputs(self.service.root, profile)
-        atomic_json(
-            generation / "generation-seal.json",
-            {
-                name: digest(generation / name)
-                for name in (
-                    "blind.jsonl",
-                    "unblind.json",
-                    "raw.jsonl",
-                    "manifest.json",
-                )
-            },
-        )
+        seal_generation(generation)
+        if steps is not None:
+            if bind_steps(self.directory, steps) != inputs:
+                raise ValueError("experiment_checkpoint_changed")
+            publish_pairs(self.directory, generation, rows(dev), inputs, steps)
         self.check_budget()
+
+    def _score_calibration(self, state: dict, calibration: dict) -> None:
+        steps = state.get("checkpoint_steps") or [None]
+        for step in steps:
+            self.check_budget()
+            generation, dev = self.service._review_inputs(state, checkpoint_step=step)
+            judgments = calibrated_judgments(calibration, review_data(generation, dev))
+            self.service._commit(state, judgments, checkpoint_step=step)
 
     def run(self) -> None:
         with self.service.run_lock(self.run_id):
@@ -383,11 +397,7 @@ class Worker:
                 self.check_budget()
                 calibration = manifest["calibration"]
                 if calibration is not None:
-                    generation, dev = self.service._review_inputs(current)
-                    judgments = calibrated_judgments(
-                        calibration, review_data(generation, dev)
-                    )
-                    self.service._commit(current, judgments)
+                    self._score_calibration(current, calibration)
                     terminal = "succeeded"
                 else:
                     terminal = "awaiting_review"

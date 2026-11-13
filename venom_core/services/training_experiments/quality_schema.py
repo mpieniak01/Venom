@@ -14,7 +14,10 @@ MAX_QUALITY_CASES = 4096
 Digest = Annotated[str, Field(pattern=SHA256_PATTERN)]
 RecordId = Annotated[str, Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")]
 EvidenceId = Annotated[
-    str, Field(pattern=r"^(?:history:)?[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
+    str,
+    Field(
+        pattern=r"^(?:(?:history:)?[A-Za-z0-9][A-Za-z0-9_-]{0,63}|checkpoint:[A-Za-z0-9][A-Za-z0-9_-]{0,63}:[1-9][0-9]{0,4})$"
+    ),
 ]
 Category = Annotated[
     str, Field(min_length=1, max_length=MAX_DEV_TASK_LENGTH, pattern=r"\S")

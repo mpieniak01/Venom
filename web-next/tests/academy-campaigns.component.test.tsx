@@ -112,6 +112,59 @@ describe("Academy campaigns", () => {
     assert.deepEqual(opened, [runId]);
   });
 
+  it("pins ordered checkpoint steps and shows the selected step or no candidate", async () => {
+    globalThis.FormData = window.FormData;
+    let current: Campaign[] = [];
+    const requests: CampaignRequest[] = [];
+    const checkpoints = {
+      ...planned,
+      plan: { ...planned.plan, checkpoint_steps: [2, 4] },
+    };
+    serve(() => current, {
+      [`POST ${campaignsPath}/plan`]: (init) => {
+        requests.push(JSON.parse(String(init?.body)) as CampaignRequest);
+        current = [checkpoints];
+        return Response.json(checkpoints);
+      },
+    });
+    render(<CampaignPanel onOpenRun={() => {}} />);
+    fireEvent.change(await screen.findByLabelText("Identyfikator kampanii"), { target: { value: planned.campaign_id } });
+    const field = screen.getByLabelText("Kroki oceny checkpointów");
+    const submit = screen.getByRole("button", { name: "Przygotuj plan kampanii" });
+    fireEvent.change(field, { target: { value: "4, 2" } });
+    fireEvent.click(submit);
+    assert.ok(screen.getByRole("alert"));
+    assert.equal(requests.length, 0);
+
+    fireEvent.change(field, { target: { value: "2, 4" } });
+    fireEvent.click(submit);
+    await screen.findByText("Kroki oceny checkpointów · 2, 4");
+    assert.deepEqual(requests[0]?.checkpoint_steps, [2, 4]);
+    cleanup();
+
+    const scored = {
+      ...checkpoints,
+      status: "succeeded",
+      trials: [{
+        run_id: runId,
+        status: "succeeded",
+        checkpoint_evaluations: [
+          { step: 2, status: "succeeded", usable_delta: 0.25, critical_delta: 0 },
+          { step: 4, status: "succeeded", usable_delta: -0.25, critical_delta: 0.25 },
+        ],
+      }],
+    };
+    current = [{ ...scored, selected_run_id: runId, selected_checkpoint_step: 2 }];
+    render(<CampaignPanel onOpenRun={() => {}} />);
+    await screen.findByText(`Wybrany adapter ${runId} · Checkpoint w kroku 2`);
+    assert.ok(screen.getByRole("row", { name: /Checkpoint w kroku 4.*-25/ }));
+    cleanup();
+
+    current = [scored];
+    render(<CampaignPanel onOpenRun={() => {}} />);
+    await screen.findByText("Żaden checkpoint nie spełnił warunków wyboru.");
+  });
+
   it("inspects mix evidence, blocks rejected profiles, and reads the audit pinned to the plan", async () => {
     globalThis.FormData = window.FormData;
     let current: Campaign[] = [];

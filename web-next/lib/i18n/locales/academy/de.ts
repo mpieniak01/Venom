@@ -255,6 +255,20 @@ export const academy = {
     },
   },
   campaigns: {
+    checkpoints: {
+      plan: "Schritte zur Checkpoint-Bewertung",
+      hint: "Optional bis zu vier aufsteigende, kommagetrennte Schrittnummern eingeben. Jeder Schritt muss im Trainingsplan als Speicherpunkt vorgesehen sein.",
+      step: "Checkpoint bei Schritt",
+      noCandidate: "Kein Checkpoint erfüllte die Auswahlkriterien.",
+      answerStep: "Antworten für Checkpoint bei Schritt",
+      judgmentFile: "Die JSON-Datei muss checkpoint_step aus dem heruntergeladenen Paket und ein Array judgments enthalten.",
+      errors: {
+        campaign_checkpoint_steps_invalid: "Die Bewertungsschritte müssen den Speicherpunkten im Rezept der festen Kampagne entsprechen.",
+        campaign_checkpoint_protocol_changed: "Die Bewertungsumgebung hat sich seit der Planung geändert. Prüfe das Profil und erstelle einen neuen Plan.",
+        experiment_checkpoint_review_changed: "Die Kampagne erwartet jetzt einen anderen Schritt. Lade das aktuelle Bewertungspaket herunter.",
+        experiment_checkpoint_baseline_changed: "Die Bewertung einer Basisantwort weicht vom früheren Urteil ab. Verwende das frühere Urteil.",
+      },
+    },
     initialAdapter: {
       label: "Initialisierungsquelle",
       fresh: "Neue LoRA vom Basismodell",

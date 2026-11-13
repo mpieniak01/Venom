@@ -121,7 +121,7 @@ interface RunDetailProps {
   readonly onOpenQuality?: (recordId: string) => void;
   readonly disabled: boolean;
   readonly onAction: (action: ExperimentAction) => void;
-  readonly onJudgments: (judgments: Record<string, unknown>[]) => Promise<boolean>;
+  readonly onJudgments: (judgments: Record<string, unknown>[], checkpointStep?: number) => Promise<boolean>;
 }
 
 function RunDetail({ run, headingRef, onOpenQuality, disabled, onAction, onJudgments }: RunDetailProps) {
@@ -207,7 +207,10 @@ function RunDetail({ run, headingRef, onOpenQuality, disabled, onAction, onJudgm
         </Button>
       </div>
       {showLogs && <ExperimentLogs run={run} />}
-      {(run.actions?.review ?? run.status === "awaiting_review") && <ExperimentReviewPanel runId={run.run_id} disabled={disabled} onSubmit={onJudgments} />}
+      {(run.actions?.review ?? run.status === "awaiting_review") && (
+        <ExperimentReviewPanel key={run.review_checkpoint_step ?? run.run_id} runId={run.run_id}
+          disabled={disabled} onSubmit={onJudgments} />
+      )}
       {showResult && <ExperimentResult run={run} onOpenQuality={onOpenQuality} />}
     </section>
   );
@@ -291,9 +294,10 @@ export function ExperimentsPanel({ initialRunId = "", onOpenQuality }: {
       return true;
     } catch (error) {
       const detail = error instanceof ApiError ? (error.data as { detail?: { code?: string } } | null)?.detail : null;
-      const auditKey = dataAuditErrorKey(detail?.code);
+      const keys = [dataAuditErrorKey(detail?.code), `academy.campaigns.checkpoints.errors.${detail?.code}`];
+      if (detail?.code === "experiment_checkpoint_review_changed") setRefresh((value) => value + 1);
       const fallback = error instanceof ApiError && error.status === 409 ? "academy.experiments.conflict" : "academy.experiments.actionError";
-      setActionError(auditKey && t(auditKey) !== auditKey ? auditKey : fallback);
+      setActionError(keys.find((key) => key && t(key) !== key) ?? fallback);
       return false;
     } finally {
       setBusy(false);
@@ -368,7 +372,7 @@ export function ExperimentsPanel({ initialRunId = "", onOpenQuality }: {
           onOpenQuality={onOpenQuality}
           disabled={busy || runsFailed}
           onAction={(action) => void mutate(() => updateExperiment(selected.run_id, action))}
-          onJudgments={(judgments) => mutate(() => submitExperimentJudgments(selected.run_id, judgments))}
+          onJudgments={(judgments, step) => mutate(() => submitExperimentJudgments(selected.run_id, judgments, step))}
         />
       )}
     </div>

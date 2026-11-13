@@ -171,7 +171,7 @@ function CheckpointTrialRow({ result, delta, onOpen }: {
       <th scope="row" className="py-2 pl-4 pr-3 font-normal">
         <span>{t("academy.campaigns.checkpoints.step")} {result.step}</span>
         {onOpen && result.status === "succeeded" && result.result_sha256 && (
-          <Button type="button" size="sm" variant="link" onClick={onOpen}>
+          <Button type="button" size="sm" variant="outline" className="ml-2" onClick={onOpen}>
             {t("academy.campaigns.checkpoints.openResult")} {result.step}
           </Button>
         )}

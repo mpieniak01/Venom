@@ -1031,7 +1031,8 @@ def test_audit_profile_remains_visible_when_planning_is_blocked(
         "data_audit"
     ]
     if mutation != "max_tokens":
-        assert summary["status"] == "blocked" and summary["error"] == error
+        assert summary["status"] == "blocked"
+        assert summary["error"] == error
     else:
         assert summary["status"] == "passed"
     if mutation == "threshold":
@@ -1044,8 +1045,10 @@ def test_audit_profile_remains_visible_when_planning_is_blocked(
                 "minimum": 1,
             }
         ]
+    campaign = CampaignService(service)
+    candidate = CampaignSpec.model_validate(spec)
     with pytest.raises(ValueError, match=error):
-        CampaignService(service).plan(CampaignSpec.model_validate(spec))
+        campaign.plan(candidate)
     assert not launches
 
 

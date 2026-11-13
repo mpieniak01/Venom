@@ -518,20 +518,7 @@ class CampaignService:
             {key: value for key, value in plan.items() if key != "plan_sha256"}
         ):
             raise ValueError("campaign_plan_changed")
-        warm_variants = [
-            variant for variant in plan["variants"] if "initial_adapter" in variant
-        ]
-        if plan.get("data_audit") or (state["status"] == "planned" and warm_variants):
-            self._profile(plan)
-            if plan.get("data_audit"):
-                self._verify_data_audit(plan)
-        else:
-            self._verify_quality_policy(plan)
-        if state["status"] == "planned":
-            for variant in warm_variants:
-                verify_adapter_entry(
-                    self.experiments.root, variant["initial_adapter"], variant["recipe"]
-                )
+        self._verify_activation_inputs(plan, first_start=state["status"] == "planned")
         state.pop("quality_policy_error", None)
         optimized = _is_optuna(plan)
         if optimized and optuna_backend.require_optuna() != plan["optuna_version"]:
@@ -545,6 +532,22 @@ class CampaignService:
         state["termination"] = "timed_out" if expired else None
         if expired:
             state["status"] = "stopping"
+
+    def _verify_activation_inputs(self, plan: dict, *, first_start: bool) -> None:
+        warm_variants = [
+            variant for variant in plan["variants"] if "initial_adapter" in variant
+        ]
+        if plan.get("data_audit") or (first_start and warm_variants):
+            self._profile(plan)
+            if plan.get("data_audit"):
+                self._verify_data_audit(plan)
+        else:
+            self._verify_quality_policy(plan)
+        if first_start:
+            for variant in warm_variants:
+                verify_adapter_entry(
+                    self.experiments.root, variant["initial_adapter"], variant["recipe"]
+                )
 
     def _ensure_single_campaign(self, campaign_id: str) -> None:
         for other in self.list():

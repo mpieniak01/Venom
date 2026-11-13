@@ -370,6 +370,16 @@ class ExperimentService:
         self._save(state)
         return self._view(state)
 
+    @staticmethod
+    def _select_calibration(calibration: dict | None, mode: str | None) -> dict | None:
+        if mode == "manual":
+            return None
+        if mode == "automatic" and calibration is None:
+            raise ValueError("experiment_evaluator_unqualified")
+        if mode not in {None, "automatic"}:
+            raise ValueError("experiment_review_mode_invalid")
+        return calibration
+
     def start(
         self,
         profile_id: str,
@@ -384,12 +394,7 @@ class ExperimentService:
     ) -> dict:
         ensure_data_mutation_allowed("academy_experiment_start")
         profile, info, calibration = self._validated(profile_id, recipe)
-        if review_mode == "manual":
-            calibration = None
-        elif review_mode == "automatic" and calibration is None:
-            raise ValueError("experiment_evaluator_unqualified")
-        elif review_mode not in {None, "automatic"}:
-            raise ValueError("experiment_review_mode_invalid")
+        calibration = self._select_calibration(calibration, review_mode)
         if expected_identity is not None and expected_identity != info["identity"]:
             raise ValueError("experiment_profile_changed")
         initial_adapter = info.get("initial_adapter")

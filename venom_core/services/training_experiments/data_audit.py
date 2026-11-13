@@ -12,7 +12,7 @@ from scripts.academy.omni_pl_chat_audit import reject_duplicate_keys
 from scripts.academy.omni_pl_chat_masks import SNAPSHOT_PIN
 from venom_core.services.remote_training.paths import operator_path
 
-from .data_audit_schema import AuditBucket, AuditReport, AuditTaxonomy
+from .data_audit_schema import AuditBucket, AuditGroups, AuditReport, AuditTaxonomy
 from .profiles import MAX_JSON_BYTES, Profile, digest, read_json, resolve_input, rows
 
 AUDIT_ERROR_PREFIX = "experiment_data_audit_"
@@ -110,7 +110,7 @@ def _verify_coverage(
     if train_ids != taxonomy.records.keys() or report.totals.records != len(train_ids):
         raise AuditError("invalid")
     counts = Counter((tag.skill, tag.group) for tag in taxonomy.records.values())
-    if report.skills.keys() != {skill for skill, _ in counts}:
+    if report.skills.keys() != {tag.skill for tag in taxonomy.records.values()}:
         raise AuditError("invalid")
     for group in _GROUPS:
         buckets = []
@@ -130,29 +130,35 @@ def _verify_coverage(
         raise AuditError("invalid")
 
 
-def _violations(policy: dict, report: AuditReport) -> list[dict]:
+def _group_violations(
+    floors: dict, pair: AuditGroups | None, *, skill: str | None = None
+) -> list[dict]:
     violations = []
-    subsets = [(None, policy["groups"], report.groups)]
-    subsets.extend(
-        (skill, floors, report.skills.get(skill))
-        for skill, floors in sorted(policy["skills"].items())
-    )
-    for skill, floors, pair in subsets:
-        for group, limits in sorted(floors.items()):
-            bucket = getattr(pair, group) if pair is not None else None
-            for metric in ("records", "supervised_tokens"):
-                actual = getattr(bucket, metric) if bucket is not None else 0
-                minimum = limits["min_" + metric]
-                if actual < minimum:
-                    violation = {
+    scope = {"skill": skill} if skill is not None else {}
+    for group, limits in sorted(floors.items()):
+        bucket = getattr(pair, group) if pair is not None else None
+        for metric in ("records", "supervised_tokens"):
+            actual = getattr(bucket, metric, 0)
+            minimum = limits["min_" + metric]
+            if actual < minimum:
+                violations.append(
+                    {
+                        **scope,
                         "group": group,
                         "metric": metric,
                         "actual": actual,
                         "minimum": minimum,
                     }
-                    if skill is not None:
-                        violation["skill"] = skill
-                    violations.append(violation)
+                )
+    return violations
+
+
+def _violations(policy: dict, report: AuditReport) -> list[dict]:
+    violations = _group_violations(policy["groups"], report.groups)
+    for skill, floors in sorted(policy["skills"].items()):
+        violations.extend(
+            _group_violations(floors, report.skills.get(skill), skill=skill)
+        )
     return violations
 
 

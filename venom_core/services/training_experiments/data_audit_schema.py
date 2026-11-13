@@ -4,6 +4,8 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from scripts.academy.omni_pl_chat_audit import MAX_AUDIT_SKILLS
+
 Digest = Annotated[str, Field(pattern=r"^[a-f0-9]{64}$")]
 Group = Literal["replay", "fresh"]
 Skill = Annotated[str, Field(pattern=r"^[a-z0-9][a-z0-9_-]{0,63}$")]
@@ -22,7 +24,7 @@ class AuditFloor(_StrictAuditModel):
 class AuditPolicy(_StrictAuditModel):
     groups: dict[Group, AuditFloor] = Field(default_factory=dict)
     skills: dict[Skill, dict[Group, AuditFloor]] = Field(
-        default_factory=dict, max_length=128
+        default_factory=dict, max_length=MAX_AUDIT_SKILLS
     )
 
 
@@ -87,7 +89,7 @@ class AuditReport(_StrictAuditModel):
     tokenization: AuditTokenizer
     totals: AuditBucket
     groups: AuditGroups
-    skills: dict[Skill, AuditGroups] = Field(min_length=1, max_length=128)
+    skills: dict[Skill, AuditGroups] = Field(min_length=1, max_length=MAX_AUDIT_SKILLS)
     leakage: AuditLeakage
 
 

@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from scripts.academy.omni_remote_session import digest, prepare, verify
+from scripts.academy.omni_remote_session import digest, prepare, run_stage, verify
 
 
 def _record(split: str) -> dict:
@@ -119,3 +119,36 @@ def test_prepare_rejects_reserved_source_and_wrong_hash(tmp_path, monkeypatch):
     profile.write_text(json.dumps(value))
     with pytest.raises(ValueError, match="reserved evaluation"):
         prepare(profile, tmp_path / "bundle", code)
+
+
+def test_remote_stage_requires_matching_checkout_and_preflight(tmp_path, monkeypatch):
+    profile, code = _fixture(tmp_path)
+    monkeypatch.setattr(
+        "scripts.academy.omni_remote_session._commit", lambda _: "b" * 40
+    )
+    monkeypatch.setattr(
+        "scripts.academy.omni_remote_session._clean_checkout", lambda _: None
+    )
+    bundle = tmp_path / "bundle"
+    prepare(profile, bundle, code)
+    assert verify(bundle, code)["source_commit"] == "b" * 40
+    snapshot = tmp_path / "snapshot"
+    snapshot.mkdir()
+    venv = tmp_path / "venv"
+    (venv / "bin").mkdir(parents=True)
+    (venv / "bin/python").write_text("")
+    output = tmp_path / "output"
+    with pytest.raises(ValueError, match="preflight"):
+        run_stage(bundle, code, snapshot, venv, output, "smoke")
+    calls = []
+    monkeypatch.setattr(
+        "scripts.academy.omni_remote_session.subprocess.run",
+        lambda argv, **kwargs: calls.append(argv),
+    )
+    run_stage(bundle, code, snapshot, venv, output, "preflight")
+    assert calls[0][-2:] == ["preflight", str(bundle / "smoke-recipe.json")]
+    monkeypatch.setattr(
+        "scripts.academy.omni_remote_session._commit", lambda _: "c" * 40
+    )
+    with pytest.raises(ValueError, match="reviewed checkout"):
+        verify(bundle, code)

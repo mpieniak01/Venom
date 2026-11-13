@@ -52,6 +52,18 @@ def _commit(code_root: Path) -> str:
     return result
 
 
+def _clean_checkout(code_root: Path) -> None:
+    status = subprocess.run(
+        ["git", "status", "--porcelain", "--untracked-files=no"],
+        cwd=code_root,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+    if status.strip():
+        raise ValueError("remote checkout has uncommitted tracked changes")
+
+
 def prepare(profile_path: Path, output: Path, code_root: Path) -> dict:
     profile = _json(profile_path)
     train = Path(profile["train"]).resolve(strict=True)
@@ -109,7 +121,7 @@ def prepare(profile_path: Path, output: Path, code_root: Path) -> dict:
     return manifest
 
 
-def verify(bundle: Path) -> dict:
+def verify(bundle: Path, code_root: Path | None = None) -> dict:
     if bundle.is_symlink() or not bundle.is_dir():
         raise ValueError("session bundle must be a real directory")
     manifest = _json(bundle / "manifest.json")
@@ -144,7 +156,103 @@ def verify(bundle: Path) -> dict:
         or len(validation) != manifest["dev_records"]
     ):
         raise ValueError("session record counts differ")
+    if code_root is not None:
+        pin = _json(code_root / "scripts/llm/omni_native_snapshot.json")
+        if (
+            manifest["source_commit"] != _commit(code_root)
+            or manifest["model"] != pin["repo"]
+            or manifest["revision"] != pin["revision"]
+        ):
+            raise ValueError("session differs from the reviewed checkout")
     return manifest
+
+
+def run_stage(
+    bundle: Path,
+    code_root: Path,
+    snapshot: Path,
+    venv: Path,
+    output: Path,
+    stage: str,
+) -> None:
+    """Execute one explicit stage on an already prepared GPU host."""
+    verify(bundle, code_root)
+    _clean_checkout(code_root)
+    if output.is_symlink() or snapshot.is_symlink() or venv.is_symlink():
+        raise ValueError("session paths must be real directories")
+    if not snapshot.is_dir() or not (venv / "bin/python").is_file():
+        raise ValueError("snapshot or training interpreter is unavailable")
+    if not output.is_dir():
+        output.mkdir(parents=True)
+    script = code_root / "scripts/academy/omni_pl_chat_p1.sh"
+    common = ["bash", str(script), str(snapshot), str(bundle / "train.jsonl")]
+    smoke = output / "smoke"
+    if stage == "preflight":
+        receipt = output / "preflight/preflight.json"
+        if receipt.exists():
+            result = _json(receipt)
+            if result.get("recipe") != _json(
+                bundle / "smoke-recipe.json"
+            ) or result.get("train_sha256") != digest(bundle / "train.jsonl"):
+                raise ValueError("preflight receipt differs from frozen inputs")
+            return
+        argv = [
+            *common,
+            str(output / "preflight"),
+            str(venv),
+            "preflight",
+            str(bundle / "smoke-recipe.json"),
+        ]
+    elif stage == "smoke":
+        receipt = output / "preflight/preflight.json"
+        if not receipt.is_file():
+            raise ValueError("preflight must pass before GPU smoke")
+        if _json(receipt).get("recipe") != _json(bundle / "smoke-recipe.json") or _json(
+            receipt
+        ).get("train_sha256") != digest(bundle / "train.jsonl"):
+            raise ValueError("preflight receipt differs from frozen inputs")
+        if (smoke / "resume.json").exists():
+            from scripts.academy.omni_pl_chat_p1 import verify_checkpoint
+
+            verify_checkpoint(smoke / "checkpoint-16")
+            return
+        if smoke.exists():
+            from scripts.academy.omni_pl_chat_p1 import verify_checkpoint
+
+            verify_checkpoint(smoke / "checkpoint-8")
+            mode = "resume"
+        else:
+            mode = "initial"
+        argv = [
+            *common,
+            str(smoke),
+            str(venv),
+            mode,
+            str(bundle / "smoke-recipe.json"),
+        ]
+    elif stage == "evaluate":
+        from scripts.academy.omni_pl_chat_p1 import verify_checkpoint
+
+        if not (smoke / "resume.json").is_file():
+            raise ValueError("completed smoke is required for evaluation")
+        checkpoint = smoke / "checkpoint-16"
+        verify_checkpoint(checkpoint)
+        if (output / "evaluation").exists():
+            raise ValueError("evaluation output already exists; use a new run")
+        argv = [
+            "bash",
+            str(script),
+            str(snapshot),
+            str(bundle / "dev.jsonl"),
+            str(output / "evaluation"),
+            str(venv),
+            "evaluate",
+            "base",
+            f"checkpoint-16={checkpoint}",
+        ]
+    else:
+        raise ValueError("unknown remote qualification stage")
+    subprocess.run(argv, cwd=code_root, check=True)
 
 
 def main() -> None:
@@ -156,11 +264,31 @@ def main() -> None:
     prep.add_argument("--code-root", type=Path, default=Path.cwd())
     check = sub.add_parser("verify")
     check.add_argument("--bundle", type=Path, required=True)
+    check.add_argument("--code-root", type=Path)
+    run = sub.add_parser("run-stage")
+    run.add_argument("--bundle", type=Path, required=True)
+    run.add_argument("--code-root", type=Path, required=True)
+    run.add_argument("--snapshot", type=Path, required=True)
+    run.add_argument("--venv", type=Path, required=True)
+    run.add_argument("--output", type=Path, required=True)
+    run.add_argument(
+        "--stage", choices=["preflight", "smoke", "evaluate"], required=True
+    )
     args = parser.parse_args()
+    if args.command == "run-stage":
+        run_stage(
+            args.bundle,
+            args.code_root,
+            args.snapshot,
+            args.venv,
+            args.output,
+            args.stage,
+        )
+        return
     result = (
         prepare(args.profile, args.output, args.code_root)
         if args.command == "prepare"
-        else verify(args.bundle)
+        else verify(args.bundle, args.code_root)
     )
     print(json.dumps(result, ensure_ascii=False, sort_keys=True, indent=2))
 

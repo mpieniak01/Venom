@@ -16,15 +16,18 @@ MAX_INPUT_BYTES = 8 * 1024 * 1024
 _SKILL = re.compile(r"[a-z0-9][a-z0-9_-]{0,63}")
 
 
-def _unique_object(pairs: list[tuple[str, object]]) -> dict:
+def reject_duplicate_keys(pairs: list[tuple[str, object]]) -> dict:
     result = dict(pairs)
     if len(pairs) != len(result):
-        raise ValueError("audit taxonomy must not contain duplicate keys")
+        raise ValueError("audit JSON must not contain duplicate keys")
     return result
 
 
-def _taxonomy(path: Path, train: list[dict]) -> dict[str, dict[str, str]]:
-    doc = json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=_unique_object)
+def read_taxonomy(path: Path, record_ids: set[str]) -> dict[str, dict[str, str]]:
+    """Read an exact and unambiguous classification for the frozen training IDs."""
+    doc = json.loads(
+        path.read_text(encoding="utf-8"), object_pairs_hook=reject_duplicate_keys
+    )
     if (
         not isinstance(doc, dict)
         or doc.keys() != {"schema_version", "records"}
@@ -34,7 +37,7 @@ def _taxonomy(path: Path, train: list[dict]) -> dict[str, dict[str, str]]:
     ):
         raise ValueError("audit taxonomy requires a v1 record mapping")
     labels = doc["records"]
-    if labels.keys() != {row["record_id"] for row in train}:
+    if labels.keys() != record_ids:
         raise ValueError("audit taxonomy must label exactly every training record")
     for label in labels.values():
         if (
@@ -149,7 +152,7 @@ def build_audit(
             raise ValueError(
                 "audit train and dev must have disjoint record and group IDs"
             )
-    labels = _taxonomy(taxonomy_path, train)
+    labels = read_taxonomy(taxonomy_path, {row["record_id"] for row in train})
     observations, metadata = audit(snapshot, train, max_tokens)
     if any(sha256(path) != hashes[f"{name}_sha256"] for name, path in sources.items()):
         raise ValueError("audit input changed during tokenization")

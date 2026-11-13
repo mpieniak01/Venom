@@ -112,7 +112,7 @@ file_ro() {
     mount_ro "$1" "$2"
 }
 
-copy_initial_input() {
+copy_bounded_input() {
     local source=$1 destination=$2 limit=$3
     # The sandbox verifies and loads these same bytes from its private tmpfs.
     [[ -f "$source" && ! -L "$source" ]]
@@ -131,7 +131,9 @@ if [[ "$python_base" != "$venv" ]]; then
     mount_ro "$python_base" "$scratch$python_base"
 fi
 mount_ro "$snapshot" "$scratch/inputs/model"
-file_ro "$data" "$scratch/inputs/train.jsonl"
+if [[ "$mode" != audit-mix ]]; then
+    file_ro "$data" "$scratch/inputs/train.jsonl"
+fi
 for file in omni_pl_chat_data.py omni_pl_chat_masks.py omni_pl_chat_recipe.py omni_pl_chat_p1.py omni_pl_chat_adapter.py omni_pl_chat_export.py omni_pl_chat_evaluate.py; do
     file_ro "$job/$file" "$scratch/job/scripts/academy/$file"
 done
@@ -140,8 +142,10 @@ file_ro "$job/../llm/omni_native_snapshot.json" "$scratch/job/scripts/llm/omni_n
 worker=(scripts.academy.omni_pl_chat_p1 "$mode")
 case "$mode" in
     audit-mix)
-        file_ro "$1" "$scratch/inputs/dev.jsonl"
-        file_ro "$2" "$scratch/inputs/taxonomy.json"
+        max_source_bytes=$((8 * 1024 * 1024))
+        copy_bounded_input "$data" "$scratch/inputs/train.jsonl" "$max_source_bytes"
+        copy_bounded_input "$1" "$scratch/inputs/dev.jsonl" "$max_source_bytes"
+        copy_bounded_input "$2" "$scratch/inputs/taxonomy.json" "$max_source_bytes"
         file_ro "$job/omni_pl_chat_audit.py" "$scratch/job/scripts/academy/omni_pl_chat_audit.py"
         worker=(scripts.academy.omni_pl_chat_audit "$3")
         ;;
@@ -162,11 +166,11 @@ case "$mode" in
         if [[ $# -ge 1 ]]; then file_ro "$1" "$scratch/inputs/recipe.json"; fi
         if [[ $# -eq 3 ]]; then
             mkdir "$scratch/inputs/initial-adapter"
-            copy_initial_input "$2/adapter_config.json" \
+            copy_bounded_input "$2/adapter_config.json" \
                 "$scratch/inputs/initial-adapter/adapter_config.json" $((16 * 1024))
-            copy_initial_input "$2/adapter_model.safetensors" \
+            copy_bounded_input "$2/adapter_model.safetensors" \
                 "$scratch/inputs/initial-adapter/adapter_model.safetensors" $((512 * 1024 * 1024))
-            copy_initial_input "$3" "$scratch/inputs/initial-adapter.json" $((16 * 1024))
+            copy_bounded_input "$3" "$scratch/inputs/initial-adapter.json" $((16 * 1024))
         fi
         ;;
 esac

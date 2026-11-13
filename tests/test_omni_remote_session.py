@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from scripts.academy.omni_remote_host import canonicalize_python_link
 from scripts.academy.omni_remote_session import digest, prepare, run_stage, verify
 
 
@@ -152,3 +153,31 @@ def test_remote_stage_requires_matching_checkout_and_preflight(tmp_path, monkeyp
     )
     with pytest.raises(ValueError, match="reviewed checkout"):
         verify(bundle, code)
+
+
+def test_remote_venv_uses_exact_managed_python_path(tmp_path: Path):
+    exact = tmp_path / "cpython-3.14.8-linux-x86_64-gnu"
+    managed = exact / "bin/python3.14"
+    managed.parent.mkdir(parents=True)
+    managed.write_text("python")
+    alias = tmp_path / "cpython-3.14-linux-x86_64-gnu"
+    alias.symlink_to(exact, target_is_directory=True)
+    link = tmp_path / "venv/bin/python"
+    link.parent.mkdir(parents=True)
+    link.symlink_to(alias / "bin/python3.14")
+    canonicalize_python_link(link, managed)
+    assert link.readlink() == managed
+
+
+def test_remote_venv_rejects_wrong_interpreter(tmp_path: Path):
+    managed = tmp_path / "pinned/bin/python3.14"
+    other = tmp_path / "other/bin/python3.14"
+    for path in (managed, other):
+        path.parent.mkdir(parents=True)
+        path.write_text("python")
+    link = tmp_path / "venv/bin/python"
+    link.parent.mkdir(parents=True)
+    link.symlink_to(other)
+    with pytest.raises(ValueError, match="differs"):
+        canonicalize_python_link(link, managed)
+    assert link.readlink() == other

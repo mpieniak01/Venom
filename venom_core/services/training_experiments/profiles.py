@@ -11,8 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from venom_core.services.remote_training.lifecycle import validate_run_id
 from venom_core.services.remote_training.paths import operator_path
-
-from .data_audit_schema import AuditPin
+from venom_core.services.training_experiments.data_audit_schema import AuditPin
 
 MODEL = "LiquidAI/LFM3-Omni-2B"
 SHA256_PATTERN = r"^[0-9a-f]{64}$"

@@ -562,7 +562,8 @@ def _mask_fixture(monkeypatch):
     class Tokenizer:
         @staticmethod
         def from_pretrained(*args, **kwargs):
-            assert kwargs["local_files_only"] and not kwargs["trust_remote_code"]
+            assert kwargs["local_files_only"]
+            assert not kwargs["trust_remote_code"]
             return object()
 
     pin = json.loads(SNAPSHOT_PIN.read_text())
@@ -573,7 +574,8 @@ def _mask_fixture(monkeypatch):
     monkeypatch.setattr(masks, "version", lambda _package: "fixture")
 
     def fixture_mask(tokenizer, template, row, max_tokens):
-        assert template == "template" and max_tokens == 128
+        assert template == "template"
+        assert max_tokens == 128
         n = int(row["record_id"][-1])
         return {
             "input_ids": [1] * (8 + n),

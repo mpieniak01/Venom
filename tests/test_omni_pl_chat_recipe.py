@@ -10,15 +10,22 @@ from unittest.mock import Mock
 import pytest
 
 from scripts.academy import omni_pl_chat_evaluate as evaluator
+from scripts.academy.omni_pl_chat_adapter import (
+    ADAPTER_CONFIG,
+    ADAPTER_WEIGHTS,
+    verify_initial_adapter,
+)
 from scripts.academy.omni_pl_chat_data import read_jsonl, sha256
 from scripts.academy.omni_pl_chat_evaluate import (
     blind_mapping,
     validate_dev_cases,
     verify_adapter,
 )
+from scripts.academy.omni_pl_chat_masks import SNAPSHOT_PIN
 from scripts.academy.omni_pl_chat_p1 import (
     CHECKPOINT_FILES,
     _checkpoint_hashes,
+    _load_adapter_tensors,
     _module_inventory,
     _resume_checkpoint,
     _token_trainer_type,
@@ -366,3 +373,130 @@ def test_generation_progress_requires_same_identity_and_valid_seal(tmp_path):
     receipt.write_text(json.dumps(data), encoding="utf-8")
     with pytest.raises(ValueError, match="differs from its seal"):
         evaluator.GenerationProgress(tmp_path, identity, mapping)
+
+
+def _initial_adapter_fixture(root: Path, **changes):
+    pin = json.loads(SNAPSHOT_PIN.read_text())
+    config = {
+        "base_model_name_or_path": "/inputs/model",
+        "bias": "none",
+        "lora_alpha": 8,
+        "lora_dropout": 0.05,
+        "peft_type": "LORA",
+        "r": 4,
+        "target_modules": P13_LANGUAGE_SELECTOR,
+        "task_type": "CAUSAL_LM",
+        **changes,
+    }
+    (root / ADAPTER_CONFIG).write_text(json.dumps(config), encoding="utf-8")
+    (root / ADAPTER_WEIGHTS).write_bytes(b"fixture weights")
+    receipt = {
+        "schema_version": 1,
+        "adapter_id": "p13-145",
+        "model": pin["repo"],
+        "revision": pin["revision"],
+        "snapshot_sha256": sha256(SNAPSHOT_PIN),
+        "config_sha256": sha256(root / ADAPTER_CONFIG),
+        "weights_sha256": sha256(root / ADAPTER_WEIGHTS),
+    }
+    recipe = validate_recipe(
+        {
+            "target_modules": list(LANGUAGE_TARGET_MODULES),
+            "dropout": 0.05,
+        }
+    )
+    return receipt, recipe
+
+
+def test_initial_adapter_binds_both_files_to_pinned_base(tmp_path):
+    receipt, recipe = _initial_adapter_fixture(tmp_path)
+    assert verify_initial_adapter(tmp_path, receipt, recipe)["r"] == 4
+    wrong_base = {**receipt, "snapshot_sha256": "0" * 64}
+    with pytest.raises(ValueError, match="identity_invalid"):
+        verify_initial_adapter(tmp_path, wrong_base, recipe)
+    with pytest.raises(ValueError, match="recipe_mismatch"):
+        verify_initial_adapter(tmp_path, receipt, {**recipe, "alpha": 9})
+    outside = tmp_path / "outside.safetensors"
+    outside.write_bytes((tmp_path / ADAPTER_WEIGHTS).read_bytes())
+    (tmp_path / ADAPTER_WEIGHTS).unlink()
+    (tmp_path / ADAPTER_WEIGHTS).symlink_to(outside)
+    with pytest.raises(ValueError, match="file_invalid"):
+        verify_initial_adapter(tmp_path, receipt, recipe)
+    (tmp_path / ADAPTER_WEIGHTS).unlink()
+    (tmp_path / ADAPTER_WEIGHTS).write_bytes(b"changed")
+    with pytest.raises(ValueError, match="adapter_changed"):
+        verify_initial_adapter(tmp_path, receipt, recipe)
+
+
+@pytest.mark.parametrize(
+    "changes,error",
+    [
+        ({"use_dora": True}, "config_unsupported"),
+        ({"modules_to_save": ["audio_head"]}, "config_unsupported"),
+        ({"unrecognized_variant": True}, "config_unsupported"),
+        ({"target_modules": ["q_proj", "v_proj"]}, "modules_mismatch"),
+        (
+            {"target_modules": P13_LANGUAGE_SELECTOR.replace("w3", "audio")},
+            "modules_mismatch",
+        ),
+        (
+            {"target_modules": P13_LANGUAGE_SELECTOR.replace("w3", "w2")},
+            "modules_mismatch",
+        ),
+        ({"base_model_name_or_path": "/unverified/snapshot"}, "recipe_mismatch"),
+        ({"revision": "unpinned"}, "recipe_mismatch"),
+        ({"lora_dropout": 0.0}, "recipe_mismatch"),
+    ],
+)
+def test_initial_adapter_rejects_unsupported_config(tmp_path, changes, error):
+    receipt, recipe = _initial_adapter_fixture(tmp_path, **changes)
+    with pytest.raises(ValueError, match=error):
+        verify_initial_adapter(tmp_path, receipt, recipe)
+
+
+def test_initial_adapter_checks_complete_state_shapes_values_and_actual_load(
+    tmp_path, monkeypatch
+):
+    torch = pytest.importorskip("torch")
+    peft = pytest.importorskip("peft")
+    safe = pytest.importorskip("safetensors.torch")
+    base = torch.nn.Sequential(torch.nn.Linear(8, 8, bias=False))
+    model = peft.get_peft_model(
+        base, peft.LoraConfig(r=2, lora_alpha=8, target_modules=["0"])
+    )
+    original = peft.get_peft_model_state_dict(model)
+    keys = sorted(original)
+    expected = {
+        name: torch.full_like(original[name], idx + 1.0)
+        for idx, name in enumerate(keys)
+    }
+    weights = tmp_path / ADAPTER_WEIGHTS
+    safe.save_file(expected, weights)
+    assert _load_adapter_tensors(model, weights) == len(expected)
+    loaded = peft.get_peft_model_state_dict(model)
+    assert all(torch.equal(loaded[name], tensor) for name, tensor in expected.items())
+
+    cases = (
+        ({keys[0]: expected[keys[0]]}, "names_mismatch"),
+        ({**expected, keys[0]: torch.zeros((1,))}, "shape_or_dtype"),
+        (
+            {
+                **expected,
+                keys[0]: torch.zeros_like(expected[keys[0]], dtype=torch.int32),
+            },
+            "shape_or_dtype",
+        ),
+        (
+            {**expected, keys[0]: torch.full_like(expected[keys[0]], float("nan"))},
+            "nonfinite",
+        ),
+    )
+    for tensors, reason in cases:
+        safe.save_file(tensors, weights)
+        with pytest.raises(ValueError, match=reason):
+            _load_adapter_tensors(model, weights)
+
+    monkeypatch.setattr(peft, "set_peft_model_state_dict", Mock())
+    safe.save_file({name: tensor + 1 for name, tensor in expected.items()}, weights)
+    with pytest.raises(ValueError, match="load_mismatch"):
+        _load_adapter_tensors(model, weights)

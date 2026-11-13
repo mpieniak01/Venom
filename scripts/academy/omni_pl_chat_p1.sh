@@ -5,7 +5,7 @@ umask 077
 
 if [[ "${1:-}" != --inside ]]; then
     if [[ $# -lt 5 ]]; then
-        echo "Usage: bash $0 SNAPSHOT JSONL OUTPUT VENV MODE [RECIPE_JSON | VARIANTS...]" >&2
+        echo "Usage: bash $0 SNAPSHOT JSONL OUTPUT VENV MODE [RECIPE_JSON [ADAPTER_DIR HANDOFF_JSON] | VARIANTS...]" >&2
         exit 2
     fi
     snapshot=$(realpath -e -- "$1")
@@ -20,8 +20,20 @@ if [[ "${1:-}" != --inside ]]; then
     inputs=()
     case "$mode" in
         preflight|control|initial|resume)
-            if [[ $# -gt 1 ]]; then exit 2; fi
-            if [[ $# -eq 1 ]]; then inputs+=("$(realpath -e -- "$1")"); fi
+            case $# in
+                0) ;;
+                1) inputs+=("$(realpath -e -- "$1")") ;;
+                3)
+                    [[ -d "$2" && ! -L "$2" ]]
+                    [[ -f "$3" && ! -L "$3" ]]
+                    adapter=$(realpath -e -- "$2")
+                    for name in adapter_config.json adapter_model.safetensors; do
+                        [[ -f "$adapter/$name" && ! -L "$adapter/$name" ]]
+                    done
+                    inputs+=("$(realpath -e -- "$1")" "$adapter" "$(realpath -e -- "$3")")
+                    ;;
+                *) exit 2 ;;
+            esac
             ;;
         merge) [[ $# -eq 0 ]] ;;
         evaluate|evaluate-resumable)
@@ -107,7 +119,7 @@ if [[ "$python_base" != "$venv" ]]; then
 fi
 mount_ro "$snapshot" "$scratch/inputs/model"
 file_ro "$data" "$scratch/inputs/train.jsonl"
-for file in omni_pl_chat_data.py omni_pl_chat_masks.py omni_pl_chat_recipe.py omni_pl_chat_p1.py omni_pl_chat_export.py omni_pl_chat_evaluate.py; do
+for file in omni_pl_chat_data.py omni_pl_chat_masks.py omni_pl_chat_recipe.py omni_pl_chat_p1.py omni_pl_chat_adapter.py omni_pl_chat_export.py omni_pl_chat_evaluate.py; do
     file_ro "$job/$file" "$scratch/job/scripts/academy/$file"
 done
 file_ro "$job/../llm/omni_native_snapshot.json" "$scratch/job/scripts/llm/omni_native_snapshot.json"
@@ -127,7 +139,16 @@ case "$mode" in
             worker+=("$name")
         done
         ;;
-    *) if [[ $# -eq 1 ]]; then file_ro "$1" "$scratch/inputs/recipe.json"; fi ;;
+    *)
+        if [[ $# -ge 1 ]]; then file_ro "$1" "$scratch/inputs/recipe.json"; fi
+        if [[ $# -eq 3 ]]; then
+            mkdir "$scratch/inputs/initial-adapter"
+            for name in adapter_config.json adapter_model.safetensors; do
+                file_ro "$2/$name" "$scratch/inputs/initial-adapter/$name"
+            done
+            file_ro "$3" "$scratch/inputs/initial-adapter.json"
+        fi
+        ;;
 esac
 
 if [[ "$mode" == evaluate-resumable ]]; then

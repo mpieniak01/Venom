@@ -361,6 +361,7 @@ def main() -> None:
                 "omni_pl_chat_masks.py",
                 "omni_pl_chat_p1.py",
                 "omni_pl_chat_recipe.py",
+                "omni_pl_chat_adapter.py",
             )
         },
         "cuda": torch.version.cuda,

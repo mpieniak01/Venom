@@ -716,7 +716,8 @@ test.describe("Academy smoke", () => {
         await expect(page.getByText("Brak przypiętego audytu danych.")).toBeVisible();
         await profileInput.selectOption("blocked-profile");
         await expect(planButton).toBeDisabled();
-        await expect(page.getByRole("alert")).toContainText("state_update");
+        const auditBlock = page.getByRole("alert").filter({ hasText: "Audyt danych blokuje użycie profilu." });
+        await expect(auditBlock).toContainText("state_update");
       }
       await profileInput.selectOption(profile.id);
       await page.getByLabel("Identyfikator kampanii").fill(campaignId);

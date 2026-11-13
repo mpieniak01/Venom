@@ -520,19 +520,13 @@ class CampaignService:
                 )
                 if observed != expected:
                     continue
-                if "checkpoint_steps" in state["plan"]:
-                    checkpoints = self._checkpoint_evaluations(trial)
-                    if not checkpoints:
-                        continue
-                    step = (
-                        state.get("selected_checkpoint_step")
-                        if run_id == state.get("selected_run_id")
-                        else checkpoints[-1]["step"]
-                    )
-                    anchor = next(item for item in checkpoints if item["step"] == step)
-                    evaluations[run_id] = {**anchor, "checkpoints": checkpoints}
-                else:
-                    evaluations[run_id] = self._evaluation_totals(report)
+                evidence = (
+                    self._checkpoint_evidence(state, trial)
+                    if "checkpoint_steps" in state["plan"]
+                    else self._evaluation_totals(report)
+                )
+                if evidence is not None:
+                    evaluations[run_id] = evidence
             except (OSError, ValueError, TypeError, KeyError, StopIteration):
                 # Missing or stale evidence remains unavailable in the comparison.
                 continue
@@ -548,6 +542,18 @@ class CampaignService:
                 artifact.get("available") is True for artifact in report["artifacts"]
             ),
         }
+
+    def _checkpoint_evidence(self, state: dict, trial: dict) -> dict | None:
+        checkpoints = self._checkpoint_evaluations(trial)
+        if not checkpoints:
+            return None
+        step = (
+            state.get("selected_checkpoint_step")
+            if trial["run_id"] == state.get("selected_run_id")
+            else checkpoints[-1]["step"]
+        )
+        anchor = next(item for item in checkpoints if item["step"] == step)
+        return {**anchor, "checkpoints": checkpoints}
 
     def _checkpoint_evaluations(self, trial: dict) -> list[dict]:
         checkpoint_rows = []

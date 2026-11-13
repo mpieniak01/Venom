@@ -1291,15 +1291,27 @@ def test_missing_checkpoint_report_blocks_candidate(checkpoint_campaign):
     assert state["selected_checkpoint_step"] is None
 
 
-@pytest.mark.parametrize("steps", [[4, 2], [2, 2], [1, 4], [2, 6], [1, 2, 3, 4, 5]])
+@pytest.mark.parametrize("steps", [[4, 2], [2, 2], [1, 2, 3, 4, 5]])
 def test_checkpoint_campaign_rejects_invalid_step_list(checkpoint_campaign, steps):
     from venom_core.services.training_experiments.campaign_schema import CampaignSpec
 
-    campaign, spec, _, _, _, _, _, _ = checkpoint_campaign
-    values = spec.model_dump()
-    values["checkpoint_steps"] = steps
+    _, spec, _, _, _, _, _, _ = checkpoint_campaign
+    values = {**spec.model_dump(), "checkpoint_steps": steps}
     with pytest.raises(ValueError):
-        candidate = CampaignSpec.model_validate(values)
+        CampaignSpec.model_validate(values)
+
+
+@pytest.mark.parametrize("steps", [[1, 4], [2, 6]])
+def test_checkpoint_campaign_rejects_steps_outside_save_schedule(
+    checkpoint_campaign, steps
+):
+    from venom_core.services.training_experiments.campaign_schema import CampaignSpec
+
+    campaign, spec, _, _, _, _, _, _ = checkpoint_campaign
+    candidate = CampaignSpec.model_validate(
+        {**spec.model_dump(), "checkpoint_steps": steps}
+    )
+    with pytest.raises(ValueError, match="campaign_checkpoint_steps_invalid"):
         campaign.validate(candidate)
 
 

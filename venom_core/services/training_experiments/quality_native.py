@@ -164,12 +164,9 @@ def evaluated_cases(
     }
 
 
-def native_record(
-    experiments: Any, run_id: str, checkpoint_step: int | None = None
-) -> dict:
-    """Read a completed native run using its result seal and bound inputs."""
-    directory = experiments.run_dir(run_id)
-    state = read_json(directory / "state.json")
+def _verified_native_result(
+    directory: Path, state: dict, run_id: str, checkpoint_step: int | None
+) -> tuple[Path, dict, str]:
     if checkpoint_step is None:
         generation = directory / f"evaluation-{state['attempt']}"
         result_dir = directory
@@ -182,16 +179,24 @@ def native_record(
     report = _verified_json(result_dir / "result.json", result_sha)
     if checkpoint_step is None and "checkpoint_evaluations" in report:
         raise ValueError("experiment_checkpoint_step_required")
-    if (
-        experiments._child_alive(state)
-        or report["run_id"] != run_id
-        or report.get("historical")
-        or (
-            checkpoint_step is not None
-            and report["checkpoint"]["step"] != checkpoint_step
-        )
-    ):
+    if report["run_id"] != run_id or report.get("historical"):
         raise ValueError("experiment_quality_result_incomplete")
+    if checkpoint_step is not None and report["checkpoint"]["step"] != checkpoint_step:
+        raise ValueError("experiment_quality_result_incomplete")
+    return generation, report, result_sha
+
+
+def native_record(
+    experiments: Any, run_id: str, checkpoint_step: int | None = None
+) -> dict:
+    """Read a completed native run using its result seal and bound inputs."""
+    directory = experiments.run_dir(run_id)
+    state = read_json(directory / "state.json")
+    if experiments._child_alive(state):
+        raise ValueError("experiment_quality_result_incomplete")
+    generation, report, result_sha = _verified_native_result(
+        directory, state, run_id, checkpoint_step
+    )
     manifest = read_json(directory / _MANIFEST_NAME)
     if stable_hash(manifest) != report["manifest_sha256"]:
         raise ValueError("experiment_quality_evidence_changed")

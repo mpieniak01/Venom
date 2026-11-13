@@ -122,11 +122,11 @@ function readOptunaPlan(data: FormData): Pick<CampaignRequest, "variants" | "str
 }
 
 function readCheckpointSteps(data: FormData) {
-  const raw = String(data.get("checkpoint_steps") ?? "").trim();
-  if (!raw) return undefined;
-  const parts = raw.split(/\s*,\s*/);
+  const raw = data.get("checkpoint_steps");
+  if (typeof raw !== "string" || !raw.trim()) return undefined;
+  const parts = raw.split(",").map((part) => part.trim());
   const steps = parts.map(Number);
-  if (steps.length > 4 || parts.some((part) => !/^[1-9][0-9]*$/.test(part))
+  if (steps.length > 4 || parts.some((part) => !/^[1-9]\d*$/.test(part))
     || steps.some((step, index) => !Number.isSafeInteger(step) || (index > 0 && step <= steps[index - 1]))) {
     throw new Error("expected up to four strictly increasing checkpoint steps");
   }

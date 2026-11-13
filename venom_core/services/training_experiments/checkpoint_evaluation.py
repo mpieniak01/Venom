@@ -15,7 +15,10 @@ from .evidence import ADAPTER_FILES, inspect_checkpoint
 from .profiles import MAX_JSON_BYTES, digest, read_json
 
 GENERATION_SEAL = "generation-seal.json"
-GENERATION_OUTPUTS = ("raw.jsonl", "blind.jsonl", "unblind.json")
+RAW_ANSWERS = "raw.jsonl"
+BLIND_MAPPING = "unblind.json"
+EVALUATION_MANIFEST = "manifest.json"
+GENERATION_OUTPUTS = (RAW_ANSWERS, "blind.jsonl", BLIND_MAPPING)
 RESULT_SEAL = "result-seal.json"
 
 
@@ -61,10 +64,10 @@ def bind_steps(directory: Path, steps: list[int]) -> dict:
 
 def read_generation(directory: Path) -> tuple[dict, dict]:
     seal = read_json(directory / GENERATION_SEAL)
-    manifest = read_json(directory / "manifest.json")
+    manifest = read_json(directory / EVALUATION_MANIFEST)
     if any(
         digest(directory / name) != seal[name]
-        for name in (*GENERATION_OUTPUTS, "manifest.json")
+        for name in (*GENERATION_OUTPUTS, EVALUATION_MANIFEST)
     ) or manifest["outputs"] != {name: seal[name] for name in GENERATION_OUTPUTS}:
         raise ValueError("experiment_evidence_changed")
     return manifest, seal
@@ -75,7 +78,7 @@ def seal_generation(directory: Path) -> None:
         directory / GENERATION_SEAL,
         {
             name: digest(directory / name)
-            for name in (*GENERATION_OUTPUTS, "manifest.json")
+            for name in (*GENERATION_OUTPUTS, EVALUATION_MANIFEST)
         },
     )
 
@@ -88,7 +91,7 @@ def _raw_rows(directory: Path, manifest: dict) -> dict:
         for case_id in manifest["evaluated_ids"]
         for variant in manifest["models"]
     }
-    with operator_path(directory / "raw.jsonl").open(encoding="utf-8") as source:
+    with operator_path(directory / RAW_ANSWERS).open(encoding="utf-8") as source:
         for line in source:
             row = json.loads(line)
             key = (row["case"], row["model"])
@@ -141,11 +144,11 @@ def _publish_pair(
             raw.append({**row, "label": label})
             answers[label] = row["response"]
         blind.append({"case": case, "answers": dict(sorted(answers.items()))})
-    _write_rows(folder / "raw.jsonl", raw)
+    _write_rows(folder / RAW_ANSWERS, raw)
     _write_rows(folder / "blind.jsonl", blind)
-    atomic_json(folder / "unblind.json", mapping)
+    atomic_json(folder / BLIND_MAPPING, mapping)
     atomic_json(
-        folder / "manifest.json",
+        folder / EVALUATION_MANIFEST,
         {
             **pair,
             "outputs": {name: digest(folder / name) for name in GENERATION_OUTPUTS},
@@ -202,7 +205,7 @@ def step_statuses(directory: Path, steps: list[int], status: str) -> list[dict]:
 
 
 def baseline_judgments(folder: Path, judgments: list[dict]) -> dict:
-    mapping = read_json(folder / "unblind.json")
+    mapping = read_json(folder / BLIND_MAPPING)
     return {
         grade["record_id"]: {
             key: grade[key]

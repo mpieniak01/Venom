@@ -313,6 +313,7 @@ export function ExperimentReviewPanel({ runId, disabled, onSubmit }: ReviewProps
   }
 
   const checkpointStep = review?.checkpoint_step;
+  const reviewId = checkpointStep === undefined ? runId : `${runId}-${checkpointStep}`;
   if (!review && !loadError) return <p className="text-sm text-hint">{t("academy.experiments.loadingReview")}</p>;
   if (loadError) {
     return (
@@ -336,7 +337,7 @@ export function ExperimentReviewPanel({ runId, disabled, onSubmit }: ReviewProps
         type="button"
         size="sm"
         variant="outline"
-        onClick={() => downloadJson(`experiment-${runId}${checkpointStep === undefined ? "" : `-${checkpointStep}`}-review.json`, review)}
+        onClick={() => downloadJson(`experiment-${reviewId}-review.json`, review)}
       >
         {t("academy.experiments.downloadReview")}
       </Button>

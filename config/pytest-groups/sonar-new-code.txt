@@ -305,6 +305,7 @@ tests/test_omni_pilot_report.py
 tests/test_omni_pl_chat_preparation.py
 tests/test_omni_pl_chat_recipe.py
 tests/test_omni_pl_chat_scoring.py
+tests/test_omni_remote_session.py
 tests/test_onnx_gpu_bridge.py
 tests/test_onnx_llm_client.py
 tests/test_onnx_runtime_cleanup.py

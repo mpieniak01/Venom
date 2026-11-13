@@ -38,7 +38,7 @@ const run: ExperimentRun = {
 
 function serve(
   runs: () => ExperimentRun[],
-  handlers: Record<string, (init?: RequestInit) => Response> = {},
+  handlers: Record<string, (init?: RequestInit) => Response | Promise<Response>> = {},
 ) {
   globalThis.fetch = async (input, init) => {
     const path = new URL(String(input), "http://localhost").pathname;

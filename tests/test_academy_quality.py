@@ -433,8 +433,9 @@ def test_history_cohorts_keep_overlapping_case_counts_and_compare_membership(tmp
     ],
 )
 def test_quality_import_rejects_invalid_cohorts(cohorts, reason):
+    payload = {**record(), "cohorts": cohorts}
     with pytest.raises(ValidationError, match=reason):
-        quality_record_view({**record(), "cohorts": cohorts})
+        quality_record_view(payload)
 
 
 def test_external_outcome_is_historical_and_keeps_old_seals(tmp_path):

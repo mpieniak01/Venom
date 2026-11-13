@@ -12,6 +12,8 @@ from pydantic import BaseModel, ConfigDict, Field
 from venom_core.services.remote_training.lifecycle import validate_run_id
 from venom_core.services.remote_training.paths import operator_path
 
+from .data_audit_schema import AuditPin
+
 MODEL = "LiquidAI/LFM3-Omni-2B"
 SHA256_PATTERN = r"^[0-9a-f]{64}$"
 MAX_JSON_BYTES = 8 * 1024 * 1024
@@ -34,6 +36,7 @@ class Profile(BaseModel):
     max_seconds: int = Field(default=1800, ge=30, le=86400)
     min_free_bytes: int = Field(default=1073741824, ge=1)
     backing_volume: str | None = None
+    data_audit: AuditPin | None = None
     calibration_sha256: str | None = Field(default=None, pattern=SHA256_PATTERN)
 
 

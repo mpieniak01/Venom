@@ -37,6 +37,7 @@ from venom_core.services.runtime_release_service import (
 )
 
 from .adapters import runner_identity, verify_adapter_entry
+from .data_audit import verify_audit_preflight
 from .evidence import calibrated_judgments, review_data
 from .profiles import (
     Profile,
@@ -203,6 +204,20 @@ class Worker:
         ):
             raise ValueError("experiment_initial_adapter_receipt_invalid")
 
+    @staticmethod
+    def _verify_preflight(path: Path, manifest: dict) -> None:
+        adapter = manifest.get("initial_adapter")
+        audit = manifest.get("data_audit")
+        if adapter is None and audit is None:
+            return
+        receipt = read_json(path / "preflight.json")
+        if adapter is not None and receipt.get("initial_adapter") != runner_identity(
+            adapter
+        ):
+            raise ValueError("experiment_initial_adapter_receipt_invalid")
+        if audit is not None:
+            verify_audit_preflight(audit, receipt)
+
     def pipeline(self, state: dict, manifest: dict, gpu_fd: int) -> None:
         profile = Profile.model_validate(manifest["profile"])
         check_inputs(self.service.root, profile)
@@ -236,11 +251,8 @@ class Worker:
                 ],
                 gpu_fd,
             )
+            self._verify_preflight(preflight, manifest)
             entry = manifest.get("initial_adapter")
-            if entry is not None and read_json(preflight / "preflight.json").get(
-                "initial_adapter"
-            ) != runner_identity(entry):
-                raise ValueError("experiment_initial_adapter_receipt_invalid")
             self._space(profile)
             self.update(stage="train")
             self.execute(
@@ -327,6 +339,8 @@ class Worker:
                 raise ValueError("experiment_manifest_changed")
             if read_json(self.directory / "recipe.json") != manifest["recipe"]:
                 raise ValueError("experiment_recipe_changed")
+            if state["mode"] != "evaluate":
+                self.service.verify_run_data_audit(manifest)
             host = get_runtime_admission()
             host.database.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
             gpu_lock = host.database.parent / "academy-experiments.gpu.lock"

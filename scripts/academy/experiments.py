@@ -20,6 +20,7 @@ def main(argv: list[str] | None = None) -> None:
     commands.add_parser("profiles")
     commands.add_parser("list")
     commands.add_parser("adapters")
+    commands.add_parser("audit").add_argument("profile_id")
     for action in ("validate", "run"):
         sub = commands.add_parser(action)
         sub.add_argument("profile_id")
@@ -48,6 +49,8 @@ def execute(args: argparse.Namespace):
         return service.profiles()
     if args.command == "adapters":
         return service.adapters()
+    if args.command == "audit":
+        return service.data_audit(args.profile_id)
     if args.command == "list":
         return service.list_runs()
     if args.command in {"validate", "run"}:

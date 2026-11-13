@@ -132,6 +132,7 @@ def _fixed_variants(
             raise ValueError("campaign_profile_changed")
         identity = validated["identity"]
         recipe = validated["recipe"]
+        audit = validated.get("data_audit")
         adapter = validated.get("initial_adapter")
         initialization = {"initial_adapter": adapter} if adapter is not None else {}
         recipe_hash = fingerprint((recipe, initialization))
@@ -144,6 +145,7 @@ def _fixed_variants(
                 "recipe": recipe,
                 "workload": _workload(validated),
                 **initialization,
+                **({"data_audit": audit} if audit is not None else {}),
             }
         )
     if identity is None:
@@ -163,11 +165,14 @@ def _optimization_plan(
     version = optuna_backend.require_optuna()
     base = _validate_trial(spec, experiments, None)
     workload = _workload(base)
+    audit = base.get("data_audit")
     for values in product(*[(item["low"], item["high"]) for item in space.values()]):
         recipe = dict(zip(space, values, strict=True))
         corner = _validate_trial(spec, experiments, recipe)
         if corner["identity"] != base["identity"]:
             raise ValueError("campaign_profile_changed")
+        if corner.get("data_audit") != audit:
+            raise ValueError("experiment_data_audit_changed")
         for metric, amount in _workload(corner).items():
             workload[metric] = max(workload[metric], amount)
     variants = [
@@ -175,6 +180,7 @@ def _optimization_plan(
             "run_id": _run_id(spec.campaign_id, index),
             "recipe": base["recipe"],
             "workload": workload,
+            **({"data_audit": audit} if audit is not None else {}),
         }
         for index in range(spec.budget.max_trials)
     ]
@@ -190,12 +196,24 @@ def _optimization_plan(
     )
 
 
+def _plan_audit(variants: list[dict]) -> dict | None:
+    audit = variants[0].get("data_audit")
+    if any(variant.get("data_audit") != audit for variant in variants):
+        raise ValueError("experiment_data_audit_changed")
+    return audit
+
+
 def _plan(spec: CampaignSpec, experiments: CampaignExperiments) -> dict:
     extra: dict = {}
     if spec.strategy == "optuna":
         identity, variants, extra = _optimization_plan(spec, experiments)
     else:
         identity, variants = _fixed_variants(spec, experiments)
+    audit = _plan_audit(variants)
+    if audit is not None:
+        extra["data_audit"] = audit
+        for variant in variants:
+            variant.pop("data_audit")
     budget = spec.budget
     if sum(v["workload"]["updates"] for v in variants) > budget.max_updates:
         raise ValueError("campaign_update_budget_exceeded")
@@ -503,14 +521,17 @@ class CampaignService:
         warm_variants = [
             variant for variant in plan["variants"] if "initial_adapter" in variant
         ]
-        if state["status"] == "planned" and warm_variants:
+        if plan.get("data_audit") or (state["status"] == "planned" and warm_variants):
             self._profile(plan)
+            if plan.get("data_audit"):
+                self._verify_data_audit(plan)
+        else:
+            self._verify_quality_policy(plan)
+        if state["status"] == "planned":
             for variant in warm_variants:
                 verify_adapter_entry(
                     self.experiments.root, variant["initial_adapter"], variant["recipe"]
                 )
-        else:
-            self._verify_quality_policy(plan)
         state.pop("quality_policy_error", None)
         optimized = _is_optuna(plan)
         if optimized and optuna_backend.require_optuna() != plan["optuna_version"]:
@@ -622,6 +643,14 @@ class CampaignService:
         except (OSError, ValueError, KeyError, TypeError) as exc:
             raise ValueError(_quality_error(exc)) from exc
 
+    def _verify_data_audit(self, plan: dict) -> None:
+        # In a bound plan every variant was checked against the same length limit.
+        audit = self.experiments.validate(
+            plan["profile_id"], plan["variants"][0]["recipe"]
+        )
+        if audit.get("data_audit") != plan["data_audit"]:
+            raise ValueError("experiment_data_audit_changed")
+
     def _profile(self, plan: dict) -> None:
         self._verify_quality_policy(plan)
         for profile in self.experiments.profiles():
@@ -647,6 +676,7 @@ class CampaignService:
             or run.get("recipe") != _actual_recipe(state, trial)
             or run.get("initial_adapter")
             != _current_variant(state).get("initial_adapter")
+            or run.get("data_audit") != state["plan"].get("data_audit")
         ):
             raise ValueError("campaign_trial_conflict")
         return run
@@ -1077,7 +1107,8 @@ class CampaignService:
                 state["error"] = (
                     code
                     if re.fullmatch(
-                        r"(?:campaign_|experiment_initial_adapter_)[a-z0-9_]+", code
+                        r"(?:campaign_|experiment_initial_adapter_|experiment_data_audit_)[a-z0-9_]+",
+                        code,
                     )
                     else "campaign_stage_failed"
                 )

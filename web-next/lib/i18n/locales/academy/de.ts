@@ -256,6 +256,7 @@ export const academy = {
   },
   campaigns: {
     checkpoints: {
+      openResult: "Ergebnis anzeigen für Schritt",
       plan: "Schritte zur Checkpoint-Bewertung",
       hint: "Optional bis zu vier aufsteigende, kommagetrennte Schrittnummern eingeben. Jeder Schritt muss im Trainingsplan als Speicherpunkt vorgesehen sein.",
       step: "Checkpoint bei Schritt",
@@ -286,6 +287,7 @@ export const academy = {
       },
     },
     quality: {
+      loadingAnalysis: "Qualitätsvergleich wird geladen…",
       criticalComparison: "Kritische Fehler",
       criticalComparisonHint: "Links steht der Wert für das Basismodell oder die Referenz, rechts der Wert für den Kandidaten. Ein Strich bedeutet, dass die Bewertung kritischer Fehler unvollständig ist.",
       selectedUnavailable: "Die ausgewählte Bewertung ist im Verlauf nicht verfügbar.",

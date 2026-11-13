@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { dataAuditErrorKey } from "@/lib/academy-data-audit";
 import { ApiError } from "@/lib/api-client";
@@ -52,7 +52,8 @@ export function CampaignPanel({
   const [busy, setBusy] = useState(false);
   const [selectedId, setSelectedId] = useState(initialCampaignId ?? "");
   const [refresh, setRefresh] = useState(0);
-  const [qualityOpen, setQualityOpen] = useState(Boolean(initialQualityId));
+  const [qualityId, setQualityId] = useState(initialQualityId);
+  const qualityHeading = useRef<HTMLHeadingElement>(null);
   const [draft, setDraft] = useState<{ value: QualityCampaignDraft; revision: number }>();
   const selected = selectedId
     ? campaigns?.find((campaign) => campaign.campaign_id === selectedId)
@@ -154,13 +155,13 @@ export function CampaignPanel({
   const failed = profilesFailed || campaignsFailed;
   return (
     <div className="space-y-4">
-      <details className={CARD} open={qualityOpen} onToggle={(event) => setQualityOpen(event.currentTarget.open)}>
-        <summary className="cursor-pointer font-semibold">{t("academy.campaigns.quality.title")}</summary>
-        {qualityOpen && (
-          <CampaignQualityHistory initialRecordId={initialQualityId} disabled={busy || !profiles?.length || failed}
-            onDraft={(value) => setDraft((current) => ({ value, revision: (current?.revision ?? 0) + 1 }))} />
-        )}
-      </details>
+      <section className={CARD} aria-labelledby="academy-quality-heading">
+        <h3 id="academy-quality-heading" ref={qualityHeading} tabIndex={-1} className="font-semibold">
+          {t("academy.campaigns.quality.title")}
+        </h3>
+        <CampaignQualityHistory key={qualityId} initialRecordId={qualityId} refresh={refresh} disabled={busy || !profiles?.length || failed}
+          onDraft={(value) => setDraft((current) => ({ value, revision: (current?.revision ?? 0) + 1 }))} />
+      </section>
       <section className={CARD}>
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h3 className="font-semibold">{t("academy.campaigns.title")}</h3>
@@ -205,7 +206,11 @@ export function CampaignPanel({
       )}
       {selected && <section className={CARD}>
         <CampaignDetail key={selected.campaign_id} campaign={selected} disabled={busy || campaignsFailed} optunaAvailable={optunaAvailable}
-          onAction={act} onOpenRun={onOpenRun} onChanged={refreshData} />
+          onAction={act} onOpenRun={onOpenRun} onChanged={refreshData}
+          onOpenCheckpoint={(recordId) => {
+            setQualityId(recordId);
+            qualityHeading.current?.focus();
+          }} />
       </section>}
     </div>
   );

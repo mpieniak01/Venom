@@ -132,6 +132,10 @@ Pobierz pakiet i zapisz jego `checkpoint_step` razem z kompletem ocen w pliku JS
 }
 ```
 
+W szczegółach kampanii przy ocenionym kroku wybierz **Pokaż wynik kroku**. Sekcja **Wnioski i następna próba** od razu wyświetla ocenę i przelicza porównanie po zmianie kandydata lub odniesienia. Szczegółowa analiza kroków jest dostępna po zamknięciu ślepej oceny przebiegu.
+
+Jeśli kampanii została już tylko ślepa ocena ostatniej próby i jej przebieg zwolnił zasoby, możesz uruchomić następną kampanię z tego samego katalogu. Kampania z kolejnymi próbami nadal rezerwuje kolejkę do czasu zakończenia lub zatrzymania.
+
 Raport pokazuje wyniki osobno dla każdej pary przebieg i krok. Wybór wymaga spełnienia progów kampanii oraz jej opcjonalnych kryteriów względem referencji i chronionych przypadków. Wynik może wskazać wcześniejszy checkpoint albo brak kandydata. Status `succeeded` oznacza zakończenie procedury. Dla eksperymentów z otwartymi polskimi odpowiedziami jakość potwierdź ślepą oceną według właściwej rubryki oraz osobnym testem końcowym.
 
 Przy `discard_rejected` retencja chroni cały przebieg, w którym znajduje się wybrany checkpoint, i sprawdza dostępność jego wag przed usunięciem plików odrzuconych prób. Brak kandydata zachowuje pliki do analizy.

@@ -160,15 +160,21 @@ function SelectedCheckpoint({ campaign }: { readonly campaign: Campaign }) {
   );
 }
 
-function CheckpointTrialRow({ result, delta }: {
+function CheckpointTrialRow({ result, delta, onOpen }: {
   readonly result: CampaignCheckpointEvaluation;
   readonly delta: (value?: number) => string;
+  readonly onOpen?: () => void;
 }) {
   const t = useTranslation();
   return (
     <tr className="border-b border-[color:var(--ui-border)]">
       <th scope="row" className="py-2 pl-4 pr-3 font-normal">
-        {t("academy.campaigns.checkpoints.step")} {result.step}
+        <span>{t("academy.campaigns.checkpoints.step")} {result.step}</span>
+        {onOpen && result.status === "succeeded" && result.result_sha256 && (
+          <Button type="button" size="sm" variant="link" onClick={onOpen}>
+            {t("academy.campaigns.checkpoints.openResult")} {result.step}
+          </Button>
+        )}
         {result.quality_guard && <TrialQualityDecision guard={result.quality_guard} />}
       </th>
       <td className="px-3 py-2"><CampaignStatus status={result.status} /></td>
@@ -184,10 +190,11 @@ interface CampaignDetailProps {
   readonly optunaAvailable: boolean;
   readonly onAction: (action: "start" | "stop" | "resume") => void;
   readonly onOpenRun: (runId: string) => void;
+  readonly onOpenCheckpoint: (recordId: string) => void;
   readonly onChanged: () => void;
 }
 
-export function CampaignDetail({ campaign, disabled, optunaAvailable, onAction, onOpenRun, onChanged }: CampaignDetailProps) {
+export function CampaignDetail({ campaign, disabled, optunaAvailable, onAction, onOpenRun, onOpenCheckpoint, onChanged }: CampaignDetailProps) {
   const { t, language } = useLanguage();
   const { budget, selection, variants, strategy } = campaign.plan;
   const adapterError = useInitialAdapterError(campaign.error);
@@ -300,7 +307,8 @@ export function CampaignDetail({ campaign, disabled, optunaAvailable, onAction, 
                     <td className="px-3 py-2">{delta(trial.critical_delta)}</td>
                   </tr>
                   {trial.checkpoint_evaluations?.map((result) => (
-                    <CheckpointTrialRow key={result.step} result={result} delta={delta} />
+                    <CheckpointTrialRow key={result.step} result={result} delta={delta}
+                      onOpen={trial.status === "succeeded" ? () => onOpenCheckpoint(`checkpoint:${trial.run_id}:${result.step}`) : undefined} />
                   ))}
                 </Fragment>
               );

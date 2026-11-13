@@ -256,6 +256,7 @@ export const academy = {
   },
   campaigns: {
     checkpoints: {
+      openResult: "Pokaż wynik kroku",
       plan: "Kroki oceny checkpointów",
       hint: "Opcjonalnie wpisz do czterech rosnących numerów kroków, rozdzielonych przecinkami. Każdy musi odpowiadać zapisowi w planie treningu.",
       step: "Checkpoint w kroku",
@@ -286,6 +287,7 @@ export const academy = {
       },
     },
     quality: {
+      loadingAnalysis: "Pobieranie porównania jakości…",
       criticalComparison: "Błędy krytyczne",
       criticalComparisonHint: "Wynik po lewej dotyczy bazy lub odniesienia, a po prawej kandydata. Kreska oznacza brak pełnej oceny błędów krytycznych.",
       selectedUnavailable: "Wybranej oceny nie ma w dostępnej historii.",

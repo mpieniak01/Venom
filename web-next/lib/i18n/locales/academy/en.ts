@@ -256,6 +256,7 @@ export const academy = {
   },
   campaigns: {
     checkpoints: {
+      openResult: "View result for step",
       plan: "Checkpoint evaluation steps",
       hint: "Optionally enter up to four increasing step numbers separated by commas. Each must be a save step in the training plan.",
       step: "Checkpoint at step",
@@ -286,6 +287,7 @@ export const academy = {
       },
     },
     quality: {
+      loadingAnalysis: "Loading the quality comparison…",
       criticalComparison: "Critical errors",
       criticalComparisonHint: "The left value is for the baseline or reference, and the right value is for the candidate. A dash means the critical error review is incomplete.",
       selectedUnavailable: "The selected review is unavailable in the history.",

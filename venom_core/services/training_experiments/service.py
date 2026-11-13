@@ -22,6 +22,17 @@ from venom_core.services.remote_training.lifecycle import (
 from venom_core.services.remote_training.paths import operator_path
 
 from .adapters import list_adapters, resolve_adapter, verify_adapter_entry
+from .checkpoint_evaluation import (
+    GENERATION_SEAL,
+    inspect_steps,
+    read_generation,
+    review_step,
+    sealed_step,
+    step_directory,
+    step_statuses,
+    validate_steps,
+    verify_baseline,
+)
 from .data_audit import AuditError, verify_data_audit
 from .evidence import (
     historical_report,
@@ -44,7 +55,6 @@ from .quality import QualityStore
 from .store import RunStore
 
 REPO = Path(__file__).resolve().parents[3]
-GENERATION_SEAL = "generation-seal.json"
 ACTIVE = frozenset({"queued", "running"})
 RETRYABLE = frozenset({"failed", "stopped", "timed_out"})
 PUBLIC = (
@@ -292,6 +302,10 @@ class ExperimentService:
             and resume_checkpoint[1]["step"] < state["recipe"]["steps"]
         )
         result["evaluation_available"] = bool(can_retry and checkpoint)
+        if result["evaluation_available"] and "checkpoint_steps" in state:
+            result["evaluation_available"] = (
+                checkpoint[1]["step"] == state["recipe"]["steps"]
+            )
 
     def _view(self, state: dict) -> dict:
         run_id = state["run_id"]
@@ -314,7 +328,17 @@ class ExperimentService:
             "evaluate": operator_controls and result["evaluation_available"],
             "review": result["status"] == "awaiting_review",
         }
-        result.update(self._external_review_fields(state, result["status"]))
+        if "checkpoint_steps" in state:
+            steps = state["checkpoint_steps"]
+            directory = self.run_dir(run_id)
+            result["checkpoint_steps"] = steps
+            result["checkpoint_evaluations"] = step_statuses(
+                directory, steps, result["status"]
+            )
+            if result["actions"]["review"]:
+                result["review_checkpoint_step"] = review_step(directory, steps)
+        else:
+            result.update(self._external_review_fields(state, result["status"]))
         if state["status"] in ACTIVE:
             result["elapsed_seconds"] = state["elapsed_before"] + max(
                 0, time.time() - state["attempt_started_at"]
@@ -391,6 +415,7 @@ class ExperimentService:
         expected_identity: str | None = None,
         review_mode: str | None = None,
         expected_initial_adapter: dict | None = None,
+        checkpoint_steps: list[int] | None = None,
     ) -> dict:
         ensure_data_mutation_allowed("academy_experiment_start")
         profile, info, calibration = self._validated(profile_id, recipe)
@@ -419,6 +444,15 @@ class ExperimentService:
             manifest["initial_adapter"] = initial_adapter
         if audit is not None:
             manifest["data_audit"] = audit
+        if checkpoint_steps is not None:
+            validate_steps(checkpoint_steps, info["recipe"])
+            manifest["checkpoint_steps"] = checkpoint_steps
+        return self._create_run(manifest, profile, directory, max_seconds)
+
+    def _create_run(
+        self, manifest: dict, profile: Profile, directory: Path, max_seconds: int | None
+    ) -> dict:
+        run_id = manifest["run_id"]
         with self.run_lock(run_id):
             if (directory / "manifest.json").exists():
                 if self._manifest(run_id) != manifest:
@@ -427,21 +461,21 @@ class ExperimentService:
                     return self.status(run_id)
             check_inputs(self.root, profile)
             atomic_json(directory / "manifest.json", manifest)
-            atomic_json(directory / "recipe.json", info["recipe"])
+            atomic_json(directory / "recipe.json", manifest["recipe"])
             now = time.time()
             state = {
                 "schema_version": 1,
                 "run_id": run_id,
-                "profile_id": profile_id,
-                "profile_identity": info["identity"],
-                "campaign_id": campaign_id,
+                "profile_id": manifest["profile_id"],
+                "profile_identity": manifest["profile_identity"],
+                "campaign_id": manifest["campaign_id"],
                 "manifest_sha256": stable_hash(manifest),
-                "recipe": info["recipe"],
+                "recipe": manifest["recipe"],
                 "created_at": now,
                 "attempt": 0,
                 "elapsed_seconds": 0.0,
             }
-            for key in ("initial_adapter", "data_audit"):
+            for key in ("initial_adapter", "data_audit", "checkpoint_steps"):
                 if key in manifest:
                     state[key] = manifest[key]
             return self._enqueue(
@@ -465,8 +499,11 @@ class ExperimentService:
             if view["status"] not in RETRYABLE or self._child_alive(state):
                 raise ValueError("experiment_retry_not_allowed")
             checkpoint = self._checkpoint(run_id, resume=mode == "resume")
-            if checkpoint is None or (
-                mode == "resume" and not view["resume_available"]
+            if (
+                checkpoint is None
+                or not view[
+                    "resume_available" if mode == "resume" else "evaluation_available"
+                ]
             ):
                 raise ValueError("experiment_checkpoint_unavailable")
             manifest = self._manifest(run_id)
@@ -553,11 +590,20 @@ class ExperimentService:
             stream.seek(max(0, path.stat().st_size - 65536))
             return {"logs": stream.read(65536).decode("utf-8", errors="replace")}
 
-    def _review_inputs(self, state: dict) -> tuple[Path, Path]:
+    def _review_inputs(
+        self, state: dict, *, checkpoint_step: int | None = None
+    ) -> tuple[Path, Path]:
         run_id = state["run_id"]
         profile = Profile.model_validate(self._manifest(run_id)["profile"])
         dev = resolve_input(self.root, profile.dev)
-        generation = self.run_dir(run_id) / f"evaluation-{state['attempt']}"
+        directory = self.run_dir(run_id)
+        if checkpoint_step is not None:
+            generation = step_directory(directory, checkpoint_step)
+            manifest, _ = read_generation(generation)
+            if manifest["data_sha256"] != profile.dev_sha256:
+                raise ValueError("experiment_evidence_changed")
+        else:
+            generation = directory / f"evaluation-{state['attempt']}"
         seal = read_json(generation / GENERATION_SEAL)
         if digest(dev) != profile.dev_sha256 or any(
             digest(generation / name) != seal[name]
@@ -570,19 +616,55 @@ class ExperimentService:
         state = self.store.read(run_id)
         if state["status"] != "awaiting_review":
             raise ValueError("experiment_review_not_available")
-        return review_data(*self._review_inputs(state))
+        steps = state.get("checkpoint_steps")
+        if steps is None:
+            return review_data(*self._review_inputs(state))
+        step = review_step(self.run_dir(run_id), steps)
+        return {
+            "checkpoint_step": step,
+            **review_data(*self._review_inputs(state, checkpoint_step=step)),
+        }
 
-    def _commit(self, state: dict, judgments: list[dict[str, Any]]) -> None:
+    def _reviewed_checkpoint(
+        self, state: dict, generation: Path, checkpoint_step: int | None
+    ) -> dict:
+        directory = self.run_dir(state["run_id"])
+        training = directory / "training"
+        if checkpoint_step is None:
+            checkpoint = inspect_checkpoint(
+                training / f"checkpoint-{state['checkpoint_step']}"
+            )
+            if checkpoint["sha256"] != state["checkpoint_sha256"]:
+                raise ValueError("experiment_checkpoint_changed")
+            return checkpoint
+
+        tag = f"checkpoint-{checkpoint_step}"
+        inputs = read_json(directory / "checkpoint-inputs.json")[tag]
+        manifest, _ = read_generation(generation)
+        if (
+            manifest["models"][tag] != inputs
+            or inspect_steps(training, [checkpoint_step])[tag] != inputs
+        ):
+            raise ValueError("experiment_checkpoint_changed")
+        return inspect_checkpoint(training / tag)
+
+    def _commit(
+        self,
+        state: dict,
+        judgments: list[dict[str, Any]],
+        *,
+        checkpoint_step: int | None = None,
+    ) -> None:
         run_id = state["run_id"]
         directory = self.run_dir(run_id)
-        generation, dev = self._review_inputs(state)
-        checkpoint = inspect_checkpoint(
-            directory / "training" / f"checkpoint-{state['checkpoint_step']}"
-        )
-        if checkpoint["sha256"] != state["checkpoint_sha256"]:
-            raise ValueError("experiment_checkpoint_changed")
+        generation, dev = self._review_inputs(state, checkpoint_step=checkpoint_step)
+        checkpoint = self._reviewed_checkpoint(state, generation, checkpoint_step)
         bundle = review_data(generation, dev)
         aggregate(bundle["cases"], bundle["answers"], judgments)
+        if checkpoint_step is not None:
+            verify_baseline(
+                directory, state["checkpoint_steps"], checkpoint_step, judgments
+            )
         verdict_file = generation / "judgments.json"
         if verdict_file.exists():
             if read_json(verdict_file) != judgments:
@@ -599,30 +681,68 @@ class ExperimentService:
             generation_sha256=digest(generation / GENERATION_SEAL),
         )
         provenance = {"initial_adapter", "data_audit"} & state.keys()
-        if provenance:
+        if provenance or checkpoint_step is not None:
             manifest = self._manifest(run_id)
             if stable_hash(manifest) != state["manifest_sha256"]:
                 raise ValueError("experiment_manifest_changed")
             result.update({key: manifest[key] for key in provenance})
+        if checkpoint_step is None:
+            self._publish_result(directory, result)
+            self._finish_review(state)
+        else:
+            self._publish_result(generation, result)
+            self._finish_checkpoint_review(state)
+
+    @staticmethod
+    def _publish_result(directory: Path, result: dict) -> None:
         atomic_json(directory / "result.json", result)
         atomic_json(
             directory / "result-seal.json",
-            {
-                "result_sha256": digest(directory / "result.json"),
-            },
+            {"result_sha256": digest(directory / "result.json")},
         )
+
+    def _finish_review(self, state: dict) -> None:
         state.update(status="succeeded", stage="done", error=None)
         self._save(state)
 
-    def submit(self, run_id: str, judgments: list[dict]) -> dict:
+    def _finish_checkpoint_review(self, state: dict) -> None:
+        directory = self.run_dir(state["run_id"])
+        steps = state["checkpoint_steps"]
+        statuses = step_statuses(directory, steps, state["status"])
+        if any(item["status"] != "succeeded" for item in statuses):
+            return
+        results = [sealed_step(step_directory(directory, step))[0] for step in steps]
+        anchor = results[-1]
+        self._publish_result(
+            directory,
+            {
+                **anchor,
+                "checkpoint_evaluations": statuses,
+                "artifacts": [item["artifacts"][0] for item in results],
+            },
+        )
+        self._finish_review(state)
+
+    def submit(
+        self, run_id: str, judgments: list[dict], *, checkpoint_step: int | None = None
+    ) -> dict:
         ensure_data_mutation_allowed("academy_experiment_submit")
         with self.run_lock(run_id):
             state = self.store.read(run_id)
-            if self._check_report(run_id) is not None:
+            steps = state.get("checkpoint_steps")
+            committed = self._check_report(run_id)
+            if steps is not None:
+                if committed is not None or checkpoint_step != review_step(
+                    self.run_dir(run_id), steps
+                ):
+                    raise ValueError("experiment_checkpoint_review_changed")
+            elif checkpoint_step is not None:
+                raise ValueError("experiment_checkpoint_review_changed")
+            elif committed is not None:
                 return self._view(state)
             if state["status"] != "awaiting_review":
                 raise ValueError("experiment_review_not_available")
-            self._commit(state, judgments)
+            self._commit(state, judgments, checkpoint_step=checkpoint_step)
             return self._view(state)
 
     def import_results(self, run_id: str, source: Path) -> dict:
@@ -670,14 +790,25 @@ class ExperimentService:
             raise FileNotFoundError("experiment_result_missing")
         if result.get("historical"):
             return result
-        artifact = result["artifacts"][0]
-        checkpoint = (
-            self.run_dir(run_id) / "training" / f"checkpoint-{artifact['step']}"
-        )
-        try:
-            artifact["available"] = (
-                inspect_checkpoint(checkpoint)["sha256"] == artifact["sha256"]
-            )
-        except (OSError, ValueError, KeyError, TypeError):
-            artifact["available"] = False
+        self._add_artifact_availability(run_id, result["artifacts"])
         return result
+
+    def checkpoint_report(self, run_id: str, step: int) -> tuple[dict, str]:
+        state = self.store.read(run_id)
+        if step not in state.get("checkpoint_steps", ()):
+            raise ValueError("experiment_checkpoint_invalid")
+        result, digest_value = sealed_step(step_directory(self.run_dir(run_id), step))
+        self._add_artifact_availability(run_id, result["artifacts"])
+        return result, digest_value
+
+    def _add_artifact_availability(self, run_id: str, artifacts: list[dict]) -> None:
+        for artifact in artifacts:
+            checkpoint = (
+                self.run_dir(run_id) / "training" / f"checkpoint-{artifact['step']}"
+            )
+            try:
+                artifact["available"] = (
+                    inspect_checkpoint(checkpoint)["sha256"] == artifact["sha256"]
+                )
+            except (OSError, ValueError, KeyError, TypeError):
+                artifact["available"] = False

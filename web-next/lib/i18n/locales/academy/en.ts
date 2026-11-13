@@ -255,6 +255,20 @@ export const academy = {
     },
   },
   campaigns: {
+    checkpoints: {
+      plan: "Checkpoint evaluation steps",
+      hint: "Optionally enter up to four increasing step numbers separated by commas. Each must be a save step in the training plan.",
+      step: "Checkpoint at step",
+      noCandidate: "No checkpoint met the selection criteria.",
+      answerStep: "Answers for checkpoint at step",
+      judgmentFile: "The JSON file must include checkpoint_step from the downloaded bundle and a judgments array.",
+      errors: {
+        campaign_checkpoint_steps_invalid: "Evaluation steps must match save steps in the fixed campaign recipe.",
+        campaign_checkpoint_protocol_changed: "The evaluation environment changed since planning. Check the profile and prepare a new plan.",
+        experiment_checkpoint_review_changed: "The campaign now expects a different step. Download the current review bundle.",
+        experiment_checkpoint_baseline_changed: "A base answer has a different verdict from its earlier review. Use the previous verdict.",
+      },
+    },
     initialAdapter: {
       label: "Initialization source",
       fresh: "New LoRA from the base model",

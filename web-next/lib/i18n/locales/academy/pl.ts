@@ -255,6 +255,20 @@ export const academy = {
     },
   },
   campaigns: {
+    checkpoints: {
+      plan: "Kroki oceny checkpointów",
+      hint: "Opcjonalnie wpisz do czterech rosnących numerów kroków, rozdzielonych przecinkami. Każdy musi odpowiadać zapisowi w planie treningu.",
+      step: "Checkpoint w kroku",
+      noCandidate: "Żaden checkpoint nie spełnił warunków wyboru.",
+      answerStep: "Odpowiedzi dla checkpointu w kroku",
+      judgmentFile: "Plik JSON musi zawierać checkpoint_step z pobranego pakietu i tablicę judgments.",
+      errors: {
+        campaign_checkpoint_steps_invalid: "Kroki oceny muszą odpowiadać zapisom w recepturze kampanii na stałej liście.",
+        campaign_checkpoint_protocol_changed: "Środowisko oceny zmieniło się od zapisania planu. Sprawdź profil i przygotuj nowy plan.",
+        experiment_checkpoint_review_changed: "Kampania oczekuje już na ocenę innego kroku. Pobierz aktualny pakiet.",
+        experiment_checkpoint_baseline_changed: "Ocena tej samej odpowiedzi bazy różni się od wcześniejszej. Użyj poprzedniego werdyktu.",
+      },
+    },
     initialAdapter: {
       label: "Źródło inicjalizacji",
       fresh: "Nowa LoRA od modelu bazowego",

@@ -153,6 +153,8 @@ _TEXT = {
         "state": "Stan",
         "progress": "Próby ukończone",
         "selected": "Wybrany kandydat",
+        "checkpoint": "checkpoint",
+        "no_checkpoint_candidate": "żaden checkpoint nie spełnił warunków wyboru",
         "resources": "Sekundy · aktualizacje · tokeny · ponowienia · bajty artefaktów",
         "panel": "Otwórz kampanię w Academy",
         "missing": "brak danych",
@@ -177,6 +179,8 @@ _TEXT = {
         "state": "State",
         "progress": "Trials processed",
         "selected": "Selected candidate",
+        "checkpoint": "checkpoint",
+        "no_checkpoint_candidate": "no checkpoint met the selection criteria",
         "resources": "Seconds · updates · tokens · retries · artifact bytes",
         "panel": "Open campaign in Academy",
         "missing": "unavailable",
@@ -201,6 +205,8 @@ _TEXT = {
         "state": "Status",
         "progress": "Bearbeitete Versuche",
         "selected": "Ausgewählter Kandidat",
+        "checkpoint": "Checkpoint",
+        "no_checkpoint_candidate": "kein Checkpoint erfüllte die Auswahlkriterien",
         "resources": "Sekunden · Updates · Token · Wiederholungen · Artefaktbytes",
         "panel": "Kampagne in Academy öffnen",
         "missing": "keine Daten",
@@ -266,6 +272,8 @@ def _plan_text(action: str, result: dict, labels: dict[str, str]) -> str:
         )
     else:
         details["variants"] = [row["recipe"] for row in plan["variants"]]
+        if "checkpoint_steps" in plan:
+            details["checkpoint_steps"] = plan["checkpoint_steps"]
     text = (
         f"**{labels[action]}** `{campaign_id}`\n\n"
         f"{labels['profile']} `{plan['profile_id']}`\n\n"
@@ -277,6 +285,20 @@ def _plan_text(action: str, result: dict, labels: dict[str, str]) -> str:
             f"\n\n{labels['confirm']}\n\n`/academy start {campaign_id} {digest}`"
         )
     return text
+
+
+def _selected_candidate(state: dict, labels: dict[str, str]) -> str:
+    run_id = state["selected_run_id"]
+    step = state.get("selected_checkpoint_step")
+    if run_id and step is not None:
+        return f"`{run_id}` · {labels['checkpoint']} `{step}`"
+    if (
+        not run_id
+        and state["status"] == "succeeded"
+        and "checkpoint_steps" in state["plan"]
+    ):
+        return labels["no_checkpoint_candidate"]
+    return f"`{run_id or labels['missing']}`"
 
 
 def _summary(state: dict, labels: dict[str, str]) -> str:
@@ -291,7 +313,7 @@ def _summary(state: dict, labels: dict[str, str]) -> str:
         f"{state['trial_index']}/{len(state['trials'])}\n\n"
         f"[{labels['panel']}](/academy?campaign={campaign_id})\n\n"
         f"{labels['resources']}\n\n{used}\n\n"
-        f"{labels['selected']} `{state['selected_run_id'] or labels['missing']}`"
+        f"{labels['selected']} {_selected_candidate(state, labels)}"
     )
     if state.get("error"):
         text += f"\n\n`{state['error']}`"
@@ -301,6 +323,8 @@ def _summary(state: dict, labels: dict[str, str]) -> str:
 def _comparison_row(trial: dict, data: dict, labels: dict[str, str]) -> str:
     missing = labels["missing"]
     run_id, status = trial["run_id"], trial["status"]
+    if "step" in data:
+        run_id = f"{run_id} · {labels['checkpoint']} {data['step']}"
     artifact = data.get("adapter_available")
     available = missing
     if artifact is not None:
@@ -322,6 +346,8 @@ def _comparison_row(trial: dict, data: dict, labels: dict[str, str]) -> str:
 
 
 def _confirmation_recipe(state: dict, evaluations: dict) -> dict | None:
+    if "checkpoint_steps" in state["plan"]:
+        return None
     selected = state["selected_run_id"]
     evidence = evaluations.get(selected, {})
     if not evidence.get("adapter_available"):
@@ -348,10 +374,13 @@ def render_campaign_result(action: str, result: dict, language: str | None) -> s
     if "evaluations" not in result:
         return text
     evaluations = result["evaluations"]
-    rows = [
-        _comparison_row(trial, evaluations.get(trial["run_id"], {}), labels)
-        for trial in state["trials"]
-    ]
+    rows = []
+    for trial in state["trials"]:
+        evidence = evaluations.get(trial["run_id"], {})
+        rows.extend(
+            _comparison_row(trial, item, labels)
+            for item in evidence.get("checkpoints", [evidence])
+        )
     table = [
         f"| {labels['comparison']} |",
         "| --- | --- | --- | --- | --- | --- |",

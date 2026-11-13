@@ -131,7 +131,10 @@ export function CampaignPanel({
         setOptunaAvailable(false);
         setOperationError(ACTION_ERROR.optuna);
       } else {
-        const keys = [dataAuditErrorKey(detail?.code), `academy.campaigns.initialAdapter.errors.${detail?.code}`, `academy.campaigns.quality.issues.${detail?.code}`];
+        const keys = [
+          dataAuditErrorKey(detail?.code), `academy.campaigns.initialAdapter.errors.${detail?.code}`,
+          `academy.campaigns.quality.issues.${detail?.code}`, `academy.campaigns.checkpoints.errors.${detail?.code}`,
+        ];
         const fallback = error instanceof ApiError && error.status === 409 ? ACTION_ERROR.conflict : ACTION_ERROR.failed;
         setOperationError(keys.find((key) => key && t(key) !== key) ?? fallback);
       }

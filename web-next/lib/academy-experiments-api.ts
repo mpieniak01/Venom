@@ -44,6 +44,8 @@ export interface ExperimentRun {
   attempt: number;
   recipe: ExperimentRecipe;
   checkpoint_step?: number | null;
+  checkpoint_steps?: number[];
+  review_checkpoint_step?: number | null;
   resume_available: boolean;
   error?: string | null;
   report?: ExperimentReport | null;
@@ -90,7 +92,15 @@ export interface ExperimentArtifact {
 
 export type ExperimentVerdict = { semantic: number; usable: number; passed: number };
 
+export interface ExperimentCheckpointResult {
+  step: number;
+  status: string;
+  summaries?: ExperimentReport["summaries"];
+  result_sha256?: string;
+}
+
 export interface ExperimentReport {
+  checkpoint_evaluations?: ExperimentCheckpointResult[];
   initial_adapter?: ExperimentInitialAdapter | null;
   data_audit?: PassedDataAudit | null;
   historical?: boolean;
@@ -110,6 +120,7 @@ interface ReviewCase {
 }
 
 export interface ExperimentReview {
+  checkpoint_step?: number;
   cases: ReviewCase[];
   answers: { case: ReviewCase; answers: Record<string, ExperimentAnswer> }[];
 }
@@ -161,9 +172,11 @@ export function getExperimentReview(runId: string, signal?: AbortSignal) {
   return apiFetch<ExperimentReview>(`${runPath(runId)}/review`, { signal });
 }
 
-export function submitExperimentJudgments(runId: string, judgments: Record<string, unknown>[]) {
+export function submitExperimentJudgments(
+  runId: string, judgments: Record<string, unknown>[], checkpointStep?: number,
+) {
   return apiFetch<ExperimentRun>(`${runPath(runId)}/judgments`, {
     method: "POST",
-    body: JSON.stringify({ judgments }),
+    body: JSON.stringify({ judgments, checkpoint_step: checkpointStep }),
   });
 }

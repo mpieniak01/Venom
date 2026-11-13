@@ -6649,6 +6649,8 @@ export interface components {
              */
             review_mode: "manual" | "automatic";
             quality_policy?: components["schemas"]["CampaignQualityPolicy"] | null;
+            /** Checkpoint Steps */
+            checkpoint_steps?: number[] | null;
         };
         /** CancelChatTask */
         CancelChatTask: {
@@ -10119,6 +10121,8 @@ export interface components {
         SubmitJudgments: {
             /** Judgments */
             judgments: components["schemas"]["Judgment"][];
+            /** Checkpoint Step */
+            checkpoint_step?: number | null;
         };
         /**
          * SystemState

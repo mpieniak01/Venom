@@ -3670,7 +3670,7 @@
             "required": true,
             "schema": {
               "type": "string",
-              "pattern": "^(?:history:)?[A-Za-z0-9][A-Za-z0-9_-]{0,63}$",
+              "pattern": "^(?:(?:history:)?[A-Za-z0-9][A-Za-z0-9_-]{0,63}|checkpoint:[A-Za-z0-9][A-Za-z0-9_-]{0,63}:[1-9][0-9]{0,4})$",
               "title": "Record Id"
             }
           },
@@ -3682,7 +3682,7 @@
               "anyOf": [
                 {
                   "type": "string",
-                  "pattern": "^(?:history:)?[A-Za-z0-9][A-Za-z0-9_-]{0,63}$"
+                  "pattern": "^(?:(?:history:)?[A-Za-z0-9][A-Za-z0-9_-]{0,63}|checkpoint:[A-Za-z0-9][A-Za-z0-9_-]{0,63}:[1-9][0-9]{0,4})$"
                 },
                 {
                   "type": "null"
@@ -14704,7 +14704,7 @@
           "reference_record_ids": {
             "items": {
               "type": "string",
-              "pattern": "^(?:history:)?[A-Za-z0-9][A-Za-z0-9_-]{0,63}$"
+              "pattern": "^(?:(?:history:)?[A-Za-z0-9][A-Za-z0-9_-]{0,63}|checkpoint:[A-Za-z0-9][A-Za-z0-9_-]{0,63}:[1-9][0-9]{0,4})$"
             },
             "type": "array",
             "maxItems": 8,
@@ -14756,7 +14756,7 @@
             "anyOf": [
               {
                 "type": "string",
-                "pattern": "^(?:history:)?[A-Za-z0-9][A-Za-z0-9_-]{0,63}$"
+                "pattern": "^(?:(?:history:)?[A-Za-z0-9][A-Za-z0-9_-]{0,63}|checkpoint:[A-Za-z0-9][A-Za-z0-9_-]{0,63}:[1-9][0-9]{0,4})$"
               },
               {
                 "type": "null"
@@ -14904,6 +14904,24 @@
                 "type": "null"
               }
             ]
+          },
+          "checkpoint_steps": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer",
+                  "maximum": 10000.0,
+                  "minimum": 1.0
+                },
+                "type": "array",
+                "maxItems": 4,
+                "minItems": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checkpoint Steps"
           }
         },
         "additionalProperties": false,
@@ -23248,6 +23266,19 @@
             "maxItems": 2048,
             "minItems": 1,
             "title": "Judgments"
+          },
+          "checkpoint_step": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 10000.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checkpoint Step"
           }
         },
         "additionalProperties": false,

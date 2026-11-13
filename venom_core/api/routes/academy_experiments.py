@@ -40,6 +40,7 @@ class SubmitJudgments(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
     judgments: list[Judgment] = Field(min_length=1, max_length=2048)
+    checkpoint_step: int | None = Field(default=None, ge=1, le=10000)
 
 
 def require_experiment_access(request: Request) -> None:
@@ -147,6 +148,7 @@ def submit_judgments(run_id: str, body: SubmitJudgments) -> dict:
         experiment_service().submit,
         run_id,
         [grade.model_dump() for grade in body.judgments],
+        checkpoint_step=body.checkpoint_step,
     )
 
 

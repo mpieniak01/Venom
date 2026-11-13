@@ -157,7 +157,12 @@ class Retention:
         if state["plan"]["retention"] != "discard_rejected" or winner is None:
             return {}
         artifacts = self.experiments.report(winner).get("artifacts", ())
-        if not any(artifact.get("available") is True for artifact in artifacts):
+        step = state.get("selected_checkpoint_step")
+        if not any(
+            artifact.get("available") is True
+            and (step is None or artifact.get("step") == step)
+            for artifact in artifacts
+        ):
             # Retain alternatives if the current winner can no longer be loaded.
             return {}
         protected = protected_runs(self.experiments)
@@ -173,6 +178,7 @@ class Retention:
                     not state["plan"].get("quality_policy")
                     or trial.get("quality_guard", {}).get("status")
                     in {"passed", "rejected"}
+                    or bool(trial.get("checkpoint_evaluations"))
                 )
             )
         }
@@ -186,6 +192,11 @@ class Retention:
         payload = {
             "campaign_id": state["campaign_id"],
             "selected_run_id": state["selected_run_id"],
+            **(
+                {"selected_checkpoint_step": state["selected_checkpoint_step"]}
+                if "selected_checkpoint_step" in state
+                else {}
+            ),
             "files": files,
             "bytes": sum(file["size_bytes"] for file in files),
         }
@@ -232,6 +243,8 @@ class Retention:
             or fingerprint({k: v for k, v in plan.items() if k != "plan_sha256"})
             != plan_sha256
             or plan["selected_run_id"] != state["selected_run_id"]
+            or plan.get("selected_checkpoint_step")
+            != state.get("selected_checkpoint_step")
         ):
             raise ValueError("campaign_retention_plan_changed")
         eligible = self._eligible(state)

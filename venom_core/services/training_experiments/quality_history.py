@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from .checkpoint_evaluation import RESULT_SEAL, step_directory
 from .quality import QualityStore, analyze_quality
 from .quality_native import HISTORY_PREFIX, get_record
 from .service import ExperimentService
@@ -18,13 +19,25 @@ def list_records(experiments: ExperimentService) -> dict:
             sealed = experiments.run_dir(run_id) / "result-seal.json"
             if state["profile_id"] == "historical" or not sealed.is_file():
                 continue
-            records.append(
+            directory = experiments.run_dir(run_id)
+            steps = state.get("checkpoint_steps")
+            ids = (
+                [
+                    f"checkpoint:{run_id}:{step}"
+                    for step in steps
+                    if (step_directory(directory, step) / RESULT_SEAL).is_file()
+                ]
+                if steps is not None
+                else [run_id]
+            )
+            records.extend(
                 {
-                    "record_id": run_id,
+                    "record_id": record_id,
                     "split": "dev",
                     "outcome": None,
-                    "source": {"identity": run_id},
+                    "source": {"identity": record_id},
                 }
+                for record_id in ids
             )
         except (OSError, ValueError, KeyError, TypeError):
             continue

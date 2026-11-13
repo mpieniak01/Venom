@@ -64,6 +64,17 @@ def execute(args: argparse.Namespace):
         payload = (
             rows(args.file) if args.file.suffix == ".jsonl" else read_json(args.file)
         )
+        if isinstance(payload, dict):
+            if (
+                payload.keys() != {"checkpoint_step", "judgments"}
+                or type(payload["checkpoint_step"]) is not int
+            ):
+                raise ValueError("experiment_checkpoint_review_changed")
+            return service.submit(
+                args.run_id,
+                payload["judgments"],
+                checkpoint_step=payload["checkpoint_step"],
+            )
         return service.submit(args.run_id, payload)
     return getattr(service, args.command)(args.run_id)
 

@@ -121,6 +121,25 @@ function readOptunaPlan(data: FormData): Pick<CampaignRequest, "variants" | "str
   return { strategy: "optuna", variants: [], search_space: searchSpace, sampler_seed: seed };
 }
 
+function readCheckpointSteps(data: FormData) {
+  const raw = data.get("checkpoint_steps");
+  if (typeof raw !== "string" || !raw.trim()) return undefined;
+  const parts = raw.split(",").map((part) => part.trim());
+  const steps = parts.map(Number);
+  if (steps.length > 4 || parts.some((part) => !/^[1-9]\d*$/.test(part))
+    || steps.some((step, index) => !Number.isSafeInteger(step) || (index > 0 && step <= steps[index - 1]))) {
+    throw new Error("expected up to four strictly increasing checkpoint steps");
+  }
+  return steps;
+}
+
+function readFixedPlan(data: FormData, rows: number[], draft: boolean, adapters: ExperimentInitialAdapter[]) {
+  return {
+    variants: rows.map((row) => fixedVariant(data, row, draft, adapters)),
+    checkpoint_steps: readCheckpointSteps(data),
+  };
+}
+
 function readPlan(
   data: FormData, profileId: string, rows: number[], strategy: CampaignStrategy, adapters: ExperimentInitialAdapter[],
   draft?: QualityCampaignDraft,
@@ -135,7 +154,7 @@ function readPlan(
     profile_id: profileId,
     ...(strategy === "optuna"
       ? readOptunaPlan(data)
-      : { variants: rows.map((row) => fixedVariant(data, row, Boolean(draft), adapters)) }),
+      : readFixedPlan(data, rows, Boolean(draft), adapters)),
     ...(qualityPolicy ? { quality_policy: qualityPolicy } : {}),
     budget: {
       max_trials: numberField(data, "max_trials"),
@@ -286,6 +305,12 @@ export function CampaignForm({ profiles, adapters, adaptersFailed, disabled, opt
           onClick={() => setRows((current) => [...current, Math.max(current.at(-1) ?? 0, (draft?.variants.length ?? 1) - 1) + 1])}>
           {t("academy.campaigns.addVariant")}
         </Button>
+        <div className="space-y-1 sm:max-w-xs">
+          <Label htmlFor="campaign-checkpoint-steps">{t("academy.campaigns.checkpoints.plan")}</Label>
+          <Input id="campaign-checkpoint-steps" name="checkpoint_steps" maxLength={64} disabled={disabled}
+            aria-describedby="campaign-checkpoint-hint" />
+          <p id="campaign-checkpoint-hint" className="text-sm text-hint">{t("academy.campaigns.checkpoints.hint")}</p>
+        </div>
       </fieldset>
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="space-y-1">

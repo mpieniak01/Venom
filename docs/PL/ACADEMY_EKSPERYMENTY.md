@@ -115,6 +115,28 @@ python -m scripts.academy.campaigns --root "$experiment_root" report polski-czat
 `stop` zatrzymuje kampanię. `resume` podejmuje ją z zachowanym stanem oraz pozostałym budżetem. [Kontrakt kampanii](../../venom_core/services/training_experiments/campaign_schema.py) · [CLI kampanii](../../scripts/academy/campaigns.py)
 
 
+## Ocena kilku checkpointów z jednej próby
+
+W kampanii na stałej liście wypełnij **Kroki oceny checkpointów** albo dodaj do manifestu pole, np. `"checkpoint_steps": [7, 14, 21, 28]`. Podaj od jednego do czterech różnych, rosnących kroków. Każdy musi odpowiadać zapisowi wszystkich receptur w planie. Ostatni krok receptury jest zapisywany także przy niepełnym interwale `save_every`. Zapisany plan wiąże listę kroków i protokół oceny z sumą kontrolną.
+
+Wykonawca trenuje raz na wariant. Następnie na wspólnym roboczym dev generuje odpowiedzi bazy raz i po jednej odpowiedzi z każdego checkpointu. Przerwanie oceny pozwala wznowić brakujące generacje z zachowaniem zweryfikowanych odpowiedzi. W ręcznej ocenie Academy otwiera kolejno anonimowe pakiety A/B. Zachowaj jednakowy werdykt dla tej samej odpowiedzi bazy.
+
+Pobierz pakiet i zapisz jego `checkpoint_step` razem z kompletem ocen w pliku JSON. W panelu wybierz plik dla bieżącego kroku albo użyj polecenia `judgments RUN_ID judgments.json` z CLI eksperymentów.
+
+```json
+{
+  "checkpoint_step": 7,
+  "judgments": [
+    {"record_id":"dev-01","label":"A","criteria":{"treść":true,"format":false},"polish_ok":true,"natural_ok":true,"critical_error":false,"reason":"Zachowuje fakty, pomija format."}
+  ]
+}
+```
+
+Raport pokazuje wyniki osobno dla każdej pary przebieg i krok. Wybór wymaga spełnienia progów kampanii oraz jej opcjonalnych kryteriów względem referencji i chronionych przypadków. Wynik może wskazać wcześniejszy checkpoint albo brak kandydata. Status `succeeded` oznacza zakończenie procedury. Dla eksperymentów z otwartymi polskimi odpowiedziami jakość potwierdź ślepą oceną według właściwej rubryki oraz osobnym testem końcowym.
+
+Przy `discard_rejected` retencja chroni cały przebieg, w którym znajduje się wybrany checkpoint, i sprawdza dostępność jego wag przed usunięciem plików odrzuconych prób. Brak kandydata zachowuje pliki do analizy.
+
+
 ## Kampania Optuna
 
 Optuna jest opcjonalnym narzędziem uruchamianym przez kontroler kampanii. Utwórz środowisko CPU z Pythonem 3.12 i zainstaluj przypięte wersje.

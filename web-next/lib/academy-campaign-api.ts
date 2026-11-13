@@ -32,6 +32,7 @@ export interface CampaignRequest {
   strategy?: CampaignStrategy;
   search_space?: OptunaSearchSpace;
   sampler_seed?: number;
+  checkpoint_steps?: number[];
   budget: CampaignBudget;
   selection: CampaignSelection;
   retention: "keep_all" | "discard_rejected";
@@ -50,6 +51,15 @@ export interface CampaignPlan extends Omit<CampaignRequest, "variants"> {
   }[];
 }
 
+export interface CampaignCheckpointEvaluation {
+  step: number;
+  status: string;
+  usable_delta?: number;
+  critical_delta?: number;
+  quality_guard?: TrialQualityGuard | null;
+  result_sha256?: string;
+}
+
 export interface CampaignTrial {
   run_id: string;
   status: string;
@@ -59,6 +69,7 @@ export interface CampaignTrial {
   error?: string | null;
   resume_available?: boolean;
   quality_guard?: TrialQualityGuard | null;
+  checkpoint_evaluations?: CampaignCheckpointEvaluation[];
   recipe?: ExperimentRecipe | null;
   optuna_trial_number?: number | null;
   optuna_trial_state?: "WAITING" | "RUNNING" | "COMPLETE" | "PRUNED" | "FAIL" | null;
@@ -71,6 +82,7 @@ export interface Campaign {
   trial_index: number;
   trials: CampaignTrial[];
   selected_run_id?: string | null;
+  selected_checkpoint_step?: number | null;
   quality_policy_error?: string | null;
   elapsed_seconds: number;
   used_updates: number;

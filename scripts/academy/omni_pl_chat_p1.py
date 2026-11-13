@@ -91,8 +91,8 @@ def _resume_checkpoint(output: Path, step_limit: int) -> Path:
     if not sealed:
         raise ValueError("no sealed checkpoint is available")
     step, latest = max(sealed)
-    if step > step_limit:
-        raise ValueError("checkpoint exceeds the planned step budget")
+    if step >= step_limit:
+        raise ValueError("checkpoint has reached or exceeded the planned step budget")
     verify_checkpoint(latest)
     trainer_state = json.loads(
         (latest / "trainer_state.json").read_text(encoding="utf-8")
@@ -137,6 +137,87 @@ def _collate(rows: list[dict], pad_token: int) -> dict:
         )
         for name, pad in pad_values.items()
     }
+
+
+def _supervised_token_count(labels):
+    """Count causal-LM targets after the model's one-position label shift."""
+    return (labels[..., 1:] != IGNORE).sum()
+
+
+def _token_normalized_text_loss(outputs, labels, accumulated_tokens):
+    """Scale an Omni microbatch mean to its share of the accumulated tokens."""
+    text_loss = outputs.text_loss
+    if text_loss is None or outputs.audio_loss is not None:
+        raise ValueError("text-only training requires the Omni text loss")
+    count = _supervised_token_count(labels)
+    if int(count) <= 0 or accumulated_tokens is None or int(accumulated_tokens) <= 0:
+        raise ValueError("token-normalized training requires supervised tokens")
+    return (
+        text_loss * count.to(text_loss.device) / accumulated_tokens.to(text_loss.device)
+    )
+
+
+def _token_trainer_type(trainer_type):
+    class TokenNormalizedTrainer(trainer_type):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self.model_accepts_loss_kwargs = False
+            self.loss_is_scaled_for_ga = True
+
+        def _get_num_items_in_batch(self, batch_samples, device):
+            if self.args.world_size != 1 or self.args.n_gpu > 1:
+                raise RuntimeError("token-normalized Omni training requires one device")
+            total = sum(
+                (_supervised_token_count(batch["labels"]) for batch in batch_samples)
+            )
+            if int(total) <= 0:
+                raise ValueError("accumulated batch has no supervised tokens")
+            return total.to(device)
+
+        def compute_loss(
+            self, model, inputs, return_outputs=False, num_items_in_batch=None
+        ):
+            outputs = model(**inputs)
+            loss = _token_normalized_text_loss(
+                outputs, inputs["labels"], num_items_in_batch
+            )
+            return (loss, outputs) if return_outputs else loss
+
+    return TokenNormalizedTrainer
+
+
+def _module_inventory(model, selector):
+    groups = {
+        "q_proj": "attention",
+        "k_proj": "attention",
+        "v_proj": "attention",
+        "o_proj": "attention",
+        "in_proj": "convolution_projection",
+        "out_proj": "convolution_projection",
+        "w1": "mlp",
+        "w2": "mlp",
+        "w3": "mlp",
+    }
+    inventory = []
+    for name, module in model.named_modules():
+        if not selector.fullmatch(name):
+            continue
+        suffix = name.rsplit(".", 1)[-1]
+        weight = getattr(module, "weight", None)
+        if suffix not in groups or weight is None or not hasattr(weight, "numel"):
+            raise RuntimeError(f"unsupported matched language module: {name}")
+        inventory.append(
+            {
+                "name": name,
+                "group": groups[suffix],
+                "type": type(module).__name__,
+                "weight_shape": list(weight.shape),
+                "weight_parameters": weight.numel(),
+            }
+        )
+    if not inventory:
+        raise RuntimeError("no language modules match the LoRA recipe")
+    return sorted(inventory, key=lambda item: item["name"])
 
 
 def _prepare_inputs(
@@ -263,8 +344,12 @@ def run(mode: str) -> None:
     free, total = torch.cuda.mem_get_info()
     if free < 6500 * mib:
         raise RuntimeError(f"only {free // mib} MiB free on the GPU")
-    torch.cuda.set_per_process_memory_fraction(min(1.0, (free - 1000 * mib) / total))
+    allocator_limit_mib = free // mib - recipe["gpu_allocator_reserve_mib"]
+    torch.cuda.set_per_process_memory_fraction(
+        min(1.0, (free - recipe["gpu_allocator_reserve_mib"] * mib) / total)
+    )
     torch.cuda.reset_peak_memory_stats()
+    minimum_gpu_free_mib = free // mib
 
     targets = "|".join(recipe["target_modules"])
     profile = {
@@ -310,12 +395,15 @@ def run(mode: str) -> None:
     )
     backbone = import_module(type(base.model.language_model).__module__)
     base.config.use_cache = False
+    if recipe["gradient_checkpointing"]:
+        base.requires_grad_(False)
+        base.gradient_checkpointing_enable(
+            gradient_checkpointing_kwargs={"use_reentrant": False}
+        )
+        base.enable_input_require_grads()
     selector = re.compile(profile["target_modules"])
-    planned_modules = {
-        name for name, _ in base.named_modules() if selector.fullmatch(name)
-    }
-    if not planned_modules:
-        raise RuntimeError("no language modules match the LoRA recipe")
+    module_inventory = _module_inventory(base, selector)
+    planned_modules = {item["name"] for item in module_inventory}
     model = get_peft_model(
         base,
         LoraConfig(
@@ -327,15 +415,29 @@ def run(mode: str) -> None:
             target_modules=profile["target_modules"],
         ),
     )
-    adapted_modules = {
-        name for name, layer in base.named_modules() if isinstance(layer, LoraLayer)
+    adapted_layers = {
+        name: layer
+        for name, layer in base.named_modules()
+        if isinstance(layer, LoraLayer)
     }
-    if adapted_modules != planned_modules:
+    if adapted_layers.keys() != planned_modules:
         raise RuntimeError("adapted LoRA modules differ from the language recipe")
+    module_groups = {item["name"]: item["group"] for item in module_inventory}
+    adapted_groups = {
+        group: {"modules": 0, "trainable_parameters": 0}
+        for group in set(module_groups.values())
+    }
+    for name, layer in adapted_layers.items():
+        group = adapted_groups[module_groups[name]]
+        group["modules"] += 1
+        group["trainable_parameters"] += sum(
+            param.numel()
+            for param in layer.parameters(recurse=True)
+            if param.requires_grad
+        )
+    parameters = dict(model.named_parameters())
     trainable = {
-        name: param.numel()
-        for name, param in model.named_parameters()
-        if param.requires_grad
+        name: param.numel() for name, param in parameters.items() if param.requires_grad
     }
     if not trainable or any(
         ".language_model." not in name or ".lora_" not in name for name in trainable
@@ -350,8 +452,26 @@ def run(mode: str) -> None:
 
     class PilotCallback(TrainerCallback):
         def on_step_end(self, args, state, control, **kwargs):
-            if torch.cuda.mem_get_info()[0] < 600 * mib:
-                raise RuntimeError("stopped at the GPU headroom threshold")
+            nonlocal minimum_gpu_free_mib
+            free_now_mib = torch.cuda.mem_get_info()[0] // mib
+            minimum_gpu_free_mib = min(minimum_gpu_free_mib, free_now_mib)
+            if free_now_mib < recipe["gpu_step_min_free_mib"]:
+                _write_json(
+                    output / f"gpu-stop-{state.global_step}.json",
+                    {
+                        "step": state.global_step,
+                        "gpu_free_mib": free_now_mib,
+                        "gpu_step_min_free_mib": recipe["gpu_step_min_free_mib"],
+                        "peak_gpu_allocated_mib": torch.cuda.max_memory_allocated()
+                        / mib,
+                        "peak_gpu_reserved_mib": torch.cuda.max_memory_reserved() / mib,
+                    },
+                )
+                raise RuntimeError(
+                    "stopped at the GPU headroom threshold: "
+                    f"{free_now_mib} MiB free below "
+                    f"{recipe['gpu_step_min_free_mib']} MiB"
+                )
             if state.global_step == recipe["steps"]:
                 control.should_save = True
             if mode == "initial" and state.global_step == recipe["save_every"]:
@@ -383,13 +503,31 @@ def run(mode: str) -> None:
         disable_tqdm=True,
         remove_unused_columns=False,
     )
-    trainer = Trainer(
+    trainer_type = (
+        Trainer
+        if recipe["loss_mode"] == "model_default"
+        else _token_trainer_type(Trainer)
+    )
+    trainer = trainer_type(
         model=model,
         args=args,
         train_dataset=encoded,
         data_collator=lambda rows: _collate(rows, processor.tokenizer.pad_token_id),
         callbacks=[PilotCallback()],
     )
+    trainer.create_optimizer()
+    optimized_ids = {
+        id(parameter)
+        for group in trainer.optimizer.param_groups
+        for parameter in group["params"]
+    }
+    optimized_parameters = sorted(
+        name for name, parameter in parameters.items() if id(parameter) in optimized_ids
+    )
+    if optimized_ids != {
+        id(parameter) for parameter in parameters.values() if parameter.requires_grad
+    }:
+        raise RuntimeError("optimizer parameters differ from trainable adapter tensors")
     # A MagicMock would retain every CUDA tensor argument for the whole training.
     with patch.object(
         backbone, "can_use_lfm3_conv", new=lambda *_args, **_kwargs: False
@@ -417,14 +555,25 @@ def run(mode: str) -> None:
     receipt = {
         "mode": mode,
         "final_step": trainer.state.global_step,
-        "adapted_modules": sorted(adapted_modules),
+        "module_inventory": module_inventory,
+        "adapted_modules": sorted(adapted_layers),
+        "adapted_groups": adapted_groups,
         "trainable": trainable,
         "trainable_count": sum(trainable.values()),
+        "frozen_parameter_count": sum(
+            parameter.numel()
+            for parameter in parameters.values()
+            if not parameter.requires_grad
+        ),
+        "optimizer_parameters": optimized_parameters,
         "changed_tensors": changed,
         **observations,
         "step_logs": step_logs,
         "checkpoint": f"checkpoint-{expected_step}",
         "initial_gpu_free_mib": free // mib,
+        "gpu_total_mib": total // mib,
+        "gpu_allocator_limit_mib": allocator_limit_mib,
+        "minimum_gpu_free_mib_at_step": minimum_gpu_free_mib,
         "peak_gpu_allocated_mib": round(torch.cuda.max_memory_allocated() / mib, 1),
         "peak_gpu_reserved_mib": round(torch.cuda.max_memory_reserved() / mib, 1),
         "peak_rss_mib": round(

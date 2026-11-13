@@ -1,7 +1,9 @@
 """Offline contracts for the isolated, configurable Omni worker."""
 
 import json
+import re
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -14,7 +16,9 @@ from scripts.academy.omni_pl_chat_evaluate import (
 from scripts.academy.omni_pl_chat_p1 import (
     CHECKPOINT_FILES,
     _checkpoint_hashes,
+    _module_inventory,
     _resume_checkpoint,
+    _token_trainer_type,
     _write_json,
 )
 from scripts.academy.omni_pl_chat_recipe import (
@@ -42,6 +46,10 @@ def test_recipe_overrides_keep_defaults_and_canonicalize_targets(tmp_path):
     recipe = load_recipe(path)
     assert recipe["rank"] == 8
     assert recipe["alpha"] == 8
+    assert recipe["loss_mode"] == "model_default"
+    assert recipe["gradient_checkpointing"] is False
+    assert recipe["gpu_allocator_reserve_mib"] == 1000
+    assert recipe["gpu_step_min_free_mib"] == 600
     assert recipe["target_modules"] == ["q_proj", "v_proj"]
     assert recipe["steps"] == 5
     assert recipe["gradient_accumulation_steps"] == 4
@@ -56,6 +64,100 @@ def test_wider_language_targets_canonicalize_without_recipe_changes():
     assert wide == control
 
 
+def test_gradient_checkpointing_is_explicit_and_boolean():
+    enabled = validate_recipe({"gradient_checkpointing": True})
+    assert enabled["gradient_checkpointing"] is True
+    with pytest.raises(ValueError, match="gradient_checkpointing must be a boolean"):
+        validate_recipe({"gradient_checkpointing": "true"})
+
+
+def test_gpu_headroom_is_bounded_and_step_limit_stays_below_reserve():
+    widened = validate_recipe(
+        {"gpu_allocator_reserve_mib": 768, "gpu_step_min_free_mib": 384}
+    )
+    assert (widened["gpu_allocator_reserve_mib"], widened["gpu_step_min_free_mib"]) == (
+        768,
+        384,
+    )
+    with pytest.raises(ValueError, match="gpu_allocator_reserve_mib"):
+        validate_recipe({"gpu_allocator_reserve_mib": 0})
+    with pytest.raises(ValueError, match="GPU step minimum"):
+        validate_recipe(
+            {"gpu_allocator_reserve_mib": 768, "gpu_step_min_free_mib": 768}
+        )
+
+
+def test_token_loss_accumulation_matches_one_pooled_batch():
+    import torch
+    from torch import nn
+
+    from scripts.academy.omni_pl_chat_p1 import _collate
+
+    class TinyOmni(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.weight = nn.Parameter(torch.tensor(0.25))
+
+        def forward(self, input_ids, attention_mask, labels):
+            prediction = self.weight * input_ids[:, :-1].float()
+            target = labels[:, 1:].clamp_min(0).float()
+            mask = labels[:, 1:] != -100
+            text_loss = ((prediction - target).square() * mask).sum() / mask.sum()
+            return SimpleNamespace(loss=text_loss, text_loss=text_loss, audio_loss=None)
+
+    rows = [
+        {"input_ids": [0, 2, 3], "labels": [-100, 1, 2], "attention_mask": [1] * 3},
+        {
+            "input_ids": [0, 4, 5, 6],
+            "labels": [-100, 3, 4, 5],
+            "attention_mask": [1] * 4,
+        },
+    ]
+    batches = [_collate([row], 0) for row in rows]
+    model = TinyOmni()
+
+    class TrainerBase:
+        def __init__(self):
+            self.args = SimpleNamespace(world_size=1, n_gpu=0)
+
+    trainer = _token_trainer_type(TrainerBase)()
+    total = trainer._get_num_items_in_batch(batches, torch.device("cpu"))
+    assert int(total) == 5
+    assert trainer.loss_is_scaled_for_ga
+    for batch in batches:
+        trainer.compute_loss(model, batch, num_items_in_batch=total).backward()
+    actual_gradient = model.weight.grad.detach().clone()
+
+    reference_model = TinyOmni()
+    pooled = _collate(rows, 0)
+    reference_model(**pooled).loss.backward()
+    torch.testing.assert_close(actual_gradient.cpu(), reference_model.weight.grad)
+
+
+def test_language_inventory_excludes_other_modalities():
+    from torch import nn
+
+    model = nn.Module()
+    model.model = nn.Module()
+    model.model.language_model = nn.Module()
+    model.model.language_model.layers = nn.ModuleList([nn.Module()])
+    model.model.language_model.layers[0].q_proj = nn.Linear(2, 3)
+    model.model.language_model.layers[0].w1 = nn.Linear(3, 4)
+    model.model.vision_model = nn.Module()
+    model.model.vision_model.q_proj = nn.Linear(2, 3)
+
+    inventory = _module_inventory(
+        model, re.compile(r"model\.language_model\..*\.(q_proj|w1)")
+    )
+    assert [
+        (item["name"], item["group"], item["weight_shape"]) for item in inventory
+    ] == [
+        ("model.language_model.layers.0.q_proj", "attention", [3, 2]),
+        ("model.language_model.layers.0.w1", "mlp", [4, 3]),
+    ]
+    assert sum(item["weight_parameters"] for item in inventory) == 18
+
+
 @pytest.mark.parametrize(
     "recipe",
     [
@@ -63,6 +165,7 @@ def test_wider_language_targets_canonicalize_without_recipe_changes():
         {"target_modules": [".*"]},
         {"target_modules": P13_LANGUAGE_SELECTOR},
         {"target_modules": ["q_proj", "q_proj"]},
+        {"loss_mode": "unknown"},
         {"rank": True},
         {"rank": 65},
         {"learning_rate": float("nan")},
@@ -100,6 +203,8 @@ def test_resume_uses_latest_sealed_step_and_rejects_tampering(tmp_path):
     assert _resume_checkpoint(tmp_path, 8) == current
     with pytest.raises(ValueError, match="step budget"):
         _resume_checkpoint(tmp_path, 3)
+    with pytest.raises(ValueError, match="step budget"):
+        _resume_checkpoint(tmp_path, 4)
     (current / "optimizer.pt").write_bytes(b"changed")
     with pytest.raises(ValueError, match="saved receipt"):
         _resume_checkpoint(tmp_path, 8)

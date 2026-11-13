@@ -1,0 +1,7 @@
+{
+  "version": "0.13.7",
+  "url": "https://files.pythonhosted.org/packages/b9/93/0e053a2ca4523ee9825ccbedeb7121470d0a188933f11688b6d90d7f5c08/uv-0.13.7-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl",
+  "wheel_sha256": "2c9bdc4a872b60a93c5f26c0791089ea11585a4f9d3b3c017d78eb8487505e25",
+  "binary_sha256": "4b5e59bc557ff2cd70934beb59d0eaa92820702853d49f0066b50aa11a8f0c52",
+  "member": "uv-0.13.7.data/scripts/uv"
+}

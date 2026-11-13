@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+from collections.abc import Coroutine
 from contextlib import nullcontext
 from typing import Any
 from urllib.parse import urlsplit
@@ -30,6 +31,7 @@ from venom_core.utils.logger import get_logger
 logger = get_logger(__name__)
 
 _OLLAMA_UNLOAD_TIMEOUT = 5.0
+TRAINING_CLEANUP_HEADER = "X-Venom-Training-Lease"
 
 _LLM_RECOVERY_KINDS = frozenset(
     {
@@ -46,7 +48,9 @@ _LLM_RECOVERY_KINDS = frozenset(
 _LOCAL_RUNTIMES = frozenset({"ollama", "multi_runtime", "vllm", "onnx"})
 
 
-async def _listening(endpoint: str) -> bool:
+async def _listening(endpoint: str | None) -> bool:
+    if not endpoint:
+        return False
     parsed = urlsplit(endpoint)
     if parsed.hostname not in {"localhost", "127.0.0.1", "::1"}:
         raise ValueError("runtime_release_local_only")
@@ -137,7 +141,11 @@ async def _release_all_models(
     kind = "cleanup" if include_registered else "llm_cleanup"
     with get_runtime_admission().operation(kind=kind, mutation=True, _cleanup=True):
         return await _release_models(
-            controller, failures, runtime_ids, include_registered=include_registered
+            controller,
+            failures,
+            runtime_ids,
+            include_registered=include_registered,
+            for_training=False,
         )
 
 
@@ -147,6 +155,7 @@ async def _release_models(
     runtime_ids: set[str] | None,
     *,
     include_registered: bool,
+    for_training: bool,
 ) -> dict[str, Any]:
     """Release only under a host barrier; retain evidence on every partial failure."""
     results = []
@@ -190,12 +199,19 @@ async def _release_models(
         include_registered or bool(results)
     )
     admission = get_runtime_admission()
-    if not _recover_uncertainty(admission, verified, include_registered):
+    if not (
+        verified
+        if for_training
+        else _recover_uncertainty(admission, verified, include_registered)
+    ):
         raise HTTPException(
             status_code=502,
             detail={"code": "runtime_release_failed", "runtimes": results},
         )
-    return {"status": "success", "released": True, "runtimes": results}
+    result = {"status": "success", "released": True, "runtimes": results}
+    if for_training:
+        result["training_lease_verified"] = True
+    return result
 
 
 def memory_snapshot() -> dict[str, Any]:
@@ -233,14 +249,10 @@ def memory_snapshot() -> dict[str, Any]:
 
 
 async def _settle_cleanup(
-    controller, failures, runtime_ids, *, include_registered=True
-):
-    """Caller cancellation cannot reopen admission while native unload is running."""
-    task = asyncio.create_task(
-        _release_all_models(
-            controller, failures, runtime_ids, include_registered=include_registered
-        )
-    )
+    cleanup: Coroutine[Any, Any, dict[str, Any]],
+) -> dict[str, Any]:
+    """Caller cancellation cannot reopen admission while cleanup is running."""
+    task = asyncio.create_task(cleanup)
     interrupted = False
     while True:
         try:
@@ -260,8 +272,35 @@ async def release_all_runtime_models(
     *,
     runtime_ids: set[str] | None = None,
     include_registered: bool = True,
+    training_capability: str | None = None,
 ) -> dict[str, Any]:
     """Serialize LLM cleanup; pause in-process owners only for global release."""
+    if training_capability is None:
+        return await _release_runtime_models(
+            controller, runtime_ids, include_registered=include_registered
+        )
+
+    async def release_for_training() -> dict[str, Any]:
+        # Record cleanup before draining any work, so a timed-out client cannot
+        # release the lease while the API still owns the cleanup.
+        with get_runtime_admission().training_cleanup(training_capability):
+            return await _release_runtime_models(
+                controller,
+                runtime_ids,
+                include_registered=include_registered,
+                for_training=True,
+            )
+
+    return await _settle_cleanup(release_for_training())
+
+
+async def _release_runtime_models(
+    controller: Any,
+    runtime_ids: set[str] | None,
+    *,
+    include_registered: bool,
+    for_training: bool = False,
+) -> dict[str, Any]:
     barrier = release_barrier() if include_registered else nullcontext()
     with barrier:
         await cancel_runtime_switch_for_release()
@@ -289,9 +328,23 @@ async def release_all_runtime_models(
             failures = await prepare_registered_models() if include_registered else []
             if include_registered:
                 await asyncio.to_thread(wait_for_model_work)
-            result = await _settle_cleanup(
-                controller, failures, runtime_ids, include_registered=include_registered
-            )
+            if for_training:
+                result = await _release_models(
+                    controller,
+                    failures,
+                    runtime_ids,
+                    include_registered=include_registered,
+                    for_training=True,
+                )
+            else:
+                result = await _settle_cleanup(
+                    _release_all_models(
+                        controller,
+                        failures,
+                        runtime_ids,
+                        include_registered=include_registered,
+                    )
+                )
             result["memory_before"] = before
             result["memory_after"] = await asyncio.to_thread(memory_snapshot)
             return result

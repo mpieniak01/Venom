@@ -1685,7 +1685,10 @@ async def _shutdown_runtime_components() -> None:
 async def lifespan(app: FastAPI):
     """Zarządzanie cyklem życia aplikacji."""
     global startup_audio_task, startup_llm_task
+    from venom_core.services.runtime_admission import get_runtime_admission
+
     validate_environment_policy()
+    get_runtime_admission().claim_host()
     await _initialize_observability()
     _initialize_model_services()
     _initialize_calendar_skill()

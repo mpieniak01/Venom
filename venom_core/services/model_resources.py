@@ -13,6 +13,7 @@ from typing import Any
 
 from fastapi import HTTPException
 
+from venom_core.services.runtime_admission import get_runtime_admission
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -46,6 +47,8 @@ def _model_work():
             raise HTTPException(
                 status_code=409, detail={"code": "model_resources_releasing"}
             )
+        if not depth:
+            get_runtime_admission().assert_model_loading_available()
         _LOCAL.depth = depth + 1
         _ACTIVE += 1
     try:
@@ -69,6 +72,7 @@ def model_operation(function):
                     raise HTTPException(
                         status_code=409, detail={"code": "model_resources_releasing"}
                     )
+                get_runtime_admission().assert_model_loading_available()
                 _ACTIVE += 1
             try:
                 return await function(*args, **kwargs)

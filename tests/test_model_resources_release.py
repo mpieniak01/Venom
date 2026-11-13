@@ -207,13 +207,16 @@ async def test_release_endpoint_delegates_to_global_coordinator(world, monkeypat
 
     monkeypatch.setattr(system_llm, "_installed_local_servers", lambda: {"ollama"})
 
-    async def release(value, *, runtime_ids):
+    async def release(value, *, runtime_ids, training_capability):
+        assert training_capability is None
         assert runtime_ids == {"ollama"}
         assert value is controller
         return {"released": True}
 
     monkeypatch.setattr(service, "release_all_runtime_models", release)
-    assert await system_llm.release_llm_runtime() == {"released": True}
+    assert await system_llm.release_llm_runtime(SimpleNamespace(headers={})) == {
+        "released": True
+    }
 
 
 @pytest.mark.asyncio
@@ -1050,4 +1053,83 @@ async def test_operator_release_interrupts_pending_model_activation(world, monke
         assert world.snapshot()["status"] == "available"
     finally:
         task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+
+
+@pytest.mark.asyncio
+async def test_training_release_does_not_reopen_inference(world):
+    class Owner:
+        def release(self):
+            return True
+
+        @resources.model_operation
+        def load(self):
+            return "loaded"
+
+    owner = Owner()
+    resources.register_model_resource(owner, "vision", "release")
+    controller = SimpleNamespace(list_servers=lambda: [])
+    lease = world.acquire(
+        owner=admission_module.ACADEMY_TRAINING_OWNER,
+        run_id="wide-run",
+        engine="omni-training",
+        model="omni",
+    )
+    with pytest.raises(RuntimeAdmissionError, match="runtime_lease_invalid"):
+        await service.release_all_runtime_models(
+            controller, training_capability="a" * 32
+        )
+    assert (
+        await service.release_all_runtime_models(
+            controller, training_capability=lease.training_cleanup_capability()
+        )
+    )["released"]
+    with pytest.raises(RuntimeAdmissionError):
+        owner.load()
+    with pytest.raises(RuntimeAdmissionError):
+        with world.operation(kind="generation"):
+            pass
+    assert lease.release()
+    assert owner.load() == "loaded"
+
+
+@pytest.mark.asyncio
+async def test_timed_out_training_release_waits_for_cleanup_completion(
+    world, monkeypatch
+):
+    started = asyncio.Event()
+    proceed = asyncio.Event()
+    lease = world.acquire(
+        owner=admission_module.ACADEMY_TRAINING_OWNER,
+        run_id="wide-run",
+        engine="omni-training",
+        model="omni",
+    )
+    controller = SimpleNamespace(list_servers=lambda: [])
+
+    async def prepare():
+        started.set()
+        await proceed.wait()
+        return []
+
+    monkeypatch.setattr(service, "prepare_registered_models", prepare)
+    task = asyncio.create_task(
+        service.release_all_runtime_models(
+            controller, training_capability=lease.training_cleanup_capability()
+        )
+    )
+    try:
+        await asyncio.wait_for(started.wait(), 2)
+        task.cancel()
+        assert not lease.release()
+        lease.defer_training_release()
+        with pytest.raises(RuntimeAdmissionError):
+            with world.operation(kind="generation"):
+                pass
+        proceed.set()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        assert world.snapshot()["status"] == "available"
+    finally:
+        proceed.set()
         await asyncio.gather(task, return_exceptions=True)

@@ -44,6 +44,10 @@ Plik **dev** zawiera rekordy `split: "dev"` z `record_id`, `group_id`, `language
 
 ## Uruchomienie i wznowienie
 
+Academy wymaga wspólnej dzierżawy GPU. Włącz ustawienie `RUNTIME_ADMISSION_ENABLED=true` przed startem hosta. CLI i API muszą używać tego samego pliku środowiska oraz tej samej ścieżki `MEMORY_ROOT`. Przy pracy z osobnego checkoutu ustaw `ENV_FILE` i bezwzględną ścieżkę do wspólnego katalogu pamięci.
+
+Przed uruchomieniem modelu Academy weryfikuje zwolnienie lokalnych modeli. Przy działającym Full lub Studio zwalnianie obsługuje ich backend, który musi zawierać tę samą obsługę dzierżawy. Błąd zwolnienia przerywa zadanie przed ładowaniem wag. Dzierżawa pozostaje aktywna do wyjścia procesów treningu i oceny. Zapis zwolnienia i pomiar końcowy znajdują się w plikach `gpu-release-*.json` i `gpu-after-*.json` katalogu przebiegu.
+
 Z katalogu repozytorium uruchom poniższe polecenia. Dopasuj ścieżkę `experiment_root` do konfiguracji Academy.
 
 ```bash
@@ -178,3 +182,9 @@ Formularz kampanii może wiązać referencję, chronione przypadki, progi różn
 W historii jakości porównaj `history:p14-02` z `history:p13-on-p14-dev` i przenieś rekomendację do formularza. Wybierz profil z przypiętymi danymi P14 i środowiskiem wskazanym w szkicu. Academy wstępnie uzupełnia limit tokenów dla obu wariantów. Zapisz plan, sprawdź budżet i użyj osobnego przycisku startu.
 
 Wariant kontrolny używa `q_proj` i `v_proj`. Wariant porównawczy obejmuje również `k_proj`, `o_proj`, `in_proj`, `out_proj`, `w1`, `w2` i `w3`, jeśli występują w części językowej przypiętego modelu. Academy rozpoznaje zapis tego zakresu w historycznej recepturze P13 i wystawia listę nazw do planu. Wykonawca sprawdza rzeczywiste warstwy adaptera i zapisuje ich listę w raporcie treningu. Porównanie zachowuje dane, sposób obliczania straty i pozostałe parametry P14.
+
+Zapisany rekord jakości P13 zawiera wyniki, ale może nie zawierać receptury ani sumy danych treningowych. W takim przypadku Academy nie tworzy z niego automatycznie porównywalnej próby. Przygotuj dwa świeże warianty od tej samej przypiętej bazy i na tym samym zbiorze; historyczne P13 służy do kontroli jakości, nie do przypisywania przyczyny różnicy. Nie dopisuj do zapieczętowanego rekordu parametrów odtworzonych z pamięci.
+
+Receptura tekstowego Omni ma jawne `loss_mode`: `model_default` zachowuje dotychczasowe uśrednianie straty modelu dla mikroserii, a `supervised_token` waży każdą mikroserię udziałem nadzorowanych tokenów w całym kroku akumulacji. Oba ramiona próby zakresu LoRA muszą mieć ten sam tryb. Wykonawca raportuje nazwy, kształty i grupy dopasowanych modułów, liczbę parametrów adaptera oraz parametry optymalizatora. Zmianę `loss_mode` testuj osobno od zmiany modułów. Opcjonalne `gradient_checkpointing` zmniejsza szczyt zużycia pamięci GPU kosztem czasu treningu; domyślnie jest wyłączone. Przy porównaniu ramion ustaw tę samą wartość i zapisz ją w profilu.
+
+Budżet GPU ma dwa osobne parametry receptury w MiB. `gpu_allocator_reserve_mib` ogranicza udział pamięci przydzielany alokatorowi PyTorch według wolnej pamięci przy starcie; `gpu_step_min_free_mib` zatrzymuje próbę, jeśli wolna pamięć po kroku spadnie poniżej minimum. Domyślne wartości to 1000 i 600 MiB. Zapisz inne wartości jawnie w profilu i porównuj rzeczywisty zapas z potwierdzenia treningu (`gpu_total_mib`, `initial_gpu_free_mib`, `gpu_allocator_limit_mib`, `minimum_gpu_free_mib_at_step`). Pole `min_free_bytes` profilu kampanii dotyczy miejsca na dysku, nie VRAM. Większy budżet pamięci nie zmienia sam w sobie receptury uczenia ani jakości odpowiedzi.

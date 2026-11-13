@@ -303,7 +303,7 @@ describe("Campaign quality feedback", () => {
     evidence_gaps: ["quality_critical_unknown"],
   };
   const reference = { record_id: "history:p13-reference", split: "dev", source: { identity: "fixture" } };
-  const trial = { rank: 8, steps: 128, max_tokens: 1024, microbatch: 1, gradient_accumulation_steps: 8 };
+  const trial = { rank: 8, steps: 128, max_tokens: 1024, microbatch: 1, gradient_accumulation_steps: 8, loss_mode: "supervised_token", gradient_checkpointing: true, gpu_allocator_reserve_mib: 1000, gpu_step_min_free_mib: 600 };
   const control = { ...trial, target_modules: ["q_proj", "v_proj"], loss_mode: "historic" };
   const isolated = { ...control, target_modules: ["q_proj", "k_proj", "v_proj", "o_proj", "in_proj", "out_proj", "w1", "w2", "w3"] };
   const sourceControls = { train_sha256: "d".repeat(64), runtime: { dtype: "bf16" } };

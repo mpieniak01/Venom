@@ -11,6 +11,10 @@ DEFAULT_RECIPE: dict[str, Any] = {
     "alpha": 8,
     "dropout": 0.0,
     "target_modules": ["q_proj", "v_proj"],
+    "loss_mode": "model_default",
+    "gradient_checkpointing": False,
+    "gpu_allocator_reserve_mib": 1000,
+    "gpu_step_min_free_mib": 600,
     "steps": 8,
     "save_every": 2,
     "warmup_steps": 1,
@@ -31,6 +35,8 @@ _INTEGER_LIMITS = {
     "microbatch": (1, 4),
     "gradient_accumulation_steps": (1, 32),
     "seed": (0, 2**32 - 1),
+    "gpu_allocator_reserve_mib": (512, 4096),
+    "gpu_step_min_free_mib": (256, 2048),
 }
 LANGUAGE_TARGET_MODULES = (
     "q_proj",
@@ -76,6 +82,8 @@ def validate_recipe(value: object) -> dict[str, Any]:
         or recipe["warmup_steps"] >= recipe["steps"]
     ):
         raise ValueError("save interval and warmup must fit the optimizer step budget")
+    if recipe["gpu_step_min_free_mib"] >= recipe["gpu_allocator_reserve_mib"]:
+        raise ValueError("GPU step minimum must be below the allocator reserve")
     for key, lower, upper in (
         ("dropout", 0.0, 0.5),
         ("learning_rate", 1e-7, 0.01),
@@ -89,6 +97,10 @@ def validate_recipe(value: object) -> dict[str, Any]:
             raise ValueError(f"{key} must be a finite number in [{lower}, {upper}]")
         recipe[key] = float(item)
     recipe["target_modules"] = validate_target_modules(recipe["target_modules"])
+    if type(recipe["gradient_checkpointing"]) is not bool:
+        raise ValueError("gradient_checkpointing must be a boolean")
+    if recipe["loss_mode"] not in ("model_default", "supervised_token"):
+        raise ValueError("unsupported loss_mode")
     if recipe["lr_scheduler_type"] not in ("linear", "cosine", "constant"):
         raise ValueError("unsupported lr_scheduler_type")
     if "train_sha256" in recipe:

@@ -13,9 +13,10 @@ import { OPTUNA_PARAMETERS, OptunaFields } from "./campaign-optuna";
 
 const MIB = 1024 ** 2;
 const DRAFT_RECIPE_FIELDS = new Set([
-  "rank", "alpha", "dropout", "target_modules", "steps", "save_every", "warmup_steps", "learning_rate",
+  "rank", "alpha", "dropout", "target_modules", "loss_mode", "steps", "save_every", "warmup_steps", "learning_rate",
   "max_tokens", "microbatch", "gradient_accumulation_steps", "seed", "lr_scheduler_type",
   "train_sha256", "max_supervised_tokens",
+  "gradient_checkpointing", "gpu_allocator_reserve_mib", "gpu_step_min_free_mib",
 ]);
 const LANGUAGE_TARGET_MODULES = new Set([
   "q_proj", "k_proj", "v_proj", "o_proj", "in_proj", "out_proj", "w1", "w2", "w3",
@@ -27,6 +28,10 @@ function unsupportedDraftFields(recipe: Record<string, unknown>) {
   if (modules !== undefined && (!Array.isArray(modules)
     || !modules.length || modules.some((item) => typeof item !== "string" || !LANGUAGE_TARGET_MODULES.has(item)))) {
     fields.push("target_modules");
+  }
+  if (recipe.loss_mode !== undefined
+    && recipe.loss_mode !== "model_default" && recipe.loss_mode !== "supervised_token") {
+    fields.push("loss_mode");
   }
   return fields;
 }

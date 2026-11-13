@@ -5404,6 +5404,20 @@
       "rationale": "Complete anonymous rubric coverage with separate semantic and format outcomes."
     },
     {
+      "path": "tests/test_omni_remote_session.py",
+      "domain": "runtime",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Verify the bounded Omni remote session inputs, frozen hashes and exclusion of reserved data."
+    },
+    {
       "path": "tests/test_onnx_gpu_bridge.py",
       "domain": "runtime",
       "test_type": "gate",

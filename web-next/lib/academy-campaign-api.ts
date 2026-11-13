@@ -1,5 +1,5 @@
 import { apiFetch } from "./api-client";
-import type { ExperimentRecipe } from "./academy-experiments-api";
+import type { ExperimentInitialAdapter, ExperimentRecipe } from "./academy-experiments-api";
 import type { CampaignQualityPolicy, TrialQualityGuard } from "./academy-quality-api";
 
 const CAMPAIGNS = "/api/v1/academy/experiments/campaigns";
@@ -40,7 +40,12 @@ export interface CampaignRequest {
 
 export interface CampaignPlan extends Omit<CampaignRequest, "variants"> {
   plan_sha256: string;
-  variants: { run_id: string; recipe: ExperimentRecipe; workload: { updates: number; tokens: number } }[];
+  variants: {
+    run_id: string;
+    recipe: ExperimentRecipe;
+    initial_adapter?: ExperimentInitialAdapter | null;
+    workload: { updates: number; tokens: number };
+  }[];
 }
 
 export interface CampaignTrial {

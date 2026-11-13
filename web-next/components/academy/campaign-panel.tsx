@@ -3,7 +3,12 @@
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { ApiError } from "@/lib/api-client";
-import { listExperimentProfiles, type ExperimentProfile } from "@/lib/academy-experiments-api";
+import {
+  listExperimentProfiles,
+  listInitialAdapters,
+  type ExperimentInitialAdapter,
+  type ExperimentProfile,
+} from "@/lib/academy-experiments-api";
 import {
   listCampaigns,
   planCampaign,
@@ -36,6 +41,8 @@ export function CampaignPanel({
 }) {
   const t = useTranslation();
   const [profiles, setProfiles] = useState<ExperimentProfile[] | null>(null);
+  const [adapters, setAdapters] = useState<ExperimentInitialAdapter[]>([]);
+  const [adaptersFailed, setAdaptersFailed] = useState(false);
   const [campaigns, setCampaigns] = useState<Campaign[] | null>(null);
   const [profilesFailed, setProfilesFailed] = useState(false);
   const [campaignsFailed, setCampaignsFailed] = useState(false);
@@ -91,6 +98,13 @@ export function CampaignPanel({
         setProfilesFailed(false);
       })
       .catch(() => { if (!signal.aborted) setProfilesFailed(true); });
+    void listInitialAdapters(signal)
+      .then((next) => {
+        if (signal.aborted) return;
+        setAdapters(next);
+        setAdaptersFailed(false);
+      })
+      .catch(() => { if (!signal.aborted) setAdaptersFailed(true); });
     void read();
     document.addEventListener("visibilitychange", readVisible);
     return () => {
@@ -116,9 +130,9 @@ export function CampaignPanel({
         setOptunaAvailable(false);
         setOperationError(ACTION_ERROR.optuna);
       } else {
-        const qualityKey = "academy.campaigns.quality.issues." + detail?.code;
+        const keys = [`academy.campaigns.initialAdapter.errors.${detail?.code}`, `academy.campaigns.quality.issues.${detail?.code}`];
         const fallback = error instanceof ApiError && error.status === 409 ? ACTION_ERROR.conflict : ACTION_ERROR.failed;
-        setOperationError(t(qualityKey) === qualityKey ? fallback : qualityKey);
+        setOperationError(keys.find((key) => t(key) !== key) ?? fallback);
       }
       return false;
     } finally {
@@ -152,6 +166,7 @@ export function CampaignPanel({
         {!failed && (!profiles || !campaigns) && <p className="text-sm text-hint">{t("academy.campaigns.loading")}</p>}
         {profiles && campaigns && (
           <CampaignForm key={draft?.revision ?? 0} draft={draft?.value} profiles={profiles} onDiscardDraft={() => setDraft(undefined)}
+            adapters={adapters} adaptersFailed={adaptersFailed}
             disabled={busy || failed} optunaAvailable={optunaAvailable}
             onPlan={(request) => mutate(() => planCampaign(request))} />
         )}

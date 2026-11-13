@@ -19,6 +19,7 @@ def main(argv: list[str] | None = None) -> None:
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("profiles")
     commands.add_parser("list")
+    commands.add_parser("adapters")
     for action in ("validate", "run"):
         sub = commands.add_parser(action)
         sub.add_argument("profile_id")
@@ -45,6 +46,8 @@ def execute(args: argparse.Namespace):
     service = ExperimentService(args.root)
     if args.command == "profiles":
         return service.profiles()
+    if args.command == "adapters":
+        return service.adapters()
     if args.command == "list":
         return service.list_runs()
     if args.command in {"validate", "run"}:

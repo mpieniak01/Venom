@@ -16,6 +16,7 @@ import {
 import { useLanguage, useTranslation } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { ExperimentForm } from "./experiment-form";
+import { InitialAdapterSummary, useInitialAdapterError } from "./initial-adapter";
 import { ExperimentResult, ExperimentReviewPanel } from "./experiment-results";
 
 const ACTIVE = new Set(["queued", "running"]);
@@ -129,6 +130,8 @@ function RunDetail({ run, headingRef, onOpenQuality, disabled, onAction, onJudgm
   const canResume = run.actions?.resume ?? (interrupted && run.resume_available);
   const elapsed = run.elapsed_seconds;
   const externalReview = run.external_review;
+  const adapterError = useInitialAdapterError(run.error);
+  const showResult = run.status === "succeeded" || Boolean(run.report);
 
   return (
     <section className={SECTION_CLASS}>
@@ -159,6 +162,7 @@ function RunDetail({ run, headingRef, onOpenQuality, disabled, onAction, onJudgm
           <dd>{t(run.resume_available ? "academy.experiments.available" : "academy.experiments.unavailable")}</dd>
         </div>
       </dl>
+      {!showResult && <InitialAdapterSummary adapter={run.initial_adapter} />}
       {externalReview && (
         <div className="flex flex-wrap items-center gap-2 text-sm">
           <p>
@@ -175,7 +179,7 @@ function RunDetail({ run, headingRef, onOpenQuality, disabled, onAction, onJudgm
       {run.error && (
         <div className="space-y-1 text-sm text-red-400">
           <p>{t("academy.experiments.runError")}</p>
-          <pre className="max-h-28 overflow-auto whitespace-pre-wrap break-words">{run.error}</pre>
+          <pre className="max-h-28 overflow-auto whitespace-pre-wrap break-words">{adapterError ?? run.error}</pre>
         </div>
       )}
       <div className="flex flex-wrap gap-2">
@@ -200,7 +204,7 @@ function RunDetail({ run, headingRef, onOpenQuality, disabled, onAction, onJudgm
       </div>
       {showLogs && <ExperimentLogs run={run} />}
       {(run.actions?.review ?? run.status === "awaiting_review") && <ExperimentReviewPanel runId={run.run_id} disabled={disabled} onSubmit={onJudgments} />}
-      {(run.status === "succeeded" || run.report) && <ExperimentResult run={run} onOpenQuality={onOpenQuality} />}
+      {showResult && <ExperimentResult run={run} onOpenQuality={onOpenQuality} />}
     </section>
   );
 }

@@ -4,7 +4,8 @@ import { afterEach, describe, it } from "node:test";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import AcademyPage from "../app/(console)/academy/page";
 import { CampaignPanel } from "../components/academy/campaign-panel";
-import type { Campaign } from "../lib/academy-campaign-api";
+import type { Campaign, CampaignRequest } from "../lib/academy-campaign-api";
+import type { ExperimentInitialAdapter } from "../lib/academy-experiments-api";
 
 const base = "/api/v1/academy/experiments";
 const campaignsPath = `${base}/campaigns`;
@@ -57,6 +58,7 @@ function serve(
     if (key === `GET ${base}/profiles`) {
       return Response.json({ profiles: [{ id: "omni", label: "Omni", model: "Omni", dataset: "pilot", recipe: { rank: 8 } }] });
     }
+    if (key === `GET ${base}/adapters`) return Response.json({ adapters: [] });
     if (key === `GET ${campaignsPath}`) {
       return Response.json({
         campaigns: campaigns(),
@@ -107,6 +109,67 @@ describe("Academy campaigns", () => {
     assert.deepEqual(started, { plan_sha256: planHash });
     fireEvent.click(screen.getByRole("button", { name: runId }));
     assert.deepEqual(opened, [runId]);
+  });
+
+  it("keeps an adapter selection explicit across profile changes and pins it to the plan", async () => {
+    globalThis.FormData = window.FormData;
+    const adapter: ExperimentInitialAdapter = {
+      adapter_id: "p13-145",
+      label: "P13 checkpoint 145",
+      model: "Omni",
+      revision: "a".repeat(40),
+      snapshot_sha256: "b".repeat(64),
+      config_sha256: "c".repeat(64),
+      weights_sha256: "d".repeat(64),
+      source: { identity: "P13", sha256: "e".repeat(64) },
+    };
+    const pendingRun = "pilot-campaign-02";
+    let current: Campaign[] = [];
+    const requests: CampaignRequest[] = [];
+    serve(() => current, {
+      [`GET ${base}/profiles`]: () => Response.json({ profiles: [
+        { id: "omni", label: "Omni", model: "Omni", dataset: "pilot", recipe: { rank: 8 } },
+        { id: "other", label: "Other", model: "Other", dataset: "pilot", recipe: { rank: 8 } },
+      ] }),
+      [`GET ${base}/adapters`]: () => Response.json({ adapters: [adapter] }),
+      [`POST ${campaignsPath}/plan`]: (init) => {
+        requests.push(JSON.parse(String(init?.body)) as CampaignRequest);
+        const variant = planned.plan.variants[0];
+        const next = {
+          ...planned,
+          plan: { ...planned.plan, variants: [variant, { ...variant, run_id: pendingRun, initial_adapter: adapter }] },
+          trials: [...planned.trials, { run_id: pendingRun, status: "pending" }],
+        };
+        current = [next];
+        return Response.json(next);
+      },
+      [`POST ${campaignsPath}/pilot-campaign/start`]: () => Response.json(
+        { detail: { code: "experiment_initial_adapter_changed" } }, { status: 409 },
+      ),
+    });
+
+    render(<CampaignPanel onOpenRun={() => {}} />);
+    fireEvent.change(await screen.findByLabelText("Identyfikator kampanii"), { target: { value: "pilot-campaign" } });
+    fireEvent.click(screen.getByRole("button", { name: "Dodaj wariant" }));
+    await screen.findAllByRole("option", { name: /P13 checkpoint 145/ });
+    fireEvent.change(screen.getByLabelText("Źródło inicjalizacji 2"), { target: { value: adapter.adapter_id } });
+    const profileSelector = screen.getByLabelText("Profil eksperymentu");
+    fireEvent.change(profileSelector, { target: { value: "other" } });
+    const planButton = screen.getByRole("button", { name: "Przygotuj plan kampanii" });
+    fireEvent.click(planButton);
+    assert.equal(requests.length, 0);
+    assert.ok(screen.getByRole("alert"));
+    fireEvent.change(profileSelector, { target: { value: "omni" } });
+    fireEvent.click(planButton);
+
+    const start = await screen.findByRole("button", { name: "Uruchom zaplanowaną kampanię" });
+    assert.deepEqual(requests[0]?.variants, [{}, { initial_adapter_id: adapter.adapter_id }]);
+    const row = screen.getByRole("row", { name: /pilot-campaign-02/ });
+    assert.match(row.textContent ?? "", /P13 checkpoint 145/);
+    assert.match(row.textContent ?? "", /dddddddddddd/);
+    assert.match(screen.getByRole("row", { name: /^pilot-campaign-01/ }).textContent ?? "", /Nowa LoRA od modelu bazowego/);
+    fireEvent.click(start);
+    assert.match((await screen.findByRole("alert")).textContent ?? "", /Adapter startowy zmienił się/);
   });
 
   it("binds removal to the reviewed file list", async () => {

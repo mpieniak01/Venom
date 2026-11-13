@@ -15,6 +15,12 @@ from tempfile import NamedTemporaryFile
 from time import monotonic
 from unittest.mock import patch
 
+from scripts.academy.omni_pl_chat_adapter import (
+    ADAPTER_CONFIG,
+    ADAPTER_WEIGHTS,
+    read_initial_adapter_handoff,
+    verify_initial_adapter,
+)
 from scripts.academy.omni_pl_chat_data import read_jsonl, sha256, validate_splits
 from scripts.academy.omni_pl_chat_masks import IGNORE, masked_example, verify_snapshot
 from scripts.academy.omni_pl_chat_recipe import (
@@ -25,9 +31,11 @@ from scripts.academy.omni_pl_chat_recipe import (
 
 STEPS = DEFAULT_RECIPE["steps"]
 _RECIPE_PATH = Path("/inputs/recipe.json")
+_INITIAL_ADAPTER_DIR = Path("/inputs/initial-adapter")
+_INITIAL_HANDOFF = Path("/inputs/initial-adapter.json")
 CHECKPOINT_FILES = (
-    "adapter_config.json",
-    "adapter_model.safetensors",
+    ADAPTER_CONFIG,
+    ADAPTER_WEIGHTS,
     "optimizer.pt",
     "scheduler.pt",
     "rng_state.pth",
@@ -290,14 +298,62 @@ def _prepare_inputs(
     return pin, processor, encoded, observations
 
 
+def _load_adapter_tensors(model, weights: Path) -> int:
+    import torch
+    from peft import get_peft_model_state_dict, set_peft_model_state_dict
+    from safetensors import safe_open
+
+    expected = get_peft_model_state_dict(model)
+    with safe_open(weights, framework="pt", device="cpu") as source:
+        if set(source.keys()) != expected.keys():
+            raise ValueError("experiment_initial_adapter_tensor_names_mismatch")
+        tensors = {}
+        for name, parameter in expected.items():
+            meta = source.get_slice(name)
+            if meta.get_shape() != list(parameter.shape) or meta.get_dtype() not in {
+                "F32",
+                "F16",
+                "BF16",
+            }:
+                raise ValueError("experiment_initial_adapter_tensor_shape_or_dtype")
+            value = source.get_tensor(name)
+            if not torch.isfinite(value).all():
+                raise ValueError("experiment_initial_adapter_tensor_nonfinite")
+            tensors[name] = value
+
+    set_peft_model_state_dict(model, tensors)
+    loaded = get_peft_model_state_dict(model)
+    if loaded.keys() != tensors.keys() or any(
+        not torch.equal(loaded[name].detach().cpu(), tensor)
+        for name, tensor in tensors.items()
+    ):
+        raise ValueError("experiment_initial_adapter_tensor_load_mismatch")
+    return len(tensors)
+
+
 def run(mode: str) -> None:
     legacy = not _RECIPE_PATH.exists()
-    _verify_boundary(() if legacy else (str(_RECIPE_PATH),))
+    has_initial = _INITIAL_HANDOFF.exists()
+    read_only = () if legacy else (str(_RECIPE_PATH),)
+    if has_initial or _INITIAL_ADAPTER_DIR.exists():
+        if legacy or not has_initial:
+            raise ValueError("experiment_initial_adapter_handoff_missing")
+        read_only += (
+            str(_INITIAL_HANDOFF),
+            str(_INITIAL_ADAPTER_DIR / ADAPTER_CONFIG),
+            str(_INITIAL_ADAPTER_DIR / ADAPTER_WEIGHTS),
+        )
+    _verify_boundary(read_only)
     started = monotonic()
     snapshot = Path("/inputs/model")
     train_path = Path("/inputs/train.jsonl")
     output = Path("/out")
     recipe = validate_recipe({}) if legacy else load_recipe(_RECIPE_PATH)
+    initial_adapter = None
+    if has_initial:
+        initial_adapter = read_initial_adapter_handoff(_INITIAL_HANDOFF)
+        verify_initial_adapter(_INITIAL_ADAPTER_DIR, initial_adapter, recipe)
+    initialization = {"initial_adapter": initial_adapter} if has_initial else {}
     pin, processor, encoded, observations = _prepare_inputs(
         snapshot, train_path, recipe, legacy=legacy, preflight=mode == "preflight"
     )
@@ -321,6 +377,7 @@ def run(mode: str) -> None:
                 "revision": pin["revision"],
                 "environment": environment,
                 "recipe": recipe,
+                **initialization,
                 **observations,
             },
         )
@@ -354,6 +411,7 @@ def run(mode: str) -> None:
     targets = "|".join(recipe["target_modules"])
     profile = {
         **recipe,
+        **initialization,
         "model": pin["repo"],
         "revision": pin["revision"],
         "snapshot_manifest_sha256": sha256(
@@ -367,6 +425,7 @@ def run(mode: str) -> None:
                 "omni_pl_chat_masks.py",
                 "omni_pl_chat_data.py",
                 "omni_pl_chat_recipe.py",
+                "omni_pl_chat_adapter.py",
             )
         },
         "environment": environment,
@@ -445,6 +504,14 @@ def run(mode: str) -> None:
         raise RuntimeError(
             "trainable parameters must be LoRA tensors in the language model"
         )
+    if checkpoint is not None:
+        loaded_tensors = _load_adapter_tensors(model, checkpoint / ADAPTER_WEIGHTS)
+    elif initial_adapter is not None:
+        loaded_tensors = _load_adapter_tensors(
+            model, _INITIAL_ADAPTER_DIR / ADAPTER_WEIGHTS
+        )
+    else:
+        loaded_tensors = 0
     initial = {
         name: value.detach().cpu().clone()
         for name, value in get_peft_model_state_dict(model).items()
@@ -554,6 +621,12 @@ def run(mode: str) -> None:
 
     receipt = {
         "mode": mode,
+        **initialization,
+        "state_source": "checkpoint"
+        if checkpoint
+        else ("initial_adapter" if has_initial else "base"),
+        "loaded_tensors": loaded_tensors,
+        "fresh_optimizer": checkpoint is None,
         "final_step": trainer.state.global_step,
         "module_inventory": module_inventory,
         "adapted_modules": sorted(adapted_layers),

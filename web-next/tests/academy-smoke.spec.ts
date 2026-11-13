@@ -625,6 +625,16 @@ test.describe("Academy smoke", () => {
         automatic_review: false,
       };
       const planSha256 = "a".repeat(64);
+      const adapter = {
+        adapter_id: "p13-145",
+        label: "P13 checkpoint 145",
+        model: profile.model,
+        revision: "1".repeat(40),
+        snapshot_sha256: "2".repeat(64),
+        config_sha256: "3".repeat(64),
+        weights_sha256: "4".repeat(64),
+        source: { identity: "P13", sha256: "5".repeat(64) },
+      };
       const space = {
         rank: { low: 4, high: 8, log: false },
         learning_rate: { low: 0.0001, high: 0.001, log: true },
@@ -639,6 +649,7 @@ test.describe("Academy smoke", () => {
       await page.route(`${api}/profiles`, (route) =>
         route.fulfill({ json: { profiles: [{ ...profile, id: "other-profile", label: "Drugi profil" }, profile] } }),
       );
+      await page.route(`${api}/adapters`, (route) => route.fulfill({ json: { adapters: [adapter] } }));
       await page.route(campaigns, (route) =>
         route.fulfill({
           json: {
@@ -657,7 +668,8 @@ test.describe("Academy smoke", () => {
             variants: [
               {
                 run_id: runId,
-                recipe: { ...profile.recipe, ...planRequest.variants[0] },
+                recipe: { ...profile.recipe, ...(!optuna ? { rank: 6 } : {}) },
+                ...(!optuna ? { initial_adapter: adapter } : {}),
                 workload: { updates: 8, tokens: 8192 },
               },
             ],
@@ -698,6 +710,7 @@ test.describe("Academy smoke", () => {
       if (optuna) {
         await strategyInput.selectOption("optuna");
         await expect(page.getByRole("button", { name: "Dodaj wariant" })).toBeHidden();
+        await expect(page.getByLabel("Źródło inicjalizacji 1")).toBeHidden();
         await page.getByRole("checkbox", { name: "Ranga LoRA", exact: true }).check();
         await page.getByLabel("Ranga LoRA · minimum").fill("4");
         await page.getByLabel("Ranga LoRA · maksimum").fill("8");
@@ -708,6 +721,7 @@ test.describe("Academy smoke", () => {
         await expect(strategyInput.locator('option[value="optuna"]')).toBeDisabled();
         await expect(page.getByText("Optuna jest niedostępna w środowisku sterownika kampanii.")).toBeVisible();
         await page.locator("#variant-0-rank").fill("6");
+        await page.getByLabel("Źródło inicjalizacji 1").selectOption(adapter.adapter_id);
       }
       await page.getByRole("button", { name: "Przygotuj plan kampanii" }).click();
       const start = page.getByRole("button", { name: "Uruchom zaplanowaną kampanię" });
@@ -721,7 +735,10 @@ test.describe("Academy smoke", () => {
         await expect(page.getByText("0,0001 – 0,001 · Skala logarytmiczna")).toBeVisible();
       } else {
         expect(planRequest?.strategy).toBeUndefined();
-        expect(planRequest?.variants).toEqual([{ rank: 6 }]);
+        expect(planRequest?.variants).toEqual([{ rank: 6, initial_adapter_id: adapter.adapter_id }]);
+        const plannedTrial = page.getByRole("row").filter({ has: page.getByRole("button", { name: runId, exact: true }) });
+        await expect(plannedTrial).toContainText(adapter.label);
+        await expect(plannedTrial).toContainText(adapter.weights_sha256.slice(0, 12));
       }
 
       await page.goto(buildHttpUrl(host, port, `/academy?campaign=${campaignId}`));

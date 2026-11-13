@@ -199,3 +199,16 @@ Historia obsługuje nakładające się grupy przypadków, np. wszystkie zadania 
 Operator może zaimportować wersjonowany pakiet przez `scripts.academy.quality import`. Pole `cohorts` wiąże nazwy grup z identyfikatorami przypadków. Pole `reviewed_run` wiąże zewnętrzną decyzję z identyfikatorem przebiegu oraz sumami SHA-256 checkpointu i manifestu generacji. Academy pokazuje odnośnik tylko po sprawdzeniu zgodności zapieczętowanych plików tej próby. Ponowny import tego samego rekordu zachowuje jego tożsamość.
 
 Po zatrzymaniu albo nieudanej generacji użyj ponowienia oceny w przebiegu. Wykonawca odczyta zweryfikowane odpowiedzi zapisane wcześniej w katalogu tego przebiegu, jeśli zgadzają się dane, wagi i protokół. Wygeneruje brakujące odpowiedzi i zapisze nowy kompletny pakiet do ślepej oceny. Kampania używa własnego limitu ponowień i czasu. Jeśli wyczerpała budżet, jej raport wskazuje zatrzymanie.
+
+
+## Nowy trening od zapisanego adaptera LoRA
+
+W kampanii na stałej liście wybierz dla każdego wariantu model bazowy albo adapter z katalogu Academy. Podgląd zapisuje tożsamość adaptera, sumy kontrolne, rewizję bazy i pochodzenie. Dwa warianty z identyczną recepturą mogą zacząć od różnych wag. Zmiana katalogu lub plików po zapisaniu planu wymaga ponownego planowania.
+
+Operator rejestruje adapter w `<experiment_root>/adapters/<adapter_id>/`. Katalog zawiera `adapter_config.json`, `adapter_model.safetensors`, `hashes.json` z sumami dokładnie tych dwóch plików oraz `adapter.json`. W `adapter.json` wpisz `schema_version: 1`, `adapter_id`, `label`, `model`, `revision`, `snapshot_sha256`, `config_sha256`, `weights_sha256` oraz `source` z polami `identity` i `sha256` identyfikującymi zapieczętowane pochodzenie. Adapter musi pasować do przypiętego modelu Omni i do `rank`, `alpha`, `dropout` oraz modułów LoRA w recepturze. Używaj jedynie zwykłej LoRA dla części językowej.
+
+W manifeście kampanii CLI podaj np. `"variants": [{}, {"initial_adapter_id": "omni-p13-145"}]`. Ustaw recepturę profilu zgodną z obydwoma ramionami. Panel i CLI odczytują ten sam plan. Tryb wyboru adaptera startowego jest dostępny dla strategii stałej.
+
+Dla zarejestrowanego `omni-p13-145` ustaw w obu ramionach `rank: 4`, `alpha: 8`, `dropout: 0.05` i `target_modules: ["q_proj", "k_proj", "v_proj", "o_proj", "in_proj", "out_proj", "w1", "w2", "w3"]`. Jeśli profil ma inny zakres modułów lub inną wartość dropout, Academy odrzuci plan przy walidacji adaptera.
+
+Nowy przebieg rozpoczyna optymalizację od kroku zero. Runner sprawdza wartości wszystkich tensorów wczytanych z adaptera. Po przerwaniu przebieg kontynuuje z własnego pełnego checkpointu wraz ze stanem optymalizatora, harmonogramu i RNG. Retencja usuwa pliki wynikowe kampanii zgodnie z wybraną polityką. Katalog wejściowy jest niezależny od plików wynikowych.

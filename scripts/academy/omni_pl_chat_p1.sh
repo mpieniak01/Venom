@@ -5,7 +5,7 @@ umask 077
 
 if [[ "${1:-}" != --inside ]]; then
     if [[ $# -lt 5 ]]; then
-        echo "Usage: bash $0 SNAPSHOT JSONL OUTPUT VENV MODE [RECIPE_JSON | VARIANTS...]" >&2
+        echo "Usage: bash $0 SNAPSHOT JSONL OUTPUT VENV MODE [RECIPE_JSON [ADAPTER_DIR HANDOFF_JSON] | VARIANTS...]" >&2
         exit 2
     fi
     snapshot=$(realpath -e -- "$1")
@@ -20,8 +20,20 @@ if [[ "${1:-}" != --inside ]]; then
     inputs=()
     case "$mode" in
         preflight|control|initial|resume)
-            if [[ $# -gt 1 ]]; then exit 2; fi
-            if [[ $# -eq 1 ]]; then inputs+=("$(realpath -e -- "$1")"); fi
+            case $# in
+                0) ;;
+                1) inputs+=("$(realpath -e -- "$1")") ;;
+                3)
+                    [[ -d "$2" && ! -L "$2" ]]
+                    [[ -f "$3" && ! -L "$3" ]]
+                    adapter=$(realpath -e -- "$2")
+                    for name in adapter_config.json adapter_model.safetensors; do
+                        [[ -f "$adapter/$name" && ! -L "$adapter/$name" ]]
+                    done
+                    inputs+=("$(realpath -e -- "$1")" "$adapter" "$(realpath -e -- "$3")")
+                    ;;
+                *) exit 2 ;;
+            esac
             ;;
         merge) [[ $# -eq 0 ]] ;;
         evaluate|evaluate-resumable)
@@ -95,6 +107,14 @@ file_ro() {
     mount_ro "$1" "$2"
 }
 
+copy_initial_input() {
+    local source=$1 destination=$2 limit=$3
+    # The sandbox verifies and loads these same bytes from its private tmpfs.
+    [[ -f "$source" && ! -L "$source" ]]
+    head -c "$((limit + 1))" -- "$source" > "$destination"
+    [[ $(stat -c %s -- "$destination") -le $limit ]]
+}
+
 for directory in /usr/bin /usr/lib/x86_64-linux-gnu /usr/lib64 /usr/share /usr/lib/wsl/lib /usr/lib/wsl/drivers; do
     if [[ -d "$directory" ]]; then
         mkdir -p "$scratch$directory"
@@ -107,7 +127,7 @@ if [[ "$python_base" != "$venv" ]]; then
 fi
 mount_ro "$snapshot" "$scratch/inputs/model"
 file_ro "$data" "$scratch/inputs/train.jsonl"
-for file in omni_pl_chat_data.py omni_pl_chat_masks.py omni_pl_chat_recipe.py omni_pl_chat_p1.py omni_pl_chat_export.py omni_pl_chat_evaluate.py; do
+for file in omni_pl_chat_data.py omni_pl_chat_masks.py omni_pl_chat_recipe.py omni_pl_chat_p1.py omni_pl_chat_adapter.py omni_pl_chat_export.py omni_pl_chat_evaluate.py; do
     file_ro "$job/$file" "$scratch/job/scripts/academy/$file"
 done
 file_ro "$job/../llm/omni_native_snapshot.json" "$scratch/job/scripts/llm/omni_native_snapshot.json"
@@ -127,7 +147,17 @@ case "$mode" in
             worker+=("$name")
         done
         ;;
-    *) if [[ $# -eq 1 ]]; then file_ro "$1" "$scratch/inputs/recipe.json"; fi ;;
+    *)
+        if [[ $# -ge 1 ]]; then file_ro "$1" "$scratch/inputs/recipe.json"; fi
+        if [[ $# -eq 3 ]]; then
+            mkdir "$scratch/inputs/initial-adapter"
+            copy_initial_input "$2/adapter_config.json" \
+                "$scratch/inputs/initial-adapter/adapter_config.json" $((16 * 1024))
+            copy_initial_input "$2/adapter_model.safetensors" \
+                "$scratch/inputs/initial-adapter/adapter_model.safetensors" $((512 * 1024 * 1024))
+            copy_initial_input "$3" "$scratch/inputs/initial-adapter.json" $((16 * 1024))
+        fi
+        ;;
 esac
 
 if [[ "$mode" == evaluate-resumable ]]; then

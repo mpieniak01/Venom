@@ -30,7 +30,6 @@ function QualityComparison({ rows, reference }: { readonly rows: QualityCounts[]
   const formatCritical = (count: number | null | undefined, n: number) =>
     count == null ? "—" : `${count} / ${n}`;
   const peerCritical = (row: QualityCounts) => reference ? row.reference_critical : row.base_critical;
-  const hasCritical = rows.some((row) => row.candidate_critical != null || peerCritical(row) != null);
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-left text-sm">
@@ -40,7 +39,7 @@ function QualityComparison({ rows, reference }: { readonly rows: QualityCounts[]
             {["category", "sampleSize", reference ? "reference" : "base", "candidate", "lost", "gained"].map((column) => (
               <th key={column} scope="col" className="px-2 py-1">{t(QUALITY + column)}</th>
             ))}
-            {hasCritical && <th scope="col" className="px-2 py-1">{t(QUALITY + "criticalComparison")}</th>}
+            <th scope="col" className="px-2 py-1">{t(QUALITY + "criticalComparison")}</th>
           </tr>
         </thead>
         <tbody>
@@ -55,17 +54,15 @@ function QualityComparison({ rows, reference }: { readonly rows: QualityCounts[]
                 <td className="px-2 py-1">{value(row.candidate_usable)}</td>
                 <td className="px-2 py-1">{value(row.lost_usable)}</td>
                 <td className="px-2 py-1">{value(row.gained_usable)}</td>
-                {hasCritical && (
-                  <td className="whitespace-nowrap px-2 py-1">
-                    {formatCritical(peerCritical(row), row.n)} → {formatCritical(row.candidate_critical, row.n)}
-                  </td>
-                )}
+                <td className="whitespace-nowrap px-2 py-1">
+                  {formatCritical(peerCritical(row), row.n)} → {formatCritical(row.candidate_critical, row.n)}
+                </td>
               </tr>
             );
           })}
         </tbody>
       </table>
-      {hasCritical && <p className="mt-2 text-xs text-hint">{t(QUALITY + "criticalComparisonHint")}</p>}
+      <p className="mt-2 text-xs text-hint">{t(QUALITY + "criticalComparisonHint")}</p>
       {rows.some((row) => row.lost_usable == null || row.gained_usable == null) && (
         <p className="mt-2 text-xs text-hint">{t(QUALITY + "missingPairCounts")}</p>
       )}
@@ -250,14 +247,11 @@ export function CampaignQualityHistory({ disabled, initialRecordId = "", onDraft
     </output>
   ) : null;
   if (!candidate && !candidateId) return unavailableFeedback ?? <p className="text-sm text-hint">{t(QUALITY + "empty")}</p>;
-  const alignedReference = Boolean(analysis?.reference_id && analysis.comparable);
-  const cohorts = alignedReference ? analysis?.cohort_comparison : analysis?.cohorts;
-  const categories = alignedReference ? analysis?.comparison : analysis?.summary;
 
   return (
     <div className="space-y-4">
       {unavailableFeedback}
-      {!candidate && candidateId && <p role="status" className="text-sm text-hint">{t(QUALITY + "selectedUnavailable")}</p>}
+      {!candidate && candidateId && <output className="block text-sm text-hint">{t(QUALITY + "selectedUnavailable")}</output>}
       <form className="grid items-end gap-3 sm:grid-cols-[1fr_1fr_auto]" onSubmit={compare}>
         <div className="space-y-1">
           <Label htmlFor="quality-candidate">{t(QUALITY + "candidate")}</Label>
@@ -284,30 +278,43 @@ export function CampaignQualityHistory({ disabled, initialRecordId = "", onDraft
         <Button type="submit" disabled={analyzing || !candidate}>{t(QUALITY + "compare")}</Button>
       </form>
       {analysisFailed && <p role="alert" className="text-sm text-red-400">{t(QUALITY + "analysisError")}</p>}
-      {analysis && (
-        <div className="space-y-4">
-          <dl className="text-sm">
-            <dt className="text-hint">{t(QUALITY + "decision")}</dt>
-            <dd className="font-semibold">{analysis.decision} · {t(QUALITY + "outcome." + analysis.decision)}</dd>
-          </dl>
-          {analysis.reference_id && !analysis.comparable && (
-            <output className="block text-sm text-hint">{t(QUALITY + "notComparable")}</output>
-          )}
-          {cohorts?.length ? (
-            <>
-              <QualityComparison rows={cohorts} reference={alignedReference} />
-              {categories?.length ? (
-                <details>
-                  <summary className="cursor-pointer text-sm">{t(QUALITY + "categoryBreakdown")}</summary>
-                  <QualityComparison rows={categories} reference={alignedReference} />
-                </details>
-              ) : null}
-            </>
-          ) : <QualityComparison rows={categories ?? []} reference={alignedReference} />}
-          <QualityEvidence analysis={analysis} />
-          <NextTrial analysis={analysis} disabled={disabled} onDraft={onDraft} />
-        </div>
+      {analysis && <QualityAnalysisResult analysis={analysis} disabled={disabled} onDraft={onDraft} />}
+    </div>
+  );
+}
+
+function QualityAnalysisResult({ analysis, disabled, onDraft }: {
+  readonly analysis: QualityAnalysis;
+  readonly disabled: boolean;
+  readonly onDraft: (draft: QualityCampaignDraft) => void;
+}) {
+  const t = useTranslation();
+  const alignedReference = Boolean(analysis.reference_id && analysis.comparable);
+  const cohorts = alignedReference ? analysis.cohort_comparison : analysis.cohorts;
+  const categories = alignedReference ? analysis.comparison : analysis.summary;
+
+  return (
+    <div className="space-y-4">
+      <dl className="text-sm">
+        <dt className="text-hint">{t(QUALITY + "decision")}</dt>
+        <dd className="font-semibold">{analysis.decision} · {t(QUALITY + "outcome." + analysis.decision)}</dd>
+      </dl>
+      {analysis.reference_id && !analysis.comparable && (
+        <output className="block text-sm text-hint">{t(QUALITY + "notComparable")}</output>
       )}
+      {cohorts?.length ? (
+        <>
+          <QualityComparison rows={cohorts} reference={alignedReference} />
+          {categories.length ? (
+            <details>
+              <summary className="cursor-pointer text-sm">{t(QUALITY + "categoryBreakdown")}</summary>
+              <QualityComparison rows={categories} reference={alignedReference} />
+            </details>
+          ) : null}
+        </>
+      ) : <QualityComparison rows={categories} reference={alignedReference} />}
+      <QualityEvidence analysis={analysis} />
+      <NextTrial analysis={analysis} disabled={disabled} onDraft={onDraft} />
     </div>
   );
 }

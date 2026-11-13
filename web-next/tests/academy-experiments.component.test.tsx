@@ -1,7 +1,7 @@
 import "./component-test-setup";
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { ExperimentsPanel } from "../components/academy/experiments-panel";
 import { TrainingWorkspace } from "../components/academy/training-workspace";
 import { ToastProvider } from "../components/ui/toast";
@@ -104,7 +104,8 @@ describe("Academy experiments", () => {
       [`GET ${qualityPath}`]: () => Response.json({ records: [{ ...record, record_id: "history:other" }, record] }),
       [`GET ${qualityPath}/${encodeURIComponent(record.record_id)}/analysis`]: () => Response.json({
         record, decision: "REVISE", comparable: true, comparison_issues: [],
-        summary: [], comparison: [], findings: [], protected_case_ids: [],
+        summary: [{ category: "total", n: 13, base_usable: 5, candidate_usable: 8, base_critical: null, candidate_critical: null }],
+        comparison: [], findings: [], protected_case_ids: [],
         cohorts: [
           { category: "structured_retention", n: 8, base_usable: 3, candidate_usable: 6, base_critical: 2, candidate_critical: 0 },
           { category: "new_dialogue", n: 5, base_usable: 2, candidate_usable: 2, base_critical: null, candidate_critical: null },
@@ -130,6 +131,29 @@ describe("Academy experiments", () => {
     assert.equal((screen.getByLabelText("Kandydat") as HTMLSelectElement).value, record.record_id);
     assert.ok(screen.getByRole("row", { name: /Zachowanie wcześniejszych umiejętności.*2 \/ 8 → 0 \/ 8/ }));
     assert.ok(screen.getByRole("row", { name: /Nowe dialogi wieloturowe.*— → —/ }));
+    fireEvent.click(screen.getByText("Szczegóły według kategorii"));
+    const totals = screen.getByRole("row", { name: /Łącznie.*— → —/ }).closest("table");
+    assert.ok(totals);
+    assert.ok(within(totals).getByRole("columnheader", { name: "Błędy krytyczne" }));
+  });
+
+  it("keeps an imported aggregate report available without offering a native quality decision", async () => {
+    const metric = { n: 3, semantic: 2, usable: 2, passed: 1, format: 3, critical: 0, runtime_or_length_failure: 1 };
+    const summaries = { base: { total: metric }, candidate: { total: metric } };
+    let finishReport: ((response: Response) => void) | undefined;
+    const report = new Promise<Response>((resolve) => { finishReport = resolve; });
+    serve(() => [{ ...run, status: "succeeded", profile_id: "historical", attempt: 0, report: { summaries } }], {
+      [`GET ${prefix}/runs/pilot-1/report`]: () => report,
+    });
+    render(<ExperimentsPanel onOpenQuality={() => assert.fail("Imported aggregates have no native quality record")} />);
+    await screen.findByRole("table");
+    assert.equal(screen.queryByRole("button", { name: "Pokaż decyzję jakościową" }), null);
+    await act(async () => {
+      assert.ok(finishReport);
+      finishReport(Response.json({ historical: true, summaries }));
+    });
+    assert.ok(screen.getByRole("button", { name: "Pobierz raport JSON" }));
+    assert.equal(screen.queryByRole("button", { name: "Pokaż decyzję jakościową" }), null);
   });
 
   it("shows the baseline and adapter counts after completed evaluation", async () => {
@@ -143,13 +167,16 @@ describe("Academy experiments", () => {
         cases: [{ case_id: "case-1", base: { text: "Bazowa odpowiedź" }, candidate: { text: "Odpowiedź adaptera" } }],
       }),
     });
-    render(<ExperimentsPanel />);
+    const opened: string[] = [];
+    render(<ExperimentsPanel onOpenQuality={(recordId) => opened.push(recordId)} />);
     const table = await screen.findByRole("table");
     assert.match(table.textContent ?? "", /Użyteczność2 \/ 33 \/ 3/);
     fireEvent.change(screen.getByLabelText("Kategoria wyników"), { target: { value: "dialogue" } });
     assert.match(table.textContent ?? "", /Użyteczność0 \/ 11 \/ 1/);
     assert.ok(screen.getByText("Odpowiedź adaptera"));
     assert.ok(screen.getByRole("button", { name: "Pobierz raport JSON" }));
+    fireEvent.click(screen.getByRole("button", { name: "Pokaż decyzję jakościową" }));
+    assert.deepEqual(opened, [run.run_id]);
   });
 
   it("keeps resume disabled for a stopped run without a checkpoint", async () => {

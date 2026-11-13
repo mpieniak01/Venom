@@ -116,7 +116,7 @@ export function ExperimentResult({ run, onOpenQuality }: {
   readonly run: ExperimentRun;
   readonly onOpenQuality?: (recordId: string) => void;
 }) {
-  const t = useTranslation();
+  const { t, language } = useLanguage();
   const [report, setReport] = useState<ExperimentReport | null>(run.report ?? null);
   const [failed, setFailed] = useState(false);
   const [request, setRequest] = useState(0);
@@ -144,14 +144,14 @@ export function ExperimentResult({ run, onOpenQuality }: {
 
   const tasks = Object.keys(report.summaries.base)
     .filter((key) => key !== "total" && Object.hasOwn(report.summaries.candidate, key))
-    .sort();
+    .sort((left, right) => left.localeCompare(right, language));
   const selectedTask = tasks.includes(task) ? task : "total";
   return (
     <section className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h4 className="font-semibold">{t("academy.experiments.comparison")}</h4>
         <div className="flex flex-wrap gap-2">
-          {onOpenQuality && (
+          {onOpenQuality && run.attempt > 0 && !report.historical && (
             <Button type="button" variant="outline" size="sm" onClick={() => onOpenQuality(run.run_id)}>
               {t("academy.experiments.openQuality")}
             </Button>

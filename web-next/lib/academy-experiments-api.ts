@@ -76,6 +76,7 @@ export interface ExperimentArtifact {
 export type ExperimentVerdict = { semantic: number; usable: number; passed: number };
 
 export interface ExperimentReport {
+  historical?: boolean;
   summaries: {
     base: Record<string, ExperimentMetrics>;
     candidate: Record<string, ExperimentMetrics>;

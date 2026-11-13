@@ -433,3 +433,278 @@ class FakeSocket:
 
     def connect_ex(self, endpoint):
         return self.result
+
+
+def install_fixture_adapter(root: Path, adapter_id: str = "fixture-adapter"):
+    from scripts.academy.omni_pl_chat_masks import SNAPSHOT_PIN
+
+    directory = root / "adapters" / adapter_id
+    directory.mkdir(parents=True)
+    config_path = directory / "adapter_config.json"
+    weights_path = directory / "adapter_model.safetensors"
+    pin = json.loads(SNAPSHOT_PIN.read_text(encoding="utf-8"))
+    atomic_json(
+        config_path,
+        {
+            "base_model_name_or_path": pin["repo"],
+            "bias": "none",
+            "lora_alpha": 8,
+            "lora_dropout": 0.0,
+            "peft_type": "LORA",
+            "r": 4,
+            "target_modules": r"model\.language_model\..*\.(q_proj|v_proj)",
+            "task_type": "CAUSAL_LM",
+        },
+    )
+    weights_path.write_bytes(b"synthetic tensor fixture")
+    entry = {
+        "schema_version": 1,
+        "adapter_id": adapter_id,
+        "label": "Testowy adapter",
+        "model": pin["repo"],
+        "revision": pin["revision"],
+        "snapshot_sha256": digest(SNAPSHOT_PIN),
+        "config_sha256": digest(config_path),
+        "weights_sha256": digest(weights_path),
+        "source": {"identity": "fixture source", "sha256": "a" * 64},
+    }
+    atomic_json(directory / "adapter.json", entry)
+    atomic_json(
+        directory / "hashes.json",
+        {
+            config_path.name: entry["config_sha256"],
+            weights_path.name: entry["weights_sha256"],
+        },
+    )
+    return directory, entry
+
+
+def adapter_campaign_plan(campaign_id="warm"):
+    return {
+        "campaign_id": campaign_id,
+        "profile_id": "smoke",
+        "variants": [{}, {"initial_adapter_id": "fixture-adapter"}],
+        "budget": {
+            "max_trials": 2,
+            "max_updates": 8,
+            "max_tokens": 8192,
+            "max_seconds": 3600,
+            "trial_seconds": 120,
+            "max_retries": 0,
+            "max_artifact_bytes": 2**30,
+            "min_free_bytes": 0,
+        },
+        "retention": "discard_rejected",
+    }
+
+
+def test_adapter_catalog_and_fixed_campaign_plan_http(setup, monkeypatch, capsys):
+    from scripts.academy.experiments import main as experiments_cli
+    from venom_core.api.routes import academy_experiment_campaigns
+    from venom_core.services.training_experiments.campaign import CampaignService
+    from venom_core.services.training_experiments.campaign_schema import CampaignSpec
+
+    service, client, app, _, _, _, launches = setup
+    directory, entry = install_fixture_adapter(service.root)
+    campaign = CampaignService(service, launch=lambda _: process_identity(os.getpid()))
+    monkeypatch.setattr(
+        academy_experiment_campaigns, "campaign_service", lambda: campaign
+    )
+    app.include_router(academy_experiment_campaigns.router)
+    prefix = "/api/v1/academy/experiments"
+    assert client.get(f"{prefix}/adapters").json() == {"adapters": [entry]}
+    experiments_cli(["--root", str(service.root), "adapters"])
+    assert json.loads(capsys.readouterr().out) == [entry]
+
+    spec = adapter_campaign_plan()
+    response = client.post(f"{prefix}/campaigns/plan", json=spec)
+    assert response.status_code == 200, response.text
+    plan = response.json()["plan"]
+    fresh, warm = plan["variants"]
+    assert "initial_adapter" not in fresh
+    assert fresh["recipe"] == warm["recipe"]
+    assert warm["initial_adapter"] == entry
+    assert client.get(f"{prefix}/campaigns/warm/report").json()["plan"] == plan
+    assert client.post(f"{prefix}/campaigns/plan", json=spec).json()["plan"] == plan
+
+    entry["source"]["sha256"] = "b" * 64
+    atomic_json(directory / "adapter.json", entry)
+    denied = client.post(
+        f"{prefix}/campaigns/warm/start", json={"plan_sha256": plan["plan_sha256"]}
+    )
+    assert denied.status_code == 409, denied.text
+    assert denied.json()["detail"]["code"] == "experiment_initial_adapter_changed"
+    assert campaign.status("warm")["status"] == "planned"
+    assert not launches
+
+    preview = campaign.validate(CampaignSpec.model_validate(spec))
+    assert preview["plan_sha256"] != plan["plan_sha256"]
+    assert preview["variants"][1]["initial_adapter"] == entry
+
+    spec["campaign_id"] = "warm-after-change"
+    spec["variants"].reverse()
+    accepted = client.post(f"{prefix}/campaigns/plan", json=spec).json()["plan"]
+    assert (
+        client.post(
+            f"{prefix}/campaigns/warm-after-change/start",
+            json={"plan_sha256": accepted["plan_sha256"]},
+        ).status_code
+        == 200
+    )
+    campaign.advance("warm-after-change")
+    campaign.advance("warm-after-change")
+    warm_id = accepted["variants"][0]["run_id"]
+    assert launches == [(service.root, warm_id, 1)]
+    assert client.get(f"{prefix}/runs/{warm_id}").json()["initial_adapter"] == entry
+
+
+@pytest.mark.parametrize(
+    ("name", "expected"),
+    [
+        ("adapter_model.safetensors", "experiment_initial_adapter_changed"),
+        ("adapter_config.json", "experiment_initial_adapter_changed"),
+        ("hashes.json", "experiment_initial_adapter_changed"),
+        ("base", "experiment_initial_adapter_incompatible"),
+        ("snapshot_profile", "campaign_profile_changed"),
+        ("symlink", "experiment_initial_adapter_invalid"),
+    ],
+)
+def test_catalog_mutation_rejects_activation(setup, name, expected, tmp_path):
+    from venom_core.services.training_experiments.campaign import CampaignService
+    from venom_core.services.training_experiments.campaign_schema import CampaignSpec
+
+    service, _, _, profile, _, _, launches = setup
+    directory, entry = install_fixture_adapter(service.root)
+    campaign = CampaignService(service)
+    state = campaign.plan(CampaignSpec.model_validate(adapter_campaign_plan()))
+    if name == "snapshot_profile":
+        atomic_json(
+            service.root / "profiles" / "smoke.json",
+            {**profile, "snapshot": "different-model"},
+        )
+    elif name == "base":
+        atomic_json(directory / "adapter.json", {**entry, "revision": "b" * 40})
+    elif name == "symlink":
+        config = directory / "adapter_config.json"
+        link_target = tmp_path / "outside-config.json"
+        config.rename(link_target)
+        config.symlink_to(link_target)
+    else:
+        (directory / name).write_bytes(b"changed")
+    with pytest.raises(ValueError, match=expected):
+        campaign.start("warm", state["plan"]["plan_sha256"])
+    assert campaign.status("warm")["status"] == "planned"
+    assert service.adapters() == ([entry] if name == "snapshot_profile" else [])
+    assert not launches
+
+
+def test_catalog_rejects_path_id_missing_entry_and_wrong_modules(setup):
+    service, _, _, _, _, _, _ = setup
+    install_fixture_adapter(service.root)
+    for overrides, error in (
+        ({"initial_adapter_id": "../fixture-adapter"}, "invalid"),
+        ({"initial_adapter_id": None}, "invalid"),
+        ({"initial_adapter_id": "unknown"}, "missing"),
+        (
+            {"initial_adapter_id": "fixture-adapter", "target_modules": ["q_proj"]},
+            "incompatible",
+        ),
+    ):
+        with pytest.raises(ValueError, match=f"experiment_initial_adapter_{error}"):
+            service.validate("smoke", overrides)
+
+
+def test_warm_start_and_resume_use_separate_training_state(setup, monkeypatch):
+    from venom_core.services.training_experiments.adapters import runner_identity
+
+    service, client, _, _, _, dev, _ = setup
+    directory, entry = install_fixture_adapter(service.root)
+    prefix = "/api/v1/academy/experiments"
+    response = client.post(
+        f"{prefix}/runs",
+        json={
+            "profile_id": "smoke",
+            "run_id": "warm",
+            "recipe": {"initial_adapter_id": entry["adapter_id"]},
+        },
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["initial_adapter"] == entry
+    assert "initial_adapter_id" not in response.json()["recipe"]
+    assert service._manifest("warm")["initial_adapter"] == entry
+    path = service.run_dir("warm")
+    handoff = runner_identity(entry)
+
+    fake_work(monkeypatch, service, dev)
+    original_execute = Worker.execute
+    commands = []
+
+    def execute(worker, command, gpu_fd):
+        if command[1].endswith("omni_pl_chat_p1.sh"):
+            target = Path(command[4])
+            mode = command[6]
+            assert Path(command[8]) == directory
+            assert json.loads(Path(command[9]).read_text(encoding="utf-8")) == handoff
+            commands.append((mode, Path(command[9]).name))
+            if mode == "preflight":
+                target.mkdir()
+                atomic_json(target / "preflight.json", {"initial_adapter": handoff})
+            elif mode == "control":
+                write_checkpoint(path, 2)
+                raise TimeoutError("experiment_time_limit")
+            elif mode == "resume":
+                assert (target / "checkpoint-2" / "optimizer.pt").exists()
+                write_checkpoint(path, 4)
+                atomic_json(
+                    target / "resume.json",
+                    {
+                        "initial_adapter": handoff,
+                        "state_source": "checkpoint",
+                        "fresh_optimizer": False,
+                        "loaded_tensors": 8,
+                    },
+                )
+        else:
+            original_execute(worker, command, gpu_fd)
+
+    monkeypatch.setattr(Worker, "execute", execute)
+    Worker(service, "warm", 1).run()
+    assert service.status("warm")["status"] == "timed_out"
+    assert service.status("warm")["resume_available"]
+    response = client.post(f"{prefix}/runs/warm/resume")
+    assert response.status_code == 200, response.text
+    assert response.json()["initial_adapter"] == entry
+    Worker(service, "warm", 2).run()
+    assert service.status("warm")["status"] == "awaiting_review"
+    assert commands == [
+        ("preflight", "initial-adapter-1.json"),
+        ("control", "initial-adapter-1.json"),
+        ("preflight", "initial-adapter-2.json"),
+        ("resume", "initial-adapter-2.json"),
+    ]
+    assert (
+        service.submit("warm", [grade("A", True), grade("B", False)])["initial_adapter"]
+        == entry
+    )
+    assert service.report("warm")["initial_adapter"] == entry
+    assert digest(directory / "adapter_model.safetensors") == entry["weights_sha256"]
+
+
+def test_worker_rejects_invalid_warm_resume_receipt(setup):
+    from venom_core.services.training_experiments.adapters import runner_identity
+
+    service, _, _, _, _, _, _ = setup
+    directory, entry = install_fixture_adapter(service.root)
+    receipt = directory / "fixture-train-receipt.json"
+    atomic_json(
+        receipt,
+        {
+            "initial_adapter": runner_identity(entry),
+            "state_source": "initial_adapter",
+            "fresh_optimizer": True,
+            "loaded_tensors": 8,
+        },
+    )
+    Worker._verify_initial_adapter_receipt(receipt, entry, "control")
+    with pytest.raises(ValueError, match="experiment_initial_adapter_receipt_invalid"):
+        Worker._verify_initial_adapter_receipt(receipt, entry, "resume")

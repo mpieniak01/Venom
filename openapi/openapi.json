@@ -3161,6 +3161,29 @@
         }
       }
     },
+    "/api/v1/academy/experiments/adapters": {
+      "get": {
+        "tags": [
+          "academy"
+        ],
+        "summary": "Adapters",
+        "operationId": "adapters_api_v1_academy_experiments_adapters_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Adapters Api V1 Academy Experiments Adapters Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/academy/experiments/runs": {
       "get": {
         "tags": [

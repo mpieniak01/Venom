@@ -94,6 +94,11 @@ def profiles() -> dict:
     return call_experiment(lambda: {"profiles": experiment_service().profiles()})
 
 
+@router.get("/adapters")
+def adapters() -> dict:
+    return call_experiment(lambda: {"adapters": experiment_service().adapters()})
+
+
 @router.get("/runs")
 def runs() -> dict:
     return call_experiment(lambda: {"runs": experiment_service().list_runs()})

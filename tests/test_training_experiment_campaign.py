@@ -76,6 +76,7 @@ class FakeExperiments:
         campaign_id=None,
         expected_identity=None,
         review_mode=None,
+        expected_initial_adapter=None,
     ):
         assert max_seconds > 0 and expected_identity == self.identity
         self.calls.append(("start", run_id))

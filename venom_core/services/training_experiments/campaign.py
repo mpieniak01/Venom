@@ -25,6 +25,7 @@ from venom_core.services.remote_training.lifecycle import (
 from venom_core.services.remote_training.paths import data_directory, operator_path
 
 from . import optuna_backend, quality_guard, quality_native
+from .adapters import verify_adapter_entry
 from .campaign_schema import CampaignSpec
 from .retention import (
     ExperimentArtifacts,
@@ -61,6 +62,7 @@ class CampaignExperiments(ExperimentArtifacts, Protocol):
         campaign_id: str | None = None,
         expected_identity: str | None = None,
         review_mode: str | None = None,
+        expected_initial_adapter: dict | None = None,
     ) -> dict: ...
 
     def stop(self, run_id: str, *, campaign_id: str | None = None) -> dict: ...
@@ -130,7 +132,9 @@ def _fixed_variants(
             raise ValueError("campaign_profile_changed")
         identity = validated["identity"]
         recipe = validated["recipe"]
-        recipe_hash = fingerprint(recipe)
+        adapter = validated.get("initial_adapter")
+        initialization = {"initial_adapter": adapter} if adapter is not None else {}
+        recipe_hash = fingerprint((recipe, initialization))
         if recipe_hash in seen:
             raise ValueError("campaign_duplicate_variant")
         seen.add(recipe_hash)
@@ -139,6 +143,7 @@ def _fixed_variants(
                 "run_id": _run_id(spec.campaign_id, index),
                 "recipe": recipe,
                 "workload": _workload(validated),
+                **initialization,
             }
         )
     if identity is None:
@@ -491,7 +496,21 @@ class CampaignService:
 
     def _prepare_activation(self, state: dict) -> None:
         plan = state["plan"]
-        self._verify_quality_policy(plan)
+        if plan["plan_sha256"] != fingerprint(
+            {key: value for key, value in plan.items() if key != "plan_sha256"}
+        ):
+            raise ValueError("campaign_plan_changed")
+        warm_variants = [
+            variant for variant in plan["variants"] if "initial_adapter" in variant
+        ]
+        if state["status"] == "planned" and warm_variants:
+            self._profile(plan)
+            for variant in warm_variants:
+                verify_adapter_entry(
+                    self.experiments.root, variant["initial_adapter"], variant["recipe"]
+                )
+        else:
+            self._verify_quality_policy(plan)
         state.pop("quality_policy_error", None)
         optimized = _is_optuna(plan)
         if optimized and optuna_backend.require_optuna() != plan["optuna_version"]:
@@ -626,6 +645,8 @@ class CampaignService:
             or run.get("profile_identity") != state["plan"]["profile_identity"]
             or (_is_optuna(state["plan"]) and "recipe" not in trial)
             or run.get("recipe") != _actual_recipe(state, trial)
+            or run.get("initial_adapter")
+            != _current_variant(state).get("initial_adapter")
         ):
             raise ValueError("campaign_trial_conflict")
         return run
@@ -684,14 +705,19 @@ class CampaignService:
             raise ValueError("campaign_storage_budget_exhausted")
         run_id = trial["run_id"]
         if action == "start":
+            adapter = _current_variant(state).get("initial_adapter")
+            recipe = _actual_recipe(state, trial)
+            if adapter is not None:
+                recipe = {**recipe, "initial_adapter_id": adapter["adapter_id"]}
             return self.experiments.start(
                 state["plan"]["profile_id"],
                 run_id,
-                _actual_recipe(state, trial),
+                recipe,
                 campaign_id=state["campaign_id"],
                 expected_identity=state["plan"]["profile_identity"],
                 review_mode=state["plan"]["review_mode"],
                 max_seconds=remaining,
+                expected_initial_adapter=adapter,
             )
         if run is None:
             raise ValueError("campaign_trial_missing")
@@ -1050,7 +1076,9 @@ class CampaignService:
                     )
                 state["error"] = (
                     code
-                    if re.fullmatch(r"campaign_[a-z0-9_]+", code)
+                    if re.fullmatch(
+                        r"(?:campaign_|experiment_initial_adapter_)[a-z0-9_]+", code
+                    )
                     else "campaign_stage_failed"
                 )
             if state["status"] not in _ACTIVE:

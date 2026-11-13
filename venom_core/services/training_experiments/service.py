@@ -21,6 +21,7 @@ from venom_core.services.remote_training.lifecycle import (
 )
 from venom_core.services.remote_training.paths import operator_path
 
+from .adapters import list_adapters, resolve_adapter, verify_adapter_entry
 from .evidence import (
     historical_report,
     inspect_checkpoint,
@@ -125,7 +126,10 @@ class ExperimentService:
         self, profile_id: str, recipe: dict | None
     ) -> tuple[Profile, dict, dict | None]:
         profile, identity = load_profile(self.root, profile_id)
-        parameters = recipe_for(profile, recipe)
+        overrides = dict(recipe or {})
+        has_adapter = "initial_adapter_id" in overrides
+        adapter_id = overrides.pop("initial_adapter_id", None)
+        parameters = recipe_for(profile, overrides)
         calibration = self._calibration(profile_id, profile)
         info = {
             "profile_id": profile_id,
@@ -143,7 +147,14 @@ class ExperimentService:
                 ),
             },
         }
+        if has_adapter:
+            _, info["initial_adapter"] = resolve_adapter(
+                self.root, adapter_id, parameters
+            )
         return profile, info, calibration
+
+    def adapters(self) -> list[dict]:
+        return list_adapters(self.root)
 
     def profiles(self) -> list[dict]:
         result = []
@@ -247,6 +258,8 @@ class ExperimentService:
     def _view(self, state: dict) -> dict:
         run_id = state["run_id"]
         result = {key: state.get(key) for key in PUBLIC}
+        if "initial_adapter" in state:
+            result["initial_adapter"] = state["initial_adapter"]
         if self._orphaned(state):
             result.update(status="failed", error="experiment_supervisor_exited")
         committed = self._check_report(run_id)
@@ -343,6 +356,7 @@ class ExperimentService:
         campaign_id: str | None = None,
         expected_identity: str | None = None,
         review_mode: str | None = None,
+        expected_initial_adapter: dict | None = None,
     ) -> dict:
         ensure_data_mutation_allowed("academy_experiment_start")
         profile, info, calibration = self._validated(profile_id, recipe)
@@ -354,6 +368,9 @@ class ExperimentService:
             raise ValueError("experiment_review_mode_invalid")
         if expected_identity is not None and expected_identity != info["identity"]:
             raise ValueError("experiment_profile_changed")
+        initial_adapter = info.get("initial_adapter")
+        if initial_adapter != expected_initial_adapter and campaign_id is not None:
+            raise ValueError("experiment_initial_adapter_changed")
         directory = self.run_dir(run_id)
         directory.mkdir(parents=True, exist_ok=True, mode=0o700)
         manifest = {
@@ -366,6 +383,8 @@ class ExperimentService:
             "recipe": info["recipe"],
             "calibration": calibration,
         }
+        if initial_adapter is not None:
+            manifest["initial_adapter"] = initial_adapter
         with self.run_lock(run_id):
             if (directory / "manifest.json").exists():
                 if self._manifest(run_id) != manifest:
@@ -388,6 +407,8 @@ class ExperimentService:
                 "attempt": 0,
                 "elapsed_seconds": 0.0,
             }
+            if initial_adapter is not None:
+                state["initial_adapter"] = initial_adapter
             return self._enqueue(
                 state, stage="train", mode="control", max_seconds=max_seconds
             )
@@ -413,8 +434,13 @@ class ExperimentService:
                 mode == "resume" and not view["resume_available"]
             ):
                 raise ValueError("experiment_checkpoint_unavailable")
-            profile = Profile.model_validate(self._manifest(run_id)["profile"])
+            manifest = self._manifest(run_id)
+            profile = Profile.model_validate(manifest["profile"])
             check_inputs(self.root, profile)
+            if mode == "resume" and "initial_adapter" in manifest:
+                verify_adapter_entry(
+                    self.root, manifest["initial_adapter"], manifest["recipe"]
+                )
             if self._orphaned(state):
                 state["elapsed_seconds"] = view["elapsed_seconds"]
             return self._enqueue(state, stage=stage, mode=mode, max_seconds=max_seconds)
@@ -527,6 +553,11 @@ class ExperimentService:
             judgment_sha256=digest(verdict_file),
             generation_sha256=digest(generation / GENERATION_SEAL),
         )
+        if "initial_adapter" in state:
+            manifest = self._manifest(run_id)
+            if stable_hash(manifest) != state["manifest_sha256"]:
+                raise ValueError("experiment_manifest_changed")
+            result["initial_adapter"] = manifest["initial_adapter"]
         atomic_json(directory / "result.json", result)
         atomic_json(
             directory / "result-seal.json",

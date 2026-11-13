@@ -36,8 +36,17 @@ from venom_core.services.runtime_release_service import (
     release_all_runtime_models,
 )
 
+from .adapters import runner_identity, verify_adapter_entry
 from .evidence import calibrated_judgments, review_data
-from .profiles import Profile, check_inputs, digest, resolve_input, rows, stable_hash
+from .profiles import (
+    Profile,
+    check_inputs,
+    digest,
+    read_json,
+    resolve_input,
+    rows,
+    stable_hash,
+)
 from .service import REPO, ExperimentService
 
 RUNNER = REPO / "scripts/academy/omni_pl_chat_p1.sh"
@@ -171,6 +180,29 @@ class Worker:
             if stats.f_bavail * stats.f_frsize < profile.min_free_bytes:
                 raise ValueError("experiment_disk_headroom")
 
+    def _initial_adapter_args(self, manifest: dict) -> list[str]:
+        entry = manifest.get("initial_adapter")
+        if entry is None:
+            return []
+        source = verify_adapter_entry(self.service.root, entry, manifest["recipe"])
+        handoff = self.directory / f"initial-adapter-{self.attempt}.json"
+        atomic_json(handoff, runner_identity(entry))
+        return [str(source), str(handoff)]
+
+    @staticmethod
+    def _verify_initial_adapter_receipt(path: Path, entry: dict, mode: str) -> None:
+        receipt = read_json(path)
+        resumed = mode == "resume"
+        if (
+            receipt.get("initial_adapter") != runner_identity(entry)
+            or receipt.get("state_source")
+            != ("checkpoint" if resumed else "initial_adapter")
+            or receipt.get("fresh_optimizer") is not (not resumed)
+            or type(receipt.get("loaded_tensors")) is not int
+            or receipt["loaded_tensors"] <= 0
+        ):
+            raise ValueError("experiment_initial_adapter_receipt_invalid")
+
     def pipeline(self, state: dict, manifest: dict, gpu_fd: int) -> None:
         profile = Profile.model_validate(manifest["profile"])
         check_inputs(self.service.root, profile)
@@ -187,6 +219,7 @@ class Worker:
         training = self.directory / "training"
         recipe = self.directory / "recipe.json"
         if state["mode"] != "evaluate":
+            initial_adapter = self._initial_adapter_args(manifest)
             self.update(stage="preflight")
             preflight = self.directory / f"preflight-{self.attempt}"
             self.execute(
@@ -199,9 +232,15 @@ class Worker:
                     venv,
                     "preflight",
                     str(recipe),
+                    *initial_adapter,
                 ],
                 gpu_fd,
             )
+            entry = manifest.get("initial_adapter")
+            if entry is not None and read_json(preflight / "preflight.json").get(
+                "initial_adapter"
+            ) != runner_identity(entry):
+                raise ValueError("experiment_initial_adapter_receipt_invalid")
             self._space(profile)
             self.update(stage="train")
             self.execute(
@@ -214,9 +253,14 @@ class Worker:
                     venv,
                     state["mode"],
                     str(recipe),
+                    *initial_adapter,
                 ],
                 gpu_fd,
             )
+            if entry is not None:
+                self._verify_initial_adapter_receipt(
+                    training / f"{state['mode']}.json", entry, state["mode"]
+                )
         checkpoint = self.service._checkpoint(self.run_id)
         if checkpoint is None:
             raise ValueError("experiment_checkpoint_unavailable")
@@ -281,8 +325,6 @@ class Worker:
             manifest = self.service._manifest(self.run_id)
             if stable_hash(manifest) != state["manifest_sha256"]:
                 raise ValueError("experiment_manifest_changed")
-            from .profiles import read_json
-
             if read_json(self.directory / "recipe.json") != manifest["recipe"]:
                 raise ValueError("experiment_recipe_changed")
             host = get_runtime_admission()

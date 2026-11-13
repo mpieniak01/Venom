@@ -108,9 +108,11 @@ class StudioRuntime:
         )
         from venom_core.core.state_manager import StateManager
         from venom_core.core.tracer import RequestTracer
+        from venom_core.services.runtime_admission import get_runtime_admission
         from venom_core.services.session_store import SessionStore
 
         validate_environment_policy()
+        get_runtime_admission().claim_host()
         init_metrics_collector()
         self._owned_runtime = True
         # Preserve same-process test/embedding owners. Production runs one API app.

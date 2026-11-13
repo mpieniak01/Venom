@@ -25,7 +25,7 @@ from venom_core.api.studio_routes import ROUTE_MODULES, STUDIO_ROUTES, studio_ro
 from venom_core.bootstrap.studio_runtime import LazyAudioEngine, StudioRuntime
 from venom_core.config import SETTINGS
 from venom_core.core.models import TaskStatus
-from venom_core.services import model_resources
+from venom_core.services import model_resources, runtime_admission
 from venom_core.services.background_priority import run_drainable_thread
 from venom_core.services.chat_audio import synthesize_wav
 from venom_core.services.chat_materials import MaterialStore
@@ -208,6 +208,63 @@ def test_minimal_start_shared_namespace_history_and_lazy_audio(studio):
     assert deps._state_manager is previous_state
     assert not app.dependency_overrides
     assert runtime.request_tracer._watchdog_task is None
+
+
+def test_studio_releases_models_for_verified_training_lease(
+    studio, monkeypatch, tmp_path
+):
+    from venom_core.services import runtime_release_service
+
+    app, _, _ = studio
+    admission = runtime_admission.RuntimeAdmission(tmp_path / "gpu.sqlite3")
+    claim_host = Mock(wraps=admission.claim_host)
+    monkeypatch.setattr(admission, "claim_host", claim_host)
+    monkeypatch.setattr(runtime_admission, "_ADMISSION", admission)
+    monkeypatch.setattr(
+        runtime_release_service, "memory_snapshot", lambda: {"gpu": [], "rss_mib": 100}
+    )
+    from venom_core.core import llm_server_controller
+
+    monkeypatch.setattr(
+        llm_server_controller,
+        "LlmServerController",
+        lambda _settings: SimpleNamespace(list_servers=lambda: []),
+    )
+    with TestClient(app, client=("127.0.0.1", 50000)) as client:
+        claim_host.assert_called_once_with()
+        lease = admission.acquire(
+            owner=runtime_admission.ACADEMY_TRAINING_OWNER,
+            run_id="studio",
+            engine="omni-training",
+            model="omni",
+        )
+        try:
+            path = "/api/v1/system/models/release"
+            assert (
+                client.post(
+                    path,
+                    headers={runtime_release_service.TRAINING_CLEANUP_HEADER: "a" * 32},
+                ).status_code
+                == 409
+            )
+            headers = {
+                runtime_release_service.TRAINING_CLEANUP_HEADER: lease.training_cleanup_capability()
+            }
+            shared_headers = {
+                **headers,
+                "X-Venom-Proxy": "1",
+                "X-Venom-Client-Address": "192.168.0.5",
+            }
+            assert client.post(path, headers=shared_headers).status_code == 403
+            response = client.post(path, headers=headers)
+            assert response.status_code == 200
+            assert response.json()["training_lease_verified"] is True
+            assert (
+                admission.snapshot()["owner"]
+                == runtime_admission.ACADEMY_TRAINING_OWNER
+            )
+        finally:
+            assert lease.release()
 
 
 def test_direct_same_wire_durable_history_and_header_identity(studio, monkeypatch):

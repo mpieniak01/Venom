@@ -2383,10 +2383,11 @@ async def release_llm_runtime(request: Request):
     controller = system_deps.get_llm_controller()
     if controller is None:
         raise HTTPException(status_code=503, detail=LLM_CONTROLLER_UNAVAILABLE)
+    capability = request.headers.get(TRAINING_CLEANUP_HEADER)
     return await release_all_runtime_models(
         controller,
-        runtime_ids=_installed_local_servers(),
-        training_capability=request.headers.get(TRAINING_CLEANUP_HEADER),
+        runtime_ids=_installed_local_servers() if capability is None else None,
+        training_capability=capability,
     )
 
 

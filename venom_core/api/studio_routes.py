@@ -34,6 +34,7 @@ STUDIO_ROUTES: dict[str, frozenset[str]] = {
     "/healthz": frozenset({"GET"}),
     "/api/v1/config/runtime": frozenset({"GET", "POST"}),
     "/api/v1/system/status": frozenset({"GET"}),
+    "/api/v1/system/models/release": frozenset({"POST"}),
     "/api/v1/system/llm-runtime/options": frozenset({"GET"}),
     "/api/v1/system/llm-runtime/active": frozenset({"GET", "POST"}),
     "/api/v1/system/llm-servers/active": frozenset({"GET", "POST"}),

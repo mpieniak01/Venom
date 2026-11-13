@@ -456,6 +456,17 @@ def run(mode: str) -> None:
             free_now_mib = torch.cuda.mem_get_info()[0] // mib
             minimum_gpu_free_mib = min(minimum_gpu_free_mib, free_now_mib)
             if free_now_mib < recipe["gpu_step_min_free_mib"]:
+                _write_json(
+                    output / f"gpu-stop-{state.global_step}.json",
+                    {
+                        "step": state.global_step,
+                        "gpu_free_mib": free_now_mib,
+                        "gpu_step_min_free_mib": recipe["gpu_step_min_free_mib"],
+                        "peak_gpu_allocated_mib": torch.cuda.max_memory_allocated()
+                        / mib,
+                        "peak_gpu_reserved_mib": torch.cuda.max_memory_reserved() / mib,
+                    },
+                )
                 raise RuntimeError(
                     "stopped at the GPU headroom threshold: "
                     f"{free_now_mib} MiB free below "

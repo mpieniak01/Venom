@@ -44,6 +44,10 @@ Plik **dev** zawiera rekordy `split: "dev"` z `record_id`, `group_id`, `language
 
 ## Uruchomienie i wznowienie
 
+Academy wymaga wspólnej dzierżawy GPU. Włącz ustawienie `RUNTIME_ADMISSION_ENABLED=true` przed startem hosta. CLI i API muszą używać tego samego pliku środowiska oraz tej samej ścieżki `MEMORY_ROOT`. Przy pracy z osobnego checkoutu ustaw `ENV_FILE` i bezwzględną ścieżkę do wspólnego katalogu pamięci.
+
+Przed uruchomieniem modelu Academy weryfikuje zwolnienie lokalnych modeli. Przy działającym Full lub Studio zwalnianie obsługuje ich backend, który musi zawierać tę samą obsługę dzierżawy. Błąd zwolnienia przerywa zadanie przed ładowaniem wag. Dzierżawa pozostaje aktywna do wyjścia procesów treningu i oceny. Zapis zwolnienia i pomiar końcowy znajdują się w plikach `gpu-release-*.json` i `gpu-after-*.json` katalogu przebiegu.
+
 Z katalogu repozytorium uruchom poniższe polecenia. Dopasuj ścieżkę `experiment_root` do konfiguracji Academy.
 
 ```bash

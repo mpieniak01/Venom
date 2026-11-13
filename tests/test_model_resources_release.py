@@ -207,13 +207,16 @@ async def test_release_endpoint_delegates_to_global_coordinator(world, monkeypat
 
     monkeypatch.setattr(system_llm, "_installed_local_servers", lambda: {"ollama"})
 
-    async def release(value, *, runtime_ids):
+    async def release(value, *, runtime_ids, training_capability):
+        assert training_capability is None
         assert runtime_ids == {"ollama"}
         assert value is controller
         return {"released": True}
 
     monkeypatch.setattr(service, "release_all_runtime_models", release)
-    assert await system_llm.release_llm_runtime() == {"released": True}
+    assert await system_llm.release_llm_runtime(SimpleNamespace(headers={})) == {
+        "released": True
+    }
 
 
 @pytest.mark.asyncio
@@ -1051,3 +1054,40 @@ async def test_operator_release_interrupts_pending_model_activation(world, monke
     finally:
         task.cancel()
         await asyncio.gather(task, return_exceptions=True)
+
+
+@pytest.mark.asyncio
+async def test_training_release_does_not_reopen_inference(world):
+    class Owner:
+        def release(self):
+            return True
+
+        @resources.model_operation
+        def load(self):
+            return "loaded"
+
+    owner = Owner()
+    resources.register_model_resource(owner, "vision", "release")
+    controller = SimpleNamespace(list_servers=lambda: [])
+    lease = world.acquire(
+        owner=admission_module.ACADEMY_TRAINING_OWNER,
+        run_id="wide-run",
+        engine="omni-training",
+        model="omni",
+    )
+    with pytest.raises(RuntimeAdmissionError, match="runtime_lease_invalid"):
+        await service.release_all_runtime_models(
+            controller, training_capability="a" * 32
+        )
+    assert (
+        await service.release_all_runtime_models(
+            controller, training_capability=lease.training_cleanup_capability()
+        )
+    )["released"]
+    with pytest.raises(RuntimeAdmissionError):
+        owner.load()
+    with pytest.raises(RuntimeAdmissionError):
+        with world.operation(kind="generation"):
+            pass
+    assert lease.release()
+    assert owner.load() == "loaded"

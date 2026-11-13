@@ -3,15 +3,19 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
 import os
 import subprocess
 import time
-from contextlib import nullcontext
 from pathlib import Path
 
+import httpx
+from dotenv import dotenv_values
 from fastapi import HTTPException
 
 from scripts.academy.omni_pl_chat_evaluate import validate_dev_cases
+from venom_core.config import SETTINGS, _settings_env_file
+from venom_core.core.llm_server_controller import LlmServerController
 from venom_core.services.remote_training.lifecycle import (
     atomic_json,
     file_lock,
@@ -20,8 +24,15 @@ from venom_core.services.remote_training.lifecycle import (
 )
 from venom_core.services.remote_training.supervisor import _drain, _terminate
 from venom_core.services.runtime_admission import (
+    ACADEMY_TRAINING_OWNER,
     RuntimeAdmission,
+    RuntimeLease,
     get_runtime_admission,
+)
+from venom_core.services.runtime_release_service import (
+    TRAINING_CLEANUP_HEADER,
+    memory_snapshot,
+    release_all_runtime_models,
 )
 
 from .evidence import calibrated_judgments, review_data
@@ -101,6 +112,45 @@ class Worker:
                 child.stdout.close()
             if self.quiescent():
                 self.update(child=None)
+
+    def prepare_gpu(self, lease: RuntimeLease, *, offline: bool) -> None:
+        """Unload models before CUDA starts and retain the lease for the whole job."""
+        capability = lease.training_cleanup_capability()
+        try:
+            if offline:
+                receipt = asyncio.run(
+                    release_all_runtime_models(
+                        LlmServerController(SETTINGS), training_capability=capability
+                    )
+                )
+            else:
+                values = dotenv_values(_settings_env_file())
+                port = os.environ.get("PORT") or values.get("PORT")
+                if not port:
+                    proxy = os.environ.get("API_PROXY_TARGET") or values.get(
+                        "API_PROXY_TARGET"
+                    )
+                    port = httpx.URL(proxy).port if proxy else None
+                default_port = {"dev": 8000, "preprod": 8100, "prod": 8200}
+                port = int(port or default_port.get(SETTINGS.ENVIRONMENT_ROLE, 8000))
+                if not 1 <= port <= 65535:
+                    raise ValueError("invalid local API port")
+                with httpx.Client(timeout=120, trust_env=False) as client:
+                    response = client.post(
+                        f"http://127.0.0.1:{port}/api/v1/system/models/release",
+                        headers={TRAINING_CLEANUP_HEADER: capability},
+                    )
+                    response.raise_for_status()
+                    receipt = response.json()
+            if (
+                not isinstance(receipt, dict)
+                or receipt.get("released") is not True
+                or receipt.get("training_lease_verified") is not True
+            ):
+                raise ValueError("incomplete model release")
+        except (HTTPException, httpx.HTTPError, ValueError) as exc:
+            raise ValueError("experiment_gpu_release_failed") from exc
+        atomic_json(self.directory / f"gpu-release-{self.attempt}.json", receipt)
 
     def _space(self, profile: Profile) -> None:
         volumes = [self.directory]
@@ -228,27 +278,34 @@ class Worker:
             host.database.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
             gpu_lock = host.database.parent / "academy-experiments.gpu.lock"
             with file_lock(gpu_lock, blocking=False) as gpu_fd:
-                lease = None
-                if host.enabled:
-                    lease = RuntimeAdmission.for_training_worker(host.database).acquire(
-                        owner="academy-experiment",
-                        run_id=self.run_id,
-                        engine="omni-training",
-                        model=manifest["profile"]["model"],
-                    )
+                if not host.enabled:
+                    raise ValueError("experiment_gpu_admission_disabled")
+                admission = RuntimeAdmission.for_training_worker(host.database)
+                offline = admission.claim_offline_host()
+                lease = admission.acquire(
+                    owner=ACADEMY_TRAINING_OWNER,
+                    run_id=self.run_id,
+                    engine="omni-training",
+                    model=manifest["profile"]["model"],
+                )
                 try:
-                    with (
-                        lease.operation(
-                            kind="lifecycle", confirm_quiescent=self.quiescent
-                        )
-                        if lease
-                        else nullcontext()
+                    self.update(stage="release_gpu")
+                    self.prepare_gpu(lease, offline=offline)
+                    self.check_budget()
+                    with lease.operation(
+                        kind="lifecycle", confirm_quiescent=self.quiescent
                     ):
                         self.update(status="running")
                         self.pipeline(state, manifest, gpu_fd)
                 finally:
-                    if lease and self.quiescent():
-                        lease.release()
+                    if self.quiescent():
+                        try:
+                            atomic_json(
+                                self.directory / f"gpu-after-{self.attempt}.json",
+                                memory_snapshot(),
+                            )
+                        finally:
+                            lease.release()
             with self.service.run_lock(self.run_id):
                 current = self.service.store.read(self.run_id)
                 self.check_budget()

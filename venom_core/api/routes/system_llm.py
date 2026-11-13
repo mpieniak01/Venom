@@ -13,7 +13,7 @@ from uuid import UUID
 
 import httpx
 import psutil
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 
 from venom_core.api.routes import openrouter as openrouter_routes
 from venom_core.api.routes import system_deps, vast_chat
@@ -2373,15 +2373,20 @@ async def get_model_resources():
         503: {"description": LLM_CONTROLLER_UNAVAILABLE},
     },
 )
-async def release_llm_runtime():
+async def release_llm_runtime(request: Request):
     """Unload local LLMs and verify resource release before clearing uncertainty."""
-    from venom_core.services.runtime_release_service import release_all_runtime_models
+    from venom_core.services.runtime_release_service import (
+        TRAINING_CLEANUP_HEADER,
+        release_all_runtime_models,
+    )
 
     controller = system_deps.get_llm_controller()
     if controller is None:
         raise HTTPException(status_code=503, detail=LLM_CONTROLLER_UNAVAILABLE)
     return await release_all_runtime_models(
-        controller, runtime_ids=_installed_local_servers()
+        controller,
+        runtime_ids=_installed_local_servers(),
+        training_capability=request.headers.get(TRAINING_CLEANUP_HEADER),
     )
 
 

@@ -13,6 +13,7 @@ from fastapi.testclient import TestClient
 from scripts.academy.omni_pl_chat_p1 import CHECKPOINT_FILES
 from venom_core.api.routes import academy_experiments as routes
 from venom_core.services.remote_training.lifecycle import atomic_json, process_identity
+from venom_core.services.runtime_admission import RuntimeAdmission
 from venom_core.services.training_experiments.evidence import latest_checkpoint
 from venom_core.services.training_experiments.profiles import digest
 from venom_core.services.training_experiments.service import ExperimentService
@@ -125,13 +126,12 @@ def fake_work(monkeypatch, service, dev, *, training: bool = True):
             {"dev-1": {"A": command[-1].split("=")[0], "B": "base"}},
         )
 
-    class Host:
-        database = service.root / "host.sqlite3"
-        enabled = False
-
+    host = RuntimeAdmission(service.root / "host.sqlite3")
     monkeypatch.setattr(
-        "venom_core.services.training_experiments.worker.get_runtime_admission", Host
+        "venom_core.services.training_experiments.worker.get_runtime_admission",
+        lambda: host,
     )
+    monkeypatch.setattr(Worker, "prepare_gpu", lambda *args, **kwargs: None)
     monkeypatch.setattr(Worker, "execute", execute)
     monkeypatch.setattr(
         "venom_core.services.training_experiments.worker.validate_dev_cases",
@@ -323,3 +323,24 @@ def test_campaign_owns_retries_and_history_does_not_restore_weights(setup, tmp_p
         "available": False,
         "step": 62,
     }
+
+
+def test_worker_stops_before_model_load_when_release_fails(setup, monkeypatch):
+    svc, _, _, _, _, dev, _ = setup
+    fake_work(monkeypatch, svc, dev)
+    host = RuntimeAdmission(svc.root / "host.sqlite3")
+
+    def reject_release(worker, lease, *, offline):
+        assert host.snapshot()["owner"] == "academy-experiment"
+        raise ValueError("experiment_gpu_release_failed")
+
+    monkeypatch.setattr(
+        "venom_core.services.training_experiments.worker.get_runtime_admission",
+        lambda: host,
+    )
+    monkeypatch.setattr(Worker, "prepare_gpu", reject_release)
+    svc.start("smoke", "release-failed")
+    Worker(svc, "release-failed", 1).run()
+    assert svc.status("release-failed")["error"] == "experiment_gpu_release_failed"
+    assert not (svc.run_dir("release-failed") / "training").exists()
+    assert "owner" not in host.snapshot()

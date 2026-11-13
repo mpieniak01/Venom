@@ -181,3 +181,54 @@ def test_remote_venv_rejects_wrong_interpreter(tmp_path: Path):
     with pytest.raises(ValueError, match="differs"):
         canonicalize_python_link(link, managed)
     assert link.readlink() == other
+
+
+def test_full_stage_uses_original_recipe_and_final_checkpoint(tmp_path, monkeypatch):
+    profile, code = _fixture(tmp_path)
+    monkeypatch.setattr(
+        "scripts.academy.omni_remote_session._commit", lambda _: "b" * 40
+    )
+    monkeypatch.setattr(
+        "scripts.academy.omni_remote_session._clean_checkout", lambda _: None
+    )
+    bundle = tmp_path / "bundle"
+    prepare(profile, bundle, code)
+    snapshot = tmp_path / "snapshot"
+    snapshot.mkdir()
+    venv = tmp_path / "venv"
+    (venv / "bin").mkdir(parents=True)
+    (venv / "bin/python").touch()
+    output = tmp_path / "output"
+    calls = []
+    monkeypatch.setattr(
+        "scripts.academy.omni_remote_session.subprocess.run",
+        lambda argv, **kwargs: calls.append(argv),
+    )
+
+    def stage(name):
+        run_stage(bundle, code, snapshot, venv, output, name)
+
+    with pytest.raises(ValueError, match="full preflight"):
+        stage("train")
+    stage("full-preflight")
+    assert calls[-1][-2:] == ["preflight", str(bundle / "recipe.json")]
+    recipe = json.loads((bundle / "recipe.json").read_text())
+    preflight = output / "full-preflight"
+    preflight.mkdir()
+    (preflight / "preflight.json").write_text(
+        json.dumps({"recipe": recipe, "train_sha256": recipe["train_sha256"]})
+    )
+    stage("train")
+    assert calls[-1][-2:] == ["control", str(bundle / "recipe.json")]
+    with pytest.raises(ValueError, match="must finish"):
+        stage("evaluate-full")
+    training = output / "training"
+    training.mkdir()
+    (training / "control.json").write_text(json.dumps({"final_step": 128}))
+    checked = []
+    monkeypatch.setattr(
+        "scripts.academy.omni_pl_chat_p1.verify_checkpoint", checked.append
+    )
+    stage("evaluate-full")
+    assert checked == [training / "checkpoint-128"]
+    assert calls[-1][-2:] == ["base", f"checkpoint-128={checked[0]}"]

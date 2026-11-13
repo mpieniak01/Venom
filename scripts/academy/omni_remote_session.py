@@ -1,7 +1,7 @@
-"""Prepare and verify a portable, qualification-only Omni GPU session input.
+"""Prepare and verify a portable Omni GPU training session.
 
-The archive contains train/dev text and a bounded smoke recipe. Model weights,
-credentials, held-out cases and historical set B are never copied.
+The bundle freezes train/dev text, the full recipe and a bounded smoke recipe.
+Model weights, credentials, held-out cases and historical set B are never copied.
 """
 
 from __future__ import annotations
@@ -17,6 +17,7 @@ from scripts.academy.omni_pl_chat_data import read_jsonl, validate_splits
 from scripts.academy.omni_pl_chat_recipe import validate_recipe
 
 FILES = ("train.jsonl", "dev.jsonl", "recipe.json", "smoke-recipe.json")
+FULL_STAGES = frozenset({"full-preflight", "train", "evaluate-full"})
 FORBIDDEN_SOURCE_PARTS = {"holdout", "set-b", "set_b", "benchmark", "pl-assistant-v1"}
 
 
@@ -102,7 +103,7 @@ def prepare(profile_path: Path, output: Path, code_root: Path) -> dict:
     _write(output / "smoke-recipe.json", smoke)
     manifest = {
         "schema_version": 1,
-        "purpose": "remote_technical_qualification_only",
+        "purpose": "remote_omni_training",
         "source_commit": source_commit,
         "model": profile["model"],
         "revision": pin["revision"],
@@ -114,6 +115,9 @@ def prepare(profile_path: Path, output: Path, code_root: Path) -> dict:
             "smoke_initial_8",
             "smoke_resume_16",
             "evaluate_base_adapter",
+            "full-preflight",
+            "train",
+            "evaluate-full",
         ],
         "excluded": ["model_weights", "credentials", "holdout", "historical_set_B"],
     }
@@ -127,7 +131,11 @@ def verify(bundle: Path, code_root: Path | None = None) -> dict:
     manifest = _json(bundle / "manifest.json")
     if (
         manifest.get("schema_version") != 1
-        or manifest.get("purpose") != "remote_technical_qualification_only"
+        or manifest.get("purpose")
+        not in {
+            "remote_omni_training",
+            "remote_technical_qualification_only",
+        }
         or set(manifest.get("files", {})) != set(FILES)
         or set(path.name for path in bundle.iterdir()) != {*FILES, "manifest.json"}
     ):
@@ -176,7 +184,7 @@ def run_stage(
     stage: str,
 ) -> None:
     """Execute one explicit stage on an already prepared GPU host."""
-    verify(bundle, code_root)
+    manifest = verify(bundle, code_root)
     _clean_checkout(code_root)
     if output.is_symlink() or snapshot.is_symlink() or venv.is_symlink():
         raise ValueError("session paths must be real directories")
@@ -187,7 +195,11 @@ def run_stage(
     script = code_root / "scripts/academy/omni_pl_chat_p1.sh"
     common = ["bash", str(script), str(snapshot), str(bundle / "train.jsonl")]
     smoke = output / "smoke"
-    if stage == "preflight":
+    if stage in FULL_STAGES:
+        if manifest["purpose"] != "remote_omni_training":
+            raise ValueError("full training requires a current training bundle")
+        argv = _full_stage_command(bundle, snapshot, venv, output, stage, common)
+    elif stage == "preflight":
         receipt = output / "preflight/preflight.json"
         if receipt.exists():
             result = _json(receipt)
@@ -252,7 +264,68 @@ def run_stage(
         ]
     else:
         raise ValueError("unknown remote qualification stage")
-    subprocess.run(argv, cwd=code_root, check=True)
+    if argv:
+        subprocess.run(argv, cwd=code_root, check=True)
+
+
+def _full_stage_command(
+    bundle: Path,
+    snapshot: Path,
+    venv: Path,
+    output: Path,
+    stage: str,
+    common: list[str],
+) -> list[str]:
+    from scripts.academy.omni_pl_chat_p1 import _resume_checkpoint, verify_checkpoint
+
+    preflight = output / "full-preflight"
+    recipe_path = bundle / "recipe.json"
+    recipe = _json(recipe_path)
+    receipt = preflight / "preflight.json"
+    if stage == "full-preflight" and not receipt.is_file():
+        return [*common, str(preflight), str(venv), "preflight", str(recipe_path)]
+    if (
+        not receipt.is_file()
+        or _json(receipt).get("recipe") != recipe
+        or _json(receipt).get("train_sha256") != recipe["train_sha256"]
+    ):
+        raise ValueError("full preflight must pass with the frozen training recipe")
+    if stage == "full-preflight":
+        return []
+
+    training = output / "training"
+    checkpoint = training / f"checkpoint-{recipe['steps']}"
+    complete = any(
+        (training / name).is_file()
+        and _json(training / name).get("final_step") == recipe["steps"]
+        for name in ("control.json", "resume.json")
+    )
+    if complete:
+        verify_checkpoint(checkpoint)
+    if stage == "train":
+        if complete:
+            return []
+        mode = "control"
+        if training.exists():
+            _resume_checkpoint(training, recipe["steps"])
+            mode = "resume"
+        return [*common, str(training), str(venv), mode, str(recipe_path)]
+
+    if not complete:
+        raise ValueError("the full training run must finish before evaluation")
+    evaluation = output / "evaluation-full"
+    if evaluation.exists():
+        raise ValueError("evaluation output already exists; use a new run")
+    return [
+        *common[:2],
+        str(snapshot),
+        str(bundle / "dev.jsonl"),
+        str(evaluation),
+        str(venv),
+        "evaluate",
+        "base",
+        f"{checkpoint.name}={checkpoint}",
+    ]
 
 
 def main() -> None:
@@ -272,7 +345,9 @@ def main() -> None:
     run.add_argument("--venv", type=Path, required=True)
     run.add_argument("--output", type=Path, required=True)
     run.add_argument(
-        "--stage", choices=["preflight", "smoke", "evaluate"], required=True
+        "--stage",
+        choices=["preflight", "smoke", "evaluate", *sorted(FULL_STAGES)],
+        required=True,
     )
     args = parser.parse_args()
     if args.command == "run-stage":

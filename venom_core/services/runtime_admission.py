@@ -29,6 +29,7 @@ from venom_core.config import SETTINGS
 from venom_core.core.environment_policy import ensure_data_mutation_allowed
 
 RUNTIME_ADMISSION_API_VERSION = 1
+ACADEMY_TRAINING_OWNER = "academy-experiment"
 # Only these HTTP rejections establish that generation never started.
 REJECTED_BEFORE_WORK_HTTP_STATUSES = frozenset({400, 401, 403, 404, 405, 413, 415, 422})
 _MAX_OPERATIONS = 128
@@ -287,6 +288,66 @@ class RuntimeAdmission:
                 ),
             )
         return RuntimeLease(self, token)
+
+    def claim_host(self) -> None:
+        """Establish that this API owns the runtime namespace before model startup."""
+        if self.enabled:
+            self._require_supported()
+            _assert_safe_ledger_path(self.database)
+            self.database.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+            _assert_safe_ledger_path(self.database)
+            _own_host_namespace(self.database)
+
+    def claim_offline_host(self) -> bool:
+        """Hold the host lock when no local API process is managing models."""
+        try:
+            self.claim_host()
+        except RuntimeAdmissionError as exc:
+            if exc.code != "runtime_topology_unsupported":
+                raise
+            return False
+        return True
+
+    @contextmanager
+    def training_cleanup(self, capability: str) -> Iterator[None]:
+        """Let the host drain resources for a live Academy worker holding the lease."""
+        self.validate_training_cleanup(capability)
+        with self.operation(
+            kind="cleanup",
+            mutation=True,
+            lease_token=capability,
+            _cleanup=True,
+            confirm_quiescent=lambda: True,
+        ):
+            yield
+
+    def validate_training_cleanup(self, capability: str) -> None:
+        self._require_supported()
+        if len(capability) != 32 or any(
+            c not in "0123456789abcdef" for c in capability
+        ):
+            raise RuntimeAdmissionError("runtime_lease_invalid")
+        with self._transaction() as db:
+            lease = db.execute(_SELECT_LEASE).fetchone()
+            if (
+                lease is None
+                or lease["token"] != capability
+                or lease["owner"] != ACADEMY_TRAINING_OWNER
+                or lease["engine"] != "omni-training"
+                or lease["quarantine"]
+                or lease["cancelled"]
+                or not lease["process_identity"]
+                or lease["process_identity"] != process_instance_identity(lease["pid"])
+            ):
+                raise RuntimeAdmissionError("runtime_lease_invalid")
+
+    def assert_model_loading_available(self) -> None:
+        if self.enabled:
+            snapshot = self.snapshot()
+            if snapshot.get("owner") == ACADEMY_TRAINING_OWNER or snapshot.get(
+                "code"
+            ) in {"runtime_ledger_unavailable", "runtime_storage_unsafe"}:
+                raise RuntimeAdmissionError()
 
     def snapshot(self) -> dict[str, Any]:
         """Observe without creating storage or requiring mutation permission."""
@@ -830,6 +891,10 @@ class RuntimeLease:
         except asyncio.CancelledError:
             self.cancel()
             raise
+
+    def training_cleanup_capability(self) -> str:
+        """Forward only through the trusted loopback administration transport."""
+        return self._token
 
     def cancel(self) -> None:
         self._admission._cancel(self._token)

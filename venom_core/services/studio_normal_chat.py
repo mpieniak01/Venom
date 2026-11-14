@@ -19,7 +19,7 @@ from venom_core.memory.chat_retrieval import (
     retrieve_chat_memory,
 )
 from venom_core.services.background_priority import run_drainable_thread
-from venom_core.services.chat_grounding import current_chat_context
+from venom_core.services.chat_grounding import current_chat_context, grounding_follow_up
 from venom_core.services.session_store import SessionStore
 
 _NORMAL_HISTORY_POLICY = (
@@ -126,13 +126,21 @@ async def prepare_studio_normal(
     if use_default_language:
         system_context += f" {_NORMAL_LANGUAGE_POLICY}"
     system_context += await _note_context(request, session_id, get_vector_store)
-    source_context = await current_chat_context(
-        request.content, use_notes=request.use_notes
+    remaining = budget - len(system_context)
+    history = _recent_turns(
+        store, session_id, max(0, min(remaining, MAX_CHAT_HISTORY_CHARS))
     )
-    if len(source_context) <= budget - len(system_context):
+    previous = next(
+        (turn.content for turn in reversed(history) if turn.role == "user"), ""
+    )
+    query = grounding_follow_up(request.content, previous)
+    source_context = await current_chat_context(query, use_notes=request.use_notes)
+    if len(source_context) <= remaining:
         system_context += source_context
     elif source_context:
-        system_context += "\nFresh source context did not fit; say it was not checked."
+        fallback = "\nFresh source context did not fit; say it was not checked."
+        if len(fallback) <= remaining:
+            system_context += fallback
     budget -= len(system_context)
     if budget < 0:
         raise HTTPException(413, {"reason_code": "studio_normal_context_limit"})

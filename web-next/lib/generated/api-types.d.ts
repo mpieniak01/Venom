@@ -8132,6 +8132,11 @@ export interface components {
             record_id: string;
             /** Checkpoint Step */
             checkpoint_step?: number | null;
+            /**
+             * Cached Only
+             * @default false
+             */
+            cached_only: boolean;
         };
         /** Judgment */
         Judgment: {

@@ -9,7 +9,12 @@ from collections import Counter
 from pathlib import Path
 
 from scripts.academy.omni_pl_chat_data import sha256
-from scripts.academy.polish_chat_quality import CASES, _source_urls, read_cases
+from scripts.academy.polish_chat_quality import (
+    CASES,
+    _source_urls,
+    model_cases,
+    read_cases,
+)
 
 
 def _read_jsonl(path: Path) -> list[dict]:
@@ -30,7 +35,12 @@ def _verified_run(
         manifest["evaluated_ids"]
     ) != len(case_ids):
         raise ValueError("evaluation did not cover the expected cases")
-    for name, digest in manifest["outputs"].items():
+    outputs = manifest["outputs"]
+    if "raw.jsonl" not in outputs:
+        raise ValueError("GPU manifest does not include the raw response hash")
+    if set(outputs) - {"raw.jsonl", "blind.jsonl", "unblind.json"}:
+        raise ValueError("GPU manifest contains unknown output files")
+    for name, digest in outputs.items():
         if sha256(directory / name) != digest:
             raise ValueError(f"evaluation output differs from its GPU manifest: {name}")
     rows = _read_jsonl(directory / "raw.jsonl")
@@ -90,8 +100,22 @@ def build_report(root: Path) -> dict:
     ):
         raise ValueError("source evidence does not cover nine tool cases")
     evidence_by_id = {row["record_id"]: row for row in evidence}
+    model_input = root / "model-dev.jsonl"
+    expected = {
+        row["record_id"]: {**row, "max_new_tokens": 512} for row in model_cases(cases)
+    }
+    actual = _read_jsonl(model_input)
+    if (
+        len(actual) != len(expected)
+        or any(
+            {"max_new_tokens": 512, **row} != expected.get(row["record_id"])
+            for row in actual
+        )
+        or {row["record_id"] for row in actual} != model_ids
+    ):
+        raise ValueError("model evaluation input differs from the frozen cases")
     model_manifest, model_rows = _verified_run(
-        root / "model-eval", root / "model-dev.jsonl", model_ids
+        root / "model-eval", model_input, model_ids
     )
     tool_manifest, tool_rows = _verified_run(
         root / "tool-eval", capture / "tool-dev.jsonl", tool_ids

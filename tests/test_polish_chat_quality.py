@@ -102,7 +102,7 @@ def test_quality_report_checks_seals_and_separates_model_from_sources(tmp_path):
     model_ids = [row["record_id"] for row in cases if row["capability"] == "model"]
     tool_ids = [row["record_id"] for row in cases if row["capability"] != "model"]
     model_input = tmp_path / "model-dev.jsonl"
-    write_jsonl(model_input, [row for row in cases if row["capability"] == "model"])
+    export_model_cases(model_input)
     capture = tmp_path / "tool-capture"
     capture.mkdir()
     tool_input = capture / "tool-dev.jsonl"
@@ -178,6 +178,22 @@ def test_quality_report_checks_seals_and_separates_model_from_sources(tmp_path):
     assert "awaiting_blind_review" in (tmp_path / "report/report.json").read_text()
     with pytest.raises(FileExistsError):
         write_report(tmp_path, tmp_path / "report")
+    manifest_path = tmp_path / "model-eval/manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest_path.write_text(json.dumps({**manifest, "outputs": {}}))
+    with pytest.raises(ValueError, match="raw response hash"):
+        build_report(tmp_path)
+    rows = [json.loads(line) for line in model_input.read_text().splitlines()]
+    rows[0]["messages"][-1]["content"] = "Inny przypadek, to samo ID."
+    model_input.write_text("".join(json.dumps(row) + "\n" for row in rows))
+    manifest_path.write_text(
+        json.dumps({**manifest, "data_sha256": sha256(model_input)})
+    )
+    with pytest.raises(ValueError, match="frozen cases"):
+        build_report(tmp_path)
+    model_input.unlink()
+    export_model_cases(model_input)
+    manifest_path.write_text(json.dumps(manifest))
     source.write_text(source.read_text() + "\n")
     with pytest.raises(ValueError, match="source capture differs"):
         build_report(tmp_path)
@@ -225,6 +241,20 @@ def test_reviewed_training_export_rejects_unreviewed_and_eval_overlap(tmp_path):
     row["group_id"] = read_cases()[0]["group_id"]
     source.write_text(json.dumps(row, ensure_ascii=False) + "\n", encoding="utf-8")
     with pytest.raises(ValueError, match="overlaps"):
+        export_reviewed_train(source, output)
+    row["group_id"] = "reviewed-family-01"
+    row["messages"][0]["content"] = (
+        f" {read_cases()[0]['messages'][0]['content'].upper()} "
+    )
+    row["messages"].extend(
+        [
+            {"role": "user", "content": "Jak opisać drugi słoik?"},
+            {"role": "assistant", "content": "Użyj osobnej etykiety."},
+        ]
+    )
+    row["supervision"] = [1, 3]
+    source.write_text(json.dumps(row))
+    with pytest.raises(ValueError, match="training prompt overlaps"):
         export_reviewed_train(source, output)
 
 

@@ -69,7 +69,8 @@ export const academy = {
       },
       estimate: "estimate; measurement required",
       measured: "checked before each run",
-      evidence: "Observed result",
+      lora: "LoRA",
+      gpu: "GPU",
       selectedTargets: "LoRA scope in the selected profile",
       narrowTargets: "This profile omits MLP layers w1/w2/w3. Choose this scope deliberately; it may limit language training gains.",
       status: {

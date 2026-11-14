@@ -51,6 +51,7 @@ class JudgeDialogue(BaseModel):
 
     record_id: str = Field(min_length=1, max_length=256)
     checkpoint_step: int | None = Field(default=None, ge=1, le=10000)
+    cached_only: bool = False
 
 
 def require_experiment_access(request: Request) -> None:
@@ -167,6 +168,7 @@ def judge_dialogue(run_id: str, body: JudgeDialogue, request: Request) -> dict:
         run_id,
         body.record_id,
         body.checkpoint_step,
+        cached_only=body.cached_only,
     )
 
 

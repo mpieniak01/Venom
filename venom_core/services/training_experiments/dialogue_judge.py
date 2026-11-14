@@ -157,6 +157,20 @@ def judge_answer(client: httpx.Client, payload: dict) -> dict:
         body = response.json()
         result["cost_usd"] = reported_cost(body)
         result["generation_id"] = body.get("id")
+        metadata = (body.get("error") or {}).get("metadata") or {}
+        if (
+            response.status_code == 402
+            and metadata.get("limit_source")
+            in {
+                "openrouter_key_limit",
+                "openrouter_credits",
+                "openrouter_in_flight_budget",
+            }
+            and not metadata.get("provider_name")
+            and not result["generation_id"]
+            and result["cost_usd"] in {None, "0"}
+        ):
+            result["retryable"] = True
         response.raise_for_status()
         if not body.get("error"):
             result.update(verdict=model_verdict(body), status="completed")
@@ -176,7 +190,12 @@ def _judge_path(
 
 
 def evaluate_case(
-    service: ExperimentService, run_id: str, record_id: str, checkpoint_step: int | None
+    service: ExperimentService,
+    run_id: str,
+    record_id: str,
+    checkpoint_step: int | None,
+    *,
+    cached_only: bool = False,
 ) -> dict:
     ensure_data_mutation_allowed("academy_experiment_judge")
     bundle = service.review(run_id)
@@ -199,7 +218,13 @@ def evaluate_case(
     path = _judge_path(service.run_dir(run_id), checkpoint_step, record_id, payloads)
     with file_lock(path.with_suffix(".lock")):
         saved = read_json(path) if path.exists() else {"model": MODEL, "answers": {}}
-        pending = payloads.keys() - saved["answers"].keys()
+        if cached_only:
+            return saved
+        pending = {
+            label
+            for label in payloads
+            if label not in saved["answers"] or saved["answers"][label].get("retryable")
+        }
         if not pending:
             return saved
         if not available():

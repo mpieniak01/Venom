@@ -46,6 +46,8 @@ class PublicSources:
 
 
 def _host(value: str) -> str:
+    if not isinstance(value, str):
+        raise ValueError("Public source host must be text")
     host = value.lower().rstrip(".")
     if (
         len(host) > 253

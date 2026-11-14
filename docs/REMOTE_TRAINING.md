@@ -399,4 +399,4 @@ only the final candidate per method is selected for comparison.
 frozen benchmark inventories before printing separate commands. It uses NF4
 inference by default, four adaptive sessions on remote hosts (up to eight), or
 one local session. Optional BF16 evaluation has a separate output directory.
-See the [Polish preparation procedure](PL/ZDALNY_TRENING.md#jeden-wybrany-adapter-i-porównanie-qlora--lora).
+See [adapter selection and QLoRA / LoRA comparison](PL/ZDALNY_TRENING.md#wybór-adaptera-i-porównanie-qlora--lora).

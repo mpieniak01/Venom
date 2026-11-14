@@ -136,9 +136,8 @@ Pełny zakres aplikacji zależy od zainstalowanego zestawu zależności. Ollama 
 
 ## Ocena modeli multimodalnych
 
-Academy i tor głosowy mają osobne ścieżki kwalifikacji tekstu, audio, obrazu
-oraz narzędzi. Lokalne zbiory, wyniki pomiarów i raporty konkretnego hosta
-przechowujemy poza dokumentacją publikowaną z repozytorium.
+[Instrukcja Academy](docs/PL/THE_ACADEMY.md) opisuje profile treningu i lokalną
+ocenę. Wyniki, zbiory i raporty poszczególnych hostów pozostają lokalnie.
 
 ## Dokumentacja
 

@@ -115,6 +115,16 @@ If tools are skipped:
 | Repo analysis | `git status`, `git diff`, branch state, API contract scope | Default operator scenario |
 | Docs and script remodeling | Documentation and script changes aligned with the contract | Preferred analysis/remodel workflow |
 
+### Public sources in Studio Normal
+
+For Polish questions, Studio Normal routes current weather to the weather
+source, recent news and changing facts to public search, and general
+encyclopedic questions to Polish Wikipedia. Regional feeds can supply dated
+headlines when published articles are unavailable. Short weather follow-ups
+can inherit the topic from the preceding user turn. Forecasts are reported
+as unavailable. Source queries use the current question, while notes and
+private requests stay local. See [Public-source configuration](PL/CHAT_PUBLIC_SOURCES.md).
+
 ### Academy campaigns
 
 In the local Full Venom chat, type `/academy` to see campaign commands. Enable Academy to use this route. The commands execute locally with the selected model left idle. `start` requires the ID and hash of a saved plan. `start` and `resume` wait while the task queue is paused or at its configured capacity. `stop` is available during a pause. [Academy campaign commands](PL/ACADEMY_EKSPERYMENTY.md#sterowanie-kampanią-z-czatu-venom)

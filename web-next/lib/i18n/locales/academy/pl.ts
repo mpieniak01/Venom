@@ -69,7 +69,8 @@ export const academy = {
       },
       estimate: "szacunek, wymaga pomiaru",
       measured: "sprawdzane przed każdą próbą",
-      evidence: "Dotychczasowy wynik",
+      lora: "LoRA",
+      gpu: "GPU",
       selectedTargets: "Zakres LoRA w wybranym profilu",
       narrowTargets: "Ten profil pomija warstwy MLP w1/w2/w3. Wybierz ten zakres świadomie; może ograniczyć efekt treningu językowego.",
       status: {

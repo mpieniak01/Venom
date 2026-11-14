@@ -1576,11 +1576,13 @@ def test_dialogue_judge_keeps_blind_review_and_charges_once(setup, monkeypatch):
     )
     assert not submitted
     monkeypatch.setattr(judge.openrouter_runtime, "cloud_allowed", lambda: True)
+    assert client.post(url, json={**body, "cached_only": True}).json()["answers"] == {}
+    assert not submitted
     result = client.post(url, json=body).json()
     assert result["answers"]["A"]["verdict"]["pass"] is True
     assert result["answers"]["A"]["cost_usd"] == "0.000051"
     monkeypatch.setattr(judge.openrouter_runtime, "cloud_allowed", lambda: False)
-    assert client.post(url, json=body).json() == result
+    assert client.post(url, json={**body, "cached_only": True}).json() == result
     assert len(submitted) == 1
     payload = submitted[0]
     assert payload["provider"]["only"] == ["wafer/us"]
@@ -1609,6 +1611,7 @@ def test_dialogue_judge_keeps_blind_review_and_charges_once(setup, monkeypatch):
         ("length", "0.00003"),
         ("invalid_verdict", "0.00003"),
         ("rate_limit", None),
+        ("credits", None),
     ],
 )
 def test_dialogue_judge_preserves_billing_for_failed_verdicts(variation, expected_cost):
@@ -1619,6 +1622,11 @@ def test_dialogue_judge_preserves_billing_for_failed_verdicts(variation, expecte
             raise httpx.ReadTimeout("timeout", request=request)
         if variation == "rate_limit":
             return httpx.Response(429, json={"error": {"code": 429}})
+        if variation == "credits":
+            return httpx.Response(
+                402,
+                json={"error": {"metadata": {"limit_source": "openrouter_credits"}}},
+            )
         return httpx.Response(
             200,
             json={
@@ -1632,7 +1640,11 @@ def test_dialogue_judge_preserves_billing_for_failed_verdicts(variation, expecte
                         "message": {
                             "content": "{broken"
                             if variation == "invalid_json"
-                            else "{}"
+                            else (
+                                "{}"
+                                if variation == "invalid_verdict"
+                                else '{"pass":true,"critical":false,"reason":"OK"}'
+                            )
                         },
                     }
                 ],
@@ -1643,4 +1655,5 @@ def test_dialogue_judge_preserves_billing_for_failed_verdicts(variation, expecte
         result = judge.judge_answer(client, {"messages": []})
     assert result["status"] == "failed"
     assert result["cost_usd"] == expected_cost
+    assert result.get("retryable", False) == (variation == "credits")
     assert "verdict" not in result

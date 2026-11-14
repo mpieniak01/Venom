@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timezone
 from typing import Annotated
 
+from venom_core.core.permission_guard import permission_guard
 from venom_core.execution.agent_contracts import tool_function as kernel_function
 from venom_core.services.chat_public_sources import FeedSource, load_public_sources
 from venom_core.services.verified_web import NewsHeadline, fetch_rss_headlines
@@ -14,12 +16,20 @@ class RSSReaderSkill:
     """Read bounded headlines from operator-approved regional feeds."""
 
     async def read_feed(self, feed: FeedSource) -> list[NewsHeadline]:
-        return await fetch_rss_headlines(
-            feed.url,
-            article_hosts=feed.article_hosts,
-            article_path_prefix=feed.article_path_prefix,
-            today=datetime.now(timezone.utc).date(),
-        )
+        if not permission_guard.can_access_network():
+            return []
+        try:
+            return await asyncio.wait_for(
+                fetch_rss_headlines(
+                    feed.url,
+                    article_hosts=feed.article_hosts,
+                    article_path_prefix=feed.article_path_prefix,
+                    today=datetime.now(timezone.utc).date(),
+                ),
+                10,
+            )
+        except TimeoutError:
+            return []
 
     @kernel_function(
         name="get_headlines",

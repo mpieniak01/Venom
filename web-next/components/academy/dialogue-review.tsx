@@ -12,20 +12,24 @@ interface Props {
   readonly runId: string;
   readonly checkpointStep?: number;
   readonly judgeEnabled: boolean;
+  readonly canReadJudge?: boolean;
 }
 
-export function DialogueReview({ children, recordId, runId, checkpointStep, judgeEnabled }: Props) {
+export function DialogueReview({ children, recordId, runId, checkpointStep, judgeEnabled, canReadJudge = judgeEnabled }: Props) {
   const t = useTranslation();
   const [state, setState] = useState<JudgeState>();
   const requested = useRef(false);
 
   async function evaluate() {
-    if (!judgeEnabled || requested.current) return;
+    if (!canReadJudge || requested.current) return;
     requested.current = true;
     setState("pending");
     try {
-      setState(await evaluateExperimentDialogue(runId, recordId, checkpointStep));
+      const result = await evaluateExperimentDialogue(runId, recordId, checkpointStep, !judgeEnabled || state === "failed");
+      setState(Object.keys(result.answers).length ? result : undefined);
+      requested.current = !judgeEnabled || !Object.values(result.answers).some((answer) => answer.retryable);
     } catch {
+      requested.current = false;
       setState("failed");
     }
   }

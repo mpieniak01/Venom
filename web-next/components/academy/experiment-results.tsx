@@ -352,6 +352,7 @@ export function ExperimentReviewPanel({ runId, disabled, onSubmit }: ReviewProps
       {review?.answers.map((item) => (
         <DialogueReview key={item.case.record_id} recordId={item.case.record_id}
           runId={runId} checkpointStep={checkpointStep}
+          canReadJudge={dialogueIds.has(item.case.record_id)}
           judgeEnabled={!disabled && Boolean(judge?.available) && dialogueIds.has(item.case.record_id)}>
           <div className="space-y-3">
             <Conversation messages={item.case.messages} />

@@ -61,7 +61,10 @@ Pakowanie wspolne dla obu miejsc:
 "$control" scripts/remote_training.py pack --source /sciezka/przygotowanych/danych --manifest /sciezka/encoded.json --profile /sciezka/full-recipe.json --snapshot /sciezka/przypietej/rewizji --output /sciezka/input.zip --run-id fg-full --updates 264 --max-seconds 7200
 ```
 
-Budzet jest liczony z epok w recepcie i liczby decyzji w wybranym eksporcie.
+Budżet to `epoki × ceil(ceil(rekordy_train / batch) / akumulacja)`.
+`--updates 264` jest przykładem dla 88 kroków na epokę i 3 epok.
+Receptura przykładowa ma batch 4 i akumulację 4. Przelicz liczbę
+kroków dla własnego eksportu.
 Nie stosujemy limitu 256 historycznego trenera Granite. W tym pilocie FG nie obsluguje
 `--until-update`: wybieramy pelna recepte epok albo wznawiamy jej checkpoint.
 

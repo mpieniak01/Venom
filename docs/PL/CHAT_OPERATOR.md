@@ -115,6 +115,16 @@ Gdy tool jest pomijany:
 | Repo analiza | `git status`, `git diff`, zakres kontraktu API | Domyślny przypadek użycia |
 | Remodel dokumentacji i skryptów | Zmiana docs i skryptów pod kontrakt czatu | Preferowana forma pracy |
 
+### Źródła publiczne w Studio Normal
+
+W polskim czacie Studio Normal kieruje pytania o bieżącą pogodę do źródła
+pogodowego, wiadomości i zmienne fakty do wyszukiwarki, a ogólne pytania
+encyklopedyczne do polskiej Wikipedii. Gdy brakuje artykułów, regionalne RSS
+może dostarczyć datowane nagłówki. Krótkie dopytanie o pogodę może odziedziczyć
+temat z poprzedniej tury. Prognozy są niedostępne. Do źródeł trafia bieżące
+pytanie. Notatki i prywatne prośby pozostają lokalnie.
+[Konfiguracja źródeł](CHAT_PUBLIC_SOURCES.md)
+
 ### Kampanie Academy
 
 W lokalnym czacie pełnego Venoma wpisz `/academy`, aby zobaczyć komendy kampanii. Ta ścieżka wymaga włączonego Academy i działa lokalnie niezależnie od wybranego modelu. `start` wymaga identyfikatora i hasha zapisanego planu. `start` i `resume` czekają, gdy kolejka jest wstrzymana lub osiągnęła limit zadań. `stop` jest dostępne podczas pauzy. [Polecenia kampanii Academy](ACADEMY_EKSPERYMENTY.md#sterowanie-kampanią-z-czatu-venom)

@@ -22,6 +22,13 @@ _PRIVATE = re.compile(
 _WEATHER = re.compile(
     r"\b(pogod[ayę]|prognoz\w*|temperatur[ayę]|deszcz|śnieg|wiatr)\b", re.I
 )
+_FORECAST = re.compile(
+    r"\b(?:jutro|pojutrze|prognoz\w*|w weekend|za \d+ d\w*|w przyszł\w*|będzie)\b", re.I
+)
+_WEATHER_FOLLOW_UP = re.compile(
+    r"\s*(?:a\s+)?(?:jutro|pojutrze|w weekend)(?:\s+(?:rano|wieczorem|po południu))?[?!.]*\s*",
+    re.I,
+)
 _CURRENT = re.compile(
     r"\b(aktualn\w*|najnowsz\w*|dzisiaj|dziś|wczoraj|teraz|bieżąc\w*|"
     r"wiadomości|newsy|wydarzeni\w*|prognoz\w*|obecn\w*|"
@@ -75,6 +82,18 @@ def _weather_location(message: str) -> str | None:
     except (OSError, ValueError, KeyError, TypeError):
         return None
     return aliases.get(location.casefold(), location)
+
+
+def grounding_follow_up(message: str, previous_user: str) -> str:
+    """Resolve a short weather follow-up without forwarding the previous turn."""
+    if (
+        not _PRIVATE.search(message)
+        and len(message) <= 80
+        and _WEATHER_FOLLOW_UP.fullmatch(message)
+        and grounding_kind(previous_user) == "weather"
+    ):
+        return f"Prognoza pogody: {message}"
+    return message
 
 
 def _today_utc() -> date:
@@ -154,6 +173,8 @@ async def current_chat_context(message: str, *, use_notes: bool = False) -> str:
         f"Retrieved at: {retrieved}.\n"
     )
     if kind == "weather":
+        if _FORECAST.search(message):
+            return "\nWeather forecasts are unavailable. Do not report current weather as a forecast."
         city = _weather_location(message)
         if not city:
             return "\nAsk the user for the city before reporting current weather."
@@ -214,20 +235,25 @@ async def current_chat_context(message: str, *, use_notes: bool = False) -> str:
             return headlines
         return "\nCurrent web information could not be retrieved; say this explicitly."
     verified = []
-    for offset in range(0, min(len(trusted), 6), 2):
-        articles = await asyncio.gather(
-            *(
-                fetch_verified_article(url, allowed_hosts=region.article_hosts)
-                for url in trusted[offset : offset + 2]
-            )
-        )
-        verified.extend(
-            article
-            for article in articles
-            if article is not None and _article_is_recent(article.published_at, message)
-        )
-        if len(verified) >= 2:
-            break
+    try:
+        async with asyncio.timeout(12):
+            for offset in range(0, min(len(trusted), 6), 2):
+                articles = await asyncio.gather(
+                    *(
+                        fetch_verified_article(url, allowed_hosts=region.article_hosts)
+                        for url in trusted[offset : offset + 2]
+                    )
+                )
+                verified.extend(
+                    article
+                    for article in articles
+                    if article is not None
+                    and _article_is_recent(article.published_at, message)
+                )
+                if len(verified) >= 2:
+                    break
+    except TimeoutError:
+        pass
     verified = verified[:2]
     if not verified:
         if headlines := await _feed_headline_context(message, policy, region):

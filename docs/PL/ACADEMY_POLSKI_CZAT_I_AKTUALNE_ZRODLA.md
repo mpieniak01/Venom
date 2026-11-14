@@ -43,6 +43,9 @@ zrzutu i nie uruchamiamy treningu Wiki.
 
 ## Strumień B: źródła bieżące w zwykłym czacie
 
+Zasady wyboru źródeł w interfejsie opisuje
+[instrukcja operatora czatu](CHAT_OPERATOR.md#źródła-publiczne-w-studio-normal).
+
 - Pytania o pogodę korzystają z narzędzia pogodowego. Odpowiedź podaje
   lokalizację, czas odczytu oraz dostawcę danych.
 - Pytania o bieżące wydarzenia, ceny, obecne osoby na stanowiskach i inne

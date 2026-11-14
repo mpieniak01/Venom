@@ -136,9 +136,8 @@ Available features depend on the installed dependency set. Ollama runs as a sepa
 
 ## Multimodal model evaluation
 
-Academy and the voice runtime provide separate paths for qualifying text, audio,
-image and tool behavior. Local datasets, measured results and host-specific
-reports are kept outside the published documentation.
+See the [Academy guide](docs/THE_ACADEMY.md) for training profiles and local
+evaluation. Results, datasets and reports from individual hosts stay local.
 
 ## Documentation
 

@@ -18515,6 +18515,11 @@
               }
             ],
             "title": "Checkpoint Step"
+          },
+          "cached_only": {
+            "type": "boolean",
+            "title": "Cached Only",
+            "default": false
           }
         },
         "additionalProperties": false,

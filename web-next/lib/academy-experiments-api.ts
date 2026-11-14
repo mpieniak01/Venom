@@ -149,14 +149,15 @@ export interface DialogueJudgeResult {
   model: string;
   answers: Record<string, {
     cost_usd: string | null;
+    retryable?: boolean;
     verdict?: { pass: boolean; critical: boolean; reason: string };
   }>;
 }
 
-export function evaluateExperimentDialogue(runId: string, recordId: string, checkpointStep?: number) {
+export function evaluateExperimentDialogue(runId: string, recordId: string, checkpointStep?: number, cachedOnly = false) {
   return apiFetch<DialogueJudgeResult>(`${runPath(runId)}/review/dialogue-judge`, {
     method: "POST",
-    body: JSON.stringify({ record_id: recordId, checkpoint_step: checkpointStep }),
+    body: JSON.stringify({ record_id: recordId, checkpoint_step: checkpointStep, ...(cachedOnly ? { cached_only: true } : {}) }),
   });
 }
 

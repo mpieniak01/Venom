@@ -69,8 +69,16 @@ def read_cases(path: Path = CASES) -> list[dict]:
 
 def export_model_cases(path: Path) -> int:
     """Write the model-only subset for the existing pinned Omni GPU evaluator."""
-    cases = read_cases()
-    rows = [
+    rows = model_cases(read_cases())
+    validate_dev_cases(rows)
+    if path.exists():
+        raise FileExistsError(path)
+    write_jsonl(path, rows)
+    return len(rows)
+
+
+def model_cases(cases: list[dict]) -> list[dict]:
+    return [
         {
             key: row[key]
             for key in (
@@ -86,11 +94,6 @@ def export_model_cases(path: Path) -> int:
         for row in cases
         if row["capability"] == "model"
     ]
-    validate_dev_cases(rows)
-    if path.exists():
-        raise FileExistsError(path)
-    write_jsonl(path, rows)
-    return len(rows)
 
 
 def _source_urls(context: str) -> list[str]:
@@ -228,6 +231,7 @@ def export_reviewed_train(source: Path, destination: Path) -> int:
     if not rows:
         raise ValueError("no reviewed training examples")
     cases = read_cases()
+    validate_splits(rows)
     eval_groups = {row["group_id"] for row in cases}
     eval_prompts = {
         tuple(
@@ -251,13 +255,14 @@ def export_reviewed_train(source: Path, destination: Path) -> int:
             raise ValueError("training example needs pinned source identity")
         if not row.get("review_note") or not row.get("reviewer_id"):
             raise ValueError("training example needs documented human review")
-        prompt = tuple(
-            message["content"].casefold().strip()
-            for message in row["messages"]
-            if message["role"] == "user"
-        )
-        if prompt in eval_prompts:
-            raise ValueError("training prompt overlaps the quality evaluation")
+        for index in row["supervision"]:
+            prompt = tuple(
+                message["content"].casefold().strip()
+                for message in row["messages"][:index]
+                if message["role"] == "user"
+            )
+            if prompt in eval_prompts:
+                raise ValueError("training prompt overlaps the quality evaluation")
     validate_splits(rows, cases)
     if destination.exists():
         raise FileExistsError(destination)

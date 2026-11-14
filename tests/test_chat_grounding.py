@@ -505,7 +505,7 @@ async def test_verified_news_rejects_redirect_large_body_and_private_target(
         lambda _: httpx.Response(
             200,
             headers={"content-type": "text/html"},
-            text="<html><body><article><h1>News</h1><p>"
+            text='<html><body><header><time datetime="2026-11-14">Today</time></header><article><h1>News</h1><p>'
             + "A" * 120
             + "</p></article></body></html>",
         )

@@ -69,7 +69,8 @@ export const academy = {
       },
       estimate: "Schätzung; Messung erforderlich",
       measured: "vor jedem Lauf geprüft",
-      evidence: "Beobachtetes Ergebnis",
+      lora: "LoRA",
+      gpu: "GPU",
       selectedTargets: "LoRA-Umfang im gewählten Profil",
       narrowTargets: "Dieses Profil lässt die MLP-Schichten w1/w2/w3 aus. Wähle diesen Umfang bewusst; er kann den Sprachtrainingseffekt begrenzen.",
       status: {

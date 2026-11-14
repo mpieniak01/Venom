@@ -46,10 +46,10 @@ export function ModelTrainingSpecs() {
               <dl className="mt-2 space-y-1">
                 <div><dt className="text-hint">{t("academy.experiments.modelSpecs.loader")}</dt><dd>{model.loader}</dd></div>
                 <div><dt className="text-hint">{t("academy.experiments.modelSpecs.revision")}</dt><dd className="break-all">{model.revision}</dd></div>
-                <div><dt className="text-hint">LoRA</dt><dd>{model.target_families.join(", ")}</dd></div>
+                <div><dt className="text-hint">{t("academy.experiments.modelSpecs.lora")}</dt><dd>{model.target_families.join(", ")}</dd></div>
                 <div><dt className="text-hint">{t("academy.experiments.modelSpecs.modality")}</dt><dd>{t(`academy.experiments.modelSpecs.contract.${model.modality}`)}</dd></div>
                 <div><dt className="text-hint">{t("academy.experiments.modelSpecs.data")}</dt><dd>{t(`academy.experiments.modelSpecs.contract.${model.data_contract}`)}</dd></div>
-                <div><dt className="text-hint">GPU</dt><dd>{memory}</dd></div>
+                <div><dt className="text-hint">{t("academy.experiments.modelSpecs.gpu")}</dt><dd>{memory}</dd></div>
                 <div><dt className="text-hint">{t("academy.experiments.modelSpecs.runtime")}</dt><dd className="break-words">{runtime}</dd></div>
                 <div><dt className="text-hint">{t("academy.experiments.modelSpecs.defaults")}</dt><dd className="break-words">{Object.entries(model.recipe_defaults).map(([key, value]) => `${key}=${value}`).join(" · ")}</dd></div>
                 <div><dt className="text-hint">{t("academy.experiments.modelSpecs.qualification")}</dt><dd>{t(`academy.experiments.modelSpecs.contract.${model.qualification}`)}</dd></div>

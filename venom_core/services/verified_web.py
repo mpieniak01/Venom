@@ -86,8 +86,9 @@ class _ArticleParser(HTMLParser):
         ):
             if values.get("content"):
                 self.dates.append(values["content"])
-        if tag == "time" and values.get("datetime"):
-            self.dates.append(values["datetime"])
+        if tag == "time" and values.get("itemprop") == "datePublished":
+            if value := values.get("datetime"):
+                self.dates.append(value)
         if tag not in {"meta", "link", "br", "img", "input", "hr"}:
             self.stack.append(tag)
 

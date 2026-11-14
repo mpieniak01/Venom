@@ -279,7 +279,7 @@ export function CampaignQualityHistory({ disabled, initialRecordId = "", refresh
           </select>
         </div>
       </div>
-      {recordId && !current && <p role="status" className="text-sm text-hint">{t(QUALITY + "loadingAnalysis")}</p>}
+      {recordId && !current && <output className="block text-sm text-hint">{t(QUALITY + "loadingAnalysis")}</output>}
       {current && !analysis && (
         <div className="flex flex-wrap items-center gap-2">
           <p role="alert" className="text-sm text-red-400">{t(QUALITY + "analysisError")}</p>

@@ -79,16 +79,22 @@ class _ArticleParser(HTMLParser):
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         values = dict(attrs)
-        if tag == "meta" and (
-            values.get("property") == "article:published_time"
-            or values.get("name") in {"datePublished", "pubdate"}
-            or values.get("itemprop") == "datePublished"
+        if (
+            tag == "meta"
+            and (content := values.get("content"))
+            and (
+                values.get("property") == "article:published_time"
+                or values.get("name") in {"datePublished", "pubdate"}
+                or values.get("itemprop") == "datePublished"
+            )
         ):
-            if values.get("content"):
-                self.dates.append(values["content"])
-        if tag == "time" and values.get("itemprop") == "datePublished":
-            if value := values.get("datetime"):
-                self.dates.append(value)
+            self.dates.append(content)
+        if (
+            tag == "time"
+            and values.get("itemprop") == "datePublished"
+            and (value := values.get("datetime"))
+        ):
+            self.dates.append(value)
         if tag not in {"meta", "link", "br", "img", "input", "hr"}:
             self.stack.append(tag)
 
@@ -162,28 +168,30 @@ async def fetch_verified_article(
         return None
     try:
         timeout = httpx.Timeout(8.0, connect=3.0)
-        async with httpx.AsyncClient(
-            transport=transport,
-            timeout=timeout,
-            follow_redirects=False,
-            trust_env=False,
-        ) as client:
-            async with client.stream(
+        async with (
+            httpx.AsyncClient(
+                transport=transport,
+                timeout=timeout,
+                follow_redirects=False,
+                trust_env=False,
+            ) as client,
+            client.stream(
                 "GET", url, headers={"User-Agent": "Venom/0.1 (public news lookup)"}
-            ) as response:
-                if response.status_code != 200:
+            ) as response,
+        ):
+            if response.status_code != 200:
+                return None
+            if "text/html" not in response.headers.get("content-type", "").lower():
+                return None
+            if int(response.headers.get("content-length", "0")) > MAX_ARTICLE_BYTES:
+                return None
+            chunks: list[bytes] = []
+            size = 0
+            async for chunk in response.aiter_bytes():
+                size += len(chunk)
+                if size > MAX_ARTICLE_BYTES:
                     return None
-                if "text/html" not in response.headers.get("content-type", "").lower():
-                    return None
-                if int(response.headers.get("content-length", "0")) > MAX_ARTICLE_BYTES:
-                    return None
-                chunks: list[bytes] = []
-                size = 0
-                async for chunk in response.aiter_bytes():
-                    size += len(chunk)
-                    if size > MAX_ARTICLE_BYTES:
-                        return None
-                    chunks.append(chunk)
+                chunks.append(chunk)
         return _parse_article(url, b"".join(chunks))
     except (httpx.HTTPError, ValueError, OSError):
         return None
@@ -198,72 +206,81 @@ async def fetch_rss_headlines(
     transport: httpx.AsyncBaseTransport | None = None,
 ) -> list[NewsHeadline]:
     """Read at most two recent headlines from a configured public RSS feed."""
+    root = await _fetch_rss(feed_url, transport)
+    if root is None:
+        return []
+    headlines: list[NewsHeadline] = []
+    for item in root.findall("./channel/item")[:25]:
+        headline = _parse_headline(item, article_hosts, article_path_prefix, today)
+        if headline is not None:
+            headlines.append(headline)
+            if len(headlines) == 2:
+                break
+    return headlines
+
+
+async def _fetch_rss(
+    feed_url: str, transport: httpx.AsyncBaseTransport | None
+) -> ElementTree.Element | None:
     parsed_feed = urlparse(feed_url)
     if not parsed_feed.hostname or not trusted_news_url(
         feed_url, (parsed_feed.hostname,)
     ):
-        return []
+        return None
     if transport is None and not await asyncio.to_thread(
         _host_has_only_public_addresses, parsed_feed.hostname
     ):
-        return []
+        return None
     try:
-        async with httpx.AsyncClient(
-            transport=transport,
-            timeout=httpx.Timeout(8.0, connect=3.0),
-            follow_redirects=False,
-            trust_env=False,
-        ) as client:
-            async with client.stream(
+        async with (
+            httpx.AsyncClient(
+                transport=transport,
+                timeout=httpx.Timeout(8.0, connect=3.0),
+                follow_redirects=False,
+                trust_env=False,
+            ) as client,
+            client.stream(
                 "GET", feed_url, headers={"User-Agent": "Venom/0.1"}
-            ) as response:
-                if (
-                    response.status_code != 200
-                    or "xml" not in response.headers.get("content-type", "").lower()
-                ):
-                    return []
-                data = bytearray()
-                async for chunk in response.aiter_bytes():
-                    data.extend(chunk)
-                    if len(data) > MAX_FEED_BYTES:
-                        return []
-        payload = data.decode("utf-8")
-        if "<!DOCTYPE" in payload.upper() or "<!ENTITY" in payload.upper():
-            return []
-        root = ElementTree.fromstring(payload)
-    except (httpx.HTTPError, OSError, UnicodeError, ValueError, ElementTree.ParseError):
-        return []
-    headlines: list[NewsHeadline] = []
-    for item in root.findall("./channel/item")[:25]:
-        title = " ".join((item.findtext("title") or "").split())[:180]
-        url = (item.findtext("link") or "").strip()
-        published_text = item.findtext("pubDate") or ""
-        try:
-            published = parsedate_to_datetime(published_text)
-            parsed = urlparse(url)
-            port = parsed.port
-        except (TypeError, ValueError, IndexError):
-            continue
-        if (
-            published.tzinfo is None
-            or not title
-            or not (
-                trusted_news_url(url, article_hosts)
-                and parsed.path.startswith(article_path_prefix)
-                and port in {None, 443}
-            )
+            ) as response,
         ):
-            continue
-        age = (today - published.astimezone(timezone.utc).date()).days
-        if not 0 <= age <= 2:
-            continue
-        headlines.append(
-            NewsHeadline(
-                url=url,
-                title=title,
-                published_at=published.astimezone(timezone.utc).date().isoformat(),
-            )
-        )
-        if len(headlines) == 2:
-            break
-    return headlines
+            if (
+                response.status_code != 200
+                or "xml" not in response.headers.get("content-type", "").lower()
+            ):
+                return None
+            data = bytearray()
+            async for chunk in response.aiter_bytes():
+                data.extend(chunk)
+                if len(data) > MAX_FEED_BYTES:
+                    return None
+        payload = data.decode("utf-8")
+        upper_payload = payload.upper()
+        if "<!DOCTYPE" in upper_payload or "<!ENTITY" in upper_payload:
+            return None
+        return ElementTree.fromstring(payload)
+    except (httpx.HTTPError, OSError, ValueError, ElementTree.ParseError):
+        return None
+
+
+def _parse_headline(
+    item: ElementTree.Element,
+    article_hosts: Collection[str],
+    article_path_prefix: str,
+    today: date,
+) -> NewsHeadline | None:
+    title = " ".join((item.findtext("title") or "").split())[:180]
+    url = (item.findtext("link") or "").strip()
+    if not title or not trusted_news_url(url, article_hosts):
+        return None
+    if not urlparse(url).path.startswith(article_path_prefix):
+        return None
+    try:
+        published = parsedate_to_datetime(item.findtext("pubDate") or "")
+    except (TypeError, ValueError, IndexError):
+        return None
+    if published.tzinfo is None:
+        return None
+    published_on = published.astimezone(timezone.utc).date()
+    if not 0 <= (today - published_on).days <= 2:
+        return None
+    return NewsHeadline(url=url, title=title, published_at=published_on.isoformat())

@@ -90,17 +90,7 @@ def _feed(item: dict) -> FeedSource:
     return FeedSource(name, url, _hosts(item["article_hosts"]), prefix)
 
 
-def load_public_sources(path: Path | None = None) -> PublicSources:
-    """Read operator configuration; invalid sources fail closed in the caller."""
-    if path is None:
-        configured = Path(SETTINGS.CHAT_PUBLIC_SOURCES_CONFIG)
-        path = (
-            configured
-            if configured.is_absolute()
-            else Path(__file__).resolve().parents[2] / configured
-        )
-    data = json.loads(path.read_text(encoding="utf-8"))
-    aliases = data["weather"]["city_aliases"]
+def _city_aliases(aliases: dict) -> dict[str, str]:
     if not isinstance(aliases, dict) or len(aliases) > 300:
         raise ValueError("Invalid weather city aliases")
     clean_aliases = {}
@@ -112,33 +102,44 @@ def load_public_sources(path: Path | None = None) -> PublicSources:
         ):
             raise ValueError("Invalid weather city alias")
         clean_aliases[form.casefold()] = city
+    return clean_aliases
+
+
+def _news_region(item: dict) -> NewsRegion:
+    terms = item["match_terms"]
+    if (
+        not isinstance(terms, list)
+        or len(terms) > 30
+        or any(not isinstance(term, str) or not 1 <= len(term) <= 50 for term in terms)
+    ):
+        raise ValueError("Invalid news region match terms")
+    domains = item["search_domains"]
+    if not isinstance(domains, list) or len(domains) > 5:
+        raise ValueError("Invalid news search domains")
+    feeds = item["feeds"]
+    if not isinstance(feeds, list) or len(feeds) > 3:
+        raise ValueError("Invalid news feeds")
+    return NewsRegion(
+        tuple(term.casefold() for term in terms),
+        tuple(_host(domain) for domain in domains),
+        _hosts(item["article_hosts"]),
+        tuple(_feed(feed) for feed in feeds),
+    )
+
+
+def load_public_sources(path: Path | None = None) -> PublicSources:
+    """Read operator configuration; invalid sources fail closed in the caller."""
+    if path is None:
+        configured = Path(SETTINGS.CHAT_PUBLIC_SOURCES_CONFIG)
+        path = Path(__file__).resolve().parents[2] / configured
+    data = json.loads(path.read_text(encoding="utf-8"))
+    aliases = _city_aliases(data["weather"]["city_aliases"])
     news = data["news"]
-    regions = {}
-    if not isinstance(news["regions"], dict) or not 1 <= len(news["regions"]) <= 12:
+    region_configs = news["regions"]
+    if not isinstance(region_configs, dict) or not 1 <= len(region_configs) <= 12:
         raise ValueError("Invalid news regions")
-    for key, item in news["regions"].items():
-        terms = item["match_terms"]
-        if (
-            not isinstance(terms, list)
-            or len(terms) > 30
-            or any(
-                not isinstance(term, str) or not 1 <= len(term) <= 50 for term in terms
-            )
-        ):
-            raise ValueError("Invalid news region match terms")
-        domains = item["search_domains"]
-        if not isinstance(domains, list) or len(domains) > 5:
-            raise ValueError("Invalid news search domains")
-        feeds = item["feeds"]
-        if not isinstance(feeds, list) or len(feeds) > 3:
-            raise ValueError("Invalid news feeds")
-        regions[key] = NewsRegion(
-            tuple(term.casefold() for term in terms),
-            tuple(_host(domain) for domain in domains),
-            _hosts(item["article_hosts"]),
-            tuple(_feed(feed) for feed in feeds),
-        )
+    regions = {key: _news_region(item) for key, item in region_configs.items()}
     default = news["default_region"]
     if default not in regions:
         raise ValueError("Default news region is missing")
-    return PublicSources(clean_aliases, default, regions)
+    return PublicSources(aliases, default, regions)

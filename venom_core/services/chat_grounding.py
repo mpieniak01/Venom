@@ -11,7 +11,11 @@ from venom_core.execution.skills.rss_reader_skill import RSSReaderSkill
 from venom_core.execution.skills.web_skill import WebSearchSkill
 from venom_core.services.chat_public_sources import NewsRegion, load_public_sources
 from venom_core.services.polish_wikipedia import search_polish_wikipedia
-from venom_core.services.verified_web import fetch_verified_article, trusted_news_url
+from venom_core.services.verified_web import (
+    VerifiedArticle,
+    fetch_verified_article,
+    trusted_news_url,
+)
 
 _PRIVATE = re.compile(
     r"(?:\b(?:hasł\w*|token\w*|klucz api|password|secret|mam|"
@@ -111,31 +115,29 @@ def _article_is_recent(published: str, message: str) -> bool:
     return 0 <= age <= max_age
 
 
-def _safe_results(raw: str) -> tuple[list[str], str]:
+def _is_public_result_url(candidate: str) -> bool:
+    try:
+        host = urlparse(candidate).hostname
+    except ValueError:
+        return False
+    if not host or "." not in host or not trusted_news_url(candidate, (host,)):
+        return False
+    try:
+        return ipaddress.ip_address(host).is_global
+    except ValueError:
+        return True
+
+
+def _safe_results(raw: str) -> list[str]:
     if raw.startswith(_SEARCH_FAILURE):
-        return [], ""
+        return []
     urls: list[str] = []
     for candidate in _RESULT_URL.findall(raw):
-        try:
-            host = urlparse(candidate).hostname
-        except ValueError:
-            continue
-        if not host:
-            continue
-        if not trusted_news_url(candidate, (host,)):
-            continue
-        if "." not in host:
-            continue
-        try:
-            if not ipaddress.ip_address(host).is_global:
-                continue
-        except ValueError:
-            pass
-        if candidate not in urls:
+        if candidate not in urls and _is_public_result_url(candidate):
             urls.append(candidate)
-        if len(urls) >= 8:
-            break
-    return urls, raw[:1700]
+            if len(urls) == 8:
+                break
+    return urls
 
 
 async def _feed_headline_context(
@@ -173,56 +175,59 @@ async def current_chat_context(message: str, *, use_notes: bool = False) -> str:
         f"Retrieved at: {retrieved}.\n"
     )
     if kind == "weather":
-        if _FORECAST.search(message):
-            return "\nWeather forecasts are unavailable. Do not report current weather as a forecast."
-        city = _weather_location(message)
-        if not city:
-            return "\nAsk the user for the city before reporting current weather."
-        try:
-            result = await asyncio.wait_for(AssistantSkill().get_weather(city), 12)
-        except Exception:
-            result = ""
-        if not result or result.startswith("✗"):
-            return "\nCurrent weather could not be retrieved; say this explicitly."
-        url = AssistantSkill.weather_source_url(city)
-        return f"{policy}Source: {url}\n{result[:1000]}\n[/PUBLIC_SOURCES]"
+        return await _weather_context(message, policy)
     if kind == "wiki":
-        sources = await search_polish_wikipedia(message, limit=2)
-        if not sources:
-            return "\nPolish Wikipedia could not be retrieved; say this explicitly."
-        lines = [
-            f"[{index}] {item.title} | {item.url} | {item.extract}"
-            for index, item in enumerate(sources, 1)
-        ]
-        return f"{policy}" + "\n".join(lines)[:1600] + "\n[/PUBLIC_SOURCES]"
+        return await _wiki_context(message, policy)
+    return await _news_context(message, policy)
 
+
+async def _weather_context(message: str, policy: str) -> str:
+    if _FORECAST.search(message):
+        return "\nWeather forecasts are unavailable. Do not report current weather as a forecast."
+    city = _weather_location(message)
+    if not city:
+        return "\nAsk the user for the city before reporting current weather."
     try:
-        region = load_public_sources().region_for(message)
-    except (OSError, ValueError, KeyError, TypeError):
-        return (
-            "\nPublic news sources are not configured correctly; say this explicitly."
-        )
-
-    def _search(query: str) -> str:
-        skill = WebSearchSkill()
-        skill.tavily_client = None  # Public queries must use the free configured path.
-        return skill.search(query, max_results=8)
-
-    try:
-        raw = await asyncio.wait_for(asyncio.to_thread(_search, message[:200]), 12)
+        result = await asyncio.wait_for(AssistantSkill().get_weather(city), 12)
     except Exception:
-        raw = ""
-    urls, _ = _safe_results(raw)
+        result = ""
+    if not result or result.startswith("✗"):
+        return "\nCurrent weather could not be retrieved; say this explicitly."
+    url = AssistantSkill.weather_source_url(city)
+    return f"{policy}Source: {url}\n{result[:1000]}\n[/PUBLIC_SOURCES]"
+
+
+async def _wiki_context(message: str, policy: str) -> str:
+    sources = await search_polish_wikipedia(message, limit=2)
+    if not sources:
+        return "\nPolish Wikipedia could not be retrieved; say this explicitly."
+    lines = [
+        f"[{index}] {item.title} | {item.url} | {item.extract}"
+        for index, item in enumerate(sources, 1)
+    ]
+    return policy + "\n".join(lines)[:1600] + "\n[/PUBLIC_SOURCES]"
+
+
+def _search(query: str) -> str:
+    skill = WebSearchSkill()
+    skill.tavily_client = None  # Public queries must use the free configured path.
+    return skill.search(query, max_results=8)
+
+
+async def _search_urls(query: str) -> list[str]:
+    try:
+        raw = await asyncio.wait_for(asyncio.to_thread(_search, query), 12)
+    except Exception:
+        return []
+    return _safe_results(raw)
+
+
+async def _trusted_news_urls(message: str, region: NewsRegion) -> list[str]:
+    urls = await _search_urls(message[:200])
     trusted = [url for url in urls if trusted_news_url(url, region.article_hosts)]
     for domain in region.search_domains:
         targeted_query = f"site:{domain} {_today_utc().year} {message[:120]}"
-        try:
-            targeted_raw = await asyncio.wait_for(
-                asyncio.to_thread(_search, targeted_query), 12
-            )
-        except Exception:
-            targeted_raw = ""
-        targeted_urls, _ = _safe_results(targeted_raw)
+        targeted_urls = await _search_urls(targeted_query)
         trusted.extend(
             url
             for url in targeted_urls
@@ -230,18 +235,20 @@ async def current_chat_context(message: str, *, use_notes: bool = False) -> str:
         )
         if trusted:
             break
-    if not trusted:
-        if headlines := await _feed_headline_context(message, policy, region):
-            return headlines
-        return "\nCurrent web information could not be retrieved; say this explicitly."
-    verified = []
+    return trusted
+
+
+async def _recent_articles(
+    urls: list[str], region: NewsRegion, message: str
+) -> list[VerifiedArticle]:
+    verified: list[VerifiedArticle] = []
     try:
         async with asyncio.timeout(12):
-            for offset in range(0, min(len(trusted), 6), 2):
+            for offset in range(0, min(len(urls), 6), 2):
                 articles = await asyncio.gather(
                     *(
                         fetch_verified_article(url, allowed_hosts=region.article_hosts)
-                        for url in trusted[offset : offset + 2]
+                        for url in urls[offset : offset + 2]
                     )
                 )
                 verified.extend(
@@ -254,10 +261,26 @@ async def current_chat_context(message: str, *, use_notes: bool = False) -> str:
                     break
     except TimeoutError:
         pass
-    verified = verified[:2]
+    return verified[:2]
+
+
+async def _news_context(message: str, policy: str) -> str:
+    try:
+        region = load_public_sources().region_for(message)
+    except (OSError, ValueError, KeyError, TypeError):
+        return (
+            "\nPublic news sources are not configured correctly; say this explicitly."
+        )
+
+    trusted = await _trusted_news_urls(message, region)
+    verified = await _recent_articles(trusted, region, message)
     if not verified:
         if headlines := await _feed_headline_context(message, policy, region):
             return headlines
+        if not trusted:
+            return (
+                "\nCurrent web information could not be retrieved; say this explicitly."
+            )
         return (
             "\nSearch results were found, but no dated article from a trusted source "
             "could be verified. Say this explicitly; do not present news as fact."

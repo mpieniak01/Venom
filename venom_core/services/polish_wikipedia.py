@@ -78,6 +78,12 @@ async def search_polish_wikipedia(
         logger.warning("Polish Wikipedia lookup failed: %s", exc)
         return []
 
+    return _extract_sources(payload, cleaned_query, result_limit)
+
+
+def _extract_sources(
+    payload: object, cleaned_query: str, result_limit: int
+) -> list[WikipediaSource]:
     query_data = payload.get("query") if isinstance(payload, dict) else None
     pages = query_data.get("pages", []) if isinstance(query_data, dict) else []
     if not isinstance(pages, list):

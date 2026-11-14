@@ -38,7 +38,7 @@ export function ModelTrainingSpecs() {
             : `${model.gpu_memory.shared_lora_qlora.gpu_memory_gb} GB (${t("academy.experiments.modelSpecs.estimate")})`;
           const runtime = typeof model.runtime === "string"
             ? t("academy.experiments.modelSpecs.localRuntime")
-            : `Python ${model.runtime.python} · ${Object.entries(model.runtime.versions).map(([name, version]) => `${name} ${version}`).join(" · ")}`;
+            : `Python ${model.runtime.python} · ${Object.entries(model.runtime.versions).map((entry) => entry.join(" ")).join(" · ")}`;
           return (
             <details key={model.model} className="rounded-md border border-[color:var(--ui-border)] p-3 text-sm">
               <summary className="cursor-pointer font-medium break-words">{model.model}</summary>

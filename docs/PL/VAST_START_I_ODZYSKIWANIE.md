@@ -8,50 +8,9 @@ logu konkretnego kroku i testu celowego. Kod i locki repo są źródłem prawdy.
 ## 1. Wybór właściwego hosta przed wynajmem
 
 
-### Naprawa kontraktu wynajmu (2026-11-03)
+### Kwalifikacja kontraktu VM
 
-Porównanie z udaną Gemma 4 (instancja `58965216`, zapis
-`data/training/gemma4-pilot-session-20261103/operation.json`) potwierdziło,
-że payload miał `template_hash_id`, `vm: true`, `runtype: ssh_direct`,
-`disk: 100` i nie zawierał `image`. Ogólny klient na gałęzi FunctionGemma
-nadpisywał obraz digestem kontenera także dla VM. Dla VM przywrócono wybór
-obrazu przez zweryfikowany szablon; receptury kontenerowe zachowują digest.
-Obraz w profilu VM jest deklaracją pomocniczą, nie dowodem przypięcia obrazu
-gościa. Faktyczny system i GPU wymagają odczytu po SSH. Instancję `58992567`
-usunięto po kolejnym odrzuceniu poprawnego klucza. Zmianę payloadu ustalono
-z dowodów lokalnych; jej skuteczność wobec błędu SSH nie jest jeszcze
-potwierdzona nowym rozruchem. Nie wykonywać kolejnego wynajmu automatycznie.
-
-Udana sesja G03 `58823228` używała Ubuntu VM, `vm: true`,
-`runtype: ssh_direct` i publicznego IP z mapowaniem `22/tcp`.
-Ostatnie nieudane sesje `58989309` i `58991471` użyły Ubuntu Desktop VM,
-`runtype: ssh` oraz diagnostyki wyłącznie przez proxy. Obie usunięto.
-Odmowa klucza przez proxy nie potwierdza braku klucza w docelowej VM.
-
-Klient zachowuje teraz publiczny IP i wyłącznie mapowanie SSH z odpowiedzi
-instancji, dla VM żąda `ssh_direct` i nie zastępuje brakującego mapowania
-endpointem proxy. Metadane szablonu obejmują `vm` i `ssh_direct`; obie
-deklaracje muszą być prawdziwe dla profilu VM i są objęte odciskiem konfiguracji.
-Istniejące profile wymagają ponownego przygotowania po zmianie odcisku.
-
-FunctionGemma używa tego samego szablonu Ubuntu 22.04 VM co udana Gemma 4:
-`2c18cabd8f2f0525c2ff8446f5d4e063`. Ustalony dysk wynosi **100 GB**.
-Nie twórz nowego szablonu infrastruktury dla kolejnego modelu. Jego profil
-dziedziczy sprawdzoną VM, tryb SSH i procedurę bootstrapu. Różnice modelu
-dotyczą snapshotu, zależności i parametrów treningu; zmiany wymagań sprzętu
-muszą wynikać z zadania lub pomiaru, a nie zapasu dodawanego przez wykonawcę.
-Pole dostawcy `recommended_disk_space=130` jest zaleceniem, nie ustaloną
-wielkością zamówienia. Dla VM walidacja zachowuje wybrane 100 GB mimo tego
-zalecenia. Nie zwiększaj dysku ani nie zmieniaj szablonu z tego powodu.
-Wyszukiwanie, wycena i create muszą używać identycznego `disk_gb`.
-Plany oraz dowody wykonanych zamówień zachowują historyczną wielkość.
-`gpu_frac`
-opisuje udział kart maszyny, nie ułamek wydajności wynajętej karty. Nie wymagaj
-`gpu_frac=1` jako dowodu pełnej karty; kontroluj `num_gpus`, VRAM, przydział
-RAM/CPU i rzeczywiste zasoby po SSH. Cena ma pierwszeństwo po spełnieniu
-wymagań minimalnych. Zgodność profilu z API i odtworzenie historycznego
-endpointu sprawdzono bez nowego wynajmu. Nowy rozruch i trening wymagają
-oddzielnego potwierdzenia operacyjnego; nie zostały wykonane w ramach naprawy.
+Przed wynajmem potwierdź szablon VM, tryb SSH, mapowanie portu, wybrany dysk i faktyczne zasoby hosta. Identyfikatory dawnych instancji, payloady i wyniki napraw pozostają w prywatnym raporcie.
 
 Do listowania hostów bieżącej przygotowanej kampanii używaj istniejącego skryptu:
 

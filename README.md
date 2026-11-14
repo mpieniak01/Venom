@@ -134,24 +134,18 @@ modules/               Locally installed modules from separate repositories
 
 Available features depend on the installed dependency set. Ollama runs as a separate service, and the CUDA daemon has its own environment. Academy training and additional model engines require separate qualification. [Dependency profiles and deployment status](docs/DEPENDENCY_PROFILES.md)
 
-## Polish multimodal benchmark
+## Multimodal model evaluation
 
-We compared baseline **Gemma 4 E4B** and **LFM3-Omni-2B** on the frozen `pl-assistant-v1` suite. Each profile ran 200 scenarios with reference text and 80 additional runs with recordings. Both used Q4_K_M packages with Ollama 0.40.14 on the same RTX 3060 with 12 GiB of VRAM under WSL2. The Gemma profile used Whisper and Piper for this run. Omni used its native speech recognition and synthesis.
-
-| Measurement | `gemma4:e4b` | `lfm3-omni:2b` |
-| --- | ---: | ---: |
-| Strict passes | **254/280 (90.71%)** | 209/280 (74.64%) |
-| Peak GPU memory across the device | 9,741 MiB | **7,962 MiB** |
-| Median time to ready WAV on eight recorded instructions | 0.951 s | **0.511 s** |
-
-Gemma led on strict accuracy. Omni used less GPU memory and returned the WAV sooner in this run. The report also gives browser playback timings, per-task scores, and a separate Full acceptance run after changes to Gemma's native speech recognition. [English report](docs/EN/POLISH_MULTIMODAL_ASSISTANT_EXPERIMENT.md) · [Polish report](docs/PL/POLISH_MULTIMODAL_ASSISTANT_EXPERIMENT.md)
+Academy and the voice runtime provide separate paths for qualifying text, audio,
+image and tool behavior. Local datasets, measured results and host-specific
+reports are kept outside the published documentation.
 
 ## Documentation
 
 - **Start and operate** · [Deployment](docs/DEPLOYMENT_NEXT.md) · [Studio](docs/STUDIO.md) · [Full/Light profiles](docs/STACK_PROFILES.md) · [Environments](docs/ENVIRONMENTS_SUPPORT.md) · [Docker](docs/DOCKER_RELEASE_GUIDE.md)
 - **Work with Venom** · [Dashboard](docs/DASHBOARD_GUIDE.md) · [Chat operator](docs/CHAT_OPERATOR.md) · [Tools](docs/TOOLS_USAGE_GUIDE.md) · [Memory](docs/MEMORY_LAYER_GUIDE.md) · [Configuration](docs/CONFIG_PANEL.md)
 - **Agents and extensions** · [Agent catalog](docs/SYSTEM_AGENTS_CATALOG.md) · [Researcher](docs/THE_RESEARCHER.md) · [Building tools](docs/THE_FORGE.md) · [Integrations](docs/EXTERNAL_INTEGRATIONS.md) · [Optional modules](docs/MODULES_OPTIONAL_REGISTRY.md)
-- **Models and experiments** · [Academy](docs/THE_ACADEMY.md) · [Training data catalog](docs/TRAINING_DATA_CATALOG.md) · [E4B pilot](docs/PL/GEMMA4_E4B_PILOT.md) · [LFM3 evaluation](docs/PL/LFM3_LOCAL_EVALUATION.md) · [Polish assistant benchmark](docs/PL/POLSKI_BENCHMARK_ASYSTENTA.md)
+- **Models and experiments** · [Academy](docs/THE_ACADEMY.md) · [Model tuning](docs/MODEL_TUNING_GUIDE.md) · [Voice runtime](docs/VOICE_RUNTIME_CAPABILITIES.md)
 - **Providers** · [OpenRouter](docs/OPENROUTER_LOCAL_MVP.md) · [Vast and Ollama](docs/PL/VAST_START_I_ODZYSKIWANIE.md)
 - **Development and quality** · [Backend](docs/BACKEND_ARCHITECTURE.md) · [Frontend](docs/FRONTEND_NEXT_GUIDE.md) · [Contributing](docs/CONTRIBUTING.md) · [Testing policy](docs/TESTING_POLICY.md) · [GitHub Actions](https://github.com/mpieniak01/Venom/actions)
 

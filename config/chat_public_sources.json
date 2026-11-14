@@ -1,0 +1,37 @@
+{
+  "weather": {
+    "city_aliases": {
+      "warszawie": "Warszawa", "warszawy": "Warszawa",
+      "krakowie": "Kraków", "krakowa": "Kraków",
+      "wrocławiu": "Wrocław", "wrocławia": "Wrocław",
+      "gdańsku": "Gdańsk", "gdańska": "Gdańsk",
+      "poznaniu": "Poznań", "poznania": "Poznań",
+      "łodzi": "Łódź", "katowicach": "Katowice",
+      "katowic": "Katowice", "berlinie": "Berlin"
+    }
+  },
+  "news": {
+    "default_region": "pl",
+    "regions": {
+      "pl": {
+        "match_terms": [],
+        "search_domains": ["pap.pl"],
+        "article_hosts": ["pap.pl", "gov.pl"],
+        "feeds": []
+      },
+      "world": {
+        "match_terms": ["świat", "world", "global", "zagranic"],
+        "search_domains": ["reuters.com"],
+        "article_hosts": ["reuters.com", "apnews.com", "bbc.com", "bbc.co.uk"],
+        "feeds": [
+          {
+            "name": "BBC News RSS",
+            "url": "https://feeds.bbci.co.uk/news/world/rss.xml",
+            "article_hosts": ["bbc.co.uk", "bbc.com"],
+            "article_path_prefix": "/news/"
+          }
+        ]
+      }
+    }
+  }
+}

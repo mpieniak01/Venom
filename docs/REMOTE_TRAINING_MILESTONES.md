@@ -9,8 +9,8 @@ updates; the training engine and its existing checkpoint fingerprint are unchang
 
 ```bash
 python -m venom_core.services.remote_training.cli plan \
-  --run-id granite-g03-milestones --milestones 80 125 160 \
-  --max-seconds 7200 --output data/training/g03-campaign/plan.json
+  --run-id reviewed-run-milestones --milestones 80 125 160 \
+  --max-seconds 7200 --output data/training/reviewed-campaign/plan.json
 ```
 
 Packaging, host initialization, upload and smoke keep their existing separate
@@ -20,13 +20,13 @@ following examples, add the same `--ssh-config`, `--remote-root` and
 
 ```bash
 python -m venom_core.services.remote_training.cli --host gpu start \
-  --run-id granite-g03-milestones --stage smoke
+  --run-id reviewed-run-milestones --stage smoke
 python -m venom_core.services.remote_training.cli --host gpu start \
-  --run-id granite-g03-milestones --stage train --until-update 80
+  --run-id reviewed-run-milestones --stage train --until-update 80
 python -m venom_core.services.remote_training.cli --host gpu watch \
-  --run-id granite-g03-milestones
+  --run-id reviewed-run-milestones
 python -m venom_core.services.remote_training.cli --host gpu attempts \
-  --run-id granite-g03-milestones
+  --run-id reviewed-run-milestones
 ```
 
 Read `attempt`, `completed_updates`, `result_checkpoint`, `status` and `exit_code`
@@ -35,10 +35,10 @@ must not be guessed: retries and failed starts consume numbers.
 
 ```bash
 python -m venom_core.services.remote_training.cli --host gpu collect \
-  --run-id granite-g03-milestones --attempt <ATTEMPT_80> \
+  --run-id reviewed-run-milestones --attempt <ATTEMPT_80> \
   --include-checkpoint --output /absolute/results/candidate-80.zip
 python -m venom_core.services.remote_training.cli --host gpu resume \
-  --run-id granite-g03-milestones \
+  --run-id reviewed-run-milestones \
   --checkpoint attempts/<PADDED_ATTEMPT_80>/result/checkpoint --until-update 125
 ```
 
@@ -78,7 +78,7 @@ changed between milestones. Optimizer/RNG continuation remains host-bound.
 
 ```bash
 python -m scripts.granite_operator.dialogue_cases \
-  --material /absolute/G03-material --output /absolute/new-dialogue-benchmark
+  --material /absolute/reviewed-material --output /absolute/new-dialogue-benchmark
 ```
 
 The freezer checks the audited material inventory and publishes the manifest only
@@ -93,7 +93,7 @@ provided values. CLI checks allow equivalent quoting, option ordering and
 `--option=value`, while rejecting swapped/missing/duplicate/unknown arguments.
 No command is executed merely to judge an answer requesting syntax only. Human
 reply time is simulated and excluded from interpretation of model task latency.
-Prepared G03 held-out templates remain diagnostic, not independent confirmation.
+Prepared held-out templates remain diagnostic, not independent confirmation.
 A successful reference replay proves evaluator/data consistency, not model quality.
 
 All provider/GPU runs remain explicit operator actions. Automated tests use local

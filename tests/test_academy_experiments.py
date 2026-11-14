@@ -12,18 +12,65 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from scripts.academy.omni_pl_chat_p1 import CHECKPOINT_FILES
+from scripts.academy.omni_pl_chat_recipe import LANGUAGE_TARGET_MODULES
 from venom_core.api.routes import academy_experiments as routes
+from venom_core.services.gemma4_operator.profile import PINNED_REVISIONS
+from venom_core.services.gemma4_operator.training import target_modules_for
 from venom_core.services.remote_training.lifecycle import atomic_json, process_identity
 from venom_core.services.runtime_admission import RuntimeAdmission
 from venom_core.services.training_experiments import worker as worker_module
 from venom_core.services.training_experiments.evidence import latest_checkpoint
-from venom_core.services.training_experiments.profiles import digest
+from venom_core.services.training_experiments.profiles import (
+    Profile,
+    digest,
+    recipe_for,
+)
 from venom_core.services.training_experiments.service import ExperimentService
 from venom_core.services.training_experiments.worker import Worker
+from venom_core.services.training_model_specs import model_training_specs
 
 
 def write_rows(path: Path, data: list[dict]) -> None:
     path.write_text("".join(json.dumps(row) + "\n" for row in data), encoding="utf-8")
+
+
+def test_model_specs_follow_trainers() -> None:
+    omni, e4b, twelve_b = model_training_specs()
+    assert omni["target_modules"] == list(LANGUAGE_TARGET_MODULES)
+    assert set(omni["target_modules"]) >= {"w1", "w2", "w3"}
+    assert omni["legacy_recipe_default"] == ["q_proj", "v_proj"]
+    for gemma in (e4b, twelve_b):
+        assert gemma["revision"] == PINNED_REVISIONS[gemma["model"]]
+        assert gemma["target_modules"] == target_modules_for(gemma["model"])
+    assert e4b["status"] == "trained_candidate_below_acceptance"
+    assert twelve_b["status"] == "remote_gpu_smoke_required"
+
+
+def test_model_specs_route(setup) -> None:
+    _, client, *_ = setup
+    response = client.get("/api/v1/academy/experiments/model-specs")
+    assert response.status_code == 200
+    assert [item["model"] for item in response.json()["models"]] == [
+        item["model"] for item in model_training_specs()
+    ]
+
+
+def test_profile_requires_explicit_lora_scope() -> None:
+    profile = Profile(
+        label="test",
+        dataset="test",
+        snapshot="snapshot",
+        training_venv="venv",
+        train="train.jsonl",
+        dev="dev.jsonl",
+        train_sha256="a" * 64,
+        dev_sha256="b" * 64,
+    )
+    with pytest.raises(ValueError, match="experiment_target_modules_required"):
+        recipe_for(profile, None)
+    assert recipe_for(profile, {"target_modules": ["w1", "w2", "w3"]})[
+        "target_modules"
+    ] == ["w1", "w2", "w3"]
 
 
 @pytest.fixture
@@ -62,7 +109,7 @@ def setup(tmp_path, monkeypatch):
         "dev": "dev.jsonl",
         "train_sha256": digest(root / "train.jsonl"),
         "dev_sha256": digest(root / "dev.jsonl"),
-        "recipe": {"steps": 4, "save_every": 2},
+        "recipe": {"steps": 4, "save_every": 2, "target_modules": ["q_proj", "v_proj"]},
     }
     atomic_json(profiles / "smoke.json", profile)
     launches = []
@@ -1403,3 +1450,197 @@ def test_checkpoint_retention_requires_the_exact_early_selected_artifact(
             service.checkpoint_report(second, 2)[0]["artifacts"][0]["available"]
             is False
         )
+
+
+def test_dialogue_judge_keeps_blind_review_and_charges_once(setup, monkeypatch):
+    from venom_core.services.training_experiments import dialogue_judge as judge
+
+    svc, client, _, _, _, _, _ = setup
+    directory = svc.run_dir("dialogue")
+    directory.mkdir(parents=True)
+    case = {
+        "record_id": "dialogue-a",
+        "language": "pl",
+        "messages": [
+            {"role": "user", "content": "Powiedz OK."},
+            {"role": "assistant", "content": "OK"},
+            {"role": "user", "content": "Powtórz."},
+        ],
+        "criteria": [
+            {"id": "answer", "kind": "content", "description": "Używa słowa OK"}
+        ],
+        "source_repo": "meta",
+    }
+    incomplete = {"text": "Urwana", "finish": "length"}
+    items = [
+        {
+            "case": case,
+            "answers": {
+                "A": {"text": "OK", "finish": "stop", "model": "base-hidden"},
+                "B": incomplete,
+            },
+        },
+        {
+            "case": {**case, "record_id": "single", "messages": case["messages"][:1]},
+            "answers": {"A": {"text": "OK", "finish": "stop"}},
+        },
+        {"case": {**case, "record_id": "failed"}, "answers": {"A": incomplete}},
+        {
+            "case": {**case, "record_id": "en", "language": "en"},
+            "answers": {"A": {"text": "OK", "finish": "stop"}},
+        },
+    ]
+    bundle = {
+        "checkpoint_step": 4,
+        "answers": items,
+        "cases": [item["case"] for item in items],
+    }
+    monkeypatch.setattr(svc, "review", lambda _: bundle)
+    monkeypatch.setattr(judge.openrouter_runtime, "is_enabled", lambda: True)
+    monkeypatch.setattr(judge.openrouter_runtime, "cloud_allowed", lambda: True)
+    monkeypatch.setattr(judge.openrouter_runtime, "credential", lambda: "test-key")
+    real_client = httpx.Client
+    submitted = []
+
+    def model(request):
+        assert request.url == judge.openrouter_runtime.ENDPOINT
+        assert request.headers["Authorization"] == "Bearer test-key"
+        payload = json.loads(request.content)
+        submitted.append(payload)
+        return httpx.Response(
+            200,
+            json={
+                "id": "gen-test",
+                "model": judge.MODEL,
+                "provider": "Wafer",
+                "usage": {"cost": 0.000051},
+                "choices": [
+                    {
+                        "finish_reason": "stop",
+                        "message": {
+                            "content": json.dumps(
+                                {
+                                    "pass": True,
+                                    "critical": False,
+                                    "reason": "Powtarza OK.",
+                                }
+                            )
+                        },
+                    }
+                ],
+            },
+        )
+
+    monkeypatch.setattr(
+        judge.httpx,
+        "Client",
+        lambda **kwargs: real_client(transport=httpx.MockTransport(model), **kwargs),
+    )
+    base = "/api/v1/academy/experiments/runs/dialogue/review"
+    assert client.get(base).json()["dialogue_judge"] == {
+        "model": judge.MODEL,
+        "available": True,
+        "case_ids": ["dialogue-a"],
+    }
+    assert not submitted
+    body = {"record_id": "dialogue-a", "checkpoint_step": 4}
+    url = base + "/dialogue-judge"
+    assert (
+        client.post(
+            url, json=body, headers={"Origin": "https://example.test"}
+        ).status_code
+        == 403
+    )
+    assert (
+        client.post(
+            url, json=body, headers={"Sec-Fetch-Site": "cross-site"}
+        ).status_code
+        == 403
+    )
+    assert not submitted
+    assert (
+        client.post(url, json={**body, "checkpoint_step": 2}).json()["detail"]["code"]
+        == "experiment_checkpoint_review_changed"
+    )
+    for record_id in ("single", "failed", "missing", "en"):
+        assert (
+            client.post(url, json={**body, "record_id": record_id}).json()["detail"][
+                "code"
+            ]
+            == "experiment_judge_case_ineligible"
+        )
+    monkeypatch.setattr(judge.openrouter_runtime, "cloud_allowed", lambda: False)
+    assert (
+        client.post(url, json=body).json()["detail"]["code"]
+        == "experiment_judge_unavailable"
+    )
+    assert not submitted
+    monkeypatch.setattr(judge.openrouter_runtime, "cloud_allowed", lambda: True)
+    result = client.post(url, json=body).json()
+    assert result["answers"]["A"]["verdict"]["pass"] is True
+    assert result["answers"]["A"]["cost_usd"] == "0.000051"
+    monkeypatch.setattr(judge.openrouter_runtime, "cloud_allowed", lambda: False)
+    assert client.post(url, json=body).json() == result
+    assert len(submitted) == 1
+    payload = submitted[0]
+    assert payload["provider"]["only"] == ["wafer/us"]
+    assert payload["provider"]["zdr"] is True
+    assert payload["provider"]["allow_fallbacks"] is False
+    assert payload["provider"]["data_collection"] == "deny"
+    assert payload["provider"]["max_price"] == {
+        "prompt": 0.038,
+        "completion": 0.5,
+        "request": 0,
+    }
+    assert json.loads(payload["messages"][1]["content"]) == {
+        "history": case["messages"],
+        "rubric": case["criteria"],
+        "answer": "OK",
+    }
+    assert not (directory / "judgments.json").exists()
+
+
+@pytest.mark.parametrize(
+    ("variation", "expected_cost"),
+    [
+        ("timeout", None),
+        ("invalid_json", "0.00003"),
+        ("wrong_model", "0.00003"),
+        ("length", "0.00003"),
+        ("invalid_verdict", "0.00003"),
+        ("rate_limit", None),
+    ],
+)
+def test_dialogue_judge_preserves_billing_for_failed_verdicts(variation, expected_cost):
+    from venom_core.services.training_experiments import dialogue_judge as judge
+
+    def model(request):
+        if variation == "timeout":
+            raise httpx.ReadTimeout("timeout", request=request)
+        if variation == "rate_limit":
+            return httpx.Response(429, json={"error": {"code": 429}})
+        return httpx.Response(
+            200,
+            json={
+                "id": "gen-test",
+                "model": "other" if variation == "wrong_model" else judge.MODEL,
+                "provider": "Wafer",
+                "usage": {"cost": 0.00003},
+                "choices": [
+                    {
+                        "finish_reason": "length" if variation == "length" else "stop",
+                        "message": {
+                            "content": "{broken"
+                            if variation == "invalid_json"
+                            else "{}"
+                        },
+                    }
+                ],
+            },
+        )
+
+    with httpx.Client(transport=httpx.MockTransport(model)) as client:
+        result = judge.judge_answer(client, {"messages": []})
+    assert result["status"] == "failed"
+    assert result["cost_usd"] == expected_cost
+    assert "verdict" not in result

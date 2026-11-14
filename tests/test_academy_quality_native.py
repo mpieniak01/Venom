@@ -206,7 +206,8 @@ def test_profile_context_verifies_installed_runtime_metadata(sealed_run):
     }
 
 
-def test_external_disposition_keeps_native_review_pending(sealed_run):
+@pytest.mark.parametrize("checkpoint_steps", [None, [1]])
+def test_external_disposition_keeps_native_review_pending(sealed_run, checkpoint_steps):
     service, generation_manifest = sealed_run
     run_id = "test-native"
     run = service.run_dir(run_id)
@@ -236,6 +237,7 @@ def test_external_disposition_keeps_native_review_pending(sealed_run):
             "checkpoint_step": 1,
             "checkpoint_sha256": checkpoint_hash,
             "attempt": 1,
+            **({"checkpoint_steps": checkpoint_steps} if checkpoint_steps else {}),
         },
     )
     assert "external_review" not in service.status(run_id)

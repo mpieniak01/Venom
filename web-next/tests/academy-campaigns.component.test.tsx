@@ -49,17 +49,18 @@ const planned: Campaign = {
 
 function serve(
   campaigns: () => Campaign[],
-  handlers: Record<string, (init?: RequestInit) => Response> = {},
+  handlers: Record<string, (init?: RequestInit, url?: string) => Response> = {},
   optunaAvailable?: boolean,
 ) {
   globalThis.fetch = async (input, init) => {
     const path = new URL(String(input), "http://localhost").pathname;
     const key = `${init?.method ?? "GET"} ${path}`;
-    if (handlers[key]) return handlers[key](init);
+    if (handlers[key]) return handlers[key](init, String(input));
     if (key === `GET ${base}/profiles`) {
       return Response.json({ profiles: [{ id: "omni", label: "Omni", model: "Omni", dataset: "pilot", recipe: { rank: 8 } }] });
     }
     if (key === `GET ${base}/adapters`) return Response.json({ adapters: [] });
+    if (key === `GET ${campaignsPath}/quality`) return Response.json({ records: [] });
     if (key === `GET ${campaignsPath}`) {
       return Response.json({
         campaigns: campaigns(),
@@ -116,11 +117,19 @@ describe("Academy campaigns", () => {
     globalThis.FormData = window.FormData;
     let current: Campaign[] = [];
     const requests: CampaignRequest[] = [];
+    const record = { record_id: `checkpoint:${runId}:2`, split: "dev", source: { identity: runId } };
+    const checkpointAnalysis = {
+      record, decision: "GO", comparable: true, comparison_issues: [], summary: [],
+      comparison: [], findings: [], protected_case_ids: [],
+      proposal: { status: "insufficient_evidence", variants: [], reasons: [] },
+    };
     const checkpoints = {
       ...planned,
       plan: { ...planned.plan, checkpoint_steps: [2, 4] },
     };
     serve(() => current, {
+      [`GET ${campaignsPath}/quality`]: () => Response.json({ records: [] }),
+      [`GET ${campaignsPath}/quality/${encodeURIComponent(record.record_id)}/analysis`]: () => Response.json(checkpointAnalysis),
       [`POST ${campaignsPath}/plan`]: (init) => {
         requests.push(JSON.parse(String(init?.body)) as CampaignRequest);
         current = [checkpoints];
@@ -149,15 +158,32 @@ describe("Academy campaigns", () => {
         run_id: runId,
         status: "succeeded",
         checkpoint_evaluations: [
-          { step: 2, status: "succeeded", usable_delta: 0.25, critical_delta: 0 },
+          { step: 2, status: "succeeded", usable_delta: 0.25, critical_delta: 0, result_sha256: planHash },
           { step: 4, status: "succeeded", usable_delta: -0.25, critical_delta: 0.25 },
         ],
       }],
     };
     current = [{ ...scored, selected_run_id: runId, selected_checkpoint_step: 2 }];
+    const historical = { ...record, record_id: "history:older", outcome: "REVISE" };
+    serve(() => current, {
+      [`GET ${campaignsPath}/quality`]: () => Response.json({ records: [historical, record] }),
+      [`GET ${campaignsPath}/quality/${encodeURIComponent(historical.record_id)}/analysis`]: () =>
+        Response.json({ ...checkpointAnalysis, record: historical, decision: "REVISE" }),
+      [`GET ${campaignsPath}/quality/${encodeURIComponent(record.record_id)}/analysis`]: () => Response.json(checkpointAnalysis),
+    });
     render(<CampaignPanel onOpenRun={() => {}} />);
     await screen.findByText(`Wybrany adapter ${runId} · Checkpoint w kroku 2`);
     assert.ok(screen.getByRole("row", { name: /Checkpoint w kroku 4.*-25/ }));
+    assert.equal(screen.queryByRole("button", { name: "Pokaż wynik kroku 4" }), null);
+    await screen.findByText(/REVISE · Wymaga poprawki/);
+    fireEvent.click(screen.getByRole("button", { name: "Pokaż wynik kroku 2" }));
+    await screen.findByText(/^GO ·/);
+    assert.equal((screen.getByLabelText("Kandydat") as HTMLSelectElement).value, record.record_id);
+    assert.equal(document.activeElement, screen.getByRole("heading", { name: "Wnioski i następna próba" }));
+    fireEvent.change(screen.getByLabelText("Kandydat"), { target: { value: historical.record_id } });
+    await screen.findByText(/REVISE · Wymaga poprawki/);
+    fireEvent.click(screen.getByRole("button", { name: "Pokaż wynik kroku 2" }));
+    await screen.findByText(/^GO ·/);
     cleanup();
 
     current = [scored];
@@ -503,13 +529,14 @@ describe("Campaign quality feedback", () => {
     globalThis.FormData = window.FormData;
     let current: Campaign[] = [];
     let submitted: unknown;
+    let analysisUrl: string | undefined;
     serve(() => current, {
       ["GET " + qualityPath]: () => Response.json({
         records: [candidate, reference],
         unavailable_record_ids: ["history:unreadable"],
       }),
-      ["GET " + qualityPath + "/" + encodeURIComponent(candidate.record_id) + "/analysis"]: (init) => {
-        assert.equal(init?.method ?? "GET", "GET");
+      ["GET " + qualityPath + "/" + encodeURIComponent(candidate.record_id) + "/analysis"]: (_init, url) => {
+        analysisUrl = url;
         return Response.json(comparison);
       },
       ["POST " + campaignsPath + "/plan"]: (init) => {
@@ -522,15 +549,15 @@ describe("Campaign quality feedback", () => {
     });
 
     render(<CampaignPanel onOpenRun={() => {}} />);
-    fireEvent.click(screen.getByText("Wnioski i następna próba"));
+    await screen.findByText(/REVISE · Wymaga poprawki/);
+    assert.ok(analysisUrl?.endsWith("/analysis"));
     const candidateSelect = await screen.findByLabelText("Kandydat") as HTMLSelectElement;
     assert.equal(candidateSelect.value, candidate.record_id);
     assert.ok(screen.getByText("history:unreadable", { selector: "code" }));
     assert.equal(screen.queryByRole("option", { name: /history:unreadable/ }), null);
     fireEvent.change(screen.getByLabelText("Odniesienie"), { target: { value: reference.record_id } });
-    fireEvent.click(screen.getByRole("button", { name: "Porównaj oceny" }));
-
     await screen.findByText(/REVISE · Wymaga poprawki/);
+    assert.ok(analysisUrl?.endsWith(encodeURIComponent(reference.record_id)));
     const row = screen.getByRole("row", { name: /instructions/ });
     assert.match(row.textContent ?? "", /instructions96532/);
     fireEvent.click(screen.getByRole("button", { name: "Uzupełnij formularz kampanii" }));

@@ -50,8 +50,9 @@ If brief and code diverge, code remains source of truth.
 
 ## Training data knowledge
 
-Before analyzing G01–G04, read the [training data catalog](TRAINING_DATA_CATALOG.md)
-and the canonical host's private `data/training/README.md`. Reuse the dated
+Before analyzing G01–G04, read the private local
+`docs_dev/PL/DANE_TRENINGOWE.md` when available and the canonical host's
+`data/training/README.md`. Reuse the dated
 `data/training/catalog/analyses/` findings when actual file hashes and schema still
 match the recorded identities. A new model requires its own serialization, mask
 and protocol checks, not a new full profile of unchanged source data. Audit only

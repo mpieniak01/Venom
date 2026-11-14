@@ -337,8 +337,7 @@ class ExperimentService:
             )
             if result["actions"]["review"]:
                 result["review_checkpoint_step"] = review_step(directory, steps)
-        else:
-            result.update(self._external_review_fields(state, result["status"]))
+        result.update(self._external_review_fields(state, result["status"]))
         if state["status"] in ACTIVE:
             result["elapsed_seconds"] = state["elapsed_before"] + max(
                 0, time.time() - state["attempt_started_at"]

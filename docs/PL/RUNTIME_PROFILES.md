@@ -11,12 +11,12 @@ Wspólna podłoga kompromisu jest w `requirements-runtime-common.txt`. Trzyma on
 
 ## Kanoniczne odnośniki
 
-- Baseline benchmarków (3-stack): `docs/PL/LLM_RUNTIME_3STACK_BENCHMARK_BASELINE.md`
 - Status capability voice/multimodal: `docs/PL/VOICE_RUNTIME_CAPABILITIES.md`
 - Instalacja WSL i zasady pamięci: `docs/PL/WINDOWS_WSL_D_DRIVE_INSTALL.md`
 - Monitoring operacyjny: `README_PL.md` (sekcja `Monitoring i higiena środowiska`)
 
-Ten dokument jest źródłem prawdy dla wymagań profili i kontekstu środowiskowego. Wyniki pomiarów runtime utrzymujemy w baseline benchmarku.
+Ten dokument opisuje wymagania profili i kontekst środowiska. Wyniki lokalnych
+pomiarów runtime przechowujemy w prywatnych raportach.
 
 ## Kontrakt dostępności runtime (bez hardkodowania stosu)
 

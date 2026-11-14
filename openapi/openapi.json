@@ -3161,6 +3161,29 @@
         }
       }
     },
+    "/api/v1/academy/experiments/model-specs": {
+      "get": {
+        "tags": [
+          "academy"
+        ],
+        "summary": "Model Specs",
+        "operationId": "model_specs_api_v1_academy_experiments_model_specs_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Model Specs Api V1 Academy Experiments Model Specs Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/academy/experiments/adapters": {
       "get": {
         "tags": [
@@ -3495,6 +3518,60 @@
                   "type": "object",
                   "additionalProperties": true,
                   "title": "Response Review Api V1 Academy Experiments Runs  Run Id  Review Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/academy/experiments/runs/{run_id}/review/dialogue-judge": {
+      "post": {
+        "tags": [
+          "academy"
+        ],
+        "summary": "Judge Dialogue",
+        "operationId": "judge_dialogue_api_v1_academy_experiments_runs__run_id__review_dialogue_judge_post",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Run Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JudgeDialogue"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Judge Dialogue Api V1 Academy Experiments Runs  Run Id  Review Dialogue Judge Post"
                 }
               }
             }
@@ -18417,6 +18494,35 @@
         ],
         "title": "JobStatusResponse",
         "description": "Response ze statusem joba."
+      },
+      "JudgeDialogue": {
+        "properties": {
+          "record_id": {
+            "type": "string",
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Record Id"
+          },
+          "checkpoint_step": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 10000.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checkpoint Step"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "record_id"
+        ],
+        "title": "JudgeDialogue"
       },
       "Judgment": {
         "properties": {

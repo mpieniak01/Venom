@@ -79,8 +79,8 @@ first be deliberately materialized.
 ### Material preparation
 
 The input is one JSON object mapping split names to lists of canonical
-`messages`/`tools` records. Source G01–G04 data and their historical manifests
-are immutable. Do not concatenate retained versions as independent corpora.
+`messages`/`tools` records. Source versions and their manifests are immutable.
+Do not concatenate retained versions as independent corpora.
 
 ```bash
 python scripts/gemma4_operator.py prepare-material \
@@ -267,8 +267,8 @@ Gemma and Granite use separate training workers.
 
 ## Two model variants and GPU experiments
 
-See the [local E4B pilot decision](PL/GEMMA4_E4B_PILOT.md) for the selected
-artifact and evaluation evidence.
+Keep local pilot decisions and evaluation evidence in the private experiment
+reports; this page describes the supported model contract.
 
 | Variant | Explicit Ollama name | Profile | Native loader / layers |
 |---|---|---|---|
@@ -293,18 +293,11 @@ not load the inference model. The initial host search uses at least 24 GB VRAM, 
 capacity and throughput require remote measurement. In particular, 12B BF16 LoRA
 may require a larger GPU; never silently switch precision.
 
-G05 V2 is private at `data/training/gemma-g05-v2-20261103-ready/`:
-832 training, 224 validation and 160 diagnostic holdout conversations.
-It retains G04 unchanged and adds 288 executed PL/EN demonstrations of four
-real FileSkill functions across six families. These authored scenarios are not
-human-reviewed production incidents or coverage of every Venom tool.
-An independent 24-case reserve checks summary, translation and image behavior
-with diagnostic lexical oracles. Audio retention remains unqualified.
-
-Both native tokenizers separately encoded all 1,056 train/validation records.
-Excluded turns retain labels -100; native continuation turns receive no invented
-EOS. Packing is disabled; oversize records fail. For this text corpus the vectors
-happen to match, while model/loader/template/processor identities remain separate.
+Private dataset identities, counts and qualification evidence belong in the
+local training catalog. For each model variant, validate native tokenization,
+excluded-turn masks and EOS behavior against the selected dataset. Packing is
+disabled and oversized records fail. Model, loader, template and processor
+identities remain separate even when encoded text happens to match.
 
 ### Preparation
 
@@ -313,18 +306,18 @@ Existing outputs are immutable. Keep material, proofs and bundles outside Git.
 ```bash
 source .venv/bin/activate
 python scripts/gemma4_operator.py prepare-corpus \
-  --source-root data/training/granite-g04-material-20261102 \
-  --destination data/training/gemma-g05-next
+  --source-root /absolute/private/source-version \
+  --destination /absolute/private/new-material
 
 python scripts/gemma4_operator.py prepare-session \
   --profile config/gemma4_operator_e4b_profile.json --precision nf4 \
-  --source-root data/training/gemma-g05-v2-20261103-ready \
-  --input data/training/gemma4-dual-training-ready-20261103/e4b-it/encoded.json \
-  --binding data/training/gemma4-dual-training-ready-20261103/e4b-it/ollama-binding.json \
-  --snapshot data/training/gemma4-e4b-native-metadata-20261103 \
-  --destination data/training/gemma-session-e4b-qlora-next \
-  --evaluation-cases data/training/gemma4-retention-v2-20261103-ready/manifest.json \
-  --run-id gemma-e4b-qlora-pilot --max-updates 125 --max-seconds 3600
+  --source-root /absolute/private/frozen-material \
+  --input /absolute/private/encoded.json \
+  --binding /absolute/private/ollama-binding.json \
+  --snapshot /absolute/private/model-snapshot \
+  --destination /absolute/private/new-session \
+  --evaluation-cases /absolute/private/evaluation-manifest.json \
+  --run-id reviewed-run --max-updates 100 --max-seconds 3600
 ```
 
 Use `bf16` for LoRA and the 12B profile/snapshot for 12B. These are four

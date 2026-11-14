@@ -1538,6 +1538,20 @@
       "rationale": "Direct SSE persists original turns in the same host SessionStore before done; cancellation and paid accounting stay truthful."
     },
     {
+      "path": "tests/test_chat_grounding.py",
+      "domain": "knowledge",
+      "test_type": "service_contract",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Current information grounding and source handling in ordinary chat."
+    },
+    {
       "path": "tests/test_chat_materials.py",
       "domain": "api",
       "test_type": "route_contract",
@@ -5893,6 +5907,34 @@
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
+    },
+    {
+      "path": "tests/test_polish_chat_quality.py",
+      "domain": "academy",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Quality-evaluation contract for Polish chat scenarios."
+    },
+    {
+      "path": "tests/test_polish_wikipedia.py",
+      "domain": "knowledge",
+      "test_type": "service_contract",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Bounded attributed Polish Wikipedia article lookup with fake transport."
     },
     {
       "path": "tests/test_policy_autonomy_contract.py",

@@ -61,9 +61,8 @@ Pakowanie wspolne dla obu miejsc:
 "$control" scripts/remote_training.py pack --source /sciezka/przygotowanych/danych --manifest /sciezka/encoded.json --profile /sciezka/full-recipe.json --snapshot /sciezka/przypietej/rewizji --output /sciezka/input.zip --run-id fg-full --updates 264 --max-seconds 7200
 ```
 
-Budzet jest liczony z epok w recepcie. Dla obecnego eksportu 1408 decyzji,
-batch 4 i akumulacji 4 to 264 aktualizacje/3 epoki. Nie stosujemy limitu 256
-historycznego trenera Granite. W tym pilocie FG nie obsluguje
+Budzet jest liczony z epok w recepcie i liczby decyzji w wybranym eksporcie.
+Nie stosujemy limitu 256 historycznego trenera Granite. W tym pilocie FG nie obsluguje
 `--until-update`: wybieramy pelna recepte epok albo wznawiamy jej checkpoint.
 
 Pelny SFT oraz LoRA maja niezalezne sesje i dowody smoke.
@@ -77,6 +76,5 @@ Zebranie nie aktywuje modelu. Import FunctionGemma do Academy/aktywnego czatu
 wymaga osobnej oceny i implementacji promocji; dotychczasowy importer adapterow
 nie interpretuje pelnego modelu jako adaptera.
 
-Lokalne sciezki i gotowe pakiety przechowujemy w prywatnym
-data/training/functiongemma-local-preparation-20261103/local-and-remote-execution.json.
+Lokalne sciezki, liczebnosci i gotowe pakiety przechowujemy poza Git.
 Nie publikowac modeli, danych ani prywatnych konfiguracji hosta.

@@ -290,7 +290,7 @@ Academy supports direct ONNX runtime deployment for LoRA adapters through merge/
 
 Validated E2E (live):
 - full cycle `activate -> inference SSE -> deactivate` completed with HTTP `200/200/200`
-- artifact run: `test-results/202d/full_cycle_20260315_093542`
+- host-specific run artifacts are retained outside published documentation
 
 ## Configuration
 

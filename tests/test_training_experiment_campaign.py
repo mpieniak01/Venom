@@ -291,6 +291,32 @@ def test_controller_adopts_committed_launch_and_preserves_budget(controller):
     assert service.start("series", planned["plan"]["plan_sha256"]) == resumed
 
 
+@pytest.mark.parametrize(
+    ("count", "resources_active", "can_start"),
+    [(1, False, True), (1, True, False), (2, False, False)],
+)
+def test_only_a_quiescent_final_review_can_share_campaign_catalog(
+    controller, count, resources_active, can_start
+):
+    service, experiments, _ = controller
+    start(service, make_spec(count=count))
+    control = launch_next(service)
+    experiments.update(control, status="awaiting_review", stage="score")
+    assert service.advance("series")["status"] == "awaiting_review"
+    experiments.update(control, resources_active=resources_active)
+    plan = service.plan(make_spec(campaign_id="candidate", count=1))["plan"]
+    if not can_start:
+        with pytest.raises(ValueError, match="campaign_already_active"):
+            service.start("candidate", plan["plan_sha256"])
+        return
+
+    assert service.start("candidate", plan["plan_sha256"])["status"] == "running"
+    next_run = launch_next(service, "candidate")
+    experiments.finish(control, usable=3)
+    assert service.advance("series")["status"] == "succeeded"
+    assert experiments.calls == [("start", control), ("start", next_run)]
+
+
 def test_campaign_fails_closed_for_stale_profile_and_competing_start(controller):
     service, experiments, _clock = controller
     start(service)

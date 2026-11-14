@@ -28,7 +28,7 @@ Utwórz plik `profiles/polski-czat.json` w katalogu eksperymentów. Zastąp ści
     "rank": 4,
     "alpha": 8,
     "learning_rate": 0.0002,
-    "target_modules": ["q_proj", "v_proj"],
+    "target_modules": ["q_proj", "k_proj", "v_proj", "o_proj", "in_proj", "out_proj", "w1", "w2", "w3"],
     "max_tokens": 1024
   },
   "max_seconds": 1800,
@@ -37,6 +37,11 @@ Utwórz plik `profiles/polski-czat.json` w katalogu eksperymentów. Zastąp ści
 ```
 
 `max_seconds` ogranicza czas próby od kolejki do zakończenia generacji i zapisu dowodów. `min_free_bytes` określa wymagane wolne miejsce. W WSL można dodać `backing_volume` z zamontowaną ścieżką dysku Windows zawierającego VHDX. Parametr `max_supervised_tokens` ogranicza konserwatywną górną granicę ekspozycji na tokeny nadzoru. Zapisz checkpoint przed wyczerpaniem budżetu, wybierając odpowiednie `save_every`. [Pola profilu](../../venom_core/services/training_experiments/profiles.py) · [Parametry receptury](../../scripts/academy/omni_pl_chat_recipe.py)
+
+`target_modules` musi być jawnie wpisane w profilu Academy lub przekazane jako
+nadpisanie przy starcie. Wąski pilot `q_proj/v_proj` jest nadal możliwy, lecz
+pomija między innymi warstwy MLP `w1/w2/w3`. Pełną listę dziewięciu projekcji
+tekstu i porównanie trzech wariantów opisuje [specyfikacja modeli](SPECYFIKACJA_MODELI_TRENINGOWYCH.md).
 
 Plik **train** zawiera rekordy `split: "train"` oraz `language: "pl"`. Każdy ma `record_id`, `group_id`, uporządkowane `messages` zakończone turą asystenta i `supervision` z indeksami zatwierdzonych tur asystenta, liczonymi od zera. Uzupełnij `quality_status: "accepted"`, `source_repo`, `source_revision`, `source_record_id`, `license` oraz `review_note`. [Walidacja i maskowanie danych](../../scripts/academy/omni_pl_chat_data.py)
 
@@ -132,6 +137,10 @@ Pobierz pakiet i zapisz jego `checkpoint_step` razem z kompletem ocen w pliku JS
 }
 ```
 
+W szczegółach kampanii przy ocenionym kroku wybierz **Pokaż wynik kroku**. Sekcja **Wnioski i następna próba** od razu wyświetla ocenę i przelicza porównanie po zmianie kandydata lub odniesienia. Szczegółowa analiza kroków jest dostępna po zamknięciu ślepej oceny przebiegu.
+
+Jeśli kampanii została już tylko ślepa ocena ostatniej próby i jej przebieg zwolnił zasoby, możesz uruchomić następną kampanię z tego samego katalogu. Kampania z kolejnymi próbami nadal rezerwuje kolejkę do czasu zakończenia lub zatrzymania.
+
 Raport pokazuje wyniki osobno dla każdej pary przebieg i krok. Wybór wymaga spełnienia progów kampanii oraz jej opcjonalnych kryteriów względem referencji i chronionych przypadków. Wynik może wskazać wcześniejszy checkpoint albo brak kandydata. Status `succeeded` oznacza zakończenie procedury. Dla eksperymentów z otwartymi polskimi odpowiedziami jakość potwierdź ślepą oceną według właściwej rubryki oraz osobnym testem końcowym.
 
 Przy `discard_rejected` retencja chroni cały przebieg, w którym znajduje się wybrany checkpoint, i sprawdza dostępność jego wag przed usunięciem plików odrzuconych prób. Brak kandydata zachowuje pliki do analizy.
@@ -199,13 +208,13 @@ Przy zgodnych ocenach dev i udokumentowanej różnicy konfiguracji Academy propo
 Formularz kampanii może wiązać referencję, chronione przypadki, progi różnic użyteczności w kategoriach i zakaz nowych błędów krytycznych. Academy zapisuje kryteria z hashem planu. Wynik próby pokazuje utracone chronione przypadki, nowe błędy krytyczne i różnice per kategoria. Tylko kandydaci spełniający kryteria mogą zostać wybrani do retencji. Porównanie z wcześniejszym adapterem odbywa się na podstawie zapisanych ocen, więc nie wymaga załadowania jego wag.
 
 
-## Próba zakresu LoRA po P14
+## Próba zakresu LoRA
 
-W historii jakości porównaj `history:p14-02` z `history:p13-on-p14-dev` i przenieś rekomendację do formularza. Wybierz profil z przypiętymi danymi P14 i środowiskiem wskazanym w szkicu. Academy wstępnie uzupełnia limit tokenów dla obu wariantów. Zapisz plan, sprawdź budżet i użyj osobnego przycisku startu.
+W historii jakości porównaj oceny kandydatów i przenieś rekomendację do formularza. Wybierz profil z przypiętymi danymi i środowiskiem wskazanym w szkicu. Academy wstępnie uzupełnia limit tokenów dla obu wariantów. Zapisz plan, sprawdź budżet i użyj osobnego przycisku startu.
 
-Wariant kontrolny używa `q_proj` i `v_proj`. Wariant porównawczy obejmuje również `k_proj`, `o_proj`, `in_proj`, `out_proj`, `w1`, `w2` i `w3`, jeśli występują w części językowej przypiętego modelu. Academy rozpoznaje zapis tego zakresu w historycznej recepturze P13 i wystawia listę nazw do planu. Wykonawca sprawdza rzeczywiste warstwy adaptera i zapisuje ich listę w raporcie treningu. Porównanie zachowuje dane, sposób obliczania straty i pozostałe parametry P14.
+Wariant kontrolny używa `q_proj` i `v_proj`. Wariant porównawczy obejmuje również `k_proj`, `o_proj`, `in_proj`, `out_proj`, `w1`, `w2` i `w3`, jeśli występują w części językowej przypiętego modelu. Academy rozpoznaje zapis zakresu w recepturze i wystawia listę nazw do planu. Wykonawca sprawdza rzeczywiste warstwy adaptera i zapisuje ich listę w raporcie treningu. Porównanie zachowuje dane, sposób obliczania straty i pozostałe parametry.
 
-Zapisany rekord jakości P13 zawiera wyniki, ale może nie zawierać receptury ani sumy danych treningowych. W takim przypadku Academy nie tworzy z niego automatycznie porównywalnej próby. Przygotuj dwa świeże warianty od tej samej przypiętej bazy i na tym samym zbiorze; historyczne P13 służy do kontroli jakości, nie do przypisywania przyczyny różnicy. Nie dopisuj do zapieczętowanego rekordu parametrów odtworzonych z pamięci.
+Zapisany rekord jakości może nie zawierać receptury ani sumy danych treningowych. W takim przypadku Academy nie tworzy z niego automatycznie porównywalnej próby. Przygotuj dwa świeże warianty od tej samej przypiętej bazy i na tym samym zbiorze; nie przypisuj przyczyny różnicy niepełnemu rekordowi. Nie dopisuj do zapieczętowanego rekordu parametrów odtworzonych z pamięci.
 
 Receptura tekstowego Omni ma jawne `loss_mode`: `model_default` zachowuje dotychczasowe uśrednianie straty modelu dla mikroserii, a `supervised_token` waży każdą mikroserię udziałem nadzorowanych tokenów w całym kroku akumulacji. Oba ramiona próby zakresu LoRA muszą mieć ten sam tryb. Wykonawca raportuje nazwy, kształty i grupy dopasowanych modułów, liczbę parametrów adaptera oraz parametry optymalizatora. Zmianę `loss_mode` testuj osobno od zmiany modułów. Opcjonalne `gradient_checkpointing` zmniejsza szczyt zużycia pamięci GPU kosztem czasu treningu; domyślnie jest wyłączone. Przy porównaniu ramion ustaw tę samą wartość i zapisz ją w profilu.
 
@@ -229,9 +238,9 @@ W kampanii na stałej liście wybierz dla każdego wariantu model bazowy albo ad
 
 Operator rejestruje adapter w `<experiment_root>/adapters/<adapter_id>/`. Katalog zawiera `adapter_config.json`, `adapter_model.safetensors`, `hashes.json` z sumami dokładnie tych dwóch plików oraz `adapter.json`. W `adapter.json` wpisz `schema_version: 1`, `adapter_id`, `label`, `model`, `revision`, `snapshot_sha256`, `config_sha256`, `weights_sha256` oraz `source` z polami `identity` i `sha256` identyfikującymi zapieczętowane pochodzenie. Adapter musi pasować do przypiętego modelu Omni i do `rank`, `alpha`, `dropout` oraz modułów LoRA w recepturze. Używaj jedynie zwykłej LoRA dla części językowej.
 
-W manifeście kampanii CLI podaj np. `"variants": [{}, {"initial_adapter_id": "omni-p13-145"}]`. Ustaw recepturę profilu zgodną z obydwoma ramionami. Panel i CLI odczytują ten sam plan. Tryb wyboru adaptera startowego jest dostępny dla strategii stałej.
+W manifeście kampanii CLI podaj np. `"variants": [{}, {"initial_adapter_id": "reviewed-adapter"}]`. Ustaw recepturę profilu zgodną z obydwoma ramionami. Panel i CLI odczytują ten sam plan. Tryb wyboru adaptera startowego jest dostępny dla strategii stałej.
 
-Dla zarejestrowanego `omni-p13-145` ustaw w obu ramionach `rank: 4`, `alpha: 8`, `dropout: 0.05` i `target_modules: ["q_proj", "k_proj", "v_proj", "o_proj", "in_proj", "out_proj", "w1", "w2", "w3"]`. Jeśli profil ma inny zakres modułów lub inną wartość dropout, Academy odrzuci plan przy walidacji adaptera.
+Parametry `rank`, `alpha`, `dropout` oraz `target_modules` w obu ramionach muszą odpowiadać zarejestrowanemu adapterowi. Academy odrzuci plan przy niezgodności.
 
 Nowy przebieg rozpoczyna optymalizację od kroku zero. Runner sprawdza wartości wszystkich tensorów wczytanych z adaptera. Po przerwaniu przebieg kontynuuje z własnego pełnego checkpointu wraz ze stanem optymalizatora, harmonogramu i RNG. Retencja usuwa pliki wynikowe kampanii zgodnie z wybraną polityką. Katalog wejściowy jest niezależny od plików wynikowych.
 

@@ -33,6 +33,7 @@ from venom_core.execution.agent_contracts import MessageRole as AuthorRole
 from venom_core.execution.maf_runtime import AgentRuntime as Kernel
 from venom_core.execution.skill_manager import SkillManager
 from venom_core.execution.skills.assistant_skill import AssistantSkill
+from venom_core.execution.skills.rss_reader_skill import RSSReaderSkill
 from venom_core.services.execution_template_planner import wants_status_analysis
 from venom_core.services.operator_diagnostics import (
     DIAGNOSTICS_INTENT,
@@ -191,6 +192,8 @@ class TaskDispatcher:
         try:
             self.kernel.add_plugin(AssistantSkill(), plugin_name="AssistantSkill")
             logger.info("Zarejestrowano plugin: AssistantSkill")
+            self.kernel.add_plugin(RSSReaderSkill(), plugin_name="RSSReaderSkill")
+            logger.info("Zarejestrowano plugin: RSSReaderSkill")
         except Exception as e:
             logger.warning(f"Nie udało się zarejestrować AssistantSkill: {e}")
 

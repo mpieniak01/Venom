@@ -6,7 +6,7 @@ Próby z rzeczywistym modelem wykonujemy osobno od testów kodu. Bramki Gita i C
 
 ## Przygotowanie
 
-W aktywnym środowisku Venoma użyj lokalnego głosu Piper, Pillow z fontami DejaVu i FFmpeg. Jeżeli import Piper zgłosi brak biblioteki CUDA, zastosuj ścieżkę do zainstalowanej biblioteki wskazaną w [lokalnej kwalifikacji LFM3](LFM3_LOCAL_EVALUATION.md#powtórzenie).
+W aktywnym środowisku Venoma użyj lokalnego głosu Piper, Pillow z fontami DejaVu i FFmpeg. Jeżeli import Piper zgłosi brak biblioteki CUDA, sprawdź lokalną konfigurację hosta i zapisz rozwiązanie w prywatnym raporcie kwalifikacji.
 
 ```bash
 source .venv/bin/activate

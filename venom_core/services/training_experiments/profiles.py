@@ -77,6 +77,8 @@ def recipe_for(profile: Profile, overrides: dict | None) -> dict:
     parameters = dict(profile.recipe)
     if overrides:
         parameters.update(overrides)
+    if "target_modules" not in parameters:
+        raise ValueError("experiment_target_modules_required")
     parameters["train_sha256"] = profile.train_sha256
     return validate_recipe(parameters)
 

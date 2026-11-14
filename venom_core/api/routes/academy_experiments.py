@@ -9,9 +9,12 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
 
+from venom_core.api.operator_origin import require_operator_origin
 from venom_core.api.transport_access import is_localhost_request
 from venom_core.config import SETTINGS
+from venom_core.services.training_experiments import dialogue_judge
 from venom_core.services.training_experiments.service import ExperimentService
+from venom_core.services.training_model_specs import model_training_specs
 
 ID_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$"
 
@@ -41,6 +44,14 @@ class SubmitJudgments(BaseModel):
 
     judgments: list[Judgment] = Field(min_length=1, max_length=2048)
     checkpoint_step: int | None = Field(default=None, ge=1, le=10000)
+
+
+class JudgeDialogue(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    record_id: str = Field(min_length=1, max_length=256)
+    checkpoint_step: int | None = Field(default=None, ge=1, le=10000)
+    cached_only: bool = False
 
 
 def require_experiment_access(request: Request) -> None:
@@ -95,6 +106,11 @@ def profiles() -> dict:
     return call_experiment(lambda: {"profiles": experiment_service().profiles()})
 
 
+@router.get("/model-specs")
+def model_specs() -> dict:
+    return {"models": model_training_specs()}
+
+
 @router.get("/adapters")
 def adapters() -> dict:
     return call_experiment(lambda: {"adapters": experiment_service().adapters()})
@@ -139,7 +155,21 @@ def logs(run_id: str) -> dict:
 
 @router.get("/runs/{run_id}/review")
 def review(run_id: str) -> dict:
-    return call_experiment(experiment_service().review, run_id)
+    bundle = call_experiment(experiment_service().review, run_id)
+    return {**bundle, "dialogue_judge": dialogue_judge.review_config(bundle)}
+
+
+@router.post("/runs/{run_id}/review/dialogue-judge")
+def judge_dialogue(run_id: str, body: JudgeDialogue, request: Request) -> dict:
+    require_operator_origin(request, "experiment_judge_origin_denied")
+    return call_experiment(
+        dialogue_judge.evaluate_case,
+        experiment_service(),
+        run_id,
+        body.record_id,
+        body.checkpoint_step,
+        cached_only=body.cached_only,
+    )
 
 
 @router.post("/runs/{run_id}/judgments")

@@ -101,6 +101,12 @@ export function ExperimentForm({ profiles, disabled, onStart }: ExperimentFormPr
           <dd className="break-words">{profile.dataset}</dd>
         </div>
       </dl>
+      <p className="text-sm">
+        {t("academy.experiments.modelSpecs.selectedTargets")}: {profile.recipe.target_modules?.join(", ") ?? "—"}
+      </p>
+      {profile.recipe.target_modules && !["w1", "w2", "w3"].every((name) => profile.recipe.target_modules?.includes(name)) && (
+        <p className="text-sm text-amber-300">{t("academy.experiments.modelSpecs.narrowTargets")}</p>
+      )}
       <DataAuditSummary audit={profile.data_audit} />
       <details>
         <summary className="cursor-pointer text-sm font-medium">{t("academy.experiments.recipe")}</summary>

@@ -50,7 +50,8 @@ Jeśli brief i kod są niespójne, źródłem prawdy pozostaje kod.
 
 ## Wiedza o danych treningowych
 
-Przed analizą G01–G04 przeczytaj [katalog danych](DANE_TRENINGOWE.md) i lokalny
+Przed analizą G01–G04 przeczytaj prywatny lokalny
+`docs_dev/PL/DANE_TRENINGOWE.md`, jeśli jest dostępny, oraz
 `data/training/README.md`. Jeżeli rzeczywiste hashe plików oraz schemat zgadzają
 się z zapisem w `data/training/catalog/analyses/`, użyj istniejących ustaleń.
 Zmiana modelu wymaga sprawdzenia nowego formatu, masek i protokołu, nie ponownego

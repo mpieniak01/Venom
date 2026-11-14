@@ -17,6 +17,7 @@ import {
 import { useLanguage, useTranslation } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { ExperimentForm } from "./experiment-form";
+import { ModelTrainingSpecs } from "./model-training-specs";
 import { DataAuditSummary } from "./data-audit-summary";
 import { InitialAdapterSummary, useInitialAdapterError } from "./initial-adapter";
 import { ExperimentResult, ExperimentReviewPanel } from "./experiment-results";
@@ -340,6 +341,7 @@ export function ExperimentsPanel({ initialRunId = "", onOpenQuality }: {
           <ExperimentForm profiles={profiles} disabled={busy || hasActive || profilesFailed || runsFailed} onStart={(request) => mutate(() => startExperiment(request))} />
         )}
         {actionError && <p role="alert" className="text-sm text-red-400">{t(actionError)}</p>}
+        <ModelTrainingSpecs />
       </section>
       {runsLoaded && (
         <section className={SECTION_CLASS}>

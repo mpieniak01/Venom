@@ -290,7 +290,7 @@ Academy wspiera bezpośredni deploy adapterów LoRA do runtime ONNX przez pipeli
 
 Zweryfikowane E2E (live):
 - pełny cykl `activate -> inference SSE -> deactivate` zakończony kodami HTTP `200/200/200`
-- artefakt runu: `test-results/202d/full_cycle_20260315_093542`
+- artefakty przebiegu konkretnego hosta pozostają poza dokumentacją publiczną
 
 ## Konfiguracja
 

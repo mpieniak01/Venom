@@ -1,7 +1,7 @@
 # Remote Granite training
 
-For G01–G04 descriptions, lineage and reusable audit evidence, start with the
-[training data catalog](TRAINING_DATA_CATALOG.md).
+For G01–G04 lineage and reusable audit evidence, use the private local data
+catalog and verify its file identities before starting a run.
 
 This manual operator workflow extends G01. Vast supplies a host; the job controller
 uses an existing verified SSH connection and does not rent, stop or destroy instances.
@@ -247,7 +247,7 @@ any output pathname in request content.
 After verified collection, use `python -m scripts.granite_operator.remote_comparison`
 with the fixed local cases manifest, remote result path and confirmed adapter SHA.
 Inference stays on the SSH GPU host; existing isolated Docker tools and oracles run
-locally. See the [operator comparison workflow](PL/GRANITE_OPERATOR_EXPERIMENT.md#porównanie-adaptera-trenowanego-na-zdalnym-hoście).
+locally. Keep the comparison receipt with the private experiment report.
 This is separately operator-started evaluation, never an automatic training step.
 
 
@@ -399,4 +399,4 @@ only the final candidate per method is selected for comparison.
 frozen benchmark inventories before printing separate commands. It uses NF4
 inference by default, four adaptive sessions on remote hosts (up to eight), or
 one local session. Optional BF16 evaluation has a separate output directory.
-See the [Polish preparation procedure](PL/ZDALNY_TRENING.md#jeden-wybrany-adapter-i-porównanie-qlora--lora).
+See [adapter selection and QLoRA / LoRA comparison](PL/ZDALNY_TRENING.md#wybór-adaptera-i-porównanie-qlora--lora).

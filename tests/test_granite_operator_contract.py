@@ -366,7 +366,7 @@ def test_complete_artifact_trees_are_ignored(relative):
         "config/granite_operator_profile.json",
         "scripts/granite_operator/prepare_hf.py",
         "venom_core/services/granite_operator/engine.py",
-        "docs/PL/GRANITE_OPERATOR_EXPERIMENT.md",
+        "docs/REMOTE_TRAINING.md",
     ],
 )
 def test_generic_recipe_code_and_documentation_remain_visible(relative):

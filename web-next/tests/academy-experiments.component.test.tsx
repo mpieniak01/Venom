@@ -24,7 +24,7 @@ const profile: ExperimentProfile = {
   label: "Omni PL",
   model: "Omni",
   dataset: "pilot",
-  recipe: { rank: 8, alpha: 16, learning_rate: 0.0002 },
+  recipe: { rank: 8, alpha: 16, learning_rate: 0.0002, target_modules: ["q_proj", "v_proj"] },
 };
 const run: ExperimentRun = {
   run_id: "pilot-1",
@@ -47,12 +47,31 @@ function serve(
     const key = `${init?.method ?? "GET"} ${path}`;
     if (handlers[key]) return handlers[key](init);
     if (key === `GET ${prefix}/profiles`) return Response.json({ profiles: [profile] });
+    if (key === `GET ${prefix}/model-specs`) return Response.json({ models: [{
+      model: "LiquidAI/LFM3-Omni-2B", path: "academy_omni_experiment",
+      status: "local_gpu_executor_available", loader: "AutoModelForMultimodalLM",
+      revision: "snapshot_manifest_pinned", target_families: ["q_proj", "w1", "w2", "w3"],
+      modality: "text_only_lora_on_multimodal_base",
+      data_contract: "reviewed_pl_chat_jsonl_selected_assistant_turns",
+      qualification: "snapshot_data_masks_targets_and_gpu_preflight_per_run",
+      recipe_defaults: { rank: 4, max_tokens: 1024 },
+      runtime: "local_cuda_bf16_no_cpu_fallback", gpu_memory: "measured_by_preflight_no_fixed_minimum",
+    }] });
     if (key === `GET ${prefix}/runs`) return Response.json({ runs: runs() });
     throw new Error(`Unexpected request: ${key}`);
   };
 }
 
 describe("Academy experiments", () => {
+  it("shows model training scope and warns when the selected profile omits MLP", async () => {
+    serve(() => []);
+    render(<ExperimentsPanel />);
+    await screen.findByText("LiquidAI/LFM3-Omni-2B");
+    assert.ok(screen.getByText(/Ten profil pomija warstwy MLP w1\/w2\/w3/));
+    assert.ok(screen.getByText(/q_proj, w1, w2, w3/));
+    assert.ok(screen.getByText(/rank=4 · max_tokens=1024/));
+  });
+
   it("submits a profile and edited recipe, then stops the selected run", async () => {
     globalThis.FormData = window.FormData;
     let current: ExperimentRun[] = [];
@@ -92,6 +111,49 @@ describe("Academy experiments", () => {
     assert.ok(screen.getByText("Druga odpowiedź"));
     assert.equal(screen.queryByText("Baza M0"), null);
     assert.ok(screen.getByLabelText("Plik ocen JSON lub JSONL"));
+  });
+
+
+
+  it("warns about the fee and runs the judge only when an eligible dialogue opens", async () => {
+    let requests = 0;
+    const dialogue = { record_id: "dialogue-a" };
+    const single = { record_id: "single-a" };
+    serve(() => [], {
+      [`GET ${prefix}/runs/pilot-1/review`]: () => Response.json({
+        checkpoint_step: 4,
+        dialogue_judge: { model: "deepseek", available: true, case_ids: [dialogue.record_id] },
+        cases: [dialogue, single],
+        answers: [dialogue, single].map((item) => ({
+          case: item, answers: { A: { text: "Anonimowa odpowiedź" } },
+        })),
+      }),
+      [`POST ${prefix}/runs/pilot-1/review/dialogue-judge`]: (init) => {
+        requests += 1;
+        assert.deepEqual(JSON.parse(String(init?.body)), { record_id: dialogue.record_id, checkpoint_step: 4 });
+        return Response.json({ model: "deepseek", answers: {
+          A: { cost_usd: "0.000051", verdict: { pass: true, critical: false, reason: "Spełnia kryteria." } },
+        } });
+      },
+    });
+    render(<ExperimentReviewPanel runId="pilot-1" disabled={false} onSubmit={async () => true} />);
+    const notice = await screen.findByText(/nalicza opłatę według zużycia tokenów/);
+    assert.ok(notice);
+    assert.ok(screen.getByText("Płatna ocena DeepSeek"));
+    assert.equal(requests, 0);
+    const details = (id: string) => screen.getByText(id).closest("details") as HTMLDetailsElement;
+    const toggle = (element: HTMLDetailsElement, open: boolean) => {
+      element.open = open;
+      fireEvent(element, new Event("toggle"));
+    };
+    toggle(details(single.record_id), true);
+    assert.equal(requests, 0);
+    toggle(details(dialogue.record_id), true);
+    await screen.findByText("Spełnia kryteria.");
+    assert.ok(screen.getByText(/Opłata OpenRouter/));
+    toggle(details(dialogue.record_id), false);
+    toggle(details(dialogue.record_id), true);
+    assert.equal(requests, 1);
   });
 
   it("rejects a verdict file for an earlier checkpoint before posting", async () => {

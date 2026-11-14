@@ -11,12 +11,12 @@ The shared compromise floor lives in `requirements-runtime-common.txt`. It carri
 
 ## Canonical References
 
-- Benchmark baseline (3-stack): `docs/LLM_RUNTIME_3STACK_BENCHMARK_BASELINE.md`
 - Voice/multimodal runtime capability status: `docs/VOICE_RUNTIME_CAPABILITIES.md`
 - WSL setup and guardrails: `docs/WINDOWS_WSL_D_DRIVE_INSTALL.md`
 - Operational monitoring: `README.md` (`Monitoring and environment hygiene`)
 
-Use this document for profile requirements and environment context. Use the benchmark baseline for measured runtime results.
+Use this document for profile requirements and environment context. Keep measured
+runtime results in private local reports.
 
 ## Runtime Availability Contract (Do not hardcode stack)
 

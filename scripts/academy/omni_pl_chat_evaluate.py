@@ -38,6 +38,9 @@ def validate_dev_cases(cases: list[dict]) -> None:
         raise ValueError("expected one to 512 evaluation cases")
     validate_splits(cases)
     for row in cases:
+        limit = row.get("max_new_tokens", MAX_NEW_TOKENS)
+        if type(limit) is not int or not 1 <= limit <= MAX_NEW_TOKENS:
+            raise ValueError("case generation limit must be between 1 and 512")
         if row["split"] != "dev":
             raise ValueError("automated evaluation accepts only the dev split")
         task = row.get("task")
@@ -115,7 +118,14 @@ def verify_adapter(path: Path) -> dict[str, str]:
     return hashes
 
 
-def _predict(model, processor, messages: list[dict], eos: set[int]) -> dict:
+def _predict(
+    model,
+    processor,
+    messages: list[dict],
+    eos: set[int],
+    *,
+    max_new_tokens: int = MAX_NEW_TOKENS,
+) -> dict:
     started = monotonic()
     inputs = processor.apply_chat_template(
         messages,
@@ -132,7 +142,7 @@ def _predict(model, processor, messages: list[dict], eos: set[int]) -> dict:
     else:
         result = model.generate(
             **inputs.to("cuda"),
-            max_new_tokens=MAX_NEW_TOKENS,
+            max_new_tokens=max_new_tokens,
             generation_mode="text",
             do_sample=False,
             return_dict_in_generate=True,
@@ -140,7 +150,7 @@ def _predict(model, processor, messages: list[dict], eos: set[int]) -> dict:
         ids = result.sequences[0, prompt_len : int(result.sequence_lengths[0])].tolist()
         if ids and ids[-1] in eos:
             finish = "stop"
-        elif len(ids) >= MAX_NEW_TOKENS:
+        elif len(ids) >= max_new_tokens:
             finish = "length"
         else:
             finish = "unexpected_stop"
@@ -299,7 +309,13 @@ def _generate(
                 model.set_adapter(tag)
             with model.disable_adapter() if tag == "base" else nullcontext():
                 for case in missing:
-                    item = _predict(model, processor, case["messages"], eos_ids)
+                    item = _predict(
+                        model,
+                        processor,
+                        case["messages"],
+                        eos_ids,
+                        max_new_tokens=case.get("max_new_tokens", MAX_NEW_TOKENS),
+                    )
                     progress.save((case["record_id"], tag), item)
             print(json.dumps({"variant": tag, "cases": len(missing)}), flush=True)
 
@@ -316,6 +332,10 @@ def _evaluation_manifest(
         "evaluated_ids": [case["record_id"] for case in cases],
         "max_prompt_tokens": MAX_PROMPT_TOKENS,
         "max_new_tokens": MAX_NEW_TOKENS,
+        "case_max_new_tokens": {
+            case["record_id"]: case.get("max_new_tokens", MAX_NEW_TOKENS)
+            for case in cases
+        },
         "seed": GENERATION_SEED,
         "blind_seed": BLIND_SEED,
         "engine": {name: version(name) for name in ("torch", "transformers", "peft")},

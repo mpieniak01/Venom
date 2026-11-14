@@ -17,6 +17,7 @@ import {
 } from "@/lib/academy-experiments-api";
 import { useLanguage, useTranslation } from "@/lib/i18n";
 import { DataAuditSummary } from "./data-audit-summary";
+import { DialogueReview } from "./dialogue-review";
 import { InitialAdapterSummary } from "./initial-adapter";
 
 const METRICS = [
@@ -313,6 +314,8 @@ export function ExperimentReviewPanel({ runId, disabled, onSubmit }: ReviewProps
   }
 
   const checkpointStep = review?.checkpoint_step;
+  const judge = review?.dialogue_judge;
+  const dialogueIds = new Set(judge?.case_ids);
   const reviewId = checkpointStep === undefined ? runId : `${runId}-${checkpointStep}`;
   if (!review && !loadError) return <p className="text-sm text-hint">{t("academy.experiments.loadingReview")}</p>;
   if (loadError) {
@@ -341,10 +344,17 @@ export function ExperimentReviewPanel({ runId, disabled, onSubmit }: ReviewProps
       >
         {t("academy.experiments.downloadReview")}
       </Button>
+      {dialogueIds.size > 0 && (
+        <p className="rounded-lg border border-[color:var(--ui-border)] p-3 text-sm">
+          {t(judge?.available ? "academy.experiments.judge.notice" : "academy.experiments.judge.unavailable")}
+        </p>
+      )}
       {review?.answers.map((item) => (
-        <details className="rounded-lg border border-[color:var(--ui-border)] p-3" key={item.case.record_id}>
-          <summary className="cursor-pointer text-sm">{item.case.record_id}</summary>
-          <div className="mt-3 space-y-3">
+        <DialogueReview key={item.case.record_id} recordId={item.case.record_id}
+          runId={runId} checkpointStep={checkpointStep}
+          canReadJudge={dialogueIds.has(item.case.record_id)}
+          judgeEnabled={!disabled && Boolean(judge?.available) && dialogueIds.has(item.case.record_id)}>
+          <div className="space-y-3">
             <Conversation messages={item.case.messages} />
             {item.case.criteria?.map((criterion) => (
               <p key={criterion.id} className="text-sm text-hint">{criterion.id} · {criterion.description ?? criterion.kind}</p>
@@ -353,7 +363,7 @@ export function ExperimentReviewPanel({ runId, disabled, onSubmit }: ReviewProps
               {Object.entries(item.answers).map(([label, answer]) => <Answer key={label} title={label} answer={answer} />)}
             </div>
           </div>
-        </details>
+        </DialogueReview>
       ))}
       <form className="flex flex-wrap items-end gap-2" onSubmit={(event) => void submit(event)}>
         <div className="space-y-1">

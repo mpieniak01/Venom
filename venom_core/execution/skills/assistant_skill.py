@@ -3,6 +3,7 @@
 import asyncio
 from datetime import datetime
 from typing import Annotated, Any, Dict, Optional
+from urllib.parse import quote
 
 import httpx
 
@@ -48,6 +49,11 @@ class AssistantSkill:
         self.service_registry = service_registry or ServiceRegistry()
         self.service_monitor = ServiceHealthMonitor(self.service_registry)
         logger.info("AssistantSkill zainicjalizowany")
+
+    @staticmethod
+    def weather_source_url(location: str) -> str:
+        """Return the exact public endpoint used by this weather skill."""
+        return f"https://wttr.in/{quote(location)}?format=j1"
 
     @kernel_function(
         name="get_current_time",
@@ -123,7 +129,7 @@ class AssistantSkill:
             if not location_safe:
                 return "✗ Nazwa lokalizacji nie może być pusta."
 
-            url = f"https://wttr.in/{location_safe}?format=j1"
+            url = self.weather_source_url(location_safe)
             data = await self._fetch_weather_payload(url, location_safe)
             if isinstance(data, str):
                 return data

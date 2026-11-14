@@ -93,6 +93,7 @@ tests/test_changed_lines_quality_cli.py
 tests/test_changed_lines_quality_gate_runner.py
 tests/test_chat_audio.py
 tests/test_chat_direct_history.py
+tests/test_chat_grounding.py
 tests/test_chat_materials.py
 tests/test_chat_task_cancellation.py
 tests/test_check_github_actions_node_runtime.py
@@ -395,6 +396,8 @@ tests/test_policy_autonomy_contract.py
 tests/test_policy_engine.py
 tests/test_policy_gate.py
 tests/test_policy_gate_runtime_contract.py
+tests/test_polish_chat_quality.py
+tests/test_polish_wikipedia.py
 tests/test_port_authority.py
 tests/test_port_pids_script.py
 tests/test_preprod_mutation_guards.py

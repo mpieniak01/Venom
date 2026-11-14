@@ -648,7 +648,7 @@ class CampaignService:
         for other in self.list():
             if other["campaign_id"] == campaign_id:
                 continue
-            if other["status"] in _ACTIVE:
+            if other["status"] in _ACTIVE and not self._only_final_review(other):
                 raise ValueError("campaign_already_active")
             if other["status"] == "blocked" and other["trial_index"] < len(
                 other["trials"]
@@ -656,6 +656,22 @@ class CampaignService:
                 run = self._run(other, other["trials"][other["trial_index"]])
                 if run and _has_work(run):
                     raise ValueError("campaign_already_active")
+
+    def _only_final_review(self, state: dict) -> bool:
+        """A final manual review can finish without starting another GPU trial."""
+        index = state["trial_index"]
+        if (
+            state["status"] != "awaiting_review"
+            or state["plan"]["review_mode"] != "manual"
+            or index != len(state["trials"]) - 1
+        ):
+            return False
+        run = self._run(state, state["trials"][index])
+        return bool(
+            run
+            and run["status"] in {"awaiting_review", "succeeded"}
+            and not _has_work(run)
+        )
 
     def _start_worker(self, directory: Path, state: dict) -> None:
         self._save(directory, state)

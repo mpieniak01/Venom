@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import {
@@ -175,9 +175,10 @@ function NextTrial({ analysis, disabled, onDraft }: {
   );
 }
 
-export function CampaignQualityHistory({ disabled, initialRecordId = "", onDraft }: {
+export function CampaignQualityHistory({ disabled, initialRecordId = "", refresh = 0, onDraft }: {
   readonly disabled: boolean;
   readonly initialRecordId?: string;
+  readonly refresh?: number;
   readonly onDraft: (draft: QualityCampaignDraft) => void;
 }) {
   const t = useTranslation();
@@ -186,14 +187,19 @@ export function CampaignQualityHistory({ disabled, initialRecordId = "", onDraft
   const [reload, setReload] = useState(0);
   const [candidateId, setCandidateId] = useState(initialRecordId);
   const [referenceId, setReferenceId] = useState("");
-  const [analysis, setAnalysis] = useState<QualityAnalysis | null>(null);
-  const [request, setRequest] = useState(initialRecordId ? { recordId: initialRecordId, reference: "" } : null);
-  const [analysisFailed, setAnalysisFailed] = useState(false);
+  const [retry, setRetry] = useState(0);
+  const [response, setResponse] = useState<{
+    recordId: string; reference: string; retry: number; refresh: number; result: QualityAnalysis | null;
+  } | null>(null);
   const records = listing?.records;
-  const candidate = candidateId ? records?.find((record) => record.record_id === candidateId) : records?.[0];
-  const canAnalyze = Boolean(request && candidate?.record_id === request.recordId);
-  const analyzing = canAnalyze && !analysis && !analysisFailed;
-  const reference = referenceId === candidate?.record_id ? "" : referenceId;
+  const candidate = candidateId
+    ? records?.find((record) => record.record_id === candidateId)
+    : records?.find((record) => record.split === "dev" && record.outcome) ?? records?.[0];
+  const recordId = candidate?.record_id;
+  const reference = referenceId === recordId ? "" : referenceId;
+  const current = response?.recordId === recordId && response?.reference === reference && response?.retry === retry && response.refresh === refresh
+    ? response : null;
+  const analysis = current?.result;
 
   useEffect(() => {
     const controller = new AbortController();
@@ -205,28 +211,31 @@ export function CampaignQualityHistory({ disabled, initialRecordId = "", onDraft
       })
       .catch(() => { if (!controller.signal.aborted) setLoadFailed(true); });
     return () => controller.abort();
-  }, [reload]);
+  }, [reload, refresh]);
 
   useEffect(() => {
-    if (!request || !canAnalyze) return;
+    if (!recordId) return;
     const controller = new AbortController();
-    void getQualityAnalysis(request.recordId, request.reference, controller.signal)
-      .then((result) => { if (!controller.signal.aborted) setAnalysis(result); })
-      .catch(() => { if (!controller.signal.aborted) setAnalysisFailed(true); });
+    function publish(result: QualityAnalysis | null) {
+      if (!controller.signal.aborted && recordId) setResponse({ recordId, reference, retry, refresh, result });
+    }
+    void getQualityAnalysis(recordId, reference, controller.signal)
+      .then(publish)
+      .catch(() => publish(null));
     return () => controller.abort();
-  }, [request, canAnalyze]);
+  }, [recordId, reference, retry, refresh]);
 
-  function clearAnalysis() {
-    setRequest(null);
-    setAnalysis(null);
-    setAnalysisFailed(false);
+  function selectCandidate(id: string) {
+    if (id === recordId) return;
+    setResponse(null);
+    setCandidateId(id);
+    if (id === reference) setReferenceId("");
   }
 
-  function compare(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!candidate || analyzing) return;
-    clearAnalysis();
-    setRequest({ recordId: candidate.record_id, reference });
+  function selectReference(id: string) {
+    if (id === reference) return;
+    setResponse(null);
+    setReferenceId(id);
   }
 
   if (loadFailed) {
@@ -252,32 +261,33 @@ export function CampaignQualityHistory({ disabled, initialRecordId = "", onDraft
     <div className="space-y-4">
       {unavailableFeedback}
       {!candidate && candidateId && <output className="block text-sm text-hint">{t(QUALITY + "selectedUnavailable")}</output>}
-      <form className="grid items-end gap-3 sm:grid-cols-[1fr_1fr_auto]" onSubmit={compare}>
+      <div className="grid items-end gap-3 sm:grid-cols-2">
         <div className="space-y-1">
           <Label htmlFor="quality-candidate">{t(QUALITY + "candidate")}</Label>
-          <select id="quality-candidate" className={SELECT} value={candidate?.record_id ?? ""} disabled={analyzing}
-            onChange={(event) => {
-              setCandidateId(event.currentTarget.value);
-              if (event.currentTarget.value === reference) setReferenceId("");
-              clearAnalysis();
-            }}>
+          <select id="quality-candidate" className={SELECT} value={recordId ?? ""} onChange={(event) => selectCandidate(event.currentTarget.value)}>
             {!candidate && <option value="" disabled>{t(QUALITY + "selectRecord")}</option>}
             {records.map((item) => <option key={item.record_id} value={item.record_id}>{item.record_id} · {item.split}</option>)}
           </select>
         </div>
         <div className="space-y-1">
           <Label htmlFor="quality-reference">{t(QUALITY + "reference")}</Label>
-          <select id="quality-reference" className={SELECT} value={reference} disabled={analyzing}
-            onChange={(event) => { setReferenceId(event.currentTarget.value); clearAnalysis(); }}>
+          <select id="quality-reference" className={SELECT} value={reference} onChange={(event) => selectReference(event.currentTarget.value)}>
             <option value="">{t(QUALITY + "base")}</option>
             {records.filter((item) => item.record_id !== candidate?.record_id).map((item) => (
               <option key={item.record_id} value={item.record_id}>{item.record_id} · {item.split}</option>
             ))}
           </select>
         </div>
-        <Button type="submit" disabled={analyzing || !candidate}>{t(QUALITY + "compare")}</Button>
-      </form>
-      {analysisFailed && <p role="alert" className="text-sm text-red-400">{t(QUALITY + "analysisError")}</p>}
+      </div>
+      {recordId && !current && <output className="block text-sm text-hint">{t(QUALITY + "loadingAnalysis")}</output>}
+      {current && !analysis && (
+        <div className="flex flex-wrap items-center gap-2">
+          <p role="alert" className="text-sm text-red-400">{t(QUALITY + "analysisError")}</p>
+          <Button type="button" size="sm" variant="outline" onClick={() => setRetry((value) => value + 1)}>
+            {t("academy.common.retry")}
+          </Button>
+        </div>
+      )}
       {analysis && <QualityAnalysisResult analysis={analysis} disabled={disabled} onDraft={onDraft} />}
     </div>
   );

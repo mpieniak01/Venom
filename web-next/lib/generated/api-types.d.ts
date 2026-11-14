@@ -1386,6 +1386,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/academy/experiments/model-specs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Model Specs */
+        get: operations["model_specs_api_v1_academy_experiments_model_specs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/academy/experiments/adapters": {
         parameters: {
             query?: never;
@@ -1517,6 +1534,23 @@ export interface paths {
         get: operations["review_api_v1_academy_experiments_runs__run_id__review_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/academy/experiments/runs/{run_id}/review/dialogue-judge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Judge Dialogue */
+        post: operations["judge_dialogue_api_v1_academy_experiments_runs__run_id__review_dialogue_judge_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -8092,6 +8126,18 @@ export interface components {
             /** Error */
             error?: string | null;
         };
+        /** JudgeDialogue */
+        JudgeDialogue: {
+            /** Record Id */
+            record_id: string;
+            /** Checkpoint Step */
+            checkpoint_step?: number | null;
+            /**
+             * Cached Only
+             * @default false
+             */
+            cached_only: boolean;
+        };
         /** Judgment */
         Judgment: {
             /** Record Id */
@@ -13555,6 +13601,28 @@ export interface operations {
             };
         };
     };
+    model_specs_api_v1_academy_experiments_model_specs_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
     adapters_api_v1_academy_experiments_adapters_get: {
         parameters: {
             query?: never;
@@ -13809,6 +13877,43 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    judge_dialogue_api_v1_academy_experiments_runs__run_id__review_dialogue_judge_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["JudgeDialogue"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {

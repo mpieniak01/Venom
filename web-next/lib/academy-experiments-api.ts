@@ -9,6 +9,25 @@ export interface ExperimentRecipe {
   alpha?: number;
   learning_rate?: number;
   dropout?: number;
+  target_modules?: string[];
+  max_tokens?: number;
+}
+
+export interface TrainingModelSpec {
+  model: string;
+  path: string;
+  status: string;
+  loader: string;
+  revision: string;
+  target_families: string[];
+  data_contract: string;
+  modality: string;
+  qualification: string;
+  recipe_defaults: Record<string, string | number | boolean>;
+  runtime: string | { python: string; versions: Record<string, string> };
+  gpu_memory: string | {
+    shared_lora_qlora: { gpu_memory_gb: number; qualification: string };
+  };
 }
 
 export interface ExperimentProfile {
@@ -121,8 +140,25 @@ interface ReviewCase {
 
 export interface ExperimentReview {
   checkpoint_step?: number;
+  dialogue_judge?: { model: string; available: boolean; case_ids: string[] };
   cases: ReviewCase[];
   answers: { case: ReviewCase; answers: Record<string, ExperimentAnswer> }[];
+}
+
+export interface DialogueJudgeResult {
+  model: string;
+  answers: Record<string, {
+    cost_usd: string | null;
+    retryable?: boolean;
+    verdict?: { pass: boolean; critical: boolean; reason: string };
+  }>;
+}
+
+export function evaluateExperimentDialogue(runId: string, recordId: string, checkpointStep?: number, cachedOnly = false) {
+  return apiFetch<DialogueJudgeResult>(`${runPath(runId)}/review/dialogue-judge`, {
+    method: "POST",
+    body: JSON.stringify({ record_id: recordId, checkpoint_step: checkpointStep, ...(cachedOnly ? { cached_only: true } : {}) }),
+  });
 }
 
 export interface ExperimentStartRequest {
@@ -143,6 +179,10 @@ export async function listInitialAdapters(signal?: AbortSignal) {
 
 export async function listExperimentProfiles(signal?: AbortSignal) {
   return (await apiFetch<{ profiles: ExperimentProfile[] }>(`${EXPERIMENTS}/profiles`, { signal })).profiles;
+}
+
+export async function listTrainingModelSpecs(signal?: AbortSignal) {
+  return (await apiFetch<{ models: TrainingModelSpec[] }>(`${EXPERIMENTS}/model-specs`, { signal })).models;
 }
 
 export async function listExperimentRuns(signal?: AbortSignal) {

@@ -268,9 +268,7 @@ async def _news_context(message: str, policy: str) -> str:
     try:
         region = load_public_sources().region_for(message)
     except (OSError, ValueError, KeyError, TypeError):
-        return (
-            "\nPublic news sources are not configured correctly; say this explicitly."
-        )
+        return "\nPublic news sources are misconfigured; say so explicitly."
 
     trusted = await _trusted_news_urls(message, region)
     verified = await _recent_articles(trusted, region, message)
@@ -278,9 +276,7 @@ async def _news_context(message: str, policy: str) -> str:
         if headlines := await _feed_headline_context(message, policy, region):
             return headlines
         if not trusted:
-            return (
-                "\nCurrent web information could not be retrieved; say this explicitly."
-            )
+            return "\nCurrent news could not be retrieved; say this explicitly."
         return (
             "\nSearch results were found, but no dated article from a trusted source "
             "could be verified. Say this explicitly; do not present news as fact."

@@ -234,14 +234,17 @@ def test_digest_mismatch_never_connects(f):
     assert f.connection.detach.call_count == 12
 
 
-def test_refresh_restores_only_existing_provisioned_order(f):
+@pytest.mark.parametrize("actual_status", ["stopped", "exited"])
+def test_refresh_restores_only_existing_provisioned_order(f, actual_status):
     order(f)
     f.state.update(available=False, plan_id=None)
     f.m.owner = "restart"
     assert f.m.row(f.p.plan_id)["phase"] == "interrupted"
     assert f.m.refresh(f.p.plan_id)["connected"]
     assert len(f.calls) == 2
-    f.svc.client.instance.return_value["actual_status"] = "stopped"
+    f.svc.client.instance.return_value.update(
+        actual_status=actual_status, intended_status="stopped"
+    )
     assert f.m.refresh(f.p.plan_id)["phase"] == "stopped"
     f.svc.client.instance.side_effect = VastError("vast.transport_error")
     assert f.m.refresh(f.p.plan_id)["error"] == "vast.transport_error"

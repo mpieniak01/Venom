@@ -254,6 +254,14 @@ class Environments:
                 self._event(record, "unknown")
                 raise VastError("vast.instance_status_invalid")
             state = state or "unknown"
+            # Vast can report an intentionally parked VM as "exited".
+            if (
+                state == "exited"
+                and record.pending_action in (None, "stop")
+                and instance.get("intended_status") == "stopped"
+                and instance.get("next_state") in (None, "stopped")
+            ):
+                state = "stopped"
             target = {"start": "running", "stop": "stopped"}.get(
                 record.pending_action or ""
             )

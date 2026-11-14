@@ -10,8 +10,6 @@ import json
 from collections import Counter
 from pathlib import Path
 
-import pyarrow.parquet as pq
-
 from scripts.academy.omni_pl_chat_data import sha256, validate_messages, write_jsonl
 
 SOURCE_REPO = "OpenAssistant/oasst2"
@@ -122,6 +120,8 @@ def select_paths(rows: list[dict]) -> list[dict]:
 
 def prepare(source: Path, output: Path) -> dict:
     """Read a pinned local Parquet file and write an ignored review queue."""
+    import pyarrow.parquet as pq
+
     source = source.resolve()
     output = output.resolve()
     if source.is_symlink() or not source.is_file() or sha256(source) != SOURCE_SHA256:

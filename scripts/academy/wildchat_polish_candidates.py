@@ -15,7 +15,6 @@ import time
 import unicodedata
 from pathlib import Path
 
-import pyarrow.parquet as pq
 import requests
 
 SOURCE_REPO = "allenai/WildChat-4.8M"
@@ -129,6 +128,8 @@ def user_candidate(row: dict, shard: int, group: int, index: int) -> dict | None
 
 
 def select(shards: list[int], groups_per_shard: int, limit: int, output: Path) -> dict:
+    import pyarrow.parquet as pq
+
     if (
         not shards
         or len(set(shards)) != len(shards)

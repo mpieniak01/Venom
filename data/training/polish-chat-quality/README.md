@@ -60,6 +60,8 @@ Eksport sprawdza schemat Academy i wyklucza dokładne przecięcia z tym zestawem
 
 ## Kolejka rzeczywistych pytań WildChat
 
+Odczyt Parquet przez oba narzędzia kolejek wymaga `pyarrow` z profilu Full.
+
 `scripts/academy/wildchat_polish_candidates.py` czyta wybrane grupy z przypiętej rewizji [WildChat-4.8M](https://huggingface.co/datasets/allenai/WildChat-4.8M) przez żądania HTTP Range. Domyślna próba obejmuje trzy shardy. Dla szerszej, nadal ograniczonej próby można podać rozproszone indeksy shardów. Wynik wolno zapisać tylko pod ignorowanym `test-results/polish-chat-candidates/`.
 
 ```bash

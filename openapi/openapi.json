@@ -4178,6 +4178,266 @@
         }
       }
     },
+    "/api/v1/academy/experiments/campaigns/remote/text": {
+      "get": {
+        "tags": [
+          "academy"
+        ],
+        "summary": "List Remote Text",
+        "operationId": "list_remote_text_api_v1_academy_experiments_campaigns_remote_text_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response List Remote Text Api V1 Academy Experiments Campaigns Remote Text Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/academy/experiments/campaigns/remote/text/plan": {
+      "post": {
+        "tags": [
+          "academy"
+        ],
+        "summary": "Plan Remote Text",
+        "operationId": "plan_remote_text_api_v1_academy_experiments_campaigns_remote_text_plan_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RemoteTextSpec"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Plan Remote Text Api V1 Academy Experiments Campaigns Remote Text Plan Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/academy/experiments/campaigns/remote/text/{campaign_id}": {
+      "get": {
+        "tags": [
+          "academy"
+        ],
+        "summary": "Status Remote Text",
+        "operationId": "status_remote_text_api_v1_academy_experiments_campaigns_remote_text__campaign_id__get",
+        "parameters": [
+          {
+            "name": "campaign_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 40,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$",
+              "title": "Campaign Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Status Remote Text Api V1 Academy Experiments Campaigns Remote Text  Campaign Id  Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/academy/experiments/campaigns/remote/text/{campaign_id}/start": {
+      "post": {
+        "tags": [
+          "academy"
+        ],
+        "summary": "Start Remote Text",
+        "operationId": "start_remote_text_api_v1_academy_experiments_campaigns_remote_text__campaign_id__start_post",
+        "parameters": [
+          {
+            "name": "campaign_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 40,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$",
+              "title": "Campaign Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CampaignPlanReference"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Start Remote Text Api V1 Academy Experiments Campaigns Remote Text  Campaign Id  Start Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/academy/experiments/campaigns/remote/text/{campaign_id}/stop": {
+      "post": {
+        "tags": [
+          "academy"
+        ],
+        "summary": "Stop Remote Text",
+        "operationId": "stop_remote_text_api_v1_academy_experiments_campaigns_remote_text__campaign_id__stop_post",
+        "parameters": [
+          {
+            "name": "campaign_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 40,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$",
+              "title": "Campaign Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Stop Remote Text Api V1 Academy Experiments Campaigns Remote Text  Campaign Id  Stop Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/academy/experiments/campaigns/remote/text/{campaign_id}/evidence/{run_id}": {
+      "get": {
+        "tags": [
+          "academy"
+        ],
+        "summary": "Download Remote Text",
+        "operationId": "download_remote_text_api_v1_academy_experiments_campaigns_remote_text__campaign_id__evidence__run_id__get",
+        "parameters": [
+          {
+            "name": "campaign_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 40,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$",
+              "title": "Campaign Id"
+            }
+          },
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Run Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/academy/self-learning/start": {
       "post": {
         "tags": [
@@ -14759,6 +15019,29 @@
         ],
         "title": "CampaignBudget"
       },
+      "CampaignExtension": {
+        "properties": {
+          "initial_trials": {
+            "type": "integer",
+            "maximum": 31.0,
+            "minimum": 1.0,
+            "title": "Initial Trials"
+          },
+          "min_usable_delta": {
+            "type": "number",
+            "maximum": 1.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Min Usable Delta"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "initial_trials",
+          "min_usable_delta"
+        ],
+        "title": "CampaignExtension"
+      },
       "CampaignPlanReference": {
         "properties": {
           "plan_sha256": {
@@ -14976,6 +15259,16 @@
             "anyOf": [
               {
                 "$ref": "#/components/schemas/CampaignQualityPolicy"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "extension": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CampaignExtension"
               },
               {
                 "type": "null"
@@ -21918,6 +22211,60 @@
         ],
         "title": "ReasonCode",
         "description": "Reason codes for operation results."
+      },
+      "RemoteTextSpec": {
+        "properties": {
+          "campaign": {
+            "$ref": "#/components/schemas/CampaignSpec"
+          },
+          "environment_plan_id": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{32}$",
+            "title": "Environment Plan Id"
+          },
+          "max_cost_microusd": {
+            "type": "integer",
+            "maximum": 1000000000.0,
+            "minimum": 1.0,
+            "title": "Max Cost Microusd"
+          },
+          "final_test_sha256": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64,
+                "minLength": 64,
+                "pattern": "^[a-f0-9]{64}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Final Test Sha256"
+          },
+          "final_calibration_sha256": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64,
+                "minLength": 64,
+                "pattern": "^[a-f0-9]{64}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Final Calibration Sha256"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "campaign",
+          "environment_plan_id",
+          "max_cost_microusd"
+        ],
+        "title": "RemoteTextSpec"
       },
       "ResourceChange": {
         "properties": {

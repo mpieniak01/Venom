@@ -128,6 +128,25 @@ wstępny ustawia jawne prawa wyłącznie własnych sztucznych plików.
 
 ## 4. Postęp, odzyskiwanie i zakończenie
 
+### Stan instancji przy przekazaniu
+
+Ta zasada dotyczy wszystkich sesji treningowych na Vast. Przed zakończeniem
+pracy sprawdź w API, czy bieżący i docelowy stan instancji są zgodne z decyzją
+operatora. Zapisz ID, stan, przeznaczenie i bieżącą stawkę.
+
+- Jeśli instancja ma pozostać uruchomiona do kolejnego zadania, potwierdź
+  `running` jako stan bieżący i docelowy oraz zapisz, na co czeka host.
+- Jeśli operator chce zachować dysk po zakończeniu pracy, potwierdź
+  `stopped` oraz brak oczekującego startu. Vast może zwrócić `actual_status:
+  exited` dla zatrzymanej VM. Sprawdź wtedy `cur_state`, `intended_status`
+  oraz `next_state`.
+- Przy `scheduling`, `loading`, `unknown` lub rozbieżnych stanach sprawdź
+  oczekujące żądanie i aktywną pracę. Jeśli wznowienie przestało być potrzebne,
+  anuluj je przez stop i potwierdź stan końcowy. Gdy API nie pozwala potwierdzić
+  wyniku, zgłoś operatorowi ID, ostatni odczyt i możliwe naliczanie opłat.
+
+[Stany instancji Vast](https://docs.vast.ai/guides/instances/manage-instances)
+
 - `100%` kroków nie oznacza końca zapisu/walidacji. Czekaj na terminalny sukces.
   Bieżący `status` ma kroki w `progress`; zamknięte `attempts` mają
   `completed_updates` i `result_checkpoint`. Czytaj te pola zamiast zgadywać

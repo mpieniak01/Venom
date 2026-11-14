@@ -21,6 +21,7 @@ import { useTranslation } from "@/lib/i18n";
 import { CampaignDetail, CampaignStatus, campaignIsActive } from "./campaign-detail";
 import { CampaignForm } from "./campaign-form";
 import { CampaignQualityHistory } from "./campaign-quality-history";
+import { RemoteTextCampaigns } from "./remote-text-campaigns";
 import type { QualityCampaignDraft } from "@/lib/academy-quality-api";
 
 const CARD = "space-y-4 rounded-xl border border-[color:var(--ui-border)] bg-[color:var(--ui-surface)] p-4 sm:p-5";
@@ -50,6 +51,7 @@ export function CampaignPanel({
   const [optunaAvailable, setOptunaAvailable] = useState(false);
   const [operationError, setOperationError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [showRemote, setShowRemote] = useState(false);
   const [selectedId, setSelectedId] = useState(initialCampaignId ?? "");
   const [refresh, setRefresh] = useState(0);
   const [qualitySelection, setQualitySelection] = useState({ recordId: initialQualityId, revision: 0 });
@@ -160,28 +162,45 @@ export function CampaignPanel({
           {t("academy.campaigns.quality.title")}
         </h3>
         <CampaignQualityHistory key={qualitySelection.revision} initialRecordId={qualitySelection.recordId} refresh={refresh} disabled={busy || !profiles?.length || failed}
-          onDraft={(value) => setDraft((current) => ({ value, revision: (current?.revision ?? 0) + 1 }))} />
+          onDraft={(value) => {
+            setShowRemote(false);
+            setDraft((current) => ({ value, revision: (current?.revision ?? 0) + 1 }));
+          }} />
       </section>
       <section className={CARD}>
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h3 className="font-semibold">{t("academy.campaigns.title")}</h3>
           <Button type="button" size="sm" variant="outline" onClick={refreshData}>{t("academy.common.refresh")}</Button>
         </div>
-        {failed && <p role="alert" className="text-sm text-red-400">{t("academy.campaigns.loadError")}</p>}
-        {!failed && (!profiles || !campaigns) && <p className="text-sm text-hint">{t("academy.campaigns.loading")}</p>}
-        {profiles && campaigns && (
+        {profiles && <div role="group" aria-label={t("academy.campaigns.executionHost")} className="flex flex-wrap gap-2">
+          <Button type="button" variant={showRemote ? "outline" : "secondary"}
+            aria-pressed={!showRemote} onClick={() => setShowRemote(false)}>
+            {t("academy.campaigns.localTraining")}
+          </Button>
+          <Button type="button" variant={showRemote ? "secondary" : "outline"}
+            aria-pressed={showRemote} onClick={() => setShowRemote(true)}>
+            {t("academy.remoteText.title")}
+          </Button>
+        </div>}
+        {(profilesFailed || (!showRemote && campaignsFailed)) &&
+          <p role="alert" className="text-sm text-red-400">{t("academy.campaigns.loadError")}</p>}
+        {!failed && (!profiles || (!showRemote && !campaigns)) &&
+          <p className="text-sm text-hint">{t("academy.campaigns.loading")}</p>}
+        {profiles && campaigns && !showRemote && (
           <CampaignForm key={draft?.revision ?? 0} draft={draft?.value} profiles={profiles} onDiscardDraft={() => setDraft(undefined)}
             adapters={adapters} adaptersFailed={adaptersFailed}
             disabled={busy || failed} optunaAvailable={optunaAvailable}
             onPlan={(request) => mutate(() => planCampaign(request))} />
         )}
-        {operationError && (
+        {profiles && showRemote && <RemoteTextCampaigns profiles={profiles} adapters={adapters}
+          adaptersFailed={adaptersFailed} optunaAvailable={optunaAvailable} />}
+        {!showRemote && operationError && (
           <p role="alert" className="text-sm text-red-400">
             {t(operationError)}
           </p>
         )}
       </section>
-      {campaigns && (
+      {!showRemote && campaigns && (
         <section className={CARD}>
           <h3 className="font-semibold">{t("academy.campaigns.history")}</h3>
           {campaigns.length ? (
@@ -201,10 +220,10 @@ export function CampaignPanel({
           ) : <p className="text-sm text-hint">{t("academy.campaigns.noCampaigns")}</p>}
         </section>
       )}
-      {campaigns && selectedId && !selected && (
+      {!showRemote && campaigns && selectedId && !selected && (
         <output>{t("academy.campaigns.campaignUnavailable")} <code>{selectedId}</code></output>
       )}
-      {selected && <section className={CARD}>
+      {!showRemote && selected && <section className={CARD}>
         <CampaignDetail key={selected.campaign_id} campaign={selected} disabled={busy || campaignsFailed} optunaAvailable={optunaAvailable}
           onAction={act} onOpenRun={onOpenRun} onChanged={refreshData}
           onOpenCheckpoint={(recordId) => {

@@ -2,6 +2,12 @@
 
 Eksperyment porównuje odpowiedzi przypiętego modelu `LiquidAI/LFM3-Omni-2B` i adaptera LoRA na tym samym polskim zestawie dev. Profil operatora wiąże snapshot, środowisko i hashe danych. Academy oraz CLI odczytują wspólny stan przebiegu.
 
+W **Academy → Trening → Kampanie** wybierz miejsce wykonania. **Trening lokalny** jest domyślny i korzysta z GPU hosta Venoma oraz lokalnego katalogu wyników. Wybierz profil ze sprawdzoną kalibracją dev i **Ocenę automatyczną**, żeby kampania samodzielnie wykonała próby i uszeregowała wyniki. Możesz podać listę konfiguracji lub dopuścić zakres parametrów dla Optuny. Lokalna kampania korzysta z limitu czasu, pracy i miejsca na dysku.
+
+**Zdalny trening tekstowy · Vast** jest opcją dla przygotowanej VM. Ma dodatkowy limit kwoty, rozliczenie wynajmu i synchronizację dowodów. Pilot Vast dotyczy odbioru tej właśnie ścieżki. [Instrukcja zdalnej kampanii](ACADEMY_ZDALNY_TRENING_TEKSTU.md)
+
+Ranking lokalnej kampanii pochodzi z danych dev. Ocena na odłożonym zbiorze jest osobnym krokiem. Automatyczna kolejka niezależnej kwalifikacji opisana w instrukcji zdalnej korzysta z archiwów kampanii Vast.
+
 ## Przygotowanie profilu
 
 Backend działa w lokalnym Linuxie z NVIDIA CUDA i BF16. Launcher montuje dane i snapshot tylko do odczytu w izolowanej przestrzeni nazw. Przygotuj osobne środowisko treningowe oraz pełny snapshot zgodny z przypiętym manifestem. Próba techniczna korzystała z Python 3.14.8, PyTorch 2.15.0, Transformers 5.22.2, PEFT 0.21.2 i Accelerate 1.15.0. W profilu wskaż rzeczywisty katalog venv. [Manifest snapshotu](../../scripts/llm/omni_native_snapshot.json)

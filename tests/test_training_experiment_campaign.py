@@ -226,6 +226,53 @@ def launch_next(service, campaign_id="series"):
     return trial["run_id"]
 
 
+@pytest.mark.parametrize(
+    ("usable", "critical", "approved"),
+    [(3, 0, True), (2, 0, False), (4, 1, False)],
+)
+def test_automatic_campaign_runs_extension_only_after_a_qualified_gain(
+    controller, usable, critical, approved
+):
+    service, experiments, clock = controller
+    experiments.automatic = True
+    start(
+        service,
+        make_spec(
+            review_mode="automatic",
+            retention="keep_all",
+            extension={"initial_trials": 2, "min_usable_delta": 0.25},
+        ),
+    )
+    first = launch_next(service)
+    experiments.finish(first, usable=usable, critical=critical)
+    service.advance("series")
+    second = launch_next(service)
+    experiments.finish(second, usable=2)
+    service.advance("series")
+
+    # The detached supervisor may restart between the first block and the extension.
+    restored = CampaignService(experiments, clock=clock)
+    if approved:
+        third = launch_next(restored)
+        experiments.finish(third, usable=4)
+        state = restored.advance("series")
+        assert state["selected_run_id"] == third
+        assert state["extension_decision"]["run_id"] == first
+        assert (
+            state["extension_decision"]["result_sha256"]
+            == state["trials"][0]["result_sha256"]
+        )
+        assert len(experiments.calls) == 3
+    else:
+        state = restored.advance("series")
+        assert state["trials"][2]["status"] == "skipped"
+        assert len(experiments.calls) == 2
+    assert state["status"] == "succeeded"
+    assert state["extension_decision"]["status"] == (
+        "approved" if approved else "skipped"
+    )
+
+
 def test_fixed_series_keeps_winner_report_and_failed_trial(controller):
     service, experiments, _clock = controller
     start(service)
@@ -263,6 +310,22 @@ def test_fixed_series_keeps_winner_report_and_failed_trial(controller):
     assert receipt["removed_bytes"] > 0
     assert service.advance("series")["trial_index"] == 3
     assert len(experiments.calls) == 3
+
+
+def test_completed_fixed_trial_is_ranked_even_when_observed_at_cutoff(controller):
+    service, experiments, clock = controller
+    experiments.automatic = True
+    spec = make_spec(review_mode="automatic", retention="keep_all")
+    planned = service.plan(spec)
+    service.start("series", planned["plan"]["plan_sha256"], cutoff_at=130)
+    first = launch_next(service)
+    experiments.finish(first, usable=4)
+    clock.now = 130
+    state = service.advance("series")
+    assert state["status"] == "timed_out"
+    assert state["selected_run_id"] == first
+    assert state["trials"][0]["result_sha256"]
+    assert len(experiments.calls) == 1
 
 
 def test_controller_adopts_committed_launch_and_preserves_budget(controller):
@@ -349,6 +412,24 @@ def test_plan_bounds_and_evaluator_qualification(controller):
         service.resume("series")
     with pytest.raises(ValueError, match="id_invalid"):
         service.status("../series")
+
+
+def test_local_automatic_campaign_ranks_scored_trials_without_operator_review(
+    controller,
+):
+    service, experiments, _clock = controller
+    experiments.automatic = True
+    start(service, make_spec(count=2, review_mode="automatic"))
+    first = launch_next(service)
+    experiments.finish(first, usable=3)
+    assert service.advance("series")["selected_run_id"] == first
+
+    second = launch_next(service)
+    experiments.finish(second, usable=4)
+    state = service.advance("series")
+    assert state["status"] == "succeeded"
+    assert state["selected_run_id"] == second
+    assert all(trial.get("result_sha256") for trial in state["trials"])
 
 
 def test_retry_and_operator_stop_preserve_allocated_budget(controller):

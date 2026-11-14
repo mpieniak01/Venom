@@ -9,7 +9,7 @@ import stat
 import subprocess
 import sys
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from itertools import product
 from pathlib import Path
 from threading import Thread
@@ -240,12 +240,15 @@ def _plan(spec: CampaignSpec, experiments: CampaignExperiments) -> dict:
                 "sampler_seed",
                 "quality_policy",
                 "checkpoint_steps",
+                "extension",
             }
         ),
         **extra,
         "profile_identity": identity,
         "variants": variants,
     }
+    if spec.extension is not None:
+        payload["extension"] = spec.extension.model_dump()
     if spec.quality_policy is not None:
         context = quality_native.profile_context(
             experiments,
@@ -341,6 +344,42 @@ def _rank_checkpoints(state: dict) -> None:
     )
     state["selected_run_id"] = run_id
     state["selected_checkpoint_step"] = winner["step"] if winner else None
+
+
+def _allow_extension(state: dict) -> bool:
+    policy = state["plan"].get("extension")
+    if policy is None or state["trial_index"] != policy["initial_trials"]:
+        return True
+    if "extension_decision" not in state:
+        selected = state["selected_run_id"]
+        step = state.get("selected_checkpoint_step")
+        winner = next(
+            (
+                trial
+                for trial in state["trials"][: state["trial_index"]]
+                if trial["run_id"] == selected
+            ),
+            {},
+        )
+        if step is not None:
+            winner = next(
+                (
+                    row
+                    for row in winner.get("checkpoint_evaluations", ())
+                    if row["step"] == step
+                ),
+                {},
+            )
+        gain = winner.get("usable_delta")
+        approved = gain is not None and gain >= policy["min_usable_delta"]
+        state["extension_decision"] = {
+            "status": "approved" if approved else "skipped",
+            "run_id": selected,
+            "checkpoint_step": step,
+            "usable_delta": gain,
+            "result_sha256": winner.get("result_sha256"),
+        }
+    return state["extension_decision"]["status"] == "approved"
 
 
 def _deltas(report: dict) -> dict:
@@ -555,7 +594,7 @@ class CampaignService:
         anchor = next(item for item in checkpoints if item["step"] == step)
         return {**anchor, "checkpoints": checkpoints}
 
-    def _checkpoint_evaluations(self, trial: dict) -> list[dict]:
+    def _checkpoint_evaluations(self, trial: dict) -> Sequence[dict]:
         checkpoint_rows = []
         run_id = trial["run_id"]
         with self.experiments.run_lock(run_id):
@@ -569,13 +608,21 @@ class CampaignService:
                 )
         return checkpoint_rows
 
-    def start(self, campaign_id: str, plan_sha256: str) -> dict:
-        return self._activate(campaign_id, plan_sha256=plan_sha256)
+    def start(
+        self, campaign_id: str, plan_sha256: str, *, cutoff_at: float | None = None
+    ) -> dict:
+        return self._activate(campaign_id, plan_sha256=plan_sha256, cutoff_at=cutoff_at)
 
     def resume(self, campaign_id: str) -> dict:
         return self._activate(campaign_id)
 
-    def _activate(self, campaign_id: str, *, plan_sha256: str | None = None) -> dict:
+    def _activate(
+        self,
+        campaign_id: str,
+        *,
+        plan_sha256: str | None = None,
+        cutoff_at: float | None = None,
+    ) -> dict:
         ensure_data_mutation_allowed("academy_campaign_activate")
         directory = self.directory(campaign_id)
         with (
@@ -587,7 +634,13 @@ class CampaignService:
                 if plan_sha256 != state["plan"]["plan_sha256"]:
                     raise ValueError("campaign_plan_changed")
                 if state["status"] != "planned":
+                    if state.get("cutoff_at") != cutoff_at:
+                        raise ValueError("campaign_execution_cutoff_changed")
                     return state
+                if cutoff_at is not None:
+                    if not math.isfinite(cutoff_at) or cutoff_at <= self._clock():
+                        raise ValueError("campaign_execution_cutoff_expired")
+                    state["cutoff_at"] = cutoff_at
             if state["status"] == "planned" and plan_sha256 is None:
                 raise ValueError("campaign_plan_not_approved")
             if state["status"] not in _ACTIVE | {"planned", "stopped", "blocked"}:
@@ -615,7 +668,7 @@ class CampaignService:
             raise ValueError("campaign_optuna_version_changed")
         state["status"] = "running"
         self._elapsed(state)
-        expired = state["elapsed_seconds"] >= plan["budget"]["max_seconds"]
+        expired = self._campaign_seconds_left(state) <= 0
         if expired and not optimized and not _reassessing_quality(state):
             raise ValueError("campaign_time_budget_exhausted")
         state["error"] = None
@@ -827,8 +880,15 @@ class CampaignService:
         return math.floor(
             min(
                 budget["trial_seconds"] - trial["elapsed_seconds"],
-                budget["max_seconds"] - state["elapsed_seconds"],
+                self._campaign_seconds_left(state),
             )
+        )
+
+    def _campaign_seconds_left(self, state: dict) -> float:
+        remaining = state["plan"]["budget"]["max_seconds"] - state["elapsed_seconds"]
+        cutoff = state.get("cutoff_at")
+        return (
+            min(remaining, cutoff - self._clock()) if cutoff is not None else remaining
         )
 
     def _reserve(
@@ -907,11 +967,7 @@ class CampaignService:
     def _settle_timeout(self, directory: Path, state: dict, run: dict | None) -> bool:
         plan = state["plan"]
         optimized = _is_optuna(plan)
-        reviewed = (
-            (plan.get("quality_policy") or "checkpoint_steps" in plan)
-            and run
-            and run["status"] == "succeeded"
-        )
+        reviewed = run and run["status"] == "succeeded"
         if not optimized and not reviewed:
             return True
         index = state["trial_index"]
@@ -1151,12 +1207,20 @@ class CampaignService:
         run: dict | None,
         remaining: int,
     ) -> bool:
-        if state["elapsed_seconds"] >= state["plan"]["budget"]["max_seconds"]:
+        if self._campaign_seconds_left(state) <= 0:
             state["termination"] = "timed_out"
         if state["termination"]:
             self._terminate(directory, state, run)
             return True
         if run is None:
+            if (
+                state.get("cutoff_at") is not None
+                and trial.get("intent") is None
+                and remaining < state["plan"]["budget"]["trial_seconds"]
+            ):
+                state["termination"] = "timed_out"
+                self._terminate(directory, state, None)
+                return True
             if remaining < 1:
                 state["termination"] = "timed_out"
                 self._terminate(directory, state, None)
@@ -1169,6 +1233,11 @@ class CampaignService:
         run = self._run(state, trial)
         remaining = self._remaining(state, trial)
         if self._check_limits(directory, state, trial, run, remaining):
+            return
+        if not _allow_extension(state):
+            for pending in state["trials"][state["trial_index"] :]:
+                pending["status"] = "skipped"
+            state.update(trial_index=len(state["trials"]), status="succeeded")
             return
         if trial.get("intent") and remaining >= 1:
             run = self._launch_trial(state, trial, run, remaining)

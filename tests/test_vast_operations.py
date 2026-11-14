@@ -213,6 +213,42 @@ def test_stop_not_destroyed_on_missing_data(service):
     assert svc.journal.record(plan.plan_id).pending_action == "stop"
 
 
+@pytest.mark.parametrize(
+    ("action", "intended", "next_state", "expected"),
+    [
+        ("stop", "stopped", None, "stopped"),
+        ("stop", "stopped", "stopped", "stopped"),
+        ("stop", "stopped", "running", "exited"),
+        ("stop", "running", None, "exited"),
+        ("stop", None, None, "exited"),
+        ("start", "stopped", None, "exited"),
+        ("destroy", "stopped", None, "exited"),
+    ],
+)
+def test_exited_instance_reconciles_only_confirmed_stop(
+    service, action, intended, next_state, expected
+):
+    svc, plan, _ = service
+    svc.create(plan.plan_id)
+    if action == "destroy":
+        svc.export(plan.plan_id)
+    svc.change(plan.plan_id, action)
+    svc.client.instance.return_value = {
+        "id": 88,
+        "actual_status": "exited",
+        "intended_status": intended,
+        "next_state": next_state,
+    }
+
+    record = svc.reconcile(plan.plan_id)
+
+    assert record.state == expected
+    assert record.instance["actual_status"] == "exited"
+    saved = svc.journal.record(plan.plan_id)
+    assert saved.state == expected
+    assert saved.pending_action == (None if expected == "stopped" else action)
+
+
 def test_stop_start_export_cleanup(service):
     svc, plan, _ = service
     svc.create(plan.plan_id)

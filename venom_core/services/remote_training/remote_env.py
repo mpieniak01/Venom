@@ -28,6 +28,8 @@ CONTROL_IMPORTS = (
     "venom_core.services.functiongemma.worker",
     "venom_core.services.remote_training.worker",
     "venom_core.services.remote_training.verification",
+    "venom_core.services.training_experiments.remote_text_host",
+    "venom_core.services.training_experiments.worker",
 )
 
 

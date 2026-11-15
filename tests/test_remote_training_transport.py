@@ -2,9 +2,11 @@
 
 import base64
 import hashlib
+import io
 import json
 import os
 import shlex
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -20,6 +22,7 @@ from venom_core.services.remote_training.transport import (
     TransportError,
     execute_ssh,
 )
+from venom_core.services.training_experiments import remote_text_host
 
 
 def identity():
@@ -85,6 +88,258 @@ class FakeHost:
                 "eof": offset + len(data) == len(self.result),
             }
         return {"state": action}
+
+
+def _text_host(
+    executor=None,
+    *,
+    python="/workspace/venom/.venv/bin/python",
+    repo="/workspace/venom; false",
+    **limits,
+):
+    options = {} if executor is None else {"executor": executor}
+    return remote_text_host.RemoteTextHost(
+        ["ssh", "-o", "StrictHostKeyChecking=yes", "-o", "BatchMode=yes", "root@host"],
+        python,
+        repo,
+        "/workspace/campaigns",
+        **options,
+        **limits,
+    )
+
+
+def test_text_host_uses_qualified_rpc_python_and_requested_timeout():
+    python = "/workspace/data/remote-training/rpc-python"
+
+    def executor(argv, raw, timeout, limit):
+        parts = shlex.split(argv[-1])
+        assert parts[4:6] == ["env", "RUNTIME_ADMISSION_ENABLED=true"]
+        assert parts[6].startswith("VENOM_OPTUNA_PYTHON=")
+        assert parts[7] == python
+        assert timeout == 15 and limit == MAX_RPC_BYTES
+        assert json.loads(raw) == {"campaign_id": "text"}
+        return 0, b'{"ok":true,"result":{"status":"running"}}'
+
+    host = _text_host(executor, python=python, request_timeout=15)
+    assert host.status("text") == {"status": "running"}
+
+
+@pytest.mark.parametrize("seconds", [0, 61, True, 1.5])
+def test_text_host_caps_request_timeout(seconds):
+    with pytest.raises(ValueError, match="remote_text_request_timeout_invalid"):
+        _text_host(request_timeout=seconds)
+
+
+def test_text_host_verifies_pinned_checkout_before_running_rpc(tmp_path):
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    tracked = tmp_path / "tracked"
+    tracked.write_text("expected")
+    subprocess.run(["git", "-C", str(tmp_path), "add", "tracked"], check=True)
+    subprocess.run(
+        [
+            "git",
+            "-C",
+            str(tmp_path),
+            "-c",
+            "user.email=fixture@example.test",
+            "-c",
+            "user.name=Fixture",
+            "-c",
+            "core.hooksPath=/dev/null",
+            "commit",
+            "-qm",
+            "fixture",
+        ],
+        check=True,
+    )
+    commit = subprocess.check_output(
+        ["git", "-C", str(tmp_path), "rev-parse", "HEAD"], text=True
+    ).strip()
+    python = tmp_path / "rpc-python"
+    python.write_text('#!/bin/sh\nprintf \'{"ok":true,"result":{}}\'\n')
+    python.chmod(0o700)
+
+    def executor(argv, raw, timeout, limit):
+        return execute_ssh(["sh", "-c", argv[-1]], raw, timeout, limit)
+
+    kwargs = {"python": str(python), "repo": str(tmp_path)}
+    clean = _text_host(executor, expected_commit=commit, **kwargs)
+    assert clean.status("text") == {}
+    with pytest.raises(TransportError, match="remote_ssh_failed"):
+        _text_host(executor, expected_commit="0" * 40, **kwargs).status("text")
+    tracked.write_text("different")
+    with pytest.raises(TransportError, match="remote_ssh_failed"):
+        clean.status("text")
+    with pytest.raises(ValueError, match="remote_text_commit_invalid"):
+        _text_host(executor, expected_commit="$(false)", **kwargs)
+
+
+def _text_spec(review_mode="automatic"):
+    return {
+        "review_mode": review_mode,
+        "campaign_id": "text",
+        "profile_id": "pl_chat",
+        "variants": [{}],
+        "budget": {
+            "max_trials": 1,
+            "max_updates": 8,
+            "max_tokens": 8192,
+            "max_seconds": 3600,
+            "trial_seconds": 120,
+            "max_retries": 0,
+            "max_artifact_bytes": 1000,
+            "min_free_bytes": 0,
+        },
+    }
+
+
+def test_text_host_round_trip_retry_sends_same_plan_and_cutoff(monkeypatch, tmp_path):
+    calls = []
+    sha = "a" * 64
+    profile = "b" * 64
+    cutoff = 1769000000.25
+
+    class Campaign:
+        def __init__(self, experiments):
+            self.experiments = experiments
+
+        def plan(self, spec):
+            assert spec.review_mode == "automatic" and spec.profile_id == "pl_chat"
+            calls.append("plan")
+            return {"plan": {"plan_sha256": sha}}
+
+        def start(self, campaign_id, plan_sha256, *, cutoff_at):
+            assert (campaign_id, plan_sha256, cutoff_at) == ("text", sha, cutoff)
+            calls.append("start")
+            return self.status(campaign_id)
+
+        def status(self, campaign_id):
+            assert campaign_id == "text"
+            return {"status": "running", "cutoff_at": cutoff}
+
+        def resume(self, campaign_id):
+            calls.append("resume")
+            return self.status(campaign_id)
+
+        def stop(self, campaign_id):
+            calls.append("stop")
+            return {**self.status(campaign_id), "status": "stopping"}
+
+    monkeypatch.setattr(remote_text_host, "CampaignService", Campaign)
+    monkeypatch.setattr(remote_text_host, "load_profile", lambda *args: (None, profile))
+    lost = {"start"}
+
+    def executor(argv, raw, timeout, limit):
+        assert "-T" in argv and argv[-2] == "root@host"
+        command = shlex.split(argv[-1])
+        assert command[:4] == ["cd", "/workspace/venom; false", "&&", "exec"]
+        assert limit == MAX_RPC_BYTES and timeout == 60
+        output = io.BytesIO()
+        action = command[-1]
+        code = remote_text_host.serve(tmp_path, action, raw, output)
+        if action in lost:
+            lost.remove(action)
+            return 255, b""
+        return code, output.getvalue()
+
+    host = _text_host(executor)
+    assert (
+        host.plan(_text_spec(), expected_profile_identity=profile)["plan"][
+            "plan_sha256"
+        ]
+        == sha
+    )
+    with pytest.raises(TransportError, match="remote_ssh_failed"):
+        host.start("text", sha, cutoff_at=cutoff)
+    assert host.start("text", sha, cutoff_at=cutoff)["status"] == "running"
+    assert host.status("text")["cutoff_at"] == cutoff
+    assert host.resume("text")["status"] == "running"
+    assert host.stop("text")["status"] == "stopping"
+    assert calls == ["plan", "start", "start", "resume", "stop"]
+    with pytest.raises(TransportError, match="remote_text_profile_changed"):
+        host.plan(_text_spec(), expected_profile_identity="c" * 64)
+    with pytest.raises(TransportError, match="remote_text_automatic_review_required"):
+        host.plan(_text_spec("manual"))
+    with pytest.raises(TransportError, match="remote_text_cutoff_required"):
+        host.start("text", sha)
+
+
+@pytest.mark.parametrize(
+    ("action", "payload", "error"),
+    [
+        ("status", {"campaign_id": "unknown"}, "remote_text_not_found"),
+        ("status", {"campaign_id": "../unsafe"}, "remote_text_operation_failed"),
+        ("stop", {"campaign_id": "text", "exec": "private"}, "remote_text_rpc_invalid"),
+        ("other", {}, "remote_text_rpc_invalid"),
+    ],
+)
+def test_text_rpc_rejects_invalid_or_missing_campaigns(
+    tmp_path, action, payload, error
+):
+    stream = io.BytesIO()
+    assert (
+        remote_text_host.serve(tmp_path, action, json.dumps(payload).encode(), stream)
+        == 0
+    )
+    assert json.loads(stream.getvalue()) == {"ok": False, "error": error}
+
+
+def test_text_rpc_requires_existing_remote_ownership_for_resume_and_stop(
+    monkeypatch, tmp_path
+):
+    class Campaign:
+        def __init__(self, experiments):
+            pass
+
+        def status(self, campaign_id):
+            return {"status": "running", "started_at": 1}
+
+    monkeypatch.setattr(remote_text_host, "CampaignService", Campaign)
+    for action in ("resume", "stop"):
+        stream = io.BytesIO()
+        assert (
+            remote_text_host.serve(tmp_path, action, b'{"campaign_id":"text"}', stream)
+            == 0
+        )
+        assert (
+            json.loads(stream.getvalue())["error"] == "remote_text_campaign_not_started"
+        )
+
+
+def test_text_artifact_is_published_only_after_bounded_success(tmp_path):
+    contents = b"fake tar result"
+    destination = tmp_path / "text.tar"
+    calls = []
+
+    def transfer(argv, raw, timeout, limit, *, sink):
+        calls.append((timeout, limit))
+        assert argv[-1].endswith(" fetch")
+        assert json.loads(raw) == {"campaign_id": "text", "run_id": "text-01"}
+        sink.write(contents)
+        return (1 if len(calls) == 1 else 0), b""
+
+    host = _text_host(transfer)
+    with pytest.raises(TransportError, match="remote_text_fetch_failed"):
+        host.fetch("text", "text-01", destination, 100, timeout=7)
+    assert not list(tmp_path.iterdir())
+    assert host.fetch("text", "text-01", destination, 100, timeout=7) == {
+        "sha256": hashlib.sha256(contents).hexdigest(),
+        "size": len(contents),
+    }
+    assert destination.read_bytes() == contents
+    with pytest.raises(FileExistsError):
+        host.fetch("text", "text-01", destination, 100, timeout=7)
+    assert destination.read_bytes() == contents
+    assert calls == [(7, 100)] * 3
+
+
+def test_bounded_executor_streams_to_sink_without_returning_contents():
+    command = [sys.executable, "-c", "import sys;sys.stdout.buffer.write(b'x' * 4096)"]
+    sink = io.BytesIO()
+    assert execute_ssh(command, b"", 5, 4096, sink=sink) == (0, b"")
+    assert sink.getvalue() == b"x" * 4096
+    with pytest.raises(TransportError, match="remote_reply_too_large"):
+        execute_ssh(command, b"", 5, 2048, sink=io.BytesIO())
 
 
 def test_transport_quotes_remote_paths_and_does_not_expose_payload(tmp_path):

@@ -40,6 +40,8 @@ tests/test_academy_models_module.py
 tests/test_academy_optuna_backend.py
 tests/test_academy_quality.py
 tests/test_academy_quality_native.py
+tests/test_academy_remote_text.py
+tests/test_academy_remote_text_evidence.py
 tests/test_academy_route_handlers_extra.py
 tests/test_academy_route_helpers_modules.py
 tests/test_academy_self_learning_routes.py
@@ -364,6 +366,7 @@ tests/test_queue_governance.py
 tests/test_release_manager.py
 tests/test_remote_models_service.py
 tests/test_remote_provider_control.py
+tests/test_remote_text_vast.py
 tests/test_remote_training_bundles.py
 tests/test_remote_training_environment.py
 tests/test_remote_training_gemma_dispatch.py

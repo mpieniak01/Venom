@@ -181,12 +181,13 @@ interface CampaignFormProps {
   readonly adaptersFailed: boolean;
   readonly disabled: boolean;
   readonly optunaAvailable: boolean;
+  readonly remoteText?: boolean;
   readonly draft?: QualityCampaignDraft;
   readonly onDiscardDraft: () => void;
   readonly onPlan: (request: CampaignRequest) => Promise<boolean>;
 }
 
-export function CampaignForm({ profiles, adapters, adaptersFailed, disabled, optunaAvailable, draft, onDiscardDraft, onPlan }: CampaignFormProps) {
+export function CampaignForm({ profiles, adapters, adaptersFailed, disabled, optunaAvailable, remoteText, draft, onDiscardDraft, onPlan }: CampaignFormProps) {
   const t = useTranslation();
   const [profileId, setProfileId] = useState(draft?.profileId ?? "");
   const [rows, setRows] = useState(() => draft?.variants.map((_, index) => index) ?? [0]);
@@ -198,7 +199,7 @@ export function CampaignForm({ profiles, adapters, adaptersFailed, disabled, opt
   const profileAdapters = adapters.filter((item) => item.model === profile?.model);
   const unsupportedFields = [...new Set(draft?.variants.flatMap((variant) =>
     unsupportedDraftFields(variant.recipe)) ?? [])];
-  const canPlan = Boolean(profile && profile.data_audit?.status !== "blocked");
+  const canPlan = Boolean(profile && profile.data_audit?.status !== "blocked" && (!remoteText || profile.automatic_review));
 
   if (!profiles.length) return <p className="text-sm text-hint">{t("academy.experiments.noProfiles")}</p>;
 
@@ -206,7 +207,22 @@ export function CampaignForm({ profiles, adapters, adaptersFailed, disabled, opt
     event.preventDefault();
     if (disabled || !profile || !canPlan || unavailableStrategy) return;
     try {
-      const request = readPlan(new FormData(event.currentTarget), profile.id, rows, strategy, profileAdapters, draft);
+      const data = new FormData(event.currentTarget);
+      const request = readPlan(data, profile.id, rows, strategy, profileAdapters, draft);
+      if (remoteText) {
+        request.review_mode = "automatic";
+        request.retention = "keep_all";
+        if (strategy === "fixed" && data.get("extension_initial_trials")) {
+          const initial = numberField(data, "extension_initial_trials");
+          const gain = numberField(data, "extension_gain") / 100;
+          if (!Number.isSafeInteger(initial) || initial < 1 || initial >= rows.length
+            || gain <= 0 || gain > 1 || gain < request.selection.min_usable_delta) {
+            setInvalid(true);
+            return;
+          }
+          request.extension = { initial_trials: initial, min_usable_delta: gain };
+        }
+      }
       if (request.variants.length > request.budget.max_trials || request.budget.trial_seconds > request.budget.max_seconds) {
         setInvalid(true);
         return;
@@ -312,7 +328,7 @@ export function CampaignForm({ profiles, adapters, adaptersFailed, disabled, opt
           <p id="campaign-checkpoint-hint" className="text-sm text-hint">{t("academy.campaigns.checkpoints.hint")}</p>
         </div>
       </fieldset>
-      <div className="grid gap-3 sm:grid-cols-2">
+      {!remoteText && <div className="grid gap-3 sm:grid-cols-2">
         <div className="space-y-1">
           <Label htmlFor="campaign-retention">{t("academy.campaigns.retention")}</Label>
           <select id="campaign-retention" name="retention" className={SELECT_CLASS} disabled={disabled}>
@@ -327,7 +343,7 @@ export function CampaignForm({ profiles, adapters, adaptersFailed, disabled, opt
             <option value="automatic" disabled={!profile?.automatic_review}>{t("academy.campaigns.automaticReview")}</option>
           </select>
         </div>
-      </div>
+      </div>}
       <CampaignPolicyFields disabled={disabled} initial={draft?.qualityPolicy} />
       <details open>
         <summary className="cursor-pointer text-sm font-medium">{t("academy.campaigns.limits")}</summary>
@@ -351,6 +367,22 @@ export function CampaignForm({ profiles, adapters, adaptersFailed, disabled, opt
           </div>
         </div>
       </details>
+      {remoteText && strategy === "fixed" && rows.length > 1 && (
+        <fieldset className="space-y-2 rounded-lg border border-[color:var(--ui-border)] p-3" disabled={disabled}>
+          <legend className="text-sm font-medium">{t("academy.remoteText.extension.title")}</legend>
+          <p className="text-sm text-hint">{t("academy.remoteText.extension.hint")}</p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-1">
+              <Label htmlFor="campaign-extension-initial">{t("academy.remoteText.extension.initialTrials")}</Label>
+              <Input id="campaign-extension-initial" name="extension_initial_trials" type="number" min={1} max={rows.length - 1} step={1} />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="campaign-extension-gain">{t("academy.remoteText.extension.minGain")}</Label>
+              <Input id="campaign-extension-gain" name="extension_gain" type="number" min={0.01} max={100} step="any" defaultValue={5} />
+            </div>
+          </div>
+        </fieldset>
+      )}
       {invalid && <p role="alert" className="text-sm text-red-400">
         {t(draft ? "academy.campaigns.quality.invalidDraft" : invalidMessage)}
       </p>}

@@ -3,6 +3,7 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
+from fastapi.responses import FileResponse
 
 from venom_core.api.routes.academy_experiments import (
     call_experiment,
@@ -21,6 +22,10 @@ from venom_core.services.training_experiments.quality_history import (
     list_records,
 )
 from venom_core.services.training_experiments.quality_schema import EvidenceId
+from venom_core.services.training_experiments.remote_text import (
+    RemoteTextSpec,
+    remote_text_service,
+)
 
 router = APIRouter(
     prefix="/api/v1/academy/experiments/campaigns",
@@ -102,3 +107,45 @@ def retention_apply(campaign_id: CampaignId, body: CampaignPlanReference) -> dic
     return call_experiment(
         campaign_service().retention_apply, campaign_id, body.plan_sha256
     )
+
+
+remote_router = APIRouter(prefix="/remote/text")
+
+
+@remote_router.get("")
+def list_remote_text() -> dict:
+    return call_experiment(lambda: {"campaigns": remote_text_service().list()})
+
+
+@remote_router.post("/plan")
+def plan_remote_text(spec: RemoteTextSpec) -> dict:
+    return call_experiment(lambda: remote_text_service().plan(spec))
+
+
+@remote_router.get("/{campaign_id}")
+def status_remote_text(campaign_id: CampaignId) -> dict:
+    return call_experiment(lambda: remote_text_service().status(campaign_id))
+
+
+@remote_router.post("/{campaign_id}/start")
+def start_remote_text(campaign_id: CampaignId, body: CampaignPlanReference) -> dict:
+    return call_experiment(
+        lambda: remote_text_service().start(campaign_id, body.plan_sha256)
+    )
+
+
+@remote_router.post("/{campaign_id}/stop")
+def stop_remote_text(campaign_id: CampaignId) -> dict:
+    return call_experiment(lambda: remote_text_service().stop(campaign_id))
+
+
+@remote_router.get("/{campaign_id}/evidence/{run_id}", response_class=FileResponse)
+def download_remote_text(campaign_id: CampaignId, run_id: str) -> FileResponse:
+    def locate() -> dict:
+        return {"path": remote_text_service().evidence_archive(campaign_id, run_id)}
+
+    path = call_experiment(locate)["path"]
+    return FileResponse(path, media_type="application/x-tar", filename=path.name)
+
+
+router.include_router(remote_router)

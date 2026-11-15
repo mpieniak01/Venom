@@ -12,7 +12,7 @@ import subprocess
 import time
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
-from typing import Any, Callable, Protocol
+from typing import Any, BinaryIO, Callable, Protocol
 
 ACTIONS = frozenset(
     {
@@ -88,7 +88,12 @@ def _kill_owned(process: subprocess.Popen[bytes]) -> None:
 
 
 def execute_ssh(
-    argv: list[str], payload: bytes, timeout: int, limit: int
+    argv: list[str],
+    payload: bytes,
+    timeout: int,
+    limit: int,
+    *,
+    sink: BinaryIO | None = None,
 ) -> tuple[int, bytes]:
     """Bound all pipe I/O and cleanup without blocking buffered-reader threads."""
     environment = {
@@ -120,6 +125,7 @@ def execute_ssh(
     except OSError:
         raise TransportError("remote_ssh_unavailable") from None
     output = bytearray()
+    received = 0
     deadline = time.monotonic() + timeout
     sent = 0
     assert process.stdin is not None and process.stdout is not None
@@ -145,9 +151,13 @@ def execute_ssh(
                         if not data:
                             selector.unregister(key.fileobj)
                             continue
-                        if len(output) + len(data) > limit:
+                        received += len(data)
+                        if received > limit:
                             raise TransportError("remote_reply_too_large")
-                        output.extend(data)
+                        if sink is None:
+                            output.extend(data)
+                        else:
+                            sink.write(data)
                     else:
                         try:
                             sent += os.write(key.fd, payload[sent : sent + 65536])
@@ -229,23 +239,28 @@ class SSHTransport:
             shlex.join(remote),
         ]
         code, reply = self.executor(argv, raw, self.config.timeout, MAX_RPC_BYTES)
-        if code != 0:
-            raise TransportError("remote_ssh_failed", retryable=True)
-        if len(reply) > MAX_RPC_BYTES:
-            raise TransportError("remote_reply_too_large")
-        try:
-            document = json.loads(reply)
-        except (ValueError, UnicodeError):
-            raise TransportError("remote_reply_invalid") from None
-        if not isinstance(document, dict) or type(document.get("ok")) is not bool:
-            raise TransportError("remote_reply_invalid")
-        if not document["ok"]:
-            error = document.get("error", "")
-            if not isinstance(error, str) or not re.fullmatch(
-                r"[a-z][a-z0-9_]{0,95}", error
-            ):
-                error = "remote_operation_failed"
-            raise TransportError(error)
-        if not isinstance(document.get("result"), dict):
-            raise TransportError("remote_reply_invalid")
-        return document["result"]
+        return decode_reply(code, reply)
+
+
+def decode_reply(code: int, reply: bytes) -> dict[str, Any]:
+    """Validate the shared RPC envelope and suppress untrusted error text."""
+    if code != 0:
+        raise TransportError("remote_ssh_failed", retryable=True)
+    if len(reply) > MAX_RPC_BYTES:
+        raise TransportError("remote_reply_too_large")
+    try:
+        document = json.loads(reply)
+    except (ValueError, UnicodeError):
+        raise TransportError("remote_reply_invalid") from None
+    if not isinstance(document, dict) or type(document.get("ok")) is not bool:
+        raise TransportError("remote_reply_invalid")
+    if not document["ok"]:
+        error = document.get("error", "")
+        if not isinstance(error, str) or not re.fullmatch(
+            r"[a-z][a-z0-9_]{0,95}", error
+        ):
+            error = "remote_operation_failed"
+        raise TransportError(error)
+    if not isinstance(document.get("result"), dict):
+        raise TransportError("remote_reply_invalid")
+    return document["result"]

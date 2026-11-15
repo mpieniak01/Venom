@@ -72,6 +72,63 @@ function serve(
 }
 
 describe("Academy campaigns", () => {
+  it("previews a remote text campaign and starts the approved VM plan", async () => {
+    globalThis.FormData = window.FormData;
+    const remotePath = `${campaignsPath}/remote/text`;
+    const planId = "d".repeat(32);
+    const remote = {
+      campaign_id: "night", status: "planned", plan_sha256: planHash,
+      quote: { estimated_microusd: 250_000 }, cleanup: { state: "not_started" },
+      evidence: {}, stop_requested: false, deadline_at: null, last_sync_at: null,
+      remote: null, result: null, error: null,
+    };
+    let request: unknown;
+    let startRequest: unknown;
+    let current: object[] = [];
+    serve(() => [], {
+      [`GET ${base}/profiles`]: () => Response.json({
+        profiles: [{ id: "omni", label: "Omni", model: "Omni", dataset: "pilot", recipe: { rank: 8 }, automatic_review: true }],
+      }),
+      [`GET ${remotePath}`]: () => Response.json({ campaigns: current }),
+      [`POST ${remotePath}/plan`]: (init) => {
+        request = JSON.parse(String(init?.body));
+        current = [remote];
+        return Response.json(remote);
+      },
+      [`POST ${remotePath}/night/start`]: (init) => {
+        startRequest = JSON.parse(String(init?.body));
+        const queued = { ...remote, status: "queued", cleanup: { state: "pending" } };
+        current = [queued];
+        return Response.json(queued);
+      },
+    });
+    render(<CampaignPanel onOpenRun={() => undefined} />);
+    const local = await screen.findByRole("button", { name: "Trening lokalny" });
+    assert.equal(local.getAttribute("aria-pressed"), "true");
+    assert.equal(screen.queryByLabelText("ID planu Vast"), null);
+    fireEvent.click(screen.getByRole("button", { name: "Zdalny trening tekstowy · Vast" }));
+    fireEvent.change(screen.getByLabelText("ID planu Vast"), { target: { value: planId } });
+    fireEvent.change(screen.getByLabelText("Limit kosztu (USD)"), { target: { value: "1.25" } });
+    fireEvent.change(screen.getByLabelText("Identyfikator kampanii"), { target: { value: "night" } });
+    fireEvent.click(screen.getByRole("button", { name: "Dodaj wariant" }));
+    fireEvent.change(screen.getByLabelText("Liczba prób przed decyzją"), { target: { value: "1" } });
+    fireEvent.click(screen.getByRole("button", { name: "Przygotuj plan kampanii" }));
+    const start = await screen.findByRole("button", { name: "Uruchom zaplanowaną kampanię" });
+    assert.equal(startRequest, undefined);
+    const submitted = request as { campaign: CampaignRequest; environment_plan_id: string; max_cost_microusd: number };
+    assert.equal(submitted.environment_plan_id, planId);
+    assert.equal(submitted.max_cost_microusd, 1_250_000);
+    assert.equal(submitted.campaign.review_mode, "automatic");
+    assert.equal(submitted.campaign.retention, "keep_all");
+    assert.deepEqual(submitted.campaign.extension, { initial_trials: 1, min_usable_delta: 0.05 });
+    fireEvent.click(start);
+    await screen.findByRole("button", { name: "Zatrzymaj kampanię" });
+    assert.deepEqual(startRequest, { plan_sha256: planHash });
+    fireEvent.click(local);
+    assert.equal(local.getAttribute("aria-pressed"), "true");
+    assert.equal(screen.queryByLabelText("ID planu Vast"), null);
+  });
+
   it("creates a preview before starting exactly the approved plan", async () => {
     globalThis.FormData = window.FormData;
     let current: Campaign[] = [];

@@ -1,9 +1,11 @@
 import type { PassedDataAudit } from "./academy-data-audit";
 import { apiFetch } from "./api-client";
+import { getApiBaseUrl } from "./env";
 import type { ExperimentInitialAdapter, ExperimentRecipe } from "./academy-experiments-api";
 import type { CampaignQualityPolicy, TrialQualityGuard } from "./academy-quality-api";
 
 const CAMPAIGNS = "/api/v1/academy/experiments/campaigns";
+const REMOTE_TEXT = `${CAMPAIGNS}/remote/text`;
 
 export interface CampaignBudget {
   max_trials: number;
@@ -33,6 +35,7 @@ export interface CampaignRequest {
   search_space?: OptunaSearchSpace;
   sampler_seed?: number;
   checkpoint_steps?: number[];
+  extension?: { initial_trials: number; min_usable_delta: number };
   budget: CampaignBudget;
   selection: CampaignSelection;
   retention: "keep_all" | "discard_rejected";
@@ -83,6 +86,11 @@ export interface Campaign {
   trials: CampaignTrial[];
   selected_run_id?: string | null;
   selected_checkpoint_step?: number | null;
+  extension_decision?: {
+    status: "approved" | "skipped";
+    run_id: string | null;
+    usable_delta: number | null;
+  };
   quality_policy_error?: string | null;
   elapsed_seconds: number;
   used_updates: number;
@@ -111,6 +119,57 @@ export function campaignReportUrl(campaignId: string) {
 interface CampaignListing {
   campaigns: Campaign[];
   capabilities?: { optuna?: { available: boolean; reason?: string | null } };
+}
+
+export interface RemoteTextCampaign {
+  campaign_id: string;
+  status: string;
+  plan_sha256: string;
+  quote: { estimated_microusd: number };
+  cleanup: { state: string };
+  cost?: { estimated_microusd?: number; billed_microusd?: number | null } | null;
+  stop_requested: boolean;
+  deadline_at: number | null;
+  last_sync_at: number | null;
+  qualification_status?: string;
+  remote: Campaign | null;
+  evidence: Record<string, { archive_bytes: number }>;
+  result: {
+    outcome: string;
+    best_observed: { run_id: string; usable_delta?: number } | null;
+    best_qualified: { run_id: string; adapter_id: string } | null;
+  } | null;
+  error: string | null;
+}
+
+export function listRemoteTextCampaigns(signal?: AbortSignal) {
+  return apiFetch<{ campaigns: RemoteTextCampaign[] }>(REMOTE_TEXT, { signal });
+}
+
+export function planRemoteTextCampaign(
+  campaign: CampaignRequest, planId: string, budget: number, testHash: string, calibrationHash: string,
+) {
+  return apiFetch<RemoteTextCampaign>(`${REMOTE_TEXT}/plan`, {
+    method: "POST",
+    body: JSON.stringify({
+      campaign,
+      environment_plan_id: planId,
+      max_cost_microusd: budget,
+      final_test_sha256: testHash || null,
+      final_calibration_sha256: calibrationHash || null,
+    }),
+  });
+}
+
+export function controlRemoteTextCampaign(campaign: RemoteTextCampaign, action: "start" | "stop") {
+  return apiFetch<RemoteTextCampaign>(
+    `${REMOTE_TEXT}/${encodeURIComponent(campaign.campaign_id)}/${action}`,
+    { method: "POST", body: action === "start" ? JSON.stringify({ plan_sha256: campaign.plan_sha256 }) : undefined },
+  );
+}
+
+export function remoteTextEvidenceUrl(campaignId: string, runId: string) {
+  return `${getApiBaseUrl()}${REMOTE_TEXT}/${encodeURIComponent(campaignId)}/evidence/${encodeURIComponent(runId)}`;
 }
 
 export function listCampaigns(signal?: AbortSignal) {

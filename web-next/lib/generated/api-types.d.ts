@@ -1762,6 +1762,108 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/academy/experiments/campaigns/remote/text": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Remote Text */
+        get: operations["list_remote_text_api_v1_academy_experiments_campaigns_remote_text_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/academy/experiments/campaigns/remote/text/plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Plan Remote Text */
+        post: operations["plan_remote_text_api_v1_academy_experiments_campaigns_remote_text_plan_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/academy/experiments/campaigns/remote/text/{campaign_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Status Remote Text */
+        get: operations["status_remote_text_api_v1_academy_experiments_campaigns_remote_text__campaign_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/academy/experiments/campaigns/remote/text/{campaign_id}/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start Remote Text */
+        post: operations["start_remote_text_api_v1_academy_experiments_campaigns_remote_text__campaign_id__start_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/academy/experiments/campaigns/remote/text/{campaign_id}/stop": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Stop Remote Text */
+        post: operations["stop_remote_text_api_v1_academy_experiments_campaigns_remote_text__campaign_id__stop_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/academy/experiments/campaigns/remote/text/{campaign_id}/evidence/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Download Remote Text */
+        get: operations["download_remote_text_api_v1_academy_experiments_campaigns_remote_text__campaign_id__evidence__run_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/academy/self-learning/start": {
         parameters: {
             query?: never;
@@ -6589,6 +6691,13 @@ export interface components {
             /** Min Free Bytes */
             min_free_bytes: number;
         };
+        /** CampaignExtension */
+        CampaignExtension: {
+            /** Initial Trials */
+            initial_trials: number;
+            /** Min Usable Delta */
+            min_usable_delta: number;
+        };
         /** CampaignPlanReference */
         CampaignPlanReference: {
             /** Plan Sha256 */
@@ -6683,6 +6792,7 @@ export interface components {
              */
             review_mode: "manual" | "automatic";
             quality_policy?: components["schemas"]["CampaignQualityPolicy"] | null;
+            extension?: components["schemas"]["CampaignExtension"] | null;
             /** Checkpoint Steps */
             checkpoint_steps?: number[] | null;
         };
@@ -9547,6 +9657,18 @@ export interface components {
          * @enum {string}
          */
         ReasonCode: "success_hot_swap" | "success_restart_pending" | "invalid_configuration" | "incompatible_combination" | "dependency_missing" | "service_unavailable" | "forbidden_transition" | "invalid_state" | "resource_not_found" | "kernel_runtime_mismatch" | "provider_model_mismatch" | "embedding_incompatible" | "intent_mode_conflict" | "operation_in_progress" | "operation_completed" | "operation_failed" | "operation_cancelled";
+        /** RemoteTextSpec */
+        RemoteTextSpec: {
+            campaign: components["schemas"]["CampaignSpec"];
+            /** Environment Plan Id */
+            environment_plan_id: string;
+            /** Max Cost Microusd */
+            max_cost_microusd: number;
+            /** Final Test Sha256 */
+            final_test_sha256?: string | null;
+            /** Final Calibration Sha256 */
+            final_calibration_sha256?: string | null;
+        };
         /**
          * ResourceChange
          * @description Single resource change in a plan.
@@ -14348,6 +14470,196 @@ export interface operations {
                         [key: string]: unknown;
                     };
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_remote_text_api_v1_academy_experiments_campaigns_remote_text_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    plan_remote_text_api_v1_academy_experiments_campaigns_remote_text_plan_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RemoteTextSpec"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    status_remote_text_api_v1_academy_experiments_campaigns_remote_text__campaign_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                campaign_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_remote_text_api_v1_academy_experiments_campaigns_remote_text__campaign_id__start_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                campaign_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CampaignPlanReference"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    stop_remote_text_api_v1_academy_experiments_campaigns_remote_text__campaign_id__stop_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                campaign_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    download_remote_text_api_v1_academy_experiments_campaigns_remote_text__campaign_id__evidence__run_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                campaign_id: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

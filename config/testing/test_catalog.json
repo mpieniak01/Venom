@@ -779,6 +779,34 @@
       "rationale": "Verify Academy quality evidence, paired comparisons and fail-closed access."
     },
     {
+      "path": "tests/test_academy_remote_text.py",
+      "domain": "academy",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Verify remote text campaign API, durable deadline, recovery, and cleanup with provider doubles."
+    },
+    {
+      "path": "tests/test_academy_remote_text_evidence.py",
+      "domain": "academy",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Verify remote Academy evidence identity, transfer fault recovery, and honest development ranking."
+    },
+    {
       "path": "tests/test_academy_route_handlers_extra.py",
       "domain": "academy",
       "test_type": "service_contract",
@@ -5909,34 +5937,6 @@
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
-      "path": "tests/test_polish_chat_quality.py",
-      "domain": "academy",
-      "test_type": "unit",
-      "intent": "regression",
-      "primary_lane": "new-code",
-      "allowed_lanes": [
-        "new-code",
-        "ci-lite",
-        "release"
-      ],
-      "legacy_targeted": false,
-      "rationale": "Quality-evaluation contract for Polish chat scenarios."
-    },
-    {
-      "path": "tests/test_polish_wikipedia.py",
-      "domain": "knowledge",
-      "test_type": "service_contract",
-      "intent": "contract",
-      "primary_lane": "new-code",
-      "allowed_lanes": [
-        "new-code",
-        "ci-lite",
-        "release"
-      ],
-      "legacy_targeted": false,
-      "rationale": "Bounded attributed Polish Wikipedia article lookup with fake transport."
-    },
-    {
       "path": "tests/test_policy_autonomy_contract.py",
       "domain": "governance",
       "test_type": "unit",
@@ -6002,6 +6002,34 @@
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
+    },
+    {
+      "path": "tests/test_polish_chat_quality.py",
+      "domain": "academy",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Quality-evaluation contract for Polish chat scenarios."
+    },
+    {
+      "path": "tests/test_polish_wikipedia.py",
+      "domain": "knowledge",
+      "test_type": "service_contract",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Bounded attributed Polish Wikipedia article lookup with fake transport."
     },
     {
       "path": "tests/test_port_authority.py",
@@ -6395,6 +6423,20 @@
       ],
       "legacy_targeted": false,
       "rationale": "External API controls, metadata-only checks and disabled-provider generation guards."
+    },
+    {
+      "path": "tests/test_remote_text_vast.py",
+      "domain": "providers",
+      "test_type": "service_contract",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
       "path": "tests/test_remote_training_bundles.py",
@@ -7834,20 +7876,6 @@
       "rationale": "Default release-lane regression coverage."
     },
     {
-      "path": "tests/test_training_functiongemma_execution.py",
-      "domain": "models",
-      "test_type": "unit",
-      "intent": "contract",
-      "primary_lane": "new-code",
-      "allowed_lanes": [
-        "new-code",
-        "ci-lite",
-        "release"
-      ],
-      "legacy_targeted": false,
-      "rationale": "Shared local and SSH training lifecycle, native FunctionGemma and host ownership contracts."
-    },
-    {
       "path": "tests/test_training_experiment_campaign.py",
       "domain": "runtime",
       "test_type": "unit",
@@ -7860,6 +7888,20 @@
       ],
       "legacy_targeted": false,
       "rationale": "Durable experiment campaign transitions, resource budgets and protected checkpoint retention."
+    },
+    {
+      "path": "tests/test_training_functiongemma_execution.py",
+      "domain": "models",
+      "test_type": "unit",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Shared local and SSH training lifecycle, native FunctionGemma and host ownership contracts."
     },
     {
       "path": "tests/test_training_local_host.py",

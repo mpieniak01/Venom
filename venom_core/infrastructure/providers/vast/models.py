@@ -192,6 +192,7 @@ INSTANCE_FIELDS = (
     "label",
     "actual_status",
     "intended_status",
+    "next_state",
     "ssh_host",
     "ssh_port",
     "image_uuid",

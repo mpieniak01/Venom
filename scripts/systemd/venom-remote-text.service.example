@@ -1,0 +1,17 @@
+[Unit]
+Description=Venom Academy remote text campaign controller
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/srv/venom
+Environment=ENV_FILE=/srv/venom/.env.dev
+ExecStart=/srv/venom/.venv/bin/python -m venom_core.services.training_experiments.remote_text_supervisor
+Restart=on-failure
+RestartSec=5
+UMask=0077
+NoNewPrivileges=true
+
+[Install]
+WantedBy=default.target

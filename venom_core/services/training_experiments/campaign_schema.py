@@ -46,6 +46,13 @@ class CampaignSelection(BaseModel):
     max_critical_delta: float = Field(default=0.0, ge=0, le=1)
 
 
+class CampaignExtension(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, allow_inf_nan=False)
+
+    initial_trials: int = Field(ge=1, le=31)
+    min_usable_delta: float = Field(gt=0, le=1)
+
+
 SearchParameter = Literal["rank", "alpha", "learning_rate", "dropout"]
 
 
@@ -110,6 +117,7 @@ class CampaignSpec(BaseModel):
     retention: Literal["keep_all", "discard_rejected"] = "keep_all"
     review_mode: Literal["manual", "automatic"] = "manual"
     quality_policy: CampaignQualityPolicy | None = None
+    extension: CampaignExtension | None = None
     checkpoint_steps: list[CheckpointStep] | None = Field(
         default=None, min_length=1, max_length=4
     )
@@ -128,6 +136,13 @@ class CampaignSpec(BaseModel):
             or self.checkpoint_steps != sorted(set(self.checkpoint_steps))
         ):
             raise ValueError("campaign_checkpoint_steps_invalid")
+        if self.extension is not None and (
+            self.strategy != "fixed"
+            or self.review_mode != "automatic"
+            or self.extension.initial_trials >= len(self.variants)
+            or self.extension.min_usable_delta < self.selection.min_usable_delta
+        ):
+            raise ValueError("campaign_extension_invalid")
         return self
 
 

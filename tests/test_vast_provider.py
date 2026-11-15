@@ -207,6 +207,7 @@ def test_instance_and_mutations_and_volumes():
                     "instances": {
                         "id": 88,
                         "actual_status": "running",
+                        "next_state": "stopped",
                         "onstart": "secret",
                     }
                 },
@@ -224,7 +225,11 @@ def test_instance_and_mutations_and_volumes():
             ),
         ]
     )
-    assert api.instance(88) == {"id": 88, "actual_status": "running"}
+    assert api.instance(88) == {
+        "id": 88,
+        "actual_status": "running",
+        "next_state": "stopped",
+    }
     api.set_state(88, "stopped")
     api.destroy(88)
     assert api.volumes() == [{"id": 7, "status": "active"}]

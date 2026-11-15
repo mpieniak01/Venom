@@ -273,6 +273,43 @@ def test_automatic_campaign_runs_extension_only_after_a_qualified_gain(
     )
 
 
+@pytest.mark.parametrize(
+    ("usable", "expected_status", "decision"),
+    [(2, "succeeded", "skipped"), (4, "timed_out", "approved")],
+)
+def test_extension_decision_precedes_full_trial_window(
+    controller, usable, expected_status, decision
+):
+    service, experiments, clock = controller
+    experiments.automatic = True
+    clock.now = 1000.0
+    budget = make_spec().budget.model_dump()
+    spec = make_spec(
+        review_mode="automatic",
+        retention="keep_all",
+        budget={**budget, "max_seconds": 600, "trial_seconds": 180},
+        extension={"initial_trials": 2, "min_usable_delta": 0.25},
+    )
+    planned = service.plan(spec)
+    service.start("series", planned["plan"]["plan_sha256"], cutoff_at=1420.0)
+    first = launch_next(service)
+    clock.now = 1120.0
+    experiments.finish(first, usable=usable)
+    service.advance("series")
+    second = launch_next(service)
+    clock.now = 1250.0
+    experiments.finish(second, usable=2)
+    service.advance("series")
+
+    state = service.advance("series")
+    assert state["status"] == expected_status
+    assert state["extension_decision"]["status"] == decision
+    assert state["trials"][2]["status"] == (
+        "skipped" if decision == "skipped" else "pending"
+    )
+    assert len(experiments.calls) == 2
+
+
 def test_fixed_series_keeps_winner_report_and_failed_trial(controller):
     service, experiments, _clock = controller
     start(service)

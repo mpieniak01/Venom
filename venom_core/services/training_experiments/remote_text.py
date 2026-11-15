@@ -10,6 +10,7 @@ from typing import Annotated, Protocol
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, model_validator
 
 from venom_core.core.environment_policy import ensure_data_mutation_allowed
+from venom_core.infrastructure.providers.vast.client import VastError
 from venom_core.services.remote_training.bundles import MAX_BYTES
 from venom_core.services.remote_training.lifecycle import atomic_json, file_lock
 from venom_core.services.remote_training.paths import operator_path
@@ -173,12 +174,17 @@ class RemoteTextService:
         return result
 
     def _quote(self, spec: RemoteTextSpec, seconds: int) -> dict:
-        quote = self.rental.validate(
-            spec.environment_plan_id,
-            seconds,
-            spec.max_cost_microusd,
-            campaign_id=spec.campaign.campaign_id,
-        )
+        try:
+            quote = self.rental.validate(
+                spec.environment_plan_id,
+                seconds,
+                spec.max_cost_microusd,
+                campaign_id=spec.campaign.campaign_id,
+            )
+        except VastError as exc:
+            if exc.code == "vast.text_budget_exceeded":
+                raise ValueError("campaign_remote_cost_budget_exceeded") from exc
+            raise
         if spec.campaign.budget.max_artifact_bytes > min(
             quote["max_upload_bytes"], MAX_BYTES
         ):

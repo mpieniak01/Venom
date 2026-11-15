@@ -504,7 +504,9 @@ def test_final_holdout_gates_archive_and_catalog(tmp_path, scenario):
             )
 
 
-def test_pending_qualifier_only_acts_on_prepared_completed_campaign(tmp_path):
+def test_pending_qualifier_waits_for_prepared_campaign_and_available_gpu(
+    tmp_path, monkeypatch
+):
     spec = _holdout_paths(tmp_path)
     host = setup_host(tmp_path, train_sha=digest(spec.train), dev_sha=digest(spec.dev))
     academy = tmp_path / "academy"
@@ -532,6 +534,27 @@ def test_pending_qualifier_only_acts_on_prepared_completed_campaign(tmp_path):
     atomic_json(directory / "state.json", record)
     assert qualify_pending(academy, evaluator=_evaluate_fixture) == {"status": "idle"}
     atomic_json(directory / "state.json", {**record, "status": "completed"})
+
+    module = remote_text_qualification
+    admission = module.RuntimeAdmission(tmp_path / "admission.sqlite3")
+    monkeypatch.setattr(module, "get_runtime_admission", lambda: admission)
+
+    def no_api(*_args, **_kwargs):
+        raise ConnectionRefusedError()
+
+    monkeypatch.setattr(module, "create_connection", no_api)
+    busy = {"status": "busy", "campaign_id": CAMPAIGN}
+    attempts = directory / "qualification-attempts.json"
+    with module.file_lock(admission.database.parent / "academy-experiments.gpu.lock"):
+        for _ in range(3):
+            assert qualify_pending(academy) == busy
+    lease = admission.acquire(owner="test", run_id="other", engine="test", model="test")
+    try:
+        assert qualify_pending(academy) == busy
+    finally:
+        assert lease.release()
+    assert read_json(attempts) == {"attempts": 0}
+
     assert qualify_pending(academy, evaluator=_evaluate_fixture) == {
         "status": "passed",
         "campaign_id": CAMPAIGN,

@@ -2,6 +2,7 @@
 
 from datetime import timedelta
 from decimal import Decimal
+from unittest.mock import Mock
 
 import pytest
 
@@ -298,6 +299,38 @@ def test_estimate_stops_on_first_confirmed_closure(prepared, monkeypatch):
     assert again["checked_at"] != earliest["checked_at"]
     assert again["closed_at"] == earliest["closed_at"]
     assert after["estimated_microusd"] == before["estimated_microusd"]
+
+
+@pytest.mark.parametrize(
+    ("policy", "method", "expected"),
+    [("stop", "set_state", "stopped"), ("destroy", "destroy", "destroyed")],
+)
+def test_definitive_provider_rejection_allows_cleanup_retry(
+    prepared, monkeypatch, policy, method, expected
+):
+    backend, provider = prepared
+    plan = backend.journal.plan(PLAN)
+    plan.finish_policy = policy
+    plan.checksum = plan.calculate_checksum()
+    backend.journal.save_plan(plan)
+    qualify(backend)
+    rejected = Mock(side_effect=VastError("vast.http_error", status=429))
+    with monkeypatch.context() as patch:
+        patch.setattr(provider, method, rejected)
+        if policy == "stop":
+            with pytest.raises(VastError, match="vast.http_error"):
+                backend.cleanup(PLAN, campaign_id=CAMPAIGN)
+            rejected.assert_called_once_with(42, "stopped")
+        else:
+            result = backend.cleanup(PLAN, campaign_id=CAMPAIGN)
+            assert result["state"] == "cleanup_pending"
+            assert result["error"] == "vast.http_error"
+            rejected.assert_called_once_with(42)
+
+    record = backend.journal.record(PLAN)
+    assert record.state == policy + "_failed"
+    assert record.pending_action is None
+    assert backend.cleanup(PLAN, campaign_id=CAMPAIGN)["state"] == expected
 
 
 def test_ambiguous_delete_reconciles_without_replaying(prepared):

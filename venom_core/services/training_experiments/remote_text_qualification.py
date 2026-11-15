@@ -10,6 +10,7 @@ import subprocess
 import tempfile
 import time
 from collections.abc import Callable, Mapping
+from contextlib import ExitStack
 from pathlib import Path
 from socket import create_connection
 from typing import Annotated, TypeVar
@@ -32,6 +33,7 @@ from venom_core.services.remote_training.supervisor import _drain, _terminate
 from venom_core.services.runtime_admission import (
     ACADEMY_TRAINING_OWNER,
     RuntimeAdmission,
+    RuntimeAdmissionError,
     get_runtime_admission,
 )
 
@@ -57,6 +59,10 @@ _INPUTS = "remote-text-final-inputs"
 _MAX_PENDING_RETRIES = 3
 _Bound = TypeVar("_Bound", list, dict)
 _CAMPAIGN_ID = TypeAdapter(CampaignId)
+
+
+class _QualificationDeferred(RuntimeError):
+    """The evaluator could not reserve the dedicated GPU."""
 
 
 class QualificationInputs(BaseModel):
@@ -197,24 +203,34 @@ def _evaluate(
     command: list[str], log: Path, timeout: int, run_id: str, model: str
 ) -> None:
     host = get_runtime_admission()
-    if not host.enabled or not host.claim_offline_host():
+    if not host.enabled:
         raise ValueError("remote_text_final_dedicated_gpu_required")
+    if not host.claim_offline_host():
+        raise _QualificationDeferred("remote_text_final_dedicated_gpu_required")
     try:
         listener = create_connection(("127.0.0.1", Worker._local_api_port()), timeout=1)
     except ConnectionRefusedError:
         pass
     else:
         listener.close()
-        raise ValueError("remote_text_final_dedicated_gpu_required")
+        raise _QualificationDeferred("remote_text_final_dedicated_gpu_required")
     lock = host.database.parent / "academy-experiments.gpu.lock"
     admission = RuntimeAdmission.for_training_worker(host.database)
-    with file_lock(lock, blocking=False) as gpu_fd:
-        lease = admission.acquire(
-            owner=ACADEMY_TRAINING_OWNER,
-            run_id=run_id,
-            engine=_TARGET_RUNTIME,
-            model=model,
-        )
+    with ExitStack() as resources:
+        try:
+            gpu_fd = resources.enter_context(file_lock(lock, blocking=False))
+            lease = admission.acquire(
+                owner=ACADEMY_TRAINING_OWNER,
+                run_id=run_id,
+                engine=_TARGET_RUNTIME,
+                model=model,
+            )
+        except BlockingIOError as exc:
+            raise _QualificationDeferred("remote_text_final_gpu_busy") from exc
+        except RuntimeAdmissionError as exc:
+            if exc.code == "runtime_busy":
+                raise _QualificationDeferred("remote_text_final_gpu_busy") from exc
+            raise
         group: list[int] = []
 
         def quiescent() -> bool:
@@ -622,7 +638,17 @@ def qualify_pending(
             atomic_json(retry, {"attempts": attempts})
             try:
                 result = _dispatch(academy_root, directory, state, item, evaluator)
-            except (OSError, RuntimeError, TypeError, ValueError, KeyError):
+            except _QualificationDeferred:
+                atomic_json(retry, previous)
+                return {"status": "busy", "campaign_id": campaign_id}
+            except (
+                OSError,
+                RuntimeError,
+                TypeError,
+                ValueError,
+                KeyError,
+                RuntimeAdmissionError,
+            ):
                 return {
                     "status": "retry" if attempts < _MAX_PENDING_RETRIES else "failed",
                     "campaign_id": campaign_id,

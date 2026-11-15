@@ -1212,6 +1212,11 @@ class CampaignService:
         if state["termination"]:
             self._terminate(directory, state, run)
             return True
+        if not _allow_extension(state):
+            for pending in state["trials"][state["trial_index"] :]:
+                pending["status"] = "skipped"
+            state.update(trial_index=len(state["trials"]), status="succeeded")
+            return True
         if run is None:
             if (
                 state.get("cutoff_at") is not None
@@ -1233,11 +1238,6 @@ class CampaignService:
         run = self._run(state, trial)
         remaining = self._remaining(state, trial)
         if self._check_limits(directory, state, trial, run, remaining):
-            return
-        if not _allow_extension(state):
-            for pending in state["trials"][state["trial_index"] :]:
-                pending["status"] = "skipped"
-            state.update(trial_index=len(state["trials"]), status="succeeded")
             return
         if trial.get("intent") and remaining >= 1:
             run = self._launch_trial(state, trial, run, remaining)

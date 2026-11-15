@@ -284,6 +284,7 @@ class Environments:
                 and not self.journal.path(plan_id, ".export.json").exists()
             ):
                 raise VastError("vast.export_required")
+            previous_action = record.pending_action
             record.pending_action = action
             self._event(record, action + "_requested")
             try:
@@ -294,8 +295,12 @@ class Environments:
                         record.instance_id,
                         "running" if action == "start" else "stopped",
                     )
-            except VastError:
-                self._event(record, action + "_unknown")
+            except VastError as exc:
+                if not exc.ambiguous:
+                    record.pending_action = previous_action
+                self._event(
+                    record, action + ("_unknown" if exc.ambiguous else "_failed")
+                )
                 raise
             return record
 

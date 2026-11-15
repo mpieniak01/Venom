@@ -7,6 +7,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from venom_core.api.routes import academy_experiment_campaigns as routes
+from venom_core.infrastructure.providers.vast.client import VastError
 from venom_core.services.remote_training.transport import TransportError
 from venom_core.services.training_experiments import remote_text
 from venom_core.services.training_experiments.campaign import CampaignService
@@ -94,6 +95,13 @@ def test_api_start_is_idempotent_and_controller_collects_then_cleans(
     monkeypatch.setattr(routes, "remote_text_service", lambda: service)
     client = TestClient(app)
     base = "/api/v1/academy/experiments/campaigns/remote/text"
+    rental.validate.side_effect = VastError("vast.text_budget_exceeded")
+    rejected = client.post(f"{base}/plan", json=spec.model_dump())
+    assert rejected.status_code == 409
+    assert rejected.json() == {
+        "detail": {"code": "campaign_remote_cost_budget_exceeded"}
+    }
+    rental.validate.side_effect = None
     plan = client.post(f"{base}/plan", json=spec.model_dump())
     assert plan.status_code == 200
     rental.acquire.assert_not_called()

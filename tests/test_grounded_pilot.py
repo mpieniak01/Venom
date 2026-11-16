@@ -1100,19 +1100,22 @@ def test_source_price_request_does_not_ask_for_the_requested_value(real_input):
 
 def test_source_price_absence_is_an_answer_supported_by_the_full_card():
     source = Sources()
-    text = "Cena wersji podstawowej nie jest podana w karcie."
+    text = "Karta nie zawiera cennika przewozu rowerów."
     source.document = SourceDocument(
         SourceRef("price", "v1", text_hash(text)), text, True
     )
     model, reviewer = Model(), Reviewer()
-    model.override["assess"] = {"current_state": "Pełna karta.", "missing": ["cena"]}
+    model.override["assess"] = {
+        "current_state": "Pełna karta.",
+        "missing": ["koszt przewozu roweru"],
+    }
     model.override["draft"] = {
         "prose": text,
         "sources": [{"source_id": "price", "version": "v1", "quote": text}],
         "calculations": [],
     }
     answer = run_pilot_turn(
-        "Sprawdź: ile złotych kosztuje wersja podstawowa?",
+        "Sprawdź: ile złotych kosztuje przewóz roweru?",
         "price",
         source,
         model,
@@ -1120,4 +1123,5 @@ def test_source_price_absence_is_an_answer_supported_by_the_full_card():
         required=Requirements(sources=True),
     )
     assert answer.text == f"{text} [price]"
+    assert "source_inputs" not in dict(model.calls)
     assert reviewer.materials[0]["plan"]["mode"] == "answer"

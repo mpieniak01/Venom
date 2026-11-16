@@ -34,6 +34,7 @@ from venom_core.services.grounded_dialogue import (
     SourceDocument,
     SourceQuote,
     TurnPlan,
+    _normal,
     text_hash,
 )
 
@@ -206,9 +207,23 @@ def _mean_draft(calculation: CalculationEvidence) -> Draft:
     )
 
 
+def _price_subject(subject: str) -> tuple[str, ...]:
+    # The question and the reported label often use different Polish cases.
+    words = _normal(subject).removeprefix("za ").split()
+    return tuple(
+        re.sub(r"(?:ami|ach|om|em|ej|ie|[aiouy])$", "", word)
+        if len(word) >= 5
+        else word
+        for word in words
+    )
+
+
 def _price_result(label: str, subject: str) -> bool:
     match = _PRICE_RESULT.fullmatch(label)
-    return bool(match and (match[1] is None or match[1] == subject))
+    return bool(
+        match
+        and (match[1] is None or _price_subject(match[1]) == _price_subject(subject))
+    )
 
 
 def _headcount(value: str) -> int:

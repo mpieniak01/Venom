@@ -207,6 +207,7 @@ def test_changed_source_invalidates_planning_drafting_or_semantic_receipt(when):
         {"qualification_id": "unqualified"},
         {"approved": 1},
         {"reason": ""},
+        {"reason": None},
     ],
 )
 def test_unbound_or_malformed_semantic_receipt_cannot_publish(patch):
@@ -341,3 +342,64 @@ def test_correction_uses_new_expression_and_review_identity():
     assert second.evidence_id != first.evidence_id
     assert reviewer.materials[-1]["evidence"]["calculations"][0]["value"] == "27"
     assert len(backend.reads) == 4
+
+
+@pytest.mark.parametrize("message,revision", [(" ", "r"), ("ok", " ")])
+def test_empty_turn_identity_stops_before_model(message, revision):
+    model = Model()
+    with pytest.raises(EvidenceError, match="turn_identity_required"):
+        run_pilot_turn(message, revision, Sources(), model, Reviewer())
+    assert not model.calls
+
+
+def test_source_disappearing_after_review_blocks_publication():
+    backend, reviewer = Sources(), Reviewer()
+
+    def unavailable(_):
+        raise OSError("gone")
+
+    reviewer.hook = lambda: setattr(backend, "current_ref", unavailable)
+    with pytest.raises(EvidenceError, match="answer_source_unavailable"):
+        run(backend=backend, reviewer=reviewer)
+
+
+def test_empty_prose_cannot_publish_even_with_valid_claims():
+    model = Model()
+    draft = model("draft", {}, {})
+    draft["prose"] = "   "
+    model.override["draft"] = draft
+    with pytest.raises(EvidenceError, match="answer_empty"):
+        run(model=model)
+
+
+@pytest.mark.parametrize("failure", [TimeoutError, OSError, ValueError])
+def test_remote_reviewer_failure_never_releases_unreviewed_text(failure):
+    reviewer = Reviewer()
+
+    def fail():
+        raise failure("review unavailable")
+
+    reviewer.hook = fail
+    with pytest.raises(EvidenceError, match="pilot_review_failed"):
+        run(reviewer=reviewer)
+
+
+def test_arbitrary_reviewer_response_is_not_a_receipt():
+    reviewer = Reviewer()
+    reviewer.review = lambda material: {"approved": True}
+    with pytest.raises(EvidenceError, match="pilot_review_binding_invalid"):
+        run(reviewer=reviewer)
+
+
+def test_calculation_only_does_not_search_for_irrelevant_sources():
+    model, backend, reviewer = Model(), Sources(), Reviewer()
+    model.override["route"] = {"source_query": "", "calculation_required": True}
+    draft = model("draft", {}, {})
+    draft["sources"] = []
+    model.override["draft"] = draft
+    result = run_pilot_turn(
+        "Oblicz cenę 30 zł po rabacie 20%.", "only-calc", backend, model, reviewer
+    )
+    assert result.text == "Po rabacie zapłacisz 24 zł."
+    assert not backend.reads
+    assert reviewer.materials[0]["evidence"]["sources"] == ()

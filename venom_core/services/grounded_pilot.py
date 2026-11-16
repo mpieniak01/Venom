@@ -100,6 +100,88 @@ def _compile_calculation(item: Calculation) -> Calculation:
     )
 
 
+_COUNT_WORDS = {
+    "jeden": 1,
+    "jedna": 1,
+    "dwa": 2,
+    "dwie": 2,
+    "trzy": 3,
+    "cztery": 4,
+    "pięć": 5,
+    "sześć": 6,
+    "siedem": 7,
+    "osiem": 8,
+    "dziewięć": 9,
+    "dziesięć": 10,
+}
+_HEADCOUNT = (
+    rf"\b([0-9]{{1,4}}|{'|'.join(_COUNT_WORDS)})\s+os(?:ób|ob(?:a|y|om|ę|ach|ami))\b"
+)
+_ANY_HEADCOUNT = re.compile(_HEADCOUNT, re.IGNORECASE)
+_JOINED = re.compile(
+    rf"^\s*(?:dołącza(?:ją)?|dochodzi|dochodzą)\s+{_HEADCOUNT}", re.IGNORECASE
+)
+_GROUP_BASE = re.compile(
+    rf"(?:^\s*|[.!?]\s*|\bczy\s+|\bgrupa liczy\s+|\bgrupa\s+|\bjest nas\s+){_HEADCOUNT}",
+    re.IGNORECASE,
+)
+_BOOKING_QUESTION = re.compile(
+    r"\bczy (?:zapis|rezerwacja) (?:jest )?(?:potrzebn[ay]|wymagan[ay]|obowiązkow[ay])\b",
+    re.IGNORECASE,
+)
+_BOOKING_RESULT = re.compile(
+    r"(?:(?:zapis|rezerwacja)(?: (?:jest )?(?:potrzebn[ay]|wymagan[ay]|obowiązkow[ay]))"
+    r"|(?:potrzeba|obowiązek|konieczność) (?:zapisu|rezerwacji))"
+)
+_SPEED_CONVERSION = re.compile(
+    r"\bprzelicz\b[^.!?\n]*\b(?:na|w)\s+(km/h|m/s)\b", re.IGNORECASE
+)
+
+
+def _headcount(value: str) -> int:
+    return (
+        int(value)
+        if value.isascii() and value.isdecimal()
+        else _COUNT_WORDS[value.lower()]
+    )
+
+
+def _group_update(message: str, previous: str) -> dict[str, int] | None:
+    """Resolve an explicit addition to a single headcount in the preceding user turn."""
+    joined = _JOINED.match(message)
+    base = _GROUP_BASE.search(previous)
+    if not joined or not base:
+        return None
+    if _ANY_HEADCOUNT.search(
+        message[joined.end() :]
+        + " "
+        + previous[: base.start(1)]
+        + " "
+        + previous[base.end() :]
+    ):
+        return None
+    before, added = _headcount(base[1]), _headcount(joined[1])
+    return {"previous": before, "joined": added, "total": before + added}
+
+
+def _missing_inputs(
+    missing: list[str], *, booking: bool, speed_unit: str | None
+) -> list[str]:
+    """An explicitly requested output cannot itself be a prerequisite."""
+    inputs = []
+    for item in missing:
+        label = " ".join(item.lower().replace("_", " ").split()).rstrip(".?")
+        if booking and _BOOKING_RESULT.fullmatch(label):
+            continue
+        if speed_unit and label in {
+            f"prędkość {speed_unit}",
+            f"prędkość w {speed_unit}",
+        }:
+            continue
+        inputs.append(item)
+    return inputs
+
+
 class ArithmeticPlan(StrictModel):
     calculations: list[Calculation] = Field(min_length=1, max_length=MAX_CALCULATIONS)
 
@@ -270,17 +352,39 @@ def run_pilot_turn(
         "unavailable": list(unavailable),
         "message": message,
     }
+    group = (
+        _group_update(message, prior_users[-1])
+        if required.sources and documents and prior_users
+        else None
+    )
+    speed = _SPEED_CONVERSION.search(message) if required.calculation else None
+    speed_unit = speed[1].lower() if speed else None
+    resolved: dict[str, Any] = {}
+    if group is not None:
+        resolved["group_size"] = group
+    if speed_unit is not None:
+        resolved["requested_speed_unit"] = speed_unit
+    planning.update(resolved)
     assessment: InputAssessment = _call(model, "assess", planning, InputAssessment)
     audit.append({"phase": "assess", "data": assessment.model_dump()})
     planning["current_state"] = assessment.current_state
+    missing = _missing_inputs(
+        assessment.missing,
+        booking=group is not None and _BOOKING_QUESTION.search(message) is not None,
+        speed_unit=speed_unit,
+    )
+    if resolved or missing != assessment.missing:
+        audit.append(
+            {"phase": "resolved_inputs", "data": resolved | {"missing": missing}}
+        )
     calculations = []
-    if required.calculation and not assessment.missing:
+    if required.calculation and not missing:
         arithmetic: ArithmeticPlan = _call(model, "plan", planning, ArithmeticPlan)
         audit.append({"phase": "arithmetic", "data": arithmetic.model_dump()})
         calculations = [_compile_calculation(c) for c in arithmetic.calculations]
     plan = Plan(
-        mode="clarify" if assessment.missing else "answer",
-        missing=assessment.missing,
+        mode="clarify" if missing else "answer",
+        missing=missing,
         calculations=calculations,
     )
     plan_data = plan.model_dump()
@@ -314,12 +418,16 @@ def run_pilot_turn(
     # The receipt key belongs to the adapter, not the generator or its answer.
     review_evidence = {k: v for k, v in evidence_data.items() if k != "evidence_id"}
     review_evidence["sources"] = model_sources
-    draft_input = request | {
-        "history": planning["history"],
-        "current_state": assessment.current_state,
-        "plan": plan_data,
-        "evidence": review_evidence,
-    }
+    draft_input = (
+        request
+        | resolved
+        | {
+            "history": planning["history"],
+            "current_state": assessment.current_state,
+            "plan": plan_data,
+            "evidence": review_evidence,
+        }
+    )
     draft: Draft = _call(model, "draft", draft_input, Draft)
     prose = _public_prose(
         draft.prose,

@@ -764,3 +764,140 @@ def test_compact_review_rejects_mismatched_effective_expression_before_transport
     )
     with pytest.raises(ValueError, match="review_plan_evidence_mismatch"):
         reviewer.review(material)
+
+
+@pytest.mark.parametrize(
+    "previous, message, total, missing, effective",
+    [
+        (
+            "Czy dwie osoby potrzebują zapisu w czwartek?",
+            "Dołączają dwie osoby. Czy zapis jest potrzebny?",
+            4,
+            ["zapis_potrzebny"],
+            [],
+        ),
+        (
+            "Grupa liczy 8 osób.",
+            "Dochodzi jedna osoba. Czy zapis jest wymagany?",
+            9,
+            ["zapis wymagany", "dzień wizyty"],
+            ["dzień wizyty"],
+        ),
+        (
+            "Rezerwacja w czwartek.",
+            "Dołączają dwie osoby. Czy zapis jest potrzebny?",
+            None,
+            ["liczba osób"],
+            ["liczba osób"],
+        ),
+        (
+            "Grupa liczy dwie osoby, druga grupa liczy trzy osoby.",
+            "Dołączają dwie osoby. Czy zapis jest potrzebny?",
+            None,
+            ["grupa"],
+            ["grupa"],
+        ),
+        (
+            "Grupa liczy cztery osoby.",
+            "Teraz są trzy osoby. Czy zapis jest potrzebny?",
+            None,
+            [],
+            [],
+        ),
+        (
+            "Grupa liczy dwie osoby.",
+            "Dołączają dwie osoby, ale jedna osoba odchodzi.",
+            None,
+            ["liczba osób"],
+            ["liczba osób"],
+        ),
+    ],
+)
+def test_group_addition_is_based_on_user_state(
+    previous, message, total, missing, effective
+):
+    model, reviewer = Model(), Reviewer()
+    model.override["assess"] = {"current_state": "Stan roboczy.", "missing": missing}
+    model.override["draft"] = {
+        "prose": "Ustalona odpowiedź.",
+        "sources": []
+        if effective
+        else [{"source_id": "price", "version": "v1", "quote": "Rabat wynosi 20%."}],
+        "calculations": [],
+    }
+    trace = []
+    run_pilot_turn(
+        message,
+        "r2",
+        Sources(),
+        model,
+        reviewer,
+        history=(
+            {"role": "user", "content": previous},
+            {"role": "assistant", "content": "Grupa liczy 99 osób."},
+        ),
+        required=Requirements(sources=True),
+        trace=trace,
+    )
+    calls = dict(model.calls)
+    assert "plan" not in calls
+    assert reviewer.materials[0]["plan"]["missing"] == effective
+    for phase in ("assess", "draft"):
+        if total is None:
+            assert "group_size" not in calls[phase]
+        else:
+            assert calls[phase]["group_size"]["total"] == total
+    assert (
+        next(row["data"]["missing"] for row in trace if row["phase"] == "assess")
+        == missing
+    )
+
+
+@pytest.mark.parametrize("missing", [[], ["czas", "prędkość w m/s"]])
+def test_speed_conversion_discards_only_the_requested_result(missing):
+    reviewer = Reviewer()
+    calls = {}
+
+    def model(phase, data, schema):
+        calls[phase] = data
+        if phase == "assess":
+            return {
+                "current_state": "36 m i 30 s.",
+                "missing": ["prędkość w km/h", *missing],
+            }
+        if phase == "plan":
+            return {
+                "calculations": [
+                    {
+                        "calculation_id": "speed",
+                        "expression": "36/30",
+                        "input_unit": "m/s",
+                        "unit": "km/h",
+                    }
+                ]
+            }
+        return {
+            "prose": "Jaki był czas?" if missing else "4,32 km/h.",
+            "sources": [],
+            "calculations": []
+            if missing
+            else [{"calculation_id": "speed", "value": "4.32", "unit": "km/h"}],
+        }
+
+    run_pilot_turn(
+        "Przelicz aktualną prędkość na km/h.",
+        "r4",
+        Sources(),
+        model,
+        reviewer,
+        required=Requirements(calculation=True),
+    )
+    material = reviewer.materials[0]
+    assert material["plan"]["missing"] == missing
+    assert calls["draft"]["requested_speed_unit"] == "km/h"
+    if missing:
+        assert "plan" not in calls
+        assert material["plan"]["mode"] == "clarify"
+    else:
+        assert material["evidence"]["calculations"][0]["expression"] == "(36/30)*18/5"
+        assert material["evidence"]["calculations"][0]["value"] == "4.32"

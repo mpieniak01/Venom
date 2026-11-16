@@ -66,7 +66,7 @@ class Calculation(StrictModel):
     expression: StrictStr = Field(
         min_length=1, max_length=MAX_EXPRESSION_CHARS, pattern=r"^[0-9.+*/() -]+$"
     )
-    unit: StrictStr = Field(json_schema_extra={"enum": sorted(UNITS)})
+    unit: StrictStr = Field(json_schema_extra={"enum": [*sorted(UNITS)]})
 
     @field_validator("unit")
     @classmethod

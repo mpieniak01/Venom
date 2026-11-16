@@ -984,15 +984,27 @@ def test_counting_units_bind_draft_to_calculator(unit):
         run(model=model, reviewer=reviewer, required=Requirements(calculation=True))
 
 
-def test_rendered_source_preserves_public_citation_without_version_metadata():
+@pytest.mark.parametrize(
+    "prose,expected",
+    [
+        (
+            "Według karty price (ID: price, wersja: v1) rabat wynosi 20%.",
+            "Według karty price rabat wynosi 20%.",
+        ),
+        ("Rabat wynosi 20%. (ID: price, wersja: v1)", "Rabat wynosi 20%. [price]"),
+    ],
+)
+def test_rendered_source_preserves_public_citation_without_version_metadata(
+    prose, expected
+):
     model, reviewer = Model(), Reviewer()
     model.override["draft"] = {
-        "prose": "Według karty price (ID: price, wersja: v1) rabat wynosi 20%.",
+        "prose": prose,
         "sources": [
             {"source_id": "price", "version": "v1", "quote": "Rabat wynosi 20%."}
         ],
         "calculations": [],
     }
     answer = run(model=model, reviewer=reviewer, required=Requirements(sources=True))
-    assert answer.text == "Według karty price rabat wynosi 20%."
+    assert answer.text == expected
     assert reviewer.materials[0]["draft"]["prose"] == answer.text

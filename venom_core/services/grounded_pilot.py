@@ -284,9 +284,18 @@ def _public_prose(prose: str, private_ids: set[str], source_ids: set[str]) -> st
             return ""
         return match[0]
 
-    cleaned = _SOURCE_METADATA.sub(
-        lambda match: "" if match[1] in source_ids else match[0], prose
-    )
+    def source_citation(match: re.Match[str]) -> str:
+        ident = match[1]
+        if ident not in source_ids:
+            return match[0]
+        surrounding = prose[: match.start()] + prose[match.end() :]
+        return (
+            ""
+            if re.search(rf"(?<![\w-]){re.escape(ident)}(?![\w-])", surrounding)
+            else f"[{ident}]"
+        )
+
+    cleaned = _SOURCE_METADATA.sub(source_citation, prose)
     cleaned = _LABELLED_ID.sub(bare, _WRAPPED_ID.sub(wrapped, cleaned))
     for ident in sorted(private_ids):
         # Bare short IDs can coincide with real words or values.

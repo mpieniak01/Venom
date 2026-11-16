@@ -35,6 +35,9 @@ UNITS = frozenset(
         "zł",
         "s",
         "min",
+        "h",
+        "km/h",
+        "m/s",
         "%",
         "stron",
         "porcji",
@@ -233,22 +236,26 @@ class GroundedTurn:
             documents.append(document)
         return tuple(documents), tuple(unavailable)
 
-    def prepare(self, plan: TurnPlan) -> Evidence:
+    def prepare(self, plan: TurnPlan, *, infer_requirements: bool = True) -> Evidence:
         """Recompute each turn; a user correction cannot silently reuse a cache."""
         self._evidence = None
         if not plan.message.strip() or not plan.revision.strip():
             raise EvidenceError("turn_identity_required")
         if len(plan.message) > 16_000 or sum(map(len, plan.prior_users)) > 64_000:
             raise EvidenceError("turn_context_limit")
-        detected = detect_requirements(plan.message, plan.prior_users)
-        required = Requirements(
-            sources=plan.required.sources
-            or detected.sources
-            or bool(plan.source_query),
-            calculation=plan.required.calculation
-            or detected.calculation
-            or bool(plan.calculations),
-        )
+        required = plan.required
+        if infer_requirements:
+            detected = detect_requirements(plan.message, plan.prior_users)
+            required = Requirements(
+                sources=required.sources or detected.sources or bool(plan.source_query),
+                calculation=required.calculation
+                or detected.calculation
+                or bool(plan.calculations),
+            )
+        elif (plan.source_query and not required.sources) or (
+            plan.calculations and not required.calculation
+        ):
+            raise EvidenceError("tool_not_explicitly_enabled")
         if required.calculation and not plan.calculations:
             raise EvidenceError("calculation_plan_required")
         if len(plan.calculations) > MAX_CALCULATIONS:

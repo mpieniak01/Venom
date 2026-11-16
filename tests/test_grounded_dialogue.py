@@ -495,3 +495,18 @@ def test_successful_end_to_end_generator_receives_calculator_result():
         calc_plan("25000/100", unit="m"), MemorySources(), generate
     )
     assert result.text == "25000/100 = 250 m"
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"source_query": "niezamówione źródło"},
+        {"calculations": (CalculationPlan("c", "1+2"),)},
+    ],
+)
+def test_explicit_mode_rejects_unselected_tool_arguments(changes):
+    with pytest.raises(EvidenceError, match="tool_not_explicitly_enabled"):
+        GroundedTurn(MemorySources()).prepare(
+            TurnPlan("Pokaż krótką odpowiedź.", "r1", **changes),
+            infer_requirements=False,
+        )

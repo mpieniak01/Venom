@@ -53,7 +53,7 @@ class Model:
         self.calls.append((phase, data))
         self.hook(phase)
         default = {
-            "route": {"source_query": "cennik pracowni", "calculation_required": True},
+            "source_query": {"source_query": "cennik pracowni"},
             "assess": {"missing": ["liczba biletów"] if self.mode == "clarify" else []},
             "plan": {
                 "calculations": [
@@ -115,6 +115,7 @@ def run(backend=None, model=None, reviewer=None, **kwargs):
         backend or Sources(),
         model or Model(),
         reviewer or Reviewer(),
+        required=kwargs.pop("required", Requirements(sources=True, calculation=True)),
         **kwargs,
     )
 
@@ -126,10 +127,11 @@ def test_complete_flow_reads_before_formula_and_calculates_before_draft():
     assert result.text == "Po rabacie zapłacisz 24 zł."
     assert len(backend.reads) == 2
     assert model.calls[1][1]["sources"][0]["text"] == backend.document.text
+    assert "sha256" not in model.calls[1][1]["sources"][0]["ref"]
     assert model.calls[3][1]["evidence"]["calculations"][0]["value"] == "24"
     assert reviewer.materials[0]["draft"]["prose"] == result.text
     assert [x["phase"] for x in trace] == [
-        "route",
+        "source_query",
         "full_read",
         "assess",
         "plan",
@@ -149,7 +151,6 @@ def test_incomplete_source_blocks_before_formula_or_reviewer():
 
 def test_model_cannot_turn_off_required_calculator():
     model = Model()
-    model.override["route"] = {"source_query": "", "calculation_required": False}
     model.override["plan"] = {"calculations": []}
     with pytest.raises(EvidenceError, match="pilot_model_invalid"):
         run(model=model, required=Requirements(calculation=True))
@@ -249,7 +250,7 @@ def test_invalid_assessment_cannot_reach_arithmetic(assessment):
     model.override["assess"] = assessment
     with pytest.raises(EvidenceError, match="pilot_model_invalid"):
         run(model=model)
-    assert [phase for phase, _ in model.calls] == ["route", "assess"]
+    assert [phase for phase, _ in model.calls] == ["source_query", "assess"]
 
 
 @pytest.mark.parametrize(
@@ -272,15 +273,11 @@ def test_bad_calculator_plan_never_reaches_draft(expression, unit):
         EvidenceError, match="pilot_model_invalid|calculation_operator_unsupported"
     ):
         run(model=model)
-    assert [phase for phase, _ in model.calls] == ["route", "assess", "plan"]
+    assert [phase for phase, _ in model.calls] == ["source_query", "assess", "plan"]
 
 
 def test_source_fact_skips_arithmetic_even_when_document_has_numbers():
     backend, model, reviewer = Sources(), Model(), Reviewer()
-    model.override["route"] = {
-        "source_query": "cennik pracowni",
-        "calculation_required": False,
-    }
     model.override["draft"] = {
         "prose": "Bilet kosztuje 30 zł.",
         "sources": [
@@ -288,15 +285,22 @@ def test_source_fact_skips_arithmetic_even_when_document_has_numbers():
         ],
         "calculations": [],
     }
-    result = run_pilot_turn("Podaj cenę z cennika.", "read", backend, model, reviewer)
+    result = run_pilot_turn(
+        "Przeczytaj z cennika, ile kosztuje 1 bilet.",
+        "read",
+        backend,
+        model,
+        reviewer,
+        required=Requirements(sources=True),
+    )
     assert result.text == "Bilet kosztuje 30 zł."
-    assert [phase for phase, _ in model.calls] == ["route", "assess", "draft"]
+    assert [phase for phase, _ in model.calls] == ["source_query", "assess", "draft"]
 
 
 def test_assessment_changes_after_user_supplies_missing_input():
     model, reviewer = Model("clarify"), Reviewer()
     first = run(model=model, reviewer=reviewer)
-    assert [phase for phase, _ in model.calls] == ["route", "assess", "draft"]
+    assert [phase for phase, _ in model.calls] == ["source_query", "assess", "draft"]
     model.mode = "answer"
     second = run_pilot_turn(
         "Jeden bilet. Przelicz.",
@@ -304,6 +308,7 @@ def test_assessment_changes_after_user_supplies_missing_input():
         Sources(),
         model,
         reviewer,
+        required=Requirements(sources=True, calculation=True),
         history=(
             {"role": "user", "content": "Oblicz koszt biletów według cennika."},
             {"role": "assistant", "content": first.text},
@@ -326,11 +331,7 @@ def test_clarification_cannot_smuggle_claims():
 
 def test_invalid_model_schema_is_closed():
     model = Model()
-    model.override["route"] = {
-        "source_query": "price",
-        "calculation_required": False,
-        "bypass": True,
-    }
+    model.override["source_query"] = {"source_query": "price", "bypass": True}
     with pytest.raises(EvidenceError, match="pilot_model_invalid"):
         run(model=model)
 
@@ -383,6 +384,7 @@ def test_correction_uses_new_expression_and_review_identity():
         backend,
         model,
         reviewer,
+        required=Requirements(sources=True, calculation=True),
         history=(
             {"role": "user", "content": "Oblicz rabat 20% od 30 zł."},
             {"role": "assistant", "content": first.text},
@@ -397,7 +399,14 @@ def test_correction_uses_new_expression_and_review_identity():
 def test_empty_turn_identity_stops_before_model(message, revision):
     model = Model()
     with pytest.raises(EvidenceError, match="turn_identity_required"):
-        run_pilot_turn(message, revision, Sources(), model, Reviewer())
+        run_pilot_turn(
+            message,
+            revision,
+            Sources(),
+            model,
+            Reviewer(),
+            required=Requirements(calculation=True),
+        )
     assert not model.calls
 
 
@@ -442,13 +451,103 @@ def test_arbitrary_reviewer_response_is_not_a_receipt():
 
 def test_calculation_only_does_not_search_for_irrelevant_sources():
     model, backend, reviewer = Model(), Sources(), Reviewer()
-    model.override["route"] = {"source_query": "", "calculation_required": True}
     draft = model("draft", {}, {})
     draft["sources"] = []
     model.override["draft"] = draft
     result = run_pilot_turn(
-        "Oblicz cenę 30 zł po rabacie 20%.", "only-calc", backend, model, reviewer
+        "Oblicz z podanych danych, czy dokument podaje 30 zł po rabacie 20%.",
+        "only-calc",
+        backend,
+        model,
+        reviewer,
+        required=Requirements(calculation=True),
     )
     assert result.text == "Po rabacie zapłacisz 24 zł."
     assert not backend.reads
-    assert reviewer.materials[0]["evidence"]["sources"] == ()
+    assert reviewer.materials[0]["evidence"]["sources"] == []
+
+
+@pytest.mark.parametrize(
+    "message",
+    (
+        "Czy pierwszy przyjęty zawsze pierwszy skończy, gdy zadania wykonują dwie osoby naraz?",
+        "Napisz aktualną instrukcję jako jedno zdanie.",
+        "Czy usunięcie kopii usuwa kartkę z pierwszego segregatora?",
+    ),
+)
+def test_unselected_tool_path_never_calls_model_or_sources(message):
+    model, backend, reviewer = Model(), Sources(), Reviewer()
+    with pytest.raises(EvidenceError, match="pilot_tools_not_enabled"):
+        run_pilot_turn(message, "no-tools", backend, model, reviewer)
+    assert not model.calls and not backend.reads and not reviewer.materials
+
+
+def test_unit_conversion_uses_hours_and_speed_without_leaking_ids():
+    backend, model, reviewer = Sources(), Model(), Reviewer()
+    model.override["plan"] = {
+        "calculations": [
+            {"calculation_id": "travel_hours", "expression": "(20+10)/60", "unit": "h"},
+            {
+                "calculation_id": "speed_kmh",
+                "expression": "9/((20+10)/60)",
+                "unit": "km/h",
+            },
+        ],
+    }
+
+    def respond(phase, data, schema):
+        if phase != "draft":
+            return model(phase, data, schema)
+        assert "evidence_id" not in data["evidence"]
+        return {
+            "prose": "Średnia to 18 km/h (speed_kmh), czas to 0,5 h (id: 81e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6).",
+            "sources": [],
+            "calculations": [
+                {
+                    "calculation_id": c["calculation_id"],
+                    "value": c["value"],
+                    "unit": c["unit"],
+                }
+                for c in data["evidence"]["calculations"]
+            ],
+        }
+
+    trace = []
+    answer = run_pilot_turn(
+        "Oblicz średnią dla 9 km i 30 minut.",
+        "r1",
+        backend,
+        respond,
+        reviewer,
+        required=Requirements(calculation=True),
+        trace=trace,
+    )
+    assert answer.text == "Średnia to 18 km/h, czas to 0,5 h."
+    material = reviewer.materials[0]
+    assert material["draft"]["prose"] == answer.text
+    assert "evidence_id" not in material["evidence"]
+    assert "technical_ids_removed" in [x["phase"] for x in trace]
+    assert not backend.reads
+
+
+def test_redaction_preserves_citation_and_numeric_answer():
+    model = Model()
+    model.override["source_query"] = {"source_query": "  "}
+    model.override["draft"] = {
+        "prose": "Według cennika (id: price) wynik to 24 zł [c1].",
+        "sources": [
+            {"source_id": "price", "version": "v1", "quote": "Rabat wynosi 20%."}
+        ],
+        "calculations": [{"calculation_id": "c1", "value": "24", "unit": "zł"}],
+    }
+    assert run(model=model).text == "Według cennika (id: price) wynik to 24 zł."
+
+
+def test_redaction_only_removes_metadata_before_review_and_never_releases_empty():
+    model, reviewer = Model(), Reviewer()
+    draft = model("draft", {}, {})
+    draft["prose"] = "(evidence_id: fake_receipt)"
+    model.override["draft"] = draft
+    with pytest.raises(EvidenceError, match="answer_empty"):
+        run(model=model, reviewer=reviewer)
+    assert not reviewer.materials

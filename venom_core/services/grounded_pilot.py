@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from typing import Annotated, Any, Literal, Protocol
@@ -11,7 +12,6 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
-    StrictBool,
     StrictStr,
     ValidationError,
     field_validator,
@@ -32,7 +32,6 @@ from venom_core.services.grounded_dialogue import (
     SourceDocument,
     SourceQuote,
     TurnPlan,
-    detect_requirements,
     text_hash,
 )
 
@@ -43,9 +42,8 @@ class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
 
-class Route(StrictModel):
+class SourceQuery(StrictModel):
     source_query: StrictStr = Field(max_length=500)
-    calculation_required: StrictBool
 
 
 class InputAssessment(StrictModel):
@@ -148,6 +146,42 @@ def _current(backend: SourceBackend, sources: tuple[SourceDocument, ...]) -> Non
             raise EvidenceError("answer_source_stale")
 
 
+_WRAPPED_ID = re.compile(r"\(([A-Za-z0-9_:-][^()\n]{0,100})\)|\[([^\[\]\n]{1,100})\]")
+_LABELLED_ID = re.compile(
+    r"(?i)\b(?:(?:evidence|calculation|qualification)[_ -]?id|"
+    r"id(?: dowodu| obliczenia)?)\s*:\s*([a-z0-9_-]+)\b"
+)
+
+
+def _public_prose(prose: str, private_ids: set[str], source_ids: set[str]) -> str:
+    """Remove adapter metadata before the semantic reviewer sees visible prose."""
+
+    private_ids = private_ids - source_ids - UNITS
+
+    def bare(match: re.Match[str]) -> str:
+        return match[0] if match[1] in source_ids else ""
+
+    def wrapped(match: re.Match[str]) -> str:
+        content = (match[1] or match[2]).strip()
+        label = _LABELLED_ID.fullmatch(content)
+        if (content in private_ids and not content.isdecimal()) or (
+            label and label[1] not in source_ids
+        ):
+            return ""
+        return match[0]
+
+    cleaned = _LABELLED_ID.sub(bare, _WRAPPED_ID.sub(wrapped, prose))
+    for ident in sorted(private_ids):
+        # Bare short IDs can coincide with real words or values.
+        if "_" not in ident and not re.fullmatch(r"[0-9a-f]{32,64}", ident):
+            continue
+        cleaned = re.sub(rf"(?<![\w-]){re.escape(ident)}(?![\w-])", "", cleaned)
+    if cleaned == prose:
+        return prose
+    cleaned = re.sub(r"[ \t]+([.,!?])", r"\1", cleaned)
+    return re.sub(r"[ \t]{2,}", " ", cleaned).strip()
+
+
 def run_pilot_turn(
     message: str,
     revision: str,
@@ -162,10 +196,12 @@ def run_pilot_turn(
     """No gold labels, hidden formula or unreviewed prose enters this boundary.
 
     The trace is a private diagnostic sink, never a streaming user response.
-    Each turn reads and computes anew. Source updates during planning/review
+    Only the caller selects tools for this turn. Source updates during planning/review
     invalidate the answer. A clarification also requires semantic approval.
     """
     audit = trace if trace is not None else []
+    if not (required.sources or required.calculation):
+        raise EvidenceError("pilot_tools_not_enabled")
     qualification = reviewer.qualification_id
     if not isinstance(qualification, str) or not qualification.strip():
         raise EvidenceError("pilot_reviewer_unqualified")
@@ -179,22 +215,16 @@ def run_pilot_turn(
     ):
         raise EvidenceError("pilot_history_invalid")
     prior_users = tuple(h["content"] for h in history if h["role"] == "user")
-    detected = detect_requirements(message, prior_users)
     request = {"message": message, "revision": revision, "history": list(history)}
-    route: Route = _call(model, "route", request, Route)
-    audit.append({"phase": "route", "data": route.model_dump()})
-    requirements = Requirements(
-        sources=required.sources or detected.sources or bool(route.source_query),
-        calculation=required.calculation
-        or detected.calculation
-        or route.calculation_required,
-    )
+    query = ""
     gate = GroundedTurn(backend)
-    documents, unavailable = (
-        gate.read_sources(route.source_query or message)
-        if requirements.sources
-        else ((), ())
-    )
+    documents: tuple[SourceDocument, ...] = ()
+    unavailable: tuple[str, ...] = ()
+    if required.sources:
+        selection: SourceQuery = _call(model, "source_query", request, SourceQuery)
+        query = selection.source_query.strip() or message
+        audit.append({"phase": "source_query", "data": {"source_query": query}})
+        documents, unavailable = gate.read_sources(query)
     audit.append(
         {
             "phase": "full_read",
@@ -202,15 +232,19 @@ def run_pilot_turn(
             "unavailable": list(unavailable),
         }
     )
+    model_sources = [
+        asdict(d) | {"ref": {"source_id": d.ref.source_id, "version": d.ref.version}}
+        for d in documents
+    ]
     planning = request | {
-        "requirements": asdict(requirements),
-        "sources": [asdict(d) for d in documents],
+        "requirements": asdict(required),
+        "sources": model_sources,
         "unavailable": list(unavailable),
     }
     assessment: InputAssessment = _call(model, "assess", planning, InputAssessment)
     audit.append({"phase": "assess", "data": assessment.model_dump()})
     calculations = []
-    if requirements.calculation and not assessment.missing:
+    if required.calculation and not assessment.missing:
         arithmetic: ArithmeticPlan = _call(model, "plan", planning, ArithmeticPlan)
         calculations = arithmetic.calculations
     plan = Plan(
@@ -233,21 +267,32 @@ def run_pilot_turn(
             message,
             revision,
             prior_users,
-            route.source_query or (message if requirements.sources else ""),
+            query,
             tuple(
                 CalculationPlan(c.calculation_id, c.expression, c.unit)
                 for c in plan.calculations
             ),
-            requirements,
+            required,
         )
-        evidence = gate.prepare(final_plan)
+        evidence = gate.prepare(final_plan, infer_requirements=False)
         if evidence.sources != documents or evidence.unavailable != unavailable:
             raise EvidenceError("pilot_evidence_changed_during_plan")
         evidence_id = evidence.evidence_id
         evidence_data = asdict(evidence)
     audit.append({"phase": "evidence", "data": evidence_data})
-    draft_input = request | {"plan": plan_data, "evidence": evidence_data}
+    # The receipt key belongs to the adapter, not the generator or its answer.
+    review_evidence = {k: v for k, v in evidence_data.items() if k != "evidence_id"}
+    review_evidence["sources"] = model_sources
+    draft_input = request | {"plan": plan_data, "evidence": review_evidence}
     draft: Draft = _call(model, "draft", draft_input, Draft)
+    prose = _public_prose(
+        draft.prose,
+        {evidence_id, *(c.calculation_id for c in plan.calculations)},
+        {doc.ref.source_id for doc in documents},
+    )
+    if prose != draft.prose:
+        draft = draft.model_copy(update={"prose": prose})
+        audit.append({"phase": "technical_ids_removed"})
     audit.append({"phase": "draft", "data": draft.model_dump()})
     if not draft.prose.strip():
         raise EvidenceError("answer_empty")
@@ -265,9 +310,9 @@ def run_pilot_turn(
         gate.publish(AnswerDraft(evidence_id, claims))
     _current(backend, documents)
     material = request | {
-        "requirements": asdict(requirements),
+        "requirements": asdict(required),
         "plan": plan_data,
-        "evidence": evidence_data,
+        "evidence": review_evidence,
         "draft": draft.model_dump(),
     }
     try:

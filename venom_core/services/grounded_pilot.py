@@ -24,6 +24,7 @@ from venom_core.services.grounded_dialogue import (
     UNITS,
     AnswerDraft,
     CalculationClaim,
+    CalculationEvidence,
     CalculationPlan,
     EvidenceError,
     GroundedTurn,
@@ -147,6 +148,69 @@ _SPEED_CONVERSION = re.compile(
 )
 
 
+_NUMBER = r"[+-]?[0-9]+(?:[.,][0-9]+)?"
+_MEAN_REQUEST = re.compile(
+    rf"\s*(?:policz|oblicz|wyznacz)\s+średnią(?:\s+arytmetyczną)?\s+z\s+"
+    rf"(?:(?:wyników|liczb|wartości)\s+)?"
+    rf"(?P<numbers>{_NUMBER}(?:(?:,\s+|\s+i\s+){_NUMBER})+)"
+    r"(?:\s+(?P<points>punktów|punkty|pkt\.?))?\s*[.!?]?\s*",
+    re.IGNORECASE,
+)
+_PRICE_QUESTION = re.compile(
+    r"\b(?:ile\s+(?:(?:złotych|zł)\s+)?kosztuje|jaka\s+jest\s+cena)\s+([^?!.]+)",
+    re.IGNORECASE,
+)
+_PRICE_RESULT = re.compile(
+    r"(?:cena|koszt|opłata|kwota|stawka|cennik)(?:\s+(.+))?", re.IGNORECASE
+)
+
+
+def _explicit_mean(message: str) -> Calculation | None:
+    match = _MEAN_REQUEST.fullmatch(message)
+    if match is None:
+        return None
+    operands = re.split(r",\s+|\s+i\s+", match["numbers"], flags=re.IGNORECASE)
+    addends = "+".join(f"({item.replace(',', '.')})" for item in operands)
+    expression = f"({addends})/{len(operands)}"
+    if len(expression) > MAX_EXPRESSION_CHARS:
+        return None
+    return Calculation(
+        calculation_id="arithmetic_mean",
+        expression=expression,
+        unit="punktów" if match["points"] else "",
+    )
+
+
+def _mean_draft(calculation: CalculationEvidence) -> Draft:
+    value = calculation.value.replace(".", ",")
+    if calculation.unit == "punktów":
+        if value.lstrip("-") == "1":
+            unit = "punkt"
+        elif "," in value:
+            unit = "punktu"
+        elif value[-1] in "234" and value[-2:] not in {"12", "13", "14"}:
+            unit = "punkty"
+        else:
+            unit = "punktów"
+        value = f"{value} {unit}"
+    return Draft(
+        prose=f"Średnia wynosi {value}.",
+        sources=[],
+        calculations=[
+            ResultClaim(
+                calculation_id=calculation.calculation_id,
+                value=calculation.value,
+                unit=calculation.unit,
+            )
+        ],
+    )
+
+
+def _price_result(label: str, subject: str) -> bool:
+    match = _PRICE_RESULT.fullmatch(label)
+    return bool(match and (match[1] is None or match[1] == subject))
+
+
 def _headcount(value: str) -> int:
     return (
         int(value)
@@ -174,13 +238,15 @@ def _group_update(message: str, previous: str) -> dict[str, int] | None:
 
 
 def _missing_inputs(
-    missing: list[str], *, booking: bool, speed_unit: str | None
+    missing: list[str], *, booking: bool, speed_unit: str | None, price_subject: str
 ) -> list[str]:
     """An explicitly requested output cannot itself be a prerequisite."""
     inputs = []
     for item in missing:
         label = " ".join(item.lower().replace("_", " ").split()).rstrip(".?")
         if booking and _BOOKING_RESULT.fullmatch(label):
+            continue
+        if price_subject and _price_result(label, price_subject):
             continue
         if speed_unit and label in {
             f"prędkość {speed_unit}",
@@ -314,6 +380,19 @@ def _public_prose(prose: str, private_ids: set[str], source_ids: set[str]) -> st
     return re.sub(r"[ \t]{2,}", " ", cleaned).strip()
 
 
+def _cite_sources(prose: str, quotes: list[Quote]) -> str:
+    quoted = {quote.source_id: quote.version for quote in quotes}
+    missing = [
+        f"[{ident}]"
+        for ident, version in quoted.items()
+        if not re.search(
+            rf"(?<![\w-]){re.escape(ident)}(?:[-@]{re.escape(version)})?(?![\w-])",
+            prose,
+        )
+    ]
+    return f"{prose} {' '.join(missing)}" if missing else prose
+
+
 def run_pilot_turn(
     message: str,
     revision: str,
@@ -389,13 +468,30 @@ def run_pilot_turn(
     if speed_unit is not None:
         resolved["requested_speed_unit"] = speed_unit
     planning.update(resolved)
-    assessment: InputAssessment = _call(model, "assess", planning, InputAssessment)
+    mean = (
+        _explicit_mean(message)
+        if required.calculation and not required.sources
+        else None
+    )
+    assessment: InputAssessment = (
+        InputAssessment(
+            current_state="Wszystkie składniki podano w bieżącej prośbie.", missing=[]
+        )
+        if mean is not None
+        else _call(model, "assess", planning, InputAssessment)
+    )
     audit.append({"phase": "assess", "data": assessment.model_dump()})
     planning["current_state"] = assessment.current_state
+    price = (
+        _PRICE_QUESTION.search(message)
+        if documents and not required.calculation
+        else None
+    )
     missing = _missing_inputs(
         assessment.missing,
         booking=group is not None and _BOOKING_QUESTION.search(message) is not None,
         speed_unit=speed_unit,
+        price_subject=" ".join(price[1].lower().split()) if price else "",
     )
     if missing and required.sources and not required.calculation and documents:
         # A complete card may resolve the question, including a fact it explicitly
@@ -420,7 +516,11 @@ def run_pilot_turn(
             {"phase": "resolved_inputs", "data": resolved | {"missing": missing}}
         )
     calculations = []
-    if required.calculation and not missing:
+    compiled_mean: CalculationEvidence | None = None
+    if mean is not None:
+        calculations = [mean]
+        audit.append({"phase": "explicit_arithmetic", "data": mean.model_dump()})
+    elif required.calculation and not missing:
         arithmetic: ArithmeticPlan = _call(model, "plan", planning, ArithmeticPlan)
         audit.append({"phase": "arithmetic", "data": arithmetic.model_dump()})
         calculations = [_compile_calculation(c) for c in arithmetic.calculations]
@@ -456,6 +556,8 @@ def run_pilot_turn(
             raise EvidenceError("pilot_evidence_changed_during_plan")
         evidence_id = evidence.evidence_id
         evidence_data = asdict(evidence)
+        if mean is not None:
+            compiled_mean = evidence.calculations[0]
     audit.append({"phase": "evidence", "data": evidence_data})
     # The receipt key belongs to the adapter, not the generator or its answer.
     review_evidence = {k: v for k, v in evidence_data.items() if k != "evidence_id"}
@@ -470,7 +572,11 @@ def run_pilot_turn(
             "evidence": review_evidence,
         }
     )
-    draft: Draft = _call(model, "draft", draft_input, Draft)
+    draft: Draft = (
+        _mean_draft(compiled_mean)
+        if compiled_mean is not None
+        else _call(model, "draft", draft_input, Draft)
+    )
     prose = _public_prose(
         draft.prose,
         {evidence_id, *(c.calculation_id for c in plan.calculations)},
@@ -479,7 +585,8 @@ def run_pilot_turn(
     if prose != draft.prose:
         draft = draft.model_copy(update={"prose": prose})
         audit.append({"phase": "technical_ids_removed"})
-    audit.append({"phase": "draft", "data": draft.model_dump()})
+    draft_audit = {"phase": "draft", "data": draft.model_dump()}
+    audit.append(draft_audit)
     if not draft.prose.strip():
         raise EvidenceError("answer_empty")
     if plan.mode == "clarify":
@@ -494,6 +601,11 @@ def run_pilot_turn(
             for c in draft.calculations
         )
         gate.publish(AnswerDraft(evidence_id, claims))
+        cited = _cite_sources(draft.prose, draft.sources)
+        if cited != draft.prose:
+            draft = draft.model_copy(update={"prose": cited})
+            audit.append({"phase": "public_citations_added"})
+            draft_audit["data"] = draft.model_dump()
     _current(backend, documents)
     material = request | {
         "requirements": asdict(required),

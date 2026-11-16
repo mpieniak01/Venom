@@ -135,7 +135,7 @@ def test_complete_flow_reads_before_formula_and_calculates_before_draft():
     backend, model, reviewer = Sources(), Model(), Reviewer()
     trace = []
     result = run(backend, model, reviewer, trace=trace)
-    assert result.text == "Po rabacie zapłacisz 24 zł."
+    assert result.text == "Po rabacie zapłacisz 24 zł. [price]"
     assert len(backend.reads) == 2
     assert model.calls[1][1]["sources"][0]["text"] == backend.document.text
     assert "sha256" not in model.calls[1][1]["sources"][0]["ref"]
@@ -149,6 +149,7 @@ def test_complete_flow_reads_before_formula_and_calculates_before_draft():
         "plan",
         "evidence",
         "draft",
+        "public_citations_added",
         "semantic_review",
     ]
 
@@ -305,7 +306,7 @@ def test_source_fact_skips_arithmetic_even_when_document_has_numbers():
         reviewer,
         required=Requirements(sources=True),
     )
-    assert result.text == "Bilet kosztuje 30 zł."
+    assert result.text == "Bilet kosztuje 30 zł. [price]"
     assert [phase for phase, _ in model.calls] == ["source_query", "assess", "draft"]
 
 
@@ -326,7 +327,7 @@ def test_assessment_changes_after_user_supplies_missing_input():
             {"role": "assistant", "content": first.text},
         ),
     )
-    assert second.text == "Po rabacie zapłacisz 24 zł."
+    assert second.text == "Po rabacie zapłacisz 24 zł. [price]"
     assert second.evidence_id != first.evidence_id
 
 
@@ -945,7 +946,7 @@ def test_source_determines_which_missing_inputs_must_come_from_the_user(
         reviewer,
         required=Requirements(sources=True),
     )
-    assert answer.text == text
+    assert answer.text == (f"{text} [price]" if claim else text)
     data = dict(model.calls)
     assert data["source_inputs"]["reported_missing"] == original
     assert data["source_inputs"]["request"] == "Sprawdź w karcie warunki rabatu."
@@ -1013,3 +1014,110 @@ def test_rendered_source_preserves_public_citation_without_version_metadata(
     answer = run(model=model, reviewer=reviewer, required=Requirements(sources=True))
     assert answer.text == expected
     assert reviewer.materials[0]["draft"]["prose"] == answer.text
+
+
+@pytest.mark.parametrize(
+    "message,answer,expression",
+    [
+        (
+            "Policz średnią z wyników 12, 16 i 23 punktów.",
+            "Średnia wynosi 17 punktów.",
+            "((12)+(16)+(23))/3",
+        ),
+        ("Oblicz średnią z liczb -2,5 i 4,5.", "Średnia wynosi 1.", "((-2.5)+(4.5))/2"),
+        (
+            "Wyznacz średnią arytmetyczną z 0 i 2 punkty.",
+            "Średnia wynosi 1 punkt.",
+            "((0)+(2))/2",
+        ),
+        (
+            "Oblicz średnią z wyników 2 i 4 punkty.",
+            "Średnia wynosi 3 punkty.",
+            "((2)+(4))/2",
+        ),
+        (
+            "Oblicz średnią z wyników 2 i 3 pkt.",
+            "Średnia wynosi 2,5 punktu.",
+            "((2)+(3))/2",
+        ),
+    ],
+)
+def test_explicit_mean_uses_current_operands_and_review(message, answer, expression):
+    def no_model(*args):
+        pytest.fail("explicit arithmetic should not call the generator")
+
+    reviewer = Reviewer()
+    accepted = run_pilot_turn(
+        message,
+        "mean",
+        Sources(),
+        no_model,
+        reviewer,
+        history=(
+            {"role": "user", "content": "Moje poprzednie wyniki były inne: 100, 200."},
+        ),
+        required=Requirements(calculation=True),
+    )
+    assert accepted.text == answer
+    evidence = reviewer.materials[0]["evidence"]["calculations"]
+    assert evidence[0]["expression"] == expression
+
+
+@pytest.mark.parametrize("real_input", [None, "rodzaj biletu"])
+def test_source_price_request_does_not_ask_for_the_requested_value(real_input):
+    model, reviewer = Model(), Reviewer()
+    model.override["assess"] = {
+        "current_state": "Cena to żądany wynik.",
+        "missing": ["cena biletu", *([real_input] if real_input else [])],
+    }
+    model.override["draft"] = {
+        "prose": "Który rodzaj biletu?" if real_input else "Bilet kosztuje 30 zł.",
+        "sources": []
+        if real_input
+        else [
+            {"source_id": "price", "version": "v1", "quote": "bilet kosztuje 30 zł."},
+        ],
+        "calculations": [],
+    }
+    answer = run_pilot_turn(
+        "Sprawdź kartę: jaka jest cena biletu?",
+        "price",
+        Sources(),
+        model,
+        reviewer,
+        required=Requirements(sources=True),
+    )
+    if real_input:
+        assert dict(model.calls)["source_inputs"]["reported_missing"] == [real_input]
+        assert answer.text == "Który rodzaj biletu?"
+    else:
+        assert "source_inputs" not in dict(model.calls)
+        assert answer.text == "Bilet kosztuje 30 zł. [price]"
+    assert reviewer.materials[0]["plan"]["missing"] == (
+        [real_input] if real_input else []
+    )
+
+
+def test_source_price_absence_is_an_answer_supported_by_the_full_card():
+    source = Sources()
+    text = "Cena wersji podstawowej nie jest podana w karcie."
+    source.document = SourceDocument(
+        SourceRef("price", "v1", text_hash(text)), text, True
+    )
+    model, reviewer = Model(), Reviewer()
+    model.override["assess"] = {"current_state": "Pełna karta.", "missing": ["cena"]}
+    model.override["draft"] = {
+        "prose": text,
+        "sources": [{"source_id": "price", "version": "v1", "quote": text}],
+        "calculations": [],
+    }
+    answer = run_pilot_turn(
+        "Sprawdź: ile złotych kosztuje wersja podstawowa?",
+        "price",
+        source,
+        model,
+        reviewer,
+        required=Requirements(sources=True),
+    )
+    assert answer.text == f"{text} [price]"
+    assert reviewer.materials[0]["plan"]["mode"] == "answer"

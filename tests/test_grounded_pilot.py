@@ -737,6 +737,7 @@ def test_compact_form_preserves_independent_checks_and_complete_coverage(
         assert packet["calculations"][0]["expression"] == "30*(1-20/100)"
         assert packet["answer"] == material["draft"]["prose"]
         return {
+            "state": "Obowiązuje cena 30 zł i rabat 20%.",
             "context_ok": True,
             "source_ok": True,
             "source_refs": [1],

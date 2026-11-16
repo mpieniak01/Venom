@@ -122,6 +122,7 @@ class GroundedChecklistReviewer:
 
 
 class CompactFindings(StrictModel):
+    state: StrictStr = Field(min_length=1, max_length=220)
     context_ok: StrictBool
     source_ok: StrictBool
     source_refs: list[StrictInt] = Field(max_length=8)

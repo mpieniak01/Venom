@@ -74,12 +74,15 @@ def detect_requirements(message: str, prior_users: Sequence[str] = ()) -> Requir
     current = _normal(message)
     history = _normal(" ".join(prior_users[-8:]))
     arithmetic = (
-        r"oblicz|przelicz|rachun|ile|jak daleko|dystans|lacznie|razem|porcj|obniz|rabat"
+        r"\b(?:oblicz\w*|przelicz\w*|rachun\w*|ile|jak daleko|dystans\w*|"
+        r"lacznie|razem|porcj\w*|obniz\w*|rabat\w*)\b"
     )
     current_math = bool(re.search(arithmetic, current))
     follow_up = bool(
         re.search(
-            r"teraz|jesli|dokladnie|przyjmij|odcinek|dojsc|pozostal|zostalo", current
+            r"\b(?:teraz|jesli|dokladnie|przyjmij|odcinek|dojsc|pozostal\w*|"
+            r"zostalo|poprawka|korekta|zmiana)\b",
+            current,
         )
     )
     numbers = bool(re.search(r"\d", current + " " + history))
@@ -89,11 +92,17 @@ def detect_requirements(message: str, prior_users: Sequence[str] = ()) -> Requir
         and (current_math or (follow_up and bool(re.search(arithmetic, history))))
     )
     source_words = bool(
-        re.search(r"zrodl|regulamin|instrukcj|pakie|zasad|dokument", current)
+        re.search(r"\b(?:zrodl\w*|regulamin\w*|pakie\w*|dokument\w*)\b", current)
     )
-    check = bool(re.search(r"sprawdz|przeczytaj", current))
+    source_reference = bool(re.search(r"\bwedlug\s+(?:instrukcj\w*|zasad\w*)", current))
+    check = bool(re.search(r"\b(?:sprawdz|przeczytaj)\b", current))
+    fact_check = bool(re.search(r"\bczy\b.{0,200}\b(?:zawsze|prawda)\b", current))
     return Requirements(
-        sources=source_words or (check and not calculation), calculation=calculation
+        sources=source_words
+        or source_reference
+        or fact_check
+        or (check and not calculation),
+        calculation=calculation,
     )
 
 
@@ -270,7 +279,7 @@ class GroundedTurn:
                 sources, unavailable = self._read_sources(
                     plan.source_query or plan.message
                 )
-            except (OSError, TimeoutError) as exc:
+            except (OSError, TimeoutError, KeyError) as exc:
                 raise EvidenceError("source_unavailable") from exc
         identity = text_hash(
             json.dumps(
@@ -306,7 +315,11 @@ class GroundedTurn:
                 document = documents.get(claim.source_id)
                 if document is None or document.ref.version != claim.version:
                     raise EvidenceError("answer_source_unknown")
-                if self.backend.current_ref(claim.source_id) != document.ref:
+                try:
+                    current_ref = self.backend.current_ref(claim.source_id)
+                except (OSError, TimeoutError, KeyError) as exc:
+                    raise EvidenceError("answer_source_unavailable") from exc
+                if current_ref != document.ref:
                     raise EvidenceError("answer_source_stale")
                 if not claim.quote.strip() or claim.quote not in document.text:
                     raise EvidenceError("answer_quote_unsupported")

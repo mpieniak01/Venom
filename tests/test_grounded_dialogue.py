@@ -438,3 +438,60 @@ def test_execution_boundary_exposes_full_evidence_and_blocks_unverified_draft():
 
     with pytest.raises(EvidenceError, match="semantic_review"):
         execute_grounded_turn(TurnPlan("Przeczytaj źródło.", "r"), backend, generate)
+
+
+@pytest.mark.parametrize(
+    ("message", "history", "expected"),
+    [
+        (
+            "Poprawka: czas wynosił 2,1 s.",
+            ("Oblicz drogę przy 6 m/s.",),
+            Requirements(calculation=True),
+        ),
+        (
+            "Korekta: droga 15 m.",
+            ("Ile czasu przy 3 m/s?",),
+            Requirements(calculation=True),
+        ),
+        ("Czy ta prędkość zawsze jest stała?", (), Requirements(sources=True)),
+        ("Kontakt wyłącznie przez odpowiedź.", ("Numer 987654321.",), Requirements()),
+        ("Od 80 włącznie, pozostałe bez zmian.", ("Wynik 79 to B.",), Requirements()),
+        ("Jedna luźna zasada układania książek.", (), Requirements()),
+        ("Krótka instrukcja dla współpracownika.", (), Requirements()),
+    ],
+)
+def test_routing_corrections_factual_checks_and_non_arithmetic_words(
+    message, history, expected
+):
+    assert detect_requirements(message, history) == expected
+
+
+def test_source_disappearing_before_publication_cannot_be_released():
+    backend, gate, evidence = prepared_source()
+
+    def missing(source_id):
+        raise KeyError(source_id)
+
+    backend.current_ref = missing
+    with pytest.raises(EvidenceError, match="answer_source_unavailable"):
+        gate.publish(
+            AnswerDraft(
+                evidence.evidence_id,
+                (SourceQuote("club", "v2", "Dozwolone PNG do 2 MB."),),
+            )
+        )
+
+
+def test_successful_end_to_end_generator_receives_calculator_result():
+    from venom_core.services.grounded_dialogue import execute_grounded_turn
+
+    def generate(evidence):
+        assert evidence.calculations[0].value == "250"
+        return AnswerDraft(
+            evidence.evidence_id, (CalculationClaim("distance", "250", "m"),)
+        )
+
+    result = execute_grounded_turn(
+        calc_plan("25000/100", unit="m"), MemorySources(), generate
+    )
+    assert result.text == "25000/100 = 250 m"

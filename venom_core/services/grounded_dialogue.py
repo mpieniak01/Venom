@@ -41,6 +41,8 @@ UNITS = frozenset(
         "%",
         "stron",
         "porcji",
+        "punktów",
+        "paczek",
     )
 )
 

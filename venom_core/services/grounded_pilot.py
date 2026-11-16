@@ -46,8 +46,7 @@ class SourceQuery(StrictModel):
     source_query: StrictStr = Field(max_length=500)
 
 
-class InputAssessment(StrictModel):
-    current_state: StrictStr = Field(min_length=1, max_length=700)
+class MissingInputs(StrictModel):
     missing: list[Annotated[StrictStr, Field(min_length=1, max_length=160)]] = Field(
         max_length=8
     )
@@ -58,6 +57,10 @@ class InputAssessment(StrictModel):
         if any(not item.strip() for item in missing):
             raise ValueError("missing input must be named")
         return missing
+
+
+class InputAssessment(MissingInputs):
+    current_state: StrictStr = Field(min_length=1, max_length=700)
 
 
 class Calculation(StrictModel):
@@ -255,6 +258,9 @@ def _current(backend: SourceBackend, sources: tuple[SourceDocument, ...]) -> Non
 
 
 _WRAPPED_ID = re.compile(r"\(([A-Za-z0-9_:-][^()\n]{0,100})\)|\[([^\[\]\n]{1,100})\]")
+_SOURCE_METADATA = re.compile(
+    r"\(\s*id\s*:\s*([a-z0-9_-]+)\s*,\s*wersja\s*:\s*[a-z0-9_.-]+\s*\)", re.IGNORECASE
+)
 _LABELLED_ID = re.compile(
     r"(?i)\b(?:(?:evidence|calculation|qualification)[_ -]?id|"
     r"id(?: dowodu| obliczenia)?)\s*:\s*([a-z0-9_-]+)\b"
@@ -278,7 +284,10 @@ def _public_prose(prose: str, private_ids: set[str], source_ids: set[str]) -> st
             return ""
         return match[0]
 
-    cleaned = _LABELLED_ID.sub(bare, _WRAPPED_ID.sub(wrapped, prose))
+    cleaned = _SOURCE_METADATA.sub(
+        lambda match: "" if match[1] in source_ids else match[0], prose
+    )
+    cleaned = _LABELLED_ID.sub(bare, _WRAPPED_ID.sub(wrapped, cleaned))
     for ident in sorted(private_ids):
         # Bare short IDs can coincide with real words or values.
         if "_" not in ident and not re.fullmatch(r"[0-9a-f]{32,64}", ident):
@@ -373,6 +382,19 @@ def run_pilot_turn(
         booking=group is not None and _BOOKING_QUESTION.search(message) is not None,
         speed_unit=speed_unit,
     )
+    if missing and required.sources and not required.calculation and documents:
+        # A complete card may resolve the question, including a fact it explicitly
+        # leaves unspecified. Check which reported inputs can only come from the user.
+        source_inputs: MissingInputs = _call(
+            model,
+            "source_inputs",
+            planning | {"reported_missing": missing},
+            MissingInputs,
+        )
+        if not set(source_inputs.missing) <= set(missing):
+            raise EvidenceError("pilot_source_input_unlisted")
+        missing = source_inputs.missing
+        audit.append({"phase": "source_inputs", "data": source_inputs.model_dump()})
     if resolved or missing != assessment.missing:
         audit.append(
             {"phase": "resolved_inputs", "data": resolved | {"missing": missing}}

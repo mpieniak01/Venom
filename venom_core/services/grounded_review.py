@@ -142,10 +142,10 @@ def compact_packet(material: dict[str, Any]) -> dict[str, Any]:
     if planned != [(c["calculation_id"], c["expression"], c["unit"]) for c in output]:
         raise ValueError("review_plan_evidence_mismatch")
     return {
-        "users": [
+        "request": material["message"],
+        "prior_users": [
             turn["content"] for turn in material["history"] if turn["role"] == "user"
-        ]
-        + [material["message"]],
+        ],
         "needs": material["requirements"],
         "mode": plan["mode"],
         "missing": plan["missing"],

@@ -62,6 +62,7 @@ class Model:
                 "current_state": "Aktualna cena biletu 30 zł.",
                 "missing": ["liczba biletów"] if self.mode == "clarify" else [],
             },
+            "source_inputs": {"missing": data.get("reported_missing", [])},
             "plan": {
                 "calculations": [
                     {
@@ -729,7 +730,14 @@ def test_compact_form_preserves_independent_checks_and_complete_coverage(
 ):
     material, _ = _grounded_review_fixture()
 
+    material["history"] = [
+        {"role": "user", "content": "Definicja rabatu w jednym zdaniu."},
+        {"role": "assistant", "content": "Odpowiedź o definicji."},
+    ]
+
     def check(packet):
+        assert packet["request"] == material["message"]
+        assert packet["prior_users"] == ["Definicja rabatu w jednym zdaniu."]
         assert (
             packet["sources"][0]["text"]
             == "Cennik pracowni: bilet kosztuje 30 zł. Rabat wynosi 20%."
@@ -901,3 +909,90 @@ def test_speed_conversion_discards_only_the_requested_result(missing):
     else:
         assert material["evidence"]["calculations"][0]["expression"] == "(36/30)*18/5"
         assert material["evidence"]["calculations"][0]["value"] == "4.32"
+
+
+@pytest.mark.parametrize(
+    "missing_after,claim,text",
+    [
+        ([], True, "Karta podaje rabat 20%."),
+        (["liczba uczestników"], False, "Ilu uczestników obejmuje rezerwacja?"),
+    ],
+)
+def test_source_determines_which_missing_inputs_must_come_from_the_user(
+    missing_after, claim, text
+):
+    model, reviewer = Model(), Reviewer()
+    original = ["wysokość rabatu", "liczba uczestników"]
+    model.override["assess"] = {"current_state": "Pełny cennik.", "missing": original}
+    model.override["source_inputs"] = {"missing": missing_after}
+    model.override["draft"] = {
+        "prose": text,
+        "sources": [
+            {"source_id": "price", "version": "v1", "quote": "Rabat wynosi 20%."}
+        ]
+        if claim
+        else [],
+        "calculations": [],
+    }
+    answer = run_pilot_turn(
+        "Sprawdź w karcie warunki rabatu.",
+        "read",
+        Sources(),
+        model,
+        reviewer,
+        required=Requirements(sources=True),
+    )
+    assert answer.text == text
+    data = dict(model.calls)
+    assert data["source_inputs"]["reported_missing"] == original
+    assert data["source_inputs"]["sources"][0]["complete"]
+    assert reviewer.materials[0]["plan"]["missing"] == missing_after
+    assert "plan" not in data
+
+
+def test_source_confirmation_cannot_introduce_another_missing_item():
+    model = Model("clarify")
+    model.override["source_inputs"] = {"missing": ["inne dane"]}
+    with pytest.raises(EvidenceError, match="pilot_source_input_unlisted"):
+        run(model=model, required=Requirements(sources=True))
+    assert [phase for phase, _ in model.calls] == [
+        "source_query",
+        "assess",
+        "source_inputs",
+    ]
+
+
+@pytest.mark.parametrize("unit", ["punktów", "paczek"])
+def test_counting_units_bind_draft_to_calculator(unit):
+    model, reviewer = Model(), Reviewer()
+    model.override["plan"] = {
+        "calculations": [
+            {"calculation_id": "total", "expression": "17+6", "unit": unit}
+        ]
+    }
+    model.override["draft"] = {
+        "prose": f"Razem 23 {unit}.",
+        "sources": [],
+        "calculations": [{"calculation_id": "total", "value": "23", "unit": unit}],
+    }
+    answer = run(
+        model=model, reviewer=reviewer, required=Requirements(calculation=True)
+    )
+    assert answer.text == f"Razem 23 {unit}."
+    model.override["draft"]["calculations"][0]["unit"] = "porcji"
+    with pytest.raises(EvidenceError, match="answer_calculation_mismatch"):
+        run(model=model, reviewer=reviewer, required=Requirements(calculation=True))
+
+
+def test_rendered_source_preserves_public_citation_without_version_metadata():
+    model, reviewer = Model(), Reviewer()
+    model.override["draft"] = {
+        "prose": "Według karty price (ID: price, wersja: v1) rabat wynosi 20%.",
+        "sources": [
+            {"source_id": "price", "version": "v1", "quote": "Rabat wynosi 20%."}
+        ],
+        "calculations": [],
+    }
+    answer = run(model=model, reviewer=reviewer, required=Requirements(sources=True))
+    assert answer.text == "Według karty price rabat wynosi 20%."
+    assert reviewer.materials[0]["draft"]["prose"] == answer.text

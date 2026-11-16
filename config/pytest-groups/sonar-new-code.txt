@@ -192,6 +192,7 @@ tests/test_granite_remote_comparison.py
 tests/test_granite_remote_inference.py
 tests/test_graph_rag_service.py
 tests/test_graph_store.py
+tests/test_grounded_dialogue.py
 tests/test_hardware_bridge.py
 tests/test_healing_flow.py
 tests/test_hidden_prompts_cache.py

@@ -16,6 +16,7 @@ from venom_core.services.grounded_pilot import (
     material_hash,
     run_pilot_turn,
 )
+from venom_core.services.grounded_review import GroundedChecklistReviewer
 
 
 class Sources:
@@ -569,3 +570,77 @@ def test_planner_does_not_treat_prior_assistant_assumptions_as_user_data():
     assert (
         calls["draft"]["history"] == reviewer.materials[0]["history"] == list(history)
     )
+
+
+def _grounded_review_fixture():
+    recorder = Reviewer()
+    run(reviewer=recorder)
+    material = recorder.materials[0]
+    grade = {
+        "context": {
+            "ok": True,
+            "reason": "Rabat dotyczy ceny.",
+            "latest_user_quote": "20%",
+        },
+        "source_claims": [
+            {
+                "ok": True,
+                "reason": "Rabat należy odjąć.",
+                "answer_quote": "24 zł",
+                "source_id": "price",
+                "source_quote": "Rabat wynosi 20%.",
+            }
+        ],
+        "calculations": [{"calculation_id": "c1", "ok": True, "reason": "30 × 0,8."}],
+        "answer": {"ok": True, "reason": "Cena po rabacie."},
+    }
+    return material, grade
+
+
+@pytest.mark.parametrize(
+    "fault", [None, "context", "source_claims", "calculations", "answer"]
+)
+def test_each_review_finding_can_block_the_verified_answer(fault):
+    material, grade = _grounded_review_fixture()
+    if fault:
+        finding = grade[fault]
+        if isinstance(finding, list):
+            finding = finding[0]
+        finding.update(ok=False, reason="Wykryto rozbieżność.")
+    reviewer = GroundedChecklistReviewer("q1", lambda _: grade)
+    verdict = reviewer.review(material)
+    assert verdict.approved is (fault is None)
+    assert verdict.material_sha256 == material_hash(material)
+    assert verdict.qualification_id == "q1"
+
+
+@pytest.mark.parametrize(
+    "change,error",
+    [
+        ("wrong_user", "review_context_quote_invalid"),
+        ("absent_calculation", "review_calculation_coverage_invalid"),
+        ("duplicate_calculation", "review_calculation_coverage_invalid"),
+        ("absent_source", "review_source_coverage_missing"),
+        ("wrong_answer", "review_answer_quote_invalid"),
+        ("wrong_source", "review_source_quote_invalid"),
+        ("absent_quote", "review_source_quote_invalid"),
+    ],
+)
+def test_review_requires_complete_plan_and_literal_evidence(change, error):
+    material, grade = _grounded_review_fixture()
+    if change == "wrong_user":
+        grade["context"]["latest_user_quote"] = "różne dane"
+    elif change == "absent_calculation":
+        grade["calculations"] = []
+    elif change == "duplicate_calculation":
+        grade["calculations"] *= 2
+    elif change == "absent_source":
+        grade["source_claims"] = []
+    elif change == "wrong_answer":
+        grade["source_claims"][0]["answer_quote"] = "inna odpowiedź"
+    elif change == "wrong_source":
+        grade["source_claims"][0]["source_quote"] = "inny zapis"
+    elif change == "absent_quote":
+        grade["source_claims"][0]["source_quote"] = ""
+    with pytest.raises(ValueError, match=error):
+        GroundedChecklistReviewer("q1", lambda _: grade).review(material)

@@ -56,6 +56,9 @@ class Model:
     def __call__(self, phase, data, schema):
         self.calls.append((phase, data))
         self.hook(phase)
+        if phase == "assess":
+            # Gemma reconstructs the inputs before listing which ones are absent.
+            assert list(schema["properties"]) == ["current_state", "missing"]
         default = {
             "source_query": {"source_query": "cennik pracowni"},
             "assess": {
@@ -945,6 +948,8 @@ def test_source_determines_which_missing_inputs_must_come_from_the_user(
     assert answer.text == text
     data = dict(model.calls)
     assert data["source_inputs"]["reported_missing"] == original
+    assert data["source_inputs"]["request"] == "Sprawdź w karcie warunki rabatu."
+    assert "current_state" not in data["source_inputs"]
     assert data["source_inputs"]["sources"][0]["complete"]
     assert reviewer.materials[0]["plan"]["missing"] == missing_after
     assert "plan" not in data

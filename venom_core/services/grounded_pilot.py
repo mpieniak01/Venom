@@ -9,6 +9,7 @@ from dataclasses import asdict, dataclass
 from typing import Annotated, Any, Literal, Protocol
 
 from pydantic import (
+    AfterValidator,
     BaseModel,
     ConfigDict,
     Field,
@@ -46,21 +47,26 @@ class SourceQuery(StrictModel):
     source_query: StrictStr = Field(max_length=500)
 
 
+def _validate_missing(missing: list[str]) -> list[str]:
+    if any(not item.strip() for item in missing):
+        raise ValueError("missing input must be named")
+    return missing
+
+
+MissingLabels = Annotated[
+    list[Annotated[StrictStr, Field(min_length=1, max_length=160)]],
+    Field(max_length=8),
+    AfterValidator(_validate_missing),
+]
+
+
 class MissingInputs(StrictModel):
-    missing: list[Annotated[StrictStr, Field(min_length=1, max_length=160)]] = Field(
-        max_length=8
-    )
-
-    @field_validator("missing")
-    @classmethod
-    def validate_missing(cls, missing: list[str]) -> list[str]:
-        if any(not item.strip() for item in missing):
-            raise ValueError("missing input must be named")
-        return missing
+    missing: MissingLabels
 
 
-class InputAssessment(MissingInputs):
+class InputAssessment(StrictModel):
     current_state: StrictStr = Field(min_length=1, max_length=700)
+    missing: MissingLabels
 
 
 class Calculation(StrictModel):
@@ -397,7 +403,12 @@ def run_pilot_turn(
         source_inputs: MissingInputs = _call(
             model,
             "source_inputs",
-            planning | {"reported_missing": missing},
+            {
+                "reported_missing": missing,
+                "prior_users": prior_users,
+                "sources": model_sources,
+                "request": message,
+            },
             MissingInputs,
         )
         if not set(source_inputs.missing) <= set(missing):

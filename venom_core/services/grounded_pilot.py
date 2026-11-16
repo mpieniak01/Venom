@@ -47,6 +47,7 @@ class SourceQuery(StrictModel):
 
 
 class InputAssessment(StrictModel):
+    current_state: StrictStr = Field(min_length=1, max_length=700)
     missing: list[Annotated[StrictStr, Field(min_length=1, max_length=160)]] = Field(
         max_length=8
     )
@@ -65,6 +66,7 @@ class Calculation(StrictModel):
         min_length=1, max_length=MAX_EXPRESSION_CHARS, pattern=r"^[0-9.+*/() -]+$"
     )
     unit: StrictStr = Field(json_schema_extra={"enum": [*sorted(UNITS)]})
+    input_unit: StrictStr = ""
 
     @field_validator("unit")
     @classmethod
@@ -72,6 +74,30 @@ class Calculation(StrictModel):
         if unit not in UNITS:
             raise ValueError("unsupported calculator unit")
         return unit
+
+
+_CONVERSIONS = {
+    ("ml", "l"): "/1000",
+    ("l", "ml"): "*1000",
+    ("g", "kg"): "/1000",
+    ("kg", "g"): "*1000",
+    ("min", "h"): "/60",
+    ("h", "min"): "*60",
+    ("m/s", "km/h"): "*18/5",
+    ("km/h", "m/s"): "*5/18",
+}
+
+
+def _compile_calculation(item: Calculation) -> Calculation:
+    """Apply conversion to the value of the entire expression."""
+    if not item.input_unit or item.input_unit == item.unit:
+        return item
+    scale = _CONVERSIONS.get((item.input_unit, item.unit))
+    if scale is None:
+        raise EvidenceError("pilot_conversion_unsupported")
+    return item.model_copy(
+        update={"expression": f"({item.expression}){scale}", "input_unit": ""}
+    )
 
 
 class ArithmeticPlan(StrictModel):
@@ -246,10 +272,12 @@ def run_pilot_turn(
     }
     assessment: InputAssessment = _call(model, "assess", planning, InputAssessment)
     audit.append({"phase": "assess", "data": assessment.model_dump()})
+    planning["current_state"] = assessment.current_state
     calculations = []
     if required.calculation and not assessment.missing:
         arithmetic: ArithmeticPlan = _call(model, "plan", planning, ArithmeticPlan)
-        calculations = arithmetic.calculations
+        audit.append({"phase": "arithmetic", "data": arithmetic.model_dump()})
+        calculations = [_compile_calculation(c) for c in arithmetic.calculations]
     plan = Plan(
         mode="clarify" if assessment.missing else "answer",
         missing=assessment.missing,
@@ -286,7 +314,12 @@ def run_pilot_turn(
     # The receipt key belongs to the adapter, not the generator or its answer.
     review_evidence = {k: v for k, v in evidence_data.items() if k != "evidence_id"}
     review_evidence["sources"] = model_sources
-    draft_input = request | {"plan": plan_data, "evidence": review_evidence}
+    draft_input = request | {
+        "history": planning["history"],
+        "current_state": assessment.current_state,
+        "plan": plan_data,
+        "evidence": review_evidence,
+    }
     draft: Draft = _call(model, "draft", draft_input, Draft)
     prose = _public_prose(
         draft.prose,

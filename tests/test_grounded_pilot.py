@@ -16,7 +16,10 @@ from venom_core.services.grounded_pilot import (
     material_hash,
     run_pilot_turn,
 )
-from venom_core.services.grounded_review import GroundedChecklistReviewer
+from venom_core.services.grounded_review import (
+    CompactGroundedReviewer,
+    GroundedChecklistReviewer,
+)
 
 
 class Sources:
@@ -55,7 +58,10 @@ class Model:
         self.hook(phase)
         default = {
             "source_query": {"source_query": "cennik pracowni"},
-            "assess": {"missing": ["liczba biletów"] if self.mode == "clarify" else []},
+            "assess": {
+                "current_state": "Aktualna cena biletu 30 zł.",
+                "missing": ["liczba biletów"] if self.mode == "clarify" else [],
+            },
             "plan": {
                 "calculations": [
                     {
@@ -135,6 +141,7 @@ def test_complete_flow_reads_before_formula_and_calculates_before_draft():
         "source_query",
         "full_read",
         "assess",
+        "arithmetic",
         "plan",
         "evidence",
         "draft",
@@ -567,9 +574,9 @@ def test_planner_does_not_treat_prior_assistant_assumptions_as_user_data():
     calls = dict(model.calls)
     for phase in ("assess", "plan"):
         assert calls[phase]["history"] == [history[0]]
-    assert (
-        calls["draft"]["history"] == reviewer.materials[0]["history"] == list(history)
-    )
+    assert calls["draft"]["history"] == [history[0]]
+    assert reviewer.materials[0]["history"] == list(history)
+    assert calls["draft"]["current_state"] == calls["plan"]["current_state"]
 
 
 def _grounded_review_fixture():
@@ -656,4 +663,103 @@ def test_source_event_mismatch_blocks_even_when_quotes_and_other_checks_pass():
     assert not reviewer.review(material).approved
     grade["source_claims"][0]["answer_role"] = "nieistniejąca czynność"
     with pytest.raises(ValueError, match="review_answer_role_invalid"):
+        reviewer.review(material)
+
+
+def test_unit_conversion_is_compiled_around_entire_expression():
+    model, reviewer = Model(), Reviewer()
+    model.override["plan"] = {
+        "calculations": [
+            {
+                "calculation_id": "v",
+                "expression": "900 - (2 * 85) + 120",
+                "input_unit": "ml",
+                "unit": "l",
+            }
+        ]
+    }
+    model.override["draft"] = {
+        "prose": "W dzbanku jest 0,85 l.",
+        "sources": [],
+        "calculations": [{"calculation_id": "v", "value": "0.85", "unit": "l"}],
+    }
+    result = run(
+        model=model, reviewer=reviewer, required=Requirements(calculation=True)
+    )
+    assert result.text == "W dzbanku jest 0,85 l."
+    assert (
+        reviewer.materials[0]["evidence"]["calculations"][0]["expression"]
+        == "(900 - (2 * 85) + 120)/1000"
+    )
+
+
+def test_unsupported_conversion_stops_before_any_draft():
+    model, reviewer = Model(), Reviewer()
+    model.override["plan"] = {
+        "calculations": [
+            {
+                "calculation_id": "v",
+                "expression": "10+2",
+                "input_unit": "kg",
+                "unit": "l",
+            }
+        ]
+    }
+    with pytest.raises(EvidenceError, match="pilot_conversion_unsupported"):
+        run(model=model, reviewer=reviewer)
+    assert not reviewer.materials
+    assert "draft" not in dict(model.calls)
+
+
+@pytest.mark.parametrize(
+    "change,expected",
+    [
+        ({}, True),
+        ({"context_ok": False}, False),
+        ({"source_ok": False}, False),
+        ({"calc_ok": [False]}, False),
+        ({"answer_ok": False}, False),
+        ({"calc_ok": []}, "review_calculation_coverage_invalid"),
+        ({"source_refs": [2]}, "review_source_reference_invalid"),
+        ({"source_refs": []}, "review_source_coverage_missing"),
+    ],
+)
+def test_compact_form_preserves_independent_checks_and_complete_coverage(
+    change, expected
+):
+    material, _ = _grounded_review_fixture()
+
+    def check(packet):
+        assert (
+            packet["sources"][0]["text"]
+            == "Cennik pracowni: bilet kosztuje 30 zł. Rabat wynosi 20%."
+        )
+        assert packet["calculations"][0]["expression"] == "30*(1-20/100)"
+        assert packet["answer"] == material["draft"]["prose"]
+        return {
+            "context_ok": True,
+            "source_ok": True,
+            "source_refs": [1],
+            "calc_ok": [True],
+            "answer_ok": True,
+            "reason": "OK",
+        } | change
+
+    reviewer = CompactGroundedReviewer("q", check)
+    if isinstance(expected, str):
+        with pytest.raises(ValueError, match=expected):
+            reviewer.review(material)
+    else:
+        result = reviewer.review(material)
+        assert result.approved is expected
+        assert result.material_sha256 == material_hash(material)
+
+
+def test_compact_review_rejects_mismatched_effective_expression_before_transport():
+    material, _ = _grounded_review_fixture()
+    material["plan"]["calculations"][0]["expression"] = "30"
+    reviewer = CompactGroundedReviewer(
+        "q", lambda _: pytest.fail("unexpected review call")
+    )
+    with pytest.raises(ValueError, match="review_plan_evidence_mismatch"):
         reviewer.review(material)

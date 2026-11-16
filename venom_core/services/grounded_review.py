@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
-from pydantic import Field, StrictBool, StrictStr
+from pydantic import Field, StrictBool, StrictInt, StrictStr
 
 from venom_core.services.grounded_pilot import (
     SemanticVerdict,
@@ -118,4 +118,93 @@ class GroundedChecklistReviewer:
             self.qualification_id,
             not failures,
             " | ".join(failures) if failures else audit.answer.reason,
+        )
+
+
+class CompactFindings(StrictModel):
+    context_ok: StrictBool
+    source_ok: StrictBool
+    source_refs: list[StrictInt] = Field(max_length=8)
+    calc_ok: list[StrictBool] = Field(max_length=8)
+    answer_ok: StrictBool
+    reason: StrictStr = Field(min_length=1, max_length=300)
+
+
+def compact_packet(material: dict[str, Any]) -> dict[str, Any]:
+    """Keep complete source text and ordered computations without duplicating claims."""
+    plan = material["plan"]
+    evidence = material["evidence"]
+    output = evidence["calculations"]
+    planned = [
+        (c["calculation_id"], c["expression"], c["unit"]) for c in plan["calculations"]
+    ]
+    if planned != [(c["calculation_id"], c["expression"], c["unit"]) for c in output]:
+        raise ValueError("review_plan_evidence_mismatch")
+    return {
+        "users": [
+            turn["content"] for turn in material["history"] if turn["role"] == "user"
+        ]
+        + [material["message"]],
+        "needs": material["requirements"],
+        "mode": plan["mode"],
+        "missing": plan["missing"],
+        "sources": [
+            {"n": i, "id": doc["ref"]["source_id"], "text": doc["text"]}
+            for i, doc in enumerate(evidence["sources"], 1)
+        ],
+        "calculations": [
+            {
+                "n": i,
+                "expression": c["expression"],
+                "value": c["value"],
+                "unit": c["unit"],
+            }
+            for i, c in enumerate(output, 1)
+        ],
+        "answer": material["draft"]["prose"],
+    }
+
+
+def compact_approved(raw: dict[str, Any], packet: dict[str, Any]) -> bool:
+    findings = CompactFindings.model_validate(raw)
+    if len(findings.calc_ok) != len(packet["calculations"]):
+        raise ValueError("review_calculation_coverage_invalid")
+    refs = findings.source_refs
+    if len(set(refs)) != len(refs) or not set(refs) <= {
+        doc["n"] for doc in packet["sources"]
+    }:
+        raise ValueError("review_source_reference_invalid")
+    if (
+        packet["needs"]["sources"]
+        and packet["mode"] == "answer"
+        and findings.source_ok
+        and findings.answer_ok
+        and not refs
+    ):
+        raise ValueError("review_source_coverage_missing")
+    return (
+        findings.context_ok
+        and findings.source_ok
+        and findings.answer_ok
+        and all(findings.calc_ok)
+    )
+
+
+class CompactGroundedReviewer:
+    """Bind the transport response to the original material and verify its coverage."""
+
+    def __init__(
+        self,
+        qualification_id: str,
+        review_call: Callable[[dict[str, Any]], dict[str, Any]],
+    ) -> None:
+        self.qualification_id = qualification_id
+        self.review_call = review_call
+
+    def review(self, material: dict[str, Any]) -> SemanticVerdict:
+        packet = compact_packet(material)
+        reply = self.review_call(packet)
+        approved = compact_approved(reply, packet)
+        return SemanticVerdict(
+            material_hash(material), self.qualification_id, approved, reply["reason"]
         )

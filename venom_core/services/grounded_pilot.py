@@ -148,6 +148,33 @@ _SPEED_CONVERSION = re.compile(
     r"\bprzelicz\b[^.!?\n]*\b(?:na|w)\s+(km/h|m/s)\b", re.IGNORECASE
 )
 
+_SPEED_REQUEST = re.compile(
+    r"\b(?:oblicz|policz|wyznacz)\s+(?:\w+\s+){0,3}prędkość\s+w\s+(m/s|km/h)\b",
+    re.IGNORECASE,
+)
+_PRIOR_RESULT = re.compile(
+    r"\b(?:przelicz|użyj|weź)\s+(?:(?:ten|tego|poprzedni|wcześniejszy)\s+)?wynik(?:u)?\b",
+    re.IGNORECASE,
+)
+_COMPUTE_REQUEST = re.compile(r"\b(?:oblicz|policz|przelicz|wyznacz)\b", re.IGNORECASE)
+_REMAINDER_REQUEST = re.compile(
+    r"\b(?:oblicz|policz|wyznacz)\s+(?:pozostałość|ile\s+(?:zostało|pozostało))\b",
+    re.IGNORECASE,
+)
+
+
+def _calculation_outputs(message: str, speed_unit: str | None) -> set[str]:
+    outputs = (
+        {"wynik", "wynik obliczenia", "wynik rachunku"}
+        if _COMPUTE_REQUEST.search(message) and not _PRIOR_RESULT.search(message)
+        else set()
+    )
+    if speed_unit:
+        outputs.update({f"prędkość {speed_unit}", f"prędkość w {speed_unit}"})
+    if _REMAINDER_REQUEST.search(message):
+        outputs.update({"pozostałość", "wynik pozostałości"})
+    return outputs
+
 
 _NUMBER = r"[+-]?[0-9]+(?:[.,][0-9]+)?"
 _MEAN_REQUEST = re.compile(
@@ -255,7 +282,11 @@ def _group_update(message: str, previous: str) -> dict[str, int] | None:
 
 
 def _missing_inputs(
-    missing: list[str], *, booking: bool, speed_unit: str | None, price_subject: str
+    missing: list[str],
+    *,
+    booking: bool,
+    calculation_outputs: set[str],
+    price_subject: str,
 ) -> list[str]:
     """An explicitly requested output cannot itself be a prerequisite."""
     inputs = []
@@ -265,10 +296,7 @@ def _missing_inputs(
             continue
         if price_subject and _price_result(label, price_subject):
             continue
-        if speed_unit and label in {
-            f"prędkość {speed_unit}",
-            f"prędkość w {speed_unit}",
-        }:
+        if label in calculation_outputs:
             continue
         inputs.append(item)
     return inputs
@@ -410,6 +438,75 @@ def _cite_sources(prose: str, quotes: list[Quote]) -> str:
     return f"{prose} {' '.join(missing)}" if missing else prose
 
 
+_RECAP_REQUEST = re.compile(
+    r"\b(?:podsumuj|przypomnij|powtórz)\b|"
+    r"\b(?:sporządź|przygotuj|zrób|napisz)\b[^.!?]*\b(?:informację|notatkę|komunikat|podsumowanie)\b",
+    re.IGNORECASE,
+)
+_DATE_EXCEPTION = re.compile(
+    r"\b(?:pierwszą|ostatnią|najbliższą)\s+(?:sobotę|niedzielę|środę)|"
+    r"\b(?:pierwszy|ostatni|najbliższy)\s+(?:poniedziałek|wtorek|czwartek|piątek)|"
+    r"\bwyjątkowo\b",
+    re.IGNORECASE,
+)
+_DATE_OVERRIDE = re.compile(
+    r"\b(?:wróć\s+do\s+zwykł|zwykle|standardow|przekładam|przenosim|zmieniam\w*\s+termin)",
+    re.IGNORECASE,
+)
+_ADDRESS_REPLACED = re.compile(
+    r"\b(?:nowy|aktualny)\s+adres\s+(?:to|jest)\b", re.IGNORECASE
+)
+_ADDRESS_REVOKED = re.compile(
+    r"\badres\b[^.!?;\n]{0,80}\b(?:odwołano|wycofano)\b|"
+    r"\b(?:odwołujemy|wycofujemy)\s+adres\b",
+    re.IGNORECASE,
+)
+_TENTATIVE_TIME = re.compile(
+    r"\b(?:wstępnie|prowizorycznie)\b[^.!?;\n]{0,65}\b([0-2]?\d:[0-5]\d)\b",
+    re.IGNORECASE,
+)
+
+
+def plain_pilot_context(
+    message: str, history: tuple[dict[str, str], ...]
+) -> tuple[tuple[dict[str, str], ...], str]:
+    """Focus an ordinary pilot turn on the selected exception or latest status."""
+    recap = bool(_RECAP_REQUEST.search(message))
+    previous = [
+        (i, item["content"]) for i, item in enumerate(history) if item["role"] == "user"
+    ]
+    guidance = []
+    if recap and not _DATE_OVERRIDE.search(message):
+        for index, prior in reversed(previous[-2:]):
+            if _DATE_OVERRIDE.search(prior):
+                break
+            if _DATE_EXCEPTION.search(prior):
+                history = history[index:]
+                guidance.append(
+                    "Użytkownik wybrał wyjątek od zwykłego terminu. Podsumuj wyłącznie "
+                    "ten wybrany termin i jego ustalenia. Godzinę przypisz do czynności "
+                    "podanej w rozmowie lub karcie. Godzina otwarcia lub odjazdu nie oznacza "
+                    "godziny zbiórki bez wyraźnego potwierdzenia."
+                )
+                break
+    latest = previous[-1][1] if recap and previous else ""
+    if _ADDRESS_REVOKED.search(message) or _TENTATIVE_TIME.search(message):
+        latest = message
+    revoked = _ADDRESS_REVOKED.search(latest)
+    if revoked and not _ADDRESS_REPLACED.search(latest, revoked.end()):
+        guidance.append(
+            "Ostatni podany adres został wycofany. Wprost wskaż, że aktualny adres "
+            "wymaga potwierdzenia. Nie podawaj wycofanego adresu jako miejsca spotkania."
+        )
+    tentative = _TENTATIVE_TIME.search(latest)
+    if tentative:
+        guidance.append(
+            f"Godzina {tentative[1]} jest wstępna i wymaga potwierdzenia. "
+            "Tak opisz ją w odpowiedzi, zachowując już ustalony dzień."
+        )
+    return history, " ".join(guidance)
+
+
 def run_pilot_turn(
     message: str,
     revision: str,
@@ -477,7 +574,11 @@ def run_pilot_turn(
         if required.sources and documents and prior_users
         else None
     )
-    speed = _SPEED_CONVERSION.search(message) if required.calculation else None
+    speed = (
+        _SPEED_CONVERSION.search(message) or _SPEED_REQUEST.search(message)
+        if required.calculation
+        else None
+    )
     speed_unit = speed[1].lower() if speed else None
     resolved: dict[str, Any] = {}
     if group is not None:
@@ -507,7 +608,9 @@ def run_pilot_turn(
     missing = _missing_inputs(
         assessment.missing,
         booking=group is not None and _BOOKING_QUESTION.search(message) is not None,
-        speed_unit=speed_unit,
+        calculation_outputs=_calculation_outputs(message, speed_unit)
+        if required.calculation
+        else set(),
         price_subject=" ".join(price[1].lower().split()) if price else "",
     )
     if missing and required.sources and not required.calculation and documents:

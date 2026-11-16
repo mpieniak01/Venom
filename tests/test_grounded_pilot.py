@@ -14,6 +14,7 @@ from venom_core.services.grounded_dialogue import (
 from venom_core.services.grounded_pilot import (
     SemanticVerdict,
     material_hash,
+    plain_pilot_context,
     run_pilot_turn,
 )
 from venom_core.services.grounded_review import (
@@ -1142,3 +1143,113 @@ def test_source_price_absence_is_an_answer_supported_by_the_full_card(
     assert answer.text == f"{text} [price]"
     assert "source_inputs" not in dict(model.calls)
     assert reviewer.materials[0]["plan"]["mode"] == "answer"
+
+
+@pytest.mark.parametrize(
+    "message,output,input_label,expression,unit",
+    [
+        (
+            "Model przejechał 45 m w 15 sekund. Oblicz jego prędkość w m/s.",
+            "prędkość w m/s",
+            "czas przejazdu",
+            "45/15",
+            "m/s",
+        ),
+        (
+            "Odjęto trzy porcje po 40 ml. Oblicz pozostałość.",
+            "pozostałość",
+            "początkowa objętość",
+            "230-3*40",
+            "ml",
+        ),
+        (
+            "Korekta: odjęto tylko dwie porcje. Przelicz mililitry.",
+            "wynik obliczenia",
+            "objętość porcji",
+            "230-2*40",
+            "ml",
+        ),
+    ],
+)
+@pytest.mark.parametrize("has_missing_input", [False, True])
+def test_explicit_calculation_distinguishes_outputs_from_prerequisites(
+    message, output, input_label, expression, unit, has_missing_input
+):
+    model, reviewer = Model(), Reviewer()
+    model.override["assess"] = {
+        "current_state": "Stan z bieżącego polecenia i historii.",
+        "missing": [output, input_label] if has_missing_input else [output],
+    }
+    model.override["plan"] = {
+        "calculations": [
+            {"calculation_id": "r", "expression": expression, "unit": unit}
+        ]
+    }
+
+    def draft(phase, data, schema):
+        if phase != "draft":
+            return model(phase, data, schema)
+        calcs = data["evidence"]["calculations"]
+        return {
+            "prose": f"Podaj {input_label}."
+            if has_missing_input
+            else f"Wynik to {calcs[0]['value']} {unit}.",
+            "sources": [],
+            "calculations": [
+                {k: c[k] for k in ("calculation_id", "value", "unit")} for c in calcs
+            ],
+        }
+
+    run_pilot_turn(
+        message,
+        "inputs",
+        Sources(),
+        draft,
+        reviewer,
+        required=Requirements(calculation=True),
+    )
+    material = reviewer.materials[0]
+    assert material["plan"]["missing"] == ([input_label] if has_missing_input else [])
+    assert ("plan" in dict(model.calls)) == (not has_missing_input)
+
+
+def test_plain_recap_uses_selected_exception_and_its_own_source_turns():
+    history = (
+        {"role": "user", "content": "O której zwykle odjazd?"},
+        {"role": "assistant", "content": "O 12:00."},
+        {"role": "user", "content": "Sprawdź odjazd w pierwszą sobotę."},
+        {"role": "assistant", "content": "Odjazd o 15:00."},
+        {"role": "user", "content": "Gdzie wsiadamy tego dnia?"},
+        {"role": "assistant", "content": "Boczne wejście."},
+    )
+    focused, guidance = plain_pilot_context(
+        "Sporządź informację z godziną i miejscem.", history
+    )
+    assert focused == history[2:]
+    assert "wybrany termin" in guidance
+    assert plain_pilot_context("Co to jest rower?", history) == (history, "")
+    assert plain_pilot_context("Podsumuj, kiedy zwykle następuje odjazd.", history) == (
+        history,
+        "",
+    )
+
+
+def test_plain_recap_preserves_revoked_address_and_tentative_time():
+    revision = "Adres przy Miedzianej odwołano. Wstępnie planujemy 07:50. Co wiadomo?"
+    history = (
+        {"role": "user", "content": "Termin to poniedziałek."},
+        {"role": "assistant", "content": "Poniedziałek."},
+    )
+    assert plain_pilot_context(revision, history)[0] == history
+    revised = history + (
+        {"role": "user", "content": revision},
+        {"role": "assistant", "content": "Nie zatwierdzono godziny i adresu."},
+    )
+    _, guidance = plain_pilot_context("Napisz notatkę dla uczestników.", revised)
+    assert guidance == plain_pilot_context(revision, history)[1]
+    assert "adres wymaga potwierdzenia" in guidance and "07:50 jest wstępna" in guidance
+    replaced = revised + (
+        {"role": "user", "content": "Adres i godzina są już potwierdzone."},
+        {"role": "assistant", "content": "Przyjąłem potwierdzenie."},
+    )
+    assert plain_pilot_context("Napisz notatkę dla uczestników.", replaced)[1] == ""

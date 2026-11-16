@@ -54,12 +54,9 @@ class Model:
         self.hook(phase)
         default = {
             "route": {"source_query": "cennik pracowni", "calculation_required": True},
+            "assess": {"missing": ["liczba biletów"] if self.mode == "clarify" else []},
             "plan": {
-                "mode": self.mode,
-                "missing": ["liczba biletów"] if self.mode == "clarify" else [],
-                "calculations": []
-                if self.mode == "clarify"
-                else [
+                "calculations": [
                     {
                         "calculation_id": "c1",
                         "expression": "30*(1-20/100)",
@@ -129,11 +126,12 @@ def test_complete_flow_reads_before_formula_and_calculates_before_draft():
     assert result.text == "Po rabacie zapłacisz 24 zł."
     assert len(backend.reads) == 2
     assert model.calls[1][1]["sources"][0]["text"] == backend.document.text
-    assert model.calls[2][1]["evidence"]["calculations"][0]["value"] == "24"
+    assert model.calls[3][1]["evidence"]["calculations"][0]["value"] == "24"
     assert reviewer.materials[0]["draft"]["prose"] == result.text
     assert [x["phase"] for x in trace] == [
         "route",
         "full_read",
+        "assess",
         "plan",
         "evidence",
         "draft",
@@ -152,8 +150,8 @@ def test_incomplete_source_blocks_before_formula_or_reviewer():
 def test_model_cannot_turn_off_required_calculator():
     model = Model()
     model.override["route"] = {"source_query": "", "calculation_required": False}
-    model.override["plan"] = {"mode": "answer", "missing": [], "calculations": []}
-    with pytest.raises(EvidenceError, match="calculation_plan_required"):
+    model.override["plan"] = {"calculations": []}
+    with pytest.raises(EvidenceError, match="pilot_model_invalid"):
         run(model=model, required=Requirements(calculation=True))
 
 
@@ -173,8 +171,6 @@ def test_wrong_value_unit_or_second_expression_never_reaches_reviewer(value, uni
 def test_semantic_review_checks_formula_selection_and_free_prose():
     model, reviewer = Model(), Reviewer(False)
     model.override["plan"] = {
-        "mode": "answer",
-        "missing": [],
         "calculations": [{"calculation_id": "c1", "expression": "30+20", "unit": "zł"}],
     }
     model.override["draft"] = {
@@ -241,25 +237,80 @@ def test_missing_data_asks_only_after_semantic_review_without_fabricated_calcula
 
 
 @pytest.mark.parametrize(
-    "plan",
+    "assessment",
     [
-        {"mode": "answer", "missing": ["długość kroku"], "calculations": []},
-        {"mode": "clarify", "missing": [], "calculations": []},
-        {
-            "mode": "clarify",
-            "missing": ["liczba"],
-            "calculations": [{"calculation_id": "c", "expression": "2", "unit": ""}],
-        },
+        {"missing": ["  "]},
+        {"missing": "długość kroku"},
+        {"missing": ["długość kroku"], "calculations": [{"expression": "0.762*1700"}]},
     ],
 )
-def test_inconsistent_missing_data_plan_blocks(plan):
+def test_invalid_assessment_cannot_reach_arithmetic(assessment):
     model = Model()
-    model.override["plan"] = plan
+    model.override["assess"] = assessment
+    with pytest.raises(EvidenceError, match="pilot_model_invalid"):
+        run(model=model)
+    assert [phase for phase, _ in model.calls] == ["route", "assess"]
+
+
+@pytest.mark.parametrize(
+    "expression,unit",
+    [
+        ("3 * 75 zł", "zł"),
+        ("(1600 * 0.7) / 1000 km", "km"),
+        ("135 + 45", "minuty"),
+        ("2**3", "min"),
+    ],
+)
+def test_bad_calculator_plan_never_reaches_draft(expression, unit):
+    model = Model()
+    model.override["plan"] = {
+        "calculations": [
+            {"calculation_id": "c1", "expression": expression, "unit": unit}
+        ]
+    }
     with pytest.raises(
-        EvidenceError,
-        match="pilot_missing_data_inconsistent|pilot_clarification_calculation",
+        EvidenceError, match="pilot_model_invalid|calculation_operator_unsupported"
     ):
         run(model=model)
+    assert [phase for phase, _ in model.calls] == ["route", "assess", "plan"]
+
+
+def test_source_fact_skips_arithmetic_even_when_document_has_numbers():
+    backend, model, reviewer = Sources(), Model(), Reviewer()
+    model.override["route"] = {
+        "source_query": "cennik pracowni",
+        "calculation_required": False,
+    }
+    model.override["draft"] = {
+        "prose": "Bilet kosztuje 30 zł.",
+        "sources": [
+            {"source_id": "price", "version": "v1", "quote": "bilet kosztuje 30 zł."}
+        ],
+        "calculations": [],
+    }
+    result = run_pilot_turn("Podaj cenę z cennika.", "read", backend, model, reviewer)
+    assert result.text == "Bilet kosztuje 30 zł."
+    assert [phase for phase, _ in model.calls] == ["route", "assess", "draft"]
+
+
+def test_assessment_changes_after_user_supplies_missing_input():
+    model, reviewer = Model("clarify"), Reviewer()
+    first = run(model=model, reviewer=reviewer)
+    assert [phase for phase, _ in model.calls] == ["route", "assess", "draft"]
+    model.mode = "answer"
+    second = run_pilot_turn(
+        "Jeden bilet. Przelicz.",
+        "r2",
+        Sources(),
+        model,
+        reviewer,
+        history=(
+            {"role": "user", "content": "Oblicz koszt biletów według cennika."},
+            {"role": "assistant", "content": first.text},
+        ),
+    )
+    assert second.text == "Po rabacie zapłacisz 24 zł."
+    assert second.evidence_id != first.evidence_id
 
 
 def test_clarification_cannot_smuggle_claims():
@@ -315,8 +366,6 @@ def test_correction_uses_new_expression_and_review_identity():
     backend, model, reviewer = Sources(), Model(), Reviewer()
     first = run(backend, model, reviewer)
     model.override["plan"] = {
-        "mode": "answer",
-        "missing": [],
         "calculations": [
             {"calculation_id": "c1", "expression": "30*(1-10/100)", "unit": "zł"}
         ],

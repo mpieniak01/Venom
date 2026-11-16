@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
-from typing import Any, Literal, Protocol
+from typing import Annotated, Any, Literal, Protocol
 
 from pydantic import (
     BaseModel,
@@ -14,9 +14,13 @@ from pydantic import (
     StrictBool,
     StrictStr,
     ValidationError,
+    field_validator,
 )
 
+from venom_core.services.grounded_calculator import MAX_EXPRESSION_CHARS
 from venom_core.services.grounded_dialogue import (
+    MAX_CALCULATIONS,
+    UNITS,
     AnswerDraft,
     CalculationClaim,
     CalculationPlan,
@@ -25,6 +29,7 @@ from venom_core.services.grounded_dialogue import (
     PublishedAnswer,
     Requirements,
     SourceBackend,
+    SourceDocument,
     SourceQuote,
     TurnPlan,
     detect_requirements,
@@ -43,16 +48,42 @@ class Route(StrictModel):
     calculation_required: StrictBool
 
 
+class InputAssessment(StrictModel):
+    missing: list[Annotated[StrictStr, Field(min_length=1, max_length=160)]] = Field(
+        max_length=8
+    )
+
+    @field_validator("missing")
+    @classmethod
+    def validate_missing(cls, missing: list[str]) -> list[str]:
+        if any(not item.strip() for item in missing):
+            raise ValueError("missing input must be named")
+        return missing
+
+
 class Calculation(StrictModel):
     calculation_id: StrictStr = Field(min_length=1, max_length=80)
-    expression: StrictStr = Field(min_length=1, max_length=160)
-    unit: StrictStr = Field(max_length=20)
+    expression: StrictStr = Field(
+        min_length=1, max_length=MAX_EXPRESSION_CHARS, pattern=r"^[0-9.+*/() -]+$"
+    )
+    unit: StrictStr = Field(json_schema_extra={"enum": sorted(UNITS)})
+
+    @field_validator("unit")
+    @classmethod
+    def validate_unit(cls, unit: str) -> str:
+        if unit not in UNITS:
+            raise ValueError("unsupported calculator unit")
+        return unit
+
+
+class ArithmeticPlan(StrictModel):
+    calculations: list[Calculation] = Field(min_length=1, max_length=MAX_CALCULATIONS)
 
 
 class Plan(StrictModel):
     mode: Literal["answer", "clarify"]
-    missing: list[StrictStr] = Field(max_length=8)
-    calculations: list[Calculation] = Field(max_length=8)
+    missing: list[str]
+    calculations: list[Calculation]
 
 
 class Quote(StrictModel):
@@ -107,7 +138,7 @@ def _call(
         raise EvidenceError("pilot_model_invalid") from exc
 
 
-def _current(backend: SourceBackend, sources: tuple) -> None:
+def _current(backend: SourceBackend, sources: tuple[SourceDocument, ...]) -> None:
     for document in sources:
         try:
             ref = backend.current_ref(document.ref.source_id)
@@ -176,14 +207,21 @@ def run_pilot_turn(
         "sources": [asdict(d) for d in documents],
         "unavailable": list(unavailable),
     }
-    plan: Plan = _call(model, "plan", planning, Plan)
-    audit.append({"phase": "plan", "data": plan.model_dump()})
-    if (plan.mode == "clarify") != bool(plan.missing):
-        raise EvidenceError("pilot_missing_data_inconsistent")
+    assessment: InputAssessment = _call(model, "assess", planning, InputAssessment)
+    audit.append({"phase": "assess", "data": assessment.model_dump()})
+    calculations = []
+    if requirements.calculation and not assessment.missing:
+        arithmetic: ArithmeticPlan = _call(model, "plan", planning, ArithmeticPlan)
+        calculations = arithmetic.calculations
+    plan = Plan(
+        mode="clarify" if assessment.missing else "answer",
+        missing=assessment.missing,
+        calculations=calculations,
+    )
+    plan_data = plan.model_dump()
+    audit.append({"phase": "plan", "data": plan_data})
     if plan.mode == "clarify":
-        if plan.calculations:
-            raise EvidenceError("pilot_clarification_calculation")
-        evidence_id = material_hash(planning | {"plan": plan.model_dump()})
+        evidence_id = material_hash(planning | {"plan": plan_data})
         evidence_data: dict[str, Any] = {
             "evidence_id": evidence_id,
             "sources": [asdict(d) for d in documents],
@@ -208,7 +246,7 @@ def run_pilot_turn(
         evidence_id = evidence.evidence_id
         evidence_data = asdict(evidence)
     audit.append({"phase": "evidence", "data": evidence_data})
-    draft_input = request | {"plan": plan.model_dump(), "evidence": evidence_data}
+    draft_input = request | {"plan": plan_data, "evidence": evidence_data}
     draft: Draft = _call(model, "draft", draft_input, Draft)
     audit.append({"phase": "draft", "data": draft.model_dump()})
     if not draft.prose.strip():
@@ -228,7 +266,7 @@ def run_pilot_turn(
     _current(backend, documents)
     material = request | {
         "requirements": asdict(requirements),
-        "plan": plan.model_dump(),
+        "plan": plan_data,
         "evidence": evidence_data,
         "draft": draft.model_dump(),
     }

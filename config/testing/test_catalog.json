@@ -3473,6 +3473,20 @@
       "rationale": "Offline enforcement of complete sources, required arithmetic, stale evidence and answer/tool consistency."
     },
     {
+      "path": "tests/test_grounded_pilot.py",
+      "domain": "knowledge",
+      "test_type": "service_contract",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Opt-in pilot full-source, calculator and qualified semantic release-boundary regressions."
+    },
+    {
       "path": "tests/test_guardian_agent.py",
       "domain": "agents",
       "test_type": "unit",

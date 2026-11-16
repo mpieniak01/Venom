@@ -199,7 +199,7 @@ class GroundedTurn:
         self.backend = backend
         self._evidence: Evidence | None = None
 
-    def _read_sources(
+    def read_sources(
         self, query: str
     ) -> tuple[tuple[SourceDocument, ...], tuple[str, ...]]:
         references = tuple(self.backend.search(query))
@@ -276,7 +276,7 @@ class GroundedTurn:
         unavailable: tuple[str, ...] = ()
         if required.sources:
             try:
-                sources, unavailable = self._read_sources(
+                sources, unavailable = self.read_sources(
                     plan.source_query or plan.message
                 )
             except (OSError, TimeoutError, KeyError) as exc:

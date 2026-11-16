@@ -209,7 +209,9 @@ def _mean_draft(calculation: CalculationEvidence) -> Draft:
 
 def _price_subject(subject: str) -> tuple[str, ...]:
     # The question and the reported label often use different Polish cases.
-    words = _normal(subject).removeprefix("za ").split()
+    normalized = _normal(subject).removeprefix("za ")
+    # Polish deverbal nouns use forms such as "przechowanie" and "przechowania".
+    words = re.sub(r"ni[aeu]\b", "ni", normalized).split()
     return tuple(
         re.sub(r"(?:ami|ach|om|em|ej|ie|[aiouy])$", "", word)
         if len(word) >= 5

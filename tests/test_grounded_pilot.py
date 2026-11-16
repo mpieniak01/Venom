@@ -1098,16 +1098,33 @@ def test_source_price_request_does_not_ask_for_the_requested_value(real_input):
     )
 
 
-def test_source_price_absence_is_an_answer_supported_by_the_full_card():
+@pytest.mark.parametrize(
+    "item,missing,card_text",
+    [
+        (
+            "przewóz roweru",
+            "koszt przewozu roweru",
+            "Karta nie zawiera cennika przewozu rowerów.",
+        ),
+        (
+            "przechowanie walizki",
+            "koszt przechowania walizki",
+            "Karta nie podaje taryfy przechowania walizek.",
+        ),
+    ],
+)
+def test_source_price_absence_is_an_answer_supported_by_the_full_card(
+    item, missing, card_text
+):
     source = Sources()
-    text = "Karta nie zawiera cennika przewozu rowerów."
+    text = card_text
     source.document = SourceDocument(
         SourceRef("price", "v1", text_hash(text)), text, True
     )
     model, reviewer = Model(), Reviewer()
     model.override["assess"] = {
         "current_state": "Pełna karta.",
-        "missing": ["koszt przewozu roweru"],
+        "missing": [missing],
     }
     model.override["draft"] = {
         "prose": text,
@@ -1115,7 +1132,7 @@ def test_source_price_absence_is_an_answer_supported_by_the_full_card():
         "calculations": [],
     }
     answer = run_pilot_turn(
-        "Sprawdź: ile złotych kosztuje przewóz roweru?",
+        f"Sprawdź: ile złotych kosztuje {item}?",
         "price",
         source,
         model,

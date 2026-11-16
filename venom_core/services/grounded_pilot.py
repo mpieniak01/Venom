@@ -236,10 +236,13 @@ def run_pilot_turn(
         asdict(d) | {"ref": {"source_id": d.ref.source_id, "version": d.ref.version}}
         for d in documents
     ]
-    planning = request | {
+    planning = {
+        "revision": revision,
+        "history": [h for h in history if h["role"] == "user"],
         "requirements": asdict(required),
         "sources": model_sources,
         "unavailable": list(unavailable),
+        "message": message,
     }
     assessment: InputAssessment = _call(model, "assess", planning, InputAssessment)
     audit.append({"phase": "assess", "data": assessment.model_dump()})

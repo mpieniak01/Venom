@@ -551,3 +551,21 @@ def test_redaction_only_removes_metadata_before_review_and_never_releases_empty(
     with pytest.raises(EvidenceError, match="answer_empty"):
         run(model=model, reviewer=reviewer)
     assert not reviewer.materials
+
+
+def test_planner_does_not_treat_prior_assistant_assumptions_as_user_data():
+    model, reviewer = Model(), Reviewer()
+    history = (
+        {"role": "user", "content": "Bilety kosztują 30 zł."},
+        {
+            "role": "assistant",
+            "content": "Zgaduję, że potrzeba potwierdzić minimalną liczbę.",
+        },
+    )
+    run(model=model, reviewer=reviewer, history=history)
+    calls = dict(model.calls)
+    for phase in ("assess", "plan"):
+        assert calls[phase]["history"] == [history[0]]
+    assert (
+        calls["draft"]["history"] == reviewer.materials[0]["history"] == list(history)
+    )

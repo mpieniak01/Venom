@@ -507,6 +507,51 @@ def plain_pilot_context(
     return history, " ".join(guidance)
 
 
+_ONE_SENTENCE_RECAP = re.compile(
+    r"\b(?:jednozdaniow\w*|w\s+jednym\s+zdaniu)\b", re.IGNORECASE
+)
+_GATHERING_DETAILS = re.compile(
+    r"\b(?:godzinami|godziny)\b[^.!?]*\b(?:miejscem|miejsce)\s+zbiórki\b", re.IGNORECASE
+)
+_CLOCK_VALUE = re.compile(r"\b(?:[01]?\d|2[0-3]):[0-5]\d\b")
+_GATHERING_PLACE = re.compile(
+    r"zbiórka\s+(?:odbywa się|jest|będzie)\s+(?:przy|w|we|na|obok|przed|za)\s+[^0-9.!?\n]+",
+    re.IGNORECASE,
+)
+_PUBLIC_CARD_AT_END = re.compile(r"\s*(\[[A-Za-z][\w-]{0,63}\])\.?\s*$")
+
+
+def plain_pilot_recap(message: str, focused: tuple[dict[str, str], ...]) -> str | None:
+    """Keep event roles by joining complete statements from the selected exception."""
+    if not (_ONE_SENTENCE_RECAP.search(message) and _GATHERING_DETAILS.search(message)):
+        return None
+    if tuple(turn["role"] for turn in focused) != (
+        "user",
+        "assistant",
+        "user",
+        "assistant",
+    ):
+        return None
+    if not _DATE_EXCEPTION.search(focused[0]["content"]):
+        return None
+    schedule, gathering = (focused[i]["content"].strip() for i in (1, 3))
+    citation_matches = (
+        _PUBLIC_CARD_AT_END.search(schedule),
+        _PUBLIC_CARD_AT_END.search(gathering),
+    )
+    schedule = _PUBLIC_CARD_AT_END.sub("", schedule).rstrip(". ")
+    gathering = _PUBLIC_CARD_AT_END.sub("", gathering).rstrip(". ")
+    if (
+        not re.fullmatch(r"[^.!?\n]+", schedule)
+        or len(set(_CLOCK_VALUE.findall(schedule))) != 2
+        or not _GATHERING_PLACE.fullmatch(gathering)
+    ):
+        return None
+    citations = " ".join(dict.fromkeys(match[1] for match in citation_matches if match))
+    result = f"{schedule}, a {gathering[0].lower()}{gathering[1:]}."
+    return f"{result} {citations}" if citations else result
+
+
 def run_pilot_turn(
     message: str,
     revision: str,

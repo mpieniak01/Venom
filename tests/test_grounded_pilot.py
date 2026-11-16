@@ -15,6 +15,7 @@ from venom_core.services.grounded_pilot import (
     SemanticVerdict,
     material_hash,
     plain_pilot_context,
+    plain_pilot_recap,
     run_pilot_turn,
 )
 from venom_core.services.grounded_review import (
@@ -1253,3 +1254,28 @@ def test_plain_recap_preserves_revoked_address_and_tentative_time():
         {"role": "assistant", "content": "Przyjąłem potwierdzenie."},
     )
     assert plain_pilot_context("Napisz notatkę dla uczestników.", replaced)[1] == ""
+
+
+def test_one_sentence_recap_preserves_two_event_times_and_the_gathering_location():
+    history = (
+        {"role": "user", "content": "W pierwszą środę sprawdź godziny."},
+        {
+            "role": "assistant",
+            "content": "Wejście od 07:30, a pokaz startuje o 08:00. [KARTA]",
+        },
+        {"role": "user", "content": "A miejsce zbiórki?"},
+        {"role": "assistant", "content": "Zbiórka jest przy wieży. [KARTA]"},
+    )
+    message = "Sporządź jednozdaniową informację z godzinami i miejscem zbiórki."
+    assert plain_pilot_recap(message, history) == (
+        "Wejście od 07:30, a pokaz startuje o 08:00, a zbiórka jest przy wieży. [KARTA]"
+    )
+    assert plain_pilot_recap("Gdzie mam przyjść?", history) is None
+    assert plain_pilot_recap(message, history[2:]) is None
+
+    uncertain = history[:-1] + (
+        {"role": "assistant", "content": "Być może przy wieży."},
+    )
+    assert plain_pilot_recap(message, uncertain) is None
+    other = ({"role": "user", "content": "Sprawdź standardowe godziny."},) + history[1:]
+    assert plain_pilot_recap(message, other) is None

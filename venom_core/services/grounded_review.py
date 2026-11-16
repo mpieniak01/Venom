@@ -27,6 +27,9 @@ class SourceFinding(Finding):
     answer_quote: StrictStr = Field(min_length=1, max_length=500)
     source_id: StrictStr
     source_quote: StrictStr = Field(max_length=500)
+    answer_role: StrictStr = Field(min_length=1, max_length=160)
+    source_role: StrictStr = Field(max_length=160)
+    same_role: StrictBool
 
 
 class CalculationFinding(Finding):
@@ -73,11 +76,15 @@ def checked_findings(
     for item in audit.source_claims:
         if not item.answer_quote.strip() or item.answer_quote not in draft["prose"]:
             raise ValueError("review_answer_quote_invalid")
-        if item.ok or item.source_id or item.source_quote:
+        if not item.answer_role.strip() or item.answer_role not in item.answer_quote:
+            raise ValueError("review_answer_role_invalid")
+        if item.ok or item.source_id or item.source_quote or item.source_role:
             if (
                 not item.source_quote.strip()
                 or item.source_id not in documents
                 or item.source_quote not in documents[item.source_id]
+                or not item.source_role.strip()
+                or item.source_role not in item.source_quote
             ):
                 raise ValueError("review_source_quote_invalid")
     return audit
@@ -104,6 +111,8 @@ class GroundedChecklistReviewer:
             audit.answer,
         ]
         failures = [c.reason for c in checks if not c.ok]
+        if any(not claim.same_role for claim in audit.source_claims):
+            failures.append("review_source_role_mismatch")
         return SemanticVerdict(
             material_id,
             self.qualification_id,

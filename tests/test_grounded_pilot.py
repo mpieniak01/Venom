@@ -586,7 +586,10 @@ def _grounded_review_fixture():
             {
                 "ok": True,
                 "reason": "Rabat należy odjąć.",
-                "answer_quote": "24 zł",
+                "answer_quote": "Po rabacie zapłacisz 24 zł.",
+                "answer_role": "zapłacisz",
+                "source_role": "Rabat",
+                "same_role": True,
                 "source_id": "price",
                 "source_quote": "Rabat wynosi 20%.",
             }
@@ -644,3 +647,13 @@ def test_review_requires_complete_plan_and_literal_evidence(change, error):
         grade["source_claims"][0]["source_quote"] = ""
     with pytest.raises(ValueError, match=error):
         GroundedChecklistReviewer("q1", lambda _: grade).review(material)
+
+
+def test_source_event_mismatch_blocks_even_when_quotes_and_other_checks_pass():
+    material, grade = _grounded_review_fixture()
+    grade["source_claims"][0]["same_role"] = False
+    reviewer = GroundedChecklistReviewer("q1", lambda _: grade)
+    assert not reviewer.review(material).approved
+    grade["source_claims"][0]["answer_role"] = "nieistniejąca czynność"
+    with pytest.raises(ValueError, match="review_answer_role_invalid"):
+        reviewer.review(material)

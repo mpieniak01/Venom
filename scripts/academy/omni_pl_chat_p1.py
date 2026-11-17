@@ -17,6 +17,7 @@ from pathlib import Path
 from random import Random
 from tempfile import NamedTemporaryFile
 from time import monotonic
+from typing import cast
 from unittest.mock import patch
 
 from scripts.academy.omni_pl_chat_adapter import (
@@ -662,7 +663,7 @@ def run(mode: str) -> None:
         group["modules"] += 1
         group["trainable_parameters"] += sum(
             param.numel()
-            for param in layer.parameters(recurse=True)
+            for param in cast(torch.nn.Module, layer).parameters(recurse=True)
             if param.requires_grad
         )
     parameters = dict(model.named_parameters())

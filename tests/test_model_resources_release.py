@@ -1165,8 +1165,9 @@ async def test_llm_recovery_handles_real_stream_ledger_only_with_daemon_proof(
     from unittest.mock import AsyncMock
 
     # A failed transport leaves the actual durable host ledger uncertain.
+    operation = world.operation(kind=kind, runtime_identity=identity)
     with pytest.raises(RuntimeError, match="transport lost"):
-        with world.operation(kind=kind, runtime_identity=identity):
+        with operation:
             raise RuntimeError("transport lost")
     assert world.snapshot()["status"] == "quarantined"
     servers = [

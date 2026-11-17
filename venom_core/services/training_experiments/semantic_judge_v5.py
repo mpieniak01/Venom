@@ -28,21 +28,37 @@ W additional_claims wypisz wyłącznie DODATKOWE twierdzenia kandydata, nieobję
 polish_ok i natural_ok są niezależne od faktów. polish_ok=true dla polszczyzny oraz samej oczekiwanej liczby, nazwy, jednostki lub kodu; pełne obcojęzyczne zdanie daje false. Polska wypowiedź z błędami nadal jest po polsku. natural_ok=false dla bełkotu, przypadkowych powtórzeń lub ciężkich błędów gramatycznych, true dla czytelnego zdania, krótkiej wartości i listy. Fałszywy fakt i obcy język same nie obniżają natural_ok.
 
 Najpierw uzupełnij required, observed i relation dla wszystkich pól. Potem wypisz dodatkowe twierdzenia i oceń ich grounding, injection i styl. Krótkie reason musi być spójne ze wszystkimi decyzjami. Zwróć wyłącznie JSON zgodny ze schematem."""
-_DECIMAL = re.compile(
-    r"(?<![\w.,])([+-]?\d++),(\d++)",
-    re.IGNORECASE,
-)
-
-
 _DECIMAL_UNIT = re.compile(
     r"\s*+(?:zł|PLN|EUR|USD|kg|km|cm|mm|ml|mg|%)(?!\w)", re.IGNORECASE
 )
 
 
-def _decimal_value(match: re.Match[str]) -> str:
-    if _DECIMAL_UNIT.match(match.string, match.end()):
-        return f"{match[1]}.{match[2]}"
-    return match[0]
+def _decimal_boundary(value: str, comma: int) -> bool:
+    left = comma
+    while left > 0 and value[left - 1].isdecimal():
+        left -= 1
+    if left == comma:
+        return False
+    if left > 0 and (value[left - 1].isalnum() or value[left - 1] in "_.,"):
+        return False
+    end = comma + 1
+    while end < len(value) and value[end].isdecimal():
+        end += 1
+    return end > comma + 1 and _DECIMAL_UNIT.match(value, end) is not None
+
+
+def _decimal_text(value: str) -> str:
+    separators = [
+        match.start()
+        for match in re.finditer(",", value)
+        if _decimal_boundary(value, match.start())
+    ]
+    pieces = []
+    start = 0
+    for comma in separators:
+        pieces.extend((value[start:comma], "."))
+        start = comma + 1
+    return "".join((*pieces, value[start:]))
 
 
 def _nonblank(value: str) -> str:
@@ -79,7 +95,7 @@ class Decision(judge._Strict):
 def decimal_view(value):
     """Normalize only unambiguous decimal separators; retain original packet separately."""
     if isinstance(value, str):
-        return _DECIMAL.sub(_decimal_value, value)
+        return _decimal_text(value)
     if isinstance(value, list):
         return [decimal_view(item) for item in value]
     if isinstance(value, dict):

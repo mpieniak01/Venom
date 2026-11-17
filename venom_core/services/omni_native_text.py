@@ -237,8 +237,7 @@ async def switch(
             async with runtime_request_guard(
                 request_kind="omni_native_text_switch", provider=RUNTIME
             ):
-                pass
-            _PREVIOUS, _ACTIVE, _ORDINARY = _ACTIVE, None, None
+                _PREVIOUS, _ACTIVE, _ORDINARY = _ACTIVE, None, None
             return state()
         return await _switch_locked(adapter_id, expected_runtime_id)
 

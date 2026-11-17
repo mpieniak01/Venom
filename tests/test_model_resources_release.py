@@ -171,6 +171,46 @@ async def test_legacy_recovery_requires_proof_for_generation(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("alias_verified", [True, False])
+async def test_ollama_recovery_probes_the_ledger_alias(
+    world, monkeypatch, alias_verified
+):
+    from unittest.mock import AsyncMock, call
+
+    configured = "http://localhost:11434"
+    alternate = "http://127.0.0.1:11434"
+    operation = world.operation(
+        kind="simple_chat_non_stream", runtime_identity=f"ollama@{alternate}/v1"
+    )
+    with pytest.raises(OSError):
+        with operation:
+            raise OSError("transport lost")
+    listen = AsyncMock(return_value=True)
+    responses = [[], ["omni"]] if alias_verified else [[], ValueError("busy")]
+    unload = AsyncMock(side_effect=responses)
+    monkeypatch.setattr(service, "_listening", listen)
+    monkeypatch.setattr(service, "_unload_ollama", unload)
+    controller = SimpleNamespace(
+        list_servers=lambda: [{"name": "ollama", "endpoint": configured}]
+    )
+    release = service.release_all_runtime_models(controller, include_registered=False)
+    if alias_verified:
+        result = await release
+        assert result["runtimes"] == [
+            {"runtime": "ollama", "models": ["omni"], "verified": True, "state": "idle"}
+        ]
+        assert world.snapshot()["status"] == "available"
+    else:
+        with pytest.raises(HTTPException) as rejected:
+            await release
+        assert rejected.value.status_code == 502
+        assert world.snapshot()["status"] == "quarantined"
+
+    assert listen.await_args_list == [call(configured), call(alternate)]
+    assert unload.await_args_list == [call(configured), call(alternate)]
+
+
+@pytest.mark.asyncio
 async def test_global_release_verifies_daemons_voice_and_vision_before_recovery(
     world, monkeypatch
 ):

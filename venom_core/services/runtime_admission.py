@@ -788,6 +788,20 @@ class RuntimeAdmission:
             db.execute("DELETE FROM lease WHERE token=?", (token,))
             return True
 
+    def pending_host_runtime_ids(self) -> frozenset[str]:
+        """Targets of unleased uncertain operations, for host-only cleanup."""
+        if not self.enabled:
+            return frozenset()
+        self._require_supported()
+        with self._transaction() as db:
+            return frozenset(
+                row["runtime_identity"]
+                for row in db.execute(
+                    "SELECT runtime_identity FROM operation WHERE uncertain=1 "
+                    "AND lease_token IS NULL AND runtime_identity IS NOT NULL"
+                )
+            )
+
     def recover(
         self,
         *,

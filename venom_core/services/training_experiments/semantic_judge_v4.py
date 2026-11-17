@@ -12,7 +12,7 @@ from venom_core.config import SETTINGS
 from .profiles import digest, stable_hash
 
 if TYPE_CHECKING:
-    from .local_semantic_judge import QualificationV4
+    from .local_semantic_judge import QualificationV4, QualificationV5
 
 ERROR = "experiment_judge_v4_audit_invalid"
 _OPTIONS = "options.json"
@@ -51,10 +51,13 @@ def implementation_hashes() -> dict[str, str]:
         "v4_verifier": digest(Path(__file__)),
         "audit_runner": digest(Path(__file__).with_name("semantic_judge_audit.py")),
         "provenance": digest(Path(__file__).with_name("semantic_judge_provenance.py")),
+        "v5": digest(Path(__file__).with_name("semantic_judge_v5.py")),
     }
 
 
-def control_files(root: Path, expected: str) -> dict:
+def control_files(
+    root: Path, expected: str, *, judge_id: str = "semantic-local-v4"
+) -> dict:
     from . import local_semantic_judge as judge
 
     controls = root / "controls"
@@ -64,10 +67,10 @@ def control_files(root: Path, expected: str) -> dict:
     for name, checksum in manifest["files"].items():
         require(isinstance(checksum, str) and digest(controls / name) == checksum)
     options = judge._bound_json(controls, _OPTIONS, manifest["files"][_OPTIONS])
-    require(options == judge.OPTIONS)
+    require(options == judge.options_for(judge_id))
     require(
         (controls / "prompt-proposal.txt").read_text(encoding="utf8")
-        == judge.PROMPT_V4 + "\n"
+        == judge.prompt_for(judge_id) + "\n"
     )
     return manifest
 
@@ -171,7 +174,9 @@ def jobs_for(root: Path, manifest: dict, split: str) -> tuple[dict, dict]:
     return jobs, gold
 
 
-def request_for(model: str, case: dict, answer: dict) -> dict:
+def request_for(
+    model: str, case: dict, answer: dict, *, judge_id: str = "semantic-local-v4"
+) -> dict:
     """Identical material serialization for the runner and offline verifier."""
     from . import local_semantic_judge as judge
 
@@ -184,7 +189,7 @@ def request_for(model: str, case: dict, answer: dict) -> dict:
         "candidate": answer["text"],
     }
     return judge._request(
-        model, material, [c["id"] for c in case["criteria"]], judge=judge.JUDGE_V4
+        model, material, [c["id"] for c in case["criteria"]], judge=judge_id
     )
 
 
@@ -222,7 +227,7 @@ def _legacy_decisions(jobs: dict, gold: dict, decisions: dict) -> None:
 def verify_rows(
     root: Path,
     manifest: dict,
-    pin: QualificationV4,
+    pin: QualificationV4 | QualificationV5,
     rows: list[dict],
     *,
     phase1: bool = False,
@@ -257,7 +262,9 @@ def verify_rows(
         previous_end = provenance.verify_call(
             call, protocol, pin.protocol_sha256, seen, previous_end
         )
-        expected_request = request_for(pin.model, case, answer)
+        expected_request = request_for(
+            pin.model, case, answer, judge_id=judge.judge_for(pin)
+        )
         request_sha = stable_hash(expected_request)
         require(
             call["request"] == expected_request
@@ -265,7 +272,10 @@ def verify_rows(
         )
         require(row["request_sha256"] == request_sha)
         decision = judge._decode(
-            call["response"], [c["id"] for c in case["criteria"]], pin.model
+            call["response"],
+            [c["id"] for c in case["criteria"]],
+            pin.model,
+            judge=judge.judge_for(pin),
         )
         require(decision is not None)
         assert decision is not None
@@ -300,13 +310,15 @@ def verify_rows(
     }
 
 
-def verify_audit(pin: QualificationV4) -> None:
+def verify_audit(pin: QualificationV4 | QualificationV5) -> None:
     from . import local_semantic_judge as judge
 
     try:
+        judge_id = judge.judge_for(pin)
+        version = 5 if judge_id == judge.JUDGE_V5 else 4
         location = os.environ.get(
-            "VENOM_ACADEMY_JUDGE_V4_AUDIT_ROOT",
-            SETTINGS.VENOM_ACADEMY_JUDGE_V4_AUDIT_ROOT,
+            f"VENOM_ACADEMY_JUDGE_V{version}_AUDIT_ROOT",
+            "" if version == 5 else SETTINGS.VENOM_ACADEMY_JUDGE_V4_AUDIT_ROOT,
         ).strip()
         require(
             bool(location) and Path(location).is_absolute() and Path(location).is_dir()
@@ -314,12 +326,12 @@ def verify_audit(pin: QualificationV4) -> None:
         root = Path(location)
         protocol = judge._bound_json(root, "judge-protocol.json", pin.protocol_sha256)
         result = judge._bound_json(root, "judge-result.json", pin.result_sha256)
-        manifest = control_files(root, pin.accuracy_manifest_sha256)
+        manifest = control_files(root, pin.accuracy_manifest_sha256, judge_id=judge_id)
         require(manifest["files"]["legacy/qualification-gold.json"] == pin.gold_sha256)
-        require(protocol["judge"] == judge.JUDGE_V4 and protocol["schema_version"] == 4)
+        require(protocol["judge"] == judge_id and protocol["schema_version"] == version)
         require(
-            protocol["system"] == judge.PROMPT_V4
-            and protocol["options"] == judge.OPTIONS
+            protocol["system"] == judge.prompt_for(judge_id)
+            and protocol["options"] == judge.options_for(judge_id)
         )
         require(
             protocol["model"] == pin.model
@@ -338,6 +350,6 @@ def verify_audit(pin: QualificationV4) -> None:
         metrics = verify_rows(root, manifest, pin, result["rows"])
         require(result["metrics"] == metrics)
         provenance.verify_session(root, protocol, pin, result)
-        control_files(root, pin.accuracy_manifest_sha256)
+        control_files(root, pin.accuracy_manifest_sha256, judge_id=judge_id)
     except (KeyError, TypeError, AttributeError, IndexError, OSError) as exc:
         raise ValueError(ERROR) from exc

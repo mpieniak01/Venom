@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import shutil
@@ -62,10 +63,18 @@ def _copy_controls(controls: Path, output: Path, intent: dict) -> None:
 
 
 def prepare_audit(
-    controls: Path, output: Path, manifest_sha256: str, run_id: str, seconds: int
+    controls: Path,
+    output: Path,
+    manifest_sha256: str,
+    run_id: str,
+    seconds: int,
+    *,
+    judge_id: str = judge.JUDGE_V4,
 ) -> dict:
     """Stage immutable inputs; this function does not access a model or GPU."""
     validate_run_id(run_id)
+    if judge_id not in {judge.JUDGE_V4, judge.JUDGE_V5}:
+        raise ValueError("experiment_judge_version_invalid")
     if type(seconds) is not int or not CLEANUP_SECONDS < seconds <= MAX_SECONDS:
         raise ValueError("experiment_judge_v4_budget_invalid")
     controls, output = controls.resolve(strict=True), output.resolve()
@@ -82,7 +91,7 @@ def prepare_audit(
         "implementation_sha256": verifier.implementation_hashes(),
     }
     _stage_controls(controls, output, intent)
-    manifest = verifier.control_files(output, manifest_sha256)
+    manifest = verifier.control_files(output, manifest_sha256, judge_id=judge_id)
     verifier.execution_order(output, manifest)
     # Only phase-one cases are materialized before their gate has passed.
     verifier.jobs_for(output, manifest, "legacy")
@@ -93,10 +102,10 @@ def prepare_audit(
     if legacy.prompt_sha256 != judge.PROMPT_SHA256:
         raise ValueError("experiment_judge_v4_legacy_pin_changed")
     protocol = {
-        "schema_version": 4,
-        "judge": judge.JUDGE_V4,
-        "system": judge.PROMPT_V4,
-        "options": judge.OPTIONS,
+        "schema_version": 5 if judge_id == judge.JUDGE_V5 else 4,
+        "judge": judge_id,
+        "system": judge.prompt_for(judge_id),
+        "options": judge.options_for(judge_id),
         "model": legacy.model,
         "model_sha256": legacy.model_sha256,
         "ollama": {"version": legacy.ollama_version},
@@ -111,12 +120,17 @@ def prepare_audit(
             raise ValueError("experiment_judge_v4_protocol_changed")
     else:
         atomic_json(path, protocol)
-    provisional = judge.QualificationV4(
+    pin_model = (
+        judge.QualificationV5 if judge_id == judge.JUDGE_V5 else judge.QualificationV4
+    )
+    provisional = pin_model(
         **{
             **legacy.model_dump(),
-            "schema_version": 2,
+            "schema_version": 3 if judge_id == judge.JUDGE_V5 else 2,
             "true_positives": 24,
-            "prompt_sha256": judge.PROMPT_V4_SHA256,
+            "prompt_sha256": hashlib.sha256(
+                judge.prompt_for(judge_id).encode()
+            ).hexdigest(),
             "protocol_sha256": digest(path),
             "accuracy_manifest_sha256": manifest_sha256,
             "gold_sha256": manifest["files"]["legacy/qualification-gold.json"],
@@ -146,7 +160,9 @@ def _collect(
         remaining()
         index = len(rows) + 1
         case, answer = jobs[entry["split"]][entry["answer_id"]]
-        request = verifier.request_for(pin.model, case, answer)
+        request = verifier.request_for(
+            pin.model, case, answer, judge_id=judge.judge_for(pin)
+        )
         provenance = {
             "call_id": uuid.uuid4().hex,
             "run_id": context["intent"]["run_id"],
@@ -160,7 +176,10 @@ def _collect(
             finished_at_ns=time.time_ns(), finished_monotonic_ns=time.monotonic_ns()
         )
         decision = judge._decode(
-            response, [c["id"] for c in case["criteria"]], pin.model
+            response,
+            [c["id"] for c in case["criteria"]],
+            pin.model,
+            judge=judge.judge_for(pin),
         )
         request_sha = stable_hash(request)
         path = root / "judge-calls" / f"{index:03d}.json"
@@ -288,11 +307,17 @@ def run_audit(
             **pin.model_dump(),
             "result_sha256": digest(root / _RESULT),
         }
-        old_location = os.environ.get("VENOM_ACADEMY_JUDGE_V4_AUDIT_ROOT")
-        os.environ["VENOM_ACADEMY_JUDGE_V4_AUDIT_ROOT"] = str(root)
+        judge_id = judge.judge_for(pin)
+        location_key = (
+            "VENOM_ACADEMY_JUDGE_V5_AUDIT_ROOT"
+            if judge_id == judge.JUDGE_V5
+            else "VENOM_ACADEMY_JUDGE_V4_AUDIT_ROOT"
+        )
+        old_location = os.environ.get(location_key)
+        os.environ[location_key] = str(root)
         try:
             qualified = judge.qualification(
-                {"judge": judge.JUDGE_V4, "judge_qualification": receipt}
+                {"judge": judge_id, "judge_qualification": receipt}
             )
             atomic_json(
                 root / "judge-qualification-receipt.json", qualified.model_dump()
@@ -302,9 +327,9 @@ def run_audit(
             atomic_json(root / _RESULT, result)
         finally:
             if old_location is None:
-                os.environ.pop("VENOM_ACADEMY_JUDGE_V4_AUDIT_ROOT", None)
+                os.environ.pop(location_key, None)
             else:
-                os.environ["VENOM_ACADEMY_JUDGE_V4_AUDIT_ROOT"] = old_location
+                os.environ[location_key] = old_location
         progress(
             {
                 "stage": "qualification_passed"

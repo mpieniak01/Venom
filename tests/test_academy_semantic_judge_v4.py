@@ -596,7 +596,7 @@ def test_cli_requires_execute_for_gpu(monkeypatch, tmp_path, execute):
 
     calls = []
     context = {"root": tmp_path}
-    monkeypatch.setattr(cli, "prepare_audit", lambda *_args: context)
+    monkeypatch.setattr(cli, "prepare_audit", lambda *_args, **_kwargs: context)
 
     def run(value, **_kwargs):
         assert value is context
@@ -759,3 +759,190 @@ def test_audit_preparation_copy_failure_can_retry(qualified_v4, tmp_path, monkey
     incomplete.mkdir()
     with pytest.raises(ValueError, match="output_incomplete"):
         runner.prepare_audit(controls, incomplete, checksum, "incomplete-prepare", 300)
+
+
+@pytest.mark.parametrize(
+    "invalid",
+    [None, "missing", "contradiction", "truncated", "extra", "empty", "thinking"],
+)
+def test_v5_field_first_decoding_and_fail_closed(invalid):
+    from venom_core.services.training_experiments import semantic_judge_v5 as v5
+
+    value = {
+        "checks": {
+            "price": {
+                "required": "Cena wynosi 2,75 zł.",
+                "observed": "Cena: 2.75 zł",
+                "relation": "supported",
+            }
+        },
+        "unsupported": "no",
+        "injection": False,
+        "polish_ok": True,
+        "natural_ok": True,
+        "reason": "Zgodna wartość.",
+    }
+    response = {
+        "model": "judge",
+        "done": True,
+        "done_reason": "stop",
+        "message": {"content": ""},
+    }
+    if invalid == "missing":
+        value["checks"] = {}
+    if invalid == "contradiction":
+        value["checks"]["price"]["relation"] = "contradicted"
+    if invalid == "truncated":
+        response["done_reason"] = "length"
+    if invalid == "extra":
+        value["other"] = True
+    if invalid == "empty":
+        value["checks"]["price"]["observed"] = ""
+    if invalid == "thinking":
+        response["message"]["thinking"] = "not allowed"
+    response["message"]["content"] = json.dumps(value)
+    result = judge._decode(response, ["price"], "judge", judge=judge.JUDGE_V5)
+    if invalid:
+        assert result is None
+    else:
+        assert result.atoms == {"price": "supported"}
+    assert v5.decode({"model": "other"}, ["price"], "judge") is None
+    response["message"]["content"] = "not json"
+    assert v5.decode(response, ["price"], "judge") is None
+
+
+def test_v5_normalization_preserves_raw_packet_and_identifiers():
+    from venom_core.services.training_experiments import semantic_judge_v5 as v5
+
+    material = {
+        "messages": [{"content": "Cena: 2,75 zł; kod A2,75B; kod 1,25; lista 1, 2."}],
+        "candidate": "2.75 zł",
+        "flag": True,
+    }
+    request = judge._request("judge", material, ["price"], judge=judge.JUDGE_V5)
+    packet = json.loads(request["messages"][1]["content"])
+    assert packet["messages"] == material["messages"]
+    assert (
+        packet["decimal_notation"]["messages"][0]["content"]
+        == "Cena: 2.75 zł; kod A2,75B; kod 1,25; lista 1, 2."
+    )
+    assert packet["decimal_notation"]["flag"] is True
+    assert request["options"] == judge.options_for(judge.JUDGE_V5)
+    assert request["format"]["properties"]["checks"]["required"] == ["price"]
+    assert judge.prompt_for(judge.JUDGE_V5) == v5.PROMPT
+    plain = judge._request(
+        "judge", {"candidate": "brak danych"}, ["x"], judge=judge.JUDGE_V5
+    )
+    assert "decimal_notation" not in json.loads(plain["messages"][1]["content"])
+    pin = judge.QualificationV5(
+        schema_version=3,
+        model="judge",
+        model_sha256="a" * 64,
+        ollama_version="0.40.14",
+        prompt_sha256="a" * 64,
+        protocol_sha256="a" * 64,
+        gold_sha256="a" * 64,
+        result_sha256="a" * 64,
+        true_positives=24,
+        positive_total=24,
+        false_positives=0,
+        negative_total=36,
+        families_covered=12,
+        families_total=12,
+        accuracy_manifest_sha256="a" * 64,
+    )
+    assert judge.judge_for(pin) == judge.JUDGE_V5
+
+
+@pytest.mark.parametrize("fail_phase1", [False, True])
+def test_v5_audit_uses_raw_field_decisions_and_gates_holdout(
+    qualified_v4, tmp_path, monkeypatch, fail_phase1
+):
+    import hashlib
+    import shutil
+
+    controls = tmp_path / "v5-controls"
+    _, source = qualified_v4
+    shutil.copytree(source / "controls", controls)
+    (controls / "prompt-proposal.txt").write_text(
+        judge.prompt_for(judge.JUDGE_V5) + "\n"
+    )
+    atomic_json(controls / "options.json", judge.options_for(judge.JUDGE_V5))
+    atomic_json(
+        controls / "frozen-manifest.json",
+        {
+            "status": "frozen_before_any_inference",
+            "files": {name: digest(controls / name) for name in audit.FILES},
+        },
+    )
+    context = runner.prepare_audit(
+        controls,
+        tmp_path / "v5-output",
+        digest(controls / "frozen-manifest.json"),
+        "v5-fixture",
+        300,
+        judge_id=judge.JUDGE_V5,
+    )
+    assert (
+        context["pin"].prompt_sha256
+        == hashlib.sha256(judge.prompt_for(judge.JUDGE_V5).encode()).hexdigest()
+    )
+    mapping = {}
+    for row in read_json(source / "judge-result.json")["rows"]:
+        manifest = read_json(source / "controls/frozen-manifest.json")
+        jobs, _ = audit.jobs_for(source, manifest, row["split"])
+        case, answer = jobs[row["answer_id"]]
+        req = audit.request_for(
+            context["pin"].model, case, answer, judge_id=judge.JUDGE_V5
+        )
+        d = row["decision"]
+        mapping[stable_hash(req)] = {
+            **{k: v for k, v in d.items() if k != "atoms"},
+            "checks": {
+                k: {
+                    "required": "Fixture required fact",
+                    "observed": "Fixture observed fact",
+                    "relation": v,
+                }
+                for k, v in d["atoms"].items()
+            },
+        }
+    calls = []
+
+    def api(_client, action, payload=None, *, timeout):
+        assert action == "chat"
+        calls.append(payload)
+        value = json.loads(json.dumps(mapping[stable_hash(payload)]))
+        if fail_phase1 and len(calls) == 1:
+            value["checks"]["fact"]["relation"] = "unclear"
+        return {
+            "model": context["pin"].model,
+            "done": True,
+            "done_reason": "stop",
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "message": {"content": json.dumps(value)},
+        }
+
+    @contextmanager
+    def lease(*_args):
+        yield
+
+    monkeypatch.setattr(judge, "_api", api)
+    monkeypatch.setattr(judge, "_verify_runtime", lambda *_args: None)
+    monkeypatch.setattr(judge, "_review_gpu", lease)
+    result = runner.run_audit(context)
+    assert result["completed_calls"] == (108 if fail_phase1 else 180)
+    assert result["holdout_opened"] is not fail_phase1
+    assert result["status"] == ("failed_qualification" if fail_phase1 else "complete")
+    if not fail_phase1:
+        monkeypatch.setenv("VENOM_ACADEMY_JUDGE_V5_AUDIT_ROOT", str(context["root"]))
+        settings = {
+            "judge": judge.JUDGE_V5,
+            "judge_qualification": read_json(
+                context["root"] / "judge-qualification-receipt.json"
+            ),
+        }
+        assert judge.qualification(settings).schema_version == 3
+        settings["judge_qualification"]["prompt_sha256"] = "f" * 64
+        with pytest.raises(ValueError, match="prompt_mismatch"):
+            judge.qualification(settings)

@@ -36,7 +36,7 @@ from venom_core.services.runtime_release_service import (
     release_all_runtime_models,
 )
 
-from . import local_semantic_judge
+from . import semantic_judge_dispatch
 from .adapters import runner_identity, verify_adapter_entry
 from .checkpoint_evaluation import (
     RESULT_SEAL,
@@ -372,7 +372,7 @@ class Worker:
         ):
             return read_json(verdict)
         bundle = review_data(generation, dev)
-        if calibration["judge"] in local_semantic_judge.JUDGES:
+        if semantic_judge_dispatch.is_semantic(calibration):
             reused: list[dict] = []
             if step is not None:
                 bundle, reused = reuse_baseline_reviews(
@@ -383,7 +383,7 @@ class Worker:
                     steps=state["checkpoint_steps"],
                     manifest_sha256=state["manifest_sha256"],
                 )
-            fresh = local_semantic_judge.review_bundle(
+            fresh = semantic_judge_dispatch.review_bundle(
                 calibration,
                 bundle,
                 self.run_id,
@@ -422,11 +422,10 @@ class Worker:
             if state["mode"] != "evaluate":
                 self.service.verify_run_data_audit(manifest)
             calibration = manifest["calibration"]
-            if (
-                calibration is not None
-                and calibration["judge"] in local_semantic_judge.JUDGES
+            if calibration is not None and semantic_judge_dispatch.is_semantic(
+                calibration
             ):
-                local_semantic_judge.preflight(calibration)
+                semantic_judge_dispatch.preflight(calibration)
             host = get_runtime_admission()
             host.database.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
             gpu_lock = host.database.parent / "academy-experiments.gpu.lock"

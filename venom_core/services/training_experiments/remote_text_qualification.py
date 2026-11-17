@@ -41,7 +41,7 @@ from venom_core.services.runtime_admission import (
     get_runtime_admission,
 )
 
-from . import local_semantic_judge
+from . import semantic_judge_dispatch
 from .adapters import (
     AdapterEntry,
     resolve_adapter,
@@ -564,15 +564,17 @@ def _final_judgments(
     seconds: float,
     check: Callable[[], float] | None,
 ) -> list[dict]:
-    if calibration["judge"] not in local_semantic_judge.JUDGES:
+    if not semantic_judge_dispatch.is_semantic(calibration):
         return calibrated_judgments(calibration, review)
     if check is None:
-        return local_semantic_judge.review_bundle(calibration, review, run_id, seconds)
+        return semantic_judge_dispatch.review_bundle(
+            calibration, review, run_id, seconds
+        )
 
     def check_deadline() -> None:
         check()
 
-    return local_semantic_judge.review_bundle(
+    return semantic_judge_dispatch.review_bundle(
         calibration, review, run_id, seconds, check=check_deadline
     )
 
@@ -736,7 +738,7 @@ def _read_result(directory: Path, binding: dict) -> dict | None:
     no_parent_pass = "parent" not in binding and result["qualified"] is not None
     semantic = (
         result.get("calibration_protocol", {}).get("judge")
-        in local_semantic_judge.JUDGES
+        in semantic_judge_dispatch.JUDGES
     )
     if "parent" in binding or semantic or no_parent_pass:
         evidence = _verify_final_evidence(directory, result)
@@ -983,8 +985,8 @@ def _run_final(
     venv = operator_path(spec.training_venv)
     if not snapshot.is_dir() or not (venv / "bin/python").is_file():
         raise ValueError("remote_text_final_runtime_missing")
-    if calibration["judge"] in local_semantic_judge.JUDGES:
-        local_semantic_judge.preflight(calibration)
+    if semantic_judge_dispatch.is_semantic(calibration):
+        semantic_judge_dispatch.preflight(calibration)
     atomic_json(directory / "intent.json", binding)
     generation = workspace / "generation"
     command = [

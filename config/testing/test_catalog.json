@@ -877,6 +877,36 @@
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
+      "path": "tests/test_academy_judge_controls.py",
+      "domain": "academy",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": ["new-code", "ci-lite", "release"],
+      "legacy_targeted": false,
+      "rationale": "Freeze corrected source and role controls without changing historical receipts or opening held-out data."
+    },
+    {
+      "path": "tests/test_academy_judge_dispatch.py",
+      "domain": "academy",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": ["new-code", "ci-lite", "release"],
+      "legacy_targeted": false,
+      "rationale": "Route qualified local and OpenRouter reviewers through calibration, checkpoint, final and cache contracts."
+    },
+    {
+      "path": "tests/test_academy_openrouter_judge.py",
+      "domain": "academy",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": ["new-code", "ci-lite", "release"],
+      "legacy_targeted": false,
+      "rationale": "Verify remote reviewer qualification replay, cost accounting, fail-closed transport and authenticated cache inputs with fake HTTP."
+    },
+    {
       "path": "tests/test_academy_semantic_judge_v4.py",
       "domain": "academy",
       "test_type": "unit",

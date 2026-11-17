@@ -28,7 +28,7 @@ from venom_core.services.training_experiments.adapters import (
     list_adapters,
     resolve_adapter,
 )
-from venom_core.services.training_experiments.profiles import read_json
+from venom_core.services.training_experiments.profiles import read_json, stable_hash
 from venom_core.utils.llm_runtime import get_active_llm_runtime
 
 RUNTIME = "omni-native-peft-text"
@@ -59,6 +59,28 @@ class Selection:
 
 _ACTIVE: Selection | None = None
 _PREVIOUS: Selection | None = None
+_ORDINARY: dict[str, Any] | None = None
+
+
+def _ordinary_identity() -> dict[str, Any]:
+    from venom_core.services import openrouter_runtime
+    from venom_core.services.vast_chat_runtime import is_remote
+
+    runtime = get_active_llm_runtime()
+    if (
+        is_remote(runtime)
+        or runtime.host_local is False
+        or openrouter_runtime.selection() is not None
+    ):
+        raise _error("omni_native_text_runtime_conflict")
+    return runtime.to_payload()
+
+
+def _check_ordinary() -> dict[str, Any]:
+    current = _ordinary_identity()
+    if _ORDINARY is not None and current != _ORDINARY:
+        raise _error("omni_native_text_runtime_changed")
+    return current
 
 
 def _configuration() -> tuple[Path, Path, Path]:
@@ -116,6 +138,7 @@ def state() -> dict[str, Any]:
         "selection": _ACTIVE.payload() if _ACTIVE else None,
         "previous": _PREVIOUS.payload() if _PREVIOUS else None,
         "persistent": False,
+        "ordinary_runtime": dict(_ORDINARY) if _ORDINARY else None,
     }
 
 
@@ -152,6 +175,9 @@ async def _generate(
         result = json.loads(output)
         if (
             result.get("identity") != selection.identity
+            or result.get("input_messages_sha256") != stable_hash(messages)
+            or result.get("snapshot_manifest_sha256")
+            != selection.identity["snapshot_sha256"]
             or not isinstance(result.get("text"), str)
             or not result["text"].strip()
         ):
@@ -169,9 +195,10 @@ async def _generate(
 async def _switch_locked(
     adapter_id: str | None, expected_runtime_id: str | None
 ) -> dict[str, Any]:
-    global _ACTIVE, _PREVIOUS
+    global _ACTIVE, _PREVIOUS, _ORDINARY
     if expected_runtime_id != (_ACTIVE.runtime_id if _ACTIVE else None):
         raise _error("omni_native_text_selection_changed")
+    ordinary = _check_ordinary()
     candidate = _resolve(adapter_id) if adapter_id is not None else None
     async with runtime_request_guard(
         request_kind="omni_native_text_switch", provider=RUNTIME
@@ -186,7 +213,10 @@ async def _switch_locked(
             failure = exc
     if failure:
         raise failure
+    if _ordinary_identity() != ordinary:
+        raise _error("omni_native_text_runtime_changed")
     _PREVIOUS, _ACTIVE = _ACTIVE, candidate
+    _ORDINARY = ordinary if candidate else None
     return state()
 
 
@@ -257,7 +287,7 @@ async def response(
         max_tokens = request.max_tokens if request.max_tokens is not None else 256
         if type(max_tokens) is not int or not 1 <= max_tokens <= 1024:
             raise _error("omni_native_text_token_limit", 422)
-        ordinary = get_active_llm_runtime()
+        ordinary = _check_ordinary()
         async with runtime_request_guard(
             request_kind=RUNTIME,
             provider=RUNTIME,
@@ -270,7 +300,9 @@ async def response(
                 failure = exc
         if failure:
             raise failure
-        result["previous_runtime"] = ordinary.to_payload()
+        if _ordinary_identity() != ordinary:
+            raise _error("omni_native_text_runtime_changed")
+        result["previous_runtime"] = ordinary
     request_id = str(uuid4())
     metadata = {
         **selection.payload(),

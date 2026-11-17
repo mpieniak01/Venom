@@ -11,12 +11,19 @@ from importlib import import_module
 from pathlib import Path
 from unittest.mock import patch
 
-from omni_native_worker import SNAPSHOT, WorkerError, gpu_budget, verify_snapshot
+from omni_native_worker import PIN, SNAPSHOT, WorkerError, gpu_budget, verify_snapshot
 
 
 def identity(request: dict) -> dict:
     expected = request["identity"]
-    if expected["revision"] != verify_snapshot():
+    pin = json.loads(PIN.read_text(encoding="utf-8"))
+    with PIN.open("rb") as stream:
+        snapshot_sha = hashlib.file_digest(stream, "sha256").hexdigest()
+    if (
+        expected["revision"] != verify_snapshot()
+        or expected["model"] != pin["repo"]
+        or expected["snapshot_sha256"] != snapshot_sha
+    ):
         raise WorkerError("omni_native_snapshot_invalid")
     for name, key in (
         ("adapter_config.json", "config_sha256"),
@@ -35,6 +42,13 @@ def generate(request: dict) -> dict:
 
     started = time.perf_counter()
     verified = identity(request)
+    messages_sha = hashlib.sha256(
+        json.dumps(request["messages"], sort_keys=True, allow_nan=False).encode("utf-8")
+    ).hexdigest()
+    with PIN.open("rb") as stream:
+        snapshot_sha = hashlib.file_digest(stream, "sha256").hexdigest()
+    if snapshot_sha != verified["snapshot_sha256"]:
+        raise WorkerError("omni_native_snapshot_invalid")
     gpu_budget(torch)
     processor = AutoProcessor.from_pretrained(
         SNAPSHOT, local_files_only=True, trust_remote_code=True
@@ -83,6 +97,8 @@ def generate(request: dict) -> dict:
     return {
         "text": text,
         "identity": verified,
+        "input_messages_sha256": messages_sha,
+        "snapshot_manifest_sha256": snapshot_sha,
         "prompt_tokens": length,
         "output_tokens": len(tokens),
         "load_ms": round((ready - started) * 1000),

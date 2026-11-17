@@ -5530,6 +5530,20 @@
       "rationale": "State repair targets, own-history dev and immutable provenance."
     },
     {
+      "path": "tests/test_omni_text_bridge.py",
+      "domain": "models",
+      "test_type": "service_contract",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Native Omni PEFT chat identity, atomic selection, history and sandbox worker contract."
+    },
+    {
       "path": "tests/test_onnx_gpu_bridge.py",
       "domain": "runtime",
       "test_type": "gate",

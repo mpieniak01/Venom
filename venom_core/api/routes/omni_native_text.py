@@ -5,7 +5,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from venom_core.services import omni_native_text
 
-router = APIRouter(prefix="/api/v1/llm/native-text", tags=["llm"])
+router = APIRouter(prefix="/native-text", tags=["llm"])
 
 
 class SelectionRequest(BaseModel):

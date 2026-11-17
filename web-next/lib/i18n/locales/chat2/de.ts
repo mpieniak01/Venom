@@ -1,4 +1,11 @@
 export const chat2 = {
+  nativeText: {
+    "context": "Das Gespräch überschreitet das Limit des nativen Modells. Kürzen Sie den Kontext oder das Antwortlimit.",
+    "unsupported": "Der ausgewählte Adapter unterstützt diese Chatfunktion nicht.",
+    "changed": "Modellauswahl oder Gewichte haben sich geändert. Prüfen Sie den aktiven Adapter vor einem neuen Versuch.",
+    "unavailable": "Das native Textmodell ist auf diesem Host nicht konfiguriert.",
+    "failed": "Der ausgewählte Adapter konnte nicht ausgeführt werden. Prüfen Sie seinen Zustand vor einem neuen Versuch."
+},
   "attachVoiceImage": "Bild zur gesprochenen Frage hinzufügen",
   "voiceImageInvalid": "Wähle ein JPEG- oder PNG-Bild aus.",
   "voiceImageTooLarge": "Das Bild darf höchstens 2 MB groß sein.",

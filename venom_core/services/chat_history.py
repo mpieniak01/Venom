@@ -50,6 +50,7 @@ class DirectHistory:
         self.recorded = False
         self.terminal = False
         self.cost: dict[str, Any] | None = None
+        self.model_identity: dict[str, str] | None = None
 
     def feed(self, chunk: str | bytes | memoryview) -> str | None:
         text = chunk if isinstance(chunk, str) else self.decoder.decode(bytes(chunk))
@@ -65,6 +66,25 @@ class DirectHistory:
         return terminal
 
     def _observe(self, kind: str, value: dict[str, Any]) -> str | None:
+        identity = value.get("model_identity")
+        if (
+            isinstance(identity, dict)
+            and identity.get("runtime") == "omni-native-peft-text"
+        ):
+            self.model_identity = {
+                key: identity[key]
+                for key in (
+                    "runtime",
+                    "runtime_id",
+                    "adapter_id",
+                    "model",
+                    "revision",
+                    "snapshot_sha256",
+                    "config_sha256",
+                    "weights_sha256",
+                )
+                if isinstance(identity.get(key), str) and len(identity[key]) <= 256
+            }
         charge = value if kind == "cost" else value.get("cost")
         if isinstance(charge, dict):
             self.cost = _cost_snapshot(charge)
@@ -109,6 +129,8 @@ class DirectHistory:
             "content": "".join(self.parts),
             "timestamp": now,
         }
+        if self.model_identity is not None:
+            assistant["model_identity"] = dict(self.model_identity)
         if self.cost is not None:
             assistant["cost"] = dict(self.cost)
         # Pass frozen payloads to the existing drainable I/O helper. Repeated

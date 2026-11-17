@@ -7,6 +7,12 @@ sandbox=$2
 python_env=$3
 python_base=$4
 python_exec=$5
+adapter=${6:-}
+worker=${7:-omni_native_worker.py}
+case "$worker" in
+    omni_native_worker.py|omni_native_text_worker.py) ;;
+    *) exit 2 ;;
+esac
 worker_dir=$(dirname "$(realpath -- "$0")")
 
 test "$(id -u)" = 0
@@ -52,7 +58,21 @@ while IFS= read -r file; do
     touch "$target"
     mount_readonly "$original" "$target"
 done <<< "$manifest_files"
-for file in omni_native_worker.py omni_native_snapshot.json; do
+if [[ -n "$adapter" ]]; then
+    adapter=$(realpath -- "$adapter")
+    mkdir adapter
+    for file in adapter_config.json adapter_model.safetensors; do
+        original="$adapter/$file"
+        [[ -f "$original" && "$(realpath -- "$original")" == "$original" ]]
+        touch "$sandbox/adapter/$file"
+        mount_readonly "$original" "$sandbox/adapter/$file"
+    done
+fi
+files=(omni_native_worker.py omni_native_snapshot.json)
+if [[ "$worker" != omni_native_worker.py ]]; then
+    files+=("$worker")
+fi
+for file in "${files[@]}"; do
     touch "$sandbox/job/$file"
     mount_readonly "$worker_dir/$file" "$sandbox/job/$file"
 done
@@ -82,4 +102,4 @@ exec /usr/sbin/chroot "$sandbox" /usr/bin/env -i \
     HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 PYTHONDONTWRITEBYTECODE=1 \
     TOKENIZERS_PARALLELISM=false OMP_NUM_THREADS=1 \
     /usr/bin/setpriv --bounding-set=-all --inh-caps=-all --ambient-caps=-all \
-    --no-new-privs "$python_exec" -u /job/omni_native_worker.py
+    --no-new-privs "$python_exec" -u "/job/$worker"

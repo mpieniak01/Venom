@@ -1,0 +1,296 @@
+"""Opt-in native Omni adapter selection for the ordinary text chat endpoint.
+
+Selections are process-local and probe-before-commit. No global runtime setting
+is rewritten: disabling the overlay restores the exact ordinary runtime path.
+Catalog integrity is distinct from quality qualification; activation is explicit.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import os
+import sys
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+from uuid import uuid4
+
+from fastapi import HTTPException
+from fastapi.responses import StreamingResponse
+
+from venom_core.api.schemas.llm_simple import MAX_CHAT_HISTORY_CHARS, SimpleChatRequest
+from venom_core.services import omni_native_dialogue
+from venom_core.services.model_resources import model_operation
+from venom_core.services.remote_training.paths import operator_path
+from venom_core.services.runtime_switch_gate import runtime_request_guard
+from venom_core.services.training_experiments.adapters import (
+    list_adapters,
+    resolve_adapter,
+)
+from venom_core.services.training_experiments.profiles import read_json
+from venom_core.utils.llm_runtime import get_active_llm_runtime
+
+RUNTIME = "omni-native-peft-text"
+_LOCK = asyncio.Lock()
+
+
+def _error(code: str, status: int = 409) -> HTTPException:
+    return HTTPException(status, {"reason_code": code})
+
+
+@dataclass(frozen=True)
+class Selection:
+    directory: Path
+    identity: dict[str, Any]
+    catalog: Path
+    snapshot: Path
+    python_env: Path
+
+    @property
+    def runtime_id(self) -> str:
+        return (
+            f"{RUNTIME}:{self.identity['adapter_id']}:{self.identity['weights_sha256']}"
+        )
+
+    def payload(self) -> dict[str, Any]:
+        return {"runtime": RUNTIME, "runtime_id": self.runtime_id, **self.identity}
+
+
+_ACTIVE: Selection | None = None
+_PREVIOUS: Selection | None = None
+
+
+def _configuration() -> tuple[Path, Path, Path]:
+    try:
+        paths = [
+            operator_path(Path(os.environ[name]))
+            for name in (
+                "OMNI_NATIVE_TEXT_CATALOG_ROOT",
+                "OMNI_NATIVE_SNAPSHOT",
+                "OMNI_NATIVE_TEXT_ENV",
+            )
+        ]
+        if not all(p.is_dir() for p in paths):
+            raise ValueError("directory_missing")
+        # The sandbox shares this known Python base, never a caller-supplied program.
+        if (paths[2] / "bin/python").resolve(strict=True) != Path(
+            sys.executable
+        ).resolve(strict=True):
+            raise ValueError("python_base_mismatch")
+        return paths[0], paths[1], paths[2]
+    except (KeyError, OSError, ValueError) as exc:
+        raise _error("omni_native_text_not_configured", 503) from exc
+
+
+def _resolve(adapter_id: str) -> Selection:
+    catalog, snapshot, python_env = _configuration()
+    try:
+        # resolve_adapter validates the ID before joining it with the catalog.
+        from venom_core.services.remote_training.lifecycle import validate_run_id
+
+        validate_run_id(adapter_id)
+        config = read_json(
+            operator_path(catalog / "adapters" / adapter_id / "adapter_config.json")
+        )
+        selector = config["target_modules"]
+        # The existing adapter validator verifies this selector and module allowlist.
+        modules = selector.rsplit("(", 1)[-1].removesuffix(")").split("|")
+        directory, entry = resolve_adapter(
+            catalog,
+            adapter_id,
+            {
+                "rank": config["r"],
+                "alpha": config["lora_alpha"],
+                "dropout": config["lora_dropout"],
+                "target_modules": modules,
+            },
+        )
+        return Selection(directory, entry, catalog, snapshot, python_env)
+    except (OSError, ValueError, KeyError, TypeError, AttributeError) as exc:
+        raise _error("omni_native_text_adapter_invalid", 422) from exc
+
+
+def state() -> dict[str, Any]:
+    return {
+        "selection": _ACTIVE.payload() if _ACTIVE else None,
+        "previous": _PREVIOUS.payload() if _PREVIOUS else None,
+        "persistent": False,
+    }
+
+
+def catalog() -> list[dict[str, Any]]:
+    root, _, _ = _configuration()
+    return list_adapters(root)
+
+
+def selected() -> bool:
+    return _ACTIVE is not None
+
+
+async def _generate(
+    selection: Selection, messages: list[dict[str, str]], max_tokens: int
+) -> dict[str, Any]:
+    fresh = _resolve(selection.identity["adapter_id"])
+    if fresh != selection:
+        raise _error("omni_native_text_selection_changed")
+    payload = json.dumps(
+        {
+            "identity": selection.identity,
+            "messages": messages,
+            "max_tokens": max_tokens,
+        },
+        ensure_ascii=False,
+    ).encode()
+    try:
+        output = await omni_native_dialogue._invoke(
+            selection.snapshot,
+            payload,
+            adapter=selection.directory,
+            python_env=selection.python_env,
+        )
+        result = json.loads(output)
+        if (
+            result.get("identity") != selection.identity
+            or not isinstance(result.get("text"), str)
+            or not result["text"].strip()
+        ):
+            raise ValueError("invalid_worker_result")
+        return result
+    except (
+        OSError,
+        ValueError,
+        TimeoutError,
+        omni_native_dialogue.NativeDialogueError,
+    ) as exc:
+        raise _error("omni_native_text_generation_failed", 503) from exc
+
+
+async def _switch_locked(
+    adapter_id: str | None, expected_runtime_id: str | None
+) -> dict[str, Any]:
+    global _ACTIVE, _PREVIOUS
+    if expected_runtime_id != (_ACTIVE.runtime_id if _ACTIVE else None):
+        raise _error("omni_native_text_selection_changed")
+    candidate = _resolve(adapter_id) if adapter_id is not None else None
+    async with runtime_request_guard(
+        request_kind="omni_native_text_switch", provider=RUNTIME
+    ):
+        failure = None
+        try:
+            if candidate:
+                await _generate(
+                    candidate, [{"role": "user", "content": "Napisz: gotowe."}], 8
+                )
+        except (HTTPException, asyncio.CancelledError) as exc:
+            failure = exc
+    if failure:
+        raise failure
+    _PREVIOUS, _ACTIVE = _ACTIVE, candidate
+    return state()
+
+
+@model_operation
+async def switch(
+    adapter_id: str | None, *, expected_runtime_id: str | None = None
+) -> dict[str, Any]:
+    """Probe before atomically committing; failed/cancelled loads keep prior state."""
+    async with _LOCK:
+        return await _switch_locked(adapter_id, expected_runtime_id)
+
+
+@model_operation
+async def rollback(*, expected_runtime_id: str | None = None) -> dict[str, Any]:
+    """Select and probe the previous weights under the same atomic selection lock."""
+    async with _LOCK:
+        return await _switch_locked(
+            _PREVIOUS.identity["adapter_id"] if _PREVIOUS else None,
+            expected_runtime_id,
+        )
+
+
+def _validate_request(
+    request: SimpleChatRequest, selection: Selection
+) -> list[dict[str, str]]:
+    if request.model not in (
+        None,
+        selection.identity["adapter_id"],
+        selection.runtime_id,
+    ):
+        raise _error("omni_native_text_selection_changed")
+    if request.expected_runtime_id not in (None, selection.runtime_id):
+        raise _error("omni_native_text_selection_changed")
+    if request.expected_config_hash not in (None, selection.identity["config_sha256"]):
+        raise _error("omni_native_text_selection_changed")
+    if (
+        request.tools
+        or request.tool_choice is not None
+        or request.material_ids
+        or request.response_format
+        or request.format
+        or request.studio_normal
+    ):
+        raise _error("omni_native_text_feature_unsupported", 422)
+    if (
+        sum(len(row.content) for row in request.history) + len(request.content)
+        > MAX_CHAT_HISTORY_CHARS
+    ):
+        raise _error("omni_native_text_context_limit", 413)
+    return [
+        *[row.model_dump(include={"role", "content"}) for row in request.history],
+        {"role": "user", "content": request.content},
+    ]
+
+
+@model_operation
+async def response(
+    request: SimpleChatRequest, *, system_context: str = ""
+) -> StreamingResponse:
+    """Use unchanged request history, including this adapter's earlier answers."""
+    async with _LOCK:
+        selection = _ACTIVE
+        if selection is None:
+            raise _error("omni_native_text_selection_changed")
+        messages = _validate_request(request, selection)
+        if system_context:
+            messages.insert(0, {"role": "system", "content": system_context})
+        max_tokens = request.max_tokens if request.max_tokens is not None else 256
+        if type(max_tokens) is not int or not 1 <= max_tokens <= 1024:
+            raise _error("omni_native_text_token_limit", 422)
+        ordinary = get_active_llm_runtime()
+        async with runtime_request_guard(
+            request_kind=RUNTIME,
+            provider=RUNTIME,
+            model=selection.identity["adapter_id"],
+        ):
+            failure = None
+            try:
+                result = await _generate(selection, messages, max_tokens)
+            except (HTTPException, asyncio.CancelledError) as exc:
+                failure = exc
+        if failure:
+            raise failure
+        result["previous_runtime"] = ordinary.to_payload()
+    request_id = str(uuid4())
+    metadata = {
+        **selection.payload(),
+        **{k: v for k, v in result.items() if k not in {"text", "identity"}},
+    }
+
+    async def chunks():
+        for kind, value in (
+            ("start", {"request_id": request_id, "model_identity": metadata}),
+            ("content", {"text": result["text"]}),
+            ("done", {"model_identity": metadata}),
+        ):
+            yield (
+                "event: "
+                + kind
+                + "\ndata: "
+                + json.dumps(value, ensure_ascii=False)
+                + "\n\n"
+            )
+
+    return StreamingResponse(
+        chunks(), media_type="text/event-stream", headers={"X-Request-ID": request_id}
+    )

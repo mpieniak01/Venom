@@ -179,7 +179,13 @@ async def _terminate(
         raise RuntimeError("omni_native_cleanup_failed") from exc
 
 
-async def _invoke(snapshot: Path, payload: bytes) -> bytes:
+async def _invoke(
+    snapshot: Path,
+    payload: bytes,
+    *,
+    adapter: Path | None = None,
+    python_env: Path | None = None,
+) -> bytes:
     with TemporaryDirectory(prefix="venom-omni-native-") as sandbox:
         start = asyncio.create_task(
             asyncio.create_subprocess_exec(
@@ -197,9 +203,10 @@ async def _invoke(snapshot: Path, payload: bytes) -> bytes:
                 str(_WORKER_SCRIPT),
                 str(snapshot),
                 sandbox,
-                sys.prefix,
+                str(python_env) if python_env else sys.prefix,
                 sys.base_prefix,
-                sys.executable,
+                str(python_env / "bin/python") if python_env else sys.executable,
+                *([str(adapter), "omni_native_text_worker.py"] if adapter else []),
                 stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.DEVNULL,

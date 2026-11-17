@@ -210,7 +210,7 @@ function StudioConversation({ showLegacyLink, lightNormal }: Readonly<{
       <div className="studio-top-actions"><label className="studio-language"><span className="sr-only">{t("chat2.language")}</span><select aria-label={t("chat2.language")} value={language} onChange={event => setLanguage(event.target.value as "pl" | "en" | "de")}><option value="pl">PL</option><option value="en">EN</option><option value="de">DE</option></select></label>
         <button ref={materialButton} type="button" className="studio-button" aria-expanded={materialsOpen} aria-controls="studio-materials" onClick={() => { setHistoryOpen(false); setMaterialsOverride(!materialsOpen); }}><Paperclip size={16} />{t("chat2.materials")}</button></div>
     </header>
-    <StudioModelPicker catalog={source.data.unifiedModelCatalog} interaction={interaction} session={sessionId} selectedModel={selectedModel} activeModel={activeServer?.active_model} onApply={conversation.handleActivateModel} busy={active || voice != null || native.busy || !!native.state.selection} />
+    <StudioModelPicker catalog={source.data.unifiedModelCatalog} interaction={interaction} session={sessionId} selectedModel={selectedModel} activeModel={native.state.selection?.adapter_id ?? activeServer?.active_model} onApply={conversation.handleActivateModel} busy={active || voice != null || native.busy || !!native.state.selection} />
     <NativeTextPicker native={native} busy={active || voice != null} />
     {nativeBlocked && <p className="studio-error" role="alert">{t("chat2.nativeText.unsupported")}</p>}
     {!!native.state.selection && <button type="button" className="studio-button" disabled={active || native.busy} onClick={() => setters.setChatMode("direct")}>{t("chat2.nativeText.direct")}</button>}

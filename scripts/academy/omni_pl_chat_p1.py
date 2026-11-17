@@ -264,7 +264,7 @@ class _BalancedSampler:
         self, counts: list[int], steps: int, limit: int | None
     ) -> list[_SupervisedUpdate]:
         stream = chain.from_iterable(self.epoch_updates(epoch) for epoch in count())
-        plan = []
+        plan: list[_SupervisedUpdate] = []
         cumulative = 0
         for indices in islice(stream, steps):
             fresh = sum(counts[index] for index in indices[::2])
@@ -500,7 +500,7 @@ def _load_adapter_tensors(model, weights: Path) -> int:
 def run(mode: str) -> None:
     legacy = not _RECIPE_PATH.exists()
     has_initial = _INITIAL_HANDOFF.exists()
-    read_only = () if legacy else (str(_RECIPE_PATH),)
+    read_only: tuple[str, ...] = () if legacy else (str(_RECIPE_PATH),)
     if has_initial or _INITIAL_ADAPTER_DIR.exists():
         if legacy or not has_initial:
             raise ValueError("experiment_initial_adapter_handoff_missing")
@@ -756,10 +756,10 @@ def run(mode: str) -> None:
         data_collator=lambda rows: _collate(rows, processor.tokenizer.pad_token_id),
         callbacks=[PilotCallback()],
     )
-    trainer.create_optimizer()
+    optimizer = trainer.create_optimizer()
     optimized_ids = {
         id(parameter)
-        for group in trainer.optimizer.param_groups
+        for group in optimizer.param_groups
         for parameter in group["params"]
     }
     optimized_parameters = sorted(

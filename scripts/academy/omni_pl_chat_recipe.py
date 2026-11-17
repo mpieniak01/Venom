@@ -85,17 +85,19 @@ def validate_recipe(value: object) -> dict[str, Any]:
         raise ValueError("save interval and warmup must fit the optimizer step budget")
     if recipe["gpu_step_min_free_mib"] >= recipe["gpu_allocator_reserve_mib"]:
         raise ValueError("GPU step minimum must be below the allocator reserve")
-    for key, lower, upper in (
+    for key, float_lower, float_upper in (
         ("dropout", 0.0, 0.5),
         ("learning_rate", 1e-7, 0.01),
     ):
         item = recipe[key]
         if (
             type(item) not in (int, float)
-            or not lower <= item <= upper
+            or not float_lower <= item <= float_upper
             or not math.isfinite(item)
         ):
-            raise ValueError(f"{key} must be a finite number in [{lower}, {upper}]")
+            raise ValueError(
+                f"{key} must be a finite number in [{float_lower}, {float_upper}]"
+            )
         recipe[key] = float(item)
     recipe["target_modules"] = validate_target_modules(recipe["target_modules"])
     if type(recipe["gradient_checkpointing"]) is not bool:

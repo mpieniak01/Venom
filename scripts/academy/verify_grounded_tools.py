@@ -15,6 +15,7 @@ from venom_core.services.grounded_dialogue import (
     AnswerDraft,
     CalculationClaim,
     CalculationPlan,
+    Evidence,
     GroundedTurn,
     SourceDocument,
     SourceRef,
@@ -131,6 +132,14 @@ def replay(previous: Path) -> dict:
             elif call["name"] == "calculate":
                 expression = call["arguments"]["expression"]
                 recorded_value = call["result"]["result"]
+
+                def draft(
+                    evidence: Evidence, value: str = recorded_value
+                ) -> AnswerDraft:
+                    return AnswerDraft(
+                        evidence.evidence_id, (CalculationClaim("result", value, ""),)
+                    )
+
                 answer = execute_grounded_turn(
                     TurnPlan(
                         "Oblicz.",
@@ -138,9 +147,7 @@ def replay(previous: Path) -> dict:
                         calculations=(CalculationPlan("result", expression),),
                     ),
                     packet,
-                    lambda evidence, value=recorded_value: AnswerDraft(
-                        evidence.evidence_id, (CalculationClaim("result", value, ""),)
-                    ),
+                    draft,
                 )
                 checks.append(
                     {
@@ -158,7 +165,7 @@ def replay(previous: Path) -> dict:
     routing = []
     extra = []
     for case in json.loads((previous / "dev.json").read_text()):
-        prior = []
+        prior: list[str] = []
         for index, turn in enumerate(case["turns"], 1):
             predicted = detect_requirements(turn["user"], prior)
             mode = turn["tool_expectation"]["mode"]

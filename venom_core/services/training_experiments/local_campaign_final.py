@@ -192,7 +192,17 @@ def transition(state: dict) -> None:
     if state["status"] not in {"succeeded", "timed_out", "stopped", "blocked"}:
         return
     state["training_status"] = state["status"]
-    if state["status"] in {"stopped", "blocked"}:
+    confirmation = state.get("repeat_confirmation", {})
+    if confirmation.get("status") in {"failed_quality", "incomplete"}:
+        finish(
+            state,
+            {
+                "status": confirmation["status"],
+                "qualified": None,
+                "reason": confirmation["reason"],
+            },
+        )
+    elif state["status"] in {"stopped", "blocked"}:
         incomplete(state, state.get("error") or f"campaign_{state['status']}")
     elif state["selected_run_id"] is None:
         assessed = (

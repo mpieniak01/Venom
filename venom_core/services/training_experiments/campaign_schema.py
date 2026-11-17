@@ -44,6 +44,7 @@ class CampaignSelection(BaseModel):
 
     min_usable_delta: float = Field(default=0.0, ge=-1, le=1)
     max_critical_delta: float = Field(default=0.0, ge=0, le=1)
+    protect_parent_full_pass: bool = False
 
 
 class CampaignExtension(BaseModel):
@@ -51,6 +52,7 @@ class CampaignExtension(BaseModel):
 
     initial_trials: int = Field(ge=1, le=31)
     min_usable_delta: float = Field(gt=0, le=1)
+    repeat_best_recipe: bool = False
 
 
 SearchParameter = Literal["rank", "alpha", "learning_rate", "dropout"]
@@ -78,6 +80,7 @@ class CampaignQualityPolicy(BaseModel):
 
     reference_record_ids: list[EvidenceId] = Field(default_factory=list, max_length=8)
     parent_reference_record_id: EvidenceId | None = None
+    protect_parent_full_pass: bool = False
     protected_case_ids: list[CaseId] = Field(
         default_factory=list, max_length=MAX_QUALITY_CASES
     )
@@ -94,6 +97,8 @@ class CampaignQualityPolicy(BaseModel):
 
     @model_validator(mode="after")
     def validate_unique_ids(self) -> "CampaignQualityPolicy":
+        if self.protect_parent_full_pass and self.parent_reference_record_id is None:
+            raise ValueError("campaign_quality_parent_reference_missing")
         for values in (self.reference_record_ids, self.protected_case_ids):
             if len(set(values)) != len(values):
                 raise ValueError("campaign_quality_duplicate_ids")
@@ -143,7 +148,12 @@ class CampaignSpec(BaseModel):
         if self.strategy == "fixed":
             if not self.variants or self.search_space is not None:
                 raise ValueError("campaign_fixed_variants_required")
-            if len(self.variants) > self.budget.max_trials:
+            trials = (
+                self.extension.initial_trials + 1
+                if self.extension is not None and self.extension.repeat_best_recipe
+                else len(self.variants)
+            )
+            if trials > self.budget.max_trials:
                 raise ValueError("campaign_trial_budget_exceeded")
         elif self.variants or not self.search_space:
             raise ValueError("campaign_optuna_space_required")
@@ -168,6 +178,16 @@ class CampaignSpec(BaseModel):
             or self.extension.min_usable_delta < self.selection.min_usable_delta
         ):
             raise ValueError("campaign_extension_invalid")
+        if (
+            self.extension is not None
+            and self.extension.repeat_best_recipe
+            and (
+                len(self.variants) != 2 * self.extension.initial_trials
+                or self.quality_policy is None
+                or self.quality_policy.parent_reference_record_id is None
+            )
+        ):
+            raise ValueError("campaign_repeat_recipe_invalid")
         return self
 
 

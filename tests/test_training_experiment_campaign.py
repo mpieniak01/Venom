@@ -1985,3 +1985,434 @@ def test_local_recovery_failure_does_not_block_remote_cleanup(controller, monkey
     with pytest.raises(InterruptedError, match="test supervisor shutdown"):
         supervisor.supervise(remote)
     assert calls == ["heartbeat", "first", "cleanup"]
+
+
+def _repeat_campaign(controller, guarded_evidence, monkeypatch):
+    from venom_core.services.training_experiments import campaign
+
+    service, experiments, clock = controller
+    references, record = guarded_evidence
+    parent = {"adapter_id": "fixture-parent", "weights_sha256": "8" * 64}
+    references["prior"]["candidate_sha256"] = parent["weights_sha256"]
+    for case_id, case in references["prior"]["cases"].items():
+        case["candidate"]["usable"] = case_id in {"a", "c"}
+    experiments.automatic = True
+    original_validate = experiments.validate
+
+    def validate(*args, **kwargs):
+        result = original_validate(*args, **kwargs)
+        result["initial_adapter"] = parent
+        result["workload"]["tokens"] = result["recipe"]["max_supervised_tokens"]
+        return result
+
+    original_start = experiments.start
+
+    def launch(profile_id, run_id, recipe, **kwargs):
+        recipe = {
+            key: value for key, value in recipe.items() if key != "initial_adapter_id"
+        }
+        result = original_start(profile_id, run_id, recipe, **kwargs)
+        return experiments.update(
+            result["run_id"], initial_adapter=kwargs["expected_initial_adapter"]
+        )
+
+    monkeypatch.setattr(experiments, "validate", validate)
+    monkeypatch.setattr(experiments, "start", launch)
+    monkeypatch.setattr(campaign, "verify_adapter_entry", lambda *_: experiments.root)
+    variants = [
+        {
+            "rank": 2,
+            "learning_rate": lr,
+            "seed": seed,
+            "max_supervised_tokens": 40 if seed == 42 else 42,
+        }
+        for seed in (42, 43)
+        for lr in (0.001, 0.002)
+    ]
+    spec = make_spec(
+        count=4,
+        variants=variants,
+        review_mode="automatic",
+        retention="keep_all",
+        extension={
+            "initial_trials": 2,
+            "min_usable_delta": 0.25,
+            "repeat_best_recipe": True,
+        },
+        quality_policy={
+            "reference_record_ids": ["prior"],
+            "parent_reference_record_id": "prior",
+        },
+        budget={
+            **make_spec().budget.model_dump(),
+            "max_trials": 3,
+            "max_updates": 6,
+            "max_tokens": 122,
+        },
+    )
+    return service, experiments, clock, spec, record
+
+
+@pytest.mark.parametrize("winner", [0, 1])
+def test_repeat_best_runs_only_frozen_copy_of_parent_relative_winner_after_restart(
+    controller, guarded_evidence, monkeypatch, winner
+):
+    import copy
+
+    service, experiments, clock, spec, record = _repeat_campaign(
+        controller, guarded_evidence, monkeypatch
+    )
+    planned = start(service, spec)
+    frozen = copy.deepcopy(planned["plan"])
+    initial = []
+    for index in range(2):
+        run = launch_next(service)
+        initial.append(run)
+        # Deliberately conflicting M0 diagnostics prove that parent_delta selects.
+        experiments.finish(run, usable=3 if index == winner else 4)
+        record(run, {"a", "b", "c"} if index == winner else {"a", "c"})
+        service.advance("series")
+    assert service.status("series")["selected_run_id"] == initial[winner]
+    routed = service.advance("series")
+    repeated = frozen["variants"][winner + 2]["run_id"]
+    skipped = frozen["variants"][3 - winner]["run_id"]
+    assert routed["extension_decision"]["repeat_run_id"] == repeated
+    assert routed["extension_decision"]["run_id"] == initial[winner]
+    assert routed["extension_decision"]["usable_delta"] == 0.25
+    assert (
+        next(item for item in routed["trials"] if item["run_id"] == skipped)["status"]
+        == "skipped"
+    )
+
+    routed["worker"] = None
+    service._save(service.directory("series"), routed)
+    restored = CampaignService(
+        experiments, clock=clock, launch=lambda _: process_identity(os.getpid())
+    )
+    restored.resume("series")
+    for _ in range(2):
+        restored.advance("series")
+        if experiments.calls[-1] == ("start", repeated):
+            break
+    assert experiments.calls[-1] == ("start", repeated)
+    assert (
+        experiments.status(repeated)["recipe"]
+        == frozen["variants"][winner + 2]["recipe"]
+    )
+    experiments.finish(repeated, usable=3)
+    record(repeated, {"a", "b", "c"})
+    finished = restored.advance("series")
+    if finished["status"] == "running":
+        finished = restored.advance("series")
+    assert finished["status"] == "succeeded"
+    assert len(experiments.calls) == 3
+    assert finished["used_updates"] == 6
+    assert finished["used_tokens"] == 122
+    assert finished["plan"] == frozen
+    assert finished["plan"]["budget"]["max_trials"] == 3
+
+
+@pytest.mark.parametrize("critical", [False, True])
+def test_repeat_best_skips_all_alternatives_without_protected_parent_gain(
+    controller, guarded_evidence, monkeypatch, critical
+):
+    service, experiments, _clock, spec, record = _repeat_campaign(
+        controller, guarded_evidence, monkeypatch
+    )
+    start(service, spec)
+    for _ in range(2):
+        run = launch_next(service)
+        experiments.finish(run, usable=4)
+        record(
+            run, {"a", "b", "c"} if critical else {"a", "c"}, {"d"} if critical else ()
+        )
+        service.advance("series")
+    finished = service.advance("series")
+    assert finished["status"] == "succeeded"
+    assert finished["extension_decision"]["status"] == "skipped"
+    assert all(trial["status"] == "skipped" for trial in finished["trials"][2:])
+    assert len(experiments.calls) == 2
+
+
+@pytest.mark.parametrize("mutation", ["seed", "recipe", "duplicate", "budget"])
+def test_repeat_best_freeze_rejects_unmatched_or_unbudgeted_alternative(
+    controller, guarded_evidence, monkeypatch, mutation
+):
+    service, _experiments, _clock, spec, _record = _repeat_campaign(
+        controller, guarded_evidence, monkeypatch
+    )
+    values = spec.model_dump()
+    if mutation == "seed":
+        values["variants"][2]["seed"] = 42
+    elif mutation == "recipe":
+        values["variants"][2]["rank"] = 3
+    elif mutation == "duplicate":
+        values["variants"][3]["learning_rate"] = 0.001
+        values["variants"][3]["seed"] = 44
+    else:
+        values["budget"]["max_tokens"] = 121
+    with pytest.raises(
+        ValueError,
+        match="repeat_recipe_mismatch|duplicate_variant|token_budget_exceeded",
+    ):
+        service.plan(CampaignSpec.model_validate(values))
+    assert service.list() == []
+
+
+def test_repeat_best_schema_requires_parent_and_single_repeat_budget(
+    controller, guarded_evidence, monkeypatch
+):
+    _service, _experiments, _clock, spec, _record = _repeat_campaign(
+        controller, guarded_evidence, monkeypatch
+    )
+    values = spec.model_dump()
+    values["quality_policy"]["parent_reference_record_id"] = None
+    with pytest.raises(ValueError, match="repeat_recipe_invalid"):
+        CampaignSpec.model_validate(values)
+    values = spec.model_dump()
+    values["budget"]["max_trials"] = 2
+    with pytest.raises(ValueError, match="trial_budget_exceeded"):
+        CampaignSpec.model_validate(values)
+    values = spec.model_dump()
+    values["quality_policy"].update(
+        parent_reference_record_id=None, protect_parent_full_pass=True
+    )
+    with pytest.raises(ValueError, match="parent_reference_missing"):
+        CampaignSpec.model_validate(values)
+
+
+def test_repeat_recipe_rejects_different_parent_before_planning(
+    controller, guarded_evidence, monkeypatch
+):
+    service, experiments, _clock, spec, _record = _repeat_campaign(
+        controller, guarded_evidence, monkeypatch
+    )
+    validated = experiments.validate
+
+    def different(*args, **kwargs):
+        result = validated(*args, **kwargs)
+        if result["recipe"]["seed"] == 43:
+            result["initial_adapter"] = {
+                **result["initial_adapter"],
+                "weights_sha256": "9" * 64,
+            }
+        return result
+
+    monkeypatch.setattr(experiments, "validate", different)
+    with pytest.raises(ValueError, match="repeat_parent_changed"):
+        service.plan(spec)
+    assert service.list() == []
+
+
+def test_parent_full_pass_breaks_otherwise_equal_checkpoint_quality():
+    from venom_core.services.training_experiments.campaign import _rank
+
+    checkpoints = [
+        {
+            "step": 2,
+            "qualified": True,
+            "usable_delta": 0.25,
+            "critical_delta": 0.0,
+            "quality_guard": {
+                "status": "passed",
+                "parent_delta": {"full_pass_delta": delta},
+            },
+        }
+        for delta in (0.25, 0.5)
+    ]
+    state = {
+        "plan": {"checkpoint_steps": [2]},
+        "trials": [
+            {
+                "run_id": f"trial-{index}",
+                "status": "succeeded",
+                "checkpoint_evaluations": [checkpoint],
+            }
+            for index, checkpoint in enumerate(checkpoints)
+        ],
+    }
+    _rank(state)
+    assert state["selected_run_id"] == "trial-1"
+    assert state["selected_checkpoint_step"] == 2
+
+
+@pytest.mark.parametrize(
+    "full_delta,expected", [(None, False), (0.0, False), (0.125, False), (0.25, True)]
+)
+def test_full_parent_gain_must_meet_selection_threshold_for_repeat(
+    full_delta, expected
+):
+    from venom_core.services.training_experiments.campaign import (
+        _allow_extension,
+        _passes_selection,
+    )
+
+    winner = {
+        "run_id": "first",
+        "usable_delta": 0.5,
+        "critical_delta": 0.0,
+        "result_sha256": "a" * 64,
+        "quality_guard": {
+            "status": "passed",
+            "parent_delta": {"full_pass_delta": full_delta},
+        },
+    }
+    selection = {
+        "min_usable_delta": 0.25,
+        "max_critical_delta": 0.0,
+        "protect_parent_full_pass": True,
+    }
+    assert _passes_selection(winner, selection) is expected
+    state = {
+        "plan": {
+            "selection": selection,
+            "extension": {"initial_trials": 1, "min_usable_delta": 0.25},
+        },
+        "trial_index": 1,
+        "selected_run_id": "first",
+        "trials": [winner],
+    }
+    assert _allow_extension(state) is expected
+    assert state["extension_decision"]["full_pass_delta"] == full_delta
+
+
+@pytest.mark.parametrize(
+    "outcome,confirmation_status",
+    [("passed", "passed"), ("quality", "failed_quality"), ("execution", "incomplete")],
+)
+def test_repeat_is_required_confirmation_before_opening_holdout(
+    controller, guarded_evidence, monkeypatch, outcome, confirmation_status
+):
+    from venom_core.services.training_experiments.local_campaign_final import transition
+
+    service, experiments, _clock, spec, record = _repeat_campaign(
+        controller, guarded_evidence, monkeypatch
+    )
+    start(service, spec)
+    source = None
+    for index in range(2):
+        run = launch_next(service)
+        if index == 0:
+            source = run
+        experiments.finish(run, usable=4 if index == 0 else 2)
+        record(run, {"a", "b", "c", "d"} if index == 0 else {"a", "c"})
+        service.advance("series")
+    service.advance("series")  # select the first recipe's frozen seed-43 alternative
+    launched = service.advance("series")
+    repeated = launched["extension_decision"]["repeat_run_id"]
+    if outcome == "execution":
+        experiments.update(repeated, status="failed", resume_available=False)
+    else:
+        experiments.finish(repeated, usable=3 if outcome == "passed" else 2)
+        record(repeated, {"a", "b", "c"} if outcome == "passed" else {"a", "c"})
+    service.advance("series")
+    finished = service.advance("series")  # consume the non-selected alternative
+    proof = finished["repeat_confirmation"]
+    assert proof["status"] == confirmation_status
+    assert proof["source_run_id"] == source
+    assert proof["repeat_run_id"] == repeated
+    assert finished["selected_run_id"] == (source if outcome == "passed" else None)
+    assert len(experiments.calls) == 3
+    if outcome == "passed":
+        assert proof["repeat_result_sha256"]
+        assert proof["usable_delta"] == 0.25
+        assert service.report("series")["repeat_confirmation"]["status"] == "passed"
+        # The confirmation must remain valid even when the first seed is finalist.
+        record(repeated, {"a", "b", "c"}, source={"sha256": "0" * 64})
+        invalid = service.report("series")
+        assert invalid["repeat_confirmation"]["status"] == "incomplete"
+        assert invalid["selected_run_id"] is None
+
+    # CampaignService uses this same final transition after confirming the repeat.
+    finished["phase"] = "trials"
+    finished["plan"]["final_qualification"] = {"inputs_id": "unopened"}
+    transition(finished)
+    assert finished["phase"] == ("qualification" if outcome == "passed" else "complete")
+    if outcome != "passed":
+        assert finished["qualification_status"] == confirmation_status
+        assert finished["qualification"]["qualified"] is None
+
+
+@pytest.mark.parametrize(
+    "repeat_at_21,source_at_63,expected,final_step",
+    [
+        (0.0, 0.1, "failed_quality", None),
+        (None, 0.1, "incomplete", None),
+        (0.1, 0.1, "passed", 63),
+        (0.1, 0.0, "passed", 21),
+    ],
+)
+def test_repeat_confirms_same_training_dose_and_finalist_requires_both_seeds(
+    repeat_at_21, source_at_63, expected, final_step
+):
+    from venom_core.services.training_experiments.campaign import _confirm_repeat
+
+    def checkpoint(step, delta, digest_prefix):
+        return {
+            "step": step,
+            "status": "succeeded",
+            "result_sha256": digest_prefix * 64,
+            "usable_delta": delta,
+            "critical_delta": 0.0,
+            "quality_guard": {
+                "status": "passed",
+                "parent_delta": {"full_pass_delta": delta},
+            },
+        }
+
+    repeat_rows = [checkpoint(63, 0.5, "d")]
+    if repeat_at_21 is not None:
+        repeat_rows.insert(0, checkpoint(21, repeat_at_21, "c"))
+    state = {
+        "status": "succeeded",
+        "selected_run_id": "source",
+        "selected_checkpoint_step": 21,
+        "plan": {
+            "checkpoint_steps": [21, 63],
+            "selection": {
+                "min_usable_delta": 0.05,
+                "max_critical_delta": 0.0,
+                "protect_parent_full_pass": True,
+            },
+            "extension": {"repeat_best_recipe": True, "min_usable_delta": 0.05},
+        },
+        "extension_decision": {
+            "status": "approved",
+            "run_id": "source",
+            "checkpoint_step": 21,
+            "result_sha256": "a" * 64,
+            "repeat_run_id": "repeat",
+        },
+        "trials": [
+            {
+                "run_id": "source",
+                "status": "succeeded",
+                "checkpoint_evaluations": [
+                    checkpoint(21, 0.3, "a"),
+                    checkpoint(63, source_at_63, "b"),
+                ],
+            },
+            {
+                "run_id": "repeat",
+                "status": "succeeded",
+                "checkpoint_evaluations": repeat_rows,
+            },
+        ],
+    }
+    _confirm_repeat(state)
+    proof = state["repeat_confirmation"]
+    assert proof["status"] == expected
+    assert state["selected_checkpoint_step"] == final_step
+    if expected == "passed":
+        assert proof["source_checkpoint_step"] == proof["repeat_checkpoint_step"] == 21
+        assert proof["finalist_checkpoint_step"] == final_step
+        assert (
+            proof["paired_source_result_sha256"]
+            == ("b" if final_step == 63 else "a") * 64
+        )
+        assert (
+            proof["paired_repeat_result_sha256"]
+            == ("d" if final_step == 63 else "c") * 64
+        )
+    else:
+        assert state["selected_run_id"] is None

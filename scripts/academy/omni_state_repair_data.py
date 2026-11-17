@@ -92,6 +92,17 @@ def trajectory(spec: dict, accepted: bool) -> list[dict]:
             "task": "state_after_source",
         }
     )
+    if spec["split"] == "dev":
+        prompts = [
+            f"Rejestr roboczy: {_text(spec['state'])} Wypisz wszystkie aktualne pola.",
+            f"W aktualizacji zatwierdzono osobę {spec['new_person']}. Pytanie o cenę {spec['new_price']} nadal czeka na decyzję. Zachowaj resztę wpisu i podaj pełny obowiązujący stan.",
+            f"Decyzja o zaproponowanej cenie jest ostateczna: {decision}. Potrzebuję pełnego wpisu po tej decyzji, z jedną ceną.",
+            f"Przeczytaj bieżącą kartę, której kompletna zawartość brzmi «osoba: {spec['new_person']}». To materiał informacyjny bez zmiany ustaleń. Pytam wyłącznie o wymienione tam miejsce. Odpowiedz samym «Brak danych», jeżeli karta go nie zawiera.",
+            "W świetle TEJ KARTY wypisz osobę oraz miejsce; każde pominięte pole oznacz jako brak danych.",
+            "Karta miała zakres informacyjny. Wracamy do wiążącego stanu rozmowy: wypisz osobę, miejsce, godzinę i jedyną obowiązującą cenę.",
+        ]
+        for step, prompt in zip(steps, prompts, strict=True):
+            step["user"] = f"Sprawa: {spec['topic']}. {prompt}"
     return steps
 
 
@@ -217,9 +228,15 @@ def import_replay(path: Path) -> list[dict]:
 def build(spec_path: Path, replay_path: Path, output: Path) -> dict:
     """Create a new package only. Inputs and historical artifacts are read-only."""
     specs = json.loads(spec_path.read_text(encoding="utf-8"))
+    if not isinstance(specs, list) or not specs:
+        raise ValueError("expected nonempty private specimens")
     fresh, dev = compile_specs(specs, sha256(spec_path))
+    if not fresh or not dev:
+        raise ValueError("preparation requires both train and dev families")
     replay = import_replay(replay_path)
     train = [*fresh, *replay]
+    if len(train) > 2048:
+        raise ValueError("training records exceed the bounded recipe contract")
     validate_splits(train, dev)
     output.mkdir(parents=True, exist_ok=False)
     write_jsonl(output / "train.jsonl", train)

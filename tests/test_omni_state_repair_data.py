@@ -5,6 +5,7 @@ import json
 import pytest
 
 from scripts.academy import omni_state_repair_data as data
+from scripts.academy.omni_pl_chat_audit import leakage_counts
 
 
 def specimen(split="train", family="repair-fixture"):
@@ -79,6 +80,12 @@ def test_dev_uses_own_history_and_families_are_not_reused():
         if row["dialogue"]["turn_index"] > 1:
             assert len(row["messages"]) == 1
         assert all(m["role"] != "assistant" for m in row["messages"])
+    assert leakage_counts(train, dev) == {
+        "normalization": "nfkc_casefold_whitespace_v1",
+        "supervised_prefix_matches": 0,
+        "final_user_matches": 0,
+        "duplicate_train_records": 0,
+    }
     with pytest.raises(ValueError, match="families"):
         data.compile_specs([specimen(), specimen("dev")], "b" * 64)
 
@@ -126,3 +133,34 @@ def test_build_is_reproducible_unready_and_refuses_overwrite(tmp_path):
     assert a["files"] == {name: data.sha256(second / name) for name in a["files"]}
     with pytest.raises(FileExistsError):
         data.build(spec_path, replay, first)
+
+
+@pytest.mark.parametrize("specs", [[], {}, [specimen()], [specimen("dev")]])
+def test_build_requires_both_splits_before_writing(tmp_path, specs):
+    path = tmp_path / "spec.json"
+    path.write_text(json.dumps(specs))
+    with pytest.raises(ValueError):
+        data.build(path, tmp_path / "unused", tmp_path / "out")
+    assert not (tmp_path / "out").exists()
+
+
+def test_cli_builds_private_package_without_model_or_training(
+    tmp_path, monkeypatch, capsys
+):
+    path, replay = tmp_path / "spec.json", tmp_path / "prior.jsonl"
+    path.write_text(json.dumps([specimen(), specimen("dev", "new-family")]))
+    write_replay(replay)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "prepare",
+            "--specimens",
+            str(path),
+            "--replay",
+            str(replay),
+            "--output",
+            str(tmp_path / "out"),
+        ],
+    )
+    data.main()
+    assert json.loads(capsys.readouterr().out)["start_ready"] is False

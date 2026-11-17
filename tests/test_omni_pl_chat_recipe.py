@@ -229,9 +229,9 @@ def test_balanced_dataloader_measures_epochs_and_resumes_without_training(
     tmp_path, loss_mode
 ):
     import torch
-    from accelerate import skip_first_batches
     from transformers import Trainer, TrainingArguments
 
+    accelerate = pytest.importorskip("accelerate")
     rows = _sampling_rows()
     recipe = validate_recipe(
         {
@@ -301,7 +301,7 @@ def test_balanced_dataloader_measures_epochs_and_resumes_without_training(
 
     resumed, _, _ = prepare()
     resumed.state.global_step = 4
-    loader = skip_first_batches(resumed.get_train_dataloader(), 4)
+    loader = accelerate.skip_first_batches(resumed.get_train_dataloader(), 4)
     loader.set_epoch(1)
     stream = iter(loader)
     for expected in plan[4:6]:

@@ -2688,8 +2688,9 @@ def test_remote_supervisor_read_failure_keeps_local_recovery(
             raise InterruptedError("shutdown")
 
     monkeypatch.setattr(supervisor.time, "sleep", stop_after_two)
+    remote = Remote()
     with pytest.raises(InterruptedError, match="shutdown"):
-        supervisor.supervise(Remote(), academy_root=experiments.root)
+        supervisor.supervise(remote, academy_root=experiments.root)
     assert local == [True, True]
 
 

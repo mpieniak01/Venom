@@ -74,7 +74,7 @@ export interface CampaignCheckpointEvaluation {
   step: number;
   status: string;
   usable_delta?: number;
-  critical_delta?: number;
+  critical_delta?: number | null;
   quality_guard?: TrialQualityGuard | null;
   result_sha256?: string;
 }
@@ -84,7 +84,7 @@ export interface CampaignTrial {
   status: string;
   attempt?: number;
   usable_delta?: number;
-  critical_delta?: number;
+  critical_delta?: number | null;
   error?: string | null;
   resume_available?: boolean;
   quality_guard?: TrialQualityGuard | null;
@@ -97,7 +97,7 @@ export interface CampaignTrial {
 export interface Campaign {
   phase?: "trials" | "qualification" | "complete";
   qualification_status?: CampaignQualificationStatus;
-  qualification?: { status?: string; qualified?: unknown; reason?: string; usable_delta?: number; critical_delta?: number; parent_full_pass_count?: number; candidate_full_pass_count?: number; full_pass_delta?: number } | null;
+  qualification?: { status?: string; qualified?: unknown; reason?: string; usable_delta?: number; critical_delta?: number | null; parent_full_pass_count?: number; candidate_full_pass_count?: number; full_pass_delta?: number } | null;
   deadline_at?: number | null;
   qualification_attempts?: number;
   repeat_confirmation?: {

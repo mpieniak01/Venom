@@ -24,6 +24,7 @@ MAX_SECONDS = 1500
 _INTENT = "intent.json"
 _STARTED = "started.json"
 _PHASE1_PASS = "phase1-pass.json"
+_RESULT = "judge-result.json"
 
 
 def _stage_controls(controls: Path, output: Path, intent: dict) -> None:
@@ -281,11 +282,11 @@ def run_audit(
         result["completed_calls"] = len(rows)
         if (root / _PHASE1_PASS).exists():
             result["phase1_marker_sha256"] = digest(root / _PHASE1_PASS)
-        atomic_json(root / "judge-result.json", result)
+        atomic_json(root / _RESULT, result)
     if result["status"] == "complete":
         receipt = {
             **pin.model_dump(),
-            "result_sha256": digest(root / "judge-result.json"),
+            "result_sha256": digest(root / _RESULT),
         }
         old_location = os.environ.get("VENOM_ACADEMY_JUDGE_V4_AUDIT_ROOT")
         os.environ["VENOM_ACADEMY_JUDGE_V4_AUDIT_ROOT"] = str(root)
@@ -298,7 +299,7 @@ def run_audit(
             )
         except (OSError, ValueError, TypeError, KeyError, RuntimeError) as exc:
             result.update(status="failed_qualification", error=str(exc))
-            atomic_json(root / "judge-result.json", result)
+            atomic_json(root / _RESULT, result)
         finally:
             if old_location is None:
                 os.environ.pop("VENOM_ACADEMY_JUDGE_V4_AUDIT_ROOT", None)

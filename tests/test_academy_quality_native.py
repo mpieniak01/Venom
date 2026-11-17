@@ -89,7 +89,7 @@ def sealed_run(tmp_path):
     )
     report = {
         "run_id": "test-native",
-        "checkpoint": {"step": 1},
+        "checkpoint": {"step": 1, "sha256": "f" * 64},
         "dev_sha256": profile["dev_sha256"],
         "manifest_sha256": stable_hash(manifest),
         "generation_sha256": generation_seal,
@@ -105,6 +105,11 @@ def test_sealed_result_preserves_paired_critical_evidence(sealed_run):
     service, generation = sealed_run
     row = get_record(service, "test-native")
     assert row["identity"] == evaluation_identity(generation, None)
+    assert row["candidate_sha256"] == "f" * 64
+    assert (
+        evaluation_identity({**generation, "dialogue_protocol": "own-history-v1"}, None)
+        != row["identity"]
+    )
     assert row["cases"]["a"] == {
         "category": "init",
         "base": {"usable": True, "critical": False},

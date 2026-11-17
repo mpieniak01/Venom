@@ -37,7 +37,7 @@ def quality_record_view(record: QualityRecord | dict) -> dict:
     view["protected_case_ids"] = sorted(view["protected_case_ids"])
     view["evidence_gaps"] = sorted(set(view["evidence_gaps"]))
     # Preserve previously sealed v1 records when the new optional fields are absent.
-    for key in ("reviewed_run", "cohorts"):
+    for key in ("reviewed_run", "cohorts", "candidate_sha256"):
         if view[key] is None:
             del view[key]
     if "cohorts" in view:

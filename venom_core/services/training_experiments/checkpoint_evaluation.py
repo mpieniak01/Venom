@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 
+from scripts.academy.omni_pl_chat_dialogue import blind_answer
 from scripts.academy.omni_pl_chat_evaluate import blind_mapping
 from venom_core.services.remote_training.lifecycle import atomic_json
 from venom_core.services.remote_training.paths import operator_path
@@ -142,7 +143,7 @@ def _publish_pair(
         for label, variant in mapping[case["record_id"]].items():
             row = rows[case["record_id"], variant]
             raw.append({**row, "label": label})
-            answers[label] = row["response"]
+            answers[label] = blind_answer(row)
         blind.append({"case": case, "answers": dict(sorted(answers.items()))})
     _write_rows(folder / RAW_ANSWERS, raw)
     _write_rows(folder / "blind.jsonl", blind)

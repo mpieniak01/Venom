@@ -929,3 +929,123 @@ def test_preflight_receipt_exposes_actual_mask_totals(monkeypatch):
     assert report["max_input_tokens"] == 3
     assert report["max_supervised_tokens"] == 2
     assert {name: report[name] for name in observed} == observed
+
+
+def _dialogue_cases():
+    return [
+        {
+            **_dev_case(),
+            "record_id": f"turn-{index}",
+            "group_id": "one-dialogue",
+            "dialogue": {"id": "conversation", "turn_index": index},
+            "messages": [{"role": "user", "content": f"Pytanie {index}"}],
+        }
+        for index in range(1, 5)
+    ]
+
+
+def test_dialogue_validation_requires_complete_own_history_chain():
+    cases = _dialogue_cases()
+    validate_dev_cases(cases)
+    for broken in (cases[:3], [cases[1], cases[0], *cases[2:]]):
+        with pytest.raises(ValueError, match="dialogue"):
+            validate_dev_cases(broken)
+    cases[1]["messages"] = [
+        {"role": "user", "content": "Gotowy prompt"},
+        {"role": "assistant", "content": "Wzorcowa odpowiedź"},
+        {"role": "user", "content": "Kolejne pytanie"},
+    ]
+    with pytest.raises(ValueError, match="current user"):
+        validate_dev_cases(cases)
+
+
+def test_dialogue_retry_preserves_each_arms_actual_responses(tmp_path, monkeypatch):
+    from scripts.academy.omni_pl_chat_dialogue import answer_context
+
+    cases = _dialogue_cases()
+    variants = ["base", "checkpoint-2"]
+    mapping = blind_mapping(cases, variants)
+    identity = {"protocol": "own-history-v1"}
+    progress = evaluator.GenerationProgress(tmp_path, identity, mapping)
+    base = SimpleNamespace(
+        model=SimpleNamespace(language_model=object()),
+        generation_config=SimpleNamespace(eos_token_id=99),
+        config=SimpleNamespace(text_end_token_id=100),
+    )
+    model = Mock()
+    model.disable_adapter.side_effect = nullcontext
+    monkeypatch.setitem(
+        sys.modules, "torch", SimpleNamespace(inference_mode=nullcontext)
+    )
+    monkeypatch.setattr(
+        evaluator,
+        "import_module",
+        lambda _: SimpleNamespace(can_use_lfm3_conv=lambda: True),
+    )
+
+    def prediction(text):
+        return {"response": {"text": text, "finish": "stop", "error": None}}
+
+    monkeypatch.setattr(
+        evaluator,
+        "_predict",
+        Mock(side_effect=[prediction("Moja błędna odpowiedź"), TimeoutError]),
+    )
+    with pytest.raises(TimeoutError):
+        evaluator._generate(progress, base, model, None, cases, variants)
+    resumed = evaluator.GenerationProgress(tmp_path, identity, mapping)
+    predict = Mock(side_effect=[prediction(f"Odpowiedź {i}") for i in range(7)])
+    monkeypatch.setattr(evaluator, "_predict", predict)
+    evaluator._generate(resumed, base, model, None, cases, variants)
+    assert predict.call_count == 7
+    assert predict.call_args_list[0].args[2][1]["content"] == "Moja błędna odpowiedź"
+    assert predict.call_args_list[3].args[2] == cases[0]["messages"]
+    assert predict.call_args_list[4].args[2][1]["content"] == "Odpowiedź 3"
+    resumed.publish(tmp_path, cases, variants)
+    blind = read_jsonl(tmp_path / "blind.jsonl")
+    label = next(label for label, tag in mapping["turn-2"].items() if tag == "base")
+    answer = blind[1]["answers"][label]
+    assert answer_context(cases[1], answer)[1]["content"] == "Moja błędna odpowiedź"
+    with pytest.raises(ValueError, match="verified history"):
+        answer_context(cases[1], {**answer, "history_sha256": "wrong"})
+    # Re-sealing a later turn cannot hide a changed predecessor.
+    cached = resumed.rows["turn-1", "base"]
+    resumed.rows["turn-1", "base"] = {
+        **cached,
+        "response": prediction("changed")["response"],
+    }
+    with pytest.raises(ValueError, match="predecessors"):
+        resumed.publish(tmp_path / "other", cases, variants)
+
+
+def test_own_history_survives_reblinding_and_reaches_semantic_reviewer():
+    from scripts.academy.omni_pl_chat_dialogue import DialogueHistory, blind_answer
+    from venom_core.services.training_experiments.local_semantic_judge import _material
+
+    cases = _dialogue_cases()
+    state = DialogueHistory()
+    first = {
+        "case": "turn-1",
+        "model": "base",
+        "label": "A",
+        "response": {
+            "text": "Moje poprzednie ustalenie",
+            "finish": "stop",
+            "error": None,
+        },
+        **state.context(cases[0]),
+    }
+    state.remember(cases[0], first, state.context(cases[0]))
+    context = state.context(cases[1])
+    second = {
+        "response": {"text": "Wynik po korekcie", "finish": "stop", "error": None},
+        **context,
+    }
+    answer = blind_answer(second)
+    packet = _material({}, cases[1], answer)
+    assert packet["messages"][1]["content"] == "Moje poprzednie ustalenie"
+    reblinded = DialogueHistory()
+    reblinded.remember(cases[0], {**first, "label": "B"}, reblinded.context(cases[0]))
+    assert reblinded.context(cases[1]) == context
+    with pytest.raises(ValueError, match="verified history"):
+        _material({}, cases[1], second["response"])

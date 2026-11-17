@@ -6,6 +6,7 @@ import re
 from pathlib import Path
 from typing import Any
 
+from scripts.academy.omni_pl_chat_dialogue import grouped_scores, paired_delta
 from scripts.academy.omni_pl_chat_p1 import CHECKPOINT_FILES
 from scripts.academy.omni_pl_chat_scoring import aggregate
 from venom_core.services.remote_training.paths import operator_path
@@ -102,7 +103,11 @@ def sealed_report(
     candidate = f"checkpoint-{checkpoint['step']}"
     case_by_id = {case["record_id"]: case for case in cases}
     roles = {"base": "base", candidate: "candidate"}
-    track_critical_cases = parent_tag is not None or include_critical_case_ids
+    track_critical_cases = (
+        parent_tag is not None
+        or include_critical_case_ids
+        or any("dialogue" in case for case in cases)
+    )
     if parent_tag is not None:
         if parent_tag in roles:
             raise ValueError("experiment_unblind_invalid")
@@ -132,6 +137,24 @@ def sealed_report(
         **scores,
         **({"critical_case_ids": critical} if track_critical_cases else {}),
         "cases": details,
+        "grouped_scores": grouped_scores(cases, scores["verdicts"], critical),
+        **(
+            {
+                "paired_parent_comparison": paired_delta(
+                    [
+                        scores["verdicts"]["parent"][case["record_id"]]["usable"]
+                        for case in cases
+                    ],
+                    [
+                        scores["verdicts"]["candidate"][case["record_id"]]["usable"]
+                        for case in cases
+                    ],
+                    [case.get("group_id", case["record_id"]) for case in cases],
+                )
+            }
+            if parent_tag is not None
+            else {}
+        ),
         "checkpoint": checkpoint,
         "artifacts": [{"kind": "adapter", **checkpoint, "available": True}],
     }

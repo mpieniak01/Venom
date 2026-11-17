@@ -16,6 +16,7 @@ from typing import Annotated, Literal
 import httpx
 from pydantic import BaseModel, ConfigDict, Field, StrictBool
 
+from scripts.academy.omni_pl_chat_dialogue import answer_context
 from venom_core.services.remote_training.lifecycle import file_lock
 from venom_core.services.runtime_admission import (
     ACADEMY_TRAINING_OWNER,
@@ -320,7 +321,7 @@ def schema_for(ids: list[str]) -> dict:
 
 def _material(spec: dict, case: dict, answer: dict) -> dict:
     return {
-        "messages": case["messages"],
+        "messages": answer_context(case, answer),
         "criteria": [
             {name: criterion[name] for name in ("description", "id")}
             for criterion in case["criteria"]

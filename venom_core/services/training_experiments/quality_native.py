@@ -131,6 +131,11 @@ def evaluation_identity(
                 "scorer": scorer_protocol(calibration),
                 "calibration_sha256": calibration_sha256,
                 **{key: generation[key] for key in _PROTOCOL_FIELDS},
+                **(
+                    {"dialogue_protocol": generation["dialogue_protocol"]}
+                    if "dialogue_protocol" in generation
+                    else {}
+                ),
             }
         ),
     }
@@ -240,6 +245,7 @@ def native_record(
                 "kind": "academy",
             },
             "cases": evaluated_cases(report, categories, grades, mapping),
+            "candidate_sha256": report["checkpoint"].get("sha256"),
             "train_sha256": profile["train_sha256"],
             "recipe": manifest["recipe"],
             "runtime": {
@@ -285,6 +291,7 @@ def frozen_evaluation_identity(
             "engine": runtime["evaluation_engine"],
             "template": "vendor",
             "generation_mode": "text",
+            "dialogue_protocol": "own-history-v1",
             "do_sample": False,
             "enable_thinking": False,
         },

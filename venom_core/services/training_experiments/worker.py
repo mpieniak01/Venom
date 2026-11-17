@@ -119,9 +119,15 @@ class Worker:
 
     def prepare_gpu(self, lease: RuntimeLease, *, offline: bool) -> None:
         """Unload models before CUDA starts and retain the lease for the whole job."""
+        receipt = self.release_gpu(lease, offline=offline)
+        atomic_json(self.directory / f"gpu-release-{self.attempt}.json", receipt)
+
+    @staticmethod
+    def release_gpu(lease: RuntimeLease, *, offline: bool) -> dict:
+        """Drain loaded models through the host owning the Academy lease."""
         capability = lease.training_cleanup_capability()
         try:
-            port = self._local_api_port()
+            port = Worker._local_api_port()
             if offline:
                 # An older API may be serving before it has claimed the ledger.
                 # Only use the standalone release path when the API is absent.
@@ -150,7 +156,7 @@ class Worker:
                 raise ValueError("incomplete model release")
         except (HTTPException, httpx.HTTPError, OSError, ValueError) as exc:
             raise ValueError("experiment_gpu_release_failed") from exc
-        atomic_json(self.directory / f"gpu-release-{self.attempt}.json", receipt)
+        return receipt
 
     @staticmethod
     def _local_api_port() -> int:

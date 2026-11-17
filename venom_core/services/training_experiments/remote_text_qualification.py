@@ -4,13 +4,16 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
+import re
 import shutil
 import subprocess
 import tempfile
 import time
 from collections.abc import Callable, Mapping
 from contextlib import ExitStack
+from functools import partial
 from pathlib import Path
 from socket import create_connection
 from typing import Annotated, TypeVar
@@ -37,7 +40,12 @@ from venom_core.services.runtime_admission import (
     get_runtime_admission,
 )
 
-from .adapters import AdapterEntry, resolve_adapter, runner_identity
+from .adapters import (
+    AdapterEntry,
+    resolve_adapter,
+    runner_identity,
+    verify_adapter_entry,
+)
 from .campaign_schema import CampaignId
 from .checkpoint_evaluation import read_generation, seal_generation
 from .evidence import (
@@ -49,7 +57,14 @@ from .evidence import (
 )
 from .profiles import digest, read_json, rows, stable_hash
 from .quality_native import evaluation_identity
-from .remote_text_evidence import _metrics, _receipt_matches, _sha, stage_candidate
+from .remote_text_evidence import (
+    _metrics,
+    _receipt_matches,
+    _sha,
+    read_run,
+    stage_candidate,
+)
+from .remote_text_local import collect_local, pin_local
 from .service import REPO
 from .worker import Worker
 
@@ -78,16 +93,19 @@ class QualificationInputs(BaseModel):
 
 
 def _binding(
-    remote: dict, receipts: Mapping[str, dict], test_sha: str, calibration_sha: str
+    remote: dict,
+    receipts: Mapping[str, dict],
+    test_sha: str,
+    calibration_sha: str,
+    *,
+    source: str = "remote",
 ) -> dict:
     if remote.get("status") not in {"succeeded", "timed_out", "stopped"}:
         raise ValueError("remote_text_final_campaign_not_finished")
-    if any(
-        variant.get("initial_adapter") for variant in remote["plan"].get("variants", [])
-    ):
-        raise ValueError("remote_text_final_parent_comparison_required")
     run_id = remote.get("selected_run_id")
-    receipt = receipts.get(run_id) if isinstance(run_id, str) else None
+    if not isinstance(run_id, str):
+        raise ValueError("remote_text_final_candidate_missing")
+    receipt = receipts.get(run_id)
     trial = next((row for row in remote["trials"] if row["run_id"] == run_id), None)
     if receipt is None or trial is None or not _receipt_matches(receipt, remote, trial):
         raise ValueError("remote_text_final_candidate_missing")
@@ -98,6 +116,7 @@ def _binding(
     candidate = next((row for row in items if row["step"] == step), None)
     if candidate is None or candidate["adapter_available"] is not True:
         raise ValueError("remote_text_final_candidate_missing")
+    parent = _planned_parent(remote["plan"], run_id)
     return {
         "campaign_id": receipt["campaign_id"],
         "run_id": receipt["run_id"],
@@ -111,7 +130,61 @@ def _binding(
         "development_protocol": stable_hash(remote["plan"]["selection"]),
         "final_test_sha256": _sha(test_sha),
         "final_calibration_sha256": _sha(calibration_sha),
+        **({"parent": parent} if parent is not None else {}),
+        **({"source": source} if source == "local" else {}),
     }
+
+
+def _planned_parent(plan: dict, run_id: str) -> dict | None:
+    variants = plan.get("variants", [])
+    parents = [row.get("initial_adapter") for row in variants]
+    if not parents or all(parent is None for parent in parents):
+        return None
+    selected = [row for row in variants if row.get("run_id") == run_id]
+    if (
+        plan.get("strategy", "fixed") != "fixed"
+        or parents[0] is None
+        or any(parent != parents[0] for parent in parents)
+        or len(selected) != 1
+        or not isinstance(selected[0].get("recipe"), dict)
+    ):
+        raise ValueError("remote_text_final_parent_plan_invalid")
+    entry = AdapterEntry.model_validate(parents[0]).model_dump(mode="json")
+    return {"entry": entry, "recipe": selected[0]["recipe"]}
+
+
+def _parent_tag(step: int) -> str:
+    return "checkpoint-99998" if step == 99999 else "checkpoint-99999"
+
+
+def _verify_parent(binding: dict, academy_root: Path | None) -> Path | None:
+    parent = binding.get("parent")
+    if parent is None:
+        return None
+    if academy_root is None:
+        raise ValueError("remote_text_final_parent_catalog_required")
+    return verify_adapter_entry(academy_root, parent["entry"], parent["recipe"])
+
+
+def _stage_parent(
+    binding: dict, manifest: dict, academy_root: Path, workspace: Path
+) -> Path | None:
+    parent = binding.get("parent")
+    expected = parent["entry"] if parent is not None else None
+    if manifest.get("initial_adapter") != expected or (
+        parent is not None and manifest["recipe"] != parent["recipe"]
+    ):
+        raise ValueError("remote_text_final_parent_manifest_mismatch")
+    source = _verify_parent(binding, academy_root)
+    if source is None:
+        return None
+    target = workspace / _parent_tag(binding["step"])
+    target.mkdir(mode=0o700)
+    for name in (*ADAPTER_FILES, "hashes.json"):
+        shutil.copyfile(operator_path(source / name), target / name)
+    assert parent is not None
+    verify_initial_adapter(target, runner_identity(parent["entry"]), parent["recipe"])
+    return target
 
 
 def _load_bound(path: Path, checksum: str, parser: Callable[[Path], _Bound]) -> _Bound:
@@ -200,20 +273,30 @@ def _execute(
 
 
 def _evaluate(
-    command: list[str], log: Path, timeout: int, run_id: str, model: str
+    command: list[str],
+    log: Path,
+    timeout: int,
+    run_id: str,
+    model: str,
+    *,
+    shared_runtime: bool = False,
 ) -> None:
     host = get_runtime_admission()
     if not host.enabled:
         raise ValueError("remote_text_final_dedicated_gpu_required")
-    if not host.claim_offline_host():
-        raise _QualificationDeferred("remote_text_final_dedicated_gpu_required")
-    try:
-        listener = create_connection(("127.0.0.1", Worker._local_api_port()), timeout=1)
-    except ConnectionRefusedError:
-        pass
-    else:
-        listener.close()
-        raise _QualificationDeferred("remote_text_final_dedicated_gpu_required")
+    offline = host.claim_offline_host()
+    if not shared_runtime:
+        if not offline:
+            raise _QualificationDeferred("remote_text_final_dedicated_gpu_required")
+        try:
+            listener = create_connection(
+                ("127.0.0.1", Worker._local_api_port()), timeout=1
+            )
+        except ConnectionRefusedError:
+            pass
+        else:
+            listener.close()
+            raise _QualificationDeferred("remote_text_final_dedicated_gpu_required")
     lock = host.database.parent / "academy-experiments.gpu.lock"
     admission = RuntimeAdmission.for_training_worker(host.database)
     with ExitStack() as resources:
@@ -222,7 +305,7 @@ def _evaluate(
             lease = admission.acquire(
                 owner=ACADEMY_TRAINING_OWNER,
                 run_id=run_id,
-                engine=_TARGET_RUNTIME,
+                engine="omni-training" if shared_runtime else _TARGET_RUNTIME,
                 model=model,
             )
         except BlockingIOError as exc:
@@ -237,12 +320,22 @@ def _evaluate(
             return not group or not group_alive(group[0])
 
         try:
+            if shared_runtime:
+                started = time.monotonic()
+                receipt = Worker.release_gpu(lease, offline=offline)
+                atomic_json(log.with_name("gpu-release.json"), receipt)
+                timeout -= math.ceil(time.monotonic() - started)
+                if timeout <= 0:
+                    raise TimeoutError("remote_text_final_inference_timed_out")
             # Any failure with unconfirmed process state quarantines the lease.
             with lease.operation(kind="lifecycle", confirm_quiescent=quiescent):
                 _execute(command, log, timeout, gpu_fd, group)
         finally:
             if quiescent() and not lease.release():
-                raise RuntimeError("remote_text_final_gpu_recovery_required")
+                if shared_runtime and not group:
+                    lease.defer_training_release()
+                else:
+                    raise RuntimeError("remote_text_final_gpu_recovery_required")
 
 
 def _adapter_identity(checkpoint: Path, binding: dict, manifest: dict) -> dict:
@@ -282,6 +375,39 @@ def _known_outputs(calibration: dict, review: dict) -> bool:
     )
 
 
+def _parent_comparison(scores: dict) -> dict:
+    summaries, verdicts = scores["summaries"], scores["verdicts"]
+    m0_usable, m0_critical = _metrics(summaries)
+    parent_usable, parent_critical = _metrics(
+        {"base": summaries["parent"], "candidate": summaries["candidate"]}
+    )
+    critical = scores["critical_case_ids"]
+    return {
+        "parent_usable_delta": parent_usable,
+        "parent_critical_delta": parent_critical,
+        "m0_usable_delta": m0_usable,
+        "m0_critical_delta": m0_critical,
+        "lost_parent_usable_case_ids": sorted(
+            case_id
+            for case_id, verdict in verdicts["parent"].items()
+            if verdict["usable"] and not verdicts["candidate"][case_id]["usable"]
+        ),
+        "new_parent_critical_case_ids": sorted(
+            set(critical["candidate"]) - set(critical["parent"])
+        ),
+        "new_m0_critical_case_ids": sorted(
+            set(critical["candidate"]) - set(critical["base"])
+        ),
+    }
+
+
+def _model_hashes(adapter: dict) -> dict[str, str]:
+    return {
+        ADAPTER_FILES[0]: adapter["config_sha256"],
+        WEIGHTS: adapter["weights_sha256"],
+    }
+
+
 def _measure(
     generation: Path,
     data: Path,
@@ -293,6 +419,11 @@ def _measure(
     seal_generation(generation)
     generated, _ = read_generation(generation)
     tag = f"checkpoint-{binding['step']}"
+    parent = binding.get("parent")
+    parent_tag = _parent_tag(binding["step"]) if parent is not None else None
+    models: dict[str, dict] = {"base": {"base": True}, tag: _model_hashes(adapter)}
+    if parent is not None and parent_tag is not None:
+        models[parent_tag] = _model_hashes(parent["entry"])
     if (
         generated["data_sha256"] != digest(data)
         or generated["snapshot_manifest_sha256"] != adapter["snapshot_sha256"]
@@ -300,14 +431,7 @@ def _measure(
         or generated["revision"] != adapter["revision"]
         or generated["generation_mode"] != "text"
         or generated["resumed_generations"] != 0
-        or generated["models"]
-        != {
-            "base": {"base": True},
-            tag: {
-                ADAPTER_FILES[0]: adapter["config_sha256"],
-                WEIGHTS: adapter["weights_sha256"],
-            },
-        }
+        or generated["models"] != models
     ):
         raise ValueError("remote_text_final_generation_identity_mismatch")
     review = review_data(generation, data)
@@ -319,6 +443,8 @@ def _measure(
         "holdout_identity": identity,
         "generation_seal_sha256": digest(generation / "generation-seal.json"),
     }
+    if parent is not None:
+        result["adapter_config_sha256"] = adapter["config_sha256"]
     if not _known_outputs(calibration, review):
         return {**result, "status": "incomplete_calibration", "qualified": None}
     judgments = calibrated_judgments(calibration, review)
@@ -327,12 +453,27 @@ def _measure(
         data,
         judgments,
         {"step": binding["step"], "sha256": binding["checkpoint_sha256"]},
+        parent_tag=parent_tag,
     )
-    usable, critical = _metrics(scores["summaries"])
-    critical_regression = any(
-        candidate["critical"] > scores["summaries"]["base"][name]["critical"]
-        for name, candidate in scores["summaries"]["candidate"].items()
-    )
+    if parent is None:
+        usable, critical = _metrics(scores["summaries"])
+        critical_regression = any(
+            candidate["critical"] > scores["summaries"]["base"][name]["critical"]
+            for name, candidate in scores["summaries"]["candidate"].items()
+        )
+    else:
+        comparison = _parent_comparison(scores)
+        result["parent_comparison"] = comparison
+        usable = comparison["parent_usable_delta"]
+        critical = comparison["parent_critical_delta"]
+        critical_regression = any(
+            comparison[key]
+            for key in (
+                "lost_parent_usable_case_ids",
+                "new_parent_critical_case_ids",
+                "new_m0_critical_case_ids",
+            )
+        )
     passed = (
         usable > 0
         and usable >= selection["min_usable_delta"]
@@ -380,10 +521,7 @@ def _publish_adapter(
                 atomic_json(entry / "adapter.json", adapter)
                 atomic_json(
                     entry / "hashes.json",
-                    {
-                        ADAPTER_FILES[0]: adapter["config_sha256"],
-                        WEIGHTS: adapter["weights_sha256"],
-                    },
+                    _model_hashes(adapter),
                 )
                 verify_initial_adapter(entry, runner_identity(adapter), recipe)
                 entry.rename(destination)
@@ -403,14 +541,56 @@ def _read_result(directory: Path, binding: dict) -> dict | None:
     result = read_json(path)
     if result["binding"] != binding:
         raise ValueError("remote_text_final_result_identity_mismatch")
+    if "parent" in binding:
+        _verify_final_evidence(directory, result)
     return result
 
 
-def _catalog_published(directory: Path) -> bool:
+def _verify_final_evidence(directory: Path, result: dict) -> None:
+    name = result["evidence_name"]
+    if not re.fullmatch(r"verified-[A-Za-z0-9_]{8}", name):
+        raise ValueError("remote_text_final_evidence_invalid")
+    evidence = operator_path(directory / name)
+    generation = evidence / "generation"
+    manifest, _ = read_generation(generation)
+    judgments = result.get("judgments_sha256")
+    if (
+        digest(generation / "generation-seal.json") != result["generation_seal_sha256"]
+        or digest(evidence / "holdout.jsonl")
+        != result["holdout_identity"]["dataset_sha256"]
+        or evaluation_identity(manifest, result["binding"]["final_calibration_sha256"])
+        != result["holdout_identity"]
+        or (
+            judgments is not None and digest(generation / "judgments.json") != judgments
+        )
+    ):
+        raise ValueError("remote_text_final_evidence_changed")
+
+
+def _catalog_published(
+    directory: Path, result: dict, academy_root: Path | None
+) -> bool:
     receipt = operator_path(directory / "catalog.json")
-    return receipt.is_file() and read_json(receipt)["result_sha256"] == digest(
+    if not receipt.is_file() or read_json(receipt)["result_sha256"] != digest(
         directory / "result.json"
-    )
+    ):
+        return False
+    binding = result["binding"]
+    if "parent" in binding:
+        if academy_root is None:
+            raise ValueError("remote_text_final_parent_catalog_required")
+        qualified = result["qualified"]
+        _, adapter = resolve_adapter(
+            academy_root, qualified["adapter_id"], binding["parent"]["recipe"]
+        )
+        if (
+            adapter["config_sha256"] != result["adapter_config_sha256"]
+            or adapter["weights_sha256"] != binding["checkpoint_sha256"]
+            or adapter["source"]
+            != {"identity": binding["run_id"], "sha256": binding["result_sha256"]}
+        ):
+            raise ValueError("remote_text_final_catalog_conflict")
+    return True
 
 
 def read_qualification(
@@ -420,17 +600,22 @@ def read_qualification(
     *,
     final_test_sha256: str,
     final_calibration_sha256: str,
+    academy_root: Path | None = None,
+    source: str = "remote",
 ) -> dict | None:
     """Read the sealed controller decision without rehashing remote weight archives."""
     directory = operator_path(evidence_root / _ENTRY)
     if not (directory / "result-seal.json").exists():
         return None
-    binding = _binding(remote, receipts, final_test_sha256, final_calibration_sha256)
+    binding = _binding(
+        remote, receipts, final_test_sha256, final_calibration_sha256, source=source
+    )
+    _verify_parent(binding, academy_root)
     result = _read_result(directory, binding)
     if (
         result is not None
         and result["qualified"] is not None
-        and not _catalog_published(directory)
+        and not _catalog_published(directory, result, academy_root)
     ):
         return {**result, "status": "catalog_pending", "qualified": None}
     return result
@@ -445,10 +630,13 @@ def qualify(
     *,
     final_test_sha256: str,
     final_calibration_sha256: str,
+    source: str = "remote",
     evaluator: Callable[[list[str], Path, int, str, str], None] = _evaluate,
 ) -> dict:
     ensure_data_mutation_allowed("academy_remote_text_qualification")
-    binding = _binding(remote, receipts, final_test_sha256, final_calibration_sha256)
+    binding = _binding(
+        remote, receipts, final_test_sha256, final_calibration_sha256, source=source
+    )
     directory = operator_path(evidence_root / _ENTRY)
     directory.mkdir(mode=0o700, exist_ok=True)
     return _qualify_locked(
@@ -469,9 +657,17 @@ def _qualify_locked(
         intent = directory / "intent.json"
         if intent.exists() and read_json(intent) != binding:
             raise ValueError("remote_text_final_already_bound")
+        _verify_parent(binding, academy_root)
         result = _read_result(directory, binding)
+        if result is not None and "parent" in binding:
+            if (
+                read_run(evidence_root, binding["run_id"])["archive_sha256"]
+                != binding["archive_sha256"]
+            ):
+                raise ValueError("remote_text_final_archive_changed")
         if result is not None and (
-            result["qualified"] is None or _catalog_published(directory)
+            result["qualified"] is None
+            or _catalog_published(directory, result, academy_root)
         ):
             return result
         with tempfile.TemporaryDirectory(prefix=".final-", dir=directory) as staging:
@@ -485,6 +681,7 @@ def _qualify_locked(
                 expected_archive_sha256=binding["archive_sha256"],
             )
             adapter = _adapter_identity(checkpoint, binding, manifest)
+            parent = _stage_parent(binding, manifest, academy_root, workspace)
             if result is None:
                 result = _run_final(
                     directory,
@@ -496,8 +693,10 @@ def _qualify_locked(
                     adapter,
                     remote["plan"]["selection"],
                     evaluator,
+                    parent=parent,
                 )
             if result["qualified"] is not None:
+                _verify_parent(binding, academy_root)
                 _publish_adapter(academy_root, checkpoint, adapter, manifest["recipe"])
                 atomic_json(
                     directory / "catalog.json",
@@ -516,6 +715,8 @@ def _run_final(
     adapter: dict,
     selection: dict,
     evaluator: Callable[[list[str], Path, int, str, str], None],
+    *,
+    parent: Path | None = None,
 ) -> dict:
     data = workspace / "holdout.jsonl"
     calibration = _stage_data(spec, binding, manifest, data)
@@ -539,6 +740,8 @@ def _run_final(
         "base",
         f"{checkpoint.name}={checkpoint}",
     ]
+    if parent is not None:
+        command.append(f"{parent.name}={parent}")
     data_sha = digest(data)
     log = workspace / "evaluation.log"
     evaluator(command, log, spec.max_seconds, binding["run_id"], adapter["model"])
@@ -550,6 +753,9 @@ def _run_final(
     data.rename(run_dir / "holdout.jsonl")
     if log.is_file():
         log.rename(run_dir / "evaluation.log")
+    gpu_receipt = workspace / "gpu-release.json"
+    if gpu_receipt.is_file():
+        gpu_receipt.rename(run_dir / "gpu-release.json")
     generation.rename(run_dir / "generation")
     result["evidence_name"] = run_dir.name
     atomic_json(directory / "result.json", result)
@@ -624,6 +830,7 @@ def qualify_pending(
                     directory / "evidence",
                     state["remote"],
                     state["evidence"],
+                    academy_root=academy_root,
                     **_pins(state),
                 )
             except (OSError, RuntimeError, TypeError, ValueError, KeyError):
@@ -664,17 +871,56 @@ def main() -> None:
     parser.add_argument("campaign_id", nargs="?")
     parser.add_argument("inputs", nargs="?", type=Path)
     parser.add_argument("--pending", action="store_true")
+    parser.add_argument("--local", action="store_true")
+    parser.add_argument("--pin-only", action="store_true")
+    parser.add_argument("--final-test-sha256")
+    parser.add_argument("--final-calibration-sha256")
     args = parser.parse_args()
     academy_root = operator_path(args.academy_root)
-    if args.pending:
-        if args.campaign_id is not None or args.inputs is not None:
+    if args.pin_only:
+        if not (
+            args.local
+            and args.campaign_id
+            and args.inputs is None
+            and args.final_test_sha256
+            and args.final_calibration_sha256
+            and not args.pending
+        ):
+            parser.error("--pin-only takes --local, campaign_id and both digests")
+        result = pin_local(
+            academy_root,
+            args.campaign_id,
+            final_test_sha256=args.final_test_sha256,
+            final_calibration_sha256=args.final_calibration_sha256,
+        )
+    elif (
+        args.final_test_sha256 is not None or args.final_calibration_sha256 is not None
+    ):
+        parser.error("digests can only be supplied with --local --pin-only")
+    elif args.pending:
+        if args.campaign_id is not None or args.inputs is not None or args.local:
             parser.error("--pending takes only the Academy root")
         result = qualify_pending(academy_root)
     else:
         if args.campaign_id is None or args.inputs is None:
             parser.error("provide campaign_id and inputs or use --pending")
-        directory, state = _controller_state(academy_root, args.campaign_id)
-        result = _dispatch(academy_root, directory, state, args.inputs, _evaluate)
+        if args.local:
+            evidence, state, receipts, pins = collect_local(
+                academy_root, args.campaign_id
+            )
+            result = qualify(
+                evidence,
+                state,
+                receipts,
+                academy_root,
+                QualificationInputs.model_validate(read_json(args.inputs)),
+                source="local",
+                evaluator=partial(_evaluate, shared_runtime=True),
+                **pins,
+            )
+        else:
+            directory, state = _controller_state(academy_root, args.campaign_id)
+            result = _dispatch(academy_root, directory, state, args.inputs, _evaluate)
     print(json.dumps(result, ensure_ascii=False, allow_nan=False))
 
 

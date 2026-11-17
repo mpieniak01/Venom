@@ -47,9 +47,9 @@ Przycisk zatrzymania zapisuje żądanie przez API. Kontroler obserwuje stan proc
 
 ## Niezależna kwalifikacja adaptera
 
-Kampania ze stałą listą może kontynuować jeden wspólny adapter. Zainstaluj ten sam wpis katalogu wraz z wagami, konfiguracją i potwierdzeniem hashy na obu hostach i wybierz go we wszystkich wariantach. Zgodność sprawdza plan. Obecna kwalifikacja automatyczna mierzy poprawę względem M0. Zdalna kampania kontynuacji dopuszcza ranking na dev. Do wydania przyrostowego potrzebne jest osobne porównanie ze wspólnym rodzicem.
+Kampania ze stałą listą może kontynuować jeden wspólny adapter. Zainstaluj ten sam wpis katalogu wraz z wagami, konfiguracją i potwierdzeniem hashy na obu hostach i wybierz go we wszystkich wariantach. Kwalifikator sprawdza zgodność rodzica z planem, manifestem treningu i lokalnym katalogiem.
 
-Dla kampanii startującej od M0 podaj w formularzu SHA-256 odłożonego testu i jego kalibracji. Na dedykowanym GPU do oceny udostępnij artefakty kontrolera i przypięty snapshot modelu. Po finalizacji kampanii istnieje możliwość oceny jednego zamrożonego finalisty wybranego na zbiorze dev.
+Przed startem podaj w formularzu SHA-256 odłożonego testu i jego kalibracji. Na dedykowanym GPU do oceny udostępnij artefakty kontrolera, przypięty snapshot modelu i wpis rodzica dla kampanii kontynuacji. Po finalizacji kwalifikator ocenia jednego zamrożonego finalistę wybranego na zbiorze dev. Trening od M0 porównuje finalistę z M0. Kontynuacja porównuje trzy ramiona na dokładnie tych samych zadaniach i w tym samym procesie generacji. Finalista musi poprawić wynik względem rodzica, zachować wszystkie jego użyteczne odpowiedzi i uniknąć nowych błędów krytycznych wobec rodzica oraz M0. Raport podaje obie delty.
 
 ```bash
 python -m venom_core.services.training_experiments.remote_text_qualification \
@@ -66,5 +66,24 @@ python -m venom_core.services.training_experiments.remote_text_qualification \
 ```
 
 Pozytywny wynik potwierdza świeże załadowanie konkretnego adaptera przez natywny tryb tekstowy Omni z PEFT. Katalog Academy pokazuje zakwalifikowany adapter i pozwala użyć go jako rodzica kolejnego zlecenia zgodnego z jego recepturą.
+
+### Kwalifikacja kampanii lokalnej
+
+Po zapisaniu planu lokalnego i przed startem zarejestruj hashe testu i kalibracji. Rejestracja wiąże je z konkretnym planem kampanii. Pliki rejestracji i pieczęci przechowuj w zaufanym katalogu Academy z prawem zapisu dla kontrolera i operatora.
+
+```bash
+python -m venom_core.services.training_experiments.remote_text_qualification \
+  /srv/venom-data/training/experiments CAMPAIGN_ID --local --pin-only \
+  --final-test-sha256 SHA256_TESTU --final-calibration-sha256 SHA256_KALIBRACJI
+```
+
+Po zakończeniu kampanii wywołaj ten sam kwalifikator z manifestem wejść. Pobiera dokładnie wybrany checkpoint przez weryfikowany eksport z lokalnego katalogu kampanii. Jeśli API Venoma zarządza GPU, lokalny kwalifikator używa wspólnej dzierżawy Academy i zwolnienia modeli przez API przed inferencją.
+
+```bash
+python -m venom_core.services.training_experiments.remote_text_qualification \
+  /srv/venom-data/training/experiments CAMPAIGN_ID /srv/venom-data/final-inputs.json --local
+```
+
+Raporty lokalne znajdują się w `local-text-qualification/CAMPAIGN_ID/evidence/final-qualification` wewnątrz katalogu eksperymentów. Ponowienie odczytuje zapieczętowany wynik dla tych samych wejść. Wynik `incomplete_calibration` zachowuje dowody dla audytu i nie rejestruje adaptera.
 
 Odbiór ścieżki Vast wymaga przygotowanej VM i zamrożonego profilu czatu tekstowego z danymi oraz oceną. Testy kodu używają imitacji dostawcy. Płatny pilot wykonuje się jako osobne zlecenie operatora.

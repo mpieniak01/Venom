@@ -236,17 +236,20 @@ def test_remote_campaign_pins_same_starting_adapter_in_each_variant(setup):
     host.start.assert_called_once()
 
 
-def test_remote_campaign_rejects_mixed_parents_and_base_only_qualification(setup):
+def test_remote_campaign_requires_one_parent_and_allows_pinned_continuation_holdout(
+    setup,
+):
     service, spec, _, rental, _ = setup
     spec.campaign.variants[0]["initial_adapter_id"] = "omni-p13-145"
     with pytest.raises(ValueError, match="campaign_remote_mixed_parents"):
         service.plan(spec)
+    rental.validate.assert_not_called()
     spec.campaign.variants[1]["initial_adapter_id"] = "omni-p13-145"
     spec.final_test_sha256 = PLAN
     spec.final_calibration_sha256 = PROFILE
-    with pytest.raises(ValueError, match="campaign_remote_parent_holdout_required"):
-        service.plan(spec)
-    rental.validate.assert_not_called()
+    result = service.plan(spec)
+    assert result["plan"]["request"]["final_test_sha256"] == PLAN
+    assert result["plan"]["request"]["final_calibration_sha256"] == PROFILE
 
 
 def test_completed_remote_campaign_exposes_only_sealed_qualification(
@@ -267,6 +270,7 @@ def test_completed_remote_campaign_exposes_only_sealed_qualification(
     assert result["result"]["outcome"] == "QUALIFIED"
     assert result["result"]["best_qualified"] == qualified
     assert read.call_args.kwargs == {
+        "academy_root": service.local.experiments.root,
         "final_test_sha256": PLAN,
         "final_calibration_sha256": PROFILE,
     }

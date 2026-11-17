@@ -5268,6 +5268,20 @@
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
+      "path": "tests/test_native_text_acceptance.py",
+      "domain": "academy",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Native chat acceptance lifecycle always restores the owned runtime and verifies fresh evidence."
+    },
+    {
       "path": "tests/test_new_chat_session_api.py",
       "domain": "api",
       "test_type": "unit",

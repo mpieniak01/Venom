@@ -22,6 +22,7 @@ def supervise(service: CampaignService, campaign_id: str) -> None:
                 "awaiting_review",
                 "stopping",
                 "interrupted",
+                "qualifying",
             }:
                 return
             state["worker"] = process_identity(os.getpid())
@@ -30,6 +31,7 @@ def supervise(service: CampaignService, campaign_id: str) -> None:
             "running",
             "awaiting_review",
             "stopping",
+            "qualifying",
         }:
             time.sleep(2)
 

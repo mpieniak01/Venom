@@ -39,23 +39,40 @@ def pin_local(
     """Bind both hashes before the local campaign starts, allowing identical retries."""
     ensure_data_mutation_allowed("academy_local_text_qualification_pin")
     campaign = CampaignService(ExperimentService(academy_root))
-    directory = _directory(academy_root, campaign, campaign_id)
+    with file_lock(campaign.directory(campaign_id) / ".state.lock"):
+        state = campaign.status(campaign_id)
+        return pin_state(
+            academy_root,
+            state,
+            final_test_sha256=final_test_sha256,
+            final_calibration_sha256=final_calibration_sha256,
+        )
+
+
+def pin_state(
+    academy_root: Path,
+    state: dict,
+    *,
+    final_test_sha256: str,
+    final_calibration_sha256: str,
+) -> dict:
+    """Persist pre-start pins under the caller's campaign state lock."""
+    campaign = CampaignService(ExperimentService(academy_root))
+    directory = _directory(academy_root, campaign, state["campaign_id"])
     pins = {
         "final_test_sha256": _sha(final_test_sha256),
         "final_calibration_sha256": _sha(final_calibration_sha256),
     }
-    with file_lock(campaign.directory(campaign_id) / ".state.lock"):
-        state = campaign.status(campaign_id)
-        expected = {**_plan_identity(state), "pins": pins}
-        location = operator_path(directory / "holdout-pins.json")
-        if location.exists():
-            if read_json(location) != expected:
-                raise ValueError("remote_text_final_local_pins_changed")
-        elif state["status"] == "planned" and state["started_at"] is None:
-            directory.mkdir(parents=True, exist_ok=True, mode=0o700)
-            atomic_json(location, expected)
-        else:
-            raise ValueError("remote_text_final_local_pins_required_before_start")
+    expected = {**_plan_identity(state), "pins": pins}
+    location = operator_path(directory / "holdout-pins.json")
+    if location.exists():
+        if read_json(location) != expected:
+            raise ValueError("remote_text_final_local_pins_changed")
+    elif state["status"] == "planned" and state["started_at"] is None:
+        directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+        atomic_json(location, expected)
+    else:
+        raise ValueError("remote_text_final_local_pins_required_before_start")
     return expected
 
 
@@ -100,7 +117,7 @@ class _LocalEvidence:
 
 
 def collect_local(
-    academy_root: Path, campaign_id: str
+    academy_root: Path, campaign_id: str, *, timeout: int | None = None
 ) -> tuple[Path, dict, dict, dict[str, str]]:
     """Export and verify exactly the finalist of a completed local CampaignService."""
     ensure_data_mutation_allowed("academy_local_text_qualification_collect")
@@ -111,6 +128,8 @@ def collect_local(
         raise ValueError("remote_text_final_local_pins_required_before_start")
     record = read_json(location)
     state = campaign.status(campaign_id)
+    if state.get("phase") in {"qualification", "complete"}:
+        state = {**state, "status": state["training_status"]}
     if state["status"] not in {"succeeded", "timed_out", "stopped"}:
         raise ValueError("remote_text_final_campaign_not_finished")
     if {key: value for key, value in record.items() if key != "pins"} != _plan_identity(
@@ -131,5 +150,6 @@ def collect_local(
         run_id,
         evidence,
         state["plan"]["budget"]["max_artifact_bytes"],
+        timeout=timeout,
     )
     return evidence, state, {run_id: receipt}, pins

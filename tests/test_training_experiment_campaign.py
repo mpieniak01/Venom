@@ -1628,3 +1628,174 @@ def test_pinned_source_rejects_mismatched_observed_runtime_and_reassesses_at_tim
     assert settled["trials"][0]["quality_guard"]["status"] == "passed"
     assert settled["selected_run_id"] == run_id
     assert experiments.calls == [("start", run_id)]
+
+
+def _automatic_final_controller(controller, monkeypatch):
+    from venom_core.services.training_experiments import campaign, local_campaign_final
+
+    service, experiments, clock = controller
+    experiments.automatic = True
+    frozen = {
+        "inputs_id": "fresh",
+        "reserve_seconds": 60,
+        "inputs_sha256": "a" * 64,
+        "final_test_sha256": "b" * 64,
+        "final_calibration_sha256": "c" * 64,
+    }
+    monkeypatch.setattr(local_campaign_final, "freeze_inputs", lambda *_: frozen)
+    monkeypatch.setattr(local_campaign_final, "pin_inputs", lambda *_: None)
+    monkeypatch.setattr(
+        campaign.quality_native, "frozen_evaluation_identity", lambda *_: {}
+    )
+    monkeypatch.setattr(service, "_verify_checkpoint_protocol", lambda *_: None)
+    monkeypatch.setattr(service, "_verify_quality_winner", lambda *_: None)
+    original_start = experiments.start
+
+    def launch(*args, checkpoint_steps=None, **kwargs):
+        run = original_start(*args, **kwargs)
+        return experiments.update(run["run_id"], checkpoint_steps=checkpoint_steps)
+
+    monkeypatch.setattr(experiments, "start", launch)
+
+    def checkpoints(state, trial, _policy):
+        trial["checkpoint_evaluations"] = [
+            {
+                "step": 2,
+                "qualified": trial["usable_delta"] >= 0,
+                "status": "succeeded",
+                "result_sha256": trial["result_sha256"],
+                "usable_delta": trial["usable_delta"],
+                "critical_delta": trial["critical_delta"],
+            }
+        ]
+
+    monkeypatch.setattr(service, "_record_checkpoint_results", checkpoints)
+    spec = make_spec(
+        count=1,
+        review_mode="automatic",
+        retention="keep_all",
+        checkpoint_steps=[2],
+        final_qualification={"inputs_id": "fresh", "reserve_seconds": 60},
+        budget={
+            **make_spec(count=1).budget.model_dump(),
+            "max_seconds": 120,
+            "trial_seconds": 30,
+        },
+    )
+    return service, experiments, clock, spec
+
+
+@pytest.mark.parametrize(
+    "verdict", ["passed", "failed_quality", "incomplete_calibration"]
+)
+def test_one_normal_local_start_reaches_final_without_manual_command(
+    controller, monkeypatch, verdict
+):
+    from venom_core.services.training_experiments import local_campaign_final
+
+    service, experiments, clock, spec = _automatic_final_controller(
+        controller, monkeypatch
+    )
+    started = start(service, spec)
+    assert started["deadline_at"] == 220
+    run = launch_next(service)
+    experiments.finish(run, usable=3)
+    clock.now += 10
+    scheduled = service.advance("series")
+    assert scheduled["phase"] == "qualification"
+    assert scheduled["status"] == "qualifying"
+    assert scheduled["selected_checkpoint_step"] == 2
+    calls = []
+
+    def evaluate(owner, state):
+        assert owner is service
+        calls.append(state["selected_run_id"])
+        clock.now += 4
+        return {"status": verdict, "qualified": None}
+
+    monkeypatch.setattr(local_campaign_final, "_execute", evaluate)
+    result = service.advance("series")
+    assert calls == [run]
+    assert result["phase"] == "complete"
+    assert result["qualification_status"] == (
+        "incomplete" if verdict == "incomplete_calibration" else verdict
+    )
+    assert result["elapsed_seconds"] == 14
+    assert result["deadline_at"] == 220
+    assert service.advance("series") == result
+    assert len(calls) == 1
+
+
+def test_local_final_retry_restart_uses_original_deadline(controller, monkeypatch):
+    from venom_core.services.training_experiments import local_campaign_final
+
+    service, experiments, clock, spec = _automatic_final_controller(
+        controller, monkeypatch
+    )
+    start(service, spec)
+    run = launch_next(service)
+    experiments.finish(run, usable=3)
+    service.advance("series")
+    calls = []
+
+    def failing(owner, state):
+        local_campaign_final._check(owner, state["campaign_id"])
+        calls.append(clock.now)
+        raise OSError("temporary")
+
+    monkeypatch.setattr(local_campaign_final, "_execute", failing)
+    first = service.advance("series")
+    assert first["qualification_status"] == "pending"
+    assert first["qualification_attempts"] == 1
+    first["worker"] = None
+    service._save(service.directory("series"), first)
+    clock.now = 221
+    resumed = service.resume("series")
+    assert resumed["deadline_at"] == 220
+    result = service.advance("series")
+    assert calls == [100]
+    assert result["qualification_status"] == "incomplete"
+    assert result["qualification"]["reason"] == "campaign_final_deadline_exhausted"
+    assert result["elapsed_seconds"] == 121
+
+
+def test_local_training_timeout_leaves_reserved_final_time(controller, monkeypatch):
+    service, experiments, clock, spec = _automatic_final_controller(
+        controller, monkeypatch
+    )
+    start(service, spec)
+    run = launch_next(service)
+    experiments.finish(run, usable=3)
+    clock.now = 161
+    scheduled = service.advance("series")
+    assert scheduled["status"] == "qualifying"
+    assert scheduled["training_status"] == "timed_out"
+    assert scheduled["deadline_at"] - clock.now == 59
+
+
+def test_local_no_eligible_candidate_is_a_quality_decision(controller, monkeypatch):
+    service, experiments, _clock, spec = _automatic_final_controller(
+        controller, monkeypatch
+    )
+    start(service, spec)
+    run = launch_next(service)
+    experiments.finish(run, usable=1)
+    result = service.advance("series")
+    assert result["phase"] == "complete"
+    assert result["selected_run_id"] is None
+    assert result["qualification_status"] == "failed_quality"
+    assert result["qualification"]["reason"] == "campaign_no_eligible_finalist"
+
+
+def test_local_final_stop_prevents_evaluation(controller, monkeypatch):
+    service, experiments, _clock, spec = _automatic_final_controller(
+        controller, monkeypatch
+    )
+    start(service, spec)
+    run = launch_next(service)
+    experiments.finish(run, usable=3)
+    service.advance("series")
+    assert service.stop("series")["status"] == "stopping"
+    result = service.advance("series")
+    assert result["qualification_status"] == "incomplete"
+    assert result["qualification"]["reason"] == "campaign_final_stopped"

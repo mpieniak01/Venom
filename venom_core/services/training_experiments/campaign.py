@@ -37,7 +37,9 @@ from .retention import (
 )
 
 _CAMPAIGN_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,39}\Z")
-_ACTIVE = frozenset({"running", "awaiting_review", "stopping", "interrupted"})
+_ACTIVE = frozenset(
+    {"running", "awaiting_review", "stopping", "interrupted", "qualifying"}
+)
 _RUN_ACTIVE = frozenset({"queued", "running", "stopping"})
 _RUN_FINISHED = frozenset({"succeeded", "failed", "stopped", "timed_out"})
 
@@ -241,6 +243,7 @@ def _plan(spec: CampaignSpec, experiments: CampaignExperiments) -> dict:
                 "quality_policy",
                 "checkpoint_steps",
                 "extension",
+                "final_qualification",
             }
         ),
         **extra,
@@ -258,10 +261,25 @@ def _plan(spec: CampaignSpec, experiments: CampaignExperiments) -> dict:
         )
         if "checkpoint_evaluation_identity" in payload:
             context["identity"] = payload["checkpoint_evaluation_identity"]
+        if spec.quality_policy.parent_reference_record_id is not None:
+            parents = [variant.get("initial_adapter") for variant in variants]
+            if (
+                not parents
+                or parents[0] is None
+                or any(parent != parents[0] for parent in parents)
+            ):
+                raise ValueError("campaign_quality_parent_adapter_required")
+            context["initial_adapter_sha256"] = parents[0]["weights_sha256"]
         payload["quality_policy"] = quality_guard.freeze_policy(
             spec.quality_policy.model_dump(),
             context,
             lambda record_id: quality_native.get_record(experiments, record_id),
+        )
+    if spec.final_qualification is not None:
+        from .local_campaign_final import freeze_inputs
+
+        payload["final_qualification"] = freeze_inputs(
+            experiments.root, payload, spec.final_qualification.model_dump()
         )
     return {**payload, "plan_sha256": fingerprint(payload)}
 
@@ -269,6 +287,15 @@ def _plan(spec: CampaignSpec, experiments: CampaignExperiments) -> dict:
 def _initial_state(plan: dict) -> dict:
     return {
         "campaign_id": plan["campaign_id"],
+        **(
+            {
+                "phase": "trials",
+                "qualification_status": "pending",
+                "qualification_attempts": 0,
+            }
+            if plan.get("final_qualification")
+            else {}
+        ),
         "plan": plan,
         "status": "planned",
         "trial_index": 0,
@@ -295,6 +322,14 @@ def _current_variant(state: dict) -> dict:
 
 def _actual_recipe(state: dict, trial: dict) -> dict:
     return trial.get("recipe", _current_variant(state)["recipe"])
+
+
+def _parent_metrics(item: dict, guard: dict) -> None:
+    parent = guard.get("parent_delta")
+    if parent is not None:
+        for key in ("usable_delta", "critical_delta"):
+            item[f"m0_{key}"] = item[key]
+            item[key] = parent[key]
 
 
 def _rank(state: dict) -> None:
@@ -353,7 +388,7 @@ def _allow_extension(state: dict) -> bool:
     if "extension_decision" not in state:
         selected = state["selected_run_id"]
         step = state.get("selected_checkpoint_step")
-        winner = next(
+        winner: dict = next(
             (
                 trial
                 for trial in state["trials"][: state["trial_index"]]
@@ -520,6 +555,10 @@ class CampaignService:
             state["status"] = "interrupted"
         self._elapsed(state)
         self._review_selection(state)
+        if state["plan"].get("final_qualification"):
+            from .local_campaign_final import observe
+
+            observe(self.experiments.root, state)
         return state
 
     def _review_selection(self, state: dict) -> None:
@@ -643,15 +682,30 @@ class CampaignService:
                     state["cutoff_at"] = cutoff_at
             if state["status"] == "planned" and plan_sha256 is None:
                 raise ValueError("campaign_plan_not_approved")
+            if state.get("phase") == "complete":
+                raise ValueError("campaign_resume_unavailable")
             if state["status"] not in _ACTIVE | {"planned", "stopped", "blocked"}:
                 raise ValueError("campaign_resume_unavailable")
             if state["status"] in _ACTIVE and identity_alive(state["worker"]):
                 return state
             self._ensure_single_campaign(campaign_id)
-            if state["status"] != "stopping":
+            if state.get("phase") == "qualification":
+                state["status"] = "qualifying"
+            elif state["status"] != "stopping":
+                if state["plan"].get("final_qualification"):
+                    from .local_campaign_final import pin_inputs
+
+                    pin_inputs(self.experiments.root, state)
                 self._prepare_activation(state)
             if state["started_at"] is None:
                 state["started_at"] = self._clock()
+                if state["plan"].get("final_qualification"):
+                    deadline = (
+                        state["started_at"] + state["plan"]["budget"]["max_seconds"]
+                    )
+                    state["deadline_at"] = min(
+                        deadline, state.get("cutoff_at", deadline)
+                    )
             self._start_worker(directory, state)
             return state
 
@@ -669,7 +723,12 @@ class CampaignService:
         state["status"] = "running"
         self._elapsed(state)
         expired = self._campaign_seconds_left(state) <= 0
-        if expired and not optimized and not _reassessing_quality(state):
+        if (
+            expired
+            and not optimized
+            and not _reassessing_quality(state)
+            and not plan.get("final_qualification")
+        ):
             raise ValueError("campaign_time_budget_exhausted")
         state["error"] = None
         state["termination"] = "timed_out" if expired else None
@@ -774,7 +833,10 @@ class CampaignService:
         directory = self.directory(campaign_id)
         with file_lock(directory / ".state.lock"):
             state = self._state(directory)
-            if state["status"] in _ACTIVE | {"blocked"}:
+            if (
+                state["status"] in _ACTIVE | {"blocked"}
+                and state.get("phase") != "complete"
+            ):
                 state["termination"] = "stopped"
                 state["status"] = "stopping"
                 if not identity_alive(state["worker"]):
@@ -784,7 +846,9 @@ class CampaignService:
             return state
 
     def _elapsed(self, state: dict) -> None:
-        if state["started_at"] is not None and state["status"] in _ACTIVE:
+        if state["started_at"] is not None and (
+            state["status"] in _ACTIVE or state.get("phase") == "qualification"
+        ):
             state["elapsed_seconds"] = max(
                 state["elapsed_seconds"], self._clock() - state["started_at"]
             )
@@ -806,6 +870,10 @@ class CampaignService:
                 plan["review_mode"],
                 include_runtime=policy.get("source_record") is not None,
             )
+            if policy.get("parent_cases") is not None:
+                context["initial_adapter_sha256"] = plan["variants"][0][
+                    "initial_adapter"
+                ]["weights_sha256"]
             quality_guard.verify_context(policy, context)
         except (OSError, ValueError, KeyError, TypeError) as exc:
             raise ValueError(_quality_error(exc)) from exc
@@ -866,6 +934,12 @@ class CampaignService:
             for trial in state["trials"]
             if trial["status"] != "pending" or trial.get("intent")
         )
+        if state["plan"].get("final_qualification"):
+            state["artifact_bytes"] += _tree_bytes(
+                self.experiments.root
+                / "local-text-qualification"
+                / state["campaign_id"]
+            )
         budget = state["plan"]["budget"]
         return (
             state["artifact_bytes"] < budget["max_artifact_bytes"]
@@ -886,6 +960,12 @@ class CampaignService:
 
     def _campaign_seconds_left(self, state: dict) -> float:
         remaining = state["plan"]["budget"]["max_seconds"] - state["elapsed_seconds"]
+        if state.get("deadline_at") is not None:
+            return (
+                state["deadline_at"]
+                - self._clock()
+                - state["plan"]["final_qualification"]["reserve_seconds"]
+            )
         cutoff = state.get("cutoff_at")
         return (
             min(remaining, cutoff - self._clock()) if cutoff is not None else remaining
@@ -1086,9 +1166,14 @@ class CampaignService:
             guard, _ = quality_guard.evaluate(
                 policy, record, expected["protocol_sha256"]
             )
+            _parent_metrics(item, guard)
             item.update(
                 quality_guard=guard,
-                qualified=item["qualified"] and guard["status"] == "passed",
+                qualified=(
+                    item["usable_delta"] >= selection["min_usable_delta"]
+                    and item["critical_delta"] <= selection["max_critical_delta"]
+                    and guard["status"] == "passed"
+                ),
             )
         return item
 
@@ -1125,6 +1210,7 @@ class CampaignService:
         except (OSError, ValueError, KeyError, TypeError) as exc:
             decision = quality_guard.blocked(_quality_error(exc))
         trial["quality_guard"] = decision
+        _parent_metrics(trial, decision)
 
     def _evaluate_quality(
         self, state: dict, trial: dict, policy: dict
@@ -1365,6 +1451,11 @@ class CampaignService:
         """Advance one durable transition. Called by the detached supervisor."""
         ensure_data_mutation_allowed("academy_campaign_advance")
         directory = self.directory(campaign_id)
+        state = self._state(directory)
+        if state.get("phase") == "qualification":
+            from .local_campaign_final import advance
+
+            return advance(self, campaign_id)
         with file_lock(directory / ".state.lock"):
             state = self._state(directory)
             if state["status"] not in _ACTIVE:
@@ -1387,6 +1478,10 @@ class CampaignService:
                     )
                     else "campaign_stage_failed"
                 )
+            if state["plan"].get("final_qualification"):
+                from .local_campaign_final import transition
+
+                transition(state)
             if state["status"] not in _ACTIVE:
                 state["worker"] = None
             self._save(directory, state)

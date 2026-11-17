@@ -20,6 +20,10 @@ def main(argv: list[str] | None = None) -> None:
     )
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("list")
+    sub.add_parser("final-inputs")
+    register = sub.add_parser("register-final")
+    register.add_argument("inputs_id")
+    register.add_argument("inputs", type=Path)
     sub.add_parser("plan").add_argument("manifest", type=Path)
     for action in (
         "status",
@@ -39,6 +43,17 @@ def main(argv: list[str] | None = None) -> None:
     try:
         if args.command == "list":
             result = service.list()
+        elif args.command in {"final-inputs", "register-final"}:
+            from venom_core.services.training_experiments.local_campaign_final import (
+                list_inputs,
+                register_inputs,
+            )
+
+            result = (
+                {"inputs": list_inputs(args.root)}
+                if args.command == "final-inputs"
+                else register_inputs(args.root, args.inputs_id, read_json(args.inputs))
+            )
         elif args.command == "plan":
             result = service.plan(CampaignSpec.model_validate(read_json(args.manifest)))
         else:

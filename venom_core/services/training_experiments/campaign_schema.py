@@ -77,6 +77,7 @@ class CampaignQualityPolicy(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True, allow_inf_nan=False)
 
     reference_record_ids: list[EvidenceId] = Field(default_factory=list, max_length=8)
+    parent_reference_record_id: EvidenceId | None = None
     protected_case_ids: list[CaseId] = Field(
         default_factory=list, max_length=MAX_QUALITY_CASES
     )
@@ -96,7 +97,21 @@ class CampaignQualityPolicy(BaseModel):
         for values in (self.reference_record_ids, self.protected_case_ids):
             if len(set(values)) != len(values):
                 raise ValueError("campaign_quality_duplicate_ids")
+        if (
+            self.parent_reference_record_id is not None
+            and self.parent_reference_record_id not in self.reference_record_ids
+        ):
+            raise ValueError("campaign_quality_parent_reference_missing")
         return self
+
+
+class CampaignFinalQualification(BaseModel):
+    """Select an operator-registered private holdout and reserve its session budget."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    inputs_id: CampaignId
+    reserve_seconds: int = Field(ge=30, le=86400)
 
 
 CheckpointStep = Annotated[int, Field(ge=1, le=10000)]
@@ -118,6 +133,7 @@ class CampaignSpec(BaseModel):
     review_mode: Literal["manual", "automatic"] = "manual"
     quality_policy: CampaignQualityPolicy | None = None
     extension: CampaignExtension | None = None
+    final_qualification: CampaignFinalQualification | None = None
     checkpoint_steps: list[CheckpointStep] | None = Field(
         default=None, min_length=1, max_length=4
     )
@@ -136,6 +152,15 @@ class CampaignSpec(BaseModel):
             or self.checkpoint_steps != sorted(set(self.checkpoint_steps))
         ):
             raise ValueError("campaign_checkpoint_steps_invalid")
+        if self.final_qualification is not None and (
+            self.strategy != "fixed"
+            or self.review_mode != "automatic"
+            or self.checkpoint_steps is None
+            or self.final_qualification.reserve_seconds >= self.budget.max_seconds
+            or self.budget.trial_seconds
+            > self.budget.max_seconds - self.final_qualification.reserve_seconds
+        ):
+            raise ValueError("campaign_final_qualification_invalid")
         if self.extension is not None and (
             self.strategy != "fixed"
             or self.review_mode != "automatic"

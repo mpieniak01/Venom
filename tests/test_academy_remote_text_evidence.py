@@ -515,7 +515,7 @@ def _holdout_paths(tmp_path, *, overlap=False, unknown=False, size=1):
 
 
 def _evaluate_fixture(command, log, timeout, run_id, model, *, outcomes=None):
-    assert timeout == 60
+    assert 0 < timeout <= 60
     assert run_id == RUN
     base_index = command.index("base")
     data, generation = map(Path, command[base_index - 3 : base_index - 1])
@@ -1539,3 +1539,127 @@ def test_local_qualification_uses_api_owner_cleanup_and_releases_lease(
     client.post.assert_called_once()
     lease = host.acquire(owner="test", run_id="verify", engine="test", model="test")
     assert lease.release()
+
+
+def _registered_local_final(tmp_path):
+    from venom_core.services.training_experiments import local_campaign_final
+
+    spec, academy, _parent, host, pins = _continued_campaign(tmp_path)
+    profile = {
+        "label": "Local final fixture",
+        "dataset": "fixture",
+        "snapshot": str(spec.snapshot),
+        "training_venv": str(spec.training_venv),
+        "train": str(spec.train),
+        "dev": str(spec.dev),
+        "train_sha256": digest(spec.train),
+        "dev_sha256": digest(spec.dev),
+    }
+    (academy / "profiles").mkdir()
+    atomic_json(academy / "profiles" / "fixture.json", profile)
+    host.state["plan"]["profile_id"] = "fixture"
+    registered = local_campaign_final.register_inputs(
+        academy, "fresh", spec.model_dump(mode="json")
+    )
+    assert registered["final_test_sha256"] == pins["final_test_sha256"]
+    config = local_campaign_final.freeze_inputs(
+        academy, host.state["plan"], {"inputs_id": "fresh", "reserve_seconds": 60}
+    )
+    host.state["plan"]["final_qualification"] = config
+    return spec, academy, host, pins
+
+
+def test_local_final_inputs_are_frozen_before_launch_and_private(tmp_path):
+    from venom_core.services.training_experiments import local_campaign_final
+
+    spec, academy, host, _pins = _registered_local_final(tmp_path)
+    root = academy / "local-text-final-inputs"
+    assert root.stat().st_mode & 0o077 == 0
+    listed = local_campaign_final.list_inputs(academy)
+    assert [entry["inputs_id"] for entry in listed] == ["fresh"]
+    assert "train" not in listed[0]
+    assert "final_test" not in listed[0]
+    local_campaign_final.verify_inputs(academy, host.state["plan"])
+    spec.final_test.write_text(spec.final_test.read_text() + "\n")
+    with pytest.raises(ValueError, match="calibration_invalid|inputs_changed"):
+        local_campaign_final.verify_inputs(academy, host.state["plan"])
+
+
+def test_local_final_registration_rejects_rebinding_and_path_escape(tmp_path):
+    from venom_core.services.training_experiments import local_campaign_final
+
+    spec, academy, _host, _pins = _registered_local_final(tmp_path)
+    with pytest.raises(ValueError, match="inputs_conflict"):
+        local_campaign_final.register_inputs(
+            academy, "fresh", {**spec.model_dump(mode="json"), "max_seconds": 90}
+        )
+    with pytest.raises(ValueError):
+        local_campaign_final.register_inputs(
+            academy, "../escape", spec.model_dump(mode="json")
+        )
+
+
+def test_local_worker_exports_qualifies_and_catalogs_without_manual_final(
+    tmp_path, monkeypatch
+):
+    from venom_core.services.training_experiments.campaign import CampaignService
+    from venom_core.services.training_experiments.service import ExperimentService
+
+    spec, academy, host, pins = _registered_local_final(tmp_path)
+    directory = academy / "campaigns" / CAMPAIGN
+    directory.mkdir(parents=True)
+    run = academy / "runs" / RUN
+    run.parent.mkdir()
+    host.directory.rename(run)
+    state = {
+        **host.state,
+        "started_at": None,
+        "status": "planned",
+        "trial_index": 1,
+        "elapsed_seconds": 0.0,
+        "worker": None,
+        "artifact_bytes": 0,
+    }
+    state["plan"]["budget"].update(max_retries=1, min_free_bytes=0)
+    atomic_json(directory / "state.json", state)
+    pin_local(academy, CAMPAIGN, **pins)
+    state.update(
+        status="qualifying",
+        phase="qualification",
+        training_status="succeeded",
+        started_at=100.0,
+        deadline_at=160.0,
+    )
+    atomic_json(directory / "state.json", state)
+    calls = []
+
+    def evaluate(*args, **kwargs):
+        calls.append(True)
+        assert kwargs["shared_runtime"] is True
+        kwargs["check"]()
+        _evaluate_fixture(*args, outcomes=[("bad", "good", "bad")] * 3)
+
+    monkeypatch.setattr(remote_text_qualification, "_evaluate", evaluate)
+    service = CampaignService(ExperimentService(academy), clock=lambda: 101.0)
+    result = service.advance(CAMPAIGN)
+    assert result["qualification_status"] == "passed"
+    adapter_id = result["qualification"]["qualified"]["adapter_id"]
+    assert (academy / "adapters" / adapter_id / "adapter.json").is_file()
+    assert service.report(CAMPAIGN)["qualification"] == result["qualification"]
+    assert service.advance(CAMPAIGN) == result
+    assert calls == [True]
+    # Even a crash after publishing but before state persistence reuses the seal.
+    state["qualification_attempts"] = 2
+    atomic_json(directory / "state.json", state)
+    assert service.advance(CAMPAIGN)["qualification_status"] == "passed"
+    assert calls == [True]
+    result_path = (
+        academy
+        / "local-text-qualification"
+        / CAMPAIGN
+        / "evidence"
+        / "final-qualification"
+        / "result.json"
+    )
+    result_path.write_text(result_path.read_text() + "\n")
+    assert service.report(CAMPAIGN)["qualification_status"] == "incomplete"

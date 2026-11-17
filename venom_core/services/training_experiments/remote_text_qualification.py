@@ -235,7 +235,13 @@ def _stage_data(
 
 
 def _execute(
-    command: list[str], log: Path, timeout: int, gpu_fd: int, group: list[int]
+    command: list[str],
+    log: Path,
+    timeout: int,
+    gpu_fd: int,
+    group: list[int],
+    *,
+    check: Callable[[], float] | None = None,
 ) -> None:
     deadline = time.monotonic() + timeout
     child = subprocess.Popen(
@@ -254,6 +260,8 @@ def _execute(
             raise RuntimeError("remote_text_final_child_not_confirmed")
         os.set_blocking(child.stdout.fileno(), False)
         while child.poll() is None:
+            if check is not None:
+                check()
             _drain(child, log)
             if time.monotonic() >= deadline:
                 raise TimeoutError("remote_text_final_inference_timed_out")
@@ -289,6 +297,7 @@ def _evaluate(
     model: str,
     *,
     shared_runtime: bool = False,
+    check: Callable[[], float] | None = None,
 ) -> None:
     host = get_runtime_admission()
     if not host.enabled:
@@ -321,6 +330,7 @@ def _evaluate(
             lease,
             shared_runtime=shared_runtime,
             offline=offline,
+            **({"check": check} if check is not None else {}),
         )
 
 
@@ -333,6 +343,7 @@ def _evaluate_with_lease(
     *,
     shared_runtime: bool,
     offline: bool,
+    check: Callable[[], float] | None = None,
 ) -> None:
     group: list[int] = []
 
@@ -351,7 +362,14 @@ def _evaluate_with_lease(
                 raise TimeoutError("remote_text_final_inference_timed_out")
         # Any failure with unconfirmed process state quarantines the lease.
         with lease.operation(kind="lifecycle", confirm_quiescent=quiescent):
-            _execute(command, log, timeout, gpu_fd, group)
+            _execute(
+                command,
+                log,
+                timeout,
+                gpu_fd,
+                group,
+                **({"check": check} if check is not None else {}),
+            )
     finally:
         if quiescent() and not lease.release():
             if shared_runtime and not group:
@@ -497,6 +515,7 @@ def _measure(
     selection: dict,
     *,
     seconds: float = 0.0,
+    check: Callable[[], float] | None = None,
 ) -> dict:
     has_parent = binding.get("parent") is not None
     parent_tag = _parent_tag(binding["step"]) if has_parent else None
@@ -520,11 +539,17 @@ def _measure(
     if legacy and not _known_outputs(calibration, review):
         return {**result, "status": "incomplete_calibration", "qualified": None}
     if calibration["judge"] == local_semantic_judge.JUDGE:
+
+        def check_deadline() -> None:
+            if check is not None:
+                check()
+
         judgments = local_semantic_judge.review_bundle(
             calibration,
             review,
             binding["run_id"],
             seconds,
+            **({"check": check_deadline} if check is not None else {}),
         )
     else:
         judgments = calibrated_judgments(calibration, review)
@@ -734,6 +759,7 @@ def qualify(
     final_calibration_sha256: str,
     source: str = "remote",
     evaluator: Callable[[list[str], Path, int, str, str], None] = _evaluate,
+    check: Callable[[], float] | None = None,
 ) -> dict:
     ensure_data_mutation_allowed("academy_remote_text_qualification")
     binding = _binding(
@@ -742,7 +768,14 @@ def qualify(
     directory = operator_path(evidence_root / _ENTRY)
     directory.mkdir(mode=0o700, exist_ok=True)
     return _qualify_locked(
-        directory, evidence_root, remote, academy_root, spec, binding, evaluator
+        directory,
+        evidence_root,
+        remote,
+        academy_root,
+        spec,
+        binding,
+        evaluator,
+        check=check,
     )
 
 
@@ -754,6 +787,8 @@ def _qualify_locked(
     spec: QualificationInputs,
     binding: dict,
     evaluator: Callable[[list[str], Path, int, str, str], None],
+    *,
+    check: Callable[[], float] | None = None,
 ) -> dict:
     with file_lock(directory / ".lock"):
         intent = directory / "intent.json"
@@ -773,6 +808,8 @@ def _qualify_locked(
             or _catalog_published(directory, result, academy_root)
         ):
             return result
+        if check is not None:
+            check()
         receipt = reverify_run(
             evidence_root,
             remote,
@@ -805,7 +842,10 @@ def _qualify_locked(
                     remote["plan"]["selection"],
                     evaluator,
                     parent=parent,
+                    check=check,
                 )
+            if check is not None:
+                check()
             if result["qualified"] is not None:
                 _verify_parent(binding, academy_root)
                 _publish_adapter(academy_root, checkpoint, adapter, manifest["recipe"])
@@ -828,7 +868,19 @@ def _run_final(
     evaluator: Callable[[list[str], Path, int, str, str], None],
     *,
     parent: Path | None = None,
+    check: Callable[[], float] | None = None,
 ) -> dict:
+    started = time.monotonic()
+
+    def remaining() -> float:
+        budget = spec.max_seconds - (time.monotonic() - started)
+        if check is not None:
+            budget = min(budget, check())
+        if budget <= 0:
+            raise TimeoutError("remote_text_final_inference_timed_out")
+        return budget
+
+    remaining()
     data = workspace / _HOLDOUT
     calibration = _stage_data(spec, binding, manifest, data)
     snapshot = operator_path(spec.snapshot)
@@ -857,8 +909,13 @@ def _run_final(
         command.append(f"{parent.name}={parent}")
     data_sha = digest(data)
     log = workspace / "evaluation.log"
-    started = time.monotonic()
-    evaluator(command, log, spec.max_seconds, binding["run_id"], adapter["model"])
+    evaluator(
+        command,
+        log,
+        max(1, math.floor(remaining())),
+        binding["run_id"],
+        adapter["model"],
+    )
     if digest(data) != data_sha:
         raise ValueError("remote_text_final_input_changed")
     result = _measure(
@@ -868,8 +925,10 @@ def _run_final(
         adapter,
         binding,
         selection,
-        seconds=spec.max_seconds - (time.monotonic() - started),
+        seconds=remaining(),
+        **({"check": check} if check is not None else {}),
     )
+    remaining()
     # The case definitions, outputs and judgments stay on the independent host.
     run_dir = Path(tempfile.mkdtemp(prefix="verified-", dir=directory))
     data.rename(run_dir / _HOLDOUT)
@@ -926,7 +985,8 @@ def _dispatch(
         academy_root,
         QualificationInputs.model_validate(read_json(inputs)),
         evaluator=evaluator,
-        **_pins(state),
+        final_test_sha256=_pins(state)["final_test_sha256"],
+        final_calibration_sha256=_pins(state)["final_calibration_sha256"],
     )
 
 
@@ -1024,7 +1084,8 @@ def _qualify_from_args(
         QualificationInputs.model_validate(read_json(args.inputs)),
         source="local",
         evaluator=partial(_evaluate, shared_runtime=True),
-        **pins,
+        final_test_sha256=pins["final_test_sha256"],
+        final_calibration_sha256=pins["final_calibration_sha256"],
     )
 
 

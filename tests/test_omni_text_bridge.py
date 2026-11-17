@@ -458,3 +458,29 @@ def test_worker_uses_native_multimodal_class_and_text_only_peft(
     assert result["prompt_tokens"] == 3 and result["output_tokens"] == 2
     assert result["peak_reserved_mib"] == 1
     assert calls["messages"] == messages and calls["base"][1]["local_files_only"]
+
+
+@pytest.mark.asyncio
+async def test_rollback_rejects_resealed_previous_adapter_before_probe(native):
+    root, calls = native
+    original = await bridge.switch("p13")
+    current = await bridge.switch(
+        "candidate", expected_runtime_id=original["selection"]["runtime_id"]
+    )
+    before = bridge.state()
+    directory = root / "adapters/p13"
+    (directory / "adapter_model.safetensors").write_bytes(b"replacement sealed weights")
+    hashes = read_json(directory / "hashes.json")
+    hashes["adapter_model.safetensors"] = digest(
+        directory / "adapter_model.safetensors"
+    )
+    write(directory / "hashes.json", hashes)
+    entry = read_json(directory / "adapter.json")
+    entry["weights_sha256"] = hashes["adapter_model.safetensors"]
+    write(directory / "adapter.json", entry)
+    # The replacement passes catalog validation, but is not the retained selection.
+    assert bridge._resolve("p13").payload() != original["selection"]
+    with pytest.raises(HTTPException, match="omni_native_text_selection_changed"):
+        await bridge.rollback(expected_runtime_id=current["selection"]["runtime_id"])
+    assert len(calls) == 2
+    assert bridge.state() == before

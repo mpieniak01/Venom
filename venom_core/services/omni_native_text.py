@@ -193,13 +193,18 @@ async def _generate(
 
 
 async def _switch_locked(
-    adapter_id: str | None, expected_runtime_id: str | None
+    adapter_id: str | None,
+    expected_runtime_id: str | None,
+    *,
+    expected_selection: Selection | None = None,
 ) -> dict[str, Any]:
     global _ACTIVE, _PREVIOUS, _ORDINARY
     if expected_runtime_id != (_ACTIVE.runtime_id if _ACTIVE else None):
         raise _error("omni_native_text_selection_changed")
     ordinary = _check_ordinary()
     candidate = _resolve(adapter_id) if adapter_id is not None else None
+    if expected_selection is not None and candidate != expected_selection:
+        raise _error("omni_native_text_selection_changed")
     async with runtime_request_guard(
         request_kind="omni_native_text_switch", provider=RUNTIME
     ):
@@ -236,6 +241,7 @@ async def rollback(*, expected_runtime_id: str | None = None) -> dict[str, Any]:
         return await _switch_locked(
             _PREVIOUS.identity["adapter_id"] if _PREVIOUS else None,
             expected_runtime_id,
+            expected_selection=_PREVIOUS,
         )
 
 

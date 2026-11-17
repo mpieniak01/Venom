@@ -14,6 +14,7 @@ from pydantic import TypeAdapter
 from venom_core.core.environment_policy import ensure_data_mutation_allowed
 from venom_core.services.remote_training.lifecycle import atomic_json, file_lock
 from venom_core.services.remote_training.paths import operator_path
+from venom_core.services.runtime_admission import RuntimeAdmissionError
 
 from .calibration import scorer_protocol
 from .campaign_schema import CampaignId
@@ -22,6 +23,7 @@ from .remote_text_local import collect_local, pin_state
 
 if TYPE_CHECKING:
     from .campaign import CampaignService
+    from .remote_text_qualification import QualificationInputs
 
 _INPUTS = "local-text-final-inputs"
 _IDS = TypeAdapter(CampaignId)
@@ -50,6 +52,23 @@ def register_inputs(root: Path, inputs_id: str, values: dict) -> dict:
     ):
         payload[key] = str(operator_path(Path(payload[key]).absolute()))
     path = _input_path(root, inputs_id)
+    # Reject broken input packages before publishing a catalog entry.
+    prepared = QualificationInputs.model_validate(payload)
+    summary = _summarize_inputs(inputs_id, prepared)
+    from .remote_text_qualification import _stage_data
+
+    with tempfile.TemporaryDirectory(prefix="academy-final-register-") as temporary:
+        _stage_data(
+            prepared,
+            summary,
+            {
+                "profile": {
+                    "train_sha256": digest(prepared.train),
+                    "dev_sha256": digest(prepared.dev),
+                }
+            },
+            Path(temporary) / "holdout.jsonl",
+        )
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     if path.parent.stat().st_mode & 0o077:
         raise ValueError("campaign_final_inputs_not_private")
@@ -57,15 +76,19 @@ def register_inputs(root: Path, inputs_id: str, values: dict) -> dict:
         if path.exists() and read_json(path) != payload:
             raise ValueError("campaign_final_inputs_conflict")
         atomic_json(path, payload)
-    return _input_summary(path)
+    return summary
 
 
 def _input_summary(path: Path) -> dict:
     from .remote_text_qualification import QualificationInputs
 
     spec = QualificationInputs.model_validate(read_json(path))
+    return _summarize_inputs(path.stem, spec)
+
+
+def _summarize_inputs(inputs_id: str, spec: QualificationInputs) -> dict:
     return {
-        "inputs_id": path.stem,
+        "inputs_id": inputs_id,
         "final_test_sha256": digest(spec.final_test),
         "final_calibration_sha256": digest(spec.calibration),
         "max_seconds": spec.max_seconds,
@@ -197,6 +220,8 @@ def transition(state: dict) -> None:
 
 
 def _error_code(exc: Exception) -> str:
+    if isinstance(exc, RuntimeAdmissionError):
+        return "campaign_final_runtime_admission_failed"
     code = str(exc)
     return (
         code
@@ -207,8 +232,8 @@ def _error_code(exc: Exception) -> str:
 
 def _check(service: CampaignService, campaign_id: str) -> float:
     state = service._state(service.directory(campaign_id))
-    if state.get("termination") == "stopped":
-        raise ValueError("campaign_final_stopped")
+    if state.get("termination") in {"stopped", "blocked"}:
+        raise ValueError(state.get("error") or "campaign_final_stopped")
     remaining = state["deadline_at"] - service._clock()
     if remaining <= 0:
         raise TimeoutError("campaign_final_deadline_exhausted")
@@ -291,6 +316,73 @@ def _execute(service: CampaignService, state: dict) -> dict:
     )
 
 
+def _recover_result(service: CampaignService, state: dict) -> None:
+    # A crash consumes its attempt; recover a sealed result without inference.
+    try:
+        cached = read_result(service.experiments.root, state)
+        if cached is not None and cached["status"] != "catalog_pending":
+            finish(state, cached)
+        else:
+            incomplete(state, "campaign_final_retries_exhausted")
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        incomplete(state, _error_code(exc))
+
+
+def _begin(service: CampaignService, directory: Path) -> tuple[dict, bool]:
+    with file_lock(directory / ".state.lock"):
+        state = service._state(directory)
+        if state.get("phase") != "qualification":
+            return state, False
+        if (
+            state.get("qualification_attempts", 0)
+            > state["plan"]["budget"]["max_retries"]
+        ):
+            _recover_result(service, state)
+            service._save(directory, state)
+            return state, False
+        state["qualification_status"] = "running"
+        state["qualification_attempts"] = state.get("qualification_attempts", 0) + 1
+        service._save(directory, state)
+        return state, True
+
+
+def _record_deferred(service: CampaignService, directory: Path) -> dict:
+    with file_lock(directory / ".state.lock"):
+        state = service._state(directory)
+        state["qualification_attempts"] -= 1
+        state["qualification_status"] = "pending"
+        service._elapsed(state)
+        service._save(directory, state)
+        return state
+
+
+def _record_failure(service: CampaignService, directory: Path, exc: Exception) -> dict:
+    with file_lock(directory / ".state.lock"):
+        state = service._state(directory)
+        state["qualification_error"] = _error_code(exc)
+        expired = state["deadline_at"] <= service._clock()
+        stopped = state.get("termination") in {"stopped", "blocked"}
+        retries = state["plan"]["budget"]["max_retries"]
+        service._elapsed(state)
+        if expired or stopped or state["qualification_attempts"] > retries:
+            incomplete(state, state["qualification_error"])
+        else:
+            state["qualification_status"] = "pending"
+        service._save(directory, state)
+        return state
+
+
+def _record_result(service: CampaignService, directory: Path, result: dict) -> dict:
+    with file_lock(directory / ".state.lock"):
+        state = service._state(directory)
+        service._elapsed(state)
+        service._artifact_budget(state)
+        finish(state, result)
+        state.pop("qualification_error", None)
+        service._save(directory, state)
+        return state
+
+
 def advance(service: CampaignService, campaign_id: str) -> dict:
     """One detached worker owns final execution; status/stop stay responsive."""
     from .remote_text_qualification import _QualificationDeferred
@@ -298,59 +390,50 @@ def advance(service: CampaignService, campaign_id: str) -> dict:
     directory = service.directory(campaign_id)
     try:
         with file_lock(directory / ".qualification-worker.lock", blocking=False):
-            with file_lock(directory / ".state.lock"):
-                state = service._state(directory)
-                if state.get("phase") != "qualification":
-                    return state
-                if (
-                    state.get("qualification_attempts", 0)
-                    > state["plan"]["budget"]["max_retries"]
-                ):
-                    # A crash also consumes its recorded attempt. Sealed results can
-                    # still be recovered without running the evaluator again.
-                    cached = read_result(service.experiments.root, state)
-                    if cached is not None and cached["status"] != "catalog_pending":
-                        finish(state, cached)
-                    else:
-                        incomplete(state, "campaign_final_retries_exhausted")
-                    service._save(directory, state)
-                    return state
-                state["qualification_status"] = "running"
-                state["qualification_attempts"] = (
-                    state.get("qualification_attempts", 0) + 1
-                )
-                service._save(directory, state)
+            state, execute = _begin(service, directory)
+            if not execute:
+                return state
             try:
                 result = _execute(service, state)
             except _QualificationDeferred:
-                with file_lock(directory / ".state.lock"):
-                    state = service._state(directory)
-                    state["qualification_attempts"] -= 1
-                    state["qualification_status"] = "pending"
-                    service._elapsed(state)
-                    service._save(directory, state)
-                return state
-            except (OSError, RuntimeError, TypeError, ValueError, KeyError) as exc:
-                with file_lock(directory / ".state.lock"):
-                    state = service._state(directory)
-                    state["qualification_error"] = _error_code(exc)
-                    expired = state["deadline_at"] <= service._clock()
-                    stopped = state.get("termination") == "stopped"
-                    retries = state["plan"]["budget"]["max_retries"]
-                    service._elapsed(state)
-                    if expired or stopped or state["qualification_attempts"] > retries:
-                        incomplete(state, state["qualification_error"])
-                    else:
-                        state["qualification_status"] = "pending"
-                    service._elapsed(state)
-                    service._save(directory, state)
-                return state
-            with file_lock(directory / ".state.lock"):
-                state = service._state(directory)
-                service._elapsed(state)
-                finish(state, result)
-                state.pop("qualification_error", None)
-                service._save(directory, state)
-                return state
+                return _record_deferred(service, directory)
+            except (
+                OSError,
+                RuntimeError,
+                TypeError,
+                ValueError,
+                KeyError,
+                RuntimeAdmissionError,
+            ) as exc:
+                return _record_failure(service, directory, exc)
+            return _record_result(service, directory, result)
     except BlockingIOError:
         return service.status(campaign_id)
+
+
+def resume_pending(root: Path) -> dict:
+    """Recover one interrupted automatic local session without resetting its budget."""
+    from .campaign import CampaignService
+    from .service import ExperimentService
+
+    ensure_data_mutation_allowed("academy_campaign_activate")
+    service = CampaignService(ExperimentService(root))
+    for state in service.list():
+        if state.get("phase") not in {"trials", "qualification"}:
+            continue
+        if state["status"] == "interrupted":
+            try:
+                resumed = service.resume(state["campaign_id"])
+            except (OSError, RuntimeError, ValueError, KeyError, TypeError) as exc:
+                # Changed inputs must not leave a session in an endless recovery
+                # loop. The normal worker first quiesces any owned trial.
+                directory = service.directory(state["campaign_id"])
+                with file_lock(directory / ".state.lock"):
+                    failed = service._state(directory)
+                    failed.update(
+                        status="stopping", termination="blocked", error=_error_code(exc)
+                    )
+                    service._save(directory, failed)
+                resumed = service.resume(state["campaign_id"])
+            return {"status": resumed["status"], "campaign_id": state["campaign_id"]}
+    return {"status": "idle"}

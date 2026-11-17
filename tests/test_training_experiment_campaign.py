@@ -1799,3 +1799,189 @@ def test_local_final_stop_prevents_evaluation(controller, monkeypatch):
     result = service.advance("series")
     assert result["qualification_status"] == "incomplete"
     assert result["qualification"]["reason"] == "campaign_final_stopped"
+
+
+def test_local_final_busy_gpu_does_not_charge_retry_but_keeps_deadline(
+    controller, monkeypatch
+):
+    from venom_core.services.training_experiments import local_campaign_final
+    from venom_core.services.training_experiments.remote_text_qualification import (
+        _QualificationDeferred,
+    )
+
+    service, experiments, clock, spec = _automatic_final_controller(
+        controller, monkeypatch
+    )
+    start(service, spec)
+    run = launch_next(service)
+    experiments.finish(run, usable=3)
+    service.advance("series")
+
+    def busy(owner, state):
+        local_campaign_final._check(owner, state["campaign_id"])
+        raise _QualificationDeferred("remote_text_final_gpu_busy")
+
+    monkeypatch.setattr(local_campaign_final, "_execute", busy)
+    for _ in range(2):
+        result = service.advance("series")
+        assert result["qualification_attempts"] == 0
+        assert result["qualification_status"] == "pending"
+    clock.now = 221
+    result = service.advance("series")
+    assert result["qualification_status"] == "incomplete"
+    assert result["qualification"]["reason"] == "campaign_final_deadline_exhausted"
+
+
+def test_local_pending_recovers_interrupted_session_without_renewing_deadline(
+    controller, monkeypatch
+):
+    from venom_core.services.training_experiments import campaign, local_campaign_final
+
+    service, experiments, _clock, spec = _automatic_final_controller(
+        controller, monkeypatch
+    )
+    start(service, spec)
+    run = launch_next(service)
+    experiments.finish(run, usable=3)
+    state = service.advance("series")
+    state["worker"] = None
+    service._save(service.directory("series"), state)
+    monkeypatch.setattr(campaign, "CampaignService", lambda *_: service)
+    assert local_campaign_final.resume_pending(experiments.root) == {
+        "status": "qualifying",
+        "campaign_id": "series",
+    }
+    assert service.status("series")["deadline_at"] == 220
+    assert local_campaign_final.resume_pending(experiments.root) == {"status": "idle"}
+
+
+def test_local_final_runtime_failure_is_bounded_and_reported(controller, monkeypatch):
+    from venom_core.services.runtime_admission import RuntimeAdmissionError
+    from venom_core.services.training_experiments import local_campaign_final
+
+    service, experiments, _clock, spec = _automatic_final_controller(
+        controller, monkeypatch
+    )
+    start(service, spec)
+    run = launch_next(service)
+    experiments.finish(run, usable=3)
+    service.advance("series")
+
+    def failed(*_args):
+        raise RuntimeAdmissionError("runtime_storage_unsafe")
+
+    monkeypatch.setattr(local_campaign_final, "_execute", failed)
+    assert service.advance("series")["qualification_status"] == "pending"
+    result = service.advance("series")
+    assert result["qualification_attempts"] == 2
+    assert result["qualification_status"] == "incomplete"
+    assert (
+        result["qualification"]["reason"] == "campaign_final_runtime_admission_failed"
+    )
+    assert service.advance("series") == result
+
+
+def test_system_supervisor_recovers_local_final_without_panel_polling(
+    controller, monkeypatch
+):
+    from venom_core.services.training_experiments import campaign
+    from venom_core.services.training_experiments import (
+        remote_text_supervisor as supervisor,
+    )
+
+    service, experiments, clock, spec = _automatic_final_controller(
+        controller, monkeypatch
+    )
+    start(service, spec)
+    run = launch_next(service)
+    experiments.finish(run, usable=3)
+    state = service.advance("series")
+    state["worker"] = None
+    service._save(service.directory("series"), state)
+    clock.now = 151
+    monkeypatch.setattr(campaign, "CampaignService", lambda *_: service)
+    launches = []
+    identity = process_identity(os.getpid())
+    monkeypatch.setattr(
+        service, "_launch", lambda cid: launches.append(cid) or identity
+    )
+    iterations = []
+
+    def tick(_seconds):
+        iterations.append(True)
+        if len(iterations) == 2:
+            raise InterruptedError("test supervisor shutdown")
+
+    monkeypatch.setattr(supervisor.time, "sleep", tick)
+    with pytest.raises(InterruptedError, match="test supervisor shutdown"):
+        supervisor.supervise(None, academy_root=experiments.root)
+    restored = service._state(service.directory("series"))
+    assert restored["status"] == "qualifying"
+    assert restored["deadline_at"] == 220
+    assert restored["qualification_attempts"] == 0
+    assert launches == ["series"]
+
+
+def test_system_recovery_quiesces_trials_when_frozen_inputs_changed(
+    controller, monkeypatch
+):
+    from venom_core.services.training_experiments import campaign, local_campaign_final
+
+    service, experiments, _clock, spec = _automatic_final_controller(
+        controller, monkeypatch
+    )
+    start(service, spec)
+    run = launch_next(service)
+    state = service._state(service.directory("series"))
+    state["worker"] = None
+    service._save(service.directory("series"), state)
+    monkeypatch.setattr(campaign, "CampaignService", lambda *_: service)
+
+    def changed(*_args):
+        raise ValueError("campaign_final_inputs_changed")
+
+    monkeypatch.setattr(local_campaign_final, "pin_inputs", changed)
+    assert local_campaign_final.resume_pending(experiments.root)["status"] == "stopping"
+    result = service.advance("series")
+    assert experiments.status(run)["status"] == "stopped"
+    assert result["phase"] == "complete"
+    assert result["qualification_status"] == "incomplete"
+    assert result["qualification"]["reason"] == "campaign_final_inputs_changed"
+
+
+def test_local_recovery_failure_does_not_block_remote_cleanup(controller, monkeypatch):
+    from types import SimpleNamespace
+
+    from venom_core.services.training_experiments import (
+        remote_text_supervisor as supervisor,
+    )
+
+    service, _experiments, _clock = controller
+    calls = []
+
+    def local_failure(_root):
+        raise ValueError("campaign_final_inputs_changed")
+
+    def remote_tick(campaign_id):
+        calls.append(campaign_id)
+        if campaign_id == "first":
+            raise OSError("temporary")
+
+    def shutdown(_seconds):
+        raise InterruptedError("test supervisor shutdown")
+
+    remote = SimpleNamespace(
+        local=service,
+        heartbeat=lambda: calls.append("heartbeat"),
+        list=lambda: [
+            {"campaign_id": "first", "status": "running"},
+            {"campaign_id": "finished", "status": "completed"},
+            {"campaign_id": "cleanup", "status": "cleanup_pending"},
+        ],
+        tick=remote_tick,
+    )
+    monkeypatch.setattr(supervisor, "resume_pending", local_failure)
+    monkeypatch.setattr(supervisor.time, "sleep", shutdown)
+    with pytest.raises(InterruptedError, match="test supervisor shutdown"):
+        supervisor.supervise(remote)
+    assert calls == ["heartbeat", "first", "cleanup"]

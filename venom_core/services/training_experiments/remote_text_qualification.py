@@ -582,6 +582,16 @@ def _measure(
         if uncertain:
             status, passed = "incomplete_calibration", False
             result["qualification_reason"] = UNCERTAIN
+    pending_dialogues = [
+        case["record_id"]
+        for case in review["cases"]
+        if case.get("chat_group") in {"W", "R"}
+    ]
+    if pending_dialogues:
+        # The qualified short-fact judge does not qualify open conversation.
+        status, passed = "incomplete_calibration", False
+        result["qualification_reason"] = "remote_text_final_dialogue_review_required"
+        result["independent_review_case_ids"] = pending_dialogues
     atomic_json(generation / _JUDGMENTS, judgments)
     return {
         **result,
@@ -762,6 +772,12 @@ def qualify(
     check: Callable[[], float] | None = None,
 ) -> dict:
     ensure_data_mutation_allowed("academy_remote_text_qualification")
+    if (
+        source == "local"
+        and remote["plan"].get("final_qualification")
+        and check is None
+    ):
+        raise ValueError("campaign_final_requires_supervised_budget")
     binding = _binding(
         remote, receipts, final_test_sha256, final_calibration_sha256, source=source
     )
@@ -1108,9 +1124,14 @@ def main() -> None:
     ):
         parser.error("digests can only be supplied with --local --pin-only")
     elif args.pending:
-        if args.campaign_id is not None or args.inputs is not None or args.local:
+        if args.campaign_id is not None or args.inputs is not None:
             parser.error("--pending takes only the Academy root")
-        result = qualify_pending(academy_root)
+        if args.local:
+            from .local_campaign_final import resume_pending
+
+            result = resume_pending(academy_root)
+        else:
+            result = qualify_pending(academy_root)
     else:
         result = _qualify_from_args(parser, args, academy_root)
     print(json.dumps(result, ensure_ascii=False, allow_nan=False))

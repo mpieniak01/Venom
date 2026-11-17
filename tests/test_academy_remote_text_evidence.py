@@ -1663,3 +1663,90 @@ def test_local_worker_exports_qualifies_and_catalogs_without_manual_final(
     )
     result_path.write_text(result_path.read_text() + "\n")
     assert service.report(CAMPAIGN)["qualification_status"] == "incomplete"
+
+
+def test_broken_final_registration_does_not_poison_catalog(tmp_path):
+    from venom_core.services.training_experiments import local_campaign_final
+
+    spec = _holdout_paths(tmp_path)
+    academy = tmp_path / "academy"
+    spec.final_test.unlink()
+    with pytest.raises(FileNotFoundError):
+        local_campaign_final.register_inputs(
+            academy, "broken", spec.model_dump(mode="json")
+        )
+    assert local_campaign_final.list_inputs(academy) == []
+
+
+def test_final_inputs_api_and_cli_share_private_registry(tmp_path, monkeypatch, capsys):
+    from types import SimpleNamespace
+
+    from scripts.academy.campaigns import main
+    from venom_core.api.routes import academy_experiment_campaigns as routes
+    from venom_core.services.training_experiments import local_campaign_final
+
+    spec, academy, _host, _pins = _registered_local_final(tmp_path)
+    payload = tmp_path / "inputs.json"
+    atomic_json(payload, spec.model_dump(mode="json"))
+    main(["--root", str(academy), "register-final", "second", str(payload)])
+    registered = json.loads(capsys.readouterr().out)
+    assert registered["inputs_id"] == "second"
+    main(["--root", str(academy), "final-inputs"])
+    cli = json.loads(capsys.readouterr().out)
+    monkeypatch.setattr(
+        routes, "experiment_service", lambda: SimpleNamespace(root=academy)
+    )
+    assert (
+        routes.final_inputs()
+        == cli
+        == {"inputs": local_campaign_final.list_inputs(academy)}
+    )
+
+
+def test_short_fact_judge_cannot_publish_open_conversation_scope(tmp_path):
+    spec, academy, _parent, host, _pins = _continued_campaign(tmp_path)
+    data = [{**case, "chat_group": "W"} for case in rows(spec.final_test)]
+    spec.final_test.unlink()
+    write_jsonl(spec.final_test, data)
+    calibration = read_json(spec.calibration)
+    calibration["dev_sha256"] = digest(spec.final_test)
+    atomic_json(spec.calibration, calibration)
+    pins = {
+        "final_test_sha256": digest(spec.final_test),
+        "final_calibration_sha256": digest(spec.calibration),
+    }
+    evidence = tmp_path / "evidence"
+    receipt = sync_run(host, host.state, RUN, evidence, LIMIT)
+    result = qualify(
+        evidence,
+        host.state,
+        {RUN: receipt},
+        academy,
+        spec,
+        evaluator=lambda *args: _evaluate_fixture(
+            *args, outcomes=[("bad", "good", "bad")] * 3
+        ),
+        **pins,
+    )
+    assert result["usable_delta"] > 0
+    assert result["status"] == "incomplete_calibration"
+    assert result["qualified"] is None
+    assert (
+        result["qualification_reason"] == "remote_text_final_dialogue_review_required"
+    )
+    assert len(result["independent_review_case_ids"]) == 3
+
+
+def test_automatic_final_cannot_bypass_shared_budget_with_manual_qualify(tmp_path):
+    spec, academy, host, pins = _registered_local_final(tmp_path)
+    with pytest.raises(ValueError, match="requires_supervised_budget"):
+        qualify(
+            tmp_path / "evidence",
+            host.state,
+            {},
+            academy,
+            spec,
+            source="local",
+            evaluator=_evaluate_fixture,
+            **pins,
+        )

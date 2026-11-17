@@ -94,6 +94,8 @@ class Host(Protocol):
 
 def _remote_spec(spec: RemoteTextSpec) -> CampaignSpec:
     campaign = spec.campaign
+    if campaign.final_qualification is not None:
+        raise ValueError("campaign_remote_local_qualification_unsupported")
     if campaign.review_mode != "automatic":
         raise ValueError("campaign_remote_automatic_review_required")
     if campaign.retention != "keep_all":

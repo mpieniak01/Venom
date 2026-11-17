@@ -1198,10 +1198,9 @@ def test_local_evidence_stops_streaming_after_fetch_deadline(tmp_path, monkeypat
 
     monkeypatch.setattr(remote_text_local, "export_run", export)
     target = tmp_path / "evidence.tar"
+    evidence = remote_text_local._LocalEvidence(Mock())
     with pytest.raises(TimeoutError, match="remote_text_evidence_fetch_timeout"):
-        remote_text_local._LocalEvidence(Mock()).fetch(
-            CAMPAIGN, RUN, target, LIMIT, timeout=1
-        )
+        evidence.fetch(CAMPAIGN, RUN, target, LIMIT, timeout=1)
     assert target.read_bytes() == b"first"
 
 

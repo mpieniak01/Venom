@@ -711,7 +711,7 @@ _STOCK_RECAP = re.compile(
     re.IGNORECASE,
 )
 _STOCK_READ_PREFIX = re.compile(
-    r"^(?:oblicz|policz|podaj|potwierdź|napisz|zestaw|chcę(?:\s+teraz)?)\b[,]?\s+",
+    r"^(?:oblicz|policz|podaj|potwierdź|napisz|zestaw|chcę(?:\s+teraz)?)\b,?\s+",
     re.IGNORECASE,
 )
 _STOCK_READ_TOTAL = re.compile(
@@ -725,13 +725,13 @@ _STOCK_READ_RECAP = re.compile(
     re.IGNORECASE,
 )
 _STOCK_READ_PRECISION = re.compile(
-    r"\s+do\s+(?:(?a:\d+)|zero|jednego|dwóch|trzech|czterech|pięciu|sześciu)\s+miejsca?\s+po\s+przecinku$",
+    r"(?<=\s)do\s+(?:(?a:\d+)|zero|jednego|dwóch|trzech|czterech|pięciu|sześciu)\s+miejsca?\s+po\s+przecinku$",
     re.IGNORECASE,
 )
 _STOCK_READ_UNIT = re.compile(
-    r"\s+(?:w|i\s+przelicz\s+go\s+na)\s+([\w/]+)$", re.IGNORECASE
+    r"(?<=\s)(?:w|i\s+przelicz\s+go\s+na)\s+([\w/]+)$", re.IGNORECASE
 )
-_STOCK_READ_UNITLESS = re.compile(r"\s+bez\s+jednost(?:ki|ek)$", re.IGNORECASE)
+_STOCK_READ_UNITLESS = re.compile(r"(?<=\s)bez\s+jednost(?:ki|ek)$", re.IGNORECASE)
 _NUMBER_ONLY = re.compile(
     r"(?:podaj|zwróć|napisz)\s+(?:(?:samą|tylko)\s+)?liczbę", re.IGNORECASE
 )
@@ -751,10 +751,11 @@ def requests_unitless_result(message: str) -> bool:
 
 def _stock_read_clause(clause: str) -> bool:
     """A stock snapshot survives only a recognized read or an explicit transition."""
-    clause = _STOCK_READ_UNITLESS.sub("", _STOCK_READ_PRECISION.sub("", clause))
+    clause = _STOCK_READ_PRECISION.sub("", clause).rstrip()
+    clause = _STOCK_READ_UNITLESS.sub("", clause).rstrip()
     unit = _STOCK_READ_UNIT.search(clause)
     if unit and explicit_result_unit(f"Policz zapas w {unit[1]}") is not None:
-        clause = clause[: unit.start()]
+        clause = clause[: unit.start()].rstrip()
     body = _STOCK_READ_PREFIX.sub("", clause)
     remainder = body
     location = _UPDATED_LOCATION.search(body)

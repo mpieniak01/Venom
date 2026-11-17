@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import math
 import re
-from typing import Any
+from typing import Any, cast
 
 from pydantic import BaseModel, ConfigDict, Field, StrictBool
 
@@ -43,6 +43,7 @@ def _broad_gate(
 ) -> dict:
     payload = report.get("payload")
     _require(isinstance(payload, dict))
+    payload = cast(dict, payload)
     _require(
         bool(_DIGEST.fullmatch(expected))
         and report.get("sha256") == expected == stable_hash(payload)
@@ -73,7 +74,7 @@ def _broad_gate(
     for ident in sorted(reference):
         match = re.fullmatch(r"inc17-dialogue-([WKSR])-[1-6]-t[1-6]", ident)
         _require(match is not None)
-        group = match[1]
+        group = cast(re.Match[str], match)[1]
         groups[group] = groups.get(group, 0) + 1
         for metric in lost:
             before, after = (

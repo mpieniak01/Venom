@@ -1,11 +1,13 @@
 """v4 requires every raw call and repeated decision; v3 pins remain unchanged."""
 
 import json
+from contextlib import contextmanager
 
 import pytest
 
 from venom_core.services.remote_training.lifecycle import atomic_json
 from venom_core.services.training_experiments import local_semantic_judge as judge
+from venom_core.services.training_experiments import semantic_judge_audit as runner
 from venom_core.services.training_experiments import semantic_judge_v4 as audit
 from venom_core.services.training_experiments.calibration import scorer_protocol
 from venom_core.services.training_experiments.profiles import (
@@ -142,6 +144,25 @@ def qualified_v4(tmp_path, monkeypatch):
         path = root / "controls" / name
         if not path.exists():
             atomic_json(path, {})
+    atomic_json(
+        root / "controls/legacy/judge-qualification-receipt.json",
+        {
+            "schema_version": 1,
+            "model": "test-judge",
+            "model_sha256": "d" * 64,
+            "ollama_version": "0.40.14",
+            "prompt_sha256": judge.PROMPT_SHA256,
+            "protocol_sha256": "e" * 64,
+            "gold_sha256": "f" * 64,
+            "result_sha256": "a" * 64,
+            "true_positives": 24,
+            "positive_total": 24,
+            "false_positives": 0,
+            "negative_total": 36,
+            "families_covered": 12,
+            "families_total": 12,
+        },
+    )
     atomic_json(
         root / "controls/frozen-manifest.json",
         {
@@ -386,3 +407,146 @@ def test_frozen_v4_prompt_has_no_case_specific_literal():
     assert judge.prompt_for(judge.JUDGE) == judge.PROMPT
     with pytest.raises(ValueError):
         judge.prompt_for("unknown")
+
+
+@pytest.mark.parametrize("fail_phase1", [False, True])
+def test_runner_preserves_calls_and_gates_holdout(
+    qualified_v4, tmp_path, monkeypatch, fail_phase1
+):
+    _, source = qualified_v4
+    output = tmp_path / "attempt"
+    context = runner.prepare_audit(
+        source / "controls",
+        output,
+        digest(source / "controls/frozen-manifest.json"),
+        "audit-fixture",
+        300,
+    )
+    originals = {}
+    for path in (source / "judge-calls").iterdir():
+        call = read_json(path)
+        originals[call["request_sha256"]] = call["response"]
+    calls, released = [], []
+
+    def api(_client, action, payload=None, *, timeout):
+        assert action == "chat" and timeout > 0
+        calls.append(stable_hash(payload))
+        response = json.loads(json.dumps(originals[stable_hash(payload)]))
+        if fail_phase1 and len(calls) == 61:
+            value = json.loads(response["message"]["content"])
+            value["atoms"]["fact"] = "contradicted"
+            value["unsupported"] = "yes"
+            response["message"]["content"] = json.dumps(value)
+        return response
+
+    @contextmanager
+    def lease(*_args):
+        try:
+            yield
+        finally:
+            released.append(True)
+
+    monkeypatch.setattr(judge, "_api", api)
+    monkeypatch.setattr(judge, "_verify_runtime", lambda *_args: None)
+    monkeypatch.setattr(judge, "_review_gpu", lease)
+    events = []
+    result = runner.run_audit(context, progress=events.append)
+    assert released == [True]
+    assert result["completed_calls"] == len(calls) == (108 if fail_phase1 else 180)
+    assert result["holdout_opened"] is not fail_phase1
+    assert len(list((output / "judge-calls").iterdir())) == len(calls)
+    if fail_phase1:
+        assert result["status"] == "failed_qualification"
+        assert not (output / "judge-qualification-receipt.json").exists()
+        assert not (output / "phase1-pass.json").exists()
+    else:
+        assert result["status"] == "complete"
+        monkeypatch.setenv("VENOM_ACADEMY_JUDGE_V4_AUDIT_ROOT", str(output))
+        assert judge.qualification(
+            {
+                "judge": judge.JUDGE_V4,
+                "judge_qualification": read_json(
+                    output / "judge-qualification-receipt.json"
+                ),
+            }
+        )
+    with pytest.raises(ValueError, match="already_started"):
+        runner.prepare_audit(
+            source / "controls",
+            output,
+            digest(source / "controls/frozen-manifest.json"),
+            "audit-fixture",
+            300,
+        )
+
+
+def test_audit_preparation_refuses_bad_budget_hash_and_overlap(qualified_v4, tmp_path):
+    _, source = qualified_v4
+    controls = source / "controls"
+    for seconds in (120, 1501, True):
+        with pytest.raises(ValueError, match="budget_invalid"):
+            runner.prepare_audit(
+                controls,
+                tmp_path / "unused",
+                digest(controls / "frozen-manifest.json"),
+                "audit-fixture",
+                seconds,
+            )
+    with pytest.raises(ValueError, match="controls_changed"):
+        runner.prepare_audit(
+            controls, tmp_path / "unused", "0" * 64, "audit-fixture", 300
+        )
+    with pytest.raises(ValueError, match="overlaps"):
+        runner.prepare_audit(
+            controls,
+            controls / "attempt",
+            digest(controls / "frozen-manifest.json"),
+            "audit-fixture",
+            300,
+        )
+
+
+def test_preflight_is_idempotent_but_refuses_changed_intent(qualified_v4, tmp_path):
+    _, source = qualified_v4
+    controls, output = source / "controls", tmp_path / "staged"
+    checksum = digest(controls / "frozen-manifest.json")
+    first = runner.prepare_audit(controls, output, checksum, "staged-audit", 300)
+    second = runner.prepare_audit(controls, output, checksum, "staged-audit", 300)
+    assert first["pin"] == second["pin"]
+    assert not (output / "started.json").exists()
+    with pytest.raises(ValueError, match="output_reused"):
+        runner.prepare_audit(controls, output, checksum, "staged-audit", 301)
+
+
+@pytest.mark.parametrize("execute", [False, True])
+def test_cli_requires_execute_for_gpu(monkeypatch, tmp_path, execute):
+    import sys
+
+    from scripts.academy import qualify_semantic_judge_v4 as cli
+
+    calls = []
+    context = {"root": tmp_path}
+    monkeypatch.setattr(cli, "prepare_audit", lambda *_args: context)
+
+    def run(value, **_kwargs):
+        assert value is context
+        calls.append("execute")
+        return {"status": "incomplete"}
+
+    monkeypatch.setattr(cli, "run_audit", run)
+    args = [
+        "qualify",
+        "--controls",
+        str(tmp_path),
+        "--output",
+        str(tmp_path),
+        "--manifest-sha256",
+        "a" * 64,
+        "--run-id",
+        "test-audit",
+    ]
+    if execute:
+        args.append("--execute")
+    monkeypatch.setattr(sys, "argv", args)
+    assert cli.main() == (2 if execute else 0)
+    assert calls == (["execute"] if execute else [])

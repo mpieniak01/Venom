@@ -385,3 +385,26 @@ def test_holdout_quote_over_frozen_cap_records_exposure_without_http(
     assert result["holdout_opened"] is True
     assert client.calls == 156
     assert not (root / "qualification.json").exists()
+
+
+def test_deadline_spent_on_fsync_or_client_init_never_sends_post(ready, monkeypatch):
+    root, _, client = ready
+    clock = {"now": 0.0}
+    monkeypatch.setattr(audit.time, "monotonic", lambda: clock["now"])
+
+    class SlowClient(client):
+        def __init__(self, **kwargs):
+            super().__init__(**kwargs)
+            clock["now"] = 7201
+
+    result = audit.run(root, execute=True, client_factory=SlowClient)
+    assert result["status"] == "deadline_exceeded"
+    assert SlowClient.factory_calls == 1
+    assert SlowClient.calls == 0
+    assert Decimal(result["unknown_reserved_usd"]) == 0
+    assert Decimal(result["actual_known_cost_usd"]) == 0
+    assert Decimal(result["accounted_usd"]) == Decimal("0.01")
+    row = json.loads((root / "receipts/001.json").read_text())
+    assert row["status"] == "not_sent"
+    assert row["cost_usd"] == "0"
+    assert not (root / "controls/holdout").exists()

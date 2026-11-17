@@ -485,6 +485,7 @@ class Worker:
             KeyError,
             AttributeError,
             RuntimeError,
+            httpx.HTTPError,
         ) as exc:
             code = str(exc)
             error = (

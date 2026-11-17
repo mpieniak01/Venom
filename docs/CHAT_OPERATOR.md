@@ -207,6 +207,18 @@ In Studio voice conversation and Full Direct Voice, the Omni response-mode picke
 
 The chat surface should be managed with explicit, repeatable `make` targets instead of ad-hoc shell commands.
 
+### Native Omni text adapter
+
+In Direct chat at `/chat2`, choose an Omni text adapter and use the load and
+verify action. Before starting the API, set `OMNI_NATIVE_TEXT_CATALOG_ROOT`
+to the Academy experiments catalog, `OMNI_NATIVE_SNAPSHOT` to the pinned
+model snapshot, and `OMNI_NATIVE_TEXT_ENV` to the PEFT environment. The restore action reloads the
+previous adapter. Use the separate return to ordinary runtime action to disable
+the overlay, including after a change to the underlying runtime.
+
+See the [native Omni runtime guide](PL/OMNI_NATIVE_TEXT_RUNTIME.md) for the
+environment keys and runtime acceptance procedure.
+
 ### Runtime lifecycle
 
 1. Start local-first chat runtime:

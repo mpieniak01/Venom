@@ -59,7 +59,8 @@ def test_payload_remote_route_and_context(packet):
     assert body["model"] == judge.MODEL
     assert body["provider"]["only"] == ["azure"]
     assert "zdr" not in body["provider"]
-    assert "temperature" not in body and "max_tokens" not in body
+    assert "temperature" not in body
+    assert "max_tokens" not in body
     assert body["max_completion_tokens"] == 900
     assert judge.reserve(body) > Decimal("0.00001")
     assert judge.decode(response(body), body, "Hala A").atoms == {"place": "supported"}
@@ -401,7 +402,8 @@ def review_env(tmp_path, monkeypatch, packet):
 
     class Client:
         def __init__(self, **kwargs):
-            assert kwargs["trust_env"] is False and kwargs["follow_redirects"] is False
+            assert kwargs["trust_env"] is False
+            assert kwargs["follow_redirects"] is False
 
         def __enter__(self):
             return self
@@ -410,7 +412,8 @@ def review_env(tmp_path, monkeypatch, packet):
             return None
 
         def post(self, url, *, json, timeout):
-            assert url == judge.ENDPOINT and timeout > 0
+            assert url == judge.ENDPOINT
+            assert timeout > 0
             state["calls"].append(json)
             request = httpx.Request("POST", url)
             if state["nonjson"]:
@@ -431,7 +434,8 @@ def review_env(tmp_path, monkeypatch, packet):
 def test_review_replay_and_exact_completed_reuse(review_env, packet):
     calibration, bundle, pin, state, root = review_env
     grades = judge.review_bundle(calibration, bundle, "run-1", 10)
-    assert len(state["calls"]) == 1 and grades[0]["criteria"]["place"]
+    assert len(state["calls"]) == 1
+    assert grades[0]["criteria"]["place"]
     assert "synthetic-test-key" not in (root / "ledger.json").read_text()
     judge.verify_review_receipt(pin, *packet, grades[0])
     assert judge.review_bundle(calibration, bundle, "run-1", 10) == grades
@@ -485,8 +489,10 @@ def test_failfast_preserves_failure_and_unknown_reservation(
     ledger = json.loads((root / "ledger.json").read_text())
     name = next(iter(ledger["receipts"]))
     row = json.loads((root / "receipts" / name).read_text())
-    assert row["http_status"] == status and row["status"] == "failed"
-    assert row["response"] and row["cost_usd"] is None
+    assert row["http_status"] == status
+    assert row["status"] == "failed"
+    assert row["response"]
+    assert row["cost_usd"] is None
     assert Decimal(ledger["accounted_usd"]) == Decimal("0.01") + Decimal(
         row["reserved_usd"]
     )
@@ -545,5 +551,113 @@ def test_budget_cancel_deadline_and_configuration(review_env):
 
 def test_current_qualification_rejects_changed_code(full_audit):
     _, pin, _ = full_audit
+    damaged = pin.model_copy(update={"implementation_sha256": "0" * 64})
     with pytest.raises(ValueError):
-        judge.verify_audit(pin.model_copy(update={"implementation_sha256": "0" * 64}))
+        judge.verify_audit(damaged)
+
+
+@pytest.mark.parametrize(
+    "damage", ["choice-none", "choice-list", "message-none", "message-list"]
+)
+def test_malformed_provider_objects_fail_without_poisoning_ledger(review_env, damage):
+    calibration, bundle, _, state, root = review_env
+
+    def malformed(raw):
+        if damage.startswith("choice"):
+            raw["choices"] = [None if damage.endswith("none") else []]
+        else:
+            raw["choices"][0]["message"] = None if damage.endswith("none") else []
+        return raw
+
+    state["raw_change"] = malformed
+    with pytest.raises(ValueError):
+        judge.review_bundle(calibration, bundle, "invalid-reply", 10)
+    row = json.loads(next((root / "receipts").glob("*.json")).read_text())
+    assert row["status"] == "failed"
+    assert row["cost_usd"] is not None
+    state["raw_change"] = lambda raw: raw
+    assert judge.review_bundle(calibration, bundle, "fresh-plan", 10)[0]["criteria"][
+        "place"
+    ]
+    assert len(state["calls"]) == 2
+
+
+def test_failed_duplicate_keeps_cost_and_allows_fresh_generation(review_env):
+    calibration, bundle, _, state, root = review_env
+    judge.review_bundle(calibration, bundle, "first", 10)
+
+    def duplicate(raw):
+        raw["id"] = "remote-1"
+        return raw
+
+    state["raw_change"] = duplicate
+    with pytest.raises(ValueError):
+        judge.review_bundle(calibration, bundle, "duplicate", 10)
+    state["raw_change"] = lambda raw: raw
+    grades = judge.review_bundle(calibration, bundle, "fresh", 10)
+    assert grades[0]["criteria"]["place"]
+    assert len(state["calls"]) == 3
+    ledger = json.loads((root / "ledger.json").read_text())
+    assert Decimal(ledger["accounted_usd"]) == Decimal("0.01003")
+    assert len(ledger["receipts"]) == 3
+    state["raw_change"] = duplicate
+    with pytest.raises(ValueError):
+        judge.review_bundle(calibration, bundle, "duplicate-again", 10)
+    assert len(state["calls"]) == 4
+
+
+@pytest.mark.parametrize("when", ["initial-ledger", "final-ledger", "final-cleanup"])
+def test_transaction_recovers_interrupted_pair_without_repeating_post(
+    review_env, monkeypatch, when
+):
+    calibration, bundle, pin, state, root = review_env
+    original = judge.atomic_json
+    ledger_writes = 0
+    target = 1 if when == "initial-ledger" else 2
+    failed = False
+
+    def interrupted(path, value):
+        nonlocal ledger_writes, failed
+        if path == root / "ledger.json":
+            ledger_writes += 1
+            if when != "final-cleanup" and ledger_writes == target:
+                failed = True
+                raise OSError("simulated crash between receipt and ledger")
+        return original(path, value)
+
+    if when != "final-cleanup":
+        monkeypatch.setattr(judge, "atomic_json", interrupted)
+    else:
+        unlink = type(root).unlink
+        cleanup_calls = 0
+
+        def cleanup(path, *args, **kwargs):
+            nonlocal cleanup_calls, failed
+            if path == root / ".pending-transaction.json":
+                cleanup_calls += 1
+                if cleanup_calls == 2:
+                    failed = True
+                    raise OSError("simulated crash after ledger commit")
+            return unlink(path, *args, **kwargs)
+
+        monkeypatch.setattr(type(root), "unlink", cleanup)
+    with pytest.raises(OSError, match="simulated crash"):
+        judge.review_bundle(calibration, bundle, "crashed-plan", 10)
+    assert failed
+    sent = 0 if when == "initial-ledger" else 1
+    assert len(state["calls"]) == sent
+    assert (root / ".pending-transaction.json").exists()
+    monkeypatch.setattr(judge, "atomic_json", original)
+    recovered, _ = judge._ledger_snapshot(root, pin)
+    assert len(recovered["receipts"]) == 1
+    row = json.loads(next((root / "receipts").glob("*.json")).read_text())
+    charge = row["reserved_usd"] if sent == 0 else row["cost_usd"]
+    assert Decimal(recovered["accounted_usd"]) == Decimal("0.01") + Decimal(charge)
+    assert not (root / ".pending-transaction.json").exists()
+    with pytest.raises(ValueError, match="attempt_already_started"):
+        judge.review_bundle(calibration, bundle, "crashed-plan", 10)
+    assert len(state["calls"]) == sent
+    assert judge.review_bundle(calibration, bundle, "independent-plan", 10)[0][
+        "criteria"
+    ]["place"]
+    assert len(state["calls"]) == sent + 1

@@ -10,6 +10,8 @@ from pathlib import Path
 from .profiles import digest
 
 VERSION = "luna-controls-v3"
+_MANIFEST = "frozen-manifest.json"
+_PROVENANCE = "repair-provenance.json"
 THRESHOLDS = {
     "legacy_positive": 24,
     "legacy_negative": 36,
@@ -303,9 +305,9 @@ def build_controls(source: Path, output: Path, source_manifest_sha256: str) -> d
         or source.is_relative_to(output)
     ):
         raise ValueError("judge_controls_output_overlaps_source")
-    if digest(source / "frozen-manifest.json") != source_manifest_sha256:
+    if digest(source / _MANIFEST) != source_manifest_sha256:
         raise ValueError("judge_controls_source_changed")
-    manifest = _read(source / "frozen-manifest.json")
+    manifest = _read(source / _MANIFEST)
     if manifest.get("status") != "frozen_before_any_inference":
         raise ValueError("judge_controls_source_not_frozen")
     values = {
@@ -364,7 +366,7 @@ def build_controls(source: Path, output: Path, source_manifest_sha256: str) -> d
             target.write_bytes(_source_bytes(source, name, before[name]))
         else:
             _write(output, name, value)
-    values["repair-provenance.json"] = {
+    values[_PROVENANCE] = {
         "source_manifest_sha256": source_manifest_sha256,
         "files": {
             name: {
@@ -376,7 +378,7 @@ def build_controls(source: Path, output: Path, source_manifest_sha256: str) -> d
         },
         "holdout_content_read": False,
     }
-    _write(output, "repair-provenance.json", values["repair-provenance.json"])
+    _write(output, _PROVENANCE, values[_PROVENANCE])
     result = {
         "schema_version": 1,
         "control_version": VERSION,
@@ -395,5 +397,5 @@ def build_controls(source: Path, output: Path, source_manifest_sha256: str) -> d
             "policy": "unopened_until_phase1_pass",
         },
     }
-    _write(output, "frozen-manifest.json", result)
+    _write(output, _MANIFEST, result)
     return result

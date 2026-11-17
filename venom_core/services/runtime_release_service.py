@@ -26,6 +26,7 @@ from venom_core.services.runtime_switch_gate import (
     finish_runtime_switch,
     wait_for_runtime_requests_to_drain,
 )
+from venom_core.utils.llm_runtime import compute_runtime_id
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -119,15 +120,24 @@ def _release_error_code(error: Exception) -> str:
     return "runtime_release_" + type(error).__name__
 
 
-def _recover_uncertainty(admission, verified: bool, include_registered: bool) -> bool:
+def _recover_uncertainty(
+    admission,
+    verified: bool,
+    include_registered: bool,
+    verified_runtime_ids: frozenset[str],
+) -> bool:
     if not verified:
         return False
     if not admission.enabled:
         return True
     if include_registered:
-        return admission.recover(confirm_quiescent=lambda: True)
+        return admission.recover(
+            confirm_quiescent=lambda: True, verified_runtime_ids=verified_runtime_ids
+        )
     return admission.recover(
-        confirm_quiescent=lambda: True, allowed_operation_kinds=_LLM_RECOVERY_KINDS
+        confirm_quiescent=lambda: True,
+        allowed_operation_kinds=_LLM_RECOVERY_KINDS,
+        verified_runtime_ids=verified_runtime_ids,
     )
 
 
@@ -203,7 +213,16 @@ async def _release_models(
     if not (
         verified
         if for_training
-        else _recover_uncertainty(admission, verified, include_registered)
+        else _recover_uncertainty(
+            admission,
+            verified,
+            include_registered,
+            frozenset(
+                compute_runtime_id(server["name"], server["endpoint"])
+                for server in servers
+                if server["endpoint"]
+            ),
+        )
     ):
         raise HTTPException(
             status_code=502,

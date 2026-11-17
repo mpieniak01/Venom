@@ -2,6 +2,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
+from scripts.academy import native_text_acceptance as acceptance
 from scripts.academy.native_text_acceptance import run_acceptance
 
 
@@ -61,8 +62,9 @@ def test_success_has_new_complete_receipts(tmp_path):
     assert result["status"] == "passed"
     assert len(events) == len(result["phases"]) == 7
     assert (tmp_path / "new/verify_restore.json").exists()
+    actions = steps(tmp_path, [])
     with pytest.raises(FileExistsError):
-        run_acceptance(tmp_path / "new", tmp_path, steps(tmp_path, []))
+        run_acceptance(tmp_path / "new", tmp_path, actions)
 
 
 @pytest.mark.parametrize(
@@ -137,3 +139,39 @@ def test_missing_fresh_restore_proof_is_failed(tmp_path):
     result = run_acceptance(tmp_path / "attempt", tmp_path, actions)
     assert result["status"] == "failed"
     assert result["errors"][0]["reason"] == "native_acceptance_restore_proof_missing"
+
+
+@pytest.mark.parametrize(
+    "failure", ["stop_main.json", "stop_test.json", "lifecycle.json"]
+)
+def test_write_failure_cannot_suppress_restore_and_fresh_probe(
+    tmp_path, monkeypatch, failure
+):
+    events = []
+    original = acceptance.atomic_json
+
+    def failing_write(path, value):
+        if path.name == failure:
+            raise OSError("fixture disk full")
+        original(path, value)
+
+    monkeypatch.setattr(acceptance, "atomic_json", failing_write)
+    result = run_acceptance(tmp_path / "attempt", tmp_path, steps(tmp_path, events))
+    assert result["status"] == "failed"
+    if failure != "lifecycle.json":
+        assert events[-3:] == ["stop_test", "restore_main", "verify_restore"]
+    assert any(error.get("operation") == "write" for error in result["errors"])
+
+
+def test_final_write_failure_never_returns_pass(tmp_path, monkeypatch):
+    original = acceptance.atomic_json
+
+    def fail_final(path, value):
+        if path.name == "lifecycle.json" and value.get("status") == "passed":
+            raise OSError("fixture final write failure")
+        original(path, value)
+
+    monkeypatch.setattr(acceptance, "atomic_json", fail_final)
+    result = run_acceptance(tmp_path / "attempt", tmp_path, steps(tmp_path, []))
+    assert result["status"] == "failed"
+    assert result["errors"][-1]["phase"] == "lifecycle"

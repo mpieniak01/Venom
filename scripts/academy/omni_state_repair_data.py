@@ -1,15 +1,11 @@
 """Build private, single-target state-repair data; never start training."""
 
 import argparse
+import hashlib
 import json
 from pathlib import Path
 
-from scripts.academy.omni_pl_chat_data import (
-    read_jsonl,
-    sha256,
-    validate_splits,
-    write_jsonl,
-)
+from scripts.academy.omni_pl_chat_data import sha256, validate_splits, write_jsonl
 from scripts.academy.omni_pl_chat_evaluate import validate_dev_cases
 from venom_core.services.training_experiments.grounded_claims import (
     validate_claim_rubrics,
@@ -212,11 +208,15 @@ def compile_specs(specs: list[dict], revision: str) -> tuple[list[dict], list[di
     return train, dev
 
 
-def import_replay(path: Path) -> list[dict]:
-    """Preserve historical chosen labels and identify their exact source file."""
-    revision = sha256(path)
+def _read_replay(path: Path) -> tuple[list[dict], str]:
+    """Hash and parse the same source bytes, even if the file changes later."""
+    raw = path.read_bytes()
+    revision = hashlib.sha256(raw).hexdigest()
     result = []
-    for row in read_jsonl(path):
+    for line in raw.decode("utf8").splitlines():
+        if not line.strip():
+            continue
+        row = json.loads(line)
         if not isinstance(row.get("chosen"), str) or not row["chosen"].strip():
             raise ValueError("historical replay requires a chosen answer")
         result.append(
@@ -241,18 +241,25 @@ def import_replay(path: Path) -> list[dict]:
             }
         )
     validate_splits(result)
-    return result
+    return result, revision
+
+
+def import_replay(path: Path) -> list[dict]:
+    """Preserve historical chosen labels and identify their exact source read."""
+    return _read_replay(path)[0]
 
 
 def build(spec_path: Path, replay_path: Path, output: Path) -> dict:
     """Create a new package only. Inputs and historical artifacts are read-only."""
-    specs = json.loads(spec_path.read_text(encoding="utf-8"))
+    specimen_bytes = spec_path.read_bytes()
+    specimen_revision = hashlib.sha256(specimen_bytes).hexdigest()
+    specs = json.loads(specimen_bytes.decode("utf8"))
     if not isinstance(specs, list) or not specs:
         raise ValueError("expected nonempty private specimens")
-    fresh, dev = compile_specs(specs, sha256(spec_path))
+    fresh, dev = compile_specs(specs, specimen_revision)
     if not fresh or not dev:
         raise ValueError("preparation requires both train and dev families")
-    replay = import_replay(replay_path)
+    replay, replay_revision = _read_replay(replay_path)
     train = [*fresh, *replay]
     if len(train) > 2048:
         raise ValueError("training records exceed the bounded recipe contract")
@@ -303,11 +310,11 @@ def build(spec_path: Path, replay_path: Path, output: Path) -> dict:
         "sources": {
             "specimens": {
                 "path": str(spec_path.resolve()),
-                "sha256": sha256(spec_path),
+                "sha256": specimen_revision,
             },
             "replay": {
                 "path": str(replay_path.resolve()),
-                "sha256": sha256(replay_path),
+                "sha256": replay_revision,
             },
         },
         "files": {

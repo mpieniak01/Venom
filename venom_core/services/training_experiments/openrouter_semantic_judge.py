@@ -54,6 +54,12 @@ PROVIDER = "Azure"
 ROUTE = "azure"
 ENDPOINT = "https://openrouter.ai/api/v1/chat/completions"
 OUTPUT = 900
+_TRANSACTION_FILE = ".pending-transaction.json"
+_STAGED_RECEIPT_FILE = ".pending-receipt.json"
+_STAGED_LEDGER_FILE = ".pending-ledger.json"
+
+_JSON_SUFFIX = ".json"
+_LEDGER_FILE = "ledger.json"
 INPUT_PRICE = Decimal("0.10")
 OUTPUT_PRICE = Decimal("0.50")
 PHASE1 = {"legacy": 60, "development": 48, "extra": 32, "contrasts": 16}
@@ -237,8 +243,11 @@ def decode(response: dict, body: dict, candidate: str) -> local._Decision:
     if not isinstance(choices, list) or len(choices) != 1:
         raise ValueError(ERROR)
     choice = choices[0]
+    _require(isinstance(choice, dict))
     _require(choice.get("finish_reason") == "stop")
-    content = choice.get("message", {}).get("content")
+    message = choice.get("message")
+    _require(isinstance(message, dict))
+    content = message.get("content")
     _require(isinstance(content, str))
     ids = list(
         body["response_format"]["json_schema"]["schema"]["properties"]["checks"][
@@ -576,7 +585,7 @@ def verify_review_receipt(
     # Validate before constructing a path or opening any receipt.
     _require(
         len(raw["receipt_name"]) == 37
-        and raw["receipt_name"].endswith(".json")
+        and raw["receipt_name"].endswith(_JSON_SUFFIX)
         and all(c in "0123456789abcdef" for c in raw["receipt_name"][:-5])
     )
     row = _bound(
@@ -595,21 +604,55 @@ def _receipt_name(name: object) -> str:
     assert isinstance(name, str)
     _require(
         len(name) == 37
-        and name.endswith(".json")
+        and name.endswith(_JSON_SUFFIX)
         and all(c in "0123456789abcdef" for c in name[:-5])
     )
     return name
 
 
+def _ledger_charge(row: dict, pin: QualificationRemote) -> Decimal:
+    _require(row["qualification_sha256"] == stable_hash(pin.model_dump()))
+    _require(row["protocol_sha256"] == pin.protocol_sha256)
+    _require(row["status"] in {"attempted", "failed", "completed"})
+    body = request_payload(row["spec"], row["case"], row["answer"])
+    _require(row["request"] == body and row["request_sha256"] == stable_hash(body))
+    reservation = _money(row["reserved_usd"])
+    _require(reservation == reserve(body))
+    cost = row.get("cost_usd")
+    if cost is not None:
+        _require(reported_cost(row["response"]) == cost)
+    if row["status"] == "attempted":
+        _require(cost is None and row["response"] == {})
+    else:
+        _require(row["response_sha256"] == stable_hash(row["response"]))
+        _require(_time(row["started_at"]) <= _time(row["finished_at"]))
+    if row["status"] == "completed":
+        _verify_call(row, body, row["answer"]["text"], pin.protocol_sha256)
+    return reservation if cost is None else _money(cost)
+
+
+def _ledger_rows(root: Path, ledger: dict) -> list[dict]:
+    existing = {path.name for path in (root / "receipts").glob("*.json")}
+    _require(existing == set(ledger["receipts"]))
+    rows = []
+    calls: set[str] = set()
+    for name, checksum in ledger["receipts"].items():
+        row = _bound(root / "receipts", _receipt_name(name), checksum)
+        _require(row["call_id"] + _JSON_SUFFIX == name and row["call_id"] not in calls)
+        calls.add(row["call_id"])
+        rows.append(row)
+    return sorted(rows, key=lambda row: _time(row["started_at"]))
+
+
 def _ledger_snapshot(root: Path, pin: QualificationRemote) -> tuple[dict, set[str]]:
+    _recover_transaction(root)
     identity = stable_hash(pin.model_dump())
     base = _money(
         _bound(_root(pin.audit_root), "result.json", pin.result_sha256)["accounted_usd"]
     )
-    existing = {path.name for path in (root / "receipts").glob("*.json")}
-    path = root / "ledger.json"
+    path = root / _LEDGER_FILE
     if not path.exists():
-        _require(not existing)
+        _require(not list((root / "receipts").glob("*.json")))
         return {
             "qualification_sha256": identity,
             "accounted_usd": str(base),
@@ -624,46 +667,97 @@ def _ledger_snapshot(root: Path, pin: QualificationRemote) -> tuple[dict, set[st
         ledger["qualification_sha256"] == identity
         and isinstance(ledger["receipts"], dict)
     )
-    _require(existing == set(ledger["receipts"]))
     total = base
-    calls: set[str] = set()
     generations: set[str] = set()
-    for name, checksum in ledger["receipts"].items():
-        row = _bound(root / "receipts", _receipt_name(name), checksum)
-        _require(
-            row["qualification_sha256"] == identity
-            and row["protocol_sha256"] == pin.protocol_sha256
-        )
-        _require(row["call_id"] + ".json" == name and row["call_id"] not in calls)
-        _require(row["status"] in {"attempted", "failed", "completed"})
-        body = request_payload(row["spec"], row["case"], row["answer"])
-        _require(row["request"] == body and row["request_sha256"] == stable_hash(body))
-        reservation = _money(row["reserved_usd"])
-        _require(reservation == reserve(body))
-        cost = row.get("cost_usd")
-        total += reservation if cost is None else _money(cost)
-        if cost is not None:
-            _require(reported_cost(row["response"]) == cost)
-        if row["status"] == "attempted":
-            _require(cost is None and row["response"] == {})
-        else:
-            _require(row["response_sha256"] == stable_hash(row["response"]))
-            _require(_time(row["started_at"]) <= _time(row["finished_at"]))
-        if row["status"] == "completed":
-            _verify_call(row, body, row["answer"]["text"], pin.protocol_sha256)
+    for row in _ledger_rows(root, ledger):
+        total += _ledger_charge(row, pin)
         generation = row["response"].get("id")
         if isinstance(generation, str) and generation.strip():
-            _require(generation not in generations)
+            # Failed duplicates remain chargeable observations, not accepted calls.
+            if row["status"] == "completed":
+                _require(generation not in generations)
             generations.add(generation)
-        calls.add(row["call_id"])
     _require(_money(ledger["accounted_usd"]) == total)
     return ledger, generations
 
 
+def _current_version(path: Path, before: str | None, after: str) -> None:
+    current = digest(path) if path.exists() else None
+    _require(current in {before, after})
+
+
+def _recover_transaction(root: Path) -> None:
+    journal_path = root / _TRANSACTION_FILE
+    if not journal_path.exists():
+        return
+    journal = read_json(journal_path)
+    _require(journal["schema_version"] == 1)
+    name = _receipt_name(journal["receipt_name"])
+    row = _bound(root, _STAGED_RECEIPT_FILE, journal["receipt_sha256"])
+    ledger = _bound(root, _STAGED_LEDGER_FILE, journal["ledger_sha256"])
+    _require(ledger["receipts"].get(name) == journal["receipt_sha256"])
+    target = root / "receipts" / name
+    _current_version(
+        target, journal["previous_receipt_sha256"], journal["receipt_sha256"]
+    )
+    _current_version(
+        root / _LEDGER_FILE, journal["previous_ledger_sha256"], journal["ledger_sha256"]
+    )
+    # Repeating either idempotent write after a crash cannot cause another POST.
+    atomic_json(target, row)
+    atomic_json(root / _LEDGER_FILE, ledger)
+    journal_path.unlink()
+    (root / _STAGED_RECEIPT_FILE).unlink()
+    (root / _STAGED_LEDGER_FILE).unlink()
+
+
 def _save_call(root: Path, path: Path, row: dict, ledger: dict) -> None:
-    atomic_json(path, row)
-    ledger["receipts"][path.name] = digest(path)
-    atomic_json(root / "ledger.json", ledger)
+    _require(path.parent == root / "receipts")
+    _receipt_name(path.name)
+    _require(not (root / _TRANSACTION_FILE).exists())
+    previous_receipt = digest(path) if path.exists() else None
+    ledger_path = root / _LEDGER_FILE
+    previous_ledger = digest(ledger_path) if ledger_path.exists() else None
+    atomic_json(root / _STAGED_RECEIPT_FILE, row)
+    row_sha = digest(root / _STAGED_RECEIPT_FILE)
+    ledger["receipts"][path.name] = row_sha
+    atomic_json(root / _STAGED_LEDGER_FILE, ledger)
+    atomic_json(
+        root / _TRANSACTION_FILE,
+        {
+            "schema_version": 1,
+            "receipt_name": path.name,
+            "previous_receipt_sha256": previous_receipt,
+            "previous_ledger_sha256": previous_ledger,
+            "receipt_sha256": row_sha,
+            "ledger_sha256": digest(root / _STAGED_LEDGER_FILE),
+        },
+    )
+    _recover_transaction(root)
+
+
+def _cached_observations(
+    marker_path: Path,
+    plan_sha: str,
+    calibration: dict,
+    cases: dict,
+    plan: list,
+    pin: QualificationRemote,
+) -> list[dict] | None:
+    if not marker_path.exists():
+        return None
+    marker = read_json(marker_path)
+    _require(marker["plan_sha256"] == plan_sha)
+    if marker.get("status") != "completed":
+        raise ValueError("experiment_remote_judge_attempt_already_started")
+    cached = marker["observations"]
+    _require(len(cached) == len(plan))
+    for (ident, label, answer), grade in zip(plan, cached):
+        _require(grade["record_id"] == ident and grade["label"] == label)
+        verify_review_receipt(
+            pin, calibration["cases"][ident], cases[ident], answer, grade
+        )
+    return cached
 
 
 def _post_call(
@@ -701,7 +795,7 @@ def _post_call(
         "response": {},
         "cost_usd": None,
     }
-    path = root / "receipts" / (ident + ".json")
+    path = root / "receipts" / (ident + _JSON_SUFFIX)
     ledger["accounted_usd"] = str(accounted + reservation)
     _save_call(root, path, row, ledger)
     try:
@@ -780,23 +874,15 @@ def review_bundle(
     )
     root.mkdir(parents=True, exist_ok=True)
     (root / "receipts").mkdir(exist_ok=True)
-    marker_path = root / ("attempt-" + plan_sha + ".json")
+    marker_path = root / ("attempt-" + plan_sha + _JSON_SUFFIX)
     deadline = time.monotonic() + seconds
     observations = []
     with file_lock(root / "ledger.lock", blocking=False):
         ledger, generations = _ledger_snapshot(root, pin)
-        if marker_path.exists():
-            marker = read_json(marker_path)
-            _require(marker["plan_sha256"] == plan_sha)
-            if marker.get("status") != "completed":
-                raise ValueError("experiment_remote_judge_attempt_already_started")
-            cached = marker["observations"]
-            _require(len(cached) == len(plan))
-            for (ident, label, answer), grade in zip(plan, cached):
-                _require(grade["record_id"] == ident and grade["label"] == label)
-                verify_review_receipt(
-                    pin, calibration["cases"][ident], cases[ident], answer, grade
-                )
+        cached = _cached_observations(
+            marker_path, plan_sha, calibration, cases, plan, pin
+        )
+        if cached is not None:
             return cached
         atomic_json(
             marker_path,

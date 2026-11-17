@@ -28,7 +28,7 @@ export async function fetchNativeTextState() { return readState(await apiFetch<N
 export async function fetchNativeTextCatalog() {
   return (await apiFetch<{adapters: NativeTextAdapter[]}>(prefix + "/catalog")).adapters;
 }
-export async function selectNativeText(adapter: string, current: NativeTextIdentity | null) {
+export async function selectNativeText(adapter: string | null, current: NativeTextIdentity | null) {
   return readState(await apiFetch<NativeTextState>(prefix + "/selection", { method: "PUT",
     body: JSON.stringify({adapter_id: adapter, expected_runtime_id: current?.runtime_id ?? null}) }));
 }

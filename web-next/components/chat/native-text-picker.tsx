@@ -8,6 +8,8 @@ export function NativeTextPicker({native, busy}: Readonly<{native: NativeTextCha
   const {t} = useLanguage();
   const [candidate, setCandidate] = useState("");
   const current = native.state.selection;
+  const runtimeLabel = current ? current.adapter_id + " · " + current.weights_sha256 : t("chat2.nativeText.ordinary");
+  const status = native.busy ? t("chat2.nativeText.probing") : runtimeLabel;
   if (!native.adapters.length && !current && native.ready) return null;
   return <section className="studio-models" aria-label={t("chat2.nativeText.title")}>
     <div className="studio-model-line">
@@ -20,11 +22,12 @@ export function NativeTextPicker({native, busy}: Readonly<{native: NativeTextCha
         onClick={() => { void native.change(candidate); }}>{t("chat2.nativeText.apply")}</button>
       <button type="button" className="studio-button" disabled={busy || native.busy || !native.ready || !current}
         onClick={() => { void native.change(); }}>{t("chat2.nativeText.rollback")}</button>
+      <button type="button" className="studio-button" disabled={busy || native.busy || !native.ready || !current}
+        onClick={() => { void native.deactivate(); }}>{t("chat2.nativeText.deactivate")}</button>
       <button type="button" className="studio-button" disabled={busy || native.busy} onClick={() => { void native.refresh(); }}>{t("chat2.nativeText.refresh")}</button>
     </div>
     <p className="studio-muted">{t("chat2.nativeText.scope")}</p>
-    <output aria-live="polite">{native.busy ? t("chat2.nativeText.probing") : current
-      ? current.adapter_id + " · " + current.weights_sha256 : t("chat2.nativeText.ordinary")}</output>
+    <output aria-live="polite">{status}</output>
     {native.error && <p className="studio-error" role="alert">{t(native.error)}</p>}
   </section>;
 }

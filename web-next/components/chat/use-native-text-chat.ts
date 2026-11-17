@@ -31,17 +31,19 @@ export function useNativeTextChat() {
     window.addEventListener("focus", onFocus);
     return () => { invalidate(); window.removeEventListener("focus", onFocus); };
   }, [refresh, invalidate]);
-  const change = useCallback(async (adapter?: string) => {
+  const change = useCallback(async (adapter?: string | null) => {
     if (locked.current) return false;
     locked.current = true; setBusy(true); setError(null); revision.current++;
     try {
-      const fresh = adapter ? await selectNativeText(adapter, state.selection)
-        : state.selection ? await rollbackNativeText(state.selection) : state;
+      let fresh = state;
+      if (adapter !== undefined) fresh = await selectNativeText(adapter, state.selection);
+      else if (state.selection) fresh = await rollbackNativeText(state.selection);
       setState(fresh); setReady(true); return true;
     } catch {
       setError("chat2.nativeText.changed"); await refresh(); return false;
     } finally { locked.current = false; setBusy(false); }
   }, [state, refresh]);
-  return {state, adapters, ready, busy, error, refresh, change};
+  const deactivate = useCallback(() => change(null), [change]);
+  return {state, adapters, ready, busy, error, refresh, change, deactivate};
 }
 export type NativeTextChat = ReturnType<typeof useNativeTextChat>;

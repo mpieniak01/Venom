@@ -310,6 +310,17 @@ def verify_rows(
         require(vector == gold["answers"][ident]["decision"])
         if split == "holdout":
             repeated[ident].append((request_sha, vector))
+    _verify_totals(inputs, actual, repeated, phase1=phase1)
+    return {
+        "legacy_correct": 60,
+        "development_correct": 48,
+        **({"extra_correct": 32} if phase1_count == 140 else {}),
+        "holdout_correct": 0 if phase1 else 72,
+        "stable_groups": 0 if phase1 else 24,
+    }
+
+
+def _verify_totals(inputs, actual, repeated, *, phase1: bool) -> None:
     for split, (jobs, _) in inputs.items():
         require(actual[split].keys() == jobs.keys())
     _legacy_decisions(inputs["legacy"][0], inputs["legacy"][1], actual["legacy"])
@@ -321,13 +332,6 @@ def verify_rows(
                 for values in repeated.values()
             )
         )
-    return {
-        "legacy_correct": 60,
-        "development_correct": 48,
-        **({"extra_correct": 32} if phase1_count == 140 else {}),
-        "holdout_correct": 0 if phase1 else 72,
-        "stable_groups": 0 if phase1 else 24,
-    }
 
 
 def verify_audit(pin: QualificationV4 | QualificationV5 | QualificationV6) -> None:

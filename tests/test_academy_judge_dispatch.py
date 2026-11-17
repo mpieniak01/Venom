@@ -16,7 +16,7 @@ from venom_core.services.training_experiments import openrouter_semantic_judge a
 from venom_core.services.training_experiments import remote_text_qualification as final
 from venom_core.services.training_experiments import semantic_judge_dispatch as dispatch
 from venom_core.services.training_experiments import worker
-from venom_core.services.training_experiments.profiles import digest
+from venom_core.services.training_experiments.profiles import digest, stable_hash
 from venom_core.services.training_experiments.quality_native import evaluation_identity
 
 HASH = "a" * 64
@@ -93,15 +93,17 @@ def test_remote_calibration_requires_remote_qualification(
     calibration.validate_calibration(remote_calibration, HASH, [_case()])
     qualify.assert_called_once_with(remote_calibration)
     qualify.side_effect = ValueError("remote_qualification_failed")
+    cases = [_case()]
     with pytest.raises(ValueError, match="remote_qualification_failed"):
-        calibration.validate_calibration(remote_calibration, HASH, [_case()])
+        calibration.validate_calibration(remote_calibration, HASH, cases)
 
 
 def test_remote_calibration_cannot_skip_case_coverage(remote_calibration, monkeypatch):
     monkeypatch.setattr(remote, "qualification", lambda _: object())
     remote_calibration["cases"] = {}
+    cases = [_case()]
     with pytest.raises(ValueError, match="experiment_calibration_coverage"):
-        calibration.validate_calibration(remote_calibration, HASH, [_case()])
+        calibration.validate_calibration(remote_calibration, HASH, cases)
 
 
 def test_remote_preflight_delegates_without_local_runtime(
@@ -380,5 +382,59 @@ def test_malformed_judge_ids_fail_with_contract_error(remote_calibration, invali
     for action in (dispatch.backend, dispatch.is_semantic, calibration.scorer_protocol):
         with pytest.raises(ValueError, match="experiment_judge_version_invalid"):
             action(settings)
+    cases = [_case()]
     with pytest.raises(ValueError, match="experiment_calibration_invalid"):
-        calibration.validate_calibration(settings, HASH, [_case()])
+        calibration.validate_calibration(settings, HASH, cases)
+
+
+def test_worker_persists_terminal_failure_for_remote_http_error(tmp_path, monkeypatch):
+    from contextlib import nullcontext
+    from types import SimpleNamespace
+
+    import httpx
+
+    manifest = {"recipe": {}, "calibration": {"judge": remote.JUDGE}}
+    state = {
+        "attempt": 1,
+        "status": "queued",
+        "supervisor": {"pid": "fixture"},
+        "max_seconds": 30,
+        "attempt_started_at": time.time(),
+        "elapsed_before": 0,
+        "mode": "evaluate",
+        "stage": "evaluate",
+        "manifest_sha256": stable_hash(manifest),
+    }
+    (tmp_path / "recipe.json").write_text("{}")
+    store = SimpleNamespace(read=lambda _: state)
+    instance = object.__new__(worker.Worker)
+    instance.service = SimpleNamespace(
+        run_lock=lambda _: nullcontext(), store=store, _manifest=lambda _: manifest
+    )
+    instance.run_id = "cpu-http"
+    instance.attempt = 1
+    instance.directory = tmp_path
+    instance.log = tmp_path / "worker.log"
+    instance.check_budget = lambda: None
+
+    def update(**fields):
+        state.update(fields)
+        return state
+
+    instance.update = update
+    monkeypatch.setattr(worker, "process_identity", lambda _: {"pid": "fixture"})
+    monkeypatch.setattr(
+        worker,
+        "get_runtime_admission",
+        lambda: pytest.fail("GPU after failed preflight"),
+    )
+
+    def failed(_):
+        raise httpx.HTTPError("synthetic provider HTTP failure")
+
+    monkeypatch.setattr(dispatch, "preflight", failed)
+    instance.run()
+    assert state["status"] == "failed"
+    assert state["error"] == "experiment_stage_failed"
+    assert state["elapsed_seconds"] >= 0
+    assert "HTTPError" in instance.log.read_text()

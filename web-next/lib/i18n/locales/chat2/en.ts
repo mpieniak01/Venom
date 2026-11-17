@@ -4,6 +4,7 @@ export const chat2 = {
     "choose": "Choose an adapter",
     "apply": "Load and verify",
     "rollback": "Restore previous model",
+    "deactivate": "Use ordinary model",
     "refresh": "Refresh state",
     "reference": "P13 reference",
     "unqualified": "Unqualified candidate",

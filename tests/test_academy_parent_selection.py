@@ -133,8 +133,9 @@ def test_short_tie_tradeoff_or_critical_retains_reference(change):
     ],
 )
 def test_invalid_short_comparison_rejected(change):
+    evidence = report()
     with pytest.raises(ValueError):
-        choose(report(), {**SHORT, **change})
+        choose(evidence, {**SHORT, **change})
 
 
 @pytest.mark.parametrize(
@@ -166,8 +167,9 @@ def test_tamper_or_incomplete_evidence_fails_closed(mutation):
 
 
 def test_external_expected_pin_cannot_be_resealed_with_the_report():
+    evidence = report()
     with pytest.raises(ValueError):
-        choose(report(), checksum="a" * 64)
+        choose(evidence, checksum="a" * 64)
 
 
 def test_invalid_weight_pin_rejected():
@@ -220,16 +222,18 @@ def test_passed_answer_cannot_be_unusable_or_unknown(usable):
         "usable": usable,
         "passed": 1,
     }
+    evidence = seal(payload)
     with pytest.raises(ValueError, match="broad_audit_invalid"):
-        choose(seal(payload))
+        choose(evidence)
 
 
 @pytest.mark.parametrize("value", [0, 1, "false", None])
 def test_final_flag_requires_actual_boolean_false(value):
     payload = report()["payload"]
     payload["factual_final_used"] = value
+    evidence = seal(payload)
     with pytest.raises(ValueError, match="broad_audit_invalid"):
-        choose(seal(payload))
+        choose(evidence)
 
 
 def test_nullable_full_pass_does_not_make_unknown_a_zero():

@@ -6,6 +6,7 @@ import hashlib
 import math
 import time
 from contextlib import ExitStack
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from decimal import Decimal
 from pathlib import Path
@@ -21,6 +22,14 @@ from venom_core.services.remote_training.paths import operator_path
 
 from . import openrouter_semantic_judge as judge
 from .profiles import digest, read_json, stable_hash
+
+_MANIFEST_FILE = "frozen-manifest.json"
+_PROTOCOL_FILE = "protocol.json"
+_RESULT_FILE = "result.json"
+_HOLDOUT_RESERVE_FILE = "holdout-reserve.json"
+_LEDGER_FILE = "ledger.json"
+_PHASE1_RESULT_FILE = "phase1-result.json"
+
 
 CONTROL_FILES = frozenset(
     {
@@ -80,8 +89,8 @@ def prepare(
         and not controls.is_relative_to(output),
         "remote_audit_output_exists_or_overlaps",
     )
-    manifest_raw = _bytes(controls, "frozen-manifest.json", controls_sha256)
-    manifest = read_json(controls / "frozen-manifest.json")
+    manifest_raw = _bytes(controls, _MANIFEST_FILE, controls_sha256)
+    manifest = read_json(controls / _MANIFEST_FILE)
     _require(
         manifest.get("control_version") == "luna-controls-v3"
         and manifest.get("status") == "frozen_before_any_inference"
@@ -151,17 +160,17 @@ def prepare(
         "operator_execute_required": True,
         "uncertain_decision": "stop_without_qualification",
     }
-    atomic_json(output / "protocol.json", protocol)
+    atomic_json(output / _PROTOCOL_FILE, protocol)
     atomic_json(
         output / "frozen.json",
-        {"protocol_sha256": digest(output / "protocol.json"), "created_at": _utc()},
+        {"protocol_sha256": digest(output / _PROTOCOL_FILE), "created_at": _utc()},
     )
     return {"status": "prepared_not_qualified", "audit_root": str(output), **protocol}
 
 
 def _static(root: Path) -> tuple[dict, dict, str]:
-    protocol = read_json(root / "protocol.json")
-    sha = digest(root / "protocol.json")
+    protocol = read_json(root / _PROTOCOL_FILE)
+    sha = digest(root / _PROTOCOL_FILE)
     _require(
         read_json(root / "frozen.json")["protocol_sha256"] == sha
         and protocol["audit_runner_sha256"] == digest(Path(__file__))
@@ -171,9 +180,7 @@ def _static(root: Path) -> tuple[dict, dict, str]:
         "remote_audit_frozen_contract_changed",
     )
     _bytes(root, "data-review.json", protocol["data_review_sha256"])
-    _bytes(
-        root / "controls", "frozen-manifest.json", protocol["controls_manifest_sha256"]
-    )
+    _bytes(root / "controls", _MANIFEST_FILE, protocol["controls_manifest_sha256"])
     manifest = read_json(root / "controls/frozen-manifest.json")
     for name, expected in manifest["files"].items():
         _require(name in CONTROL_FILES, "remote_audit_controls_invalid")
@@ -213,8 +220,8 @@ def _pin(root: Path, protocol: dict) -> judge.QualificationRemote:
             "model": judge.MODEL,
             "provider": judge.PROVIDER,
             "endpoint": judge.ENDPOINT,
-            "protocol_sha256": digest(root / "protocol.json"),
-            "result_sha256": digest(root / "result.json"),
+            "protocol_sha256": digest(root / _PROTOCOL_FILE),
+            "result_sha256": digest(root / _RESULT_FILE),
             "controls_manifest_sha256": protocol["controls_manifest_sha256"],
             "prompt_sha256": judge._contract()["prompt_sha256"],
             "request_contract_sha256": stable_hash(judge._contract()),
@@ -262,6 +269,266 @@ def run(
         )
 
 
+@dataclass
+class _AuditState:
+    root: Path
+    protocol: dict
+    manifest: dict
+    protocol_sha: str
+    budget: Decimal
+    per_request: Decimal
+    client_factory: Callable
+    rows: list[dict] = field(default_factory=list)
+    known: Decimal = Decimal(0)
+    unknown: Decimal = Decimal(0)
+    status: str = "transport_incomplete"
+    metrics: dict | None = None
+    phase1_sha: str | None = None
+    holdout_opened: bool = False
+    start: float = 0
+    generations: set[str] = field(default_factory=set)
+    order: list[dict] = field(default_factory=list)
+    client: httpx.Client | None = None
+
+    @property
+    def initial(self) -> Decimal:
+        return judge._money(self.protocol["initial_accounted_usd"])
+
+    @property
+    def accounted(self) -> Decimal:
+        return self.initial + self.known + self.unknown
+
+    def remaining(self) -> float:
+        return self.protocol["max_seconds"] - (time.monotonic() - self.start)
+
+    def ledger(self, pending: str | None) -> None:
+        atomic_json(
+            self.root / _LEDGER_FILE,
+            {
+                "accounted_usd": str(self.accounted),
+                "pending_call_id": pending,
+                "actual_known_cost_usd": str(self.known),
+                "unknown_reserved_usd": str(self.unknown),
+                "created_at": _utc(),
+            },
+        )
+
+
+def _next_audit_request(state: _AuditState) -> tuple | None:
+    _static(state.root)
+    if state.remaining() <= 0:
+        state.status = "deadline_exceeded"
+        return None
+    entry = state.order[len(state.rows)]
+    case, answer = judge._jobs(state.root, state.manifest, entry["split"])[0][
+        entry["answer_id"]
+    ]
+    body = judge._control_request(case, answer)
+    reservation = judge.reserve(body)
+    if entry["split"] == "holdout" and reservation > judge._money(
+        state.protocol["holdout_max_request_usd"]
+    ):
+        state.status = "holdout_request_bound_exceeded"
+        return None
+    if reservation > state.per_request or state.accounted + reservation > state.budget:
+        state.status = "budget_exhausted"
+        return None
+    return entry, answer, body, reservation
+
+
+def _post_audit_row(
+    state: _AuditState, row: dict, answer: dict, stack: ExitStack
+) -> None:
+    if state.client is None:
+        state.client = stack.enter_context(
+            state.client_factory(
+                timeout=httpx.Timeout(75, connect=8),
+                trust_env=False,
+                follow_redirects=False,
+                headers={"Authorization": "Bearer " + runtime.credential()},
+            )
+        )
+    # Receipt/ledger fsync and client construction belong to the same deadline.
+    remaining = state.remaining()
+    reservation = judge._money(row["reserved_usd"])
+    if remaining <= 0:
+        state.unknown -= reservation
+        row.update(status="not_sent", cost_usd="0", error_type="deadline_exceeded")
+        state.status = "deadline_exceeded"
+        return
+    response = state.client.post(
+        judge.ENDPOINT,
+        json=row["request"],
+        timeout=httpx.Timeout(min(75, remaining), connect=min(8, remaining)),
+    )
+    row["http_status"] = response.status_code
+    try:
+        row["response"] = response.json()
+    except ValueError:
+        row["response"] = {"non_json_body": response.text[:16000]}
+        raise
+    _require(isinstance(row["response"], dict), "remote_audit_response_invalid")
+    row["cost_usd"] = judge.reported_cost(row["response"])
+    if row["cost_usd"] is not None:
+        state.known += judge._money(row["cost_usd"])
+        state.unknown -= reservation
+    response.raise_for_status()
+    _require(row["cost_usd"] is not None, "remote_audit_cost_missing")
+    _require(
+        judge._money(row["cost_usd"]) <= reservation,
+        "remote_audit_reservation_exceeded",
+    )
+    decision = judge.decode(row["response"], row["request"], answer["text"])
+    generation = row["response"]["id"]
+    _require(generation not in state.generations, "remote_audit_duplicate_generation")
+    state.generations.add(generation)
+    row["decision"] = decision.model_dump()
+    _require(
+        decision.unsupported != "unclear" and "unclear" not in decision.atoms.values(),
+        "remote_audit_uncertain",
+    )
+    row["status"] = "completed"
+
+
+def _audit_next(state: _AuditState, stack: ExitStack) -> bool:
+    request = _next_audit_request(state)
+    if request is None:
+        return False
+    entry, answer, body, reservation = request
+    row = {
+        **entry,
+        "index": len(state.rows) + 1,
+        "call_id": uuid4().hex,
+        "status": "attempted",
+        "protocol_sha256": state.protocol_sha,
+        "request": body,
+        "request_sha256": stable_hash(body),
+        "reserved_usd": str(reservation),
+        "cost_usd": None,
+        "started_at": _utc(),
+        "response": {},
+    }
+    path = state.root / "receipts" / f"{row['index']:03d}.json"
+    atomic_json(path, row)
+    state.unknown += reservation
+    state.ledger(row["call_id"])
+    try:
+        _post_audit_row(state, row, answer, stack)
+    except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
+        row.update(status="failed", error_type=type(exc).__name__)
+    finally:
+        row["finished_at"] = _utc()
+        row["response_sha256"] = stable_hash(row["response"])
+        atomic_json(path, row)
+        state.rows.append(row)
+        state.ledger(None)
+    return row["status"] == "completed"
+
+
+def _reserve_holdout(state: _AuditState) -> bool:
+    cap = judge._money(state.protocol["holdout_max_request_usd"])
+    reserve = 72 * cap
+    remaining_budget = state.budget - state.accounted
+    remaining_seconds = state.remaining()
+    required_seconds = (
+        72 * state.protocol["holdout_request_timeout_seconds"]
+        + state.protocol["holdout_cleanup_seconds"]
+    )
+    if remaining_budget < reserve:
+        state.status = "holdout_budget_unavailable"
+        return False
+    if remaining_seconds < required_seconds:
+        state.status = "holdout_deadline_unavailable"
+        return False
+    atomic_json(
+        state.root / _HOLDOUT_RESERVE_FILE,
+        {
+            "phase1_result_sha256": state.phase1_sha,
+            "request_bound_usd": str(cap),
+            "budget_reserve_usd": str(reserve),
+            "remaining_budget_usd": str(remaining_budget),
+            "remaining_seconds": remaining_seconds,
+            "required_seconds": required_seconds,
+            "created_at": _utc(),
+        },
+    )
+    return True
+
+
+def _phase1_gate(state: _AuditState) -> bool:
+    state.metrics = judge._audit_metrics(
+        state.root, state.manifest, state.rows, phase1=True
+    )
+    expected = {
+        k: v
+        for k, v in state.manifest["thresholds"].items()
+        if not k.startswith("holdout")
+    }
+    passed = state.metrics == expected
+    atomic_json(
+        state.root / _PHASE1_RESULT_FILE,
+        {
+            "status": "passed" if passed else "failed_qualification",
+            "rows": 156,
+            "metrics": state.metrics,
+            "receipt_hashes": _hashes(state.root),
+            "finished_at": _utc(),
+        },
+    )
+    state.phase1_sha = digest(state.root / _PHASE1_RESULT_FILE)
+    if not passed:
+        state.status = "failed_qualification"
+        return False
+    if not _reserve_holdout(state):
+        return False
+    state.holdout_opened = True
+    try:
+        state.manifest = _stage_holdout(state.root, state.manifest)
+        state.order = judge._audit_order(state.root, state.manifest)
+    except (OSError, ValueError, KeyError, TypeError):
+        state.status = "holdout_stage_incomplete"
+        return False
+    return True
+
+
+def _audit_result(state: _AuditState) -> dict:
+    if state.remaining() < 0:
+        state.status = "deadline_exceeded"
+    reserve_path = state.root / _HOLDOUT_RESERVE_FILE
+    result = {
+        "status": state.status,
+        "protocol_sha256": state.protocol_sha,
+        "rows": len(state.rows),
+        "holdout_opened": state.holdout_opened,
+        "holdout_reserve_sha256": digest(reserve_path)
+        if reserve_path.exists()
+        else None,
+        "metrics": state.metrics,
+        "receipt_hashes": _hashes(state.root),
+        "phase1_result_sha256": state.phase1_sha,
+        "actual_known_cost_usd": str(state.known),
+        "unknown_reserved_usd": str(state.unknown),
+        "carried_unknown_reserved_usd": state.protocol["initial_unknown_reserved_usd"],
+        "accounted_usd": str(state.accounted),
+        "finished_at": _utc(),
+    }
+    atomic_json(state.root / _RESULT_FILE, result)
+    if state.status == "passed":
+        _publish_qualification(state.root, state.protocol, result)
+    return result
+
+
+def _publish_qualification(root: Path, protocol: dict, result: dict) -> None:
+    pin = _pin(root, protocol)
+    try:
+        judge.verify_audit(pin)
+    except (ValueError, KeyError, TypeError) as exc:
+        result.update(status="verification_failed", error_type=type(exc).__name__)
+        atomic_json(root / _RESULT_FILE, result)
+    else:
+        atomic_json(root / "qualification.json", pin.model_dump())
+
+
 def _execute(
     root: Path,
     protocol: dict,
@@ -271,232 +538,26 @@ def _execute(
     per_request: Decimal,
     client_factory: Callable,
 ) -> dict:
-    order = judge._audit_order(root, manifest, phase1=True)
-    rows: list[dict] = []
-    known, unknown = Decimal(0), Decimal(0)
-    initial = judge._money(protocol["initial_accounted_usd"])
-    status, metrics = "transport_incomplete", None
-    phase1_sha = None
-    holdout_opened = False
-    held_cap = judge._money(protocol["holdout_max_request_usd"])
-    start = time.monotonic()
-    generations: set[str] = set()
+    state = _AuditState(
+        root, protocol, manifest, protocol_sha, budget, per_request, client_factory
+    )
+    state.order = judge._audit_order(root, manifest, phase1=True)
+    state.start = time.monotonic()
     (root / "receipts").mkdir()
     with ExitStack() as stack:
-        client = None
-        index = 0
-        while index < len(order):
-            _static(root)
-            remaining = protocol["max_seconds"] - (time.monotonic() - start)
-            if remaining <= 0:
-                status = "deadline_exceeded"
+        while len(state.rows) < len(state.order):
+            if not _audit_next(state, stack):
                 break
-            entry = order[index]
-            case, answer = judge._jobs(root, manifest, entry["split"])[0][
-                entry["answer_id"]
-            ]
-            body = judge._control_request(case, answer)
-            reservation = judge.reserve(body)
-            if entry["split"] == "holdout" and reservation > held_cap:
-                status = "holdout_request_bound_exceeded"
+            if len(state.rows) == 156 and not _phase1_gate(state):
                 break
-            if (
-                reservation > per_request
-                or initial + known + unknown + reservation > budget
-            ):
-                status = "budget_exhausted"
-                break
-            row = {
-                **entry,
-                "index": index + 1,
-                "call_id": uuid4().hex,
-                "status": "attempted",
-                "protocol_sha256": protocol_sha,
-                "request": body,
-                "request_sha256": stable_hash(body),
-                "reserved_usd": str(reservation),
-                "cost_usd": None,
-                "started_at": _utc(),
-                "response": {},
-            }
-            path = root / "receipts" / f"{index + 1:03d}.json"
-            atomic_json(path, row)
-            unknown += reservation
-            atomic_json(
-                root / "ledger.json",
-                {
-                    "accounted_usd": str(initial + known + unknown),
-                    "pending_call_id": row["call_id"],
-                    "created_at": _utc(),
-                },
-            )
-            try:
-                if client is None:
-                    client = stack.enter_context(
-                        client_factory(
-                            timeout=httpx.Timeout(75, connect=8),
-                            trust_env=False,
-                            follow_redirects=False,
-                            headers={"Authorization": "Bearer " + runtime.credential()},
-                        )
-                    )
-                response = client.post(
-                    judge.ENDPOINT,
-                    json=body,
-                    timeout=httpx.Timeout(
-                        min(75, remaining), connect=min(8, remaining)
-                    ),
-                )
-                row["http_status"] = response.status_code
-                try:
-                    row["response"] = response.json()
-                except ValueError:
-                    row["response"] = {"non_json_body": response.text[:16000]}
-                    raise
-                _require(
-                    isinstance(row["response"], dict), "remote_audit_response_invalid"
-                )
-                row["cost_usd"] = judge.reported_cost(row["response"])
-                if row["cost_usd"] is not None:
-                    cost = judge._money(row["cost_usd"])
-                    known += cost
-                    unknown -= reservation
-                response.raise_for_status()
-                _require(row["cost_usd"] is not None, "remote_audit_cost_missing")
-                _require(
-                    judge._money(row["cost_usd"]) <= reservation,
-                    "remote_audit_reservation_exceeded",
-                )
-                decision = judge.decode(row["response"], body, answer["text"])
-                generation = row["response"]["id"]
-                _require(
-                    generation not in generations, "remote_audit_duplicate_generation"
-                )
-                generations.add(generation)
-                row["decision"] = decision.model_dump()
-                _require(
-                    decision.unsupported != "unclear"
-                    and "unclear" not in decision.atoms.values(),
-                    "remote_audit_uncertain",
-                )
-                row["status"] = "completed"
-            except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
-                row.update(status="failed", error_type=type(exc).__name__)
-            finally:
-                row["finished_at"] = _utc()
-                row["response_sha256"] = stable_hash(row["response"])
-                atomic_json(path, row)
-                rows.append(row)
-                atomic_json(
-                    root / "ledger.json",
-                    {
-                        "accounted_usd": str(initial + known + unknown),
-                        "pending_call_id": None,
-                        "actual_known_cost_usd": str(known),
-                        "unknown_reserved_usd": str(unknown),
-                        "created_at": _utc(),
-                    },
-                )
-            index += 1
-            if row["status"] != "completed":
-                status = "transport_incomplete"
-                break
-            if index == 156:
-                metrics = judge._audit_metrics(root, manifest, rows, phase1=True)
-                expected = {
-                    k: v
-                    for k, v in manifest["thresholds"].items()
-                    if not k.startswith("holdout")
-                }
-                phase1_status = (
-                    "passed" if metrics == expected else "failed_qualification"
-                )
-                atomic_json(
-                    root / "phase1-result.json",
-                    {
-                        "status": phase1_status,
-                        "rows": 156,
-                        "metrics": metrics,
-                        "receipt_hashes": _hashes(root),
-                        "finished_at": _utc(),
-                    },
-                )
-                phase1_sha = digest(root / "phase1-result.json")
-                if phase1_status != "passed":
-                    status = "failed_qualification"
-                    break
-                held_reserve = 72 * held_cap
-                remaining_budget = budget - initial - known - unknown
-                remaining_seconds = protocol["max_seconds"] - (time.monotonic() - start)
-                required_seconds = (
-                    72 * protocol["holdout_request_timeout_seconds"]
-                    + protocol["holdout_cleanup_seconds"]
-                )
-                if remaining_budget < held_reserve:
-                    status = "holdout_budget_unavailable"
-                    break
-                if remaining_seconds < required_seconds:
-                    status = "holdout_deadline_unavailable"
-                    break
-                atomic_json(
-                    root / "holdout-reserve.json",
-                    {
-                        "phase1_result_sha256": phase1_sha,
-                        "request_bound_usd": str(held_cap),
-                        "budget_reserve_usd": str(held_reserve),
-                        "remaining_budget_usd": str(remaining_budget),
-                        "remaining_seconds": remaining_seconds,
-                        "required_seconds": required_seconds,
-                        "created_at": _utc(),
-                    },
-                )
-                # Conservative exposure flag also covers failed/partial copying.
-                holdout_opened = True
-                try:
-                    manifest = _stage_holdout(root, manifest)
-                    order = judge._audit_order(root, manifest)
-                except (OSError, ValueError, KeyError, TypeError):
-                    status = "holdout_stage_incomplete"
-                    break
-            if index == 228:
-                metrics = judge._audit_metrics(root, manifest, rows)
-                status = (
+            if len(state.rows) == 228:
+                state.metrics = judge._audit_metrics(root, state.manifest, state.rows)
+                state.status = (
                     "passed"
-                    if metrics == manifest["thresholds"]
+                    if state.metrics == state.manifest["thresholds"]
                     else "failed_qualification"
                 )
-    if time.monotonic() - start > protocol["max_seconds"]:
-        status = "deadline_exceeded"
-    result = {
-        "status": status,
-        "protocol_sha256": protocol_sha,
-        "rows": len(rows),
-        "holdout_opened": holdout_opened,
-        "holdout_reserve_sha256": (
-            digest(root / "holdout-reserve.json")
-            if (root / "holdout-reserve.json").exists()
-            else None
-        ),
-        "metrics": metrics,
-        "receipt_hashes": _hashes(root),
-        "phase1_result_sha256": phase1_sha,
-        "actual_known_cost_usd": str(known),
-        "unknown_reserved_usd": str(unknown),
-        "carried_unknown_reserved_usd": protocol["initial_unknown_reserved_usd"],
-        "accounted_usd": str(initial + known + unknown),
-        "finished_at": _utc(),
-    }
-    atomic_json(root / "result.json", result)
-    if status == "passed":
-        pin = _pin(root, protocol)
-        try:
-            judge.verify_audit(pin)
-        except (ValueError, KeyError, TypeError) as exc:
-            result.update(status="verification_failed", error_type=type(exc).__name__)
-            atomic_json(root / "result.json", result)
-        else:
-            atomic_json(root / "qualification.json", pin.model_dump())
-    return result
+    return _audit_result(state)
 
 
 def _hashes(root: Path) -> dict[str, str]:

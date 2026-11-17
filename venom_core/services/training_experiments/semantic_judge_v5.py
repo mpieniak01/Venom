@@ -29,9 +29,20 @@ polish_ok i natural_ok są niezależne od faktów. polish_ok=true dla polszczyzn
 
 Najpierw uzupełnij required, observed i relation dla wszystkich pól. Potem wypisz dodatkowe twierdzenia i oceń ich grounding, injection i styl. Krótkie reason musi być spójne ze wszystkimi decyzjami. Zwróć wyłącznie JSON zgodny ze schematem."""
 _DECIMAL = re.compile(
-    r"(?<![\w.,])([+-]?\d++),(\d++)(?=\s*+(?:zł|PLN|EUR|USD|kg|km|cm|mm|ml|mg|%)(?!\w))",
+    r"(?<![\w.,])([+-]?\d++),(\d++)",
     re.IGNORECASE,
 )
+
+
+_DECIMAL_UNIT = re.compile(
+    r"\s*+(?:zł|PLN|EUR|USD|kg|km|cm|mm|ml|mg|%)(?!\w)", re.IGNORECASE
+)
+
+
+def _decimal_value(match: re.Match[str]) -> str:
+    if _DECIMAL_UNIT.match(match.string, match.end()):
+        return f"{match[1]}.{match[2]}"
+    return match[0]
 
 
 def _nonblank(value: str) -> str:
@@ -68,7 +79,7 @@ class Decision(judge._Strict):
 def decimal_view(value):
     """Normalize only unambiguous decimal separators; retain original packet separately."""
     if isinstance(value, str):
-        return _DECIMAL.sub(r"\1.\2", value)
+        return _DECIMAL.sub(_decimal_value, value)
     if isinstance(value, list):
         return [decimal_view(item) for item in value]
     if isinstance(value, dict):
@@ -128,13 +139,11 @@ def decode(response: dict, ids: list[str], model: str, *, candidate: str | None 
     ):
         return None
     grounding = {claim.grounding for claim in value.additional_claims}
-    unsupported: Literal["yes", "no", "unclear"] = (
-        "yes"
-        if "contradicted" in atoms.values() or "unsupported" in grounding
-        else "unclear"
-        if "unclear" in grounding
-        else "no"
-    )
+    unsupported: Literal["yes", "no", "unclear"] = "no"
+    if "contradicted" in atoms.values() or "unsupported" in grounding:
+        unsupported = "yes"
+    elif "unclear" in grounding:
+        unsupported = "unclear"
     return judge._Decision(
         atoms=atoms,
         unsupported=unsupported,

@@ -30,7 +30,11 @@ def world(tmp_path, monkeypatch):
 
 def uncertain(admission):
     def exercise_operation():
-        with admission.operation(kind="runtime_switch", mutation=True):
+        with admission.operation(
+            kind="runtime_switch",
+            mutation=True,
+            runtime_identity="ollama@http://127.0.0.1:11434",
+        ):
             raise RuntimeError("transport lost")
 
     with pytest.raises(RuntimeError):
@@ -987,7 +991,9 @@ async def test_operator_release_cancels_and_joins_active_chat_before_unload(
     stopped = asyncio.Event()
 
     async def chat():
-        with world.operation(kind="simple_chat"):
+        with world.operation(
+            kind="simple_chat", runtime_identity="ollama@http://127.0.0.1:11434"
+        ):
             entered.set()
             try:
                 await asyncio.Event().wait()
@@ -1033,7 +1039,11 @@ async def test_operator_release_interrupts_pending_model_activation(world, monke
             source="model-activation", from_runtime="old", to_runtime="new"
         )
         try:
-            with world.operation(kind="runtime_switch", mutation=True):
+            with world.operation(
+                kind="runtime_switch",
+                mutation=True,
+                runtime_identity="ollama@http://127.0.0.1:11434",
+            ):
                 entered.set()
                 await asyncio.Event().wait()
         finally:
@@ -1137,15 +1147,18 @@ async def test_timed_out_training_release_waits_for_cleanup_completion(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "kind,verified,recovers",
+    "kind,identity,verified,recovers",
     [
-        ("simple_chat_stream", True, True),
-        ("simple_chat_stream", False, False),
-        ("omni-native-peft-text", True, False),
+        ("simple_chat_stream", "ollama@http://127.0.0.1:11434", True, True),
+        ("simple_chat_stream", "ollama@http://127.0.0.1:11434", False, False),
+        ("simple_chat_stream", "ollama@http://127.0.0.1:12345", True, False),
+        ("simple_chat_stream", "openrouter@https://openrouter.ai", True, False),
+        ("simple_chat_stream", None, True, False),
+        ("omni-native-peft-text", None, True, False),
     ],
 )
 async def test_llm_recovery_handles_real_stream_ledger_only_with_daemon_proof(
-    world, monkeypatch, kind, verified, recovers
+    world, monkeypatch, kind, identity, verified, recovers
 ):
     import sqlite3
     from contextlib import closing
@@ -1153,7 +1166,7 @@ async def test_llm_recovery_handles_real_stream_ledger_only_with_daemon_proof(
 
     # A failed transport leaves the actual durable host ledger uncertain.
     with pytest.raises(RuntimeError, match="transport lost"):
-        with world.operation(kind=kind):
+        with world.operation(kind=kind, runtime_identity=identity):
             raise RuntimeError("transport lost")
     assert world.snapshot()["status"] == "quarantined"
     servers = [
@@ -1173,10 +1186,11 @@ async def test_llm_recovery_handles_real_stream_ledger_only_with_daemon_proof(
         else AsyncMock(side_effect=ValueError("runtime_release_models_remaining")),
     )
     controller = SimpleNamespace(list_servers=lambda: servers)
+    selected_ids = {s["name"] for s in servers}
     if recovers:
         result = await service.release_all_runtime_models(
             controller,
-            runtime_ids={s["name"] for s in servers},
+            runtime_ids=selected_ids,
             include_registered=False,
         )
         assert all(row["verified"] for row in result["runtimes"])
@@ -1186,7 +1200,7 @@ async def test_llm_recovery_handles_real_stream_ledger_only_with_daemon_proof(
         with pytest.raises(HTTPException) as rejected:
             await service.release_all_runtime_models(
                 controller,
-                runtime_ids={s["name"] for s in servers},
+                runtime_ids=selected_ids,
                 include_registered=False,
             )
         assert rejected.value.status_code == 502

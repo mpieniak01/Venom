@@ -23916,7 +23916,7 @@
               "$ref": "#/components/schemas/HistoryMessage"
             },
             "type": "array",
-            "maxItems": 20,
+            "maxItems": 200,
             "title": "History"
           }
         },

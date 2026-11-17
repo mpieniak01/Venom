@@ -15,7 +15,9 @@ test("native adapter errors use translated decisions without echoing upstream co
   for (const [reason, key] of Object.entries(expected)) {
     const error = new ApiError("sensitive", 409, { detail: { reason_code: `omni_native_text_${reason}` } });
     assert.equal(chatMaterialError(error, value => value), `chat2.nativeText.${key}`);
+    assert.equal(chatMaterialError(new Error(`omni_native_text_${reason}`), value => value), `chat2.nativeText.${key}`);
   }
+  assert.equal(chatMaterialError(new Error("arbitrary upstream failure"), value => value), null);
   assert.deepEqual(Object.keys(pl.nativeText).sort(), Object.keys(en.nativeText).sort());
   assert.deepEqual(Object.keys(pl.nativeText).sort(), Object.keys(de.nativeText).sort());
 });

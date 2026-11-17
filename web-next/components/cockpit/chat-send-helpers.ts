@@ -335,6 +335,15 @@ type SimpleTaskSendParams = {
     setSending: ChatSendParams["setSending"];
 };
 
+function simpleTaskErrorText(params: SimpleTaskSendParams, error: unknown, openRouter: boolean): string {
+    const t = params.t ?? (key => key);
+    const known = chatMaterialError(error, t);
+    if (known) return known;
+    if (isNativeTextRuntime(params.activeServerInfo?.runtime_id)) return t("chat2.nativeText.failed");
+    if (openRouter) return t("cockpit.openrouter.failure");
+    return error instanceof Error ? error.message : t("chat2.error");
+}
+
 function failSimpleTaskSend(
     params: SimpleTaskSendParams,
     requestId: string,
@@ -350,10 +359,7 @@ function failSimpleTaskSend(
             ? { ...entry, ...(entry.role === "assistant" && partial ? { content: partial } : {}), pending: false, status: "CANCELLED" } : entry));
         return;
     }
-    const error = openRouter
-        ? new Error(params.t?.("cockpit.openrouter.failure") ?? "cockpit.openrouter.failure")
-        : error_;
-    const errorText = chatMaterialError(error_, params.t ?? (key => key)) ?? (error instanceof Error ? error.message : "Błąd trybu prostego.");
+    const errorText = simpleTaskErrorText(params, error_, openRouter);
     params.updateSimpleStream(params.clientId, {
         ...(partial ? { text: partial } : {}),
         status: "FAILED",

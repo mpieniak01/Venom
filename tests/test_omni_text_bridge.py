@@ -113,7 +113,8 @@ async def test_switch_probes_and_preserves_history(native):
     root, calls = native
     result = await bridge.switch("p13")
     identity = result["selection"]
-    assert len(calls) == 1 and calls[0]["max_tokens"] == 8
+    assert len(calls) == 1
+    assert calls[0]["max_tokens"] == 8
     request = SimpleChatRequest(
         content="Popraw osobę na Annę. Podaj pełny rekord.",
         history=[
@@ -128,7 +129,8 @@ async def test_switch_probes_and_preserves_history(native):
         {"role": "assistant", "content": "Jan, 130 zł"},
         {"role": "user", "content": request.content},
     ]
-    assert identity["weights_sha256"] in body and "event: content" in body
+    assert identity["weights_sha256"] in body
+    assert "event: content" in body
     assert "previous-model" in body
     await bridge.rollback(expected_runtime_id=identity["runtime_id"])
     assert not bridge.selected()
@@ -170,7 +172,8 @@ async def test_changed_weights_and_stale_selection_fail_closed(native):
     (root / "adapters/p13/adapter_model.safetensors").write_bytes(b"changed")
     with pytest.raises(HTTPException):
         await bridge.response(SimpleChatRequest(content="test"))
-    assert len(calls) == 1 and bridge.state() == old
+    assert len(calls) == 1
+    assert bridge.state() == old
 
 
 @pytest.mark.parametrize("adapter", ["../p13", "/tmp/p13", "no-such-adapter"])
@@ -207,6 +210,13 @@ async def test_switch_and_rollback_really_reload_previous(native):
         {"max_tokens": 2048},
         {"expected_runtime_id": "wrong"},
         {"model": "ollama-model"},
+        {"temperature": 0.8},
+        {"top_p": 0.5},
+        {"logprobs": True},
+        {"top_logprobs": 2},
+        {"seed": 42},
+        {"think": True},
+        {"stream": False},
     ],
 )
 async def test_unsupported_or_stale_request_does_not_generate(native, fields):
@@ -218,6 +228,7 @@ async def test_unsupported_or_stale_request_does_not_generate(native, fields):
 
 
 def test_normal_endpoint_uses_selected_native_adapter(native, monkeypatch):
+    _, calls = native
     app = FastAPI()
     app.include_router(llm_simple.router)
     paths = app.openapi()["paths"]
@@ -237,14 +248,18 @@ def test_normal_endpoint_uses_selected_native_adapter(native, monkeypatch):
             "/api/v1/llm/simple/stream",
             json={
                 "content": "Podaj rekord.",
+                "expected_runtime_id": selected.json()["selection"]["runtime_id"],
                 "history": [
                     {"role": "user", "content": "Anna, 120 zł"},
                     {"role": "assistant", "content": "Anna, 120 zł"},
-                ],
+                ]
+                * 11,
             },
         )
         assert response.status_code == 200, response.text
-        assert "Anna, 120" in response.text and "weights_sha256" in response.text
+        assert len(calls[-1]["messages"]) == 23
+        assert "Anna, 120" in response.text
+        assert "weights_sha256" in response.text
         rid = selected.json()["selection"]["runtime_id"]
         assert (
             client.post(
@@ -268,7 +283,13 @@ async def test_ordinary_runtime_drift_rejects_generation_and_rollback(
         await bridge.response(SimpleChatRequest(content="hello"))
     with pytest.raises(HTTPException, match="runtime_changed"):
         await bridge.rollback(expected_runtime_id=selected["selection"]["runtime_id"])
-    assert len(calls) == 1 and bridge.state()["selection"] == selected["selection"]
+    assert len(calls) == 1
+    assert bridge.state()["selection"] == selected["selection"]
+    disabled = await bridge.switch(
+        None, expected_runtime_id=selected["selection"]["runtime_id"]
+    )
+    assert disabled["selection"] is None
+    assert len(calls) == 1
 
 
 @pytest.mark.asyncio
@@ -320,7 +341,8 @@ async def test_offline_transport_mounts_only_requested_adapter(monkeypatch, tmp_
     )
     assert result == b"reply"
     args = calls[0]
-    assert "--net" in args and "--kill-child=SIGKILL" in args
+    assert "--net" in args
+    assert "--kill-child=SIGKILL" in args
     assert args[-2:] == (str(tmp_path / "adapter"), "omni_native_text_worker.py")
     assert str(tmp_path / "env/bin/python") in args
 
@@ -385,9 +407,8 @@ def test_worker_uses_native_multimodal_class_and_text_only_peft(
     class Processor:
         def apply_chat_template(self, messages, **kwargs):
             calls["messages"] = messages
-            assert (
-                kwargs["enable_thinking"] is False and kwargs["add_generation_prompt"]
-            )
+            assert kwargs["enable_thinking"] is False
+            assert kwargs["add_generation_prompt"]
             return Inputs(input_ids=SimpleNamespace(shape=(1, 3)))
 
         tokenizer = SimpleNamespace(decode=lambda tokens, **kw: "native answer")
@@ -408,9 +429,8 @@ def test_worker_uses_native_multimodal_class_and_text_only_peft(
             return [SimpleNamespace(device=SimpleNamespace(type="cuda"))]
 
         def generate(self, **kwargs):
-            assert (
-                kwargs["generation_mode"] == "text" and kwargs["max_new_tokens"] == 16
-            )
+            assert kwargs["generation_mode"] == "text"
+            assert kwargs["max_new_tokens"] == 16
             assert kwargs["do_sample"] is False
             return SimpleNamespace(sequences=Sequences(), sequence_lengths=[5])
 
@@ -421,7 +441,9 @@ def test_worker_uses_native_multimodal_class_and_text_only_peft(
         return base
 
     def load_peft(model, path, **kwargs):
-        assert model is base and path == "/adapter" and kwargs["is_trainable"] is False
+        assert model is base
+        assert path == "/adapter"
+        assert kwargs["is_trainable"] is False
         return base
 
     torch = SimpleNamespace(
@@ -452,12 +474,15 @@ def test_worker_uses_native_multimodal_class_and_text_only_peft(
     )
     messages = [{"role": "user", "content": "question"}]
     result = text_worker.generate({"messages": messages, "max_tokens": 16})
-    assert result["identity"] == expected and result["text"] == "native answer"
+    assert result["identity"] == expected
+    assert result["text"] == "native answer"
     assert result["input_messages_sha256"] == stable_hash(messages)
     assert result["snapshot_manifest_sha256"] == digest(SNAPSHOT_PIN)
-    assert result["prompt_tokens"] == 3 and result["output_tokens"] == 2
+    assert result["prompt_tokens"] == 3
+    assert result["output_tokens"] == 2
     assert result["peak_reserved_mib"] == 1
-    assert calls["messages"] == messages and calls["base"][1]["local_files_only"]
+    assert calls["messages"] == messages
+    assert calls["base"][1]["local_files_only"]
 
 
 @pytest.mark.asyncio

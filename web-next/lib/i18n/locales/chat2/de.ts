@@ -4,6 +4,7 @@ export const chat2 = {
     "choose": "Adapter auswählen",
     "apply": "Laden und prüfen",
     "rollback": "Vorheriges Modell wiederherstellen",
+    "deactivate": "Normales Modell verwenden",
     "refresh": "Status aktualisieren",
     "reference": "P13-Referenz",
     "unqualified": "Nicht qualifizierter Kandidat",

@@ -18,14 +18,14 @@ from venom_core.services.training_experiments.profiles import (
 )
 
 
-def _v6_example():
+def _v6_example(candidate="Nie z tacy A."):
     from venom_core.services.training_experiments import semantic_judge_v6 as v6
 
     material = {
         "messages": [{"role": "user", "content": "Miejsce: taca A. Podaj miejsce."}],
         "criteria": [{"id": "location", "description": "Miejsce to taca A."}],
         "evidence": [{"ref": "old", "text": "Nieaktualne", "current": False}],
-        "candidate": "Nie z tacy A.",
+        "candidate": candidate,
     }
     request = judge._request("judge", material, ["location"], judge=judge.JUDGE_V6)
     primary = {
@@ -46,7 +46,7 @@ def _v6_example():
         "checks": {
             "location": {
                 "source_refs": [{"ref": "U0", "quote": "Miejsce: taca A."}],
-                "candidate_quotes": ["Nie z tacy A."],
+                "candidate_quotes": [candidate],
                 "relation": "denies",
             }
         },
@@ -57,6 +57,20 @@ def _v6_example():
     }
     assert v6.sources(material) == {"U0": material["messages"][0]["content"]}
     return request, primary, guard
+
+
+def test_v6_keeps_a_full_long_segment_for_polarity():
+    candidate = "Nie z tacy A, " + "ciąg dalszy " * 40 + "koniec."
+    request, primary, guard = _v6_example(candidate)
+    result = judge._decode(
+        _v6_response(request, primary, guard),
+        ["location"],
+        "judge",
+        judge=judge.JUDGE_V6,
+        request=request,
+    )
+    assert result is not None
+    assert result.atoms == {"location": "contradicted"}
 
 
 def _v6_response(request, primary, guard):
@@ -1273,7 +1287,8 @@ def test_v6_invocation_keeps_first_stage_on_second_failure(monkeypatch, fail_sec
     completed, persisted = [], []
 
     def api(_client, action, payload, *, timeout):
-        assert action == "chat" and timeout == 30
+        assert action == "chat"
+        assert timeout == 30
         completed.append(payload)
         if fail_second and len(completed) == 2:
             raise ValueError("timeout")
@@ -1295,7 +1310,8 @@ def test_v6_invocation_keeps_first_stage_on_second_failure(monkeypatch, fail_sec
     )
     assert completed == request["stages"]
     assert "checks" not in json.loads(completed[1]["messages"][1]["content"])
-    assert len(persisted) >= 4 and "response" in persisted[2]["calls"][0]
+    assert len(persisted) >= 4
+    assert "response" in persisted[2]["calls"][0]
     assert response["status"] == ("uncertain" if fail_second else "complete")
     result = judge._decode(
         response, ["location"], "judge", judge=judge.JUDGE_V6, request=request

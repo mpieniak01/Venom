@@ -94,6 +94,23 @@ def run_acceptance(
         "errors": [],
     }
 
+    def persist(path: Path, payload: dict[str, Any], phase: dict | None = None) -> None:
+        try:
+            atomic_json(path, payload)
+        except OSError as exc:
+            result["status"] = "failed"
+            result["errors"].append(
+                {
+                    "phase": phase["name"] if phase is not None else "lifecycle",
+                    "operation": "write",
+                    "file": path.name,
+                    "type": type(exc).__name__,
+                    "reason": str(exc),
+                }
+            )
+            if phase is not None:
+                phase["status"] = "failed"
+
     def call(name: str) -> bool:
         phase: dict[str, Any] = {"name": name, "started_at": _now()}
         try:
@@ -104,17 +121,16 @@ def run_acceptance(
                     raise ValueError("native_acceptance_restore_proof_missing")
                 _validate_restore(value, phase["started_at"], main_root)
             phase["status"] = "passed"
-            return True
         except BaseException as exc:
             phase["status"] = "failed"
             phase["error"] = {"type": type(exc).__name__, "reason": str(exc)}
             result["errors"].append({"phase": name, **phase["error"]})
-            return False
         finally:
             phase["finished_at"] = _now()
             result["phases"].append(phase)
-            atomic_json(output / (name + ".json"), phase)
-            atomic_json(output / "lifecycle.json", result)
+            persist(output / (name + ".json"), phase, phase)
+            persist(output / "lifecycle.json", result, phase)
+        return phase["status"] == "passed"
 
     if call("preflight"):
         try:
@@ -126,5 +142,5 @@ def run_acceptance(
             call("verify_restore")
     result["status"] = "passed" if not result["errors"] else "failed"
     result["finished_at"] = _now()
-    atomic_json(output / "lifecycle.json", result)
+    persist(output / "lifecycle.json", result)
     return result

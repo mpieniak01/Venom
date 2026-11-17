@@ -186,7 +186,6 @@ async def _generate(
     except (
         OSError,
         ValueError,
-        TimeoutError,
         omni_native_dialogue.NativeDialogueError,
     ) as exc:
         raise _error("omni_native_text_generation_failed", 503) from exc
@@ -230,7 +229,17 @@ async def switch(
     adapter_id: str | None, *, expected_runtime_id: str | None = None
 ) -> dict[str, Any]:
     """Probe before atomically committing; failed/cancelled loads keep prior state."""
+    global _ACTIVE, _PREVIOUS, _ORDINARY
     async with _LOCK:
+        if adapter_id is None:
+            if expected_runtime_id != (_ACTIVE.runtime_id if _ACTIVE else None):
+                raise _error("omni_native_text_selection_changed")
+            async with runtime_request_guard(
+                request_kind="omni_native_text_switch", provider=RUNTIME
+            ):
+                pass
+            _PREVIOUS, _ACTIVE, _ORDINARY = _ACTIVE, None, None
+            return state()
         return await _switch_locked(adapter_id, expected_runtime_id)
 
 
@@ -265,6 +274,13 @@ def _validate_request(
         or request.response_format
         or request.format
         or request.studio_normal
+        or request.temperature not in (None, 0.0)
+        or request.top_p not in (None, 1.0)
+        or request.logprobs
+        or request.top_logprobs not in (None, 0)
+        or request.seed is not None
+        or request.think
+        or request.stream is False
     ):
         raise _error("omni_native_text_feature_unsupported", 422)
     if (

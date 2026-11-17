@@ -36,3 +36,45 @@ test("picker probes, rolls back, retains selection after failed probe, and refre
   await waitFor(()=>assert.equal(screen.getByTestId("state").textContent,"ordinary"));
  }finally{cleanup();globalThis.fetch=old;}
 });
+
+test("ordinary action clears the overlay after multiple adapter choices without replacing rollback",async()=>{
+ const old=globalThis.fetch;
+ const second={...identity,adapter_id:"omni-p25-24",weights_sha256:"d".repeat(64),runtime_id:"omni-native-peft-text:omni-p25-24:"+"d".repeat(64)};
+ let selection:typeof identity|null=null;let previous:typeof identity|null=null;
+ const requests:Array<{path:string;body:unknown}>=[];
+ globalThis.fetch=async(input,init)=>{
+  const url=String(input);
+  if(url.endsWith("/catalog"))return Response.json({adapters:[{...identity,label:"P13"},{...second,label:"P25"}]});
+  if(url.endsWith("/selection")){
+   const body=JSON.parse(String(init?.body));
+   assert.equal(body.expected_runtime_id,selection?.runtime_id??null);
+   requests.push({path:"selection",body});previous=selection;
+   if(body.adapter_id===null)selection=null;
+   else if(body.adapter_id===second.adapter_id)selection=second;
+   else selection=identity;
+  }
+  if(url.endsWith("/rollback")){
+   const body=JSON.parse(String(init?.body));assert.equal(body.expected_runtime_id,selection?.runtime_id);
+   requests.push({path:"rollback",body});const before=selection;selection=previous;previous=before;
+  }
+  return Response.json({selection,previous,persistent:false});
+ };
+ try{
+  render(<LanguageProvider><Harness/></LanguageProvider>);
+  await waitFor(()=>assert.ok(screen.getByRole("option",{name:/P25/})));
+  const select=screen.getByRole("combobox");
+  const load=screen.getByRole("button",{name:/Wczytaj|Load|Laden/});
+  const ordinary=screen.getByRole("button",{name:/Użyj zwykłego|Use ordinary|Normales Modell/});
+  assert.equal(ordinary.hasAttribute("disabled"),true);
+  fireEvent.change(select,{target:{value:identity.adapter_id}});fireEvent.click(load);
+  await waitFor(()=>assert.equal(screen.getByTestId("state").textContent,identity.runtime_id));
+  fireEvent.change(select,{target:{value:second.adapter_id}});fireEvent.click(load);
+  await waitFor(()=>assert.equal(screen.getByTestId("state").textContent,second.runtime_id));
+  fireEvent.click(screen.getByRole("button",{name:/Przywróć|Restore|wiederherstellen/}));
+  await waitFor(()=>assert.equal(screen.getByTestId("state").textContent,identity.runtime_id));
+  fireEvent.click(ordinary);
+  await waitFor(()=>assert.equal(screen.getByTestId("state").textContent,"ordinary"));
+  assert.deepEqual(requests.at(-1),{path:"selection",body:{adapter_id:null,expected_runtime_id:identity.runtime_id}});
+  assert.equal(requests.filter(request=>request.path==="rollback").length,1);
+ }finally{cleanup();globalThis.fetch=old;}
+});

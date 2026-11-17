@@ -1,8 +1,8 @@
 """Schemas for LLM simple API endpoints."""
 
-from typing import Any, Literal, Optional
+from typing import Any, Literal, Optional, Self
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 MAX_CHAT_MESSAGE_CHARS = 50_000
 MAX_CHAT_HISTORY_CHARS = 50_000
@@ -38,4 +38,12 @@ class SimpleChatRequest(BaseModel):
     tool_choice: Optional[dict[str, Any] | str] = None
     think: Optional[bool] = None
     session_id: Optional[str] = None
-    history: list[HistoryMessage] = Field(default_factory=list, max_length=20)
+    history: list[HistoryMessage] = Field(default_factory=list, max_length=200)
+
+    @model_validator(mode="after")
+    def check_history_length(self) -> Self:
+        if len(self.history) > 20 and not (self.expected_runtime_id or "").startswith(
+            "omni-native-peft-text:"
+        ):
+            raise ValueError("simple_chat_history_limit")
+        return self

@@ -4,6 +4,7 @@ export const chat2 = {
     "choose": "Wybierz adapter",
     "apply": "Wczytaj i sprawdź",
     "rollback": "Przywróć poprzedni model",
+    "deactivate": "Użyj zwykłego modelu",
     "refresh": "Odśwież stan",
     "reference": "Referencja P13",
     "unqualified": "Kandydat bez kwalifikacji",

@@ -24,6 +24,15 @@ import {
   addInitialSimpleUserHistoryEntry,
 } from "./chat-send-helpers";
 
+export function prepareChatHistory(
+  runtimeId: string | null | undefined,
+  history: ChatSendParams["conversationHistory"],
+  currentLength: number,
+) {
+  if (!history || isNativeTextRuntime(runtimeId)) return history;
+  return boundChatHistory(history, currentLength);
+}
+
 function resolveSession(
   parsed: ReturnType<typeof parseInputCommand>,
   sessionId: string | null,
@@ -380,8 +389,7 @@ export function useChatSend(params: ChatSendParams) {
     const shouldUseSimple = studioNormal || shouldUseSimpleMode(chatMode, parsed);
     const historyKey = vastChatHistoryKey(effectiveActiveServerInfo?.runtime_id, effectiveSelectedModel, resolvedSession, effectiveActiveServerInfo?.config_hash);
     const historySource = conversationHistory ?? (historyKey ? vastHistory.current.get(historyKey) ?? [] : undefined);
-    const history = isNativeTextRuntime(effectiveActiveServerInfo?.runtime_id) ? historySource
-      : historySource ? boundChatHistory(historySource, trimmed.length) : undefined;
+    const history = prepareChatHistory(effectiveActiveServerInfo?.runtime_id, historySource, trimmed.length);
     const quote = await prepareOpenRouterQuote({
       activeServerInfo: effectiveActiveServerInfo,
       trimmed,

@@ -57,6 +57,10 @@ function studioCapabilities(
   };
 }
 
+function unsupportedNativeFeatures(native: boolean, direct: boolean, selectedCount: number, voice: string | null) {
+  return native && (!direct || selectedCount > 0 || voice != null);
+}
+
 const compactQuery = "(max-width: 800px)";
 function subscribeCompact(onChange: () => void) {
   const query = window.matchMedia(compactQuery);
@@ -137,7 +141,7 @@ function StudioConversation({ showLegacyLink, lightNormal }: Readonly<{
   const notesSelected = notesAvailable && state.chatMode === "normal" && useNotes;
   const attached = materials.items.filter(item => selected.includes(item.id));
   const missing = selected.length > attached.length;
-  const nativeBlocked = !!native.state.selection && (!direct || selected.length > 0 || voice != null);
+  const nativeBlocked = unsupportedNativeFeatures(!!native.state.selection, direct, selected.length, voice);
   const blocked = !native.ready || native.busy || nativeBlocked || missing || materialBlocked(attached, materials.capabilities, direct);
   const chatActive = state.sending || conversation.historyMessages.some(message => message.pending || ["PENDING", "PROCESSING"].includes(message.status ?? ""));
   const active = chatActive || multimodalBusy;

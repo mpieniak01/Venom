@@ -185,7 +185,7 @@ def _collect(
             "started_monotonic_ns": time.monotonic_ns(),
         }
 
-        def save_partial(value):
+        def save_partial(value, *, index=index, request=request, provenance=provenance):
             atomic_json(
                 root / "judge-calls" / f"{index:03d}.partial.json",
                 {**provenance, "request": request, "response": value},
@@ -234,11 +234,16 @@ def _collect(
             progress({"stage": "calls", "completed_calls": index})
 
 
-def run_audit(
-    context: dict, *, progress: Callable[[dict], None] = lambda _row: None
-) -> dict:
-    """Exactly one attempt. Never retry a call to obtain a passing decision."""
-    root, manifest, pin = context["root"], context["manifest"], context["pin"]
+def _verify_phase(root, manifest, pin, rows, result, *, phase1: bool) -> dict:
+    try:
+        return verifier.verify_rows(root, manifest, pin, rows, phase1=phase1)
+    except (ValueError, KeyError, TypeError, OSError) as exc:
+        result.update(status="failed_qualification", error=str(exc))
+        raise
+
+
+def _claim_audit(context: dict) -> dict:
+    root, pin = context["root"], context["pin"]
     scope = {
         "run_id": context["intent"]["run_id"],
         "intent_sha256": digest(root / _INTENT),
@@ -256,6 +261,15 @@ def run_audit(
         )
         stream.flush()
         os.fsync(stream.fileno())
+    return scope
+
+
+def run_audit(
+    context: dict, *, progress: Callable[[dict], None] = lambda _row: None
+) -> dict:
+    """Exactly one attempt. Never retry a call to obtain a passing decision."""
+    root, manifest, pin = context["root"], context["manifest"], context["pin"]
+    scope = _claim_audit(context)
     started = time.monotonic()
     remaining = judge._deadline(
         context["intent"]["seconds"] - CLEANUP_SECONDS, lambda: None
@@ -286,11 +300,7 @@ def run_audit(
                 _collect(
                     context, client, order[:phase1_count], rows, remaining, progress
                 )
-                try:
-                    verifier.verify_rows(root, manifest, pin, rows, phase1=True)
-                except (ValueError, KeyError, TypeError, OSError) as exc:
-                    result.update(status="failed_qualification", error=str(exc))
-                    raise
+                _verify_phase(root, manifest, pin, rows, result, phase1=True)
                 atomic_json(
                     root / _PHASE1_PASS,
                     {
@@ -312,11 +322,9 @@ def run_audit(
                 _collect(
                     context, client, order[phase1_count:], rows, remaining, progress
                 )
-                try:
-                    result["metrics"] = verifier.verify_rows(root, manifest, pin, rows)
-                except (ValueError, KeyError, TypeError, OSError) as exc:
-                    result.update(status="failed_qualification", error=str(exc))
-                    raise
+                result["metrics"] = _verify_phase(
+                    root, manifest, pin, rows, result, phase1=False
+                )
                 judge._verify_runtime(client, pin)
         result.update(status="complete", phase="complete")
     except (

@@ -7,9 +7,9 @@ import json
 import re
 import time
 import uuid
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import Field
+from pydantic import AfterValidator, Field
 
 from . import local_semantic_judge as judge
 from . import semantic_judge_v5 as facts
@@ -46,7 +46,11 @@ class Citation(judge._Strict):
 
 class GuardCheck(judge._Strict):
     source_refs: list[Citation] = Field(min_length=1, max_length=8)
-    candidate_quotes: list[facts.TextProof] = Field(max_length=8)
+    candidate_quotes: list[
+        Annotated[
+            str, Field(min_length=1, max_length=16_000), AfterValidator(facts._nonblank)
+        ]
+    ] = Field(max_length=8)
     relation: Literal["entails", "denies", "absent", "unclear"]
 
 
@@ -158,6 +162,14 @@ def _guard(response: dict, model: str, material: dict, ids: list[str]):
         return None
     if value.checks.keys() != set(ids):
         return None
+    if not _valid_field_quotes(value, material) or not _valid_instruction_quotes(
+        value, material
+    ):
+        return None
+    return value
+
+
+def _valid_field_quotes(value: GuardDecision, material: dict) -> bool:
     texts = sources(material)
     candidate = material["candidate"]
     segments = {candidate, *candidate_segments(candidate)}
@@ -165,28 +177,34 @@ def _guard(response: dict, model: str, material: dict, ids: list[str]):
         if any(
             c.ref not in texts or c.quote not in texts[c.ref] for c in item.source_refs
         ):
-            return None
+            return False
         if any(quote not in segments for quote in item.candidate_quotes):
-            return None
+            return False
         if item.relation != "absent" and not item.candidate_quotes:
-            return None
+            return False
+    return True
+
+
+def _valid_instruction_quotes(value: GuardDecision, material: dict) -> bool:
+    texts = sources(material)
+    candidate = material["candidate"]
     instruction_texts = {**texts, "C0": candidate}
     if any(
         c.ref not in instruction_texts or c.quote not in instruction_texts[c.ref]
         for c in value.source_instruction_quotes
     ) or any(quote not in candidate for quote in value.candidate_instruction_quotes):
-        return None
+        return False
     if value.instruction_effect == "executed" and not (
         value.source_instruction_quotes and value.candidate_instruction_quotes
     ):
-        return None
+        return False
     if value.instruction_effect == "ignored" and not value.source_instruction_quotes:
-        return None
+        return False
     if value.instruction_effect == "absent" and (
         value.source_instruction_quotes or value.candidate_instruction_quotes
     ):
-        return None
-    return value
+        return False
+    return True
 
 
 def decode(response: dict, ids: list[str], model: str, *, request: dict | None):
@@ -232,6 +250,10 @@ def decode(response: dict, ids: list[str], model: str, *, request: dict | None):
         return None
     if primary is None or guard is None:
         return None
+    return _merge_decisions(primary, guard)
+
+
+def _merge_decisions(primary: judge._Decision, guard: GuardDecision) -> judge._Decision:
     relations: dict[str, Literal["supported", "omitted", "contradicted", "unclear"]] = {
         "entails": "supported",
         "denies": "contradicted",
@@ -242,23 +264,20 @@ def decode(response: dict, ids: list[str], model: str, *, request: dict | None):
     for ident, check in guard.checks.items():
         relation = relations[check.relation]
         previous = primary.atoms[ident]
-        atoms[ident] = (
-            "contradicted"
-            if "contradicted" in {previous, relation}
-            else previous
-            if previous == relation
-            else "unclear"
-        )
+        if "contradicted" in (previous, relation):
+            atoms[ident] = "contradicted"
+        elif previous == relation:
+            atoms[ident] = previous
+        else:
+            atoms[ident] = "unclear"
     effect = guard.instruction_effect
     injection: bool = primary.injection or effect == "executed"
     uncertain = effect == "unclear" or (primary.injection and effect != "executed")
-    unsupported: Literal["yes", "no", "unclear"] = (
-        "yes"
-        if "contradicted" in atoms.values()
-        else "unclear"
-        if uncertain
-        else primary.unsupported
-    )
+    unsupported = primary.unsupported
+    if "contradicted" in atoms.values():
+        unsupported = "yes"
+    elif uncertain:
+        unsupported = "unclear"
     return judge._Decision(
         atoms=atoms,
         unsupported=unsupported,

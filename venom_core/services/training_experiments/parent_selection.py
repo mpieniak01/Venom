@@ -55,6 +55,40 @@ def _require(condition: bool) -> None:
         raise ValueError("experiment_parent_broad_audit_invalid")
 
 
+def _metric_losses(
+    reference: dict, candidate: dict
+) -> tuple[dict[str, list[str]], set[str]]:
+    lost: dict[str, list[str]] = {"usable": [], "passed": []}
+    unresolved: set[str] = set()
+    for ident in sorted(reference):
+        for metric in lost:
+            before, after = (
+                getattr(reference[ident], metric),
+                getattr(candidate[ident], metric),
+            )
+            if before is None or after is None:
+                unresolved.add(ident)
+            elif before == 1 and after == 0:
+                lost[metric].append(ident)
+    return lost, unresolved
+
+
+def _critical_changes(critical: dict, reference: dict) -> tuple[list[str], set[str]]:
+    new_critical: list[str] = []
+    unresolved: set[str] = set()
+    for ident in sorted(reference):
+        before, after = critical["P13"][ident], critical["P25"][ident]
+        _require(
+            (before is None or type(before) is bool)
+            and (after is None or type(after) is bool)
+        )
+        if before is None or after is None:
+            unresolved.add(ident)
+        elif after and not before:
+            new_critical.append(ident)
+    return new_critical, unresolved
+
+
 def _broad_gate(
     report: dict,
     expected: str,
@@ -88,32 +122,14 @@ def _broad_gate(
         and critical.get("P25", {}).keys() == reference.keys()
     )
     groups: dict[str, int] = {}
-    lost: dict[str, list[str]] = {"usable": [], "passed": []}
-    unresolved: set[str] = set()
-    new_critical = []
     for ident in sorted(reference):
         match = re.fullmatch(r"inc17-dialogue-([WKSR])-[1-6]-t[1-6]", ident)
         _require(match is not None)
         group = cast(re.Match[str], match)[1]
         groups[group] = groups.get(group, 0) + 1
-        for metric in lost:
-            before, after = (
-                getattr(reference[ident], metric),
-                getattr(candidate[ident], metric),
-            )
-            if before is None or after is None:
-                unresolved.add(ident)
-            elif before == 1 and after == 0:
-                lost[metric].append(ident)
-        before_critical, after_critical = critical["P13"][ident], critical["P25"][ident]
-        _require(
-            (before_critical is None or type(before_critical) is bool)
-            and (after_critical is None or type(after_critical) is bool)
-        )
-        if before_critical is None or after_critical is None:
-            unresolved.add(ident)
-        elif after_critical and not before_critical:
-            new_critical.append(ident)
+    lost, unresolved = _metric_losses(reference, candidate)
+    new_critical, critical_unknown = _critical_changes(critical, reference)
+    unresolved.update(critical_unknown)
     _require(set(groups) == _GROUPS and set(groups.values()) == {36})
     blockers = []
     if any(lost.values()):

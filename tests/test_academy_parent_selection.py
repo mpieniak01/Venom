@@ -88,6 +88,8 @@ def test_four_known_new_critical_errors_override_narrow_win():
 def test_retention_loss_blocks_parent(metric):
     evidence = report()["payload"]
     evidence["verdicts"]["P25"]["inc17-dialogue-S-1-t6"][metric] = 0
+    if metric == "usable":
+        evidence["verdicts"]["P25"]["inc17-dialogue-S-1-t6"]["passed"] = 0
     gate = choose(seal(evidence))["broad_gate"]
     assert gate["blockers"] == ["broad_retention_lost"]
     assert gate["lost_reference_case_ids"][metric] == ["inc17-dialogue-S-1-t6"]
@@ -99,6 +101,7 @@ def test_null_remains_unresolved_and_blocks_parent(scope):
     ident = "inc17-dialogue-K-5-t2"
     if scope == "usable":
         evidence["verdicts"]["P13"][ident]["usable"] = None
+        evidence["verdicts"]["P13"][ident]["passed"] = None
     else:
         evidence["critical_by_case"]["P25"][ident] = None
     gate = choose(seal(evidence))["broad_gate"]
@@ -208,3 +211,30 @@ def test_strict_wider_schema_rejects_resealed_malformed_rows(mutation):
         evidence = seal(payload)
     with pytest.raises(ValueError):
         choose(evidence)
+
+
+@pytest.mark.parametrize("usable", [0, None])
+def test_passed_answer_cannot_be_unusable_or_unknown(usable):
+    payload = report()["payload"]
+    payload["verdicts"]["P25"]["inc17-dialogue-W-1-t1"] = {
+        "usable": usable,
+        "passed": 1,
+    }
+    with pytest.raises(ValueError, match="broad_audit_invalid"):
+        choose(seal(payload))
+
+
+@pytest.mark.parametrize("value", [0, 1, "false", None])
+def test_final_flag_requires_actual_boolean_false(value):
+    payload = report()["payload"]
+    payload["factual_final_used"] = value
+    with pytest.raises(ValueError, match="broad_audit_invalid"):
+        choose(seal(payload))
+
+
+def test_nullable_full_pass_does_not_make_unknown_a_zero():
+    payload = report()["payload"]
+    payload["verdicts"]["P25"]["inc17-dialogue-W-1-t1"] = {"usable": 1, "passed": None}
+    result = choose(seal(payload))
+    assert result["selected_parent"] == "P13"
+    assert result["broad_gate"]["unresolved_pair_case_ids"] == ["inc17-dialogue-W-1-t1"]

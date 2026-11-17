@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import re
-from typing import Annotated, Any, Literal, cast
+from typing import Annotated, Any, cast
 
-from pydantic import BaseModel, ConfigDict, Field, StrictBool
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, model_validator
 
 from .profiles import stable_hash
 
@@ -15,13 +15,25 @@ class _AuditVerdict(BaseModel):
     usable: Annotated[int, Field(ge=0, le=1)] | None
     passed: Annotated[int, Field(ge=0, le=1)] | None
 
+    @model_validator(mode="after")
+    def _consistent(self) -> _AuditVerdict:
+        if self.passed == 1 and self.usable != 1:
+            raise ValueError("experiment_parent_broad_audit_invalid")
+        return self
+
 
 class _BroadPayload(BaseModel):
     model_config = ConfigDict(strict=True, extra="ignore")
-    factual_final_used: Literal[False]
+    factual_final_used: StrictBool
     model_identities: dict[str, dict[str, Any]]
     verdicts: dict[str, dict[str, _AuditVerdict]]
     critical_by_case: dict[str, dict[str, StrictBool | None]]
+
+    @model_validator(mode="after")
+    def _unopened_final(self) -> _BroadPayload:
+        if self.factual_final_used is not False:
+            raise ValueError("experiment_parent_broad_audit_invalid")
+        return self
 
 
 class ShortComparison(BaseModel):

@@ -23,8 +23,10 @@ GENERATION_SEAL = "generation-seal.json"
 RAW_ANSWERS = "raw.jsonl"
 BLIND_MAPPING = "unblind.json"
 EVALUATION_MANIFEST = "manifest.json"
-GENERATION_OUTPUTS = (RAW_ANSWERS, "blind.jsonl", BLIND_MAPPING)
+_BLIND = "blind.jsonl"
+GENERATION_OUTPUTS = (RAW_ANSWERS, _BLIND, BLIND_MAPPING)
 RESULT_SEAL = "result-seal.json"
+_JUDGMENTS = "judgments.json"
 
 
 def validate_steps(steps: list[int], recipe: dict) -> None:
@@ -150,7 +152,7 @@ def _publish_pair(
             answers[label] = blind_answer(row)
         blind.append({"case": case, "answers": dict(sorted(answers.items()))})
     _write_rows(folder / RAW_ANSWERS, raw)
-    _write_rows(folder / "blind.jsonl", blind)
+    _write_rows(folder / _BLIND, blind)
     atomic_json(folder / BLIND_MAPPING, mapping)
     atomic_json(
         folder / EVALUATION_MANIFEST,
@@ -228,7 +230,7 @@ def verify_baseline(
         return
     reference = step_directory(directory, steps[0])
     report, _ = sealed_step(reference)
-    prior_path = reference / "judgments.json"
+    prior_path = reference / _JUDGMENTS
     if (
         digest(prior_path) != report["judgment_sha256"]
         or digest(reference / GENERATION_SEAL) != report["generation_sha256"]
@@ -248,7 +250,7 @@ def _baseline_inputs(folder: Path, manifest: dict, cases: list[dict]) -> dict:
         raise ValueError("experiment_checkpoint_baseline_generation_changed")
     raw = _raw_rows(folder, manifest)
     mapping = read_json(folder / BLIND_MAPPING)
-    blind = rows(folder / "blind.jsonl")
+    blind = rows(folder / _BLIND)
     if [row["case"] for row in blind] != cases or set(mapping) != {
         case["record_id"] for case in cases
     }:
@@ -289,7 +291,7 @@ def _baseline_source(
         or manifest["calibration"] != calibration
         or report["calibration_judge"] != calibration["judge"]
         or digest(source / GENERATION_SEAL) != report["generation_sha256"]
-        or digest(source / "judgments.json") != report["judgment_sha256"]
+        or digest(source / _JUDGMENTS) != report["judgment_sha256"]
         or generated["data_sha256"] != report["dev_sha256"]
         or generated["data_sha256"] != manifest["profile"]["dev_sha256"]
     ):
@@ -305,7 +307,7 @@ def _baseline_source(
         "calibration_sha256": manifest["profile"]["calibration_sha256"],
         "scorer_protocol": scorer_protocol(calibration),
     }
-    return source, generated, receipt, read_json(source / "judgments.json")
+    return source, generated, receipt, read_json(source / _JUDGMENTS)
 
 
 def reuse_baseline_reviews(
@@ -344,9 +346,9 @@ def reuse_baseline_reviews(
         cases = bundle["cases"]
         original = _baseline_inputs(source, previous, cases)
         target = _baseline_inputs(current, generated, cases)
-        if bundle["answers"] != rows(current / "blind.jsonl"):
+        if bundle["answers"] != rows(current / _BLIND):
             raise ValueError("experiment_checkpoint_baseline_generation_changed")
-        aggregate(cases, rows(source / "blind.jsonl"), grades)
+        aggregate(cases, rows(source / _BLIND), grades)
         source_grades = {
             grade["record_id"]: grade
             for grade in grades

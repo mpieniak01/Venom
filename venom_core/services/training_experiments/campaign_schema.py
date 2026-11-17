@@ -162,6 +162,18 @@ class CampaignSpec(BaseModel):
             or self.checkpoint_steps != sorted(set(self.checkpoint_steps))
         ):
             raise ValueError("campaign_checkpoint_steps_invalid")
+        self._validate_final_qualification()
+        if self.extension is not None and (
+            self.strategy != "fixed"
+            or self.review_mode != "automatic"
+            or self.extension.initial_trials >= len(self.variants)
+            or self.extension.min_usable_delta < self.selection.min_usable_delta
+        ):
+            raise ValueError("campaign_extension_invalid")
+        self._validate_repeat_recipe()
+        return self
+
+    def _validate_final_qualification(self) -> None:
         if self.final_qualification is not None and (
             self.strategy != "fixed"
             or self.review_mode != "automatic"
@@ -171,13 +183,8 @@ class CampaignSpec(BaseModel):
             > self.budget.max_seconds - self.final_qualification.reserve_seconds
         ):
             raise ValueError("campaign_final_qualification_invalid")
-        if self.extension is not None and (
-            self.strategy != "fixed"
-            or self.review_mode != "automatic"
-            or self.extension.initial_trials >= len(self.variants)
-            or self.extension.min_usable_delta < self.selection.min_usable_delta
-        ):
-            raise ValueError("campaign_extension_invalid")
+
+    def _validate_repeat_recipe(self) -> None:
         if (
             self.extension is not None
             and self.extension.repeat_best_recipe
@@ -188,7 +195,6 @@ class CampaignSpec(BaseModel):
             )
         ):
             raise ValueError("campaign_repeat_recipe_invalid")
-        return self
 
 
 class CampaignPlanReference(BaseModel):

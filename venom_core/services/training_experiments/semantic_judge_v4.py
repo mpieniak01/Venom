@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     from .local_semantic_judge import QualificationV4
 
 ERROR = "experiment_judge_v4_audit_invalid"
+_OPTIONS = "options.json"
 FILES = frozenset(
     {
         "development/panel.json",
@@ -27,7 +28,7 @@ FILES = frozenset(
         "legacy/judge-protocol.json",
         "legacy/judge-result.json",
         "legacy/judge-qualification-receipt.json",
-        "options.json",
+        _OPTIONS,
         "preregister.json",
         "prompt-proposal.txt",
         "prompt-change.diff",
@@ -62,9 +63,7 @@ def control_files(root: Path, expected: str) -> dict:
     require(manifest["status"] == "frozen_before_any_inference")
     for name, checksum in manifest["files"].items():
         require(isinstance(checksum, str) and digest(controls / name) == checksum)
-    options = judge._bound_json(
-        controls, "options.json", manifest["files"]["options.json"]
-    )
+    options = judge._bound_json(controls, _OPTIONS, manifest["files"][_OPTIONS])
     require(options == judge.OPTIONS)
     require(
         (controls / "prompt-proposal.txt").read_text(encoding="utf8")
@@ -109,9 +108,35 @@ def execution_order(root: Path, manifest: dict) -> list[dict]:
     return first + held
 
 
-def jobs_for(root: Path, manifest: dict, split: str) -> tuple[dict, dict]:
+def _verify_gold(cases: list[dict], gold: dict, jobs: dict) -> None:
     from . import local_semantic_judge as judge
 
+    require(gold["answers"].keys() == jobs.keys())
+    positive_families: Counter = Counter()
+    for ident, item in gold["answers"].items():
+        case, _ = jobs[ident]
+        require(item["case_id"] == case["id"])
+        require(set(item["decision"]) == set(DECISION_FIELDS))
+        decision = judge._Decision.model_validate(
+            {**item["decision"], "reason": "frozen gold"}
+        )
+        require(
+            decision.atoms.keys() == {criterion["id"] for criterion in case["criteria"]}
+        )
+        require(
+            "unclear" not in decision.atoms.values()
+            and decision.unsupported != "unclear"
+        )
+        require(item["expected"] in {"positive", "negative"})
+        positive = item["expected"] == "positive"
+        require(judge._supported(decision) == positive)
+        if positive:
+            positive_families[case["id"]] += 1
+    require(positive_families == dict.fromkeys((case["id"] for case in cases), 2))
+    require(all(len(case["answers"]) == 4 for case in cases))
+
+
+def jobs_for(root: Path, manifest: dict, split: str) -> tuple[dict, dict]:
     require(split in {"legacy", "development", "holdout"})
     suffix = "qualification-" if split == "legacy" else ""
     panel = _control(root, manifest, f"{split}/{suffix}panel.json")
@@ -142,33 +167,7 @@ def jobs_for(root: Path, manifest: dict, split: str) -> tuple[dict, dict]:
         require(not set(positives) & set(negatives))
         require(set(positives) | set(negatives) == jobs.keys())
     else:
-        require(gold["answers"].keys() == jobs.keys())
-        positive_families: Counter = Counter()
-        for ident, item in gold["answers"].items():
-            case, _ = jobs[ident]
-            require(item["case_id"] == case["id"])
-            require(set(item["decision"]) == set(DECISION_FIELDS))
-            decision = judge._Decision.model_validate(
-                {**item["decision"], "reason": "frozen gold"}
-            )
-            require(
-                decision.atoms.keys()
-                == {criterion["id"] for criterion in case["criteria"]}
-            )
-            require(
-                "unclear" not in decision.atoms.values()
-                and decision.unsupported != "unclear"
-            )
-            require(item["expected"] in {"positive", "negative"})
-            positive = item["expected"] == "positive"
-            require(judge._supported(decision) == positive)
-            if positive:
-                positive_families[case["id"]] += 1
-        require(
-            positive_families
-            == dict.fromkeys((case["id"] for case in panel["cases"]), 2)
-        )
-        require(all(len(case["answers"]) == 4 for case in panel["cases"]))
+        _verify_gold(panel["cases"], gold, jobs)
     return jobs, gold
 
 
@@ -276,11 +275,12 @@ def verify_rows(
         )
         require(decision.model_dump() == row["decision"])
         actual[split][ident] = decision
-        if split != "legacy":
-            vector = {key: getattr(decision, key) for key in DECISION_FIELDS}
-            require(vector == gold["answers"][ident]["decision"])
-            if split == "holdout":
-                repeated[ident].append((request_sha, vector))
+        if split == "legacy":
+            continue
+        vector = {key: getattr(decision, key) for key in DECISION_FIELDS}
+        require(vector == gold["answers"][ident]["decision"])
+        if split == "holdout":
+            repeated[ident].append((request_sha, vector))
     for split, (jobs, _) in inputs.items():
         require(actual[split].keys() == jobs.keys())
     _legacy_decisions(inputs["legacy"][0], inputs["legacy"][1], actual["legacy"])

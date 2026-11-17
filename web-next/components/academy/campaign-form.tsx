@@ -180,6 +180,51 @@ function readPlan(
   };
 }
 
+function applyFinalQualification(
+  request: CampaignRequest,
+  data: FormData,
+  finalInputs: CampaignFinalInputs[],
+  profile: ExperimentProfile,
+) {
+  const final = readFinalQualification(data, finalInputs);
+  if (!final) return;
+  if (!profile.automatic_review) throw new Error("automatic review required");
+  request.final_qualification = final;
+  request.review_mode = "automatic";
+  if (data.has("protect_parent_full_pass")) {
+    request.selection.protect_parent_full_pass = true;
+    if (request.quality_policy?.parent_reference_record_id) {
+      request.quality_policy.protect_parent_full_pass = true;
+    }
+  }
+}
+
+function applyConditionalExtension(
+  request: CampaignRequest,
+  data: FormData,
+  variantCount: number,
+  profile: ExperimentProfile,
+) {
+  if (!data.get("extension_initial_trials")) return;
+  const initial = numberField(data, "extension_initial_trials");
+  const gain = numberField(data, "extension_gain") / 100;
+  if (!Number.isSafeInteger(initial) || initial < 1 || initial >= variantCount
+    || gain <= 0 || gain > 1 || gain < request.selection.min_usable_delta) {
+    throw new Error("invalid conditional extension");
+  }
+  if (!profile.automatic_review) throw new Error("automatic review required");
+  const repeatBest = data.has("extension_repeat_best_recipe");
+  if (repeatBest && (variantCount !== 2 * initial || !request.quality_policy?.parent_reference_record_id)) {
+    throw new Error("repeat requires a frozen alternative for every initial recipe and a parent reference");
+  }
+  request.review_mode = "automatic";
+  request.extension = {
+    initial_trials: initial,
+    min_usable_delta: gain,
+    ...(repeatBest ? { repeat_best_recipe: true } : {}),
+  };
+}
+
 interface CampaignFormProps {
   readonly profiles: ExperimentProfile[];
   readonly adapters: ExperimentInitialAdapter[];
@@ -216,42 +261,13 @@ export function CampaignForm({ profiles, adapters, adaptersFailed, disabled, opt
     try {
       const data = new FormData(event.currentTarget);
       const request = readPlan(data, profile.id, rows, strategy, profileAdapters, draft);
-      if (!remoteText) {
-        const final = readFinalQualification(data, finalInputs);
-        if (final) {
-          if (!profile.automatic_review) throw new Error("automatic review required");
-          request.final_qualification = final;
-          if (data.has("protect_parent_full_pass")) {
-            request.selection.protect_parent_full_pass = true;
-            if (request.quality_policy?.parent_reference_record_id) {
-              request.quality_policy.protect_parent_full_pass = true;
-            }
-          }
-          request.review_mode = "automatic";
-        }
-      }
       if (remoteText) {
         request.review_mode = "automatic";
         request.retention = "keep_all";
+      } else {
+        applyFinalQualification(request, data, finalInputs, profile);
       }
-      if (strategy === "fixed" && data.get("extension_initial_trials")) {
-          const initial = numberField(data, "extension_initial_trials");
-          const gain = numberField(data, "extension_gain") / 100;
-          if (!Number.isSafeInteger(initial) || initial < 1 || initial >= rows.length
-            || gain <= 0 || gain > 1 || gain < request.selection.min_usable_delta) {
-            setInvalid(true);
-            return;
-          }
-          if (!profile.automatic_review) throw new Error("automatic review required");
-          request.review_mode = "automatic";
-          const repeatBest = data.has("extension_repeat_best_recipe");
-          if (repeatBest && (rows.length !== 2 * initial || !request.quality_policy?.parent_reference_record_id)) {
-            throw new Error("repeat requires a frozen alternative for every initial recipe and a parent reference");
-          }
-          request.extension = { initial_trials: initial, min_usable_delta: gain,
-            ...(repeatBest ? { repeat_best_recipe: true } : {}) };
-
-      }
+      if (strategy === "fixed") applyConditionalExtension(request, data, rows.length, profile);
       const trials = request.extension?.repeat_best_recipe
         ? request.extension.initial_trials + 1 : request.variants.length;
       if (trials > request.budget.max_trials || request.budget.trial_seconds > request.budget.max_seconds) {

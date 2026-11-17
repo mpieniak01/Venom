@@ -274,6 +274,42 @@ def _bounded_workload(
     return total + max(alternatives, default=0)
 
 
+def _freeze_plan_quality_policy(
+    spec: CampaignSpec,
+    experiments: CampaignExperiments,
+    variants: list[dict],
+    payload: dict,
+) -> None:
+    if spec.quality_policy is None:
+        return
+    context = quality_native.profile_context(
+        experiments,
+        spec.profile_id,
+        spec.review_mode,
+        include_runtime=spec.quality_policy.source_record_id is not None,
+    )
+    if "checkpoint_evaluation_identity" in payload:
+        context["identity"] = payload["checkpoint_evaluation_identity"]
+    if spec.quality_policy.parent_reference_record_id is not None:
+        parents = [variant.get("initial_adapter") for variant in variants]
+        if (
+            not parents
+            or parents[0] is None
+            or any(parent != parents[0] for parent in parents)
+        ):
+            raise ValueError("campaign_quality_parent_adapter_required")
+        context["initial_adapter_sha256"] = parents[0]["weights_sha256"]
+    payload["quality_policy"] = quality_guard.freeze_policy(
+        spec.quality_policy.model_dump(
+            exclude={"protect_parent_full_pass"}
+            if not spec.quality_policy.protect_parent_full_pass
+            else set()
+        ),
+        context,
+        lambda record_id: quality_native.get_record(experiments, record_id),
+    )
+
+
 def _plan(spec: CampaignSpec, experiments: CampaignExperiments) -> dict:
     extra: dict = {}
     if spec.strategy == "optuna":
@@ -318,33 +354,7 @@ def _plan(spec: CampaignSpec, experiments: CampaignExperiments) -> dict:
         payload["selection"].pop("protect_parent_full_pass")
     if extension is not None:
         payload["extension"] = extension
-    if spec.quality_policy is not None:
-        context = quality_native.profile_context(
-            experiments,
-            spec.profile_id,
-            spec.review_mode,
-            include_runtime=spec.quality_policy.source_record_id is not None,
-        )
-        if "checkpoint_evaluation_identity" in payload:
-            context["identity"] = payload["checkpoint_evaluation_identity"]
-        if spec.quality_policy.parent_reference_record_id is not None:
-            parents = [variant.get("initial_adapter") for variant in variants]
-            if (
-                not parents
-                or parents[0] is None
-                or any(parent != parents[0] for parent in parents)
-            ):
-                raise ValueError("campaign_quality_parent_adapter_required")
-            context["initial_adapter_sha256"] = parents[0]["weights_sha256"]
-        payload["quality_policy"] = quality_guard.freeze_policy(
-            spec.quality_policy.model_dump(
-                exclude={"protect_parent_full_pass"}
-                if not spec.quality_policy.protect_parent_full_pass
-                else set()
-            ),
-            context,
-            lambda record_id: quality_native.get_record(experiments, record_id),
-        )
+    _freeze_plan_quality_policy(spec, experiments, variants, payload)
     if spec.final_qualification is not None:
         from .local_campaign_final import freeze_inputs
 
@@ -470,52 +480,56 @@ def _rank_checkpoints(state: dict) -> None:
     state["selected_checkpoint_step"] = winner["step"] if winner else None
 
 
+def _extension_decision(state: dict, policy: dict) -> dict:
+    selected = state["selected_run_id"]
+    step = state.get("selected_checkpoint_step")
+    winner: dict = next(
+        (
+            trial
+            for trial in state["trials"][: state["trial_index"]]
+            if trial["run_id"] == selected
+        ),
+        {},
+    )
+    if step is not None:
+        winner = next(
+            (
+                row
+                for row in winner.get("checkpoint_evaluations", ())
+                if row["step"] == step
+            ),
+            {},
+        )
+    gain = winner.get("usable_delta")
+    approved = (
+        gain is not None
+        and gain >= policy["min_usable_delta"]
+        and _passes_selection(winner, state["plan"]["selection"])
+    )
+    return {
+        "status": "approved" if approved else "skipped",
+        "run_id": selected,
+        "checkpoint_step": step,
+        "usable_delta": gain,
+        "result_sha256": winner.get("result_sha256"),
+        **(
+            {
+                "full_pass_delta": winner.get("quality_guard", {})
+                .get("parent_delta", {})
+                .get("full_pass_delta")
+            }
+            if state["plan"]["selection"].get("protect_parent_full_pass")
+            else {}
+        ),
+    }
+
+
 def _allow_extension(state: dict) -> bool:
     policy = state["plan"].get("extension")
     if policy is None or state["trial_index"] != policy["initial_trials"]:
         return True
     if "extension_decision" not in state:
-        selected = state["selected_run_id"]
-        step = state.get("selected_checkpoint_step")
-        winner: dict = next(
-            (
-                trial
-                for trial in state["trials"][: state["trial_index"]]
-                if trial["run_id"] == selected
-            ),
-            {},
-        )
-        if step is not None:
-            winner = next(
-                (
-                    row
-                    for row in winner.get("checkpoint_evaluations", ())
-                    if row["step"] == step
-                ),
-                {},
-            )
-        gain = winner.get("usable_delta")
-        approved = (
-            gain is not None
-            and gain >= policy["min_usable_delta"]
-            and _passes_selection(winner, state["plan"]["selection"])
-        )
-        state["extension_decision"] = {
-            "status": "approved" if approved else "skipped",
-            "run_id": selected,
-            "checkpoint_step": step,
-            "usable_delta": gain,
-            "result_sha256": winner.get("result_sha256"),
-            **(
-                {
-                    "full_pass_delta": winner.get("quality_guard", {})
-                    .get("parent_delta", {})
-                    .get("full_pass_delta")
-                }
-                if state["plan"]["selection"].get("protect_parent_full_pass")
-                else {}
-            ),
-        }
+        state["extension_decision"] = _extension_decision(state, policy)
     decision = state["extension_decision"]
     if decision["status"] == "approved" and policy.get("repeat_best_recipe"):
         repeated = policy["repeat_variants"][decision["run_id"]]
@@ -1619,25 +1633,30 @@ class CampaignService:
             state.update(trial_index=len(state["trials"]), status="succeeded")
             return True
         if run is None:
-            if state["plan"].get("extension", {}).get("repeat_best_recipe"):
-                if trial["status"] == "skipped":
-                    self._next_slot(state)
-                    return True
-                self._verify_repeat_winner(state)
-            if (
-                state.get("cutoff_at") is not None
-                and trial.get("intent") is None
-                and remaining < state["plan"]["budget"]["trial_seconds"]
-            ):
-                state["termination"] = "timed_out"
-                self._terminate(directory, state, None)
-                return True
-            if remaining < 1:
-                state["termination"] = "timed_out"
-                self._terminate(directory, state, None)
-                return True
-            return False
+            return self._check_pending_trial(directory, state, trial, remaining)
         return _has_work(run) and self._monitor(directory, state, trial, run, remaining)
+
+    def _check_pending_trial(
+        self, directory: Path, state: dict, trial: dict, remaining: int
+    ) -> bool:
+        if state["plan"].get("extension", {}).get("repeat_best_recipe"):
+            if trial["status"] == "skipped":
+                self._next_slot(state)
+                return True
+            self._verify_repeat_winner(state)
+        if (
+            state.get("cutoff_at") is not None
+            and trial.get("intent") is None
+            and remaining < state["plan"]["budget"]["trial_seconds"]
+        ):
+            state["termination"] = "timed_out"
+            self._terminate(directory, state, None)
+            return True
+        if remaining < 1:
+            state["termination"] = "timed_out"
+            self._terminate(directory, state, None)
+            return True
+        return False
 
     def _verify_repeat_winner(self, state: dict) -> None:
         decision = state.get("extension_decision")

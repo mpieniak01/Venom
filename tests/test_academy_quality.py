@@ -566,7 +566,8 @@ def test_dialogue_summary_preserves_pairs_and_requires_independent_open_chat_rev
     assert summary["contrast_pairs"]["pair2"]["both_usable"]
     result = paired_delta([0, 0, 1, 1], [1, 1, 1, 1], ["x", "x", "y", "y"])
     assert result == paired_delta([0, 0, 1, 1], [1, 1, 1, 1], ["x", "x", "y", "y"])
-    assert result["gains"] == 2 and result["losses"] == 0
+    assert result["gains"] == 2
+    assert result["losses"] == 0
     assert result["family_bootstrap"]["families"] == 2
     assert result["family_bootstrap"]["interval_95"] == [0.0, 1.0]
     with pytest.raises(ValueError, match="coverage"):
@@ -595,12 +596,14 @@ def test_whole_dialogue_pair_requires_both_complete_branches():
     family = grouped_scores(cases, verdicts, {})["candidate"]["dialogue_families"][
         "paired-family"
     ]
-    assert family["contrast_pair_complete"] and family["both_conversations_usable"]
+    assert family["contrast_pair_complete"]
+    assert family["both_conversations_usable"]
     verdicts["candidate"]["rejected-3"]["usable"] = 0
     family = grouped_scores(cases, verdicts, {})["candidate"]["dialogue_families"][
         "paired-family"
     ]
-    assert family["contrast_pair_complete"] and not family["both_conversations_usable"]
+    assert family["contrast_pair_complete"]
+    assert not family["both_conversations_usable"]
     cases[0]["decision"] = "rejected"
     family = grouped_scores(cases, verdicts, {})["candidate"]["dialogue_families"][
         "paired-family"

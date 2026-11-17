@@ -1589,14 +1589,12 @@ def test_local_final_registration_rejects_rebinding_and_path_escape(tmp_path):
     from venom_core.services.training_experiments import local_campaign_final
 
     spec, academy, _host, _pins = _registered_local_final(tmp_path)
+    payload = spec.model_dump(mode="json")
+    changed = {**payload, "max_seconds": 90}
     with pytest.raises(ValueError, match="inputs_conflict"):
-        local_campaign_final.register_inputs(
-            academy, "fresh", {**spec.model_dump(mode="json"), "max_seconds": 90}
-        )
+        local_campaign_final.register_inputs(academy, "fresh", changed)
     with pytest.raises(ValueError):
-        local_campaign_final.register_inputs(
-            academy, "../escape", spec.model_dump(mode="json")
-        )
+        local_campaign_final.register_inputs(academy, "../escape", payload)
 
 
 def test_local_worker_exports_qualifies_and_catalogs_without_manual_final(
@@ -1671,10 +1669,9 @@ def test_broken_final_registration_does_not_poison_catalog(tmp_path):
     spec = _holdout_paths(tmp_path)
     academy = tmp_path / "academy"
     spec.final_test.unlink()
+    payload = spec.model_dump(mode="json")
     with pytest.raises(FileNotFoundError):
-        local_campaign_final.register_inputs(
-            academy, "broken", spec.model_dump(mode="json")
-        )
+        local_campaign_final.register_inputs(academy, "broken", payload)
     assert local_campaign_final.list_inputs(academy) == []
 
 

@@ -483,7 +483,8 @@ def test_runner_preserves_calls_and_gates_holdout(
     calls, released = [], []
 
     def api(_client, action, payload=None, *, timeout):
-        assert action == "chat" and timeout > 0
+        assert action == "chat"
+        assert timeout > 0
         calls.append(stable_hash(payload))
         response = json.loads(json.dumps(originals[stable_hash(payload)]))
         response["created_at"] = datetime.now(timezone.utc).isoformat()
@@ -709,5 +710,6 @@ def test_legacy_rejections_are_metadata_mapping(qualified_v4, tmp_path):
         300,
     )
     jobs, loaded_gold = audit.jobs_for(result["root"], result["manifest"], "legacy")
-    assert len(jobs) == 60 and loaded_gold == gold
+    assert len(jobs) == 60
+    assert loaded_gold == gold
     assert not (result["root"] / "started.json").exists()

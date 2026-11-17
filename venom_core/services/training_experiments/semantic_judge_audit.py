@@ -20,6 +20,29 @@ from .profiles import digest, read_json, stable_hash
 
 CLEANUP_SECONDS = 120
 MAX_SECONDS = 1500
+_INTENT = "intent.json"
+_STARTED = "started.json"
+_PHASE1_PASS = "phase1-pass.json"
+
+
+def _stage_controls(controls: Path, output: Path, intent: dict) -> None:
+    if output.exists():
+        if read_json(output / _INTENT) != intent:
+            raise ValueError("experiment_judge_v4_output_reused")
+        if (output / _STARTED).exists():
+            raise ValueError("experiment_judge_v4_attempt_already_started")
+    else:
+        output.mkdir(mode=0o700, parents=True)
+        (output / "controls").mkdir(mode=0o700)
+        (output / "judge-calls").mkdir(mode=0o700)
+        for name in sorted(verifier.FILES | {"frozen-manifest.json"}):
+            source = controls / name
+            if source.is_symlink() or not source.resolve().is_relative_to(controls):
+                raise ValueError("experiment_judge_v4_controls_invalid")
+            target = output / "controls" / name
+            target.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+            shutil.copyfile(source, target)
+        atomic_json(output / _INTENT, intent)
 
 
 def prepare_audit(
@@ -42,23 +65,7 @@ def prepare_audit(
         "cleanup_seconds": CLEANUP_SECONDS,
         "implementation_sha256": verifier.implementation_hashes(),
     }
-    if output.exists():
-        if read_json(output / "intent.json") != intent:
-            raise ValueError("experiment_judge_v4_output_reused")
-        if (output / "started.json").exists():
-            raise ValueError("experiment_judge_v4_attempt_already_started")
-    else:
-        output.mkdir(mode=0o700, parents=True)
-        (output / "controls").mkdir(mode=0o700)
-        (output / "judge-calls").mkdir(mode=0o700)
-        for name in sorted(verifier.FILES | {"frozen-manifest.json"}):
-            source = controls / name
-            if source.is_symlink() or not source.resolve().is_relative_to(controls):
-                raise ValueError("experiment_judge_v4_controls_invalid")
-            target = output / "controls" / name
-            target.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-            shutil.copyfile(source, target)
-        atomic_json(output / "intent.json", intent)
+    _stage_controls(controls, output, intent)
     manifest = verifier.control_files(output, manifest_sha256)
     verifier.execution_order(output, manifest)
     # Only phase-one cases are materialized before their gate has passed.
@@ -80,7 +87,7 @@ def prepare_audit(
         "accuracy_manifest_sha256": manifest_sha256,
         "implementation_sha256": verifier.implementation_hashes(),
         "run_id": run_id,
-        "intent_sha256": digest(output / "intent.json"),
+        "intent_sha256": digest(output / _INTENT),
     }
     path = output / "judge-protocol.json"
     if path.exists():
@@ -127,7 +134,7 @@ def _collect(
         provenance = {
             "call_id": uuid.uuid4().hex,
             "run_id": context["intent"]["run_id"],
-            "intent_sha256": digest(root / "intent.json"),
+            "intent_sha256": digest(root / _INTENT),
             "protocol_sha256": pin.protocol_sha256,
             "started_at_ns": time.time_ns(),
             "started_monotonic_ns": time.monotonic_ns(),
@@ -175,11 +182,11 @@ def run_audit(
     root, manifest, pin = context["root"], context["manifest"], context["pin"]
     scope = {
         "run_id": context["intent"]["run_id"],
-        "intent_sha256": digest(root / "intent.json"),
+        "intent_sha256": digest(root / _INTENT),
         "protocol_sha256": pin.protocol_sha256,
     }
     # Atomic claim prevents concurrent execution and retry-after-exposure.
-    with (root / "started.json").open("x", encoding="utf8") as stream:
+    with (root / _STARTED).open("x", encoding="utf8") as stream:
         json.dump(
             {
                 **scope,
@@ -199,7 +206,7 @@ def run_audit(
         **scope,
         "status": "incomplete",
         "phase": "legacy_and_development",
-        "started_sha256": digest(root / "started.json"),
+        "started_sha256": digest(root / _STARTED),
         "rows": rows,
         "holdout_opened": False,
         "qualification_receipt_required": True,
@@ -220,7 +227,7 @@ def run_audit(
                     result.update(status="failed_qualification", error=str(exc))
                     raise
                 atomic_json(
-                    root / "phase1-pass.json",
+                    root / _PHASE1_PASS,
                     {
                         **scope,
                         "completed_calls": 108,
@@ -247,7 +254,6 @@ def run_audit(
         KeyError,
         TypeError,
         OSError,
-        TimeoutError,
         RuntimeError,
     ) as exc:
         result["error"] = str(exc)
@@ -258,8 +264,8 @@ def run_audit(
         result["finished_at_ns"] = time.time_ns()
         result["finished_monotonic_ns"] = time.monotonic_ns()
         result["completed_calls"] = len(rows)
-        if (root / "phase1-pass.json").exists():
-            result["phase1_marker_sha256"] = digest(root / "phase1-pass.json")
+        if (root / _PHASE1_PASS).exists():
+            result["phase1_marker_sha256"] = digest(root / _PHASE1_PASS)
         atomic_json(root / "judge-result.json", result)
     if result["status"] == "complete":
         receipt = {

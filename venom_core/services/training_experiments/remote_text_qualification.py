@@ -557,6 +557,61 @@ def _selection_metrics(
     )
 
 
+def _final_judgments(
+    calibration: dict,
+    review: dict,
+    run_id: str,
+    seconds: float,
+    check: Callable[[], float] | None,
+) -> list[dict]:
+    if calibration["judge"] not in local_semantic_judge.JUDGES:
+        return calibrated_judgments(calibration, review)
+    if check is None:
+        return local_semantic_judge.review_bundle(calibration, review, run_id, seconds)
+
+    def check_deadline() -> None:
+        check()
+
+    return local_semantic_judge.review_bundle(
+        calibration, review, run_id, seconds, check=check_deadline
+    )
+
+
+def _final_status(
+    result: dict,
+    calibration: dict,
+    judgments: list[dict],
+    review: dict,
+    passed: bool,
+    full_pass_complete: bool,
+) -> tuple[str, bool]:
+    status = "passed" if passed else "failed_quality"
+    if not full_pass_complete:
+        status = "incomplete_calibration"
+    if calibration["judge"] != "exact-v1":
+        result["calibration_protocol"] = {
+            name: calibration[name]
+            for name in ("judge", "schema_version", "judge_qualification")
+            if name in calibration
+        }
+        uncertain = sum(grade["reason"] == UNCERTAIN for grade in judgments)
+        result["unverifiable_answers"] = uncertain
+        if uncertain:
+            status, passed = "incomplete_calibration", False
+            result["qualification_reason"] = UNCERTAIN
+    pending_dialogues = [
+        case["record_id"]
+        for case in review["cases"]
+        if case.get("chat_group") in {"W", "R"}
+    ]
+    if pending_dialogues:
+        # The qualified short-fact judge does not qualify open conversation.
+        status, passed = "incomplete_calibration", False
+        result["qualification_reason"] = "remote_text_final_dialogue_review_required"
+        result["independent_review_case_ids"] = pending_dialogues
+    return status, passed
+
+
 def _measure(
     generation: Path,
     data: Path,
@@ -589,21 +644,7 @@ def _measure(
     legacy = calibration["judge"] == "exact-v1"
     if legacy and not _known_outputs(calibration, review):
         return {**result, "status": "incomplete_calibration", "qualified": None}
-    if calibration["judge"] in local_semantic_judge.JUDGES:
-
-        def check_deadline() -> None:
-            if check is not None:
-                check()
-
-        judgments = local_semantic_judge.review_bundle(
-            calibration,
-            review,
-            binding["run_id"],
-            seconds,
-            **({"check": check_deadline} if check is not None else {}),
-        )
-    else:
-        judgments = calibrated_judgments(calibration, review)
+    judgments = _final_judgments(calibration, review, binding["run_id"], seconds, check)
     scores = sealed_report(
         generation,
         data,
@@ -623,30 +664,9 @@ def _measure(
         and critical <= selection["max_critical_delta"]
         and not critical_regression
     )
-    status = "passed" if passed else "failed_quality"
-    if not full_pass_complete:
-        status = "incomplete_calibration"
-    if not legacy:
-        result["calibration_protocol"] = {
-            name: calibration[name]
-            for name in ("judge", "schema_version", "judge_qualification")
-            if name in calibration
-        }
-        uncertain = sum(grade["reason"] == UNCERTAIN for grade in judgments)
-        result["unverifiable_answers"] = uncertain
-        if uncertain:
-            status, passed = "incomplete_calibration", False
-            result["qualification_reason"] = UNCERTAIN
-    pending_dialogues = [
-        case["record_id"]
-        for case in review["cases"]
-        if case.get("chat_group") in {"W", "R"}
-    ]
-    if pending_dialogues:
-        # The qualified short-fact judge does not qualify open conversation.
-        status, passed = "incomplete_calibration", False
-        result["qualification_reason"] = "remote_text_final_dialogue_review_required"
-        result["independent_review_case_ids"] = pending_dialogues
+    status, passed = _final_status(
+        result, calibration, judgments, review, passed, full_pass_complete
+    )
     atomic_json(generation / _JUDGMENTS, judgments)
     return {
         **result,

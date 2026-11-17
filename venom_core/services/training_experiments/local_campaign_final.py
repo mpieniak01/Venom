@@ -26,6 +26,7 @@ if TYPE_CHECKING:
     from .remote_text_qualification import QualificationInputs
 
 _INPUTS = "local-text-final-inputs"
+_STATE_LOCK = ".state.lock"
 _IDS = TypeAdapter(CampaignId)
 _FINISHED = frozenset({"passed", "failed_quality", "incomplete"})
 
@@ -334,7 +335,7 @@ def _recover_result(service: CampaignService, state: dict) -> None:
 
 
 def _begin(service: CampaignService, directory: Path) -> tuple[dict, bool]:
-    with file_lock(directory / ".state.lock"):
+    with file_lock(directory / _STATE_LOCK):
         state = service._state(directory)
         if state.get("phase") != "qualification":
             return state, False
@@ -352,7 +353,7 @@ def _begin(service: CampaignService, directory: Path) -> tuple[dict, bool]:
 
 
 def _record_deferred(service: CampaignService, directory: Path) -> dict:
-    with file_lock(directory / ".state.lock"):
+    with file_lock(directory / _STATE_LOCK):
         state = service._state(directory)
         state["qualification_attempts"] -= 1
         state["qualification_status"] = "pending"
@@ -362,7 +363,7 @@ def _record_deferred(service: CampaignService, directory: Path) -> dict:
 
 
 def _record_failure(service: CampaignService, directory: Path, exc: Exception) -> dict:
-    with file_lock(directory / ".state.lock"):
+    with file_lock(directory / _STATE_LOCK):
         state = service._state(directory)
         state["qualification_error"] = _error_code(exc)
         expired = state["deadline_at"] <= service._clock()
@@ -378,7 +379,7 @@ def _record_failure(service: CampaignService, directory: Path, exc: Exception) -
 
 
 def _record_result(service: CampaignService, directory: Path, result: dict) -> dict:
-    with file_lock(directory / ".state.lock"):
+    with file_lock(directory / _STATE_LOCK):
         state = service._state(directory)
         service._elapsed(state)
         service._artifact_budget(state)
@@ -433,7 +434,7 @@ def resume_pending(root: Path) -> dict:
                 # Changed inputs must not leave a session in an endless recovery
                 # loop. The normal worker first quiesces any owned trial.
                 directory = service.directory(state["campaign_id"])
-                with file_lock(directory / ".state.lock"):
+                with file_lock(directory / _STATE_LOCK):
                     failed = service._state(directory)
                     failed.update(
                         status="stopping", termination="blocked", error=_error_code(exc)

@@ -81,6 +81,24 @@ def _reference_hits(record: dict, cases: dict, protect_hits: bool) -> set[str]:
     return protected
 
 
+def _parent_cases(record: dict, cases: dict, context: dict, settings: dict) -> dict:
+    adapter = context.get("initial_adapter_sha256")
+    if not _digest(adapter) or adapter != record.get("candidate_sha256"):
+        raise ValueError("campaign_quality_parent_adapter_changed")
+    return {
+        key: {
+            "usable": _flag(case, "candidate", "usable"),
+            "critical": _flag(case, "candidate", "critical"),
+            **(
+                {"passed": _flag(case, "candidate", "passed")}
+                if settings.get("protect_parent_full_pass", False)
+                else {}
+            ),
+        }
+        for key, case in cases.items()
+    }
+
+
 def freeze_policy(settings: dict, context: dict, fetch: EvidenceReader) -> dict:
     """Bind the policy to verified dev context and immutable reference digests."""
     identity = _identity(context["identity"], protocol_required=False)
@@ -105,21 +123,7 @@ def freeze_policy(settings: dict, context: dict, fetch: EvidenceReader) -> dict:
         identity = observed
         cases = _cases(record, categories)
         if record_id == parent_id:
-            adapter = context.get("initial_adapter_sha256")
-            if not _digest(adapter) or adapter != record.get("candidate_sha256"):
-                raise ValueError("campaign_quality_parent_adapter_changed")
-            parent_cases = {
-                key: {
-                    "usable": _flag(case, "candidate", "usable"),
-                    "critical": _flag(case, "candidate", "critical"),
-                    **(
-                        {"passed": _flag(case, "candidate", "passed")}
-                        if settings.get("protect_parent_full_pass", False)
-                        else {}
-                    ),
-                }
-                for key, case in cases.items()
-            }
+            parent_cases = _parent_cases(record, cases, context, settings)
             protected.update(
                 key for key, case in parent_cases.items() if case["usable"]
             )
@@ -223,26 +227,24 @@ def blocked(reason: str) -> dict:
     }
 
 
+def _reference_flag(case: dict, reference: dict | None, metric: str) -> bool:
+    if reference is not None:
+        return reference[metric]
+    return _flag(case, "base", metric)
+
+
 def _decisions(policy: dict, cases: dict) -> tuple[set[str], list[str], dict]:
     protected = set(policy["protected_case_ids"])
     critical = []
     summaries: dict[str, dict] = {}
     for key, case in cases.items():
         reference = policy.get("parent_cases", {}).get(key)
-        base = (
-            reference["usable"]
-            if reference is not None
-            else _flag(case, "base", "usable")
-        )
+        base = _reference_flag(case, reference, "usable")
         candidate = _flag(case, "candidate", "usable")
         if base and (policy["protect_base_hits"] or reference is not None):
             protected.add(key)
         if policy["no_new_critical"]:
-            base_critical = (
-                reference["critical"]
-                if reference is not None
-                else _flag(case, "base", "critical")
-            )
+            base_critical = _reference_flag(case, reference, "critical")
             candidate_critical = _flag(case, "candidate", "critical")
             if candidate_critical and not base_critical:
                 critical.append(key)

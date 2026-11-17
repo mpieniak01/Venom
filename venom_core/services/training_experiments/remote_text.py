@@ -101,10 +101,6 @@ def _remote_spec(spec: RemoteTextSpec) -> CampaignSpec:
     parents = [variant.get("initial_adapter_id") for variant in campaign.variants]
     if parents and any(parent != parents[0] for parent in parents):
         raise ValueError("campaign_remote_mixed_parents")
-    # The current holdout qualifies against M0. A continuation needs a
-    # separate parent comparison before it can register a release.
-    if parents and parents[0] is not None and spec.final_test_sha256 is not None:
-        raise ValueError("campaign_remote_parent_holdout_required")
     return campaign
 
 
@@ -137,8 +133,7 @@ class RemoteTextService:
             self._show_qualification(directory, state)
         return state
 
-    @staticmethod
-    def _show_qualification(directory: Path, state: dict) -> None:
+    def _show_qualification(self, directory: Path, state: dict) -> None:
         request = state["plan"]["request"]
         final_test = request.get("final_test_sha256")
         if not final_test or state["remote"] is None:
@@ -148,6 +143,7 @@ class RemoteTextService:
                 directory / "evidence",
                 state["remote"],
                 state["evidence"],
+                academy_root=self.local.experiments.root,
                 final_test_sha256=final_test,
                 final_calibration_sha256=request["final_calibration_sha256"],
             )

@@ -79,3 +79,10 @@ polskiego dialogu względem bazy bez pogorszenia chronionych zadań.
 Warstwa narzędzi wymaga prób z udanym i nieudanym pobraniem, poprawnym czasem,
 źródłami oraz izolacją prywatnego kontekstu. Testy automatyczne stosują
 podstawione odpowiedzi sieciowe i nie wysyłają płatnych zapytań.
+
+## Jawna precyzja wyniku i brakujące wejścia
+Kalkulator zachowuje dokładną wartość dowodu. Pilot może powiązać zaokrąglone roszczenie tylko z jawnym poleceniem bieżącego użytkownika `do N miejsc po przecinku` (0–6) i jednoznaczną jednostką wyniku. Stosuje dziesiętne ROUND_HALF_UP; widoczna odpowiedź musi mieć żądaną precyzję. Przecinek dziesiętny i powtórzona zgodna jednostka są normalizowane, błędna wartość/jednostka pozostaje blokowana. Protokół precyzji trafia także do recenzji semantycznej. Konwersja liczebności na procent nie jest domniemywana.
+
+Żądany całkowity koszt lub nazwany wynik procentowy nie może być wymaganym wejściem do własnego obliczenia. Ten filtr nie usuwa brakującej ceny dojazdu, liczebności ani stawki procentowej potrzebnej w rachunku. Rozpoznanie języka jest ograniczone; niezależna recenzja planu i odpowiedzi pozostaje obowiązkowa. Testy kontrolowane nie upoważniają do pomijania recenzji przy rzeczywistym modelu.
+
+Pozostałe zgłoszone braki nazwane jako procent lub udział, przy jawnym żądaniu wyniku procentowego, przechodzą fazę `input_roles`. Inne operandy (np. nieznany koszt dojazdu) nie mogą zostać usunięte przez tę fazę. Adapter modelu obsługuje schemat `InputRoles` i instrukcję `INPUT_ROLES_GUIDANCE`. Model musi sklasyfikować każdą etykietę dokładnie raz; odrzucenie jej jako szukanego wyniku wymaga literalnego cytatu bieżącej prośby. Role `input` i `uncertain` zachowują dopytanie. Pełny ślad trafia do niezależnej recenzji; klasyfikacja roli nie potwierdza sama poprawności wyrażenia ani odpowiedzi.

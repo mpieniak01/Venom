@@ -50,7 +50,8 @@ LANGUAGE_TARGET_MODULES = (
     "w3",
 )
 P13_LANGUAGE_SELECTOR = r"model\.language_model\..*\.(q_proj|k_proj|v_proj|o_proj|in_proj|out_proj|w1|w2|w3)"
-_OPTIONAL = {"train_sha256", "max_supervised_tokens"}
+BALANCED_SAMPLING = "balanced_fresh_replay"
+_OPTIONAL = {"train_sha256", "max_supervised_tokens", "sampling"}
 _MAX_RECIPE_BYTES = 16 * 1024
 
 
@@ -84,17 +85,19 @@ def validate_recipe(value: object) -> dict[str, Any]:
         raise ValueError("save interval and warmup must fit the optimizer step budget")
     if recipe["gpu_step_min_free_mib"] >= recipe["gpu_allocator_reserve_mib"]:
         raise ValueError("GPU step minimum must be below the allocator reserve")
-    for key, lower, upper in (
+    for key, float_lower, float_upper in (
         ("dropout", 0.0, 0.5),
         ("learning_rate", 1e-7, 0.01),
     ):
         item = recipe[key]
         if (
             type(item) not in (int, float)
-            or not lower <= item <= upper
+            or not float_lower <= item <= float_upper
             or not math.isfinite(item)
         ):
-            raise ValueError(f"{key} must be a finite number in [{lower}, {upper}]")
+            raise ValueError(
+                f"{key} must be a finite number in [{float_lower}, {float_upper}]"
+            )
         recipe[key] = float(item)
     recipe["target_modules"] = validate_target_modules(recipe["target_modules"])
     if type(recipe["gradient_checkpointing"]) is not bool:
@@ -103,6 +106,13 @@ def validate_recipe(value: object) -> dict[str, Any]:
         raise ValueError("unsupported loss_mode")
     if recipe["lr_scheduler_type"] not in ("linear", "cosine", "constant"):
         raise ValueError("unsupported lr_scheduler_type")
+    if "sampling" in recipe:
+        if recipe["sampling"] != BALANCED_SAMPLING:
+            raise ValueError("unsupported sampling policy")
+        if recipe["microbatch"] * recipe["gradient_accumulation_steps"] != 8:
+            raise ValueError(
+                "balanced sampling requires eight records per optimizer update"
+            )
     if "train_sha256" in recipe:
         digest = recipe["train_sha256"]
         if not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest):

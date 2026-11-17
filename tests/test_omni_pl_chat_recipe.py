@@ -148,6 +148,193 @@ def test_token_loss_accumulation_matches_one_pooled_batch():
     torch.testing.assert_close(actual_gradient.cpu(), reference_model.weight.grad)
 
 
+def _sampling_rows():
+    return [
+        {
+            "input_ids": [0, *([1] * (i + 1))],
+            "labels": [-100, *([1] * (i + 1))],
+            "attention_mask": [1] * (i + 2),
+            "sampling_pool": "fresh" if i < 5 else "replay",
+            "sampling_index": i,
+        }
+        for i in range(16)
+    ]
+
+
+def test_balanced_recipe_opt_in_preserves_historical_recipes():
+    assert "sampling" not in validate_recipe({})
+    with pytest.raises(ValueError, match="unsupported sampling"):
+        validate_recipe({"sampling": "random-4+4"})
+    with pytest.raises(ValueError, match="eight records"):
+        validate_recipe({"sampling": "balanced_fresh_replay"})
+    recipe = validate_recipe(
+        {
+            "sampling": "balanced_fresh_replay",
+            "microbatch": 2,
+            "gradient_accumulation_steps": 4,
+        }
+    )
+    assert recipe["sampling"] == "balanced_fresh_replay"
+
+
+def test_balanced_preflight_checks_exact_schedule_budget(monkeypatch, tmp_path):
+    from transformers import AutoTokenizer
+
+    source = tmp_path / "train.jsonl"
+    encoded = _sampling_rows()
+    entries = [{"sampling_pool": r["sampling_pool"], "split": "train"} for r in encoded]
+    write_jsonl(source, entries)
+    monkeypatch.setattr(
+        trainer, "verify_snapshot", lambda *args, **kwargs: {"revision": "test"}
+    )
+    monkeypatch.setattr(trainer, "validate_splits", lambda *args: None)
+    monkeypatch.setattr(
+        AutoTokenizer, "from_pretrained", lambda *args, **kwargs: object()
+    )
+    (tmp_path / "chat_template.jinja").write_text("template", encoding="utf-8")
+    prepared = iter(
+        [{k: r[k] for k in ("input_ids", "labels", "attention_mask")} for r in encoded]
+    )
+    monkeypatch.setattr(trainer, "masked_example", lambda *args: next(prepared))
+    recipe = validate_recipe(
+        {
+            "sampling": "balanced_fresh_replay",
+            "gradient_accumulation_steps": 8,
+            "steps": 8,
+        }
+    )
+    sampler, plan = trainer._balanced_setup(encoded, recipe)
+    tokens = plan[-1].cumulative_tokens
+    assert tokens < 16 * 8 * 8
+    _, _, result, observations = trainer._prepare_inputs(
+        tmp_path,
+        source,
+        {**recipe, "max_supervised_tokens": tokens},
+        legacy=False,
+        preflight=True,
+    )
+    assert result == encoded
+    assert observations["planned_supervised_tokens"] == tokens
+    assert observations["sampling_updates_per_epoch"] == sampler.updates_per_epoch
+    with pytest.raises(ValueError, match="token budget at update 8"):
+        sampler.plan(list(range(1, 17)), 8, tokens - 1)
+    with pytest.raises(ValueError, match="at least four"):
+        trainer._BalancedSampler(["fresh", "replay"], 42)
+    with pytest.raises(ValueError, match="sampling_pool"):
+        trainer._BalancedSampler(["fresh", None], 42)
+
+
+@pytest.mark.parametrize("loss_mode", ["model_default", "supervised_token"])
+def test_balanced_dataloader_measures_epochs_and_resumes_without_training(
+    tmp_path, loss_mode
+):
+    import torch
+    from transformers import Trainer, TrainingArguments
+
+    accelerate = pytest.importorskip("accelerate")
+    cpu = torch.device("cpu")
+    rows = _sampling_rows()
+    recipe = validate_recipe(
+        {
+            "sampling": "balanced_fresh_replay",
+            "microbatch": 2,
+            "gradient_accumulation_steps": 4,
+            "steps": 9,
+            "loss_mode": loss_mode,
+        }
+    )
+
+    def prepare():
+        sampler, plan = trainer._balanced_setup(rows, recipe)
+        args = TrainingArguments(
+            output_dir=str(tmp_path),
+            use_cpu=True,
+            max_steps=recipe["steps"],
+            per_device_train_batch_size=2,
+            gradient_accumulation_steps=4,
+            remove_unused_columns=False,
+            seed=42,
+            report_to="none",
+        )
+        base = Trainer if loss_mode == "model_default" else _token_trainer_type(Trainer)
+        cls = trainer._balanced_trainer_type(base, sampler, plan)
+        return (
+            cls(
+                model=torch.nn.Linear(1, 1),
+                args=args,
+                train_dataset=rows,
+                data_collator=lambda batch: trainer._collate(batch, 0),
+            ),
+            sampler,
+            plan,
+        )
+
+    def consume(worker, stream, expected):
+        batches, num_items = worker.get_batch_samples(stream, 4, cpu)
+        assert all("sampling_indices" not in batch for batch in batches)
+        assert sum(
+            int(trainer._supervised_token_count(b["labels"])) for b in batches
+        ) == sum(len(rows[i]["labels"]) - 1 for i in expected.indices)
+        assert len(set(expected.indices)) == 8
+        assert [rows[i]["sampling_pool"] for i in expected.indices] == [
+            "fresh",
+            "replay",
+        ] * 4
+        if loss_mode == "supervised_token":
+            assert int(num_items) == expected.fresh_tokens + expected.replay_tokens
+        worker.state.global_step += 1
+        worker.log({"loss": 0.1})
+        assert {
+            k: worker.state.log_history[-1][k] for k in expected.metrics()
+        } == expected.metrics()
+
+    worker, sampler, plan = prepare()
+    assert sampler.updates_per_epoch == 3
+    worker.log({"train_runtime": 0.0})
+    loader = worker.get_train_dataloader()
+    for epoch in range(3):
+        loader.set_epoch(epoch)
+        stream = iter(loader)
+        for expected in plan[3 * epoch : 3 * (epoch + 1)]:
+            consume(worker, stream, expected)
+        assert next(stream, None) is None
+    assert worker.optimizer is None
+
+    resumed, _, _ = prepare()
+    resumed.state.global_step = 4
+    # Transformers 5.22.2 wraps the resumed loader before setting its epoch.
+    loader = accelerate.skip_first_batches(resumed.get_train_dataloader(), 4)
+    loader.set_epoch(1)
+    underlying_sampler = getattr(loader.batch_sampler, "batch_sampler", None)
+    if hasattr(underlying_sampler, "set_epoch"):
+        underlying_sampler.set_epoch(1)
+    stream = iter(loader)
+    for expected in plan[4:6]:
+        consume(resumed, stream, expected)
+    assert resumed.state.global_step == 6
+    assert resumed.get_batch_samples(stream, 4, cpu) == ([], None)
+    assert resumed.state.global_step == 6
+
+    corrupt, _, _ = prepare()
+    batches = [
+        trainer._collate([rows[i] for i in plan[0].indices[start : start + 2]], 0)
+        for start in range(0, 8, 2)
+    ]
+    batches[0]["sampling_indices"] = batches[0]["sampling_indices"].flip(0)
+    stream = iter(batches)
+    with pytest.raises(RuntimeError, match="sample order differs at update 1"):
+        corrupt.get_batch_samples(stream, 4, cpu)
+
+    batches = [
+        trainer._collate([rows[i] for i in plan[0].indices[start : start + 2]], 0)
+        for start in range(0, 8, 2)
+    ]
+    batches[0]["labels"][0, 1] = -100
+    stream = iter(batches)
+    with pytest.raises(RuntimeError, match="token counts differ at update 1"):
+        corrupt.get_batch_samples(stream, 4, cpu)
+
+
 def test_language_inventory_excludes_other_modalities():
     from torch import nn
 

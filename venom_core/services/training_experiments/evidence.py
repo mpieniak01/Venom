@@ -63,11 +63,36 @@ def review_data(generation: Path, dev: Path) -> dict:
     return {"cases": rows(dev), "answers": rows(generation / "blind.jsonl")}
 
 
+def _unblind_answers(
+    answers: dict,
+    case_id: str,
+    names: dict,
+    roles: dict[str, str],
+    grades: dict[tuple[str, str], dict[str, Any]],
+) -> tuple[dict, list[dict], list[str]]:
+    if set(names) != set(answers) or sorted(names.values()) != sorted(roles):
+        raise ValueError("experiment_unblind_invalid")
+    variants = {}
+    identified_grades = []
+    critical_roles = []
+    for label, value in answers.items():
+        role = roles[names[label]]
+        grade = grades[case_id, label]
+        identified_grades.append({**grade, "label": role})
+        variants[role] = {**value, "reason": grade["reason"]}
+        if grade["critical_error"]:
+            critical_roles.append(role)
+    return variants, identified_grades, critical_roles
+
+
 def sealed_report(
     generation: Path,
     dev: Path,
     judgments: list[dict[str, Any]],
     checkpoint: dict,
+    *,
+    parent_tag: str | None = None,
+    include_critical_case_ids: bool = False,
 ) -> dict:
     bundle = review_data(generation, dev)
     cases, answers = bundle["cases"], bundle["answers"]
@@ -75,32 +100,37 @@ def sealed_report(
     aggregate(cases, answers, judgments)
     mapping = read_json(generation / "unblind.json")
     candidate = f"checkpoint-{checkpoint['step']}"
-    if set(mapping) != {case["record_id"] for case in cases}:
+    case_by_id = {case["record_id"]: case for case in cases}
+    roles = {"base": "base", candidate: "candidate"}
+    track_critical_cases = parent_tag is not None or include_critical_case_ids
+    if parent_tag is not None:
+        if parent_tag in roles:
+            raise ValueError("experiment_unblind_invalid")
+        roles[parent_tag] = "parent"
+    if set(mapping) != set(case_by_id):
         raise ValueError("experiment_unblind_incomplete")
     grades = {(row["record_id"], row["label"]): row for row in judgments}
     identified = []
     identified_grades = []
     details = []
+    critical: dict[str, list[str]] = {role: [] for role in roles.values()}
     for row in answers:
         case = row["case"]
         case_id = case["record_id"]
-        names = mapping[case_id]
-        if set(names) != set(row["answers"]) or sorted(names.values()) != [
-            "base",
-            candidate,
-        ]:
-            raise ValueError("experiment_unblind_invalid")
-        variants = {}
-        for label, value in row["answers"].items():
-            role = "base" if names[label] == "base" else "candidate"
-            grade = grades[case_id, label]
-            identified_grades.append({**grade, "label": role})
-            variants[role] = {**value, "reason": grade["reason"]}
+        variants, remapped, critical_roles = _unblind_answers(
+            row["answers"], case_id, mapping[case_id], roles, grades
+        )
+        if track_critical_cases and case != case_by_id[case_id]:
+            raise ValueError("experiment_blind_case_changed")
+        identified_grades.extend(remapped)
+        for role in critical_roles:
+            critical[role].append(case_id)
         identified.append({"case": case, "answers": variants})
         details.append({"case_id": case_id, "messages": case["messages"], **variants})
     scores = aggregate(cases, identified, identified_grades)
     return {
         **scores,
+        **({"critical_case_ids": critical} if track_critical_cases else {}),
         "cases": details,
         "checkpoint": checkpoint,
         "artifacts": [{"kind": "adapter", **checkpoint, "available": True}],

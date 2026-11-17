@@ -36,8 +36,14 @@ from venom_core.services.runtime_release_service import (
     release_all_runtime_models,
 )
 
+from . import local_semantic_judge
 from .adapters import runner_identity, verify_adapter_entry
-from .checkpoint_evaluation import bind_steps, publish_pairs, seal_generation
+from .checkpoint_evaluation import (
+    RESULT_SEAL,
+    bind_steps,
+    publish_pairs,
+    seal_generation,
+)
 from .data_audit import verify_audit_preflight
 from .evidence import calibrated_judgments, review_data
 from .profiles import Profile, check_inputs, read_json, resolve_input, rows, stable_hash
@@ -119,9 +125,17 @@ class Worker:
 
     def prepare_gpu(self, lease: RuntimeLease, *, offline: bool) -> None:
         """Unload models before CUDA starts and retain the lease for the whole job."""
+        receipt = self.release_gpu(lease, offline=offline)
+        atomic_json(self.directory / f"gpu-release-{self.attempt}.json", receipt)
+
+    @staticmethod
+    def release_gpu(
+        lease: RuntimeLease, *, offline: bool, timeout: float | None = None
+    ) -> dict:
+        """Drain loaded models through the host owning the Academy lease."""
         capability = lease.training_cleanup_capability()
         try:
-            port = self._local_api_port()
+            port = Worker._local_api_port()
             if offline:
                 # An older API may be serving before it has claimed the ledger.
                 # Only use the standalone release path when the API is absent.
@@ -135,7 +149,8 @@ class Worker:
                     )
                 )
             else:
-                with httpx.Client(timeout=120, trust_env=False) as client:
+                request_timeout = 120 if timeout is None else min(timeout, 120)
+                with httpx.Client(timeout=request_timeout, trust_env=False) as client:
                     response = client.post(
                         f"http://127.0.0.1:{port}/api/v1/system/models/release",
                         headers={TRAINING_CLEANUP_HEADER: capability},
@@ -150,7 +165,7 @@ class Worker:
                 raise ValueError("incomplete model release")
         except (HTTPException, httpx.HTTPError, OSError, ValueError) as exc:
             raise ValueError("experiment_gpu_release_failed") from exc
-        atomic_json(self.directory / f"gpu-release-{self.attempt}.json", receipt)
+        return receipt
 
     @staticmethod
     def _local_api_port() -> int:
@@ -329,8 +344,34 @@ class Worker:
         for step in steps:
             self.check_budget()
             generation, dev = self.service._review_inputs(state, checkpoint_step=step)
-            judgments = calibrated_judgments(calibration, review_data(generation, dev))
-            self.service._commit(state, judgments, checkpoint_step=step)
+            judgments = self._checkpoint_judgments(generation, dev, step, calibration)
+            with self.service.run_lock(self.run_id):
+                self.check_budget()
+                current = self.service.store.read(self.run_id)
+                if current["attempt"] != self.attempt:
+                    raise ValueError("experiment_attempt_changed")
+                self.service._commit(current, judgments, checkpoint_step=step)
+
+    def _checkpoint_judgments(
+        self, generation: Path, dev: Path, step: int | None, calibration: dict
+    ) -> list[dict]:
+        verdict = generation / "judgments.json"
+        # The run service verifies the saved judgments against the sealed pair,
+        # checkpoint, baseline and any previous result before publishing again.
+        if step is not None and (
+            verdict.exists() or (generation / RESULT_SEAL).exists()
+        ):
+            return read_json(verdict)
+        bundle = review_data(generation, dev)
+        if calibration["judge"] == local_semantic_judge.JUDGE:
+            return local_semantic_judge.review_bundle(
+                calibration,
+                bundle,
+                self.run_id,
+                self.deadline - time.monotonic(),
+                check=self.check_budget,
+            )
+        return calibrated_judgments(calibration, bundle)
 
     def run(self) -> None:
         with self.service.run_lock(self.run_id):
@@ -355,6 +396,12 @@ class Worker:
                 raise ValueError("experiment_recipe_changed")
             if state["mode"] != "evaluate":
                 self.service.verify_run_data_audit(manifest)
+            calibration = manifest["calibration"]
+            if (
+                calibration is not None
+                and calibration["judge"] == local_semantic_judge.JUDGE
+            ):
+                local_semantic_judge.preflight(calibration)
             host = get_runtime_admission()
             host.database.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
             gpu_lock = host.database.parent / "academy-experiments.gpu.lock"
@@ -392,15 +439,13 @@ class Worker:
                                 if training_started:
                                     raise ValueError("experiment_gpu_recovery_required")
                                 lease.defer_training_release()
-            with self.service.run_lock(self.run_id):
-                current = self.service.store.read(self.run_id)
-                self.check_budget()
-                calibration = manifest["calibration"]
-                if calibration is not None:
-                    self._score_calibration(current, calibration)
-                    terminal = "succeeded"
-                else:
-                    terminal = "awaiting_review"
+            self.check_budget()
+            if calibration is not None:
+                current = self.update(stage="score")
+                self._score_calibration(current, calibration)
+                terminal = "succeeded"
+            else:
+                terminal = "awaiting_review"
         except StopRequested:
             terminal = "stopped"
         except TimeoutError:

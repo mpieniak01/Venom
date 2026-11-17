@@ -8,11 +8,16 @@ import os
 import re
 import resource
 import sys
+from collections.abc import Iterator
+from dataclasses import dataclass
 from importlib import import_module
 from importlib.metadata import version
+from itertools import chain, count, islice
 from pathlib import Path
+from random import Random
 from tempfile import NamedTemporaryFile
 from time import monotonic
+from typing import cast
 from unittest.mock import patch
 
 from scripts.academy.omni_pl_chat_adapter import (
@@ -24,6 +29,7 @@ from scripts.academy.omni_pl_chat_adapter import (
 from scripts.academy.omni_pl_chat_data import read_jsonl, sha256, validate_splits
 from scripts.academy.omni_pl_chat_masks import IGNORE, masked_example, verify_snapshot
 from scripts.academy.omni_pl_chat_recipe import (
+    BALANCED_SAMPLING,
     DEFAULT_RECIPE,
     load_recipe,
     validate_recipe,
@@ -139,12 +145,17 @@ def _collate(rows: list[dict], pad_token: int) -> dict:
 
     longest = max(len(row["input_ids"]) for row in rows)
     pad_values = {"input_ids": pad_token, "attention_mask": 0, "labels": IGNORE}
-    return {
+    batch = {
         name: torch.tensor(
             [row[name] + [pad] * (longest - len(row[name])) for row in rows]
         )
         for name, pad in pad_values.items()
     }
+    if "sampling_index" in rows[0]:
+        batch["sampling_indices"] = torch.tensor(
+            [row["sampling_index"] for row in rows]
+        )
+    return batch
 
 
 def _supervised_token_count(labels):
@@ -173,6 +184,8 @@ def _token_trainer_type(trainer_type):
             self.loss_is_scaled_for_ga = True
 
         def _get_num_items_in_batch(self, batch_samples, device):
+            if not batch_samples:
+                return None
             if self.args.world_size != 1 or self.args.n_gpu > 1:
                 raise RuntimeError("token-normalized Omni training requires one device")
             total = sum(
@@ -192,6 +205,148 @@ def _token_trainer_type(trainer_type):
             return (loss, outputs) if return_outputs else loss
 
     return TokenNormalizedTrainer
+
+
+@dataclass(frozen=True)
+class _SupervisedUpdate:
+    indices: tuple[int, ...]
+    fresh_tokens: int
+    replay_tokens: int
+    cumulative_tokens: int
+
+    def metrics(self) -> dict[str, int]:
+        return {
+            "fresh_supervised_tokens": self.fresh_tokens,
+            "replay_supervised_tokens": self.replay_tokens,
+            "supervised_tokens": self.fresh_tokens + self.replay_tokens,
+            "cumulative_supervised_tokens": self.cumulative_tokens,
+        }
+
+
+class _BalancedSampler:
+    """Give HF whole updates, with deterministic reshuffling at each epoch."""
+
+    def __init__(self, pools: list[str], seed: int):
+        if any(pool not in ("fresh", "replay") for pool in pools):
+            raise ValueError(
+                "balanced sampling requires sampling_pool fresh or replay on every record"
+            )
+        self.fresh = [i for i, pool in enumerate(pools) if pool == "fresh"]
+        self.replay = [i for i, pool in enumerate(pools) if pool == "replay"]
+        if min(len(self.fresh), len(self.replay)) < 4:
+            raise ValueError(
+                "balanced sampling requires at least four distinct records per pool"
+            )
+        self.updates_per_epoch = (max(len(self.fresh), len(self.replay)) + 3) // 4
+        self.seed = seed
+        self.epoch = 0
+
+    def set_epoch(self, epoch: int) -> None:
+        self.epoch = epoch
+
+    def __len__(self) -> int:
+        return self.updates_per_epoch * 8
+
+    def __iter__(self) -> Iterator[int]:
+        for update in self.epoch_updates(self.epoch):
+            yield from update
+
+    def epoch_updates(self, epoch: int) -> Iterator[tuple[int, ...]]:
+        rng = Random(self.seed + epoch)
+        fresh, replay = self.fresh.copy(), self.replay.copy()
+        rng.shuffle(fresh)
+        rng.shuffle(replay)
+        for start in range(0, self.updates_per_epoch * 4, 4):
+            yield tuple(
+                index
+                for slot in range(start, start + 4)
+                for index in (fresh[slot % len(fresh)], replay[slot % len(replay)])
+            )
+
+    def plan(
+        self, counts: list[int], steps: int, limit: int | None
+    ) -> list[_SupervisedUpdate]:
+        stream = chain.from_iterable(self.epoch_updates(epoch) for epoch in count())
+        plan: list[_SupervisedUpdate] = []
+        cumulative = 0
+        for indices in islice(stream, steps):
+            fresh = sum(counts[index] for index in indices[::2])
+            replay = sum(counts[index] for index in indices[1::2])
+            cumulative += fresh + replay
+            if limit is not None and cumulative > limit:
+                raise ValueError(
+                    f"planned supervision exceeds the token budget at update {len(plan) + 1}"
+                )
+            plan.append(_SupervisedUpdate(indices, fresh, replay, cumulative))
+        return plan
+
+
+def _balanced_setup(
+    encoded: list[dict], recipe: dict
+) -> tuple[_BalancedSampler, list[_SupervisedUpdate]]:
+    sampler = _BalancedSampler(
+        [row["sampling_pool"] for row in encoded], recipe["seed"]
+    )
+    counts = [sum(label != IGNORE for label in row["labels"][1:]) for row in encoded]
+    return sampler, sampler.plan(
+        counts, recipe["steps"], recipe.get("max_supervised_tokens")
+    )
+
+
+def _balanced_trainer_type(trainer_type, sampler, plan):
+    class BalancedTrainer(trainer_type):
+        _measured_update = None
+
+        def _get_train_sampler(self, train_dataset=None):
+            if self.args.world_size != 1 or self.args.n_gpu > 1:
+                raise RuntimeError("balanced Omni training requires one device")
+            return sampler
+
+        def get_batch_samples(self, epoch_iterator, num_batches, device):
+            import torch
+
+            batches, num_items = super().get_batch_samples(
+                epoch_iterator, num_batches, device
+            )
+            if not batches:
+                return batches, num_items
+            step = self.state.global_step
+            expected = plan[step]
+            actual_indices = tuple(
+                torch.cat([batch.pop("sampling_indices") for batch in batches]).tolist()
+            )
+            if actual_indices != expected.indices:
+                raise RuntimeError(
+                    f"balanced sample order differs at update {step + 1}"
+                )
+
+            counts = torch.cat(
+                [(batch["labels"][..., 1:] != IGNORE).sum(dim=-1) for batch in batches]
+            ).tolist()
+            fresh = sum(counts[::2])
+            replay = sum(counts[1::2])
+            if (fresh, replay) != (expected.fresh_tokens, expected.replay_tokens):
+                raise RuntimeError(
+                    f"supervised token counts differ at update {step + 1}"
+                )
+            previous = plan[step - 1].cumulative_tokens if step else 0
+            self._measured_update = _SupervisedUpdate(
+                actual_indices, fresh, replay, previous + fresh + replay
+            )
+            return batches, num_items
+
+        def log(self, logs, start_time=None):
+            if "loss" in logs:
+                measured = self._measured_update
+                if measured is None or measured != plan[self.state.global_step - 1]:
+                    raise RuntimeError(
+                        "missing supervision measurement for completed update"
+                    )
+                logs = {**logs, **measured.metrics()}
+                self._measured_update = None
+            super().log(logs, start_time)
+
+    return BalancedTrainer
 
 
 def _module_inventory(model, selector):
@@ -287,14 +442,24 @@ def _prepare_inputs(
         * recipe["gradient_accumulation_steps"]
         * recipe["steps"]
     )
-    if upper_bound > recipe.get("max_supervised_tokens", upper_bound):
-        raise ValueError("training supervision could exceed the recipe token budget")
     observations = {
         "train_sha256": train_hash,
         "records": len(records),
         "supervised_tokens": sum(counts),
         "supervised_token_exposure_upper_bound": upper_bound,
     }
+    if recipe.get("sampling") == BALANCED_SAMPLING:
+        for index, (row, item) in enumerate(zip(records, encoded, strict=True)):
+            item["sampling_pool"] = row.get("sampling_pool")
+            item["sampling_index"] = index
+        sampler, plan = _balanced_setup(encoded, recipe)
+        observations.update(
+            supervised_token_exposure_upper_bound=plan[-1].cumulative_tokens,
+            sampling_updates_per_epoch=sampler.updates_per_epoch,
+            planned_supervised_tokens=plan[-1].cumulative_tokens,
+        )
+    elif upper_bound > recipe.get("max_supervised_tokens", upper_bound):
+        raise ValueError("training supervision could exceed the recipe token budget")
     return pin, processor, encoded, observations
 
 
@@ -334,7 +499,7 @@ def _load_adapter_tensors(model, weights: Path) -> int:
 def run(mode: str) -> None:
     legacy = not _RECIPE_PATH.exists()
     has_initial = _INITIAL_HANDOFF.exists()
-    read_only = () if legacy else (str(_RECIPE_PATH),)
+    read_only: tuple[str, ...] = () if legacy else (str(_RECIPE_PATH),)
     if has_initial or _INITIAL_ADAPTER_DIR.exists():
         if legacy or not has_initial:
             raise ValueError("experiment_initial_adapter_handoff_missing")
@@ -496,7 +661,7 @@ def run(mode: str) -> None:
         group["modules"] += 1
         group["trainable_parameters"] += sum(
             param.numel()
-            for param in layer.parameters(recurse=True)
+            for param in cast(torch.nn.Module, layer).parameters(recurse=True)
             if param.requires_grad
         )
     parameters = dict(model.named_parameters())
@@ -580,6 +745,9 @@ def run(mode: str) -> None:
         if recipe["loss_mode"] == "model_default"
         else _token_trainer_type(Trainer)
     )
+    if recipe.get("sampling") == BALANCED_SAMPLING:
+        sampler, plan = _balanced_setup(encoded, recipe)
+        trainer_type = _balanced_trainer_type(trainer_type, sampler, plan)
     trainer = trainer_type(
         model=model,
         args=args,
@@ -587,10 +755,10 @@ def run(mode: str) -> None:
         data_collator=lambda rows: _collate(rows, processor.tokenizer.pad_token_id),
         callbacks=[PilotCallback()],
     )
-    trainer.create_optimizer()
+    optimizer = trainer.create_optimizer()
     optimized_ids = {
         id(parameter)
-        for group in trainer.optimizer.param_groups
+        for group in optimizer.param_groups
         for parameter in group["params"]
     }
     optimized_parameters = sorted(

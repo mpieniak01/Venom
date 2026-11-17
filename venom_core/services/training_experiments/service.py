@@ -22,8 +22,10 @@ from venom_core.services.remote_training.lifecycle import (
 from venom_core.services.remote_training.paths import operator_path
 
 from .adapters import list_adapters, resolve_adapter, verify_adapter_entry
+from .calibration import validate_calibration
 from .checkpoint_evaluation import (
     GENERATION_SEAL,
+    RESULT_SEAL,
     inspect_steps,
     read_generation,
     review_step,
@@ -41,6 +43,7 @@ from .evidence import (
     review_data,
     sealed_report,
 )
+from .grounded_claims import UNCERTAIN
 from .profiles import (
     Profile,
     check_inputs,
@@ -49,6 +52,7 @@ from .profiles import (
     read_json,
     recipe_for,
     resolve_input,
+    rows,
     stable_hash,
 )
 from .quality import QualityStore
@@ -122,15 +126,14 @@ class ExperimentService:
         if digest(path) != profile.calibration_sha256:
             raise ValueError("experiment_calibration_changed")
         calibration = read_json(path)
-        if (
-            calibration.get("schema_version") != 1
-            or calibration.get("judge") != "exact-v1"
-            or calibration.get("dev_sha256") != profile.dev_sha256
-            or not isinstance(calibration.get("reviewer"), str)
-            or not calibration["reviewer"].strip()
-            or not isinstance(calibration.get("cases"), dict)
-        ):
-            raise ValueError("experiment_calibration_invalid")
+        if digest(path) != profile.calibration_sha256:
+            raise ValueError("experiment_calibration_changed")
+        cases = (
+            rows(resolve_input(self.root, profile.dev))
+            if isinstance(calibration, dict) and calibration.get("judge") != "exact-v1"
+            else None
+        )
+        validate_calibration(calibration, profile.dev_sha256, cases)
         return calibration
 
     def _validated(
@@ -302,14 +305,14 @@ class ExperimentService:
             and resume_checkpoint[1]["step"] < state["recipe"]["steps"]
         )
         result["evaluation_available"] = bool(can_retry and checkpoint)
-        if result["evaluation_available"] and "checkpoint_steps" in state:
+        if can_retry and checkpoint is not None and "checkpoint_steps" in state:
             result["evaluation_available"] = (
                 checkpoint[1]["step"] == state["recipe"]["steps"]
             )
 
     def _view(self, state: dict) -> dict:
         run_id = state["run_id"]
-        result = {key: state.get(key) for key in PUBLIC}
+        result: dict[str, Any] = {key: state.get(key) for key in PUBLIC}
         for key in ("initial_adapter", "data_audit"):
             if key in state:
                 result[key] = state[key]
@@ -680,17 +683,31 @@ class ExperimentService:
             generation_sha256=digest(generation / GENERATION_SEAL),
         )
         provenance = {"initial_adapter", "data_audit"} & state.keys()
-        if provenance or checkpoint_step is not None:
-            manifest = self._manifest(run_id)
-            if stable_hash(manifest) != state["manifest_sha256"]:
-                raise ValueError("experiment_manifest_changed")
+        manifest = self._manifest(run_id)
+        if stable_hash(manifest) != state["manifest_sha256"]:
+            raise ValueError("experiment_manifest_changed")
+        if provenance:
             result.update({key: manifest[key] for key in provenance})
+        judge = (manifest.get("calibration") or {}).get("judge", "exact-v1")
+        if judge != "exact-v1":
+            result["calibration_judge"] = judge
+            result["unverifiable_answers"] = sum(
+                grade["reason"] == UNCERTAIN for grade in judgments
+            )
         if checkpoint_step is None:
             self._publish_result(directory, result)
             self._finish_review(state)
         else:
-            self._publish_result(generation, result)
+            self._publish_checkpoint_result(generation, result)
             self._finish_checkpoint_review(state)
+
+    def _publish_checkpoint_result(self, generation: Path, result: dict) -> None:
+        if (generation / RESULT_SEAL).is_file():
+            existing, _ = sealed_step(generation)
+            if existing != result:
+                raise ValueError("experiment_result_changed")
+            return
+        self._publish_result(generation, result)
 
     @staticmethod
     def _publish_result(directory: Path, result: dict) -> None:

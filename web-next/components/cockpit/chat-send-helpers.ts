@@ -1,3 +1,4 @@
+import { isNativeTextRuntime, readNativeTextIdentity, type NativeTextIdentity } from "@/lib/native-text-chat";
 import { chatMaterialError } from "@/lib/chat-error";
 import { pendingOpenRouterCost, readOpenRouterCost, readOpenRouterMetadata, readOpenRouterUsage } from "@/lib/openrouter-chat";
 import { isGuardedChatRuntime, isOpenRouterRuntime } from "@/lib/remote-chat";
@@ -20,6 +21,7 @@ export type RuntimeOverride = {
 } | null;
 
 export type LocalHistoryEntry = {
+    model_identity?: NativeTextIdentity;
     role?: string;
     mode?: string | null;
     content?: string;
@@ -414,6 +416,17 @@ export async function handleSimpleTaskSend(params: SimpleTaskSendParams) {
     let accounting = openRouter ? params.initialCost ?? pendingOpenRouterCost() : undefined;
     let provenance = readOpenRouterMetadata({requested_model: selectedLlmModel});
     let actualUsage: ReturnType<typeof readOpenRouterUsage> = null;
+    const native = isNativeTextRuntime(activeServerInfo?.runtime_id);
+    let nativeIdentity: NativeTextIdentity | undefined;
+    const acceptNativeIdentity = (raw: unknown) => {
+      const identity = readNativeTextIdentity(raw);
+      if (identity.runtime_id !== activeServerInfo?.runtime_id || identity.config_sha256 !== activeServerInfo?.config_hash
+        || !/^[a-f0-9]{64}$/.test(identity.input_messages_sha256 ?? "")
+        || (nativeIdentity && JSON.stringify(identity) !== JSON.stringify(nativeIdentity))) {
+        throw new Error("omni_native_text_selection_changed");
+      }
+      nativeIdentity = identity;
+    };
     const recordAccounting = (status: string) => {
         if (!accounting) return;
         setSimpleRequestDetails(previous => ({...previous, [resolvedRequestId]: {
@@ -501,6 +514,7 @@ export async function handleSimpleTaskSend(params: SimpleTaskSendParams) {
         const handleContent = (raw: string) => {
             if (params.isCancelled?.()) throw new DOMException("Stopped", "AbortError");
             const data = JSON.parse(raw);
+            if (native && !nativeIdentity) throw new Error("omni_native_text_selection_changed");
             if (!data.text) return;
             buffer += data.text;
             partialAnswer = buffer;
@@ -515,6 +529,7 @@ export async function handleSimpleTaskSend(params: SimpleTaskSendParams) {
             upsertLocalHistory("assistant", buffer);
         };
         const handleStart = (raw: string) => {
+            if (native) acceptNativeIdentity(JSON.parse(raw).model_identity);
             if (!openRouter) return;
             provenance = readOpenRouterMetadata(JSON.parse(raw));
             recordAccounting("PROCESSING");
@@ -527,7 +542,11 @@ export async function handleSimpleTaskSend(params: SimpleTaskSendParams) {
             }
         };
         const handleDone = (raw: string) => {
-            const completion = openRouter ? JSON.parse(raw) : {};
+            const completion = openRouter || native ? JSON.parse(raw) : {};
+            if (native) {
+              if (!nativeIdentity) throw new Error("omni_native_text_selection_changed");
+              acceptNativeIdentity(completion.model_identity);
+            }
             if (openRouter) {
                 provenance = readOpenRouterMetadata(completion);
                 actualUsage = readOpenRouterUsage(completion.usage, completion.usage_source);
@@ -584,6 +603,7 @@ export async function handleSimpleTaskSend(params: SimpleTaskSendParams) {
                 next[idx] = {
                     ...next[idx],
                     pending: false,
+                    ...(nativeIdentity ? {model_identity: nativeIdentity} : {}),
                     status: "COMPLETED",
                 };
             }
@@ -605,6 +625,7 @@ export async function handleSimpleTaskSend(params: SimpleTaskSendParams) {
                 llm_endpoint: simpleEndpoint ?? null,
                 llm_config_hash: activeServerInfo?.config_hash ?? null,
                 llm_runtime_id: activeServerInfo?.runtime_id ?? null,
+                ...(nativeIdentity ? {model_identity: nativeIdentity} : {}),
                 ...(accounting ? {openrouter_cost: accounting, openrouter_metadata: provenance, ...(actualUsage ? {openrouter_usage: actualUsage} : {})} : {}),
                 forced_tool: null,
                 forced_provider: null,

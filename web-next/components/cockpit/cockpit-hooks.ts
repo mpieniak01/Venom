@@ -212,6 +212,7 @@ export function useTokenMetricsSummary({
 }
 
 export type SessionHistoryEntry = {
+  model_identity?: import("@/lib/native-text-chat").NativeTextIdentity;
   role?: string;
   mode?: string | null;
   content?: string;

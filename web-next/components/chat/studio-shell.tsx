@@ -18,6 +18,8 @@ import { useConversationController } from "./use-conversation-controller";
 import { useConversationData } from "./use-conversation-data";
 import { useSessionDraft } from "./use-session-draft";
 import { useChatMaterials } from "./use-chat-materials";
+import { useNativeTextChat } from "./use-native-text-chat";
+import { NativeTextPicker } from "./native-text-picker";
 import { StudioModelPicker } from "./studio-model-picker";
 import { StudioMaterials } from "./studio-materials";
 import { StudioThread } from "./studio-thread";
@@ -83,6 +85,7 @@ function StudioConversation({ showLegacyLink, lightNormal }: Readonly<{
   const { theme, setTheme } = useTheme();
   const { sessionId, setSessionId } = useSession();
   const source = useConversationData();
+  const native = useNativeTextChat();
   const interaction = useCockpitInteractiveState("direct");
   const layout = useCockpitLayout();
   const shellRef = useRef<HTMLDivElement>(null);
@@ -110,25 +113,27 @@ function StudioConversation({ showLegacyLink, lightNormal }: Readonly<{
   const [multimodalBusy, setMultimodalBusy] = useState(false);
   const conversation = useConversationController({
     data: source.data, interactive: interaction, layout, chatScrollRef: scrollRef,
-    materialIds: selected, manualChatNotes: true, lightNormal,
+    materialIds: selected, manualChatNotes: true, lightNormal, nativeSelection: native.state.selection,
   });
   const { state, setters } = interaction;
   const activeServer = source.data.activeServerInfo;
-  const selectedModel = resolveEffectiveChatModelSelection(
+  const ordinaryModel = resolveEffectiveChatModelSelection(
     state.selectedLlmModel, activeServer?.active_model, state.selectedLlmServer, activeServer?.active_server ?? "",
   );
+  const selectedModel = native.state.selection?.adapter_id ?? ordinaryModel;
   const materials = useChatMaterials(sessionId, selectedModel, state.selectedLlmServer,
     activeServer?.active_server ?? "", activeServer?.config_hash ?? "", materialsOpen || selected.length > 0);
   const direct = state.chatMode === "direct";
   const {
     voiceAvailable, multimodalEnabled, conversationVoiceAvailable,
     documentStatus, imageStatus, voiceStatus,
-  } = studioCapabilities(materials.capabilities, direct, language, activeServer);
+  } = studioCapabilities(native.state.selection ? null : materials.capabilities, direct, language, native.state.selection ? null : activeServer);
   const notesAvailable = materials.capabilities?.notes === true;
   const notesSelected = notesAvailable && state.chatMode === "normal" && useNotes;
   const attached = materials.items.filter(item => selected.includes(item.id));
   const missing = selected.length > attached.length;
-  const blocked = missing || materialBlocked(attached, materials.capabilities, direct);
+  const nativeBlocked = !!native.state.selection && (!direct || selected.length > 0 || voice != null);
+  const blocked = !native.ready || native.busy || nativeBlocked || missing || materialBlocked(attached, materials.capabilities, direct);
   const chatActive = state.sending || conversation.historyMessages.some(message => message.pending || ["PENDING", "PROCESSING"].includes(message.status ?? ""));
   const active = chatActive || multimodalBusy;
   const sendLock = useRef(false);
@@ -205,7 +210,10 @@ function StudioConversation({ showLegacyLink, lightNormal }: Readonly<{
       <div className="studio-top-actions"><label className="studio-language"><span className="sr-only">{t("chat2.language")}</span><select aria-label={t("chat2.language")} value={language} onChange={event => setLanguage(event.target.value as "pl" | "en" | "de")}><option value="pl">PL</option><option value="en">EN</option><option value="de">DE</option></select></label>
         <button ref={materialButton} type="button" className="studio-button" aria-expanded={materialsOpen} aria-controls="studio-materials" onClick={() => { setHistoryOpen(false); setMaterialsOverride(!materialsOpen); }}><Paperclip size={16} />{t("chat2.materials")}</button></div>
     </header>
-    <StudioModelPicker catalog={source.data.unifiedModelCatalog} interaction={interaction} session={sessionId} selectedModel={selectedModel} activeModel={activeServer?.active_model} onApply={conversation.handleActivateModel} busy={active || voice != null} />
+    <StudioModelPicker catalog={source.data.unifiedModelCatalog} interaction={interaction} session={sessionId} selectedModel={selectedModel} activeModel={activeServer?.active_model} onApply={conversation.handleActivateModel} busy={active || voice != null || native.busy || !!native.state.selection} />
+    <NativeTextPicker native={native} busy={active || voice != null} />
+    {nativeBlocked && <p className="studio-error" role="alert">{t("chat2.nativeText.unsupported")}</p>}
+    {!!native.state.selection && <button type="button" className="studio-button" disabled={active || native.busy} onClick={() => setters.setChatMode("direct")}>{t("chat2.nativeText.direct")}</button>}
     {source.error && <div className="studio-error" role="alert">{t("chat2.offline")}<button type="button" className="studio-button" onClick={() => { void source.refresh(); }}>{t("chat2.retry")}</button></div>}
     <div className={"studio-workspace" + (materialsOpen ? " studio-with-materials" : "")}><div className="studio-conversation">
       <StudioThread key={sessionId} messages={conversation.historyMessages} details={interaction.optimistic.simpleRequestDetails} scrollRef={scrollRef} onScroll={conversation.chatUi.handleChatScroll} loading={source.loading || !sessionId} onError={setters.setMessage} noteSession={notesAvailable ? sessionId : undefined} />

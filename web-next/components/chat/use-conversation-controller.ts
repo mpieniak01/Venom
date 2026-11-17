@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef } from "react";
+import { nativeTextServer, type NativeTextIdentity } from "@/lib/native-text-chat";
 import { ApiError } from "@/lib/api-client";
 import { rememberChatSession } from "@/lib/chat-sessions";
 import { useSession } from "@/lib/session";
@@ -32,7 +33,8 @@ export type ConversationInteraction = ReturnType<typeof useCockpitInteractiveSta
 type ConversationLayout = Pick<ReturnType<typeof useCockpitLayout>, "labMode" | "setTuningOpen" | "setExportingPinned">;
 
 /** One owner of conversation/history/stream per mounted route, without system telemetry. */
-export function useConversationController({ data, interactive, layout, chatScrollRef, onTurnFinished, materialIds, manualChatNotes = false, lightNormal = false }: {
+export function useConversationController({ data, interactive, layout, chatScrollRef, onTurnFinished, materialIds, manualChatNotes = false, lightNormal = false, nativeSelection }: {
+  nativeSelection?: NativeTextIdentity | null;
   materialIds?: string[];
   manualChatNotes?: boolean;
   lightNormal?: boolean;
@@ -421,10 +423,10 @@ export function useConversationController({ data, interactive, layout, chatScrol
         lastResponseDurationMs: interactive.state.lastResponseDurationMs,
         labMode: layout.labMode,
         chatMode: interactive.state.chatMode,
-        selectedLlmServer: interactive.state.selectedLlmServer,
-        generationParams: interactive.state.generationParams,
-        selectedLlmModel: interactive.state.selectedLlmModel,
-        activeServerInfo: data.activeServerInfo,
+        selectedLlmServer: nativeSelection ? nativeSelection.runtime : interactive.state.selectedLlmServer,
+        generationParams: nativeSelection ? null : interactive.state.generationParams,
+        selectedLlmModel: nativeSelection ? nativeSelection.adapter_id : interactive.state.selectedLlmModel,
+        activeServerInfo: nativeSelection ? nativeTextServer(nativeSelection) : data.activeServerInfo,
         sessionId: sessionId,
         language: language ?? "pl",
         resetSession,

@@ -1,3 +1,4 @@
+import type { NativeTextIdentity } from "./native-text-chat";
 import type { OpenRouterCost, OpenRouterMetadata, OpenRouterUsage } from "./openrouter-chat";
 import type { components } from "./generated/api-types";
 
@@ -58,6 +59,7 @@ export interface HistoryRequestDetail
   openrouter_cost?: OpenRouterCost;
   openrouter_metadata?: OpenRouterMetadata;
   openrouter_usage?: OpenRouterUsage;
+  model_identity?: NativeTextIdentity;
   adapter_applied?: boolean | null;
   adapter_id?: string | null;
 }

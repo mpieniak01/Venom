@@ -1,5 +1,18 @@
 export const chat2 = {
   nativeText: {
+    "title": "Omni-Textadapter",
+    "choose": "Adapter auswählen",
+    "apply": "Laden und prüfen",
+    "rollback": "Vorheriges Modell wiederherstellen",
+    "refresh": "Status aktualisieren",
+    "reference": "P13-Referenz",
+    "unqualified": "Nicht qualifizierter Kandidat",
+    "scope": "Der Adapter unterstützt nur Text im Direct-Modus. Die Auswahl endet beim API-Neustart.",
+    "probing": "Adapter wird geladen und geprüft…",
+    "ordinary": "Normales Modell aktiv",
+    "direct": "Zu Direct wechseln",
+    "usedWeights": "Für diese Antwort verwendete Gewichte",
+
     "context": "Das Gespräch überschreitet das Limit des nativen Modells. Kürzen Sie den Kontext oder das Antwortlimit.",
     "unsupported": "Der ausgewählte Adapter unterstützt diese Chatfunktion nicht.",
     "changed": "Modellauswahl oder Gewichte haben sich geändert. Prüfen Sie den aktiven Adapter vor einem neuen Versuch.",

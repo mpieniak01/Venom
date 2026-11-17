@@ -2,7 +2,7 @@ export const academy = {
   remoteText: {
     extension: {
       title: "Warunkowa dogrywka",
-      hint: "Po pierwszej części host uruchomi pozostałe warianty, jeśli najlepszy wynik na dev osiągnie próg względem M0. Limit kosztu i czasu obejmuje całość.",
+      hint: "Po pierwszej części wykonawca uruchomi pozostałe warianty, jeśli wynik dev osiągnie próg względem wskazanego rodzica, albo M0 przy treningu od bazy. Wybór dogrywki włącza ocenę automatyczną. Łączny limit obejmuje całość.",
       initialTrials: "Liczba prób przed decyzją",
       minGain: "Wymagany zysk na dev (pkt proc.)",
       approved: "Dogrywka zatwierdzona na podstawie wyniku dev.",
@@ -362,6 +362,7 @@ export const academy = {
   },
   campaigns: {
     finalQualification: {
+      trainingSeed: "Ziarno treningu",
       "title": "Końcowa kwalifikacja względem rodzica",
       "inputs": "Pakiet odłożonego testu",
       "none": "Bez automatycznego finału",

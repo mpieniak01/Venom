@@ -2,7 +2,7 @@ export const academy = {
   remoteText: {
     extension: {
       title: "Bedingte Fortsetzung",
-      hint: "Nach den ersten Versuchen startet der Host die übrigen Varianten, wenn das beste Entwicklungsergebnis die Schwelle gegenüber M0 erreicht. Das Zeit- und Kostenlimit gilt für beide Blöcke.",
+      hint: "Nach den ersten Versuchen startet der Worker weitere Varianten, wenn der Zuwachs im Dev-Test den Schwellenwert gegenüber dem gewählten Elternadapter oder M0 beim Basistraining erreicht. Die Verlängerung aktiviert die automatische Bewertung. Das Gesamtlimit umfasst alle Phasen.",
       initialTrials: "Versuche vor der Entscheidung",
       minGain: "Mindestverbesserung auf den Entwicklungsdaten (Prozentpunkte)",
       approved: "Fortsetzung anhand der Entwicklungsergebnisse genehmigt.",
@@ -362,6 +362,7 @@ export const academy = {
   },
   campaigns: {
     finalQualification: {
+      trainingSeed: "Trainings-Seed",
       "title": "Abschließende Qualifikation gegenüber dem Elternadapter",
       "inputs": "Paket für den zurückgehaltenen Test",
       "none": "Keine automatische Abschlussbewertung",

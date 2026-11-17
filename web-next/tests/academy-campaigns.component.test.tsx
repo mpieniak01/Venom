@@ -108,6 +108,9 @@ describe("Academy campaigns", () => {
     await screen.findByRole("option", { name: "fresh-final" });
     fireEvent.change(screen.getByLabelText("Identyfikator kampanii"), { target: { value: "final-cycle" } });
     fireEvent.change(screen.getByLabelText("Pakiet odłożonego testu"), { target: { value: "fresh-final" } });
+    fireEvent.click(screen.getByRole("button", { name: "Dodaj wariant" }));
+    fireEvent.change(screen.getAllByLabelText("Ziarno treningu")[1], { target: { value: "43" } });
+    fireEvent.change(screen.getByLabelText("Liczba prób przed decyzją"), { target: { value: "1" } });
     fireEvent.change(screen.getByLabelText("Czas zarezerwowany na finał (s)"), { target: { value: "3600" } });
     fireEvent.click(screen.getByRole("button", { name: "Przygotuj plan kampanii" }));
     assert.equal(submitted, undefined);
@@ -118,6 +121,8 @@ describe("Academy campaigns", () => {
     assert.deepEqual(submitted!.final_qualification, { inputs_id: "fresh-final", reserve_seconds: 900 });
     assert.equal(submitted!.review_mode, "automatic");
     assert.equal(submitted!.budget.max_seconds, 3600);
+    assert.deepEqual(submitted!.extension, { initial_trials: 1, min_usable_delta: 0.05 });
+    assert.equal(submitted!.variants[1].seed, 43);
   });
 
   it("keeps qualification active and distinguishes quality rejection from completed trials", async () => {

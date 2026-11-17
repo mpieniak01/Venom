@@ -65,6 +65,7 @@ const VARIANT_FIELDS = [
   ["rank", "academy.experiments.rank"],
   ["alpha", "academy.experiments.alpha"],
   ["learning_rate", "academy.experiments.learningRate"],
+  ["seed", "academy.campaigns.finalQualification.trainingSeed"],
 ] as const;
 const SELECT_CLASS = "h-9 w-full rounded-md border border-[color:var(--ui-border)] bg-[color:var(--ui-surface)] px-2 text-sm";
 
@@ -90,7 +91,7 @@ function variantRecipe(data: FormData, row: number, editableRecipe: boolean): Re
   const recipe: ExperimentRecipe = {};
   for (const [key] of VARIANT_FIELDS) {
     const name = `variant-${row}-${key}`;
-    if (data.get(name) !== "") recipe[key] = numberField(data, name);
+    if (data.get(name) != null && data.get(name) !== "") recipe[key] = numberField(data, name);
   }
   return { ...recipe };
 }
@@ -224,7 +225,8 @@ export function CampaignForm({ profiles, adapters, adaptersFailed, disabled, opt
       if (remoteText) {
         request.review_mode = "automatic";
         request.retention = "keep_all";
-        if (strategy === "fixed" && data.get("extension_initial_trials")) {
+      }
+      if (strategy === "fixed" && data.get("extension_initial_trials")) {
           const initial = numberField(data, "extension_initial_trials");
           const gain = numberField(data, "extension_gain") / 100;
           if (!Number.isSafeInteger(initial) || initial < 1 || initial >= rows.length
@@ -232,8 +234,9 @@ export function CampaignForm({ profiles, adapters, adaptersFailed, disabled, opt
             setInvalid(true);
             return;
           }
+          if (!profile.automatic_review) throw new Error("automatic review required");
+          request.review_mode = "automatic";
           request.extension = { initial_trials: initial, min_usable_delta: gain };
-        }
       }
       if (request.variants.length > request.budget.max_trials || request.budget.trial_seconds > request.budget.max_seconds) {
         setInvalid(true);
@@ -320,7 +323,7 @@ export function CampaignForm({ profiles, adapters, adaptersFailed, disabled, opt
                 <div className="space-y-1" key={field}>
                   <Label htmlFor={`variant-${row}-${field}`}>{t(label)}</Label>
                   <Input id={`variant-${row}-${field}`} name={`variant-${row}-${field}`} type="number"
-                    min={field === "learning_rate" ? undefined : 1}
+                    min={field === "learning_rate" ? undefined : Number(field !== "seed")}
                     step={field === "learning_rate" ? "any" : 1}
                     placeholder={profile?.recipe[field]?.toString()} disabled={disabled} />
                 </div>
@@ -381,7 +384,7 @@ export function CampaignForm({ profiles, adapters, adaptersFailed, disabled, opt
           </div>
         </div>
       </details>
-      {remoteText && strategy === "fixed" && rows.length > 1 && (
+      {profile?.automatic_review && strategy === "fixed" && rows.length > 1 && (
         <fieldset className="space-y-2 rounded-lg border border-[color:var(--ui-border)] p-3" disabled={disabled}>
           <legend className="text-sm font-medium">{t("academy.remoteText.extension.title")}</legend>
           <p className="text-sm text-hint">{t("academy.remoteText.extension.hint")}</p>

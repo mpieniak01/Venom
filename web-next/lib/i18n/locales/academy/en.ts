@@ -2,7 +2,7 @@ export const academy = {
   remoteText: {
     extension: {
       title: "Conditional extension",
-      hint: "After the initial trials, the host runs the remaining variants if the best development result meets the threshold against M0. The time and cost limits cover both blocks.",
+      hint: "After the initial trials, the worker runs the remaining variants if the dev gain reaches the threshold against the selected parent, or M0 for base training. An extension enables automatic review. The overall limit covers every stage.",
       initialTrials: "Trials before decision",
       minGain: "Minimum development gain (percentage points)",
       approved: "Extension approved based on development evidence.",
@@ -362,6 +362,7 @@ export const academy = {
   },
   campaigns: {
     finalQualification: {
+      trainingSeed: "Training seed",
       "title": "Final qualification against parent",
       "inputs": "Held-out test package",
       "none": "No automatic final qualification",

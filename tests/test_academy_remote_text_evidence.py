@@ -1991,6 +1991,9 @@ def test_local_export_accounts_for_remaining_space_and_existing_archive(tmp_path
     (folder / "evidence.tar").write_bytes(b"x" * 50_000)
     used[0] += 50_000
     assert _export_budget(owner, state, evidence, "run-1") == first
+    (folder / "verified.json").write_bytes(b"{}")
+    used[0] += 2
+    assert _export_budget(owner, state, evidence, "run-1") == first + 64 * 1024 - 2
     used[0] = 500_000
     with pytest.raises(ValueError, match="storage_budget_exhausted"):
         _export_budget(owner, state, evidence, "run-2")

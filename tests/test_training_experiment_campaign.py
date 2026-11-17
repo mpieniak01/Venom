@@ -2622,6 +2622,8 @@ def test_retention_keeps_repeat_source_until_confirmation(controller):
     retention, state, source, _winner = retained_series(controller)
     state["extension_decision"] = {"run_id": state["trials"][0]["run_id"]}
     assert retention.plan(state)["files"] == []
+    state["repeat_confirmation"] = {"status": "incomplete"}
+    assert retention.plan(state)["files"] == []
     state["repeat_confirmation"] = {"status": "passed"}
     assert any(
         row["run_id"] == state["trials"][0]["run_id"]

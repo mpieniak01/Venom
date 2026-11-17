@@ -10,7 +10,14 @@ from venom_core.services.remote_training.paths import operator_path
 
 from .campaign import CampaignService
 from .profiles import read_json
-from .remote_text_evidence import _ARCHIVE, _run_directory, _sha, export_run, sync_run
+from .remote_text_evidence import (
+    _ARCHIVE,
+    _RECEIPT,
+    _run_directory,
+    _sha,
+    export_run,
+    sync_run,
+)
 from .service import ExperimentService
 
 
@@ -125,7 +132,8 @@ def _export_budget(
     archive = operator_path(_run_directory(evidence, run_id) / _ARCHIVE)
     archived_bytes = archive.stat().st_size if archive.exists() else 0
     # Keep space for the receipt written alongside the bounded archive.
-    metadata_reserve = 64 * 1024
+    receipt = operator_path(archive.parent / _RECEIPT)
+    metadata_reserve = 0 if receipt.exists() else 64 * 1024
     available = min(
         budget["max_artifact_bytes"] - state["artifact_bytes"],
         campaign.experiments.free_storage_bytes(state["plan"]["profile_id"])

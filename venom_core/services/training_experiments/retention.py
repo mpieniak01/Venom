@@ -168,7 +168,11 @@ class Retention:
         protected = protected_runs(self.experiments)
         protected.add(winner)
         decision_run = state.get("extension_decision", {}).get("run_id")
-        if decision_run and "repeat_confirmation" not in state:
+        confirmation = state.get("repeat_confirmation", {})
+        if decision_run and confirmation.get("status") not in {
+            "passed",
+            "failed_quality",
+        }:
             protected.add(decision_run)
         return {
             trial["run_id"]: trial

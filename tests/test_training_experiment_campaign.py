@@ -2416,3 +2416,194 @@ def test_repeat_confirms_same_training_dose_and_finalist_requires_both_seeds(
         )
     else:
         assert state["selected_run_id"] is None
+
+
+def _original_incomplete_development_state():
+    def checkpoint(step, usable, passed):
+        return {
+            "step": step,
+            "status": "succeeded",
+            "result_sha256": str(step % 10) * 64,
+            "qualified": False,
+            "usable_delta": (usable - 37) / 48,
+            "critical_delta": 0.0,
+            "quality_guard": {
+                "status": "rejected",
+                "parent_delta": {"full_pass_delta": (passed - 33) / 48},
+            },
+            "summaries": {
+                "candidate": {"total": {"n": 48, "usable": usable, "passed": passed}}
+            },
+        }
+
+    return {
+        "status": "succeeded",
+        "phase": "trials",
+        "trial_index": 4,
+        "selected_run_id": None,
+        "selected_checkpoint_step": None,
+        "qualification_status": "pending",
+        "qualification_attempts": 0,
+        "retries": 1,
+        "deadline_at": 1794923315.6446989,
+        "plan": {
+            "checkpoint_steps": [21, 42, 63],
+            "quality_policy": {"protect_parent_full_pass": True},
+            "selection": {
+                "min_usable_delta": 0.05,
+                "max_critical_delta": 0,
+                "protect_parent_full_pass": True,
+            },
+            "extension": {
+                "repeat_best_recipe": True,
+                "initial_trials": 2,
+                "min_usable_delta": 0.05,
+            },
+            "final_qualification": {"inputs_id": "unopened"},
+        },
+        "extension_decision": {
+            "status": "skipped",
+            "run_id": None,
+            "checkpoint_step": None,
+        },
+        "trials": [
+            {
+                "run_id": "trial01",
+                "status": "failed",
+                "stage": "score",
+                "attempt": 2,
+                "error": "experiment_checkpoint_baseline_changed",
+                "checkpoint_evaluations": [
+                    checkpoint(21, 38, 34),
+                    {"step": 42, "status": "pending"},
+                    {"step": 63, "status": "pending"},
+                ],
+            },
+            {
+                "run_id": "trial02",
+                "status": "succeeded",
+                "result_sha256": "b" * 64,
+                "checkpoint_evaluations": [
+                    checkpoint(21, 37, 33),
+                    checkpoint(42, 36, 34),
+                    checkpoint(63, 36, 34),
+                ],
+            },
+            {"run_id": "trial03", "status": "skipped"},
+            {"run_id": "trial04", "status": "skipped"},
+        ],
+    }
+
+
+@pytest.mark.parametrize("with_repeat", [False, True])
+@pytest.mark.parametrize(
+    "evidence",
+    [
+        "failed_score",
+        "missing_step",
+        "pending_step",
+        "missing_seal",
+        "blocked_guard",
+        "complete",
+    ],
+)
+def test_no_candidate_requires_all_expected_development_evidence(with_repeat, evidence):
+    import copy
+
+    from venom_core.services.training_experiments.campaign import _confirm_repeat
+    from venom_core.services.training_experiments.local_campaign_final import transition
+
+    state = _original_incomplete_development_state()
+    first, second = state["trials"][:2]
+    if evidence != "failed_score":
+        first.update(
+            status="succeeded",
+            result_sha256="a" * 64,
+            checkpoint_evaluations=copy.deepcopy(second["checkpoint_evaluations"]),
+        )
+        rows = first["checkpoint_evaluations"]
+        if evidence == "missing_step":
+            rows.pop(1)
+        elif evidence == "pending_step":
+            rows[1]["status"] = "pending"
+        elif evidence == "missing_seal":
+            rows[1].pop("result_sha256")
+        elif evidence == "blocked_guard":
+            rows[1]["quality_guard"]["status"] = "blocked"
+    if not with_repeat:
+        state["plan"].pop("extension")
+    before = copy.deepcopy(state)
+    _confirm_repeat(state)
+    transition(state)
+    expected = "failed_quality" if evidence == "complete" else "incomplete"
+    assert state["phase"] == "complete"
+    assert state["qualification_status"] == expected
+    assert state["qualification"]["qualified"] is None
+    assert state["selected_run_id"] is None
+    assert state["qualification_attempts"] == 0
+    assert state["deadline_at"] == before["deadline_at"]
+    assert state["retries"] == before["retries"] == 1
+    assert state["trials"] == before["trials"]
+    if evidence != "complete":
+        assert state["qualification"]["reason"] == "campaign_development_incomplete"
+    if with_repeat:
+        assert state["repeat_confirmation"]["status"] == expected
+
+
+def test_confirmed_finalist_survives_an_unrelated_failed_development_variant():
+    import copy
+
+    from venom_core.services.training_experiments.campaign import (
+        _confirm_repeat,
+        development_complete,
+    )
+    from venom_core.services.training_experiments.local_campaign_final import transition
+
+    state = _original_incomplete_development_state()
+    source = state["trials"][1]
+    for row in source["checkpoint_evaluations"]:
+        row.update(qualified=True, usable_delta=0.125, critical_delta=0.0)
+        row["quality_guard"] = {
+            "status": "passed",
+            "parent_delta": {"full_pass_delta": 0.125},
+        }
+    repeated = {**copy.deepcopy(source), "run_id": "trial04"}
+    state["trials"][3] = repeated
+    state["selected_run_id"] = source["run_id"]
+    state["selected_checkpoint_step"] = 21
+    state["extension_decision"] = {
+        "status": "approved",
+        "run_id": source["run_id"],
+        "checkpoint_step": 21,
+        "result_sha256": source["checkpoint_evaluations"][0]["result_sha256"],
+        "repeat_run_id": repeated["run_id"],
+    }
+    assert not development_complete(state)
+    deadline = state["deadline_at"]
+    _confirm_repeat(state)
+    assert state["repeat_confirmation"]["status"] == "passed"
+    assert state["selected_run_id"] in {"trial02", "trial04"}
+    transition(state)
+    assert state["phase"] == "qualification"
+    assert state["status"] == "qualifying"
+    assert state["qualification_status"] == "pending"
+    assert state["deadline_at"] == deadline
+    assert state["qualification_attempts"] == 0
+
+
+@pytest.mark.parametrize("problem", ["empty", "quality_policy_error", "missing_result"])
+def test_incomplete_development_without_checkpoints_is_not_quality_rejection(problem):
+    from venom_core.services.training_experiments.campaign import development_complete
+
+    state = {
+        "plan": {},
+        "trials": [{"status": "succeeded", "result_sha256": "a" * 64}],
+    }
+    assert development_complete(state)
+    if problem == "empty":
+        state["trials"] = [{"status": "skipped"}]
+    elif problem == "quality_policy_error":
+        state["quality_policy_error"] = "campaign_quality_evidence_changed"
+    else:
+        state["trials"][0].pop("result_sha256")
+    assert not development_complete(state)

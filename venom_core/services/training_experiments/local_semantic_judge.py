@@ -292,7 +292,7 @@ def schema_for(ids: list[str]) -> dict:
         "properties": {
             "atoms": {
                 "type": "object",
-                "properties": {key: _ATOM_SCHEMA for key in ids},
+                "properties": dict.fromkeys(ids, _ATOM_SCHEMA),
                 "required": ids,
                 "additionalProperties": False,
             },

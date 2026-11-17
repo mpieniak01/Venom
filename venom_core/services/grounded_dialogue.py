@@ -18,7 +18,10 @@ from decimal import Decimal
 from typing import Protocol
 
 from venom_core.services.grounded_calculator import CalculationError, calculate
-from venom_core.services.grounded_presentation import rounded_value
+from venom_core.services.grounded_presentation import (
+    clean_bookkeeping_spacing,
+    rounded_value,
+)
 
 MAX_SOURCE_CHARS = 32_000
 MAX_TOTAL_SOURCE_CHARS = 64_000
@@ -406,7 +409,7 @@ def strip_public_bookkeeping(prose: str, source_versions: dict[str, str]) -> str
     )
     if cleaned == prose:
         return prose
-    return re.sub(r"[ \t]{2,}", " ", re.sub(r"[ \t]+([.,!?])", r"\1", cleaned)).strip()
+    return clean_bookkeeping_spacing(cleaned)
 
 
 @dataclass(frozen=True)
@@ -416,7 +419,7 @@ class SourceQuote:
     quote: str
 
 
-_DOUBLE_QUOTES = str.maketrans({mark: '"' for mark in "„“”«»"})
+_DOUBLE_QUOTES = str.maketrans(dict.fromkeys("„“”«»", '"'))
 _PUBLIC_CARD = re.compile(r"\[(?P<name>[\w.-]{1,64})(?:@[\w.-]+)?\]")
 _PUBLIC_CARD_REFERENCE = re.compile(
     r"\b(?:według|zgodnie\s+z|na\s+podstawie|karta|karty|karcie|kartą|dokument|źródło)"

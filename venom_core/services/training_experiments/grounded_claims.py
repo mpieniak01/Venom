@@ -65,10 +65,10 @@ def validate_claim_rubrics(specs: dict, cases: list[dict]) -> None:
     for case in cases:
         rubric = _Rubric.model_validate(specs[case["record_id"]])
         expected = {item["id"]: item["kind"] for item in case["criteria"]}
-        observed = {key: "content" for key in rubric.claims}
+        observed = dict.fromkeys(rubric.claims, "content")
         if rubric.format.keys() & observed.keys():
             raise ValueError("grounded_claims_criteria_invalid")
-        observed.update({key: "format" for key in rubric.format})
+        observed.update(dict.fromkeys(rubric.format, "format"))
         if observed != expected:
             raise ValueError("grounded_claims_criteria_invalid")
 

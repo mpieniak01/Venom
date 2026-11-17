@@ -60,6 +60,17 @@ def rounded_value(value: str, places: int) -> str:
         )
 
 
+def clean_bookkeeping_spacing(text: str) -> str:
+    """Clean spacing left by removed citation metadata."""
+
+    def replace_run(match: re.Match[str]) -> str:
+        if text.startswith((".", ",", "!", "?"), match.end()):
+            return ""
+        return " " if len(match[0]) > 1 else match[0]
+
+    return re.sub(r"[ 	]+", replace_run, text).strip()
+
+
 def normalize_claim(value: str, unit: str) -> str:
     """Normalize a lone decimal and an optional redundant, matching unit."""
     separation = r"\s*" if unit == "%" else r"\s+"

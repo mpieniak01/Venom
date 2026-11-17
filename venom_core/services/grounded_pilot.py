@@ -52,6 +52,7 @@ from venom_core.services.grounded_dialogue import (
 )
 from venom_core.services.grounded_presentation import (
     ROUNDING_MODE,
+    clean_bookkeeping_spacing,
     normalize_claim,
     requested_precision,
     rounded_value,
@@ -249,7 +250,7 @@ def _percentage_outputs(message: str) -> set[str]:
     # Match the requested quantity, not every percentage mentioned in history.
     for match in re.finditer(r"\b(?:procent|udział)\s+([^.!?;\n]+)", message.lower()):
         subject = re.split(
-            r"\s*(?:\bzaokrąglon\w*|\bpo (?:zmianie|korekcie)|\bdo (?:[0-9]+|jednego|dwóch|trzech|czterech|pięciu|sześciu) miejsc|\bi (?:podaj|oblicz|policz))\b",
+            r"(?:\bzaokrąglon\w*|\bpo (?:zmianie|korekcie)|\bdo (?:[0-9]+|jednego|dwóch|trzech|czterech|pięciu|sześciu) miejsc|\bi (?:podaj|oblicz|policz))\b",
             match[1],
             maxsplit=1,
         )[0].strip()
@@ -289,7 +290,7 @@ _PRICE_QUESTION = re.compile(
     re.IGNORECASE,
 )
 _PRICE_RESULT = re.compile(
-    r"(?:cena|koszt|opłata|kwota|stawka|cennik)(?:\s+(.+))?", re.IGNORECASE
+    r"(?:cena|koszt|opłata|kwota|stawka|cennik)(?:\s+(\S[^\n]*))?", re.IGNORECASE
 )
 
 
@@ -297,7 +298,12 @@ def _explicit_mean(message: str) -> Calculation | None:
     match = _MEAN_REQUEST.fullmatch(message)
     if match is None:
         return None
-    operands = re.split(r",\s+|\s+i\s+", match["numbers"], flags=re.IGNORECASE)
+    operands = [
+        item.strip()
+        for item in re.split(
+            r",(?=\s)|(?<=\s)i(?=\s)", match["numbers"], flags=re.IGNORECASE
+        )
+    ]
     addends = "+".join(f"({item.replace(',', '.')})" for item in operands)
     expression = f"({addends})/{len(operands)}"
     if len(expression) > MAX_EXPRESSION_CHARS:
@@ -341,7 +347,7 @@ def _explicit_length_conversion(message: str) -> Calculation | None:
 
 
 _SPEED_REFERENCE = re.compile(
-    r"\b(?:przelicz\w*|przeliczenie)\b[^.!?]*\bpoprzedni(?:ego)?\s+wynik(?:u)?\b",
+    r"\bprzelicz\w*\b[^.!?]*\bpoprzedni(?:ego)?\s+wynik(?:u)?\b",
     re.IGNORECASE,
 )
 _SPEED_OUTPUT = re.compile(r"\b(?:w|na)\s+(km/h|m/s)\b", re.IGNORECASE)
@@ -514,19 +520,23 @@ def _price_result(label: str, subject: str) -> bool:
     )
 
 
-_LOCATION_QUESTION = re.compile(
-    r"\bgdzie\b[^.!?]*?\b(?:jest|będzie|odbywa\s+się)\s+([^.!?]+?)(?:\s+tego\s+dnia)?[.!?]?\s*$",
-    re.IGNORECASE,
-)
-_LOCATION_RESULT = re.compile(r"(?:miejsce|lokalizacja|adres)\s+(.+)")
+_LOCATION_QUESTION = re.compile(r"\bgdzie\b", re.IGNORECASE)
+_LOCATION_VERB = re.compile(r"\b(?:jest|będzie|odbywa\s+się)\s+", re.IGNORECASE)
+_LOCATION_RESULT = re.compile(r"(?:miejsce|lokalizacja|adres)\s+(\S[^\n]*)")
+_LOCATION_DAY = re.compile(r"(?<=\s)tego\s+dnia$", re.IGNORECASE)
 
 
 def _source_location_inputs(message: str, missing: list[str]) -> list[str]:
     """A place requested from a complete card is an output, as a price is."""
-    question = _LOCATION_QUESTION.search(message)
-    if question is None:
+    text = message.rstrip()
+    if text.endswith((".", "!", "?")):
+        text = text[:-1]
+    sentence = re.split(r"[.!?]", text)[-1]
+    question = _LOCATION_QUESTION.search(sentence)
+    verb = _LOCATION_VERB.search(sentence, question.end()) if question else None
+    if verb is None or not (reference := sentence[verb.end() :].strip()):
         return missing
-    subject = _price_subject(question[1])
+    subject = _price_subject(_LOCATION_DAY.sub("", reference))
     return [
         item
         for item in missing
@@ -609,7 +619,7 @@ _VOLUME_ITEM = re.compile(
     rf"({_STATE_NUMBER})\s+(ml|l|g|kg)\s+w(?:e)?\s+(?:lokalizacji\s+)?([\w-]+)",
     re.IGNORECASE,
 )
-_CATEGORY_ANCHOR = re.compile(r"^.+?\bwpisz:\s*(.+)$", re.IGNORECASE)
+_CATEGORY_ANCHOR = re.compile(r"\bwpisz:", re.IGNORECASE)
 _CATEGORY_ITEM = re.compile(r"kategoria\s+([\w-]+)\s+ma\s+([0-9]{1,6})", re.IGNORECASE)
 _STOCK_COUNT = re.compile(
     r"^(?:w\s+[\w-]+\s+)?są\s+(\d{1,6})\s+(przesyłek|paczek|elementów|sztuk)\s+"
@@ -656,9 +666,7 @@ _STOCK_QUERY = re.compile(
     r"chcę\s+(?:teraz\s+)?sumę\b|(?:w\s+wypisie|na\s+tablicę)\s+[^.?!]*\bpodaj\b)",
     re.IGNORECASE,
 )
-_STOCK_TOTAL = re.compile(
-    r"\b(?:sum[ęay]|łącznie|łączn\w*|razem|zapas\s+po)\b", re.IGNORECASE
-)
+_STOCK_TOTAL = re.compile(r"\b(?:sum[ęay]|łączn\w*|razem|zapas\s+po)\b", re.IGNORECASE)
 _STOCK_REMAIN = re.compile(
     r"\bile\s+(?:(?P<category>[\w-]+)\s+)?(?:zostało|pozostało)"
     r"(?:\s+w(?:e)?\s+(?:sam(?:ej|ym)\s+)?(?P<location>[\w-]+))?",
@@ -716,10 +724,13 @@ def _stock_snapshot(
 ) -> tuple[str, str, dict[str, _StockValue]] | None:
     volume = _STOCK_VOLUME.fullmatch(message)
     count = _STOCK_COUNT.fullmatch(message)
-    categories = _CATEGORY_ANCHOR.fullmatch(message)
+    category_anchor = (
+        _CATEGORY_ANCHOR.search(message, 1) if "\n" not in message else None
+    )
+    categories = message[category_anchor.end() :].lstrip() if category_anchor else ""
     if volume:
-        parts = re.split(r",\s+(?=[0-9])|\s+i\s+", volume[1])
-        amounts = [_VOLUME_ITEM.fullmatch(part) for part in parts]
+        parts = re.split(r",(?=\s+[0-9])|(?<=\s)i(?=\s)", volume[1])
+        amounts = [_VOLUME_ITEM.fullmatch(part.strip()) for part in parts]
         if len(amounts) < 2 or not all(amounts):
             return None
         rows = [(m[1], m[2].lower(), m[3]) for m in amounts if m]
@@ -731,8 +742,8 @@ def _stock_snapshot(
         rows = [(count[1], "", count[3]), (count[4], "", count[5])]
         unit, noun = "", count[2].lower()
     elif categories:
-        parts = re.split(r"\s*,\s*|\s+i\s+", categories[1])
-        counts = [_CATEGORY_ITEM.fullmatch(part) for part in parts]
+        parts = re.split(r",|(?<=\s)i(?=\s)", categories)
+        counts = [_CATEGORY_ITEM.fullmatch(part.strip()) for part in parts]
         if len(counts) < 2 or not all(counts):
             return None
         rows = [(m[2], "", m[1]) for m in counts if m]
@@ -1106,8 +1117,7 @@ def _public_prose(
         cleaned = re.sub(rf"(?<![\w-]){re.escape(ident)}(?![\w-])", "", cleaned)
     if cleaned == prose:
         return prose
-    cleaned = re.sub(r"[ \t]+([.,!?])", r"\1", cleaned)
-    return re.sub(r"[ \t]{2,}", " ", cleaned).strip()
+    return clean_bookkeeping_spacing(cleaned)
 
 
 def _cite_sources(prose: str, quotes: list[Quote]) -> str:
@@ -1325,10 +1335,10 @@ _GATHERING_DETAILS = re.compile(
 )
 _CLOCK_VALUE = re.compile(r"\b(?:[01]?\d|2[0-3]):[0-5]\d\b")
 _GATHERING_PLACE = re.compile(
-    r"zbiórka\s+(?:tego dnia\s+)?(?:odbywa się|jest|będzie)\s+(?:przy|w|we|na|obok|przed|za)\s+[^0-9.!?\n]+",
+    r"zbiórka\s+(?:tego dnia\s+)?(?:odbywa się|jest|będzie)\s+(?:przy|we|w|na|obok|przed|za)\s++[^0-9.!?\n]+",
     re.IGNORECASE,
 )
-_PUBLIC_CARD_AT_END = re.compile(r"\s*(\[[A-Za-z][\w-]{0,63}\])\.?\s*$")
+_PUBLIC_CARD_AT_END = re.compile(r"(\[[A-Za-z][\w-]{0,63}\])\.?$")
 
 
 _DAYS = {
@@ -1793,8 +1803,13 @@ def plain_pilot_recap(message: str, focused: tuple[dict[str, str], ...]) -> str 
         _PUBLIC_CARD_AT_END.search(schedule),
         _PUBLIC_CARD_AT_END.search(gathering),
     )
-    schedule = _PUBLIC_CARD_AT_END.sub("", schedule).rstrip(". ")
-    gathering = _PUBLIC_CARD_AT_END.sub("", gathering).rstrip(". ")
+    schedule_match, gathering_match = citation_matches
+    if schedule_match:
+        schedule = schedule[: schedule_match.start()].rstrip()
+    if gathering_match:
+        gathering = gathering[: gathering_match.start()].rstrip()
+    schedule = schedule.rstrip(". ")
+    gathering = gathering.rstrip(". ")
     all_times = set(_CLOCK_VALUE.findall(schedule))
     # Keep an intact sentence covering all times. Later repetition of the same
     # times can be omitted. Additional hours make this rendering ambiguous.

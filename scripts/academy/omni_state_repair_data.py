@@ -11,6 +11,9 @@ from scripts.academy.omni_pl_chat_data import (
     write_jsonl,
 )
 from scripts.academy.omni_pl_chat_evaluate import validate_dev_cases
+from venom_core.services.training_experiments.grounded_claims import (
+    validate_claim_rubrics,
+)
 
 SYSTEM = (
     "Odpowiadaj po polsku, krótko. Zachowuj pola nieobjęte korektą. "
@@ -92,6 +95,16 @@ def trajectory(spec: dict, accepted: bool) -> list[dict]:
             "task": "state_after_source",
         }
     )
+    expected_states = [
+        spec["state"].copy(),
+        {**spec["state"], "osoba": spec["new_person"]},
+        state.copy(),
+        {"miejsce": None},
+        {"osoba": spec["new_person"], "miejsce": None},
+        state.copy(),
+    ]
+    for step, expected in zip(steps, expected_states, strict=True):
+        step["expected_fields"] = expected
     if spec["split"] == "dev":
         prompts = [
             f"Rejestr roboczy: {_text(spec['state'])} Wypisz wszystkie aktualne pola.",
@@ -167,12 +180,18 @@ def compile_specs(specs: list[dict], revision: str) -> tuple[list[dict], list[di
                             else messages,
                             "dialogue": {"id": ident, "turn_index": index},
                             "max_new_tokens": 256,
+                            "expected_fields": step["expected_fields"],
                             "criteria": [
-                                {
-                                    "id": "state",
-                                    "kind": "content",
-                                    "description": f"Obowiązujący wynik: {step['answer']} Nie dodaje sprzecznej wartości.",
-                                },
+                                *[
+                                    {
+                                        "id": f"fact-{number}",
+                                        "kind": "content",
+                                        "description": f"Pole {field}: {value if value is not None else 'brak danych w karcie'}. Bez sprzecznej wartości.",
+                                    }
+                                    for number, (field, value) in enumerate(
+                                        step["expected_fields"].items(), 1
+                                    )
+                                ],
                                 {
                                     "id": "short",
                                     "kind": "format",
@@ -238,6 +257,25 @@ def build(spec_path: Path, replay_path: Path, output: Path) -> dict:
     if len(train) > 2048:
         raise ValueError("training records exceed the bounded recipe contract")
     validate_splits(train, dev)
+    rubrics = {
+        row["record_id"]: {
+            "claims": {
+                f"fact-{number}": {
+                    "field_aliases": [field],
+                    "kind": "missing" if value is None else "value",
+                    **({"value_aliases": [value]} if value is not None else {}),
+                }
+                for number, (field, value) in enumerate(
+                    row["expected_fields"].items(), 1
+                )
+            },
+            "format": {
+                "short": "bare_value" if row["task"] == "source_missing" else "labeled"
+            },
+        }
+        for row in dev
+    }
+    validate_claim_rubrics(rubrics, dev)
     output.mkdir(parents=True, exist_ok=False)
     write_jsonl(output / "train.jsonl", train)
     write_jsonl(output / "dev.jsonl", dev)
@@ -249,6 +287,9 @@ def build(spec_path: Path, replay_path: Path, output: Path) -> dict:
         },
     }
     (output / "taxonomy.json").write_text(json.dumps(taxonomy, indent=2) + "\n")
+    (output / "dev.rubrics.json").write_text(
+        json.dumps({"cases": rubrics}, ensure_ascii=False, indent=2) + "\n"
+    )
     manifest = {
         "schema_version": 1,
         "start_ready": False,
@@ -271,7 +312,12 @@ def build(spec_path: Path, replay_path: Path, output: Path) -> dict:
         },
         "files": {
             name: sha256(output / name)
-            for name in ("train.jsonl", "dev.jsonl", "taxonomy.json")
+            for name in (
+                "train.jsonl",
+                "dev.jsonl",
+                "taxonomy.json",
+                "dev.rubrics.json",
+            )
         },
         "records": {"fresh": len(fresh), "replay": len(replay), "dev": len(dev)},
         "final_holdout_opened": False,

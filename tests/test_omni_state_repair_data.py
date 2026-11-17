@@ -6,6 +6,10 @@ import pytest
 
 from scripts.academy import omni_state_repair_data as data
 from scripts.academy.omni_pl_chat_audit import leakage_counts
+from venom_core.services.training_experiments.grounded_claims import (
+    format_grades,
+    validate_claim_rubrics,
+)
 
 
 def specimen(split="train", family="repair-fixture"):
@@ -131,6 +135,16 @@ def test_build_is_reproducible_unready_and_refuses_overwrite(tmp_path):
     assert "parent_not_selected" in a["blocking"]
     assert a["records"] == {"fresh": 9, "replay": 1, "dev": 12}
     assert a["files"] == {name: data.sha256(second / name) for name in a["files"]}
+    cases = data.read_jsonl(first / "dev.jsonl")
+    rubrics = json.loads((first / "dev.rubrics.json").read_text())["cases"]
+    validate_claim_rubrics(rubrics, cases)
+    full = rubrics["new-family-accepted-3"]
+    assert len(full["claims"]) == 4
+    assert full["claims"]["fact-1"]["value_aliases"] == ["Maks"]
+    assert full["claims"]["fact-4"]["value_aliases"] == ["51 zł"]
+    missing = rubrics["new-family-accepted-4"]
+    assert missing["claims"]["fact-1"]["kind"] == "missing"
+    assert format_grades(missing, "Brak danych.") == {"short": True}
     with pytest.raises(FileExistsError):
         data.build(spec_path, replay, first)
 
@@ -164,3 +178,12 @@ def test_cli_builds_private_package_without_model_or_training(
     )
     data.main()
     assert json.loads(capsys.readouterr().out)["start_ready"] is False
+
+
+def test_build_rejects_overlarge_recipe_before_writing(tmp_path, monkeypatch):
+    path = tmp_path / "spec.json"
+    path.write_text(json.dumps([specimen(), specimen("dev", "new-family")]))
+    monkeypatch.setattr(data, "import_replay", lambda _: [{}] * 2048)
+    with pytest.raises(ValueError, match="bounded recipe"):
+        data.build(path, tmp_path / "unused", tmp_path / "out")
+    assert not (tmp_path / "out").exists()

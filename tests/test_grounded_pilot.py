@@ -68,6 +68,12 @@ class Model:
                 "missing": ["liczba biletów"] if self.mode == "clarify" else [],
             },
             "source_inputs": {"missing": data.get("reported_missing", [])},
+            "input_roles": {
+                "items": [
+                    {"label": label, "role": "input", "requested_output_quote": ""}
+                    for label in data.get("reported_missing", [])
+                ]
+            },
             "plan": {
                 "calculations": [
                     {
@@ -335,13 +341,21 @@ def test_source_fact_skips_arithmetic_even_when_document_has_numbers():
         required=Requirements(sources=True),
     )
     assert result.text == "Bilet kosztuje 30 zł. [price]"
-    assert [phase for phase, _ in model.calls] == ["source_query", "assess", "draft"]
+    assert [phase for phase, _ in model.calls] == [
+        "source_query",
+        "assess",
+        "draft",
+    ]
 
 
 def test_assessment_changes_after_user_supplies_missing_input():
     model, reviewer = Model("clarify"), Reviewer()
     first = run(model=model, reviewer=reviewer)
-    assert [phase for phase, _ in model.calls] == ["source_query", "assess", "draft"]
+    assert [phase for phase, _ in model.calls] == [
+        "source_query",
+        "assess",
+        "draft",
+    ]
     model.mode = "answer"
     second = run_pilot_turn(
         "Jeden bilet. Przelicz.",
@@ -904,6 +918,13 @@ def test_speed_conversion_discards_only_the_requested_result(missing):
             return {
                 "current_state": "36 m i 30 s.",
                 "missing": ["prędkość w km/h", *missing],
+            }
+        if phase == "input_roles":
+            return {
+                "items": [
+                    {"label": label, "role": "input", "requested_output_quote": ""}
+                    for label in data["reported_missing"]
+                ]
             }
         if phase == "plan":
             return {

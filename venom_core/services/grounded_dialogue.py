@@ -97,7 +97,7 @@ _COMPUTE_IN = re.compile(
     re.IGNORECASE,
 )
 _PERCENT_REQUEST = re.compile(
-    r"\b(?:(?:podaj|oblicz|policz|wyznacz)\s+(?:(?:kalkulatorem|aktualny|obecny|nowy|dokładny)\s+){0,3}procent|jaki\s+procent)\b",
+    r"\b(?:(?:podaj|oblicz|policz|wyznacz)\s+(?:(?:kalkulatorem|aktualny|obecny|nowy|dokładny)\s+){0,3}procent|jaki\s+procent|(?:zapisz|wyraź|podaj)\s+(?:wynik\s+)?jako\s+procent)\b",
     re.IGNORECASE,
 )
 _RESULT_IN_PROSE = re.compile(

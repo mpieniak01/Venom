@@ -28,6 +28,7 @@ class Model:
         claim="57,14%",
         prose="Wynik to 57,14%.",
         missing=(),
+        unit="%",
     ):
         self.expression, self.claim, self.prose, self.missing = (
             expression,
@@ -35,10 +36,18 @@ class Model:
             prose,
             list(missing),
         )
+        self.unit = unit
         self.calls = []
 
     def __call__(self, phase, data, schema):
         self.calls.append((phase, data))
+        if phase == "input_roles":
+            return {
+                "items": [
+                    {"label": label, "role": "input", "requested_output_quote": ""}
+                    for label in data["reported_missing"]
+                ]
+            }
         if phase == "assess":
             return {
                 "current_state": "Składniki podano wcześniej.",
@@ -50,7 +59,7 @@ class Model:
                     {
                         "calculation_id": "total",
                         "expression": self.expression,
-                        "unit": "%",
+                        "unit": self.unit,
                     }
                 ]
             }
@@ -61,7 +70,7 @@ class Model:
             "sources": [],
             "calculations": []
             if clarify
-            else [{"calculation_id": "total", "value": self.claim, "unit": "%"}],
+            else [{"calculation_id": "total", "value": self.claim, "unit": self.unit}],
         }
 
 
@@ -180,7 +189,11 @@ def test_requested_total_is_not_an_input_but_real_missing_fields_remain(
     missing, remaining
 ):
     model = Model(
-        "18+5*7+5", "58", "Ile kosztuje dojazd?" if remaining else "58%.", missing
+        "18+5*7+5",
+        "58",
+        "Ile kosztuje dojazd?" if remaining else "58 zł.",
+        missing,
+        unit="zł",
     )
     _, reviewer = invoke(
         "Policz kalkulatorem pełen koszt po korekcie i podaj kwotę.", model
@@ -263,3 +276,134 @@ def test_ratio_unit_contract_never_invents_a_count_to_percentage_conversion():
                 input_unit="punktów",
             )
         )
+
+
+def test_output_paraphrase_is_rechecked_against_current_request_before_clarification():
+    message = "Policz kalkulatorem, jaki procent wszystkich modeli stanowią gliniane. Podaj procent do trzech miejsc po przecinku."
+
+    class RolesModel(Model):
+        def __call__(self, phase, data, schema):
+            if phase == "input_roles":
+                self.calls.append((phase, data))
+                assert "Nie zakładaj wartości wejścia" in data["instruction"]
+                return {
+                    "items": [
+                        {
+                            "label": "procent glinianych modeli",
+                            "role": "output",
+                            "requested_output_quote": "jaki procent wszystkich modeli stanowią gliniane",
+                        }
+                    ]
+                }
+            return super().__call__(phase, data, schema)
+
+    model = RolesModel(
+        "1/6*100", "16.667", "Udział wynosi 16,667%.", ["procent glinianych modeli"]
+    )
+    _, reviewer = invoke(message, model)
+    material = reviewer.materials[0]
+    assert material["plan"]["mode"] == "answer"
+    assert material["input_roles"]["items"][0]["role"] == "output"
+    assert compact_packet(material)["input_roles"] == material["input_roles"]
+    assert dict(model.calls)["input_roles"]["prior_users"] == ()
+
+
+@pytest.mark.parametrize(
+    "items,error",
+    [
+        (
+            [
+                {
+                    "label": "procent modeli",
+                    "role": "output",
+                    "requested_output_quote": "nie ma tego w prośbie",
+                }
+            ],
+            "unbound",
+        ),
+        (
+            [
+                {
+                    "label": "inne pole",
+                    "role": "output",
+                    "requested_output_quote": "Podaj procent",
+                }
+            ],
+            "coverage_invalid",
+        ),
+        (
+            [
+                {
+                    "label": "procent modeli",
+                    "role": "output",
+                    "requested_output_quote": "",
+                }
+            ],
+            "unbound",
+        ),
+    ],
+)
+def test_input_recheck_cannot_remove_an_unbound_or_different_input(items, error):
+    class RolesModel(Model):
+        def __call__(self, phase, data, schema):
+            return (
+                {"items": items}
+                if phase == "input_roles"
+                else super().__call__(phase, data, schema)
+            )
+
+    reviewer = Reviewer()
+    with pytest.raises(EvidenceError, match="pilot_input_role_" + error):
+        invoke(
+            "Podaj procent tych egzemplarzy.",
+            RolesModel(missing=["procent modeli"]),
+            reviewer,
+        )
+    assert not reviewer.materials
+
+
+def test_uncertain_role_preserves_real_input_instead_of_guessing_it():
+    class RolesModel(Model):
+        def __call__(self, phase, data, schema):
+            if phase == "input_roles":
+                return {
+                    "items": [
+                        {
+                            "label": "stawka ubytku",
+                            "role": "uncertain",
+                            "requested_output_quote": "",
+                        }
+                    ]
+                }
+            return super().__call__(phase, data, schema)
+
+    _, reviewer = invoke(
+        "Podaj procent pozostałych modeli.",
+        RolesModel(prose="Jaka jest stawka ubytku?", missing=["stawka ubytku"]),
+    )
+    assert reviewer.materials[0]["plan"]["mode"] == "clarify"
+    assert reviewer.materials[0]["plan"]["missing"] == ["stawka ubytku"]
+
+
+def test_named_operands_never_enter_the_model_output_reclassification():
+    class GuardedModel(Model):
+        def __call__(self, phase, data, schema):
+            assert phase != "input_roles", (
+                "A quoted request is not proof an operand is a result."
+            )
+            return super().__call__(phase, data, schema)
+
+    _, reviewer = invoke(
+        "Policz kalkulatorem pełną kwotę po zmianie, łącznie z dojazdem.",
+        GuardedModel(prose="Jaka jest cena dojazdu?", missing=["dojazd"], unit="zł"),
+    )
+    assert reviewer.materials[0]["plan"]["missing"] == ["dojazd"]
+    assert not reviewer.materials[0]["evidence"]["calculations"]
+
+
+def test_percentage_unit_can_follow_the_rounding_instruction():
+    result, _ = invoke(
+        "Wynik zaokrąglij do trzech miejsc po przecinku i zapisz jako procent.",
+        Model("1/6*100", "16,667%", "Udział wynosi 16,667%."),
+    )
+    assert result.text == "Udział wynosi 16,667%."

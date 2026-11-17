@@ -167,6 +167,8 @@ def compact_packet(material: dict[str, Any]) -> dict[str, Any]:
         ],
         "answer": material["draft"]["prose"],
     }
+    if "input_roles" in material:
+        packet["input_roles"] = material["input_roles"]
     if "result_precision" in material:
         packet["result_precision"] = material["result_precision"]
     if output and requests_unitless_result(material["message"]):

@@ -90,6 +90,44 @@ class InputAssessment(StrictModel):
     missing: MissingLabels
 
 
+INPUT_ROLES_GUIDANCE = (
+    "Sprawdź rolę KAŻDEJ zgłoszonej brakującej wielkości w bieżącym zadaniu. "
+    "input to operand, którego nie podano w wiążących danych; output to wynik, "
+    "który dopiero mamy obliczyć, także gdy nazwano go innymi słowami. "
+    "Nieznany procent pozostałej grupy jest wynikiem, ale nieznana stawka ubytku "
+    "używana do wyliczenia nowych liczebności jest wejściem. "
+    "Nie zakładaj wartości wejścia. uncertain zachowuje potrzebę dopytania. "
+    "Dla output zacytuj dokładny fragment bieżącego request wskazujący tę szukaną wielkość. "
+    "Zwróć każde reported_missing dokładnie raz, bez dodawania nowych etykiet."
+)
+
+
+class InputRole(StrictModel):
+    label: StrictStr = Field(min_length=1, max_length=160)
+    role: Literal["input", "output", "uncertain"]
+    requested_output_quote: StrictStr = Field(max_length=500)
+
+
+class InputRoles(StrictModel):
+    items: list[InputRole] = Field(min_length=1, max_length=8)
+
+
+def _retain_input_roles(
+    missing: list[str], assessment: InputRoles, message: str
+) -> list[str]:
+    labels = [item.label for item in assessment.items]
+    if len(labels) != len(set(labels)) or set(labels) != set(missing):
+        raise EvidenceError("pilot_input_role_coverage_invalid")
+    outputs = set()
+    for item in assessment.items:
+        if item.role == "output":
+            quote = item.requested_output_quote.strip()
+            if not quote or quote not in message:
+                raise EvidenceError("pilot_input_role_unbound")
+            outputs.add(item.label)
+    return [label for label in missing if label not in outputs]
+
+
 class Calculation(StrictModel):
     calculation_id: StrictStr = Field(min_length=1, max_length=80)
     expression: StrictStr = Field(
@@ -797,6 +835,7 @@ def _stock_calculation(
     if not snapshots or not query:
         return None
     values = snapshots[-1]
+    selected: tuple[_StockValue, ...]
     count = _STOCK_REMAIN.search(query)
     if count:
         if _UPDATED_LOCATION.search(query):
@@ -1936,6 +1975,35 @@ def run_pilot_turn(
             raise EvidenceError("pilot_source_input_unlisted")
         missing = source_inputs.missing
         audit.append({"phase": "source_inputs", "data": source_inputs.model_dump()})
+    input_roles = None
+    # A verifier may reconsider a named percentage output, never delete an
+    # arbitrary operand such as a transport fee just because it is in the request.
+    role_candidates = (
+        [
+            label
+            for label in missing
+            if re.match(r"^(?:procent|udział)\b", label.strip(), re.IGNORECASE)
+        ]
+        if required.calculation and explicit_result_unit(message) == "%"
+        else []
+    )
+    if role_candidates:
+        input_roles = _call(
+            model,
+            "input_roles",
+            {
+                "instruction": INPUT_ROLES_GUIDANCE,
+                "reported_missing": role_candidates,
+                "request": message,
+                "prior_users": prior_users,
+                "sources": model_sources,
+            },
+            InputRoles,
+        )
+        retained = _retain_input_roles(role_candidates, input_roles, message)
+        removed = set(role_candidates) - set(retained)
+        missing = [label for label in missing if label not in removed]
+        audit.append({"phase": "input_roles", "data": input_roles.model_dump()})
     if resolved or missing != assessment.missing:
         audit.append(
             {"phase": "resolved_inputs", "data": resolved | {"missing": missing}}
@@ -2109,6 +2177,9 @@ def run_pilot_turn(
             draft_audit["data"] = draft.model_dump()
     _current(backend, documents)
     material = request | {
+        **(
+            {"input_roles": input_roles.model_dump()} if input_roles is not None else {}
+        ),
         "requirements": asdict(required),
         **(
             {"result_precision": resolved["result_precision"]}

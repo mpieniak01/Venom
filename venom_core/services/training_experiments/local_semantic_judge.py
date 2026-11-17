@@ -465,6 +465,45 @@ def _decode(response: dict, ids: list[str], model: str) -> _Decision | None:
     return result if result.atoms.keys() == set(ids) else None
 
 
+def _review_request(model: str, spec: dict, case: dict, answer: dict) -> dict | None:
+    if (
+        answer.get("finish") != "stop"
+        or answer.get("error") is not None
+        or not isinstance(answer.get("text"), str)
+    ):
+        return None
+    material = _material(spec, case, answer)
+    ids = [criterion["id"] for criterion in material["criteria"]]
+    request = _request(model, material, ids)
+    return (
+        request
+        if len(request["messages"][1]["content"].encode()) <= _MAX_PACKET_BYTES
+        else None
+    )
+
+
+def verify_review_receipt(
+    pin: Qualification, spec: dict, case: dict, answer: dict, grade: dict
+) -> None:
+    """Verify a saved call against this exact input without calling the model."""
+    request = _review_request(pin.model, spec, case, answer)
+    raw = grade.get("model_review_call")
+    decision = None
+    if request is None:
+        if raw is not None:
+            raise ValueError("experiment_checkpoint_baseline_receipt_changed")
+    else:
+        if not isinstance(raw, dict) or raw.get("request_sha256") != stable_hash(
+            request
+        ):
+            raise ValueError("experiment_checkpoint_baseline_request_changed")
+        ids = list(request["format"]["properties"]["atoms"]["properties"])
+        decision = _decode(raw.get("response", {}), ids, pin.model)
+    expected = _grade(decision, claim_rubric(spec), case, answer)
+    if any(grade.get(key) != value for key, value in expected.items()):
+        raise ValueError("experiment_checkpoint_baseline_receipt_changed")
+
+
 def _review_answer(
     client: httpx.Client,
     pin: Qualification,
@@ -476,18 +515,12 @@ def _review_answer(
     rubric = claim_rubric(spec)
     decision = None
     raw = None
-    if (
-        answer.get("finish") == "stop"
-        and answer.get("error") is None
-        and isinstance(answer.get("text"), str)
-    ):
-        material = _material(spec, case, answer)
-        ids = [criterion["id"] for criterion in material["criteria"]]
-        request = _request(pin.model, material, ids)
-        if len(request["messages"][1]["content"].encode()) <= _MAX_PACKET_BYTES:
-            response = _api(client, "chat", request, timeout=remaining())
-            raw = {"request_sha256": stable_hash(request), "response": response}
-            decision = _decode(response, ids, pin.model)
+    request = _review_request(pin.model, spec, case, answer)
+    if request is not None:
+        ids = list(request["format"]["properties"]["atoms"]["properties"])
+        response = _api(client, "chat", request, timeout=remaining())
+        raw = {"request_sha256": stable_hash(request), "response": response}
+        decision = _decode(response, ids, pin.model)
     return {**_grade(decision, rubric, case, answer), "model_review_call": raw}
 
 

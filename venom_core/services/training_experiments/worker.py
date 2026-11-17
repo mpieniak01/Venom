@@ -42,6 +42,7 @@ from .checkpoint_evaluation import (
     RESULT_SEAL,
     bind_steps,
     publish_pairs,
+    reuse_baseline_reviews,
     seal_generation,
 )
 from .data_audit import verify_audit_preflight
@@ -344,7 +345,9 @@ class Worker:
         for step in steps:
             self.check_budget()
             generation, dev = self.service._review_inputs(state, checkpoint_step=step)
-            judgments = self._checkpoint_judgments(generation, dev, step, calibration)
+            judgments = self._checkpoint_judgments(
+                generation, dev, step, calibration, state=state
+            )
             with self.service.run_lock(self.run_id):
                 self.check_budget()
                 current = self.service.store.read(self.run_id)
@@ -353,7 +356,13 @@ class Worker:
                 self.service._commit(current, judgments, checkpoint_step=step)
 
     def _checkpoint_judgments(
-        self, generation: Path, dev: Path, step: int | None, calibration: dict
+        self,
+        generation: Path,
+        dev: Path,
+        step: int | None,
+        calibration: dict,
+        *,
+        state: dict,
     ) -> list[dict]:
         verdict = generation / "judgments.json"
         # The run service verifies the saved judgments against the sealed pair,
@@ -364,12 +373,26 @@ class Worker:
             return read_json(verdict)
         bundle = review_data(generation, dev)
         if calibration["judge"] == local_semantic_judge.JUDGE:
-            return local_semantic_judge.review_bundle(
+            reused = []
+            if step is not None:
+                bundle, reused = reuse_baseline_reviews(
+                    self.directory,
+                    step,
+                    bundle,
+                    calibration,
+                    steps=state["checkpoint_steps"],
+                    manifest_sha256=state["manifest_sha256"],
+                )
+            fresh = local_semantic_judge.review_bundle(
                 calibration,
                 bundle,
                 self.run_id,
                 self.deadline - time.monotonic(),
                 check=self.check_budget,
+            )
+            return sorted(
+                [*reused, *fresh],
+                key=lambda grade: (grade["record_id"], grade["label"]),
             )
         return calibrated_judgments(calibration, bundle)
 

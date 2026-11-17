@@ -178,11 +178,14 @@ def qualification(calibration: dict) -> JudgePin:
     if judge in {JUDGE_V4, JUDGE_V5, JUDGE_V6}:
         from .semantic_judge_v4 import verify_audit
 
-        model = {
+        models: dict[
+            str, type[QualificationV4] | type[QualificationV5] | type[QualificationV6]
+        ] = {
             JUDGE_V4: QualificationV4,
             JUDGE_V5: QualificationV5,
             JUDGE_V6: QualificationV6,
-        }[judge]
+        }
+        model = models[judge]
         current = model.model_validate(calibration.get("judge_qualification"))
         if (
             current.prompt_sha256
@@ -477,12 +480,16 @@ def _api(
 
 
 def invoke_request(
-    client: httpx.Client, request: dict, remaining: Callable[[], float]
+    client: httpx.Client,
+    request: dict,
+    remaining: Callable[[], float],
+    *,
+    progress: Callable[[dict], None] = lambda _value: None,
 ) -> dict:
     if request.get("protocol") == JUDGE_V6:
         from .semantic_judge_v6 import invoke
 
-        return invoke(client, request, remaining)
+        return invoke(client, request, remaining, progress=progress)
     return _api(client, "chat", request, timeout=remaining())
 
 
@@ -572,9 +579,9 @@ def _decode(
     request: dict | None = None,
 ) -> _Decision | None:
     if judge == JUDGE_V6:
-        from .semantic_judge_v6 import decode
+        from .semantic_judge_v6 import decode as decode_v6
 
-        return decode(response, ids, model, request=request)
+        return decode_v6(response, ids, model, request=request)
     if judge == JUDGE_V5:
         from .semantic_judge_v5 import decode
 

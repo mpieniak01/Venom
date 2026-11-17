@@ -70,6 +70,33 @@ wyników zwykłej wyszukiwarki nie jest planem wydania.
 
 ## Bramka jakości
 
+Protokół `semantic-local-v6` wykonuje dwa osobne zapytania do tego samego
+przypiętego modelu: ocenę faktów v5 oraz kontrolę polaryzacji i wykonania
+instrukcji z materiału. Kontroler otrzymuje oryginalny materiał bez werdyktu
+pierwszej oceny. To rozdziela zadania, ale nie dowodzi niezależności błędów
+tego samego modelu.
+
+Kontroler cytuje aktualne źródła oraz pełne, mechanicznie wydzielone zdania
+kandydata. Wycięcie samej nazwy z zanegowanego zdania jest odrzucane.
+Sprzeczny fakt lub wykonanie instrukcji z materiału ma prawo weta; inne
+rozbieżności między ocenami dają nierozstrzygnięcie i blokują kwalifikację.
+Segmentacja zdań nie stanowi samodzielnej analizy językowej. Skuteczność
+całości musi potwierdzić osobny audyt.
+
+Audyt v6 wymaga 60 kontroli legacy, 48 rozwojowych i 32 dodatkowych przed
+otwarciem 24 odłożonych odpowiedzi ocenianych trzykrotnie. Łącznie są to
+212 decyzji i 424 odrębne wywołania. Zachowuje pełne requesty, odpowiedzi,
+tożsamość modelu, hashe kodu i kolejność obu etapów. Częściowy ślad jest
+zapisywany przed każdym wywołaniem i po nim; awaria drugiego nie usuwa
+dowodu pierwszego i nie powoduje automatycznego retry.
+
+Kod v6 nie oznacza uzyskanej kwalifikacji. Wymagany jest prawdziwy receipt
+całego mechanizmu, wskazany w środowisku procesu przez
+`VENOM_ACADEMY_JUDGE_V6_AUDIT_ROOT`. Receipt starszej wersji go nie zastępuje.
+Przygotowanie audytu dopuszcza limit do 3600 s z rezerwą cleanup 120 s;
+wersje v4/v5 zachowują dotychczasowy limit 1500 s. Testy na atrapach nie
+stanowią audytu rzeczywistego modelu.
+
 Wspólny zestaw obejmuje krótkie prośby i rozmowy z doprecyzowaniem. Dla
 każdego wariantu zapisujemy identyczną wersję danych, model bazowy, adapter,
 budżet tokenów i wyniki. Raport oddziela przypadki modelowe od tych, które

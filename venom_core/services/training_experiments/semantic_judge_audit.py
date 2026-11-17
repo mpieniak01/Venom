@@ -53,7 +53,10 @@ def _stage_controls(controls: Path, output: Path, intent: dict) -> None:
 def _copy_controls(controls: Path, output: Path, intent: dict) -> None:
     (output / "controls").mkdir(mode=0o700)
     (output / "judge-calls").mkdir(mode=0o700)
-    for name in sorted(verifier.FILES | {"frozen-manifest.json"}):
+    files = verifier.FILES | {"frozen-manifest.json"}
+    if "v6" in intent["implementation_sha256"]:
+        files |= {"extra/panel.json", "extra/gold.json"}
+    for name in sorted(files):
         source = controls / name
         if source.is_symlink() or not source.resolve().is_relative_to(controls):
             raise ValueError("experiment_judge_v4_controls_invalid")
@@ -181,7 +184,16 @@ def _collect(
             "started_at_ns": time.time_ns(),
             "started_monotonic_ns": time.monotonic_ns(),
         }
-        response = judge.invoke_request(client, request, remaining)
+
+        def save_partial(value):
+            atomic_json(
+                root / "judge-calls" / f"{index:03d}.partial.json",
+                {**provenance, "request": request, "response": value},
+            )
+
+        response = judge.invoke_request(
+            client, request, remaining, progress=save_partial
+        )
         provenance.update(
             finished_at_ns=time.time_ns(), finished_monotonic_ns=time.monotonic_ns()
         )

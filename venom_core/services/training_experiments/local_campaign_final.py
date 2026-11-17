@@ -205,14 +205,9 @@ def transition(state: dict) -> None:
     elif state["status"] in {"stopped", "blocked"}:
         incomplete(state, state.get("error") or f"campaign_{state['status']}")
     elif state["selected_run_id"] is None:
-        assessed = (
-            any(trial.get("result_sha256") for trial in state["trials"])
-            and all(
-                trial["status"] in {"succeeded", "skipped"} for trial in state["trials"]
-            )
-            and not state.get("quality_policy_error")
-        )
-        if assessed:
+        from .campaign import development_complete
+
+        if development_complete(state):
             finish(
                 state,
                 {
@@ -222,7 +217,7 @@ def transition(state: dict) -> None:
                 },
             )
         else:
-            incomplete(state, "campaign_final_candidate_missing")
+            incomplete(state, "campaign_development_incomplete")
     else:
         state.update(
             phase="qualification", status="qualifying", qualification_status="pending"

@@ -546,6 +546,32 @@ def _repeat_candidates(state: dict, trial: dict) -> list[dict]:
     ]
 
 
+def development_complete(state: dict) -> bool:
+    """A missing candidate is a quality decision only with complete development."""
+    trials = [trial for trial in state["trials"] if trial["status"] != "skipped"]
+    if not trials or state.get("quality_policy_error"):
+        return False
+    steps = state["plan"].get("checkpoint_steps")
+    guarded = state["plan"].get("quality_policy") is not None
+    for trial in trials:
+        if trial["status"] != "succeeded":
+            return False
+        rows = trial.get("checkpoint_evaluations", []) if steps is not None else [trial]
+        if steps is not None and (
+            len(rows) != len(steps) or {row.get("step") for row in rows} != set(steps)
+        ):
+            return False
+        if any(
+            row.get("status") != "succeeded"
+            or not row.get("result_sha256")
+            or guarded
+            and row.get("quality_guard", {}).get("status") not in {"passed", "rejected"}
+            for row in rows
+        ):
+            return False
+    return True
+
+
 def _confirm_repeat(state: dict) -> None:
     policy = state["plan"].get("extension", {})
     if not policy.get("repeat_best_recipe") or state["status"] not in {
@@ -582,7 +608,9 @@ def _confirm_repeat(state: dict) -> None:
             or decision.get("status") == "skipped"
             and state["status"] == "succeeded"
         )
-        if completed and state["status"] not in {"stopped", "blocked"}:
+        if not development_complete(state):
+            confirmation["reason"] = "campaign_development_incomplete"
+        elif completed and state["status"] not in {"stopped", "blocked"}:
             confirmation.update(
                 status="failed_quality", reason="campaign_repeat_failed_quality"
             )

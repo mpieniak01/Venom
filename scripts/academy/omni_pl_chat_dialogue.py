@@ -157,6 +157,31 @@ def _family_bootstrap(differences: list[int], groups: list[str]) -> dict:
     }
 
 
+def _dialogue_families(cases: list[dict], conversations: dict) -> dict:
+    families: dict[str, set[str]] = defaultdict(set)
+    decisions: dict[str, set[str]] = defaultdict(set)
+    for case in cases:
+        if "dialogue" not in case:
+            continue
+        ident = case["dialogue"]["id"]
+        families[case["group_id"]].add(ident)
+        if case.get("decision") in {"accepted", "rejected"}:
+            decisions[ident].add(case["decision"])
+    result = {}
+    for group, ids in families.items():
+        branches = {tuple(sorted(decisions[ident])) for ident in ids}
+        complete = len(ids) == 2 and branches == {("accepted",), ("rejected",)}
+        usable = all(conversations[ident]["all_turns_usable"] for ident in ids)
+        result[group] = {
+            "conversation_ids": sorted(ids),
+            "conversation_count": len(ids),
+            "contrast_pair_complete": complete,
+            "all_conversations_usable": usable,
+            "both_conversations_usable": complete and usable,
+        }
+    return result
+
+
 def grouped_scores(cases: list[dict], verdicts: dict, critical: dict) -> dict:
     """Summarize complete dialogues and contrast pairs after unblinding."""
     dialogues: dict[str, list[dict]] = defaultdict(list)
@@ -195,5 +220,9 @@ def grouped_scores(cases: list[dict], verdicts: dict, critical: dict) -> dict:
                 "both_passed": complete
                 and all(outcomes[c["record_id"]]["passed"] for c in members),
             }
-        result[role] = {"conversations": conversations, "contrast_pairs": pair_scores}
+        result[role] = {
+            "conversations": conversations,
+            "contrast_pairs": pair_scores,
+            "dialogue_families": _dialogue_families(cases, conversations),
+        }
     return result

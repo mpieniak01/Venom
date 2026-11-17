@@ -570,3 +570,36 @@ def test_dialogue_summary_preserves_pairs_and_requires_independent_open_chat_rev
         paired_delta([0], [1], [])
     with pytest.raises(ValueError, match="equal nonempty"):
         paired_delta([], [])
+
+
+def test_whole_dialogue_pair_requires_both_complete_branches():
+    from scripts.academy.omni_pl_chat_dialogue import grouped_scores
+
+    cases = [
+        {
+            "record_id": f"{branch}-{turn}",
+            "group_id": "paired-family",
+            "dialogue": {"id": branch, "turn_index": turn},
+            "decision": branch,
+            "chat_group": "K",
+        }
+        for branch in ("accepted", "rejected")
+        for turn in range(1, 5)
+    ]
+    verdicts = {
+        "candidate": {row["record_id"]: {"usable": 1, "passed": 1} for row in cases}
+    }
+    family = grouped_scores(cases, verdicts, {})["candidate"]["dialogue_families"][
+        "paired-family"
+    ]
+    assert family["contrast_pair_complete"] and family["both_conversations_usable"]
+    verdicts["candidate"]["rejected-3"]["usable"] = 0
+    family = grouped_scores(cases, verdicts, {})["candidate"]["dialogue_families"][
+        "paired-family"
+    ]
+    assert family["contrast_pair_complete"] and not family["both_conversations_usable"]
+    cases[0]["decision"] = "rejected"
+    family = grouped_scores(cases, verdicts, {})["candidate"]["dialogue_families"][
+        "paired-family"
+    ]
+    assert not family["contrast_pair_complete"]

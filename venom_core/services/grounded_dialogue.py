@@ -715,10 +715,12 @@ class GroundedTurn:
             raise EvidenceError("source_identity_mismatch")
         return references
 
-    def _read_document(self, ref: SourceRef) -> SourceDocument:
+    def _read_document(
+        self, ref: SourceRef, *, version_error: str = "source_version_changed"
+    ) -> SourceDocument:
         document = self.backend.read(ref)  # Search previews can never satisfy this.
         if document.ref != ref or self.backend.current_ref(ref.source_id) != ref:
-            raise EvidenceError("source_version_changed")
+            raise EvidenceError(version_error)
         if document.superseded:
             raise EvidenceError("source_superseded")
         if document.available:
@@ -811,36 +813,63 @@ class GroundedTurn:
         )
         return self._evidence
 
-    def _source_line(
-        self, claim: SourceQuote, documents: dict[str, SourceDocument]
-    ) -> str:
-        document = documents.get(claim.source_id)
-        if document is None or document.ref.version != claim.version:
-            raise EvidenceError("answer_source_unknown")
+    def _read_publication_document(self, ref: SourceRef) -> SourceDocument:
         try:
-            current_ref = self.backend.current_ref(claim.source_id)
+            document = self._read_document(ref, version_error="answer_source_stale")
         except (OSError, KeyError) as exc:
             raise EvidenceError("answer_source_unavailable") from exc
-        if current_ref != document.ref:
-            raise EvidenceError("answer_source_stale")
+        if not document.available:
+            raise EvidenceError("answer_source_unavailable")
+        return document
+
+    def _source_line(
+        self,
+        claim: SourceQuote,
+        documents: dict[str, SourceDocument],
+        fresh_documents: dict[str, SourceDocument] | None,
+    ) -> str:
+        source_id = claim.source_id
+        document = documents.get(source_id)
+        if document is None or document.ref.version != claim.version:
+            raise EvidenceError("answer_source_unknown")
+        if fresh_documents is not None:
+            if source_id not in fresh_documents:
+                fresh_documents[source_id] = self._read_publication_document(
+                    document.ref
+                )
+            document = fresh_documents[source_id]
         quote = literal_source_quote(document.text, claim.quote)
         return f"„{quote}” [{claim.source_id}@{claim.version}]"
 
+    def validate_draft(self, draft: AnswerDraft) -> None:
+        """Check the prepared claims before review without consuming the receipt."""
+        self._render_draft(draft, refresh_sources=False)
+
     def publish(self, draft: AnswerDraft) -> PublishedAnswer:
-        """Only exact source quotations and bound calculator values are certified."""
+        """Certify exact source quotations and calculator values for publication."""
+        answer = self._render_draft(draft, refresh_sources=True)
+        self._evidence = None
+        return answer
+
+    def _render_draft(
+        self, draft: AnswerDraft, *, refresh_sources: bool
+    ) -> PublishedAnswer:
         evidence = self._evidence
         if evidence is None or draft.evidence_id != evidence.evidence_id:
             raise EvidenceError("answer_evidence_stale")
         if draft.prose.strip():
             raise EvidenceError("answer_semantic_review_required")
         documents = {d.ref.source_id: d for d in evidence.sources}
-        calculations = {c.calculation_id: c for c in evidence.calculations}
+        fresh_documents: dict[str, SourceDocument] | None = (
+            {} if refresh_sources else None
+        )
         used_sources: set[str] = set()
+        calculations = {c.calculation_id: c for c in evidence.calculations}
         used_calculations: set[str] = set()
         lines: list[str] = []
         for claim in draft.claims:
             if isinstance(claim, SourceQuote):
-                lines.append(self._source_line(claim, documents))
+                lines.append(self._source_line(claim, documents, fresh_documents))
                 used_sources.add(claim.source_id)
             elif isinstance(claim, CalculationClaim):
                 lines.append(_calculation_line(claim, calculations))
@@ -855,9 +884,6 @@ class GroundedTurn:
             raise EvidenceError("answer_calculation_required")
         if not lines:
             raise EvidenceError("answer_empty")
-        self._evidence = (
-            None  # A finalized receipt cannot be replayed for another turn.
-        )
         return PublishedAnswer(evidence.evidence_id, "\n".join(lines))
 
 

@@ -142,9 +142,12 @@ def run(backend=None, model=None, reviewer=None, **kwargs):
 def test_complete_flow_reads_before_formula_and_calculates_before_draft():
     backend, model, reviewer = Sources(), Model(), Reviewer()
     trace = []
+    before_publication = []
+    reviewer.hook = lambda: before_publication.extend(backend.reads)
     result = run(backend, model, reviewer, trace=trace)
     assert result.text == "Po rabacie zapłacisz 24 zł. [price]"
-    assert len(backend.reads) == 2
+    assert before_publication == [backend.document.ref] * 2
+    assert backend.reads == [backend.document.ref] * 3
     assert model.calls[1][1]["sources"][0]["text"] == backend.document.text
     assert "sha256" not in model.calls[1][1]["sources"][0]["ref"]
     assert model.calls[3][1]["evidence"]["calculations"][0]["value"] == "24"
@@ -243,6 +246,27 @@ def test_changed_source_invalidates_planning_drafting_or_semantic_receipt(when):
         model.hook = lambda phase: backend.change() if phase == when else None
     with pytest.raises(EvidenceError, match="changed|stale|unknown"):
         run(backend, model, reviewer)
+
+
+@pytest.mark.parametrize(
+    ("status", "error"),
+    [
+        ({"available": False}, "answer_source_unavailable"),
+        ({"superseded": True}, "source_superseded"),
+    ],
+)
+def test_source_status_can_change_during_review_with_the_same_ref(status, error):
+    backend, reviewer = Sources(), Reviewer()
+    ref = backend.document.ref
+
+    def change_status():
+        backend.document = replace(backend.document, **status)
+
+    reviewer.hook = change_status
+    with pytest.raises(EvidenceError, match=error):
+        run(backend=backend, reviewer=reviewer)
+    assert backend.current_ref(ref.source_id) == ref
+    assert backend.reads == [ref] * 3
 
 
 @pytest.mark.parametrize(
@@ -448,7 +472,7 @@ def test_correction_uses_new_expression_and_review_identity():
     )
     assert second.evidence_id != first.evidence_id
     assert reviewer.materials[-1]["evidence"]["calculations"][0]["value"] == "27"
-    assert len(backend.reads) == 4
+    assert len(backend.reads) == 6
 
 
 @pytest.mark.parametrize("message,revision", [(" ", "r"), ("ok", " ")])
@@ -1765,6 +1789,30 @@ def test_full_ordinary_recap_keeps_opening_time_distinct_from_event_time():
 
 
 @pytest.mark.parametrize(
+    ("room_update", "expected"),
+    [
+        (
+            "Przenosimy spotkanie do sali 12. Godzina bez zmian.",
+            "Środa, sala 12, otwarcie o 10:50, spotkanie o 11:05; prowadzi Anita.",
+        ),
+        ("Przenosimy spotkanie do sali na parterze. Godzina bez zmian.", None),
+    ],
+)
+def test_schedule_recap_updates_numbered_room_or_declines_unknown_room(
+    room_update, expected
+):
+    history = tuple(
+        {"role": "user", "content": turn}
+        for turn in (
+            "Zapisz spotkanie: środa, 11:05, sala Brzoza, prowadzi Anita.",
+            "Otwarcie sali będzie kwadrans wcześniej.",
+            room_update,
+        )
+    )
+    assert plain_pilot_recap("Podsumuj aktualne ustalenia.", history) == expected
+
+
+@pytest.mark.parametrize(
     ("message", "planned", "expression", "unit", "value", "compiled", "changed"),
     [
         (
@@ -1951,6 +1999,15 @@ def test_category_removal_to_zero_retains_number_after_presentation_clause():
             "21,6 km/h.",
         ),
         (
+            (
+                "Cały odcinek ma 100 m. Oblicz prędkość w m/s.",
+                "Poprawka: cały odcinek ma 200 m, czas wynosi 20 s.",
+            ),
+            "Przelicz poprzedni wynik na km/h.",
+            "(200/20)*18/5",
+            "36 km/h.",
+        ),
+        (
             ("Z pojemnika z 0,7 l odlano 250 ml. Oblicz pozostałość w mililitrach.",),
             "Ile litrów wynosi ta pozostałość? Użyj danych z rozmowy.",
             "(700-250)/1000",
@@ -1981,6 +2038,62 @@ def test_context_arithmetic_binds_operands_and_result_unit(
         required=Requirements(calculation=True),
     )
     assert not model.calls
+    assert answer.text == answer_text
+    assert (
+        reviewer.materials[0]["evidence"]["calculations"][0]["expression"] == expression
+    )
+
+
+@pytest.mark.parametrize(
+    ("prior", "message", "expression", "value", "unit", "answer_text"),
+    [
+        (
+            (
+                "Cały odcinek ma 100 m. Oblicz prędkość w m/s.",
+                "Czas wynosi 20 s, ale odcinek jest dwa razy dłuższy.",
+            ),
+            "Przelicz poprzedni wynik na km/h.",
+            "(2*100/20)*18/5",
+            "36",
+            "km/h",
+            "36 km/h.",
+        ),
+        (
+            (
+                "Z pojemnika z 1 l odlano 250 ml, a następnie dolano 100 ml. Oblicz pozostałość w mililitrach.",
+            ),
+            "Ile litrów wynosi ta pozostałość?",
+            "(1000-250+100)/1000",
+            "0.85",
+            "l",
+            "0,85 l.",
+        ),
+    ],
+)
+def test_context_conversion_with_unparsed_update_uses_full_planner(
+    prior, message, expression, value, unit, answer_text
+):
+    model, reviewer = Model(), Reviewer()
+    model.override["plan"] = {
+        "calculations": [
+            {"calculation_id": "result", "expression": expression, "unit": unit}
+        ]
+    }
+    model.override["draft"] = {
+        "prose": answer_text,
+        "sources": [],
+        "calculations": [{"calculation_id": "result", "value": value, "unit": unit}],
+    }
+    answer = run_pilot_turn(
+        message,
+        "conversion-recheck",
+        Sources(),
+        model,
+        reviewer,
+        history=tuple({"role": "user", "content": turn} for turn in prior),
+        required=Requirements(calculation=True),
+    )
+    assert [phase for phase, _ in model.calls] == ["assess", "plan", "draft"]
     assert answer.text == answer_text
     assert (
         reviewer.materials[0]["evidence"]["calculations"][0]["expression"] == expression

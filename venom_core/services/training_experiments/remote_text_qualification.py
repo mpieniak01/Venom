@@ -66,6 +66,7 @@ from .remote_text_evidence import (
     _receipt_matches,
     _sha,
     read_run,
+    reverify_run,
     stage_candidate,
 )
 from .remote_text_local import collect_local, pin_local
@@ -396,6 +397,11 @@ def _known_outputs(calibration: dict, review: dict) -> bool:
     )
 
 
+def _new_m0_critical_cases(scores: dict) -> list[str]:
+    critical = scores["critical_case_ids"]
+    return sorted(set(critical["candidate"]) - set(critical["base"]))
+
+
 def _parent_comparison(scores: dict) -> dict:
     summaries, verdicts = scores["summaries"], scores["verdicts"]
     m0_usable, m0_critical = _metrics(summaries)
@@ -416,9 +422,7 @@ def _parent_comparison(scores: dict) -> dict:
         "new_parent_critical_case_ids": sorted(
             set(critical["candidate"]) - set(critical["parent"])
         ),
-        "new_m0_critical_case_ids": sorted(
-            set(critical["candidate"]) - set(critical["base"])
-        ),
+        "new_m0_critical_case_ids": _new_m0_critical_cases(scores),
     }
 
 
@@ -460,7 +464,9 @@ def _selection_metrics(
 ) -> tuple[float, float, bool]:
     if not has_parent:
         usable, critical = _metrics(scores["summaries"])
-        regression = any(
+        new_cases = _new_m0_critical_cases(scores)
+        result["new_m0_critical_case_ids"] = new_cases
+        regression = bool(new_cases) or any(
             candidate["critical"] > scores["summaries"]["base"][name]["critical"]
             for name, candidate in scores["summaries"]["candidate"].items()
         )
@@ -528,6 +534,7 @@ def _measure(
         judgments,
         {"step": binding["step"], "sha256": binding["checkpoint_sha256"]},
         parent_tag=parent_tag,
+        include_critical_case_ids=True,
     )
     usable, critical, critical_regression = _selection_metrics(
         scores, result, has_parent=has_parent
@@ -611,16 +618,19 @@ def _read_result(directory: Path, binding: dict) -> dict | None:
     result = read_json(path)
     if result["binding"] != binding:
         raise ValueError("remote_text_final_result_identity_mismatch")
-    if (
-        "parent" in binding
-        or result.get("calibration_protocol", {}).get("judge")
+    no_parent_pass = "parent" not in binding and result["qualified"] is not None
+    semantic = (
+        result.get("calibration_protocol", {}).get("judge")
         == local_semantic_judge.JUDGE
-    ):
-        _verify_final_evidence(directory, result)
+    )
+    if "parent" in binding or semantic or no_parent_pass:
+        evidence = _verify_final_evidence(directory, result)
+        if no_parent_pass:
+            _verify_m0_pass(evidence, result)
     return result
 
 
-def _verify_final_evidence(directory: Path, result: dict) -> None:
+def _verify_final_evidence(directory: Path, result: dict) -> Path:
     name = result["evidence_name"]
     if not re.fullmatch(r"verified-\w{8}", name, re.ASCII):
         raise ValueError("remote_text_final_evidence_invalid")
@@ -640,6 +650,23 @@ def _verify_final_evidence(directory: Path, result: dict) -> None:
         or (judgments is not None and digest(generation / _JUDGMENTS) != judgments)
     ):
         raise ValueError("remote_text_final_evidence_changed")
+    return evidence
+
+
+def _verify_m0_pass(evidence: Path, result: dict) -> None:
+    generation = evidence / "generation"
+    if result.get("judgments_sha256") is None:
+        raise ValueError("remote_text_final_critical_evidence_missing")
+    binding = result["binding"]
+    scores = sealed_report(
+        generation,
+        evidence / _HOLDOUT,
+        read_json(generation / _JUDGMENTS),
+        {"step": binding["step"], "sha256": binding["checkpoint_sha256"]},
+        include_critical_case_ids=True,
+    )
+    if _new_m0_critical_cases(scores):
+        raise ValueError("remote_text_final_m0_critical_regression")
 
 
 def _catalog_published(
@@ -746,6 +773,14 @@ def _qualify_locked(
             or _catalog_published(directory, result, academy_root)
         ):
             return result
+        receipt = reverify_run(
+            evidence_root,
+            remote,
+            binding["run_id"],
+            remote["plan"]["budget"]["max_artifact_bytes"],
+        )
+        if receipt["archive_sha256"] != binding["archive_sha256"]:
+            raise ValueError("remote_text_final_archive_changed")
         with tempfile.TemporaryDirectory(prefix=".final-", dir=directory) as staging:
             workspace = Path(staging)
             checkpoint = workspace / f"checkpoint-{binding['step']}"

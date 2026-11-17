@@ -359,16 +359,27 @@ _SPEED_REFERENCE = re.compile(
 )
 _SPEED_OUTPUT = re.compile(r"\b(?:w|na)\s+(km/h|m/s)\b", re.IGNORECASE)
 _TRAVEL_DISTANCE = re.compile(
-    rf"\b(?:cały\s+odcinek|długość\s+odcinka|cała\s+trasa|droga)\s+(?:ma|wynosi)\s+({_STATE_NUMBER})\s+m\b",
+    rf"(?:cały\s+odcinek|długość\s+odcinka|cała\s+trasa|droga)\s+(?:ma|wynosi)\s+(?P<distance>{_STATE_NUMBER})\s+m",
     re.IGNORECASE,
 )
 _TRAVEL_SECONDS = re.compile(
-    rf"\b(?:zajęło(?:\s+to)?|trwało|czas\s+wynosi)\s+({_STATE_NUMBER})\s+(?:s|sekund(?:y|ę)?)\b",
+    rf"(?:z\s+postojem\s+)?(?:zajęło(?:\s+to)?|trwało|czas\s+wynosi)\s+(?P<duration>{_STATE_NUMBER})\s+(?:s|sekund[ęy]?)",
     re.IGNORECASE,
 )
+_SPEED_CONTEXT_REQUEST = re.compile(
+    r"(?:oblicz|policz|wyznacz)\s+(?:(?:średnią|jego|jej)\s+){0,2}prędkość(?:\s+w\s+(?:m/s|km/h))?",
+    re.IGNORECASE,
+)
+_SPEED_CORRECTION = re.compile(r"^(?:poprawka|korekta)\s*:\s*", re.IGNORECASE)
+_CONTEXT_SENTENCES = re.compile(r"[!?;\n]|\.(?=\s|$)")
 _REMAINING_VOLUME = re.compile(
     rf"^\s*z\s+(?:naczynia|zbiornika|pojemnika)\s+z\s+({_STATE_NUMBER})\s*(ml|l)\s+"
     rf"(?:przelano|odlano|pobrano)\s+({_STATE_NUMBER})\s*(ml|l)\b",
+    re.IGNORECASE,
+)
+_VOLUME_INITIAL_REQUEST = re.compile(
+    r"(?:oblicz|policz|wyznacz)\s+(?:pozostałość|ile\s+(?:zostało|pozostało))"
+    r"(?:\s+w\s+(?:ml|l|mililitrach|litrach))?",
     re.IGNORECASE,
 )
 _VOLUME_FOLLOWUP = re.compile(
@@ -426,14 +437,12 @@ def _context_speed(message: str, previous: tuple[str, ...]) -> Calculation | Non
     if len(previous) < 2 or not _SPEED_REFERENCE.search(message):
         return None
     targets = {item.lower() for item in _SPEED_OUTPUT.findall(message)}
-    distances = _TRAVEL_DISTANCE.findall(previous[-2])
-    durations = _TRAVEL_SECONDS.findall(previous[-1])
-    if len(targets) != 1 or len(distances) != 1 or len(durations) != 1:
+    if len(targets) != 1 or not _SPEED_REQUEST.search(previous[-2]):
         return None
-    if not _SPEED_REQUEST.search(previous[-2]):
+    operands = _previous_speed_operands(previous[-2], previous[-1])
+    if operands is None:
         return None
-    path = distances[0].replace(",", ".")
-    duration = durations[0].replace(",", ".")
+    path, duration = operands
     if Decimal(path) < 0 or Decimal(duration) <= 0:
         return None
     return _compile_calculation(
@@ -446,12 +455,46 @@ def _context_speed(message: str, previous: tuple[str, ...]) -> Calculation | Non
     )
 
 
+def _speed_turn_operands(message: str) -> dict[str, str] | None:
+    operands = {}
+    message = _SPEED_CORRECTION.sub("", message.strip())
+    for sentence in _CONTEXT_SENTENCES.split(message):
+        clause = sentence.strip()
+        if not clause or _SPEED_CONTEXT_REQUEST.fullmatch(clause):
+            continue
+        for item in re.split(r",(?=\s)", clause):
+            item = item.strip()
+            match = _TRAVEL_DISTANCE.fullmatch(item) or _TRAVEL_SECONDS.fullmatch(item)
+            if match is None or match.lastgroup is None or match.lastgroup in operands:
+                return None
+            operands[match.lastgroup] = match[match.lastgroup].replace(",", ".")
+    return operands
+
+
+def _previous_speed_operands(initial: str, update: str) -> tuple[str, str] | None:
+    original = _speed_turn_operands(initial)
+    corrected = _speed_turn_operands(update)
+    if original is None or corrected is None:
+        return None
+    operands = original | corrected
+    if set(operands) != {"distance", "duration"}:
+        return None
+    return operands["distance"], operands["duration"]
+
+
 def _context_volume(message: str, previous: tuple[str, ...]) -> Calculation | None:
     unit = _VOLUME_FOLLOWUP.match(message)
     if not previous or not unit:
         return None
-    remainder = _REMAINING_VOLUME.match(previous[-1])
-    if not remainder or not _REMAINDER_REQUEST.search(previous[-1]):
+    clauses = [
+        clause.strip()
+        for clause in _CONTEXT_SENTENCES.split(previous[-1])
+        if clause.strip()
+    ]
+    if len(clauses) != 2 or not _VOLUME_INITIAL_REQUEST.fullmatch(clauses[1]):
+        return None
+    remainder = _REMAINING_VOLUME.fullmatch(clauses[0])
+    if not remainder:
         return None
     initial = _stock_number(remainder[1], remainder[2].lower(), "ml")
     removed = _stock_number(remainder[3], remainder[4].lower(), "ml")
@@ -1597,7 +1640,11 @@ def _people_noun(size: int) -> str:
     return "osób"
 
 
-_ROOM = re.compile(r"\b(?:sala|sali|salę)\s+", re.IGNORECASE)
+_ROOM = re.compile(r"\bsal[aię]\b\s*:?\s*", re.IGNORECASE)
+_ROOM_NUMBER = re.compile(
+    r"(?:nr\.?\s+)?((?a:\d{1,6})[a-z]?)(?![\w-]|\.(?a:\d))", re.IGNORECASE
+)
+_ROOM_UNCHANGED = re.compile(r"bez\s+zmian\b", re.IGNORECASE)
 _HOST = re.compile(r"\b(?:prowadzi|zastąpi\s+(?:go|ją))\s+", re.IGNORECASE)
 _SCHEDULE_NAME = re.compile(r"[A-ZĄĆĘŁŃÓŚŹŻ][\w-]*")
 _SCHEDULE_EVENT = re.compile(
@@ -1627,11 +1674,37 @@ def _schedule_names(turn: str, prefix: re.Pattern[str]) -> set[str]:
     return names
 
 
+def _schedule_rooms(turn: str, opening: re.Match[str] | None) -> set[str] | None:
+    rooms: set[str] = set()
+    end = 0
+    for match in _ROOM.finditer(turn):
+        if match.start() < end:
+            continue
+        if opening and opening.start() <= match.start() < opening.end():
+            continue
+        start = match.end()
+        if _ROOM_UNCHANGED.match(turn, start):
+            continue
+        if number := _ROOM_NUMBER.match(turn, start):
+            rooms.add(number[1])
+            end = number.end()
+            continue
+        name = _SCHEDULE_NAME.match(turn, start)
+        if name is None:
+            return None
+        rooms.add(name[0])
+        end = name.end()
+    return rooms
+
+
 def _schedule_fields(turn: str, opening: re.Match[str] | None) -> dict[str, str] | None:
+    rooms = _schedule_rooms(turn, opening)
+    if rooms is None:
+        return None
     fields = {
         "day": {_DAYS[day.casefold()] for day in _WEEKDAY.findall(turn)},
         "time": set(_CLOCK_VALUE.findall(turn)),
-        "room": _schedule_names(turn, _ROOM),
+        "room": rooms,
         "host": _schedule_names(turn, _HOST),
     }
     if any(len(values) > 1 for values in fields.values()):
@@ -2519,11 +2592,11 @@ def _certify_pilot_draft(
     audit_entry: dict[str, Any],
     *,
     sources_required: bool,
-) -> Draft:
+) -> tuple[Draft, AnswerDraft | None]:
     if plan.mode == "clarify":
         if draft.sources or draft.calculations:
             raise EvidenceError("pilot_clarification_claims")
-        return draft
+        return draft, None
     evidence = proof.evidence
     if evidence is None:
         raise EvidenceError("pilot_evidence_unavailable")
@@ -2545,12 +2618,13 @@ def _certify_pilot_draft(
         _bind_result_claim(item, evidence, result.unit, result.places)
         for item in draft.calculations
     )
-    gate.publish(AnswerDraft(proof.evidence_id, claims))
+    claim_draft = AnswerDraft(proof.evidence_id, claims)
+    gate.validate_draft(claim_draft)
     if result.unit is not None:
         verify_result_prose(
             draft.prose, evidence, result.unit, decimal_places=result.places
         )
-    return draft
+    return draft, claim_draft
 
 
 def _finalize_pilot_draft(
@@ -2561,7 +2635,7 @@ def _finalize_pilot_draft(
     draft: Draft,
     proof: _PilotProof,
     audit: list[dict[str, Any]],
-) -> Draft:
+) -> tuple[Draft, AnswerDraft | None]:
     source_versions = {
         document.ref.source_id: document.ref.version for document in sources.documents
     }
@@ -2580,7 +2654,7 @@ def _finalize_pilot_draft(
     audit.append(draft_audit)
     if not draft.prose.strip():
         raise EvidenceError("answer_empty")
-    draft = _certify_pilot_draft(
+    draft, claim_draft = _certify_pilot_draft(
         gate,
         plan,
         draft,
@@ -2594,7 +2668,7 @@ def _finalize_pilot_draft(
             draft = draft.model_copy(update={"prose": cited})
             audit.append({"phase": "public_citations_added"})
             draft_audit["data"] = draft.model_dump()
-    return draft
+    return draft, claim_draft
 
 
 def _review_pilot_draft(
@@ -2654,7 +2728,9 @@ def run_pilot_turn(
         turn, sources, gate, plan, inputs.planning, result, audit
     )
     draft = _pilot_draft(turn, model, deterministic, inputs, plan, proof)
-    draft = _finalize_pilot_draft(turn, sources, gate, plan, draft, proof, audit)
+    draft, claim_draft = _finalize_pilot_draft(
+        turn, sources, gate, plan, draft, proof, audit
+    )
     _current(backend, sources.documents)
     material = turn.material()
     if inputs.input_roles is not None:
@@ -2670,4 +2746,6 @@ def run_pilot_turn(
     )
     _review_pilot_draft(reviewer, qualification, material, audit)
     _current(backend, sources.documents)
+    if claim_draft is not None:
+        gate.publish(claim_draft)
     return PublishedAnswer(proof.evidence_id, draft.prose)

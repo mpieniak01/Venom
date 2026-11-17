@@ -16,6 +16,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import IO, TYPE_CHECKING, BinaryIO, Iterator, Protocol, Self
 
+from scripts.academy.omni_pl_chat_evaluate import validate_dev_cases
 from scripts.academy.omni_pl_chat_p1 import CHECKPOINT_FILES
 from venom_core.services.remote_training.bundles import MAX_BYTES, canonical
 from venom_core.services.remote_training.lifecycle import (
@@ -28,7 +29,14 @@ from venom_core.services.remote_training.paths import data_directory, operator_p
 from .calibration import JUDGES, validate_calibration
 from .checkpoint_evaluation import GENERATION_OUTPUTS, GENERATION_SEAL, read_generation
 from .evidence import ADAPTER_FILES, WEIGHTS, inspect_checkpoint, latest_checkpoint
-from .profiles import MAX_JSON_BYTES, digest, read_json, stable_hash
+from .profiles import (
+    MAX_JSON_BYTES,
+    digest,
+    parse_rows,
+    read_json,
+    resolve_input,
+    stable_hash,
+)
 from .quality_native import evaluation_identity
 
 if TYPE_CHECKING:
@@ -37,6 +45,7 @@ if TYPE_CHECKING:
 _BUNDLE = "bundle.json"
 _ARCHIVE = "evidence.tar"
 _RECEIPT = "verified.json"
+_DEV = "dev.jsonl"
 _ATTEMPT_RE = re.compile(r"attempt-[1-9][0-9]{0,5}[.]log")
 _GEN_RE = r"(?:evaluation-[1-9][0-9]{0,5}|checkpoint-evaluations/[1-9][0-9]{0,7})"
 _TRAIN_RE = r"training/checkpoint-[1-9][0-9]{0,7}"
@@ -121,6 +130,7 @@ def _safe_member(name: str) -> bool:
     parent, _, leaf = name.rpartition("/")
     return bool(
         name in _ROOT_FILES
+        or name == _DEV
         or name in _METRIC_FILES
         or _ATTEMPT_RE.fullmatch(name)
         or (leaf in _EVAL_FILES and re.fullmatch(_GEN_RE, parent))
@@ -232,7 +242,12 @@ def export_run(
         if digest(directory / "result.json") != _sha(trial["result_sha256"]):
             raise ValueError("remote_text_evidence_result_changed")
         names, resume_step = _source_entries(directory, trial, attempt, result)
-        files = {name: _file_identity(directory / name) for name in sorted(names)}
+        profile = read_json(directory / "manifest.json")["profile"]
+        sources = {name: directory / name for name in names}
+        sources[_DEV] = resolve_input(experiments.root, profile["dev"])
+        files = {name: _file_identity(sources[name]) for name in sorted(sources)}
+        if files[_DEV]["sha256"] != _sha(profile["dev_sha256"]):
+            raise ValueError("remote_text_evidence_dev_changed")
         body = {
             "schema_version": 1,
             "campaign_id": campaign_id,
@@ -249,7 +264,7 @@ def export_run(
         ) as archive:
             _add_metadata(archive, body)
             for name, entry in files.items():
-                with _regular(directory / name) as (stream, size):
+                with _regular(sources[name]) as (stream, size):
                     if size != entry["size"]:
                         raise ValueError("remote_text_evidence_file_changed")
                     info = tarfile.TarInfo(name)
@@ -269,6 +284,16 @@ def _read_metadata(archive: tarfile.TarFile, member: tarfile.TarInfo) -> dict:
     if not isinstance(raw, dict):
         raise ValueError("remote_text_evidence_metadata_invalid")
     return raw
+
+
+def _read_rows(archive: tarfile.TarFile, member: tarfile.TarInfo) -> list[dict]:
+    if member.size > MAX_JSON_BYTES:
+        raise ValueError("remote_text_evidence_metadata_too_large")
+    stream = archive.extractfile(member)
+    if stream is None:
+        raise ValueError("remote_text_evidence_file_invalid")
+    with stream:
+        return parse_rows(stream.read().decode("utf-8"))
 
 
 def _verify_members(
@@ -479,9 +504,44 @@ def _verified_manifest(metadata: Callable[[str], dict], body: dict) -> dict:
         != manifest["profile"]["dev_sha256"]
     ):
         raise ValueError("remote_text_evidence_manifest_identity_mismatch")
-    if manifest["calibration"]["judge"] != "exact-v1":
-        validate_calibration(manifest["calibration"], manifest["profile"]["dev_sha256"])
     return manifest
+
+
+def _legacy_dev_sha256(cases: list[dict]) -> str:
+    # Older archives only carry the sealed blind cases. Recover the bytes
+    # produced by Academy's write_jsonl and demand the original dataset hash.
+    checksum = hashlib.sha256()
+    for case in cases:
+        payload = json.dumps(case, ensure_ascii=False, sort_keys=True) + "\n"
+        checksum.update(payload.encode("utf-8"))
+    return checksum.hexdigest()
+
+
+def _verify_dev(
+    archive: tarfile.TarFile,
+    members: dict[str, tarfile.TarInfo],
+    files: dict,
+    manifest: dict,
+    generations: list[str],
+) -> None:
+    expected = _sha(manifest["profile"]["dev_sha256"])
+    if _DEV in members:
+        if files[_DEV]["sha256"] != expected:
+            raise ValueError("remote_text_evidence_dev_changed")
+        cases = _read_rows(archive, members[_DEV])
+    else:
+        cases = [
+            row["case"]
+            for row in _read_rows(archive, members[f"{generations[0]}/blind.jsonl"])
+        ]
+        if _legacy_dev_sha256(cases) != expected:
+            raise ValueError("remote_text_evidence_legacy_dev_unverified")
+    validate_dev_cases(cases)
+    validate_calibration(manifest["calibration"], expected, cases)
+    for name in generations:
+        blind = _read_rows(archive, members[f"{name}/blind.jsonl"])
+        if [row["case"] for row in blind] != cases:
+            raise ValueError("remote_text_evidence_dev_cases_changed")
 
 
 def _restore_evidence(
@@ -498,6 +558,10 @@ def _restore_evidence(
     manifest = _verified_manifest(metadata, body)
     result = _verified_result(metadata, "", body["result_sha256"], files, manifest)
     steps = _expected_steps(trial)
+    generations = [_generation(attempt, step) for step in steps]
+    if not generations:
+        generations = [_generation(attempt, None)]
+    _verify_dev(archive, members, files, manifest, generations)
     checkpoints = []
     if steps:
         for step, result_sha in steps.items():
@@ -650,6 +714,22 @@ def _receipt_matches(receipt: dict, state: dict, trial: dict) -> bool:
     )
 
 
+def reverify_run(evidence_root: Path, state: dict, run_id: str, max_bytes: int) -> dict:
+    """Require current evidence checks before a stored receipt is used for selection."""
+    directory = _run_directory(evidence_root, run_id)
+    receipt = read_json(directory / _RECEIPT)
+    trial = _trial(state, run_id)
+    if (
+        not _receipt_matches(receipt, state, trial)
+        or receipt["archive_bytes"] > max_bytes
+    ):
+        raise ValueError("remote_text_evidence_receipt_conflict")
+    actual = _verify_archive(directory / _ARCHIVE, state, trial, max_bytes)
+    if actual != {key: value for key, value in receipt.items() if key != "verified_at"}:
+        raise ValueError("remote_text_evidence_receipt_conflict")
+    return receipt
+
+
 def sync_run(
     host: EvidenceHost,
     state: dict,
@@ -668,7 +748,7 @@ def sync_run(
     path = directory / _ARCHIVE
     with file_lock(directory / ".evidence.lock"):
         if (directory / _RECEIPT).exists():
-            receipt = read_run(evidence_root, run_id)
+            receipt = reverify_run(evidence_root, state, run_id, max_bytes)
         elif path.exists():
             # A crash between archive rename and receipt publication needs no re-download.
             receipt = _verify_archive(path, state, trial, max_bytes)

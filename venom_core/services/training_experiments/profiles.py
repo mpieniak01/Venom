@@ -55,11 +55,11 @@ def rows(path: Path) -> list[dict[str, Any]]:
     path = operator_path(path)
     if path.stat().st_size > MAX_JSON_BYTES:
         raise ValueError("experiment_input_too_large")
-    records = [
-        json.loads(line)
-        for line in path.read_text(encoding="utf-8").splitlines()
-        if line.strip()
-    ]
+    return parse_rows(path.read_text(encoding="utf-8"))
+
+
+def parse_rows(text: str) -> list[dict[str, Any]]:
+    records = [json.loads(line) for line in text.splitlines() if line.strip()]
     if not records or not all(isinstance(row, dict) for row in records):
         raise ValueError("experiment_invalid_records")
     return records

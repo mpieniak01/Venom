@@ -92,6 +92,7 @@ def sealed_report(
     checkpoint: dict,
     *,
     parent_tag: str | None = None,
+    include_critical_case_ids: bool = False,
 ) -> dict:
     bundle = review_data(generation, dev)
     cases, answers = bundle["cases"], bundle["answers"]
@@ -101,6 +102,7 @@ def sealed_report(
     candidate = f"checkpoint-{checkpoint['step']}"
     case_by_id = {case["record_id"]: case for case in cases}
     roles = {"base": "base", candidate: "candidate"}
+    track_critical_cases = parent_tag is not None or include_critical_case_ids
     if parent_tag is not None:
         if parent_tag in roles:
             raise ValueError("experiment_unblind_invalid")
@@ -118,7 +120,7 @@ def sealed_report(
         variants, remapped, critical_roles = _unblind_answers(
             row["answers"], case_id, mapping[case_id], roles, grades
         )
-        if parent_tag is not None and case != case_by_id[case_id]:
+        if track_critical_cases and case != case_by_id[case_id]:
             raise ValueError("experiment_blind_case_changed")
         identified_grades.extend(remapped)
         for role in critical_roles:
@@ -128,7 +130,7 @@ def sealed_report(
     scores = aggregate(cases, identified, identified_grades)
     return {
         **scores,
-        **({"critical_case_ids": critical} if parent_tag is not None else {}),
+        **({"critical_case_ids": critical} if track_critical_cases else {}),
         "cases": details,
         "checkpoint": checkpoint,
         "artifacts": [{"kind": "adapter", **checkpoint, "available": True}],

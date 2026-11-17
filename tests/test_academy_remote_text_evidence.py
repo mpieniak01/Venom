@@ -19,6 +19,7 @@ from scripts.academy.omni_pl_chat_p1 import CHECKPOINT_FILES
 from venom_core.services.remote_training.lifecycle import atomic_json
 from venom_core.services.training_experiments import local_semantic_judge as semantic
 from venom_core.services.training_experiments import (
+    remote_text_evidence,
     remote_text_local,
     remote_text_qualification,
 )
@@ -64,6 +65,7 @@ RECIPE = {"rank": 4, "alpha": 8, "dropout": 0.05, "target_modules": ["q_proj"]}
 class Host:
     def __init__(self, directory, state):
         self.directory = directory
+        self.root = directory.parent
         self.state = state
         self.experiments = self
         self.calls = 0
@@ -131,7 +133,13 @@ def _write_evaluation(run, manifest, result_root, eval_root, step, n_usable):
     eval_root.mkdir(parents=True)
     hashes = _checkpoint(run, step)
     for name in GENERATION_OUTPUTS:
-        (eval_root / name).write_text("{}\n")
+        if name == "blind.jsonl":
+            cases = rows(Path(manifest["profile"]["dev"]))
+            write_jsonl(
+                eval_root / name, [{"case": case, "answers": {}} for case in cases]
+            )
+        else:
+            (eval_root / name).write_text("{}\n")
     atomic_json(eval_root / "judgments.json", [])
     atomic_json(
         eval_root / "manifest.json",
@@ -182,9 +190,13 @@ def setup_host(
     n_usable=2,
     checkpoint_eval=False,
     train_sha=DEV,
-    dev_sha=DEV,
+    calibration=None,
     parent=None,
 ):
+    dev = tmp_path / "dev.jsonl"
+    if not dev.is_file():
+        write_jsonl(dev, [_dev_case()])
+    dev_sha = digest(dev)
     run = tmp_path / "host"
     run.mkdir()
     manifest = {
@@ -194,11 +206,19 @@ def setup_host(
         "recipe": RECIPE,
         "profile": {
             "model": "LiquidAI/LFM3-Omni-2B",
+            "dev": str(dev),
             "train_sha256": train_sha,
             "dev_sha256": dev_sha,
             "calibration_sha256": "d" * 64,
         },
-        "calibration": {"judge": "exact-v1", "dev_sha256": dev_sha},
+        "calibration": {
+            "schema_version": 1,
+            "judge": "exact-v1",
+            "reviewer": "Operator",
+            "cases": {case["record_id"]: {} for case in rows(dev)},
+            **(calibration or {}),
+            "dev_sha256": dev_sha,
+        },
     }
     if parent is not None:
         manifest["initial_adapter"] = parent
@@ -210,17 +230,19 @@ def setup_host(
     atomic_json(run / "recipe.json", manifest["recipe"])
     trial = {"run_id": RUN, "status": "succeeded", "attempt": 1}
     if checkpoint_eval:
-        rows = []
+        evaluations = []
         for step, usable in ((1, n_usable), (2, 1)):
             folder = run / "checkpoint-evaluations" / str(step)
             result, checksum = _write_evaluation(
                 run, manifest, folder, folder, step, usable
             )
-            rows.append(
+            evaluations.append(
                 {"step": step, "status": "succeeded", "result_sha256": checksum}
             )
-        trial["checkpoint_evaluations"] = rows
-        checksum = _publish_result(run, {**result, "checkpoint_evaluations": rows})
+        trial["checkpoint_evaluations"] = evaluations
+        checksum = _publish_result(
+            run, {**result, "checkpoint_evaluations": evaluations}
+        )
     else:
         _, checksum = _write_evaluation(
             run, manifest, run, run / "evaluation-1", 1, n_usable
@@ -235,6 +257,7 @@ def setup_host(
                 "plan_sha256": PLAN,
                 "profile_identity": PROFILE,
                 "selection": {"min_usable_delta": 0.01, "max_critical_delta": 0.0},
+                "budget": {"max_artifact_bytes": LIMIT},
             },
             "selected_run_id": RUN,
             "trials": [trial],
@@ -341,6 +364,67 @@ def test_campaign_and_run_digests_cannot_be_replayed(tmp_path):
         artifact_path(store, "../borrowed")
 
 
+def _remove_dev_member(raw):
+    result = io.BytesIO()
+    with (
+        tarfile.open(fileobj=io.BytesIO(raw), mode="r:") as source,
+        tarfile.open(fileobj=result, mode="w", format=tarfile.USTAR_FORMAT) as target,
+    ):
+        for member in source:
+            if member.name == "dev.jsonl":
+                continue
+            content = source.extractfile(member)
+            if member.name == "bundle.json":
+                metadata = json.load(content)
+                metadata["files"].pop("dev.jsonl")
+                payload = json.dumps(metadata).encode()
+                content = io.BytesIO(payload)
+                member.size = len(payload)
+            target.addfile(member, content)
+    return result.getvalue()
+
+
+@pytest.mark.parametrize("canonical", [True, False])
+def test_legacy_archive_reconstructs_dev_only_when_the_pinned_hash_matches(
+    tmp_path, canonical
+):
+    dev = tmp_path / "dev.jsonl"
+    if canonical:
+        write_jsonl(dev, [_dev_case()])
+    else:
+        dev.write_text(json.dumps(_dev_case(), separators=(",", ":")) + "\n")
+    host = setup_host(tmp_path)
+    evidence = tmp_path / "evidence"
+    host.mutate = _remove_dev_member
+    if canonical:
+        receipt = sync_run(host, host.state, RUN, evidence, LIMIT)
+        assert sync_run(host, host.state, RUN, evidence, LIMIT) == receipt
+        assert host.calls == 1
+    else:
+        with pytest.raises(
+            ValueError, match="remote_text_evidence_legacy_dev_unverified"
+        ):
+            sync_run(host, host.state, RUN, evidence, LIMIT)
+        assert not (evidence / RUN / "verified.json").exists()
+        # Equivalently shaped records in a newly exported archive retain exact bytes.
+        host.mutate = None
+        assert sync_run(host, host.state, RUN, evidence, LIMIT)["run_id"] == RUN
+
+
+def _dev_case():
+    return {
+        "record_id": "dev",
+        "group_id": "dev-family",
+        "split": "dev",
+        "language": "pl",
+        "messages": [{"role": "user", "content": "Podaj dzień."}],
+        "task": "dialogue",
+        "criteria": [
+            {"id": "correct", "kind": "content", "description": "Right answer"}
+        ],
+    }
+
+
 def _holdout_paths(tmp_path, *, overlap=False, unknown=False, size=1):
     train = tmp_path / "train.jsonl"
     dev = tmp_path / "dev.jsonl"
@@ -363,17 +447,7 @@ def _holdout_paths(tmp_path, *, overlap=False, unknown=False, size=1):
         "license": "CC0",
         "review_note": "approved",
     }
-    dev_row = {
-        "record_id": "dev",
-        "group_id": "dev-family",
-        "split": "dev",
-        "language": "pl",
-        "messages": [{"role": "user", "content": "Podaj dzień."}],
-        "task": "dialogue",
-        "criteria": [
-            {"id": "correct", "kind": "content", "description": "Right answer"}
-        ],
-    }
+    dev_row = _dev_case()
     holdout = {
         **dev_row,
         "record_id": "pilot",
@@ -504,7 +578,7 @@ def test_final_holdout_gates_archive_and_catalog(tmp_path, scenario):
     spec = _holdout_paths(
         tmp_path, overlap=scenario == "overlap", unknown=scenario == "unknown"
     )
-    host = setup_host(tmp_path, train_sha=digest(spec.train), dev_sha=digest(spec.dev))
+    host = setup_host(tmp_path, train_sha=digest(spec.train))
     evidence = tmp_path / "evidence"
     academy = tmp_path / "academy"
     receipts = {RUN: sync_run(host, host.state, RUN, evidence, LIMIT)}
@@ -544,6 +618,45 @@ def test_final_holdout_gates_archive_and_catalog(tmp_path, scenario):
             )
 
 
+def test_final_rejects_new_m0_critical_case_at_the_same_count(tmp_path):
+    spec = _holdout_paths(tmp_path, size=3)
+    host = setup_host(tmp_path, train_sha=digest(spec.train))
+    evidence, academy = tmp_path / "evidence", tmp_path / "academy"
+    receipts = {RUN: sync_run(host, host.state, RUN, evidence, LIMIT)}
+    pins = {
+        "final_test_sha256": digest(spec.final_test),
+        "final_calibration_sha256": digest(spec.calibration),
+    }
+
+    def swap_critical(*args):
+        _evaluate_fixture(
+            *args,
+            outcomes=[("critical", "good"), ("good", "critical"), ("bad", "good")],
+        )
+
+    result = qualify(
+        evidence, host.state, receipts, academy, spec, evaluator=swap_critical, **pins
+    )
+    assert result["usable_delta"] > 0
+    assert result["critical_delta"] == 0
+    assert result["new_m0_critical_case_ids"] == ["pilot-1"]
+    assert result["status"] == "failed_quality"
+    assert result["qualified"] is None
+    assert not (academy / "adapters").exists()
+    assert read_qualification(evidence, host.state, receipts, **pins) == result
+
+    # Simulate a verdict written by the prior counts-only gate with the same sealed
+    # generation and judgments. Its idempotent replay must not expose a PASS.
+    entry = evidence / "final-qualification"
+    result.pop("new_m0_critical_case_ids")
+    result["status"] = "passed"
+    result["qualified"] = {"run_id": RUN}
+    atomic_json(entry / "result.json", result)
+    atomic_json(entry / "result-seal.json", {"sha256": digest(entry / "result.json")})
+    with pytest.raises(ValueError, match="remote_text_final_m0_critical_regression"):
+        read_qualification(evidence, host.state, receipts, **pins)
+
+
 def _parent_entry(academy, tmp_path):
     hashes = _checkpoint(tmp_path, 39)
     source = tmp_path / "training" / "checkpoint-39"
@@ -576,7 +689,6 @@ def _continued_campaign(tmp_path, *, eligible_manifest=True):
     host = setup_host(
         tmp_path,
         train_sha=digest(spec.train),
-        dev_sha=digest(spec.dev),
         parent=parent if eligible_manifest else None,
     )
     host.state["plan"]["variants"] = [
@@ -720,6 +832,43 @@ def semantic_audit(tmp_path, monkeypatch):
         "families_total": 12,
     }
     return {"judge_qualification": receipt}, root
+
+
+def test_archive_and_receipt_reject_missing_semantic_dev_coverage(
+    tmp_path, monkeypatch, semantic_audit
+):
+    qualification, _ = semantic_audit
+    spec = _holdout_paths(tmp_path)
+    host = setup_host(
+        tmp_path,
+        train_sha=digest(spec.train),
+        calibration={**qualification, "judge": semantic.JUDGE, "cases": {}},
+    )
+    evidence, academy = tmp_path / "evidence", tmp_path / "academy"
+    with pytest.raises(ValueError, match="coverage"):
+        sync_run(host, host.state, RUN, evidence, LIMIT)
+    assert not (evidence / RUN / "verified.json").exists()
+
+    # The previous verifier authenticated the seal and declared dev hash while
+    # ignoring that the calibrated judge had no rules for the frozen cases.
+    with monkeypatch.context() as old:
+        old.setattr(remote_text_evidence, "_verify_dev", lambda *_args: None)
+        receipt = sync_run(host, host.state, RUN, evidence, LIMIT)
+    with pytest.raises(ValueError, match="coverage"):
+        sync_run(host, host.state, RUN, evidence, LIMIT)
+    evaluator = Mock()
+    with pytest.raises(ValueError, match="coverage"):
+        qualify(
+            evidence,
+            host.state,
+            {RUN: receipt},
+            academy,
+            spec,
+            final_test_sha256=digest(spec.final_test),
+            final_calibration_sha256=digest(spec.calibration),
+            evaluator=evaluator,
+        )
+    evaluator.assert_not_called()
 
 
 def test_semantic_audit_rechecks_hashes_and_derived_false_positive_gate(semantic_audit):
@@ -1208,7 +1357,7 @@ def test_pending_qualifier_waits_for_prepared_campaign_and_available_gpu(
     tmp_path, monkeypatch
 ):
     spec = _holdout_paths(tmp_path)
-    host = setup_host(tmp_path, train_sha=digest(spec.train), dev_sha=digest(spec.dev))
+    host = setup_host(tmp_path, train_sha=digest(spec.train))
     academy = tmp_path / "academy"
     queue = academy / "remote-text-final-inputs"
     queue.mkdir(parents=True, mode=0o700)
@@ -1265,7 +1414,7 @@ def test_pending_qualifier_waits_for_prepared_campaign_and_available_gpu(
 
 def test_pending_transient_failure_has_bounded_retry(tmp_path):
     spec = _holdout_paths(tmp_path)
-    host = setup_host(tmp_path, train_sha=digest(spec.train), dev_sha=digest(spec.dev))
+    host = setup_host(tmp_path, train_sha=digest(spec.train))
     academy = tmp_path / "academy"
     queue = academy / "remote-text-final-inputs"
     queue.mkdir(parents=True, mode=0o700)

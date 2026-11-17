@@ -113,15 +113,23 @@ def test_calculator_rejects_unsafe_unbounded_or_unsupported_syntax(expression):
 
 def test_full_source_is_read_even_if_search_preview_would_answer():
     backend, gate, evidence = prepared_source()
-    assert len(backend.reads) == 1
+    ref = evidence.sources[0].ref
+    assert backend.reads == [ref]
     assert evidence.sources[0].text.endswith("przy autorze.")
     result = gate.publish(
         AnswerDraft(
             evidence.evidence_id,
-            (SourceQuote("club", "v2", "Prawa pozostają przy autorze."),),
+            (
+                SourceQuote("club", "v2", "Prawa pozostają przy autorze."),
+                SourceQuote("club", "v2", "Dozwolone PNG do 2 MB."),
+            ),
         )
     )
-    assert result.text == "„Prawa pozostają przy autorze.” [club@v2]"
+    assert result.text.splitlines() == [
+        "„Prawa pozostają przy autorze.” [club@v2]",
+        "„Dozwolone PNG do 2 MB.” [club@v2]",
+    ]
+    assert backend.reads == [ref, ref]
     with pytest.raises(EvidenceError, match="stale"):
         gate.publish(AnswerDraft(evidence.evidence_id, ()))
 
@@ -196,6 +204,31 @@ def test_version_change_before_publication_fails_closed():
     )
     with pytest.raises(EvidenceError, match="answer_source_stale"):
         gate.publish(draft)
+
+
+@pytest.mark.parametrize(
+    ("change", "reason"),
+    [
+        ({"available": False}, "answer_source_unavailable"),
+        ({"superseded": True}, "source_superseded"),
+        ({"complete": False}, "source_incomplete"),
+        ({"text": "Tekst podmieniony."}, "source_hash_mismatch"),
+    ],
+)
+def test_source_change_under_same_reference_blocks_publication(change, reason):
+    backend, gate, evidence = prepared_source()
+    ref = evidence.sources[0].ref
+    backend.document = replace(backend.document, **change)
+    assert backend.current_ref("club") == ref
+    draft = AnswerDraft(
+        evidence.evidence_id,
+        (SourceQuote("club", "v2", "Dozwolone PNG do 2 MB."),),
+    )
+
+    with pytest.raises(EvidenceError, match=reason):
+        gate.publish(draft)
+
+    assert backend.reads == [ref, ref]
 
 
 def test_unavailable_document_cannot_be_cited_or_invented():

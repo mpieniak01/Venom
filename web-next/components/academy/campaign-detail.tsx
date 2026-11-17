@@ -164,7 +164,7 @@ function SelectedCheckpoint({ campaign }: { readonly campaign: Campaign }) {
 
 function CheckpointTrialRow({ result, delta, onOpen }: {
   readonly result: CampaignCheckpointEvaluation;
-  readonly delta: (value?: number) => string;
+  readonly delta: (value?: number | null) => string;
   readonly onOpen?: () => void;
 }) {
   const t = useTranslation();

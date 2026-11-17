@@ -79,3 +79,8 @@ polskiego dialogu względem bazy bez pogorszenia chronionych zadań.
 Warstwa narzędzi wymaga prób z udanym i nieudanym pobraniem, poprawnym czasem,
 źródłami oraz izolacją prywatnego kontekstu. Testy automatyczne stosują
 podstawione odpowiedzi sieciowe i nie wysyłają płatnych zapytań.
+
+## Jawna precyzja wyniku i brakujące wejścia
+Kalkulator zachowuje dokładną wartość dowodu. Pilot może powiązać zaokrąglone roszczenie tylko z jawnym poleceniem bieżącego użytkownika `do N miejsc po przecinku` (0–6) i jednoznaczną jednostką wyniku. Stosuje dziesiętne ROUND_HALF_UP; widoczna odpowiedź musi mieć żądaną precyzję. Przecinek dziesiętny i powtórzona zgodna jednostka są normalizowane, błędna wartość/jednostka pozostaje blokowana. Protokół precyzji trafia także do recenzji semantycznej. Konwersja liczebności na procent nie jest domniemywana.
+
+Żądany całkowity koszt lub nazwany wynik procentowy nie może być wymaganym wejściem do własnego obliczenia. Ten filtr nie usuwa brakującej ceny dojazdu, liczebności ani stawki procentowej potrzebnej w rachunku. Rozpoznanie języka jest ograniczone; niezależna recenzja planu i odpowiedzi pozostaje obowiązkowa. Testy kontrolowane nie upoważniają do pomijania recenzji przy rzeczywistym modelu.

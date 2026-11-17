@@ -11,6 +11,7 @@ from venom_core.services.grounded_pilot import (
     SemanticVerdict,
     StrictModel,
     material_hash,
+    requests_unitless_result,
 )
 
 
@@ -141,7 +142,12 @@ def compact_packet(material: dict[str, Any]) -> dict[str, Any]:
     ]
     if planned != [(c["calculation_id"], c["expression"], c["unit"]) for c in output]:
         raise ValueError("review_plan_evidence_mismatch")
-    return {
+    cards = [
+        {"n": i, "id": doc["ref"]["source_id"], "text": doc["text"]}
+        for i, doc in enumerate(evidence["sources"], 1)
+    ]
+    cited = {claim["source_id"] for claim in material["draft"].get("sources", [])}
+    packet = {
         "request": material["message"],
         "prior_users": [
             turn["content"] for turn in material["history"] if turn["role"] == "user"
@@ -149,10 +155,7 @@ def compact_packet(material: dict[str, Any]) -> dict[str, Any]:
         "needs": material["requirements"],
         "mode": plan["mode"],
         "missing": plan["missing"],
-        "sources": [
-            {"n": i, "id": doc["ref"]["source_id"], "text": doc["text"]}
-            for i, doc in enumerate(evidence["sources"], 1)
-        ],
+        "sources": cards,
         "calculations": [
             {
                 "n": i,
@@ -164,6 +167,15 @@ def compact_packet(material: dict[str, Any]) -> dict[str, Any]:
         ],
         "answer": material["draft"]["prose"],
     }
+    if "result_precision" in material:
+        packet["result_precision"] = material["result_precision"]
+    if output and requests_unitless_result(material["message"]):
+        packet["result_presentation"] = "number_without_unit"
+    if cited:
+        packet["cited_source_refs"] = [
+            card["n"] for card in cards if card["id"] in cited
+        ]
+    return packet
 
 
 def compact_approved(raw: dict[str, Any], packet: dict[str, Any]) -> bool:
@@ -180,7 +192,7 @@ def compact_approved(raw: dict[str, Any], packet: dict[str, Any]) -> bool:
         and packet["mode"] == "answer"
         and findings.source_ok
         and findings.answer_ok
-        and not refs
+        and (not refs or not set(packet.get("cited_source_refs", ())) <= set(refs))
     ):
         raise ValueError("review_source_coverage_missing")
     return (
@@ -191,6 +203,42 @@ def compact_approved(raw: dict[str, Any], packet: dict[str, Any]) -> bool:
     )
 
 
+class CompactContextFinding(StrictModel):
+    ok: StrictBool
+    reason: StrictStr = Field(min_length=1)
+    state: StrictStr = Field(min_length=1)
+
+
+def context_packet(packet: dict[str, Any]) -> dict[str, Any]:
+    """Give the reviewer the executed expressions used by an answer."""
+    context = {key: packet[key] for key in ("request", "prior_users", "answer")}
+    if packet["calculations"]:
+        context["calculations"] = packet["calculations"]
+    return context
+
+
+class ArithmeticFinding(Finding):
+    n: StrictInt
+
+
+class ArithmeticReview(StrictModel):
+    complete: Finding
+    steps: list[ArithmeticFinding] = Field(max_length=8)
+
+
+def arithmetic_approved(raw: dict[str, Any], packet: dict[str, Any]) -> bool:
+    """Require a substantive verdict for each step and for the whole plan."""
+    audit = ArithmeticReview.model_validate(raw)
+    expected = [item["n"] for item in packet["calculations"]]
+    if not expected or [step.n for step in audit.steps] != expected:
+        raise ValueError("review_arithmetic_coverage_invalid")
+    if not audit.complete.reason.strip() or any(
+        not step.reason.strip() for step in audit.steps
+    ):
+        raise ValueError("review_arithmetic_reason_missing")
+    return audit.complete.ok and all(step.ok for step in audit.steps)
+
+
 class CompactGroundedReviewer:
     """Bind the transport response to the original material and verify its coverage."""
 
@@ -198,14 +246,36 @@ class CompactGroundedReviewer:
         self,
         qualification_id: str,
         review_call: Callable[[dict[str, Any]], dict[str, Any]],
+        *,
+        arithmetic_call: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
+        context_call: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
     ) -> None:
         self.qualification_id = qualification_id
         self.review_call = review_call
+        self.arithmetic_call = arithmetic_call
+        self.context_call = context_call
 
     def review(self, material: dict[str, Any]) -> SemanticVerdict:
         packet = compact_packet(material)
         reply = self.review_call(packet)
         approved = compact_approved(reply, packet)
+        reason = reply["reason"]
+        if packet["prior_users"] and self.context_call is not None:
+            context = CompactContextFinding.model_validate(
+                self.context_call(context_packet(packet))
+            )
+            if not context.state.strip() or not context.reason.strip():
+                raise ValueError("review_context_finding_missing")
+            if not context.ok:
+                approved = False
+                reason = context.reason
+        if approved and packet["calculations"] and self.arithmetic_call is not None:
+            arithmetic = self.arithmetic_call(packet)
+            approved = arithmetic_approved(arithmetic, packet)
+            if not approved:
+                audit = ArithmeticReview.model_validate(arithmetic)
+                findings = [audit.complete, *audit.steps]
+                reason = " | ".join(item.reason for item in findings if not item.ok)
         return SemanticVerdict(
-            material_hash(material), self.qualification_id, approved, reply["reason"]
+            material_hash(material), self.qualification_id, approved, reason
         )

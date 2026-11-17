@@ -171,7 +171,33 @@ def test_model_cannot_turn_off_required_calculator():
         run(model=model, required=Requirements(calculation=True))
 
 
-@pytest.mark.parametrize("value,unit", [("25", "zł"), ("24", "m"), ("12+12", "zł")])
+def test_calculation_claim_accepts_only_redundant_identical_unit():
+    model, reviewer = Model(), Reviewer()
+    model.override["draft"] = {
+        "prose": "Koszt to 24 zł.",
+        "sources": [],
+        "calculations": [{"calculation_id": "c1", "value": "24 zł", "unit": "zł"}],
+    }
+    result = run(
+        model=model, reviewer=reviewer, required=Requirements(calculation=True)
+    )
+    assert result.text == "Koszt to 24 zł."
+    assert len(reviewer.materials) == 1
+
+
+@pytest.mark.parametrize(
+    "value,unit",
+    [
+        ("25", "zł"),
+        ("24", "m"),
+        ("12+12", "zł"),
+        ("25 zł", "zł"),
+        ("24 EUR", "zł"),
+        ("12+12 zł", "zł"),
+        ("24 zł zł", "zł"),
+        ("24 m", "m"),
+    ],
+)
 def test_wrong_value_unit_or_second_expression_never_reaches_reviewer(value, unit):
     model, reviewer = Model(), Reviewer()
     model.override["draft"] = {
@@ -1000,6 +1026,19 @@ def test_counting_units_bind_draft_to_calculator(unit):
             "Według karty price rabat wynosi 20%.",
         ),
         ("Rabat wynosi 20%. (ID: price, wersja: v1)", "Rabat wynosi 20%. [price]"),
+        (
+            "Według price (version 1) rabat wynosi 20%.",
+            "Według price rabat wynosi 20%.",
+        ),
+        ("Rabat wynosi 20%. [price@v1]", "Rabat wynosi 20%. [price]"),
+        ("Rabat wynosi 20% (price, v1).", "Rabat wynosi 20% [price]."),
+        ("Rabat wynosi 20% (price).", "Rabat wynosi 20% [price]."),
+        ("Rabat wynosi 20% [price, v1].", "Rabat wynosi 20% [price]."),
+        ("Rabat wynosi 20%. (price, r1)", "Rabat wynosi 20%. [price]"),
+        (
+            "Rabat wynosi 20%. Źródło: price, wersja 1.",
+            "Rabat wynosi 20%. Źródło: price.",
+        ),
     ],
 )
 def test_rendered_source_preserves_public_citation_without_version_metadata(
@@ -1279,3 +1318,881 @@ def test_one_sentence_recap_preserves_two_event_times_and_the_gathering_location
     assert plain_pilot_recap(message, uncertain) is None
     other = ({"role": "user", "content": "Sprawdź standardowe godziny."},) + history[1:]
     assert plain_pilot_recap(message, other) is None
+
+
+@pytest.mark.parametrize(
+    "message,text,value,unit,expression",
+    [
+        ("Przelicz 162 cm na metry.", "1,62 m.", "1.62", "m", "(162)/100"),
+        ("Zamień 1,62 m na cm.", "162 cm.", "162", "cm", "(1.62)*100"),
+        (
+            "Listwa ma 215 cm. Podaj długość w metrach.",
+            "2,15 m.",
+            "2.15",
+            "m",
+            "(215)/100",
+        ),
+    ],
+)
+def test_explicit_length_conversion_uses_calculator_once(
+    message, text, value, unit, expression
+):
+    model, reviewer = Model(), Reviewer()
+    answer = run_pilot_turn(
+        message,
+        "r1",
+        Sources(),
+        model,
+        reviewer,
+        required=Requirements(calculation=True),
+    )
+    assert not model.calls
+    assert answer.text == text
+    calculation = reviewer.materials[0]["evidence"]["calculations"][0]
+    assert (calculation["value"], calculation["unit"], calculation["expression"]) == (
+        value,
+        unit,
+        expression,
+    )
+
+
+def test_whole_arithmetic_review_rejects_surplus_wrong_step():
+    from venom_core.services.grounded_review import CompactGroundedReviewer
+
+    model = Model()
+    model.override["plan"] = {
+        "calculations": [
+            {"calculation_id": "unneeded", "expression": "24*0.8", "unit": "zł"},
+            {"calculation_id": "correct", "expression": "30*0.8", "unit": "zł"},
+        ]
+    }
+    model.override["draft"] = {
+        "prose": "Po rabacie zapłacisz 24 zł.",
+        "sources": [],
+        "calculations": [
+            {"calculation_id": "unneeded", "value": "19.2", "unit": "zł"},
+            {"calculation_id": "correct", "value": "24", "unit": "zł"},
+        ],
+    }
+    reviewer = CompactGroundedReviewer(
+        "test",
+        lambda _packet: {
+            "state": "Cena po rabacie.",
+            "context_ok": True,
+            "source_ok": True,
+            "source_refs": [],
+            "calc_ok": [True, True],
+            "answer_ok": True,
+            "reason": "OK",
+        },
+        arithmetic_call=lambda _packet: {
+            "complete": {"ok": False, "reason": "Powtórzony rabat."},
+            "steps": [
+                {"n": 1, "ok": False, "reason": "Rabat już zastosowano."},
+                {"n": 2, "ok": True, "reason": "Właściwa cena."},
+            ],
+        },
+    )
+    with pytest.raises(EvidenceError, match="pilot_semantic_rejected"):
+        run(model=model, reviewer=reviewer, required=Requirements(calculation=True))
+
+
+def test_arithmetic_review_requires_all_ordered_steps():
+    from venom_core.services.grounded_review import arithmetic_approved
+
+    with pytest.raises(ValueError, match="review_arithmetic_coverage_invalid"):
+        arithmetic_approved(
+            {
+                "complete": {"ok": True, "reason": "OK"},
+                "steps": [{"n": 2, "ok": True, "reason": "OK"}],
+            },
+            {"calculations": [{"n": 1}, {"n": 2}]},
+        )
+
+
+def test_booking_recap_preserves_latest_state_and_plain_history():
+    history = (
+        {"role": "user", "content": "Czy pięć osób potrzebuje zapisu we wtorek?"},
+        {"role": "assistant", "content": "We wtorek zapis nie jest wymagany."},
+        {"role": "user", "content": "Wizyta będzie w piątek, idą trzy osoby."},
+        {"role": "assistant", "content": "W piątek obowiązuje zapis. [KARTA]"},
+    )
+    focused, guidance = plain_pilot_context(
+        "Podaj dzień, liczebność i decyzję o rezerwacji.", history
+    )
+    assert focused == history
+    assert "z najnowszego odczytu karty" in guidance
+    assert "nie zastępuje późniejszego wyjątku" in guidance
+
+
+def test_observation_guidance_remains_when_final_does_not_repeat_chart_name():
+    history = (
+        {"role": "user", "content": "Czy z wykresu wynika, kto był w budynku?"},
+        {"role": "assistant", "content": "Wykres pokazuje tylko liczbę osób."},
+    )
+    _, guidance = plain_pilot_context("Napisz w jednym zdaniu, co wiadomo.", history)
+    assert "stałość mierzonej wielkości" in guidance
+
+
+def test_gathering_recap_preserves_all_event_roles_with_day_reference():
+    history = (
+        {"role": "user", "content": "Co się zmienia w pierwszą sobotę?"},
+        {
+            "role": "assistant",
+            "content": "Brama od 12:15, a pokaz o 12:45. Fakty: brama 12:15 i pokaz 12:45. [KARTA]",
+        },
+        {"role": "user", "content": "Gdzie jest zbiórka?"},
+        {
+            "role": "assistant",
+            "content": "Zbiórka tego dnia odbywa się przy fontannie. [KARTA]",
+        },
+    )
+    assert (
+        plain_pilot_recap(
+            "Przygotuj w jednym zdaniu notatkę z godzinami i miejscem zbiórki.",
+            history,
+        )
+        == "Brama od 12:15, a pokaz o 12:45, a zbiórka tego dnia odbywa się przy fontannie. [KARTA]"
+    )
+
+
+def test_booking_recap_uses_specific_day_instead_of_general_rule():
+    message = "Podaj dzień, liczbę osób i decyzję o zapisie."
+    history = (
+        {
+            "role": "user",
+            "content": "Przekładamy na poniedziałek i wracamy do czterech osób.",
+        },
+        {
+            "role": "assistant",
+            "content": "Na ogół wchodzą bez zapisu, ale w poniedziałek wszystkie grupy muszą się zapisać. [KARTA]",
+        },
+    )
+    assert (
+        plain_pilot_recap(message, history)
+        == "Poniedziałek, 4 osoby, zapis obowiązkowy."
+    )
+    unresolved = (
+        history[0],
+        {
+            "role": "assistant",
+            "content": "Każda grupa do pięciu osób wchodzi bez zapisu.",
+        },
+    )
+    assert plain_pilot_recap(message, unresolved) is None
+
+
+def test_booking_recap_preserves_explicit_negative_decision():
+    history = (
+        {"role": "user", "content": "Przekładamy na czwartek i wracamy do dwóch osób."},
+        {
+            "role": "assistant",
+            "content": "W czwartek dwie osoby nie muszą się zapisać.",
+        },
+    )
+    assert plain_pilot_recap(
+        "Podaj dzień, liczebność i decyzję o rezerwacji.", history
+    ) == ("Czwartek, 2 osoby, zapis niewymagany.")
+
+
+def test_observation_intro_does_not_preempt_later_question():
+    _, guidance = plain_pilot_context("Co oznacza na wykresie pozioma linia?", ())
+    assert "dokładny odczyt" in guidance
+    assert "wejścia i wyjścia" not in guidance
+
+
+def test_source_location_question_does_not_treat_requested_place_as_input():
+    from venom_core.services.grounded_pilot import _source_location_inputs
+
+    assert _source_location_inputs(
+        "Gdzie według karty jest zbiórka tego dnia?",
+        ["miejsce zbiórki", "termin wizyty"],
+    ) == ["termin wizyty"]
+    assert _source_location_inputs(
+        "Czy spotkanie należy potwierdzić?",
+        ["miejsce spotkania"],
+    ) == ["miejsce spotkania"]
+
+
+def test_stock_replay_plans_the_update_once_and_keeps_milliliters():
+    from venom_core.services.grounded_pilot import _stock_calculation
+
+    turns = (
+        "Zapisz zapas mleka: 2 l w chłodni, 320 ml w szafce.",
+        "W szafce jest jednak 360 ml. Oblicz łączną ilość.",
+        "Z chłodni odlano 230 ml. Policz, ile zostało w samej chłodni.",
+    )
+    inputs = tuple({"role": "user", "content": turn} for turn in turns[:-1])
+    history = (
+        *inputs,
+        {"role": "assistant", "content": "Po odjęciu pozostało 1770 ml."},
+    )
+    plans = []
+    for _ in range(2):
+        model, reviewer = Model(), Reviewer()
+        answer = run_pilot_turn(
+            turns[-1],
+            "stock-r3",
+            Sources(),
+            model,
+            reviewer,
+            history=history,
+            required=Requirements(calculation=True),
+        )
+        assert not model.calls
+        assert "1770 ml" in answer.text
+        plans.append(reviewer.materials[0]["evidence"]["calculations"][0])
+    assert plans[0] == plans[1]
+    assert plans[0]["expression"] == "(2000)-230"
+    assert (
+        _stock_calculation(
+            (*turns, "Policz zapas po wszystkich zmianach i przelicz go na litry.")
+        )[0].expression
+        == "((2000)-230+360)/1000"
+    )
+
+
+def test_unrecognized_quantity_correction_never_reuses_stale_stock():
+    from venom_core.services.grounded_pilot import _stock_calculation
+
+    assert (
+        _stock_calculation(
+            (
+                "Zanotuj zapas wody: 400 ml w chłodni, 80 ml w szafce.",
+                "Z chłodni część wypito. Policz sumę.",
+            )
+        )
+        is None
+    )
+
+
+def test_count_correction_and_ordinary_final_replay_from_the_same_values():
+    turns = (
+        "W rejestrze są 21 przesyłek lokalnych i 13 zamiejscowych. Potwierdź obie liczby.",
+        "Lokalne skorygowano na 18. Policz aktualną sumę.",
+        "Wysłano pięć z zamiejscowych. Ile zamiejscowych zostało?",
+    )
+    history = tuple({"role": "user", "content": turn} for turn in turns)
+    answer = plain_pilot_recap(
+        "Napisz bieżącą liczbę obydwu rodzajów i ich sumę.",
+        history,
+    )
+    assert answer == "18 lokalnych, 8 zamiejscowych, razem 26."
+    model, reviewer = Model(), Reviewer()
+    answer = run_pilot_turn(
+        turns[-1],
+        "r3",
+        Sources(),
+        model,
+        reviewer,
+        history=history[:-1],
+        required=Requirements(calculation=True),
+    )
+    assert "8 przesyłek" in answer.text
+    assert reviewer.materials[0]["evidence"]["calculations"][0]["unit"] == "przesyłek"
+    assert (
+        reviewer.materials[0]["evidence"]["calculations"][0]["expression"] == "(13)-5"
+    )
+
+
+def test_stock_replay_supports_undo_and_new_identical_user_events():
+    from venom_core.services.grounded_pilot import _stock_calculation
+
+    recorded = "Zapisz objętości: 400 ml w chłodni, 120 ml w szafce."
+    delta = "Z chłodni odlano 20 ml."
+    undo = "Cofnij ostatnią zmianę."
+    query = "Policz, ile zostało w chłodni."
+    plan = _stock_calculation((recorded, delta, delta, undo, query))
+    assert plan is not None
+    assert plan[0].expression == "(400)-20"
+    plan = _stock_calculation((recorded, delta, delta, query))
+    assert plan is not None
+    assert plan[0].expression == "((400)-20)-20"
+
+
+def test_group_addition_replays_from_an_explicit_count_behind_card_name():
+    from venom_core.services.grounded_pilot import _group_change, _group_update
+
+    anchor = "Czy według karty GRANIT cztery osoby muszą się zapisać w środę?"
+    added = "Dołączają trzy osoby. Czy zapis jest potrzebny?"
+    assert _group_update(added, anchor) == {"previous": 4, "joined": 3, "total": 7}
+    more = "Dochodzi jedna osoba. Czy nowa grupa musi się zapisać?"
+    assert _group_change(more, (anchor, added))["total"] == 8
+    assert _group_change(
+        more, (anchor, added, "Cofnij ostatnią zmianę liczebności.")
+    ) == {"previous": 4, "joined": 1, "total": 5}
+
+
+def test_booking_recap_accepts_decision_before_day_but_rejects_conflict():
+    user = {
+        "role": "user",
+        "content": "Przekładamy na czwartek i wracamy do pięciu osób.",
+    }
+    message = "Podaj dzień, liczbę osób i decyzję o zapisie."
+    assistant = {
+        "role": "assistant",
+        "content": "Obowiązuje zapis w czwartek. [GRANIT]",
+    }
+    assert (
+        plain_pilot_recap(message, (user, assistant))
+        == "Czwartek, 5 osób, zapis obowiązkowy."
+    )
+    assistant["content"] += " Jednak w czwartek zapis nie jest wymagany."
+    assert plain_pilot_recap(message, (user, assistant)) is None
+
+
+def test_full_ordinary_recap_keeps_opening_time_distinct_from_event_time():
+    history = (
+        {
+            "role": "user",
+            "content": "Dopisz odprawę: środa, 11:05, sala Wrzos, prowadzi Anita.",
+        },
+        {"role": "assistant", "content": "Potwierdzam godzinę."},
+        {
+            "role": "user",
+            "content": "Przenosimy do sali Cis i na piątek. Godzina bez zmian.",
+        },
+        {"role": "assistant", "content": "Spotkanie o 14:00."},
+    )
+    update = (
+        "Zastąpi ją Maja, a otwarcie sali będzie kwadrans wcześniej. Podsumuj stan."
+    )
+    after_update = (*history, {"role": "user", "content": update})
+    expected = "Piątek, sala Cis, otwarcie o 10:50, odprawa o 11:05; prowadzi Maja."
+    assert plain_pilot_recap(update, history) == expected
+    assert (
+        plain_pilot_recap(
+            "Napisz krótką notatkę ze wszystkimi godzinami.", after_update
+        )
+        == expected
+    )
+
+
+@pytest.mark.parametrize(
+    ("message", "planned", "expression", "unit", "value", "compiled", "changed"),
+    [
+        (
+            "Przelicz tę prędkość na km/h, zachowaj dwa miejsca po przecinku.",
+            "m/s",
+            "126/35",
+            "km/h",
+            "12.96",
+            "(126/35)*18/5",
+            True,
+        ),
+        (
+            "Przelicz podaną prędkość na m/s.",
+            "km/h",
+            "36",
+            "m/s",
+            "10",
+            "(36)*5/18",
+            True,
+        ),
+        ("Przelicz podaną prędkość na km/h.", "km/h", "36", "km/h", "36", "36", False),
+    ],
+)
+def test_explicit_speed_request_converts_one_declared_result(
+    message, planned, expression, unit, value, compiled, changed
+):
+    def model(phase, arguments, schema):
+        if phase == "assess":
+            return {"current_state": "Znana prędkość.", "missing": []}
+        if phase == "plan":
+            return {
+                "calculations": [
+                    {
+                        "calculation_id": "speed",
+                        "expression": expression,
+                        "unit": planned,
+                    }
+                ]
+            }
+        assert arguments["evidence"]["calculations"][0]["expression"] == compiled
+        return {
+            "prose": f"{value} {unit}.",
+            "sources": [],
+            "calculations": [{"calculation_id": "speed", "value": value, "unit": unit}],
+        }
+
+    reviewer, trace = Reviewer(), []
+    answer = run_pilot_turn(
+        message,
+        "speed-r4",
+        Sources(),
+        model,
+        reviewer,
+        required=Requirements(calculation=True),
+        trace=trace,
+    )
+    assert answer.text == f"{value} {unit}."
+    assert (
+        "explicit_speed_conversion" in {event["phase"] for event in trace}
+    ) is changed
+    event = reviewer.materials[0]["evidence"]["calculations"][0]
+    assert event["value"] == value and event["unit"] == unit
+    assert reviewer.materials[0]["plan"]["calculations"][0]["expression"] == compiled
+
+
+@pytest.mark.parametrize(
+    ("message", "steps"),
+    [
+        ("Oblicz średnią prędkość w km/h.", [("distance_over_time", "126/35", "m/s")]),
+        (
+            "Przelicz podaną prędkość na km/h.",
+            [("first", "3", "m/s"), ("second", "4", "m/s")],
+        ),
+        ("Przelicz podaną prędkość na km/h.", [("distance", "126", "m")]),
+    ],
+)
+def test_speed_conversion_leaves_other_plans_at_evidence_gate(message, steps):
+    def model(phase, arguments, schema):
+        if phase == "assess":
+            return {"current_state": "Znane operandy.", "missing": []}
+        if phase == "plan":
+            return {
+                "calculations": [
+                    {"calculation_id": ident, "expression": expression, "unit": unit}
+                    for ident, expression, unit in steps
+                ]
+            }
+        pytest.fail("A plan without the required result unit reached drafting.")
+
+    trace = []
+    with pytest.raises(EvidenceError):
+        run_pilot_turn(
+            message,
+            "speed-r4",
+            Sources(),
+            model,
+            Reviewer(),
+            required=Requirements(calculation=True),
+            trace=trace,
+        )
+    assert "explicit_speed_conversion" not in {event["phase"] for event in trace}
+    planned = next(
+        event["data"]["calculations"] for event in trace if event["phase"] == "plan"
+    )
+    assert [
+        (item["calculation_id"], item["expression"], item["unit"]) for item in planned
+    ] == steps
+
+
+def test_mass_register_calculates_one_location_from_last_user_update():
+    prior = (
+        "W rejestrze surowców zapisz 1,42 kg w lokalizacji Górna i 35 g w lokalizacji Dolna.",
+        "Wpis dla Dolna zmieniam na 50 g. Podaj aktualną sumę.",
+    )
+    request = "Z Górna pobrano 50 g. Ile zostało w tej jednej lokalizacji?"
+    history = tuple({"role": "user", "content": turn} for turn in prior)
+    model, reviewer = Model(), Reviewer()
+    answer = run_pilot_turn(
+        request,
+        "balance",
+        Sources(),
+        model,
+        reviewer,
+        history=history,
+        required=Requirements(calculation=True),
+    )
+    assert not model.calls
+    assert answer.text == "Górna: 1370 g."
+    evidence = reviewer.materials[0]["evidence"]["calculations"][0]
+    assert evidence["expression"] == "(1420)-50"
+    history += (
+        {"role": "user", "content": request},
+        {"role": "assistant", "content": "Poprzednia odpowiedź zablokowana."},
+    )
+    recap = "W wypisie dla magazynu podaj osobno Górna, Dolna i sumę."
+    assert (
+        plain_pilot_recap(recap, history) == "Górna: 1370 g, Dolna: 50 g, razem 1420 g."
+    )
+
+
+def test_category_removal_to_zero_retains_number_after_presentation_clause():
+    history = (
+        {
+            "role": "user",
+            "content": "Do zestawienia wpisz: kategoria R ma 4, kategoria S ma 3.",
+        },
+    )
+    request = "Z kategorii S zdjęto 3. Ile pozycji pozostało w S? Podaj tylko liczbę."
+    model, reviewer = Model(), Reviewer()
+    answer = run_pilot_turn(
+        request,
+        "count",
+        Sources(),
+        model,
+        reviewer,
+        history=history,
+        required=Requirements(calculation=True),
+    )
+    assert not model.calls
+    assert answer.text == "0"
+    evidence = reviewer.materials[0]["evidence"]["calculations"][0]
+    assert (evidence["expression"], evidence["unit"]) == ("(3)-3", "")
+    history += (
+        {"role": "user", "content": request},
+        {"role": "assistant", "content": "S: 3."},
+    )
+    update = "Dodaj do kategorii R jeszcze 2. Podaj R i S po zmianie."
+    assert plain_pilot_recap(update, history) == "R: 6, S: 0."
+
+
+@pytest.mark.parametrize(
+    ("prior", "message", "expression", "answer_text"),
+    [
+        (
+            (
+                "Cały odcinek ma 420 m. Oblicz średnią prędkość w m/s.",
+                "Z postojem zajęło to 70 sekund. Oblicz prędkość.",
+            ),
+            "Podam ją w km/h. Zrób przeliczenie z poprzedniego wyniku.",
+            "(420/70)*18/5",
+            "21,6 km/h.",
+        ),
+        (
+            ("Z pojemnika z 0,7 l odlano 250 ml. Oblicz pozostałość w mililitrach.",),
+            "Ile litrów wynosi ta pozostałość? Użyj danych z rozmowy.",
+            "(700-250)/1000",
+            "0,45 l.",
+        ),
+        (
+            (
+                "Na mapie każdy centymetr oznacza 25 metrów.",
+                "Trasa na mapie ma 8 cm. Oblicz rzeczywistą długość.",
+            ),
+            "Jest poprawiony pomiar, 5,5 cm. Oblicz długość jeszcze raz.",
+            "5.5*25",
+            "137,5 m.",
+        ),
+    ],
+)
+def test_context_arithmetic_binds_operands_and_result_unit(
+    prior, message, expression, answer_text
+):
+    model, reviewer = Model(), Reviewer()
+    answer = run_pilot_turn(
+        message,
+        "conversion",
+        Sources(),
+        model,
+        reviewer,
+        history=tuple({"role": "user", "content": item} for item in prior),
+        required=Requirements(calculation=True),
+    )
+    assert not model.calls
+    assert answer.text == answer_text
+    assert (
+        reviewer.materials[0]["evidence"]["calculations"][0]["expression"] == expression
+    )
+
+
+def test_scale_change_plain_recap_uses_both_user_measurements():
+    history = (
+        {"role": "user", "content": "Na mapie każdy centymetr oznacza 25 metrów."},
+        {
+            "role": "user",
+            "content": "Trasa na mapie ma 8 cm. Oblicz rzeczywistą długość.",
+        },
+        {"role": "assistant", "content": "Nie udało mi się zweryfikować odpowiedzi."},
+        {
+            "role": "user",
+            "content": "Jest nowy pomiar, 5,5 cm. Oblicz długość jeszcze raz.",
+        },
+        {"role": "assistant", "content": "140 m."},
+    )
+    request = "O ile zmienił się wynik po poprawieniu pomiaru?"
+    assert plain_pilot_recap(request, history) == "Wynik spadł o 62,5 m."
+    history += ({"role": "user", "content": "Przyjmij inną skalę."},)
+    assert plain_pilot_recap(request, history) is None
+
+
+def test_grounded_order_comparison_requires_two_matching_published_amounts():
+    backend = Sources()
+    card = (
+        "Cena jednej sztuki: organizer na kable kosztuje 34 zł. "
+        "Przy zakupie od 3 sztuk rabat to 4 zł za każdą sztukę. "
+        "Opcja „dostawa do punktu” kosztuje 12 zł za całe zamówienie. "
+        "Opcja „odbiór przy recepcji” jest darmowa."
+    )
+    backend.document = SourceDocument(
+        SourceRef("SUMATRA", "1", text_hash(card)), card, True
+    )
+    requested = (
+        "Na podstawie SUMATRA oblicz koszt zamówienia „organizer na kable”: 4 sztuki "
+        "i opcja „dostawa do punktu”."
+    )
+    changed = (
+        "Dla zamówienia „organizer na kable” liczba sztuk zostaje. "
+        "Teraz wybieram „odbiór przy recepcji”. Oblicz nową kwotę z SUMATRA."
+    )
+    model, reviewer = Model(), Reviewer()
+    history: tuple[dict[str, str], ...] = ()
+    for index, (message, expression, expected) in enumerate(
+        ((requested, "4*(34-4)+12", "132"), (changed, "4*(34-4)+0", "120"))
+    ):
+        answer = run_pilot_turn(
+            message,
+            f"price-{index}",
+            backend,
+            model,
+            reviewer,
+            history=history,
+            required=Requirements(sources=True, calculation=True),
+        )
+        assert f"{expected} zł." in answer.text
+        assert answer.text.endswith("[SUMATRA]")
+        evidence = reviewer.materials[-1]["evidence"]["calculations"][0]
+        assert evidence["expression"] == expression
+        assert reviewer.materials[-1]["draft"]["sources"][0]["quote"] == card
+        history += (
+            {"role": "user", "content": message},
+            {"role": "assistant", "content": answer.text},
+        )
+    assert not model.calls
+    recap = "Jednym zdaniem porównaj ceny obu wariantów zamówienia „organizer na kable” z kwotą różnicy."
+    assert plain_pilot_recap(recap, history) == (
+        "„dostawa do punktu” kosztuje 132 zł, a „odbiór przy recepcji” 120 zł (różnica 12 zł)."
+    )
+    wrong = (
+        history[0],
+        {"role": "assistant", "content": "Nie udało się."},
+        *history[2:],
+    )
+    assert plain_pilot_recap(recap, wrong) is None
+    wrong_reference = (
+        *history[:3],
+        {
+            "role": "assistant",
+            "content": history[3]["content"].replace("[SUMATRA]", "[SABINA]"),
+        },
+    )
+    assert plain_pilot_recap(recap, wrong_reference) is None
+
+
+@pytest.mark.parametrize(
+    ("message", "expect"),
+    [
+        ("Podaj wynik bez jednostki.", True),
+        ("Wylicz koszt i podaj go w złotych.", False),
+    ],
+)
+def test_compact_review_preserves_typed_evidence_and_explicit_presentation(
+    message, expect
+):
+    from venom_core.services.grounded_review import compact_packet
+
+    material, _ = _grounded_review_fixture()
+    material["message"] = message
+    packet = compact_packet(material)
+    assert (
+        packet["calculations"][0]["unit"]
+        == material["evidence"]["calculations"][0]["unit"]
+    )
+    assert packet.get("result_presentation") == (
+        "number_without_unit" if expect else None
+    )
+
+
+@pytest.mark.parametrize("approved", [True, False])
+def test_explicit_pickup_comparison_preserves_each_card_fact_and_review(approved):
+    cards = {
+        "BERELON": "Dokument dla „klucz płaski”. Wydanie w punkcie T5 do 09:40.",
+        "BERELONA": "Dokument dla „klucz gięty”. Wydanie w punkcie H8 do 16:15.",
+    }
+
+    class PairSources:
+        def current_ref(self, ident):
+            return SourceRef(ident, "1", text_hash(cards[ident]))
+
+        def read(self, ref):
+            return SourceDocument(ref, cards[ref.source_id], True)
+
+        def search(self, query):
+            raise AssertionError("Both named cards should be read directly.")
+
+    message = (
+        "Zestaw dla mnie oba punkty, wyraźnie przypisz „klucz płaski” do BERELON, "
+        "a „klucz gięty” do BERELONA."
+    )
+    reviewer, model = Reviewer(approved), Model()
+    args = message, "two-card-pickup", PairSources(), model, reviewer
+    required = Requirements(sources=True)
+    if approved:
+        result = run_pilot_turn(*args, required=required)
+        assert result.text == (
+            "„klucz płaski” — punkt T5 do 09:40. [BERELON] "
+            "„klucz gięty” — punkt H8 do 16:15. [BERELONA]"
+        )
+    else:
+        with pytest.raises(EvidenceError, match="pilot_semantic_rejected"):
+            run_pilot_turn(*args, required=required)
+    assert not model.calls
+    assert len(reviewer.materials) == 1
+    assert {
+        row["source_id"]: row["quote"]
+        for row in reviewer.materials[0]["draft"]["sources"]
+    } == cards
+
+
+@pytest.mark.parametrize(
+    "value,unit,approved",
+    [
+        ("52%", "%", True),
+        ("52 %", "%", True),
+        ("50%", "%", False),
+        ("52%%", "%", False),
+        ("52%", "zł", False),
+    ],
+)
+def test_percentage_claim_matches_value_and_separate_unit(value, unit, approved):
+    model = Model()
+    model.override["plan"] = {
+        "calculations": [
+            {"calculation_id": "chance", "expression": "13/25*100", "unit": "%"}
+        ],
+    }
+    model.override["draft"] = {
+        "prose": "Szansa wynosi 52%.",
+        "sources": [],
+        "calculations": [{"calculation_id": "chance", "value": value, "unit": unit}],
+    }
+    if approved:
+        result = run(model=model, required=Requirements(calculation=True))
+        assert result.text == "Szansa wynosi 52%."
+    else:
+        with pytest.raises(EvidenceError, match="answer_calculation_mismatch"):
+            run(model=model, required=Requirements(calculation=True))
+
+
+@pytest.mark.parametrize(
+    "context_ok,arithmetic_ok", [(True, True), (True, False), (False, True)]
+)
+def test_context_reviewer_inspects_actual_calculation_without_bypassing_other_gates(
+    context_ok, arithmetic_ok
+):
+    material, _ = _grounded_review_fixture()
+    message = "Aktualna cena to 30 zł, a rabat pozostał bez zmian."
+    material["history"] = [
+        {"role": "user", "content": message},
+        {"role": "assistant", "content": "Przestarzały rachunek."},
+    ]
+    calls = []
+
+    def context(packet):
+        assert packet == {
+            "request": material["message"],
+            "prior_users": [message],
+            "answer": material["draft"]["prose"],
+            "calculations": [
+                {"n": 1, "expression": "30*(1-20/100)", "value": "24", "unit": "zł"}
+            ],
+        }
+        return {"state": message * 6, "ok": context_ok, "reason": "Sprawdzono stan."}
+
+    def arithmetic(packet):
+        calls.append(packet)
+        verdict = {"ok": arithmetic_ok, "reason": "Sprawdzono rachunek."}
+        return {"complete": verdict, "steps": [dict(verdict, n=1)]}
+
+    reviewer = CompactGroundedReviewer(
+        "qualification",
+        lambda _: {
+            "state": message,
+            "context_ok": True,
+            "source_ok": True,
+            "source_refs": [1],
+            "calc_ok": [True],
+            "answer_ok": True,
+            "reason": "Sprawdzono treść.",
+        },
+        context_call=context,
+        arithmetic_call=arithmetic,
+    )
+    verdict = reviewer.review(material)
+    assert verdict.approved is (context_ok and arithmetic_ok)
+    assert bool(calls) is context_ok
+
+
+@pytest.mark.parametrize(
+    "previous,message,expected",
+    [
+        (
+            "Navigator idzie w drugą stronę.",
+            "Dwa zdania do skopiowania.",
+            "odwróceniu kierunku",
+        ),
+        (
+            "W następnej rundzie zaczyna osoba z lewej.",
+            "Punkty do przeczytania.",
+            "obecną rundę",
+        ),
+        (
+            "Zgłoszenie ma numer 31.",
+            "Opisz aktualny stan.",
+            "co dopiero można sprawdzić",
+        ),
+        (
+            "Skróć jeden odcinek.",
+            "Przekaż, co zachowuje długość nominalną.",
+            "wartość bazową",
+        ),
+    ],
+)
+def test_plain_reformulations_keep_previous_user_facts(previous, message, expected):
+    history = ({"role": "user", "content": previous},)
+    focused, guidance = plain_pilot_context(message, history)
+    assert focused == history
+    assert expected in guidance
+
+
+def test_plain_recap_anchors_nominal_length_to_an_explicit_user_value():
+    history = (
+        {"role": "user", "content": "Potrzebuję czterech odcinków po 1,35 m."},
+        {"role": "user", "content": "Czwarty skróć o 25 cm."},
+    )
+    _, guidance = plain_pilot_context(
+        "Przekaż, które zachowują nominalną długość.", history
+    )
+    assert "podaną długość nominalną 1,35 m" in guidance
+
+
+def test_plain_route_fallback_retains_location_and_contingency():
+    history = (
+        {"role": "user", "content": "Przejdź ten odcinek w przeciwnym kierunku."},
+        {"role": "user", "content": "Jeśli wejścia nie widać, wróć do portierni."},
+    )
+    _, guidance = plain_pilot_context("Dwa zdania do skopiowania.", history)
+    assert "pełną lokalizację" in guidance
+    assert "instrukcję awaryjną" in guidance
+
+
+def test_plain_round_recap_retains_latest_roles_and_all_four_rules():
+    history = (
+        {
+            "role": "user",
+            "content": "Tylko dłonie, bez mówienia i bez wyłaniania zwycięzcy.",
+        },
+        {"role": "assistant", "content": "Poruszajcie dłońmi jednocześnie."},
+        {
+            "role": "user",
+            "content": "W tej rundzie zaczyna osoba z prawej. Pozostali nie mogą gestykulować równocześnie.",
+        },
+        {
+            "role": "user",
+            "content": "W kolejnej rundzie zaczyna osoba z lewej. W tej dalej prawa.",
+        },
+    )
+    expected = (
+        "1. Obecną rundę zaczyna osoba z prawej.\n"
+        "2. Następną rundę zaczyna osoba z lewej.\n"
+        "3. Pokazujcie gesty tylko dłońmi, po jednej osobie naraz.\n"
+        "4. Grajcie bez mówienia i bez wyłaniania zwycięzcy."
+    )
+    assert plain_pilot_recap("Cztery punkty do przeczytania.", history) == expected
+    conflicting = (
+        *history[:-1],
+        dict(history[-1], content=history[-1]["content"].replace("prawa", "lewa")),
+    )
+    assert plain_pilot_recap("Cztery punkty do przeczytania.", conflicting) is None

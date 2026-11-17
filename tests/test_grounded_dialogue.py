@@ -16,8 +16,16 @@ from venom_core.services.grounded_dialogue import (
     SourceQuote,
     SourceRef,
     TurnPlan,
+    bind_source_quotes,
     detect_requirements,
+    explicit_result_unit,
+    literal_source_quote,
+    requested_card_ids,
+    requested_meeting_place,
+    requested_pickup_details,
+    strip_public_bookkeeping,
     text_hash,
+    verify_result_prose,
 )
 
 
@@ -510,3 +518,351 @@ def test_explicit_mode_rejects_unselected_tool_arguments(changes):
             TurnPlan("Pokaż krótką odpowiedź.", "r1", **changes),
             infer_requirements=False,
         )
+
+
+@pytest.mark.parametrize(
+    ("message", "unit"),
+    [
+        ("Przelicz tę prędkość na km/h, zachowaj dwa miejsca po przecinku.", "km/h"),
+        ("Przelicz 3.6 m/s na kilometry.", "km"),
+        ("Podaj długość w centymetrach.", "cm"),
+        ("Oblicz zapas po zmianie w litrach.", "l"),
+        ("Oblicz wynik w m/s i km/h.", None),
+        ("W 12 s przejechał odcinek. Oblicz średnią prędkość.", None),
+        ("Podaj to w dwóch zdaniach.", None),
+    ],
+)
+def test_explicit_unit_recognizes_only_requested_single_destination(message, unit):
+    assert explicit_result_unit(message) == unit
+
+
+def test_correct_prose_cannot_publish_if_calculator_only_computed_input_unit():
+    message = "Przelicz tę prędkość na km/h."
+    plan = TurnPlan(
+        message,
+        "turn-4",
+        calculations=(CalculationPlan("velocity", "126/35", "m/s"),),
+        required=Requirements(calculation=True),
+    )
+    gate = GroundedTurn(MemorySources())
+    with pytest.raises(EvidenceError, match="calculation_result_unit_missing"):
+        gate.prepare(
+            plan,
+            infer_requirements=False,
+            required_result_unit=explicit_result_unit(message),
+        )
+    evidence = gate.prepare(
+        replace(
+            plan, calculations=(CalculationPlan("velocity", "126/35*18/5", "km/h"),)
+        ),
+        infer_requirements=False,
+        required_result_unit=explicit_result_unit(message),
+    )
+    verify_result_prose("Otrzymujemy 12,96 km/h.", evidence, "km/h")
+    verify_result_prose("Otrzymujemy 12.960 kilometrów na godzinę.", evidence, "km/h")
+    with pytest.raises(EvidenceError, match="answer_result_unbound"):
+        verify_result_prose("Wychodzi 12,96 m/s.", evidence, "km/h")
+    with pytest.raises(EvidenceError, match="answer_result_unbound"):
+        verify_result_prose("Wychodzi 12,97 km/h.", evidence, "km/h")
+
+
+def test_prose_numbers_preserve_grouping_instead_of_matching_suffix():
+    gate = GroundedTurn(MemorySources())
+    evidence = gate.prepare(calc_plan("1200.5", unit="zł"))
+    verify_result_prose("Wynik to 1\u202f200,50 zł.", evidence, "zł")
+    old = gate.prepare(calc_plan("200.5", unit="zł"))
+    with pytest.raises(EvidenceError, match="answer_result_unbound"):
+        verify_result_prose("Wynik to 1 200,50 zł.", old, "zł")
+
+
+@pytest.mark.parametrize(
+    ("message", "cards"),
+    [
+        ("Sprawdź w WIERZBA godzinę pokazu.", ("WIERZBA",)),
+        ("Zajrzyj do MORWA. W PELIKAN znajdź adres.", ("MORWA", "PELIKAN")),
+        ("Według karty [club.v2] podaj zasadę.", ("club.v2",)),
+        ("Na podstawie ZEFIR policz koszt.", ("ZEFIR",)),
+        ("Z MORWA odczytaj zwykłe godziny.", ("MORWA",)),
+        ("Sprawdź kartę MIRABELKA i potem kartę MIRABELKA.", ("MIRABELKA",)),
+        ("Przeczytaj cennik i spójrz na zasady.", ()),
+    ],
+)
+def test_explicit_card_id_forms_are_distinct_from_search_text(message, cards):
+    assert requested_card_ids(message) == cards
+
+
+def test_named_card_binds_identity_even_when_search_returns_different_document():
+    backend = MemorySources()
+    text = "Pokaz zaczyna się o 18:10."
+    doc = SourceDocument(SourceRef("WIERZBA", "1", text_hash(text)), text, True)
+    backend.current_ref = lambda ident: {
+        "WIERZBA": doc.ref,
+        "club": backend.document.ref,
+    }[ident]
+    backend.read = lambda ref: {"WIERZBA": doc, "club": backend.document}[ref.source_id]
+    gate = GroundedTurn(backend)
+
+    _, _ = gate.read_sources("club", message="Sprawdź WIERZBA godzinę pokazu.")
+    evidence = gate.prepare(
+        TurnPlan("Według WIERZBA kiedy pokaz?", "r", source_query="club")
+    )
+    assert evidence.sources == (doc,)
+    assert not backend.searches
+    assert gate.publish(
+        AnswerDraft(evidence.evidence_id, (SourceQuote("WIERZBA", "1", text),))
+    ).text.endswith("[WIERZBA@1]")
+    with pytest.raises(EvidenceError, match="source_not_found"):
+        gate.read_sources("club", message="Sprawdź NIEISTNIEJĄCA godzinę.")
+    backend.current_ref = lambda _ident: backend.document.ref
+    with pytest.raises(EvidenceError, match="source_identity_mismatch"):
+        gate.read_sources("club", message="Sprawdź WIERZBA godzinę.")
+
+
+def test_all_explicit_named_cards_need_bound_quotes():
+    backend = MemorySources()
+    docs = {
+        name: SourceDocument(SourceRef(name, "1", text_hash(name)), name, True)
+        for name in ("PIERWSZA", "DRUGA")
+    }
+    backend.current_ref = lambda ident: docs[ident].ref
+    backend.read = lambda ref: docs[ref.source_id]
+    gate = GroundedTurn(backend)
+    evidence = gate.prepare(
+        TurnPlan("Porównaj wyniki według PIERWSZA oraz według DRUGA.", "r")
+    )
+    assert evidence.requested_source_ids == ("PIERWSZA", "DRUGA")
+    with pytest.raises(EvidenceError, match="answer_named_source_required"):
+        gate.publish(
+            AnswerDraft(
+                evidence.evidence_id,
+                (SourceQuote("PIERWSZA", "1", "PIERWSZA"),),
+            )
+        )
+
+
+def test_public_bookkeeping_cleanup_keeps_fact_and_real_citation():
+    prose = (
+        "Zbiórka odbywa się przy żółtej wiacie (current_state). "
+        "(Fakt 1: Opublikowana godzina. Przypisanie: MIRABELKA, 1) "
+        "(Calculation 1, version 1)"
+    )
+    assert strip_public_bookkeeping(prose, {"MIRABELKA": "1"}) == (
+        "Zbiórka odbywa się przy żółtej wiacie. [MIRABELKA]"
+    )
+    assert strip_public_bookkeeping("Pozostały 2 bilety (oba ulgowe).", {}) == (
+        "Pozostały 2 bilety (oba ulgowe)."
+    )
+
+
+def test_prose_result_does_not_drop_polish_minus():
+    gate = GroundedTurn(MemorySources())
+    evidence = gate.prepare(calc_plan("-12.96", unit="km/h"))
+    verify_result_prose("Wynik to −12,96 km/h.", evidence, "km/h")
+    positive = gate.prepare(calc_plan("12.96", unit="km/h"))
+    with pytest.raises(EvidenceError, match="answer_result_unbound"):
+        verify_result_prose("Wynik to −12,96 km/h.", positive, "km/h")
+
+
+def test_compact_review_must_cover_the_card_actually_quoted():
+    from venom_core.services.grounded_review import compact_approved
+
+    packet = {
+        "needs": {"sources": True},
+        "mode": "answer",
+        "sources": [{"n": 1}, {"n": 2}],
+        "cited_source_refs": [1],
+        "calculations": [],
+    }
+    verdict = {
+        "state": "Stan z karty.",
+        "context_ok": True,
+        "source_ok": True,
+        "source_refs": [1],
+        "calc_ok": [],
+        "answer_ok": True,
+        "reason": "Znane źródło.",
+    }
+    assert compact_approved(verdict, packet)
+    with pytest.raises(ValueError, match="review_source_coverage_missing"):
+        compact_approved(verdict | {"source_refs": [2]}, packet)
+
+
+def test_assignments_bind_both_required_cards_and_restore_missing_literal():
+    backend = MemorySources()
+    bodies = {
+        "WITRAZ": "Wybór maski: punkt B7, czynne do 16:15.",
+        "RAMKA": "Wybór plakatu: punkt K3, czynne do 14:20.",
+    }
+    references = {
+        ident: SourceRef(ident, "1", text_hash(body)) for ident, body in bodies.items()
+    }
+    backend.current_ref = references.__getitem__
+    backend.read = lambda ref: SourceDocument(ref, bodies[ref.source_id], True)
+    original = (
+        "Zestaw punkty: przypisz wybór maski do WITRAZ, a wybór plakatu do RAMKA."
+    )
+    assert requested_card_ids(original) == ("WITRAZ", "RAMKA")
+    assert requested_card_ids("Teraz użyj wyłącznie RAMKA.") == ("RAMKA",)
+    assert requested_card_ids("Czy z WITRAZ wynika wyjątek?") == ("WITRAZ",)
+    assert requested_card_ids("Porównaj informacje według WITRAZ i RAMKA.") == (
+        "WITRAZ",
+        "RAMKA",
+    )
+    gate = GroundedTurn(backend)
+    evidence = gate.prepare(
+        TurnPlan(original, "turn-1", required=Requirements(sources=True))
+    )
+    assert evidence.requested_source_ids == ("WITRAZ", "RAMKA")
+    assert not backend.searches
+    quotes = (SourceQuote("WITRAZ", "1", "punkt B7, czynne do 16:15"),)
+    prose = "Maska: B7 do 16:15 [WITRAZ]. Plakat: K3 do 14:20 [RAMKA]."
+    bound = bind_source_quotes(prose, evidence, quotes)
+    assert bound == (*quotes, SourceQuote("RAMKA", "1", bodies["RAMKA"]))
+    assert "[RAMKA@1]" in gate.publish(AnswerDraft(evidence.evidence_id, bound)).text
+    with pytest.raises(EvidenceError, match="answer_source_unknown"):
+        bind_source_quotes(prose.replace("RAMKA", "POMYLONA"), evidence, quotes)
+    with pytest.raises(EvidenceError, match="answer_source_unknown"):
+        bind_source_quotes(
+            prose + " Według karty **NIEISTNIEJACA** obowiązuje rabat.",
+            evidence,
+            quotes,
+        )
+
+
+def test_long_or_incomplete_card_cannot_supply_implicit_quote():
+    _, _, evidence = prepared_source(MemorySources("Wzór " * 1300))
+    with pytest.raises(EvidenceError, match="answer_public_source_required"):
+        bind_source_quotes("Wynik według karty [club].", evidence, ())
+    with pytest.raises(EvidenceError, match="answer_public_source_required"):
+        bind_source_quotes(
+            "Wynik według karty [club].",
+            replace(evidence, sources=(replace(evidence.sources[0], complete=False),)),
+            (),
+        )
+
+
+def test_quote_normalizes_only_double_quote_spelling():
+    card = "W danych nie określono parametru „stawka za sprawdzenie”."
+    assert literal_source_quote(card, 'parametru „stawka za sprawdzenie"') == (
+        "parametru „stawka za sprawdzenie”"
+    )
+    with pytest.raises(EvidenceError, match="answer_quote_unsupported"):
+        literal_source_quote(card, 'parametru "stawka za dostawę"')
+    with pytest.raises(EvidenceError, match="answer_quote_unsupported"):
+        literal_source_quote(card, "”")
+
+
+def test_named_card_location_is_distinct_from_other_missing_fact_roles():
+    body = "Wejście od 18:00. Grupa spotyka się pod kamiennym łukiem. Godziny zbiórki nie podano."
+    ref = SourceRef("ALFA", "1", text_hash(body))
+    doc = SourceDocument(ref, body, True)
+    question = "Gdzie grupa zbiera się tego dnia według ALFA?"
+    assert requested_meeting_place(question, (doc,)) == SourceQuote(
+        "ALFA", "1", "Grupa spotyka się pod kamiennym łukiem."
+    )
+    assert (
+        requested_meeting_place("O której grupa zbiera się według ALFA?", (doc,))
+        is None
+    )
+    assert (
+        requested_meeting_place(
+            "Gdzie grupa zbiera się i o której według ALFA?", (doc,)
+        )
+        is None
+    )
+    assert requested_meeting_place(question, (replace(doc, complete=False),)) is None
+    assert requested_meeting_place(question, (replace(doc, text=body + " X."),)) is None
+    repeated = body + " Grupa zbiera się przy wejściu."
+    other = SourceDocument(replace(ref, sha256=text_hash(repeated)), repeated, True)
+    assert requested_meeting_place(question, (other,)) is None
+
+
+def test_trailing_model_fact_labels_keep_public_values_and_citation():
+    assert (
+        strip_public_bookkeeping("Średnia to 4,5 m/s. Fakty: : 4,5 m/s.", {})
+        == "Średnia to 4,5 m/s."
+    )
+    assert (
+        strip_public_bookkeeping(
+            "Początek o 17:55. Fakty: wejście (17:25), zbiórka (stojak A). [ALFA]",
+            {"ALFA": "1"},
+        )
+        == "Początek o 17:55. Wejście (17:25), zbiórka (stojak A). [ALFA]"
+    )
+
+
+def test_bare_card_like_labels_keep_implicit_dialogue_ordinary():
+    assert not detect_requirements("Użyj wyłącznie CSV.").sources
+    assert not detect_requirements("Oblicz nową kwotę z VAT.").sources
+    assert requested_card_ids("Zachowaj liczbę sztuk. Oblicz nową kwotę z TYLONA.") == (
+        "TYLONA",
+    )
+    assert not detect_requirements("Przypisz zmywarkę do AGD, a plik do CSV.").sources
+    assert detect_requirements("Użyj wyłącznie karty CSV.").sources
+    assert detect_requirements(
+        "Użyj wyłącznie RAMKA.", ("Jaki jest limit według RAMKA?",)
+    ).sources
+    assert detect_requirements(
+        "Przypisz wybór maski do WITRAZ, a plakat do RAMKA.",
+        ("Sprawdź WITRAZ.", "Według RAMKA jaki jest limit?"),
+    ).sources
+
+
+def test_pickup_summary_binds_each_item_and_literal_to_its_own_card():
+    bodies = {
+        "ARKON": "Dokument dla „znacznik jodły”. Wydanie w punkcie M4 do 12:45.",
+        "LUTNIA": 'Karta dla "klucz dziedzińca". Wydanie w punkcie lada C do godziny 18:05.',
+    }
+    documents = tuple(
+        SourceDocument(SourceRef(ident, "2", text_hash(body)), body, True)
+        for ident, body in bodies.items()
+    )
+    request = (
+        "Zestaw dla mnie oba punkty, wyraźnie przypisz „klucz dziedzińca” do LUTNIA, "
+        "a „znacznik jodły” do ARKON."
+    )
+    details = requested_pickup_details(request, documents)
+    assert details is not None
+    assert [(d.item, d.point, d.until) for d in details] == [
+        ("klucz dziedzińca", "lada C", "18:05"),
+        ("znacznik jodły", "M4", "12:45"),
+    ]
+    assert [d.quote for d in details] == [
+        SourceQuote("LUTNIA", "2", bodies["LUTNIA"]),
+        SourceQuote("ARKON", "2", bodies["ARKON"]),
+    ]
+    swapped = (
+        request.replace("LUTNIA", "ZAMIANA")
+        .replace("ARKON", "LUTNIA")
+        .replace("ZAMIANA", "ARKON")
+    )
+    assert requested_pickup_details(swapped, documents) is None
+    assert requested_pickup_details(request, documents[:1]) is None
+    assert (
+        requested_pickup_details(
+            request, (documents[0], replace(documents[1], complete=False))
+        )
+        is None
+    )
+    assert (
+        requested_pickup_details(
+            request + " Podaj również numer rezerwacji.", documents
+        )
+        is None
+    )
+    original = documents[1]
+    conflict = original.text + " Wydanie w punkcie B1 do 17:40."
+    assert (
+        requested_pickup_details(
+            request,
+            (
+                documents[0],
+                replace(
+                    original,
+                    text=conflict,
+                    ref=replace(original.ref, sha256=text_hash(conflict)),
+                ),
+            ),
+        )
+        is None
+    )

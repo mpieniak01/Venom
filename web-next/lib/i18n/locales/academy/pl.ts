@@ -483,6 +483,10 @@ export const academy = {
       recipeJson: "Parametry wariantu (JSON)",
       invalidDraft: "Sprawdź JSON wariantów, pola trenera i limity kampanii.",
       policy: {
+        parentReference: "Odniesienie rzeczywistego rodzica",
+        noParent: "Bez wskazanego rodzica",
+        parentHint: "Wybierz ocenę tych samych wag, od których zaczyna się trening. Reguły chronią jej trafienia, a selekcja i dogrywka mierzą przyrost względem rodzica.",
+        parentDelta: "Przyrost względem rodzica",
         sourceLocked: "Szkic ma przypiętą ocenę źródłową. Odrzuć szkic, aby wrócić do zwykłego formularza.",
         title: "Reguły jakości",
         enable: "Stosuj reguły jakości",

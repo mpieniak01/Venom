@@ -96,7 +96,7 @@ export interface CampaignTrial {
 export interface Campaign {
   phase?: "trials" | "qualification" | "complete";
   qualification_status?: CampaignQualificationStatus;
-  qualification?: { status?: string; qualified?: unknown; reason?: string } | null;
+  qualification?: { status?: string; qualified?: unknown; reason?: string; usable_delta?: number; critical_delta?: number } | null;
   deadline_at?: number | null;
   qualification_attempts?: number;
   campaign_id: string;

@@ -4,6 +4,7 @@ import { afterEach, describe, it } from "node:test";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { auditFixture, blockedAuditFixture } from "./fixtures/academy-data-audit";
 import AcademyPage from "../app/(console)/academy/page";
+import { readQualityPolicy } from "../components/academy/campaign-quality-policy";
 import { CampaignPanel } from "../components/academy/campaign-panel";
 import type { Campaign, CampaignRequest } from "../lib/academy-campaign-api";
 import type { ExperimentInitialAdapter } from "../lib/academy-experiments-api";
@@ -73,6 +74,19 @@ function serve(
 }
 
 describe("Academy campaigns", () => {
+  it("pins the real parent as a protected quality reference", () => {
+    const data = new FormData();
+    data.set("quality-policy-enabled", "on");
+    data.set("quality-parent-reference", "run:parent-baseline");
+    data.append("quality-reference-record-id", "run:reference");
+    data.set("quality-protect-reference-hits", "on");
+    data.set("quality-no-new-critical", "on");
+    const policy = readQualityPolicy(data);
+    assert.equal(policy?.parent_reference_record_id, "run:parent-baseline");
+    assert.deepEqual(policy?.reference_record_ids, ["run:reference", "run:parent-baseline"]);
+    assert.equal(policy?.protect_reference_hits, true);
+  });
+
   it("plans one-start final qualification with a registered package and shared time budget", async () => {
     globalThis.FormData = window.FormData;
     let submitted: CampaignRequest | undefined;

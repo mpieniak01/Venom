@@ -483,6 +483,10 @@ export const academy = {
       recipeJson: "Variantenparameter (JSON)",
       invalidDraft: "Prüfen Sie das Varianten-JSON, die Trainerfelder und die Kampagnenlimits.",
       policy: {
+        parentReference: "Referenz des tatsächlichen Elternadapters",
+        noParent: "Keine Elternreferenz",
+        parentHint: "Wählen Sie die Bewertung der Ausgangsgewichte des Trainings. Die Regeln schützen deren Erfolge; Auswahl und Verlängerung messen den Zuwachs gegenüber dem Elternadapter.",
+        parentDelta: "Verbesserung gegenüber dem Elternadapter",
         sourceLocked: "Der Entwurf ist an seine Quellbewertung gebunden. Verwerfen Sie ihn, um zum Standardformular zurückzukehren.",
         title: "Qualitätsregeln",
         enable: "Qualitätsregeln anwenden",

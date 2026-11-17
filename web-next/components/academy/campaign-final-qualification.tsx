@@ -60,6 +60,8 @@ export function CampaignFinalSummary({ campaign }: { readonly campaign: Campaign
   const status = campaign.qualification_status ?? "pending";
   const statusKey = QUALIFICATION_STATES.has(status) ? status : "unverified";
   const deadline = campaign.deadline_at;
+  const delta = campaign.qualification?.usable_delta;
+  const format = new Intl.NumberFormat(language, { maximumFractionDigits: 2, signDisplay: "exceptZero" });
   return (
     <section aria-label={t(PREFIX + "title")} className="space-y-2 rounded-lg border border-[color:var(--ui-border)] p-3">
       <h4 className="font-medium">{t(PREFIX + "title")}</h4>
@@ -72,6 +74,9 @@ export function CampaignFinalSummary({ campaign }: { readonly campaign: Campaign
             <dd>{new Date(deadline * 1000).toLocaleString(language)}</dd></div>
         )}
       </dl>
+      {typeof delta === "number" && Number.isFinite(delta) && (
+        <p className="text-sm">{t("academy.campaigns.quality.policy.parentDelta")} · {format.format(delta * 100)} {t("academy.campaigns.quality.guard.points")}</p>
+      )}
       <p className="text-sm text-hint">{t(PREFIX + "scope")}</p>
     </section>
   );

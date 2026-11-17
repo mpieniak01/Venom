@@ -239,6 +239,12 @@ for version in genealogy['versions']:
    └─> Dashboard: Loss charts, statistics, genealogy
 ```
 
+## Local campaigns with automatic final qualification
+
+Local experiment campaigns may include `final_qualification: {inputs_id, reserve_seconds}`. Register an immutable `QualificationInputs` package with `python -m scripts.academy.campaigns --root ROOT register-final ID inputs.json` before planning; the panel lists packages without exposing private file paths or test contents. Semantic review requires the verified judge audit in the API and worker environment.
+
+The normal start action runs trials and then exports and qualifies the selected candidate. The final reserve is part of the overall time budget; restarting does not reset the deadline. The panel keeps polling during `qualifying` and distinguishes completed trials from `passed`, `failed_quality` and `incomplete` qualification. Evidence compares the candidate with its actual parent on held-out cases. A tie is not an improvement. Qualification does not automatically activate the model in general chat. See the [local campaign instructions](PL/ACADEMY_EKSPERYMENTY.md).
+
 ## Ollama LoRA Deployment Path (External Training)
 
 The Academy contract separates training and runtime deployment:

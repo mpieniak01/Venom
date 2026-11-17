@@ -31,7 +31,11 @@ export function readQualityPolicy(data: FormData, sourceRecordId?: string): Camp
     }
     return [category, value / 100] as const;
   });
-  const references = data.getAll("quality-reference-record-id").map(textValue);
+  const parentReference = textValue(data.get("quality-parent-reference"));
+  const references = [...new Set([
+    ...data.getAll("quality-reference-record-id").map(textValue),
+    ...(parentReference ? [parentReference] : []),
+  ])];
   const protectedIds = [...new Set(textValue(data.get("quality-protected-cases")).split(/\r?\n/)
     .map((line) => line.trim()).filter(Boolean))];
   if (references.length > 8 || protectedIds.length > 2048 || deltas.length > 64) {
@@ -42,6 +46,7 @@ export function readQualityPolicy(data: FormData, sourceRecordId?: string): Camp
     ...(hypothesis ? { hypothesis } : {}),
     ...(sourceRecordId ? { source_record_id: sourceRecordId } : {}),
     reference_record_ids: references,
+    ...(parentReference ? { parent_reference_record_id: parentReference } : {}),
     protected_case_ids: protectedIds,
     protect_reference_hits: data.has("quality-protect-reference-hits"),
     protect_base_hits: data.has("quality-protect-base-hits"),
@@ -55,7 +60,7 @@ function PolicyReferences({ initial }: { readonly initial?: CampaignQualityPolic
   const [recordIds, setRecordIds] = useState<string[] | null>(null);
   const [error, setError] = useState(false);
   const initialIds = initial?.reference_record_ids ?? [];
-  const options = [...new Set([...(recordIds ?? []), ...initialIds])];
+  const options = [...new Set([...(recordIds ?? []), ...initialIds, ...(initial?.parent_reference_record_id ? [initial.parent_reference_record_id] : [])])];
 
   useEffect(() => {
     const controller = new AbortController();
@@ -73,6 +78,13 @@ function PolicyReferences({ initial }: { readonly initial?: CampaignQualityPolic
       {error && <p role="alert" className="text-sm text-red-400">{t(QUALITY + "historyError")}</p>}
       {!error && !recordIds && <p className="text-sm text-hint">{t(QUALITY + "loading")}</p>}
       {!error && recordIds && !options.length && <p className="text-sm text-hint">{t(QUALITY + "policy.noReferences")}</p>}
+      <Label htmlFor="quality-parent-reference">{t(QUALITY + "policy.parentReference")}</Label>
+      <select id="quality-parent-reference" name="quality-parent-reference" className={TEXTAREA}
+        defaultValue={initial?.parent_reference_record_id ?? ""}>
+        <option value="">{t(QUALITY + "policy.noParent")}</option>
+        {options.map((id) => <option key={id} value={id}>{id}</option>)}
+      </select>
+      <p className="text-xs text-hint">{t(QUALITY + "policy.parentHint")}</p>
       <div className="max-h-40 space-y-1 overflow-auto">
         {options.map((id) => (
           <Label htmlFor={`quality-policy-ref-${id}`} className="flex items-center gap-2 break-all" key={id}>
@@ -216,6 +228,9 @@ export function QualityPolicySummary({ policy }: { readonly policy: CampaignQual
           <li key={category}>{category} · {t(QUALITY + "policy.minimum")} {format.format(minimum * 100)}</li>
         ))}
       </ul>
+      {policy.parent_reference_record_id && (
+        <p className="break-all">{t(QUALITY + "policy.parentReference")} · {policy.parent_reference_record_id}</p>
+      )}
       {policy.reference_record_ids.length > 0 && (
         <p className="break-all">{t(QUALITY + "policy.references")} · {policy.reference_record_ids.join(", ")}</p>
       )}
@@ -232,6 +247,10 @@ export function TrialQualityDecision({ guard }: { readonly guard: TrialQualityGu
       <summary className="cursor-pointer font-medium">{t(QUALITY + "guard." + guard.status)}</summary>
       <div className="mt-2 space-y-1 text-hint">
         <p>{t(QUALITY + "policy.protectedIds")} · {guard.protected_count ?? "—"}</p>
+        {guard.parent_delta && (
+          <p>{t(QUALITY + "policy.parentDelta")} · {format.format(guard.parent_delta.usable_delta * 100)} {t(QUALITY + "guard.points")}
+            {" · "}{guard.parent_delta.reference_record_id}</p>
+        )}
         {guard.reasons.map((reason, index) => {
           const key = QUALITY + "issues." + reason.code;
           const label = t(key);

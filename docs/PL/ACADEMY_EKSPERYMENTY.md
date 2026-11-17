@@ -6,7 +6,7 @@ W **Academy → Trening → Kampanie** wybierz miejsce wykonania. **Trening loka
 
 **Zdalny trening tekstowy · Vast** jest opcją dla przygotowanej VM. Ma dodatkowy limit kwoty, rozliczenie wynajmu i synchronizację dowodów. Pilot Vast dotyczy odbioru tej właśnie ścieżki. [Instrukcja zdalnej kampanii](ACADEMY_ZDALNY_TRENING_TEKSTU.md)
 
-Ranking lokalnej kampanii pochodzi z danych dev. Ocena na odłożonym zbiorze jest osobnym krokiem. Automatyczna kolejka niezależnej kwalifikacji opisana w instrukcji zdalnej korzysta z archiwów kampanii Vast.
+Ranking lokalnej kampanii pochodzi z danych dev. Opcjonalna końcowa kwalifikacja lokalna uruchamia się automatycznie po próbach, na wcześniej przypiętym odłożonym zbiorze. Kampanie bez tego etapu zachowują dotychczasowy przebieg.
 
 ## Przygotowanie profilu
 
@@ -125,6 +125,25 @@ python -m scripts.academy.campaigns --root "$experiment_root" report polski-czat
 
 `stop` zatrzymuje kampanię. `resume` podejmuje ją z zachowanym stanem oraz pozostałym budżetem. [Kontrakt kampanii](../../venom_core/services/training_experiments/campaign_schema.py) · [CLI kampanii](../../scripts/academy/campaigns.py)
 
+
+## Lokalna kampania z automatycznym finałem
+
+Operator rejestruje pakiet końcowej oceny przed zaplanowaniem kampanii. Plik wejściowy używa kontraktu `QualificationInputs`: ścieżki train, dev, final_test, calibration, snapshot i training_venv oraz max_seconds. Zestaw testowy musi być rozłączny z uczeniem i oceną dev. Profil semantyczny wymaga zweryfikowanego audytu sędziego wskazanego przez `VENOM_ACADEMY_JUDGE_AUDIT_ROOT` w środowisku API i wykonawcy.
+
+```bash
+python -m scripts.academy.campaigns --root "$experiment_root" register-final fresh-final inputs.json
+python -m scripts.academy.campaigns --root "$experiment_root" final-inputs
+```
+
+W panelu **Końcowa kwalifikacja względem rodzica** wybierz zarejestrowany pakiet i rezerwę czasu. W manifeście CLI odpowiada temu pole:
+
+```json
+"final_qualification": {"inputs_id": "fresh-final", "reserve_seconds": 900}
+```
+
+Rezerwa stanowi część `budget.max_seconds`; musi pomieścić eksport i ocenę. Wybranie pakietu włącza ocenę automatyczną. Zapis planu wiąże wejścia oraz protokół, a pierwszy start ustala nieprzesuwalny termin. Wznowienie wykorzystuje pozostały czas. Po zakończeniu prób wykonawca sam eksportuje finalistę, ocenia go względem bazy i rzeczywistego rodzica, zapisuje dowody i decyzję. Osobne wywołanie końcowej oceny nie jest potrzebne.
+
+`qualifying` oznacza trwający finał. Panel pokazuje osobno `qualification_status`: oczekiwanie, pracę, spełnienie kryteriów, odrzucenie jakościowe albo niekompletną ocenę. `succeeded` dotyczy zakończenia procedury; kwalifikację potwierdza dopiero wynik `passed`. Remis z rodzicem nie jest przyrostem. Wynik dotyczy umiejętności objętych testem i nie aktywuje automatycznie adaptera w zwykłym czacie. Raport kampanii zawiera także wynik końcowego etapu.
 
 ## Ocena kilku checkpointów z jednej próby
 

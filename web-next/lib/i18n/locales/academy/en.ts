@@ -483,6 +483,10 @@ export const academy = {
       recipeJson: "Variant parameters (JSON)",
       invalidDraft: "Check the variant JSON, supported trainer fields, and campaign limits.",
       policy: {
+        parentReference: "Actual parent reference",
+        noParent: "No parent reference",
+        parentHint: "Choose the evaluation of the weights used to initialize training. The policy protects its successes; selection and extension measure improvement against the parent.",
+        parentDelta: "Improvement against parent",
         sourceLocked: "The draft is pinned to its source evaluation. Discard the draft to return to the standard form.",
         title: "Quality rules",
         enable: "Apply quality rules",

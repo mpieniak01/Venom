@@ -1268,11 +1268,24 @@ def _review_checkpoint_test(client, run_id, step, candidate_good):
 
 
 def _semantic_test_pin(monkeypatch):
-    from types import SimpleNamespace
-
     from venom_core.services.training_experiments import local_semantic_judge as judge
 
-    pin = SimpleNamespace(model="test-reviewer")
+    pin = judge.Qualification(
+        schema_version=1,
+        model="test-reviewer",
+        model_sha256="d" * 64,
+        ollama_version="0.40.14",
+        prompt_sha256=judge.PROMPT_SHA256,
+        protocol_sha256="a" * 64,
+        gold_sha256="c" * 64,
+        result_sha256="b" * 64,
+        true_positives=24,
+        positive_total=24,
+        false_positives=0,
+        negative_total=36,
+        families_covered=12,
+        families_total=12,
+    )
     monkeypatch.setattr(judge, "qualification", lambda _calibration: pin)
     return pin
 

@@ -43,8 +43,8 @@ jest osobną, jawną czynnością operatora.
 Opis argumentów jest dostępny bez połączenia z dostawcą:
 
 ```bash
-python scripts/academy/qualify_openrouter_judge.py prepare --help
-python scripts/academy/qualify_openrouter_judge.py run --help
+python -m scripts.academy.qualify_openrouter_judge prepare --help
+python -m scripts.academy.qualify_openrouter_judge run --help
 ```
 
 `prepare` wymaga katalogu kontroli, pliku odbioru danych oraz niezależnie

@@ -71,7 +71,9 @@ def _legacy():
         {"cases": cases},
         {
             "accepted": accepted,
-            "rejected": rejected,
+            "rejected": {
+                ident: {"critical": True, "failure": "wrong_fact"} for ident in rejected
+            },
             "expected_style": styles,
             "expected_semantics": semantics,
             "challenge_cases": [c["id"] for c in cases[-3:]],
@@ -688,3 +690,24 @@ def test_phase_and_call_provenance_cannot_be_resealed(qualified_v4, damage):
     _reseal_result(settings, root, result)
     with pytest.raises((ValueError, FileNotFoundError)):
         judge.qualification(settings)
+
+
+def test_legacy_rejections_are_metadata_mapping(qualified_v4, tmp_path):
+    _, source = qualified_v4
+    controls = source / "controls"
+    gold = read_json(controls / "legacy/qualification-gold.json")
+    assert isinstance(gold["accepted"], list)
+    assert isinstance(gold["rejected"], dict)
+    assert all(
+        set(meta) == {"critical", "failure"} for meta in gold["rejected"].values()
+    )
+    result = runner.prepare_audit(
+        controls,
+        tmp_path / "legacy-mapping",
+        digest(controls / "frozen-manifest.json"),
+        "legacy-mapping",
+        300,
+    )
+    jobs, loaded_gold = audit.jobs_for(result["root"], result["manifest"], "legacy")
+    assert len(jobs) == 60 and loaded_gold == gold
+    assert not (result["root"] / "started.json").exists()

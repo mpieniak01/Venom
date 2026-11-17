@@ -136,7 +136,7 @@ def jobs_for(root: Path, manifest: dict, split: str) -> tuple[dict, dict]:
     require(len(jobs) == expected_answers)
     if split == "legacy":
         positives, negatives = gold["accepted"], gold["rejected"]
-        require(isinstance(positives, list) and isinstance(negatives, list))
+        require(isinstance(positives, list) and isinstance(negatives, dict))
         require(len(positives) == len(set(positives)) == 24)
         require(len(negatives) == len(set(negatives)) == 36)
         require(not set(positives) & set(negatives))

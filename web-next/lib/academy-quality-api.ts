@@ -81,7 +81,7 @@ export interface TrialQualityGuard {
   candidate_full_pass_count?: number;
   full_pass_delta?: number;
 
-  parent_delta?: { reference_record_id: string; n: number; usable_delta: number; critical_delta: number };
+  parent_delta?: { reference_record_id: string; n: number; usable_delta: number; critical_delta: number | null };
   status: "passed" | "rejected" | "blocked";
   reasons: { code: string; category?: string; count?: number }[];
   protected_count: number | null;

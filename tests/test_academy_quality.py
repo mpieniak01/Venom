@@ -695,16 +695,30 @@ def test_dialogue_null_rejected_before_generation_and_absent_field_supported():
         validate_dialogues([{"dialogue": None}])
 
 
-@pytest.mark.parametrize("parent", [False, True])
-def test_unknown_critical_evidence_is_rejected_consistently(parent):
-    from venom_core.services.training_experiments.quality_guard import _decisions
+@pytest.mark.parametrize(
+    "parent_unknown,candidate_unknown", [(True, False), (False, True), (True, True)]
+)
+def test_unknown_critical_metrics_remain_unavailable(parent_unknown, candidate_unknown):
+    from venom_core.services.training_experiments.quality_guard import (
+        _decisions,
+        _parent_delta,
+    )
 
+    reference = {"usable": True, "critical": None if parent_unknown else False}
     policy = {
         "protected_case_ids": [],
         "protect_base_hits": False,
         "no_new_critical": False,
+        "parent_cases": {"a": reference},
+        "parent_reference_record_id": "prior",
     }
-    if parent:
-        policy["parent_cases"] = {"a": {"usable": True, "critical": False}}
+    cases = {
+        "a": case(
+            "text", True, True, candidate_critical=None if candidate_unknown else False
+        )
+    }
+    assert _decisions(policy, cases)[1] == []
+    assert _parent_delta(policy, cases)["critical_delta"] is None
+    policy["no_new_critical"] = True
     with pytest.raises(ValueError, match="case_evidence_missing"):
-        _decisions(policy, {"a": case("text", True, True, candidate_critical=None)})
+        _decisions(policy, cases)

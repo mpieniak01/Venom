@@ -856,3 +856,16 @@ describe("Campaign quality feedback", () => {
     assert.ok(screen.getByText("instructions · -25 / — p.p."));
   });
 });
+
+it("bounds the final reserve to the backend range", async () => {
+  const { readFinalQualification } = await import("../components/academy/campaign-final-qualification");
+  const data = new originalFormData();
+  data.set("final_inputs_id", "frozen");
+  data.set("max_seconds", "200000");
+  data.set("final_reserve_seconds", "86401");
+  const inputs = [{ inputs_id: "frozen", final_test_sha256: "a".repeat(64),
+    final_calibration_sha256: "b".repeat(64), max_seconds: 600 }];
+  assert.throws(() => readFinalQualification(data, inputs), /invalid final qualification reserve/);
+  data.set("final_reserve_seconds", "86400");
+  assert.equal(readFinalQualification(data, inputs)?.reserve_seconds, 86400);
+});

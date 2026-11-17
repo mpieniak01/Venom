@@ -414,7 +414,8 @@ def _parent_metrics(item: dict, guard: dict) -> None:
 
 def _passes_selection(row: dict, selection: dict) -> bool:
     if (
-        row["usable_delta"] < selection["min_usable_delta"]
+        row.get("critical_delta") is None
+        or row["usable_delta"] < selection["min_usable_delta"]
         or row["critical_delta"] > selection["max_critical_delta"]
     ):
         return False
@@ -529,6 +530,8 @@ def _allow_extension(state: dict) -> bool:
     if policy is None or state["trial_index"] != policy["initial_trials"]:
         return True
     if "extension_decision" not in state:
+        if state["selected_run_id"] is None:
+            _rank(state)
         state["extension_decision"] = _extension_decision(state, policy)
     decision = state["extension_decision"]
     if decision["status"] == "approved" and policy.get("repeat_best_recipe"):
@@ -1775,7 +1778,11 @@ class CampaignService:
             return
         number = trial["optuna_trial_number"]
         guard = trial.get("quality_guard", {})
-        if "result_sha256" in trial and guard.get("status") != "blocked":
+        if (
+            "result_sha256" in trial
+            and guard.get("status") != "blocked"
+            and trial.get("critical_delta") is not None
+        ):
             selection = state["plan"]["selection"]
             constraints = [
                 trial["critical_delta"] - selection["max_critical_delta"],

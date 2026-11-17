@@ -15,7 +15,7 @@ export function readFinalQualification(data: FormData, inputs: CampaignFinalInpu
   const registered = inputs.find((item) => item.inputs_id === inputsId);
   const total = Number(data.get("max_seconds"));
   if (!registered || !Number.isSafeInteger(reserve) || reserve < 1
-    || reserve >= total || reserve < registered.max_seconds) {
+    || reserve > 86400 || reserve >= total || reserve < registered.max_seconds) {
     throw new Error("invalid final qualification reserve");
   }
   return { inputs_id: registered.inputs_id, reserve_seconds: reserve };
@@ -51,7 +51,7 @@ export function CampaignFinalFields({ inputs, failed, disabled, automaticReview 
         </div>
         <div className="space-y-1">
           <Label htmlFor="campaign-final-reserve">{t(PREFIX + "reserve")}</Label>
-          <Input id="campaign-final-reserve" name="final_reserve_seconds" type="number" min={1} step={1} defaultValue={900} />
+          <Input id="campaign-final-reserve" name="final_reserve_seconds" type="number" max={86400} min={1} step={1} defaultValue={900} />
         </div>
       </div>
     </fieldset>

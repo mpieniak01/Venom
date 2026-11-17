@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import tempfile
 import time
 import uuid
 from pathlib import Path
@@ -27,22 +28,36 @@ _PHASE1_PASS = "phase1-pass.json"
 
 def _stage_controls(controls: Path, output: Path, intent: dict) -> None:
     if output.exists():
+        if not (output / _INTENT).is_file():
+            raise ValueError("experiment_judge_v4_output_incomplete")
         if read_json(output / _INTENT) != intent:
             raise ValueError("experiment_judge_v4_output_reused")
         if (output / _STARTED).exists():
             raise ValueError("experiment_judge_v4_attempt_already_started")
-    else:
-        output.mkdir(mode=0o700, parents=True)
-        (output / "controls").mkdir(mode=0o700)
-        (output / "judge-calls").mkdir(mode=0o700)
-        for name in sorted(verifier.FILES | {"frozen-manifest.json"}):
-            source = controls / name
-            if source.is_symlink() or not source.resolve().is_relative_to(controls):
-                raise ValueError("experiment_judge_v4_controls_invalid")
-            target = output / "controls" / name
-            target.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-            shutil.copyfile(source, target)
-        atomic_json(output / _INTENT, intent)
+        return
+    output.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    # Build privately, then publish the complete preparation in one rename.
+    # An interrupted preparation leaves no partial target for a retry to reuse.
+    with tempfile.TemporaryDirectory(
+        prefix=".judge-preparation-", dir=output.parent
+    ) as temporary:
+        staging = Path(temporary) / "prepared"
+        staging.mkdir(mode=0o700)
+        _copy_controls(controls, staging, intent)
+        staging.rename(output)
+
+
+def _copy_controls(controls: Path, output: Path, intent: dict) -> None:
+    (output / "controls").mkdir(mode=0o700)
+    (output / "judge-calls").mkdir(mode=0o700)
+    for name in sorted(verifier.FILES | {"frozen-manifest.json"}):
+        source = controls / name
+        if source.is_symlink() or not source.resolve().is_relative_to(controls):
+            raise ValueError("experiment_judge_v4_controls_invalid")
+        target = output / "controls" / name
+        target.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        shutil.copyfile(source, target)
+    atomic_json(output / _INTENT, intent)
 
 
 def prepare_audit(

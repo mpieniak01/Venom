@@ -727,3 +727,35 @@ def test_legacy_rejections_are_metadata_mapping(qualified_v4, tmp_path):
     assert len(jobs) == 60
     assert loaded_gold == gold
     assert not (result["root"] / "started.json").exists()
+
+
+def test_audit_missing_file_returns_controlled_error(qualified_v4):
+    pin, root = qualified_v4
+    (root / "judge-result.json").unlink()
+    with pytest.raises(ValueError, match="experiment_judge_v4_audit_invalid"):
+        audit.verify_audit(pin)
+
+
+def test_audit_preparation_copy_failure_can_retry(qualified_v4, tmp_path, monkeypatch):
+    _, source = qualified_v4
+    controls = source / "controls"
+    output = tmp_path / "new-audit"
+    checksum = digest(controls / "frozen-manifest.json")
+    copy = runner.shutil.copyfile
+
+    def fail(*_args):
+        raise OSError("copy failed")
+
+    monkeypatch.setattr(runner.shutil, "copyfile", fail)
+    with pytest.raises(OSError, match="copy failed"):
+        runner.prepare_audit(controls, output, checksum, "retry-prepare", 300)
+    assert not output.exists()
+    monkeypatch.setattr(runner.shutil, "copyfile", copy)
+    assert (
+        runner.prepare_audit(controls, output, checksum, "retry-prepare", 300)["root"]
+        == output
+    )
+    incomplete = tmp_path / "incomplete-audit"
+    incomplete.mkdir()
+    with pytest.raises(ValueError, match="output_incomplete"):
+        runner.prepare_audit(controls, incomplete, checksum, "incomplete-prepare", 300)

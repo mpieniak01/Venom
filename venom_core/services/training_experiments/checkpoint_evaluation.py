@@ -334,7 +334,7 @@ def reuse_baseline_reviews(
         generated, _ = read_generation(current)
         # Per-step models/output digests differ; all inference identity fields,
         # including evaluator file hashes and own-history protocol, must agree.
-        ignored = {"models", "outputs"}
+        ignored = {"models", "outputs", "resumed_generations"}
         if previous["models"].get("base") != {"base": True} or generated["models"].get(
             "base"
         ) != {"base": True}:

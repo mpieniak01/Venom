@@ -2691,3 +2691,43 @@ def test_remote_supervisor_read_failure_keeps_local_recovery(
     with pytest.raises(InterruptedError, match="shutdown"):
         supervisor.supervise(Remote(), academy_root=experiments.root)
     assert local == [True, True]
+
+
+def test_repeat_selection_recovers_after_stop_before_extension(
+    controller, guarded_evidence, monkeypatch
+):
+    service, experiments, _clock, spec, record = _repeat_campaign(
+        controller, guarded_evidence, monkeypatch
+    )
+    start(service, spec)
+    first = None
+    for index in range(2):
+        run = launch_next(service)
+        if index == 0:
+            first = run
+        experiments.finish(run, usable=4 if index == 0 else 2)
+        record(run, {"a", "b", "c", "d"} if index == 0 else {"a", "c"})
+        service.advance("series")
+    service.stop("series")
+    stopped = service.advance("series")
+    assert stopped["selected_run_id"] is None
+    service.resume("series")
+    resumed = service.advance("series")
+    assert resumed["extension_decision"]["status"] == "approved"
+    assert resumed["extension_decision"]["run_id"] == first
+
+
+def test_selection_rejects_unavailable_parent_critical_metric_without_exception():
+    from venom_core.services.training_experiments.campaign import (
+        _parent_metrics,
+        _passes_selection,
+    )
+
+    item = {"usable_delta": 0.25, "critical_delta": 0.0}
+    _parent_metrics(
+        item, {"parent_delta": {"usable_delta": 0.25, "critical_delta": None}}
+    )
+    assert item["critical_delta"] is None
+    assert not _passes_selection(
+        item, {"min_usable_delta": 0.0, "max_critical_delta": 0.0}
+    )

@@ -339,5 +339,5 @@ def verify_audit(pin: QualificationV4) -> None:
         require(result["metrics"] == metrics)
         provenance.verify_session(root, protocol, pin, result)
         control_files(root, pin.accuracy_manifest_sha256)
-    except (KeyError, TypeError, AttributeError, IndexError) as exc:
+    except (KeyError, TypeError, AttributeError, IndexError, OSError) as exc:
         raise ValueError(ERROR) from exc

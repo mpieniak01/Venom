@@ -1891,6 +1891,7 @@ def sealed_baseline_pair(tmp_path, monkeypatch):
             "data_sha256": stable_hash(cases),
             "generation_identity_sha256": "c" * 64,
             "dialogue_protocol": "own-history-v1",
+            "resumed_generations": 0 if step == 21 else 8,
             "engine": {"torch": "pinned"},
             "outputs": {
                 name: digest(folder / name)

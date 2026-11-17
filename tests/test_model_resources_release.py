@@ -1133,3 +1133,67 @@ async def test_timed_out_training_release_waits_for_cleanup_completion(
     finally:
         proceed.set()
         await asyncio.gather(task, return_exceptions=True)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "kind,verified,recovers",
+    [
+        ("simple_chat_stream", True, True),
+        ("simple_chat_stream", False, False),
+        ("omni-native-peft-text", True, False),
+    ],
+)
+async def test_llm_recovery_handles_real_stream_ledger_only_with_daemon_proof(
+    world, monkeypatch, kind, verified, recovers
+):
+    import sqlite3
+    from contextlib import closing
+    from unittest.mock import AsyncMock
+
+    # A failed transport leaves the actual durable host ledger uncertain.
+    with pytest.raises(RuntimeError, match="transport lost"):
+        with world.operation(kind=kind):
+            raise RuntimeError("transport lost")
+    assert world.snapshot()["status"] == "quarantined"
+    servers = [
+        {"name": "ollama", "endpoint": "http://127.0.0.1:11434"},
+        {"name": "vllm", "endpoint": "http://127.0.0.1:8001"},
+        {"name": "onnx", "endpoint": "http://127.0.0.1:8004"},
+    ]
+    # Positive proof: Ollama is observed idle after unload; other daemons stopped.
+    monkeypatch.setattr(
+        service, "_listening", AsyncMock(side_effect=[True, False, False])
+    )
+    monkeypatch.setattr(
+        service,
+        "_unload_ollama",
+        AsyncMock(return_value=[])
+        if verified
+        else AsyncMock(side_effect=ValueError("runtime_release_models_remaining")),
+    )
+    controller = SimpleNamespace(list_servers=lambda: servers)
+    if recovers:
+        result = await service.release_all_runtime_models(
+            controller,
+            runtime_ids={s["name"] for s in servers},
+            include_registered=False,
+        )
+        assert all(row["verified"] for row in result["runtimes"])
+        assert {row["state"] for row in result["runtimes"]} == {"idle", "stopped"}
+        assert world.snapshot()["status"] == "available"
+    else:
+        with pytest.raises(HTTPException) as rejected:
+            await service.release_all_runtime_models(
+                controller,
+                runtime_ids={s["name"] for s in servers},
+                include_registered=False,
+            )
+        assert rejected.value.status_code == 502
+        assert world.snapshot()["status"] == "quarantined"
+    with closing(sqlite3.connect(world.database)) as database:
+        kinds = database.execute("SELECT kind,uncertain FROM operation").fetchall()
+    if recovers:
+        assert kinds == []
+    else:
+        assert (kind, 1) in kinds

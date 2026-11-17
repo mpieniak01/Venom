@@ -39,6 +39,7 @@ _LLM_RECOVERY_KINDS = frozenset(
         "maf_stream",
         "maf_validation",
         "simple_chat",
+        "simple_chat_stream",
         "runtime_switch",
         "runtime_command",
         "llm_cleanup",

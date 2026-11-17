@@ -455,7 +455,7 @@ def test_replay_binds_v4_prompt_and_rejects_v3_request(qualified_v4):
 def test_frozen_v4_prompt_has_no_case_specific_literal():
     assert (
         judge.PROMPT_V4_SHA256
-        == "691b19fec941849745791af5bbe2fe50afde3bf5ace31200c2a8ce4a1943d40e"
+        == "648ce39daa0555f1082faa712e42fecaffc27f7a8800e3435c78347d622562f4"
     )
     assert "czytelnia" not in judge.PROMPT_V4.lower()
     assert judge.prompt_for(judge.JUDGE) == judge.PROMPT

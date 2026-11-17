@@ -7,7 +7,7 @@ import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { createElement, useState } from "react";
+import { act, createContext, createElement, useContext, useState } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import ts from "typescript";
 import { prepareStudio } from "../scripts/prepare-studio.mjs";
@@ -127,7 +127,7 @@ const nativeReference = {
   runtime_id: "omni-native-peft-text:omni-p13-145:9f6863cda26a452e89085ea28628a57cd7f10742d9a0337ade100fd0eb58c493",
 };
 
-function shellExports(selection: typeof nativeReference | null = null, onController?: (input: Record<string, unknown>) => void) {
+function shellExports(selection: typeof nativeReference | null = null, onController?: (input: Record<string, unknown>) => void, overrides: Record<string, unknown> = {}) {
   const noCall = () => { throw new Error("No runtime/transport expected during SSR"); };
   const nullComponent = () => null;
   const imports: Record<string, unknown> = {
@@ -172,7 +172,7 @@ function shellExports(selection: typeof nativeReference | null = null, onControl
   imports["./native-text-picker"] = loadTsx(path.join(repositoryRoot, "web-next/components/chat/native-text-picker.tsx"), {
     "@/lib/i18n": imports["@/lib/i18n"], "@/lib/native-text-chat": nativeApi,
   });
-  return loadTsx(path.join(repositoryRoot, "web-next/components/chat/studio-shell.tsx"), imports);
+  return loadTsx(path.join(repositoryRoot, "web-next/components/chat/studio-shell.tsx"), {...imports, ...overrides});
 }
 
 function shell() {
@@ -327,4 +327,113 @@ test("cancellation sequence does not start later tasks after an unhandled callba
     if (id === "second") throw new Error("failed callback");
   }), /failed callback/);
   assert.deepEqual(started, ["first", "second"]);
+});
+
+
+test("session switch preserves the owner of an in-flight native adapter change", async () => {
+  const { JSDOM } = await import("jsdom");
+  const dom = new JSDOM('<!doctype html><div id="native-session-root"></div>', {
+    url: "http://localhost/",
+  });
+  const globals: Record<string, unknown> = {
+    window: dom.window,
+    document: dom.window.document,
+    HTMLElement: dom.window.HTMLElement,
+    IS_REACT_ACT_ENVIRONMENT: true,
+  };
+  const originals = new Map(
+    Object.keys(globals).map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]),
+  );
+  for (const [key, value] of Object.entries(globals)) {
+    Object.defineProperty(globalThis, key, { value, writable: true, configurable: true });
+  }
+  Object.defineProperty(dom.window, "matchMedia", {
+    value: () => ({ matches: false, addEventListener: () => {}, removeEventListener: () => {} }),
+    configurable: true,
+  });
+
+  const { createRoot } = await import("react-dom/client");
+  const { document } = dom.window;
+  const root = createRoot(document.getElementById("native-session-root")!);
+  const emptySelection = { selection: null, previous: null, persistent: false };
+  let resolveSwitch!: (value: unknown) => void;
+  const pendingSwitch = new Promise(resolve => { resolveSwitch = resolve; });
+  let stateReads = 0;
+  let switches = 0;
+  const api = {
+    fetchNativeTextState: async () => {
+      stateReads++;
+      return emptySelection;
+    },
+    fetchNativeTextCatalog: async () => [{ ...nativeReference, label: "P13" }],
+    selectNativeText: () => {
+      switches++;
+      return pendingSwitch;
+    },
+    rollbackNativeText: async () => emptySelection,
+  };
+  type Native = ReturnType<typeof import("../../web-next/components/chat/use-native-text-chat").useNativeTextChat>;
+  const realHook = loadTsx(
+    path.join(repositoryRoot, "web-next/components/chat/use-native-text-chat.ts"),
+    { "@/lib/native-text-chat": api },
+  ).useNativeTextChat as () => Native;
+
+  let native!: Native;
+  let controller: Record<string, unknown> | undefined;
+  const Session = createContext({
+    sessionId: "first",
+    setSessionId: (session: string) => { void session; },
+  });
+  const StudioShell = shellExports(null, input => { controller = input; }, {
+    "@/lib/session": { useSession: () => useContext(Session) },
+    "./use-native-text-chat": {
+      useNativeTextChat: () => {
+        native = realHook();
+        return native;
+      },
+    },
+  }).StudioShell as React.ComponentType;
+
+  function Sessions() {
+    const [sessionId, setSessionId] = useState("first");
+    return createElement(
+      Session.Provider,
+      { value: { sessionId, setSessionId } },
+      createElement("output", { id: "selected-session" }, sessionId),
+      createElement("button", {
+        id: "change-session",
+        onClick: () => setSessionId("second"),
+      }, "Change session"),
+      createElement(StudioShell),
+    );
+  }
+
+  try {
+    await act(async () => { root.render(createElement(Sessions)); });
+    assert.equal(native.ready, true);
+    let change!: Promise<boolean>;
+    act(() => { change = native.change(nativeReference.adapter_id); });
+    assert.equal(native.busy, true);
+
+    await act(async () => { document.getElementById("change-session")!.click(); });
+    assert.equal(document.getElementById("selected-session")?.textContent, "second");
+    assert.equal(controller?.nativeSelection, null);
+
+    await act(async () => {
+      resolveSwitch({ ...emptySelection, selection: nativeReference });
+      await change;
+    });
+    assert.deepEqual(controller?.nativeSelection, nativeReference);
+    assert.ok(document.body.textContent?.includes(nativeReference.weights_sha256));
+    assert.equal(native.busy, false);
+    assert.equal(stateReads, 1);
+    assert.equal(switches, 1);
+  } finally {
+    await act(async () => { root.unmount(); });
+    dom.window.close();
+    for (const [key, descriptor] of originals) {
+      if (descriptor) Object.defineProperty(globalThis, key, descriptor);
+      else Reflect.deleteProperty(globalThis, key);
+    }
+  }
 });

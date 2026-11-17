@@ -375,7 +375,7 @@ def run_audit(
                 "stage": "qualification_passed"
                 if result["status"] == "complete"
                 else result["status"],
-                "completed_calls": 180,
+                "completed_calls": len(rows),
             }
         )
     else:

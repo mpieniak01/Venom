@@ -103,6 +103,13 @@ verifier. Live local operation rows cannot be erased. Process crash releases
 the OS lock but leaves ownership/work rows durable. Restart reports quarantine,
 requires actual daemon/worker quiescence and never auto-resumes experiments.
 
+Runtime cleanup matches chat operations to a verified provider and endpoint.
+Global cleanup can also recover older rows for metadata-only guards, including
+voice decoder selection. For a legacy row whose generation target is unknown,
+identify the original worker from host or provider records and verify it is
+quiescent before using the host-admin recovery callback. If the target or its
+state cannot be verified, the operation stays quarantined.
+
 Conflicts expose stable `RuntimeAdmissionError.code` / HTTP detail `code`; the
 caller translates its UI. `snapshot()` reports availability, owner/run/engine/
 model and active-operation count, without the private token.

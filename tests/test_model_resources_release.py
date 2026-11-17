@@ -135,6 +135,42 @@ def test_releasing_models_rejects_new_work_and_waits_for_real_thread(world):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "kind, global_cleanup, recovers",
+    [
+        ("voice_audio_selection", True, True),
+        ("maf_validation", True, True),
+        ("maf_validation", False, False),
+        ("simple_chat_non_stream", True, False),
+    ],
+)
+async def test_legacy_recovery_requires_proof_for_generation(
+    world, monkeypatch, kind, global_cleanup, recovers
+):
+    from unittest.mock import AsyncMock
+
+    operation = world.operation(kind=kind)
+    with pytest.raises(OSError):
+        with operation:
+            raise OSError("interrupted")
+    monkeypatch.setattr(service, "_listening", AsyncMock(return_value=False))
+    controller = SimpleNamespace(
+        list_servers=lambda: [{"name": "ollama", "endpoint": "http://127.0.0.1:11434"}]
+    )
+    release = service.release_all_runtime_models(
+        controller, include_registered=global_cleanup
+    )
+    if recovers:
+        assert (await release)["released"]
+        assert world.snapshot()["status"] == "available"
+    else:
+        with pytest.raises(HTTPException) as rejected:
+            await release
+        assert rejected.value.status_code == 502
+        assert world.snapshot()["status"] == "quarantined"
+
+
+@pytest.mark.asyncio
 async def test_global_release_verifies_daemons_voice_and_vision_before_recovery(
     world, monkeypatch
 ):
@@ -1146,6 +1182,48 @@ async def test_timed_out_training_release_waits_for_cleanup_completion(
 
 
 @pytest.mark.asyncio
+async def test_non_stream_cancellation_records_actual_runtime(world, monkeypatch):
+    from contextlib import asynccontextmanager, closing
+    from sqlite3 import connect
+    from uuid import uuid4
+
+    from venom_core.services import llm_simple_service as chat
+
+    waiting = asyncio.Event()
+    endpoint = "http://127.0.0.1:11434"
+    runtime = SimpleNamespace(provider="ollama", runtime_id=f"ollama@{endpoint}")
+
+    @asynccontextmanager
+    async def open_stream(**_kwargs):
+        waiting.set()
+        await asyncio.Future()
+        yield
+
+    async def generate():
+        async for _ in chat._stream_simple_chunks_non_stream(
+            completions_url=f"{endpoint}/v1/chat/completions",
+            payload={},
+            runtime=runtime,
+            request_id=uuid4(),
+            model_name="fixture",
+        ):
+            pass
+
+    monkeypatch.setattr(chat.llm_simple_transport, "open_stream_response", open_stream)
+    task = asyncio.create_task(generate())
+    try:
+        await asyncio.wait_for(waiting.wait(), 2)
+    finally:
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+    with closing(connect(world.database)) as db:
+        stored = db.execute(
+            "SELECT kind, runtime_identity, uncertain FROM operation"
+        ).fetchone()
+    assert stored == ("simple_chat_non_stream", runtime.runtime_id, 1)
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "kind,identity,verified,recovers",
     [
@@ -1154,6 +1232,8 @@ async def test_timed_out_training_release_waits_for_cleanup_completion(
         ("simple_chat_stream", "ollama@http://127.0.0.1:12345", True, False),
         ("simple_chat_stream", "openrouter@https://openrouter.ai", True, False),
         ("simple_chat_stream", None, True, False),
+        ("simple_chat_non_stream", "ollama@http://127.0.0.1:11434", True, True),
+        ("simple_chat_non_stream", "ollama@http://127.0.0.1:11434/v1", True, True),
         ("omni-native-peft-text", None, True, False),
     ],
 )

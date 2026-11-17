@@ -41,11 +41,16 @@ _LLM_RECOVERY_KINDS = frozenset(
         "maf_validation",
         "simple_chat",
         "simple_chat_stream",
+        "simple_chat_non_stream",
         "runtime_switch",
         "runtime_command",
         "llm_cleanup",
     }
 )
+
+# These legacy guards only build local request metadata or query capabilities.
+# Even when interrupted, neither submits a generation to a daemon.
+_METADATA_ONLY_KINDS = frozenset({"maf_validation", "voice_audio_selection"})
 
 _LOCAL_RUNTIMES = frozenset({"ollama", "multi_runtime", "vllm", "onnx"})
 
@@ -120,6 +125,21 @@ def _release_error_code(error: Exception) -> str:
     return "runtime_release_" + type(error).__name__
 
 
+def _verified_runtime_ids(servers: list[dict[str, Any]]) -> frozenset[str]:
+    identities = set()
+    for server in servers:
+        endpoint = server["endpoint"]
+        if not endpoint:
+            continue
+        provider = server["name"]
+        identities.add(compute_runtime_id(provider, endpoint))
+        if provider == "ollama":
+            # The controller checks Ollama's root API; chat may use its /v1 API.
+            root = endpoint.rstrip("/").removesuffix("/v1")
+            identities.add(compute_runtime_id(provider, root + "/v1"))
+    return frozenset(identities)
+
+
 def _recover_uncertainty(
     admission,
     verified: bool,
@@ -132,7 +152,9 @@ def _recover_uncertainty(
         return True
     if include_registered:
         return admission.recover(
-            confirm_quiescent=lambda: True, verified_runtime_ids=verified_runtime_ids
+            confirm_quiescent=lambda: True,
+            verified_runtime_ids=verified_runtime_ids,
+            verified_unidentified_kinds=_METADATA_ONLY_KINDS,
         )
     return admission.recover(
         confirm_quiescent=lambda: True,
@@ -217,11 +239,7 @@ async def _release_models(
             admission,
             verified,
             include_registered,
-            frozenset(
-                compute_runtime_id(server["name"], server["endpoint"])
-                for server in servers
-                if server["endpoint"]
-            ),
+            _verified_runtime_ids(servers),
         )
     ):
         raise HTTPException(

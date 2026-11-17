@@ -795,6 +795,7 @@ class RuntimeAdmission:
         expected_token: str | None = None,
         allowed_operation_kinds: frozenset[str] | None = None,
         verified_runtime_ids: frozenset[str] | None = None,
+        verified_unidentified_kinds: frozenset[str] = frozenset(),
     ) -> bool:
         """Trusted host-only recovery after verified daemon/worker quiescence.
 
@@ -836,8 +837,12 @@ class RuntimeAdmission:
                     return False
             if verified_runtime_ids is not None and any(
                 row["runtime_identity"] not in verified_runtime_ids
+                and not (
+                    row["runtime_identity"] is None
+                    and row["kind"] in verified_unidentified_kinds
+                )
                 for row in db.execute(
-                    "SELECT runtime_identity FROM operation WHERE token<>? "
+                    "SELECT kind, runtime_identity FROM operation WHERE token<>? "
                     "AND lease_token IS NULL AND kind NOT IN ('cleanup', 'llm_cleanup')",
                     (cleanup_token,),
                 )

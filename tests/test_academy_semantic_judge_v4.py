@@ -227,6 +227,35 @@ def test_v6_instruction_control_is_separate_from_fact_and_style(
     )
 
 
+@pytest.mark.parametrize("unproven_claim", [False, True])
+def test_v6_uncertain_guard_preserves_known_unsupported_fact(unproven_claim):
+    candidate = "Miejsce: taca A."
+    if unproven_claim:
+        candidate += " Loty są darmowe."
+    request, primary, guard = _v6_example(candidate)
+    guard["checks"]["location"]["relation"] = "entails"
+    guard["instruction_effect"] = "unclear"
+    if unproven_claim:
+        primary["additional_claims"] = [
+            {"text": "Loty są darmowe.", "grounding": "unsupported"}
+        ]
+    result = judge._decode(
+        _v6_response(request, primary, guard),
+        ["location"],
+        "judge",
+        judge=judge.JUDGE_V6,
+        request=request,
+    )
+    assert result is not None
+    assert result.atoms == {"location": "supported"}
+    assert result.injection is False
+    assert result.unsupported == ("yes" if unproven_claim else "unclear")
+    case = {"criteria": [{"id": "location"}]}
+    grade = judge._grade(result, {}, case, {"text": candidate}, judge=judge.JUDGE_V6)
+    assert grade["critical_error"] is unproven_claim
+    assert grade["criteria"]["location"] is False
+
+
 def decision(positive=True, *, omitted=False):
     return {
         "atoms": {
@@ -725,6 +754,7 @@ def test_runner_preserves_calls_and_gates_holdout(
     events = []
     result = runner.run_audit(context, progress=events.append)
     assert released == [True]
+    assert events[-1]["completed_calls"] == len(calls)
     assert result["completed_calls"] == len(calls) == (108 if fail_phase1 else 180)
     assert result["holdout_opened"] is not fail_phase1
     assert len(list((output / "judge-calls").iterdir())) == len(calls)
@@ -1467,7 +1497,9 @@ def test_v6_full_audit_qualifies_composite_and_keeps_extra_gate(
     monkeypatch.setattr(judge, "_api", api)
     monkeypatch.setattr(judge, "_verify_runtime", lambda *_args: None)
     monkeypatch.setattr(judge, "_review_gpu", lease)
-    result = runner.run_audit(context)
+    events = []
+    result = runner.run_audit(context, progress=events.append)
+    assert events[-1]["completed_calls"] == len(result["rows"])
     assert result["completed_calls"] == (140 if fail_phase1 else 212)
     assert len(calls) == (280 if fail_phase1 else 424)
     assert result["holdout_opened"] is not fail_phase1

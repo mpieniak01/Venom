@@ -31,6 +31,7 @@
   },
   "include": [
     "next-env.d.ts",
+    "../web-next/types/jsdom.d.ts",
     "**/*.ts",
     "**/*.tsx",
     ".next/types/**/*.ts",

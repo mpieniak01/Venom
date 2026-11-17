@@ -1009,6 +1009,7 @@ async def _stream_simple_chunks_non_stream(
         model=model_name,
         expected_runtime_id=expected_runtime_id,
         expected_config_hash=expected_config_hash,
+        runtime_identity=runtime.runtime_id,
     ):
         stream_start = time.perf_counter()
         chunks: list[str] = []

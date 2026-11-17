@@ -18,7 +18,7 @@ import { useConversationController } from "./use-conversation-controller";
 import { useConversationData } from "./use-conversation-data";
 import { useSessionDraft } from "./use-session-draft";
 import { useChatMaterials } from "./use-chat-materials";
-import { useNativeTextChat } from "./use-native-text-chat";
+import { useNativeTextChat, type NativeTextChat } from "./use-native-text-chat";
 import { NativeTextPicker } from "./native-text-picker";
 import { StudioModelPicker } from "./studio-model-picker";
 import { StudioMaterials } from "./studio-materials";
@@ -83,18 +83,19 @@ export function StudioShell({ showLegacyLink = true, lightNormal = false }: Read
   lightNormal?: boolean;
 }>) {
   const { sessionId } = useSession();
-  return <StudioConversation key={sessionId} showLegacyLink={showLegacyLink} lightNormal={lightNormal} />;
+  const native = useNativeTextChat();
+  return <StudioConversation key={sessionId} showLegacyLink={showLegacyLink} lightNormal={lightNormal} native={native} />;
 }
 /** Render the conversation and keep its draft, materials and controls scoped to the session. */
-function StudioConversation({ showLegacyLink, lightNormal }: Readonly<{
+function StudioConversation({ showLegacyLink, lightNormal, native }: Readonly<{
   showLegacyLink: boolean;
   lightNormal: boolean;
+  native: NativeTextChat;
 }>) {
   const { t, language, setLanguage } = useLanguage();
   const { theme, setTheme } = useTheme();
   const { sessionId, setSessionId } = useSession();
   const source = useConversationData();
-  const native = useNativeTextChat();
   const interaction = useCockpitInteractiveState("direct");
   const layout = useCockpitLayout();
   const shellRef = useRef<HTMLDivElement>(null);

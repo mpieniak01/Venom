@@ -276,7 +276,7 @@ def _merge_decisions(primary: judge._Decision, guard: GuardDecision) -> judge._D
     unsupported = primary.unsupported
     if "contradicted" in atoms.values():
         unsupported = "yes"
-    elif uncertain:
+    elif uncertain and unsupported != "yes":
         unsupported = "unclear"
     return judge._Decision(
         atoms=atoms,

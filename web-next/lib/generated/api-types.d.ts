@@ -6714,6 +6714,11 @@ export interface components {
             initial_trials: number;
             /** Min Usable Delta */
             min_usable_delta: number;
+            /**
+             * Repeat Best Recipe
+             * @default false
+             */
+            repeat_best_recipe: boolean;
         };
         /**
          * CampaignFinalQualification
@@ -6736,6 +6741,11 @@ export interface components {
             reference_record_ids?: string[];
             /** Parent Reference Record Id */
             parent_reference_record_id?: string | null;
+            /**
+             * Protect Parent Full Pass
+             * @default false
+             */
+            protect_parent_full_pass: boolean;
             /** Protected Case Ids */
             protected_case_ids?: string[];
             /**
@@ -6774,6 +6784,11 @@ export interface components {
              * @default 0
              */
             max_critical_delta: number;
+            /**
+             * Protect Parent Full Pass
+             * @default false
+             */
+            protect_parent_full_pass: boolean;
         };
         /** CampaignSpec */
         CampaignSpec: {

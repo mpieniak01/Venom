@@ -15055,6 +15055,11 @@
             "maximum": 1.0,
             "exclusiveMinimum": 0.0,
             "title": "Min Usable Delta"
+          },
+          "repeat_best_recipe": {
+            "type": "boolean",
+            "title": "Repeat Best Recipe",
+            "default": false
           }
         },
         "additionalProperties": false,
@@ -15128,6 +15133,11 @@
               }
             ],
             "title": "Parent Reference Record Id"
+          },
+          "protect_parent_full_pass": {
+            "type": "boolean",
+            "title": "Protect Parent Full Pass",
+            "default": false
           },
           "protected_case_ids": {
             "items": {
@@ -15217,6 +15227,11 @@
             "minimum": 0.0,
             "title": "Max Critical Delta",
             "default": 0.0
+          },
+          "protect_parent_full_pass": {
+            "type": "boolean",
+            "title": "Protect Parent Full Pass",
+            "default": false
           }
         },
         "additionalProperties": false,

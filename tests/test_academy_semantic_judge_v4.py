@@ -463,9 +463,11 @@ def test_frozen_v4_prompt_has_no_case_specific_literal():
         judge.prompt_for("unknown")
 
 
-@pytest.mark.parametrize("fail_phase1", [False, True])
+@pytest.mark.parametrize(
+    "fail_phase1,fail_final", [(False, False), (True, False), (False, True)]
+)
 def test_runner_preserves_calls_and_gates_holdout(
-    qualified_v4, tmp_path, monkeypatch, fail_phase1
+    qualified_v4, tmp_path, monkeypatch, fail_phase1, fail_final
 ):
     _, source = qualified_v4
     output = tmp_path / "attempt"
@@ -505,6 +507,12 @@ def test_runner_preserves_calls_and_gates_holdout(
     monkeypatch.setattr(judge, "_api", api)
     monkeypatch.setattr(judge, "_verify_runtime", lambda *_args: None)
     monkeypatch.setattr(judge, "_review_gpu", lease)
+    if fail_final:
+
+        def reject(_value):
+            raise ValueError("experiment_judge_v4_audit_invalid")
+
+        monkeypatch.setattr(judge, "qualification", reject)
     events = []
     result = runner.run_audit(context, progress=events.append)
     assert released == [True]
@@ -515,6 +523,12 @@ def test_runner_preserves_calls_and_gates_holdout(
         assert result["status"] == "failed_qualification"
         assert not (output / "judge-qualification-receipt.json").exists()
         assert not (output / "phase1-pass.json").exists()
+    elif fail_final:
+        assert result["status"] == "failed_qualification"
+        assert (
+            read_json(output / "judge-result.json")["status"] == "failed_qualification"
+        )
+        assert not (output / "judge-qualification-receipt.json").exists()
     else:
         assert result["status"] == "complete"
         monkeypatch.setenv("VENOM_ACADEMY_JUDGE_V4_AUDIT_ROOT", str(output))

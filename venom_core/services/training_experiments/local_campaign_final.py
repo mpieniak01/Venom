@@ -339,13 +339,16 @@ def _begin(service: CampaignService, directory: Path) -> tuple[dict, bool]:
         state = service._state(directory)
         if state.get("phase") != "qualification":
             return state, False
+        attempts = state.get("qualification_attempts", 0)
         if (
-            state.get("qualification_attempts", 0)
-            > state["plan"]["budget"]["max_retries"]
+            attempts
+            and state.get("retries", 0) >= state["plan"]["budget"]["max_retries"]
         ):
             _recover_result(service, state)
             service._save(directory, state)
             return state, False
+        if attempts:
+            state["retries"] = state.get("retries", 0) + 1
         state["qualification_status"] = "running"
         state["qualification_attempts"] = state.get("qualification_attempts", 0) + 1
         service._save(directory, state)
@@ -355,6 +358,8 @@ def _begin(service: CampaignService, directory: Path) -> tuple[dict, bool]:
 def _record_deferred(service: CampaignService, directory: Path) -> dict:
     with file_lock(directory / _STATE_LOCK):
         state = service._state(directory)
+        if state["qualification_attempts"] > 1:
+            state["retries"] -= 1
         state["qualification_attempts"] -= 1
         state["qualification_status"] = "pending"
         service._elapsed(state)
@@ -370,7 +375,7 @@ def _record_failure(service: CampaignService, directory: Path, exc: Exception) -
         stopped = state.get("termination") in {"stopped", "blocked"}
         retries = state["plan"]["budget"]["max_retries"]
         service._elapsed(state)
-        if expired or stopped or state["qualification_attempts"] > retries:
+        if expired or stopped or state.get("retries", 0) >= retries:
             incomplete(state, state["qualification_error"])
         else:
             state["qualification_status"] = "pending"

@@ -167,6 +167,9 @@ class Retention:
             return {}
         protected = protected_runs(self.experiments)
         protected.add(winner)
+        decision_run = state.get("extension_decision", {}).get("run_id")
+        if decision_run and "repeat_confirmation" not in state:
+            protected.add(decision_run)
         return {
             trial["run_id"]: trial
             for trial in state["trials"]
@@ -184,7 +187,7 @@ class Retention:
         }
 
     def _plan(self, state: dict) -> dict:
-        files = []
+        files: list[dict] = []
         for run_id, trial in self._eligible(state).items():
             with self.experiments.run_lock(run_id):
                 run_dir = _verify_run(self.experiments, state, trial)

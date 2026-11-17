@@ -10,7 +10,7 @@ from venom_core.services.remote_training.paths import operator_path
 
 from .campaign import CampaignService
 from .profiles import read_json
-from .remote_text_evidence import _sha, export_run, sync_run
+from .remote_text_evidence import _ARCHIVE, _run_directory, _sha, export_run, sync_run
 from .service import ExperimentService
 
 
@@ -116,6 +116,27 @@ class _LocalEvidence:
         return {}
 
 
+def _export_budget(
+    campaign: CampaignService, state: dict, evidence: Path, run_id: str
+) -> int:
+    if not campaign._artifact_budget(state):
+        raise ValueError("campaign_storage_budget_exhausted")
+    budget = state["plan"]["budget"]
+    archive = operator_path(_run_directory(evidence, run_id) / _ARCHIVE)
+    archived_bytes = archive.stat().st_size if archive.exists() else 0
+    # Keep space for the receipt written alongside the bounded archive.
+    metadata_reserve = 64 * 1024
+    available = min(
+        budget["max_artifact_bytes"] - state["artifact_bytes"],
+        campaign.experiments.free_storage_bytes(state["plan"]["profile_id"])
+        - budget["min_free_bytes"],
+    )
+    limit = available + archived_bytes - metadata_reserve
+    if limit <= 0:
+        raise ValueError("campaign_storage_budget_exhausted")
+    return min(limit, budget["max_artifact_bytes"])
+
+
 def collect_local(
     academy_root: Path, campaign_id: str, *, timeout: int | None = None
 ) -> tuple[Path, dict, dict, dict[str, str]]:
@@ -144,12 +165,15 @@ def collect_local(
     if not isinstance(run_id, str):
         raise ValueError("remote_text_final_candidate_missing")
     evidence = directory / "evidence"
+    max_bytes = state["plan"]["budget"]["max_artifact_bytes"]
+    if state["plan"].get("final_qualification"):
+        max_bytes = _export_budget(campaign, state, evidence, run_id)
     receipt = sync_run(
         _LocalEvidence(campaign),
         state,
         run_id,
         evidence,
-        state["plan"]["budget"]["max_artifact_bytes"],
+        max_bytes,
         timeout=timeout,
     )
     return evidence, state, {run_id: receipt}, pins

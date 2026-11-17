@@ -2607,3 +2607,87 @@ def test_incomplete_development_without_checkpoints_is_not_quality_rejection(pro
     else:
         state["trials"][0].pop("result_sha256")
     assert not development_complete(state)
+
+
+@pytest.mark.parametrize(
+    "policy",
+    [None, {"reference_record_ids": ["prior"], "parent_reference_record_id": "prior"}],
+)
+def test_selection_full_pass_requires_a_complete_parent_policy(policy):
+    with pytest.raises(ValueError, match="parent_full_pass_policy_required"):
+        make_spec(selection={"protect_parent_full_pass": True}, quality_policy=policy)
+
+
+def test_retention_keeps_repeat_source_until_confirmation(controller):
+    retention, state, source, _winner = retained_series(controller)
+    state["extension_decision"] = {"run_id": state["trials"][0]["run_id"]}
+    assert retention.plan(state)["files"] == []
+    state["repeat_confirmation"] = {"status": "passed"}
+    assert any(
+        row["run_id"] == state["trials"][0]["run_id"]
+        for row in retention.plan(state)["files"]
+    )
+    assert source.exists()
+
+
+def test_local_final_consumes_shared_retry_budget(controller, monkeypatch):
+    from venom_core.services.training_experiments import local_campaign_final
+
+    service, experiments, _clock, spec = _automatic_final_controller(
+        controller, monkeypatch
+    )
+    start(service, spec)
+    run = launch_next(service)
+    experiments.finish(run, usable=3)
+    state = service.advance("series")
+    state["retries"] = state["plan"]["budget"]["max_retries"]
+    service._save(service.directory("series"), state)
+    calls = []
+
+    def failing(*_args):
+        calls.append(True)
+        raise OSError("temporary")
+
+    monkeypatch.setattr(local_campaign_final, "_execute", failing)
+    result = service.advance("series")
+    assert result["qualification_attempts"] == 1
+    assert result["qualification_status"] == "incomplete"
+    service.advance("series")
+    assert calls == [True]
+
+
+@pytest.mark.parametrize("failure", ["heartbeat", "list"])
+def test_remote_supervisor_read_failure_keeps_local_recovery(
+    controller, monkeypatch, failure
+):
+    from venom_core.services.training_experiments import (
+        remote_text_supervisor as supervisor,
+    )
+
+    _service, experiments, _clock = controller
+    local = []
+    monkeypatch.setattr(supervisor, "resume_pending", lambda _root: local.append(True))
+
+    class Remote:
+        local = type("Local", (), {"experiments": experiments})()
+
+        def heartbeat(self):
+            if failure == "heartbeat":
+                raise OSError("heartbeat unavailable")
+
+        def list(self):
+            if failure == "list":
+                raise ValueError("bad remote state")
+            return []
+
+    ticks = []
+
+    def stop_after_two(_seconds):
+        ticks.append(True)
+        if len(ticks) == 2:
+            raise InterruptedError("shutdown")
+
+    monkeypatch.setattr(supervisor.time, "sleep", stop_after_two)
+    with pytest.raises(InterruptedError, match="shutdown"):
+        supervisor.supervise(Remote(), academy_root=experiments.root)
+    assert local == [True, True]

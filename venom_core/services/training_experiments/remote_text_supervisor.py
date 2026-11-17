@@ -44,7 +44,12 @@ def supervise(
             except (OSError, ValueError, RuntimeError, KeyError, TypeError):
                 LOGGER.error("Local campaign recovery could not ensure its worker")
             if service is not None:
-                _remote_tick(service)
+                try:
+                    _remote_tick(service)
+                except (OSError, ValueError, RuntimeError, KeyError, TypeError):
+                    LOGGER.error(
+                        "Remote text controller could not read or update its state"
+                    )
             time.sleep(3)
 
 

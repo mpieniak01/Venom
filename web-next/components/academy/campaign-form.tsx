@@ -192,6 +192,9 @@ function applyFinalQualification(
   request.final_qualification = final;
   request.review_mode = "automatic";
   if (data.has("protect_parent_full_pass")) {
+    if (!request.quality_policy?.parent_reference_record_id) {
+      throw new Error("parent reference required for full-pass protection");
+    }
     request.selection.protect_parent_full_pass = true;
     if (request.quality_policy?.parent_reference_record_id) {
       request.quality_policy.protect_parent_full_pass = true;
@@ -205,7 +208,10 @@ function applyConditionalExtension(
   variantCount: number,
   profile: ExperimentProfile,
 ) {
-  if (!data.get("extension_initial_trials")) return;
+  if (!data.get("extension_initial_trials")) {
+    if (data.has("extension_repeat_best_recipe")) throw new Error("initial trials required for repeat");
+    return;
+  }
   const initial = numberField(data, "extension_initial_trials");
   const gain = numberField(data, "extension_gain") / 100;
   if (!Number.isSafeInteger(initial) || initial < 1 || initial >= variantCount

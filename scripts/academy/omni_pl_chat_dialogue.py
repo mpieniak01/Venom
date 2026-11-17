@@ -19,9 +19,9 @@ def digest(value: object) -> str:
 def validate_dialogues(cases: list[dict]) -> None:
     groups: dict[str, list[dict]] = defaultdict(list)
     for case in cases:
-        spec = case.get("dialogue")
-        if spec is None:
+        if "dialogue" not in case:
             continue
+        spec = case["dialogue"]
         if (
             not isinstance(spec, dict)
             or set(spec) != {"id", "turn_index"}

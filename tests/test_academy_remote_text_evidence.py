@@ -1958,3 +1958,39 @@ def test_full_pass_gain_must_meet_the_same_declared_delta():
     assert result["full_pass_delta"] == pytest.approx(1 / 3)
     assert result["lost_parent_full_pass_case_ids"] == []
     assert result["qualification_reason"] == "remote_text_final_full_pass_below_minimum"
+
+
+def test_local_export_accounts_for_remaining_space_and_existing_archive(tmp_path):
+    from types import SimpleNamespace
+
+    from venom_core.services.training_experiments.remote_text_local import (
+        _export_budget,
+    )
+
+    used = [200_000]
+
+    def measure(state):
+        state["artifact_bytes"] = used[0]
+        return True
+
+    owner = SimpleNamespace(
+        _artifact_budget=measure,
+        experiments=SimpleNamespace(free_storage_bytes=lambda _profile: 1_000_000),
+    )
+    state = {
+        "plan": {
+            "profile_id": "fixture",
+            "budget": {"max_artifact_bytes": 500_000, "min_free_bytes": 0},
+        }
+    }
+    evidence = tmp_path / "evidence"
+    first = _export_budget(owner, state, evidence, "run-1")
+    assert first == 300_000 - 64 * 1024
+    folder = evidence / "run-1"
+    folder.mkdir(parents=True)
+    (folder / "evidence.tar").write_bytes(b"x" * 50_000)
+    used[0] += 50_000
+    assert _export_budget(owner, state, evidence, "run-1") == first
+    used[0] = 500_000
+    with pytest.raises(ValueError, match="storage_budget_exhausted"):
+        _export_budget(owner, state, evidence, "run-2")

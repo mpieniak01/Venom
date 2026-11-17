@@ -243,9 +243,10 @@ def _decisions(policy: dict, cases: dict) -> tuple[set[str], list[str], dict]:
         candidate = _flag(case, "candidate", "usable")
         if base and (policy["protect_base_hits"] or reference is not None):
             protected.add(key)
+        # A parent delta needs complete critical evidence even when its gate is disabled.
+        candidate_critical = _flag(case, "candidate", "critical")
         if policy["no_new_critical"]:
             base_critical = _reference_flag(case, reference, "critical")
-            candidate_critical = _flag(case, "candidate", "critical")
             if candidate_critical and not base_critical:
                 critical.append(key)
         totals = summaries.setdefault(

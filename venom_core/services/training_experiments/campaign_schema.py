@@ -163,6 +163,12 @@ class CampaignSpec(BaseModel):
         ):
             raise ValueError("campaign_checkpoint_steps_invalid")
         self._validate_final_qualification()
+        self._validate_extension()
+        self._validate_repeat_recipe()
+        self._validate_parent_protection()
+        return self
+
+    def _validate_extension(self) -> None:
         if self.extension is not None and (
             self.strategy != "fixed"
             or self.review_mode != "automatic"
@@ -170,8 +176,14 @@ class CampaignSpec(BaseModel):
             or self.extension.min_usable_delta < self.selection.min_usable_delta
         ):
             raise ValueError("campaign_extension_invalid")
-        self._validate_repeat_recipe()
-        return self
+
+    def _validate_parent_protection(self) -> None:
+        if self.selection.protect_parent_full_pass and (
+            self.quality_policy is None
+            or self.quality_policy.parent_reference_record_id is None
+            or not self.quality_policy.protect_parent_full_pass
+        ):
+            raise ValueError("campaign_quality_parent_full_pass_policy_required")
 
     def _validate_final_qualification(self) -> None:
         if self.final_qualification is not None and (

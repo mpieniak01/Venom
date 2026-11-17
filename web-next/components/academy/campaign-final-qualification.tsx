@@ -61,7 +61,7 @@ export function CampaignFinalFields({ inputs, failed, disabled, automaticReview 
 export function CampaignFinalSummary({ campaign }: { readonly campaign: Campaign }) {
   const { t, language } = useLanguage();
   const plan = campaign.plan.final_qualification;
-  if (!plan) return null;
+  if (!plan && !campaign.repeat_confirmation) return null;
   const status = campaign.qualification_status ?? "pending";
   const statusKey = QUALIFICATION_STATES.has(status) ? status : "unverified";
   const deadline = campaign.deadline_at;
@@ -74,16 +74,16 @@ export function CampaignFinalSummary({ campaign }: { readonly campaign: Campaign
   return (
     <section aria-label={t(PREFIX + "title")} className="space-y-2 rounded-lg border border-[color:var(--ui-border)] p-3">
       <h4 className="font-medium">{t(PREFIX + "title")}</h4>
-      <output className="block font-medium">{t(PREFIX + statusKey)}</output>
+      {plan && <output className="block font-medium">{t(PREFIX + statusKey)}</output>}
       {repeat && <p className="text-sm">{t(PREFIX + "repeatConfirmation")} · {t(PREFIX + "repeatStatus." + repeatKey)}</p>}
-      <dl className="flex flex-wrap gap-4 text-sm">
+      {plan && <dl className="flex flex-wrap gap-4 text-sm">
         <div><dt className="text-hint">{t(PREFIX + "inputs")}</dt><dd>{plan.inputs_id}</dd></div>
         <div><dt className="text-hint">{t(PREFIX + "reserve")}</dt><dd>{plan.reserve_seconds}</dd></div>
         {typeof deadline === "number" && Number.isFinite(deadline) && (
           <div><dt className="text-hint">{t(PREFIX + "deadline")}</dt>
             <dd>{new Date(deadline * 1000).toLocaleString(language)}</dd></div>
         )}
-      </dl>
+      </dl>}
       {typeof delta === "number" && Number.isFinite(delta) && (
         <p className="text-sm">{t("academy.campaigns.quality.policy.parentDelta")} · {format.format(delta * 100)} {t("academy.campaigns.quality.guard.points")}</p>
       )}

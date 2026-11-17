@@ -685,3 +685,26 @@ def test_full_pass_cannot_be_true_for_an_unusable_or_critical_outcome():
     payload["cases"]["a"]["candidate"].update(usable=True, critical=True)
     with pytest.raises(ValidationError, match="full_pass_requires_usable"):
         quality_record_view(payload)
+
+
+def test_dialogue_null_rejected_before_generation_and_absent_field_supported():
+    from scripts.academy.omni_pl_chat_dialogue import validate_dialogues
+
+    validate_dialogues([{"messages": [{"role": "user", "content": "hello"}]}])
+    with pytest.raises(ValueError, match="invalid dialogue identity"):
+        validate_dialogues([{"dialogue": None}])
+
+
+@pytest.mark.parametrize("parent", [False, True])
+def test_unknown_critical_evidence_is_rejected_consistently(parent):
+    from venom_core.services.training_experiments.quality_guard import _decisions
+
+    policy = {
+        "protected_case_ids": [],
+        "protect_base_hits": False,
+        "no_new_critical": False,
+    }
+    if parent:
+        policy["parent_cases"] = {"a": {"usable": True, "critical": False}}
+    with pytest.raises(ValueError, match="case_evidence_missing"):
+        _decisions(policy, {"a": case("text", True, True, candidate_critical=None)})

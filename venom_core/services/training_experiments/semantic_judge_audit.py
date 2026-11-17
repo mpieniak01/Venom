@@ -281,12 +281,22 @@ def run_audit(
             atomic_json(
                 root / "judge-qualification-receipt.json", qualified.model_dump()
             )
+        except (OSError, ValueError, TypeError, KeyError, RuntimeError) as exc:
+            result.update(status="failed_qualification", error=str(exc))
+            atomic_json(root / "judge-result.json", result)
         finally:
             if old_location is None:
                 os.environ.pop("VENOM_ACADEMY_JUDGE_V4_AUDIT_ROOT", None)
             else:
                 os.environ["VENOM_ACADEMY_JUDGE_V4_AUDIT_ROOT"] = old_location
-        progress({"stage": "qualification_passed", "completed_calls": 180})
+        progress(
+            {
+                "stage": "qualification_passed"
+                if result["status"] == "complete"
+                else result["status"],
+                "completed_calls": 180,
+            }
+        )
     else:
         progress(
             {

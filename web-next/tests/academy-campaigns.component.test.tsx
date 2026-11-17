@@ -112,6 +112,13 @@ describe("Academy campaigns", () => {
     fireEvent.change(screen.getByLabelText("Pakiet odłożonego testu"), { target: { value: "fresh-final" } });
     fireEvent.click(screen.getByRole("button", { name: "Dodaj wariant" }));
     fireEvent.change(screen.getAllByLabelText("Ziarno treningu")[1], { target: { value: "43" } });
+    fireEvent.click(screen.getByRole("checkbox", { name: "Powtórz najlepszą recepturę z innym ziarnem" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Wymagaj pełnego wykonania instrukcji w finale" }));
+    fireEvent.click(screen.getByRole("button", { name: "Przygotuj plan kampanii" }));
+    await screen.findByRole("alert");
+    assert.equal(submitted, undefined);
+    fireEvent.click(screen.getByRole("checkbox", { name: "Powtórz najlepszą recepturę z innym ziarnem" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Wymagaj pełnego wykonania instrukcji w finale" }));
     fireEvent.change(screen.getByLabelText("Liczba prób przed decyzją"), { target: { value: "1" } });
     fireEvent.change(screen.getByLabelText("Czas zarezerwowany na finał (s)"), { target: { value: "3600" } });
     fireEvent.click(screen.getByRole("button", { name: "Przygotuj plan kampanii" }));
@@ -119,11 +126,15 @@ describe("Academy campaigns", () => {
     await screen.findByRole("alert");
     fireEvent.change(screen.getByLabelText("Czas zarezerwowany na finał (s)"), { target: { value: "900" } });
     fireEvent.click(screen.getByRole("button", { name: "Przygotuj plan kampanii" }));
+    await screen.findByRole("alert");
+    assert.equal(submitted, undefined);
+    fireEvent.click(screen.getByRole("checkbox", { name: "Wymagaj pełnego wykonania instrukcji w finale" }));
+    fireEvent.click(screen.getByRole("button", { name: "Przygotuj plan kampanii" }));
     await waitFor(() => assert.ok(submitted));
     assert.deepEqual(submitted!.final_qualification, { inputs_id: "fresh-final", reserve_seconds: 900 });
     assert.equal(submitted!.review_mode, "automatic");
     assert.equal(submitted!.budget.max_seconds, 3600);
-    assert.equal(submitted!.selection.protect_parent_full_pass, true);
+    assert.equal(submitted!.selection.protect_parent_full_pass, undefined);
     assert.deepEqual(submitted!.extension, { initial_trials: 1, min_usable_delta: 0.05 });
     assert.equal(submitted!.variants[1].seed, 43);
   });
@@ -149,7 +160,7 @@ describe("Academy campaigns", () => {
     await screen.findByText(/Powtórzenie nie zostało uruchomione/);
     assert.equal(screen.queryByText(/Powtórzenie nie potwierdziło jakości/), null);
     cleanup();
-    current = { ...current, qualification_status: "failed_quality",
+    current = { ...current, plan: { ...planned.plan, final_qualification: undefined }, qualification_status: "failed_quality",
       repeat_confirmation: { status: "failed_quality", repeat_run_id: "confirmed-recipe-03" } };
     render(<CampaignPanel onOpenRun={() => undefined} />);
     await screen.findByText(/Powtórzenie nie potwierdziło jakości/);

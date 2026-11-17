@@ -12,7 +12,6 @@ from fastapi.testclient import TestClient
 
 from scripts.academy.omni_pl_chat_masks import SNAPSHOT_PIN
 from venom_core.api.routes import llm_simple
-from venom_core.api.routes import omni_native_text as routes
 from venom_core.api.schemas.llm_simple import HistoryMessage, SimpleChatRequest
 from venom_core.services import omni_native_text as bridge
 from venom_core.services.training_experiments.profiles import (
@@ -220,8 +219,10 @@ async def test_unsupported_or_stale_request_does_not_generate(native, fields):
 
 def test_normal_endpoint_uses_selected_native_adapter(native, monkeypatch):
     app = FastAPI()
-    app.include_router(routes.router, prefix="/api/v1/llm")
     app.include_router(llm_simple.router)
+    paths = app.openapi()["paths"]
+    assert "/api/v1/llm/native-text/selection" in paths
+    assert not any("/llm/api/" in path for path in paths)
     monkeypatch.setattr(
         "venom_core.services.llm_simple_service.assert_runtime_request_allowed",
         lambda **kw: None,

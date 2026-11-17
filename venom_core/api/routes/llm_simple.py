@@ -7,6 +7,7 @@ from typing import Annotated, cast
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from venom_core.api.dependencies import get_session_store
+from venom_core.api.routes.omni_native_text import router as native_text_router
 from venom_core.api.schemas.llm_simple import SimpleChatRequest
 from venom_core.services.chat_history import persist_direct_response
 from venom_core.services.llm_simple_service import release_onnx_simple_client
@@ -17,6 +18,7 @@ from venom_core.services.session_store import SessionStore
 from venom_core.services.studio_normal_chat import prepare_studio_normal
 
 router = APIRouter(prefix="/api/v1/llm", tags=["llm"])
+router.include_router(native_text_router)
 
 
 @router.post(

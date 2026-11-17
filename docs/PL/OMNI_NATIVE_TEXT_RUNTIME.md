@@ -22,6 +22,8 @@ Zdarzenia SSE start/done zawierają model_identity: ID i SHA wag/konfiguracji, p
 
 Na jednym GPU obowiązuje jeden właściciel namespace `MEMORY_ROOT` i wspólny ledger host admission. Drugi proces API nie może otrzymać własnego ledgera na tym samym GPU. Przed odbiorem należy potwierdzić bezczynność, zatrzymać główne API zgodnie z launcherem, uruchomić API odbioru ze wspólnym `MEMORY_ROOT` oraz osobnym SessionStore, a po zakończeniu zatrzymać je i odtworzyć główny stos z jego wcześniejszą konfiguracją. Sprawdzenie zakończenia obejmuje puste dzierżawy, brak aktywnej pracy i rzeczywistą dostępność GPU.
 
+Prywatny SessionStore odbioru umieszczaj w `/tmp`. Przed pierwszą generacją sprawdź, czy faktyczne `store._store_path` po rozwiązaniu ścieżki jest równe żądanej lokalizacji. Odmowa ścieżki poza dozwolonym zakresem może spowodować fallback do głównego pliku historii; każda niezgodność musi przerwać odbiór przed wysłaniem promptu.
+
 Rezydentny model Ollamy może nadal zajmować VRAM mimo zatrzymania API. Dla odbioru ustaw `LLM_KEEP_ALIVE=0` w izolowanym procesie, aby jego zwykła generacja zwolniła własny model. Nie wykonuj potajemnego unloadu innych modeli. Jeśli pamięć nadal jest zajęta, zgłoś ten stan przed obciążeniem GPU; sama pustka kolejki nie dowodzi dostępności VRAM.
 
 ## Wybór z aplikacji

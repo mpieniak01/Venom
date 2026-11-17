@@ -194,6 +194,7 @@ test("ordinary Studio SSR exposes the real native picker without selecting or lo
   assert.match(html, /aria-label="chat2.nativeText.title"/);
   assert.match(html, /chat2.nativeText.reference/);
   assert.match(html, /chat2.nativeText.ordinary/);
+  assert.ok(html.includes("chat2.documents: chat2.unknown"));
   assert.doesNotMatch(html, /chat2.nativeText.probing/);
 });
 
@@ -205,6 +206,10 @@ test("native overlay reaches the shared conversation controller and renders its 
   assert.match(html, new RegExp(nativeReference.weights_sha256));
   assert.match(html, /chat2.nativeText.rollback/);
   assert.match(html, /chat2.nativeText.direct/);
+  for (const feature of ["documents", "images", "voice"]) {
+    assert.ok(html.includes("chat2." + feature + ": chat2.unsupported"));
+  }
+  assert.match(html, /aria-label="chat2.chooseFiles" disabled=""/);
   assert.doesNotMatch(html, /chat2.nativeText.ordinary/);
 });
 

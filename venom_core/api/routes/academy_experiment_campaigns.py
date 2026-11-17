@@ -52,6 +52,15 @@ def list_campaigns() -> dict:
     )
 
 
+@router.get("/final-inputs")
+def final_inputs() -> dict:
+    from venom_core.services.training_experiments.local_campaign_final import (
+        list_inputs,
+    )
+
+    return call_experiment(lambda: {"inputs": list_inputs(experiment_service().root)})
+
+
 @router.get("/quality")
 def quality_records() -> dict:
     return call_experiment(list_records, experiment_service())

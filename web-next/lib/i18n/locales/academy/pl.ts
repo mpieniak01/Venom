@@ -2,7 +2,7 @@ export const academy = {
   remoteText: {
     extension: {
       title: "Warunkowa dogrywka",
-      hint: "Po pierwszej części host uruchomi pozostałe warianty, jeśli najlepszy wynik na dev osiągnie próg względem M0. Limit kosztu i czasu obejmuje całość.",
+      hint: "Po pierwszej części wykonawca uruchomi pozostałe warianty, jeśli wynik dev osiągnie próg względem wskazanego rodzica, albo M0 przy treningu od bazy. Wybór dogrywki włącza ocenę automatyczną. Łączny limit obejmuje całość.",
       initialTrials: "Liczba prób przed decyzją",
       minGain: "Wymagany zysk na dev (pkt proc.)",
       approved: "Dogrywka zatwierdzona na podstawie wyniku dev.",
@@ -361,6 +361,35 @@ export const academy = {
     },
   },
   campaigns: {
+    finalQualification: {
+      fullPassCounts: "Pełne zaliczenia: rodzic → kandydat",
+      repeatConfirmation: "Potwierdzenie innym ziarnem",
+      repeatStatus: {"passed": "Przyrost potwierdzony", "failed_quality": "Powtórzenie nie potwierdziło jakości", "incomplete": "Brak kompletnego potwierdzenia", "not_started": "Powtórzenie nie zostało uruchomione"},
+      supervisedTokens: "Limit tokenów nadzoru",
+      repeatBest: "Powtórz najlepszą recepturę z innym ziarnem",
+      repeatHint: "Przygotuj po jednej alternatywie dla każdej próby początkowej, z innym ziarnem. Wykonana zostanie tylko alternatywa zwycięzcy. Wskaż odniesienie rzeczywistego rodzica.",
+      fullPass: "Wymagaj pełnego wykonania instrukcji w finale",
+      fullPassHint: "Wymagaj także przyrostu pełnych zaliczeń i zachowania wszystkich pełnych zaliczeń rodzica. Obejmuje to format oraz krótkość odpowiedzi.",
+      consideredVariants: "Rozpatrzone warianty",
+      trainingSeed: "Ziarno treningu",
+      "title": "Końcowa kwalifikacja względem rodzica",
+      "inputs": "Pakiet odłożonego testu",
+      "none": "Bez automatycznego finału",
+      "reserve": "Czas zarezerwowany na finał (s)",
+      "hint": "Po próbach kampania sama oceni wybranego kandydata, zapisze dowody i decyzję. Finał mieści się w łącznym czasie kampanii.",
+      "automatic": "Wybór pakietu włącza ocenę automatyczną.",
+      "loadError": "Nie udało się pobrać pakietów końcowej oceny.",
+      "noInputs": "Brak zarejestrowanego pakietu końcowej oceny.",
+      "deadline": "Koniec wspólnego limitu",
+      "candidate": "Najlepszy kandydat z prób",
+      "pending": "Finał zaplanowany",
+      "running": "Trwa końcowa ocena",
+      "passed": "Spełnia kryteria odłożonego testu",
+      "failed_quality": "Nie spełnia kryteriów jakości",
+      "incomplete": "Brak kompletnej końcowej oceny",
+      "unverified": "Nieznany wynik kwalifikacji",
+      "scope": "Ten wynik dotyczy umiejętności objętych testem. Aktywacja w czacie jest oddzielnym krokiem."
+},
     executionHost: "Miejsce treningu",
     localTraining: "Trening lokalny",
     checkpoints: {
@@ -464,6 +493,11 @@ export const academy = {
       recipeJson: "Parametry wariantu (JSON)",
       invalidDraft: "Sprawdź JSON wariantów, pola trenera i limity kampanii.",
       policy: {
+        protectFullPass: "Zachowaj pełne zaliczenia rodzica",
+        parentReference: "Odniesienie rzeczywistego rodzica",
+        noParent: "Bez wskazanego rodzica",
+        parentHint: "Wybierz ocenę tych samych wag, od których zaczyna się trening. Reguły chronią jej trafienia, a selekcja i dogrywka mierzą przyrost względem rodzica.",
+        parentDelta: "Przyrost względem rodzica",
         sourceLocked: "Szkic ma przypiętą ocenę źródłową. Odrzuć szkic, aby wrócić do zwykłego formularza.",
         title: "Reguły jakości",
         enable: "Stosuj reguły jakości",
@@ -488,6 +522,8 @@ export const academy = {
         points: "p.p.",
       },
       issues: {
+        parent_full_pass_lost: "Utracono pełne zaliczenia rodzica.",
+        parent_full_pass_no_gain: "Brak przyrostu pełnych zaliczeń względem rodzica.",
         quality_cohort_mismatch: "Oceny mają różne grupy porównawcze.",
         campaign_quality_evidence_unavailable: "Brakuje raportu oceny potrzebnego do reguł jakości.",
         quality_identity_unverified: "Brak potwierdzonej tożsamości oceny.",
@@ -606,6 +642,7 @@ export const academy = {
       min_free_mib: "Rezerwa wolnego miejsca (MiB)",
     },
     status: {
+      qualifying: "Końcowa kwalifikacja",
       skipped: "Pominięta",
       pruned: "Zakończona wcześniej",
       cancelled: "Anulowana",

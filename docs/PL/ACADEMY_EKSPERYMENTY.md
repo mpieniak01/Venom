@@ -6,7 +6,7 @@ W **Academy → Trening → Kampanie** wybierz miejsce wykonania. **Trening loka
 
 **Zdalny trening tekstowy · Vast** jest opcją dla przygotowanej VM. Ma dodatkowy limit kwoty, rozliczenie wynajmu i synchronizację dowodów. Pilot Vast dotyczy odbioru tej właśnie ścieżki. [Instrukcja zdalnej kampanii](ACADEMY_ZDALNY_TRENING_TEKSTU.md)
 
-Ranking lokalnej kampanii pochodzi z danych dev. Ocena na odłożonym zbiorze jest osobnym krokiem. Automatyczna kolejka niezależnej kwalifikacji opisana w instrukcji zdalnej korzysta z archiwów kampanii Vast.
+Ranking lokalnej kampanii pochodzi z danych dev. Opcjonalna końcowa kwalifikacja lokalna uruchamia się automatycznie po próbach, na wcześniej przypiętym odłożonym zbiorze. Kampanie bez tego etapu zachowują dotychczasowy przebieg.
 
 ## Przygotowanie profilu
 
@@ -126,11 +126,48 @@ python -m scripts.academy.campaigns --root "$experiment_root" report polski-czat
 `stop` zatrzymuje kampanię. `resume` podejmuje ją z zachowanym stanem oraz pozostałym budżetem. [Kontrakt kampanii](../../venom_core/services/training_experiments/campaign_schema.py) · [CLI kampanii](../../scripts/academy/campaigns.py)
 
 
+## Lokalna kampania z automatycznym finałem
+
+Operator rejestruje pakiet końcowej oceny przed zaplanowaniem kampanii. Plik wejściowy używa kontraktu `QualificationInputs`: ścieżki train, dev, final_test, calibration, snapshot i training_venv oraz max_seconds. Zestaw testowy musi być rozłączny z uczeniem i oceną dev. Profil semantyczny wymaga zweryfikowanego audytu sędziego w środowisku API i wykonawcy: `VENOM_ACADEMY_JUDGE_AUDIT_ROOT` dla `semantic-local-v3` albo osobnego `VENOM_ACADEMY_JUDGE_V4_AUDIT_ROOT` dla `semantic-local-v4`. Sama dostępność kodu nowej wersji nie kwalifikuje sędziego.
+
+```bash
+python -m scripts.academy.campaigns --root "$experiment_root" register-final fresh-final inputs.json
+python -m scripts.academy.campaigns --root "$experiment_root" final-inputs
+```
+
+W panelu **Końcowa kwalifikacja względem rodzica** wybierz zarejestrowany pakiet i rezerwę czasu. W manifeście CLI odpowiada temu pole:
+
+```json
+"final_qualification": {"inputs_id": "fresh-final", "reserve_seconds": 900}
+```
+
+Rezerwa stanowi część `budget.max_seconds`; musi pomieścić eksport i ocenę. Wybranie pakietu włącza ocenę automatyczną. Zapis planu wiąże wejścia oraz protokół, a pierwszy start ustala nieprzesuwalny termin. Wznowienie wykorzystuje pozostały czas. Po zakończeniu prób wykonawca sam eksportuje finalistę, ocenia go względem bazy i rzeczywistego rodzica, zapisuje dowody i decyzję. Osobne wywołanie końcowej oceny nie jest potrzebne.
+
+Opcja `selection.protect_parent_full_pass: true` dodatkowo chroni wszystkie pełne zaliczenia rodzica i wymaga przyrostu pełnych zaliczeń na finale. Sama poprawność treści nie zastępuje spełnienia instrukcji formatu. W regułach dev odpowiada jej `quality_policy.protect_parent_full_pass`.
+
+`qualifying` oznacza trwający finał. Panel pokazuje osobno `qualification_status`: oczekiwanie, pracę, spełnienie kryteriów, odrzucenie jakościowe albo niekompletną ocenę. `succeeded` dotyczy zakończenia procedury; kwalifikację potwierdza dopiero wynik `passed`. Remis z rodzicem nie jest przyrostem. Wynik dotyczy umiejętności objętych testem i nie aktywuje automatycznie adaptera w zwykłym czacie. Raport kampanii zawiera także wynik końcowego etapu.
+
+Jeśli brak kwalifikującego kandydata, a oceny wymaganych checkpointów są niepełne lub zakończyły się błędem, kampania zwraca `incomplete`. Pełne oceny bez wymaganego przyrostu zwracają `failed_quality`. Pominięte powtórzenie receptury ma w panelu osobny opis od powtórzenia wykonanego bez potwierdzenia poprawy.
+
+## Wersjonowanie i odbiór sędziego
+
+Nowy prompt wymaga osobnego audytu oraz jawnej zmiany protokołu nowego profilu. Historyczne generacje, oceny i pieczęcie pozostają niezmienione. Weryfikator v4 sprawdza 60 wcześniejszych kontroli, 48 kontroli rozwojowych oraz 24 odłożone odpowiedzi oceniane po trzy razy. Odłożona część może rozpocząć się dopiero po zaliczeniu pierwszych 108 wywołań. Wszystkie 72 odłożone decyzje muszą zgadzać się ze wzorcem, a trzy decyzje dla każdej odpowiedzi muszą być zgodne.
+
+Audyt wymaga rzeczywistych, odrębnych wywołań oraz powiązania modelu, runtime, promptu, opcji, kolejności i granicy faz z zamrożonym manifestem. Kopie odpowiedzi nie zastępują powtórzeń. `python -m scripts.academy.qualify_semantic_judge_v4 --help` opisuje przygotowanie audytu; bez `--execute` nie wykonuje inferencji. Każdy rozpoczęty audyt ma jedną próbę i trwały limit. Nieudany wynik nie wydaje receipt kwalifikacji. Zmiana promptu po wykorzystaniu odłożonych kontroli wymaga nowej rewizji tych kontroli.
+
+## Dogrywka najlepszej receptury
+
+Dla automatycznej kampanii od wskazanego rodzica można ustawić `extension.repeat_best_recipe: true`. Zamroź po jednej alternatywie z innym ziarnem dla każdej próby początkowej. Po ocenie początkowych prób wykonawca wybierze tylko alternatywę najlepszej receptury, jeśli uzyskała wymagany przyrost względem rodzica i zachowała chronione zaliczenia. Pozostałe alternatywy zostaną pominięte. Wszystkie receptury oraz ich powiązania są sprawdzane przy planowaniu; podczas pracy nie są przepisywane.
+
+Przy dwóch początkowych recepturach przygotuj cztery warianty: dwa początkowe i dwa możliwe powtórzenia. Limit trzech prób obejmuje dwa treningi początkowe oraz jedno wybrane powtórzenie. Limit tokenów i aktualizacji uwzględnia najdroższą możliwą dogrywkę. Zmiana ziarna może zmienić rzeczywistą liczbę tokenów nadzoru, dlatego parametr `max_supervised_tokens` trzeba obliczyć dla każdego ziarna. Wszystkie etapy, włącznie z kwalifikacją, pozostają w jednym limicie czasu. Finał wymaga potwierdzenia poprawy na tym samym kroku w obu ziarnach; brak potwierdzenia kończy sesję bez otwierania odłożonego testu.
+
 ## Ocena kilku checkpointów z jednej próby
 
 W kampanii na stałej liście wypełnij **Kroki oceny checkpointów** albo dodaj do manifestu pole, np. `"checkpoint_steps": [7, 14, 21, 28]`. Podaj od jednego do czterech różnych, rosnących kroków. Każdy musi odpowiadać zapisowi wszystkich receptur w planie. Ostatni krok receptury jest zapisywany także przy niepełnym interwale `save_every`. Zapisany plan wiąże listę kroków i protokół oceny z sumą kontrolną.
 
 Wykonawca trenuje raz na wariant. Następnie na wspólnym roboczym dev generuje odpowiedzi bazy raz i po jednej odpowiedzi z każdego checkpointu. Przerwanie oceny pozwala wznowić brakujące generacje z zachowaniem zweryfikowanych odpowiedzi. W ręcznej ocenie Academy otwiera kolejno anonimowe pakiety A/B. Zachowaj jednakowy werdykt dla tej samej odpowiedzi bazy.
+
+Automatyczna ocena kolejnych checkpointów wykorzystuje zapieczętowane werdykty bazy z pierwszej kompletnej pary. Przed użyciem sprawdza identyczność treści, rzeczywistej historii, żądania sędziego i protokołu oraz integralność obu pakietów. Dowód zapisuje pochodzenie wykorzystanej oceny. Zmienione wejście jest błędem; nie jest dopasowywane do wcześniejszego werdyktu.
 
 Pobierz pakiet i zapisz jego `checkpoint_step` razem z kompletem ocen w pliku JSON. W panelu wybierz plik dla bieżącego kroku albo użyj polecenia `judgments RUN_ID judgments.json` z CLI eksperymentów.
 

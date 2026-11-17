@@ -863,6 +863,20 @@
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
+      "path": "tests/test_academy_semantic_judge_v4.py",
+      "domain": "academy",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Verify complete v4 semantic judge accuracy receipts, repeated-request stability, tamper rejection, and v3 compatibility."
+    },
+    {
       "path": "tests/test_academy_training_service.py",
       "domain": "academy",
       "test_type": "route_contract",

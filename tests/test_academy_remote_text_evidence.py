@@ -515,7 +515,7 @@ def _holdout_paths(tmp_path, *, overlap=False, unknown=False, size=1):
 
 
 def _evaluate_fixture(command, log, timeout, run_id, model, *, outcomes=None):
-    assert timeout == 60
+    assert 0 < timeout <= 60
     assert run_id == RUN
     base_index = command.index("base")
     data, generation = map(Path, command[base_index - 3 : base_index - 1])
@@ -1539,3 +1539,461 @@ def test_local_qualification_uses_api_owner_cleanup_and_releases_lease(
     client.post.assert_called_once()
     lease = host.acquire(owner="test", run_id="verify", engine="test", model="test")
     assert lease.release()
+
+
+def _registered_local_final(tmp_path):
+    from venom_core.services.training_experiments import local_campaign_final
+
+    spec, academy, _parent, host, pins = _continued_campaign(tmp_path)
+    profile = {
+        "label": "Local final fixture",
+        "dataset": "fixture",
+        "snapshot": str(spec.snapshot),
+        "training_venv": str(spec.training_venv),
+        "train": str(spec.train),
+        "dev": str(spec.dev),
+        "train_sha256": digest(spec.train),
+        "dev_sha256": digest(spec.dev),
+    }
+    (academy / "profiles").mkdir()
+    atomic_json(academy / "profiles" / "fixture.json", profile)
+    host.state["plan"]["profile_id"] = "fixture"
+    registered = local_campaign_final.register_inputs(
+        academy, "fresh", spec.model_dump(mode="json")
+    )
+    assert registered["final_test_sha256"] == pins["final_test_sha256"]
+    config = local_campaign_final.freeze_inputs(
+        academy, host.state["plan"], {"inputs_id": "fresh", "reserve_seconds": 60}
+    )
+    host.state["plan"]["final_qualification"] = config
+    return spec, academy, host, pins
+
+
+def test_local_final_inputs_are_frozen_before_launch_and_private(tmp_path):
+    from venom_core.services.training_experiments import local_campaign_final
+
+    spec, academy, host, _pins = _registered_local_final(tmp_path)
+    root = academy / "local-text-final-inputs"
+    assert root.stat().st_mode & 0o077 == 0
+    listed = local_campaign_final.list_inputs(academy)
+    assert [entry["inputs_id"] for entry in listed] == ["fresh"]
+    assert "train" not in listed[0]
+    assert "final_test" not in listed[0]
+    local_campaign_final.verify_inputs(academy, host.state["plan"])
+    spec.final_test.write_text(spec.final_test.read_text() + "\n")
+    with pytest.raises(ValueError, match="calibration_invalid|inputs_changed"):
+        local_campaign_final.verify_inputs(academy, host.state["plan"])
+
+
+def test_local_final_registration_rejects_rebinding_and_path_escape(tmp_path):
+    from venom_core.services.training_experiments import local_campaign_final
+
+    spec, academy, _host, _pins = _registered_local_final(tmp_path)
+    payload = spec.model_dump(mode="json")
+    changed = {**payload, "max_seconds": 90}
+    with pytest.raises(ValueError, match="inputs_conflict"):
+        local_campaign_final.register_inputs(academy, "fresh", changed)
+    with pytest.raises(ValueError):
+        local_campaign_final.register_inputs(academy, "../escape", payload)
+
+
+def test_local_worker_exports_qualifies_and_catalogs_without_manual_final(
+    tmp_path, monkeypatch
+):
+    from venom_core.services.training_experiments.campaign import CampaignService
+    from venom_core.services.training_experiments.service import ExperimentService
+
+    spec, academy, host, pins = _registered_local_final(tmp_path)
+    directory = academy / "campaigns" / CAMPAIGN
+    directory.mkdir(parents=True)
+    run = academy / "runs" / RUN
+    run.parent.mkdir()
+    host.directory.rename(run)
+    state = {
+        **host.state,
+        "started_at": None,
+        "status": "planned",
+        "trial_index": 1,
+        "elapsed_seconds": 0.0,
+        "worker": None,
+        "artifact_bytes": 0,
+    }
+    state["plan"]["budget"].update(max_retries=1, min_free_bytes=0)
+    atomic_json(directory / "state.json", state)
+    pin_local(academy, CAMPAIGN, **pins)
+    state.update(
+        status="qualifying",
+        phase="qualification",
+        training_status="succeeded",
+        started_at=100.0,
+        deadline_at=160.0,
+    )
+    atomic_json(directory / "state.json", state)
+    calls = []
+
+    def evaluate(*args, **kwargs):
+        calls.append(True)
+        assert kwargs["shared_runtime"] is True
+        kwargs["check"]()
+        _evaluate_fixture(*args, outcomes=[("bad", "good", "bad")] * 3)
+
+    monkeypatch.setattr(remote_text_qualification, "_evaluate", evaluate)
+    service = CampaignService(ExperimentService(academy), clock=lambda: 101.0)
+    result = service.advance(CAMPAIGN)
+    assert result["qualification_status"] == "passed"
+    adapter_id = result["qualification"]["qualified"]["adapter_id"]
+    assert (academy / "adapters" / adapter_id / "adapter.json").is_file()
+    assert service.report(CAMPAIGN)["qualification"] == result["qualification"]
+    assert service.advance(CAMPAIGN) == result
+    assert calls == [True]
+    # Even a crash after publishing but before state persistence reuses the seal.
+    state["qualification_attempts"] = 2
+    atomic_json(directory / "state.json", state)
+    assert service.advance(CAMPAIGN)["qualification_status"] == "passed"
+    assert calls == [True]
+    result_path = (
+        academy
+        / "local-text-qualification"
+        / CAMPAIGN
+        / "evidence"
+        / "final-qualification"
+        / "result.json"
+    )
+    result_path.write_text(result_path.read_text() + "\n")
+    assert service.report(CAMPAIGN)["qualification_status"] == "incomplete"
+
+
+def test_broken_final_registration_does_not_poison_catalog(tmp_path):
+    from venom_core.services.training_experiments import local_campaign_final
+
+    spec = _holdout_paths(tmp_path)
+    academy = tmp_path / "academy"
+    spec.final_test.unlink()
+    payload = spec.model_dump(mode="json")
+    with pytest.raises(FileNotFoundError):
+        local_campaign_final.register_inputs(academy, "broken", payload)
+    assert local_campaign_final.list_inputs(academy) == []
+
+
+def test_final_inputs_api_and_cli_share_private_registry(tmp_path, monkeypatch, capsys):
+    from types import SimpleNamespace
+
+    from scripts.academy.campaigns import main
+    from venom_core.api.routes import academy_experiment_campaigns as routes
+    from venom_core.services.training_experiments import local_campaign_final
+
+    spec, academy, _host, _pins = _registered_local_final(tmp_path)
+    payload = tmp_path / "inputs.json"
+    atomic_json(payload, spec.model_dump(mode="json"))
+    main(["--root", str(academy), "register-final", "second", str(payload)])
+    registered = json.loads(capsys.readouterr().out)
+    assert registered["inputs_id"] == "second"
+    main(["--root", str(academy), "final-inputs"])
+    cli = json.loads(capsys.readouterr().out)
+    monkeypatch.setattr(
+        routes, "experiment_service", lambda: SimpleNamespace(root=academy)
+    )
+    assert (
+        routes.final_inputs()
+        == cli
+        == {"inputs": local_campaign_final.list_inputs(academy)}
+    )
+
+
+def test_short_fact_judge_cannot_publish_open_conversation_scope(tmp_path):
+    spec, academy, _parent, host, _pins = _continued_campaign(tmp_path)
+    data = [{**case, "chat_group": "W"} for case in rows(spec.final_test)]
+    spec.final_test.unlink()
+    write_jsonl(spec.final_test, data)
+    calibration = read_json(spec.calibration)
+    calibration["dev_sha256"] = digest(spec.final_test)
+    atomic_json(spec.calibration, calibration)
+    pins = {
+        "final_test_sha256": digest(spec.final_test),
+        "final_calibration_sha256": digest(spec.calibration),
+    }
+    evidence = tmp_path / "evidence"
+    receipt = sync_run(host, host.state, RUN, evidence, LIMIT)
+    result = qualify(
+        evidence,
+        host.state,
+        {RUN: receipt},
+        academy,
+        spec,
+        evaluator=lambda *args: _evaluate_fixture(
+            *args, outcomes=[("bad", "good", "bad")] * 3
+        ),
+        **pins,
+    )
+    assert result["usable_delta"] > 0
+    assert result["status"] == "incomplete_calibration"
+    assert result["qualified"] is None
+    assert (
+        result["qualification_reason"] == "remote_text_final_dialogue_review_required"
+    )
+    assert len(result["independent_review_case_ids"]) == 3
+
+
+def test_automatic_final_cannot_bypass_shared_budget_with_manual_qualify(tmp_path):
+    spec, academy, host, pins = _registered_local_final(tmp_path)
+    with pytest.raises(ValueError, match="requires_supervised_budget"):
+        qualify(
+            tmp_path / "evidence",
+            host.state,
+            {},
+            academy,
+            spec,
+            source="local",
+            evaluator=_evaluate_fixture,
+            **pins,
+        )
+
+
+def _judge_settings_from_env_file(tmp_path, monkeypatch, audit_root):
+    from venom_core.config import Settings, _settings_env_file
+
+    key = "VENOM_ACADEMY_JUDGE_AUDIT_ROOT"
+    environment = tmp_path / "judge.env"
+    environment.write_text(f"{key}={audit_root}\n")
+    monkeypatch.delenv(key, raising=False)
+    monkeypatch.setenv("ENV_FILE", str(environment))
+    settings = Settings(_env_file=_settings_env_file())
+    assert settings.VENOM_ACADEMY_JUDGE_AUDIT_ROOT == str(audit_root)
+    assert key not in os.environ
+    monkeypatch.setattr(semantic, "SETTINGS", settings)
+    return settings
+
+
+def test_semantic_audit_loads_from_selected_env_file_without_export(
+    tmp_path, monkeypatch, semantic_audit
+):
+    calibration, root = semantic_audit
+    _judge_settings_from_env_file(tmp_path, monkeypatch, root)
+    assert semantic.qualification(calibration).false_positives == 0
+    # An explicit empty or invalid override cannot silently use the valid file setting.
+    for override in ("", "relative", str(tmp_path / "absent-audit")):
+        monkeypatch.setenv("VENOM_ACADEMY_JUDGE_AUDIT_ROOT", override)
+        with pytest.raises(ValueError, match="experiment_judge_audit_missing"):
+            semantic.qualification(calibration)
+
+
+def test_profile_readiness_rechecks_configured_audit_and_fails_closed(
+    tmp_path, monkeypatch, semantic_audit
+):
+    from venom_core.services.training_experiments.service import ExperimentService
+
+    qualification, audit_root = semantic_audit
+    settings = _judge_settings_from_env_file(tmp_path, monkeypatch, audit_root)
+    spec, academy, _host, _pins = _registered_local_final(tmp_path)
+    calibration = {
+        **qualification,
+        "schema_version": 1,
+        "judge": semantic.JUDGE,
+        "reviewer": "Fixture independent reviewer",
+        "dev_sha256": digest(spec.dev),
+        "cases": {
+            case["record_id"]: {
+                "claims": {
+                    "correct": {
+                        "kind": "value",
+                        "field_aliases": ["limit"],
+                        "value_aliases": ["14 dni"],
+                    }
+                }
+            }
+            for case in rows(spec.dev)
+        },
+    }
+    calibration_path = academy / "profiles" / "fixture.calibration.json"
+    atomic_json(calibration_path, calibration)
+    profile_path = academy / "profiles" / "fixture.json"
+    profile = read_json(profile_path)
+    profile.update(
+        calibration_sha256=digest(calibration_path),
+        recipe={"steps": 2, "save_every": 2, **RECIPE},
+    )
+    atomic_json(profile_path, profile)
+    service = ExperimentService(academy)
+    assert service.profiles()[0]["automatic_review"] is True
+    assert service.validate("fixture")["automatic_review"] is True
+
+    monkeypatch.setattr(
+        settings, "VENOM_ACADEMY_JUDGE_AUDIT_ROOT", str(tmp_path / "missing-audit")
+    )
+    assert service.profiles() == []
+    with pytest.raises(ValueError, match="experiment_judge_audit_missing"):
+        service.validate("fixture")
+    monkeypatch.setattr(settings, "VENOM_ACADEMY_JUDGE_AUDIT_ROOT", "")
+    with pytest.raises(ValueError, match="experiment_judge_audit_missing"):
+        semantic.qualification(qualification)
+
+
+@pytest.mark.parametrize(
+    ("outcomes", "protect", "expected", "lost", "delta"),
+    [
+        (
+            [("bad", "good", "good"), ("bad", "good", "bad"), ("bad", "bad", "bad")],
+            True,
+            "passed",
+            [],
+            1 / 3,
+        ),
+        (
+            [
+                ("bad", "verbose", "good"),
+                ("bad", "good", "bad"),
+                ("bad", "good", "bad"),
+            ],
+            True,
+            "failed_quality",
+            ["pilot"],
+            1 / 3,
+        ),
+        (
+            [("bad", "good", "good"), ("bad", "verbose", "bad"), ("bad", "bad", "bad")],
+            True,
+            "failed_quality",
+            [],
+            0,
+        ),
+        (
+            [
+                ("bad", "verbose", "good"),
+                ("bad", "good", "bad"),
+                ("bad", "good", "bad"),
+            ],
+            False,
+            "passed",
+            [],
+            None,
+        ),
+    ],
+)
+def test_final_full_pass_gate_retains_format_and_requires_positive_full_gain(
+    tmp_path, outcomes, protect, expected, lost, delta
+):
+    spec, academy, _parent, host, pins = _continued_campaign(tmp_path)
+    cases = rows(spec.final_test)
+    for case in cases:
+        case["criteria"].append(
+            {"id": "short", "kind": "format", "description": "Krótka forma."}
+        )
+    spec.final_test.write_text("".join(json.dumps(case) + "\n" for case in cases))
+    calibration = read_json(spec.calibration)
+    calibration["dev_sha256"] = digest(spec.final_test)
+    for rule in calibration["cases"].values():
+        for grade in [*rule["outputs"].values(), rule["fallback"]]:
+            grade["criteria"]["short"] = True
+        rule["outputs"]["verbose"] = {
+            **rule["outputs"]["good"],
+            "criteria": {"correct": True, "short": False},
+        }
+    atomic_json(spec.calibration, calibration)
+    pins.update(
+        final_test_sha256=digest(spec.final_test),
+        final_calibration_sha256=digest(spec.calibration),
+    )
+    host.state["plan"]["selection"]["protect_parent_full_pass"] = protect
+    evidence = tmp_path / "evidence"
+    receipts = {RUN: sync_run(host, host.state, RUN, evidence, LIMIT)}
+    result = qualify(
+        evidence,
+        host.state,
+        receipts,
+        academy,
+        spec,
+        evaluator=lambda *args: _evaluate_fixture(*args, outcomes=outcomes),
+        **pins,
+    )
+    assert result["status"] == expected
+    assert result["usable_delta"] > 0
+    if protect:
+        assert result["full_pass_delta"] == pytest.approx(delta)
+        assert result["lost_parent_full_pass_case_ids"] == lost
+        assert (
+            result["parent_comparison"]["full_pass_delta"] == result["full_pass_delta"]
+        )
+    else:
+        assert "full_pass_delta" not in result
+
+
+def test_full_pass_gate_fails_closed_on_missing_parent_or_missing_passed():
+    result = {}
+    assert remote_text_qualification._full_pass_gate({}, result, {}) == (True, True)
+    assert remote_text_qualification._full_pass_gate(
+        {}, result, {"protect_parent_full_pass": True}
+    ) == (False, False)
+    assert (
+        result["qualification_reason"] == "remote_text_final_full_pass_evidence_missing"
+    )
+    scores = {
+        "verdicts": {
+            "parent": {"a": {"usable": 1}},
+            "candidate": {"a": {"usable": 1, "passed": 1}},
+        }
+    }
+    with pytest.raises(ValueError, match="full_pass_evidence_missing"):
+        remote_text_qualification._full_pass_comparison(scores)
+
+
+def test_full_pass_gain_must_meet_the_same_declared_delta():
+    scores = {
+        "verdicts": {
+            "parent": {
+                "a": {"usable": 1, "passed": 1},
+                "b": {"usable": 0, "passed": 0},
+                "c": {"usable": 0, "passed": 0},
+            },
+            "candidate": {
+                "a": {"usable": 1, "passed": 1},
+                "b": {"usable": 1, "passed": 1},
+                "c": {"usable": 1, "passed": 0},
+            },
+        }
+    }
+    result = {}
+    assert remote_text_qualification._full_pass_gate(
+        scores, result, {"protect_parent_full_pass": True, "min_usable_delta": 0.5}
+    ) == (False, True)
+    assert result["full_pass_delta"] == pytest.approx(1 / 3)
+    assert result["lost_parent_full_pass_case_ids"] == []
+    assert result["qualification_reason"] == "remote_text_final_full_pass_below_minimum"
+
+
+def test_local_export_accounts_for_remaining_space_and_existing_archive(tmp_path):
+    from types import SimpleNamespace
+
+    from venom_core.services.training_experiments.remote_text_local import (
+        _export_budget,
+    )
+
+    used = [200_000]
+
+    def measure(state):
+        state["artifact_bytes"] = used[0]
+        return True
+
+    owner = SimpleNamespace(
+        _artifact_budget=measure,
+        experiments=SimpleNamespace(free_storage_bytes=lambda _profile: 1_000_000),
+    )
+    state = {
+        "plan": {
+            "profile_id": "fixture",
+            "budget": {"max_artifact_bytes": 500_000, "min_free_bytes": 0},
+        }
+    }
+    evidence = tmp_path / "evidence"
+    first = _export_budget(owner, state, evidence, "run-1")
+    assert first == 300_000 - 64 * 1024
+    folder = evidence / "run-1"
+    folder.mkdir(parents=True)
+    (folder / "evidence.tar").write_bytes(b"x" * 50_000)
+    used[0] += 50_000
+    assert _export_budget(owner, state, evidence, "run-1") == first
+    (folder / "verified.json").write_bytes(b"{}")
+    used[0] += 2
+    assert _export_budget(owner, state, evidence, "run-1") == first + 64 * 1024 - 2
+    used[0] = 500_000
+    with pytest.raises(ValueError, match="storage_budget_exhausted"):
+        _export_budget(owner, state, evidence, "run-2")

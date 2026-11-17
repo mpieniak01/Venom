@@ -1608,6 +1608,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/academy/experiments/campaigns/final-inputs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Final Inputs */
+        get: operations["final_inputs_api_v1_academy_experiments_campaigns_final_inputs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/academy/experiments/campaigns/quality": {
         parameters: {
             query?: never;
@@ -6697,6 +6714,21 @@ export interface components {
             initial_trials: number;
             /** Min Usable Delta */
             min_usable_delta: number;
+            /**
+             * Repeat Best Recipe
+             * @default false
+             */
+            repeat_best_recipe: boolean;
+        };
+        /**
+         * CampaignFinalQualification
+         * @description Select an operator-registered private holdout and reserve its session budget.
+         */
+        CampaignFinalQualification: {
+            /** Inputs Id */
+            inputs_id: string;
+            /** Reserve Seconds */
+            reserve_seconds: number;
         };
         /** CampaignPlanReference */
         CampaignPlanReference: {
@@ -6707,6 +6739,13 @@ export interface components {
         CampaignQualityPolicy: {
             /** Reference Record Ids */
             reference_record_ids?: string[];
+            /** Parent Reference Record Id */
+            parent_reference_record_id?: string | null;
+            /**
+             * Protect Parent Full Pass
+             * @default false
+             */
+            protect_parent_full_pass: boolean;
             /** Protected Case Ids */
             protected_case_ids?: string[];
             /**
@@ -6745,6 +6784,11 @@ export interface components {
              * @default 0
              */
             max_critical_delta: number;
+            /**
+             * Protect Parent Full Pass
+             * @default false
+             */
+            protect_parent_full_pass: boolean;
         };
         /** CampaignSpec */
         CampaignSpec: {
@@ -6793,6 +6837,7 @@ export interface components {
             review_mode: "manual" | "automatic";
             quality_policy?: components["schemas"]["CampaignQualityPolicy"] | null;
             extension?: components["schemas"]["CampaignExtension"] | null;
+            final_qualification?: components["schemas"]["CampaignFinalQualification"] | null;
             /** Checkpoint Steps */
             checkpoint_steps?: number[] | null;
         };
@@ -14130,6 +14175,28 @@ export interface operations {
         };
     };
     list_campaigns_api_v1_academy_experiments_campaigns_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    final_inputs_api_v1_academy_experiments_campaigns_final_inputs_get: {
         parameters: {
             query?: never;
             header?: never;

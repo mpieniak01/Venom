@@ -443,8 +443,11 @@ def test_external_outcome_is_historical_and_keeps_old_seals(tmp_path):
 
     payload = record()
     legacy = QualityRecord.model_validate(payload).model_dump(
-        mode="json", exclude={"cohorts", "reviewed_run"}
+        mode="json", exclude={"cohorts", "reviewed_run", "candidate_sha256"}
     )
+    for item in legacy["cases"].values():
+        for role in ("base", "candidate"):
+            item[role].pop("passed")
     legacy["protected_case_ids"] = sorted(legacy["protected_case_ids"])
     expected = stable_hash(legacy)
     assert quality_record_view(payload) == {**legacy, "result_sha256": expected}
@@ -470,3 +473,252 @@ def test_external_outcome_is_historical_and_keeps_old_seals(tmp_path):
     payload["source"]["kind"] = "academy"
     with pytest.raises(ValidationError, match="quality_external_review_invalid"):
         quality_record_view(payload)
+
+
+def test_parent_policy_retains_hits_and_measures_real_parent():
+    from venom_core.services.training_experiments.quality_guard import (
+        evaluate,
+        freeze_policy,
+        verify_context,
+    )
+
+    ref = record("parent")
+    ref["cases"] = {
+        "a": case("source", False, True),
+        "b": case("source", False, False),
+        "c": case("source", True, False),
+    }
+    ref["candidate_sha256"] = "f" * 64
+    ref["protected_case_ids"] = []
+    ref = quality_record_view(ref)
+    settings = {
+        "reference_record_ids": ["parent"],
+        "parent_reference_record_id": "parent",
+        "protected_case_ids": [],
+        "protect_reference_hits": False,
+        "protect_base_hits": False,
+        "min_category_usable_delta": {"source": 0.0},
+        "no_new_critical": True,
+    }
+    context = {
+        "identity": ref["identity"],
+        "case_categories": dict.fromkeys(ref["cases"], "source"),
+        "initial_adapter_sha256": "f" * 64,
+    }
+    policy = freeze_policy(settings, context, lambda _: ref)
+    assert policy["protected_case_ids"] == ["a"]
+    candidate = {
+        **ref,
+        "cases": {
+            "a": case("source", False, True),
+            "b": case("source", False, True),
+            "c": case("source", True, False),
+        },
+    }
+    result, _ = evaluate(policy, candidate, None)
+    assert result["status"] == "passed"
+    assert result["parent_delta"]["usable_delta"] == pytest.approx(1 / 3)
+    assert result["category_deltas"]["source"]["base"] == 1
+    candidate["cases"]["a"]["candidate"]["usable"] = False
+    result, _ = evaluate(policy, candidate, None)
+    assert result["lost_case_ids"] == ["a"]
+    assert result["parent_delta"]["usable_delta"] == 0
+    candidate["cases"]["c"]["base"]["critical"] = True
+    candidate["cases"]["c"]["candidate"]["critical"] = True
+    result, _ = evaluate(policy, candidate, None)
+    assert result["new_critical_case_ids"] == ["c"]
+    with pytest.raises(ValueError, match="parent_adapter_changed"):
+        freeze_policy(
+            settings, {**context, "initial_adapter_sha256": "e" * 64}, lambda _: ref
+        )
+    with pytest.raises(ValueError, match="parent_adapter_changed"):
+        verify_context(policy, {**context, "initial_adapter_sha256": "e" * 64})
+    with pytest.raises(ValueError, match="parent_reference_missing"):
+        freeze_policy({**settings, "reference_record_ids": []}, context, lambda _: ref)
+
+
+def test_dialogue_summary_preserves_pairs_and_requires_independent_open_chat_review():
+    from scripts.academy.omni_pl_chat_dialogue import grouped_scores, paired_delta
+
+    cases = [
+        {
+            "record_id": f"t{i}",
+            "group_id": f"family-{i // 2}",
+            "dialogue": {"id": "d1" if i < 2 else "d2", "turn_index": i % 2 + 1},
+            "chat_group": "W" if i < 2 else "K",
+            "contrast_pair_id": "pair",
+            "decision": "accepted" if i % 2 else "rejected",
+        }
+        for i in range(4)
+    ]
+    cases[2]["contrast_pair_id"] = cases[3]["contrast_pair_id"] = "pair2"
+    verdicts = {
+        "candidate": {
+            row["record_id"]: {"usable": int(index != 1), "passed": int(index != 1)}
+            for index, row in enumerate(cases)
+        }
+    }
+    summary = grouped_scores(cases, verdicts, {"candidate": ["t1"]})["candidate"]
+    assert summary["conversations"]["d1"]["assessment"] == "independent_review_required"
+    assert summary["conversations"]["d1"]["critical_case_ids"] == ["t1"]
+    assert summary["conversations"]["d2"]["all_turns_usable"]
+    assert not summary["contrast_pairs"]["pair"]["both_usable"]
+    assert summary["contrast_pairs"]["pair2"]["both_usable"]
+    result = paired_delta([0, 0, 1, 1], [1, 1, 1, 1], ["x", "x", "y", "y"])
+    assert result == paired_delta([0, 0, 1, 1], [1, 1, 1, 1], ["x", "x", "y", "y"])
+    assert result["gains"] == 2
+    assert result["losses"] == 0
+    assert result["family_bootstrap"]["families"] == 2
+    assert result["family_bootstrap"]["interval_95"] == [0.0, 1.0]
+    with pytest.raises(ValueError, match="coverage"):
+        paired_delta([0], [1], [])
+    with pytest.raises(ValueError, match="equal nonempty"):
+        paired_delta([], [])
+
+
+def test_whole_dialogue_pair_requires_both_complete_branches():
+    from scripts.academy.omni_pl_chat_dialogue import grouped_scores
+
+    cases = [
+        {
+            "record_id": f"{branch}-{turn}",
+            "group_id": "paired-family",
+            "dialogue": {"id": branch, "turn_index": turn},
+            "decision": branch,
+            "chat_group": "K",
+        }
+        for branch in ("accepted", "rejected")
+        for turn in range(1, 5)
+    ]
+    verdicts = {
+        "candidate": {row["record_id"]: {"usable": 1, "passed": 1} for row in cases}
+    }
+    family = grouped_scores(cases, verdicts, {})["candidate"]["dialogue_families"][
+        "paired-family"
+    ]
+    assert family["contrast_pair_complete"]
+    assert family["both_conversations_usable"]
+    verdicts["candidate"]["rejected-3"]["usable"] = 0
+    family = grouped_scores(cases, verdicts, {})["candidate"]["dialogue_families"][
+        "paired-family"
+    ]
+    assert family["contrast_pair_complete"]
+    assert not family["both_conversations_usable"]
+    cases[0]["decision"] = "rejected"
+    family = grouped_scores(cases, verdicts, {})["candidate"]["dialogue_families"][
+        "paired-family"
+    ]
+    assert not family["contrast_pair_complete"]
+
+
+@pytest.mark.parametrize(
+    ("candidate_passes", "status", "reason"),
+    [
+        ([True, True, True], "passed", None),
+        ([True, False, False], "rejected", "parent_full_pass_no_gain"),
+        ([False, True, True], "rejected", "parent_full_pass_lost"),
+    ],
+)
+def test_parent_full_pass_guard_cannot_exchange_format_for_usable_gain(
+    candidate_passes, status, reason
+):
+    from venom_core.services.training_experiments.quality_guard import (
+        evaluate,
+        freeze_policy,
+    )
+
+    ref = record("parent")
+    ref["candidate_sha256"] = "f" * 64
+    ref["protected_case_ids"] = []
+    ref["cases"] = {
+        key: {
+            "category": "source",
+            "base": {"usable": False, "critical": False},
+            "candidate": {"usable": index < 2, "critical": False, "passed": index == 0},
+        }
+        for index, key in enumerate(("a", "b", "c"))
+    }
+    ref = quality_record_view(ref)
+    settings = {
+        "reference_record_ids": ["parent"],
+        "parent_reference_record_id": "parent",
+        "protected_case_ids": [],
+        "protect_reference_hits": True,
+        "protect_base_hits": False,
+        "protect_parent_full_pass": True,
+        "min_category_usable_delta": {},
+        "no_new_critical": True,
+    }
+    context = {
+        "identity": ref["identity"],
+        "case_categories": dict.fromkeys(ref["cases"], "source"),
+        "initial_adapter_sha256": "f" * 64,
+    }
+    policy = freeze_policy(settings, context, lambda _: ref)
+    current = deepcopy(ref)
+    for (key, row), passed in zip(
+        current["cases"].items(), candidate_passes, strict=True
+    ):
+        row["candidate"] = {"usable": True, "critical": False, "passed": passed}
+    decision, _ = evaluate(policy, current, None)
+    assert decision["status"] == status
+    assert decision["parent_delta"]["usable_delta"] == pytest.approx(1 / 3)
+    assert decision["full_pass_delta"] == pytest.approx((sum(candidate_passes) - 1) / 3)
+    if reason:
+        assert reason in {item["code"] for item in decision["reasons"]}
+    assert decision["lost_parent_full_pass_case_ids"] == (
+        [] if candidate_passes[0] else ["a"]
+    )
+    current["cases"]["b"]["candidate"].pop("passed")
+    with pytest.raises(ValueError, match="case_evidence_missing"):
+        evaluate(policy, current, None)
+    ref["cases"]["b"]["candidate"].pop("passed")
+    with pytest.raises(ValueError, match="case_evidence_missing"):
+        freeze_policy(settings, context, lambda _: ref)
+
+
+def test_full_pass_cannot_be_true_for_an_unusable_or_critical_outcome():
+    payload = record()
+    payload["cases"]["a"]["candidate"]["passed"] = True
+    with pytest.raises(ValidationError, match="full_pass_requires_usable"):
+        quality_record_view(payload)
+    payload["cases"]["a"]["candidate"].update(usable=True, critical=True)
+    with pytest.raises(ValidationError, match="full_pass_requires_usable"):
+        quality_record_view(payload)
+
+
+def test_dialogue_null_rejected_before_generation_and_absent_field_supported():
+    from scripts.academy.omni_pl_chat_dialogue import validate_dialogues
+
+    validate_dialogues([{"messages": [{"role": "user", "content": "hello"}]}])
+    with pytest.raises(ValueError, match="invalid dialogue identity"):
+        validate_dialogues([{"dialogue": None}])
+
+
+@pytest.mark.parametrize(
+    "parent_unknown,candidate_unknown", [(True, False), (False, True), (True, True)]
+)
+def test_unknown_critical_metrics_remain_unavailable(parent_unknown, candidate_unknown):
+    from venom_core.services.training_experiments.quality_guard import (
+        _decisions,
+        _parent_delta,
+    )
+
+    reference = {"usable": True, "critical": None if parent_unknown else False}
+    policy = {
+        "protected_case_ids": [],
+        "protect_base_hits": False,
+        "no_new_critical": False,
+        "parent_cases": {"a": reference},
+        "parent_reference_record_id": "prior",
+    }
+    cases = {
+        "a": case(
+            "text", True, True, candidate_critical=None if candidate_unknown else False
+        )
+    }
+    assert _decisions(policy, cases)[1] == []
+    assert _parent_delta(policy, cases)["critical_delta"] is None
+    policy["no_new_critical"] = True
+    with pytest.raises(ValueError, match="case_evidence_missing"):
+        _decisions(policy, cases)

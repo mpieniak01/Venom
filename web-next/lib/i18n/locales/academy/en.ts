@@ -2,7 +2,7 @@ export const academy = {
   remoteText: {
     extension: {
       title: "Conditional extension",
-      hint: "After the initial trials, the host runs the remaining variants if the best development result meets the threshold against M0. The time and cost limits cover both blocks.",
+      hint: "After the initial trials, the worker runs the remaining variants if the dev gain reaches the threshold against the selected parent, or M0 for base training. An extension enables automatic review. The overall limit covers every stage.",
       initialTrials: "Trials before decision",
       minGain: "Minimum development gain (percentage points)",
       approved: "Extension approved based on development evidence.",
@@ -361,6 +361,35 @@ export const academy = {
     },
   },
   campaigns: {
+    finalQualification: {
+      fullPassCounts: "Fully passed: parent → candidate",
+      repeatConfirmation: "Confirmation with another seed",
+      repeatStatus: {"passed": "Improvement confirmed", "failed_quality": "Repeat did not confirm quality", "incomplete": "Confirmation incomplete", "not_started": "Repeat was not started"},
+      supervisedTokens: "Supervised token limit",
+      repeatBest: "Repeat the best recipe with another seed",
+      repeatHint: "Prepare one alternative for each initial trial, using another seed. Only the winner's alternative will run. Select the actual parent reference.",
+      fullPass: "Require full instruction compliance in the final",
+      fullPassHint: "Also require more fully passed cases and retain every fully passed parent case. This includes answer format and brevity.",
+      consideredVariants: "Considered variants",
+      trainingSeed: "Training seed",
+      "title": "Final qualification against parent",
+      "inputs": "Held-out test package",
+      "none": "No automatic final qualification",
+      "reserve": "Time reserved for final qualification (s)",
+      "hint": "After the trials, the campaign evaluates the selected candidate and records evidence and a decision. The final stage is included in the total campaign time.",
+      "automatic": "Selecting a package enables automatic review.",
+      "loadError": "Could not load final evaluation packages.",
+      "noInputs": "No final evaluation package is registered.",
+      "deadline": "Overall deadline",
+      "candidate": "Best candidate from trials",
+      "pending": "Final qualification planned",
+      "running": "Final evaluation in progress",
+      "passed": "Meets held-out test criteria",
+      "failed_quality": "Does not meet quality criteria",
+      "incomplete": "Final evaluation is incomplete",
+      "unverified": "Unknown qualification result",
+      "scope": "This result covers the skills in the test. Activation in chat is a separate step."
+},
     executionHost: "Training host",
     localTraining: "Local training",
     checkpoints: {
@@ -464,6 +493,11 @@ export const academy = {
       recipeJson: "Variant parameters (JSON)",
       invalidDraft: "Check the variant JSON, supported trainer fields, and campaign limits.",
       policy: {
+        protectFullPass: "Retain the parent's fully passed cases",
+        parentReference: "Actual parent reference",
+        noParent: "No parent reference",
+        parentHint: "Choose the evaluation of the weights used to initialize training. The policy protects its successes; selection and extension measure improvement against the parent.",
+        parentDelta: "Improvement against parent",
         sourceLocked: "The draft is pinned to its source evaluation. Discard the draft to return to the standard form.",
         title: "Quality rules",
         enable: "Apply quality rules",
@@ -488,6 +522,8 @@ export const academy = {
         points: "pp",
       },
       issues: {
+        parent_full_pass_lost: "The candidate lost fully passed parent cases.",
+        parent_full_pass_no_gain: "No gain in fully passed cases against the parent.",
         quality_cohort_mismatch: "The reviews use different comparison cohorts.",
         campaign_quality_evidence_unavailable: "The evaluation report required by the quality rules is unavailable.",
         quality_identity_unverified: "The evaluation identity is unverified.",
@@ -606,6 +642,7 @@ export const academy = {
       min_free_mib: "Free space reserve (MiB)",
     },
     status: {
+      qualifying: "Final qualification",
       skipped: "Skipped",
       pruned: "Ended early",
       cancelled: "Cancelled",

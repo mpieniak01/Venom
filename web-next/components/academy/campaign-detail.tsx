@@ -18,10 +18,12 @@ import { DataAuditSummary } from "./data-audit-summary";
 import { InitialAdapterSummary, useInitialAdapterError } from "./initial-adapter";
 import { QualityPolicySummary, TrialQualityDecision } from "./campaign-quality-policy";
 
-const ACTIVE = new Set(["running", "awaiting_review", "stopping", "interrupted"]);
+import { CampaignFinalSummary } from "./campaign-final-qualification";
+
+const ACTIVE = new Set(["running", "qualifying", "awaiting_review", "stopping", "interrupted"]);
 const CAN_RESUME = new Set(["interrupted", "blocked", "stopped"]);
 const STATUSES = new Set([
-  "planned", "pending", "queued", "running", "awaiting_review", "stopping",
+  "planned", "pending", "queued", "running", "qualifying", "awaiting_review", "stopping",
   "interrupted", "blocked", "stopped", "succeeded", "failed", "timed_out", "skipped", "pruned", "cancelled",
 ]);
 
@@ -152,7 +154,7 @@ function SelectedCheckpoint({ campaign }: { readonly campaign: Campaign }) {
   }
   return (
     <p className="break-all text-sm font-medium">
-      {t("academy.campaigns.selected")} {campaign.selected_run_id}
+      {t(campaign.plan.final_qualification ? "academy.campaigns.finalQualification.candidate" : "academy.campaigns.selected")} {campaign.selected_run_id}
       {typeof campaign.selected_checkpoint_step === "number" && (
         <> · {t("academy.campaigns.checkpoints.step")} {campaign.selected_checkpoint_step}</>
       )}
@@ -204,6 +206,7 @@ export function CampaignDetail({ campaign, disabled, optunaAvailable, onAction, 
   const displayNumber = new Intl.NumberFormat(language, { maximumFractionDigits: 1 });
   const displayDelta = new Intl.NumberFormat(language, { maximumFractionDigits: 1, signDisplay: "exceptZero" });
   const trialLimit = `${campaign.trial_index} / ${variants.length}`;
+  const executedTrials = campaign.trials.filter((trial) => (trial.attempt ?? 0) > 0).length;
   const planned = campaign.status === "planned";
   const active = campaignIsActive(campaign.status);
   const canStop = (active && campaign.status !== "stopping") || campaign.status === "blocked";
@@ -212,7 +215,7 @@ export function CampaignDetail({ campaign, disabled, optunaAvailable, onAction, 
   const canResume = CAN_RESUME.has(campaign.status)
     && (campaign.elapsed_seconds < budget.max_seconds || canReassessQuality);
 
-  function delta(value?: number) {
+  function delta(value?: number | null) {
     return typeof value === "number" ? displayDelta.format(value * 100) : t("academy.experiments.unavailable");
   }
 
@@ -228,7 +231,8 @@ export function CampaignDetail({ campaign, disabled, optunaAvailable, onAction, 
           <dt className="text-hint">{t("academy.campaigns.strategy")}</dt>
           <dd>{t(optuna ? "academy.campaigns.optuna.name" : "academy.campaigns.fixed")}</dd>
         </div>
-        <div><dt className="text-hint">{t("academy.campaigns.trials")}</dt><dd>{trialLimit}</dd></div>
+        <div><dt className="text-hint">{t("academy.campaigns.finalQualification.consideredVariants")}</dt><dd>{trialLimit}</dd></div>
+        <div><dt className="text-hint">{t("academy.campaigns.trials")}</dt><dd>{executedTrials} / {budget.max_trials}</dd></div>
         <div><dt className="text-hint">{t("academy.campaigns.budget.max_seconds")}</dt><dd>{displayNumber.format(campaign.elapsed_seconds)} / {displayNumber.format(budget.max_seconds)}</dd></div>
         <div><dt className="text-hint">{t("academy.campaigns.budget.max_updates")}</dt><dd>{displayNumber.format(campaign.used_updates)} / {displayNumber.format(budget.max_updates)}</dd></div>
         <div><dt className="text-hint">{t("academy.campaigns.budget.max_tokens")}</dt><dd>{displayNumber.format(campaign.used_tokens)} / {displayNumber.format(budget.max_tokens)}</dd></div>
@@ -254,6 +258,7 @@ export function CampaignDetail({ campaign, disabled, optunaAvailable, onAction, 
       )}
       {campaign.error && <p role="alert" className="break-all text-sm text-red-400">{auditError && t(auditError) !== auditError ? t(auditError) : adapterError ?? campaign.error}</p>}
       <SelectedCheckpoint campaign={campaign} />
+      <CampaignFinalSummary campaign={campaign} />
       <div className="flex flex-wrap gap-2">
         {planned && <Button type="button" disabled={launchDisabled} onClick={() => onAction("start")}>{t("academy.campaigns.start")}</Button>}
         {canStop && <Button type="button" variant="outline" disabled={disabled} onClick={() => onAction("stop")}>{t("academy.campaigns.stop")}</Button>}

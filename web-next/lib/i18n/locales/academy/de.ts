@@ -2,7 +2,7 @@ export const academy = {
   remoteText: {
     extension: {
       title: "Bedingte Fortsetzung",
-      hint: "Nach den ersten Versuchen startet der Host die übrigen Varianten, wenn das beste Entwicklungsergebnis die Schwelle gegenüber M0 erreicht. Das Zeit- und Kostenlimit gilt für beide Blöcke.",
+      hint: "Nach den ersten Versuchen startet der Worker weitere Varianten, wenn der Zuwachs im Dev-Test den Schwellenwert gegenüber dem gewählten Elternadapter oder M0 beim Basistraining erreicht. Die Verlängerung aktiviert die automatische Bewertung. Das Gesamtlimit umfasst alle Phasen.",
       initialTrials: "Versuche vor der Entscheidung",
       minGain: "Mindestverbesserung auf den Entwicklungsdaten (Prozentpunkte)",
       approved: "Fortsetzung anhand der Entwicklungsergebnisse genehmigt.",
@@ -361,6 +361,35 @@ export const academy = {
     },
   },
   campaigns: {
+    finalQualification: {
+      fullPassCounts: "Vollständig bestanden: Elternadapter → Kandidat",
+      repeatConfirmation: "Bestätigung mit anderem Seed",
+      repeatStatus: {"passed": "Verbesserung bestätigt", "failed_quality": "Wiederholung bestätigt Qualität nicht", "incomplete": "Bestätigung unvollständig", "not_started": "Wiederholung wurde nicht gestartet"},
+      supervisedTokens: "Limit überwachter Tokens",
+      repeatBest: "Beste Rezeptur mit anderem Seed wiederholen",
+      repeatHint: "Bereiten Sie für jeden ersten Versuch eine Alternative mit anderem Seed vor. Nur die Alternative des Gewinners wird ausgeführt. Wählen Sie die tatsächliche Elternreferenz.",
+      fullPass: "Vollständige Anweisungsbefolgung im Abschlusstest verlangen",
+      fullPassHint: "Zusätzlich mehr vollständig bestandene Fälle verlangen und alle vollständig bestandenen Elternfälle erhalten. Dies umfasst Format und Kürze der Antwort.",
+      consideredVariants: "Geprüfte Varianten",
+      trainingSeed: "Trainings-Seed",
+      "title": "Abschließende Qualifikation gegenüber dem Elternadapter",
+      "inputs": "Paket für den zurückgehaltenen Test",
+      "none": "Keine automatische Abschlussbewertung",
+      "reserve": "Reservierte Zeit für die Abschlussbewertung (s)",
+      "hint": "Nach den Versuchen bewertet die Kampagne den ausgewählten Kandidaten und speichert Nachweise sowie eine Entscheidung. Die Abschlussbewertung ist Teil der gesamten Kampagnenzeit.",
+      "automatic": "Die Paketauswahl aktiviert die automatische Bewertung.",
+      "loadError": "Pakete für die Abschlussbewertung konnten nicht geladen werden.",
+      "noInputs": "Kein Paket für die Abschlussbewertung registriert.",
+      "deadline": "Gesamtfrist",
+      "candidate": "Bester Kandidat aus den Versuchen",
+      "pending": "Abschlussbewertung geplant",
+      "running": "Abschlussbewertung läuft",
+      "passed": "Erfüllt die Kriterien des zurückgehaltenen Tests",
+      "failed_quality": "Erfüllt die Qualitätskriterien nicht",
+      "incomplete": "Abschlussbewertung unvollständig",
+      "unverified": "Unbekanntes Qualifikationsergebnis",
+      "scope": "Dieses Ergebnis gilt für die getesteten Fähigkeiten. Die Aktivierung im Chat ist ein separater Schritt."
+},
     executionHost: "Trainingsumgebung",
     localTraining: "Lokales Training",
     checkpoints: {
@@ -464,6 +493,11 @@ export const academy = {
       recipeJson: "Variantenparameter (JSON)",
       invalidDraft: "Prüfen Sie das Varianten-JSON, die Trainerfelder und die Kampagnenlimits.",
       policy: {
+        protectFullPass: "Vollständig bestandene Elternfälle erhalten",
+        parentReference: "Referenz des tatsächlichen Elternadapters",
+        noParent: "Keine Elternreferenz",
+        parentHint: "Wählen Sie die Bewertung der Ausgangsgewichte des Trainings. Die Regeln schützen deren Erfolge; Auswahl und Verlängerung messen den Zuwachs gegenüber dem Elternadapter.",
+        parentDelta: "Verbesserung gegenüber dem Elternadapter",
         sourceLocked: "Der Entwurf ist an seine Quellbewertung gebunden. Verwerfen Sie ihn, um zum Standardformular zurückzukehren.",
         title: "Qualitätsregeln",
         enable: "Qualitätsregeln anwenden",
@@ -488,6 +522,8 @@ export const academy = {
         points: "Prozentpunkte",
       },
       issues: {
+        parent_full_pass_lost: "Vollständig bestandene Elternfälle gingen verloren.",
+        parent_full_pass_no_gain: "Kein Zuwachs vollständig bestandener Fälle gegenüber dem Elternadapter.",
         quality_cohort_mismatch: "Die Bewertungen verwenden unterschiedliche Vergleichsgruppen.",
         campaign_quality_evidence_unavailable: "Der für die Qualitätsregeln benötigte Bewertungsbericht fehlt.",
         quality_identity_unverified: "Die Identität der Bewertung ist unbestätigt.",
@@ -606,6 +642,7 @@ export const academy = {
       min_free_mib: "Speicherreserve (MiB)",
     },
     status: {
+      qualifying: "Abschließende Qualifikation",
       skipped: "Übersprungen",
       pruned: "Vorzeitig beendet",
       cancelled: "Abgebrochen",

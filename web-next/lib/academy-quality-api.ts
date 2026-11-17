@@ -62,6 +62,8 @@ export interface QualityAnalysis {
 }
 
 export interface CampaignQualityPolicy {
+  parent_reference_record_id?: string | null;
+  protect_parent_full_pass?: boolean;
   reference_record_ids: string[];
   protected_case_ids: string[];
   protect_reference_hits: boolean;
@@ -75,6 +77,11 @@ export interface CampaignQualityPolicy {
 }
 
 export interface TrialQualityGuard {
+  parent_full_pass_count?: number;
+  candidate_full_pass_count?: number;
+  full_pass_delta?: number;
+
+  parent_delta?: { reference_record_id: string; n: number; usable_delta: number; critical_delta: number | null };
   status: "passed" | "rejected" | "blocked";
   reasons: { code: string; category?: string; count?: number }[];
   protected_count: number | null;

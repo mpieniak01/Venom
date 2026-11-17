@@ -306,3 +306,17 @@ def test_remote_trial_needs_full_window_and_cutoff_cannot_be_extended(
     terminal = service.advance("night")
     assert terminal["status"] == "timed_out"
     assert terminal["trials"][0]["status"] == "pending"
+
+
+def test_remote_plan_does_not_send_private_local_final_configuration(setup):
+    service, spec, _clock, rental, host = setup
+    payload = spec.model_dump()
+    payload["campaign"]["checkpoint_steps"] = [1]
+    payload["campaign"]["final_qualification"] = {
+        "inputs_id": "controller-private",
+        "reserve_seconds": 120,
+    }
+    with pytest.raises(ValueError, match="local_qualification_unsupported"):
+        service.plan(RemoteTextSpec.model_validate(payload))
+    rental.validate.assert_not_called()
+    host.plan.assert_not_called()

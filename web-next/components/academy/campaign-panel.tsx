@@ -12,6 +12,8 @@ import {
 } from "@/lib/academy-experiments-api";
 import {
   listCampaigns,
+  listCampaignFinalInputs,
+  type CampaignFinalInputs,
   planCampaign,
   startCampaign,
   updateCampaign,
@@ -45,6 +47,8 @@ export function CampaignPanel({
   const [profiles, setProfiles] = useState<ExperimentProfile[] | null>(null);
   const [adapters, setAdapters] = useState<ExperimentInitialAdapter[]>([]);
   const [adaptersFailed, setAdaptersFailed] = useState(false);
+  const [finalInputs, setFinalInputs] = useState<CampaignFinalInputs[]>([]);
+  const [finalInputsFailed, setFinalInputsFailed] = useState(false);
   const [campaigns, setCampaigns] = useState<Campaign[] | null>(null);
   const [profilesFailed, setProfilesFailed] = useState(false);
   const [campaignsFailed, setCampaignsFailed] = useState(false);
@@ -109,6 +113,17 @@ export function CampaignPanel({
         setAdaptersFailed(false);
       })
       .catch(() => { if (!signal.aborted) setAdaptersFailed(true); });
+    void listCampaignFinalInputs(signal)
+      .then((next) => {
+        if (signal.aborted) return;
+        setFinalInputs(next.inputs);
+        setFinalInputsFailed(false);
+      })
+      .catch(() => {
+        if (signal.aborted) return;
+        setFinalInputs([]);
+        setFinalInputsFailed(true);
+      });
     void read();
     document.addEventListener("visibilitychange", readVisible);
     return () => {
@@ -189,6 +204,7 @@ export function CampaignPanel({
         {profiles && campaigns && !showRemote && (
           <CampaignForm key={draft?.revision ?? 0} draft={draft?.value} profiles={profiles} onDiscardDraft={() => setDraft(undefined)}
             adapters={adapters} adaptersFailed={adaptersFailed}
+            finalInputs={finalInputs} finalInputsFailed={finalInputsFailed}
             disabled={busy || failed} optunaAvailable={optunaAvailable}
             onPlan={(request) => mutate(() => planCampaign(request))} />
         )}

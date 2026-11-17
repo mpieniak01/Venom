@@ -4,7 +4,7 @@ import { useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import type { CampaignRequest, CampaignStrategy, OptunaSearchSpace } from "@/lib/academy-campaign-api";
+import type { CampaignFinalInputs, CampaignRequest, CampaignStrategy, OptunaSearchSpace } from "@/lib/academy-campaign-api";
 import type { ExperimentInitialAdapter, ExperimentProfile, ExperimentRecipe } from "@/lib/academy-experiments-api";
 import { useTranslation } from "@/lib/i18n";
 import type { QualityCampaignDraft } from "@/lib/academy-quality-api";
@@ -12,6 +12,8 @@ import { CampaignPolicyFields, PinnedQualitySource, readQualityPolicy } from "./
 import { OPTUNA_PARAMETERS, OptunaFields } from "./campaign-optuna";
 import { DataAuditSummary } from "./data-audit-summary";
 import { initialAdapterField, InitialAdapterSelector } from "./initial-adapter";
+
+import { CampaignFinalFields, readFinalQualification } from "./campaign-final-qualification";
 
 const MIB = 1024 ** 2;
 const DRAFT_RECIPE_FIELDS = new Set([
@@ -63,7 +65,10 @@ const VARIANT_FIELDS = [
   ["rank", "academy.experiments.rank"],
   ["alpha", "academy.experiments.alpha"],
   ["learning_rate", "academy.experiments.learningRate"],
+  ["seed", "academy.campaigns.finalQualification.trainingSeed"],
+  ["max_supervised_tokens", "academy.campaigns.finalQualification.supervisedTokens"],
 ] as const;
+const VARIANT_MIN = { rank: 1, alpha: 1, learning_rate: undefined, seed: 0, max_supervised_tokens: 1 };
 const SELECT_CLASS = "h-9 w-full rounded-md border border-[color:var(--ui-border)] bg-[color:var(--ui-surface)] px-2 text-sm";
 
 function numberField(data: FormData, name: string) {
@@ -88,7 +93,7 @@ function variantRecipe(data: FormData, row: number, editableRecipe: boolean): Re
   const recipe: ExperimentRecipe = {};
   for (const [key] of VARIANT_FIELDS) {
     const name = `variant-${row}-${key}`;
-    if (data.get(name) !== "") recipe[key] = numberField(data, name);
+    if (data.get(name) != null && data.get(name) !== "") recipe[key] = numberField(data, name);
   }
   return { ...recipe };
 }
@@ -175,6 +180,57 @@ function readPlan(
   };
 }
 
+function applyFinalQualification(
+  request: CampaignRequest,
+  data: FormData,
+  finalInputs: CampaignFinalInputs[],
+  profile: ExperimentProfile,
+) {
+  const final = readFinalQualification(data, finalInputs);
+  if (!final) return;
+  if (!profile.automatic_review) throw new Error("automatic review required");
+  request.final_qualification = final;
+  request.review_mode = "automatic";
+  if (data.has("protect_parent_full_pass")) {
+    if (!request.quality_policy?.parent_reference_record_id) {
+      throw new Error("parent reference required for full-pass protection");
+    }
+    request.selection.protect_parent_full_pass = true;
+    if (request.quality_policy?.parent_reference_record_id) {
+      request.quality_policy.protect_parent_full_pass = true;
+    }
+  }
+}
+
+function applyConditionalExtension(
+  request: CampaignRequest,
+  data: FormData,
+  variantCount: number,
+  profile: ExperimentProfile,
+) {
+  if (!data.get("extension_initial_trials")) {
+    if (data.has("extension_repeat_best_recipe")) throw new Error("initial trials required for repeat");
+    return;
+  }
+  const initial = numberField(data, "extension_initial_trials");
+  const gain = numberField(data, "extension_gain") / 100;
+  if (!Number.isSafeInteger(initial) || initial < 1 || initial >= variantCount
+    || gain <= 0 || gain > 1 || gain < request.selection.min_usable_delta) {
+    throw new Error("invalid conditional extension");
+  }
+  if (!profile.automatic_review) throw new Error("automatic review required");
+  const repeatBest = data.has("extension_repeat_best_recipe");
+  if (repeatBest && (variantCount !== 2 * initial || !request.quality_policy?.parent_reference_record_id)) {
+    throw new Error("repeat requires a frozen alternative for every initial recipe and a parent reference");
+  }
+  request.review_mode = "automatic";
+  request.extension = {
+    initial_trials: initial,
+    min_usable_delta: gain,
+    ...(repeatBest ? { repeat_best_recipe: true } : {}),
+  };
+}
+
 interface CampaignFormProps {
   readonly profiles: ExperimentProfile[];
   readonly adapters: ExperimentInitialAdapter[];
@@ -182,12 +238,14 @@ interface CampaignFormProps {
   readonly disabled: boolean;
   readonly optunaAvailable: boolean;
   readonly remoteText?: boolean;
+  readonly finalInputs?: CampaignFinalInputs[];
+  readonly finalInputsFailed?: boolean;
   readonly draft?: QualityCampaignDraft;
   readonly onDiscardDraft: () => void;
   readonly onPlan: (request: CampaignRequest) => Promise<boolean>;
 }
 
-export function CampaignForm({ profiles, adapters, adaptersFailed, disabled, optunaAvailable, remoteText, draft, onDiscardDraft, onPlan }: CampaignFormProps) {
+export function CampaignForm({ profiles, adapters, adaptersFailed, disabled, optunaAvailable, remoteText, finalInputs = [], finalInputsFailed = false, draft, onDiscardDraft, onPlan }: CampaignFormProps) {
   const t = useTranslation();
   const [profileId, setProfileId] = useState(draft?.profileId ?? "");
   const [rows, setRows] = useState(() => draft?.variants.map((_, index) => index) ?? [0]);
@@ -212,18 +270,13 @@ export function CampaignForm({ profiles, adapters, adaptersFailed, disabled, opt
       if (remoteText) {
         request.review_mode = "automatic";
         request.retention = "keep_all";
-        if (strategy === "fixed" && data.get("extension_initial_trials")) {
-          const initial = numberField(data, "extension_initial_trials");
-          const gain = numberField(data, "extension_gain") / 100;
-          if (!Number.isSafeInteger(initial) || initial < 1 || initial >= rows.length
-            || gain <= 0 || gain > 1 || gain < request.selection.min_usable_delta) {
-            setInvalid(true);
-            return;
-          }
-          request.extension = { initial_trials: initial, min_usable_delta: gain };
-        }
+      } else {
+        applyFinalQualification(request, data, finalInputs, profile);
       }
-      if (request.variants.length > request.budget.max_trials || request.budget.trial_seconds > request.budget.max_seconds) {
+      if (strategy === "fixed") applyConditionalExtension(request, data, rows.length, profile);
+      const trials = request.extension?.repeat_best_recipe
+        ? request.extension.initial_trials + 1 : request.variants.length;
+      if (trials > request.budget.max_trials || request.budget.trial_seconds > request.budget.max_seconds) {
         setInvalid(true);
         return;
       }
@@ -308,7 +361,7 @@ export function CampaignForm({ profiles, adapters, adaptersFailed, disabled, opt
                 <div className="space-y-1" key={field}>
                   <Label htmlFor={`variant-${row}-${field}`}>{t(label)}</Label>
                   <Input id={`variant-${row}-${field}`} name={`variant-${row}-${field}`} type="number"
-                    min={field === "learning_rate" ? undefined : 1}
+                    min={VARIANT_MIN[field]}
                     step={field === "learning_rate" ? "any" : 1}
                     placeholder={profile?.recipe[field]?.toString()} disabled={disabled} />
                 </div>
@@ -344,6 +397,8 @@ export function CampaignForm({ profiles, adapters, adaptersFailed, disabled, opt
           </select>
         </div>
       </div>}
+      {!remoteText && <CampaignFinalFields inputs={finalInputs} failed={finalInputsFailed}
+        disabled={disabled} automaticReview={profile?.automatic_review === true} />}
       <CampaignPolicyFields disabled={disabled} initial={draft?.qualityPolicy} />
       <details open>
         <summary className="cursor-pointer text-sm font-medium">{t("academy.campaigns.limits")}</summary>
@@ -367,10 +422,15 @@ export function CampaignForm({ profiles, adapters, adaptersFailed, disabled, opt
           </div>
         </div>
       </details>
-      {remoteText && strategy === "fixed" && rows.length > 1 && (
+      {profile?.automatic_review && strategy === "fixed" && rows.length > 1 && (
         <fieldset className="space-y-2 rounded-lg border border-[color:var(--ui-border)] p-3" disabled={disabled}>
           <legend className="text-sm font-medium">{t("academy.remoteText.extension.title")}</legend>
           <p className="text-sm text-hint">{t("academy.remoteText.extension.hint")}</p>
+          <Label htmlFor="campaign-repeat-best" className="flex items-center gap-2">
+            <input id="campaign-repeat-best" name="extension_repeat_best_recipe" type="checkbox" />
+            {t("academy.campaigns.finalQualification.repeatBest")}
+          </Label>
+          <p className="text-xs text-hint">{t("academy.campaigns.finalQualification.repeatHint")}</p>
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1">
               <Label htmlFor="campaign-extension-initial">{t("academy.remoteText.extension.initialTrials")}</Label>

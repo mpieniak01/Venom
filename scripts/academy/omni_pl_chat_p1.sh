@@ -134,7 +134,7 @@ mount_ro "$snapshot" "$scratch/inputs/model"
 if [[ "$mode" != audit-mix ]]; then
     file_ro "$data" "$scratch/inputs/train.jsonl"
 fi
-for file in omni_pl_chat_data.py omni_pl_chat_masks.py omni_pl_chat_recipe.py omni_pl_chat_p1.py omni_pl_chat_adapter.py omni_pl_chat_export.py omni_pl_chat_evaluate.py; do
+for file in omni_pl_chat_data.py omni_pl_chat_masks.py omni_pl_chat_recipe.py omni_pl_chat_p1.py omni_pl_chat_adapter.py omni_pl_chat_export.py omni_pl_chat_evaluate.py omni_pl_chat_dialogue.py; do
     file_ro "$job/$file" "$scratch/job/scripts/academy/$file"
 done
 file_ro "$job/../llm/omni_native_snapshot.json" "$scratch/job/scripts/llm/omni_native_snapshot.json"

@@ -239,6 +239,14 @@ for version in genealogy['versions']:
    └─> Dashboard: Loss charts, statistics, genealogy
 ```
 
+## Local campaigns with automatic final qualification
+
+Local experiment campaigns may include `final_qualification: {inputs_id, reserve_seconds}`. Register an immutable `QualificationInputs` package with `python -m scripts.academy.campaigns --root ROOT register-final ID inputs.json` before planning; the panel lists packages without exposing private file paths or test contents. Semantic review requires the verified judge audit in the API and worker environment.
+
+Use `VENOM_ACADEMY_JUDGE_AUDIT_ROOT` for `semantic-local-v3` and a separate `VENOM_ACADEMY_JUDGE_V4_AUDIT_ROOT` for `semantic-local-v4`. A version is usable only after its real audit qualifies the pinned model, runtime, prompt and options. V4 requires 60 legacy and 48 development controls before opening 24 held-out controls with three independent calls each. All held-out decisions must match their gold labels and repeated decisions. The audit rejects replayed calls and retains evidence of phase order. Run `python -m scripts.academy.qualify_semantic_judge_v4 --help` for the staging/execution interface; historical v3 evidence is preserved.
+
+The normal start action runs trials and then exports and qualifies the selected candidate. The final reserve is part of the overall time budget; restarting does not reset the deadline. The panel keeps polling during `qualifying` and distinguishes completed trials from `passed`, `failed_quality` and `incomplete` qualification. Evidence compares the candidate with its actual parent on held-out cases. A tie is not an improvement. Qualification does not automatically activate the model in general chat. Optional `selection.protect_parent_full_pass` also requires improvement and retention of fully passed instructions, including format. A fixed campaign may use `extension.repeat_best_recipe`: freeze one different-seed alternative per initial recipe, then execute only the winning alternative within the original budget. See the [local campaign instructions](PL/ACADEMY_EKSPERYMENTY.md).
+
 ## Ollama LoRA Deployment Path (External Training)
 
 The Academy contract separates training and runtime deployment:

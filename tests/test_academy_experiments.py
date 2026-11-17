@@ -1267,6 +1267,73 @@ def _review_checkpoint_test(client, run_id, step, candidate_good):
     assert client.post(prefix + "/judgments", json=submission).status_code == 409
 
 
+def _semantic_test_pin(monkeypatch):
+    from types import SimpleNamespace
+
+    from venom_core.services.training_experiments import local_semantic_judge as judge
+
+    pin = SimpleNamespace(model="test-reviewer")
+    monkeypatch.setattr(judge, "qualification", lambda _calibration: pin)
+    return pin
+
+
+def _semantic_test_grade(case, label, answer, *, natural=True):
+    from venom_core.services.training_experiments import local_semantic_judge as judge
+    from venom_core.services.training_experiments.profiles import stable_hash
+
+    material = judge._material({}, case, answer)
+    ids = [item["id"] for item in material["criteria"]]
+    request = judge._request("test-reviewer", material, ids)
+    decision = judge._Decision(
+        atoms=dict.fromkeys(ids, "supported"),
+        unsupported="no",
+        injection=False,
+        polish_ok=True,
+        natural_ok=natural,
+        reason="Verified atom",
+    )
+    response = {
+        "model": "test-reviewer",
+        "done": True,
+        "done_reason": "stop",
+        "created_at": "original-call",
+        "message": {"content": decision.model_dump_json()},
+    }
+    return {
+        **judge._grade(decision, {}, case, answer),
+        "record_id": case["record_id"],
+        "label": label,
+        "model_review_call": {
+            "request_sha256": stable_hash(request),
+            "response": response,
+        },
+    }
+
+
+def _semantic_test_manifest(service, run_id, monkeypatch):
+    from venom_core.services.training_experiments.profiles import read_json, stable_hash
+
+    _semantic_test_pin(monkeypatch)
+    manifest_path = service.run_dir(run_id) / "manifest.json"
+    manifest = read_json(manifest_path)
+    calibration = {
+        "judge": "semantic-local-v3",
+        "schema_version": 1,
+        "judge_qualification": {
+            "protocol_sha256": "a" * 64,
+            "result_sha256": "b" * 64,
+        },
+        "cases": {"dev-1": {}},
+    }
+    manifest["calibration"] = calibration
+    manifest["profile"]["calibration_sha256"] = stable_hash(calibration)
+    atomic_json(manifest_path, manifest)
+    state = service.store.read(run_id)
+    state["manifest_sha256"] = stable_hash(manifest)
+    service._save(state)
+    return state, calibration
+
+
 @pytest.mark.parametrize(
     "partial", ["sealed-step", "unpublished-step", "final-publication"]
 )
@@ -1286,8 +1353,10 @@ def test_automatic_checkpoint_review_recovers_without_rescoring(
     state = service.store.read(run_id)
     assert state["status"] == "awaiting_review"
     worker.deadline = worker_module.time.monotonic() + 30
-    calibration = {"judge": local_semantic_judge.JUDGE}
+    original_deadline = worker.deadline
+    state, calibration = _semantic_test_manifest(service, run_id, monkeypatch)
     scored = []
+    baseline_calls = []
     interrupted = True
 
     def judge(_calibration, bundle, _run_id, _seconds, *, check):
@@ -1299,13 +1368,12 @@ def test_automatic_checkpoint_review_recovers_without_rescoring(
         scored.append(step)
         if interrupted and partial == "sealed-step" and step == "checkpoint-4":
             raise RuntimeError("score interrupted")
-        judgments = [
-            grade(label, answer["text"] != "base") for label, answer in values.items()
+        if any(answer["text"] == "base" for answer in values.values()):
+            baseline_calls.append(step)
+        return [
+            _semantic_test_grade(bundle["cases"][0], label, answer)
+            for label, answer in values.items()
         ]
-        for judgment in judgments:
-            judgment["critical_error"] = False
-            judgment["model_review_call"] = {"created_at": len(scored)}
-        return judgments
 
     publish = service._publish_result
     run = service.run_dir(run_id)
@@ -1334,6 +1402,11 @@ def test_automatic_checkpoint_review_recovers_without_rescoring(
     interrupted = False
     worker._score_calibration(service.store.read(run_id), calibration)
     assert scored.count("checkpoint-2") == 1
+    assert baseline_calls == ["checkpoint-2"]
+    assert worker.deadline == original_deadline
+    assert (
+        service.store.read(run_id)["attempt_started_at"] == state["attempt_started_at"]
+    )
     assert scored.count("checkpoint-4") == (2 if partial == "sealed-step" else 1)
     assert all(
         saved[path] == (path.read_bytes(), path.stat().st_mtime_ns) for path in saved
@@ -1736,3 +1809,301 @@ def test_dialogue_judge_preserves_billing_for_failed_verdicts(variation, expecte
     assert result["cost_usd"] == expected_cost
     assert result.get("retryable", False) == (variation == "credits")
     assert "verdict" not in result
+
+
+@pytest.fixture
+def sealed_baseline_pair(tmp_path, monkeypatch):
+    from scripts.academy.omni_pl_chat_dialogue import DialogueHistory, blind_answer
+    from scripts.academy.omni_pl_chat_evaluate import blind_mapping
+    from venom_core.services.training_experiments.checkpoint_evaluation import (
+        seal_generation,
+    )
+    from venom_core.services.training_experiments.profiles import stable_hash
+
+    _semantic_test_pin(monkeypatch)
+    directory = tmp_path / "receipt-run"
+    directory.mkdir()
+    cases = [
+        {
+            "record_id": f"case-{turn}",
+            "group_id": "one-conversation",
+            "task": "partial_correction",
+            "split": "dev",
+            "dialogue": {"id": "conversation", "turn_index": turn},
+            "messages": [{"role": "user", "content": f"Podaj stan po zmianie {turn}."}],
+            "criteria": [
+                {"id": "answer", "kind": "content", "description": f"Stan {turn}."}
+            ],
+        }
+        for turn in range(1, 5)
+    ]
+    calibration = {
+        "judge": "semantic-local-v3",
+        "schema_version": 1,
+        "judge_qualification": {
+            "protocol_sha256": "a" * 64,
+            "result_sha256": "b" * 64,
+        },
+        "cases": {case["record_id"]: {} for case in cases},
+    }
+    run_manifest = {
+        "calibration": calibration,
+        "profile": {
+            "dev_sha256": stable_hash(cases),
+            "calibration_sha256": stable_hash(calibration),
+        },
+    }
+    atomic_json(directory / "manifest.json", run_manifest)
+    bundles = {}
+    for step in (21, 42):
+        folder = directory / "checkpoint-evaluations" / str(step)
+        folder.mkdir(parents=True)
+        mapping = blind_mapping(cases, ["base", f"checkpoint-{step}"])
+        if step == 42:
+            mapping = {
+                ident: dict(zip(labels, reversed(tuple(labels.values())), strict=True))
+                for ident, labels in mapping.items()
+            }
+        raw, anonymous = [], []
+        histories = {"base": DialogueHistory(), f"checkpoint-{step}": DialogueHistory()}
+        for case in cases:
+            answers = {}
+            for label, tag in mapping[case["record_id"]].items():
+                history = histories[tag]
+                context = history.context(case)
+                row = {
+                    "case": case["record_id"],
+                    "model": tag,
+                    "label": label,
+                    "response": {"text": "Stan", "finish": "stop", "error": None},
+                    **context,
+                }
+                history.remember(case, row, context)
+                raw.append(row)
+                answers[label] = blind_answer(row)
+            anonymous.append({"case": case, "answers": answers})
+        write_rows(folder / "raw.jsonl", raw)
+        write_rows(folder / "blind.jsonl", anonymous)
+        atomic_json(folder / "unblind.json", mapping)
+        manifest = {
+            "models": {"base": {"base": True}, f"checkpoint-{step}": {}},
+            "evaluated_ids": [case["record_id"] for case in cases],
+            "data_sha256": stable_hash(cases),
+            "generation_identity_sha256": "c" * 64,
+            "dialogue_protocol": "own-history-v1",
+            "resumed_generations": 0 if step == 21 else 8,
+            "engine": {"torch": "pinned"},
+            "outputs": {
+                name: digest(folder / name)
+                for name in ("raw.jsonl", "blind.jsonl", "unblind.json")
+            },
+        }
+        atomic_json(folder / "manifest.json", manifest)
+        seal_generation(folder)
+        bundles[step] = {"cases": cases, "answers": anonymous}
+    source = directory / "checkpoint-evaluations/21"
+    grades = [
+        _semantic_test_grade(row["case"], label, answer)
+        for row in bundles[21]["answers"]
+        for label, answer in row["answers"].items()
+    ]
+    atomic_json(source / "judgments.json", grades)
+    report = {
+        "run_id": directory.name,
+        "checkpoint": {"step": 21},
+        "manifest_sha256": stable_hash(run_manifest),
+        "calibration_judge": calibration["judge"],
+        "generation_sha256": digest(source / "generation-seal.json"),
+        "judgment_sha256": digest(source / "judgments.json"),
+        "dev_sha256": stable_hash(cases),
+    }
+    atomic_json(source / "result.json", report)
+    atomic_json(
+        source / "result-seal.json", {"result_sha256": digest(source / "result.json")}
+    )
+    return directory, bundles, calibration, stable_hash(run_manifest)
+
+
+def test_checkpoint_baseline_reuses_original_call_and_rebinds_labels(
+    sealed_baseline_pair,
+):
+    from venom_core.services.training_experiments.checkpoint_evaluation import (
+        reuse_baseline_reviews,
+        verify_baseline,
+    )
+    from venom_core.services.training_experiments.profiles import read_json
+
+    directory, bundles, calibration, identity = sealed_baseline_pair
+    source = directory / "checkpoint-evaluations/21"
+    before = {p.name: p.read_bytes() for p in source.iterdir()}
+    pending, reused = reuse_baseline_reviews(
+        directory,
+        42,
+        bundles[42],
+        calibration,
+        steps=[21, 42],
+        manifest_sha256=identity,
+    )
+    assert len(reused) == 4
+    assert all(len(row["answers"]) == 1 for row in pending["answers"])
+    mapping = read_json(source / "unblind.json")
+    original = {
+        grade["record_id"]: grade
+        for grade in read_json(source / "judgments.json")
+        if mapping[grade["record_id"]][grade["label"]] == "base"
+    }
+    target_mapping = read_json(directory / "checkpoint-evaluations/42/unblind.json")
+    for grade in reused:
+        assert target_mapping[grade["record_id"]][grade["label"]] == "base"
+        assert grade["label"] != original[grade["record_id"]]["label"]
+        receipt = grade["review_reused_from"]
+        assert receipt["result_sha256"] == digest(source / "result.json")
+        assert receipt["scorer_protocol"].startswith("semantic-local-v3:")
+        assert (
+            grade["model_review_call"]
+            == original[grade["record_id"]]["model_review_call"]
+        )
+        assert grade["natural_ok"] is True
+    # A fresh judge would flip this case's naturalness, as in the observed failure.
+    fresh = [
+        _semantic_test_grade(row["case"], label, answer, natural=False)
+        for row in pending["answers"]
+        for label, answer in row["answers"].items()
+    ]
+    verify_baseline(directory, [21, 42], 42, [*reused, *fresh])
+    assert before == {p.name: p.read_bytes() for p in source.iterdir()}
+    again = reuse_baseline_reviews(
+        directory,
+        42,
+        bundles[42],
+        calibration,
+        steps=[21, 42],
+        manifest_sha256=identity,
+    )
+    assert again == (pending, reused)
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "unsealed",
+        "grade_bytes",
+        "request",
+        "response_grade",
+        "calibration",
+        "generation_identity",
+        "engine",
+        "base_model",
+        "raw",
+        "history",
+        "history_parent",
+        "reused_source",
+        "blind",
+    ],
+)
+def test_checkpoint_baseline_receipt_rejects_changed_evidence(
+    sealed_baseline_pair, mutation
+):
+    import copy
+
+    from venom_core.services.training_experiments.checkpoint_evaluation import (
+        reuse_baseline_reviews,
+        seal_generation,
+    )
+    from venom_core.services.training_experiments.profiles import read_json, rows
+
+    directory, bundles, calibration, identity = sealed_baseline_pair
+    source = directory / "checkpoint-evaluations/21"
+    target = directory / "checkpoint-evaluations/42"
+    if mutation == "unsealed":
+        (source / "result-seal.json").unlink()
+    elif mutation == "grade_bytes":
+        with (source / "judgments.json").open("a") as stream:
+            stream.write(" ")
+    elif mutation == "calibration":
+        calibration = {**calibration, "schema_version": 2}
+    elif mutation in {"request", "response_grade", "reused_source"}:
+        grades = read_json(source / "judgments.json")
+        mapping = read_json(source / "unblind.json")
+        grade = next(
+            item
+            for item in grades
+            if mapping[item["record_id"]][item["label"]] == "base"
+        )
+        if mutation == "request":
+            grade["model_review_call"]["request_sha256"] = "0" * 64
+        elif mutation == "response_grade":
+            grade["natural_ok"] = False
+        else:
+            grade["review_reused_from"] = {}
+        atomic_json(source / "judgments.json", grades)
+        report = read_json(source / "result.json")
+        report["judgment_sha256"] = digest(source / "judgments.json")
+        atomic_json(source / "result.json", report)
+        atomic_json(
+            source / "result-seal.json",
+            {"result_sha256": digest(source / "result.json")},
+        )
+    else:
+        manifest = read_json(target / "manifest.json")
+        if mutation == "generation_identity":
+            manifest["generation_identity_sha256"] = "0" * 64
+        elif mutation == "engine":
+            manifest["engine"]["torch"] = "other"
+        elif mutation == "base_model":
+            manifest["models"]["base"] = {"base": False}
+        elif mutation == "blind":
+            anonymous = rows(target / "blind.jsonl")
+            label = next(iter(anonymous[0]["answers"]))
+            anonymous[0]["answers"][label]["text"] = "Tampered"
+            write_rows(target / "blind.jsonl", anonymous)
+        else:
+            raw = rows(target / "raw.jsonl")
+            row = next(item for item in raw if item["model"] == "base")
+            if mutation == "raw":
+                row["response"]["text"] = "Different"
+            elif mutation == "history":
+                row["history_sha256"] = "0" * 64
+            else:
+                row["history_parent_sha256"] = "0" * 64
+            write_rows(target / "raw.jsonl", raw)
+        manifest["outputs"] = {
+            name: digest(target / name)
+            for name in ("raw.jsonl", "blind.jsonl", "unblind.json")
+        }
+        atomic_json(target / "manifest.json", manifest)
+        seal_generation(target)
+    with pytest.raises(ValueError):
+        reuse_baseline_reviews(
+            directory,
+            42,
+            copy.deepcopy(bundles[42]),
+            calibration,
+            steps=[21, 42],
+            manifest_sha256=identity,
+        )
+
+
+@pytest.mark.parametrize("finish", ["length", "stop"])
+def test_review_receipt_handles_no_call_or_changed_valid_call(monkeypatch, finish):
+    from venom_core.services.training_experiments import local_semantic_judge as judge
+
+    pin = _semantic_test_pin(monkeypatch)
+    case = {
+        "record_id": "one",
+        "messages": [{"role": "user", "content": "Stan?"}],
+        "criteria": [{"id": "answer", "kind": "content", "description": "Stan."}],
+    }
+    answer = {"text": "Stan", "finish": finish, "error": None}
+    grade = (
+        {**judge._grade(None, {}, case, answer), "model_review_call": None}
+        if finish == "length"
+        else _semantic_test_grade(case, "A", answer)
+    )
+    judge.verify_review_receipt(pin, {}, case, answer, grade)
+    if finish == "length":
+        grade["model_review_call"] = {"response": {}}
+    else:
+        grade["model_review_call"]["response"]["message"]["content"] = "{}"
+    with pytest.raises(ValueError, match="baseline_receipt_changed"):
+        judge.verify_review_receipt(pin, {}, case, answer, grade)

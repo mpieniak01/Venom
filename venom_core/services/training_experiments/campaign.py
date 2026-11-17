@@ -37,7 +37,9 @@ from .retention import (
 )
 
 _CAMPAIGN_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,39}\Z")
-_ACTIVE = frozenset({"running", "awaiting_review", "stopping", "interrupted"})
+_ACTIVE = frozenset(
+    {"running", "awaiting_review", "stopping", "interrupted", "qualifying"}
+)
 _RUN_ACTIVE = frozenset({"queued", "running", "stopping"})
 _RUN_FINISHED = frozenset({"succeeded", "failed", "stopped", "timed_out"})
 
@@ -209,6 +211,105 @@ def _plan_audit(variants: list[dict]) -> dict | None:
     return audit
 
 
+def _freeze_extension(spec: CampaignSpec, variants: list[dict]) -> dict | None:
+    if spec.extension is None:
+        return None
+    frozen = spec.extension.model_dump()
+    if not spec.extension.repeat_best_recipe:
+        frozen.pop("repeat_best_recipe")
+        return frozen
+    parents = [variant.get("initial_adapter") for variant in variants]
+    if parents[0] is None or any(parent != parents[0] for parent in parents):
+        raise ValueError("campaign_repeat_parent_changed")
+    initial = spec.extension.initial_trials
+    repeats = variants[initial:]
+    mapping = {}
+    excluded = {"seed", "max_supervised_tokens"}
+    for source in variants[:initial]:
+        recipe = source["recipe"]
+        comparable = {
+            key: value for key, value in recipe.items() if key not in excluded
+        }
+        matches = [
+            candidate
+            for candidate in repeats
+            if candidate["recipe"].get("seed") != recipe.get("seed")
+            and {
+                key: value
+                for key, value in candidate["recipe"].items()
+                if key not in excluded
+            }
+            == comparable
+        ]
+        if len(matches) != 1:
+            raise ValueError("campaign_repeat_recipe_mismatch")
+        mapping[source["run_id"]] = matches[0]["run_id"]
+    if len(set(mapping.values())) != initial:
+        raise ValueError("campaign_repeat_recipe_mismatch")
+    return {**frozen, "repeat_variants": mapping}
+
+
+def _bounded_workload(
+    variants: list[dict],
+    extension: dict | None,
+    metric: str,
+    *,
+    start: int = 0,
+    skipped: set[int] | None = None,
+) -> int:
+    """Reserve the initial block plus at most one pre-frozen repeat alternative."""
+    total, alternatives = 0, []
+    for index, variant in enumerate(variants[start:], start=start):
+        if skipped and index in skipped:
+            continue
+        amount = variant["workload"][metric]
+        if (
+            extension
+            and extension.get("repeat_best_recipe")
+            and index >= extension["initial_trials"]
+        ):
+            alternatives.append(amount)
+        else:
+            total += amount
+    return total + max(alternatives, default=0)
+
+
+def _freeze_plan_quality_policy(
+    spec: CampaignSpec,
+    experiments: CampaignExperiments,
+    variants: list[dict],
+    payload: dict,
+) -> None:
+    if spec.quality_policy is None:
+        return
+    context = quality_native.profile_context(
+        experiments,
+        spec.profile_id,
+        spec.review_mode,
+        include_runtime=spec.quality_policy.source_record_id is not None,
+    )
+    if "checkpoint_evaluation_identity" in payload:
+        context["identity"] = payload["checkpoint_evaluation_identity"]
+    if spec.quality_policy.parent_reference_record_id is not None:
+        parents = [variant.get("initial_adapter") for variant in variants]
+        if (
+            not parents
+            or parents[0] is None
+            or any(parent != parents[0] for parent in parents)
+        ):
+            raise ValueError("campaign_quality_parent_adapter_required")
+        context["initial_adapter_sha256"] = parents[0]["weights_sha256"]
+    payload["quality_policy"] = quality_guard.freeze_policy(
+        spec.quality_policy.model_dump(
+            exclude={"protect_parent_full_pass"}
+            if not spec.quality_policy.protect_parent_full_pass
+            else set()
+        ),
+        context,
+        lambda record_id: quality_native.get_record(experiments, record_id),
+    )
+
+
 def _plan(spec: CampaignSpec, experiments: CampaignExperiments) -> dict:
     extra: dict = {}
     if spec.strategy == "optuna":
@@ -227,10 +328,11 @@ def _plan(spec: CampaignSpec, experiments: CampaignExperiments) -> dict:
                 experiments, spec.profile_id, spec.review_mode
             )
         )
+    extension = _freeze_extension(spec, variants)
     budget = spec.budget
-    if sum(v["workload"]["updates"] for v in variants) > budget.max_updates:
+    if _bounded_workload(variants, extension, "updates") > budget.max_updates:
         raise ValueError("campaign_update_budget_exceeded")
-    if sum(v["workload"]["tokens"] for v in variants) > budget.max_tokens:
+    if _bounded_workload(variants, extension, "tokens") > budget.max_tokens:
         raise ValueError("campaign_token_budget_exceeded")
     payload = {
         **spec.model_dump(
@@ -241,27 +343,23 @@ def _plan(spec: CampaignSpec, experiments: CampaignExperiments) -> dict:
                 "quality_policy",
                 "checkpoint_steps",
                 "extension",
+                "final_qualification",
             }
         ),
         **extra,
         "profile_identity": identity,
         "variants": variants,
     }
-    if spec.extension is not None:
-        payload["extension"] = spec.extension.model_dump()
-    if spec.quality_policy is not None:
-        context = quality_native.profile_context(
-            experiments,
-            spec.profile_id,
-            spec.review_mode,
-            include_runtime=spec.quality_policy.source_record_id is not None,
-        )
-        if "checkpoint_evaluation_identity" in payload:
-            context["identity"] = payload["checkpoint_evaluation_identity"]
-        payload["quality_policy"] = quality_guard.freeze_policy(
-            spec.quality_policy.model_dump(),
-            context,
-            lambda record_id: quality_native.get_record(experiments, record_id),
+    if not spec.selection.protect_parent_full_pass:
+        payload["selection"].pop("protect_parent_full_pass")
+    if extension is not None:
+        payload["extension"] = extension
+    _freeze_plan_quality_policy(spec, experiments, variants, payload)
+    if spec.final_qualification is not None:
+        from .local_campaign_final import freeze_inputs
+
+        payload["final_qualification"] = freeze_inputs(
+            experiments.root, payload, spec.final_qualification.model_dump()
         )
     return {**payload, "plan_sha256": fingerprint(payload)}
 
@@ -269,6 +367,15 @@ def _plan(spec: CampaignSpec, experiments: CampaignExperiments) -> dict:
 def _initial_state(plan: dict) -> dict:
     return {
         "campaign_id": plan["campaign_id"],
+        **(
+            {
+                "phase": "trials",
+                "qualification_status": "pending",
+                "qualification_attempts": 0,
+            }
+            if plan.get("final_qualification")
+            else {}
+        ),
         "plan": plan,
         "status": "planned",
         "trial_index": 0,
@@ -297,6 +404,39 @@ def _actual_recipe(state: dict, trial: dict) -> dict:
     return trial.get("recipe", _current_variant(state)["recipe"])
 
 
+def _parent_metrics(item: dict, guard: dict) -> None:
+    parent = guard.get("parent_delta")
+    if parent is not None:
+        for key in ("usable_delta", "critical_delta"):
+            item[f"m0_{key}"] = item[key]
+            item[key] = parent[key]
+
+
+def _passes_selection(row: dict, selection: dict) -> bool:
+    if (
+        row.get("critical_delta") is None
+        or row["usable_delta"] < selection["min_usable_delta"]
+        or row["critical_delta"] > selection["max_critical_delta"]
+    ):
+        return False
+    if selection.get("protect_parent_full_pass"):
+        full = (
+            row.get("quality_guard", {}).get("parent_delta", {}).get("full_pass_delta")
+        )
+        return full is not None and full > 0 and full >= selection["min_usable_delta"]
+    return True
+
+
+def _selection_key(row: dict) -> tuple[float, float, float]:
+    return (
+        row["usable_delta"],
+        -row["critical_delta"],
+        row.get("quality_guard", {})
+        .get("parent_delta", {})
+        .get("full_pass_delta", 0.0),
+    )
+
+
 def _rank(state: dict) -> None:
     if "checkpoint_steps" in state["plan"]:
         _rank_checkpoints(state)
@@ -311,12 +451,11 @@ def _rank(state: dict) -> None:
         for trial in state["trials"]
         if trial.get("result_sha256")
         and (not guarded or trial.get("quality_guard", {}).get("status") == "passed")
-        and trial["usable_delta"] >= selection["min_usable_delta"]
-        and trial["critical_delta"] <= selection["max_critical_delta"]
+        and _passes_selection(trial, selection)
     ]
     winner = max(
         candidates,
-        key=lambda row: (row["usable_delta"], -row["critical_delta"]),
+        key=_selection_key,
         default=None,
     )
     state["selected_run_id"] = winner["run_id"] if winner else None
@@ -335,15 +474,55 @@ def _rank_checkpoints(state: dict) -> None:
     )
     run_id, winner = max(
         qualified,
-        key=lambda choice: (
-            choice[1]["usable_delta"],
-            -choice[1]["critical_delta"],
-            -choice[1]["step"],
-        ),
+        key=lambda choice: (*_selection_key(choice[1]), -choice[1]["step"]),
         default=(None, None),
     )
     state["selected_run_id"] = run_id
     state["selected_checkpoint_step"] = winner["step"] if winner else None
+
+
+def _extension_decision(state: dict, policy: dict) -> dict:
+    selected = state["selected_run_id"]
+    step = state.get("selected_checkpoint_step")
+    winner: dict = next(
+        (
+            trial
+            for trial in state["trials"][: state["trial_index"]]
+            if trial["run_id"] == selected
+        ),
+        {},
+    )
+    if step is not None:
+        winner = next(
+            (
+                row
+                for row in winner.get("checkpoint_evaluations", ())
+                if row["step"] == step
+            ),
+            {},
+        )
+    gain = winner.get("usable_delta")
+    approved = (
+        gain is not None
+        and gain >= policy["min_usable_delta"]
+        and _passes_selection(winner, state["plan"]["selection"])
+    )
+    return {
+        "status": "approved" if approved else "skipped",
+        "run_id": selected,
+        "checkpoint_step": step,
+        "usable_delta": gain,
+        "result_sha256": winner.get("result_sha256"),
+        **(
+            {
+                "full_pass_delta": winner.get("quality_guard", {})
+                .get("parent_delta", {})
+                .get("full_pass_delta")
+            }
+            if state["plan"]["selection"].get("protect_parent_full_pass")
+            else {}
+        ),
+    }
 
 
 def _allow_extension(state: dict) -> bool:
@@ -351,35 +530,168 @@ def _allow_extension(state: dict) -> bool:
     if policy is None or state["trial_index"] != policy["initial_trials"]:
         return True
     if "extension_decision" not in state:
-        selected = state["selected_run_id"]
-        step = state.get("selected_checkpoint_step")
-        winner = next(
-            (
-                trial
-                for trial in state["trials"][: state["trial_index"]]
-                if trial["run_id"] == selected
-            ),
-            {},
+        if state["selected_run_id"] is None:
+            _rank(state)
+        state["extension_decision"] = _extension_decision(state, policy)
+    decision = state["extension_decision"]
+    if decision["status"] == "approved" and policy.get("repeat_best_recipe"):
+        repeated = policy["repeat_variants"][decision["run_id"]]
+        if decision.get("repeat_run_id", repeated) != repeated:
+            raise ValueError("campaign_repeat_selection_changed")
+        decision["repeat_run_id"] = repeated
+        for trial in state["trials"][policy["initial_trials"] :]:
+            if trial["run_id"] != repeated:
+                trial.update(status="skipped", error="campaign_repeat_not_selected")
+    return decision["status"] == "approved"
+
+
+def _repeat_candidates(state: dict, trial: dict) -> list[dict]:
+    rows = (
+        trial.get("checkpoint_evaluations", [])
+        if "checkpoint_steps" in state["plan"]
+        else [trial]
+    )
+    policy = state["plan"]["extension"]
+    return [
+        item
+        for item in rows
+        if trial["status"] == "succeeded"
+        and item.get("result_sha256")
+        and item.get("quality_guard", {}).get("status") == "passed"
+        and _passes_selection(item, state["plan"]["selection"])
+        and item["usable_delta"] >= policy["min_usable_delta"]
+    ]
+
+
+def development_complete(state: dict) -> bool:
+    """A missing candidate is a quality decision only with complete development."""
+    trials = [trial for trial in state["trials"] if trial["status"] != "skipped"]
+    if not trials or state.get("quality_policy_error"):
+        return False
+    steps = state["plan"].get("checkpoint_steps")
+    guarded = state["plan"].get("quality_policy") is not None
+    for trial in trials:
+        if trial["status"] != "succeeded":
+            return False
+        rows = trial.get("checkpoint_evaluations", []) if steps is not None else [trial]
+        if steps is not None and (
+            len(rows) != len(steps) or {row.get("step") for row in rows} != set(steps)
+        ):
+            return False
+        if any(
+            row.get("status") != "succeeded"
+            or not row.get("result_sha256")
+            or guarded
+            and row.get("quality_guard", {}).get("status") not in {"passed", "rejected"}
+            for row in rows
+        ):
+            return False
+    return True
+
+
+def _confirm_repeat(state: dict) -> None:
+    policy = state["plan"].get("extension", {})
+    if not policy.get("repeat_best_recipe") or state["status"] not in {
+        "succeeded",
+        "timed_out",
+        "stopped",
+        "blocked",
+    }:
+        return
+    decision = state.get("extension_decision", {})
+    repeat_id = decision.get("repeat_run_id")
+    repeat: dict = next(
+        (trial for trial in state["trials"] if trial["run_id"] == repeat_id), {}
+    )
+    confirmation = {
+        "status": "incomplete",
+        "reason": "campaign_repeat_not_confirmed",
+        "source_run_id": decision.get("run_id"),
+        "source_checkpoint_step": decision.get("checkpoint_step"),
+        "source_result_sha256": decision.get("result_sha256"),
+        "repeat_run_id": repeat_id,
+    }
+    # Interrupted execution is not evidence of poor model quality.
+    eligible = [
+        item
+        for item in (_repeat_candidates(state, repeat) if repeat else [])
+        if item.get("step") == decision.get("checkpoint_step")
+    ]
+    if state["status"] not in {"stopped", "blocked"} and eligible:
+        _confirm_repeat_success(state, decision, repeat, eligible, confirmation)
+    else:
+        completed = (
+            _repeat_step_complete(repeat, decision.get("checkpoint_step"))
+            or decision.get("status") == "skipped"
+            and state["status"] == "succeeded"
         )
-        if step is not None:
-            winner = next(
-                (
-                    row
-                    for row in winner.get("checkpoint_evaluations", ())
-                    if row["step"] == step
-                ),
-                {},
+        if not development_complete(state):
+            confirmation["reason"] = "campaign_development_incomplete"
+        elif completed and state["status"] not in {"stopped", "blocked"}:
+            confirmation.update(
+                status="failed_quality", reason="campaign_repeat_failed_quality"
             )
-        gain = winner.get("usable_delta")
-        approved = gain is not None and gain >= policy["min_usable_delta"]
-        state["extension_decision"] = {
-            "status": "approved" if approved else "skipped",
-            "run_id": selected,
-            "checkpoint_step": step,
-            "usable_delta": gain,
-            "result_sha256": winner.get("result_sha256"),
-        }
-    return state["extension_decision"]["status"] == "approved"
+        state["selected_run_id"] = None
+        if "selected_checkpoint_step" in state:
+            state["selected_checkpoint_step"] = None
+    state["repeat_confirmation"] = confirmation
+
+
+def _repeat_step_complete(trial: dict, step: int | None) -> bool:
+    rows = trial.get("checkpoint_evaluations", []) if step is not None else [trial]
+    return trial.get("status") == "succeeded" and any(
+        item.get("step") == step
+        and item.get("status") == "succeeded"
+        and item.get("result_sha256")
+        for item in rows
+    )
+
+
+def _confirm_repeat_success(
+    state: dict,
+    decision: dict,
+    repeat: dict,
+    eligible: list[dict],
+    confirmation: dict,
+) -> None:
+    best = max(eligible, key=lambda item: (*_selection_key(item), -item.get("step", 0)))
+    confirmation.update(
+        status="passed",
+        reason=None,
+        repeat_checkpoint_step=best.get("step"),
+        repeat_result_sha256=best["result_sha256"],
+        usable_delta=best["usable_delta"],
+        full_pass_delta=best["quality_guard"]
+        .get("parent_delta", {})
+        .get("full_pass_delta"),
+    )
+    source = next(
+        trial for trial in state["trials"] if trial["run_id"] == decision["run_id"]
+    )
+    source_rows = {item.get("step"): item for item in _repeat_candidates(state, source)}
+    repeat_rows = {item.get("step"): item for item in _repeat_candidates(state, repeat)}
+    common = source_rows.keys() & repeat_rows.keys()
+    pair = [
+        (run_id, rows[step])
+        for run_id, rows in (
+            (source["run_id"], source_rows),
+            (repeat["run_id"], repeat_rows),
+        )
+        for step in common
+    ]
+    run_id, winner = max(
+        pair, key=lambda choice: (*_selection_key(choice[1]), -choice[1].get("step", 0))
+    )
+    step = winner.get("step")
+    confirmation.update(
+        finalist_run_id=run_id,
+        finalist_checkpoint_step=step,
+        paired_source_result_sha256=source_rows[step]["result_sha256"],
+        paired_repeat_result_sha256=repeat_rows[step]["result_sha256"],
+    )
+    state["selected_run_id"] = run_id
+    if "selected_checkpoint_step" in state:
+        state["selected_checkpoint_step"] = step
 
 
 def _deltas(report: dict) -> dict:
@@ -520,6 +832,11 @@ class CampaignService:
             state["status"] = "interrupted"
         self._elapsed(state)
         self._review_selection(state)
+        self._review_repeat_confirmation(state)
+        if state["plan"].get("final_qualification"):
+            from .local_campaign_final import observe
+
+            observe(self.experiments.root, state)
         return state
 
     def _review_selection(self, state: dict) -> None:
@@ -541,6 +858,55 @@ class CampaignService:
             if "selected_checkpoint_step" in state:
                 state["selected_checkpoint_step"] = None
             state["quality_policy_error"] = _quality_error(exc)
+
+    def _review_repeat_confirmation(self, state: dict) -> None:
+        confirmation = state.get("repeat_confirmation", {})
+        if confirmation.get("status") != "passed":
+            return
+        try:
+            if (
+                state["selected_run_id"] != confirmation["finalist_run_id"]
+                or state.get("selected_checkpoint_step")
+                != confirmation["finalist_checkpoint_step"]
+            ):
+                raise ValueError("campaign_repeat_confirmation_changed")
+            for prefix in ("source", "repeat"):
+                trial = next(
+                    item
+                    for item in state["trials"]
+                    if item["run_id"] == confirmation[f"{prefix}_run_id"]
+                )
+                for step, checksum in (
+                    (
+                        confirmation[f"{prefix}_checkpoint_step"],
+                        confirmation[f"{prefix}_result_sha256"],
+                    ),
+                    (
+                        confirmation["finalist_checkpoint_step"],
+                        confirmation[f"paired_{prefix}_result_sha256"],
+                    ),
+                ):
+                    item = (
+                        next(
+                            row
+                            for row in trial["checkpoint_evaluations"]
+                            if row["step"] == step
+                        )
+                        if step is not None
+                        else trial
+                    )
+                    if item["result_sha256"] != checksum:
+                        raise ValueError("campaign_repeat_confirmation_changed")
+                    self._verify_quality_winner(
+                        {**state, "selected_checkpoint_step": step}, trial
+                    )
+        except (OSError, ValueError, KeyError, TypeError, StopIteration):
+            confirmation.update(
+                status="incomplete", reason="campaign_repeat_confirmation_changed"
+            )
+            state["selected_run_id"] = None
+            if "selected_checkpoint_step" in state:
+                state["selected_checkpoint_step"] = None
 
     def report(self, campaign_id: str) -> dict:
         return self.status(campaign_id)
@@ -643,15 +1009,30 @@ class CampaignService:
                     state["cutoff_at"] = cutoff_at
             if state["status"] == "planned" and plan_sha256 is None:
                 raise ValueError("campaign_plan_not_approved")
+            if state.get("phase") == "complete":
+                raise ValueError("campaign_resume_unavailable")
             if state["status"] not in _ACTIVE | {"planned", "stopped", "blocked"}:
                 raise ValueError("campaign_resume_unavailable")
             if state["status"] in _ACTIVE and identity_alive(state["worker"]):
                 return state
             self._ensure_single_campaign(campaign_id)
-            if state["status"] != "stopping":
+            if state.get("phase") == "qualification":
+                state["status"] = "qualifying"
+            elif state["status"] != "stopping":
+                if state["plan"].get("final_qualification"):
+                    from .local_campaign_final import pin_inputs
+
+                    pin_inputs(self.experiments.root, state)
                 self._prepare_activation(state)
             if state["started_at"] is None:
                 state["started_at"] = self._clock()
+                if state["plan"].get("final_qualification"):
+                    deadline = (
+                        state["started_at"] + state["plan"]["budget"]["max_seconds"]
+                    )
+                    state["deadline_at"] = min(
+                        deadline, state.get("cutoff_at", deadline)
+                    )
             self._start_worker(directory, state)
             return state
 
@@ -669,7 +1050,12 @@ class CampaignService:
         state["status"] = "running"
         self._elapsed(state)
         expired = self._campaign_seconds_left(state) <= 0
-        if expired and not optimized and not _reassessing_quality(state):
+        if (
+            expired
+            and not optimized
+            and not _reassessing_quality(state)
+            and not plan.get("final_qualification")
+        ):
             raise ValueError("campaign_time_budget_exhausted")
         state["error"] = None
         state["termination"] = "timed_out" if expired else None
@@ -774,7 +1160,10 @@ class CampaignService:
         directory = self.directory(campaign_id)
         with file_lock(directory / ".state.lock"):
             state = self._state(directory)
-            if state["status"] in _ACTIVE | {"blocked"}:
+            if (
+                state["status"] in _ACTIVE | {"blocked"}
+                and state.get("phase") != "complete"
+            ):
                 state["termination"] = "stopped"
                 state["status"] = "stopping"
                 if not identity_alive(state["worker"]):
@@ -784,7 +1173,9 @@ class CampaignService:
             return state
 
     def _elapsed(self, state: dict) -> None:
-        if state["started_at"] is not None and state["status"] in _ACTIVE:
+        if state["started_at"] is not None and (
+            state["status"] in _ACTIVE or state.get("phase") == "qualification"
+        ):
             state["elapsed_seconds"] = max(
                 state["elapsed_seconds"], self._clock() - state["started_at"]
             )
@@ -806,6 +1197,10 @@ class CampaignService:
                 plan["review_mode"],
                 include_runtime=policy.get("source_record") is not None,
             )
+            if policy.get("parent_cases") is not None:
+                context["initial_adapter_sha256"] = plan["variants"][0][
+                    "initial_adapter"
+                ]["weights_sha256"]
             quality_guard.verify_context(policy, context)
         except (OSError, ValueError, KeyError, TypeError) as exc:
             raise ValueError(_quality_error(exc)) from exc
@@ -866,6 +1261,12 @@ class CampaignService:
             for trial in state["trials"]
             if trial["status"] != "pending" or trial.get("intent")
         )
+        if state["plan"].get("final_qualification"):
+            state["artifact_bytes"] += _tree_bytes(
+                self.experiments.root
+                / "local-text-qualification"
+                / state["campaign_id"]
+            )
         budget = state["plan"]["budget"]
         return (
             state["artifact_bytes"] < budget["max_artifact_bytes"]
@@ -886,6 +1287,12 @@ class CampaignService:
 
     def _campaign_seconds_left(self, state: dict) -> float:
         remaining = state["plan"]["budget"]["max_seconds"] - state["elapsed_seconds"]
+        if state.get("deadline_at") is not None:
+            return (
+                state["deadline_at"]
+                - self._clock()
+                - state["plan"]["final_qualification"]["reserve_seconds"]
+            )
         cutoff = state.get("cutoff_at")
         return (
             min(remaining, cutoff - self._clock()) if cutoff is not None else remaining
@@ -1077,18 +1484,16 @@ class CampaignService:
             "result_sha256": checksum,
             "summaries": report["summaries"],
             **metrics,
-            "qualified": (
-                metrics["usable_delta"] >= selection["min_usable_delta"]
-                and metrics["critical_delta"] <= selection["max_critical_delta"]
-            ),
+            "qualified": _passes_selection(metrics, selection),
         }
         if policy is not None:
             guard, _ = quality_guard.evaluate(
                 policy, record, expected["protocol_sha256"]
             )
-            item.update(
-                quality_guard=guard,
-                qualified=item["qualified"] and guard["status"] == "passed",
+            _parent_metrics(item, guard)
+            item["quality_guard"] = guard
+            item["qualified"] = (
+                _passes_selection(item, selection) and guard["status"] == "passed"
             )
         return item
 
@@ -1125,6 +1530,7 @@ class CampaignService:
         except (OSError, ValueError, KeyError, TypeError) as exc:
             decision = quality_guard.blocked(_quality_error(exc))
         trial["quality_guard"] = decision
+        _parent_metrics(trial, decision)
 
     def _evaluate_quality(
         self, state: dict, trial: dict, policy: dict
@@ -1166,10 +1572,22 @@ class CampaignService:
         if run["stage"] in {"generate", "score"} and run["evaluation_available"]:
             return "evaluate"
         if run["stage"] == "train" and run["resume_available"]:
-            pending = state["plan"]["variants"][state["trial_index"] :]
+            plan = state["plan"]
+            skipped = {
+                index
+                for index, trial in enumerate(state["trials"])
+                if trial["status"] == "skipped"
+            }
             if all(
-                state[f"used_{key}"] + sum(item["workload"][key] for item in pending)
-                <= state["plan"]["budget"][f"max_{key}"]
+                state[f"used_{key}"]
+                + _bounded_workload(
+                    plan["variants"],
+                    plan.get("extension"),
+                    key,
+                    start=state["trial_index"],
+                    skipped=skipped,
+                )
+                <= plan["budget"][f"max_{key}"]
                 for key in ("updates", "tokens")
             ):
                 return "resume"
@@ -1218,20 +1636,42 @@ class CampaignService:
             state.update(trial_index=len(state["trials"]), status="succeeded")
             return True
         if run is None:
-            if (
-                state.get("cutoff_at") is not None
-                and trial.get("intent") is None
-                and remaining < state["plan"]["budget"]["trial_seconds"]
-            ):
-                state["termination"] = "timed_out"
-                self._terminate(directory, state, None)
-                return True
-            if remaining < 1:
-                state["termination"] = "timed_out"
-                self._terminate(directory, state, None)
-                return True
-            return False
+            return self._check_pending_trial(directory, state, trial, remaining)
         return _has_work(run) and self._monitor(directory, state, trial, run, remaining)
+
+    def _check_pending_trial(
+        self, directory: Path, state: dict, trial: dict, remaining: int
+    ) -> bool:
+        if state["plan"].get("extension", {}).get("repeat_best_recipe"):
+            if trial["status"] == "skipped":
+                self._next_slot(state)
+                return True
+            self._verify_repeat_winner(state)
+        if (
+            state.get("cutoff_at") is not None
+            and trial.get("intent") is None
+            and remaining < state["plan"]["budget"]["trial_seconds"]
+        ):
+            state["termination"] = "timed_out"
+            self._terminate(directory, state, None)
+            return True
+        if remaining < 1:
+            state["termination"] = "timed_out"
+            self._terminate(directory, state, None)
+            return True
+        return False
+
+    def _verify_repeat_winner(self, state: dict) -> None:
+        decision = state.get("extension_decision")
+        if decision is None or decision["status"] != "approved":
+            return
+        source = next(
+            trial for trial in state["trials"] if trial["run_id"] == decision["run_id"]
+        )
+        self._verify_quality_winner(
+            {**state, "selected_checkpoint_step": decision["checkpoint_step"]},
+            source,
+        )
 
     def _advance(self, directory: Path, state: dict) -> None:
         trial = state["trials"][state["trial_index"]]
@@ -1338,7 +1778,11 @@ class CampaignService:
             return
         number = trial["optuna_trial_number"]
         guard = trial.get("quality_guard", {})
-        if "result_sha256" in trial and guard.get("status") != "blocked":
+        if (
+            "result_sha256" in trial
+            and guard.get("status") != "blocked"
+            and trial.get("critical_delta") is not None
+        ):
             selection = state["plan"]["selection"]
             constraints = [
                 trial["critical_delta"] - selection["max_critical_delta"],
@@ -1365,6 +1809,11 @@ class CampaignService:
         """Advance one durable transition. Called by the detached supervisor."""
         ensure_data_mutation_allowed("academy_campaign_advance")
         directory = self.directory(campaign_id)
+        state = self._state(directory)
+        if state.get("phase") == "qualification":
+            from .local_campaign_final import advance
+
+            return advance(self, campaign_id)
         with file_lock(directory / ".state.lock"):
             state = self._state(directory)
             if state["status"] not in _ACTIVE:
@@ -1387,6 +1836,11 @@ class CampaignService:
                     )
                     else "campaign_stage_failed"
                 )
+            _confirm_repeat(state)
+            if state["plan"].get("final_qualification"):
+                from .local_campaign_final import transition
+
+                transition(state)
             if state["status"] not in _ACTIVE:
                 state["worker"] = None
             self._save(directory, state)

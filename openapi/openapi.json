@@ -3710,6 +3710,29 @@
         }
       }
     },
+    "/api/v1/academy/experiments/campaigns/final-inputs": {
+      "get": {
+        "tags": [
+          "academy"
+        ],
+        "summary": "Final Inputs",
+        "operationId": "final_inputs_api_v1_academy_experiments_campaigns_final_inputs_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Final Inputs Api V1 Academy Experiments Campaigns Final Inputs Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/academy/experiments/campaigns/quality": {
       "get": {
         "tags": [
@@ -15032,6 +15055,11 @@
             "maximum": 1.0,
             "exclusiveMinimum": 0.0,
             "title": "Min Usable Delta"
+          },
+          "repeat_best_recipe": {
+            "type": "boolean",
+            "title": "Repeat Best Recipe",
+            "default": false
           }
         },
         "additionalProperties": false,
@@ -15041,6 +15069,30 @@
           "min_usable_delta"
         ],
         "title": "CampaignExtension"
+      },
+      "CampaignFinalQualification": {
+        "properties": {
+          "inputs_id": {
+            "type": "string",
+            "maxLength": 40,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$",
+            "title": "Inputs Id"
+          },
+          "reserve_seconds": {
+            "type": "integer",
+            "maximum": 86400.0,
+            "minimum": 30.0,
+            "title": "Reserve Seconds"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "inputs_id",
+          "reserve_seconds"
+        ],
+        "title": "CampaignFinalQualification",
+        "description": "Select an operator-registered private holdout and reserve its session budget."
       },
       "CampaignPlanReference": {
         "properties": {
@@ -15069,6 +15121,23 @@
             "type": "array",
             "maxItems": 8,
             "title": "Reference Record Ids"
+          },
+          "parent_reference_record_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?:(?:history:)?[A-Za-z0-9][A-Za-z0-9_-]{0,63}|checkpoint:[A-Za-z0-9][A-Za-z0-9_-]{0,63}:[1-9][0-9]{0,4})$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Reference Record Id"
+          },
+          "protect_parent_full_pass": {
+            "type": "boolean",
+            "title": "Protect Parent Full Pass",
+            "default": false
           },
           "protected_case_ids": {
             "items": {
@@ -15158,6 +15227,11 @@
             "minimum": 0.0,
             "title": "Max Critical Delta",
             "default": 0.0
+          },
+          "protect_parent_full_pass": {
+            "type": "boolean",
+            "title": "Protect Parent Full Pass",
+            "default": false
           }
         },
         "additionalProperties": false,
@@ -15269,6 +15343,16 @@
             "anyOf": [
               {
                 "$ref": "#/components/schemas/CampaignExtension"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "final_qualification": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CampaignFinalQualification"
               },
               {
                 "type": "null"

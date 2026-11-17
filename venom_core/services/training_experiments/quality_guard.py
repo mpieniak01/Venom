@@ -81,6 +81,28 @@ def _reference_hits(record: dict, cases: dict, protect_hits: bool) -> set[str]:
     return protected
 
 
+def _parent_cases(record: dict, cases: dict, context: dict, settings: dict) -> dict:
+    adapter = context.get("initial_adapter_sha256")
+    if not _digest(adapter) or adapter != record.get("candidate_sha256"):
+        raise ValueError("campaign_quality_parent_adapter_changed")
+    return {
+        key: {
+            "usable": _flag(case, "candidate", "usable"),
+            "critical": (
+                _flag(case, "candidate", "critical")
+                if settings["no_new_critical"]
+                else case["candidate"].get("critical")
+            ),
+            **(
+                {"passed": _flag(case, "candidate", "passed")}
+                if settings.get("protect_parent_full_pass", False)
+                else {}
+            ),
+        }
+        for key, case in cases.items()
+    }
+
+
 def freeze_policy(settings: dict, context: dict, fetch: EvidenceReader) -> dict:
     """Bind the policy to verified dev context and immutable reference digests."""
     identity = _identity(context["identity"], protocol_required=False)
@@ -92,12 +114,23 @@ def freeze_policy(settings: dict, context: dict, fetch: EvidenceReader) -> dict:
         raise ValueError("campaign_quality_category_unknown")
     protected = set(settings["protected_case_ids"])
     references = []
+    parent_id = settings.get("parent_reference_record_id")
+    parent_cases = None
+    if settings.get("protect_parent_full_pass", False) and parent_id is None:
+        raise ValueError("campaign_quality_parent_reference_missing")
+    if parent_id is not None and parent_id not in settings["reference_record_ids"]:
+        raise ValueError("campaign_quality_parent_reference_missing")
     for record_id in settings["reference_record_ids"]:
         record = _reference(fetch, record_id)
         observed = _identity(record["identity"])
         _compare_identity(identity, observed)
         identity = observed
         cases = _cases(record, categories)
+        if record_id == parent_id:
+            parent_cases = _parent_cases(record, cases, context, settings)
+            protected.update(
+                key for key, case in parent_cases.items() if case["usable"]
+            )
         protected.update(
             _reference_hits(record, cases, settings["protect_reference_hits"])
         )
@@ -112,6 +145,14 @@ def freeze_policy(settings: dict, context: dict, fetch: EvidenceReader) -> dict:
         "references": references,
         "identity": identity,
         "case_categories": categories,
+        **(
+            {
+                "parent_cases": parent_cases,
+                "initial_adapter_sha256": context["initial_adapter_sha256"],
+            }
+            if parent_cases is not None
+            else {}
+        ),
     }
     source_id = settings.get("source_record_id")
     if source_id is not None:
@@ -172,6 +213,11 @@ def verify_context(policy: dict, context: dict) -> None:
         raise ValueError("campaign_quality_case_coverage")
     if policy.get("source_record") is not None:
         _verify_source_context(policy["source_record"], context)
+    if (
+        policy.get("parent_cases") is not None
+        and context.get("initial_adapter_sha256") != policy["initial_adapter_sha256"]
+    ):
+        raise ValueError("campaign_quality_parent_adapter_changed")
 
 
 def blocked(reason: str) -> dict:
@@ -185,18 +231,27 @@ def blocked(reason: str) -> dict:
     }
 
 
+def _reference_flag(case: dict, reference: dict | None, metric: str) -> bool:
+    if reference is not None:
+        return reference[metric]
+    return _flag(case, "base", metric)
+
+
 def _decisions(policy: dict, cases: dict) -> tuple[set[str], list[str], dict]:
     protected = set(policy["protected_case_ids"])
     critical = []
     summaries: dict[str, dict] = {}
     for key, case in cases.items():
-        base = _flag(case, "base", "usable")
+        reference = policy.get("parent_cases", {}).get(key)
+        base = _reference_flag(case, reference, "usable")
         candidate = _flag(case, "candidate", "usable")
-        if base and policy["protect_base_hits"]:
+        if base and (policy["protect_base_hits"] or reference is not None):
             protected.add(key)
         if policy["no_new_critical"]:
-            base_critical = _flag(case, "base", "critical")
             candidate_critical = _flag(case, "candidate", "critical")
+            base_critical = _reference_flag(case, reference, "critical")
+            if type(base_critical) is not bool:
+                raise ValueError("campaign_quality_case_evidence_missing")
             if candidate_critical and not base_critical:
                 critical.append(key)
         totals = summaries.setdefault(
@@ -229,6 +284,7 @@ def evaluate(
         reasons.append({"code": "protected_case_lost", "count": len(lost)})
     if new_critical:
         reasons.append({"code": "new_critical_error", "count": len(new_critical)})
+    full_pass = _full_pass_decision(policy, cases, reasons)
     for category, total in summaries.items():
         delta = (total["candidate"] - total["base"]) / total["n"]
         minimum = policy["min_category_usable_delta"].get(category)
@@ -242,4 +298,62 @@ def evaluate(
         "lost_case_ids": lost,
         "new_critical_case_ids": sorted(new_critical),
         "category_deltas": summaries,
+        **full_pass,
+        **(
+            {"parent_delta": {**_parent_delta(policy, cases), **full_pass}}
+            if policy.get("parent_cases") is not None
+            else {}
+        ),
     }, protocol
+
+
+def _parent_delta(policy: dict, cases: dict) -> dict:
+    parent = policy["parent_cases"]
+    return {
+        "reference_record_id": policy["parent_reference_record_id"],
+        "n": len(cases),
+        "usable_delta": (
+            sum(_flag(case, "candidate", "usable") for case in cases.values())
+            - sum(case["usable"] for case in parent.values())
+        )
+        / len(cases),
+        "critical_delta": _critical_delta(parent, cases),
+    }
+
+
+def _critical_delta(parent: dict, cases: dict) -> float | None:
+    values = [
+        (parent[key]["critical"], case["candidate"].get("critical"))
+        for key, case in cases.items()
+    ]
+    if any(type(value) is not bool for pair in values for value in pair):
+        return None
+    return sum(
+        int(candidate) - int(reference) for reference, candidate in values
+    ) / len(values)
+
+
+def _full_pass_decision(policy: dict, cases: dict, reasons: list[dict]) -> dict:
+    if not policy.get("protect_parent_full_pass", False):
+        return {}
+    parent = policy.get("parent_cases")
+    if not isinstance(parent, dict) or parent.keys() != cases.keys():
+        raise ValueError("campaign_quality_parent_reference_missing")
+    if any(type(case.get("passed")) is not bool for case in parent.values()):
+        raise ValueError("campaign_quality_case_evidence_missing")
+    protected = {key for key, case in parent.items() if case["passed"]}
+    full_passes = {
+        key for key, case in cases.items() if _flag(case, "candidate", "passed")
+    }
+    lost = sorted(protected - full_passes)
+    delta = (len(full_passes) - len(protected)) / len(cases)
+    if lost:
+        reasons.append({"code": "parent_full_pass_lost", "count": len(lost)})
+    if delta <= 0:
+        reasons.append({"code": "parent_full_pass_no_gain"})
+    return {
+        "full_pass_delta": delta,
+        "parent_full_pass_count": len(protected),
+        "candidate_full_pass_count": len(full_passes),
+        "lost_parent_full_pass_case_ids": lost,
+    }

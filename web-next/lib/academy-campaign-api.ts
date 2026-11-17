@@ -21,11 +21,26 @@ export interface CampaignBudget {
 export interface CampaignSelection {
   min_usable_delta: number;
   max_critical_delta: number;
+  protect_parent_full_pass?: boolean;
 }
 
 export type CampaignStrategy = "fixed" | "optuna";
 export type OptunaParameter = "rank" | "alpha" | "learning_rate" | "dropout";
 export type OptunaSearchSpace = Partial<Record<OptunaParameter, { low: number; high: number; log?: boolean }>>;
+
+export interface CampaignFinalInputs {
+  inputs_id: string;
+  final_test_sha256: string;
+  final_calibration_sha256: string;
+  max_seconds: number;
+}
+
+export interface CampaignFinalQualification {
+  inputs_id: string;
+  reserve_seconds: number;
+}
+
+export type CampaignQualificationStatus = "pending" | "running" | "passed" | "failed_quality" | "incomplete";
 
 export interface CampaignRequest {
   campaign_id: string;
@@ -35,12 +50,13 @@ export interface CampaignRequest {
   search_space?: OptunaSearchSpace;
   sampler_seed?: number;
   checkpoint_steps?: number[];
-  extension?: { initial_trials: number; min_usable_delta: number };
+  extension?: { initial_trials: number; min_usable_delta: number; repeat_best_recipe?: boolean };
   budget: CampaignBudget;
   selection: CampaignSelection;
   retention: "keep_all" | "discard_rejected";
   review_mode: "manual" | "automatic";
   quality_policy?: CampaignQualityPolicy | null;
+  final_qualification?: CampaignFinalQualification | null;
 }
 
 export interface CampaignPlan extends Omit<CampaignRequest, "variants"> {
@@ -58,7 +74,7 @@ export interface CampaignCheckpointEvaluation {
   step: number;
   status: string;
   usable_delta?: number;
-  critical_delta?: number;
+  critical_delta?: number | null;
   quality_guard?: TrialQualityGuard | null;
   result_sha256?: string;
 }
@@ -68,7 +84,7 @@ export interface CampaignTrial {
   status: string;
   attempt?: number;
   usable_delta?: number;
-  critical_delta?: number;
+  critical_delta?: number | null;
   error?: string | null;
   resume_available?: boolean;
   quality_guard?: TrialQualityGuard | null;
@@ -79,6 +95,15 @@ export interface CampaignTrial {
 }
 
 export interface Campaign {
+  phase?: "trials" | "qualification" | "complete";
+  qualification_status?: CampaignQualificationStatus;
+  qualification?: { status?: string; qualified?: unknown; reason?: string; usable_delta?: number; critical_delta?: number | null; parent_full_pass_count?: number; candidate_full_pass_count?: number; full_pass_delta?: number } | null;
+  deadline_at?: number | null;
+  qualification_attempts?: number;
+  repeat_confirmation?: {
+    status: "passed" | "failed_quality" | "incomplete";
+    repeat_run_id?: string | null;
+  } | null;
   campaign_id: string;
   plan: CampaignPlan;
   status: string;
@@ -170,6 +195,10 @@ export function controlRemoteTextCampaign(campaign: RemoteTextCampaign, action: 
 
 export function remoteTextEvidenceUrl(campaignId: string, runId: string) {
   return `${getApiBaseUrl()}${REMOTE_TEXT}/${encodeURIComponent(campaignId)}/evidence/${encodeURIComponent(runId)}`;
+}
+
+export function listCampaignFinalInputs(signal?: AbortSignal) {
+  return apiFetch<{ inputs: CampaignFinalInputs[] }>(`${CAMPAIGNS}/final-inputs`, { signal });
 }
 
 export function listCampaigns(signal?: AbortSignal) {

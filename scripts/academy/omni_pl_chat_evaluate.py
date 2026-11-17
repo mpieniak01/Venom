@@ -21,6 +21,11 @@ from scripts.academy.omni_pl_chat_data import (
     validate_splits,
     write_jsonl,
 )
+from scripts.academy.omni_pl_chat_dialogue import (
+    DialogueHistory,
+    blind_answer,
+    validate_dialogues,
+)
 from scripts.academy.omni_pl_chat_masks import SNAPSHOT_PIN, verify_snapshot
 from scripts.academy.omni_pl_chat_p1 import _verify_boundary, _write_json
 
@@ -37,6 +42,7 @@ def validate_dev_cases(cases: list[dict]) -> None:
     if not 1 <= len(cases) <= 512:
         raise ValueError("expected one to 512 evaluation cases")
     validate_splits(cases)
+    validate_dialogues(cases)
     for row in cases:
         limit = row.get("max_new_tokens", MAX_NEW_TOKENS)
         if type(limit) is not int or not 1 <= limit <= MAX_NEW_TOKENS:
@@ -263,14 +269,20 @@ class GenerationProgress:
         return [case for case in cases if (case["record_id"], tag) not in self.rows]
 
     def publish(self, root: Path, cases: list[dict], variants: list[str]) -> None:
-        # Check completeness before publishing any review files.
+        # Check completeness and arm-specific history before publishing any files.
+        for tag in variants:
+            history = DialogueHistory()
+            for case in cases:
+                history.remember(
+                    case, self.rows[case["record_id"], tag], history.context(case)
+                )
         raw = [self.rows[case["record_id"], tag] for tag in variants for case in cases]
         blind = []
         for case in cases:
             answers = {
-                self.labels[case["record_id"], tag]: self.rows[case["record_id"], tag][
-                    "response"
-                ]
+                self.labels[case["record_id"], tag]: blind_answer(
+                    self.rows[case["record_id"], tag]
+                )
                 for tag in variants
             }
             blind.append({"case": case, "answers": dict(sorted(answers.items()))})
@@ -307,16 +319,23 @@ def _generate(
                 continue
             if tag != "base":
                 model.set_adapter(tag)
+            history = DialogueHistory()
             with model.disable_adapter() if tag == "base" else nullcontext():
-                for case in missing:
-                    item = _predict(
-                        model,
-                        processor,
-                        case["messages"],
-                        eos_ids,
-                        max_new_tokens=case.get("max_new_tokens", MAX_NEW_TOKENS),
-                    )
-                    progress.save((case["record_id"], tag), item)
+                for case in cases:
+                    key = (case["record_id"], tag)
+                    actual = history.context(case)
+                    cached = progress.rows.get(key)
+                    if cached is None:
+                        item = _predict(
+                            model,
+                            processor,
+                            actual.get("input_messages", case["messages"]),
+                            eos_ids,
+                            max_new_tokens=case.get("max_new_tokens", MAX_NEW_TOKENS),
+                        )
+                        progress.save(key, {**item, **actual})
+                        cached = progress.rows[key]
+                    history.remember(case, cached, actual)
             print(json.dumps({"variant": tag, "cases": len(missing)}), flush=True)
 
 
@@ -341,6 +360,7 @@ def _evaluation_manifest(
         "engine": {name: version(name) for name in ("torch", "transformers", "peft")},
         "template": "vendor",
         "generation_mode": "text",
+        "dialogue_protocol": "own-history-v1",
         "do_sample": False,
         "enable_thinking": False,
     }
@@ -377,6 +397,7 @@ def main() -> None:
             name: sha256(Path(__file__).with_name(name))
             for name in (
                 "omni_pl_chat_evaluate.py",
+                "omni_pl_chat_dialogue.py",
                 "omni_pl_chat_data.py",
                 "omni_pl_chat_masks.py",
                 "omni_pl_chat_p1.py",

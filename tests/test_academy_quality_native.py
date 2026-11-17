@@ -89,7 +89,7 @@ def sealed_run(tmp_path):
     )
     report = {
         "run_id": "test-native",
-        "checkpoint": {"step": 1},
+        "checkpoint": {"step": 1, "sha256": "f" * 64},
         "dev_sha256": profile["dev_sha256"],
         "manifest_sha256": stable_hash(manifest),
         "generation_sha256": generation_seal,
@@ -105,6 +105,11 @@ def test_sealed_result_preserves_paired_critical_evidence(sealed_run):
     service, generation = sealed_run
     row = get_record(service, "test-native")
     assert row["identity"] == evaluation_identity(generation, None)
+    assert row["candidate_sha256"] == "f" * 64
+    assert (
+        evaluation_identity({**generation, "dialogue_protocol": "own-history-v1"}, None)
+        != row["identity"]
+    )
     assert row["cases"]["a"] == {
         "category": "init",
         "base": {"usable": True, "critical": False},
@@ -257,3 +262,18 @@ def test_external_disposition_keeps_native_review_pending(sealed_run, checkpoint
     }
     write(generation / "raw.jsonl", {})
     assert "external_review" not in service.status(run_id)
+
+
+def test_native_quality_preserves_whole_rubric_passed(sealed_run):
+    from venom_core.services.training_experiments.profiles import read_json
+
+    service, _ = sealed_run
+    root = service.run_dir("test-native")
+    report = read_json(root / "result.json")
+    report["verdicts"]["base"]["a"]["passed"] = 1
+    report["verdicts"]["candidate"]["a"]["passed"] = 0
+    checksum = write(root / "result.json", report)
+    write(root / "result-seal.json", {"result_sha256": checksum})
+    row = native_record(service, "test-native")
+    assert row["cases"]["a"]["base"]["passed"] is True
+    assert row["cases"]["a"]["candidate"]["passed"] is False

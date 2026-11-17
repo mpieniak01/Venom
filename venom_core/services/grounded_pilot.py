@@ -1642,7 +1642,7 @@ def _people_noun(size: int) -> str:
 
 _ROOM = re.compile(r"\bsal[aię]\b\s*:?\s*", re.IGNORECASE)
 _ROOM_NUMBER = re.compile(
-    r"(?:nr\.?\s+)?((?a:\d{1,6})[a-z]?)(?![\w-]|\.(?a:\d))", re.IGNORECASE
+    r"(?:nr\.?\s+)?((?a:\d{1,6})[a-z]?)(?![\w/-]|\.(?a:\d))", re.IGNORECASE
 )
 _ROOM_UNCHANGED = re.compile(r"bez\s+zmian\b", re.IGNORECASE)
 _HOST = re.compile(r"\b(?:prowadzi|zastąpi\s+(?:go|ją))\s+", re.IGNORECASE)
@@ -2620,9 +2620,9 @@ def _certify_pilot_draft(
     )
     claim_draft = AnswerDraft(proof.evidence_id, claims)
     gate.validate_draft(claim_draft)
-    if result.unit is not None:
+    if result.unit is not None or any(not item.unit for item in evidence.calculations):
         verify_result_prose(
-            draft.prose, evidence, result.unit, decimal_places=result.places
+            draft.prose, evidence, result.unit or "", decimal_places=result.places
         )
     return draft, claim_draft
 
@@ -2745,7 +2745,9 @@ def run_pilot_turn(
         }
     )
     _review_pilot_draft(reviewer, qualification, material, audit)
-    _current(backend, sources.documents)
-    if claim_draft is not None:
+    if claim_draft is None:
+        gate.revalidate_sources(sources.documents)
+    else:
+        _current(backend, sources.documents)
         gate.publish(claim_draft)
     return PublishedAnswer(proof.evidence_id, draft.prose)

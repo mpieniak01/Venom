@@ -111,11 +111,12 @@ _PERCENT_REQUESTS = (
         re.IGNORECASE,
     ),
 )
-_RESULT_IN_PROSE = re.compile(
-    rf"(?<![\w.,+−-])([+−-]?(?:[0-9]{{1,3}}(?:[ \u00a0\u202f][0-9]{{3}})+"
-    rf"|[0-9]{{1,160}})(?:[.,][0-9]{{1,160}})?)\s*({_UNIT_TOKEN})",
-    re.IGNORECASE,
+_RESULT_NUMBER = (
+    r"(?<![\w.,+−-])([+−-]?(?a:\d{1,3}(?:[ \u00a0\u202f]\d{3})+"
+    r"|\d{1,160})(?:[.,](?a:\d{1,160}))?)"
 )
+_RESULT_IN_PROSE = re.compile(rf"{_RESULT_NUMBER}\s*({_UNIT_TOKEN})", re.IGNORECASE)
+_BARE_RESULT_IN_PROSE = re.compile(rf"(?>{_RESULT_NUMBER})(?![\w+−-]|[.,](?a:\d))")
 _NUMERIC_SPACES = str.maketrans({"−": "-", " ": None, "\u00a0": None, "\u202f": None})
 _ALTERNATE_UNIT = re.compile(
     rf"\s*(?:i|oraz|lub|albo|bądź)\s+(?:(?:na|w)\s+)?({_UNIT_TOKEN})",
@@ -349,6 +350,22 @@ class Evidence:
     requested_source_ids: tuple[str, ...] = ()
 
 
+def _displayed_result_values(prose: str, unit: str) -> list[str]:
+    labeled = list(_RESULT_IN_PROSE.finditer(prose))
+    if unit:
+        return [
+            match[1]
+            for match in labeled
+            if _UNIT_BY_SPELLING[match[2].casefold()] == unit
+        ]
+    labeled_starts = {match.start() for match in labeled}
+    return [
+        match[1]
+        for match in _BARE_RESULT_IN_PROSE.finditer(prose)
+        if match.start() not in labeled_starts
+    ]
+
+
 def verify_result_prose(
     prose: str,
     evidence: Evidence,
@@ -367,9 +384,8 @@ def verify_result_prose(
         if c.unit == result_unit
     }
     displayed = [
-        match[1].translate(_NUMERIC_SPACES).replace(",", ".")
-        for match in _RESULT_IN_PROSE.finditer(prose)
-        if _UNIT_BY_SPELLING[match[2].casefold()] == result_unit
+        value.translate(_NUMERIC_SPACES).replace(",", ".")
+        for value in _displayed_result_values(prose, result_unit)
     ]
     # Every visible amount in the requested unit must bind to executed evidence.
     if not displayed or not all(
@@ -821,6 +837,11 @@ class GroundedTurn:
         if not document.available:
             raise EvidenceError("answer_source_unavailable")
         return document
+
+    def revalidate_sources(self, sources: tuple[SourceDocument, ...]) -> None:
+        """Refresh documents that informed a clarification before it is published."""
+        for source in sources:
+            self._read_publication_document(source.ref)
 
     def _source_line(
         self,

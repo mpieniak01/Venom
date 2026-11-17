@@ -398,6 +398,69 @@ def test_assessment_changes_after_user_supplies_missing_input():
     assert second.evidence_id != first.evidence_id
 
 
+@pytest.mark.parametrize(
+    ("status", "error"),
+    [
+        ({"available": False}, "answer_source_unavailable"),
+        ({"superseded": True}, "source_superseded"),
+        ({"complete": False}, "source_incomplete"),
+        ({"text": "Nowa treść tej samej karty."}, "source_hash_mismatch"),
+    ],
+)
+def test_clarification_refreshes_source_after_review(status, error):
+    backend, reviewer, model = Sources(), Reviewer(), Model("clarify")
+    ref = backend.document.ref
+    model.override["draft"] = {
+        "prose": "Cena wynosi 30 zł. Ile biletów?",
+        "sources": [],
+        "calculations": [],
+    }
+
+    def change_status():
+        backend.document = replace(backend.document, **status)
+
+    reviewer.hook = change_status
+    with pytest.raises(EvidenceError, match=error):
+        run(backend=backend, model=model, reviewer=reviewer)
+    assert backend.current_ref(ref.source_id) == ref
+    assert backend.reads == [ref, ref]
+
+
+@pytest.mark.parametrize(
+    ("prose", "accepted"),
+    [
+        ("Wynik to 4.", True),
+        ("Wynik to 5.", False),
+        ("Pośrednio 4, ostatecznie 5.", False),
+        ("Wynik to 4 kg.", False),
+        ("Wynik to 4,5.", False),
+        ("Wynik to 4 500x.", False),
+    ],
+)
+def test_unitless_result_requires_visible_calculated_value(prose, accepted):
+    model, reviewer = Model(), Reviewer()
+    model.override["plan"] = {
+        "calculations": [{"calculation_id": "c1", "expression": "2+2", "unit": ""}]
+    }
+    model.override["draft"] = {
+        "prose": prose,
+        "sources": [],
+        "calculations": [{"calculation_id": "c1", "value": "4", "unit": ""}],
+    }
+    backend, required = Sources(), Requirements(calculation=True)
+    if accepted:
+        result = run_pilot_turn(
+            "Oblicz 2+2.", "r1", backend, model, reviewer, required=required
+        )
+        assert result.text == prose
+    else:
+        with pytest.raises(EvidenceError, match="answer_result_unbound"):
+            run_pilot_turn(
+                "Oblicz 2+2.", "r1", backend, model, reviewer, required=required
+            )
+        assert not reviewer.materials
+
+
 def test_clarification_cannot_smuggle_claims():
     model = Model("clarify")
     model.override["draft"] = {
@@ -1796,6 +1859,7 @@ def test_full_ordinary_recap_keeps_opening_time_distinct_from_event_time():
             "Środa, sala 12, otwarcie o 10:50, spotkanie o 11:05; prowadzi Anita.",
         ),
         ("Przenosimy spotkanie do sali na parterze. Godzina bez zmian.", None),
+        ("Przenosimy spotkanie do sali 12/13. Godzina bez zmian.", None),
     ],
 )
 def test_schedule_recap_updates_numbered_room_or_declines_unknown_room(

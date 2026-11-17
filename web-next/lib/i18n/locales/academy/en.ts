@@ -364,7 +364,7 @@ export const academy = {
     finalQualification: {
       fullPassCounts: "Fully passed: parent → candidate",
       repeatConfirmation: "Confirmation with another seed",
-      repeatStatus: {"passed": "Improvement confirmed", "failed_quality": "Repeat did not confirm quality", "incomplete": "Confirmation incomplete"},
+      repeatStatus: {"passed": "Improvement confirmed", "failed_quality": "Repeat did not confirm quality", "incomplete": "Confirmation incomplete", "not_started": "Repeat was not started"},
       supervisedTokens: "Supervised token limit",
       repeatBest: "Repeat the best recipe with another seed",
       repeatHint: "Prepare one alternative for each initial trial, using another seed. Only the winner's alternative will run. Select the actual parent reference.",

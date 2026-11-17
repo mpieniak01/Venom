@@ -142,6 +142,17 @@ describe("Academy campaigns", () => {
     await screen.findByText("Nie spełnia kryteriów jakości");
     assert.equal(screen.queryByRole("button", { name: "Zatrzymaj kampanię" }), null);
     assert.equal(screen.queryByText("Spełnia kryteria odłożonego testu"), null);
+    cleanup();
+    current = { ...current, qualification_status: "incomplete",
+      repeat_confirmation: { status: "incomplete", repeat_run_id: null } };
+    render(<CampaignPanel onOpenRun={() => undefined} />);
+    await screen.findByText(/Powtórzenie nie zostało uruchomione/);
+    assert.equal(screen.queryByText(/Powtórzenie nie potwierdziło jakości/), null);
+    cleanup();
+    current = { ...current, qualification_status: "failed_quality",
+      repeat_confirmation: { status: "failed_quality", repeat_run_id: "confirmed-recipe-03" } };
+    render(<CampaignPanel onOpenRun={() => undefined} />);
+    await screen.findByText(/Powtórzenie nie potwierdziło jakości/);
   });
 
   it("previews a remote text campaign and starts the approved VM plan", async () => {

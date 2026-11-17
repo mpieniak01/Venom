@@ -364,7 +364,7 @@ export const academy = {
     finalQualification: {
       fullPassCounts: "Pełne zaliczenia: rodzic → kandydat",
       repeatConfirmation: "Potwierdzenie innym ziarnem",
-      repeatStatus: {"passed": "Przyrost potwierdzony", "failed_quality": "Powtórzenie nie potwierdziło jakości", "incomplete": "Brak kompletnego potwierdzenia"},
+      repeatStatus: {"passed": "Przyrost potwierdzony", "failed_quality": "Powtórzenie nie potwierdziło jakości", "incomplete": "Brak kompletnego potwierdzenia", "not_started": "Powtórzenie nie zostało uruchomione"},
       supervisedTokens: "Limit tokenów nadzoru",
       repeatBest: "Powtórz najlepszą recepturę z innym ziarnem",
       repeatHint: "Przygotuj po jednej alternatywie dla każdej próby początkowej, z innym ziarnem. Wykonana zostanie tylko alternatywa zwycięzcy. Wskaż odniesienie rzeczywistego rodzica.",

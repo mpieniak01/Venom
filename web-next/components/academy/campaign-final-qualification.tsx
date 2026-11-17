@@ -69,12 +69,13 @@ export function CampaignFinalSummary({ campaign }: { readonly campaign: Campaign
   const parentFull = campaign.qualification?.parent_full_pass_count;
   const candidateFull = campaign.qualification?.candidate_full_pass_count;
   const repeat = campaign.repeat_confirmation?.status;
+  const repeatKey = campaign.repeat_confirmation?.repeat_run_id === null ? "not_started" : repeat;
   const format = new Intl.NumberFormat(language, { maximumFractionDigits: 2, signDisplay: "exceptZero" });
   return (
     <section aria-label={t(PREFIX + "title")} className="space-y-2 rounded-lg border border-[color:var(--ui-border)] p-3">
       <h4 className="font-medium">{t(PREFIX + "title")}</h4>
       <p role="status" className="font-medium">{t(PREFIX + statusKey)}</p>
-      {repeat && <p className="text-sm">{t(PREFIX + "repeatConfirmation")} · {t(PREFIX + "repeatStatus." + repeat)}</p>}
+      {repeat && <p className="text-sm">{t(PREFIX + "repeatConfirmation")} · {t(PREFIX + "repeatStatus." + repeatKey)}</p>}
       <dl className="flex flex-wrap gap-4 text-sm">
         <div><dt className="text-hint">{t(PREFIX + "inputs")}</dt><dd>{plan.inputs_id}</dd></div>
         <div><dt className="text-hint">{t(PREFIX + "reserve")}</dt><dd>{plan.reserve_seconds}</dd></div>

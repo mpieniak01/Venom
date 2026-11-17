@@ -364,7 +364,7 @@ export const academy = {
     finalQualification: {
       fullPassCounts: "Vollständig bestanden: Elternadapter → Kandidat",
       repeatConfirmation: "Bestätigung mit anderem Seed",
-      repeatStatus: {"passed": "Verbesserung bestätigt", "failed_quality": "Wiederholung bestätigt Qualität nicht", "incomplete": "Bestätigung unvollständig"},
+      repeatStatus: {"passed": "Verbesserung bestätigt", "failed_quality": "Wiederholung bestätigt Qualität nicht", "incomplete": "Bestätigung unvollständig", "not_started": "Wiederholung wurde nicht gestartet"},
       supervisedTokens: "Limit überwachter Tokens",
       repeatBest: "Beste Rezeptur mit anderem Seed wiederholen",
       repeatHint: "Bereiten Sie für jeden ersten Versuch eine Alternative mit anderem Seed vor. Nur die Alternative des Gewinners wird ausgeführt. Wählen Sie die tatsächliche Elternreferenz.",

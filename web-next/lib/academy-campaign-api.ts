@@ -100,7 +100,10 @@ export interface Campaign {
   qualification?: { status?: string; qualified?: unknown; reason?: string; usable_delta?: number; critical_delta?: number; parent_full_pass_count?: number; candidate_full_pass_count?: number; full_pass_delta?: number } | null;
   deadline_at?: number | null;
   qualification_attempts?: number;
-  repeat_confirmation?: { status: "passed" | "failed_quality" | "incomplete" } | null;
+  repeat_confirmation?: {
+    status: "passed" | "failed_quality" | "incomplete";
+    repeat_run_id?: string | null;
+  } | null;
   campaign_id: string;
   plan: CampaignPlan;
   status: string;

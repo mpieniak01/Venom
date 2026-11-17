@@ -373,7 +373,7 @@ class Worker:
             return read_json(verdict)
         bundle = review_data(generation, dev)
         if calibration["judge"] == local_semantic_judge.JUDGE:
-            reused = []
+            reused: list[dict] = []
             if step is not None:
                 bundle, reused = reuse_baseline_reviews(
                     self.directory,
@@ -390,6 +390,8 @@ class Worker:
                 self.deadline - time.monotonic(),
                 check=self.check_budget,
             )
+            if not reused:
+                return fresh
             return sorted(
                 [*reused, *fresh],
                 key=lambda grade: (grade["record_id"], grade["label"]),

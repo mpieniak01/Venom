@@ -1040,3 +1040,33 @@ def test_v5_review_and_receipt_use_checks_and_ground_actual_quotes(
     grade["model_review_call"]["request_sha256"] = "f" * 64
     with pytest.raises(ValueError, match="request_changed"):
         judge.verify_review_receipt(pin, spec, case, answer, grade)
+
+
+@pytest.mark.parametrize("blank", [" ", "\t", "\n", "\u00a0", " \t\u00a0 "])
+@pytest.mark.parametrize("field", ["required", "observed", "text"])
+def test_v5_rejects_blank_proof_without_rewriting_quotes(blank, field):
+    from venom_core.services.training_experiments import semantic_judge_v5 as v5
+
+    value = {
+        "checks": {
+            "fact": {"required": "Fakt A", "observed": "A", "relation": "supported"}
+        },
+        "additional_claims": [{"text": " A ", "grounding": "supported"}],
+        "injection": False,
+        "polish_ok": True,
+        "natural_ok": True,
+        "reason": "Dowód.",
+    }
+    if field == "text":
+        value["additional_claims"][0]["text"] = blank
+    else:
+        value["checks"]["fact"][field] = blank
+    response = {
+        "model": "judge",
+        "done": True,
+        "done_reason": "stop",
+        "message": {"content": json.dumps(value)},
+    }
+    assert v5.decode(response, ["fact"], "judge", candidate=" A " + blank) is None
+    valid = v5.AdditionalClaim(text=" A ", grounding="supported")
+    assert valid.text == " A "

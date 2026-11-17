@@ -5,9 +5,9 @@ from __future__ import annotations
 import copy
 import json
 import re
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import Field, StrictBool
+from pydantic import AfterValidator, Field, StrictBool
 
 from . import local_semantic_judge as judge
 
@@ -34,14 +34,25 @@ _DECIMAL = re.compile(
 )
 
 
+def _nonblank(value: str) -> str:
+    if not value.strip():
+        raise ValueError("experiment_judge_empty_evidence")
+    return value
+
+
+TextProof = Annotated[
+    str, Field(min_length=1, max_length=400), AfterValidator(_nonblank)
+]
+
+
 class Check(judge._Strict):
-    required: str = Field(min_length=1, max_length=400)
-    observed: str = Field(min_length=1, max_length=400)
+    required: TextProof
+    observed: TextProof
     relation: Literal["supported", "omitted", "contradicted", "unclear"]
 
 
 class AdditionalClaim(judge._Strict):
-    text: str = Field(min_length=1, max_length=400)
+    text: TextProof
     grounding: Literal["supported", "unsupported", "unclear"]
 
 
@@ -117,7 +128,7 @@ def decode(response: dict, ids: list[str], model: str, *, candidate: str | None 
     ):
         return None
     grounding = {claim.grounding for claim in value.additional_claims}
-    unsupported = (
+    unsupported: Literal["yes", "no", "unclear"] = (
         "yes"
         if "contradicted" in atoms.values() or "unsupported" in grounding
         else "unclear"

@@ -445,6 +445,9 @@ def test_external_outcome_is_historical_and_keeps_old_seals(tmp_path):
     legacy = QualityRecord.model_validate(payload).model_dump(
         mode="json", exclude={"cohorts", "reviewed_run", "candidate_sha256"}
     )
+    for item in legacy["cases"].values():
+        for role in ("base", "candidate"):
+            item[role].pop("passed")
     legacy["protected_case_ids"] = sorted(legacy["protected_case_ids"])
     expected = stable_hash(legacy)
     assert quality_record_view(payload) == {**legacy, "result_sha256": expected}
@@ -603,3 +606,79 @@ def test_whole_dialogue_pair_requires_both_complete_branches():
         "paired-family"
     ]
     assert not family["contrast_pair_complete"]
+
+
+@pytest.mark.parametrize(
+    ("candidate_passes", "status", "reason"),
+    [
+        ([True, True, True], "passed", None),
+        ([True, False, False], "rejected", "parent_full_pass_no_gain"),
+        ([False, True, True], "rejected", "parent_full_pass_lost"),
+    ],
+)
+def test_parent_full_pass_guard_cannot_exchange_format_for_usable_gain(
+    candidate_passes, status, reason
+):
+    from venom_core.services.training_experiments.quality_guard import (
+        evaluate,
+        freeze_policy,
+    )
+
+    ref = record("parent")
+    ref["candidate_sha256"] = "f" * 64
+    ref["protected_case_ids"] = []
+    ref["cases"] = {
+        key: {
+            "category": "source",
+            "base": {"usable": False, "critical": False},
+            "candidate": {"usable": index < 2, "critical": False, "passed": index == 0},
+        }
+        for index, key in enumerate(("a", "b", "c"))
+    }
+    ref = quality_record_view(ref)
+    settings = {
+        "reference_record_ids": ["parent"],
+        "parent_reference_record_id": "parent",
+        "protected_case_ids": [],
+        "protect_reference_hits": True,
+        "protect_base_hits": False,
+        "protect_parent_full_pass": True,
+        "min_category_usable_delta": {},
+        "no_new_critical": True,
+    }
+    context = {
+        "identity": ref["identity"],
+        "case_categories": dict.fromkeys(ref["cases"], "source"),
+        "initial_adapter_sha256": "f" * 64,
+    }
+    policy = freeze_policy(settings, context, lambda _: ref)
+    current = deepcopy(ref)
+    for (key, row), passed in zip(
+        current["cases"].items(), candidate_passes, strict=True
+    ):
+        row["candidate"] = {"usable": True, "critical": False, "passed": passed}
+    decision, _ = evaluate(policy, current, None)
+    assert decision["status"] == status
+    assert decision["parent_delta"]["usable_delta"] == pytest.approx(1 / 3)
+    assert decision["full_pass_delta"] == pytest.approx((sum(candidate_passes) - 1) / 3)
+    if reason:
+        assert reason in {item["code"] for item in decision["reasons"]}
+    assert decision["lost_parent_full_pass_case_ids"] == (
+        [] if candidate_passes[0] else ["a"]
+    )
+    current["cases"]["b"]["candidate"].pop("passed")
+    with pytest.raises(ValueError, match="case_evidence_missing"):
+        evaluate(policy, current, None)
+    ref["cases"]["b"]["candidate"].pop("passed")
+    with pytest.raises(ValueError, match="case_evidence_missing"):
+        freeze_policy(settings, context, lambda _: ref)
+
+
+def test_full_pass_cannot_be_true_for_an_unusable_or_critical_outcome():
+    payload = record()
+    payload["cases"]["a"]["candidate"]["passed"] = True
+    with pytest.raises(ValidationError, match="full_pass_requires_usable"):
+        quality_record_view(payload)
+    payload["cases"]["a"]["candidate"].update(usable=True, critical=True)
+    with pytest.raises(ValidationError, match="full_pass_requires_usable"):
+        quality_record_view(payload)

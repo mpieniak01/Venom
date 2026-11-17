@@ -47,6 +47,13 @@ class QualitySource(_QualityModel):
 class QualityOutcome(_QualityModel):
     usable: bool
     critical: bool | None
+    passed: bool | None = None
+
+    @model_validator(mode="after")
+    def full_pass_requires_usable(self) -> QualityOutcome:
+        if self.passed and (not self.usable or self.critical is True):
+            raise ValueError("quality_full_pass_requires_usable")
+        return self
 
 
 class QualityCase(_QualityModel):

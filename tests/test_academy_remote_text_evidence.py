@@ -1829,3 +1829,135 @@ def test_profile_readiness_rechecks_configured_audit_and_fails_closed(
     monkeypatch.setattr(settings, "VENOM_ACADEMY_JUDGE_AUDIT_ROOT", "")
     with pytest.raises(ValueError, match="experiment_judge_audit_missing"):
         semantic.qualification(qualification)
+
+
+@pytest.mark.parametrize(
+    ("outcomes", "protect", "expected", "lost", "delta"),
+    [
+        (
+            [("bad", "good", "good"), ("bad", "good", "bad"), ("bad", "bad", "bad")],
+            True,
+            "passed",
+            [],
+            1 / 3,
+        ),
+        (
+            [
+                ("bad", "verbose", "good"),
+                ("bad", "good", "bad"),
+                ("bad", "good", "bad"),
+            ],
+            True,
+            "failed_quality",
+            ["pilot"],
+            1 / 3,
+        ),
+        (
+            [("bad", "good", "good"), ("bad", "verbose", "bad"), ("bad", "bad", "bad")],
+            True,
+            "failed_quality",
+            [],
+            0,
+        ),
+        (
+            [
+                ("bad", "verbose", "good"),
+                ("bad", "good", "bad"),
+                ("bad", "good", "bad"),
+            ],
+            False,
+            "passed",
+            [],
+            None,
+        ),
+    ],
+)
+def test_final_full_pass_gate_retains_format_and_requires_positive_full_gain(
+    tmp_path, outcomes, protect, expected, lost, delta
+):
+    spec, academy, _parent, host, pins = _continued_campaign(tmp_path)
+    cases = rows(spec.final_test)
+    for case in cases:
+        case["criteria"].append(
+            {"id": "short", "kind": "format", "description": "Krótka forma."}
+        )
+    spec.final_test.write_text("".join(json.dumps(case) + "\n" for case in cases))
+    calibration = read_json(spec.calibration)
+    calibration["dev_sha256"] = digest(spec.final_test)
+    for rule in calibration["cases"].values():
+        for grade in [*rule["outputs"].values(), rule["fallback"]]:
+            grade["criteria"]["short"] = True
+        rule["outputs"]["verbose"] = {
+            **rule["outputs"]["good"],
+            "criteria": {"correct": True, "short": False},
+        }
+    atomic_json(spec.calibration, calibration)
+    pins.update(
+        final_test_sha256=digest(spec.final_test),
+        final_calibration_sha256=digest(spec.calibration),
+    )
+    host.state["plan"]["selection"]["protect_parent_full_pass"] = protect
+    evidence = tmp_path / "evidence"
+    receipts = {RUN: sync_run(host, host.state, RUN, evidence, LIMIT)}
+    result = qualify(
+        evidence,
+        host.state,
+        receipts,
+        academy,
+        spec,
+        evaluator=lambda *args: _evaluate_fixture(*args, outcomes=outcomes),
+        **pins,
+    )
+    assert result["status"] == expected
+    assert result["usable_delta"] > 0
+    if protect:
+        assert result["full_pass_delta"] == pytest.approx(delta)
+        assert result["lost_parent_full_pass_case_ids"] == lost
+        assert (
+            result["parent_comparison"]["full_pass_delta"] == result["full_pass_delta"]
+        )
+    else:
+        assert "full_pass_delta" not in result
+
+
+def test_full_pass_gate_fails_closed_on_missing_parent_or_missing_passed():
+    result = {}
+    assert remote_text_qualification._full_pass_gate({}, result, {}) == (True, True)
+    assert remote_text_qualification._full_pass_gate(
+        {}, result, {"protect_parent_full_pass": True}
+    ) == (False, False)
+    assert (
+        result["qualification_reason"] == "remote_text_final_full_pass_evidence_missing"
+    )
+    scores = {
+        "verdicts": {
+            "parent": {"a": {"usable": 1}},
+            "candidate": {"a": {"usable": 1, "passed": 1}},
+        }
+    }
+    with pytest.raises(ValueError, match="full_pass_evidence_missing"):
+        remote_text_qualification._full_pass_comparison(scores)
+
+
+def test_full_pass_gain_must_meet_the_same_declared_delta():
+    scores = {
+        "verdicts": {
+            "parent": {
+                "a": {"usable": 1, "passed": 1},
+                "b": {"usable": 0, "passed": 0},
+                "c": {"usable": 0, "passed": 0},
+            },
+            "candidate": {
+                "a": {"usable": 1, "passed": 1},
+                "b": {"usable": 1, "passed": 1},
+                "c": {"usable": 1, "passed": 0},
+            },
+        }
+    }
+    result = {}
+    assert remote_text_qualification._full_pass_gate(
+        scores, result, {"protect_parent_full_pass": True, "min_usable_delta": 0.5}
+    ) == (False, True)
+    assert result["full_pass_delta"] == pytest.approx(1 / 3)
+    assert result["lost_parent_full_pass_case_ids"] == []
+    assert result["qualification_reason"] == "remote_text_final_full_pass_below_minimum"

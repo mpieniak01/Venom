@@ -94,6 +94,8 @@ def freeze_policy(settings: dict, context: dict, fetch: EvidenceReader) -> dict:
     references = []
     parent_id = settings.get("parent_reference_record_id")
     parent_cases = None
+    if settings.get("protect_parent_full_pass", False) and parent_id is None:
+        raise ValueError("campaign_quality_parent_reference_missing")
     if parent_id is not None and parent_id not in settings["reference_record_ids"]:
         raise ValueError("campaign_quality_parent_reference_missing")
     for record_id in settings["reference_record_ids"]:
@@ -110,6 +112,11 @@ def freeze_policy(settings: dict, context: dict, fetch: EvidenceReader) -> dict:
                 key: {
                     "usable": _flag(case, "candidate", "usable"),
                     "critical": _flag(case, "candidate", "critical"),
+                    **(
+                        {"passed": _flag(case, "candidate", "passed")}
+                        if settings.get("protect_parent_full_pass", False)
+                        else {}
+                    ),
                 }
                 for key, case in cases.items()
             }
@@ -269,6 +276,7 @@ def evaluate(
         reasons.append({"code": "protected_case_lost", "count": len(lost)})
     if new_critical:
         reasons.append({"code": "new_critical_error", "count": len(new_critical)})
+    full_pass = _full_pass_decision(policy, cases, reasons)
     for category, total in summaries.items():
         delta = (total["candidate"] - total["base"]) / total["n"]
         minimum = policy["min_category_usable_delta"].get(category)
@@ -282,8 +290,9 @@ def evaluate(
         "lost_case_ids": lost,
         "new_critical_case_ids": sorted(new_critical),
         "category_deltas": summaries,
+        **full_pass,
         **(
-            {"parent_delta": _parent_delta(policy, cases)}
+            {"parent_delta": {**_parent_delta(policy, cases), **full_pass}}
             if policy.get("parent_cases") is not None
             else {}
         ),
@@ -303,4 +312,30 @@ def _parent_delta(policy: dict, cases: dict) -> dict:
             / len(cases)
             for metric in ("usable", "critical")
         },
+    }
+
+
+def _full_pass_decision(policy: dict, cases: dict, reasons: list[dict]) -> dict:
+    if not policy.get("protect_parent_full_pass", False):
+        return {}
+    parent = policy.get("parent_cases")
+    if not isinstance(parent, dict) or parent.keys() != cases.keys():
+        raise ValueError("campaign_quality_parent_reference_missing")
+    if any(type(case.get("passed")) is not bool for case in parent.values()):
+        raise ValueError("campaign_quality_case_evidence_missing")
+    protected = {key for key, case in parent.items() if case["passed"]}
+    full_passes = {
+        key for key, case in cases.items() if _flag(case, "candidate", "passed")
+    }
+    lost = sorted(protected - full_passes)
+    delta = (len(full_passes) - len(protected)) / len(cases)
+    if lost:
+        reasons.append({"code": "parent_full_pass_lost", "count": len(lost)})
+    if delta <= 0:
+        reasons.append({"code": "parent_full_pass_no_gain"})
+    return {
+        "full_pass_delta": delta,
+        "parent_full_pass_count": len(protected),
+        "candidate_full_pass_count": len(full_passes),
+        "lost_parent_full_pass_case_ids": lost,
     }

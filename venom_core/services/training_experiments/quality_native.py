@@ -161,10 +161,20 @@ def evaluated_cases(
             "category": category,
             "base": {
                 "usable": verdicts["base"][case_id]["usable"] == 1,
+                **(
+                    {"passed": verdicts["base"][case_id]["passed"] == 1}
+                    if "passed" in verdicts["base"][case_id]
+                    else {}
+                ),
                 "critical": critical[case_id, "base"],
             },
             "candidate": {
                 "usable": verdicts["candidate"][case_id]["usable"] == 1,
+                **(
+                    {"passed": verdicts["candidate"][case_id]["passed"] == 1}
+                    if "passed" in verdicts["candidate"][case_id]
+                    else {}
+                ),
                 "critical": critical[case_id, checkpoint],
             },
         }

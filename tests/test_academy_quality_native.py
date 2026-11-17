@@ -262,3 +262,18 @@ def test_external_disposition_keeps_native_review_pending(sealed_run, checkpoint
     }
     write(generation / "raw.jsonl", {})
     assert "external_review" not in service.status(run_id)
+
+
+def test_native_quality_preserves_whole_rubric_passed(sealed_run):
+    from venom_core.services.training_experiments.profiles import read_json
+
+    service, _ = sealed_run
+    root = service.run_dir("test-native")
+    report = read_json(root / "result.json")
+    report["verdicts"]["base"]["a"]["passed"] = 1
+    report["verdicts"]["candidate"]["a"]["passed"] = 0
+    checksum = write(root / "result.json", report)
+    write(root / "result-seal.json", {"result_sha256": checksum})
+    row = native_record(service, "test-native")
+    assert row["cases"]["a"]["base"]["passed"] is True
+    assert row["cases"]["a"]["candidate"]["passed"] is False

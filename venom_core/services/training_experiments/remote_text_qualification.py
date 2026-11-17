@@ -444,6 +444,57 @@ def _parent_comparison(scores: dict) -> dict:
     }
 
 
+def _full_pass_comparison(scores: dict) -> dict:
+    verdicts = scores.get("verdicts", {})
+    parent, candidate = verdicts.get("parent"), verdicts.get("candidate")
+    if (
+        not isinstance(parent, dict)
+        or not parent
+        or not isinstance(candidate, dict)
+        or parent.keys() != candidate.keys()
+    ):
+        raise ValueError("remote_text_final_full_pass_evidence_missing")
+    for outcomes in (parent, candidate):
+        if any(
+            type(row.get("passed")) not in (int, bool)
+            or row["passed"] not in (0, 1)
+            or (row["passed"] and row.get("usable") != 1)
+            for row in outcomes.values()
+        ):
+            raise ValueError("remote_text_final_full_pass_evidence_missing")
+    protected = {key for key, row in parent.items() if row["passed"]}
+    full_passes = {key for key, row in candidate.items() if row["passed"]}
+    return {
+        "full_pass_delta": (len(full_passes) - len(protected)) / len(parent),
+        "parent_full_pass_count": len(protected),
+        "candidate_full_pass_count": len(full_passes),
+        "lost_parent_full_pass_case_ids": sorted(protected - full_passes),
+    }
+
+
+def _full_pass_gate(scores: dict, result: dict, selection: dict) -> tuple[bool, bool]:
+    if not selection.get("protect_parent_full_pass", False):
+        return True, True
+    try:
+        comparison = _full_pass_comparison(scores)
+    except ValueError as exc:
+        result["qualification_reason"] = str(exc)
+        return False, False
+    result.update(comparison)
+    result.setdefault("parent_comparison", {}).update(comparison)
+    minimum = selection["min_usable_delta"]
+    result["full_pass_min_delta"] = minimum
+    lost = comparison["lost_parent_full_pass_case_ids"]
+    sufficient = (
+        comparison["full_pass_delta"] > 0 and comparison["full_pass_delta"] >= minimum
+    )
+    if lost:
+        result["qualification_reason"] = "remote_text_final_parent_full_pass_lost"
+    elif not sufficient:
+        result["qualification_reason"] = "remote_text_final_full_pass_below_minimum"
+    return sufficient and not lost, True
+
+
 def _model_hashes(adapter: dict) -> dict[str, str]:
     return {
         ADAPTER_FILES[0]: adapter["config_sha256"],
@@ -564,13 +615,17 @@ def _measure(
     usable, critical, critical_regression = _selection_metrics(
         scores, result, has_parent=has_parent
     )
+    full_pass_ok, full_pass_complete = _full_pass_gate(scores, result, selection)
     passed = (
-        usable > 0
+        full_pass_ok
+        and usable > 0
         and usable >= selection["min_usable_delta"]
         and critical <= selection["max_critical_delta"]
         and not critical_regression
     )
     status = "passed" if passed else "failed_quality"
+    if not full_pass_complete:
+        status = "incomplete_calibration"
     if not legacy:
         result["calibration_protocol"] = {
             name: calibration[name]
@@ -598,6 +653,11 @@ def _measure(
         "status": status,
         "judgments_sha256": digest(generation / _JUDGMENTS),
         "summaries": scores["summaries"],
+        **{
+            key: scores[key]
+            for key in ("grouped_scores", "paired_parent_comparison")
+            if key in scores
+        },
         "usable_delta": usable,
         "critical_delta": critical,
         "qualified": {

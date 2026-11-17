@@ -143,7 +143,15 @@ W panelu **Końcowa kwalifikacja względem rodzica** wybierz zarejestrowany paki
 
 Rezerwa stanowi część `budget.max_seconds`; musi pomieścić eksport i ocenę. Wybranie pakietu włącza ocenę automatyczną. Zapis planu wiąże wejścia oraz protokół, a pierwszy start ustala nieprzesuwalny termin. Wznowienie wykorzystuje pozostały czas. Po zakończeniu prób wykonawca sam eksportuje finalistę, ocenia go względem bazy i rzeczywistego rodzica, zapisuje dowody i decyzję. Osobne wywołanie końcowej oceny nie jest potrzebne.
 
+Opcja `selection.protect_parent_full_pass: true` dodatkowo chroni wszystkie pełne zaliczenia rodzica i wymaga przyrostu pełnych zaliczeń na finale. Sama poprawność treści nie zastępuje spełnienia instrukcji formatu. W regułach dev odpowiada jej `quality_policy.protect_parent_full_pass`.
+
 `qualifying` oznacza trwający finał. Panel pokazuje osobno `qualification_status`: oczekiwanie, pracę, spełnienie kryteriów, odrzucenie jakościowe albo niekompletną ocenę. `succeeded` dotyczy zakończenia procedury; kwalifikację potwierdza dopiero wynik `passed`. Remis z rodzicem nie jest przyrostem. Wynik dotyczy umiejętności objętych testem i nie aktywuje automatycznie adaptera w zwykłym czacie. Raport kampanii zawiera także wynik końcowego etapu.
+
+## Dogrywka najlepszej receptury
+
+Dla automatycznej kampanii od wskazanego rodzica można ustawić `extension.repeat_best_recipe: true`. Zamroź po jednej alternatywie z innym ziarnem dla każdej próby początkowej. Po ocenie początkowych prób wykonawca wybierze tylko alternatywę najlepszej receptury, jeśli uzyskała wymagany przyrost względem rodzica i zachowała chronione zaliczenia. Pozostałe alternatywy zostaną pominięte. Wszystkie receptury oraz ich powiązania są sprawdzane przy planowaniu; podczas pracy nie są przepisywane.
+
+Przy dwóch początkowych recepturach przygotuj cztery warianty: dwa początkowe i dwa możliwe powtórzenia. Limit trzech prób obejmuje dwa treningi początkowe oraz jedno wybrane powtórzenie. Limit tokenów i aktualizacji uwzględnia najdroższą możliwą dogrywkę. Zmiana ziarna może zmienić rzeczywistą liczbę tokenów nadzoru, dlatego parametr `max_supervised_tokens` trzeba obliczyć dla każdego ziarna. Wszystkie etapy, włącznie z kwalifikacją, pozostają w jednym limicie czasu. Finał wymaga potwierdzenia poprawy na tym samym kroku w obu ziarnach; brak potwierdzenia kończy sesję bez otwierania odłożonego testu.
 
 ## Ocena kilku checkpointów z jednej próby
 

@@ -34,6 +34,11 @@ export function CampaignFinalFields({ inputs, failed, disabled, automaticReview 
       <p className="text-sm text-hint">{t(PREFIX + "hint")}</p>
       {failed && <p role="alert" className="text-sm text-red-400">{t(PREFIX + "loadError")}</p>}
       {!failed && !inputs.length && <p className="text-sm text-hint">{t(PREFIX + "noInputs")}</p>}
+      <Label htmlFor="campaign-parent-full-pass" className="flex items-center gap-2">
+        <input id="campaign-parent-full-pass" name="protect_parent_full_pass" type="checkbox" defaultChecked />
+        {t(PREFIX + "fullPass")}
+      </Label>
+      <p className="text-xs text-hint">{t(PREFIX + "fullPassHint")}</p>
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="space-y-1">
           <Label htmlFor="campaign-final-inputs">{t(PREFIX + "inputs")}</Label>
@@ -61,11 +66,15 @@ export function CampaignFinalSummary({ campaign }: { readonly campaign: Campaign
   const statusKey = QUALIFICATION_STATES.has(status) ? status : "unverified";
   const deadline = campaign.deadline_at;
   const delta = campaign.qualification?.usable_delta;
+  const parentFull = campaign.qualification?.parent_full_pass_count;
+  const candidateFull = campaign.qualification?.candidate_full_pass_count;
+  const repeat = campaign.repeat_confirmation?.status;
   const format = new Intl.NumberFormat(language, { maximumFractionDigits: 2, signDisplay: "exceptZero" });
   return (
     <section aria-label={t(PREFIX + "title")} className="space-y-2 rounded-lg border border-[color:var(--ui-border)] p-3">
       <h4 className="font-medium">{t(PREFIX + "title")}</h4>
       <p role="status" className="font-medium">{t(PREFIX + statusKey)}</p>
+      {repeat && <p className="text-sm">{t(PREFIX + "repeatConfirmation")} · {t(PREFIX + "repeatStatus." + repeat)}</p>}
       <dl className="flex flex-wrap gap-4 text-sm">
         <div><dt className="text-hint">{t(PREFIX + "inputs")}</dt><dd>{plan.inputs_id}</dd></div>
         <div><dt className="text-hint">{t(PREFIX + "reserve")}</dt><dd>{plan.reserve_seconds}</dd></div>
@@ -76,6 +85,9 @@ export function CampaignFinalSummary({ campaign }: { readonly campaign: Campaign
       </dl>
       {typeof delta === "number" && Number.isFinite(delta) && (
         <p className="text-sm">{t("academy.campaigns.quality.policy.parentDelta")} · {format.format(delta * 100)} {t("academy.campaigns.quality.guard.points")}</p>
+      )}
+      {typeof parentFull === "number" && typeof candidateFull === "number" && (
+        <p className="text-sm">{t(PREFIX + "fullPassCounts")} · {parentFull} → {candidateFull}</p>
       )}
       <p className="text-sm text-hint">{t(PREFIX + "scope")}</p>
     </section>

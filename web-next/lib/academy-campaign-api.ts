@@ -21,6 +21,7 @@ export interface CampaignBudget {
 export interface CampaignSelection {
   min_usable_delta: number;
   max_critical_delta: number;
+  protect_parent_full_pass?: boolean;
 }
 
 export type CampaignStrategy = "fixed" | "optuna";
@@ -49,7 +50,7 @@ export interface CampaignRequest {
   search_space?: OptunaSearchSpace;
   sampler_seed?: number;
   checkpoint_steps?: number[];
-  extension?: { initial_trials: number; min_usable_delta: number };
+  extension?: { initial_trials: number; min_usable_delta: number; repeat_best_recipe?: boolean };
   budget: CampaignBudget;
   selection: CampaignSelection;
   retention: "keep_all" | "discard_rejected";
@@ -96,9 +97,10 @@ export interface CampaignTrial {
 export interface Campaign {
   phase?: "trials" | "qualification" | "complete";
   qualification_status?: CampaignQualificationStatus;
-  qualification?: { status?: string; qualified?: unknown; reason?: string; usable_delta?: number; critical_delta?: number } | null;
+  qualification?: { status?: string; qualified?: unknown; reason?: string; usable_delta?: number; critical_delta?: number; parent_full_pass_count?: number; candidate_full_pass_count?: number; full_pass_delta?: number } | null;
   deadline_at?: number | null;
   qualification_attempts?: number;
+  repeat_confirmation?: { status: "passed" | "failed_quality" | "incomplete" } | null;
   campaign_id: string;
   plan: CampaignPlan;
   status: string;

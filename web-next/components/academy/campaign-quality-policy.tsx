@@ -51,6 +51,7 @@ export function readQualityPolicy(data: FormData, sourceRecordId?: string): Camp
     protect_reference_hits: data.has("quality-protect-reference-hits"),
     protect_base_hits: data.has("quality-protect-base-hits"),
     no_new_critical: data.has("quality-no-new-critical"),
+    ...(data.has("quality-protect-parent-full-pass") ? { protect_parent_full_pass: true } : {}),
     min_category_usable_delta: Object.fromEntries(deltas),
   };
 }
@@ -143,6 +144,7 @@ export function CampaignPolicyFields({ disabled, initial }: {
               ["protect-reference-hits", initial?.protect_reference_hits ?? true, "protectReference"],
               ["protect-base-hits", initial?.protect_base_hits ?? false, "protectBase"],
               ["no-new-critical", initial?.no_new_critical ?? true, "noNewCritical"],
+              ["protect-parent-full-pass", initial?.protect_parent_full_pass ?? false, "protectFullPass"],
             ] as const).map(([key, checked, label]) => (
               <Label htmlFor={`quality-${key}`} key={key} className="flex items-center gap-2">
                 <input id={`quality-${key}`} name={`quality-${key}`} type="checkbox" defaultChecked={checked} />
@@ -209,6 +211,7 @@ export function QualityPolicySummary({ policy }: { readonly policy: CampaignQual
     [policy.protect_reference_hits, "protectReference"],
     [policy.protect_base_hits, "protectBase"],
     [policy.no_new_critical, "noNewCritical"],
+    [policy.protect_parent_full_pass, "protectFullPass"],
   ] as const;
 
   return (
@@ -250,6 +253,9 @@ export function TrialQualityDecision({ guard }: { readonly guard: TrialQualityGu
         {guard.parent_delta && (
           <p>{t(QUALITY + "policy.parentDelta")} · {format.format(guard.parent_delta.usable_delta * 100)} {t(QUALITY + "guard.points")}
             {" · "}{guard.parent_delta.reference_record_id}</p>
+        )}
+        {typeof guard.parent_full_pass_count === "number" && typeof guard.candidate_full_pass_count === "number" && (
+          <p>{t("academy.campaigns.finalQualification.fullPassCounts")} · {guard.parent_full_pass_count} → {guard.candidate_full_pass_count}</p>
         )}
         {guard.reasons.map((reason, index) => {
           const key = QUALITY + "issues." + reason.code;

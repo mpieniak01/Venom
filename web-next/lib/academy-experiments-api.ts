@@ -5,6 +5,8 @@ import { apiFetch } from "./api-client";
 const EXPERIMENTS = "/api/v1/academy/experiments";
 
 export interface ExperimentRecipe {
+  seed?: number;
+  max_supervised_tokens?: number;
   rank?: number;
   alpha?: number;
   learning_rate?: number;

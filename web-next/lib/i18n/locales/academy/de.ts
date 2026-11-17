@@ -362,6 +362,15 @@ export const academy = {
   },
   campaigns: {
     finalQualification: {
+      fullPassCounts: "Vollständig bestanden: Elternadapter → Kandidat",
+      repeatConfirmation: "Bestätigung mit anderem Seed",
+      repeatStatus: {"passed": "Verbesserung bestätigt", "failed_quality": "Wiederholung bestätigt Qualität nicht", "incomplete": "Bestätigung unvollständig"},
+      supervisedTokens: "Limit überwachter Tokens",
+      repeatBest: "Beste Rezeptur mit anderem Seed wiederholen",
+      repeatHint: "Bereiten Sie für jeden ersten Versuch eine Alternative mit anderem Seed vor. Nur die Alternative des Gewinners wird ausgeführt. Wählen Sie die tatsächliche Elternreferenz.",
+      fullPass: "Vollständige Anweisungsbefolgung im Abschlusstest verlangen",
+      fullPassHint: "Zusätzlich mehr vollständig bestandene Fälle verlangen und alle vollständig bestandenen Elternfälle erhalten. Dies umfasst Format und Kürze der Antwort.",
+      consideredVariants: "Geprüfte Varianten",
       trainingSeed: "Trainings-Seed",
       "title": "Abschließende Qualifikation gegenüber dem Elternadapter",
       "inputs": "Paket für den zurückgehaltenen Test",
@@ -484,6 +493,7 @@ export const academy = {
       recipeJson: "Variantenparameter (JSON)",
       invalidDraft: "Prüfen Sie das Varianten-JSON, die Trainerfelder und die Kampagnenlimits.",
       policy: {
+        protectFullPass: "Vollständig bestandene Elternfälle erhalten",
         parentReference: "Referenz des tatsächlichen Elternadapters",
         noParent: "Keine Elternreferenz",
         parentHint: "Wählen Sie die Bewertung der Ausgangsgewichte des Trainings. Die Regeln schützen deren Erfolge; Auswahl und Verlängerung messen den Zuwachs gegenüber dem Elternadapter.",
@@ -512,6 +522,8 @@ export const academy = {
         points: "Prozentpunkte",
       },
       issues: {
+        parent_full_pass_lost: "Vollständig bestandene Elternfälle gingen verloren.",
+        parent_full_pass_no_gain: "Kein Zuwachs vollständig bestandener Fälle gegenüber dem Elternadapter.",
         quality_cohort_mismatch: "Die Bewertungen verwenden unterschiedliche Vergleichsgruppen.",
         campaign_quality_evidence_unavailable: "Der für die Qualitätsregeln benötigte Bewertungsbericht fehlt.",
         quality_identity_unverified: "Die Identität der Bewertung ist unbestätigt.",

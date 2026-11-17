@@ -362,6 +362,15 @@ export const academy = {
   },
   campaigns: {
     finalQualification: {
+      fullPassCounts: "Pełne zaliczenia: rodzic → kandydat",
+      repeatConfirmation: "Potwierdzenie innym ziarnem",
+      repeatStatus: {"passed": "Przyrost potwierdzony", "failed_quality": "Powtórzenie nie potwierdziło jakości", "incomplete": "Brak kompletnego potwierdzenia"},
+      supervisedTokens: "Limit tokenów nadzoru",
+      repeatBest: "Powtórz najlepszą recepturę z innym ziarnem",
+      repeatHint: "Przygotuj po jednej alternatywie dla każdej próby początkowej, z innym ziarnem. Wykonana zostanie tylko alternatywa zwycięzcy. Wskaż odniesienie rzeczywistego rodzica.",
+      fullPass: "Wymagaj pełnego wykonania instrukcji w finale",
+      fullPassHint: "Wymagaj także przyrostu pełnych zaliczeń i zachowania wszystkich pełnych zaliczeń rodzica. Obejmuje to format oraz krótkość odpowiedzi.",
+      consideredVariants: "Rozpatrzone warianty",
       trainingSeed: "Ziarno treningu",
       "title": "Końcowa kwalifikacja względem rodzica",
       "inputs": "Pakiet odłożonego testu",
@@ -484,6 +493,7 @@ export const academy = {
       recipeJson: "Parametry wariantu (JSON)",
       invalidDraft: "Sprawdź JSON wariantów, pola trenera i limity kampanii.",
       policy: {
+        protectFullPass: "Zachowaj pełne zaliczenia rodzica",
         parentReference: "Odniesienie rzeczywistego rodzica",
         noParent: "Bez wskazanego rodzica",
         parentHint: "Wybierz ocenę tych samych wag, od których zaczyna się trening. Reguły chronią jej trafienia, a selekcja i dogrywka mierzą przyrost względem rodzica.",
@@ -512,6 +522,8 @@ export const academy = {
         points: "p.p.",
       },
       issues: {
+        parent_full_pass_lost: "Utracono pełne zaliczenia rodzica.",
+        parent_full_pass_no_gain: "Brak przyrostu pełnych zaliczeń względem rodzica.",
         quality_cohort_mismatch: "Oceny mają różne grupy porównawcze.",
         campaign_quality_evidence_unavailable: "Brakuje raportu oceny potrzebnego do reguł jakości.",
         quality_identity_unverified: "Brak potwierdzonej tożsamości oceny.",

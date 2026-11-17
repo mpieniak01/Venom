@@ -206,6 +206,7 @@ export function CampaignDetail({ campaign, disabled, optunaAvailable, onAction, 
   const displayNumber = new Intl.NumberFormat(language, { maximumFractionDigits: 1 });
   const displayDelta = new Intl.NumberFormat(language, { maximumFractionDigits: 1, signDisplay: "exceptZero" });
   const trialLimit = `${campaign.trial_index} / ${variants.length}`;
+  const executedTrials = campaign.trials.filter((trial) => (trial.attempt ?? 0) > 0).length;
   const planned = campaign.status === "planned";
   const active = campaignIsActive(campaign.status);
   const canStop = (active && campaign.status !== "stopping") || campaign.status === "blocked";
@@ -230,7 +231,8 @@ export function CampaignDetail({ campaign, disabled, optunaAvailable, onAction, 
           <dt className="text-hint">{t("academy.campaigns.strategy")}</dt>
           <dd>{t(optuna ? "academy.campaigns.optuna.name" : "academy.campaigns.fixed")}</dd>
         </div>
-        <div><dt className="text-hint">{t("academy.campaigns.trials")}</dt><dd>{trialLimit}</dd></div>
+        <div><dt className="text-hint">{t("academy.campaigns.finalQualification.consideredVariants")}</dt><dd>{trialLimit}</dd></div>
+        <div><dt className="text-hint">{t("academy.campaigns.trials")}</dt><dd>{executedTrials} / {budget.max_trials}</dd></div>
         <div><dt className="text-hint">{t("academy.campaigns.budget.max_seconds")}</dt><dd>{displayNumber.format(campaign.elapsed_seconds)} / {displayNumber.format(budget.max_seconds)}</dd></div>
         <div><dt className="text-hint">{t("academy.campaigns.budget.max_updates")}</dt><dd>{displayNumber.format(campaign.used_updates)} / {displayNumber.format(budget.max_updates)}</dd></div>
         <div><dt className="text-hint">{t("academy.campaigns.budget.max_tokens")}</dt><dd>{displayNumber.format(campaign.used_tokens)} / {displayNumber.format(budget.max_tokens)}</dd></div>

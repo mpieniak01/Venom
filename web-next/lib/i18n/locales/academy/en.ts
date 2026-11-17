@@ -362,6 +362,15 @@ export const academy = {
   },
   campaigns: {
     finalQualification: {
+      fullPassCounts: "Fully passed: parent → candidate",
+      repeatConfirmation: "Confirmation with another seed",
+      repeatStatus: {"passed": "Improvement confirmed", "failed_quality": "Repeat did not confirm quality", "incomplete": "Confirmation incomplete"},
+      supervisedTokens: "Supervised token limit",
+      repeatBest: "Repeat the best recipe with another seed",
+      repeatHint: "Prepare one alternative for each initial trial, using another seed. Only the winner's alternative will run. Select the actual parent reference.",
+      fullPass: "Require full instruction compliance in the final",
+      fullPassHint: "Also require more fully passed cases and retain every fully passed parent case. This includes answer format and brevity.",
+      consideredVariants: "Considered variants",
       trainingSeed: "Training seed",
       "title": "Final qualification against parent",
       "inputs": "Held-out test package",
@@ -484,6 +493,7 @@ export const academy = {
       recipeJson: "Variant parameters (JSON)",
       invalidDraft: "Check the variant JSON, supported trainer fields, and campaign limits.",
       policy: {
+        protectFullPass: "Retain the parent's fully passed cases",
         parentReference: "Actual parent reference",
         noParent: "No parent reference",
         parentHint: "Choose the evaluation of the weights used to initialize training. The policy protects its successes; selection and extension measure improvement against the parent.",
@@ -512,6 +522,8 @@ export const academy = {
         points: "pp",
       },
       issues: {
+        parent_full_pass_lost: "The candidate lost fully passed parent cases.",
+        parent_full_pass_no_gain: "No gain in fully passed cases against the parent.",
         quality_cohort_mismatch: "The reviews use different comparison cohorts.",
         campaign_quality_evidence_unavailable: "The evaluation report required by the quality rules is unavailable.",
         quality_identity_unverified: "The evaluation identity is unverified.",

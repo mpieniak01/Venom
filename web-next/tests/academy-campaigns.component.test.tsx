@@ -80,11 +80,13 @@ describe("Academy campaigns", () => {
     data.set("quality-parent-reference", "run:parent-baseline");
     data.append("quality-reference-record-id", "run:reference");
     data.set("quality-protect-reference-hits", "on");
+    data.set("quality-protect-parent-full-pass", "on");
     data.set("quality-no-new-critical", "on");
     const policy = readQualityPolicy(data);
     assert.equal(policy?.parent_reference_record_id, "run:parent-baseline");
     assert.deepEqual(policy?.reference_record_ids, ["run:reference", "run:parent-baseline"]);
     assert.equal(policy?.protect_reference_hits, true);
+    assert.equal(policy?.protect_parent_full_pass, true);
   });
 
   it("plans one-start final qualification with a registered package and shared time budget", async () => {
@@ -121,6 +123,7 @@ describe("Academy campaigns", () => {
     assert.deepEqual(submitted!.final_qualification, { inputs_id: "fresh-final", reserve_seconds: 900 });
     assert.equal(submitted!.review_mode, "automatic");
     assert.equal(submitted!.budget.max_seconds, 3600);
+    assert.equal(submitted!.selection.protect_parent_full_pass, true);
     assert.deepEqual(submitted!.extension, { initial_trials: 1, min_usable_delta: 0.05 });
     assert.equal(submitted!.variants[1].seed, 43);
   });

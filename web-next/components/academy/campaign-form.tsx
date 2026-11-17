@@ -66,7 +66,9 @@ const VARIANT_FIELDS = [
   ["alpha", "academy.experiments.alpha"],
   ["learning_rate", "academy.experiments.learningRate"],
   ["seed", "academy.campaigns.finalQualification.trainingSeed"],
+  ["max_supervised_tokens", "academy.campaigns.finalQualification.supervisedTokens"],
 ] as const;
+const VARIANT_MIN = { rank: 1, alpha: 1, learning_rate: undefined, seed: 0, max_supervised_tokens: 1 };
 const SELECT_CLASS = "h-9 w-full rounded-md border border-[color:var(--ui-border)] bg-[color:var(--ui-surface)] px-2 text-sm";
 
 function numberField(data: FormData, name: string) {
@@ -219,6 +221,12 @@ export function CampaignForm({ profiles, adapters, adaptersFailed, disabled, opt
         if (final) {
           if (!profile.automatic_review) throw new Error("automatic review required");
           request.final_qualification = final;
+          if (data.has("protect_parent_full_pass")) {
+            request.selection.protect_parent_full_pass = true;
+            if (request.quality_policy?.parent_reference_record_id) {
+              request.quality_policy.protect_parent_full_pass = true;
+            }
+          }
           request.review_mode = "automatic";
         }
       }
@@ -236,9 +244,17 @@ export function CampaignForm({ profiles, adapters, adaptersFailed, disabled, opt
           }
           if (!profile.automatic_review) throw new Error("automatic review required");
           request.review_mode = "automatic";
-          request.extension = { initial_trials: initial, min_usable_delta: gain };
+          const repeatBest = data.has("extension_repeat_best_recipe");
+          if (repeatBest && (rows.length !== 2 * initial || !request.quality_policy?.parent_reference_record_id)) {
+            throw new Error("repeat requires a frozen alternative for every initial recipe and a parent reference");
+          }
+          request.extension = { initial_trials: initial, min_usable_delta: gain,
+            ...(repeatBest ? { repeat_best_recipe: true } : {}) };
+
       }
-      if (request.variants.length > request.budget.max_trials || request.budget.trial_seconds > request.budget.max_seconds) {
+      const trials = request.extension?.repeat_best_recipe
+        ? request.extension.initial_trials + 1 : request.variants.length;
+      if (trials > request.budget.max_trials || request.budget.trial_seconds > request.budget.max_seconds) {
         setInvalid(true);
         return;
       }
@@ -323,7 +339,7 @@ export function CampaignForm({ profiles, adapters, adaptersFailed, disabled, opt
                 <div className="space-y-1" key={field}>
                   <Label htmlFor={`variant-${row}-${field}`}>{t(label)}</Label>
                   <Input id={`variant-${row}-${field}`} name={`variant-${row}-${field}`} type="number"
-                    min={field === "learning_rate" ? undefined : Number(field !== "seed")}
+                    min={VARIANT_MIN[field]}
                     step={field === "learning_rate" ? "any" : 1}
                     placeholder={profile?.recipe[field]?.toString()} disabled={disabled} />
                 </div>
@@ -388,6 +404,11 @@ export function CampaignForm({ profiles, adapters, adaptersFailed, disabled, opt
         <fieldset className="space-y-2 rounded-lg border border-[color:var(--ui-border)] p-3" disabled={disabled}>
           <legend className="text-sm font-medium">{t("academy.remoteText.extension.title")}</legend>
           <p className="text-sm text-hint">{t("academy.remoteText.extension.hint")}</p>
+          <Label htmlFor="campaign-repeat-best" className="flex items-center gap-2">
+            <input id="campaign-repeat-best" name="extension_repeat_best_recipe" type="checkbox" />
+            {t("academy.campaigns.finalQualification.repeatBest")}
+          </Label>
+          <p className="text-xs text-hint">{t("academy.campaigns.finalQualification.repeatHint")}</p>
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1">
               <Label htmlFor="campaign-extension-initial">{t("academy.remoteText.extension.initialTrials")}</Label>

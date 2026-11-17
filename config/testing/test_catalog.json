@@ -5516,6 +5516,20 @@
       "rationale": "Verify the bounded Omni remote session inputs, frozen hashes and exclusion of reserved data."
     },
     {
+      "path": "tests/test_omni_state_repair_data.py",
+      "domain": "academy",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "State repair targets, own-history dev and immutable provenance."
+    },
+    {
       "path": "tests/test_onnx_gpu_bridge.py",
       "domain": "runtime",
       "test_type": "gate",

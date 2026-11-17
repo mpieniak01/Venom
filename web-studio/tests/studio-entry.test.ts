@@ -120,7 +120,14 @@ function loadTsx(file: string, imports: Record<string, unknown>) {
   return loaded.exports;
 }
 
-function shellExports() {
+const nativeReference = {
+  runtime: "omni-native-peft-text", adapter_id: "omni-p13-145",
+  weights_sha256: "9f6863cda26a452e89085ea28628a57cd7f10742d9a0337ade100fd0eb58c493",
+  config_sha256: "b".repeat(64), snapshot_sha256: "c".repeat(64),
+  runtime_id: "omni-native-peft-text:omni-p13-145:9f6863cda26a452e89085ea28628a57cd7f10742d9a0337ade100fd0eb58c493",
+};
+
+function shellExports(selection: typeof nativeReference | null = null, onController?: (input: Record<string, unknown>) => void) {
   const noCall = () => { throw new Error("No runtime/transport expected during SSR"); };
   const nullComponent = () => null;
   const imports: Record<string, unknown> = {
@@ -140,9 +147,15 @@ function shellExports() {
       setters: { setMessage: noCall, setSending: noCall }, optimistic: { simpleRequestDetails: {} },
     }) },
     "@/components/cockpit/hooks/use-cockpit-layout": { useCockpitLayout: () => ({}) },
-    "./use-conversation-controller": { useConversationController: () => ({
-      historyMessages: [], normalRequestIds: [], chatUi: { handleSend: noCall, handleChatScroll: noCall },
-      sessionActions: { handleSessionReset: noCall },
+    "./use-conversation-controller": { useConversationController: (input: Record<string, unknown>) => {
+      onController?.(input);
+      return { historyMessages: [], normalRequestIds: [], chatUi: { handleSend: noCall, handleChatScroll: noCall },
+        sessionActions: { handleSessionReset: noCall } };
+    } },
+    "./use-native-text-chat": { useNativeTextChat: () => ({
+      state: {selection, previous: null, persistent: false},
+      adapters: [{...nativeReference, label: "P13"}], ready: true, busy: false, error: null,
+      refresh: noCall, change: noCall,
     }) },
     "./use-conversation-data": { useConversationData: () => ({ data: {}, loading: false, error: null, refresh: noCall }) },
     "./use-session-draft": { useSessionDraft: () => useState("") },
@@ -153,6 +166,12 @@ function shellExports() {
     "./studio-thread": { StudioThread: nullComponent },
     "./studio.css": {},
   };
+  const nativeApi = loadTsx(path.join(repositoryRoot, "web-next/lib/native-text-chat.ts"), {
+    "./api-client": {apiFetch: noCall},
+  });
+  imports["./native-text-picker"] = loadTsx(path.join(repositoryRoot, "web-next/components/chat/native-text-picker.tsx"), {
+    "@/lib/i18n": imports["@/lib/i18n"], "@/lib/native-text-chat": nativeApi,
+  });
   return loadTsx(path.join(repositoryRoot, "web-next/components/chat/studio-shell.tsx"), imports);
 }
 
@@ -165,6 +184,28 @@ test("shared Full shell retains its legacy navigation by default", () => {
   assert.match(html, /data-testid="chat2-shell"/);
   assert.match(html, /href="\/chat"/);
   assert.match(html, /aria-label="chat2.back"/);
+});
+
+test("ordinary Studio SSR exposes the real native picker without selecting or loading weights", () => {
+  let controller: Record<string, unknown> | undefined;
+  const StudioShell = shellExports(null, input => { controller = input; }).StudioShell as React.ComponentType;
+  const html = renderToStaticMarkup(createElement(StudioShell));
+  assert.equal(controller?.nativeSelection, null);
+  assert.match(html, /aria-label="chat2.nativeText.title"/);
+  assert.match(html, /chat2.nativeText.reference/);
+  assert.match(html, /chat2.nativeText.ordinary/);
+  assert.doesNotMatch(html, /chat2.nativeText.probing/);
+});
+
+test("native overlay reaches the shared conversation controller and renders its pinned identity", () => {
+  let controller: Record<string, unknown> | undefined;
+  const StudioShell = shellExports(nativeReference, input => { controller = input; }).StudioShell as React.ComponentType;
+  const html = renderToStaticMarkup(createElement(StudioShell));
+  assert.deepEqual(controller?.nativeSelection, nativeReference);
+  assert.match(html, new RegExp(nativeReference.weights_sha256));
+  assert.match(html, /chat2.nativeText.rollback/);
+  assert.match(html, /chat2.nativeText.direct/);
+  assert.doesNotMatch(html, /chat2.nativeText.ordinary/);
 });
 
 test("standalone entry renders the same shell without a dead classic link", () => {

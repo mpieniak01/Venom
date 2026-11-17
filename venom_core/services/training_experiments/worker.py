@@ -38,7 +38,12 @@ from venom_core.services.runtime_release_service import (
 
 from . import local_semantic_judge
 from .adapters import runner_identity, verify_adapter_entry
-from .checkpoint_evaluation import bind_steps, publish_pairs, seal_generation
+from .checkpoint_evaluation import (
+    RESULT_SEAL,
+    bind_steps,
+    publish_pairs,
+    seal_generation,
+)
 from .data_audit import verify_audit_preflight
 from .evidence import calibrated_judgments, review_data
 from .profiles import Profile, check_inputs, read_json, resolve_input, rows, stable_hash
@@ -124,7 +129,9 @@ class Worker:
         atomic_json(self.directory / f"gpu-release-{self.attempt}.json", receipt)
 
     @staticmethod
-    def release_gpu(lease: RuntimeLease, *, offline: bool) -> dict:
+    def release_gpu(
+        lease: RuntimeLease, *, offline: bool, timeout: float | None = None
+    ) -> dict:
         """Drain loaded models through the host owning the Academy lease."""
         capability = lease.training_cleanup_capability()
         try:
@@ -142,7 +149,8 @@ class Worker:
                     )
                 )
             else:
-                with httpx.Client(timeout=120, trust_env=False) as client:
+                request_timeout = 120 if timeout is None else min(timeout, 120)
+                with httpx.Client(timeout=request_timeout, trust_env=False) as client:
                     response = client.post(
                         f"http://127.0.0.1:{port}/api/v1/system/models/release",
                         headers={TRAINING_CLEANUP_HEADER: capability},
@@ -336,23 +344,34 @@ class Worker:
         for step in steps:
             self.check_budget()
             generation, dev = self.service._review_inputs(state, checkpoint_step=step)
-            bundle = review_data(generation, dev)
-            if calibration["judge"] == local_semantic_judge.JUDGE:
-                judgments = local_semantic_judge.review_bundle(
-                    calibration,
-                    bundle,
-                    self.run_id,
-                    self.deadline - time.monotonic(),
-                    check=self.check_budget,
-                )
-            else:
-                judgments = calibrated_judgments(calibration, bundle)
+            judgments = self._checkpoint_judgments(generation, dev, step, calibration)
             with self.service.run_lock(self.run_id):
                 self.check_budget()
                 current = self.service.store.read(self.run_id)
                 if current["attempt"] != self.attempt:
                     raise ValueError("experiment_attempt_changed")
                 self.service._commit(current, judgments, checkpoint_step=step)
+
+    def _checkpoint_judgments(
+        self, generation: Path, dev: Path, step: int | None, calibration: dict
+    ) -> list[dict]:
+        verdict = generation / "judgments.json"
+        # The run service verifies the saved judgments against the sealed pair,
+        # checkpoint, baseline and any previous result before publishing again.
+        if step is not None and (
+            verdict.exists() or (generation / RESULT_SEAL).exists()
+        ):
+            return read_json(verdict)
+        bundle = review_data(generation, dev)
+        if calibration["judge"] == local_semantic_judge.JUDGE:
+            return local_semantic_judge.review_bundle(
+                calibration,
+                bundle,
+                self.run_id,
+                self.deadline - time.monotonic(),
+                check=self.check_budget,
+            )
+        return calibrated_judgments(calibration, bundle)
 
     def run(self) -> None:
         with self.service.run_lock(self.run_id):

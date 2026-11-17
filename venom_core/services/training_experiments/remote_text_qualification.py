@@ -37,6 +37,7 @@ from venom_core.services.runtime_admission import (
     ACADEMY_TRAINING_OWNER,
     RuntimeAdmission,
     RuntimeAdmissionError,
+    RuntimeLease,
     get_runtime_admission,
 )
 
@@ -74,6 +75,9 @@ from .worker import Worker
 _TARGET_RUNTIME = "omni-native-peft-text"
 _ENTRY = "final-qualification"
 _INPUTS = "remote-text-final-inputs"
+_GPU_RELEASE_RECEIPT = "gpu-release.json"
+_HOLDOUT = "holdout.jsonl"
+_JUDGMENTS = "judgments.json"
 _MAX_PENDING_RETRIES = 3
 _Bound = TypeVar("_Bound", list, dict)
 _CAMPAIGN_ID = TypeAdapter(CampaignId)
@@ -265,6 +269,17 @@ def _execute(
             child.stdout.close()
 
 
+def _require_dedicated_runtime(offline: bool) -> None:
+    if not offline:
+        raise _QualificationDeferred("remote_text_final_dedicated_gpu_required")
+    try:
+        listener = create_connection(("127.0.0.1", Worker._local_api_port()), timeout=1)
+    except ConnectionRefusedError:
+        return
+    listener.close()
+    raise _QualificationDeferred("remote_text_final_dedicated_gpu_required")
+
+
 def _evaluate(
     command: list[str],
     log: Path,
@@ -279,17 +294,7 @@ def _evaluate(
         raise ValueError("remote_text_final_dedicated_gpu_required")
     offline = host.claim_offline_host()
     if not shared_runtime:
-        if not offline:
-            raise _QualificationDeferred("remote_text_final_dedicated_gpu_required")
-        try:
-            listener = create_connection(
-                ("127.0.0.1", Worker._local_api_port()), timeout=1
-            )
-        except ConnectionRefusedError:
-            pass
-        else:
-            listener.close()
-            raise _QualificationDeferred("remote_text_final_dedicated_gpu_required")
+        _require_dedicated_runtime(offline)
     lock = host.database.parent / "academy-experiments.gpu.lock"
     admission = RuntimeAdmission.for_training_worker(host.database)
     with ExitStack() as resources:
@@ -307,28 +312,51 @@ def _evaluate(
             if exc.code == "runtime_busy":
                 raise _QualificationDeferred("remote_text_final_gpu_busy") from exc
             raise
-        group: list[int] = []
+        _evaluate_with_lease(
+            command,
+            log,
+            timeout,
+            gpu_fd,
+            lease,
+            shared_runtime=shared_runtime,
+            offline=offline,
+        )
 
-        def quiescent() -> bool:
-            return not group or not group_alive(group[0])
 
-        try:
-            if shared_runtime:
-                started = time.monotonic()
-                receipt = Worker.release_gpu(lease, offline=offline)
-                atomic_json(log.with_name("gpu-release.json"), receipt)
-                timeout -= math.ceil(time.monotonic() - started)
-                if timeout <= 0:
-                    raise TimeoutError("remote_text_final_inference_timed_out")
-            # Any failure with unconfirmed process state quarantines the lease.
-            with lease.operation(kind="lifecycle", confirm_quiescent=quiescent):
-                _execute(command, log, timeout, gpu_fd, group)
-        finally:
-            if quiescent() and not lease.release():
-                if shared_runtime and not group:
-                    lease.defer_training_release()
-                else:
-                    raise RuntimeError("remote_text_final_gpu_recovery_required")
+def _evaluate_with_lease(
+    command: list[str],
+    log: Path,
+    timeout: int,
+    gpu_fd: int,
+    lease: RuntimeLease,
+    *,
+    shared_runtime: bool,
+    offline: bool,
+) -> None:
+    group: list[int] = []
+
+    def quiescent() -> bool:
+        return not group or not group_alive(group[0])
+
+    try:
+        if shared_runtime:
+            if timeout <= 0:
+                raise TimeoutError("remote_text_final_inference_timed_out")
+            started = time.monotonic()
+            receipt = Worker.release_gpu(lease, offline=offline, timeout=timeout)
+            atomic_json(log.with_name(_GPU_RELEASE_RECEIPT), receipt)
+            timeout -= math.ceil(time.monotonic() - started)
+            if timeout <= 0:
+                raise TimeoutError("remote_text_final_inference_timed_out")
+        # Any failure with unconfirmed process state quarantines the lease.
+        with lease.operation(kind="lifecycle", confirm_quiescent=quiescent):
+            _execute(command, log, timeout, gpu_fd, group)
+    finally:
+        if quiescent() and not lease.release():
+            if shared_runtime and not group:
+                lease.defer_training_release()
+            else:
+                raise RuntimeError("remote_text_final_gpu_recovery_required")
 
 
 def _adapter_identity(checkpoint: Path, binding: dict, manifest: dict) -> dict:
@@ -401,24 +429,19 @@ def _model_hashes(adapter: dict) -> dict[str, str]:
     }
 
 
-def _measure(
+def _verified_generation(
     generation: Path,
     data: Path,
-    calibration: dict,
     adapter: dict,
     binding: dict,
-    selection: dict,
-    *,
-    seconds: float = 0.0,
+    parent_tag: str | None,
 ) -> dict:
     seal_generation(generation)
     generated, _ = read_generation(generation)
     tag = f"checkpoint-{binding['step']}"
-    parent = binding.get("parent")
-    parent_tag = _parent_tag(binding["step"]) if parent is not None else None
     models: dict[str, dict] = {"base": {"base": True}, tag: _model_hashes(adapter)}
-    if parent is not None and parent_tag is not None:
-        models[parent_tag] = _model_hashes(parent["entry"])
+    if parent_tag is not None:
+        models[parent_tag] = _model_hashes(binding["parent"]["entry"])
     if (
         generated["data_sha256"] != digest(data)
         or generated["snapshot_manifest_sha256"] != adapter["snapshot_sha256"]
@@ -429,6 +452,49 @@ def _measure(
         or generated["models"] != models
     ):
         raise ValueError("remote_text_final_generation_identity_mismatch")
+    return generated
+
+
+def _selection_metrics(
+    scores: dict, result: dict, *, has_parent: bool
+) -> tuple[float, float, bool]:
+    if not has_parent:
+        usable, critical = _metrics(scores["summaries"])
+        regression = any(
+            candidate["critical"] > scores["summaries"]["base"][name]["critical"]
+            for name, candidate in scores["summaries"]["candidate"].items()
+        )
+        return usable, critical, regression
+    comparison = _parent_comparison(scores)
+    result["parent_comparison"] = comparison
+    regression = any(
+        comparison[key]
+        for key in (
+            "lost_parent_usable_case_ids",
+            "new_parent_critical_case_ids",
+            "new_m0_critical_case_ids",
+        )
+    )
+    return (
+        comparison["parent_usable_delta"],
+        comparison["parent_critical_delta"],
+        regression,
+    )
+
+
+def _measure(
+    generation: Path,
+    data: Path,
+    calibration: dict,
+    adapter: dict,
+    binding: dict,
+    selection: dict,
+    *,
+    seconds: float = 0.0,
+) -> dict:
+    has_parent = binding.get("parent") is not None
+    parent_tag = _parent_tag(binding["step"]) if has_parent else None
+    generated = _verified_generation(generation, data, adapter, binding, parent_tag)
     review = review_data(generation, data)
     identity = evaluation_identity(
         generated,
@@ -442,7 +508,7 @@ def _measure(
         "holdout_identity": identity,
         "generation_seal_sha256": digest(generation / "generation-seal.json"),
     }
-    if parent is not None:
+    if has_parent:
         result["adapter_config_sha256"] = adapter["config_sha256"]
     legacy = calibration["judge"] == "exact-v1"
     if legacy and not _known_outputs(calibration, review):
@@ -463,25 +529,9 @@ def _measure(
         {"step": binding["step"], "sha256": binding["checkpoint_sha256"]},
         parent_tag=parent_tag,
     )
-    if parent is None:
-        usable, critical = _metrics(scores["summaries"])
-        critical_regression = any(
-            candidate["critical"] > scores["summaries"]["base"][name]["critical"]
-            for name, candidate in scores["summaries"]["candidate"].items()
-        )
-    else:
-        comparison = _parent_comparison(scores)
-        result["parent_comparison"] = comparison
-        usable = comparison["parent_usable_delta"]
-        critical = comparison["parent_critical_delta"]
-        critical_regression = any(
-            comparison[key]
-            for key in (
-                "lost_parent_usable_case_ids",
-                "new_parent_critical_case_ids",
-                "new_m0_critical_case_ids",
-            )
-        )
+    usable, critical, critical_regression = _selection_metrics(
+        scores, result, has_parent=has_parent
+    )
     passed = (
         usable > 0
         and usable >= selection["min_usable_delta"]
@@ -500,11 +550,11 @@ def _measure(
         if uncertain:
             status, passed = "incomplete_calibration", False
             result["qualification_reason"] = UNCERTAIN
-    atomic_json(generation / "judgments.json", judgments)
+    atomic_json(generation / _JUDGMENTS, judgments)
     return {
         **result,
         "status": status,
-        "judgments_sha256": digest(generation / "judgments.json"),
+        "judgments_sha256": digest(generation / _JUDGMENTS),
         "summaries": scores["summaries"],
         "usable_delta": usable,
         "critical_delta": critical,
@@ -572,7 +622,7 @@ def _read_result(directory: Path, binding: dict) -> dict | None:
 
 def _verify_final_evidence(directory: Path, result: dict) -> None:
     name = result["evidence_name"]
-    if not re.fullmatch(r"verified-[A-Za-z0-9_]{8}", name):
+    if not re.fullmatch(r"verified-\w{8}", name, re.ASCII):
         raise ValueError("remote_text_final_evidence_invalid")
     evidence = operator_path(directory / name)
     generation = evidence / "generation"
@@ -580,17 +630,14 @@ def _verify_final_evidence(directory: Path, result: dict) -> None:
     judgments = result.get("judgments_sha256")
     if (
         digest(generation / "generation-seal.json") != result["generation_seal_sha256"]
-        or digest(evidence / "holdout.jsonl")
-        != result["holdout_identity"]["dataset_sha256"]
+        or digest(evidence / _HOLDOUT) != result["holdout_identity"]["dataset_sha256"]
         or evaluation_identity(
             manifest,
             result["binding"]["final_calibration_sha256"],
             calibration=result.get("calibration_protocol"),
         )
         != result["holdout_identity"]
-        or (
-            judgments is not None and digest(generation / "judgments.json") != judgments
-        )
+        or (judgments is not None and digest(generation / _JUDGMENTS) != judgments)
     ):
         raise ValueError("remote_text_final_evidence_changed")
 
@@ -687,12 +734,13 @@ def _qualify_locked(
             raise ValueError("remote_text_final_already_bound")
         _verify_parent(binding, academy_root)
         result = _read_result(directory, binding)
-        if result is not None and "parent" in binding:
-            if (
-                read_run(evidence_root, binding["run_id"])["archive_sha256"]
-                != binding["archive_sha256"]
-            ):
-                raise ValueError("remote_text_final_archive_changed")
+        if (
+            result is not None
+            and "parent" in binding
+            and read_run(evidence_root, binding["run_id"])["archive_sha256"]
+            != binding["archive_sha256"]
+        ):
+            raise ValueError("remote_text_final_archive_changed")
         if result is not None and (
             result["qualified"] is None
             or _catalog_published(directory, result, academy_root)
@@ -746,7 +794,7 @@ def _run_final(
     *,
     parent: Path | None = None,
 ) -> dict:
-    data = workspace / "holdout.jsonl"
+    data = workspace / _HOLDOUT
     calibration = _stage_data(spec, binding, manifest, data)
     snapshot = operator_path(spec.snapshot)
     venv = operator_path(spec.training_venv)
@@ -789,12 +837,12 @@ def _run_final(
     )
     # The case definitions, outputs and judgments stay on the independent host.
     run_dir = Path(tempfile.mkdtemp(prefix="verified-", dir=directory))
-    data.rename(run_dir / "holdout.jsonl")
+    data.rename(run_dir / _HOLDOUT)
     if log.is_file():
         log.rename(run_dir / "evaluation.log")
-    gpu_receipt = workspace / "gpu-release.json"
+    gpu_receipt = workspace / _GPU_RELEASE_RECEIPT
     if gpu_receipt.is_file():
-        gpu_receipt.rename(run_dir / "gpu-release.json")
+        gpu_receipt.rename(run_dir / _GPU_RELEASE_RECEIPT)
     generation.rename(run_dir / "generation")
     result["evidence_name"] = run_dir.name
     atomic_json(directory / "result.json", result)
@@ -904,6 +952,47 @@ def qualify_pending(
     return {"status": "idle"}
 
 
+def _pin_from_args(
+    parser: argparse.ArgumentParser, args: argparse.Namespace, academy_root: Path
+) -> dict:
+    if not (
+        args.local
+        and args.campaign_id
+        and args.inputs is None
+        and args.final_test_sha256
+        and args.final_calibration_sha256
+        and not args.pending
+    ):
+        parser.error("--pin-only takes --local, campaign_id and both digests")
+    return pin_local(
+        academy_root,
+        args.campaign_id,
+        final_test_sha256=args.final_test_sha256,
+        final_calibration_sha256=args.final_calibration_sha256,
+    )
+
+
+def _qualify_from_args(
+    parser: argparse.ArgumentParser, args: argparse.Namespace, academy_root: Path
+) -> dict:
+    if args.campaign_id is None or args.inputs is None:
+        parser.error("provide campaign_id and inputs or use --pending")
+    if not args.local:
+        directory, state = _controller_state(academy_root, args.campaign_id)
+        return _dispatch(academy_root, directory, state, args.inputs, _evaluate)
+    evidence, state, receipts, pins = collect_local(academy_root, args.campaign_id)
+    return qualify(
+        evidence,
+        state,
+        receipts,
+        academy_root,
+        QualificationInputs.model_validate(read_json(args.inputs)),
+        source="local",
+        evaluator=partial(_evaluate, shared_runtime=True),
+        **pins,
+    )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("academy_root", type=Path)
@@ -917,21 +1006,7 @@ def main() -> None:
     args = parser.parse_args()
     academy_root = operator_path(args.academy_root)
     if args.pin_only:
-        if not (
-            args.local
-            and args.campaign_id
-            and args.inputs is None
-            and args.final_test_sha256
-            and args.final_calibration_sha256
-            and not args.pending
-        ):
-            parser.error("--pin-only takes --local, campaign_id and both digests")
-        result = pin_local(
-            academy_root,
-            args.campaign_id,
-            final_test_sha256=args.final_test_sha256,
-            final_calibration_sha256=args.final_calibration_sha256,
-        )
+        result = _pin_from_args(parser, args, academy_root)
     elif (
         args.final_test_sha256 is not None or args.final_calibration_sha256 is not None
     ):
@@ -941,25 +1016,7 @@ def main() -> None:
             parser.error("--pending takes only the Academy root")
         result = qualify_pending(academy_root)
     else:
-        if args.campaign_id is None or args.inputs is None:
-            parser.error("provide campaign_id and inputs or use --pending")
-        if args.local:
-            evidence, state, receipts, pins = collect_local(
-                academy_root, args.campaign_id
-            )
-            result = qualify(
-                evidence,
-                state,
-                receipts,
-                academy_root,
-                QualificationInputs.model_validate(read_json(args.inputs)),
-                source="local",
-                evaluator=partial(_evaluate, shared_runtime=True),
-                **pins,
-            )
-        else:
-            directory, state = _controller_state(academy_root, args.campaign_id)
-            result = _dispatch(academy_root, directory, state, args.inputs, _evaluate)
+        result = _qualify_from_args(parser, args, academy_root)
     print(json.dumps(result, ensure_ascii=False, allow_nan=False))
 
 

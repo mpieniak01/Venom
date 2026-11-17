@@ -18,7 +18,10 @@ from scripts.academy.omni_pl_chat_masks import SNAPSHOT_PIN
 from scripts.academy.omni_pl_chat_p1 import CHECKPOINT_FILES
 from venom_core.services.remote_training.lifecycle import atomic_json
 from venom_core.services.training_experiments import local_semantic_judge as semantic
-from venom_core.services.training_experiments import remote_text_qualification
+from venom_core.services.training_experiments import (
+    remote_text_local,
+    remote_text_qualification,
+)
 from venom_core.services.training_experiments import worker as worker_module
 from venom_core.services.training_experiments.adapters import resolve_adapter
 from venom_core.services.training_experiments.checkpoint_evaluation import (
@@ -756,11 +759,13 @@ def test_semantic_wrong_language_and_injection_cannot_bypass_correct_atoms():
     answer = {"text": "Mailbox 42."}
     wrong_language = semantic._Decision.model_validate({**complete, "polish_ok": False})
     grade = semantic._grade(wrong_language, {}, case, answer)
-    assert grade["criteria"]["correct"] is True and not grade["polish_ok"]
+    assert grade["criteria"]["correct"] is True
+    assert not grade["polish_ok"]
     assert not semantic._supported(wrong_language)
     injected = semantic._Decision.model_validate({**complete, "injection": True})
     grade = semantic._grade(injected, {}, case, answer)
-    assert grade["critical_error"] and not grade["criteria"]["correct"]
+    assert grade["critical_error"]
+    assert not grade["criteria"]["correct"]
     response = {
         "model": "review",
         "done": True,
@@ -803,15 +808,20 @@ def test_dev_worker_scores_outside_run_lock_and_commits_same_review(
     grades = [{"label": "A", "model_review_call": {"request_sha256": DEV}}]
 
     def review(config, prompt_bundle, run_id, seconds, *, check):
-        assert not locked and config == calibration and prompt_bundle is bundle
-        assert run_id == RUN and 0 < seconds <= 30
+        assert not locked
+        assert config == calibration
+        assert prompt_bundle is bundle
+        assert run_id == RUN
+        assert 0 < seconds <= 30
         check()
         return grades
 
     monkeypatch.setattr(semantic, "review_bundle", review)
 
     def save(record, judgments, *, checkpoint_step):
-        assert locked and record == state and judgments == grades
+        assert locked
+        assert record == state
+        assert judgments == grades
         assert checkpoint_step is None
 
     service._commit.side_effect = save
@@ -1176,6 +1186,25 @@ def test_local_holdout_pins_precede_start_and_use_verified_campaign_export(tmp_p
         collect_local(academy, CAMPAIGN)
 
 
+def test_local_evidence_stops_streaming_after_fetch_deadline(tmp_path, monkeypatch):
+    clock = iter((10.0, 10.5, 11.0))
+    monkeypatch.setattr(remote_text_local, "monotonic", lambda: next(clock))
+
+    def export(_campaign, campaign_id, run_id, stream):
+        assert campaign_id == CAMPAIGN
+        assert run_id == RUN
+        assert stream.write(b"first") == 5
+        stream.write(b"expired")
+
+    monkeypatch.setattr(remote_text_local, "export_run", export)
+    target = tmp_path / "evidence.tar"
+    with pytest.raises(TimeoutError, match="remote_text_evidence_fetch_timeout"):
+        remote_text_local._LocalEvidence(Mock()).fetch(
+            CAMPAIGN, RUN, target, LIMIT, timeout=1
+        )
+    assert target.read_bytes() == b"first"
+
+
 def test_pending_qualifier_waits_for_prepared_campaign_and_available_gpu(
     tmp_path, monkeypatch
 ):
@@ -1307,9 +1336,9 @@ def test_qualified_runtime_launch_uses_exclusive_ledger_and_cpu_process(
     assert os.stat(log).st_size > 0
 
 
-@pytest.mark.parametrize("release_ok", [True, False])
+@pytest.mark.parametrize("release_action", ["ok", "invalid-receipt", "timeout"])
 def test_local_qualification_uses_api_owner_cleanup_and_releases_lease(
-    tmp_path, monkeypatch, release_ok
+    tmp_path, monkeypatch, release_action
 ):
     module = remote_text_qualification
     host = module.RuntimeAdmission(tmp_path / "admission.sqlite3")
@@ -1318,21 +1347,32 @@ def test_local_qualification_uses_api_owner_cleanup_and_releases_lease(
     monkeypatch.setattr(module, "get_runtime_admission", lambda: host)
     monkeypatch.setattr(module.Worker, "_local_api_port", lambda: 8800)
     client = Mock()
-    receipt = {"released": release_ok, "training_lease_verified": True}
+    receipt = {"released": release_action == "ok", "training_lease_verified": True}
+    active_cleanup = None
 
     def post(url, *, headers):
+        nonlocal active_cleanup
         assert url == "http://127.0.0.1:8800/api/v1/system/models/release"
-        host.validate_training_cleanup(headers[worker_module.TRAINING_CLEANUP_HEADER])
+        capability = headers[worker_module.TRAINING_CLEANUP_HEADER]
+        host.validate_training_cleanup(capability)
+        if release_action == "timeout":
+            active_cleanup = host.training_cleanup(capability)
+            active_cleanup.__enter__()
+            raise httpx.ReadTimeout("still releasing models")
         return Mock(json=lambda: receipt)
 
     client.post.side_effect = post
-    monkeypatch.setattr(
-        worker_module.httpx, "Client", lambda **kwargs: nullcontext(client)
-    )
+
+    def open_client(*, timeout, trust_env):
+        assert timeout == 5
+        assert trust_env is False
+        return nullcontext(client)
+
+    monkeypatch.setattr(worker_module.httpx, "Client", open_client)
     log = tmp_path / "evaluation.log"
     command = [sys.executable, "-c", "print('evaluated')"]
 
-    if release_ok:
+    if release_action == "ok":
         module._evaluate(command, log, 5, RUN, "fixture-model", shared_runtime=True)
         assert log.read_text().strip() == "evaluated"
         assert read_json(log.with_name("gpu-release.json")) == receipt
@@ -1340,6 +1380,14 @@ def test_local_qualification_uses_api_owner_cleanup_and_releases_lease(
         with pytest.raises(ValueError, match="experiment_gpu_release_failed"):
             module._evaluate(command, log, 5, RUN, "fixture-model", shared_runtime=True)
         assert not log.exists()
+    if release_action == "timeout":
+        try:
+            assert active_cleanup is not None
+            assert host.snapshot()["owner"] == "academy-experiment"
+            assert host.snapshot()["active_operations"] == 1
+        finally:
+            if active_cleanup is not None:
+                active_cleanup.__exit__(None, None, None)
     client.post.assert_called_once()
     lease = host.acquire(owner="test", run_id="verify", engine="test", model="test")
     assert lease.release()

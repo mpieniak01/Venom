@@ -15,7 +15,6 @@ from pydantic import (
     ConfigDict,
     Field,
     StrictStr,
-    ValidationError,
     field_validator,
 )
 
@@ -243,17 +242,24 @@ _TOTAL_COST_REQUEST = re.compile(
     r"\b(?:(?:pełny|pełen|łączny|całkowity)\s+koszt|koszt\s+(?:łączny|całkowity)|sumę\s+kosztów)\b",
     re.IGNORECASE,
 )
+_PERCENTAGE_QUALIFIER = re.compile(
+    r"\b(?:zaokrąglon\w*|po (?:zmianie|korekcie)|i (?:podaj|oblicz|policz))\b"
+)
+_PERCENTAGE_PRECISION = re.compile(
+    r"\bdo (?:(?a:\d+)|jednego|dwóch|trzech|czterech|pięciu|sześciu) miejsc\b"
+)
 
 
 def _percentage_outputs(message: str) -> set[str]:
     outputs = {"procent", "wynik procentowy", "udział procentowy"}
     # Match the requested quantity, not every percentage mentioned in history.
     for match in re.finditer(r"\b(?:procent|udział)\s+([^.!?;\n]+)", message.lower()):
-        subject = re.split(
-            r"(?:\bzaokrąglon\w*|\bpo (?:zmianie|korekcie)|\bdo (?:[0-9]+|jednego|dwóch|trzech|czterech|pięciu|sześciu) miejsc|\bi (?:podaj|oblicz|policz))\b",
-            match[1],
-            maxsplit=1,
-        )[0].strip()
+        qualifiers = (
+            _PERCENTAGE_QUALIFIER.search(match[1]),
+            _PERCENTAGE_PRECISION.search(match[1]),
+        )
+        end = min((part.start() for part in qualifiers if part), default=len(match[1]))
+        subject = match[1][:end].strip()
         if subject and len(subject) <= 120:
             outputs.update({f"procent {subject}", f"udział {subject}"})
     return outputs
@@ -278,6 +284,7 @@ def _calculation_outputs(message: str, speed_unit: str | None) -> set[str]:
 
 _NUMBER = r"[+-]?[0-9]+(?:[.,][0-9]+)?"
 _STATE_NUMBER = r"[+-]?[0-9]{1,9}(?:[.,][0-9]{1,6})?"
+_POINTS = "punktów"
 _MEAN_REQUEST = re.compile(
     rf"\s*(?:policz|oblicz|wyznacz)\s+średnią(?:\s+arytmetyczną)?\s+z\s+"
     rf"(?:(?:wyników|liczb|wartości)\s+)?"
@@ -311,7 +318,7 @@ def _explicit_mean(message: str) -> Calculation | None:
     return Calculation(
         calculation_id="arithmetic_mean",
         expression=expression,
-        unit="punktów" if match["points"] else "",
+        unit=_POINTS if match["points"] else "",
     )
 
 
@@ -415,39 +422,55 @@ def _map_measurements(messages: tuple[str, ...]) -> tuple[str, tuple[str, ...]] 
     return factor, tuple(lengths)
 
 
+def _context_speed(message: str, previous: tuple[str, ...]) -> Calculation | None:
+    if len(previous) < 2 or not _SPEED_REFERENCE.search(message):
+        return None
+    targets = {item.lower() for item in _SPEED_OUTPUT.findall(message)}
+    distances = _TRAVEL_DISTANCE.findall(previous[-2])
+    durations = _TRAVEL_SECONDS.findall(previous[-1])
+    if len(targets) != 1 or len(distances) != 1 or len(durations) != 1:
+        return None
+    if not _SPEED_REQUEST.search(previous[-2]):
+        return None
+    path = distances[0].replace(",", ".")
+    duration = durations[0].replace(",", ".")
+    if Decimal(path) < 0 or Decimal(duration) <= 0:
+        return None
+    return _compile_calculation(
+        Calculation(
+            calculation_id="average_speed",
+            expression=f"{path}/{duration}",
+            input_unit="m/s",
+            unit=targets.pop(),
+        )
+    )
+
+
+def _context_volume(message: str, previous: tuple[str, ...]) -> Calculation | None:
+    unit = _VOLUME_FOLLOWUP.match(message)
+    if not previous or not unit:
+        return None
+    remainder = _REMAINING_VOLUME.match(previous[-1])
+    if not remainder or not _REMAINDER_REQUEST.search(previous[-1]):
+        return None
+    initial = _stock_number(remainder[1], remainder[2].lower(), "ml")
+    removed = _stock_number(remainder[3], remainder[4].lower(), "ml")
+    if not Decimal(initial) >= Decimal(removed) >= 0:
+        return None
+    return _compile_calculation(
+        Calculation(
+            calculation_id="volume_remainder",
+            expression=f"{initial}-{removed}",
+            input_unit="ml",
+            unit="l" if unit[1].casefold() == "litrów" else "ml",
+        )
+    )
+
+
 def _context_calculation(message: str, previous: tuple[str, ...]) -> Calculation | None:
-    if len(previous) >= 2 and _SPEED_REFERENCE.search(message):
-        targets = {item.lower() for item in _SPEED_OUTPUT.findall(message)}
-        distances = _TRAVEL_DISTANCE.findall(previous[-2])
-        durations = _TRAVEL_SECONDS.findall(previous[-1])
-        if len(targets) == len(distances) == len(
-            durations
-        ) == 1 and _SPEED_REQUEST.search(previous[-2]):
-            path = distances[0].replace(",", ".")
-            duration = durations[0].replace(",", ".")
-            if Decimal(path) >= 0 and Decimal(duration) > 0:
-                return _compile_calculation(
-                    Calculation(
-                        calculation_id="average_speed",
-                        expression=f"{path}/{duration}",
-                        input_unit="m/s",
-                        unit=targets.pop(),
-                    )
-                )
-    if previous and (unit := _VOLUME_FOLLOWUP.match(message)):
-        remainder = _REMAINING_VOLUME.match(previous[-1])
-        if remainder and _REMAINDER_REQUEST.search(previous[-1]):
-            initial = _stock_number(remainder[1], remainder[2].lower(), "ml")
-            removed = _stock_number(remainder[3], remainder[4].lower(), "ml")
-            if Decimal(initial) >= Decimal(removed) >= 0:
-                return _compile_calculation(
-                    Calculation(
-                        calculation_id="volume_remainder",
-                        expression=f"{initial}-{removed}",
-                        input_unit="ml",
-                        unit="l" if unit[1].casefold() == "litrów" else "ml",
-                    )
-                )
+    conversion = _context_speed(message, previous) or _context_volume(message, previous)
+    if conversion is not None:
+        return conversion
     scale = _map_measurements((*previous, message))
     if scale:
         factor, lengths = scale
@@ -459,8 +482,14 @@ def _context_calculation(message: str, previous: tuple[str, ...]) -> Calculation
     return None
 
 
-def _length_draft(calculation: CalculationEvidence) -> Draft:
-    value = calculation.value.replace(".", ",")
+def _display_calculation(value: str, places: int | None) -> str:
+    if places is not None:
+        value = rounded_value(value, places)
+    return value.replace(".", ",")
+
+
+def _length_draft(calculation: CalculationEvidence, places: int | None) -> Draft:
+    value = _display_calculation(calculation.value, places)
     return Draft(
         prose=f"{value} {calculation.unit}.",
         sources=[],
@@ -474,9 +503,9 @@ def _length_draft(calculation: CalculationEvidence) -> Draft:
     )
 
 
-def _mean_draft(calculation: CalculationEvidence) -> Draft:
-    value = calculation.value.replace(".", ",")
-    if calculation.unit == "punktów":
+def _mean_draft(calculation: CalculationEvidence, places: int | None) -> Draft:
+    value = _display_calculation(calculation.value, places)
+    if calculation.unit == _POINTS:
         if value.lstrip("-") == "1":
             unit = "punkt"
         elif "," in value:
@@ -484,7 +513,7 @@ def _mean_draft(calculation: CalculationEvidence) -> Draft:
         elif value[-1] in "234" and value[-2:] not in {"12", "13", "14"}:
             unit = "punkty"
         else:
-            unit = "punktów"
+            unit = _POINTS
         value = f"{value} {unit}"
     return Draft(
         prose=f"Średnia wynosi {value}.",
@@ -575,22 +604,26 @@ def _group_previous(messages: tuple[str, ...]) -> int | None:
             continue
         if not counts:
             continue
-        base = _GROUP_BASE.search(message)
-        joined = _JOINED.match(message)
-        left = _GROUP_LEAVE.match(message)
-        previous = states[-1] if states else None
         if len(counts) != 1:
             states.clear()
-        elif joined and previous is not None:
-            states.append(previous + _headcount(joined[1]))
-        elif left and previous is not None:
-            total = previous - _headcount(left[1])
-            states.append(total if total >= 0 else None)
-        elif base:
-            states.append(_headcount(base[1]))
         else:
-            states.clear()
+            _replay_group_change(message, states)
     return states[-1] if states else None
+
+
+def _replay_group_change(message: str, states: list[int | None]) -> None:
+    previous = states[-1] if states else None
+    joined = _JOINED.match(message)
+    left = _GROUP_LEAVE.match(message)
+    if joined and previous is not None:
+        states.append(previous + _headcount(joined[1]))
+    elif left and previous is not None:
+        total = previous - _headcount(left[1])
+        states.append(total if total >= 0 else None)
+    elif base := _GROUP_BASE.search(message):
+        states.append(_headcount(base[1]))
+    else:
+        states.clear()
 
 
 def _group_change(message: str, history: tuple[str, ...]) -> dict[str, int] | None:
@@ -620,7 +653,9 @@ _VOLUME_ITEM = re.compile(
     re.IGNORECASE,
 )
 _CATEGORY_ANCHOR = re.compile(r"\bwpisz:", re.IGNORECASE)
-_CATEGORY_ITEM = re.compile(r"kategoria\s+([\w-]+)\s+ma\s+([0-9]{1,6})", re.IGNORECASE)
+_CATEGORY_ITEM = re.compile(
+    r"kategoria\s+([\w-]+)\s+ma\s+((?a:\d{1,6}))", re.IGNORECASE
+)
 _STOCK_COUNT = re.compile(
     r"^(?:w\s+[\w-]+\s+)?są\s+(\d{1,6})\s+(przesyłek|paczek|elementów|sztuk)\s+"
     r"([\w-]+)\s+i\s+(\d{1,6})\s+([\w-]+)$",
@@ -641,15 +676,15 @@ _REGISTER_SET = re.compile(
     re.IGNORECASE,
 )
 _CATEGORY_SET = re.compile(
-    r"^(?:[^:]+:\s*)?skoryguj\s+(?:kategorię\s+)?([\w-]+)\s+na\s+([0-9]{1,6})$",
+    r"^(?:[^:]+:\s*)?skoryguj\s+(?:kategorię\s+)?([\w-]+)\s+na\s+((?a:\d{1,6}))$",
     re.IGNORECASE,
 )
 _CATEGORY_REMOVE = re.compile(
-    r"^z\s+kategorii\s+([\w-]+)\s+(?:zdjęto|odjęto|wydano)\s+([0-9]{1,6})$",
+    r"^z\s+kategorii\s+([\w-]+)\s+(?:zdjęto|odjęto|wydano)\s+((?a:\d{1,6}))$",
     re.IGNORECASE,
 )
 _CATEGORY_ADD = re.compile(
-    r"^(?:dopisz|dodaj)\s+do\s+kategorii\s+([\w-]+)\s+(?:jeszcze\s+)?([0-9]{1,6})$",
+    r"^(?:dopisz|dodaj)\s+do\s+kategorii\s+([\w-]+)\s+(?:jeszcze\s+)?((?a:\d{1,6}))$",
     re.IGNORECASE,
 )
 _COUNT_SET = re.compile(
@@ -661,11 +696,6 @@ _COUNT_DELTA = re.compile(
     re.IGNORECASE,
 )
 _STOCK_UNDO = re.compile(r"cofnij ostatnią (?:zmianę|korektę)", re.IGNORECASE)
-_STOCK_QUERY = re.compile(
-    r"^(?:(?:oblicz|policz|podaj|potwierdź|napisz|zestaw|ile)\b|"
-    r"chcę\s+(?:teraz\s+)?sumę\b|(?:w\s+wypisie|na\s+tablicę)\s+[^.?!]*\bpodaj\b)",
-    re.IGNORECASE,
-)
 _STOCK_TOTAL = re.compile(r"\b(?:sum[ęay]|łączn\w*|razem|zapas\s+po)\b", re.IGNORECASE)
 _STOCK_REMAIN = re.compile(
     r"\bile\s+(?:(?P<category>[\w-]+)\s+)?(?:zostało|pozostało)"
@@ -680,6 +710,28 @@ _STOCK_RECAP = re.compile(
     r"\b(?:obydwu|obu)\s+rodzajów\b|\bpodaj\s+(?:osobno|aktualną\s+liczbę\s+dla)\b",
     re.IGNORECASE,
 )
+_STOCK_READ_PREFIX = re.compile(
+    r"^(?:oblicz|policz|podaj|potwierdź|napisz|zestaw|chcę(?:\s+teraz)?)\b[,]?\s+",
+    re.IGNORECASE,
+)
+_STOCK_READ_TOTAL = re.compile(
+    r"(?:(?:aktualną|bieżącą|obecną|łączną)\s+)?(?:sumę|ilość|zapas|liczbę)"
+    r"(?:\s+po\s+(?:zmianie|korekcie|wszystkich zmianach))?|ile\s+(?:jest\s+)?razem",
+    re.IGNORECASE,
+)
+_STOCK_READ_RECAP = re.compile(
+    r"(?:obie\s+liczby|(?:bieżącą\s+)?liczbę\s+(?:obu|obydwu)\s+rodzajów(?:\s+i\s+ich\s+sumę)?)"
+    r"|(?:w\s+wypisie(?:\s+dla\s+[\w-]+)?|na\s+tablicę)\s+podaj\s+osobno\s+[\w-]+[,]\s+[\w-]+\s+i\s+sumę",
+    re.IGNORECASE,
+)
+_STOCK_READ_PRECISION = re.compile(
+    r"\s+do\s+(?:(?a:\d+)|zero|jednego|dwóch|trzech|czterech|pięciu|sześciu)\s+miejsca?\s+po\s+przecinku$",
+    re.IGNORECASE,
+)
+_STOCK_READ_UNIT = re.compile(
+    r"\s+(?:w|i\s+przelicz\s+go\s+na)\s+([\w/]+)$", re.IGNORECASE
+)
+_STOCK_READ_UNITLESS = re.compile(r"\s+bez\s+jednost(?:ki|ek)$", re.IGNORECASE)
 _NUMBER_ONLY = re.compile(
     r"(?:podaj|zwróć|napisz)\s+(?:(?:samą|tylko)\s+)?liczbę", re.IGNORECASE
 )
@@ -695,6 +747,27 @@ _UNITLESS_RESULT = re.compile(
 def requests_unitless_result(message: str) -> bool:
     """Distinguish a presentation request from the type of the source quantity."""
     return bool(_UNITLESS_RESULT.search(message))
+
+
+def _stock_read_clause(clause: str) -> bool:
+    """A stock snapshot survives only a recognized read or an explicit transition."""
+    clause = _STOCK_READ_UNITLESS.sub("", _STOCK_READ_PRECISION.sub("", clause))
+    unit = _STOCK_READ_UNIT.search(clause)
+    if unit and explicit_result_unit(f"Policz zapas w {unit[1]}") is not None:
+        clause = clause[: unit.start()]
+    body = _STOCK_READ_PREFIX.sub("", clause)
+    remainder = body
+    location = _UPDATED_LOCATION.search(body)
+    if location and location.end() == len(body):
+        remainder = body[: location.start()].rstrip()
+    return any(
+        (
+            _STOCK_REMAIN.fullmatch(remainder),
+            _STOCK_READ_TOTAL.fullmatch(body),
+            _STOCK_READ_RECAP.fullmatch(body),
+            _STOCK_LIST.fullmatch(clause),
+        )
+    )
 
 
 @dataclass(frozen=True)
@@ -722,34 +795,10 @@ def _stock_number(number: str, scale: str, unit: str) -> str:
 def _stock_snapshot(
     message: str,
 ) -> tuple[str, str, dict[str, _StockValue]] | None:
-    volume = _STOCK_VOLUME.fullmatch(message)
-    count = _STOCK_COUNT.fullmatch(message)
-    category_anchor = (
-        _CATEGORY_ANCHOR.search(message, 1) if "\n" not in message else None
-    )
-    categories = message[category_anchor.end() :].lstrip() if category_anchor else ""
-    if volume:
-        parts = re.split(r",(?=\s+[0-9])|(?<=\s)i(?=\s)", volume[1])
-        amounts = [_VOLUME_ITEM.fullmatch(part.strip()) for part in parts]
-        if len(amounts) < 2 or not all(amounts):
-            return None
-        rows = [(m[1], m[2].lower(), m[3]) for m in amounts if m]
-        units = {_QUANTITY_UNITS[scale] for _, scale, _ in rows}
-        if len(units) != 1:
-            return None
-        unit, noun = units.pop(), ""
-    elif count:
-        rows = [(count[1], "", count[3]), (count[4], "", count[5])]
-        unit, noun = "", count[2].lower()
-    elif categories:
-        parts = re.split(r",|(?<=\s)i(?=\s)", categories)
-        counts = [_CATEGORY_ITEM.fullmatch(part.strip()) for part in parts]
-        if len(counts) < 2 or not all(counts):
-            return None
-        rows = [(m[2], "", m[1]) for m in counts if m]
-        unit = noun = ""
-    else:
+    parsed = _stock_snapshot_rows(message)
+    if parsed is None:
         return None
+    unit, noun, rows = parsed
     values = {}
     for amount, scale, label in rows:
         number = _stock_number(amount, scale, unit)
@@ -762,40 +811,120 @@ def _stock_snapshot(
     return unit, noun, values
 
 
-def _stock_update(message: str, unit: str) -> tuple[str, str, str] | None:
-    if unit:
-        assignment = _VOLUME_SET.fullmatch(message) or _REGISTER_SET.fullmatch(message)
-        if assignment and _QUANTITY_UNITS[assignment[3].lower()] == unit:
-            return (
-                assignment[1],
-                "set",
-                _stock_number(assignment[2], assignment[3].lower(), unit),
-            )
-        delta = _VOLUME_DELTA.fullmatch(message)
-        if delta and _QUANTITY_UNITS[delta[4].lower()] == unit:
-            op = "+" if delta[2].lower() in {"dolano", "dodano"} else "-"
-            return delta[1], op, _stock_number(delta[3], delta[4].lower(), unit)
-    else:
-        assignment = _COUNT_SET.fullmatch(message) or _CATEGORY_SET.fullmatch(message)
-        if assignment:
-            return assignment[1], "set", assignment[2]
-        if addition := _CATEGORY_ADD.fullmatch(message):
-            return addition[1], "+", addition[2]
-        if removal := _CATEGORY_REMOVE.fullmatch(message):
-            return removal[1], "-", removal[2]
-        if match := _COUNT_DELTA.fullmatch(message):
-            op = "+" if message.lower().startswith(("dodano", "przyjęto")) else "-"
-            return match[2], op, str(_headcount(match[1]))
+def _stock_snapshot_rows(
+    message: str,
+) -> tuple[str, str, list[tuple[str, str, str]]] | None:
+    if volume := _STOCK_VOLUME.fullmatch(message):
+        return _stock_volume_rows(volume[1])
+    if count := _STOCK_COUNT.fullmatch(message):
+        return (
+            "",
+            count[2].lower(),
+            [(count[1], "", count[3]), (count[4], "", count[5])],
+        )
+    category_anchor = (
+        _CATEGORY_ANCHOR.search(message, 1) if "\n" not in message else None
+    )
+    if category_anchor is None:
+        return None
+    parts = re.split(r",|(?<=\s)i(?=\s)", message[category_anchor.end() :].lstrip())
+    counts = [_CATEGORY_ITEM.fullmatch(part.strip()) for part in parts]
+    if len(counts) < 2 or not all(counts):
+        return None
+    return "", "", [(m[2], "", m[1]) for m in counts if m]
+
+
+def _stock_volume_rows(
+    volume: str,
+) -> tuple[str, str, list[tuple[str, str, str]]] | None:
+    parts = re.split(r",(?=\s+(?a:\d))|(?<=\s)i(?=\s)", volume)
+    amounts = [_VOLUME_ITEM.fullmatch(part.strip()) for part in parts]
+    if len(amounts) < 2 or not all(amounts):
+        return None
+    rows = [(m[1], m[2].lower(), m[3]) for m in amounts if m]
+    units = {_QUANTITY_UNITS[scale] for _, scale, _ in rows}
+    if len(units) != 1:
+        return None
+    return units.pop(), "", rows
+
+
+def _stock_quantity_update(message: str, unit: str) -> tuple[str, str, str] | None:
+    assignment = _VOLUME_SET.fullmatch(message) or _REGISTER_SET.fullmatch(message)
+    if assignment and _QUANTITY_UNITS[assignment[3].lower()] == unit:
+        return (
+            assignment[1],
+            "set",
+            _stock_number(assignment[2], assignment[3].lower(), unit),
+        )
+    delta = _VOLUME_DELTA.fullmatch(message)
+    if delta and _QUANTITY_UNITS[delta[4].lower()] == unit:
+        op = "+" if delta[2].lower() in {"dolano", "dodano"} else "-"
+        return delta[1], op, _stock_number(delta[3], delta[4].lower(), unit)
     return None
 
 
-def _stock_calculation(
-    messages: tuple[str, ...], *, allow_listing: bool = False
-) -> tuple[Calculation, str, tuple[_StockValue, ...]] | None:
-    unit = noun = ""
-    snapshots: list[dict[str, _StockValue]] = []
-    query = updated_key = ""
-    for message in messages:
+def _stock_update(message: str, unit: str) -> tuple[str, str, str] | None:
+    if unit:
+        return _stock_quantity_update(message, unit)
+    assignment = _COUNT_SET.fullmatch(message) or _CATEGORY_SET.fullmatch(message)
+    if assignment:
+        return assignment[1], "set", assignment[2]
+    if addition := _CATEGORY_ADD.fullmatch(message):
+        return addition[1], "+", addition[2]
+    if removal := _CATEGORY_REMOVE.fullmatch(message):
+        return removal[1], "-", removal[2]
+    if match := _COUNT_DELTA.fullmatch(message):
+        op = "+" if message.lower().startswith(("dodano", "przyjęto")) else "-"
+        return match[2], op, str(_headcount(match[1]))
+    return None
+
+
+@dataclass
+class _StockLedger:
+    snapshots: list[dict[str, _StockValue]]
+    unit: str = ""
+    noun: str = ""
+
+    def apply_clause(self, clause: str, *, is_query: bool) -> str | None:
+        if anchor := _stock_snapshot(clause):
+            self.unit, self.noun, initial = anchor
+            self.snapshots = [initial]
+            return None
+        if not self.snapshots:
+            return None
+        if len(self.snapshots) > 1 and _STOCK_UNDO.fullmatch(clause):
+            self.snapshots.pop()
+            return None
+        update = _stock_update(clause, self.unit)
+        if update is None:
+            # Unknown transitions are never carried into a later calculation.
+            if not is_query:
+                self.snapshots.clear()
+            return None
+        return self._apply_update(update)
+
+    def _apply_update(self, update: tuple[str, str, str]) -> str | None:
+        label, op, raw = update
+        key = _stock_key(label, self.unit)
+        last = self.snapshots[-1].get(key)
+        amount = Decimal(raw)
+        if last is None or amount < 0:
+            self.snapshots.clear()
+            return None
+        if op == "set":
+            number, expression = amount, raw
+        else:
+            number = last.value + amount if op == "+" else last.value - amount
+            expression = f"({last.expression}){op}{raw}"
+        if number < 0 or len(expression) > MAX_EXPRESSION_CHARS:
+            self.snapshots.clear()
+            return key
+        self.snapshots.append(
+            self.snapshots[-1] | {key: _StockValue(last.label, number, expression)}
+        )
+        return key
+
+    def replay(self, message: str) -> tuple[str, str]:
         query = updated_key = ""
         for clause in re.split(r"[.!?](?:\s+|$)|[;\n]+", message):
             clause = clause.strip()
@@ -804,76 +933,73 @@ def _stock_calculation(
             if query and _NUMBER_ONLY.fullmatch(clause):
                 query += f" {clause}"
                 continue
-            query = clause if _STOCK_QUERY.search(clause) else ""
-            anchor = _stock_snapshot(clause)
-            if anchor:
-                unit, noun, initial = anchor
-                snapshots = [initial]
-                continue
-            if not snapshots and not _STOCK_QUERY.search(clause):
-                continue
-            if len(snapshots) > 1 and _STOCK_UNDO.fullmatch(clause):
-                snapshots.pop()
-                continue
-            update = _stock_update(clause, unit) if snapshots else None
-            if update is None:
-                # Unknown transitions are never carried into a later calculation.
-                if clause and not _STOCK_QUERY.search(clause):
-                    snapshots.clear()
-                continue
-            label, op, raw = update
-            key = _stock_key(label, unit)
-            last = snapshots[-1].get(key)
-            if last is None:
-                snapshots.clear()
-                continue
-            amount = Decimal(raw)
-            if amount < 0:
-                snapshots.clear()
-                continue
-            updated_key = key
-            if op == "set":
-                number, expression = amount, raw
-            else:
-                number = last.value + amount if op == "+" else last.value - amount
-                expression = f"({last.expression}){op}{raw}"
-            if number < 0 or len(expression) > MAX_EXPRESSION_CHARS:
-                snapshots.clear()
-                continue
-            snapshots.append(
-                snapshots[-1] | {key: _StockValue(last.label, number, expression)}
-            )
-    if not snapshots or not query:
-        return None
-    values = snapshots[-1]
-    selected: tuple[_StockValue, ...]
-    count = _STOCK_REMAIN.search(query)
-    if count:
-        if _UPDATED_LOCATION.search(query):
-            item = values.get(updated_key)
-        else:
-            label = count["location"] or count["category"]
-            item = values.get(_stock_key(label, unit)) if label else None
-        if item is None:
-            return None
-        selected = (item,)
-    elif _STOCK_TOTAL.search(query):
-        selected = tuple(values.values())
-    elif allow_listing and (listing := _STOCK_LIST.search(query)):
+            is_query = _stock_read_clause(clause)
+            query = clause if is_query else ""
+            key = self.apply_clause(clause, is_query=is_query)
+            if key is not None:
+                updated_key = key
+        return query, updated_key
+
+
+def _stock_selection(
+    values: dict[str, _StockValue],
+    query: str,
+    updated_key: str,
+    unit: str,
+    *,
+    allow_listing: bool,
+) -> tuple[_StockValue, ...]:
+    if count := _STOCK_REMAIN.search(query):
+        item = _stock_remainder(values, query, count, updated_key, unit)
+        return (item,) if item is not None else ()
+    if _STOCK_TOTAL.search(query):
+        return tuple(values.values())
+    if allow_listing and (listing := _STOCK_LIST.search(query)):
         labels = {_stock_key(label, unit) for label in listing.groups()}
-        if labels != values.keys():
-            return None
-        selected = tuple(values.values())
-    else:
+        if labels == values.keys():
+            return tuple(values.values())
+    return ()
+
+
+def _stock_remainder(
+    values: dict[str, _StockValue],
+    query: str,
+    count: re.Match[str],
+    updated_key: str,
+    unit: str,
+) -> _StockValue | None:
+    if _UPDATED_LOCATION.search(query):
+        return values.get(updated_key)
+    label = count["location"] or count["category"]
+    return values.get(_stock_key(label, unit)) if label else None
+
+
+def _stock_calculation(
+    messages: tuple[str, ...], *, allow_listing: bool = False
+) -> tuple[Calculation, str, tuple[_StockValue, ...]] | None:
+    ledger = _StockLedger([])
+    query = updated_key = ""
+    for message in messages:
+        query, updated_key = ledger.replay(message)
+    if not ledger.snapshots or not query:
         return None
-    omit_unit = not unit and requests_unitless_result(query)
-    target = (
-        ""
-        if omit_unit
-        else explicit_result_unit(query) or (noun if noun and noun in UNITS else unit)
+    unit, noun = ledger.unit, ledger.noun
+    selected = _stock_selection(
+        ledger.snapshots[-1], query, updated_key, unit, allow_listing=allow_listing
     )
-    if omit_unit:
-        noun = ""
+    if not selected:
+        return None
+    return _compile_stock_result(query, unit, noun, selected)
+
+
+def _compile_stock_result(
+    query: str, unit: str, noun: str, selected: tuple[_StockValue, ...]
+) -> tuple[Calculation, str, tuple[_StockValue, ...]] | None:
+    if not unit and requests_unitless_result(query):
+        target, noun = "", ""
+    else:
+        default_unit = noun if noun and noun in UNITS else unit
+        target = explicit_result_unit(query) or default_unit
     if unit and target != unit and (unit, target) not in _CONVERSIONS:
         return None
     if not unit and target not in {"", noun}:
@@ -896,8 +1022,9 @@ def _stock_draft(
     balances: tuple[_StockValue, ...],
     *,
     number_only: bool,
+    places: int | None,
 ) -> Draft:
-    amount = calculation.value.replace(".", ",")
+    amount = _display_calculation(calculation.value, places)
     unit = calculation.unit or noun
     label = f"{balances[0].label}:" if len(balances) == 1 else "Łącznie:"
     prose = f"{label} {amount}{f' {unit}' if unit else ''}."
@@ -981,7 +1108,7 @@ def _bind_result_claim(
         and claim.unit == unit
         and calculated is not None
         and calculated.unit == unit
-        and re.fullmatch(r"[+-]?[0-9]+(?:\.[0-9]+)?", value)
+        and re.fullmatch(r"[+-]?\d+(?:\.\d+)?", value, re.ASCII)
         and Decimal(value) == Decimal(rounded_value(calculated.value, places))
     ):
         # Certify against the exact executed evidence, retaining the model's
@@ -1026,7 +1153,7 @@ def _call(
         raise EvidenceError("pilot_context_limit")
     try:
         return schema.model_validate(model(phase, data, schema.model_json_schema()))
-    except (ValidationError, ValueError, TypeError, OSError, TimeoutError) as exc:
+    except (ValueError, TypeError, OSError) as exc:
         raise EvidenceError("pilot_model_invalid") from exc
 
 
@@ -1034,7 +1161,7 @@ def _current(backend: SourceBackend, sources: tuple[SourceDocument, ...]) -> Non
     for document in sources:
         try:
             ref = backend.current_ref(document.ref.source_id)
-        except (OSError, TimeoutError, KeyError) as exc:
+        except (OSError, KeyError) as exc:
             raise EvidenceError("answer_source_unavailable") from exc
         if ref != document.ref:
             raise EvidenceError("answer_source_stale")
@@ -1050,36 +1177,12 @@ _LABELLED_ID = re.compile(
 )
 
 
-def _public_prose(
-    prose: str, private_ids: set[str], source_versions: dict[str, str]
+def _public_source_references(
+    prose: str, source_versions: dict[str, str], private_ids: set[str]
 ) -> str:
-    """Remove adapter metadata before the semantic reviewer sees visible prose."""
-
-    source_ids = set(source_versions)
-    private_ids = private_ids - source_ids - UNITS
-
-    def bare(match: re.Match[str]) -> str:
-        return match[0] if match[1] in source_ids else ""
-
-    def wrapped(match: re.Match[str]) -> str:
-        content = (match[1] or match[2]).strip()
-        label = _LABELLED_ID.fullmatch(content)
-        if (content in private_ids and not content.isdecimal()) or (
-            label and label[1] not in source_ids
-        ):
-            return ""
-        if re.search(
-            r"\b(?:przypisanie|obliczenie)\s*:", content, re.IGNORECASE
-        ) and any(
-            re.search(rf"(?<![\w-]){re.escape(ident)}(?![\w-])", content)
-            for ident in private_ids
-        ):
-            return ""
-        return match[0]
-
     def source_citation(match: re.Match[str]) -> str:
         ident = match[1]
-        if ident not in source_ids:
+        if ident not in source_versions:
             return match[0]
         surrounding = prose[: match.start()] + prose[match.end() :]
         return (
@@ -1109,6 +1212,40 @@ def _public_prose(
             flags=re.IGNORECASE,
         )
         cleaned = re.sub(rf"\[({name})@[a-zA-Z0-9_.-]+\]", r"[\1]", cleaned)
+    return cleaned
+
+
+def _wrapped_public_text(
+    match: re.Match[str], private_ids: set[str], source_ids: set[str]
+) -> str:
+    content = (match[1] or match[2]).strip()
+    label = _LABELLED_ID.fullmatch(content)
+    if (content in private_ids and not content.isdecimal()) or (
+        label and label[1] not in source_ids
+    ):
+        return ""
+    if re.search(r"\b(?:przypisanie|obliczenie)\s*:", content, re.IGNORECASE) and any(
+        re.search(rf"(?<![\w-]){re.escape(ident)}(?![\w-])", content)
+        for ident in private_ids
+    ):
+        return ""
+    return match[0]
+
+
+def _public_prose(
+    prose: str, private_ids: set[str], source_versions: dict[str, str]
+) -> str:
+    """Remove adapter metadata before the semantic reviewer sees visible prose."""
+    source_ids = set(source_versions)
+    private_ids = private_ids - source_ids - UNITS
+    cleaned = _public_source_references(prose, source_versions, private_ids)
+
+    def bare(match: re.Match[str]) -> str:
+        return match[0] if match[1] in source_ids else ""
+
+    def wrapped(match: re.Match[str]) -> str:
+        return _wrapped_public_text(match, private_ids, source_ids)
+
     cleaned = _LABELLED_ID.sub(bare, _WRAPPED_ID.sub(wrapped, cleaned))
     for ident in sorted(private_ids):
         # Bare short IDs can coincide with real words or values.
@@ -1202,73 +1339,71 @@ _NOMINAL_LENGTH = re.compile(
 )
 
 
-def plain_pilot_context(
-    message: str, history: tuple[dict[str, str], ...]
-) -> tuple[tuple[dict[str, str], ...], str]:
-    """Focus an ordinary pilot turn on the selected exception or latest status."""
-    recap = bool(_RECAP_REQUEST.search(message) or _BOOKING_RECAP.search(message))
-    previous = [
-        (i, item["content"]) for i, item in enumerate(history) if item["role"] == "user"
-    ]
-    guidance = []
-    if previous and (
+def _reformulation_guidance(message: str, previous: list[str]) -> list[str]:
+    if not previous or not (
         _FINAL_REFORMULATION.search(message)
         or _NEXT_ROUND.search(message)
         or _LOCATION_FALLBACK.search(message)
     ):
+        return []
+    guidance: list[str] = []
+    guidance.append(
+        "Ułóż samodzielną odpowiedź z aktualnych ustaleń użytkownika. Ostatnia "
+        "korekta zmienia tylko wskazane fakty. Zapisz potrzebne liczby wraz "
+        "z etykietami i jednostkami, w tym wartość bazową wskazaną przez "
+        "odesłanie do wcześniejszej tury. Zachowaj warunki, które pozostają w mocy. "
+        "W pytaniu hipotetycznym osobno podaj skutek zmiany i porównaj go ze "
+        "stanem bez tej zmiany, jeśli użytkownik o to pyta."
+    )
+    context = [*previous[-3:], message]
+    if any(_ROUTE_REVERSAL.search(turn) for turn in context):
         guidance.append(
-            "Ułóż samodzielną odpowiedź z aktualnych ustaleń użytkownika. Ostatnia "
-            "korekta zmienia tylko wskazane fakty. Zapisz potrzebne liczby wraz "
-            "z etykietami i jednostkami, w tym wartość bazową wskazaną przez "
-            "odesłanie do wcześniejszej tury. Zachowaj warunki, które pozostają w mocy. "
-            "W pytaniu hipotetycznym osobno podaj skutek zmiany i porównaj go ze "
-            "stanem bez tej zmiany, jeśli użytkownik o to pyta."
+            "Prześledź trasę od nowego punktu startu. Przy odwróceniu kierunku "
+            "pierwszy z dwóch punktów staje się drugim, a drugi pierwszym. "
+            "Zachowaj położenie celu względem tego punktu. Jawnie nazwij punkt "
+            "startu w gotowej odpowiedzi, używając zwrotu «licząc od ...»."
         )
-        context = [prior for _, prior in previous[-3:]] + [message]
-        if any(_ROUTE_REVERSAL.search(turn) for turn in context):
+        if any(_LOCATION_FALLBACK.search(turn) for turn in context):
             guidance.append(
-                "Prześledź trasę od nowego punktu startu. Przy odwróceniu kierunku "
-                "pierwszy z dwóch punktów staje się drugim, a drugi pierwszym. "
-                "Zachowaj położenie celu względem tego punktu. Jawnie nazwij punkt "
-                "startu w gotowej odpowiedzi, używając zwrotu «licząc od ...»."
+                "Podaj jednocześnie pełne położenie celu od nowego punktu startu "
+                "oraz instrukcję na wypadek, gdy wskazanego miejsca nie widać. "
+                "Przy prośbie o dwa zdania pierwsze przeznacz na pełną lokalizację, "
+                "a drugie na warunek i instrukcję awaryjną."
             )
-            if any(_LOCATION_FALLBACK.search(turn) for turn in context):
-                guidance.append(
-                    "Podaj jednocześnie pełne położenie celu od nowego punktu startu "
-                    "oraz instrukcję na wypadek, gdy wskazanego miejsca nie widać. "
-                    "Przy prośbie o dwa zdania pierwsze przeznacz na pełną lokalizację, "
-                    "a drugie na warunek i instrukcję awaryjną."
-                )
-        if any(_ROUND_ORDER.search(turn) for turn in context):
+    if any(_ROUND_ORDER.search(turn) for turn in context):
+        guidance.append(
+            "Wypisz osobno, kto zaczyna obecną rundę, i kto zaczyna następną. "
+            "Zwrot «w tej dalej» utrzymuje osobę ustaloną dla obecnej rundy. "
+            "Zachowaj reguły wspólne dla obu rund. Jeśli użytkownik chce określonej "
+            "liczby punktów, zmieść obie role i wszystkie wspólne ograniczenia w "
+            "tych punktach, bez osobnego dopisku. Obowiązuje ostatnia reguła "
+            "kolejności uczestników. Jeśli gesty mają następować kolejno, pomiń "
+            "pomysł jednoczesnych ruchów w każdym punkcie i w opisie zabawy. "
+            "Gdy dla którejś rundy nie ustalono rozpoczynającego, nie dopisuj go."
+        )
+    if _NOMINAL_RECAP.search(message):
+        matches = map(_NOMINAL_LENGTH.search, reversed(context))
+        nominal = next(filter(None, matches), None)
+        if nominal:
             guidance.append(
-                "Wypisz osobno, kto zaczyna obecną rundę, i kto zaczyna następną. "
-                "Zwrot «w tej dalej» utrzymuje osobę ustaloną dla obecnej rundy. "
-                "Zachowaj reguły wspólne dla obu rund. Jeśli użytkownik chce określonej "
-                "liczby punktów, zmieść obie role i wszystkie wspólne ograniczenia w "
-                "tych punktach, bez osobnego dopisku. Obowiązuje ostatnia reguła "
-                "kolejności uczestników. Jeśli gesty mają następować kolejno, pomiń "
-                "pomysł jednoczesnych ruchów w każdym punkcie i w opisie zabawy. "
-                "Gdy dla którejś rundy nie ustalono rozpoczynającego, nie dopisuj go."
+                f"W odpowiedzi wpisz podaną długość nominalną {nominal[1]} "
+                "przy odcinkach, których długość pozostała bez zmiany."
             )
-        if _NOMINAL_RECAP.search(message):
-            for turn in reversed(context):
-                nominal = _NOMINAL_LENGTH.search(turn)
-                if nominal:
-                    guidance.append(
-                        f"W odpowiedzi wpisz podaną długość nominalną {nominal[1]} "
-                        "przy odcinkach, których długość pozostała bez zmiany."
-                    )
-                    break
-        if _STATUS_RECAP.search(message):
-            guidance.append(
-                "Oddziel potwierdzone zdarzenia od tego, co dopiero można sprawdzić. "
-                "Jeżeli wiadomo tylko, że nadano numer zgłoszenia, napisz, że zgłoszenie "
-                "przyjęto, używając sformułowania «sam numer nie potwierdza wyboru». "
-                "Stan faktycznej decyzji jest nieznany. Unikaj twierdzeń «wybór nie "
-                "został jeszcze potwierdzony», «oczekuje na weryfikację» lub "
-                "«weryfikacja trwa». Wymień wskazany dokument i osobę kontaktową, "
-                "gdy pytanie dotyczy późniejszego sprawdzenia."
-            )
+    if _STATUS_RECAP.search(message):
+        guidance.append(
+            "Oddziel potwierdzone zdarzenia od tego, co dopiero można sprawdzić. "
+            "Jeżeli wiadomo tylko, że nadano numer zgłoszenia, napisz, że zgłoszenie "
+            "przyjęto, używając sformułowania «sam numer nie potwierdza wyboru». "
+            "Stan faktycznej decyzji jest nieznany. Unikaj twierdzeń «wybór nie "
+            "został jeszcze potwierdzony», «oczekuje na weryfikację» lub "
+            "«weryfikacja trwa». Wymień wskazany dokument i osobę kontaktową, "
+            "gdy pytanie dotyczy późniejszego sprawdzenia."
+        )
+    return guidance
+
+
+def _recap_guidance(message: str, previous: list[str], recap: bool) -> list[str]:
+    guidance: list[str] = []
     if _BOOKING_RECAP.search(message):
         guidance.append(
             "Podaj dzień, liczebność i obowiązek zapisu. Weź dzień i liczbę z ostatniej "
@@ -1288,7 +1423,7 @@ def plain_pilot_context(
             "Wykres jednej wielkości nie wykazuje przebiegu zjawisk, których nie mierzy."
         )
     if (recap or _ONE_SENTENCE_RECAP.search(message)) and any(
-        _OBSERVATION_REQUEST.search(prior) for _, prior in previous[-2:]
+        _OBSERVATION_REQUEST.search(prior) for prior in previous[-2:]
     ):
         guidance.append(
             "Rozróżnij stałość mierzonej wielkości od tego, co działo się w grupie lub "
@@ -1296,20 +1431,27 @@ def plain_pilot_context(
             "Jeśli chodziło o wejścia i wyjścia, zachowaj oba zamiast zamieniać je na "
             "ogólny ruch wewnątrz obiektu."
         )
-    if recap and not _DATE_OVERRIDE.search(message):
-        for index, prior in reversed(previous[-2:]):
-            if _DATE_OVERRIDE.search(prior):
-                break
-            if _DATE_EXCEPTION.search(prior):
-                history = history[index:]
-                guidance.append(
-                    "Użytkownik wybrał wyjątek od zwykłego terminu. Podsumuj wyłącznie "
-                    "ten wybrany termin i jego ustalenia. Godzinę przypisz do czynności "
-                    "podanej w rozmowie lub karcie. Godzina otwarcia lub odjazdu nie oznacza "
-                    "godziny zbiórki bez wyraźnego potwierdzenia."
-                )
-                break
-    latest = previous[-1][1] if recap and previous else ""
+    return guidance
+
+
+def _recap_exception(previous: list[tuple[int, str]]) -> tuple[int | None, list[str]]:
+    guidance: list[str] = []
+    for index, prior in reversed(previous[-2:]):
+        if _DATE_OVERRIDE.search(prior):
+            break
+        if _DATE_EXCEPTION.search(prior):
+            guidance.append(
+                "Użytkownik wybrał wyjątek od zwykłego terminu. Podsumuj wyłącznie "
+                "ten wybrany termin i jego ustalenia. Godzinę przypisz do czynności "
+                "podanej w rozmowie lub karcie. Godzina otwarcia lub odjazdu nie oznacza "
+                "godziny zbiórki bez wyraźnego potwierdzenia."
+            )
+            return index, guidance
+    return None, guidance
+
+
+def _status_guidance(message: str, latest: str) -> list[str]:
+    guidance: list[str] = []
     if _ADDRESS_REVOKED.search(message) or _TENTATIVE_TIME.search(message):
         latest = message
     revoked = _ADDRESS_REVOKED.search(latest)
@@ -1324,6 +1466,27 @@ def plain_pilot_context(
             f"Godzina {tentative[1]} jest wstępna i wymaga potwierdzenia. "
             "Tak opisz ją w odpowiedzi, zachowując już ustalony dzień."
         )
+    return guidance
+
+
+def plain_pilot_context(
+    message: str, history: tuple[dict[str, str], ...]
+) -> tuple[tuple[dict[str, str], ...], str]:
+    """Focus an ordinary pilot turn on the selected exception or latest status."""
+    recap = bool(_RECAP_REQUEST.search(message) or _BOOKING_RECAP.search(message))
+    user_turns = [
+        (i, item["content"]) for i, item in enumerate(history) if item["role"] == "user"
+    ]
+    previous = [text for _, text in user_turns]
+    guidance = _reformulation_guidance(message, previous)
+    guidance.extend(_recap_guidance(message, previous, recap))
+    if recap and not _DATE_OVERRIDE.search(message):
+        index, exception = _recap_exception(user_turns)
+        if index is not None:
+            history = history[index:]
+            guidance.extend(exception)
+    latest = previous[-1] if recap and previous else ""
+    guidance.extend(_status_guidance(message, latest))
     return history, " ".join(guidance)
 
 
@@ -1341,11 +1504,12 @@ _GATHERING_PLACE = re.compile(
 _PUBLIC_CARD_AT_END = re.compile(r"(\[[A-Za-z][\w-]{0,63}\])\.?$")
 
 
+_WEDNESDAY = "środa"
 _DAYS = {
     "poniedziałek": "poniedziałek",
     "wtorek": "wtorek",
-    "środę": "środa",
-    "środa": "środa",
+    "środę": _WEDNESDAY,
+    _WEDNESDAY: _WEDNESDAY,
     "czwartek": "czwartek",
     "piątek": "piątek",
     "sobotę": "sobota",
@@ -1394,6 +1558,14 @@ def _plain_booking_recap(history: tuple[dict[str, str], ...]) -> str | None:
     if len(days) != 1 or len(sizes) != 1:
         return None
     day, size = next(iter(days)), next(iter(sizes))
+    required = _booking_decision(result, day)
+    if required is None:
+        return None
+    noun = _people_noun(size)
+    return f"{day.capitalize()}, {size} {noun}, zapis {'obowiązkowy' if required else 'niewymagany'}."
+
+
+def _booking_decision(result: str, day: str) -> bool | None:
     # A date may occur before or after the decision. Only attribute a clause
     # in both directions when it points to that one day.
     decisions = set()
@@ -1413,21 +1585,20 @@ def _plain_booking_recap(history: tuple[dict[str, str], ...]) -> str | None:
                 decisions.add(False)
             if _BOOKING_REQUIRED.search(_BOOKING_OPTIONAL.sub("", candidate)):
                 decisions.add(True)
-    if len(decisions) != 1:
-        return None
-    required = decisions.pop()
-    noun = (
-        "osoba"
-        if size == 1
-        else "osoby"
-        if size % 10 in (2, 3, 4) and size % 100 not in (12, 13, 14)
-        else "osób"
-    )
-    return f"{day.capitalize()}, {size} {noun}, zapis {'obowiązkowy' if required else 'niewymagany'}."
+    return decisions.pop() if len(decisions) == 1 else None
 
 
-_ROOM = re.compile(r"(?i:\b(?:sala|sali|salę)\s+)([A-ZĄĆĘŁŃÓŚŹŻ][\w-]*)")
-_HOST = re.compile(r"(?i:\b(?:prowadzi|zastąpi\s+(?:go|ją))\s+)([A-ZĄĆĘŁŃÓŚŹŻ][\w-]*)")
+def _people_noun(size: int) -> str:
+    if size == 1:
+        return "osoba"
+    if size % 10 in (2, 3, 4) and size % 100 not in (12, 13, 14):
+        return "osoby"
+    return "osób"
+
+
+_ROOM = re.compile(r"\b(?:sala|sali|salę)\s+", re.IGNORECASE)
+_HOST = re.compile(r"\b(?:prowadzi|zastąpi\s+(?:go|ją))\s+", re.IGNORECASE)
+_SCHEDULE_NAME = re.compile(r"[A-ZĄĆĘŁŃÓŚŹŻ][\w-]*")
 _SCHEDULE_EVENT = re.compile(
     r"\b(?:dopisz|zanotuj|zapisz|ustal)\b[^.!?:]*?\b(prób[ęa]|odpraw[ęa]|spotkanie)\s*:",
     re.IGNORECASE,
@@ -1437,22 +1608,42 @@ _SCHEDULE_EDIT = re.compile(
     re.IGNORECASE,
 )
 _RELATIVE_OPENING = re.compile(
-    r"\botwarcie\s+(?:sali\s+)?(?:będzie\s+)?(?:(kwadrans)|(\d{1,2})\s+minut(?:ę|y)?)\s+wcześniej\b",
+    r"\botwarcie\s+(?:sali\s+)?(?:będzie\s+)?(?:(kwadrans)|(\d{1,2})\s+minut[ęy]?)\s+wcześniej\b",
     re.IGNORECASE,
 )
 
 
-def _plain_schedule_recap(
-    message: str, history: tuple[dict[str, str], ...]
-) -> str | None:
-    if not _RECAP_REQUEST.search(message):
+def _schedule_names(turn: str, prefix: re.Pattern[str]) -> set[str]:
+    names: set[str] = set()
+    end = 0
+    for match in prefix.finditer(turn):
+        if match.start() < end:
+            continue
+        name = _SCHEDULE_NAME.match(turn, match.end())
+        if name is not None:
+            names.add(name[0])
+            end = name.end()
+    return names
+
+
+def _schedule_fields(turn: str, opening: re.Match[str] | None) -> dict[str, str] | None:
+    fields = {
+        "day": {_DAYS[day.casefold()] for day in _WEEKDAY.findall(turn)},
+        "time": set(_CLOCK_VALUE.findall(turn)),
+        "room": _schedule_names(turn, _ROOM),
+        "host": _schedule_names(turn, _HOST),
+    }
+    if any(len(values) > 1 for values in fields.values()):
         return None
+    updates = {field: values.pop() for field, values in fields.items() if values}
+    if opening:
+        updates["opening_offset"] = "15" if opening[1] else opening[2]
+    return updates
+
+
+def _schedule_state(turns: list[str]) -> dict[str, str] | None:
     facts: dict[str, str] = {}
-    opening_offset: int | None = None
-    for turn in (
-        *[item["content"] for item in history if item["role"] == "user"],
-        message,
-    ):
+    for turn in turns:
         anchor = _SCHEDULE_EVENT.search(turn)
         opening = _RELATIVE_OPENING.search(turn)
         amendment = _SCHEDULE_EDIT.search(turn)
@@ -1461,31 +1652,31 @@ def _plain_schedule_recap(
                 anchor[1].casefold(), anchor[1].casefold()
             )
             facts = {"event": event}
-            opening_offset = None
         elif not facts:
             continue
-        elif not (amendment or opening or _RECAP_REQUEST.search(turn)):
+        if anchor or amendment or opening:
+            fields = _schedule_fields(turn, opening)
+            if fields is None:
+                return None
+            facts.update(fields)
+        elif not _RECAP_REQUEST.search(turn):
             # Do not infer what an unrecognized update meant.
             return None
-        if opening:
-            opening_offset = 15 if opening[1] else int(opening[2])
-        if anchor or amendment or opening:
-            fields = {
-                "day": {_DAYS[day.casefold()] for day in _WEEKDAY.findall(turn)},
-                "time": set(_CLOCK_VALUE.findall(turn)),
-                "room": set(_ROOM.findall(turn)),
-                "host": set(_HOST.findall(turn)),
-            }
-            if any(len(values) > 1 for values in fields.values()):
-                return None
-            for field, values in fields.items():
-                if values:
-                    facts[field] = values.pop()
-    keys = {"event", "day", "time", "room", "host"}
-    if opening_offset is None or set(facts) != keys:
+    return facts
+
+
+def _plain_schedule_recap(
+    message: str, history: tuple[dict[str, str], ...]
+) -> str | None:
+    if not _RECAP_REQUEST.search(message):
+        return None
+    users = [turn["content"] for turn in history if turn["role"] == "user"]
+    facts = _schedule_state([*users, message])
+    keys = {"event", "day", "time", "room", "host", "opening_offset"}
+    if facts is None or set(facts) != keys:
         return None
     hours, minutes = (int(value) for value in facts["time"].split(":"))
-    start = hours * 60 + minutes - opening_offset
+    start = hours * 60 + minutes - int(facts["opening_offset"])
     if start < 0:
         return None
     opening_time = f"{start // 60:02d}:{start % 60:02d}"
@@ -1607,31 +1798,10 @@ def _order_calculation(
         or not source.complete
     ):
         return None
-    unit_price: str | None = None
-    discount: tuple[int, str] | None = None
-    fees: dict[str, str] = {}
-    for sentence in re.split(r"(?<=[.])\s+", source.text.strip()):
-        if price := _TARIFF_PRICE.fullmatch(sentence):
-            if unit_price is not None or _normal(price[1]) != _normal(
-                selection.product
-            ):
-                return None
-            unit_price = price[2].replace(",", ".")
-        elif rebate := _TARIFF_DISCOUNT.fullmatch(sentence):
-            if discount is not None:
-                return None
-            discount = int(rebate[1]), rebate[2].replace(",", ".")
-        elif option := _TARIFF_OPTION.fullmatch(sentence):
-            key = _normal(option[1])
-            if key in fees:
-                return None
-            fees[key] = (option[2] or "0").replace(",", ".")
-        else:
-            return None
-    fee = fees.get(_normal(selection.option))
-    if unit_price is None or discount is None or fee is None:
+    tariff = _order_tariff(source.text, selection)
+    if tariff is None:
         return None
-    threshold, rebate_amount = discount
+    unit_price, (threshold, rebate_amount), fee = tariff
     if (
         threshold < 1
         or not Decimal(unit_price) >= Decimal(rebate_amount) >= 0
@@ -1646,10 +1816,45 @@ def _order_calculation(
     return _OrderCalculation(selection, calculation, source, Decimal(fee) == 0)
 
 
-def _order_draft(calculation: CalculationEvidence, order: _OrderCalculation) -> Draft:
-    result = _length_draft(calculation)
+def _order_tariff(
+    text: str, selection: _OrderSelection
+) -> tuple[str, tuple[int, str], str] | None:
+    prices: list[re.Match[str]] = []
+    discounts: list[re.Match[str]] = []
+    fees: dict[str, str] = {}
+    for sentence in re.split(r"(?<=[.])\s+", text.strip()):
+        if price := _TARIFF_PRICE.fullmatch(sentence):
+            prices.append(price)
+            continue
+        if rebate := _TARIFF_DISCOUNT.fullmatch(sentence):
+            discounts.append(rebate)
+            continue
+        option = _TARIFF_OPTION.fullmatch(sentence)
+        if not option:
+            return None
+        key = _normal(option[1])
+        if key in fees:
+            return None
+        fees[key] = (option[2] or "0").replace(",", ".")
+    fee = fees.get(_normal(selection.option))
+    if len(prices) != 1 or len(discounts) != 1 or fee is None:
+        return None
+    price, rebate = prices[0], discounts[0]
+    if _normal(price[1]) != _normal(selection.product):
+        return None
+    return (
+        price[2].replace(",", "."),
+        (int(rebate[1]), rebate[2].replace(",", ".")),
+        fee,
+    )
+
+
+def _order_draft(
+    calculation: CalculationEvidence, order: _OrderCalculation, places: int | None
+) -> Draft:
+    result = _length_draft(calculation, places)
     selection, card = order.selection, order.source
-    amount = calculation.value.replace(".", ",")
+    amount = _display_calculation(calculation.value, places)
     prose = f"Koszt zamówienia „{selection.product}” z opcją „{selection.option}” wynosi {amount} zł."
     if order.free:
         prose += " Ta opcja jest bezpłatna."
@@ -1826,78 +2031,255 @@ def plain_pilot_recap(message: str, focused: tuple[dict[str, str], ...]) -> str 
     return f"{result} {citations}" if citations else result
 
 
-def run_pilot_turn(
-    message: str,
-    revision: str,
-    backend: SourceBackend,
-    model: ModelCall,
-    reviewer: SemanticReviewer,
-    *,
-    history: tuple[dict[str, str], ...] = (),
-    required: Requirements = Requirements(),
-    trace: list[dict[str, Any]] | None = None,
-) -> PublishedAnswer:
-    """No gold labels, hidden formula or unreviewed prose enters this boundary.
+@dataclass(frozen=True)
+class _PilotRequest:
+    message: str
+    revision: str
+    history: tuple[dict[str, str], ...]
+    required: Requirements
 
-    The trace is a private diagnostic sink, never a streaming user response.
-    Only the caller selects tools for this turn. Source updates during planning/review
-    invalidate the answer. A clarification also requires semantic approval.
-    """
-    audit = trace if trace is not None else []
-    if not (required.sources or required.calculation):
+    @property
+    def prior_users(self) -> tuple[str, ...]:
+        return tuple(turn["content"] for turn in self.history if turn["role"] == "user")
+
+    def material(self) -> dict[str, Any]:
+        return {
+            "message": self.message,
+            "revision": self.revision,
+            "history": list(self.history),
+        }
+
+
+@dataclass(frozen=True)
+class _PilotSources:
+    query: str
+    documents: tuple[SourceDocument, ...]
+    unavailable: tuple[str, ...]
+
+    def material(self) -> list[dict[str, Any]]:
+        return [
+            asdict(document)
+            | {
+                "ref": {
+                    "source_id": document.ref.source_id,
+                    "version": document.ref.version,
+                }
+            }
+            for document in self.documents
+        ]
+
+
+@dataclass(frozen=True)
+class _DeterministicAnswer:
+    calculation: Calculation | None = None
+    source_draft: Draft | None = None
+    order: _OrderCalculation | None = None
+    stock: tuple[Calculation, str, tuple[_StockValue, ...]] | None = None
+
+
+@dataclass(frozen=True)
+class _ReconciledInputs:
+    planning: dict[str, Any]
+    resolved: dict[str, Any]
+    assessment: InputAssessment
+    missing: list[str]
+    input_roles: InputRoles | None
+
+
+@dataclass(frozen=True)
+class _ResultFormat:
+    unit: str | None
+    places: int | None
+
+    def material(self) -> dict[str, Any]:
+        if self.places is None:
+            return {}
+        return {
+            "result_precision": {
+                "decimal_places": self.places,
+                "rounding": ROUNDING_MODE,
+                "unit": self.unit,
+            }
+        }
+
+
+@dataclass(frozen=True)
+class _PilotProof:
+    evidence_id: str
+    evidence: Evidence | None
+    review_material: dict[str, Any]
+    result: _ResultFormat
+
+
+def _validate_pilot_request(turn: _PilotRequest, reviewer: SemanticReviewer) -> str:
+    if not (turn.required.sources or turn.required.calculation):
         raise EvidenceError("pilot_tools_not_enabled")
     qualification = reviewer.qualification_id
     if not isinstance(qualification, str) or not qualification.strip():
         raise EvidenceError("pilot_reviewer_unqualified")
-    if not message.strip() or not revision.strip():
+    if not turn.message.strip() or not turn.revision.strip():
         raise EvidenceError("turn_identity_required")
     if any(
-        set(h) != {"role", "content"}
-        or h["role"] not in {"user", "assistant"}
-        or not isinstance(h["content"], str)
-        for h in history
+        set(item) != {"role", "content"}
+        or item["role"] not in {"user", "assistant"}
+        or not isinstance(item["content"], str)
+        for item in turn.history
     ):
         raise EvidenceError("pilot_history_invalid")
-    prior_users = tuple(h["content"] for h in history if h["role"] == "user")
-    request = {"message": message, "revision": revision, "history": list(history)}
+    return qualification
+
+
+def _read_pilot_sources(
+    turn: _PilotRequest,
+    gate: GroundedTurn,
+    model: ModelCall,
+    audit: list[dict[str, Any]],
+) -> _PilotSources:
     query = ""
-    gate = GroundedTurn(backend)
     documents: tuple[SourceDocument, ...] = ()
     unavailable: tuple[str, ...] = ()
-    if required.sources:
-        if requested_card_ids(message):
-            query = message
-        else:
-            selection: SourceQuery = _call(model, "source_query", request, SourceQuery)
-            query = selection.source_query.strip() or message
+    if turn.required.sources:
+        query = turn.message
+        if not requested_card_ids(turn.message):
+            selection: SourceQuery = _call(
+                model, "source_query", turn.material(), SourceQuery
+            )
+            query = selection.source_query.strip() or query
         audit.append({"phase": "source_query", "data": {"source_query": query}})
-        documents, unavailable = gate.read_sources(query, message=message)
+        documents, unavailable = gate.read_sources(query, message=turn.message)
     audit.append(
         {
             "phase": "full_read",
-            "documents": [asdict(d) for d in documents],
+            "documents": [asdict(document) for document in documents],
             "unavailable": list(unavailable),
         }
     )
-    model_sources = [
-        asdict(d) | {"ref": {"source_id": d.ref.source_id, "version": d.ref.version}}
-        for d in documents
+    return _PilotSources(query, documents, unavailable)
+
+
+def _source_only_draft(
+    message: str, documents: tuple[SourceDocument, ...]
+) -> Draft | None:
+    if meeting := requested_meeting_place(message, documents):
+        return Draft(
+            prose=f"{meeting.quote} [{meeting.source_id}]",
+            sources=[Quote(**asdict(meeting))],
+            calculations=[],
+        )
+    if pickups := requested_pickup_details(message, documents):
+        return Draft(
+            prose=" ".join(
+                f"„{entry.item}” — punkt {entry.point} do {entry.until}. [{entry.quote.source_id}]"
+                for entry in pickups
+            ),
+            sources=[Quote(**asdict(entry.quote)) for entry in pickups],
+            calculations=[],
+        )
+    return None
+
+
+def _deterministic_answer(
+    turn: _PilotRequest, documents: tuple[SourceDocument, ...]
+) -> _DeterministicAnswer:
+    message, prior_users = turn.message, turn.prior_users
+    if turn.required.sources:
+        if not turn.required.calculation:
+            return _DeterministicAnswer(
+                source_draft=_source_only_draft(message, documents)
+            )
+        order = _order_calculation(message, prior_users, documents)
+        return _DeterministicAnswer(
+            calculation=order.calculation if order else None, order=order
+        )
+    if not turn.required.calculation:
+        return _DeterministicAnswer()
+    stock = _stock_calculation((*prior_users, message))
+    calculation = _explicit_mean(message) or _explicit_length_conversion(message)
+    if calculation is None:
+        calculation = stock[0] if stock else _context_calculation(message, prior_users)
+    return _DeterministicAnswer(calculation=calculation, stock=stock)
+
+
+def _check_source_inputs(
+    turn: _PilotRequest,
+    model: ModelCall,
+    documents: list[dict[str, Any]],
+    missing: list[str],
+    audit: list[dict[str, Any]],
+) -> list[str]:
+    missing = _source_location_inputs(turn.message, missing)
+    if not missing:
+        return missing
+    # Complete cards can resolve outputs, including facts they explicitly omit.
+    source_inputs: MissingInputs = _call(
+        model,
+        "source_inputs",
+        {
+            "reported_missing": missing,
+            "prior_users": turn.prior_users,
+            "sources": documents,
+            "request": turn.message,
+        },
+        MissingInputs,
+    )
+    if not set(source_inputs.missing) <= set(missing):
+        raise EvidenceError("pilot_source_input_unlisted")
+    audit.append({"phase": "source_inputs", "data": source_inputs.model_dump()})
+    return source_inputs.missing
+
+
+def _recheck_percentage_inputs(
+    turn: _PilotRequest,
+    model: ModelCall,
+    documents: list[dict[str, Any]],
+    missing: list[str],
+    audit: list[dict[str, Any]],
+) -> tuple[list[str], InputRoles | None]:
+    if not turn.required.calculation or explicit_result_unit(turn.message) != "%":
+        return missing, None
+    # Reconsider only a named percentage. A quote cannot erase an arbitrary operand.
+    candidates = [
+        label
+        for label in missing
+        if re.match(r"^(?:procent|udział)\b", label.strip(), re.IGNORECASE)
     ]
-    planning = {
-        "revision": revision,
-        "history": [h for h in history if h["role"] == "user"],
-        "requirements": asdict(required),
-        "sources": model_sources,
-        "unavailable": list(unavailable),
-        "message": message,
-    }
+    if not candidates:
+        return missing, None
+    roles: InputRoles = _call(
+        model,
+        "input_roles",
+        {
+            "instruction": INPUT_ROLES_GUIDANCE,
+            "reported_missing": candidates,
+            "request": turn.message,
+            "prior_users": turn.prior_users,
+            "sources": documents,
+        },
+        InputRoles,
+    )
+    retained = _retain_input_roles(candidates, roles, turn.message)
+    removed = set(candidates) - set(retained)
+    audit.append({"phase": "input_roles", "data": roles.model_dump()})
+    return [label for label in missing if label not in removed], roles
+
+
+def _reconcile_inputs(
+    turn: _PilotRequest,
+    sources: _PilotSources,
+    deterministic: _DeterministicAnswer,
+    model: ModelCall,
+    audit: list[dict[str, Any]],
+) -> _ReconciledInputs:
+    message, required = turn.message, turn.required
+    documents = sources.material()
+    prior_users = turn.prior_users
     group = (
         _group_change(message, prior_users)
         if required.sources and documents and prior_users
         else None
     )
     speed = (
-        _SPEED_CONVERSION.search(message) or _SPEED_REQUEST.search(message)
+        (_SPEED_CONVERSION.search(message) or _SPEED_REQUEST.search(message))
         if required.calculation
         else None
     )
@@ -1907,249 +2289,288 @@ def run_pilot_turn(
         resolved["group_size"] = group
     if speed_unit is not None:
         resolved["requested_speed_unit"] = speed_unit
-    planning.update(resolved)
-    stock = (
-        _stock_calculation((*prior_users, message))
-        if required.calculation and not required.sources
-        else None
-    )
-    order = (
-        _order_calculation(message, prior_users, documents)
-        if required.calculation and required.sources
-        else None
-    )
-    explicit = (
-        order.calculation
-        if order
-        else (
-            _explicit_mean(message)
-            or _explicit_length_conversion(message)
-            or (stock[0] if stock else None)
-            or _context_calculation(message, prior_users)
-            if required.calculation and not required.sources
-            else None
-        )
-    )
-    source_draft = None
-    if required.sources and not required.calculation:
-        if meeting := requested_meeting_place(message, documents):
-            source_draft = Draft(
-                prose=f"{meeting.quote} [{meeting.source_id}]",
-                sources=[Quote(**asdict(meeting))],
-                calculations=[],
-            )
-        elif pickups := requested_pickup_details(message, documents):
-            source_draft = Draft(
-                prose=" ".join(
-                    f"„{entry.item}” — punkt {entry.point} do {entry.until}. [{entry.quote.source_id}]"
-                    for entry in pickups
-                ),
-                sources=[Quote(**asdict(entry.quote)) for entry in pickups],
-                calculations=[],
-            )
-    assessment: InputAssessment = (
-        InputAssessment(
-            current_state="Składniki pochodzą z jawnych danych i aktualizacji użytkownika.",
-            missing=[],
-        )
-        if explicit is not None or source_draft is not None
-        else _call(model, "assess", planning, InputAssessment)
-    )
+    planning = {
+        "revision": turn.revision,
+        "history": [item for item in turn.history if item["role"] == "user"],
+        "requirements": asdict(required),
+        "sources": documents,
+        "unavailable": list(sources.unavailable),
+        "message": message,
+        **resolved,
+    }
+    assessment = _assess_inputs(deterministic, model, planning)
     audit.append({"phase": "assess", "data": assessment.model_dump()})
     planning["current_state"] = assessment.current_state
-    price = (
-        _PRICE_QUESTION.search(message)
-        if documents and not required.calculation
-        else None
-    )
-    missing = _missing_inputs(
-        assessment.missing,
-        booking=group is not None and _BOOKING_QUESTION.search(message) is not None,
-        calculation_outputs=_calculation_outputs(message, speed_unit)
-        if required.calculation
-        else set(),
-        price_subject=" ".join(price[1].lower().split()) if price else "",
-    )
-    if required.sources and not required.calculation and documents:
-        missing = _source_location_inputs(message, missing)
-    if missing and required.sources and not required.calculation and documents:
-        # A complete card may resolve the question, including a fact it explicitly
-        # leaves unspecified. Check which reported inputs can only come from the user.
-        source_inputs: MissingInputs = _call(
-            model,
-            "source_inputs",
-            {
-                "reported_missing": missing,
-                "prior_users": prior_users,
-                "sources": model_sources,
-                "request": message,
-            },
-            MissingInputs,
-        )
-        if not set(source_inputs.missing) <= set(missing):
-            raise EvidenceError("pilot_source_input_unlisted")
-        missing = source_inputs.missing
-        audit.append({"phase": "source_inputs", "data": source_inputs.model_dump()})
-    input_roles = None
-    # A verifier may reconsider a named percentage output, never delete an
-    # arbitrary operand such as a transport fee just because it is in the request.
-    role_candidates = (
-        [
-            label
-            for label in missing
-            if re.match(r"^(?:procent|udział)\b", label.strip(), re.IGNORECASE)
-        ]
-        if required.calculation and explicit_result_unit(message) == "%"
-        else []
-    )
-    if role_candidates:
-        input_roles = _call(
-            model,
-            "input_roles",
-            {
-                "instruction": INPUT_ROLES_GUIDANCE,
-                "reported_missing": role_candidates,
-                "request": message,
-                "prior_users": prior_users,
-                "sources": model_sources,
-            },
-            InputRoles,
-        )
-        retained = _retain_input_roles(role_candidates, input_roles, message)
-        removed = set(role_candidates) - set(retained)
-        missing = [label for label in missing if label not in removed]
-        audit.append({"phase": "input_roles", "data": input_roles.model_dump()})
+    source_only = bool(required.sources and not required.calculation and documents)
+    missing = _reported_inputs(turn, assessment, source_only, group, speed_unit)
+    if source_only:
+        missing = _check_source_inputs(turn, model, documents, missing, audit)
+    missing, roles = _recheck_percentage_inputs(turn, model, documents, missing, audit)
     if resolved or missing != assessment.missing:
         audit.append(
             {"phase": "resolved_inputs", "data": resolved | {"missing": missing}}
         )
-    result_unit = explicit_result_unit(message) if required.calculation else None
-    if result_unit is None and explicit is not None:
-        result_unit = explicit.unit or None
+    return _ReconciledInputs(planning, resolved, assessment, missing, roles)
+
+
+def _reported_inputs(
+    turn: _PilotRequest,
+    assessment: InputAssessment,
+    source_only: bool,
+    group: dict[str, int] | None,
+    speed_unit: str | None,
+) -> list[str]:
+    message = turn.message
+    price = _PRICE_QUESTION.search(message) if source_only else None
+    return _missing_inputs(
+        assessment.missing,
+        booking=group is not None and _BOOKING_QUESTION.search(message) is not None,
+        calculation_outputs=_calculation_outputs(message, speed_unit)
+        if turn.required.calculation
+        else set(),
+        price_subject=" ".join(price[1].lower().split()) if price else "",
+    )
+
+
+def _assess_inputs(
+    deterministic: _DeterministicAnswer, model: ModelCall, planning: dict[str, Any]
+) -> InputAssessment:
+    if deterministic.calculation is not None or deterministic.source_draft is not None:
+        return InputAssessment(
+            current_state="Składniki pochodzą z jawnych danych i aktualizacji użytkownika.",
+            missing=[],
+        )
+    assessment: InputAssessment = _call(model, "assess", planning, InputAssessment)
+    return assessment
+
+
+def _result_format(turn: _PilotRequest, explicit: Calculation | None) -> _ResultFormat:
+    unit = explicit_result_unit(turn.message) if turn.required.calculation else None
+    if unit is None and explicit is not None:
+        unit = explicit.unit or None
     try:
-        places = requested_precision(message) if required.calculation else None
+        places = (
+            requested_precision(turn.message) if turn.required.calculation else None
+        )
     except ValueError as exc:
         raise EvidenceError(str(exc)) from exc
-    if places is not None:
-        if result_unit is None:
-            raise EvidenceError("answer_precision_unit_required")
-        resolved["result_precision"] = {
-            "decimal_places": places,
-            "rounding": ROUNDING_MODE,
-            "unit": result_unit,
-        }
-        planning.update(resolved)
+    if places is not None and unit is None:
+        raise EvidenceError("answer_precision_unit_required")
+    return _ResultFormat(unit, places)
+
+
+def _planned_calculations(
+    message: str,
+    model: ModelCall,
+    planning: dict[str, Any],
+    result: _ResultFormat,
+    audit: list[dict[str, Any]],
+) -> list[Calculation]:
+    planning["calculation_contract"] = {
+        "input_unit": "Jednostka CAŁEGO wyrażenia przed konwersją; puste gdy nie ma konwersji.",
+        "percentage": "Dla udziału użyj (część/całość)*100. Wyrażenie ma już jednostkę %: unit=% i input_unit=% albo puste. Nie przeliczaj punktów lub sztuk na procenty.",
+    }
+    arithmetic: ArithmeticPlan = _call(model, "plan", planning, ArithmeticPlan)
+    audit.append({"phase": "arithmetic", "data": arithmetic.model_dump()})
+    calculations = [_compile_calculation(item) for item in arithmetic.calculations]
+    conversion = _SPEED_CONVERSION.search(message)
+    if not conversion or len(calculations) != 1 or result.unit != conversion[1].lower():
+        return calculations
+    original = calculations[0]
+    if result.unit is not None and (original.unit, result.unit) in _CONVERSIONS:
+        converted = _compile_calculation(
+            original.model_copy(
+                update={"input_unit": original.unit, "unit": result.unit}
+            )
+        )
+        audit.append(
+            {"phase": "explicit_speed_conversion", "data": converted.model_dump()}
+        )
+        return [converted]
+    return calculations
+
+
+def _pilot_plan(
+    turn: _PilotRequest,
+    model: ModelCall,
+    inputs: _ReconciledInputs,
+    explicit: Calculation | None,
+    result: _ResultFormat,
+    audit: list[dict[str, Any]],
+) -> Plan:
     calculations = []
     if explicit is not None:
         calculations = [explicit]
         audit.append({"phase": "explicit_arithmetic", "data": explicit.model_dump()})
-    elif required.calculation and not missing:
-        planning["calculation_contract"] = {
-            "input_unit": "Jednostka CAŁEGO wyrażenia przed konwersją; puste gdy nie ma konwersji.",
-            "percentage": "Dla udziału użyj (część/całość)*100. Wyrażenie ma już jednostkę %: unit=% i input_unit=% albo puste. Nie przeliczaj punktów lub sztuk na procenty.",
-        }
-        arithmetic: ArithmeticPlan = _call(model, "plan", planning, ArithmeticPlan)
-        audit.append({"phase": "arithmetic", "data": arithmetic.model_dump()})
-        calculations = [_compile_calculation(c) for c in arithmetic.calculations]
-        conversion = _SPEED_CONVERSION.search(message)
-        if (
-            conversion
-            and len(calculations) == 1
-            and result_unit == conversion[1].lower()
-        ):
-            original = calculations[0]
-            if result_unit is not None and (original.unit, result_unit) in _CONVERSIONS:
-                calculations[0] = _compile_calculation(
-                    original.model_copy(
-                        update={"input_unit": original.unit, "unit": result_unit}
-                    )
-                )
-                audit.append(
-                    {
-                        "phase": "explicit_speed_conversion",
-                        "data": calculations[0].model_dump(),
-                    }
-                )
-    plan = Plan(
-        mode="clarify" if missing else "answer",
-        missing=missing,
+    elif turn.required.calculation and not inputs.missing:
+        calculations = _planned_calculations(
+            turn.message, model, inputs.planning, result, audit
+        )
+    return Plan(
+        mode="clarify" if inputs.missing else "answer",
+        missing=inputs.missing,
         calculations=calculations,
     )
-    plan_data = plan.model_dump()
-    audit.append({"phase": "plan", "data": plan_data})
-    compiled_explicit = None
+
+
+def _prepare_pilot_proof(
+    turn: _PilotRequest,
+    sources: _PilotSources,
+    gate: GroundedTurn,
+    plan: Plan,
+    planning: dict[str, Any],
+    result: _ResultFormat,
+    audit: list[dict[str, Any]],
+) -> _PilotProof:
+    evidence = None
+    evidence_data: dict[str, Any]
     if plan.mode == "clarify":
-        evidence_id = material_hash(planning | {"plan": plan_data})
-        evidence_data: dict[str, Any] = {
+        evidence_id = material_hash(planning | {"plan": plan.model_dump()})
+        evidence_data = {
             "evidence_id": evidence_id,
-            "sources": [asdict(d) for d in documents],
+            "sources": [asdict(document) for document in sources.documents],
             "calculations": [],
-            "unavailable": list(unavailable),
+            "unavailable": list(sources.unavailable),
         }
     else:
         final_plan = TurnPlan(
-            message,
-            revision,
-            prior_users,
-            query,
+            turn.message,
+            turn.revision,
+            turn.prior_users,
+            sources.query,
             tuple(
-                CalculationPlan(c.calculation_id, c.expression, c.unit)
-                for c in plan.calculations
+                CalculationPlan(item.calculation_id, item.expression, item.unit)
+                for item in plan.calculations
             ),
-            required,
+            turn.required,
         )
         evidence = gate.prepare(
-            final_plan, infer_requirements=False, required_result_unit=result_unit
+            final_plan, infer_requirements=False, required_result_unit=result.unit
         )
-        if evidence.sources != documents or evidence.unavailable != unavailable:
+        if (
+            evidence.sources != sources.documents
+            or evidence.unavailable != sources.unavailable
+        ):
             raise EvidenceError("pilot_evidence_changed_during_plan")
         evidence_id = evidence.evidence_id
         evidence_data = asdict(evidence)
-        if explicit is not None:
-            compiled_explicit = evidence.calculations[0]
     audit.append({"phase": "evidence", "data": evidence_data})
-    # The receipt key belongs to the adapter, not the generator or its answer.
-    review_evidence = {k: v for k, v in evidence_data.items() if k != "evidence_id"}
-    review_evidence["sources"] = model_sources
-    draft_input = (
-        request
-        | resolved
-        | {
-            "history": planning["history"],
-            "current_state": assessment.current_state,
-            "plan": plan_data,
-            "evidence": review_evidence,
-        }
-    )
-    if source_draft is not None:
-        draft = source_draft
-    elif compiled_explicit is None:
-        draft = _call(model, "draft", draft_input, Draft)
-    elif order is not None:
-        draft = _order_draft(compiled_explicit, order)
-    elif compiled_explicit.calculation_id in {
+    # The receipt key belongs to the adapter. Only public source data goes to the model.
+    review_material = {
+        key: value for key, value in evidence_data.items() if key != "evidence_id"
+    }
+    review_material["sources"] = sources.material()
+    return _PilotProof(evidence_id, evidence, review_material, result)
+
+
+def _pilot_draft(
+    turn: _PilotRequest,
+    model: ModelCall,
+    deterministic: _DeterministicAnswer,
+    inputs: _ReconciledInputs,
+    plan: Plan,
+    proof: _PilotProof,
+) -> Draft:
+    if deterministic.source_draft is not None:
+        return deterministic.source_draft
+    if deterministic.calculation is None or proof.evidence is None:
+        draft_input = (
+            turn.material()
+            | inputs.resolved
+            | proof.result.material()
+            | {
+                "history": inputs.planning["history"],
+                "current_state": inputs.assessment.current_state,
+                "plan": plan.model_dump(),
+                "evidence": proof.review_material,
+            }
+        )
+        draft: Draft = _call(model, "draft", draft_input, Draft)
+        return draft
+    calculation = proof.evidence.calculations[0]
+    places = proof.result.places
+    if deterministic.order is not None:
+        return _order_draft(calculation, deterministic.order, places)
+    if calculation.calculation_id in {
         "length_conversion",
         "average_speed",
         "volume_remainder",
         "scaled_length",
     }:
-        draft = _length_draft(compiled_explicit)
-    elif stock is not None:
-        draft = _stock_draft(
-            compiled_explicit,
-            stock[1],
-            stock[2],
-            number_only=requests_unitless_result(message),
+        return _length_draft(calculation, places)
+    if deterministic.stock is not None:
+        _, noun, balances = deterministic.stock
+        return _stock_draft(
+            calculation,
+            noun,
+            balances,
+            number_only=requests_unitless_result(turn.message),
+            places=places,
         )
-    else:
-        draft = _mean_draft(compiled_explicit)
-    prose = _public_prose(
-        draft.prose,
-        {evidence_id, revision, *(c.calculation_id for c in plan.calculations)},
-        {doc.ref.source_id: doc.ref.version for doc in documents},
+    return _mean_draft(calculation, places)
+
+
+def _certify_pilot_draft(
+    gate: GroundedTurn,
+    plan: Plan,
+    draft: Draft,
+    proof: _PilotProof,
+    audit_entry: dict[str, Any],
+    *,
+    sources_required: bool,
+) -> Draft:
+    if plan.mode == "clarify":
+        if draft.sources or draft.calculations:
+            raise EvidenceError("pilot_clarification_claims")
+        return draft
+    evidence = proof.evidence
+    if evidence is None:
+        raise EvidenceError("pilot_evidence_unavailable")
+    result = proof.result
+    quotes = tuple(
+        SourceQuote(item.source_id, item.version, item.quote) for item in draft.sources
     )
+    bound_quotes = (
+        bind_source_quotes(draft.prose, evidence, quotes)
+        if sources_required
+        else quotes
+    )
+    if bound_quotes != quotes:
+        draft = draft.model_copy(
+            update={"sources": [Quote(**asdict(quote)) for quote in bound_quotes]}
+        )
+        audit_entry["data"] = draft.model_dump()
+    claims = bound_quotes + tuple(
+        _bind_result_claim(item, evidence, result.unit, result.places)
+        for item in draft.calculations
+    )
+    gate.publish(AnswerDraft(proof.evidence_id, claims))
+    if result.unit is not None:
+        verify_result_prose(
+            draft.prose, evidence, result.unit, decimal_places=result.places
+        )
+    return draft
+
+
+def _finalize_pilot_draft(
+    turn: _PilotRequest,
+    sources: _PilotSources,
+    gate: GroundedTurn,
+    plan: Plan,
+    draft: Draft,
+    proof: _PilotProof,
+    audit: list[dict[str, Any]],
+) -> Draft:
+    source_versions = {
+        document.ref.source_id: document.ref.version for document in sources.documents
+    }
+    private_ids = {
+        proof.evidence_id,
+        turn.revision,
+        *(item.calculation_id for item in plan.calculations),
+    }
     prose = strip_public_bookkeeping(
-        prose, {doc.ref.source_id: doc.ref.version for doc in documents}
+        _public_prose(draft.prose, private_ids, source_versions), source_versions
     )
     if prose != draft.prose:
         draft = draft.model_copy(update={"prose": prose})
@@ -2158,56 +2579,32 @@ def run_pilot_turn(
     audit.append(draft_audit)
     if not draft.prose.strip():
         raise EvidenceError("answer_empty")
-    if plan.mode == "clarify":
-        if draft.sources or draft.calculations:
-            raise EvidenceError("pilot_clarification_claims")
-    else:
-        # Keep the original deterministic contract: arbitrary prose cannot bypass it.
-        quotes = tuple(
-            SourceQuote(q.source_id, q.version, q.quote) for q in draft.sources
-        )
-        bound_quotes = (
-            bind_source_quotes(draft.prose, evidence, quotes)
-            if required.sources
-            else quotes
-        )
-        if bound_quotes != quotes:
-            draft = draft.model_copy(
-                update={"sources": [Quote(**asdict(quote)) for quote in bound_quotes]}
-            )
-            draft_audit["data"] = draft.model_dump()
-        claims = bound_quotes + tuple(
-            _bind_result_claim(c, evidence, result_unit, places)
-            for c in draft.calculations
-        )
-        gate.publish(AnswerDraft(evidence_id, claims))
-        if result_unit is not None:
-            verify_result_prose(
-                draft.prose, evidence, result_unit, decimal_places=places
-            )
+    draft = _certify_pilot_draft(
+        gate,
+        plan,
+        draft,
+        proof,
+        draft_audit,
+        sources_required=turn.required.sources,
+    )
+    if plan.mode == "answer":
         cited = _cite_sources(draft.prose, draft.sources)
         if cited != draft.prose:
             draft = draft.model_copy(update={"prose": cited})
             audit.append({"phase": "public_citations_added"})
             draft_audit["data"] = draft.model_dump()
-    _current(backend, documents)
-    material = request | {
-        **(
-            {"input_roles": input_roles.model_dump()} if input_roles is not None else {}
-        ),
-        "requirements": asdict(required),
-        **(
-            {"result_precision": resolved["result_precision"]}
-            if places is not None
-            else {}
-        ),
-        "plan": plan_data,
-        "evidence": review_evidence,
-        "draft": draft.model_dump(),
-    }
+    return draft
+
+
+def _review_pilot_draft(
+    reviewer: SemanticReviewer,
+    qualification: str,
+    material: dict[str, Any],
+    audit: list[dict[str, Any]],
+) -> None:
     try:
         verdict = reviewer.review(material)
-    except (ValueError, OSError, TimeoutError) as exc:
+    except (ValueError, OSError) as exc:
         raise EvidenceError("pilot_review_failed") from exc
     if not isinstance(verdict, SemanticVerdict):
         raise EvidenceError("pilot_review_binding_invalid")
@@ -2223,5 +2620,53 @@ def run_pilot_turn(
         raise EvidenceError("pilot_review_binding_invalid")
     if not verdict.approved:
         raise EvidenceError("pilot_semantic_rejected")
-    _current(backend, documents)
-    return PublishedAnswer(evidence_id, draft.prose)
+
+
+def run_pilot_turn(
+    message: str,
+    revision: str,
+    backend: SourceBackend,
+    model: ModelCall,
+    reviewer: SemanticReviewer,
+    *,
+    history: tuple[dict[str, str], ...] = (),
+    required: Requirements = Requirements(),
+    trace: list[dict[str, Any]] | None = None,
+) -> PublishedAnswer:
+    """Require current evidence and approval for an answer or a clarification.
+
+    The trace is a private diagnostic sink, never a streaming user response.
+    Only the caller selects tools for this turn.
+    """
+    audit = trace if trace is not None else []
+    turn = _PilotRequest(message, revision, history, required)
+    qualification = _validate_pilot_request(turn, reviewer)
+    gate = GroundedTurn(backend)
+    sources = _read_pilot_sources(turn, gate, model, audit)
+    deterministic = _deterministic_answer(turn, sources.documents)
+    inputs = _reconcile_inputs(turn, sources, deterministic, model, audit)
+    result = _result_format(turn, deterministic.calculation)
+    inputs.planning.update(result.material())
+    plan = _pilot_plan(turn, model, inputs, deterministic.calculation, result, audit)
+    audit.append({"phase": "plan", "data": plan.model_dump()})
+    proof = _prepare_pilot_proof(
+        turn, sources, gate, plan, inputs.planning, result, audit
+    )
+    draft = _pilot_draft(turn, model, deterministic, inputs, plan, proof)
+    draft = _finalize_pilot_draft(turn, sources, gate, plan, draft, proof, audit)
+    _current(backend, sources.documents)
+    material = turn.material()
+    if inputs.input_roles is not None:
+        material["input_roles"] = inputs.input_roles.model_dump()
+    material["requirements"] = asdict(required)
+    material.update(result.material())
+    material.update(
+        {
+            "plan": plan.model_dump(),
+            "evidence": proof.review_material,
+            "draft": draft.model_dump(),
+        }
+    )
+    _review_pilot_draft(reviewer, qualification, material, audit)
+    _current(backend, sources.documents)
+    return PublishedAnswer(proof.evidence_id, draft.prose)

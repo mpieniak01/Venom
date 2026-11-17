@@ -167,7 +167,8 @@ def test_incomplete_source_blocks_before_formula_or_reviewer():
     backend.document = replace(backend.document, complete=False)
     with pytest.raises(EvidenceError, match="source_incomplete"):
         run(backend, model, reviewer)
-    assert len(model.calls) == 1 and not reviewer.materials
+    assert len(model.calls) == 1
+    assert not reviewer.materials
 
 
 def test_model_cannot_turn_off_required_calculator():
@@ -452,16 +453,10 @@ def test_correction_uses_new_expression_and_review_identity():
 
 @pytest.mark.parametrize("message,revision", [(" ", "r"), ("ok", " ")])
 def test_empty_turn_identity_stops_before_model(message, revision):
-    model = Model()
+    model, backend, reviewer = Model(), Sources(), Reviewer()
+    required = Requirements(calculation=True)
     with pytest.raises(EvidenceError, match="turn_identity_required"):
-        run_pilot_turn(
-            message,
-            revision,
-            Sources(),
-            model,
-            Reviewer(),
-            required=Requirements(calculation=True),
-        )
+        run_pilot_turn(message, revision, backend, model, reviewer, required=required)
     assert not model.calls
 
 
@@ -534,7 +529,9 @@ def test_unselected_tool_path_never_calls_model_or_sources(message):
     model, backend, reviewer = Model(), Sources(), Reviewer()
     with pytest.raises(EvidenceError, match="pilot_tools_not_enabled"):
         run_pilot_turn(message, "no-tools", backend, model, reviewer)
-    assert not model.calls and not backend.reads and not reviewer.materials
+    assert not model.calls
+    assert not backend.reads
+    assert not reviewer.materials
 
 
 def test_unit_conversion_uses_hours_and_speed_without_leaking_ids():
@@ -699,8 +696,9 @@ def test_review_requires_complete_plan_and_literal_evidence(change, error):
         grade["source_claims"][0]["source_quote"] = "inny zapis"
     elif change == "absent_quote":
         grade["source_claims"][0]["source_quote"] = ""
+    reviewer = GroundedChecklistReviewer("q1", lambda _: grade)
     with pytest.raises(ValueError, match=error):
-        GroundedChecklistReviewer("q1", lambda _: grade).review(material)
+        reviewer.review(material)
 
 
 def test_source_event_mismatch_blocks_even_when_quotes_and_other_checks_pass():
@@ -1308,7 +1306,8 @@ def test_plain_recap_preserves_revoked_address_and_tentative_time():
     )
     _, guidance = plain_pilot_context("Napisz notatkę dla uczestników.", revised)
     assert guidance == plain_pilot_context(revision, history)[1]
-    assert "adres wymaga potwierdzenia" in guidance and "07:50 jest wstępna" in guidance
+    assert "adres wymaga potwierdzenia" in guidance
+    assert "07:50 jest wstępna" in guidance
     replaced = revised + (
         {"role": "user", "content": "Adres i godzina są już potwierdzone."},
         {"role": "assistant", "content": "Przyjąłem potwierdzenie."},
@@ -1587,6 +1586,82 @@ def test_unrecognized_quantity_correction_never_reuses_stale_stock():
     )
 
 
+def test_stock_read_with_unparsed_embedded_update_uses_normal_planner():
+    history = (
+        {
+            "role": "user",
+            "content": "Zapisz objętości: 400 ml w chłodni, 100 ml w szafce.",
+        },
+    )
+    model, reviewer = Model(), Reviewer()
+    model.override["assess"] = {
+        "current_state": "Odlano 20 ml z chłodni.",
+        "missing": [],
+    }
+    model.override["plan"] = {
+        "calculations": [
+            {"calculation_id": "total", "expression": "400+100-20", "unit": "ml"}
+        ]
+    }
+    model.override["draft"] = {
+        "prose": "Pozostało 480 ml.",
+        "sources": [],
+        "calculations": [{"calculation_id": "total", "value": "480", "unit": "ml"}],
+    }
+    answer = run_pilot_turn(
+        "Oblicz sumę po odlaniu 20 ml z chłodni.",
+        "stock-update",
+        Sources(),
+        model,
+        reviewer,
+        history=history,
+        required=Requirements(calculation=True),
+    )
+    assert [phase for phase, _ in model.calls] == ["assess", "plan", "draft"]
+    assert answer.text == "Pozostało 480 ml."
+    assert (
+        reviewer.materials[0]["evidence"]["calculations"][0]["expression"]
+        == "400+100-20"
+    )
+
+
+@pytest.mark.parametrize(
+    ("prior", "message", "visible", "exact"),
+    [
+        (
+            ("Zapisz objętości: 400 ml w chłodni, 105 ml w szafce.",),
+            "Policz sumę w litrach do dwóch miejsc po przecinku.",
+            "Łącznie: 0,51 l.",
+            "0.505",
+        ),
+        (
+            ("Z pojemnika z 0,7 l odlano 250 ml. Oblicz pozostałość w mililitrach.",),
+            "Ile litrów wynosi ta pozostałość do trzech miejsc po przecinku?",
+            "0,450 l.",
+            "0.45",
+        ),
+    ],
+)
+def test_deterministic_draft_formats_precision_without_rounding_evidence(
+    prior, message, visible, exact
+):
+    model, reviewer = Model(), Reviewer()
+    answer = run_pilot_turn(
+        message,
+        "stock-precision",
+        Sources(),
+        model,
+        reviewer,
+        history=tuple({"role": "user", "content": turn} for turn in prior),
+        required=Requirements(calculation=True),
+    )
+    assert not model.calls
+    assert answer.text == visible
+    material = reviewer.materials[0]
+    assert material["evidence"]["calculations"][0]["value"] == exact
+    assert material["draft"]["calculations"][0]["value"] == exact
+
+
 def test_count_correction_and_ordinary_final_replay_from_the_same_values():
     turns = (
         "W rejestrze są 21 przesyłek lokalnych i 13 zamiejscowych. Potwierdź obie liczby.",
@@ -1751,7 +1826,8 @@ def test_explicit_speed_request_converts_one_declared_result(
         "explicit_speed_conversion" in {event["phase"] for event in trace}
     ) is changed
     event = reviewer.materials[0]["evidence"]["calculations"][0]
-    assert event["value"] == value and event["unit"] == unit
+    assert event["value"] == value
+    assert event["unit"] == unit
     assert reviewer.materials[0]["plan"]["calculations"][0]["expression"] == compiled
 
 
@@ -1780,14 +1856,16 @@ def test_speed_conversion_leaves_other_plans_at_evidence_gate(message, steps):
         pytest.fail("A plan without the required result unit reached drafting.")
 
     trace = []
+    backend, reviewer = Sources(), Reviewer()
+    required = Requirements(calculation=True)
     with pytest.raises(EvidenceError):
         run_pilot_turn(
             message,
             "speed-r4",
-            Sources(),
+            backend,
             model,
-            Reviewer(),
-            required=Requirements(calculation=True),
+            reviewer,
+            required=required,
             trace=trace,
         )
     assert "explicit_speed_conversion" not in {event["phase"] for event in trace}

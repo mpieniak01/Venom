@@ -190,26 +190,26 @@ def test_version_change_before_publication_fails_closed():
     backend.document = replace(
         backend.document, ref=replace(backend.document.ref, version="v3")
     )
+    draft = AnswerDraft(
+        evidence.evidence_id,
+        (SourceQuote("club", "v2", "Dozwolone PNG do 2 MB."),),
+    )
     with pytest.raises(EvidenceError, match="answer_source_stale"):
-        gate.publish(
-            AnswerDraft(
-                evidence.evidence_id,
-                (SourceQuote("club", "v2", "Dozwolone PNG do 2 MB."),),
-            )
-        )
+        gate.publish(draft)
 
 
 def test_unavailable_document_cannot_be_cited_or_invented():
     backend = MemorySources()
     backend.document = replace(backend.document, available=False)
     _, gate, evidence = prepared_source(backend)
-    assert evidence.unavailable == ("club",) and not evidence.sources
+    assert evidence.unavailable == ("club",)
+    assert not evidence.sources
+    empty = AnswerDraft(evidence.evidence_id, ())
+    invented = AnswerDraft(evidence.evidence_id, (SourceQuote("club", "v2", "Reset"),))
     with pytest.raises(EvidenceError, match="answer_source_required"):
-        gate.publish(AnswerDraft(evidence.evidence_id, ()))
+        gate.publish(empty)
     with pytest.raises(EvidenceError, match="answer_source_unknown"):
-        gate.publish(
-            AnswerDraft(evidence.evidence_id, (SourceQuote("club", "v2", "Reset"),))
-        )
+        gate.publish(invented)
 
 
 @pytest.mark.parametrize("failure", [OSError("offline"), TimeoutError("timeout")])
@@ -268,23 +268,24 @@ def test_all_planned_calculations_run_before_model_draft():
 def test_wrong_answer_number_unit_or_expression_is_blocked(value, unit):
     gate = GroundedTurn(MemorySources())
     evidence = gate.prepare(calc_plan())
+    draft = AnswerDraft(
+        evidence.evidence_id, (CalculationClaim("distance", value, unit),)
+    )
     with pytest.raises(EvidenceError, match="answer_calculation_mismatch"):
-        gate.publish(
-            AnswerDraft(
-                evidence.evidence_id, (CalculationClaim("distance", value, unit),)
-            )
-        )
+        gate.publish(draft)
 
 
 def test_missing_or_unknown_calculation_is_blocked():
     gate = GroundedTurn(MemorySources())
     evidence = gate.prepare(calc_plan())
+    empty = AnswerDraft(evidence.evidence_id, ())
+    unknown = AnswerDraft(
+        evidence.evidence_id, (CalculationClaim("fake", "3.75", "km"),)
+    )
     with pytest.raises(EvidenceError, match="answer_calculation_required"):
-        gate.publish(AnswerDraft(evidence.evidence_id, ()))
+        gate.publish(empty)
     with pytest.raises(EvidenceError, match="answer_calculation_unknown"):
-        gate.publish(
-            AnswerDraft(evidence.evidence_id, (CalculationClaim("fake", "3.75", "km"),))
-        )
+        gate.publish(unknown)
 
 
 def test_user_correction_invalidates_previous_receipt_and_recomputes():
@@ -294,12 +295,11 @@ def test_user_correction_invalidates_previous_receipt_and_recomputes():
     current = gate.prepare(calc_plan(revision="turn-2"))
     assert current.evidence_id != previous.evidence_id
     assert current.calculations[0].value == "3.75"
+    stale = AnswerDraft(
+        previous.evidence_id, (CalculationClaim("distance", "4.2", "km"),)
+    )
     with pytest.raises(EvidenceError, match="stale"):
-        gate.publish(
-            AnswerDraft(
-                previous.evidence_id, (CalculationClaim("distance", "4.2", "km"),)
-            )
-        )
+        gate.publish(stale)
     assert gate.publish(
         AnswerDraft(current.evidence_id, (CalculationClaim("distance", "3.75", "km"),))
     ).text.endswith("3.75 km")
@@ -308,14 +308,13 @@ def test_user_correction_invalidates_previous_receipt_and_recomputes():
 def test_correct_number_does_not_certify_wrong_prose():
     gate = GroundedTurn(MemorySources())
     evidence = gate.prepare(calc_plan("72/(1-20/100)", unit="zł"))
+    draft = AnswerDraft(
+        evidence.evidence_id,
+        (CalculationClaim("distance", "90", "zł"),),
+        prose="Aby wrócić do ceny, dodaj 20% do ceny przed obniżką.",
+    )
     with pytest.raises(EvidenceError, match="answer_semantic_review_required"):
-        gate.publish(
-            AnswerDraft(
-                evidence.evidence_id,
-                (CalculationClaim("distance", "90", "zł"),),
-                prose="Aby wrócić do ceny, dodaj 20% do ceny przed obniżką.",
-            )
-        )
+        gate.publish(draft)
 
 
 @pytest.mark.parametrize(
@@ -333,18 +332,18 @@ def test_correct_number_does_not_certify_wrong_prose():
     ],
 )
 def test_invalid_plans_fail_before_publication(plan):
+    gate = GroundedTurn(MemorySources())
     with pytest.raises(EvidenceError):
-        GroundedTurn(MemorySources()).prepare(plan)
+        gate.prepare(plan)
 
 
 def test_unstructured_grounded_answer_never_gets_a_pass():
     _, gate, evidence = prepared_source()
+    draft = AnswerDraft(
+        evidence.evidence_id, (), prose="Wszystko na pewno sprawdziłem."
+    )
     with pytest.raises(EvidenceError, match="semantic_review"):
-        gate.publish(
-            AnswerDraft(
-                evidence.evidence_id, (), prose="Wszystko na pewno sprawdziłem."
-            )
-        )
+        gate.publish(draft)
 
 
 def test_unsupported_claim_and_empty_answer_are_rejected():
@@ -380,17 +379,17 @@ def test_mandatory_routing_uses_user_text_not_benchmark_ids(
 
 
 def test_caller_requirements_cannot_disable_detected_calculation():
+    gate = GroundedTurn(MemorySources())
+    plan = TurnPlan("Oblicz 7*8", "r", required=Requirements(False, False))
     with pytest.raises(EvidenceError, match="calculation_plan_required"):
-        GroundedTurn(MemorySources()).prepare(
-            TurnPlan("Oblicz 7*8", "r", required=Requirements(False, False))
-        )
+        gate.prepare(plan)
 
 
 def test_explicit_requirement_blocks_ambiguous_unplanned_calculation():
+    gate = GroundedTurn(MemorySources())
+    plan = TurnPlan("Podaj wynik.", "r", required=Requirements(calculation=True))
     with pytest.raises(EvidenceError, match="calculation_plan_required"):
-        GroundedTurn(MemorySources()).prepare(
-            TurnPlan("Podaj wynik.", "r", required=Requirements(calculation=True))
-        )
+        gate.prepare(plan)
 
 
 def test_sources_and_calculations_must_both_be_represented():
@@ -403,10 +402,11 @@ def test_sources_and_calculations_must_both_be_represented():
             source_query="club",
         )
     )
+    calculation_only = AnswerDraft(
+        evidence.evidence_id, (CalculationClaim("area", "4", ""),)
+    )
     with pytest.raises(EvidenceError, match="answer_source_required"):
-        gate.publish(
-            AnswerDraft(evidence.evidence_id, (CalculationClaim("area", "4", ""),))
-        )
+        gate.publish(calculation_only)
     result = gate.publish(
         AnswerDraft(
             evidence.evidence_id,
@@ -416,7 +416,8 @@ def test_sources_and_calculations_must_both_be_represented():
             ),
         )
     )
-    assert "= 4" in result.text and "[club@v2]" in result.text
+    assert "= 4" in result.text
+    assert "[club@v2]" in result.text
 
 
 def test_long_decimal_result_is_rejected():
@@ -430,8 +431,10 @@ def test_execution_boundary_never_calls_generator_without_required_tool():
     from venom_core.services.grounded_dialogue import execute_grounded_turn
 
     generator = Mock()
+    plan = TurnPlan("Oblicz 3*7.", "r")
+    backend = MemorySources()
     with pytest.raises(EvidenceError, match="calculation_plan_required"):
-        execute_grounded_turn(TurnPlan("Oblicz 3*7.", "r"), MemorySources(), generator)
+        execute_grounded_turn(plan, backend, generator)
     generator.assert_not_called()
 
 
@@ -441,11 +444,13 @@ def test_execution_boundary_exposes_full_evidence_and_blocks_unverified_draft():
     backend = MemorySources()
 
     def generate(evidence):
-        assert backend.reads and evidence.sources[0].text == backend.document.text
+        assert backend.reads
+        assert evidence.sources[0].text == backend.document.text
         return AnswerDraft(evidence.evidence_id, (), prose="JPEG do 100 MB.")
 
+    plan = TurnPlan("Przeczytaj źródło.", "r")
     with pytest.raises(EvidenceError, match="semantic_review"):
-        execute_grounded_turn(TurnPlan("Przeczytaj źródło.", "r"), backend, generate)
+        execute_grounded_turn(plan, backend, generate)
 
 
 @pytest.mark.parametrize(
@@ -481,13 +486,12 @@ def test_source_disappearing_before_publication_cannot_be_released():
         raise KeyError(source_id)
 
     backend.current_ref = missing
+    draft = AnswerDraft(
+        evidence.evidence_id,
+        (SourceQuote("club", "v2", "Dozwolone PNG do 2 MB."),),
+    )
     with pytest.raises(EvidenceError, match="answer_source_unavailable"):
-        gate.publish(
-            AnswerDraft(
-                evidence.evidence_id,
-                (SourceQuote("club", "v2", "Dozwolone PNG do 2 MB."),),
-            )
-        )
+        gate.publish(draft)
 
 
 def test_successful_end_to_end_generator_receives_calculator_result():
@@ -513,11 +517,10 @@ def test_successful_end_to_end_generator_receives_calculator_result():
     ],
 )
 def test_explicit_mode_rejects_unselected_tool_arguments(changes):
+    gate = GroundedTurn(MemorySources())
+    plan = TurnPlan("Pokaż krótką odpowiedź.", "r1", **changes)
     with pytest.raises(EvidenceError, match="tool_not_explicitly_enabled"):
-        GroundedTurn(MemorySources()).prepare(
-            TurnPlan("Pokaż krótką odpowiedź.", "r1", **changes),
-            infer_requirements=False,
-        )
+        gate.prepare(plan, infer_requirements=False)
 
 
 @pytest.mark.parametrize(
@@ -573,6 +576,14 @@ def test_prose_numbers_preserve_grouping_instead_of_matching_suffix():
     old = gate.prepare(calc_plan("200.5", unit="zł"))
     with pytest.raises(EvidenceError, match="answer_result_unbound"):
         verify_result_prose("Wynik to 1 200,50 zł.", old, "zł")
+
+
+def test_correct_intermediate_cannot_hide_wrong_exact_result():
+    gate = GroundedTurn(MemorySources())
+    evidence = gate.prepare(calc_plan("30*0.8", unit="zł"))
+    verify_result_prose("Po obniżce cena wynosi 24 zł.", evidence, "zł")
+    with pytest.raises(EvidenceError, match="answer_result_unbound"):
+        verify_result_prose("Pośrednio 24 zł, ostatecznie 25 zł.", evidence, "zł")
 
 
 @pytest.mark.parametrize(
@@ -631,13 +642,11 @@ def test_all_explicit_named_cards_need_bound_quotes():
         TurnPlan("Porównaj wyniki według PIERWSZA oraz według DRUGA.", "r")
     )
     assert evidence.requested_source_ids == ("PIERWSZA", "DRUGA")
+    one_quote = AnswerDraft(
+        evidence.evidence_id, (SourceQuote("PIERWSZA", "1", "PIERWSZA"),)
+    )
     with pytest.raises(EvidenceError, match="answer_named_source_required"):
-        gate.publish(
-            AnswerDraft(
-                evidence.evidence_id,
-                (SourceQuote("PIERWSZA", "1", "PIERWSZA"),),
-            )
-        )
+        gate.publish(one_quote)
 
 
 def test_public_bookkeeping_cleanup_keeps_fact_and_real_citation():
@@ -687,6 +696,67 @@ def test_compact_review_must_cover_the_card_actually_quoted():
         compact_approved(verdict | {"source_refs": [2]}, packet)
 
 
+def test_checklist_review_must_cover_every_source_bound_to_the_answer():
+    from venom_core.services.grounded_review import GroundedChecklistReviewer
+
+    texts = {"price": "Cena biletu to 24 zł.", "deposit": "Depozyt wynosi 5 zł."}
+    message = "Podaj cenę i depozyt."
+    facts = [
+        {"source_id": ident, "version": "v2", "quote": value}
+        for ident, value in texts.items()
+    ]
+    material = {
+        "message": message,
+        "requirements": {"sources": True},
+        "plan": {"mode": "answer", "calculations": []},
+        "draft": {"prose": " ".join(texts.values()), "sources": facts},
+        "evidence": {
+            "sources": [
+                {"ref": {"source_id": ident}, "text": value}
+                for ident, value in texts.items()
+            ],
+            "calculations": [],
+        },
+    }
+    findings = [
+        {
+            "source_id": ident,
+            "source_quote": value,
+            "source_role": value,
+            "answer_quote": value,
+            "answer_role": value,
+            "same_role": True,
+            "ok": True,
+            "reason": "Sprawdzony fakt.",
+        }
+        for ident, value in texts.items()
+    ]
+    grade = {
+        "context": {
+            "ok": True,
+            "reason": "Aktualne pytanie.",
+            "latest_user_quote": message,
+        },
+        "calculations": [],
+        "source_claims": findings[:1],
+        "answer": {"ok": True, "reason": "Odpowiedź zgodna."},
+    }
+    reviewer = GroundedChecklistReviewer("local", lambda _: grade)
+    with pytest.raises(ValueError, match="review_source_coverage_missing"):
+        reviewer.review(material)
+    grade["source_claims"] = findings
+    assert reviewer.review(material).approved
+
+
+def test_unknown_explicit_lowercase_citation_rejected_even_with_valid_quote():
+    _, _, evidence = prepared_source(MemorySources("Cena wynosi 30 zł."))
+    quotes = (SourceQuote("club", "v2", "Cena wynosi 30 zł."),)
+    prose = "Cena wynosi 30 zł według cennika [club]."
+    assert bind_source_quotes(prose, evidence, quotes) == quotes
+    with pytest.raises(EvidenceError, match="answer_source_unknown"):
+        bind_source_quotes("Cena wynosi 30 zł [invented].", evidence, quotes)
+
+
 def test_assignments_bind_both_required_cards_and_restore_missing_literal():
     backend = MemorySources()
     bodies = {
@@ -719,8 +789,9 @@ def test_assignments_bind_both_required_cards_and_restore_missing_literal():
     bound = bind_source_quotes(prose, evidence, quotes)
     assert bound == (*quotes, SourceQuote("RAMKA", "1", bodies["RAMKA"]))
     assert "[RAMKA@1]" in gate.publish(AnswerDraft(evidence.evidence_id, bound)).text
+    unknown_source = prose.replace("RAMKA", "POMYLONA")
     with pytest.raises(EvidenceError, match="answer_source_unknown"):
-        bind_source_quotes(prose.replace("RAMKA", "POMYLONA"), evidence, quotes)
+        bind_source_quotes(unknown_source, evidence, quotes)
     with pytest.raises(EvidenceError, match="answer_source_unknown"):
         bind_source_quotes(
             prose + " Według karty **NIEISTNIEJACA** obowiązuje rabat.",
@@ -733,12 +804,11 @@ def test_long_or_incomplete_card_cannot_supply_implicit_quote():
     _, _, evidence = prepared_source(MemorySources("Wzór " * 1300))
     with pytest.raises(EvidenceError, match="answer_public_source_required"):
         bind_source_quotes("Wynik według karty [club].", evidence, ())
+    incomplete = replace(
+        evidence, sources=(replace(evidence.sources[0], complete=False),)
+    )
     with pytest.raises(EvidenceError, match="answer_public_source_required"):
-        bind_source_quotes(
-            "Wynik według karty [club].",
-            replace(evidence, sources=(replace(evidence.sources[0], complete=False),)),
-            (),
-        )
+        bind_source_quotes("Wynik według karty [club].", incomplete, ())
 
 
 def test_quote_normalizes_only_double_quote_spelling():

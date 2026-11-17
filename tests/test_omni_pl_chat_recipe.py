@@ -232,6 +232,7 @@ def test_balanced_dataloader_measures_epochs_and_resumes_without_training(
     from transformers import Trainer, TrainingArguments
 
     accelerate = pytest.importorskip("accelerate")
+    cpu = torch.device("cpu")
     rows = _sampling_rows()
     recipe = validate_recipe(
         {
@@ -269,7 +270,7 @@ def test_balanced_dataloader_measures_epochs_and_resumes_without_training(
         )
 
     def consume(worker, stream, expected):
-        batches, num_items = worker.get_batch_samples(stream, 4, torch.device("cpu"))
+        batches, num_items = worker.get_batch_samples(stream, 4, cpu)
         assert all("sampling_indices" not in batch for batch in batches)
         assert sum(
             int(trainer._supervised_token_count(b["labels"])) for b in batches
@@ -301,11 +302,17 @@ def test_balanced_dataloader_measures_epochs_and_resumes_without_training(
 
     resumed, _, _ = prepare()
     resumed.state.global_step = 4
+    # Transformers 5.22.2 wraps the resumed loader before setting its epoch.
     loader = accelerate.skip_first_batches(resumed.get_train_dataloader(), 4)
     loader.set_epoch(1)
+    underlying_sampler = getattr(loader.batch_sampler, "batch_sampler", None)
+    if hasattr(underlying_sampler, "set_epoch"):
+        underlying_sampler.set_epoch(1)
     stream = iter(loader)
     for expected in plan[4:6]:
         consume(resumed, stream, expected)
+    assert resumed.state.global_step == 6
+    assert resumed.get_batch_samples(stream, 4, cpu) == ([], None)
     assert resumed.state.global_step == 6
 
     corrupt, _, _ = prepare()
@@ -314,16 +321,18 @@ def test_balanced_dataloader_measures_epochs_and_resumes_without_training(
         for start in range(0, 8, 2)
     ]
     batches[0]["sampling_indices"] = batches[0]["sampling_indices"].flip(0)
+    stream = iter(batches)
     with pytest.raises(RuntimeError, match="sample order differs at update 1"):
-        corrupt.get_batch_samples(iter(batches), 4, torch.device("cpu"))
+        corrupt.get_batch_samples(stream, 4, cpu)
 
     batches = [
         trainer._collate([rows[i] for i in plan[0].indices[start : start + 2]], 0)
         for start in range(0, 8, 2)
     ]
     batches[0]["labels"][0, 1] = -100
+    stream = iter(batches)
     with pytest.raises(RuntimeError, match="token counts differ at update 1"):
-        corrupt.get_batch_samples(iter(batches), 4, torch.device("cpu"))
+        corrupt.get_batch_samples(stream, 4, cpu)
 
 
 def test_language_inventory_excludes_other_modalities():

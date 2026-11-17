@@ -1267,6 +1267,85 @@ def _review_checkpoint_test(client, run_id, step, candidate_good):
     assert client.post(prefix + "/judgments", json=submission).status_code == 409
 
 
+@pytest.mark.parametrize(
+    "partial", ["sealed-step", "unpublished-step", "final-publication"]
+)
+def test_automatic_checkpoint_review_recovers_without_rescoring(
+    checkpoint_campaign, monkeypatch, partial
+):
+    from venom_core.services.training_experiments import local_semantic_judge
+    from venom_core.services.training_experiments.checkpoint_evaluation import (
+        step_directory,
+    )
+    from venom_core.services.training_experiments.profiles import read_json
+
+    campaign, _, plan, run_id, _, _, service, _ = checkpoint_campaign
+    _start_checkpoint_test(campaign, plan)
+    worker = Worker(service, run_id, 1)
+    worker.run()
+    state = service.store.read(run_id)
+    assert state["status"] == "awaiting_review"
+    worker.deadline = worker_module.time.monotonic() + 30
+    calibration = {"judge": local_semantic_judge.JUDGE}
+    scored = []
+    interrupted = True
+
+    def judge(_calibration, bundle, _run_id, _seconds, *, check):
+        check()
+        values = bundle["answers"][0]["answers"]
+        step = next(
+            answer["text"] for answer in values.values() if answer["text"] != "base"
+        )
+        scored.append(step)
+        if interrupted and partial == "sealed-step" and step == "checkpoint-4":
+            raise RuntimeError("score interrupted")
+        judgments = [
+            grade(label, answer["text"] != "base") for label, answer in values.items()
+        ]
+        for judgment in judgments:
+            judgment["critical_error"] = False
+            judgment["model_review_call"] = {"created_at": len(scored)}
+        return judgments
+
+    publish = service._publish_result
+    run = service.run_dir(run_id)
+
+    def publish_result(directory, result):
+        if interrupted and (
+            (partial == "unpublished-step" and directory == step_directory(run, 2))
+            or (partial == "final-publication" and directory == run)
+        ):
+            raise RuntimeError("publish interrupted")
+        publish(directory, result)
+
+    monkeypatch.setattr(local_semantic_judge, "review_bundle", judge)
+    monkeypatch.setattr(service, "_publish_result", publish_result)
+    with pytest.raises(RuntimeError, match="interrupted"):
+        worker._score_calibration(state, calibration)
+    first = step_directory(run, 2)
+    saved = {
+        path: (path.read_bytes(), path.stat().st_mtime_ns)
+        for path in first.iterdir()
+        if path.name in {"judgments.json", "result.json", "result-seal.json"}
+    }
+    assert saved
+    if partial == "final-publication":
+        assert not (run / "result-seal.json").exists()
+    interrupted = False
+    worker._score_calibration(service.store.read(run_id), calibration)
+    assert scored.count("checkpoint-2") == 1
+    assert scored.count("checkpoint-4") == (2 if partial == "sealed-step" else 1)
+    assert all(
+        saved[path] == (path.read_bytes(), path.stat().st_mtime_ns) for path in saved
+    )
+    report = read_json(run / "result.json")
+    assert [item["status"] for item in report["checkpoint_evaluations"]] == [
+        "succeeded",
+        "succeeded",
+    ]
+    assert service.store.read(run_id)["status"] == "succeeded"
+
+
 @pytest.mark.parametrize("qualifying", [True, False])
 def test_checkpoint_campaign_retries_generation_and_ranks_only_qualified_steps(
     checkpoint_campaign, qualifying

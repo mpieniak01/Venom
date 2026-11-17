@@ -1,6 +1,7 @@
 """Pin and collect holdout inputs from an existing local Academy campaign."""
 
 from pathlib import Path
+from time import monotonic
 from typing import BinaryIO, cast
 
 from venom_core.core.environment_policy import ensure_data_mutation_allowed
@@ -59,11 +60,14 @@ def pin_local(
 
 
 class _LimitedWriter:
-    def __init__(self, stream: BinaryIO, max_bytes: int) -> None:
+    def __init__(self, stream: BinaryIO, max_bytes: int, timeout: int | None) -> None:
         self.stream = stream
         self.limit = max_bytes
+        self.deadline = None if timeout is None else monotonic() + timeout
 
     def write(self, chunk: bytes) -> int:
+        if self.deadline is not None and monotonic() >= self.deadline:
+            raise TimeoutError("remote_text_evidence_fetch_timeout")
         if len(chunk) > self.limit:
             raise ValueError("remote_text_evidence_size_invalid")
         written = self.stream.write(chunk)
@@ -90,7 +94,7 @@ class _LocalEvidence:
                 self.campaign,
                 campaign_id,
                 run_id,
-                cast(BinaryIO, _LimitedWriter(stream, max_bytes)),
+                cast(BinaryIO, _LimitedWriter(stream, max_bytes, timeout)),
             )
         return {}
 

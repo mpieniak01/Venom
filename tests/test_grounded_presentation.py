@@ -143,20 +143,22 @@ def test_rounding_does_not_allow_wrong_claim_unit_precision_or_visible_result(
     claim, prose
 ):
     reviewer = Reviewer()
+    model = Model(claim=claim, prose=prose)
     with pytest.raises(
         EvidenceError, match="answer_calculation_mismatch|answer_result_unbound"
     ):
         invoke(
             "Podaj procent do dwóch miejsc po przecinku.",
-            Model(claim=claim, prose=prose),
+            model,
             reviewer,
         )
     assert not reviewer.materials
 
 
 def test_unrequested_rounding_cannot_be_authorized_by_model_claim():
+    model = Model()
     with pytest.raises(EvidenceError, match="answer_calculation_mismatch"):
-        invoke("Podaj procent.", Model())
+        invoke("Podaj procent.", model)
 
 
 @pytest.mark.parametrize(
@@ -172,8 +174,9 @@ def test_unrequested_rounding_cannot_be_authorized_by_model_claim():
     ],
 )
 def test_ambiguous_or_unsupported_precision_fails_closed(message, error):
+    model = Model()
     with pytest.raises(EvidenceError, match="answer_precision_" + error):
-        invoke(message, Model())
+        invoke(message, model)
 
 
 @pytest.mark.parametrize(
@@ -353,10 +356,11 @@ def test_input_recheck_cannot_remove_an_unbound_or_different_input(items, error)
             )
 
     reviewer = Reviewer()
+    model = RolesModel(missing=["procent modeli"])
     with pytest.raises(EvidenceError, match="pilot_input_role_" + error):
         invoke(
             "Podaj procent tych egzemplarzy.",
-            RolesModel(missing=["procent modeli"]),
+            model,
             reviewer,
         )
     assert not reviewer.materials

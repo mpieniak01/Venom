@@ -44,6 +44,42 @@ class GroundedReviewForm(StrictModel):
     answer: Finding
 
 
+def _check_calculation_coverage(
+    findings: list[CalculationFinding],
+    plan: dict[str, Any],
+    evidence: dict[str, Any],
+) -> None:
+    expected = sorted(item["calculation_id"] for item in plan["calculations"])
+    if (
+        sorted(item.calculation_id for item in findings) != expected
+        or sorted(item["calculation_id"] for item in evidence["calculations"])
+        != expected
+    ):
+        raise ValueError("review_calculation_coverage_invalid")
+
+
+def _check_source_finding(
+    finding: SourceFinding, prose: str, documents: dict[str, str]
+) -> None:
+    if not finding.answer_quote.strip() or finding.answer_quote not in prose:
+        raise ValueError("review_answer_quote_invalid")
+    if (
+        not finding.answer_role.strip()
+        or finding.answer_role not in finding.answer_quote
+    ):
+        raise ValueError("review_answer_role_invalid")
+    if (
+        finding.ok or finding.source_id or finding.source_quote or finding.source_role
+    ) and (
+        not finding.source_quote.strip()
+        or finding.source_id not in documents
+        or finding.source_quote not in documents[finding.source_id]
+        or not finding.source_role.strip()
+        or finding.source_role not in finding.source_quote
+    ):
+        raise ValueError("review_source_quote_invalid")
+
+
 def checked_findings(
     raw: dict[str, Any], material: dict[str, Any]
 ) -> GroundedReviewForm:
@@ -55,39 +91,24 @@ def checked_findings(
     ):
         raise ValueError("review_context_quote_invalid")
 
-    draft = material["draft"]
     evidence = material["evidence"]
     plan = material["plan"]
-    documents = {doc["ref"]["source_id"]: doc["text"] for doc in evidence["sources"]}
-    ids = [c.calculation_id for c in audit.calculations]
-    expected = sorted(c["calculation_id"] for c in plan["calculations"])
+    _check_calculation_coverage(audit.calculations, plan, evidence)
+    draft = material["draft"]
+    cited = {source["source_id"] for source in draft.get("sources", ())}
+    checked = {finding.source_id for finding in audit.source_claims}
     if (
-        sorted(ids) != expected
-        or sorted(c["calculation_id"] for c in evidence["calculations"]) != expected
-    ):
-        raise ValueError("review_calculation_coverage_invalid")
-
-    if (
-        material["requirements"]["sources"]
-        and plan["mode"] == "answer"
+        plan["mode"] == "answer"
         and audit.answer.ok
-        and not audit.source_claims
+        and (
+            not cited <= checked
+            or (material["requirements"]["sources"] and not audit.source_claims)
+        )
     ):
         raise ValueError("review_source_coverage_missing")
-    for item in audit.source_claims:
-        if not item.answer_quote.strip() or item.answer_quote not in draft["prose"]:
-            raise ValueError("review_answer_quote_invalid")
-        if not item.answer_role.strip() or item.answer_role not in item.answer_quote:
-            raise ValueError("review_answer_role_invalid")
-        if item.ok or item.source_id or item.source_quote or item.source_role:
-            if (
-                not item.source_quote.strip()
-                or item.source_id not in documents
-                or item.source_quote not in documents[item.source_id]
-                or not item.source_role.strip()
-                or item.source_role not in item.source_quote
-            ):
-                raise ValueError("review_source_quote_invalid")
+    documents = {doc["ref"]["source_id"]: doc["text"] for doc in evidence["sources"]}
+    for finding in audit.source_claims:
+        _check_source_finding(finding, draft["prose"], documents)
     return audit
 
 

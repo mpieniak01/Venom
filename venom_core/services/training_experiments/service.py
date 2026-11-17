@@ -25,6 +25,7 @@ from .adapters import list_adapters, resolve_adapter, verify_adapter_entry
 from .calibration import validate_calibration
 from .checkpoint_evaluation import (
     GENERATION_SEAL,
+    RESULT_SEAL,
     inspect_steps,
     read_generation,
     review_step,
@@ -697,8 +698,16 @@ class ExperimentService:
             self._publish_result(directory, result)
             self._finish_review(state)
         else:
-            self._publish_result(generation, result)
+            self._publish_checkpoint_result(generation, result)
             self._finish_checkpoint_review(state)
+
+    def _publish_checkpoint_result(self, generation: Path, result: dict) -> None:
+        if (generation / RESULT_SEAL).is_file():
+            existing, _ = sealed_step(generation)
+            if existing != result:
+                raise ValueError("experiment_result_changed")
+            return
+        self._publish_result(generation, result)
 
     @staticmethod
     def _publish_result(directory: Path, result: dict) -> None:

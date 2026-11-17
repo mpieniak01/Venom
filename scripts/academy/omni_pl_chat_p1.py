@@ -184,6 +184,8 @@ def _token_trainer_type(trainer_type):
             self.loss_is_scaled_for_ga = True
 
         def _get_num_items_in_batch(self, batch_samples, device):
+            if not batch_samples:
+                return None
             if self.args.world_size != 1 or self.args.n_gpu > 1:
                 raise RuntimeError("token-normalized Omni training requires one device")
             total = sum(
@@ -306,16 +308,12 @@ def _balanced_trainer_type(trainer_type, sampler, plan):
             batches, num_items = super().get_batch_samples(
                 epoch_iterator, num_batches, device
             )
+            if not batches:
+                return batches, num_items
             step = self.state.global_step
             expected = plan[step]
-            actual_indices = (
-                tuple(
-                    torch.cat(
-                        [batch.pop("sampling_indices") for batch in batches]
-                    ).tolist()
-                )
-                if batches
-                else ()
+            actual_indices = tuple(
+                torch.cat([batch.pop("sampling_indices") for batch in batches]).tolist()
             )
             if actual_indices != expected.indices:
                 raise RuntimeError(

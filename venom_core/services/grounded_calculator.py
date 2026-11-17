@@ -3,44 +3,48 @@
 from __future__ import annotations
 
 import ast
+import operator
 import re
 from decimal import Decimal, DecimalException, localcontext
 
 MAX_EXPRESSION_CHARS = 160
 MAX_MAGNITUDE = Decimal("1e12")
+_DECIMAL_LITERAL = re.compile(r"(?:\d+(?:\.\d*)?|\.\d+)", re.ASCII)
+_BINARY_OPERATORS = {
+    ast.Add: operator.add,
+    ast.Sub: operator.sub,
+    ast.Mult: operator.mul,
+    ast.Div: operator.truediv,
+}
 
 
 class CalculationError(ValueError):
     """An expression is unsupported or exceeds the bounded arithmetic contract."""
 
 
+def _evaluate_node(node: ast.AST, expression: str, depth: int) -> Decimal:
+    if isinstance(node, ast.Constant) and type(node.value) in (int, float):
+        literal = ast.get_source_segment(expression, node) or ""
+        if not _DECIMAL_LITERAL.fullmatch(literal):
+            raise CalculationError("calculation_literal_unsupported")
+        return Decimal(literal)
+    if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.UAdd, ast.USub)):
+        value = _visit(node.operand, expression, depth + 1)
+        return -value if isinstance(node.op, ast.USub) else value
+    if isinstance(node, ast.BinOp):
+        left = _visit(node.left, expression, depth + 1)
+        right = _visit(node.right, expression, depth + 1)
+        operation = _BINARY_OPERATORS.get(type(node.op))
+        if operation is None:
+            raise CalculationError("calculation_operator_unsupported")
+        return operation(left, right)
+    raise CalculationError("calculation_syntax_unsupported")
+
+
 def _visit(node: ast.AST, expression: str, depth: int = 0) -> Decimal:
     if depth > 16:
         raise CalculationError("calculation_depth_limit")
-    if isinstance(node, ast.Constant) and type(node.value) in (int, float):
-        literal = ast.get_source_segment(expression, node) or ""
-        if not re.fullmatch(r"(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)", literal):
-            raise CalculationError("calculation_literal_unsupported")
-        value = Decimal(literal)
-    elif isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.UAdd, ast.USub)):
-        value = _visit(node.operand, expression, depth + 1)
-        if isinstance(node.op, ast.USub):
-            value = -value
-    elif isinstance(node, ast.BinOp):
-        left = _visit(node.left, expression, depth + 1)
-        right = _visit(node.right, expression, depth + 1)
-        if isinstance(node.op, ast.Add):
-            value = left + right
-        elif isinstance(node.op, ast.Sub):
-            value = left - right
-        elif isinstance(node.op, ast.Mult):
-            value = left * right
-        elif isinstance(node.op, ast.Div):
-            value = left / right
-        else:
-            raise CalculationError("calculation_operator_unsupported")
-    else:
-        raise CalculationError("calculation_syntax_unsupported")
+    value = _evaluate_node(node, expression, depth)
     if not value.is_finite() or abs(value) > MAX_MAGNITUDE:
         raise CalculationError("calculation_magnitude_limit")
     return value

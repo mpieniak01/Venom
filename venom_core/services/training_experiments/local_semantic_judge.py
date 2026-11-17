@@ -160,15 +160,36 @@ def _verify_acceptance(
         or len({case["id"] for case, _ in jobs.values()}) != pin.families_total
     ):
         raise ValueError("experiment_judge_audit_coverage_invalid")
-    accepted = set()
     style_checks = _style_checks(gold, positives, negatives)
     challenge_cases = set(gold["challenge_cases"])
     challenge_answers = {
         ident for ident, (case, _) in jobs.items() if case["id"] in challenge_cases
     }
     semantics = gold["expected_semantics"]
-    if len(semantics) != 6 or not semantics.keys() <= challenge_answers & negatives:
+    if len(semantics) != 6 or semantics.keys() - (challenge_answers & negatives):
         raise ValueError("experiment_judge_audit_semantics_invalid")
+    accepted = _accepted_answers(root, pin.model, rows, jobs, style_checks, semantics)
+    if (
+        len(accepted & positives) != pin.true_positives
+        or accepted & negatives
+        or len({jobs[ident][0]["id"] for ident in accepted}) != pin.families_covered
+        or len(challenge_cases) != 3
+        or len(challenge_answers & positives) != 6
+        or len(challenge_answers & negatives) != 12
+        or (challenge_answers & positives) - accepted
+    ):
+        raise ValueError("experiment_judge_audit_acceptance_invalid")
+
+
+def _accepted_answers(
+    root: Path,
+    model: str,
+    rows: list[dict],
+    jobs: dict[str, tuple[dict, dict]],
+    style_checks: dict[str, tuple[bool, bool]],
+    semantics: dict,
+) -> set[str]:
+    accepted = set()
     for row in rows:
         ident = row["id"]
         if not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", ident):
@@ -176,7 +197,7 @@ def _verify_acceptance(
         case, answer = jobs[ident]
         if row["case"] != case["id"]:
             raise ValueError("experiment_judge_audit_coverage_invalid")
-        decision = _audit_call(root, pin.model, case, answer, row)
+        decision = _audit_call(root, model, case, answer, row)
         if ident in style_checks and (
             decision is None
             or (decision.polish_ok, decision.natural_ok) != style_checks[ident]
@@ -186,16 +207,7 @@ def _verify_acceptance(
             raise ValueError("experiment_judge_audit_semantics_invalid")
         if decision is not None and _supported(decision):
             accepted.add(ident)
-    if (
-        len(accepted & positives) != pin.true_positives
-        or accepted & negatives
-        or len({jobs[ident][0]["id"] for ident in accepted}) != pin.families_covered
-        or len(challenge_cases) != 3
-        or len(challenge_answers & positives) != 6
-        or len(challenge_answers & negatives) != 12
-        or not challenge_answers & positives <= accepted
-    ):
-        raise ValueError("experiment_judge_audit_acceptance_invalid")
+    return accepted
 
 
 def _semantic_check(decision: _Decision | None, expected: dict) -> bool:

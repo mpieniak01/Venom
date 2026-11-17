@@ -71,18 +71,21 @@ class FrozenPacket:
 
 
 def replay(previous: Path) -> dict:
-    frozen = json.loads((previous / "frozen.json").read_text())
+    frozen = json.loads((previous / "frozen.json").read_text(encoding="utf-8"))
     for name, expected in frozen["files"].items():
         if hashlib.sha256((previous / name).read_bytes()).hexdigest() != expected:
             raise ValueError("frozen_input_changed: " + name)
-    cards = json.loads((previous / "sources.json").read_text())
+    cards = json.loads((previous / "sources.json").read_text(encoding="utf-8"))
     rows = [
-        json.loads(line) for line in (previous / "rows.jsonl").read_text().splitlines()
+        json.loads(line)
+        for line in (previous / "rows.jsonl").read_text(encoding="utf-8").splitlines()
     ]
     rows_hash = hashlib.sha256((previous / "rows.jsonl").read_bytes()).hexdigest()
     if (
         rows_hash
-        != json.loads((previous / "generation-proof.json").read_text())["rows_sha256"]
+        != json.loads((previous / "generation-proof.json").read_text(encoding="utf-8"))[
+            "rows_sha256"
+        ]
     ):
         raise ValueError("responses_changed")
     packet = FrozenPacket(cards)
@@ -94,9 +97,9 @@ def replay(previous: Path) -> dict:
             if call["name"] == "search_sources":
                 query = call["arguments"]["query"]
                 references = packet.search(query)
-                assert [r.source_id for r in references] == [
-                    r["source_id"] for r in call["result"]["results"]
-                ]
+                recorded_ids = [r["source_id"] for r in call["result"]["results"]]
+                if [r.source_id for r in references] != recorded_ids:
+                    raise ValueError(f"search_source_ids_changed: {key}")
                 before = len(packet.read_log)
                 evidence = GroundedTurn(packet).prepare(
                     TurnPlan("Przeczytaj źródła.", key, source_query=query)
@@ -164,7 +167,7 @@ def replay(previous: Path) -> dict:
     # Expected labels are used ONLY here for offline routing measurement.
     routing = []
     extra = []
-    for case in json.loads((previous / "dev.json").read_text()):
+    for case in json.loads((previous / "dev.json").read_text(encoding="utf-8")):
         prior: list[str] = []
         for index, turn in enumerate(case["turns"], 1):
             predicted = detect_requirements(turn["user"], prior)
@@ -215,7 +218,9 @@ def main() -> None:
     args = parser.parse_args()
     result = replay(args.previous)
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n")
+    args.output.write_text(
+        json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
     print(
         json.dumps(
             {

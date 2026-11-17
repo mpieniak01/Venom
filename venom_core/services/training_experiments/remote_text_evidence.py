@@ -433,9 +433,7 @@ def _checkpoint_row(
     }
 
 
-def _restore_evidence(
-    archive: tarfile.TarFile, body: dict, state: dict, trial: dict, max_bytes: int
-) -> dict:
+def _verify_bundle_identity(body: dict, state: dict, trial: dict) -> int:
     attempt = _attempt(body["attempt"])
     plan = state["plan"]
     if (
@@ -448,7 +446,10 @@ def _restore_evidence(
         or (trial.get("attempt") is not None and attempt != trial["attempt"])
     ):
         raise ValueError("remote_text_evidence_identity_mismatch")
-    files = body["files"]
+    return attempt
+
+
+def _verify_inventory(files: dict, max_bytes: int) -> None:
     if (
         not isinstance(files, dict)
         or not _ROOT_FILES <= files.keys()
@@ -463,11 +464,9 @@ def _restore_evidence(
         or sum(entry["size"] for entry in files.values()) > max_bytes
     ):
         raise ValueError("remote_text_evidence_manifest_invalid")
-    members = _verify_members(archive, files)
 
-    def metadata(name: str) -> dict:
-        return _read_metadata(archive, members[name])
 
+def _verified_manifest(metadata: Callable[[str], dict], body: dict) -> dict:
     manifest = metadata("manifest.json")
     if (
         manifest["run_id"] != body["run_id"]
@@ -482,6 +481,21 @@ def _restore_evidence(
         raise ValueError("remote_text_evidence_manifest_identity_mismatch")
     if manifest["calibration"]["judge"] != "exact-v1":
         validate_calibration(manifest["calibration"], manifest["profile"]["dev_sha256"])
+    return manifest
+
+
+def _restore_evidence(
+    archive: tarfile.TarFile, body: dict, state: dict, trial: dict, max_bytes: int
+) -> dict:
+    attempt = _verify_bundle_identity(body, state, trial)
+    files = body["files"]
+    _verify_inventory(files, max_bytes)
+    members = _verify_members(archive, files)
+
+    def metadata(name: str) -> dict:
+        return _read_metadata(archive, members[name])
+
+    manifest = _verified_manifest(metadata, body)
     result = _verified_result(metadata, "", body["result_sha256"], files, manifest)
     steps = _expected_steps(trial)
     checkpoints = []

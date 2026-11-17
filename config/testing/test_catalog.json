@@ -751,6 +751,20 @@
       "rationale": "Durable Optuna trial assignment, outcome reconciliation, and reproducible sampler replay."
     },
     {
+      "path": "tests/test_academy_parent_selection.py",
+      "domain": "academy",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Prevent narrow S/K gains from discarding sealed wider retention and critical regressions."
+    },
+    {
       "path": "tests/test_academy_quality.py",
       "domain": "academy",
       "test_type": "unit",

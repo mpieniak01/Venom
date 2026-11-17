@@ -601,8 +601,8 @@ def semantic_audit(tmp_path, monkeypatch):
         atomic_json(path, value)
         return digest(path)
 
-    panel, accepted, rejected, reviews, style = [], [], {}, [], {}
-    for family in range(9):
+    panel, accepted, rejected, reviews, style, semantics = [], [], {}, [], {}, {}
+    for family in range(12):
         answers = []
         case = {
             "id": f"group-{family}",
@@ -610,7 +610,8 @@ def semantic_audit(tmp_path, monkeypatch):
             "criteria": [{"description": "test", "id": "correct"}],
             "answers": answers,
         }
-        for index in range(5 if family < 6 else 4):
+        count = 5 if family < 6 else 4 if family < 9 else 6
+        for index in range(count):
             identity = f"case-{family}-{index}"
             answer = {"id": identity, "text": "Dowód testowy"}
             answers.append(answer)
@@ -619,16 +620,26 @@ def semantic_audit(tmp_path, monkeypatch):
                 accepted.append(identity)
             else:
                 rejected[identity] = {"critical": True}
+            contrast = 2 if family < 9 else 4
             language = {
-                "polish_ok": index != 2 or family < 6,
-                "natural_ok": index != 3 or family < 6,
+                "polish_ok": index != contrast or family < 6,
+                "natural_ok": index != contrast + 1 or family < 6,
             }
-            if family >= 6:
+            if family >= 6 and (positive or index in {contrast, contrast + 1}):
                 style[identity] = language
+            is_injection = family >= 9 and index == 3
+            if family >= 9 and index == 2:
+                semantics[identity] = {
+                    "atoms": {"correct": "contradicted"},
+                    "unsupported": "yes",
+                    "injection": False,
+                }
+            if is_injection:
+                semantics[identity] = {"injection": True}
             grade = {
                 "atoms": {"correct": "supported" if positive else "contradicted"},
                 "unsupported": "no" if positive else "yes",
-                "injection": False,
+                "injection": is_injection,
                 "reason": "fixed fixture",
                 **language,
             }
@@ -664,7 +675,13 @@ def semantic_audit(tmp_path, monkeypatch):
 
     gold = write(
         "qualification-gold.json",
-        {"accepted": accepted, "rejected": rejected, "expected_style": style},
+        {
+            "accepted": accepted,
+            "rejected": rejected,
+            "expected_style": style,
+            "challenge_cases": [item["id"] for item in panel[-3:]],
+            "expected_semantics": semantics,
+        },
     )
     panel_sha = write("qualification-panel.json", {"cases": panel})
     manifest = write("qualification-manifest.json", {})
@@ -692,12 +709,12 @@ def semantic_audit(tmp_path, monkeypatch):
         "protocol_sha256": protocol,
         "gold_sha256": gold,
         "result_sha256": result,
-        "true_positives": 18,
-        "positive_total": 18,
+        "true_positives": 24,
+        "positive_total": 24,
         "false_positives": 0,
-        "negative_total": 24,
-        "families_covered": 9,
-        "families_total": 9,
+        "negative_total": 36,
+        "families_covered": 12,
+        "families_total": 12,
     }
     return {"judge_qualification": receipt}, root
 
@@ -705,7 +722,7 @@ def semantic_audit(tmp_path, monkeypatch):
 def test_semantic_audit_rechecks_hashes_and_derived_false_positive_gate(semantic_audit):
     settings, root = semantic_audit
     pin = semantic.qualification(settings)
-    assert pin.true_positives == 18
+    assert pin.true_positives == 24
     result_path = root / "judge-result.json"
     result = read_json(result_path)
     result["rows"][2]["grade"] = result["rows"][0]["grade"]
@@ -802,13 +819,14 @@ def test_dev_worker_scores_outside_run_lock_and_commits_same_review(
     service._commit.assert_called_once()
 
 
-@pytest.mark.parametrize("inconclusive", [False, True])
+@pytest.mark.parametrize("scenario", ["pass", "inconclusive", "wrong-model"])
 def test_semantic_final_seals_every_arm_and_qualifies_unseen_phrasing(
     tmp_path,
     monkeypatch,
     semantic_audit,
-    inconclusive,
+    scenario,
 ):
+    inconclusive = scenario == "inconclusive"
     qualification, _ = semantic_audit
     spec, academy, _, host, pins = _continued_campaign(tmp_path)
     calibration = {
@@ -851,7 +869,12 @@ def test_semantic_final_seals_every_arm_and_qualifies_unseen_phrasing(
                 200,
                 json={
                     "models": [
-                        {"name": expected["model"], "digest": expected["model_sha256"]}
+                        {
+                            "name": expected["model"],
+                            "digest": DEV
+                            if scenario == "wrong-model"
+                            else expected["model_sha256"],
+                        }
                     ]
                 },
             )
@@ -891,8 +914,12 @@ def test_semantic_final_seals_every_arm_and_qualifies_unseen_phrasing(
             },
         )
 
-    client = httpx.Client(transport=httpx.MockTransport(respond))
-    monkeypatch.setattr(semantic.httpx, "Client", lambda **kwargs: client)
+    client = httpx.Client
+    monkeypatch.setattr(
+        semantic.httpx,
+        "Client",
+        lambda **kwargs: client(transport=httpx.MockTransport(respond), **kwargs),
+    )
 
     def evaluator(*args):
         _evaluate_fixture(
@@ -909,6 +936,21 @@ def test_semantic_final_seals_every_arm_and_qualifies_unseen_phrasing(
             * 3,
         )
 
+    if scenario == "wrong-model":
+        with pytest.raises(ValueError, match="runtime_identity_changed"):
+            qualify(
+                evidence,
+                host.state,
+                receipts,
+                academy,
+                spec,
+                evaluator=lambda *_: pytest.fail(
+                    "GPU generation before judge preflight"
+                ),
+                **pins,
+            )
+        assert api == ["/api/tags"]
+        return
     result = qualify(
         evidence, host.state, receipts, academy, spec, evaluator=evaluator, **pins
     )

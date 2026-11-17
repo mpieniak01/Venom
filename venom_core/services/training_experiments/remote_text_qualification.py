@@ -752,6 +752,8 @@ def _run_final(
     venv = operator_path(spec.training_venv)
     if not snapshot.is_dir() or not (venv / "bin/python").is_file():
         raise ValueError("remote_text_final_runtime_missing")
+    if calibration["judge"] == local_semantic_judge.JUDGE:
+        local_semantic_judge.preflight(calibration)
     atomic_json(directory / "intent.json", binding)
     generation = workspace / "generation"
     command = [

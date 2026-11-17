@@ -377,6 +377,12 @@ class Worker:
                 raise ValueError("experiment_recipe_changed")
             if state["mode"] != "evaluate":
                 self.service.verify_run_data_audit(manifest)
+            calibration = manifest["calibration"]
+            if (
+                calibration is not None
+                and calibration["judge"] == local_semantic_judge.JUDGE
+            ):
+                local_semantic_judge.preflight(calibration)
             host = get_runtime_admission()
             host.database.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
             gpu_lock = host.database.parent / "academy-experiments.gpu.lock"
@@ -415,7 +421,6 @@ class Worker:
                                     raise ValueError("experiment_gpu_recovery_required")
                                 lease.defer_training_release()
             self.check_budget()
-            calibration = manifest["calibration"]
             if calibration is not None:
                 current = self.update(stage="score")
                 self._score_calibration(current, calibration)

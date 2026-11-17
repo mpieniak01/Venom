@@ -21,7 +21,7 @@ def main() -> int:
     parser.add_argument("--execute", action="store_true")
     parser.add_argument(
         "--judge",
-        choices=("semantic-local-v4", "semantic-local-v5"),
+        choices=("semantic-local-v4", "semantic-local-v5", "semantic-local-v6"),
         default="semantic-local-v4",
     )
     args = parser.parse_args()

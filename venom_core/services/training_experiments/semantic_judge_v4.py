@@ -12,7 +12,7 @@ from venom_core.config import SETTINGS
 from .profiles import digest, stable_hash
 
 if TYPE_CHECKING:
-    from .local_semantic_judge import QualificationV4, QualificationV5
+    from .local_semantic_judge import QualificationV4, QualificationV5, QualificationV6
 
 ERROR = "experiment_judge_v4_audit_invalid"
 _OPTIONS = "options.json"
@@ -43,16 +43,19 @@ def require(condition: bool) -> None:
         raise ValueError(ERROR)
 
 
-def implementation_hashes() -> dict[str, str]:
+def implementation_hashes(*, judge_id: str = "semantic-local-v4") -> dict[str, str]:
     from . import local_semantic_judge as judge
 
-    return {
+    result = {
         "judge": digest(Path(judge.__file__)),
         "v4_verifier": digest(Path(__file__)),
         "audit_runner": digest(Path(__file__).with_name("semantic_judge_audit.py")),
         "provenance": digest(Path(__file__).with_name("semantic_judge_provenance.py")),
         "v5": digest(Path(__file__).with_name("semantic_judge_v5.py")),
     }
+    if judge_id == judge.JUDGE_V6:
+        result["v6"] = digest(Path(__file__).with_name("semantic_judge_v6.py"))
+    return result
 
 
 def control_files(
@@ -62,7 +65,12 @@ def control_files(
 
     controls = root / "controls"
     manifest = judge._bound_json(controls, "frozen-manifest.json", expected)
-    require(set(manifest["files"]) == FILES)
+    files = (
+        FILES | {"extra/panel.json", "extra/gold.json"}
+        if judge_id == judge.JUDGE_V6
+        else FILES
+    )
+    require(set(manifest["files"]) == files)
     require(manifest["status"] == "frozen_before_any_inference")
     for name, checksum in manifest["files"].items():
         require(isinstance(checksum, str) and digest(controls / name) == checksum)
@@ -87,13 +95,16 @@ def execution_order(root: Path, manifest: dict) -> list[dict]:
         order["phase1_legacy_and_development"],
         order["phase2_holdout_stability"],
     )
-    require(len(first) == 108 and len(held) == 72)
-    require(Counter(row["split"] for row in first) == {"legacy": 60, "development": 48})
+    extra = "extra/panel.json" in manifest["files"]
+    phase1_count = 140 if extra else 108
+    expected = {"legacy": 60, "development": 48, **({"extra": 32} if extra else {})}
+    require(len(first) == phase1_count and len(held) == 72)
+    require(Counter(row["split"] for row in first) == expected)
     require(all(row["split"] == "holdout" for row in held))
     require(all(type(row["repeat"]) is int and row["repeat"] == 1 for row in first))
     require(Counter(row["repeat"] for row in held) == {1: 24, 2: 24, 3: 24})
     require(all(type(row["repeat"]) is int for row in held))
-    require(len({(row["split"], row["answer_id"]) for row in first}) == 108)
+    require(len({(row["split"], row["answer_id"]) for row in first}) == phase1_count)
     require(len({(row["answer_id"], row["repeat"]) for row in held}) == 72)
     for repeat in (1, 2, 3):
         require(
@@ -140,7 +151,7 @@ def _verify_gold(cases: list[dict], gold: dict, jobs: dict) -> None:
 
 
 def jobs_for(root: Path, manifest: dict, split: str) -> tuple[dict, dict]:
-    require(split in {"legacy", "development", "holdout"})
+    require(split in {"legacy", "development", "holdout", "extra"})
     suffix = "qualification-" if split == "legacy" else ""
     panel = _control(root, manifest, f"{split}/{suffix}panel.json")
     gold = _control(root, manifest, f"{split}/{suffix}gold.json")
@@ -148,6 +159,7 @@ def jobs_for(root: Path, manifest: dict, split: str) -> tuple[dict, dict]:
         "legacy": (12, 60),
         "development": (12, 48),
         "holdout": (6, 24),
+        "extra": (8, 32),
     }[split]
     require(len(panel["cases"]) == expected_families)
     require(len({case["id"] for case in panel["cases"]}) == expected_families)
@@ -227,7 +239,7 @@ def _legacy_decisions(jobs: dict, gold: dict, decisions: dict) -> None:
 def verify_rows(
     root: Path,
     manifest: dict,
-    pin: QualificationV4 | QualificationV5,
+    pin: QualificationV4 | QualificationV5 | QualificationV6,
     rows: list[dict],
     *,
     phase1: bool = False,
@@ -240,10 +252,15 @@ def verify_rows(
         key: set() for key in ("call_id", "server_time", "raw_response")
     }
     previous_end = 0
-    order = execution_order(root, manifest)[: 108 if phase1 else 180]
+    phase1_count = 140 if judge.judge_for(pin) == judge.JUDGE_V6 else 108
+    order = execution_order(root, manifest)[
+        : phase1_count if phase1 else phase1_count + 72
+    ]
     require(len(rows) == len(order))
     splits = (
-        ("legacy", "development") if phase1 else ("legacy", "development", "holdout")
+        ("legacy", "development")
+        + (("extra",) if phase1_count == 140 else ())
+        + (() if phase1 else ("holdout",))
     )
     inputs = {split: jobs_for(root, manifest, split) for split in splits}
     actual: dict[str, dict] = {split: {} for split in splits}
@@ -277,6 +294,7 @@ def verify_rows(
             pin.model,
             judge=judge.judge_for(pin),
             candidate=answer["text"],
+            request=expected_request,
         )
         require(decision is not None)
         assert decision is not None
@@ -306,20 +324,21 @@ def verify_rows(
     return {
         "legacy_correct": 60,
         "development_correct": 48,
+        **({"extra_correct": 32} if phase1_count == 140 else {}),
         "holdout_correct": 0 if phase1 else 72,
         "stable_groups": 0 if phase1 else 24,
     }
 
 
-def verify_audit(pin: QualificationV4 | QualificationV5) -> None:
+def verify_audit(pin: QualificationV4 | QualificationV5 | QualificationV6) -> None:
     from . import local_semantic_judge as judge
 
     try:
         judge_id = judge.judge_for(pin)
-        version = 5 if judge_id == judge.JUDGE_V5 else 4
+        version = {judge.JUDGE_V4: 4, judge.JUDGE_V5: 5, judge.JUDGE_V6: 6}[judge_id]
         location = os.environ.get(
             f"VENOM_ACADEMY_JUDGE_V{version}_AUDIT_ROOT",
-            "" if version == 5 else SETTINGS.VENOM_ACADEMY_JUDGE_V4_AUDIT_ROOT,
+            "" if version >= 5 else SETTINGS.VENOM_ACADEMY_JUDGE_V4_AUDIT_ROOT,
         ).strip()
         require(
             bool(location) and Path(location).is_absolute() and Path(location).is_dir()
@@ -340,7 +359,10 @@ def verify_audit(pin: QualificationV4 | QualificationV5) -> None:
         )
         require(protocol["ollama"] == {"version": pin.ollama_version})
         require(protocol["accuracy_manifest_sha256"] == pin.accuracy_manifest_sha256)
-        require(protocol["implementation_sha256"] == implementation_hashes())
+        require(
+            protocol["implementation_sha256"]
+            == implementation_hashes(judge_id=judge_id)
+        )
         require(
             result["protocol_sha256"] == pin.protocol_sha256
             and result["status"] == "complete"

@@ -18,6 +18,185 @@ from venom_core.services.training_experiments.profiles import (
 )
 
 
+def _v6_example():
+    from venom_core.services.training_experiments import semantic_judge_v6 as v6
+
+    material = {
+        "messages": [{"role": "user", "content": "Miejsce: taca A. Podaj miejsce."}],
+        "criteria": [{"id": "location", "description": "Miejsce to taca A."}],
+        "evidence": [{"ref": "old", "text": "Nieaktualne", "current": False}],
+        "candidate": "Nie z tacy A.",
+    }
+    request = judge._request("judge", material, ["location"], judge=judge.JUDGE_V6)
+    primary = {
+        "checks": {
+            "location": {
+                "required": "taca A",
+                "observed": "taca A",
+                "relation": "supported",
+            }
+        },
+        "additional_claims": [],
+        "injection": False,
+        "polish_ok": True,
+        "natural_ok": True,
+        "reason": "fixture",
+    }
+    guard = {
+        "checks": {
+            "location": {
+                "source_refs": [{"ref": "U0", "quote": "Miejsce: taca A."}],
+                "candidate_quotes": ["Nie z tacy A."],
+                "relation": "denies",
+            }
+        },
+        "source_instruction_quotes": [],
+        "candidate_instruction_quotes": [],
+        "instruction_effect": "absent",
+        "reason": "Zanegowano miejsce.",
+    }
+    assert v6.sources(material) == {"U0": material["messages"][0]["content"]}
+    return request, primary, guard
+
+
+def _v6_response(request, primary, guard):
+    return {
+        "protocol": judge.JUDGE_V6,
+        "calls": [
+            {
+                "request": stage,
+                "request_sha256": stable_hash(stage),
+                "response": {
+                    "model": "judge",
+                    "done": True,
+                    "done_reason": "stop",
+                    "message": {"content": json.dumps(value)},
+                },
+            }
+            for stage, value in zip(request["stages"], (primary, guard), strict=True)
+        ],
+    }
+
+
+@pytest.mark.parametrize(
+    "relation,expected",
+    [
+        ("denies", "contradicted"),
+        ("entails", "supported"),
+        ("absent", "unclear"),
+        ("unclear", "unclear"),
+    ],
+)
+def test_v6_polarity_veto_and_other_conflicts_abstain(relation, expected):
+    request, primary, guard = _v6_example()
+    guard["checks"]["location"]["relation"] = relation
+    if relation == "absent":
+        guard["checks"]["location"]["candidate_quotes"] = []
+    response = _v6_response(request, primary, guard)
+    result = judge._decode(
+        response, ["location"], "judge", judge=judge.JUDGE_V6, request=request
+    )
+    assert result.atoms == {"location": expected}
+    assert (result.unsupported == "yes") == (relation == "denies")
+    assert judge._decode(response, ["location"], "judge", judge=judge.JUDGE_V6) is None
+
+
+@pytest.mark.parametrize(
+    "damage",
+    [
+        "wrong_source",
+        "old_source",
+        "wrong_quote",
+        "blank_quote",
+        "missing_quote",
+        "missing_source",
+        "different_request",
+        "missing_stage",
+        "thinking",
+        "wrong_model",
+        "invalid_json",
+        "extra_atom",
+    ],
+)
+def test_v6_invalid_guard_evidence_fails_closed(damage):
+    request, primary, guard = _v6_example()
+    check = guard["checks"]["location"]
+    if damage == "wrong_source":
+        check["source_refs"][0]["ref"] = "C0"
+    elif damage == "old_source":
+        check["source_refs"][0] = {"ref": "E0", "quote": "Nieaktualne"}
+    elif damage == "wrong_quote":
+        check["candidate_quotes"] = ["z tacy B"]
+    elif damage == "blank_quote":
+        check["candidate_quotes"] = [" \t"]
+    elif damage == "missing_quote":
+        check["candidate_quotes"] = []
+    elif damage == "missing_source":
+        check["source_refs"] = []
+    elif damage == "extra_atom":
+        guard["checks"]["other"] = check
+    response = _v6_response(request, primary, guard)
+    if damage == "different_request":
+        response["calls"][1]["request_sha256"] = "f" * 64
+    elif damage == "missing_stage":
+        response["calls"].pop()
+    elif damage == "thinking":
+        response["calls"][1]["response"]["message"]["thinking"] = "forbidden"
+    elif damage == "wrong_model":
+        response["calls"][1]["response"]["model"] = "other"
+    elif damage == "invalid_json":
+        response["calls"][1]["response"]["message"]["content"] = "invalid"
+    assert (
+        judge._decode(
+            response, ["location"], "judge", judge=judge.JUDGE_V6, request=request
+        )
+        is None
+    )
+
+
+@pytest.mark.parametrize(
+    "effect,primary_injection,expected",
+    [
+        ("executed", False, True),
+        ("ignored", False, False),
+        ("absent", False, False),
+        ("ignored", True, True),
+        ("unclear", False, False),
+    ],
+)
+def test_v6_instruction_control_is_separate_from_fact_and_style(
+    effect, primary_injection, expected
+):
+    request, primary, guard = _v6_example()
+    primary["injection"] = primary_injection
+    primary["polish_ok"] = False
+    guard["instruction_effect"] = effect
+    if effect in {"executed", "ignored"}:
+        guard["source_instruction_quotes"] = [{"ref": "C0", "quote": "Nie z tacy A."}]
+    if effect == "executed":
+        guard["candidate_instruction_quotes"] = ["Nie z tacy A."]
+    result = judge._decode(
+        _v6_response(request, primary, guard),
+        ["location"],
+        "judge",
+        judge=judge.JUDGE_V6,
+        request=request,
+    )
+    assert result.injection is expected
+    assert result.polish_ok is False
+    guard["source_instruction_quotes"] = [{"ref": "U99", "quote": "Missing"}]
+    assert (
+        judge._decode(
+            _v6_response(request, primary, guard),
+            ["location"],
+            "judge",
+            judge=judge.JUDGE_V6,
+            request=request,
+        )
+        is None
+    )
+
+
 def decision(positive=True, *, omitted=False):
     return {
         "atoms": {

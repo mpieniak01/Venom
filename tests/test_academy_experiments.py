@@ -1859,6 +1859,11 @@ def sealed_baseline_pair(tmp_path, monkeypatch):
         folder = directory / "checkpoint-evaluations" / str(step)
         folder.mkdir(parents=True)
         mapping = blind_mapping(cases, ["base", f"checkpoint-{step}"])
+        if step == 42:
+            mapping = {
+                ident: dict(zip(labels, reversed(tuple(labels.values())), strict=True))
+                for ident, labels in mapping.items()
+            }
         raw, anonymous = [], []
         histories = {"base": DialogueHistory(), f"checkpoint-{step}": DialogueHistory()}
         for case in cases:
@@ -1946,7 +1951,10 @@ def test_checkpoint_baseline_reuses_original_call_and_rebinds_labels(
         for grade in read_json(source / "judgments.json")
         if mapping[grade["record_id"]][grade["label"]] == "base"
     }
+    target_mapping = read_json(directory / "checkpoint-evaluations/42/unblind.json")
     for grade in reused:
+        assert target_mapping[grade["record_id"]][grade["label"]] == "base"
+        assert grade["label"] != original[grade["record_id"]]["label"]
         receipt = grade["review_reused_from"]
         assert receipt["result_sha256"] == digest(source / "result.json")
         assert receipt["scorer_protocol"].startswith("semantic-local-v3:")

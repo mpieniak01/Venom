@@ -438,6 +438,9 @@ class Settings(BaseSettings):
 
     # Konfiguracja THE_ACADEMY (Knowledge Distillation & Fine-tuning)
     ENABLE_ACADEMY: bool = False  # Training is an explicit opt-in extension.
+    VENOM_ACADEMY_JUDGE_AUDIT_ROOT: str = (
+        ""  # Empty disables qualified automatic review.
+    )
     ACADEMY_TRAINING_DIR: str = _storage_path("./data/training")  # Katalog z datasetami
     ACADEMY_MODELS_DIR: str = _storage_path("./data/models")  # Katalog z modelami
     ACADEMY_MIN_LESSONS: int = 100  # Minimum lekcji do rozpoczęcia treningu

@@ -17,6 +17,7 @@ import httpx
 from pydantic import BaseModel, ConfigDict, Field, StrictBool
 
 from scripts.academy.omni_pl_chat_dialogue import answer_context
+from venom_core.config import SETTINGS
 from venom_core.services.remote_training.lifecycle import file_lock
 from venom_core.services.runtime_admission import (
     ACADEMY_TRAINING_OWNER,
@@ -112,8 +113,10 @@ def _bound_json(root: Path, name: str, checksum: str) -> dict:
 
 
 def _verify_audit(pin: Qualification) -> None:
-    location = os.getenv("VENOM_ACADEMY_JUDGE_AUDIT_ROOT")
-    if not location or not Path(location).is_absolute():
+    location = os.environ.get(
+        "VENOM_ACADEMY_JUDGE_AUDIT_ROOT", SETTINGS.VENOM_ACADEMY_JUDGE_AUDIT_ROOT
+    ).strip()
+    if not location or not Path(location).is_absolute() or not Path(location).is_dir():
         raise ValueError("experiment_judge_audit_missing")
     root = Path(location)
     protocol = _bound_json(root, "judge-protocol.json", pin.protocol_sha256)

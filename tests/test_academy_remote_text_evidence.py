@@ -1750,3 +1750,82 @@ def test_automatic_final_cannot_bypass_shared_budget_with_manual_qualify(tmp_pat
             evaluator=_evaluate_fixture,
             **pins,
         )
+
+
+def _judge_settings_from_env_file(tmp_path, monkeypatch, audit_root):
+    from venom_core.config import Settings, _settings_env_file
+
+    key = "VENOM_ACADEMY_JUDGE_AUDIT_ROOT"
+    environment = tmp_path / "judge.env"
+    environment.write_text(f"{key}={audit_root}\n")
+    monkeypatch.delenv(key, raising=False)
+    monkeypatch.setenv("ENV_FILE", str(environment))
+    settings = Settings(_env_file=_settings_env_file())
+    assert settings.VENOM_ACADEMY_JUDGE_AUDIT_ROOT == str(audit_root)
+    assert key not in os.environ
+    monkeypatch.setattr(semantic, "SETTINGS", settings)
+    return settings
+
+
+def test_semantic_audit_loads_from_selected_env_file_without_export(
+    tmp_path, monkeypatch, semantic_audit
+):
+    calibration, root = semantic_audit
+    _judge_settings_from_env_file(tmp_path, monkeypatch, root)
+    assert semantic.qualification(calibration).false_positives == 0
+    # An explicit empty or invalid override cannot silently use the valid file setting.
+    for override in ("", "relative", str(tmp_path / "absent-audit")):
+        monkeypatch.setenv("VENOM_ACADEMY_JUDGE_AUDIT_ROOT", override)
+        with pytest.raises(ValueError, match="experiment_judge_audit_missing"):
+            semantic.qualification(calibration)
+
+
+def test_profile_readiness_rechecks_configured_audit_and_fails_closed(
+    tmp_path, monkeypatch, semantic_audit
+):
+    from venom_core.services.training_experiments.service import ExperimentService
+
+    qualification, audit_root = semantic_audit
+    settings = _judge_settings_from_env_file(tmp_path, monkeypatch, audit_root)
+    spec, academy, _host, _pins = _registered_local_final(tmp_path)
+    calibration = {
+        **qualification,
+        "schema_version": 1,
+        "judge": semantic.JUDGE,
+        "reviewer": "Fixture independent reviewer",
+        "dev_sha256": digest(spec.dev),
+        "cases": {
+            case["record_id"]: {
+                "claims": {
+                    "correct": {
+                        "kind": "value",
+                        "field_aliases": ["limit"],
+                        "value_aliases": ["14 dni"],
+                    }
+                }
+            }
+            for case in rows(spec.dev)
+        },
+    }
+    calibration_path = academy / "profiles" / "fixture.calibration.json"
+    atomic_json(calibration_path, calibration)
+    profile_path = academy / "profiles" / "fixture.json"
+    profile = read_json(profile_path)
+    profile.update(
+        calibration_sha256=digest(calibration_path),
+        recipe={"steps": 2, "save_every": 2, **RECIPE},
+    )
+    atomic_json(profile_path, profile)
+    service = ExperimentService(academy)
+    assert service.profiles()[0]["automatic_review"] is True
+    assert service.validate("fixture")["automatic_review"] is True
+
+    monkeypatch.setattr(
+        settings, "VENOM_ACADEMY_JUDGE_AUDIT_ROOT", str(tmp_path / "missing-audit")
+    )
+    assert service.profiles() == []
+    with pytest.raises(ValueError, match="experiment_judge_audit_missing"):
+        service.validate("fixture")
+    monkeypatch.setattr(settings, "VENOM_ACADEMY_JUDGE_AUDIT_ROOT", "")
+    with pytest.raises(ValueError, match="experiment_judge_audit_missing"):
+        semantic.qualification(qualification)

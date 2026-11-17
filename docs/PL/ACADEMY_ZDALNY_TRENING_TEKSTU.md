@@ -86,4 +86,12 @@ python -m venom_core.services.training_experiments.remote_text_qualification \
 
 Raporty lokalne znajdują się w `local-text-qualification/CAMPAIGN_ID/evidence/final-qualification` wewnątrz katalogu eksperymentów. Ponowienie odczytuje zapieczętowany wynik dla tych samych wejść. Wynik `incomplete_calibration` zachowuje dowody dla audytu i nie rejestruje adaptera.
 
+### Lokalna ocena semantyczna odpowiedzi
+
+Do zadań polegających na odczycie źródła i zachowaniu korekt użyj kalibracji `semantic-local-v2` w profilu dev i zestawie końcowym. Jawne kryteria treści zawierają oczekiwane ustalenia, a każde kryterium w kalibracji ma atom `claims` z aliasami pola i krótką wartością (`kind: value`, `value_aliases`) albo oznaczeniem `kind: missing`. Opcjonalne `evidence` zawiera karty `ref`, `text` i `current`. Wymagania formatu można zapisać niezależnie jako `bare_value` lub `labeled`. Kalibrację `exact-v1` można nadal odtworzyć zgodnie z jej pierwotną procedurą.
+
+Do obu kalibracji dołącz potwierdzenie `judge_qualification` z niezależnego panelu dla przypiętej wersji Ollamy, modelu i promptu. Ustaw `VENOM_ACADEMY_JUDGE_AUDIT_ROOT` na zaufany lokalny katalog zawierający `judge-protocol.json`, `judge-result.json`, `qualification-manifest.json`, `qualification-panel.json`, `qualification-gold.json` i katalog `judge-calls`. Weryfikator przelicza wyniki akceptacji i oceny stylu z zapisanych odpowiedzi sędziego. W czasie oceny korzysta z przypiętego modelu Ollama na `127.0.0.1:11434`, sprawdza jego digest i wersję runtime oraz zwalnia model po zakończeniu sprawdzania. Trening i ocena korzystają z osobnych dzierżaw Academy.
+
+Wynik oddziela treść, wymagany format, polszczyznę i naturalność. Sprzeczny lub niepodparty fakt, sterowanie sędzią i niepełna macierz nie kwalifikują adaptera. Odpowiedzi, których sędzia nie rozstrzygnął, nie dostają punktu, a w końcowej ocenie wstrzymują publikację. Zapieczętowane oceny zawierają hash żądania i zwróconą decyzję. Niezależny panel kwalifikuje ten protokół do krótkich odpowiedzi opartych na źródłach i korektach.
+
 Odbiór ścieżki Vast wymaga przygotowanej VM i zamrożonego profilu czatu tekstowego z danymi oraz oceną. Testy kodu używają imitacji dostawcy. Płatny pilot wykonuje się jako osobne zlecenie operatora.

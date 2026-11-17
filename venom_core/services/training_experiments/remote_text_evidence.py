@@ -25,6 +25,7 @@ from venom_core.services.remote_training.lifecycle import (
 )
 from venom_core.services.remote_training.paths import data_directory, operator_path
 
+from .calibration import JUDGES, validate_calibration
 from .checkpoint_evaluation import GENERATION_OUTPUTS, GENERATION_SEAL, read_generation
 from .evidence import ADAPTER_FILES, WEIGHTS, inspect_checkpoint, latest_checkpoint
 from .profiles import MAX_JSON_BYTES, digest, read_json, stable_hash
@@ -359,7 +360,9 @@ def _verify_generation(
     ):
         raise ValueError("remote_text_evidence_generation_changed")
     return evaluation_identity(
-        generation, _sha(manifest["profile"]["calibration_sha256"])
+        generation,
+        _sha(manifest["profile"]["calibration_sha256"]),
+        calibration=manifest["calibration"],
     )
 
 
@@ -472,11 +475,13 @@ def _restore_evidence(
         or manifest["profile_identity"] != body["profile_identity"]
         or manifest["recipe"] != metadata("recipe.json")
         or not isinstance(manifest.get("calibration"), dict)
-        or manifest["calibration"].get("judge") != "exact-v1"
+        or manifest["calibration"].get("judge") not in JUDGES
         or manifest["calibration"].get("dev_sha256")
         != manifest["profile"]["dev_sha256"]
     ):
         raise ValueError("remote_text_evidence_manifest_identity_mismatch")
+    if manifest["calibration"]["judge"] != "exact-v1":
+        validate_calibration(manifest["calibration"], manifest["profile"]["dev_sha256"])
     result = _verified_result(metadata, "", body["result_sha256"], files, manifest)
     steps = _expected_steps(trial)
     checkpoints = []

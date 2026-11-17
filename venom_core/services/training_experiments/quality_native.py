@@ -12,6 +12,7 @@ from scripts.academy.omni_pl_chat_data import MAX_DEV_TASK_LENGTH
 from scripts.academy.omni_pl_chat_masks import SNAPSHOT_PIN
 from venom_core.services.remote_training.paths import operator_path
 
+from .calibration import scorer_protocol
 from .checkpoint_evaluation import step_directory
 from .profiles import (
     MAX_JSON_BYTES,
@@ -117,7 +118,9 @@ def profile_context(
     return context
 
 
-def evaluation_identity(generation: dict, calibration_sha256: str | None) -> dict:
+def evaluation_identity(
+    generation: dict, calibration_sha256: str | None, *, calibration: dict | None = None
+) -> dict:
     """Bind the scorer and actual inference protocol, including library versions."""
     return {
         "model": generation["model_repo"],
@@ -125,7 +128,7 @@ def evaluation_identity(generation: dict, calibration_sha256: str | None) -> dic
         "dataset_sha256": generation["data_sha256"],
         "protocol_sha256": stable_hash(
             {
-                "scorer": "omni-rubric-v1",
+                "scorer": scorer_protocol(calibration),
                 "calibration_sha256": calibration_sha256,
                 **{key: generation[key] for key in _PROTOCOL_FIELDS},
             }
@@ -216,7 +219,9 @@ def native_record(
     calibration = (
         profile["calibration_sha256"] if manifest["calibration"] is not None else None
     )
-    identity = evaluation_identity(generated, calibration)
+    identity = evaluation_identity(
+        generated, calibration, calibration=manifest["calibration"]
+    )
     if (
         identity["dataset_sha256"] != profile["dev_sha256"]
         or identity["model"] != profile["model"]
@@ -259,6 +264,15 @@ def frozen_evaluation_identity(
     profile, _ = load_profile(experiments.root, profile_id)
     runtime = _profile_runtime(resolve_input(experiments.root, profile.training_venv))
     pin = read_json(SNAPSHOT_PIN)
+    calibration_sha = profile.calibration_sha256 if review_mode == "automatic" else None
+    calibration = (
+        _verified_json(
+            experiments.root / "profiles" / f"{profile_id}.calibration.json",
+            calibration_sha,
+        )
+        if calibration_sha is not None
+        else None
+    )
     return evaluation_identity(
         {
             "model_repo": profile.model,
@@ -274,7 +288,8 @@ def frozen_evaluation_identity(
             "do_sample": False,
             "enable_thinking": False,
         },
-        profile.calibration_sha256 if review_mode == "automatic" else None,
+        calibration_sha,
+        calibration=calibration,
     )
 
 

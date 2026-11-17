@@ -36,6 +36,7 @@ from venom_core.services.runtime_release_service import (
     release_all_runtime_models,
 )
 
+from . import local_semantic_judge
 from .adapters import runner_identity, verify_adapter_entry
 from .checkpoint_evaluation import bind_steps, publish_pairs, seal_generation
 from .data_audit import verify_audit_preflight
@@ -335,8 +336,23 @@ class Worker:
         for step in steps:
             self.check_budget()
             generation, dev = self.service._review_inputs(state, checkpoint_step=step)
-            judgments = calibrated_judgments(calibration, review_data(generation, dev))
-            self.service._commit(state, judgments, checkpoint_step=step)
+            bundle = review_data(generation, dev)
+            if calibration["judge"] == local_semantic_judge.JUDGE:
+                judgments = local_semantic_judge.review_bundle(
+                    calibration,
+                    bundle,
+                    self.run_id,
+                    self.deadline - time.monotonic(),
+                    check=self.check_budget,
+                )
+            else:
+                judgments = calibrated_judgments(calibration, bundle)
+            with self.service.run_lock(self.run_id):
+                self.check_budget()
+                current = self.service.store.read(self.run_id)
+                if current["attempt"] != self.attempt:
+                    raise ValueError("experiment_attempt_changed")
+                self.service._commit(current, judgments, checkpoint_step=step)
 
     def run(self) -> None:
         with self.service.run_lock(self.run_id):
@@ -398,15 +414,14 @@ class Worker:
                                 if training_started:
                                     raise ValueError("experiment_gpu_recovery_required")
                                 lease.defer_training_release()
-            with self.service.run_lock(self.run_id):
-                current = self.service.store.read(self.run_id)
-                self.check_budget()
-                calibration = manifest["calibration"]
-                if calibration is not None:
-                    self._score_calibration(current, calibration)
-                    terminal = "succeeded"
-                else:
-                    terminal = "awaiting_review"
+            self.check_budget()
+            calibration = manifest["calibration"]
+            if calibration is not None:
+                current = self.update(stage="score")
+                self._score_calibration(current, calibration)
+                terminal = "succeeded"
+            else:
+                terminal = "awaiting_review"
         except StopRequested:
             terminal = "stopped"
         except TimeoutError:

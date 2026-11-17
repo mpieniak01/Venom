@@ -40,12 +40,14 @@ from venom_core.services.runtime_admission import (
     get_runtime_admission,
 )
 
+from . import local_semantic_judge
 from .adapters import (
     AdapterEntry,
     resolve_adapter,
     runner_identity,
     verify_adapter_entry,
 )
+from .calibration import validate_calibration
 from .campaign_schema import CampaignId
 from .checkpoint_evaluation import read_generation, seal_generation
 from .evidence import (
@@ -55,6 +57,7 @@ from .evidence import (
     review_data,
     sealed_report,
 )
+from .grounded_claims import UNCERTAIN
 from .profiles import digest, read_json, rows, stable_hash
 from .quality_native import evaluation_identity
 from .remote_text_evidence import (
@@ -222,17 +225,7 @@ def _stage_data(
     calibration = _load_bound(
         spec.calibration, binding["final_calibration_sha256"], read_json
     )
-    if (
-        not isinstance(calibration, dict)
-        or calibration.get("schema_version") != 1
-        or calibration.get("judge") != "exact-v1"
-        or calibration.get("dev_sha256") != holdout_sha
-        or not isinstance(calibration.get("reviewer"), str)
-        or not calibration["reviewer"].strip()
-        or not isinstance(calibration.get("cases"), dict)
-        or calibration["cases"].keys() != {row["record_id"] for row in holdout}
-    ):
-        raise ValueError("remote_text_final_calibration_invalid")
+    validate_calibration(calibration, holdout_sha, holdout)
     return calibration
 
 
@@ -415,6 +408,8 @@ def _measure(
     adapter: dict,
     binding: dict,
     selection: dict,
+    *,
+    seconds: float = 0.0,
 ) -> dict:
     seal_generation(generation)
     generated, _ = read_generation(generation)
@@ -435,7 +430,11 @@ def _measure(
     ):
         raise ValueError("remote_text_final_generation_identity_mismatch")
     review = review_data(generation, data)
-    identity = evaluation_identity(generated, binding["final_calibration_sha256"])
+    identity = evaluation_identity(
+        generated,
+        binding["final_calibration_sha256"],
+        calibration=calibration,
+    )
     result = {
         "binding": binding,
         "runtime": _TARGET_RUNTIME,
@@ -445,9 +444,18 @@ def _measure(
     }
     if parent is not None:
         result["adapter_config_sha256"] = adapter["config_sha256"]
-    if not _known_outputs(calibration, review):
+    legacy = calibration["judge"] == "exact-v1"
+    if legacy and not _known_outputs(calibration, review):
         return {**result, "status": "incomplete_calibration", "qualified": None}
-    judgments = calibrated_judgments(calibration, review)
+    if calibration["judge"] == local_semantic_judge.JUDGE:
+        judgments = local_semantic_judge.review_bundle(
+            calibration,
+            review,
+            binding["run_id"],
+            seconds,
+        )
+    else:
+        judgments = calibrated_judgments(calibration, review)
     scores = sealed_report(
         generation,
         data,
@@ -480,10 +488,22 @@ def _measure(
         and critical <= selection["max_critical_delta"]
         and not critical_regression
     )
+    status = "passed" if passed else "failed_quality"
+    if not legacy:
+        result["calibration_protocol"] = {
+            name: calibration[name]
+            for name in ("judge", "schema_version", "judge_qualification")
+            if name in calibration
+        }
+        uncertain = sum(grade["reason"] == UNCERTAIN for grade in judgments)
+        result["unverifiable_answers"] = uncertain
+        if uncertain:
+            status, passed = "incomplete_calibration", False
+            result["qualification_reason"] = UNCERTAIN
     atomic_json(generation / "judgments.json", judgments)
     return {
         **result,
-        "status": "passed" if passed else "failed_quality",
+        "status": status,
         "judgments_sha256": digest(generation / "judgments.json"),
         "summaries": scores["summaries"],
         "usable_delta": usable,
@@ -541,7 +561,11 @@ def _read_result(directory: Path, binding: dict) -> dict | None:
     result = read_json(path)
     if result["binding"] != binding:
         raise ValueError("remote_text_final_result_identity_mismatch")
-    if "parent" in binding:
+    if (
+        "parent" in binding
+        or result.get("calibration_protocol", {}).get("judge")
+        == local_semantic_judge.JUDGE
+    ):
         _verify_final_evidence(directory, result)
     return result
 
@@ -558,7 +582,11 @@ def _verify_final_evidence(directory: Path, result: dict) -> None:
         digest(generation / "generation-seal.json") != result["generation_seal_sha256"]
         or digest(evidence / "holdout.jsonl")
         != result["holdout_identity"]["dataset_sha256"]
-        or evaluation_identity(manifest, result["binding"]["final_calibration_sha256"])
+        or evaluation_identity(
+            manifest,
+            result["binding"]["final_calibration_sha256"],
+            calibration=result.get("calibration_protocol"),
+        )
         != result["holdout_identity"]
         or (
             judgments is not None and digest(generation / "judgments.json") != judgments
@@ -744,10 +772,19 @@ def _run_final(
         command.append(f"{parent.name}={parent}")
     data_sha = digest(data)
     log = workspace / "evaluation.log"
+    started = time.monotonic()
     evaluator(command, log, spec.max_seconds, binding["run_id"], adapter["model"])
     if digest(data) != data_sha:
         raise ValueError("remote_text_final_input_changed")
-    result = _measure(generation, data, calibration, adapter, binding, selection)
+    result = _measure(
+        generation,
+        data,
+        calibration,
+        adapter,
+        binding,
+        selection,
+        seconds=spec.max_seconds - (time.monotonic() - started),
+    )
     # The case definitions, outputs and judgments stay on the independent host.
     run_dir = Path(tempfile.mkdtemp(prefix="verified-", dir=directory))
     data.rename(run_dir / "holdout.jsonl")

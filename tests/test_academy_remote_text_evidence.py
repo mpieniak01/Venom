@@ -2,6 +2,7 @@
 
 import hashlib
 import io
+import json
 import os
 import sys
 import tarfile
@@ -9,12 +10,14 @@ from contextlib import nullcontext
 from pathlib import Path
 from unittest.mock import Mock
 
+import httpx
 import pytest
 
 from scripts.academy.omni_pl_chat_data import write_jsonl
 from scripts.academy.omni_pl_chat_masks import SNAPSHOT_PIN
 from scripts.academy.omni_pl_chat_p1 import CHECKPOINT_FILES
 from venom_core.services.remote_training.lifecycle import atomic_json
+from venom_core.services.training_experiments import local_semantic_judge as semantic
 from venom_core.services.training_experiments import remote_text_qualification
 from venom_core.services.training_experiments import worker as worker_module
 from venom_core.services.training_experiments.adapters import resolve_adapter
@@ -583,6 +586,362 @@ def _continued_campaign(tmp_path, *, eligible_manifest=True):
         "final_calibration_sha256": digest(spec.calibration),
     }
     return spec, academy, parent, host, pins
+
+
+@pytest.fixture
+def semantic_audit(tmp_path, monkeypatch):
+    root = tmp_path / "judge-audit"
+    root.mkdir()
+    monkeypatch.setenv("VENOM_ACADEMY_JUDGE_AUDIT_ROOT", str(root))
+    (root / "judge-calls").mkdir()
+    model, model_sha, version = "gemma4:12b-it-q4_K_M", "d" * 64, "0.40.14"
+
+    def write(name, value):
+        path = root / name
+        atomic_json(path, value)
+        return digest(path)
+
+    panel, accepted, rejected, reviews, style = [], [], {}, [], {}
+    for family in range(9):
+        answers = []
+        case = {
+            "id": f"group-{family}",
+            "messages": [],
+            "criteria": [{"description": "test", "id": "correct"}],
+            "answers": answers,
+        }
+        for index in range(5 if family < 6 else 4):
+            identity = f"case-{family}-{index}"
+            answer = {"id": identity, "text": "Dowód testowy"}
+            answers.append(answer)
+            positive = index < 2
+            if positive:
+                accepted.append(identity)
+            else:
+                rejected[identity] = {"critical": True}
+            language = {
+                "polish_ok": index != 2 or family < 6,
+                "natural_ok": index != 3 or family < 6,
+            }
+            if family >= 6:
+                style[identity] = language
+            grade = {
+                "atoms": {"correct": "supported" if positive else "contradicted"},
+                "unsupported": "no" if positive else "yes",
+                "injection": False,
+                "reason": "fixed fixture",
+                **language,
+            }
+            response = {
+                "model": model,
+                "done": True,
+                "done_reason": "stop",
+                "message": {"content": json.dumps(grade)},
+            }
+            request = semantic._request(
+                model,
+                {
+                    "messages": [],
+                    "criteria": case["criteria"],
+                    "evidence": [],
+                    "candidate": answer["text"],
+                },
+                ["correct"],
+            )
+            reviews.append(
+                {
+                    "id": identity,
+                    "case": case["id"],
+                    "finish": "stop",
+                    "grade": grade,
+                    "call_sha256": write(
+                        f"judge-calls/{identity}.json",
+                        {"request": request, "response": response},
+                    ),
+                }
+            )
+        panel.append(case)
+
+    gold = write(
+        "qualification-gold.json",
+        {"accepted": accepted, "rejected": rejected, "expected_style": style},
+    )
+    panel_sha = write("qualification-panel.json", {"cases": panel})
+    manifest = write("qualification-manifest.json", {})
+    protocol = write(
+        "judge-protocol.json",
+        {
+            "system": semantic.PROMPT,
+            "options": semantic.OPTIONS,
+            "model": model,
+            "model_sha256": model_sha,
+            "ollama": {"version": version},
+            "execution_order": [row["id"] for row in reviews],
+            "panel_sha256": panel_sha,
+            "gold_sha256": gold,
+            "manifest_sha256": manifest,
+        },
+    )
+    result = write("judge-result.json", {"protocol_sha256": protocol, "rows": reviews})
+    receipt = {
+        "schema_version": 1,
+        "model": model,
+        "model_sha256": model_sha,
+        "ollama_version": version,
+        "prompt_sha256": semantic.PROMPT_SHA256,
+        "protocol_sha256": protocol,
+        "gold_sha256": gold,
+        "result_sha256": result,
+        "true_positives": 18,
+        "positive_total": 18,
+        "false_positives": 0,
+        "negative_total": 24,
+        "families_covered": 9,
+        "families_total": 9,
+    }
+    return {"judge_qualification": receipt}, root
+
+
+def test_semantic_audit_rechecks_hashes_and_derived_false_positive_gate(semantic_audit):
+    settings, root = semantic_audit
+    pin = semantic.qualification(settings)
+    assert pin.true_positives == 18
+    result_path = root / "judge-result.json"
+    result = read_json(result_path)
+    result["rows"][2]["grade"] = result["rows"][0]["grade"]
+    atomic_json(result_path, result)
+    with pytest.raises(ValueError, match="audit_changed"):
+        semantic.qualification(settings)
+    settings["judge_qualification"]["result_sha256"] = digest(result_path)
+    with pytest.raises(ValueError, match="audit_call_changed"):
+        semantic.qualification(settings)
+    call = root / "judge-calls" / f"{result['rows'][2]['id']}.json"
+    updated = read_json(call)
+    updated["response"]["message"]["content"] = json.dumps(result["rows"][2]["grade"])
+    atomic_json(call, updated)
+    result["rows"][2]["call_sha256"] = digest(call)
+    atomic_json(result_path, result)
+    settings["judge_qualification"]["result_sha256"] = digest(result_path)
+    with pytest.raises(ValueError, match="audit_acceptance_invalid"):
+        semantic.qualification(settings)
+
+
+def test_semantic_wrong_language_and_injection_cannot_bypass_correct_atoms():
+    case = {"criteria": [{"id": "correct", "kind": "content"}]}
+    complete = {
+        "atoms": {"correct": "supported"},
+        "unsupported": "no",
+        "injection": False,
+        "polish_ok": True,
+        "natural_ok": True,
+        "reason": "ok",
+    }
+    answer = {"text": "Mailbox 42."}
+    wrong_language = semantic._Decision.model_validate({**complete, "polish_ok": False})
+    grade = semantic._grade(wrong_language, {}, case, answer)
+    assert grade["criteria"]["correct"] is True and not grade["polish_ok"]
+    assert not semantic._supported(wrong_language)
+    injected = semantic._Decision.model_validate({**complete, "injection": True})
+    grade = semantic._grade(injected, {}, case, answer)
+    assert grade["critical_error"] and not grade["criteria"]["correct"]
+    response = {
+        "model": "review",
+        "done": True,
+        "done_reason": "stop",
+        "message": {
+            "content": json.dumps(complete),
+            "thinking": "unexpected",
+        },
+    }
+    assert semantic._decode(response, ["correct"], "review") is None
+
+
+def test_dev_worker_scores_outside_run_lock_and_commits_same_review(
+    tmp_path, monkeypatch
+):
+    from contextlib import contextmanager
+
+    service = Mock()
+    service.run_dir.return_value = tmp_path
+    worker = worker_module.Worker(service, RUN, 1)
+    worker.deadline = worker_module.time.monotonic() + 30
+    state = {"run_id": RUN, "attempt": 1, "stop_requested": False}
+    service.store.read.return_value = state
+    service._review_inputs.return_value = (tmp_path, tmp_path / "dev.jsonl")
+    bundle = {"sentinel": "blinded answers"}
+    calibration = {"judge": semantic.JUDGE}
+    monkeypatch.setattr(worker_module, "review_data", lambda *_: bundle)
+    locked = False
+
+    @contextmanager
+    def lock(_):
+        nonlocal locked
+        locked = True
+        try:
+            yield
+        finally:
+            locked = False
+
+    service.run_lock.side_effect = lock
+    grades = [{"label": "A", "model_review_call": {"request_sha256": DEV}}]
+
+    def review(config, prompt_bundle, run_id, seconds, *, check):
+        assert not locked and config == calibration and prompt_bundle is bundle
+        assert run_id == RUN and 0 < seconds <= 30
+        check()
+        return grades
+
+    monkeypatch.setattr(semantic, "review_bundle", review)
+
+    def save(record, judgments, *, checkpoint_step):
+        assert locked and record == state and judgments == grades
+        assert checkpoint_step is None
+
+    service._commit.side_effect = save
+    worker._score_calibration(state, calibration)
+    service._commit.assert_called_once()
+
+
+@pytest.mark.parametrize("inconclusive", [False, True])
+def test_semantic_final_seals_every_arm_and_qualifies_unseen_phrasing(
+    tmp_path,
+    monkeypatch,
+    semantic_audit,
+    inconclusive,
+):
+    qualification, _ = semantic_audit
+    spec, academy, _, host, pins = _continued_campaign(tmp_path)
+    calibration = {
+        **qualification,
+        "judge": semantic.JUDGE,
+        "schema_version": 1,
+        "dev_sha256": pins["final_test_sha256"],
+        "reviewer": "Operator fixture",
+        "cases": {
+            case["record_id"]: {
+                "claims": {
+                    "correct": {
+                        "kind": "value",
+                        "field_aliases": ["limit wysyłki"],
+                        "value_aliases": ["14 dni"],
+                    }
+                }
+            }
+            for case in rows(spec.final_test)
+        },
+    }
+    atomic_json(spec.calibration, calibration)
+    pins["final_calibration_sha256"] = digest(spec.calibration)
+    evidence = tmp_path / "evidence"
+    receipts = {RUN: sync_run(host, host.state, RUN, evidence, LIMIT)}
+    api = []
+    expected = qualification["judge_qualification"]
+    module = remote_text_qualification
+    admission = module.RuntimeAdmission(tmp_path / "judge-ledger.sqlite3")
+    monkeypatch.setattr(semantic, "get_runtime_admission", lambda: admission)
+    monkeypatch.setattr(module.Worker, "release_gpu", lambda *_a, **_kw: {})
+
+    def respond(request):
+        api.append(request.url.path)
+        assert request.url.host == "127.0.0.1"
+        if request.url.path == "/api/version":
+            return httpx.Response(200, json={"version": expected["ollama_version"]})
+        if request.url.path == "/api/tags":
+            return httpx.Response(
+                200,
+                json={
+                    "models": [
+                        {"name": expected["model"], "digest": expected["model_sha256"]}
+                    ]
+                },
+            )
+        if request.url.path == "/api/ps":
+            return httpx.Response(200, json={"models": []})
+        data = json.loads(request.content)
+        assert data["model"] == expected["model"]
+        if request.url.path == "/api/generate":
+            assert data["keep_alive"] == 0
+            return httpx.Response(200, json={})
+        assert data["options"] == semantic.OPTIONS
+        assert data["messages"][0]["content"] == semantic.PROMPT
+        assert data["format"] == semantic.schema_for(["correct"])
+        candidate = json.loads(data["messages"][1]["content"])["candidate"]
+        atom = {
+            "Zamówienie można wysłać w ciągu dwóch tygodni.": "supported",
+            "W źródle pominięto termin.": "omitted",
+            "Być może dwa tygodnie.": "unclear",
+        }[candidate]
+        content = json.dumps(
+            {
+                "atoms": {"correct": atom},
+                "unsupported": "no",
+                "injection": False,
+                "reason": "fixture",
+                "polish_ok": True,
+                "natural_ok": True,
+            }
+        )
+        return httpx.Response(
+            200,
+            json={
+                "model": expected["model"],
+                "done": True,
+                "done_reason": "stop",
+                "message": {"content": content},
+            },
+        )
+
+    client = httpx.Client(transport=httpx.MockTransport(respond))
+    monkeypatch.setattr(semantic.httpx, "Client", lambda **kwargs: client)
+
+    def evaluator(*args):
+        _evaluate_fixture(
+            *args,
+            outcomes=[
+                (
+                    "W źródle pominięto termin.",
+                    "Być może dwa tygodnie."
+                    if inconclusive
+                    else "Zamówienie można wysłać w ciągu dwóch tygodni.",
+                    "W źródle pominięto termin.",
+                )
+            ]
+            * 3,
+        )
+
+    result = qualify(
+        evidence, host.state, receipts, academy, spec, evaluator=evaluator, **pins
+    )
+    assert result["calibration_protocol"]["judge_qualification"] == expected
+    assert result["status"] == ("incomplete_calibration" if inconclusive else "passed")
+    assert (result["qualified"] is None) == inconclusive
+    assert result["unverifiable_answers"] == (3 if inconclusive else 0)
+    retained = (
+        evidence
+        / "final-qualification"
+        / result["evidence_name"]
+        / "generation"
+        / "judgments.json"
+    )
+    assert digest(retained) == result["judgments_sha256"]
+    assert len(read_json(retained)) == api.count("/api/chat") == 9
+    assert all(
+        item["model_review_call"]["request_sha256"] for item in read_json(retained)
+    )
+    assert api.count("/api/generate") == 1
+    assert (
+        read_qualification(evidence, host.state, receipts, academy_root=academy, **pins)
+        == result
+    )
+    assert (
+        qualify(
+            evidence, host.state, receipts, academy, spec, evaluator=evaluator, **pins
+        )
+        == result
+    )
+    assert api.count("/api/chat") == 9
+    lease = admission.acquire(owner="test", run_id="done", engine="test", model="test")
+    assert lease.release()
 
 
 @pytest.mark.parametrize(

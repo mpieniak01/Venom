@@ -6,6 +6,7 @@ import json
 import os
 import shutil
 import time
+import uuid
 from pathlib import Path
 from typing import Callable
 
@@ -78,6 +79,8 @@ def prepare_audit(
         "ollama": {"version": legacy.ollama_version},
         "accuracy_manifest_sha256": manifest_sha256,
         "implementation_sha256": verifier.implementation_hashes(),
+        "run_id": run_id,
+        "intent_sha256": digest(output / "intent.json"),
     }
     path = output / "judge-protocol.json"
     if path.exists():
@@ -97,6 +100,9 @@ def prepare_audit(
             "result_sha256": "0" * 64,
         }
     )
+    from .semantic_judge_provenance import verify_legacy
+
+    verify_legacy(output, manifest, provisional)
     return {"root": output, "manifest": manifest, "pin": provisional, "intent": intent}
 
 
@@ -118,7 +124,18 @@ def _collect(
         index = len(rows) + 1
         case, answer = jobs[entry["split"]][entry["answer_id"]]
         request = verifier.request_for(pin.model, case, answer)
+        provenance = {
+            "call_id": uuid.uuid4().hex,
+            "run_id": context["intent"]["run_id"],
+            "intent_sha256": digest(root / "intent.json"),
+            "protocol_sha256": pin.protocol_sha256,
+            "started_at_ns": time.time_ns(),
+            "started_monotonic_ns": time.monotonic_ns(),
+        }
         response = judge._api(client, "chat", request, timeout=remaining())
+        provenance.update(
+            finished_at_ns=time.time_ns(), finished_monotonic_ns=time.monotonic_ns()
+        )
         decision = judge._decode(
             response, [c["id"] for c in case["criteria"]], pin.model
         )
@@ -128,7 +145,12 @@ def _collect(
             raise ValueError("experiment_judge_v4_call_already_exists")
         atomic_json(
             path,
-            {"request": request, "request_sha256": request_sha, "response": response},
+            {
+                **provenance,
+                "request": request,
+                "request_sha256": request_sha,
+                "response": response,
+            },
         )
         rows.append(
             {
@@ -151,10 +173,19 @@ def run_audit(
 ) -> dict:
     """Exactly one attempt. Never retry a call to obtain a passing decision."""
     root, manifest, pin = context["root"], context["manifest"], context["pin"]
+    scope = {
+        "run_id": context["intent"]["run_id"],
+        "intent_sha256": digest(root / "intent.json"),
+        "protocol_sha256": pin.protocol_sha256,
+    }
     # Atomic claim prevents concurrent execution and retry-after-exposure.
     with (root / "started.json").open("x", encoding="utf8") as stream:
         json.dump(
-            {"started_at": time.time(), "intent_sha256": digest(root / "intent.json")},
+            {
+                **scope,
+                "started_at_ns": time.time_ns(),
+                "started_monotonic_ns": time.monotonic_ns(),
+            },
             stream,
         )
         stream.flush()
@@ -165,9 +196,10 @@ def run_audit(
     )
     rows: list[dict] = []
     result = {
+        **scope,
         "status": "incomplete",
         "phase": "legacy_and_development",
-        "protocol_sha256": pin.protocol_sha256,
+        "started_sha256": digest(root / "started.json"),
         "rows": rows,
         "holdout_opened": False,
         "qualification_receipt_required": True,
@@ -189,7 +221,13 @@ def run_audit(
                     raise
                 atomic_json(
                     root / "phase1-pass.json",
-                    {"completed_calls": 108, "protocol_sha256": pin.protocol_sha256},
+                    {
+                        **scope,
+                        "completed_calls": 108,
+                        "phase1_rows_sha256": stable_hash(rows),
+                        "closed_at_ns": time.time_ns(),
+                        "closed_monotonic_ns": time.monotonic_ns(),
+                    },
                 )
                 progress(
                     {"stage": "legacy_and_development_passed", "completed_calls": 108}
@@ -217,7 +255,11 @@ def run_audit(
             result["status"] = "incomplete"
     finally:
         result["elapsed_seconds"] = round(time.monotonic() - started, 3)
+        result["finished_at_ns"] = time.time_ns()
+        result["finished_monotonic_ns"] = time.monotonic_ns()
         result["completed_calls"] = len(rows)
+        if (root / "phase1-pass.json").exists():
+            result["phase1_marker_sha256"] = digest(root / "phase1-pass.json")
         atomic_json(root / "judge-result.json", result)
     if result["status"] == "complete":
         receipt = {

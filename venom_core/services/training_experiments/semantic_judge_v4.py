@@ -48,6 +48,8 @@ def implementation_hashes() -> dict[str, str]:
     return {
         "judge": digest(Path(judge.__file__)),
         "v4_verifier": digest(Path(__file__)),
+        "audit_runner": digest(Path(__file__).with_name("semantic_judge_audit.py")),
+        "provenance": digest(Path(__file__).with_name("semantic_judge_provenance.py")),
     }
 
 
@@ -227,7 +229,13 @@ def verify_rows(
     phase1: bool = False,
 ) -> dict:
     from . import local_semantic_judge as judge
+    from . import semantic_judge_provenance as provenance
 
+    protocol = judge._bound_json(root, "judge-protocol.json", pin.protocol_sha256)
+    seen: dict[str, set[str]] = {
+        key: set() for key in ("call_id", "server_time", "raw_response")
+    }
+    previous_end = 0
     order = execution_order(root, manifest)[: 108 if phase1 else 180]
     require(len(rows) == len(order))
     splits = (
@@ -246,6 +254,9 @@ def verify_rows(
         require(case["id"] == entry["case_id"])
         call = judge._bound_json(
             root / "judge-calls", f"{index:03d}.json", row["call_sha256"]
+        )
+        previous_end = provenance.verify_call(
+            call, protocol, pin.protocol_sha256, seen, previous_end
         )
         expected_request = request_for(pin.model, case, answer)
         request_sha = stable_hash(expected_request)
@@ -321,8 +332,12 @@ def verify_audit(pin: QualificationV4) -> None:
             result["protocol_sha256"] == pin.protocol_sha256
             and result["status"] == "complete"
         )
+        from . import semantic_judge_provenance as provenance
+
+        provenance.verify_legacy(root, manifest, pin)
         metrics = verify_rows(root, manifest, pin, result["rows"])
         require(result["metrics"] == metrics)
+        provenance.verify_session(root, protocol, pin, result)
         control_files(root, pin.accuracy_manifest_sha256)
     except (KeyError, TypeError, AttributeError, IndexError) as exc:
         raise ValueError(ERROR) from exc

@@ -2,6 +2,7 @@
 
 import json
 from contextlib import contextmanager
+from datetime import datetime, timezone
 
 import pytest
 
@@ -144,25 +145,39 @@ def qualified_v4(tmp_path, monkeypatch):
         path = root / "controls" / name
         if not path.exists():
             atomic_json(path, {})
+    legacy = root / "controls/legacy"
+    old_protocol = {
+        "system": judge.PROMPT,
+        "options": judge.OPTIONS,
+        "model": "test-judge",
+        "model_sha256": "d" * 64,
+        "ollama": {"version": "0.40.14"},
+        "gold_sha256": digest(legacy / "qualification-gold.json"),
+        "panel_sha256": digest(legacy / "qualification-panel.json"),
+        "manifest_sha256": digest(legacy / "qualification-manifest.json"),
+    }
+    atomic_json(legacy / "judge-protocol.json", old_protocol)
     atomic_json(
-        root / "controls/legacy/judge-qualification-receipt.json",
-        {
-            "schema_version": 1,
-            "model": "test-judge",
-            "model_sha256": "d" * 64,
-            "ollama_version": "0.40.14",
-            "prompt_sha256": judge.PROMPT_SHA256,
-            "protocol_sha256": "e" * 64,
-            "gold_sha256": "f" * 64,
-            "result_sha256": "a" * 64,
-            "true_positives": 24,
-            "positive_total": 24,
-            "false_positives": 0,
-            "negative_total": 36,
-            "families_covered": 12,
-            "families_total": 12,
-        },
+        legacy / "judge-result.json",
+        {"protocol_sha256": digest(legacy / "judge-protocol.json")},
     )
+    old_pin = {
+        "schema_version": 1,
+        "model": "test-judge",
+        "model_sha256": "d" * 64,
+        "ollama_version": "0.40.14",
+        "prompt_sha256": judge.PROMPT_SHA256,
+        "protocol_sha256": digest(legacy / "judge-protocol.json"),
+        "gold_sha256": digest(legacy / "qualification-gold.json"),
+        "result_sha256": digest(legacy / "judge-result.json"),
+        "true_positives": 24,
+        "positive_total": 24,
+        "false_positives": 0,
+        "negative_total": 36,
+        "families_covered": 12,
+        "families_total": 12,
+    }
+    atomic_json(legacy / "judge-qualification-receipt.json", old_pin)
     atomic_json(
         root / "controls/frozen-manifest.json",
         {
@@ -171,20 +186,19 @@ def qualified_v4(tmp_path, monkeypatch):
         },
     )
     receipt = {
+        **old_pin,
         "schema_version": 2,
-        "model": "test-judge",
-        "model_sha256": "d" * 64,
-        "ollama_version": "0.40.14",
         "prompt_sha256": judge.PROMPT_V4_SHA256,
-        "true_positives": 24,
-        "positive_total": 24,
-        "false_positives": 0,
-        "negative_total": 36,
-        "families_covered": 12,
-        "families_total": 12,
         "accuracy_manifest_sha256": digest(root / "controls/frozen-manifest.json"),
-        "gold_sha256": digest(root / "controls/legacy/qualification-gold.json"),
     }
+    intent = {
+        "run_id": "fixture-v4",
+        "manifest_sha256": receipt["accuracy_manifest_sha256"],
+        "seconds": 300,
+        "cleanup_seconds": 120,
+        "implementation_sha256": audit.implementation_hashes(),
+    }
+    atomic_json(root / "intent.json", intent)
     protocol = {
         "schema_version": 4,
         "judge": judge.JUDGE_V4,
@@ -195,25 +209,47 @@ def qualified_v4(tmp_path, monkeypatch):
         "ollama": {"version": receipt["ollama_version"]},
         "accuracy_manifest_sha256": receipt["accuracy_manifest_sha256"],
         "implementation_sha256": audit.implementation_hashes(),
+        "run_id": intent["run_id"],
+        "intent_sha256": digest(root / "intent.json"),
     }
     atomic_json(root / "judge-protocol.json", protocol)
     receipt["protocol_sha256"] = digest(root / "judge-protocol.json")
+    scope = {
+        "run_id": intent["run_id"],
+        "intent_sha256": protocol["intent_sha256"],
+        "protocol_sha256": receipt["protocol_sha256"],
+    }
+    wall, mono = 1800000000000000000, 1000000
+    atomic_json(
+        root / "started.json",
+        {**scope, "started_at_ns": wall, "started_monotonic_ns": mono},
+    )
     reviews = []
     for index, entry in enumerate(first + hold, 1):
         key = entry["split"], entry["answer_id"]
         case, answer = all_jobs[key]
         request = audit.request_for(receipt["model"], case, answer)
         value = gold_decisions[key]
+        start_wall, start_mono = wall + index * 1000000, mono + index * 1000000
         response = {
             "model": receipt["model"],
             "done": True,
             "done_reason": "stop",
+            "created_at": datetime.fromtimestamp(
+                start_wall / 1e9, timezone.utc
+            ).isoformat(),
             "message": {"content": json.dumps(value)},
         }
         path = root / "judge-calls" / f"{index:03d}.json"
         atomic_json(
             path,
             {
+                **scope,
+                "call_id": f"{index:032x}",
+                "started_at_ns": start_wall,
+                "finished_at_ns": start_wall + 1000,
+                "started_monotonic_ns": start_mono,
+                "finished_monotonic_ns": start_mono + 1000,
                 "request": request,
                 "request_sha256": stable_hash(request),
                 "response": response,
@@ -229,11 +265,27 @@ def qualified_v4(tmp_path, monkeypatch):
             }
         )
     atomic_json(
+        root / "phase1-pass.json",
+        {
+            **scope,
+            "completed_calls": 108,
+            "phase1_rows_sha256": stable_hash(reviews[:108]),
+            "closed_at_ns": wall + 108 * 1000000 + 2000,
+            "closed_monotonic_ns": mono + 108 * 1000000 + 2000,
+        },
+    )
+    atomic_json(
         root / "judge-result.json",
         {
+            **scope,
             "status": "complete",
-            "protocol_sha256": receipt["protocol_sha256"],
             "rows": reviews,
+            "holdout_opened": True,
+            "completed_calls": 180,
+            "started_sha256": digest(root / "started.json"),
+            "phase1_marker_sha256": digest(root / "phase1-pass.json"),
+            "finished_monotonic_ns": mono + 181 * 1000000,
+            "finished_at_ns": wall + 181 * 1000000,
             "metrics": {
                 "legacy_correct": 60,
                 "development_correct": 48,
@@ -432,6 +484,7 @@ def test_runner_preserves_calls_and_gates_holdout(
         assert action == "chat" and timeout > 0
         calls.append(stable_hash(payload))
         response = json.loads(json.dumps(originals[stable_hash(payload)]))
+        response["created_at"] = datetime.now(timezone.utc).isoformat()
         if fail_phase1 and len(calls) == 61:
             value = json.loads(response["message"]["content"])
             value["atoms"]["fact"] = "contradicted"
@@ -550,3 +603,88 @@ def test_cli_requires_execute_for_gpu(monkeypatch, tmp_path, execute):
     monkeypatch.setattr(sys, "argv", args)
     assert cli.main() == (2 if execute else 0)
     assert calls == (["execute"] if execute else [])
+
+
+@pytest.mark.parametrize("copy_whole_call", [False, True])
+def test_replayed_raw_response_cannot_fake_three_executions(
+    qualified_v4, copy_whole_call
+):
+    settings, root = qualified_v4
+    result = read_json(root / "judge-result.json")
+    earlier = read_json(root / "judge-calls/132.json")
+    last = read_json(root / "judge-calls/180.json")
+    if copy_whole_call:
+        last = earlier
+    else:
+        last["response"] = earlier["response"]
+    atomic_json(root / "judge-calls/180.json", last)
+    result["rows"][-1]["call_sha256"] = digest(root / "judge-calls/180.json")
+    _reseal_result(settings, root, result)
+    with pytest.raises(ValueError, match="provenance"):
+        judge.qualification(settings)
+
+
+@pytest.mark.parametrize(
+    "field,value", [("model_sha256", "b" * 64), ("ollama_version", "0.41.0")]
+)
+def test_runtime_cannot_be_reassigned_away_from_frozen_legacy(
+    qualified_v4, field, value
+):
+    settings, root = qualified_v4
+    protocol = read_json(root / "judge-protocol.json")
+    result = read_json(root / "judge-result.json")
+    settings["judge_qualification"][field] = value
+    if field == "model_sha256":
+        protocol[field] = value
+    else:
+        protocol["ollama"] = {"version": value}
+    atomic_json(root / "judge-protocol.json", protocol)
+    settings["judge_qualification"]["protocol_sha256"] = digest(
+        root / "judge-protocol.json"
+    )
+    result["protocol_sha256"] = settings["judge_qualification"]["protocol_sha256"]
+    _reseal_result(settings, root, result)
+    with pytest.raises(ValueError, match="provenance"):
+        judge.qualification(settings)
+
+
+@pytest.mark.parametrize(
+    "damage",
+    [
+        "missing_gate",
+        "late_gate",
+        "changed_gate_rows",
+        "wrong_run",
+        "missing_server_time",
+        "backwards_time",
+    ],
+)
+def test_phase_and_call_provenance_cannot_be_resealed(qualified_v4, damage):
+    settings, root = qualified_v4
+    result = read_json(root / "judge-result.json")
+    if damage == "missing_gate":
+        (root / "phase1-pass.json").unlink()
+    elif damage in {"late_gate", "changed_gate_rows"}:
+        gate = read_json(root / "phase1-pass.json")
+        if damage == "late_gate":
+            gate["closed_monotonic_ns"] = (
+                read_json(root / "judge-calls/109.json")["started_monotonic_ns"] + 1
+            )
+        else:
+            gate["phase1_rows_sha256"] = "0" * 64
+        atomic_json(root / "phase1-pass.json", gate)
+        result["phase1_marker_sha256"] = digest(root / "phase1-pass.json")
+    else:
+        path = root / "judge-calls/180.json"
+        call = read_json(path)
+        if damage == "wrong_run":
+            call["run_id"] = "different-audit"
+        elif damage == "missing_server_time":
+            call["response"].pop("created_at")
+        else:
+            call["started_monotonic_ns"] = 1
+        atomic_json(path, call)
+        result["rows"][-1]["call_sha256"] = digest(path)
+    _reseal_result(settings, root, result)
+    with pytest.raises((ValueError, FileNotFoundError)):
+        judge.qualification(settings)

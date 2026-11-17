@@ -2,13 +2,26 @@
 
 from __future__ import annotations
 
-import math
 import re
-from typing import Any, cast
+from typing import Annotated, Any, Literal, cast
 
 from pydantic import BaseModel, ConfigDict, Field, StrictBool
 
 from .profiles import stable_hash
+
+
+class _AuditVerdict(BaseModel):
+    model_config = ConfigDict(strict=True, extra="ignore")
+    usable: Annotated[int, Field(ge=0, le=1)] | None
+    passed: Annotated[int, Field(ge=0, le=1)] | None
+
+
+class _BroadPayload(BaseModel):
+    model_config = ConfigDict(strict=True, extra="ignore")
+    factual_final_used: Literal[False]
+    model_identities: dict[str, dict[str, Any]]
+    verdicts: dict[str, dict[str, _AuditVerdict]]
+    critical_by_case: dict[str, dict[str, StrictBool | None]]
 
 
 class ShortComparison(BaseModel):
@@ -30,11 +43,6 @@ def _require(condition: bool) -> None:
         raise ValueError("experiment_parent_broad_audit_invalid")
 
 
-def _metric(value: Any) -> int | None:
-    _require(value is None or type(value) is int and value in (0, 1))
-    return value
-
-
 def _broad_gate(
     report: dict,
     expected: str,
@@ -48,18 +56,18 @@ def _broad_gate(
         bool(_DIGEST.fullmatch(expected))
         and report.get("sha256") == expected == stable_hash(payload)
     )
-    identities = payload.get("model_identities", {})
+    try:
+        validated = _BroadPayload.model_validate(payload)
+    except ValueError as exc:
+        raise ValueError("experiment_parent_broad_audit_invalid") from exc
+    identities = validated.model_identities
     _require(
         identities.get("checkpoint-145", {}).get("adapter_model.safetensors")
         == reference_weight
         and identities.get("checkpoint-25", {}).get("adapter_model.safetensors")
         == candidate_weight
     )
-    _require(payload.get("factual_final_used") is False)
-    verdicts, critical = (
-        payload.get("verdicts", {}),
-        payload.get("critical_by_case", {}),
-    )
+    verdicts, critical = validated.verdicts, validated.critical_by_case
     reference, candidate = verdicts.get("P13", {}), verdicts.get("P25", {})
     _require(
         len(reference) == len(candidate) == 144
@@ -78,8 +86,8 @@ def _broad_gate(
         groups[group] = groups.get(group, 0) + 1
         for metric in lost:
             before, after = (
-                _metric(reference[ident].get(metric)),
-                _metric(candidate[ident].get(metric)),
+                getattr(reference[ident], metric),
+                getattr(candidate[ident], metric),
             )
             if before is None or after is None:
                 unresolved.add(ident)
@@ -137,7 +145,6 @@ def select_campaign_parent(
         and short.passed_delta > 0
         and short.full_retention
         and not short.new_critical_case_ids
-        and math.isfinite(short.usable_delta + short.passed_delta)
         else "P13"
     )
     broad = (

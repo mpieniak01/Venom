@@ -176,3 +176,35 @@ def test_invalid_weight_pin_rejected():
             reference_weight_sha256=REF,
             candidate_weight_sha256=REF,
         )
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "missing_metric",
+        "string_metric",
+        "missing_payload",
+        "malformed_map",
+        "malformed_id",
+    ],
+)
+def test_strict_wider_schema_rejects_resealed_malformed_rows(mutation):
+    evidence = report()
+    payload = evidence["payload"]
+    if mutation == "missing_metric":
+        payload["verdicts"]["P25"]["inc17-dialogue-K-1-t1"].pop("usable")
+    elif mutation == "string_metric":
+        payload["verdicts"]["P25"]["inc17-dialogue-K-1-t1"]["usable"] = "1"
+    elif mutation == "missing_payload":
+        evidence = {"sha256": evidence["sha256"]}
+    elif mutation == "malformed_map":
+        payload["critical_by_case"] = []
+    else:
+        for section in ("verdicts", "critical_by_case"):
+            for role in ("P13", "P25"):
+                rows = payload[section][role]
+                rows["other"] = rows.pop("inc17-dialogue-K-1-t1")
+    if mutation != "missing_payload":
+        evidence = seal(payload)
+    with pytest.raises(ValueError):
+        choose(evidence)

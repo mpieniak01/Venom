@@ -276,6 +276,7 @@ def verify_rows(
             [c["id"] for c in case["criteria"]],
             pin.model,
             judge=judge.judge_for(pin),
+            candidate=answer["text"],
         )
         require(decision is not None)
         assert decision is not None

@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 from .profiles import stable_hash
 
 if TYPE_CHECKING:
-    from .local_semantic_judge import QualificationV4
+    from .local_semantic_judge import QualificationV4, QualificationV5
 
 
 def require(condition: bool) -> None:
@@ -18,7 +18,9 @@ def require(condition: bool) -> None:
         raise ValueError("experiment_judge_v4_provenance_invalid")
 
 
-def verify_legacy(root: Path, manifest: dict, pin: QualificationV4) -> None:
+def verify_legacy(
+    root: Path, manifest: dict, pin: QualificationV4 | QualificationV5
+) -> None:
     from . import local_semantic_judge as judge
 
     directory = root / "controls"
@@ -113,7 +115,7 @@ def verify_call(
 
 
 def verify_session(
-    root: Path, protocol: dict, pin: QualificationV4, result: dict
+    root: Path, protocol: dict, pin: QualificationV4 | QualificationV5, result: dict
 ) -> None:
     from . import local_semantic_judge as judge
 

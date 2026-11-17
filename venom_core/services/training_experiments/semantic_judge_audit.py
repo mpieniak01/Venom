@@ -180,6 +180,7 @@ def _collect(
             [c["id"] for c in case["criteria"]],
             pin.model,
             judge=judge.judge_for(pin),
+            candidate=answer["text"],
         )
         request_sha = stable_hash(request)
         path = root / "judge-calls" / f"{index:03d}.json"

@@ -776,7 +776,7 @@ def test_v5_field_first_decoding_and_fail_closed(invalid):
                 "relation": "supported",
             }
         },
-        "unsupported": "no",
+        "additional_claims": [],
         "injection": False,
         "polish_ok": True,
         "natural_ok": True,
@@ -802,7 +802,10 @@ def test_v5_field_first_decoding_and_fail_closed(invalid):
         response["message"]["thinking"] = "not allowed"
     response["message"]["content"] = json.dumps(value)
     result = judge._decode(response, ["price"], "judge", judge=judge.JUDGE_V5)
-    if invalid:
+    if invalid == "contradiction":
+        assert result.atoms == {"price": "contradicted"}
+        assert result.unsupported == "yes"
+    elif invalid:
         assert result is None
     else:
         assert result.atoms == {"price": "supported"}
@@ -897,7 +900,8 @@ def test_v5_audit_uses_raw_field_decisions_and_gates_holdout(
         )
         d = row["decision"]
         mapping[stable_hash(req)] = {
-            **{k: v for k, v in d.items() if k != "atoms"},
+            **{k: v for k, v in d.items() if k not in {"atoms", "unsupported"}},
+            "additional_claims": [],
             "checks": {
                 k: {
                     "required": "Fixture required fact",
@@ -946,3 +950,93 @@ def test_v5_audit_uses_raw_field_decisions_and_gates_holdout(
         settings["judge_qualification"]["prompt_sha256"] = "f" * 64
         with pytest.raises(ValueError, match="prompt_mismatch"):
             judge.qualification(settings)
+
+
+@pytest.mark.parametrize(
+    "grounding", ["supported", "unsupported", "unclear", "not-in-candidate"]
+)
+def test_v5_review_and_receipt_use_checks_and_ground_actual_quotes(
+    qualified_v4, monkeypatch, grounding
+):
+    _, source = qualified_v4
+    old = read_json(source / "controls/legacy/judge-qualification-receipt.json")
+    import hashlib
+
+    pin = judge.QualificationV5(
+        **{
+            **old,
+            "schema_version": 3,
+            "prompt_sha256": hashlib.sha256(
+                judge.prompt_for(judge.JUDGE_V5).encode()
+            ).hexdigest(),
+            "accuracy_manifest_sha256": "a" * 64,
+        }
+    )
+    case = {
+        "messages": [
+            {"role": "user", "content": "Podaj cenę ze źródła: cena 2,75 zł."}
+        ],
+        "criteria": [
+            {"id": "price", "kind": "content", "description": "Cena wynosi 2,75 zł."}
+        ],
+    }
+    spec = {
+        "claims": {
+            "price": {
+                "kind": "value",
+                "value_aliases": ["2,75 zł"],
+                "field_aliases": ["cena"],
+            }
+        }
+    }
+    answer = {"text": "Cena: 2.75 zł. Dostawa gratis.", "error": None, "finish": "stop"}
+    value = {
+        "checks": {
+            "price": {
+                "required": "Cena wynosi 2,75 zł.",
+                "observed": "Cena: 2.75 zł",
+                "relation": "supported",
+            }
+        },
+        "additional_claims": [
+            {
+                "text": "nieobecny cytat"
+                if grounding == "not-in-candidate"
+                else "Dostawa gratis.",
+                "grounding": "unsupported"
+                if grounding == "not-in-candidate"
+                else grounding,
+            }
+        ],
+        "injection": False,
+        "polish_ok": True,
+        "natural_ok": True,
+        "reason": "Ocena wymaganego pola i dodatkowego twierdzenia.",
+    }
+    response = {
+        "model": pin.model,
+        "done": True,
+        "done_reason": "stop",
+        "message": {"content": json.dumps(value)},
+    }
+    monkeypatch.setattr(judge, "_api", lambda *_args, **_kwargs: response)
+    grade = judge._review_answer(None, pin, spec, case, answer, lambda: 30)
+    judge.verify_review_receipt(pin, spec, case, answer, grade)
+    if grounding == "not-in-candidate":
+        assert grade["review"] is None
+    else:
+        assert (
+            grade["review"]["unsupported"]
+            == {"supported": "no", "unsupported": "yes", "unclear": "unclear"}[
+                grounding
+            ]
+        )
+    assert judge.request_atom_ids(
+        judge._review_request(pin.model, spec, case, answer, judge=judge.JUDGE_V5)
+    ) == ["price"]
+    assert judge.request_atom_ids(
+        judge._review_request(pin.model, spec, case, answer, judge=judge.JUDGE)
+    ) == ["price"]
+    grade["model_review_call"]["request_sha256"] = "f" * 64
+    with pytest.raises(ValueError, match="request_changed"):
+        judge.verify_review_receipt(pin, spec, case, answer, grade)

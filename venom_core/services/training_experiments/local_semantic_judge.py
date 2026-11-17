@@ -528,12 +528,17 @@ def _review_gpu(client: httpx.Client, pin: JudgePin, run_id: str) -> Iterator[No
 
 
 def _decode(
-    response: dict, ids: list[str], model: str, *, judge: str = JUDGE
+    response: dict,
+    ids: list[str],
+    model: str,
+    *,
+    judge: str = JUDGE,
+    candidate: str | None = None,
 ) -> _Decision | None:
     if judge == JUDGE_V5:
         from .semantic_judge_v5 import decode
 
-        return decode(response, ids, model)
+        return decode(response, ids, model, candidate=candidate)
     message = response.get("message")
     if (
         response.get("model") != model
@@ -548,6 +553,12 @@ def _decode(
     except (KeyError, TypeError, ValueError):
         return None
     return result if result.atoms.keys() == set(ids) else None
+
+
+def request_atom_ids(request: dict) -> list[str]:
+    properties = request["format"]["properties"]
+    field = "checks" if "checks" in properties else "atoms"
+    return list(properties[field]["properties"])
 
 
 def _review_request(
@@ -584,9 +595,13 @@ def verify_review_receipt(
             request
         ):
             raise ValueError("experiment_checkpoint_baseline_request_changed")
-        ids = list(request["format"]["properties"]["atoms"]["properties"])
+        ids = request_atom_ids(request)
         decision = _decode(
-            raw.get("response", {}), ids, pin.model, judge=judge_for(pin)
+            raw.get("response", {}),
+            ids,
+            pin.model,
+            judge=judge_for(pin),
+            candidate=answer["text"],
         )
     expected = _grade(decision, claim_rubric(spec), case, answer, judge=judge_for(pin))
     if any(grade.get(key) != value for key, value in expected.items()):
@@ -606,10 +621,12 @@ def _review_answer(
     raw = None
     request = _review_request(pin.model, spec, case, answer, judge=judge_for(pin))
     if request is not None:
-        ids = list(request["format"]["properties"]["atoms"]["properties"])
+        ids = request_atom_ids(request)
         response = _api(client, "chat", request, timeout=remaining())
         raw = {"request_sha256": stable_hash(request), "response": response}
-        decision = _decode(response, ids, pin.model, judge=judge_for(pin))
+        decision = _decode(
+            response, ids, pin.model, judge=judge_for(pin), candidate=answer["text"]
+        )
     return {
         **_grade(decision, rubric, case, answer, judge=judge_for(pin)),
         "model_review_call": raw,

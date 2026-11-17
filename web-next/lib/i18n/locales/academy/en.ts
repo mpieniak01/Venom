@@ -361,6 +361,25 @@ export const academy = {
     },
   },
   campaigns: {
+    finalQualification: {
+      "title": "Final qualification against parent",
+      "inputs": "Held-out test package",
+      "none": "No automatic final qualification",
+      "reserve": "Time reserved for final qualification (s)",
+      "hint": "After the trials, the campaign evaluates the selected candidate and records evidence and a decision. The final stage is included in the total campaign time.",
+      "automatic": "Selecting a package enables automatic review.",
+      "loadError": "Could not load final evaluation packages.",
+      "noInputs": "No final evaluation package is registered.",
+      "deadline": "Overall deadline",
+      "candidate": "Best candidate from trials",
+      "pending": "Final qualification planned",
+      "running": "Final evaluation in progress",
+      "passed": "Meets held-out test criteria",
+      "failed_quality": "Does not meet quality criteria",
+      "incomplete": "Final evaluation is incomplete",
+      "unverified": "Unknown qualification result",
+      "scope": "This result covers the skills in the test. Activation in chat is a separate step."
+},
     executionHost: "Training host",
     localTraining: "Local training",
     checkpoints: {
@@ -606,6 +625,7 @@ export const academy = {
       min_free_mib: "Free space reserve (MiB)",
     },
     status: {
+      qualifying: "Final qualification",
       skipped: "Skipped",
       pruned: "Ended early",
       cancelled: "Cancelled",

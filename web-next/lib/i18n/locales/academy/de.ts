@@ -361,6 +361,25 @@ export const academy = {
     },
   },
   campaigns: {
+    finalQualification: {
+      "title": "Abschließende Qualifikation gegenüber dem Elternadapter",
+      "inputs": "Paket für den zurückgehaltenen Test",
+      "none": "Keine automatische Abschlussbewertung",
+      "reserve": "Reservierte Zeit für die Abschlussbewertung (s)",
+      "hint": "Nach den Versuchen bewertet die Kampagne den ausgewählten Kandidaten und speichert Nachweise sowie eine Entscheidung. Die Abschlussbewertung ist Teil der gesamten Kampagnenzeit.",
+      "automatic": "Die Paketauswahl aktiviert die automatische Bewertung.",
+      "loadError": "Pakete für die Abschlussbewertung konnten nicht geladen werden.",
+      "noInputs": "Kein Paket für die Abschlussbewertung registriert.",
+      "deadline": "Gesamtfrist",
+      "candidate": "Bester Kandidat aus den Versuchen",
+      "pending": "Abschlussbewertung geplant",
+      "running": "Abschlussbewertung läuft",
+      "passed": "Erfüllt die Kriterien des zurückgehaltenen Tests",
+      "failed_quality": "Erfüllt die Qualitätskriterien nicht",
+      "incomplete": "Abschlussbewertung unvollständig",
+      "unverified": "Unbekanntes Qualifikationsergebnis",
+      "scope": "Dieses Ergebnis gilt für die getesteten Fähigkeiten. Die Aktivierung im Chat ist ein separater Schritt."
+},
     executionHost: "Trainingsumgebung",
     localTraining: "Lokales Training",
     checkpoints: {
@@ -606,6 +625,7 @@ export const academy = {
       min_free_mib: "Speicherreserve (MiB)",
     },
     status: {
+      qualifying: "Abschließende Qualifikation",
       skipped: "Übersprungen",
       pruned: "Vorzeitig beendet",
       cancelled: "Abgebrochen",

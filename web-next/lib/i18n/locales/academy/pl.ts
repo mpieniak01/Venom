@@ -361,6 +361,25 @@ export const academy = {
     },
   },
   campaigns: {
+    finalQualification: {
+      "title": "Końcowa kwalifikacja względem rodzica",
+      "inputs": "Pakiet odłożonego testu",
+      "none": "Bez automatycznego finału",
+      "reserve": "Czas zarezerwowany na finał (s)",
+      "hint": "Po próbach kampania sama oceni wybranego kandydata, zapisze dowody i decyzję. Finał mieści się w łącznym czasie kampanii.",
+      "automatic": "Wybór pakietu włącza ocenę automatyczną.",
+      "loadError": "Nie udało się pobrać pakietów końcowej oceny.",
+      "noInputs": "Brak zarejestrowanego pakietu końcowej oceny.",
+      "deadline": "Koniec wspólnego limitu",
+      "candidate": "Najlepszy kandydat z prób",
+      "pending": "Finał zaplanowany",
+      "running": "Trwa końcowa ocena",
+      "passed": "Spełnia kryteria odłożonego testu",
+      "failed_quality": "Nie spełnia kryteriów jakości",
+      "incomplete": "Brak kompletnej końcowej oceny",
+      "unverified": "Nieznany wynik kwalifikacji",
+      "scope": "Ten wynik dotyczy umiejętności objętych testem. Aktywacja w czacie jest oddzielnym krokiem."
+},
     executionHost: "Miejsce treningu",
     localTraining: "Trening lokalny",
     checkpoints: {
@@ -606,6 +625,7 @@ export const academy = {
       min_free_mib: "Rezerwa wolnego miejsca (MiB)",
     },
     status: {
+      qualifying: "Końcowa kwalifikacja",
       skipped: "Pominięta",
       pruned: "Zakończona wcześniej",
       cancelled: "Anulowana",

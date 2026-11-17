@@ -4,7 +4,7 @@ import { useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import type { CampaignRequest, CampaignStrategy, OptunaSearchSpace } from "@/lib/academy-campaign-api";
+import type { CampaignFinalInputs, CampaignRequest, CampaignStrategy, OptunaSearchSpace } from "@/lib/academy-campaign-api";
 import type { ExperimentInitialAdapter, ExperimentProfile, ExperimentRecipe } from "@/lib/academy-experiments-api";
 import { useTranslation } from "@/lib/i18n";
 import type { QualityCampaignDraft } from "@/lib/academy-quality-api";
@@ -12,6 +12,8 @@ import { CampaignPolicyFields, PinnedQualitySource, readQualityPolicy } from "./
 import { OPTUNA_PARAMETERS, OptunaFields } from "./campaign-optuna";
 import { DataAuditSummary } from "./data-audit-summary";
 import { initialAdapterField, InitialAdapterSelector } from "./initial-adapter";
+
+import { CampaignFinalFields, readFinalQualification } from "./campaign-final-qualification";
 
 const MIB = 1024 ** 2;
 const DRAFT_RECIPE_FIELDS = new Set([
@@ -182,12 +184,14 @@ interface CampaignFormProps {
   readonly disabled: boolean;
   readonly optunaAvailable: boolean;
   readonly remoteText?: boolean;
+  readonly finalInputs?: CampaignFinalInputs[];
+  readonly finalInputsFailed?: boolean;
   readonly draft?: QualityCampaignDraft;
   readonly onDiscardDraft: () => void;
   readonly onPlan: (request: CampaignRequest) => Promise<boolean>;
 }
 
-export function CampaignForm({ profiles, adapters, adaptersFailed, disabled, optunaAvailable, remoteText, draft, onDiscardDraft, onPlan }: CampaignFormProps) {
+export function CampaignForm({ profiles, adapters, adaptersFailed, disabled, optunaAvailable, remoteText, finalInputs = [], finalInputsFailed = false, draft, onDiscardDraft, onPlan }: CampaignFormProps) {
   const t = useTranslation();
   const [profileId, setProfileId] = useState(draft?.profileId ?? "");
   const [rows, setRows] = useState(() => draft?.variants.map((_, index) => index) ?? [0]);
@@ -209,6 +213,14 @@ export function CampaignForm({ profiles, adapters, adaptersFailed, disabled, opt
     try {
       const data = new FormData(event.currentTarget);
       const request = readPlan(data, profile.id, rows, strategy, profileAdapters, draft);
+      if (!remoteText) {
+        const final = readFinalQualification(data, finalInputs);
+        if (final) {
+          if (!profile.automatic_review) throw new Error("automatic review required");
+          request.final_qualification = final;
+          request.review_mode = "automatic";
+        }
+      }
       if (remoteText) {
         request.review_mode = "automatic";
         request.retention = "keep_all";
@@ -344,6 +356,8 @@ export function CampaignForm({ profiles, adapters, adaptersFailed, disabled, opt
           </select>
         </div>
       </div>}
+      {!remoteText && <CampaignFinalFields inputs={finalInputs} failed={finalInputsFailed}
+        disabled={disabled} automaticReview={profile?.automatic_review === true} />}
       <CampaignPolicyFields disabled={disabled} initial={draft?.qualityPolicy} />
       <details open>
         <summary className="cursor-pointer text-sm font-medium">{t("academy.campaigns.limits")}</summary>

@@ -27,6 +27,20 @@ export type CampaignStrategy = "fixed" | "optuna";
 export type OptunaParameter = "rank" | "alpha" | "learning_rate" | "dropout";
 export type OptunaSearchSpace = Partial<Record<OptunaParameter, { low: number; high: number; log?: boolean }>>;
 
+export interface CampaignFinalInputs {
+  inputs_id: string;
+  final_test_sha256: string;
+  final_calibration_sha256: string;
+  max_seconds: number;
+}
+
+export interface CampaignFinalQualification {
+  inputs_id: string;
+  reserve_seconds: number;
+}
+
+export type CampaignQualificationStatus = "pending" | "running" | "passed" | "failed_quality" | "incomplete";
+
 export interface CampaignRequest {
   campaign_id: string;
   profile_id: string;
@@ -41,6 +55,7 @@ export interface CampaignRequest {
   retention: "keep_all" | "discard_rejected";
   review_mode: "manual" | "automatic";
   quality_policy?: CampaignQualityPolicy | null;
+  final_qualification?: CampaignFinalQualification | null;
 }
 
 export interface CampaignPlan extends Omit<CampaignRequest, "variants"> {
@@ -79,6 +94,11 @@ export interface CampaignTrial {
 }
 
 export interface Campaign {
+  phase?: "trials" | "qualification" | "complete";
+  qualification_status?: CampaignQualificationStatus;
+  qualification?: { status?: string; qualified?: unknown; reason?: string } | null;
+  deadline_at?: number | null;
+  qualification_attempts?: number;
   campaign_id: string;
   plan: CampaignPlan;
   status: string;
@@ -170,6 +190,10 @@ export function controlRemoteTextCampaign(campaign: RemoteTextCampaign, action: 
 
 export function remoteTextEvidenceUrl(campaignId: string, runId: string) {
   return `${getApiBaseUrl()}${REMOTE_TEXT}/${encodeURIComponent(campaignId)}/evidence/${encodeURIComponent(runId)}`;
+}
+
+export function listCampaignFinalInputs(signal?: AbortSignal) {
+  return apiFetch<{ inputs: CampaignFinalInputs[] }>(`${CAMPAIGNS}/final-inputs`, { signal });
 }
 
 export function listCampaigns(signal?: AbortSignal) {

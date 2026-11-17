@@ -18,10 +18,12 @@ import { DataAuditSummary } from "./data-audit-summary";
 import { InitialAdapterSummary, useInitialAdapterError } from "./initial-adapter";
 import { QualityPolicySummary, TrialQualityDecision } from "./campaign-quality-policy";
 
-const ACTIVE = new Set(["running", "awaiting_review", "stopping", "interrupted"]);
+import { CampaignFinalSummary } from "./campaign-final-qualification";
+
+const ACTIVE = new Set(["running", "qualifying", "awaiting_review", "stopping", "interrupted"]);
 const CAN_RESUME = new Set(["interrupted", "blocked", "stopped"]);
 const STATUSES = new Set([
-  "planned", "pending", "queued", "running", "awaiting_review", "stopping",
+  "planned", "pending", "queued", "running", "qualifying", "awaiting_review", "stopping",
   "interrupted", "blocked", "stopped", "succeeded", "failed", "timed_out", "skipped", "pruned", "cancelled",
 ]);
 
@@ -152,7 +154,7 @@ function SelectedCheckpoint({ campaign }: { readonly campaign: Campaign }) {
   }
   return (
     <p className="break-all text-sm font-medium">
-      {t("academy.campaigns.selected")} {campaign.selected_run_id}
+      {t(campaign.plan.final_qualification ? "academy.campaigns.finalQualification.candidate" : "academy.campaigns.selected")} {campaign.selected_run_id}
       {typeof campaign.selected_checkpoint_step === "number" && (
         <> · {t("academy.campaigns.checkpoints.step")} {campaign.selected_checkpoint_step}</>
       )}
@@ -254,6 +256,7 @@ export function CampaignDetail({ campaign, disabled, optunaAvailable, onAction, 
       )}
       {campaign.error && <p role="alert" className="break-all text-sm text-red-400">{auditError && t(auditError) !== auditError ? t(auditError) : adapterError ?? campaign.error}</p>}
       <SelectedCheckpoint campaign={campaign} />
+      <CampaignFinalSummary campaign={campaign} />
       <div className="flex flex-wrap gap-2">
         {planned && <Button type="button" disabled={launchDisabled} onClick={() => onAction("start")}>{t("academy.campaigns.start")}</Button>}
         {canStop && <Button type="button" variant="outline" disabled={disabled} onClick={() => onAction("stop")}>{t("academy.campaigns.stop")}</Button>}

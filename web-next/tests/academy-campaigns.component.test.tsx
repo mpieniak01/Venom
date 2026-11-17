@@ -59,6 +59,7 @@ function serve(
     if (key === `GET ${base}/profiles`) {
       return Response.json({ profiles: [{ id: "omni", label: "Omni", model: "Omni", dataset: "pilot", recipe: { rank: 8 } }] });
     }
+    if (key === `GET ${campaignsPath}/final-inputs`) return Response.json({ inputs: [] });
     if (key === `GET ${base}/adapters`) return Response.json({ adapters: [] });
     if (key === `GET ${campaignsPath}/quality`) return Response.json({ records: [] });
     if (key === `GET ${campaignsPath}`) {
@@ -72,6 +73,55 @@ function serve(
 }
 
 describe("Academy campaigns", () => {
+  it("plans one-start final qualification with a registered package and shared time budget", async () => {
+    globalThis.FormData = window.FormData;
+    let submitted: CampaignRequest | undefined;
+    serve(() => [], {
+      [`GET ${base}/profiles`]: () => Response.json({ profiles: [{
+        id: "omni", label: "Omni", model: "Omni", dataset: "pilot",
+        recipe: { rank: 8 }, automatic_review: true,
+      }] }),
+      [`GET ${campaignsPath}/final-inputs`]: () => Response.json({ inputs: [{
+        inputs_id: "fresh-final", final_test_sha256: "c".repeat(64),
+        final_calibration_sha256: "d".repeat(64), max_seconds: 600,
+      }] }),
+      [`POST ${campaignsPath}/plan`]: (init) => {
+        submitted = JSON.parse(String(init?.body));
+        return Response.json(planned);
+      },
+    });
+    render(<CampaignPanel onOpenRun={() => undefined} />);
+    await screen.findByRole("option", { name: "fresh-final" });
+    fireEvent.change(screen.getByLabelText("Identyfikator kampanii"), { target: { value: "final-cycle" } });
+    fireEvent.change(screen.getByLabelText("Pakiet odłożonego testu"), { target: { value: "fresh-final" } });
+    fireEvent.change(screen.getByLabelText("Czas zarezerwowany na finał (s)"), { target: { value: "3600" } });
+    fireEvent.click(screen.getByRole("button", { name: "Przygotuj plan kampanii" }));
+    assert.equal(submitted, undefined);
+    await screen.findByRole("alert");
+    fireEvent.change(screen.getByLabelText("Czas zarezerwowany na finał (s)"), { target: { value: "900" } });
+    fireEvent.click(screen.getByRole("button", { name: "Przygotuj plan kampanii" }));
+    await waitFor(() => assert.ok(submitted));
+    assert.deepEqual(submitted!.final_qualification, { inputs_id: "fresh-final", reserve_seconds: 900 });
+    assert.equal(submitted!.review_mode, "automatic");
+    assert.equal(submitted!.budget.max_seconds, 3600);
+  });
+
+  it("keeps qualification active and distinguishes quality rejection from completed trials", async () => {
+    let current: Campaign = { ...planned, status: "qualifying", phase: "qualification",
+      qualification_status: "running", selected_run_id: runId, deadline_at: 1800000000,
+      plan: { ...planned.plan, final_qualification: { inputs_id: "fresh-final", reserve_seconds: 900 } } };
+    serve(() => [current]);
+    render(<CampaignPanel onOpenRun={() => undefined} />);
+    await screen.findByText("Trwa końcowa ocena");
+    assert.ok(screen.getByRole("button", { name: "Zatrzymaj kampanię" }));
+    assert.ok(screen.getByText(`Najlepszy kandydat z prób ${runId}`));
+    current = { ...current, status: "succeeded", phase: "complete", qualification_status: "failed_quality" };
+    document.dispatchEvent(new Event("visibilitychange"));
+    await screen.findByText("Nie spełnia kryteriów jakości");
+    assert.equal(screen.queryByRole("button", { name: "Zatrzymaj kampanię" }), null);
+    assert.equal(screen.queryByText("Spełnia kryteria odłożonego testu"), null);
+  });
+
   it("previews a remote text campaign and starts the approved VM plan", async () => {
     globalThis.FormData = window.FormData;
     const remotePath = `${campaignsPath}/remote/text`;

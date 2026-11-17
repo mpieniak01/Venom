@@ -372,3 +372,13 @@ def test_final_remote_without_deadline_callback_does_not_fall_back(
     )
     assert final._final_judgments(remote_calibration, {}, "remote-cpu", 10, None) == []
     assert review.call_args.args == (remote_calibration, {}, "remote-cpu", 10)
+
+
+@pytest.mark.parametrize("invalid_id", [[], {}, True])
+def test_malformed_judge_ids_fail_with_contract_error(remote_calibration, invalid_id):
+    settings = {**remote_calibration, "judge": invalid_id}
+    for action in (dispatch.backend, dispatch.is_semantic, calibration.scorer_protocol):
+        with pytest.raises(ValueError, match="experiment_judge_version_invalid"):
+            action(settings)
+    with pytest.raises(ValueError, match="experiment_calibration_invalid"):
+        calibration.validate_calibration(settings, HASH, [_case()])

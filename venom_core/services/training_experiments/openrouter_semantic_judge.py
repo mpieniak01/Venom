@@ -145,6 +145,7 @@ def implementation_identity() -> str:
             "local_semantic_judge.py",
             "semantic_judge_v4.py",
             "semantic_judge_controls.py",
+            "semantic_openrouter_audit.py",
             "profiles.py",
             "grounded_claims.py",
         )
@@ -176,6 +177,13 @@ def request_payload(spec: dict, case: dict, answer: dict) -> dict:
     _require(bool(ids) and len(ids) == len(set(ids)))
     body = fields.request(MODEL, material, ids)
     body["messages"][0]["content"] = PROMPT
+    # Persisted packet dictionaries may be key-sorted by atomic_json.
+    body["messages"][1]["content"] = json.dumps(
+        json.loads(body["messages"][1]["content"]),
+        ensure_ascii=False,
+        sort_keys=True,
+        allow_nan=False,
+    )
     return {
         "model": MODEL,
         "messages": body["messages"],
@@ -261,7 +269,7 @@ def _jobs(root: Path, manifest: dict, split: str) -> tuple[dict, dict]:
     return controls.jobs_for(root, manifest, split)
 
 
-def _audit_order(root: Path, manifest: dict) -> list[dict]:
+def _audit_order(root: Path, manifest: dict, *, phase1: bool = False) -> list[dict]:
     entry = "phase1-order.json"
     order = _bound(root / "controls", entry, manifest["files"][entry])["jobs"]
     expected = {
@@ -273,6 +281,8 @@ def _audit_order(root: Path, manifest: dict) -> list[dict]:
         all(type(row.get("repeat")) is int and row["repeat"] == 1 for row in order)
     )
     _require({(row["split"], row["answer_id"]) for row in order} == expected)
+    if phase1:
+        return order
     held, _ = _jobs(root, manifest, "holdout")
     _require(len(held) == 24)
     return order + [
@@ -282,8 +292,11 @@ def _audit_order(root: Path, manifest: dict) -> list[dict]:
     ]
 
 
-def _audit_metrics(root: Path, manifest: dict, rows: list[dict]) -> dict:
-    decisions: dict[str, dict] = {split: {} for split in (*PHASE1, "holdout")}
+def _audit_metrics(
+    root: Path, manifest: dict, rows: list[dict], *, phase1: bool = False
+) -> dict:
+    splits = (*PHASE1,) if phase1 else (*PHASE1, "holdout")
+    decisions: dict[str, dict] = {split: {} for split in splits}
     for row in rows:
         decisions[row["split"]].setdefault(row["answer_id"], []).append(
             local._Decision.model_validate(row["decision"])
@@ -293,6 +306,7 @@ def _audit_metrics(root: Path, manifest: dict, rows: list[dict]) -> dict:
     positives = set(gold["accepted"])
     accepted = {key for key, decision in actual.items() if local._supported(decision)}
     styles = local._style_checks(gold, positives, set(gold["rejected"]))
+    _require(len(styles) == 24 and len(gold["expected_semantics"]) == 6)
     metrics = {
         "legacy_positive": len(accepted & positives),
         "legacy_negative": len(set(gold["rejected"]) - accepted),
@@ -305,7 +319,7 @@ def _audit_metrics(root: Path, manifest: dict, rows: list[dict]) -> dict:
             for key, expected in gold["expected_semantics"].items()
         ),
     }
-    for split in ("development", "extra", "contrasts", "holdout"):
+    for split in splits[1:]:
         _, gold = _jobs(root, manifest, split)
         metrics[split + "_full"] = sum(
             {key: getattr(decision, key) for key in DECISION_FIELDS}
@@ -313,15 +327,16 @@ def _audit_metrics(root: Path, manifest: dict, rows: list[dict]) -> dict:
             for ident, arr in decisions[split].items()
             for decision in arr
         )
-    metrics["holdout_stable_groups"] = sum(
-        len(arr) == 3
-        and all(
-            {k: getattr(d, k) for k in DECISION_FIELDS}
-            == {k: getattr(arr[0], k) for k in DECISION_FIELDS}
-            for d in arr
+    if not phase1:
+        metrics["holdout_stable_groups"] = sum(
+            len(arr) == 3
+            and all(
+                {k: getattr(d, k) for k in DECISION_FIELDS}
+                == {k: getattr(arr[0], k) for k in DECISION_FIELDS}
+                for d in arr
+            )
+            for arr in decisions["holdout"].values()
         )
-        for arr in decisions["holdout"].values()
-    )
     return metrics
 
 
@@ -344,7 +359,7 @@ def _verify_call(
     _require(row.get("decision") == result.model_dump())
     cost = reported_cost(response)
     _require(cost is not None and row.get("cost_usd") == cost)
-    _money(cost)
+    _require(_money(cost) <= _money(row["reserved_usd"]))
     _require(_money(row["reserved_usd"]) == reserve(body))
     _require(_time(row["started_at"]) <= _time(row["finished_at"]))
     return result
@@ -357,7 +372,7 @@ def verify_audit(pin: QualificationRemote) -> None:
     manifest = _bound(
         root / "controls", "frozen-manifest.json", pin.controls_manifest_sha256
     )
-    expected_thresholds = {
+    thresholds = {
         "legacy_positive": 24,
         "legacy_negative": 36,
         "legacy_style": 24,
@@ -371,7 +386,7 @@ def verify_audit(pin: QualificationRemote) -> None:
     _require(
         manifest.get("control_version") == "luna-controls-v3"
         and manifest.get("status") == "frozen_before_any_inference"
-        and manifest.get("thresholds") == expected_thresholds
+        and manifest.get("thresholds") == thresholds
     )
     _require(
         protocol.get("judge") == JUDGE
@@ -395,60 +410,117 @@ def verify_audit(pin: QualificationRemote) -> None:
         and isinstance(review.get("reviewer"), str)
         and bool(review["reviewer"].strip())
     )
-    # The held-out bytes are only needed when replaying an already completed PASS.
-    held = manifest["holdout"]
-    for name in ("panel.json", "gold.json"):
-        _require(digest(root / "controls" / "holdout" / name) == held["files"][name])
-    verified_manifest = {
-        **manifest,
-        "files": {
-            **manifest["files"],
-            **{"holdout/" + name: sha for name, sha in held["files"].items()},
-        },
-    }
-    order = _audit_order(root, verified_manifest)
     hashes = result["receipt_hashes"]
     _require(set(hashes) == {f"{i:03d}.json" for i in range(1, 229)})
-    rows = []
-    seen_calls: set[str] = set()
-    seen_generations: set[str] = set()
-    previous_end = _time(review["created_at"])
-    for index, expected in enumerate(order, 1):
-        row = _bound(
-            root / "receipts", f"{index:03d}.json", hashes[f"{index:03d}.json"]
-        )
-        _require(type(row.get("index")) is int and row["index"] == index)
-        _require(all(row.get(k) == v for k, v in expected.items()))
-        _require(
-            isinstance(row.get("call_id"), str) and row["call_id"] not in seen_calls
-        )
-        _require(_time(row["started_at"]) >= previous_end)
-        previous_end = _time(row["finished_at"])
-        case, answer = _jobs(root, verified_manifest, row["split"])[0][row["answer_id"]]
-        _verify_call(
-            row, _control_request(case, answer), answer["text"], pin.protocol_sha256
-        )
-        generation = row["response"]["id"]
-        _require(generation not in seen_generations)
-        seen_generations.add(generation)
-        seen_calls.add(row["call_id"])
-        rows.append(row)
-    metrics = _audit_metrics(root, verified_manifest, rows)
-    _require(metrics == expected_thresholds and result.get("metrics") == metrics)
+    rows = _audit_rows(
+        root,
+        pin,
+        manifest,
+        hashes,
+        _audit_order(root, manifest, phase1=True),
+        [],
+        _time(review["created_at"]),
+    )
+    phase1_metrics = _audit_metrics(root, manifest, rows, phase1=True)
+    _require(
+        phase1_metrics
+        == {k: v for k, v in thresholds.items() if not k.startswith("holdout")}
+    )
     phase1 = _bound(root, "phase1-result.json", result["phase1_result_sha256"])
-    _require(phase1.get("status") == "passed" and phase1.get("rows") == 156)
+    _require(
+        phase1.get("status") == "passed"
+        and type(phase1.get("rows")) is int
+        and phase1["rows"] == 156
+    )
+    _require(phase1.get("metrics") == phase1_metrics)
     _require(
         phase1.get("receipt_hashes")
         == {k: v for k, v in hashes.items() if int(k[:3]) <= 156}
     )
-    _require(
-        _time(rows[155]["finished_at"])
-        <= _time(phase1["finished_at"])
-        <= _time(rows[156]["started_at"])
+    _require(_time(rows[-1]["finished_at"]) <= _time(phase1["finished_at"]))
+    # No held-out content, including its receipts, is read until G1 replay passed.
+    held = manifest["holdout"]
+    _require(set(held["files"]) == {"panel.json", "gold.json"})
+    for name in ("panel.json", "gold.json"):
+        _require(digest(root / "controls" / "holdout" / name) == held["files"][name])
+    combined = {
+        **manifest,
+        "files": {
+            **manifest["files"],
+            **{"holdout/" + n: h for n, h in held["files"].items()},
+        },
+    }
+    rows = _audit_rows(
+        root,
+        pin,
+        combined,
+        hashes,
+        _audit_order(root, combined)[156:],
+        rows,
+        _time(phase1["finished_at"]),
     )
+    metrics = _audit_metrics(root, combined, rows)
+    _require(metrics == thresholds and result.get("metrics") == metrics)
     total = sum((_money(row["cost_usd"]) for row in rows), Decimal(0))
+    initial = _money(protocol["initial_accounted_usd"])
+    initial_unknown = _money(protocol["initial_unknown_reserved_usd"])
+    budget = _money(protocol["budget_usd"])
+    _require(initial_unknown <= initial and budget > 0)
     _require(_money(result["actual_known_cost_usd"]) == total)
-    _require(_money(result["accounted_usd"]) >= total)
+    _require(_money(result["unknown_reserved_usd"]) == 0)
+    _require(_money(result["carried_unknown_reserved_usd"]) == initial_unknown)
+    _require(_money(result["accounted_usd"]) == initial + total <= budget)
+    limit = protocol["max_seconds"]
+    _require(
+        type(limit) in (int, float) and math.isfinite(limit) and 0 < limit <= 86400
+    )
+    elapsed = (
+        _time(rows[-1]["finished_at"]) - _time(rows[0]["started_at"])
+    ).total_seconds()
+    _require(elapsed <= limit)
+
+
+def _audit_rows(
+    root: Path,
+    pin: QualificationRemote,
+    manifest: dict,
+    hashes: dict,
+    order: list[dict],
+    prior: list[dict],
+    previous_end: datetime,
+) -> list[dict]:
+    rows = list(prior)
+    calls = {row["call_id"] for row in prior}
+    generations = {row["response"]["id"] for row in prior}
+    for index, expected in enumerate(order, len(prior) + 1):
+        row = _bound(
+            root / "receipts", f"{index:03d}.json", hashes[f"{index:03d}.json"]
+        )
+        _require(type(row.get("index")) is int and row["index"] == index)
+        _require(type(row.get("repeat")) is int)
+        _require(all(row.get(k) == v for k, v in expected.items()))
+        _require(
+            isinstance(row.get("call_id"), str)
+            and bool(row["call_id"].strip())
+            and row["call_id"] not in calls
+        )
+        _require(_time(row["started_at"]) >= previous_end)
+        previous_end = _time(row["finished_at"])
+        case, answer = _jobs(root, manifest, row["split"])[0][row["answer_id"]]
+        decision = _verify_call(
+            row, _control_request(case, answer), answer["text"], pin.protocol_sha256
+        )
+        _require(
+            decision.unsupported != "unclear"
+            and "unclear" not in decision.atoms.values()
+        )
+        generation = row["response"]["id"]
+        _require(generation not in generations)
+        _require(_money(row["cost_usd"]) <= _money(row["reserved_usd"]))
+        generations.add(generation)
+        calls.add(row["call_id"])
+        rows.append(row)
+    return rows
 
 
 def qualification(calibration: dict) -> QualificationRemote:
@@ -500,6 +572,7 @@ def verify_review_receipt(
     raw = grade.get("model_review_call")
     if not isinstance(raw, dict):
         raise ValueError(ERROR)
+    _receipt_name(raw.get("receipt_name"))
     # Validate before constructing a path or opening any receipt.
     _require(
         len(raw["receipt_name"]) == 37
@@ -517,6 +590,156 @@ def verify_review_receipt(
     _require(all(grade.get(key) == value for key, value in expected.items()))
 
 
+def _receipt_name(name: object) -> str:
+    _require(isinstance(name, str))
+    assert isinstance(name, str)
+    _require(
+        len(name) == 37
+        and name.endswith(".json")
+        and all(c in "0123456789abcdef" for c in name[:-5])
+    )
+    return name
+
+
+def _ledger_snapshot(root: Path, pin: QualificationRemote) -> tuple[dict, set[str]]:
+    identity = stable_hash(pin.model_dump())
+    base = _money(
+        _bound(_root(pin.audit_root), "result.json", pin.result_sha256)["accounted_usd"]
+    )
+    existing = {path.name for path in (root / "receipts").glob("*.json")}
+    path = root / "ledger.json"
+    if not path.exists():
+        _require(not existing)
+        return {
+            "qualification_sha256": identity,
+            "accounted_usd": str(base),
+            "receipts": {},
+        }, set()
+    ledger = read_json(path)
+    _require(
+        isinstance(ledger, dict)
+        and set(ledger) == {"qualification_sha256", "accounted_usd", "receipts"}
+    )
+    _require(
+        ledger["qualification_sha256"] == identity
+        and isinstance(ledger["receipts"], dict)
+    )
+    _require(existing == set(ledger["receipts"]))
+    total = base
+    calls: set[str] = set()
+    generations: set[str] = set()
+    for name, checksum in ledger["receipts"].items():
+        row = _bound(root / "receipts", _receipt_name(name), checksum)
+        _require(
+            row["qualification_sha256"] == identity
+            and row["protocol_sha256"] == pin.protocol_sha256
+        )
+        _require(row["call_id"] + ".json" == name and row["call_id"] not in calls)
+        _require(row["status"] in {"attempted", "failed", "completed"})
+        body = request_payload(row["spec"], row["case"], row["answer"])
+        _require(row["request"] == body and row["request_sha256"] == stable_hash(body))
+        reservation = _money(row["reserved_usd"])
+        _require(reservation == reserve(body))
+        cost = row.get("cost_usd")
+        total += reservation if cost is None else _money(cost)
+        if cost is not None:
+            _require(reported_cost(row["response"]) == cost)
+        if row["status"] == "attempted":
+            _require(cost is None and row["response"] == {})
+        else:
+            _require(row["response_sha256"] == stable_hash(row["response"]))
+            _require(_time(row["started_at"]) <= _time(row["finished_at"]))
+        if row["status"] == "completed":
+            _verify_call(row, body, row["answer"]["text"], pin.protocol_sha256)
+        generation = row["response"].get("id")
+        if isinstance(generation, str) and generation.strip():
+            _require(generation not in generations)
+            generations.add(generation)
+        calls.add(row["call_id"])
+    _require(_money(ledger["accounted_usd"]) == total)
+    return ledger, generations
+
+
+def _save_call(root: Path, path: Path, row: dict, ledger: dict) -> None:
+    atomic_json(path, row)
+    ledger["receipts"][path.name] = digest(path)
+    atomic_json(root / "ledger.json", ledger)
+
+
+def _post_call(
+    client: httpx.Client,
+    root: Path,
+    pin: QualificationRemote,
+    ledger: dict,
+    body: dict,
+    spec: dict,
+    case: dict,
+    answer: dict,
+    run_id: str,
+    label: str,
+    remaining: float,
+    generations: set[str],
+) -> tuple[dict, dict]:
+    reservation = reserve(body)
+    accounted = _money(ledger["accounted_usd"])
+    ident = uuid4().hex
+    row = {
+        "status": "attempted",
+        "run_id": run_id,
+        "call_id": ident,
+        "record_id": case["record_id"],
+        "label": label,
+        "qualification_sha256": stable_hash(pin.model_dump()),
+        "protocol_sha256": pin.protocol_sha256,
+        "request": body,
+        "spec": spec,
+        "case": case,
+        "answer": answer,
+        "request_sha256": stable_hash(body),
+        "reserved_usd": str(reservation),
+        "started_at": _utc(),
+        "response": {},
+        "cost_usd": None,
+    }
+    path = root / "receipts" / (ident + ".json")
+    ledger["accounted_usd"] = str(accounted + reservation)
+    _save_call(root, path, row, ledger)
+    try:
+        response = client.post(ENDPOINT, json=body, timeout=min(75.0, remaining))
+        row["http_status"] = response.status_code
+        try:
+            raw = response.json()
+        except ValueError:
+            row["response"] = {"non_json_body": response.text[:16000]}
+            raise
+        _require(isinstance(raw, dict))
+        row["response"] = raw
+        row["cost_usd"] = reported_cost(raw)
+        response.raise_for_status()
+        decision = decode(raw, body, answer["text"])
+        _require(row["cost_usd"] is not None and raw["id"] not in generations)
+        _require(_money(row["cost_usd"]) <= reservation)
+        row["decision"] = decision.model_dump()
+        row["status"] = "completed"
+    except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
+        row["status"] = "failed"
+        row["error_type"] = type(exc).__name__
+        raise
+    finally:
+        row["finished_at"] = _utc()
+        row["response_sha256"] = stable_hash(row["response"])
+        if row["cost_usd"] is not None:
+            ledger["accounted_usd"] = str(accounted + _money(row["cost_usd"]))
+        _save_call(root, path, row, ledger)
+    _require(_money(row["cost_usd"]) <= reservation)
+    generations.add(row["response"]["id"])
+    return local._grade(decision, claim_rubric(spec), case, answer, judge=JUDGE), {
+        "ledger_root": str(root),
+        "receipt_name": path.name,
+        "receipt_sha256": digest(path),
+    }
+
+
 def review_bundle(
     calibration: dict,
     bundle: dict,
@@ -525,7 +748,9 @@ def review_bundle(
     *,
     check: Callable[[], None] = lambda: None,
 ) -> list[dict]:
-    """One fail-fast run; persist reservations before POST, never retry."""
+    """A locked budget ledger, one attempt per exact plan, no model retries."""
+    from venom_core.core.environment_policy import ensure_data_mutation_allowed
+
     pin = qualification(calibration)
     root, budget, per_request = _review_settings(calibration)
     _require(math.isfinite(seconds) and seconds > 0)
@@ -535,106 +760,95 @@ def review_bundle(
         or not runtime.credential()
     ):
         raise ValueError("experiment_remote_judge_unavailable")
+    ensure_data_mutation_allowed("academy_remote_judge")
     cases = {c["record_id"]: c for c in bundle["cases"]}
+    _require(len(cases) == len(bundle["cases"]))
     plan = [
         (row["case"]["record_id"], label, answer)
         for row in bundle["answers"]
         for label, answer in row["answers"].items()
     ]
-    _require(len({(ident, label) for ident, label, _ in plan}) == len(plan))
+    _require(
+        bool(plan) and len({(ident, label) for ident, label, _ in plan}) == len(plan)
+    )
+    payloads = [
+        request_payload(calibration["cases"][ident], cases[ident], answer)
+        for ident, _, answer in plan
+    ]
+    plan_sha = stable_hash(
+        {"run_id": run_id, "bundle": bundle, "qualification": pin.model_dump()}
+    )
     root.mkdir(parents=True, exist_ok=True)
     (root / "receipts").mkdir(exist_ok=True)
+    marker_path = root / ("attempt-" + plan_sha + ".json")
     deadline = time.monotonic() + seconds
-    identity = stable_hash(pin.model_dump())
     observations = []
     with file_lock(root / "ledger.lock", blocking=False):
-        ledger_path = root / "ledger.json"
-        ledger = (
-            read_json(ledger_path)
-            if ledger_path.exists()
-            else {
-                "qualification_sha256": identity,
-                "accounted_usd": read_json(_root(pin.audit_root) / "result.json")[
-                    "accounted_usd"
-                ],
-                "receipts": {},
-            }
+        ledger, generations = _ledger_snapshot(root, pin)
+        if marker_path.exists():
+            marker = read_json(marker_path)
+            _require(marker["plan_sha256"] == plan_sha)
+            if marker.get("status") != "completed":
+                raise ValueError("experiment_remote_judge_attempt_already_started")
+            cached = marker["observations"]
+            _require(len(cached) == len(plan))
+            for (ident, label, answer), grade in zip(plan, cached):
+                _require(grade["record_id"] == ident and grade["label"] == label)
+                verify_review_receipt(
+                    pin, calibration["cases"][ident], cases[ident], answer, grade
+                )
+            return cached
+        atomic_json(
+            marker_path,
+            {"status": "started", "plan_sha256": plan_sha, "created_at": _utc()},
         )
-        _require(ledger["qualification_sha256"] == identity)
         with httpx.Client(
             trust_env=False,
             follow_redirects=False,
             headers={"Authorization": "Bearer " + runtime.credential()},
         ) as client:
-            for ident, label, answer in plan:
+            for (ident, label, answer), body in zip(plan, payloads):
                 check()
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
                     raise TimeoutError("experiment_judge_time_limit")
-                spec, case = calibration["cases"][ident], cases[ident]
-                body = request_payload(spec, case, answer)
                 reservation = reserve(body)
-                accounted = _money(ledger["accounted_usd"])
-                if reservation > per_request or accounted + reservation > budget:
+                if (
+                    reservation > per_request
+                    or _money(ledger["accounted_usd"]) + reservation > budget
+                ):
                     raise ValueError("experiment_remote_judge_budget_exhausted")
-                call_id = uuid4().hex
-                row = {
-                    "status": "attempted",
-                    "run_id": run_id,
-                    "call_id": call_id,
-                    "record_id": ident,
-                    "label": label,
-                    "qualification_sha256": identity,
-                    "protocol_sha256": pin.protocol_sha256,
-                    "request": body,
-                    "request_sha256": stable_hash(body),
-                    "reserved_usd": str(reservation),
-                    "started_at": _utc(),
-                    "response": {},
-                    "cost_usd": None,
-                }
-                path = root / "receipts" / (call_id + ".json")
-                atomic_json(path, row)
-                ledger["accounted_usd"] = str(accounted + reservation)
-                ledger["receipts"][path.name] = digest(path)
-                atomic_json(ledger_path, ledger)
-                try:
-                    response = client.post(
-                        ENDPOINT, json=body, timeout=min(75.0, remaining)
-                    )
-                    response.raise_for_status()
-                    raw = response.json()
-                    _require(isinstance(raw, dict))
-                    row["response"] = raw
-                    row["cost_usd"] = reported_cost(raw)
-                    decision = decode(raw, body, answer["text"])
-                    _require(row["cost_usd"] is not None)
-                    row["decision"] = decision.model_dump()
-                    row["status"] = "completed"
-                finally:
-                    row["finished_at"] = _utc()
-                    row["response_sha256"] = stable_hash(row["response"])
-                    if row["cost_usd"] is not None:
-                        ledger["accounted_usd"] = str(
-                            accounted + _money(row["cost_usd"])
-                        )
-                    atomic_json(path, row)
-                    ledger["receipts"][path.name] = digest(path)
-                    atomic_json(ledger_path, ledger)
+                grade, raw = _post_call(
+                    client,
+                    root,
+                    pin,
+                    ledger,
+                    body,
+                    calibration["cases"][ident],
+                    cases[ident],
+                    answer,
+                    run_id,
+                    label,
+                    remaining,
+                    generations,
+                )
                 if time.monotonic() > deadline:
                     raise TimeoutError("experiment_judge_time_limit")
                 observations.append(
                     {
-                        **local._grade(
-                            decision, claim_rubric(spec), case, answer, judge=JUDGE
-                        ),
+                        **grade,
                         "record_id": ident,
                         "label": label,
-                        "model_review_call": {
-                            "ledger_root": str(root),
-                            "receipt_name": path.name,
-                            "receipt_sha256": digest(path),
-                        },
+                        "model_review_call": raw,
                     }
                 )
+        atomic_json(
+            marker_path,
+            {
+                "status": "completed",
+                "plan_sha256": plan_sha,
+                "finished_at": _utc(),
+                "observations": observations,
+            },
+        )
     return observations

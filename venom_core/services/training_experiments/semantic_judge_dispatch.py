@@ -14,6 +14,8 @@ JudgePin = local.JudgePin | remote.QualificationRemote
 
 def backend(calibration: dict) -> ModuleType:
     judge = calibration.get("judge")
+    if not isinstance(judge, str):
+        raise ValueError("experiment_judge_version_invalid")
     if judge in local.JUDGES:
         return local
     if judge in remote.JUDGES:

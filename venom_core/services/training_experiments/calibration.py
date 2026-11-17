@@ -19,6 +19,7 @@ def validate_calibration(
         not isinstance(calibration, dict)
         or type(calibration.get("schema_version")) is not int
         or calibration["schema_version"] != 1
+        or not isinstance(calibration.get("judge"), str)
         or calibration.get("judge") not in JUDGES
         or calibration.get("dev_sha256") != dataset_sha256
         or not isinstance(calibration.get("reviewer"), str)

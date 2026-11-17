@@ -39,6 +39,7 @@ tests/test_academy_history_module.py
 tests/test_academy_judge_controls.py
 tests/test_academy_judge_dispatch.py
 tests/test_academy_models_module.py
+tests/test_academy_openrouter_audit.py
 tests/test_academy_openrouter_judge.py
 tests/test_academy_optuna_backend.py
 tests/test_academy_parent_selection.py

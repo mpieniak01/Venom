@@ -59,6 +59,15 @@ def source(tmp_path):
                 )
                 item = copy.deepcopy(gold_template["answers"][old])
                 item["case_id"] = ident
+                if (split, i) in {("development", 5), ("extra", 6)}:
+                    field = "owner" if split == "development" else "price"
+                    case["criteria"][0]["id"] = field
+                    item["decision"]["atoms"][field] = item["decision"]["atoms"].pop(
+                        "focus"
+                    )
+                    if j == 2:
+                        answer["id"] = "Q73853" if split == "development" else "X0703"
+                        item["decision"]["atoms"][field] = "contradicted"
                 gold["answers"][answer["id"]] = item
                 if split == "extra" and i == 1 and j == 0:
                     answer["text"] = "Chłodzenia nie zamówiono; skrzynia D."
@@ -113,11 +122,20 @@ def test_build_repairs_explicit_facts_and_preserves_old_files(source, tmp_path):
     for name in (
         "legacy/qualification-gold.json",
         "development/panel.json",
-        "development/gold.json",
     ):
         assert (output / name).read_bytes() == (source / name).read_bytes()
     provenance = json.loads((output / "repair-provenance.json").read_text())
     assert provenance["files"]["development/panel.json"]["semantic_changed"] is False
+    for name, ident, field in (
+        ("development/gold.json", "Q73853", "owner"),
+        ("extra/gold.json", "X0703", "price"),
+    ):
+        before = json.loads((source / name).read_text())["answers"][ident]
+        after = json.loads((output / name).read_text())["answers"][ident]
+        assert before["decision"]["atoms"][field] == "contradicted"
+        assert after["decision"]["atoms"][field] == "omitted"
+        assert after["decision"]["unsupported"] == "yes"
+        assert after["expected"] == "negative"
     assert (
         provenance["files"]["legacy/qualification-panel.json"]["semantic_changed"]
         is True

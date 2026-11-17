@@ -114,6 +114,26 @@ def _repair_extra(panel: dict, gold: dict) -> None:
     )
 
 
+def _repair_epistemic_gold(development: dict, extra: dict) -> None:
+    for gold, ident, field in (
+        (development, "Q73853", "owner"),
+        (extra, "X0703", "price"),
+    ):
+        item = gold["answers"][ident]
+        decision = item["decision"]
+        if (
+            item["expected"] != "negative"
+            or decision["atoms"][field] != "contradicted"
+            or decision["unsupported"] != "yes"
+        ):
+            raise ValueError("judge_controls_epistemic_target_invalid")
+        decision["atoms"][field] = "omitted"
+        item["rationale"] = (
+            "Wymagany komunikat o braku informacji pominięty; konkretna wartość "
+            "pozostaje niepopartym twierdzeniem, bez zaprzeczenia o stanie świata."
+        )
+
+
 def _decision(first: str, second: str, *, extra: bool = False) -> dict:
     return {
         "atoms": {"focus": first, "anchor": second},
@@ -297,6 +317,7 @@ def build_controls(source: Path, output: Path, source_manifest_sha256: str) -> d
     before = {name: manifest["files"][name] for name in PHASE1_FILES}
     _repair_legacy(values[PHASE1_FILES[0]])
     _repair_extra(values[PHASE1_FILES[4]], values[PHASE1_FILES[5]])
+    _repair_epistemic_gold(values[PHASE1_FILES[3]], values[PHASE1_FILES[5]])
     panels = {
         split: values[PHASE1_FILES[index]]
         for split, index in (("legacy", 0), ("development", 2), ("extra", 4))
@@ -331,6 +352,7 @@ def build_controls(source: Path, output: Path, source_manifest_sha256: str) -> d
         "changes": [
             "KOR-1 explicit issuer and person scope",
             "E02 explicit order and paraphrase",
+            "D06/Q73853 owner and E07/X0703 price use explicit epistemic rule",
         ],
         "review_required": "Independent source review must be bound before first HTTP.",
     }

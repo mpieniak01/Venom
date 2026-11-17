@@ -907,6 +907,16 @@
       "rationale": "Verify remote reviewer qualification replay, cost accounting, fail-closed transport and authenticated cache inputs with fake HTTP."
     },
     {
+      "path": "tests/test_academy_openrouter_audit.py",
+      "domain": "academy",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": ["new-code", "ci-lite", "release"],
+      "legacy_targeted": false,
+      "rationale": "Validate operator audit preparation, phase-one gating, fail-fast accounting and complete fake HTTP qualification without provider calls."
+    },
+    {
       "path": "tests/test_academy_semantic_judge_v4.py",
       "domain": "academy",
       "test_type": "unit",

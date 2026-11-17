@@ -372,7 +372,7 @@ class Worker:
         ):
             return read_json(verdict)
         bundle = review_data(generation, dev)
-        if calibration["judge"] == local_semantic_judge.JUDGE:
+        if calibration["judge"] in local_semantic_judge.JUDGES:
             reused: list[dict] = []
             if step is not None:
                 bundle, reused = reuse_baseline_reviews(
@@ -424,7 +424,7 @@ class Worker:
             calibration = manifest["calibration"]
             if (
                 calibration is not None
-                and calibration["judge"] == local_semantic_judge.JUDGE
+                and calibration["judge"] in local_semantic_judge.JUDGES
             ):
                 local_semantic_judge.preflight(calibration)
             host = get_runtime_admission()

@@ -2,7 +2,7 @@
 
 from . import grounded_claims, local_semantic_judge
 
-JUDGES = frozenset({"exact-v1", local_semantic_judge.JUDGE})
+JUDGES = frozenset({"exact-v1", *local_semantic_judge.JUDGES})
 _LEGACY_PROTOCOL = "omni-rubric-v1"
 
 
@@ -10,7 +10,7 @@ def scorer_protocol(calibration: dict | None) -> str:
     if calibration is None or calibration.get("judge") == "exact-v1":
         return _LEGACY_PROTOCOL
     judge = calibration["judge"]
-    if judge == local_semantic_judge.JUDGE:
+    if judge in local_semantic_judge.JUDGES:
         pin = calibration["judge_qualification"]
         return f"{judge}:schema-{calibration['schema_version']}:{pin['protocol_sha256']}:{pin['result_sha256']}"
     return _LEGACY_PROTOCOL
@@ -30,11 +30,11 @@ def validate_calibration(
         or not isinstance(calibration.get("cases"), dict)
     ):
         raise ValueError("experiment_calibration_invalid")
-    if calibration["judge"] == local_semantic_judge.JUDGE:
+    if calibration["judge"] in local_semantic_judge.JUDGES:
         local_semantic_judge.qualification(calibration)
     if cases is not None:
         rules = calibration["cases"]
-        if calibration["judge"] == local_semantic_judge.JUDGE:
+        if calibration["judge"] in local_semantic_judge.JUDGES:
             grounded_claims.validate_claim_rubrics(
                 {
                     key: local_semantic_judge.claim_rubric(rule)

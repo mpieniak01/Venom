@@ -589,7 +589,7 @@ def _measure(
     legacy = calibration["judge"] == "exact-v1"
     if legacy and not _known_outputs(calibration, review):
         return {**result, "status": "incomplete_calibration", "qualified": None}
-    if calibration["judge"] == local_semantic_judge.JUDGE:
+    if calibration["judge"] in local_semantic_judge.JUDGES:
 
         def check_deadline() -> None:
             if check is not None:
@@ -716,7 +716,7 @@ def _read_result(directory: Path, binding: dict) -> dict | None:
     no_parent_pass = "parent" not in binding and result["qualified"] is not None
     semantic = (
         result.get("calibration_protocol", {}).get("judge")
-        == local_semantic_judge.JUDGE
+        in local_semantic_judge.JUDGES
     )
     if "parent" in binding or semantic or no_parent_pass:
         evidence = _verify_final_evidence(directory, result)
@@ -963,7 +963,7 @@ def _run_final(
     venv = operator_path(spec.training_venv)
     if not snapshot.is_dir() or not (venv / "bin/python").is_file():
         raise ValueError("remote_text_final_runtime_missing")
-    if calibration["judge"] == local_semantic_judge.JUDGE:
+    if calibration["judge"] in local_semantic_judge.JUDGES:
         local_semantic_judge.preflight(calibration)
     atomic_json(directory / "intent.json", binding)
     generation = workspace / "generation"

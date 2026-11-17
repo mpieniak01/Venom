@@ -789,7 +789,7 @@ class RuntimeAdmission:
             return True
 
     def pending_host_runtime_ids(self) -> frozenset[str]:
-        """Targets of unleased uncertain operations, for host-only cleanup."""
+        """Targets of interrupted or orphaned unleased operations."""
         if not self.enabled:
             return frozenset()
         self._require_supported()
@@ -797,8 +797,10 @@ class RuntimeAdmission:
             return frozenset(
                 row["runtime_identity"]
                 for row in db.execute(
-                    "SELECT runtime_identity FROM operation WHERE uncertain=1 "
-                    "AND lease_token IS NULL AND runtime_identity IS NOT NULL"
+                    "SELECT runtime_identity FROM operation WHERE lease_token IS NULL "
+                    "AND runtime_identity IS NOT NULL "
+                    "AND (uncertain=1 OR pid<>?)",
+                    (os.getpid(),),
                 )
             )
 

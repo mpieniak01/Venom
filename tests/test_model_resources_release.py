@@ -172,19 +172,32 @@ async def test_legacy_recovery_requires_proof_for_generation(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("alias_verified", [True, False])
+@pytest.mark.parametrize("orphaned", [True, False])
 async def test_ollama_recovery_probes_the_ledger_alias(
-    world, monkeypatch, alias_verified
+    world, monkeypatch, alias_verified, orphaned
 ):
     from unittest.mock import AsyncMock, call
 
     configured = "http://localhost:11434"
     alternate = "http://127.0.0.1:11434"
-    operation = world.operation(
-        kind="simple_chat_non_stream", runtime_identity=f"ollama@{alternate}/v1"
-    )
-    with pytest.raises(OSError):
-        with operation:
-            raise OSError("transport lost")
+    identity = f"ollama@{alternate}/v1"
+    kind = "simple_chat_non_stream"
+    if orphaned:
+        exited_pid = 999999
+        with world._transaction() as db:
+            db.execute(
+                "INSERT INTO operation (token,kind,pid,runtime_identity) VALUES (?,?,?,?)",
+                ("orphaned-chat", kind, exited_pid, identity),
+            )
+        monkeypatch.setattr(
+            admission_module, "_owner_has_exited", lambda pid: pid == exited_pid
+        )
+    else:
+        operation = world.operation(kind=kind, runtime_identity=identity)
+        with pytest.raises(OSError):
+            with operation:
+                raise OSError("transport lost")
+    assert world.snapshot()["status"] == "quarantined"
     listen = AsyncMock(return_value=True)
     responses = [[], ["omni"]] if alias_verified else [[], ValueError("busy")]
     unload = AsyncMock(side_effect=responses)

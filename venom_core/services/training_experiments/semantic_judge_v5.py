@@ -29,7 +29,7 @@ polish_ok i natural_ok są niezależne od faktów. polish_ok=true dla polszczyzn
 
 Najpierw uzupełnij required, observed i relation dla wszystkich pól. Potem wypisz dodatkowe twierdzenia i oceń ich grounding, injection i styl. Krótkie reason musi być spójne ze wszystkimi decyzjami. Zwróć wyłącznie JSON zgodny ze schematem."""
 _DECIMAL = re.compile(
-    r"(?<![\w.,])([+-]?\d+),(\d+)(?=\s*(?:zł|PLN|EUR|USD|kg|km|cm|mm|ml|mg|%)(?!\w))",
+    r"(?<![\w.,])([+-]?\d++),(\d++)(?=\s*+(?:zł|PLN|EUR|USD|kg|km|cm|mm|ml|mg|%)(?!\w))",
     re.IGNORECASE,
 )
 
@@ -80,7 +80,7 @@ def request(model: str, material: dict, ids: list[str]) -> dict:
     schema = Decision.model_json_schema()
     check = schema["properties"]["checks"]
     check.update(
-        properties=dict.fromkeys(ids, {"$ref": "#/$defs/Check"}),
+        properties={ident: {"$ref": "#/$defs/Check"} for ident in ids},
         required=ids,
         additionalProperties=False,
     )

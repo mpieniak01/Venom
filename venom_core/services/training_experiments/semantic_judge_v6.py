@@ -83,7 +83,7 @@ def request(model: str, material: dict, ids: list[str]) -> dict:
     primary = facts.request(model, material, ids)
     schema = GuardDecision.model_json_schema()
     schema["properties"]["checks"].update(
-        properties=dict.fromkeys(ids, {"$ref": "#/$defs/GuardCheck"}),
+        properties={ident: {"$ref": "#/$defs/GuardCheck"} for ident in ids},
         required=ids,
         additionalProperties=False,
     )

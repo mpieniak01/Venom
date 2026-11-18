@@ -40,7 +40,9 @@ _EMPHASIS = re.compile(r"\*\*([^*\r\n]+)\*\*")
 _OMITTED = "brak w odpowiedzi"
 _UNSAFE_CONTEXT = re.compile(
     r"\b(?:hipotetyczn\w*|przykład\w*|przykładow\w*|przyjmijmy|"
-    r"nie dotyczy|wycof\w*|odwołuj\w*|(?:inna|innym|innej) (?:próba|próbie|komor\w*|pomiar\w*))\b",
+    r"nie dotyczy|wycof\w*|odwołuj\w*|cof(?:am|amy|nięt\w*|nął\w*|nęł\w*)|"
+    r"anul(?:uj\w*|owan\w*)|unieważn(?:ia\w*|ion\w*)|nieaktualn\w*|"
+    r"nie obowiązuj(?:e|ą)|(?:inna|innym|innej) (?:próba|próbie|komor\w*|pomiar\w*))\b",
     re.I,
 )
 
@@ -129,11 +131,18 @@ _COUNTS = {
     for word in words.split()
 }
 _CARDINAL = "|".join(sorted(_COUNTS, key=len, reverse=True))
-_TEMP_TOKEN = (
-    rf"(?:(?:minusem|minus|plusem|plus)\s+)?(?:{_NUMBER}|(?:{_CARDINAL}))"
-    r"\s*(?:°\s*C|stop(?:ień|nia|nie|ni)(?:\s+Celsjusza)?)"
+_SPOKEN_SIGN = r"(?:minusem|minus|plusem|plus)"
+_TEMP_MAGNITUDE = rf"(?:{_NUMBER}|{_CARDINAL})"
+# Only a numeric temperature can attach its unit without a space.
+_TEMP_UNIT = (
+    r"(?:(?<=[0-9])\s*°\s*C|\s+(?:°\s*C|stop(?:ień|nia|nie|ni)(?:\s+Celsjusza)?))"
 )
+_TEMP_TOKEN = rf"(?:{_SPOKEN_SIGN}\s+)?{_TEMP_MAGNITUDE}{_TEMP_UNIT}"
 _TEMPERATURE = re.compile(_TEMP_TOKEN, re.I)
+_TEMP_PARTS = re.compile(
+    rf"(?:(?P<sign>{_SPOKEN_SIGN})\s+)?(?P<magnitude>{_TEMP_MAGNITUDE}){_TEMP_UNIT}",
+    re.I,
+)
 _EXPLICIT_C = re.compile(r"(?:°\s*C|Celsjusza)\Z", re.I)
 _SETTING = re.compile(
     rf"(?:Po (?:korekcie|zmianie)\s+)?(?:nastawa|Bieżąca nastawa|Aktualna nastawa)"
@@ -305,16 +314,19 @@ def _current_evidence(
 
 
 def _temperature(token: str) -> Decimal | None:
-    sign, words = 1, token.casefold().split()
-    if words[0] in {"minus", "minusem", "plus", "plusem"}:
-        sign = -1 if words[0].startswith("minus") else 1
-        words.pop(0)
-        if words[0].startswith(("+", "-", "−")):
-            return None
-    value = re.match(_NUMBER, words[0])
-    if value:
-        return sign * _normalize_decimal(value[0])
-    return sign * Decimal(_COUNTS[words[0]])
+    match = _TEMP_PARTS.fullmatch(token.casefold())
+    if match is None:
+        return None
+    spoken_sign = match["sign"]
+    magnitude = match["magnitude"]
+    if spoken_sign and magnitude.startswith(("+", "-", "−")):
+        return None
+    count = _COUNTS.get(magnitude)
+    if count is not None:
+        value = Decimal(count)
+    else:
+        value = _normalize_decimal(magnitude)
+    return -value if spoken_sign and spoken_sign.startswith("minus") else value
 
 
 def _explicit_setting(text: str) -> tuple[str, str] | None:

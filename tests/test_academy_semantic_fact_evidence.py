@@ -60,6 +60,8 @@ def test_current_role_preserves_source_assignment_across_explicit_update():
         "U Miry odbierzesz, ale Halina wydaje karton.",
         "Karton odbierzesz u Miry. Wydaje Halina.",
         "Karton odbierzesz u Miry. To przykład.",
+        "Karton odbierzesz u Miry. To nieaktualne.",
+        "Karton odbierzesz u Miry. Anuluję to.",
     ],
 )
 def test_same_name_without_unambiguous_candidate_pickup_binding_is_delegated(candidate):
@@ -170,6 +172,7 @@ def test_current_ambiguity_or_wrong_unit_is_delegated(candidate, source, observe
             "Minusem dziewięciu stopni nie należy się kierować.",
         ),
         ("Nie ustawiaj −9°C.", "−9°C"),
+        ("Nie stosuj minus dziewięć °C.", "minus dziewięć °C"),
         ("Nie stosuj -9°C. Odbiór o 8:00.", "Nie stosuj -9°C."),
     ],
 )
@@ -204,6 +207,15 @@ def test_active_rejection_of_current_setting_is_a_contradiction(candidate, obser
         ("Nie ustawiaj −9°C.", "Zmieniłam nastawę na -9°C. Nastawa wynosi -10°C."),
         ("Nie ustawiaj −9°C.", "Zmieniłam nastawę na -9°C. Wycofuję zmianę."),
         ("Odbiór o 8:00.", "Zmieniłam nastawę na -9°C."),
+        ("Nie stosuj −9°C. Cofam tę instrukcję.", "Zmieniłam nastawę na -9°C."),
+        (
+            "Nie stosuj minus dziewięćstopni Celsjusza.",
+            "Zmieniłam nastawę na -9°C.",
+        ),
+        (
+            "Nie stosuj minus -9°C.",
+            "Zmieniłam nastawę na -9°C.",
+        ),
     ],
 )
 def test_temperature_does_not_infer_rejection_when_current_value_is_unclear(

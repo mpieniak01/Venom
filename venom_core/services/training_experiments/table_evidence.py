@@ -35,7 +35,7 @@ _CRITERION = re.compile(
     re.IGNORECASE,
 )
 _FIRST_ASSIGNMENT = re.compile(
-    rf"(?:W (?:poniedziałek|wtorek|środę|czwartek|piątek|sobotę|niedzielę) )?"
+    r"(?:(?:W (?:poniedziałek|wtorek|środę|czwartek|piątek|sobotę|niedzielę)|We wtorek)\s+)?"
     rf"(?P<entity>{_NAME})(?:\s+{_VERB}\s+|:\s*){_QUANTITY}",
     re.IGNORECASE,
 )

@@ -74,12 +74,17 @@ def test_table_rejects_swapped_counts_even_when_review_supports(
     assert trace["effective_observed"] == candidate
 
 
-def test_table_uses_names_and_units_rather_than_fixed_columns() -> None:
+@pytest.mark.parametrize(
+    ("prefix", "day"), [("W piątek", "piątek"), ("We wtorek", "wtorek")]
+)
+def test_table_uses_names_and_units_rather_than_fixed_columns(
+    prefix: str, day: str
+) -> None:
     candidate = (
-        "| Dzień | Igor [sztuki] | Ela [sztuki] |\n|---|---:|---:|\n| piątek | 4 | 2 |"
+        f"| Dzień | Igor [sztuki] | Ela [sztuki] |\n|---|---:|---:|\n| {day} | 4 | 2 |"
     )
-    observed = "| Dzień | Ela [sztuki] |\n|---|---:|\n| piątek | 2"
-    material = _material(candidate, "W piątek Ela odbiera 2 sztuki i Igor 4 sztuki.")
+    observed = f"| Dzień | Ela [sztuki] |\n|---|---:|\n| {day} | 2"
+    material = _material(candidate, f"{prefix} Ela odbiera 2 sztuki i Igor 4 sztuki.")
     material["criteria"] = [{"id": "first", "description": "Ela: 2 sztuki."}]
     trace = table_evidence.compare(material, candidate, "first", observed, "supported")
     assert trace is not None

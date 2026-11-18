@@ -758,7 +758,8 @@ _STOCK_READ_PREFIX = re.compile(
     re.IGNORECASE,
 )
 _STOCK_READ_TOTAL = re.compile(
-    r"(?:(?:aktualną|bieżącą|obecną|łączną)\s+)?(?:sumę|ilość|zapas|liczbę)"
+    r"(?:(?:(?:aktualną|bieżącą|obecną|łączną)\s+)?(?:sumę|ilość|zapas|liczbę)"
+    r"|(?:aktualny|bieżący|obecny|łączny)\s+zapas)"
     r"(?:\s+po\s+(?:zmianie|korekcie|wszystkich zmianach))?|ile\s+(?:jest\s+)?razem",
     re.IGNORECASE,
 )

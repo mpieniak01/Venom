@@ -1659,6 +1659,38 @@ def test_stock_replay_plans_the_update_once_and_keeps_milliliters():
     )
 
 
+def test_stock_replay_keeps_state_after_a_total_requested_in_milliliters():
+    history = (
+        {
+            "role": "user",
+            "content": "Zanotuj zapas wody: 740 ml w lodówce, 410 ml w szafce.",
+        },
+        {
+            "role": "user",
+            "content": "W szafce jest jednak 360 ml. Oblicz łączny zapas w mililitrach.",
+        },
+        {"role": "assistant", "content": "W lodówce: 510 ml. W szafce: 360 ml."},
+    )
+    model, reviewer = Model(), Reviewer()
+
+    answer = run_pilot_turn(
+        "Z lodówki odlano 230 ml. Policz, ile zostało w samej lodówce.",
+        "stock-r3",
+        Sources(),
+        model,
+        reviewer,
+        history=history,
+        required=Requirements(calculation=True),
+    )
+
+    assert not model.calls
+    assert "510 ml" in answer.text
+    assert (
+        reviewer.materials[0]["evidence"]["calculations"][0]["expression"]
+        == "(740)-230"
+    )
+
+
 def test_unrecognized_quantity_correction_never_reuses_stale_stock():
     from venom_core.services.grounded_pilot import _stock_calculation
 

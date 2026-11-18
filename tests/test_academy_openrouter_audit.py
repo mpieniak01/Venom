@@ -146,6 +146,14 @@ def test_prepare_never_opens_holdout_and_full_fake_audit_replays(ready):
     )
     judge.verify_audit(pin)
     assert len(result["receipt_hashes"]) == 228
+    assert result["deviations"] == {
+        "planned": 228,
+        "attempted": 228,
+        "by_case": [],
+        "not_run_reason": None,
+        "not_run": [],
+        "holdout_unscheduled": 0,
+    }
     assert "invented-test-credential" not in "".join(
         p.read_text() for p in root.rglob("*.json")
     )
@@ -177,12 +185,16 @@ def test_phase1_collects_rejections_through_156_and_never_opens_holdout(
         def post(self, url, **kwargs):
             response = super().post(url, **kwargs)
             index = type(self).calls
-            if index not in (98, 134):
+            if index not in (98, 134, 156):
                 return response
             body = response.json()
             message = body["choices"][0]["message"]
             if index == 98:
                 message["content"] = "invalid decision"
+            elif index == 156:
+                decision = json.loads(message["content"])
+                decision.update(polish_ok=False, natural_ok=False)
+                message["content"] = json.dumps(decision)
             else:
                 decision = json.loads(message["content"])
                 candidate = json.loads(kwargs["json"]["messages"][1]["content"])[
@@ -215,6 +227,63 @@ def test_phase1_collects_rejections_through_156_and_never_opens_holdout(
     assert result["metrics"]["development_full"] == 47
     assert result["metrics"]["extra_full"] == 31
     assert json.loads((root / "receipts/156.json").read_text())["status"] == "completed"
+    deviations = result["deviations"]
+    assert deviations["planned"] == deviations["attempted"] == 156
+    assert deviations["holdout_unscheduled"] == 72
+    assert deviations["not_run"] == []
+    assert deviations["not_run_reason"] is None
+    early, mid, last = deviations["by_case"]
+    assert [early["index"], mid["index"], last["index"]] == [98, 134, 156]
+    assert early["issues"][0]["error_type"] == "decoder_invalid"
+    assert mid["issues"][0]["error_type"] == "uncertain_decision"
+    assert {item["field"] for item in mid["issues"]} >= {"status", "atoms.fact"}
+    assert last["issues"] == [
+        {"field": "polish_ok", "expected": True, "actual": False},
+        {"field": "natural_ok", "expected": True, "actual": False},
+    ]
+    assert json.loads((root / "result.json").read_text())["deviations"] == deviations
+
+
+def test_open_holdout_collects_quality_deviations_through_228(ready):
+    root, _, client = ready
+
+    class HoldoutClient(client):
+        def post(self, url, **kwargs):
+            response = super().post(url, **kwargs)
+            index = type(self).calls
+            if index not in {157, 228}:
+                return response
+            body = response.json()
+            message = body["choices"][0]["message"]
+            if index == 157:
+                message["content"] = "invalid holdout decision"
+            else:
+                decision = json.loads(message["content"])
+                decision["checks"]["fact"]["relation"] = "supported"
+                message["content"] = json.dumps(decision)
+            return httpx.Response(200, json=body, request=response.request)
+
+    result = audit.run(root, execute=True, client_factory=HoldoutClient)
+    assert result["status"] == "failed_qualification"
+    assert result["holdout_opened"]
+    assert result["rows"] == HoldoutClient.calls == 228
+    assert result["rate_limit_retries"] == 0
+    assert result["metrics"]["holdout_full"] == 70
+    assert result["metrics"]["holdout_stable_groups"] == 22
+    assert not (root / "qualification.json").exists()
+    deviations = result["deviations"]
+    assert deviations["not_run"] == []
+    assert deviations["holdout_unscheduled"] == 0
+    first, last = deviations["by_case"]
+    assert (first["index"], first["repeat"]) == (157, 1)
+    assert first["issues"][0]["error_type"] == "decoder_invalid"
+    assert (last["index"], last["repeat"]) == (228, 3)
+    assert {
+        item["field"]: (item["expected"], item["actual"]) for item in last["issues"]
+    } == {
+        "atoms.fact": ("contradicted", "supported"),
+        "unsupported": ("yes", "no"),
+    }
 
 
 def test_missing_legacy_decision_never_counts_as_correct_negative(ready):
@@ -256,6 +325,13 @@ def test_system_error_stops_without_retry_and_retains_unknown_cost(ready, fail_a
     assert result["status"] == "transport_incomplete"
     assert audit.judge._money(result["unknown_reserved_usd"]) > 0
     assert result["metrics"] is None
+    deviations = result["deviations"]
+    assert deviations["by_case"][0]["index"] == fail_at
+    assert deviations["by_case"][0]["issues"][0]["http_status"] == 404
+    assert deviations["not_run_reason"] == "transport_incomplete"
+    assert [entry["index"] for entry in deviations["not_run"]] == list(
+        range(fail_at + 1, 157)
+    )
     assert not (root / "controls/holdout").exists()
     with pytest.raises(ValueError, match="single_attempt"):
         audit.run(root, execute=True, client_factory=client)

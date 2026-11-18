@@ -176,6 +176,7 @@ def prepare(
         "rate_limit": _RATE_LIMIT_POLICY,
         "operator_execute_required": True,
         "phase1_decision_errors": "collect_and_block_holdout",
+        "holdout_decision_errors": "collect_and_block_qualification",
         "uncertain_decision": "block_qualification",
     }
     atomic_json(output / _PROTOCOL_FILE, protocol)
@@ -615,8 +616,7 @@ def _receive_audit_response(
 
 def _record_audit_decision(state: _AuditState, row: dict, candidate: str) -> None:
     collect_rejection = state.protocol.get("kind") == "targeted_regression" or (
-        not state.holdout_opened
-        and row.get("split") in judge.PHASE1
+        (row.get("split") in judge.PHASE1 or row.get("split") == "holdout")
         and row.get("http_status") == 200
         and judge._response_identity(row["response"])
     )
@@ -725,9 +725,7 @@ def _audit_next(state: _AuditState, stack: ExitStack) -> bool:
     if request is None:
         return False
     status = _submit_case(state, request, stack)
-    return status == "completed" or (
-        status == "rejected_decision" and not state.holdout_opened
-    )
+    return status in {"completed", "rejected_decision"}
 
 
 def _finish_rate_window(
@@ -897,6 +895,95 @@ def _phase1_rejections(rows: list[dict]) -> list[dict]:
     ]
 
 
+def _expected_fields(gold: dict, split: str, ident: str) -> dict:
+    if split != "legacy":
+        return gold["answers"][ident]["decision"]
+    return {
+        "accepted": ident in gold["accepted"],
+        **gold["expected_style"].get(ident, {}),
+        **gold["expected_semantics"].get(ident, {}),
+    }
+
+
+def _field_deviations(
+    expected: dict, actual: dict, *, strict_atoms: bool
+) -> list[dict]:
+    comparisons = {
+        key: (value, actual.get(key))
+        for key, value in expected.items()
+        if key != "atoms"
+    }
+    if "atoms" in expected:
+        atoms = expected["atoms"].keys()
+        if strict_atoms:
+            atoms = atoms | actual["atoms"].keys()
+        comparisons.update(
+            {
+                f"atoms.{key}": (expected["atoms"].get(key), actual["atoms"].get(key))
+                for key in sorted(atoms)
+            }
+        )
+    return [
+        {"field": key, "expected": wanted, "actual": received}
+        for key, (wanted, received) in comparisons.items()
+        if wanted != received
+    ]
+
+
+def _audit_deviations(state: _AuditState) -> dict:
+    gold_by_split: dict[str, dict] = {}
+    by_case = []
+    for row in state.rows:
+        issues = []
+        if row["status"] != "completed":
+            issues.append(
+                {
+                    "field": "status",
+                    "expected": "completed",
+                    "actual": row["status"],
+                    "error_type": row.get("error_type"),
+                    "http_status": row.get("http_status"),
+                }
+            )
+        if "decision" in row:
+            split, ident = row["split"], row["answer_id"]
+            if split not in gold_by_split:
+                _, gold_by_split[split] = judge._jobs(state.root, state.manifest, split)
+            expected = _expected_fields(gold_by_split[split], split, ident)
+            actual = row["decision"]
+            if split == "legacy":
+                decision = judge.local._Decision.model_validate(actual)
+                actual = {**actual, "accepted": judge.local._supported(decision)}
+            issues.extend(
+                _field_deviations(expected, actual, strict_atoms=split != "legacy")
+            )
+        if issues:
+            by_case.append(
+                {
+                    **{
+                        key: row[key]
+                        for key in ("index", "split", "answer_id", "repeat")
+                    },
+                    "issues": issues,
+                }
+            )
+    return {
+        "planned": len(state.order),
+        "attempted": len(state.rows),
+        "by_case": by_case,
+        "not_run_reason": state.status if len(state.rows) < len(state.order) else None,
+        "not_run": [
+            {**entry, "index": index}
+            for index, entry in enumerate(
+                state.order[len(state.rows) :], len(state.rows) + 1
+            )
+        ],
+        "holdout_unscheduled": sum(judge.PHASE1.values())
+        + _HOLDOUT_CALLS
+        - len(state.order),
+    }
+
+
 def _audit_result(state: _AuditState) -> dict:
     if state.remaining() < 0:
         state.status = "deadline_exceeded"
@@ -923,6 +1010,8 @@ def _audit_result(state: _AuditState) -> dict:
     }
     if state.protocol.get("kind") == "targeted_regression":
         result.update(state.metrics or {})
+    else:
+        result["deviations"] = _audit_deviations(state)
     atomic_json(state.root / _RESULT_FILE, result)
     if state.status == "passed":
         _publish_qualification(state.root, state.protocol, result)
@@ -992,10 +1081,12 @@ def _execute(
             if len(state.rows) == 156 and not _phase1_gate(state):
                 break
             if len(state.rows) == 228:
-                state.metrics = judge._audit_metrics(root, state.manifest, state.rows)
+                completed = [row for row in state.rows if row["status"] == "completed"]
+                state.metrics = judge._audit_metrics(root, state.manifest, completed)
                 state.status = (
                     "passed"
-                    if state.metrics == state.manifest["thresholds"]
+                    if len(completed) == len(state.order)
+                    and state.metrics == state.manifest["thresholds"]
                     else "failed_qualification"
                 )
     return _audit_result(state)

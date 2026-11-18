@@ -35,6 +35,7 @@ _HOLDOUT_RESERVE_FILE = "holdout-reserve.json"
 _LEDGER_FILE = "ledger.json"
 _PHASE1_RESULT_FILE = "phase1-result.json"
 _REQUEST_TIMEOUT_SECONDS = 75
+_AUTOMATIC_RETRY = "http_429_or_one_provider_unavailable_per_case"
 _RATE_LIMIT_POLICY = {
     "interval_seconds": 2,
     "backoff_seconds": [5, 10],
@@ -171,7 +172,7 @@ def prepare(
         "initial_unknown_reserved_usd": str(unknown),
         "max_seconds": max_seconds,
         "created_at": _utc(),
-        "automatic_retry": "http_429_only",
+        "automatic_retry": _AUTOMATIC_RETRY,
         "rate_limit": _RATE_LIMIT_POLICY,
         "operator_execute_required": True,
         "uncertain_decision": "stop_without_qualification",
@@ -201,7 +202,7 @@ def _sealed_protocol(root: Path) -> tuple[dict, str]:
         and protocol["request_contract"] == judge._contract()
         and protocol["request_timeout_seconds"] == _REQUEST_TIMEOUT_SECONDS
         and protocol["rate_limit"] == _RATE_LIMIT_POLICY
-        and protocol["automatic_retry"] == "http_429_only",
+        and protocol["automatic_retry"] == _AUTOMATIC_RETRY,
         "remote_audit_frozen_contract_changed",
     )
     return protocol, sha
@@ -549,6 +550,30 @@ def _post_audit_row(
     if row["rate_limit_attempts"]:
         state.retries += 1
     response = post_with_deadline(state.client, row["request"], request_timeout)
+    if _receive_audit_response(state, row, response, reservation):
+        _record_audit_decision(state, row, answer["text"])
+
+
+def _provider_unavailable(row: dict) -> bool:
+    payload = row.get("response")
+    if row.get("http_status") != 200 or not isinstance(payload, dict):
+        return False
+    error = payload.get("error")
+    if not isinstance(error, dict) or "choices" in payload:
+        return False
+    code = error.get("code")
+    if type(code) is not int or code != 502:
+        return False
+    metadata = error.get("metadata")
+    return (
+        isinstance(metadata, dict)
+        and metadata.get("error_type") == "provider_unavailable"
+    )
+
+
+def _receive_audit_response(
+    state: _AuditState, row: dict, response: httpx.Response, reservation: Decimal
+) -> bool:
     row["http_status"] = response.status_code
     if response.status_code == 429:
         row["retry_after"] = response.headers.get("Retry-After", "")[:128]
@@ -566,6 +591,13 @@ def _post_audit_row(
         state.known += judge._money(row["cost_usd"])
         state.unknown -= reservation
     response.raise_for_status()
+    if _provider_unavailable(row):
+        row.update(
+            status="failed",
+            error_type="provider_unavailable",
+            retry_after=response.headers.get("Retry-After", "")[:128],
+        )
+        return False
     _require(row["cost_usd"] is not None, "remote_audit_cost_missing")
     _require(
         judge._money(row["cost_usd"]) <= reservation,
@@ -577,7 +609,7 @@ def _post_audit_row(
             generation not in state.generations, "remote_audit_duplicate_generation"
         )
         state.generations.add(generation)
-    _record_audit_decision(state, row, answer["text"])
+    return True
 
 
 def _record_audit_decision(state: _AuditState, row: dict, candidate: str) -> None:
@@ -698,6 +730,12 @@ def _finish_rate_window(
     if row.get("http_status") == 429:
         state.status = "provider_rate_limited"
         return _rate_delay(state, row, retry_count)
+    if row.get("error_type") == "provider_unavailable":
+        state.status = "provider_unavailable"
+        if not any(
+            _provider_unavailable(attempt) for attempt in row["rate_limit_attempts"]
+        ):
+            return _rate_delay(state, row, retry_count)
     if row["status"] != "not_sent":
         _persist_cooldown(state, max(0.0, state.next_post_at - time.monotonic()))
     return None

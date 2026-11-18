@@ -196,7 +196,7 @@ def prepare(
         "audit_runner_sha256": digest(Path(audit.__file__)),
         "targeted_runner_sha256": digest(Path(__file__)),
         "request_timeout_seconds": audit._REQUEST_TIMEOUT_SECONDS,
-        "automatic_retry": "http_429_only",
+        "automatic_retry": audit._AUTOMATIC_RETRY,
         "rate_limit": audit._RATE_LIMIT_POLICY,
         "manual_review_required": True,
         "created_at": audit._utc(),

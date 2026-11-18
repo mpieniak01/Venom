@@ -593,8 +593,15 @@ def test_existing_request_timer_blocks_start_without_post(ready, monkeypatch):
 
 
 @pytest.mark.parametrize("throttle_at", [1, 157])
-def test_429_waits_and_replays_without_counting_throttle_as_grade(
-    ready, monkeypatch, throttle_at
+@pytest.mark.parametrize(
+    "status, error",
+    [
+        (429, {"code": 429}),
+        (200, {"code": 502, "metadata": {"error_type": "provider_unavailable"}}),
+    ],
+)
+def test_transient_error_waits_and_replays_without_counting_as_grade(
+    ready, monkeypatch, throttle_at, status, error
 ):
     root, _, client = ready
     delays = []
@@ -617,9 +624,9 @@ def test_429_waits_and_replays_without_counting_throttle_as_grade(
             if self.calls + 1 == throttle_at:
                 type(self).calls += 1
                 return httpx.Response(
-                    429,
+                    status,
                     headers={"Retry-After": "7"},
-                    json={"error": {"code": 429}},
+                    json={"error": error},
                     request=httpx.Request("POST", url),
                 )
             return super().post(url, json=json, **kwargs)
@@ -630,8 +637,10 @@ def test_429_waits_and_replays_without_counting_throttle_as_grade(
     assert result["status"] == "passed"
     assert result["rows"] == 228
     assert Throttled.calls == 229
-    assert attempt["http_status"] == 429
+    assert attempt["http_status"] == status
     assert attempt["retry_after"] == "7"
+    if status == 200:
+        assert attempt["error_type"] == "provider_unavailable"
     assert attempt["call_id"] != row["call_id"]
     assert Decimal(result["unknown_reserved_usd"]) == Decimal(attempt["reserved_usd"])
     assert delays.count(7.0) == 1
@@ -668,6 +677,43 @@ def test_429_stops_at_frozen_retry_bounds(ready, monkeypatch, header, calls, wai
         row["reserved_usd"]
     )
     assert len(row["rate_limit_attempts"]) == calls - 1
+    assert not result["holdout_opened"]
+    assert not (root / "qualification.json").exists()
+
+
+@pytest.mark.parametrize(
+    "error_type, expected_status, expected_calls",
+    [
+        ("provider_unavailable", "provider_unavailable", 2),
+        ("other_error", "transport_incomplete", 1),
+    ],
+)
+def test_embedded_502_retries_only_the_known_transient_error(
+    ready, monkeypatch, error_type, expected_status, expected_calls
+):
+    root, _, client = ready
+    delays = []
+    monkeypatch.setattr(audit, "sleep", delays.append)
+    monkeypatch.setattr(audit.time, "monotonic", lambda: 0)
+
+    class Unavailable(client):
+        def post(self, url, **_kwargs):
+            type(self).calls += 1
+            return httpx.Response(
+                200,
+                json={"error": {"code": 502, "metadata": {"error_type": error_type}}},
+                request=httpx.Request("POST", url),
+            )
+
+    result = audit.run(root, execute=True, client_factory=Unavailable)
+    row = json.loads((root / "receipts/001.json").read_text())
+    assert result["status"] == expected_status
+    assert Unavailable.calls == expected_calls
+    assert delays == ([5.0] if expected_calls == 2 else [])
+    assert Decimal(result["unknown_reserved_usd"]) == expected_calls * Decimal(
+        row["reserved_usd"]
+    )
+    assert len(row["rate_limit_attempts"]) == expected_calls - 1
     assert not result["holdout_opened"]
     assert not (root / "qualification.json").exists()
 

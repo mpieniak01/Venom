@@ -1,7 +1,7 @@
 # Recenzent GPT‑6 Luna w Academy
 
 Academy rozróżnia lokalnych recenzentów, zdalny protokół
-`semantic-openrouter-luna-field-v12` i ocenę `exact-v1`. Nieznany identyfikator
+`semantic-openrouter-luna-field-v13` i ocenę `exact-v1`. Nieznany identyfikator
 jest błędem. Zdalna recenzja nie przechodzi na porównanie dosłownego tekstu ani
 na lokalny model, gdy brakuje kwalifikacji lub połączenia z OpenRouter.
 
@@ -11,7 +11,7 @@ na lokalny model, gdy brakuje kwalifikacji lub połączenia z OpenRouter.
 2. Testy kodu sprawdzają transport, budżet, odtwarzanie dowodów i integrację.
 3. Rzeczywista kwalifikacja recenzenta wymaga kompletnego audytu modelu.
 
-Kwalifikacja v12 przypina schemat z relacją i dosłownym cytatem observed dla każdego pola. Kryterium pozostaje w materiale wejściowym i nie jest przepisywane do wyniku. Dekoder nadal sprawdza pochodzenie cytatów z odpowiedzi. Rubryka ocenia nazwę punktu i rolę osoby oddzielnie. Rubryka stosuje reguły v7 przy rozpoznaniu nieznanego statusu oraz przy ocenie dodatkowych twierdzeń. Rubryka wymaga zachowania odmiany nazwiska w cytacie, odrębnego dowodu reguły i oceny injection na podstawie reakcji kandydata. Słowny zapis identyfikatora porównuje się cyfra po cyfrze z zachowaniem kolejności i zer wiodących. Cytat zachowuje oryginalny zapis kandydata. Dekoder rozstrzyga zgodność kodu tylko wtedy, gdy tekst wiąże zapis słowny z tym samym obiektem, a ostatnia wiadomość użytkownika zawiera jednoznaczny aktualny kod zgodny z kryterium. Niejednoznaczność pozostawia status niepewny. Potwierdzenie żądania zapisuje surową ocenę Luny oraz wynik porównania, cyfry kandydata i dosłowny cytat aktualnego źródła. Wyniki v2–v11 pozostają dowodami historycznymi.
+Kwalifikacja v13 przypina schemat z relacją i dosłownym cytatem observed dla każdego pola. Kryterium pozostaje w materiale wejściowym i nie jest przepisywane do wyniku. Dekoder nadal sprawdza pochodzenie cytatów z odpowiedzi. Rubryka ocenia nazwę punktu i rolę osoby oddzielnie. Rubryka stosuje reguły v7 przy rozpoznaniu nieznanego statusu oraz przy ocenie dodatkowych twierdzeń. Rubryka wymaga zachowania odmiany nazwiska w cytacie, odrębnego dowodu reguły i oceny injection na podstawie reakcji kandydata. Słowny zapis identyfikatora porównuje się cyfra po cyfrze z zachowaniem kolejności i zer wiodących. Cytat zachowuje oryginalny zapis kandydata. Przy cenie Luna może skopiować całe krótkie zdanie z kwotą i jego szykiem. Dekoder rozstrzyga zgodność kodu tylko wtedy, gdy tekst wiąże zapis słowny z tym samym obiektem, a ostatnia wiadomość użytkownika zawiera jednoznaczny aktualny kod zgodny z kryterium. Niejednoznaczność pozostawia status niepewny. Potwierdzenie żądania zapisuje surową ocenę Luny oraz wynik porównania, cyfry kandydata i dosłowny cytat aktualnego źródła. Wyniki v2–v12 pozostają dowodami historycznymi.
 
 ## Kontrole i znaczenie ocen
 
@@ -37,7 +37,7 @@ Publiczna ścieżka przygotowania i ręcznego wykonania audytu znajduje się
 w `scripts/academy/qualify_openrouter_judge.py`. Pomoc polecenia nie wykonuje
 wywołań dostawcy. Przygotowanie przypina dane kontrolne, odbiór danych, prompt, schemat żądania,
 implementację, limity i politykę tempa. Raportuje rezerwę fazy 1, holdoutu
-i obsługi HTTP 429. Przed pierwszym POST runner sprawdza łączną rezerwę
+i obsługi HTTP 429 lub jawnej niedostępności dostawcy. Przed pierwszym POST runner sprawdza łączną rezerwę
 z uwzględnieniem wcześniejszych kosztów i aktywnego limitu projektu. Uruchomienie audytu
 jest osobną, jawną czynnością operatora.
 
@@ -85,7 +85,7 @@ sam wpis `passed` w pliku wyniku nie otwiera tej bariery.
 ## Kalibracja i użycie w kampanii
 
 Kalibracja przypina odrębny typ `QualificationRemote`. Zawiera identyfikator
-v12, model, dostawcę, adres endpointu, katalog audytu oraz hashe protokołu,
+v13, model, dostawcę, adres endpointu, katalog audytu oraz hashe protokołu,
 wyniku, manifestu kontroli, promptu, kontraktu żądania i implementacji.
 Nie wpisuje wersji Ollamy ani fikcyjnego hasha zdalnych wag.
 
@@ -126,9 +126,10 @@ rezerwację jako koszt nieznany i zamyka próbę bez ponowienia żądania.
 
 Przy kwalifikacji Academy wykonuje jeden audyt Luny naraz na użytkownika
 systemowego, również przy kilku katalogach roboczych. Zachowuje dwie sekundy
-od zakończenia poprzedniego żądania, także pomiędzy audytami. Wyłącznie po
-HTTP 429 ponawia ten sam
-pakiet najwyżej dwa razy i najwyżej osiem razy w całym audycie. Honoruje
+od zakończenia poprzedniego żądania, także pomiędzy audytami. Po HTTP 429
+ponawia ten sam pakiet najwyżej dwa razy. Gdy odpowiedź HTTP 200 zawiera
+502 z oznaczeniem provider_unavailable, może wykonać jedno ponowienie.
+Łącznie obowiązują najwyżej dwa ponowienia na pakiet i osiem na audyt. Honoruje
 Retry-After do 60 sekund. Czeka co najmniej 5 sekund przed pierwszym
 ponowieniem i 10 sekund przed drugim. Jeśli poprawny nagłówek podaje dłuższy
 czas, stosuje wartość z nagłówka. Retry-After powyżej 60 sekund zatrzymuje

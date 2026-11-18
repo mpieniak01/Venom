@@ -59,7 +59,7 @@ def test_payload_remote_route_and_context(packet):
     assert body["model"] == judge.MODEL
     assert body["messages"][0]["content"] == judge.PROMPT
     assert judge._contract()["prompt_sha256"] == (
-        "3fc8f2ff96eaca442195b2d60150a4fa6239a612de48e0c9189833cc7038004e"
+        "4a67e40b399fe884edd80627f1bffeb640989119c86da9df07748a5b03e54229"
     )
     schema = body["response_format"]["json_schema"]["schema"]
     check_schema = schema["$defs"]["_QuoteCheck"]
@@ -105,7 +105,7 @@ def test_invalid_money_fails_closed(value):
         judge._money(value)
 
 
-@pytest.mark.parametrize("version", [2, 7, 8, 9, 10, 11])
+@pytest.mark.parametrize("version", [2, 7, 8, 9, 10, 11, 12])
 def test_historical_reviews_are_not_current_qualification(version):
     with pytest.raises(ValueError):
         judge.qualification({"judge": f"semantic-openrouter-luna-field-v{version}"})
@@ -240,7 +240,7 @@ def full_audit(tmp_path, monkeypatch):
         "phase1_max_request_usd": str(max(quotes)),
         "holdout_cleanup_seconds": 120,
         "rate_limit": audit._RATE_LIMIT_POLICY,
-        "automatic_retry": "http_429_only",
+        "automatic_retry": audit._AUTOMATIC_RETRY,
         "request_timeout_seconds": audit._REQUEST_TIMEOUT_SECONDS,
     }
     _write(root / "protocol.json", protocol)

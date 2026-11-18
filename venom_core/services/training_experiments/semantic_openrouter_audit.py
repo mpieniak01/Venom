@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import math
 import signal
 import threading
@@ -189,8 +190,9 @@ def prepare(
 
 
 def _sealed_protocol(root: Path) -> tuple[dict, str]:
-    protocol = read_json(root / _PROTOCOL_FILE)
-    sha = digest(root / _PROTOCOL_FILE)
+    raw = (root / _PROTOCOL_FILE).read_bytes()
+    protocol = json.loads(raw)
+    sha = hashlib.sha256(raw).hexdigest()
     _require(
         read_json(root / "frozen.json")["protocol_sha256"] == sha
         and protocol["audit_runner_sha256"] == digest(Path(__file__))
@@ -521,6 +523,8 @@ def _post_audit_row(
         row.update(status="not_sent", cost_usd="0", error_type="deadline_exceeded")
         state.status = "deadline_exceeded"
         return
+    if row["rate_limit_attempts"]:
+        state.retries += 1
     response = post_with_deadline(
         state.client,
         row["request"],
@@ -708,7 +712,6 @@ def _submit_case(
         rejected.append(
             {key: value for key, value in row.items() if key != "rate_limit_attempts"}
         )
-        state.retries += 1
         state.status = "transport_incomplete"
     state.rows.append(row)
     return row["status"]

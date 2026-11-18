@@ -12,6 +12,7 @@ from collections import Counter
 from contextlib import ExitStack
 from decimal import Decimal
 from pathlib import Path
+from typing import cast
 
 from venom_core.services.remote_training.lifecycle import atomic_json
 from venom_core.services.remote_training.paths import data_directory, operator_path
@@ -172,7 +173,7 @@ def prepare(
         "remote_audit_deadline_invalid",
     )
     maximum = max(quotes)
-    reserve = maximum * audit._RATE_LIMIT_POLICY["max_retries_per_audit"]
+    reserve = maximum * cast(int, audit._RATE_LIMIT_POLICY["max_retries_per_audit"])
     planned = initial + sum(quotes, Decimal(0)) + reserve
     audit._require(
         maximum <= per_request and planned <= budget, "remote_audit_budget_invalid"

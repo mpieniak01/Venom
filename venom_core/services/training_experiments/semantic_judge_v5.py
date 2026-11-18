@@ -53,7 +53,7 @@ def _decimal_text(value: str) -> str:
         for match in re.finditer(",", value)
         if _decimal_boundary(value, match.start())
     ]
-    pieces = []
+    pieces: list[str] = []
     start = 0
     for comma in separators:
         pieces.extend((value[start:comma], "."))
@@ -140,14 +140,15 @@ _OBSERVED_QUOTES = frozenset({("„", "”"), ("«", "»"), ('"', '"')})
 
 
 def _observed_from_answer(check: Check, candidate: str) -> bool:
-    observed = check.observed.strip()
-    if observed and observed in candidate:
+    if check.observed == _OBSERVED_MISSING and check.relation == "omitted":
         return True
-    if len(observed) >= 2 and (observed[0], observed[-1]) in _OBSERVED_QUOTES:
-        observed = observed[1:-1].strip()
-        if observed and observed in candidate:
-            return True
-    return observed == _OBSERVED_MISSING and check.relation == "omitted"
+    quote = check.observed.strip()
+    if quote and quote in candidate:
+        return True
+    if len(quote) >= 2 and (quote[0], quote[-1]) in _OBSERVED_QUOTES:
+        quote = quote[1:-1].strip()
+        return bool(quote) and quote in candidate
+    return False
 
 
 def decode(

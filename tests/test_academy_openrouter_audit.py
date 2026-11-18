@@ -646,6 +646,46 @@ def test_429_stops_at_frozen_retry_bounds(ready, monkeypatch, header, calls, wai
     assert not (root / "qualification.json").exists()
 
 
+def test_deadline_during_retry_receipt_write_does_not_count_a_post(ready, monkeypatch):
+    root, _, client = ready
+    elapsed = 0.0
+
+    def sleep(seconds):
+        nonlocal elapsed
+        elapsed += seconds
+
+    monkeypatch.setattr(audit, "sleep", sleep)
+    monkeypatch.setattr(audit.time, "monotonic", lambda: elapsed)
+    original_write = audit.atomic_json
+
+    def write_receipt(path, value):
+        nonlocal elapsed
+        original_write(path, value)
+        if value.get("status") == "attempted" and value.get("rate_limit_attempts"):
+            elapsed = 7201
+
+    monkeypatch.setattr(audit, "atomic_json", write_receipt)
+
+    class Throttled(client):
+        def post(self, url, **_kwargs):
+            type(self).calls += 1
+            return httpx.Response(
+                429,
+                json={"error": {"code": 429}},
+                request=httpx.Request("POST", url),
+            )
+
+    result = audit.run(root, execute=True, client_factory=Throttled)
+    receipt = json.loads((root / "receipts/001.json").read_text())
+
+    assert result["status"] == "deadline_exceeded"
+    assert result["rate_limit_retries"] == 0
+    assert Throttled.calls == 1
+    assert receipt["status"] == "not_sent"
+    assert receipt["rate_limit_attempts"][0]["http_status"] == 429
+    assert Decimal(result["unknown_reserved_usd"]) == Decimal(receipt["reserved_usd"])
+
+
 def test_retry_after_http_date_and_invalid_value():
     from datetime import datetime, timezone
 

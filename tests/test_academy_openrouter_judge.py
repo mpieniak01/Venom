@@ -229,6 +229,7 @@ def full_audit(tmp_path, monkeypatch):
         "max_seconds": 2000,
         "rate_limit": audit._RATE_LIMIT_POLICY,
         "automatic_retry": "http_429_only",
+        "request_timeout_seconds": audit._REQUEST_TIMEOUT_SECONDS,
     }
     _write(root / "protocol.json", protocol)
     protocol_sha = digest(root / "protocol.json")
@@ -678,6 +679,10 @@ def test_transaction_recovers_interrupted_pair_without_repeating_post(
         ("omitted", "Opiekunka: Daria", "", False),
         ("supported", "brak w odpowiedzi", "", False),
         ("omitted", "brak w odpowiedzi", "", True),
+        ("omitted", "„brak w odpowiedzi”", "", False),
+        ("omitted", '"brak w odpowiedzi"', "", False),
+        ("omitted", " brak w odpowiedzi ", "", False),
+        ("omitted", "„brak w odpowiedzi”", "Notatka: brak w odpowiedzi.", True),
         ("supported", "brak w odpowiedzi", "Notatka: brak w odpowiedzi.", True),
         ("contradicted", "„brak w odpowiedzi”", "Notatka: brak w odpowiedzi.", True),
         ("supported", "„Pawilon: F”", "", True),
@@ -721,12 +726,14 @@ def _audit_with_first_429(
     policy=None,
     budget="0.20",
     phase1_marker_delay=0.5,
+    request_timeout=audit._REQUEST_TIMEOUT_SECONDS,
 ):
     root, pin, result = full_audit
     protocol_path = root / "protocol.json"
     protocol = json.loads(protocol_path.read_text())
     protocol["max_seconds"] = limit
     protocol["budget_usd"] = budget
+    protocol["request_timeout_seconds"] = request_timeout
     if policy is not None:
         protocol["rate_limit"] = policy
     _write(protocol_path, protocol)
@@ -962,3 +969,9 @@ def test_phase1_marker_does_not_restart_request_interval(full_audit):
     _write(root / "result.json", result)
     pin = pin.model_copy(update={"result_sha256": digest(root / "result.json")})
     judge.verify_audit(pin)
+
+
+def test_full_audit_rejects_changed_request_timeout(full_audit):
+    pin = _audit_with_first_429(full_audit, request_timeout=120)
+    with pytest.raises(ValueError, match=judge.ERROR):
+        judge.verify_audit(pin)

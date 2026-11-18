@@ -473,13 +473,14 @@ def _verify_call(
 
 
 def verify_audit(pin: QualificationRemote) -> None:
-    from .semantic_openrouter_audit import _RATE_LIMIT_POLICY
+    from .semantic_openrouter_audit import _RATE_LIMIT_POLICY, _REQUEST_TIMEOUT_SECONDS
 
     root = _root(pin.audit_root)
     protocol = _bound(root, "protocol.json", pin.protocol_sha256)
     _require(
         protocol.get("rate_limit") == _RATE_LIMIT_POLICY
         and protocol.get("automatic_retry") == "http_429_only"
+        and protocol.get("request_timeout_seconds") == _REQUEST_TIMEOUT_SECONDS
     )
     result = _bound(root, "result.json", pin.result_sha256)
     manifest = _bound(

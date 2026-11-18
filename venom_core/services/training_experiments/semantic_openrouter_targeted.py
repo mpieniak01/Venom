@@ -2,22 +2,29 @@
 
 from __future__ import annotations
 
+import ctypes
+import errno
 import json
 import math
+import os
+import tempfile
 from collections import Counter
 from contextlib import ExitStack
 from decimal import Decimal
 from pathlib import Path
 
 from venom_core.services.remote_training.lifecycle import atomic_json
-from venom_core.services.remote_training.paths import operator_path
+from venom_core.services.remote_training.paths import data_directory, operator_path
 
 from . import openrouter_semantic_judge as judge
 from . import semantic_openrouter_audit as audit
-from .profiles import digest
+from .profiles import digest, stable_hash
+from .semantic_judge_v5 import MAX_EVIDENCE_TEXT_CHARS
 
 _PANEL_FILE = "panel.json"
 _INVALID = "remote_audit_targeted_panel_invalid"
+_OUTPUT_EXISTS = "remote_audit_output_exists_or_overlaps"
+_RENAME_NOREPLACE = 1
 
 
 def _validate_panel(panel: dict) -> list[Decimal]:
@@ -45,7 +52,8 @@ def _validate_panel(panel: dict) -> list[Decimal]:
         text = packet["candidate"]
         criteria = packet["criteria"]
         audit._require(
-            judge._control_request({**packet, "id": label}, {"text": text}) == body,
+            stable_hash(judge._control_request({**packet, "id": label}, {"text": text}))
+            == stable_hash(body),
             _INVALID,
         )
         expected = case["expected"]
@@ -57,13 +65,18 @@ def _validate_panel(panel: dict) -> list[Decimal]:
         decision = judge.local._Decision.model_validate({**expected, "reason": ""})
         audit._require(
             decision.unsupported != "unclear"
-            and "unclear" not in decision.atoms.values(),
+            and "unclear" not in decision.atoms.values()
+            and (
+                "contradicted" not in decision.atoms.values()
+                or decision.unsupported == "yes"
+            ),
             _INVALID,
         )
         quote = case.get("required_unsupported_quote")
         if quote is not None:
             audit._require(
                 isinstance(quote, str)
+                and len(quote) <= MAX_EVIDENCE_TEXT_CHARS
                 and bool(quote.strip())
                 and quote in text
                 and decision.unsupported == "yes",
@@ -71,6 +84,46 @@ def _validate_panel(panel: dict) -> list[Decimal]:
             )
         reservations[label] = judge.reserve(body)
     return [reservations[label] for label in order]
+
+
+def _write_panel(directory: Path, raw: bytes) -> None:
+    with data_directory(directory) as directory_fd:
+        descriptor = os.open(
+            _PANEL_FILE,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+            0o600,
+            dir_fd=directory_fd,
+        )
+        with os.fdopen(descriptor, "wb") as stream:
+            stream.write(raw)
+            stream.flush()
+            os.fsync(stream.fileno())
+
+
+def _publish(staged: Path, output: Path) -> None:
+    # Linux renameat2 provides the no-replacement guarantee even for empty targets.
+    rename = ctypes.CDLL(None, use_errno=True).renameat2
+    rename.argtypes = [
+        ctypes.c_int,
+        ctypes.c_char_p,
+        ctypes.c_int,
+        ctypes.c_char_p,
+        ctypes.c_uint,
+    ]
+    rename.restype = ctypes.c_int
+    with data_directory(output.parent) as directory_fd:
+        if rename(
+            directory_fd,
+            os.fsencode(staged.name),
+            directory_fd,
+            os.fsencode(output.name),
+            _RENAME_NOREPLACE,
+        ):
+            error = ctypes.get_errno()
+            if error == errno.EEXIST:
+                raise ValueError(_OUTPUT_EXISTS)
+            raise OSError(error, os.strerror(error), output)
+        os.fsync(directory_fd)
 
 
 def prepare(
@@ -88,7 +141,7 @@ def prepare(
     panel, output = operator_path(panel), operator_path(output)
     audit._require(
         not output.exists() and not panel.is_relative_to(output),
-        "remote_audit_output_exists_or_overlaps",
+        _OUTPUT_EXISTS,
     )
     raw = audit._bytes(panel.parent, panel.name, panel_sha256)
     quotes = _validate_panel(json.loads(raw))
@@ -140,13 +193,16 @@ def prepare(
         "manual_review_required": True,
         "created_at": audit._utc(),
     }
-    output.mkdir(parents=True)
-    (output / _PANEL_FILE).write_bytes(raw)
-    atomic_json(output / "protocol.json", protocol)
-    sha = digest(output / "protocol.json")
-    atomic_json(
-        output / "frozen.json", {"protocol_sha256": sha, "created_at": audit._utc()}
-    )
+    output.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix=".targeted-", dir=output.parent) as temp:
+        staged = Path(temp)
+        _write_panel(staged, raw)
+        atomic_json(staged / "protocol.json", protocol)
+        sha = digest(staged / "protocol.json")
+        atomic_json(
+            staged / "frozen.json", {"protocol_sha256": sha, "created_at": audit._utc()}
+        )
+        _publish(staged, output)
     return {
         "status": "prepared_not_qualified",
         "audit_root": str(output),
@@ -203,7 +259,9 @@ def execute(state: audit._AuditState) -> dict:
     if planned > state.budget or maximum > state.per_request:
         state.status = "budget_exhausted"
         return audit._audit_result(state)
-    state.wait_seconds = audit._provider_cooldown(state.rate_path)
+    state.next_post_at = audit.time.monotonic() + audit._provider_cooldown(
+        state.rate_path
+    )
     mismatches = []
     completed = 0
     cases = state.manifest["cases"]

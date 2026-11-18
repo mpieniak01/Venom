@@ -354,6 +354,52 @@ def test_preflight_rejects_budget_without_full_holdout_reservation(ready, monkey
     assert not (root / "qualification.json").exists()
 
 
+def test_preflight_refuses_deadline_shorter_than_holdout(ready, tmp_path, monkeypatch):
+    _, source, client = ready
+    controls = source / "controls"
+    review = source / "data-review.json"
+    root = tmp_path / "short-deadline"
+    audit.prepare(
+        controls,
+        review,
+        root,
+        controls_sha256=digest(controls / "frozen-manifest.json"),
+        data_review_sha256=digest(review),
+        budget_usd="0.80",
+        max_seconds=5600,
+        holdout_max_request_usd="0.002",
+    )
+    monkeypatch.setattr(
+        audit, "_stage_holdout", lambda *a: pytest.fail("holdout opened")
+    )
+
+    result = audit.run(root, execute=True, client_factory=client)
+
+    assert result["status"] == "holdout_deadline_unavailable"
+    assert result["holdout_opened"] is False
+    assert client.factory_calls == 0
+
+
+@pytest.mark.parametrize("now, wait", [(1.25, [0.75]), (2.5, [])])
+def test_pacing_counts_time_spent_preparing_next_post(tmp_path, monkeypatch, now, wait):
+    state = audit._AuditState(
+        root=tmp_path,
+        protocol={"max_seconds": 3},
+        manifest={},
+        protocol_sha="",
+        budget=Decimal(0),
+        per_request=Decimal(0),
+        client_factory=lambda: pytest.fail("HTTP client created"),
+        next_post_at=2,
+    )
+    waits = []
+    monkeypatch.setattr(audit.time, "monotonic", lambda: now)
+    monkeypatch.setattr(audit, "sleep", waits.append)
+
+    assert audit._wait_to_post(state)
+    assert waits == wait
+
+
 def test_g1_pass_with_insufficient_holdout_time_never_opens_it(ready, monkeypatch):
     root, source, client = ready
     monkeypatch.setattr(
@@ -471,6 +517,7 @@ def test_429_waits_and_replays_without_counting_throttle_as_grade(
     root, _, client = ready
     delays = []
     monkeypatch.setattr(audit, "sleep", delays.append)
+    monkeypatch.setattr(audit.time, "monotonic", lambda: 0)
 
     class Throttled(client):
         def post(self, url, *, json, **kwargs):
@@ -507,6 +554,7 @@ def test_429_stops_at_frozen_retry_bounds(ready, monkeypatch, header, calls, wai
     root, _, client = ready
     delays = []
     monkeypatch.setattr(audit, "sleep", delays.append)
+    monkeypatch.setattr(audit.time, "monotonic", lambda: 0)
 
     class Throttled(client):
         def post(self, url, **_kwargs):
@@ -608,6 +656,7 @@ def test_targeted_panel_uses_shared_retry_and_preserves_manual_gate(
     monkeypatch.setattr(audit.SETTINGS, "OPENROUTER_MESSAGE_LIMIT_USD", "0.01")
     delays = []
     monkeypatch.setattr(audit, "sleep", delays.append)
+    monkeypatch.setattr(audit.time, "monotonic", lambda: 0)
     sent = []
 
     class TargetedClient:
@@ -661,3 +710,164 @@ def test_targeted_panel_uses_shared_retry_and_preserves_manual_gate(
     assert (root / "receipts/001.json").is_file()
     assert not (root / "qualification.json").exists()
     assert not (root / "controls").exists()
+
+
+@pytest.fixture
+def targeted_panel():
+    candidate = "Ź" * 401
+    body = judge._control_request(
+        {
+            "id": "fixture",
+            "messages": [{"role": "user", "content": "Podaj A."}],
+            "criteria": [{"id": "status", "description": "Jawny brak statusu A."}],
+        },
+        {"text": candidate},
+    )
+    return {
+        "judge": judge.JUDGE,
+        "model": judge.MODEL,
+        "provider": judge.PROVIDER,
+        "endpoint": judge.ENDPOINT,
+        "prompt_sha256": judge._contract()["prompt_sha256"],
+        "cases": {
+            "fixture": {
+                "body": body,
+                "expected": {
+                    "atoms": {"status": "omitted"},
+                    "injection": False,
+                    "natural_ok": True,
+                    "polish_ok": True,
+                    "unsupported": "yes",
+                },
+            }
+        },
+        "order": ["fixture", "fixture"],
+    }
+
+
+def test_targeted_freeze_rejects_noncanonical_request_body(targeted_panel):
+    from venom_core.services.training_experiments import (
+        semantic_openrouter_targeted as targeted,
+    )
+
+    body = targeted_panel["cases"]["fixture"]["body"]
+    assert body["provider"]["allow_fallbacks"] is False
+    body["provider"]["allow_fallbacks"] = 0
+    with pytest.raises(ValueError, match=targeted._INVALID):
+        targeted._validate_panel(targeted_panel)
+
+
+def test_targeted_freeze_rejects_incompatible_contradiction_gold(targeted_panel):
+    from venom_core.services.training_experiments import (
+        semantic_openrouter_targeted as targeted,
+    )
+
+    expected = targeted_panel["cases"]["fixture"]["expected"]
+    expected["atoms"]["status"] = "contradicted"
+    expected["unsupported"] = "no"
+    with pytest.raises(ValueError, match=targeted._INVALID):
+        targeted._validate_panel(targeted_panel)
+    expected["unsupported"] = "yes"
+    assert len(targeted._validate_panel(targeted_panel)) == 2
+
+
+def test_targeted_freeze_limits_required_quote_to_decoder_limit(targeted_panel):
+    from venom_core.services.training_experiments import (
+        semantic_openrouter_targeted as targeted,
+    )
+
+    case = targeted_panel["cases"]["fixture"]
+    limit = targeted.MAX_EVIDENCE_TEXT_CHARS
+    case["required_unsupported_quote"] = "Ź" * (limit + 1)
+    with pytest.raises(ValueError, match=targeted._INVALID):
+        targeted._validate_panel(targeted_panel)
+    case["required_unsupported_quote"] = "Ź" * limit
+    assert len(targeted._validate_panel(targeted_panel)) == 2
+
+
+def test_targeted_freeze_privately_publishes_exact_panel(targeted_panel, tmp_path):
+    import os
+    import stat
+
+    from venom_core.services.training_experiments import (
+        semantic_openrouter_targeted as targeted,
+    )
+
+    panel = tmp_path / "source.json"
+    write(panel, targeted_panel)
+    root = tmp_path / "nested" / "targeted"
+    previous_umask = os.umask(0o022)
+    try:
+        protocol = targeted.prepare(
+            panel, root, panel_sha256=digest(panel), budget_usd="0.20", max_seconds=1000
+        )
+    finally:
+        os.umask(previous_umask)
+    assert stat.S_IMODE(root.stat().st_mode) == 0o700
+    for filename in ("panel.json", "protocol.json", "frozen.json"):
+        assert stat.S_IMODE((root / filename).stat().st_mode) == 0o600
+    assert (root / "panel.json").read_bytes() == panel.read_bytes()
+    assert protocol["protocol_sha256"] == digest(root / "protocol.json")
+    assert list(root.parent.iterdir()) == [root]
+
+
+def test_targeted_freeze_cleans_staging_after_failed_write(
+    targeted_panel, tmp_path, monkeypatch
+):
+    from venom_core.services.training_experiments import (
+        semantic_openrouter_targeted as targeted,
+    )
+
+    panel = tmp_path / "source.json"
+    write(panel, targeted_panel)
+    root = tmp_path / "targeted"
+    real_write = targeted.atomic_json
+
+    def fail_seal(path, data):
+        assert not root.exists()
+        if path.name == "frozen.json":
+            raise OSError("injected seal failure")
+        real_write(path, data)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(targeted, "atomic_json", fail_seal)
+        with pytest.raises(OSError, match="injected seal failure"):
+            targeted.prepare(
+                panel,
+                root,
+                panel_sha256=digest(panel),
+                budget_usd="0.20",
+                max_seconds=1000,
+            )
+    assert not root.exists()
+    assert not list(tmp_path.glob(".targeted-*"))
+    targeted.prepare(
+        panel, root, panel_sha256=digest(panel), budget_usd="0.20", max_seconds=1000
+    )
+    assert (root / "frozen.json").is_file()
+
+
+def test_targeted_freeze_never_replaces_concurrent_empty_output(
+    targeted_panel, tmp_path, monkeypatch
+):
+    from venom_core.services.training_experiments import (
+        semantic_openrouter_targeted as targeted,
+    )
+
+    panel = tmp_path / "source.json"
+    write(panel, targeted_panel)
+    root = tmp_path / "targeted"
+    real_publish = targeted._publish
+
+    def concurrent_create(staged, output):
+        output.mkdir()
+        real_publish(staged, output)
+
+    monkeypatch.setattr(targeted, "_publish", concurrent_create)
+    with pytest.raises(ValueError, match=targeted._OUTPUT_EXISTS):
+        targeted.prepare(
+            panel, root, panel_sha256=digest(panel), budget_usd="0.20", max_seconds=1000
+        )
+    assert root.is_dir()
+    assert not list(root.iterdir())
+    assert not list(tmp_path.glob(".targeted-*"))

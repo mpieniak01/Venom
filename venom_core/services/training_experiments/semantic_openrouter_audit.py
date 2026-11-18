@@ -452,7 +452,7 @@ class _AuditState:
     order: list[dict] = field(default_factory=list)
     client: httpx.Client | None = None
     retries: int = 0
-    wait_seconds: float = 0.0
+    next_post_at: float = 0.0
     rate_path: Path | None = None
 
     @property
@@ -571,7 +571,7 @@ def _post_audit_row(
 
 def _attempt_row(
     state: _AuditState, row: dict, answer: dict, path: Path, stack: ExitStack
-) -> None:
+) -> float:
     atomic_json(path, row)
     state.unknown += judge._money(row["reserved_usd"])
     state.ledger(row["call_id"])
@@ -580,13 +580,16 @@ def _attempt_row(
     except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
         row.update(status="failed", error_type=type(exc).__name__)
     finally:
+        finished = time.monotonic()
         row["finished_at"] = _utc()
         row["response_sha256"] = stable_hash(row["response"])
         atomic_json(path, row)
         state.ledger(None)
+    return finished
 
 
-def _wait_to_post(state: _AuditState, delay: float) -> bool:
+def _wait_to_post(state: _AuditState) -> bool:
+    delay = max(0.0, state.next_post_at - time.monotonic())
     if state.remaining() <= delay:
         return False
     if delay:
@@ -645,7 +648,7 @@ def _submit_case(
     index = len(state.rows) + 1
     path = state.root / "receipts" / f"{index:03d}.json"
     rejected: list[dict] = []
-    if not _wait_to_post(state, state.wait_seconds):
+    if not _wait_to_post(state):
         state.status = "deadline_exceeded"
         return "not_sent"
     while True:
@@ -663,15 +666,17 @@ def _submit_case(
             "response": {},
             "rate_limit_attempts": list(rejected),
         }
-        _attempt_row(state, row, answer, path, stack)
-        state.wait_seconds = state.protocol["rate_limit"]["interval_seconds"]
+        finished = _attempt_row(state, row, answer, path, stack)
+        interval = state.protocol["rate_limit"]["interval_seconds"]
+        state.next_post_at = finished + interval
         if row.get("http_status") != 429:
             break
         state.status = "provider_rate_limited"
         delay = _rate_delay(state, row, len(rejected))
         if delay is None or state.accounted + reservation > state.budget:
             break
-        if not _wait_to_post(state, delay):
+        state.next_post_at = finished + max(interval, delay)
+        if not _wait_to_post(state):
             break
         rejected.append(
             {key: value for key, value in row.items() if key != "rate_limit_attempts"}
@@ -682,25 +687,23 @@ def _submit_case(
     return row["status"]
 
 
+def _holdout_required_seconds(protocol: dict, retries: int) -> int:
+    timeout = protocol["request_timeout_seconds"]
+    policy = protocol["rate_limit"]
+    return (
+        _HOLDOUT_CALLS * (timeout + policy["interval_seconds"])
+        + retries * (timeout + policy["max_retry_after_seconds"])
+        + protocol["holdout_cleanup_seconds"]
+    )
+
+
 def _reserve_holdout(state: _AuditState) -> bool:
     cap = judge._money(state.protocol["holdout_max_request_usd"])
     retries_left = state.protocol["rate_limit"]["max_retries_per_audit"] - state.retries
     reserve = (_HOLDOUT_CALLS + retries_left) * cap
     remaining_budget = state.budget - state.accounted
     remaining_seconds = state.remaining()
-    required_seconds = (
-        _HOLDOUT_CALLS
-        * (
-            state.protocol["request_timeout_seconds"]
-            + state.protocol["rate_limit"]["interval_seconds"]
-        )
-        + retries_left
-        * (
-            state.protocol["request_timeout_seconds"]
-            + state.protocol["rate_limit"]["max_retry_after_seconds"]
-        )
-        + state.protocol["holdout_cleanup_seconds"]
-    )
+    required_seconds = _holdout_required_seconds(state.protocol, retries_left)
     if remaining_budget < reserve:
         state.status = "holdout_budget_unavailable"
         return False
@@ -836,7 +839,10 @@ def _execute(
     if maximum > per_request or judge._money(capacity["planned_budget_usd"]) > budget:
         state.status = "budget_exhausted"
         return _audit_result(state)
-    state.wait_seconds = _provider_cooldown(rate_path)
+    if state.remaining() < _holdout_required_seconds(protocol, 0):
+        state.status = "holdout_deadline_unavailable"
+        return _audit_result(state)
+    state.next_post_at = time.monotonic() + _provider_cooldown(rate_path)
     with ExitStack() as stack:
         while len(state.rows) < len(state.order):
             if not _audit_next(state, stack):

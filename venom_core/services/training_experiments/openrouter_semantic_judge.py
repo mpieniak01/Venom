@@ -583,10 +583,22 @@ def verify_audit(pin: QualificationRemote) -> None:
     _require(
         type(limit) in (int, float) and math.isfinite(limit) and 0 < limit <= 86400
     )
+    first_row = rows[0]
+    attempts = _rate_limit_attempts(first_row)
+    first_attempt = attempts[0] if attempts else first_row
     elapsed = (
-        _time(rows[-1]["finished_at"]) - _time(rows[0]["started_at"])
+        _time(rows[-1]["finished_at"]) - _time(first_attempt["started_at"])
     ).total_seconds()
     _require(elapsed <= limit)
+
+
+def _rate_limit_attempts(row: dict) -> list[dict]:
+    attempts = row.get("rate_limit_attempts", [])
+    if not isinstance(attempts, list) or not all(
+        isinstance(attempt, dict) for attempt in attempts
+    ):
+        raise ValueError(ERROR)
+    return attempts
 
 
 def _verify_rate_limited_calls(
@@ -594,12 +606,10 @@ def _verify_rate_limited_calls(
 ) -> tuple[Decimal, Decimal]:
     known = unknown = Decimal(0)
     retry_count = 0
-    previous_end = datetime.min.replace(tzinfo=timezone.utc)
     call_ids = {row["call_id"] for row in rows}
+    policy = protocol.get("rate_limit", {})
     for row in rows:
-        attempts = row.get("rate_limit_attempts", [])
-        _require(isinstance(attempts, list))
-        policy = protocol.get("rate_limit", {})
+        attempts = _rate_limit_attempts(row)
         _require(len(attempts) <= len(policy.get("backoff_seconds", ())))
         retry_count += len(attempts)
         _require(retry_count <= policy.get("max_retries_per_audit", 0))
@@ -626,16 +636,13 @@ def _verify_rate_limited_calls(
                 isinstance(attempt.get("call_id"), str)
                 and bool(attempt["call_id"].strip())
                 and attempt["call_id"] not in call_ids
-                and isinstance(attempt.get("response"), dict)
+                and "response" in attempt
                 and stable_hash(attempt["response"]) == attempt["response_sha256"]
             )
             call_ids.add(attempt["call_id"])
-            started = _time(attempt["started_at"])
-            finished = _time(attempt["finished_at"])
-            _require(previous_end <= started <= finished <= _time(row["started_at"]))
-            previous_end = finished
             reserved = _money(attempt["reserved_usd"])
-            reported = reported_cost(attempt["response"])
+            response = attempt["response"]
+            reported = reported_cost(response) if isinstance(response, dict) else None
             _require(reported == attempt.get("cost_usd"))
             if reported is None:
                 unknown += reserved
@@ -643,7 +650,6 @@ def _verify_rate_limited_calls(
                 cost = _money(reported)
                 _require(cost <= reserved)
                 known += cost
-        previous_end = _time(row["finished_at"])
     return known, unknown
 
 
@@ -671,6 +677,11 @@ def _audit_rows(
             and bool(row["call_id"].strip())
             and row["call_id"] not in calls
         )
+        for attempt in _rate_limit_attempts(row):
+            started = _time(attempt["started_at"])
+            finished = _time(attempt["finished_at"])
+            _require(previous_end <= started <= finished)
+            previous_end = finished
         _require(_time(row["started_at"]) >= previous_end)
         previous_end = _time(row["finished_at"])
         case, answer = _jobs(root, manifest, row["split"])[0][row["answer_id"]]

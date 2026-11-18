@@ -67,8 +67,11 @@ def _nonblank(value: str) -> str:
     return value
 
 
+MAX_EVIDENCE_TEXT_CHARS = 400
 TextProof = Annotated[
-    str, Field(min_length=1, max_length=400), AfterValidator(_nonblank)
+    str,
+    Field(min_length=1, max_length=MAX_EVIDENCE_TEXT_CHARS),
+    AfterValidator(_nonblank),
 ]
 
 
@@ -140,9 +143,9 @@ def _observed_from_answer(check: Check, candidate: str) -> bool:
     observed = check.observed.strip()
     if (observed[0], observed[-1]) in _OBSERVED_QUOTES:
         observed = observed[1:-1].strip()
-    if observed == _OBSERVED_MISSING:
-        return check.relation == "omitted"
-    return bool(observed) and observed in candidate
+    if observed and observed in candidate:
+        return True
+    return observed == _OBSERVED_MISSING and check.relation == "omitted"
 
 
 def decode(

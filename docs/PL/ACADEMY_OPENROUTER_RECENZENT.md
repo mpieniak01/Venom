@@ -60,8 +60,9 @@ Operator wybiera aktualny odebrany pakiet i aktualną recenzję danych.
 Poprzednie rewizje i zastąpione recenzje zachowuje się jako historyczne
 dowody; nie służą do przygotowania nowej kwalifikacji.
 
-Przed odczytem holdoutu runner sprawdza rezerwę na wszystkie 72 żądania
-oraz rezerwę czasu według zamrożonej polityki. Jeśli po odczycie rzeczywisty
+Przed pierwszym płatnym żądaniem runner sprawdza minimalny zapas czasu na
+holdout. Przed odczytem holdoutu sprawdza rezerwę na wszystkie 72 żądania
+oraz pozostały czas według zamrożonej polityki. Jeśli po odczycie rzeczywisty
 pakiet przekroczy ustalony limit pojedynczego żądania, próba kończy się jako
 technicznie niekompletna. Nie wysyła tego żądania i zapisuje, że holdout
 został już otwarty. Wybrany limit nie jest pomiarem nieodczytanych danych.
@@ -126,8 +127,10 @@ Przy kwalifikacji Academy wykonuje jeden audyt Luny naraz na użytkownika
 systemowego, również przy kilku katalogach roboczych. Zachowuje dwie sekundy
 przerwy między zwykłymi żądaniami. Wyłącznie po HTTP 429 ponawia ten sam
 pakiet najwyżej dwa razy i najwyżej osiem razy w całym audycie. Honoruje
-Retry-After do 60 sekund. Przy braku poprawnego nagłówka stosuje 5 i 10 sekund.
-Dłuższy Retry-After zatrzymuje audyt i jest zapisany dla kolejnego startu.
+Retry-After do 60 sekund. Czeka co najmniej 5 sekund przed pierwszym
+ponowieniem i 10 sekund przed drugim. Jeśli poprawny nagłówek podaje dłuższy
+czas, stosuje wartość z nagłówka. Retry-After powyżej 60 sekund zatrzymuje
+audyt i jest zapisany dla kolejnego startu.
 Połączenie o nieznanym wyniku, inny błąd HTTP i błąd oceny kończą próbę.
 Odrzucone żądania zachowują koszty lub rezerwacje i nie liczą się jako decyzje.
 Próby zamrożone przed zmianą zachowują dotychczasowy protokół.

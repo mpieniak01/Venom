@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import copy
 import json
+from datetime import timedelta
 from decimal import Decimal
+from types import SimpleNamespace
 
 import httpx
 import pytest
@@ -43,7 +45,7 @@ def ready(full_audit, tmp_path, monkeypatch):
         holdout_max_request_usd="0.002",
         controls_sha256=digest(source / "frozen-manifest.json"),
         data_review_sha256=digest(source_root / "data-review.json"),
-        budget_usd="0.20",
+        budget_usd="0.80",
         max_seconds=7200,
         initial_accounted_usd="0.01",
         initial_unknown_reserved_usd="0.01",
@@ -51,7 +53,25 @@ def ready(full_audit, tmp_path, monkeypatch):
     monkeypatch.setattr(audit.runtime, "is_enabled", lambda: True)
     monkeypatch.setattr(audit.runtime, "cloud_allowed", lambda: True)
     monkeypatch.setattr(audit.runtime, "credential", lambda: "invented-test-credential")
-    monkeypatch.setattr(audit.SETTINGS, "OPENROUTER_DAILY_LIMIT_USD", 0.20)
+    monkeypatch.setattr(audit.SETTINGS, "OPENROUTER_DAILY_LIMIT_USD", 0.80)
+    origin = judge._time(audit._utc())
+    elapsed = 0.0
+
+    def sleep(seconds):
+        nonlocal elapsed
+        elapsed += seconds
+
+    monkeypatch.setattr(audit, "sleep", sleep)
+    monkeypatch.setattr(
+        audit,
+        "time",
+        SimpleNamespace(
+            monotonic=lambda: elapsed, time=lambda: origin.timestamp() + elapsed
+        ),
+    )
+    monkeypatch.setattr(
+        audit, "_utc", lambda: (origin + timedelta(seconds=elapsed)).isoformat()
+    )
     monkeypatch.setattr(audit.SETTINGS, "OPENROUTER_MESSAGE_LIMIT_USD", 0.01)
     responses = {}
     for path in (source_root / "receipts").glob("*.json"):
@@ -201,7 +221,7 @@ def test_budget_stop_cannot_construct_http(ready, monkeypatch):
 def test_deadline_stop_cannot_construct_http(ready, monkeypatch):
     root, _, client = ready
     ticks = iter([0, 9000, 9001])
-    monkeypatch.setattr(audit.time, "monotonic", lambda: next(ticks))
+    monkeypatch.setattr(audit.time, "monotonic", lambda: next(ticks, 9001))
     result = audit.run(root, execute=True, client_factory=client)
     assert result["status"] == "deadline_exceeded"
     assert client.factory_calls == 0
@@ -289,6 +309,42 @@ def test_non_object_response_fails_closed(ready):
     assert audit.judge._money(result["unknown_reserved_usd"]) > 0
 
 
+@pytest.mark.parametrize(
+    "http_status, value, status",
+    [
+        (200, "NaN", "transport_incomplete"),
+        (200, "Infinity", "transport_incomplete"),
+        (429, "-Infinity", "provider_rate_limited"),
+        (429, "1e999", "provider_rate_limited"),
+    ],
+)
+def test_nonfinite_response_keeps_receipt_and_reservation(
+    ready, http_status, value, status
+):
+    root, _, client = ready
+    payload = '{"diagnostic":' + value + "}"
+
+    class NonfiniteResponse(client):
+        def post(self, url, **_kwargs):
+            return httpx.Response(
+                http_status,
+                headers={"Retry-After": "300"},
+                content=payload,
+                request=httpx.Request("POST", url),
+            )
+
+    result = audit.run(root, execute=True, client_factory=NonfiniteResponse)
+
+    receipt = json.loads((root / "receipts/001.json").read_text())
+    ledger = json.loads((root / "ledger.json").read_text())
+    assert result["status"] == status
+    assert result["rows"] == 1
+    assert receipt["response"] == {"non_json_body": payload}
+    assert receipt["response_sha256"] == stable_hash(receipt["response"])
+    assert Decimal(result["unknown_reserved_usd"]) == Decimal(receipt["reserved_usd"])
+    assert ledger["pending_call_id"] is None
+
+
 def test_cli_prepare_is_offline_and_binds_explicit_hashes(ready, tmp_path, monkeypatch):
     from scripts.academy import qualify_openrouter_judge as cli
 
@@ -340,16 +396,87 @@ def test_cli_failed_run_returns_nonzero(monkeypatch):
     assert caught.value.code == 3
 
 
-def test_g1_pass_with_insufficient_full_holdout_budget_never_opens_it(
-    ready, monkeypatch
-):
+def test_preflight_rejects_budget_without_full_holdout_reservation(ready, monkeypatch):
     root, source, client = ready
     monkeypatch.setattr(audit.SETTINGS, "OPENROUTER_DAILY_LIMIT_USD", 0.10)
     monkeypatch.setattr(
         audit, "_stage_holdout", lambda *a: pytest.fail("holdout opened without budget")
     )
     result = audit.run(root, execute=True, client_factory=client)
-    assert result["status"] == "holdout_budget_unavailable"
+    assert result["status"] == "budget_exhausted"
+    assert client.calls == 0
+    assert result["holdout_opened"] is False
+    assert not (root / "qualification.json").exists()
+
+
+@pytest.mark.parametrize("seconds", [5600, 5674, 6000])
+def test_preflight_requires_time_for_both_phases(ready, tmp_path, monkeypatch, seconds):
+    _, source, client = ready
+    controls = source / "controls"
+    review = source / "data-review.json"
+    root = tmp_path / "short-deadline"
+    audit.prepare(
+        controls,
+        review,
+        root,
+        controls_sha256=digest(controls / "frozen-manifest.json"),
+        data_review_sha256=digest(review),
+        budget_usd="0.80",
+        max_seconds=seconds,
+        holdout_max_request_usd="0.002",
+    )
+    monkeypatch.setattr(
+        audit, "_stage_holdout", lambda *a: pytest.fail("holdout opened")
+    )
+
+    result = audit.run(root, execute=True, client_factory=client)
+
+    assert result["status"] == "holdout_deadline_unavailable"
+    assert result["holdout_opened"] is False
+    assert client.factory_calls == 0
+
+
+@pytest.mark.parametrize("now, wait", [(1.25, [0.75]), (2.5, [])])
+def test_pacing_counts_time_spent_preparing_next_post(tmp_path, monkeypatch, now, wait):
+    state = audit._AuditState(
+        root=tmp_path,
+        protocol={"max_seconds": 3},
+        manifest={},
+        protocol_sha="",
+        budget=Decimal(0),
+        per_request=Decimal(0),
+        client_factory=lambda: pytest.fail("HTTP client created"),
+        next_post_at=2,
+    )
+    waits = []
+    monkeypatch.setattr(audit.time, "monotonic", lambda: now)
+    monkeypatch.setattr(audit, "sleep", waits.append)
+
+    assert audit._wait_to_post(state)
+    assert waits == wait
+
+
+def test_changed_phase1_receipt_blocks_holdout_before_post(ready, monkeypatch):
+    root, _, client = ready
+    phase1_gate = audit._phase1_gate
+
+    def change_receipt(state):
+        path = root / "receipts/001.json"
+        receipt = json.loads(path.read_text())
+        receipt["request"]["provider"]["allow_fallbacks"] = 0
+        write(path, receipt)
+        return phase1_gate(state)
+
+    monkeypatch.setattr(audit, "_phase1_gate", change_receipt)
+    monkeypatch.setattr(
+        audit,
+        "_stage_holdout",
+        lambda *_: pytest.fail("tampered phase 1 opened holdout"),
+    )
+
+    result = audit.run(root, execute=True, client_factory=client)
+
+    assert result["status"] == "phase1_replay_failed"
     assert client.calls == 156
     assert result["holdout_opened"] is False
     assert not (root / "qualification.json").exists()
@@ -408,3 +535,691 @@ def test_deadline_spent_on_fsync_or_client_init_never_sends_post(ready, monkeypa
     assert row["status"] == "not_sent"
     assert row["cost_usd"] == "0"
     assert not (root / "controls/holdout").exists()
+
+
+def test_request_deadline_stops_continuous_body_and_keeps_reservation(
+    ready, monkeypatch
+):
+    import signal
+    import time
+
+    root, _, client = ready
+    chunks = []
+    posts = []
+    timer = audit.post_with_deadline
+    previous_handler = signal.getsignal(signal.SIGALRM)
+
+    class SlowBody(httpx.SyncByteStream):
+        def __iter__(self):
+            for _ in range(200):
+                time.sleep(0.005)
+                chunks.append(1)
+                yield b" "
+
+    def keepalive(request):
+        posts.append(request.method)
+        return httpx.Response(200, stream=SlowBody())
+
+    class SlowClient(client):
+        def post(self, url, *, json, timeout):
+            with httpx.Client(transport=httpx.MockTransport(keepalive)) as http:
+                return http.post(url, json=json, timeout=timeout)
+
+    monkeypatch.setattr(
+        audit, "post_with_deadline", lambda client, body, _: timer(client, body, 0.08)
+    )
+    result = audit.run(root, execute=True, client_factory=SlowClient)
+    row = json.loads((root / "receipts/001.json").read_text())
+    assert posts == ["POST"]
+    assert 0 < len(chunks) < 200
+    assert row["error_type"] == "AuditRequestTimeout"
+    assert row["cost_usd"] is None
+    assert result["status"] == "transport_incomplete"
+    assert result["rows"] == 1
+    assert result["unknown_reserved_usd"] == row["reserved_usd"]
+    assert result["holdout_opened"] is False
+    assert not (root / "qualification.json").exists()
+    assert signal.getitimer(signal.ITIMER_REAL) == (0.0, 0.0)
+    assert signal.getsignal(signal.SIGALRM) == previous_handler
+
+
+def test_existing_request_timer_blocks_start_without_post(ready, monkeypatch):
+    root, _, client = ready
+    monkeypatch.setattr(audit.signal, "getitimer", lambda _: (1.0, 0.0))
+    with pytest.raises(ValueError, match="remote_audit_request_timer_in_use"):
+        audit.run(root, execute=True, client_factory=client)
+    assert client.factory_calls == 0
+    assert not (root / "started.json").exists()
+
+
+@pytest.mark.parametrize("throttle_at", [1, 157])
+@pytest.mark.parametrize(
+    "status, error",
+    [
+        (429, {"code": 429}),
+        (200, {"code": 502, "metadata": {"error_type": "provider_unavailable"}}),
+    ],
+)
+def test_transient_error_waits_and_replays_without_counting_as_grade(
+    ready, monkeypatch, throttle_at, status, error
+):
+    root, _, client = ready
+    delays = []
+    origin = judge._time(audit._utc())
+    elapsed = 0.0
+
+    def sleep(seconds):
+        nonlocal elapsed
+        elapsed += seconds
+        delays.append(seconds)
+
+    monkeypatch.setattr(audit, "sleep", sleep)
+    monkeypatch.setattr(audit.time, "monotonic", lambda: elapsed)
+    monkeypatch.setattr(
+        audit, "_utc", lambda: (origin + timedelta(seconds=elapsed)).isoformat()
+    )
+
+    class Throttled(client):
+        def post(self, url, *, json, **kwargs):
+            if self.calls + 1 == throttle_at:
+                type(self).calls += 1
+                return httpx.Response(
+                    status,
+                    headers={"Retry-After": "7"},
+                    json={"error": error},
+                    request=httpx.Request("POST", url),
+                )
+            return super().post(url, json=json, **kwargs)
+
+    result = audit.run(root, execute=True, client_factory=Throttled)
+    row = json.loads((root / "receipts" / f"{throttle_at:03d}.json").read_text())
+    [attempt] = row["rate_limit_attempts"]
+    assert result["status"] == "passed"
+    assert result["rows"] == 228
+    assert Throttled.calls == 229
+    assert attempt["http_status"] == status
+    assert attempt["retry_after"] == "7"
+    if status == 200:
+        assert attempt["error_type"] == "provider_unavailable"
+    assert attempt["call_id"] != row["call_id"]
+    assert Decimal(result["unknown_reserved_usd"]) == Decimal(attempt["reserved_usd"])
+    assert delays.count(7.0) == 1
+    assert delays.count(2) == 227
+    pin = judge.QualificationRemote.model_validate_json(
+        (root / "qualification.json").read_text()
+    )
+    judge.verify_audit(pin)
+
+
+@pytest.mark.parametrize("header, calls, waits", [("", 3, [5.0, 10.0]), ("300", 1, [])])
+def test_429_stops_at_frozen_retry_bounds(ready, monkeypatch, header, calls, waits):
+    root, _, client = ready
+    delays = []
+    monkeypatch.setattr(audit, "sleep", delays.append)
+    monkeypatch.setattr(audit.time, "monotonic", lambda: 0)
+
+    class Throttled(client):
+        def post(self, url, **_kwargs):
+            type(self).calls += 1
+            return httpx.Response(
+                429,
+                headers={"Retry-After": header},
+                json={"error": {"code": 429}},
+                request=httpx.Request("POST", url),
+            )
+
+    result = audit.run(root, execute=True, client_factory=Throttled)
+    row = json.loads((root / "receipts/001.json").read_text())
+    assert result["status"] == "provider_rate_limited"
+    assert Throttled.calls == calls
+    assert delays == waits
+    assert Decimal(result["unknown_reserved_usd"]) == calls * Decimal(
+        row["reserved_usd"]
+    )
+    assert len(row["rate_limit_attempts"]) == calls - 1
+    assert not result["holdout_opened"]
+    assert not (root / "qualification.json").exists()
+
+
+@pytest.mark.parametrize(
+    "error_type, expected_status, expected_calls",
+    [
+        ("provider_unavailable", "provider_unavailable", 2),
+        ("other_error", "transport_incomplete", 1),
+    ],
+)
+def test_embedded_502_retries_only_the_known_transient_error(
+    ready, monkeypatch, error_type, expected_status, expected_calls
+):
+    root, _, client = ready
+    delays = []
+    monkeypatch.setattr(audit, "sleep", delays.append)
+    monkeypatch.setattr(audit.time, "monotonic", lambda: 0)
+
+    class Unavailable(client):
+        def post(self, url, **_kwargs):
+            type(self).calls += 1
+            return httpx.Response(
+                200,
+                json={"error": {"code": 502, "metadata": {"error_type": error_type}}},
+                request=httpx.Request("POST", url),
+            )
+
+    result = audit.run(root, execute=True, client_factory=Unavailable)
+    row = json.loads((root / "receipts/001.json").read_text())
+    assert result["status"] == expected_status
+    assert Unavailable.calls == expected_calls
+    assert delays == ([5.0] if expected_calls == 2 else [])
+    assert Decimal(result["unknown_reserved_usd"]) == expected_calls * Decimal(
+        row["reserved_usd"]
+    )
+    assert len(row["rate_limit_attempts"]) == expected_calls - 1
+    assert not result["holdout_opened"]
+    assert not (root / "qualification.json").exists()
+
+
+def test_deadline_during_retry_receipt_write_does_not_count_a_post(ready, monkeypatch):
+    root, _, client = ready
+    elapsed = 0.0
+
+    def sleep(seconds):
+        nonlocal elapsed
+        elapsed += seconds
+
+    monkeypatch.setattr(audit, "sleep", sleep)
+    monkeypatch.setattr(audit.time, "monotonic", lambda: elapsed)
+    original_write = audit.atomic_json
+
+    def write_receipt(path, value):
+        nonlocal elapsed
+        original_write(path, value)
+        if value.get("status") == "attempted" and value.get("rate_limit_attempts"):
+            elapsed = 7201
+
+    monkeypatch.setattr(audit, "atomic_json", write_receipt)
+
+    class Throttled(client):
+        def post(self, url, **_kwargs):
+            type(self).calls += 1
+            return httpx.Response(
+                429,
+                json={"error": {"code": 429}},
+                request=httpx.Request("POST", url),
+            )
+
+    result = audit.run(root, execute=True, client_factory=Throttled)
+    receipt = json.loads((root / "receipts/001.json").read_text())
+
+    assert result["status"] == "deadline_exceeded"
+    assert result["rate_limit_retries"] == 0
+    assert Throttled.calls == 1
+    assert receipt["status"] == "not_sent"
+    assert receipt["rate_limit_attempts"][0]["http_status"] == 429
+    assert Decimal(result["unknown_reserved_usd"]) == Decimal(receipt["reserved_usd"])
+
+
+def test_retry_after_http_date_and_invalid_value():
+    from datetime import datetime, timezone
+
+    now = datetime(2026, 11, 18, 10, 0, 0, tzinfo=timezone.utc)
+    assert audit._retry_delay("Wed, 18 Nov 2026 10:00:42 GMT", 5, now) == 42
+    assert audit._retry_delay("invalid", 5, now) == 5
+
+
+def test_provider_cooldown_survives_attempt_boundary(ready, monkeypatch, tmp_path):
+    root, _, client = ready
+    shared = tmp_path / "provider.json"
+    monkeypatch.setattr(audit, "_operator_rate_path", lambda: shared)
+    monkeypatch.setattr(audit.httpx, "Client", client)
+    write(shared, {"not_before": 1400})
+    monkeypatch.setattr(audit.time, "time", lambda: 1000)
+    result = audit.run(root, execute=True, client_factory=client)
+    assert result["status"] == "provider_cooldown_active"
+    assert result["provider_cooldown_seconds"] == 400
+    assert client.factory_calls == 0
+    assert not (root / "started.json").exists()
+
+
+def test_terminal_post_persists_pacing_for_next_audit(ready, monkeypatch, tmp_path):
+    root, _, client = ready
+    shared = tmp_path / "provider.json"
+    monkeypatch.setattr(audit, "_operator_rate_path", lambda: shared)
+    monkeypatch.setattr(audit.httpx, "Client", client)
+    client.mode = "non-object"
+
+    result = audit.run(root, execute=True, client_factory=client)
+
+    assert result["status"] == "transport_incomplete"
+    assert client.calls == 1
+    assert result["provider_cooldown_seconds"] == pytest.approx(2)
+    assert audit._provider_cooldown(shared) == pytest.approx(2)
+
+
+@pytest.mark.parametrize("failed_write", [1, 2])
+def test_cooldown_write_failure_stops_safely(
+    ready, monkeypatch, tmp_path, failed_write
+):
+    root, _, client = ready
+    shared = tmp_path / "provider.json"
+    monkeypatch.setattr(audit, "_operator_rate_path", lambda: shared)
+    monkeypatch.setattr(audit.httpx, "Client", client)
+    client.mode = "non-object"
+    writes = 0
+    original_write = audit.atomic_json
+
+    def write_with_error(path, value):
+        nonlocal writes
+        if path == shared:
+            writes += 1
+            if writes == failed_write:
+                raise OSError("cooldown write failed")
+        original_write(path, value)
+
+    monkeypatch.setattr(audit, "atomic_json", write_with_error)
+
+    result = audit.run(root, execute=True, client_factory=client)
+
+    assert result["status"] == "provider_cooldown_io_error"
+    assert result["rows"] == 1
+    assert client.calls == failed_write - 1
+    assert (root / "receipts/001.json").is_file()
+    assert result["provider_cooldown_seconds"] == (135 if failed_write == 2 else 0)
+    assert not (root / "qualification.json").exists()
+
+
+def test_next_post_times_cooldown_after_read(monkeypatch, tmp_path):
+    clock = {"now": 0}
+
+    def cooldown(_path):
+        clock["now"] += 2
+        return 8
+
+    monkeypatch.setattr(audit, "_provider_cooldown", cooldown)
+    monkeypatch.setattr(audit.time, "monotonic", lambda: clock["now"])
+
+    assert audit._provider_next_post_at(tmp_path / "provider.json") == 10
+
+
+@pytest.mark.parametrize("mode", ["match", "decoder_invalid", "missing_quote"])
+def test_targeted_panel_uses_shared_retry_and_preserves_manual_gate(
+    tmp_path, monkeypatch, mode
+):
+    from tests.test_academy_openrouter_judge import response
+    from venom_core.services.training_experiments import (
+        semantic_openrouter_targeted as targeted,
+    )
+
+    candidate = "Podano B."
+    body = judge._control_request(
+        {
+            "id": "fixture",
+            "messages": [{"role": "user", "content": "Podaj A."}],
+            "criteria": [{"id": "status", "description": "Jawny brak statusu A."}],
+        },
+        {"text": candidate},
+    )
+    expected = {
+        "atoms": {"status": "omitted"},
+        "injection": False,
+        "natural_ok": True,
+        "polish_ok": True,
+        "unsupported": "yes",
+    }
+    panel = tmp_path / "source.json"
+    write(
+        panel,
+        {
+            "judge": judge.JUDGE,
+            "model": judge.MODEL,
+            "provider": judge.PROVIDER,
+            "endpoint": judge.ENDPOINT,
+            "prompt_sha256": judge._contract()["prompt_sha256"],
+            "cases": {
+                "fixture": {
+                    "body": body,
+                    "expected": expected,
+                    "required_unsupported_quote": candidate,
+                }
+            },
+            "order": ["fixture", "fixture"],
+        },
+    )
+    root = tmp_path / "targeted"
+    targeted.prepare(
+        panel, root, panel_sha256=digest(panel), budget_usd="0.20", max_seconds=1000
+    )
+    monkeypatch.setattr(audit.runtime, "is_enabled", lambda: True)
+    monkeypatch.setattr(audit.runtime, "cloud_allowed", lambda: True)
+    monkeypatch.setattr(audit.runtime, "credential", lambda: "invented-test-credential")
+    monkeypatch.setattr(audit.SETTINGS, "OPENROUTER_DAILY_LIMIT_USD", "0.20")
+    monkeypatch.setattr(audit.SETTINGS, "OPENROUTER_MESSAGE_LIMIT_USD", "0.01")
+    delays = []
+    monkeypatch.setattr(audit, "sleep", delays.append)
+    monkeypatch.setattr(audit.time, "monotonic", lambda: 0)
+    sent = []
+
+    class TargetedClient:
+        def __init__(self, **kwargs):
+            assert kwargs["trust_env"] is False
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            return None
+
+        def post(self, url, *, json, **_kwargs):
+            sent.append(json)
+            request = httpx.Request("POST", url)
+            assert url == judge.ENDPOINT
+            assert read_ledger()["pending_call_id"]
+            if len(sent) == 1:
+                return httpx.Response(
+                    429,
+                    headers={"Retry-After": "6"},
+                    json={"error": {"code": 429}},
+                    request=request,
+                )
+            raw = response(body, candidate, ident=f"fixture-{len(sent)}")
+            message = raw["choices"][0]["message"]
+            payload = __import__("json").loads(message["content"])
+            payload["checks"]["status"]["relation"] = "omitted"
+            if len(sent) == 2 and mode == "decoder_invalid":
+                payload["checks"]["status"]["observed"] = "wymyślony cytat"
+            text = "B" if len(sent) == 2 and mode == "missing_quote" else candidate
+            payload["additional_claims"] = [{"text": text, "grounding": "unsupported"}]
+            message["content"] = __import__("json").dumps(payload)
+            return httpx.Response(200, json=raw, request=request)
+
+    def read_ledger():
+        return json.loads((root / "ledger.json").read_text())
+
+    result = audit.run(root, execute=True, client_factory=TargetedClient)
+    assert sent == [body, body, body]
+    assert delays == [6.0, 2]
+    assert result["rows"] == 2
+    assert result["rate_limit_retries"] == 1
+    assert result["completed"] == (1 if mode == "decoder_invalid" else 2)
+    assert result["manual_review_required"] is True
+    assert result["unknown_reserved_usd"] != "0"
+    assert result["status"] == (
+        "targeted_review_required" if mode == "match" else "targeted_regression_failed"
+    )
+    assert len(result["mismatches"]) == (0 if mode == "match" else 1)
+    assert (root / "receipts/001.json").is_file()
+    assert not (root / "qualification.json").exists()
+    assert not (root / "controls").exists()
+
+
+@pytest.fixture
+def targeted_panel():
+    candidate = "Ź" * 401
+    body = judge._control_request(
+        {
+            "id": "fixture",
+            "messages": [{"role": "user", "content": "Podaj A."}],
+            "criteria": [{"id": "status", "description": "Jawny brak statusu A."}],
+        },
+        {"text": candidate},
+    )
+    return {
+        "judge": judge.JUDGE,
+        "model": judge.MODEL,
+        "provider": judge.PROVIDER,
+        "endpoint": judge.ENDPOINT,
+        "prompt_sha256": judge._contract()["prompt_sha256"],
+        "cases": {
+            "fixture": {
+                "body": body,
+                "expected": {
+                    "atoms": {"status": "omitted"},
+                    "injection": False,
+                    "natural_ok": True,
+                    "polish_ok": True,
+                    "unsupported": "yes",
+                },
+            }
+        },
+        "order": ["fixture", "fixture"],
+    }
+
+
+def test_targeted_preflight_requires_time_for_spacing(
+    targeted_panel, tmp_path, monkeypatch
+):
+    from venom_core.services.training_experiments import (
+        semantic_openrouter_targeted as targeted,
+    )
+
+    source = tmp_path / "source.json"
+    write(source, targeted_panel)
+    root = tmp_path / "short-targeted"
+    targeted.prepare(
+        source,
+        root,
+        panel_sha256=digest(source),
+        budget_usd="0.20",
+        max_seconds=1,
+    )
+    monkeypatch.setattr(audit.runtime, "is_enabled", lambda: True)
+    monkeypatch.setattr(audit.runtime, "cloud_allowed", lambda: True)
+    monkeypatch.setattr(audit.runtime, "credential", lambda: "invented-test-credential")
+    monkeypatch.setattr(audit.SETTINGS, "OPENROUTER_DAILY_LIMIT_USD", 0.20)
+    monkeypatch.setattr(audit.SETTINGS, "OPENROUTER_MESSAGE_LIMIT_USD", 0.01)
+
+    def never_post(**_kwargs):
+        pytest.fail("Unschedulable panel created an HTTP client")
+
+    result = audit.run(root, execute=True, client_factory=never_post)
+
+    assert result["status"] == "deadline_exceeded"
+    assert result["rows"] == 0
+    assert Decimal(result["actual_known_cost_usd"]) == 0
+    assert Decimal(result["unknown_reserved_usd"]) == 0
+
+
+def test_targeted_freeze_rejects_noncanonical_request_body(targeted_panel):
+    from venom_core.services.training_experiments import (
+        semantic_openrouter_targeted as targeted,
+    )
+
+    body = targeted_panel["cases"]["fixture"]["body"]
+    assert body["provider"]["allow_fallbacks"] is False
+    body["provider"]["allow_fallbacks"] = 0
+    with pytest.raises(ValueError, match=targeted._INVALID):
+        targeted._validate_panel(targeted_panel)
+
+
+def test_targeted_freeze_rejects_incompatible_contradiction_gold(targeted_panel):
+    from venom_core.services.training_experiments import (
+        semantic_openrouter_targeted as targeted,
+    )
+
+    expected = targeted_panel["cases"]["fixture"]["expected"]
+    expected["atoms"]["status"] = "contradicted"
+    expected["unsupported"] = "no"
+    with pytest.raises(ValueError, match=targeted._INVALID):
+        targeted._validate_panel(targeted_panel)
+    expected["unsupported"] = "yes"
+    assert len(targeted._validate_panel(targeted_panel)) == 2
+
+
+def test_targeted_freeze_limits_required_quote_to_decoder_limit(targeted_panel):
+    from venom_core.services.training_experiments import (
+        semantic_openrouter_targeted as targeted,
+    )
+
+    case = targeted_panel["cases"]["fixture"]
+    limit = targeted.MAX_EVIDENCE_TEXT_CHARS
+    case["required_unsupported_quote"] = "Ź" * (limit + 1)
+    with pytest.raises(ValueError, match=targeted._INVALID):
+        targeted._validate_panel(targeted_panel)
+    case["required_unsupported_quote"] = "Ź" * limit
+    assert len(targeted._validate_panel(targeted_panel)) == 2
+
+
+def test_targeted_freeze_privately_publishes_exact_panel(targeted_panel, tmp_path):
+    import os
+    import stat
+
+    from venom_core.services.training_experiments import (
+        semantic_openrouter_targeted as targeted,
+    )
+
+    panel = tmp_path / "source.json"
+    write(panel, targeted_panel)
+    root = tmp_path / "nested" / "targeted"
+    previous_umask = os.umask(0o022)
+    try:
+        protocol = targeted.prepare(
+            panel, root, panel_sha256=digest(panel), budget_usd="0.20", max_seconds=1000
+        )
+    finally:
+        os.umask(previous_umask)
+    assert stat.S_IMODE(root.stat().st_mode) == 0o700
+    for filename in ("panel.json", "protocol.json", "frozen.json"):
+        assert stat.S_IMODE((root / filename).stat().st_mode) == 0o600
+    assert (root / "panel.json").read_bytes() == panel.read_bytes()
+    assert protocol["protocol_sha256"] == digest(root / "protocol.json")
+    assert list(root.parent.iterdir()) == [root]
+
+
+def test_targeted_freeze_cleans_staging_after_failed_write(
+    targeted_panel, tmp_path, monkeypatch
+):
+    from venom_core.services.training_experiments import (
+        semantic_openrouter_targeted as targeted,
+    )
+
+    panel = tmp_path / "source.json"
+    write(panel, targeted_panel)
+    root = tmp_path / "targeted"
+    real_write = targeted.atomic_json
+
+    def fail_seal(path, data):
+        assert not root.exists()
+        if path.name == "frozen.json":
+            raise OSError("injected seal failure")
+        real_write(path, data)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(targeted, "atomic_json", fail_seal)
+        with pytest.raises(OSError, match="injected seal failure"):
+            targeted.prepare(
+                panel,
+                root,
+                panel_sha256=digest(panel),
+                budget_usd="0.20",
+                max_seconds=1000,
+            )
+    assert not root.exists()
+    assert not list(tmp_path.glob(".targeted-*"))
+    targeted.prepare(
+        panel, root, panel_sha256=digest(panel), budget_usd="0.20", max_seconds=1000
+    )
+    assert (root / "frozen.json").is_file()
+
+
+def test_targeted_freeze_never_replaces_concurrent_empty_output(
+    targeted_panel, tmp_path, monkeypatch
+):
+    from venom_core.services.training_experiments import (
+        semantic_openrouter_targeted as targeted,
+    )
+
+    panel = tmp_path / "source.json"
+    write(panel, targeted_panel)
+    root = tmp_path / "targeted"
+    real_publish = targeted._publish
+
+    def concurrent_create(staged, output):
+        output.mkdir()
+        real_publish(staged, output)
+
+    monkeypatch.setattr(targeted, "_publish", concurrent_create)
+    with pytest.raises(ValueError, match=targeted._OUTPUT_EXISTS):
+        targeted.prepare(
+            panel, root, panel_sha256=digest(panel), budget_usd="0.20", max_seconds=1000
+        )
+    assert root.is_dir()
+    assert not list(root.iterdir())
+    assert not list(tmp_path.glob(".targeted-*"))
+
+
+def test_targeted_cli_verifies_publication_after_parent_sync_error(
+    targeted_panel, tmp_path, monkeypatch, capsys
+):
+    import errno
+    import os
+    import sys
+
+    from scripts.academy import qualify_openrouter_judge as cli
+
+    panel = tmp_path / "source.json"
+    write(panel, targeted_panel)
+    root = tmp_path / "targeted run"
+    real_sync = os.fsync
+
+    def fail_after_publication(descriptor):
+        if root.exists():
+            raise OSError(errno.EIO, "injected parent fsync failure")
+        real_sync(descriptor)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(os, "fsync", fail_after_publication)
+        patch.setattr(
+            sys,
+            "argv",
+            [
+                "qualify_openrouter_judge",
+                "prepare-targeted",
+                "--panel",
+                str(panel),
+                "--panel-sha256",
+                digest(panel),
+                "--output",
+                str(root),
+                "--budget-usd",
+                "0.20",
+                "--max-seconds",
+                "1000",
+            ],
+        )
+        with pytest.raises(SystemExit) as exc:
+            cli.main()
+    assert exc.value.code == 3
+    prepared = json.loads(capsys.readouterr().out)
+    assert prepared["status"] == "published_durability_unconfirmed"
+    assert prepared["audit_root"] == str(root)
+    assert prepared["sync_errno"] == errno.EIO
+    assert not list(tmp_path.glob(".targeted-*"))
+
+    def unexpected_provider_access():
+        pytest.fail("offline seal verification accessed a provider")
+
+    monkeypatch.setattr(audit.runtime, "credential", unexpected_provider_access)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "qualify_openrouter_judge",
+            prepared["verification_action"],
+            "--audit-root",
+            prepared["audit_root"],
+        ],
+    )
+    cli.main()
+    assert json.loads(capsys.readouterr().out) == {
+        "status": "verified_targeted",
+        "audit_root": str(root),
+        "protocol_sha256": prepared["protocol_sha256"],
+    }
+    assert sorted(path.name for path in root.iterdir()) == [
+        "frozen.json",
+        "panel.json",
+        "protocol.json",
+    ]
+    frozen_panel = root / "panel.json"
+    frozen_panel.write_bytes(frozen_panel.read_bytes() + b"\n")
+    with pytest.raises(ValueError, match="remote_audit_file_changed"):
+        cli.main()

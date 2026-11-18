@@ -10,6 +10,7 @@ from decimal import Decimal
 import pytest
 
 from venom_core.services.training_experiments import openrouter_semantic_judge as judge
+from venom_core.services.training_experiments import semantic_openrouter_audit as audit
 from venom_core.services.training_experiments.profiles import digest, stable_hash
 
 
@@ -31,7 +32,6 @@ def response(body, candidate="Hala A", ident="generation-1", positive=True):
     content = {
         "checks": {
             key: {
-                "required": "fixture fact",
                 "observed": candidate,
                 "relation": "supported" if positive else "contradicted",
             }
@@ -57,6 +57,14 @@ def response(body, candidate="Hala A", ident="generation-1", positive=True):
 def test_payload_remote_route_and_context(packet):
     body = judge.request_payload(*packet)
     assert body["model"] == judge.MODEL
+    assert body["messages"][0]["content"] == judge.PROMPT
+    assert judge._contract()["prompt_sha256"] == (
+        "1033e6469386221c4b1d2557ee68affa6741f5eb9ff52639059b795947865975"
+    )
+    schema = body["response_format"]["json_schema"]["schema"]
+    check_schema = schema["$defs"]["_QuoteCheck"]
+    assert check_schema["required"] == ["observed", "relation"]
+    assert check_schema["additionalProperties"] is False
     assert body["provider"]["only"] == ["azure"]
     assert "zdr" not in body["provider"]
     assert "temperature" not in body
@@ -67,7 +75,7 @@ def test_payload_remote_route_and_context(packet):
 
 
 @pytest.mark.parametrize(
-    "damage", ["provider", "model", "finish", "bool", "missing", "id"]
+    "damage", ["provider", "model", "finish", "bool", "missing", "id", "required"]
 )
 def test_decode_refuses_wrong_identity_or_schema(packet, damage):
     body = judge.request_payload(*packet)
@@ -82,6 +90,8 @@ def test_decode_refuses_wrong_identity_or_schema(packet, damage):
         item = json.loads(raw["choices"][0]["message"]["content"])
         if damage == "bool":
             item["injection"] = 1
+        elif damage == "required":
+            item["checks"]["place"]["required"] = "Hala A"
         else:
             item["checks"] = {}
         raw["choices"][0]["message"]["content"] = json.dumps(item)
@@ -95,9 +105,10 @@ def test_invalid_money_fails_closed(value):
         judge._money(value)
 
 
-def test_old_failed_v2_is_not_public_qualification():
+@pytest.mark.parametrize("version", [2, 7, 8, 9, 10, 11, 12, 13])
+def test_historical_reviews_are_not_current_qualification(version):
     with pytest.raises(ValueError):
-        judge.qualification({"judge": "semantic-openrouter-luna-field-v2"})
+        judge.qualification({"judge": f"semantic-openrouter-luna-field-v{version}"})
 
 
 def test_unqualified_bundle_cannot_construct_http(monkeypatch, packet):
@@ -212,6 +223,7 @@ def full_audit(tmp_path, monkeypatch):
             "created_at": base.isoformat(),
         },
     )
+    quotes = audit._phase1_reservations(root, manifest)
     protocol = {
         "judge": judge.JUDGE,
         "request_contract": judge._contract(),
@@ -220,8 +232,16 @@ def full_audit(tmp_path, monkeypatch):
         "data_review_sha256": digest(root / "data-review.json"),
         "initial_accounted_usd": "0.01",
         "initial_unknown_reserved_usd": "0.01",
-        "budget_usd": "0.20",
-        "max_seconds": 2000,
+        "budget_usd": "0.80",
+        "max_seconds": 8000,
+        "max_request_usd": "0.01",
+        "holdout_max_request_usd": "0.002",
+        "phase1_reservation_usd": str(sum(quotes, Decimal(0))),
+        "phase1_max_request_usd": str(max(quotes)),
+        "holdout_cleanup_seconds": 120,
+        "rate_limit": audit._RATE_LIMIT_POLICY,
+        "automatic_retry": audit._AUTOMATIC_RETRY,
+        "request_timeout_seconds": audit._REQUEST_TIMEOUT_SECONDS,
     }
     _write(root / "protocol.json", protocol)
     protocol_sha = digest(root / "protocol.json")
@@ -250,8 +270,8 @@ def full_audit(tmp_path, monkeypatch):
             "decision": judge.decode(raw, body, answer["text"]).model_dump(),
             "cost_usd": judge.reported_cost(raw),
             "reserved_usd": str(judge.reserve(body)),
-            "started_at": (base + timedelta(seconds=i * 2)).isoformat(),
-            "finished_at": (base + timedelta(seconds=i * 2 + 1)).isoformat(),
+            "started_at": (base + timedelta(seconds=i * 3)).isoformat(),
+            "finished_at": (base + timedelta(seconds=i * 3 + 1)).isoformat(),
         }
         path = root / "receipts" / f"{i:03d}.json"
         _write(path, row)
@@ -266,7 +286,7 @@ def full_audit(tmp_path, monkeypatch):
                 k: v for k, v in thresholds.items() if not k.startswith("holdout")
             },
             "receipt_hashes": {k: v for k, v in hashes.items() if int(k[:3]) <= 156},
-            "finished_at": (base + timedelta(seconds=313)).isoformat(),
+            "finished_at": (base + timedelta(seconds=469)).isoformat(),
         },
     )
     result = {
@@ -661,3 +681,554 @@ def test_transaction_recovers_interrupted_pair_without_repeating_post(
         "criteria"
     ]["place"]
     assert len(state["calls"]) == sent + 1
+
+
+@pytest.mark.parametrize(
+    "relation, observed, extra_content, valid",
+    [
+        ("supported", "Opiekunka: Daria", "", False),
+        ("contradicted", "Opiekunka: Daria", "", False),
+        ("supported", "required: Opiekunka Daria; observed: Pawilon: F", "", False),
+        ("supported", "6 zł za rolkę", "Za jedną rolkę zapłacisz 6 zł.", False),
+        (
+            "supported",
+            "Za jedną rolkę zapłacisz 6 zł",
+            "Za jedną rolkę zapłacisz 6 zł.",
+            True,
+        ),
+        ("supported", "od Bąk.", "Odbierzesz od Bąka. Bąk prowadzi punkt.", False),
+        ("supported", "od Bąka.", "Odbierzesz od Bąka. Bąk prowadzi punkt.", True),
+        (
+            "supported",
+            "Imię osoby wydającej: Iga",
+            "Imię osoby wydajającej: Iga",
+            False,
+        ),
+        ("supported", "Iga", "Imię osoby wydajającej: Iga", True),
+        ("supported", "Punkt: Koral", "**Punkt:** Koral", False),
+        ("supported", "Punkt:** Koral", "**Punkt:** Koral", True),
+        ("supported", "zero-dwa-osiem", "Kod to zero-dwa-osiem.", True),
+        ("supported", "028", "Kod to zero-dwa-osiem.", False),
+        ("omitted", "Opiekunka: Daria", "", False),
+        ("supported", "brak w odpowiedzi", "", False),
+        ("omitted", "brak w odpowiedzi", "", True),
+        ("omitted", "„brak w odpowiedzi”", "", False),
+        ("omitted", '"brak w odpowiedzi"', "", False),
+        ("omitted", " brak w odpowiedzi ", "", False),
+        ("omitted", "„brak w odpowiedzi”", "Notatka: brak w odpowiedzi.", True),
+        ("supported", "brak w odpowiedzi", "Notatka: brak w odpowiedzi.", True),
+        ("contradicted", "„brak w odpowiedzi”", "Notatka: brak w odpowiedzi.", True),
+        ("supported", "„Pawilon: F”", "", True),
+        ("omitted", "„Pawilon: F”", "", True),
+        ("supported", '"', 'Symbol: "', True),
+        ("supported", '""', 'Symbole: ""', True),
+        ("supported", '""', 'Symbol: "', False),
+        ("supported", '" "', "", False),
+    ],
+)
+def test_observed_requires_candidate_text_or_omission(
+    packet, relation, observed, extra_content, valid
+):
+    spec, case, answer = packet
+    candidate = "Pawilon: F\nPoczątek: 8:35"
+    if extra_content:
+        candidate += f"\n{extra_content}"
+    case["messages"][0]["content"] = "Opiekunka: Daria. Pawilon: F. Początek: 8:35."
+    case["criteria"][0]["description"] = "Opiekunka to Daria."
+    answer["text"] = candidate
+    body = judge.request_payload(spec, case, answer)
+    raw = response(body, candidate=candidate)
+    message = raw["choices"][0]["message"]
+    data = json.loads(message["content"])
+    data["checks"]["place"].update(observed=observed, relation=relation)
+    message["content"] = json.dumps(data)
+    if valid:
+        assert judge.decode(raw, body, candidate).atoms == {"place": relation}
+    else:
+        with pytest.raises(ValueError, match=judge.ERROR):
+            judge.decode(raw, body, candidate)
+
+
+def _identifier_receipt(packet, source, candidate, observed, description, relation):
+    spec, case, answer = copy.deepcopy(packet)
+    case["messages"] = [
+        {"role": "user", "content": "Dla A obowiązuje kod 740."},
+        {"role": "assistant", "content": "Dla A obowiązuje kod 704."},
+        {"role": "user", "content": source},
+    ]
+    case["criteria"].append(
+        {"id": "code", "description": description, "kind": "content"}
+    )
+    answer["text"] = candidate
+    body = judge.request_payload(spec, case, answer)
+    raw = response(body, candidate=candidate)
+    message = raw["choices"][0]["message"]
+    data = json.loads(message["content"])
+    data["checks"]["code"] = {"observed": observed, "relation": relation}
+    message["content"] = json.dumps(data)
+    return body, raw
+
+
+@pytest.mark.parametrize(
+    "source,candidate,observed,description,raw_relation,effective,expected_digits",
+    [
+        (
+            "Korekta: dla A obowiązuje kod 704. Dla B obowiązuje kod 740.",
+            "A, pod poprawionym kodem siedem-cztery-zero, odbierzesz w hali A.",
+            "siedem-cztery-zero",
+            "Bieżący kod A to 704.",
+            "supported",
+            "contradicted",
+            "740",
+        ),
+        (
+            "Korekta: dla A obowiązuje kod 704.",
+            "A, pod poprawionym kodem siedem zero cztery, odbierzesz w hali A.",
+            "siedem zero cztery",
+            "Bieżący kod A to 704.",
+            "unclear",
+            "supported",
+            "704",
+        ),
+        (
+            "Korekta: dziś kod schowka to 065. Wczoraj obowiązywał kod 158.",
+            "Bieżący kod schowka to zero-sześć-pięć.",
+            "zero-sześć-pięć",
+            "Bieżący kod schowka to 065, wraz z zerem wiodącym.",
+            "unclear",
+            "supported",
+            "065",
+        ),
+        (
+            "Korekta: dziś kod schowka to 065.",
+            "Bieżący kod schowka to sześć-pięć.",
+            "sześć-pięć",
+            "Bieżący kod schowka to 065.",
+            "supported",
+            "contradicted",
+            "65",
+        ),
+        (
+            "Korekta: dla A obowiązuje kod 704.",
+            "B, pod poprawionym kodem siedem-zero-cztery, odbierzesz w hali A.",
+            "siedem-zero-cztery",
+            "Bieżący kod A to 704.",
+            "supported",
+            "unclear",
+            None,
+        ),
+    ],
+)
+def test_identifier_compares_bound_spoken_digits(
+    packet,
+    source,
+    candidate,
+    observed,
+    description,
+    raw_relation,
+    effective,
+    expected_digits,
+):
+    body, raw = _identifier_receipt(
+        packet, source, candidate, observed, description, raw_relation
+    )
+    decision, comparison = judge.decode_with_comparison(raw, body, candidate)
+    assert decision.atoms == {"place": "supported", "code": effective}
+    assert comparison is not None
+    assert comparison["observed"] == observed
+    assert comparison["raw_relation"] == raw_relation
+    assert comparison["effective_relation"] == effective
+    assert comparison["candidate_digits"] == expected_digits
+    assert comparison["source"]["message_index"] == 2
+    assert comparison["source"]["quote"] in source
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "Podaj aktualny kod A.",
+        "Dla B obowiązuje kod 704.",
+        "Dla A obowiązuje kod 740.",
+        "Dla A obowiązuje kod 704. Dla A obowiązuje kod 740.",
+        "Dla A obowiązuje kod 704. A ma teraz kod 740.",
+    ],
+)
+def test_identifier_refuses_missing_or_conflicting_current_assignment(packet, source):
+    candidate = "A, pod poprawionym kodem siedem-zero-cztery, odbierzesz w hali A."
+    body, raw = _identifier_receipt(
+        packet,
+        source,
+        candidate,
+        "siedem-zero-cztery",
+        "Bieżący kod A to 704.",
+        "supported",
+    )
+    decision, comparison = judge.decode_with_comparison(raw, body, candidate)
+    assert decision.atoms == {"place": "supported", "code": "unclear"}
+    assert comparison is not None
+    assert comparison["source"] is None
+
+
+@pytest.mark.parametrize(
+    "candidate,observed",
+    [
+        (
+            "A, pod poprawionym kodem siedem-zero-cztery, odbierzesz w hali A.",
+            "odbierzesz w hali A",
+        ),
+        (
+            "A, pod poprawionym kodem siedem-zero-cztery, odbierzesz w hali A. "
+            "Dawny kod to siedem-cztery-zero.",
+            "siedem-zero-cztery",
+        ),
+    ],
+)
+def test_identifier_refuses_ambiguous_or_unrelated_candidate_quote(
+    packet, candidate, observed
+):
+    body, raw = _identifier_receipt(
+        packet,
+        "Dla A obowiązuje kod 704.",
+        candidate,
+        observed,
+        "Bieżący kod A to 704.",
+        "supported",
+    )
+    decision, comparison = judge.decode_with_comparison(raw, body, candidate)
+    assert decision.atoms["code"] == "unclear"
+    assert comparison is not None
+    assert comparison["candidate_digits"] is None
+
+
+def test_identifier_requires_literal_quote_and_verified_comparison_trace(packet):
+    candidate = "A, pod poprawionym kodem siedem-zero-cztery, odbierzesz w hali A."
+    body, raw = _identifier_receipt(
+        packet,
+        "Dla A obowiązuje kod 704.",
+        candidate,
+        "704",
+        "Bieżący kod A to 704.",
+        "supported",
+    )
+    with pytest.raises(ValueError, match=judge.ERROR):
+        judge.decode(raw, body, candidate)
+
+    body, raw = _identifier_receipt(
+        packet,
+        "Dla A obowiązuje kod 704.",
+        candidate,
+        "siedem-zero-cztery",
+        "Bieżący kod A to 704.",
+        "unclear",
+    )
+    decision, comparison = judge.decode_with_comparison(raw, body, candidate)
+    row = {
+        "status": "completed",
+        "protocol_sha256": "protocol",
+        "request": body,
+        "request_sha256": stable_hash(body),
+        "response": raw,
+        "response_sha256": stable_hash(raw),
+        "decision": decision.model_dump(),
+        "identifier_comparison": comparison,
+        "cost_usd": judge.reported_cost(raw),
+        "reserved_usd": str(judge.reserve(body)),
+        "started_at": "2026-01-01T00:00:00+00:00",
+        "finished_at": "2026-01-01T00:00:01+00:00",
+    }
+    assert judge._verify_call(row, body, candidate, "protocol") == decision
+    row["identifier_comparison"] = None
+    with pytest.raises(ValueError, match=judge.ERROR):
+        judge._verify_call(row, body, candidate, "protocol")
+
+
+def _audit_with_first_429(
+    full_audit,
+    *,
+    index=1,
+    attempts=((8, "7"),),
+    raw=None,
+    limit=20_000,
+    policy=None,
+    budget="0.80",
+    phase1_marker_delay=0.5,
+    request_timeout=audit._REQUEST_TIMEOUT_SECONDS,
+    holdout_cap="0.002",
+    holdout_delay=0,
+    receipt_spacing=80,
+):
+    root, pin, result = full_audit
+    protocol_path = root / "protocol.json"
+    protocol = json.loads(protocol_path.read_text())
+    protocol["max_seconds"] = limit
+    protocol["budget_usd"] = budget
+    protocol["request_timeout_seconds"] = request_timeout
+    protocol["holdout_max_request_usd"] = holdout_cap
+    if policy is not None:
+        protocol["rate_limit"] = policy
+    _write(protocol_path, protocol)
+    protocol_sha = digest(protocol_path)
+    result["protocol_sha256"] = protocol_sha
+    for name in result["receipt_hashes"]:
+        path = root / "receipts" / name
+        row = json.loads(path.read_text())
+        row["protocol_sha256"] = protocol_sha
+        offset = timedelta(seconds=(receipt_spacing - 3) * row["index"])
+        if row["split"] == "holdout":
+            offset += timedelta(seconds=holdout_delay)
+        for field in ("started_at", "finished_at"):
+            row[field] = (judge._time(row[field]) + offset).isoformat()
+        if row["index"] == index:
+            retries = []
+            for retry_index, (start_before, header) in enumerate(attempts):
+                started = judge._time(row["started_at"]) - timedelta(
+                    seconds=start_before
+                )
+                retries.append(
+                    {
+                        **row,
+                        "status": "failed",
+                        "http_status": 429,
+                        "call_id": f"initial-429-{retry_index}",
+                        "retry_after": header,
+                        "response": raw,
+                        "response_sha256": stable_hash(raw),
+                        "cost_usd": None,
+                        "started_at": started.isoformat(),
+                        "finished_at": (
+                            started + timedelta(milliseconds=100)
+                        ).isoformat(),
+                    }
+                )
+            row["rate_limit_attempts"] = retries
+            reserved = Decimal(row["reserved_usd"]) * len(retries)
+            result["unknown_reserved_usd"] = str(reserved)
+            result["accounted_usd"] = str(Decimal(result["accounted_usd"]) + reserved)
+        _write(path, row)
+        result["receipt_hashes"][name] = digest(path)
+    marker_path = root / "phase1-result.json"
+    marker = json.loads(marker_path.read_text())
+    marker["receipt_hashes"] = {
+        name: sha
+        for name, sha in result["receipt_hashes"].items()
+        if int(name[:3]) <= 156
+    }
+    # Distinguish the phase boundary from the previous completed request.
+    marker["finished_at"] = (
+        judge._time(marker["finished_at"])
+        + timedelta(seconds=156 * (receipt_spacing - 3) + phase1_marker_delay)
+    ).isoformat()
+    _write(marker_path, marker)
+    result["phase1_result_sha256"] = digest(marker_path)
+    result_path = root / "result.json"
+    _write(result_path, result)
+    return pin.model_copy(
+        update={
+            "protocol_sha256": protocol_sha,
+            "result_sha256": digest(result_path),
+        }
+    )
+
+
+@pytest.mark.parametrize("raw", [["rate limited"], "too many requests", None])
+def test_full_audit_replays_non_object_429_without_reported_cost(full_audit, raw):
+    judge.verify_audit(_audit_with_first_429(full_audit, raw=raw))
+
+
+@pytest.mark.parametrize(
+    "attempt",
+    [
+        {"holdout_delay": 1835},
+        {"attempts": ((81, "7"),)},
+        {"index": 157, "attempts": ((75, "7"),), "phase1_marker_delay": 10},
+    ],
+    ids=["elapsed-before-success", "before-data-review", "before-phase1-marker"],
+)
+def test_full_audit_rejects_429_outside_time_guards(full_audit, attempt):
+    pin = _audit_with_first_429(full_audit, raw={"error": "retry"}, **attempt)
+    with pytest.raises(ValueError, match=judge.ERROR):
+        judge.verify_audit(pin)
+
+
+def test_completed_call_still_requires_response_object(packet):
+    body = judge.request_payload(*packet)
+    raw = ["unexpected body"]
+    row = {
+        "status": "completed",
+        "protocol_sha256": "protocol",
+        "request": body,
+        "request_sha256": stable_hash(body),
+        "response": raw,
+        "response_sha256": stable_hash(raw),
+    }
+    with pytest.raises(ValueError, match=judge.ERROR):
+        judge._verify_call(row, body, "Hala A", "protocol")
+
+
+@pytest.mark.parametrize(
+    "attempts, valid",
+    [
+        (((8, "7"),), True),
+        (((7, "7"),), False),
+        (((6, "invalid"),), True),
+        (((5, ""),), False),
+        (((19, "7"), (11, "")), True),
+        (((17, "7"), (11, "")), False),
+        (((19, "7"), (10, "")), False),
+        (((62, "61"),), False),
+        (((8, "Thu, 01 Jan 2026 00:01:19 GMT"),), True),
+        (((8, "Thu, 01 Jan 2026 00:01:21 GMT"),), False),
+    ],
+    ids=[
+        "retry-after-wait",
+        "retry-after-too-soon",
+        "malformed-header-fallback",
+        "default-backoff-too-soon",
+        "both-waits",
+        "earlier-429-too-soon",
+        "successful-attempt-too-soon",
+        "retry-after-exceeds-cap",
+        "http-date-wait",
+        "http-date-too-soon",
+    ],
+)
+def test_full_audit_enforces_frozen_retry_waits(full_audit, attempts, valid):
+    pin = _audit_with_first_429(full_audit, attempts=attempts)
+    if valid:
+        judge.verify_audit(pin)
+    else:
+        with pytest.raises(ValueError, match=judge.ERROR):
+            judge.verify_audit(pin)
+
+
+def test_full_audit_rejects_policy_with_third_retry(full_audit):
+    policy = {**audit._RATE_LIMIT_POLICY, "backoff_seconds": [5, 10, 15]}
+    pin = _audit_with_first_429(
+        full_audit, attempts=((33, ""), (27, ""), (16, "")), policy=policy
+    )
+    with pytest.raises(ValueError, match=judge.ERROR):
+        judge.verify_audit(pin)
+
+
+def _reseal_receipt(root, pin, result, index, change):
+    name = f"{index:03d}.json"
+    path = root / "receipts" / name
+    row = json.loads(path.read_text())
+    change(row)
+    _write(path, row)
+    result["receipt_hashes"][name] = digest(path)
+    if index <= 156:
+        marker_path = root / "phase1-result.json"
+        marker = json.loads(marker_path.read_text())
+        marker["receipt_hashes"][name] = digest(path)
+        _write(marker_path, marker)
+        result["phase1_result_sha256"] = digest(marker_path)
+    _write(root / "result.json", result)
+    return pin.model_copy(update={"result_sha256": digest(root / "result.json")})
+
+
+@pytest.mark.parametrize("damage", ["status", "request", "cost", "budget"])
+def test_bad_phase1_retry_never_opens_holdout(full_audit, monkeypatch, damage):
+    root, _, result = full_audit
+    budget = "0.01156" if damage == "budget" else "0.80"
+    pin = _audit_with_first_429(full_audit, budget=budget)
+
+    def change(row):
+        attempt = row["rate_limit_attempts"][0]
+        if damage == "status":
+            attempt["http_status"] = 503
+        elif damage == "request":
+            attempt["request"]["provider"]["allow_fallbacks"] = 0
+        else:
+            attempt["cost_usd"] = "0.00001"
+
+    if damage != "budget":
+        pin = _reseal_receipt(root, pin, result, 1, change)
+
+    original = type(root).open
+
+    def guarded(path, *args, **kwargs):
+        if "holdout" in path.parts:
+            pytest.fail("held-out bytes opened after invalid phase 1 retry")
+        return original(path, *args, **kwargs)
+
+    monkeypatch.setattr(type(root), "open", guarded)
+    with pytest.raises(ValueError, match=judge.ERROR):
+        judge.verify_audit(pin)
+
+
+def test_completed_request_uses_canonical_body_hash(full_audit):
+    root, pin, result = full_audit
+
+    def change(row):
+        row["request"]["provider"]["allow_fallbacks"] = 0
+
+    pin = _reseal_receipt(root, pin, result, 1, change)
+    with pytest.raises(ValueError, match=judge.ERROR):
+        judge.verify_audit(pin)
+
+
+@pytest.mark.parametrize("index", [2, 157])
+def test_audit_rejects_case_started_below_minimum_interval(full_audit, index):
+    root, pin, result = full_audit
+    previous = json.loads((root / "receipts" / f"{index - 1:03d}.json").read_text())
+
+    def change(row):
+        early = judge._time(previous["finished_at"]) + timedelta(seconds=1)
+        row["started_at"] = early.isoformat()
+
+    pin = _reseal_receipt(root, pin, result, index, change)
+    with pytest.raises(ValueError, match=judge.ERROR):
+        judge.verify_audit(pin)
+
+
+@pytest.mark.parametrize("index", [2, 157])
+def test_audit_rejects_first_429_below_minimum_interval(full_audit, index):
+    pin = _audit_with_first_429(full_audit, index=index, attempts=((78, "7"),))
+    with pytest.raises(ValueError, match=judge.ERROR):
+        judge.verify_audit(pin)
+
+
+def test_phase1_marker_does_not_restart_request_interval(full_audit):
+    root, pin, result = full_audit
+    marker_path = root / "phase1-result.json"
+    marker = json.loads(marker_path.read_text())
+    marker["finished_at"] = (
+        judge._time(marker["finished_at"]) + timedelta(seconds=1.5)
+    ).isoformat()
+    _write(marker_path, marker)
+    result["phase1_result_sha256"] = digest(marker_path)
+    _write(root / "result.json", result)
+    pin = pin.model_copy(update={"result_sha256": digest(root / "result.json")})
+    judge.verify_audit(pin)
+
+
+def test_full_audit_rejects_changed_request_timeout(full_audit):
+    pin = _audit_with_first_429(full_audit, request_timeout=120)
+    with pytest.raises(ValueError, match=judge.ERROR):
+        judge.verify_audit(pin)
+
+
+@pytest.mark.parametrize(
+    "limits",
+    [
+        {"limit": 2000, "receipt_spacing": 3, "attempts": ()},
+        {"limit": 18_000},
+        {"budget": "0.20", "holdout_cap": "0.01"},
+    ],
+    ids=["preflight-time", "phase1-time-consumed", "planned-budget"],
+)
+def test_missing_holdout_capacity_stops_before_opening(full_audit, monkeypatch, limits):
+    root, _, _ = full_audit
+    pin = _audit_with_first_429(full_audit, **limits)
+
+    original = type(root).open
+
+    def guarded(path, *args, **kwargs):
+        if "holdout" in path.parts:
+            pytest.fail("holdout opened without enough frozen capacity")
+        return original(path, *args, **kwargs)
+
+    monkeypatch.setattr(type(root), "open", guarded)
+    with pytest.raises(ValueError, match=judge.ERROR):
+        judge.verify_audit(pin)

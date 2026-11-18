@@ -1,4 +1,4 @@
-"""Explicit operator CLI for preparing/running the separate Luna v3 audit."""
+"""Explicit operator CLI for preparing and running Luna audits and targeted regressions."""
 
 from __future__ import annotations
 
@@ -7,6 +7,9 @@ import json
 from pathlib import Path
 
 from venom_core.services.training_experiments import semantic_openrouter_audit as audit
+from venom_core.services.training_experiments import (
+    semantic_openrouter_targeted as targeted,
+)
 
 
 def main() -> None:
@@ -28,6 +31,19 @@ def main() -> None:
     prepare.add_argument("--max-request-usd", default="0.01")
     prepare.add_argument("--initial-accounted-usd", default="0")
     prepare.add_argument("--initial-unknown-reserved-usd", default="0")
+    regression = commands.add_parser("prepare-targeted")
+    regression.add_argument("--panel", type=Path, required=True)
+    regression.add_argument("--panel-sha256", required=True)
+    regression.add_argument("--output", type=Path, required=True)
+    regression.add_argument("--budget-usd", required=True)
+    regression.add_argument("--max-seconds", type=float, required=True)
+    regression.add_argument("--max-request-usd", default="0.01")
+    regression.add_argument("--initial-accounted-usd", default="0")
+    regression.add_argument("--initial-unknown-reserved-usd", default="0")
+    verify = commands.add_parser(
+        "verify-targeted", help="Check a published panel and its seal offline"
+    )
+    verify.add_argument("--audit-root", type=Path, required=True)
     execute = commands.add_parser("run")
     execute.add_argument("--audit-root", type=Path, required=True)
     execute.add_argument(
@@ -50,10 +66,28 @@ def main() -> None:
             initial_accounted_usd=args.initial_accounted_usd,
             initial_unknown_reserved_usd=args.initial_unknown_reserved_usd,
         )
+    elif args.action == "prepare-targeted":
+        result = targeted.prepare(
+            args.panel,
+            args.output,
+            panel_sha256=args.panel_sha256,
+            budget_usd=args.budget_usd,
+            max_seconds=args.max_seconds,
+            max_request_usd=args.max_request_usd,
+            initial_accounted_usd=args.initial_accounted_usd,
+            initial_unknown_reserved_usd=args.initial_unknown_reserved_usd,
+        )
+    elif args.action == "verify-targeted":
+        result = targeted.verify(args.audit_root)
     else:
         result = audit.run(args.audit_root, execute=args.execute)
     print(json.dumps(result, ensure_ascii=False, indent=2))
-    if result["status"] not in {"prepared_not_qualified", "passed"}:
+    if result["status"] not in {
+        "prepared_not_qualified",
+        "verified_targeted",
+        "passed",
+        "targeted_review_required",
+    }:
         raise SystemExit(3)
 
 

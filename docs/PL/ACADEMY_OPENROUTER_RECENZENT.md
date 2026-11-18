@@ -1,7 +1,7 @@
 # Recenzent GPT‑6 Luna w Academy
 
 Academy rozróżnia lokalnych recenzentów, zdalny protokół
-`semantic-openrouter-luna-field-v3` i ocenę `exact-v1`. Nieznany identyfikator
+`semantic-openrouter-luna-field-v14` i ocenę `exact-v1`. Nieznany identyfikator
 jest błędem. Zdalna recenzja nie przechodzi na porównanie dosłownego tekstu ani
 na lokalny model, gdy brakuje kwalifikacji lub połączenia z OpenRouter.
 
@@ -11,8 +11,7 @@ na lokalny model, gdy brakuje kwalifikacji lub połączenia z OpenRouter.
 2. Testy kodu sprawdzają transport, budżet, odtwarzanie dowodów i integrację.
 3. Rzeczywista kwalifikacja recenzenta wymaga kompletnego audytu modelu.
 
-Testy z atrapami HTTP nie nadają modelowi kwalifikacji. Historyczny wynik
-`semantic-openrouter-luna-field-v2` nie jest kwalifikacją wersji v3.
+Kwalifikacja v14 przypina schemat z relacją i dosłownym cytatem observed dla każdego pola. Kryterium pozostaje w materiale wejściowym i nie jest przepisywane do wyniku. Dekoder nadal sprawdza pochodzenie cytatów z odpowiedzi. Rubryka ocenia nazwę punktu i rolę osoby oddzielnie. Rubryka stosuje reguły v7 przy rozpoznaniu nieznanego statusu oraz przy ocenie dodatkowych twierdzeń. Rubryka wymaga zachowania odmiany nazwiska w cytacie, odrębnego dowodu reguły i oceny injection na podstawie reakcji kandydata. Słowny zapis identyfikatora porównuje się cyfra po cyfrze z zachowaniem kolejności i zer wiodących. Cytat zachowuje oryginalny zapis kandydata, w tym literówki i znaczniki formatowania wewnątrz cytatu. Przy cenie Luna może skopiować całe krótkie zdanie z kwotą i jego szykiem. Dekoder rozstrzyga zgodność kodu tylko wtedy, gdy tekst wiąże zapis słowny z tym samym obiektem, a ostatnia wiadomość użytkownika zawiera jednoznaczny aktualny kod zgodny z kryterium. Niejednoznaczność pozostawia status niepewny. Potwierdzenie żądania zapisuje surową ocenę Luny oraz wynik porównania, cyfry kandydata i dosłowny cytat aktualnego źródła. Wyniki v2–v13 pozostają dowodami historycznymi.
 
 ## Kontrole i znaczenie ocen
 
@@ -36,8 +35,10 @@ nadal daje negatywny werdykt i alarm krytyczny.
 
 Publiczna ścieżka przygotowania i ręcznego wykonania audytu znajduje się
 w `scripts/academy/qualify_openrouter_judge.py`. Pomoc polecenia nie wykonuje
-wywołań dostawcy. Przygotowanie przypina kontrolne dane, odbiór danych, prompt,
-schemat żądania, implementację, limit kosztu i deadline. Uruchomienie audytu
+wywołań dostawcy. Przygotowanie przypina dane kontrolne, odbiór danych, prompt, schemat żądania,
+implementację, limity i politykę tempa. Raportuje rezerwę fazy 1, holdoutu
+i obsługi HTTP 429 lub jawnej niedostępności dostawcy. Przed pierwszym POST runner sprawdza łączną rezerwę
+z uwzględnieniem wcześniejszych kosztów i aktywnego limitu projektu. Uruchomienie audytu
 jest osobną, jawną czynnością operatora.
 
 Opis argumentów jest dostępny bez połączenia z dostawcą:
@@ -58,8 +59,11 @@ Operator wybiera aktualny odebrany pakiet i aktualną recenzję danych.
 Poprzednie rewizje i zastąpione recenzje zachowuje się jako historyczne
 dowody; nie służą do przygotowania nowej kwalifikacji.
 
-Przed odczytem holdoutu runner sprawdza rezerwę na wszystkie 72 żądania
-oraz rezerwę czasu według zamrożonej polityki. Jeśli po odczycie rzeczywisty
+Przed pierwszym płatnym żądaniem runner sprawdza, czy limit obejmuje
+obowiązkowe odstępy fazy pierwszej i rezerwę czasu na holdout, w tym
+czas dopuszczonych ponowień.
+Przed odczytem holdoutu sprawdza rezerwę na wszystkie 72 żądania oraz
+pozostały czas według zamrożonej polityki. Jeśli po odczycie rzeczywisty
 pakiet przekroczy ustalony limit pojedynczego żądania, próba kończy się jako
 technicznie niekompletna. Nie wysyła tego żądania i zapisuje, że holdout
 został już otwarty. Wybrany limit nie jest pomiarem nieodczytanych danych.
@@ -81,7 +85,7 @@ sam wpis `passed` w pliku wyniku nie otwiera tej bariery.
 ## Kalibracja i użycie w kampanii
 
 Kalibracja przypina odrębny typ `QualificationRemote`. Zawiera identyfikator
-v3, model, dostawcę, adres endpointu, katalog audytu oraz hashe protokołu,
+v14, model, dostawcę, adres endpointu, katalog audytu oraz hashe protokołu,
 wyniku, manifestu kontroli, promptu, kontraktu żądania i implementacji.
 Nie wpisuje wersji Ollamy ani fikcyjnego hasha zdalnych wag.
 
@@ -114,3 +118,49 @@ Nie nadaje kwalifikacji ocenianemu adapterowi, całemu czatowi W/R, mowie ani
 narzędziom. Kampania nadal wymaga danych, właściwej referencji jakości,
 retencji i odrębnego odbioru finalisty. Wprowadzenie tego protokołu nie
 uruchamia treningu ani automatycznego testu dostawcy.
+
+Audyt operatora uruchamia się z głównego wątku procesu CLI w systemie Linux.
+Limit 75 sekund dotyczy całej wymiany HTTP, w tym odczytania odpowiedzi.
+Krótkie porcje danych nie odnawiają tego limitu. Przerwany POST zachowuje
+rezerwację jako koszt nieznany i zamyka próbę bez ponowienia żądania.
+
+Przy kwalifikacji Academy wykonuje jeden audyt Luny naraz na użytkownika
+systemowego, również przy kilku katalogach roboczych. Zachowuje dwie sekundy
+od zakończenia poprzedniego żądania, także pomiędzy audytami. Po HTTP 429
+ponawia ten sam pakiet najwyżej dwa razy. Gdy odpowiedź HTTP 200 zawiera
+502 z oznaczeniem provider_unavailable, może wykonać jedno ponowienie.
+Łącznie obowiązują najwyżej dwa ponowienia na pakiet i osiem na audyt. Honoruje
+Retry-After do 60 sekund. Czeka co najmniej 5 sekund przed pierwszym
+ponowieniem i 10 sekund przed drugim. Jeśli poprawny nagłówek podaje dłuższy
+czas, stosuje wartość z nagłówka. Retry-After powyżej 60 sekund zatrzymuje
+audyt i jest zapisany dla kolejnego startu.
+Połączenie o nieznanym wyniku, inny błąd HTTP i błąd oceny kończą próbę.
+Przed wysyłką runner zapisuje zapasowy okres wstrzymania w rejestrze
+współdzielonym. Błąd zapisu zatrzymuje próbę z wynikiem
+provider_cooldown_io_error. Jeżeli zapis po wysyłce zawiedzie, rozliczenie
+pozostaje w audycie, a rejestr zachowuje zapasowy okres wstrzymania.
+Odrzucone żądania zachowują koszty lub rezerwacje i nie liczą się jako decyzje.
+Próby zamrożone przed zmianą zachowują dotychczasowy protokół.
+
+Panel celowany przechodzi przez ten sam limit czasu, tempo i rejestr prób.
+Przed startem limit musi pomieścić wszystkie obowiązkowe odstępy panelu.
+Polecenie przygotowania sprawdza hash wejściowego panelu oraz zgodność
+wszystkich pakietów z aktualnym kontraktem recenzenta. Użyj podpolecenia
+prepare-targeted w scripts.academy.qualify_openrouter_judge, a następnie
+podpolecenia run z katalogiem audytu i flagą --execute.
+
+Wynik `published_durability_unconfirmed` oznacza, że katalog został
+opublikowany, a synchronizacja katalogu nadrzędnego się nie powiodła.
+Przed ponownym przygotowaniem sprawdź zapieczętowany panel offline. Wstaw
+ścieżkę zwróconą w polu `audit_root`.
+
+```bash
+python -m scripts.academy.qualify_openrouter_judge verify-targeted --audit-root '<audit_root>'
+```
+
+Wynik `verified_targeted` potwierdza spójność odczytanego katalogu.
+
+Wynik targeted_review_required wymaga potwierdzenia ręcznego. Ten tryb
+nie tworzy pinu kwalifikacji ani nie otwiera holdoutu. Odrzucona decyzja
+lub różnica względem klucza nie przerywa zbierania kolejnych niezależnych
+ocen. Ograniczenia transportu i budżetu nadal mogą zakończyć próbę wcześniej.

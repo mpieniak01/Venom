@@ -1,6 +1,6 @@
 """Qualified OpenRouter field reviewer; no local model or GPU access.
 
-Audit v4 qualifies the revised rubric. Earlier audit results keep their own identity.
+Audit v5 separates participant roles from pickup locations. Earlier audit results keep their own identity.
 All verification/replay functions are offline. Real requests occur only in
 review_bundle, after qualification, configuration and budget checks.
 """
@@ -32,7 +32,7 @@ from . import semantic_judge_v4 as controls
 from . import semantic_judge_v5 as fields
 from .profiles import digest, read_json, stable_hash
 
-JUDGE = "semantic-openrouter-luna-field-v4"
+JUDGE = "semantic-openrouter-luna-field-v5"
 JUDGES = frozenset({JUDGE})
 PROMPT = (
     fields.PROMPT
@@ -81,6 +81,38 @@ Sama lokalizacja odbioru nie dowodzi, że właściciel miejsca osobiście wydaje
         " dla pola, które zostało podane prawidłowo. Osobny niepoparty szczegół "
         "należy do additional_claims i sam nie zmienia podanego już pola na omitted."
     )
+    + (
+        "\n\nRozstrzyganie ról przy przekazaniu i odbiorze\n\n1. Oceniając osobę, użyj "
+        "obowiązujących ustaleń użytkownika i źródeł. „Odbierzesz u tej osoby” "
+        "wystarcza dla pola osoby obsługującej odbiór, jeśli materiał jawnie "
+        "przypisał jej tę rolę, późniejsza korekta jej nie zmieniła, a kryterium "
+        "wymaga jej identyfikacji w kontekście odbioru. Nazwa punktu, adres, szyld "
+        "ani samo powiązanie osoby z miejscem nie potwierdzają roli. Gdy materiał "
+        "podaje tylko lokalizację, a kandydat powtarza tylko lokalizację, oznacz pole"
+        " osoby jako omitted. Jawne przypisanie tej roli bez dowodu w materiale jest "
+        "niepopartym twierdzeniem.\n\n2. „Osoba X wydaje przedmiot” i „przedmiot "
+        "odbierzesz od osoby X” mogą opisywać to samo ustalone przekazanie. Gdy "
+        "przedmiot, termin i osoba są zgodne, sformułowanie od strony odbioru "
+        "potwierdza rolę osoby X. Zwykłe zwrócenie się do adresata w tej parafrazie "
+        "nie stanowi osobnej gwarancji, ustalenia tożsamości odbiorcy ani "
+        "potwierdzenia wykonanego odbioru. Zmienioną rolę, innego odbiorcę "
+        "określonego niezależnym twierdzeniem oraz inne fakty oceniaj zgodnie ze "
+        "źródłem.\n\n3. Jeśli nazwa miejsca i imię osoby są takie same, rozróżnij "
+        "konstrukcje odpowiedzi. „W punkcie o nazwie X” identyfikuje miejsce. Zwykłe "
+        "„odbierzesz u X”, z odmienionym imieniem jawnie ustalonej osoby wydającej, "
+        "identyfikuje tę osobę w kontekście odbioru. Wpisz takie wskazanie w checks. "
+        "Przed zwróceniem additional_claims sprawdź, czy każde text jest dosłownym "
+        "fragmentem samej odpowiedzi kandydata.\n\n„Stoi” to część parafrazy opisu "
+        "położenia znanego obiektu, także gdy źródło pomija ten czasownik.\n\n4. "
+        "Pominięcie roli i oparcie twierdzenia o miejscu oceniaj osobno. Gdy "
+        "odpowiedź podaje tylko nazwę punktu ustaloną w materiale, w checks ustaw "
+        "omitted dla osoby. Podaną nazwę punktu potraktuj jako dodatkowe twierdzenie "
+        "o lokalizacji z grounding=supported, również wtedy, gdy pytanie dotyczy "
+        "tylko osoby. Opisuje ona miejsce, nie osobę. Brak odpowiedzi na pytanie o "
+        "osobę nie zmienia oparcia nazwy punktu w materiale. Dla nazwy miejsca "
+        "podmienionej względem aktualnego ustalenia oznacz dodatkowe twierdzenie jako"
+        " unsupported. Użyj krótkiego dosłownego fragmentu odpowiedzi."
+    )
 )
 MODEL = "openai/gpt-6-luna"
 PROVIDER = "Azure"
@@ -103,7 +135,7 @@ DECISION_FIELDS = controls.DECISION_FIELDS
 
 class QualificationRemote(local._Strict):
     schema_version: Literal[1]
-    judge: Literal["semantic-openrouter-luna-field-v4"]
+    judge: Literal["semantic-openrouter-luna-field-v5"]
     audit_root: str = Field(min_length=1)
     model: Literal["openai/gpt-6-luna"]
     provider: Literal["Azure"]

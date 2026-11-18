@@ -59,7 +59,7 @@ def test_payload_remote_route_and_context(packet):
     assert body["model"] == judge.MODEL
     assert body["messages"][0]["content"] == judge.PROMPT
     assert judge._contract()["prompt_sha256"] == (
-        "45bfae276869590eb57890b6307384f4ffe44af009eded19ef6fad011ec19b45"
+        "476b1f95b8b6f1f1050d7cdab4c687988836cfc9205c8958da032dd820864278"
     )
     assert body["provider"]["only"] == ["azure"]
     assert "zdr" not in body["provider"]

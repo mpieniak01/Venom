@@ -59,7 +59,7 @@ def test_payload_remote_route_and_context(packet):
     assert body["model"] == judge.MODEL
     assert body["messages"][0]["content"] == judge.PROMPT
     assert judge._contract()["prompt_sha256"] == (
-        "4a67e40b399fe884edd80627f1bffeb640989119c86da9df07748a5b03e54229"
+        "1033e6469386221c4b1d2557ee68affa6741f5eb9ff52639059b795947865975"
     )
     schema = body["response_format"]["json_schema"]["schema"]
     check_schema = schema["$defs"]["_QuoteCheck"]
@@ -105,7 +105,7 @@ def test_invalid_money_fails_closed(value):
         judge._money(value)
 
 
-@pytest.mark.parametrize("version", [2, 7, 8, 9, 10, 11, 12])
+@pytest.mark.parametrize("version", [2, 7, 8, 9, 10, 11, 12, 13])
 def test_historical_reviews_are_not_current_qualification(version):
     with pytest.raises(ValueError):
         judge.qualification({"judge": f"semantic-openrouter-luna-field-v{version}"})
@@ -698,6 +698,15 @@ def test_transaction_recovers_interrupted_pair_without_repeating_post(
         ),
         ("supported", "od Bąk.", "Odbierzesz od Bąka. Bąk prowadzi punkt.", False),
         ("supported", "od Bąka.", "Odbierzesz od Bąka. Bąk prowadzi punkt.", True),
+        (
+            "supported",
+            "Imię osoby wydającej: Iga",
+            "Imię osoby wydajającej: Iga",
+            False,
+        ),
+        ("supported", "Iga", "Imię osoby wydajającej: Iga", True),
+        ("supported", "Punkt: Koral", "**Punkt:** Koral", False),
+        ("supported", "Punkt:** Koral", "**Punkt:** Koral", True),
         ("supported", "zero-dwa-osiem", "Kod to zero-dwa-osiem.", True),
         ("supported", "028", "Kod to zero-dwa-osiem.", False),
         ("omitted", "Opiekunka: Daria", "", False),

@@ -38,10 +38,21 @@ def _material(candidate: str = TABLE, user: str = USER) -> dict:
         ("bruno", "| 8 | 11", "Bruno [paczki]", "11", 1),
     ],
 )
+@pytest.mark.parametrize(
+    "clip", ["as_recorded", "header_left", "header_right", "all_edges"]
+)
 def test_table_recovers_recorded_discontinuous_quote(
-    criterion: str, row: str, header: str, cell: str, column: int
+    criterion: str, row: str, header: str, cell: str, column: int, clip: str
 ) -> None:
-    observed = f"{SHORT_HEADER}\n{ALIGNMENT}\n{row}"
+    header_quote, alignment = SHORT_HEADER, ALIGNMENT
+    if clip in {"header_left", "all_edges"}:
+        header_quote = header_quote.removeprefix("|").lstrip()
+    if clip in {"header_right", "all_edges"}:
+        header_quote = header_quote.removesuffix("|").rstrip()
+    if clip == "all_edges":
+        alignment = alignment.strip("|")
+        row = row.strip("|").strip()
+    observed = f"{header_quote}\n{alignment}\n{row}"
     assert not observed_from_answer(observed, "supported", TABLE)
     trace = table_evidence.compare(_material(), TABLE, criterion, observed, "supported")
     assert trace is not None
@@ -101,6 +112,9 @@ def test_table_uses_names_and_units_rather_than_fixed_columns(
         "| Bruno [paczki] | Mila [paczki] |\n|---:|---:|\n| 11 | 8",
         "| Bruno [paczki] |\n|---:|\n| 11",
         "| Mila [paczki] | Mila [paczki] |\n|---:|---:|\n| 8 | 8",
+        "Mila [paczki] | Bruno [paczki] |\n|---:|---:|---|\n| 99 | 11",
+        "Bruno [paczki] | Mila [paczki]\n---:|---:\n11 | 8",
+        "Mila [sztuki] | Bruno [paczki] |\n|---:|---:|---|\n| 8 | 11",
         "Mila odbiera 8 paczek.",
     ],
 )
@@ -116,6 +130,8 @@ def test_table_never_recovers_fabricated_or_misattributed_proof(observed: str) -
     "candidate",
     [
         TABLE.replace("Bruno [paczki]", "MILA [paczki]"),
+        TABLE.removeprefix("|"),
+        TABLE.removesuffix("|"),
         TABLE.replace("Bruno [paczki]", "Mila [sztuki]"),
         TABLE.replace("Bruno [paczki]", "Mila"),
         TABLE.replace("| 8 | 11 | środa |", "| 8 | środa |"),

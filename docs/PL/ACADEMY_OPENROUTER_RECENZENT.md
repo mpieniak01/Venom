@@ -63,7 +63,10 @@ dodatkowe twierdzenia są nadal oceniane osobno.
 Kod v15 sprawdza jednoznaczne przypisanie w tabeli, bieżącą rolę osoby,
 odczyt znaku i jednostki oraz jawne odrzucenie aktualnej wartości. Stosuje
 reguły tylko wtedy, gdy forma odpowiedzi i aktualne źródło pozwalają powiązać
-pole z konkretnym dosłownym cytatem. Niejednoznaczny materiał podlega
+pole z konkretnym dosłownym cytatem. Skrót cytatu tabeli może pomijać
+separatory na brzegach oraz nieużyte kolumny. Każda przytoczona komórka
+musi odpowiadać tej samej kolumnie rzeczywistej tabeli. Dowód zapisuje
+cały dosłowny fragment odpowiedzi. Niejednoznaczny materiał podlega
 dotychczasowej ocenie i walidacji cytatów. Zapis próby zawiera surową decyzję
 modelu, użyty dowód i wynik weryfikacji. Weryfikator odtwarza ten sam wynik
 z zapieczętowanego żądania i odpowiedzi.

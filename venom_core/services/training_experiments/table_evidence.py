@@ -76,17 +76,14 @@ class _Table:
     values: tuple[str, ...]
 
 
-def _cells(line: str, *, open_end: bool = False) -> tuple[str, ...]:
+def _cells(line: str, *, projected: bool = False) -> tuple[str, ...]:
     line = line.strip()
-    if not line.startswith("|") or "\\" in line:
+    if "\\" in line or (
+        not projected and not (line.startswith("|") and line.endswith("|"))
+    ):
         return ()
-    if line.endswith("|"):
-        line = line[1:-1]
-    elif open_end:
-        line = line[1:]
-    else:
-        return ()
-    values = tuple(cell.strip() for cell in line.split("|"))
+    interior = line.removeprefix("|").removesuffix("|")
+    values = tuple(cell.strip() for cell in interior.split("|"))
     return values if all(values) else ()
 
 
@@ -171,9 +168,8 @@ def _table_projection(observed: str, table: _Table, column: int) -> bool:
     lines = observed.strip().splitlines()
     if len(lines) != 3:
         return False
-    headers = _cells(lines[0])
-    alignment = _cells(lines[1])
-    values = _cells(lines[2], open_end=True)
+    # A quote can start or end inside a border; every quoted cell still has to match.
+    headers, alignment, values = (_cells(line, projected=True) for line in lines)
     if not headers or not values or not all(cell in table.headers for cell in headers):
         return False
     selected = tuple(table.headers.index(cell) for cell in headers)

@@ -290,6 +290,42 @@ def test_non_object_response_fails_closed(ready):
     assert audit.judge._money(result["unknown_reserved_usd"]) > 0
 
 
+@pytest.mark.parametrize(
+    "http_status, value, status",
+    [
+        (200, "NaN", "transport_incomplete"),
+        (200, "Infinity", "transport_incomplete"),
+        (429, "-Infinity", "provider_rate_limited"),
+        (429, "1e999", "provider_rate_limited"),
+    ],
+)
+def test_nonfinite_response_keeps_receipt_and_reservation(
+    ready, http_status, value, status
+):
+    root, _, client = ready
+    payload = '{"diagnostic":' + value + "}"
+
+    class NonfiniteResponse(client):
+        def post(self, url, **_kwargs):
+            return httpx.Response(
+                http_status,
+                headers={"Retry-After": "300"},
+                content=payload,
+                request=httpx.Request("POST", url),
+            )
+
+    result = audit.run(root, execute=True, client_factory=NonfiniteResponse)
+
+    receipt = json.loads((root / "receipts/001.json").read_text())
+    ledger = json.loads((root / "ledger.json").read_text())
+    assert result["status"] == status
+    assert result["rows"] == 1
+    assert receipt["response"] == {"non_json_body": payload}
+    assert receipt["response_sha256"] == stable_hash(receipt["response"])
+    assert Decimal(result["unknown_reserved_usd"]) == Decimal(receipt["reserved_usd"])
+    assert ledger["pending_call_id"] is None
+
+
 def test_cli_prepare_is_offline_and_binds_explicit_hashes(ready, tmp_path, monkeypatch):
     from scripts.academy import qualify_openrouter_judge as cli
 
@@ -354,7 +390,8 @@ def test_preflight_rejects_budget_without_full_holdout_reservation(ready, monkey
     assert not (root / "qualification.json").exists()
 
 
-def test_preflight_refuses_deadline_shorter_than_holdout(ready, tmp_path, monkeypatch):
+@pytest.mark.parametrize("seconds", [5600, 5674])
+def test_preflight_requires_time_for_both_phases(ready, tmp_path, monkeypatch, seconds):
     _, source, client = ready
     controls = source / "controls"
     review = source / "data-review.json"
@@ -366,7 +403,7 @@ def test_preflight_refuses_deadline_shorter_than_holdout(ready, tmp_path, monkey
         controls_sha256=digest(controls / "frozen-manifest.json"),
         data_review_sha256=digest(review),
         budget_usd="0.80",
-        max_seconds=5600,
+        max_seconds=seconds,
         holdout_max_request_usd="0.002",
     )
     monkeypatch.setattr(
@@ -514,10 +551,23 @@ def test_existing_request_timer_blocks_start_without_post(ready, monkeypatch):
 def test_429_waits_and_replays_without_counting_throttle_as_grade(
     ready, monkeypatch, throttle_at
 ):
+    from datetime import timedelta
+
     root, _, client = ready
     delays = []
-    monkeypatch.setattr(audit, "sleep", delays.append)
-    monkeypatch.setattr(audit.time, "monotonic", lambda: 0)
+    origin = judge._time(audit._utc())
+    elapsed = 0.0
+
+    def sleep(seconds):
+        nonlocal elapsed
+        elapsed += seconds
+        delays.append(seconds)
+
+    monkeypatch.setattr(audit, "sleep", sleep)
+    monkeypatch.setattr(audit.time, "monotonic", lambda: elapsed)
+    monkeypatch.setattr(
+        audit, "_utc", lambda: (origin + timedelta(seconds=elapsed)).isoformat()
+    )
 
     class Throttled(client):
         def post(self, url, *, json, **kwargs):
@@ -599,6 +649,19 @@ def test_provider_cooldown_survives_attempt_boundary(ready, monkeypatch, tmp_pat
     assert result["provider_cooldown_seconds"] == 400
     assert client.factory_calls == 0
     assert not (root / "started.json").exists()
+
+
+def test_next_post_times_cooldown_after_read(monkeypatch, tmp_path):
+    clock = {"now": 0}
+
+    def cooldown(_path):
+        clock["now"] += 2
+        return 8
+
+    monkeypatch.setattr(audit, "_provider_cooldown", cooldown)
+    monkeypatch.setattr(audit.time, "monotonic", lambda: clock["now"])
+
+    assert audit._provider_next_post_at(tmp_path / "provider.json") == 10
 
 
 @pytest.mark.parametrize("mode", ["match", "decoder_invalid", "missing_quote"])
@@ -871,3 +934,82 @@ def test_targeted_freeze_never_replaces_concurrent_empty_output(
     assert root.is_dir()
     assert not list(root.iterdir())
     assert not list(tmp_path.glob(".targeted-*"))
+
+
+def test_targeted_cli_verifies_publication_after_parent_sync_error(
+    targeted_panel, tmp_path, monkeypatch, capsys
+):
+    import errno
+    import os
+    import sys
+
+    from scripts.academy import qualify_openrouter_judge as cli
+
+    panel = tmp_path / "source.json"
+    write(panel, targeted_panel)
+    root = tmp_path / "targeted run"
+    real_sync = os.fsync
+
+    def fail_after_publication(descriptor):
+        if root.exists():
+            raise OSError(errno.EIO, "injected parent fsync failure")
+        real_sync(descriptor)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(os, "fsync", fail_after_publication)
+        patch.setattr(
+            sys,
+            "argv",
+            [
+                "qualify_openrouter_judge",
+                "prepare-targeted",
+                "--panel",
+                str(panel),
+                "--panel-sha256",
+                digest(panel),
+                "--output",
+                str(root),
+                "--budget-usd",
+                "0.20",
+                "--max-seconds",
+                "1000",
+            ],
+        )
+        with pytest.raises(SystemExit) as exc:
+            cli.main()
+    assert exc.value.code == 3
+    prepared = json.loads(capsys.readouterr().out)
+    assert prepared["status"] == "published_durability_unconfirmed"
+    assert prepared["audit_root"] == str(root)
+    assert prepared["sync_errno"] == errno.EIO
+    assert not list(tmp_path.glob(".targeted-*"))
+
+    def unexpected_provider_access():
+        pytest.fail("offline seal verification accessed a provider")
+
+    monkeypatch.setattr(audit.runtime, "credential", unexpected_provider_access)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "qualify_openrouter_judge",
+            prepared["verification_action"],
+            "--audit-root",
+            prepared["audit_root"],
+        ],
+    )
+    cli.main()
+    assert json.loads(capsys.readouterr().out) == {
+        "status": "verified_targeted",
+        "audit_root": str(root),
+        "protocol_sha256": prepared["protocol_sha256"],
+    }
+    assert sorted(path.name for path in root.iterdir()) == [
+        "frozen.json",
+        "panel.json",
+        "protocol.json",
+    ]
+    frozen_panel = root / "panel.json"
+    frozen_panel.write_bytes(frozen_panel.read_bytes() + b"\n")
+    with pytest.raises(ValueError, match="remote_audit_file_changed"):
+        cli.main()

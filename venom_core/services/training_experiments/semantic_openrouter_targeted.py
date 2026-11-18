@@ -100,6 +100,10 @@ def _write_panel(directory: Path, raw: bytes) -> None:
             os.fsync(stream.fileno())
 
 
+class _PublicationSyncError(OSError):
+    """The complete directory was renamed, but its parent could not be synced."""
+
+
 def _publish(staged: Path, output: Path) -> None:
     # Linux renameat2 provides the no-replacement guarantee even for empty targets.
     rename = ctypes.CDLL(None, use_errno=True).renameat2
@@ -123,7 +127,10 @@ def _publish(staged: Path, output: Path) -> None:
             if error == errno.EEXIST:
                 raise ValueError(_OUTPUT_EXISTS)
             raise OSError(error, os.strerror(error), output)
-        os.fsync(directory_fd)
+        try:
+            os.fsync(directory_fd)
+        except OSError as error:
+            raise _PublicationSyncError(error.errno, error.strerror, output) from error
 
 
 def prepare(
@@ -202,12 +209,33 @@ def prepare(
         atomic_json(
             staged / "frozen.json", {"protocol_sha256": sha, "created_at": audit._utc()}
         )
-        _publish(staged, output)
+        result = {
+            "status": "prepared_not_qualified",
+            "audit_root": str(output),
+            "protocol_sha256": sha,
+            **protocol,
+        }
+        try:
+            _publish(staged, output)
+        except _PublicationSyncError as error:
+            result.update(
+                status="published_durability_unconfirmed",
+                sync_errno=error.errno,
+                verification_action="verify-targeted",
+            )
+    return result
+
+
+def verify(output: Path) -> dict:
+    """Verify the published seal and panel without accessing a provider."""
+    root = operator_path(output)
+    protocol, sha = audit._sealed_protocol(root)
+    audit._require(protocol.get("kind") == "targeted_regression", _INVALID)
+    frozen_panel(root, protocol)
     return {
-        "status": "prepared_not_qualified",
-        "audit_root": str(output),
+        "status": "verified_targeted",
+        "audit_root": str(root),
         "protocol_sha256": sha,
-        **protocol,
     }
 
 
@@ -259,9 +287,7 @@ def execute(state: audit._AuditState) -> dict:
     if planned > state.budget or maximum > state.per_request:
         state.status = "budget_exhausted"
         return audit._audit_result(state)
-    state.next_post_at = audit.time.monotonic() + audit._provider_cooldown(
-        state.rate_path
-    )
+    state.next_post_at = audit._provider_next_post_at(state.rate_path)
     mismatches = []
     completed = 0
     cases = state.manifest["cases"]

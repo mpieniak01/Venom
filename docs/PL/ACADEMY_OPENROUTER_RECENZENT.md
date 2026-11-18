@@ -60,9 +60,10 @@ Operator wybiera aktualny odebrany pakiet i aktualną recenzję danych.
 Poprzednie rewizje i zastąpione recenzje zachowuje się jako historyczne
 dowody; nie służą do przygotowania nowej kwalifikacji.
 
-Przed pierwszym płatnym żądaniem runner sprawdza minimalny zapas czasu na
-holdout. Przed odczytem holdoutu sprawdza rezerwę na wszystkie 72 żądania
-oraz pozostały czas według zamrożonej polityki. Jeśli po odczycie rzeczywisty
+Przed pierwszym płatnym żądaniem runner sprawdza, czy limit obejmuje
+obowiązkowe odstępy fazy pierwszej i minimalną rezerwę czasu na holdout.
+Przed odczytem holdoutu sprawdza rezerwę na wszystkie 72 żądania oraz
+pozostały czas według zamrożonej polityki. Jeśli po odczycie rzeczywisty
 pakiet przekroczy ustalony limit pojedynczego żądania, próba kończy się jako
 technicznie niekompletna. Nie wysyła tego żądania i zapisuje, że holdout
 został już otwarty. Wybrany limit nie jest pomiarem nieodczytanych danych.
@@ -140,6 +141,17 @@ Polecenie przygotowania sprawdza hash wejściowego panelu oraz zgodność
 wszystkich pakietów z aktualnym kontraktem recenzenta. Użyj podpolecenia
 prepare-targeted w scripts.academy.qualify_openrouter_judge, a następnie
 podpolecenia run z katalogiem audytu i flagą --execute.
+
+Wynik `published_durability_unconfirmed` oznacza, że katalog został
+opublikowany, a synchronizacja katalogu nadrzędnego się nie powiodła.
+Przed ponownym przygotowaniem sprawdź zapieczętowany panel offline. Wstaw
+ścieżkę zwróconą w polu `audit_root`.
+
+```bash
+python -m scripts.academy.qualify_openrouter_judge verify-targeted --audit-root '<audit_root>'
+```
+
+Wynik `verified_targeted` potwierdza spójność odczytanego katalogu.
 
 Wynik targeted_review_required wymaga potwierdzenia ręcznego. Ten tryb
 nie tworzy pinu kwalifikacji ani nie otwiera holdoutu. Odrzucona decyzja

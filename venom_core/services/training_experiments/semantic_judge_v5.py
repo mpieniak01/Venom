@@ -141,10 +141,12 @@ _OBSERVED_QUOTES = frozenset({("„", "”"), ("«", "»"), ('"', '"')})
 
 def _observed_from_answer(check: Check, candidate: str) -> bool:
     observed = check.observed.strip()
-    if (observed[0], observed[-1]) in _OBSERVED_QUOTES:
-        observed = observed[1:-1].strip()
     if observed and observed in candidate:
         return True
+    if len(observed) >= 2 and (observed[0], observed[-1]) in _OBSERVED_QUOTES:
+        observed = observed[1:-1].strip()
+        if observed and observed in candidate:
+            return True
     return observed == _OBSERVED_MISSING and check.relation == "omitted"
 
 

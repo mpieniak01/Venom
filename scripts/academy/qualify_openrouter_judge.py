@@ -40,6 +40,10 @@ def main() -> None:
     regression.add_argument("--max-request-usd", default="0.01")
     regression.add_argument("--initial-accounted-usd", default="0")
     regression.add_argument("--initial-unknown-reserved-usd", default="0")
+    verify = commands.add_parser(
+        "verify-targeted", help="Check a published panel and its seal offline"
+    )
+    verify.add_argument("--audit-root", type=Path, required=True)
     execute = commands.add_parser("run")
     execute.add_argument("--audit-root", type=Path, required=True)
     execute.add_argument(
@@ -73,11 +77,14 @@ def main() -> None:
             initial_accounted_usd=args.initial_accounted_usd,
             initial_unknown_reserved_usd=args.initial_unknown_reserved_usd,
         )
+    elif args.action == "verify-targeted":
+        result = targeted.verify(args.audit_root)
     else:
         result = audit.run(args.audit_root, execute=args.execute)
     print(json.dumps(result, ensure_ascii=False, indent=2))
     if result["status"] not in {
         "prepared_not_qualified",
+        "verified_targeted",
         "passed",
         "targeted_review_required",
     }:

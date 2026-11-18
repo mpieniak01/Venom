@@ -10,6 +10,7 @@ from decimal import Decimal
 import pytest
 
 from venom_core.services.training_experiments import openrouter_semantic_judge as judge
+from venom_core.services.training_experiments import semantic_openrouter_audit as audit
 from venom_core.services.training_experiments.profiles import digest, stable_hash
 
 
@@ -226,6 +227,8 @@ def full_audit(tmp_path, monkeypatch):
         "initial_unknown_reserved_usd": "0.01",
         "budget_usd": "0.20",
         "max_seconds": 2000,
+        "rate_limit": audit._RATE_LIMIT_POLICY,
+        "automatic_retry": "http_429_only",
     }
     _write(root / "protocol.json", protocol)
     protocol_sha = digest(root / "protocol.json")
@@ -668,26 +671,30 @@ def test_transaction_recovers_interrupted_pair_without_repeating_post(
 
 
 @pytest.mark.parametrize(
-    "relation, observed, marker_in_candidate, valid",
+    "relation, observed, extra_content, valid",
     [
-        ("supported", "Opiekunka: Daria", False, False),
-        ("contradicted", "Opiekunka: Daria", False, False),
-        ("omitted", "Opiekunka: Daria", False, False),
-        ("supported", "brak w odpowiedzi", False, False),
-        ("omitted", "brak w odpowiedzi", False, True),
-        ("supported", "brak w odpowiedzi", True, True),
-        ("contradicted", "„brak w odpowiedzi”", True, True),
-        ("supported", "„Pawilon: F”", False, True),
-        ("omitted", "„Pawilon: F”", False, True),
+        ("supported", "Opiekunka: Daria", "", False),
+        ("contradicted", "Opiekunka: Daria", "", False),
+        ("omitted", "Opiekunka: Daria", "", False),
+        ("supported", "brak w odpowiedzi", "", False),
+        ("omitted", "brak w odpowiedzi", "", True),
+        ("supported", "brak w odpowiedzi", "Notatka: brak w odpowiedzi.", True),
+        ("contradicted", "„brak w odpowiedzi”", "Notatka: brak w odpowiedzi.", True),
+        ("supported", "„Pawilon: F”", "", True),
+        ("omitted", "„Pawilon: F”", "", True),
+        ("supported", '"', 'Symbol: "', True),
+        ("supported", '""', 'Symbole: ""', True),
+        ("supported", '""', 'Symbol: "', False),
+        ("supported", '" "', "", False),
     ],
 )
 def test_observed_requires_candidate_text_or_omission(
-    packet, relation, observed, marker_in_candidate, valid
+    packet, relation, observed, extra_content, valid
 ):
     spec, case, answer = packet
     candidate = "Pawilon: F\nPoczątek: 8:35"
-    if marker_in_candidate:
-        candidate += "\nNotatka: brak w odpowiedzi."
+    if extra_content:
+        candidate += f"\n{extra_content}"
     case["messages"][0]["content"] = "Opiekunka: Daria. Pawilon: F. Początek: 8:35."
     case["criteria"][0]["description"] = "Opiekunka to Daria."
     answer["text"] = candidate
@@ -704,12 +711,15 @@ def test_observed_requires_candidate_text_or_omission(
             judge.decode(raw, body, candidate)
 
 
-def _audit_with_first_429(full_audit, *, index=1, start_before=1, raw=None, limit=2000):
+def _audit_with_first_429(
+    full_audit, *, index=1, attempts=((8, "7"),), raw=None, limit=20_000, policy=None
+):
     root, pin, result = full_audit
     protocol_path = root / "protocol.json"
     protocol = json.loads(protocol_path.read_text())
     protocol["max_seconds"] = limit
-    protocol["rate_limit"] = {"backoff_seconds": [1], "max_retries_per_audit": 1}
+    if policy is not None:
+        protocol["rate_limit"] = policy
     _write(protocol_path, protocol)
     protocol_sha = digest(protocol_path)
     result["protocol_sha256"] = protocol_sha
@@ -717,25 +727,35 @@ def _audit_with_first_429(full_audit, *, index=1, start_before=1, raw=None, limi
         path = root / "receipts" / name
         row = json.loads(path.read_text())
         row["protocol_sha256"] = protocol_sha
+        offset = timedelta(seconds=78 * row["index"])
+        for field in ("started_at", "finished_at"):
+            row[field] = (judge._time(row[field]) + offset).isoformat()
         if row["index"] == index:
-            started = judge._time(row["started_at"]) - timedelta(seconds=start_before)
-            row["rate_limit_attempts"] = [
-                {
-                    **row,
-                    "status": "failed",
-                    "http_status": 429,
-                    "call_id": "initial-429",
-                    "response": raw,
-                    "response_sha256": stable_hash(raw),
-                    "cost_usd": None,
-                    "started_at": started.isoformat(),
-                    "finished_at": (started + timedelta(milliseconds=100)).isoformat(),
-                }
-            ]
-            result["unknown_reserved_usd"] = row["reserved_usd"]
-            result["accounted_usd"] = str(
-                Decimal(result["accounted_usd"]) + Decimal(row["reserved_usd"])
-            )
+            retries = []
+            for retry_index, (start_before, header) in enumerate(attempts):
+                started = judge._time(row["started_at"]) - timedelta(
+                    seconds=start_before
+                )
+                retries.append(
+                    {
+                        **row,
+                        "status": "failed",
+                        "http_status": 429,
+                        "call_id": f"initial-429-{retry_index}",
+                        "retry_after": header,
+                        "response": raw,
+                        "response_sha256": stable_hash(raw),
+                        "cost_usd": None,
+                        "started_at": started.isoformat(),
+                        "finished_at": (
+                            started + timedelta(milliseconds=100)
+                        ).isoformat(),
+                    }
+                )
+            row["rate_limit_attempts"] = retries
+            reserved = Decimal(row["reserved_usd"]) * len(retries)
+            result["unknown_reserved_usd"] = str(reserved)
+            result["accounted_usd"] = str(Decimal(result["accounted_usd"]) + reserved)
         _write(path, row)
         result["receipt_hashes"][name] = digest(path)
     marker_path = root / "phase1-result.json"
@@ -747,7 +767,8 @@ def _audit_with_first_429(full_audit, *, index=1, start_before=1, raw=None, limi
     }
     # Distinguish the phase boundary from the previous completed request.
     marker["finished_at"] = (
-        judge._time(marker["finished_at"]) + timedelta(milliseconds=500)
+        judge._time(marker["finished_at"])
+        + timedelta(seconds=156 * 78, milliseconds=500)
     ).isoformat()
     _write(marker_path, marker)
     result["phase1_result_sha256"] = digest(marker_path)
@@ -769,9 +790,9 @@ def test_full_audit_replays_non_object_429_without_reported_cost(full_audit, raw
 @pytest.mark.parametrize(
     "attempt",
     [
-        {"limit": 455.5},
-        {"start_before": 3},
-        {"index": 157, "start_before": 0.75},
+        {"limit": 18165},
+        {"attempts": ((81, "7"),)},
+        {"index": 157, "attempts": ((78.75, "7"),)},
     ],
     ids=["elapsed-before-success", "before-data-review", "before-phase1-marker"],
 )
@@ -794,3 +815,48 @@ def test_completed_call_still_requires_response_object(packet):
     }
     with pytest.raises(ValueError, match=judge.ERROR):
         judge._verify_call(row, body, "Hala A", "protocol")
+
+
+@pytest.mark.parametrize(
+    "attempts, valid",
+    [
+        (((8, "7"),), True),
+        (((7, "7"),), False),
+        (((6, "invalid"),), True),
+        (((5, ""),), False),
+        (((19, "7"), (11, "")), True),
+        (((17, "7"), (11, "")), False),
+        (((19, "7"), (10, "")), False),
+        (((62, "61"),), False),
+        (((8, "Thu, 01 Jan 2026 00:01:19 GMT"),), True),
+        (((8, "Thu, 01 Jan 2026 00:01:21 GMT"),), False),
+    ],
+    ids=[
+        "retry-after-wait",
+        "retry-after-too-soon",
+        "malformed-header-fallback",
+        "default-backoff-too-soon",
+        "both-waits",
+        "earlier-429-too-soon",
+        "successful-attempt-too-soon",
+        "retry-after-exceeds-cap",
+        "http-date-wait",
+        "http-date-too-soon",
+    ],
+)
+def test_full_audit_enforces_frozen_retry_waits(full_audit, attempts, valid):
+    pin = _audit_with_first_429(full_audit, attempts=attempts)
+    if valid:
+        judge.verify_audit(pin)
+    else:
+        with pytest.raises(ValueError, match=judge.ERROR):
+            judge.verify_audit(pin)
+
+
+def test_full_audit_rejects_policy_with_third_retry(full_audit):
+    policy = {**audit._RATE_LIMIT_POLICY, "backoff_seconds": [5, 10, 15]}
+    pin = _audit_with_first_429(
+        full_audit, attempts=((33, ""), (27, ""), (16, "")), policy=policy
+    )
+    with pytest.raises(ValueError, match=judge.ERROR):
+        judge.verify_audit(pin)

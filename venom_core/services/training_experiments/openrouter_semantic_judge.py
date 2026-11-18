@@ -471,8 +471,14 @@ def _verify_call(
 
 
 def verify_audit(pin: QualificationRemote) -> None:
+    from .semantic_openrouter_audit import _RATE_LIMIT_POLICY
+
     root = _root(pin.audit_root)
     protocol = _bound(root, "protocol.json", pin.protocol_sha256)
+    _require(
+        protocol.get("rate_limit") == _RATE_LIMIT_POLICY
+        and protocol.get("automatic_retry") == "http_429_only"
+    )
     result = _bound(root, "result.json", pin.result_sha256)
     manifest = _bound(
         root / "controls", "frozen-manifest.json", pin.controls_manifest_sha256
@@ -607,12 +613,12 @@ def _verify_rate_limited_calls(
     known = unknown = Decimal(0)
     retry_count = 0
     call_ids = {row["call_id"] for row in rows}
-    policy = protocol.get("rate_limit", {})
+    policy = protocol["rate_limit"]
     for row in rows:
         attempts = _rate_limit_attempts(row)
-        _require(len(attempts) <= len(policy.get("backoff_seconds", ())))
+        _require(len(attempts) <= len(policy["backoff_seconds"]))
         retry_count += len(attempts)
-        _require(retry_count <= policy.get("max_retries_per_audit", 0))
+        _require(retry_count <= policy["max_retries_per_audit"])
         for attempt in attempts:
             _require(
                 attempt.get("status") == "failed"
@@ -653,6 +659,20 @@ def _verify_rate_limited_calls(
     return known, unknown
 
 
+def _retry_wait_seconds(attempt: dict, index: int, finished: datetime) -> float:
+    from .semantic_openrouter_audit import _RATE_LIMIT_POLICY, _retry_delay
+
+    policy: dict = _RATE_LIMIT_POLICY
+    backoff = policy["backoff_seconds"]
+    _require(index < len(backoff))
+    header = attempt.get("retry_after")
+    if not isinstance(header, str) or len(header) > 128:
+        raise ValueError(ERROR)
+    delay = _retry_delay(header, backoff[index], finished)
+    _require(delay <= policy["max_retry_after_seconds"])
+    return max(policy["interval_seconds"], delay)
+
+
 def _audit_rows(
     root: Path,
     pin: QualificationRemote,
@@ -677,12 +697,19 @@ def _audit_rows(
             and bool(row["call_id"].strip())
             and row["call_id"] not in calls
         )
-        for attempt in _rate_limit_attempts(row):
+        wait_seconds = 0.0
+        for retry_index, attempt in enumerate(_rate_limit_attempts(row)):
             started = _time(attempt["started_at"])
             finished = _time(attempt["finished_at"])
-            _require(previous_end <= started <= finished)
+            _require(
+                (started - previous_end).total_seconds() >= wait_seconds
+                and started <= finished
+            )
+            wait_seconds = _retry_wait_seconds(attempt, retry_index, finished)
             previous_end = finished
-        _require(_time(row["started_at"]) >= previous_end)
+        _require(
+            (_time(row["started_at"]) - previous_end).total_seconds() >= wait_seconds
+        )
         previous_end = _time(row["finished_at"])
         case, answer = _jobs(root, manifest, row["split"])[0][row["answer_id"]]
         decision = _verify_call(

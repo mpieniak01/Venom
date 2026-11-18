@@ -530,11 +530,14 @@ def _post_audit_row(
     if response.status_code == 429:
         row["retry_after"] = response.headers.get("Retry-After", "")[:128]
     try:
-        row["response"] = response.json()
+        payload = response.json()
+        payload_sha = stable_hash(payload)
     except ValueError:
         row["response"] = {"non_json_body": response.text[:16000]}
         raise
-    _require(isinstance(row["response"], dict), "remote_audit_response_invalid")
+    row["response"] = payload
+    row["response_sha256"] = payload_sha
+    _require(isinstance(payload, dict), "remote_audit_response_invalid")
     row["cost_usd"] = judge.reported_cost(row["response"])
     if row["cost_usd"] is not None:
         state.known += judge._money(row["cost_usd"])
@@ -580,9 +583,10 @@ def _attempt_row(
     except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
         row.update(status="failed", error_type=type(exc).__name__)
     finally:
-        finished = time.monotonic()
         row["finished_at"] = _utc()
-        row["response_sha256"] = stable_hash(row["response"])
+        finished = time.monotonic()
+        if "response_sha256" not in row:
+            row["response_sha256"] = stable_hash(row["response"])
         atomic_json(path, row)
         state.ledger(None)
     return finished
@@ -629,6 +633,11 @@ def _provider_cooldown(path: Path | None) -> float:
         "remote_audit_cooldown_invalid",
     )
     return max(0.0, value - time.time())
+
+
+def _provider_next_post_at(path: Path | None) -> float:
+    cooldown = _provider_cooldown(path)
+    return time.monotonic() + cooldown
 
 
 def _audit_next(state: _AuditState, stack: ExitStack) -> bool:
@@ -839,10 +848,12 @@ def _execute(
     if maximum > per_request or judge._money(capacity["planned_budget_usd"]) > budget:
         state.status = "budget_exhausted"
         return _audit_result(state)
-    if state.remaining() < _holdout_required_seconds(protocol, 0):
+    state.next_post_at = _provider_next_post_at(rate_path)
+    phase1_spacing = (len(state.order) - 1) * protocol["rate_limit"]["interval_seconds"]
+    minimum = phase1_spacing + _holdout_required_seconds(protocol, 0)
+    if state.next_post_at - state.start + minimum > protocol["max_seconds"]:
         state.status = "holdout_deadline_unavailable"
         return _audit_result(state)
-    state.next_post_at = time.monotonic() + _provider_cooldown(rate_path)
     with ExitStack() as stack:
         while len(state.rows) < len(state.order):
             if not _audit_next(state, stack):

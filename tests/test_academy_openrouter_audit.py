@@ -221,7 +221,7 @@ def test_budget_stop_cannot_construct_http(ready, monkeypatch):
 def test_deadline_stop_cannot_construct_http(ready, monkeypatch):
     root, _, client = ready
     ticks = iter([0, 9000, 9001])
-    monkeypatch.setattr(audit.time, "monotonic", lambda: next(ticks))
+    monkeypatch.setattr(audit.time, "monotonic", lambda: next(ticks, 9001))
     result = audit.run(root, execute=True, client_factory=client)
     assert result["status"] == "deadline_exceeded"
     assert client.factory_calls == 0
@@ -454,6 +454,32 @@ def test_pacing_counts_time_spent_preparing_next_post(tmp_path, monkeypatch, now
 
     assert audit._wait_to_post(state)
     assert waits == wait
+
+
+def test_changed_phase1_receipt_blocks_holdout_before_post(ready, monkeypatch):
+    root, _, client = ready
+    phase1_gate = audit._phase1_gate
+
+    def change_receipt(state):
+        path = root / "receipts/001.json"
+        receipt = json.loads(path.read_text())
+        receipt["request"]["provider"]["allow_fallbacks"] = 0
+        write(path, receipt)
+        return phase1_gate(state)
+
+    monkeypatch.setattr(audit, "_phase1_gate", change_receipt)
+    monkeypatch.setattr(
+        audit,
+        "_stage_holdout",
+        lambda *_: pytest.fail("tampered phase 1 opened holdout"),
+    )
+
+    result = audit.run(root, execute=True, client_factory=client)
+
+    assert result["status"] == "phase1_replay_failed"
+    assert client.calls == 156
+    assert result["holdout_opened"] is False
+    assert not (root / "qualification.json").exists()
 
 
 def test_g1_pass_with_insufficient_holdout_time_never_opens_it(ready, monkeypatch):
@@ -721,6 +747,38 @@ def test_terminal_post_persists_pacing_for_next_audit(ready, monkeypatch, tmp_pa
     assert client.calls == 1
     assert result["provider_cooldown_seconds"] == pytest.approx(2)
     assert audit._provider_cooldown(shared) == pytest.approx(2)
+
+
+@pytest.mark.parametrize("failed_write", [1, 2])
+def test_cooldown_write_failure_stops_safely(
+    ready, monkeypatch, tmp_path, failed_write
+):
+    root, _, client = ready
+    shared = tmp_path / "provider.json"
+    monkeypatch.setattr(audit, "_operator_rate_path", lambda: shared)
+    monkeypatch.setattr(audit.httpx, "Client", client)
+    client.mode = "non-object"
+    writes = 0
+    original_write = audit.atomic_json
+
+    def write_with_error(path, value):
+        nonlocal writes
+        if path == shared:
+            writes += 1
+            if writes == failed_write:
+                raise OSError("cooldown write failed")
+        original_write(path, value)
+
+    monkeypatch.setattr(audit, "atomic_json", write_with_error)
+
+    result = audit.run(root, execute=True, client_factory=client)
+
+    assert result["status"] == "provider_cooldown_io_error"
+    assert result["rows"] == 1
+    assert client.calls == failed_write - 1
+    assert (root / "receipts/001.json").is_file()
+    assert result["provider_cooldown_seconds"] == (135 if failed_write == 2 else 0)
+    assert not (root / "qualification.json").exists()
 
 
 def test_next_post_times_cooldown_after_read(monkeypatch, tmp_path):

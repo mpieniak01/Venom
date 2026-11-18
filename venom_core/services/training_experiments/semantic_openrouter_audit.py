@@ -516,20 +516,30 @@ def _post_audit_row(
             )
         )
     # Receipt/ledger fsync and client construction belong to the same deadline.
-    remaining = state.remaining()
+    request_timeout = min(state.protocol["request_timeout_seconds"], state.remaining())
     reservation = judge._money(row["reserved_usd"])
-    if remaining <= 0:
+    if request_timeout > 0 and state.rate_path is not None:
+        emergency_cooldown = (
+            request_timeout + state.protocol["rate_limit"]["max_retry_after_seconds"]
+        )
+        try:
+            _persist_cooldown(state, emergency_cooldown)
+        except OSError:
+            state.unknown -= reservation
+            row.update(
+                status="not_sent", cost_usd="0", error_type="cooldown_write_failed"
+            )
+            state.status = "provider_cooldown_io_error"
+            return
+        request_timeout = min(request_timeout, state.remaining())
+    if request_timeout <= 0:
         state.unknown -= reservation
         row.update(status="not_sent", cost_usd="0", error_type="deadline_exceeded")
         state.status = "deadline_exceeded"
         return
     if row["rate_limit_attempts"]:
         state.retries += 1
-    response = post_with_deadline(
-        state.client,
-        row["request"],
-        min(state.protocol["request_timeout_seconds"], remaining),
-    )
+    response = post_with_deadline(state.client, row["request"], request_timeout)
     row["http_status"] = response.status_code
     if response.status_code == 429:
         row["retry_after"] = response.headers.get("Retry-After", "")[:128]
@@ -653,7 +663,7 @@ def _schedule_fits(
 ) -> bool:
     spacing = (request_count - 1) * state.protocol["rate_limit"]["interval_seconds"]
     return (
-        state.next_post_at + spacing + reserve_seconds
+        max(state.next_post_at, time.monotonic()) + spacing + reserve_seconds
         < state.start + state.protocol["max_seconds"]
     )
 
@@ -696,14 +706,19 @@ def _submit_case(
         finished = _attempt_row(state, row, answer, path, stack)
         interval = state.protocol["rate_limit"]["interval_seconds"]
         state.next_post_at = finished + interval
-        if row.get("http_status") != 429:
-            if row["status"] != "not_sent":
-                _persist_cooldown(
-                    state, max(0.0, state.next_post_at - time.monotonic())
-                )
-            break
-        state.status = "provider_rate_limited"
-        delay = _rate_delay(state, row, len(rejected))
+        try:
+            if row.get("http_status") != 429:
+                if row["status"] != "not_sent":
+                    _persist_cooldown(
+                        state, max(0.0, state.next_post_at - time.monotonic())
+                    )
+                break
+            state.status = "provider_rate_limited"
+            delay = _rate_delay(state, row, len(rejected))
+        except OSError:
+            state.status = "provider_cooldown_io_error"
+            state.rows.append(row)
+            return "transport_incomplete"
         if delay is None or state.accounted + reservation > state.budget:
             break
         state.next_post_at = finished + max(interval, delay)
@@ -756,9 +771,20 @@ def _reserve_holdout(state: _AuditState) -> bool:
 
 
 def _phase1_gate(state: _AuditState) -> bool:
-    state.metrics = judge._audit_metrics(
-        state.root, state.manifest, state.rows, phase1=True
-    )
+    try:
+        hashes = _hashes(state.root)
+        replayed, metrics, costs = judge._replay_phase1(
+            state.root, state.protocol, state.protocol_sha, state.manifest, hashes
+        )
+        _require(
+            stable_hash(replayed) == stable_hash(state.rows)
+            and costs == (state.known, state.unknown),
+            "remote_audit_phase1_evidence_changed",
+        )
+    except (OSError, ValueError, KeyError, TypeError):
+        state.status = "phase1_replay_failed"
+        return False
+    state.metrics = metrics
     expected = {
         k: v
         for k, v in state.manifest["thresholds"].items()
@@ -771,7 +797,7 @@ def _phase1_gate(state: _AuditState) -> bool:
             "status": "passed" if passed else "failed_qualification",
             "rows": 156,
             "metrics": state.metrics,
-            "receipt_hashes": _hashes(state.root),
+            "receipt_hashes": hashes,
             "finished_at": _utc(),
         },
     )

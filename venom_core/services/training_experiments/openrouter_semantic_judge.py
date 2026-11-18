@@ -517,25 +517,12 @@ def verify_audit(pin: QualificationRemote) -> None:
         result.get("status") == "passed"
         and result.get("protocol_sha256") == pin.protocol_sha256
     )
-    review = _bound(root, "data-review.json", protocol["data_review_sha256"])
-    _require(
-        review.get("status") == "passed"
-        and review.get("controls_manifest_sha256") == pin.controls_manifest_sha256
-        and isinstance(review.get("reviewer"), str)
-        and bool(review["reviewer"].strip())
-    )
     hashes = result["receipt_hashes"]
     _require(set(hashes) == {f"{i:03d}.json" for i in range(1, 229)})
-    rows = _audit_rows(
-        root,
-        pin,
-        manifest,
-        hashes,
-        _audit_order(root, manifest, phase1=True),
-        [],
-        _time(review["created_at"]),
+    phase1_hashes = {f"{i:03d}.json": hashes[f"{i:03d}.json"] for i in range(1, 157)}
+    rows, phase1_metrics, (phase1_known, phase1_reserved) = _replay_phase1(
+        root, protocol, pin.protocol_sha256, manifest, phase1_hashes
     )
-    phase1_metrics = _audit_metrics(root, manifest, rows, phase1=True)
     _require(
         phase1_metrics
         == {k: v for k, v in thresholds.items() if not k.startswith("holdout")}
@@ -547,17 +534,16 @@ def verify_audit(pin: QualificationRemote) -> None:
         and phase1["rows"] == 156
     )
     _require(phase1.get("metrics") == phase1_metrics)
-    _require(
-        phase1.get("receipt_hashes")
-        == {k: v for k, v in hashes.items() if int(k[:3]) <= 156}
-    )
-    _require(_time(rows[-1]["finished_at"]) <= _time(phase1["finished_at"]))
+    _require(phase1.get("receipt_hashes") == phase1_hashes)
+    phase1_finished = _time(phase1["finished_at"])
+    _require(_time(rows[-1]["finished_at"]) <= phase1_finished)
     initial = _money(protocol["initial_accounted_usd"])
     initial_unknown = _money(protocol["initial_unknown_reserved_usd"])
     budget = _money(protocol["budget_usd"])
     _require(initial_unknown <= initial and budget > 0)
-    phase1_known, phase1_reserved = _audit_costs(rows, protocol)
-    _require(initial + phase1_known + phase1_reserved <= budget)
+    limit = _verify_holdout_capacity(
+        protocol, rows, initial + phase1_known + phase1_reserved, phase1_finished
+    )
     # No held-out content, including its receipts, is read until G1 replay passed.
     held = manifest["holdout"]
     _require(set(held["files"]) == {"panel.json", "gold.json"})
@@ -572,13 +558,15 @@ def verify_audit(pin: QualificationRemote) -> None:
     }
     rows = _audit_rows(
         root,
-        pin,
+        pin.protocol_sha256,
         combined,
         hashes,
         _audit_order(root, combined)[156:],
         rows,
-        _time(phase1["finished_at"]),
+        phase1_finished,
     )
+    holdout_cap = _money(protocol["holdout_max_request_usd"])
+    _require(all(_money(row["reserved_usd"]) <= holdout_cap for row in rows[156:]))
     metrics = _audit_metrics(root, combined, rows)
     _require(metrics == thresholds and result.get("metrics") == metrics)
     known, reserved = _audit_costs(rows, protocol)
@@ -586,17 +574,80 @@ def verify_audit(pin: QualificationRemote) -> None:
     _require(_money(result["unknown_reserved_usd"]) == reserved)
     _require(_money(result["carried_unknown_reserved_usd"]) == initial_unknown)
     _require(_money(result["accounted_usd"]) == initial + known + reserved <= budget)
-    limit = protocol["max_seconds"]
-    _require(
-        type(limit) in (int, float) and math.isfinite(limit) and 0 < limit <= 86400
-    )
-    first_row = rows[0]
-    attempts = _rate_limit_attempts(first_row)
-    first_attempt = attempts[0] if attempts else first_row
     elapsed = (
-        _time(rows[-1]["finished_at"]) - _time(first_attempt["started_at"])
+        _time(rows[-1]["finished_at"]) - _first_attempt_started(rows[0])
     ).total_seconds()
     _require(elapsed <= limit)
+
+
+def _replay_phase1(
+    root: Path, protocol: dict, protocol_sha: str, manifest: dict, hashes: dict
+) -> tuple[list[dict], dict, tuple[Decimal, Decimal]]:
+    review = _bound(root, "data-review.json", protocol["data_review_sha256"])
+    _require(
+        review.get("status") == "passed"
+        and review.get("controls_manifest_sha256")
+        == protocol["controls_manifest_sha256"]
+        and isinstance(review.get("reviewer"), str)
+        and bool(review["reviewer"].strip())
+    )
+    _require(set(hashes) == {f"{i:03d}.json" for i in range(1, 157)})
+    rows = _audit_rows(
+        root,
+        protocol_sha,
+        manifest,
+        hashes,
+        _audit_order(root, manifest, phase1=True),
+        [],
+        _time(review["created_at"]),
+    )
+    costs = _audit_costs(rows, protocol)
+    return rows, _audit_metrics(root, manifest, rows, phase1=True), costs
+
+
+def _verify_holdout_capacity(
+    protocol: dict, rows: list[dict], accounted: Decimal, phase1_finished: datetime
+) -> float:
+    from .semantic_openrouter_audit import (
+        _HOLDOUT_CALLS,
+        _capacity,
+        _holdout_required_seconds,
+    )
+
+    budget = _money(protocol["budget_usd"])
+    per_request = _money(protocol["max_request_usd"])
+    cap = _money(protocol["holdout_max_request_usd"])
+    quotes = [_money(row["reserved_usd"]) for row in rows]
+    _require(
+        0 < cap <= per_request <= budget
+        and max(quotes) <= per_request
+        and max(quotes) == _money(protocol["phase1_max_request_usd"])
+        and sum(quotes, Decimal(0)) == _money(protocol["phase1_reservation_usd"])
+    )
+    _require(_money(_capacity(protocol, budget)["planned_budget_usd"]) <= budget)
+    policy = protocol["rate_limit"]
+    max_retries = policy["max_retries_per_audit"]
+    retries_left = max_retries - sum(len(_rate_limit_attempts(row)) for row in rows)
+    _require(accounted + (_HOLDOUT_CALLS + retries_left) * cap <= budget)
+    limit = protocol["max_seconds"]
+    cleanup = protocol["holdout_cleanup_seconds"]
+    _require(
+        type(limit) in (int, float)
+        and math.isfinite(limit)
+        and 0 < limit <= 86400
+        and type(cleanup) is int
+        and cleanup >= 0
+    )
+    phase1_spacing = (len(rows) - 1) * policy["interval_seconds"]
+    _require(phase1_spacing + _holdout_required_seconds(protocol, max_retries) < limit)
+    elapsed = (phase1_finished - _first_attempt_started(rows[0])).total_seconds()
+    _require(elapsed + _holdout_required_seconds(protocol, retries_left) <= limit)
+    return limit
+
+
+def _first_attempt_started(row: dict) -> datetime:
+    attempts = _rate_limit_attempts(row)
+    return _time((attempts[0] if attempts else row)["started_at"])
 
 
 def _rate_limit_attempts(row: dict) -> list[dict]:
@@ -675,7 +726,7 @@ def _retry_wait_seconds(attempt: dict, index: int, finished: datetime) -> float:
 
 def _audit_rows(
     root: Path,
-    pin: QualificationRemote,
+    protocol_sha: str,
     manifest: dict,
     hashes: dict,
     order: list[dict],
@@ -720,7 +771,7 @@ def _audit_rows(
         previous_end = _time(row["finished_at"])
         case, answer = _jobs(root, manifest, row["split"])[0][row["answer_id"]]
         decision = _verify_call(
-            row, _control_request(case, answer), answer["text"], pin.protocol_sha256
+            row, _control_request(case, answer), answer["text"], protocol_sha
         )
         _require(
             decision.unsupported != "unclear"

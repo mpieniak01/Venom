@@ -135,6 +135,10 @@ ponowieniem i 10 sekund przed drugim. Jeśli poprawny nagłówek podaje dłuższ
 czas, stosuje wartość z nagłówka. Retry-After powyżej 60 sekund zatrzymuje
 audyt i jest zapisany dla kolejnego startu.
 Połączenie o nieznanym wyniku, inny błąd HTTP i błąd oceny kończą próbę.
+Przed wysyłką runner zapisuje zapasowy okres wstrzymania w rejestrze
+współdzielonym. Błąd zapisu zatrzymuje próbę z wynikiem
+provider_cooldown_io_error. Jeżeli zapis po wysyłce zawiedzie, rozliczenie
+pozostaje w audycie, a rejestr zachowuje zapasowy okres wstrzymania.
 Odrzucone żądania zachowują koszty lub rezerwacje i nie liczą się jako decyzje.
 Próby zamrożone przed zmianą zachowują dotychczasowy protokół.
 

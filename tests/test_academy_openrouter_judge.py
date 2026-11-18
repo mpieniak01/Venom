@@ -217,6 +217,7 @@ def full_audit(tmp_path, monkeypatch):
             "created_at": base.isoformat(),
         },
     )
+    quotes = audit._phase1_reservations(root, manifest)
     protocol = {
         "judge": judge.JUDGE,
         "request_contract": judge._contract(),
@@ -225,8 +226,13 @@ def full_audit(tmp_path, monkeypatch):
         "data_review_sha256": digest(root / "data-review.json"),
         "initial_accounted_usd": "0.01",
         "initial_unknown_reserved_usd": "0.01",
-        "budget_usd": "0.20",
-        "max_seconds": 2000,
+        "budget_usd": "0.80",
+        "max_seconds": 8000,
+        "max_request_usd": "0.01",
+        "holdout_max_request_usd": "0.002",
+        "phase1_reservation_usd": str(sum(quotes, Decimal(0))),
+        "phase1_max_request_usd": str(max(quotes)),
+        "holdout_cleanup_seconds": 120,
         "rate_limit": audit._RATE_LIMIT_POLICY,
         "automatic_retry": "http_429_only",
         "request_timeout_seconds": audit._REQUEST_TIMEOUT_SECONDS,
@@ -724,9 +730,12 @@ def _audit_with_first_429(
     raw=None,
     limit=20_000,
     policy=None,
-    budget="0.20",
+    budget="0.80",
     phase1_marker_delay=0.5,
     request_timeout=audit._REQUEST_TIMEOUT_SECONDS,
+    holdout_cap="0.002",
+    holdout_delay=0,
+    receipt_spacing=80,
 ):
     root, pin, result = full_audit
     protocol_path = root / "protocol.json"
@@ -734,6 +743,7 @@ def _audit_with_first_429(
     protocol["max_seconds"] = limit
     protocol["budget_usd"] = budget
     protocol["request_timeout_seconds"] = request_timeout
+    protocol["holdout_max_request_usd"] = holdout_cap
     if policy is not None:
         protocol["rate_limit"] = policy
     _write(protocol_path, protocol)
@@ -743,7 +753,9 @@ def _audit_with_first_429(
         path = root / "receipts" / name
         row = json.loads(path.read_text())
         row["protocol_sha256"] = protocol_sha
-        offset = timedelta(seconds=77 * row["index"])
+        offset = timedelta(seconds=(receipt_spacing - 3) * row["index"])
+        if row["split"] == "holdout":
+            offset += timedelta(seconds=holdout_delay)
         for field in ("started_at", "finished_at"):
             row[field] = (judge._time(row[field]) + offset).isoformat()
         if row["index"] == index:
@@ -784,7 +796,7 @@ def _audit_with_first_429(
     # Distinguish the phase boundary from the previous completed request.
     marker["finished_at"] = (
         judge._time(marker["finished_at"])
-        + timedelta(seconds=156 * 77 + phase1_marker_delay)
+        + timedelta(seconds=156 * (receipt_spacing - 3) + phase1_marker_delay)
     ).isoformat()
     _write(marker_path, marker)
     result["phase1_result_sha256"] = digest(marker_path)
@@ -806,7 +818,7 @@ def test_full_audit_replays_non_object_429_without_reported_cost(full_audit, raw
 @pytest.mark.parametrize(
     "attempt",
     [
-        {"limit": 18165},
+        {"holdout_delay": 1835},
         {"attempts": ((81, "7"),)},
         {"index": 157, "attempts": ((75, "7"),), "phase1_marker_delay": 10},
     ],
@@ -898,7 +910,7 @@ def _reseal_receipt(root, pin, result, index, change):
 @pytest.mark.parametrize("damage", ["status", "request", "cost", "budget"])
 def test_bad_phase1_retry_never_opens_holdout(full_audit, monkeypatch, damage):
     root, _, result = full_audit
-    budget = "0.01156" if damage == "budget" else "0.20"
+    budget = "0.01156" if damage == "budget" else "0.80"
     pin = _audit_with_first_429(full_audit, budget=budget)
 
     def change(row):
@@ -973,5 +985,30 @@ def test_phase1_marker_does_not_restart_request_interval(full_audit):
 
 def test_full_audit_rejects_changed_request_timeout(full_audit):
     pin = _audit_with_first_429(full_audit, request_timeout=120)
+    with pytest.raises(ValueError, match=judge.ERROR):
+        judge.verify_audit(pin)
+
+
+@pytest.mark.parametrize(
+    "limits",
+    [
+        {"limit": 2000, "receipt_spacing": 3, "attempts": ()},
+        {"limit": 18_000},
+        {"budget": "0.20", "holdout_cap": "0.01"},
+    ],
+    ids=["preflight-time", "phase1-time-consumed", "planned-budget"],
+)
+def test_missing_holdout_capacity_stops_before_opening(full_audit, monkeypatch, limits):
+    root, _, _ = full_audit
+    pin = _audit_with_first_429(full_audit, **limits)
+
+    original = type(root).open
+
+    def guarded(path, *args, **kwargs):
+        if "holdout" in path.parts:
+            pytest.fail("holdout opened without enough frozen capacity")
+        return original(path, *args, **kwargs)
+
+    monkeypatch.setattr(type(root), "open", guarded)
     with pytest.raises(ValueError, match=judge.ERROR):
         judge.verify_audit(pin)

@@ -75,10 +75,13 @@ TextProof = Annotated[
 ]
 
 
+Relation = Literal["supported", "omitted", "contradicted", "unclear"]
+
+
 class Check(judge._Strict):
     required: TextProof
     observed: TextProof
-    relation: Literal["supported", "omitted", "contradicted", "unclear"]
+    relation: Relation
 
 
 class AdditionalClaim(judge._Strict):
@@ -106,11 +109,15 @@ def decimal_view(value):
     return value
 
 
-def request(model: str, material: dict, ids: list[str]) -> dict:
-    schema = Decision.model_json_schema()
+def request(
+    model: str, material: dict, ids: list[str], *, schema: dict | None = None
+) -> dict:
+    if schema is None:
+        schema = Decision.model_json_schema()
     check = schema["properties"]["checks"]
+    item_schema = check["additionalProperties"]
     check.update(
-        properties={ident: {"$ref": "#/$defs/Check"} for ident in ids},
+        properties=dict.fromkeys(ids, item_schema),
         required=ids,
         additionalProperties=False,
     )
@@ -139,10 +146,10 @@ _OBSERVED_MISSING = "brak w odpowiedzi"
 _OBSERVED_QUOTES = frozenset({("„", "”"), ("«", "»"), ('"', '"')})
 
 
-def _observed_from_answer(check: Check, candidate: str) -> bool:
-    if check.observed == _OBSERVED_MISSING and check.relation == "omitted":
+def observed_from_answer(observed: str, relation: Relation, candidate: str) -> bool:
+    if observed == _OBSERVED_MISSING and relation == "omitted":
         return True
-    quote = check.observed.strip()
+    quote = observed.strip()
     if quote and quote in candidate:
         return True
     if len(quote) >= 2 and (quote[0], quote[-1]) in _OBSERVED_QUOTES:
@@ -177,18 +184,28 @@ def decode(
     if require_observed_quotes and (
         candidate is None
         or any(
-            not _observed_from_answer(check, candidate)
+            not observed_from_answer(check.observed, check.relation, candidate)
             for check in value.checks.values()
         )
     ):
         return None
-    atoms = {key: check.relation for key, check in value.checks.items()}
-    if any(
-        candidate is None or claim.text not in candidate
-        for claim in value.additional_claims
-    ):
+    return project_decision(
+        {key: check.relation for key, check in value.checks.items()},
+        value.additional_claims,
+        value.model_dump(exclude={"checks", "additional_claims"}),
+        candidate,
+    )
+
+
+def project_decision(
+    atoms: dict[str, Relation],
+    claims: list[AdditionalClaim],
+    flags: dict,
+    candidate: str | None,
+) -> judge._Decision | None:
+    if any(candidate is None or claim.text not in candidate for claim in claims):
         return None
-    grounding = {claim.grounding for claim in value.additional_claims}
+    grounding = {claim.grounding for claim in claims}
     unsupported: Literal["yes", "no", "unclear"] = "no"
     if "contradicted" in atoms.values() or "unsupported" in grounding:
         unsupported = "yes"
@@ -197,5 +214,5 @@ def decode(
     return judge._Decision(
         atoms=atoms,
         unsupported=unsupported,
-        **value.model_dump(exclude={"checks", "additional_claims"}),
+        **flags,
     )

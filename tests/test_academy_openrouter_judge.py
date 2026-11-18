@@ -32,7 +32,6 @@ def response(body, candidate="Hala A", ident="generation-1", positive=True):
     content = {
         "checks": {
             key: {
-                "required": "fixture fact",
                 "observed": candidate,
                 "relation": "supported" if positive else "contradicted",
             }
@@ -60,8 +59,12 @@ def test_payload_remote_route_and_context(packet):
     assert body["model"] == judge.MODEL
     assert body["messages"][0]["content"] == judge.PROMPT
     assert judge._contract()["prompt_sha256"] == (
-        "03670ddc9bcb365dfc9e73c359dc8335d0d53261072e253c3f6517eacc70ad4d"
+        "8d1c0780f4d189fb7da010479918e5bbd61b8e7e6ba2fe56860f03980529eee6"
     )
+    schema = body["response_format"]["json_schema"]["schema"]
+    check_schema = schema["$defs"]["_QuoteCheck"]
+    assert check_schema["required"] == ["observed", "relation"]
+    assert check_schema["additionalProperties"] is False
     assert body["provider"]["only"] == ["azure"]
     assert "zdr" not in body["provider"]
     assert "temperature" not in body
@@ -72,7 +75,7 @@ def test_payload_remote_route_and_context(packet):
 
 
 @pytest.mark.parametrize(
-    "damage", ["provider", "model", "finish", "bool", "missing", "id"]
+    "damage", ["provider", "model", "finish", "bool", "missing", "id", "required"]
 )
 def test_decode_refuses_wrong_identity_or_schema(packet, damage):
     body = judge.request_payload(*packet)
@@ -87,6 +90,8 @@ def test_decode_refuses_wrong_identity_or_schema(packet, damage):
         item = json.loads(raw["choices"][0]["message"]["content"])
         if damage == "bool":
             item["injection"] = 1
+        elif damage == "required":
+            item["checks"]["place"]["required"] = "Hala A"
         else:
             item["checks"] = {}
         raw["choices"][0]["message"]["content"] = json.dumps(item)
@@ -100,9 +105,10 @@ def test_invalid_money_fails_closed(value):
         judge._money(value)
 
 
-def test_old_failed_v2_is_not_public_qualification():
+@pytest.mark.parametrize("version", [2, 7])
+def test_historical_reviews_are_not_current_qualification(version):
     with pytest.raises(ValueError):
-        judge.qualification({"judge": "semantic-openrouter-luna-field-v2"})
+        judge.qualification({"judge": f"semantic-openrouter-luna-field-v{version}"})
 
 
 def test_unqualified_bundle_cannot_construct_http(monkeypatch, packet):
@@ -682,6 +688,7 @@ def test_transaction_recovers_interrupted_pair_without_repeating_post(
     [
         ("supported", "Opiekunka: Daria", "", False),
         ("contradicted", "Opiekunka: Daria", "", False),
+        ("supported", "required: Opiekunka Daria; observed: Pawilon: F", "", False),
         ("omitted", "Opiekunka: Daria", "", False),
         ("supported", "brak w odpowiedzi", "", False),
         ("omitted", "brak w odpowiedzi", "", True),

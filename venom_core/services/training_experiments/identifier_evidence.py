@@ -66,7 +66,7 @@ class Comparison(TypedDict):
 def _unresolved_assignment(quote: str, entity: str) -> bool:
     return (
         _CODE_MENTION.search(quote) is not None
-        and re.search(r"[0-9]", quote) is not None
+        and re.search(r"\d", quote, re.ASCII) is not None
         and entity in {word.casefold() for word in re.findall(r"[^\W\d_]+", quote)}
     )
 

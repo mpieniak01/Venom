@@ -577,9 +577,13 @@ def _post_audit_row(
             generation not in state.generations, "remote_audit_duplicate_generation"
         )
         state.generations.add(generation)
+    _record_audit_decision(state, row, answer["text"])
+
+
+def _record_audit_decision(state: _AuditState, row: dict, candidate: str) -> None:
     try:
         decision, comparison = judge.decode_with_comparison(
-            row["response"], row["request"], answer["text"]
+            row["response"], row["request"], candidate
         )
     except ValueError:
         if state.protocol.get("kind") == "targeted_regression":

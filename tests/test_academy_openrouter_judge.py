@@ -856,7 +856,8 @@ def test_identifier_refuses_missing_or_conflicting_current_assignment(packet, so
     )
     decision, comparison = judge.decode_with_comparison(raw, body, candidate)
     assert decision.atoms == {"place": "supported", "code": "unclear"}
-    assert comparison is not None and comparison["source"] is None
+    assert comparison is not None
+    assert comparison["source"] is None
 
 
 @pytest.mark.parametrize(
@@ -886,7 +887,8 @@ def test_identifier_refuses_ambiguous_or_unrelated_candidate_quote(
     )
     decision, comparison = judge.decode_with_comparison(raw, body, candidate)
     assert decision.atoms["code"] == "unclear"
-    assert comparison is not None and comparison["candidate_digits"] is None
+    assert comparison is not None
+    assert comparison["candidate_digits"] is None
 
 
 def test_identifier_requires_literal_quote_and_verified_comparison_trace(packet):

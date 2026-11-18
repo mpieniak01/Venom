@@ -188,7 +188,13 @@ Retry-After do 60 sekund. Czeka co najmniej 5 sekund przed pierwszym
 ponowieniem i 10 sekund przed drugim. Jeśli poprawny nagłówek podaje dłuższy
 czas, stosuje wartość z nagłówka. Retry-After powyżej 60 sekund zatrzymuje
 audyt i jest zapisany dla kolejnego startu.
-Połączenie o nieznanym wyniku, inny błąd HTTP i błąd oceny kończą próbę.
+Połączenie o nieznanym wyniku, inny błąd HTTP oraz niepotwierdzony model,
+dostawca, identyfikator lub koszt kończą próbę. W fazie 1 wadliwy albo
+nierozstrzygalny werdykt po rozliczonej odpowiedzi HTTP 200 jest odtwarzalnym
+odrzuceniem. Runner zapisuje powód i przechodzi do następnego przypadku
+w ramach zamrożonych 156 żądań. Odrzucenie nie jest ponawiane i nie
+zalicza żadnej miary. Pełny odczyt fazy 1 zapisuje wszystkie odrzucenia.
+Choćby jedno odrzucenie zamyka kwalifikację przed holdoutem.
 Przed wysyłką runner zapisuje zapasowy okres wstrzymania w rejestrze
 współdzielonym. Błąd zapisu zatrzymuje próbę z wynikiem
 provider_cooldown_io_error. Jeżeli zapis po wysyłce zawiedzie, rozliczenie

@@ -163,6 +163,90 @@ def test_g1_failure_cannot_open_missing_holdout(ready):
     assert not (root / "qualification.json").exists()
 
 
+def test_phase1_collects_rejections_through_156_and_never_opens_holdout(
+    ready, monkeypatch
+):
+    root, _, client = ready
+    monkeypatch.setattr(
+        audit,
+        "_stage_holdout",
+        lambda *_: pytest.fail("rejected phase 1 opened holdout"),
+    )
+
+    class RejectingClient(client):
+        def post(self, url, **kwargs):
+            response = super().post(url, **kwargs)
+            index = type(self).calls
+            if index not in (98, 134):
+                return response
+            body = response.json()
+            message = body["choices"][0]["message"]
+            if index == 98:
+                message["content"] = "invalid decision"
+            else:
+                decision = json.loads(message["content"])
+                candidate = json.loads(kwargs["json"]["messages"][1]["content"])[
+                    "candidate"
+                ]
+                decision["checks"] = {
+                    key: {"relation": "unclear", "observed": candidate}
+                    for key in decision["checks"]
+                }
+                decision["additional_claims"] = []
+                message["content"] = json.dumps(decision)
+            return httpx.Response(200, json=body, request=response.request)
+
+    result = audit.run(root, execute=True, client_factory=RejectingClient)
+
+    assert result["status"] == "failed_qualification"
+    assert result["rows"] == RejectingClient.calls == 156
+    assert result["rate_limit_retries"] == 0
+    assert Decimal(result["actual_known_cost_usd"]) == Decimal("0.00156")
+    assert Decimal(result["unknown_reserved_usd"]) == 0
+    assert result["holdout_opened"] is False
+    assert not (root / "controls/holdout").exists()
+    assert not (root / "qualification.json").exists()
+    phase1 = json.loads((root / "phase1-result.json").read_text())
+    assert phase1["status"] == "failed_qualification"
+    assert result["phase1_rejections"] == phase1["rejected_decisions"]
+    assert [
+        (row["index"], row["error_type"]) for row in phase1["rejected_decisions"]
+    ] == [(98, "decoder_invalid"), (134, "uncertain_decision")]
+    assert result["metrics"]["development_full"] == 47
+    assert result["metrics"]["extra_full"] == 31
+    assert json.loads((root / "receipts/156.json").read_text())["status"] == "completed"
+
+
+def test_missing_legacy_decision_never_counts_as_correct_negative(ready):
+    root, _, client = ready
+    protocol, manifest, _ = audit._static(root)
+    _, gold = judge._jobs(root, manifest, "legacy")
+    rejected = set(gold["rejected"])
+    order = judge._audit_order(root, manifest, phase1=True)
+    target = next(
+        i
+        for i, row in enumerate(order, 1)
+        if row["split"] == "legacy" and row["answer_id"] in rejected
+    )
+    assert protocol["phase1_decision_errors"] == "collect_and_block_holdout"
+
+    class DroppingClient(client):
+        def post(self, url, **kwargs):
+            response = super().post(url, **kwargs)
+            if type(self).calls != target:
+                return response
+            body = response.json()
+            body["choices"][0]["message"]["content"] = "invalid decision"
+            return httpx.Response(200, json=body, request=response.request)
+
+    result = audit.run(root, execute=True, client_factory=DroppingClient)
+    assert result["status"] == "failed_qualification"
+    assert result["rows"] == 156
+    assert result["metrics"]["legacy_negative"] == 35
+    assert result["phase1_rejections"][0]["index"] == target
+    assert not result["holdout_opened"]
+
+
 @pytest.mark.parametrize("fail_at", [1, 2])
 def test_system_error_stops_without_retry_and_retains_unknown_cost(ready, fail_at):
     root, _, client = ready

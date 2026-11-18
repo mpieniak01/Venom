@@ -175,7 +175,8 @@ def prepare(
         "automatic_retry": _AUTOMATIC_RETRY,
         "rate_limit": _RATE_LIMIT_POLICY,
         "operator_execute_required": True,
-        "uncertain_decision": "stop_without_qualification",
+        "phase1_decision_errors": "collect_and_block_holdout",
+        "uncertain_decision": "block_qualification",
     }
     atomic_json(output / _PROTOCOL_FILE, protocol)
     atomic_json(
@@ -613,24 +614,27 @@ def _receive_audit_response(
 
 
 def _record_audit_decision(state: _AuditState, row: dict, candidate: str) -> None:
+    collect_rejection = state.protocol.get("kind") == "targeted_regression" or (
+        not state.holdout_opened
+        and row.get("split") in judge.PHASE1
+        and row.get("http_status") == 200
+        and judge._response_identity(row["response"])
+    )
     try:
         decision, evidence = judge.decode_with_evidence(
             row["response"], row["request"], candidate
         )
     except ValueError:
-        if state.protocol.get("kind") == "targeted_regression":
-            row.update(status="rejected_decision", error_type="decoder_invalid")
-            return
-        raise
+        if not collect_rejection:
+            raise
+        row.update(status="rejected_decision", error_type="decoder_invalid")
+        return
     row["decision"] = decision.model_dump()
     row.update(evidence)
-    uncertain = (
-        decision.unsupported == "unclear" or "unclear" in decision.atoms.values()
-    )
-    if uncertain and state.protocol.get("kind") == "targeted_regression":
+    if judge._uncertain(decision):
+        _require(collect_rejection, "remote_audit_uncertain")
         row.update(status="rejected_decision", error_type="uncertain_decision")
     else:
-        _require(not uncertain, "remote_audit_uncertain")
         row["status"] = "completed"
 
 
@@ -720,7 +724,10 @@ def _audit_next(state: _AuditState, stack: ExitStack) -> bool:
     request = _next_audit_request(state)
     if request is None:
         return False
-    return _submit_case(state, request, stack) == "completed"
+    status = _submit_case(state, request, stack)
+    return status == "completed" or (
+        status == "rejected_decision" and not state.holdout_opened
+    )
 
 
 def _finish_rate_window(
@@ -832,7 +839,12 @@ def _phase1_gate(state: _AuditState) -> bool:
     try:
         hashes = _hashes(state.root)
         replayed, metrics, costs = judge._replay_phase1(
-            state.root, state.protocol, state.protocol_sha, state.manifest, hashes
+            state.root,
+            state.protocol,
+            state.protocol_sha,
+            state.manifest,
+            hashes,
+            collect_rejections=True,
         )
         _require(
             stable_hash(replayed) == stable_hash(state.rows)
@@ -848,13 +860,15 @@ def _phase1_gate(state: _AuditState) -> bool:
         for k, v in state.manifest["thresholds"].items()
         if not k.startswith("holdout")
     }
-    passed = state.metrics == expected
+    rejected = _phase1_rejections(replayed)
+    passed = not rejected and state.metrics == expected
     atomic_json(
         state.root / _PHASE1_RESULT_FILE,
         {
             "status": "passed" if passed else "failed_qualification",
             "rows": 156,
             "metrics": state.metrics,
+            "rejected_decisions": rejected,
             "receipt_hashes": hashes,
             "finished_at": _utc(),
         },
@@ -875,6 +889,14 @@ def _phase1_gate(state: _AuditState) -> bool:
     return True
 
 
+def _phase1_rejections(rows: list[dict]) -> list[dict]:
+    return [
+        {key: row[key] for key in ("index", "split", "answer_id", "error_type")}
+        for row in rows
+        if row.get("status") == "rejected_decision" and row.get("split") in judge.PHASE1
+    ]
+
+
 def _audit_result(state: _AuditState) -> dict:
     if state.remaining() < 0:
         state.status = "deadline_exceeded"
@@ -892,6 +914,7 @@ def _audit_result(state: _AuditState) -> dict:
         "metrics": state.metrics,
         "receipt_hashes": _hashes(state.root),
         "phase1_result_sha256": state.phase1_sha,
+        "phase1_rejections": _phase1_rejections(state.rows),
         "actual_known_cost_usd": str(state.known),
         "unknown_reserved_usd": str(state.unknown),
         "carried_unknown_reserved_usd": state.protocol["initial_unknown_reserved_usd"],

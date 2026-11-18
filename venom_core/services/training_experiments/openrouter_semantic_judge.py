@@ -382,8 +382,7 @@ def _apply_pickup_point(
 def decode_with_evidence(
     response: dict, body: dict, candidate: str
 ) -> tuple[local._Decision, ReviewEvidence]:
-    _require(response.get("model") == MODEL and response.get("provider") == PROVIDER)
-    _require(isinstance(response.get("id"), str) and bool(response["id"].strip()))
+    _require(_response_identity(response))
     choices = response.get("choices")
     if not isinstance(choices, list) or len(choices) != 1:
         raise ValueError(ERROR)
@@ -493,13 +492,14 @@ def _audit_metrics(
     _require(len(styles) == 24 and len(gold["expected_semantics"]) == 6)
     metrics = {
         "legacy_positive": len(accepted & positives),
-        "legacy_negative": len(set(gold["rejected"]) - accepted),
+        "legacy_negative": len((set(gold["rejected"]) & actual.keys()) - accepted),
         "legacy_style": sum(
-            (actual[key].polish_ok, actual[key].natural_ok) == expected
+            key in actual
+            and (actual[key].polish_ok, actual[key].natural_ok) == expected
             for key, expected in styles.items()
         ),
         "legacy_semantics": sum(
-            local._semantic_check(actual[key], expected)
+            key in actual and local._semantic_check(actual[key], expected)
             for key, expected in gold["expected_semantics"].items()
         ),
     }
@@ -524,12 +524,21 @@ def _audit_metrics(
     return metrics
 
 
-def _verify_call(
-    row: dict, body: dict, candidate: str, protocol_sha: str
-) -> local._Decision:
-    _require(
-        row.get("status") == "completed" and row.get("protocol_sha256") == protocol_sha
+def _response_identity(response: dict) -> bool:
+    return (
+        response.get("model") == MODEL
+        and response.get("provider") == PROVIDER
+        and isinstance(response.get("id"), str)
+        and bool(response["id"].strip())
     )
+
+
+def _uncertain(decision: local._Decision) -> bool:
+    return decision.unsupported == "unclear" or "unclear" in decision.atoms.values()
+
+
+def _verified_exchange(row: dict, body: dict, protocol_sha: str) -> dict:
+    _require(row.get("protocol_sha256") == protocol_sha)
     request_sha = stable_hash(body)
     _require(
         row.get("request_sha256") == request_sha
@@ -541,24 +550,52 @@ def _verify_call(
         and row.get("response_sha256") == stable_hash(response)
     )
     assert isinstance(response, dict)
-    result, evidence = decode_with_evidence(response, body, candidate)
-    _require(row.get("decision") == result.model_dump())
-    _require(
-        stable_hash(row.get("identifier_comparison"))
-        == stable_hash(evidence.get("identifier_comparison"))
-        and stable_hash(row.get("field_evidence"))
-        == stable_hash(evidence.get("field_evidence"))
-        and stable_hash(row.get("response_scope"))
-        == stable_hash(evidence.get("response_scope"))
-        and stable_hash(row.get("pickup_point"))
-        == stable_hash(evidence.get("pickup_point"))
-    )
     cost = reported_cost(response)
     _require(cost is not None and row.get("cost_usd") == cost)
     _require(_money(cost) <= _money(row["reserved_usd"]))
     _require(_money(row["reserved_usd"]) == reserve(body))
     _require(_time(row["started_at"]) <= _time(row["finished_at"]))
-    return result
+    return response
+
+
+def _verify_decision(
+    row: dict, decision: local._Decision, evidence: ReviewEvidence
+) -> None:
+    _require(row.get("decision") == decision.model_dump())
+    _require(
+        all(
+            stable_hash(row.get(field)) == stable_hash(evidence.get(field))
+            for field in ReviewEvidence.__annotations__
+        )
+    )
+
+
+def _verify_call(
+    row: dict, body: dict, candidate: str, protocol_sha: str
+) -> local._Decision:
+    _require(row.get("status") == "completed")
+    response = _verified_exchange(row, body, protocol_sha)
+    decision, evidence = decode_with_evidence(response, body, candidate)
+    _verify_decision(row, decision, evidence)
+    return decision
+
+
+def _verify_rejected_call(
+    row: dict, body: dict, candidate: str, protocol_sha: str
+) -> None:
+    response = _verified_exchange(row, body, protocol_sha)
+    _require(row.get("http_status") == 200 and _response_identity(response))
+    try:
+        decision, evidence = decode_with_evidence(response, body, candidate)
+    except ValueError:
+        _require(
+            row.get("error_type") == "decoder_invalid"
+            and "decision" not in row
+            and not any(field in row for field in ReviewEvidence.__annotations__)
+        )
+    else:
+        _require(row.get("error_type") == "uncertain_decision" and _uncertain(decision))
+        _verify_decision(row, decision, evidence)
 
 
 def verify_audit(pin: QualificationRemote) -> None:
@@ -674,7 +711,13 @@ def verify_audit(pin: QualificationRemote) -> None:
 
 
 def _replay_phase1(
-    root: Path, protocol: dict, protocol_sha: str, manifest: dict, hashes: dict
+    root: Path,
+    protocol: dict,
+    protocol_sha: str,
+    manifest: dict,
+    hashes: dict,
+    *,
+    collect_rejections: bool = False,
 ) -> tuple[list[dict], dict, tuple[Decimal, Decimal]]:
     review = _bound(root, "data-review.json", protocol["data_review_sha256"])
     _require(
@@ -693,9 +736,11 @@ def _replay_phase1(
         _audit_order(root, manifest, phase1=True),
         [],
         _time(review["created_at"]),
+        collect_rejections=collect_rejections,
     )
     costs = _audit_costs(rows, protocol)
-    return rows, _audit_metrics(root, manifest, rows, phase1=True), costs
+    completed = [row for row in rows if row["status"] == "completed"]
+    return rows, _audit_metrics(root, manifest, completed, phase1=True), costs
 
 
 def _verify_holdout_capacity(
@@ -836,6 +881,8 @@ def _audit_rows(
     order: list[dict],
     prior: list[dict],
     phase_opened_at: datetime,
+    *,
+    collect_rejections: bool = False,
 ) -> list[dict]:
     from .semantic_openrouter_audit import _RATE_LIMIT_POLICY
 
@@ -874,13 +921,13 @@ def _audit_rows(
         )
         previous_end = _time(row["finished_at"])
         case, answer = _jobs(root, manifest, row["split"])[0][row["answer_id"]]
-        decision = _verify_call(
-            row, _control_request(case, answer), answer["text"], protocol_sha
-        )
-        _require(
-            decision.unsupported != "unclear"
-            and "unclear" not in decision.atoms.values()
-        )
+        body = _control_request(case, answer)
+        if collect_rejections and row.get("status") == "rejected_decision":
+            _require(row["split"] in PHASE1)
+            _verify_rejected_call(row, body, answer["text"], protocol_sha)
+        else:
+            decision = _verify_call(row, body, answer["text"], protocol_sha)
+            _require(not _uncertain(decision))
         generation = row["response"]["id"]
         _require(generation not in generations)
         _require(_money(row["cost_usd"]) <= _money(row["reserved_usd"]))

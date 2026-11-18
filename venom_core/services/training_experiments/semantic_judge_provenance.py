@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 from .profiles import stable_hash
 
 if TYPE_CHECKING:
-    from .local_semantic_judge import QualificationV4
+    from .local_semantic_judge import QualificationV4, QualificationV5, QualificationV6
 
 
 def require(condition: bool) -> None:
@@ -18,7 +18,9 @@ def require(condition: bool) -> None:
         raise ValueError("experiment_judge_v4_provenance_invalid")
 
 
-def verify_legacy(root: Path, manifest: dict, pin: QualificationV4) -> None:
+def verify_legacy(
+    root: Path, manifest: dict, pin: QualificationV4 | QualificationV5 | QualificationV6
+) -> None:
     from . import local_semantic_judge as judge
 
     directory = root / "controls"
@@ -87,6 +89,33 @@ def verify_call(
     require(
         previous_end <= call["started_monotonic_ns"] <= call["finished_monotonic_ns"]
     )
+    if (
+        protocol.get("judge") == "semantic-local-v6"
+        and call["response"].get("protocol") == "semantic-local-v6"
+    ):
+        require(call["request"].get("protocol") == "semantic-local-v6")
+        stages = call["response"].get("calls")
+        require(isinstance(stages, list) and len(stages) == 2)
+        require(ident not in seen["call_id"])
+        seen["call_id"].add(ident)
+        stage_end = call["started_monotonic_ns"]
+        for stage, expected in zip(stages, call["request"]["stages"], strict=True):
+            require(stage["request"] == expected)
+            require(stage["request_sha256"] == stable_hash(expected))
+            stage_end = verify_call(
+                {
+                    **stage,
+                    "run_id": call["run_id"],
+                    "protocol_sha256": protocol_sha,
+                    "intent_sha256": call["intent_sha256"],
+                },
+                protocol,
+                protocol_sha,
+                seen,
+                stage_end,
+            )
+        require(stage_end <= call["finished_monotonic_ns"])
+        return int(call["finished_monotonic_ns"])
     created = call["response"]["created_at"]
     require(isinstance(created, str))
     stamp = datetime.fromisoformat(created.replace("Z", "+00:00"))
@@ -113,7 +142,10 @@ def verify_call(
 
 
 def verify_session(
-    root: Path, protocol: dict, pin: QualificationV4, result: dict
+    root: Path,
+    protocol: dict,
+    pin: QualificationV4 | QualificationV5 | QualificationV6,
+    result: dict,
 ) -> None:
     from . import local_semantic_judge as judge
 
@@ -123,15 +155,18 @@ def verify_session(
     require(intent["run_id"] == protocol["run_id"])
     require(intent["manifest_sha256"] == pin.accuracy_manifest_sha256)
     require(intent["implementation_sha256"] == protocol["implementation_sha256"])
-    require(type(intent["seconds"]) is int and 120 < intent["seconds"] <= 1500)
+    maximum = 3600 if protocol["judge"] == judge.JUDGE_V6 else 1500
+    require(type(intent["seconds"]) is int and 120 < intent["seconds"] <= maximum)
     require(intent["cleanup_seconds"] == 120)
     for value in (started, gate, result):
         _scope(value, protocol, pin.protocol_sha256)
-    require(result["holdout_opened"] is True and result["completed_calls"] == 180)
-    require(gate["completed_calls"] == 108)
-    require(gate["phase1_rows_sha256"] == stable_hash(result["rows"][:108]))
+    phase1_count = 140 if protocol["judge"] == judge.JUDGE_V6 else 108
+    total = phase1_count + 72
+    require(result["holdout_opened"] is True and result["completed_calls"] == total)
+    require(gate["completed_calls"] == phase1_count)
+    require(gate["phase1_rows_sha256"] == stable_hash(result["rows"][:phase1_count]))
     boundary = {}
-    for index in (1, 108, 109, 180):
+    for index in (1, phase1_count, phase1_count + 1, total):
         row = result["rows"][index - 1]
         boundary[index] = judge._bound_json(
             root / "judge-calls", f"{index:03d}.json", row["call_sha256"]
@@ -144,9 +179,9 @@ def verify_session(
     require(all(type(value) is int and value > 0 for value in times))
     require(times[0] <= boundary[1]["started_monotonic_ns"])
     require(
-        boundary[108]["finished_monotonic_ns"]
+        boundary[phase1_count]["finished_monotonic_ns"]
         <= times[1]
-        <= boundary[109]["started_monotonic_ns"]
+        <= boundary[phase1_count + 1]["started_monotonic_ns"]
     )
-    require(boundary[180]["finished_monotonic_ns"] <= times[2])
+    require(boundary[total]["finished_monotonic_ns"] <= times[2])
     require(0 <= times[2] - times[0] <= intent["seconds"] * 1_000_000_000)

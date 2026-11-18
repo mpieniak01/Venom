@@ -242,8 +242,16 @@ class RuntimeAdmission:
                 connection.execute("ALTER TABLE lease ADD COLUMN process_identity TEXT")
             connection.execute(
                 "CREATE TABLE IF NOT EXISTS operation (token TEXT PRIMARY KEY, "
-                "lease_token TEXT, kind TEXT, pid INTEGER, uncertain INTEGER DEFAULT 0)"
+                "lease_token TEXT, kind TEXT, pid INTEGER, uncertain INTEGER DEFAULT 0, "
+                "runtime_identity TEXT)"
             )
+            if not any(
+                row["name"] == "runtime_identity"
+                for row in connection.execute("PRAGMA table_info(operation)")
+            ):
+                connection.execute(
+                    "ALTER TABLE operation ADD COLUMN runtime_identity TEXT"
+                )
             yield connection
             connection.commit()
         finally:
@@ -564,6 +572,7 @@ class RuntimeAdmission:
         token: str | None = None,
         detached: bool = False,
         cleanup: bool = False,
+        runtime_identity: str | None = None,
     ) -> str | None:
         if not self.enabled:
             return None
@@ -603,8 +612,8 @@ class RuntimeAdmission:
                 raise RuntimeAdmissionError("runtime_recovery_required")
             operation = uuid4().hex
             db.execute(
-                "INSERT INTO operation (token,lease_token,kind,pid) VALUES (?,?,?,?)",
-                (operation, token, kind, os.getpid()),
+                "INSERT INTO operation (token,lease_token,kind,pid,runtime_identity) VALUES (?,?,?,?,?)",
+                (operation, token, kind, os.getpid(), runtime_identity),
             )
             return operation
 
@@ -653,10 +662,17 @@ class RuntimeAdmission:
         lease_token: str | None = None,
         confirm_quiescent: Callable[[], bool] | None = None,
         _cleanup: bool = False,
+        runtime_identity: str | None = None,
     ) -> Iterator[None]:
         """Cover real work, not just queueing it or waiting on its HTTP caller."""
         token = lease_token or _CURRENT_LEASE.get()
-        operation = self._enter(kind, mutation=mutation, token=token, cleanup=_cleanup)
+        operation = self._enter(
+            kind,
+            mutation=mutation,
+            token=token,
+            cleanup=_cleanup,
+            runtime_identity=runtime_identity,
+        )
         evidence = _CURRENT_EVIDENCE.get()
         if operation is not None or evidence is None:
             evidence = _OperationEvidence(object())
@@ -772,12 +788,30 @@ class RuntimeAdmission:
             db.execute("DELETE FROM lease WHERE token=?", (token,))
             return True
 
+    def pending_host_runtime_ids(self) -> frozenset[str]:
+        """Targets of interrupted or orphaned unleased operations."""
+        if not self.enabled:
+            return frozenset()
+        self._require_supported()
+        with self._transaction() as db:
+            return frozenset(
+                row["runtime_identity"]
+                for row in db.execute(
+                    "SELECT runtime_identity FROM operation WHERE lease_token IS NULL "
+                    "AND runtime_identity IS NOT NULL "
+                    "AND (uncertain=1 OR pid<>?)",
+                    (os.getpid(),),
+                )
+            )
+
     def recover(
         self,
         *,
         confirm_quiescent: Callable[[], bool],
         expected_token: str | None = None,
         allowed_operation_kinds: frozenset[str] | None = None,
+        verified_runtime_ids: frozenset[str] | None = None,
+        verified_unidentified_kinds: frozenset[str] = frozenset(),
     ) -> bool:
         """Trusted host-only recovery after verified daemon/worker quiescence.
 
@@ -817,6 +851,19 @@ class RuntimeAdmission:
                     row["kind"] not in allowed_operation_kinds for row in operations
                 ):
                     return False
+            if verified_runtime_ids is not None and any(
+                row["runtime_identity"] not in verified_runtime_ids
+                and not (
+                    row["runtime_identity"] is None
+                    and row["kind"] in verified_unidentified_kinds
+                )
+                for row in db.execute(
+                    "SELECT kind, runtime_identity FROM operation WHERE token<>? "
+                    "AND lease_token IS NULL AND kind NOT IN ('cleanup', 'llm_cleanup')",
+                    (cleanup_token,),
+                )
+            ):
+                return False
             if not confirm_quiescent():
                 return False
             # Keep the cleanup barrier until its host operation actually exits.

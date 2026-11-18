@@ -207,6 +207,16 @@ W rozmowie głosowej Studio i w trybie Direct w panelu Głos w Full selektor try
 
 Środowisko local-first powinno być zarządzane przez jawne i powtarzalne targety `make`, a nie przez jednorazowe komendy shellowe.
 
+### Natywny adapter tekstowy Omni
+
+W trybie Direct na `/chat2` wybierz adapter tekstowy Omni i użyj akcji
+wczytania i sprawdzenia. Przed uruchomieniem API skonfiguruj katalog adapterów,
+snapshot modelu i środowisko PEFT. Akcja przywracania wczytuje poprzedni adapter.
+Osobna akcja powrotu do zwykłego runtime wyłącza nakładkę, także po zmianie
+runtime działającego pod nakładką.
+
+Klucze środowiskowe i procedurę odbioru opisuje [instrukcja runtime Omni](OMNI_NATIVE_TEXT_RUNTIME.md).
+
 ### Cykl życia runtime
 
 1. Start lokalnego runtime czatu:

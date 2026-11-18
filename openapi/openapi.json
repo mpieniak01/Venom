@@ -4793,6 +4793,126 @@
         }
       }
     },
+    "/api/v1/llm/native-text/state": {
+      "get": {
+        "tags": [
+          "llm",
+          "llm"
+        ],
+        "summary": "State",
+        "operationId": "state_api_v1_llm_native_text_state_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/llm/native-text/catalog": {
+      "get": {
+        "tags": [
+          "llm",
+          "llm"
+        ],
+        "summary": "Catalog",
+        "operationId": "catalog_api_v1_llm_native_text_catalog_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/llm/native-text/selection": {
+      "put": {
+        "tags": [
+          "llm",
+          "llm"
+        ],
+        "summary": "Select",
+        "operationId": "select_api_v1_llm_native_text_selection_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SelectionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/llm/native-text/rollback": {
+      "post": {
+        "tags": [
+          "llm",
+          "llm"
+        ],
+        "summary": "Rollback",
+        "operationId": "rollback_api_v1_llm_native_text_rollback_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RollbackRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/llm/simple/stream": {
       "post": {
         "tags": [
@@ -22528,6 +22648,25 @@
         "title": "RoadmapCreateRequest",
         "description": "Request dla utworzenia roadmapy."
       },
+      "RollbackRequest": {
+        "properties": {
+          "expected_runtime_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 256
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Runtime Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "RollbackRequest"
+      },
       "RoutingDecisionSummary": {
         "properties": {
           "target_runtime": {
@@ -22777,6 +22916,38 @@
           "duration_minutes"
         ],
         "title": "SearchRequest"
+      },
+      "SelectionRequest": {
+        "properties": {
+          "adapter_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Adapter Id"
+          },
+          "expected_runtime_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 256
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Runtime Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "SelectionRequest"
       },
       "SelfLearningCapabilitiesResponse": {
         "properties": {
@@ -23745,7 +23916,7 @@
               "$ref": "#/components/schemas/HistoryMessage"
             },
             "type": "array",
-            "maxItems": 20,
+            "maxItems": 200,
             "title": "History"
           }
         },

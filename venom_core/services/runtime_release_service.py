@@ -7,7 +7,7 @@ import os
 from collections.abc import Coroutine
 from contextlib import nullcontext
 from typing import Any
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, urlunsplit
 
 import httpx
 import psutil
@@ -26,6 +26,7 @@ from venom_core.services.runtime_switch_gate import (
     finish_runtime_switch,
     wait_for_runtime_requests_to_drain,
 )
+from venom_core.utils.llm_runtime import compute_runtime_id
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -39,11 +40,17 @@ _LLM_RECOVERY_KINDS = frozenset(
         "maf_stream",
         "maf_validation",
         "simple_chat",
+        "simple_chat_stream",
+        "simple_chat_non_stream",
         "runtime_switch",
         "runtime_command",
         "llm_cleanup",
     }
 )
+
+# These legacy guards only build local request metadata or query capabilities.
+# Even when interrupted, neither submits a generation to a daemon.
+_METADATA_ONLY_KINDS = frozenset({"maf_validation", "voice_audio_selection"})
 
 _LOCAL_RUNTIMES = frozenset({"ollama", "multi_runtime", "vllm", "onnx"})
 
@@ -118,15 +125,94 @@ def _release_error_code(error: Exception) -> str:
     return "runtime_release_" + type(error).__name__
 
 
-def _recover_uncertainty(admission, verified: bool, include_registered: bool) -> bool:
+def _ollama_runtime_ids(endpoint: str) -> frozenset[str]:
+    root = endpoint.rstrip("/").removesuffix("/v1")
+    return frozenset(
+        compute_runtime_id("ollama", value) for value in (endpoint, root, root + "/v1")
+    )
+
+
+def _pending_ollama_alias(endpoint: str, pending: frozenset[str]) -> str | None:
+    parsed = urlsplit(endpoint)
+    hosts = {"localhost": "127.0.0.1", "127.0.0.1": "localhost"}
+    alternate = hosts.get(parsed.hostname or "")
+    if alternate is None or parsed.username is not None:
+        return None
+    authority = alternate if parsed.port is None else f"{alternate}:{parsed.port}"
+    alias = urlunsplit(parsed._replace(netloc=authority))
+    if _ollama_runtime_ids(alias) & pending:
+        return alias
+    return None
+
+
+async def _release_ollama_endpoints(
+    endpoint: str, pending: frozenset[str]
+) -> tuple[list[str], str, set[str]]:
+    # localhost and IPv4 loopback may select different listening sockets.
+    alias = _pending_ollama_alias(endpoint, pending)
+    endpoints = [endpoint, alias] if alias else [endpoint]
+    identities: set[str] = set()
+    models: dict[str, None] = {}
+    state = "stopped"
+    for target in endpoints:
+        if await _listening(target):
+            unloaded = await _unload_ollama(target)
+            models.update(dict.fromkeys(unloaded))
+            state = "idle"
+        identities.update(_ollama_runtime_ids(target))
+    return list(models), state, identities
+
+
+async def _release_server(
+    controller: Any,
+    server: dict[str, Any],
+    pending: frozenset[str],
+) -> tuple[dict[str, Any], frozenset[str]]:
+    provider = server["name"]
+    endpoint = server["endpoint"]
+    result: dict[str, Any] = {"runtime": provider, "models": [], "verified": False}
+    try:
+        if provider == "ollama" and endpoint:
+            models, state, identities = await _release_ollama_endpoints(
+                endpoint, pending
+            )
+            result.update(models=models, state=state)
+        else:
+            if await _listening(endpoint):
+                await _stop_worker(controller, server)
+            result["state"] = "stopped"
+            identities = {compute_runtime_id(provider, endpoint)} if endpoint else set()
+        result["verified"] = True
+        return result, frozenset(identities)
+    except Exception as exc:
+        logger.opt(exception=True).warning(
+            "Runtime release failed runtime={}", provider
+        )
+        result["state"] = "failed"
+        result["error"] = _release_error_code(exc)
+        return result, frozenset()
+
+
+def _recover_uncertainty(
+    admission,
+    verified: bool,
+    include_registered: bool,
+    verified_runtime_ids: frozenset[str],
+) -> bool:
     if not verified:
         return False
     if not admission.enabled:
         return True
     if include_registered:
-        return admission.recover(confirm_quiescent=lambda: True)
+        return admission.recover(
+            confirm_quiescent=lambda: True,
+            verified_runtime_ids=verified_runtime_ids,
+            verified_unidentified_kinds=_METADATA_ONLY_KINDS,
+        )
     return admission.recover(
-        confirm_quiescent=lambda: True, allowed_operation_kinds=_LLM_RECOVERY_KINDS
+        confirm_quiescent=lambda: True,
+        allowed_operation_kinds=_LLM_RECOVERY_KINDS,
+        verified_runtime_ids=verified_runtime_ids,
     )
 
 
@@ -159,31 +245,15 @@ async def _release_models(
 ) -> dict[str, Any]:
     """Release only under a host barrier; retain evidence on every partial failure."""
     results = []
+    verified_ids: set[str] = set()
     selected = _LOCAL_RUNTIMES if runtime_ids is None else runtime_ids
     servers = [s for s in controller.list_servers() if s["name"] in selected]
+    admission = get_runtime_admission()
+    pending = frozenset() if for_training else admission.pending_host_runtime_ids()
     for server in servers:
-        result: dict[str, Any] = {
-            "runtime": server["name"],
-            "models": [],
-            "verified": False,
-        }
-        try:
-            if not await _listening(server["endpoint"]):
-                result["state"] = "stopped"
-            elif server["name"] == "ollama":
-                result["models"] = await _unload_ollama(server["endpoint"])
-                result["state"] = "idle"
-            else:
-                await _stop_worker(controller, server)
-                result["state"] = "stopped"
-            result["verified"] = True
-        except Exception as exc:
-            logger.opt(exception=True).warning(
-                "Runtime release failed runtime={}", server["name"]
-            )
-            result["state"] = "failed"
-            result["error"] = _release_error_code(exc)
+        result, identities = await _release_server(controller, server, pending)
         results.append(result)
+        verified_ids.update(identities)
     local_results = (
         await asyncio.to_thread(release_registered_models) if include_registered else []
     )
@@ -198,11 +268,15 @@ async def _release_models(
     verified = all(row["verified"] for row in results) and (
         include_registered or bool(results)
     )
-    admission = get_runtime_admission()
     if not (
         verified
         if for_training
-        else _recover_uncertainty(admission, verified, include_registered)
+        else _recover_uncertainty(
+            admission,
+            verified,
+            include_registered,
+            frozenset(verified_ids),
+        )
     ):
         raise HTTPException(
             status_code=502,

@@ -923,6 +923,7 @@ async def _stream_simple_chunks(
         model=model_name,
         expected_runtime_id=expected_runtime_id,
         expected_config_hash=expected_config_hash,
+        runtime_identity=runtime.runtime_id,
     ):
         state = _SimpleStreamState(chunks=[])
         stream_start = time.perf_counter()
@@ -1008,6 +1009,7 @@ async def _stream_simple_chunks_non_stream(
         model=model_name,
         expected_runtime_id=expected_runtime_id,
         expected_config_hash=expected_config_hash,
+        runtime_identity=runtime.runtime_id,
     ):
         stream_start = time.perf_counter()
         chunks: list[str] = []
@@ -1141,8 +1143,16 @@ def _validate_simple_chat_runtime(runtime) -> str:
 
 async def stream_simple_chat(request: SimpleChatRequest, *, system_context: str = ""):
     assert_runtime_request_allowed(request_kind="simple_chat")
-    from venom_core.services import openrouter_runtime
+    from venom_core.services import omni_native_text, openrouter_runtime
 
+    if omni_native_text.selected():
+        if openrouter_runtime.selection() is not None:
+            raise HTTPException(
+                409, {"reason_code": "omni_native_text_runtime_conflict"}
+            )
+        return await omni_native_text.response(request, system_context=system_context)
+    if (request.expected_runtime_id or "").startswith("omni-native-peft-text:"):
+        raise HTTPException(409, {"reason_code": "omni_native_text_selection_changed"})
     if openrouter_runtime.selection() is not None:
         if request.studio_normal:
             raise HTTPException(400, "studio_normal_requires_local_ollama")

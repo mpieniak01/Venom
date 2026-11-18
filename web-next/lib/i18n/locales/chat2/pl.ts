@@ -1,4 +1,25 @@
 export const chat2 = {
+  nativeText: {
+    "title": "Adapter tekstowy Omni",
+    "choose": "Wybierz adapter",
+    "apply": "Wczytaj i sprawdź",
+    "rollback": "Przywróć poprzedni model",
+    "deactivate": "Użyj zwykłego modelu",
+    "refresh": "Odśwież stan",
+    "reference": "Referencja P13",
+    "unqualified": "Kandydat bez kwalifikacji",
+    "scope": "Adapter obsługuje wyłącznie tekst w trybie Direct. Wybór wygasa po restarcie API.",
+    "probing": "Ładowanie i sprawdzanie adaptera…",
+    "ordinary": "Aktywny zwykły model",
+    "direct": "Przejdź do Direct",
+    "usedWeights": "Wagi użyte w odpowiedzi",
+
+    "context": "Rozmowa przekracza limit natywnego modelu. Skróć kontekst lub limit odpowiedzi.",
+    "unsupported": "Wybrany adapter nie obsługuje tej funkcji czatu.",
+    "changed": "Wybór modelu lub wagi zmieniły się. Sprawdź aktywny adapter przed ponowieniem.",
+    "unavailable": "Natywny model tekstowy nie jest skonfigurowany na tym hoście.",
+    "failed": "Nie udało się uruchomić wybranego adaptera. Sprawdź jego stan przed ponowieniem."
+},
   "attachVoiceImage": "Dołącz obraz do pytania głosowego",
   "voiceImageInvalid": "Wybierz obraz JPEG lub PNG.",
   "voiceImageTooLarge": "Obraz może mieć maksymalnie 2 MB.",

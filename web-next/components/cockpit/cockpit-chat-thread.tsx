@@ -40,6 +40,7 @@ import { Settings, ThumbsDown, ThumbsUp } from "lucide-react";
 export type ChatMode = "direct" | "normal" | "complex";
 
 export type ChatMessage = {
+  modelIdentity?: import("@/lib/native-text-chat").NativeTextIdentity;
   materialIds?: string[];
   bubbleId: string;
   requestId: string | null;

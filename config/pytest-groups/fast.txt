@@ -41,8 +41,13 @@ tests/test_academy_dataset_conversion.py
 tests/test_academy_experiments.py
 tests/test_academy_file_resolution_service.py
 tests/test_academy_history_module.py
+tests/test_academy_judge_controls.py
+tests/test_academy_judge_dispatch.py
 tests/test_academy_models_module.py
+tests/test_academy_openrouter_audit.py
+tests/test_academy_openrouter_judge.py
 tests/test_academy_optuna_backend.py
+tests/test_academy_parent_selection.py
 tests/test_academy_quality.py
 tests/test_academy_quality_native.py
 tests/test_academy_remote_text.py
@@ -350,6 +355,7 @@ tests/test_module_example_data_policy_routes.py
 tests/test_module_registry.py
 tests/test_multi_runtime_probe_logits_tokens.py
 tests/test_multi_runtime_profile_service.py
+tests/test_native_text_acceptance.py
 tests/test_new_chat_session_api.py
 tests/test_node_manager.py
 tests/test_node_protocol.py
@@ -369,6 +375,8 @@ tests/test_omni_pl_chat_preparation.py
 tests/test_omni_pl_chat_recipe.py
 tests/test_omni_pl_chat_scoring.py
 tests/test_omni_remote_session.py
+tests/test_omni_state_repair_data.py
+tests/test_omni_text_bridge.py
 tests/test_onnx_llm_client.py
 tests/test_onnx_runtime_cleanup.py
 tests/test_openai_semantic_kernel_compat.py

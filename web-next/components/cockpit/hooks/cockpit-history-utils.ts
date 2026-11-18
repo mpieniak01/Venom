@@ -1,6 +1,7 @@
 "use client";
 
 type HistoryEntryLike = {
+  model_identity?: import("@/lib/native-text-chat").NativeTextIdentity;
   material_ids?: string[];
   role?: string;
   content?: string;
@@ -239,6 +240,7 @@ export function toHistoryMessages(entries: HistoryEntryLike[]) {
       : fallbackId;
     return {
       ...(entry.material_ids?.length ? { materialIds: [...entry.material_ids] } : {}),
+      ...(entry.model_identity ? {modelIdentity: entry.model_identity} : {}),
       bubbleId: uniqueId,
       role: mapRole(entry.role),
       text: entry.content || "",

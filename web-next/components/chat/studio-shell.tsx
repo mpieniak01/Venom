@@ -18,6 +18,8 @@ import { useConversationController } from "./use-conversation-controller";
 import { useConversationData } from "./use-conversation-data";
 import { useSessionDraft } from "./use-session-draft";
 import { useChatMaterials } from "./use-chat-materials";
+import { useNativeTextChat, type NativeTextChat } from "./use-native-text-chat";
+import { NativeTextPicker } from "./native-text-picker";
 import { StudioModelPicker } from "./studio-model-picker";
 import { StudioMaterials } from "./studio-materials";
 import { StudioThread } from "./studio-thread";
@@ -37,7 +39,12 @@ function studioCapabilities(
   direct: boolean,
   language: string,
   activeServer: Parameters<typeof supportsLocalOmniVoice>[0],
+  native = false,
 ) {
+  if (native) return {
+    voiceAvailable: false, multimodalEnabled: false, conversationVoiceAvailable: false,
+    documentStatus: "chat2.unsupported", imageStatus: "chat2.unsupported", voiceStatus: "chat2.unsupported",
+  };
   const voiceAvailable = materials?.voice === true;
   const multimodalEnabled = language === "pl" && supportsLocalOmniVoice(activeServer);
   return {
@@ -48,6 +55,10 @@ function studioCapabilities(
     imageStatus: direct ? capabilityStatus(materials?.image) : "chat2.unsupported",
     voiceStatus: capabilityStatus(multimodalEnabled ? true : materials?.voice),
   };
+}
+
+function unsupportedNativeFeatures(native: boolean, direct: boolean, selectedCount: number, voice: string | null) {
+  return native && (!direct || selectedCount > 0 || voice != null);
 }
 
 const compactQuery = "(max-width: 800px)";
@@ -72,12 +83,14 @@ export function StudioShell({ showLegacyLink = true, lightNormal = false }: Read
   lightNormal?: boolean;
 }>) {
   const { sessionId } = useSession();
-  return <StudioConversation key={sessionId} showLegacyLink={showLegacyLink} lightNormal={lightNormal} />;
+  const native = useNativeTextChat();
+  return <StudioConversation key={sessionId} showLegacyLink={showLegacyLink} lightNormal={lightNormal} native={native} />;
 }
 /** Render the conversation and keep its draft, materials and controls scoped to the session. */
-function StudioConversation({ showLegacyLink, lightNormal }: Readonly<{
+function StudioConversation({ showLegacyLink, lightNormal, native }: Readonly<{
   showLegacyLink: boolean;
   lightNormal: boolean;
+  native: NativeTextChat;
 }>) {
   const { t, language, setLanguage } = useLanguage();
   const { theme, setTheme } = useTheme();
@@ -110,25 +123,27 @@ function StudioConversation({ showLegacyLink, lightNormal }: Readonly<{
   const [multimodalBusy, setMultimodalBusy] = useState(false);
   const conversation = useConversationController({
     data: source.data, interactive: interaction, layout, chatScrollRef: scrollRef,
-    materialIds: selected, manualChatNotes: true, lightNormal,
+    materialIds: selected, manualChatNotes: true, lightNormal, nativeSelection: native.state.selection,
   });
   const { state, setters } = interaction;
   const activeServer = source.data.activeServerInfo;
-  const selectedModel = resolveEffectiveChatModelSelection(
+  const ordinaryModel = resolveEffectiveChatModelSelection(
     state.selectedLlmModel, activeServer?.active_model, state.selectedLlmServer, activeServer?.active_server ?? "",
   );
+  const selectedModel = native.state.selection?.adapter_id ?? ordinaryModel;
   const materials = useChatMaterials(sessionId, selectedModel, state.selectedLlmServer,
     activeServer?.active_server ?? "", activeServer?.config_hash ?? "", materialsOpen || selected.length > 0);
   const direct = state.chatMode === "direct";
   const {
     voiceAvailable, multimodalEnabled, conversationVoiceAvailable,
     documentStatus, imageStatus, voiceStatus,
-  } = studioCapabilities(materials.capabilities, direct, language, activeServer);
-  const notesAvailable = materials.capabilities?.notes === true;
+  } = studioCapabilities(materials.capabilities, direct, language, activeServer, !!native.state.selection);
+  const notesAvailable = !native.state.selection && materials.capabilities?.notes === true;
   const notesSelected = notesAvailable && state.chatMode === "normal" && useNotes;
   const attached = materials.items.filter(item => selected.includes(item.id));
   const missing = selected.length > attached.length;
-  const blocked = missing || materialBlocked(attached, materials.capabilities, direct);
+  const nativeBlocked = unsupportedNativeFeatures(!!native.state.selection, direct, selected.length, voice);
+  const blocked = !native.ready || native.busy || nativeBlocked || missing || materialBlocked(attached, materials.capabilities, direct);
   const chatActive = state.sending || conversation.historyMessages.some(message => message.pending || ["PENDING", "PROCESSING"].includes(message.status ?? ""));
   const active = chatActive || multimodalBusy;
   const sendLock = useRef(false);
@@ -167,6 +182,7 @@ function StudioConversation({ showLegacyLink, lightNormal }: Readonly<{
   }, [active, blocked, materials.uploading, notesSelected, conversation.chatUi, setDraft, setSelectedJson, selectedJson, setters, t]);
   const toggleMaterial = (id: string) => setSelectedJson(JSON.stringify(selected.includes(id) ? selected.filter(item => item !== id) : [...selected, id]));
   const upload = async (files: File[]) => {
+    if (native.state.selection) return;
     const created = await materials.upload(files);
     if (created.length) setSelectedJson(previous => JSON.stringify([...new Set([...materialSelection(previous), ...created.map(item => item.id)])].slice(0, 4)));
   };
@@ -205,7 +221,10 @@ function StudioConversation({ showLegacyLink, lightNormal }: Readonly<{
       <div className="studio-top-actions"><label className="studio-language"><span className="sr-only">{t("chat2.language")}</span><select aria-label={t("chat2.language")} value={language} onChange={event => setLanguage(event.target.value as "pl" | "en" | "de")}><option value="pl">PL</option><option value="en">EN</option><option value="de">DE</option></select></label>
         <button ref={materialButton} type="button" className="studio-button" aria-expanded={materialsOpen} aria-controls="studio-materials" onClick={() => { setHistoryOpen(false); setMaterialsOverride(!materialsOpen); }}><Paperclip size={16} />{t("chat2.materials")}</button></div>
     </header>
-    <StudioModelPicker catalog={source.data.unifiedModelCatalog} interaction={interaction} session={sessionId} selectedModel={selectedModel} activeModel={activeServer?.active_model} onApply={conversation.handleActivateModel} busy={active || voice != null} />
+    <StudioModelPicker catalog={source.data.unifiedModelCatalog} interaction={interaction} session={sessionId} selectedModel={selectedModel} activeModel={native.state.selection?.adapter_id ?? activeServer?.active_model} onApply={conversation.handleActivateModel} busy={active || voice != null || native.busy || !!native.state.selection} />
+    <NativeTextPicker native={native} busy={active || voice != null || materials.uploading} />
+    {nativeBlocked && <p className="studio-error" role="alert">{t("chat2.nativeText.unsupported")}</p>}
+    {!!native.state.selection && <button type="button" className="studio-button" disabled={active || native.busy} onClick={() => setters.setChatMode("direct")}>{t("chat2.nativeText.direct")}</button>}
     {source.error && <div className="studio-error" role="alert">{t("chat2.offline")}<button type="button" className="studio-button" onClick={() => { void source.refresh(); }}>{t("chat2.retry")}</button></div>}
     <div className={"studio-workspace" + (materialsOpen ? " studio-with-materials" : "")}><div className="studio-conversation">
       <StudioThread key={sessionId} messages={conversation.historyMessages} details={interaction.optimistic.simpleRequestDetails} scrollRef={scrollRef} onScroll={conversation.chatUi.handleChatScroll} loading={source.loading || !sessionId} onError={setters.setMessage} noteSession={notesAvailable ? sessionId : undefined} />
@@ -225,7 +244,7 @@ function StudioConversation({ showLegacyLink, lightNormal }: Readonly<{
         {!!selected.length && <div className="studio-attachments" aria-label={t("chat2.selectedMaterials")}>{selected.map(id => <button type="button" key={id} className="studio-chip" aria-label={t("chat2.detach") + ": " + (materials.items.find(item => item.id === id)?.name || id)} onClick={() => toggleMaterial(id)}><Paperclip size={13} />{materials.items.find(item => item.id === id)?.name || t("chat2.stale")}<X size={12} /></button>)}</div>}
         <div className="studio-compose"><textarea ref={textarea} aria-label={t("chat2.placeholder")} placeholder={t("chat2.placeholder")} value={draft} maxLength={50000} rows={3} disabled={!sessionId}
           onChange={event => setDraft(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void send(draft); } }} />
-          <div className="studio-compose-actions"><div><button type="button" className="studio-icon" aria-label={t("chat2.chooseFiles")} onClick={() => { setHistoryOpen(false); setMaterialsOverride(true); }}><Paperclip size={19} /></button>
+          <div className="studio-compose-actions"><div><button type="button" className="studio-icon" aria-label={t("chat2.chooseFiles")} disabled={!!native.state.selection} onClick={() => { setHistoryOpen(false); setMaterialsOverride(true); }}><Paperclip size={19} /></button>
             <button type="button" className="studio-button studio-quiet" onClick={() => setVoice(voice === "dictation" ? null : "dictation")} disabled={active || !voiceAvailable}><Mic size={17} />{t("chat2.dictate")}</button>
             <button type="button" className="studio-button studio-quiet" onClick={() => setVoice(voice === "conversation" ? null : "conversation")} disabled={active || !conversationVoiceAvailable}><Headphones size={17} />{t("chat2.voice")}</button></div>
             {active ? <button type="button" className="studio-button studio-stop" onClick={() => { void stop(); }}><Square size={15} />{t("chat2.stop")}</button> : <button type="submit" className="studio-button studio-send" disabled={!sessionId || source.loading || !selectedModel || !draft.trim() || blocked || materials.uploading}><Send size={17} />{t("chat2.send")}</button>}
@@ -253,7 +272,7 @@ function StudioConversation({ showLegacyLink, lightNormal }: Readonly<{
         if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
         else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
       }}>
-      <StudioMaterials key={sessionId} materialState={materials} selected={selected} onToggle={toggleMaterial} onUpload={upload} onClose={() => { setMaterialsOverride(false); materialButton.current?.focus(); }} />
+      <StudioMaterials key={sessionId} disabled={!!native.state.selection} materialState={materials} selected={selected} onToggle={toggleMaterial} onUpload={upload} onClose={() => { setMaterialsOverride(false); materialButton.current?.focus(); }} />
     </div>}
     </div></main>
   </div>;

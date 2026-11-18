@@ -1,5 +1,6 @@
 "use client";
 
+import { isNativeTextRuntime } from "@/lib/native-text-chat";
 import { isSelectableChatModel } from "@/lib/chat-model-options";
 import { normalizeRuntimeId } from "@/lib/cockpit-runtime-selection";
 import { apiFetch } from "@/lib/api-client";
@@ -22,6 +23,15 @@ import {
   buildSimpleStreamRequestPayload,
   addInitialSimpleUserHistoryEntry,
 } from "./chat-send-helpers";
+
+export function prepareChatHistory(
+  runtimeId: string | null | undefined,
+  history: ChatSendParams["conversationHistory"],
+  currentLength: number,
+) {
+  if (!history || isNativeTextRuntime(runtimeId)) return history;
+  return boundChatHistory(history, currentLength);
+}
 
 function resolveSession(
   parsed: ReturnType<typeof parseInputCommand>,
@@ -210,6 +220,9 @@ function resolveChatSendContext(payload: string, params: SendContextParams, t: (
       setMessage(t("cockpit.chatMessages.emptyPrompt"));
       return null;
     }
+    if (isNativeTextRuntime(activeServerInfo?.runtime_id) && (chatMode !== "direct" || parsed.forcedTool || parsed.forcedProvider || parsed.sessionReset)) {
+      setMessage(t("chat2.nativeText.unsupported")); return null;
+    }
     const academy = parsed.forcedTool === "academy";
     const effectiveSelectedModel = academy ? "" : resolveEffectiveChatModelSelection(
       selectedLlmModel,
@@ -251,6 +264,9 @@ async function prepareSendRuntime(
     return { runtimeOverride: null, activeServerInfo: null };
   }
 
+  if (isNativeTextRuntime(params.activeServerInfo?.runtime_id)) {
+    return {runtimeOverride: null, activeServerInfo: params.activeServerInfo};
+  }
   const selectedLlmModel = context.effectiveSelectedModel;
   const switched = await handleRuntimeSwitch({
     parsed: context.parsed,
@@ -373,7 +389,7 @@ export function useChatSend(params: ChatSendParams) {
     const shouldUseSimple = studioNormal || shouldUseSimpleMode(chatMode, parsed);
     const historyKey = vastChatHistoryKey(effectiveActiveServerInfo?.runtime_id, effectiveSelectedModel, resolvedSession, effectiveActiveServerInfo?.config_hash);
     const historySource = conversationHistory ?? (historyKey ? vastHistory.current.get(historyKey) ?? [] : undefined);
-    const history = historySource ? boundChatHistory(historySource, trimmed.length) : undefined;
+    const history = prepareChatHistory(effectiveActiveServerInfo?.runtime_id, historySource, trimmed.length);
     const quote = await prepareOpenRouterQuote({
       activeServerInfo: effectiveActiveServerInfo,
       trimmed,

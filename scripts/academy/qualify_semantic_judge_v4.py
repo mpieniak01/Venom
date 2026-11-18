@@ -19,9 +19,19 @@ def main() -> int:
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--max-seconds", type=int, default=1500)
     parser.add_argument("--execute", action="store_true")
+    parser.add_argument(
+        "--judge",
+        choices=("semantic-local-v4", "semantic-local-v5", "semantic-local-v6"),
+        default="semantic-local-v4",
+    )
     args = parser.parse_args()
     context = prepare_audit(
-        args.controls, args.output, args.manifest_sha256, args.run_id, args.max_seconds
+        args.controls,
+        args.output,
+        args.manifest_sha256,
+        args.run_id,
+        args.max_seconds,
+        judge_id=args.judge,
     )
     if not args.execute:
         print(json.dumps({"status": "staged_no_gpu", "output": str(context["root"])}))

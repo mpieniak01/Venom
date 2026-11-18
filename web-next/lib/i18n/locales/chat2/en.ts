@@ -1,4 +1,25 @@
 export const chat2 = {
+  nativeText: {
+    "title": "Omni text adapter",
+    "choose": "Choose an adapter",
+    "apply": "Load and verify",
+    "rollback": "Restore previous model",
+    "deactivate": "Use ordinary model",
+    "refresh": "Refresh state",
+    "reference": "P13 reference",
+    "unqualified": "Unqualified candidate",
+    "scope": "The adapter supports text in Direct mode only. Selection expires when the API restarts.",
+    "probing": "Loading and verifying adapter…",
+    "ordinary": "Ordinary model active",
+    "direct": "Switch to Direct",
+    "usedWeights": "Weights used for this answer",
+
+    "context": "The conversation exceeds the native model limit. Shorten the context or response limit.",
+    "unsupported": "The selected adapter does not support this chat feature.",
+    "changed": "The model selection or weights changed. Check the active adapter before retrying.",
+    "unavailable": "The native text model is not configured on this host.",
+    "failed": "The selected adapter could not run. Check its state before retrying."
+},
   "attachVoiceImage": "Attach an image to your spoken question",
   "voiceImageInvalid": "Choose a JPEG or PNG image.",
   "voiceImageTooLarge": "The image must be 2 MB or smaller.",

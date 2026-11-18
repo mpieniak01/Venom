@@ -721,6 +721,7 @@ export function useMemoryGraph(
 }
 
 type SessionHistoryEntry = {
+  model_identity?: import("@/lib/native-text-chat").NativeTextIdentity;
   role?: string;
   content?: string;
   session_id?: string;

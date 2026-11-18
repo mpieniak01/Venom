@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import shutil
@@ -21,6 +22,7 @@ from .profiles import digest, read_json, stable_hash
 
 CLEANUP_SECONDS = 120
 MAX_SECONDS = 1500
+V6_MAX_SECONDS = 3600
 _INTENT = "intent.json"
 _STARTED = "started.json"
 _PHASE1_PASS = "phase1-pass.json"
@@ -51,7 +53,10 @@ def _stage_controls(controls: Path, output: Path, intent: dict) -> None:
 def _copy_controls(controls: Path, output: Path, intent: dict) -> None:
     (output / "controls").mkdir(mode=0o700)
     (output / "judge-calls").mkdir(mode=0o700)
-    for name in sorted(verifier.FILES | {"frozen-manifest.json"}):
+    files = verifier.FILES | {"frozen-manifest.json"}
+    if "v6" in intent["implementation_sha256"]:
+        files |= {"extra/panel.json", "extra/gold.json"}
+    for name in sorted(files):
         source = controls / name
         if source.is_symlink() or not source.resolve().is_relative_to(controls):
             raise ValueError("experiment_judge_v4_controls_invalid")
@@ -62,11 +67,20 @@ def _copy_controls(controls: Path, output: Path, intent: dict) -> None:
 
 
 def prepare_audit(
-    controls: Path, output: Path, manifest_sha256: str, run_id: str, seconds: int
+    controls: Path,
+    output: Path,
+    manifest_sha256: str,
+    run_id: str,
+    seconds: int,
+    *,
+    judge_id: str = judge.JUDGE_V4,
 ) -> dict:
     """Stage immutable inputs; this function does not access a model or GPU."""
     validate_run_id(run_id)
-    if type(seconds) is not int or not CLEANUP_SECONDS < seconds <= MAX_SECONDS:
+    if judge_id not in {judge.JUDGE_V4, judge.JUDGE_V5, judge.JUDGE_V6}:
+        raise ValueError("experiment_judge_version_invalid")
+    maximum = V6_MAX_SECONDS if judge_id == judge.JUDGE_V6 else MAX_SECONDS
+    if type(seconds) is not int or not CLEANUP_SECONDS < seconds <= maximum:
         raise ValueError("experiment_judge_v4_budget_invalid")
     controls, output = controls.resolve(strict=True), output.resolve()
     if output == controls or output.is_relative_to(controls):
@@ -79,29 +93,33 @@ def prepare_audit(
         "manifest_sha256": manifest_sha256,
         "seconds": seconds,
         "cleanup_seconds": CLEANUP_SECONDS,
-        "implementation_sha256": verifier.implementation_hashes(),
+        "implementation_sha256": verifier.implementation_hashes(judge_id=judge_id),
     }
     _stage_controls(controls, output, intent)
-    manifest = verifier.control_files(output, manifest_sha256)
+    manifest = verifier.control_files(output, manifest_sha256, judge_id=judge_id)
     verifier.execution_order(output, manifest)
     # Only phase-one cases are materialized before their gate has passed.
     verifier.jobs_for(output, manifest, "legacy")
     verifier.jobs_for(output, manifest, "development")
+    if judge_id == judge.JUDGE_V6:
+        verifier.jobs_for(output, manifest, "extra")
     legacy = judge.Qualification.model_validate(
         read_json(output / "controls/legacy/judge-qualification-receipt.json")
     )
     if legacy.prompt_sha256 != judge.PROMPT_SHA256:
         raise ValueError("experiment_judge_v4_legacy_pin_changed")
     protocol = {
-        "schema_version": 4,
-        "judge": judge.JUDGE_V4,
-        "system": judge.PROMPT_V4,
-        "options": judge.OPTIONS,
+        "schema_version": {judge.JUDGE_V4: 4, judge.JUDGE_V5: 5, judge.JUDGE_V6: 6}[
+            judge_id
+        ],
+        "judge": judge_id,
+        "system": judge.prompt_for(judge_id),
+        "options": judge.options_for(judge_id),
         "model": legacy.model,
         "model_sha256": legacy.model_sha256,
         "ollama": {"version": legacy.ollama_version},
         "accuracy_manifest_sha256": manifest_sha256,
-        "implementation_sha256": verifier.implementation_hashes(),
+        "implementation_sha256": verifier.implementation_hashes(judge_id=judge_id),
         "run_id": run_id,
         "intent_sha256": digest(output / _INTENT),
     }
@@ -111,12 +129,21 @@ def prepare_audit(
             raise ValueError("experiment_judge_v4_protocol_changed")
     else:
         atomic_json(path, protocol)
-    provisional = judge.QualificationV4(
+    pin_model = {
+        judge.JUDGE_V4: judge.QualificationV4,
+        judge.JUDGE_V5: judge.QualificationV5,
+        judge.JUDGE_V6: judge.QualificationV6,
+    }[judge_id]
+    provisional = pin_model(
         **{
             **legacy.model_dump(),
-            "schema_version": 2,
+            "schema_version": {judge.JUDGE_V4: 2, judge.JUDGE_V5: 3, judge.JUDGE_V6: 4}[
+                judge_id
+            ],
             "true_positives": 24,
-            "prompt_sha256": judge.PROMPT_V4_SHA256,
+            "prompt_sha256": hashlib.sha256(
+                judge.prompt_for(judge_id).encode()
+            ).hexdigest(),
             "protocol_sha256": digest(path),
             "accuracy_manifest_sha256": manifest_sha256,
             "gold_sha256": manifest["files"]["legacy/qualification-gold.json"],
@@ -146,7 +173,9 @@ def _collect(
         remaining()
         index = len(rows) + 1
         case, answer = jobs[entry["split"]][entry["answer_id"]]
-        request = verifier.request_for(pin.model, case, answer)
+        request = verifier.request_for(
+            pin.model, case, answer, judge_id=judge.judge_for(pin)
+        )
         provenance = {
             "call_id": uuid.uuid4().hex,
             "run_id": context["intent"]["run_id"],
@@ -155,12 +184,26 @@ def _collect(
             "started_at_ns": time.time_ns(),
             "started_monotonic_ns": time.monotonic_ns(),
         }
-        response = judge._api(client, "chat", request, timeout=remaining())
+
+        def save_partial(value, *, index=index, request=request, provenance=provenance):
+            atomic_json(
+                root / "judge-calls" / f"{index:03d}.partial.json",
+                {**provenance, "request": request, "response": value},
+            )
+
+        response = judge.invoke_request(
+            client, request, remaining, progress=save_partial
+        )
         provenance.update(
             finished_at_ns=time.time_ns(), finished_monotonic_ns=time.monotonic_ns()
         )
         decision = judge._decode(
-            response, [c["id"] for c in case["criteria"]], pin.model
+            response,
+            [c["id"] for c in case["criteria"]],
+            pin.model,
+            judge=judge.judge_for(pin),
+            candidate=answer["text"],
+            request=request,
         )
         request_sha = stable_hash(request)
         path = root / "judge-calls" / f"{index:03d}.json"
@@ -191,11 +234,16 @@ def _collect(
             progress({"stage": "calls", "completed_calls": index})
 
 
-def run_audit(
-    context: dict, *, progress: Callable[[dict], None] = lambda _row: None
-) -> dict:
-    """Exactly one attempt. Never retry a call to obtain a passing decision."""
-    root, manifest, pin = context["root"], context["manifest"], context["pin"]
+def _verify_phase(root, manifest, pin, rows, result, *, phase1: bool) -> dict:
+    try:
+        return verifier.verify_rows(root, manifest, pin, rows, phase1=phase1)
+    except (ValueError, KeyError, TypeError, OSError) as exc:
+        result.update(status="failed_qualification", error=str(exc))
+        raise
+
+
+def _claim_audit(context: dict) -> dict:
+    root, pin = context["root"], context["pin"]
     scope = {
         "run_id": context["intent"]["run_id"],
         "intent_sha256": digest(root / _INTENT),
@@ -213,6 +261,15 @@ def run_audit(
         )
         stream.flush()
         os.fsync(stream.fileno())
+    return scope
+
+
+def run_audit(
+    context: dict, *, progress: Callable[[dict], None] = lambda _row: None
+) -> dict:
+    """Exactly one attempt. Never retry a call to obtain a passing decision."""
+    root, manifest, pin = context["root"], context["manifest"], context["pin"]
+    scope = _claim_audit(context)
     started = time.monotonic()
     remaining = judge._deadline(
         context["intent"]["seconds"] - CLEANUP_SECONDS, lambda: None
@@ -233,36 +290,41 @@ def run_audit(
             judge._verify_runtime(client, pin)
             with judge._review_gpu(client, pin, context["intent"]["run_id"]):
                 judge._verify_runtime(client, pin)
+                phase1_count = 140 if judge.judge_for(pin) == judge.JUDGE_V6 else 108
                 progress(
-                    {"stage": "legacy_and_development_started", "planned_calls": 108}
+                    {
+                        "stage": "legacy_and_development_started",
+                        "planned_calls": phase1_count,
+                    }
                 )
-                _collect(context, client, order[:108], rows, remaining, progress)
-                try:
-                    verifier.verify_rows(root, manifest, pin, rows, phase1=True)
-                except (ValueError, KeyError, TypeError, OSError) as exc:
-                    result.update(status="failed_qualification", error=str(exc))
-                    raise
+                _collect(
+                    context, client, order[:phase1_count], rows, remaining, progress
+                )
+                _verify_phase(root, manifest, pin, rows, result, phase1=True)
                 atomic_json(
                     root / _PHASE1_PASS,
                     {
                         **scope,
-                        "completed_calls": 108,
+                        "completed_calls": phase1_count,
                         "phase1_rows_sha256": stable_hash(rows),
                         "closed_at_ns": time.time_ns(),
                         "closed_monotonic_ns": time.monotonic_ns(),
                     },
                 )
                 progress(
-                    {"stage": "legacy_and_development_passed", "completed_calls": 108}
+                    {
+                        "stage": "legacy_and_development_passed",
+                        "completed_calls": phase1_count,
+                    }
                 )
                 remaining()
                 result.update(phase="holdout_stability", holdout_opened=True)
-                _collect(context, client, order[108:], rows, remaining, progress)
-                try:
-                    result["metrics"] = verifier.verify_rows(root, manifest, pin, rows)
-                except (ValueError, KeyError, TypeError, OSError) as exc:
-                    result.update(status="failed_qualification", error=str(exc))
-                    raise
+                _collect(
+                    context, client, order[phase1_count:], rows, remaining, progress
+                )
+                result["metrics"] = _verify_phase(
+                    root, manifest, pin, rows, result, phase1=False
+                )
                 judge._verify_runtime(client, pin)
         result.update(status="complete", phase="complete")
     except (
@@ -288,11 +350,14 @@ def run_audit(
             **pin.model_dump(),
             "result_sha256": digest(root / _RESULT),
         }
-        old_location = os.environ.get("VENOM_ACADEMY_JUDGE_V4_AUDIT_ROOT")
-        os.environ["VENOM_ACADEMY_JUDGE_V4_AUDIT_ROOT"] = str(root)
+        judge_id = judge.judge_for(pin)
+        version = {judge.JUDGE_V4: 4, judge.JUDGE_V5: 5, judge.JUDGE_V6: 6}[judge_id]
+        location_key = f"VENOM_ACADEMY_JUDGE_V{version}_AUDIT_ROOT"
+        old_location = os.environ.get(location_key)
+        os.environ[location_key] = str(root)
         try:
             qualified = judge.qualification(
-                {"judge": judge.JUDGE_V4, "judge_qualification": receipt}
+                {"judge": judge_id, "judge_qualification": receipt}
             )
             atomic_json(
                 root / "judge-qualification-receipt.json", qualified.model_dump()
@@ -302,15 +367,15 @@ def run_audit(
             atomic_json(root / _RESULT, result)
         finally:
             if old_location is None:
-                os.environ.pop("VENOM_ACADEMY_JUDGE_V4_AUDIT_ROOT", None)
+                os.environ.pop(location_key, None)
             else:
-                os.environ["VENOM_ACADEMY_JUDGE_V4_AUDIT_ROOT"] = old_location
+                os.environ[location_key] = old_location
         progress(
             {
                 "stage": "qualification_passed"
                 if result["status"] == "complete"
                 else result["status"],
-                "completed_calls": 180,
+                "completed_calls": len(rows),
             }
         )
     else:

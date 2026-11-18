@@ -316,6 +316,7 @@ async def runtime_request_guard(
     model: str | None = None,
     expected_runtime_id: str | None = None,
     expected_config_hash: str | None = None,
+    runtime_identity: str | None = None,
 ) -> AsyncIterator[RuntimeSwitchGateSnapshot]:
     with _STATE_LOCK:
         _recover_stale_gate_unlocked()
@@ -354,7 +355,9 @@ async def runtime_request_guard(
         # Preflight only reads metadata. A rejection/cancellation before yielding
         # cannot leave a generation running; errors after yielding remain uncertain.
         with get_runtime_admission().operation(
-            kind=request_kind, confirm_quiescent=lambda: not work_started
+            kind=request_kind,
+            confirm_quiescent=lambda: not work_started,
+            runtime_identity=runtime_identity,
         ):
             from venom_core.services.vast_chat_runtime import preflight
 

@@ -357,7 +357,10 @@ async def stream(request, turn):
         async with (
             _ACTIVE,
             runtime_request_guard(
-                request_kind="simple_chat", provider="openrouter", model=turn["model"]
+                request_kind="simple_chat",
+                provider="openrouter",
+                model=turn["model"],
+                runtime_identity=turn["runtime_id"],
             ),
         ):
             runtime.assert_identity(request)

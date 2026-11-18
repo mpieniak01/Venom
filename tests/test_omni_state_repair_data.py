@@ -1,0 +1,269 @@
+"""State repair oracle and context-only masking contracts, with no model load."""
+
+import hashlib
+import json
+
+import pytest
+
+from scripts.academy import omni_state_repair_data as data
+from scripts.academy.omni_pl_chat_audit import leakage_counts
+from scripts.academy.omni_pl_chat_data import read_jsonl
+from venom_core.services.training_experiments.grounded_claims import (
+    format_grades,
+    validate_claim_rubrics,
+)
+
+
+def specimen(split="train", family="repair-fixture"):
+    return {
+        "family": family,
+        "split": split,
+        "topic": "kontrola dostawy",
+        "state": {
+            "osoba": "Iga",
+            "miejsce": "hala 7",
+            "godzina": "11:20",
+            "cena": "45 zł",
+        },
+        "new_person": "Maks",
+        "new_price": "51 zł",
+    }
+
+
+def test_state_oracle_keeps_fields_and_accepts_only_confirmed_price():
+    accepted = data.trajectory(specimen(), True)
+    rejected = data.trajectory(specimen(), False)
+    assert accepted[1]["answer"] == rejected[1]["answer"]
+    assert "osoba: Maks" in accepted[1]["answer"]
+    assert "cena: 45 zł" in accepted[1]["answer"]
+    assert "cena: 51 zł" in accepted[2]["answer"]
+    assert "cena: 45 zł" in rejected[2]["answer"]
+    assert accepted[3]["answer"] == rejected[3]["answer"] == "Brak danych."
+    assert "miejsce: brak danych" in accepted[4]["answer"]
+    assert accepted[-1]["answer"] == accepted[2]["answer"]
+    assert rejected[-1]["answer"] == rejected[2]["answer"]
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"split": "final"},
+        {"new_person": "Iga"},
+        {"new_price": "45 zł"},
+        {"state": {}},
+        {"topic": ""},
+        {"extra": True},
+    ],
+)
+def test_rejects_invalid_or_ineffective_specimens(change):
+    changed_specimen = {**specimen(), **change}
+    with pytest.raises(ValueError, match="specimen"):
+        data.trajectory(changed_specimen, True)
+
+
+def test_training_error_is_context_only_and_targets_are_short():
+    train, dev = data.compile_specs([specimen()], "a" * 64)
+    assert len(train) == 9
+    assert not dev
+    for row in train:
+        messages = row["messages"]
+        assert row["supervision"] == [len(messages) - 1]
+        assert row["context_only_assistant_indices"][0] == 2
+        assert "BŁĘDNIE" in messages[2]["content"]
+        assert 2 not in row["supervision"]
+        assert set(row["supervision"]).isdisjoint(row["context_only_assistant_indices"])
+        assert messages[-1]["content"] == row["expected_answer"]
+        assert len(messages[-1]["content"]) < 100
+        assert row["source_revision"] == "a" * 64
+
+
+def test_dev_uses_own_history_and_families_are_not_reused():
+    train, dev = data.compile_specs(
+        [specimen(), specimen("dev", "new-family")], "b" * 64
+    )
+    assert len(dev) == 12
+    assert {r["group_id"] for r in train}.isdisjoint({r["group_id"] for r in dev})
+    for row in dev:
+        assert row["messages"][-1]["role"] == "user"
+        if row["dialogue"]["turn_index"] > 1:
+            assert len(row["messages"]) == 1
+        assert all(m["role"] != "assistant" for m in row["messages"])
+    assert leakage_counts(train, dev) == {
+        "normalization": "nfkc_casefold_whitespace_v1",
+        "supervised_prefix_matches": 0,
+        "final_user_matches": 0,
+        "duplicate_train_records": 0,
+    }
+    reused_families = [specimen(), specimen("dev")]
+    with pytest.raises(ValueError, match="families"):
+        data.compile_specs(reused_families, "b" * 64)
+
+
+def write_replay(path, chosen="Poprawna odpowiedź."):
+    path.write_text(
+        json.dumps(
+            {
+                "id": "prior-1",
+                "family": "prior-family",
+                "task": "source",
+                "messages": [{"role": "user", "content": "Odczytaj poprzedni wpis."}],
+                "chosen": chosen,
+            }
+        )
+        + "\n"
+    )
+
+
+def test_replay_preserves_chosen_with_exact_source_identity(tmp_path):
+    path = tmp_path / "replay.jsonl"
+    write_replay(path)
+    row = data.import_replay(path)[0]
+    assert row["messages"][-1]["content"] == "Poprawna odpowiedź."
+    assert row["source_revision"] == data.sha256(path)
+    assert row["sampling_pool"] == "replay"
+    assert row["supervision"] == [1]
+    write_replay(path, "")
+    with pytest.raises(ValueError, match="chosen"):
+        data.import_replay(path)
+
+
+def test_build_is_reproducible_unready_and_refuses_overwrite(tmp_path):
+    spec_path, replay = tmp_path / "spec.json", tmp_path / "prior.jsonl"
+    spec_path.write_text(json.dumps([specimen(), specimen("dev", "new-family")]))
+    write_replay(replay)
+    first, second = tmp_path / "one", tmp_path / "two"
+    a = data.build(spec_path, replay, first)
+    b = data.build(spec_path, replay, second)
+    assert a == b
+    assert a["start_ready"] is False
+    assert a["final_holdout_opened"] is False
+    assert "parent_not_selected" in a["blocking"]
+    assert a["records"] == {"fresh": 9, "replay": 1, "dev": 12}
+    assert a["files"] == {name: data.sha256(second / name) for name in a["files"]}
+    cases = read_jsonl(first / "dev.jsonl")
+    rubrics = json.loads((first / "dev.rubrics.json").read_text())["cases"]
+    validate_claim_rubrics(rubrics, cases)
+    full = rubrics["new-family-accepted-3"]
+    assert len(full["claims"]) == 4
+    assert full["claims"]["fact-1"]["value_aliases"] == ["Maks"]
+    assert full["claims"]["fact-4"]["value_aliases"] == ["51 zł"]
+    missing = rubrics["new-family-accepted-4"]
+    assert missing["claims"]["fact-1"]["kind"] == "missing"
+    assert format_grades(missing, "Brak danych.") == {"short": True}
+    with pytest.raises(FileExistsError):
+        data.build(spec_path, replay, first)
+
+
+@pytest.mark.parametrize("specs", [[], {}, [specimen()], [specimen("dev")]])
+def test_build_requires_both_splits_before_writing(tmp_path, specs):
+    path = tmp_path / "spec.json"
+    path.write_text(json.dumps(specs))
+    with pytest.raises(ValueError):
+        data.build(path, tmp_path / "unused", tmp_path / "out")
+    assert not (tmp_path / "out").exists()
+
+
+def test_cli_builds_private_package_without_model_or_training(
+    tmp_path, monkeypatch, capsys
+):
+    path, replay = tmp_path / "spec.json", tmp_path / "prior.jsonl"
+    path.write_text(json.dumps([specimen(), specimen("dev", "new-family")]))
+    write_replay(replay)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "prepare",
+            "--specimens",
+            str(path),
+            "--replay",
+            str(replay),
+            "--output",
+            str(tmp_path / "out"),
+        ],
+    )
+    data.main()
+    assert json.loads(capsys.readouterr().out)["start_ready"] is False
+
+
+def test_build_rejects_overlarge_recipe_before_writing(tmp_path, monkeypatch):
+    path = tmp_path / "spec.json"
+    path.write_text(json.dumps([specimen(), specimen("dev", "new-family")]))
+    monkeypatch.setattr(data, "_read_replay", lambda _: ([{}] * 2048, "a" * 64))
+    with pytest.raises(ValueError, match="bounded recipe"):
+        data.build(path, tmp_path / "unused", tmp_path / "out")
+    assert not (tmp_path / "out").exists()
+
+
+def test_build_manifest_uses_the_compiled_specimen_read(tmp_path, monkeypatch):
+    path, replay = tmp_path / "spec.json", tmp_path / "replay.jsonl"
+    specs = [specimen(), specimen("dev", "new-family")]
+    raw = json.dumps(specs).encode()
+    path.write_bytes(raw)
+    write_replay(replay)
+    compile_specs = data.compile_specs
+
+    def mutate_after_compile(values, revision):
+        compiled = compile_specs(values, revision)
+        changed = [dict(value, new_price="61 zł") for value in specs]
+        path.write_text(json.dumps(changed))
+        return compiled
+
+    monkeypatch.setattr(data, "compile_specs", mutate_after_compile)
+    out = tmp_path / "out"
+    manifest = data.build(path, replay, out)
+    expected = hashlib.sha256(raw).hexdigest()
+    assert manifest["sources"]["specimens"]["sha256"] == expected
+    assert data.sha256(path) != expected
+    fresh = [
+        r for r in read_jsonl(out / "train.jsonl") if r["sampling_pool"] == "fresh"
+    ]
+    assert all(row["source_revision"] == expected for row in fresh)
+    assert any("51 zł" in row["expected_answer"] for row in fresh)
+
+
+def test_replay_hash_and_label_share_one_read(tmp_path, monkeypatch):
+    path = tmp_path / "replay.jsonl"
+    write_replay(path, "Pierwsza odpowiedź.")
+    original_bytes = path.read_bytes()
+    original_read = type(path).read_bytes
+    reads = []
+
+    def mutate_after_read(source):
+        raw = original_read(source)
+        if source == path:
+            reads.append(source)
+            write_replay(path, "Inna odpowiedź.")
+        return raw
+
+    monkeypatch.setattr(type(path), "read_bytes", mutate_after_read)
+    row = data.import_replay(path)[0]
+    assert reads == [path]
+    assert row["messages"][-1]["content"] == "Pierwsza odpowiedź."
+    assert row["source_revision"] == hashlib.sha256(original_bytes).hexdigest()
+
+
+def test_build_replay_manifest_retains_the_parsed_read(tmp_path, monkeypatch):
+    specs, replay = tmp_path / "specs.json", tmp_path / "replay.jsonl"
+    specs.write_text(json.dumps([specimen(), specimen("dev", "new-family")]))
+    write_replay(replay, "Pierwotna odpowiedź.")
+    original_bytes = replay.read_bytes()
+    load = data._read_replay
+
+    def mutate_after_parse(path):
+        rows, revision = load(path)
+        write_replay(path, "Zmieniona odpowiedź.")
+        return rows, revision
+
+    monkeypatch.setattr(data, "_read_replay", mutate_after_parse)
+    out = tmp_path / "out"
+    manifest = data.build(specs, replay, out)
+    expected = hashlib.sha256(original_bytes).hexdigest()
+    assert manifest["sources"]["replay"]["sha256"] == expected
+    assert data.sha256(replay) != expected
+    records = [
+        row
+        for row in read_jsonl(out / "train.jsonl")
+        if row["sampling_pool"] == "replay"
+    ]
+    assert records[0]["source_revision"] == expected
+    assert records[0]["messages"][-1]["content"] == "Pierwotna odpowiedź."

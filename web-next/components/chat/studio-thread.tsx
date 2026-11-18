@@ -46,6 +46,7 @@ const Message = memo(function StudioMessage({ message, detail, onError, noteSess
         {canSave && <button type="button" className="studio-copy" disabled={note !== "idle"} onClick={() => { void save(); }}>
           <Bookmark size={14} />{t(noteLabel[note])}
         </button>}</>} />
+    {message.role === "assistant" && (detail?.model_identity ?? message.modelIdentity) && <p className="studio-muted" data-testid="native-turn-identity">{t("chat2.nativeText.usedWeights")}: {(detail?.model_identity ?? message.modelIdentity)!.adapter_id} · {(detail?.model_identity ?? message.modelIdentity)!.weights_sha256}</p>}
     {!!message.materialIds?.length && <p className="studio-muted">{t("chat2.materials")}: {message.materialIds.length}</p>}
     {message.role === "assistant" && detail?.openrouter_cost && <details className="studio-turn-cost"><summary>{t("chat2.costs")}</summary><OpenRouterCost cost={detail.openrouter_cost} t={t} /></details>}
   </article>;
@@ -54,6 +55,7 @@ const Message = memo(function StudioMessage({ message, detail, onError, noteSess
   previous.message.timestamp === next.message.timestamp && previous.message.requestId === next.message.requestId && previous.message.role === next.message.role &&
   previous.message.contextUsed === next.message.contextUsed && previous.message.policyBlocked === next.message.policyBlocked &&
   previous.message.reasonCode === next.message.reasonCode && previous.message.userMessage === next.message.userMessage &&
+  previous.message.modelIdentity === next.message.modelIdentity &&
   previous.message.materialIds?.join("|") === next.message.materialIds?.join("|"));
 export function StudioThread({ messages, details, scrollRef, onScroll, loading, onError, noteSession }: Readonly<{
   noteSession?: string;

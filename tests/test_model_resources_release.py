@@ -30,7 +30,11 @@ def world(tmp_path, monkeypatch):
 
 def uncertain(admission):
     def exercise_operation():
-        with admission.operation(kind="runtime_switch", mutation=True):
+        with admission.operation(
+            kind="runtime_switch",
+            mutation=True,
+            runtime_identity="ollama@http://127.0.0.1:11434",
+        ):
             raise RuntimeError("transport lost")
 
     with pytest.raises(RuntimeError):
@@ -128,6 +132,95 @@ def test_releasing_models_rejects_new_work_and_waits_for_real_thread(world):
         worker.join(2)
         resources.wait_for_model_work(timeout=1)
         assert resources.release_registered_models() == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "kind, global_cleanup, recovers",
+    [
+        ("voice_audio_selection", True, True),
+        ("maf_validation", True, True),
+        ("maf_validation", False, False),
+        ("simple_chat_non_stream", True, False),
+    ],
+)
+async def test_legacy_recovery_requires_proof_for_generation(
+    world, monkeypatch, kind, global_cleanup, recovers
+):
+    from unittest.mock import AsyncMock
+
+    operation = world.operation(kind=kind)
+    with pytest.raises(OSError):
+        with operation:
+            raise OSError("interrupted")
+    monkeypatch.setattr(service, "_listening", AsyncMock(return_value=False))
+    controller = SimpleNamespace(
+        list_servers=lambda: [{"name": "ollama", "endpoint": "http://127.0.0.1:11434"}]
+    )
+    release = service.release_all_runtime_models(
+        controller, include_registered=global_cleanup
+    )
+    if recovers:
+        assert (await release)["released"]
+        assert world.snapshot()["status"] == "available"
+    else:
+        with pytest.raises(HTTPException) as rejected:
+            await release
+        assert rejected.value.status_code == 502
+        assert world.snapshot()["status"] == "quarantined"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("alias_verified", [True, False])
+@pytest.mark.parametrize("orphaned", [True, False])
+async def test_ollama_recovery_probes_the_ledger_alias(
+    world, monkeypatch, alias_verified, orphaned
+):
+    from unittest.mock import AsyncMock, call
+
+    configured = "http://localhost:11434"
+    alternate = "http://127.0.0.1:11434"
+    identity = f"ollama@{alternate}/v1"
+    kind = "simple_chat_non_stream"
+    if orphaned:
+        exited_pid = 999999
+        with world._transaction() as db:
+            db.execute(
+                "INSERT INTO operation (token,kind,pid,runtime_identity) VALUES (?,?,?,?)",
+                ("orphaned-chat", kind, exited_pid, identity),
+            )
+        monkeypatch.setattr(
+            admission_module, "_owner_has_exited", lambda pid: pid == exited_pid
+        )
+    else:
+        operation = world.operation(kind=kind, runtime_identity=identity)
+        with pytest.raises(OSError):
+            with operation:
+                raise OSError("transport lost")
+    assert world.snapshot()["status"] == "quarantined"
+    listen = AsyncMock(return_value=True)
+    responses = [[], ["omni"]] if alias_verified else [[], ValueError("busy")]
+    unload = AsyncMock(side_effect=responses)
+    monkeypatch.setattr(service, "_listening", listen)
+    monkeypatch.setattr(service, "_unload_ollama", unload)
+    controller = SimpleNamespace(
+        list_servers=lambda: [{"name": "ollama", "endpoint": configured}]
+    )
+    release = service.release_all_runtime_models(controller, include_registered=False)
+    if alias_verified:
+        result = await release
+        assert result["runtimes"] == [
+            {"runtime": "ollama", "models": ["omni"], "verified": True, "state": "idle"}
+        ]
+        assert world.snapshot()["status"] == "available"
+    else:
+        with pytest.raises(HTTPException) as rejected:
+            await release
+        assert rejected.value.status_code == 502
+        assert world.snapshot()["status"] == "quarantined"
+
+    assert listen.await_args_list == [call(configured), call(alternate)]
+    assert unload.await_args_list == [call(configured), call(alternate)]
 
 
 @pytest.mark.asyncio
@@ -987,7 +1080,9 @@ async def test_operator_release_cancels_and_joins_active_chat_before_unload(
     stopped = asyncio.Event()
 
     async def chat():
-        with world.operation(kind="simple_chat"):
+        with world.operation(
+            kind="simple_chat", runtime_identity="ollama@http://127.0.0.1:11434"
+        ):
             entered.set()
             try:
                 await asyncio.Event().wait()
@@ -1033,7 +1128,11 @@ async def test_operator_release_interrupts_pending_model_activation(world, monke
             source="model-activation", from_runtime="old", to_runtime="new"
         )
         try:
-            with world.operation(kind="runtime_switch", mutation=True):
+            with world.operation(
+                kind="runtime_switch",
+                mutation=True,
+                runtime_identity="ollama@http://127.0.0.1:11434",
+            ):
                 entered.set()
                 await asyncio.Event().wait()
         finally:
@@ -1133,3 +1232,116 @@ async def test_timed_out_training_release_waits_for_cleanup_completion(
     finally:
         proceed.set()
         await asyncio.gather(task, return_exceptions=True)
+
+
+@pytest.mark.asyncio
+async def test_non_stream_cancellation_records_actual_runtime(world, monkeypatch):
+    from contextlib import asynccontextmanager, closing
+    from sqlite3 import connect
+    from uuid import uuid4
+
+    from venom_core.services import llm_simple_service as chat
+
+    waiting = asyncio.Event()
+    endpoint = "http://127.0.0.1:11434"
+    runtime = SimpleNamespace(provider="ollama", runtime_id=f"ollama@{endpoint}")
+
+    @asynccontextmanager
+    async def open_stream(**_kwargs):
+        waiting.set()
+        await asyncio.Future()
+        yield
+
+    async def generate():
+        async for _ in chat._stream_simple_chunks_non_stream(
+            completions_url=f"{endpoint}/v1/chat/completions",
+            payload={},
+            runtime=runtime,
+            request_id=uuid4(),
+            model_name="fixture",
+        ):
+            pass
+
+    monkeypatch.setattr(chat.llm_simple_transport, "open_stream_response", open_stream)
+    task = asyncio.create_task(generate())
+    try:
+        await asyncio.wait_for(waiting.wait(), 2)
+    finally:
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+    with closing(connect(world.database)) as db:
+        stored = db.execute(
+            "SELECT kind, runtime_identity, uncertain FROM operation"
+        ).fetchone()
+    assert stored == ("simple_chat_non_stream", runtime.runtime_id, 1)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "kind,identity,verified,recovers",
+    [
+        ("simple_chat_stream", "ollama@http://127.0.0.1:11434", True, True),
+        ("simple_chat_stream", "ollama@http://127.0.0.1:11434", False, False),
+        ("simple_chat_stream", "ollama@http://127.0.0.1:12345", True, False),
+        ("simple_chat_stream", "openrouter@https://openrouter.ai", True, False),
+        ("simple_chat_stream", None, True, False),
+        ("simple_chat_non_stream", "ollama@http://127.0.0.1:11434", True, True),
+        ("simple_chat_non_stream", "ollama@http://127.0.0.1:11434/v1", True, True),
+        ("omni-native-peft-text", None, True, False),
+    ],
+)
+async def test_llm_recovery_handles_real_stream_ledger_only_with_daemon_proof(
+    world, monkeypatch, kind, identity, verified, recovers
+):
+    import sqlite3
+    from contextlib import closing
+    from unittest.mock import AsyncMock
+
+    # A failed transport leaves the actual durable host ledger uncertain.
+    operation = world.operation(kind=kind, runtime_identity=identity)
+    with pytest.raises(RuntimeError, match="transport lost"):
+        with operation:
+            raise RuntimeError("transport lost")
+    assert world.snapshot()["status"] == "quarantined"
+    servers = [
+        {"name": "ollama", "endpoint": "http://127.0.0.1:11434"},
+        {"name": "vllm", "endpoint": "http://127.0.0.1:8001"},
+        {"name": "onnx", "endpoint": "http://127.0.0.1:8004"},
+    ]
+    # Positive proof: Ollama is observed idle after unload; other daemons stopped.
+    monkeypatch.setattr(
+        service, "_listening", AsyncMock(side_effect=[True, False, False])
+    )
+    monkeypatch.setattr(
+        service,
+        "_unload_ollama",
+        AsyncMock(return_value=[])
+        if verified
+        else AsyncMock(side_effect=ValueError("runtime_release_models_remaining")),
+    )
+    controller = SimpleNamespace(list_servers=lambda: servers)
+    selected_ids = {s["name"] for s in servers}
+    if recovers:
+        result = await service.release_all_runtime_models(
+            controller,
+            runtime_ids=selected_ids,
+            include_registered=False,
+        )
+        assert all(row["verified"] for row in result["runtimes"])
+        assert {row["state"] for row in result["runtimes"]} == {"idle", "stopped"}
+        assert world.snapshot()["status"] == "available"
+    else:
+        with pytest.raises(HTTPException) as rejected:
+            await service.release_all_runtime_models(
+                controller,
+                runtime_ids=selected_ids,
+                include_registered=False,
+            )
+        assert rejected.value.status_code == 502
+        assert world.snapshot()["status"] == "quarantined"
+    with closing(sqlite3.connect(world.database)) as database:
+        kinds = database.execute("SELECT kind,uncertain FROM operation").fetchall()
+    if recovers:
+        assert kinds == []
+    else:
+        assert (kind, 1) in kinds

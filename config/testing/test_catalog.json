@@ -751,6 +751,20 @@
       "rationale": "Durable Optuna trial assignment, outcome reconciliation, and reproducible sampler replay."
     },
     {
+      "path": "tests/test_academy_parent_selection.py",
+      "domain": "academy",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Prevent narrow S/K gains from discarding sealed wider retention and critical regressions."
+    },
+    {
       "path": "tests/test_academy_quality.py",
       "domain": "academy",
       "test_type": "unit",
@@ -861,6 +875,46 @@
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
+    },
+    {
+      "path": "tests/test_academy_judge_controls.py",
+      "domain": "academy",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": ["new-code", "ci-lite", "release"],
+      "legacy_targeted": false,
+      "rationale": "Freeze corrected source and role controls without changing historical receipts or opening held-out data."
+    },
+    {
+      "path": "tests/test_academy_judge_dispatch.py",
+      "domain": "academy",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": ["new-code", "ci-lite", "release"],
+      "legacy_targeted": false,
+      "rationale": "Route qualified local and OpenRouter reviewers through calibration, checkpoint, final and cache contracts."
+    },
+    {
+      "path": "tests/test_academy_openrouter_judge.py",
+      "domain": "academy",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": ["new-code", "ci-lite", "release"],
+      "legacy_targeted": false,
+      "rationale": "Verify remote reviewer qualification replay, cost accounting, fail-closed transport and authenticated cache inputs with fake HTTP."
+    },
+    {
+      "path": "tests/test_academy_openrouter_audit.py",
+      "domain": "academy",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": ["new-code", "ci-lite", "release"],
+      "legacy_targeted": false,
+      "rationale": "Validate operator audit preparation, phase-one gating, fail-fast accounting and complete fake HTTP qualification without provider calls."
     },
     {
       "path": "tests/test_academy_semantic_judge_v4.py",
@@ -5254,6 +5308,20 @@
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
+      "path": "tests/test_native_text_acceptance.py",
+      "domain": "academy",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Native chat acceptance lifecycle always restores the owned runtime and verifies fresh evidence."
+    },
+    {
       "path": "tests/test_new_chat_session_api.py",
       "domain": "api",
       "test_type": "unit",
@@ -5514,6 +5582,34 @@
       ],
       "legacy_targeted": false,
       "rationale": "Verify the bounded Omni remote session inputs, frozen hashes and exclusion of reserved data."
+    },
+    {
+      "path": "tests/test_omni_state_repair_data.py",
+      "domain": "academy",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "State repair targets, own-history dev and immutable provenance."
+    },
+    {
+      "path": "tests/test_omni_text_bridge.py",
+      "domain": "models",
+      "test_type": "service_contract",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Native Omni PEFT chat identity, atomic selection, history and sandbox worker contract."
     },
     {
       "path": "tests/test_onnx_gpu_bridge.py",

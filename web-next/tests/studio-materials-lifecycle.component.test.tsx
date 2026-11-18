@@ -124,3 +124,34 @@ for (const closeFirst of [true, false]) {
     assert.deepEqual(revoke.mock.calls.map(call => call.arguments), [["blob:preview-1"], ["blob:preview-2"]]);
   });
 }
+
+test("native text disables file choice, drop and new attachments while ordinary mode retains uploads", () => {
+  const batches: File[][] = [], toggles: string[] = [];
+  const onUpload = async (files: File[]) => { batches.push(files); };
+  const materialState = state([item("selected"), item("other")]);
+  const props = {materialState, selected: ["selected"], onToggle: (id: string) => { toggles.push(id); }, onUpload, onClose: () => {}};
+  const view = render(<StudioMaterials {...props} disabled />);
+  const file = new File(["context"], "context.txt");
+  const picker = view.container.querySelector<HTMLInputElement>('input[type="file"]')!;
+  assert.equal(picker.disabled, true);
+  assert.equal((screen.getByRole("button", {name: pl.chat2.chooseFiles}) as HTMLButtonElement).disabled, true);
+  assert.equal((screen.getByRole("checkbox", {name: /other/}) as HTMLInputElement).disabled, true);
+  fireEvent.change(picker, {target: {files: [file]}});
+  fireEvent.drop(view.container.querySelector("aside")!, {dataTransfer: {files: [file]}});
+  fireEvent.click(screen.getByRole("checkbox", {name: /other/}));
+  assert.deepEqual(batches, []);
+  assert.deepEqual(toggles, []);
+  fireEvent.click(screen.getByRole("checkbox", {name: /selected/}));
+  assert.deepEqual(toggles, ["selected"]);
+  const footer = view.container.querySelector("footer")!;
+  assert.match(footer.textContent ?? "", new RegExp(pl.chat2.documents + ": " + pl.chat2.unsupported));
+  assert.match(footer.textContent ?? "", new RegExp(pl.chat2.images + ": " + pl.chat2.unsupported));
+  assert.ok(screen.getByText(pl.chat2.nativeText.unsupported));
+  view.rerender(<StudioMaterials {...props} />);
+  assert.equal(picker.disabled, false);
+  assert.equal((screen.getByRole("button", {name: pl.chat2.chooseFiles}) as HTMLButtonElement).disabled, false);
+  fireEvent.change(picker, {target: {files: [file]}});
+  fireEvent.drop(view.container.querySelector("aside")!, {dataTransfer: {files: [file]}});
+  assert.deepEqual(batches, [[file], [file]]);
+  assert.ok(screen.getByText(pl.chat2.dropFiles));
+});

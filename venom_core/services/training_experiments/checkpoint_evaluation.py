@@ -324,7 +324,7 @@ def reuse_baseline_reviews(
         return bundle, []
     from scripts.academy.omni_pl_chat_scoring import aggregate
 
-    from . import local_semantic_judge
+    from . import semantic_judge_dispatch
 
     try:
         source, previous, receipt, grades = _baseline_source(
@@ -354,7 +354,7 @@ def reuse_baseline_reviews(
             for grade in grades
             if grade["label"] == original[grade["record_id"]]["label"]
         }
-        pin = local_semantic_judge.qualification(calibration)
+        pin = semantic_judge_dispatch.qualification(calibration)
         reused = []
         for case in cases:
             ident = case["record_id"]
@@ -363,7 +363,7 @@ def reuse_baseline_reviews(
             grade = source_grades[ident]
             if "review_reused_from" in grade:
                 raise ValueError("experiment_checkpoint_baseline_receipt_changed")
-            local_semantic_judge.verify_review_receipt(
+            semantic_judge_dispatch.verify_review_receipt(
                 pin, calibration["cases"][ident], case, target[ident]["answer"], grade
             )
             # The original call and response remain byte-equivalent JSON values.

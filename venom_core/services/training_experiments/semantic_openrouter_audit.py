@@ -640,6 +640,16 @@ def _provider_next_post_at(path: Path | None) -> float:
     return time.monotonic() + cooldown
 
 
+def _schedule_fits(
+    state: _AuditState, request_count: int, *, reserve_seconds: int = 0
+) -> bool:
+    spacing = (request_count - 1) * state.protocol["rate_limit"]["interval_seconds"]
+    return (
+        state.next_post_at + spacing + reserve_seconds
+        < state.start + state.protocol["max_seconds"]
+    )
+
+
 def _audit_next(state: _AuditState, stack: ExitStack) -> bool:
     request = _next_audit_request(state)
     if request is None:
@@ -849,9 +859,12 @@ def _execute(
         state.status = "budget_exhausted"
         return _audit_result(state)
     state.next_post_at = _provider_next_post_at(rate_path)
-    phase1_spacing = (len(state.order) - 1) * protocol["rate_limit"]["interval_seconds"]
-    minimum = phase1_spacing + _holdout_required_seconds(protocol, 0)
-    if state.next_post_at - state.start + minimum > protocol["max_seconds"]:
+    retries = protocol["rate_limit"]["max_retries_per_audit"]
+    if not _schedule_fits(
+        state,
+        len(state.order),
+        reserve_seconds=_holdout_required_seconds(protocol, retries),
+    ):
         state.status = "holdout_deadline_unavailable"
         return _audit_result(state)
     with ExitStack() as stack:

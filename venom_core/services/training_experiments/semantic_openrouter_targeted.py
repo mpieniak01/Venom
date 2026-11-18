@@ -288,10 +288,13 @@ def execute(state: audit._AuditState) -> dict:
         state.status = "budget_exhausted"
         return audit._audit_result(state)
     state.next_post_at = audit._provider_next_post_at(state.rate_path)
+    order = state.manifest["order"]
+    if not audit._schedule_fits(state, len(order)):
+        state.status = "deadline_exceeded"
+        return audit._audit_result(state)
     mismatches = []
     completed = 0
     cases = state.manifest["cases"]
-    order = state.manifest["order"]
     repeats: Counter[str] = Counter()
     with ExitStack() as stack:
         for label in order:

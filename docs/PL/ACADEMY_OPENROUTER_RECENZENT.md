@@ -61,7 +61,8 @@ Poprzednie rewizje i zastąpione recenzje zachowuje się jako historyczne
 dowody; nie służą do przygotowania nowej kwalifikacji.
 
 Przed pierwszym płatnym żądaniem runner sprawdza, czy limit obejmuje
-obowiązkowe odstępy fazy pierwszej i minimalną rezerwę czasu na holdout.
+obowiązkowe odstępy fazy pierwszej i rezerwę czasu na holdout, w tym
+czas dopuszczonych ponowień.
 Przed odczytem holdoutu sprawdza rezerwę na wszystkie 72 żądania oraz
 pozostały czas według zamrożonej polityki. Jeśli po odczycie rzeczywisty
 pakiet przekroczy ustalony limit pojedynczego żądania, próba kończy się jako
@@ -137,6 +138,7 @@ Odrzucone żądania zachowują koszty lub rezerwacje i nie liczą się jako decy
 Próby zamrożone przed zmianą zachowują dotychczasowy protokół.
 
 Panel celowany przechodzi przez ten sam limit czasu, tempo i rejestr prób.
+Przed startem limit musi pomieścić wszystkie obowiązkowe odstępy panelu.
 Polecenie przygotowania sprawdza hash wejściowego panelu oraz zgodność
 wszystkich pakietów z aktualnym kontraktem recenzenta. Użyj podpolecenia
 prepare-targeted w scripts.academy.qualify_openrouter_judge, a następnie

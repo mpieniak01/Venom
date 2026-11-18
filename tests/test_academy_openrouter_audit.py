@@ -390,7 +390,7 @@ def test_preflight_rejects_budget_without_full_holdout_reservation(ready, monkey
     assert not (root / "qualification.json").exists()
 
 
-@pytest.mark.parametrize("seconds", [5600, 5674])
+@pytest.mark.parametrize("seconds", [5600, 5674, 6000])
 def test_preflight_requires_time_for_both_phases(ready, tmp_path, monkeypatch, seconds):
     _, source, client = ready
     controls = source / "controls"
@@ -806,6 +806,40 @@ def targeted_panel():
         },
         "order": ["fixture", "fixture"],
     }
+
+
+def test_targeted_preflight_requires_time_for_spacing(
+    targeted_panel, tmp_path, monkeypatch
+):
+    from venom_core.services.training_experiments import (
+        semantic_openrouter_targeted as targeted,
+    )
+
+    source = tmp_path / "source.json"
+    write(source, targeted_panel)
+    root = tmp_path / "short-targeted"
+    targeted.prepare(
+        source,
+        root,
+        panel_sha256=digest(source),
+        budget_usd="0.20",
+        max_seconds=1,
+    )
+    monkeypatch.setattr(audit.runtime, "is_enabled", lambda: True)
+    monkeypatch.setattr(audit.runtime, "cloud_allowed", lambda: True)
+    monkeypatch.setattr(audit.runtime, "credential", lambda: "invented-test-credential")
+    monkeypatch.setattr(audit.SETTINGS, "OPENROUTER_DAILY_LIMIT_USD", 0.20)
+    monkeypatch.setattr(audit.SETTINGS, "OPENROUTER_MESSAGE_LIMIT_USD", 0.01)
+
+    def never_post(**_kwargs):
+        pytest.fail("Unschedulable panel created an HTTP client")
+
+    result = audit.run(root, execute=True, client_factory=never_post)
+
+    assert result["status"] == "deadline_exceeded"
+    assert result["rows"] == 0
+    assert Decimal(result["actual_known_cost_usd"]) == 0
+    assert Decimal(result["unknown_reserved_usd"]) == 0
 
 
 def test_targeted_freeze_rejects_noncanonical_request_body(targeted_panel):

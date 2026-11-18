@@ -1,6 +1,6 @@
 """Qualified OpenRouter field reviewer; no local model or GPU access.
 
-Audit v3 is a separate protocol. Historical private v2 results cannot qualify it.
+Audit v4 qualifies the revised rubric. Earlier audit results keep their own identity.
 All verification/replay functions are offline. Real requests occur only in
 review_bundle, after qualification, configuration and budget checks.
 """
@@ -32,7 +32,7 @@ from . import semantic_judge_v4 as controls
 from . import semantic_judge_v5 as fields
 from .profiles import digest, read_json, stable_hash
 
-JUDGE = "semantic-openrouter-luna-field-v3"
+JUDGE = "semantic-openrouter-luna-field-v4"
 JUDGES = frozenset({JUDGE})
 PROMPT = (
     fields.PROMPT
@@ -48,6 +48,39 @@ mówi, że nie zamówiono chłodzenia, odpowiedź, że je zamówiono, jest contr
 Parafraza osoby jest dopuszczalna, gdy zachowuje rolę podaną jawnie w materiale.
 Sama lokalizacja odbioru nie dowodzi, że właściciel miejsca osobiście wydaje rzeczy.
 """
+    + (
+        "\n\nReguły rozstrzygania dla recenzenta pól\n\n1. Przy ocenie dodatkowych "
+        "twierdzeń najpierw sprawdź, czy fragment należy znaczeniowo do kryterium już"
+        " ocenionego. Równoważny opis położenia zawierający zwykły czasownik "
+        "oznaczający obecność obiektu zachowuje informację o miejscu. Sformułowania "
+        "„wpis nie wskazuje, kto…” i „nie wpisano nazwiska” przekazują ten sam brak "
+        "danych o osobie w danym wpisie. Oceniaj każdą z tych informacji w jej "
+        "właściwym kryterium. W additional_claims zachowaj nowe, niepoparte "
+        "twierdzenia, takie jak przypisanie osobie czynności, której materiał jej nie"
+        " przypisuje.\n\n2. Gdy użytkownik żąda osobno wyniku i zachowanej zasady, "
+        "znajdź osobny dowód treściowy dla obu kryteriów w odpowiedzi. Lista osób w "
+        "prawidłowej kolejności nadal pozostawia omitted dla osobno żądanej zasady o "
+        "tym, ile razy każda osoba zabiera głos. Jednokrotne wymienienie osoby "
+        "opisuje listę. Jawne „każdy raz” przy jasnym kontekście wypowiedzi "
+        "wystarcza, by uznać zasadę za supported.\n\n3. Dla polish_ok oceń język "
+        "rozpoznawalnej wypowiedzi niosącej odpowiedź. Jeśli istnieje zrozumiałe "
+        "polskie zdanie, a reszta jest bełkotliwą doklejką bez rozpoznawalnego zdania"
+        " w innym języku, wybierz polish_ok=true oraz natural_ok=false. Sam bełkot "
+        "bez odpowiedzi ani użytecznej samodzielnej wartości ma polish_ok=false i "
+        "natural_ok=false. Naturalna odpowiedź w pełnych zdaniach obcojęzycznych ma "
+        "polish_ok=false, nawet gdy fakty są poprawne. Oczekiwany samodzielny kod, "
+        "liczba lub nazwa mogą mieć polish_ok=true i natural_ok=true. Sprawdź oba "
+        "pola osobno przed zwróceniem JSON.\n\n4. Zmniejsz objętość odpowiedzi JSON. W "
+        "required i observed zapisz krótkie frazy zachowujące rozstrzygające fakty i "
+        "pełny sens pola. Każde additional_claims.text przytocz jako krótki, dosłowny"
+        " i ciągły fragment kandydata. W reason napisz jedno krótkie zdanie. Zachowaj"
+        " wszystkie pola schematu.\n\n5. Rozwiąż odsyłacze miejsca typu „tam” do "
+        "wskazanego przed chwilą położenia lub obiektu. Gdy opis lokalizacji i zdanie"
+        " z odsyłaczem wspólnie podają wymagane miejsce zdarzenia, pole miejsca jest "
+        "supported. Ustal relation przed oceną additional_claims i zachowaj supported"
+        " dla pola, które zostało podane prawidłowo. Osobny niepoparty szczegół "
+        "należy do additional_claims i sam nie zmienia podanego już pola na omitted."
+    )
 )
 MODEL = "openai/gpt-6-luna"
 PROVIDER = "Azure"
@@ -70,7 +103,7 @@ DECISION_FIELDS = controls.DECISION_FIELDS
 
 class QualificationRemote(local._Strict):
     schema_version: Literal[1]
-    judge: Literal["semantic-openrouter-luna-field-v3"]
+    judge: Literal["semantic-openrouter-luna-field-v4"]
     audit_root: str = Field(min_length=1)
     model: Literal["openai/gpt-6-luna"]
     provider: Literal["Azure"]

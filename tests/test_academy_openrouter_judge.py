@@ -1216,6 +1216,155 @@ def test_withdrawn_role_fragment_distinguishes_source_fields(
         assert scope["ignored_claims"] == ([claim] if unsupported == "no" else [])
 
 
+@pytest.mark.parametrize("explicit_criterion", [False, True])
+def test_pickup_point_detects_replacement_without_judge_claim(explicit_criterion):
+    candidate = (
+        "U Anki odbierzesz 3 kartony. Cofam informację o osobie. "
+        "Do odbioru zostało 3 kartony. Odbiór w punkcie „U Anki”."
+    )
+    criteria = [{"id": "count", "description": "Do odbioru są 3 kartony."}]
+    if explicit_criterion:
+        criteria.append({"id": "point", "description": "Nazwa punktu: „U Ewy”."})
+    body = judge._control_request(
+        {
+            "id": "pickup-point-replacement",
+            "messages": [
+                {"role": "user", "content": "Punkt ma nazwę „U Rutki”."},
+                {
+                    "role": "user",
+                    "content": "Odbiór obsługuje Anka. Korekta: Punkt ma nazwę „U Ewy”. "
+                    "Do odbioru są 3 kartony. Podaj nazwę punktu i liczbę.",
+                },
+            ],
+            "criteria": criteria,
+        },
+        {"text": candidate},
+    )
+    raw = response(body, candidate)
+
+    decision, evidence = judge.decode_with_evidence(raw, body, candidate)
+    assert decision.unsupported == "yes"
+    assert decision.atoms.get("point") == (
+        "contradicted" if explicit_criterion else None
+    )
+    point = evidence["pickup_point"]
+    assert point["source"] == {
+        "message_index": 1,
+        "quote": "Korekta: Punkt ma nazwę „U Ewy”.",
+    }
+    assert point["quote"] == "Odbiór w punkcie „U Anki”."
+    assert point["relation"] == "contradicted"
+    assert "response_scope" not in evidence
+    row = {
+        "status": "completed",
+        "protocol_sha256": "protocol",
+        "request": body,
+        "request_sha256": stable_hash(body),
+        "response": raw,
+        "response_sha256": stable_hash(raw),
+        "decision": decision.model_dump(),
+        "cost_usd": judge.reported_cost(raw),
+        "reserved_usd": str(judge.reserve(body)),
+        "started_at": "2026-01-01T00:00:00+00:00",
+        "finished_at": "2026-01-01T00:00:01+00:00",
+        **evidence,
+    }
+    assert judge._verify_call(row, body, candidate, "protocol") == decision
+    row["pickup_point"] = {}
+    with pytest.raises(ValueError, match=judge.ERROR):
+        judge._verify_call(row, body, candidate, "protocol")
+
+
+@pytest.mark.parametrize("point_before_count", [False, True])
+def test_pickup_point_keeps_confirmed_name_after_withdrawn_role(point_before_count):
+    count = "Do odbioru zostało 3 kartony."
+    point = "Punkt odbioru nazywa się «Zielona Zatoka 2»."
+    tail = (point, count) if point_before_count else (count, point)
+    candidate = " ".join(
+        ("U Anki odbierzesz 3 kartony.", "Cofam informację o osobie.", *tail)
+    )
+    body = judge._control_request(
+        {
+            "id": "pickup-point-confirmed",
+            "messages": [
+                {
+                    "role": "user",
+                    "content": "Szyld to „Zielona Zatoka 2”. Odbiór obsługuje Anka. "
+                    "Do odbioru są 3 kartony. Podaj osobę, szyld i liczbę.",
+                }
+            ],
+            "criteria": [
+                {"id": "person", "description": "Osoba obsługująca odbiór: Anka."},
+                {"id": "point", "description": "Nazwa punktu: „Zielona Zatoka 2”."},
+                {"id": "count", "description": "Do odbioru są 3 kartony."},
+            ],
+        },
+        {"text": candidate},
+    )
+    raw = response(body, candidate)
+    message = raw["choices"][0]["message"]
+    content = json.loads(message["content"])
+    content["checks"]["point"].update(relation="contradicted", observed=point)
+    content["additional_claims"] = [
+        {"text": "U Anki", "grounding": "unsupported"},
+        {"text": "Zielona Zatoka 2", "grounding": "unsupported"},
+    ]
+    message["content"] = json.dumps(content)
+
+    decision, evidence = judge.decode_with_evidence(raw, body, candidate)
+    assert decision.atoms == {
+        "person": "omitted",
+        "count": "supported",
+        "point": "supported",
+    }
+    assert decision.unsupported == "no"
+    assert evidence["pickup_point"]["quote"] == point
+    scope = evidence["response_scope"]
+    assert scope["ignored_claims"] == ["U Anki"]
+    assert point not in scope["proof"]["withdrawn_quotes"]
+
+
+@pytest.mark.parametrize(
+    ("source", "candidate"),
+    [
+        (
+            "Punkt ma nazwę „U Ewy”. Punkt ma nazwę „U Oli”.",
+            "Punkt ma nazwę „U Rutki”.",
+        ),
+        (
+            "Punkt ma nazwę „U Ewy”. Rozważamy zmianę szyldu.",
+            "Punkt ma nazwę „U Rutki”.",
+        ),
+        (
+            "Punkt ma nazwę „U Ewy”.",
+            "Punkt ma nazwę „U Rutki”. Cofam to ustalenie.",
+        ),
+        (
+            "Punkt ma nazwę „U Ewy”.",
+            "Punkt ma nazwę „U Rutki”. Szyld to „U Oli”.",
+        ),
+        (
+            "Punkt ma nazwę „U Ewy”.",
+            "U Rutki odbierzesz kartony.",
+        ),
+    ],
+)
+def test_pickup_point_declines_uncertain_or_indirect_names(source, candidate):
+    body = judge._control_request(
+        {
+            "id": "pickup-point-ambiguous",
+            "messages": [{"role": "user", "content": source}],
+            "criteria": [{"id": "place", "description": "Nazwa punktu: „U Ewy”."}],
+        },
+        {"text": candidate},
+    )
+    decision, evidence = judge.decode_with_evidence(
+        response(body, candidate), body, candidate
+    )
+    assert "pickup_point" not in evidence
+    assert decision.atoms == {"place": "supported"}
+
+
 def _audit_with_first_429(
     full_audit,
     *,

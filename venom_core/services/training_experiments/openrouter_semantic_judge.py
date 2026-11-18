@@ -104,6 +104,7 @@ class ResponseScopeEvidence(TypedDict):
 
 class ReviewEvidence(TypedDict, total=False):
     response_scope: ResponseScopeEvidence
+    pickup_point: semantic_fact_evidence.PickupPointEvidence
     identifier_comparison: identifier_evidence.Comparison
     field_evidence: dict[str, FieldEvidence]
 
@@ -179,7 +180,8 @@ def _contract() -> dict:
         "response_format": "strict_quote_schema",
         "identifier_comparison": "current_user_spelled_digits_v1",
         "field_evidence": "literal_candidate_current_source_v1",
-        "response_scope": "literal_task_and_retraction_v2",
+        "response_scope": "literal_task_and_retraction_v3",
+        "pickup_point": "literal_active_point_name_v1",
         "prompt_sha256": hashlib.sha256(PROMPT.encode()).hexdigest(),
     }
 
@@ -354,6 +356,29 @@ def _apply_response_scope(
     ], evidence
 
 
+def _apply_pickup_point(
+    point: semantic_fact_evidence.PickupPointEvidence,
+    claims: list[fields.AdditionalClaim],
+    atoms: dict[str, fields.Relation],
+    candidate: str,
+) -> list[fields.AdditionalClaim]:
+    criterion = point.get("criterion")
+    if criterion is not None:
+        atoms[criterion] = point["relation"]
+    if point["relation"] == "contradicted":
+        if criterion is not None:
+            return claims
+        return [
+            *claims,
+            fields.AdditionalClaim(text=point["quote"], grounding="unsupported"),
+        ]
+    proven = {point["quote"]}
+    name = point["answer_name"]
+    if candidate.count(name) == 1:
+        proven.add(name)
+    return [claim for claim in claims if claim.text not in proven]
+
+
 def decode_with_evidence(
     response: dict, body: dict, candidate: str
 ) -> tuple[local._Decision, ReviewEvidence]:
@@ -402,10 +427,17 @@ def decode_with_evidence(
                     if atoms["code"] == "unclear"
                     else "Kod oceniono przez porównanie dosłownego zapisu z aktualnym źródłem."
                 )
+    point = semantic_fact_evidence.pickup_point_evidence(material, candidate)
     claims = value.additional_claims
-    if scope := semantic_fact_evidence.response_scope(material, candidate):
+    if scope := semantic_fact_evidence.response_scope(material, candidate, point=point):
         claims, evidence["response_scope"] = _apply_response_scope(
             scope, value, atoms, flags
+        )
+    if point is not None:
+        claims = _apply_pickup_point(point, claims, atoms, candidate)
+        evidence["pickup_point"] = point
+        flags["reason"] = (
+            "Porównano dosłowną nazwę punktu z aktualnym ustaleniem użytkownika."
         )
     result = fields.project_decision(atoms, claims, flags, candidate)
     _require(result is not None)
@@ -518,6 +550,8 @@ def _verify_call(
         == stable_hash(evidence.get("field_evidence"))
         and stable_hash(row.get("response_scope"))
         == stable_hash(evidence.get("response_scope"))
+        and stable_hash(row.get("pickup_point"))
+        == stable_hash(evidence.get("pickup_point"))
     )
     cost = reported_cost(response)
     _require(cost is not None and row.get("cost_usd") == cost)

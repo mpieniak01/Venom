@@ -31,6 +31,15 @@ class ResponseScope(TypedDict):
     withdrawn_quotes: NotRequired[list[str]]
 
 
+class PickupPointEvidence(TypedDict):
+    source: UserSource
+    source_name: str
+    quote: str
+    answer_name: str
+    relation: Literal["supported", "contradicted"]
+    criterion: NotRequired[str]
+
+
 class Comparison(TypedDict):
     criterion: str
     kind: ProofKind
@@ -99,9 +108,21 @@ _PICKUP_QUANTITY = r"(?P<count>[0-9]{1,6}) (?P<unit>pudeł(?:ek|ka|o)?|karton(?:
 _PICKUP_SOURCE_COUNT = re.compile(
     rf"Do odbioru (?:jest|są|zostało|pozostało|pozostaje) {_PICKUP_QUANTITY}\.?", re.I
 )
+_POINT_LABEL = r"[^\W_]{1,32}(?:[ -][^\W_]{1,32}){0,4}"
 _PICKUP_POINT_NAME = re.compile(
-    rf"(?:Punkt(?: odbioru)? (?:ma nazwę|nazywa się)|Szyld to) "
-    rf'(?:„U (?P<polish>{_NAME})”|«U (?P<angle>{_NAME})»|"U (?P<ascii>{_NAME})")\.?',
+    r"(?:Korekta:\s*)?(?:Punkt(?: odbioru)? (?:ma nazwę|nazywa się)|"
+    r"Szyld to|Nazwa punktu:|Odbiór (?:jest )?w punkcie) "
+    rf"(?:„(?P<polish>{_POINT_LABEL})”|«(?P<angle>{_POINT_LABEL})»|"
+    rf'"(?P<ascii>{_POINT_LABEL})")\.?',
+    re.I,
+)
+_PICKUP_FIELD = (
+    r"(?:osobę(?: wydającą| obsługującą odbiór)?|rolę|"
+    r"liczbę(?: paczek| kartonów| pudeł| sztuk)?|"
+    r"(?:aktualną )?nazwę punktu(?: odbioru)?|(?:aktualny )?szyld)"
+)
+_PICKUP_QUESTION = re.compile(
+    rf"(?:Podaj|Wypisz|Podsumuj) {_PICKUP_FIELD}(?:(?:, | i | oraz ){_PICKUP_FIELD})*[.!?]?",
     re.I,
 )
 
@@ -227,14 +248,20 @@ def _role_source_clause(clause: str, forms: set[str]) -> bool:
     )
 
 
-def _independent_pickup_clause(clause: str, role_forms: set[str]) -> bool:
-    if _PICKUP_SOURCE_COUNT.fullmatch(clause):
-        return True
+def _point_name(clause: str) -> str | None:
     point = _PICKUP_POINT_NAME.fullmatch(clause)
     if point is None:
-        return False
-    point_name = point["polish"] or point["angle"] or point["ascii"]
-    return point_name.casefold() not in role_forms
+        return None
+    return point["polish"] or point["angle"] or point["ascii"]
+
+
+def _independent_pickup_clause(clause: str, role_forms: set[str]) -> bool:
+    if _PICKUP_SOURCE_COUNT.fullmatch(clause) or _PICKUP_QUESTION.fullmatch(clause):
+        return True
+    point = _point_name(clause)
+    return point is not None and not role_forms.intersection(
+        point.casefold().removeprefix("u ").replace("-", " ").split()
+    )
 
 
 def _role_statement(
@@ -497,6 +524,61 @@ _SETTING_REPORT = re.compile(
 _PICKUP_TIME_REPORT = re.compile(rf"{_PICKUP_TIME}\.?", re.I)
 
 
+def _explicit_pickup_point(text: str, *, source: bool) -> tuple[str, str] | None:
+    points = []
+    for clause in _clauses(text):
+        if name := _point_name(clause):
+            points.append((name, clause))
+        elif not source and _ROLE_WITHDRAWAL.fullmatch(clause):
+            continue
+        elif _UNSAFE_CONTEXT.search(clause) or (
+            _PICKUP_LOCATION.search(clause)
+            and not (source and _PICKUP_QUESTION.fullmatch(clause))
+        ):
+            return None
+    return points[0] if len(points) == 1 else None
+
+
+def pickup_point_evidence(material: dict, candidate: str) -> PickupPointEvidence | None:
+    """Compare explicit point names without interpreting a bare reference to a person."""
+    if (
+        material.get("candidate") != candidate
+        or len(candidate) > MAX_EVIDENCE_TEXT_CHARS
+        or material.get("evidence")
+    ):
+        return None
+    users = _users(material)
+    if not users:
+        return None
+    index, text = users[-1]
+    source = _explicit_pickup_point(text, source=True)
+    answer = _explicit_pickup_point(candidate, source=False)
+    if source is None or answer is None:
+        return None
+    source_name, source_quote = source
+    answer_name, quote = answer
+    result: PickupPointEvidence = {
+        "source": {"message_index": index, "quote": source_quote},
+        "source_name": source_name,
+        "quote": quote,
+        "answer_name": answer_name,
+        "relation": (
+            "supported"
+            if answer_name.casefold() == source_name.casefold()
+            else "contradicted"
+        ),
+    }
+    criteria = [
+        item["id"]
+        for item in material["criteria"]
+        if (name := _point_name(item["description"]))
+        and name.casefold() == source_name.casefold()
+    ]
+    if len(criteria) == 1:
+        result["criterion"] = criteria[0]
+    return result
+
+
 def _withdrawn_role_scope(
     material: dict, users: UserMessages, clauses: list[str], candidate: str
 ) -> ResponseScope | None:
@@ -590,7 +672,9 @@ def _setting_scope(
     return evidence
 
 
-def response_scope(material: dict, candidate: str) -> ResponseScope | None:
+def response_scope(
+    material: dict, candidate: str, *, point: PickupPointEvidence | None = None
+) -> ResponseScope | None:
     """Prove the entire answer is confined to a narrowly recognized task response."""
     if (
         material.get("candidate") != candidate
@@ -602,6 +686,14 @@ def response_scope(material: dict, candidate: str) -> ResponseScope | None:
     if not users:
         return None
     clauses = _clauses(candidate)
-    return _withdrawn_role_scope(material, users, clauses, candidate) or _setting_scope(
-        material, users, clauses, candidate
-    )
+    role_clauses = clauses
+    if (
+        point is not None
+        and point["relation"] == "supported"
+        and len(clauses) == 4
+        and point["quote"] in clauses[2:]
+    ):
+        role_clauses = [clause for clause in clauses if clause != point["quote"]]
+    return _withdrawn_role_scope(
+        material, users, role_clauses, candidate
+    ) or _setting_scope(material, users, clauses, candidate)

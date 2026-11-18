@@ -47,9 +47,14 @@ pełnym dowodzie zakresu wypowiedzi. Zachowuje dosłowną treść, surowe flagi,
 źródło i cytaty odwołanych zdań. Przy cofniętej roli odrębna nazwa punktu i liczba do odbioru mogą wystąpić
 obok jawnego przypisania osoby. Krótki cytat typu „u Anki” pomija się tylko
 wtedy, gdy dokładnie wskazuje wycofane odniesienie do osoby i występuje raz.
-Szyld o tej samej nazwie, sprzeczne przypisanie osoby albo dalsze twierdzenie
-o punkcie wymagają zwykłej oceny. Dodatkowy fragment, który wykracza poza
-rozpoznaną formę, kieruje ocenę do zwykłej ścieżki. Obecność kart źródłowych
+Dekoder porównuje też jawnie podaną, jednoznaczną nazwę punktu z ostatnim
+ustaleniem użytkownika. Podmieniony szyld daje sprzeczność w kryterium
+punktu albo niepoparte twierdzenie, gdy osobnego kryterium brak. Poprawny
+szyld zapisany po cofnięciu roli zachowuje własny dowód i pozwala ocenić
+cofnięcie niezależnie. Cytaty miejsca i osoby są poświadczone osobno.
+Szyld o tej samej nazwie, sprzeczne przypisanie osoby albo niejednoznaczne
+wzmianki nadal blokują wiązanie roli. Dodatkowy fragment poza rozpoznaną
+formą podlega zwykłej ocenie. Obecność kart źródłowych
 także wyłącza tę automatyczną korektę zakresu. Sprzeczność i pozostałe
 dodatkowe twierdzenia są nadal oceniane osobno.
 

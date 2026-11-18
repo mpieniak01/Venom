@@ -503,21 +503,11 @@ def _next_audit_request(state: _AuditState) -> tuple | None:
     return entry, answer, body, reservation
 
 
-def _post_audit_row(
-    state: _AuditState, row: dict, answer: dict, stack: ExitStack
-) -> None:
-    if state.client is None:
-        state.client = stack.enter_context(
-            state.client_factory(
-                timeout=httpx.Timeout(_REQUEST_TIMEOUT_SECONDS, connect=8),
-                trust_env=False,
-                follow_redirects=False,
-                headers={"Authorization": "Bearer " + runtime.credential()},
-            )
-        )
+def _reserve_attempt_time(
+    state: _AuditState, row: dict, reservation: Decimal
+) -> float | None:
     # Receipt/ledger fsync and client construction belong to the same deadline.
     request_timeout = min(state.protocol["request_timeout_seconds"], state.remaining())
-    reservation = judge._money(row["reserved_usd"])
     if request_timeout > 0 and state.rate_path is not None:
         emergency_cooldown = (
             request_timeout + state.protocol["rate_limit"]["max_retry_after_seconds"]
@@ -530,12 +520,31 @@ def _post_audit_row(
                 status="not_sent", cost_usd="0", error_type="cooldown_write_failed"
             )
             state.status = "provider_cooldown_io_error"
-            return
+            return None
         request_timeout = min(request_timeout, state.remaining())
     if request_timeout <= 0:
         state.unknown -= reservation
         row.update(status="not_sent", cost_usd="0", error_type="deadline_exceeded")
         state.status = "deadline_exceeded"
+        return None
+    return request_timeout
+
+
+def _post_audit_row(
+    state: _AuditState, row: dict, answer: dict, stack: ExitStack
+) -> None:
+    if state.client is None:
+        state.client = stack.enter_context(
+            state.client_factory(
+                timeout=httpx.Timeout(_REQUEST_TIMEOUT_SECONDS, connect=8),
+                trust_env=False,
+                follow_redirects=False,
+                headers={"Authorization": "Bearer " + runtime.credential()},
+            )
+        )
+    reservation = judge._money(row["reserved_usd"])
+    request_timeout = _reserve_attempt_time(state, row, reservation)
+    if request_timeout is None:
         return
     if row["rate_limit_attempts"]:
         state.retries += 1
@@ -675,6 +684,17 @@ def _audit_next(state: _AuditState, stack: ExitStack) -> bool:
     return _submit_case(state, request, stack) == "completed"
 
 
+def _finish_rate_window(
+    state: _AuditState, row: dict, retry_count: int
+) -> float | None:
+    if row.get("http_status") == 429:
+        state.status = "provider_rate_limited"
+        return _rate_delay(state, row, retry_count)
+    if row["status"] != "not_sent":
+        _persist_cooldown(state, max(0.0, state.next_post_at - time.monotonic()))
+    return None
+
+
 def _submit_case(
     state: _AuditState, request: tuple[dict, dict, dict, Decimal], stack: ExitStack
 ) -> str:
@@ -707,14 +727,7 @@ def _submit_case(
         interval = state.protocol["rate_limit"]["interval_seconds"]
         state.next_post_at = finished + interval
         try:
-            if row.get("http_status") != 429:
-                if row["status"] != "not_sent":
-                    _persist_cooldown(
-                        state, max(0.0, state.next_post_at - time.monotonic())
-                    )
-                break
-            state.status = "provider_rate_limited"
-            delay = _rate_delay(state, row, len(rejected))
+            delay = _finish_rate_window(state, row, len(rejected))
         except OSError:
             state.status = "provider_cooldown_io_error"
             state.rows.append(row)

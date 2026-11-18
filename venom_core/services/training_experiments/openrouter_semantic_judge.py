@@ -269,16 +269,12 @@ def decode(response: dict, body: dict, candidate: str) -> local._Decision:
     _require(isinstance(message, dict))
     content = message.get("content")
     _require(isinstance(content, str))
-    ids = list(
-        body["response_format"]["json_schema"]["schema"]["properties"]["checks"][
-            "properties"
-        ]
-    )
+    checks = body["response_format"]["json_schema"]["schema"]["properties"]["checks"]
     try:
         value = _QuoteDecision.model_validate_json(content)
     except ValueError as exc:
         raise ValueError(ERROR) from exc
-    _require(value.checks.keys() == set(ids))
+    _require(value.checks.keys() == checks["properties"].keys())
     _require(
         all(
             fields.observed_from_answer(check.observed, check.relation, candidate)

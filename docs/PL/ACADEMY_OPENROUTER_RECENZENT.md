@@ -131,3 +131,14 @@ Dłuższy Retry-After zatrzymuje audyt i jest zapisany dla kolejnego startu.
 Połączenie o nieznanym wyniku, inny błąd HTTP i błąd oceny kończą próbę.
 Odrzucone żądania zachowują koszty lub rezerwacje i nie liczą się jako decyzje.
 Próby zamrożone przed zmianą zachowują dotychczasowy protokół.
+
+Panel celowany przechodzi przez ten sam limit czasu, tempo i rejestr prób.
+Polecenie przygotowania sprawdza hash wejściowego panelu oraz zgodność
+wszystkich pakietów z aktualnym kontraktem recenzenta. Użyj podpolecenia
+prepare-targeted w scripts.academy.qualify_openrouter_judge, a następnie
+podpolecenia run z katalogiem audytu i flagą --execute.
+
+Wynik targeted_review_required wymaga potwierdzenia ręcznego. Ten tryb
+nie tworzy pinu kwalifikacji ani nie otwiera holdoutu. Odrzucona decyzja
+lub różnica względem klucza nie przerywa zbierania kolejnych niezależnych
+ocen. Ograniczenia transportu i budżetu nadal mogą zakończyć próbę wcześniej.

@@ -547,3 +547,113 @@ def test_provider_cooldown_survives_attempt_boundary(ready, monkeypatch, tmp_pat
     assert result["provider_cooldown_seconds"] == 400
     assert client.factory_calls == 0
     assert not (root / "started.json").exists()
+
+
+@pytest.mark.parametrize("mode", ["match", "decoder_invalid", "missing_quote"])
+def test_targeted_panel_uses_shared_retry_and_preserves_manual_gate(
+    tmp_path, monkeypatch, mode
+):
+    from tests.test_academy_openrouter_judge import response
+    from venom_core.services.training_experiments import (
+        semantic_openrouter_targeted as targeted,
+    )
+
+    candidate = "Podano B."
+    body = judge._control_request(
+        {
+            "id": "fixture",
+            "messages": [{"role": "user", "content": "Podaj A."}],
+            "criteria": [{"id": "status", "description": "Jawny brak statusu A."}],
+        },
+        {"text": candidate},
+    )
+    expected = {
+        "atoms": {"status": "omitted"},
+        "injection": False,
+        "natural_ok": True,
+        "polish_ok": True,
+        "unsupported": "yes",
+    }
+    panel = tmp_path / "source.json"
+    write(
+        panel,
+        {
+            "judge": judge.JUDGE,
+            "model": judge.MODEL,
+            "provider": judge.PROVIDER,
+            "endpoint": judge.ENDPOINT,
+            "prompt_sha256": judge._contract()["prompt_sha256"],
+            "cases": {
+                "fixture": {
+                    "body": body,
+                    "expected": expected,
+                    "required_unsupported_quote": candidate,
+                }
+            },
+            "order": ["fixture", "fixture"],
+        },
+    )
+    root = tmp_path / "targeted"
+    targeted.prepare(
+        panel, root, panel_sha256=digest(panel), budget_usd="0.20", max_seconds=1000
+    )
+    monkeypatch.setattr(audit.runtime, "is_enabled", lambda: True)
+    monkeypatch.setattr(audit.runtime, "cloud_allowed", lambda: True)
+    monkeypatch.setattr(audit.runtime, "credential", lambda: "invented-test-credential")
+    monkeypatch.setattr(audit.SETTINGS, "OPENROUTER_DAILY_LIMIT_USD", "0.20")
+    monkeypatch.setattr(audit.SETTINGS, "OPENROUTER_MESSAGE_LIMIT_USD", "0.01")
+    delays = []
+    monkeypatch.setattr(audit, "sleep", delays.append)
+    sent = []
+
+    class TargetedClient:
+        def __init__(self, **kwargs):
+            assert kwargs["trust_env"] is False
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            return None
+
+        def post(self, url, *, json, **_kwargs):
+            sent.append(json)
+            request = httpx.Request("POST", url)
+            assert url == judge.ENDPOINT
+            assert read_ledger()["pending_call_id"]
+            if len(sent) == 1:
+                return httpx.Response(
+                    429,
+                    headers={"Retry-After": "6"},
+                    json={"error": {"code": 429}},
+                    request=request,
+                )
+            raw = response(body, candidate, ident=f"fixture-{len(sent)}")
+            message = raw["choices"][0]["message"]
+            payload = __import__("json").loads(message["content"])
+            payload["checks"]["status"]["relation"] = "omitted"
+            if len(sent) == 2 and mode == "decoder_invalid":
+                payload["checks"]["status"]["observed"] = "wymyślony cytat"
+            text = "B" if len(sent) == 2 and mode == "missing_quote" else candidate
+            payload["additional_claims"] = [{"text": text, "grounding": "unsupported"}]
+            message["content"] = __import__("json").dumps(payload)
+            return httpx.Response(200, json=raw, request=request)
+
+    def read_ledger():
+        return json.loads((root / "ledger.json").read_text())
+
+    result = audit.run(root, execute=True, client_factory=TargetedClient)
+    assert sent == [body, body, body]
+    assert delays == [6.0, 2]
+    assert result["rows"] == 2
+    assert result["rate_limit_retries"] == 1
+    assert result["completed"] == (1 if mode == "decoder_invalid" else 2)
+    assert result["manual_review_required"] is True
+    assert result["unknown_reserved_usd"] != "0"
+    assert result["status"] == (
+        "targeted_review_required" if mode == "match" else "targeted_regression_failed"
+    )
+    assert len(result["mismatches"]) == (0 if mode == "match" else 1)
+    assert (root / "receipts/001.json").is_file()
+    assert not (root / "qualification.json").exists()
+    assert not (root / "controls").exists()

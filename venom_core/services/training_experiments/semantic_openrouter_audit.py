@@ -188,7 +188,7 @@ def prepare(
     }
 
 
-def _static(root: Path) -> tuple[dict, dict, str]:
+def _sealed_protocol(root: Path) -> tuple[dict, str]:
     protocol = read_json(root / _PROTOCOL_FILE)
     sha = digest(root / _PROTOCOL_FILE)
     _require(
@@ -202,6 +202,11 @@ def _static(root: Path) -> tuple[dict, dict, str]:
         and protocol["automatic_retry"] == "http_429_only",
         "remote_audit_frozen_contract_changed",
     )
+    return protocol, sha
+
+
+def _static(root: Path) -> tuple[dict, dict, str]:
+    protocol, sha = _sealed_protocol(root)
     _bytes(root, "data-review.json", protocol["data_review_sha256"])
     _bytes(root / "controls", _MANIFEST_FILE, protocol["controls_manifest_sha256"])
     manifest = read_json(root / "controls/frozen-manifest.json")
@@ -351,7 +356,14 @@ def run(
     """One explicit attempt; fake transports are used only by offline tests."""
     _require(execute is True, "remote_audit_operator_execute_required")
     root = operator_path(audit_root)
-    protocol, manifest, protocol_sha = _static(root)
+    protocol, protocol_sha = _sealed_protocol(root)
+    targeted = protocol.get("kind") == "targeted_regression"
+    if targeted:
+        from . import semantic_openrouter_targeted as panel
+
+        manifest = panel.frozen_panel(root, protocol)
+    else:
+        protocol, manifest, protocol_sha = _static(root)
     _require(
         runtime.is_enabled() and runtime.cloud_allowed() and bool(runtime.credential()),
         "remote_audit_provider_unavailable",
@@ -366,7 +378,11 @@ def run(
     )
     initial = judge._money(protocol["initial_accounted_usd"])
     _require(
-        0 < judge._money(protocol["holdout_max_request_usd"]) <= per_request <= budget
+        0 < per_request <= budget
+        and (
+            targeted
+            or 0 < judge._money(protocol["holdout_max_request_usd"]) <= per_request
+        )
         and initial <= budget,
         "remote_audit_budget_invalid",
     )
@@ -390,6 +406,19 @@ def run(
             root / "started.json",
             {"created_at": _utc(), "protocol_sha256": protocol_sha},
         )
+        if targeted:
+            return panel.execute(
+                _AuditState(
+                    root,
+                    protocol,
+                    manifest,
+                    protocol_sha,
+                    budget,
+                    per_request,
+                    client_factory,
+                    rate_path=rate_path,
+                )
+            )
         return _execute(
             root,
             protocol,
@@ -516,16 +545,28 @@ def _post_audit_row(
         judge._money(row["cost_usd"]) <= reservation,
         "remote_audit_reservation_exceeded",
     )
-    decision = judge.decode(row["response"], row["request"], answer["text"])
-    generation = row["response"]["id"]
-    _require(generation not in state.generations, "remote_audit_duplicate_generation")
-    state.generations.add(generation)
+    generation = row["response"].get("id")
+    if isinstance(generation, str) and generation.strip():
+        _require(
+            generation not in state.generations, "remote_audit_duplicate_generation"
+        )
+        state.generations.add(generation)
+    try:
+        decision = judge.decode(row["response"], row["request"], answer["text"])
+    except ValueError:
+        if state.protocol.get("kind") == "targeted_regression":
+            row.update(status="rejected_decision", error_type="decoder_invalid")
+            return
+        raise
     row["decision"] = decision.model_dump()
-    _require(
-        decision.unsupported != "unclear" and "unclear" not in decision.atoms.values(),
-        "remote_audit_uncertain",
+    uncertain = (
+        decision.unsupported == "unclear" or "unclear" in decision.atoms.values()
     )
-    row["status"] = "completed"
+    if uncertain and state.protocol.get("kind") == "targeted_regression":
+        row.update(status="rejected_decision", error_type="uncertain_decision")
+    else:
+        _require(not uncertain, "remote_audit_uncertain")
+        row["status"] = "completed"
 
 
 def _attempt_row(
@@ -591,13 +632,22 @@ def _audit_next(state: _AuditState, stack: ExitStack) -> bool:
     request = _next_audit_request(state)
     if request is None:
         return False
+    return _submit_case(state, request, stack) == "completed"
+
+
+def _submit_case(
+    state: _AuditState, request: tuple[dict, dict, dict, Decimal], stack: ExitStack
+) -> str:
     entry, answer, body, reservation = request
+    if reservation > state.per_request or state.accounted + reservation > state.budget:
+        state.status = "budget_exhausted"
+        return "not_sent"
     index = len(state.rows) + 1
     path = state.root / "receipts" / f"{index:03d}.json"
     rejected: list[dict] = []
     if not _wait_to_post(state, state.wait_seconds):
         state.status = "deadline_exceeded"
-        return False
+        return "not_sent"
     while True:
         row = {
             **entry,
@@ -629,7 +679,7 @@ def _audit_next(state: _AuditState, stack: ExitStack) -> bool:
         state.retries += 1
         state.status = "transport_incomplete"
     state.rows.append(row)
-    return row["status"] == "completed"
+    return row["status"]
 
 
 def _reserve_holdout(state: _AuditState) -> bool:
@@ -731,6 +781,8 @@ def _audit_result(state: _AuditState) -> dict:
         "accounted_usd": str(state.accounted),
         "finished_at": _utc(),
     }
+    if state.protocol.get("kind") == "targeted_regression":
+        result.update(state.metrics or {})
     atomic_json(state.root / _RESULT_FILE, result)
     if state.status == "passed":
         _publish_qualification(state.root, state.protocol, result)

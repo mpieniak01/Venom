@@ -1,7 +1,7 @@
 # Recenzent GPT‑6 Luna w Academy
 
 Academy rozróżnia lokalnych recenzentów, zdalny protokół
-`semantic-openrouter-luna-field-v5` i ocenę `exact-v1`. Nieznany identyfikator
+`semantic-openrouter-luna-field-v6` i ocenę `exact-v1`. Nieznany identyfikator
 jest błędem. Zdalna recenzja nie przechodzi na porównanie dosłownego tekstu ani
 na lokalny model, gdy brakuje kwalifikacji lub połączenia z OpenRouter.
 
@@ -11,8 +11,8 @@ na lokalny model, gdy brakuje kwalifikacji lub połączenia z OpenRouter.
 2. Testy kodu sprawdzają transport, budżet, odtwarzanie dowodów i integrację.
 3. Rzeczywista kwalifikacja recenzenta wymaga kompletnego audytu modelu.
 
-Kwalifikacja v5 przypina odrębną rubrykę oceny roli i miejsca.
-Wyniki v2, v3 i v4 pozostają dowodami historycznymi.
+Kwalifikacja v6 przypina rozdzielenie dowodów z odpowiedzi od wymagań i źródeł.
+Wyniki v2–v5 pozostają dowodami historycznymi.
 
 ## Kontrole i znaczenie ocen
 
@@ -81,7 +81,7 @@ sam wpis `passed` w pliku wyniku nie otwiera tej bariery.
 ## Kalibracja i użycie w kampanii
 
 Kalibracja przypina odrębny typ `QualificationRemote`. Zawiera identyfikator
-v5, model, dostawcę, adres endpointu, katalog audytu oraz hashe protokołu,
+v6, model, dostawcę, adres endpointu, katalog audytu oraz hashe protokołu,
 wyniku, manifestu kontroli, promptu, kontraktu żądania i implementacji.
 Nie wpisuje wersji Ollamy ani fikcyjnego hasha zdalnych wag.
 
@@ -114,3 +114,8 @@ Nie nadaje kwalifikacji ocenianemu adapterowi, całemu czatowi W/R, mowie ani
 narzędziom. Kampania nadal wymaga danych, właściwej referencji jakości,
 retencji i odrębnego odbioru finalisty. Wprowadzenie tego protokołu nie
 uruchamia treningu ani automatycznego testu dostawcy.
+
+Audyt operatora uruchamia się z głównego wątku procesu CLI w systemie Linux.
+Limit 75 sekund dotyczy całej wymiany HTTP, w tym odczytania odpowiedzi.
+Krótkie porcje danych nie odnawiają tego limitu. Przerwany POST zachowuje
+rezerwację jako koszt nieznany i zamyka próbę bez ponowienia żądania.

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import hashlib
 import math
+import signal
+import threading
 import time
 from contextlib import ExitStack
 from dataclasses import dataclass, field
@@ -29,6 +31,7 @@ _RESULT_FILE = "result.json"
 _HOLDOUT_RESERVE_FILE = "holdout-reserve.json"
 _LEDGER_FILE = "ledger.json"
 _PHASE1_RESULT_FILE = "phase1-result.json"
+_REQUEST_TIMEOUT_SECONDS = 75
 
 
 CONTROL_FILES = frozenset(
@@ -150,7 +153,7 @@ def prepare(
         "budget_usd": str(budget),
         "max_request_usd": str(per_request),
         "holdout_max_request_usd": str(held_cap),
-        "holdout_request_timeout_seconds": 75,
+        "request_timeout_seconds": _REQUEST_TIMEOUT_SECONDS,
         "holdout_cleanup_seconds": 120,
         "initial_accounted_usd": str(initial),
         "initial_unknown_reserved_usd": str(unknown),
@@ -176,7 +179,8 @@ def _static(root: Path) -> tuple[dict, dict, str]:
         and protocol["audit_runner_sha256"] == digest(Path(__file__))
         and protocol["implementation_sha256"] == judge.implementation_identity()
         and protocol["judge"] == judge.JUDGE
-        and protocol["request_contract"] == judge._contract(),
+        and protocol["request_contract"] == judge._contract()
+        and protocol["request_timeout_seconds"] == _REQUEST_TIMEOUT_SECONDS,
         "remote_audit_frozen_contract_changed",
     )
     _bytes(root, "data-review.json", protocol["data_review_sha256"])
@@ -186,6 +190,48 @@ def _static(root: Path) -> tuple[dict, dict, str]:
         _require(name in CONTROL_FILES, "remote_audit_controls_invalid")
         _bytes(root / "controls", name, expected)
     return protocol, manifest, sha
+
+
+class AuditRequestTimeout(httpx.TimeoutException):
+    """The entire HTTP exchange exceeded its wall-clock allowance."""
+
+
+def _require_request_timer() -> None:
+    _require(
+        hasattr(signal, "setitimer")
+        and threading.current_thread() is threading.main_thread(),
+        "remote_audit_request_timer_unavailable",
+    )
+    _require(
+        signal.getitimer(signal.ITIMER_REAL) == (0.0, 0.0),
+        "remote_audit_request_timer_in_use",
+    )
+
+
+def _expire_request(_signum: int, _frame: object) -> None:
+    raise AuditRequestTimeout("remote_audit_request_deadline_exceeded")
+
+
+def post_with_deadline(
+    client: httpx.Client, body: dict, timeout_seconds: float
+) -> httpx.Response:
+    """Bound the POST, including reading its complete body, on the operator CLI."""
+    _require_request_timer()
+    _require(
+        math.isfinite(timeout_seconds) and timeout_seconds > 0,
+        "remote_audit_request_timeout_invalid",
+    )
+    previous = signal.signal(signal.SIGALRM, _expire_request)
+    try:
+        signal.setitimer(signal.ITIMER_REAL, timeout_seconds)
+        return client.post(
+            judge.ENDPOINT,
+            json=body,
+            timeout=httpx.Timeout(timeout_seconds, connect=min(8, timeout_seconds)),
+        )
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, previous)
 
 
 def _stage_holdout(root: Path, manifest: dict) -> dict:
@@ -258,6 +304,7 @@ def run(
         and initial <= budget,
         "remote_audit_budget_invalid",
     )
+    _require_request_timer()
     with file_lock(root / "session.lock", blocking=False):
         _require(not (root / "started.json").exists(), "remote_audit_single_attempt")
         atomic_json(
@@ -342,7 +389,7 @@ def _post_audit_row(
     if state.client is None:
         state.client = stack.enter_context(
             state.client_factory(
-                timeout=httpx.Timeout(75, connect=8),
+                timeout=httpx.Timeout(_REQUEST_TIMEOUT_SECONDS, connect=8),
                 trust_env=False,
                 follow_redirects=False,
                 headers={"Authorization": "Bearer " + runtime.credential()},
@@ -356,10 +403,10 @@ def _post_audit_row(
         row.update(status="not_sent", cost_usd="0", error_type="deadline_exceeded")
         state.status = "deadline_exceeded"
         return
-    response = state.client.post(
-        judge.ENDPOINT,
-        json=row["request"],
-        timeout=httpx.Timeout(min(75, remaining), connect=min(8, remaining)),
+    response = post_with_deadline(
+        state.client,
+        row["request"],
+        min(state.protocol["request_timeout_seconds"], remaining),
     )
     row["http_status"] = response.status_code
     try:
@@ -431,7 +478,7 @@ def _reserve_holdout(state: _AuditState) -> bool:
     remaining_budget = state.budget - state.accounted
     remaining_seconds = state.remaining()
     required_seconds = (
-        72 * state.protocol["holdout_request_timeout_seconds"]
+        72 * state.protocol["request_timeout_seconds"]
         + state.protocol["holdout_cleanup_seconds"]
     )
     if remaining_budget < reserve:

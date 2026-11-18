@@ -408,3 +408,58 @@ def test_deadline_spent_on_fsync_or_client_init_never_sends_post(ready, monkeypa
     assert row["status"] == "not_sent"
     assert row["cost_usd"] == "0"
     assert not (root / "controls/holdout").exists()
+
+
+def test_request_deadline_stops_continuous_body_and_keeps_reservation(
+    ready, monkeypatch
+):
+    import signal
+    import time
+
+    root, _, client = ready
+    chunks = []
+    posts = []
+    timer = audit.post_with_deadline
+    previous_handler = signal.getsignal(signal.SIGALRM)
+
+    class SlowBody(httpx.SyncByteStream):
+        def __iter__(self):
+            for _ in range(200):
+                time.sleep(0.005)
+                chunks.append(1)
+                yield b" "
+
+    def keepalive(request):
+        posts.append(request.method)
+        return httpx.Response(200, stream=SlowBody())
+
+    class SlowClient(client):
+        def post(self, url, *, json, timeout):
+            with httpx.Client(transport=httpx.MockTransport(keepalive)) as http:
+                return http.post(url, json=json, timeout=timeout)
+
+    monkeypatch.setattr(
+        audit, "post_with_deadline", lambda client, body, _: timer(client, body, 0.08)
+    )
+    result = audit.run(root, execute=True, client_factory=SlowClient)
+    row = json.loads((root / "receipts/001.json").read_text())
+    assert posts == ["POST"]
+    assert 0 < len(chunks) < 200
+    assert row["error_type"] == "AuditRequestTimeout"
+    assert row["cost_usd"] is None
+    assert result["status"] == "transport_incomplete"
+    assert result["rows"] == 1
+    assert result["unknown_reserved_usd"] == row["reserved_usd"]
+    assert result["holdout_opened"] is False
+    assert not (root / "qualification.json").exists()
+    assert signal.getitimer(signal.ITIMER_REAL) == (0.0, 0.0)
+    assert signal.getsignal(signal.SIGALRM) == previous_handler
+
+
+def test_existing_request_timer_blocks_start_without_post(ready, monkeypatch):
+    root, _, client = ready
+    monkeypatch.setattr(audit.signal, "getitimer", lambda _: (1.0, 0.0))
+    with pytest.raises(ValueError, match="remote_audit_request_timer_in_use"):
+        audit.run(root, execute=True, client_factory=client)
+    assert client.factory_calls == 0
+    assert not (root / "started.json").exists()

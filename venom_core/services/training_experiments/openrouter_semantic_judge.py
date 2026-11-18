@@ -1,6 +1,6 @@
 """Qualified OpenRouter field reviewer; no local model or GPU access.
 
-Audit v5 separates participant roles from pickup locations. Earlier audit results keep their own identity.
+Audit v6 binds observations to the candidate's answer. Earlier audit results keep their own identity.
 All verification/replay functions are offline. Real requests occur only in
 review_bundle, after qualification, configuration and budget checks.
 """
@@ -32,7 +32,7 @@ from . import semantic_judge_v4 as controls
 from . import semantic_judge_v5 as fields
 from .profiles import digest, read_json, stable_hash
 
-JUDGE = "semantic-openrouter-luna-field-v5"
+JUDGE = "semantic-openrouter-luna-field-v6"
 JUDGES = frozenset({JUDGE})
 PROMPT = (
     fields.PROMPT
@@ -113,6 +113,23 @@ Sama lokalizacja odbioru nie dowodzi, że właściciel miejsca osobiście wydaje
         "podmienionej względem aktualnego ustalenia oznacz dodatkowe twierdzenie jako"
         " unsupported. Użyj krótkiego dosłownego fragmentu odpowiedzi."
     )
+    + (
+        "\n\nRozstrzyganie parafrazy, braku danych i dowodu z odpowiedzi\n\n1. Oceniaj "
+        "znaczenie połączenia czynności z miejscem. „Podejdź po przedmiot pod schody”"
+        " i „odbierz przedmiot spod schodów” mogą wskazywać to samo miejsce odbioru. "
+        "Sprawdź przedmiot, faktyczne położenie i właściwy termin. „Obok schodów” i "
+        "„pod schodami” to różne położenia.\n2. Gdy wymagany fakt mówi, że status jest"
+        " nieznany, jawne „nie ma ustalonego statusu” spełnia ten warunek. Zakaz "
+        "wnioskowania z kodu jest ograniczeniem oceny i treści. Kandydat nie musi go "
+        "powtarzać, chyba że użytkownik osobno prosi o podanie tej zasady.\n3. Dla "
+        "każdego pola oddziel required z polecenia lub źródeł od observed z samej "
+        "odpowiedzi. W observed przytocz krótki dosłowny fragment odpowiedzi "
+        "kandydata. Jeśli kandydat nie podał treści danego pola, wpisz „brak w "
+        "odpowiedzi” oraz relation=omitted. Imię lub wartość widoczne tylko w "
+        "pytaniu, karcie albo w required nigdy nie potwierdzają pola odpowiedzi. "
+        "Przed zwróceniem wyniku sprawdź, że każdy cytat observed pochodzi z "
+        "odpowiedzi."
+    )
 )
 MODEL = "openai/gpt-6-luna"
 PROVIDER = "Azure"
@@ -135,7 +152,7 @@ DECISION_FIELDS = controls.DECISION_FIELDS
 
 class QualificationRemote(local._Strict):
     schema_version: Literal[1]
-    judge: Literal["semantic-openrouter-luna-field-v5"]
+    judge: Literal["semantic-openrouter-luna-field-v6"]
     audit_root: str = Field(min_length=1)
     model: Literal["openai/gpt-6-luna"]
     provider: Literal["Azure"]

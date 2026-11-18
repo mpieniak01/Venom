@@ -179,7 +179,7 @@ def _contract() -> dict:
         "response_format": "strict_quote_schema",
         "identifier_comparison": "current_user_spelled_digits_v1",
         "field_evidence": "literal_candidate_current_source_v1",
-        "response_scope": "literal_task_and_retraction_v1",
+        "response_scope": "literal_task_and_retraction_v2",
         "prompt_sha256": hashlib.sha256(PROMPT.encode()).hexdigest(),
     }
 
@@ -327,6 +327,9 @@ def _apply_response_scope(
     flags: dict,
 ) -> tuple[list[fields.AdditionalClaim], ResponseScopeEvidence]:
     ignored = set(scope.get("withdrawn_quotes", ()))
+    role_reference = scope.get("withdrawn_role_reference")
+    if role_reference and scope["quote"].count(role_reference) == 1:
+        ignored.add(role_reference)
     suppressed = [
         claim.text
         for claim in value.additional_claims

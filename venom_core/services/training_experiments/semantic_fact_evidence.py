@@ -26,6 +26,7 @@ class ResponseScope(TypedDict):
     kind: Literal["withdrawn_role", "withdrawn_setting_advice", "setting_advice"]
     quote: str
     withdrawn_role: NotRequired[str]
+    withdrawn_role_reference: NotRequired[str]
     source: UserSource
     withdrawn_quotes: NotRequired[list[str]]
 
@@ -88,8 +89,19 @@ _PICKUP_LOCATION = re.compile(
 )
 _PICKUP_AT = re.compile(rf"\b(?:odbiór|odbierzesz)\s+u\s+(?P<name>{_NAME})\b", re.I)
 _PICKUP_CLAIM = re.compile(
-    rf"U\s+(?P<before>{_NAME})\s+odbierzesz(?:\s+(?:[0-9]{{1,6}}\s+)?{_NAME})?\.?"
-    rf"|(?:{_NAME}\s+)?odbierzesz\s+u\s+(?P<after>{_NAME})\.?",
+    rf"(?P<leading>U\s+(?P<before>{_NAME}))\s+odbierzesz"
+    rf"(?:\s+(?:[0-9]{{1,6}}\s+)?{_NAME})?\.?"
+    rf"|(?:{_NAME}\s+)?odbierzesz\s+(?P<trailing>u\s+(?P<after>{_NAME}))\.?",
+    re.I,
+)
+
+_PICKUP_QUANTITY = r"(?P<count>[0-9]{1,6}) (?P<unit>pudeł(?:ek|ka|o)?|karton(?:y|ów)?|pacz(?:ek|ki|ka))"
+_PICKUP_SOURCE_COUNT = re.compile(
+    rf"Do odbioru (?:jest|są|zostało|pozostało|pozostaje) {_PICKUP_QUANTITY}\.?", re.I
+)
+_PICKUP_POINT_NAME = re.compile(
+    rf"(?:Punkt(?: odbioru)? (?:ma nazwę|nazywa się)|Szyld to) "
+    rf'(?:„U (?P<polish>{_NAME})”|«U (?P<angle>{_NAME})»|"U (?P<ascii>{_NAME})")\.?',
     re.I,
 )
 
@@ -215,25 +227,41 @@ def _role_source_clause(clause: str, forms: set[str]) -> bool:
     )
 
 
-def _role_statement(text: str, forms: set[str]) -> tuple[str, str | None] | None:
+def _independent_pickup_clause(clause: str, role_forms: set[str]) -> bool:
+    if _PICKUP_SOURCE_COUNT.fullmatch(clause):
+        return True
+    point = _PICKUP_POINT_NAME.fullmatch(clause)
+    if point is None:
+        return False
+    point_name = point["polish"] or point["angle"] or point["ascii"]
+    return point_name.casefold() not in role_forms
+
+
+def _role_statement(
+    text: str, forms: set[str], *, separate_fields: bool
+) -> tuple[str, str | None] | None:
     anchors: list[tuple[str, str | None]] = []
     for clause in _clauses(text):
         if found := _ROLE_ASSIGN.fullmatch(clause):
             anchors.append((clause, found["name"]))
         elif _ROLE_SAME.fullmatch(clause):
             anchors.append((clause, None))
+        elif separate_fields and _independent_pickup_clause(clause, forms):
+            continue
         elif not _role_source_clause(clause, forms):
             return None
     return anchors[0] if len(anchors) == 1 else None
 
 
-def _role_reference(users: UserMessages, person: str) -> UserSource | None:
+def _role_reference(
+    users: UserMessages, person: str, *, separate_fields: bool = False
+) -> UserSource | None:
     forms = _role_forms(person)
     if not forms:
         return None
     continuity: tuple[int, str] | None = None
     for index, text in reversed(users):
-        anchor = _role_statement(text, forms)
+        anchor = _role_statement(text, forms, separate_fields=separate_fields)
         if anchor is None:
             return None
         quote, name = anchor
@@ -459,11 +487,7 @@ _ADVICE_WITHDRAWAL = re.compile(
     r"(?:Cofam|Wycofuję|Odwołuję) (?:tę instrukcję|to odradzanie|tę poradę)\.?",
     re.I,
 )
-_PICKUP_COUNT = re.compile(
-    r"(?:Do odbioru zostało )?(?P<count>[0-9]{1,6}) "
-    r"(?P<unit>pudeł(?:ek|ka|o)?|karton(?:y|ów)?|pacz(?:ek|ki|ka))\.?",
-    re.I,
-)
+_PICKUP_COUNT = re.compile(rf"(?:Do odbioru zostało )?{_PICKUP_QUANTITY}\.?", re.I)
 _PICKUP_TIME = r"(?:odbiór|odbiór jest) o (?:[01]?[0-9]|2[0-3]):[0-5][0-9]"
 _SETTING_REPORT = re.compile(
     rf"(?:Aktualna|Bieżąca) nastawa (?:to|wynosi) (?P<value>{_TEMP_TOKEN})"
@@ -503,7 +527,7 @@ def _withdrawn_role_scope(
     if len(roles) != 1:
         return None
     field, person = roles[0]
-    source = _role_reference(users, person)
+    source = _role_reference(users, person, separate_fields=True)
     if source is None or name.casefold() not in _role_forms(person):
         return None
     return {
@@ -511,6 +535,7 @@ def _withdrawn_role_scope(
         "quote": candidate,
         "source": source,
         "withdrawn_role": field,
+        "withdrawn_role_reference": pickup["leading"] or pickup["trailing"],
         "withdrawn_quotes": clauses[:2],
     }
 

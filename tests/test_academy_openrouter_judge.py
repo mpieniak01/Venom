@@ -1124,6 +1124,98 @@ def test_explicit_role_withdrawal_never_hides_replacement_or_unrelated_claim(
         judge._verify_call(row, body, candidate, "protocol")
 
 
+@pytest.mark.parametrize(
+    ("source", "extra", "claim", "bound", "unsupported"),
+    [
+        (
+            "Odbiór obsługuje Anka. Punkt ma nazwę „U Ewy”. Do odbioru są 3 kartony.",
+            "",
+            "U Anki",
+            True,
+            "no",
+        ),
+        (
+            'Do odbioru są 3 kartony. Punkt odbioru nazywa się "U Ewy". Odbiór obsługuje Anka.',
+            "",
+            "U Anki",
+            True,
+            "no",
+        ),
+        (
+            "Odbiór obsługuje Anka. Szyld to «U Ewy». Do odbioru są 3 kartony.",
+            "",
+            "3 kartony",
+            True,
+            "yes",
+        ),
+        (
+            "Odbiór obsługuje Anka. Punkt ma nazwę „U Anki”. Do odbioru są 3 kartony.",
+            "",
+            "U Anki",
+            False,
+            "yes",
+        ),
+        (
+            "Punkt ma nazwę „U Ewy”. Do odbioru są 3 kartony.",
+            "",
+            "U Anki",
+            False,
+            "yes",
+        ),
+        (
+            "Odbiór obsługuje Anka. Punkt ma nazwę „U Ewy”. Do odbioru są 3 kartony.",
+            " Punkt ma nazwę „U Anki”.",
+            "U Anki",
+            False,
+            "yes",
+        ),
+        (
+            "Odbiór obsługuje Anka. Odbiór obsługuje Ewa. Do odbioru są 3 kartony.",
+            "",
+            "U Anki",
+            False,
+            "yes",
+        ),
+    ],
+)
+def test_withdrawn_role_fragment_distinguishes_source_fields(
+    source, extra, claim, bound, unsupported
+):
+    candidate = (
+        "U Anki odbierzesz 3 kartony. Wycofuję stwierdzenie o osobie. "
+        "Do odbioru zostało 3 kartony." + extra
+    )
+    body = judge._control_request(
+        {
+            "id": "role-with-point",
+            "messages": [{"role": "user", "content": source + " Podaj rolę i liczbę."}],
+            "criteria": [
+                {"id": "issuer", "description": "Osoba obsługująca odbiór: Anka."},
+                {"id": "count", "description": "Do odbioru są 3 kartony."},
+            ],
+        },
+        {"text": candidate},
+    )
+    raw = response(body, candidate)
+    message = raw["choices"][0]["message"]
+    content = json.loads(message["content"])
+    content["checks"]["issuer"] = {
+        "observed": "brak w odpowiedzi",
+        "relation": "omitted",
+    }
+    content["additional_claims"] = [{"text": claim, "grounding": "unsupported"}]
+    message["content"] = json.dumps(content)
+
+    decision, evidence = judge.decode_with_evidence(raw, body, candidate)
+    assert decision.atoms == {"issuer": "omitted", "count": "supported"}
+    assert decision.unsupported == unsupported
+    assert ("response_scope" in evidence) is bound
+    if bound:
+        scope = evidence["response_scope"]
+        assert scope["proof"]["withdrawn_role_reference"] == "U Anki"
+        assert scope["ignored_claims"] == ([claim] if unsupported == "no" else [])
+
+
 def _audit_with_first_429(
     full_audit,
     *,

@@ -44,7 +44,11 @@ Dla każdej odpowiedzi stosuj ten sam klucz znaczeniowy i porównuj go z aktualn
 
 Rubryka Luny stosuje te reguły. Dekoder może skorygować werdykt tylko przy
 pełnym dowodzie zakresu wypowiedzi. Zachowuje dosłowną treść, surowe flagi,
-źródło i cytaty odwołanych zdań. Dodatkowy fragment, który wykracza poza
+źródło i cytaty odwołanych zdań. Przy cofniętej roli odrębna nazwa punktu i liczba do odbioru mogą wystąpić
+obok jawnego przypisania osoby. Krótki cytat typu „u Anki” pomija się tylko
+wtedy, gdy dokładnie wskazuje wycofane odniesienie do osoby i występuje raz.
+Szyld o tej samej nazwie, sprzeczne przypisanie osoby albo dalsze twierdzenie
+o punkcie wymagają zwykłej oceny. Dodatkowy fragment, który wykracza poza
 rozpoznaną formę, kieruje ocenę do zwykłej ścieżki. Obecność kart źródłowych
 także wyłącza tę automatyczną korektę zakresu. Sprzeczność i pozostałe
 dodatkowe twierdzenia są nadal oceniane osobno.

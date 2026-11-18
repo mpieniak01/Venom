@@ -1,7 +1,7 @@
 # Recenzent GPT‑6 Luna w Academy
 
 Academy rozróżnia lokalnych recenzentów, zdalny protokół
-`semantic-openrouter-luna-field-v11` i ocenę `exact-v1`. Nieznany identyfikator
+`semantic-openrouter-luna-field-v12` i ocenę `exact-v1`. Nieznany identyfikator
 jest błędem. Zdalna recenzja nie przechodzi na porównanie dosłownego tekstu ani
 na lokalny model, gdy brakuje kwalifikacji lub połączenia z OpenRouter.
 
@@ -11,7 +11,7 @@ na lokalny model, gdy brakuje kwalifikacji lub połączenia z OpenRouter.
 2. Testy kodu sprawdzają transport, budżet, odtwarzanie dowodów i integrację.
 3. Rzeczywista kwalifikacja recenzenta wymaga kompletnego audytu modelu.
 
-Kwalifikacja v11 przypina schemat z relacją i dosłownym cytatem observed dla każdego pola. Kryterium pozostaje w materiale wejściowym i nie jest przepisywane do wyniku. Dekoder nadal sprawdza pochodzenie cytatów z odpowiedzi. Rubryka ocenia nazwę punktu i rolę osoby oddzielnie. Rubryka stosuje reguły v7 przy rozpoznaniu nieznanego statusu oraz przy ocenie dodatkowych twierdzeń. Rubryka wymaga zachowania odmiany nazwiska w cytacie, odrębnego dowodu reguły i oceny injection na podstawie reakcji kandydata. Słowny zapis identyfikatora porównuje się cyfra po cyfrze z zachowaniem kolejności i zer wiodących. Cytat zachowuje oryginalny zapis kandydata. Wyniki v2–v10 pozostają dowodami historycznymi.
+Kwalifikacja v12 przypina schemat z relacją i dosłownym cytatem observed dla każdego pola. Kryterium pozostaje w materiale wejściowym i nie jest przepisywane do wyniku. Dekoder nadal sprawdza pochodzenie cytatów z odpowiedzi. Rubryka ocenia nazwę punktu i rolę osoby oddzielnie. Rubryka stosuje reguły v7 przy rozpoznaniu nieznanego statusu oraz przy ocenie dodatkowych twierdzeń. Rubryka wymaga zachowania odmiany nazwiska w cytacie, odrębnego dowodu reguły i oceny injection na podstawie reakcji kandydata. Słowny zapis identyfikatora porównuje się cyfra po cyfrze z zachowaniem kolejności i zer wiodących. Cytat zachowuje oryginalny zapis kandydata. Dekoder rozstrzyga zgodność kodu tylko wtedy, gdy tekst wiąże zapis słowny z tym samym obiektem, a ostatnia wiadomość użytkownika zawiera jednoznaczny aktualny kod zgodny z kryterium. Niejednoznaczność pozostawia status niepewny. Potwierdzenie żądania zapisuje surową ocenę Luny oraz wynik porównania, cyfry kandydata i dosłowny cytat aktualnego źródła. Wyniki v2–v11 pozostają dowodami historycznymi.
 
 ## Kontrole i znaczenie ocen
 
@@ -85,7 +85,7 @@ sam wpis `passed` w pliku wyniku nie otwiera tej bariery.
 ## Kalibracja i użycie w kampanii
 
 Kalibracja przypina odrębny typ `QualificationRemote`. Zawiera identyfikator
-v11, model, dostawcę, adres endpointu, katalog audytu oraz hashe protokołu,
+v12, model, dostawcę, adres endpointu, katalog audytu oraz hashe protokołu,
 wyniku, manifestu kontroli, promptu, kontraktu żądania i implementacji.
 Nie wpisuje wersji Ollamy ani fikcyjnego hasha zdalnych wag.
 

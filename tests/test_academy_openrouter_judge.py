@@ -105,7 +105,7 @@ def test_invalid_money_fails_closed(value):
         judge._money(value)
 
 
-@pytest.mark.parametrize("version", [2, 7, 8, 9, 10])
+@pytest.mark.parametrize("version", [2, 7, 8, 9, 10, 11])
 def test_historical_reviews_are_not_current_qualification(version):
     with pytest.raises(ValueError):
         judge.qualification({"judge": f"semantic-openrouter-luna-field-v{version}"})
@@ -738,6 +738,197 @@ def test_observed_requires_candidate_text_or_omission(
     else:
         with pytest.raises(ValueError, match=judge.ERROR):
             judge.decode(raw, body, candidate)
+
+
+def _identifier_receipt(packet, source, candidate, observed, description, relation):
+    spec, case, answer = copy.deepcopy(packet)
+    case["messages"] = [
+        {"role": "user", "content": "Dla A obowiązuje kod 740."},
+        {"role": "assistant", "content": "Dla A obowiązuje kod 704."},
+        {"role": "user", "content": source},
+    ]
+    case["criteria"].append(
+        {"id": "code", "description": description, "kind": "content"}
+    )
+    answer["text"] = candidate
+    body = judge.request_payload(spec, case, answer)
+    raw = response(body, candidate=candidate)
+    message = raw["choices"][0]["message"]
+    data = json.loads(message["content"])
+    data["checks"]["code"] = {"observed": observed, "relation": relation}
+    message["content"] = json.dumps(data)
+    return body, raw
+
+
+@pytest.mark.parametrize(
+    "source,candidate,observed,description,raw_relation,effective,expected_digits",
+    [
+        (
+            "Korekta: dla A obowiązuje kod 704. Dla B obowiązuje kod 740.",
+            "A, pod poprawionym kodem siedem-cztery-zero, odbierzesz w hali A.",
+            "siedem-cztery-zero",
+            "Bieżący kod A to 704.",
+            "supported",
+            "contradicted",
+            "740",
+        ),
+        (
+            "Korekta: dla A obowiązuje kod 704.",
+            "A, pod poprawionym kodem siedem zero cztery, odbierzesz w hali A.",
+            "siedem zero cztery",
+            "Bieżący kod A to 704.",
+            "unclear",
+            "supported",
+            "704",
+        ),
+        (
+            "Korekta: dziś kod schowka to 065. Wczoraj obowiązywał kod 158.",
+            "Bieżący kod schowka to zero-sześć-pięć.",
+            "zero-sześć-pięć",
+            "Bieżący kod schowka to 065, wraz z zerem wiodącym.",
+            "unclear",
+            "supported",
+            "065",
+        ),
+        (
+            "Korekta: dziś kod schowka to 065.",
+            "Bieżący kod schowka to sześć-pięć.",
+            "sześć-pięć",
+            "Bieżący kod schowka to 065.",
+            "supported",
+            "contradicted",
+            "65",
+        ),
+        (
+            "Korekta: dla A obowiązuje kod 704.",
+            "B, pod poprawionym kodem siedem-zero-cztery, odbierzesz w hali A.",
+            "siedem-zero-cztery",
+            "Bieżący kod A to 704.",
+            "supported",
+            "unclear",
+            None,
+        ),
+    ],
+)
+def test_identifier_compares_bound_spoken_digits(
+    packet,
+    source,
+    candidate,
+    observed,
+    description,
+    raw_relation,
+    effective,
+    expected_digits,
+):
+    body, raw = _identifier_receipt(
+        packet, source, candidate, observed, description, raw_relation
+    )
+    decision, comparison = judge.decode_with_comparison(raw, body, candidate)
+    assert decision.atoms == {"place": "supported", "code": effective}
+    assert comparison is not None
+    assert comparison["observed"] == observed
+    assert comparison["raw_relation"] == raw_relation
+    assert comparison["effective_relation"] == effective
+    assert comparison["candidate_digits"] == expected_digits
+    assert comparison["source"]["message_index"] == 2
+    assert comparison["source"]["quote"] in source
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "Podaj aktualny kod A.",
+        "Dla B obowiązuje kod 704.",
+        "Dla A obowiązuje kod 740.",
+        "Dla A obowiązuje kod 704. Dla A obowiązuje kod 740.",
+        "Dla A obowiązuje kod 704. A ma teraz kod 740.",
+    ],
+)
+def test_identifier_refuses_missing_or_conflicting_current_assignment(packet, source):
+    candidate = "A, pod poprawionym kodem siedem-zero-cztery, odbierzesz w hali A."
+    body, raw = _identifier_receipt(
+        packet,
+        source,
+        candidate,
+        "siedem-zero-cztery",
+        "Bieżący kod A to 704.",
+        "supported",
+    )
+    decision, comparison = judge.decode_with_comparison(raw, body, candidate)
+    assert decision.atoms == {"place": "supported", "code": "unclear"}
+    assert comparison is not None and comparison["source"] is None
+
+
+@pytest.mark.parametrize(
+    "candidate,observed",
+    [
+        (
+            "A, pod poprawionym kodem siedem-zero-cztery, odbierzesz w hali A.",
+            "odbierzesz w hali A",
+        ),
+        (
+            "A, pod poprawionym kodem siedem-zero-cztery, odbierzesz w hali A. "
+            "Dawny kod to siedem-cztery-zero.",
+            "siedem-zero-cztery",
+        ),
+    ],
+)
+def test_identifier_refuses_ambiguous_or_unrelated_candidate_quote(
+    packet, candidate, observed
+):
+    body, raw = _identifier_receipt(
+        packet,
+        "Dla A obowiązuje kod 704.",
+        candidate,
+        observed,
+        "Bieżący kod A to 704.",
+        "supported",
+    )
+    decision, comparison = judge.decode_with_comparison(raw, body, candidate)
+    assert decision.atoms["code"] == "unclear"
+    assert comparison is not None and comparison["candidate_digits"] is None
+
+
+def test_identifier_requires_literal_quote_and_verified_comparison_trace(packet):
+    candidate = "A, pod poprawionym kodem siedem-zero-cztery, odbierzesz w hali A."
+    body, raw = _identifier_receipt(
+        packet,
+        "Dla A obowiązuje kod 704.",
+        candidate,
+        "704",
+        "Bieżący kod A to 704.",
+        "supported",
+    )
+    with pytest.raises(ValueError, match=judge.ERROR):
+        judge.decode(raw, body, candidate)
+
+    body, raw = _identifier_receipt(
+        packet,
+        "Dla A obowiązuje kod 704.",
+        candidate,
+        "siedem-zero-cztery",
+        "Bieżący kod A to 704.",
+        "unclear",
+    )
+    decision, comparison = judge.decode_with_comparison(raw, body, candidate)
+    row = {
+        "status": "completed",
+        "protocol_sha256": "protocol",
+        "request": body,
+        "request_sha256": stable_hash(body),
+        "response": raw,
+        "response_sha256": stable_hash(raw),
+        "decision": decision.model_dump(),
+        "identifier_comparison": comparison,
+        "cost_usd": judge.reported_cost(raw),
+        "reserved_usd": str(judge.reserve(body)),
+        "started_at": "2026-01-01T00:00:00+00:00",
+        "finished_at": "2026-01-01T00:00:01+00:00",
+    }
+    assert judge._verify_call(row, body, candidate, "protocol") == decision
+    row["identifier_comparison"] = None
+    with pytest.raises(ValueError, match=judge.ERROR):
+        judge._verify_call(row, body, candidate, "protocol")
 
 
 def _audit_with_first_429(

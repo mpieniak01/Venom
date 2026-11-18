@@ -578,13 +578,17 @@ def _post_audit_row(
         )
         state.generations.add(generation)
     try:
-        decision = judge.decode(row["response"], row["request"], answer["text"])
+        decision, comparison = judge.decode_with_comparison(
+            row["response"], row["request"], answer["text"]
+        )
     except ValueError:
         if state.protocol.get("kind") == "targeted_regression":
             row.update(status="rejected_decision", error_type="decoder_invalid")
             return
         raise
     row["decision"] = decision.model_dump()
+    if comparison is not None:
+        row["identifier_comparison"] = comparison
     uncertain = (
         decision.unsupported == "unclear" or "unclear" in decision.atoms.values()
     )

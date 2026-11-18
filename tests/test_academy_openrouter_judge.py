@@ -59,7 +59,7 @@ def test_payload_remote_route_and_context(packet):
     assert body["model"] == judge.MODEL
     assert body["messages"][0]["content"] == judge.PROMPT
     assert judge._contract()["prompt_sha256"] == (
-        "a34ace22ea7d348816717768e085e23a230badae6db36c428c7774f6b3c42762"
+        "366fa15b43a561f039eaa80fd666619bb93bc0e415b619f385b7467eada23c18"
     )
     schema = body["response_format"]["json_schema"]["schema"]
     check_schema = schema["$defs"]["_QuoteCheck"]
@@ -105,7 +105,7 @@ def test_invalid_money_fails_closed(value):
         judge._money(value)
 
 
-@pytest.mark.parametrize("version", [2, 7, 8])
+@pytest.mark.parametrize("version", [2, 7, 8, 9])
 def test_historical_reviews_are_not_current_qualification(version):
     with pytest.raises(ValueError):
         judge.qualification({"judge": f"semantic-openrouter-luna-field-v{version}"})
@@ -696,6 +696,8 @@ def test_transaction_recovers_interrupted_pair_without_repeating_post(
             "Za jedną rolkę zapłacisz 6 zł.",
             True,
         ),
+        ("supported", "od Bąk.", "Odbierzesz od Bąka. Bąk prowadzi punkt.", False),
+        ("supported", "od Bąka.", "Odbierzesz od Bąka. Bąk prowadzi punkt.", True),
         ("omitted", "Opiekunka: Daria", "", False),
         ("supported", "brak w odpowiedzi", "", False),
         ("omitted", "brak w odpowiedzi", "", True),

@@ -36,8 +36,10 @@ nadal daje negatywny werdykt i alarm krytyczny.
 
 Publiczna ścieżka przygotowania i ręcznego wykonania audytu znajduje się
 w `scripts/academy/qualify_openrouter_judge.py`. Pomoc polecenia nie wykonuje
-wywołań dostawcy. Przygotowanie przypina kontrolne dane, odbiór danych, prompt,
-schemat żądania, implementację, limit kosztu i deadline. Uruchomienie audytu
+wywołań dostawcy. Przygotowanie przypina dane kontrolne, odbiór danych, prompt, schemat żądania,
+implementację, limity i politykę tempa. Raportuje rezerwę fazy 1, holdoutu
+i obsługi HTTP 429. Przed pierwszym POST runner sprawdza łączną rezerwę
+z uwzględnieniem wcześniejszych kosztów i aktywnego limitu projektu. Uruchomienie audytu
 jest osobną, jawną czynnością operatora.
 
 Opis argumentów jest dostępny bez połączenia z dostawcą:
@@ -119,3 +121,13 @@ Audyt operatora uruchamia się z głównego wątku procesu CLI w systemie Linux.
 Limit 75 sekund dotyczy całej wymiany HTTP, w tym odczytania odpowiedzi.
 Krótkie porcje danych nie odnawiają tego limitu. Przerwany POST zachowuje
 rezerwację jako koszt nieznany i zamyka próbę bez ponowienia żądania.
+
+Przy kwalifikacji Academy wykonuje jeden audyt Luny naraz na użytkownika
+systemowego, również przy kilku katalogach roboczych. Zachowuje dwie sekundy
+przerwy między zwykłymi żądaniami. Wyłącznie po HTTP 429 ponawia ten sam
+pakiet najwyżej dwa razy i najwyżej osiem razy w całym audycie. Honoruje
+Retry-After do 60 sekund. Przy braku poprawnego nagłówka stosuje 5 i 10 sekund.
+Dłuższy Retry-After zatrzymuje audyt i jest zapisany dla kolejnego startu.
+Połączenie o nieznanym wyniku, inny błąd HTTP i błąd oceny kończą próbę.
+Odrzucone żądania zachowują koszty lub rezerwacje i nie liczą się jako decyzje.
+Próby zamrożone przed zmianą zachowują dotychczasowy protokół.

@@ -43,7 +43,7 @@ def ready(full_audit, tmp_path, monkeypatch):
         holdout_max_request_usd="0.002",
         controls_sha256=digest(source / "frozen-manifest.json"),
         data_review_sha256=digest(source_root / "data-review.json"),
-        budget_usd="0.20",
+        budget_usd="0.80",
         max_seconds=7200,
         initial_accounted_usd="0.01",
         initial_unknown_reserved_usd="0.01",
@@ -51,7 +51,8 @@ def ready(full_audit, tmp_path, monkeypatch):
     monkeypatch.setattr(audit.runtime, "is_enabled", lambda: True)
     monkeypatch.setattr(audit.runtime, "cloud_allowed", lambda: True)
     monkeypatch.setattr(audit.runtime, "credential", lambda: "invented-test-credential")
-    monkeypatch.setattr(audit.SETTINGS, "OPENROUTER_DAILY_LIMIT_USD", 0.20)
+    monkeypatch.setattr(audit.SETTINGS, "OPENROUTER_DAILY_LIMIT_USD", 0.80)
+    monkeypatch.setattr(audit, "sleep", lambda _: None)
     monkeypatch.setattr(audit.SETTINGS, "OPENROUTER_MESSAGE_LIMIT_USD", 0.01)
     responses = {}
     for path in (source_root / "receipts").glob("*.json"):
@@ -340,17 +341,15 @@ def test_cli_failed_run_returns_nonzero(monkeypatch):
     assert caught.value.code == 3
 
 
-def test_g1_pass_with_insufficient_full_holdout_budget_never_opens_it(
-    ready, monkeypatch
-):
+def test_preflight_rejects_budget_without_full_holdout_reservation(ready, monkeypatch):
     root, source, client = ready
     monkeypatch.setattr(audit.SETTINGS, "OPENROUTER_DAILY_LIMIT_USD", 0.10)
     monkeypatch.setattr(
         audit, "_stage_holdout", lambda *a: pytest.fail("holdout opened without budget")
     )
     result = audit.run(root, execute=True, client_factory=client)
-    assert result["status"] == "holdout_budget_unavailable"
-    assert client.calls == 156
+    assert result["status"] == "budget_exhausted"
+    assert client.calls == 0
     assert result["holdout_opened"] is False
     assert not (root / "qualification.json").exists()
 
@@ -461,5 +460,90 @@ def test_existing_request_timer_blocks_start_without_post(ready, monkeypatch):
     monkeypatch.setattr(audit.signal, "getitimer", lambda _: (1.0, 0.0))
     with pytest.raises(ValueError, match="remote_audit_request_timer_in_use"):
         audit.run(root, execute=True, client_factory=client)
+    assert client.factory_calls == 0
+    assert not (root / "started.json").exists()
+
+
+@pytest.mark.parametrize("throttle_at", [1, 157])
+def test_429_waits_and_replays_without_counting_throttle_as_grade(
+    ready, monkeypatch, throttle_at
+):
+    root, _, client = ready
+    delays = []
+    monkeypatch.setattr(audit, "sleep", delays.append)
+
+    class Throttled(client):
+        def post(self, url, *, json, **kwargs):
+            if self.calls + 1 == throttle_at:
+                type(self).calls += 1
+                return httpx.Response(
+                    429,
+                    headers={"Retry-After": "7"},
+                    json={"error": {"code": 429}},
+                    request=httpx.Request("POST", url),
+                )
+            return super().post(url, json=json, **kwargs)
+
+    result = audit.run(root, execute=True, client_factory=Throttled)
+    row = json.loads((root / "receipts" / f"{throttle_at:03d}.json").read_text())
+    [attempt] = row["rate_limit_attempts"]
+    assert result["status"] == "passed"
+    assert result["rows"] == 228 and Throttled.calls == 229
+    assert attempt["http_status"] == 429 and attempt["retry_after"] == "7"
+    assert attempt["call_id"] != row["call_id"]
+    assert Decimal(result["unknown_reserved_usd"]) == Decimal(attempt["reserved_usd"])
+    assert delays.count(7.0) == 1 and delays.count(2) == 227
+    pin = judge.QualificationRemote.model_validate_json(
+        (root / "qualification.json").read_text()
+    )
+    judge.verify_audit(pin)
+
+
+@pytest.mark.parametrize("header, calls, waits", [("", 3, [5.0, 10.0]), ("300", 1, [])])
+def test_429_stops_at_frozen_retry_bounds(ready, monkeypatch, header, calls, waits):
+    root, _, client = ready
+    delays = []
+    monkeypatch.setattr(audit, "sleep", delays.append)
+
+    class Throttled(client):
+        def post(self, url, **_kwargs):
+            type(self).calls += 1
+            return httpx.Response(
+                429,
+                headers={"Retry-After": header},
+                json={"error": {"code": 429}},
+                request=httpx.Request("POST", url),
+            )
+
+    result = audit.run(root, execute=True, client_factory=Throttled)
+    row = json.loads((root / "receipts/001.json").read_text())
+    assert result["status"] == "provider_rate_limited"
+    assert Throttled.calls == calls and delays == waits
+    assert Decimal(result["unknown_reserved_usd"]) == calls * Decimal(
+        row["reserved_usd"]
+    )
+    assert len(row["rate_limit_attempts"]) == calls - 1
+    assert not result["holdout_opened"]
+    assert not (root / "qualification.json").exists()
+
+
+def test_retry_after_http_date_and_invalid_value():
+    from datetime import datetime, timezone
+
+    now = datetime(2026, 11, 18, 10, 0, 0, tzinfo=timezone.utc)
+    assert audit._retry_delay("Wed, 18 Nov 2026 10:00:42 GMT", 5, now) == 42
+    assert audit._retry_delay("invalid", 5, now) == 5
+
+
+def test_provider_cooldown_survives_attempt_boundary(ready, monkeypatch, tmp_path):
+    root, _, client = ready
+    shared = tmp_path / "provider.json"
+    monkeypatch.setattr(audit, "_operator_rate_path", lambda: shared)
+    monkeypatch.setattr(audit.httpx, "Client", client)
+    write(shared, {"not_before": 1400})
+    monkeypatch.setattr(audit.time, "time", lambda: 1000)
+    result = audit.run(root, execute=True, client_factory=client)
+    assert result["status"] == "provider_cooldown_active"
+    assert result["provider_cooldown_seconds"] == 400
     assert client.factory_calls == 0
     assert not (root / "started.json").exists()

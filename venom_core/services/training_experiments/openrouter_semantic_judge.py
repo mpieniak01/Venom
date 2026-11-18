@@ -567,14 +567,18 @@ def verify_audit(pin: QualificationRemote) -> None:
     metrics = _audit_metrics(root, combined, rows)
     _require(metrics == thresholds and result.get("metrics") == metrics)
     total = sum((_money(row["cost_usd"]) for row in rows), Decimal(0))
+    rejected_cost, rejected_reserved = _verify_rate_limited_calls(rows, protocol)
+    total += rejected_cost
     initial = _money(protocol["initial_accounted_usd"])
     initial_unknown = _money(protocol["initial_unknown_reserved_usd"])
     budget = _money(protocol["budget_usd"])
     _require(initial_unknown <= initial and budget > 0)
     _require(_money(result["actual_known_cost_usd"]) == total)
-    _require(_money(result["unknown_reserved_usd"]) == 0)
+    _require(_money(result["unknown_reserved_usd"]) == rejected_reserved)
     _require(_money(result["carried_unknown_reserved_usd"]) == initial_unknown)
-    _require(_money(result["accounted_usd"]) == initial + total <= budget)
+    _require(
+        _money(result["accounted_usd"]) == initial + total + rejected_reserved <= budget
+    )
     limit = protocol["max_seconds"]
     _require(
         type(limit) in (int, float) and math.isfinite(limit) and 0 < limit <= 86400
@@ -583,6 +587,64 @@ def verify_audit(pin: QualificationRemote) -> None:
         _time(rows[-1]["finished_at"]) - _time(rows[0]["started_at"])
     ).total_seconds()
     _require(elapsed <= limit)
+
+
+def _verify_rate_limited_calls(
+    rows: list[dict], protocol: dict
+) -> tuple[Decimal, Decimal]:
+    known = unknown = Decimal(0)
+    retry_count = 0
+    previous_end = datetime.min.replace(tzinfo=timezone.utc)
+    call_ids = {row["call_id"] for row in rows}
+    for row in rows:
+        attempts = row.get("rate_limit_attempts", [])
+        _require(isinstance(attempts, list))
+        policy = protocol.get("rate_limit", {})
+        _require(len(attempts) <= len(policy.get("backoff_seconds", ())))
+        retry_count += len(attempts)
+        _require(retry_count <= policy.get("max_retries_per_audit", 0))
+        for attempt in attempts:
+            _require(
+                attempt.get("status") == "failed"
+                and attempt.get("http_status") == 429
+                and all(
+                    attempt.get(k) == row.get(k)
+                    for k in (
+                        "index",
+                        "case_id",
+                        "answer_id",
+                        "split",
+                        "repeat",
+                        "request",
+                        "request_sha256",
+                        "reserved_usd",
+                        "protocol_sha256",
+                    )
+                )
+            )
+            _require(
+                isinstance(attempt.get("call_id"), str)
+                and bool(attempt["call_id"].strip())
+                and attempt["call_id"] not in call_ids
+                and isinstance(attempt.get("response"), dict)
+                and stable_hash(attempt["response"]) == attempt["response_sha256"]
+            )
+            call_ids.add(attempt["call_id"])
+            started = _time(attempt["started_at"])
+            finished = _time(attempt["finished_at"])
+            _require(previous_end <= started <= finished <= _time(row["started_at"]))
+            previous_end = finished
+            reserved = _money(attempt["reserved_usd"])
+            reported = reported_cost(attempt["response"])
+            _require(reported == attempt.get("cost_usd"))
+            if reported is None:
+                unknown += reserved
+            else:
+                cost = _money(reported)
+                _require(cost <= reserved)
+                known += cost
+        previous_end = _time(row["finished_at"])
+    return known, unknown
 
 
 def _audit_rows(

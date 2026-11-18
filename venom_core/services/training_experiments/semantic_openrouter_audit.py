@@ -7,11 +7,13 @@ import math
 import signal
 import threading
 import time
-from contextlib import ExitStack
+from contextlib import ExitStack, nullcontext
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from decimal import Decimal
+from email.utils import parsedate_to_datetime
 from pathlib import Path
+from time import sleep
 from typing import Callable
 from uuid import uuid4
 
@@ -32,6 +34,13 @@ _HOLDOUT_RESERVE_FILE = "holdout-reserve.json"
 _LEDGER_FILE = "ledger.json"
 _PHASE1_RESULT_FILE = "phase1-result.json"
 _REQUEST_TIMEOUT_SECONDS = 75
+_RATE_LIMIT_POLICY = {
+    "interval_seconds": 2,
+    "backoff_seconds": [5, 10],
+    "max_retry_after_seconds": 60,
+    "max_retries_per_audit": 8,
+}
+_HOLDOUT_CALLS = 72
 
 
 CONTROL_FILES = frozenset(
@@ -141,8 +150,10 @@ def prepare(
         target.write_bytes(raw)
     (output / "controls/frozen-manifest.json").write_bytes(manifest_raw)
     (output / "data-review.json").write_bytes(review_raw)
-    judge._audit_order(output, manifest, phase1=True)
+    quotes = _phase1_reservations(output, manifest)
     protocol = {
+        "phase1_reservation_usd": str(sum(quotes, Decimal(0))),
+        "phase1_max_request_usd": str(max(quotes)),
         "schema_version": 1,
         "judge": judge.JUDGE,
         "request_contract": judge._contract(),
@@ -159,7 +170,8 @@ def prepare(
         "initial_unknown_reserved_usd": str(unknown),
         "max_seconds": max_seconds,
         "created_at": _utc(),
-        "automatic_retry": False,
+        "automatic_retry": "http_429_only",
+        "rate_limit": _RATE_LIMIT_POLICY,
         "operator_execute_required": True,
         "uncertain_decision": "stop_without_qualification",
     }
@@ -168,7 +180,12 @@ def prepare(
         output / "frozen.json",
         {"protocol_sha256": digest(output / _PROTOCOL_FILE), "created_at": _utc()},
     )
-    return {"status": "prepared_not_qualified", "audit_root": str(output), **protocol}
+    return {
+        "status": "prepared_not_qualified",
+        "audit_root": str(output),
+        **protocol,
+        "capacity": _capacity(protocol, budget),
+    }
 
 
 def _static(root: Path) -> tuple[dict, dict, str]:
@@ -180,7 +197,9 @@ def _static(root: Path) -> tuple[dict, dict, str]:
         and protocol["implementation_sha256"] == judge.implementation_identity()
         and protocol["judge"] == judge.JUDGE
         and protocol["request_contract"] == judge._contract()
-        and protocol["request_timeout_seconds"] == _REQUEST_TIMEOUT_SECONDS,
+        and protocol["request_timeout_seconds"] == _REQUEST_TIMEOUT_SECONDS
+        and protocol["rate_limit"] == _RATE_LIMIT_POLICY
+        and protocol["automatic_retry"] == "http_429_only",
         "remote_audit_frozen_contract_changed",
     )
     _bytes(root, "data-review.json", protocol["data_review_sha256"])
@@ -234,6 +253,46 @@ def post_with_deadline(
         signal.signal(signal.SIGALRM, previous)
 
 
+def _capacity(protocol: dict, budget: Decimal) -> dict[str, str]:
+    phase1 = judge._money(protocol["phase1_reservation_usd"])
+    cap = judge._money(protocol["holdout_max_request_usd"])
+    maximum = judge._money(protocol["phase1_max_request_usd"])
+    initial = judge._money(protocol["initial_accounted_usd"])
+    retry_reserve = max(maximum, cap) * protocol["rate_limit"]["max_retries_per_audit"]
+    holdout_reserve = _HOLDOUT_CALLS * cap
+    return {
+        "configured_budget_usd": str(budget),
+        "planned_budget_usd": str(initial + phase1 + holdout_reserve + retry_reserve),
+        "phase1_reservation_usd": str(phase1),
+        "holdout_reservation_usd": str(holdout_reserve),
+        "rate_limit_reservation_usd": str(retry_reserve),
+    }
+
+
+def _phase1_reservations(root: Path, manifest: dict) -> list[Decimal]:
+    order = judge._audit_order(root, manifest, phase1=True)
+    jobs = {split: judge._jobs(root, manifest, split)[0] for split in judge.PHASE1}
+    return [
+        judge.reserve(judge._control_request(*jobs[row["split"]][row["answer_id"]]))
+        for row in order
+    ]
+
+
+def _retry_delay(header: str | None, fallback: int, now: datetime) -> float:
+    header = header.strip() if header else ""
+    if not header:
+        return float(fallback)
+    if header.isascii() and header.isdecimal():
+        return max(fallback, float(header))
+    try:
+        retry_at = parsedate_to_datetime(header)
+    except (TypeError, ValueError, OverflowError):
+        return float(fallback)
+    if retry_at.tzinfo is None:
+        retry_at = retry_at.replace(tzinfo=timezone.utc)
+    return max(fallback, (retry_at - now).total_seconds())
+
+
 def _stage_holdout(root: Path, manifest: dict) -> dict:
     held = manifest["holdout"]
     _require(
@@ -276,6 +335,13 @@ def _pin(root: Path, protocol: dict) -> judge.QualificationRemote:
     )
 
 
+def _operator_rate_path() -> Path:
+    """One live Academy qualification per Unix user across worktrees."""
+    path = operator_path(Path.home() / ".local/state/venom")
+    path.mkdir(mode=0o700, parents=True, exist_ok=True)
+    return operator_path(path / "openrouter-luna-rate-limit.json")
+
+
 def run(
     audit_root: Path,
     *,
@@ -305,14 +371,34 @@ def run(
         "remote_audit_budget_invalid",
     )
     _require_request_timer()
-    with file_lock(root / "session.lock", blocking=False):
+    rate_path = _operator_rate_path() if client_factory is httpx.Client else None
+    guard = (
+        file_lock(rate_path.with_suffix(".lock"), blocking=False)
+        if rate_path is not None
+        else nullcontext()
+    )
+    with guard, file_lock(root / "session.lock", blocking=False):
         _require(not (root / "started.json").exists(), "remote_audit_single_attempt")
+        cooldown = _provider_cooldown(rate_path)
+        if cooldown > protocol["rate_limit"]["max_retry_after_seconds"]:
+            return {
+                "status": "provider_cooldown_active",
+                "provider_cooldown_seconds": cooldown,
+                "rows": 0,
+            }
         atomic_json(
             root / "started.json",
             {"created_at": _utc(), "protocol_sha256": protocol_sha},
         )
         return _execute(
-            root, protocol, manifest, protocol_sha, budget, per_request, client_factory
+            root,
+            protocol,
+            manifest,
+            protocol_sha,
+            budget,
+            per_request,
+            client_factory,
+            rate_path,
         )
 
 
@@ -336,6 +422,9 @@ class _AuditState:
     generations: set[str] = field(default_factory=set)
     order: list[dict] = field(default_factory=list)
     client: httpx.Client | None = None
+    retries: int = 0
+    wait_seconds: float = 0.0
+    rate_path: Path | None = None
 
     @property
     def initial(self) -> Decimal:
@@ -409,6 +498,8 @@ def _post_audit_row(
         min(state.protocol["request_timeout_seconds"], remaining),
     )
     row["http_status"] = response.status_code
+    if response.status_code == 429:
+        row["retry_after"] = response.headers.get("Retry-After", "")[:128]
     try:
         row["response"] = response.json()
     except ValueError:
@@ -437,27 +528,11 @@ def _post_audit_row(
     row["status"] = "completed"
 
 
-def _audit_next(state: _AuditState, stack: ExitStack) -> bool:
-    request = _next_audit_request(state)
-    if request is None:
-        return False
-    entry, answer, body, reservation = request
-    row = {
-        **entry,
-        "index": len(state.rows) + 1,
-        "call_id": uuid4().hex,
-        "status": "attempted",
-        "protocol_sha256": state.protocol_sha,
-        "request": body,
-        "request_sha256": stable_hash(body),
-        "reserved_usd": str(reservation),
-        "cost_usd": None,
-        "started_at": _utc(),
-        "response": {},
-    }
-    path = state.root / "receipts" / f"{row['index']:03d}.json"
+def _attempt_row(
+    state: _AuditState, row: dict, answer: dict, path: Path, stack: ExitStack
+) -> None:
     atomic_json(path, row)
-    state.unknown += reservation
+    state.unknown += judge._money(row["reserved_usd"])
     state.ledger(row["call_id"])
     try:
         _post_audit_row(state, row, answer, stack)
@@ -467,18 +542,113 @@ def _audit_next(state: _AuditState, stack: ExitStack) -> bool:
         row["finished_at"] = _utc()
         row["response_sha256"] = stable_hash(row["response"])
         atomic_json(path, row)
-        state.rows.append(row)
         state.ledger(None)
+
+
+def _wait_to_post(state: _AuditState, delay: float) -> bool:
+    if state.remaining() <= delay:
+        return False
+    if delay:
+        sleep(delay)
+    return state.remaining() > 0
+
+
+def _rate_delay(state: _AuditState, row: dict, count: int) -> float | None:
+    policy = state.protocol["rate_limit"]
+    backoff = policy["backoff_seconds"]
+    delay = _retry_delay(
+        row["retry_after"],
+        backoff[min(count, len(backoff) - 1)],
+        judge._time(row["finished_at"]),
+    )
+    if state.rate_path is not None:
+        atomic_json(state.rate_path, {"not_before": time.time() + delay})
+    if (
+        count >= len(backoff)
+        or state.retries >= policy["max_retries_per_audit"]
+        or delay > policy["max_retry_after_seconds"]
+        or (
+            row["cost_usd"] is not None
+            and judge._money(row["cost_usd"]) > judge._money(row["reserved_usd"])
+        )
+    ):
+        return None
+    return delay
+
+
+def _provider_cooldown(path: Path | None) -> float:
+    if path is None or not path.exists():
+        return 0.0
+    value = read_json(path)["not_before"]
+    _require(
+        type(value) in (float, int) and math.isfinite(value),
+        "remote_audit_cooldown_invalid",
+    )
+    return max(0.0, value - time.time())
+
+
+def _audit_next(state: _AuditState, stack: ExitStack) -> bool:
+    request = _next_audit_request(state)
+    if request is None:
+        return False
+    entry, answer, body, reservation = request
+    index = len(state.rows) + 1
+    path = state.root / "receipts" / f"{index:03d}.json"
+    rejected: list[dict] = []
+    if not _wait_to_post(state, state.wait_seconds):
+        state.status = "deadline_exceeded"
+        return False
+    while True:
+        row = {
+            **entry,
+            "index": index,
+            "call_id": uuid4().hex,
+            "status": "attempted",
+            "protocol_sha256": state.protocol_sha,
+            "request": body,
+            "request_sha256": stable_hash(body),
+            "reserved_usd": str(reservation),
+            "cost_usd": None,
+            "started_at": _utc(),
+            "response": {},
+            "rate_limit_attempts": list(rejected),
+        }
+        _attempt_row(state, row, answer, path, stack)
+        state.wait_seconds = state.protocol["rate_limit"]["interval_seconds"]
+        if row.get("http_status") != 429:
+            break
+        state.status = "provider_rate_limited"
+        delay = _rate_delay(state, row, len(rejected))
+        if delay is None or state.accounted + reservation > state.budget:
+            break
+        if not _wait_to_post(state, delay):
+            break
+        rejected.append(
+            {key: value for key, value in row.items() if key != "rate_limit_attempts"}
+        )
+        state.retries += 1
+        state.status = "transport_incomplete"
+    state.rows.append(row)
     return row["status"] == "completed"
 
 
 def _reserve_holdout(state: _AuditState) -> bool:
     cap = judge._money(state.protocol["holdout_max_request_usd"])
-    reserve = 72 * cap
+    retries_left = state.protocol["rate_limit"]["max_retries_per_audit"] - state.retries
+    reserve = (_HOLDOUT_CALLS + retries_left) * cap
     remaining_budget = state.budget - state.accounted
     remaining_seconds = state.remaining()
     required_seconds = (
-        72 * state.protocol["request_timeout_seconds"]
+        _HOLDOUT_CALLS
+        * (
+            state.protocol["request_timeout_seconds"]
+            + state.protocol["rate_limit"]["interval_seconds"]
+        )
+        + retries_left
+        * (
+            state.protocol["request_timeout_seconds"]
+            + state.protocol["rate_limit"]["max_retry_after_seconds"]
+        )
         + state.protocol["holdout_cleanup_seconds"]
     )
     if remaining_budget < reserve:
@@ -547,6 +717,8 @@ def _audit_result(state: _AuditState) -> dict:
         "protocol_sha256": state.protocol_sha,
         "rows": len(state.rows),
         "holdout_opened": state.holdout_opened,
+        "rate_limit_retries": state.retries,
+        "provider_cooldown_seconds": _provider_cooldown(state.rate_path),
         "holdout_reserve_sha256": digest(reserve_path)
         if reserve_path.exists()
         else None,
@@ -584,13 +756,35 @@ def _execute(
     budget: Decimal,
     per_request: Decimal,
     client_factory: Callable,
+    rate_path: Path | None,
 ) -> dict:
     state = _AuditState(
-        root, protocol, manifest, protocol_sha, budget, per_request, client_factory
+        root,
+        protocol,
+        manifest,
+        protocol_sha,
+        budget,
+        per_request,
+        client_factory,
+        rate_path=rate_path,
     )
     state.order = judge._audit_order(root, manifest, phase1=True)
     state.start = time.monotonic()
     (root / "receipts").mkdir()
+    quotes = _phase1_reservations(root, manifest)
+    phase1 = sum(quotes, Decimal(0))
+    maximum = max(quotes)
+    _require(
+        phase1 == judge._money(protocol["phase1_reservation_usd"])
+        and maximum == judge._money(protocol["phase1_max_request_usd"]),
+        "remote_audit_capacity_changed",
+    )
+    capacity = _capacity(protocol, budget)
+    atomic_json(root / "capacity.json", capacity)
+    if maximum > per_request or judge._money(capacity["planned_budget_usd"]) > budget:
+        state.status = "budget_exhausted"
+        return _audit_result(state)
+    state.wait_seconds = _provider_cooldown(rate_path)
     with ExitStack() as stack:
         while len(state.rows) < len(state.order):
             if not _audit_next(state, stack):

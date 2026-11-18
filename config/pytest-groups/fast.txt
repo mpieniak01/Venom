@@ -46,6 +46,7 @@ tests/test_academy_judge_dispatch.py
 tests/test_academy_models_module.py
 tests/test_academy_openrouter_audit.py
 tests/test_academy_openrouter_judge.py
+tests/test_academy_openrouter_regression_replay.py
 tests/test_academy_optuna_backend.py
 tests/test_academy_parent_selection.py
 tests/test_academy_quality.py
@@ -56,7 +57,9 @@ tests/test_academy_route_handlers_extra.py
 tests/test_academy_route_helpers_modules.py
 tests/test_academy_self_learning_routes.py
 tests/test_academy_self_learning_service.py
+tests/test_academy_semantic_fact_evidence.py
 tests/test_academy_semantic_judge_v4.py
+tests/test_academy_table_evidence.py
 tests/test_academy_training_service.py
 tests/test_adapter_audit_service.py
 tests/test_adapter_runtime_service.py

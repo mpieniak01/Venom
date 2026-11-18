@@ -614,7 +614,7 @@ def _receive_audit_response(
 
 def _record_audit_decision(state: _AuditState, row: dict, candidate: str) -> None:
     try:
-        decision, comparison = judge.decode_with_comparison(
+        decision, evidence = judge.decode_with_evidence(
             row["response"], row["request"], candidate
         )
     except ValueError:
@@ -623,8 +623,7 @@ def _record_audit_decision(state: _AuditState, row: dict, candidate: str) -> Non
             return
         raise
     row["decision"] = decision.model_dump()
-    if comparison is not None:
-        row["identifier_comparison"] = comparison
+    row.update(evidence)
     uncertain = (
         decision.unsupported == "unclear" or "unclear" in decision.atoms.values()
     )

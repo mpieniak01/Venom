@@ -105,7 +105,7 @@ def test_invalid_money_fails_closed(value):
         judge._money(value)
 
 
-@pytest.mark.parametrize("version", [2, 7, 8, 9, 10, 11, 12, 13])
+@pytest.mark.parametrize("version", [2, 7, 8, 9, 10, 11, 12, 13, 14])
 def test_historical_reviews_are_not_current_qualification(version):
     with pytest.raises(ValueError):
         judge.qualification({"judge": f"semantic-openrouter-luna-field-v{version}"})
@@ -938,6 +938,53 @@ def test_identifier_requires_literal_quote_and_verified_comparison_trace(packet)
     }
     assert judge._verify_call(row, body, candidate, "protocol") == decision
     row["identifier_comparison"] = None
+    with pytest.raises(ValueError, match=judge.ERROR):
+        judge._verify_call(row, body, candidate, "protocol")
+
+
+def test_structured_evidence_recovers_literal_table_and_binds_receipt():
+    candidate = "| Mila [paczki] | Bruno [paczki] | Dzień |\n|---:|---:|---|\n| 8 | 11 | środa |"
+    body = judge._control_request(
+        {
+            "id": "table-review",
+            "messages": [
+                {
+                    "role": "user",
+                    "content": "W środę Mila ma odebrać 8 paczek, a Bruno 11 paczek.",
+                }
+            ],
+            "criteria": [{"id": "mila", "description": "Mila odbiera 8 paczek."}],
+        },
+        {"text": candidate},
+    )
+    raw = response(body, candidate)
+    message = raw["choices"][0]["message"]
+    content = json.loads(message["content"])
+    altered_quote = "| Mila [paczki] | Bruno [paczki] |\n|---:|---:|---|\n| 8"
+    content["checks"]["mila"]["observed"] = altered_quote
+    message["content"] = json.dumps(content)
+
+    decision, proof = judge.decode_with_evidence(raw, body, candidate)
+    bound = proof["field_evidence"]["mila"]
+    assert bound["observed"] == altered_quote
+    assert bound["effective_observed"] == candidate
+    assert decision.atoms == {"mila": "supported"}
+    row = {
+        "status": "completed",
+        "protocol_sha256": "protocol",
+        "request": body,
+        "request_sha256": stable_hash(body),
+        "response": raw,
+        "response_sha256": stable_hash(raw),
+        "decision": decision.model_dump(),
+        "cost_usd": judge.reported_cost(raw),
+        "reserved_usd": str(judge.reserve(body)),
+        "started_at": "2026-01-01T00:00:00+00:00",
+        "finished_at": "2026-01-01T00:00:01+00:00",
+        **proof,
+    }
+    assert judge._verify_call(row, body, candidate, "protocol") == decision
+    row["field_evidence"] = {}
     with pytest.raises(ValueError, match=judge.ERROR):
         judge._verify_call(row, body, candidate, "protocol")
 

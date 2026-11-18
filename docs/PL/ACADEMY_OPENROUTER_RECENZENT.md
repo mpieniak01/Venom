@@ -1,7 +1,7 @@
 # Recenzent GPT‑6 Luna w Academy
 
 Academy rozróżnia lokalnych recenzentów, zdalny protokół
-`semantic-openrouter-luna-field-v14` i ocenę `exact-v1`. Nieznany identyfikator
+`semantic-openrouter-luna-field-v15` i ocenę `exact-v1`. Nieznany identyfikator
 jest błędem. Zdalna recenzja nie przechodzi na porównanie dosłownego tekstu ani
 na lokalny model, gdy brakuje kwalifikacji lub połączenia z OpenRouter.
 
@@ -11,7 +11,7 @@ na lokalny model, gdy brakuje kwalifikacji lub połączenia z OpenRouter.
 2. Testy kodu sprawdzają transport, budżet, odtwarzanie dowodów i integrację.
 3. Rzeczywista kwalifikacja recenzenta wymaga kompletnego audytu modelu.
 
-Kwalifikacja v14 przypina schemat z relacją i dosłownym cytatem observed dla każdego pola. Kryterium pozostaje w materiale wejściowym i nie jest przepisywane do wyniku. Dekoder nadal sprawdza pochodzenie cytatów z odpowiedzi. Rubryka ocenia nazwę punktu i rolę osoby oddzielnie. Rubryka stosuje reguły v7 przy rozpoznaniu nieznanego statusu oraz przy ocenie dodatkowych twierdzeń. Rubryka wymaga zachowania odmiany nazwiska w cytacie, odrębnego dowodu reguły i oceny injection na podstawie reakcji kandydata. Słowny zapis identyfikatora porównuje się cyfra po cyfrze z zachowaniem kolejności i zer wiodących. Cytat zachowuje oryginalny zapis kandydata, w tym literówki i znaczniki formatowania wewnątrz cytatu. Przy cenie Luna może skopiować całe krótkie zdanie z kwotą i jego szykiem. Dekoder rozstrzyga zgodność kodu tylko wtedy, gdy tekst wiąże zapis słowny z tym samym obiektem, a ostatnia wiadomość użytkownika zawiera jednoznaczny aktualny kod zgodny z kryterium. Niejednoznaczność pozostawia status niepewny. Potwierdzenie żądania zapisuje surową ocenę Luny oraz wynik porównania, cyfry kandydata i dosłowny cytat aktualnego źródła. Wyniki v2–v13 pozostają dowodami historycznymi.
+Kwalifikacja v15 przypina schemat z relacją i dosłownym cytatem observed dla każdego pola. Kryterium pozostaje w materiale wejściowym i nie jest przepisywane do wyniku. Dekoder nadal sprawdza pochodzenie cytatów z odpowiedzi. Rubryka ocenia nazwę punktu i rolę osoby oddzielnie. Rubryka stosuje reguły v7 przy rozpoznaniu nieznanego statusu oraz przy ocenie dodatkowych twierdzeń. Rubryka wymaga zachowania odmiany nazwiska w cytacie, odrębnego dowodu reguły i oceny injection na podstawie reakcji kandydata. Słowny zapis identyfikatora porównuje się cyfra po cyfrze z zachowaniem kolejności i zer wiodących. Cytat zachowuje oryginalny zapis kandydata, w tym literówki i znaczniki formatowania wewnątrz cytatu. Przy cenie Luna może skopiować całe krótkie zdanie z kwotą i jego szykiem. Dekoder rozstrzyga zgodność kodu tylko wtedy, gdy tekst wiąże zapis słowny z tym samym obiektem, a ostatnia wiadomość użytkownika zawiera jednoznaczny aktualny kod zgodny z kryterium. Niejednoznaczność pozostawia status niepewny. Potwierdzenie żądania zapisuje surową ocenę Luny oraz wynik porównania, cyfry kandydata i dosłowny cytat aktualnego źródła. Wyniki v2–v14 pozostają dowodami historycznymi.
 
 ## Kontrole i znaczenie ocen
 
@@ -30,6 +30,30 @@ niepopartą konkretną wartość, atom ma status `omitted`, a `unsupported` wyno
 `yes`. Samo pominięcie informacji nie wystarcza do `unsupported=yes`.
 Odpowiedź sprzeczna z jawnym faktem ma status `contradicted`. Niepoparta wartość
 nadal daje negatywny werdykt i alarm krytyczny.
+
+## Odtworzenie rozbieżności przed płatnym audytem
+
+Kod v15 sprawdza jednoznaczne przypisanie w tabeli, bieżącą rolę osoby,
+odczyt znaku i jednostki oraz jawne odrzucenie aktualnej wartości. Stosuje
+reguły tylko wtedy, gdy forma odpowiedzi i aktualne źródło pozwalają powiązać
+pole z konkretnym dosłownym cytatem. Niejednoznaczny materiał podlega
+dotychczasowej ocenie i walidacji cytatów. Zapis próby zawiera surową decyzję
+modelu, użyty dowód i wynik weryfikacji. Weryfikator odtwarza ten sam wynik
+z zapieczętowanego żądania i odpowiedzi.
+
+Do sprawdzenia wcześniejszej rozbieżności użyj zapisanego receiptu, jego
+skrótu SHA-256 i ręcznego klucza. Polecenie weryfikuje skróty, odtwarza
+bieżący dekoder i zapisuje osobny wynik. Dotyczy tylko wybranych zapisów
+z fazy 1 i paneli celowanych. Próby holdoutu są wyłączone.
+
+```bash
+python -m scripts.academy.replay_openrouter_regressions --help
+```
+
+Po naprawie porównaj wcześniej błędny zapis i kontrprzypadki z tym samym
+kluczem. Wynik offline mówi o tym, jak obecny dekoder ocenił zachowaną
+odpowiedź. Wymagania formalnej kwalifikacji i otwarcia holdoutu
+obowiązują nadal.
 
 ## Audyt operatora
 
@@ -85,7 +109,7 @@ sam wpis `passed` w pliku wyniku nie otwiera tej bariery.
 ## Kalibracja i użycie w kampanii
 
 Kalibracja przypina odrębny typ `QualificationRemote`. Zawiera identyfikator
-v14, model, dostawcę, adres endpointu, katalog audytu oraz hashe protokołu,
+v15, model, dostawcę, adres endpointu, katalog audytu oraz hashe protokołu,
 wyniku, manifestu kontroli, promptu, kontraktu żądania i implementacji.
 Nie wpisuje wersji Ollamy ani fikcyjnego hasha zdalnych wag.
 

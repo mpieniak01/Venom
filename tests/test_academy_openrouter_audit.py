@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import copy
 import json
+from datetime import timedelta
 from decimal import Decimal
+from types import SimpleNamespace
 
 import httpx
 import pytest
@@ -52,7 +54,24 @@ def ready(full_audit, tmp_path, monkeypatch):
     monkeypatch.setattr(audit.runtime, "cloud_allowed", lambda: True)
     monkeypatch.setattr(audit.runtime, "credential", lambda: "invented-test-credential")
     monkeypatch.setattr(audit.SETTINGS, "OPENROUTER_DAILY_LIMIT_USD", 0.80)
-    monkeypatch.setattr(audit, "sleep", lambda _: None)
+    origin = judge._time(audit._utc())
+    elapsed = 0.0
+
+    def sleep(seconds):
+        nonlocal elapsed
+        elapsed += seconds
+
+    monkeypatch.setattr(audit, "sleep", sleep)
+    monkeypatch.setattr(
+        audit,
+        "time",
+        SimpleNamespace(
+            monotonic=lambda: elapsed, time=lambda: origin.timestamp() + elapsed
+        ),
+    )
+    monkeypatch.setattr(
+        audit, "_utc", lambda: (origin + timedelta(seconds=elapsed)).isoformat()
+    )
     monkeypatch.setattr(audit.SETTINGS, "OPENROUTER_MESSAGE_LIMIT_USD", 0.01)
     responses = {}
     for path in (source_root / "receipts").glob("*.json"):
@@ -551,8 +570,6 @@ def test_existing_request_timer_blocks_start_without_post(ready, monkeypatch):
 def test_429_waits_and_replays_without_counting_throttle_as_grade(
     ready, monkeypatch, throttle_at
 ):
-    from datetime import timedelta
-
     root, _, client = ready
     delays = []
     origin = judge._time(audit._utc())
@@ -649,6 +666,21 @@ def test_provider_cooldown_survives_attempt_boundary(ready, monkeypatch, tmp_pat
     assert result["provider_cooldown_seconds"] == 400
     assert client.factory_calls == 0
     assert not (root / "started.json").exists()
+
+
+def test_terminal_post_persists_pacing_for_next_audit(ready, monkeypatch, tmp_path):
+    root, _, client = ready
+    shared = tmp_path / "provider.json"
+    monkeypatch.setattr(audit, "_operator_rate_path", lambda: shared)
+    monkeypatch.setattr(audit.httpx, "Client", client)
+    client.mode = "non-object"
+
+    result = audit.run(root, execute=True, client_factory=client)
+
+    assert result["status"] == "transport_incomplete"
+    assert client.calls == 1
+    assert result["provider_cooldown_seconds"] == pytest.approx(2)
+    assert audit._provider_cooldown(shared) == pytest.approx(2)
 
 
 def test_next_post_times_cooldown_after_read(monkeypatch, tmp_path):

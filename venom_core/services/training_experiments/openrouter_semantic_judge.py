@@ -16,7 +16,7 @@ from collections.abc import Callable
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
-from typing import Annotated, Literal
+from typing import Annotated, Literal, cast
 from uuid import uuid4
 
 import httpx
@@ -451,8 +451,10 @@ def _verify_call(
     _require(
         row.get("status") == "completed" and row.get("protocol_sha256") == protocol_sha
     )
+    request_sha = stable_hash(body)
     _require(
-        row.get("request") == body and row.get("request_sha256") == stable_hash(body)
+        row.get("request_sha256") == request_sha
+        and stable_hash(row.get("request")) == request_sha
     )
     response = row.get("response")
     _require(
@@ -549,6 +551,12 @@ def verify_audit(pin: QualificationRemote) -> None:
         == {k: v for k, v in hashes.items() if int(k[:3]) <= 156}
     )
     _require(_time(rows[-1]["finished_at"]) <= _time(phase1["finished_at"]))
+    initial = _money(protocol["initial_accounted_usd"])
+    initial_unknown = _money(protocol["initial_unknown_reserved_usd"])
+    budget = _money(protocol["budget_usd"])
+    _require(initial_unknown <= initial and budget > 0)
+    phase1_known, phase1_reserved = _audit_costs(rows, protocol)
+    _require(initial + phase1_known + phase1_reserved <= budget)
     # No held-out content, including its receipts, is read until G1 replay passed.
     held = manifest["holdout"]
     _require(set(held["files"]) == {"panel.json", "gold.json"})
@@ -572,19 +580,11 @@ def verify_audit(pin: QualificationRemote) -> None:
     )
     metrics = _audit_metrics(root, combined, rows)
     _require(metrics == thresholds and result.get("metrics") == metrics)
-    total = sum((_money(row["cost_usd"]) for row in rows), Decimal(0))
-    rejected_cost, rejected_reserved = _verify_rate_limited_calls(rows, protocol)
-    total += rejected_cost
-    initial = _money(protocol["initial_accounted_usd"])
-    initial_unknown = _money(protocol["initial_unknown_reserved_usd"])
-    budget = _money(protocol["budget_usd"])
-    _require(initial_unknown <= initial and budget > 0)
-    _require(_money(result["actual_known_cost_usd"]) == total)
-    _require(_money(result["unknown_reserved_usd"]) == rejected_reserved)
+    known, reserved = _audit_costs(rows, protocol)
+    _require(_money(result["actual_known_cost_usd"]) == known)
+    _require(_money(result["unknown_reserved_usd"]) == reserved)
     _require(_money(result["carried_unknown_reserved_usd"]) == initial_unknown)
-    _require(
-        _money(result["accounted_usd"]) == initial + total + rejected_reserved <= budget
-    )
+    _require(_money(result["accounted_usd"]) == initial + known + reserved <= budget)
     limit = protocol["max_seconds"]
     _require(
         type(limit) in (int, float) and math.isfinite(limit) and 0 < limit <= 86400
@@ -607,10 +607,9 @@ def _rate_limit_attempts(row: dict) -> list[dict]:
     return attempts
 
 
-def _verify_rate_limited_calls(
-    rows: list[dict], protocol: dict
-) -> tuple[Decimal, Decimal]:
-    known = unknown = Decimal(0)
+def _audit_costs(rows: list[dict], protocol: dict) -> tuple[Decimal, Decimal]:
+    known = sum((_money(row["cost_usd"]) for row in rows), Decimal(0))
+    unknown = Decimal(0)
     retry_count = 0
     call_ids = {row["call_id"] for row in rows}
     policy = protocol["rate_limit"]
@@ -631,12 +630,12 @@ def _verify_rate_limited_calls(
                         "answer_id",
                         "split",
                         "repeat",
-                        "request",
                         "request_sha256",
                         "reserved_usd",
                         "protocol_sha256",
                     )
                 )
+                and stable_hash(attempt.get("request")) == row["request_sha256"]
             )
             _require(
                 isinstance(attempt.get("call_id"), str)
@@ -680,8 +679,12 @@ def _audit_rows(
     hashes: dict,
     order: list[dict],
     prior: list[dict],
-    previous_end: datetime,
+    phase_opened_at: datetime,
 ) -> list[dict]:
+    from .semantic_openrouter_audit import _RATE_LIMIT_POLICY
+
+    interval = cast(int, _RATE_LIMIT_POLICY["interval_seconds"])
+    previous_end = _time(prior[-1]["finished_at"]) if prior else phase_opened_at
     rows = list(prior)
     calls = {row["call_id"] for row in prior}
     generations = {row["response"]["id"] for row in prior}
@@ -697,7 +700,10 @@ def _audit_rows(
             and bool(row["call_id"].strip())
             and row["call_id"] not in calls
         )
-        wait_seconds = 0.0
+        wait_seconds = max(
+            interval if rows else 0.0,
+            (phase_opened_at - previous_end).total_seconds(),
+        )
         for retry_index, attempt in enumerate(_rate_limit_attempts(row)):
             started = _time(attempt["started_at"])
             finished = _time(attempt["finished_at"])

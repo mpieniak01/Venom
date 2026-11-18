@@ -127,7 +127,8 @@ rezerwację jako koszt nieznany i zamyka próbę bez ponowienia żądania.
 
 Przy kwalifikacji Academy wykonuje jeden audyt Luny naraz na użytkownika
 systemowego, również przy kilku katalogach roboczych. Zachowuje dwie sekundy
-przerwy między zwykłymi żądaniami. Wyłącznie po HTTP 429 ponawia ten sam
+od zakończenia poprzedniego żądania, także pomiędzy audytami. Wyłącznie po
+HTTP 429 ponawia ten sam
 pakiet najwyżej dwa razy i najwyżej osiem razy w całym audycie. Honoruje
 Retry-After do 60 sekund. Czeka co najmniej 5 sekund przed pierwszym
 ponowieniem i 10 sekund przed drugim. Jeśli poprawny nagłówek podaje dłuższy

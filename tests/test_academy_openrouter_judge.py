@@ -257,8 +257,8 @@ def full_audit(tmp_path, monkeypatch):
             "decision": judge.decode(raw, body, answer["text"]).model_dump(),
             "cost_usd": judge.reported_cost(raw),
             "reserved_usd": str(judge.reserve(body)),
-            "started_at": (base + timedelta(seconds=i * 2)).isoformat(),
-            "finished_at": (base + timedelta(seconds=i * 2 + 1)).isoformat(),
+            "started_at": (base + timedelta(seconds=i * 3)).isoformat(),
+            "finished_at": (base + timedelta(seconds=i * 3 + 1)).isoformat(),
         }
         path = root / "receipts" / f"{i:03d}.json"
         _write(path, row)
@@ -273,7 +273,7 @@ def full_audit(tmp_path, monkeypatch):
                 k: v for k, v in thresholds.items() if not k.startswith("holdout")
             },
             "receipt_hashes": {k: v for k, v in hashes.items() if int(k[:3]) <= 156},
-            "finished_at": (base + timedelta(seconds=313)).isoformat(),
+            "finished_at": (base + timedelta(seconds=469)).isoformat(),
         },
     )
     result = {
@@ -712,12 +712,21 @@ def test_observed_requires_candidate_text_or_omission(
 
 
 def _audit_with_first_429(
-    full_audit, *, index=1, attempts=((8, "7"),), raw=None, limit=20_000, policy=None
+    full_audit,
+    *,
+    index=1,
+    attempts=((8, "7"),),
+    raw=None,
+    limit=20_000,
+    policy=None,
+    budget="0.20",
+    phase1_marker_delay=0.5,
 ):
     root, pin, result = full_audit
     protocol_path = root / "protocol.json"
     protocol = json.loads(protocol_path.read_text())
     protocol["max_seconds"] = limit
+    protocol["budget_usd"] = budget
     if policy is not None:
         protocol["rate_limit"] = policy
     _write(protocol_path, protocol)
@@ -727,7 +736,7 @@ def _audit_with_first_429(
         path = root / "receipts" / name
         row = json.loads(path.read_text())
         row["protocol_sha256"] = protocol_sha
-        offset = timedelta(seconds=78 * row["index"])
+        offset = timedelta(seconds=77 * row["index"])
         for field in ("started_at", "finished_at"):
             row[field] = (judge._time(row[field]) + offset).isoformat()
         if row["index"] == index:
@@ -768,7 +777,7 @@ def _audit_with_first_429(
     # Distinguish the phase boundary from the previous completed request.
     marker["finished_at"] = (
         judge._time(marker["finished_at"])
-        + timedelta(seconds=156 * 78, milliseconds=500)
+        + timedelta(seconds=156 * 77 + phase1_marker_delay)
     ).isoformat()
     _write(marker_path, marker)
     result["phase1_result_sha256"] = digest(marker_path)
@@ -792,7 +801,7 @@ def test_full_audit_replays_non_object_429_without_reported_cost(full_audit, raw
     [
         {"limit": 18165},
         {"attempts": ((81, "7"),)},
-        {"index": 157, "attempts": ((78.75, "7"),)},
+        {"index": 157, "attempts": ((75, "7"),), "phase1_marker_delay": 10},
     ],
     ids=["elapsed-before-success", "before-data-review", "before-phase1-marker"],
 )
@@ -860,3 +869,96 @@ def test_full_audit_rejects_policy_with_third_retry(full_audit):
     )
     with pytest.raises(ValueError, match=judge.ERROR):
         judge.verify_audit(pin)
+
+
+def _reseal_receipt(root, pin, result, index, change):
+    name = f"{index:03d}.json"
+    path = root / "receipts" / name
+    row = json.loads(path.read_text())
+    change(row)
+    _write(path, row)
+    result["receipt_hashes"][name] = digest(path)
+    if index <= 156:
+        marker_path = root / "phase1-result.json"
+        marker = json.loads(marker_path.read_text())
+        marker["receipt_hashes"][name] = digest(path)
+        _write(marker_path, marker)
+        result["phase1_result_sha256"] = digest(marker_path)
+    _write(root / "result.json", result)
+    return pin.model_copy(update={"result_sha256": digest(root / "result.json")})
+
+
+@pytest.mark.parametrize("damage", ["status", "request", "cost", "budget"])
+def test_bad_phase1_retry_never_opens_holdout(full_audit, monkeypatch, damage):
+    root, _, result = full_audit
+    budget = "0.01156" if damage == "budget" else "0.20"
+    pin = _audit_with_first_429(full_audit, budget=budget)
+
+    def change(row):
+        attempt = row["rate_limit_attempts"][0]
+        if damage == "status":
+            attempt["http_status"] = 503
+        elif damage == "request":
+            attempt["request"]["provider"]["allow_fallbacks"] = 0
+        else:
+            attempt["cost_usd"] = "0.00001"
+
+    if damage != "budget":
+        pin = _reseal_receipt(root, pin, result, 1, change)
+
+    original = type(root).open
+
+    def guarded(path, *args, **kwargs):
+        if "holdout" in path.parts:
+            pytest.fail("held-out bytes opened after invalid phase 1 retry")
+        return original(path, *args, **kwargs)
+
+    monkeypatch.setattr(type(root), "open", guarded)
+    with pytest.raises(ValueError, match=judge.ERROR):
+        judge.verify_audit(pin)
+
+
+def test_completed_request_uses_canonical_body_hash(full_audit):
+    root, pin, result = full_audit
+
+    def change(row):
+        row["request"]["provider"]["allow_fallbacks"] = 0
+
+    pin = _reseal_receipt(root, pin, result, 1, change)
+    with pytest.raises(ValueError, match=judge.ERROR):
+        judge.verify_audit(pin)
+
+
+@pytest.mark.parametrize("index", [2, 157])
+def test_audit_rejects_case_started_below_minimum_interval(full_audit, index):
+    root, pin, result = full_audit
+    previous = json.loads((root / "receipts" / f"{index - 1:03d}.json").read_text())
+
+    def change(row):
+        early = judge._time(previous["finished_at"]) + timedelta(seconds=1)
+        row["started_at"] = early.isoformat()
+
+    pin = _reseal_receipt(root, pin, result, index, change)
+    with pytest.raises(ValueError, match=judge.ERROR):
+        judge.verify_audit(pin)
+
+
+@pytest.mark.parametrize("index", [2, 157])
+def test_audit_rejects_first_429_below_minimum_interval(full_audit, index):
+    pin = _audit_with_first_429(full_audit, index=index, attempts=((78, "7"),))
+    with pytest.raises(ValueError, match=judge.ERROR):
+        judge.verify_audit(pin)
+
+
+def test_phase1_marker_does_not_restart_request_interval(full_audit):
+    root, pin, result = full_audit
+    marker_path = root / "phase1-result.json"
+    marker = json.loads(marker_path.read_text())
+    marker["finished_at"] = (
+        judge._time(marker["finished_at"]) + timedelta(seconds=1.5)
+    ).isoformat()
+    _write(marker_path, marker)
+    result["phase1_result_sha256"] = digest(marker_path)
+    _write(root / "result.json", result)
+    pin = pin.model_copy(update={"result_sha256": digest(root / "result.json")})
+    judge.verify_audit(pin)

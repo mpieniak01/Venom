@@ -601,6 +601,11 @@ def _wait_to_post(state: _AuditState) -> bool:
     return state.remaining() > 0
 
 
+def _persist_cooldown(state: _AuditState, seconds: float) -> None:
+    if state.rate_path is not None:
+        atomic_json(state.rate_path, {"not_before": time.time() + seconds})
+
+
 def _rate_delay(state: _AuditState, row: dict, count: int) -> float | None:
     policy = state.protocol["rate_limit"]
     backoff = policy["backoff_seconds"]
@@ -609,8 +614,7 @@ def _rate_delay(state: _AuditState, row: dict, count: int) -> float | None:
         backoff[min(count, len(backoff) - 1)],
         judge._time(row["finished_at"]),
     )
-    if state.rate_path is not None:
-        atomic_json(state.rate_path, {"not_before": time.time() + delay})
+    _persist_cooldown(state, delay)
     if (
         count >= len(backoff)
         or state.retries >= policy["max_retries_per_audit"]
@@ -689,6 +693,10 @@ def _submit_case(
         interval = state.protocol["rate_limit"]["interval_seconds"]
         state.next_post_at = finished + interval
         if row.get("http_status") != 429:
+            if row["status"] != "not_sent":
+                _persist_cooldown(
+                    state, max(0.0, state.next_post_at - time.monotonic())
+                )
             break
         state.status = "provider_rate_limited"
         delay = _rate_delay(state, row, len(rejected))

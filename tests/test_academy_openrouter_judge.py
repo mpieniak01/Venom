@@ -59,7 +59,7 @@ def test_payload_remote_route_and_context(packet):
     assert body["model"] == judge.MODEL
     assert body["messages"][0]["content"] == judge.PROMPT
     assert judge._contract()["prompt_sha256"] == (
-        "2d13f09aa695ec2688828c9de2879101145f019063a1e9271e0e724219839545"
+        "03670ddc9bcb365dfc9e73c359dc8335d0d53261072e253c3f6517eacc70ad4d"
     )
     assert body["provider"]["only"] == ["azure"]
     assert "zdr" not in body["provider"]
@@ -665,3 +665,36 @@ def test_transaction_recovers_interrupted_pair_without_repeating_post(
         "criteria"
     ]["place"]
     assert len(state["calls"]) == sent + 1
+
+
+@pytest.mark.parametrize(
+    "relation, observed, valid",
+    [
+        ("supported", "Opiekunka: Daria", False),
+        ("contradicted", "Opiekunka: Daria", False),
+        ("omitted", "Opiekunka: Daria", False),
+        ("supported", "brak w odpowiedzi", False),
+        ("omitted", "brak w odpowiedzi", True),
+        ("supported", "„Pawilon: F”", True),
+        ("omitted", "„Pawilon: F”", True),
+    ],
+)
+def test_observed_requires_candidate_text_or_omission(
+    packet, relation, observed, valid
+):
+    spec, case, answer = packet
+    candidate = "Pawilon: F\nPoczątek: 8:35"
+    case["messages"][0]["content"] = "Opiekunka: Daria. Pawilon: F. Początek: 8:35."
+    case["criteria"][0]["description"] = "Opiekunka to Daria."
+    answer["text"] = candidate
+    body = judge.request_payload(spec, case, answer)
+    raw = response(body, candidate=candidate)
+    message = raw["choices"][0]["message"]
+    data = json.loads(message["content"])
+    data["checks"]["place"].update(observed=observed, relation=relation)
+    message["content"] = json.dumps(data)
+    if valid:
+        assert judge.decode(raw, body, candidate).atoms == {"place": relation}
+    else:
+        with pytest.raises(ValueError, match=judge.ERROR):
+            judge.decode(raw, body, candidate)

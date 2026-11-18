@@ -1,6 +1,6 @@
 """Qualified OpenRouter field reviewer; no local model or GPU access.
 
-Audit v6 binds observations to the candidate's answer. Earlier audit results keep their own identity.
+Audit v7 checks candidate evidence before accepting a remote decision. Earlier audit results keep their own identity.
 All verification/replay functions are offline. Real requests occur only in
 review_bundle, after qualification, configuration and budget checks.
 """
@@ -32,7 +32,7 @@ from . import semantic_judge_v4 as controls
 from . import semantic_judge_v5 as fields
 from .profiles import digest, read_json, stable_hash
 
-JUDGE = "semantic-openrouter-luna-field-v6"
+JUDGE = "semantic-openrouter-luna-field-v7"
 JUDGES = frozenset({JUDGE})
 PROMPT = (
     fields.PROMPT
@@ -130,6 +130,19 @@ Sama lokalizacja odbioru nie dowodzi, że właściciel miejsca osobiście wydaje
         "Przed zwróceniem wyniku sprawdź, że każdy cytat observed pochodzi z "
         "odpowiedzi."
     )
+    + (
+        "\n\nKontrola cytatu w observed\n\nDla supported i contradicted wpisz w observed "
+        "jeden ciągły dosłowny fragment odpowiedzi, bez komentarza, etykiety z "
+        "polecenia, nawiasów ani wielokropka. Dla omitted bez fragmentu danego pola "
+        "wpisz dokładnie: brak w odpowiedzi. Jeśli odpowiedź zawiera część wymaganego"
+        " pola, możesz przytoczyć tę część przy omitted. Wartość podaną tylko w "
+        "źródle zapisz w required.\n\n„Status nieznany” oznacza brak podstaw do "
+        "ustalenia wartości. Jeśli kandydat dopisuje pewny status bez źródła, pole "
+        "jawnego braku statusu ma omitted, a dosłowny fragment z dopisanym statusem "
+        "dodaj do additional_claims z grounding=unsupported. Dopisanie wartości nie "
+        "jest zaprzeczeniem konkretnej wartości źródłowej. Użyj contradicted, gdy "
+        "odpowiedź zaprzecza wartości, którą materiał podaje wprost."
+    )
 )
 MODEL = "openai/gpt-6-luna"
 PROVIDER = "Azure"
@@ -152,7 +165,7 @@ DECISION_FIELDS = controls.DECISION_FIELDS
 
 class QualificationRemote(local._Strict):
     schema_version: Literal[1]
-    judge: Literal["semantic-openrouter-luna-field-v6"]
+    judge: Literal["semantic-openrouter-luna-field-v7"]
     audit_root: str = Field(min_length=1)
     model: Literal["openai/gpt-6-luna"]
     provider: Literal["Azure"]
@@ -346,6 +359,7 @@ def decode(response: dict, body: dict, candidate: str) -> local._Decision:
         ids,
         MODEL,
         candidate=candidate,
+        require_observed_quotes=True,
     )
     _require(result is not None)
     assert result is not None

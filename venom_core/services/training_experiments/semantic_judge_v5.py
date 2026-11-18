@@ -132,7 +132,27 @@ def request(model: str, material: dict, ids: list[str]) -> dict:
     }
 
 
-def decode(response: dict, ids: list[str], model: str, *, candidate: str | None = None):
+_OBSERVED_MISSING = "brak w odpowiedzi"
+_OBSERVED_QUOTES = frozenset({("„", "”"), ("«", "»"), ('"', '"')})
+
+
+def _observed_from_answer(check: Check, candidate: str) -> bool:
+    observed = check.observed.strip()
+    if (observed[0], observed[-1]) in _OBSERVED_QUOTES:
+        observed = observed[1:-1].strip()
+    if observed == _OBSERVED_MISSING:
+        return check.relation == "omitted"
+    return bool(observed) and observed in candidate
+
+
+def decode(
+    response: dict,
+    ids: list[str],
+    model: str,
+    *,
+    candidate: str | None = None,
+    require_observed_quotes: bool = False,
+):
     message = response.get("message")
     if (
         response.get("model") != model
@@ -147,6 +167,14 @@ def decode(response: dict, ids: list[str], model: str, *, candidate: str | None 
     except (ValueError, TypeError, KeyError):
         return None
     if value.checks.keys() != set(ids):
+        return None
+    if require_observed_quotes and (
+        candidate is None
+        or any(
+            not _observed_from_answer(check, candidate)
+            for check in value.checks.values()
+        )
+    ):
         return None
     atoms = {key: check.relation for key, check in value.checks.items()}
     if any(

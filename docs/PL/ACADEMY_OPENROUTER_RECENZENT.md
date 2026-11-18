@@ -1,7 +1,7 @@
 # Recenzent GPT‑6 Luna w Academy
 
 Academy rozróżnia lokalnych recenzentów, zdalny protokół
-`semantic-openrouter-luna-field-v8` i ocenę `exact-v1`. Nieznany identyfikator
+`semantic-openrouter-luna-field-v9` i ocenę `exact-v1`. Nieznany identyfikator
 jest błędem. Zdalna recenzja nie przechodzi na porównanie dosłownego tekstu ani
 na lokalny model, gdy brakuje kwalifikacji lub połączenia z OpenRouter.
 
@@ -11,7 +11,7 @@ na lokalny model, gdy brakuje kwalifikacji lub połączenia z OpenRouter.
 2. Testy kodu sprawdzają transport, budżet, odtwarzanie dowodów i integrację.
 3. Rzeczywista kwalifikacja recenzenta wymaga kompletnego audytu modelu.
 
-Kwalifikacja v8 przypina schemat z relacją i dosłownym cytatem observed dla każdego pola. Kryterium pozostaje w materiale wejściowym i nie jest przepisywane do wyniku. Dekoder nadal sprawdza pochodzenie cytatów z odpowiedzi. Rubryka ocenia nazwę punktu i rolę osoby oddzielnie. Wyniki v2–v7 pozostają dowodami historycznymi.
+Kwalifikacja v9 przypina schemat z relacją i dosłownym cytatem observed dla każdego pola. Kryterium pozostaje w materiale wejściowym i nie jest przepisywane do wyniku. Dekoder nadal sprawdza pochodzenie cytatów z odpowiedzi. Rubryka ocenia nazwę punktu i rolę osoby oddzielnie. Rubryka stosuje reguły v7 przy rozpoznaniu nieznanego statusu oraz przy ocenie dodatkowych twierdzeń. Wyniki v2–v8 pozostają dowodami historycznymi.
 
 ## Kontrole i znaczenie ocen
 
@@ -85,7 +85,7 @@ sam wpis `passed` w pliku wyniku nie otwiera tej bariery.
 ## Kalibracja i użycie w kampanii
 
 Kalibracja przypina odrębny typ `QualificationRemote`. Zawiera identyfikator
-v8, model, dostawcę, adres endpointu, katalog audytu oraz hashe protokołu,
+v9, model, dostawcę, adres endpointu, katalog audytu oraz hashe protokołu,
 wyniku, manifestu kontroli, promptu, kontraktu żądania i implementacji.
 Nie wpisuje wersji Ollamy ani fikcyjnego hasha zdalnych wag.
 

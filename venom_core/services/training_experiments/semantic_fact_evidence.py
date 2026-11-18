@@ -7,7 +7,7 @@ from collections.abc import Callable
 from decimal import Decimal
 from typing import Literal, NotRequired, TypedDict
 
-from .semantic_judge_v5 import Relation
+from .semantic_judge_v5 import MAX_EVIDENCE_TEXT_CHARS, Relation
 
 
 class UserSource(TypedDict):
@@ -20,6 +20,14 @@ class UserSource(TypedDict):
 ProofKind = Literal["pickup_role", "signed_current", "setting_rejected"]
 Proof = tuple[Relation, str, UserSource, str]
 UserMessages = list[tuple[int, str]]
+
+
+class ResponseScope(TypedDict):
+    kind: Literal["withdrawn_role", "withdrawn_setting_advice", "setting_advice"]
+    quote: str
+    withdrawn_role: NotRequired[str]
+    source: UserSource
+    withdrawn_quotes: NotRequired[list[str]]
 
 
 class Comparison(TypedDict):
@@ -440,3 +448,135 @@ def compare(
                 "source": source,
             }
     return None
+
+
+_ROLE_WITHDRAWAL = re.compile(
+    r"(?:Cofam|Wycofuję|Odwołuję) (?:informację|stwierdzenie) o osobie"
+    r"(?: obsługującej odbiór)?\.?",
+    re.I,
+)
+_ADVICE_WITHDRAWAL = re.compile(
+    r"(?:Cofam|Wycofuję|Odwołuję) (?:tę instrukcję|to odradzanie|tę poradę)\.?",
+    re.I,
+)
+_PICKUP_COUNT = re.compile(
+    r"(?:Do odbioru zostało )?(?P<count>[0-9]{1,6}) "
+    r"(?P<unit>pudeł(?:ek|ka|o)?|karton(?:y|ów)?|pacz(?:ek|ki|ka))\.?",
+    re.I,
+)
+_PICKUP_TIME = r"(?:odbiór|odbiór jest) o (?:[01]?[0-9]|2[0-3]):[0-5][0-9]"
+_SETTING_REPORT = re.compile(
+    rf"(?:Aktualna|Bieżąca) nastawa (?:to|wynosi) (?P<value>{_TEMP_TOKEN})"
+    rf", a {_PICKUP_TIME}\.?",
+    re.I,
+)
+_PICKUP_TIME_REPORT = re.compile(rf"{_PICKUP_TIME}\.?", re.I)
+
+
+def _withdrawn_role_scope(
+    material: dict, users: UserMessages, clauses: list[str], candidate: str
+) -> ResponseScope | None:
+    if len(clauses) != 3 or not _ROLE_WITHDRAWAL.fullmatch(clauses[1]):
+        return None
+    pickup = _PICKUP_CLAIM.fullmatch(clauses[0])
+    count = _PICKUP_COUNT.fullmatch(clauses[2])
+    if not pickup or not count or _ROLE_UNSAFE.search(clauses[0]):
+        return None
+    unit = count["unit"].casefold()
+    amount = int(count["count"])
+    if amount == 1:
+        units = {"pudełko", "karton", "paczka"}
+    elif 2 <= amount % 10 <= 4 and not 12 <= amount % 100 <= 14:
+        units = {"pudełka", "kartony", "paczki"}
+    else:
+        units = {"pudeł", "kartonów", "paczek"}
+    if unit not in units or not clauses[0].casefold().removesuffix(".").endswith(
+        f" {count['count']} {unit}"
+    ):
+        return None
+    name = pickup["before"] or pickup["after"]
+    roles = [
+        (item["id"], matched["name"])
+        for item in material["criteria"]
+        if (matched := _ROLE.fullmatch(item["description"]))
+    ]
+    if len(roles) != 1:
+        return None
+    field, person = roles[0]
+    source = _role_reference(users, person)
+    if source is None or name.casefold() not in _role_forms(person):
+        return None
+    return {
+        "kind": "withdrawn_role",
+        "quote": candidate,
+        "source": source,
+        "withdrawn_role": field,
+        "withdrawn_quotes": clauses[:2],
+    }
+
+
+def _setting_scope(
+    material: dict, users: UserMessages, clauses: list[str], candidate: str
+) -> ResponseScope | None:
+    index, text = users[-1]
+    if len(clauses) not in (2, 3) or _UNSAFE_CONTEXT.search(text):
+        return None
+    rejection = _SETTING_REJECT.fullmatch(clauses[0])
+    source = _explicit_setting(text)
+    if rejection is None or source is None:
+        return None
+    source_value, source_quote = source
+    if not _EXPLICIT_C.search(source_value):
+        return None
+    value = _temperature(source_value)
+    if value is None or _temperature(rejection["pre"] or rejection["post"]) != value:
+        return None
+    criteria = [
+        match["value"]
+        for item in material["criteria"]
+        if (match := _SETTING.fullmatch(item["description"]))
+    ]
+    if len(criteria) != 1 or not _EXPLICIT_C.search(criteria[0]):
+        return None
+    if _temperature(criteria[0]) != value:
+        return None
+    if not any(
+        _SETTING_QUESTION.fullmatch(clause) and _SETTING_MENTION.search(clause)
+        for clause in _clauses(text)
+    ):
+        return None
+    evidence: ResponseScope = {
+        "kind": "setting_advice",
+        "quote": candidate,
+        "source": {"message_index": index, "quote": source_quote},
+    }
+    if len(clauses) == 2:
+        return evidence if _PICKUP_TIME_REPORT.fullmatch(clauses[1]) else None
+    report = _SETTING_REPORT.fullmatch(clauses[2])
+    if (
+        not _ADVICE_WITHDRAWAL.fullmatch(clauses[1])
+        or report is None
+        or not _EXPLICIT_C.search(report["value"])
+        or _temperature(report["value"]) != value
+    ):
+        return None
+    evidence["kind"] = "withdrawn_setting_advice"
+    evidence["withdrawn_quotes"] = clauses[:2]
+    return evidence
+
+
+def response_scope(material: dict, candidate: str) -> ResponseScope | None:
+    """Prove the entire answer is confined to a narrowly recognized task response."""
+    if (
+        material.get("candidate") != candidate
+        or len(candidate) > MAX_EVIDENCE_TEXT_CHARS
+        or material.get("evidence")
+    ):
+        return None
+    users = _users(material)
+    if not users:
+        return None
+    clauses = _clauses(candidate)
+    return _withdrawn_role_scope(material, users, clauses, candidate) or _setting_scope(
+        material, users, clauses, candidate
+    )

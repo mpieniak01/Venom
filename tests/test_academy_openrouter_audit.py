@@ -488,11 +488,14 @@ def test_429_waits_and_replays_without_counting_throttle_as_grade(
     row = json.loads((root / "receipts" / f"{throttle_at:03d}.json").read_text())
     [attempt] = row["rate_limit_attempts"]
     assert result["status"] == "passed"
-    assert result["rows"] == 228 and Throttled.calls == 229
-    assert attempt["http_status"] == 429 and attempt["retry_after"] == "7"
+    assert result["rows"] == 228
+    assert Throttled.calls == 229
+    assert attempt["http_status"] == 429
+    assert attempt["retry_after"] == "7"
     assert attempt["call_id"] != row["call_id"]
     assert Decimal(result["unknown_reserved_usd"]) == Decimal(attempt["reserved_usd"])
-    assert delays.count(7.0) == 1 and delays.count(2) == 227
+    assert delays.count(7.0) == 1
+    assert delays.count(2) == 227
     pin = judge.QualificationRemote.model_validate_json(
         (root / "qualification.json").read_text()
     )
@@ -518,7 +521,8 @@ def test_429_stops_at_frozen_retry_bounds(ready, monkeypatch, header, calls, wai
     result = audit.run(root, execute=True, client_factory=Throttled)
     row = json.loads((root / "receipts/001.json").read_text())
     assert result["status"] == "provider_rate_limited"
-    assert Throttled.calls == calls and delays == waits
+    assert Throttled.calls == calls
+    assert delays == waits
     assert Decimal(result["unknown_reserved_usd"]) == calls * Decimal(
         row["reserved_usd"]
     )

@@ -106,6 +106,10 @@ from venom_core.services.grounded_segment_length import (
     bind_segment_length,
     segment_length_intro,
 )
+from venom_core.services.grounded_source_enrollment import (
+    bind_enrollment_evidence,
+    requests_enrollment_recap,
+)
 from venom_core.services.grounded_speed_measurement import (
     MEASURED_SPEED_ID,
     PilotSpeedMeasurementAnswer,
@@ -1291,12 +1295,26 @@ class PilotSourceAnswer(PublishedAnswer):
         self, history: tuple[dict[str, str], ...], backend: SourceBackend
     ) -> list[dict[str, str]]:
         """Supply data from the latest accepted read for an explicitly selected recap."""
-        if material_hash(history) != self.history_sha256:
-            raise EvidenceError("pilot_source_recall_history_mismatch")
-        _current(backend, self.documents)
+        self._check_recall(history, backend)
         return [
             {"source_id": doc.ref.source_id, "text": doc.text} for doc in self.documents
         ]
+
+    def recall_enrollment(
+        self, message: str, history: tuple[dict[str, str], ...], backend: SourceBackend
+    ) -> str | None:
+        """Render a complete enrollment recap using only the latest published read."""
+        if not requests_enrollment_recap(message):
+            return None
+        self._check_recall(history, backend)
+        return bind_enrollment_evidence(self.documents).render()
+
+    def _check_recall(
+        self, history: tuple[dict[str, str], ...], backend: SourceBackend
+    ) -> None:
+        if material_hash(history) != self.history_sha256:
+            raise EvidenceError("pilot_source_recall_history_mismatch")
+        _current(backend, self.documents)
 
 
 _WRAPPED_ID = re.compile(r"\(([A-Za-z0-9_:-][^()\n]{0,100})\)|\[([^\[\]\n]{1,100})\]")

@@ -3553,3 +3553,260 @@ def test_source_recall_is_bound_to_a_published_history_and_current_cards():
     backend.texts["MORKADA"] += " Stara karta jest nieaktualna."
     with pytest.raises(EvidenceError, match="answer_source_stale"):
         published.recall_context(history, backend)
+
+
+_ENROLLMENT_RECAP = (
+    "W dwóch zdaniach przypomnij kanał i termin zgłoszenia, a następnie datę wyników."
+)
+_ENROLLMENT_INPUT = (
+    "Zgłoszenie na warsztaty przyjmuje panel do 18 lipca do godziny 15:00."
+)
+_ENROLLMENT_RESULT = "Wyniki naboru zostaną ogłoszone 23 lipca."
+
+
+def _enrollment_documents(cards):
+    return tuple(
+        SourceDocument(SourceRef(ident, "1", text_hash(body)), body, True)
+        for ident, body in cards.items()
+    )
+
+
+def test_source_enrollment_binds_distinct_fields_to_exact_evidence():
+    from venom_core.services.grounded_source_enrollment import bind_enrollment_evidence
+
+    docs = _enrollment_documents(
+        {
+            "KANDEL": _ENROLLMENT_INPUT,
+            "MIRWEN": _ENROLLMENT_RESULT + " Materiały są w cenie.",
+        }
+    )
+    bound = bind_enrollment_evidence(docs)
+    assert (bound.channel.value, bound.deadline.value, bound.results_date.value) == (
+        "panel",
+        "18 lipca o 15:00",
+        "23 lipca",
+    )
+    assert bound.channel.proof == bound.deadline.proof
+    assert bound.channel.proof.quote == _ENROLLMENT_INPUT
+    assert bound.results_date.proof.quote == _ENROLLMENT_RESULT
+    assert bound.results_date.proof.source_id == "MIRWEN"
+    assert bound.render() == (
+        "Kanał zgłoszeń to panel, a termin mija 18 lipca o 15:00. "
+        "Wyniki zostaną ogłoszone 23 lipca."
+    )
+
+
+@pytest.mark.parametrize(
+    "cards, reason",
+    [
+        (
+            {
+                "KANDEL": "Zgłoszenie na warsztaty przyjmuje KANDEL do 18 lipca o 15:00.",
+                "MIRWEN": _ENROLLMENT_RESULT,
+            },
+            "enrollment_channel_is_source_id",
+        ),
+        (
+            {
+                "KANDEL": "Zgłoszenie przyjmuje karta KANDEL do 18 lipca o 15:00.",
+                "MIRWEN": _ENROLLMENT_RESULT,
+            },
+            "enrollment_channel_is_source_id",
+        ),
+        (
+            {
+                "KANDEL": "Zgłoszenie na warsztaty przyjmuje panel.",
+                "MIRWEN": "Wyniki naboru zostaną ogłoszone 23 lipca. Otwieramy o 15:00.",
+            },
+            "enrollment_missing_deadline",
+        ),
+        (
+            {
+                "KANDEL": _ENROLLMENT_INPUT,
+                "MIRWEN": "Listę uczestników opublikujemy 31 kwietnia.",
+            },
+            "enrollment_invalid_date",
+        ),
+        (
+            {
+                "KANDEL": _ENROLLMENT_INPUT,
+                "MIRWEN": _ENROLLMENT_RESULT + " Wyniki ogłosimy 24 lipca.",
+            },
+            "enrollment_conflicting_results_date",
+        ),
+        (
+            {
+                "KANDEL": _ENROLLMENT_INPUT
+                + " Formularze przyjmujemy do 18 lipca o 15:10.",
+                "MIRWEN": _ENROLLMENT_RESULT,
+            },
+            "enrollment_conflicting_deadline",
+        ),
+        (
+            {
+                "KANDEL": "Zapisy na zajęcia obsługuje kiosk przy wejściu.",
+                "MIRWEN": "Zgłoszenia przyjmujemy do 9 września o 14:30. "
+                + _ENROLLMENT_RESULT,
+            },
+            "enrollment_unbound_submission",
+        ),
+        (
+            {
+                "KANDEL": _ENROLLMENT_INPUT,
+                "MIRWEN": "Zgłoszenia przyjmujemy do 23 lipca o 11:00.",
+            },
+            "enrollment_conflicting_deadline",
+        ),
+    ],
+)
+def test_source_enrollment_never_renders_substituted_or_missing_fields(cards, reason):
+    from venom_core.services.grounded_source_enrollment import bind_enrollment_evidence
+
+    with pytest.raises(EvidenceError, match=reason):
+        bind_enrollment_evidence(_enrollment_documents(cards))
+
+
+def test_source_enrollment_recap_uses_the_released_history_and_current_card_versions():
+    from venom_core.services.grounded_pilot import PilotSourceAnswer
+
+    backend, model = PickupRoleCards(), Model()
+    backend.texts = {
+        "TORAND": (
+            "Zapisy na zajęcia terenowe obsługuje kiosk przy wejściu. "
+            "Zgłoszenia przyjmujemy do 9 września do godziny 14:30."
+        ),
+        "KELVIR": "Listę uczestników zajęć opublikujemy 16 września. Materiały są w cenie.",
+    }
+    message = "Przeczytaj kartę TORAND i kartę KELVIR. Podaj datę ogłoszenia wyników."
+    model.override["draft"] = {
+        "prose": "Listę uczestników zajęć opublikujemy 16 września [KELVIR].",
+        "sources": [
+            {
+                "source_id": "KELVIR",
+                "version": "1",
+                "quote": "Listę uczestników zajęć opublikujemy 16 września",
+            }
+        ],
+        "calculations": [],
+    }
+    published = run_pilot_turn(
+        message, "r", backend, model, Reviewer(), required=Requirements(sources=True)
+    )
+    assert isinstance(published, PilotSourceAnswer)
+    history = (
+        {"role": "user", "content": message},
+        {"role": "assistant", "content": published.text},
+    )
+    reads = backend.reads[:]
+    assert published.recall_enrollment(
+        "W dwóch zdaniach przypomnij gdzie i do kiedy mam się zgłosić oraz "
+        "kiedy poznam listę uczestników.",
+        history,
+        backend,
+    ) == (
+        "Kanał zgłoszeń to kiosk przy wejściu, a termin mija 9 września o 14:30. "
+        "Wyniki zostaną ogłoszone 16 września."
+    )
+    assert backend.reads == reads
+    assert (
+        published.recall_enrollment(
+            "Podaj tylko aktualną lokalizację i kto dopina osłonę.", history, backend
+        )
+        is None
+    )
+    with pytest.raises(EvidenceError, match="pilot_source_recall_history_mismatch"):
+        published.recall_enrollment(_ENROLLMENT_RECAP, history[:1], backend)
+    backend.texts["TORAND"] += " Termin został odwołany."
+    with pytest.raises(EvidenceError, match="answer_source_stale"):
+        published.recall_enrollment(_ENROLLMENT_RECAP, history, backend)
+
+
+def test_source_enrollment_recap_does_not_use_an_organizational_meeting_date():
+    from venom_core.services.grounded_source_enrollment import bind_enrollment_evidence
+
+    bound = bind_enrollment_evidence(
+        _enrollment_documents(
+            {
+                "SOLWET": "Zgłoszenie na przegląd muzyczny przyjmuje sekretariat do 11 sierpnia do godziny 17:20.",
+                "RENKOL": "Wyniki przeglądu zostaną ogłoszone 14 sierpnia. Spotkanie organizacyjne odbędzie się 16 sierpnia.",
+            }
+        )
+    )
+    assert bound.channel.value == "sekretariat"
+    assert bound.deadline.value == "11 sierpnia o 17:20"
+    assert bound.results_date.value == "14 sierpnia"
+    assert (
+        bound.results_date.proof.quote
+        == "Wyniki przeglądu zostaną ogłoszone 14 sierpnia."
+    )
+
+
+def test_source_enrollment_accepts_explicit_field_labels_and_a_fresh_recap_form():
+    from venom_core.services.grounded_source_enrollment import (
+        bind_enrollment_evidence,
+        requests_enrollment_recap,
+    )
+
+    assert requests_enrollment_recap(
+        "Podaj kanał zgłoszeń, termin składania zgłoszeń z godziną "
+        "oraz datę publikacji wyników w dokładnie dwóch zdaniach."
+    )
+    assert not requests_enrollment_recap(
+        "Podaj kanał i termin zgłoszeń oraz datę wyników. Nie podawaj godziny."
+    )
+    bound = bind_enrollment_evidence(
+        _enrollment_documents(
+            {
+                "KALPEN": "Kanał zgłoszeń: formularz internetowy. Termin składania zgłoszeń: do 6 maja o 9:15.",
+                "VORTEN": "Data publikacji wyników: 10 maja.",
+            }
+        )
+    )
+    assert bound.channel.value == "formularz internetowy"
+    assert bound.deadline.value == "6 maja o 09:15"
+    assert bound.results_date.value == "10 maja"
+
+
+def test_source_role_and_historical_day_stay_in_the_established_recap_path():
+    from venom_core.services.grounded_pilot import PilotSourceAnswer
+
+    backend, model = PickupRoleCards(), Model()
+    backend.texts = {
+        "KORFELA": "Zapisy z poniedziałkowej próby technicznej. Wnęka A była miejscem testowego odstawienia mównicy.",
+        "BIRNATA": "Po bieżącej próbie odstaw mównicę przy drzwiach D. Osłonę dopina technik dyżurny.",
+    }
+    message = "Przeczytaj kartę KORFELA i kartę BIRNATA. Podaj dzień wcześniejszej próby i aktualną rolę."
+    model.override["draft"] = {
+        "prose": "Wcześniejsza próba była w poniedziałek [KORFELA]. Osłonę dopina technik dyżurny [BIRNATA].",
+        "sources": [
+            {
+                "source_id": "KORFELA",
+                "version": "1",
+                "quote": "poniedziałkowej próby technicznej",
+            },
+            {
+                "source_id": "BIRNATA",
+                "version": "1",
+                "quote": "Osłonę dopina technik dyżurny.",
+            },
+        ],
+        "calculations": [],
+    }
+    result = run_pilot_turn(
+        message, "r", backend, model, Reviewer(), required=Requirements(sources=True)
+    )
+    assert isinstance(result, PilotSourceAnswer)
+    history = (
+        {"role": "user", "content": message},
+        {"role": "assistant", "content": result.text},
+    )
+    assert (
+        result.recall_enrollment(
+            "Podaj tylko aktualną lokalizację i kto dopina osłonę.", history, backend
+        )
+        is None
+    )
+    assert result.recall_context(history, backend) == [
+        {"source_id": ident, "text": text} for ident, text in backend.texts.items()
+    ]
+    assert result.text == model.override["draft"]["prose"]

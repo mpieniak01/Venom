@@ -426,6 +426,30 @@ def _apply_pickup_point(
     return [claim for claim in claims if claim.text not in proven]
 
 
+def _apply_identifier_evidence(
+    value: _QuoteDecision,
+    material: dict,
+    candidate: str,
+    bindings: dict,
+    atoms: dict[str, fields.Relation],
+    flags: dict,
+    evidence: ReviewEvidence,
+) -> None:
+    if (code := value.checks.get("code")) is not None and "code" not in bindings:
+        comparison = identifier_evidence.compare(
+            material, candidate, code.observed, code.relation
+        )
+        if comparison is not None:
+            evidence["identifier_comparison"] = comparison
+            atoms["code"] = comparison["effective_relation"]
+            if comparison["effective_relation"] != comparison["raw_relation"]:
+                flags["reason"] = (
+                    "Brak jednoznacznego powiązania cytatu kodu z aktualnym źródłem."
+                    if atoms["code"] == "unclear"
+                    else "Kod oceniono przez porównanie dosłownego zapisu z aktualnym źródłem."
+                )
+
+
 def decode_with_evidence(
     response: dict, body: dict, candidate: str
 ) -> tuple[local._Decision, ReviewEvidence]:
@@ -460,19 +484,9 @@ def decode_with_evidence(
             flags["reason"] = (
                 "Ocenę powiązano z dosłownym fragmentem odpowiedzi i aktualnym źródłem."
             )
-    if (code := value.checks.get("code")) is not None and "code" not in bindings:
-        comparison = identifier_evidence.compare(
-            material, candidate, code.observed, code.relation
-        )
-        if comparison is not None:
-            evidence["identifier_comparison"] = comparison
-            atoms["code"] = comparison["effective_relation"]
-            if comparison["effective_relation"] != comparison["raw_relation"]:
-                flags["reason"] = (
-                    "Brak jednoznacznego powiązania cytatu kodu z aktualnym źródłem."
-                    if atoms["code"] == "unclear"
-                    else "Kod oceniono przez porównanie dosłownego zapisu z aktualnym źródłem."
-                )
+    _apply_identifier_evidence(
+        value, material, candidate, bindings, atoms, flags, evidence
+    )
     point = semantic_fact_evidence.pickup_point_evidence(material, candidate)
     claims = value.additional_claims
     if scope := semantic_fact_evidence.response_scope(material, candidate, point=point):
@@ -645,14 +659,15 @@ def _verify_rejected_call(
         _verify_decision(row, decision, evidence)
 
 
-def verify_audit(pin: QualificationRemote) -> None:
+def _verified_audit_contract(
+    pin: QualificationRemote, root: Path
+) -> tuple[dict, dict, dict, dict]:
     from .semantic_openrouter_audit import (
         _AUTOMATIC_RETRY,
         _REQUEST_TIMEOUT_SECONDS,
         _rate_policy,
     )
 
-    root = _root(pin.audit_root)
     protocol = _bound(root, "protocol.json", pin.protocol_sha256)
     _require(
         protocol.get("rate_limit") == _rate_policy(protocol)
@@ -694,6 +709,12 @@ def verify_audit(pin: QualificationRemote) -> None:
         result.get("status") == "passed"
         and result.get("protocol_sha256") == pin.protocol_sha256
     )
+    return protocol, result, manifest, thresholds
+
+
+def verify_audit(pin: QualificationRemote) -> None:
+    root = _root(pin.audit_root)
+    protocol, result, manifest, thresholds = _verified_audit_contract(pin, root)
     hashes = result["receipt_hashes"]
     admitted = "phase1_admission_sha256" in protocol
     _require(
@@ -873,6 +894,58 @@ def _rate_limit_attempts(row: dict) -> list[dict]:
     return attempts
 
 
+def _retry_costs(
+    row: dict, attempts: list[dict], call_ids: set[str]
+) -> tuple[Decimal, Decimal]:
+    from .semantic_openrouter_audit import _provider_unavailable
+
+    known, unknown = Decimal(0), Decimal(0)
+    for attempt in attempts:
+        _require(
+            attempt.get("status") == "failed"
+            and (
+                attempt.get("http_status") == 429
+                or (
+                    _provider_unavailable(attempt)
+                    and attempt.get("error_type") == "provider_unavailable"
+                )
+            )
+            and all(
+                attempt.get(k) == row.get(k)
+                for k in (
+                    "index",
+                    "case_id",
+                    "answer_id",
+                    "split",
+                    "repeat",
+                    "request_sha256",
+                    "reserved_usd",
+                    "protocol_sha256",
+                )
+            )
+            and stable_hash(attempt.get("request")) == row["request_sha256"]
+        )
+        _require(
+            isinstance(attempt.get("call_id"), str)
+            and bool(attempt["call_id"].strip())
+            and attempt["call_id"] not in call_ids
+            and "response" in attempt
+            and stable_hash(attempt["response"]) == attempt["response_sha256"]
+        )
+        call_ids.add(attempt["call_id"])
+        reserved = _money(attempt["reserved_usd"])
+        response = attempt["response"]
+        reported = reported_cost(response) if isinstance(response, dict) else None
+        _require(reported == attempt.get("cost_usd"))
+        if reported is None:
+            unknown += reserved
+        else:
+            cost = _money(reported)
+            _require(cost <= reserved)
+            known += cost
+    return known, unknown
+
+
 def _audit_costs(rows: list[dict], protocol: dict) -> tuple[Decimal, Decimal]:
     from .semantic_openrouter_audit import _provider_unavailable
 
@@ -893,49 +966,9 @@ def _audit_costs(rows: list[dict], protocol: dict) -> tuple[Decimal, Decimal]:
         )
         retry_count += len(attempts)
         _require(retry_count <= policy["max_retries_per_audit"])
-        for attempt in attempts:
-            _require(
-                attempt.get("status") == "failed"
-                and (
-                    attempt.get("http_status") == 429
-                    or (
-                        _provider_unavailable(attempt)
-                        and attempt.get("error_type") == "provider_unavailable"
-                    )
-                )
-                and all(
-                    attempt.get(k) == row.get(k)
-                    for k in (
-                        "index",
-                        "case_id",
-                        "answer_id",
-                        "split",
-                        "repeat",
-                        "request_sha256",
-                        "reserved_usd",
-                        "protocol_sha256",
-                    )
-                )
-                and stable_hash(attempt.get("request")) == row["request_sha256"]
-            )
-            _require(
-                isinstance(attempt.get("call_id"), str)
-                and bool(attempt["call_id"].strip())
-                and attempt["call_id"] not in call_ids
-                and "response" in attempt
-                and stable_hash(attempt["response"]) == attempt["response_sha256"]
-            )
-            call_ids.add(attempt["call_id"])
-            reserved = _money(attempt["reserved_usd"])
-            response = attempt["response"]
-            reported = reported_cost(response) if isinstance(response, dict) else None
-            _require(reported == attempt.get("cost_usd"))
-            if reported is None:
-                unknown += reserved
-            else:
-                cost = _money(reported)
-                _require(cost <= reserved)
-                known += cost
+        retry_known, retry_unknown = _retry_costs(row, attempts, call_ids)
+        known += retry_known
+        unknown += retry_unknown
     return known, unknown
 
 

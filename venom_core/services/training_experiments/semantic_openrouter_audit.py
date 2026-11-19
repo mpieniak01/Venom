@@ -1170,6 +1170,28 @@ def _resume_qualification(state: _AuditState) -> list[dict]:
     return attempts
 
 
+def _execute_cases(state: _AuditState, prior_attempts: list[dict] | None) -> None:
+    with ExitStack() as stack:
+        while len(state.rows) < len(state.order):
+            progressed = _audit_next(state, stack, prior_attempts)
+            prior_attempts = None
+            if not progressed:
+                break
+            if len(state.rows) == 156 and not _phase1_gate(state):
+                break
+            if len(state.rows) == 228:
+                completed = [row for row in state.rows if row["status"] == "completed"]
+                state.metrics = judge._audit_metrics(
+                    state.root, state.manifest, completed
+                )
+                state.status = (
+                    "passed"
+                    if len(completed) == len(state.order)
+                    and state.metrics == state.manifest["thresholds"]
+                    else "failed_qualification"
+                )
+
+
 def _execute(
     root: Path,
     protocol: dict,
@@ -1224,9 +1246,13 @@ def _execute(
     elif "phase1_admission_sha256" in protocol:
         if not _phase1_gate(state):
             return _audit_result(state)
-    if resume and len(state.rows) == 156 and not state.holdout_opened:
-        if not _phase1_gate(state):
-            return _audit_result(state)
+    if (
+        resume
+        and len(state.rows) == 156
+        and not state.holdout_opened
+        and not _phase1_gate(state)
+    ):
+        return _audit_result(state)
     retries = protocol["rate_limit"]["max_retries_per_audit"] - state.retries
     reserve_time = (
         0 if state.holdout_opened else _holdout_required_seconds(protocol, retries)
@@ -1236,23 +1262,7 @@ def _execute(
     ):
         state.status = "holdout_deadline_unavailable"
         return _audit_result(state)
-    with ExitStack() as stack:
-        while len(state.rows) < len(state.order):
-            progressed = _audit_next(state, stack, prior_attempts)
-            prior_attempts = None
-            if not progressed:
-                break
-            if len(state.rows) == 156 and not _phase1_gate(state):
-                break
-            if len(state.rows) == 228:
-                completed = [row for row in state.rows if row["status"] == "completed"]
-                state.metrics = judge._audit_metrics(root, state.manifest, completed)
-                state.status = (
-                    "passed"
-                    if len(completed) == len(state.order)
-                    and state.metrics == state.manifest["thresholds"]
-                    else "failed_qualification"
-                )
+    _execute_cases(state, prior_attempts)
     return _audit_result(state)
 
 

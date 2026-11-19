@@ -437,6 +437,36 @@ def _resume_timing(state: audit._AuditState, prior_attempts: list[dict] | None) 
         )
 
 
+def _record_targeted_metrics(state: audit._AuditState, planned: int) -> None:
+    cases = state.manifest["cases"]
+    mismatches = []
+    completed = 0
+    for row in state.rows:
+        if row["status"] == "rejected_decision":
+            differences = [row["error_type"]]
+        elif row["status"] == "completed":
+            completed += 1
+            differences = _differences(row, cases[row["label"]])
+        else:
+            continue
+        if differences:
+            mismatches.append(
+                {
+                    "index": row["index"],
+                    "label": row["label"],
+                    "differences": differences,
+                }
+            )
+    if state.status == "targeted_review_required" and mismatches:
+        state.status = "targeted_regression_failed"
+    state.metrics = {
+        "planned": planned,
+        "completed": completed,
+        "mismatches": mismatches,
+        "manual_review_required": True,
+    }
+
+
 def execute(
     state: audit._AuditState,
     *,
@@ -468,31 +498,5 @@ def execute(
                 break
         else:
             state.status = "targeted_review_required"
-    cases = state.manifest["cases"]
-    mismatches = []
-    completed = 0
-    for row in state.rows:
-        if row["status"] == "rejected_decision":
-            differences = [row["error_type"]]
-        elif row["status"] == "completed":
-            completed += 1
-            differences = _differences(row, cases[row["label"]])
-        else:
-            continue
-        if differences:
-            mismatches.append(
-                {
-                    "index": row["index"],
-                    "label": row["label"],
-                    "differences": differences,
-                }
-            )
-    if state.status == "targeted_review_required" and mismatches:
-        state.status = "targeted_regression_failed"
-    state.metrics = {
-        "planned": len(requests),
-        "completed": completed,
-        "mismatches": mismatches,
-        "manual_review_required": True,
-    }
+    _record_targeted_metrics(state, len(requests))
     return audit._audit_result(state)

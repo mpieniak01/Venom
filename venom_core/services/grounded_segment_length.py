@@ -130,6 +130,18 @@ class SegmentLengthState:
         return f"{self.main.expression}+{self.reserve.measure.expression}"
 
 
+def segment_length_intro(message: str) -> str | None:
+    match = _INTRO.fullmatch(_turn(message))
+    if match is None:
+        return None
+    main = _Measure.from_match(match)
+    value = _number(main.value).replace(".", ",")
+    return (
+        f"Odcinek główny ma {value} {main.unit}. "
+        "Dostawca gwarantuje osobny zapas, ale jego długość pozostaje nieznana."
+    )
+
+
 def _source_fact(
     documents: tuple[SourceDocument, ...], pattern: re.Pattern[str]
 ) -> _LengthFact | None:

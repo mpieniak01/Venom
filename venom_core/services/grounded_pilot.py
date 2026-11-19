@@ -62,6 +62,7 @@ from venom_core.services.grounded_explicit_totals import (
     OrderTotal,
     PilotExplicitTotalAnswer,
     bind_explicit_total,
+    explicit_group_intro,
     total_identity,
 )
 from venom_core.services.grounded_percentages import (
@@ -102,6 +103,7 @@ from venom_core.services.grounded_segment_length import (
     SegmentLengthReceipt,
     SegmentLengthState,
     bind_segment_length,
+    segment_length_intro,
 )
 
 MAX_MODEL_INPUT_BYTES = 6000
@@ -2143,6 +2145,10 @@ def plain_pilot_recap(
 ) -> str | None:
     """Retain verified decisions and event roles from the selected exception."""
     users = tuple(item["content"] for item in focused if item["role"] == "user")
+    if not users:
+        intro = explicit_group_intro(message) or segment_length_intro(message)
+        if intro is not None:
+            return intro
     if explicit_total_receipt is not None:
         recap = explicit_total_receipt.recap(message, users)
         if recap is not None:

@@ -3339,3 +3339,22 @@ def test_pickup_label_guidance_keeps_point_name_and_unconfirmed_person(message):
         {"role": "user", "content": "Odbierająca osoba została już potwierdzona."},
     )
     assert plain_pilot_context(message, known) == (known, "")
+
+
+def test_plain_pilot_keeps_explicit_group_and_main_length_on_first_turn():
+    group = "W grupie wycieczkowej jest 16 dorosłych, 7 dzieci. Jedna opiekunka wlicza się już do dorosłych."
+    cable = (
+        "Mamy 180 cm przewodu, a dostawca gwarantuje osobny odcinek zapasu w metrach."
+    )
+    assert plain_pilot_recap(group, ()) == (
+        "16 dorosłych i 7 dzieci. Opiekunka jest już wliczona do dorosłych."
+    )
+    assert plain_pilot_recap(cable, ()) == (
+        "Odcinek główny ma 180 cm. Dostawca gwarantuje osobny zapas, ale jego długość pozostaje nieznana."
+    )
+    assert (
+        plain_pilot_recap(
+            cable, ({"role": "user", "content": "Mamy już odczytaną kartę zapasu."},)
+        )
+        is None
+    )

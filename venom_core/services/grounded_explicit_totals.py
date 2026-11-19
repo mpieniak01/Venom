@@ -110,6 +110,15 @@ class GroupTotal:
         )
 
 
+def explicit_group_intro(message: str) -> str | None:
+    match = _GROUP.fullmatch(message)
+    if match is None or int(match["adults"]) < 1:
+        return None
+    return GroupTotal(int(match["adults"]), int(match["children"])).details(
+        "", final=True
+    )
+
+
 def _bind_order(users: tuple[str, ...]) -> OrderTotal | None:
     base = _ORDER.fullmatch(users[0])
     if base is None or _ORDER_TOTAL.fullmatch(users[1]) is None:

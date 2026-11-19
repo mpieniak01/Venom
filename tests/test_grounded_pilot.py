@@ -3413,6 +3413,17 @@ def test_bound_speed_replays_w34_without_duplicate_conversion_or_model_placehold
         )
         == "Nie. Przed korektą średnia wynosiła 8 m/s, a po niej 6 m/s (21,6 km/h). Dystans pozostał ten sam, a zmierzony czas to wcześniej 90 s i po korekcie 120 s."
     )
+    comparison = plain_pilot_recap(
+        "Porównaj obie średnie prędkości w m/s i uwzględnij zmianę czasu.",
+        history,
+        speed_measurement_receipts=(
+            a.speed_measurement_receipt,
+            b.speed_measurement_receipt,
+        ),
+    )
+    assert comparison is not None and comparison.startswith(
+        "Przed korektą średnia wynosiła 8 m/s, a po niej 6 m/s"
+    )
     assert plain_pilot_recap(
         request, history, speed_measurement_receipts=(a.speed_measurement_receipt,)
     ).startswith("Do porównania potrzebuję")

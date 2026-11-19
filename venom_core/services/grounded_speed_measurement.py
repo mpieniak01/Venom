@@ -32,9 +32,9 @@ _UPDATE = re.compile(
     re.IGNORECASE,
 )
 _RECAP = re.compile(
-    rf"napisz krótko, czy liczby {_A} i {_A} znaczą, że po poprawce jechałem szybciej\. "
+    rf"(?P<question>napisz krótko, czy liczby {_A} i {_A} znaczą, że po poprawce jechałem szybciej)\. "
     r"odnieś się do jednostki i czasu"
-    r"|porównaj obie prędkości po sprowadzeniu do m/s i uwzględnij zmianę czasu",
+    r"|porównaj obie (?:średnie )?prędkości (?:w|po sprowadzeniu do) m/s i uwzględnij zmianę czasu",
     re.IGNORECASE,
 )
 
@@ -164,7 +164,7 @@ class PilotSpeedMeasurementAnswer(PublishedAnswer):
 def speed_measurement_recap(
     message: str, users: tuple[str, ...], receipts: tuple[SpeedMeasurementReceipt, ...]
 ) -> str | None:
-    if not receipts or _RECAP.fullmatch(_normal(message)) is None:
+    if not receipts or (request := _RECAP.fullmatch(_normal(message))) is None:
         return None
     by_history = {item.users: item for item in receipts}
     before, after = by_history.get(users[:-1]), by_history.get(users)
@@ -172,7 +172,9 @@ def speed_measurement_recap(
         return "Do porównania potrzebuję potwierdzonych prędkości sprzed korekty i po niej."
     old = Decimal(calculate(before.state.base_expression))
     new = Decimal(calculate(after.state.base_expression))
-    certainty = "Tak. " if new > old else "Nie. "
+    certainty = ""
+    if request["question"]:
+        certainty = "Tak. " if new > old else "Nie. "
     correction = (
         f"({_shown(_decimal(after.calculation.value))} km/h)"
         if after.calculation.unit == "km/h"

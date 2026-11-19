@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import os
 import signal
 import tempfile
 import threading
@@ -24,7 +25,7 @@ import httpx
 from venom_core.config import SETTINGS
 from venom_core.services import openrouter_runtime as runtime
 from venom_core.services.remote_training.lifecycle import atomic_json, file_lock
-from venom_core.services.remote_training.paths import operator_path
+from venom_core.services.remote_training.paths import data_directory, operator_path
 
 from . import openrouter_semantic_judge as judge
 from .profiles import digest, read_json, stable_hash
@@ -84,6 +85,36 @@ def _bytes(root: Path, name: str, expected: str) -> bytes:
     raw = path.read_bytes()
     _require(hashlib.sha256(raw).hexdigest() == expected, "remote_audit_file_changed")
     return raw
+
+
+def _write_frozen_file(directory: Path, name: str, raw: bytes) -> None:
+    _require(
+        name
+        in {
+            "qualification-panel.json",
+            "qualification-gold.json",
+            "panel.json",
+            "gold.json",
+            "phase1-order.json",
+            "semantic-contract.json",
+            "repair-provenance.json",
+            "frozen-manifest.json",
+            "data-review.json",
+            "phase1-admission.json",
+        },
+        "remote_audit_frozen_filename_invalid",
+    )
+    with data_directory(directory) as directory_fd:
+        descriptor = os.open(
+            name,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+            0o600,
+            dir_fd=directory_fd,
+        )
+        with os.fdopen(descriptor, "wb") as stream:
+            stream.write(raw)
+            stream.flush()
+            os.fsync(stream.fileno())
 
 
 def prepare(
@@ -155,7 +186,7 @@ def prepare(
         "remote_audit_deadline_invalid",
     )
     frozen_files = {
-        name: _bytes(controls, name, sha) for name, sha in manifest["files"].items()
+        name: _bytes(controls, name, manifest["files"][name]) for name in CONTROL_FILES
     }
     from . import semantic_openrouter_targeted as publication
 
@@ -163,12 +194,12 @@ def prepare(
     with tempfile.TemporaryDirectory(prefix=".audit-", dir=output.parent) as temp:
         staged = Path(temp)
         # No access to the holdout descriptor's source_directory occurs in prepare.
-        for name, raw in frozen_files.items():
+        for name in CONTROL_FILES:
             target = staged / "controls" / name
             target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_bytes(raw)
-        (staged / "controls/frozen-manifest.json").write_bytes(manifest_raw)
-        (staged / "data-review.json").write_bytes(review_raw)
+            _write_frozen_file(target.parent, target.name, frozen_files[name])
+        _write_frozen_file(staged / "controls", "frozen-manifest.json", manifest_raw)
+        _write_frozen_file(staged, "data-review.json", review_raw)
         quotes = _phase1_reservations(staged, manifest)
         protocol = {
             "phase1_reservation_usd": str(sum(quotes, Decimal(0))),
@@ -205,10 +236,12 @@ def prepare(
                 "remote_audit_admission_unsealed",
             )
             assert phase1_admission_sha256 is not None
-            (staged / admission.FILE).write_bytes(
+            _write_frozen_file(
+                staged,
+                "phase1-admission.json",
                 _bytes(
                     evidence_path.parent, evidence_path.name, phase1_admission_sha256
-                )
+                ),
             )
             protocol["phase1_admission_sha256"] = phase1_admission_sha256
             protocol["rate_limit"] = _ADMITTED_RATE_LIMIT_POLICY

@@ -1861,3 +1861,50 @@ def test_prepare_does_not_publish_failed_admission(ready, tmp_path, monkeypatch)
         )
     assert not output.exists()
     assert not list(tmp_path.glob(".audit-*"))
+
+
+@pytest.mark.parametrize(
+    "name", ["../outside.json", "/tmp/outside.json", "x/panel.json"]
+)
+def test_frozen_file_rejects_paths_instead_of_approved_basenames(tmp_path, name):
+    with pytest.raises(ValueError, match="remote_audit_frozen_filename_invalid"):
+        audit._write_frozen_file(tmp_path, name, b"untrusted contents")
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_frozen_file_refuses_existing_symlink_and_preserves_exact_bytes(tmp_path):
+    outside = tmp_path / "outside.json"
+    outside.write_bytes(b"preserved")
+    staged = tmp_path / "staged"
+    staged.mkdir()
+    (staged / "panel.json").symlink_to(outside)
+    with pytest.raises(FileExistsError):
+        audit._write_frozen_file(staged, "panel.json", b"replacement")
+    assert outside.read_bytes() == b"preserved"
+    raw = b"../contents-are-not-a-path\x00\xff"
+    audit._write_frozen_file(staged, "data-review.json", raw)
+    assert (staged / "data-review.json").read_bytes() == raw
+    assert (staged / "data-review.json").stat().st_mode & 0o777 == 0o600
+
+
+def test_prepare_rejects_resealed_manifest_with_traversal_key(ready, tmp_path):
+    _, source, _ = ready
+    controls = source / "controls"
+    manifest_path = controls / "frozen-manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["files"]["../outside.json"] = "f" * 64
+    write(manifest_path, manifest)
+    output = tmp_path / "traversal-output"
+    with pytest.raises(ValueError, match="remote_audit_controls_invalid"):
+        audit.prepare(
+            controls,
+            source / "data-review.json",
+            output,
+            controls_sha256=digest(manifest_path),
+            data_review_sha256=digest(source / "data-review.json"),
+            budget_usd="0.80",
+            max_seconds=7200,
+            holdout_max_request_usd="0.002",
+        )
+    assert not output.exists()
+    assert not (tmp_path / "outside.json").exists()

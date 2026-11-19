@@ -77,3 +77,30 @@ def test_requested_arithmetic_multiplier_is_not_a_conversion(expression):
 )
 def test_unrequested_or_additional_conversion_is_still_rejected(expression, message):
     assert has_repeated_speed_scale(expression, "m/s", "km/h", request=message)
+
+
+def test_arithmetic_plan_converts_after_the_explicit_user_multiplier():
+    from venom_core.services import grounded_pilot as pilot
+
+    message = "Zwiększ sumę 10 m/s i 5 m/s 3,6 raza i podaj wynik w km/h"
+    planning, trace = {}, []
+
+    def model(phase, _data, _schema):
+        assert phase == "plan"
+        return {
+            "calculations": [
+                {
+                    "calculation_id": "speed",
+                    "expression": "(10+5)*3.6",
+                    "input_unit": "m/s",
+                    "unit": "km/h",
+                }
+            ]
+        }
+
+    [result] = pilot._planned_calculations(
+        message, model, planning, pilot._ResultFormat("km/h", None), trace
+    )
+    assert calculate(result.expression) == "194.4"
+    assert result.unit == "km/h"
+    assert result.input_unit == ""

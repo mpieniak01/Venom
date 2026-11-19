@@ -2787,7 +2787,9 @@ def _planned_calculations(
     arithmetic: ArithmeticPlan = _call(model, "plan", planning, ArithmeticPlan)
     audit.append({"phase": "arithmetic", "data": arithmetic.model_dump()})
     if any(
-        has_repeated_speed_scale(item.expression, item.input_unit, item.unit)
+        has_repeated_speed_scale(
+            item.expression, item.input_unit, item.unit, request=message
+        )
         for item in arithmetic.calculations
     ):
         raise EvidenceError("pilot_speed_double_conversion")

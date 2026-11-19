@@ -62,8 +62,16 @@ _RESULTS = re.compile(
     rf"{_DATE}\.?",
     re.IGNORECASE,
 )
-_CLAUSES = re.compile(r"(?<=[.!?])\s+|\n+")
-_SENTENCE_CLAUSES = re.compile(r"(?<=[.!?])\s+")
+_CLAUSES = re.compile(r"(?<=[.!?])\s+")
+_RESULTS_WITHDRAWAL = re.compile(
+    r"\b(?:odwoł\w*|anulow\w*|wycofa\w*|nieaktualn\w*|"
+    r"nie (?:obowiązuje|jest aktualn\w*))\b",
+    re.IGNORECASE,
+)
+_ENROLLMENT_ID = re.compile(
+    r"\b(?:identyfikator naboru|id naboru|nabór):\s*([A-Za-z0-9][A-Za-z0-9_-]{0,63})(?![\w-])",
+    re.IGNORECASE,
+)
 
 _CARD = r"(?:\[[\w.-]{1,64}\]|[^\W\d_][\w-]{1,63})"
 _CARD_LIST = rf"(?:kartę|karty) {_CARD}(?:(?:, | i | oraz )(?:kart[ęy] )?{_CARD})*"
@@ -124,13 +132,25 @@ def _one(candidates: list[EnrollmentField], role: str) -> tuple[EnrollmentField,
 
 
 def _verified_clauses(
-    documents: tuple[SourceDocument, ...], *, split: re.Pattern[str] = _CLAUSES
+    documents: tuple[SourceDocument, ...],
 ) -> Iterator[tuple[SourceDocument, str]]:
     for doc in documents:
         if not _verified_document(doc):
             raise EvidenceError("source_incomplete")
-        for clause in split.split(doc.text):
+        for clause in _CLAUSES.split(doc.text):
             yield doc, clause.strip()
+
+
+def _results_field(document: SourceDocument, clause: str) -> EnrollmentField | None:
+    match = _RESULTS.fullmatch(" ".join(clause.split()))
+    if match:
+        proof = SourceQuote(document.ref.source_id, document.ref.version, clause)
+        return EnrollmentField(_date(match), proof)
+    if _RESULTS_ROLE.search(clause) and (
+        _OTHER_DATED_RESULT.search(clause) or _RESULTS_WITHDRAWAL.search(clause)
+    ):
+        raise EvidenceError("enrollment_results_date_ambiguous")
+    return None
 
 
 def requested_results_date_quote(
@@ -143,13 +163,9 @@ def requested_results_date_quote(
     if len(citations) != 1:
         raise EvidenceError("enrollment_results_citation_required")
     fields: list[EnrollmentField] = []
-    for document, clause in _verified_clauses(documents, split=_SENTENCE_CLAUSES):
-        match = _RESULTS.fullmatch(clause)
-        if match:
-            proof = SourceQuote(document.ref.source_id, document.ref.version, clause)
-            fields.append(EnrollmentField(_date(match), proof))
-        elif _RESULTS_ROLE.search(clause) and _OTHER_DATED_RESULT.search(clause):
-            raise EvidenceError("enrollment_results_date_ambiguous")
+    for document, clause in _verified_clauses(documents):
+        if field := _results_field(document, clause):
+            fields.append(field)
     supported = _one(fields, "results_date")
     eligible = [
         field.proof for field in supported if field.proof.source_id == citations[0]
@@ -162,28 +178,62 @@ def requested_results_date_quote(
 def bind_enrollment_evidence(
     documents: tuple[SourceDocument, ...],
 ) -> EnrollmentEvidence:
-    """Require unique supported fields; keep channel and deadline on the same card."""
+    """Require unique fields belonging to one explicitly bound enrollment."""
     channels: list[EnrollmentField] = []
     deadlines: list[EnrollmentField] = []
     results: list[EnrollmentField] = []
     source_ids = {doc.ref.source_id.casefold() for doc in documents}
     for doc, sentence in _verified_clauses(documents):
         proof = SourceQuote(doc.ref.source_id, doc.ref.version, sentence)
-        combined = _COMBINED.fullmatch(sentence)
-        if channel := combined or _CHANNEL_ONLY.fullmatch(sentence):
+        normalized = " ".join(sentence.split())
+        combined = _COMBINED.fullmatch(normalized)
+        if channel := combined or _CHANNEL_ONLY.fullmatch(normalized):
             value = " ".join(channel["channel"].split())
             if value.casefold().removeprefix("karta ") in source_ids:
                 raise EvidenceError("enrollment_channel_is_source_id")
             channels.append(EnrollmentField(value, proof))
-        if deadline := combined or _DEADLINE_ONLY.fullmatch(sentence):
+        if deadline := combined or _DEADLINE_ONLY.fullmatch(normalized):
             deadlines.append(EnrollmentField(_deadline(deadline), proof))
-        if result := _RESULTS.fullmatch(sentence):
-            results.append(EnrollmentField(_date(result), proof))
+        if result := _results_field(doc, sentence):
+            results.append(result)
     channel_fields = _one(channels, "channel")
     deadline_fields = _one(deadlines, "deadline")
-    (results_date, *_) = _one(results, "results_date")
+    result_fields = _one(results, "results_date")
+    return _bind_enrollment_fields(
+        documents, channel_fields, deadline_fields, result_fields
+    )
+
+
+def _bind_enrollment_fields(
+    documents: tuple[SourceDocument, ...],
+    channel_fields: tuple[EnrollmentField, ...],
+    deadline_fields: tuple[EnrollmentField, ...],
+    result_fields: tuple[EnrollmentField, ...],
+) -> EnrollmentEvidence:
+    identities = {
+        doc.ref.source_id: {
+            match.casefold() for match in _ENROLLMENT_ID.findall(doc.text)
+        }
+        for doc in documents
+    }
     deadline_by_source = {field.proof.source_id: field for field in deadline_fields}
     for channel_field in channel_fields:
-        if deadline_field := deadline_by_source.get(channel_field.proof.source_id):
-            return EnrollmentEvidence(channel_field, deadline_field, results_date)
+        source_id = channel_field.proof.source_id
+        if deadline_field := deadline_by_source.get(source_id):
+            for results_date in result_fields:
+                if _same_enrollment(
+                    source_id, results_date.proof.source_id, identities
+                ):
+                    return EnrollmentEvidence(
+                        channel_field, deadline_field, results_date
+                    )
     raise EvidenceError("enrollment_unbound_submission")
+
+
+def _same_enrollment(
+    submission_source: str, results_source: str, identities: dict[str, set[str]]
+) -> bool:
+    if submission_source == results_source:
+        return True
+    submission_ids = identities[submission_source]
+    return len(submission_ids) == 1 and submission_ids == identities[results_source]

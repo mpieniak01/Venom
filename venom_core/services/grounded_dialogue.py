@@ -222,25 +222,44 @@ def requested_card_ids(
 ) -> tuple[str, ...]:
     """Extract card references after the source context is established."""
     references = _card_mentions(message, _CARD_REFERENCE)
+    references.extend(_citation_mentions(message))
     if include_contextual:
         references.extend(_card_mentions(message, _CARD_USE))
         references.extend(_assigned_card_mentions(message))
     return tuple(dict.fromkeys(marker.strip("[]") for _, marker in sorted(references)))
 
 
-_CITE_COMMAND = re.compile(
-    r"\b(?:zacytuj|przytocz (?:cytat|cytaty) z|podaj (?:cytat|cytaty) z)\b",
+_CITE_REFERENCE = re.compile(
+    r"\b(?:zacytuj|przytocz (?:cytat|cytaty) z|podaj (?:cytat|cytaty) z)\s+"
+    rf"(?:(?:tylko|wyłącznie|jedynie)\s+)?(?:kart[ęay]\s+)?(?P<name>{_CARD_ID})(?![\w-])",
+    re.IGNORECASE,
+)
+_CITE_LIST_ITEM = re.compile(
+    rf"\s*(?:,|i\b|oraz\b)\s+(?:kart[ęay]\s+)?(?P<name>{_CARD_ID})(?![\w-])",
     re.IGNORECASE,
 )
 
 
+def _citation_mentions(message: str) -> list[tuple[int, str]]:
+    references = []
+    for command in _CITE_REFERENCE.finditer(message):
+        if not _card_marker(command["name"]):
+            continue
+        references.append((command.start("name"), command["name"]))
+        end = command.end()
+        while (item := _CITE_LIST_ITEM.match(message, end)) and _card_marker(
+            item["name"]
+        ):
+            references.append((item.start("name"), item["name"]))
+            end = item.end()
+    return references
+
+
 def requested_citation_ids(message: str) -> tuple[str, ...]:
-    """A request to cite a card is distinct from a request to read it."""
-    names: list[str] = []
-    for clause in _SENTENCE_BREAK.split(message):
-        if command := _CITE_COMMAND.search(clause):
-            names.extend(requested_card_ids(clause[command.start() :].strip()))
-    return tuple(dict.fromkeys(names))
+    """Bind only the card arguments of citation commands, preserving their order."""
+    return tuple(
+        dict.fromkeys(marker.strip("[]") for _, marker in _citation_mentions(message))
+    )
 
 
 class EvidenceError(ValueError):

@@ -3558,7 +3558,7 @@ def test_source_recall_is_bound_to_a_published_history_and_current_cards():
     assert published.recall_context(history, backend) == [
         {"source_id": ident, "text": body} for ident, body in backend.texts.items()
     ]
-    assert backend.reads == read_log
+    assert backend.reads == read_log + ["MORKADA", "SILETOR"]
     changed_history = (*history, {"role": "user", "content": "To jednak inny komplet."})
     with pytest.raises(EvidenceError, match="pilot_source_recall_history_mismatch"):
         published.recall_context(changed_history, backend)
@@ -3576,7 +3576,16 @@ _ENROLLMENT_INPUT = (
 _ENROLLMENT_RESULT = "Wyniki naboru zostaną ogłoszone 23 lipca."
 
 
-def _enrollment_documents(cards):
+def _linked_enrollment_cards(cards):
+    return {
+        ident: body + " Identyfikator naboru: WARSZTATY-2026."
+        for ident, body in cards.items()
+    }
+
+
+def _enrollment_documents(cards, *, linked=False):
+    if linked:
+        cards = _linked_enrollment_cards(cards)
     return tuple(
         SourceDocument(SourceRef(ident, "1", text_hash(body)), body, True)
         for ident, body in cards.items()
@@ -3590,7 +3599,8 @@ def test_source_enrollment_binds_distinct_fields_to_exact_evidence():
         {
             "KANDEL": _ENROLLMENT_INPUT,
             "MIRWEN": _ENROLLMENT_RESULT + " Materiały są w cenie.",
-        }
+        },
+        linked=True,
     )
     bound = bind_enrollment_evidence(docs)
     assert (bound.channel.value, bound.deadline.value, bound.results_date.value) == (
@@ -3690,6 +3700,7 @@ def test_source_enrollment_recap_uses_the_released_history_and_current_card_vers
         ),
         "KELVIR": "Listę uczestników zajęć opublikujemy 16 września. Materiały są w cenie.",
     }
+    backend.texts = _linked_enrollment_cards(backend.texts)
     message = "Przeczytaj kartę TORAND i kartę KELVIR. Podaj datę ogłoszenia wyników."
     model.override["draft"] = {
         "prose": "Listę uczestników zajęć opublikujemy 16 września [KELVIR].",
@@ -3720,7 +3731,7 @@ def test_source_enrollment_recap_uses_the_released_history_and_current_card_vers
         "Kanał zgłoszeń to kiosk przy wejściu, a termin mija 9 września o 14:30. "
         "Wyniki zostaną ogłoszone 16 września."
     )
-    assert backend.reads == reads
+    assert backend.reads == reads + ["TORAND", "KELVIR"]
     assert (
         published.recall_enrollment(
             "Podaj tylko aktualną lokalizację i kto dopina osłonę.", history, backend
@@ -3742,7 +3753,8 @@ def test_source_enrollment_recap_does_not_use_an_organizational_meeting_date():
             {
                 "SOLWET": "Zgłoszenie na przegląd muzyczny przyjmuje sekretariat do 11 sierpnia do godziny 17:20.",
                 "RENKOL": "Wyniki przeglądu zostaną ogłoszone 14 sierpnia. Spotkanie organizacyjne odbędzie się 16 sierpnia.",
-            }
+            },
+            linked=True,
         )
     )
     assert bound.channel.value == "sekretariat"
@@ -3772,7 +3784,8 @@ def test_source_enrollment_accepts_explicit_field_labels_and_a_fresh_recap_form(
             {
                 "KALPEN": "Kanał zgłoszeń: formularz internetowy. Termin składania zgłoszeń: do 6 maja o 9:15.",
                 "VORTEN": "Data publikacji wyników: 10 maja.",
-            }
+            },
+            linked=True,
         )
     )
     assert bound.channel.value == "formularz internetowy"
@@ -3839,6 +3852,7 @@ def test_results_date_uses_minimal_literal_citation_and_reviewed_recap():
         "KANDEL": _ENROLLMENT_INPUT,
         "MIRWEN": _ENROLLMENT_RESULT + " Potwierdzenie przychodzi automatycznie.",
     }
+    backend.texts = _linked_enrollment_cards(backend.texts)
     stop = Reviewer(False)
     with pytest.raises(EvidenceError, match="pilot_semantic_rejected"):
         run_pilot_turn(
@@ -4084,3 +4098,153 @@ def test_thermal_reply_cannot_treat_uncertain_equality_as_a_fact():
     )
     with pytest.raises(EvidenceError, match="thermal_contact_premises_unbound"):
         plain_pilot_recap(prompt, ())
+
+
+@pytest.mark.parametrize("recall", ["context", "enrollment"])
+def test_source_recall_rejects_unavailable_cards_with_unchanged_references(recall):
+    from venom_core.services.grounded_pilot import PilotSourceAnswer
+
+    cards = _linked_enrollment_cards(
+        {"KANDEL": _ENROLLMENT_INPUT, "MIRWEN": _ENROLLMENT_RESULT}
+    )
+    backend = FrozenPacket(
+        [
+            {"id": ident, "version": "1", "text": body, "status": "available"}
+            for ident, body in cards.items()
+        ]
+    )
+    documents = _enrollment_documents(cards)
+    history = ({"role": "user", "content": "Przeczytaj obie karty."},)
+    released = PilotSourceAnswer("proof", "Wyniki.", material_hash(history), documents)
+
+    def read():
+        if recall == "context":
+            return released.recall_context(history, backend)
+        return released.recall_enrollment(_ENROLLMENT_RECAP, history, backend)
+
+    assert read()
+    original = backend.current_ref("KANDEL")
+    backend.cards["KANDEL"]["status"] = "unavailable"
+    assert backend.current_ref("KANDEL") == original
+    with pytest.raises(EvidenceError, match="answer_source_unavailable"):
+        read()
+
+
+@pytest.mark.parametrize(
+    "results",
+    [
+        _ENROLLMENT_RESULT + " Termin wyników odwołano.",
+        "Termin wyników anulowano. " + _ENROLLMENT_RESULT,
+        _ENROLLMENT_RESULT + " Termin wyników nie obowiązuje.",
+        "Wyniki naboru zostaną ogłoszone 23 lipca\njeżeli komisja zdąży.",
+    ],
+)
+def test_results_date_has_identical_ambiguity_checks_in_quote_and_recap(results):
+    from venom_core.services.grounded_source_enrollment import (
+        bind_enrollment_evidence,
+        requested_results_date_quote,
+    )
+
+    documents = _enrollment_documents(
+        {"KANDEL": _ENROLLMENT_INPUT, "MIRWEN": results}, linked=True
+    )
+    with pytest.raises(EvidenceError, match="enrollment_results_date_ambiguous"):
+        requested_results_date_quote(_RESULTS_CITATION_REQUEST, documents)
+    with pytest.raises(EvidenceError, match="enrollment_results_date_ambiguous"):
+        bind_enrollment_evidence(documents)
+
+
+@pytest.mark.parametrize(
+    "submission_identity, results_identity",
+    [
+        ("", ""),
+        (" Identyfikator naboru: WARSZTATY-2026.", ""),
+        (
+            " Identyfikator naboru: WARSZTATY-2026.",
+            " Identyfikator naboru: KONKURS-2026.",
+        ),
+        (
+            " Identyfikator naboru: WARSZTATY-2026. Nabór: INNY.",
+            " Identyfikator naboru: WARSZTATY-2026.",
+        ),
+    ],
+)
+def test_enrollment_does_not_combine_unrelated_or_unidentified_cards(
+    submission_identity, results_identity
+):
+    from venom_core.services.grounded_source_enrollment import bind_enrollment_evidence
+
+    documents = _enrollment_documents(
+        {
+            "KANDEL": _ENROLLMENT_INPUT + submission_identity,
+            "MIRWEN": "Wyniki konkursu zostaną ogłoszone 23 lipca." + results_identity,
+        }
+    )
+    with pytest.raises(EvidenceError, match="enrollment_unbound_submission"):
+        bind_enrollment_evidence(documents)
+
+
+def test_single_card_enrollment_needs_no_cross_card_identity_and_keeps_line_breaks():
+    from venom_core.services.grounded_source_enrollment import bind_enrollment_evidence
+
+    results = "Wyniki naboru zostaną ogłoszone\n23 lipca."
+    documents = _enrollment_documents({"JEDNA": _ENROLLMENT_INPUT + " " + results})
+    evidence = bind_enrollment_evidence(documents)
+    assert evidence.results_date.value == "23 lipca"
+    assert evidence.results_date.proof.quote == results
+
+
+@pytest.mark.parametrize("trailing", ["Przelicz.", "Sprzątanie nadal raz. Przelicz."])
+def test_duration_recap_accepts_the_same_unchanged_clauses_as_state_binding(trailing):
+    initial = (
+        "Wykonam trzy pętle po 11 minut, po całej sesji dojdzie 7 minut porządków."
+    )
+    request = "Oblicz kalkulatorem całkowity czas, w minutach."
+    released = run_pilot_turn(
+        request,
+        "r",
+        Sources(),
+        Model(),
+        Reviewer(),
+        history=({"role": "user", "content": initial},),
+        required=Requirements(calculation=True),
+    )
+    receipt = released.duration_receipt
+    recap = "Wypisz aktualny czas ostatniej pętli, jednorazowy dodatek i pełną sumę."
+    users = (*receipt.users, trailing, recap)
+    assert receipt.recap(recap, users) == receipt.recap(recap, receipt.users)
+    assert bind_duration(users) == receipt.state
+    changed = (*receipt.users, "Zmieniam czas ostatniej pętli na 8 min.")
+    assert receipt.recap(recap, changed) == (
+        "Po zmianie danych potrzebuję aktualnego wyniku kalkulatora."
+    )
+
+
+@pytest.mark.parametrize("property_name", ["ciężkie", "duże", "szerokie"])
+def test_thermal_comparison_does_not_infer_equal_temperature_from_other_properties(
+    property_name,
+):
+    message = (
+        f"Dotykam stali i filcu. Oba przedmioty są jednakowo {property_name}. "
+        "Oba są chłodniejsze od dłoni. Który może wydawać się chłodniejszy?"
+    )
+    with pytest.raises(EvidenceError, match="thermal_contact_premises_unbound"):
+        plain_pilot_recap(message, ())
+
+
+def test_gathering_recap_rejects_unrequested_parenthetical_without_final_period():
+    history = (
+        {"role": "user", "content": "Według WIERZBA sprawdź ostatnią środę."},
+        {"role": "assistant", "content": "Brama od 15:35, a pokaz o 16:25. [WIERZBA]"},
+        {"role": "user", "content": "Gdzie według WIERZBA jest zbiórka?"},
+        {
+            "role": "assistant",
+            "content": "Zbiórka tego dnia odbywa się przy makiecie (POMYLONA)",
+        },
+    )
+    assert (
+        plain_pilot_recap(
+            "Przygotuj w jednym zdaniu notatkę z godzinami i miejscem zbiórki.", history
+        )
+        is None
+    )

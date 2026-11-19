@@ -31,7 +31,7 @@ _CHOICE = re.compile(
 )
 _EQUAL = re.compile(
     r"\b(?:(?:te sama|taka sama|jednakow\w*|rowna) temperature"
-    r"|(?:obie|oba) (?:plytki |przedmioty )?sa jednakowo"
+    r"|(?:obie|oba) (?:plytki |przedmioty )?sa jednakowo (?:cieple|zimne|chlodne|gorace)"
     r"|oba maja po \d{1,3} stopni)\b"
 )
 _RELATIVE_TO_HAND = (

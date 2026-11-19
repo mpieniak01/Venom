@@ -188,8 +188,9 @@ class DurationReceipt:
         if _RECAP.fullmatch(_normalize(message)) is None:
             return None
         if users[: len(self.users)] != self.users or any(
-            _RECAP.fullmatch(_normalize(turn)) is None
+            self.state.with_clause(_normalize(clause), clause) is not self.state
             for turn in users[len(self.users) :]
+            for clause in re.split(r"[.!?]\s+", turn.strip())
         ):
             return "Po zmianie danych potrzebuję aktualnego wyniku kalkulatora."
         last = self.state.last.replace(".", ",")

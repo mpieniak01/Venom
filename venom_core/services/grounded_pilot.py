@@ -1317,7 +1317,7 @@ class PilotSourceAnswer(PublishedAnswer):
     ) -> None:
         if material_hash(history) != self.history_sha256:
             raise EvidenceError("pilot_source_recall_history_mismatch")
-        _current(backend, self.documents)
+        GroundedTurn(backend).revalidate_sources(self.documents)
 
 
 _WRAPPED_ID = re.compile(r"\(([A-Za-z0-9_:-][^()\n]{0,100})\)|\[([^\[\]\n]{1,100})\]")
@@ -2202,12 +2202,12 @@ def _plain_gathering_recap(
         for index in (0, 2)
         for ident in requested_card_ids(focused[index]["content"])
     }
-    citation_matches = tuple(
-        match
-        if match and (match["bracketed"] or match["parenthetical"] in requested)
-        else None
-        for match in map(_PUBLIC_CARD_AT_END.search, (schedule, gathering))
-    )
+    citation_matches = tuple(map(_PUBLIC_CARD_AT_END.search, (schedule, gathering)))
+    if any(
+        match and match["parenthetical"] and match["parenthetical"] not in requested
+        for match in citation_matches
+    ):
+        return None
     schedule_match, gathering_match = citation_matches
     if schedule_match:
         schedule = schedule[: schedule_match.start()].rstrip()

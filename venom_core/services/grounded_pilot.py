@@ -1342,6 +1342,9 @@ _COMPARISON_RECAP = re.compile(
 _OBSERVATION_REQUEST = re.compile(
     r"\bwykres\w*\b|\bpoziom\w*\s+(?:lini\w*|odcink\w*)\b", re.IGNORECASE
 )
+_OBSERVATION_PEOPLE_FLOW = re.compile(
+    r"\b(?:wchodz\w*|wychodz\w*|wejści\w*|wyjści\w*)\b", re.IGNORECASE
+)
 _ADDRESS_REPLACED = re.compile(
     r"\b(?:nowy|aktualny)\s+adres\s+(?:to|jest)\b", re.IGNORECASE
 )
@@ -1469,6 +1472,13 @@ def _recap_guidance(message: str, previous: list[str], recap: bool) -> list[str]
             "czy wykres czegoś dowodzi, odpowiedz wprost i wskaż granicę wniosku. "
             "Wykres jednej wielkości nie wykazuje przebiegu zjawisk, których nie mierzy."
         )
+        if _OBSERVATION_PEOPLE_FLOW.search(message):
+            guidance.append(
+                "Jeśli wykres mierzy liczbę osób, podaj wprost oba powody, "
+                "dla których nie dowodzi braku ruchu: liczba może się nie zmienić, "
+                "gdy tyle samo osób wchodzi i wychodzi, a ruch może zajść "
+                "między kolejnymi odczytami. Nie twierdź, że do ruchu faktycznie doszło."
+            )
     if (recap or _ONE_SENTENCE_RECAP.search(message)) and any(
         _OBSERVATION_REQUEST.search(prior) for prior in previous[-2:]
     ):

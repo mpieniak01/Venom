@@ -1626,6 +1626,17 @@ def test_booking_recap_preserves_explicit_negative_decision():
     ) == ("Czwartek, 2 osoby, zapis niewymagany.")
 
 
+def test_observation_guidance_explains_why_a_flat_people_count_does_not_show_flow():
+    _, guidance = plain_pilot_context(
+        "Czy poziomy wykres liczby obecnych osób dowodzi, że nikt nie wchodził ani nie wychodził?",
+        (),
+    )
+    assert "tyle samo osób wchodzi i wychodzi" in guidance
+    assert "między kolejnymi odczytami" in guidance
+    _, unrelated = plain_pilot_context("Czy wykres podaje liczbę osób?", ())
+    assert "tyle samo osób wchodzi i wychodzi" not in unrelated
+
+
 def test_observation_intro_does_not_preempt_later_question():
     _, guidance = plain_pilot_context("Co oznacza na wykresie pozioma linia?", ())
     assert "dokładny odczyt" in guidance

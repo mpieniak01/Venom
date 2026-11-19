@@ -1280,6 +1280,25 @@ def _current(backend: SourceBackend, sources: tuple[SourceDocument, ...]) -> Non
             raise EvidenceError("answer_source_stale")
 
 
+@dataclass(frozen=True)
+class PilotSourceAnswer(PublishedAnswer):
+    """A published source turn and its complete, already reviewed evidence."""
+
+    history_sha256: str
+    documents: tuple[SourceDocument, ...]
+
+    def recall_context(
+        self, history: tuple[dict[str, str], ...], backend: SourceBackend
+    ) -> list[dict[str, str]]:
+        """Supply data from the latest accepted read for an explicitly selected recap."""
+        if material_hash(history) != self.history_sha256:
+            raise EvidenceError("pilot_source_recall_history_mismatch")
+        _current(backend, self.documents)
+        return [
+            {"source_id": doc.ref.source_id, "text": doc.text} for doc in self.documents
+        ]
+
+
 _WRAPPED_ID = re.compile(r"\(([A-Za-z0-9_:-][^()\n]{0,100})\)|\[([^\[\]\n]{1,100})\]")
 _SOURCE_METADATA = re.compile(
     r"\(\s*id\s*:\s*([a-z0-9_-]+)\s*,\s*wersja\s*:\s*[a-z0-9_.-]+\s*\)", re.IGNORECASE
@@ -3136,5 +3155,23 @@ def run_pilot_turn(
         )
         return PilotSpeedMeasurementAnswer(
             proof.evidence_id, draft.prose, speed_receipt
+        )
+    if (
+        required.sources
+        and not required.calculation
+        and plan.mode == "answer"
+        and requested_card_ids(message)
+        and not sources.unavailable
+    ):
+        published_history = (
+            *history,
+            {"role": "user", "content": message},
+            {"role": "assistant", "content": draft.prose},
+        )
+        return PilotSourceAnswer(
+            proof.evidence_id,
+            draft.prose,
+            material_hash(published_history),
+            sources.documents,
         )
     return PublishedAnswer(proof.evidence_id, draft.prose)

@@ -3513,3 +3513,43 @@ def test_named_source_reads_can_be_full_with_only_one_relevant_citation():
             reviewer,
             required=Requirements(sources=True),
         )
+
+
+def test_source_recall_is_bound_to_a_published_history_and_current_cards():
+    from venom_core.services.grounded_pilot import PilotSourceAnswer
+
+    backend, model = PickupRoleCards(), Model()
+    message = "Przeczytaj kartę MORKADA i kartę SILETOR. Czy potwierdzono odbiór?"
+    model.override["draft"] = {
+        "prose": "Osoba odbierająca wymaga potwierdzenia [SILETOR].",
+        "sources": [
+            {
+                "source_id": "SILETOR",
+                "version": "1",
+                "quote": "osoba odbierająca wymaga potwierdzenia",
+            }
+        ],
+        "calculations": [],
+    }
+    required = Requirements(sources=True)
+    with pytest.raises(EvidenceError, match="pilot_semantic_rejected"):
+        run_pilot_turn(message, "r", backend, model, Reviewer(False), required=required)
+    published = run_pilot_turn(
+        message, "r", backend, model, Reviewer(), required=required
+    )
+    assert isinstance(published, PilotSourceAnswer)
+    history = (
+        {"role": "user", "content": message},
+        {"role": "assistant", "content": published.text},
+    )
+    read_log = backend.reads[:]
+    assert published.recall_context(history, backend) == [
+        {"source_id": ident, "text": body} for ident, body in backend.texts.items()
+    ]
+    assert backend.reads == read_log
+    changed_history = (*history, {"role": "user", "content": "To jednak inny komplet."})
+    with pytest.raises(EvidenceError, match="pilot_source_recall_history_mismatch"):
+        published.recall_context(changed_history, backend)
+    backend.texts["MORKADA"] += " Stara karta jest nieaktualna."
+    with pytest.raises(EvidenceError, match="answer_source_stale"):
+        published.recall_context(history, backend)

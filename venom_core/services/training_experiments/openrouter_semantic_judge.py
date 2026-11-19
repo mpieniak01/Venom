@@ -895,11 +895,14 @@ def _rate_limit_attempts(row: dict) -> list[dict]:
 
 
 def _retry_costs(
-    row: dict, attempts: list[dict], call_ids: set[str]
+    row: dict,
+    attempts: list[dict],
+    call_ids: set[str],
+    known: Decimal,
+    unknown: Decimal,
 ) -> tuple[Decimal, Decimal]:
     from .semantic_openrouter_audit import _provider_unavailable
 
-    known, unknown = Decimal(0), Decimal(0)
     for attempt in attempts:
         _require(
             attempt.get("status") == "failed"
@@ -966,9 +969,7 @@ def _audit_costs(rows: list[dict], protocol: dict) -> tuple[Decimal, Decimal]:
         )
         retry_count += len(attempts)
         _require(retry_count <= policy["max_retries_per_audit"])
-        retry_known, retry_unknown = _retry_costs(row, attempts, call_ids)
-        known += retry_known
-        unknown += retry_unknown
+        known, unknown = _retry_costs(row, attempts, call_ids, known, unknown)
     return known, unknown
 
 

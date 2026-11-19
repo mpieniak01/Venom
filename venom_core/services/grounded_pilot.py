@@ -72,6 +72,12 @@ from venom_core.services.grounded_percentages import (
     bind_percent_change,
     percent_change_recap,
 )
+from venom_core.services.grounded_pickup_roles import (
+    PickupRoles,
+    PickupRolesReceipt,
+    PilotPickupRolesAnswer,
+    bind_pickup_roles,
+)
 from venom_core.services.grounded_presentation import (
     ROUNDING_MODE,
     clean_bookkeeping_spacing,
@@ -2122,6 +2128,7 @@ def plain_pilot_recap(
     price_mean_receipts: tuple[PriceMeanReceipt, ...] = (),
     percent_change_receipts: tuple[PercentChangeReceipt, ...] | None = None,
     explicit_total_receipt: ExplicitTotalReceipt | None = None,
+    pickup_roles_receipt: PickupRolesReceipt | None = None,
 ) -> str | None:
     """Retain verified decisions and event roles from the selected exception."""
     users = tuple(item["content"] for item in focused if item["role"] == "user")
@@ -2141,6 +2148,11 @@ def plain_pilot_recap(
         recap = duration_receipt.recap(message, users)
         if recap is not None:
             return recap
+    if pickup_roles_receipt is not None:
+        users = tuple(item["content"] for item in focused if item["role"] == "user")
+        pickup_recap = pickup_roles_receipt.recap(message, users)
+        if pickup_recap is not None:
+            return pickup_recap
     if _BOOKING_RECAP.search(message):
         return _plain_booking_recap(focused)
     contextual = (
@@ -2252,6 +2264,7 @@ class _DeterministicAnswer:
     price_mean: PriceMeanState | None = None
     explicit_total: OrderTotal | GroupTotal | None = None
     percent_change: PercentChange | None = None
+    pickup_roles: PickupRoles | None = None
 
 
 @dataclass(frozen=True)
@@ -2361,6 +2374,20 @@ def _deterministic_answer(
     message, prior_users = turn.message, turn.prior_users
     if turn.required.sources:
         if not turn.required.calculation:
+            pickup = bind_pickup_roles(message, documents)
+            if pickup is not None:
+                roles, signer_requested = pickup
+                return _DeterministicAnswer(
+                    source_draft=Draft(
+                        prose=roles.reply(signer_requested=signer_requested),
+                        sources=[
+                            Quote(**asdict(roles.historical)),
+                            Quote(**asdict(roles.scheduled)),
+                        ],
+                        calculations=[],
+                    ),
+                    pickup_roles=roles,
+                )
             return _DeterministicAnswer(
                 source_draft=_source_only_draft(message, documents)
             )
@@ -2943,6 +2970,11 @@ def run_pilot_turn(
     else:
         _current(backend, sources.documents)
         gate.publish(claim_draft)
+    if deterministic.pickup_roles is not None:
+        pickup_receipt = PickupRolesReceipt(
+            (*turn.prior_users, message), deterministic.pickup_roles
+        )
+        return PilotPickupRolesAnswer(proof.evidence_id, draft.prose, pickup_receipt)
     if duration_receipt is not None:
         return PilotDurationAnswer(proof.evidence_id, draft.prose, duration_receipt)
     if deterministic.price_mean is not None and proof.evidence is not None:

@@ -20,6 +20,7 @@ from venom_core.services.grounded_percentages import (
     PilotPercentChangeAnswer,
     bind_percent_change,
 )
+from venom_core.services.grounded_pickup_roles import PilotPickupRolesAnswer
 from venom_core.services.grounded_pilot import (
     SemanticVerdict,
     _public_prose,
@@ -3043,3 +3044,130 @@ def test_explicit_group_does_not_bind_unconfirmed_composition():
     correction = "Dwóch dorosłych odwołało obecność. Próba dopisania dwojga dzieci nieaktualna. Użyj kalkulatora ponownie."
     assert bind_explicit_total((base, join, correction)) is None
     assert bind_explicit_total((base, "Dołącza 3 dzieci, dorośli bez zmian.")) is None
+
+
+class PickupRoleCards:
+    def __init__(self):
+        self.texts = {
+            "MORKADA": (
+                "Punkt wydawania nosi oficjalną nazwę U Ady. Ada Witek 9 marca podpisała "
+                "zamknięcie przeglądu starego kompletu. Wzmianka nie dotyczy przyszłych wydawań."
+            ),
+            "SILETOR": (
+                "Piątkowy odbiór nowego kompletu przewidziano w punkcie U Ady; osoba odbierająca "
+                "wymaga potwierdzenia. Komplet pozostaje zabezpieczony do chwili potwierdzenia."
+            ),
+        }
+        self.reads = []
+
+    def current_ref(self, source_id):
+        return SourceRef(source_id, "1", text_hash(self.texts[source_id]))
+
+    def read(self, ref):
+        self.reads.append(ref.source_id)
+        return SourceDocument(ref, self.texts[ref.source_id], True)
+
+    def search(self, query):
+        raise AssertionError("The request names both cards.")
+
+
+_POINT_AND_PICKUP = (
+    "Przeczytaj kartę MORKADA i kartę SILETOR. "
+    "Podaj nazwę punktu i kto odbiera tam komplet w piątek."
+)
+_HISTORICAL_SIGNER = (
+    "Nie o odbierającą chodzi, tylko kto podpisał zamknięcie przeglądu. "
+    "Sprawdź kartę SILETOR i kartę MORKADA."
+)
+_PICKUP_RECAP = "Podaj dwie linie: punkt i osoba odbierająca w piątek."
+
+
+def test_pickup_roles_keep_history_and_current_pickup_separate():
+    backend, model, reviewer = PickupRoleCards(), Model(), Reviewer()
+    history = (
+        {"role": "user", "content": "Na etykiecie widnieje nazwa punktu U Ady."},
+        {"role": "assistant", "content": "Ada Witek odbiera komplet w piątek."},
+    )
+    required = Requirements(sources=True)
+    for request in (_POINT_AND_PICKUP, _HISTORICAL_SIGNER):
+        result = run_pilot_turn(
+            request,
+            "roles",
+            backend,
+            model,
+            reviewer,
+            history=history,
+            required=required,
+        )
+        assert isinstance(result, PilotPickupRolesAnswer)
+        status = (
+            "Osoba odbierająca nowy komplet w piątek wymaga potwierdzenia [SILETOR]."
+        )
+        signature = "Ada Witek 9 marca podpisała zamknięcie przeglądu starego kompletu. [MORKADA]"
+        if request == _POINT_AND_PICKUP:
+            assert result.text == f"Punkt: U Ady [MORKADA]. {status} {signature}"
+        else:
+            assert result.text == f"{signature} {status}"
+        assert {
+            row["source_id"]: row["quote"]
+            for row in reviewer.materials[-1]["draft"]["sources"]
+        } == backend.texts
+        history += (
+            {"role": "user", "content": request},
+            {"role": "assistant", "content": result.text},
+        )
+    assert not model.calls
+    assert backend.reads.count("MORKADA") == backend.reads.count("SILETOR") == 6
+    focused, _ = plain_pilot_context(_PICKUP_RECAP, history)
+    assert (
+        plain_pilot_recap(
+            _PICKUP_RECAP,
+            focused,
+            pickup_roles_receipt=result.pickup_roles_receipt,
+        )
+        == "Punkt: U Ady.\nOsoba odbierająca w piątek: niepotwierdzona."
+    )
+    assert (
+        plain_pilot_recap(
+            _PICKUP_RECAP,
+            (*history, {"role": "user", "content": "Punkt został zmieniony."}),
+            pickup_roles_receipt=result.pickup_roles_receipt,
+        )
+        == "Punkt: brak potwierdzenia.\nOsoba odbierająca w piątek: brak potwierdzenia."
+    )
+
+
+@pytest.mark.parametrize(("old", "new"), [("U Ady", "U Oli"), ("Piątkowy", "Wtorkowy")])
+def test_pickup_roles_reject_conflicting_point_or_day(old, new):
+    backend = PickupRoleCards()
+    backend.texts["SILETOR"] = backend.texts["SILETOR"].replace(old, new)
+    model, reviewer = Model(), Reviewer()
+    with pytest.raises(EvidenceError, match="pilot_pickup_roles_inconsistent"):
+        run_pilot_turn(
+            _POINT_AND_PICKUP,
+            "roles",
+            backend,
+            model,
+            reviewer,
+            required=Requirements(sources=True),
+        )
+    assert backend.reads == ["MORKADA", "SILETOR"]
+    assert not model.calls and not reviewer.materials
+
+
+def test_pickup_roles_receipt_requires_approved_current_cards():
+    backend, model, reviewer = PickupRoleCards(), Model(), Reviewer()
+    reviewer.hook = lambda: backend.texts.update(
+        SILETOR=backend.texts["SILETOR"].replace("U Ady", "U Oli")
+    )
+    with pytest.raises(EvidenceError, match="answer_source_stale"):
+        run_pilot_turn(
+            _HISTORICAL_SIGNER,
+            "roles",
+            backend,
+            model,
+            reviewer,
+            required=Requirements(sources=True),
+        )
+    assert len(reviewer.materials) == 1
+    assert not model.calls

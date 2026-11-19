@@ -6,6 +6,7 @@ import re
 from dataclasses import dataclass
 
 from venom_core.services.grounded_dialogue import (
+    EvidenceError,
     PublishedAnswer,
     SourceDocument,
     SourceQuote,
@@ -126,7 +127,7 @@ def bind_pickup_roles(
     if history_match["point"].casefold() != pickup_match["point"].casefold() or (
         point_request is not None and point_request["day"].casefold() != weekday
     ):
-        return None
+        raise EvidenceError("pilot_pickup_roles_inconsistent")
     return (
         PickupRoles(
             history_match["point"],

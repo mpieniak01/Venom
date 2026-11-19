@@ -653,6 +653,13 @@ def _setting_criterion_id(material: dict, value: Decimal) -> str | None:
     return criterion_id
 
 
+def _asks_for_setting(text: str) -> bool:
+    return any(
+        _SETTING_QUESTION.fullmatch(clause) and _SETTING_MENTION.search(clause)
+        for clause in _clauses(text)
+    )
+
+
 def _setting_scope(
     material: dict, users: UserMessages, clauses: list[str], candidate: str
 ) -> ResponseScope | None:
@@ -672,10 +679,7 @@ def _setting_scope(
     criterion_id = _setting_criterion_id(material, value)
     if criterion_id is None:
         return None
-    if not any(
-        _SETTING_QUESTION.fullmatch(clause) and _SETTING_MENTION.search(clause)
-        for clause in _clauses(text)
-    ):
+    if not _asks_for_setting(text):
         return None
     evidence: ResponseScope = {
         "kind": "setting_advice",

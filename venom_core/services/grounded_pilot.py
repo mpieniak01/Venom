@@ -2182,72 +2182,9 @@ def _plain_round_recap(message: str, history: tuple[dict[str, str], ...]) -> str
     )
 
 
-def plain_pilot_recap(
-    message: str,
-    focused: tuple[dict[str, str], ...],
-    *,
-    duration_receipt: DurationReceipt | None = None,
-    price_mean_receipts: tuple[PriceMeanReceipt, ...] = (),
-    percent_change_receipts: tuple[PercentChangeReceipt, ...] | None = None,
-    explicit_total_receipt: ExplicitTotalReceipt | None = None,
-    pickup_roles_receipt: PickupRolesReceipt | None = None,
-    segment_length_receipt: SegmentLengthReceipt | None = None,
-    speed_measurement_receipts: tuple[SpeedMeasurementReceipt, ...] = (),
-    thermal_draft: tuple[ThermalStep, ...] | None = None,
+def _plain_gathering_recap(
+    message: str, focused: tuple[dict[str, str], ...]
 ) -> str | None:
-    """Retain verified decisions and event roles from the selected exception."""
-    users = tuple(item["content"] for item in focused if item["role"] == "user")
-    if not users:
-        intro = explicit_group_intro(message) or segment_length_intro(message)
-        if intro is not None:
-            return intro
-    if contact := thermal_contact(message):
-        if thermal_draft is not None:
-            contact.check(thermal_draft)
-        return contact.render()
-    if thermal_draft is not None:
-        raise EvidenceError("thermal_contact_premises_unbound")
-    if handoff := handoff_sms_recap(message, users):
-        return handoff
-    if explicit_total_receipt is not None:
-        recap = explicit_total_receipt.recap(message, users)
-        if recap is not None:
-            return recap
-    if percent_change_receipts is not None:
-        recap = percent_change_recap(message, users, percent_change_receipts)
-        if recap is not None:
-            return recap
-    if segment_length_receipt is not None:
-        length_recap = segment_length_receipt.recap(message, users)
-        if length_recap is not None:
-            return length_recap
-    if price_mean_receipts:
-        price_recap = price_mean_recap(message, users, price_mean_receipts)
-        if price_recap is not None:
-            return price_recap
-    speed_recap = speed_measurement_recap(message, users, speed_measurement_receipts)
-    if speed_recap is not None:
-        return speed_recap
-    if duration_receipt is not None:
-        recap = duration_receipt.recap(message, users)
-        if recap is not None:
-            return recap
-    if pickup_roles_receipt is not None:
-        users = tuple(item["content"] for item in focused if item["role"] == "user")
-        pickup_recap = pickup_roles_receipt.recap(message, users)
-        if pickup_recap is not None:
-            return pickup_recap
-    if _BOOKING_RECAP.search(message):
-        return _plain_booking_recap(focused)
-    contextual = (
-        _plain_schedule_recap(message, focused)
-        or _plain_stock_recap(message, focused)
-        or _plain_map_difference(message, focused)
-        or _plain_order_comparison(message, focused)
-        or _plain_round_recap(message, focused)
-    )
-    if contextual:
-        return contextual
     if not (_ONE_SENTENCE_RECAP.search(message) and _GATHERING_DETAILS.search(message)):
         return None
     if tuple(turn["role"] for turn in focused) != (
@@ -2298,6 +2235,111 @@ def plain_pilot_recap(
     )
     result = f"{schedule}, a {gathering[0].lower()}{gathering[1:]}."
     return f"{result} {citations}" if citations else result
+
+
+def _plain_calculation_recap(
+    message: str,
+    users: tuple[str, ...],
+    explicit_total_receipt: ExplicitTotalReceipt | None,
+    percent_change_receipts: tuple[PercentChangeReceipt, ...] | None,
+    segment_length_receipt: SegmentLengthReceipt | None,
+    price_mean_receipts: tuple[PriceMeanReceipt, ...],
+    speed_measurement_receipts: tuple[SpeedMeasurementReceipt, ...],
+) -> str | None:
+    if explicit_total_receipt is not None:
+        recap = explicit_total_receipt.recap(message, users)
+        if recap is not None:
+            return recap
+    if percent_change_receipts is not None:
+        recap = percent_change_recap(message, users, percent_change_receipts)
+        if recap is not None:
+            return recap
+    if segment_length_receipt is not None:
+        length_recap = segment_length_receipt.recap(message, users)
+        if length_recap is not None:
+            return length_recap
+    if price_mean_receipts:
+        price_recap = price_mean_recap(message, users, price_mean_receipts)
+        if price_recap is not None:
+            return price_recap
+    speed_recap = speed_measurement_recap(message, users, speed_measurement_receipts)
+    if speed_recap is not None:
+        return speed_recap
+    return None
+
+
+def _plain_context_receipt_recap(
+    message: str,
+    users: tuple[str, ...],
+    duration_receipt: DurationReceipt | None,
+    pickup_roles_receipt: PickupRolesReceipt | None,
+) -> str | None:
+    if duration_receipt is not None:
+        recap = duration_receipt.recap(message, users)
+        if recap is not None:
+            return recap
+    if pickup_roles_receipt is not None:
+        pickup_recap = pickup_roles_receipt.recap(message, users)
+        if pickup_recap is not None:
+            return pickup_recap
+    return None
+
+
+def plain_pilot_recap(
+    message: str,
+    focused: tuple[dict[str, str], ...],
+    *,
+    duration_receipt: DurationReceipt | None = None,
+    price_mean_receipts: tuple[PriceMeanReceipt, ...] = (),
+    percent_change_receipts: tuple[PercentChangeReceipt, ...] | None = None,
+    explicit_total_receipt: ExplicitTotalReceipt | None = None,
+    pickup_roles_receipt: PickupRolesReceipt | None = None,
+    segment_length_receipt: SegmentLengthReceipt | None = None,
+    speed_measurement_receipts: tuple[SpeedMeasurementReceipt, ...] = (),
+    thermal_draft: tuple[ThermalStep, ...] | None = None,
+) -> str | None:
+    """Retain verified decisions and event roles from the selected exception."""
+    users = tuple(item["content"] for item in focused if item["role"] == "user")
+    if not users:
+        intro = explicit_group_intro(message) or segment_length_intro(message)
+        if intro is not None:
+            return intro
+    if contact := thermal_contact(message):
+        if thermal_draft is not None:
+            contact.check(thermal_draft)
+        return contact.render()
+    if thermal_draft is not None:
+        raise EvidenceError("thermal_contact_premises_unbound")
+    if handoff := handoff_sms_recap(message, users):
+        return handoff
+    calculated = _plain_calculation_recap(
+        message,
+        users,
+        explicit_total_receipt,
+        percent_change_receipts,
+        segment_length_receipt,
+        price_mean_receipts,
+        speed_measurement_receipts,
+    )
+    if calculated is not None:
+        return calculated
+    verified = _plain_context_receipt_recap(
+        message, users, duration_receipt, pickup_roles_receipt
+    )
+    if verified is not None:
+        return verified
+    if _BOOKING_RECAP.search(message):
+        return _plain_booking_recap(focused)
+    contextual = (
+        _plain_schedule_recap(message, focused)
+        or _plain_stock_recap(message, focused)
+        or _plain_map_difference(message, focused)
+        or _plain_order_comparison(message, focused)
+        or _plain_round_recap(message, focused)
+    )
+    if contextual:
+        return contextual
+    return _plain_gathering_recap(message, focused)
 
 
 @dataclass(frozen=True)
@@ -2461,44 +2503,49 @@ def _source_only_draft(
     return None
 
 
+def _source_deterministic_answer(
+    turn: _PilotRequest, documents: tuple[SourceDocument, ...]
+) -> _DeterministicAnswer:
+    message, prior_users = turn.message, turn.prior_users
+    if not turn.required.calculation:
+        pickup = bind_pickup_roles(message, documents)
+        if pickup is not None:
+            roles, signer_requested = pickup
+            return _DeterministicAnswer(
+                source_draft=Draft(
+                    prose=roles.reply(signer_requested=signer_requested),
+                    sources=[
+                        Quote(**asdict(roles.historical)),
+                        Quote(**asdict(roles.scheduled)),
+                    ],
+                    calculations=[],
+                ),
+                pickup_roles=roles,
+            )
+        return _DeterministicAnswer(source_draft=_source_only_draft(message, documents))
+    segment_length = bind_segment_length((*prior_users, message), documents)
+    if segment_length is not None:
+        expression = segment_length.expression
+        return _DeterministicAnswer(
+            calculation=Calculation(
+                calculation_id=SEGMENT_LENGTH_ID, expression=expression, unit="m"
+            )
+            if expression is not None
+            else None,
+            segment_length=segment_length,
+        )
+    order = _order_calculation(message, prior_users, documents)
+    return _DeterministicAnswer(
+        calculation=order.calculation if order else None, order=order
+    )
+
+
 def _deterministic_answer(
     turn: _PilotRequest, documents: tuple[SourceDocument, ...]
 ) -> _DeterministicAnswer:
     message, prior_users = turn.message, turn.prior_users
     if turn.required.sources:
-        if not turn.required.calculation:
-            pickup = bind_pickup_roles(message, documents)
-            if pickup is not None:
-                roles, signer_requested = pickup
-                return _DeterministicAnswer(
-                    source_draft=Draft(
-                        prose=roles.reply(signer_requested=signer_requested),
-                        sources=[
-                            Quote(**asdict(roles.historical)),
-                            Quote(**asdict(roles.scheduled)),
-                        ],
-                        calculations=[],
-                    ),
-                    pickup_roles=roles,
-                )
-            return _DeterministicAnswer(
-                source_draft=_source_only_draft(message, documents)
-            )
-        segment_length = bind_segment_length((*prior_users, message), documents)
-        if segment_length is not None:
-            expression = segment_length.expression
-            return _DeterministicAnswer(
-                calculation=Calculation(
-                    calculation_id=SEGMENT_LENGTH_ID, expression=expression, unit="m"
-                )
-                if expression is not None
-                else None,
-                segment_length=segment_length,
-            )
-        order = _order_calculation(message, prior_users, documents)
-        return _DeterministicAnswer(
-            calculation=order.calculation if order else None, order=order
-        )
+        return _source_deterministic_answer(turn, documents)
     if not turn.required.calculation:
         return _DeterministicAnswer()
     speed = bind_speed_measurement((*prior_users, message))
@@ -3154,9 +3201,63 @@ def run_pilot_turn(
     else:
         _current(backend, sources.documents)
         gate.publish(claim_draft)
+    return _published_pilot_answer(
+        turn, sources, deterministic, plan, proof, duration_receipt, draft
+    )
+
+
+def _calculated_pilot_answer(
+    turn: _PilotRequest,
+    deterministic: _DeterministicAnswer,
+    proof: _PilotProof,
+    draft: Draft,
+) -> PublishedAnswer | None:
+    if proof.evidence is None:
+        return None
+    if deterministic.price_mean is not None:
+        price_receipt = PriceMeanReceipt.from_evidence(
+            (*turn.prior_users, turn.message), deterministic.price_mean, proof.evidence
+        )
+        return PilotPriceMeanAnswer(proof.evidence_id, draft.prose, price_receipt)
+    if deterministic.explicit_total is not None:
+        total_receipt = ExplicitTotalReceipt.from_evidence(
+            (*turn.prior_users, turn.message),
+            deterministic.explicit_total,
+            proof.evidence,
+        )
+        return PilotExplicitTotalAnswer(proof.evidence_id, draft.prose, total_receipt)
+    if deterministic.percent_change is not None:
+        percent_receipt = PercentChangeReceipt.from_evidence(
+            (*turn.prior_users, turn.message),
+            deterministic.percent_change,
+            proof.evidence,
+            proof.result.places,
+        )
+        return PilotPercentChangeAnswer(proof.evidence_id, draft.prose, percent_receipt)
+    if deterministic.speed_measurement is not None:
+        speed_receipt = SpeedMeasurementReceipt.from_evidence(
+            (*turn.prior_users, turn.message),
+            deterministic.speed_measurement,
+            proof.evidence,
+        )
+        return PilotSpeedMeasurementAnswer(
+            proof.evidence_id, draft.prose, speed_receipt
+        )
+    return None
+
+
+def _published_pilot_answer(
+    turn: _PilotRequest,
+    sources: _PilotSources,
+    deterministic: _DeterministicAnswer,
+    plan: Plan,
+    proof: _PilotProof,
+    duration_receipt: DurationReceipt | None,
+    draft: Draft,
+) -> PublishedAnswer:
     if deterministic.pickup_roles is not None:
         pickup_receipt = PickupRolesReceipt(
-            (*turn.prior_users, message), deterministic.pickup_roles
+            (*turn.prior_users, turn.message), deterministic.pickup_roles
         )
         return PilotPickupRolesAnswer(proof.evidence_id, draft.prose, pickup_receipt)
     if proof.segment_length is not None:
@@ -3165,43 +3266,19 @@ def run_pilot_turn(
         )
     if duration_receipt is not None:
         return PilotDurationAnswer(proof.evidence_id, draft.prose, duration_receipt)
-    if deterministic.price_mean is not None and proof.evidence is not None:
-        price_receipt = PriceMeanReceipt.from_evidence(
-            (*turn.prior_users, message), deterministic.price_mean, proof.evidence
-        )
-        return PilotPriceMeanAnswer(proof.evidence_id, draft.prose, price_receipt)
-    if deterministic.explicit_total is not None and proof.evidence is not None:
-        total_receipt = ExplicitTotalReceipt.from_evidence(
-            (*turn.prior_users, message), deterministic.explicit_total, proof.evidence
-        )
-        return PilotExplicitTotalAnswer(proof.evidence_id, draft.prose, total_receipt)
-    if deterministic.percent_change is not None and proof.evidence is not None:
-        percent_receipt = PercentChangeReceipt.from_evidence(
-            (*turn.prior_users, message),
-            deterministic.percent_change,
-            proof.evidence,
-            result.places,
-        )
-        return PilotPercentChangeAnswer(proof.evidence_id, draft.prose, percent_receipt)
-    if deterministic.speed_measurement is not None and proof.evidence is not None:
-        speed_receipt = SpeedMeasurementReceipt.from_evidence(
-            (*turn.prior_users, message),
-            deterministic.speed_measurement,
-            proof.evidence,
-        )
-        return PilotSpeedMeasurementAnswer(
-            proof.evidence_id, draft.prose, speed_receipt
-        )
+    calculated = _calculated_pilot_answer(turn, deterministic, proof, draft)
+    if calculated is not None:
+        return calculated
     if (
-        required.sources
-        and not required.calculation
+        turn.required.sources
+        and not turn.required.calculation
         and plan.mode == "answer"
-        and requested_card_ids(message)
+        and requested_card_ids(turn.message)
         and not sources.unavailable
     ):
         published_history = (
-            *history,
-            {"role": "user", "content": message},
+            *turn.history,
+            {"role": "user", "content": turn.message},
             {"role": "assistant", "content": draft.prose},
         )
         return PilotSourceAnswer(

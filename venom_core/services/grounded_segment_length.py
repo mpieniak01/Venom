@@ -6,7 +6,6 @@ import re
 from dataclasses import dataclass
 from decimal import Decimal
 
-from venom_core.services.grounded_calculator import calculate
 from venom_core.services.grounded_dialogue import (
     CalculationEvidence,
     Evidence,
@@ -114,6 +113,17 @@ class SegmentLengthState:
         return labels
 
     @property
+    def question(self) -> str:
+        if self.reserve is None and self.minimum is None:
+            return (
+                "Jaka jest długość osobnego odcinka zapasu i jaka łączna długość "
+                "jest wymagana do odbioru?"
+            )
+        if self.reserve is None:
+            return "Jaka jest długość osobnego odcinka zapasu?"
+        return "Jaka łączna długość jest wymagana do odbioru?"
+
+    @property
     def expression(self) -> str | None:
         if self.reserve is None or self.minimum is None:
             return None
@@ -139,9 +149,9 @@ def bind_segment_length(
         return None
     current = _turn(users[-1])
     named = requested_card_ids(users[-1])
-    if len(named) != 2 or len(documents) != 2:
-        return None
-    if {document.ref.source_id for document in documents} != set(named):
+    if len(named) != 2 or not {document.ref.source_id for document in documents} <= set(
+        named
+    ):
         return None
     update = _UPDATE.fullmatch(current)
     if update is not None:
@@ -197,22 +207,25 @@ class SegmentLengthReceipt:
             or minimum.source not in evidence.sources
         ):
             raise EvidenceError("pilot_segment_sources_mismatch")
-        expected = CalculationEvidence(
-            SEGMENT_LENGTH_ID, expression, calculate(expression), "m"
-        )
-        if evidence.calculations != (expected,):
+        if len(evidence.calculations) != 1:
             raise EvidenceError("pilot_segment_calculation_mismatch")
-        return cls(users, state, expected, reserve, minimum)
+        calculation = evidence.calculations[0]
+        if (
+            calculation.calculation_id != SEGMENT_LENGTH_ID
+            or calculation.expression != expression
+            or calculation.unit != "m"
+            or Decimal(calculation.value) != state.main.metres + reserve.measure.metres
+        ):
+            raise EvidenceError("pilot_segment_calculation_mismatch")
+        return cls(users, state, calculation, reserve, minimum)
 
     @property
     def _total(self) -> str:
         return _metres(Decimal(self.calculation.value))
 
     @property
-    def _verdict(self) -> str:
-        if Decimal(self.calculation.value) < self.minimum.measure.metres:
-            return "Łączna długość jest za mała."
-        return "Łączna długość spełnia normę."
+    def _meets_minimum(self) -> bool:
+        return Decimal(self.calculation.value) >= self.minimum.measure.metres
 
     @property
     def quotes(self) -> tuple[SourceQuote, SourceQuote]:
@@ -229,8 +242,11 @@ class SegmentLengthReceipt:
             f"Norma odbioru wynosi {_metres(self.minimum.measure.metres)} "
             f"[{self.minimum.quote.source_id}] i jest progiem dla sumy."
         )
-        comparison = f" {self._verdict}" if self.state.compare else ""
-        return f"{main_clause} {reserve} Łącznie {self._total}. {minimum}{comparison}"
+        summary = f"{main_clause} {reserve} Łącznie {self._total}. {minimum}"
+        if not self.state.compare:
+            return summary
+        verdict = "spełnia normę" if self._meets_minimum else "jest za mała"
+        return f"{summary} Łączna długość {verdict}."
 
     def verify_prose(self, prose: str, evidence: Evidence) -> None:
         # Verify the exact renderer, including source operands in metres.
@@ -242,12 +258,13 @@ class SegmentLengthReceipt:
     def recap(self, message: str, users: tuple[str, ...]) -> str | None:
         if _RECAP.fullmatch(_turn(message)) is None:
             return None
-        if self.users != users:
+        if users[: len(self.users)] != self.users or any(
+            _RECAP.fullmatch(_turn(turn)) is None for turn in users[len(self.users) :]
+        ):
             return "Potrzebuję aktualnego potwierdzonego wyniku i normy odbioru."
         minimum = _metres(self.minimum.measure.metres)
-        if Decimal(self.calculation.value) < self.minimum.measure.metres:
-            return f"{self._total}, za mało wobec normy {minimum}."
-        return f"{self._total}, wystarczy wobec normy {minimum}."
+        verdict = "wystarczy" if self._meets_minimum else "za mało"
+        return f"{self._total}, {verdict} wobec normy {minimum}."
 
 
 @dataclass(frozen=True)

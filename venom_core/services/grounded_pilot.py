@@ -2764,7 +2764,7 @@ def _pilot_draft(
         )
     if deterministic.segment_length is not None and plan.mode == "clarify":
         return Draft(
-            prose=f"Brakuje potwierdzonych danych. Podaj proszę: {', '.join(plan.missing)}.",
+            prose=deterministic.segment_length.question,
             sources=[],
             calculations=[],
         )

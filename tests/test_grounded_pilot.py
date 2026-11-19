@@ -3275,18 +3275,26 @@ def test_segment_length_uses_each_card_for_its_role_and_updates_recap():
     )
 
 
-def test_segment_length_missing_reserve_clarifies_after_full_read_without_calculation():
+@pytest.mark.parametrize("unavailable", [False, True])
+def test_segment_length_missing_reserve_clarifies_after_full_read_without_calculation(
+    unavailable,
+):
     cards, model, reviewer = _s05_cards(reserve=None), Model(), Reviewer()
+    if unavailable:
+        cards.cards["PARWENA"]["status"] = "unavailable"
     result = _s05_turn(
         _S05_TOTAL, _s05_history(_S05_INITIAL), cards, model, reviewer, []
     )
-    assert "długość osobnego odcinka zapasu" in result.text
+    assert result.text == "Jaka jest długość osobnego odcinka zapasu?"
     assert not isinstance(result, PilotSegmentLengthAnswer)
     material = reviewer.materials[-1]
     assert material["plan"]["mode"] == "clarify"
     assert material["evidence"]["calculations"] == []
-    assert len(material["evidence"]["sources"]) == 2
-    assert cards.read_log == ["PARWENA", "TRUDOM", "PARWENA", "TRUDOM"]
+    assert len(material["evidence"]["sources"]) == (1 if unavailable else 2)
+    assert material["evidence"]["unavailable"] == (["PARWENA"] if unavailable else [])
+    assert cards.read_log[:2] == ["PARWENA", "TRUDOM"]
+    assert cards.read_log.count("TRUDOM") == 2
+    assert cards.read_log.count("PARWENA") == (1 if unavailable else 2)
     assert model.calls == []
 
 

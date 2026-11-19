@@ -108,6 +108,7 @@ from venom_core.services.grounded_segment_length import (
 )
 from venom_core.services.grounded_source_enrollment import (
     bind_enrollment_evidence,
+    requested_results_date_quote,
     requests_enrollment_recap,
 )
 from venom_core.services.grounded_speed_measurement import (
@@ -2425,6 +2426,12 @@ def _read_pilot_sources(
 def _source_only_draft(
     message: str, documents: tuple[SourceDocument, ...]
 ) -> Draft | None:
+    if results := requested_results_date_quote(message, documents):
+        return Draft(
+            prose=f"„{results.quote}” [{results.source_id}]",
+            sources=[Quote(**asdict(results))],
+            calculations=[],
+        )
     if meeting := requested_meeting_place(message, documents):
         return Draft(
             prose=f"{meeting.quote} [{meeting.source_id}]",

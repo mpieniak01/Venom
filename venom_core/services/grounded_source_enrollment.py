@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Iterator
 from dataclasses import dataclass
 
 from venom_core.services.grounded_dialogue import (
@@ -10,6 +11,7 @@ from venom_core.services.grounded_dialogue import (
     SourceDocument,
     SourceQuote,
     _verified_document,
+    requested_citation_ids,
 )
 
 _RECAP = re.compile(
@@ -61,6 +63,20 @@ _RESULTS = re.compile(
     re.IGNORECASE,
 )
 _CLAUSES = re.compile(r"(?<=[.!?])\s+|\n+")
+_SENTENCE_CLAUSES = re.compile(r"(?<=[.!?])\s+")
+
+_CARD = r"(?:\[[\w.-]{1,64}\]|[^\W\d_][\w-]{1,63})"
+_CARD_LIST = rf"(?:kartę|karty) {_CARD}(?:(?:, | i | oraz )(?:kartę |karty )?{_CARD})*"
+_RESULTS_CITATION = re.compile(
+    rf"(?:przeczytaj(?: ponownie)? (?:(?:obie|wszystkie) )?{_CARD_LIST}[.!] )?"
+    rf"zacytuj kartę {_CARD} (?:i|oraz) podaj (?:tylko|wyłącznie) "
+    r"datę (?:ogłoszenia |publikacji )?wyników[.!?]?",
+    re.IGNORECASE,
+)
+_RESULTS_ROLE = re.compile(r"\b(?:wynik\w*|list(?:a|ę) uczestników)\b", re.IGNORECASE)
+_OTHER_DATED_RESULT = re.compile(
+    rf"{_DATE}|\b[0-9]{{1,4}}[./-][0-9]{{1,2}}\b", re.IGNORECASE
+)
 
 
 @dataclass(frozen=True)
@@ -107,6 +123,42 @@ def _one(candidates: list[EnrollmentField], role: str) -> tuple[EnrollmentField,
     return tuple(candidates)
 
 
+def _verified_clauses(
+    documents: tuple[SourceDocument, ...], *, split: re.Pattern[str] = _CLAUSES
+) -> Iterator[tuple[SourceDocument, str]]:
+    for doc in documents:
+        if not _verified_document(doc):
+            raise EvidenceError("source_incomplete")
+        for clause in split.split(doc.text):
+            yield doc, clause.strip()
+
+
+def requested_results_date_quote(
+    message: str, documents: tuple[SourceDocument, ...]
+) -> SourceQuote | None:
+    """Select one literal results date from the explicitly cited card."""
+    if _RESULTS_CITATION.fullmatch(" ".join(message.split())) is None:
+        return None
+    citations = requested_citation_ids(message)
+    if len(citations) != 1:
+        raise EvidenceError("enrollment_results_citation_required")
+    fields: list[EnrollmentField] = []
+    for document, clause in _verified_clauses(documents, split=_SENTENCE_CLAUSES):
+        match = _RESULTS.fullmatch(clause)
+        if match:
+            proof = SourceQuote(document.ref.source_id, document.ref.version, clause)
+            fields.append(EnrollmentField(_date(match), proof))
+        elif _RESULTS_ROLE.search(clause) and _OTHER_DATED_RESULT.search(clause):
+            raise EvidenceError("enrollment_results_date_ambiguous")
+    supported = _one(fields, "results_date")
+    eligible = [
+        field.proof for field in supported if field.proof.source_id == citations[0]
+    ]
+    if not eligible:
+        raise EvidenceError("enrollment_results_quote_missing")
+    return min(eligible, key=lambda proof: len(proof.quote))
+
+
 def bind_enrollment_evidence(
     documents: tuple[SourceDocument, ...],
 ) -> EnrollmentEvidence:
@@ -115,22 +167,18 @@ def bind_enrollment_evidence(
     deadlines: list[EnrollmentField] = []
     results: list[EnrollmentField] = []
     source_ids = {doc.ref.source_id.casefold() for doc in documents}
-    for doc in documents:
-        if not _verified_document(doc):
-            raise EvidenceError("source_incomplete")
-        for sentence in _CLAUSES.split(doc.text):
-            sentence = sentence.strip()
-            proof = SourceQuote(doc.ref.source_id, doc.ref.version, sentence)
-            combined = _COMBINED.fullmatch(sentence)
-            if channel := combined or _CHANNEL_ONLY.fullmatch(sentence):
-                value = " ".join(channel["channel"].split())
-                if value.casefold().removeprefix("karta ") in source_ids:
-                    raise EvidenceError("enrollment_channel_is_source_id")
-                channels.append(EnrollmentField(value, proof))
-            if deadline := combined or _DEADLINE_ONLY.fullmatch(sentence):
-                deadlines.append(EnrollmentField(_deadline(deadline), proof))
-            if result := _RESULTS.fullmatch(sentence):
-                results.append(EnrollmentField(_date(result), proof))
+    for doc, sentence in _verified_clauses(documents):
+        proof = SourceQuote(doc.ref.source_id, doc.ref.version, sentence)
+        combined = _COMBINED.fullmatch(sentence)
+        if channel := combined or _CHANNEL_ONLY.fullmatch(sentence):
+            value = " ".join(channel["channel"].split())
+            if value.casefold().removeprefix("karta ") in source_ids:
+                raise EvidenceError("enrollment_channel_is_source_id")
+            channels.append(EnrollmentField(value, proof))
+        if deadline := combined or _DEADLINE_ONLY.fullmatch(sentence):
+            deadlines.append(EnrollmentField(_deadline(deadline), proof))
+        if result := _RESULTS.fullmatch(sentence):
+            results.append(EnrollmentField(_date(result), proof))
     channel_fields = _one(channels, "channel")
     deadline_fields = _one(deadlines, "deadline")
     (results_date, *_) = _one(results, "results_date")

@@ -3810,3 +3810,113 @@ def test_source_role_and_historical_day_stay_in_the_established_recap_path():
         {"source_id": ident, "text": text} for ident, text in backend.texts.items()
     ]
     assert result.text == model.override["draft"]["prose"]
+
+
+_RESULTS_CITATION_REQUEST = (
+    "Przeczytaj ponownie kartę KANDEL i kartę MIRWEN. "
+    "Zacytuj kartę MIRWEN i podaj tylko datę wyników."
+)
+
+
+def test_results_date_uses_minimal_literal_citation_and_reviewed_recap():
+    from venom_core.services.grounded_pilot import PilotSourceAnswer
+
+    backend, model, reviewer = PickupRoleCards(), Model(), Reviewer()
+    backend.texts = {
+        "KANDEL": _ENROLLMENT_INPUT,
+        "MIRWEN": _ENROLLMENT_RESULT + " Potwierdzenie przychodzi automatycznie.",
+    }
+    stop = Reviewer(False)
+    with pytest.raises(EvidenceError, match="pilot_semantic_rejected"):
+        run_pilot_turn(
+            _RESULTS_CITATION_REQUEST,
+            "r",
+            backend,
+            model,
+            stop,
+            required=Requirements(sources=True),
+        )
+    released = run_pilot_turn(
+        _RESULTS_CITATION_REQUEST,
+        "r",
+        backend,
+        model,
+        reviewer,
+        required=Requirements(sources=True),
+    )
+    assert not model.calls
+    assert isinstance(released, PilotSourceAnswer)
+    assert released.text == f"„{_ENROLLMENT_RESULT}” [MIRWEN]"
+    draft = reviewer.materials[0]["draft"]
+    assert draft == stop.materials[0]["draft"]
+    assert draft["sources"] == [
+        {"source_id": "MIRWEN", "version": "1", "quote": _ENROLLMENT_RESULT}
+    ]
+    history = (
+        {"role": "user", "content": _RESULTS_CITATION_REQUEST},
+        {"role": "assistant", "content": released.text},
+    )
+    assert released.recall_enrollment(_ENROLLMENT_RECAP, history, backend) == (
+        "Kanał zgłoszeń to panel, a termin mija 18 lipca o 15:00. "
+        "Wyniki zostaną ogłoszone 23 lipca."
+    )
+
+
+@pytest.mark.parametrize(
+    "submission, results, reason",
+    [
+        (
+            _ENROLLMENT_INPUT + " Wyniki ogłosimy 24 lipca.",
+            _ENROLLMENT_RESULT,
+            "enrollment_conflicting_results_date",
+        ),
+        (
+            _ENROLLMENT_INPUT + " " + _ENROLLMENT_RESULT,
+            "Potwierdzenie przychodzi automatycznie.",
+            "enrollment_results_quote_missing",
+        ),
+        (
+            _ENROLLMENT_INPUT,
+            _ENROLLMENT_RESULT + " Termin wyników przesunięto na 24 lipca.",
+            "enrollment_results_date_ambiguous",
+        ),
+        (
+            _ENROLLMENT_INPUT,
+            "Wyniki naboru zostaną ogłoszone 23 lipca\njeżeli komisja zdąży.",
+            "enrollment_results_date_ambiguous",
+        ),
+    ],
+)
+def test_results_date_does_not_release_conflicting_or_unbacked_citation(
+    submission, results, reason
+):
+    backend, model, reviewer = PickupRoleCards(), Model(), Reviewer()
+    backend.texts = {"KANDEL": submission, "MIRWEN": results}
+    with pytest.raises(EvidenceError, match=reason):
+        run_pilot_turn(
+            _RESULTS_CITATION_REQUEST,
+            "r",
+            backend,
+            model,
+            reviewer,
+            required=Requirements(sources=True),
+        )
+    assert not model.calls and not reviewer.materials
+
+
+def test_results_date_rechecks_even_the_uncited_card_after_review():
+    backend, model, reviewer = PickupRoleCards(), Model(), Reviewer()
+    backend.texts = {"KANDEL": _ENROLLMENT_INPUT, "MIRWEN": _ENROLLMENT_RESULT}
+    reviewer.hook = lambda: backend.texts.update(
+        {"KANDEL": "Zgłoszenie na warsztaty przyjmuje panel do 20 lipca o 15:00."}
+    )
+    with pytest.raises(EvidenceError, match="answer_source_stale"):
+        run_pilot_turn(
+            _RESULTS_CITATION_REQUEST,
+            "r",
+            backend,
+            model,
+            reviewer,
+            required=Requirements(sources=True),
+        )
+    assert not model.calls

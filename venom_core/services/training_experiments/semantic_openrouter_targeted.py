@@ -409,7 +409,16 @@ def _restore_progress(
     return prior_attempts
 
 
+def _capacity_exceeded(state: audit._AuditState) -> bool:
+    return (
+        judge._money(state.protocol["planned_budget_usd"]) > state.budget
+        or judge._money(state.protocol["max_case_reservation_usd"]) > state.per_request
+    )
+
+
 def resume(state: audit._AuditState) -> dict:
+    if _capacity_exceeded(state):
+        return {"status": "budget_exhausted", "resume_blocked": True}
     recorded = _recorded_prefix(state, _requests(state.manifest))
     return execute(
         state, prior_attempts=_restore_progress(state, recorded), resuming=True
@@ -479,9 +488,7 @@ def execute(
     if not resuming:
         state.start = audit.time.monotonic()
     (state.root / "receipts").mkdir(exist_ok=resuming)
-    planned = judge._money(state.protocol["planned_budget_usd"])
-    maximum = judge._money(state.protocol["max_case_reservation_usd"])
-    if planned > state.budget or maximum > state.per_request:
+    if _capacity_exceeded(state):
         state.status = "budget_exhausted"
         return audit._audit_result(state)
     state.next_post_at = audit._provider_next_post_at(state.rate_path)

@@ -251,13 +251,20 @@ def prepare(
             staged / "frozen.json",
             {"protocol_sha256": digest(staged / _PROTOCOL_FILE), "created_at": _utc()},
         )
-        publication._publish(staged, output)
-    return {
-        "status": "prepared_not_qualified",
-        "audit_root": str(output),
-        **protocol,
-        "capacity": _capacity(protocol, budget),
-    }
+        result = {
+            "status": "prepared_not_qualified",
+            "audit_root": str(output),
+            **protocol,
+            "capacity": _capacity(protocol, budget),
+        }
+        try:
+            publication._publish(staged, output)
+        except publication._PublicationSyncError as error:
+            result.update(
+                status="published_durability_unconfirmed",
+                sync_errno=error.errno,
+            )
+    return result
 
 
 def _rate_policy(protocol: dict) -> dict:
@@ -845,8 +852,10 @@ def _finish_rate_window(
     if row.get("error_type") == "provider_unavailable":
         state.status = "provider_unavailable"
         previous = row["rate_limit_attempts"]
+        delay = _rate_delay(state, row, retry_count)
         if not any(_provider_unavailable(attempt) for attempt in previous):
-            return _rate_delay(state, row, retry_count)
+            return delay
+        return None
     if row["status"] != "not_sent":
         _persist_cooldown(state, max(0.0, state.next_post_at - time.monotonic()))
     return None
@@ -1052,11 +1061,15 @@ def _field_deviations(
     ]
 
 
+def _was_attempted(row: dict) -> bool:
+    return row["status"] != "not_sent" or bool(row.get("rate_limit_attempts"))
+
+
 def _unrun_cases(state: _AuditState) -> list[dict]:
     return [
         {**entry, "index": index}
         for index, entry in enumerate(state.order, 1)
-        if index > len(state.rows) or state.rows[index - 1]["status"] == "not_sent"
+        if index > len(state.rows) or not _was_attempted(state.rows[index - 1])
     ]
 
 
@@ -1100,7 +1113,7 @@ def _audit_deviations(state: _AuditState) -> dict:
     not_run = _unrun_cases(state)
     return {
         "planned": len(state.order),
-        "attempted": sum(row["status"] != "not_sent" for row in state.rows),
+        "attempted": sum(_was_attempted(row) for row in state.rows),
         "by_case": by_case,
         "not_run_reason": state.status if not_run else None,
         "not_run": not_run,
@@ -1211,8 +1224,9 @@ def _resume_qualification(state: _AuditState) -> list[dict]:
         state.manifest = _staged_manifest(root, manifest)
         state.order = judge._audit_order(root, state.manifest)
         state.holdout_opened = True
-    else:
-        _require(not admitted, "remote_audit_resume_holdout_missing")
+    elif admitted:
+        _require(not _hashes(root), "remote_audit_resume_holdout_missing")
+        state.metrics = metrics
     requests = []
     for entry in state.order[len(admitted) :]:
         case, answer = judge._jobs(root, state.manifest, entry["split"])[0][
@@ -1226,6 +1240,18 @@ def _resume_qualification(state: _AuditState) -> list[dict]:
     return attempts
 
 
+def _finalize_audit(state: _AuditState) -> None:
+    if len(state.rows) == 228:
+        completed = [row for row in state.rows if row["status"] == "completed"]
+        state.metrics = judge._audit_metrics(state.root, state.manifest, completed)
+        state.status = (
+            "passed"
+            if len(completed) == len(state.order)
+            and state.metrics == state.manifest["thresholds"]
+            else "failed_qualification"
+        )
+
+
 def _execute_cases(state: _AuditState, prior_attempts: list[dict] | None) -> None:
     with ExitStack() as stack:
         while len(state.rows) < len(state.order):
@@ -1235,17 +1261,7 @@ def _execute_cases(state: _AuditState, prior_attempts: list[dict] | None) -> Non
                 break
             if len(state.rows) == 156 and not _phase1_gate(state):
                 break
-            if len(state.rows) == 228:
-                completed = [row for row in state.rows if row["status"] == "completed"]
-                state.metrics = judge._audit_metrics(
-                    state.root, state.manifest, completed
-                )
-                state.status = (
-                    "passed"
-                    if len(completed) == len(state.order)
-                    and state.metrics == state.manifest["thresholds"]
-                    else "failed_qualification"
-                )
+    _finalize_audit(state)
 
 
 def _execute(
@@ -1306,6 +1322,9 @@ def _execute(
         and not state.holdout_opened
         and not _phase1_gate(state)
     ):
+        return _audit_result(state)
+    if len(state.rows) == 228:
+        _finalize_audit(state)
         return _audit_result(state)
     retries = protocol["rate_limit"]["max_retries_per_audit"] - state.retries
     reserve_time = (

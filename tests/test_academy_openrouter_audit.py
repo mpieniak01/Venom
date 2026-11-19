@@ -1702,9 +1702,7 @@ def test_provider_unavailable_live_and_resume_share_single_retry(
 
     state = _resume_fixture_state(tmp_path)
     monkeypatch.setattr(audit, "_persist_cooldown", lambda *_: None)
-    monkeypatch.setattr(
-        audit, "_rate_delay", lambda *_: pytest.fail("must not allow a third POST")
-    )
+    monkeypatch.setattr(audit, "_rate_delay", lambda *_: 0.0)
     prior = _unavailable_attempt(502)
     tail = {**_unavailable_attempt(second_status), "rate_limit_attempts": [prior]}
     assert audit._finish_rate_window(state, tail, 1) is None
@@ -1908,3 +1906,237 @@ def test_prepare_rejects_resealed_manifest_with_traversal_key(ready, tmp_path):
         )
     assert not output.exists()
     assert not (tmp_path / "outside.json").exists()
+
+
+def test_audit_prepare_reports_published_directory_after_parent_sync_error(
+    ready, tmp_path, monkeypatch
+):
+    import errno
+
+    from venom_core.services.training_experiments import (
+        semantic_openrouter_targeted as targeted,
+    )
+
+    _, source, _ = ready
+    output = tmp_path / "published-sync-unconfirmed"
+    publish = targeted._publish
+
+    def fail_parent_sync(staged, target):
+        publish(staged, target)
+        raise targeted._PublicationSyncError(errno.EIO, "fixture parent sync", target)
+
+    monkeypatch.setattr(targeted, "_publish", fail_parent_sync)
+    result = audit.prepare(
+        source / "controls",
+        source / "data-review.json",
+        output,
+        controls_sha256=digest(source / "controls/frozen-manifest.json"),
+        data_review_sha256=digest(source / "data-review.json"),
+        budget_usd="0.80",
+        max_seconds=7200,
+        holdout_max_request_usd="0.002",
+    )
+    assert result["status"] == "published_durability_unconfirmed"
+    assert result["sync_errno"] == errno.EIO
+    assert result["audit_root"] == str(output)
+    assert audit._sealed_protocol(output)[1] == digest(output / "protocol.json")
+    assert not list(tmp_path.glob(".audit-*"))
+
+
+def test_second_azure_unavailable_persists_retry_after_without_retry(
+    tmp_path, monkeypatch
+):
+    state = _resume_fixture_state(tmp_path)
+    state.rate_path = tmp_path / "provider-rate.json"
+    monkeypatch.setattr(
+        audit, "time", SimpleNamespace(time=lambda: 1234.0, monotonic=lambda: 12.0)
+    )
+    tail = {
+        **_unavailable_attempt(502),
+        "rate_limit_attempts": [_unavailable_attempt(502)],
+        "retry_after": "90",
+        "finished_at": audit._utc(),
+        "reserved_usd": "0.001",
+    }
+    assert audit._finish_rate_window(state, tail, 1) is None
+    assert json.loads(state.rate_path.read_text())["not_before"] == 1324.0
+    assert state.status == "provider_unavailable"
+
+
+def test_not_sent_retry_still_counts_its_previous_post(tmp_path):
+    state = _resume_fixture_state(tmp_path)
+    state.status = "provider_cooldown_io_error"
+    entry = {"split": "legacy", "answer_id": "fixture", "repeat": 1}
+    state.order = [entry]
+    state.rows = [
+        {
+            **entry,
+            "index": 1,
+            "status": "not_sent",
+            "error_type": "OSError",
+            "rate_limit_attempts": [{"http_status": 429}],
+        }
+    ]
+    deviations = audit._audit_deviations(state)
+    assert deviations["attempted"] == 1
+    assert deviations["not_run"] == []
+    assert deviations["by_case"][0]["issues"][0]["error_type"] == "OSError"
+
+
+def test_complete_verified_prefix_finalizes_qualification_without_http(
+    full_audit, monkeypatch
+):
+    root, _, result = full_audit
+    protocol = json.loads((root / "protocol.json").read_text())
+    manifest = json.loads((root / "controls/frozen-manifest.json").read_text())
+    phase_sha = digest(root / "phase1-result.json")
+    first = json.loads((root / "receipts/001.json").read_text())
+    last = json.loads((root / "receipts/228.json").read_text())
+    write(root / "holdout-reserve.json", {"phase1_result_sha256": phase_sha})
+    write(
+        root / "started.json",
+        {
+            "created_at": first["started_at"],
+            "protocol_sha256": digest(root / "protocol.json"),
+        },
+    )
+    write(
+        root / "ledger.json",
+        {
+            "pending_call_id": None,
+            "actual_known_cost_usd": result["actual_known_cost_usd"],
+            "unknown_reserved_usd": "0",
+            "accounted_usd": result["accounted_usd"],
+        },
+    )
+    (root / "result.json").unlink()
+    monkeypatch.setattr(audit, "_utc", lambda: last["finished_at"])
+    monkeypatch.setattr(
+        audit,
+        "_schedule_fits",
+        lambda *_args, **_: pytest.fail("a complete prefix needs no HTTP schedule"),
+    )
+    final = audit._execute(
+        root,
+        protocol,
+        manifest,
+        digest(root / "protocol.json"),
+        Decimal("0.80"),
+        Decimal("0.01"),
+        lambda **_: pytest.fail("a complete prefix must not construct HTTP"),
+        None,
+        resume=True,
+    )
+    assert final["status"] == "passed"
+    assert final["rows"] == 228
+    assert final["metrics"] == manifest["thresholds"]
+    assert (root / "qualification.json").is_file()
+    pin = judge.QualificationRemote.model_validate_json(
+        (root / "qualification.json").read_text()
+    )
+    judge.verify_audit(pin)
+
+
+@pytest.mark.parametrize("unexpected_receipt", [False, True])
+def test_admitted_empty_prefix_resumes_through_the_normal_phase_gate(
+    full_audit, tmp_path, monkeypatch, unexpected_receipt
+):
+    from venom_core.services.training_experiments import semantic_openrouter_admission
+
+    source, _, _ = full_audit
+    root = tmp_path / "admitted-started"
+    root.mkdir()
+    admitted = [
+        json.loads((source / "receipts" / f"{index:03d}.json").read_text())
+        for index in range(1, 157)
+    ]
+    manifest = json.loads((source / "controls/frozen-manifest.json").read_text())
+    metrics = {
+        k: v for k, v in manifest["thresholds"].items() if not k.startswith("holdout")
+    }
+    protocol = {
+        **json.loads((source / "protocol.json").read_text()),
+        "phase1_admission_sha256": "fixture",
+        "phase1_reservation_usd": "0.001",
+        "phase1_max_request_usd": "0.001",
+    }
+    write(
+        root / "started.json",
+        {"created_at": audit._utc(), "protocol_sha256": "fixture"},
+    )
+    if unexpected_receipt:
+        write(root / "receipts/157.json", {"status": "failed"})
+    monkeypatch.setattr(
+        semantic_openrouter_admission, "verify", lambda *_: (admitted, metrics)
+    )
+    monkeypatch.setattr(judge, "_audit_order", lambda *_args, **_: admitted)
+    monkeypatch.setattr(audit, "_phase1_reservations", lambda *_: [Decimal("0.001")])
+    gated = []
+
+    def gate(state):
+        assert state.rows == admitted
+        assert not state.holdout_opened
+        assert state.metrics == metrics
+        gated.append(True)
+        state.status = "fixture_gate_blocked"
+        return False
+
+    monkeypatch.setattr(audit, "_phase1_gate", gate)
+
+    def execute():
+        return audit._execute(
+            root,
+            protocol,
+            manifest,
+            "fixture",
+            Decimal("0.80"),
+            Decimal("0.01"),
+            lambda **_: pytest.fail("no HTTP before phase gate"),
+            None,
+            resume=True,
+        )
+
+    if unexpected_receipt:
+        with pytest.raises(ValueError, match="remote_audit_resume_holdout_missing"):
+            execute()
+        assert gated == []
+    else:
+        result = execute()
+        assert gated == [True]
+        assert result["status"] == "fixture_gate_blocked"
+        assert result["rows"] == 156
+        assert not result["holdout_opened"]
+
+
+@pytest.mark.parametrize(
+    "over_limit", ["planned_budget_usd", "max_case_reservation_usd"]
+)
+def test_targeted_budget_refusal_keeps_result_before_restoring_prefix(
+    tmp_path, monkeypatch, over_limit
+):
+    from venom_core.services.training_experiments import (
+        semantic_openrouter_targeted as targeted,
+    )
+
+    state = _resume_fixture_state(tmp_path, **{over_limit: "0.20"})
+    write(tmp_path / "result.json", {"status": "provider_rate_limited", "rows": 1})
+    write(tmp_path / "receipts/001.json", {"fixture": "preserved"})
+    result_bytes = (tmp_path / "result.json").read_bytes()
+    receipt_bytes = (tmp_path / "receipts/001.json").read_bytes()
+    monkeypatch.setattr(
+        targeted,
+        "_recorded_prefix",
+        lambda *_: pytest.fail("must refuse before prefix restore"),
+    )
+    refusal = targeted.resume(state)
+    assert refusal == {"status": "budget_exhausted", "resume_blocked": True}
+    assert (tmp_path / "result.json").read_bytes() == result_bytes
+    assert (tmp_path / "receipts/001.json").read_bytes() == receipt_bytes
+    assert not (tmp_path / "prior-results").exists()
+    state.budget = Decimal("0.30")
+    state.per_request = Decimal("0.30")
+    monkeypatch.setattr(targeted, "_requests", lambda _: [])
+    monkeypatch.setattr(targeted, "_recorded_prefix", lambda *_: [])
+    monkeypatch.setattr(targeted, "_restore_progress", lambda *_: [])
+    monkeypatch.setattr(targeted, "execute", lambda *_args, **_: {"status": "resumed"})
+    assert targeted.resume(state) == {"status": "resumed"}

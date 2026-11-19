@@ -81,9 +81,14 @@ class DurationState:
         return self.tail[-1][0] if self.tail else self.regular
 
     def with_clause(self, clause: str, quote: str) -> DurationState | None:
-        if _CALCULATE.fullmatch(clause) or clause in (
-            "sprzątanie nadal raz",
-            "porządki nadal raz",
+        if (
+            _CALCULATE.fullmatch(clause)
+            or _RECAP.fullmatch(clause)
+            or clause
+            in (
+                "sprzątanie nadal raz",
+                "porządki nadal raz",
+            )
         ):
             return self
         if added := _ADD.fullmatch(clause):
@@ -179,7 +184,10 @@ class DurationReceipt:
     def recap(self, message: str, users: tuple[str, ...]) -> str | None:
         if _RECAP.fullmatch(_normalize(message)) is None:
             return None
-        if users != self.users:
+        if users[: len(self.users)] != self.users or any(
+            _RECAP.fullmatch(_normalize(turn)) is None
+            for turn in users[len(self.users) :]
+        ):
             return "Po zmianie danych potrzebuję aktualnego wyniku kalkulatora."
         last = self.state.last.replace(".", ",")
         cleanup = self.state.cleanup.replace(".", ",")

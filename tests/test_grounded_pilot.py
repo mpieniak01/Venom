@@ -2627,6 +2627,10 @@ def test_duration_receipt_reuses_bound_roles_in_the_ordinary_final():
     assert roles["last_changes"] == [change.split(". ", 1)[0]]
     assert roles["cleanup"] == initial
     assert reviewer.materials[-1]["evidence"]["calculations"][0]["value"] == "48"
+    assert (
+        bind_duration((initial, first, change, final, "Przelicz."))
+        == updated.duration_receipt.state
+    )
 
     history += (
         {"role": "user", "content": change},
@@ -2635,6 +2639,12 @@ def test_duration_receipt_reuses_bound_roles_in_the_ordinary_final():
     assert plain_pilot_recap(
         final, history, duration_receipt=updated.duration_receipt
     ) == ("Ostatnia pętla — 8 min.\nJednorazowe sprzątanie — 7 min.\nŁącznie — 48 min.")
+
+    assert plain_pilot_recap(
+        final,
+        (*history, {"role": "user", "content": final}),
+        duration_receipt=updated.duration_receipt,
+    ) == plain_pilot_recap(final, history, duration_receipt=updated.duration_receipt)
     assert plain_pilot_recap(
         final, history, duration_receipt=first_answer.duration_receipt
     ) == ("Po zmianie danych potrzebuję aktualnego wyniku kalkulatora.")

@@ -217,10 +217,18 @@ def _assigned_card_mentions(message: str) -> list[tuple[int, str]]:
     return references
 
 
+_QUOTED_SOURCE_TEXT = re.compile(r'„[^”]*”|“[^”]*”|«[^»]*»|"[^"]*"')
+
+
+def _unquoted_source_text(message: str) -> str:
+    return _QUOTED_SOURCE_TEXT.sub(lambda match: " " * len(match[0]), message)
+
+
 def requested_card_ids(
     message: str, *, include_contextual: bool = True
 ) -> tuple[str, ...]:
     """Extract card references after the source context is established."""
+    message = _unquoted_source_text(message)
     references = _card_mentions(message, _CARD_REFERENCE)
     references.extend(_citation_mentions(message))
     if include_contextual:
@@ -231,7 +239,7 @@ def requested_card_ids(
 
 _CITE_REFERENCE = re.compile(
     r"\b(?:zacytuj|przytocz (?:cytat|cytaty) z|podaj (?:cytat|cytaty) z)\s+"
-    rf"(?:(?:tylko|wyłącznie|jedynie)\s+)?(?:kart[ęay]\s+)?(?P<name>{_CARD_ID})(?![\w-])",
+    rf"(?:(?P<exclusive>tylko|wyłącznie|jedynie)\s+)?(?:kart[ęay]\s+)?(?P<name>{_CARD_ID})(?![\w-])",
     re.IGNORECASE,
 )
 _CITE_LIST_ITEM = re.compile(
@@ -240,10 +248,15 @@ _CITE_LIST_ITEM = re.compile(
 )
 
 
-def _citation_mentions(message: str) -> list[tuple[int, str]]:
+def _citation_mentions(
+    message: str, *, exclusive_only: bool = False
+) -> list[tuple[int, str]]:
     references = []
+    message = _unquoted_source_text(message)
     for command in _CITE_REFERENCE.finditer(message):
-        if not _card_marker(command["name"]):
+        if not _card_marker(command["name"]) or (
+            exclusive_only and command["exclusive"] is None
+        ):
             continue
         references.append((command.start("name"), command["name"]))
         end = command.end()
@@ -260,6 +273,23 @@ def requested_citation_ids(message: str) -> tuple[str, ...]:
     return tuple(
         dict.fromkeys(marker.strip("[]") for _, marker in _citation_mentions(message))
     )
+
+
+def requested_allowed_citation_ids(message: str) -> tuple[str, ...] | None:
+    """Keep an explicit 'only' restriction separate from mandatory citations."""
+    references = _citation_mentions(message, exclusive_only=True)
+    if not references:
+        return None
+    return tuple(dict.fromkeys(marker.strip("[]") for _, marker in references))
+
+
+def _source_citation_contract(
+    message: str, required_citations: tuple[str, ...] | None
+) -> tuple[tuple[str, ...] | None, tuple[str, ...] | None]:
+    allowed = requested_allowed_citation_ids(message)
+    if allowed is not None and required_citations is None:
+        required_citations = requested_citation_ids(message)
+    return required_citations, allowed
 
 
 class EvidenceError(ValueError):
@@ -394,6 +424,7 @@ class Evidence:
     requirements: Requirements
     unavailable: tuple[str, ...]
     requested_source_ids: tuple[str, ...] = ()
+    allowed_source_ids: tuple[str, ...] | None = None
 
 
 def _displayed_result_values(prose: str, unit: str) -> list[str]:
@@ -536,6 +567,13 @@ def _verified_document(document: SourceDocument) -> bool:
     )
 
 
+def _validate_citation_scope(used: set[str], evidence: Evidence) -> None:
+    if evidence.allowed_source_ids is not None and not used <= set(
+        evidence.allowed_source_ids
+    ):
+        raise EvidenceError("answer_source_not_allowed")
+
+
 def bind_source_quotes(
     prose: str, evidence: Evidence, quotes: Sequence[SourceQuote]
 ) -> tuple[SourceQuote, ...]:
@@ -559,6 +597,7 @@ def bind_source_quotes(
     )
     if not cited <= documents.keys():
         raise EvidenceError("answer_source_unknown")
+    _validate_citation_scope(cited | {quote.source_id for quote in quotes}, evidence)
     bound = []
     for quote in quotes:
         document = documents.get(quote.source_id)
@@ -862,6 +901,9 @@ class GroundedTurn:
             c.unit == output_unit for c in calculations
         ):
             raise EvidenceError("calculation_result_unit_missing")
+        required_citations, allowed = _source_citation_contract(
+            plan.message, required_citations
+        )
         sources, unavailable, citations = self._prepare_sources(
             plan, required, required_citations
         )
@@ -878,13 +920,14 @@ class GroundedTurn:
                         else {}
                     ),
                     **({"result_unit": output_unit} if output_unit is not None else {}),
+                    **({"allowed_citations": allowed} if allowed is not None else {}),
                 },
                 ensure_ascii=False,
                 sort_keys=True,
             )
         )
         self._evidence = Evidence(
-            identity, sources, calculations, required, unavailable, citations
+            identity, sources, calculations, required, unavailable, citations, allowed
         )
         return self._evidence
 
@@ -994,6 +1037,7 @@ class GroundedTurn:
         lines, used_sources, used_calculations = self._render_claims(
             draft, documents, fresh_documents, calculations
         )
+        _validate_citation_scope(used_sources, evidence)
         if evidence.requirements.sources and not used_sources:
             raise EvidenceError("answer_source_required")
         if not set(evidence.requested_source_ids) <= used_sources:

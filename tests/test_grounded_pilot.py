@@ -1454,7 +1454,7 @@ def test_plain_recap_preserves_revoked_address_and_tentative_time():
 
 def test_one_sentence_recap_preserves_two_event_times_and_the_gathering_location():
     history = (
-        {"role": "user", "content": "W pierwszą środę sprawdź godziny."},
+        {"role": "user", "content": "Według KARTA w pierwszą środę sprawdź godziny."},
         {
             "role": "assistant",
             "content": "Wejście od 07:30, a pokaz startuje o 08:00. [KARTA]",
@@ -1593,15 +1593,15 @@ def test_observation_guidance_remains_when_final_does_not_repeat_chart_name():
 
 def test_gathering_recap_preserves_all_event_roles_with_day_reference():
     history = (
-        {"role": "user", "content": "Co się zmienia w pierwszą sobotę?"},
+        {"role": "user", "content": "Według WIERZBA co się zmienia w pierwszą sobotę?"},
         {
             "role": "assistant",
-            "content": "Brama od 12:15, a pokaz o 12:45. Fakty: brama 12:15 i pokaz 12:45. [KARTA]",
+            "content": "Brama od 12:15, a pokaz o 12:45. Fakty: brama 12:15 i pokaz 12:45. [WIERZBA]",
         },
         {"role": "user", "content": "Gdzie jest zbiórka?"},
         {
             "role": "assistant",
-            "content": "Zbiórka tego dnia odbywa się przy fontannie. [KARTA]",
+            "content": "Zbiórka tego dnia odbywa się przy fontannie. [WIERZBA]",
         },
     )
     assert (
@@ -1609,7 +1609,7 @@ def test_gathering_recap_preserves_all_event_roles_with_day_reference():
             "Przygotuj w jednym zdaniu notatkę z godzinami i miejscem zbiórki.",
             history,
         )
-        == "Brama od 12:15, a pokaz o 12:45, a zbiórka tego dnia odbywa się przy fontannie. [KARTA]"
+        == "Brama od 12:15, a pokaz o 12:45, a zbiórka tego dnia odbywa się przy fontannie. [WIERZBA]"
     )
 
 
@@ -4326,3 +4326,71 @@ def test_thermal_contact_rejects_negated_temperature_equality(negation):
     assert plain_pilot_recap(base.format(""), ())
     with pytest.raises(EvidenceError, match="thermal_contact_premises_unbound"):
         plain_pilot_recap(base.format(negation + " "), ())
+
+
+@pytest.mark.parametrize(
+    "citation", ["[POMYLONA]", "(POMYLONA)", "[WIERZBA]", "(WIERZBA)"]
+)
+def test_gathering_recap_validates_both_citation_shapes_against_named_cards(citation):
+    history = (
+        {"role": "user", "content": "Według WIERZBA sprawdź ostatnią środę."},
+        {"role": "assistant", "content": "Brama od 15:35, a pokaz o 16:25. [WIERZBA]"},
+        {"role": "user", "content": "Gdzie według WIERZBA jest zbiórka?"},
+        {
+            "role": "assistant",
+            "content": f"Zbiórka tego dnia odbywa się przy makiecie {citation}",
+        },
+    )
+    result = plain_pilot_recap(
+        "Przygotuj w jednym zdaniu notatkę z godzinami i miejscem zbiórki.", history
+    )
+    if "POMYLONA" in citation:
+        assert result is None
+    else:
+        assert result.endswith("przy makiecie. [WIERZBA]")
+
+
+def test_gathering_recap_does_not_treat_unbound_brackets_as_verified_source():
+    history = (
+        {"role": "user", "content": "W pierwszą środę sprawdź godziny."},
+        {"role": "assistant", "content": "Brama od 15:35, a pokaz o 16:25. [KARTA]"},
+        {"role": "user", "content": "Gdzie jest zbiórka?"},
+        {"role": "assistant", "content": "Zbiórka jest przy makiecie. [KARTA]"},
+    )
+    assert (
+        plain_pilot_recap(
+            "Przygotuj w jednym zdaniu notatkę z godzinami i miejscem zbiórki.", history
+        )
+        is None
+    )
+
+
+@pytest.mark.parametrize("restriction", ["", "tylko "])
+def test_pilot_honors_only_citation_scope_before_semantic_review(restriction):
+    backend, model, reviewer = PickupRoleCards(), Model(), Reviewer()
+    message = f"Zacytuj {restriction}kartę SILETOR po przeczytaniu karty MORKADA."
+    model.override["draft"] = {
+        "prose": "Punkt U Ady [MORKADA]. Osoba odbierająca wymaga potwierdzenia [SILETOR].",
+        "sources": [
+            {"source_id": ident, "version": "1", "quote": text}
+            for ident, text in backend.texts.items()
+        ],
+        "calculations": [],
+    }
+    if restriction:
+        with pytest.raises(EvidenceError, match="answer_source_not_allowed"):
+            run_pilot_turn(
+                message,
+                "r",
+                backend,
+                model,
+                reviewer,
+                required=Requirements(sources=True),
+            )
+        assert not reviewer.materials
+    else:
+        result = run_pilot_turn(
+            message, "r", backend, model, reviewer, required=Requirements(sources=True)
+        )
+        assert "[MORKADA]" in result.text
+    assert {"MORKADA", "SILETOR"} <= set(backend.reads)

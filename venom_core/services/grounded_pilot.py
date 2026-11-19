@@ -2204,7 +2204,7 @@ def _plain_gathering_recap(
     }
     citation_matches = tuple(map(_PUBLIC_CARD_AT_END.search, (schedule, gathering)))
     if any(
-        match and match["parenthetical"] and match["parenthetical"] not in requested
+        match and (match["bracketed"] or match["parenthetical"]) not in requested
         for match in citation_matches
     ):
         return None

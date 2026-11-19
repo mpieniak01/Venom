@@ -1047,3 +1047,79 @@ def test_explicit_citation_requires_the_target_but_only_reads_other_cards(comman
         gate.publish(wrong)
     correct = AnswerDraft(evidence.evidence_id, (SourceQuote("MIRWEN", "1", "MIRWEN"),))
     assert gate.publish(correct).text == "„MIRWEN” [MIRWEN@1]"
+
+
+@pytest.mark.parametrize("quotation", ["„{}”", '"{}"', "«{}»"])
+def test_quoted_citation_command_is_explanatory_instead_of_a_source_request(quotation):
+    from venom_core.services.grounded_dialogue import requested_citation_ids
+
+    message = (
+        "Wyjaśnij, co oznacza polecenie " + quotation.format("Zacytuj [MIRWEN]") + "."
+    )
+    assert requested_card_ids(message, include_contextual=False) == ()
+    assert requested_card_ids(message) == ()
+    assert requested_citation_ids(message) == ()
+    assert detect_requirements(message) == Requirements()
+    backend = MemorySources()
+    evidence = GroundedTurn(backend).prepare(TurnPlan(message, "r"))
+    assert evidence.sources == ()
+    assert not backend.searches
+    assert not backend.reads
+    assert detect_requirements("Zacytuj [MIRWEN]").sources
+
+
+@pytest.mark.parametrize("restriction", ["", "tylko ", "wyłącznie ", "jedynie "])
+def test_only_citation_scope_limits_publication_without_limiting_full_reads(
+    restriction,
+):
+    from venom_core.services.grounded_dialogue import requested_citation_ids
+
+    message = f"Zacytuj {restriction}kartę MIRWEN po przeczytaniu karty KANDEL."
+    backend = MemorySources()
+    documents = {
+        name: SourceDocument(SourceRef(name, "1", text_hash(name)), name, True)
+        for name in ("MIRWEN", "KANDEL")
+    }
+    backend.current_ref = lambda ident: documents[ident].ref
+    reads = []
+
+    def read(ref):
+        reads.append(ref.source_id)
+        return documents[ref.source_id]
+
+    backend.read = read
+    gate = GroundedTurn(backend)
+    evidence = gate.prepare(
+        TurnPlan(message, "r", required=Requirements(sources=True)),
+        required_citations=requested_citation_ids(message),
+    )
+    assert reads == ["MIRWEN", "KANDEL"]
+    assert evidence.requested_source_ids == ("MIRWEN",)
+    all_quotes = tuple(SourceQuote(name, "1", name) for name in documents)
+    extra = AnswerDraft(evidence.evidence_id, all_quotes)
+    if restriction:
+        assert evidence.allowed_source_ids == ("MIRWEN",)
+        with pytest.raises(EvidenceError, match="answer_source_not_allowed"):
+            gate.validate_draft(extra)
+        with pytest.raises(EvidenceError, match="answer_source_not_allowed"):
+            bind_source_quotes("MIRWEN [MIRWEN], KANDEL [KANDEL]", evidence, all_quotes)
+        correct = AnswerDraft(
+            evidence.evidence_id, (SourceQuote("MIRWEN", "1", "MIRWEN"),)
+        )
+        assert gate.publish(correct).text == "„MIRWEN” [MIRWEN@1]"
+    else:
+        assert evidence.allowed_source_ids is None
+        assert "[KANDEL@1]" in gate.publish(extra).text
+    assert reads.count("KANDEL") >= 2
+
+
+def test_only_scope_is_automatically_bound_for_direct_grounded_turns():
+    backend = MemorySources()
+    text = "MIRWEN"
+    document = SourceDocument(SourceRef("MIRWEN", "1", text_hash(text)), text, True)
+    backend.current_ref = lambda _ident: document.ref
+    backend.read = lambda _ref: document
+    gate = GroundedTurn(backend)
+    evidence = gate.prepare(TurnPlan("Zacytuj tylko [MIRWEN].", "r"))
+    assert evidence.allowed_source_ids == ("MIRWEN",)
+    assert evidence.requested_source_ids == ("MIRWEN",)

@@ -11,6 +11,7 @@ from venom_core.services.grounded_dialogue import (
     SourceRef,
     text_hash,
 )
+from venom_core.services.grounded_duration import PilotDurationAnswer, bind_duration
 from venom_core.services.grounded_pilot import (
     SemanticVerdict,
     _public_prose,
@@ -2576,3 +2577,125 @@ def test_plain_round_recap_retains_latest_roles_and_all_four_rules():
         dict(history[-1], content=history[-1]["content"].replace("prawa", "lewa")),
     )
     assert plain_pilot_recap("Cztery punkty do przeczytania.", conflicting) is None
+
+
+def test_duration_receipt_reuses_bound_roles_in_the_ordinary_final():
+    initial = (
+        "Wykonam trzy pętle po 11 minut, po całej sesji dojdzie 7 minut porządków."
+    )
+    first = "Oblicz kalkulatorem całkowity czas, w minutach."
+    change = (
+        "Dodaję czwartą pętlę, ale ostatnia trwa 8 minut zamiast 11. "
+        "Sprzątanie nadal raz. Przelicz."
+    )
+    final = "Wypisz aktualny czas ostatniej pętli, jednorazowy dodatek i pełną sumę."
+    history = ({"role": "user", "content": initial},)
+    reviewer, model, trace = Reviewer(), Model(), []
+    first_answer = run_pilot_turn(
+        first,
+        "r1",
+        Sources(),
+        model,
+        reviewer,
+        history=history,
+        required=Requirements(calculation=True),
+    )
+    assert isinstance(first_answer, PilotDurationAnswer)
+    assert first_answer.duration_receipt.calculation.value == "40"
+    history += (
+        {"role": "user", "content": first},
+        {"role": "assistant", "content": "Sprzątanie zajmuje 9 minut."},
+    )
+    updated = run_pilot_turn(
+        change,
+        "r2",
+        Sources(),
+        model,
+        reviewer,
+        history=history,
+        required=Requirements(calculation=True),
+        trace=trace,
+    )
+    assert isinstance(updated, PilotDurationAnswer)
+    assert updated.text == (
+        "Łącznie 48 min (41 na pętle, w tym 8 na ostatnią, oraz 7 na jednorazowe sprzątanie)."
+    )
+    assert not model.calls
+    roles = next(
+        record["data"] for record in trace if record["phase"] == "duration_roles_bound"
+    )
+    assert roles["last_changes"] == [change.split(". ", 1)[0]]
+    assert roles["cleanup"] == initial
+    assert reviewer.materials[-1]["evidence"]["calculations"][0]["value"] == "48"
+
+    history += (
+        {"role": "user", "content": change},
+        {"role": "assistant", "content": "Łącznie 56 minut."},
+    )
+    assert plain_pilot_recap(
+        final, history, duration_receipt=updated.duration_receipt
+    ) == ("Ostatnia pętla — 8 min.\nJednorazowe sprzątanie — 7 min.\nŁącznie — 48 min.")
+    assert plain_pilot_recap(
+        final, history, duration_receipt=first_answer.duration_receipt
+    ) == ("Po zmianie danych potrzebuję aktualnego wyniku kalkulatora.")
+    assert (
+        plain_pilot_recap(
+            "Co to jest rower?", history, duration_receipt=updated.duration_receipt
+        )
+        is None
+    )
+
+
+def test_duration_roles_support_decimals_replacement_and_cleanup_changes():
+    initial = "Planuję dwie pętle po 7,5 min. Na koniec dolicz 4 min sprzątania."
+    previous = "Policz kalkulatorem łączny czas."
+    change = (
+        "Zmieniam czas ostatniej pętli na 6,25 min. "
+        "Sprzątanie zmieniam na 2 min, nadal raz. Przelicz."
+    )
+    history = tuple(
+        {"role": "user", "content": message} for message in (initial, previous)
+    )
+    answer = run_pilot_turn(
+        change,
+        "r2",
+        Sources(),
+        Model(),
+        Reviewer(),
+        history=history,
+        required=Requirements(calculation=True),
+    )
+    assert isinstance(answer, PilotDurationAnswer)
+    assert answer.duration_receipt.calculation.expression == "(1*7.5+6.25)+2"
+    assert "15,75 min" in answer.text and "13,75 na pętle" in answer.text
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        "Dodaję piątą pętlę, ale ostatnia trwa 8 min zamiast 11. Przelicz.",
+        "Dodaję czwartą pętlę, ale ostatnia trwa 8 min zamiast 10. Przelicz.",
+        "Po każdej pętli sprzątanie trwa 7 min. Przelicz.",
+        "Sprzątanie trwa 7 min albo 11 min. Przelicz.",
+        "Może ostatnia pętla potrwa 8 min. Przelicz.",
+    ],
+)
+def test_duration_binding_declines_conflicting_or_unconfirmed_states(change):
+    initial = (
+        "Wykonam trzy pętle po 11 minut, po całej sesji dojdzie 7 minut porządków."
+    )
+    assert bind_duration((initial, change)) is None
+
+
+def test_duration_receipt_is_not_released_if_semantic_review_rejects():
+    initial = "Wykonam 3 pętle po 11 minut, po całej sesji dojdzie 7 minut porządków."
+    with pytest.raises(EvidenceError, match="pilot_semantic_rejected"):
+        run_pilot_turn(
+            "Przelicz.",
+            "r1",
+            Sources(),
+            Model(),
+            Reviewer(approved=False),
+            history=({"role": "user", "content": initial},),
+            required=Requirements(calculation=True),
+        )

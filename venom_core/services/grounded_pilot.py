@@ -49,6 +49,13 @@ from venom_core.services.grounded_dialogue import (
     text_hash,
     verify_result_prose,
 )
+from venom_core.services.grounded_duration import (
+    DURATION_CALCULATION_ID,
+    DurationReceipt,
+    DurationState,
+    PilotDurationAnswer,
+    bind_duration,
+)
 from venom_core.services.grounded_presentation import (
     ROUNDING_MODE,
     clean_bookkeeping_spacing,
@@ -2080,8 +2087,18 @@ def _plain_round_recap(message: str, history: tuple[dict[str, str], ...]) -> str
     )
 
 
-def plain_pilot_recap(message: str, focused: tuple[dict[str, str], ...]) -> str | None:
+def plain_pilot_recap(
+    message: str,
+    focused: tuple[dict[str, str], ...],
+    *,
+    duration_receipt: DurationReceipt | None = None,
+) -> str | None:
     """Retain verified decisions and event roles from the selected exception."""
+    if duration_receipt is not None:
+        users = tuple(item["content"] for item in focused if item["role"] == "user")
+        recap = duration_receipt.recap(message, users)
+        if recap is not None:
+            return recap
     if _BOOKING_RECAP.search(message):
         return _plain_booking_recap(focused)
     contextual = (
@@ -2189,6 +2206,7 @@ class _DeterministicAnswer:
     source_draft: Draft | None = None
     order: _OrderCalculation | None = None
     stock: tuple[Calculation, str, tuple[_StockValue, ...]] | None = None
+    duration: DurationState | None = None
 
 
 @dataclass(frozen=True)
@@ -2307,6 +2325,16 @@ def _deterministic_answer(
         )
     if not turn.required.calculation:
         return _DeterministicAnswer()
+    duration = bind_duration((*prior_users, message))
+    if duration is not None:
+        return _DeterministicAnswer(
+            calculation=Calculation(
+                calculation_id=DURATION_CALCULATION_ID,
+                expression=duration.expression,
+                unit="min",
+            ),
+            duration=duration,
+        )
     stock = _stock_calculation((*prior_users, message))
     calculation = _explicit_mean(message) or _explicit_length_conversion(message)
     if calculation is None:
@@ -2584,9 +2612,22 @@ def _pilot_draft(
     inputs: _ReconciledInputs,
     plan: Plan,
     proof: _PilotProof,
+    duration_receipt: DurationReceipt | None = None,
 ) -> Draft:
     if deterministic.source_draft is not None:
         return deterministic.source_draft
+    if duration_receipt is not None:
+        return Draft(
+            prose=duration_receipt.summary(),
+            sources=[],
+            calculations=[
+                ResultClaim(
+                    calculation_id=duration_receipt.calculation.calculation_id,
+                    value=duration_receipt.calculation.value,
+                    unit=duration_receipt.calculation.unit,
+                )
+            ],
+        )
     if deterministic.calculation is None or proof.evidence is None:
         draft_input = (
             turn.material()
@@ -2774,7 +2815,20 @@ def run_pilot_turn(
     proof = _prepare_pilot_proof(
         turn, sources, gate, plan, inputs.planning, result, audit
     )
-    draft = _pilot_draft(turn, model, deterministic, inputs, plan, proof)
+    duration_receipt = None
+    if deterministic.duration is not None and proof.evidence is not None:
+        duration_receipt = DurationReceipt.from_evidence(
+            (*turn.prior_users, message), deterministic.duration, proof.evidence
+        )
+        audit.append(
+            {
+                "phase": "duration_roles_bound",
+                "data": deterministic.duration.proof_material(),
+            }
+        )
+    draft = _pilot_draft(
+        turn, model, deterministic, inputs, plan, proof, duration_receipt
+    )
     draft, claim_draft = _finalize_pilot_draft(
         turn, sources, gate, plan, draft, proof, audit
     )
@@ -2797,4 +2851,6 @@ def run_pilot_turn(
     else:
         _current(backend, sources.documents)
         gate.publish(claim_draft)
+    if duration_receipt is not None:
+        return PilotDurationAnswer(proof.evidence_id, draft.prose, duration_receipt)
     return PublishedAnswer(proof.evidence_id, draft.prose)

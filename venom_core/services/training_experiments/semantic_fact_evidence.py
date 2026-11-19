@@ -29,6 +29,8 @@ class ResponseScope(TypedDict):
     withdrawn_role_reference: NotRequired[str]
     source: UserSource
     withdrawn_quotes: NotRequired[list[str]]
+    setting_criterion: NotRequired[str]
+    setting_quote: NotRequired[str]
 
 
 class PickupPointEvidence(TypedDict):
@@ -634,17 +636,18 @@ def _withdrawn_role_scope(
     }
 
 
-def _setting_criterion_matches(material: dict, value: Decimal | None) -> bool:
+def _setting_criterion_id(material: dict, value: Decimal) -> str | None:
     criteria = [
-        match["value"]
+        (item["id"], match["value"])
         for item in material["criteria"]
         if (match := _SETTING.fullmatch(item["description"]))
     ]
-    return (
-        len(criteria) == 1
-        and _EXPLICIT_C.search(criteria[0]) is not None
-        and _temperature(criteria[0]) == value
-    )
+    if len(criteria) != 1:
+        return None
+    criterion_id, token = criteria[0]
+    if _EXPLICIT_C.search(token) is None or _temperature(token) != value:
+        return None
+    return criterion_id
 
 
 def _setting_scope(
@@ -663,7 +666,8 @@ def _setting_scope(
     value = _temperature(source_value)
     if value is None or _temperature(rejection["pre"] or rejection["post"]) != value:
         return None
-    if not _setting_criterion_matches(material, value):
+    criterion_id = _setting_criterion_id(material, value)
+    if criterion_id is None:
         return None
     if not any(
         _SETTING_QUESTION.fullmatch(clause) and _SETTING_MENTION.search(clause)
@@ -685,6 +689,8 @@ def _setting_scope(
         or _temperature(report["value"]) != value
     ):
         return None
+    evidence["setting_criterion"] = criterion_id
+    evidence["setting_quote"] = clauses[2]
     evidence["kind"] = "withdrawn_setting_advice"
     evidence["withdrawn_quotes"] = clauses[:2]
     return evidence

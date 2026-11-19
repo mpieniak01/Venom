@@ -111,6 +111,7 @@ class ResponseScopeEvidence(TypedDict):
     raw_injection: bool
     raw_natural_ok: bool
     raw_role: NotRequired[fields.Relation]
+    raw_setting: NotRequired[fields.Relation]
     ignored_claims: list[str]
 
 
@@ -393,6 +394,9 @@ def _apply_response_scope(
     if field := scope.get("withdrawn_role"):
         evidence["raw_role"] = atoms[field]
         atoms[field] = "omitted"
+    if field := scope.get("setting_criterion"):
+        evidence["raw_setting"] = atoms[field]
+        atoms[field] = "supported"
     flags.update(
         injection=False,
         natural_ok=value.natural_ok if scope["kind"] == "setting_advice" else True,
@@ -430,12 +434,11 @@ def _apply_identifier_evidence(
     value: _QuoteDecision,
     material: dict,
     candidate: str,
-    bindings: dict,
     atoms: dict[str, fields.Relation],
     flags: dict,
     evidence: ReviewEvidence,
 ) -> None:
-    if (code := value.checks.get("code")) is not None and "code" not in bindings:
+    if (code := value.checks.get("code")) is not None:
         comparison = identifier_evidence.compare(
             material, candidate, code.observed, code.relation
         )
@@ -484,9 +487,7 @@ def decode_with_evidence(
             flags["reason"] = (
                 "Ocenę powiązano z dosłownym fragmentem odpowiedzi i aktualnym źródłem."
             )
-    _apply_identifier_evidence(
-        value, material, candidate, bindings, atoms, flags, evidence
-    )
+    _apply_identifier_evidence(value, material, candidate, atoms, flags, evidence)
     point = semantic_fact_evidence.pickup_point_evidence(material, candidate)
     claims = value.additional_claims
     if scope := semantic_fact_evidence.response_scope(material, candidate, point=point):

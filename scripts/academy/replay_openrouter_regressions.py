@@ -192,6 +192,8 @@ def _replay_case(entry: dict, path: Path, index: int, targeted: dict | None) -> 
             row.get("split") is None
             and row.get("protocol_sha256") == targeted["protocol_sha256"]
             and ident == targeted["label"]
+            and type(row.get("repeat")) is int
+            and row["repeat"] == targeted["repeat"]
             and row["request"] == targeted["body"],
             "offline_replay_targeted_binding",
         )

@@ -212,6 +212,7 @@ def _targeted_record(tmp_path, index=157):
     sha = digest(root / "protocol.json")
     row.pop("split")
     row["label"] = row.pop("answer_id")
+    row["repeat"] = panel["order"][:index].count(row["label"])
     row["protocol_sha256"] = sha
     _write(receipt, row)
     entry["receipt_sha256"] = digest(receipt)
@@ -260,7 +261,9 @@ def test_invalid_targeted_seal_is_rejected_before_receipt_read(
         replay.replay(manifest, sha)
 
 
-@pytest.mark.parametrize("failure", ["label", "protocol", "request", "holdout"])
+@pytest.mark.parametrize(
+    "failure", ["label", "protocol", "request", "holdout", "repeat", "boolean_repeat"]
+)
 def test_targeted_receipt_must_match_protocol_panel_and_order(tmp_path, failure):
     case = _targeted_record(tmp_path)
     path = tmp_path / case["receipt"]
@@ -272,6 +275,10 @@ def test_targeted_receipt_must_match_protocol_panel_and_order(tmp_path, failure)
     elif failure == "request":
         row["request"]["messages"][0]["content"] = "Changed"
         row["request_sha256"] = stable_hash(row["request"])
+    elif failure == "repeat":
+        row["repeat"] = 2
+    elif failure == "boolean_repeat":
+        row["repeat"] = True
     else:
         row["split"] = "holdout"
     _write(path, row)

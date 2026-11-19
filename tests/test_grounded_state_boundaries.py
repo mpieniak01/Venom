@@ -104,3 +104,16 @@ def test_arithmetic_plan_converts_after_the_explicit_user_multiplier():
     assert calculate(result.expression) == "194.4"
     assert result.unit == "km/h"
     assert result.input_unit == ""
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "Zwiększ sumę 10 m/s i 5 m/s 2 razy, nie 3,6 raza, i podaj wynik w km/h",
+        "Zwiększ sumę 10 m/s i 5 m/s 3,6 raza albo 2 razy i podaj wynik w km/h",
+        "Zwiększ sumę 10 m/s i 5 m/s 3,6 raza i 2 razy i podaj wynik w km/h",
+        "Zwiększ sumę 10 m/s i 5 m/s bez mnożenia 3,6 raza i podaj wynik w km/h",
+    ],
+)
+def test_negated_or_conflicting_multiplier_cannot_authorize_conversion(message):
+    assert has_repeated_speed_scale("(10+5)*3.6", "m/s", "km/h", request=message)

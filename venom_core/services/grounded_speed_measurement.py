@@ -126,16 +126,19 @@ def _outer_scale(node: ast.AST, scale: Fraction) -> bool:
 
 
 def _requested_multiplier(request: str, scale: Fraction) -> bool:
-    if re.match(r"\s*(?:zwiększ|pomnóż)\b", request, re.I) is None:
+    if re.match(r"\s*(?:zwiększ|pomnóż)\b", request, re.IGNORECASE) is None:
         return False
-    return any(
-        Fraction(match[1].replace(",", ".")) == scale
+    if re.search(r"\b(?:nie|bez|zamiast|albo|lub)\b", request, re.IGNORECASE):
+        return False
+    factors = [
+        Fraction(match[1].replace(",", "."))
         for match in re.finditer(
             r"(?<![\w.,])((?a:\d){1,8}(?:[.,](?a:\d){1,6})?)\s+raz(?:a|y)\b",
             request,
-            re.I,
+            re.IGNORECASE,
         )
-    )
+    ]
+    return len(factors) == 1 and factors[0] == scale
 
 
 def has_repeated_speed_scale(

@@ -1255,7 +1255,7 @@ class SemanticReviewer(Protocol):
 ModelCall = Callable[[str, dict[str, Any], dict[str, Any]], dict[str, Any]]
 
 
-def material_hash(material: dict[str, Any]) -> str:
+def material_hash(material: dict[str, Any] | tuple[dict[str, str], ...]) -> str:
     return text_hash(json.dumps(material, ensure_ascii=False, sort_keys=True))
 
 

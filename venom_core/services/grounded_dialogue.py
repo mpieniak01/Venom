@@ -236,7 +236,7 @@ _CITE_COMMAND = re.compile(
 
 def requested_citation_ids(message: str) -> tuple[str, ...]:
     """A request to cite a card is distinct from a request to read it."""
-    names = []
+    names: list[str] = []
     for clause in _SENTENCE_BREAK.split(message):
         if command := _CITE_COMMAND.search(clause):
             names.extend(requested_card_ids(clause[command.start() :].strip()))

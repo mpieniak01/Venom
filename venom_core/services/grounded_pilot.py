@@ -1611,7 +1611,7 @@ def plain_pilot_context(
             guidance.extend(exception)
     latest = previous[-1] if recap and previous else ""
     guidance.extend(_status_guidance(message, latest))
-    if label_guidance := pickup_label_guidance(message):
+    if not previous and (label_guidance := pickup_label_guidance(message)):
         guidance.append(label_guidance)
     return history, " ".join(guidance)
 

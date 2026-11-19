@@ -3335,3 +3335,7 @@ def test_pickup_label_guidance_keeps_point_name_and_unconfirmed_person(message):
     assert "Przytocz dosłownie nazwę punktu z etykiety" in guidance
     assert "osoby odbierającej pozostaje nieustalona" in guidance
     assert plain_pilot_context("Kto nazywa się Ada?", ()) == ((), "")
+    known = (
+        {"role": "user", "content": "Odbierająca osoba została już potwierdzona."},
+    )
+    assert plain_pilot_context(message, known) == (known, "")

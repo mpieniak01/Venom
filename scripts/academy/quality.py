@@ -39,6 +39,7 @@ def main(argv: list[str] | None = None) -> None:
     diagnostic.add_argument("matrix", type=Path)
     args = parser.parse_args(argv)
     experiments = ExperimentService(args.root)
+    result: list[dict] | dict
     try:
         if args.command == "import":
             bundle = QualityBundle.model_validate(read_json(args.bundle))

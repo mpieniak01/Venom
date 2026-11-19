@@ -235,3 +235,49 @@ def test_omission_token_cannot_substitute_for_a_literal_observation():
         )
         is None
     )
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("PUNKTem", True),
+        ("punkcie", True),
+        ("SZYLDem", True),
+        ("adres_2", True),
+        ("miejsce", True),
+        ("placówce", True),
+        ("« \tU Miry»,", True),
+        ("„U Miry”", True),
+        ("punktowy", False),
+        ("Śadres", False),
+        ("Żpunkt", False),
+        ("placowce", False),
+        ("„U", False),
+    ],
+)
+def test_pickup_location_preserves_polish_word_boundaries(text, expected):
+    from venom_core.services.training_experiments import semantic_fact_evidence
+
+    assert semantic_fact_evidence._pickup_location(text) is expected
+
+
+@pytest.mark.parametrize(
+    ("question", "current", "setting"),
+    [
+        ("Podaj \t\n aktualną nastawę.", True, True),
+        ("Wypisz\u00a0prąd!", True, True),
+        ("Podsumuj ", True, True),
+        ("Podaj prąd 4.", False, True),
+        ("Podaj prąd ٤.", True, True),
+        ("Podaj prąd ４.", True, True),
+        ("Podaj prąd?!", False, False),
+        ("Podaj " + " " * 20000 + "prąd. nadal", False, False),
+    ],
+)
+def test_question_patterns_keep_ascii_numeric_scope_and_single_sentence(
+    question, current, setting
+):
+    from venom_core.services.training_experiments import semantic_fact_evidence
+
+    assert bool(semantic_fact_evidence._CURRENT_QUESTION.fullmatch(question)) is current
+    assert bool(semantic_fact_evidence._SETTING_QUESTION.fullmatch(question)) is setting

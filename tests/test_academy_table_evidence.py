@@ -277,3 +277,41 @@ def test_sorting_projection_refuses_later_day_correction():
         )
         is None
     )
+
+
+@pytest.mark.parametrize("number", ["٨", "８"])
+@pytest.mark.parametrize("location", ["candidate", "source", "criterion"])
+def test_table_counts_remain_ascii_only(number, location):
+    candidate = (
+        TABLE.replace("| 8 |", f"| {number} |") if location == "candidate" else TABLE
+    )
+    material = _material(candidate)
+    if location == "source":
+        material["messages"][0]["content"] = USER.replace(
+            "8 paczek", f"{number} paczek"
+        )
+    elif location == "criterion":
+        material["criteria"][0]["description"] = f"Mila odbiera {number} paczek."
+    assert (
+        table_evidence.compare(material, candidate, "mila", candidate, "supported")
+        is None
+    )
+
+
+def test_sorting_implicit_unit_does_not_cross_mixed_explicit_units():
+    source = "Dla sortowania: Mila liczy 8 paczek, Bruno 11 sztuk, Olga 4."
+    assert table_evidence._assignment_clauses(source) == []
+
+
+@pytest.mark.parametrize(
+    ("singular", "plural", "genitive"),
+    [("przesyłka", "przesyłki", "przesyłek"), ("pudełko", "pudełka", "pudełek")],
+)
+def test_table_unit_aliases_keep_canonical_attribution(singular, plural, genitive):
+    candidate = TABLE.replace("paczki", plural)
+    material = _material(candidate, f"Mila odbiera 8 {genitive}.")
+    material["criteria"][0]["description"] = f"Mila odbiera 8 {singular}."
+    trace = table_evidence.compare(material, candidate, "mila", candidate, "supported")
+    assert trace is not None
+    assert trace["source"]["unit"] == plural
+    assert trace["effective_relation"] == "supported"

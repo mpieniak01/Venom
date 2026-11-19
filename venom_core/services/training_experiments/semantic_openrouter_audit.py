@@ -1240,7 +1240,6 @@ def _execute(
     state.order = judge._audit_order(root, manifest, phase1=True)
     state.start = time.monotonic()
     (root / "receipts").mkdir(exist_ok=resume)
-    prior_attempts = _resume_qualification(state) if resume else None
     quotes = _phase1_reservations(root, manifest)
     phase1 = sum(quotes, Decimal(0))
     maximum = max(quotes)
@@ -1260,9 +1259,12 @@ def _execute(
         max_request > per_request
         or judge._money(capacity["planned_budget_usd"]) > budget
     ):
+        if resume:
+            return {"status": "budget_exhausted", "resume_blocked": True}
         state.status = "budget_exhausted"
         return _audit_result(state)
     state.next_post_at = _provider_next_post_at(rate_path)
+    prior_attempts = _resume_qualification(state) if resume else None
     if not resume and "phase1_admission_sha256" in protocol and not _phase1_gate(state):
         return _audit_result(state)
     if (

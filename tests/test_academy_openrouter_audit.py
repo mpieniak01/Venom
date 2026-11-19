@@ -1733,7 +1733,7 @@ def test_resume_allows_one_azure_unavailable_attempt(tmp_path):
     assert state.rows == []
 
 
-def test_capacity_blocked_resume_preserves_restored_rows_and_costs(
+def test_capacity_blocked_resume_preserves_result_and_can_continue(
     tmp_path, monkeypatch
 ):
     state = _resume_fixture_state(
@@ -1751,35 +1751,50 @@ def test_capacity_blocked_resume_preserves_restored_rows_and_costs(
         "error_type": "provider_unavailable",
     }
     write(tmp_path / "receipts/001.json", row)
+    write(tmp_path / "result.json", {"status": "provider_rate_limited", "rows": 1})
+    saved_result = (tmp_path / "result.json").read_bytes()
     receipt_sha = digest(tmp_path / "receipts/001.json")
     monkeypatch.setattr(judge, "_audit_order", lambda *_args, **_: [row])
     monkeypatch.setattr(audit, "_phase1_reservations", lambda *_: [Decimal("0.02")])
+    restored = []
 
-    def restore(restored):
-        restored.rows = [row]
-        restored.known = Decimal("0.003")
-        restored.unknown = Decimal("0.002")
+    def restore(current):
+        restored.append(current)
+        current.rows = [row]
+        current.known = Decimal("0.003")
+        current.unknown = Decimal("0.002")
+        current.holdout_opened = True
         return []
 
     monkeypatch.setattr(audit, "_resume_qualification", restore)
-    result = audit._execute(
-        tmp_path,
-        state.protocol,
-        state.manifest,
-        state.protocol_sha,
-        state.budget,
-        state.per_request,
-        state.client_factory,
-        None,
-        resume=True,
-    )
-    assert result["status"] == "budget_exhausted"
+    monkeypatch.setattr(audit, "_execute_cases", lambda *_: None)
+    monkeypatch.setattr(audit, "_schedule_fits", lambda *_args, **_: True)
+
+    def execute(budget):
+        return audit._execute(
+            tmp_path,
+            state.protocol,
+            state.manifest,
+            state.protocol_sha,
+            budget,
+            Decimal("0.03"),
+            state.client_factory,
+            None,
+            resume=True,
+        )
+
+    refusal = execute(Decimal("0.10"))
+    assert refusal == {"status": "budget_exhausted", "resume_blocked": True}
+    assert restored == []
+    assert (tmp_path / "result.json").read_bytes() == saved_result
+    assert digest(tmp_path / "receipts/001.json") == receipt_sha
+    result = execute(Decimal("0.50"))
+    assert len(restored) == 1
     assert result["rows"] == 1
     assert result["actual_known_cost_usd"] == "0.003"
     assert result["unknown_reserved_usd"] == "0.002"
     assert result["accounted_usd"] == "0.005"
     assert digest(tmp_path / "receipts/001.json") == receipt_sha
-    assert json.loads((tmp_path / "result.json").read_text())["rows"] == 1
 
 
 def test_not_sent_case_is_reported_as_unrun_with_its_reason(tmp_path):

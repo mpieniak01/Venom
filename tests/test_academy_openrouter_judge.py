@@ -942,6 +942,61 @@ def test_identifier_requires_literal_quote_and_verified_comparison_trace(packet)
         judge._verify_call(row, body, candidate, "protocol")
 
 
+@pytest.mark.parametrize(
+    ("candidate", "observed", "relation", "effective"),
+    [
+        (
+            "Dziewięć teczek wyda Ada.",
+            "Dziewięć teczek.",
+            "supported",
+            "Dziewięć teczek",
+        ),
+        ("Osiem teczek wyda Ada.", "Osiem teczek.", "contradicted", "Osiem teczek"),
+        ("Dziewięć teczek wyda Ada.", "Osiem teczek.", "supported", None),
+        ("Dziewięć teczek, wyda Ada.", "Dziewięć teczek.", "supported", None),
+        (
+            "Dziewięć teczek wyda Ada. Dziewięć teczek czeka.",
+            "Dziewięć teczek.",
+            "supported",
+            None,
+        ),
+        ("Kod 3.70 działa.", "Kod 3.7.", "supported", None),
+        ("Ponaddziewięć teczek trafiło do Ady.", "dziewięć teczek.", "supported", None),
+    ],
+)
+def test_terminal_period_can_only_bind_an_unambiguous_literal_phrase(
+    candidate, observed, relation, effective
+):
+    body = judge._control_request(
+        {
+            "id": "count-review",
+            "messages": [{"role": "user", "content": "Ada wydaje dziewięć teczek."}],
+            "criteria": [{"id": "anchor", "description": "Dziewięć teczek."}],
+        },
+        {"text": candidate},
+    )
+    raw = response(body, candidate)
+    message = raw["choices"][0]["message"]
+    content = json.loads(message["content"])
+    content["checks"]["anchor"] = {"observed": observed, "relation": relation}
+    message["content"] = json.dumps(content)
+
+    if effective is None:
+        with pytest.raises(ValueError, match=judge.ERROR):
+            judge.decode_with_evidence(raw, body, candidate)
+        return
+    decision, evidence = judge.decode_with_evidence(raw, body, candidate)
+    assert decision.atoms == {"anchor": relation}
+    assert decision.unsupported == ("yes" if relation == "contradicted" else "no")
+    assert evidence["field_evidence"]["anchor"] == {
+        "kind": "appended_period",
+        "observed": observed,
+        "effective_observed": effective,
+        "raw_relation": relation,
+        "effective_relation": relation,
+    }
+
+
 def test_structured_evidence_recovers_literal_table_and_binds_receipt():
     candidate = "| Mila [paczki] | Bruno [paczki] | Dzień |\n|---:|---:|---|\n| 8 | 11 | środa |"
     body = judge._control_request(

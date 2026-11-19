@@ -91,7 +91,19 @@ class _QuoteDecision(local._Strict):
     reason: str = Field(max_length=220)
 
 
-FieldEvidence = table_evidence.Comparison | semantic_fact_evidence.Comparison
+class AppendedPeriodEvidence(TypedDict):
+    kind: Literal["appended_period"]
+    observed: str
+    effective_observed: str
+    raw_relation: fields.Relation
+    effective_relation: fields.Relation
+
+
+FieldEvidence = (
+    table_evidence.Comparison
+    | semantic_fact_evidence.Comparison
+    | AppendedPeriodEvidence
+)
 
 
 class ResponseScopeEvidence(TypedDict):
@@ -179,7 +191,7 @@ def _contract() -> dict:
         "automatic_retry": False,
         "response_format": "strict_quote_schema",
         "identifier_comparison": "current_user_spelled_digits_v1",
-        "field_evidence": "literal_candidate_current_source_v1",
+        "field_evidence": "literal_candidate_current_source_v2",
         "response_scope": "literal_task_and_retraction_v3",
         "pickup_point": "literal_active_point_name_v1",
         "prompt_sha256": hashlib.sha256(PROMPT.encode()).hexdigest(),
@@ -297,23 +309,56 @@ def decode_with_comparison(
     return decision, evidence.get("identifier_comparison")
 
 
+def _bind_appended_period(
+    check: _QuoteCheck, candidate: str
+) -> AppendedPeriodEvidence | None:
+    # Bind only a multiword phrase that occurs once inside a continuing sentence.
+    observed = check.observed
+    if check.relation not in {"supported", "contradicted"} or not observed.endswith(
+        "."
+    ):
+        return None
+    quote = observed[:-1]
+    words = quote.split(" ")
+    if len(words) < 2 or not all(word.isalpha() for word in words):
+        return None
+    before, match, after = candidate.partition(quote)
+    if (
+        not match
+        or (before and not before[-1].isspace())
+        or len(after) < 2
+        or after[0] != " "
+        or not after[1].isalpha()
+        or candidate.find(quote, len(before) + 1) != -1
+    ):
+        return None
+    return {
+        "kind": "appended_period",
+        "observed": observed,
+        "effective_observed": match,
+        "raw_relation": check.relation,
+        "effective_relation": check.relation,
+    }
+
+
 def _bound_fields(
     value: _QuoteDecision, material: dict, candidate: str
 ) -> tuple[dict[str, fields.Relation], dict[str, FieldEvidence]]:
     atoms = {}
     evidence: dict[str, FieldEvidence] = {}
     for key, check in value.checks.items():
-        binding = table_evidence.compare(
+        binding: FieldEvidence | None = table_evidence.compare(
             material, candidate, key, check.observed, check.relation
         ) or semantic_fact_evidence.compare(
             material, candidate, key, check.observed, check.relation
         )
         if binding is None:
-            _require(
-                fields.observed_from_answer(check.observed, check.relation, candidate)
-            )
-            atoms[key] = check.relation
-            continue
+            if fields.observed_from_answer(check.observed, check.relation, candidate):
+                atoms[key] = check.relation
+                continue
+            binding = _bind_appended_period(check, candidate)
+            _require(binding is not None)
+            assert binding is not None
         quote = binding["effective_observed"]
         _require(bool(quote.strip()) and len(quote) <= fields.MAX_EVIDENCE_TEXT_CHARS)
         _require(quote in candidate)

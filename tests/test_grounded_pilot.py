@@ -4398,3 +4398,21 @@ def test_pilot_honors_only_citation_scope_before_semantic_review(restriction):
         )
         assert "[MORKADA]" in result.text
     assert {"MORKADA", "SILETOR"} <= set(backend.reads)
+
+
+@pytest.mark.parametrize("label", ["Identyfikator naboru", "Nabór", "Poprzedni nabór"])
+def test_enrollment_identity_value_can_continue_on_the_next_line(label):
+    from venom_core.services.grounded_source_enrollment import bind_enrollment_evidence
+
+    cards = {
+        "KANDEL": _ENROLLMENT_INPUT + " Identyfikator naboru:\nWARSZTATY-2026.",
+        "MIRWEN": _ENROLLMENT_RESULT + f" {label}:\nWARSZTATY-2026.",
+    }
+    documents = _enrollment_documents(cards)
+    if label == "Poprzedni nabór":
+        with pytest.raises(EvidenceError, match="enrollment_unbound_submission"):
+            bind_enrollment_evidence(documents)
+    else:
+        evidence = bind_enrollment_evidence(documents)
+        assert evidence.results_date.value == "23 lipca"
+        assert evidence.channel.value == "panel"

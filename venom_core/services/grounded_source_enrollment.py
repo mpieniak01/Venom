@@ -216,8 +216,8 @@ def _enrollment_identities(document: SourceDocument) -> set[str]:
     return {
         match[1].casefold()
         for clause in _CLAUSES.split(document.text)
-        for field in clause.splitlines()
-        if (match := _ENROLLMENT_ID.fullmatch(field.strip())) is not None
+        for field in (clause, *clause.splitlines())
+        if (match := _ENROLLMENT_ID.fullmatch(" ".join(field.split()))) is not None
     }
 
 

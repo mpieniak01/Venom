@@ -586,30 +586,9 @@ def _validate_citation_scope(used: set[str], evidence: Evidence) -> None:
         raise EvidenceError("answer_source_not_allowed")
 
 
-def bind_source_quotes(
-    prose: str, evidence: Evidence, quotes: Sequence[SourceQuote]
-) -> tuple[SourceQuote, ...]:
-    """Bind actual public references to literal evidence before semantic review."""
-    documents = {doc.ref.source_id: doc for doc in evidence.sources}
-    cited = {match["name"] for match in _PUBLIC_CARD.finditer(prose)}
-    cited.update(
-        match["name"]
-        for match in _PUBLIC_CARD_REFERENCE.finditer(prose)
-        if match["name"].isupper() or match["name"] in documents
-    )
-    cited.update(
-        match["name"]
-        for match in _PUBLIC_CARD_DECLARATION.finditer(prose)
-        if match["marker"] or match["name"][0].isupper() or match["name"] in documents
-    )
-    cited.update(
-        ident
-        for ident in documents
-        if re.search(rf"(?<![\w-]){re.escape(ident)}(?![\w-])", prose)
-    )
-    if not cited <= documents.keys():
-        raise EvidenceError("answer_source_unknown")
-    _validate_citation_scope(cited | {quote.source_id for quote in quotes}, evidence)
+def _verified_source_quotes(
+    documents: dict[str, SourceDocument], quotes: Sequence[SourceQuote]
+) -> list[SourceQuote]:
     bound = []
     for quote in quotes:
         document = documents.get(quote.source_id)
@@ -624,6 +603,44 @@ def bind_source_quotes(
                 literal_source_quote(document.text, quote.quote),
             )
         )
+    return bound
+
+
+def _without_verified_public_quotes(prose: str, quotes: Sequence[SourceQuote]) -> str:
+    """Exclude exact displayed literals after their source receipts are verified."""
+    unquoted = prose.translate(_DOUBLE_QUOTES)
+    for quote in quotes:
+        literal = '"' + quote.quote.translate(_DOUBLE_QUOTES) + '"'
+        unquoted = unquoted.replace(literal, " " * len(literal))
+    return unquoted
+
+
+def bind_source_quotes(
+    prose: str, evidence: Evidence, quotes: Sequence[SourceQuote]
+) -> tuple[SourceQuote, ...]:
+    """Bind actual public references to literal evidence before semantic review."""
+    documents = {doc.ref.source_id: doc for doc in evidence.sources}
+    bound = _verified_source_quotes(documents, quotes)
+    public_references = _without_verified_public_quotes(prose, bound)
+    cited = {match["name"] for match in _PUBLIC_CARD.finditer(public_references)}
+    cited.update(
+        match["name"]
+        for match in _PUBLIC_CARD_REFERENCE.finditer(public_references)
+        if match["name"].isupper() or match["name"] in documents
+    )
+    cited.update(
+        match["name"]
+        for match in _PUBLIC_CARD_DECLARATION.finditer(public_references)
+        if match["marker"] or match["name"][0].isupper() or match["name"] in documents
+    )
+    cited.update(
+        ident
+        for ident in documents
+        if re.search(rf"(?<![\w-]){re.escape(ident)}(?![\w-])", public_references)
+    )
+    if not cited <= documents.keys():
+        raise EvidenceError("answer_source_unknown")
+    _validate_citation_scope(cited | {quote.source_id for quote in quotes}, evidence)
     used = {quote.source_id for quote in bound}
     for ident in sorted(cited - used):
         document = documents[ident]

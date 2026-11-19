@@ -1123,3 +1123,48 @@ def test_only_scope_is_automatically_bound_for_direct_grounded_turns():
     evidence = gate.prepare(TurnPlan("Zacytuj tylko [MIRWEN].", "r"))
     assert evidence.allowed_source_ids == ("MIRWEN",)
     assert evidence.requested_source_ids == ("MIRWEN",)
+
+
+@pytest.mark.parametrize(
+    "suffix", ["", " [KANDEL]", " Według KANDEL termin jest inny."]
+)
+def test_verified_literal_quote_does_not_make_mentioned_card_an_extra_citation(suffix):
+    from venom_core.services.grounded_dialogue import Evidence
+
+    literal = "Karta KANDEL nie określa terminu."
+    body = literal + " Tytuł to „Zapisy”."
+    documents = tuple(
+        SourceDocument(SourceRef(name, "1", text_hash(text)), text, True)
+        for name, text in (("MIRWEN", body), ("KANDEL", "Brak daty."))
+    )
+    evidence = Evidence(
+        "id", documents, (), Requirements(sources=True), (), ("MIRWEN",), ("MIRWEN",)
+    )
+    quote = SourceQuote("MIRWEN", "1", literal + ' Tytuł to "Zapisy".')
+    prose = f"„{body}” [MIRWEN]" + suffix
+    if suffix:
+        with pytest.raises(EvidenceError, match="answer_source_not_allowed"):
+            bind_source_quotes(prose, evidence, (quote,))
+    else:
+        bound = bind_source_quotes(prose, evidence, (quote,))
+        assert len(bound) == 1
+        assert bound[0].source_id == "MIRWEN"
+        assert bound[0].quote == body
+
+
+@pytest.mark.parametrize("verified", [False, True])
+def test_free_prose_or_unverified_quote_cannot_hide_forbidden_card_mentions(verified):
+    from venom_core.services.grounded_dialogue import Evidence
+
+    literal = "Karta KANDEL nie określa terminu."
+    document = SourceDocument(
+        SourceRef("MIRWEN", "1", text_hash(literal)), literal, True
+    )
+    evidence = Evidence(
+        "id", (document,), (), Requirements(sources=True), (), ("MIRWEN",), ("MIRWEN",)
+    )
+    quote = SourceQuote("MIRWEN", "1", literal if verified else "Inna treść.")
+    prose = literal + " [MIRWEN]" if verified else f"„{literal}” [MIRWEN]"
+    reason = "answer_source_unknown" if verified else "answer_quote_unsupported"
+    with pytest.raises(EvidenceError, match=reason):
+        bind_source_quotes(prose, evidence, (quote,))

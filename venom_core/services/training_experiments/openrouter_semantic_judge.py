@@ -961,11 +961,7 @@ def _audit_costs(rows: list[dict], protocol: dict) -> tuple[Decimal, Decimal]:
         attempts = _rate_limit_attempts(row)
         _require(
             len(attempts) <= len(policy["backoff_seconds"])
-            and sum(
-                _provider_unavailable(attempt) and attempt["http_status"] == 200
-                for attempt in attempts
-            )
-            <= 1
+            and sum(_provider_unavailable(attempt) for attempt in attempts) <= 1
         )
         retry_count += len(attempts)
         _require(retry_count <= policy["max_retries_per_audit"])

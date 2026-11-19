@@ -1179,9 +1179,15 @@ def _ledger_rows(root: Path, ledger: dict) -> list[dict]:
 def _ledger_snapshot(root: Path, pin: QualificationRemote) -> tuple[dict, set[str]]:
     _recover_transaction(root)
     identity = stable_hash(pin.model_dump())
-    base = _money(
-        _bound(_root(pin.audit_root), "result.json", pin.result_sha256)["accounted_usd"]
+    audit_root = _root(pin.audit_root)
+    protocol = _bound(audit_root, "protocol.json", pin.protocol_sha256)
+    result = _bound(audit_root, "result.json", pin.result_sha256)
+    accounted_key = (
+        "accounted_with_table_pilot_usd"
+        if "table_replay_sha256" in protocol
+        else "accounted_usd"
     )
+    base = _money(result[accounted_key])
     path = root / _LEDGER_FILE
     if not path.exists():
         _require(not list((root / "receipts").glob("*.json")))

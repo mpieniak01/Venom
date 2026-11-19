@@ -53,7 +53,8 @@ def _panel_decision(
     decision, evidence = judge.decode_with_evidence(response, body, text)
     if row["index"] == 2:
         judge._require(
-            row["status"] == "rejected_decision"
+            row["label"] == "ND05-swap"
+            and row["status"] == "rejected_decision"
             and row.get("error_type") == "decoder_invalid"
             and "decision" not in row
             and {"olga", "daniel", "day"} <= evidence.get("field_evidence", {}).keys()
@@ -62,6 +63,11 @@ def _panel_decision(
         judge._require(
             row["status"] == "completed" and row["decision"] == decision.model_dump()
         )
+        for field in judge.ReviewEvidence.__annotations__:
+            if field in row:
+                judge._require(
+                    stable_hash(row[field]) == stable_hash(evidence.get(field))
+                )
     return decision
 
 

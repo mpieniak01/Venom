@@ -383,6 +383,7 @@ def review_env(tmp_path, monkeypatch, packet):
     spec, case, answer = packet
     audit = tmp_path / "audit"
     _write(audit / "result.json", {"accounted_usd": "0.01"})
+    _write(audit / "protocol.json", {})
     pin = judge.QualificationRemote(
         schema_version=1,
         judge=judge.JUDGE,
@@ -390,7 +391,7 @@ def review_env(tmp_path, monkeypatch, packet):
         model=judge.MODEL,
         provider=judge.PROVIDER,
         endpoint=judge.ENDPOINT,
-        protocol_sha256="0" * 64,
+        protocol_sha256=digest(audit / "protocol.json"),
         result_sha256=digest(audit / "result.json"),
         controls_manifest_sha256="2" * 64,
         prompt_sha256="3" * 64,
@@ -1858,3 +1859,52 @@ def test_active_setting_advice_is_still_contradicted(raw_relation):
     assert decision.unsupported == "yes"
     assert evidence["response_scope"]["proof"]["kind"] == "setting_advice"
     assert "setting_criterion" not in evidence["response_scope"]["proof"]
+
+
+@pytest.mark.parametrize("table_replay", [False, True])
+def test_review_ledger_includes_only_verified_table_panel_costs(
+    review_env, table_replay
+):
+    _, _, original_pin, _, root = review_env
+    audit_root = judge._root(original_pin.audit_root)
+    protocol = {"table_replay_sha256": "a" * 64} if table_replay else {}
+    _write(audit_root / "protocol.json", protocol)
+    _write(
+        audit_root / "result.json",
+        {"accounted_usd": "0.01", "accounted_with_table_pilot_usd": "0.02"},
+    )
+    pin = original_pin.model_copy(
+        update={
+            "protocol_sha256": digest(audit_root / "protocol.json"),
+            "result_sha256": digest(audit_root / "result.json"),
+        }
+    )
+    ledger, generations = judge._ledger_snapshot(root, pin)
+    assert Decimal(ledger["accounted_usd"]) == Decimal(
+        "0.02" if table_replay else "0.01"
+    )
+    assert ledger["receipts"] == {}
+    assert generations == set()
+
+
+def test_table_panel_costs_exhaust_review_budget_before_another_post(
+    review_env, monkeypatch
+):
+    calibration, bundle, original_pin, state, _ = review_env
+    audit_root = judge._root(original_pin.audit_root)
+    _write(audit_root / "protocol.json", {"table_replay_sha256": "a" * 64})
+    _write(
+        audit_root / "result.json",
+        {"accounted_usd": "0.01", "accounted_with_table_pilot_usd": "0.02"},
+    )
+    pin = original_pin.model_copy(
+        update={
+            "protocol_sha256": digest(audit_root / "protocol.json"),
+            "result_sha256": digest(audit_root / "result.json"),
+        }
+    )
+    monkeypatch.setattr(judge, "qualification", lambda _calibration: pin)
+    calibration["remote_review"]["budget_usd"] = "0.019"
+    with pytest.raises(ValueError, match="budget"):
+        judge.review_bundle(calibration, bundle, "table-cost-bound", 10)
+    assert state["calls"] == []

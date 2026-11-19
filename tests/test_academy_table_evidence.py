@@ -393,7 +393,7 @@ def _replay_receipt(item, text, *, index, label, repeat, protocol_sha, confirmat
     return row
 
 
-def _replay_panel(case, *, confirmation=False):
+def _replay_panel(case, *, confirmation=False, order=None):
     candidates = {
         "ND05-A2": (SORTING_TABLE, ("supported", "supported")),
         "ND05-swap": (
@@ -410,7 +410,7 @@ def _replay_panel(case, *, confirmation=False):
         ),
     }
     labels = ["ND05-swap"] if confirmation else list(candidates)
-    order = labels * 2
+    order = labels * 2 if order is None else order
     cases = {}
     for label in labels:
         candidate, (olga, daniel) = candidates[label]
@@ -652,6 +652,7 @@ def test_table_replay_rejects_resealed_holdout_or_budget_substitution(
         "generation",
         "rejected_status",
         "confirmation_proof",
+        "pilot_proof",
         "panel_cost",
     ],
 )
@@ -674,7 +675,7 @@ def test_table_replay_checks_all_panel_exchanges_and_independent_confirmation(
         used.add(row["response"]["id"])
     elif damage == "rejected_status":
         row["error_type"] = "different_failure"
-    elif damage == "confirmation_proof":
+    elif damage in {"confirmation_proof", "pilot_proof"}:
         row["field_evidence"] = {}
     else:
         panel_result = json.loads(panel["result"])
@@ -721,3 +722,30 @@ def test_table_repair_is_limited_to_the_single_archived_decoder_failure(
         row["field_evidence"] = {}
     with pytest.raises(ValueError, match=judge.ERROR):
         replay.decode(row, ordinary["request"], SORTING_TABLE, panel["protocol_sha256"])
+
+
+def test_table_replay_exception_requires_the_named_swapped_case(table_replay_archive):
+    root, case, packet, protocol, result = table_replay_archive
+    packet["pilot"] = _replay_panel(
+        case,
+        order=["ND05-swap", "ND05-A2", "ND05-missing", "ND05-reordered"] * 2,
+    )
+    _reseal_replay(root, packet, protocol)
+    with pytest.raises(ValueError, match=judge.ERROR):
+        replay.source(root, protocol, result, case, set())
+
+
+def test_table_replay_accepts_old_completed_receipts_without_saved_evidence(
+    table_replay_archive,
+):
+    root, case, packet, protocol, result = table_replay_archive
+    panel = packet["pilot"]
+    row = json.loads(panel["receipts"]["001.json"])
+    for field in judge.ReviewEvidence.__annotations__:
+        row.pop(field, None)
+    _replace_panel_receipt(panel, "001.json", row)
+    _reseal_replay(root, packet, protocol)
+    assert (
+        replay.source(root, protocol, result, case, set())
+        == packet["source_protocol_sha256"]
+    )

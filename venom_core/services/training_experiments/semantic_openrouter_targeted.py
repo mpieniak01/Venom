@@ -291,8 +291,12 @@ def _requests(panel: dict) -> list[tuple[dict, dict, dict, Decimal]]:
     return requests
 
 
-def _recorded_prefix(state: audit._AuditState) -> list[dict]:
-    requests = _requests(state.manifest)
+def _recorded_prefix(
+    state: audit._AuditState,
+    requests: list[tuple[dict, dict, dict, Decimal]],
+    *,
+    offset: int = 0,
+) -> list[dict]:
     root = state.root
     paths = sorted((root / "receipts").glob("*.json"))
     audit._require(len(paths) <= len(requests), _INVALID)
@@ -310,8 +314,8 @@ def _recorded_prefix(state: audit._AuditState) -> list[dict]:
         ledger["pending_call_id"] is None, "remote_audit_resume_pending_call"
     )
     recorded = []
-    for index, path in enumerate(paths, 1):
-        entry, answer, body, reservation = requests[index - 1]
+    for index, path in enumerate(paths, offset + 1):
+        entry, answer, body, reservation = requests[index - offset - 1]
         row = audit.read_json(path)
         audit._require(
             path.name == f"{index:03d}.json"
@@ -331,7 +335,7 @@ def _recorded_prefix(state: audit._AuditState) -> list[dict]:
             judge._verify_rejected_call(row, body, answer["text"], state.protocol_sha)
         else:
             audit._require(
-                index == len(paths)
+                index == offset + len(paths)
                 and row["status"] == "failed"
                 and (row.get("http_status") == 429 or audit._provider_unavailable(row))
                 and judge.reported_cost(row["response"]) == row.get("cost_usd"),
@@ -361,8 +365,9 @@ def _recorded_prefix(state: audit._AuditState) -> list[dict]:
     return recorded
 
 
-def resume(state: audit._AuditState) -> dict:
-    recorded = _recorded_prefix(state)
+def _restore_progress(
+    state: audit._AuditState, recorded: list[dict], admitted: list[dict] | None = None
+) -> list[dict]:
     started = audit.read_json(state.root / "started.json")
     audit._require(started["protocol_sha256"] == state.protocol_sha, _INVALID)
     elapsed = (
@@ -372,7 +377,7 @@ def resume(state: audit._AuditState) -> dict:
         0 <= elapsed < state.protocol["max_seconds"], "remote_audit_resume_deadline"
     )
     state.start = audit.time.monotonic() - elapsed
-    state.rows = recorded
+    state.rows = [*(admitted or []), *recorded]
     state.retries = sum(len(judge._rate_limit_attempts(row)) for row in recorded)
     prior_attempts = []
     if recorded and recorded[-1]["status"] == "failed":
@@ -399,7 +404,37 @@ def resume(state: audit._AuditState) -> dict:
         history = state.root / "prior-results"
         history.mkdir(exist_ok=True)
         result_path.replace(history / f"{digest(result_path)}.json")
-    return execute(state, prior_attempts=prior_attempts, resuming=True)
+    return prior_attempts
+
+
+def resume(state: audit._AuditState) -> dict:
+    recorded = _recorded_prefix(state, _requests(state.manifest))
+    return execute(
+        state, prior_attempts=_restore_progress(state, recorded), resuming=True
+    )
+
+
+def _resume_timing(state: audit._AuditState, prior_attempts: list[dict] | None) -> None:
+    if prior_attempts:
+        last = prior_attempts[-1]
+        finished = judge._time(last["finished_at"])
+        delay = judge._retry_wait_seconds(
+            last,
+            len(prior_attempts) - 1,
+            finished,
+            rate_policy=state.protocol["rate_limit"],
+        )
+        elapsed = (judge._time(audit._utc()) - finished).total_seconds()
+        state.next_post_at = max(
+            state.next_post_at, audit.time.monotonic() + delay - elapsed
+        )
+    elif state.rows:
+        finished = judge._time(state.rows[-1]["finished_at"])
+        elapsed = (judge._time(audit._utc()) - finished).total_seconds()
+        interval = state.protocol["rate_limit"]["interval_seconds"]
+        state.next_post_at = max(
+            state.next_post_at, audit.time.monotonic() + interval - elapsed
+        )
 
 
 def execute(
@@ -419,21 +454,7 @@ def execute(
         return audit._audit_result(state)
     state.next_post_at = audit._provider_next_post_at(state.rate_path)
     requests = _requests(state.manifest)
-    if prior_attempts:
-        last = prior_attempts[-1]
-        finished = judge._time(last["finished_at"])
-        delay = judge._retry_wait_seconds(last, len(prior_attempts) - 1, finished)
-        elapsed = (judge._time(audit._utc()) - finished).total_seconds()
-        state.next_post_at = max(
-            state.next_post_at, audit.time.monotonic() + delay - elapsed
-        )
-    elif state.rows:
-        finished = judge._time(state.rows[-1]["finished_at"])
-        elapsed = (judge._time(audit._utc()) - finished).total_seconds()
-        interval = state.protocol["rate_limit"]["interval_seconds"]
-        state.next_post_at = max(
-            state.next_post_at, audit.time.monotonic() + interval - elapsed
-        )
+    _resume_timing(state, prior_attempts)
     if not audit._schedule_fits(state, len(requests) - len(state.rows)):
         state.status = "deadline_exceeded"
         return audit._audit_result(state)

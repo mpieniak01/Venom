@@ -1494,3 +1494,82 @@ def test_targeted_resume_replays_completed_receipts_and_azure_capacity(
     assert Decimal(result["unknown_reserved_usd"]) == Decimal(tail["reserved_usd"])
     assert row["rate_limit_attempts"][0]["call_id"] == tail["call_id"]
     assert digest(root / "receipts/001.json") == first_receipt
+
+
+@pytest.mark.parametrize("use_admission", [False, True])
+def test_full_audit_resumes_after_holdout_azure_502(ready, monkeypatch, use_admission):
+    from venom_core.services.training_experiments import semantic_openrouter_admission
+
+    root, source, client = ready
+    if use_admission:
+        protocol = json.loads((root / "protocol.json").read_text())
+        protocol.update(
+            phase1_admission_sha256="fixture",
+            rate_limit=audit._ADMITTED_RATE_LIMIT_POLICY,
+            max_seconds=11000,
+        )
+        write(root / "protocol.json", protocol)
+        write(root / "frozen.json", {"protocol_sha256": digest(root / "protocol.json")})
+
+        def admit(_root, manifest, _protocol):
+            rows = [
+                json.loads((source / "receipts" / f"{index:03d}.json").read_text())
+                for index in range(1, 157)
+            ]
+            return rows, {
+                k: v
+                for k, v in manifest["thresholds"].items()
+                if not k.startswith("holdout")
+            }
+
+        monkeypatch.setattr(semantic_openrouter_admission, "verify", admit)
+    interrupted_at = 1 if use_admission else 157
+    stop = True
+    sleep = audit.sleep
+
+    def stop_during_backoff(seconds):
+        if stop and CapacityClient.calls == interrupted_at:
+            raise KeyboardInterrupt
+        sleep(seconds)
+
+    monkeypatch.setattr(audit, "sleep", stop_during_backoff)
+
+    class CapacityClient(client):
+        def post(self, url, **kwargs):
+            if self.calls + 1 == interrupted_at:
+                type(self).calls += 1
+                return httpx.Response(
+                    502,
+                    json={
+                        "error": {
+                            "code": 502,
+                            "message": "The system is currently experiencing high demand.",
+                            "metadata": {"provider_name": "Azure"},
+                        }
+                    },
+                    request=httpx.Request("POST", url),
+                )
+            return super().post(url, **kwargs)
+
+    with pytest.raises(KeyboardInterrupt):
+        audit.run(root, execute=True, client_factory=CapacityClient)
+    assert CapacityClient.calls == interrupted_at
+    phase = digest(root / "phase1-result.json")
+    phase_paths = sorted((root / "receipts").glob("0*.json"))
+    prefix = {path.name: digest(path) for path in phase_paths}
+
+    stop = False
+    result = audit.run(root, execute=True, resume=True, client_factory=CapacityClient)
+    assert result["status"] == "passed"
+    assert result["holdout_opened"] and result["rate_limit_retries"] == 1
+    assert CapacityClient.calls == interrupted_at + 72
+    assert digest(root / "phase1-result.json") == phase
+    assert all(digest(root / "receipts" / name) == sha for name, sha in prefix.items())
+    tail = json.loads((root / "receipts/157.json").read_text())
+    assert tail["rate_limit_attempts"][0]["http_status"] == 502
+    assert Decimal(result["unknown_reserved_usd"]) == Decimal(tail["reserved_usd"])
+    assert len(result["receipt_hashes"]) == (72 if use_admission else 228)
+    pin = judge.QualificationRemote.model_validate_json(
+        (root / "qualification.json").read_text()
+    )
+    judge.verify_audit(pin)

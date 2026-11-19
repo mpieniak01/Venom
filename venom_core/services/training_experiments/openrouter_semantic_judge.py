@@ -212,6 +212,7 @@ def implementation_identity() -> str:
             "semantic_judge_v4.py",
             "semantic_judge_controls.py",
             "semantic_openrouter_audit.py",
+            "semantic_openrouter_admission.py",
             "profiles.py",
             "grounded_claims.py",
         )
@@ -646,14 +647,14 @@ def _verify_rejected_call(
 def verify_audit(pin: QualificationRemote) -> None:
     from .semantic_openrouter_audit import (
         _AUTOMATIC_RETRY,
-        _RATE_LIMIT_POLICY,
         _REQUEST_TIMEOUT_SECONDS,
+        _rate_policy,
     )
 
     root = _root(pin.audit_root)
     protocol = _bound(root, "protocol.json", pin.protocol_sha256)
     _require(
-        protocol.get("rate_limit") == _RATE_LIMIT_POLICY
+        protocol.get("rate_limit") == _rate_policy(protocol)
         and protocol.get("automatic_retry") == _AUTOMATIC_RETRY
         and protocol.get("request_timeout_seconds") == _REQUEST_TIMEOUT_SECONDS
     )
@@ -693,11 +694,23 @@ def verify_audit(pin: QualificationRemote) -> None:
         and result.get("protocol_sha256") == pin.protocol_sha256
     )
     hashes = result["receipt_hashes"]
-    _require(set(hashes) == {f"{i:03d}.json" for i in range(1, 229)})
-    phase1_hashes = {f"{i:03d}.json": hashes[f"{i:03d}.json"] for i in range(1, 157)}
-    rows, phase1_metrics, (phase1_known, phase1_reserved) = _replay_phase1(
-        root, protocol, pin.protocol_sha256, manifest, phase1_hashes
+    admitted = "phase1_admission_sha256" in protocol
+    _require(
+        set(hashes) == {f"{i:03d}.json" for i in range(157 if admitted else 1, 229)}
     )
+    if admitted:
+        from . import semantic_openrouter_admission as admission
+
+        rows, phase1_metrics = admission.verify(root, manifest, protocol)
+        phase1_hashes = {}
+        phase1_known, phase1_reserved = Decimal(0), Decimal(0)
+    else:
+        phase1_hashes = {
+            f"{i:03d}.json": hashes[f"{i:03d}.json"] for i in range(1, 157)
+        }
+        rows, phase1_metrics, (phase1_known, phase1_reserved) = _replay_phase1(
+            root, protocol, pin.protocol_sha256, manifest, phase1_hashes
+        )
     _require(
         phase1_metrics
         == {k: v for k, v in thresholds.items() if not k.startswith("holdout")}
@@ -707,30 +720,35 @@ def verify_audit(pin: QualificationRemote) -> None:
         phase1.get("status") == "passed"
         and type(phase1.get("rows")) is int
         and phase1["rows"] == 156
+        and phase1.get("metrics") == phase1_metrics
+        and phase1.get("receipt_hashes") == phase1_hashes
+        and phase1.get("phase1_admission_sha256")
+        == protocol.get("phase1_admission_sha256")
     )
-    _require(phase1.get("metrics") == phase1_metrics)
-    _require(phase1.get("receipt_hashes") == phase1_hashes)
     phase1_finished = _time(phase1["finished_at"])
-    _require(_time(rows[-1]["finished_at"]) <= phase1_finished)
+    _require(all(_time(row["finished_at"]) <= phase1_finished for row in rows))
     initial = _money(protocol["initial_accounted_usd"])
     initial_unknown = _money(protocol["initial_unknown_reserved_usd"])
     budget = _money(protocol["budget_usd"])
     _require(initial_unknown <= initial and budget > 0)
-    limit = _verify_holdout_capacity(
-        protocol, rows, initial + phase1_known + phase1_reserved, phase1_finished
-    )
-    # No held-out content, including its receipts, is read until G1 replay passed.
-    held = manifest["holdout"]
-    _require(set(held["files"]) == {"panel.json", "gold.json"})
-    for name in ("panel.json", "gold.json"):
-        _require(digest(root / "controls" / "holdout" / name) == held["files"][name])
-    combined = {
-        **manifest,
-        "files": {
-            **manifest["files"],
-            **{"holdout/" + n: h for n, h in held["files"].items()},
-        },
-    }
+    if admitted:
+        from .semantic_openrouter_audit import _capacity, _holdout_required_seconds
+
+        max_retries = protocol["rate_limit"]["max_retries_per_audit"]
+        limit = protocol["max_seconds"]
+        _require(
+            type(limit) in (int, float) and math.isfinite(limit) and 0 < limit <= 86400
+        )
+        _require(limit >= _holdout_required_seconds(protocol, max_retries))
+        _require(_money(_capacity(protocol, budget)["planned_budget_usd"]) <= budget)
+    else:
+        limit = _verify_holdout_capacity(
+            protocol, rows, initial + phase1_known + phase1_reserved, phase1_finished
+        )
+    # Held-out files become eligible only after independently verifying phase one.
+    from .semantic_openrouter_audit import _staged_manifest
+
+    combined = _staged_manifest(root, manifest)
     rows = _audit_rows(
         root,
         pin.protocol_sha256,
@@ -739,19 +757,20 @@ def verify_audit(pin: QualificationRemote) -> None:
         _audit_order(root, combined)[156:],
         rows,
         phase1_finished,
+        rate_policy=protocol["rate_limit"],
     )
     holdout_cap = _money(protocol["holdout_max_request_usd"])
     _require(all(_money(row["reserved_usd"]) <= holdout_cap for row in rows[156:]))
     metrics = _audit_metrics(root, combined, rows)
     _require(metrics == thresholds and result.get("metrics") == metrics)
-    known, reserved = _audit_costs(rows, protocol)
+    billable = rows[156:] if admitted else rows
+    known, reserved = _audit_costs(billable, protocol)
     _require(_money(result["actual_known_cost_usd"]) == known)
     _require(_money(result["unknown_reserved_usd"]) == reserved)
     _require(_money(result["carried_unknown_reserved_usd"]) == initial_unknown)
     _require(_money(result["accounted_usd"]) == initial + known + reserved <= budget)
-    elapsed = (
-        _time(rows[-1]["finished_at"]) - _first_attempt_started(rows[0])
-    ).total_seconds()
+    started = phase1_finished if admitted else _first_attempt_started(rows[0])
+    elapsed = (_time(rows[-1]["finished_at"]) - started).total_seconds()
     _require(elapsed <= limit)
 
 
@@ -908,10 +927,12 @@ def _audit_costs(rows: list[dict], protocol: dict) -> tuple[Decimal, Decimal]:
     return known, unknown
 
 
-def _retry_wait_seconds(attempt: dict, index: int, finished: datetime) -> float:
+def _retry_wait_seconds(
+    attempt: dict, index: int, finished: datetime, *, rate_policy: dict | None = None
+) -> float:
     from .semantic_openrouter_audit import _RATE_LIMIT_POLICY, _retry_delay
 
-    policy: dict = _RATE_LIMIT_POLICY
+    policy: dict = rate_policy or _RATE_LIMIT_POLICY
     backoff = policy["backoff_seconds"]
     _require(index < len(backoff))
     header = attempt.get("retry_after")
@@ -932,10 +953,11 @@ def _audit_rows(
     phase_opened_at: datetime,
     *,
     collect_rejections: bool = False,
+    rate_policy: dict | None = None,
 ) -> list[dict]:
     from .semantic_openrouter_audit import _RATE_LIMIT_POLICY
 
-    interval = cast(int, _RATE_LIMIT_POLICY["interval_seconds"])
+    interval = cast(int, (rate_policy or _RATE_LIMIT_POLICY)["interval_seconds"])
     previous_end = _time(prior[-1]["finished_at"]) if prior else phase_opened_at
     rows = list(prior)
     calls = {row["call_id"] for row in prior}
@@ -963,7 +985,9 @@ def _audit_rows(
                 (started - previous_end).total_seconds() >= wait_seconds
                 and started <= finished
             )
-            wait_seconds = _retry_wait_seconds(attempt, retry_index, finished)
+            wait_seconds = _retry_wait_seconds(
+                attempt, retry_index, finished, rate_policy=rate_policy
+            )
             previous_end = finished
         _require(
             (_time(row["started_at"]) - previous_end).total_seconds() >= wait_seconds

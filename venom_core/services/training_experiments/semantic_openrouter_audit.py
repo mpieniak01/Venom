@@ -42,6 +42,12 @@ _RATE_LIMIT_POLICY = {
     "max_retry_after_seconds": 60,
     "max_retries_per_audit": 8,
 }
+_ADMITTED_RATE_LIMIT_POLICY = {
+    "interval_seconds": 3,
+    "backoff_seconds": [12, 25, 50],
+    "max_retry_after_seconds": 60,
+    "max_retries_per_audit": 24,
+}
 _HOLDOUT_CALLS = 72
 
 
@@ -92,6 +98,8 @@ def prepare(
     max_request_usd: str = "0.01",
     initial_accounted_usd: str = "0",
     initial_unknown_reserved_usd: str = "0",
+    phase1_admission: Path | None = None,
+    phase1_admission_sha256: str | None = None,
 ) -> dict:
     """Freeze a separate namespace; holdout contents remain at their original path."""
     controls, data_review, output = (
@@ -179,6 +187,20 @@ def prepare(
         "holdout_decision_errors": "collect_and_block_qualification",
         "uncertain_decision": "block_qualification",
     }
+    if phase1_admission is not None:
+        from . import semantic_openrouter_admission as admission
+
+        evidence_path = operator_path(phase1_admission)
+        _require(
+            isinstance(phase1_admission_sha256, str), "remote_audit_admission_unsealed"
+        )
+        assert phase1_admission_sha256 is not None
+        (output / admission.FILE).write_bytes(
+            _bytes(evidence_path.parent, evidence_path.name, phase1_admission_sha256)
+        )
+        protocol["phase1_admission_sha256"] = phase1_admission_sha256
+        protocol["rate_limit"] = _ADMITTED_RATE_LIMIT_POLICY
+        admission.verify(output, manifest, protocol)
     atomic_json(output / _PROTOCOL_FILE, protocol)
     atomic_json(
         output / "frozen.json",
@@ -192,6 +214,14 @@ def prepare(
     }
 
 
+def _rate_policy(protocol: dict) -> dict:
+    return (
+        _ADMITTED_RATE_LIMIT_POLICY
+        if "phase1_admission_sha256" in protocol
+        else _RATE_LIMIT_POLICY
+    )
+
+
 def _sealed_protocol(root: Path) -> tuple[dict, str]:
     raw = (root / _PROTOCOL_FILE).read_bytes()
     protocol = json.loads(raw)
@@ -203,7 +233,7 @@ def _sealed_protocol(root: Path) -> tuple[dict, str]:
         and protocol["judge"] == judge.JUDGE
         and protocol["request_contract"] == judge._contract()
         and protocol["request_timeout_seconds"] == _REQUEST_TIMEOUT_SECONDS
-        and protocol["rate_limit"] == _RATE_LIMIT_POLICY
+        and protocol["rate_limit"] == _rate_policy(protocol)
         and protocol["automatic_retry"] == _AUTOMATIC_RETRY,
         "remote_audit_frozen_contract_changed",
     )
@@ -264,7 +294,11 @@ def post_with_deadline(
 
 
 def _capacity(protocol: dict, budget: Decimal) -> dict[str, str]:
-    phase1 = judge._money(protocol["phase1_reservation_usd"])
+    phase1 = (
+        Decimal(0)
+        if "phase1_admission_sha256" in protocol
+        else judge._money(protocol["phase1_reservation_usd"])
+    )
     cap = judge._money(protocol["holdout_max_request_usd"])
     maximum = judge._money(protocol["phase1_max_request_usd"])
     initial = judge._money(protocol["initial_accounted_usd"])
@@ -364,7 +398,6 @@ def run(
     root = operator_path(audit_root)
     protocol, protocol_sha = _sealed_protocol(root)
     targeted = protocol.get("kind") == "targeted_regression"
-    _require(not resume or targeted, "remote_audit_resume_requires_targeted")
     if targeted:
         from . import semantic_openrouter_targeted as panel
 
@@ -438,6 +471,7 @@ def run(
             per_request,
             client_factory,
             rate_path,
+            resume=resume,
         )
 
 
@@ -735,11 +769,13 @@ def _schedule_fits(
     )
 
 
-def _audit_next(state: _AuditState, stack: ExitStack) -> bool:
+def _audit_next(
+    state: _AuditState, stack: ExitStack, prior_attempts: list[dict] | None = None
+) -> bool:
     request = _next_audit_request(state)
     if request is None:
         return False
-    status = _submit_case(state, request, stack)
+    status = _submit_case(state, request, stack, prior_attempts=prior_attempts)
     return status in {"completed", "rejected_decision"}
 
 
@@ -856,19 +892,29 @@ def _reserve_holdout(state: _AuditState) -> bool:
 def _phase1_gate(state: _AuditState) -> bool:
     try:
         hashes = _hashes(state.root)
-        replayed, metrics, costs = judge._replay_phase1(
-            state.root,
-            state.protocol,
-            state.protocol_sha,
-            state.manifest,
-            hashes,
-            collect_rejections=True,
-        )
-        _require(
-            stable_hash(replayed) == stable_hash(state.rows)
-            and costs == (state.known, state.unknown),
-            "remote_audit_phase1_evidence_changed",
-        )
+        if "phase1_admission_sha256" in state.protocol:
+            from . import semantic_openrouter_admission as admission
+
+            _require(not hashes, "remote_audit_phase1_evidence_changed")
+            replayed, metrics = admission.verify(
+                state.root, state.manifest, state.protocol
+            )
+            state.rows = replayed
+            state.generations = {row["response"]["id"] for row in replayed}
+        else:
+            replayed, metrics, costs = judge._replay_phase1(
+                state.root,
+                state.protocol,
+                state.protocol_sha,
+                state.manifest,
+                hashes,
+                collect_rejections=True,
+            )
+            _require(
+                stable_hash(replayed) == stable_hash(state.rows)
+                and costs == (state.known, state.unknown),
+                "remote_audit_phase1_evidence_changed",
+            )
     except (OSError, ValueError, KeyError, TypeError):
         state.status = "phase1_replay_failed"
         return False
@@ -888,6 +934,7 @@ def _phase1_gate(state: _AuditState) -> bool:
             "metrics": state.metrics,
             "rejected_decisions": rejected,
             "receipt_hashes": hashes,
+            "phase1_admission_sha256": state.protocol.get("phase1_admission_sha256"),
             "finished_at": _utc(),
         },
     )
@@ -1049,6 +1096,77 @@ def _publish_qualification(root: Path, protocol: dict, result: dict) -> None:
         atomic_json(root / "qualification.json", pin.model_dump())
 
 
+def _staged_manifest(root: Path, manifest: dict) -> dict:
+    files = manifest["holdout"]["files"]
+    _require(set(files) == {"panel.json", "gold.json"}, "remote_audit_holdout_invalid")
+    staged = {f"holdout/{name}": sha for name, sha in files.items()}
+    for name, expected in staged.items():
+        _bytes(root / "controls", name, expected)
+    return {**manifest, "files": {**manifest["files"], **staged}}
+
+
+def _resume_qualification(state: _AuditState) -> list[dict]:
+    from . import semantic_openrouter_admission as admission
+    from . import semantic_openrouter_targeted as continuation
+
+    root, manifest, protocol = state.root, state.manifest, state.protocol
+    admitted: list[dict] = []
+    if "phase1_admission_sha256" in protocol:
+        admitted, metrics = admission.verify(root, manifest, protocol)
+    held = root / "controls" / "holdout"
+    if held.exists():
+        phase_path = root / _PHASE1_RESULT_FILE
+        phase = read_json(phase_path)
+        _require(phase["status"] == "passed", "remote_audit_resume_phase1_unverified")
+        hashes = _hashes(root)
+        if not admitted:
+            phase_hashes = {
+                f"{i:03d}.json": hashes[f"{i:03d}.json"] for i in range(1, 157)
+            }
+            _, metrics, _ = judge._replay_phase1(
+                root, protocol, state.protocol_sha, manifest, phase_hashes
+            )
+            _require(
+                phase["receipt_hashes"] == phase_hashes,
+                "remote_audit_resume_phase1_unverified",
+            )
+        expected = {
+            k: v
+            for k, v in manifest["thresholds"].items()
+            if not k.startswith("holdout")
+        }
+        _require(
+            phase["rows"] == 156
+            and phase["metrics"] == metrics == expected
+            and phase.get("phase1_admission_sha256")
+            == protocol.get("phase1_admission_sha256"),
+            "remote_audit_resume_phase1_unverified",
+        )
+        state.phase1_sha = digest(phase_path)
+        reservation = read_json(root / _HOLDOUT_RESERVE_FILE)
+        _require(
+            reservation["phase1_result_sha256"] == state.phase1_sha,
+            "remote_audit_resume_phase1_unverified",
+        )
+        state.metrics = metrics
+        state.manifest = _staged_manifest(root, manifest)
+        state.order = judge._audit_order(root, state.manifest)
+        state.holdout_opened = True
+    else:
+        _require(not admitted, "remote_audit_resume_holdout_missing")
+    requests = []
+    for entry in state.order[len(admitted) :]:
+        case, answer = judge._jobs(root, state.manifest, entry["split"])[0][
+            entry["answer_id"]
+        ]
+        body = judge._control_request(case, answer)
+        requests.append((entry, answer, body, judge.reserve(body)))
+    recorded = continuation._recorded_prefix(state, requests, offset=len(admitted))
+    attempts = continuation._restore_progress(state, recorded, admitted)
+    continuation._resume_timing(state, attempts)
+    return attempts
+
+
 def _execute(
     root: Path,
     protocol: dict,
@@ -1058,6 +1176,8 @@ def _execute(
     per_request: Decimal,
     client_factory: Callable,
     rate_path: Path | None,
+    *,
+    resume: bool = False,
 ) -> dict:
     state = _AuditState(
         root,
@@ -1071,7 +1191,8 @@ def _execute(
     )
     state.order = judge._audit_order(root, manifest, phase1=True)
     state.start = time.monotonic()
-    (root / "receipts").mkdir()
+    if not resume:
+        (root / "receipts").mkdir()
     quotes = _phase1_reservations(root, manifest)
     phase1 = sum(quotes, Decimal(0))
     maximum = max(quotes)
@@ -1082,21 +1203,41 @@ def _execute(
     )
     capacity = _capacity(protocol, budget)
     atomic_json(root / "capacity.json", capacity)
-    if maximum > per_request or judge._money(capacity["planned_budget_usd"]) > budget:
+    max_request = (
+        judge._money(protocol["holdout_max_request_usd"])
+        if "phase1_admission_sha256" in protocol
+        else maximum
+    )
+    if (
+        max_request > per_request
+        or judge._money(capacity["planned_budget_usd"]) > budget
+    ):
         state.status = "budget_exhausted"
         return _audit_result(state)
     state.next_post_at = _provider_next_post_at(rate_path)
-    retries = protocol["rate_limit"]["max_retries_per_audit"]
+    prior_attempts = None
+    if resume:
+        prior_attempts = _resume_qualification(state)
+    elif "phase1_admission_sha256" in protocol:
+        if not _phase1_gate(state):
+            return _audit_result(state)
+    if resume and len(state.rows) == 156 and not state.holdout_opened:
+        if not _phase1_gate(state):
+            return _audit_result(state)
+    retries = protocol["rate_limit"]["max_retries_per_audit"] - state.retries
+    reserve_time = (
+        0 if state.holdout_opened else _holdout_required_seconds(protocol, retries)
+    )
     if not _schedule_fits(
-        state,
-        len(state.order),
-        reserve_seconds=_holdout_required_seconds(protocol, retries),
+        state, len(state.order) - len(state.rows), reserve_seconds=reserve_time
     ):
         state.status = "holdout_deadline_unavailable"
         return _audit_result(state)
     with ExitStack() as stack:
         while len(state.rows) < len(state.order):
-            if not _audit_next(state, stack):
+            progressed = _audit_next(state, stack, prior_attempts)
+            prior_attempts = None
+            if not progressed:
                 break
             if len(state.rows) == 156 and not _phase1_gate(state):
                 break

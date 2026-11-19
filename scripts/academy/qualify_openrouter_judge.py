@@ -29,6 +29,8 @@ def main() -> None:
         help="Explicit hard cap per held-out request; not a measured estimate",
     )
     prepare.add_argument("--max-request-usd", default="0.01")
+    prepare.add_argument("--phase1-admission", type=Path)
+    prepare.add_argument("--phase1-admission-sha256")
     prepare.add_argument("--initial-accounted-usd", default="0")
     prepare.add_argument("--initial-unknown-reserved-usd", default="0")
     regression = commands.add_parser("prepare-targeted")
@@ -52,7 +54,9 @@ def main() -> None:
         help="Operator-requested real OpenRouter requests",
     )
     execute.add_argument(
-        "--resume", action="store_true", help="Resume a stopped targeted panel"
+        "--resume",
+        action="store_true",
+        help="Continue a sealed audit from the first uncompleted request",
     )
     args = parser.parse_args()
     if args.action == "prepare":
@@ -68,6 +72,8 @@ def main() -> None:
             max_request_usd=args.max_request_usd,
             initial_accounted_usd=args.initial_accounted_usd,
             initial_unknown_reserved_usd=args.initial_unknown_reserved_usd,
+            phase1_admission=args.phase1_admission,
+            phase1_admission_sha256=args.phase1_admission_sha256,
         )
     elif args.action == "prepare-targeted":
         result = targeted.prepare(

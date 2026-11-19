@@ -66,6 +66,9 @@ _HEADER = re.compile(rf"(?P<entity>{_NAME})\s+\[(?P<unit>{_UNIT})\]", re.IGNOREC
 _ALIGNMENT = re.compile(r":?-{3,}:?")
 _VALUE = re.compile(_COUNT)
 _MAX_COLUMNS = 10
+_ASSIGNMENT_WITHDRAWAL = re.compile(
+    r"\b(?:anul\w*|wycof\w*|odwoł\w*|cofam|unieważn\w*)\b", re.I
+)
 
 
 class Source(TypedDict):
@@ -189,6 +192,8 @@ def _source(material: dict, entity: str) -> Source | None:
     if latest is None:
         return None
     index, text = latest
+    if _ASSIGNMENT_WITHDRAWAL.search(text):
+        return None
     matches: list[Source] = []
     for sentence in re.split(r"(?<=[.!?])\s+|\n+", text):
         entries = _assignment_clauses(sentence)

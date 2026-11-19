@@ -281,3 +281,33 @@ def test_question_patterns_keep_ascii_numeric_scope_and_single_sentence(
 
     assert bool(semantic_fact_evidence._CURRENT_QUESTION.fullmatch(question)) is current
     assert bool(semantic_fact_evidence._SETTING_QUESTION.fullmatch(question)) is setting
+
+
+@pytest.mark.parametrize(
+    "clause",
+    [
+        "Jutro odbiór u Anki, ale odbiór obsługuje Ola.",
+        "Jutro odbiór u Anki, ale wydaje Ola.",
+        "Ola obsługuje odbiór, jutro odbiór u Anki.",
+    ],
+)
+def test_pickup_reference_does_not_discard_another_role_in_the_same_clause(clause):
+    assert (
+        _compare(
+            "U Anki odbierzesz 7 pudeł.",
+            "Osoba obsługująca odbiór: Anka.",
+            f"{clause} Osobą obsługującą odbiór jest Anka.",
+        )
+        is None
+    )
+
+
+def test_pickup_reference_accepts_unambiguous_tomorrow_prefix():
+    assert (
+        _compare(
+            "U Anki odbierzesz 7 pudeł.",
+            "Osoba obsługująca odbiór: Anka.",
+            "Jutro odbiór u Anki. Osobą obsługującą odbiór jest Anka.",
+        )
+        is not None
+    )

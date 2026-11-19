@@ -701,6 +701,12 @@ def _verified_audit_contract(
     )
     _require(protocol.get("controls_manifest_sha256") == pin.controls_manifest_sha256)
     _require(
+        0
+        < _money(protocol["holdout_max_request_usd"])
+        <= _money(protocol["max_request_usd"])
+        <= _money(protocol["budget_usd"])
+    )
+    _require(
         pin.prompt_sha256 == _contract()["prompt_sha256"]
         and pin.request_contract_sha256 == stable_hash(_contract())
         and pin.implementation_sha256 == implementation_identity()

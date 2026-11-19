@@ -258,7 +258,10 @@ def _role_source_clause(clause: str, forms: set[str]) -> bool:
         return True
     match = _PICKUP_AT.search(clause)
     return bool(
-        match and match["name"].casefold() in forms and not _ROLE_UNSAFE.search(clause)
+        match
+        and match["name"].casefold() in forms
+        and not _ROLE_UNSAFE.search(clause)
+        and not _ROLE_MENTION.search(clause[: match.start()] + clause[match.end() :])
     )
 
 

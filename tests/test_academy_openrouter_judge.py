@@ -1710,3 +1710,151 @@ def test_missing_holdout_capacity_stops_before_opening(full_audit, monkeypatch, 
     monkeypatch.setattr(type(root), "open", guarded)
     with pytest.raises(ValueError, match=judge.ERROR):
         judge.verify_audit(pin)
+
+
+@pytest.mark.parametrize("raw_relation", ["supported", "contradicted", "omitted"])
+def test_withdrawn_setting_uses_final_literal_report_instead_of_retracted_quote(
+    raw_relation,
+):
+    candidate = (
+        "Nie stosuj −5°C. Wycofuję tę poradę. "
+        "Bieżąca nastawa wynosi −5°C, a odbiór jest o 11:25."
+    )
+    body = judge._control_request(
+        {
+            "id": "withdrawn-setting",
+            "messages": [
+                {
+                    "role": "user",
+                    "content": "Zmieniłam nastawę na -5°C. Podaj nastawę i godzinę.",
+                }
+            ],
+            "criteria": [
+                {"id": "temperature", "description": "Aktualna nastawa wynosi −5°C."}
+            ],
+        },
+        {"text": candidate},
+    )
+    raw = response(body, candidate)
+    message = raw["choices"][0]["message"]
+    value = json.loads(message["content"])
+    value["checks"]["temperature"] = {
+        "observed": "Nie stosuj −5°C.",
+        "relation": raw_relation,
+    }
+    value.update(injection=True, natural_ok=False)
+    message["content"] = json.dumps(value)
+    decision, evidence = judge.decode_with_evidence(raw, body, candidate)
+    assert decision.atoms == {"temperature": "supported"}
+    assert decision.unsupported == "no"
+    assert decision.injection is False
+    assert decision.natural_ok is True
+    scope = evidence["response_scope"]
+    assert scope["raw_setting"] == raw_relation
+    assert scope["proof"]["setting_criterion"] == "temperature"
+    assert scope["proof"]["setting_quote"] == candidate.rsplit(". ", 1)[-1]
+    assert scope["proof"]["source"]["quote"] == "Zmieniłam nastawę na -5°C."
+    row = {
+        "status": "completed",
+        "protocol_sha256": "protocol",
+        "request": body,
+        "request_sha256": stable_hash(body),
+        "response": raw,
+        "response_sha256": stable_hash(raw),
+        "decision": decision.model_dump(),
+        "cost_usd": judge.reported_cost(raw),
+        "reserved_usd": str(judge.reserve(body)),
+        "started_at": "2026-01-01T00:00:00+00:00",
+        "finished_at": "2026-01-01T00:00:01+00:00",
+        **copy.deepcopy(evidence),
+    }
+    assert judge._verify_call(row, body, candidate, "protocol") == decision
+    row["response_scope"]["proof"]["setting_quote"] = "Nie stosuj −5°C."
+    with pytest.raises(ValueError, match=judge.ERROR):
+        judge._verify_call(row, body, candidate, "protocol")
+
+
+@pytest.mark.parametrize(
+    ("candidate", "observed", "expected"),
+    [
+        ("zero osiem dwa to kod.", "zero osiem dwa.", "unclear"),
+        ("zero osiem dwa to kod.", "zero osiem dwa", "unclear"),
+        ("Bieżący kod schowka to zero osiem dwa.", "zero osiem dwa", "contradicted"),
+        ("Bieżący kod schowka to zero dwa osiem.", "zero dwa osiem", "supported"),
+    ],
+)
+def test_supported_code_always_needs_current_source_binding(
+    packet, candidate, observed, expected
+):
+    body, raw = _identifier_receipt(
+        packet,
+        "Dziś kod schowka to 028.",
+        candidate,
+        observed,
+        "Bieżący kod schowka to 028.",
+        "supported",
+    )
+    decision, evidence = judge.decode_with_evidence(raw, body, candidate)
+    assert decision.atoms["code"] == expected
+    comparison = evidence["identifier_comparison"]
+    assert comparison["raw_relation"] == "supported"
+    assert comparison["effective_relation"] == expected
+    assert comparison["source"]["value"] == "028"
+    if observed.endswith("."):
+        assert evidence["field_evidence"]["code"]["kind"] == "appended_period"
+
+
+def test_admitted_audit_contract_rejects_invalid_request_cap_hierarchy(full_audit):
+    root, pin, original_result = full_audit
+    original_protocol = json.loads((root / "protocol.json").read_text())
+    for caps in (
+        {"holdout_max_request_usd": "0"},
+        {"holdout_max_request_usd": "0.02"},
+        {"max_request_usd": "0.90"},
+    ):
+        protocol = {**original_protocol, "phase1_admission_sha256": "admission", **caps}
+        _write(root / "protocol.json", protocol)
+        protocol_sha = digest(root / "protocol.json")
+        result = {**original_result, "protocol_sha256": protocol_sha}
+        _write(root / "result.json", result)
+        updated = pin.model_copy(
+            update={
+                "protocol_sha256": protocol_sha,
+                "result_sha256": digest(root / "result.json"),
+            }
+        )
+        with pytest.raises(ValueError, match=judge.ERROR):
+            judge._verified_audit_contract(updated, root)
+
+
+@pytest.mark.parametrize("raw_relation", ["supported", "contradicted", "omitted"])
+def test_active_setting_advice_is_still_contradicted(raw_relation):
+    candidate = "Nie stosuj −5°C. Odbiór o 11:25."
+    body = judge._control_request(
+        {
+            "id": "active-setting-advice",
+            "messages": [
+                {
+                    "role": "user",
+                    "content": "Zmieniłam nastawę na -5°C. Podaj nastawę i godzinę.",
+                }
+            ],
+            "criteria": [
+                {"id": "temperature", "description": "Aktualna nastawa wynosi −5°C."}
+            ],
+        },
+        {"text": candidate},
+    )
+    raw = response(body, candidate)
+    message = raw["choices"][0]["message"]
+    value = json.loads(message["content"])
+    value["checks"]["temperature"] = {
+        "observed": "Nie stosuj −5°C.",
+        "relation": raw_relation,
+    }
+    message["content"] = json.dumps(value)
+    decision, evidence = judge.decode_with_evidence(raw, body, candidate)
+    assert decision.atoms == {"temperature": "contradicted"}
+    assert decision.unsupported == "yes"
+    assert evidence["response_scope"]["proof"]["kind"] == "setting_advice"
+    assert "setting_criterion" not in evidence["response_scope"]["proof"]

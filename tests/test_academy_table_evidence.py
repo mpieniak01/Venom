@@ -315,3 +315,12 @@ def test_table_unit_aliases_keep_canonical_attribution(singular, plural, genitiv
     assert trace is not None
     assert trace["source"]["unit"] == plural
     assert trace["effective_relation"] == "supported"
+
+
+@pytest.mark.parametrize(
+    "withdrawal",
+    ["Anuluję odbiór.", "Wycofuję cały przydział.", "Odwołuję wszystkie ustalenia."],
+)
+def test_table_invalidates_global_withdrawal_without_repeating_entity(withdrawal):
+    material = _material(user=USER + " " + withdrawal)
+    assert table_evidence.compare(material, TABLE, "mila", TABLE, "supported") is None

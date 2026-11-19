@@ -26,12 +26,20 @@ _UNITS = {
     "karton": "kartony",
     "kartony": "kartony",
     "kartonów": "kartony",
+    "koperta": "koperty",
+    "koperty": "koperty",
+    "kopert": "koperty",
 }
 _UNIT = rf"(?:{'|'.join(_UNITS)})"
 _QUANTITY = rf"(?P<value>{_COUNT})\s+(?P<unit>{_UNIT})"
-_VERB = r"(?:odbiera|ma odebrać|dostaje|ma otrzymać)"
+_VERB = r"(?:odbiera|ma odebrać|dostaje|ma otrzymać|liczy)"
 _CRITERION = re.compile(
     rf"(?P<entity>{_NAME})(?:\s+{_VERB}\s+|:\s*){_QUANTITY}\.?",
+    re.IGNORECASE,
+)
+_SORTING_PREFIX = "Dla sortowania: "
+_PICKUP_DAY = re.compile(
+    r"odbiór partii w (?:poniedziałek|wtorek|środę|czwartek|piątek|sobotę|niedzielę)",
     re.IGNORECASE,
 )
 _FIRST_ASSIGNMENT = re.compile(
@@ -43,6 +51,7 @@ _KNOWN_CONTINUATION = re.compile(
     rf"(?:a |i )?(?P<entity>{_NAME})(?:\s+{_VERB}\s+|:\s*|\s+){_QUANTITY}",
     re.IGNORECASE,
 )
+_IMPLICIT_SORT_COUNT = re.compile(rf"(?P<entity>{_NAME})\s+(?P<value>{_COUNT})")
 _HEADER = re.compile(rf"(?P<entity>{_NAME})\s+\[(?P<unit>{_UNIT})\]", re.IGNORECASE)
 _ALIGNMENT = re.compile(r":?-{3,}:?")
 _VALUE = re.compile(_COUNT)
@@ -116,18 +125,34 @@ def _entity_columns(table: _Table, entity: str) -> list[tuple[int, str]]:
     return columns
 
 
-def _assignment_clauses(sentence: str) -> list[tuple[str, re.Match[str]]]:
+def _assignment_clauses(sentence: str) -> list[tuple[str, str, str, str]]:
     clauses = [
         item.strip()
         for item in re.split(r",\s+|\s+(?=[ai]\s+)", sentence.rstrip(".!?"))
     ]
-    entries = []
+    scoped_sorting = bool(clauses) and clauses[0].startswith(_SORTING_PREFIX)
+    if scoped_sorting:
+        clauses[0] = clauses[0].removeprefix(_SORTING_PREFIX)
+        if len(clauses) > 1 and _PICKUP_DAY.fullmatch(clauses[-1]):
+            clauses.pop()
+    entries: list[tuple[str, str, str, str]] = []
     for index, clause in enumerate(clauses):
         pattern = _FIRST_ASSIGNMENT if index == 0 else _KNOWN_CONTINUATION
         match = pattern.fullmatch(clause)
-        if match is None:
+        if match is not None:
+            unit = _UNITS[match["unit"].casefold()]
+        elif (
+            scoped_sorting
+            and entries
+            and (match := _IMPLICIT_SORT_COUNT.fullmatch(clause))
+        ):
+            units = {entry[3] for entry in entries}
+            if len(units) != 1:
+                return []
+            unit = units.pop()
+        else:
             return []
-        entries.append((clause, match))
+        entries.append((clause, match["entity"], match["value"], unit))
     return entries
 
 
@@ -150,14 +175,14 @@ def _source(material: dict, entity: str) -> Source | None:
             token.casefold() for token in re.findall(_NAME, sentence)
         }:
             return None
-        for clause, match in entries:
-            if match["entity"].casefold() == entity:
+        for clause, entity_name, value, unit in entries:
+            if entity_name.casefold() == entity:
                 matches.append(
                     {
                         "message_index": index,
                         "quote": clause,
-                        "value": match["value"],
-                        "unit": _UNITS[match["unit"].casefold()],
+                        "value": value,
+                        "unit": unit,
                     }
                 )
     return matches[0] if len(matches) == 1 else None

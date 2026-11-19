@@ -213,6 +213,7 @@ def implementation_identity() -> str:
             "semantic_judge_controls.py",
             "semantic_openrouter_audit.py",
             "semantic_openrouter_admission.py",
+            "semantic_openrouter_table_replay.py",
             "profiles.py",
             "grounded_claims.py",
         )
@@ -749,15 +750,26 @@ def verify_audit(pin: QualificationRemote) -> None:
     from .semantic_openrouter_audit import _staged_manifest
 
     combined = _staged_manifest(root, manifest)
+    replaying = "table_replay_sha256" in protocol
+    receipt_protocol_sha = pin.protocol_sha256
+    if replaying:
+        from . import semantic_openrouter_table_replay as repair
+
+        case, _ = _jobs(root, combined, "holdout")[0][repair.CASE]
+        generations = {row["response"]["id"] for row in rows}
+        for name, expected in hashes.items():
+            generations.add(_bound(root / "receipts", name, expected)["response"]["id"])
+        receipt_protocol_sha = repair.source(root, protocol, result, case, generations)
     rows = _audit_rows(
         root,
-        pin.protocol_sha256,
+        receipt_protocol_sha,
         combined,
         hashes,
         _audit_order(root, combined)[156:],
         rows,
         phase1_finished,
         rate_policy=protocol["rate_limit"],
+        table_replay=replaying,
     )
     holdout_cap = _money(protocol["holdout_max_request_usd"])
     _require(all(_money(row["reserved_usd"]) <= holdout_cap for row in rows[156:]))
@@ -954,6 +966,7 @@ def _audit_rows(
     *,
     collect_rejections: bool = False,
     rate_policy: dict | None = None,
+    table_replay: bool = False,
 ) -> list[dict]:
     from .semantic_openrouter_audit import _RATE_LIMIT_POLICY
 
@@ -995,7 +1008,11 @@ def _audit_rows(
         previous_end = _time(row["finished_at"])
         case, answer = _jobs(root, manifest, row["split"])[0][row["answer_id"]]
         body = _control_request(case, answer)
-        if collect_rejections and row.get("status") == "rejected_decision":
+        if table_replay:
+            from . import semantic_openrouter_table_replay as repair
+
+            row = repair.decode(row, body, answer["text"], protocol_sha)
+        elif collect_rejections and row.get("status") == "rejected_decision":
             _require(row["split"] in PHASE1)
             _verify_rejected_call(row, body, answer["text"], protocol_sha)
         else:

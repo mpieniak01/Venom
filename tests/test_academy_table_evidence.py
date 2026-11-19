@@ -175,3 +175,72 @@ def test_table_keeps_unrelated_criterion_for_ordinary_literal_validation() -> No
     assert (
         table_evidence.compare(_material(), TABLE, "day", "środa", "supported") is None
     )
+
+
+SORTING_SOURCE = (
+    "Dla sortowania: Olga liczy 7 kopert, Daniel 12, odbiór partii w sobotę. "
+    "Podaj liczbę każdej osoby i dzień."
+)
+SORTING_TABLE = "| Olga [koperty] | Daniel [koperty] | Dzień |\n|---:|---:|---|\n| 7 | 12 | sobota |"
+SORTING_QUOTES = (
+    "| Olga [koperty] | Daniel [koperty] |\n|---:|---:|---|\n| 7",
+    "| Daniel [koperty] |\n|---:|---:|---|\n| 12",
+)
+
+
+def _sorting_material(user=SORTING_SOURCE):
+    return {
+        "messages": [{"role": "user", "content": user}],
+        "criteria": [
+            {"id": "olga", "description": "Olga liczy 7 kopert."},
+            {"id": "daniel", "description": "Daniel liczy 12 kopert."},
+            {"id": "day", "description": "Odbiór w sobotę."},
+        ],
+    }
+
+
+@pytest.mark.parametrize(
+    ("field", "quote", "column"),
+    [("olga", SORTING_QUOTES[0], 0), ("daniel", SORTING_QUOTES[1], 1)],
+)
+def test_sorting_count_projection_binds_each_column(field, quote, column):
+    trace = table_evidence.compare(
+        _sorting_material(), SORTING_TABLE, field, quote, "supported"
+    )
+    assert trace is not None
+    assert trace["effective_observed"] == SORTING_TABLE
+    assert trace["effective_relation"] == "supported"
+    assert trace["column"] == column
+    assert trace["source"]["quote"] in SORTING_SOURCE
+
+
+def test_sorting_table_rejects_wrong_source_or_column():
+    daniel = SORTING_QUOTES[1]
+    for damaged in (
+        daniel.replace("| 12", "| 7"),
+        daniel.replace("[koperty]", "[paczki]"),
+        daniel.replace("Daniel", "Olga"),
+    ):
+        assert (
+            table_evidence.compare(
+                _sorting_material(), SORTING_TABLE, "daniel", damaged, "supported"
+            )
+            is None
+        )
+    conflicting = SORTING_SOURCE.replace("Daniel 12", "Daniel 12 lub 14")
+    assert (
+        table_evidence.compare(
+            _sorting_material(conflicting), SORTING_TABLE, "daniel", daniel, "supported"
+        )
+        is None
+    )
+    swapped = SORTING_TABLE.replace("| 7 | 12 |", "| 12 | 7 |")
+    trace = table_evidence.compare(
+        _sorting_material(),
+        swapped,
+        "daniel",
+        daniel.replace("| 12", "| 7"),
+        "supported",
+    )
+    assert trace is not None
+    assert trace["effective_relation"] == "contradicted"

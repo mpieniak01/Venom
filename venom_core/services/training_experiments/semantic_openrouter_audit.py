@@ -397,6 +397,9 @@ def run(
     _require(execute is True, "remote_audit_operator_execute_required")
     root = operator_path(audit_root)
     protocol, protocol_sha = _sealed_protocol(root)
+    _require(
+        "table_replay_sha256" not in protocol, "remote_audit_replay_is_offline_only"
+    )
     targeted = protocol.get("kind") == "targeted_regression"
     if targeted:
         from . import semantic_openrouter_targeted as panel

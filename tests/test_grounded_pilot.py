@@ -3320,3 +3320,18 @@ def test_segment_length_equality_and_mixed_units():
         )
         == "2,15 m, wystarczy wobec normy 2,15 m."
     )
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "Chcę odnaleźć osobę odbierającą komplet. Na etykiecie widnieje nazwa punktu U Ady.",
+        "Szukam odbierającego nowy komplet. Na etykiecie widnieje nazwa punktu Warsztat Pod Dębem.",
+    ],
+)
+def test_pickup_label_guidance_keeps_point_name_and_unconfirmed_person(message):
+    history, guidance = plain_pilot_context(message, ())
+    assert not history
+    assert "Przytocz dosłownie nazwę punktu z etykiety" in guidance
+    assert "osoby odbierającej pozostaje nieustalona" in guidance
+    assert plain_pilot_context("Kto nazywa się Ada?", ()) == ((), "")

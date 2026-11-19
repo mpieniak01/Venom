@@ -41,6 +41,11 @@ _FINAL_REQUEST = re.compile(
 
 _NAME_WORD = r"[^\W\d_]+(?:[-\u2019\x27][^\W\d_]+)*"
 _POINT = rf"(?P<point>{_NAME_WORD}(?: {_NAME_WORD}){{0,4}})"
+_LABEL_REQUEST = re.compile(
+    r"(?:chcę odnaleźć osobę odbierającą komplet|szukam odbierającego nowy komplet)\. "
+    rf"na etykiecie widnieje nazwa punktu {_POINT}",
+    re.IGNORECASE,
+)
 _MONTH = (
     r"stycznia|lutego|marca|kwietnia|maja|czerwca|lipca|sierpnia|"
     r"września|października|listopada|grudnia"
@@ -62,6 +67,15 @@ _PICKUP_CARD = re.compile(
 
 def _request_text(message: str) -> str:
     return " ".join(message.split()).rstrip(".?!")
+
+
+def pickup_label_guidance(message: str) -> str:
+    if _LABEL_REQUEST.fullmatch(_request_text(message)):
+        return (
+            "Przytocz dosłownie nazwę punktu z etykiety i wyjaśnij, że tożsamość "
+            "osoby odbierającej pozostaje nieustalona."
+        )
+    return ""
 
 
 @dataclass(frozen=True)
@@ -142,6 +156,12 @@ def bind_pickup_roles(
 
 @dataclass(frozen=True)
 class PickupRolesReceipt:
+    """Session snapshot of card claims certified in an explicit source turn.
+
+    Plain output does not fetch cards. A later explicit source turn is needed
+    to rebind updated cards to a new snapshot.
+    """
+
     users: tuple[str, ...]
     roles: PickupRoles
 

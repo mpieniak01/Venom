@@ -3450,3 +3450,55 @@ def test_cross_unit_speed_draft_refuses_a_known_repeated_scale(
             Reviewer(),
             required=Requirements(calculation=True),
         )
+
+
+def test_named_source_reads_can_be_full_with_only_one_relevant_citation():
+    backend = PickupRoleCards()
+    reviewer, model = Reviewer(), Model()
+    model.override["draft"] = {
+        "prose": "Osoba odbierająca w piątek wymaga potwierdzenia [SILETOR].",
+        "sources": [
+            {
+                "source_id": "SILETOR",
+                "version": backend.current_ref("SILETOR").version,
+                "quote": "osoba odbierająca wymaga potwierdzenia",
+            }
+        ],
+        "calculations": [{"calculation_id": "none", "value": "none", "unit": "none"}],
+    }
+    trace = []
+    result = run_pilot_turn(
+        "Przeczytaj kartę MORKADA i kartę SILETOR. Czy potwierdzono osobę odbierającą?",
+        "r",
+        backend,
+        model,
+        reviewer,
+        required=Requirements(sources=True),
+        trace=trace,
+    )
+    assert result.text.endswith("[SILETOR].") and "[MORKADA]" not in result.text
+    assert reviewer.materials[0]["draft"]["calculations"] == []
+    assert "empty_calculation_placeholder_removed" in [step["phase"] for step in trace]
+    assert backend.reads.count("MORKADA") == 3 and backend.reads.count("SILETOR") == 3
+    assert len(reviewer.materials[0]["evidence"]["sources"]) == 2
+    with pytest.raises(EvidenceError, match="answer_named_source_required"):
+        run_pilot_turn(
+            "Zacytuj kartę MORKADA i kartę SILETOR. Czy potwierdzono osobę odbierającą?",
+            "explicit",
+            backend,
+            model,
+            reviewer,
+            required=Requirements(sources=True),
+        )
+    model.override["draft"]["calculations"] = [
+        {"calculation_id": "none", "value": "77", "unit": "zł"}
+    ]
+    with pytest.raises(EvidenceError, match="answer_calculation_unknown"):
+        run_pilot_turn(
+            "Przeczytaj kartę MORKADA i kartę SILETOR. Czy potwierdzono odbiór?",
+            "unauthorized",
+            backend,
+            model,
+            reviewer,
+            required=Requirements(sources=True),
+        )

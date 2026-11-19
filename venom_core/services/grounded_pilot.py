@@ -43,6 +43,7 @@ from venom_core.services.grounded_dialogue import (
     bind_source_quotes,
     explicit_result_unit,
     requested_card_ids,
+    requested_citation_ids,
     requested_meeting_place,
     requested_pickup_details,
     strip_public_bookkeeping,
@@ -2760,8 +2761,18 @@ def _prepare_pilot_proof(
             ),
             turn.required,
         )
+        separate_citations = (
+            turn.required.sources
+            and not turn.required.calculation
+            and requested_card_ids(turn.message)
+        )
         evidence = gate.prepare(
-            final_plan, infer_requirements=False, required_result_unit=result.unit
+            final_plan,
+            infer_requirements=False,
+            required_result_unit=result.unit,
+            required_citations=requested_citation_ids(turn.message)
+            if separate_citations
+            else None,
         )
         if (
             evidence.sources != sources.documents
@@ -2833,6 +2844,12 @@ def _pilot_draft(
                 "evidence": proof.review_material,
             }
         )
+        if turn.required.sources and not turn.required.calculation:
+            draft_input["source_response_contract"] = (
+                "Powołuj kartę przy faktach, które z niej wynikają. Gdy pytanie dotyczy terminu, "
+                "podaj dzień lub datę obok zdarzenia, jeśli podano je w karcie. "
+                "Brak daty stwierdź dopiero po sprawdzeniu wymaganych kart. Nie wymyślaj cytatu ani rachunku."
+            )
         draft: Draft = _call(model, "draft", draft_input, Draft)
         return draft
     calculation = proof.evidence.calculations[0]
@@ -2934,6 +2951,18 @@ def _finalize_pilot_draft(
     source_versions = {
         document.ref.source_id: document.ref.version for document in sources.documents
     }
+    if not turn.required.calculation and len(draft.calculations) == 1:
+        placeholder = draft.calculations[0]
+        if all(
+            value.strip().casefold() == "none"
+            for value in (
+                placeholder.calculation_id,
+                placeholder.value,
+                placeholder.unit,
+            )
+        ):
+            draft = draft.model_copy(update={"calculations": []})
+            audit.append({"phase": "empty_calculation_placeholder_removed"})
     private_ids = {
         proof.evidence_id,
         turn.revision,

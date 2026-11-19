@@ -228,6 +228,21 @@ def requested_card_ids(
     return tuple(dict.fromkeys(marker.strip("[]") for _, marker in sorted(references)))
 
 
+_CITE_COMMAND = re.compile(
+    r"\b(?:zacytuj|przytocz (?:cytat|cytaty) z|podaj (?:cytat|cytaty) z)\b",
+    re.IGNORECASE,
+)
+
+
+def requested_citation_ids(message: str) -> tuple[str, ...]:
+    """A request to cite a card is distinct from a request to read it."""
+    names = []
+    for clause in _SENTENCE_BREAK.split(message):
+        if command := _CITE_COMMAND.search(clause):
+            names.extend(requested_card_ids(clause[command.start() :].strip()))
+    return tuple(dict.fromkeys(names))
+
+
 class EvidenceError(ValueError):
     """A reason code for a failed contract, without an unverified answer."""
 
@@ -743,6 +758,7 @@ class GroundedTurn:
     def __init__(self, backend: SourceBackend) -> None:
         self.backend = backend
         self._evidence: Evidence | None = None
+        self._revalidate_full_read = False
 
     def _named_sources(self, named: tuple[str, ...]) -> tuple[SourceRef, ...]:
         try:
@@ -807,9 +823,11 @@ class GroundedTurn:
         *,
         infer_requirements: bool = True,
         required_result_unit: str | None = None,
+        required_citations: tuple[str, ...] | None = None,
     ) -> Evidence:
         """Recompute each turn; a user correction cannot silently reuse a cache."""
         self._evidence = None
+        self._revalidate_full_read = False
         if not plan.message.strip() or not plan.revision.strip():
             raise EvidenceError("turn_identity_required")
         if len(plan.message) > 16_000 or sum(map(len, plan.prior_users)) > 64_000:
@@ -835,6 +853,14 @@ class GroundedTurn:
                 )
             except (OSError, KeyError) as exc:
                 raise EvidenceError("source_unavailable") from exc
+        citations = named
+        if required_citations is not None:
+            if not required.sources or not set(required_citations) <= set(named):
+                raise EvidenceError("source_citation_scope_invalid")
+            if not set(named) <= {doc.ref.source_id for doc in sources}:
+                raise EvidenceError("answer_named_source_not_read")
+            citations = required_citations
+            self._revalidate_full_read = True
         identity = text_hash(
             json.dumps(
                 {
@@ -842,6 +868,11 @@ class GroundedTurn:
                     "sources": [asdict(d) for d in sources],
                     "calculations": [asdict(c) for c in calculations],
                     "unavailable": unavailable,
+                    **(
+                        {"required_citations": citations}
+                        if required_citations is not None
+                        else {}
+                    ),
                     **({"result_unit": output_unit} if output_unit is not None else {}),
                 },
                 ensure_ascii=False,
@@ -849,7 +880,7 @@ class GroundedTurn:
             )
         )
         self._evidence = Evidence(
-            identity, sources, calculations, required, unavailable, named
+            identity, sources, calculations, required, unavailable, citations
         )
         return self._evidence
 
@@ -927,6 +958,9 @@ class GroundedTurn:
             raise EvidenceError("answer_named_source_required")
         if set(calculations) != used_calculations:
             raise EvidenceError("answer_calculation_required")
+        if fresh_documents is not None and self._revalidate_full_read:
+            for ident in documents.keys() - fresh_documents.keys():
+                self._read_publication_document(documents[ident].ref)
         if not lines:
             raise EvidenceError("answer_empty")
         return PublishedAnswer(evidence.evidence_id, "\n".join(lines))

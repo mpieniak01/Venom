@@ -1383,3 +1383,114 @@ def test_targeted_cli_verifies_publication_after_parent_sync_error(
     frozen_panel.write_bytes(frozen_panel.read_bytes() + b"\n")
     with pytest.raises(ValueError, match="remote_audit_file_changed"):
         cli.main()
+
+
+@pytest.mark.parametrize("damage", [None, "ledger", "pending"])
+def test_targeted_resume_replays_completed_receipts_and_azure_capacity(
+    ready, tmp_path, monkeypatch, damage
+):
+    from tests.test_academy_openrouter_judge import response
+    from venom_core.services.training_experiments import (
+        semantic_openrouter_targeted as targeted,
+    )
+
+    prompt_case = {
+        "id": "fixture",
+        "messages": [{"role": "user", "content": "Odbiór w Hali B."}],
+        "criteria": [{"id": "place", "description": "Hala B."}],
+    }
+    body = judge._control_request(prompt_case, {"text": "Hala B"})
+    panel = {
+        **judge._contract(),
+        "cases": {
+            "fixture": {
+                "body": body,
+                "expected": {
+                    "atoms": {"place": "supported"},
+                    "injection": False,
+                    "natural_ok": True,
+                    "polish_ok": True,
+                    "unsupported": "no",
+                },
+            }
+        },
+        "order": ["fixture", "fixture"],
+    }
+    source = tmp_path / "restart-source.json"
+    root = tmp_path / "restart-panel"
+    write(source, panel)
+    targeted.prepare(
+        source, root, panel_sha256=digest(source), budget_usd="0.10", max_seconds=300
+    )
+    sleep = audit.sleep
+    interrupt = True
+
+    class Client:
+        calls = 0
+
+        def __init__(self, **_):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            return None
+
+        def post(self, url, *, json, **_):
+            type(self).calls += 1
+            req = httpx.Request("POST", url)
+            assert json == body
+            if self.calls == 2:
+                return httpx.Response(
+                    502,
+                    json={
+                        "error": {
+                            "code": 502,
+                            "message": "The system is currently experiencing high demand.",
+                            "metadata": {"provider_name": "Azure"},
+                        }
+                    },
+                    request=req,
+                )
+            return httpx.Response(
+                200,
+                json=response(body, "Hala B", ident=f"generation-{self.calls}"),
+                request=req,
+            )
+
+    def crash_on_retry(seconds):
+        if interrupt and Client.calls == 2:
+            raise KeyboardInterrupt
+        sleep(seconds)
+
+    monkeypatch.setattr(audit, "sleep", crash_on_retry)
+    with pytest.raises(KeyboardInterrupt):
+        audit.run(root, execute=True, client_factory=Client)
+    assert Client.calls == 2
+    first_receipt = digest(root / "receipts/001.json")
+    tail = json.loads((root / "receipts/002.json").read_text())
+    assert tail["error_type"] == "provider_unavailable"
+    interrupt = False
+    if damage:
+        ledger = root / "ledger.json"
+        contents = json.loads(ledger.read_text())
+        if damage == "pending":
+            contents["pending_call_id"] = "ambiguous"
+            expected = "remote_audit_resume_pending_call"
+        else:
+            contents["unknown_reserved_usd"] = "0"
+            expected = "remote_audit_resume_ledger_changed"
+        write(ledger, contents)
+        with pytest.raises(ValueError, match=expected):
+            audit.run(root, execute=True, resume=True, client_factory=Client)
+        assert Client.calls == 2
+        return
+    result = audit.run(root, execute=True, resume=True, client_factory=Client)
+    row = json.loads((root / "receipts/002.json").read_text())
+    assert Client.calls == 3
+    assert result["status"] == "targeted_review_required"
+    assert result["completed"] == 2 and result["rate_limit_retries"] == 1
+    assert Decimal(result["unknown_reserved_usd"]) == Decimal(tail["reserved_usd"])
+    assert row["rate_limit_attempts"][0]["call_id"] == tail["call_id"]
+    assert digest(root / "receipts/001.json") == first_receipt

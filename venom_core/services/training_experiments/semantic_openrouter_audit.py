@@ -356,6 +356,7 @@ def run(
     audit_root: Path,
     *,
     execute: bool = False,
+    resume: bool = False,
     client_factory: Callable = httpx.Client,
 ) -> dict:
     """One explicit attempt; fake transports are used only by offline tests."""
@@ -363,6 +364,7 @@ def run(
     root = operator_path(audit_root)
     protocol, protocol_sha = _sealed_protocol(root)
     targeted = protocol.get("kind") == "targeted_regression"
+    _require(not resume or targeted, "remote_audit_resume_requires_targeted")
     if targeted:
         from . import semantic_openrouter_targeted as panel
 
@@ -399,7 +401,11 @@ def run(
         else nullcontext()
     )
     with guard, file_lock(root / "session.lock", blocking=False):
-        _require(not (root / "started.json").exists(), "remote_audit_single_attempt")
+        started = root / "started.json"
+        _require(
+            started.exists() if resume else not started.exists(),
+            "remote_audit_single_attempt",
+        )
         cooldown = _provider_cooldown(rate_path)
         if cooldown > protocol["rate_limit"]["max_retry_after_seconds"]:
             return {
@@ -407,23 +413,22 @@ def run(
                 "provider_cooldown_seconds": cooldown,
                 "rows": 0,
             }
-        atomic_json(
-            root / "started.json",
-            {"created_at": _utc(), "protocol_sha256": protocol_sha},
-        )
-        if targeted:
-            return panel.execute(
-                _AuditState(
-                    root,
-                    protocol,
-                    manifest,
-                    protocol_sha,
-                    budget,
-                    per_request,
-                    client_factory,
-                    rate_path=rate_path,
-                )
+        if not resume:
+            atomic_json(
+                started, {"created_at": _utc(), "protocol_sha256": protocol_sha}
             )
+        if targeted:
+            state = _AuditState(
+                root,
+                protocol,
+                manifest,
+                protocol_sha,
+                budget,
+                per_request,
+                client_factory,
+                rate_path=rate_path,
+            )
+            return panel.resume(state) if resume else panel.execute(state)
         return _execute(
             root,
             protocol,
@@ -746,8 +751,9 @@ def _finish_rate_window(
         return _rate_delay(state, row, retry_count)
     if row.get("error_type") == "provider_unavailable":
         state.status = "provider_unavailable"
-        if not any(
-            _provider_unavailable(attempt) for attempt in row["rate_limit_attempts"]
+        previous = row["rate_limit_attempts"]
+        if row["http_status"] == 502 or not any(
+            _provider_unavailable(attempt) for attempt in previous
         ):
             return _rate_delay(state, row, retry_count)
     if row["status"] != "not_sent":
@@ -756,7 +762,11 @@ def _finish_rate_window(
 
 
 def _submit_case(
-    state: _AuditState, request: tuple[dict, dict, dict, Decimal], stack: ExitStack
+    state: _AuditState,
+    request: tuple[dict, dict, dict, Decimal],
+    stack: ExitStack,
+    *,
+    prior_attempts: list[dict] | None = None,
 ) -> str:
     entry, answer, body, reservation = request
     if reservation > state.per_request or state.accounted + reservation > state.budget:
@@ -764,7 +774,7 @@ def _submit_case(
         return "not_sent"
     index = len(state.rows) + 1
     path = state.root / "receipts" / f"{index:03d}.json"
-    rejected: list[dict] = []
+    rejected = list(prior_attempts or [])
     if not _wait_to_post(state):
         state.status = "deadline_exceeded"
         return "not_sent"

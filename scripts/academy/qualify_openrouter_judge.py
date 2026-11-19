@@ -51,6 +51,9 @@ def main() -> None:
         action="store_true",
         help="Operator-requested real OpenRouter requests",
     )
+    execute.add_argument(
+        "--resume", action="store_true", help="Resume a stopped targeted panel"
+    )
     args = parser.parse_args()
     if args.action == "prepare":
         result = audit.prepare(
@@ -80,7 +83,7 @@ def main() -> None:
     elif args.action == "verify-targeted":
         result = targeted.verify(args.audit_root)
     else:
-        result = audit.run(args.audit_root, execute=args.execute)
+        result = audit.run(args.audit_root, execute=args.execute, resume=args.resume)
     print(json.dumps(result, ensure_ascii=False, indent=2))
     if result["status"] not in {
         "prepared_not_qualified",

@@ -288,7 +288,12 @@ class SegmentLengthReceipt:
             return "Potrzebuję aktualnego potwierdzonego wyniku i normy odbioru."
         minimum = _metres(self.minimum.measure.metres)
         verdict = "wystarczy" if self._meets_minimum else "za mało"
-        return f"{self._total}, {verdict} wobec normy {minimum}."
+        source = self.minimum.source.ref
+        return (
+            f"Według normy z poprzedniego odczytu [{source.source_id}@{source.version}]: "
+            f"{self._total}, {verdict} wobec normy {minimum}. "
+            "Aktualność normy wymaga ponownego odczytu."
+        )
 
 
 @dataclass(frozen=True)

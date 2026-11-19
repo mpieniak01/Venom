@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Iterator
 from dataclasses import dataclass
 from decimal import Decimal
 
@@ -49,6 +50,10 @@ _RECAP = re.compile(
 
 def _normalize(message: str) -> str:
     return " ".join(message.casefold().split()).rstrip(".!?")
+
+
+def _clauses(message: str) -> Iterator[str]:
+    yield from re.split(r"[.!?]\s+", message.strip())
 
 
 def _decimal(duration: str) -> str:
@@ -154,7 +159,7 @@ def bind_duration(users: tuple[str, ...]) -> DurationState | None:
         users[0],
     )
     for message in users[1:]:
-        for quote in re.split(r"[.!?]\s+", message.strip()):
+        for quote in _clauses(message):
             updated = state.with_clause(_normalize(quote), quote)
             if updated is None or len(updated.tail) > 5:
                 return None
@@ -200,7 +205,7 @@ class DurationReceipt:
         if users[: len(self.users)] != self.users or any(
             self.state.with_clause(_normalize(clause), clause) is not self.state
             for turn in users[len(self.users) :]
-            for clause in re.split(r"[.!?]\s+", turn.strip())
+            for clause in _clauses(turn)
         ):
             return "Po zmianie danych potrzebuję aktualnego wyniku kalkulatora."
         last = self.state.last.replace(".", ",")

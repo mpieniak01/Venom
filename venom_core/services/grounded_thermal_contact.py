@@ -46,7 +46,7 @@ _SEQUENCE = re.compile(r"\bnajpierw\b[^.]*\bpotem\b")
 _UNSUPPORTED = re.compile(
     r"\b(?:powlok\w*|foli\w*|powlecz\w*|powlekan\w*|mok\w*|wilgot\w*|"
     r"nierown\w*|rozne temperatury|rozna grubosc|izolowan\w*|warstw\w*|"
-    r"nie (?:maja|wiem|wiemy|wiadomo|ustalono))\b"
+    r"nie (?:maja|wiem|wiemy|wiadomo|ustalono|jest prawda)|nieprawda)\b"
 )
 _QUESTION_START = re.compile(r"\b(?:ktory|ktora|ktore)\b[^.!?]{0,120}\?")
 _DIRECTION: dict[Temperature, Flow] = {

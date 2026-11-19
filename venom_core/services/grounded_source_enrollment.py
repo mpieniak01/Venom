@@ -62,15 +62,20 @@ _RESULTS = re.compile(
     rf"{_DATE}\.?",
     re.IGNORECASE,
 )
-_CLAUSES = re.compile(r"(?<=[.!?])\s+")
+_FIELD_LABEL = (
+    r"(?:kanał (?:zgłoszeń|zapisów)|termin (?:składania )?zgłoszeń|"
+    r"(?:data )?(?:ogłoszeni[ae]|publikacji) wyników|"
+    r"identyfikator naboru|id naboru|nabór):"
+)
+_CLAUSES = re.compile(rf"(?<=[.!?])\s+|\n[ \t]*(?={_FIELD_LABEL})", re.IGNORECASE)
 _RESULTS_WITHDRAWAL = re.compile(
     r"\b(?:odwoł\w*|anulow\w*|wycofa\w*|nieaktualn\w*|"
     r"nie (?:obowiązuje|jest aktualn\w*))\b",
     re.IGNORECASE,
 )
 _ENROLLMENT_ID = re.compile(
-    r"\b(?:identyfikator naboru|id naboru|nabór):\s*"
-    r"([A-Za-z0-9][A-Za-z0-9_-]{0,63})(?=\s*(?:[.!?](?:\s|$)|$))",
+    r"(?:identyfikator naboru|id naboru|nabór):\s*"
+    r"([A-Za-z0-9][A-Za-z0-9_-]{0,63})[.!?]?",
     re.IGNORECASE,
 )
 
@@ -180,6 +185,8 @@ def bind_enrollment_evidence(
     documents: tuple[SourceDocument, ...],
 ) -> EnrollmentEvidence:
     """Require unique fields belonging to one explicitly bound enrollment."""
+    if any(len(_enrollment_identities(doc)) > 1 for doc in documents):
+        raise EvidenceError("enrollment_unbound_submission")
     channels: list[EnrollmentField] = []
     deadlines: list[EnrollmentField] = []
     results: list[EnrollmentField] = []
@@ -205,18 +212,22 @@ def bind_enrollment_evidence(
     )
 
 
+def _enrollment_identities(document: SourceDocument) -> set[str]:
+    return {
+        match[1].casefold()
+        for clause in _CLAUSES.split(document.text)
+        for field in clause.splitlines()
+        if (match := _ENROLLMENT_ID.fullmatch(field.strip())) is not None
+    }
+
+
 def _bind_enrollment_fields(
     documents: tuple[SourceDocument, ...],
     channel_fields: tuple[EnrollmentField, ...],
     deadline_fields: tuple[EnrollmentField, ...],
     result_fields: tuple[EnrollmentField, ...],
 ) -> EnrollmentEvidence:
-    identities = {
-        doc.ref.source_id: {
-            match.casefold() for match in _ENROLLMENT_ID.findall(doc.text)
-        }
-        for doc in documents
-    }
+    identities = {doc.ref.source_id: _enrollment_identities(doc) for doc in documents}
     deadline_by_source = {field.proof.source_id: field for field in deadline_fields}
     for channel_field in channel_fields:
         source_id = channel_field.proof.source_id
@@ -234,7 +245,10 @@ def _bind_enrollment_fields(
 def _same_enrollment(
     submission_source: str, results_source: str, identities: dict[str, set[str]]
 ) -> bool:
+    submission_ids = identities[submission_source]
+    results_ids = identities[results_source]
+    if len(submission_ids) > 1 or len(results_ids) > 1:
+        return False
     if submission_source == results_source:
         return True
-    submission_ids = identities[submission_source]
-    return len(submission_ids) == 1 and submission_ids == identities[results_source]
+    return len(submission_ids) == 1 and submission_ids == results_ids

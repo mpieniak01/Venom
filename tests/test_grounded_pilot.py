@@ -3269,7 +3269,9 @@ def test_segment_length_uses_each_card_for_its_role_and_updates_recap():
         plain_pilot_recap(
             _S05_RECAP, history, segment_length_receipt=corrected.segment_length_receipt
         )
-        == "2,15 m, za mało wobec normy 2,3 m."
+        == "Według normy z poprzedniego odczytu [TRUDOM@1]: "
+        "2,15 m, za mało wobec normy 2,3 m. "
+        "Aktualność normy wymaga ponownego odczytu."
     )
     assert (
         plain_pilot_recap(
@@ -3322,7 +3324,9 @@ def test_segment_length_equality_and_mixed_units():
             _s05_history(_S05_INITIAL, _S05_TOTAL, _S05_UPDATE),
             segment_length_receipt=result.segment_length_receipt,
         )
-        == "2,15 m, wystarczy wobec normy 2,15 m."
+        == "Według normy z poprzedniego odczytu [TRUDOM@1]: "
+        "2,15 m, wystarczy wobec normy 2,15 m. "
+        "Aktualność normy wymaga ponownego odczytu."
     )
 
 
@@ -4249,3 +4253,76 @@ def test_gathering_recap_rejects_unrequested_parenthetical_without_final_period(
         )
         is None
     )
+
+
+def test_enrollment_line_fields_split_at_labels_without_splitting_result_conditions():
+    from venom_core.services.grounded_source_enrollment import bind_enrollment_evidence
+
+    body = (
+        "Kanał zgłoszeń: formularz internetowy\n"
+        "Termin składania zgłoszeń: do 6 maja o 9:15\n"
+        "Data publikacji wyników: 10 maja"
+    )
+    evidence = bind_enrollment_evidence(_enrollment_documents({"KARTA": body}))
+    assert evidence.channel.value == "formularz internetowy"
+    assert evidence.deadline.value == "6 maja o 09:15"
+    assert evidence.results_date.value == "10 maja"
+    conditional = body + "\njeżeli komisja zdąży."
+    with pytest.raises(EvidenceError, match="enrollment_results_date_ambiguous"):
+        bind_enrollment_evidence(_enrollment_documents({"KARTA": conditional}))
+
+
+@pytest.mark.parametrize(
+    "label", ["Poprzedni nabór", "Nieaktualny identyfikator naboru"]
+)
+def test_historical_enrollment_identity_does_not_bind_current_results(label):
+    from venom_core.services.grounded_source_enrollment import bind_enrollment_evidence
+
+    cards = {
+        "KANDEL": _ENROLLMENT_INPUT + " Identyfikator naboru: WARSZTATY-2026.",
+        "MIRWEN": _ENROLLMENT_RESULT + f" {label}: WARSZTATY-2026.",
+    }
+    with pytest.raises(EvidenceError, match="enrollment_unbound_submission"):
+        bind_enrollment_evidence(_enrollment_documents(cards))
+
+
+@pytest.mark.parametrize("separator", [". ", "\n"])
+def test_one_card_cannot_bind_fields_from_multiple_enrollment_sections(separator):
+    from venom_core.services.grounded_source_enrollment import bind_enrollment_evidence
+
+    text = (
+        "Nabór: WARSZTATY"
+        + separator
+        + _ENROLLMENT_INPUT
+        + "\nNabór: KONKURS"
+        + separator
+        + _ENROLLMENT_RESULT
+    )
+    with pytest.raises(EvidenceError, match="enrollment_unbound_submission"):
+        bind_enrollment_evidence(_enrollment_documents({"KARTA": text}))
+
+
+def test_segment_recap_marks_saved_norm_as_historical_after_card_change():
+    cards, model, reviewer = _s05_cards(), Model(), Reviewer()
+    history = _s05_history(_S05_INITIAL)
+    released = _s05_turn(_S05_TOTAL, history, cards, model, reviewer, [])
+    history += ({"role": "user", "content": _S05_TOTAL},)
+    cards.cards["TRUDOM"]["text"] = "Minimalna łączna długość dwóch odcinków to 10 m."
+    recap = plain_pilot_recap(
+        _S05_RECAP, history, segment_length_receipt=released.segment_length_receipt
+    )
+    assert recap.startswith("Według normy z poprzedniego odczytu [TRUDOM@1]:")
+    assert "wobec normy 2,3 m" in recap
+    assert recap.endswith("Aktualność normy wymaga ponownego odczytu.")
+
+
+@pytest.mark.parametrize("negation", ["Nie jest prawdą, że", "Nieprawda, że"])
+def test_thermal_contact_rejects_negated_temperature_equality(negation):
+    base = (
+        "Dotykam stalowej płytki i filcu. "
+        "{}obie płytki są jednakowo ciepłe. "
+        "Obie są chłodniejsze od dłoni. Która jest zimniejsza w dotyku?"
+    )
+    assert plain_pilot_recap(base.format(""), ())
+    with pytest.raises(EvidenceError, match="thermal_contact_premises_unbound"):
+        plain_pilot_recap(base.format(negation + " "), ())

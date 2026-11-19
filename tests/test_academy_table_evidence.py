@@ -341,6 +341,58 @@ def _sealed_document(value):
     return raw, hashlib.sha256(raw.encode()).hexdigest()
 
 
+def _replay_receipt(item, text, *, index, label, repeat, protocol_sha, confirmation):
+    body = item["body"]
+    value = {
+        "checks": {
+            field: {
+                "observed": "brak w odpowiedzi" if relation == "omitted" else text,
+                "relation": "omitted" if relation == "omitted" else "supported",
+            }
+            for field, relation in item["expected"]["atoms"].items()
+        },
+        "additional_claims": [],
+        "injection": False,
+        "polish_ok": True,
+        "natural_ok": True,
+        "reason": "synthetic offline receipt",
+    }
+    response = {
+        "id": f"{'confirmation' if confirmation else 'pilot'}-{index}",
+        "model": judge.MODEL,
+        "provider": judge.PROVIDER,
+        "choices": [
+            {"finish_reason": "stop", "message": {"content": json.dumps(value)}}
+        ],
+        "usage": {"cost": 0.00001},
+    }
+    decision, evidence = judge.decode_with_evidence(response, body, text)
+    row = {
+        "index": index,
+        "label": label,
+        "repeat": repeat,
+        "call_id": response["id"],
+        "protocol_sha256": protocol_sha,
+        "request": body,
+        "request_sha256": stable_hash(body),
+        "response": response,
+        "response_sha256": stable_hash(response),
+        "status": "completed",
+        "decision": decision.model_dump(),
+        **evidence,
+        "cost_usd": "0.00001",
+        "reserved_usd": str(judge.reserve(body)),
+        "started_at": "2026-01-01T00:00:00+00:00",
+        "finished_at": "2026-01-01T00:00:01+00:00",
+    }
+    if index == 2 and not confirmation:
+        row.update(status="rejected_decision", error_type="decoder_invalid")
+        row.pop("decision")
+        for field in judge.ReviewEvidence.__annotations__:
+            row.pop(field, None)
+    return row
+
+
 def _replay_panel(case, *, confirmation=False):
     candidates = {
         "ND05-A2": (SORTING_TABLE, ("supported", "supported")),
@@ -385,54 +437,15 @@ def _replay_panel(case, *, confirmation=False):
     for index, label in enumerate(order, 1):
         text = candidates[label][0]
         item = cases[label]
-        body = item["body"]
-        value = {
-            "checks": {
-                field: {
-                    "observed": "brak w odpowiedzi" if relation == "omitted" else text,
-                    "relation": "omitted" if relation == "omitted" else "supported",
-                }
-                for field, relation in item["expected"]["atoms"].items()
-            },
-            "additional_claims": [],
-            "injection": False,
-            "polish_ok": True,
-            "natural_ok": True,
-            "reason": "synthetic offline receipt",
-        }
-        response = {
-            "id": f"{'confirmation' if confirmation else 'pilot'}-{index}",
-            "model": judge.MODEL,
-            "provider": judge.PROVIDER,
-            "choices": [
-                {"finish_reason": "stop", "message": {"content": json.dumps(value)}}
-            ],
-            "usage": {"cost": 0.00001},
-        }
-        decision, evidence = judge.decode_with_evidence(response, body, text)
-        row = {
-            "index": index,
-            "label": label,
-            "repeat": order[:index].count(label),
-            "call_id": response["id"],
-            "protocol_sha256": protocol_sha,
-            "request": body,
-            "request_sha256": stable_hash(body),
-            "response": response,
-            "response_sha256": stable_hash(response),
-            "status": "completed",
-            "decision": decision.model_dump(),
-            **evidence,
-            "cost_usd": "0.00001",
-            "reserved_usd": str(judge.reserve(body)),
-            "started_at": "2026-01-01T00:00:00+00:00",
-            "finished_at": "2026-01-01T00:00:01+00:00",
-        }
-        if index == 2 and not confirmation:
-            row.update(status="rejected_decision", error_type="decoder_invalid")
-            row.pop("decision")
-            for field in judge.ReviewEvidence.__annotations__:
-                row.pop(field, None)
+        row = _replay_receipt(
+            item,
+            text,
+            index=index,
+            label=label,
+            repeat=order[:index].count(label),
+            protocol_sha=protocol_sha,
+            confirmation=confirmation,
+        )
         name = f"{index:03d}.json"
         receipts[name], hashes[name] = _sealed_document(row)
     mismatches = (

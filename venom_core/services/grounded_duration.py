@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from decimal import Decimal
 
 from venom_core.services.grounded_calculator import calculate
@@ -98,23 +98,33 @@ class DurationState:
                 and _decimal(added["previous"]) != self.regular
             ):
                 return None
-            updated: DurationState = replace(
-                self, tail=(*self.tail, (_decimal(added["duration"]), quote))
+            return DurationState(
+                count=self.count,
+                regular=self.regular,
+                cleanup=self.cleanup,
+                regular_quote=self.regular_quote,
+                cleanup_quote=self.cleanup_quote,
+                tail=(*self.tail, (_decimal(added["duration"]), quote)),
             )
-            return updated
         if changed := _CHANGE_LAST.fullmatch(clause):
             last = (_decimal(changed["duration"]), quote)
-            updated = replace(
-                self,
+            return DurationState(
                 count=self.count if self.tail else self.count - 1,
+                regular=self.regular,
+                cleanup=self.cleanup,
+                regular_quote=self.regular_quote,
+                cleanup_quote=self.cleanup_quote,
                 tail=(*self.tail[:-1], last),
             )
-            return updated
         if changed := _CHANGE_CLEANUP.fullmatch(clause):
-            updated = replace(
-                self, cleanup=_decimal(changed["duration"]), cleanup_quote=quote
+            return DurationState(
+                count=self.count,
+                regular=self.regular,
+                cleanup=_decimal(changed["duration"]),
+                regular_quote=self.regular_quote,
+                cleanup_quote=quote,
+                tail=self.tail,
             )
-            return updated
         return None
 
     def proof_material(self) -> dict[str, object]:

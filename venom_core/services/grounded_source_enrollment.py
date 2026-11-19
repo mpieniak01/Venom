@@ -82,7 +82,7 @@ _RESULTS_CITATION = re.compile(
     r"datę (?:ogłoszenia |publikacji )?wyników[.!?]?",
     re.IGNORECASE,
 )
-_RESULTS_ROLE = re.compile(r"\b(?:wynik\w*|list(?:a|ę) uczestników)\b", re.IGNORECASE)
+_RESULTS_ROLE = re.compile(r"\b(?:wynik\w*|list[aę] uczestników)\b", re.IGNORECASE)
 _OTHER_DATED_RESULT = re.compile(
     rf"{_DATE}|\b[0-9]{{1,4}}[./-][0-9]{{1,2}}\b", re.IGNORECASE
 )

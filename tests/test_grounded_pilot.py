@@ -16,6 +16,10 @@ from venom_core.services.grounded_explicit_totals import (
     PilotExplicitTotalAnswer,
     bind_explicit_total,
 )
+from venom_core.services.grounded_percentages import (
+    PilotPercentChangeAnswer,
+    bind_percent_change,
+)
 from venom_core.services.grounded_pilot import (
     SemanticVerdict,
     _public_prose,
@@ -2450,6 +2454,127 @@ def test_percentage_claim_matches_value_and_separate_unit(value, unit, approved)
     else:
         with pytest.raises(EvidenceError, match="answer_calculation_mismatch"):
             run(model=model, required=Requirements(calculation=True))
+
+
+@pytest.mark.parametrize(
+    "correction,return_display,expected_base,expected_reason",
+    [
+        (
+            "Koryguję stan końcowy na 64. ",
+            "25%",
+            "64",
+            "Oba stosunki zmiany do podstawy są równe, choć podstawy są różne.",
+        ),
+        (
+            "",
+            "33,33%",
+            "60",
+            "Każdy procent odnosi wielkość zmiany do własnej podstawy.",
+        ),
+    ],
+)
+def test_percent_recap_keeps_distinct_verified_bases(
+    correction, return_display, expected_base, expected_reason
+):
+    opening = (
+        "Czy spadek z 80 do 60 sztuk oznacza, że potrzeba potem takiego samego "
+        "procentu na powrót?"
+    )
+    drop = "Użyj kalkulatora. Zaczęliśmy od 80, zostało 60. Ile procent wynosi spadek?"
+    recovery = (
+        correction
+        + "Użyj kalkulatora do obliczenia procentowego wzrostu potrzebnego do 80."
+    )
+    if not correction:
+        recovery += " Zaokrąglij do dwóch miejsc po przecinku."
+    finale = (
+        "Napisz tylko, dlaczego dwa razy wyszło 25% mimo różnych kierunków."
+        if correction
+        else "Porównaj krótko procent spadku i procent powrotu. Wyjaśnij podstawy."
+    )
+    assert plain_pilot_recap(opening, ()) is None
+    assert plain_pilot_recap(opening, (), percent_change_receipts=()) == (
+        "Nie. Spadek liczysz od 80, a powrót od 60. "
+        "Ta sama różnica stanowi większy procent mniejszej podstawy."
+    )
+
+    history = ({"role": "user", "content": opening},)
+    backend, reviewer, model = Sources(), Reviewer(), Model()
+    first = run_pilot_turn(
+        drop,
+        "1",
+        backend,
+        model,
+        reviewer,
+        history=history,
+        required=Requirements(calculation=True),
+    )
+    history += (
+        {"role": "user", "content": drop},
+        {"role": "assistant", "content": "Spadek od podstawy 64 wyniósł 20%."},
+    )
+    second = run_pilot_turn(
+        recovery,
+        "2",
+        backend,
+        model,
+        reviewer,
+        history=history,
+        required=Requirements(calculation=True),
+    )
+    assert isinstance(first, PilotPercentChangeAnswer)
+    assert isinstance(second, PilotPercentChangeAnswer)
+    assert first.text == "Spadek z 80 do 60 wynosi 25% (zmiana o 20 przy podstawie 80)."
+    delta = 80 - int(expected_base)
+    assert second.text == (
+        f"Powrót z {expected_base} do 80 wymaga wzrostu o {return_display} "
+        f"(zmiana o {delta} przy podstawie {expected_base})."
+    )
+    calculations = [item["evidence"]["calculations"][0] for item in reviewer.materials]
+    assert [item["expression"] for item in calculations] == [
+        "(80-60)/80*100",
+        f"(80-{expected_base})/{expected_base}*100",
+    ]
+    if not correction:
+        assert calculations[1]["value"].startswith("33.333")
+        assert calculations[1]["value"] != "33.33"
+    assert not model.calls
+    assert not backend.reads
+
+    history += (
+        {"role": "user", "content": recovery},
+        {"role": "assistant", "content": "Powrót z 80 do 64 to 20%."},
+    )
+    receipts = first.percent_change_receipt, second.percent_change_receipt
+    assert plain_pilot_recap(finale, history, percent_change_receipts=receipts) == (
+        f"{first.text} {second.text} {expected_reason}"
+    )
+    no_current = "Do porównania potrzebuję potwierdzonych wyników spadku i powrotu."
+    assert (
+        plain_pilot_recap(finale, history, percent_change_receipts=receipts[:1])
+        == no_current
+    )
+    assert (
+        plain_pilot_recap(
+            finale,
+            (*history, {"role": "user", "content": "Ostatni stan to teraz 70."}),
+            percent_change_receipts=receipts,
+        )
+        == no_current
+    )
+
+
+@pytest.mark.parametrize(
+    "recovery",
+    [
+        "Koryguję stan końcowy na 0. Użyj kalkulatora do obliczenia procentowego wzrostu potrzebnego do 80.",
+        "Koryguję stan końcowy na 90. Użyj kalkulatora do obliczenia procentowego wzrostu potrzebnego do 80.",
+        "Koryguję stan końcowy na 64. Użyj kalkulatora do obliczenia procentowego wzrostu potrzebnego do 90.",
+    ],
+)
+def test_percent_change_declines_undefined_or_conflicting_returns(recovery):
+    drop = "Użyj kalkulatora. Zaczęliśmy od 80, zostało 60. Ile procent wynosi spadek?"
+    assert bind_percent_change((drop, recovery)) is None
 
 
 @pytest.mark.parametrize(

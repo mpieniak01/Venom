@@ -1563,6 +1563,30 @@ def test_gathering_recap_preserves_all_event_roles_with_day_reference():
     )
 
 
+@pytest.mark.parametrize("citation", ["WIERZBA", "POMYLONA"])
+def test_gathering_recap_only_binds_requested_parenthetical_citations(citation):
+    history = (
+        {"role": "user", "content": "Według WIERZBA sprawdź ostatnią środę."},
+        {
+            "role": "assistant",
+            "content": "Brama od 15:35, a pokaz o 16:25. [WIERZBA]",
+        },
+        {"role": "user", "content": "Gdzie według WIERZBA jest zbiórka?"},
+        {
+            "role": "assistant",
+            "content": f"Zbiórka tego dnia odbywa się przy makiecie. ({citation})",
+        },
+    )
+    message = "Przygotuj w jednym zdaniu notatkę z godzinami i miejscem zbiórki."
+    if citation == "WIERZBA":
+        assert plain_pilot_recap(message, history) == (
+            "Brama od 15:35, a pokaz o 16:25, a zbiórka tego dnia odbywa się "
+            "przy makiecie. [WIERZBA]"
+        )
+    else:
+        assert plain_pilot_recap(message, history) is None
+
+
 def test_booking_recap_uses_specific_day_instead_of_general_rule():
     message = "Podaj dzień, liczbę osób i decyzję o zapisie."
     history = (

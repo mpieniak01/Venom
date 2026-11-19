@@ -1458,7 +1458,9 @@ def _recap_guidance(message: str, previous: list[str], recap: bool) -> list[str]
     if _COMPARISON_RECAP.search(message):
         guidance.append(
             "Podaj obie osobne wartości z poprzednich odpowiedzi, zachowaj ich etykiety "
-            "i jednostki oraz podaj różnicę, jeśli obie wartości zostały potwierdzone."
+            "i jednostki oraz podaj różnicę, jeśli obie wartości zostały potwierdzone. "
+            "Porównaj tę samą wielkość w obu wariantach. Jeżeli podsumowujesz dwie "
+            "kwoty całego zamówienia, nie zastępuj jednej z nich ceną jednostkową."
         )
     if _OBSERVATION_REQUEST.search(message):
         guidance.append(
@@ -1546,7 +1548,10 @@ _GATHERING_PLACE = re.compile(
     r"zbiórka\s+(?:tego dnia\s+)?(?:odbywa się|jest|będzie)\s+(?:przy|we|w|na|obok|przed|za)\s++[^0-9.!?\n]+",
     re.IGNORECASE,
 )
-_PUBLIC_CARD_AT_END = re.compile(r"(\[[A-Za-z][\w-]{0,63}\])\.?$")
+_PUBLIC_CARD_AT_END = re.compile(
+    r"(?:\[(?P<bracketed>[A-Za-z][\w-]{0,63})\]|"
+    r"\((?P<parenthetical>[A-Z][A-Z0-9_-]{1,63})\))\.?$"
+)
 
 
 _WEDNESDAY = "środa"
@@ -2079,9 +2084,16 @@ def plain_pilot_recap(message: str, focused: tuple[dict[str, str], ...]) -> str 
     if not _DATE_EXCEPTION.search(focused[0]["content"]):
         return None
     schedule, gathering = (focused[i]["content"].strip() for i in (1, 3))
-    citation_matches = (
-        _PUBLIC_CARD_AT_END.search(schedule),
-        _PUBLIC_CARD_AT_END.search(gathering),
+    requested = {
+        ident
+        for index in (0, 2)
+        for ident in requested_card_ids(focused[index]["content"])
+    }
+    citation_matches = tuple(
+        match
+        if match and (match["bracketed"] or match["parenthetical"] in requested)
+        else None
+        for match in map(_PUBLIC_CARD_AT_END.search, (schedule, gathering))
     )
     schedule_match, gathering_match = citation_matches
     if schedule_match:
@@ -2101,7 +2113,13 @@ def plain_pilot_recap(message: str, focused: tuple[dict[str, str], ...]) -> str 
     ):
         return None
     schedule = first_sentence
-    citations = " ".join(dict.fromkeys(match[1] for match in citation_matches if match))
+    citations = " ".join(
+        dict.fromkeys(
+            f"[{match['bracketed'] or match['parenthetical']}]"
+            for match in citation_matches
+            if match
+        )
+    )
     result = f"{schedule}, a {gathering[0].lower()}{gathering[1:]}."
     return f"{result} {citations}" if citations else result
 

@@ -1261,9 +1261,14 @@ def _public_source_references(
 
 
 def _wrapped_public_text(
-    match: re.Match[str], private_ids: set[str], source_ids: set[str]
+    match: re.Match[str],
+    private_ids: set[str],
+    source_ids: set[str],
+    numeric_calculation_ids: set[str],
 ) -> str:
     content = (match[1] or match[2]).strip()
+    if match[2] is not None and content in numeric_calculation_ids:
+        return ""
     label = _LABELLED_ID.fullmatch(content)
     if (content in private_ids and not content.isdecimal()) or (
         label and label[1] not in source_ids
@@ -1278,18 +1283,24 @@ def _wrapped_public_text(
 
 
 def _public_prose(
-    prose: str, private_ids: set[str], source_versions: dict[str, str]
+    prose: str,
+    private_ids: set[str],
+    source_versions: dict[str, str],
+    numeric_calculation_ids: set[str],
 ) -> str:
     """Remove adapter metadata before the semantic reviewer sees visible prose."""
     source_ids = set(source_versions)
     private_ids = private_ids - source_ids - UNITS
+    numeric_calculation_ids = numeric_calculation_ids - source_ids
     cleaned = _public_source_references(prose, source_versions, private_ids)
 
     def bare(match: re.Match[str]) -> str:
         return match[0] if match[1] in source_ids else ""
 
     def wrapped(match: re.Match[str]) -> str:
-        return _wrapped_public_text(match, private_ids, source_ids)
+        return _wrapped_public_text(
+            match, private_ids, source_ids, numeric_calculation_ids
+        )
 
     cleaned = _LABELLED_ID.sub(bare, _WRAPPED_ID.sub(wrapped, cleaned))
     for ident in sorted(private_ids):
@@ -2673,8 +2684,15 @@ def _finalize_pilot_draft(
         turn.revision,
         *(item.calculation_id for item in plan.calculations),
     }
+    executed = proof.evidence.calculations if proof.evidence is not None else ()
+    numeric_calculation_ids = {
+        item.calculation_id for item in executed if item.calculation_id.isdecimal()
+    }
     prose = strip_public_bookkeeping(
-        _public_prose(draft.prose, private_ids, source_versions), source_versions
+        _public_prose(
+            draft.prose, private_ids, source_versions, numeric_calculation_ids
+        ),
+        source_versions,
     )
     if prose != draft.prose:
         draft = draft.model_copy(update={"prose": prose})

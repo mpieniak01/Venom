@@ -13,6 +13,7 @@ from venom_core.services.grounded_dialogue import (
 )
 from venom_core.services.grounded_pilot import (
     SemanticVerdict,
+    _public_prose,
     material_hash,
     plain_pilot_context,
     plain_pilot_recap,
@@ -680,6 +681,42 @@ def test_redaction_preserves_citation_and_numeric_answer():
         "calculations": [{"calculation_id": "c1", "value": "24", "unit": "zł"}],
     }
     assert run(model=model).text == "Według cennika (id: price) wynik to 24 zł."
+
+
+def test_numeric_calculation_reference_is_removed_before_review():
+    model, reviewer = Model(), Reviewer()
+    model.override["plan"] = {
+        "calculations": [{"calculation_id": "1", "expression": "5*27", "unit": "zł"}]
+    }
+    model.override["draft"] = {
+        "prose": "Za 5 desek po 27 zł zapłacisz 135 zł [1].",
+        "sources": [],
+        "calculations": [{"calculation_id": "1", "value": "135", "unit": "zł"}],
+    }
+
+    answer = run_pilot_turn(
+        "Oblicz koszt 5 desek po 27 zł.",
+        "r1",
+        Sources(),
+        model,
+        reviewer,
+        required=Requirements(calculation=True),
+    )
+    assert answer.text == "Za 5 desek po 27 zł zapłacisz 135 zł."
+    assert reviewer.materials[0]["draft"]["prose"] == answer.text
+    assert reviewer.materials[0]["draft"]["calculations"][0]["calculation_id"] == "1"
+
+
+def test_numeric_calculation_reference_preserves_numbers_and_known_source_ids():
+    assert (
+        _public_prose(
+            "Pozycja (1) kosztuje 135 zł [1]. Źródła [2] i [3].",
+            {"1", "2"},
+            {"2": "v1"},
+            {"1", "2"},
+        )
+        == "Pozycja (1) kosztuje 135 zł. Źródła [2] i [3]."
+    )
 
 
 def test_redaction_only_removes_metadata_before_review_and_never_releases_empty():

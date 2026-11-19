@@ -106,6 +106,16 @@ def _literal_quote(document: SourceDocument) -> SourceQuote:
     )
 
 
+def _valid_pickup_document(document: SourceDocument) -> bool:
+    return (
+        document.complete
+        and document.available
+        and not document.superseded
+        and len(document.text) <= 640
+        and text_hash(document.text) == document.ref.sha256
+    )
+
+
 def bind_pickup_roles(
     message: str, documents: tuple[SourceDocument, ...]
 ) -> tuple[PickupRoles, bool] | None:
@@ -120,13 +130,7 @@ def bind_pickup_roles(
     historical: tuple[SourceDocument, re.Match[str]] | None = None
     scheduled: tuple[SourceDocument, re.Match[str]] | None = None
     for document in documents:
-        if (
-            not document.complete
-            or not document.available
-            or document.superseded
-            or len(document.text) > 640
-            or text_hash(document.text) != document.ref.sha256
-        ):
+        if not _valid_pickup_document(document):
             return None
         content = " ".join(document.text.split())
         if history_match := _HISTORY_CARD.fullmatch(content):

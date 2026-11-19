@@ -25,20 +25,20 @@ _RECAP = re.compile(
     r"(?: w (?:dokładnie )?dwóch zdaniach)?[.!?]?",
     re.IGNORECASE,
 )
-_MONTH_LENGTHS = dict(
-    stycznia=31,
-    lutego=29,
-    marca=31,
-    kwietnia=30,
-    maja=31,
-    czerwca=30,
-    lipca=31,
-    sierpnia=31,
-    września=30,
-    października=31,
-    listopada=30,
-    grudnia=31,
-)
+_MONTH_LENGTHS = {
+    "stycznia": 31,
+    "lutego": 29,
+    "marca": 31,
+    "kwietnia": 30,
+    "maja": 31,
+    "czerwca": 30,
+    "lipca": 31,
+    "sierpnia": 31,
+    "września": 30,
+    "października": 31,
+    "listopada": 30,
+    "grudnia": 31,
+}
 _DATE = rf"(?P<day>0?[1-9]|[12][0-9]|3[01]) (?P<month>{'|'.join(_MONTH_LENGTHS)})"
 _TIME = r"(?P<time>(?:[01]?[0-9]|2[0-3]):[0-5][0-9])"
 _DEADLINE = rf"do {_DATE} (?:do godziny|o(?: godzinie)?) {_TIME}"
@@ -66,7 +66,7 @@ _CLAUSES = re.compile(r"(?<=[.!?])\s+|\n+")
 _SENTENCE_CLAUSES = re.compile(r"(?<=[.!?])\s+")
 
 _CARD = r"(?:\[[\w.-]{1,64}\]|[^\W\d_][\w-]{1,63})"
-_CARD_LIST = rf"(?:kartę|karty) {_CARD}(?:(?:, | i | oraz )(?:kartę |karty )?{_CARD})*"
+_CARD_LIST = rf"(?:kartę|karty) {_CARD}(?:(?:, | i | oraz )(?:kart[ęy] )?{_CARD})*"
 _RESULTS_CITATION = re.compile(
     rf"(?:przeczytaj(?: ponownie)? (?:(?:obie|wszystkie) )?{_CARD_LIST}[.!] )?"
     rf"zacytuj kartę {_CARD} (?:i|oraz) podaj (?:tylko|wyłącznie) "

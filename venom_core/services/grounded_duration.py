@@ -98,20 +98,23 @@ class DurationState:
                 and _decimal(added["previous"]) != self.regular
             ):
                 return None
-            return replace(
+            updated: DurationState = replace(
                 self, tail=(*self.tail, (_decimal(added["duration"]), quote))
             )
+            return updated
         if changed := _CHANGE_LAST.fullmatch(clause):
             last = (_decimal(changed["duration"]), quote)
-            return replace(
+            updated = replace(
                 self,
                 count=self.count if self.tail else self.count - 1,
                 tail=(*self.tail[:-1], last),
             )
+            return updated
         if changed := _CHANGE_CLEANUP.fullmatch(clause):
-            return replace(
+            updated = replace(
                 self, cleanup=_decimal(changed["duration"]), cleanup_quote=quote
             )
+            return updated
         return None
 
     def proof_material(self) -> dict[str, object]:

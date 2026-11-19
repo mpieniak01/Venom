@@ -843,24 +843,9 @@ class GroundedTurn:
             c.unit == output_unit for c in calculations
         ):
             raise EvidenceError("calculation_result_unit_missing")
-        sources: tuple[SourceDocument, ...] = ()
-        unavailable: tuple[str, ...] = ()
-        named = requested_card_ids(plan.message) if required.sources else ()
-        if required.sources:
-            try:
-                sources, unavailable = self.read_sources(
-                    plan.source_query or plan.message, message=plan.message
-                )
-            except (OSError, KeyError) as exc:
-                raise EvidenceError("source_unavailable") from exc
-        citations = named
-        if required_citations is not None:
-            if not required.sources or not set(required_citations) <= set(named):
-                raise EvidenceError("source_citation_scope_invalid")
-            if not set(named) <= {doc.ref.source_id for doc in sources}:
-                raise EvidenceError("answer_named_source_not_read")
-            citations = required_citations
-            self._revalidate_full_read = True
+        sources, unavailable, citations = self._prepare_sources(
+            plan, required, required_citations
+        )
         identity = text_hash(
             json.dumps(
                 {
@@ -883,6 +868,32 @@ class GroundedTurn:
             identity, sources, calculations, required, unavailable, citations
         )
         return self._evidence
+
+    def _prepare_sources(
+        self,
+        plan: TurnPlan,
+        required: Requirements,
+        required_citations: tuple[str, ...] | None,
+    ) -> tuple[tuple[SourceDocument, ...], tuple[str, ...], tuple[str, ...]]:
+        sources: tuple[SourceDocument, ...] = ()
+        unavailable: tuple[str, ...] = ()
+        named = requested_card_ids(plan.message) if required.sources else ()
+        if required.sources:
+            try:
+                sources, unavailable = self.read_sources(
+                    plan.source_query or plan.message, message=plan.message
+                )
+            except (OSError, KeyError) as exc:
+                raise EvidenceError("source_unavailable") from exc
+        citations = named
+        if required_citations is not None:
+            if not required.sources or not set(required_citations) <= set(named):
+                raise EvidenceError("source_citation_scope_invalid")
+            if not set(named) <= {doc.ref.source_id for doc in sources}:
+                raise EvidenceError("answer_named_source_not_read")
+            citations = required_citations
+            self._revalidate_full_read = True
+        return sources, unavailable, citations
 
     def _read_publication_document(self, ref: SourceRef) -> SourceDocument:
         try:
@@ -927,6 +938,27 @@ class GroundedTurn:
         self._evidence = None
         return answer
 
+    def _render_claims(
+        self,
+        draft: AnswerDraft,
+        documents: dict[str, SourceDocument],
+        fresh_documents: dict[str, SourceDocument] | None,
+        calculations: dict[str, CalculationEvidence],
+    ) -> tuple[list[str], set[str], set[str]]:
+        used_sources: set[str] = set()
+        used_calculations: set[str] = set()
+        lines: list[str] = []
+        for claim in draft.claims:
+            if isinstance(claim, SourceQuote):
+                lines.append(self._source_line(claim, documents, fresh_documents))
+                used_sources.add(claim.source_id)
+            elif isinstance(claim, CalculationClaim):
+                lines.append(_calculation_line(claim, calculations))
+                used_calculations.add(claim.calculation_id)
+            else:
+                raise EvidenceError("answer_claim_unsupported")
+        return lines, used_sources, used_calculations
+
     def _render_draft(
         self, draft: AnswerDraft, *, refresh_sources: bool
     ) -> PublishedAnswer:
@@ -939,19 +971,10 @@ class GroundedTurn:
         fresh_documents: dict[str, SourceDocument] | None = (
             {} if refresh_sources else None
         )
-        used_sources: set[str] = set()
         calculations = {c.calculation_id: c for c in evidence.calculations}
-        used_calculations: set[str] = set()
-        lines: list[str] = []
-        for claim in draft.claims:
-            if isinstance(claim, SourceQuote):
-                lines.append(self._source_line(claim, documents, fresh_documents))
-                used_sources.add(claim.source_id)
-            elif isinstance(claim, CalculationClaim):
-                lines.append(_calculation_line(claim, calculations))
-                used_calculations.add(claim.calculation_id)
-            else:
-                raise EvidenceError("answer_claim_unsupported")
+        lines, used_sources, used_calculations = self._render_claims(
+            draft, documents, fresh_documents, calculations
+        )
         if evidence.requirements.sources and not used_sources:
             raise EvidenceError("answer_source_required")
         if not set(evidence.requested_source_ids) <= used_sources:

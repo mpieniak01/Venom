@@ -153,19 +153,12 @@ def _source_fact(
     return facts[0] if len(facts) == 1 else None
 
 
-def bind_segment_length(
-    users: tuple[str, ...], documents: tuple[SourceDocument, ...]
-) -> SegmentLengthState | None:
-    """Recognize the explicit two-card request and bind each quantity by role."""
-    if len(users) < 2 or any(len(turn) > 1000 for turn in users[-3:]):
-        return None
-    current = _turn(users[-1])
-    named = requested_card_ids(users[-1])
-    if len(named) != 2 or not {document.ref.source_id for document in documents} <= set(
-        named
-    ):
-        return None
-    update = _UPDATE.fullmatch(current)
+def _requested_main_length(
+    users: tuple[str, ...],
+    current: str,
+    named: tuple[str, ...],
+    update: re.Match[str] | None,
+) -> _Measure | None:
     if update is not None:
         if (
             len(users) < 3
@@ -188,6 +181,25 @@ def bind_segment_length(
             return None
         main = _Measure.from_match(intro)
     else:
+        return None
+    return main
+
+
+def bind_segment_length(
+    users: tuple[str, ...], documents: tuple[SourceDocument, ...]
+) -> SegmentLengthState | None:
+    """Recognize the explicit two-card request and bind each quantity by role."""
+    if len(users) < 2 or any(len(turn) > 1000 for turn in users[-3:]):
+        return None
+    current = _turn(users[-1])
+    named = requested_card_ids(users[-1])
+    if len(named) != 2 or not {document.ref.source_id for document in documents} <= set(
+        named
+    ):
+        return None
+    update = _UPDATE.fullmatch(current)
+    main = _requested_main_length(users, current, named, update)
+    if main is None:
         return None
     return SegmentLengthState(
         main,

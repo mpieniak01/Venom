@@ -63,6 +63,15 @@ from venom_core.services.grounded_presentation import (
     requested_precision,
     rounded_value,
 )
+from venom_core.services.grounded_prices import (
+    PRICE_MEAN_ID,
+    PilotPriceMeanAnswer,
+    PriceMeanReceipt,
+    PriceMeanState,
+    bind_price_mean,
+    mean_expression,
+    price_mean_recap,
+)
 
 MAX_MODEL_INPUT_BYTES = 6000
 
@@ -318,9 +327,8 @@ def _explicit_mean(message: str) -> Calculation | None:
             r",(?=\s)|(?<=\s)i(?=\s)", match["numbers"], flags=re.IGNORECASE
         )
     ]
-    addends = "+".join(f"({item.replace(',', '.')})" for item in operands)
-    expression = f"({addends})/{len(operands)}"
-    if len(expression) > MAX_EXPRESSION_CHARS:
+    expression = mean_expression(operands)
+    if expression is None:
         return None
     return Calculation(
         calculation_id="arithmetic_mean",
@@ -553,7 +561,11 @@ def _length_draft(calculation: CalculationEvidence, places: int | None) -> Draft
     )
 
 
-def _mean_draft(calculation: CalculationEvidence, places: int | None) -> Draft:
+def _mean_draft(
+    calculation: CalculationEvidence,
+    places: int | None,
+    price_mean: PriceMeanState | None = None,
+) -> Draft:
     value = _display_calculation(calculation.value, places)
     if calculation.unit == _POINTS:
         if value.lstrip("-") == "1":
@@ -565,8 +577,14 @@ def _mean_draft(calculation: CalculationEvidence, places: int | None) -> Draft:
         else:
             unit = _POINTS
         value = f"{value} {unit}"
+    elif calculation.unit:
+        value = f"{value} {calculation.unit}"
+    subject = "Średnia"
+    if price_mean is not None:
+        prices = ", ".join(price.replace(".", ",") for price in price_mean.prices)
+        subject = f"Średnia z podanych cen ({prices})"
     return Draft(
-        prose=f"Średnia wynosi {value}.",
+        prose=f"{subject} wynosi {value}.",
         sources=[],
         calculations=[
             ResultClaim(
@@ -2092,10 +2110,15 @@ def plain_pilot_recap(
     focused: tuple[dict[str, str], ...],
     *,
     duration_receipt: DurationReceipt | None = None,
+    price_mean_receipts: tuple[PriceMeanReceipt, ...] = (),
 ) -> str | None:
     """Retain verified decisions and event roles from the selected exception."""
-    if duration_receipt is not None:
+    if price_mean_receipts or duration_receipt is not None:
         users = tuple(item["content"] for item in focused if item["role"] == "user")
+        price_recap = price_mean_recap(message, users, price_mean_receipts)
+        if price_recap is not None:
+            return price_recap
+    if duration_receipt is not None:
         recap = duration_receipt.recap(message, users)
         if recap is not None:
             return recap
@@ -2207,6 +2230,7 @@ class _DeterministicAnswer:
     order: _OrderCalculation | None = None
     stock: tuple[Calculation, str, tuple[_StockValue, ...]] | None = None
     duration: DurationState | None = None
+    price_mean: PriceMeanState | None = None
 
 
 @dataclass(frozen=True)
@@ -2334,6 +2358,16 @@ def _deterministic_answer(
                 unit="min",
             ),
             duration=duration,
+        )
+    price_mean = bind_price_mean((*prior_users, message))
+    if price_mean is not None:
+        return _DeterministicAnswer(
+            calculation=Calculation(
+                calculation_id=PRICE_MEAN_ID,
+                expression=price_mean.expression,
+                unit="zł",
+            ),
+            price_mean=price_mean,
         )
     stock = _stock_calculation((*prior_users, message))
     calculation = _explicit_mean(message) or _explicit_length_conversion(message)
@@ -2662,7 +2696,7 @@ def _pilot_draft(
             number_only=requests_unitless_result(turn.message),
             places=places,
         )
-    return _mean_draft(calculation, places)
+    return _mean_draft(calculation, places, deterministic.price_mean)
 
 
 def _certify_pilot_draft(
@@ -2853,4 +2887,9 @@ def run_pilot_turn(
         gate.publish(claim_draft)
     if duration_receipt is not None:
         return PilotDurationAnswer(proof.evidence_id, draft.prose, duration_receipt)
+    if deterministic.price_mean is not None and proof.evidence is not None:
+        price_receipt = PriceMeanReceipt.from_evidence(
+            (*turn.prior_users, message), deterministic.price_mean, proof.evidence
+        )
+        return PilotPriceMeanAnswer(proof.evidence_id, draft.prose, price_receipt)
     return PublishedAnswer(proof.evidence_id, draft.prose)

@@ -20,6 +20,7 @@ from venom_core.services.grounded_pilot import (
     plain_pilot_recap,
     run_pilot_turn,
 )
+from venom_core.services.grounded_prices import PilotPriceMeanAnswer, bind_price_mean
 from venom_core.services.grounded_review import (
     CompactGroundedReviewer,
     GroundedChecklistReviewer,
@@ -2709,3 +2710,115 @@ def test_duration_receipt_is_not_released_if_semantic_review_rejects():
             history=({"role": "user", "content": initial},),
             required=Requirements(calculation=True),
         )
+
+
+def test_price_mean_binds_correction_and_compares_both_calculator_results():
+    initial = "Użyj kalkulatora dla cen 15, 18 i 51 zł. Podaj średnią w złotych."
+    change = (
+        "Koryguję tylko skrajną pozycję z 51 na 36 zł. Przelicz kalkulatorem średnią."
+    )
+    final = (
+        "A co ze średnią i medianą przed korektą oraz po niej? Chcę krótkie porównanie."
+    )
+    history = ({"role": "user", "content": "Co różni średnią od mediany?"},)
+    backend, model, reviewer = Sources(), Model(), Reviewer()
+    first = run_pilot_turn(
+        initial,
+        "r1",
+        backend,
+        model,
+        reviewer,
+        history=history,
+        required=Requirements(calculation=True),
+    )
+    assert isinstance(first, PilotPriceMeanAnswer)
+    assert first.text == "Średnia z podanych cen (15, 18, 51) wynosi 28 zł."
+    history += (
+        {"role": "user", "content": initial},
+        {"role": "assistant", "content": "Średnia wyniosła 50 zł."},
+    )
+    corrected = run_pilot_turn(
+        change,
+        "r2",
+        backend,
+        model,
+        reviewer,
+        history=history,
+        required=Requirements(calculation=True),
+    )
+    assert isinstance(corrected, PilotPriceMeanAnswer)
+    assert corrected.price_mean_receipt.calculation.expression == "((15)+(18)+(36))/3"
+    assert corrected.text == "Średnia z podanych cen (15, 18, 36) wynosi 23 zł."
+    assert not model.calls
+    history += (
+        {"role": "user", "content": change},
+        {"role": "assistant", "content": "Średnia wynosi 45 zł, mediana 15 zł."},
+    )
+    receipts = first.price_mean_receipt, corrected.price_mean_receipt
+    assert plain_pilot_recap(final, history, price_mean_receipts=receipts) == (
+        "Średnia spadła z 28 zł do 23 zł. Mediana pozostała na poziomie 18 zł, "
+        "bo środek uporządkowanej listy się nie zmienił."
+    )
+    assert plain_pilot_recap(final, history, price_mean_receipts=receipts[:1]) == (
+        "Do porównania potrzebuję potwierdzonych wyników sprzed korekty i po niej."
+    )
+    changed = (*history, {"role": "user", "content": "Jednak zmieniam pozostałe ceny."})
+    assert plain_pilot_recap(final, changed, price_mean_receipts=receipts) == (
+        "Do porównania potrzebuję potwierdzonych wyników sprzed korekty i po niej."
+    )
+    assert (
+        plain_pilot_recap("Co to jest mediana?", history, price_mean_receipts=receipts)
+        is None
+    )
+
+
+def test_price_mean_compares_changed_middle_price():
+    base = "Użyj kalkulatora dla cen 4, 7, 10 i 15 zł. Podaj średnią w złotych."
+    update = "Zmieniam cenę z 7 na 11 zł. Przelicz kalkulatorem średnią."
+    backend, model, reviewer = Sources(), Model(), Reviewer()
+    first = run_pilot_turn(
+        base, "a", backend, model, reviewer, required=Requirements(calculation=True)
+    )
+    history = ({"role": "user", "content": base},)
+    new = run_pilot_turn(
+        update,
+        "b",
+        backend,
+        model,
+        reviewer,
+        history=history,
+        required=Requirements(calculation=True),
+    )
+    assert isinstance(first, PilotPriceMeanAnswer)
+    assert isinstance(new, PilotPriceMeanAnswer)
+    history += ({"role": "user", "content": update},)
+    assert (
+        plain_pilot_recap(
+            "Porównaj krótko średnią i medianę przed korektą i po niej.",
+            history,
+            price_mean_receipts=(first.price_mean_receipt, new.price_mean_receipt),
+        )
+        == "Średnia wzrosła z 9 zł do 10 zł. Mediana zmieniła się z 8,5 zł na 10,5 zł."
+    )
+
+
+@pytest.mark.parametrize(
+    "inputs",
+    [
+        (
+            "Użyj kalkulatora dla cen 4, 8 i 8 zł. Podaj średnią w złotych.",
+            "Zmieniam cenę z 8 na 5 zł. Przelicz kalkulatorem średnią.",
+        ),
+        (
+            "Użyj kalkulatora dla cen 4, 8 i 15 zł. Podaj średnią w złotych.",
+            "Koryguję skrajną pozycję z 8 na 5 zł. Przelicz kalkulatorem średnią.",
+        ),
+        (
+            "Użyj kalkulatora dla cen 4, 8 i 15 zł. Podaj średnią w złotych.",
+            "Nie znamy już drugiej ceny.",
+            "Zmieniam cenę z 4 na 5 zł. Przelicz kalkulatorem średnią.",
+        ),
+    ],
+)
+def test_price_mean_declines_ambiguous_or_stale_operands(inputs):
+    assert bind_price_mean(inputs) is None

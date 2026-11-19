@@ -1490,7 +1490,8 @@ def test_targeted_resume_replays_completed_receipts_and_azure_capacity(
     row = json.loads((root / "receipts/002.json").read_text())
     assert Client.calls == 3
     assert result["status"] == "targeted_review_required"
-    assert result["completed"] == 2 and result["rate_limit_retries"] == 1
+    assert result["completed"] == 2
+    assert result["rate_limit_retries"] == 1
     assert Decimal(result["unknown_reserved_usd"]) == Decimal(tail["reserved_usd"])
     assert row["rate_limit_attempts"][0]["call_id"] == tail["call_id"]
     assert digest(root / "receipts/001.json") == first_receipt
@@ -1561,7 +1562,8 @@ def test_full_audit_resumes_after_holdout_azure_502(ready, monkeypatch, use_admi
     stop = False
     result = audit.run(root, execute=True, resume=True, client_factory=CapacityClient)
     assert result["status"] == "passed"
-    assert result["holdout_opened"] and result["rate_limit_retries"] == 1
+    assert result["holdout_opened"]
+    assert result["rate_limit_retries"] == 1
     assert CapacityClient.calls == interrupted_at + 72
     assert digest(root / "phase1-result.json") == phase
     assert all(digest(root / "receipts" / name) == sha for name, sha in prefix.items())

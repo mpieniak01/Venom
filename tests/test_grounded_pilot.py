@@ -2810,7 +2810,8 @@ def test_duration_roles_support_decimals_replacement_and_cleanup_changes():
     )
     assert isinstance(answer, PilotDurationAnswer)
     assert answer.duration_receipt.calculation.expression == "(1*7.5+6.25)+2"
-    assert "15,75 min" in answer.text and "13,75 na pętle" in answer.text
+    assert "15,75 min" in answer.text
+    assert "13,75 na pętle" in answer.text
 
 
 @pytest.mark.parametrize(
@@ -2832,15 +2833,17 @@ def test_duration_binding_declines_conflicting_or_unconfirmed_states(change):
 
 def test_duration_receipt_is_not_released_if_semantic_review_rejects():
     initial = "Wykonam 3 pętle po 11 minut, po całej sesji dojdzie 7 minut porządków."
+    backend, model, reviewer = Sources(), Model(), Reviewer(approved=False)
+    required = Requirements(calculation=True)
     with pytest.raises(EvidenceError, match="pilot_semantic_rejected"):
         run_pilot_turn(
             "Przelicz.",
             "r1",
-            Sources(),
-            Model(),
-            Reviewer(approved=False),
+            backend,
+            model,
+            reviewer,
             history=({"role": "user", "content": initial},),
-            required=Requirements(calculation=True),
+            required=required,
         )
 
 
@@ -3154,7 +3157,8 @@ def test_pickup_roles_reject_conflicting_point_or_day(old, new):
             required=Requirements(sources=True),
         )
     assert backend.reads == ["MORKADA", "SILETOR"]
-    assert not model.calls and not reviewer.materials
+    assert not model.calls
+    assert not reviewer.materials
 
 
 def test_pickup_roles_receipt_requires_approved_current_cards():
@@ -3421,7 +3425,8 @@ def test_bound_speed_replays_w34_without_duplicate_conversion_or_model_placehold
             b.speed_measurement_receipt,
         ),
     )
-    assert comparison is not None and comparison.startswith(
+    assert comparison is not None
+    assert comparison.startswith(
         "Przed korektą średnia wynosiła 8 m/s, a po niej 6 m/s"
     )
     assert plain_pilot_recap(
@@ -3452,14 +3457,16 @@ def test_cross_unit_speed_draft_refuses_a_known_repeated_scale(
             }
         ]
     }
+    backend, reviewer = Sources(), Reviewer()
+    required = Requirements(calculation=True)
     with pytest.raises(EvidenceError, match="pilot_speed_double_conversion"):
         run_pilot_turn(
             f"Podaj prędkość w {target}.",
             "r",
-            Sources(),
+            backend,
             model,
-            Reviewer(),
-            required=Requirements(calculation=True),
+            reviewer,
+            required=required,
         )
 
 
@@ -3487,10 +3494,12 @@ def test_named_source_reads_can_be_full_with_only_one_relevant_citation():
         required=Requirements(sources=True),
         trace=trace,
     )
-    assert result.text.endswith("[SILETOR].") and "[MORKADA]" not in result.text
+    assert result.text.endswith("[SILETOR].")
+    assert "[MORKADA]" not in result.text
     assert reviewer.materials[0]["draft"]["calculations"] == []
     assert "empty_calculation_placeholder_removed" in [step["phase"] for step in trace]
-    assert backend.reads.count("MORKADA") == 3 and backend.reads.count("SILETOR") == 3
+    assert backend.reads.count("MORKADA") == 3
+    assert backend.reads.count("SILETOR") == 3
     assert len(reviewer.materials[0]["evidence"]["sources"]) == 2
     with pytest.raises(EvidenceError, match="answer_named_source_required"):
         run_pilot_turn(
@@ -3532,8 +3541,11 @@ def test_source_recall_is_bound_to_a_published_history_and_current_cards():
         "calculations": [],
     }
     required = Requirements(sources=True)
+    rejecting_reviewer = Reviewer(False)
     with pytest.raises(EvidenceError, match="pilot_semantic_rejected"):
-        run_pilot_turn(message, "r", backend, model, Reviewer(False), required=required)
+        run_pilot_turn(
+            message, "r", backend, model, rejecting_reviewer, required=required
+        )
     published = run_pilot_turn(
         message, "r", backend, model, Reviewer(), required=required
     )
@@ -3662,8 +3674,9 @@ def test_source_enrollment_binds_distinct_fields_to_exact_evidence():
 def test_source_enrollment_never_renders_substituted_or_missing_fields(cards, reason):
     from venom_core.services.grounded_source_enrollment import bind_enrollment_evidence
 
+    documents = _enrollment_documents(cards)
     with pytest.raises(EvidenceError, match=reason):
-        bind_enrollment_evidence(_enrollment_documents(cards))
+        bind_enrollment_evidence(documents)
 
 
 def test_source_enrollment_recap_uses_the_released_history_and_current_card_versions():
@@ -3901,7 +3914,8 @@ def test_results_date_does_not_release_conflicting_or_unbacked_citation(
             reviewer,
             required=Requirements(sources=True),
         )
-    assert not model.calls and not reviewer.materials
+    assert not model.calls
+    assert not reviewer.materials
 
 
 def test_results_date_rechecks_even_the_uncited_card_after_review():
@@ -4004,22 +4018,21 @@ def test_thermal_reply_checks_flow_and_choice_before_rendering():
         ThermalStep("colder", "hand_to_objects", "stal"),
         ThermalStep("warmer", "objects_to_hand", "stal"),
     )
+    invalid_draft = (valid[0], ThermalStep("warmer", "hand_to_objects", "filc"))
     with pytest.raises(
         EvidenceError, match="thermal_flow_mismatch,thermal_material_mismatch"
     ):
-        plain_pilot_recap(
-            question,
-            (),
-            thermal_draft=(valid[0], ThermalStep("warmer", "hand_to_objects", "filc")),
-        )
+        plain_pilot_recap(question, (), thermal_draft=invalid_draft)
     with pytest.raises(EvidenceError, match="thermal_conditions_mismatch"):
         plain_pilot_recap(question, (), thermal_draft=valid[::-1])
     answer = plain_pilot_recap(question, (), thermal_draft=valid)
     assert answer == plain_pilot_recap(question, ())
     assert answer is not None
     colder, warmer = answer.rstrip(".").split(". ")
-    assert "stal" in colder and "z dłoni do przedmiotów" in colder
-    assert "stal" in warmer and "z przedmiotów do dłoni" in warmer
+    assert "stal" in colder
+    assert "z dłoni do przedmiotów" in colder
+    assert "stal" in warmer
+    assert "z przedmiotów do dłoni" in warmer
 
 
 @pytest.mark.parametrize(

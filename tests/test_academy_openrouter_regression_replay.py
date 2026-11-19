@@ -129,8 +129,9 @@ def test_regression_replay_preserves_archive_and_tests_all_cases(tmp_path, monke
 def test_replay_refuses_holdout_paths_before_opening(tmp_path, receipt_path, reason):
     case = _record(tmp_path, 1)
     case["receipt"] = receipt_path
+    manifest, sha = _manifest(tmp_path, case)
     with pytest.raises(ValueError, match=reason):
-        replay.replay(*_manifest(tmp_path, case))
+        replay.replay(manifest, sha)
 
 
 @pytest.mark.parametrize("tampered", [False, True])
@@ -160,8 +161,9 @@ def test_replay_refuses_changed_receipt(tmp_path):
     case = _record(tmp_path, 1)
     path = tmp_path / case["receipt"]
     path.write_text(path.read_text(encoding="utf-8") + "\n", encoding="utf-8")
+    manifest, sha = _manifest(tmp_path, case)
     with pytest.raises(ValueError, match="offline_replay_hash"):
-        replay.replay(*_manifest(tmp_path, case))
+        replay.replay(manifest, sha)
 
 
 def test_cli_does_not_replace_prior_report(tmp_path, monkeypatch):

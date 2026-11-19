@@ -99,6 +99,7 @@ def _targeted_selection(path: Path, index: int, protocol_sha: str) -> dict:
     return {
         "protocol_sha256": protocol_sha,
         "label": label,
+        "repeat": order[:index].count(label),
         "body": cases[label]["body"],
     }
 

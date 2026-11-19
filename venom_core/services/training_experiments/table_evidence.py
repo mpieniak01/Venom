@@ -9,20 +9,22 @@ from typing import TypedDict
 from .semantic_judge_v5 import MAX_EVIDENCE_TEXT_CHARS, Relation, observed_from_answer
 
 _NAME = r"[^\W\d_]{1,40}"
-_COUNT = r"[0-9]{1,9}"
+_COUNT = r"(?a:\d){1,9}"
+_SHIPMENTS = "przesyłki"
+_BOXES = "pudełka"
 _UNITS = {
     "paczka": "paczki",
     "paczki": "paczki",
     "paczek": "paczki",
-    "przesyłka": "przesyłki",
-    "przesyłki": "przesyłki",
-    "przesyłek": "przesyłki",
+    "przesyłka": _SHIPMENTS,
+    _SHIPMENTS: _SHIPMENTS,
+    "przesyłek": _SHIPMENTS,
     "sztuka": "sztuki",
     "sztuki": "sztuki",
     "sztuk": "sztuki",
-    "pudełko": "pudełka",
-    "pudełka": "pudełka",
-    "pudełek": "pudełka",
+    "pudełko": _BOXES,
+    _BOXES: _BOXES,
+    "pudełek": _BOXES,
     "karton": "kartony",
     "kartony": "kartony",
     "kartonów": "kartony",
@@ -133,6 +135,29 @@ def _entity_columns(table: _Table, entity: str) -> list[tuple[int, str]]:
     return columns
 
 
+def _assignment_entry(
+    clause: str,
+    index: int,
+    entries: list[tuple[str, str, str, str]],
+    *,
+    scoped_sorting: bool,
+) -> tuple[str, str, str, str] | None:
+    pattern = _FIRST_ASSIGNMENT if index == 0 else _KNOWN_CONTINUATION
+    match = pattern.fullmatch(clause)
+    if match is not None:
+        unit = _UNITS[match["unit"].casefold()]
+    elif (
+        scoped_sorting and entries and (match := _IMPLICIT_SORT_COUNT.fullmatch(clause))
+    ):
+        units = {entry[3] for entry in entries}
+        if len(units) != 1:
+            return None
+        unit = units.pop()
+    else:
+        return None
+    return clause, match["entity"], match["value"], unit
+
+
 def _assignment_clauses(sentence: str) -> list[tuple[str, str, str, str]]:
     clauses = [
         item.strip()
@@ -145,22 +170,10 @@ def _assignment_clauses(sentence: str) -> list[tuple[str, str, str, str]]:
             clauses.pop()
     entries: list[tuple[str, str, str, str]] = []
     for index, clause in enumerate(clauses):
-        pattern = _FIRST_ASSIGNMENT if index == 0 else _KNOWN_CONTINUATION
-        match = pattern.fullmatch(clause)
-        if match is not None:
-            unit = _UNITS[match["unit"].casefold()]
-        elif (
-            scoped_sorting
-            and entries
-            and (match := _IMPLICIT_SORT_COUNT.fullmatch(clause))
-        ):
-            units = {entry[3] for entry in entries}
-            if len(units) != 1:
-                return []
-            unit = units.pop()
-        else:
+        entry = _assignment_entry(clause, index, entries, scoped_sorting=scoped_sorting)
+        if entry is None:
             return []
-        entries.append((clause, match["entity"], match["value"], unit))
+        entries.append(entry)
     return entries
 
 
@@ -269,6 +282,39 @@ def _sorting_day(
     }
 
 
+def _count_comparison(
+    material: dict,
+    candidate: str,
+    table: _Table,
+    criterion: re.Match[str],
+    observed: str,
+    raw_relation: Relation,
+) -> tuple[int, Source, bool] | None:
+    entity = criterion["entity"].casefold()
+    unit = _UNITS[criterion["unit"].casefold()]
+    columns = _entity_columns(table, entity)
+    if len(columns) != 1 or columns[0][1] != unit:
+        return None
+    column = columns[0][0]
+    cell = table.values[column]
+    if _VALUE.fullmatch(cell) is None:
+        return None
+    checked_source = _source(material, entity)
+    if (
+        checked_source is None
+        or checked_source["unit"] != unit
+        or int(checked_source["value"]) != int(criterion["value"])
+    ):
+        return None
+    source = checked_source
+    if not (
+        observed_from_answer(observed, raw_relation, candidate)
+        or _table_projection(observed, table, column)
+    ):
+        return None
+    return column, source, int(cell) == int(source["value"])
+
+
 def compare(
     material: dict,
     candidate: str,
@@ -291,29 +337,13 @@ def compare(
         cell = table.values[column]
         matches = cell == source["value"]
     else:
-        entity = criterion["entity"].casefold()
-        unit = _UNITS[criterion["unit"].casefold()]
-        columns = _entity_columns(table, entity)
-        if len(columns) != 1 or columns[0][1] != unit:
+        count = _count_comparison(
+            material, candidate, table, criterion, observed, raw_relation
+        )
+        if count is None:
             return None
-        column = columns[0][0]
+        column, source, matches = count
         cell = table.values[column]
-        if _VALUE.fullmatch(cell) is None:
-            return None
-        checked_source = _source(material, entity)
-        if (
-            checked_source is None
-            or checked_source["unit"] != unit
-            or int(checked_source["value"]) != int(criterion["value"])
-        ):
-            return None
-        source = checked_source
-        if not (
-            observed_from_answer(observed, raw_relation, candidate)
-            or _table_projection(observed, table, column)
-        ):
-            return None
-        matches = int(cell) == int(source["value"])
     effective: Relation = "supported" if matches else "contradicted"
     return {
         "criterion": criterion_id,

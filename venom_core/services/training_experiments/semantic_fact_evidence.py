@@ -51,7 +51,7 @@ class Comparison(TypedDict):
 
 
 _NAME = r"[^\W\d_]{2,32}"
-_NUMBER = r"[+−-]?[0-9]{1,12}(?:[.,][0-9]{1,12})?"
+_NUMBER = r"[+−-]?(?a:\d){1,12}(?:[.,](?a:\d){1,12})?"
 _AMPERE = r"(?:mA|µA|μA|A)"
 _CLAUSE = re.compile(r"(?<=[.!?])(?=\s)|[;\r\n]+")
 _EMPHASIS = re.compile(r"\*\*([^*\r\n]+)\*\*")
@@ -92,19 +92,21 @@ _ROLE_UNSAFE = re.compile(
     r"\b(?:nie|chyba|może|prawdopodobnie|albo|lub|zamiast|punkt\w*|sklep\w*|adres\w*)\b",
     re.I,
 )
-_PICKUP_LOCATION = re.compile(
-    r"\b(?:punkt(?:em|u)?|punkcie|szyld\w*|adres\w*|miejsc\w*|placów\w*)\b|[«„]\s*U\s+",
-    re.I,
+_PICKUP_LOCATION_PATTERNS = (
+    re.compile(r"\b(?:punkt(?:em|u)?|punkcie)\b", re.I),
+    re.compile(r"\b(?:szyld|adres|miejsc|placów)\w*\b", re.I),
+    re.compile(r"[«„]\s*U\s+", re.I),
 )
+
 _PICKUP_AT = re.compile(rf"\b(?:odbiór|odbierzesz)\s+u\s+(?P<name>{_NAME})\b", re.I)
 _PICKUP_CLAIM = re.compile(
     rf"(?P<leading>U\s+(?P<before>{_NAME}))\s+odbierzesz"
-    rf"(?:\s+(?:[0-9]{{1,6}}\s+)?{_NAME})?\.?"
+    rf"(?:\s+(?:(?a:\d){{1,6}}\s+)?{_NAME})?\.?"
     rf"|(?:{_NAME}\s+)?odbierzesz\s+(?P<trailing>u\s+(?P<after>{_NAME}))\.?",
     re.I,
 )
 
-_PICKUP_QUANTITY = r"(?P<count>[0-9]{1,6}) (?P<unit>pudeł(?:ek|ka|o)?|karton(?:y|ów)?|pacz(?:ek|ki|ka))"
+_PICKUP_QUANTITY = r"(?P<count>(?a:\d){1,6}) (?P<unit>pudeł(?:ek|ka|o)?|karton(?:y|ów)?|pacz(?:ek|ki|ka))"
 _PICKUP_SOURCE_COUNT = re.compile(
     rf"Do odbioru (?:jest|są|zostało|pozostało|pozostaje) {_PICKUP_QUANTITY}\.?", re.I
 )
@@ -134,10 +136,14 @@ _CURRENT_FACT = re.compile(
     r"(?i:prąd|natężenie prądu)(?:\s+(?:(?i:wynosi)\s+)?|\s*[:=]\s*)"
     rf"(?P<value>{_NUMBER})\s+(?P<unit>{_AMPERE})"
     r"(?:(?:\s+(?i:przez)|,\s*(?i:czas))\s+"
-    r"[0-9]{1,12}\s+(?i:sekund\w*|s|minut\w*|min))?\.?"
+    r"(?a:\d){1,12}\s+(?i:sekund\w*|s|minut\w*|min))?\.?"
 )
 _CURRENT_MENTION = re.compile(r"\b(?:pomiar|prąd(?:u|em)?|natężenie)\b", re.I)
-_CURRENT_QUESTION = re.compile(r"^(?:Podaj|Wypisz|Podsumuj)\s+[^0-9.!?]*[.?!]?\Z", re.I)
+# Whitespace belongs entirely to the prefix: consuming it possessively keeps
+# the accepted language while avoiding overlap with the question body.
+_CURRENT_QUESTION = re.compile(
+    r"^(?:Podaj|Wypisz|Podsumuj)\s++(?a:[^\d.!?]*)[.?!]?\Z", re.I
+)
 _EXPLICIT_SIGN = re.compile(
     r"\b(?:plus\w*|znak\w*|biegunowoś\w*|polaryzacj\w*)\b", re.I
 )
@@ -176,7 +182,7 @@ _SPOKEN_SIGN = r"(?:minusem|minus|plusem|plus)"
 _TEMP_MAGNITUDE = rf"(?:{_NUMBER}|{_CARDINAL})"
 # Only a numeric temperature can attach its unit without a space.
 _TEMP_UNIT = (
-    r"(?:(?<=[0-9])\s*°\s*C|\s+(?:°\s*C|stop(?:ień|nia|nie|ni)(?:\s+Celsjusza)?))"
+    r"(?:(?<=(?a:\d))\s*°\s*C|\s+(?:°\s*C|stop(?:ień|nia|nie|ni)(?:\s+Celsjusza)?))"
 )
 _TEMP_TOKEN = rf"(?:{_SPOKEN_SIGN}\s+)?{_TEMP_MAGNITUDE}{_TEMP_UNIT}"
 _TEMPERATURE = re.compile(_TEMP_TOKEN, re.I)
@@ -203,7 +209,13 @@ _SETTING_REJECT = re.compile(
 _SETTING_MENTION = re.compile(
     r"\b(?:nastaw\w*|stopni\w*|Celsjusza|Fahrenheita|kelwin\w*)\b|°", re.I
 )
-_SETTING_QUESTION = re.compile(r"^(?:Podaj|Wypisz|Podsumuj)\s+[^.!?]*[.?!]?\Z", re.I)
+_SETTING_QUESTION = re.compile(r"^(?:Podaj|Wypisz|Podsumuj)\s++[^.!?]*[.?!]?\Z", re.I)
+
+
+def _pickup_location(text: str) -> bool:
+    return any(
+        pattern.search(text) is not None for pattern in _PICKUP_LOCATION_PATTERNS
+    )
 
 
 def _clauses(text: str) -> list[str]:
@@ -238,7 +250,7 @@ def _role_forms(person: str) -> set[str]:
 def _role_source_clause(clause: str, forms: set[str]) -> bool:
     if _ROLE_QUESTION.fullmatch(clause):
         return True
-    if _PICKUP_LOCATION.search(clause) or _UNSAFE_CONTEXT.search(clause):
+    if _pickup_location(clause) or _UNSAFE_CONTEXT.search(clause):
         return False
     if not _ROLE_MENTION.search(clause):
         return True
@@ -308,7 +320,7 @@ def _role_evidence(
     description: str, users: UserMessages, candidate: str
 ) -> Proof | None:
     criterion = _ROLE.fullmatch(description)
-    if not criterion or _PICKUP_LOCATION.search(candidate):
+    if not criterion or _pickup_location(candidate):
         return None
     person = criterion["name"]
     source = _role_reference(users, person)
@@ -484,7 +496,7 @@ def compare(
         return None
     for kind, prover in _PROVERS:
         if kind == "pickup_role" and any(
-            doc.get("current", True) and _PICKUP_LOCATION.search(doc["text"])
+            doc.get("current", True) and _pickup_location(doc["text"])
             for doc in material.get("evidence", ())
         ):
             continue
@@ -515,7 +527,7 @@ _ADVICE_WITHDRAWAL = re.compile(
     re.I,
 )
 _PICKUP_COUNT = re.compile(rf"(?:Do odbioru zostało )?{_PICKUP_QUANTITY}\.?", re.I)
-_PICKUP_TIME = r"(?:odbiór|odbiór jest) o (?:[01]?[0-9]|2[0-3]):[0-5][0-9]"
+_PICKUP_TIME = r"(?:odbiór|odbiór jest) o (?:[01]?(?a:\d)|2[0-3]):[0-5](?a:\d)"
 _SETTING_REPORT = re.compile(
     rf"(?:Aktualna|Bieżąca) nastawa (?:to|wynosi) (?P<value>{_TEMP_TOKEN})"
     rf", a {_PICKUP_TIME}\.?",
@@ -532,7 +544,7 @@ def _explicit_pickup_point(text: str, *, source: bool) -> tuple[str, str] | None
         elif not source and _ROLE_WITHDRAWAL.fullmatch(clause):
             continue
         elif _UNSAFE_CONTEXT.search(clause) or (
-            _PICKUP_LOCATION.search(clause)
+            _pickup_location(clause)
             and not (source and _PICKUP_QUESTION.fullmatch(clause))
         ):
             return None
@@ -622,6 +634,19 @@ def _withdrawn_role_scope(
     }
 
 
+def _setting_criterion_matches(material: dict, value: Decimal | None) -> bool:
+    criteria = [
+        match["value"]
+        for item in material["criteria"]
+        if (match := _SETTING.fullmatch(item["description"]))
+    ]
+    return (
+        len(criteria) == 1
+        and _EXPLICIT_C.search(criteria[0]) is not None
+        and _temperature(criteria[0]) == value
+    )
+
+
 def _setting_scope(
     material: dict, users: UserMessages, clauses: list[str], candidate: str
 ) -> ResponseScope | None:
@@ -638,14 +663,7 @@ def _setting_scope(
     value = _temperature(source_value)
     if value is None or _temperature(rejection["pre"] or rejection["post"]) != value:
         return None
-    criteria = [
-        match["value"]
-        for item in material["criteria"]
-        if (match := _SETTING.fullmatch(item["description"]))
-    ]
-    if len(criteria) != 1 or not _EXPLICIT_C.search(criteria[0]):
-        return None
-    if _temperature(criteria[0]) != value:
+    if not _setting_criterion_matches(material, value):
         return None
     if not any(
         _SETTING_QUESTION.fullmatch(clause) and _SETTING_MENTION.search(clause)

@@ -44,6 +44,27 @@ def _document(raw: str, expected: str) -> dict:
     return json.loads(raw)
 
 
+def _panel_decision(
+    row: dict, body: dict, text: str, sha: str, *, confirmation: bool
+) -> judge.local._Decision:
+    if confirmation:
+        return judge._verify_call(row, body, text, sha)
+    response = judge._verified_exchange(row, body, sha)
+    decision, evidence = judge.decode_with_evidence(response, body, text)
+    if row["index"] == 2:
+        judge._require(
+            row["status"] == "rejected_decision"
+            and row.get("error_type") == "decoder_invalid"
+            and "decision" not in row
+            and {"olga", "daniel", "day"} <= evidence.get("field_evidence", {}).keys()
+        )
+    else:
+        judge._require(
+            row["status"] == "completed" and row["decision"] == decision.model_dump()
+        )
+    return decision
+
+
 def _verify_panel(
     packet: dict, case: dict, forbidden_ids: set[str], *, confirmation: bool = False
 ) -> tuple[str, str]:
@@ -98,24 +119,7 @@ def _verify_panel(
             and row["label"] == label
             and row["repeat"] == order[:index].count(label)
         )
-        if confirmation:
-            decision = judge._verify_call(row, body, text, sha)
-        else:
-            response = judge._verified_exchange(row, body, sha)
-            decision, evidence = judge.decode_with_evidence(response, body, text)
-            if index == 2:
-                judge._require(
-                    row["status"] == "rejected_decision"
-                    and row.get("error_type") == "decoder_invalid"
-                    and "decision" not in row
-                    and {"olga", "daniel", "day"}
-                    <= evidence.get("field_evidence", {}).keys()
-                )
-            else:
-                judge._require(
-                    row["status"] == "completed"
-                    and row["decision"] == decision.model_dump()
-                )
+        decision = _panel_decision(row, body, text, sha, confirmation=confirmation)
         judge._require(
             not targeted._differences({**row, "decision": decision.model_dump()}, item)
         )

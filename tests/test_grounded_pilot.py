@@ -4268,8 +4268,9 @@ def test_enrollment_line_fields_split_at_labels_without_splitting_result_conditi
     assert evidence.deadline.value == "6 maja o 09:15"
     assert evidence.results_date.value == "10 maja"
     conditional = body + "\njeżeli komisja zdąży."
+    documents = _enrollment_documents({"KARTA": conditional})
     with pytest.raises(EvidenceError, match="enrollment_results_date_ambiguous"):
-        bind_enrollment_evidence(_enrollment_documents({"KARTA": conditional}))
+        bind_enrollment_evidence(documents)
 
 
 @pytest.mark.parametrize(
@@ -4282,8 +4283,9 @@ def test_historical_enrollment_identity_does_not_bind_current_results(label):
         "KANDEL": _ENROLLMENT_INPUT + " Identyfikator naboru: WARSZTATY-2026.",
         "MIRWEN": _ENROLLMENT_RESULT + f" {label}: WARSZTATY-2026.",
     }
+    documents = _enrollment_documents(cards)
     with pytest.raises(EvidenceError, match="enrollment_unbound_submission"):
-        bind_enrollment_evidence(_enrollment_documents(cards))
+        bind_enrollment_evidence(documents)
 
 
 @pytest.mark.parametrize("separator", [". ", "\n"])
@@ -4298,8 +4300,9 @@ def test_one_card_cannot_bind_fields_from_multiple_enrollment_sections(separator
         + separator
         + _ENROLLMENT_RESULT
     )
+    documents = _enrollment_documents({"KARTA": text})
     with pytest.raises(EvidenceError, match="enrollment_unbound_submission"):
-        bind_enrollment_evidence(_enrollment_documents({"KARTA": text}))
+        bind_enrollment_evidence(documents)
 
 
 def test_segment_recap_marks_saved_norm_as_historical_after_card_change():
@@ -4324,8 +4327,9 @@ def test_thermal_contact_rejects_negated_temperature_equality(negation):
         "Obie są chłodniejsze od dłoni. Która jest zimniejsza w dotyku?"
     )
     assert plain_pilot_recap(base.format(""), ())
+    negated = base.format(negation + " ")
     with pytest.raises(EvidenceError, match="thermal_contact_premises_unbound"):
-        plain_pilot_recap(base.format(negation + " "), ())
+        plain_pilot_recap(negated, ())
 
 
 @pytest.mark.parametrize(

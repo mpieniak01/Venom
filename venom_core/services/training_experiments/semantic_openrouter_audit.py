@@ -31,6 +31,9 @@ from . import openrouter_semantic_judge as judge
 from .profiles import digest, read_json, stable_hash
 
 _MANIFEST_FILE = "frozen-manifest.json"
+_PANEL_FILE = "panel.json"
+_GOLD_FILE = "gold.json"
+_DATA_REVIEW_FILE = "data-review.json"
 _PROTOCOL_FILE = "protocol.json"
 _RESULT_FILE = "result.json"
 _HOLDOUT_RESERVE_FILE = "holdout-reserve.json"
@@ -93,13 +96,13 @@ def _write_frozen_file(directory: Path, name: str, raw: bytes) -> None:
         in {
             "qualification-panel.json",
             "qualification-gold.json",
-            "panel.json",
-            "gold.json",
+            _PANEL_FILE,
+            _GOLD_FILE,
             "phase1-order.json",
             "semantic-contract.json",
             "repair-provenance.json",
-            "frozen-manifest.json",
-            "data-review.json",
+            _MANIFEST_FILE,
+            _DATA_REVIEW_FILE,
             "phase1-admission.json",
         },
         "remote_audit_frozen_filename_invalid",
@@ -198,8 +201,8 @@ def prepare(
             target = staged / "controls" / name
             target.parent.mkdir(parents=True, exist_ok=True)
             _write_frozen_file(target.parent, target.name, frozen_files[name])
-        _write_frozen_file(staged / "controls", "frozen-manifest.json", manifest_raw)
-        _write_frozen_file(staged, "data-review.json", review_raw)
+        _write_frozen_file(staged / "controls", _MANIFEST_FILE, manifest_raw)
+        _write_frozen_file(staged, _DATA_REVIEW_FILE, review_raw)
         quotes = _phase1_reservations(staged, manifest)
         protocol = {
             "phase1_reservation_usd": str(sum(quotes, Decimal(0))),
@@ -295,7 +298,7 @@ def _sealed_protocol(root: Path) -> tuple[dict, str]:
 
 def _static(root: Path) -> tuple[dict, dict, str]:
     protocol, sha = _sealed_protocol(root)
-    _bytes(root, "data-review.json", protocol["data_review_sha256"])
+    _bytes(root, _DATA_REVIEW_FILE, protocol["data_review_sha256"])
     _bytes(root / "controls", _MANIFEST_FILE, protocol["controls_manifest_sha256"])
     manifest = read_json(root / "controls/frozen-manifest.json")
     for name, expected in manifest["files"].items():
@@ -397,7 +400,7 @@ def _retry_delay(header: str | None, fallback: int, now: datetime) -> float:
 def _stage_holdout(root: Path, manifest: dict) -> dict:
     held = manifest["holdout"]
     _require(
-        set(held["files"]) == {"panel.json", "gold.json"},
+        set(held["files"]) == {_PANEL_FILE, _GOLD_FILE},
         "remote_audit_holdout_invalid",
     )
     source = operator_path(Path(held["source_directory"]))
@@ -1170,7 +1173,7 @@ def _publish_qualification(root: Path, protocol: dict, result: dict) -> None:
 
 def _staged_manifest(root: Path, manifest: dict) -> dict:
     files = manifest["holdout"]["files"]
-    _require(set(files) == {"panel.json", "gold.json"}, "remote_audit_holdout_invalid")
+    _require(set(files) == {_PANEL_FILE, _GOLD_FILE}, "remote_audit_holdout_invalid")
     staged = {f"holdout/{name}": sha for name, sha in files.items()}
     for name, expected in staged.items():
         _bytes(root / "controls", name, expected)

@@ -44,7 +44,9 @@ def _document(raw: str, expected: str) -> dict:
     return json.loads(raw)
 
 
-def _verify_panel(packet: dict, case: dict, forbidden_ids: set[str]) -> tuple[str, str]:
+def _verify_panel(
+    packet: dict, case: dict, forbidden_ids: set[str], *, confirmation: bool = False
+) -> tuple[str, str]:
     from . import semantic_openrouter_targeted as targeted
 
     sha = packet["protocol_sha256"]
@@ -52,16 +54,27 @@ def _verify_panel(packet: dict, case: dict, forbidden_ids: set[str]) -> tuple[st
     panel = _document(packet["panel"], protocol["panel_sha256"])
     result = _document(packet["result"], packet["result_sha256"])
     order = panel["order"]
+    labels = {"ND05-swap"} if confirmation else set(_CANDIDATE_ROWS)
+    mismatches = (
+        []
+        if confirmation
+        else [{"index": 2, "label": "ND05-swap", "differences": ["decoder_invalid"]}]
+    )
+    count = len(labels) * 2
     judge._require(
         protocol["kind"] == "targeted_regression"
         and protocol["request_contract"] == judge._contract()
-        and result["status"] == "targeted_review_required"
+        and result["status"]
+        == (
+            "targeted_review_required" if confirmation else "targeted_regression_failed"
+        )
         and result["protocol_sha256"] == sha
-        and not result["mismatches"]
-        and result["rows"] == result["completed"] == 8
-        and set(panel["cases"]) == set(_CANDIDATE_ROWS)
-        and Counter(order) == dict.fromkeys(_CANDIDATE_ROWS, 2)
-        and len(packet["receipts"]) == 8
+        and result["mismatches"] == mismatches
+        and result["rows"] == count
+        and result["completed"] == count - len(mismatches)
+        and set(panel["cases"]) == labels
+        and Counter(order) == dict.fromkeys(labels, 2)
+        and len(packet["receipts"]) == count
     )
     rows = []
     for index, label in enumerate(order, 1):
@@ -85,8 +98,27 @@ def _verify_panel(packet: dict, case: dict, forbidden_ids: set[str]) -> tuple[st
             and row["label"] == label
             and row["repeat"] == order[:index].count(label)
         )
-        judge._verify_call(row, body, text, sha)
-        judge._require(not targeted._differences(row, item))
+        if confirmation:
+            decision = judge._verify_call(row, body, text, sha)
+        else:
+            response = judge._verified_exchange(row, body, sha)
+            decision, evidence = judge.decode_with_evidence(response, body, text)
+            if index == 2:
+                judge._require(
+                    row["status"] == "rejected_decision"
+                    and row.get("error_type") == "decoder_invalid"
+                    and "decision" not in row
+                    and {"olga", "daniel", "day"}
+                    <= evidence.get("field_evidence", {}).keys()
+                )
+            else:
+                judge._require(
+                    row["status"] == "completed"
+                    and row["decision"] == decision.model_dump()
+                )
+        judge._require(
+            not targeted._differences({**row, "decision": decision.model_dump()}, item)
+        )
         ident = row["response"]["id"]
         judge._require(ident not in forbidden_ids)
         forbidden_ids.add(ident)
@@ -149,7 +181,12 @@ def source(
             }
         ]
     )
-    known, unknown = _verify_panel(packet["pilot"], case, forbidden_ids)
+    pilot_known, pilot_unknown = _verify_panel(packet["pilot"], case, forbidden_ids)
+    confirm_known, confirm_unknown = _verify_panel(
+        packet["confirmation"], case, forbidden_ids, confirmation=True
+    )
+    known = judge._money(pilot_known) + judge._money(confirm_known)
+    unknown = judge._money(pilot_unknown) + judge._money(confirm_unknown)
     charged = (
         judge._money(known)
         + judge._money(unknown)

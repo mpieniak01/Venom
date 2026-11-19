@@ -244,3 +244,36 @@ def test_sorting_table_rejects_wrong_source_or_column():
     )
     assert trace is not None
     assert trace["effective_relation"] == "contradicted"
+
+
+@pytest.mark.parametrize("day", ["sobota", "wtorek"])
+def test_sorting_projection_with_full_row_recovers_counts_and_day(day):
+    candidate = SORTING_TABLE.replace("sobota", day).replace("| 7 | 12", "| 12 | 7")
+    observed = candidate.replace(" | Dzień |", " |")
+    for field in ("olga", "daniel", "day"):
+        proof = table_evidence.compare(
+            _sorting_material(), candidate, field, observed, "supported"
+        )
+        assert proof is not None
+        assert proof["effective_observed"] == candidate
+        assert proof["effective_relation"] == (
+            "supported" if field == "day" and day == "sobota" else "contradicted"
+        )
+    modified_day = observed.replace(day, "piątek")
+    assert (
+        table_evidence.compare(
+            _sorting_material(), candidate, "day", modified_day, "supported"
+        )
+        is None
+    )
+
+
+def test_sorting_projection_refuses_later_day_correction():
+    source = SORTING_SOURCE + " Korekta: odbiór jest we wtorek."
+    observed = SORTING_TABLE.replace(" | Dzień |", " |")
+    assert (
+        table_evidence.compare(
+            _sorting_material(source), SORTING_TABLE, "day", observed, "supported"
+        )
+        is None
+    )

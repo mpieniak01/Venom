@@ -38,10 +38,18 @@ _CRITERION = re.compile(
     re.IGNORECASE,
 )
 _SORTING_PREFIX = "Dla sortowania: "
-_PICKUP_DAY = re.compile(
-    r"odbiór partii w (?:poniedziałek|wtorek|środę|czwartek|piątek|sobotę|niedzielę)",
-    re.IGNORECASE,
-)
+_WEEKDAYS = {
+    "poniedziałek": "poniedziałek",
+    "wtorek": "wtorek",
+    "środę": "środa",
+    "czwartek": "czwartek",
+    "piątek": "piątek",
+    "sobotę": "sobota",
+    "niedzielę": "niedziela",
+}
+_DAY = rf"(?P<day>{'|'.join(_WEEKDAYS)})"
+_PICKUP_DAY = re.compile(rf"odbiór partii w {_DAY}", re.IGNORECASE)
+_SORT_CRITERION_DAY = re.compile(rf"Odbiór w {_DAY}\.?", re.IGNORECASE)
 _FIRST_ASSIGNMENT = re.compile(
     r"(?:(?:W (?:poniedziałek|wtorek|środę|czwartek|piątek|sobotę|niedzielę)|We wtorek)\s+)?"
     rf"(?P<entity>{_NAME})(?:\s+{_VERB}\s+|:\s*){_QUANTITY}",
@@ -188,26 +196,77 @@ def _source(material: dict, entity: str) -> Source | None:
     return matches[0] if len(matches) == 1 else None
 
 
-def _table_projection(observed: str, table: _Table, column: int) -> bool:
-    """Check the only tolerated broken quote, an ordered projection of the same table."""
+def _ordered_projection(
+    observed: str, table: _Table
+) -> tuple[tuple[int, ...], tuple[str, ...], tuple[str, ...]] | None:
     lines = observed.strip().splitlines()
     if len(lines) != 3:
-        return False
-    # A quote can start or end inside a border; every quoted cell still has to match.
+        return None
+    # A quote can start or end inside a border. Every cell must still be literal.
     headers, alignment, values = (_cells(line, projected=True) for line in lines)
     if not headers or not values or not all(cell in table.headers for cell in headers):
-        return False
+        return None
     selected = tuple(table.headers.index(cell) for cell in headers)
-    if (
-        selected != tuple(sorted(set(selected)))
-        or column not in selected[: len(values)]
-    ):
+    if selected != tuple(sorted(set(selected))):
+        return None
+    return selected, alignment, values
+
+
+def _table_projection(observed: str, table: _Table, column: int) -> bool:
+    """Verify a shortened header with either the full row or its ordered projection."""
+    parts = _ordered_projection(observed, table)
+    if parts is None:
         return False
+    selected, alignment, values = parts
+    if alignment == table.alignment and values == table.values:
+        return column in selected
     projection = tuple(table.values[index] for index in selected)
-    return values == projection[: len(values)] and alignment in (
-        table.alignment,
-        tuple(table.alignment[index] for index in selected),
+    return (
+        column in selected[: len(values)]
+        and values == projection[: len(values)]
+        and alignment
+        in (table.alignment, tuple(table.alignment[index] for index in selected))
     )
+
+
+def _sorting_day(
+    material: dict, table: _Table, description: str, observed: str
+) -> tuple[int, Source] | None:
+    criterion = _SORT_CRITERION_DAY.fullmatch(description)
+    latest = _user_message(material)
+    parts = _ordered_projection(observed, table)
+    if (
+        criterion is None
+        or latest is None
+        or parts is None
+        or not latest[1].startswith(_SORTING_PREFIX)
+    ):
+        return None
+    _, alignment, values = parts
+    if (
+        alignment != table.alignment
+        or values != table.values
+        or table.headers.count("Dzień") != 1
+    ):
+        return None
+    column = table.headers.index("Dzień")
+    if table.values[column] not in _WEEKDAYS.values():
+        return None
+    fields, _, question = latest[1].removeprefix(_SORTING_PREFIX).partition(".")
+    if question.strip() not in {"", "Podaj liczbę każdej osoby i dzień."}:
+        return None
+    if not _assignment_clauses(_SORTING_PREFIX + fields):
+        return None
+    quote = fields.rsplit(",", 1)[-1].strip()
+    match = _PICKUP_DAY.fullmatch(quote)
+    if match is None or match["day"].casefold() != criterion["day"].casefold():
+        return None
+    return column, {
+        "message_index": latest[0],
+        "quote": quote,
+        "value": _WEEKDAYS[match["day"].casefold()],
+        "unit": "dzień",
+    }
 
 
 def compare(
@@ -220,36 +279,42 @@ def compare(
     description = next(
         (c["description"] for c in material["criteria"] if c["id"] == criterion_id), ""
     )
-    criterion = _CRITERION.fullmatch(description)
-    if criterion is None:
-        return None
     table = _parse_table(candidate)
     if table is None:
         return None
-    entity = criterion["entity"].casefold()
-    unit = _UNITS[criterion["unit"].casefold()]
-    columns = _entity_columns(table, entity)
-    if len(columns) != 1 or columns[0][1] != unit:
-        return None
-    column = columns[0][0]
-    cell = table.values[column]
-    if _VALUE.fullmatch(cell) is None:
-        return None
-    source = _source(material, entity)
-    if (
-        source is None
-        or source["unit"] != unit
-        or int(source["value"]) != int(criterion["value"])
-    ):
-        return None
-    if not (
-        observed_from_answer(observed, raw_relation, candidate)
-        or _table_projection(observed, table, column)
-    ):
-        return None
-    effective: Relation = (
-        "supported" if int(cell) == int(source["value"]) else "contradicted"
-    )
+    criterion = _CRITERION.fullmatch(description)
+    if criterion is None:
+        day = _sorting_day(material, table, description, observed)
+        if day is None:
+            return None
+        column, source = day
+        cell = table.values[column]
+        matches = cell == source["value"]
+    else:
+        entity = criterion["entity"].casefold()
+        unit = _UNITS[criterion["unit"].casefold()]
+        columns = _entity_columns(table, entity)
+        if len(columns) != 1 or columns[0][1] != unit:
+            return None
+        column = columns[0][0]
+        cell = table.values[column]
+        if _VALUE.fullmatch(cell) is None:
+            return None
+        checked_source = _source(material, entity)
+        if (
+            checked_source is None
+            or checked_source["unit"] != unit
+            or int(checked_source["value"]) != int(criterion["value"])
+        ):
+            return None
+        source = checked_source
+        if not (
+            observed_from_answer(observed, raw_relation, candidate)
+            or _table_projection(observed, table, column)
+        ):
+            return None
+        matches = int(cell) == int(source["value"])
+    effective: Relation = "supported" if matches else "contradicted"
     return {
         "criterion": criterion_id,
         "observed": observed,

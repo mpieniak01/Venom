@@ -116,7 +116,31 @@ def _scaled(node: ast.AST, scale: Fraction) -> bool:
     )
 
 
-def has_repeated_speed_scale(expression: str, origin: str, target: str) -> bool:
+def _outer_scale(node: ast.AST, scale: Fraction) -> bool:
+    if _scaled(node, scale):
+        return True
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Div):
+        if divisor := _literal(node.right):
+            return _scaled(node.left, scale * divisor)
+    return False
+
+
+def _requested_multiplier(request: str, scale: Fraction) -> bool:
+    if re.match(r"\s*(?:zwiększ|pomnóż)\b", request, re.I) is None:
+        return False
+    return any(
+        Fraction(match[1].replace(",", ".")) == scale
+        for match in re.finditer(
+            r"(?<![\w.,])((?a:\d){1,8}(?:[.,](?a:\d){1,6})?)\s+raz(?:a|y)\b",
+            request,
+            re.I,
+        )
+    )
+
+
+def has_repeated_speed_scale(
+    expression: str, origin: str, target: str, *, request: str = ""
+) -> bool:
     """Reject an outer conversion of an arithmetic result before scaling again."""
     scale = {("m/s", "km/h"): Fraction(18, 5), ("km/h", "m/s"): Fraction(5, 18)}.get(
         (origin, target)
@@ -127,12 +151,11 @@ def has_repeated_speed_scale(expression: str, origin: str, target: str) -> bool:
         node = ast.parse(expression.strip(), mode="eval").body
     except SyntaxError:
         return False
-    if _scaled(node, scale):
-        return True
-    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Div):
-        if divisor := _literal(node.right):
-            return _scaled(node.left, scale * divisor)
-    return False
+    if not _outer_scale(node, scale):
+        return False
+    if _requested_multiplier(request, scale):
+        return sum(_outer_scale(part, scale) for part in ast.walk(node)) > 1
+    return True
 
 
 @dataclass(frozen=True)

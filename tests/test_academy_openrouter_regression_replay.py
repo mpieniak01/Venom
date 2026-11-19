@@ -190,3 +190,92 @@ def test_cli_does_not_replace_prior_report(tmp_path, monkeypatch):
         replay.main()
     assert error.value.code == 2
     assert output.read_bytes() == first
+
+
+def _targeted_record(tmp_path, index=157):
+    entry = _record(tmp_path, index)
+    root = tmp_path / "audit"
+    receipt = tmp_path / entry["receipt"]
+    row = json.loads(receipt.read_text())
+    labels = [f"J{number:03d}" for number in range(1, 79)] + ["J123"]
+    panel = {
+        "order": [label for label in labels for _ in range(2)],
+        "cases": {label: {"body": row["request"]} for label in labels},
+    }
+    _write(root / "panel.json", panel)
+    protocol = {
+        "kind": "targeted_regression",
+        "planned_requests": len(panel["order"]),
+        "panel_sha256": digest(root / "panel.json"),
+    }
+    _write(root / "protocol.json", protocol)
+    sha = digest(root / "protocol.json")
+    row.pop("split")
+    row["label"] = row.pop("answer_id")
+    row["protocol_sha256"] = sha
+    _write(receipt, row)
+    entry["receipt_sha256"] = digest(receipt)
+    entry["targeted_protocol_sha256"] = sha
+    return entry
+
+
+@pytest.mark.parametrize("index", [157, 158])
+def test_replay_accepts_later_targeted_receipt_bound_to_sealed_panel(tmp_path, index):
+    case = _targeted_record(tmp_path, index)
+    manifest, sha = _manifest(tmp_path, case)
+    result = replay.replay(manifest, sha)
+    assert result["status"] == "offline_pass"
+    assert result["live_requests"] == 0
+
+
+@pytest.mark.parametrize("failure", ["kind", "capacity", "panel_hash", "order"])
+def test_invalid_targeted_seal_is_rejected_before_receipt_read(
+    tmp_path, monkeypatch, failure
+):
+    case = _targeted_record(tmp_path)
+    root = tmp_path / "audit"
+    protocol = json.loads((root / "protocol.json").read_text())
+    if failure == "kind":
+        protocol["kind"] = "full_audit"
+    elif failure == "capacity":
+        protocol["planned_requests"] = 156
+    elif failure == "panel_hash":
+        protocol["panel_sha256"] = "0" * 64
+    else:
+        panel = json.loads((root / "panel.json").read_text())
+        panel["order"] = panel["order"][:-1]
+        _write(root / "panel.json", panel)
+        protocol["panel_sha256"] = digest(root / "panel.json")
+    _write(root / "protocol.json", protocol)
+    case["targeted_protocol_sha256"] = digest(root / "protocol.json")
+    manifest, sha = _manifest(tmp_path, case)
+    sealed = replay._sealed_json
+
+    def read(path, expected):
+        assert path.parent.name != "receipts"
+        return sealed(path, expected)
+
+    monkeypatch.setattr(replay, "_sealed_json", read)
+    with pytest.raises(ValueError, match="offline_replay_"):
+        replay.replay(manifest, sha)
+
+
+@pytest.mark.parametrize("failure", ["label", "protocol", "request", "holdout"])
+def test_targeted_receipt_must_match_protocol_panel_and_order(tmp_path, failure):
+    case = _targeted_record(tmp_path)
+    path = tmp_path / case["receipt"]
+    row = json.loads(path.read_text())
+    if failure == "label":
+        row["label"] = "WRONG"
+    elif failure == "protocol":
+        row["protocol_sha256"] = "0" * 64
+    elif failure == "request":
+        row["request"]["messages"][0]["content"] = "Changed"
+        row["request_sha256"] = stable_hash(row["request"])
+    else:
+        row["split"] = "holdout"
+    _write(path, row)
+    case["receipt_sha256"] = digest(path)
+    manifest, sha = _manifest(tmp_path, case)
+    with pytest.raises(ValueError, match="offline_replay_"):
+        replay.replay(manifest, sha)

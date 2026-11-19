@@ -11,9 +11,9 @@ _DRAFT_REQUEST = re.compile(
     re.IGNORECASE,
 )
 _FIRST = re.compile(
-    rf"ułóż krótką wiadomość o (przekazaniu|odebraniu) [^.!?\n]+\. "
-    rf"mogę przyjść (?:po|o) {_CLOCK} i mam (zostawić|odebrać) (?:go|ją|je|ich) "
-    rf"(u|od) (?P<recipient>{_PERSON})[.]",
+    rf"ułóż krótką wiadomość o (?P<kind>przekazaniu|odebraniu) (?P<item>[^.!?\n]+)\. "
+    rf"mogę przyjść (?:po|o) {_CLOCK} i mam (?P<action>zostawić|odebrać) (?:go|ją|je|ich) "
+    rf"(?P<relation>u|od) (?P<recipient>{_PERSON})[.]",
     re.IGNORECASE,
 )
 _CONFIRMATION = re.compile(
@@ -31,6 +31,19 @@ _ACT = {
     ("odebraniu", "odebrać", "od"): "odbiorę od Ciebie",
 }
 
+# These explicit declensions are safe to bind; other names must match literally.
+_ITEM_FORMS = (
+    frozenset({"statyw", "statywu"}),
+    frozenset({"pompa", "pompy", "pompę"}),
+)
+
+
+def _same_item(original: str, current: str) -> bool:
+    first, second = original.casefold(), current.casefold()
+    return first == second or any(
+        first in forms and second in forms for forms in _ITEM_FORMS
+    )
+
 
 def handoff_sms_recap(message: str, users: tuple[str, ...]) -> str | None:
     """Keep the stated action and latest time for a recognized draft request."""
@@ -43,8 +56,14 @@ def handoff_sms_recap(message: str, users: tuple[str, ...]) -> str | None:
         return None
     if original["recipient"].casefold() != confirmation["recipient"].casefold():
         return None
+    if not _same_item(original["item"], confirmation["item"]):
+        return None
     action = _ACT.get(
-        (original[1].casefold(), original[2].casefold(), original[3].casefold())
+        (
+            original["kind"].casefold(),
+            original["action"].casefold(),
+            original["relation"].casefold(),
+        )
     )
     if action is None:
         return None

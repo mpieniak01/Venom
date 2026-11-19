@@ -45,9 +45,10 @@ _GROUP_GROWTH = re.compile(
     re.IGNORECASE,
 )
 _ADULTS = {"dwóch": 2, "trzech": 3, "czterech": 4, "pięciu": 5}
+_CHILDREN = {"dwojga": 2, "trojga": 3}
 _ADULTS_LEFT = re.compile(
     rf"(?P<adults>{_COUNT}|{'|'.join(_ADULTS)}) dorosłych odwołało obecność\. "
-    r"Próba dopisania (?:dwojga|trojga|[0-9]{1,4}) dzieci nieaktualna\. Użyj kalkulatora ponownie\.",
+    r"Próba dopisania (?P<children>dwojga|trojga|[0-9]{1,4}) dzieci nieaktualna\. Użyj kalkulatora ponownie\.",
     re.IGNORECASE,
 )
 _GROUP_RECAP = re.compile(
@@ -141,15 +142,22 @@ def _bind_group(users: tuple[str, ...]) -> GroupTotal | None:
     if base is None or growth is None:
         return None
     adults = int(base["adults"])
+    growth_count = int(growth["children"])
     if len(users) == 3:
         left = _ADULTS_LEFT.fullmatch(users[2])
         if left is None:
             return None
         value = left["adults"].casefold()
         adults -= int(value) if value.isdecimal() else _ADULTS[value]
+        cancelled = left["children"].casefold()
+        cancelled_count = (
+            int(cancelled) if cancelled.isdecimal() else _CHILDREN[cancelled]
+        )
+        if cancelled_count == growth_count:
+            growth_count = 0
     if adults < 1:
         return None
-    return GroupTotal(adults, int(base["children"]) + int(growth["children"]))
+    return GroupTotal(adults, int(base["children"]) + growth_count)
 
 
 def bind_explicit_total(users: tuple[str, ...]) -> OrderTotal | GroupTotal | None:

@@ -3,7 +3,8 @@
 A manifest contains schema_version=1 and cases, each with id, receipt (relative
 to the manifest or absolute), receipt_sha256, and expected (all decision fields
 except reason). IDs refer to archived case labels. Different attempts for the
-same case may be listed separately.
+same case may be listed separately. Targeted panels may additionally bind
+targeted_protocol_sha256 to the protocol alongside the receipts directory.
 """
 
 from __future__ import annotations
@@ -70,7 +71,39 @@ def _sealed_json(path: Path, expected_sha256: str) -> dict:
     return value
 
 
-def _receipt_path(path: Path) -> tuple[Path, int]:
+def _targeted_selection(path: Path, index: int, protocol_sha: str) -> dict:
+    root = path.parent.parent
+    protocol = _sealed_json(root / "protocol.json", protocol_sha)
+    _require(
+        protocol.get("kind") == "targeted_regression"
+        and type(protocol.get("planned_requests")) is int
+        and 0 < index <= protocol["planned_requests"] <= 228,
+        "offline_replay_non_targeted_index",
+    )
+    panel = _sealed_json(root / "panel.json", protocol["panel_sha256"])
+    order, cases = panel.get("order"), panel.get("cases")
+    _require(
+        isinstance(order, list) and isinstance(cases, dict),
+        "offline_replay_invalid_panel",
+    )
+    assert isinstance(order, list)
+    assert isinstance(cases, dict)
+    _require(
+        len(order) == protocol["planned_requests"]
+        and all(isinstance(label, str) for label in order)
+        and set(order) == set(cases)
+        and all(order.count(label) == 2 for label in cases),
+        "offline_replay_invalid_panel",
+    )
+    label = order[index - 1]
+    return {
+        "protocol_sha256": protocol_sha,
+        "label": label,
+        "body": cases[label]["body"],
+    }
+
+
+def _receipt_path(path: Path, entry: dict) -> tuple[Path, int, dict | None]:
     path = _offline_path(path)
     match = re.fullmatch(r"([0-9]{3})[.]json", path.name)
     _require(
@@ -79,9 +112,17 @@ def _receipt_path(path: Path) -> tuple[Path, int]:
     )
     assert match is not None
     index = int(match[1])
-    # The full audit's holdout starts immediately after the phase-one calls.
-    _require(0 < index <= sum(judge.PHASE1.values()), "offline_replay_non_phase1_index")
-    return path, index
+    # A targeted protocol must be sealed before any receipt beyond phase one
+    # is read; the full audit's holdout remains excluded at this boundary.
+    protocol_sha = entry.get("targeted_protocol_sha256")
+    targeted = None
+    if protocol_sha is not None:
+        targeted = _targeted_selection(path, index, protocol_sha)
+    else:
+        _require(
+            0 < index <= sum(judge.PHASE1.values()), "offline_replay_non_phase1_index"
+        )
+    return path, index, targeted
 
 
 def _receipt_identity(row: dict, index: int) -> str:
@@ -142,10 +183,18 @@ def _expected_decision(expected: dict, material: dict) -> dict:
     return expect.model_dump(exclude={"reason"})
 
 
-def _replay_case(entry: dict, path: Path, index: int) -> dict:
+def _replay_case(entry: dict, path: Path, index: int, targeted: dict | None) -> dict:
     row = _sealed_json(path, entry["receipt_sha256"])
     ident = _receipt_identity(row, index)
     _require(ident == entry["id"], "offline_replay_receipt_id")
+    if targeted is not None:
+        _require(
+            row.get("split") is None
+            and row.get("protocol_sha256") == targeted["protocol_sha256"]
+            and ident == targeted["label"]
+            and row["request"] == targeted["body"],
+            "offline_replay_targeted_binding",
+        )
     request, raw_response = row["request"], row["response"]
     _require(
         isinstance(request, dict) and isinstance(raw_response, dict),
@@ -206,16 +255,26 @@ def replay(manifest_path: Path, manifest_sha256: str) -> dict:
     for entry in entries:
         _require(
             isinstance(entry, dict)
-            and set(entry) == {"id", "receipt", "receipt_sha256", "expected"}
+            and {"id", "receipt", "receipt_sha256", "expected"}
+            <= set(entry)
+            <= {
+                "id",
+                "receipt",
+                "receipt_sha256",
+                "expected",
+                "targeted_protocol_sha256",
+            }
             and isinstance(entry["receipt"], str)
             and bool(entry["receipt"]),
             "offline_replay_invalid_selection",
         )
         validate_run_id(entry["id"])
-        path, index = _receipt_path(manifest_path.parent / entry["receipt"])
+        path, index, targeted = _receipt_path(
+            manifest_path.parent / entry["receipt"], entry
+        )
         _require(path not in seen, "offline_replay_duplicate_receipt")
         seen.add(path)
-        selections.append((entry, path, index))
+        selections.append((entry, path, index, targeted))
     results = [_replay_case(*selection) for selection in selections]
     matched = sum(case["status"] == "match" for case in results)
     return {

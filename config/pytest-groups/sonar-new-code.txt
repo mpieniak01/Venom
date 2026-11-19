@@ -204,6 +204,7 @@ tests/test_graph_store.py
 tests/test_grounded_dialogue.py
 tests/test_grounded_pilot.py
 tests/test_grounded_presentation.py
+tests/test_grounded_state_boundaries.py
 tests/test_hardware_bridge.py
 tests/test_healing_flow.py
 tests/test_hidden_prompts_cache.py

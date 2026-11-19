@@ -896,7 +896,11 @@
       "test_type": "unit",
       "intent": "regression",
       "primary_lane": "new-code",
-      "allowed_lanes": ["new-code", "ci-lite", "release"],
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
       "legacy_targeted": false,
       "rationale": "Freeze corrected source and role controls without changing historical receipts or opening held-out data."
     },
@@ -906,7 +910,11 @@
       "test_type": "unit",
       "intent": "regression",
       "primary_lane": "new-code",
-      "allowed_lanes": ["new-code", "ci-lite", "release"],
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
       "legacy_targeted": false,
       "rationale": "Route qualified local and OpenRouter reviewers through calibration, checkpoint, final and cache contracts."
     },
@@ -916,7 +924,11 @@
       "test_type": "unit",
       "intent": "regression",
       "primary_lane": "new-code",
-      "allowed_lanes": ["new-code", "ci-lite", "release"],
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
       "legacy_targeted": false,
       "rationale": "Verify remote reviewer qualification replay, cost accounting, fail-closed transport and authenticated cache inputs with fake HTTP."
     },
@@ -926,7 +938,11 @@
       "test_type": "unit",
       "intent": "regression",
       "primary_lane": "new-code",
-      "allowed_lanes": ["new-code", "ci-lite", "release"],
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
       "legacy_targeted": false,
       "rationale": "Validate operator audit preparation, phase-one gating, fail-fast accounting and complete fake HTTP qualification without provider calls."
     },
@@ -3609,6 +3625,20 @@
       ],
       "legacy_targeted": false,
       "rationale": "Explicit decimal rounding and requested-output versus genuine missing-input release boundary."
+    },
+    {
+      "path": "tests/test_grounded_state_boundaries.py",
+      "domain": "knowledge",
+      "test_type": "service_contract",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Regression coverage for withdrawn group additions, handoff item identity and explicit speed multipliers."
     },
     {
       "path": "tests/test_guardian_agent.py",

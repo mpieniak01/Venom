@@ -3358,3 +3358,95 @@ def test_plain_pilot_keeps_explicit_group_and_main_length_on_first_turn():
         )
         is None
     )
+
+
+def test_bound_speed_replays_w34_without_duplicate_conversion_or_model_placeholders():
+    from venom_core.services.grounded_speed_measurement import (
+        PilotSpeedMeasurementAnswer,
+    )
+
+    first = (
+        "Za pierwszym odczytem przejazd 720 metrów trwał 90 sekund razem z postojem. "
+        "Oblicz kalkulatorem średnią prędkość w m/s."
+    )
+    revision = (
+        "Poprawka: cała droga to nadal 720 m, czas łącznie 120 s. "
+        "Użyj kalkulatora i podaj średnią prędkość w km/h."
+    )
+    request = (
+        "Napisz krótko, czy liczby 8 i 21,6 znaczą, że po poprawce jechałem szybciej. "
+        "Odnieś się do jednostki i czasu."
+    )
+    backend, model, reviewer = Sources(), Model(), Reviewer()
+    a = run_pilot_turn(
+        first, "one", backend, model, reviewer, required=Requirements(calculation=True)
+    )
+    history = (
+        {"role": "user", "content": first},
+        {"role": "assistant", "content": "Pierwszy wynik wyniósł 77,76 km/h."},
+    )
+    b = run_pilot_turn(
+        revision,
+        "two",
+        backend,
+        model,
+        reviewer,
+        history=history,
+        required=Requirements(calculation=True),
+    )
+    assert isinstance(a, PilotSpeedMeasurementAnswer)
+    assert isinstance(b, PilotSpeedMeasurementAnswer)
+    assert a.text == "8 m/s."
+    assert b.text == "21,6 km/h."
+    assert b.speed_measurement_receipt.calculation.expression == "(720/120)*18/5"
+    assert reviewer.materials[-1]["draft"]["sources"] == []
+    assert not model.calls
+    history += ({"role": "user", "content": revision},)
+    assert (
+        plain_pilot_recap(
+            request,
+            history,
+            speed_measurement_receipts=(
+                a.speed_measurement_receipt,
+                b.speed_measurement_receipt,
+            ),
+        )
+        == "Nie. Przed korektą średnia wynosiła 8 m/s, a po niej 6 m/s (21,6 km/h). Dystans pozostał ten sam, a zmierzony czas to wcześniej 90 s i po korekcie 120 s."
+    )
+    assert plain_pilot_recap(
+        request, history, speed_measurement_receipts=(a.speed_measurement_receipt,)
+    ).startswith("Do porównania potrzebuję")
+
+
+@pytest.mark.parametrize(
+    "expression, origin,target",
+    [
+        ("(720/120)*3.6", "m/s", "km/h"),
+        ("(720/120)*18/5", "m/s", "km/h"),
+        ("(720/120)*(18/5)", "m/s", "km/h"),
+        ("(90/3)*5/18", "km/h", "m/s"),
+    ],
+)
+def test_cross_unit_speed_draft_refuses_a_known_repeated_scale(
+    expression, origin, target
+):
+    model = Model()
+    model.override["plan"] = {
+        "calculations": [
+            {
+                "calculation_id": "speed",
+                "expression": expression,
+                "unit": target,
+                "input_unit": origin,
+            }
+        ]
+    }
+    with pytest.raises(EvidenceError, match="pilot_speed_double_conversion"):
+        run_pilot_turn(
+            f"Podaj prędkość w {target}.",
+            "r",
+            Sources(),
+            model,
+            Reviewer(),
+            required=Requirements(calculation=True),
+        )

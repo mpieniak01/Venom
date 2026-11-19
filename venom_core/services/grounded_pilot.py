@@ -105,6 +105,15 @@ from venom_core.services.grounded_segment_length import (
     bind_segment_length,
     segment_length_intro,
 )
+from venom_core.services.grounded_speed_measurement import (
+    MEASURED_SPEED_ID,
+    PilotSpeedMeasurementAnswer,
+    SpeedMeasurement,
+    SpeedMeasurementReceipt,
+    bind_speed_measurement,
+    has_repeated_speed_scale,
+    speed_measurement_recap,
+)
 
 MAX_MODEL_INPUT_BYTES = 6000
 
@@ -2142,6 +2151,7 @@ def plain_pilot_recap(
     explicit_total_receipt: ExplicitTotalReceipt | None = None,
     pickup_roles_receipt: PickupRolesReceipt | None = None,
     segment_length_receipt: SegmentLengthReceipt | None = None,
+    speed_measurement_receipts: tuple[SpeedMeasurementReceipt, ...] = (),
 ) -> str | None:
     """Retain verified decisions and event roles from the selected exception."""
     users = tuple(item["content"] for item in focused if item["role"] == "user")
@@ -2165,6 +2175,9 @@ def plain_pilot_recap(
         price_recap = price_mean_recap(message, users, price_mean_receipts)
         if price_recap is not None:
             return price_recap
+    speed_recap = speed_measurement_recap(message, users, speed_measurement_receipts)
+    if speed_recap is not None:
+        return speed_recap
     if duration_receipt is not None:
         recap = duration_receipt.recap(message, users)
         if recap is not None:
@@ -2284,6 +2297,7 @@ class _DeterministicAnswer:
     duration: DurationState | None = None
     price_mean: PriceMeanState | None = None
     explicit_total: OrderTotal | GroupTotal | None = None
+    speed_measurement: SpeedMeasurement | None = None
     percent_change: PercentChange | None = None
     pickup_roles: PickupRoles | None = None
     segment_length: SegmentLengthState | None = None
@@ -2431,6 +2445,19 @@ def _deterministic_answer(
         )
     if not turn.required.calculation:
         return _DeterministicAnswer()
+    speed = bind_speed_measurement((*prior_users, message))
+    if speed is not None:
+        return _DeterministicAnswer(
+            calculation=_compile_calculation(
+                Calculation(
+                    calculation_id=MEASURED_SPEED_ID,
+                    expression=speed.base_expression,
+                    input_unit="m/s",
+                    unit=speed.unit,
+                )
+            ),
+            speed_measurement=speed,
+        )
     duration = bind_duration((*prior_users, message))
     if duration is not None:
         return _DeterministicAnswer(
@@ -2656,6 +2683,11 @@ def _planned_calculations(
     }
     arithmetic: ArithmeticPlan = _call(model, "plan", planning, ArithmeticPlan)
     audit.append({"phase": "arithmetic", "data": arithmetic.model_dump()})
+    if any(
+        has_repeated_speed_scale(item.expression, item.input_unit, item.unit)
+        for item in arithmetic.calculations
+    ):
+        raise EvidenceError("pilot_speed_double_conversion")
     calculations = [_compile_calculation(item) for item in arithmetic.calculations]
     conversion = _SPEED_CONVERSION.search(message)
     if not conversion or len(calculations) != 1 or result.unit != conversion[1].lower():
@@ -2814,6 +2846,7 @@ def _pilot_draft(
     if calculation.calculation_id in {
         "length_conversion",
         "average_speed",
+        MEASURED_SPEED_ID,
         "volume_remainder",
         "scaled_length",
     }:
@@ -3066,4 +3099,13 @@ def run_pilot_turn(
             result.places,
         )
         return PilotPercentChangeAnswer(proof.evidence_id, draft.prose, percent_receipt)
+    if deterministic.speed_measurement is not None and proof.evidence is not None:
+        speed_receipt = SpeedMeasurementReceipt.from_evidence(
+            (*turn.prior_users, message),
+            deterministic.speed_measurement,
+            proof.evidence,
+        )
+        return PilotSpeedMeasurementAnswer(
+            proof.evidence_id, draft.prose, speed_receipt
+        )
     return PublishedAnswer(proof.evidence_id, draft.prose)

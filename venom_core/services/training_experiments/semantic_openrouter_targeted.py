@@ -309,7 +309,13 @@ def _recorded_prefix(
             and result["receipt_hashes"] == audit._hashes(root),
             "remote_audit_resume_result_invalid",
         )
-    ledger = audit.read_json(root / "ledger.json")
+    ledger_path = root / "ledger.json"
+    if not ledger_path.exists():
+        audit._require(
+            not paths and not result_path.exists(), "remote_audit_resume_ledger_missing"
+        )
+        return []
+    ledger = audit.read_json(ledger_path)
     audit._require(
         ledger["pending_call_id"] is None, "remote_audit_resume_pending_call"
     )
@@ -390,11 +396,7 @@ def _restore_progress(
         audit._require(
             len(prior_attempts) <= len(policy["backoff_seconds"])
             and state.retries < policy["max_retries_per_audit"]
-            and sum(
-                audit._provider_unavailable(row) and row["http_status"] == 200
-                for row in prior_attempts
-            )
-            <= 1,
+            and sum(audit._provider_unavailable(row) for row in prior_attempts) <= 1,
             "remote_audit_resume_retries_exhausted",
         )
     state.generations = {row["response"]["id"] for row in state.rows}
@@ -476,7 +478,7 @@ def execute(
     """Run the sealed panel, optionally continuing a verified prefix."""
     if not resuming:
         state.start = audit.time.monotonic()
-        (state.root / "receipts").mkdir()
+    (state.root / "receipts").mkdir(exist_ok=resuming)
     planned = judge._money(state.protocol["planned_budget_usd"])
     maximum = judge._money(state.protocol["max_case_reservation_usd"])
     if planned > state.budget or maximum > state.per_request:

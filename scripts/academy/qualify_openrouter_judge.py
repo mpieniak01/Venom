@@ -56,7 +56,10 @@ def main() -> None:
     execute.add_argument(
         "--resume",
         action="store_true",
-        help="Continue a sealed audit from the first uncompleted request",
+        help=(
+            "Continue a verified sealed prefix after an interrupted wait or an "
+            "eligible retry; preserve costs, retry limits and remaining deadline"
+        ),
     )
     args = parser.parse_args()
     if args.action == "prepare":

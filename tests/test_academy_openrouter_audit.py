@@ -1575,3 +1575,274 @@ def test_full_audit_resumes_after_holdout_azure_502(ready, monkeypatch, use_admi
         (root / "qualification.json").read_text()
     )
     judge.verify_audit(pin)
+
+
+def _resume_fixture_state(tmp_path, **protocol_updates):
+    protocol = {
+        "initial_accounted_usd": "0",
+        "initial_unknown_reserved_usd": "0",
+        "max_seconds": 300,
+        "rate_limit": audit._RATE_LIMIT_POLICY,
+        "planned_budget_usd": "0.01",
+        "max_case_reservation_usd": "0.001",
+        **protocol_updates,
+    }
+    return audit._AuditState(
+        tmp_path,
+        protocol,
+        {"cases": {}},
+        "fixture-sha",
+        Decimal("0.10"),
+        Decimal("0.01"),
+        lambda **_: pytest.fail("provider construction must not occur"),
+    )
+
+
+@pytest.mark.parametrize("damage", [None, "model", "provider", "id"])
+def test_targeted_invalid_decision_requires_matching_response_identity(
+    tmp_path, damage
+):
+    from tests.test_academy_openrouter_judge import response
+
+    body = judge._control_request(
+        {
+            "id": "fixture",
+            "messages": [{"role": "user", "content": "Hala B."}],
+            "criteria": [{"id": "place", "description": "Hala B."}],
+        },
+        {"text": "Hala B"},
+    )
+    payload = response(body, "Hala B")
+    payload["choices"][0]["message"]["content"] = "invalid JSON"
+    if damage:
+        payload[damage] = "wrong" if damage != "id" else ""
+    state = _resume_fixture_state(tmp_path, kind="targeted_regression")
+    row = {"http_status": 200, "response": payload, "request": body}
+    if damage:
+        with pytest.raises(ValueError, match=judge.ERROR):
+            audit._record_audit_decision(state, row, "Hala B")
+        assert row.get("status") != "rejected_decision"
+    else:
+        audit._record_audit_decision(state, row, "Hala B")
+        assert row["status"] == "rejected_decision"
+        assert row["error_type"] == "decoder_invalid"
+
+
+def test_admitted_capacity_reserves_only_holdout_retry_costs():
+    protocol = {
+        "phase1_admission_sha256": "fixture",
+        "phase1_reservation_usd": "100",
+        "phase1_max_request_usd": "1",
+        "holdout_max_request_usd": "0.001",
+        "initial_accounted_usd": "0.02",
+        "rate_limit": audit._ADMITTED_RATE_LIMIT_POLICY,
+    }
+    capacity = audit._capacity(protocol, Decimal("1"))
+    assert Decimal(capacity["rate_limit_reservation_usd"]) == Decimal("0.024")
+    assert Decimal(capacity["planned_budget_usd"]) == Decimal("0.116")
+    assert Decimal(capacity["phase1_reservation_usd"]) == 0
+
+
+@pytest.mark.parametrize("receipt_present", [False, True])
+def test_resume_without_ledger_only_accepts_an_empty_prefix(
+    tmp_path, monkeypatch, receipt_present
+):
+    from venom_core.services.training_experiments import (
+        semantic_openrouter_targeted as targeted,
+    )
+
+    state = _resume_fixture_state(tmp_path, kind="targeted_regression")
+    write(
+        tmp_path / "started.json",
+        {"created_at": audit._utc(), "protocol_sha256": state.protocol_sha},
+    )
+    if receipt_present:
+        write(tmp_path / "receipts/001.json", {"status": "failed"})
+        with pytest.raises(ValueError, match="remote_audit_resume_ledger_missing"):
+            targeted._recorded_prefix(state, [(None, None, None, None)])
+        return
+    assert targeted._recorded_prefix(state, []) == []
+    assert targeted._restore_progress(state, []) == []
+    monkeypatch.setattr(targeted, "_requests", lambda _: [])
+    result = targeted.execute(state, resuming=True)
+    assert (tmp_path / "receipts").is_dir()
+    assert result["rows"] == 0
+    assert result["status"] == "targeted_review_required"
+    assert result["accounted_usd"] == "0"
+
+
+def _unavailable_attempt(status):
+    metadata = (
+        {"provider_name": "Azure"}
+        if status == 502
+        else {"error_type": "provider_unavailable"}
+    )
+    return {
+        "status": "failed",
+        "http_status": status,
+        "cost_usd": None,
+        "error_type": "provider_unavailable",
+        "response": {
+            "error": {
+                "code": 502,
+                "message": "The system is currently experiencing high demand.",
+                "metadata": metadata,
+            }
+        },
+    }
+
+
+@pytest.mark.parametrize("second_status", [200, 502])
+def test_provider_unavailable_live_and_resume_share_single_retry(
+    tmp_path, monkeypatch, second_status
+):
+    from venom_core.services.training_experiments import (
+        semantic_openrouter_targeted as targeted,
+    )
+
+    state = _resume_fixture_state(tmp_path)
+    monkeypatch.setattr(audit, "_persist_cooldown", lambda *_: None)
+    monkeypatch.setattr(
+        audit, "_rate_delay", lambda *_: pytest.fail("must not allow a third POST")
+    )
+    prior = _unavailable_attempt(502)
+    tail = {**_unavailable_attempt(second_status), "rate_limit_attempts": [prior]}
+    assert audit._finish_rate_window(state, tail, 1) is None
+    write(
+        tmp_path / "started.json",
+        {"created_at": audit._utc(), "protocol_sha256": state.protocol_sha},
+    )
+    with pytest.raises(ValueError, match="remote_audit_resume_retries_exhausted"):
+        targeted._restore_progress(state, [tail])
+
+
+def test_resume_allows_one_azure_unavailable_attempt(tmp_path):
+    from venom_core.services.training_experiments import (
+        semantic_openrouter_targeted as targeted,
+    )
+
+    state = _resume_fixture_state(tmp_path)
+    write(
+        tmp_path / "started.json",
+        {"created_at": audit._utc(), "protocol_sha256": state.protocol_sha},
+    )
+    tail = {**_unavailable_attempt(502), "rate_limit_attempts": []}
+    assert targeted._restore_progress(state, [tail]) == [
+        {key: value for key, value in tail.items() if key != "rate_limit_attempts"}
+    ]
+    assert state.rows == []
+
+
+def test_capacity_blocked_resume_preserves_restored_rows_and_costs(
+    tmp_path, monkeypatch
+):
+    state = _resume_fixture_state(
+        tmp_path,
+        phase1_reservation_usd="0.02",
+        phase1_max_request_usd="0.02",
+        holdout_max_request_usd="0.001",
+    )
+    row = {
+        "index": 1,
+        "split": "legacy",
+        "answer_id": "fixture",
+        "repeat": 1,
+        "status": "failed",
+        "error_type": "provider_unavailable",
+    }
+    write(tmp_path / "receipts/001.json", row)
+    receipt_sha = digest(tmp_path / "receipts/001.json")
+    monkeypatch.setattr(judge, "_audit_order", lambda *_args, **_: [row])
+    monkeypatch.setattr(audit, "_phase1_reservations", lambda *_: [Decimal("0.02")])
+
+    def restore(restored):
+        restored.rows = [row]
+        restored.known = Decimal("0.003")
+        restored.unknown = Decimal("0.002")
+        return []
+
+    monkeypatch.setattr(audit, "_resume_qualification", restore)
+    result = audit._execute(
+        tmp_path,
+        state.protocol,
+        state.manifest,
+        state.protocol_sha,
+        state.budget,
+        state.per_request,
+        state.client_factory,
+        None,
+        resume=True,
+    )
+    assert result["status"] == "budget_exhausted"
+    assert result["rows"] == 1
+    assert result["actual_known_cost_usd"] == "0.003"
+    assert result["unknown_reserved_usd"] == "0.002"
+    assert result["accounted_usd"] == "0.005"
+    assert digest(tmp_path / "receipts/001.json") == receipt_sha
+    assert json.loads((tmp_path / "result.json").read_text())["rows"] == 1
+
+
+def test_not_sent_case_is_reported_as_unrun_with_its_reason(tmp_path):
+    state = _resume_fixture_state(tmp_path)
+    state.status = "budget_exhausted"
+    entry = {"split": "legacy", "answer_id": "fixture", "repeat": 1}
+    state.order = [entry, {**entry, "answer_id": "next"}]
+    state.rows = [
+        {**entry, "index": 1, "status": "not_sent", "error_type": "budget_exhausted"}
+    ]
+    deviations = audit._audit_deviations(state)
+    assert deviations["attempted"] == 0
+    assert [row["index"] for row in deviations["not_run"]] == [1, 2]
+    assert deviations["by_case"][0]["issues"][0]["error_type"] == "budget_exhausted"
+
+
+@pytest.mark.parametrize("file_only", [False, True])
+def test_prepare_requires_paired_admission_arguments_before_writing(
+    tmp_path, file_only
+):
+    output = tmp_path / "must-not-exist"
+    with pytest.raises(ValueError, match="remote_audit_admission_unsealed"):
+        audit.prepare(
+            tmp_path / "missing-controls",
+            tmp_path / "missing-review",
+            output,
+            controls_sha256="unused",
+            data_review_sha256="unused",
+            budget_usd="0.10",
+            max_seconds=300,
+            holdout_max_request_usd="0.001",
+            phase1_admission=tmp_path / "evidence" if file_only else None,
+            phase1_admission_sha256=None if file_only else "f" * 64,
+        )
+    assert not output.exists()
+
+
+def test_prepare_does_not_publish_failed_admission(ready, tmp_path, monkeypatch):
+    from venom_core.services.training_experiments import semantic_openrouter_admission
+
+    _, source_root, _ = ready
+    controls = source_root / "controls"
+    review = source_root / "data-review.json"
+    admission = tmp_path / "admission.json"
+    output = tmp_path / "invalid-admission"
+    write(admission, {"fixture": True})
+
+    def reject(*_):
+        raise ValueError("fixture_admission_rejected")
+
+    monkeypatch.setattr(semantic_openrouter_admission, "verify", reject)
+    with pytest.raises(ValueError, match="fixture_admission_rejected"):
+        audit.prepare(
+            controls,
+            review,
+            output,
+            controls_sha256=digest(controls / "frozen-manifest.json"),
+            data_review_sha256=digest(review),
+            budget_usd="0.80",
+            max_seconds=7200,
+            holdout_max_request_usd="0.002",
+            phase1_admission=admission,
+            phase1_admission_sha256=digest(admission),
+        )
+    assert not output.exists()
+    assert not list(tmp_path.glob(".audit-*"))

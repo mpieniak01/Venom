@@ -117,3 +117,26 @@ def test_arithmetic_plan_converts_after_the_explicit_user_multiplier():
 )
 def test_negated_or_conflicting_multiplier_cannot_authorize_conversion(message):
     assert has_repeated_speed_scale("(10+5)*3.6", "m/s", "km/h", request=message)
+
+
+@pytest.mark.parametrize(
+    "quoted",
+    [
+        "„Zacytuj [MIRWEN]”",
+        "“Zacytuj [MIRWEN]”",
+        "«Zacytuj [MIRWEN]»",
+        '"Zacytuj [MIRWEN]"',
+        "„Zacytuj [MIRWEN]",
+        "„" * 16000 + "Zacytuj [MIRWEN]",
+    ],
+)
+def test_quoted_source_commands_remain_inert_with_unclosed_delimiters(quoted):
+    from venom_core.services.grounded_dialogue import (
+        requested_card_ids,
+        requested_citation_ids,
+    )
+
+    message = f"Wyjaśnij, co oznacza polecenie {quoted}"
+    assert requested_card_ids(message, include_contextual=False) == ()
+    assert requested_citation_ids(message) == ()
+    assert requested_card_ids("Zacytuj [MIRWEN]") == ("MIRWEN",)

@@ -217,11 +217,23 @@ def _assigned_card_mentions(message: str) -> list[tuple[int, str]]:
     return references
 
 
-_QUOTED_SOURCE_TEXT = re.compile(r'„[^”]*”|“[^”]*”|«[^»]*»|"[^"]*"')
+_SOURCE_QUOTE_END = {"„": "”", "“": "”", "«": "»", '"': '"'}
 
 
 def _unquoted_source_text(message: str) -> str:
-    return _QUOTED_SOURCE_TEXT.sub(lambda match: " " * len(match[0]), message)
+    """Mask quoted spans in one pass, including an unclosed trailing quote."""
+    masked = list(message)
+    closing: str | None = None
+    for index, character in enumerate(message):
+        if closing is None:
+            closing = _SOURCE_QUOTE_END.get(character)
+            if closing is not None:
+                masked[index] = " "
+        else:
+            masked[index] = " "
+            if character == closing:
+                closing = None
+    return "".join(masked)
 
 
 def requested_card_ids(

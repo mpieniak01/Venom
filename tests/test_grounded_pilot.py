@@ -3989,3 +3989,85 @@ def test_handoff_sms_uses_latest_time_and_addresses_recipient(
     )
     assert plain_pilot_recap(final, changed) is None
     assert plain_pilot_recap("Wyjaśnij, od czego zależy termin.", history) is None
+
+
+def test_thermal_reply_checks_flow_and_choice_before_rendering():
+    from venom_core.services.grounded_thermal_contact import ThermalStep
+
+    question = (
+        "Dotykam dwóch płytek, stalowej i z filcu, które mają tę samą temperaturę. "
+        "Najpierw obie są chłodniejsze od dłoni, potem obie są cieplejsze od dłoni. "
+        "Która może wydawać się zimniejsza w pierwszym przypadku, a która gorętsza "
+        "w drugim? Wyjaśnij mechanizm w dwóch zdaniach."
+    )
+    valid = (
+        ThermalStep("colder", "hand_to_objects", "stal"),
+        ThermalStep("warmer", "objects_to_hand", "stal"),
+    )
+    with pytest.raises(
+        EvidenceError, match="thermal_flow_mismatch,thermal_material_mismatch"
+    ):
+        plain_pilot_recap(
+            question,
+            (),
+            thermal_draft=(valid[0], ThermalStep("warmer", "hand_to_objects", "filc")),
+        )
+    with pytest.raises(EvidenceError, match="thermal_conditions_mismatch"):
+        plain_pilot_recap(question, (), thermal_draft=valid[::-1])
+    answer = plain_pilot_recap(question, (), thermal_draft=valid)
+    assert answer == plain_pilot_recap(question, ())
+    assert answer is not None
+    colder, warmer = answer.rstrip(".").split(". ")
+    assert "stal" in colder and "z dłoni do przedmiotów" in colder
+    assert "stal" in warmer and "z przedmiotów do dłoni" in warmer
+
+
+@pytest.mark.parametrize(
+    ("pair", "premise", "error"),
+    [
+        (
+            "stalowej i z aluminium",
+            "Obie są chłodniejsze od palca.",
+            "thermal_contact_materials_unbound",
+        ),
+        (
+            "stalowej i z filcu",
+            "Obie nie są chłodniejsze od palca.",
+            "thermal_contact_temperature_unbound",
+        ),
+        (
+            "stalowej i z filcu",
+            "Najpierw obie są chłodniejsze od palca, potem jedna jest cieplejsza od palca.",
+            "thermal_contact_temperature_unbound",
+        ),
+        (
+            "stalowej i z filcu",
+            "Obie są chłodniejsze od palca, ale stal jest pokryta folią.",
+            "thermal_contact_premises_unbound",
+        ),
+    ],
+)
+def test_thermal_reply_rejects_unbound_or_modified_premises(pair, premise, error):
+    # A covering changes the comparison because the hand touches the covering.
+    message = (
+        f"Dotykam dwóch płytek, {pair}, które mają tę samą temperaturę. "
+        f"{premise} Która może wydawać się chłodniejsza?"
+    )
+    with pytest.raises(EvidenceError, match=error):
+        plain_pilot_recap(message, ())
+
+
+def test_thermal_reply_does_not_select_unrelated_recap():
+    assert (
+        plain_pilot_recap("Który ręcznik przyjemniejszy i cieplejszy w dotyku?", ())
+        is None
+    )
+
+
+def test_thermal_reply_cannot_treat_uncertain_equality_as_a_fact():
+    prompt = (
+        "Dotykam stali i filcu. Nie wiadomo, czy mają tę samą temperaturę. "
+        "Oba są chłodniejsze od palca. Który może wydawać się chłodniejszy?"
+    )
+    with pytest.raises(EvidenceError, match="thermal_contact_premises_unbound"):
+        plain_pilot_recap(prompt, ())

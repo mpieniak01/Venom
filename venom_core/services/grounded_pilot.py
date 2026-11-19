@@ -121,6 +121,7 @@ from venom_core.services.grounded_speed_measurement import (
     has_repeated_speed_scale,
     speed_measurement_recap,
 )
+from venom_core.services.grounded_thermal_contact import ThermalStep, thermal_contact
 
 MAX_MODEL_INPUT_BYTES = 6000
 
@@ -2192,6 +2193,7 @@ def plain_pilot_recap(
     pickup_roles_receipt: PickupRolesReceipt | None = None,
     segment_length_receipt: SegmentLengthReceipt | None = None,
     speed_measurement_receipts: tuple[SpeedMeasurementReceipt, ...] = (),
+    thermal_draft: tuple[ThermalStep, ...] | None = None,
 ) -> str | None:
     """Retain verified decisions and event roles from the selected exception."""
     users = tuple(item["content"] for item in focused if item["role"] == "user")
@@ -2199,6 +2201,12 @@ def plain_pilot_recap(
         intro = explicit_group_intro(message) or segment_length_intro(message)
         if intro is not None:
             return intro
+    if contact := thermal_contact(message):
+        if thermal_draft is not None:
+            contact.check(thermal_draft)
+        return contact.render()
+    if thermal_draft is not None:
+        raise EvidenceError("thermal_contact_premises_unbound")
     if handoff := handoff_sms_recap(message, users):
         return handoff
     if explicit_total_receipt is not None:

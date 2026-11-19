@@ -66,6 +66,7 @@ from venom_core.services.grounded_explicit_totals import (
     explicit_group_intro,
     total_identity,
 )
+from venom_core.services.grounded_handoff_sms import handoff_sms_recap
 from venom_core.services.grounded_percentages import (
     PERCENT_CHANGE_ID,
     PercentChange,
@@ -2198,6 +2199,8 @@ def plain_pilot_recap(
         intro = explicit_group_intro(message) or segment_length_intro(message)
         if intro is not None:
             return intro
+    if handoff := handoff_sms_recap(message, users):
+        return handoff
     if explicit_total_receipt is not None:
         recap = explicit_total_receipt.recap(message, users)
         if recap is not None:

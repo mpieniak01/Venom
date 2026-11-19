@@ -3920,3 +3920,72 @@ def test_results_date_rechecks_even_the_uncited_card_after_review():
             required=Requirements(sources=True),
         )
     assert not model.calls
+
+
+@pytest.mark.parametrize(
+    (
+        "relation",
+        "first_action",
+        "recipient_relation",
+        "thing",
+        "preposition",
+        "time",
+        "action",
+    ),
+    [
+        (
+            "przekazaniu statywu",
+            "zostawić go",
+            "u",
+            "statyw",
+            "po",
+            "17:00",
+            "zostawię u Ciebie",
+        ),
+        (
+            "odebraniu pompy",
+            "odebrać ją",
+            "od",
+            "pompę",
+            "o",
+            "19:15",
+            "odbiorę od Ciebie",
+        ),
+    ],
+)
+def test_handoff_sms_uses_latest_time_and_addresses_recipient(
+    relation, first_action, recipient_relation, thing, preposition, time, action
+):
+    history = (
+        {
+            "role": "user",
+            "content": (
+                f"Ułóż krótką wiadomość o {relation}. Mogę przyjść po 16:30 i mam "
+                f"{first_action} {recipient_relation} Tomka."
+            ),
+        },
+        {"role": "assistant", "content": "Poproś Tomka o odebranie o 16:30."},
+        {
+            "role": "user",
+            "content": (
+                f"Poproś Tomka o potwierdzenie, czy będzie o 17:40. Nadal chodzi o {thing}."
+            ),
+        },
+        {
+            "role": "user",
+            "content": (
+                "Jednak nie obiecuj, że będę punktualnie. "
+                f"Zapytaj, czy {preposition} {time} mu pasuje."
+            ),
+        },
+    )
+    final = "Zwróć tylko gotowy SMS, bez tytułu."
+    assert plain_pilot_recap(final, history) == (
+        f"Cześć, czy pasuje Ci, jeśli {action} {thing} {preposition} {time}?"
+    )
+    changed = (
+        *history[:-1],
+        {"role": "user", "content": "Jednak chodzi o inną osobę."},
+    )
+    assert plain_pilot_recap(final, changed) is None
+    assert plain_pilot_recap("Wyjaśnij, od czego zależy termin.", history) is None

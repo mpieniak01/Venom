@@ -459,6 +459,13 @@ _PUBLIC_CARD_REFERENCE = re.compile(
     re.IGNORECASE,
 )
 
+_PUBLIC_CARD_DECLARATION = re.compile(
+    r"\b(?:nazwa\s+(?:tej\s+)?(?:karty|dokumentu|źródła)\s*(?:[:=]\s*|\s+(?:to|brzmi)\s+)"
+    r"|(?:karta|dokument|źródło)\s+nosi\s+nazwę\s+)"
+    r"(?P<marker>[*_'\"„“«\x60]*)(?P<name>[^\W\d_][\w-]{1,63})(?![\w-])",
+    re.IGNORECASE,
+)
+
 _MAX_RECOVERED_CARD_LENGTH = 640
 
 
@@ -493,6 +500,11 @@ def bind_source_quotes(
         match["name"]
         for match in _PUBLIC_CARD_REFERENCE.finditer(prose)
         if match["name"].isupper() or match["name"] in documents
+    )
+    cited.update(
+        match["name"]
+        for match in _PUBLIC_CARD_DECLARATION.finditer(prose)
+        if match["marker"] or match["name"][0].isupper() or match["name"] in documents
     )
     cited.update(
         ident

@@ -790,6 +790,34 @@ def test_unknown_explicit_lowercase_citation_rejected_even_with_valid_quote():
         bind_source_quotes("Cena wynosi 30 zł [invented].", evidence, quotes)
 
 
+@pytest.mark.parametrize(
+    "declaration",
+    [
+        "Prawdziwa nazwa karty to Forma.",
+        "Nazwa tej karty: „forma”.",
+        "Dokument nosi nazwę **Forma**.",
+    ],
+)
+def test_declared_unknown_source_rejected_even_when_the_name_occurs_in_the_card(
+    declaration,
+):
+    _, _, evidence = prepared_source(MemorySources("Cykl Forma. Cena wynosi 30 zł."))
+    quotes = (SourceQuote("club", "v2", "Cena wynosi 30 zł."),)
+    prose = f"Cena wynosi 30 zł [club]. {declaration}"
+    with pytest.raises(EvidenceError, match="answer_source_unknown"):
+        bind_source_quotes(prose, evidence, quotes)
+
+
+def test_declared_source_bound_and_ordinary_prose_preserved():
+    _, _, evidence = prepared_source(MemorySources("Cykl Forma. Cena wynosi 30 zł."))
+    prose = "Nazwa karty: „club”. Pokaz należy do cyklu Forma."
+    assert bind_source_quotes(prose, evidence, ()) == (
+        SourceQuote("club", "v2", "Cykl Forma. Cena wynosi 30 zł."),
+    )
+    prose = "Nazwa karty to osobna informacja. Pokaz należy do cyklu Forma."
+    assert bind_source_quotes(prose, evidence, ()) == ()
+
+
 def test_assignments_bind_both_required_cards_and_restore_missing_literal():
     backend = MemorySources()
     bodies = {

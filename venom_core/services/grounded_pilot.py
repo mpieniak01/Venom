@@ -64,6 +64,14 @@ from venom_core.services.grounded_explicit_totals import (
     bind_explicit_total,
     total_identity,
 )
+from venom_core.services.grounded_percentages import (
+    PERCENT_CHANGE_ID,
+    PercentChange,
+    PercentChangeReceipt,
+    PilotPercentChangeAnswer,
+    bind_percent_change,
+    percent_change_recap,
+)
 from venom_core.services.grounded_presentation import (
     ROUNDING_MODE,
     clean_bookkeeping_spacing,
@@ -2112,12 +2120,17 @@ def plain_pilot_recap(
     *,
     duration_receipt: DurationReceipt | None = None,
     price_mean_receipts: tuple[PriceMeanReceipt, ...] = (),
+    percent_change_receipts: tuple[PercentChangeReceipt, ...] | None = None,
     explicit_total_receipt: ExplicitTotalReceipt | None = None,
 ) -> str | None:
     """Retain verified decisions and event roles from the selected exception."""
     users = tuple(item["content"] for item in focused if item["role"] == "user")
     if explicit_total_receipt is not None:
         recap = explicit_total_receipt.recap(message, users)
+        if recap is not None:
+            return recap
+    if percent_change_receipts is not None:
+        recap = percent_change_recap(message, users, percent_change_receipts)
         if recap is not None:
             return recap
     if price_mean_receipts:
@@ -2238,6 +2251,7 @@ class _DeterministicAnswer:
     duration: DurationState | None = None
     price_mean: PriceMeanState | None = None
     explicit_total: OrderTotal | GroupTotal | None = None
+    percent_change: PercentChange | None = None
 
 
 @dataclass(frozen=True)
@@ -2386,6 +2400,16 @@ def _deterministic_answer(
                 unit=unit,
             ),
             explicit_total=explicit_total,
+        )
+    percent_change = bind_percent_change((*prior_users, message))
+    if percent_change is not None:
+        return _DeterministicAnswer(
+            calculation=Calculation(
+                calculation_id=PERCENT_CHANGE_ID,
+                expression=percent_change.expression,
+                unit="%",
+            ),
+            percent_change=percent_change,
         )
     stock = _stock_calculation((*prior_users, message))
     calculation = _explicit_mean(message) or _explicit_length_conversion(message)
@@ -2718,6 +2742,18 @@ def _pilot_draft(
             number_only=requests_unitless_result(turn.message),
             places=places,
         )
+    if deterministic.percent_change is not None:
+        return Draft(
+            prose=deterministic.percent_change.describe(calculation.value, places),
+            sources=[],
+            calculations=[
+                ResultClaim(
+                    calculation_id=calculation.calculation_id,
+                    value=calculation.value,
+                    unit=calculation.unit,
+                )
+            ],
+        )
     return _mean_draft(calculation, places, deterministic.price_mean)
 
 
@@ -2919,4 +2955,12 @@ def run_pilot_turn(
             (*turn.prior_users, message), deterministic.explicit_total, proof.evidence
         )
         return PilotExplicitTotalAnswer(proof.evidence_id, draft.prose, total_receipt)
+    if deterministic.percent_change is not None and proof.evidence is not None:
+        percent_receipt = PercentChangeReceipt.from_evidence(
+            (*turn.prior_users, message),
+            deterministic.percent_change,
+            proof.evidence,
+            result.places,
+        )
+        return PilotPercentChangeAnswer(proof.evidence_id, draft.prose, percent_receipt)
     return PublishedAnswer(proof.evidence_id, draft.prose)

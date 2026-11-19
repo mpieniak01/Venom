@@ -69,7 +69,8 @@ _RESULTS_WITHDRAWAL = re.compile(
     re.IGNORECASE,
 )
 _ENROLLMENT_ID = re.compile(
-    r"\b(?:identyfikator naboru|id naboru|nabór):\s*([A-Za-z0-9][A-Za-z0-9_-]{0,63})(?![\w-])",
+    r"\b(?:identyfikator naboru|id naboru|nabór):\s*"
+    r"([A-Za-z0-9][A-Za-z0-9_-]{0,63})(?=\s*(?:[.!?](?:\s|$)|$))",
     re.IGNORECASE,
 )
 

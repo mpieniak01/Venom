@@ -4158,6 +4158,7 @@ def test_results_date_has_identical_ambiguity_checks_in_quote_and_recap(results)
     "submission_identity, results_identity",
     [
         ("", ""),
+        (" Nabór: WARSZTATY muzyczne.", " Nabór: WARSZTATY plastyczne."),
         (" Identyfikator naboru: WARSZTATY-2026.", ""),
         (
             " Identyfikator naboru: WARSZTATY-2026.",

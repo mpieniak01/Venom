@@ -4,6 +4,7 @@ from dataclasses import replace
 
 import pytest
 
+from scripts.academy.verify_grounded_tools import FrozenPacket
 from venom_core.services.grounded_dialogue import (
     EvidenceError,
     Requirements,
@@ -34,6 +35,7 @@ from venom_core.services.grounded_review import (
     CompactGroundedReviewer,
     GroundedChecklistReviewer,
 )
+from venom_core.services.grounded_segment_length import PilotSegmentLengthAnswer
 
 
 class Sources:
@@ -3171,3 +3173,142 @@ def test_pickup_roles_receipt_requires_approved_current_cards():
         )
     assert len(reviewer.materials) == 1
     assert not model.calls
+
+
+_S05_INITIAL = (
+    "Mamy 180 cm przewodu, a dostawca gwarantuje osobny odcinek zapasu w metrach."
+)
+_S05_TOTAL = "Przeczytaj kartę PARWENA i kartę TRUDOM. Kalkulatorem policz długość obu odcinków łącznie w metrach."
+_S05_UPDATE = (
+    "Odcinek główny skrócono do 150 cm, zapas ten sam. Sprawdź kartę PARWENA i kartę TRUDOM, "
+    "przelicz kalkulatorem w metrach i wskaż, czy spełnimy normę."
+)
+_S05_RECAP = "Podaj tylko aktualną łączną długość i czy wystarczy."
+
+
+def _s05_cards(reserve="0,65 m", minimum="2,30 m"):
+    texts = {
+        "PARWENA": f"Dostawca gwarantuje oddzielny zapas przewodu o długości {reserve}. "
+        "Jest on dostępny również po skróceniu głównego odcinka."
+        if reserve is not None
+        else "Dostawca potwierdza oddzielny odcinek zapasu. Długości zapasu nie podano.",
+        "TRUDOM": f"Minimalna łączna długość dwóch odcinków to {minimum}. "
+        "Wartość minimalna jest warunkiem odbioru.",
+    }
+    return FrozenPacket(
+        [
+            {
+                "id": ident,
+                "title": f"Karta {ident}",
+                "keywords": "przewód zapas norma",
+                "status": "available",
+                "version": "1",
+                "text": text,
+            }
+            for ident, text in texts.items()
+        ]
+    )
+
+
+def _s05_history(*messages):
+    return tuple({"role": "user", "content": message} for message in messages)
+
+
+def _s05_turn(request, history, cards, model, reviewer, trace):
+    return run_pilot_turn(
+        request,
+        f"s05-{len(history)}",
+        cards,
+        model,
+        reviewer,
+        history=history,
+        required=Requirements(sources=True, calculation=True),
+        trace=trace,
+    )
+
+
+def test_segment_length_uses_each_card_for_its_role_and_updates_recap():
+    cards, model, reviewer = _s05_cards(), Model(), Reviewer()
+    history = _s05_history(_S05_INITIAL)
+    trace = []
+    initial = _s05_turn(_S05_TOTAL, history, cards, model, reviewer, trace)
+    assert isinstance(initial, PilotSegmentLengthAnswer)
+    assert initial.segment_length_receipt.calculation.expression == "180/100+0.65"
+    assert initial.segment_length_receipt.calculation.value == "2.45"
+    assert "180 cm, czyli 1,8 m" in initial.text
+    assert "0,65 m [PARWENA]" in initial.text
+    assert "2,3 m [TRUDOM]" in initial.text
+    assert "Łącznie 2,45 m." in initial.text
+    assert [x["ref"]["source_id"] for x in trace[1]["documents"]] == [
+        "PARWENA",
+        "TRUDOM",
+    ]
+
+    history = (*history, {"role": "user", "content": _S05_TOTAL})
+    history += (
+        {"role": "assistant", "content": "Niepotwierdzona wcześniejsza suma 2,30 m."},
+    )
+    corrected = _s05_turn(_S05_UPDATE, history, cards, model, reviewer, [])
+    assert isinstance(corrected, PilotSegmentLengthAnswer)
+    assert corrected.segment_length_receipt.calculation.expression == "150/100+0.65"
+    assert corrected.segment_length_receipt.calculation.value == "2.15"
+    assert "Łącznie 2,15 m." in corrected.text
+    assert "Łączna długość jest za mała." in corrected.text
+    assert {
+        (x["source_id"], x["quote"]) for x in reviewer.materials[-1]["draft"]["sources"]
+    } == {(ident, card["text"]) for ident, card in cards.cards.items()}
+    assert cards.read_log.count("PARWENA") == cards.read_log.count("TRUDOM") == 6
+    assert model.calls == []
+
+    history += ({"role": "user", "content": _S05_UPDATE},)
+    assert (
+        plain_pilot_recap(
+            _S05_RECAP, history, segment_length_receipt=corrected.segment_length_receipt
+        )
+        == "2,15 m, za mało wobec normy 2,3 m."
+    )
+    assert (
+        plain_pilot_recap(
+            _S05_RECAP, history, segment_length_receipt=initial.segment_length_receipt
+        )
+        == "Potrzebuję aktualnego potwierdzonego wyniku i normy odbioru."
+    )
+
+
+def test_segment_length_missing_reserve_clarifies_after_full_read_without_calculation():
+    cards, model, reviewer = _s05_cards(reserve=None), Model(), Reviewer()
+    result = _s05_turn(
+        _S05_TOTAL, _s05_history(_S05_INITIAL), cards, model, reviewer, []
+    )
+    assert "długość osobnego odcinka zapasu" in result.text
+    assert not isinstance(result, PilotSegmentLengthAnswer)
+    material = reviewer.materials[-1]
+    assert material["plan"]["mode"] == "clarify"
+    assert material["evidence"]["calculations"] == []
+    assert len(material["evidence"]["sources"]) == 2
+    assert cards.read_log == ["PARWENA", "TRUDOM", "PARWENA", "TRUDOM"]
+    assert model.calls == []
+
+
+def test_segment_length_equality_and_mixed_units():
+    cards, model, reviewer = (
+        _s05_cards(reserve="65 cm", minimum="215 cm"),
+        Model(),
+        Reviewer(),
+    )
+    history = _s05_history(_S05_INITIAL, _S05_TOTAL)
+    result = _s05_turn(_S05_UPDATE, history, cards, model, reviewer, [])
+    assert isinstance(result, PilotSegmentLengthAnswer)
+    assert result.segment_length_receipt.calculation.expression == "150/100+65/100"
+    assert "0,65 m [PARWENA]" in result.text
+    assert "Łącznie 2,15 m." in result.text
+    assert "Norma odbioru wynosi 2,15 m [TRUDOM]" in result.text
+    assert "Łączna długość spełnia normę." in result.text
+    assert (
+        plain_pilot_recap(
+            _S05_RECAP,
+            _s05_history(_S05_INITIAL, _S05_TOTAL, _S05_UPDATE),
+            segment_length_receipt=result.segment_length_receipt,
+        )
+        == "2,15 m, wystarczy wobec normy 2,15 m."
+    )

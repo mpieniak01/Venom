@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Callable
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from decimal import Decimal
 from typing import Annotated, Any, Literal, Protocol
 
@@ -94,6 +94,13 @@ from venom_core.services.grounded_prices import (
     bind_price_mean,
     mean_expression,
     price_mean_recap,
+)
+from venom_core.services.grounded_segment_length import (
+    SEGMENT_LENGTH_ID,
+    PilotSegmentLengthAnswer,
+    SegmentLengthReceipt,
+    SegmentLengthState,
+    bind_segment_length,
 )
 
 MAX_MODEL_INPUT_BYTES = 6000
@@ -2129,6 +2136,7 @@ def plain_pilot_recap(
     percent_change_receipts: tuple[PercentChangeReceipt, ...] | None = None,
     explicit_total_receipt: ExplicitTotalReceipt | None = None,
     pickup_roles_receipt: PickupRolesReceipt | None = None,
+    segment_length_receipt: SegmentLengthReceipt | None = None,
 ) -> str | None:
     """Retain verified decisions and event roles from the selected exception."""
     users = tuple(item["content"] for item in focused if item["role"] == "user")
@@ -2140,6 +2148,10 @@ def plain_pilot_recap(
         recap = percent_change_recap(message, users, percent_change_receipts)
         if recap is not None:
             return recap
+    if segment_length_receipt is not None:
+        length_recap = segment_length_receipt.recap(message, users)
+        if length_recap is not None:
+            return length_recap
     if price_mean_receipts:
         price_recap = price_mean_recap(message, users, price_mean_receipts)
         if price_recap is not None:
@@ -2265,6 +2277,7 @@ class _DeterministicAnswer:
     explicit_total: OrderTotal | GroupTotal | None = None
     percent_change: PercentChange | None = None
     pickup_roles: PickupRoles | None = None
+    segment_length: SegmentLengthState | None = None
 
 
 @dataclass(frozen=True)
@@ -2299,6 +2312,7 @@ class _PilotProof:
     evidence: Evidence | None
     review_material: dict[str, Any]
     result: _ResultFormat
+    segment_length: SegmentLengthReceipt | None = None
 
 
 def _validate_pilot_request(turn: _PilotRequest, reviewer: SemanticReviewer) -> str:
@@ -2390,6 +2404,17 @@ def _deterministic_answer(
                 )
             return _DeterministicAnswer(
                 source_draft=_source_only_draft(message, documents)
+            )
+        segment_length = bind_segment_length((*prior_users, message), documents)
+        if segment_length is not None:
+            expression = segment_length.expression
+            return _DeterministicAnswer(
+                calculation=Calculation(
+                    calculation_id=SEGMENT_LENGTH_ID, expression=expression, unit="m"
+                )
+                if expression is not None
+                else None,
+                segment_length=segment_length,
             )
         order = _order_calculation(message, prior_users, documents)
         return _DeterministicAnswer(
@@ -2580,6 +2605,11 @@ def _reported_inputs(
 def _assess_inputs(
     deterministic: _DeterministicAnswer, model: ModelCall, planning: dict[str, Any]
 ) -> InputAssessment:
+    if deterministic.segment_length is not None:
+        return InputAssessment(
+            current_state="Rozdzielono odcinki przewodu i normę odbioru.",
+            missing=deterministic.segment_length.missing,
+        )
     if deterministic.calculation is not None or deterministic.source_draft is not None:
         return InputAssessment(
             current_state="Składniki pochodzą z jawnych danych i aktualizacji użytkownika.",
@@ -2719,6 +2749,25 @@ def _pilot_draft(
 ) -> Draft:
     if deterministic.source_draft is not None:
         return deterministic.source_draft
+    if proof.segment_length is not None:
+        receipt = proof.segment_length
+        return Draft(
+            prose=receipt.summary(),
+            sources=[Quote(**asdict(quote)) for quote in receipt.quotes],
+            calculations=[
+                ResultClaim(
+                    calculation_id=receipt.calculation.calculation_id,
+                    value=receipt.calculation.value,
+                    unit=receipt.calculation.unit,
+                )
+            ],
+        )
+    if deterministic.segment_length is not None and plan.mode == "clarify":
+        return Draft(
+            prose=f"Brakuje potwierdzonych danych. Podaj proszę: {', '.join(plan.missing)}.",
+            sources=[],
+            calculations=[],
+        )
     if duration_receipt is not None:
         return Draft(
             prose=duration_receipt.summary(),
@@ -2820,7 +2869,11 @@ def _certify_pilot_draft(
     )
     claim_draft = AnswerDraft(proof.evidence_id, claims)
     gate.validate_draft(claim_draft)
-    if result.unit is not None or any(not item.unit for item in evidence.calculations):
+    if proof.segment_length is not None:
+        proof.segment_length.verify_prose(draft.prose, evidence)
+    elif result.unit is not None or any(
+        not item.unit for item in evidence.calculations
+    ):
         verify_result_prose(
             draft.prose, evidence, result.unit or "", decimal_places=result.places
         )
@@ -2934,6 +2987,11 @@ def run_pilot_turn(
     proof = _prepare_pilot_proof(
         turn, sources, gate, plan, inputs.planning, result, audit
     )
+    if deterministic.segment_length is not None and proof.evidence is not None:
+        segment_length = SegmentLengthReceipt.from_evidence(
+            (*turn.prior_users, message), deterministic.segment_length, proof.evidence
+        )
+        proof = replace(proof, segment_length=segment_length)
     duration_receipt = None
     if deterministic.duration is not None and proof.evidence is not None:
         duration_receipt = DurationReceipt.from_evidence(
@@ -2975,6 +3033,10 @@ def run_pilot_turn(
             (*turn.prior_users, message), deterministic.pickup_roles
         )
         return PilotPickupRolesAnswer(proof.evidence_id, draft.prose, pickup_receipt)
+    if proof.segment_length is not None:
+        return PilotSegmentLengthAnswer(
+            proof.evidence_id, draft.prose, proof.segment_length
+        )
     if duration_receipt is not None:
         return PilotDurationAnswer(proof.evidence_id, draft.prose, duration_receipt)
     if deterministic.price_mean is not None and proof.evidence is not None:

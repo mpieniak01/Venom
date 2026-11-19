@@ -187,14 +187,10 @@ def source(
     )
     known = judge._money(pilot_known) + judge._money(confirm_known)
     unknown = judge._money(pilot_unknown) + judge._money(confirm_unknown)
-    charged = (
-        judge._money(known)
-        + judge._money(unknown)
-        + judge._money(result["accounted_usd"])
-    )
+    charged = known + unknown + judge._money(result["accounted_usd"])
     judge._require(
-        judge._money(result["table_pilot_known_usd"]) == judge._money(known)
-        and judge._money(result["table_pilot_unknown_usd"]) == judge._money(unknown)
+        judge._money(result["table_pilot_known_usd"]) == known
+        and judge._money(result["table_pilot_unknown_usd"]) == unknown
         and judge._money(result["accounted_with_table_pilot_usd"])
         == charged
         <= judge._money(protocol["budget_usd"])

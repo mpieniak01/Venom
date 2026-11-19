@@ -59,7 +59,7 @@ def test_payload_remote_route_and_context(packet):
     assert body["model"] == judge.MODEL
     assert body["messages"][0]["content"] == judge.PROMPT
     assert judge._contract()["prompt_sha256"] == (
-        "2d0e270cb7e74c0c1db52c535552807824674411aeadf7f1983925046c62b2b6"
+        "0b66969dbe6c827943ad5ad72be157261fbd5000c2983d148532386a38273b5f"
     )
     schema = body["response_format"]["json_schema"]["schema"]
     check_schema = schema["$defs"]["_QuoteCheck"]

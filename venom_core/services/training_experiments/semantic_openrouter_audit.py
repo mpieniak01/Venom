@@ -558,18 +558,28 @@ def _post_audit_row(
 
 def _provider_unavailable(row: dict) -> bool:
     payload = row.get("response")
-    if row.get("http_status") != 200 or not isinstance(payload, dict):
+    if not isinstance(payload, dict) or "choices" in payload or payload.get("id"):
         return False
     error = payload.get("error")
-    if not isinstance(error, dict) or "choices" in payload:
-        return False
-    code = error.get("code")
-    if type(code) is not int or code != 502:
+    if (
+        not isinstance(error, dict)
+        or type(error.get("code")) is not int
+        or error["code"] != 502
+    ):
         return False
     metadata = error.get("metadata")
+    if not isinstance(metadata, dict):
+        return False
+    status = row.get("http_status")
+    if status == 200:
+        return metadata.get("error_type") == "provider_unavailable"
+    message = error.get("message")
     return (
-        isinstance(metadata, dict)
-        and metadata.get("error_type") == "provider_unavailable"
+        status == 502
+        and metadata.get("provider_name") == judge.PROVIDER
+        and isinstance(message, str)
+        and "currently experiencing high demand" in message
+        and row.get("cost_usd") is None
     )
 
 
@@ -592,7 +602,6 @@ def _receive_audit_response(
     if row["cost_usd"] is not None:
         state.known += judge._money(row["cost_usd"])
         state.unknown -= reservation
-    response.raise_for_status()
     if _provider_unavailable(row):
         row.update(
             status="failed",
@@ -600,6 +609,7 @@ def _receive_audit_response(
             retry_after=response.headers.get("Retry-After", "")[:128],
         )
         return False
+    response.raise_for_status()
     _require(row["cost_usd"] is not None, "remote_audit_cost_missing")
     _require(
         judge._money(row["cost_usd"]) <= reservation,

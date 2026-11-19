@@ -76,9 +76,39 @@ skrótu SHA-256 i ręcznego klucza. Polecenie weryfikuje skróty, odtwarza
 bieżący dekoder i zapisuje osobny wynik. Dotyczy tylko wybranych zapisów
 z fazy 1 i paneli celowanych. Próby holdoutu są wyłączone.
 
-```bash
-python -m scripts.academy.replay_openrouter_regressions --help
+Przykładowy manifest (nazwy i hash należy zastąpić rzeczywistymi wartościami):
+
+```json
+{
+  "schema_version": 1,
+  "cases": [{
+    "id": "odczyt-miejsca",
+    "receipt": "audit/receipts/001.json",
+    "receipt_sha256": "<SHA-256 receiptu>",
+    "expected": {
+      "atoms": {"place": "supported"},
+      "injection": false,
+      "polish_ok": true,
+      "natural_ok": true,
+      "unsupported": "no"
+    }
+  }]
+}
 ```
+
+Kryteria i komplet pól expected muszą odpowiadać zapieczętowanemu żądaniu.
+Manifest zapisany jako replay-manifest.json odtwarza się bez dostawcy:
+
+```bash
+python -m scripts.academy.replay_openrouter_regressions \
+  --manifest replay-manifest.json \
+  --manifest-sha256 "$(sha256sum replay-manifest.json | cut -d ' ' -f 1)" \
+  --output replay-report.json
+```
+
+Dla panelu celowanego, w tym pozycji powyżej 156, dodaj do przypadku
+targeted_protocol_sha256 z protocol.json. Narzędzie sprawdzi zapieczętowany
+panel, kolejność i tożsamość receiptu. Holdout zwykłego audytu pozostaje wyłączony.
 
 Po naprawie porównaj wcześniej błędny zapis i kontrprzypadki z tym samym
 kluczem. Wynik offline mówi o tym, jak obecny dekoder ocenił zachowaną
@@ -179,13 +209,19 @@ Krótkie porcje danych nie odnawiają tego limitu. Przerwany POST zachowuje
 rezerwację jako koszt nieznany i zamyka próbę bez ponowienia żądania.
 
 Przy kwalifikacji Academy wykonuje jeden audyt Luny naraz na użytkownika
-systemowego, również przy kilku katalogach roboczych. Zachowuje dwie sekundy
-od zakończenia poprzedniego żądania, także pomiędzy audytami. Po HTTP 429
-ponawia ten sam pakiet najwyżej dwa razy. Gdy odpowiedź HTTP 200 zawiera
-502 z oznaczeniem provider_unavailable, może wykonać jedno ponowienie.
-Łącznie obowiązują najwyżej dwa ponowienia na pakiet i osiem na audyt. Honoruje
-Retry-After do 60 sekund. Czeka co najmniej 5 sekund przed pierwszym
-ponowieniem i 10 sekund przed drugim. Jeśli poprawny nagłówek podaje dłuższy
+systemowego, również przy kilku katalogach roboczych. Zwykły audyt zachowuje
+dwie sekundy od zakończenia poprzedniego żądania, także pomiędzy audytami.
+Dopuszcza najwyżej dwa ponowienia na pakiet i osiem na audyt, z minimalnym
+odczekaniem 5 i 10 sekund. Audyt z zapieczętowanym odbiorem fazy 1
+(--phase1-admission i --phase1-admission-sha256) wykonuje sam holdout:
+stosuje odstęp trzech sekund, najwyżej trzy ponowienia na pakiet i 24 na audyt,
+z odczekaniem 12, 25 i 50 sekund. Rezerwę ponowień liczy wtedy od limitu holdoutu.
+
+Ponowienie jest dozwolone po HTTP 429 albo jednej jawnej niedostępności
+dostawcy na pakiet. Rozpoznawane są HTTP 200 z błędem 502 i oznaczeniem
+provider_unavailable oraz HTTP 502 Azure bez generacji i kosztu, ze znanym
+komunikatem wysokiego obciążenia. Obie formy wspólnie zużywają limit jednej
+niedostępności, również przy wznowieniu. Retry-After jest honorowane do 60 sekund. Jeśli poprawny nagłówek podaje dłuższy
 czas, stosuje wartość z nagłówka. Retry-After powyżej 60 sekund zatrzymuje
 audyt i jest zapisany dla kolejnego startu.
 Połączenie o nieznanym wyniku, inny błąd HTTP oraz niepotwierdzony model,

@@ -12,6 +12,10 @@ from venom_core.services.grounded_dialogue import (
     text_hash,
 )
 from venom_core.services.grounded_duration import PilotDurationAnswer, bind_duration
+from venom_core.services.grounded_explicit_totals import (
+    PilotExplicitTotalAnswer,
+    bind_explicit_total,
+)
 from venom_core.services.grounded_pilot import (
     SemanticVerdict,
     _public_prose,
@@ -2822,3 +2826,95 @@ def test_price_mean_compares_changed_middle_price():
 )
 def test_price_mean_declines_ambiguous_or_stale_operands(inputs):
     assert bind_price_mean(inputs) is None
+
+
+def test_explicit_order_uses_current_price_and_no_delivery_after_pickup():
+    base = "Potrzebuję 5 desek po 24 zł, dostawa jednorazowo 21 zł."
+    first = "Użyj kalkulatora i podaj koszt całości z dostawą."
+    correction = "Cena jednej wzrosła do 27 zł. Zmieniam też dostawę na darmowy odbiór. Użyj kalkulatora."
+    final = "Napisz SMS z aktualną liczbą, ceną jednej, sposobem odbioru i sumą."
+    backend, model, reviewer = Sources(), Model(), Reviewer()
+    history = ({"role": "user", "content": base},)
+    requirements = Requirements(calculation=True)
+    before = run_pilot_turn(
+        first, "a", backend, model, reviewer, history=history, required=requirements
+    )
+    assert isinstance(before, PilotExplicitTotalAnswer)
+    assert before.explicit_total_receipt.calculation.value == "141"
+    history += (
+        {"role": "user", "content": first},
+        {"role": "assistant", "content": "Z dostawą 160 zł."},
+    )
+    after = run_pilot_turn(
+        correction,
+        "b",
+        backend,
+        model,
+        reviewer,
+        history=history,
+        required=requirements,
+    )
+    assert isinstance(after, PilotExplicitTotalAnswer)
+    assert after.explicit_total_receipt.calculation.expression == "5*27+0"
+    assert after.text == "Łącznie 135 zł (5 desek po 27, darmowy odbiór)."
+    history += ({"role": "user", "content": correction},)
+    assert plain_pilot_recap(
+        final, history, explicit_total_receipt=after.explicit_total_receipt
+    ) == ("5 desek po 27 zł, darmowy odbiór. Razem 135 zł.")
+    assert plain_pilot_recap(
+        final, history, explicit_total_receipt=before.explicit_total_receipt
+    ) == ("Po zmianie danych potrzebuję aktualnego wyniku kalkulatora.")
+    assert not model.calls
+
+
+def test_explicit_group_keeps_an_included_caregiver_and_ignores_cancelled_children():
+    base = "W grupie wycieczkowej jest 16 dorosłych, 7 dzieci. Jedna opiekunka wlicza się już do dorosłych."
+    join = "Dołącza 3 dzieci, dorośli bez zmian. Kalkulatorem policz całą grupę."
+    correction = "Dwóch dorosłych odwołało obecność. Próba dopisania dwojga dzieci nieaktualna. Użyj kalkulatora ponownie."
+    backend, model, reviewer = Sources(), Model(), Reviewer()
+    history = ({"role": "user", "content": base},)
+    first = run_pilot_turn(
+        join,
+        "a",
+        backend,
+        model,
+        reviewer,
+        history=history,
+        required=Requirements(calculation=True),
+    )
+    assert isinstance(first, PilotExplicitTotalAnswer)
+    assert first.explicit_total_receipt.calculation.value == "26"
+    history += ({"role": "user", "content": join},)
+    after = run_pilot_turn(
+        correction,
+        "b",
+        backend,
+        model,
+        reviewer,
+        history=history,
+        required=Requirements(calculation=True),
+    )
+    assert isinstance(after, PilotExplicitTotalAnswer)
+    assert after.explicit_total_receipt.calculation.expression == "14+10"
+    assert (
+        after.text
+        == "Łącznie 24 osoby (14 dorosłych, w tym opiekunka, oraz 10 dzieci)."
+    )
+    history += ({"role": "user", "content": correction},)
+    assert (
+        plain_pilot_recap(
+            "Podaj ile dorosłych, ile dzieci i czy opiekunka jest liczbą dodatkową.",
+            history,
+            explicit_total_receipt=after.explicit_total_receipt,
+        )
+        == "14 dorosłych i 10 dzieci. Opiekunka jest już wliczona do dorosłych."
+    )
+    assert not model.calls
+
+
+def test_explicit_group_does_not_bind_unconfirmed_composition():
+    base = "W grupie jest 2 dorosłych, 7 dzieci. Jedna opiekunka wlicza się już do dorosłych."
+    join = "Dołącza 3 dzieci, dorośli bez zmian. Kalkulatorem policz całą grupę."
+    correction = "Dwóch dorosłych odwołało obecność. Próba dopisania dwojga dzieci nieaktualna. Użyj kalkulatora ponownie."
+    assert bind_explicit_total((base, join, correction)) is None
+    assert bind_explicit_total((base, "Dołącza 3 dzieci, dorośli bez zmian.")) is None

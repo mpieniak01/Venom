@@ -56,10 +56,19 @@ from venom_core.services.grounded_duration import (
     PilotDurationAnswer,
     bind_duration,
 )
+from venom_core.services.grounded_explicit_totals import (
+    ExplicitTotalReceipt,
+    GroupTotal,
+    OrderTotal,
+    PilotExplicitTotalAnswer,
+    bind_explicit_total,
+    total_identity,
+)
 from venom_core.services.grounded_presentation import (
     ROUNDING_MODE,
     clean_bookkeeping_spacing,
     normalize_claim,
+    people_noun,
     requested_precision,
     rounded_value,
 )
@@ -1657,7 +1666,7 @@ def _plain_booking_recap(history: tuple[dict[str, str], ...]) -> str | None:
     required = _booking_decision(result, day)
     if required is None:
         return None
-    noun = _people_noun(size)
+    noun = people_noun(size)
     return f"{day.capitalize()}, {size} {noun}, zapis {'obowiązkowy' if required else 'niewymagany'}."
 
 
@@ -1682,14 +1691,6 @@ def _booking_decision(result: str, day: str) -> bool | None:
             if _BOOKING_REQUIRED.search(_BOOKING_OPTIONAL.sub("", candidate)):
                 decisions.add(True)
     return decisions.pop() if len(decisions) == 1 else None
-
-
-def _people_noun(size: int) -> str:
-    if size == 1:
-        return "osoba"
-    if size % 10 in (2, 3, 4) and size % 100 not in (12, 13, 14):
-        return "osoby"
-    return "osób"
 
 
 _ROOM = re.compile(r"\bsal[aię]\b\s*:?\s*", re.IGNORECASE)
@@ -2111,10 +2112,15 @@ def plain_pilot_recap(
     *,
     duration_receipt: DurationReceipt | None = None,
     price_mean_receipts: tuple[PriceMeanReceipt, ...] = (),
+    explicit_total_receipt: ExplicitTotalReceipt | None = None,
 ) -> str | None:
     """Retain verified decisions and event roles from the selected exception."""
-    if price_mean_receipts or duration_receipt is not None:
-        users = tuple(item["content"] for item in focused if item["role"] == "user")
+    users = tuple(item["content"] for item in focused if item["role"] == "user")
+    if explicit_total_receipt is not None:
+        recap = explicit_total_receipt.recap(message, users)
+        if recap is not None:
+            return recap
+    if price_mean_receipts:
         price_recap = price_mean_recap(message, users, price_mean_receipts)
         if price_recap is not None:
             return price_recap
@@ -2231,6 +2237,7 @@ class _DeterministicAnswer:
     stock: tuple[Calculation, str, tuple[_StockValue, ...]] | None = None
     duration: DurationState | None = None
     price_mean: PriceMeanState | None = None
+    explicit_total: OrderTotal | GroupTotal | None = None
 
 
 @dataclass(frozen=True)
@@ -2368,6 +2375,17 @@ def _deterministic_answer(
                 unit="zł",
             ),
             price_mean=price_mean,
+        )
+    explicit_total = bind_explicit_total((*prior_users, message))
+    if explicit_total is not None:
+        calculation_id, unit = total_identity(explicit_total)
+        return _DeterministicAnswer(
+            calculation=Calculation(
+                calculation_id=calculation_id,
+                expression=explicit_total.expression,
+                unit=unit,
+            ),
+            explicit_total=explicit_total,
         )
     stock = _stock_calculation((*prior_users, message))
     calculation = _explicit_mean(message) or _explicit_length_conversion(message)
@@ -2680,6 +2698,10 @@ def _pilot_draft(
     places = proof.result.places
     if deterministic.order is not None:
         return _order_draft(calculation, deterministic.order, places)
+    if deterministic.explicit_total is not None:
+        output = _length_draft(calculation, places)
+        prose = deterministic.explicit_total.details(calculation.value, final=False)
+        return output.model_copy(update={"prose": prose})
     if calculation.calculation_id in {
         "length_conversion",
         "average_speed",
@@ -2892,4 +2914,9 @@ def run_pilot_turn(
             (*turn.prior_users, message), deterministic.price_mean, proof.evidence
         )
         return PilotPriceMeanAnswer(proof.evidence_id, draft.prose, price_receipt)
+    if deterministic.explicit_total is not None and proof.evidence is not None:
+        total_receipt = ExplicitTotalReceipt.from_evidence(
+            (*turn.prior_users, message), deterministic.explicit_total, proof.evidence
+        )
+        return PilotExplicitTotalAnswer(proof.evidence_id, draft.prose, total_receipt)
     return PublishedAnswer(proof.evidence_id, draft.prose)

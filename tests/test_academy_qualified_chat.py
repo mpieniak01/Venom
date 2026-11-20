@@ -1081,7 +1081,7 @@ def test_explanation_stream_preserves_user_topic_after_marked_truncation(studio_
     assert all(
         payload["stream"] and payload["max_tokens"] == 96 for payload in (one, two)
     )
-    assert "trzech krótkich zdaniach" in one["messages"][0]["content"]
+    assert "Dwa krótkie zdania" in one["messages"][0]["content"]
     assert "Zachowaj zjawisko" in two["messages"][0]["content"]
     assert {"role": "user", "content": first} in two["messages"]
     assert "Jedyny niedokończony szkic" not in str(two["messages"])

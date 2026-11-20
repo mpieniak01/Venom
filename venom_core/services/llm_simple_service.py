@@ -1556,7 +1556,9 @@ async def _stream_non_openrouter_chat(
         request, model_name.casefold()
     ) and _qualified_request(request, runtime)
     if qualified_studio and complete_reply is None:
-        hint = explanation_hint(request.content, request.history)
+        hint = explanation_hint(
+            request.content, request.history, token_budget=request.max_tokens
+        )
         system_prompt = "\n\n".join(filter(None, (system_prompt, hint)))
     rewrite = complete_reply.rewrite if complete_reply else None
     if rewrite is not None:

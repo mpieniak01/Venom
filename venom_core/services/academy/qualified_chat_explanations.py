@@ -32,6 +32,11 @@ _COMPACT = (
     "Zmieść całość w najwyżej trzech krótkich zdaniach. "
     "Bez wstępu, listy i osobnego podsumowania."
 )
+_TIGHT_BUDGET = (
+    "Dwa krótkie zdania, razem najwyżej 32 słowa. W pierwszym zdaniu podaj "
+    "mechanizm, w drugim pokaż go na wymaganym przykładzie. "
+    "Bez wstępu, listy i podsumowania."
+)
 _CHANGE_ONLY = (
     "Zachowaj zjawisko z poprzedniej prośby użytkownika. Zmień tylko przykład. "
     "Wyjaśnij to samo zjawisko od początku na nowym przykładzie. "
@@ -45,14 +50,19 @@ def changes_example(text: str) -> bool:
     )
 
 
-def explanation_hint(text: str, history: Sequence[HistoryMessage]) -> str:
+def explanation_hint(
+    text: str, history: Sequence[HistoryMessage], *, token_budget: int | None = None
+) -> str:
     visible = without_quotes(text)
     if is_text_transformation(text) or _USER_FORMAT.search(visible):
         return ""
+    compact = (
+        _TIGHT_BUDGET if token_budget is not None and token_budget <= 96 else _COMPACT
+    )
     if changes_example(text):
         last_user = next(
             (turn.content for turn in reversed(history) if turn.role == "user"), ""
         )
         if _EXPLAIN.search(without_quotes(last_user)):
-            return f"{_CHANGE_ONLY} {_COMPACT}"
-    return _COMPACT if _EXPLAIN.search(visible) else ""
+            return f"{_CHANGE_ONLY} {compact}"
+    return compact if _EXPLAIN.search(visible) else ""

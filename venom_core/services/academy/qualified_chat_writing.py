@@ -19,10 +19,12 @@ _REVISION = re.compile(
     r"\b(?:sformułuj|sformułowani\w*|gotowe zdanie|przeredaguj)\b",
     re.I,
 )
-_SINGLE_CHOICE = re.compile(
-    r"(?<!nie )\b(?:wybierz (?:coś|jedną opcję|jedną propozycję)|"
-    r"(?:jak (?:zastosować|wykonać|wdrożyć)|doprecyzuj|dostosuj|rozwiń) "
-    r"(?:tę|tą) (?:propozycję|opcję))\b",
+_SINGLE_SELECTION = re.compile(
+    r"(?<!nie )\bwybierz (?:coś|jedną opcję|jedną propozycję)\b", re.I
+)
+_SINGLE_ADAPTATION = re.compile(
+    r"(?<!nie )\b(?:jak (?:zastosować|wykonać|wdrożyć)|doprecyzuj|dostosuj|rozwiń) "
+    r"(?:tę|tą) (?:propozycję|opcję)\b",
     re.I,
 )
 _COMPARISON = re.compile(
@@ -78,15 +80,22 @@ def writing_hint(text: str) -> str:
     )
 
 
-def single_choice_follow_up(text: str) -> bool:
-    """Identify a selection or adaptation of one earlier proposal."""
-    return bool(_SINGLE_CHOICE.search(without_quotes(text)))
+def selects_one_proposal(text: str) -> bool:
+    """Identify a request to select one option from an earlier list."""
+    return bool(_SINGLE_SELECTION.search(without_quotes(text)))
 
 
 def ordinary_reply_hint(text: str) -> str:
     """Keep short Studio turns complete and responsive to the latest request."""
     visible = without_quotes(text)
     hints = [_ORDINARY_BUDGET_HINT]
+    if _SINGLE_ADAPTATION.search(visible):
+        hints.append(
+            "Podaj jeden konkretny sposób wykonania wcześniej wybranej czynności "
+            "w jednym krótkim zdaniu. Wskaż, co użytkownik ma zrobić i na czym "
+            "ma się skupić. Uwzględnij ostatnie ograniczenie. "
+            "Pomiń samą nazwę czynności i pozostałe propozycje."
+        )
     if _COMPOUND_REQUEST.search(visible):
         hints.append(
             "Spełnij każdą część polecenia. Przy zmianie jednego pola "

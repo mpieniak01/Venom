@@ -223,7 +223,8 @@ async def prepare_studio_normal(
                     "Podaj nagłówek po polsku. Jeżeli wskazuje, kto powiedział, "
                     "poinformował lub ogłosił, podaj tę osobę lub instytucję "
                     "w osobnym polu «Atrybucja». Zachowaj tę informację także przy "
-                    "tłumaczeniu końcówki «said» lub «says». "
+                    "tłumaczeniu końcówki «said» lub «says». Przetłumacz opis "
+                    "funkcji albo instytucji w atrybucji, zachowując nazwy własne. "
                     "Dołącz pole «Data publikacji» z datą źródła i pole «Link» "
                     "z pełnym URL pozycji."
                 )

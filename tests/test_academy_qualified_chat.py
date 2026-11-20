@@ -1517,16 +1517,19 @@ def test_studio_current_news_keeps_source_response_in_standard_stream(
 def test_studio_short_choice_states_complete_answer_before_explanation():
     from venom_core.services.academy.qualified_chat_writing import (
         ordinary_reply_hint,
-        single_choice_follow_up,
+        selects_one_proposal,
     )
 
     hint = ordinary_reply_hint("Wybierz coś, co zadziała bez słuchawek.")
     assert "wynik z jednostką ma poprzedzać objaśnienie" in hint
-    assert single_choice_follow_up("Wybierz coś, co zadziała bez słuchawek.")
-    assert single_choice_follow_up("Jak zastosować tę propozycję?")
-    assert not single_choice_follow_up("Rozważ zdanie „Wybierz coś” w cudzysłowie.")
-    assert not single_choice_follow_up("Odrzuć tę propozycję i wymień trzy inne.")
-    assert not single_choice_follow_up("Nie wybierz jednej opcji losowo.")
+    assert selects_one_proposal("Wybierz coś, co zadziała bez słuchawek.")
+    assert not selects_one_proposal("Jak zastosować tę propozycję?")
+    assert "jeden konkretny sposób" in ordinary_reply_hint(
+        "Jak zastosować tę propozycję?"
+    )
+    assert not selects_one_proposal("Rozważ zdanie „Wybierz coś” w cudzysłowie.")
+    assert not selects_one_proposal("Odrzuć tę propozycję i wymień trzy inne.")
+    assert not selects_one_proposal("Nie wybierz jednej opcji losowo.")
     assert "tryb uprzejmej prośby" in ordinary_reply_hint(
         "Oddaj tę samą prośbę po polsku."
     )
@@ -1573,7 +1576,7 @@ def test_studio_replaces_earlier_list_with_one_concrete_adaptation(studio_chat):
         native('{"options":["Wybierz przedmiot i nazwij w myślach jego kolor."]}')
     )
     result = chat(
-        "Jak zastosować tę propozycję bez spoglądania na ludzi?",
+        "Wybierz coś, co mogę zrobić bez spoglądania na ludzi.",
         history=[
             turn("Podaj dwie propozycje na przerwę."),
             turn("1. Obserwuj otoczenie. 2. Pomyśl o trasie spaceru.", "assistant"),

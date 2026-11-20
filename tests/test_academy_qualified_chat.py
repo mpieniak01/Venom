@@ -739,13 +739,22 @@ def test_single_advice_gets_a_causal_hint_without_a_schema(studio_chat):
     chat, sent, replies = studio_chat
     replies.append(streamed("Włącz wentylację."))
     assert (
-        chat("Podaj jeden prosty sposób na ograniczenie parowania lustra.")
+        chat(
+            "Podaj jeden prosty sposób na ograniczenie parowania lustra.",
+            history=[
+                turn("Czemu paruje lustro?"),
+                turn("Para wodna styka się z chłodnym lustrem.", "assistant"),
+            ],
+        )
         == "Włącz wentylację."
     )
     call = sent[0]
     assert call["completions_url"].endswith("/v1/chat/completions")
     assert "format" not in call["payload"]
-    assert "wpływa na przyczynę" in call["payload"]["messages"][0]["content"]
+    assert (
+        "czynnik z poprzedniego wyjaśnienia"
+        in call["payload"]["messages"][0]["content"]
+    )
 
 
 def test_truncated_options_keep_the_length_diagnosis_after_one_retry(studio_chat):
@@ -763,3 +772,11 @@ def test_truncated_options_keep_the_length_diagnosis_after_one_retry(studio_chat
 def test_explicit_single_choice_or_choice_with_restrictions_stays_checked():
     assert prepare_reply("Podaj dokładnie jeden sposób.", []).requires_complete_draft
     assert prepare_reply("Podaj jeden sposób bez zdjęć.", []).requires_complete_draft
+
+
+def test_single_advice_without_prior_cause_does_not_assume_a_mechanism():
+    route = prepare_reply(
+        "Podaj jeden prosty sposób na ograniczenie parowania lustra.", []
+    )
+    assert not route.requires_complete_draft
+    assert not route.hint

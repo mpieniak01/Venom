@@ -144,6 +144,9 @@ _SHORT_DRAFT = re.compile(
 _SINGLE_ADVICE = re.compile(
     r"\b(?:jeden|jedną)\b[^.!?]{0,40}\b(?:sposób|metodę)\b", re.I
 )
+_CAUSE_QUESTION = re.compile(
+    r"\b(?:czemu|dlaczego|co powoduje|skąd się bierze|jaka jest przyczyna)\b", re.I
+)
 _STRICT_COUNT = re.compile(r"\b(?:dokładnie|wyłącznie|tylko|jedynie)\b", re.I)
 _STRICT_TIME = re.compile(
     r"\b(?:mniej|krócej|krótsz[aeąy]) niż (?:jedną |1 )?minut[ęy]\b", re.I
@@ -437,10 +440,12 @@ def prepare_reply(text: str, history: Sequence[HistoryMessage]) -> QualifiedRepl
         and not _STRICT_COUNT.search(text)
     ):
         count = None
-        hint += (
-            " Podaj jeden wykonalny krok, który wpływa na przyczynę problemu z rozmowy. "
-            "Zachowaj wskazany moment działania i pomiń dodatkowe metody."
-        )
+        if users and _CAUSE_QUESTION.search(users[-1]):
+            hint += (
+                " Podaj jedną krótką czynność na wskazany moment. Wybierz czynnik "
+                "z poprzedniego wyjaśnienia i powiedz, co ta czynność w nim zmienia "
+                "przed wystąpieniem zjawiska. Korzystaj z przyczyn już podanych w rozmowie."
+            )
     if time_bound:
         hint += (
             " Zwróć jedno krótkie polecenie bez czasu w polu action, a czas krótszy niż minuta w seconds. "

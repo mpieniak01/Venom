@@ -8,7 +8,7 @@ from collections.abc import Sequence
 from venom_core.api.schemas.llm_simple import HistoryMessage
 from venom_core.services.academy.qualified_chat_irrigation import irrigation_reply
 from venom_core.services.academy.qualified_chat_quote import (
-    wants_rewrite,
+    is_text_transformation,
     without_quotes,
 )
 from venom_core.services.academy.qualified_chat_sources import card_link, read_card
@@ -228,7 +228,7 @@ def _ventilation_reply(text: str, users: Sequence[str]) -> str | None:
 
 
 def evidence_reply(question: str, history: Sequence[HistoryMessage]) -> str | None:
-    if wants_rewrite(question):
+    if is_text_transformation(question):
         return None
     text = _normalized(question)
     users = _active_topic(

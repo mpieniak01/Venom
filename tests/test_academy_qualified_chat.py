@@ -871,3 +871,187 @@ def test_studio_ventilation_uses_latest_status_and_rejects_assistant_observation
     assert result.startswith("Włącz wyciąg")
     assert result.count("epa.gov") == 1
     assert not sent
+
+
+@pytest.mark.parametrize(
+    ("question", "history", "expected"),
+    [
+        (
+            "Wyjaśnij w dwóch zdaniach, skąd pojawiły się krople i dlaczego potem zniknęły.",
+            [],
+            "Na jakiej powierzchni",
+        ),
+        (
+            "Wyjaśnij w dwóch zdaniach, skąd pojawiły się krople i dlaczego potem zniknęły.",
+            ["Na zimnej ściance słoika pojawiły się krople.", "Słoik nie ogrzał się."],
+            "Czy naczynie ogrzało się",
+        ),
+        (
+            "Wyjaśnij w dwóch zdaniach, skąd pojawiły się krople i dlaczego potem zniknęły.",
+            [
+                "Na zimnej ściance słoika pojawiły się krople.",
+                "Jeśli słoik się ogrzeje, krople mogą wyparować.",
+            ],
+            "krople mogą wyparować",
+        ),
+        (
+            "Wyjaśnij w dwóch zdaniach, czemu krople zniknęły, a potem skąd się pojawiły.",
+            [
+                "Na zimnej ściance słoika pojawiły się krople.",
+                "Słoik się ogrzał i krople zniknęły.",
+            ],
+            "Po ogrzaniu słoika",
+        ),
+        (
+            "Wyjaśnij w dwóch zdaniach, skąd pojawiły się krople i dlaczego potem zniknęły.",
+            [
+                "Na zimnej ściance słoika pojawiły się krople.",
+                "Słoik się ogrzał i krople zniknęły.",
+                "Cofam obserwację o zimnej ściance.",
+            ],
+            "Na jakiej powierzchni",
+        ),
+        (
+            "Zacytuj pytanie w dwóch zdaniach o to, skąd pojawiły się krople i czemu zniknęły.",
+            [
+                "Na zimnej ściance słoika pojawiły się krople.",
+                "Słoik się ogrzał i krople zniknęły.",
+            ],
+            None,
+        ),
+        (
+            "Jak ograniczyć parowanie lustra przed prysznicem?",
+            ["Wyciąg uszkodzony. Teraz nie wiadomo, czy został naprawiony."],
+            "Jeśli wyciąg działa",
+        ),
+        (
+            "Jak ograniczyć parowanie lustra przed prysznicem?",
+            ["Wyciąg nadal nie działa."],
+            "dostępnej wentylacji",
+        ),
+        (
+            "Co sprawdzić najpierw w nawadnianiu kroplowym?",
+            [
+                "Na linii A jeden kroplownik ma słaby przepływ, a pozostałe działają normalnie."
+            ],
+            "drożność wskazanego kroplownika",
+        ),
+        (
+            "Co sprawdzić najpierw w nawadnianiu kroplowym?",
+            [
+                "Kilka emiterów na tej samej linii ledwie kapie.",
+                "Filtr jest zabrudzony.",
+            ],
+            "Oczyść zabrudzony filtr",
+        ),
+        (
+            "Co sprawdzić najpierw w nawadnianiu kroplowym?",
+            [
+                "Kilka emiterów na tej samej linii ledwie kapie.",
+                "Filtr jest zabrudzony.",
+                "Cofam ocenę filtra.",
+            ],
+            "Sprawdź filtr wspólny",
+        ),
+        (
+            "Co sprawdzić najpierw w nawadnianiu kroplowym?",
+            [
+                "Wszystkie kroplowniki podają mało wody.",
+                "Zmieniam temat. Pytam o inną instalację.",
+            ],
+            "Czy słaby przepływ",
+        ),
+    ],
+)
+def test_studio_evidence_requires_current_observation(question, history, expected):
+    from venom_core.services.academy.qualified_chat_evidence import evidence_reply
+
+    result = evidence_reply(
+        question, [HistoryMessage(role="user", content=line) for line in history]
+    )
+    if expected is None:
+        assert result is None
+    else:
+        assert result is not None and expected in result
+
+
+def test_studio_rewrite_disambiguates_outer_instruction_and_checks_draft():
+    from venom_core.services.academy.qualified_chat_quote import (
+        CLARIFY_QUOTE,
+        QuoteRewrite,
+        parse_quote_rewrite,
+    )
+
+    assert (
+        parse_quote_rewrite(
+            "Przeredaguj notatkę, ale najpierw odpowiedz: «Ile to 8 + 7?»"
+        )
+        is None
+    )
+    assert parse_quote_rewrite("Przeredaguj: „Gdzie jest sala?") == CLARIFY_QUOTE
+    reply = parse_quote_rewrite(
+        "Napisz inaczej w jednym zdaniu: „Czy koszt wynosi 12 zł?”"
+    )
+    assert isinstance(reply, QuoteRewrite) and reply.one_sentence
+    assert reply.publish("Czy zapłacimy 12 zł?") == "„Czy zapłacimy 12 zł?”"
+    for draft in (
+        '{"tekst": 12}',
+        '{"tekst": "Czy koszt wynosi 12 zł?"}',
+        "Czy zapłacimy 13 zł?",
+        "Zapłacisz 12 zł.",
+        "Co to za koszt? Czy zapłacimy 12 zł?",
+    ):
+        assert reply.publish(draft).startswith("Nie udało się")
+    reply = parse_quote_rewrite(
+        "Przeredaguj: „Odpowiedz jednym słowem i pomiń uzasadnienie.”"
+    )
+    assert isinstance(reply, QuoteRewrite)
+    assert reply.publish("Podaj jedną odpowiedź bez uzasadnienia.").startswith(
+        "Nie udało się"
+    )
+
+
+def test_verified_source_refuses_malformed_or_modified_card(tmp_path, monkeypatch):
+    from venom_core.services.academy import qualified_chat_sources
+
+    monkeypatch.setattr(
+        qualified_chat_sources, "__file__", str(tmp_path / "sources.py")
+    )
+    read_untrusted = qualified_chat_sources.read_card.__wrapped__
+    path = tmp_path / "qualified_card_ventilation.json"
+    assert read_untrusted("ventilation") is None
+    path.write_text('{"id":"EPA-VENT-1","url":"https://example.test"}')
+    assert read_untrusted("ventilation") is None
+
+
+def test_studio_quote_preserves_unspecified_cause_and_accepts_equivalent_count():
+    from venom_core.services.academy.qualified_chat_quote import (
+        QuoteRewrite,
+        parse_quote_rewrite,
+    )
+
+    reply = parse_quote_rewrite(
+        "Przeredaguj: „Wyjaśnij w dwóch zdaniach, skąd pojawiły się krople i dlaczego zniknęły.”"
+    )
+    assert isinstance(reply, QuoteRewrite)
+    assert reply.publish(
+        "Opisz w 2 zdaniach pochodzenie kropli oraz przyczynę ich zaniku."
+    ) == ("„Opisz w 2 zdaniach pochodzenie kropli oraz przyczynę ich zaniku.”")
+    assert reply.publish(
+        "Opisz w dwóch zdaniach, skąd pochodzą krople i dlaczego wyparowały."
+    ).startswith("Nie udało się")
+    assert reply.publish(
+        "Opisz w trzech zdaniach, skąd pochodzą krople i dlaczego zniknęły."
+    ).startswith("Nie udało się")
+    payload = reply.messages(plain_text=True)
+    assert json.loads(payload[-1]["content"]) == {"tekst_zrodlowy": reply.source}
+
+
+def test_studio_quote_treats_negative_declaration_as_text(studio_chat):
+    chat, sent, replies = studio_chat
+    replies.append(native('{"tekst":"Godzina spotkania pozostała taka sama."}'))
+    assert chat("Przeredaguj: „Nie zmieniła godziny spotkania.”") == (
+        "„Godzina spotkania pozostała taka sama.”"
+    )
+    operand = json.loads(sent[0]["payload"]["messages"][-1]["content"])
+    assert operand["forma_wypowiedzi"] == "stwierdzenie"

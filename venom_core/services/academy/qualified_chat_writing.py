@@ -20,7 +20,8 @@ _REVISION = re.compile(
     re.I,
 )
 _SINGLE_CHOICE = re.compile(
-    r"\b(?:wybierz (?:coś|jedną opcję|jedną propozycję)|"
+    r"(?<!nie )\b(?:wybierz (?:coś|jedną opcję|jedną propozycję)|"
+    r"(?:jak (?:zastosować|wykonać|wdrożyć)|doprecyzuj|dostosuj|rozwiń) "
     r"(?:tę|tą) (?:propozycję|opcję))\b",
     re.I,
 )
@@ -29,6 +30,9 @@ _COMPARISON = re.compile(
     r"porównaj|która wersja)\b",
     re.I,
 )
+_COMPOUND_REQUEST = re.compile(r"\b(?:przy okazji|dodatkowo|oprócz tego)\b", re.I)
+_SAME_REQUEST = re.compile(r"\b(?:tę samą|tę samą uprzejmą) prośbę\b", re.I)
+_NARROW_REVISION = re.compile(r"\b(?:już tylko|wyłącznie|tylko i wyłącznie)\b", re.I)
 _ORDINARY_BUDGET_HINT = (
     "Zacznij od odpowiedzi na ostatnie pytanie. "
     "Jeśli podajesz wartość, wynik z jednostką ma poprzedzać objaśnienie. "
@@ -74,14 +78,24 @@ def writing_hint(text: str) -> str:
     )
 
 
+def single_choice_follow_up(text: str) -> bool:
+    """Identify a selection or adaptation of one earlier proposal."""
+    return bool(_SINGLE_CHOICE.search(without_quotes(text)))
+
+
 def ordinary_reply_hint(text: str) -> str:
     """Keep short Studio turns complete and responsive to the latest request."""
     visible = without_quotes(text)
     hints = [_ORDINARY_BUDGET_HINT]
-    if _SINGLE_CHOICE.search(visible):
+    if _COMPOUND_REQUEST.search(visible):
         hints.append(
-            "Wybierz lub dopracuj jedną czynność zgodną z wykluczeniami. "
-            "Pomiń wcześniejszą listę propozycji."
+            "Spełnij każdą część polecenia. Przy zmianie jednego pola "
+            "podaj też pozostałe ustalenia, których zmiana nie dotyczy."
+        )
+    if _SAME_REQUEST.search(visible):
+        hints.append(
+            "Zachowaj tryb uprzejmej prośby skierowanej do odbiorcy. "
+            "Treść ma pozostać prośbą po zmianie języka."
         )
     if _REVISION.search(visible) and not _MULTIPLE_DRAFTS.search(visible):
         hints.append(
@@ -89,6 +103,11 @@ def ordinary_reply_hint(text: str) -> str:
             "W zachowanej treści przenieś dokładne liczby i warunki "
             "użytkownika. Usuń części, z których użytkownik zrezygnował."
         )
+        if _NARROW_REVISION.search(visible):
+            hints.append(
+                "Zostaw tylko wskazany składnik. Opuść resztę wcześniejszych "
+                "ustaleń, w tym wcześniejsze obowiązki spoza nowego zakresu."
+            )
     if visible != text and _COMPARISON.search(visible):
         hints.append(
             "Wyjaśnij znaczenie obu przytoczonych wersji, a potem uzasadnij "

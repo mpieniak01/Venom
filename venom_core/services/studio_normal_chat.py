@@ -220,7 +220,10 @@ async def prepare_studio_normal(
             if is_current_news_request(request.content):
                 policy += (
                     " Przy odczycie nagłówka zacznij od «Nagłówek RSS». "
-                    "Podaj nagłówek po polsku. Zachowaj wskazanego autora wypowiedzi. "
+                    "Podaj nagłówek po polsku. Jeżeli wskazuje, kto powiedział, "
+                    "poinformował lub ogłosił, podaj tę osobę lub instytucję "
+                    "w osobnym polu «Atrybucja». Zachowaj tę informację także przy "
+                    "tłumaczeniu końcówki «said» lub «says». "
                     "Dołącz pole «Data publikacji» z datą źródła i pole «Link» "
                     "z pełnym URL pozycji."
                 )

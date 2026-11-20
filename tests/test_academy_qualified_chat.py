@@ -1515,13 +1515,20 @@ def test_studio_current_news_keeps_source_response_in_standard_stream(
 
 
 def test_studio_short_choice_states_complete_answer_before_explanation():
-    from venom_core.services.academy.qualified_chat_writing import ordinary_reply_hint
+    from venom_core.services.academy.qualified_chat_writing import (
+        ordinary_reply_hint,
+        single_choice_follow_up,
+    )
 
     hint = ordinary_reply_hint("Wybierz coś, co zadziała bez słuchawek.")
     assert "wynik z jednostką ma poprzedzać objaśnienie" in hint
-    assert "jedną czynność zgodną z wykluczeniami" in hint
-    assert "jedną czynność" not in ordinary_reply_hint(
-        "Rozważ zdanie „Wybierz coś” w cudzysłowie."
+    assert single_choice_follow_up("Wybierz coś, co zadziała bez słuchawek.")
+    assert single_choice_follow_up("Jak zastosować tę propozycję?")
+    assert not single_choice_follow_up("Rozważ zdanie „Wybierz coś” w cudzysłowie.")
+    assert not single_choice_follow_up("Odrzuć tę propozycję i wymień trzy inne.")
+    assert not single_choice_follow_up("Nie wybierz jednej opcji losowo.")
+    assert "tryb uprzejmej prośby" in ordinary_reply_hint(
+        "Oddaj tę samą prośbę po polsku."
     )
     assert "zachowaj liczbę adresatów" in ordinary_reply_hint("Podaj gotowe zdanie.")
 
@@ -1555,3 +1562,24 @@ def test_native_quote_rewrite_keeps_sentence_count_attached_to_instruction():
     assert rewrite.publish("Opisz w dwóch zdaniach przyczynę ustania deszczu.") == (
         "„Opisz w dwóch zdaniach przyczynę ustania deszczu.”"
     )
+
+
+@pytest.mark.parametrize(
+    "studio_chat", [QUALIFIED_MODEL, QUALIFIED_BOLT_MODEL], indirect=True
+)
+def test_studio_replaces_earlier_list_with_one_concrete_adaptation(studio_chat):
+    chat, sent, upstream = studio_chat
+    upstream.append(
+        native('{"options":["Wybierz przedmiot i nazwij w myślach jego kolor."]}')
+    )
+    result = chat(
+        "Jak zastosować tę propozycję bez spoglądania na ludzi?",
+        history=[
+            turn("Podaj dwie propozycje na przerwę."),
+            turn("1. Obserwuj otoczenie. 2. Pomyśl o trasie spaceru.", "assistant"),
+        ],
+    )
+    assert result == "Wybierz przedmiot i nazwij w myślach jego kolor."
+    request = sent[-1]["payload"]
+    assert request["format"]["properties"]["options"]["maxItems"] == 1
+    assert "konkretną wskazówkę" in request["messages"][0]["content"]

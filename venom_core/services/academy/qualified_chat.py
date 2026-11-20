@@ -29,6 +29,7 @@ from venom_core.services.academy.qualified_chat_quote import (
     parse_quote_rewrite,
 )
 from venom_core.services.academy.qualified_chat_schedule import route_shift
+from venom_core.services.academy.qualified_chat_writing import single_choice_follow_up
 
 QUALIFIED_MODEL = "gemma4:12b-it-q4_k_m"
 QUALIFIED_BOLT_MODEL = "hf.co/nvidia/nvidia-nemotron-3.5-bolt-e4b-4gb:q4_k_m"
@@ -432,6 +433,20 @@ def prepare_studio_reply(
         return QualifiedReply(local_text=answer)
     if explanation := checked_explanation(text, history, token_budget=token_budget):
         return QualifiedReply(local_text=explanation.text())
+    if history and single_choice_follow_up(text):
+        messages = [{"role": turn.role, "content": turn.content} for turn in history]
+        messages.append({"role": "user", "content": text})
+        restrictions = active_constraints(messages)
+        return QualifiedReply(
+            count=CountRequirement("exact", 1),
+            restrictions=restrictions,
+            hint=(
+                f"{_format_hint(text, restrictions)} "
+                "Zapisz w tablicy options jedną krótką odpowiedź. "
+                "Podaj konkretną wskazówkę wykonania zgodną z najnowszym warunkiem. "
+                "Pomiń pozostałe wcześniejsze propozycje i samą nazwę czynności."
+            ).strip(),
+        )
     return None
 
 

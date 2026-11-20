@@ -147,6 +147,7 @@ def fit_hint(text: str, history: Sequence[HistoryMessage]) -> str:
         return (
             f"Aktualne porównanie boków wynosi {comparisons}. "
             f"Przedmiot {outcome} bez składania. "
-            "Wybierz właściwą opcję zgodnie z regułą użytkownika."
+            "Zacznij od nazwy miejsca lub wyboru zgodnego z regułą użytkownika. "
+            "Uzasadnij go krótko decydującym porównaniem i zakończ odpowiedź."
         )
     return ""

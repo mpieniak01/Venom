@@ -1,5 +1,6 @@
 """Prepare the lightweight Studio Normal stream from persisted chat and notes."""
 
+import re
 from collections.abc import Awaitable, Callable
 from typing import Any
 
@@ -51,8 +52,14 @@ _RETRIEVED_SOURCE_POLICY = (
     "odnośnik. Przy pytaniu o fakt pomiń komentarz o zgodzie i wyszukiwaniu. "
     "Jeżeli szukanej informacji nie ma we fragmencie, nazwij brakujące pole."
 )
+_SHORT_SOURCE_REQUEST = re.compile(
+    r"\b(?:krótko|zwięźle|(?:jedno|dwa) krótkie zdani\w*|"
+    r"w (?:jednym|dwóch)(?: krótkim| krótkich)? zdani\w*)\b",
+    re.I,
+)
 _SHORT_SOURCE_POLICY = (
     " Przy krótkiej odpowiedzi podaj tylko żądane fakty i pełny URL źródła. "
+    "Skopiuj pełny adres ze źródła zamiast samego numeru przypisu. "
     "Użyj zdania źródła, które dotyczy dokładnie pytanego faktu. "
     "Pomiń wstęp, powtarzane przypisy i czas odczytu, jeśli o niego nie proszono."
 )
@@ -228,7 +235,7 @@ async def prepare_studio_normal(
                     "Dołącz pole «Data publikacji» z datą źródła i pole «Link» "
                     "z pełnym URL pozycji."
                 )
-            if output_tokens <= 128:
+            if output_tokens <= 128 or _SHORT_SOURCE_REQUEST.search(request.content):
                 policy += _SHORT_SOURCE_POLICY
         if len(policy) + 1 + len(source_context) <= remaining:
             source_context = f"{policy}\n{source_context}"

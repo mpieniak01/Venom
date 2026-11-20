@@ -30,6 +30,19 @@ _QUOTED_TASK = re.compile(
     r"napisz inaczej|sformułuj inaczej)\b",
     re.I,
 )
+_COMPOSITION_TASK = re.compile(
+    r"^\s*(?:napisz|ułóż|przygotuj|zredaguj|przeredaguj)\b", re.I
+)
+_COMPOSITION_FORM = re.compile(
+    r"\b(?:podziękowani\w*|zaproszeni\w*|życzeni\w*|"
+    r"(?:tekst|treść|szkic) wiadomości|wiadomość (?:dla|do))\b",
+    re.I,
+)
+_COMPOSITION_WITH_SOURCE = re.compile(
+    r"\b(?:wikipedi\w*|na podstawie (?:publiczn\w* |oficjaln\w* )?źród\w*|"
+    r"(?:aktualn\w*|najnowsz\w*|dzisiejsz\w*) wiadomości)\b",
+    re.I,
+)
 _LINK = re.compile(r"\[([^\]]+)\]\(https?://[^)\s]+\)|\bhttps?://[^\s<>]+", re.I)
 _EMPTY_LINK_LABEL = re.compile(r"(?im)(?:^|\s)(?:link|źródło|odnośnik):[ \t]*(?=$|\n)")
 _SOURCE_REVISION_HINT = (
@@ -58,6 +71,13 @@ def public_lookup_query(text: str) -> str | None:
         _NO_LOOKUP.finditer(visible), key=lambda match: match.start(), default=None
     )
     if declined and (not requested or declined.start() > requested.start()):
+        return None
+    if (
+        not requested
+        and _COMPOSITION_TASK.match(visible)
+        and _COMPOSITION_FORM.search(visible)
+        and not _COMPOSITION_WITH_SOURCE.search(visible)
+    ):
         return None
     if not requested and visible != text and _QUOTED_TASK.match(visible):
         return visible

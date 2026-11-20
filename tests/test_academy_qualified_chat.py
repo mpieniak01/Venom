@@ -1586,3 +1586,45 @@ def test_studio_replaces_earlier_list_with_one_concrete_adaptation(studio_chat):
     request = sent[-1]["payload"]
     assert request["format"]["properties"]["options"]["maxItems"] == 1
     assert "konkretną wskazówkę" in request["messages"][0]["content"]
+
+
+@pytest.mark.parametrize("allow_lookup", [False, True])
+def test_studio_composition_only_searches_with_a_public_request(
+    allow_lookup, studio_chat, monkeypatch
+):
+    from venom_core.services import chat_grounding
+
+    news = AsyncMock(return_value="")
+    monkeypatch.setattr(chat_grounding, "_news_context", news)
+    chat, _, replies = studio_chat
+    replies.append(streamed("Dziękuję za oznaczenia."))
+    question = (
+        "Napisz jedno zdanie podziękowania za oznaczenia. Chodzi o tekst wiadomości."
+    )
+    if allow_lookup:
+        question += " Sprawdź w sieci dzisiejsze informacje."
+    assert chat(question, max_tokens=96) == "Dziękuję za oznaczenia."
+    assert news.await_count == int(allow_lookup)
+
+
+def test_studio_one_short_sourced_sentence_gets_full_link_with_larger_budget(
+    studio_chat, monkeypatch
+):
+    from venom_core.services import chat_grounding
+
+    wiki = AsyncMock(
+        return_value="\n[PUBLIC_SOURCES] Definicja. https://example.org/definicja"
+    )
+    monkeypatch.setattr(chat_grounding, "_wiki_context", wiki)
+    chat, sent, replies = studio_chat
+    answer = "Definicja. https://example.org/definicja"
+    replies.append(streamed(answer))
+    assert (
+        chat(
+            "Czym jest proporcja? Podaj jedno krótkie zdanie oraz link.", max_tokens=192
+        )
+        == answer
+    )
+    wiki.assert_awaited_once()
+    system = sent[-1]["payload"]["messages"][0]["content"]
+    assert "Skopiuj pełny adres" in system

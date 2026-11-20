@@ -1431,15 +1431,31 @@ def test_studio_quoted_english_translation_retains_plain_stream(studio_chat):
 
 
 @pytest.mark.parametrize(
-    ("fragment", "flag", "retrieved"),
+    ("fragment", "flag", "context_length", "retrieved"),
     [
-        ("\n[PUBLIC_SOURCES] Potwierdzona godzina. [/PUBLIC_SOURCES]", True, True),
-        ("\nSource could not be retrieved; say this explicitly.", True, False),
-        ("\n[PUBLIC_SOURCES] Potwierdzona godzina. [/PUBLIC_SOURCES]", False, False),
+        (
+            "\n[PUBLIC_SOURCES] Potwierdzona godzina. [/PUBLIC_SOURCES]",
+            True,
+            4096,
+            True,
+        ),
+        ("\nSource could not be retrieved; say this explicitly.", True, 4096, False),
+        (
+            "\n[PUBLIC_SOURCES] Potwierdzona godzina. [/PUBLIC_SOURCES]",
+            False,
+            4096,
+            False,
+        ),
+        (
+            "\n[PUBLIC_SOURCES] Potwierdzona godzina. [/PUBLIC_SOURCES]",
+            True,
+            512,
+            False,
+        ),
     ],
 )
 def test_studio_reports_attached_public_evidence_only_after_retrieval(
-    fragment, flag, retrieved, studio_chat, monkeypatch
+    fragment, flag, context_length, retrieved, studio_chat, monkeypatch
 ):
     from venom_core.services import chat_grounding
 
@@ -1447,6 +1463,9 @@ def test_studio_reports_attached_public_evidence_only_after_retrieval(
     monkeypatch.setattr(chat_grounding, "_news_context", fetch)
     monkeypatch.setattr(
         llm_simple_service.SETTINGS, "ACADEMY_QUALIFIED_CHAT_ENABLED", flag
+    )
+    monkeypatch.setattr(
+        llm_simple_service.SETTINGS, "OLLAMA_CONTEXT_LENGTH", context_length
     )
     chat, sent, replies = studio_chat
     replies.append(streamed("Odpowiedź testowa."))

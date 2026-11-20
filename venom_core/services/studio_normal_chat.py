@@ -200,7 +200,11 @@ async def prepare_studio_normal(
         if query is None
         else await current_chat_context(query, use_notes=request.use_notes)
     )
-    if local_qualification and source_context.startswith(PUBLIC_SOURCE_BLOCK):
+    if (
+        local_qualification
+        and source_context.startswith(PUBLIC_SOURCE_BLOCK)
+        and len(_RETRIEVED_SOURCE_POLICY) + 1 + len(source_context) <= remaining
+    ):
         source_context = f"{_RETRIEVED_SOURCE_POLICY}\n{source_context}"
     if len(source_context) <= remaining:
         system_context += source_context

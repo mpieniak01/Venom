@@ -20,6 +20,7 @@ from venom_core.memory.chat_retrieval import (
 )
 from venom_core.services.academy.qualified_chat import GENERATION_TRUNCATED
 from venom_core.services.academy.qualified_chat_explanations import changes_example
+from venom_core.services.academy.qualified_chat_revisions import source_revision_hint
 from venom_core.services.background_priority import run_drainable_thread
 from venom_core.services.chat_grounding import current_chat_context, grounding_follow_up
 from venom_core.services.session_store import SessionStore
@@ -150,7 +151,16 @@ async def prepare_studio_normal(
         (turn.content for turn in reversed(history) if turn.role == "user"), ""
     )
     query = grounding_follow_up(request.content, previous)
-    source_context = await current_chat_context(query, use_notes=request.use_notes)
+    supplied_update = (
+        SETTINGS.ACADEMY_QUALIFIED_CHAT_ENABLED
+        and not request.use_notes
+        and source_revision_hint(request.content)
+    )
+    source_context = (
+        ""
+        if supplied_update
+        else await current_chat_context(query, use_notes=request.use_notes)
+    )
     if len(source_context) <= remaining:
         system_context += source_context
     elif source_context:

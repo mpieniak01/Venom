@@ -27,6 +27,22 @@ _USER_FORMAT = re.compile(
     r" (?:\w+ )?(?:zdaniach|punktach|akapitach))\b",
     re.I,
 )
+_PROTECTION = re.compile(
+    r"\b(?:pas\w* bezpieczeństw\w*|zabezpiecze\w*|osłon\w*|blokad\w*|kask\w*)\b",
+    re.I,
+)
+_MATCHED_CONDITIONS = re.compile(
+    r"\b(?:w tym samym|w tej samej|w takich samych|przy tej samej|przy tych samych)\b",
+    re.I,
+)
+_MATCHED_CONDITIONS_HINT = (
+    "Zachowaj wspólny warunek porównania w wyjaśnieniu i w nowym przykładzie."
+)
+_PROTECTION_HINT = (
+    "Przy opisie zabezpieczenia nazwij, co stałoby się bez niego i dlaczego, "
+    "a potem co zmienia samo zabezpieczenie. Nie przypisuj zabezpieczeniu "
+    "zjawiska, któremu przeciwdziała."
+)
 _COMPACT = (
     "W prostym wyjaśnieniu podaj mechanizm od razu, a potem jeden przykład. "
     "Zmieść całość w najwyżej trzech krótkich zdaniach. "
@@ -59,10 +75,18 @@ def explanation_hint(
     compact = (
         _TIGHT_BUDGET if token_budget is not None and token_budget <= 96 else _COMPACT
     )
+    topic = visible
+    revision = ""
     if changes_example(text):
         last_user = next(
             (turn.content for turn in reversed(history) if turn.role == "user"), ""
         )
-        if _EXPLAIN.search(without_quotes(last_user)):
-            return f"{_CHANGE_ONLY} {compact}"
-    return compact if _EXPLAIN.search(visible) else ""
+        previous = without_quotes(last_user)
+        if _EXPLAIN.search(previous):
+            topic = previous
+            revision = _CHANGE_ONLY
+    if not _EXPLAIN.search(topic):
+        return ""
+    protection = _PROTECTION_HINT if _PROTECTION.search(topic) else ""
+    conditions = _MATCHED_CONDITIONS_HINT if _MATCHED_CONDITIONS.search(topic) else ""
+    return " ".join(filter(None, (revision, compact, protection, conditions)))

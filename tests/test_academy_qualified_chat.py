@@ -1098,3 +1098,60 @@ def test_explanation_hints_preserve_explicit_format_and_quoted_facts():
         "W notatce jest «dlaczego?». Czy jest w niej znak zapytania?", []
     )
     assert not explanation_hint("Zamiast klatki użyj przykładu z hali.", [])
+
+
+@pytest.mark.parametrize("studio_chat", [QUALIFIED_BOLT_MODEL], indirect=True)
+def test_plain_source_revision_prefers_explicit_update_and_keeps_the_unmodified_field(
+    studio_chat,
+    monkeypatch,
+):
+    from venom_core.services import studio_normal_chat
+    from venom_core.services.academy.qualified_chat_revisions import (
+        source_revision_hint,
+    )
+
+    public_grounding = AsyncMock(return_value="Syntetyczny kontekst publiczny")
+    monkeypatch.setattr(studio_normal_chat, "current_chat_context", public_grounding)
+    chat, sent, replies = studio_chat
+    note = "Kartka mówi «Cisza do 21:10; czytelnia w sali Niebieskiej». Podaj godzinę i salę."
+    new = "Na aktualnej kartce godzina to 21:40. Podaj obowiązującą godzinę i salę."
+    replies.append(streamed("21:40, sala Niebieska."))
+    assert (
+        chat(new, history=[turn(note), turn("21:10, sala Niebieska.", "assistant")])
+        == "21:40, sala Niebieska."
+    )
+    payload = sent[0]["payload"]
+    assert payload["stream"] is True
+    assert "aktualną wartość" in payload["messages"][0]["content"]
+    assert {"role": "user", "content": note} in payload["messages"]
+    assert source_revision_hint("Mam nowsze ogłoszenie. Punkt jest w pawilonie Wilga.")
+    assert not source_revision_hint("Porównaj aktualną kartkę z wcześniejszą.")
+    assert not source_revision_hint("Czy w aktualnej kartce jest godzina?")
+    assert not source_revision_hint(
+        "Na aktualnej kartce jest 21:40. Sprawdź to na stronie urzędu."
+    )
+    public_grounding.assert_not_awaited()
+
+
+def test_explanation_of_protection_distinguishes_event_from_intervention():
+    from venom_core.services.academy.qualified_chat_explanations import explanation_hint
+
+    prompt = "Wyjaśnij, co robią pasy bezpieczeństwa podczas hamowania."
+    correction = "Pokaż na innym przykładzie, z samochodem."
+    history = [HistoryMessage(role="user", content=prompt)]
+    assert "co stałoby się bez niego" in explanation_hint(prompt, [], token_budget=96)
+    assert "co zmienia samo zabezpieczenie" in explanation_hint(
+        correction, history, token_budget=96
+    )
+    assert "co stałoby się bez niego" not in explanation_hint("Wyjaśnij echo.", [])
+
+
+def test_explanation_keeps_the_shared_condition_after_a_new_example():
+    from venom_core.services.academy.qualified_chat_explanations import explanation_hint
+
+    prompt = "Wyjaśnij, dlaczego dwa materiały w tym samym pokoju wydają się mieć różną temperaturę."
+    correction = "Zmień przykład na krzesła z metalu i plastiku."
+    history = [HistoryMessage(role="user", content=prompt)]
+    assert "wspólny warunek porównania" in explanation_hint(
+        correction, history, token_budget=96
+    )

@@ -20,7 +20,11 @@ from venom_core.memory.chat_retrieval import (
 )
 from venom_core.services.academy.qualified_chat import GENERATION_TRUNCATED
 from venom_core.services.academy.qualified_chat_explanations import changes_example
-from venom_core.services.academy.qualified_chat_revisions import source_revision_hint
+from venom_core.services.academy.qualified_chat_revisions import (
+    public_lookup_query,
+    source_revision_hint,
+    without_previous_links,
+)
 from venom_core.services.background_priority import run_drainable_thread
 from venom_core.services.chat_grounding import current_chat_context, grounding_follow_up
 from venom_core.services.session_store import SessionStore
@@ -36,7 +40,12 @@ _NORMAL_LANGUAGE_POLICY = (
 
 
 def _recent_turns(
-    store: SessionStore, session_id: str, budget: int, *, omit_truncated: bool = False
+    store: SessionStore,
+    session_id: str,
+    budget: int,
+    *,
+    omit_truncated: bool = False,
+    omit_assistant_links: bool = False,
 ) -> list[HistoryMessage]:
     history = store.get_history(session_id)
     result: list[HistoryMessage] = []
@@ -67,6 +76,11 @@ def _recent_turns(
             or reply == GENERATION_TRUNCATED
         ):
             reply = "Poprzednia odpowiedź została przerwana przed zakończeniem."
+        if omit_assistant_links:
+            reply = (
+                without_previous_links(reply)
+                or "Poprzednia odpowiedź zawierała tylko odnośnik."
+            )
         cost = len(prompt) + len(reply) + 64
         if cost > budget:
             break
@@ -141,24 +155,35 @@ async def prepare_studio_normal(
         and not request.use_notes
         and changes_example(request.content)
     )
+    local_qualification = (
+        SETTINGS.ACADEMY_QUALIFIED_CHAT_ENABLED and not request.use_notes
+    )
+    supplied_update = local_qualification and bool(
+        source_revision_hint(request.content)
+    )
+    omit_assistant_links = (
+        supplied_update and public_lookup_query(request.content) is None
+    )
     history = _recent_turns(
         store,
         session_id,
         max(0, min(remaining, MAX_CHAT_HISTORY_CHARS)),
         omit_truncated=omit_truncated,
+        omit_assistant_links=omit_assistant_links,
     )
     previous = next(
         (turn.content for turn in reversed(history) if turn.role == "user"), ""
     )
     query = grounding_follow_up(request.content, previous)
-    supplied_update = (
-        SETTINGS.ACADEMY_QUALIFIED_CHAT_ENABLED
-        and not request.use_notes
-        and source_revision_hint(request.content)
-    )
+    if SETTINGS.ACADEMY_QUALIFIED_CHAT_ENABLED and not request.use_notes:
+        query = (
+            None
+            if source_revision_hint(request.content)
+            else public_lookup_query(query)
+        )
     source_context = (
         ""
-        if supplied_update
+        if query is None
         else await current_chat_context(query, use_notes=request.use_notes)
     )
     if len(source_context) <= remaining:
@@ -177,6 +202,7 @@ async def prepare_studio_normal(
                 session_id,
                 min(budget, MAX_CHAT_HISTORY_CHARS),
                 omit_truncated=omit_truncated,
+                omit_assistant_links=omit_assistant_links,
             ),
             "max_tokens": output_tokens,
             "think": False,

@@ -35,6 +35,7 @@ from venom_core.services.academy.qualified_chat import (
 )
 from venom_core.services.academy.qualified_chat_explanations import explanation_hint
 from venom_core.services.academy.qualified_chat_revisions import source_revision_hint
+from venom_core.services.academy.qualified_chat_writing import writing_hint
 from venom_core.services.llm_simple_payload_service import (
     apply_optional_features_to_payload as _apply_optional_features_to_payload,
 )
@@ -1563,7 +1564,15 @@ async def _stream_non_openrouter_chat(
             request.content, request.history, token_budget=request.max_tokens
         )
         system_prompt = "\n\n".join(
-            filter(None, (system_prompt, hint, source_revision_hint(request.content)))
+            filter(
+                None,
+                (
+                    system_prompt,
+                    hint,
+                    source_revision_hint(request.content),
+                    writing_hint(request.content),
+                ),
+            )
         )
     rewrite = complete_reply.rewrite if complete_reply else None
     if rewrite is not None:

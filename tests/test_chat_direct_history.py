@@ -1214,3 +1214,24 @@ async def test_studio_only_persists_length_metadata_and_recovers_without_draft(
             if mode
             else assistant["content"]
         )
+
+
+def test_studio_keeps_link_only_history_when_the_assistant_url_is_omitted(tmp_path):
+    from venom_core.services.studio_normal_chat import _recent_turns
+
+    store = SessionStore(str(tmp_path / "session.json"))
+    session, request_id = "history", "old-answer"
+    url = "https://example.org/prior"
+    store.append_turn_once(
+        session,
+        request_id,
+        [
+            {"role": "user", "content": "Podaj odnośnik.", "request_id": request_id},
+            {"role": "assistant", "content": url, "request_id": request_id},
+        ],
+    )
+    normal = _recent_turns(store, session, 4096)
+    current = _recent_turns(store, session, 4096, omit_assistant_links=True)
+    assert normal[-1].content == url
+    assert current[-1].content == "Poprzednia odpowiedź zawierała tylko odnośnik."
+    assert store.get_history(session)[-1]["content"] == url

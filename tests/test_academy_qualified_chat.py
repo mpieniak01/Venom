@@ -1294,3 +1294,111 @@ def test_studio_refraction_accepts_an_explicit_counterexample_without_an_invente
     assert "słomka w słoiku bez wody" in response
     assert "nie ma granicy wody i powietrza" in response
     assert not sent
+
+
+@pytest.mark.parametrize(
+    ("question", "expected"),
+    [
+        (
+            "Podaj teraz jeden przykład. Bez dodatkowego wyszukiwania w internecie.",
+            None,
+        ),
+        ("Nie szukaj w sieci. Podaj aktualną wartość.", None),
+        (
+            "Bez wyszukiwania w internecie. Sprawdź jednak w sieci, co wiadomo dzisiaj.",
+            "Bez wyszukiwania w internecie. Sprawdź jednak w sieci, co wiadomo dzisiaj.",
+        ),
+        ("Sprawdź w sieci. Jednak bez dalszego wyszukiwania użyj rozmowy.", None),
+        (
+            "Podaj dzisiejsze wiadomości. Wyrażenie «nie szukaj w sieci» to cytat.",
+            "Podaj dzisiejsze wiadomości. Wyrażenie «nie szukaj w sieci» to cytat.",
+        ),
+        (
+            "Przetłumacz na angielski: „Najnowsze wiadomości są gotowe.”",
+            "Przetłumacz na angielski:  ",
+        ),
+        (
+            "Przeredaguj «najnowsze wiadomości». Sprawdź również w publicznym źródle.",
+            "Przeredaguj «najnowsze wiadomości». Sprawdź również w publicznym źródle.",
+        ),
+    ],
+)
+def test_public_lookup_respects_the_outer_instruction(question, expected):
+    from venom_core.services.academy.qualified_chat_revisions import public_lookup_query
+
+    assert public_lookup_query(question) == expected
+
+
+def test_studio_explicit_no_search_and_quoted_news_do_not_reach_the_public_provider(
+    studio_chat, monkeypatch
+):
+    from venom_core.services import chat_grounding
+
+    fetch = AsyncMock(
+        return_value="\n[PUBLIC_SOURCES] Testowy fragment. [/PUBLIC_SOURCES]"
+    )
+    monkeypatch.setattr(chat_grounding, "_news_context", fetch)
+    chat, sent, replies = studio_chat
+    replies.extend(
+        [
+            native('{"options":["7."]}'),
+            streamed("Latest news."),
+            streamed("Testowa odpowiedź."),
+        ]
+    )
+    assert (
+        chat(
+            "Podaj teraz jeden przykład liczby pierwszej, krótko. Bez dodatkowego wyszukiwania w internecie."
+        )
+        == "7."
+    )
+    assert chat("Przetłumacz: „Najnowsze wiadomości.”") == "Latest news."
+    fetch.assert_not_awaited()
+    assert chat("Sprawdź jednak w sieci dzisiejsze wiadomości.") == "Testowa odpowiedź."
+    fetch.assert_awaited_once()
+    assert sent[-1]["payload"]["stream"] is True
+
+
+def test_short_drafting_hint_constraints_and_no_variant_override(studio_chat):
+    from venom_core.services.academy.qualified_chat_writing import writing_hint
+
+    chat, sent, replies = studio_chat
+    replies.append(streamed("Dzięki za książki. Bardzo doceniam pomoc."))
+    assert chat("Napisz dwa krótkie zdania z podziękowaniem za książki.") == (
+        "Dzięki za książki. Bardzo doceniam pomoc."
+    )
+    request = sent[0]["payload"]
+    assert request["stream"] is True
+    assert "jeden gotowy tekst" in request["messages"][0]["content"]
+    assert "Liczba zdań: 2." in request["messages"][0]["content"]
+    assert "Liczba zdań: 3." in writing_hint(
+        "Napisz wiadomość w trzech krótkich zdaniach."
+    )
+    assert not writing_hint("Napisz dwa warianty w dwóch zdaniach.")
+    assert not writing_hint("Przetłumacz: „Napisz dwa zdania.”")
+    assert not writing_hint("Napisz wiadomość do znajomych.")
+
+
+def test_studio_does_not_attribute_supplied_revision_to_a_previous_public_link(
+    studio_chat, monkeypatch
+):
+    from venom_core.services import chat_grounding
+
+    fetch = AsyncMock(return_value="test")
+    monkeypatch.setattr(chat_grounding, "_news_context", fetch)
+    chat, sent, replies = studio_chat
+    session = str(uuid4())
+    replies.append(streamed("18:40"))
+    history = [
+        turn("Sprawdź dzisiejsze godziny muzeum."),
+        turn("Zamknięcie o 17:20. Link: https://example.org/muzeum.", "assistant"),
+    ]
+    answer = chat(
+        "Na aktualnej kartce podano godzinę zamknięcia 18:40. Podaj właśnie tę godzinę, bez ponownego sprawdzania.",
+        history=history,
+        session=session,
+    )
+    assert answer == "18:40"
+    assert "https://example.org/muzeum" not in str(sent[0]["payload"]["messages"])
+    assert "17:20" in str(sent[0]["payload"]["messages"])
+    fetch.assert_not_awaited()

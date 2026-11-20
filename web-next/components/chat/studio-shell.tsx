@@ -78,18 +78,20 @@ export function cancelStudioTasksInOrder(taskIds: readonly string[], cancelTask:
   return cancelNext(0);
 }
 
-export function StudioShell({ showLegacyLink = true, lightNormal = false }: Readonly<{
+export function StudioShell({ showLegacyLink = true, lightNormal = false, nativeTextEnabled = true }: Readonly<{
   showLegacyLink?: boolean;
   lightNormal?: boolean;
+  nativeTextEnabled?: boolean;
 }>) {
   const { sessionId } = useSession();
-  const native = useNativeTextChat();
-  return <StudioConversation key={sessionId} showLegacyLink={showLegacyLink} lightNormal={lightNormal} native={native} />;
+  const native = useNativeTextChat(nativeTextEnabled);
+  return <StudioConversation key={sessionId} showLegacyLink={showLegacyLink} lightNormal={lightNormal} nativeTextEnabled={nativeTextEnabled} native={native} />;
 }
 /** Render the conversation and keep its draft, materials and controls scoped to the session. */
-function StudioConversation({ showLegacyLink, lightNormal, native }: Readonly<{
+function StudioConversation({ showLegacyLink, lightNormal, nativeTextEnabled, native }: Readonly<{
   showLegacyLink: boolean;
   lightNormal: boolean;
+  nativeTextEnabled: boolean;
   native: NativeTextChat;
 }>) {
   const { t, language, setLanguage } = useLanguage();
@@ -222,7 +224,7 @@ function StudioConversation({ showLegacyLink, lightNormal, native }: Readonly<{
         <button ref={materialButton} type="button" className="studio-button" aria-expanded={materialsOpen} aria-controls="studio-materials" onClick={() => { setHistoryOpen(false); setMaterialsOverride(!materialsOpen); }}><Paperclip size={16} />{t("chat2.materials")}</button></div>
     </header>
     <StudioModelPicker catalog={source.data.unifiedModelCatalog} interaction={interaction} session={sessionId} selectedModel={selectedModel} activeModel={native.state.selection?.adapter_id ?? activeServer?.active_model} onApply={conversation.handleActivateModel} busy={active || voice != null || native.busy || !!native.state.selection} />
-    <NativeTextPicker native={native} busy={active || voice != null || materials.uploading} />
+    {nativeTextEnabled && <NativeTextPicker native={native} busy={active || voice != null || materials.uploading} />}
     {nativeBlocked && <p className="studio-error" role="alert">{t("chat2.nativeText.unsupported")}</p>}
     {!!native.state.selection && <button type="button" className="studio-button" disabled={active || native.busy} onClick={() => setters.setChatMode("direct")}>{t("chat2.nativeText.direct")}</button>}
     {source.error && <div className="studio-error" role="alert">{t("chat2.offline")}<button type="button" className="studio-button" onClick={() => { void source.refresh(); }}>{t("chat2.retry")}</button></div>}

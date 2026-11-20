@@ -175,6 +175,33 @@ function shellExports(selection: typeof nativeReference | null = null, onControl
   return loadTsx(path.join(repositoryRoot, "web-next/components/chat/studio-shell.tsx"), {...imports, ...overrides});
 }
 
+test("standalone Studio keeps ordinary sending available without native text routes", () => {
+  const unsupported = () => { throw new Error("Standalone Studio must not call native text routes"); };
+  const nativeApi = {
+    fetchNativeTextState: unsupported,
+    fetchNativeTextCatalog: unsupported,
+    selectNativeText: unsupported,
+    rollbackNativeText: unsupported,
+  };
+  const realHook = loadTsx(path.join(repositoryRoot, "web-next/components/chat/use-native-text-chat.ts"), {
+    "@/lib/native-text-chat": nativeApi,
+  });
+  const StudioShell = shellExports(null, undefined, {
+    "./use-native-text-chat": realHook,
+    "./use-session-draft": { useSessionDraft: (key: string) => useState(key.startsWith("materials:") ? "" : "Gotowe") },
+    "@/components/cockpit/cockpit-chat-send": { resolveEffectiveChatModelSelection: () => "fixture" },
+  }).StudioShell;
+  const Page = loadTsx(path.join(appRoot, "app/chat2/page.tsx"), {
+    "@/components/chat/studio-shell": { StudioShell },
+  }).default as React.ComponentType;
+
+  const html = renderToStaticMarkup(createElement(Page));
+  assert.doesNotMatch(html, /chat2\.nativeText\./);
+  const send = html.match(/<button[^>]*class="studio-button studio-send"[^>]*>/)?.[0];
+  assert.ok(send);
+  assert.doesNotMatch(send, /disabled/);
+});
+
 function shell() {
   return shellExports().StudioShell as React.ComponentType<{ showLegacyLink?: boolean }>;
 }

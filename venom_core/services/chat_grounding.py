@@ -170,13 +170,18 @@ async def _feed_headline_context(
         headlines = await skill.read_feed(feed)
         if headlines:
             lines = "\n".join(
-                f"[{index}] {item.title} | Published: {item.published_at} | URL: {item.url}"
+                f"[{index}] Nagłówek: {item.title}\n"
+                f"Data publikacji: {item.published_at}\nLink: {item.url}"
                 for index, item in enumerate(headlines, 1)
             )
             return (
-                f"{policy}Source: {feed.name} {feed.url}. "
-                "Only the feed headlines were read, not the full articles. "
-                "Summarize only those headlines in Polish; do not add details.\n"
+                f"{policy}Kanał RSS: {feed.name} {feed.url}.\n"
+                "Odczytano tylko nagłówki RSS. Napisz po polsku treść wybranego "
+                "nagłówka. Przetłumacz tytuł obcojęzyczny, zachowując osobę, "
+                "której przypisano słowa, i stopień pewności. "
+                "Oznacz odpowiedź jako «Nagłówek RSS». Dołącz datę publikacji "
+                "i pełny link do tej pozycji. Zachowaj zakres informacji "
+                "z nagłówka i zaznacz, że artykułu nie odczytano.\n"
                 f"{lines}\n[/PUBLIC_SOURCES]"
             )
     return None

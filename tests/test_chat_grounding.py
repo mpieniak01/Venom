@@ -296,7 +296,9 @@ async def test_world_news_uses_labeled_bbc_headlines_when_articles_fail(monkeypa
     assert feed.await_count == 1
     assert feed.await_args.args[0].name == "BBC News RSS"
     article.assert_not_awaited()
-    assert "Only the feed headlines were read" in result
+    assert "Odczytano tylko nagłówki RSS" in result
+    assert "Przetłumacz tytuł obcojęzyczny" in result
+    assert "Data publikacji: 2026-11-14" in result
     assert "World headline" in result
     assert "https://www.bbc.co.uk/news/articles/example" in result
     feed.reset_mock()
@@ -312,7 +314,7 @@ async def test_world_news_uses_labeled_bbc_headlines_when_articles_fail(monkeypa
     )
     assert feed.await_count == 1
     assert feed.await_args.args[0].article_hosts == ("stat.gov.pl",)
-    assert "GUS" in result and "Only the feed headlines were read" in result
+    assert "GUS" in result and "Odczytano tylko nagłówki RSS" in result
 
     feed.reset_mock()
     result = await chat_grounding.current_chat_context(

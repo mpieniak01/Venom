@@ -52,6 +52,7 @@ _RETRIEVED_SOURCE_POLICY = (
 )
 _SHORT_SOURCE_POLICY = (
     " Przy krótkiej odpowiedzi podaj tylko żądane fakty i pełny URL źródła. "
+    "Użyj zdania źródła, które dotyczy dokładnie pytanego faktu. "
     "Pomiń wstęp, powtarzane przypisy i czas odczytu, jeśli o niego nie proszono."
 )
 _SOURCE_STATUS_POLICY = (

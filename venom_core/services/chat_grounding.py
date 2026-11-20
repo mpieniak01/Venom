@@ -51,6 +51,11 @@ _ENCYCLOPEDIC = re.compile(
     r"(?:według|z) wikipedi[ia])\b",
     re.I,
 )
+_WIKI_REFERENCE = re.compile(r"\bwikipedi\w*\b", re.I)
+_WIKI_ENTRY_LINK = re.compile(
+    r"\b(?:link|odnośnik) do (?:użytego|właściwego|encyklopedycznego) hasła(?=\s*(?:[.!?]|$))",
+    re.I,
+)
 _WIKI_TOPIC_PREFIX = re.compile(
     r"^\s*(?:czym jest|co to jest|kim (?:był[ao]?|jest))\s+", re.I
 )
@@ -60,6 +65,14 @@ _CHAT_MESSAGE_REFERENCE = re.compile(
     re.I,
 )
 _NEWS_REQUEST = re.compile(r"\b(?:wiadomoś(?:ć|ci)|newsy|wydarzeni\w*)\b", re.I)
+_EXPLICIT_RSS = re.compile(r"\bRSS\b", re.I)
+_RSS_TRANSLATION_POLICY = (
+    "Przekładaj tylko czynności i zdarzenia podane w tytule. W angielskim nagłówku "
+    "konstrukcja «podmiot + to + czasownik» oznacza zapowiedzianą czynność. "
+    "Na przykład «City to review plans» oznacza «Miasto przeanalizuje plany». "
+    "Zachowaj zapowiedź, możliwość, negację i atrybucję. "
+    "Pomiń zebrania, decyzje i inne zdarzenia, których tytuł nie wymienia. "
+)
 _TOPICAL_NEWS = re.compile(
     r"\b(?:wiadomoś(?:ć|ci)|newsy)\s+(?:o|na temat|dotycząc\w*)\b", re.I
 )
@@ -77,13 +90,21 @@ class PublicSourceUnavailable(StrEnum):
     NEWS = "\nCurrent news could not be retrieved; say this explicitly."
 
 
+def _private_context(message: str) -> bool:
+    if _WIKI_REFERENCE.search(message) and _ENCYCLOPEDIC.search(message):
+        message = _WIKI_ENTRY_LINK.sub(" ", message)
+    return bool(_PRIVATE.search(message))
+
+
 def grounding_kind(message: str, *, use_notes: bool = False) -> str | None:
     """Choose a public, read-only source for an ordinary question."""
-    if use_notes or _PRIVATE.search(message):
+    if use_notes or _private_context(message):
         return None
     message = _CHAT_MESSAGE_REFERENCE.sub(" ", message)
     current = bool(_CURRENT.search(message) or _CURRENT_OFFICE.search(message))
-    if _ENCYCLOPEDIC.search(message) and not current:
+    if _WIKI_REFERENCE.search(message) or (
+        _ENCYCLOPEDIC.search(message) and not current
+    ):
         return "wiki"
     if _WEATHER.search(message) and (
         _weather_location(message)
@@ -118,7 +139,7 @@ def _weather_location(message: str) -> str | None:
 def grounding_follow_up(message: str, previous_user: str) -> str:
     """Resolve a short weather follow-up without forwarding the previous turn."""
     if (
-        not _PRIVATE.search(message)
+        not _private_context(message)
         and len(message) <= 80
         and _WEATHER_FOLLOW_UP.fullmatch(message)
         and grounding_kind(previous_user) == "weather"
@@ -171,7 +192,9 @@ async def _feed_headline_context(
     message: str, policy: str, region: NewsRegion
 ) -> str | None:
     topic = _CHAT_MESSAGE_REFERENCE.sub(" ", message)
-    if not _NEWS_REQUEST.search(topic) or _TOPICAL_NEWS.search(topic):
+    if not _EXPLICIT_RSS.search(topic) and (
+        not _NEWS_REQUEST.search(topic) or _TOPICAL_NEWS.search(topic)
+    ):
         return None
     skill = RSSReaderSkill()
     for feed in region.feeds:
@@ -187,6 +210,7 @@ async def _feed_headline_context(
                 "Odczytano tylko nagłówki RSS. Napisz po polsku treść wybranego "
                 "nagłówka. Przetłumacz tytuł obcojęzyczny, zachowując osobę, "
                 "której przypisano słowa, i stopień pewności. "
+                f"{_RSS_TRANSLATION_POLICY}"
                 "Oznacz odpowiedź jako «Nagłówek RSS». Dołącz datę publikacji "
                 "i pełny link do tej pozycji. Zachowaj zakres informacji "
                 "z nagłówka i zaznacz, że artykułu nie odczytano.\n"
@@ -310,6 +334,12 @@ async def _news_context(message: str, policy: str) -> str:
         region = load_public_sources().region_for(message)
     except (OSError, ValueError, KeyError, TypeError):
         return "\nPublic news sources are misconfigured; say so explicitly."
+
+    if _EXPLICIT_RSS.search(message):
+        return (
+            await _feed_headline_context(message, policy, region)
+            or PublicSourceUnavailable.NEWS
+        )
 
     trusted = await _trusted_news_urls(message, region)
     verified = await _recent_articles(trusted, region, message)

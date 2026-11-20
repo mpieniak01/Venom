@@ -32,6 +32,7 @@ from venom_core.services.academy.qualified_chat_quote import (
     parse_quote_rewrite,
 )
 from venom_core.services.academy.qualified_chat_schedule import (
+    draft_reminder_reply,
     draft_time_revision,
     route_shift,
 )
@@ -437,8 +438,10 @@ def prepare_studio_reply(
         return QualifiedReply(rewrite=quote)
     if answer := quote or evidence_reply(text, history):
         return QualifiedReply(local_text=answer)
-    if answer := draft_time_revision(text, history) or ice_melting_reply(
-        text, history, token_budget=token_budget
+    if answer := (
+        draft_reminder_reply(text)
+        or draft_time_revision(text, history)
+        or ice_melting_reply(text, history, token_budget=token_budget)
     ):
         return QualifiedReply(local_text=answer)
     if explanation := checked_explanation(text, history, token_budget=token_budget):

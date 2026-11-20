@@ -1722,3 +1722,88 @@ def test_draft_time_edit_does_not_trust_unknown_or_conflicting_old_time():
     )
     assert draft_time_revision(edit, [single_time, two_times]) is None
     assert route_shift(edit, [BASE]) is None
+
+
+def test_studio_keeps_lookup_ban_for_revisions_until_explicit_permission(
+    studio_chat, monkeypatch
+):
+    from venom_core.services import studio_normal_chat
+
+    source = AsyncMock(return_value="")
+    monkeypatch.setattr(studio_normal_chat, "current_chat_context", source)
+    chat, _, replies = studio_chat
+    replies.extend(streamed("Odpowiedź.") for _ in range(3))
+    session = str(uuid4())
+    history = [
+        turn("Wyjaśnij od czego zależy kierunek przepływu ciepła. Bez wyszukiwania."),
+        turn("Ciepło przepływa od cieplejszego ciała do chłodniejszego.", "assistant"),
+    ]
+    chat(
+        "Załóż teraz brak danych. Skróć wyjaśnienie do jednego zdania.",
+        history=history,
+        session=session,
+    )
+    chat("Doprecyzuj to w jednym zdaniu.", session=session)
+    source.assert_not_awaited()
+    chat("Sprawdź teraz w sieci aktualne źródło i skróć wyjaśnienie.", session=session)
+    source.assert_awaited_once()
+
+
+def test_lookup_ban_does_not_carry_to_a_new_topic_or_from_a_quote():
+    from venom_core.services.academy.qualified_chat_revisions import lookup_forbidden
+
+    assert not lookup_forbidden(
+        "Podaj aktualną pogodę w Warszawie.", ["Opisz przewodnictwo. Bez wyszukiwania."]
+    )
+    assert not lookup_forbidden(
+        "Skróć wyjaśnienie do zdania.", ["Przepisz napis «bez wyszukiwania»."]
+    )
+    assert lookup_forbidden("Przygotuj tekst. Niczego nie wyszukuj.")
+    assert not lookup_forbidden(
+        "Skróć to do jednego zdania.",
+        ["Bez wyszukiwania.", "Zmieniam temat. Co słychać?"],
+    )
+
+
+def test_studio_reminder_draft_preserves_recipient_and_corrected_time(studio_chat):
+    chat, sent, _ = studio_chat
+    session = str(uuid4())
+    user = (
+        "Przygotuj wyłącznie szkic SMS-a do domownika. Przeredaguj polecenie "
+        "„Przypomnij mi o podlaniu sadzonek o 07:35” na krótką uprzejmą prośbę. "
+        "Nie ustawiaj przypomnienia, nie wysyłaj SMS-a i niczego nie wyszukuj."
+    )
+    answer = chat(user, session=session)
+    assert answer == "Proszę, przypomnij mi o podlaniu sadzonek o 07:35."
+    assert chat("Zmień godzinę w treści wiadomości na 08:10.", session=session) == (
+        "Proszę, przypomnij mi o podlaniu sadzonek o 08:10."
+    )
+    assert (
+        chat(
+            "Zmień godzinę w treści wiadomości na 08:10.",
+            history=[
+                turn(user),
+                turn("Czy mógłbyś podlać sadzonki o 07:35?", "assistant"),
+            ],
+        )
+        == "Proszę, przypomnij mi o podlaniu sadzonek o 08:10."
+    )
+    assert not sent
+
+
+def test_quoted_reminder_is_a_single_unambiguous_drafting_operand():
+    from venom_core.services.academy.qualified_chat_schedule import draft_reminder_reply
+
+    assert draft_reminder_reply("Przypomnij mi o odbiorze paczki o 07:35.") is None
+    assert (
+        draft_reminder_reply(
+            "Przygotuj szkic SMS-a. Przeredaguj „Przypomnij mi o odbiorze o 07:30 lub o 07:35”."
+        )
+        is None
+    )
+    assert (
+        draft_reminder_reply(
+            "Ułóż szkic wiadomości. Zmień formę „Ustaw przypomnienie o odbiorze na 08:15”."
+        )
+        == "Proszę, ustaw przypomnienie o odbiorze na 08:15."
+    )

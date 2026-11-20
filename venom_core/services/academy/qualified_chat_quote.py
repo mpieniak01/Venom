@@ -83,6 +83,13 @@ def without_quotes(text: str) -> str:
     return _QUOTE.sub(" ", text)
 
 
+def single_quoted_operand(text: str) -> str | None:
+    quotes = list(_QUOTE.finditer(text))
+    if len(quotes) != 1:
+        return None
+    return next(fragment for fragment in quotes[0].groups() if fragment is not None)
+
+
 def english_translation_hint(text: str) -> str:
     """Guide a simple quoted translation without adding a separate model call."""
     visible = without_quotes(text)

@@ -570,3 +570,52 @@ async def test_verified_news_rejects_redirect_large_body_and_private_target(
         )
         is None
     )
+
+
+def test_wikipedia_entry_link_keeps_privacy_guard_for_credentials():
+    question = (
+        "Czym jest skamieniałość? Oprzyj się na polskiej Wikipedii. "
+        "Podaj definicję i pełny odnośnik do użytego hasła."
+    )
+    assert chat_grounding.grounding_kind(question) == "wiki"
+    assert chat_grounding.grounding_kind(question + " Moje hasło to abc.") is None
+    assert (
+        chat_grounding.grounding_kind(
+            question.replace("użytego hasła.", "użytego hasła: abc.")
+        )
+        is None
+    )
+    assert chat_grounding.grounding_kind(question, use_notes=True) is None
+
+
+@pytest.mark.asyncio
+async def test_explicit_rss_reads_feed_without_search_and_preserves_source_fields(
+    monkeypatch,
+):
+    search = AsyncMock(side_effect=AssertionError("explicit RSS attempted web search"))
+    monkeypatch.setattr(chat_grounding, "_trusted_news_urls", search)
+    feed = AsyncMock(
+        return_value=[
+            verified_web.NewsHeadline(
+                url="https://www.bbc.co.uk/news/articles/example",
+                title="City to review plans, says Taylor",
+                published_at="2026-11-14",
+            )
+        ]
+    )
+    monkeypatch.setattr(chat_grounding.RSSReaderSkill, "read_feed", feed)
+    prompt = "Podaj aktualną wiadomość ze świata z kanału BBC News RSS."
+    result = await chat_grounding.current_chat_context(prompt)
+    assert feed.await_args.args[0].name == "BBC News RSS"
+    assert "podmiot + to + czasownik" in result
+    assert "City to review plans, says Taylor" in result
+    assert "Data publikacji: 2026-11-14" in result
+    assert "https://www.bbc.co.uk/news/articles/example" in result
+    assert "Odczytano tylko nagłówki RSS" in result
+
+    feed.return_value = []
+    assert (
+        await chat_grounding.current_chat_context(prompt)
+        == chat_grounding.PublicSourceUnavailable.NEWS
+    )
+    search.assert_not_awaited()

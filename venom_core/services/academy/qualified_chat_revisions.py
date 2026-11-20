@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 
 from venom_core.services.academy.qualified_chat_quote import without_quotes
 
@@ -21,8 +22,16 @@ _PUBLIC_CHECK = re.compile(
 )
 _NO_LOOKUP = re.compile(
     r"\b(?:bez (?:\w+ )?(?:wyszukiwania|szukania|sprawdzania|korzystania z internetu)|"
-    r"nie (?:szukaj|wyszukuj|sprawdzaj|weryfikuj) (?:ponownie )?"
+    r"nie (?:szukaj|wyszukuj)(?: ponownie)?\b|"
+    r"nie (?:sprawdzaj|weryfikuj) (?:ponownie )?"
     r"(?:w internecie|w sieci|online|na stronie)|nie korzystaj z internetu)\b",
+    re.I,
+)
+_LOCAL_REVISION = re.compile(
+    r"(?:^|[.!?]\s+)(?:skróć|doprecyzuj|przeredaguj|przeformułuj)\s+"
+    r"(?:to\b|(?:(?:poprzedni[ąe]|powyższ[ąe])\s+)?"
+    r"(?:odpowiedź|wyjaśnienie|opis|szkic|podsumowanie))"
+    r"(?=\s*(?:[.!?]|$|do\b|i\b|w\b|z\b))",
     re.I,
 )
 _QUOTED_TASK = re.compile(
@@ -61,17 +70,43 @@ def source_revision_hint(text: str) -> str:
     return ""
 
 
+def _lookup_instruction(visible: str) -> bool | None:
+    requested = max(
+        (match.start() for match in _PUBLIC_CHECK.finditer(visible)), default=-1
+    )
+    declined = max(
+        (match.start() for match in _NO_LOOKUP.finditer(visible)), default=-1
+    )
+    if requested == declined:
+        return None
+    return requested > declined
+
+
+def lookup_forbidden(text: str, previous_users: Sequence[str] = ()) -> bool:
+    """Keep the user's lookup decision for revisions of the same answer."""
+    visible = without_quotes(text)
+    choice = _lookup_instruction(visible)
+    if choice is not None:
+        return not choice
+    if not _LOCAL_REVISION.search(visible):
+        return False
+    for preceding in reversed(previous_users):
+        visible = without_quotes(preceding)
+        choice = _lookup_instruction(visible)
+        if choice is not None:
+            return not choice
+        if not _LOCAL_REVISION.search(visible):
+            break
+    return False
+
+
 def public_lookup_query(text: str) -> str | None:
     """Honor the latest explicit lookup instruction and treat quoted text as data."""
     visible = without_quotes(text)
-    requested = max(
-        _PUBLIC_CHECK.finditer(visible), key=lambda match: match.start(), default=None
-    )
-    declined = max(
-        _NO_LOOKUP.finditer(visible), key=lambda match: match.start(), default=None
-    )
-    if declined and (not requested or declined.start() > requested.start()):
+    choice = _lookup_instruction(visible)
+    if choice is False:
         return None
+    requested = choice is True
     if (
         not requested
         and _COMPOSITION_TASK.match(visible)

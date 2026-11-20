@@ -7,6 +7,10 @@ from collections.abc import Sequence
 from dataclasses import dataclass, replace
 
 from venom_core.api.schemas.llm_simple import HistoryMessage
+from venom_core.services.academy.qualified_chat_quote import (
+    single_quoted_operand,
+    without_quotes,
+)
 
 _DAYS = {
     "poniedziałek": "poniedziałek",
@@ -96,6 +100,11 @@ _DRAFT_TIME_EDIT = re.compile(
 )
 _DRAFT_REQUEST = re.compile(
     r"\b(?:szkic\w* (?:sms-a|wiadomości)|(?:zredaguj|przeredaguj) polecenie)\b",
+    re.I,
+)
+_DRAFT_FORMAT = re.compile(
+    r"^(?:przygotuj|napisz|ułóż|potrzebuję)\b[^.!?]{0,100}"
+    r"\bszkic\w* (?:sms-a|wiadomości)\b",
     re.I,
 )
 _DRAFT_REMINDER = re.compile(
@@ -224,6 +233,24 @@ def _confirmed_history(history: Sequence[dict[str, str]]) -> list[Schedule]:
     return state
 
 
+def _quoted_reminder(text: str) -> re.Match[str] | None:
+    if not _DRAFT_FORMAT.match(without_quotes(text)):
+        return None
+    source = single_quoted_operand(text)
+    return _DRAFT_REMINDER.fullmatch(_text(source)) if source else None
+
+
+def _reminder_text(body: str, time: str) -> str:
+    return f"Proszę, {body[0].lower()}{body[1:]} {time.zfill(5)}."
+
+
+def draft_reminder_reply(text: str) -> str | None:
+    reminder = _quoted_reminder(text)
+    if not reminder or _CLOCK_IN_TEXT.search(reminder["body"]):
+        return None
+    return _reminder_text(reminder["body"], reminder["old"])
+
+
 def draft_time_revision(text: str, history: Sequence[HistoryMessage]) -> str | None:
     edit = _DRAFT_TIME_EDIT.fullmatch(_text(text))
     if not edit or len(history) < 2:
@@ -234,13 +261,15 @@ def draft_time_revision(text: str, history: Sequence[HistoryMessage]) -> str | N
     visible = _text(user.content)
     if not (_DRAFT_REQUEST.search(visible) or _DRAFT_TIME_SCOPE.match(visible)):
         return None
-    reminder = _DRAFT_REMINDER.fullmatch(_text(draft.content))
+    reminder = _quoted_reminder(user.content) or _DRAFT_REMINDER.fullmatch(
+        _text(draft.content)
+    )
     if not reminder or _CLOCK_IN_TEXT.findall(visible) != [reminder["old"]]:
         return None
     body = reminder["body"]
     if _CLOCK_IN_TEXT.search(body):
         return None
-    return f"Proszę, {body[0].lower()}{body[1:]} {edit['new'].zfill(5)}."
+    return _reminder_text(body, edit["new"])
 
 
 def route_shift(message: str, history: Sequence[dict[str, str]]) -> str | None:

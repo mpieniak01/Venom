@@ -22,6 +22,7 @@ from venom_core.memory.chat_retrieval import (
 from venom_core.services.academy.qualified_chat import GENERATION_TRUNCATED
 from venom_core.services.academy.qualified_chat_explanations import changes_example
 from venom_core.services.academy.qualified_chat_revisions import (
+    lookup_forbidden,
     public_lookup_query,
     source_revision_hint,
     without_previous_links,
@@ -203,11 +204,12 @@ async def prepare_studio_normal(
         omit_truncated=omit_truncated,
         omit_assistant_links=omit_assistant_links,
     )
-    previous = next(
-        (turn.content for turn in reversed(history) if turn.role == "user"), ""
-    )
+    previous_users = [turn.content for turn in history if turn.role == "user"]
+    previous = previous_users[-1] if previous_users else ""
     query = grounding_follow_up(request.content, previous)
-    if local_qualification:
+    if lookup_forbidden(request.content, previous_users):
+        query = None
+    elif local_qualification:
         query = (
             None
             if source_revision_hint(request.content)

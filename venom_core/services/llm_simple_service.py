@@ -19,6 +19,7 @@ from fastapi.responses import StreamingResponse
 from venom_core.api.schemas.llm_simple import MAX_CHAT_HISTORY_CHARS, SimpleChatRequest
 from venom_core.config import DEFAULT_SIMPLE_MODE_SYSTEM_PROMPT, SETTINGS
 from venom_core.core.metrics import get_metrics_collector
+from venom_core.core.model_registry_clients import OllamaClient
 from venom_core.core.ollama_runtime_capabilities import is_gemma4_model_name
 from venom_core.core.tracer import TraceStatus
 from venom_core.services import llm_simple_transport
@@ -999,6 +1000,65 @@ async def _stream_simple_chunks(
                 return
 
 
+async def _read_non_stream_data(
+    runtime: LLMRuntimeInfo,
+    url: str,
+    payload: dict[str, Any],
+) -> Any:
+    async with llm_simple_transport.open_stream_response(
+        provider_name=runtime.provider,
+        completions_url=url,
+        payload=payload,
+    ) as response:
+        response.raise_for_status()
+        aread = getattr(response, "aread", None)
+        if callable(aread):
+            raw = await aread()
+            return json.loads(raw.decode("utf-8", errors="replace")) if raw else {}
+        reader = getattr(response, "json", None)
+        return reader() if callable(reader) else {}
+
+
+def _native_draft(data: Any) -> str:
+    if (
+        not isinstance(data, dict)
+        or data.get("done") is not True
+        or data.get("done_reason") != "stop"
+    ):
+        return ""
+    message = data.get("message")
+    content = message.get("content") if isinstance(message, dict) else None
+    return content if isinstance(content, str) else ""
+
+
+async def _publish_qualified_draft(
+    reply: QualifiedReply,
+    data: dict[str, Any],
+    runtime: LLMRuntimeInfo,
+    url: str,
+    payload: dict[str, Any],
+) -> str:
+    content = _native_draft(data)
+    repair = reply.repair(content)
+    if repair is None:
+        return reply.publish(content)
+    kept, schema = repair
+    request = {
+        "role": "user",
+        "content": (
+            "Uzupełnij wyłącznie brakujące, samodzielne i zgodne propozycje. "
+            "Zachowaj wszystkie warunki. Zaakceptowane opcje: "
+            + json.dumps(kept, ensure_ascii=False)
+        ),
+    }
+    replacement = await _read_non_stream_data(
+        runtime,
+        url,
+        {**payload, "format": schema, "messages": [*payload["messages"], request]},
+    )
+    return reply.publish(content, _native_draft(replacement))
+
+
 async def _stream_simple_chunks_non_stream(
     *,
     completions_url: str,
@@ -1029,22 +1089,7 @@ async def _stream_simple_chunks_non_stream(
             yield _SSE_EVENT_DONE
             return
         try:
-            async with llm_simple_transport.open_stream_response(
-                provider_name=str(getattr(runtime, "provider", "") or "llm_runtime"),
-                completions_url=completions_url,
-                payload=payload,
-            ) as response:
-                response.raise_for_status()
-                aread = getattr(response, "aread", None)
-                if callable(aread):
-                    raw_body = await aread()
-                    if raw_body:
-                        data = json.loads(raw_body.decode("utf-8", errors="replace"))
-                    else:
-                        data = {}
-                else:
-                    json_reader = getattr(response, "json", None)
-                    data = json_reader() if callable(json_reader) else {}
+            data = await _read_non_stream_data(runtime, completions_url, payload)
 
             if not isinstance(data, dict):
                 _trace_stream_completion(request_id, "", 0, stream_start)
@@ -1086,9 +1131,13 @@ async def _stream_simple_chunks_non_stream(
 
             runtime_telemetry = _extract_runtime_telemetry(data)
             usage = _token_usage_from_telemetry(runtime_telemetry)
-            content = _extract_message_content(data, fallback_text="")
-            if qualified_reply is not None:
-                content = qualified_reply.publish(content)
+            content = (
+                await _publish_qualified_draft(
+                    qualified_reply, data, runtime, completions_url, payload
+                )
+                if qualified_reply is not None
+                else _extract_message_content(data, fallback_text="")
+            )
             logprobs_telemetry = _extract_logprobs_telemetry(data)
             if logprobs_telemetry is not None:
                 yield (
@@ -1333,6 +1382,34 @@ def _prepare_qualified_reply(
     return prepare_reply(request.content, request.history)
 
 
+def _qualified_chat_payload(
+    request: SimpleChatRequest,
+    messages: list[dict[str, Any]],
+    reply: QualifiedReply,
+    model_name: str,
+) -> dict[str, Any]:
+    options = build_ollama_runtime_options(SETTINGS)
+    options.update(
+        num_predict=request.max_tokens if request.max_tokens is not None else 96,
+        temperature=request.temperature if request.temperature is not None else 0,
+        seed=request.seed if request.seed is not None else 42,
+        top_k=1,
+    )
+    if request.top_p is not None:
+        options["top_p"] = request.top_p
+    payload = {
+        "model": model_name,
+        "messages": messages,
+        "stream": False,
+        "think": False,
+        "keep_alive": normalize_ollama_keep_alive(SETTINGS.LLM_KEEP_ALIVE),
+        "options": options,
+    }
+    if schema := reply.schema:
+        payload["format"] = schema
+    return payload
+
+
 async def _stream_non_openrouter_chat(
     request: SimpleChatRequest, *, system_context: str = ""
 ):
@@ -1364,6 +1441,13 @@ async def _stream_non_openrouter_chat(
     request, system_prompt = _prepare_local_direct_prompt(
         request, runtime, model_name, system_context
     )
+    qualified_reply = _prepare_qualified_reply(request, runtime, model_name)
+    if qualified_reply is not None:
+        configured = (SETTINGS.SIMPLE_MODE_SYSTEM_PROMPT or "").strip()
+        custom = configured if configured != DEFAULT_SIMPLE_MODE_SYSTEM_PROMPT else ""
+        system_prompt = qualified_reply.prompt(
+            "\n\n".join(filter(None, (custom, system_context)))
+        )
     user_content = _trim_user_content_for_runtime(
         request.content, system_prompt, runtime, request_id
     )
@@ -1375,7 +1459,8 @@ async def _stream_non_openrouter_chat(
     _trace_context_preview(request_id, messages)
     headers = _build_streaming_headers(str(request_id), request.session_id or "")
     completions_url = _build_chat_completions_url(runtime)
-    qualified_reply = _prepare_qualified_reply(request, runtime, model_name)
+    if qualified_reply is not None:
+        completions_url = f"{OllamaClient(runtime.endpoint).endpoint}/api/chat"
     force_non_stream = request.stream is False or qualified_reply is not None
     if is_multi_runtime(runtime_provider) or force_non_stream:
         if not completions_url:
@@ -1383,12 +1468,14 @@ async def _stream_non_openrouter_chat(
         return StreamingResponse(
             _stream_simple_chunks_non_stream(
                 completions_url=completions_url,
-                payload=_build_payload(
-                    request,
-                    runtime,
-                    model_name,
-                    messages,
-                    stream=False,
+                payload=(
+                    _qualified_chat_payload(
+                        request, messages, qualified_reply, model_name
+                    )
+                    if qualified_reply is not None
+                    else _build_payload(
+                        request, runtime, model_name, messages, stream=False
+                    )
                 ),
                 runtime=runtime,
                 request_id=request_id,

@@ -779,6 +779,18 @@
       "rationale": "Prevent narrow S/K gains from discarding sealed wider retention and critical regressions."
     },
     {
+      "path": "tests/test_academy_qualified_chat.py",
+      "domain": "academy",
+      "test_type": "route_contract",
+      "intent": "contract",
+      "primary_lane": "release",
+      "allowed_lanes": [
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Retain opt-in Gemma publication and trusted calendar isolation through the Studio HTTP route."
+    },
+    {
       "path": "tests/test_academy_quality.py",
       "domain": "academy",
       "test_type": "unit",

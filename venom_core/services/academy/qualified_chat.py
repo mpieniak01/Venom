@@ -2,11 +2,26 @@
 
 from __future__ import annotations
 
+import json
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass
+from typing import Any
 
 from venom_core.api.schemas.llm_simple import HistoryMessage
+from venom_core.services.academy.qualified_chat_constraints import (
+    active_constraints,
+    constraint_conflicts,
+    constraint_labels,
+    find_violations,
+    uncertain_constraints,
+)
+from venom_core.services.academy.qualified_chat_options import (
+    CountRequirement,
+    requested_count,
+    split_options,
+)
+from venom_core.services.academy.qualified_chat_schedule import route_shift
 
 QUALIFIED_MODEL = "gemma4:12b-it-q4_k_m"
 _CALENDAR_UNCONFIRMED = "Wpis do kalendarza wymaga potwierdzenia wykonania."
@@ -43,9 +58,10 @@ _NEGATED_CLAIM = re.compile(
     r"\bnie (?:dodałem|dodałam|zapisałem|zapisałam|wpisałem|wpisałam|zanotowałem|zanotowałam|został\w*)\b",
     re.I,
 )
+_AMBIGUOUS_PLACE = re.compile(r"\b(?:i|lub|albo|oraz)\b", re.I)
 _LOCATION = r"(?:przy|w|za|pod|obok) [\w-]+(?: [\w-]+){0,5}"
 _RETURN_LOCATION = re.compile(
-    rf"\b(?:zwraca|oddaje) się (?P<place>{_LOCATION})(?=[.!?]|$)", re.I
+    rf"\b(?:zwraca|oddaje)(?: się)? (?P<place>{_LOCATION})(?=[.!?]|$)", re.I
 )
 _RETURN_UPDATE = re.compile(
     rf"(?:zmień|popraw)(?: tylko)? miejsce zwrotu na (?P<place>{_LOCATION})", re.I
@@ -65,17 +81,21 @@ def _normalize(text: str) -> str:
     return " ".join(text.split()).rstrip(".!?")
 
 
+def _safe_location(place: str) -> str | None:
+    return None if _AMBIGUOUS_PLACE.search(place) else place + "."
+
+
 def _return_location(history: Sequence[HistoryMessage]) -> str | None:
     for turn in reversed(history):
         if turn.role != "user":
             continue
         clause = _normalize(turn.content)
         if correction := _RETURN_UPDATE.fullmatch(clause):
-            return correction["place"] + "."
+            return _safe_location(correction["place"])
         if _LAYOUT_ONLY.fullmatch(clause):
             continue
         locations = tuple(_RETURN_LOCATION.finditer(clause))
-        return locations[0]["place"] + "." if len(locations) == 1 else None
+        return _safe_location(locations[0]["place"]) if len(locations) == 1 else None
     return None
 
 
@@ -94,23 +114,269 @@ def _calendar_reply(text: str) -> str | None:
     return None
 
 
+_DEFAULT_INSTRUCTION = (
+    "Prowadź naturalną rozmowę po polsku. Uwzględniaj kontekst, poprawki i żądany format. "
+    "Zwykła odpowiedź ma najwyżej cztery zdania."
+)
+_CLARIFICATION = (
+    "Potrzebuję doprecyzowania, żeby odpowiedzieć zgodnie z Twoimi warunkami."
+)
+_EXACT_SENTENCE = re.compile(
+    r"\b(?:jedno(?: krótkie)? zdanie|jednym(?: krótkim)? zdani[eu])\b", re.I
+)
+_TWO_BULLETS = re.compile(r"\b(?:dwóch krótkich punktach|dwa krótkie punkty)\b", re.I)
+_STRICT_TIME = re.compile(
+    r"\b(?:mniej|krócej|krótsz[aeąy]) niż (?:jedną |1 )?minut[ęy]\b", re.I
+)
+_KEEP = re.compile(r"\b(?:zachowaj|zostań przy|nadal)\b", re.I)
+_SECONDS = re.compile(r"(?<![\d,.-])([1-9][0-9]?) sekund(?:ę|y)?\b", re.I)
+_STATED_TIME = re.compile(r"\b[0-9]+(?:[.,][0-9]+)?\s*(?:sekund\w*|minut\w*|s\b)", re.I)
+_SIGN = re.compile(
+    r"\b(?:co to znaczy|wyjaśnij[^.!?]{0,40}(?:napis|co to znaczy))", re.I
+)
+_FREE = re.compile(r"wstęp wolny|bezpłatny wstęp|wstęp bezpłatny", re.I)
+_ENTRY = re.compile(
+    r"obowiązują wejściówki|wymagana wejściówka|wymagane wejściówki", re.I
+)
+_REMOVAL = re.compile(r"\b(?:czy samo|czy sama)\s+(?:wyjęcie|usunięcie)\b", re.I)
+_WEIGHT = re.compile(r"\b(?:ciężar\w*|ciężk\w*|wag[aię]|mas[ayę]|waż\w*)\b", re.I)
+_SIZE = re.compile(
+    r"\b(?:gabaryt\w*|miejsce|przejście|rozmiar\w*|wymiar\w*|(?:z)?mieśc\w*|półk\w*)\b",
+    re.I,
+)
+
+
+def _claim(clauses: str) -> bool:
+    return any(
+        _CALENDAR_CLAIM.search(clause) and not _NEGATED_CLAIM.search(clause)
+        for clause in _CLAUSE_SPLIT.split(clauses)
+    )
+
+
+def _source_reply(text: str, users: Sequence[str]) -> str | None:
+    quotes = re.findall(r"„([^”]+)”", text)
+    if _SIGN.search(text) and len(quotes) == 1:
+        parts = [part.strip().rstrip(".") for part in re.split(r"[,;]", quotes[0])]
+        if len(parts) == 2 and any(
+            _FREE.fullmatch(free) and _ENTRY.fullmatch(entry)
+            for free, entry in (parts, parts[::-1])
+        ):
+            return "Wstęp jest bezpłatny. Do wejścia potrzebujesz wejściówki."
+    context = " ".join(users)
+    if _REMOVAL.search(text) and _WEIGHT.search(context) and _SIZE.search(context):
+        return (
+            "Wyjęcie części zawartości może zmniejszyć ciężar, ale nie gwarantuje mniejszych gabarytów. "
+            "Sprawdź zewnętrzne wymiary i miejsce, w którym przedmiot ma się zmieścić."
+        )
+    return None
+
+
+def _options_schema(minimum: int, maximum: int) -> dict[str, Any]:
+    return {
+        "type": "object",
+        "required": ["options"],
+        "additionalProperties": False,
+        "properties": {
+            "options": {
+                "type": "array",
+                "items": {"type": "string"},
+                "minItems": minimum,
+                "maxItems": maximum,
+            }
+        },
+    }
+
+
+def _read_json(draft: str) -> dict[str, Any]:
+    try:
+        value = json.loads(draft)
+    except ValueError:
+        return {}
+    return value if isinstance(value, dict) else {}
+
+
+def _format_hint(text: str, restrictions: frozenset[str]) -> str:
+    hints = []
+    if _EXACT_SENTENCE.search(text):
+        hints.append(
+            "Zwróć jedno zdanie i pomiń wstęp, pytanie dodatkowe oraz pożegnanie."
+        )
+    elif _TWO_BULLETS.search(text):
+        hints.append("Zwróć wyłącznie dwa krótkie i samodzielne punkty.")
+    elif "krótkie ogłoszenie" in text.casefold():
+        hints.append("Zwróć tylko treść krótkiego ogłoszenia, bez pytania o styl.")
+    if restrictions:
+        hints.append(
+            f"Aktywne wykluczenia: {', '.join(constraint_labels(restrictions))}. "
+            "Każda opcja ma spełniać je osobno, także przy linkach i załącznikach."
+        )
+    return " ".join(hints)
+
+
+def _duration(
+    text: str, history: Sequence[HistoryMessage], users: Sequence[str]
+) -> tuple[bool, int | None]:
+    if _STRICT_TIME.search(text):
+        return True, None
+    if not (users and _KEEP.search(text) and _STRICT_TIME.search(users[-1])):
+        return False, None
+    previous = history[-1] if history else None
+    if previous and previous.role == "assistant":
+        values = _SECONDS.findall(previous.content)
+        if len(values) == 1 and int(values[0]) < 60:
+            return True, int(values[0])
+    return True, None
+
+
 @dataclass(frozen=True)
 class QualifiedReply:
     local_text: str | None = None
+    restrictions: frozenset[str] = frozenset()
+    hint: str = ""
+    count: CountRequirement | None = None
+    timed: bool = False
+    retained_seconds: int | None = None
 
-    @staticmethod
-    def publish(draft: str) -> str:
-        for clause in _CLAUSE_SPLIT.split(draft):
-            if _CALENDAR_CLAIM.search(clause) and not _NEGATED_CLAIM.search(clause):
-                return _CALENDAR_UNCONFIRMED
-        return draft
+    @property
+    def schema(self) -> dict[str, Any] | None:
+        if self.timed:
+            return {
+                "type": "object",
+                "required": ["action", "seconds"],
+                "additionalProperties": False,
+                "properties": {
+                    "action": {"type": "string"},
+                    "seconds": {
+                        "type": "integer",
+                        "minimum": self.retained_seconds or 1,
+                        "maximum": self.retained_seconds or 59,
+                    },
+                },
+            }
+        if self.count:
+            return _options_schema(
+                self.count.count if self.count.mode == "exact" else 1, self.count.count
+            )
+        return None
+
+    def prompt(self, custom: str) -> str:
+        return "\n\n".join(filter(None, (custom or _DEFAULT_INSTRUCTION, self.hint)))
+
+    def _allowed(self, text: str) -> bool:
+        return not (
+            _claim(text)
+            or find_violations(text, self.restrictions)
+            or uncertain_constraints(text, self.restrictions)
+        )
+
+    def options(self, draft: str) -> list[str]:
+        value = _read_json(draft).get("options")
+        if not isinstance(value, list):
+            return []
+        accepted: dict[str, str] = {}
+        for item in value:
+            if (
+                isinstance(item, str)
+                and item.strip()
+                and len(
+                    split_options(json.dumps({"options": [item]}, ensure_ascii=False))
+                )
+                == 1
+                and self._allowed(item)
+            ):
+                accepted.setdefault(item.strip().casefold(), item.strip())
+        return list(accepted.values())
+
+    def repair(self, draft: str) -> tuple[list[str], dict[str, Any]] | None:
+        if self.timed or not self.count:
+            return None
+        kept = self.options(draft)
+        if kept and self.count.accepts(len(kept)):
+            return None
+        missing = self.count.count - len(kept) if self.count.mode == "exact" else 1
+        return (kept, _options_schema(missing, missing)) if missing > 0 else None
+
+    def _publish_timed(self, draft: str) -> str:
+        value = _read_json(draft)
+        action, seconds = value.get("action"), value.get("seconds")
+        if (
+            not isinstance(action, str)
+            or not any(char.isalnum() for char in action)
+            or len(action.split()) > 18
+            or _STATED_TIME.search(action)
+            or type(seconds) is not int
+            or not 1 <= seconds <= 59
+            or (self.retained_seconds is not None and seconds != self.retained_seconds)
+            or not self._allowed(action)
+        ):
+            return _CLARIFICATION
+        label = (
+            "sekundę"
+            if seconds == 1
+            else "sekundy"
+            if seconds % 10 in (2, 3, 4) and seconds % 100 not in (12, 13, 14)
+            else "sekund"
+        )
+        action = action.strip().rstrip(".!?")
+        return f"Przez {seconds} {label} {action[0].lower() + action[1:]}."
+
+    def publish(self, draft: str, repair: str | None = None) -> str:
+        if self.timed:
+            return self._publish_timed(draft)
+        if self.count:
+            values = {
+                option.casefold(): option
+                for option in [*self.options(draft), *self.options(repair or "")]
+            }
+            options = list(values.values())[: self.count.count]
+            if not options or not self.count.accepts(len(options)):
+                return _CLARIFICATION
+            if len(options) == 1:
+                return options[0]
+            return "\n".join(f"{i}. {option}" for i, option in enumerate(options, 1))
+        if _claim(draft):
+            return _CALENDAR_UNCONFIRMED
+        return draft if draft.strip() and self._allowed(draft) else _CLARIFICATION
 
 
 def prepare_reply(text: str, history: Sequence[HistoryMessage]) -> QualifiedReply:
     normalized = _normalize(text)
-    local_text = (
-        _return_location(history)
-        if _ONLY_LOCATION.fullmatch(normalized)
-        else _calendar_reply(normalized)
+    users = [turn.content for turn in history if turn.role == "user"]
+    messages = [{"role": turn.role, "content": turn.content} for turn in history]
+    if _ONLY_LOCATION.fullmatch(normalized):
+        return QualifiedReply(
+            _return_location(history) or "Gdzie dokładnie znajduje się miejsce zwrotu?"
+        )
+    local = (
+        _calendar_reply(normalized)
+        or route_shift(text, messages)
+        or _source_reply(text, [*users, text])
     )
-    return QualifiedReply(local_text)
+    if local is not None:
+        return QualifiedReply(local)
+    messages.append({"role": "user", "content": text})
+    if constraint_conflicts(messages):
+        return QualifiedReply(_CLARIFICATION)
+    restrictions = active_constraints(messages)
+    time_bound, preserved = _duration(text, history, users)
+    count = requested_count(text)
+    hint = _format_hint(text, restrictions)
+    if time_bound:
+        hint += (
+            " Zwróć jedno krótkie polecenie bez czasu w polu action, a czas krótszy niż minuta w seconds. "
+            "Wybierz zgodną wcześniejszą opcję, jeśli o to proszono, i zachowaj ustalony czas."
+        )
+    elif count:
+        hint += (
+            " W polu options podaj pojedynczą pełną propozycję w każdym elemencie tablicy. "
+            "Każdy element ma zawierać jedną samodzielną opcję."
+        )
+        if {"water", "glue"} <= restrictions:
+            hint += " Wybieraj przedmioty gotowe do użycia na sucho, bez podlewania i mocowania klejem."
+    return QualifiedReply(
+        restrictions=restrictions,
+        hint=hint.strip(),
+        count=count,
+        timed=time_bound,
+        retained_seconds=preserved,
+    )

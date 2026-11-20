@@ -2,6 +2,7 @@
 
 from datetime import datetime, timedelta, timezone
 from typing import List
+from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException
 
@@ -11,6 +12,8 @@ from venom_core.api.schemas.calendar import (
     CreateEventResponse,
     EventsResponse,
 )
+from venom_core.config import SETTINGS
+from venom_core.core.calendar_execution import CalendarCreate
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -147,6 +150,28 @@ def create_calendar_event(request: CreateEventRequest):
         if request.duration_minutes <= 0:
             raise HTTPException(
                 status_code=400, detail="Czas trwania musi być większy od 0"
+            )
+
+        if SETTINGS.ACADEMY_QUALIFIED_CHAT_ENABLED:
+            operation = CalendarCreate(
+                uuid4(),
+                request.title,
+                request.start_time,
+                request.duration_minutes,
+                request.description,
+            )
+            result = skill.schedule_verified_task(operation)
+            receipt = result.confirmed(operation)
+            if receipt is None:
+                return CreateEventResponse(
+                    status="error",
+                    message="Wpis do kalendarza nie został potwierdzony.",
+                )
+            return CreateEventResponse(
+                status="success",
+                message=result.message,
+                event_id=receipt.event_id,
+                event_link=receipt.event_link,
             )
 
         # Wywołaj skill do utworzenia wydarzenia

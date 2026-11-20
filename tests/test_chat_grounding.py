@@ -32,6 +32,29 @@ def test_routing(message, expected):
     assert chat_grounding.grounding_kind(message) == expected
 
 
+@pytest.mark.parametrize(
+    ("message", "source", "news"),
+    [
+        ("Jak nazywa się punkt odbioru z poprzedniej wiadomości?", None, False),
+        ("Powtórz nazwę z ostatniej wiadomości.", None, False),
+        ("Podaj ostatnie wiadomości.", "web", True),
+        (
+            "Podaj dzisiejsze wiadomości BBC o kraju z poprzedniej wiadomości.",
+            "web",
+            True,
+        ),
+        (
+            "Sprawdź aktualną cenę z poprzedniej wiadomości.",
+            "web",
+            False,
+        ),
+    ],
+)
+def test_chat_message_reference_is_not_a_news_request(message, source, news):
+    assert chat_grounding.grounding_kind(message) == source
+    assert chat_grounding.is_current_news_request(message) == news
+
+
 def test_private_question_does_not_trigger_external_source():
     assert chat_grounding.grounding_kind("Aktualny status hasła do konta") is None
     assert chat_grounding.grounding_kind("Aktualne dane ola@example.org") is None

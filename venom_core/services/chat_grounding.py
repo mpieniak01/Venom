@@ -54,6 +54,11 @@ _ENCYCLOPEDIC = re.compile(
 _WIKI_TOPIC_PREFIX = re.compile(
     r"^\s*(?:czym jest|co to jest|kim (?:był[ao]?|jest))\s+", re.I
 )
+_CHAT_MESSAGE_REFERENCE = re.compile(
+    r"\b(?:z|we?|o|do|po)\s+(?:poprzedniej|wcześniejszej|ostatniej|tej|twojej|mojej)"
+    r"\s+wiadomości\b",
+    re.I,
+)
 _NEWS_REQUEST = re.compile(r"\b(?:wiadomoś(?:ć|ci)|newsy|wydarzeni\w*)\b", re.I)
 _TOPICAL_NEWS = re.compile(
     r"\b(?:wiadomoś(?:ć|ci)|newsy)\s+(?:o|na temat|dotycząc\w*)\b", re.I
@@ -76,6 +81,7 @@ def grounding_kind(message: str, *, use_notes: bool = False) -> str | None:
     """Choose a public, read-only source for an ordinary question."""
     if use_notes or _PRIVATE.search(message):
         return None
+    message = _CHAT_MESSAGE_REFERENCE.sub(" ", message)
     current = bool(_CURRENT.search(message) or _CURRENT_OFFICE.search(message))
     if _ENCYCLOPEDIC.search(message) and not current:
         return "wiki"
@@ -93,7 +99,8 @@ def grounding_kind(message: str, *, use_notes: bool = False) -> str | None:
 
 def is_current_news_request(message: str) -> bool:
     """Identify a request for public reporting even if retrieval was unavailable."""
-    return bool(_NEWS_REQUEST.search(message)) and grounding_kind(message) == "web"
+    topic = _CHAT_MESSAGE_REFERENCE.sub(" ", message)
+    return bool(_NEWS_REQUEST.search(topic)) and grounding_kind(message) == "web"
 
 
 def _weather_location(message: str) -> str | None:
@@ -163,7 +170,8 @@ def _safe_results(raw: str) -> list[str]:
 async def _feed_headline_context(
     message: str, policy: str, region: NewsRegion
 ) -> str | None:
-    if not _NEWS_REQUEST.search(message) or _TOPICAL_NEWS.search(message):
+    topic = _CHAT_MESSAGE_REFERENCE.sub(" ", message)
+    if not _NEWS_REQUEST.search(topic) or _TOPICAL_NEWS.search(topic):
         return None
     skill = RSSReaderSkill()
     for feed in region.feeds:

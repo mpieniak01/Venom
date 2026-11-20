@@ -47,6 +47,7 @@ async def test_weather_includes_time_and_source(monkeypatch):
     fetch.assert_awaited_once_with("Warszawa")
     assert "Retrieved at:" in result
     assert "https://wttr.in/Warszawa?format=j1" in result
+    assert "Requested location: Warszawa" in result
     assert "12°C" in result
 
 
@@ -289,7 +290,7 @@ async def test_world_news_uses_labeled_bbc_headlines_when_articles_fail(monkeypa
     )
     monkeypatch.setattr(chat_grounding.RSSReaderSkill, "read_feed", feed)
     result = await chat_grounding.current_chat_context(
-        "Jakie są dziś wiadomości ze świata?"
+        "Podaj jedną aktualną wiadomość ze świata, datę publikacji i link."
     )
     assert feed.await_count == 1
     assert feed.await_args.args[0].name == "BBC News RSS"
@@ -297,11 +298,27 @@ async def test_world_news_uses_labeled_bbc_headlines_when_articles_fail(monkeypa
     assert "Only the feed headlines were read" in result
     assert "World headline" in result
     assert "https://www.bbc.co.uk/news/articles/example" in result
+    feed.reset_mock()
+    feed.return_value = [
+        verified_web.NewsHeadline(
+            url="https://stat.gov.pl/aktualnosci/przyklad",
+            title="Publikacja danych GUS",
+            published_at="2026-11-14",
+        )
+    ]
     result = await chat_grounding.current_chat_context(
-        "Jakie są dziś wiadomości z Polski?"
+        "Podaj jedną aktualną wiadomość z Polski, datę publikacji i link."
+    )
+    assert feed.await_count == 1
+    assert feed.await_args.args[0].article_hosts == ("stat.gov.pl",)
+    assert "GUS" in result and "Only the feed headlines were read" in result
+
+    feed.reset_mock()
+    result = await chat_grounding.current_chat_context(
+        "Podaj aktualną wiadomość o remoncie mostu."
     )
     assert "could not be retrieved" in result
-    feed.assert_awaited_once()
+    feed.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -394,14 +411,14 @@ async def test_wiki_context_and_normal_chat_integration(monkeypatch):
     store = SimpleNamespace(get_history=lambda _session_id: [])
     vectors = AsyncMock()
     request = SimpleChatRequest(
-        content="Kim była Maria Skłodowska-Curie?",
+        content="Kim była Maria Skłodowska-Curie? Z Wikipedii podaj nagrody i link.",
         session_id="test",
         studio_normal=True,
     )
     prepared, context = await studio_normal_chat.prepare_studio_normal(
         request, store, vectors
     )
-    wiki.assert_awaited_once_with(request.content, limit=2)
+    wiki.assert_awaited_once_with("Maria Skłodowska-Curie", limit=2)
     vectors.assert_not_awaited()
     assert source.url in context
     assert "Polska uczona" in context

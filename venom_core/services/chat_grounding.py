@@ -51,6 +51,13 @@ _ENCYCLOPEDIC = re.compile(
     r"(?:według|z) wikipedi[ia])\b",
     re.I,
 )
+_WIKI_TOPIC_PREFIX = re.compile(
+    r"^\s*(?:czym jest|co to jest|kim (?:był[ao]?|jest))\s+", re.I
+)
+_NEWS_REQUEST = re.compile(r"\b(?:wiadomoś(?:ć|ci)|newsy|wydarzeni\w*)\b", re.I)
+_TOPICAL_NEWS = re.compile(
+    r"\b(?:wiadomoś(?:ć|ci)|newsy)\s+(?:o|na temat|dotycząc\w*)\b", re.I
+)
 _LOCATION = re.compile(
     r"\b(?:w|we|dla)\s+([A-Za-zĄĆĘŁŃÓŚŹŻąćęłńóśźż-]+(?:\s+[A-ZĄĆĘŁŃÓŚŹŻ][A-Za-zĄĆĘŁŃÓŚŹŻąćęłńóśźż-]+){0,2})",
 )
@@ -151,7 +158,7 @@ def _safe_results(raw: str) -> list[str]:
 async def _feed_headline_context(
     message: str, policy: str, region: NewsRegion
 ) -> str | None:
-    if not re.search(r"\b(wiadomości|newsy|wydarzeni\w*)\b", message, re.I):
+    if not _NEWS_REQUEST.search(message) or _TOPICAL_NEWS.search(message):
         return None
     skill = RSSReaderSkill()
     for feed in region.feeds:
@@ -202,11 +209,19 @@ async def _weather_context(message: str, policy: str) -> str:
     if not result or result.startswith("✗"):
         return PublicSourceUnavailable.WEATHER
     url = AssistantSkill.weather_source_url(city)
-    return f"{policy}Source: {url}\n{result[:1000]}\n[/PUBLIC_SOURCES]"
+    return (
+        f"{policy}Requested location: {city}\nSource: {url}\n"
+        f"{result[:1000]}\n[/PUBLIC_SOURCES]"
+    )
 
 
 async def _wiki_context(message: str, policy: str) -> str:
-    sources = await search_polish_wikipedia(message, limit=2)
+    topic = message
+    if prefix := _WIKI_TOPIC_PREFIX.match(message):
+        first_question = message[prefix.end() :].split("?", 1)[0].strip()
+        if first_question:
+            topic = first_question
+    sources = await search_polish_wikipedia(topic, limit=2)
     if not sources:
         return PublicSourceUnavailable.WIKIPEDIA
     lines = [

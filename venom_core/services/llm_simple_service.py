@@ -22,6 +22,11 @@ from venom_core.core.metrics import get_metrics_collector
 from venom_core.core.ollama_runtime_capabilities import is_gemma4_model_name
 from venom_core.core.tracer import TraceStatus
 from venom_core.services import llm_simple_transport
+from venom_core.services.academy.qualified_chat import (
+    QUALIFIED_MODEL,
+    QualifiedReply,
+    prepare_reply,
+)
 from venom_core.services.llm_simple_payload_service import (
     apply_optional_features_to_payload as _apply_optional_features_to_payload,
 )
@@ -1001,6 +1006,7 @@ async def _stream_simple_chunks_non_stream(
     runtime,
     request_id: UUID,
     model_name: str,
+    qualified_reply: QualifiedReply | None = None,
 ) -> AsyncIterator[str]:
     expected_runtime_id, expected_config_hash = _expected_vast_identity(runtime)
     async with runtime_request_guard(
@@ -1015,6 +1021,13 @@ async def _stream_simple_chunks_non_stream(
         chunks: list[str] = []
 
         yield _SSE_EVENT_START
+        if qualified_reply is not None and qualified_reply.local_text is not None:
+            content = qualified_reply.local_text
+            _trace_first_chunk(request_id, stream_start, content)
+            _trace_stream_completion(request_id, content, 1, stream_start)
+            yield "event: content\ndata: " + json.dumps({"text": content}) + "\n\n"
+            yield _SSE_EVENT_DONE
+            return
         try:
             async with llm_simple_transport.open_stream_response(
                 provider_name=str(getattr(runtime, "provider", "") or "llm_runtime"),
@@ -1074,6 +1087,8 @@ async def _stream_simple_chunks_non_stream(
             runtime_telemetry = _extract_runtime_telemetry(data)
             usage = _token_usage_from_telemetry(runtime_telemetry)
             content = _extract_message_content(data, fallback_text="")
+            if qualified_reply is not None:
+                content = qualified_reply.publish(content)
             logprobs_telemetry = _extract_logprobs_telemetry(data)
             if logprobs_telemetry is not None:
                 yield (
@@ -1295,6 +1310,29 @@ def _prepare_local_direct_prompt(
     )
 
 
+def _prepare_qualified_reply(
+    request: SimpleChatRequest,
+    runtime: LLMRuntimeInfo,
+    model_name: str,
+) -> QualifiedReply | None:
+    from venom_core.services.chat_material_payload import has_materials
+
+    if (
+        not SETTINGS.ACADEMY_QUALIFIED_CHAT_ENABLED
+        or model_name.casefold() != QUALIFIED_MODEL
+        or not is_host_ollama(runtime)
+        or has_materials(request)
+        or request.tools is not None
+        or request.tool_choice is not None
+        or request.format is not None
+        or request.response_format is not None
+        or request.logprobs
+        or request.top_logprobs is not None
+    ):
+        return None
+    return prepare_reply(request.content, request.history)
+
+
 async def _stream_non_openrouter_chat(
     request: SimpleChatRequest, *, system_context: str = ""
 ):
@@ -1337,7 +1375,8 @@ async def _stream_non_openrouter_chat(
     _trace_context_preview(request_id, messages)
     headers = _build_streaming_headers(str(request_id), request.session_id or "")
     completions_url = _build_chat_completions_url(runtime)
-    force_non_stream = request.stream is False
+    qualified_reply = _prepare_qualified_reply(request, runtime, model_name)
+    force_non_stream = request.stream is False or qualified_reply is not None
     if is_multi_runtime(runtime_provider) or force_non_stream:
         if not completions_url:
             raise HTTPException(status_code=503, detail="Brak endpointu LLM.")
@@ -1354,6 +1393,7 @@ async def _stream_non_openrouter_chat(
                 runtime=runtime,
                 request_id=request_id,
                 model_name=model_name,
+                qualified_reply=qualified_reply,
             ),
             media_type=_SSE_MEDIA_TYPE,
             headers=headers,

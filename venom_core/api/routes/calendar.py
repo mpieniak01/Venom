@@ -13,7 +13,7 @@ from venom_core.api.schemas.calendar import (
     EventsResponse,
 )
 from venom_core.config import SETTINGS
-from venom_core.core.calendar_execution import CalendarCreate
+from venom_core.services.calendar_execution import CalendarCreate
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)

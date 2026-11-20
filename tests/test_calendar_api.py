@@ -269,7 +269,10 @@ def test_calendar_api_requires_a_receipt_bound_to_current_execution(
     from dataclasses import replace
     from uuid import uuid4
 
-    from venom_core.core.calendar_execution import CalendarExecution, CalendarReceipt
+    from venom_core.services.calendar_execution import (
+        CalendarExecution,
+        CalendarReceipt,
+    )
 
     monkeypatch.setattr(
         calendar_routes.SETTINGS, "ACADEMY_QUALIFIED_CHAT_ENABLED", True

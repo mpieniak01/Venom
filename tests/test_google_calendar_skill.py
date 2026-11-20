@@ -306,7 +306,7 @@ def test_verified_calendar_executor_matches_provider_event(
 ):
     from uuid import uuid4
 
-    from venom_core.core.calendar_execution import CalendarCreate
+    from venom_core.services.calendar_execution import CalendarCreate
 
     operation = CalendarCreate(
         uuid4(), "Odprawa", "2026-11-20T15:00:00+01:00", 30, "Zespół"

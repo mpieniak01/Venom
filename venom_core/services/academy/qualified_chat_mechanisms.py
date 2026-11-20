@@ -57,9 +57,9 @@ _CAR_VARIANT = re.compile(r"\b(?:dostawcz|ciężarow|terenow|wyścigow)\w*")
 _APPEARANCE = re.compile(r"\b(?:wydaje|wygląda|pozorn)\w*")
 _BENDING = re.compile(r"\b(?:zgięt|złaman|zakrzyw|przesunięt)\w*")
 _WATER = re.compile(r"\bwod(?:a|y|ę|ą|zie)\b")
-_OTHER_MEDIUM = re.compile(
-    r"\b(?:olej|mlek|ciecz inna|na sucho|bez wody|pust\w+ "
-    r"(?:słoik|szklan|misk)|gorąc\w+ wod)\w*"
+_OTHER_MEDIUM = re.compile(r"\b(?:olej|mlek|ciecz inna|gorąc\w+ wod)\w*")
+_NO_WATER = re.compile(
+    r"\b(?:na sucho|bez wody|pust\w+ (?:słoik|szklan|mis[ck]|kubk|kubec)\w*)\b"
 )
 _OPTICAL_OBJECTS = (
     (re.compile(r"\błyżecz[kc]\w*"), "łyżeczka", "zgięta"),
@@ -153,7 +153,9 @@ def _braking(topic: str, example: str) -> CheckedExplanation | None:
 
 def _refraction(topic: str, example: str) -> CheckedExplanation | None:
     if not (
-        _WATER.search(topic) and _APPEARANCE.search(topic) and _BENDING.search(topic)
+        _WATER.search(_NO_WATER.sub(" ", topic))
+        and _APPEARANCE.search(topic)
+        and _BENDING.search(topic)
     ) or _OTHER_MEDIUM.search(f"{topic} {example}"):
         return None
     objects = [
@@ -165,6 +167,14 @@ def _refraction(topic: str, example: str) -> CheckedExplanation | None:
     if len(objects) != 1 or len(places) != 1:
         return None
     noun, adjective = objects[0]
+    remainder = _NO_WATER.sub(" ", example)
+    if remainder != example:
+        if _WATER.search(remainder):
+            return None
+        return CheckedExplanation(
+            "Bez wody w naczyniu nie ma granicy wody i powietrza, która powodowała pozorne zgięcie.",
+            f"Dlatego {noun} {places[0]} bez wody nie wydaje się {adjective} z tego powodu.",
+        )
     return CheckedExplanation(
         "Światło zmienia kierunek na granicy wody i powietrza, więc zanurzona część przedmiotu wygląda na przesuniętą.",
         f"Dlatego {noun} {places[0]} z wodą wydaje się {adjective} przy powierzchni wody.",
@@ -193,12 +203,14 @@ def checked_explanation(
             example == visible and _NEGATION.search(visible)
         ):
             return None
-    if (
-        not example
-        or _NEGATION.search(example)
-        or re.match(r"\bzamiast metal", visible)
-    ):
+    if not example or re.match(r"\bzamiast metal", visible):
         return None
+    if _NO_WATER.search(example) or _NEGATION.search(example):
+        if not _NO_WATER.search(example) or _NEGATION.search(
+            _NO_WATER.sub(" ", example)
+        ):
+            return None
+        return _refraction(topic, example)
 
     return (
         _thermal(topic, example)

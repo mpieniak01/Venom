@@ -1209,7 +1209,6 @@ def test_checked_explanation_keeps_open_requests_on_the_ordinary_path():
     reflection = "Wyjaśnij, dlaczego słomka w szklance wody wygląda na zgiętą."
     history = [HistoryMessage(role="user", content=reflection)]
     for prompt in (
-        "Zmień przykład na słomkę w słoiku bez wody.",
         "Zmień przykład na słomkę.",
         "Zmień przykład na słomkę w szklance oleju.",
         "Wyjaśnij szczegółowo, dlaczego słomka w szklance wody wygląda na zgiętą.",
@@ -1270,3 +1269,28 @@ def test_checked_explanation_supports_repeated_example_changes_without_resuming_
         HistoryMessage(role="user", content="Zmieniam temat. Napisz zaproszenie.")
     )
     assert checked_explanation(latest, history, token_budget=96) is None
+
+
+@pytest.mark.parametrize(
+    "studio_chat", [QUALIFIED_MODEL, QUALIFIED_BOLT_MODEL], indirect=True
+)
+def test_studio_refraction_accepts_an_explicit_counterexample_without_an_invented_medium(
+    studio_chat,
+    monkeypatch,
+):
+    from venom_core.services import studio_normal_chat
+
+    monkeypatch.setattr(
+        studio_normal_chat, "current_chat_context", AsyncMock(return_value="")
+    )
+    chat, sent, _ = studio_chat
+    history = [
+        turn("Wyjaśnij, czemu słomka w szklance wody wydaje się zgięta."),
+        turn("Światło załamuje się na granicy wody.", "assistant"),
+    ]
+    response = chat(
+        "Zmień przykład na słomkę w pustym słoiku bez wody.", history=history
+    )
+    assert "słomka w słoiku bez wody" in response
+    assert "nie ma granicy wody i powietrza" in response
+    assert not sent

@@ -469,6 +469,7 @@ export const de = {
     loading: "Lade Ereignisse...",
     errors: {
       no_config: "Google Calendar ist nicht konfiguriert. Prüfen Sie ENABLE_GOOGLE_CALENDAR.",
+      create_failed: "Die Erstellung des Termins konnte nicht bestätigt werden",
       fetch_failed: "Laden der Ereignisse fehlgeschlagen",
     },
   },

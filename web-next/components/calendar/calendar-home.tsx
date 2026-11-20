@@ -1,7 +1,12 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { CalendarEvent, EventsResponse, CreateEventRequest } from "@/lib/types";
+import type {
+  CalendarEvent,
+  CreateEventRequest,
+  CreateEventResponse,
+  EventsResponse,
+} from "@/lib/types";
 import { CalendarView } from "./calendar-view";
 import { EventForm } from "./event-form";
 import { Button } from "@/components/ui/button";
@@ -59,7 +64,11 @@ export function CalendarHome() {
         throw new Error(error.detail || `HTTP ${response.status}`);
       }
 
-      // Refresh events after creating new one
+      const result: CreateEventResponse | null = await response.json();
+      if (result?.status !== "success") {
+        throw new Error(result?.message || t("calendar.errors.create_failed"));
+      }
+
       await fetchEvents();
       setShowForm(false);
     } catch (err) {

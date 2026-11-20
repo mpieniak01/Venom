@@ -469,6 +469,7 @@ export const en = {
     loading: "Loading events...",
     errors: {
       no_config: "Google Calendar is not configured. Check ENABLE_GOOGLE_CALENDAR.",
+      create_failed: "Event creation could not be confirmed",
       fetch_failed: "Failed to fetch events",
     },
   },

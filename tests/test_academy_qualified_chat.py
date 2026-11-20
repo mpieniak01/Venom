@@ -99,8 +99,8 @@ def studio_chat(monkeypatch, tmp_path, request):
     app.state.studio_runtime = SimpleNamespace(get_vector_store=lambda: None)
     client = TestClient(app)
 
-    def chat(content, history=(), **kwargs):
-        session = str(uuid4())
+    def chat(content, history=(), *, session=None, **kwargs):
+        session = session or str(uuid4())
         for index, message in enumerate(history):
             store.append_message(
                 session,
@@ -1059,3 +1059,42 @@ def test_studio_quote_treats_negative_declaration_as_text(studio_chat):
     )
     operand = json.loads(sent[0]["payload"]["messages"][-1]["content"])
     assert operand["forma_wypowiedzi"] == "stwierdzenie"
+
+
+@pytest.mark.parametrize(
+    "studio_chat", [QUALIFIED_MODEL, QUALIFIED_BOLT_MODEL], indirect=True
+)
+def test_explanation_stream_preserves_user_topic_after_marked_truncation(studio_chat):
+    chat, sent, upstream = studio_chat
+    session = str(uuid4())
+    first = "Wyjaśnij, skąd się bierze echo. Użyj przykładu z klatki schodowej."
+    second = "Zamiast klatki schodowej użyj przykładu z pustej hali."
+    upstream.extend(
+        [
+            streamed("Jedyny niedokończony szkic", finish="length"),
+            streamed("Echo powstaje, gdy dźwięk odbija się od ścian hali i wraca."),
+        ]
+    )
+    assert chat(first, session=session, max_tokens=96).endswith(GENERATION_TRUNCATED)
+    assert "odbija się" in chat(second, session=session, max_tokens=96)
+    one, two = [call["payload"] for call in sent]
+    assert all(
+        payload["stream"] and payload["max_tokens"] == 96 for payload in (one, two)
+    )
+    assert "trzech krótkich zdaniach" in one["messages"][0]["content"]
+    assert "Zachowaj zjawisko" in two["messages"][0]["content"]
+    assert {"role": "user", "content": first} in two["messages"]
+    assert "Jedyny niedokończony szkic" not in str(two["messages"])
+    assert "przerwana przed zakończeniem" in str(two["messages"])
+
+
+def test_explanation_hints_preserve_explicit_format_and_quoted_facts():
+    from venom_core.services.academy.qualified_chat_explanations import explanation_hint
+
+    assert not explanation_hint("Wyjaśnij szczegółowo, skąd bierze się echo.", [])
+    assert not explanation_hint("Wyjaśnij echo w pięciu punktach.", [])
+    assert not explanation_hint("Przeredaguj: „Dlaczego widać cień?”", [])
+    assert not explanation_hint(
+        "W notatce jest «dlaczego?». Czy jest w niej znak zapytania?", []
+    )
+    assert not explanation_hint("Zamiast klatki użyj przykładu z hali.", [])

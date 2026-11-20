@@ -18,6 +18,8 @@ from venom_core.memory.chat_retrieval import (
     note_request_language,
     retrieve_chat_memory,
 )
+from venom_core.services.academy.qualified_chat import GENERATION_TRUNCATED
+from venom_core.services.academy.qualified_chat_explanations import changes_example
 from venom_core.services.background_priority import run_drainable_thread
 from venom_core.services.chat_grounding import current_chat_context, grounding_follow_up
 from venom_core.services.session_store import SessionStore
@@ -33,7 +35,7 @@ _NORMAL_LANGUAGE_POLICY = (
 
 
 def _recent_turns(
-    store: SessionStore, session_id: str, budget: int
+    store: SessionStore, session_id: str, budget: int, *, omit_truncated: bool = False
 ) -> list[HistoryMessage]:
     history = store.get_history(session_id)
     result: list[HistoryMessage] = []
@@ -58,6 +60,12 @@ def _recent_turns(
             or max(len(prompt), len(reply)) > MAX_CHAT_MESSAGE_CHARS
         ):
             continue
+        if omit_truncated and (
+            assistant.get("finish_reason") == "length"
+            or reply.endswith(f"\n\n{GENERATION_TRUNCATED}")
+            or reply == GENERATION_TRUNCATED
+        ):
+            reply = "Poprzednia odpowiedź została przerwana przed zakończeniem."
         cost = len(prompt) + len(reply) + 64
         if cost > budget:
             break
@@ -127,8 +135,16 @@ async def prepare_studio_normal(
         system_context += f" {_NORMAL_LANGUAGE_POLICY}"
     system_context += await _note_context(request, session_id, get_vector_store)
     remaining = budget - len(system_context)
+    omit_truncated = (
+        SETTINGS.ACADEMY_QUALIFIED_CHAT_ENABLED
+        and not request.use_notes
+        and changes_example(request.content)
+    )
     history = _recent_turns(
-        store, session_id, max(0, min(remaining, MAX_CHAT_HISTORY_CHARS))
+        store,
+        session_id,
+        max(0, min(remaining, MAX_CHAT_HISTORY_CHARS)),
+        omit_truncated=omit_truncated,
     )
     previous = next(
         (turn.content for turn in reversed(history) if turn.role == "user"), ""
@@ -147,7 +163,10 @@ async def prepare_studio_normal(
     return request.model_copy(
         update={
             "history": _recent_turns(
-                store, session_id, min(budget, MAX_CHAT_HISTORY_CHARS)
+                store,
+                session_id,
+                min(budget, MAX_CHAT_HISTORY_CHARS),
+                omit_truncated=omit_truncated,
             ),
             "max_tokens": output_tokens,
             "think": False,

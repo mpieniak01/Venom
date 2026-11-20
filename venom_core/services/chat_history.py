@@ -49,6 +49,7 @@ class DirectHistory:
         self.started = False
         self.recorded = False
         self.terminal = False
+        self.length_limited = False
         self.cost: dict[str, Any] | None = None
         self.model_identity: dict[str, str] | None = None
 
@@ -94,6 +95,11 @@ class DirectHistory:
             self._content(value.get("text"))
         elif kind in {"done", "error"}:
             self.terminal = True
+            self.length_limited = (
+                self.mode == "studio_normal"
+                and kind == "done"
+                and value.get("finish_reason") == "length"
+            )
             return "COMPLETED" if kind == "done" else "FAILED"
         return None
 
@@ -129,6 +135,8 @@ class DirectHistory:
             "content": "".join(self.parts),
             "timestamp": now,
         }
+        if self.length_limited:
+            assistant["finish_reason"] = "length"
         if self.model_identity is not None:
             assistant["model_identity"] = dict(self.model_identity)
         if self.cost is not None:

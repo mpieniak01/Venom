@@ -15,6 +15,7 @@ class SimpleStreamState:
     retry_requested: bool = False
     failed: bool = False
     completed: bool = False
+    length_limited: bool = False
 
 
 @dataclass(frozen=True)
@@ -40,6 +41,7 @@ def reset_stream_attempt_state(state: SimpleStreamState) -> None:
     state.retry_requested = False
     state.failed = False
     state.completed = False
+    state.length_limited = False
 
 
 def apply_post_attempt_action(action: str) -> tuple[bool, bool]:
@@ -80,6 +82,11 @@ def update_stream_state_from_packet(
     | None = None,
 ) -> list[str]:
     emitted_events: list[str] = []
+    state.length_limited |= any(
+        choice.get("finish_reason") == "length"
+        for choice in (packet.get("choices") or [])
+        if isinstance(choice, dict)
+    )
     if runtime_telemetry is None:
         runtime_telemetry = ollama_telemetry if ollama_telemetry is not None else {}
     if extract_runtime_telemetry_fn is None:

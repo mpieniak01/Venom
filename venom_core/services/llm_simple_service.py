@@ -33,6 +33,7 @@ from venom_core.services.academy.qualified_chat import (
     prepare_reply,
     prepare_studio_reply,
 )
+from venom_core.services.academy.qualified_chat_explanations import explanation_hint
 from venom_core.services.llm_simple_payload_service import (
     apply_optional_features_to_payload as _apply_optional_features_to_payload,
 )
@@ -744,6 +745,7 @@ async def _stream_single_attempt(
     state: _SimpleStreamState,
     runtime_telemetry: dict[str, int],
     guard_calendar: bool = False,
+    report_length: bool = False,
 ) -> AsyncIterator[str]:
     provider_name = str(getattr(runtime, "provider", "") or "llm_runtime")
     transport = _StreamTransportConfig(
@@ -762,18 +764,11 @@ async def _stream_single_attempt(
         sleep_fn=asyncio.sleep,
     )
     guard = CalendarClaimStream() if guard_calendar else None
-    truncated = False
 
     def visible_contents(packet: dict[str, Any]) -> list[str]:
-        nonlocal truncated
         contents = _extract_sse_contents(packet)
         if guard is None:
             return contents
-        truncated |= any(
-            choice.get("finish_reason") == "length"
-            for choice in (packet.get("choices") or [])
-            if isinstance(choice, dict)
-        )
         text = guard.push("".join(contents))
         return [text] if text else []
 
@@ -799,8 +794,12 @@ async def _stream_single_attempt(
         ),
     ):
         yield event
-    if guard is not None and state.completed:
-        final = guard.finish(truncated=truncated)
+    if state.completed and (guard is not None or report_length):
+        final = ""
+        if guard is not None:
+            final = guard.finish(truncated=state.length_limited)
+        elif state.length_limited:
+            final = f"\n\n{GENERATION_TRUNCATED}"
         for event in _update_stream_state_from_packet(
             packet={"choices": [{"delta": {"content": final}}]},
             state=state,
@@ -817,15 +816,19 @@ def _reset_stream_attempt_state(state: _SimpleStreamState) -> None:
     _reset_stream_attempt_state_impl(state)
 
 
-def _build_done_event(runtime_telemetry: dict[str, int]) -> str:
-    """Optional native usage extends the existing done event, without inference."""
-    usage = _token_usage_from_telemetry(runtime_telemetry)
-    if not usage:
-        return _SSE_EVENT_DONE
+def _build_done_event(
+    runtime_telemetry: dict[str, int], *, length_limited: bool = False
+) -> str:
+    """Keep the done event and attach provider usage or an observed length limit."""
+    details: dict[str, Any] = {}
+    if usage := _token_usage_from_telemetry(runtime_telemetry):
+        details.update(usage=usage, usage_source="upstream")
+    if length_limited:
+        details["finish_reason"] = "length"
     return (
-        "event: done\ndata: "
-        + json.dumps({"usage": usage, "usage_source": "upstream"})
-        + "\n\n"
+        "event: done\ndata: " + json.dumps(details) + "\n\n"
+        if details
+        else _SSE_EVENT_DONE
     )
 
 
@@ -958,6 +961,7 @@ async def _stream_simple_chunks(
     request_id: UUID,
     model_name: str,
     guard_calendar: bool = False,
+    report_length: bool = False,
 ) -> AsyncIterator[str]:
     expected_runtime_id, expected_config_hash = _expected_vast_identity(runtime)
     async with runtime_request_guard(
@@ -992,6 +996,7 @@ async def _stream_simple_chunks(
                     retry_backoff=retry_backoff,
                     state=state,
                     guard_calendar=guard_calendar,
+                    report_length=report_length,
                     runtime_telemetry=runtime_telemetry,
                 ):
                     yield event
@@ -1007,7 +1012,10 @@ async def _stream_simple_chunks(
                 if should_retry:
                     continue
                 if should_emit_done:
-                    yield _build_done_event(runtime_telemetry)
+                    yield _build_done_event(
+                        runtime_telemetry,
+                        length_limited=report_length and state.length_limited,
+                    )
                 return
 
             except httpx.HTTPError as exc:
@@ -1121,6 +1129,7 @@ async def _stream_simple_chunks_non_stream(
     request_id: UUID,
     model_name: str,
     qualified_reply: QualifiedReply | None = None,
+    report_length: bool = False,
 ) -> AsyncIterator[str]:
     expected_runtime_id, expected_config_hash = _expected_vast_identity(runtime)
     async with runtime_request_guard(
@@ -1215,7 +1224,15 @@ async def _stream_simple_chunks_non_stream(
                 tokens=usage.get("prompt_tokens", 0)
                 + usage.get("completion_tokens", 0),
             )
-            yield _build_done_event(runtime_telemetry)
+            yield _build_done_event(
+                runtime_telemetry,
+                length_limited=report_length
+                and (
+                    content == GENERATION_TRUNCATED
+                    if qualified_reply is not None
+                    else _draft_truncated(data)
+                ),
+            )
         except httpx.HTTPStatusError as exc:
             result = await _emit_http_status_error_and_mark_failed(
                 exc=exc,
@@ -1413,31 +1430,39 @@ def _prepare_local_direct_prompt(
     )
 
 
+def _qualified_request(request: SimpleChatRequest, runtime: LLMRuntimeInfo) -> bool:
+    from venom_core.services.chat_material_payload import has_materials
+
+    return (
+        SETTINGS.ACADEMY_QUALIFIED_CHAT_ENABLED
+        and is_host_ollama(runtime)
+        and not has_materials(request)
+        and request.tools is None
+        and request.tool_choice is None
+        and request.format is None
+        and request.response_format is None
+        and not request.logprobs
+        and request.top_logprobs is None
+    )
+
+
+def _qualified_studio_request(request: SimpleChatRequest, model: str) -> bool:
+    return (
+        request.studio_normal
+        and not request.use_notes
+        and model in {QUALIFIED_MODEL, QUALIFIED_BOLT_MODEL}
+    )
+
+
 def _prepare_qualified_reply(
     request: SimpleChatRequest,
     runtime: LLMRuntimeInfo,
     model_name: str,
 ) -> QualifiedReply | None:
-    from venom_core.services.chat_material_payload import has_materials
-
-    if (
-        not SETTINGS.ACADEMY_QUALIFIED_CHAT_ENABLED
-        or not is_host_ollama(runtime)
-        or has_materials(request)
-        or request.tools is not None
-        or request.tool_choice is not None
-        or request.format is not None
-        or request.response_format is not None
-        or request.logprobs
-        or request.top_logprobs is not None
-    ):
+    if not _qualified_request(request, runtime):
         return None
     model = model_name.casefold()
-    if (
-        request.studio_normal
-        and not request.use_notes
-        and model in {QUALIFIED_MODEL, QUALIFIED_BOLT_MODEL}
-    ):
+    if _qualified_studio_request(request, model):
         if reply := prepare_studio_reply(request.content, request.history):
             return reply
     return (
@@ -1527,6 +1552,12 @@ async def _stream_non_openrouter_chat(
         system_prompt = qualified_reply.prompt(
             "\n\n".join(filter(None, (custom, system_context)))
         )
+    qualified_studio = _qualified_studio_request(
+        request, model_name.casefold()
+    ) and _qualified_request(request, runtime)
+    if qualified_studio and complete_reply is None:
+        hint = explanation_hint(request.content, request.history)
+        system_prompt = "\n\n".join(filter(None, (system_prompt, hint)))
     rewrite = complete_reply.rewrite if complete_reply else None
     if rewrite is not None:
         messages = rewrite.messages(
@@ -1565,6 +1596,7 @@ async def _stream_non_openrouter_chat(
                 request_id=request_id,
                 model_name=model_name,
                 qualified_reply=complete_reply,
+                report_length=qualified_studio,
             ),
             media_type=_SSE_MEDIA_TYPE,
             headers=headers,
@@ -1572,6 +1604,8 @@ async def _stream_non_openrouter_chat(
     if not completions_url:
         raise HTTPException(status_code=503, detail="Brak endpointu LLM.")
     guard_options = {"guard_calendar": True} if qualified_reply is not None else {}
+    if qualified_studio:
+        guard_options["report_length"] = True
     return StreamingResponse(
         _stream_simple_chunks(
             completions_url=completions_url,

@@ -16,15 +16,21 @@ from venom_core.services.academy.qualified_chat_constraints import (
     find_violations,
     uncertain_constraints,
 )
+from venom_core.services.academy.qualified_chat_evidence import evidence_reply
 from venom_core.services.academy.qualified_chat_options import (
     CountRequirement,
     option_key,
     requested_count,
     split_options,
 )
+from venom_core.services.academy.qualified_chat_quote import (
+    QuoteRewrite,
+    parse_quote_rewrite,
+)
 from venom_core.services.academy.qualified_chat_schedule import route_shift
 
 QUALIFIED_MODEL = "gemma4:12b-it-q4_k_m"
+QUALIFIED_BOLT_MODEL = "hf.co/nvidia/nvidia-nemotron-3.5-bolt-e4b-4gb:q4_k_m"
 _CALENDAR_UNCONFIRMED = "Wpis do kalendarza wymaga potwierdzenia wykonania."
 _DAYS = {
     "poniedziałek": "w poniedziałek",
@@ -295,11 +301,13 @@ class QualifiedReply:
     timed: bool = False
     retained_seconds: int | None = None
     calendar_context: bool = False
+    rewrite: QuoteRewrite | None = None
 
     @property
     def requires_complete_draft(self) -> bool:
         return (
             self.local_text is not None
+            or self.rewrite is not None
             or bool(self.restrictions)
             or self.timed
             or self.count is not None
@@ -392,6 +400,8 @@ class QualifiedReply:
     def publish(
         self, draft: str, repair: str | None = None, *, truncated: bool = False
     ) -> str:
+        if self.rewrite is not None:
+            return self.rewrite.publish(draft)
         if self.timed:
             return self._publish_timed(draft)
         if self.count:
@@ -407,6 +417,19 @@ class QualifiedReply:
         if _claim(draft):
             return _CALENDAR_UNCONFIRMED
         return draft if draft.strip() and self._allowed(draft) else _CLARIFICATION
+
+
+def prepare_studio_reply(
+    text: str, history: Sequence[HistoryMessage]
+) -> QualifiedReply | None:
+    quote = parse_quote_rewrite(text)
+    if isinstance(quote, QuoteRewrite):
+        if literal := quote.literal_reply:
+            return QualifiedReply(local_text=literal)
+        return QualifiedReply(rewrite=quote)
+    if answer := quote or evidence_reply(text, history):
+        return QualifiedReply(local_text=answer)
+    return None
 
 
 def prepare_reply(text: str, history: Sequence[HistoryMessage]) -> QualifiedReply:

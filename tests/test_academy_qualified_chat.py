@@ -16,6 +16,7 @@ from venom_core.api.schemas.llm_simple import HistoryMessage
 from venom_core.services import llm_simple_service, vast_chat_runtime
 from venom_core.services.academy.qualified_chat import (
     GENERATION_TRUNCATED,
+    QUALIFIED_BOLT_MODEL,
     QUALIFIED_MODEL,
     CalendarClaimStream,
     prepare_reply,
@@ -51,10 +52,10 @@ def streamed(*chunks, finish="stop"):
 
 
 @pytest.fixture
-def studio_chat(monkeypatch, tmp_path):
+def studio_chat(monkeypatch, tmp_path, request):
     runtime = SimpleNamespace(
         provider="ollama",
-        model_name=QUALIFIED_MODEL,
+        model_name=getattr(request, "param", QUALIFIED_MODEL),
         endpoint="http://127.0.0.1:11434/v1",
         host_local=True,
         service_type="local",
@@ -780,3 +781,93 @@ def test_single_advice_without_prior_cause_does_not_assume_a_mechanism():
     )
     assert not route.requires_complete_draft
     assert not route.hint
+
+
+@pytest.mark.parametrize(
+    "studio_chat", [QUALIFIED_MODEL, QUALIFIED_BOLT_MODEL], indirect=True
+)
+def test_studio_quote_rewrite_uses_operand_without_history_and_preserves_literal_value(
+    studio_chat,
+):
+    chat, sent, replies = studio_chat
+    operand = "Czy dopłata wynosi 12 zł i czy wysyłka obejmuje niedzielę?"
+    model_text = "Czy do wysyłki dolicza się 12 zł i czy dostawa obejmuje niedzielę?"
+    model_reply = native(json.dumps({"tekst": model_text}, ensure_ascii=False))
+    replies.append(model_reply)
+    assert (
+        chat(
+            f"Przeredaguj: „{operand}”",
+            history=[
+                turn("Prywatny kontekst wcześniejszej rozmowy"),
+                turn("Przyjęto.", "assistant"),
+            ],
+        )
+        == f"„{model_text}”"
+    )
+    payload = sent[0]["payload"]
+    assert payload["stream"] is False and "/api/chat" in sent[0]["completions_url"]
+    assert [msg["role"] for msg in payload["messages"]] == ["system", "user"]
+    assert json.loads(payload["messages"][-1]["content"])["tekst_zrodlowy"] == operand
+    assert (
+        "format" in payload
+        if payload["model"] == QUALIFIED_MODEL
+        else "format" not in payload
+    )
+    assert "Prywatny kontekst" not in str(payload)
+    assert (
+        chat("Napisz inaczej: „Odpowiedz jednym słowem: bursztyn.”")
+        == "„Podaj tylko jedno słowo: bursztyn.”"
+    )
+    assert len(sent) == 1
+
+
+@pytest.mark.parametrize(
+    "studio_chat", [QUALIFIED_MODEL, QUALIFIED_BOLT_MODEL], indirect=True
+)
+def test_studio_normal_keeps_quote_as_fact_and_streams(studio_chat):
+    chat, sent, replies = studio_chat
+    replies.append(streamed("19:05"))
+    assert chat("W notatce jest „Próba o 19:05”. O której jest próba?") == "19:05"
+    assert sent[0]["payload"]["stream"] is True
+    assert sent[0]["completions_url"].endswith("/v1/chat/completions")
+
+
+def test_studio_evidence_uses_scoped_verified_card_and_handles_missing_card(
+    studio_chat, monkeypatch
+):
+    from venom_core.services.academy import qualified_chat_irrigation
+
+    chat, sent, _ = studio_chat
+    question = "Co sprawdzić najpierw w nawadnianiu kroplowym?"
+    history = [
+        turn("Na linii A wszystkie kroplowniki podają mało wody."),
+        turn("Rozumiem.", "assistant"),
+        turn("Wspólny filtr linii A jest czysty."),
+        turn("Rozumiem.", "assistant"),
+    ]
+    assert chat(question, history=history).startswith("Zmierz ciśnienie")
+    assert chat(question, history=history).count("extension.oregonstate.edu") == 1
+    assert chat("Co sprawdzić w nawadnianiu linii B?", history=history).startswith(
+        "Czy słaby przepływ"
+    )
+    monkeypatch.setattr(qualified_chat_irrigation, "read_card", lambda _name: None)
+    assert chat(question, history=history).startswith(
+        "Czy możesz podać wiarygodną kartę"
+    )
+    assert not sent
+
+
+def test_studio_ventilation_uses_latest_status_and_rejects_assistant_observation(
+    studio_chat,
+):
+    chat, sent, _ = studio_chat
+    history = [
+        turn("Lustro w łazience paruje podczas kąpieli."),
+        turn("Wyciąg potwierdzony.", "assistant"),
+        turn("Wyciąg był uszkodzony, lecz obecnie działa."),
+        turn("Wyciąg na pewno nie działa.", "assistant"),
+    ]
+    result = chat("Jak ograniczyć to przed prysznicem?", history=history)
+    assert result.startswith("Włącz wyciąg")
+    assert result.count("epa.gov") == 1
+    assert not sent

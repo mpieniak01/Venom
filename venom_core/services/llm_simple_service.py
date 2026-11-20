@@ -26,10 +26,12 @@ from venom_core.core.tracer import TraceStatus
 from venom_core.services import llm_simple_transport
 from venom_core.services.academy.qualified_chat import (
     GENERATION_TRUNCATED,
+    QUALIFIED_BOLT_MODEL,
     QUALIFIED_MODEL,
     CalendarClaimStream,
     QualifiedReply,
     prepare_reply,
+    prepare_studio_reply,
 )
 from venom_core.services.llm_simple_payload_service import (
     apply_optional_features_to_payload as _apply_optional_features_to_payload,
@@ -1420,7 +1422,6 @@ def _prepare_qualified_reply(
 
     if (
         not SETTINGS.ACADEMY_QUALIFIED_CHAT_ENABLED
-        or model_name.casefold() != QUALIFIED_MODEL
         or not is_host_ollama(runtime)
         or has_materials(request)
         or request.tools is not None
@@ -1431,7 +1432,19 @@ def _prepare_qualified_reply(
         or request.top_logprobs is not None
     ):
         return None
-    return prepare_reply(request.content, request.history)
+    model = model_name.casefold()
+    if (
+        request.studio_normal
+        and not request.use_notes
+        and model in {QUALIFIED_MODEL, QUALIFIED_BOLT_MODEL}
+    ):
+        if reply := prepare_studio_reply(request.content, request.history):
+            return reply
+    return (
+        prepare_reply(request.content, request.history)
+        if model == QUALIFIED_MODEL
+        else None
+    )
 
 
 def _qualified_chat_payload(
@@ -1440,9 +1453,14 @@ def _qualified_chat_payload(
     reply: QualifiedReply,
     model_name: str,
 ) -> dict[str, Any]:
+    rewrite = reply.rewrite
+    native_text = rewrite is not None and model_name.casefold() == QUALIFIED_BOLT_MODEL
+    default_limit = 160 if native_text else 96
     options = {
         "num_ctx": build_ollama_runtime_options(SETTINGS)["num_ctx"],
-        "num_predict": request.max_tokens if request.max_tokens is not None else 96,
+        "num_predict": request.max_tokens
+        if request.max_tokens is not None
+        else default_limit,
         "temperature": request.temperature if request.temperature is not None else 0,
         "seed": request.seed if request.seed is not None else 42,
         "top_k": 1,
@@ -1457,7 +1475,8 @@ def _qualified_chat_payload(
         "keep_alive": normalize_ollama_keep_alive(SETTINGS.LLM_KEEP_ALIVE),
         "options": options,
     }
-    if schema := reply.schema:
+    schema = rewrite.schema(plain_text=native_text) if rewrite else reply.schema
+    if schema is not None:
         payload["format"] = schema
     return payload
 
@@ -1508,14 +1527,19 @@ async def _stream_non_openrouter_chat(
         system_prompt = qualified_reply.prompt(
             "\n\n".join(filter(None, (custom, system_context)))
         )
-    user_content = _trim_user_content_for_runtime(
-        request.content, system_prompt, runtime, request_id
-    )
-    messages = _build_messages(system_prompt, user_content)
-    messages = await _include_simple_request_context(
-        request, runtime, model_name, system_prompt, messages
-    )
-    payload = _build_payload(request, runtime, model_name, messages)
+    rewrite = complete_reply.rewrite if complete_reply else None
+    if rewrite is not None:
+        messages = rewrite.messages(
+            plain_text=model_name.casefold() == QUALIFIED_BOLT_MODEL
+        )
+    else:
+        user_content = _trim_user_content_for_runtime(
+            request.content, system_prompt, runtime, request_id
+        )
+        messages = _build_messages(system_prompt, user_content)
+        messages = await _include_simple_request_context(
+            request, runtime, model_name, system_prompt, messages
+        )
     _trace_context_preview(request_id, messages)
     headers = _build_streaming_headers(str(request_id), request.session_id or "")
     completions_url = _build_chat_completions_url(runtime)
@@ -1551,7 +1575,7 @@ async def _stream_non_openrouter_chat(
     return StreamingResponse(
         _stream_simple_chunks(
             completions_url=completions_url,
-            payload=payload,
+            payload=_build_payload(request, runtime, model_name, messages),
             runtime=runtime,
             request_id=request_id,
             model_name=model_name,

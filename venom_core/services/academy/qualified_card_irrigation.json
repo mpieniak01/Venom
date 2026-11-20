@@ -1,0 +1,14 @@
+{
+  "id": "OSU-IRR-1",
+  "publisher": "Oregon State University Extension Service",
+  "title": "Inspecting and maintaining irrigation systems",
+  "url": "https://extension.oregonstate.edu/catalog/em-9869-inspecting-maintaining-irrigation-systems",
+  "sections": ["Mobile drip irrigation / Inspection and maintenance", "Microirrigation systems / Inspection and maintenance"],
+  "guidance": {
+    "local": "Sprawdź drożność wskazanego kroplownika pod kątem osadu. Jeśli potwierdzisz zator, oczyść kroplownik zgodnie z instrukcją producenta.",
+    "upstream": "Sprawdź filtr wspólny dla tej linii, zaczynając od oceny, czy jest zabrudzony.",
+    "dirty": "Oczyść zabrudzony filtr wspólny dla tej linii zgodnie z instrukcją producenta.",
+    "clean": "Zmierz ciśnienie na tej linii i porównaj je z zakresem zalecanym przez producenta."
+  },
+  "scope": "Kroplownik, filtr i ciśnienie to czynności kontrolne opisane w karcie. Wybór pierwszej czynności z obserwacji pojedynczego albo wspólnego objawu jest wnioskiem diagnostycznym, bez rozpoznania przyczyny na odległość."
+}

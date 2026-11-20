@@ -838,14 +838,19 @@ def _closed_card_location(
         or _UNSAFE_CONTEXT.search(card_turn)
     ):
         return None
-    cards = [
-        clause
-        for clause in _clauses(card_turn)
-        if _CLOSED_CARD_PERSON.fullmatch(clause)
-    ]
+    clauses = _clauses(card_turn)
     if (
-        len(cards) != 1
-        or "to materiał informacyjny bez zmiany ustaleń." not in card_turn.casefold()
+        len(clauses) not in (3, 5)
+        or _CLOSED_CARD_PERSON.fullmatch(clauses[1]) is None
+        or clauses[2].casefold() != "to materiał informacyjny bez zmiany ustaleń."
+        or (
+            len(clauses) == 5
+            and [part.casefold() for part in clauses[3:]]
+            != [
+                "pytam wyłącznie o wymienione tam miejsce.",
+                "odpowiedz samym «brak danych», jeżeli karta go nie zawiera.",
+            ]
+        )
     ):
         return None
     criteria = [
@@ -876,7 +881,7 @@ def _closed_card_location(
         "value_quote": value,
         "source": {
             "message_index": card_index,
-            "quote": cards[0],
+            "quote": clauses[1],
             "continuity_index": earlier[0][0],
             "continuity_quote": earlier[0][1],
         },

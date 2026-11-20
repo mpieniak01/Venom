@@ -1971,15 +1971,19 @@ def test_pending_price_keeps_omission_and_only_removes_grounded_claim(
 
 
 @pytest.mark.parametrize(
-    "closed,place,expected",
+    "closed,place,amended,expected",
     [
-        (True, "magazyn 4", "yes"),
-        (True, "brak danych", "no"),
-        (False, "magazyn 4", "no"),
+        (True, "magazyn 4", False, "yes"),
+        (True, "magazyn 4", True, "no"),
+        (True, "brak danych", False, "no"),
+        (False, "magazyn 4", False, "no"),
     ],
 )
-def test_card_only_location_surfaces_missing_unsupported_claim(closed, place, expected):
+def test_card_only_location_surfaces_missing_unsupported_claim(
+    closed, place, amended, expected
+):
     card = "«osoba: Kaja»" if closed else "«osoba: Kaja; miejsce: magazyn 4»"
+    amendment = " Uzupełniam kartę o miejsce: magazyn 4." if amended else ""
     candidate = f"Osoba: Kaja\nMiejsce: {place}"
     case = {
         "record_id": "closed-card",
@@ -1990,7 +1994,7 @@ def test_card_only_location_surfaces_missing_unsupported_claim(closed, place, ex
             },
             {
                 "role": "user",
-                "content": f"Sprawa: pokaz map. Przeczytaj bieżącą kartę, której kompletna zawartość brzmi {card}. To materiał informacyjny bez zmiany ustaleń.",
+                "content": f"Sprawa: pokaz map. Przeczytaj bieżącą kartę, której kompletna zawartość brzmi {card}. To materiał informacyjny bez zmiany ustaleń.{amendment}",
             },
             {
                 "role": "user",
@@ -2016,7 +2020,7 @@ def test_card_only_location_surfaces_missing_unsupported_claim(closed, place, ex
     raw["choices"][0]["message"]["content"] = json.dumps(content, ensure_ascii=False)
     decision, evidence = judge.decode_with_evidence(raw, body, candidate)
     assert decision.unsupported == expected
-    if closed and place == "magazyn 4":
+    if closed and not amended and place == "magazyn 4":
         assert evidence["record_scope"]["proof"]["quote"] == "Miejsce: magazyn 4"
         assert decision.atoms == {"location": "omitted"}
     else:

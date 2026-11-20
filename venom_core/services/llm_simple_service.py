@@ -1464,7 +1464,9 @@ def _prepare_qualified_reply(
         return None
     model = model_name.casefold()
     if _qualified_studio_request(request, model):
-        if reply := prepare_studio_reply(request.content, request.history):
+        if reply := prepare_studio_reply(
+            request.content, request.history, token_budget=request.max_tokens
+        ):
             return reply
     return (
         prepare_reply(request.content, request.history)

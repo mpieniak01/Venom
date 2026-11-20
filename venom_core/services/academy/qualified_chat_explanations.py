@@ -66,6 +66,13 @@ def changes_example(text: str) -> bool:
     )
 
 
+def active_explanation_topic(history: Sequence[HistoryMessage]) -> str:
+    for turn in reversed(history):
+        if turn.role == "user" and not changes_example(turn.content):
+            return turn.content if _EXPLAIN.search(without_quotes(turn.content)) else ""
+    return ""
+
+
 def explanation_hint(
     text: str, history: Sequence[HistoryMessage], *, token_budget: int | None = None
 ) -> str:
@@ -78,10 +85,7 @@ def explanation_hint(
     topic = visible
     revision = ""
     if changes_example(text):
-        last_user = next(
-            (turn.content for turn in reversed(history) if turn.role == "user"), ""
-        )
-        previous = without_quotes(last_user)
+        previous = without_quotes(active_explanation_topic(history))
         if _EXPLAIN.search(previous):
             topic = previous
             revision = _CHANGE_ONLY

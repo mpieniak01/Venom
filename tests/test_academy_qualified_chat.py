@@ -1155,3 +1155,116 @@ def test_explanation_keeps_the_shared_condition_after_a_new_example():
     assert "wspólny warunek porównania" in explanation_hint(
         correction, history, token_budget=96
     )
+
+
+@pytest.mark.parametrize(
+    ("topic", "correction", "before", "after"),
+    [
+        (
+            "Wytłumacz, dlaczego metalowa łyżka wydaje się chłodniejsza od drewnianej w tym samym pokoju. Użyj przykładu z klamką.",
+            "Zamiast klamki użyj przykładu z metalowym i plastikowym krzesłem.",
+            ("tę samą temperaturę", "metalowa klamka", "drewniana"),
+            ("tę samą temperaturę", "metalowe krzesło", "plastikowe", "odbiera"),
+        ),
+        (
+            "Wyjaśnij, jak działają pasy bezpieczeństwa, gdy autobus hamuje.",
+            "Zamień przykład z autobusem na samochód osobowy.",
+            ("autobusu", "bezwładności", "ogranicza ten ruch"),
+            ("samochodu osobowego", "bezwładności", "ogranicza ten ruch"),
+        ),
+        (
+            "Wyjaśnij, dlaczego łyżeczka w szklance wody wygląda na zgiętą.",
+            "Zmień przykład na słomkę w słoiku, bez zmiany wyjaśnienia.",
+            ("wody i powietrza", "łyżeczka", "szklance"),
+            ("wody i powietrza", "słomka", "słoiku"),
+        ),
+    ],
+)
+def test_checked_explanation_keeps_mechanism_and_named_example(
+    topic, correction, before, after
+):
+    from venom_core.services.academy.qualified_chat_mechanisms import (
+        checked_explanation,
+    )
+
+    history = [
+        HistoryMessage(role="user", content=topic),
+        HistoryMessage(
+            role="assistant", content="Tu jest inny, niepotwierdzony przykład."
+        ),
+    ]
+    start = checked_explanation(topic, [], token_budget=96)
+    revised = checked_explanation(correction, history, token_budget=96)
+    assert start and all(part in start.text().casefold() for part in before)
+    assert revised and all(part in revised.text().casefold() for part in after)
+    assert len(revised.text().split()) <= 40
+    assert checked_explanation(correction, history, token_budget=64) is None
+
+
+def test_checked_explanation_keeps_open_requests_on_the_ordinary_path():
+    from venom_core.services.academy.qualified_chat_mechanisms import (
+        checked_explanation,
+    )
+
+    reflection = "Wyjaśnij, dlaczego słomka w szklance wody wygląda na zgiętą."
+    history = [HistoryMessage(role="user", content=reflection)]
+    for prompt in (
+        "Zmień przykład na słomkę w słoiku bez wody.",
+        "Zmień przykład na słomkę.",
+        "Zmień przykład na słomkę w szklance oleju.",
+        "Wyjaśnij szczegółowo, dlaczego słomka w szklance wody wygląda na zgiętą.",
+        "Wyjaśnij, dlaczego słomka w szklance wody wygląda na zgiętą. Podaj również cenę.",
+        "Wyjaśnij, dlaczego słomka w szklance wody wygląda na zgiętą. Zweryfikuj źródło.",
+        "Wyjaśnij, czemu metalowa klamka z piekarnika wydaje się chłodniejsza od drewnianej.",
+    ):
+        assert checked_explanation(prompt, history, token_budget=96) is None, prompt
+
+
+@pytest.mark.parametrize(
+    "studio_chat", [QUALIFIED_MODEL, QUALIFIED_BOLT_MODEL], indirect=True
+)
+def test_studio_explanation_is_published_only_with_resolved_publication_slots(
+    studio_chat,
+    monkeypatch,
+):
+    from venom_core.services import studio_normal_chat
+
+    evidence = AsyncMock(
+        return_value="Syntetyczny fragment. Autor mówi o kubku i parowaniu."
+    )
+    monkeypatch.setattr(studio_normal_chat, "current_chat_context", evidence)
+    chat, sent, _ = studio_chat
+    topic = "Wyjaśnij, dlaczego ołówek w szklance wody wygląda na zgięty."
+    session = str(uuid4())
+    answer = chat(topic, session=session, max_tokens=96)
+    assert "ołówek w szklance" in answer
+    assert "wody i powietrza" in answer
+    answer = chat("Zmień przykład na słomkę w misce.", session=session)
+    assert "słomka w misce" in answer
+    assert "wody i powietrza" in answer
+    assert "parowanie" not in answer and "kubek" not in answer
+    assert not sent
+    assert evidence.await_count == 2
+
+
+def test_checked_explanation_supports_repeated_example_changes_without_resuming_old_topic():
+    from venom_core.services.academy.qualified_chat_mechanisms import (
+        checked_explanation,
+    )
+
+    history = [
+        HistoryMessage(
+            role="user",
+            content="Wyjaśnij, dlaczego łyżeczka w szklance wody wygląda na zgiętą.",
+        ),
+        HistoryMessage(role="assistant", content="Odpowiedź."),
+        HistoryMessage(role="user", content="Zmień przykład na słomkę w słoiku."),
+        HistoryMessage(role="assistant", content="Odpowiedź."),
+    ]
+    latest = "Zmień przykład na ołówek w kubku."
+    selected = checked_explanation(latest, history, token_budget=96)
+    assert selected and "ołówek w kubku" in selected.text()
+    history.append(
+        HistoryMessage(role="user", content="Zmieniam temat. Napisz zaproszenie.")
+    )
+    assert checked_explanation(latest, history, token_budget=96) is None

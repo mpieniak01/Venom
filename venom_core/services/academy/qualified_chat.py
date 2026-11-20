@@ -17,6 +17,7 @@ from venom_core.services.academy.qualified_chat_constraints import (
     uncertain_constraints,
 )
 from venom_core.services.academy.qualified_chat_evidence import evidence_reply
+from venom_core.services.academy.qualified_chat_mechanisms import checked_explanation
 from venom_core.services.academy.qualified_chat_options import (
     CountRequirement,
     option_key,
@@ -420,7 +421,7 @@ class QualifiedReply:
 
 
 def prepare_studio_reply(
-    text: str, history: Sequence[HistoryMessage]
+    text: str, history: Sequence[HistoryMessage], *, token_budget: int | None = None
 ) -> QualifiedReply | None:
     quote = parse_quote_rewrite(text)
     if isinstance(quote, QuoteRewrite):
@@ -429,6 +430,8 @@ def prepare_studio_reply(
         return QualifiedReply(rewrite=quote)
     if answer := quote or evidence_reply(text, history):
         return QualifiedReply(local_text=answer)
+    if explanation := checked_explanation(text, history, token_budget=token_budget):
+        return QualifiedReply(local_text=explanation.text())
     return None
 
 

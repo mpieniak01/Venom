@@ -34,6 +34,7 @@ from venom_core.services.academy.qualified_chat import (
     prepare_studio_reply,
 )
 from venom_core.services.academy.qualified_chat_explanations import explanation_hint
+from venom_core.services.academy.qualified_chat_quote import english_translation_hint
 from venom_core.services.academy.qualified_chat_revisions import source_revision_hint
 from venom_core.services.academy.qualified_chat_writing import writing_hint
 from venom_core.services.llm_simple_payload_service import (
@@ -1571,6 +1572,7 @@ async def _stream_non_openrouter_chat(
                     hint,
                     source_revision_hint(request.content),
                     writing_hint(request.content),
+                    english_translation_hint(request.content),
                 ),
             )
         )

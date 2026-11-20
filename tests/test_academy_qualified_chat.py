@@ -1371,6 +1371,10 @@ def test_short_drafting_hint_constraints_and_no_variant_override(studio_chat):
     assert request["stream"] is True
     assert "jeden gotowy tekst" in request["messages"][0]["content"]
     assert "Liczba zdań: 2." in request["messages"][0]["content"]
+    instruction = request["messages"][0]["content"]
+    assert "nazwij wskazany temat" in instruction
+    assert "Nie dopisuj niepodanych ilości, przebiegu ani wyników" in instruction
+    assert "szkic asystenta nie jest źródłem nowych faktów" in instruction
     assert "Liczba zdań: 3." in writing_hint(
         "Napisz wiadomość w trzech krótkich zdaniach."
     )
@@ -1402,3 +1406,59 @@ def test_studio_does_not_attribute_supplied_revision_to_a_previous_public_link(
     assert "https://example.org/muzeum" not in str(sent[0]["payload"]["messages"])
     assert "17:20" in str(sent[0]["payload"]["messages"])
     fetch.assert_not_awaited()
+
+
+def test_studio_quoted_english_translation_retains_plain_stream(studio_chat):
+    from venom_core.services.academy.qualified_chat_quote import (
+        english_translation_hint,
+    )
+
+    chat, sent, replies = studio_chat
+    replies.append(streamed("The latest news is ready."))
+    query = "Przetłumacz na angielski: „Najnowsze wiadomości są gotowe.”"
+    assert chat(query) == "The latest news is ready."
+    request = sent[-1]["payload"]
+    assert request["stream"] is True
+    assert request["messages"][-1]["content"] == query
+    assert "news, information i equipment" in request["messages"][0]["content"]
+    assert not english_translation_hint("Przetłumacz na niemiecki: „Wiadomości.”")
+    assert not english_translation_hint(
+        "Przetłumacz na angielski bez podawania cytatu."
+    )
+    assert not english_translation_hint(
+        "Przetłumacz na angielski: „Tekst.” Wyjaśnij go."
+    )
+
+
+@pytest.mark.parametrize(
+    ("fragment", "flag", "retrieved"),
+    [
+        ("\n[PUBLIC_SOURCES] Potwierdzona godzina. [/PUBLIC_SOURCES]", True, True),
+        ("\nSource could not be retrieved; say this explicitly.", True, False),
+        ("\n[PUBLIC_SOURCES] Potwierdzona godzina. [/PUBLIC_SOURCES]", False, False),
+    ],
+)
+def test_studio_reports_attached_public_evidence_only_after_retrieval(
+    fragment, flag, retrieved, studio_chat, monkeypatch
+):
+    from venom_core.services import chat_grounding
+
+    fetch = AsyncMock(return_value=fragment)
+    monkeypatch.setattr(chat_grounding, "_news_context", fetch)
+    monkeypatch.setattr(
+        llm_simple_service.SETTINGS, "ACADEMY_QUALIFIED_CHAT_ENABLED", flag
+    )
+    chat, sent, replies = studio_chat
+    replies.append(streamed("Odpowiedź testowa."))
+    query = (
+        "Bez wyszukiwania w internecie. Sprawdź jednak w sieci, "
+        "o której dzisiaj zamyka się biblioteka."
+    )
+    assert chat(query) == "Odpowiedź testowa."
+    fetch.assert_awaited_once()
+    messages = sent[-1]["payload"]["messages"]
+    assert messages[-1]["content"] == query
+    assert fragment in messages[0]["content"]
+    assert (
+        "Aplikacja pozyskała poniższy fragment" in messages[0]["content"]
+    ) is retrieved

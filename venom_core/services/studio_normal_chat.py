@@ -26,7 +26,11 @@ from venom_core.services.academy.qualified_chat_revisions import (
     without_previous_links,
 )
 from venom_core.services.background_priority import run_drainable_thread
-from venom_core.services.chat_grounding import current_chat_context, grounding_follow_up
+from venom_core.services.chat_grounding import (
+    PUBLIC_SOURCE_BLOCK,
+    current_chat_context,
+    grounding_follow_up,
+)
 from venom_core.services.session_store import SessionStore
 
 _NORMAL_HISTORY_POLICY = (
@@ -36,6 +40,16 @@ _NORMAL_HISTORY_POLICY = (
 _NORMAL_LANGUAGE_POLICY = (
     "Answer in the language of the current question unless another language "
     "was requested."
+)
+
+
+_RETRIEVED_SOURCE_POLICY = (
+    "\n\nAplikacja pozyskała poniższy fragment źródła w tej turze. "
+    "Ostatnia jawna dyspozycja użytkownika rozstrzyga wcześniejszy zakaz. "
+    "Podaj informację z fragmentu i właściwy odnośnik. "
+    "Nie dodawaj opisu wyszukiwania, chyba że użytkownik o niego pyta. "
+    "Jeśli pytanie dotyczy sprawdzenia, powiedz zgodnie ze stanem, "
+    "że fragment został pozyskany, i zaznacz, jeśli nie rozstrzyga pytania."
 )
 
 
@@ -175,7 +189,7 @@ async def prepare_studio_normal(
         (turn.content for turn in reversed(history) if turn.role == "user"), ""
     )
     query = grounding_follow_up(request.content, previous)
-    if SETTINGS.ACADEMY_QUALIFIED_CHAT_ENABLED and not request.use_notes:
+    if local_qualification:
         query = (
             None
             if source_revision_hint(request.content)
@@ -186,6 +200,8 @@ async def prepare_studio_normal(
         if query is None
         else await current_chat_context(query, use_notes=request.use_notes)
     )
+    if local_qualification and source_context.startswith(PUBLIC_SOURCE_BLOCK):
+        source_context = f"{_RETRIEVED_SOURCE_POLICY}\n{source_context}"
     if len(source_context) <= remaining:
         system_context += source_context
     elif source_context:

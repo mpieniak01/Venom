@@ -37,6 +37,10 @@ def writing_hint(text: str) -> str:
     value = count[1].casefold()
     return (
         f"Podaj jeden gotowy tekst. Liczba zdań: {_COUNTS.get(value, value)}. "
-        "Bez zapowiedzi i wariantów. Zachowaj wskazany temat, ton i fakty. "
-        "Jeśli poprzedni szkic się urwał, napisz kompletną wersję."
+        "Bez zapowiedzi i wariantów. W gotowym tekście nazwij wskazany temat "
+        "lub zdarzenie, używając słów użytkownika w odpowiedniej odmianie. "
+        "Zmiana tonu zachowuje ten temat i podane fakty. "
+        "Nie dopisuj niepodanych ilości, przebiegu ani wyników zdarzenia. "
+        "Wcześniejszy szkic asystenta nie jest źródłem nowych faktów. "
+        "Jeśli się urwał, napisz kompletną wersję."
     )

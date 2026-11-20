@@ -15,6 +15,9 @@ _REWRITE = re.compile(
 _OTHER_TRANSFORMATION = re.compile(
     r"^(?:zacytuj|przetłumacz|streść|porównaj|napisz wiadomość)\b", re.I
 )
+_ENGLISH_TRANSLATION = re.compile(
+    r"^\s*przetłumacz\s+(?:to\s+)?na angielski\s*:\s*[.!?]?\s*$", re.I
+)
 _EXTRA_ACTION = re.compile(
     r"\b(?:odpowiedz|wykonaj|wyjaśnij|oblicz|zapisz|dodaj)\b", re.I
 )
@@ -74,6 +77,19 @@ _FAILED_REWRITE = "Nie udało się przygotować poprawnego przeredagowania."
 
 def without_quotes(text: str) -> str:
     return _QUOTE.sub(" ", text)
+
+
+def english_translation_hint(text: str) -> str:
+    """Guide a simple quoted translation without adding a separate model call."""
+    visible = without_quotes(text)
+    if visible == text or not _ENGLISH_TRANSLATION.fullmatch(visible):
+        return ""
+    return (
+        "Zwróć sam angielski przekład. Zachowaj sens, liczby i negacje. "
+        "W angielskim news, information i equipment łączą się z orzeczeniem "
+        "w liczbie pojedynczej. Zachowaj liczbę mnogą angielskich rzeczowników "
+        "policzalnych, gdy tekst mówi o więcej niż jednym."
+    )
 
 
 def is_text_transformation(text: str) -> bool:

@@ -608,11 +608,21 @@ def _verified_source_quotes(
 
 def _without_verified_public_quotes(prose: str, quotes: Sequence[SourceQuote]) -> str:
     """Exclude exact displayed literals after their source receipts are verified."""
-    unquoted = prose.translate(_DOUBLE_QUOTES)
+    original = prose.translate(_DOUBLE_QUOTES)
+    boundaries = [0] * (len(original) + 1)
     for quote in quotes:
         literal = '"' + quote.quote.translate(_DOUBLE_QUOTES) + '"'
-        unquoted = unquoted.replace(literal, " " * len(literal))
-    return unquoted
+        start = original.find(literal)
+        while start >= 0:
+            boundaries[start] += 1
+            boundaries[start + len(literal)] -= 1
+            start = original.find(literal, start + 1)
+    depth = 0
+    unquoted = []
+    for index, character in enumerate(original):
+        depth += boundaries[index]
+        unquoted.append(" " if depth else character)
+    return "".join(unquoted)
 
 
 def bind_source_quotes(

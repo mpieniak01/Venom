@@ -1125,10 +1125,13 @@ def test_only_scope_is_automatically_bound_for_direct_grounded_turns():
     assert evidence.requested_source_ids == ("MIRWEN",)
 
 
+@pytest.mark.parametrize("order", ["long", "short-first", "long-first"])
 @pytest.mark.parametrize(
     "suffix", ["", " [KANDEL]", " Według KANDEL termin jest inny."]
 )
-def test_verified_literal_quote_does_not_make_mentioned_card_an_extra_citation(suffix):
+def test_verified_literal_quote_does_not_make_mentioned_card_an_extra_citation(
+    suffix, order
+):
     from venom_core.services.grounded_dialogue import Evidence
 
     literal = "Karta KANDEL nie określa terminu."
@@ -1141,15 +1144,21 @@ def test_verified_literal_quote_does_not_make_mentioned_card_an_extra_citation(s
         "id", documents, (), Requirements(sources=True), (), ("MIRWEN",), ("MIRWEN",)
     )
     quote = SourceQuote("MIRWEN", "1", literal + ' Tytuł to "Zapisy".')
+    short = SourceQuote("MIRWEN", "1", "Zapisy")
+    quotes, expected = {
+        "long": ((quote,), [body]),
+        "short-first": ((short, quote), ["Zapisy", body]),
+        "long-first": ((quote, short), [body, "Zapisy"]),
+    }[order]
     prose = f"„{body}” [MIRWEN]" + suffix
     if suffix:
         with pytest.raises(EvidenceError, match="answer_source_not_allowed"):
-            bind_source_quotes(prose, evidence, (quote,))
+            bind_source_quotes(prose, evidence, quotes)
     else:
-        bound = bind_source_quotes(prose, evidence, (quote,))
-        assert len(bound) == 1
-        assert bound[0].source_id == "MIRWEN"
-        assert bound[0].quote == body
+        bound = bind_source_quotes(prose, evidence, quotes)
+        assert len(bound) == len(quotes)
+        assert all(item.source_id == "MIRWEN" for item in bound)
+        assert [item.quote for item in bound] == expected
 
 
 @pytest.mark.parametrize("verified", [False, True])

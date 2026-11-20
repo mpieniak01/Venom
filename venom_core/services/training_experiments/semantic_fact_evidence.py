@@ -780,6 +780,10 @@ def _pending_record_price(
         return None
     if (
         len(clauses) != 4
+        or not clauses[0].casefold().startswith("sprawa: ")
+        or not re.fullmatch(
+            rf"W aktualizacji zatwierdzono osobę {_NAME}[.]", clauses[1], re.I
+        )
         or clauses[-1].casefold()
         != "zachowaj resztę wpisu i podaj pełny obowiązujący stan."
     ):
@@ -796,7 +800,15 @@ def _pending_record_price(
         for clause in _clauses(users[0][1])
         if clause.casefold() == f"cena: {criteria[0][1]}.".casefold()
     ]
-    if len(older) != 1 or _UNSAFE_CONTEXT.search(users[0][1]):
+    original = users[0][1]
+    if (
+        len(older) != 1
+        or _UNSAFE_CONTEXT.search(original)
+        or not original.casefold().startswith(
+            clauses[0].casefold() + " rejestr roboczy: "
+        )
+        or not original.casefold().endswith("wypisz wszystkie aktualne pola.")
+    ):
         return None
     return {
         "kind": "pending_price",
@@ -818,6 +830,14 @@ def _closed_card_location(
     if len(users) < 3 or not users[-1][1].casefold().endswith(_CARD_LOCATION_QUESTION):
         return None
     card_index, card_turn = users[-2]
+    topic, _, rest = users[-1][1].partition(". ")
+    if (
+        not topic.casefold().startswith("sprawa: ")
+        or rest.casefold() != _CARD_LOCATION_QUESTION
+        or not card_turn.casefold().startswith(topic.casefold() + ". ")
+        or _UNSAFE_CONTEXT.search(card_turn)
+    ):
+        return None
     cards = [
         clause
         for clause in _clauses(card_turn)
@@ -839,6 +859,7 @@ def _closed_card_location(
         for idx, msg in users[:-2]
         for clause in _clauses(msg)
         if clause.rstrip(".").casefold() == history_key
+        and msg.casefold().startswith(topic.casefold() + ". rejestr roboczy: ")
         and not _UNSAFE_CONTEXT.search(msg)
     ]
     if (

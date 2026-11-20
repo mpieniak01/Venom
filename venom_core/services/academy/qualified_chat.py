@@ -46,11 +46,14 @@ _EVENT_NAMES = {"próbę": "Próba", "odprawę": "Odprawa"}
 _CALENDAR_REQUEST = re.compile(
     r"^(?:zanotuj|zapisz|dodaj|ustal)\b.*\bkalendarz\w*\b", re.I
 )
+GENERATION_TRUNCATED = "Odpowiedź przekroczyła limit długości."
 _CALENDAR_NAME = r"\b(?:kalendarz\w*|terminarz\w*)\b"
+_WRITE_VERBS = (
+    r"dodałem|dodałam|dodano|zapisałem|zapisałam|zapisano|wpisałem|wpisałam|"
+    r"wpisano|zanotowałem|zanotowałam|zanotowano"
+)
 _CALENDAR_WRITE = (
-    r"(?<!\bnie )\b(?:dodałem|dodałam|dodano|zapisałem|zapisałam|zapisano|"
-    r"wpisałem|wpisałam|wpisano|zanotowałem|zanotowałam|zanotowano|"
-    r"został\w* (?:wpisan|zapisan|dodan)\w*)\b"
+    rf"(?<!\bnie )\b(?:{_WRITE_VERBS}|został\w* (?:wpisan|zapisan|dodan)\w*)\b"
 )
 _CALENDAR_CLAIM = re.compile(
     rf"{_CALENDAR_NAME}.{{0,100}}{_CALENDAR_WRITE}|"
@@ -59,6 +62,12 @@ _CALENDAR_CLAIM = re.compile(
     re.I,
 )
 _CLAUSE_SPLIT = re.compile(r"[.!?;\n]|\b(?:ale|jednak|natomiast)\b", re.I)
+_CALENDAR_CONTEXT = re.compile(_CALENDAR_NAME, re.I)
+_CALENDAR_CUE = re.compile(
+    rf"{_CALENDAR_NAME}|\b(?:{_WRITE_VERBS}|wpis\w*|został\w*)\b", re.I
+)
+_UNFINISHED_WORD = re.compile(r"\w+$")
+_TRAILING_CONTEXT = re.compile(r"\b(?:nie|w|we|do)\s*$", re.I)
 _AMBIGUOUS_PLACE = re.compile(r"\b(?:i|lub|albo|oraz)\b", re.I)
 _LOCATION = r"(?:przy|w|za|pod|obok) [\w-]+(?: [\w-]+){0,5}"
 _RETURN_LOCATION = re.compile(
@@ -129,6 +138,13 @@ _TWO_BULLETS = re.compile(r"\b(?:dwóch krótkich punktach|dwa krótkie punkty)\
 _MESSAGE_ONLY = re.compile(
     r"\b(?:sam tekst|samą treść|tylko treść|wyłącznie treść)\b", re.I
 )
+_SHORT_DRAFT = re.compile(
+    r"\b(?:krótko|wiadomoś\w*|przypomni\w*|przeredaguj|zmień ton)\b", re.I
+)
+_SINGLE_ADVICE = re.compile(
+    r"\b(?:jeden|jedną)\b[^.!?]{0,40}\b(?:sposób|metodę)\b", re.I
+)
+_STRICT_COUNT = re.compile(r"\b(?:dokładnie|wyłącznie|tylko|jedynie)\b", re.I)
 _STRICT_TIME = re.compile(
     r"\b(?:mniej|krócej|krótsz[aeąy]) niż (?:jedną |1 )?minut[ęy]\b", re.I
 )
@@ -154,6 +170,34 @@ def _claim(clauses: str) -> bool:
     return any(
         _CALENDAR_CLAIM.search(clause) for clause in _CLAUSE_SPLIT.split(clauses)
     )
+
+
+@dataclass
+class CalendarClaimStream:
+    """Stream stable words until a possible calendar claim needs inspection."""
+
+    pending: str = ""
+
+    def push(self, chunk: str) -> str:
+        self.pending += chunk
+        tail = _UNFINISHED_WORD.search(self.pending)
+        boundary = tail.start() if tail else len(self.pending)
+        cue = _CALENDAR_CUE.search(self.pending[:boundary])
+        if cue is not None:
+            boundary = cue.start()
+        context = _TRAILING_CONTEXT.search(self.pending[:boundary])
+        if context is not None:
+            boundary = context.start()
+        sent = self.pending[:boundary]
+        self.pending = self.pending[boundary:]
+        return sent
+
+    def finish(self, *, truncated: bool) -> str:
+        if _claim(self.pending):
+            return _CALENDAR_UNCONFIRMED
+        if truncated:
+            return "\n\n" + GENERATION_TRUNCATED
+        return self.pending
 
 
 def _source_reply(text: str, users: Sequence[str]) -> str | None:
@@ -211,6 +255,11 @@ def _format_hint(text: str, restrictions: frozenset[str]) -> str:
             "Podaj wyłącznie gotowy, krótki tekst do wysłania. "
             "Zachowaj podany termin i miejsce. Pomiń wstęp, dopiski i pytania."
         )
+    elif _SHORT_DRAFT.search(text):
+        hints.append(
+            "Podaj jedną krótką, gotową odpowiedź bez wstępu i dodatkowych wariantów. "
+            "Zachowaj podane szczegóły i najnowszą poprawkę."
+        )
     if restrictions:
         hints.append(
             f"Aktywne wykluczenia: {', '.join(constraint_labels(restrictions))}. "
@@ -242,6 +291,17 @@ class QualifiedReply:
     count: CountRequirement | None = None
     timed: bool = False
     retained_seconds: int | None = None
+    calendar_context: bool = False
+
+    @property
+    def requires_complete_draft(self) -> bool:
+        return (
+            self.local_text is not None
+            or bool(self.restrictions)
+            or self.timed
+            or self.count is not None
+            or self.calendar_context
+        )
 
     @property
     def schema(self) -> dict[str, Any] | None:
@@ -326,7 +386,9 @@ class QualifiedReply:
         action = action.strip().rstrip(".!?")
         return f"Przez {seconds} {label} {action[0].lower() + action[1:]}."
 
-    def publish(self, draft: str, repair: str | None = None) -> str:
+    def publish(
+        self, draft: str, repair: str | None = None, *, truncated: bool = False
+    ) -> str:
         if self.timed:
             return self._publish_timed(draft)
         if self.count:
@@ -335,7 +397,7 @@ class QualifiedReply:
                 values.setdefault(option_key(option), option)
             options = list(values.values())[: self.count.count]
             if not options or not self.count.accepts(len(options)):
-                return _CLARIFICATION
+                return GENERATION_TRUNCATED if truncated else _CLARIFICATION
             if len(options) == 1:
                 return options[0]
             return "\n".join(f"{i}. {option}" for i, option in enumerate(options, 1))
@@ -366,6 +428,19 @@ def prepare_reply(text: str, history: Sequence[HistoryMessage]) -> QualifiedRepl
     time_bound, preserved = _duration(text, history, users)
     count = requested_count(text)
     hint = _format_hint(text, restrictions)
+    if (
+        count is not None
+        and count.count == 1
+        and count.mode == "exact"
+        and not restrictions
+        and _SINGLE_ADVICE.search(text)
+        and not _STRICT_COUNT.search(text)
+    ):
+        count = None
+        hint += (
+            " Podaj jeden wykonalny krok, który wpływa na przyczynę problemu z rozmowy. "
+            "Zachowaj wskazany moment działania i pomiń dodatkowe metody."
+        )
     if time_bound:
         hint += (
             " Zwróć jedno krótkie polecenie bez czasu w polu action, a czas krótszy niż minuta w seconds. "
@@ -384,4 +459,5 @@ def prepare_reply(text: str, history: Sequence[HistoryMessage]) -> QualifiedRepl
         count=count,
         timed=time_bound,
         retained_seconds=preserved,
+        calendar_context=any(_CALENDAR_CONTEXT.search(turn) for turn in (*users, text)),
     )

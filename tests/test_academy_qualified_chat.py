@@ -14,7 +14,12 @@ from venom_core.api.dependencies import get_session_store
 from venom_core.api.routes import llm_simple
 from venom_core.api.schemas.llm_simple import HistoryMessage
 from venom_core.services import llm_simple_service, vast_chat_runtime
-from venom_core.services.academy.qualified_chat import QUALIFIED_MODEL, prepare_reply
+from venom_core.services.academy.qualified_chat import (
+    GENERATION_TRUNCATED,
+    QUALIFIED_MODEL,
+    CalendarClaimStream,
+    prepare_reply,
+)
 from venom_core.services.academy.qualified_chat_constraints import (
     active_constraints,
     constraint_conflicts,
@@ -36,6 +41,13 @@ def turn(content, role="user"):
 
 def native(content, done=True, reason="stop"):
     return {"message": {"content": content}, "done": done, "done_reason": reason}
+
+
+def streamed(*chunks, finish="stop"):
+    return [
+        *[{"choices": [{"delta": {"content": chunk}}]} for chunk in chunks],
+        {"choices": [{"delta": {}, "finish_reason": finish}]},
+    ]
 
 
 @pytest.fixture
@@ -63,8 +75,16 @@ def studio_chat(monkeypatch, tmp_path):
     async def upstream(**kwargs):
         sent.append(kwargs)
         assert replies, "unexpected model call"
+        reply = replies.pop(0)
+
+        async def lines():
+            assert isinstance(reply, list), reply
+            for packet in reply:
+                yield "data: " + json.dumps(packet)
+            yield "data: [DONE]"
+
         yield SimpleNamespace(
-            raise_for_status=lambda: None, json=lambda: replies.pop(0)
+            raise_for_status=lambda: None, json=lambda: reply, aiter_lines=lines
         )
 
     monkeypatch.setattr(
@@ -96,12 +116,14 @@ def studio_chat(monkeypatch, tmp_path):
         )
         assert response.status_code == 200, response.text
         events = [chunk.splitlines() for chunk in response.text.strip().split("\n\n")]
-        assert [chunk[0] for chunk in events] == [
-            "event: start",
-            "event: content",
-            "event: done",
-        ]
-        return json.loads(events[1][1].removeprefix("data: "))["text"]
+        names = [chunk[0] for chunk in events]
+        assert names[0] == "event: start"
+        assert names[-1] == "event: done", response.text
+        assert all(event == "event: content" for event in names[1:-1]), response.text
+        return "".join(
+            json.loads(chunk[1].removeprefix("data: "))["text"]
+            for chunk in events[1:-1]
+        )
 
     return chat, sent, replies
 
@@ -158,7 +180,13 @@ def test_studio_retains_full_location_and_discards_self_asserted_calendar_succes
     assert "wymaga potwierdzenia" in chat("Dodaj kolejną próbę do kalendarza.")
     assert not sent
     replies.append(
-        native("Nie zapisałem notatki, ale dodałem spotkanie do kalendarza.")
+        streamed(
+            "Nie ",
+            "zapisałem notatki,",
+            " ale do",
+            "dałem spotkanie do ",
+            "kalendarza.",
+        )
     )
     assert "wymaga potwierdzenia" in chat("Co się stało?")
     assert len(sent) == 1
@@ -198,11 +226,13 @@ def test_studio_releases_only_a_terminal_draft(studio_chat, done, reason):
     chat, sent, replies = studio_chat
     ordinary = "Nie zapisałem tego w kalendarzu. Możemy omówić propozycję."
     replies.append(native(ordinary, done, reason))
-    answer = chat("Omówmy ten pomysł.")
+    answer = chat("Omówmy ten pomysł dotyczący kalendarza.")
     if done and reason == "stop":
         assert answer == ordinary
+    elif done and reason == "length":
+        assert answer == GENERATION_TRUNCATED
     else:
-        assert answer.startswith("Potrzebuję doprecyzowania")
+        assert answer == "Nie udało się uzyskać kompletnej odpowiedzi."
     assert len(sent) == 1
 
 
@@ -629,3 +659,107 @@ def test_message_instead_of_calendar_action_uses_short_output_instruction(studio
         in payload["messages"][0]["content"]
     )
     assert "num_parallel" not in payload["options"]
+
+
+def test_ordinary_chat_streams_without_a_json_schema(studio_chat):
+    chat, sent, replies = studio_chat
+    replies.append(streamed("To ", "jest zwykła ", "odpowiedź."))
+    assert chat("Przeredaguj krótką wiadomość.") == "To jest zwykła odpowiedź."
+    call = sent[0]
+    assert call["completions_url"].endswith("/v1/chat/completions")
+    assert call["payload"]["stream"] is True
+    assert "format" not in call["payload"]
+    assert "jedną krótką, gotową odpowiedź" in call["payload"]["messages"][0]["content"]
+
+
+def test_ordinary_stream_marks_truncation_without_asking_for_input(studio_chat):
+    chat, sent, replies = studio_chat
+    replies.append(streamed("Zachowaj instrukcję. ", "Frag", finish="length"))
+    assert chat("Przeredaguj instrukcję.") == (
+        "Zachowaj instrukcję. \n\n" + GENERATION_TRUNCATED
+    )
+    assert len(sent) == 1
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Wpisałem odprawę do kalendarza.",
+        "W kalendarzu została zapisana odprawa.",
+        "Wpis jest już w kalendarzu.",
+    ],
+)
+def test_claim_cues_are_held_before_publish_even_one_character_at_a_time(text):
+    guard = CalendarClaimStream()
+    emitted = "".join(guard.push(char) for char in text)
+    assert emitted == ""
+    assert "wymaga potwierdzenia" in guard.finish(truncated=False)
+
+
+def test_calendar_guard_preserves_a_denial_and_streams_safe_words_early():
+    guard = CalendarClaimStream()
+    assert guard.push("Wstępna odpowiedź. ") == "Wstępna odpowiedź. "
+    sentence = "Nic w tej chwili nie zapisałem w kalendarzu."
+    visible = "".join(guard.push(char) for char in sentence)
+    assert visible
+    assert visible + guard.finish(truncated=False) == sentence
+
+
+def test_published_calendar_note_followup_stays_on_complete_draft(studio_chat):
+    chat, sent, replies = studio_chat
+    replies.append(native("Próba odbędzie się we wtorek."))
+    assert (
+        chat(
+            "Podaj tylko tekst dla grupy.",
+            history=[
+                turn("Zapisz w kalendarzu próbę: we wtorek o 12:35."),
+                turn("Potrzebne potwierdzenie.", "assistant"),
+            ],
+        )
+        == "Próba odbędzie się we wtorek."
+    )
+    assert sent[0]["completions_url"].endswith("/api/chat")
+
+
+def test_plain_question_keeps_original_studio_prompt_and_stream(
+    studio_chat, monkeypatch
+):
+    chat, sent, replies = studio_chat
+    replies.extend([streamed("To przykład."), streamed("To przykład.")])
+    assert chat("Podaj przykład.") == "To przykład."
+    monkeypatch.setattr(
+        llm_simple_service.SETTINGS, "ACADEMY_QUALIFIED_CHAT_ENABLED", False
+    )
+    assert chat("Podaj przykład.") == "To przykład."
+    assert sent[0]["payload"] == sent[1]["payload"]
+    assert sent[0]["completions_url"].endswith("/v1/chat/completions")
+
+
+def test_single_advice_gets_a_causal_hint_without_a_schema(studio_chat):
+    chat, sent, replies = studio_chat
+    replies.append(streamed("Włącz wentylację."))
+    assert (
+        chat("Podaj jeden prosty sposób na ograniczenie parowania lustra.")
+        == "Włącz wentylację."
+    )
+    call = sent[0]
+    assert call["completions_url"].endswith("/v1/chat/completions")
+    assert "format" not in call["payload"]
+    assert "wpływa na przyczynę" in call["payload"]["messages"][0]["content"]
+
+
+def test_truncated_options_keep_the_length_diagnosis_after_one_retry(studio_chat):
+    chat, sent, replies = studio_chat
+    replies.extend(
+        [
+            native('{"options":["Kartka."]}'),
+            native('{"options":["fra', reason="length"),
+        ]
+    )
+    assert chat("Podaj dwie opcje.") == GENERATION_TRUNCATED
+    assert len(sent) == 2
+
+
+def test_explicit_single_choice_or_choice_with_restrictions_stays_checked():
+    assert prepare_reply("Podaj dokładnie jeden sposób.", []).requires_complete_draft
+    assert prepare_reply("Podaj jeden sposób bez zdjęć.", []).requires_complete_draft

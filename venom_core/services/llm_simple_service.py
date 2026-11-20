@@ -10,6 +10,7 @@ import asyncio
 import json
 import re
 import time
+from collections.abc import Callable
 from typing import Any, AsyncIterator, Optional
 from uuid import UUID, uuid4
 
@@ -24,7 +25,9 @@ from venom_core.core.ollama_runtime_capabilities import is_gemma4_model_name
 from venom_core.core.tracer import TraceStatus
 from venom_core.services import llm_simple_transport
 from venom_core.services.academy.qualified_chat import (
+    GENERATION_TRUNCATED,
     QUALIFIED_MODEL,
+    CalendarClaimStream,
     QualifiedReply,
     prepare_reply,
 )
@@ -708,6 +711,9 @@ def _update_stream_state_from_packet(
     request_id: UUID,
     stream_start: float,
     runtime_telemetry: dict[str, int],
+    extract_visible_contents: Callable[
+        [dict[str, Any]], list[str]
+    ] = _extract_sse_contents,
 ) -> list[str]:
     return _update_stream_state_from_packet_impl(
         packet=packet,
@@ -715,7 +721,7 @@ def _update_stream_state_from_packet(
         runtime_telemetry=runtime_telemetry,
         extract_runtime_telemetry_fn=_extract_runtime_telemetry,
         extract_sse_tool_calls_fn=_extract_sse_tool_calls,
-        extract_sse_contents_fn=_extract_sse_contents,
+        extract_sse_contents_fn=extract_visible_contents,
         on_first_chunk_fn=lambda content: _trace_first_chunk(
             request_id, stream_start, content
         ),
@@ -735,6 +741,7 @@ async def _stream_single_attempt(
     retry_backoff: float,
     state: _SimpleStreamState,
     runtime_telemetry: dict[str, int],
+    guard_calendar: bool = False,
 ) -> AsyncIterator[str]:
     provider_name = str(getattr(runtime, "provider", "") or "llm_runtime")
     transport = _StreamTransportConfig(
@@ -752,6 +759,22 @@ async def _stream_single_attempt(
         retry_backoff=retry_backoff,
         sleep_fn=asyncio.sleep,
     )
+    guard = CalendarClaimStream() if guard_calendar else None
+    truncated = False
+
+    def visible_contents(packet: dict[str, Any]) -> list[str]:
+        nonlocal truncated
+        contents = _extract_sse_contents(packet)
+        if guard is None:
+            return contents
+        truncated |= any(
+            choice.get("finish_reason") == "length"
+            for choice in (packet.get("choices") or [])
+            if isinstance(choice, dict)
+        )
+        text = guard.push("".join(contents))
+        return [text] if text else []
+
     async for event in _stream_single_attempt_impl(
         transport=transport,
         retry=retry,
@@ -763,6 +786,7 @@ async def _stream_single_attempt(
             request_id=request_id,
             stream_start=stream_start,
             runtime_telemetry=runtime_telemetry,
+            extract_visible_contents=visible_contents,
         ),
         emit_http_error_fn=lambda exc: _emit_http_status_error_and_mark_failed(
             exc=exc,
@@ -773,6 +797,16 @@ async def _stream_single_attempt(
         ),
     ):
         yield event
+    if guard is not None and state.completed:
+        final = guard.finish(truncated=truncated)
+        for event in _update_stream_state_from_packet(
+            packet={"choices": [{"delta": {"content": final}}]},
+            state=state,
+            request_id=request_id,
+            stream_start=stream_start,
+            runtime_telemetry=runtime_telemetry,
+        ):
+            yield event
     if state.retry_requested:
         runtime_telemetry.clear()
 
@@ -921,6 +955,7 @@ async def _stream_simple_chunks(
     runtime,
     request_id: UUID,
     model_name: str,
+    guard_calendar: bool = False,
 ) -> AsyncIterator[str]:
     expected_runtime_id, expected_config_hash = _expected_vast_identity(runtime)
     async with runtime_request_guard(
@@ -954,6 +989,7 @@ async def _stream_simple_chunks(
                     max_attempts=max_attempts,
                     retry_backoff=retry_backoff,
                     state=state,
+                    guard_calendar=guard_calendar,
                     runtime_telemetry=runtime_telemetry,
                 ):
                     yield event
@@ -1019,6 +1055,14 @@ async def _read_non_stream_data(
         return reader() if callable(reader) else {}
 
 
+def _draft_truncated(data: Any) -> bool:
+    return (
+        isinstance(data, dict)
+        and data.get("done") is True
+        and data.get("done_reason") == "length"
+    )
+
+
 def _native_draft(data: Any) -> str:
     if (
         not isinstance(data, dict)
@@ -1041,6 +1085,10 @@ async def _publish_qualified_draft(
     content = _native_draft(data)
     repair = reply.repair(content)
     if repair is None:
+        if _draft_truncated(data):
+            return GENERATION_TRUNCATED
+        if not content.strip():
+            return "Nie udało się uzyskać kompletnej odpowiedzi."
         return reply.publish(content)
     kept, schema = repair
     request = {
@@ -1056,7 +1104,11 @@ async def _publish_qualified_draft(
         url,
         {**payload, "format": schema, "messages": [*payload["messages"], request]},
     )
-    return reply.publish(content, _native_draft(replacement))
+    return reply.publish(
+        content,
+        _native_draft(replacement),
+        truncated=_draft_truncated(data) or _draft_truncated(replacement),
+    )
 
 
 async def _stream_simple_chunks_non_stream(
@@ -1442,7 +1494,15 @@ async def _stream_non_openrouter_chat(
         request, runtime, model_name, system_context
     )
     qualified_reply = _prepare_qualified_reply(request, runtime, model_name)
-    if qualified_reply is not None:
+    complete_reply = (
+        qualified_reply
+        if qualified_reply is not None
+        and (qualified_reply.requires_complete_draft or request.stream is False)
+        else None
+    )
+    if qualified_reply is not None and (
+        complete_reply is not None or qualified_reply.hint
+    ):
         configured = (SETTINGS.SIMPLE_MODE_SYSTEM_PROMPT or "").strip()
         custom = configured if configured != DEFAULT_SIMPLE_MODE_SYSTEM_PROMPT else ""
         system_prompt = qualified_reply.prompt(
@@ -1459,9 +1519,9 @@ async def _stream_non_openrouter_chat(
     _trace_context_preview(request_id, messages)
     headers = _build_streaming_headers(str(request_id), request.session_id or "")
     completions_url = _build_chat_completions_url(runtime)
-    if qualified_reply is not None:
+    if complete_reply is not None:
         completions_url = f"{OllamaClient(runtime.endpoint).endpoint}/api/chat"
-    force_non_stream = request.stream is False or qualified_reply is not None
+    force_non_stream = request.stream is False or complete_reply is not None
     if is_multi_runtime(runtime_provider) or force_non_stream:
         if not completions_url:
             raise HTTPException(status_code=503, detail="Brak endpointu LLM.")
@@ -1470,9 +1530,9 @@ async def _stream_non_openrouter_chat(
                 completions_url=completions_url,
                 payload=(
                     _qualified_chat_payload(
-                        request, messages, qualified_reply, model_name
+                        request, messages, complete_reply, model_name
                     )
-                    if qualified_reply is not None
+                    if complete_reply is not None
                     else _build_payload(
                         request, runtime, model_name, messages, stream=False
                     )
@@ -1480,7 +1540,7 @@ async def _stream_non_openrouter_chat(
                 runtime=runtime,
                 request_id=request_id,
                 model_name=model_name,
-                qualified_reply=qualified_reply,
+                qualified_reply=complete_reply,
             ),
             media_type=_SSE_MEDIA_TYPE,
             headers=headers,
@@ -1494,6 +1554,7 @@ async def _stream_non_openrouter_chat(
             runtime=runtime,
             request_id=request_id,
             model_name=model_name,
+            guard_calendar=qualified_reply is not None,
         ),
         media_type=_SSE_MEDIA_TYPE,
         headers=headers,

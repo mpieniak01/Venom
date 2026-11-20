@@ -1388,13 +1388,13 @@ def _qualified_chat_payload(
     reply: QualifiedReply,
     model_name: str,
 ) -> dict[str, Any]:
-    options = build_ollama_runtime_options(SETTINGS)
-    options.update(
-        num_predict=request.max_tokens if request.max_tokens is not None else 96,
-        temperature=request.temperature if request.temperature is not None else 0,
-        seed=request.seed if request.seed is not None else 42,
-        top_k=1,
-    )
+    options = {
+        "num_ctx": build_ollama_runtime_options(SETTINGS)["num_ctx"],
+        "num_predict": request.max_tokens if request.max_tokens is not None else 96,
+        "temperature": request.temperature if request.temperature is not None else 0,
+        "seed": request.seed if request.seed is not None else 42,
+        "top_k": 1,
+    }
     if request.top_p is not None:
         options["top_p"] = request.top_p
     payload = {

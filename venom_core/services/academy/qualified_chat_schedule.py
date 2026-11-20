@@ -114,53 +114,32 @@ def _declaration(text: str) -> Schedule | None:
     )
 
 
-def _clarify(reason: str, answer: str) -> dict:
-    return {"route": "clarify", "reason": reason, "answer": answer, "actions": []}
-
-
-def _shift(text: str, state: Sequence[Schedule]) -> tuple[Schedule | None, dict]:
+def _shift(text: str, state: Sequence[Schedule]) -> tuple[Schedule | None, str]:
     match = _SHIFT.fullmatch(text)
     if not match:
-        return None, _clarify(
-            "unsupported_shift",
-            "Które zdarzenie przesunąć, o ile minut i w którą stronę?",
-        )
+        return None, "Które zdarzenie przesunąć, o ile minut i w którą stronę?"
     target = _EVENTS.get(match["target"].casefold())
     candidates = [value for value in state if target is None or value.event == target]
     if len(candidates) > 1:
-        return None, _clarify(
-            "ambiguous_event", "Którego zdarzenia dotyczy przesunięcie?"
-        )
+        return None, "Którego zdarzenia dotyczy przesunięcie?"
     if not candidates:
-        return None, _clarify(
-            "missing_start",
-            "Jaka jest potwierdzona godzina rozpoczęcia tego zdarzenia?",
-        )
+        return None, "Jaka jest potwierdzona godzina rozpoczęcia tego zdarzenia?"
     direction = (match["direction"] or "").casefold()
-    if match["verb"].casefold() == "cofnij":
-        if direction in _LATER:
-            return None, _clarify(
-                "conflicting_direction",
-                "Czy termin ma być wcześniejszy, czy późniejszy?",
-            )
-        sign = -1
-    elif direction in _EARLIER:
-        sign = -1
-    elif direction in _LATER:
-        sign = 1
-    else:
-        return None, _clarify(
-            "missing_direction", "Czy termin ma być wcześniejszy, czy późniejszy?"
-        )
+    if match["verb"].casefold() == "cofnij" and not direction:
+        direction = "wcześniej"
+    elif match["verb"].casefold() == "cofnij" and direction in _LATER:
+        direction = ""
+    if direction not in (_EARLIER | _LATER):
+        return None, "Czy termin ma być wcześniejszy, czy późniejszy?"
+    sign = -1 if direction in _EARLIER else 1
 
     before = candidates[0]
     hours, minutes = map(int, before.start.split(":"))
     signed_minutes = sign * int(match["minutes"])
     day_delta, minute_of_day = divmod(hours * 60 + minutes + signed_minutes, 24 * 60)
     if day_delta != 0 and "dzień" in (match["keep"] or "").casefold():
-        return None, _clarify(
-            "conflicting_day",
-            "Przesunięcie zmienia dzień. Czy zmienić dzień zgodnie z obliczeniem, czy zachować pierwotny?",
+        return None, (
+            "Przesunięcie zmienia dzień. Czy zmienić dzień zgodnie z obliczeniem, czy zachować pierwotny?"
         )
     weekday = (
         _DAYS_ORDER[(_DAYS_ORDER.index(before.weekday) + day_delta) % len(_DAYS_ORDER)]
@@ -193,23 +172,7 @@ def _shift(text: str, state: Sequence[Schedule]) -> tuple[Schedule | None, dict]
     if result.arrival_before is not None:
         minutes = result.arrival_before
         answer += f" Prośba: przyjdź {minutes} min wcześniej."
-    return result, {
-        "route": "present",
-        "answer": answer,
-        "start": result.start,
-        "weekday": weekday,
-        "day_delta": day_delta,
-        "event": result.event,
-        "entry": result.entry,
-        "room": result.room,
-        "arrival_before": result.arrival_before,
-        "confirmation": {
-            "start": before.start,
-            "weekday": before.weekday,
-            "signed_minutes": signed_minutes,
-        },
-        "actions": [],
-    }
+    return result, answer
 
 
 def _confirmed_history(history: Sequence[dict[str, str]]) -> list[Schedule]:
@@ -244,5 +207,5 @@ def route_shift(message: str, history: Sequence[dict[str, str]]) -> str | None:
     text = _text(message)
     if not (_SHIFT_HEAD.match(text) and _TIME_HINT.search(text)):
         return None
-    _, result = _shift(text, _confirmed_history(history))
-    return result["answer"]
+    _, answer = _shift(text, _confirmed_history(history))
+    return answer

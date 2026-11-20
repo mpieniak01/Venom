@@ -18,6 +18,7 @@ from venom_core.services.academy.qualified_chat_constraints import (
 )
 from venom_core.services.academy.qualified_chat_options import (
     CountRequirement,
+    option_key,
     requested_count,
     split_options,
 )
@@ -45,19 +46,19 @@ _EVENT_NAMES = {"próbę": "Próba", "odprawę": "Odprawa"}
 _CALENDAR_REQUEST = re.compile(
     r"^(?:zanotuj|zapisz|dodaj|ustal)\b.*\bkalendarz\w*\b", re.I
 )
+_CALENDAR_NAME = r"\b(?:kalendarz\w*|terminarz\w*)\b"
+_CALENDAR_WRITE = (
+    r"(?<!\bnie )\b(?:dodałem|dodałam|dodano|zapisałem|zapisałam|zapisano|"
+    r"wpisałem|wpisałam|wpisano|zanotowałem|zanotowałam|zanotowano|"
+    r"został\w* (?:wpisan|zapisan|dodan)\w*)\b"
+)
 _CALENDAR_CLAIM = re.compile(
-    r"\b(?:kalendarz\w*|terminarz\w*)\b.{0,100}\b"
-    r"(?:dodałem|dodałam|zapisałem|zapisałam|wpisałem|wpisałam|zanotowałem|zanotowałam)\b"
-    r"|\b(?:dodałem|dodałam|dodano|zapisałem|zapisałam|zapisano|wpisałem|wpisałam|"
-    r"wpisano|zanotowałem|zanotowałam|zanotowano|(?:został\w*) (?:wpisan|zapisan|dodan)\w*)\b"
-    r".{0,100}\b(?:kalendarz\w*|terminarz\w*)\b",
+    rf"{_CALENDAR_NAME}.{{0,100}}{_CALENDAR_WRITE}|"
+    rf"{_CALENDAR_WRITE}.{{0,100}}{_CALENDAR_NAME}|"
+    rf"\bwpis\w* (?:już )?(?:jest|widnieje|znajduje się) (?:już )?w {_CALENDAR_NAME}",
     re.I,
 )
-_CLAUSE_SPLIT = re.compile(r"[.!?]|\b(?:ale|jednak|natomiast)\b", re.I)
-_NEGATED_CLAIM = re.compile(
-    r"\bnie (?:dodałem|dodałam|zapisałem|zapisałam|wpisałem|wpisałam|zanotowałem|zanotowałam|został\w*)\b",
-    re.I,
-)
+_CLAUSE_SPLIT = re.compile(r"[.!?;\n]|\b(?:ale|jednak|natomiast)\b", re.I)
 _AMBIGUOUS_PLACE = re.compile(r"\b(?:i|lub|albo|oraz)\b", re.I)
 _LOCATION = r"(?:przy|w|za|pod|obok) [\w-]+(?: [\w-]+){0,5}"
 _RETURN_LOCATION = re.compile(
@@ -125,6 +126,9 @@ _EXACT_SENTENCE = re.compile(
     r"\b(?:jedno(?: krótkie)? zdanie|jednym(?: krótkim)? zdani[eu])\b", re.I
 )
 _TWO_BULLETS = re.compile(r"\b(?:dwóch krótkich punktach|dwa krótkie punkty)\b", re.I)
+_MESSAGE_ONLY = re.compile(
+    r"\b(?:sam tekst|samą treść|tylko treść|wyłącznie treść)\b", re.I
+)
 _STRICT_TIME = re.compile(
     r"\b(?:mniej|krócej|krótsz[aeąy]) niż (?:jedną |1 )?minut[ęy]\b", re.I
 )
@@ -148,8 +152,7 @@ _SIZE = re.compile(
 
 def _claim(clauses: str) -> bool:
     return any(
-        _CALENDAR_CLAIM.search(clause) and not _NEGATED_CLAIM.search(clause)
-        for clause in _CLAUSE_SPLIT.split(clauses)
+        _CALENDAR_CLAIM.search(clause) for clause in _CLAUSE_SPLIT.split(clauses)
     )
 
 
@@ -203,8 +206,11 @@ def _format_hint(text: str, restrictions: frozenset[str]) -> str:
         )
     elif _TWO_BULLETS.search(text):
         hints.append("Zwróć wyłącznie dwa krótkie i samodzielne punkty.")
-    elif "krótkie ogłoszenie" in text.casefold():
-        hints.append("Zwróć tylko treść krótkiego ogłoszenia, bez pytania o styl.")
+    elif _MESSAGE_ONLY.search(text) or "krótkie ogłoszenie" in text.casefold():
+        hints.append(
+            "Podaj wyłącznie gotowy, krótki tekst do wysłania. "
+            "Zachowaj podany termin i miejsce. Pomiń wstęp, dopiski i pytania."
+        )
     if restrictions:
         hints.append(
             f"Aktywne wykluczenia: {', '.join(constraint_labels(restrictions))}. "
@@ -284,7 +290,7 @@ class QualifiedReply:
                 == 1
                 and self._allowed(item)
             ):
-                accepted.setdefault(item.strip().casefold(), item.strip())
+                accepted.setdefault(option_key(item), item.strip())
         return list(accepted.values())
 
     def repair(self, draft: str) -> tuple[list[str], dict[str, Any]] | None:
@@ -324,10 +330,9 @@ class QualifiedReply:
         if self.timed:
             return self._publish_timed(draft)
         if self.count:
-            values = {
-                option.casefold(): option
-                for option in [*self.options(draft), *self.options(repair or "")]
-            }
+            values: dict[str, str] = {}
+            for option in [*self.options(draft), *self.options(repair or "")]:
+                values.setdefault(option_key(option), option)
             options = list(values.values())[: self.count.count]
             if not options or not self.count.accepts(len(options)):
                 return _CLARIFICATION

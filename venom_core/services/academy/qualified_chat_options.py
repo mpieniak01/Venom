@@ -187,6 +187,10 @@ def _decode(text: str) -> list[str]:
     return _NEW_OPTION.split(plain) if plain else []
 
 
+def option_key(text: str) -> str:
+    return " ".join(text.casefold().strip(" .!?").split())
+
+
 def _effective(items: Sequence[str]) -> tuple[str, ...]:
     options = {}
     for item in items:
@@ -197,7 +201,7 @@ def _effective(items: Sequence[str]) -> tuple[str, ...]:
         )
         for line in nested:
             for piece in _components(line):
-                key = " ".join(piece.casefold().strip(" .!?").split())
+                key = option_key(piece)
                 if key:
                     options.setdefault(key, piece)
     return tuple(options.values())

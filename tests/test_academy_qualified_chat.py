@@ -584,3 +584,48 @@ def test_override_still_rejects_an_actual_use_in_another_clause():
     assert find_violations("Zamiast nazwisk użyj imion. Dopisz nazwiska.", P) == (
         "surnames",
     )
+
+
+@pytest.mark.parametrize(
+    "draft",
+    [
+        "Nie zapisałem notatki i dodałem spotkanie do kalendarza.",
+        "Wpis jest już w kalendarzu.",
+        "W kalendarzu odprawa została zapisana.",
+    ],
+)
+def test_calendar_claims_in_mixed_or_passive_messages_are_withheld(draft):
+    assert "wymaga potwierdzenia" in prepare_reply("Co się stało?", []).publish(draft)
+
+
+def test_duplicate_options_trigger_repair_and_preserve_first_writing():
+    reply = prepare_reply("Podaj dwie opcje.", [])
+    draft = '{"options": ["Kartka.", "KARTKA"]}'
+    kept, schema = reply.repair(draft)
+    assert kept == ["Kartka."]
+    assert schema["properties"]["options"]["minItems"] == 1
+    assert reply.publish(draft, '{"options": ["kartka", "List."]}') == (
+        "1. Kartka.\n2. List."
+    )
+
+
+def test_message_instead_of_calendar_action_uses_short_output_instruction(studio_chat):
+    chat, sent, replies = studio_chat
+    replies.append(native("Odprawa w czwartek o 18:25 w sali C."))
+    text = chat(
+        "Przygotuj zamiast wpisu sam tekst dla zespołu. Odprawa ma zostać w tym terminie i odbędzie się w sali C.",
+        history=[
+            turn("Zapisz w kalendarzu odprawę: w czwartek o 18:25."),
+            turn(
+                "Wpis do kalendarza wymaga potwierdzenia wykonania. Odprawa w czwartek o 18:25.",
+                "assistant",
+            ),
+        ],
+    )
+    assert text == "Odprawa w czwartek o 18:25 w sali C."
+    payload = sent[0]["payload"]
+    assert (
+        "wyłącznie gotowy, krótki tekst do wysłania"
+        in payload["messages"][0]["content"]
+    )
+    assert "num_parallel" not in payload["options"]

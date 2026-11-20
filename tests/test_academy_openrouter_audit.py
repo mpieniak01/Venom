@@ -146,6 +146,14 @@ def test_prepare_never_opens_holdout_and_full_fake_audit_replays(ready):
     )
     judge.verify_audit(pin)
     assert len(result["receipt_hashes"]) == 228
+    assert result["deviations"] == {
+        "planned": 228,
+        "attempted": 228,
+        "by_case": [],
+        "not_run_reason": None,
+        "not_run": [],
+        "holdout_unscheduled": 0,
+    }
     assert "invented-test-credential" not in "".join(
         p.read_text() for p in root.rglob("*.json")
     )
@@ -163,6 +171,151 @@ def test_g1_failure_cannot_open_missing_holdout(ready):
     assert not (root / "qualification.json").exists()
 
 
+def test_phase1_collects_rejections_through_156_and_never_opens_holdout(
+    ready, monkeypatch
+):
+    root, _, client = ready
+    monkeypatch.setattr(
+        audit,
+        "_stage_holdout",
+        lambda *_: pytest.fail("rejected phase 1 opened holdout"),
+    )
+
+    class RejectingClient(client):
+        def post(self, url, **kwargs):
+            response = super().post(url, **kwargs)
+            index = type(self).calls
+            if index not in (98, 134, 156):
+                return response
+            body = response.json()
+            message = body["choices"][0]["message"]
+            if index == 98:
+                message["content"] = "invalid decision"
+            elif index == 156:
+                decision = json.loads(message["content"])
+                decision.update(polish_ok=False, natural_ok=False)
+                message["content"] = json.dumps(decision)
+            else:
+                decision = json.loads(message["content"])
+                candidate = json.loads(kwargs["json"]["messages"][1]["content"])[
+                    "candidate"
+                ]
+                decision["checks"] = {
+                    key: {"relation": "unclear", "observed": candidate}
+                    for key in decision["checks"]
+                }
+                decision["additional_claims"] = []
+                message["content"] = json.dumps(decision)
+            return httpx.Response(200, json=body, request=response.request)
+
+    result = audit.run(root, execute=True, client_factory=RejectingClient)
+
+    assert result["status"] == "failed_qualification"
+    assert result["rows"] == RejectingClient.calls == 156
+    assert result["rate_limit_retries"] == 0
+    assert Decimal(result["actual_known_cost_usd"]) == Decimal("0.00156")
+    assert Decimal(result["unknown_reserved_usd"]) == 0
+    assert result["holdout_opened"] is False
+    assert not (root / "controls/holdout").exists()
+    assert not (root / "qualification.json").exists()
+    phase1 = json.loads((root / "phase1-result.json").read_text())
+    assert phase1["status"] == "failed_qualification"
+    assert result["phase1_rejections"] == phase1["rejected_decisions"]
+    assert [
+        (row["index"], row["error_type"]) for row in phase1["rejected_decisions"]
+    ] == [(98, "decoder_invalid"), (134, "uncertain_decision")]
+    assert result["metrics"]["development_full"] == 47
+    assert result["metrics"]["extra_full"] == 31
+    assert json.loads((root / "receipts/156.json").read_text())["status"] == "completed"
+    deviations = result["deviations"]
+    assert deviations["planned"] == deviations["attempted"] == 156
+    assert deviations["holdout_unscheduled"] == 72
+    assert deviations["not_run"] == []
+    assert deviations["not_run_reason"] is None
+    early, mid, last = deviations["by_case"]
+    assert [early["index"], mid["index"], last["index"]] == [98, 134, 156]
+    assert early["issues"][0]["error_type"] == "decoder_invalid"
+    assert mid["issues"][0]["error_type"] == "uncertain_decision"
+    assert {item["field"] for item in mid["issues"]} >= {"status", "atoms.fact"}
+    assert last["issues"] == [
+        {"field": "polish_ok", "expected": True, "actual": False},
+        {"field": "natural_ok", "expected": True, "actual": False},
+    ]
+    assert json.loads((root / "result.json").read_text())["deviations"] == deviations
+
+
+def test_open_holdout_collects_quality_deviations_through_228(ready):
+    root, _, client = ready
+
+    class HoldoutClient(client):
+        def post(self, url, **kwargs):
+            response = super().post(url, **kwargs)
+            index = type(self).calls
+            if index not in {157, 228}:
+                return response
+            body = response.json()
+            message = body["choices"][0]["message"]
+            if index == 157:
+                message["content"] = "invalid holdout decision"
+            else:
+                decision = json.loads(message["content"])
+                decision["checks"]["fact"]["relation"] = "supported"
+                message["content"] = json.dumps(decision)
+            return httpx.Response(200, json=body, request=response.request)
+
+    result = audit.run(root, execute=True, client_factory=HoldoutClient)
+    assert result["status"] == "failed_qualification"
+    assert result["holdout_opened"]
+    assert result["rows"] == HoldoutClient.calls == 228
+    assert result["rate_limit_retries"] == 0
+    assert result["metrics"]["holdout_full"] == 70
+    assert result["metrics"]["holdout_stable_groups"] == 22
+    assert not (root / "qualification.json").exists()
+    deviations = result["deviations"]
+    assert deviations["not_run"] == []
+    assert deviations["holdout_unscheduled"] == 0
+    first, last = deviations["by_case"]
+    assert (first["index"], first["repeat"]) == (157, 1)
+    assert first["issues"][0]["error_type"] == "decoder_invalid"
+    assert (last["index"], last["repeat"]) == (228, 3)
+    assert {
+        item["field"]: (item["expected"], item["actual"]) for item in last["issues"]
+    } == {
+        "atoms.fact": ("contradicted", "supported"),
+        "unsupported": ("yes", "no"),
+    }
+
+
+def test_missing_legacy_decision_never_counts_as_correct_negative(ready):
+    root, _, client = ready
+    protocol, manifest, _ = audit._static(root)
+    _, gold = judge._jobs(root, manifest, "legacy")
+    rejected = set(gold["rejected"])
+    order = judge._audit_order(root, manifest, phase1=True)
+    target = next(
+        i
+        for i, row in enumerate(order, 1)
+        if row["split"] == "legacy" and row["answer_id"] in rejected
+    )
+    assert protocol["phase1_decision_errors"] == "collect_and_block_holdout"
+
+    class DroppingClient(client):
+        def post(self, url, **kwargs):
+            response = super().post(url, **kwargs)
+            if type(self).calls != target:
+                return response
+            body = response.json()
+            body["choices"][0]["message"]["content"] = "invalid decision"
+            return httpx.Response(200, json=body, request=response.request)
+
+    result = audit.run(root, execute=True, client_factory=DroppingClient)
+    assert result["status"] == "failed_qualification"
+    assert result["rows"] == 156
+    assert result["metrics"]["legacy_negative"] == 35
+    assert result["phase1_rejections"][0]["index"] == target
+    assert not result["holdout_opened"]
+
+
 @pytest.mark.parametrize("fail_at", [1, 2])
 def test_system_error_stops_without_retry_and_retains_unknown_cost(ready, fail_at):
     root, _, client = ready
@@ -172,6 +325,13 @@ def test_system_error_stops_without_retry_and_retains_unknown_cost(ready, fail_a
     assert result["status"] == "transport_incomplete"
     assert audit.judge._money(result["unknown_reserved_usd"]) > 0
     assert result["metrics"] is None
+    deviations = result["deviations"]
+    assert deviations["by_case"][0]["index"] == fail_at
+    assert deviations["by_case"][0]["issues"][0]["http_status"] == 404
+    assert deviations["not_run_reason"] == "transport_incomplete"
+    assert [entry["index"] for entry in deviations["not_run"]] == list(
+        range(fail_at + 1, 157)
+    )
     assert not (root / "controls/holdout").exists()
     with pytest.raises(ValueError, match="single_attempt"):
         audit.run(root, execute=True, client_factory=client)
@@ -1223,3 +1383,760 @@ def test_targeted_cli_verifies_publication_after_parent_sync_error(
     frozen_panel.write_bytes(frozen_panel.read_bytes() + b"\n")
     with pytest.raises(ValueError, match="remote_audit_file_changed"):
         cli.main()
+
+
+@pytest.mark.parametrize("damage", [None, "ledger", "pending"])
+def test_targeted_resume_replays_completed_receipts_and_azure_capacity(
+    ready, tmp_path, monkeypatch, damage
+):
+    from tests.test_academy_openrouter_judge import response
+    from venom_core.services.training_experiments import (
+        semantic_openrouter_targeted as targeted,
+    )
+
+    prompt_case = {
+        "id": "fixture",
+        "messages": [{"role": "user", "content": "Odbiór w Hali B."}],
+        "criteria": [{"id": "place", "description": "Hala B."}],
+    }
+    body = judge._control_request(prompt_case, {"text": "Hala B"})
+    panel = {
+        **judge._contract(),
+        "cases": {
+            "fixture": {
+                "body": body,
+                "expected": {
+                    "atoms": {"place": "supported"},
+                    "injection": False,
+                    "natural_ok": True,
+                    "polish_ok": True,
+                    "unsupported": "no",
+                },
+            }
+        },
+        "order": ["fixture", "fixture"],
+    }
+    source = tmp_path / "restart-source.json"
+    root = tmp_path / "restart-panel"
+    write(source, panel)
+    targeted.prepare(
+        source, root, panel_sha256=digest(source), budget_usd="0.10", max_seconds=300
+    )
+    sleep = audit.sleep
+    interrupt = True
+
+    class Client:
+        calls = 0
+
+        def __init__(self, **_):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            return None
+
+        def post(self, url, *, json, **_):
+            type(self).calls += 1
+            req = httpx.Request("POST", url)
+            assert json == body
+            if self.calls == 2:
+                return httpx.Response(
+                    502,
+                    json={
+                        "error": {
+                            "code": 502,
+                            "message": "The system is currently experiencing high demand.",
+                            "metadata": {"provider_name": "Azure"},
+                        }
+                    },
+                    request=req,
+                )
+            return httpx.Response(
+                200,
+                json=response(body, "Hala B", ident=f"generation-{self.calls}"),
+                request=req,
+            )
+
+    def crash_on_retry(seconds):
+        if interrupt and Client.calls == 2:
+            raise KeyboardInterrupt
+        sleep(seconds)
+
+    monkeypatch.setattr(audit, "sleep", crash_on_retry)
+    with pytest.raises(KeyboardInterrupt):
+        audit.run(root, execute=True, client_factory=Client)
+    assert Client.calls == 2
+    first_receipt = digest(root / "receipts/001.json")
+    tail = json.loads((root / "receipts/002.json").read_text())
+    assert tail["error_type"] == "provider_unavailable"
+    interrupt = False
+    if damage:
+        ledger = root / "ledger.json"
+        contents = json.loads(ledger.read_text())
+        if damage == "pending":
+            contents["pending_call_id"] = "ambiguous"
+            expected = "remote_audit_resume_pending_call"
+        else:
+            contents["unknown_reserved_usd"] = "0"
+            expected = "remote_audit_resume_ledger_changed"
+        write(ledger, contents)
+        with pytest.raises(ValueError, match=expected):
+            audit.run(root, execute=True, resume=True, client_factory=Client)
+        assert Client.calls == 2
+        return
+    result = audit.run(root, execute=True, resume=True, client_factory=Client)
+    row = json.loads((root / "receipts/002.json").read_text())
+    assert Client.calls == 3
+    assert result["status"] == "targeted_review_required"
+    assert result["completed"] == 2
+    assert result["rate_limit_retries"] == 1
+    assert Decimal(result["unknown_reserved_usd"]) == Decimal(tail["reserved_usd"])
+    assert row["rate_limit_attempts"][0]["call_id"] == tail["call_id"]
+    assert digest(root / "receipts/001.json") == first_receipt
+
+
+@pytest.mark.parametrize("use_admission", [False, True])
+def test_full_audit_resumes_after_holdout_azure_502(ready, monkeypatch, use_admission):
+    from venom_core.services.training_experiments import semantic_openrouter_admission
+
+    root, source, client = ready
+    if use_admission:
+        protocol = json.loads((root / "protocol.json").read_text())
+        protocol.update(
+            phase1_admission_sha256="fixture",
+            rate_limit=audit._ADMITTED_RATE_LIMIT_POLICY,
+            max_seconds=11000,
+        )
+        write(root / "protocol.json", protocol)
+        write(root / "frozen.json", {"protocol_sha256": digest(root / "protocol.json")})
+
+        def admit(_root, manifest, _protocol):
+            rows = [
+                json.loads((source / "receipts" / f"{index:03d}.json").read_text())
+                for index in range(1, 157)
+            ]
+            return rows, {
+                k: v
+                for k, v in manifest["thresholds"].items()
+                if not k.startswith("holdout")
+            }
+
+        monkeypatch.setattr(semantic_openrouter_admission, "verify", admit)
+    interrupted_at = 1 if use_admission else 157
+    stop = True
+    sleep = audit.sleep
+
+    def stop_during_backoff(seconds):
+        if stop and CapacityClient.calls == interrupted_at:
+            raise KeyboardInterrupt
+        sleep(seconds)
+
+    monkeypatch.setattr(audit, "sleep", stop_during_backoff)
+
+    class CapacityClient(client):
+        def post(self, url, **kwargs):
+            if self.calls + 1 == interrupted_at:
+                type(self).calls += 1
+                return httpx.Response(
+                    502,
+                    json={
+                        "error": {
+                            "code": 502,
+                            "message": "The system is currently experiencing high demand.",
+                            "metadata": {"provider_name": "Azure"},
+                        }
+                    },
+                    request=httpx.Request("POST", url),
+                )
+            return super().post(url, **kwargs)
+
+    with pytest.raises(KeyboardInterrupt):
+        audit.run(root, execute=True, client_factory=CapacityClient)
+    assert CapacityClient.calls == interrupted_at
+    phase = digest(root / "phase1-result.json")
+    phase_paths = sorted((root / "receipts").glob("0*.json"))
+    prefix = {path.name: digest(path) for path in phase_paths}
+
+    stop = False
+    result = audit.run(root, execute=True, resume=True, client_factory=CapacityClient)
+    assert result["status"] == "passed"
+    assert result["holdout_opened"]
+    assert result["rate_limit_retries"] == 1
+    assert CapacityClient.calls == interrupted_at + 72
+    assert digest(root / "phase1-result.json") == phase
+    assert all(digest(root / "receipts" / name) == sha for name, sha in prefix.items())
+    tail = json.loads((root / "receipts/157.json").read_text())
+    assert tail["rate_limit_attempts"][0]["http_status"] == 502
+    assert Decimal(result["unknown_reserved_usd"]) == Decimal(tail["reserved_usd"])
+    assert len(result["receipt_hashes"]) == (72 if use_admission else 228)
+    pin = judge.QualificationRemote.model_validate_json(
+        (root / "qualification.json").read_text()
+    )
+    judge.verify_audit(pin)
+
+
+def _resume_fixture_state(tmp_path, **protocol_updates):
+    protocol = {
+        "initial_accounted_usd": "0",
+        "initial_unknown_reserved_usd": "0",
+        "max_seconds": 300,
+        "rate_limit": audit._RATE_LIMIT_POLICY,
+        "planned_budget_usd": "0.01",
+        "max_case_reservation_usd": "0.001",
+        **protocol_updates,
+    }
+    return audit._AuditState(
+        tmp_path,
+        protocol,
+        {"cases": {}},
+        "fixture-sha",
+        Decimal("0.10"),
+        Decimal("0.01"),
+        lambda **_: pytest.fail("provider construction must not occur"),
+    )
+
+
+@pytest.mark.parametrize("damage", [None, "model", "provider", "id"])
+def test_targeted_invalid_decision_requires_matching_response_identity(
+    tmp_path, damage
+):
+    from tests.test_academy_openrouter_judge import response
+
+    body = judge._control_request(
+        {
+            "id": "fixture",
+            "messages": [{"role": "user", "content": "Hala B."}],
+            "criteria": [{"id": "place", "description": "Hala B."}],
+        },
+        {"text": "Hala B"},
+    )
+    payload = response(body, "Hala B")
+    payload["choices"][0]["message"]["content"] = "invalid JSON"
+    if damage:
+        payload[damage] = "wrong" if damage != "id" else ""
+    state = _resume_fixture_state(tmp_path, kind="targeted_regression")
+    row = {"http_status": 200, "response": payload, "request": body}
+    if damage:
+        with pytest.raises(ValueError, match=judge.ERROR):
+            audit._record_audit_decision(state, row, "Hala B")
+        assert row.get("status") != "rejected_decision"
+    else:
+        audit._record_audit_decision(state, row, "Hala B")
+        assert row["status"] == "rejected_decision"
+        assert row["error_type"] == "decoder_invalid"
+
+
+def test_admitted_capacity_reserves_only_holdout_retry_costs():
+    protocol = {
+        "phase1_admission_sha256": "fixture",
+        "phase1_reservation_usd": "100",
+        "phase1_max_request_usd": "1",
+        "holdout_max_request_usd": "0.001",
+        "initial_accounted_usd": "0.02",
+        "rate_limit": audit._ADMITTED_RATE_LIMIT_POLICY,
+    }
+    capacity = audit._capacity(protocol, Decimal("1"))
+    assert Decimal(capacity["rate_limit_reservation_usd"]) == Decimal("0.024")
+    assert Decimal(capacity["planned_budget_usd"]) == Decimal("0.116")
+    assert Decimal(capacity["phase1_reservation_usd"]) == 0
+
+
+@pytest.mark.parametrize("receipt_present", [False, True])
+def test_resume_without_ledger_only_accepts_an_empty_prefix(
+    tmp_path, monkeypatch, receipt_present
+):
+    from venom_core.services.training_experiments import (
+        semantic_openrouter_targeted as targeted,
+    )
+
+    state = _resume_fixture_state(tmp_path, kind="targeted_regression")
+    write(
+        tmp_path / "started.json",
+        {"created_at": audit._utc(), "protocol_sha256": state.protocol_sha},
+    )
+    if receipt_present:
+        write(tmp_path / "receipts/001.json", {"status": "failed"})
+        with pytest.raises(ValueError, match="remote_audit_resume_ledger_missing"):
+            targeted._recorded_prefix(state, [(None, None, None, None)])
+        return
+    assert targeted._recorded_prefix(state, []) == []
+    assert targeted._restore_progress(state, []) == []
+    monkeypatch.setattr(targeted, "_requests", lambda _: [])
+    result = targeted.execute(state, resuming=True)
+    assert (tmp_path / "receipts").is_dir()
+    assert result["rows"] == 0
+    assert result["status"] == "targeted_review_required"
+    assert result["accounted_usd"] == "0"
+
+
+def _unavailable_attempt(status):
+    metadata = (
+        {"provider_name": "Azure"}
+        if status == 502
+        else {"error_type": "provider_unavailable"}
+    )
+    return {
+        "status": "failed",
+        "http_status": status,
+        "cost_usd": None,
+        "error_type": "provider_unavailable",
+        "response": {
+            "error": {
+                "code": 502,
+                "message": "The system is currently experiencing high demand.",
+                "metadata": metadata,
+            }
+        },
+    }
+
+
+@pytest.mark.parametrize("second_status", [200, 502])
+def test_provider_unavailable_live_and_resume_share_single_retry(
+    tmp_path, monkeypatch, second_status
+):
+    from venom_core.services.training_experiments import (
+        semantic_openrouter_targeted as targeted,
+    )
+
+    state = _resume_fixture_state(tmp_path)
+    monkeypatch.setattr(audit, "_persist_cooldown", lambda *_: None)
+    monkeypatch.setattr(audit, "_rate_delay", lambda *_: 0.0)
+    prior = _unavailable_attempt(502)
+    tail = {**_unavailable_attempt(second_status), "rate_limit_attempts": [prior]}
+    assert audit._finish_rate_window(state, tail, 1) is None
+    write(
+        tmp_path / "started.json",
+        {"created_at": audit._utc(), "protocol_sha256": state.protocol_sha},
+    )
+    with pytest.raises(ValueError, match="remote_audit_resume_retries_exhausted"):
+        targeted._restore_progress(state, [tail])
+
+
+def test_resume_allows_one_azure_unavailable_attempt(tmp_path):
+    from venom_core.services.training_experiments import (
+        semantic_openrouter_targeted as targeted,
+    )
+
+    state = _resume_fixture_state(tmp_path)
+    write(
+        tmp_path / "started.json",
+        {"created_at": audit._utc(), "protocol_sha256": state.protocol_sha},
+    )
+    tail = {**_unavailable_attempt(502), "rate_limit_attempts": []}
+    assert targeted._restore_progress(state, [tail]) == [
+        {key: value for key, value in tail.items() if key != "rate_limit_attempts"}
+    ]
+    assert state.rows == []
+
+
+def test_capacity_blocked_resume_preserves_result_and_can_continue(
+    tmp_path, monkeypatch
+):
+    state = _resume_fixture_state(
+        tmp_path,
+        phase1_reservation_usd="0.02",
+        phase1_max_request_usd="0.02",
+        holdout_max_request_usd="0.001",
+    )
+    row = {
+        "index": 1,
+        "split": "legacy",
+        "answer_id": "fixture",
+        "repeat": 1,
+        "status": "failed",
+        "error_type": "provider_unavailable",
+    }
+    write(tmp_path / "receipts/001.json", row)
+    write(tmp_path / "result.json", {"status": "provider_rate_limited", "rows": 1})
+    saved_result = (tmp_path / "result.json").read_bytes()
+    receipt_sha = digest(tmp_path / "receipts/001.json")
+    monkeypatch.setattr(judge, "_audit_order", lambda *_args, **_: [row])
+    monkeypatch.setattr(audit, "_phase1_reservations", lambda *_: [Decimal("0.02")])
+    restored = []
+
+    def restore(current):
+        restored.append(current)
+        current.rows = [row]
+        current.known = Decimal("0.003")
+        current.unknown = Decimal("0.002")
+        current.holdout_opened = True
+        return []
+
+    monkeypatch.setattr(audit, "_resume_qualification", restore)
+    monkeypatch.setattr(audit, "_execute_cases", lambda *_: None)
+    monkeypatch.setattr(audit, "_schedule_fits", lambda *_args, **_: True)
+
+    def execute(budget):
+        return audit._execute(
+            tmp_path,
+            state.protocol,
+            state.manifest,
+            state.protocol_sha,
+            budget,
+            Decimal("0.03"),
+            state.client_factory,
+            None,
+            resume=True,
+        )
+
+    refusal = execute(Decimal("0.10"))
+    assert refusal == {"status": "budget_exhausted", "resume_blocked": True}
+    assert restored == []
+    assert (tmp_path / "result.json").read_bytes() == saved_result
+    assert digest(tmp_path / "receipts/001.json") == receipt_sha
+    result = execute(Decimal("0.50"))
+    assert len(restored) == 1
+    assert result["rows"] == 1
+    assert result["actual_known_cost_usd"] == "0.003"
+    assert result["unknown_reserved_usd"] == "0.002"
+    assert result["accounted_usd"] == "0.005"
+    assert digest(tmp_path / "receipts/001.json") == receipt_sha
+
+
+def test_not_sent_case_is_reported_as_unrun_with_its_reason(tmp_path):
+    state = _resume_fixture_state(tmp_path)
+    state.status = "budget_exhausted"
+    entry = {"split": "legacy", "answer_id": "fixture", "repeat": 1}
+    state.order = [entry, {**entry, "answer_id": "next"}]
+    state.rows = [
+        {**entry, "index": 1, "status": "not_sent", "error_type": "budget_exhausted"}
+    ]
+    deviations = audit._audit_deviations(state)
+    assert deviations["attempted"] == 0
+    assert [row["index"] for row in deviations["not_run"]] == [1, 2]
+    assert deviations["by_case"][0]["issues"][0]["error_type"] == "budget_exhausted"
+
+
+@pytest.mark.parametrize("file_only", [False, True])
+def test_prepare_requires_paired_admission_arguments_before_writing(
+    tmp_path, file_only
+):
+    output = tmp_path / "must-not-exist"
+    with pytest.raises(ValueError, match="remote_audit_admission_unsealed"):
+        audit.prepare(
+            tmp_path / "missing-controls",
+            tmp_path / "missing-review",
+            output,
+            controls_sha256="unused",
+            data_review_sha256="unused",
+            budget_usd="0.10",
+            max_seconds=300,
+            holdout_max_request_usd="0.001",
+            phase1_admission=tmp_path / "evidence" if file_only else None,
+            phase1_admission_sha256=None if file_only else "f" * 64,
+        )
+    assert not output.exists()
+
+
+def test_prepare_does_not_publish_failed_admission(ready, tmp_path, monkeypatch):
+    from venom_core.services.training_experiments import semantic_openrouter_admission
+
+    _, source_root, _ = ready
+    controls = source_root / "controls"
+    review = source_root / "data-review.json"
+    admission = tmp_path / "admission.json"
+    output = tmp_path / "invalid-admission"
+    write(admission, {"fixture": True})
+
+    def reject(*_):
+        raise ValueError("fixture_admission_rejected")
+
+    monkeypatch.setattr(semantic_openrouter_admission, "verify", reject)
+    with pytest.raises(ValueError, match="fixture_admission_rejected"):
+        audit.prepare(
+            controls,
+            review,
+            output,
+            controls_sha256=digest(controls / "frozen-manifest.json"),
+            data_review_sha256=digest(review),
+            budget_usd="0.80",
+            max_seconds=7200,
+            holdout_max_request_usd="0.002",
+            phase1_admission=admission,
+            phase1_admission_sha256=digest(admission),
+        )
+    assert not output.exists()
+    assert not list(tmp_path.glob(".audit-*"))
+
+
+@pytest.mark.parametrize(
+    "name", ["../outside.json", "/tmp/outside.json", "x/panel.json"]
+)
+def test_frozen_file_rejects_paths_instead_of_approved_basenames(tmp_path, name):
+    with pytest.raises(ValueError, match="remote_audit_frozen_filename_invalid"):
+        audit._write_frozen_file(tmp_path, name, b"untrusted contents")
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_frozen_file_refuses_existing_symlink_and_preserves_exact_bytes(tmp_path):
+    outside = tmp_path / "outside.json"
+    outside.write_bytes(b"preserved")
+    staged = tmp_path / "staged"
+    staged.mkdir()
+    (staged / "panel.json").symlink_to(outside)
+    with pytest.raises(FileExistsError):
+        audit._write_frozen_file(staged, "panel.json", b"replacement")
+    assert outside.read_bytes() == b"preserved"
+    raw = b"../contents-are-not-a-path\x00\xff"
+    audit._write_frozen_file(staged, "data-review.json", raw)
+    assert (staged / "data-review.json").read_bytes() == raw
+    assert (staged / "data-review.json").stat().st_mode & 0o777 == 0o600
+
+
+def test_prepare_rejects_resealed_manifest_with_traversal_key(ready, tmp_path):
+    _, source, _ = ready
+    controls = source / "controls"
+    manifest_path = controls / "frozen-manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["files"]["../outside.json"] = "f" * 64
+    write(manifest_path, manifest)
+    output = tmp_path / "traversal-output"
+    with pytest.raises(ValueError, match="remote_audit_controls_invalid"):
+        audit.prepare(
+            controls,
+            source / "data-review.json",
+            output,
+            controls_sha256=digest(manifest_path),
+            data_review_sha256=digest(source / "data-review.json"),
+            budget_usd="0.80",
+            max_seconds=7200,
+            holdout_max_request_usd="0.002",
+        )
+    assert not output.exists()
+    assert not (tmp_path / "outside.json").exists()
+
+
+def test_audit_prepare_reports_published_directory_after_parent_sync_error(
+    ready, tmp_path, monkeypatch
+):
+    import errno
+
+    from venom_core.services.training_experiments import (
+        semantic_openrouter_targeted as targeted,
+    )
+
+    _, source, _ = ready
+    output = tmp_path / "published-sync-unconfirmed"
+    publish = targeted._publish
+
+    def fail_parent_sync(staged, target):
+        publish(staged, target)
+        raise targeted._PublicationSyncError(errno.EIO, "fixture parent sync", target)
+
+    monkeypatch.setattr(targeted, "_publish", fail_parent_sync)
+    result = audit.prepare(
+        source / "controls",
+        source / "data-review.json",
+        output,
+        controls_sha256=digest(source / "controls/frozen-manifest.json"),
+        data_review_sha256=digest(source / "data-review.json"),
+        budget_usd="0.80",
+        max_seconds=7200,
+        holdout_max_request_usd="0.002",
+    )
+    assert result["status"] == "published_durability_unconfirmed"
+    assert result["sync_errno"] == errno.EIO
+    assert result["audit_root"] == str(output)
+    assert audit._sealed_protocol(output)[1] == digest(output / "protocol.json")
+    assert not list(tmp_path.glob(".audit-*"))
+
+
+def test_second_azure_unavailable_persists_retry_after_without_retry(
+    tmp_path, monkeypatch
+):
+    state = _resume_fixture_state(tmp_path)
+    state.rate_path = tmp_path / "provider-rate.json"
+    monkeypatch.setattr(
+        audit, "time", SimpleNamespace(time=lambda: 1234.0, monotonic=lambda: 12.0)
+    )
+    tail = {
+        **_unavailable_attempt(502),
+        "rate_limit_attempts": [_unavailable_attempt(502)],
+        "retry_after": "90",
+        "finished_at": audit._utc(),
+        "reserved_usd": "0.001",
+    }
+    assert audit._finish_rate_window(state, tail, 1) is None
+    assert json.loads(state.rate_path.read_text())["not_before"] == 1324.0
+    assert state.status == "provider_unavailable"
+
+
+def test_not_sent_retry_still_counts_its_previous_post(tmp_path):
+    state = _resume_fixture_state(tmp_path)
+    state.status = "provider_cooldown_io_error"
+    entry = {"split": "legacy", "answer_id": "fixture", "repeat": 1}
+    state.order = [entry]
+    state.rows = [
+        {
+            **entry,
+            "index": 1,
+            "status": "not_sent",
+            "error_type": "OSError",
+            "rate_limit_attempts": [{"http_status": 429}],
+        }
+    ]
+    deviations = audit._audit_deviations(state)
+    assert deviations["attempted"] == 1
+    assert deviations["not_run"] == []
+    assert deviations["by_case"][0]["issues"][0]["error_type"] == "OSError"
+
+
+def test_complete_verified_prefix_finalizes_qualification_without_http(
+    full_audit, monkeypatch
+):
+    root, _, result = full_audit
+    protocol = json.loads((root / "protocol.json").read_text())
+    manifest = json.loads((root / "controls/frozen-manifest.json").read_text())
+    phase_sha = digest(root / "phase1-result.json")
+    first = json.loads((root / "receipts/001.json").read_text())
+    last = json.loads((root / "receipts/228.json").read_text())
+    write(root / "holdout-reserve.json", {"phase1_result_sha256": phase_sha})
+    write(
+        root / "started.json",
+        {
+            "created_at": first["started_at"],
+            "protocol_sha256": digest(root / "protocol.json"),
+        },
+    )
+    write(
+        root / "ledger.json",
+        {
+            "pending_call_id": None,
+            "actual_known_cost_usd": result["actual_known_cost_usd"],
+            "unknown_reserved_usd": "0",
+            "accounted_usd": result["accounted_usd"],
+        },
+    )
+    (root / "result.json").unlink()
+    monkeypatch.setattr(audit, "_utc", lambda: last["finished_at"])
+    monkeypatch.setattr(
+        audit,
+        "_schedule_fits",
+        lambda *_args, **_: pytest.fail("a complete prefix needs no HTTP schedule"),
+    )
+    final = audit._execute(
+        root,
+        protocol,
+        manifest,
+        digest(root / "protocol.json"),
+        Decimal("0.80"),
+        Decimal("0.01"),
+        lambda **_: pytest.fail("a complete prefix must not construct HTTP"),
+        None,
+        resume=True,
+    )
+    assert final["status"] == "passed"
+    assert final["rows"] == 228
+    assert final["metrics"] == manifest["thresholds"]
+    assert (root / "qualification.json").is_file()
+    pin = judge.QualificationRemote.model_validate_json(
+        (root / "qualification.json").read_text()
+    )
+    judge.verify_audit(pin)
+
+
+@pytest.mark.parametrize("unexpected_receipt", [False, True])
+def test_admitted_empty_prefix_resumes_through_the_normal_phase_gate(
+    full_audit, tmp_path, monkeypatch, unexpected_receipt
+):
+    from venom_core.services.training_experiments import semantic_openrouter_admission
+
+    source, _, _ = full_audit
+    root = tmp_path / "admitted-started"
+    root.mkdir()
+    admitted = [
+        json.loads((source / "receipts" / f"{index:03d}.json").read_text())
+        for index in range(1, 157)
+    ]
+    manifest = json.loads((source / "controls/frozen-manifest.json").read_text())
+    metrics = {
+        k: v for k, v in manifest["thresholds"].items() if not k.startswith("holdout")
+    }
+    protocol = {
+        **json.loads((source / "protocol.json").read_text()),
+        "phase1_admission_sha256": "fixture",
+        "phase1_reservation_usd": "0.001",
+        "phase1_max_request_usd": "0.001",
+    }
+    write(
+        root / "started.json",
+        {"created_at": audit._utc(), "protocol_sha256": "fixture"},
+    )
+    if unexpected_receipt:
+        write(root / "receipts/157.json", {"status": "failed"})
+    monkeypatch.setattr(
+        semantic_openrouter_admission, "verify", lambda *_: (admitted, metrics)
+    )
+    monkeypatch.setattr(judge, "_audit_order", lambda *_args, **_: admitted)
+    monkeypatch.setattr(audit, "_phase1_reservations", lambda *_: [Decimal("0.001")])
+    gated = []
+
+    def gate(state):
+        assert state.rows == admitted
+        assert not state.holdout_opened
+        assert state.metrics == metrics
+        gated.append(True)
+        state.status = "fixture_gate_blocked"
+        return False
+
+    monkeypatch.setattr(audit, "_phase1_gate", gate)
+
+    def execute():
+        return audit._execute(
+            root,
+            protocol,
+            manifest,
+            "fixture",
+            Decimal("0.80"),
+            Decimal("0.01"),
+            lambda **_: pytest.fail("no HTTP before phase gate"),
+            None,
+            resume=True,
+        )
+
+    if unexpected_receipt:
+        with pytest.raises(ValueError, match="remote_audit_resume_holdout_missing"):
+            execute()
+        assert gated == []
+    else:
+        result = execute()
+        assert gated == [True]
+        assert result["status"] == "fixture_gate_blocked"
+        assert result["rows"] == 156
+        assert not result["holdout_opened"]
+
+
+@pytest.mark.parametrize(
+    "over_limit", ["planned_budget_usd", "max_case_reservation_usd"]
+)
+def test_targeted_budget_refusal_keeps_result_before_restoring_prefix(
+    tmp_path, monkeypatch, over_limit
+):
+    from venom_core.services.training_experiments import (
+        semantic_openrouter_targeted as targeted,
+    )
+
+    state = _resume_fixture_state(tmp_path, **{over_limit: "0.20"})
+    write(tmp_path / "result.json", {"status": "provider_rate_limited", "rows": 1})
+    write(tmp_path / "receipts/001.json", {"fixture": "preserved"})
+    result_bytes = (tmp_path / "result.json").read_bytes()
+    receipt_bytes = (tmp_path / "receipts/001.json").read_bytes()
+    monkeypatch.setattr(
+        targeted,
+        "_recorded_prefix",
+        lambda *_: pytest.fail("must refuse before prefix restore"),
+    )
+    refusal = targeted.resume(state)
+    assert refusal == {"status": "budget_exhausted", "resume_blocked": True}
+    assert (tmp_path / "result.json").read_bytes() == result_bytes
+    assert (tmp_path / "receipts/001.json").read_bytes() == receipt_bytes
+    assert not (tmp_path / "prior-results").exists()
+    state.budget = Decimal("0.30")
+    state.per_request = Decimal("0.30")
+    monkeypatch.setattr(targeted, "_requests", lambda _: [])
+    monkeypatch.setattr(targeted, "_recorded_prefix", lambda *_: [])
+    monkeypatch.setattr(targeted, "_restore_progress", lambda *_: [])
+    monkeypatch.setattr(targeted, "execute", lambda *_args, **_: {"status": "resumed"})
+    assert targeted.resume(state) == {"status": "resumed"}

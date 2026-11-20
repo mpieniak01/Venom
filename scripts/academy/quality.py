@@ -9,6 +9,10 @@ from pathlib import Path
 from venom_core.config import SETTINGS
 from venom_core.services.training_experiments.profiles import read_json
 from venom_core.services.training_experiments.quality import QualityStore
+from venom_core.services.training_experiments.quality_diagnostics import (
+    DiagnosticMatrix,
+    diagnose,
+)
 from venom_core.services.training_experiments.quality_history import (
     analyze_record,
     list_records,
@@ -30,8 +34,12 @@ def main(argv: list[str] | None = None) -> None:
     analyze = commands.add_parser("analyze")
     analyze.add_argument("record_id")
     analyze.add_argument("--reference-id")
+    diagnostic = commands.add_parser("diagnose")
+    diagnostic.add_argument("record_id")
+    diagnostic.add_argument("matrix", type=Path)
     args = parser.parse_args(argv)
     experiments = ExperimentService(args.root)
+    result: list[dict] | dict
     try:
         if args.command == "import":
             bundle = QualityBundle.model_validate(read_json(args.bundle))
@@ -41,6 +49,9 @@ def main(argv: list[str] | None = None) -> None:
             result = list_records(experiments)
         elif args.command == "show":
             result = get_record(experiments, args.record_id)
+        elif args.command == "diagnose":
+            matrix = DiagnosticMatrix.model_validate(read_json(args.matrix))
+            result = diagnose(get_record(experiments, args.record_id), matrix)
         else:
             result = analyze_record(experiments, args.record_id, args.reference_id)
     except (OSError, ValueError, KeyError, TypeError) as exc:

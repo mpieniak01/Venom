@@ -790,6 +790,34 @@ def test_unknown_explicit_lowercase_citation_rejected_even_with_valid_quote():
         bind_source_quotes("Cena wynosi 30 zł [invented].", evidence, quotes)
 
 
+@pytest.mark.parametrize(
+    "declaration",
+    [
+        "Prawdziwa nazwa karty to Forma.",
+        "Nazwa tej karty: „forma”.",
+        "Dokument nosi nazwę **Forma**.",
+    ],
+)
+def test_declared_unknown_source_rejected_even_when_the_name_occurs_in_the_card(
+    declaration,
+):
+    _, _, evidence = prepared_source(MemorySources("Cykl Forma. Cena wynosi 30 zł."))
+    quotes = (SourceQuote("club", "v2", "Cena wynosi 30 zł."),)
+    prose = f"Cena wynosi 30 zł [club]. {declaration}"
+    with pytest.raises(EvidenceError, match="answer_source_unknown"):
+        bind_source_quotes(prose, evidence, quotes)
+
+
+def test_declared_source_bound_and_ordinary_prose_preserved():
+    _, _, evidence = prepared_source(MemorySources("Cykl Forma. Cena wynosi 30 zł."))
+    prose = "Nazwa karty: „club”. Pokaz należy do cyklu Forma."
+    assert bind_source_quotes(prose, evidence, ()) == (
+        SourceQuote("club", "v2", "Cykl Forma. Cena wynosi 30 zł."),
+    )
+    prose = "Nazwa karty to osobna informacja. Pokaz należy do cyklu Forma."
+    assert bind_source_quotes(prose, evidence, ()) == ()
+
+
 def test_assignments_bind_both_required_cards_and_restore_missing_literal():
     backend = MemorySources()
     bodies = {
@@ -969,3 +997,183 @@ def test_pickup_summary_binds_each_item_and_literal_to_its_own_card():
         )
         is None
     )
+
+
+@pytest.mark.parametrize(
+    "message, citations",
+    [
+        ("Zacytuj kartę MIRWEN po przeczytaniu karty KANDEL.", ("MIRWEN",)),
+        ("Zacytuj kartę MIRWEN i kartę KANDEL.", ("MIRWEN", "KANDEL")),
+        (
+            "Zacytuj kartę MIRWEN, KANDEL oraz [TRZECIA].",
+            ("MIRWEN", "KANDEL", "TRZECIA"),
+        ),
+        ("Przeczytaj kartę KANDEL. Podaj cytat z [MIRWEN].", ("MIRWEN",)),
+        ("Przytocz cytat z MIRWEN po odczytaniu karty KANDEL.", ("MIRWEN",)),
+        ("Podaj cytat z [MIRWEN] i przytocz cytat z [KANDEL].", ("MIRWEN", "KANDEL")),
+        ("Podaj cytat z poradnika.", ()),
+    ],
+)
+def test_citation_arguments_do_not_include_later_read_commands(message, citations):
+    from venom_core.services.grounded_dialogue import requested_citation_ids
+
+    assert requested_citation_ids(message) == citations
+    assert set(citations) <= set(requested_card_ids(message))
+
+
+@pytest.mark.parametrize(
+    "command", ["Zacytuj kartę", "Podaj cytat z", "Przytocz cytat z"]
+)
+def test_explicit_citation_requires_the_target_but_only_reads_other_cards(command):
+    from venom_core.services.grounded_dialogue import requested_citation_ids
+
+    message = f"{command} [MIRWEN] po przeczytaniu karty KANDEL."
+    backend = MemorySources()
+    documents = {
+        name: SourceDocument(SourceRef(name, "1", text_hash(name)), name, True)
+        for name in ("MIRWEN", "KANDEL")
+    }
+    backend.current_ref = lambda ident: documents[ident].ref
+    backend.read = lambda ref: documents[ref.source_id]
+    gate = GroundedTurn(backend)
+    evidence = gate.prepare(
+        TurnPlan(message, "r", required=Requirements(sources=True)),
+        required_citations=requested_citation_ids(message),
+    )
+    assert {doc.ref.source_id for doc in evidence.sources} == {"MIRWEN", "KANDEL"}
+    assert evidence.requested_source_ids == ("MIRWEN",)
+    wrong = AnswerDraft(evidence.evidence_id, (SourceQuote("KANDEL", "1", "KANDEL"),))
+    with pytest.raises(EvidenceError, match="answer_named_source_required"):
+        gate.publish(wrong)
+    correct = AnswerDraft(evidence.evidence_id, (SourceQuote("MIRWEN", "1", "MIRWEN"),))
+    assert gate.publish(correct).text == "„MIRWEN” [MIRWEN@1]"
+
+
+@pytest.mark.parametrize("quotation", ["„{}”", '"{}"', "«{}»"])
+def test_quoted_citation_command_is_explanatory_instead_of_a_source_request(quotation):
+    from venom_core.services.grounded_dialogue import requested_citation_ids
+
+    message = (
+        "Wyjaśnij, co oznacza polecenie " + quotation.format("Zacytuj [MIRWEN]") + "."
+    )
+    assert requested_card_ids(message, include_contextual=False) == ()
+    assert requested_card_ids(message) == ()
+    assert requested_citation_ids(message) == ()
+    assert detect_requirements(message) == Requirements()
+    backend = MemorySources()
+    evidence = GroundedTurn(backend).prepare(TurnPlan(message, "r"))
+    assert evidence.sources == ()
+    assert not backend.searches
+    assert not backend.reads
+    assert detect_requirements("Zacytuj [MIRWEN]").sources
+
+
+@pytest.mark.parametrize("restriction", ["", "tylko ", "wyłącznie ", "jedynie "])
+def test_only_citation_scope_limits_publication_without_limiting_full_reads(
+    restriction,
+):
+    from venom_core.services.grounded_dialogue import requested_citation_ids
+
+    message = f"Zacytuj {restriction}kartę MIRWEN po przeczytaniu karty KANDEL."
+    backend = MemorySources()
+    documents = {
+        name: SourceDocument(SourceRef(name, "1", text_hash(name)), name, True)
+        for name in ("MIRWEN", "KANDEL")
+    }
+    backend.current_ref = lambda ident: documents[ident].ref
+    reads = []
+
+    def read(ref):
+        reads.append(ref.source_id)
+        return documents[ref.source_id]
+
+    backend.read = read
+    gate = GroundedTurn(backend)
+    evidence = gate.prepare(
+        TurnPlan(message, "r", required=Requirements(sources=True)),
+        required_citations=requested_citation_ids(message),
+    )
+    assert reads == ["MIRWEN", "KANDEL"]
+    assert evidence.requested_source_ids == ("MIRWEN",)
+    all_quotes = tuple(SourceQuote(name, "1", name) for name in documents)
+    extra = AnswerDraft(evidence.evidence_id, all_quotes)
+    if restriction:
+        assert evidence.allowed_source_ids == ("MIRWEN",)
+        with pytest.raises(EvidenceError, match="answer_source_not_allowed"):
+            gate.validate_draft(extra)
+        with pytest.raises(EvidenceError, match="answer_source_not_allowed"):
+            bind_source_quotes("MIRWEN [MIRWEN], KANDEL [KANDEL]", evidence, all_quotes)
+        correct = AnswerDraft(
+            evidence.evidence_id, (SourceQuote("MIRWEN", "1", "MIRWEN"),)
+        )
+        assert gate.publish(correct).text == "„MIRWEN” [MIRWEN@1]"
+    else:
+        assert evidence.allowed_source_ids is None
+        assert "[KANDEL@1]" in gate.publish(extra).text
+    assert reads.count("KANDEL") >= 2
+
+
+def test_only_scope_is_automatically_bound_for_direct_grounded_turns():
+    backend = MemorySources()
+    text = "MIRWEN"
+    document = SourceDocument(SourceRef("MIRWEN", "1", text_hash(text)), text, True)
+    backend.current_ref = lambda _ident: document.ref
+    backend.read = lambda _ref: document
+    gate = GroundedTurn(backend)
+    evidence = gate.prepare(TurnPlan("Zacytuj tylko [MIRWEN].", "r"))
+    assert evidence.allowed_source_ids == ("MIRWEN",)
+    assert evidence.requested_source_ids == ("MIRWEN",)
+
+
+@pytest.mark.parametrize("order", ["long", "short-first", "long-first"])
+@pytest.mark.parametrize(
+    "suffix", ["", " [KANDEL]", " Według KANDEL termin jest inny."]
+)
+def test_verified_literal_quote_does_not_make_mentioned_card_an_extra_citation(
+    suffix, order
+):
+    from venom_core.services.grounded_dialogue import Evidence
+
+    literal = "Karta KANDEL nie określa terminu."
+    body = literal + " Tytuł to „Zapisy”."
+    documents = tuple(
+        SourceDocument(SourceRef(name, "1", text_hash(text)), text, True)
+        for name, text in (("MIRWEN", body), ("KANDEL", "Brak daty."))
+    )
+    evidence = Evidence(
+        "id", documents, (), Requirements(sources=True), (), ("MIRWEN",), ("MIRWEN",)
+    )
+    quote = SourceQuote("MIRWEN", "1", literal + ' Tytuł to "Zapisy".')
+    short = SourceQuote("MIRWEN", "1", "Zapisy")
+    quotes, expected = {
+        "long": ((quote,), [body]),
+        "short-first": ((short, quote), ["Zapisy", body]),
+        "long-first": ((quote, short), [body, "Zapisy"]),
+    }[order]
+    prose = f"„{body}” [MIRWEN]" + suffix
+    if suffix:
+        with pytest.raises(EvidenceError, match="answer_source_not_allowed"):
+            bind_source_quotes(prose, evidence, quotes)
+    else:
+        bound = bind_source_quotes(prose, evidence, quotes)
+        assert len(bound) == len(quotes)
+        assert all(item.source_id == "MIRWEN" for item in bound)
+        assert [item.quote for item in bound] == expected
+
+
+@pytest.mark.parametrize("verified", [False, True])
+def test_free_prose_or_unverified_quote_cannot_hide_forbidden_card_mentions(verified):
+    from venom_core.services.grounded_dialogue import Evidence
+
+    literal = "Karta KANDEL nie określa terminu."
+    document = SourceDocument(
+        SourceRef("MIRWEN", "1", text_hash(literal)), literal, True
+    )
+    evidence = Evidence(
+        "id", (document,), (), Requirements(sources=True), (), ("MIRWEN",), ("MIRWEN",)
+    )
+    quote = SourceQuote("MIRWEN", "1", literal if verified else "Inna treść.")
+    prose = literal + " [MIRWEN]" if verified else f"„{literal}” [MIRWEN]"
+    reason = "answer_source_unknown" if verified else "answer_quote_unsupported"
+    with pytest.raises(EvidenceError, match=reason):
+        bind_source_quotes(prose, evidence, (quote,))

@@ -77,3 +77,11 @@ def normalize_claim(value: str, unit: str) -> str:
     suffix = rf"(?:{separation}{re.escape(unit)})?" if unit else ""
     match = re.fullmatch(rf"\s*([+−-]?[0-9]+(?:[.,][0-9]+)?){suffix}\s*", value)
     return match[1].replace(",", ".").replace("−", "-") if match else value
+
+
+def people_noun(size: int) -> str:
+    if size == 1:
+        return "osoba"
+    if size % 10 in (2, 3, 4) and size % 100 not in (12, 13, 14):
+        return "osoby"
+    return "osób"

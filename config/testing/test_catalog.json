@@ -737,6 +737,20 @@
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
+      "path": "tests/test_academy_openrouter_regression_replay.py",
+      "domain": "academy",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Verify sealed offline replay, immutable receipts and a persistent set of regression cases without provider calls."
+    },
+    {
       "path": "tests/test_academy_optuna_backend.py",
       "domain": "academy",
       "test_type": "unit",
@@ -882,7 +896,11 @@
       "test_type": "unit",
       "intent": "regression",
       "primary_lane": "new-code",
-      "allowed_lanes": ["new-code", "ci-lite", "release"],
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
       "legacy_targeted": false,
       "rationale": "Freeze corrected source and role controls without changing historical receipts or opening held-out data."
     },
@@ -892,7 +910,11 @@
       "test_type": "unit",
       "intent": "regression",
       "primary_lane": "new-code",
-      "allowed_lanes": ["new-code", "ci-lite", "release"],
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
       "legacy_targeted": false,
       "rationale": "Route qualified local and OpenRouter reviewers through calibration, checkpoint, final and cache contracts."
     },
@@ -902,7 +924,11 @@
       "test_type": "unit",
       "intent": "regression",
       "primary_lane": "new-code",
-      "allowed_lanes": ["new-code", "ci-lite", "release"],
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
       "legacy_targeted": false,
       "rationale": "Verify remote reviewer qualification replay, cost accounting, fail-closed transport and authenticated cache inputs with fake HTTP."
     },
@@ -912,9 +938,27 @@
       "test_type": "unit",
       "intent": "regression",
       "primary_lane": "new-code",
-      "allowed_lanes": ["new-code", "ci-lite", "release"],
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
       "legacy_targeted": false,
       "rationale": "Validate operator audit preparation, phase-one gating, fail-fast accounting and complete fake HTTP qualification without provider calls."
+    },
+    {
+      "path": "tests/test_academy_semantic_fact_evidence.py",
+      "domain": "academy",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Check deterministic and conservative attribution of roles, signed measurements and explicitly rejected settings."
     },
     {
       "path": "tests/test_academy_semantic_judge_v4.py",
@@ -929,6 +973,20 @@
       ],
       "legacy_targeted": false,
       "rationale": "Verify complete v4 semantic judge accuracy receipts, repeated-request stability, tamper rejection, and v3 compatibility."
+    },
+    {
+      "path": "tests/test_academy_table_evidence.py",
+      "domain": "academy",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Check exact Markdown table evidence, field and unit attribution, ambiguity and reordered values."
     },
     {
       "path": "tests/test_academy_training_service.py",
@@ -3567,6 +3625,20 @@
       ],
       "legacy_targeted": false,
       "rationale": "Explicit decimal rounding and requested-output versus genuine missing-input release boundary."
+    },
+    {
+      "path": "tests/test_grounded_state_boundaries.py",
+      "domain": "knowledge",
+      "test_type": "service_contract",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Regression coverage for withdrawn group additions, handoff item identity and explicit speed multipliers."
     },
     {
       "path": "tests/test_guardian_agent.py",

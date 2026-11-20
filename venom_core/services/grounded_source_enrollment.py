@@ -1,0 +1,254 @@
+"""Bind an enrollment recap to literal role-specific clauses in verified cards."""
+
+from __future__ import annotations
+
+import re
+from collections.abc import Iterator
+from dataclasses import dataclass
+
+from venom_core.services.grounded_dialogue import (
+    EvidenceError,
+    SourceDocument,
+    SourceQuote,
+    _verified_document,
+    requested_citation_ids,
+)
+
+_RECAP = re.compile(
+    r"(?:w (?:dokładnie )?dwóch zdaniach )?"
+    r"(?:przypomnij|podsumuj|podaj) "
+    r"(?:(?:kanał|sposób)(?: zgłoszeń| zapisów)?(?:,| i) termin "
+    r"(?:składania )?(?:zgłosze(?:nia|nie|ń)|złożenia formularza)(?: z godziną)?,? "
+    r"(?:a następnie|oraz|i) datę (?:ogłoszenia |publikacji )?wyników|"
+    r"gdzie i do kiedy (?:mam się zgłosić|można się zgłosić) "
+    r"(?:oraz|i) kiedy (?:poznam listę uczestników|ogłoszą wyniki))"
+    r"(?: w (?:dokładnie )?dwóch zdaniach)?[.!?]?",
+    re.IGNORECASE,
+)
+_MONTH_LENGTHS = {
+    "stycznia": 31,
+    "lutego": 29,
+    "marca": 31,
+    "kwietnia": 30,
+    "maja": 31,
+    "czerwca": 30,
+    "lipca": 31,
+    "sierpnia": 31,
+    "września": 30,
+    "października": 31,
+    "listopada": 30,
+    "grudnia": 31,
+}
+_DATE = rf"(?P<day>0?[1-9]|[12][0-9]|3[01]) (?P<month>{'|'.join(_MONTH_LENGTHS)})"
+_TIME = r"(?P<time>(?:[01]?[0-9]|2[0-3]):[0-5][0-9])"
+_DEADLINE = rf"do {_DATE} (?:do godziny|o(?: godzinie)?) {_TIME}"
+_CHANNEL = r"(?P<channel>[^\W\d_](?:[^\W\d_]|[ -]){0,79}?)"
+_CHANNEL_WORDS = r"(?:(?:na|do) (?:[^\W\d_][\w-]* ){1,7})?"
+_ACCEPT = rf"(?:(?:zgłoszenie|zgłoszenia|formularze) {_CHANNEL_WORDS}przyjmuje|zapisy {_CHANNEL_WORDS}obsługuje)"
+_COMBINED = re.compile(rf"{_ACCEPT} {_CHANNEL} {_DEADLINE}\.?", re.IGNORECASE)
+_CHANNEL_ONLY = re.compile(
+    rf"(?:{_ACCEPT} |kanał (?:zgłoszeń|zapisów): ){_CHANNEL}\.?",
+    re.IGNORECASE,
+)
+_DEADLINE_ONLY = re.compile(
+    rf"(?:(?:zgłoszenia|formularze) przyjmujemy|termin (?:składania )?zgłoszeń:) {_DEADLINE}\.?",
+    re.IGNORECASE,
+)
+_RESULTS = re.compile(
+    r"(?:wyniki(?: naboru| rekrutacji| przeglądu| konkursu| kwalifikacji)? "
+    r"(?:zostaną ogłoszone|ogłosimy)|"
+    r"listę uczestników(?: zajęć)? opublikujemy|"
+    r"(?:data )?(?:ogłoszenie|ogłoszenia|publikacji) wyników:) "
+    rf"{_DATE}\.?",
+    re.IGNORECASE,
+)
+_FIELD_LABEL = (
+    r"(?:kanał (?:zgłoszeń|zapisów)|termin (?:składania )?zgłoszeń|"
+    r"(?:data )?(?:ogłoszeni[ae]|publikacji) wyników|"
+    r"identyfikator naboru|id naboru|nabór):"
+)
+_CLAUSES = re.compile(rf"(?<=[.!?])\s+|\n[ \t]*(?={_FIELD_LABEL})", re.IGNORECASE)
+_RESULTS_WITHDRAWAL = re.compile(
+    r"\b(?:odwoł\w*|anulow\w*|wycofa\w*|nieaktualn\w*|"
+    r"nie (?:obowiązuje|jest aktualn\w*))\b",
+    re.IGNORECASE,
+)
+_ENROLLMENT_ID = re.compile(
+    r"(?:identyfikator naboru|id naboru|nabór):\s*"
+    r"([A-Za-z0-9][A-Za-z0-9_-]{0,63})[.!?]?",
+    re.IGNORECASE,
+)
+
+_CARD = r"(?:\[[\w.-]{1,64}\]|[^\W\d_][\w-]{1,63})"
+_CARD_LIST = rf"(?:kartę|karty) {_CARD}(?:(?:, | i | oraz )(?:kart[ęy] )?{_CARD})*"
+_RESULTS_CITATION = re.compile(
+    rf"(?:przeczytaj(?: ponownie)? (?:(?:obie|wszystkie) )?{_CARD_LIST}[.!] )?"
+    rf"zacytuj kartę {_CARD} (?:i|oraz) podaj (?:tylko|wyłącznie) "
+    r"datę (?:ogłoszenia |publikacji )?wyników[.!?]?",
+    re.IGNORECASE,
+)
+_RESULTS_ROLE = re.compile(r"\b(?:wynik\w*|list[aę] uczestników)\b", re.IGNORECASE)
+_OTHER_DATED_RESULT = re.compile(
+    rf"{_DATE}|\b[0-9]{{1,4}}[./-][0-9]{{1,2}}\b", re.IGNORECASE
+)
+
+
+@dataclass(frozen=True)
+class EnrollmentField:
+    value: str
+    proof: SourceQuote
+
+
+@dataclass(frozen=True)
+class EnrollmentEvidence:
+    channel: EnrollmentField
+    deadline: EnrollmentField
+    results_date: EnrollmentField
+
+    def render(self) -> str:
+        return (
+            f"Kanał zgłoszeń to {self.channel.value}, a termin mija {self.deadline.value}. "
+            f"Wyniki zostaną ogłoszone {self.results_date.value}."
+        )
+
+
+def requests_enrollment_recap(message: str) -> bool:
+    """Route only explicit requests for the full three-field recap."""
+    return _RECAP.fullmatch(" ".join(message.split())) is not None
+
+
+def _date(match: re.Match[str]) -> str:
+    day, month = int(match["day"]), match["month"].casefold()
+    if day > _MONTH_LENGTHS[month]:
+        raise EvidenceError("enrollment_invalid_date")
+    return f"{day} {month}"
+
+
+def _deadline(match: re.Match[str]) -> str:
+    hours, minutes = match["time"].split(":")
+    return f"{_date(match)} o {int(hours):02d}:{minutes}"
+
+
+def _one(candidates: list[EnrollmentField], role: str) -> tuple[EnrollmentField, ...]:
+    if not candidates:
+        raise EvidenceError(f"enrollment_missing_{role}")
+    if len({field.value.casefold() for field in candidates}) != 1:
+        raise EvidenceError(f"enrollment_conflicting_{role}")
+    return tuple(candidates)
+
+
+def _verified_clauses(
+    documents: tuple[SourceDocument, ...],
+) -> Iterator[tuple[SourceDocument, str]]:
+    for doc in documents:
+        if not _verified_document(doc):
+            raise EvidenceError("source_incomplete")
+        for clause in _CLAUSES.split(doc.text):
+            yield doc, clause.strip()
+
+
+def _results_field(document: SourceDocument, clause: str) -> EnrollmentField | None:
+    match = _RESULTS.fullmatch(" ".join(clause.split()))
+    if match:
+        proof = SourceQuote(document.ref.source_id, document.ref.version, clause)
+        return EnrollmentField(_date(match), proof)
+    if _RESULTS_ROLE.search(clause) and (
+        _OTHER_DATED_RESULT.search(clause) or _RESULTS_WITHDRAWAL.search(clause)
+    ):
+        raise EvidenceError("enrollment_results_date_ambiguous")
+    return None
+
+
+def requested_results_date_quote(
+    message: str, documents: tuple[SourceDocument, ...]
+) -> SourceQuote | None:
+    """Select one literal results date from the explicitly cited card."""
+    if _RESULTS_CITATION.fullmatch(" ".join(message.split())) is None:
+        return None
+    citations = requested_citation_ids(message)
+    if len(citations) != 1:
+        raise EvidenceError("enrollment_results_citation_required")
+    fields: list[EnrollmentField] = []
+    for document, clause in _verified_clauses(documents):
+        if field := _results_field(document, clause):
+            fields.append(field)
+    supported = _one(fields, "results_date")
+    eligible = [
+        field.proof for field in supported if field.proof.source_id == citations[0]
+    ]
+    if not eligible:
+        raise EvidenceError("enrollment_results_quote_missing")
+    return min(eligible, key=lambda proof: len(proof.quote))
+
+
+def bind_enrollment_evidence(
+    documents: tuple[SourceDocument, ...],
+) -> EnrollmentEvidence:
+    """Require unique fields belonging to one explicitly bound enrollment."""
+    if any(len(_enrollment_identities(doc)) > 1 for doc in documents):
+        raise EvidenceError("enrollment_unbound_submission")
+    channels: list[EnrollmentField] = []
+    deadlines: list[EnrollmentField] = []
+    results: list[EnrollmentField] = []
+    source_ids = {doc.ref.source_id.casefold() for doc in documents}
+    for doc, sentence in _verified_clauses(documents):
+        proof = SourceQuote(doc.ref.source_id, doc.ref.version, sentence)
+        normalized = " ".join(sentence.split())
+        combined = _COMBINED.fullmatch(normalized)
+        if channel := combined or _CHANNEL_ONLY.fullmatch(normalized):
+            value = " ".join(channel["channel"].split())
+            if value.casefold().removeprefix("karta ") in source_ids:
+                raise EvidenceError("enrollment_channel_is_source_id")
+            channels.append(EnrollmentField(value, proof))
+        if deadline := combined or _DEADLINE_ONLY.fullmatch(normalized):
+            deadlines.append(EnrollmentField(_deadline(deadline), proof))
+        if result := _results_field(doc, sentence):
+            results.append(result)
+    channel_fields = _one(channels, "channel")
+    deadline_fields = _one(deadlines, "deadline")
+    result_fields = _one(results, "results_date")
+    return _bind_enrollment_fields(
+        documents, channel_fields, deadline_fields, result_fields
+    )
+
+
+def _enrollment_identities(document: SourceDocument) -> set[str]:
+    return {
+        match[1].casefold()
+        for clause in _CLAUSES.split(document.text)
+        for field in (clause, *clause.splitlines())
+        if (match := _ENROLLMENT_ID.fullmatch(" ".join(field.split()))) is not None
+    }
+
+
+def _bind_enrollment_fields(
+    documents: tuple[SourceDocument, ...],
+    channel_fields: tuple[EnrollmentField, ...],
+    deadline_fields: tuple[EnrollmentField, ...],
+    result_fields: tuple[EnrollmentField, ...],
+) -> EnrollmentEvidence:
+    identities = {doc.ref.source_id: _enrollment_identities(doc) for doc in documents}
+    deadline_by_source = {field.proof.source_id: field for field in deadline_fields}
+    for channel_field in channel_fields:
+        source_id = channel_field.proof.source_id
+        if deadline_field := deadline_by_source.get(source_id):
+            for results_date in result_fields:
+                if _same_enrollment(
+                    source_id, results_date.proof.source_id, identities
+                ):
+                    return EnrollmentEvidence(
+                        channel_field, deadline_field, results_date
+                    )
+    raise EvidenceError("enrollment_unbound_submission")
+
+
+def _same_enrollment(
+    submission_source: str, results_source: str, identities: dict[str, set[str]]
+) -> bool:
+    submission_ids = identities[submission_source]
+    results_ids = identities[results_source]
+    if len(submission_ids) > 1 or len(results_ids) > 1:
+        return False
+    if submission_source == results_source:
+        return True
+    return len(submission_ids) == 1 and submission_ids == results_ids

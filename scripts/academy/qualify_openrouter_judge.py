@@ -29,6 +29,8 @@ def main() -> None:
         help="Explicit hard cap per held-out request; not a measured estimate",
     )
     prepare.add_argument("--max-request-usd", default="0.01")
+    prepare.add_argument("--phase1-admission", type=Path)
+    prepare.add_argument("--phase1-admission-sha256")
     prepare.add_argument("--initial-accounted-usd", default="0")
     prepare.add_argument("--initial-unknown-reserved-usd", default="0")
     regression = commands.add_parser("prepare-targeted")
@@ -51,6 +53,14 @@ def main() -> None:
         action="store_true",
         help="Operator-requested real OpenRouter requests",
     )
+    execute.add_argument(
+        "--resume",
+        action="store_true",
+        help=(
+            "Continue a verified sealed prefix after an interrupted wait or an "
+            "eligible retry; preserve costs, retry limits and remaining deadline"
+        ),
+    )
     args = parser.parse_args()
     if args.action == "prepare":
         result = audit.prepare(
@@ -65,6 +75,8 @@ def main() -> None:
             max_request_usd=args.max_request_usd,
             initial_accounted_usd=args.initial_accounted_usd,
             initial_unknown_reserved_usd=args.initial_unknown_reserved_usd,
+            phase1_admission=args.phase1_admission,
+            phase1_admission_sha256=args.phase1_admission_sha256,
         )
     elif args.action == "prepare-targeted":
         result = targeted.prepare(
@@ -80,7 +92,7 @@ def main() -> None:
     elif args.action == "verify-targeted":
         result = targeted.verify(args.audit_root)
     else:
-        result = audit.run(args.audit_root, execute=args.execute)
+        result = audit.run(args.audit_root, execute=args.execute, resume=args.resume)
     print(json.dumps(result, ensure_ascii=False, indent=2))
     if result["status"] not in {
         "prepared_not_qualified",

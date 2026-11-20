@@ -67,8 +67,20 @@ _UNIT_ALIASES = {
     "s": ("sekunda", "sekundy", "sekund", "sekundach"),
     "min": ("minuta", "minuty", "minut", "minutach"),
     "h": ("godzina", "godziny", "godzin", "godzinach"),
-    "m/s": ("metrów na sekundę", "metrach na sekundę"),
-    "km/h": ("kilometrów na godzinę", "kilometrach na godzinę"),
+    "m/s": (
+        "metr na sekundę",
+        "metry na sekundę",
+        "metra na sekundę",
+        "metrów na sekundę",
+        "metrach na sekundę",
+    ),
+    "km/h": (
+        "kilometr na godzinę",
+        "kilometry na godzinę",
+        "kilometra na godzinę",
+        "kilometrów na godzinę",
+        "kilometrach na godzinę",
+    ),
     "%": ("procent", "procenty", "procentów", "procentach"),
     "stron": ("strona", "strony", "stronach"),
     "porcji": ("porcja", "porcje", "porcjach"),
@@ -205,15 +217,91 @@ def _assigned_card_mentions(message: str) -> list[tuple[int, str]]:
     return references
 
 
+_SOURCE_QUOTE_END = {"„": "”", "“": "”", "«": "»", '"': '"'}
+
+
+def _unquoted_source_text(message: str) -> str:
+    """Mask quoted spans in one pass, including an unclosed trailing quote."""
+    masked = list(message)
+    closing: str | None = None
+    for index, character in enumerate(message):
+        if closing is None:
+            closing = _SOURCE_QUOTE_END.get(character)
+            if closing is not None:
+                masked[index] = " "
+        else:
+            masked[index] = " "
+            if character == closing:
+                closing = None
+    return "".join(masked)
+
+
 def requested_card_ids(
     message: str, *, include_contextual: bool = True
 ) -> tuple[str, ...]:
     """Extract card references after the source context is established."""
+    message = _unquoted_source_text(message)
     references = _card_mentions(message, _CARD_REFERENCE)
+    references.extend(_citation_mentions(message))
     if include_contextual:
         references.extend(_card_mentions(message, _CARD_USE))
         references.extend(_assigned_card_mentions(message))
     return tuple(dict.fromkeys(marker.strip("[]") for _, marker in sorted(references)))
+
+
+_CITE_REFERENCE = re.compile(
+    r"\b(?:zacytuj|przytocz (?:cytat|cytaty) z|podaj (?:cytat|cytaty) z)\s+"
+    rf"(?:(?P<exclusive>tylko|wyłącznie|jedynie)\s+)?(?:kart[ęay]\s+)?(?P<name>{_CARD_ID})(?![\w-])",
+    re.IGNORECASE,
+)
+_CITE_LIST_ITEM = re.compile(
+    rf"\s*(?:,|i\b|oraz\b)\s+(?:kart[ęay]\s+)?(?P<name>{_CARD_ID})(?![\w-])",
+    re.IGNORECASE,
+)
+
+
+def _citation_mentions(
+    message: str, *, exclusive_only: bool = False
+) -> list[tuple[int, str]]:
+    references = []
+    message = _unquoted_source_text(message)
+    for command in _CITE_REFERENCE.finditer(message):
+        if not _card_marker(command["name"]) or (
+            exclusive_only and command["exclusive"] is None
+        ):
+            continue
+        references.append((command.start("name"), command["name"]))
+        end = command.end()
+        while (item := _CITE_LIST_ITEM.match(message, end)) and _card_marker(
+            item["name"]
+        ):
+            references.append((item.start("name"), item["name"]))
+            end = item.end()
+    return references
+
+
+def requested_citation_ids(message: str) -> tuple[str, ...]:
+    """Bind only the card arguments of citation commands, preserving their order."""
+    return tuple(
+        dict.fromkeys(marker.strip("[]") for _, marker in _citation_mentions(message))
+    )
+
+
+def requested_allowed_citation_ids(message: str) -> tuple[str, ...] | None:
+    """Keep an explicit 'only' restriction separate from mandatory citations."""
+    references = _citation_mentions(message, exclusive_only=True)
+    if not references:
+        return None
+    return tuple(dict.fromkeys(marker.strip("[]") for _, marker in references))
+
+
+def _source_citation_contract(
+    message: str, required_citations: tuple[str, ...] | None
+) -> tuple[tuple[str, ...] | None, tuple[str, ...] | None]:
+    allowed = requested_allowed_citation_ids(message)
+    if allowed is not None and required_citations is None:
+        required_citations = requested_citation_ids(message)
+    return required_citations, allowed
 
 
 class EvidenceError(ValueError):
@@ -348,6 +436,7 @@ class Evidence:
     requirements: Requirements
     unavailable: tuple[str, ...]
     requested_source_ids: tuple[str, ...] = ()
+    allowed_source_ids: tuple[str, ...] | None = None
 
 
 def _displayed_result_values(prose: str, unit: str) -> list[str]:
@@ -459,6 +548,13 @@ _PUBLIC_CARD_REFERENCE = re.compile(
     re.IGNORECASE,
 )
 
+_PUBLIC_CARD_DECLARATION = re.compile(
+    r"\b(?:nazwa\s+(?:tej\s+)?(?:karty|dokumentu|źródła)\s*(?:[:=]\s*|\s+(?:to|brzmi)\s+)"
+    r"|(?:karta|dokument|źródło)\s+nosi\s+nazwę\s+)"
+    r"(?P<marker>[*_'\"„“«\x60]*)(?P<name>[^\W\d_][\w-]{1,63})(?![\w-])",
+    re.IGNORECASE,
+)
+
 _MAX_RECOVERED_CARD_LENGTH = 640
 
 
@@ -483,24 +579,16 @@ def _verified_document(document: SourceDocument) -> bool:
     )
 
 
-def bind_source_quotes(
-    prose: str, evidence: Evidence, quotes: Sequence[SourceQuote]
-) -> tuple[SourceQuote, ...]:
-    """Bind actual public references to literal evidence before semantic review."""
-    documents = {doc.ref.source_id: doc for doc in evidence.sources}
-    cited = {match["name"] for match in _PUBLIC_CARD.finditer(prose)}
-    cited.update(
-        match["name"]
-        for match in _PUBLIC_CARD_REFERENCE.finditer(prose)
-        if match["name"].isupper() or match["name"] in documents
-    )
-    cited.update(
-        ident
-        for ident in documents
-        if re.search(rf"(?<![\w-]){re.escape(ident)}(?![\w-])", prose)
-    )
-    if not cited <= documents.keys():
-        raise EvidenceError("answer_source_unknown")
+def _validate_citation_scope(used: set[str], evidence: Evidence) -> None:
+    if evidence.allowed_source_ids is not None and not used <= set(
+        evidence.allowed_source_ids
+    ):
+        raise EvidenceError("answer_source_not_allowed")
+
+
+def _verified_source_quotes(
+    documents: dict[str, SourceDocument], quotes: Sequence[SourceQuote]
+) -> list[SourceQuote]:
     bound = []
     for quote in quotes:
         document = documents.get(quote.source_id)
@@ -515,6 +603,54 @@ def bind_source_quotes(
                 literal_source_quote(document.text, quote.quote),
             )
         )
+    return bound
+
+
+def _without_verified_public_quotes(prose: str, quotes: Sequence[SourceQuote]) -> str:
+    """Exclude exact displayed literals after their source receipts are verified."""
+    original = prose.translate(_DOUBLE_QUOTES)
+    boundaries = [0] * (len(original) + 1)
+    for quote in quotes:
+        literal = '"' + quote.quote.translate(_DOUBLE_QUOTES) + '"'
+        start = original.find(literal)
+        while start >= 0:
+            boundaries[start] += 1
+            boundaries[start + len(literal)] -= 1
+            start = original.find(literal, start + 1)
+    depth = 0
+    unquoted = []
+    for index, character in enumerate(original):
+        depth += boundaries[index]
+        unquoted.append(" " if depth else character)
+    return "".join(unquoted)
+
+
+def bind_source_quotes(
+    prose: str, evidence: Evidence, quotes: Sequence[SourceQuote]
+) -> tuple[SourceQuote, ...]:
+    """Bind actual public references to literal evidence before semantic review."""
+    documents = {doc.ref.source_id: doc for doc in evidence.sources}
+    bound = _verified_source_quotes(documents, quotes)
+    public_references = _without_verified_public_quotes(prose, bound)
+    cited = {match["name"] for match in _PUBLIC_CARD.finditer(public_references)}
+    cited.update(
+        match["name"]
+        for match in _PUBLIC_CARD_REFERENCE.finditer(public_references)
+        if match["name"].isupper() or match["name"] in documents
+    )
+    cited.update(
+        match["name"]
+        for match in _PUBLIC_CARD_DECLARATION.finditer(public_references)
+        if match["marker"] or match["name"][0].isupper() or match["name"] in documents
+    )
+    cited.update(
+        ident
+        for ident in documents
+        if re.search(rf"(?<![\w-]){re.escape(ident)}(?![\w-])", public_references)
+    )
+    if not cited <= documents.keys():
+        raise EvidenceError("answer_source_unknown")
+    _validate_citation_scope(cited | {quote.source_id for quote in quotes}, evidence)
     used = {quote.source_id for quote in bound}
     for ident in sorted(cited - used):
         document = documents[ident]
@@ -719,6 +855,7 @@ class GroundedTurn:
     def __init__(self, backend: SourceBackend) -> None:
         self.backend = backend
         self._evidence: Evidence | None = None
+        self._revalidate_full_read = False
 
     def _named_sources(self, named: tuple[str, ...]) -> tuple[SourceRef, ...]:
         try:
@@ -783,9 +920,11 @@ class GroundedTurn:
         *,
         infer_requirements: bool = True,
         required_result_unit: str | None = None,
+        required_citations: tuple[str, ...] | None = None,
     ) -> Evidence:
         """Recompute each turn; a user correction cannot silently reuse a cache."""
         self._evidence = None
+        self._revalidate_full_read = False
         if not plan.message.strip() or not plan.revision.strip():
             raise EvidenceError("turn_identity_required")
         if len(plan.message) > 16_000 or sum(map(len, plan.prior_users)) > 64_000:
@@ -801,6 +940,42 @@ class GroundedTurn:
             c.unit == output_unit for c in calculations
         ):
             raise EvidenceError("calculation_result_unit_missing")
+        required_citations, allowed = _source_citation_contract(
+            plan.message, required_citations
+        )
+        sources, unavailable, citations = self._prepare_sources(
+            plan, required, required_citations
+        )
+        identity = text_hash(
+            json.dumps(
+                {
+                    "plan": asdict(plan),
+                    "sources": [asdict(d) for d in sources],
+                    "calculations": [asdict(c) for c in calculations],
+                    "unavailable": unavailable,
+                    **(
+                        {"required_citations": citations}
+                        if required_citations is not None
+                        else {}
+                    ),
+                    **({"result_unit": output_unit} if output_unit is not None else {}),
+                    **({"allowed_citations": allowed} if allowed is not None else {}),
+                },
+                ensure_ascii=False,
+                sort_keys=True,
+            )
+        )
+        self._evidence = Evidence(
+            identity, sources, calculations, required, unavailable, citations, allowed
+        )
+        return self._evidence
+
+    def _prepare_sources(
+        self,
+        plan: TurnPlan,
+        required: Requirements,
+        required_citations: tuple[str, ...] | None,
+    ) -> tuple[tuple[SourceDocument, ...], tuple[str, ...], tuple[str, ...]]:
         sources: tuple[SourceDocument, ...] = ()
         unavailable: tuple[str, ...] = ()
         named = requested_card_ids(plan.message) if required.sources else ()
@@ -811,23 +986,15 @@ class GroundedTurn:
                 )
             except (OSError, KeyError) as exc:
                 raise EvidenceError("source_unavailable") from exc
-        identity = text_hash(
-            json.dumps(
-                {
-                    "plan": asdict(plan),
-                    "sources": [asdict(d) for d in sources],
-                    "calculations": [asdict(c) for c in calculations],
-                    "unavailable": unavailable,
-                    **({"result_unit": output_unit} if output_unit is not None else {}),
-                },
-                ensure_ascii=False,
-                sort_keys=True,
-            )
-        )
-        self._evidence = Evidence(
-            identity, sources, calculations, required, unavailable, named
-        )
-        return self._evidence
+        citations = named
+        if required_citations is not None:
+            if not required.sources or not set(required_citations) <= set(named):
+                raise EvidenceError("source_citation_scope_invalid")
+            if not set(named) <= {doc.ref.source_id for doc in sources}:
+                raise EvidenceError("answer_named_source_not_read")
+            citations = required_citations
+            self._revalidate_full_read = True
+        return sources, unavailable, citations
 
     def _read_publication_document(self, ref: SourceRef) -> SourceDocument:
         try:
@@ -872,6 +1039,27 @@ class GroundedTurn:
         self._evidence = None
         return answer
 
+    def _render_claims(
+        self,
+        draft: AnswerDraft,
+        documents: dict[str, SourceDocument],
+        fresh_documents: dict[str, SourceDocument] | None,
+        calculations: dict[str, CalculationEvidence],
+    ) -> tuple[list[str], set[str], set[str]]:
+        used_sources: set[str] = set()
+        used_calculations: set[str] = set()
+        lines: list[str] = []
+        for claim in draft.claims:
+            if isinstance(claim, SourceQuote):
+                lines.append(self._source_line(claim, documents, fresh_documents))
+                used_sources.add(claim.source_id)
+            elif isinstance(claim, CalculationClaim):
+                lines.append(_calculation_line(claim, calculations))
+                used_calculations.add(claim.calculation_id)
+            else:
+                raise EvidenceError("answer_claim_unsupported")
+        return lines, used_sources, used_calculations
+
     def _render_draft(
         self, draft: AnswerDraft, *, refresh_sources: bool
     ) -> PublishedAnswer:
@@ -884,25 +1072,20 @@ class GroundedTurn:
         fresh_documents: dict[str, SourceDocument] | None = (
             {} if refresh_sources else None
         )
-        used_sources: set[str] = set()
         calculations = {c.calculation_id: c for c in evidence.calculations}
-        used_calculations: set[str] = set()
-        lines: list[str] = []
-        for claim in draft.claims:
-            if isinstance(claim, SourceQuote):
-                lines.append(self._source_line(claim, documents, fresh_documents))
-                used_sources.add(claim.source_id)
-            elif isinstance(claim, CalculationClaim):
-                lines.append(_calculation_line(claim, calculations))
-                used_calculations.add(claim.calculation_id)
-            else:
-                raise EvidenceError("answer_claim_unsupported")
+        lines, used_sources, used_calculations = self._render_claims(
+            draft, documents, fresh_documents, calculations
+        )
+        _validate_citation_scope(used_sources, evidence)
         if evidence.requirements.sources and not used_sources:
             raise EvidenceError("answer_source_required")
         if not set(evidence.requested_source_ids) <= used_sources:
             raise EvidenceError("answer_named_source_required")
         if set(calculations) != used_calculations:
             raise EvidenceError("answer_calculation_required")
+        if fresh_documents is not None and self._revalidate_full_read:
+            for ident in documents.keys() - fresh_documents.keys():
+                self._read_publication_document(documents[ident].ref)
         if not lines:
             raise EvidenceError("answer_empty")
         return PublishedAnswer(evidence.evidence_id, "\n".join(lines))

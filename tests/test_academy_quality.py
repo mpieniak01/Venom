@@ -722,3 +722,100 @@ def test_unknown_critical_metrics_remain_unavailable(parent_unknown, candidate_u
     policy["no_new_critical"] = True
     with pytest.raises(ValueError, match="case_evidence_missing"):
         _decisions(policy, cases)
+
+
+def diagnostic_input():
+    return {
+        "role": "chat",
+        "dataset_sha256": "b" * 64,
+        "protocol_sha256": "c" * 64,
+        "min_families": 2,
+        "cases": {
+            "a": {"area": "sources", "level": "P2", "family": "pair"},
+            "b": {"area": "sources", "level": "P2", "family": "pair"},
+            "c": {"area": "sources", "level": "P2", "family": "independent"},
+        },
+    }
+
+
+def test_diagnose_sealed_record_counts_families_and_keeps_unknown(tmp_path, capsys):
+    quality = record()
+    quality["cases"]["a"] = case("asr", True, False, candidate_critical=True)
+    quality["cases"]["b"] = case("asr", True, True, candidate_critical=None)
+    for row in quality["cases"].values():
+        row["base"]["passed"] = row["base"]["usable"]
+        row["candidate"]["passed"] = row["candidate"]["usable"]
+    quality["cases"]["c"]["candidate"]["passed"] = None
+
+    verified = QualityStore(tmp_path).import_record(quality)
+    matrix = tmp_path / "matrix.json"
+    matrix.write_text(json.dumps(diagnostic_input()), encoding="utf-8")
+    main(["--root", str(tmp_path), "diagnose", "history:run-a", str(matrix)])
+    result = json.loads(capsys.readouterr().out)
+    assert result["result_sha256"] == verified["result_sha256"]
+    assert result["identity"] == quality["identity"]
+    assert len(result["matrix_sha256"]) == 64
+    assert len(result["cells"]) == 9
+    diagnostic = next(
+        row
+        for row in result["cells"]
+        if (row["area"], row["level"]) == ("sources", "P2")
+    )
+    assert (diagnostic["cases"], diagnostic["families"], diagnostic["status"]) == (
+        3,
+        2,
+        "REVIEW",
+    )
+    assert diagnostic["usable"]["changed_to_true"] == ["independent"]
+    assert diagnostic["usable"]["changed_to_false"] == ["pair"]
+    assert diagnostic["passed"]["candidate"]["known"] == 1
+    assert diagnostic["critical"]["changed_to_true"] == ["pair"]
+    assert diagnostic["critical"]["candidate"]["known"] == 2
+    assert diagnostic["usable"]["candidate"]["interval_95"] == pytest.approx(
+        [0.09453, 0.90547], abs=1e-5
+    )
+    assert result["cells"][0]["passed"]["candidate"]["interval_95"] is None
+    assert result["cells"][0]["status"] == "REVIEW"
+
+    quality["record_id"] = "complete"
+    quality["cases"]["c"]["candidate"]["passed"] = True
+    QualityStore(tmp_path).import_record(quality)
+    main(["--root", str(tmp_path), "diagnose", "history:complete", str(matrix)])
+    result = json.loads(capsys.readouterr().out)
+    assert (
+        next(row for row in result["cells"] if row["families"])["status"] == "measured"
+    )
+
+
+@pytest.mark.parametrize(
+    "problem,error",
+    [
+        ("holdout", "diagnostic_dev_required"),
+        ("dataset_sha256", "diagnostic_identity_mismatch"),
+        ("protocol_sha256", "diagnostic_identity_mismatch"),
+        ("missing_case", "diagnostic_case_coverage"),
+        ("wrong_role", "diagnostic_area_outside_role"),
+        ("unknown_level", "literal_error"),
+    ],
+)
+def test_diagnose_rejects_incompatible_evidence(tmp_path, capsys, problem, error):
+    quality = record()
+    manifest = diagnostic_input()
+    if problem == "holdout":
+        quality["split"] = "holdout"
+    elif problem in {"dataset_sha256", "protocol_sha256"}:
+        manifest[problem] = "f" * 64
+    elif problem == "missing_case":
+        manifest["cases"].pop("c")
+    elif problem == "wrong_role":
+        manifest["role"] = "decision"
+    else:
+        manifest["cases"]["c"]["level"] = "P4"
+    QualityStore(tmp_path).import_record(quality)
+    matrix = tmp_path / "matrix.json"
+    matrix.write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(SystemExit) as exc:
+        main(["--root", str(tmp_path), "diagnose", "history:run-a", str(matrix)])
+    assert exc.value.code == 1
+    assert error in capsys.readouterr().err

@@ -4,6 +4,7 @@ from dataclasses import replace
 
 import pytest
 
+from scripts.academy.verify_grounded_tools import FrozenPacket
 from venom_core.services.grounded_dialogue import (
     EvidenceError,
     Requirements,
@@ -11,17 +12,30 @@ from venom_core.services.grounded_dialogue import (
     SourceRef,
     text_hash,
 )
+from venom_core.services.grounded_duration import PilotDurationAnswer, bind_duration
+from venom_core.services.grounded_explicit_totals import (
+    PilotExplicitTotalAnswer,
+    bind_explicit_total,
+)
+from venom_core.services.grounded_percentages import (
+    PilotPercentChangeAnswer,
+    bind_percent_change,
+)
+from venom_core.services.grounded_pickup_roles import PilotPickupRolesAnswer
 from venom_core.services.grounded_pilot import (
     SemanticVerdict,
+    _public_prose,
     material_hash,
     plain_pilot_context,
     plain_pilot_recap,
     run_pilot_turn,
 )
+from venom_core.services.grounded_prices import PilotPriceMeanAnswer, bind_price_mean
 from venom_core.services.grounded_review import (
     CompactGroundedReviewer,
     GroundedChecklistReviewer,
 )
+from venom_core.services.grounded_segment_length import PilotSegmentLengthAnswer
 
 
 class Sources:
@@ -680,6 +694,42 @@ def test_redaction_preserves_citation_and_numeric_answer():
         "calculations": [{"calculation_id": "c1", "value": "24", "unit": "zł"}],
     }
     assert run(model=model).text == "Według cennika (id: price) wynik to 24 zł."
+
+
+def test_numeric_calculation_reference_is_removed_before_review():
+    model, reviewer = Model(), Reviewer()
+    model.override["plan"] = {
+        "calculations": [{"calculation_id": "1", "expression": "5*27", "unit": "zł"}]
+    }
+    model.override["draft"] = {
+        "prose": "Za 5 desek po 27 zł zapłacisz 135 zł [1].",
+        "sources": [],
+        "calculations": [{"calculation_id": "1", "value": "135", "unit": "zł"}],
+    }
+
+    answer = run_pilot_turn(
+        "Oblicz koszt 5 desek po 27 zł.",
+        "r1",
+        Sources(),
+        model,
+        reviewer,
+        required=Requirements(calculation=True),
+    )
+    assert answer.text == "Za 5 desek po 27 zł zapłacisz 135 zł."
+    assert reviewer.materials[0]["draft"]["prose"] == answer.text
+    assert reviewer.materials[0]["draft"]["calculations"][0]["calculation_id"] == "1"
+
+
+def test_numeric_calculation_reference_preserves_numbers_and_known_source_ids():
+    assert (
+        _public_prose(
+            "Pozycja (1) kosztuje 135 zł [1]. Źródła [2] i [3].",
+            {"1", "2"},
+            {"2": "v1"},
+            {"1", "2"},
+        )
+        == "Pozycja (1) kosztuje 135 zł. Źródła [2] i [3]."
+    )
 
 
 def test_redaction_only_removes_metadata_before_review_and_never_releases_empty():
@@ -1404,7 +1454,7 @@ def test_plain_recap_preserves_revoked_address_and_tentative_time():
 
 def test_one_sentence_recap_preserves_two_event_times_and_the_gathering_location():
     history = (
-        {"role": "user", "content": "W pierwszą środę sprawdź godziny."},
+        {"role": "user", "content": "Według KARTA w pierwszą środę sprawdź godziny."},
         {
             "role": "assistant",
             "content": "Wejście od 07:30, a pokaz startuje o 08:00. [KARTA]",
@@ -1543,15 +1593,15 @@ def test_observation_guidance_remains_when_final_does_not_repeat_chart_name():
 
 def test_gathering_recap_preserves_all_event_roles_with_day_reference():
     history = (
-        {"role": "user", "content": "Co się zmienia w pierwszą sobotę?"},
+        {"role": "user", "content": "Według WIERZBA co się zmienia w pierwszą sobotę?"},
         {
             "role": "assistant",
-            "content": "Brama od 12:15, a pokaz o 12:45. Fakty: brama 12:15 i pokaz 12:45. [KARTA]",
+            "content": "Brama od 12:15, a pokaz o 12:45. Fakty: brama 12:15 i pokaz 12:45. [WIERZBA]",
         },
         {"role": "user", "content": "Gdzie jest zbiórka?"},
         {
             "role": "assistant",
-            "content": "Zbiórka tego dnia odbywa się przy fontannie. [KARTA]",
+            "content": "Zbiórka tego dnia odbywa się przy fontannie. [WIERZBA]",
         },
     )
     assert (
@@ -1559,8 +1609,32 @@ def test_gathering_recap_preserves_all_event_roles_with_day_reference():
             "Przygotuj w jednym zdaniu notatkę z godzinami i miejscem zbiórki.",
             history,
         )
-        == "Brama od 12:15, a pokaz o 12:45, a zbiórka tego dnia odbywa się przy fontannie. [KARTA]"
+        == "Brama od 12:15, a pokaz o 12:45, a zbiórka tego dnia odbywa się przy fontannie. [WIERZBA]"
     )
+
+
+@pytest.mark.parametrize("citation", ["WIERZBA", "POMYLONA"])
+def test_gathering_recap_only_binds_requested_parenthetical_citations(citation):
+    history = (
+        {"role": "user", "content": "Według WIERZBA sprawdź ostatnią środę."},
+        {
+            "role": "assistant",
+            "content": "Brama od 15:35, a pokaz o 16:25. [WIERZBA]",
+        },
+        {"role": "user", "content": "Gdzie według WIERZBA jest zbiórka?"},
+        {
+            "role": "assistant",
+            "content": f"Zbiórka tego dnia odbywa się przy makiecie. ({citation})",
+        },
+    )
+    message = "Przygotuj w jednym zdaniu notatkę z godzinami i miejscem zbiórki."
+    if citation == "WIERZBA":
+        assert plain_pilot_recap(message, history) == (
+            "Brama od 15:35, a pokaz o 16:25, a zbiórka tego dnia odbywa się "
+            "przy makiecie. [WIERZBA]"
+        )
+    else:
+        assert plain_pilot_recap(message, history) is None
 
 
 def test_booking_recap_uses_specific_day_instead_of_general_rule():
@@ -1600,6 +1674,17 @@ def test_booking_recap_preserves_explicit_negative_decision():
     assert plain_pilot_recap(
         "Podaj dzień, liczebność i decyzję o rezerwacji.", history
     ) == ("Czwartek, 2 osoby, zapis niewymagany.")
+
+
+def test_observation_guidance_explains_why_a_flat_people_count_does_not_show_flow():
+    _, guidance = plain_pilot_context(
+        "Czy poziomy wykres liczby obecnych osób dowodzi, że nikt nie wchodził ani nie wychodził?",
+        (),
+    )
+    assert "tyle samo osób wchodzi i wychodzi" in guidance
+    assert "między kolejnymi odczytami" in guidance
+    _, unrelated = plain_pilot_context("Czy wykres podaje liczbę osób?", ())
+    assert "tyle samo osób wchodzi i wychodzi" not in unrelated
 
 
 def test_observation_intro_does_not_preempt_later_question():
@@ -2375,6 +2460,127 @@ def test_percentage_claim_matches_value_and_separate_unit(value, unit, approved)
 
 
 @pytest.mark.parametrize(
+    "correction,return_display,expected_base,expected_reason",
+    [
+        (
+            "Koryguję stan końcowy na 64. ",
+            "25%",
+            "64",
+            "Oba stosunki zmiany do podstawy są równe, choć podstawy są różne.",
+        ),
+        (
+            "",
+            "33,33%",
+            "60",
+            "Każdy procent odnosi wielkość zmiany do własnej podstawy.",
+        ),
+    ],
+)
+def test_percent_recap_keeps_distinct_verified_bases(
+    correction, return_display, expected_base, expected_reason
+):
+    opening = (
+        "Czy spadek z 80 do 60 sztuk oznacza, że potrzeba potem takiego samego "
+        "procentu na powrót?"
+    )
+    drop = "Użyj kalkulatora. Zaczęliśmy od 80, zostało 60. Ile procent wynosi spadek?"
+    recovery = (
+        correction
+        + "Użyj kalkulatora do obliczenia procentowego wzrostu potrzebnego do 80."
+    )
+    if not correction:
+        recovery += " Zaokrąglij do dwóch miejsc po przecinku."
+    finale = (
+        "Napisz tylko, dlaczego dwa razy wyszło 25% mimo różnych kierunków."
+        if correction
+        else "Porównaj krótko procent spadku i procent powrotu. Wyjaśnij podstawy."
+    )
+    assert plain_pilot_recap(opening, ()) is None
+    assert plain_pilot_recap(opening, (), percent_change_receipts=()) == (
+        "Nie. Spadek liczysz od 80, a powrót od 60. "
+        "Ta sama różnica stanowi większy procent mniejszej podstawy."
+    )
+
+    history = ({"role": "user", "content": opening},)
+    backend, reviewer, model = Sources(), Reviewer(), Model()
+    first = run_pilot_turn(
+        drop,
+        "1",
+        backend,
+        model,
+        reviewer,
+        history=history,
+        required=Requirements(calculation=True),
+    )
+    history += (
+        {"role": "user", "content": drop},
+        {"role": "assistant", "content": "Spadek od podstawy 64 wyniósł 20%."},
+    )
+    second = run_pilot_turn(
+        recovery,
+        "2",
+        backend,
+        model,
+        reviewer,
+        history=history,
+        required=Requirements(calculation=True),
+    )
+    assert isinstance(first, PilotPercentChangeAnswer)
+    assert isinstance(second, PilotPercentChangeAnswer)
+    assert first.text == "Spadek z 80 do 60 wynosi 25% (zmiana o 20 przy podstawie 80)."
+    delta = 80 - int(expected_base)
+    assert second.text == (
+        f"Powrót z {expected_base} do 80 wymaga wzrostu o {return_display} "
+        f"(zmiana o {delta} przy podstawie {expected_base})."
+    )
+    calculations = [item["evidence"]["calculations"][0] for item in reviewer.materials]
+    assert [item["expression"] for item in calculations] == [
+        "(80-60)/80*100",
+        f"(80-{expected_base})/{expected_base}*100",
+    ]
+    if not correction:
+        assert calculations[1]["value"].startswith("33.333")
+        assert calculations[1]["value"] != "33.33"
+    assert not model.calls
+    assert not backend.reads
+
+    history += (
+        {"role": "user", "content": recovery},
+        {"role": "assistant", "content": "Powrót z 80 do 64 to 20%."},
+    )
+    receipts = first.percent_change_receipt, second.percent_change_receipt
+    assert plain_pilot_recap(finale, history, percent_change_receipts=receipts) == (
+        f"{first.text} {second.text} {expected_reason}"
+    )
+    no_current = "Do porównania potrzebuję potwierdzonych wyników spadku i powrotu."
+    assert (
+        plain_pilot_recap(finale, history, percent_change_receipts=receipts[:1])
+        == no_current
+    )
+    assert (
+        plain_pilot_recap(
+            finale,
+            (*history, {"role": "user", "content": "Ostatni stan to teraz 70."}),
+            percent_change_receipts=receipts,
+        )
+        == no_current
+    )
+
+
+@pytest.mark.parametrize(
+    "recovery",
+    [
+        "Koryguję stan końcowy na 0. Użyj kalkulatora do obliczenia procentowego wzrostu potrzebnego do 80.",
+        "Koryguję stan końcowy na 90. Użyj kalkulatora do obliczenia procentowego wzrostu potrzebnego do 80.",
+        "Koryguję stan końcowy na 64. Użyj kalkulatora do obliczenia procentowego wzrostu potrzebnego do 90.",
+    ],
+)
+def test_percent_change_declines_undefined_or_conflicting_returns(recovery):
+    drop = "Użyj kalkulatora. Zaczęliśmy od 80, zostało 60. Ile procent wynosi spadek?"
+    assert bind_percent_change((drop, recovery)) is None
+
+
+@pytest.mark.parametrize(
     "context_ok,arithmetic_ok", [(True, True), (True, False), (False, True)]
 )
 def test_context_reviewer_inspects_actual_calculation_without_bypassing_other_gates(
@@ -2504,3 +2710,1709 @@ def test_plain_round_recap_retains_latest_roles_and_all_four_rules():
         dict(history[-1], content=history[-1]["content"].replace("prawa", "lewa")),
     )
     assert plain_pilot_recap("Cztery punkty do przeczytania.", conflicting) is None
+
+
+def test_duration_receipt_reuses_bound_roles_in_the_ordinary_final():
+    initial = (
+        "Wykonam trzy pętle po 11 minut, po całej sesji dojdzie 7 minut porządków."
+    )
+    first = "Oblicz kalkulatorem całkowity czas, w minutach."
+    change = (
+        "Dodaję czwartą pętlę, ale ostatnia trwa 8 minut zamiast 11. "
+        "Sprzątanie nadal raz. Przelicz."
+    )
+    final = "Wypisz aktualny czas ostatniej pętli, jednorazowy dodatek i pełną sumę."
+    history = ({"role": "user", "content": initial},)
+    reviewer, model, trace = Reviewer(), Model(), []
+    first_answer = run_pilot_turn(
+        first,
+        "r1",
+        Sources(),
+        model,
+        reviewer,
+        history=history,
+        required=Requirements(calculation=True),
+    )
+    assert isinstance(first_answer, PilotDurationAnswer)
+    assert first_answer.duration_receipt.calculation.value == "40"
+    history += (
+        {"role": "user", "content": first},
+        {"role": "assistant", "content": "Sprzątanie zajmuje 9 minut."},
+    )
+    updated = run_pilot_turn(
+        change,
+        "r2",
+        Sources(),
+        model,
+        reviewer,
+        history=history,
+        required=Requirements(calculation=True),
+        trace=trace,
+    )
+    assert isinstance(updated, PilotDurationAnswer)
+    assert updated.text == (
+        "Łącznie 48 min (41 na pętle, w tym 8 na ostatnią, oraz 7 na jednorazowe sprzątanie)."
+    )
+    assert not model.calls
+    roles = next(
+        record["data"] for record in trace if record["phase"] == "duration_roles_bound"
+    )
+    assert roles["last_changes"] == [change.split(". ", 1)[0]]
+    assert roles["cleanup"] == initial
+    assert reviewer.materials[-1]["evidence"]["calculations"][0]["value"] == "48"
+    assert (
+        bind_duration((initial, first, change, final, "Przelicz."))
+        == updated.duration_receipt.state
+    )
+
+    history += (
+        {"role": "user", "content": change},
+        {"role": "assistant", "content": "Łącznie 56 minut."},
+    )
+    assert plain_pilot_recap(
+        final, history, duration_receipt=updated.duration_receipt
+    ) == ("Ostatnia pętla — 8 min.\nJednorazowe sprzątanie — 7 min.\nŁącznie — 48 min.")
+
+    assert plain_pilot_recap(
+        final,
+        (*history, {"role": "user", "content": final}),
+        duration_receipt=updated.duration_receipt,
+    ) == plain_pilot_recap(final, history, duration_receipt=updated.duration_receipt)
+    assert plain_pilot_recap(
+        final, history, duration_receipt=first_answer.duration_receipt
+    ) == ("Po zmianie danych potrzebuję aktualnego wyniku kalkulatora.")
+    assert (
+        plain_pilot_recap(
+            "Co to jest rower?", history, duration_receipt=updated.duration_receipt
+        )
+        is None
+    )
+
+
+def test_duration_roles_support_decimals_replacement_and_cleanup_changes():
+    initial = "Planuję dwie pętle po 7,5 min. Na koniec dolicz 4 min sprzątania."
+    previous = "Policz kalkulatorem łączny czas."
+    change = (
+        "Zmieniam czas ostatniej pętli na 6,25 min. "
+        "Sprzątanie zmieniam na 2 min, nadal raz. Przelicz."
+    )
+    history = tuple(
+        {"role": "user", "content": message} for message in (initial, previous)
+    )
+    answer = run_pilot_turn(
+        change,
+        "r2",
+        Sources(),
+        Model(),
+        Reviewer(),
+        history=history,
+        required=Requirements(calculation=True),
+    )
+    assert isinstance(answer, PilotDurationAnswer)
+    assert answer.duration_receipt.calculation.expression == "(1*7.5+6.25)+2"
+    assert "15,75 min" in answer.text
+    assert "13,75 na pętle" in answer.text
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        "Dodaję piątą pętlę, ale ostatnia trwa 8 min zamiast 11. Przelicz.",
+        "Dodaję czwartą pętlę, ale ostatnia trwa 8 min zamiast 10. Przelicz.",
+        "Po każdej pętli sprzątanie trwa 7 min. Przelicz.",
+        "Sprzątanie trwa 7 min albo 11 min. Przelicz.",
+        "Może ostatnia pętla potrwa 8 min. Przelicz.",
+    ],
+)
+def test_duration_binding_declines_conflicting_or_unconfirmed_states(change):
+    initial = (
+        "Wykonam trzy pętle po 11 minut, po całej sesji dojdzie 7 minut porządków."
+    )
+    assert bind_duration((initial, change)) is None
+
+
+def test_duration_receipt_is_not_released_if_semantic_review_rejects():
+    initial = "Wykonam 3 pętle po 11 minut, po całej sesji dojdzie 7 minut porządków."
+    backend, model, reviewer = Sources(), Model(), Reviewer(approved=False)
+    required = Requirements(calculation=True)
+    with pytest.raises(EvidenceError, match="pilot_semantic_rejected"):
+        run_pilot_turn(
+            "Przelicz.",
+            "r1",
+            backend,
+            model,
+            reviewer,
+            history=({"role": "user", "content": initial},),
+            required=required,
+        )
+
+
+def test_price_mean_binds_correction_and_compares_both_calculator_results():
+    initial = "Użyj kalkulatora dla cen 15, 18 i 51 zł. Podaj średnią w złotych."
+    change = (
+        "Koryguję tylko skrajną pozycję z 51 na 36 zł. Przelicz kalkulatorem średnią."
+    )
+    final = (
+        "A co ze średnią i medianą przed korektą oraz po niej? Chcę krótkie porównanie."
+    )
+    history = ({"role": "user", "content": "Co różni średnią od mediany?"},)
+    backend, model, reviewer = Sources(), Model(), Reviewer()
+    first = run_pilot_turn(
+        initial,
+        "r1",
+        backend,
+        model,
+        reviewer,
+        history=history,
+        required=Requirements(calculation=True),
+    )
+    assert isinstance(first, PilotPriceMeanAnswer)
+    assert first.text == "Średnia z podanych cen (15, 18, 51) wynosi 28 zł."
+    history += (
+        {"role": "user", "content": initial},
+        {"role": "assistant", "content": "Średnia wyniosła 50 zł."},
+    )
+    corrected = run_pilot_turn(
+        change,
+        "r2",
+        backend,
+        model,
+        reviewer,
+        history=history,
+        required=Requirements(calculation=True),
+    )
+    assert isinstance(corrected, PilotPriceMeanAnswer)
+    assert corrected.price_mean_receipt.calculation.expression == "((15)+(18)+(36))/3"
+    assert corrected.text == "Średnia z podanych cen (15, 18, 36) wynosi 23 zł."
+    assert not model.calls
+    history += (
+        {"role": "user", "content": change},
+        {"role": "assistant", "content": "Średnia wynosi 45 zł, mediana 15 zł."},
+    )
+    receipts = first.price_mean_receipt, corrected.price_mean_receipt
+    assert plain_pilot_recap(final, history, price_mean_receipts=receipts) == (
+        "Średnia spadła z 28 zł do 23 zł. Mediana pozostała na poziomie 18 zł, "
+        "bo środek uporządkowanej listy się nie zmienił."
+    )
+    assert plain_pilot_recap(final, history, price_mean_receipts=receipts[:1]) == (
+        "Do porównania potrzebuję potwierdzonych wyników sprzed korekty i po niej."
+    )
+    changed = (*history, {"role": "user", "content": "Jednak zmieniam pozostałe ceny."})
+    assert plain_pilot_recap(final, changed, price_mean_receipts=receipts) == (
+        "Do porównania potrzebuję potwierdzonych wyników sprzed korekty i po niej."
+    )
+    assert (
+        plain_pilot_recap("Co to jest mediana?", history, price_mean_receipts=receipts)
+        is None
+    )
+
+
+def test_price_mean_compares_changed_middle_price():
+    base = "Użyj kalkulatora dla cen 4, 7, 10 i 15 zł. Podaj średnią w złotych."
+    update = "Zmieniam cenę z 7 na 11 zł. Przelicz kalkulatorem średnią."
+    backend, model, reviewer = Sources(), Model(), Reviewer()
+    first = run_pilot_turn(
+        base, "a", backend, model, reviewer, required=Requirements(calculation=True)
+    )
+    history = ({"role": "user", "content": base},)
+    new = run_pilot_turn(
+        update,
+        "b",
+        backend,
+        model,
+        reviewer,
+        history=history,
+        required=Requirements(calculation=True),
+    )
+    assert isinstance(first, PilotPriceMeanAnswer)
+    assert isinstance(new, PilotPriceMeanAnswer)
+    history += ({"role": "user", "content": update},)
+    assert (
+        plain_pilot_recap(
+            "Porównaj krótko średnią i medianę przed korektą i po niej.",
+            history,
+            price_mean_receipts=(first.price_mean_receipt, new.price_mean_receipt),
+        )
+        == "Średnia wzrosła z 9 zł do 10 zł. Mediana zmieniła się z 8,5 zł na 10,5 zł."
+    )
+
+
+@pytest.mark.parametrize(
+    "inputs",
+    [
+        (
+            "Użyj kalkulatora dla cen 4, 8 i 8 zł. Podaj średnią w złotych.",
+            "Zmieniam cenę z 8 na 5 zł. Przelicz kalkulatorem średnią.",
+        ),
+        (
+            "Użyj kalkulatora dla cen 4, 8 i 15 zł. Podaj średnią w złotych.",
+            "Koryguję skrajną pozycję z 8 na 5 zł. Przelicz kalkulatorem średnią.",
+        ),
+        (
+            "Użyj kalkulatora dla cen 4, 8 i 15 zł. Podaj średnią w złotych.",
+            "Nie znamy już drugiej ceny.",
+            "Zmieniam cenę z 4 na 5 zł. Przelicz kalkulatorem średnią.",
+        ),
+    ],
+)
+def test_price_mean_declines_ambiguous_or_stale_operands(inputs):
+    assert bind_price_mean(inputs) is None
+
+
+def test_explicit_order_uses_current_price_and_no_delivery_after_pickup():
+    base = "Potrzebuję 5 desek po 24 zł, dostawa jednorazowo 21 zł."
+    first = "Użyj kalkulatora i podaj koszt całości z dostawą."
+    correction = "Cena jednej wzrosła do 27 zł. Zmieniam też dostawę na darmowy odbiór. Użyj kalkulatora."
+    final = "Napisz SMS z aktualną liczbą, ceną jednej, sposobem odbioru i sumą."
+    backend, model, reviewer = Sources(), Model(), Reviewer()
+    history = ({"role": "user", "content": base},)
+    requirements = Requirements(calculation=True)
+    before = run_pilot_turn(
+        first, "a", backend, model, reviewer, history=history, required=requirements
+    )
+    assert isinstance(before, PilotExplicitTotalAnswer)
+    assert before.explicit_total_receipt.calculation.value == "141"
+    history += (
+        {"role": "user", "content": first},
+        {"role": "assistant", "content": "Z dostawą 160 zł."},
+    )
+    after = run_pilot_turn(
+        correction,
+        "b",
+        backend,
+        model,
+        reviewer,
+        history=history,
+        required=requirements,
+    )
+    assert isinstance(after, PilotExplicitTotalAnswer)
+    assert after.explicit_total_receipt.calculation.expression == "5*27+0"
+    assert after.text == "Łącznie 135 zł (5 desek po 27, darmowy odbiór)."
+    history += ({"role": "user", "content": correction},)
+    assert plain_pilot_recap(
+        final, history, explicit_total_receipt=after.explicit_total_receipt
+    ) == ("5 desek po 27 zł, darmowy odbiór. Razem 135 zł.")
+    assert plain_pilot_recap(
+        final, history, explicit_total_receipt=before.explicit_total_receipt
+    ) == ("Po zmianie danych potrzebuję aktualnego wyniku kalkulatora.")
+    assert not model.calls
+
+
+def test_explicit_group_keeps_an_included_caregiver_and_ignores_cancelled_children():
+    base = "W grupie wycieczkowej jest 16 dorosłych, 7 dzieci. Jedna opiekunka wlicza się już do dorosłych."
+    join = "Dołącza 3 dzieci, dorośli bez zmian. Kalkulatorem policz całą grupę."
+    correction = "Dwóch dorosłych odwołało obecność. Próba dopisania dwojga dzieci nieaktualna. Użyj kalkulatora ponownie."
+    backend, model, reviewer = Sources(), Model(), Reviewer()
+    history = ({"role": "user", "content": base},)
+    first = run_pilot_turn(
+        join,
+        "a",
+        backend,
+        model,
+        reviewer,
+        history=history,
+        required=Requirements(calculation=True),
+    )
+    assert isinstance(first, PilotExplicitTotalAnswer)
+    assert first.explicit_total_receipt.calculation.value == "26"
+    history += ({"role": "user", "content": join},)
+    after = run_pilot_turn(
+        correction,
+        "b",
+        backend,
+        model,
+        reviewer,
+        history=history,
+        required=Requirements(calculation=True),
+    )
+    assert isinstance(after, PilotExplicitTotalAnswer)
+    assert after.explicit_total_receipt.calculation.expression == "14+10"
+    assert (
+        after.text
+        == "Łącznie 24 osoby (14 dorosłych, w tym opiekunka, oraz 10 dzieci)."
+    )
+    history += ({"role": "user", "content": correction},)
+    assert (
+        plain_pilot_recap(
+            "Podaj ile dorosłych, ile dzieci i czy opiekunka jest liczbą dodatkową.",
+            history,
+            explicit_total_receipt=after.explicit_total_receipt,
+        )
+        == "14 dorosłych i 10 dzieci. Opiekunka jest już wliczona do dorosłych."
+    )
+    assert not model.calls
+
+
+def test_explicit_group_does_not_bind_unconfirmed_composition():
+    base = "W grupie jest 2 dorosłych, 7 dzieci. Jedna opiekunka wlicza się już do dorosłych."
+    join = "Dołącza 3 dzieci, dorośli bez zmian. Kalkulatorem policz całą grupę."
+    correction = "Dwóch dorosłych odwołało obecność. Próba dopisania dwojga dzieci nieaktualna. Użyj kalkulatora ponownie."
+    assert bind_explicit_total((base, join, correction)) is None
+    assert bind_explicit_total((base, "Dołącza 3 dzieci, dorośli bez zmian.")) is None
+
+
+class PickupRoleCards:
+    def __init__(self):
+        self.texts = {
+            "MORKADA": (
+                "Punkt wydawania nosi oficjalną nazwę U Ady. Ada Witek 9 marca podpisała "
+                "zamknięcie przeglądu starego kompletu. Wzmianka nie dotyczy przyszłych wydawań."
+            ),
+            "SILETOR": (
+                "Piątkowy odbiór nowego kompletu przewidziano w punkcie U Ady; osoba odbierająca "
+                "wymaga potwierdzenia. Komplet pozostaje zabezpieczony do chwili potwierdzenia."
+            ),
+        }
+        self.reads = []
+
+    def current_ref(self, source_id):
+        return SourceRef(source_id, "1", text_hash(self.texts[source_id]))
+
+    def read(self, ref):
+        self.reads.append(ref.source_id)
+        return SourceDocument(ref, self.texts[ref.source_id], True)
+
+    def search(self, query):
+        raise AssertionError("The request names both cards.")
+
+
+_POINT_AND_PICKUP = (
+    "Przeczytaj kartę MORKADA i kartę SILETOR. "
+    "Podaj nazwę punktu i kto odbiera tam komplet w piątek."
+)
+_HISTORICAL_SIGNER = (
+    "Nie o odbierającą chodzi, tylko kto podpisał zamknięcie przeglądu. "
+    "Sprawdź kartę SILETOR i kartę MORKADA."
+)
+_PICKUP_RECAP = "Podaj dwie linie: punkt i osoba odbierająca w piątek."
+
+
+def test_pickup_roles_keep_history_and_current_pickup_separate():
+    backend, model, reviewer = PickupRoleCards(), Model(), Reviewer()
+    history = (
+        {"role": "user", "content": "Na etykiecie widnieje nazwa punktu U Ady."},
+        {"role": "assistant", "content": "Ada Witek odbiera komplet w piątek."},
+    )
+    required = Requirements(sources=True)
+    for request in (_POINT_AND_PICKUP, _HISTORICAL_SIGNER):
+        result = run_pilot_turn(
+            request,
+            "roles",
+            backend,
+            model,
+            reviewer,
+            history=history,
+            required=required,
+        )
+        assert isinstance(result, PilotPickupRolesAnswer)
+        status = (
+            "Osoba odbierająca nowy komplet w piątek wymaga potwierdzenia [SILETOR]."
+        )
+        signature = "Ada Witek 9 marca podpisała zamknięcie przeglądu starego kompletu. [MORKADA]"
+        if request == _POINT_AND_PICKUP:
+            assert result.text == f"Punkt: U Ady [MORKADA]. {status} {signature}"
+        else:
+            assert result.text == f"{signature} {status}"
+        assert {
+            row["source_id"]: row["quote"]
+            for row in reviewer.materials[-1]["draft"]["sources"]
+        } == backend.texts
+        history += (
+            {"role": "user", "content": request},
+            {"role": "assistant", "content": result.text},
+        )
+    assert not model.calls
+    assert backend.reads.count("MORKADA") == backend.reads.count("SILETOR") == 6
+    focused, _ = plain_pilot_context(_PICKUP_RECAP, history)
+    assert (
+        plain_pilot_recap(
+            _PICKUP_RECAP,
+            focused,
+            pickup_roles_receipt=result.pickup_roles_receipt,
+        )
+        == "Punkt: U Ady.\nOsoba odbierająca w piątek: niepotwierdzona."
+    )
+    assert (
+        plain_pilot_recap(
+            _PICKUP_RECAP,
+            (*history, {"role": "user", "content": "Punkt został zmieniony."}),
+            pickup_roles_receipt=result.pickup_roles_receipt,
+        )
+        == "Punkt: brak potwierdzenia.\nOsoba odbierająca w piątek: brak potwierdzenia."
+    )
+
+
+@pytest.mark.parametrize(("old", "new"), [("U Ady", "U Oli"), ("Piątkowy", "Wtorkowy")])
+def test_pickup_roles_reject_conflicting_point_or_day(old, new):
+    backend = PickupRoleCards()
+    backend.texts["SILETOR"] = backend.texts["SILETOR"].replace(old, new)
+    model, reviewer = Model(), Reviewer()
+    with pytest.raises(EvidenceError, match="pilot_pickup_roles_inconsistent"):
+        run_pilot_turn(
+            _POINT_AND_PICKUP,
+            "roles",
+            backend,
+            model,
+            reviewer,
+            required=Requirements(sources=True),
+        )
+    assert backend.reads == ["MORKADA", "SILETOR"]
+    assert not model.calls
+    assert not reviewer.materials
+
+
+def test_pickup_roles_receipt_requires_approved_current_cards():
+    backend, model, reviewer = PickupRoleCards(), Model(), Reviewer()
+    reviewer.hook = lambda: backend.texts.update(
+        SILETOR=backend.texts["SILETOR"].replace("U Ady", "U Oli")
+    )
+    with pytest.raises(EvidenceError, match="answer_source_stale"):
+        run_pilot_turn(
+            _HISTORICAL_SIGNER,
+            "roles",
+            backend,
+            model,
+            reviewer,
+            required=Requirements(sources=True),
+        )
+    assert len(reviewer.materials) == 1
+    assert not model.calls
+
+
+_S05_INITIAL = (
+    "Mamy 180 cm przewodu, a dostawca gwarantuje osobny odcinek zapasu w metrach."
+)
+_S05_TOTAL = "Przeczytaj kartę PARWENA i kartę TRUDOM. Kalkulatorem policz długość obu odcinków łącznie w metrach."
+_S05_UPDATE = (
+    "Odcinek główny skrócono do 150 cm, zapas ten sam. Sprawdź kartę PARWENA i kartę TRUDOM, "
+    "przelicz kalkulatorem w metrach i wskaż, czy spełnimy normę."
+)
+_S05_RECAP = "Podaj tylko aktualną łączną długość i czy wystarczy."
+
+
+def _s05_cards(reserve="0,65 m", minimum="2,30 m"):
+    texts = {
+        "PARWENA": f"Dostawca gwarantuje oddzielny zapas przewodu o długości {reserve}. "
+        "Jest on dostępny również po skróceniu głównego odcinka."
+        if reserve is not None
+        else "Dostawca potwierdza oddzielny odcinek zapasu. Długości zapasu nie podano.",
+        "TRUDOM": f"Minimalna łączna długość dwóch odcinków to {minimum}. "
+        "Wartość minimalna jest warunkiem odbioru.",
+    }
+    return FrozenPacket(
+        [
+            {
+                "id": ident,
+                "title": f"Karta {ident}",
+                "keywords": "przewód zapas norma",
+                "status": "available",
+                "version": "1",
+                "text": text,
+            }
+            for ident, text in texts.items()
+        ]
+    )
+
+
+def _s05_history(*messages):
+    return tuple({"role": "user", "content": message} for message in messages)
+
+
+def _s05_turn(request, history, cards, model, reviewer, trace):
+    return run_pilot_turn(
+        request,
+        f"s05-{len(history)}",
+        cards,
+        model,
+        reviewer,
+        history=history,
+        required=Requirements(sources=True, calculation=True),
+        trace=trace,
+    )
+
+
+def test_segment_length_uses_each_card_for_its_role_and_updates_recap():
+    cards, model, reviewer = _s05_cards(), Model(), Reviewer()
+    history = _s05_history(_S05_INITIAL)
+    trace = []
+    initial = _s05_turn(_S05_TOTAL, history, cards, model, reviewer, trace)
+    assert isinstance(initial, PilotSegmentLengthAnswer)
+    assert initial.segment_length_receipt.calculation.expression == "180/100+0.65"
+    assert initial.segment_length_receipt.calculation.value == "2.45"
+    assert "180 cm, czyli 1,8 m" in initial.text
+    assert "0,65 m [PARWENA]" in initial.text
+    assert "2,3 m [TRUDOM]" in initial.text
+    assert "Łącznie 2,45 m." in initial.text
+    assert [x["ref"]["source_id"] for x in trace[1]["documents"]] == [
+        "PARWENA",
+        "TRUDOM",
+    ]
+
+    history = (*history, {"role": "user", "content": _S05_TOTAL})
+    history += (
+        {"role": "assistant", "content": "Niepotwierdzona wcześniejsza suma 2,30 m."},
+    )
+    corrected = _s05_turn(_S05_UPDATE, history, cards, model, reviewer, [])
+    assert isinstance(corrected, PilotSegmentLengthAnswer)
+    assert corrected.segment_length_receipt.calculation.expression == "150/100+0.65"
+    assert corrected.segment_length_receipt.calculation.value == "2.15"
+    assert "Łącznie 2,15 m." in corrected.text
+    assert "Łączna długość jest za mała." in corrected.text
+    assert {
+        (x["source_id"], x["quote"]) for x in reviewer.materials[-1]["draft"]["sources"]
+    } == {(ident, card["text"]) for ident, card in cards.cards.items()}
+    assert cards.read_log.count("PARWENA") == cards.read_log.count("TRUDOM") == 6
+    assert model.calls == []
+
+    history += ({"role": "user", "content": _S05_UPDATE},)
+    assert (
+        plain_pilot_recap(
+            _S05_RECAP, history, segment_length_receipt=corrected.segment_length_receipt
+        )
+        == "Według normy z poprzedniego odczytu [TRUDOM@1]: "
+        "2,15 m, za mało wobec normy 2,3 m. "
+        "Aktualność normy wymaga ponownego odczytu."
+    )
+    assert (
+        plain_pilot_recap(
+            _S05_RECAP, history, segment_length_receipt=initial.segment_length_receipt
+        )
+        == "Potrzebuję aktualnego potwierdzonego wyniku i normy odbioru."
+    )
+
+
+@pytest.mark.parametrize("unavailable", [False, True])
+def test_segment_length_missing_reserve_clarifies_after_full_read_without_calculation(
+    unavailable,
+):
+    cards, model, reviewer = _s05_cards(reserve=None), Model(), Reviewer()
+    if unavailable:
+        cards.cards["PARWENA"]["status"] = "unavailable"
+    result = _s05_turn(
+        _S05_TOTAL, _s05_history(_S05_INITIAL), cards, model, reviewer, []
+    )
+    assert result.text == "Jaka jest długość osobnego odcinka zapasu?"
+    assert not isinstance(result, PilotSegmentLengthAnswer)
+    material = reviewer.materials[-1]
+    assert material["plan"]["mode"] == "clarify"
+    assert material["evidence"]["calculations"] == []
+    assert len(material["evidence"]["sources"]) == (1 if unavailable else 2)
+    assert material["evidence"]["unavailable"] == (["PARWENA"] if unavailable else [])
+    assert cards.read_log[:2] == ["PARWENA", "TRUDOM"]
+    assert cards.read_log.count("TRUDOM") == 2
+    assert cards.read_log.count("PARWENA") == (1 if unavailable else 2)
+    assert model.calls == []
+
+
+def test_segment_length_equality_and_mixed_units():
+    cards, model, reviewer = (
+        _s05_cards(reserve="65 cm", minimum="215 cm"),
+        Model(),
+        Reviewer(),
+    )
+    history = _s05_history(_S05_INITIAL, _S05_TOTAL)
+    result = _s05_turn(_S05_UPDATE, history, cards, model, reviewer, [])
+    assert isinstance(result, PilotSegmentLengthAnswer)
+    assert result.segment_length_receipt.calculation.expression == "150/100+65/100"
+    assert "0,65 m [PARWENA]" in result.text
+    assert "Łącznie 2,15 m." in result.text
+    assert "Norma odbioru wynosi 2,15 m [TRUDOM]" in result.text
+    assert "Łączna długość spełnia normę." in result.text
+    assert (
+        plain_pilot_recap(
+            _S05_RECAP,
+            _s05_history(_S05_INITIAL, _S05_TOTAL, _S05_UPDATE),
+            segment_length_receipt=result.segment_length_receipt,
+        )
+        == "Według normy z poprzedniego odczytu [TRUDOM@1]: "
+        "2,15 m, wystarczy wobec normy 2,15 m. "
+        "Aktualność normy wymaga ponownego odczytu."
+    )
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "Chcę odnaleźć osobę odbierającą komplet. Na etykiecie widnieje nazwa punktu U Ady.",
+        "Szukam odbierającego nowy komplet. Na etykiecie widnieje nazwa punktu Warsztat Pod Dębem.",
+    ],
+)
+def test_pickup_label_guidance_keeps_point_name_and_unconfirmed_person(message):
+    history, guidance = plain_pilot_context(message, ())
+    assert not history
+    assert "Przytocz dosłownie nazwę punktu z etykiety" in guidance
+    assert "osoby odbierającej pozostaje nieustalona" in guidance
+    assert plain_pilot_context("Kto nazywa się Ada?", ()) == ((), "")
+    known = (
+        {"role": "user", "content": "Odbierająca osoba została już potwierdzona."},
+    )
+    assert plain_pilot_context(message, known) == (known, "")
+
+
+def test_plain_pilot_keeps_explicit_group_and_main_length_on_first_turn():
+    group = "W grupie wycieczkowej jest 16 dorosłych, 7 dzieci. Jedna opiekunka wlicza się już do dorosłych."
+    cable = (
+        "Mamy 180 cm przewodu, a dostawca gwarantuje osobny odcinek zapasu w metrach."
+    )
+    assert plain_pilot_recap(group, ()) == (
+        "16 dorosłych i 7 dzieci. Opiekunka jest już wliczona do dorosłych."
+    )
+    assert plain_pilot_recap(cable, ()) == (
+        "Odcinek główny ma 180 cm. Dostawca gwarantuje osobny zapas, ale jego długość pozostaje nieznana."
+    )
+    assert (
+        plain_pilot_recap(
+            cable, ({"role": "user", "content": "Mamy już odczytaną kartę zapasu."},)
+        )
+        is None
+    )
+
+
+def test_bound_speed_replays_w34_without_duplicate_conversion_or_model_placeholders():
+    from venom_core.services.grounded_speed_measurement import (
+        PilotSpeedMeasurementAnswer,
+    )
+
+    first = (
+        "Za pierwszym odczytem przejazd 720 metrów trwał 90 sekund razem z postojem. "
+        "Oblicz kalkulatorem średnią prędkość w m/s."
+    )
+    revision = (
+        "Poprawka: cała droga to nadal 720 m, czas łącznie 120 s. "
+        "Użyj kalkulatora i podaj średnią prędkość w km/h."
+    )
+    request = (
+        "Napisz krótko, czy liczby 8 i 21,6 znaczą, że po poprawce jechałem szybciej. "
+        "Odnieś się do jednostki i czasu."
+    )
+    backend, model, reviewer = Sources(), Model(), Reviewer()
+    a = run_pilot_turn(
+        first, "one", backend, model, reviewer, required=Requirements(calculation=True)
+    )
+    history = (
+        {"role": "user", "content": first},
+        {"role": "assistant", "content": "Pierwszy wynik wyniósł 77,76 km/h."},
+    )
+    b = run_pilot_turn(
+        revision,
+        "two",
+        backend,
+        model,
+        reviewer,
+        history=history,
+        required=Requirements(calculation=True),
+    )
+    assert isinstance(a, PilotSpeedMeasurementAnswer)
+    assert isinstance(b, PilotSpeedMeasurementAnswer)
+    assert a.text == "8 m/s."
+    assert b.text == "21,6 km/h."
+    assert b.speed_measurement_receipt.calculation.expression == "(720/120)*18/5"
+    assert reviewer.materials[-1]["draft"]["sources"] == []
+    assert not model.calls
+    history += ({"role": "user", "content": revision},)
+    assert (
+        plain_pilot_recap(
+            request,
+            history,
+            speed_measurement_receipts=(
+                a.speed_measurement_receipt,
+                b.speed_measurement_receipt,
+            ),
+        )
+        == "Nie. Przed korektą średnia wynosiła 8 m/s, a po niej 6 m/s (21,6 km/h). Dystans pozostał ten sam, a zmierzony czas to wcześniej 90 s i po korekcie 120 s."
+    )
+    comparison = plain_pilot_recap(
+        "Porównaj obie średnie prędkości w m/s i uwzględnij zmianę czasu.",
+        history,
+        speed_measurement_receipts=(
+            a.speed_measurement_receipt,
+            b.speed_measurement_receipt,
+        ),
+    )
+    assert comparison is not None
+    assert comparison.startswith(
+        "Przed korektą średnia wynosiła 8 m/s, a po niej 6 m/s"
+    )
+    assert plain_pilot_recap(
+        request, history, speed_measurement_receipts=(a.speed_measurement_receipt,)
+    ).startswith("Do porównania potrzebuję")
+
+
+@pytest.mark.parametrize(
+    "expression, origin,target",
+    [
+        ("(720/120)*3.6", "m/s", "km/h"),
+        ("(720/120)*18/5", "m/s", "km/h"),
+        ("(720/120)*(18/5)", "m/s", "km/h"),
+        ("(90/3)*5/18", "km/h", "m/s"),
+    ],
+)
+def test_cross_unit_speed_draft_refuses_a_known_repeated_scale(
+    expression, origin, target
+):
+    model = Model()
+    model.override["plan"] = {
+        "calculations": [
+            {
+                "calculation_id": "speed",
+                "expression": expression,
+                "unit": target,
+                "input_unit": origin,
+            }
+        ]
+    }
+    backend, reviewer = Sources(), Reviewer()
+    required = Requirements(calculation=True)
+    with pytest.raises(EvidenceError, match="pilot_speed_double_conversion"):
+        run_pilot_turn(
+            f"Podaj prędkość w {target}.",
+            "r",
+            backend,
+            model,
+            reviewer,
+            required=required,
+        )
+
+
+def test_named_source_reads_can_be_full_with_only_one_relevant_citation():
+    backend = PickupRoleCards()
+    reviewer, model = Reviewer(), Model()
+    model.override["draft"] = {
+        "prose": "Osoba odbierająca w piątek wymaga potwierdzenia [SILETOR].",
+        "sources": [
+            {
+                "source_id": "SILETOR",
+                "version": backend.current_ref("SILETOR").version,
+                "quote": "osoba odbierająca wymaga potwierdzenia",
+            }
+        ],
+        "calculations": [{"calculation_id": "none", "value": "none", "unit": "none"}],
+    }
+    trace = []
+    result = run_pilot_turn(
+        "Przeczytaj kartę MORKADA i kartę SILETOR. Czy potwierdzono osobę odbierającą?",
+        "r",
+        backend,
+        model,
+        reviewer,
+        required=Requirements(sources=True),
+        trace=trace,
+    )
+    assert result.text.endswith("[SILETOR].")
+    assert "[MORKADA]" not in result.text
+    assert reviewer.materials[0]["draft"]["calculations"] == []
+    assert "empty_calculation_placeholder_removed" in [step["phase"] for step in trace]
+    assert backend.reads.count("MORKADA") == 3
+    assert backend.reads.count("SILETOR") == 3
+    assert len(reviewer.materials[0]["evidence"]["sources"]) == 2
+    with pytest.raises(EvidenceError, match="answer_named_source_required"):
+        run_pilot_turn(
+            "Zacytuj kartę MORKADA i kartę SILETOR. Czy potwierdzono osobę odbierającą?",
+            "explicit",
+            backend,
+            model,
+            reviewer,
+            required=Requirements(sources=True),
+        )
+    model.override["draft"]["calculations"] = [
+        {"calculation_id": "none", "value": "77", "unit": "zł"}
+    ]
+    with pytest.raises(EvidenceError, match="answer_calculation_unknown"):
+        run_pilot_turn(
+            "Przeczytaj kartę MORKADA i kartę SILETOR. Czy potwierdzono odbiór?",
+            "unauthorized",
+            backend,
+            model,
+            reviewer,
+            required=Requirements(sources=True),
+        )
+
+
+def test_source_recall_is_bound_to_a_published_history_and_current_cards():
+    from venom_core.services.grounded_pilot import PilotSourceAnswer
+
+    backend, model = PickupRoleCards(), Model()
+    message = "Przeczytaj kartę MORKADA i kartę SILETOR. Czy potwierdzono odbiór?"
+    model.override["draft"] = {
+        "prose": "Osoba odbierająca wymaga potwierdzenia [SILETOR].",
+        "sources": [
+            {
+                "source_id": "SILETOR",
+                "version": "1",
+                "quote": "osoba odbierająca wymaga potwierdzenia",
+            }
+        ],
+        "calculations": [],
+    }
+    required = Requirements(sources=True)
+    rejecting_reviewer = Reviewer(False)
+    with pytest.raises(EvidenceError, match="pilot_semantic_rejected"):
+        run_pilot_turn(
+            message, "r", backend, model, rejecting_reviewer, required=required
+        )
+    published = run_pilot_turn(
+        message, "r", backend, model, Reviewer(), required=required
+    )
+    assert isinstance(published, PilotSourceAnswer)
+    history = (
+        {"role": "user", "content": message},
+        {"role": "assistant", "content": published.text},
+    )
+    read_log = backend.reads[:]
+    assert published.recall_context(history, backend) == [
+        {"source_id": ident, "text": body} for ident, body in backend.texts.items()
+    ]
+    assert backend.reads == read_log + ["MORKADA", "SILETOR"]
+    changed_history = (*history, {"role": "user", "content": "To jednak inny komplet."})
+    with pytest.raises(EvidenceError, match="pilot_source_recall_history_mismatch"):
+        published.recall_context(changed_history, backend)
+    backend.texts["MORKADA"] += " Stara karta jest nieaktualna."
+    with pytest.raises(EvidenceError, match="answer_source_stale"):
+        published.recall_context(history, backend)
+
+
+_ENROLLMENT_RECAP = (
+    "W dwóch zdaniach przypomnij kanał i termin zgłoszenia, a następnie datę wyników."
+)
+_ENROLLMENT_INPUT = (
+    "Zgłoszenie na warsztaty przyjmuje panel do 18 lipca do godziny 15:00."
+)
+_ENROLLMENT_RESULT = "Wyniki naboru zostaną ogłoszone 23 lipca."
+
+
+def _linked_enrollment_cards(cards):
+    return {
+        ident: body + " Identyfikator naboru: WARSZTATY-2026."
+        for ident, body in cards.items()
+    }
+
+
+def _enrollment_documents(cards, *, linked=False):
+    if linked:
+        cards = _linked_enrollment_cards(cards)
+    return tuple(
+        SourceDocument(SourceRef(ident, "1", text_hash(body)), body, True)
+        for ident, body in cards.items()
+    )
+
+
+def test_source_enrollment_binds_distinct_fields_to_exact_evidence():
+    from venom_core.services.grounded_source_enrollment import bind_enrollment_evidence
+
+    docs = _enrollment_documents(
+        {
+            "KANDEL": _ENROLLMENT_INPUT,
+            "MIRWEN": _ENROLLMENT_RESULT + " Materiały są w cenie.",
+        },
+        linked=True,
+    )
+    bound = bind_enrollment_evidence(docs)
+    assert (bound.channel.value, bound.deadline.value, bound.results_date.value) == (
+        "panel",
+        "18 lipca o 15:00",
+        "23 lipca",
+    )
+    assert bound.channel.proof == bound.deadline.proof
+    assert bound.channel.proof.quote == _ENROLLMENT_INPUT
+    assert bound.results_date.proof.quote == _ENROLLMENT_RESULT
+    assert bound.results_date.proof.source_id == "MIRWEN"
+    assert bound.render() == (
+        "Kanał zgłoszeń to panel, a termin mija 18 lipca o 15:00. "
+        "Wyniki zostaną ogłoszone 23 lipca."
+    )
+
+
+@pytest.mark.parametrize(
+    "cards, reason",
+    [
+        (
+            {
+                "KANDEL": "Zgłoszenie na warsztaty przyjmuje KANDEL do 18 lipca o 15:00.",
+                "MIRWEN": _ENROLLMENT_RESULT,
+            },
+            "enrollment_channel_is_source_id",
+        ),
+        (
+            {
+                "KANDEL": "Zgłoszenie przyjmuje karta KANDEL do 18 lipca o 15:00.",
+                "MIRWEN": _ENROLLMENT_RESULT,
+            },
+            "enrollment_channel_is_source_id",
+        ),
+        (
+            {
+                "KANDEL": "Zgłoszenie na warsztaty przyjmuje panel.",
+                "MIRWEN": "Wyniki naboru zostaną ogłoszone 23 lipca. Otwieramy o 15:00.",
+            },
+            "enrollment_missing_deadline",
+        ),
+        (
+            {
+                "KANDEL": _ENROLLMENT_INPUT,
+                "MIRWEN": "Listę uczestników opublikujemy 31 kwietnia.",
+            },
+            "enrollment_invalid_date",
+        ),
+        (
+            {
+                "KANDEL": _ENROLLMENT_INPUT,
+                "MIRWEN": _ENROLLMENT_RESULT + " Wyniki ogłosimy 24 lipca.",
+            },
+            "enrollment_conflicting_results_date",
+        ),
+        (
+            {
+                "KANDEL": _ENROLLMENT_INPUT
+                + " Formularze przyjmujemy do 18 lipca o 15:10.",
+                "MIRWEN": _ENROLLMENT_RESULT,
+            },
+            "enrollment_conflicting_deadline",
+        ),
+        (
+            {
+                "KANDEL": "Zapisy na zajęcia obsługuje kiosk przy wejściu.",
+                "MIRWEN": "Zgłoszenia przyjmujemy do 9 września o 14:30. "
+                + _ENROLLMENT_RESULT,
+            },
+            "enrollment_unbound_submission",
+        ),
+        (
+            {
+                "KANDEL": _ENROLLMENT_INPUT,
+                "MIRWEN": "Zgłoszenia przyjmujemy do 23 lipca o 11:00.",
+            },
+            "enrollment_conflicting_deadline",
+        ),
+    ],
+)
+def test_source_enrollment_never_renders_substituted_or_missing_fields(cards, reason):
+    from venom_core.services.grounded_source_enrollment import bind_enrollment_evidence
+
+    documents = _enrollment_documents(cards)
+    with pytest.raises(EvidenceError, match=reason):
+        bind_enrollment_evidence(documents)
+
+
+def test_source_enrollment_recap_uses_the_released_history_and_current_card_versions():
+    from venom_core.services.grounded_pilot import PilotSourceAnswer
+
+    backend, model = PickupRoleCards(), Model()
+    backend.texts = {
+        "TORAND": (
+            "Zapisy na zajęcia terenowe obsługuje kiosk przy wejściu. "
+            "Zgłoszenia przyjmujemy do 9 września do godziny 14:30."
+        ),
+        "KELVIR": "Listę uczestników zajęć opublikujemy 16 września. Materiały są w cenie.",
+    }
+    backend.texts = _linked_enrollment_cards(backend.texts)
+    message = "Przeczytaj kartę TORAND i kartę KELVIR. Podaj datę ogłoszenia wyników."
+    model.override["draft"] = {
+        "prose": "Listę uczestników zajęć opublikujemy 16 września [KELVIR].",
+        "sources": [
+            {
+                "source_id": "KELVIR",
+                "version": "1",
+                "quote": "Listę uczestników zajęć opublikujemy 16 września",
+            }
+        ],
+        "calculations": [],
+    }
+    published = run_pilot_turn(
+        message, "r", backend, model, Reviewer(), required=Requirements(sources=True)
+    )
+    assert isinstance(published, PilotSourceAnswer)
+    history = (
+        {"role": "user", "content": message},
+        {"role": "assistant", "content": published.text},
+    )
+    reads = backend.reads[:]
+    assert published.recall_enrollment(
+        "W dwóch zdaniach przypomnij gdzie i do kiedy mam się zgłosić oraz "
+        "kiedy poznam listę uczestników.",
+        history,
+        backend,
+    ) == (
+        "Kanał zgłoszeń to kiosk przy wejściu, a termin mija 9 września o 14:30. "
+        "Wyniki zostaną ogłoszone 16 września."
+    )
+    assert backend.reads == reads + ["TORAND", "KELVIR"]
+    assert (
+        published.recall_enrollment(
+            "Podaj tylko aktualną lokalizację i kto dopina osłonę.", history, backend
+        )
+        is None
+    )
+    with pytest.raises(EvidenceError, match="pilot_source_recall_history_mismatch"):
+        published.recall_enrollment(_ENROLLMENT_RECAP, history[:1], backend)
+    backend.texts["TORAND"] += " Termin został odwołany."
+    with pytest.raises(EvidenceError, match="answer_source_stale"):
+        published.recall_enrollment(_ENROLLMENT_RECAP, history, backend)
+
+
+def test_source_enrollment_recap_does_not_use_an_organizational_meeting_date():
+    from venom_core.services.grounded_source_enrollment import bind_enrollment_evidence
+
+    bound = bind_enrollment_evidence(
+        _enrollment_documents(
+            {
+                "SOLWET": "Zgłoszenie na przegląd muzyczny przyjmuje sekretariat do 11 sierpnia do godziny 17:20.",
+                "RENKOL": "Wyniki przeglądu zostaną ogłoszone 14 sierpnia. Spotkanie organizacyjne odbędzie się 16 sierpnia.",
+            },
+            linked=True,
+        )
+    )
+    assert bound.channel.value == "sekretariat"
+    assert bound.deadline.value == "11 sierpnia o 17:20"
+    assert bound.results_date.value == "14 sierpnia"
+    assert (
+        bound.results_date.proof.quote
+        == "Wyniki przeglądu zostaną ogłoszone 14 sierpnia."
+    )
+
+
+def test_source_enrollment_accepts_explicit_field_labels_and_a_fresh_recap_form():
+    from venom_core.services.grounded_source_enrollment import (
+        bind_enrollment_evidence,
+        requests_enrollment_recap,
+    )
+
+    assert requests_enrollment_recap(
+        "Podaj kanał zgłoszeń, termin składania zgłoszeń z godziną "
+        "oraz datę publikacji wyników w dokładnie dwóch zdaniach."
+    )
+    assert not requests_enrollment_recap(
+        "Podaj kanał i termin zgłoszeń oraz datę wyników. Nie podawaj godziny."
+    )
+    bound = bind_enrollment_evidence(
+        _enrollment_documents(
+            {
+                "KALPEN": "Kanał zgłoszeń: formularz internetowy. Termin składania zgłoszeń: do 6 maja o 9:15.",
+                "VORTEN": "Data publikacji wyników: 10 maja.",
+            },
+            linked=True,
+        )
+    )
+    assert bound.channel.value == "formularz internetowy"
+    assert bound.deadline.value == "6 maja o 09:15"
+    assert bound.results_date.value == "10 maja"
+
+
+def test_source_role_and_historical_day_stay_in_the_established_recap_path():
+    from venom_core.services.grounded_pilot import PilotSourceAnswer
+
+    backend, model = PickupRoleCards(), Model()
+    backend.texts = {
+        "KORFELA": "Zapisy z poniedziałkowej próby technicznej. Wnęka A była miejscem testowego odstawienia mównicy.",
+        "BIRNATA": "Po bieżącej próbie odstaw mównicę przy drzwiach D. Osłonę dopina technik dyżurny.",
+    }
+    message = "Przeczytaj kartę KORFELA i kartę BIRNATA. Podaj dzień wcześniejszej próby i aktualną rolę."
+    model.override["draft"] = {
+        "prose": "Wcześniejsza próba była w poniedziałek [KORFELA]. Osłonę dopina technik dyżurny [BIRNATA].",
+        "sources": [
+            {
+                "source_id": "KORFELA",
+                "version": "1",
+                "quote": "poniedziałkowej próby technicznej",
+            },
+            {
+                "source_id": "BIRNATA",
+                "version": "1",
+                "quote": "Osłonę dopina technik dyżurny.",
+            },
+        ],
+        "calculations": [],
+    }
+    result = run_pilot_turn(
+        message, "r", backend, model, Reviewer(), required=Requirements(sources=True)
+    )
+    assert isinstance(result, PilotSourceAnswer)
+    history = (
+        {"role": "user", "content": message},
+        {"role": "assistant", "content": result.text},
+    )
+    assert (
+        result.recall_enrollment(
+            "Podaj tylko aktualną lokalizację i kto dopina osłonę.", history, backend
+        )
+        is None
+    )
+    assert result.recall_context(history, backend) == [
+        {"source_id": ident, "text": text} for ident, text in backend.texts.items()
+    ]
+    assert result.text == model.override["draft"]["prose"]
+
+
+_RESULTS_CITATION_REQUEST = (
+    "Przeczytaj ponownie kartę KANDEL i kartę MIRWEN. "
+    "Zacytuj kartę MIRWEN i podaj tylko datę wyników."
+)
+
+
+def test_results_date_uses_minimal_literal_citation_and_reviewed_recap():
+    from venom_core.services.grounded_pilot import PilotSourceAnswer
+
+    backend, model, reviewer = PickupRoleCards(), Model(), Reviewer()
+    backend.texts = {
+        "KANDEL": _ENROLLMENT_INPUT,
+        "MIRWEN": _ENROLLMENT_RESULT + " Potwierdzenie przychodzi automatycznie.",
+    }
+    backend.texts = _linked_enrollment_cards(backend.texts)
+    stop = Reviewer(False)
+    with pytest.raises(EvidenceError, match="pilot_semantic_rejected"):
+        run_pilot_turn(
+            _RESULTS_CITATION_REQUEST,
+            "r",
+            backend,
+            model,
+            stop,
+            required=Requirements(sources=True),
+        )
+    released = run_pilot_turn(
+        _RESULTS_CITATION_REQUEST,
+        "r",
+        backend,
+        model,
+        reviewer,
+        required=Requirements(sources=True),
+    )
+    assert not model.calls
+    assert isinstance(released, PilotSourceAnswer)
+    assert released.text == f"„{_ENROLLMENT_RESULT}” [MIRWEN]"
+    draft = reviewer.materials[0]["draft"]
+    assert draft == stop.materials[0]["draft"]
+    assert draft["sources"] == [
+        {"source_id": "MIRWEN", "version": "1", "quote": _ENROLLMENT_RESULT}
+    ]
+    history = (
+        {"role": "user", "content": _RESULTS_CITATION_REQUEST},
+        {"role": "assistant", "content": released.text},
+    )
+    assert released.recall_enrollment(_ENROLLMENT_RECAP, history, backend) == (
+        "Kanał zgłoszeń to panel, a termin mija 18 lipca o 15:00. "
+        "Wyniki zostaną ogłoszone 23 lipca."
+    )
+
+
+@pytest.mark.parametrize(
+    "submission, results, reason",
+    [
+        (
+            _ENROLLMENT_INPUT + " Wyniki ogłosimy 24 lipca.",
+            _ENROLLMENT_RESULT,
+            "enrollment_conflicting_results_date",
+        ),
+        (
+            _ENROLLMENT_INPUT + " " + _ENROLLMENT_RESULT,
+            "Potwierdzenie przychodzi automatycznie.",
+            "enrollment_results_quote_missing",
+        ),
+        (
+            _ENROLLMENT_INPUT,
+            _ENROLLMENT_RESULT + " Termin wyników przesunięto na 24 lipca.",
+            "enrollment_results_date_ambiguous",
+        ),
+        (
+            _ENROLLMENT_INPUT,
+            "Wyniki naboru zostaną ogłoszone 23 lipca\njeżeli komisja zdąży.",
+            "enrollment_results_date_ambiguous",
+        ),
+    ],
+)
+def test_results_date_does_not_release_conflicting_or_unbacked_citation(
+    submission, results, reason
+):
+    backend, model, reviewer = PickupRoleCards(), Model(), Reviewer()
+    backend.texts = {"KANDEL": submission, "MIRWEN": results}
+    with pytest.raises(EvidenceError, match=reason):
+        run_pilot_turn(
+            _RESULTS_CITATION_REQUEST,
+            "r",
+            backend,
+            model,
+            reviewer,
+            required=Requirements(sources=True),
+        )
+    assert not model.calls
+    assert not reviewer.materials
+
+
+def test_results_date_rechecks_even_the_uncited_card_after_review():
+    backend, model, reviewer = PickupRoleCards(), Model(), Reviewer()
+    backend.texts = {"KANDEL": _ENROLLMENT_INPUT, "MIRWEN": _ENROLLMENT_RESULT}
+    reviewer.hook = lambda: backend.texts.update(
+        {"KANDEL": "Zgłoszenie na warsztaty przyjmuje panel do 20 lipca o 15:00."}
+    )
+    with pytest.raises(EvidenceError, match="answer_source_stale"):
+        run_pilot_turn(
+            _RESULTS_CITATION_REQUEST,
+            "r",
+            backend,
+            model,
+            reviewer,
+            required=Requirements(sources=True),
+        )
+    assert not model.calls
+
+
+@pytest.mark.parametrize(
+    (
+        "relation",
+        "first_action",
+        "recipient_relation",
+        "thing",
+        "preposition",
+        "time",
+        "action",
+    ),
+    [
+        (
+            "przekazaniu statywu",
+            "zostawić go",
+            "u",
+            "statyw",
+            "po",
+            "17:00",
+            "zostawię u Ciebie",
+        ),
+        (
+            "odebraniu pompy",
+            "odebrać ją",
+            "od",
+            "pompę",
+            "o",
+            "19:15",
+            "odbiorę od Ciebie",
+        ),
+    ],
+)
+def test_handoff_sms_uses_latest_time_and_addresses_recipient(
+    relation, first_action, recipient_relation, thing, preposition, time, action
+):
+    history = (
+        {
+            "role": "user",
+            "content": (
+                f"Ułóż krótką wiadomość o {relation}. Mogę przyjść po 16:30 i mam "
+                f"{first_action} {recipient_relation} Tomka."
+            ),
+        },
+        {"role": "assistant", "content": "Poproś Tomka o odebranie o 16:30."},
+        {
+            "role": "user",
+            "content": (
+                f"Poproś Tomka o potwierdzenie, czy będzie o 17:40. Nadal chodzi o {thing}."
+            ),
+        },
+        {
+            "role": "user",
+            "content": (
+                "Jednak nie obiecuj, że będę punktualnie. "
+                f"Zapytaj, czy {preposition} {time} mu pasuje."
+            ),
+        },
+    )
+    final = "Zwróć tylko gotowy SMS, bez tytułu."
+    assert plain_pilot_recap(final, history) == (
+        f"Cześć, czy pasuje Ci, jeśli {action} {thing} {preposition} {time}?"
+    )
+    changed = (
+        *history[:-1],
+        {"role": "user", "content": "Jednak chodzi o inną osobę."},
+    )
+    assert plain_pilot_recap(final, changed) is None
+    assert plain_pilot_recap("Wyjaśnij, od czego zależy termin.", history) is None
+
+
+def test_thermal_reply_checks_flow_and_choice_before_rendering():
+    from venom_core.services.grounded_thermal_contact import ThermalStep
+
+    question = (
+        "Dotykam dwóch płytek, stalowej i z filcu, które mają tę samą temperaturę. "
+        "Najpierw obie są chłodniejsze od dłoni, potem obie są cieplejsze od dłoni. "
+        "Która może wydawać się zimniejsza w pierwszym przypadku, a która gorętsza "
+        "w drugim? Wyjaśnij mechanizm w dwóch zdaniach."
+    )
+    valid = (
+        ThermalStep("colder", "hand_to_objects", "stal"),
+        ThermalStep("warmer", "objects_to_hand", "stal"),
+    )
+    invalid_draft = (valid[0], ThermalStep("warmer", "hand_to_objects", "filc"))
+    with pytest.raises(
+        EvidenceError, match="thermal_flow_mismatch,thermal_material_mismatch"
+    ):
+        plain_pilot_recap(question, (), thermal_draft=invalid_draft)
+    with pytest.raises(EvidenceError, match="thermal_conditions_mismatch"):
+        plain_pilot_recap(question, (), thermal_draft=valid[::-1])
+    answer = plain_pilot_recap(question, (), thermal_draft=valid)
+    assert answer == plain_pilot_recap(question, ())
+    assert answer is not None
+    colder, warmer = answer.rstrip(".").split(". ")
+    assert "stal" in colder
+    assert "z dłoni do przedmiotów" in colder
+    assert "stal" in warmer
+    assert "z przedmiotów do dłoni" in warmer
+
+
+@pytest.mark.parametrize(
+    ("pair", "premise", "error"),
+    [
+        (
+            "stalowej i z aluminium",
+            "Obie są chłodniejsze od palca.",
+            "thermal_contact_materials_unbound",
+        ),
+        (
+            "stalowej i z filcu",
+            "Obie nie są chłodniejsze od palca.",
+            "thermal_contact_temperature_unbound",
+        ),
+        (
+            "stalowej i z filcu",
+            "Najpierw obie są chłodniejsze od palca, potem jedna jest cieplejsza od palca.",
+            "thermal_contact_temperature_unbound",
+        ),
+        (
+            "stalowej i z filcu",
+            "Obie są chłodniejsze od palca, ale stal jest pokryta folią.",
+            "thermal_contact_premises_unbound",
+        ),
+    ],
+)
+def test_thermal_reply_rejects_unbound_or_modified_premises(pair, premise, error):
+    # A covering changes the comparison because the hand touches the covering.
+    message = (
+        f"Dotykam dwóch płytek, {pair}, które mają tę samą temperaturę. "
+        f"{premise} Która może wydawać się chłodniejsza?"
+    )
+    with pytest.raises(EvidenceError, match=error):
+        plain_pilot_recap(message, ())
+
+
+def test_thermal_reply_does_not_select_unrelated_recap():
+    assert (
+        plain_pilot_recap("Który ręcznik przyjemniejszy i cieplejszy w dotyku?", ())
+        is None
+    )
+
+
+def test_thermal_reply_cannot_treat_uncertain_equality_as_a_fact():
+    prompt = (
+        "Dotykam stali i filcu. Nie wiadomo, czy mają tę samą temperaturę. "
+        "Oba są chłodniejsze od palca. Który może wydawać się chłodniejszy?"
+    )
+    with pytest.raises(EvidenceError, match="thermal_contact_premises_unbound"):
+        plain_pilot_recap(prompt, ())
+
+
+@pytest.mark.parametrize("recall", ["context", "enrollment"])
+def test_source_recall_rejects_unavailable_cards_with_unchanged_references(recall):
+    from venom_core.services.grounded_pilot import PilotSourceAnswer
+
+    cards = _linked_enrollment_cards(
+        {"KANDEL": _ENROLLMENT_INPUT, "MIRWEN": _ENROLLMENT_RESULT}
+    )
+    backend = FrozenPacket(
+        [
+            {"id": ident, "version": "1", "text": body, "status": "available"}
+            for ident, body in cards.items()
+        ]
+    )
+    documents = _enrollment_documents(cards)
+    history = ({"role": "user", "content": "Przeczytaj obie karty."},)
+    released = PilotSourceAnswer("proof", "Wyniki.", material_hash(history), documents)
+
+    def read():
+        if recall == "context":
+            return released.recall_context(history, backend)
+        return released.recall_enrollment(_ENROLLMENT_RECAP, history, backend)
+
+    assert read()
+    original = backend.current_ref("KANDEL")
+    backend.cards["KANDEL"]["status"] = "unavailable"
+    assert backend.current_ref("KANDEL") == original
+    with pytest.raises(EvidenceError, match="answer_source_unavailable"):
+        read()
+
+
+@pytest.mark.parametrize(
+    "results",
+    [
+        _ENROLLMENT_RESULT + " Termin wyników odwołano.",
+        "Termin wyników anulowano. " + _ENROLLMENT_RESULT,
+        _ENROLLMENT_RESULT + " Termin wyników nie obowiązuje.",
+        "Wyniki naboru zostaną ogłoszone 23 lipca\njeżeli komisja zdąży.",
+    ],
+)
+def test_results_date_has_identical_ambiguity_checks_in_quote_and_recap(results):
+    from venom_core.services.grounded_source_enrollment import (
+        bind_enrollment_evidence,
+        requested_results_date_quote,
+    )
+
+    documents = _enrollment_documents(
+        {"KANDEL": _ENROLLMENT_INPUT, "MIRWEN": results}, linked=True
+    )
+    with pytest.raises(EvidenceError, match="enrollment_results_date_ambiguous"):
+        requested_results_date_quote(_RESULTS_CITATION_REQUEST, documents)
+    with pytest.raises(EvidenceError, match="enrollment_results_date_ambiguous"):
+        bind_enrollment_evidence(documents)
+
+
+@pytest.mark.parametrize(
+    "submission_identity, results_identity",
+    [
+        ("", ""),
+        (" Nabór: WARSZTATY muzyczne.", " Nabór: WARSZTATY plastyczne."),
+        (" Identyfikator naboru: WARSZTATY-2026.", ""),
+        (
+            " Identyfikator naboru: WARSZTATY-2026.",
+            " Identyfikator naboru: KONKURS-2026.",
+        ),
+        (
+            " Identyfikator naboru: WARSZTATY-2026. Nabór: INNY.",
+            " Identyfikator naboru: WARSZTATY-2026.",
+        ),
+    ],
+)
+def test_enrollment_does_not_combine_unrelated_or_unidentified_cards(
+    submission_identity, results_identity
+):
+    from venom_core.services.grounded_source_enrollment import bind_enrollment_evidence
+
+    documents = _enrollment_documents(
+        {
+            "KANDEL": _ENROLLMENT_INPUT + submission_identity,
+            "MIRWEN": "Wyniki konkursu zostaną ogłoszone 23 lipca." + results_identity,
+        }
+    )
+    with pytest.raises(EvidenceError, match="enrollment_unbound_submission"):
+        bind_enrollment_evidence(documents)
+
+
+def test_single_card_enrollment_needs_no_cross_card_identity_and_keeps_line_breaks():
+    from venom_core.services.grounded_source_enrollment import bind_enrollment_evidence
+
+    results = "Wyniki naboru zostaną ogłoszone\n23 lipca."
+    documents = _enrollment_documents({"JEDNA": _ENROLLMENT_INPUT + " " + results})
+    evidence = bind_enrollment_evidence(documents)
+    assert evidence.results_date.value == "23 lipca"
+    assert evidence.results_date.proof.quote == results
+
+
+@pytest.mark.parametrize("trailing", ["Przelicz.", "Sprzątanie nadal raz. Przelicz."])
+def test_duration_recap_accepts_the_same_unchanged_clauses_as_state_binding(trailing):
+    initial = (
+        "Wykonam trzy pętle po 11 minut, po całej sesji dojdzie 7 minut porządków."
+    )
+    request = "Oblicz kalkulatorem całkowity czas, w minutach."
+    released = run_pilot_turn(
+        request,
+        "r",
+        Sources(),
+        Model(),
+        Reviewer(),
+        history=({"role": "user", "content": initial},),
+        required=Requirements(calculation=True),
+    )
+    receipt = released.duration_receipt
+    recap = "Wypisz aktualny czas ostatniej pętli, jednorazowy dodatek i pełną sumę."
+    users = (*receipt.users, trailing, recap)
+    assert receipt.recap(recap, users) == receipt.recap(recap, receipt.users)
+    assert bind_duration(users) == receipt.state
+    changed = (*receipt.users, "Zmieniam czas ostatniej pętli na 8 min.")
+    assert receipt.recap(recap, changed) == (
+        "Po zmianie danych potrzebuję aktualnego wyniku kalkulatora."
+    )
+
+
+@pytest.mark.parametrize("property_name", ["ciężkie", "duże", "szerokie"])
+def test_thermal_comparison_does_not_infer_equal_temperature_from_other_properties(
+    property_name,
+):
+    message = (
+        f"Dotykam stali i filcu. Oba przedmioty są jednakowo {property_name}. "
+        "Oba są chłodniejsze od dłoni. Który może wydawać się chłodniejszy?"
+    )
+    with pytest.raises(EvidenceError, match="thermal_contact_premises_unbound"):
+        plain_pilot_recap(message, ())
+
+
+def test_gathering_recap_rejects_unrequested_parenthetical_without_final_period():
+    history = (
+        {"role": "user", "content": "Według WIERZBA sprawdź ostatnią środę."},
+        {"role": "assistant", "content": "Brama od 15:35, a pokaz o 16:25. [WIERZBA]"},
+        {"role": "user", "content": "Gdzie według WIERZBA jest zbiórka?"},
+        {
+            "role": "assistant",
+            "content": "Zbiórka tego dnia odbywa się przy makiecie (POMYLONA)",
+        },
+    )
+    assert (
+        plain_pilot_recap(
+            "Przygotuj w jednym zdaniu notatkę z godzinami i miejscem zbiórki.", history
+        )
+        is None
+    )
+
+
+def test_enrollment_line_fields_split_at_labels_without_splitting_result_conditions():
+    from venom_core.services.grounded_source_enrollment import bind_enrollment_evidence
+
+    body = (
+        "Kanał zgłoszeń: formularz internetowy\n"
+        "Termin składania zgłoszeń: do 6 maja o 9:15\n"
+        "Data publikacji wyników: 10 maja"
+    )
+    evidence = bind_enrollment_evidence(_enrollment_documents({"KARTA": body}))
+    assert evidence.channel.value == "formularz internetowy"
+    assert evidence.deadline.value == "6 maja o 09:15"
+    assert evidence.results_date.value == "10 maja"
+    conditional = body + "\njeżeli komisja zdąży."
+    documents = _enrollment_documents({"KARTA": conditional})
+    with pytest.raises(EvidenceError, match="enrollment_results_date_ambiguous"):
+        bind_enrollment_evidence(documents)
+
+
+@pytest.mark.parametrize(
+    "label", ["Poprzedni nabór", "Nieaktualny identyfikator naboru"]
+)
+def test_historical_enrollment_identity_does_not_bind_current_results(label):
+    from venom_core.services.grounded_source_enrollment import bind_enrollment_evidence
+
+    cards = {
+        "KANDEL": _ENROLLMENT_INPUT + " Identyfikator naboru: WARSZTATY-2026.",
+        "MIRWEN": _ENROLLMENT_RESULT + f" {label}: WARSZTATY-2026.",
+    }
+    documents = _enrollment_documents(cards)
+    with pytest.raises(EvidenceError, match="enrollment_unbound_submission"):
+        bind_enrollment_evidence(documents)
+
+
+@pytest.mark.parametrize("separator", [". ", "\n"])
+def test_one_card_cannot_bind_fields_from_multiple_enrollment_sections(separator):
+    from venom_core.services.grounded_source_enrollment import bind_enrollment_evidence
+
+    text = (
+        "Nabór: WARSZTATY"
+        + separator
+        + _ENROLLMENT_INPUT
+        + "\nNabór: KONKURS"
+        + separator
+        + _ENROLLMENT_RESULT
+    )
+    documents = _enrollment_documents({"KARTA": text})
+    with pytest.raises(EvidenceError, match="enrollment_unbound_submission"):
+        bind_enrollment_evidence(documents)
+
+
+def test_segment_recap_marks_saved_norm_as_historical_after_card_change():
+    cards, model, reviewer = _s05_cards(), Model(), Reviewer()
+    history = _s05_history(_S05_INITIAL)
+    released = _s05_turn(_S05_TOTAL, history, cards, model, reviewer, [])
+    history += ({"role": "user", "content": _S05_TOTAL},)
+    cards.cards["TRUDOM"]["text"] = "Minimalna łączna długość dwóch odcinków to 10 m."
+    recap = plain_pilot_recap(
+        _S05_RECAP, history, segment_length_receipt=released.segment_length_receipt
+    )
+    assert recap.startswith("Według normy z poprzedniego odczytu [TRUDOM@1]:")
+    assert "wobec normy 2,3 m" in recap
+    assert recap.endswith("Aktualność normy wymaga ponownego odczytu.")
+
+
+@pytest.mark.parametrize("negation", ["Nie jest prawdą, że", "Nieprawda, że"])
+def test_thermal_contact_rejects_negated_temperature_equality(negation):
+    base = (
+        "Dotykam stalowej płytki i filcu. "
+        "{}obie płytki są jednakowo ciepłe. "
+        "Obie są chłodniejsze od dłoni. Która jest zimniejsza w dotyku?"
+    )
+    assert plain_pilot_recap(base.format(""), ())
+    negated = base.format(negation + " ")
+    with pytest.raises(EvidenceError, match="thermal_contact_premises_unbound"):
+        plain_pilot_recap(negated, ())
+
+
+@pytest.mark.parametrize(
+    "citation", ["[POMYLONA]", "(POMYLONA)", "[WIERZBA]", "(WIERZBA)"]
+)
+def test_gathering_recap_validates_both_citation_shapes_against_named_cards(citation):
+    history = (
+        {"role": "user", "content": "Według WIERZBA sprawdź ostatnią środę."},
+        {"role": "assistant", "content": "Brama od 15:35, a pokaz o 16:25. [WIERZBA]"},
+        {"role": "user", "content": "Gdzie według WIERZBA jest zbiórka?"},
+        {
+            "role": "assistant",
+            "content": f"Zbiórka tego dnia odbywa się przy makiecie {citation}",
+        },
+    )
+    result = plain_pilot_recap(
+        "Przygotuj w jednym zdaniu notatkę z godzinami i miejscem zbiórki.", history
+    )
+    if "POMYLONA" in citation:
+        assert result is None
+    else:
+        assert result.endswith("przy makiecie. [WIERZBA]")
+
+
+def test_gathering_recap_does_not_treat_unbound_brackets_as_verified_source():
+    history = (
+        {"role": "user", "content": "W pierwszą środę sprawdź godziny."},
+        {"role": "assistant", "content": "Brama od 15:35, a pokaz o 16:25. [KARTA]"},
+        {"role": "user", "content": "Gdzie jest zbiórka?"},
+        {"role": "assistant", "content": "Zbiórka jest przy makiecie. [KARTA]"},
+    )
+    assert (
+        plain_pilot_recap(
+            "Przygotuj w jednym zdaniu notatkę z godzinami i miejscem zbiórki.", history
+        )
+        is None
+    )
+
+
+@pytest.mark.parametrize("restriction", ["", "tylko "])
+def test_pilot_honors_only_citation_scope_before_semantic_review(restriction):
+    backend, model, reviewer = PickupRoleCards(), Model(), Reviewer()
+    message = f"Zacytuj {restriction}kartę SILETOR po przeczytaniu karty MORKADA."
+    model.override["draft"] = {
+        "prose": "Punkt U Ady [MORKADA]. Osoba odbierająca wymaga potwierdzenia [SILETOR].",
+        "sources": [
+            {"source_id": ident, "version": "1", "quote": text}
+            for ident, text in backend.texts.items()
+        ],
+        "calculations": [],
+    }
+    if restriction:
+        with pytest.raises(EvidenceError, match="answer_source_not_allowed"):
+            run_pilot_turn(
+                message,
+                "r",
+                backend,
+                model,
+                reviewer,
+                required=Requirements(sources=True),
+            )
+        assert not reviewer.materials
+    else:
+        result = run_pilot_turn(
+            message, "r", backend, model, reviewer, required=Requirements(sources=True)
+        )
+        assert "[MORKADA]" in result.text
+    assert {"MORKADA", "SILETOR"} <= set(backend.reads)
+
+
+@pytest.mark.parametrize("label", ["Identyfikator naboru", "Nabór", "Poprzedni nabór"])
+def test_enrollment_identity_value_can_continue_on_the_next_line(label):
+    from venom_core.services.grounded_source_enrollment import bind_enrollment_evidence
+
+    cards = {
+        "KANDEL": _ENROLLMENT_INPUT + " Identyfikator naboru:\nWARSZTATY-2026.",
+        "MIRWEN": _ENROLLMENT_RESULT + f" {label}:\nWARSZTATY-2026.",
+    }
+    documents = _enrollment_documents(cards)
+    if label == "Poprzedni nabór":
+        with pytest.raises(EvidenceError, match="enrollment_unbound_submission"):
+            bind_enrollment_evidence(documents)
+    else:
+        evidence = bind_enrollment_evidence(documents)
+        assert evidence.results_date.value == "23 lipca"
+        assert evidence.channel.value == "panel"

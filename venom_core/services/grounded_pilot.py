@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Callable
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from decimal import Decimal
 from typing import Annotated, Any, Literal, Protocol
 
@@ -43,19 +43,85 @@ from venom_core.services.grounded_dialogue import (
     bind_source_quotes,
     explicit_result_unit,
     requested_card_ids,
+    requested_citation_ids,
     requested_meeting_place,
     requested_pickup_details,
     strip_public_bookkeeping,
     text_hash,
     verify_result_prose,
 )
+from venom_core.services.grounded_duration import (
+    DURATION_CALCULATION_ID,
+    DurationReceipt,
+    DurationState,
+    PilotDurationAnswer,
+    bind_duration,
+)
+from venom_core.services.grounded_explicit_totals import (
+    ExplicitTotalReceipt,
+    GroupTotal,
+    OrderTotal,
+    PilotExplicitTotalAnswer,
+    bind_explicit_total,
+    explicit_group_intro,
+    total_identity,
+)
+from venom_core.services.grounded_handoff_sms import handoff_sms_recap
+from venom_core.services.grounded_percentages import (
+    PERCENT_CHANGE_ID,
+    PercentChange,
+    PercentChangeReceipt,
+    PilotPercentChangeAnswer,
+    bind_percent_change,
+    percent_change_recap,
+)
+from venom_core.services.grounded_pickup_roles import (
+    PickupRoles,
+    PickupRolesReceipt,
+    PilotPickupRolesAnswer,
+    bind_pickup_roles,
+    pickup_label_guidance,
+)
 from venom_core.services.grounded_presentation import (
     ROUNDING_MODE,
     clean_bookkeeping_spacing,
     normalize_claim,
+    people_noun,
     requested_precision,
     rounded_value,
 )
+from venom_core.services.grounded_prices import (
+    PRICE_MEAN_ID,
+    PilotPriceMeanAnswer,
+    PriceMeanReceipt,
+    PriceMeanState,
+    bind_price_mean,
+    mean_expression,
+    price_mean_recap,
+)
+from venom_core.services.grounded_segment_length import (
+    SEGMENT_LENGTH_ID,
+    PilotSegmentLengthAnswer,
+    SegmentLengthReceipt,
+    SegmentLengthState,
+    bind_segment_length,
+    segment_length_intro,
+)
+from venom_core.services.grounded_source_enrollment import (
+    bind_enrollment_evidence,
+    requested_results_date_quote,
+    requests_enrollment_recap,
+)
+from venom_core.services.grounded_speed_measurement import (
+    MEASURED_SPEED_ID,
+    PilotSpeedMeasurementAnswer,
+    SpeedMeasurement,
+    SpeedMeasurementReceipt,
+    bind_speed_measurement,
+    has_repeated_speed_scale,
+    speed_measurement_recap,
+)
+from venom_core.services.grounded_thermal_contact import ThermalStep, thermal_contact
 
 MAX_MODEL_INPUT_BYTES = 6000
 
@@ -311,9 +377,8 @@ def _explicit_mean(message: str) -> Calculation | None:
             r",(?=\s)|(?<=\s)i(?=\s)", match["numbers"], flags=re.IGNORECASE
         )
     ]
-    addends = "+".join(f"({item.replace(',', '.')})" for item in operands)
-    expression = f"({addends})/{len(operands)}"
-    if len(expression) > MAX_EXPRESSION_CHARS:
+    expression = mean_expression(operands)
+    if expression is None:
         return None
     return Calculation(
         calculation_id="arithmetic_mean",
@@ -546,7 +611,11 @@ def _length_draft(calculation: CalculationEvidence, places: int | None) -> Draft
     )
 
 
-def _mean_draft(calculation: CalculationEvidence, places: int | None) -> Draft:
+def _mean_draft(
+    calculation: CalculationEvidence,
+    places: int | None,
+    price_mean: PriceMeanState | None = None,
+) -> Draft:
     value = _display_calculation(calculation.value, places)
     if calculation.unit == _POINTS:
         if value.lstrip("-") == "1":
@@ -558,8 +627,14 @@ def _mean_draft(calculation: CalculationEvidence, places: int | None) -> Draft:
         else:
             unit = _POINTS
         value = f"{value} {unit}"
+    elif calculation.unit:
+        value = f"{value} {calculation.unit}"
+    subject = "Średnia"
+    if price_mean is not None:
+        prices = ", ".join(price.replace(".", ",") for price in price_mean.prices)
+        subject = f"Średnia z podanych cen ({prices})"
     return Draft(
-        prose=f"Średnia wynosi {value}.",
+        prose=f"{subject} wynosi {value}.",
         sources=[],
         calculations=[
             ResultClaim(
@@ -1187,7 +1262,7 @@ class SemanticReviewer(Protocol):
 ModelCall = Callable[[str, dict[str, Any], dict[str, Any]], dict[str, Any]]
 
 
-def material_hash(material: dict[str, Any]) -> str:
+def material_hash(material: dict[str, Any] | tuple[dict[str, str], ...]) -> str:
     return text_hash(json.dumps(material, ensure_ascii=False, sort_keys=True))
 
 
@@ -1210,6 +1285,39 @@ def _current(backend: SourceBackend, sources: tuple[SourceDocument, ...]) -> Non
             raise EvidenceError("answer_source_unavailable") from exc
         if ref != document.ref:
             raise EvidenceError("answer_source_stale")
+
+
+@dataclass(frozen=True)
+class PilotSourceAnswer(PublishedAnswer):
+    """A published source turn and its complete, already reviewed evidence."""
+
+    history_sha256: str
+    documents: tuple[SourceDocument, ...]
+
+    def recall_context(
+        self, history: tuple[dict[str, str], ...], backend: SourceBackend
+    ) -> list[dict[str, str]]:
+        """Supply data from the latest accepted read for an explicitly selected recap."""
+        self._check_recall(history, backend)
+        return [
+            {"source_id": doc.ref.source_id, "text": doc.text} for doc in self.documents
+        ]
+
+    def recall_enrollment(
+        self, message: str, history: tuple[dict[str, str], ...], backend: SourceBackend
+    ) -> str | None:
+        """Render a complete enrollment recap using only the latest published read."""
+        if not requests_enrollment_recap(message):
+            return None
+        self._check_recall(history, backend)
+        return bind_enrollment_evidence(self.documents).render()
+
+    def _check_recall(
+        self, history: tuple[dict[str, str], ...], backend: SourceBackend
+    ) -> None:
+        if material_hash(history) != self.history_sha256:
+            raise EvidenceError("pilot_source_recall_history_mismatch")
+        GroundedTurn(backend).revalidate_sources(self.documents)
 
 
 _WRAPPED_ID = re.compile(r"\(([A-Za-z0-9_:-][^()\n]{0,100})\)|\[([^\[\]\n]{1,100})\]")
@@ -1261,9 +1369,14 @@ def _public_source_references(
 
 
 def _wrapped_public_text(
-    match: re.Match[str], private_ids: set[str], source_ids: set[str]
+    match: re.Match[str],
+    private_ids: set[str],
+    source_ids: set[str],
+    numeric_calculation_ids: set[str],
 ) -> str:
     content = (match[1] or match[2]).strip()
+    if match[2] is not None and content in numeric_calculation_ids:
+        return ""
     label = _LABELLED_ID.fullmatch(content)
     if (content in private_ids and not content.isdecimal()) or (
         label and label[1] not in source_ids
@@ -1278,18 +1391,24 @@ def _wrapped_public_text(
 
 
 def _public_prose(
-    prose: str, private_ids: set[str], source_versions: dict[str, str]
+    prose: str,
+    private_ids: set[str],
+    source_versions: dict[str, str],
+    numeric_calculation_ids: set[str],
 ) -> str:
     """Remove adapter metadata before the semantic reviewer sees visible prose."""
     source_ids = set(source_versions)
     private_ids = private_ids - source_ids - UNITS
+    numeric_calculation_ids = numeric_calculation_ids - source_ids
     cleaned = _public_source_references(prose, source_versions, private_ids)
 
     def bare(match: re.Match[str]) -> str:
         return match[0] if match[1] in source_ids else ""
 
     def wrapped(match: re.Match[str]) -> str:
-        return _wrapped_public_text(match, private_ids, source_ids)
+        return _wrapped_public_text(
+            match, private_ids, source_ids, numeric_calculation_ids
+        )
 
     cleaned = _LABELLED_ID.sub(bare, _WRAPPED_ID.sub(wrapped, cleaned))
     for ident in sorted(private_ids):
@@ -1341,6 +1460,9 @@ _COMPARISON_RECAP = re.compile(
 )
 _OBSERVATION_REQUEST = re.compile(
     r"\bwykres\w*\b|\bpoziom\w*\s+(?:lini\w*|odcink\w*)\b", re.IGNORECASE
+)
+_OBSERVATION_PEOPLE_FLOW = re.compile(
+    r"\b(?:wchodz\w*|wychodz\w*|wejści\w*|wyjści\w*)\b", re.IGNORECASE
 )
 _ADDRESS_REPLACED = re.compile(
     r"\b(?:nowy|aktualny)\s+adres\s+(?:to|jest)\b", re.IGNORECASE
@@ -1458,7 +1580,9 @@ def _recap_guidance(message: str, previous: list[str], recap: bool) -> list[str]
     if _COMPARISON_RECAP.search(message):
         guidance.append(
             "Podaj obie osobne wartości z poprzednich odpowiedzi, zachowaj ich etykiety "
-            "i jednostki oraz podaj różnicę, jeśli obie wartości zostały potwierdzone."
+            "i jednostki oraz podaj różnicę, jeśli obie wartości zostały potwierdzone. "
+            "Porównaj tę samą wielkość w obu wariantach. Jeżeli podsumowujesz dwie "
+            "kwoty całego zamówienia, nie zastępuj jednej z nich ceną jednostkową."
         )
     if _OBSERVATION_REQUEST.search(message):
         guidance.append(
@@ -1467,6 +1591,13 @@ def _recap_guidance(message: str, previous: list[str], recap: bool) -> list[str]
             "czy wykres czegoś dowodzi, odpowiedz wprost i wskaż granicę wniosku. "
             "Wykres jednej wielkości nie wykazuje przebiegu zjawisk, których nie mierzy."
         )
+        if _OBSERVATION_PEOPLE_FLOW.search(message):
+            guidance.append(
+                "Jeśli wykres mierzy liczbę osób, podaj wprost oba powody, "
+                "dla których nie dowodzi braku ruchu: liczba może się nie zmienić, "
+                "gdy tyle samo osób wchodzi i wychodzi, a ruch może zajść "
+                "między kolejnymi odczytami. Nie twierdź, że do ruchu faktycznie doszło."
+            )
     if (recap or _ONE_SENTENCE_RECAP.search(message)) and any(
         _OBSERVATION_REQUEST.search(prior) for prior in previous[-2:]
     ):
@@ -1532,6 +1663,8 @@ def plain_pilot_context(
             guidance.extend(exception)
     latest = previous[-1] if recap and previous else ""
     guidance.extend(_status_guidance(message, latest))
+    if not previous and (label_guidance := pickup_label_guidance(message)):
+        guidance.append(label_guidance)
     return history, " ".join(guidance)
 
 
@@ -1546,7 +1679,10 @@ _GATHERING_PLACE = re.compile(
     r"zbiórka\s+(?:tego dnia\s+)?(?:odbywa się|jest|będzie)\s+(?:przy|we|w|na|obok|przed|za)\s++[^0-9.!?\n]+",
     re.IGNORECASE,
 )
-_PUBLIC_CARD_AT_END = re.compile(r"(\[[A-Za-z][\w-]{0,63}\])\.?$")
+_PUBLIC_CARD_AT_END = re.compile(
+    r"(?:\[(?P<bracketed>[A-Za-z][\w-]{0,63})\]|"
+    r"\((?P<parenthetical>[A-Z][A-Z0-9_-]{1,63})\))\.?$"
+)
 
 
 _WEDNESDAY = "środa"
@@ -1606,7 +1742,7 @@ def _plain_booking_recap(history: tuple[dict[str, str], ...]) -> str | None:
     required = _booking_decision(result, day)
     if required is None:
         return None
-    noun = _people_noun(size)
+    noun = people_noun(size)
     return f"{day.capitalize()}, {size} {noun}, zapis {'obowiązkowy' if required else 'niewymagany'}."
 
 
@@ -1631,14 +1767,6 @@ def _booking_decision(result: str, day: str) -> bool | None:
             if _BOOKING_REQUIRED.search(_BOOKING_OPTIONAL.sub("", candidate)):
                 decisions.add(True)
     return decisions.pop() if len(decisions) == 1 else None
-
-
-def _people_noun(size: int) -> str:
-    if size == 1:
-        return "osoba"
-    if size % 10 in (2, 3, 4) and size % 100 not in (12, 13, 14):
-        return "osoby"
-    return "osób"
 
 
 _ROOM = re.compile(r"\bsal[aię]\b\s*:?\s*", re.IGNORECASE)
@@ -2054,19 +2182,9 @@ def _plain_round_recap(message: str, history: tuple[dict[str, str], ...]) -> str
     )
 
 
-def plain_pilot_recap(message: str, focused: tuple[dict[str, str], ...]) -> str | None:
-    """Retain verified decisions and event roles from the selected exception."""
-    if _BOOKING_RECAP.search(message):
-        return _plain_booking_recap(focused)
-    contextual = (
-        _plain_schedule_recap(message, focused)
-        or _plain_stock_recap(message, focused)
-        or _plain_map_difference(message, focused)
-        or _plain_order_comparison(message, focused)
-        or _plain_round_recap(message, focused)
-    )
-    if contextual:
-        return contextual
+def _plain_gathering_recap(
+    message: str, focused: tuple[dict[str, str], ...]
+) -> str | None:
     if not (_ONE_SENTENCE_RECAP.search(message) and _GATHERING_DETAILS.search(message)):
         return None
     if tuple(turn["role"] for turn in focused) != (
@@ -2079,10 +2197,17 @@ def plain_pilot_recap(message: str, focused: tuple[dict[str, str], ...]) -> str 
     if not _DATE_EXCEPTION.search(focused[0]["content"]):
         return None
     schedule, gathering = (focused[i]["content"].strip() for i in (1, 3))
-    citation_matches = (
-        _PUBLIC_CARD_AT_END.search(schedule),
-        _PUBLIC_CARD_AT_END.search(gathering),
-    )
+    requested = {
+        ident
+        for index in (0, 2)
+        for ident in requested_card_ids(focused[index]["content"])
+    }
+    citation_matches = tuple(map(_PUBLIC_CARD_AT_END.search, (schedule, gathering)))
+    if any(
+        match and (match["bracketed"] or match["parenthetical"]) not in requested
+        for match in citation_matches
+    ):
+        return None
     schedule_match, gathering_match = citation_matches
     if schedule_match:
         schedule = schedule[: schedule_match.start()].rstrip()
@@ -2101,9 +2226,120 @@ def plain_pilot_recap(message: str, focused: tuple[dict[str, str], ...]) -> str 
     ):
         return None
     schedule = first_sentence
-    citations = " ".join(dict.fromkeys(match[1] for match in citation_matches if match))
+    citations = " ".join(
+        dict.fromkeys(
+            f"[{match['bracketed'] or match['parenthetical']}]"
+            for match in citation_matches
+            if match
+        )
+    )
     result = f"{schedule}, a {gathering[0].lower()}{gathering[1:]}."
     return f"{result} {citations}" if citations else result
+
+
+def _plain_calculation_recap(
+    message: str,
+    users: tuple[str, ...],
+    explicit_total_receipt: ExplicitTotalReceipt | None,
+    percent_change_receipts: tuple[PercentChangeReceipt, ...] | None,
+    segment_length_receipt: SegmentLengthReceipt | None,
+    price_mean_receipts: tuple[PriceMeanReceipt, ...],
+    speed_measurement_receipts: tuple[SpeedMeasurementReceipt, ...],
+) -> str | None:
+    if explicit_total_receipt is not None:
+        recap = explicit_total_receipt.recap(message, users)
+        if recap is not None:
+            return recap
+    if percent_change_receipts is not None:
+        recap = percent_change_recap(message, users, percent_change_receipts)
+        if recap is not None:
+            return recap
+    if segment_length_receipt is not None:
+        length_recap = segment_length_receipt.recap(message, users)
+        if length_recap is not None:
+            return length_recap
+    if price_mean_receipts:
+        price_recap = price_mean_recap(message, users, price_mean_receipts)
+        if price_recap is not None:
+            return price_recap
+    speed_recap = speed_measurement_recap(message, users, speed_measurement_receipts)
+    if speed_recap is not None:
+        return speed_recap
+    return None
+
+
+def _plain_context_receipt_recap(
+    message: str,
+    users: tuple[str, ...],
+    duration_receipt: DurationReceipt | None,
+    pickup_roles_receipt: PickupRolesReceipt | None,
+) -> str | None:
+    if duration_receipt is not None:
+        recap = duration_receipt.recap(message, users)
+        if recap is not None:
+            return recap
+    if pickup_roles_receipt is not None:
+        pickup_recap = pickup_roles_receipt.recap(message, users)
+        if pickup_recap is not None:
+            return pickup_recap
+    return None
+
+
+def plain_pilot_recap(
+    message: str,
+    focused: tuple[dict[str, str], ...],
+    *,
+    duration_receipt: DurationReceipt | None = None,
+    price_mean_receipts: tuple[PriceMeanReceipt, ...] = (),
+    percent_change_receipts: tuple[PercentChangeReceipt, ...] | None = None,
+    explicit_total_receipt: ExplicitTotalReceipt | None = None,
+    pickup_roles_receipt: PickupRolesReceipt | None = None,
+    segment_length_receipt: SegmentLengthReceipt | None = None,
+    speed_measurement_receipts: tuple[SpeedMeasurementReceipt, ...] = (),
+    thermal_draft: tuple[ThermalStep, ...] | None = None,
+) -> str | None:
+    """Retain verified decisions and event roles from the selected exception."""
+    users = tuple(item["content"] for item in focused if item["role"] == "user")
+    if not users:
+        intro = explicit_group_intro(message) or segment_length_intro(message)
+        if intro is not None:
+            return intro
+    if contact := thermal_contact(message):
+        if thermal_draft is not None:
+            contact.check(thermal_draft)
+        return contact.render()
+    if thermal_draft is not None:
+        raise EvidenceError("thermal_contact_premises_unbound")
+    if handoff := handoff_sms_recap(message, users):
+        return handoff
+    calculated = _plain_calculation_recap(
+        message,
+        users,
+        explicit_total_receipt,
+        percent_change_receipts,
+        segment_length_receipt,
+        price_mean_receipts,
+        speed_measurement_receipts,
+    )
+    if calculated is not None:
+        return calculated
+    verified = _plain_context_receipt_recap(
+        message, users, duration_receipt, pickup_roles_receipt
+    )
+    if verified is not None:
+        return verified
+    if _BOOKING_RECAP.search(message):
+        return _plain_booking_recap(focused)
+    contextual = (
+        _plain_schedule_recap(message, focused)
+        or _plain_stock_recap(message, focused)
+        or _plain_map_difference(message, focused)
+        or _plain_order_comparison(message, focused)
+        or _plain_round_recap(message, focused)
+    )
+    if contextual:
+        return contextual
+    return _plain_gathering_recap(message, focused)
 
 
 @dataclass(frozen=True)
@@ -2150,6 +2386,13 @@ class _DeterministicAnswer:
     source_draft: Draft | None = None
     order: _OrderCalculation | None = None
     stock: tuple[Calculation, str, tuple[_StockValue, ...]] | None = None
+    duration: DurationState | None = None
+    price_mean: PriceMeanState | None = None
+    explicit_total: OrderTotal | GroupTotal | None = None
+    speed_measurement: SpeedMeasurement | None = None
+    percent_change: PercentChange | None = None
+    pickup_roles: PickupRoles | None = None
+    segment_length: SegmentLengthState | None = None
 
 
 @dataclass(frozen=True)
@@ -2184,6 +2427,7 @@ class _PilotProof:
     evidence: Evidence | None
     review_material: dict[str, Any]
     result: _ResultFormat
+    segment_length: SegmentLengthReceipt | None = None
 
 
 def _validate_pilot_request(turn: _PilotRequest, reviewer: SemanticReviewer) -> str:
@@ -2235,6 +2479,12 @@ def _read_pilot_sources(
 def _source_only_draft(
     message: str, documents: tuple[SourceDocument, ...]
 ) -> Draft | None:
+    if results := requested_results_date_quote(message, documents):
+        return Draft(
+            prose=f"„{results.quote}” [{results.source_id}]",
+            sources=[Quote(**asdict(results))],
+            calculations=[],
+        )
     if meeting := requested_meeting_place(message, documents):
         return Draft(
             prose=f"{meeting.quote} [{meeting.source_id}]",
@@ -2253,21 +2503,105 @@ def _source_only_draft(
     return None
 
 
+def _source_deterministic_answer(
+    turn: _PilotRequest, documents: tuple[SourceDocument, ...]
+) -> _DeterministicAnswer:
+    message, prior_users = turn.message, turn.prior_users
+    if not turn.required.calculation:
+        pickup = bind_pickup_roles(message, documents)
+        if pickup is not None:
+            roles, signer_requested = pickup
+            return _DeterministicAnswer(
+                source_draft=Draft(
+                    prose=roles.reply(signer_requested=signer_requested),
+                    sources=[
+                        Quote(**asdict(roles.historical)),
+                        Quote(**asdict(roles.scheduled)),
+                    ],
+                    calculations=[],
+                ),
+                pickup_roles=roles,
+            )
+        return _DeterministicAnswer(source_draft=_source_only_draft(message, documents))
+    segment_length = bind_segment_length((*prior_users, message), documents)
+    if segment_length is not None:
+        expression = segment_length.expression
+        return _DeterministicAnswer(
+            calculation=Calculation(
+                calculation_id=SEGMENT_LENGTH_ID, expression=expression, unit="m"
+            )
+            if expression is not None
+            else None,
+            segment_length=segment_length,
+        )
+    order = _order_calculation(message, prior_users, documents)
+    return _DeterministicAnswer(
+        calculation=order.calculation if order else None, order=order
+    )
+
+
 def _deterministic_answer(
     turn: _PilotRequest, documents: tuple[SourceDocument, ...]
 ) -> _DeterministicAnswer:
     message, prior_users = turn.message, turn.prior_users
     if turn.required.sources:
-        if not turn.required.calculation:
-            return _DeterministicAnswer(
-                source_draft=_source_only_draft(message, documents)
-            )
-        order = _order_calculation(message, prior_users, documents)
-        return _DeterministicAnswer(
-            calculation=order.calculation if order else None, order=order
-        )
+        return _source_deterministic_answer(turn, documents)
     if not turn.required.calculation:
         return _DeterministicAnswer()
+    speed = bind_speed_measurement((*prior_users, message))
+    if speed is not None:
+        return _DeterministicAnswer(
+            calculation=_compile_calculation(
+                Calculation(
+                    calculation_id=MEASURED_SPEED_ID,
+                    expression=speed.base_expression,
+                    input_unit="m/s",
+                    unit=speed.unit,
+                )
+            ),
+            speed_measurement=speed,
+        )
+    duration = bind_duration((*prior_users, message))
+    if duration is not None:
+        return _DeterministicAnswer(
+            calculation=Calculation(
+                calculation_id=DURATION_CALCULATION_ID,
+                expression=duration.expression,
+                unit="min",
+            ),
+            duration=duration,
+        )
+    price_mean = bind_price_mean((*prior_users, message))
+    if price_mean is not None:
+        return _DeterministicAnswer(
+            calculation=Calculation(
+                calculation_id=PRICE_MEAN_ID,
+                expression=price_mean.expression,
+                unit="zł",
+            ),
+            price_mean=price_mean,
+        )
+    explicit_total = bind_explicit_total((*prior_users, message))
+    if explicit_total is not None:
+        calculation_id, unit = total_identity(explicit_total)
+        return _DeterministicAnswer(
+            calculation=Calculation(
+                calculation_id=calculation_id,
+                expression=explicit_total.expression,
+                unit=unit,
+            ),
+            explicit_total=explicit_total,
+        )
+    percent_change = bind_percent_change((*prior_users, message))
+    if percent_change is not None:
+        return _DeterministicAnswer(
+            calculation=Calculation(
+                calculation_id=PERCENT_CHANGE_ID,
+                expression=percent_change.expression,
+                unit="%",
+            ),
+            percent_change=percent_change,
+        )
     stock = _stock_calculation((*prior_users, message))
     calculation = _explicit_mean(message) or _explicit_length_conversion(message)
     if calculation is None:
@@ -2410,6 +2744,11 @@ def _reported_inputs(
 def _assess_inputs(
     deterministic: _DeterministicAnswer, model: ModelCall, planning: dict[str, Any]
 ) -> InputAssessment:
+    if deterministic.segment_length is not None:
+        return InputAssessment(
+            current_state="Rozdzielono odcinki przewodu i normę odbioru.",
+            missing=deterministic.segment_length.missing,
+        )
     if deterministic.calculation is not None or deterministic.source_draft is not None:
         return InputAssessment(
             current_state="Składniki pochodzą z jawnych danych i aktualizacji użytkownika.",
@@ -2447,6 +2786,13 @@ def _planned_calculations(
     }
     arithmetic: ArithmeticPlan = _call(model, "plan", planning, ArithmeticPlan)
     audit.append({"phase": "arithmetic", "data": arithmetic.model_dump()})
+    if any(
+        has_repeated_speed_scale(
+            item.expression, item.input_unit, item.unit, request=message
+        )
+        for item in arithmetic.calculations
+    ):
+        raise EvidenceError("pilot_speed_double_conversion")
     calculations = [_compile_calculation(item) for item in arithmetic.calculations]
     conversion = _SPEED_CONVERSION.search(message)
     if not conversion or len(calculations) != 1 or result.unit != conversion[1].lower():
@@ -2519,8 +2865,18 @@ def _prepare_pilot_proof(
             ),
             turn.required,
         )
+        separate_citations = (
+            turn.required.sources
+            and not turn.required.calculation
+            and requested_card_ids(turn.message)
+        )
         evidence = gate.prepare(
-            final_plan, infer_requirements=False, required_result_unit=result.unit
+            final_plan,
+            infer_requirements=False,
+            required_result_unit=result.unit,
+            required_citations=requested_citation_ids(turn.message)
+            if separate_citations
+            else None,
         )
         if (
             evidence.sources != sources.documents
@@ -2545,9 +2901,41 @@ def _pilot_draft(
     inputs: _ReconciledInputs,
     plan: Plan,
     proof: _PilotProof,
+    duration_receipt: DurationReceipt | None = None,
 ) -> Draft:
     if deterministic.source_draft is not None:
         return deterministic.source_draft
+    if proof.segment_length is not None:
+        receipt = proof.segment_length
+        return Draft(
+            prose=receipt.summary(),
+            sources=[Quote(**asdict(quote)) for quote in receipt.quotes],
+            calculations=[
+                ResultClaim(
+                    calculation_id=receipt.calculation.calculation_id,
+                    value=receipt.calculation.value,
+                    unit=receipt.calculation.unit,
+                )
+            ],
+        )
+    if deterministic.segment_length is not None and plan.mode == "clarify":
+        return Draft(
+            prose=deterministic.segment_length.question,
+            sources=[],
+            calculations=[],
+        )
+    if duration_receipt is not None:
+        return Draft(
+            prose=duration_receipt.summary(),
+            sources=[],
+            calculations=[
+                ResultClaim(
+                    calculation_id=duration_receipt.calculation.calculation_id,
+                    value=duration_receipt.calculation.value,
+                    unit=duration_receipt.calculation.unit,
+                )
+            ],
+        )
     if deterministic.calculation is None or proof.evidence is None:
         draft_input = (
             turn.material()
@@ -2560,15 +2948,26 @@ def _pilot_draft(
                 "evidence": proof.review_material,
             }
         )
+        if turn.required.sources and not turn.required.calculation:
+            draft_input["source_response_contract"] = (
+                "Powołuj kartę przy faktach, które z niej wynikają. Gdy pytanie dotyczy terminu, "
+                "podaj dzień lub datę obok zdarzenia, jeśli podano je w karcie. "
+                "Brak daty stwierdź dopiero po sprawdzeniu wymaganych kart. Nie wymyślaj cytatu ani rachunku."
+            )
         draft: Draft = _call(model, "draft", draft_input, Draft)
         return draft
     calculation = proof.evidence.calculations[0]
     places = proof.result.places
     if deterministic.order is not None:
         return _order_draft(calculation, deterministic.order, places)
+    if deterministic.explicit_total is not None:
+        output = _length_draft(calculation, places)
+        prose = deterministic.explicit_total.details(calculation.value, final=False)
+        return output.model_copy(update={"prose": prose})
     if calculation.calculation_id in {
         "length_conversion",
         "average_speed",
+        MEASURED_SPEED_ID,
         "volume_remainder",
         "scaled_length",
     }:
@@ -2582,7 +2981,19 @@ def _pilot_draft(
             number_only=requests_unitless_result(turn.message),
             places=places,
         )
-    return _mean_draft(calculation, places)
+    if deterministic.percent_change is not None:
+        return Draft(
+            prose=deterministic.percent_change.describe(calculation.value, places),
+            sources=[],
+            calculations=[
+                ResultClaim(
+                    calculation_id=calculation.calculation_id,
+                    value=calculation.value,
+                    unit=calculation.unit,
+                )
+            ],
+        )
+    return _mean_draft(calculation, places, deterministic.price_mean)
 
 
 def _certify_pilot_draft(
@@ -2621,7 +3032,11 @@ def _certify_pilot_draft(
     )
     claim_draft = AnswerDraft(proof.evidence_id, claims)
     gate.validate_draft(claim_draft)
-    if result.unit is not None or any(not item.unit for item in evidence.calculations):
+    if proof.segment_length is not None:
+        proof.segment_length.verify_prose(draft.prose, evidence)
+    elif result.unit is not None or any(
+        not item.unit for item in evidence.calculations
+    ):
         verify_result_prose(
             draft.prose, evidence, result.unit or "", decimal_places=result.places
         )
@@ -2640,13 +3055,32 @@ def _finalize_pilot_draft(
     source_versions = {
         document.ref.source_id: document.ref.version for document in sources.documents
     }
+    if not turn.required.calculation and len(draft.calculations) == 1:
+        placeholder = draft.calculations[0]
+        if all(
+            value.strip().casefold() == "none"
+            for value in (
+                placeholder.calculation_id,
+                placeholder.value,
+                placeholder.unit,
+            )
+        ):
+            draft = draft.model_copy(update={"calculations": []})
+            audit.append({"phase": "empty_calculation_placeholder_removed"})
     private_ids = {
         proof.evidence_id,
         turn.revision,
         *(item.calculation_id for item in plan.calculations),
     }
+    executed = proof.evidence.calculations if proof.evidence is not None else ()
+    numeric_calculation_ids = {
+        item.calculation_id for item in executed if item.calculation_id.isdecimal()
+    }
     prose = strip_public_bookkeeping(
-        _public_prose(draft.prose, private_ids, source_versions), source_versions
+        _public_prose(
+            draft.prose, private_ids, source_versions, numeric_calculation_ids
+        ),
+        source_versions,
     )
     if prose != draft.prose:
         draft = draft.model_copy(update={"prose": prose})
@@ -2728,7 +3162,25 @@ def run_pilot_turn(
     proof = _prepare_pilot_proof(
         turn, sources, gate, plan, inputs.planning, result, audit
     )
-    draft = _pilot_draft(turn, model, deterministic, inputs, plan, proof)
+    if deterministic.segment_length is not None and proof.evidence is not None:
+        segment_length = SegmentLengthReceipt.from_evidence(
+            (*turn.prior_users, message), deterministic.segment_length, proof.evidence
+        )
+        proof = replace(proof, segment_length=segment_length)
+    duration_receipt = None
+    if deterministic.duration is not None and proof.evidence is not None:
+        duration_receipt = DurationReceipt.from_evidence(
+            (*turn.prior_users, message), deterministic.duration, proof.evidence
+        )
+        audit.append(
+            {
+                "phase": "duration_roles_bound",
+                "data": deterministic.duration.proof_material(),
+            }
+        )
+    draft = _pilot_draft(
+        turn, model, deterministic, inputs, plan, proof, duration_receipt
+    )
     draft, claim_draft = _finalize_pilot_draft(
         turn, sources, gate, plan, draft, proof, audit
     )
@@ -2751,4 +3203,90 @@ def run_pilot_turn(
     else:
         _current(backend, sources.documents)
         gate.publish(claim_draft)
+    return _published_pilot_answer(
+        turn, sources, deterministic, plan, proof, duration_receipt, draft
+    )
+
+
+def _calculated_pilot_answer(
+    turn: _PilotRequest,
+    deterministic: _DeterministicAnswer,
+    proof: _PilotProof,
+    draft: Draft,
+) -> PublishedAnswer | None:
+    if proof.evidence is None:
+        return None
+    if deterministic.price_mean is not None:
+        price_receipt = PriceMeanReceipt.from_evidence(
+            (*turn.prior_users, turn.message), deterministic.price_mean, proof.evidence
+        )
+        return PilotPriceMeanAnswer(proof.evidence_id, draft.prose, price_receipt)
+    if deterministic.explicit_total is not None:
+        total_receipt = ExplicitTotalReceipt.from_evidence(
+            (*turn.prior_users, turn.message),
+            deterministic.explicit_total,
+            proof.evidence,
+        )
+        return PilotExplicitTotalAnswer(proof.evidence_id, draft.prose, total_receipt)
+    if deterministic.percent_change is not None:
+        percent_receipt = PercentChangeReceipt.from_evidence(
+            (*turn.prior_users, turn.message),
+            deterministic.percent_change,
+            proof.evidence,
+            proof.result.places,
+        )
+        return PilotPercentChangeAnswer(proof.evidence_id, draft.prose, percent_receipt)
+    if deterministic.speed_measurement is not None:
+        speed_receipt = SpeedMeasurementReceipt.from_evidence(
+            (*turn.prior_users, turn.message),
+            deterministic.speed_measurement,
+            proof.evidence,
+        )
+        return PilotSpeedMeasurementAnswer(
+            proof.evidence_id, draft.prose, speed_receipt
+        )
+    return None
+
+
+def _published_pilot_answer(
+    turn: _PilotRequest,
+    sources: _PilotSources,
+    deterministic: _DeterministicAnswer,
+    plan: Plan,
+    proof: _PilotProof,
+    duration_receipt: DurationReceipt | None,
+    draft: Draft,
+) -> PublishedAnswer:
+    if deterministic.pickup_roles is not None:
+        pickup_receipt = PickupRolesReceipt(
+            (*turn.prior_users, turn.message), deterministic.pickup_roles
+        )
+        return PilotPickupRolesAnswer(proof.evidence_id, draft.prose, pickup_receipt)
+    if proof.segment_length is not None:
+        return PilotSegmentLengthAnswer(
+            proof.evidence_id, draft.prose, proof.segment_length
+        )
+    if duration_receipt is not None:
+        return PilotDurationAnswer(proof.evidence_id, draft.prose, duration_receipt)
+    calculated = _calculated_pilot_answer(turn, deterministic, proof, draft)
+    if calculated is not None:
+        return calculated
+    if (
+        turn.required.sources
+        and not turn.required.calculation
+        and plan.mode == "answer"
+        and requested_card_ids(turn.message)
+        and not sources.unavailable
+    ):
+        published_history = (
+            *turn.history,
+            {"role": "user", "content": turn.message},
+            {"role": "assistant", "content": draft.prose},
+        )
+        return PilotSourceAnswer(
+            proof.evidence_id,
+            draft.prose,
+            material_hash(published_history),
+            sources.documents,
+        )
     return PublishedAnswer(proof.evidence_id, draft.prose)

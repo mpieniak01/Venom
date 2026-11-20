@@ -279,64 +279,233 @@ def _differences(row: dict, case: dict) -> list[str]:
     return differences
 
 
-def execute(state: audit._AuditState) -> dict:
-    """Use the qualification transport without creating a pin or opening a holdout."""
-    state.start = audit.time.monotonic()
-    (state.root / "receipts").mkdir()
-    planned = judge._money(state.protocol["planned_budget_usd"])
-    maximum = judge._money(state.protocol["max_case_reservation_usd"])
-    if planned > state.budget or maximum > state.per_request:
-        state.status = "budget_exhausted"
-        return audit._audit_result(state)
-    state.next_post_at = audit._provider_next_post_at(state.rate_path)
-    order = state.manifest["order"]
-    if not audit._schedule_fits(state, len(order)):
-        state.status = "deadline_exceeded"
-        return audit._audit_result(state)
+def _requests(panel: dict) -> list[tuple[dict, dict, dict, Decimal]]:
+    repeats: Counter[str] = Counter()
+    requests = []
+    for label in panel["order"]:
+        repeats[label] += 1
+        body = panel["cases"][label]["body"]
+        candidate = json.loads(body["messages"][1]["content"])["candidate"]
+        entry = {"label": label, "repeat": repeats[label]}
+        requests.append((entry, {"text": candidate}, body, judge.reserve(body)))
+    return requests
+
+
+def _recorded_prefix(
+    state: audit._AuditState,
+    requests: list[tuple[dict, dict, dict, Decimal]],
+    *,
+    offset: int = 0,
+) -> list[dict]:
+    root = state.root
+    paths = sorted((root / "receipts").glob("*.json"))
+    audit._require(len(paths) <= len(requests), _INVALID)
+    result_path = root / "result.json"
+    if result_path.is_file():
+        result = audit.read_json(result_path)
+        audit._require(
+            result["status"] in {"provider_unavailable", "provider_rate_limited"}
+            and result["protocol_sha256"] == state.protocol_sha
+            and result["receipt_hashes"] == audit._hashes(root),
+            "remote_audit_resume_result_invalid",
+        )
+    ledger_path = root / "ledger.json"
+    if not ledger_path.exists():
+        audit._require(
+            not paths and not result_path.exists(), "remote_audit_resume_ledger_missing"
+        )
+        return []
+    ledger = audit.read_json(ledger_path)
+    audit._require(
+        ledger["pending_call_id"] is None, "remote_audit_resume_pending_call"
+    )
+    recorded = []
+    for index, path in enumerate(paths, offset + 1):
+        entry, answer, body, reservation = requests[index - offset - 1]
+        row = audit.read_json(path)
+        audit._require(
+            path.name == f"{index:03d}.json"
+            and row["index"] == index
+            and all(row[k] == v for k, v in entry.items())
+            and row["protocol_sha256"] == state.protocol_sha
+            and stable_hash(body)
+            == row["request_sha256"]
+            == stable_hash(row["request"])
+            and row["response_sha256"] == stable_hash(row["response"])
+            and judge._money(row["reserved_usd"]) == reservation,
+            _INVALID,
+        )
+        if row["status"] == "completed":
+            judge._verify_call(row, body, answer["text"], state.protocol_sha)
+        elif row["status"] == "rejected_decision":
+            judge._verify_rejected_call(row, body, answer["text"], state.protocol_sha)
+        else:
+            audit._require(
+                index == offset + len(paths)
+                and row["status"] == "failed"
+                and (row.get("http_status") == 429 or audit._provider_unavailable(row))
+                and judge.reported_cost(row["response"]) == row.get("cost_usd"),
+                "remote_audit_resume_transport_unverified",
+            )
+        recorded.append(row)
+    audit._require(len({row["call_id"] for row in recorded}) == len(recorded), _INVALID)
+    state.known, state.unknown = judge._audit_costs(
+        [{**row, "cost_usd": row.get("cost_usd") or "0"} for row in recorded],
+        state.protocol,
+    )
+    state.unknown += sum(
+        (
+            judge._money(row["reserved_usd"])
+            for row in recorded
+            if row["cost_usd"] is None
+        ),
+        Decimal(0),
+    )
+    audit._require(
+        state.known == judge._money(ledger["actual_known_cost_usd"])
+        and state.unknown == judge._money(ledger["unknown_reserved_usd"])
+        and state.accounted == judge._money(ledger["accounted_usd"])
+        and state.accounted <= state.budget,
+        "remote_audit_resume_ledger_changed",
+    )
+    return recorded
+
+
+def _restore_progress(
+    state: audit._AuditState, recorded: list[dict], admitted: list[dict] | None = None
+) -> list[dict]:
+    started = audit.read_json(state.root / "started.json")
+    audit._require(started["protocol_sha256"] == state.protocol_sha, _INVALID)
+    elapsed = (
+        judge._time(audit._utc()) - judge._time(started["created_at"])
+    ).total_seconds()
+    audit._require(
+        0 <= elapsed < state.protocol["max_seconds"], "remote_audit_resume_deadline"
+    )
+    state.start = audit.time.monotonic() - elapsed
+    state.rows = [*(admitted or []), *recorded]
+    state.retries = sum(len(judge._rate_limit_attempts(row)) for row in recorded)
+    prior_attempts = []
+    if recorded and recorded[-1]["status"] == "failed":
+        tail = state.rows.pop()
+        prior_attempts = [
+            *judge._rate_limit_attempts(tail),
+            {key: value for key, value in tail.items() if key != "rate_limit_attempts"},
+        ]
+        policy = state.protocol["rate_limit"]
+        audit._require(
+            len(prior_attempts) <= len(policy["backoff_seconds"])
+            and state.retries < policy["max_retries_per_audit"]
+            and sum(audit._provider_unavailable(row) for row in prior_attempts) <= 1,
+            "remote_audit_resume_retries_exhausted",
+        )
+    state.generations = {row["response"]["id"] for row in state.rows}
+    audit._require(len(state.generations) == len(state.rows), _INVALID)
+    result_path = state.root / "result.json"
+    if result_path.is_file():
+        history = state.root / "prior-results"
+        history.mkdir(exist_ok=True)
+        result_path.replace(history / f"{digest(result_path)}.json")
+    return prior_attempts
+
+
+def _capacity_exceeded(state: audit._AuditState) -> bool:
+    return (
+        judge._money(state.protocol["planned_budget_usd"]) > state.budget
+        or judge._money(state.protocol["max_case_reservation_usd"]) > state.per_request
+    )
+
+
+def resume(state: audit._AuditState) -> dict:
+    if _capacity_exceeded(state):
+        return {"status": "budget_exhausted", "resume_blocked": True}
+    recorded = _recorded_prefix(state, _requests(state.manifest))
+    return execute(
+        state, prior_attempts=_restore_progress(state, recorded), resuming=True
+    )
+
+
+def _resume_timing(state: audit._AuditState, prior_attempts: list[dict] | None) -> None:
+    if prior_attempts:
+        last = prior_attempts[-1]
+        finished = judge._time(last["finished_at"])
+        delay = judge._retry_wait_seconds(
+            last,
+            len(prior_attempts) - 1,
+            finished,
+            rate_policy=state.protocol["rate_limit"],
+        )
+        elapsed = (judge._time(audit._utc()) - finished).total_seconds()
+        state.next_post_at = max(
+            state.next_post_at, audit.time.monotonic() + delay - elapsed
+        )
+    elif state.rows:
+        finished = judge._time(state.rows[-1]["finished_at"])
+        elapsed = (judge._time(audit._utc()) - finished).total_seconds()
+        interval = state.protocol["rate_limit"]["interval_seconds"]
+        state.next_post_at = max(
+            state.next_post_at, audit.time.monotonic() + interval - elapsed
+        )
+
+
+def _record_targeted_metrics(state: audit._AuditState, planned: int) -> None:
+    cases = state.manifest["cases"]
     mismatches = []
     completed = 0
-    cases = state.manifest["cases"]
-    repeats: Counter[str] = Counter()
-    with ExitStack() as stack:
-        for label in order:
-            repeats[label] += 1
-            case = cases[label]
-            body = case["body"]
-            candidate = json.loads(body["messages"][1]["content"])["candidate"]
-            entry = {"label": label, "repeat": repeats[label]}
-            request = (entry, {"text": candidate}, body, judge.reserve(body))
-            status = audit._submit_case(state, request, stack)
-            if status == "rejected_decision":
-                mismatches.append(
-                    {
-                        "index": len(state.rows),
-                        "label": label,
-                        "differences": [state.rows[-1]["error_type"]],
-                    }
-                )
-                continue
-            if status != "completed":
-                break
+    for row in state.rows:
+        if row["status"] == "rejected_decision":
+            differences = [row["error_type"]]
+        elif row["status"] == "completed":
             completed += 1
-            differences = _differences(state.rows[-1], case)
-            if differences:
-                mismatches.append(
-                    {
-                        "index": len(state.rows),
-                        "label": label,
-                        "differences": differences,
-                    }
-                )
+            differences = _differences(row, cases[row["label"]])
         else:
-            state.status = (
-                "targeted_regression_failed"
-                if mismatches
-                else "targeted_review_required"
+            continue
+        if differences:
+            mismatches.append(
+                {
+                    "index": row["index"],
+                    "label": row["label"],
+                    "differences": differences,
+                }
             )
+    if state.status == "targeted_review_required" and mismatches:
+        state.status = "targeted_regression_failed"
     state.metrics = {
-        "planned": len(order),
+        "planned": planned,
         "completed": completed,
         "mismatches": mismatches,
         "manual_review_required": True,
     }
+
+
+def execute(
+    state: audit._AuditState,
+    *,
+    prior_attempts: list[dict] | None = None,
+    resuming: bool = False,
+) -> dict:
+    """Run the sealed panel, optionally continuing a verified prefix."""
+    if not resuming:
+        state.start = audit.time.monotonic()
+    (state.root / "receipts").mkdir(exist_ok=resuming)
+    if _capacity_exceeded(state):
+        state.status = "budget_exhausted"
+        return audit._audit_result(state)
+    state.next_post_at = audit._provider_next_post_at(state.rate_path)
+    requests = _requests(state.manifest)
+    _resume_timing(state, prior_attempts)
+    if not audit._schedule_fits(state, len(requests) - len(state.rows)):
+        state.status = "deadline_exceeded"
+        return audit._audit_result(state)
+    with ExitStack() as stack:
+        for request in requests[len(state.rows) :]:
+            status = audit._submit_case(
+                state, request, stack, prior_attempts=prior_attempts
+            )
+            prior_attempts = None
+            if status not in {"completed", "rejected_decision"}:
+                break
+        else:
+            state.status = "targeted_review_required"
+    _record_targeted_metrics(state, len(requests))
     return audit._audit_result(state)

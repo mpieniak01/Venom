@@ -15,6 +15,29 @@ _SENTENCES = re.compile(
 _MULTIPLE_DRAFTS = re.compile(
     r"\b(?:wariant\w*|wersje|wersji|propozycje|opcje)\b", re.I
 )
+_REVISION = re.compile(
+    r"\b(?:sformułuj|sformułowani\w*|gotowe zdanie|przeredaguj)\b",
+    re.I,
+)
+_SINGLE_CHOICE = re.compile(
+    r"\b(?:wybierz (?:coś|jedną opcję|jedną propozycję)|"
+    r"(?:tę|tą) (?:propozycję|opcję))\b",
+    re.I,
+)
+_COMPARISON = re.compile(
+    r"^\s*(?:co (?:będzie|jest) (?:łagodniejsz\w*|uprzejmiejsz\w*|lepsz\w*)|"
+    r"porównaj|która wersja)\b",
+    re.I,
+)
+_ORDINARY_BUDGET_HINT = (
+    "Zacznij od odpowiedzi na ostatnie pytanie. "
+    "Jeśli podajesz wartość, wynik z jednostką ma poprzedzać objaśnienie. "
+    "Gdy potrzebujesz informacji do odpowiedzi, zadaj jedno krótkie pytanie. "
+    "Zakończ po spełnieniu prośby, bez dodatkowych wariantów i pytań. "
+    "Zastosuj aktualne warunki użytkownika i żądaną liczbę elementów. "
+    "W gotowym tekście zachowaj liczbę adresatów i właściwą formę zwrotu."
+)
+
 _COUNTS = {
     "jedno": "1",
     "jednym": "1",
@@ -39,7 +62,8 @@ def writing_hint(text: str) -> str:
         f"Podaj jeden gotowy tekst. Liczba zdań: {_COUNTS.get(value, value)}. "
         "Bez zapowiedzi i wariantów. W gotowym tekście nazwij wskazany temat "
         "lub zdarzenie, używając słów użytkownika w odpowiedniej odmianie. "
-        "Zwracaj się do adresatów tekstu. Jeśli piszesz podziękowanie, "
+        "Zachowaj pojedynczego adresata, jeśli podano jedną osobę. "
+        "Jeśli piszesz podziękowanie, "
         "wyraź ciepły ton przez wdzięczność. "
         "Zmiana tonu zachowuje temat i podane fakty. "
         "Nie dopisuj niepodanych ilości, przebiegu ani wyników zdarzenia. "
@@ -48,3 +72,26 @@ def writing_hint(text: str) -> str:
         "Wcześniejszy szkic asystenta nie jest źródłem nowych faktów. "
         "Jeśli się urwał, napisz kompletną wersję."
     )
+
+
+def ordinary_reply_hint(text: str) -> str:
+    """Keep short Studio turns complete and responsive to the latest request."""
+    visible = without_quotes(text)
+    hints = [_ORDINARY_BUDGET_HINT]
+    if _SINGLE_CHOICE.search(visible):
+        hints.append(
+            "Wybierz lub dopracuj jedną czynność zgodną z wykluczeniami. "
+            "Pomiń wcześniejszą listę propozycji."
+        )
+    if _REVISION.search(visible) and not _MULTIPLE_DRAFTS.search(visible):
+        hints.append(
+            "Podaj sam gotowy tekst, w jednej wersji. "
+            "W zachowanej treści przenieś dokładne liczby i warunki "
+            "użytkownika. Usuń części, z których użytkownik zrezygnował."
+        )
+    if visible != text and _COMPARISON.search(visible):
+        hints.append(
+            "Wyjaśnij znaczenie obu przytoczonych wersji, a potem uzasadnij "
+            "ocenę różnicy tonu."
+        )
+    return " ".join(hints)

@@ -31,6 +31,7 @@ from venom_core.services.chat_grounding import (
     PublicSourceUnavailable,
     current_chat_context,
     grounding_follow_up,
+    is_current_news_request,
 )
 from venom_core.services.session_store import SessionStore
 
@@ -216,6 +217,13 @@ async def prepare_studio_normal(
         policy = _SOURCE_STATUS_POLICY
         if source_context.startswith(PUBLIC_SOURCE_BLOCK):
             policy = _RETRIEVED_SOURCE_POLICY
+            if is_current_news_request(request.content):
+                policy += (
+                    " Przy odczycie nagłówka zacznij od «Nagłówek RSS». "
+                    "Podaj nagłówek po polsku. Zachowaj wskazanego autora wypowiedzi. "
+                    "Dołącz pole «Data publikacji» z datą źródła i pole «Link» "
+                    "z pełnym URL pozycji."
+                )
             if output_tokens <= 128:
                 policy += _SHORT_SOURCE_POLICY
         if len(policy) + 1 + len(source_context) <= remaining:

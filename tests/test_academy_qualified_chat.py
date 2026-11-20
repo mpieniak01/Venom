@@ -1512,3 +1512,46 @@ def test_studio_current_news_keeps_source_response_in_standard_stream(
     assert payload["stream"] is True
     assert "pełny URL źródła" in payload["messages"][0]["content"]
     assert "Nagłówek i link." in payload["messages"][0]["content"]
+
+
+def test_studio_short_choice_states_complete_answer_before_explanation():
+    from venom_core.services.academy.qualified_chat_writing import ordinary_reply_hint
+
+    hint = ordinary_reply_hint("Wybierz coś, co zadziała bez słuchawek.")
+    assert "wynik z jednostką ma poprzedzać objaśnienie" in hint
+    assert "jedną czynność zgodną z wykluczeniami" in hint
+    assert "jedną czynność" not in ordinary_reply_hint(
+        "Rozważ zdanie „Wybierz coś” w cudzysłowie."
+    )
+    assert "zachowaj liczbę adresatów" in ordinary_reply_hint("Podaj gotowe zdanie.")
+
+
+def test_studio_fitting_applies_latest_user_side_and_ignores_assistant_numbers():
+    from venom_core.services.academy.qualified_chat_fit import fit_hint
+
+    capacity = "Koperta ma 20 na 30 cm. Czy kartka się zmieści? Nie mogę jej zginać."
+    assert "Zapytaj krótko" in fit_hint(capacity, [])
+    history = [HistoryMessage(**turn(capacity))]
+    assert "nie mieści się" in fit_hint("Kartka ma 15 na 32 cm.", history)
+    history += [
+        HistoryMessage(**turn("Kartka ma 15 na 32 cm.")),
+        HistoryMessage(**turn("Kartka ma 25 na 60 cm.", "assistant")),
+    ]
+    hint = fit_hint("Dłuższy bok ma 28 cm. Czy się zmieści?", history)
+    assert "28 cm ≤ 30 cm" in hint and "mieści się bez składania" in hint
+    assert fit_hint("Dłuższy bok ma około 28 cm.", history) == ""
+    assert fit_hint("Dłuższy bok ma 28 cm, ale nie można obrócić.", history) == ""
+
+
+def test_native_quote_rewrite_keeps_sentence_count_attached_to_instruction():
+    from venom_core.services.academy.qualified_chat_quote import QuoteRewrite
+
+    rewrite = QuoteRewrite("Wyjaśnij w dwóch zdaniach, dlaczego ustał deszcz.", False)
+    prompt = rewrite.messages(plain_text=True)[0]["content"]
+    assert "liczbę zdań lub słów umieść przy tym czasowniku" in prompt
+    assert rewrite.publish(
+        "Jakie były przyczyny ustania deszczu w dwóch zdaniach."
+    ) == ("Nie udało się przygotować poprawnego przeredagowania.")
+    assert rewrite.publish("Opisz w dwóch zdaniach przyczynę ustania deszczu.") == (
+        "„Opisz w dwóch zdaniach przyczynę ustania deszczu.”"
+    )

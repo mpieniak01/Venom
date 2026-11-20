@@ -34,10 +34,17 @@ from venom_core.services.academy.qualified_chat import (
     prepare_studio_reply,
 )
 from venom_core.services.academy.qualified_chat_explanations import explanation_hint
+from venom_core.services.academy.qualified_chat_fit import fit_hint
 from venom_core.services.academy.qualified_chat_quote import english_translation_hint
 from venom_core.services.academy.qualified_chat_revisions import source_revision_hint
-from venom_core.services.academy.qualified_chat_writing import writing_hint
-from venom_core.services.chat_grounding import is_current_news_request
+from venom_core.services.academy.qualified_chat_writing import (
+    ordinary_reply_hint,
+    writing_hint,
+)
+from venom_core.services.chat_grounding import (
+    PUBLIC_SOURCE_BLOCK,
+    is_current_news_request,
+)
 from venom_core.services.llm_simple_payload_service import (
     apply_optional_features_to_payload as _apply_optional_features_to_payload,
 )
@@ -1573,8 +1580,13 @@ async def _stream_non_openrouter_chat(
                 (
                     system_prompt,
                     hint,
+                    fit_hint(request.content, request.history),
                     source_revision_hint(request.content),
                     writing_hint(request.content),
+                    ordinary_reply_hint(request.content)
+                    if (request.max_tokens or 256) <= 96
+                    and PUBLIC_SOURCE_BLOCK not in system_context
+                    else "",
                     english_translation_hint(request.content),
                 ),
             )

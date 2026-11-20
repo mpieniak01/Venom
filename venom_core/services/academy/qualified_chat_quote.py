@@ -22,7 +22,9 @@ _EXTRA_ACTION = re.compile(
     r"\b(?:odpowiedz|wykonaj|wyjaśnij|oblicz|zapisz|dodaj)\b", re.I
 )
 _QUESTION = re.compile(
-    r"^(?:czy|jak|co|kiedy|gdzie|ile|dlaczego|skąd|czemu|który)\b", re.I
+    r"^(?:czy|jak(?:i|a|ie|iego|iemu|im|iej|ich|imi|ą)?|co|kiedy|gdzie|ile|"
+    r"dlaczego|skąd|czemu|któr(?:y|a|e|ego|ej|ą|ym|ych|ymi|emu))\b",
+    re.I,
 )
 _IMPERATIVE = re.compile(
     r"^(?:(?:krótko|zwięźle) )?(?:nie )?(?:wyjaśnij|wytłumacz|opisz|powiedz|podaj|wskaż|"
@@ -62,6 +64,8 @@ _NATIVE_TRANSFORMATION_PROMPT = (
     "Zmień choć jeden zwrot lub szyk. Zapis cyfr, kwot, godzin i jednostek zostaw bez zmian. "
     "Zachowaj liczbę wymaganych słów, zdań oraz zakazy. Przy wymogu jednego słowa użyj zwrotu "
     "«jednym słowem», «jednym wyrazem» lub równoważnego. Pytanie zakończ znakiem zapytania. "
+    "W poleceniu zacznij od czasownika w trybie rozkazującym. "
+    "Wymaganą liczbę zdań lub słów umieść przy tym czasowniku, przed tematem polecenia. "
     "Pole wymagania_formy dotyczy wyłącznie formy parafrazy, jeśli je podano."
 )
 _RELOCATION = re.compile(r"^\w+\s+(?:przeniós|przełoży|przesun)\w*\s", re.I)

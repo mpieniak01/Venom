@@ -1264,6 +1264,8 @@ def test_checked_explanation_supports_repeated_example_changes_without_resuming_
     latest = "Zmień przykład na ołówek w kubku."
     selected = checked_explanation(latest, history, token_budget=96)
     assert selected and "ołówek w kubku" in selected.text()
+    selected = checked_explanation("Zmień przykład na patyczek w misce.", history)
+    assert selected and "patyczek w misce" in selected.text()
     history.append(
         HistoryMessage(role="user", content="Zmieniam temat. Napisz zaproszenie.")
     )

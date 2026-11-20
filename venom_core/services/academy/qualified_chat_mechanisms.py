@@ -65,7 +65,8 @@ _OPTICAL_OBJECTS = (
     (re.compile(r"\błyżecz[kc]\w*"), "łyżeczka", "zgięta"),
     (re.compile(r"\bsłom[ck]\w*"), "słomka", "zgięta"),
     (re.compile(r"\boł[oó]w(?:e?k|c)\w*"), "ołówek", "zgięty"),
-    (re.compile(r"\b(?:patycz[kc]|patyk)\w*"), "patyczek", "zgięty"),
+    (re.compile(r"\bpatycz(?:e?k|c)\w*"), "patyczek", "zgięty"),
+    (re.compile(r"\bpatyk\w*"), "patyk", "zgięty"),
 )
 _VESSELS = (
     (re.compile(r"\bsłoik\w*"), "w słoiku"),

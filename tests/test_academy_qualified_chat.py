@@ -1628,3 +1628,97 @@ def test_studio_one_short_sourced_sentence_gets_full_link_with_larger_budget(
     wiki.assert_awaited_once()
     system = sent[-1]["payload"]["messages"][0]["content"]
     assert "Skopiuj pełny adres" in system
+
+
+def test_studio_keeps_heat_flow_from_user_premise_after_shortening(studio_chat):
+    chat, sent, _ = studio_chat
+    session = str(uuid4())
+    question = (
+        "W identycznych warunkach kostka lodu topi się szybciej na aluminiowej płytce "
+        "niż na korku. Wyjaśnij w dwóch zdaniach, skąd płynie ciepło i dlaczego aluminium "
+        "przyspiesza topnienie. Bez wyszukiwania."
+    )
+    answer = chat(question, session=session, max_tokens=96)
+    assert answer.count(".") == 2
+    assert "z podłoża do lodu" in answer and "przewodność aluminium" in answer
+    short = chat(
+        "Skróć to do jednego zdania i zachowaj kierunek przepływu ciepła.",
+        session=session,
+        max_tokens=96,
+    )
+    assert short.count(".") == 1
+    assert "z podłoża do lodu" in short and "przewodność aluminium" in short
+    assert not sent
+
+
+def test_ice_comparison_requires_known_premise_and_does_not_resume_stale_topic():
+    from venom_core.services.academy.qualified_chat_mechanisms import ice_melting_reply
+
+    known = (
+        "Przy jednakowej temperaturze obu podłoży lód topi się szybciej na miedzi "
+        "niż na drewnie. Wyjaśnij w dwóch zdaniach."
+    )
+    known_answer = ice_melting_reply(known, [])
+    assert known_answer and "przewodność miedzi względem drewna" in known_answer
+
+    unknown = "Nie znam temperatur obu podłoży. Czy lód stopi się szybciej na miedzi czy na drewnie?"
+    unknown_answer = ice_melting_reply(unknown, [])
+    assert unknown_answer and unknown_answer.startswith("Podaj temperatury obu podłoży")
+    assert "cieplejszego ciała do chłodniejszego" in unknown_answer
+    assert ice_melting_reply(known, [], token_budget=64) is None
+    incompatible = known.replace("na miedzi niż na drewnie", "na drewnie niż na miedzi")
+    assert ice_melting_reply(incompatible, []) is None
+    assert ice_melting_reply(known + " Zweryfikuj źródło.", []) is None
+    history = [
+        HistoryMessage(role="user", content=known),
+        HistoryMessage(role="user", content="Napisz teraz zaproszenie."),
+    ]
+    assert ice_melting_reply("Skróć to do jednego zdania.", history) is None
+
+
+def test_studio_edits_reminder_draft_without_routing_to_event_shift(studio_chat):
+    chat, sent, _ = studio_chat
+    history = [
+        turn("Potrzebuję szkicu SMS-a. Zredaguj polecenie przypomnienia na 18:25."),
+        turn("Ustaw przypomnienie o oddaniu atlasu na 18:25.", "assistant"),
+    ]
+    session = str(uuid4())
+    revised = chat(
+        "Przesuń godzinę w tym szkicu na 19:05 i zachowaj krótką formę prośby.",
+        history=history,
+        session=session,
+    )
+    assert revised == "Proszę, ustaw przypomnienie o oddaniu atlasu na 19:05."
+    assert chat("Zmień godzinę w treści SMS-a na 7:10.", session=session) == (
+        "Proszę, ustaw przypomnienie o oddaniu atlasu na 07:10."
+    )
+    assert chat(
+        "Przesuń próbę o 20 minut później.",
+        history=[BASE, turn("Próba o 16:40.", "assistant")],
+    ).startswith("Próba: w poniedziałek o 17:00")
+    assert not sent
+
+
+def test_draft_time_edit_does_not_trust_unknown_or_conflicting_old_time():
+    from venom_core.services.academy.qualified_chat_schedule import draft_time_revision
+
+    edit = "Przesuń godzinę w tym szkicu na 20:15."
+    draft = HistoryMessage(
+        role="assistant", content="Przypomnij mi o odbiorze na 18:25."
+    )
+    unrelated = HistoryMessage(role="user", content="Dzisiaj jest 18:25.")
+    draft_intent = HistoryMessage(
+        role="user", content="Przygotuj szkic SMS-a z prośbą o 18:20 albo 18:25."
+    )
+    single_time = HistoryMessage(
+        role="user", content="Przygotuj szkic SMS-a z prośbą na 18:25."
+    )
+    assert draft_time_revision(edit, []) is None
+    assert draft_time_revision(edit, [draft, single_time]) is None
+    assert draft_time_revision(edit, [unrelated, draft]) is None
+    assert draft_time_revision(edit, [draft_intent, draft]) is None
+    two_times = draft.model_copy(
+        update={"content": "Przypomnij mi o odbiorze o 18:10 na 18:25."}
+    )
+    assert draft_time_revision(edit, [single_time, two_times]) is None
+    assert route_shift(edit, [BASE]) is None

@@ -44,6 +44,47 @@ _THERMAL_EXAMPLES = (
     (re.compile(r"\bporęcz\w*"), "poręcz", "a"),
     (re.compile(r"\bblat\w*"), "blat", "y"),
 )
+_MELTING_PAIR = re.compile(
+    r"\b(?:kostk\w+ lodu|lód) topi się szybciej na (?P<fast>\w+)(?: płytce| podłożu)? "
+    r"niż na (?P<slow>\w+)\b"
+)
+_MELTING_COMPARE = re.compile(
+    r"\b(?:lód|kostk\w+ lodu)\b[^.!?]*\b(?:topi się|stopi się)\b"
+    r"[^.!?]*\bszybciej\b[^.!?]*\b(?:czy|niż)\b"
+)
+_EQUAL_CONDITIONS = re.compile(
+    r"\b(?:w identycznych warunkach|w takich samych warunkach|"
+    r"przy (?:tej samej|jednakowej) temperaturze (?:obu )?podłoży)\b"
+)
+_UNEQUAL_CONDITIONS = re.compile(
+    r"\b(?:różn\w* temperatur\w*|nie znam\w* temperatur\w*|"
+    r"nie wiadomo[^.!?]*temperatur\w*|niekoniecznie|nie identyczn\w*)\b"
+)
+_MELTING_SHORTEN = re.compile(
+    r"^skróć (?:to|wyjaśnienie|odpowiedź) do jednego zdania"
+    r"(?: i zachowaj (?:kierunek przepływu ciepła|przyczynę))?[.!?]*$"
+)
+_MELTING_FORMAT = re.compile(r"\bw dwóch zdaniach\b")
+_CONDUCTIVE_SURFACES = {
+    "aluminium": "aluminium",
+    "aluminiowej": "aluminium",
+    "miedzi": "miedzi",
+    "miedzianej": "miedzi",
+    "stali": "stali",
+    "stalowej": "stali",
+}
+_INSULATING_SURFACES = {
+    "korku": "korku",
+    "drewnie": "drewna",
+    "filcu": "filcu",
+}
+_HOT_BASE_TO_ICE = (
+    "Jeśli oba podłoża są cieplejsze od lodu, ciepło płynie z podłoża do lodu"
+)
+_UNKNOWN_MELTING = (
+    "Podaj temperatury obu podłoży i warunki kontaktu. Ciepło płynie od "
+    "cieplejszego ciała do chłodniejszego, a sam materiał nie rozstrzyga tempa topnienia."
+)
 _BELT = re.compile(r"\bpas(?:y|a|ów|em|ami)? bezpieczeństw\w*")
 _BRAKING = re.compile(r"\b(?:hamuj|hamowa|zwalni|zatrzym)\w*")
 _VEHICLES = (
@@ -133,6 +174,42 @@ def _thermal(topic: str, example: str) -> CheckedExplanation | None:
     return CheckedExplanation(
         "Gdy oba przedmioty mają tę samą temperaturę niższą od temperatury dłoni, metal szybciej odbiera jej ciepło.",
         f"Dlatego metalow{gender} {noun} wydaje się wtedy chłodniejsz{gender} niż {materials[0]}{gender}.",
+    )
+
+
+def ice_melting_reply(
+    text: str,
+    history: Sequence[HistoryMessage],
+    *,
+    token_budget: int | None = None,
+) -> str | None:
+    """Resolve a short ice-melting comparison from the user's thermal premise."""
+    if token_budget is not None and token_budget < 96:
+        return None
+
+    visible = _visible(text)
+    shorten = bool(_MELTING_SHORTEN.fullmatch(visible))
+    topic = _visible(active_explanation_topic(history)) if shorten else visible
+    if not topic or _OTHER_TASK.search(topic):
+        return None
+    pair = _MELTING_PAIR.search(topic)
+    if _UNEQUAL_CONDITIONS.search(topic) and (pair or _MELTING_COMPARE.search(topic)):
+        return None if shorten else _UNKNOWN_MELTING
+    if (
+        not pair
+        or not _EQUAL_CONDITIONS.search(topic)
+        or not _MELTING_FORMAT.search(topic)
+    ):
+        return None
+    metal = _CONDUCTIVE_SURFACES.get(pair["fast"])
+    insulation = _INSULATING_SURFACES.get(pair["slow"])
+    if not metal or not insulation:
+        return None
+    if shorten:
+        return f"{_HOT_BASE_TO_ICE}, a większa przewodność {metal} przyspiesza ten przepływ."
+    return (
+        f"{_HOT_BASE_TO_ICE}. Większa przewodność {metal} względem "
+        f"{insulation} przyspiesza ten przepływ i topnienie lodu."
     )
 
 

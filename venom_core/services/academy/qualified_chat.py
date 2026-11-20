@@ -17,7 +17,10 @@ from venom_core.services.academy.qualified_chat_constraints import (
     uncertain_constraints,
 )
 from venom_core.services.academy.qualified_chat_evidence import evidence_reply
-from venom_core.services.academy.qualified_chat_mechanisms import checked_explanation
+from venom_core.services.academy.qualified_chat_mechanisms import (
+    checked_explanation,
+    ice_melting_reply,
+)
 from venom_core.services.academy.qualified_chat_options import (
     CountRequirement,
     option_key,
@@ -28,7 +31,10 @@ from venom_core.services.academy.qualified_chat_quote import (
     QuoteRewrite,
     parse_quote_rewrite,
 )
-from venom_core.services.academy.qualified_chat_schedule import route_shift
+from venom_core.services.academy.qualified_chat_schedule import (
+    draft_time_revision,
+    route_shift,
+)
 from venom_core.services.academy.qualified_chat_writing import selects_one_proposal
 
 QUALIFIED_MODEL = "gemma4:12b-it-q4_k_m"
@@ -430,6 +436,10 @@ def prepare_studio_reply(
             return QualifiedReply(local_text=literal)
         return QualifiedReply(rewrite=quote)
     if answer := quote or evidence_reply(text, history):
+        return QualifiedReply(local_text=answer)
+    if answer := draft_time_revision(text, history) or ice_melting_reply(
+        text, history, token_budget=token_budget
+    ):
         return QualifiedReply(local_text=answer)
     if explanation := checked_explanation(text, history, token_budget=token_budget):
         return QualifiedReply(local_text=explanation.text())

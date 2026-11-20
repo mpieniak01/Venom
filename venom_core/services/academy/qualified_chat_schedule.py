@@ -6,6 +6,8 @@ import re
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
 
+from venom_core.api.schemas.llm_simple import HistoryMessage
+
 _DAYS = {
     "poniedziałek": "poniedziałek",
     "wtorek": "wtorek",
@@ -82,6 +84,26 @@ _SHIFT = re.compile(
     r"(?:,\s*zachowaj\s+(?P<keep>wejście i dzień|dzień i wejście|wejście|dzień))?",
     re.I,
 )
+_DRAFT_TIME_TARGET = r"godzinę (?:w (?:tym )?szkicu|w treści (?:sms-a|wiadomości))"
+_DRAFT_TIME_SCOPE = re.compile(
+    rf"^(?:proszę\s+)?(?:zmień|popraw|przesuń|cofnij)\s+{_DRAFT_TIME_TARGET}\b",
+    re.I,
+)
+_DRAFT_TIME_EDIT = re.compile(
+    rf"{_DRAFT_TIME_SCOPE.pattern}\s+na\s+(?P<new>{_CLOCK})"
+    r"(?:,?\s+i zachowaj krótką formę prośby)?",
+    re.I,
+)
+_DRAFT_REQUEST = re.compile(
+    r"\b(?:szkic\w* (?:sms-a|wiadomości)|(?:zredaguj|przeredaguj) polecenie)\b",
+    re.I,
+)
+_DRAFT_REMINDER = re.compile(
+    rf"(?:proszę,?\s+)?(?P<body>(?:ustaw przypomnienie|przypomnij mi)"
+    rf" (?:o|żeby) [^.!?]{{1,180}} (?:na|o))\s+(?P<old>{_CLOCK})",
+    re.I,
+)
+_CLOCK_IN_TEXT = re.compile(rf"(?<!\d){_CLOCK}(?!\d)")
 _LATER = {"później", "dalej", "do przodu"}
 _EARLIER = {"wcześniej", "wstecz"}
 
@@ -202,10 +224,31 @@ def _confirmed_history(history: Sequence[dict[str, str]]) -> list[Schedule]:
     return state
 
 
+def draft_time_revision(text: str, history: Sequence[HistoryMessage]) -> str | None:
+    edit = _DRAFT_TIME_EDIT.fullmatch(_text(text))
+    if not edit or len(history) < 2:
+        return None
+    user, draft = history[-2:]
+    if user.role != "user" or draft.role != "assistant":
+        return None
+    visible = _text(user.content)
+    if not (_DRAFT_REQUEST.search(visible) or _DRAFT_TIME_SCOPE.match(visible)):
+        return None
+    reminder = _DRAFT_REMINDER.fullmatch(_text(draft.content))
+    if not reminder or _CLOCK_IN_TEXT.findall(visible) != [reminder["old"]]:
+        return None
+    body = reminder["body"]
+    if _CLOCK_IN_TEXT.search(body):
+        return None
+    return f"Proszę, {body[0].lower()}{body[1:]} {edit['new'].zfill(5)}."
+
+
 def route_shift(message: str, history: Sequence[dict[str, str]]) -> str | None:
     """Handle an explicit time shift. History excludes the current message."""
     text = _text(message)
-    if not (_SHIFT_HEAD.match(text) and _TIME_HINT.search(text)):
+    if _DRAFT_TIME_SCOPE.match(text) or not (
+        _SHIFT_HEAD.match(text) and _TIME_HINT.search(text)
+    ):
         return None
     _, answer = _shift(text, _confirmed_history(history))
     return answer

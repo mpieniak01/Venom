@@ -35,7 +35,7 @@ _WEATHER_FOLLOW_UP = re.compile(
     re.I,
 )
 _CURRENT = re.compile(
-    r"\b(aktualn\w*|najnowsz\w*|dzisiaj|dziś|wczoraj|teraz|bieżąc\w*|"
+    r"\b(aktualn\w*|najnowsz\w*|dzisiaj|dzisiejsz\w*|dziś|wczoraj|teraz|bieżąc\w*|"
     r"wiadomości|newsy|wydarzeni\w*|prognoz\w*|obecn\w*|"
     r"kurs\w*|cen[ayę]|kosztuj\w*|ostatni\w*)\b",
     re.I,
@@ -89,6 +89,11 @@ def grounding_kind(message: str, *, use_notes: bool = False) -> str | None:
     if _ENCYCLOPEDIC.search(message):
         return "wiki"
     return None
+
+
+def is_current_news_request(message: str) -> bool:
+    """Identify a request for public reporting even if retrieval was unavailable."""
+    return bool(_NEWS_REQUEST.search(message)) and grounding_kind(message) == "web"
 
 
 def _weather_location(message: str) -> str | None:

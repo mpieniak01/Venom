@@ -37,6 +37,7 @@ from venom_core.services.academy.qualified_chat_explanations import explanation_
 from venom_core.services.academy.qualified_chat_quote import english_translation_hint
 from venom_core.services.academy.qualified_chat_revisions import source_revision_hint
 from venom_core.services.academy.qualified_chat_writing import writing_hint
+from venom_core.services.chat_grounding import is_current_news_request
 from venom_core.services.llm_simple_payload_service import (
     apply_optional_features_to_payload as _apply_optional_features_to_payload,
 )
@@ -1470,6 +1471,8 @@ def _prepare_qualified_reply(
             request.content, request.history, token_budget=request.max_tokens
         ):
             return reply
+        if is_current_news_request(request.content):
+            return None
     return (
         prepare_reply(request.content, request.history)
         if model == QUALIFIED_MODEL

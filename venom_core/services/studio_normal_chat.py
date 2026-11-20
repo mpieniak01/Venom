@@ -50,6 +50,10 @@ _RETRIEVED_SOURCE_POLICY = (
     "odnośnik. Przy pytaniu o fakt pomiń komentarz o zgodzie i wyszukiwaniu. "
     "Jeżeli szukanej informacji nie ma we fragmencie, nazwij brakujące pole."
 )
+_SHORT_SOURCE_POLICY = (
+    " Przy krótkiej odpowiedzi podaj tylko żądane fakty i pełny URL źródła. "
+    "Pomiń wstęp, powtarzane przypisy i czas odczytu, jeśli o niego nie proszono."
+)
 _SOURCE_STATUS_POLICY = (
     "\n\nPoniższy status pochodzi z aplikacji. Przekaż go własnymi słowami "
     "w języku pytania, po polsku przy polskim pytaniu. Jeśli odczyt nie "
@@ -208,11 +212,11 @@ async def prepare_studio_normal(
     if local_qualification and source_context:
         if isinstance(source_context, PublicSourceUnavailable):
             source_context = "\nW tej turze nie udało się odczytać publicznego źródła."
-        policy = (
-            _RETRIEVED_SOURCE_POLICY
-            if source_context.startswith(PUBLIC_SOURCE_BLOCK)
-            else _SOURCE_STATUS_POLICY
-        )
+        policy = _SOURCE_STATUS_POLICY
+        if source_context.startswith(PUBLIC_SOURCE_BLOCK):
+            policy = _RETRIEVED_SOURCE_POLICY
+            if output_tokens <= 128:
+                policy += _SHORT_SOURCE_POLICY
         if len(policy) + 1 + len(source_context) <= remaining:
             source_context = f"{policy}\n{source_context}"
     if len(source_context) <= remaining:

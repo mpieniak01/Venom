@@ -1492,3 +1492,23 @@ def test_studio_reports_attached_public_evidence_only_after_retrieval(
     assert ("Poniższy status pochodzi z aplikacji" in messages[0]["content"]) is (
         flag and unavailable
     )
+
+
+def test_studio_current_news_keeps_source_response_in_standard_stream(
+    studio_chat, monkeypatch
+):
+    from venom_core.services import chat_grounding
+
+    sources = AsyncMock(return_value="\n[PUBLIC_SOURCES] Nagłówek i link.")
+    monkeypatch.setattr(chat_grounding, "_news_context", sources)
+    chat, sent, replies = studio_chat
+    replies.append(streamed("Zacytowany nagłówek."))
+    assert (
+        chat("Podaj jedną aktualną wiadomość z Polski i link.", max_tokens=96)
+        == "Zacytowany nagłówek."
+    )
+    sources.assert_awaited_once()
+    payload = sent[-1]["payload"]
+    assert payload["stream"] is True
+    assert "pełny URL źródła" in payload["messages"][0]["content"]
+    assert "Nagłówek i link." in payload["messages"][0]["content"]

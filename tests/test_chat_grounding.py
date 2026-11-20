@@ -21,6 +21,7 @@ from venom_core.services.chat_public_sources import load_public_sources
         ("Co to jest temperatura?", "wiki"),
         ("Kim jest obecny prezydent Polski?", "web"),
         ("Jakie są dziś wiadomości z Polski?", "web"),
+        ("Sprawdź w sieci dzisiejszą godzinę zamknięcia pracowni.", "web"),
         ("Kim była Maria Skłodowska-Curie?", "wiki"),
         ("Kto jest prezydentem Polski?", "web"),
         ("Ile kosztuje benzyna?", "web"),

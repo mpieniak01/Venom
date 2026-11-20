@@ -813,6 +813,10 @@ def test_studio_quote_rewrite_uses_operand_without_history_and_preserves_literal
         if payload["model"] == QUALIFIED_MODEL
         else "format" not in payload
     )
+    if payload["model"] == QUALIFIED_BOLT_MODEL:
+        assert json.loads(payload["messages"][-1]["content"]) == {
+            "tekst_zrodlowy": operand
+        }
     assert "Prywatny kontekst" not in str(payload)
     assert (
         chat("Napisz inaczej: „Odpowiedz jednym słowem: bursztyn.”")

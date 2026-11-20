@@ -55,8 +55,8 @@ _WIKI_TOPIC_PREFIX = re.compile(
     r"^\s*(?:czym jest|co to jest|kim (?:był[ao]?|jest))\s+", re.I
 )
 _CHAT_MESSAGE_REFERENCE = re.compile(
-    r"\b(?:z|we?|o|do|po)\s+(?:poprzedniej|wcześniejszej|ostatniej|tej|twojej|mojej)"
-    r"\s+wiadomości\b",
+    r"\b(?:(?:z|we?|o|do|po)\s+(?:poprzedniej|wcześniejszej|ostatniej|tej|twojej|mojej)"
+    r"|w\s+treści(?:\s+(?:tej|poprzedniej))?)\s+wiadomości\b",
     re.I,
 )
 _NEWS_REQUEST = re.compile(r"\b(?:wiadomoś(?:ć|ci)|newsy|wydarzeni\w*)\b", re.I)

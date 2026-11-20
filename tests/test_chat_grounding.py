@@ -37,6 +37,8 @@ def test_routing(message, expected):
     [
         ("Jak nazywa się punkt odbioru z poprzedniej wiadomości?", None, False),
         ("Powtórz nazwę z ostatniej wiadomości.", None, False),
+        ("Zmień godzinę w treści wiadomości na 17:05.", None, False),
+        ("Sprawdź aktualną cenę opisaną w treści tej wiadomości.", "web", False),
         ("Podaj ostatnie wiadomości.", "web", True),
         (
             "Podaj dzisiejsze wiadomości BBC o kraju z poprzedniej wiadomości.",

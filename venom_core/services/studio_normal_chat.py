@@ -28,6 +28,7 @@ from venom_core.services.academy.qualified_chat_revisions import (
 from venom_core.services.background_priority import run_drainable_thread
 from venom_core.services.chat_grounding import (
     PUBLIC_SOURCE_BLOCK,
+    PublicSourceUnavailable,
     current_chat_context,
     grounding_follow_up,
 )
@@ -44,12 +45,16 @@ _NORMAL_LANGUAGE_POLICY = (
 
 
 _RETRIEVED_SOURCE_POLICY = (
-    "\n\nAplikacja pozyskała poniższy fragment źródła w tej turze. "
-    "Ostatnia jawna dyspozycja użytkownika rozstrzyga wcześniejszy zakaz. "
-    "Podaj informację z fragmentu i właściwy odnośnik. "
-    "Nie dodawaj opisu wyszukiwania, chyba że użytkownik o niego pyta. "
-    "Jeśli pytanie dotyczy sprawdzenia, powiedz zgodnie ze stanem, "
-    "że fragment został pozyskany, i zaznacz, jeśli nie rozstrzyga pytania."
+    "\n\nAplikacja pozyskała poniższy fragment po rozstrzygnięciu zgody na "
+    "wyszukiwanie. Zacznij od konkretnej odpowiedzi z fragmentu i podaj właściwy "
+    "odnośnik. Przy pytaniu o fakt pomiń komentarz o zgodzie i wyszukiwaniu. "
+    "Jeżeli szukanej informacji nie ma we fragmencie, nazwij brakujące pole."
+)
+_SOURCE_STATUS_POLICY = (
+    "\n\nPoniższy status pochodzi z aplikacji. Przekaż go własnymi słowami "
+    "w języku pytania, po polsku przy polskim pytaniu. Jeśli odczyt nie "
+    "powiódł się w tej turze, powiedz, że nie udało się uzyskać źródła. "
+    "Nie dopisuj danych, odnośników ani ograniczeń funkcji wyszukiwania."
 )
 
 
@@ -200,12 +205,16 @@ async def prepare_studio_normal(
         if query is None
         else await current_chat_context(query, use_notes=request.use_notes)
     )
-    if (
-        local_qualification
-        and source_context.startswith(PUBLIC_SOURCE_BLOCK)
-        and len(_RETRIEVED_SOURCE_POLICY) + 1 + len(source_context) <= remaining
-    ):
-        source_context = f"{_RETRIEVED_SOURCE_POLICY}\n{source_context}"
+    if local_qualification and source_context:
+        if isinstance(source_context, PublicSourceUnavailable):
+            source_context = "\nW tej turze nie udało się odczytać publicznego źródła."
+        policy = (
+            _RETRIEVED_SOURCE_POLICY
+            if source_context.startswith(PUBLIC_SOURCE_BLOCK)
+            else _SOURCE_STATUS_POLICY
+        )
+        if len(policy) + 1 + len(source_context) <= remaining:
+            source_context = f"{policy}\n{source_context}"
     if len(source_context) <= remaining:
         system_context += source_context
     elif source_context:

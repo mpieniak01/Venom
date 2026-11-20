@@ -1374,6 +1374,7 @@ def test_short_drafting_hint_constraints_and_no_variant_override(studio_chat):
     instruction = request["messages"][0]["content"]
     assert "nazwij wskazany temat" in instruction
     assert "Nie dopisuj niepodanych ilości, przebiegu ani wyników" in instruction
+    assert "Nie przypisuj czynności wykonawcy ani odbiorcy" in instruction
     assert "szkic asystenta nie jest źródłem nowych faktów" in instruction
     assert "Liczba zdań: 3." in writing_hint(
         "Napisz wiadomość w trzech krótkich zdaniach."
@@ -1439,7 +1440,8 @@ def test_studio_quoted_english_translation_retains_plain_stream(studio_chat):
             4096,
             True,
         ),
-        ("\nSource could not be retrieved; say this explicitly.", True, 4096, False),
+        ("unavailable", True, 4096, False),
+        ("unavailable", False, 4096, False),
         (
             "\n[PUBLIC_SOURCES] Potwierdzona godzina. [/PUBLIC_SOURCES]",
             False,
@@ -1459,7 +1461,9 @@ def test_studio_reports_attached_public_evidence_only_after_retrieval(
 ):
     from venom_core.services import chat_grounding
 
-    fetch = AsyncMock(return_value=fragment)
+    unavailable = fragment == "unavailable"
+    source = chat_grounding.PublicSourceUnavailable.NEWS if unavailable else fragment
+    fetch = AsyncMock(return_value=source)
     monkeypatch.setattr(chat_grounding, "_news_context", fetch)
     monkeypatch.setattr(
         llm_simple_service.SETTINGS, "ACADEMY_QUALIFIED_CHAT_ENABLED", flag
@@ -1477,7 +1481,14 @@ def test_studio_reports_attached_public_evidence_only_after_retrieval(
     fetch.assert_awaited_once()
     messages = sent[-1]["payload"]["messages"]
     assert messages[-1]["content"] == query
-    assert fragment in messages[0]["content"]
+    if unavailable and flag:
+        assert "nie udało się odczytać publicznego źródła" in messages[0]["content"]
+        assert source not in messages[0]["content"]
+    else:
+        assert source in messages[0]["content"]
     assert (
         "Aplikacja pozyskała poniższy fragment" in messages[0]["content"]
     ) is retrieved
+    assert ("Poniższy status pochodzi z aplikacji" in messages[0]["content"]) is (
+        flag and unavailable
+    )

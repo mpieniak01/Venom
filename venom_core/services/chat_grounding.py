@@ -4,6 +4,7 @@ import asyncio
 import ipaddress
 import re
 from datetime import date, datetime, timezone
+from enum import StrEnum
 from urllib.parse import urlparse
 
 from venom_core.execution.skills.assistant_skill import AssistantSkill
@@ -56,6 +57,12 @@ _LOCATION = re.compile(
 _RESULT_URL = re.compile(r"^URL:\s*(https?://\S+)", re.M)
 PUBLIC_SOURCE_BLOCK = "\n[PUBLIC_SOURCES]"
 _SEARCH_FAILURE = ("Wystąpił błąd", "Nie znaleziono wyników")
+
+
+class PublicSourceUnavailable(StrEnum):
+    WEATHER = "\nCurrent weather could not be retrieved; say this explicitly."
+    WIKIPEDIA = "\nPolish Wikipedia could not be retrieved; say this explicitly."
+    NEWS = "\nCurrent news could not be retrieved; say this explicitly."
 
 
 def grounding_kind(message: str, *, use_notes: bool = False) -> str | None:
@@ -193,7 +200,7 @@ async def _weather_context(message: str, policy: str) -> str:
     except Exception:
         result = ""
     if not result or result.startswith("✗"):
-        return "\nCurrent weather could not be retrieved; say this explicitly."
+        return PublicSourceUnavailable.WEATHER
     url = AssistantSkill.weather_source_url(city)
     return f"{policy}Source: {url}\n{result[:1000]}\n[/PUBLIC_SOURCES]"
 
@@ -201,7 +208,7 @@ async def _weather_context(message: str, policy: str) -> str:
 async def _wiki_context(message: str, policy: str) -> str:
     sources = await search_polish_wikipedia(message, limit=2)
     if not sources:
-        return "\nPolish Wikipedia could not be retrieved; say this explicitly."
+        return PublicSourceUnavailable.WIKIPEDIA
     lines = [
         f"[{index}] {item.title} | {item.url} | {item.extract}"
         for index, item in enumerate(sources, 1)
@@ -277,7 +284,7 @@ async def _news_context(message: str, policy: str) -> str:
         if headlines := await _feed_headline_context(message, policy, region):
             return headlines
         if not trusted:
-            return "\nCurrent news could not be retrieved; say this explicitly."
+            return PublicSourceUnavailable.NEWS
         return (
             "\nSearch results were found, but no dated article from a trusted source "
             "could be verified. Say this explicitly; do not present news as fact."

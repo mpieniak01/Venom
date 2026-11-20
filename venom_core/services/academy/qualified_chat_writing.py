@@ -39,8 +39,12 @@ def writing_hint(text: str) -> str:
         f"Podaj jeden gotowy tekst. Liczba zdań: {_COUNTS.get(value, value)}. "
         "Bez zapowiedzi i wariantów. W gotowym tekście nazwij wskazany temat "
         "lub zdarzenie, używając słów użytkownika w odpowiedniej odmianie. "
-        "Zmiana tonu zachowuje ten temat i podane fakty. "
+        "Zwracaj się do adresatów tekstu. Jeśli piszesz podziękowanie, "
+        "wyraź ciepły ton przez wdzięczność. "
+        "Zmiana tonu zachowuje temat i podane fakty. "
         "Nie dopisuj niepodanych ilości, przebiegu ani wyników zdarzenia. "
+        "Nie przypisuj czynności wykonawcy ani odbiorcy, których użytkownik "
+        "nie podał. Zachowaj bezosobową formę faktu, jeśli była podana. "
         "Wcześniejszy szkic asystenta nie jest źródłem nowych faktów. "
         "Jeśli się urwał, napisz kompletną wersję."
     )

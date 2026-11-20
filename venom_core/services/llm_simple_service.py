@@ -1547,6 +1547,7 @@ async def _stream_non_openrouter_chat(
         )
     if not completions_url:
         raise HTTPException(status_code=503, detail="Brak endpointu LLM.")
+    guard_options = {"guard_calendar": True} if qualified_reply is not None else {}
     return StreamingResponse(
         _stream_simple_chunks(
             completions_url=completions_url,
@@ -1554,7 +1555,7 @@ async def _stream_non_openrouter_chat(
             runtime=runtime,
             request_id=request_id,
             model_name=model_name,
-            guard_calendar=qualified_reply is not None,
+            **guard_options,
         ),
         media_type=_SSE_MEDIA_TYPE,
         headers=headers,

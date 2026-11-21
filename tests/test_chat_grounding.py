@@ -458,6 +458,10 @@ async def test_wiki_context_and_normal_chat_integration(monkeypatch):
     ("format_request", "expected"),
     [
         ("W jednym zdaniu podaj czas.", "dokładnie jedno zdanie"),
+        (
+            "W jednym zdaniu podaj czas i użyj kropki dziesiętnej.",
+            "dokładnie jedno zdanie",
+        ),
         ("Odpowiedz w dwóch krótkich zdaniach.", "dokładnie dwa zdania"),
         ("Podaj czas bez dodatkowego ograniczenia formatu.", ""),
         ("Wyjaśnij cytat «Podaj w jednym zdaniu».", ""),
@@ -490,6 +494,9 @@ async def test_studio_first_wikipedia_answer_respects_explicit_sentence_format(
     assert source.url in context
     assert source.extract in context
     assert prepared._studio_public_source_evidence["scope"] == "wiki"
+    assert ("użyj kropki między cyframi" in context) == (
+        "kropki dziesiętnej" in format_request
+    )
     if expected:
         assert expected in context
         assert "jednostkę, przybliżenie i warunek" in context

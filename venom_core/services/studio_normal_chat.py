@@ -79,6 +79,12 @@ _WIKI_SENTENCE_REQUEST = re.compile(
     r"do\s+dwóch(?:\s+krótkich)?\s+zdań|(?:dwa|2)(?:\s+krótkie)?\s+zdania)\b",
     re.I,
 )
+_DECIMAL_DOT_REQUEST = re.compile(r"\bkropk\w*\s+dziesiętn\w*\b", re.I)
+_DECIMAL_DOT_POLICY = (
+    " W liczbach dziesiętnych użyj kropki między cyframi. Wartość z polskim "
+    "przecinkiem dziesiętnym przepisz z kropką zamiast przecinka, zachowując "
+    "cyfry, jednostkę oraz pełny adres."
+)
 _WIKI_FACT_POLICY = (
     " Odpowiedz wprost na szczegółowe pytanie, zachowując wartość, jednostkę, "
     "przybliżenie i warunek, gdy występują w źródle. Podaj pełny adres właściwego "
@@ -93,7 +99,8 @@ _SOURCE_STATUS_POLICY = (
 
 
 def _wiki_sentence_policy(message: str) -> str:
-    matches = list(_WIKI_SENTENCE_REQUEST.finditer(without_quotes(message)))
+    visible = without_quotes(message)
+    matches = list(_WIKI_SENTENCE_REQUEST.finditer(visible))
     if not matches:
         return ""
     limit = (
@@ -102,7 +109,8 @@ def _wiki_sentence_policy(message: str) -> str:
         if matches[-1].group("one")
         else " Napisz dokładnie dwa zdania. W obu pozostań przy zakresie pytania."
     )
-    return limit + _WIKI_FACT_POLICY
+    decimal_format = _DECIMAL_DOT_POLICY if _DECIMAL_DOT_REQUEST.search(visible) else ""
+    return limit + _WIKI_FACT_POLICY + decimal_format
 
 
 def _recent_turns(

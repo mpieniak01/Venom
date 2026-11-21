@@ -1312,3 +1312,21 @@ def test_direct_drafts_do_not_override_new_requests_or_ambiguous_history():
         ]
     )
     assert invitation_context(reminder, history) is None
+
+
+def test_broad_panel_reservation_and_accepted_fee():
+    record = "Na warsztaty introligatorskie mam rezerwację 73. Opiekunką jest Iga Lis. Podaj obie dane w krótkiej notatce."
+    card = "Na kartce jest tylko „Opiekun: Iga Lis”. Odczytaj z kartki opiekuna i numer rezerwacji."
+    result = correction_context(
+        "Wróć do ustaleń rozmowy. Podaj opiekuna i numer rezerwacji.", [record, card]
+    )
+    assert result.verified_reply == "Numer rezerwacji: 73. Opiekun: Iga Lis."
+    prior = [
+        "Ustalam, że opłata za wstęp na pokaz ceramiki wynosi 27 zł za osobę. Podaj bieżącą stawkę w jednym zdaniu.",
+        "Proponuję opłatę 34 zł. To na razie propozycja. Jaka opłata obowiązuje?",
+    ]
+    result = correction_context(
+        "Akceptuję opłatę 34 zł. Ile wynosi teraz opłata za wstęp dla jednej osoby?",
+        prior,
+    )
+    assert result.verified_reply == "Obowiązuje 34 zł za osobę."

@@ -39,11 +39,14 @@ _PENDING_PROPOSAL = re.compile(
     rf"{_AMOUNT.pattern}(?:[.!]\s*|$)",
     re.I,
 )
-_PENDING_MARKER = re.compile(r"to (?:na razie sugestia|tylko propozycja)\.\s*", re.I)
+_PENDING_MARKER = re.compile(
+    r"to (?:na razie sugestia|na razie propozycja|tylko propozycja)\.\s*", re.I
+)
 _CURRENT_FEE_QUERY = re.compile(
     rf"(?:jaką {_FEE_ACCUSATIVE} mam wpisać do aktualnych ustaleń"
     rf"|jaka {_FEE_NOMINATIVE} (?:obowiązuje|jest aktualna)"
-    rf"|ile (?:obecnie wynosi|wynosi obecnie) {_FEE_NOMINATIVE})\s*\?",
+    rf"|ile (?:obecnie wynosi|wynosi obecnie) {_FEE_NOMINATIVE}"
+    rf"|ile wynosi teraz {_FEE_NOMINATIVE} za wstęp dla jednej osoby)\s*\?",
     re.I,
 )
 _FEE_ENTRY = r"(?:wejście|wstęp|bilet)"
@@ -102,14 +105,14 @@ _RETURN_TO_RESERVATION = re.compile(
     r"(?:teraz korzystaj z ustaleń (?:naszej )?rozmowy|"
     r"wróć do ustaleń (?:naszej )?rozmowy)\.\s+"
     r"(?:jaki jest (?:rzeczywisty )?numer rezerwacji i kto jest opiekunem\?"
-    r"|podaj numer rezerwacji i opiekuna\.?)",
+    r"|podaj numer rezerwacji i opiekuna\.?|podaj opiekuna i numer rezerwacji\.?)",
     re.I,
 )
 _RESERVATION_RECORD = re.compile(
     r"(?i:(?:na zajęcia (?:w|we) [a-ząćęłńóśźż-]+ )?"
-    r"mam rezerwację )(?P<number>[0-9]{1,12})\.\s+"
-    rf"(?i:opiekunem jest )(?P<name>{_BOUNDED_NAME})\."
-    r"(?:\s+(?i:zrób krótką notatkę z tymi dwiema danymi)\.)?"
+    r"(?:na warsztaty [a-ząćęłńóśźż-]+ )?mam rezerwację )(?P<number>[0-9]{1,12})\.\s+"
+    rf"(?i:(?:opiekunem|opiekunką) jest )(?P<name>{_BOUNDED_NAME})\."
+    r"(?:\s+(?i:zrób krótką notatkę z tymi dwiema danymi|podaj obie dane w krótkiej notatce)\.)?"
 )
 _OTHER_RESERVATION = re.compile(r"\b(?:rezerwacj|opiekun)\w*\b", re.I)
 _STATE_QUERY = re.compile(r"\b(?:ustalen\w*|obowiązuj\w*|wiążąc\w*)\b", re.I)
@@ -401,6 +404,8 @@ def _accepted_fee_context(
             or requested[1].casefold() != category
         ):
             return None
+    if "dla jednej osoby" in question.casefold() and not per_person:
+        return None
     unit = " za osobę" if per_person else ""
     reply = f"Obowiązuje {amount[1]} zł{unit}."
     return CorrectionContext("binding_fee", reply, verified_reply=reply)

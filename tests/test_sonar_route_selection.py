@@ -34,6 +34,7 @@ from venom_core.core.queue_manager import QueueManager
 from venom_core.execution.skills.chrono_skill import ChronoSkill
 from venom_core.execution.skills.complexity_skill import ComplexitySkill
 from venom_core.memory.lessons_store import Lesson, LessonsStore
+from venom_core.services.calendar_execution import CalendarExecution, CalendarReceipt
 from venom_core.utils.llm_runtime import LLMRuntimeInfo
 from venom_core.utils.ttl_cache import TTLCache
 
@@ -71,8 +72,8 @@ def test_routes_agents_calendar_memory_projection_nodes_queue_strategy(
     calendar_skill = MagicMock()
     calendar_skill.credentials_available = True
     calendar_skill.read_agenda.return_value = "Brak wydarzeń"
-    calendar_skill.schedule_task.return_value = (
-        "✅ Zaplanowano\n🔗 Link: https://calendar"
+    calendar_skill.schedule_verified_task.side_effect = lambda operation: (
+        CalendarExecution("Zaplanowano", CalendarReceipt(operation, "test-event", None))
     )
     calendar_routes.set_dependencies(calendar_skill)
     calendar_client = _client_with_router(calendar_routes.router)

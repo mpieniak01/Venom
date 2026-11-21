@@ -23,9 +23,12 @@ from venom_core.api.schemas.llm_simple import MAX_CHAT_HISTORY_CHARS, SimpleChat
 from venom_core.services import omni_native_dialogue
 from venom_core.services.chat_policy.direct_calculator import plan_calculator
 from venom_core.services.chat_policy.direct_correction import (
+    CorrectionContext,
     corrected_registration_reply,
     correction_context,
 )
+from venom_core.services.chat_policy.direct_drafts import reservation_confirmation_draft
+from venom_core.services.chat_policy.direct_invitations import invitation_context
 from venom_core.services.grounded_calculator import result_with_unit
 from venom_core.services.model_resources import model_operation
 from venom_core.services.remote_training.paths import operator_path
@@ -351,10 +354,18 @@ async def response(
         if selection is None:
             raise _error("omni_native_text_selection_changed")
         messages = _validate_request(request, selection)
-        correction = correction_context(
-            request.content,
-            [message.content for message in request.history if message.role == "user"],
-        )
+        preceding_users = [
+            message["content"] for message in messages[:-1] if message["role"] == "user"
+        ]
+        correction = correction_context(request.content, preceding_users)
+        if correction is None:
+            correction = invitation_context(request.content, messages[:-1])
+        if correction is None:
+            draft = reservation_confirmation_draft(request.content, preceding_users)
+            if draft is not None:
+                correction = CorrectionContext(
+                    "reservation_confirmation_draft", draft, verified_reply=draft
+                )
         if correction:
             system_context = "\n\n".join(
                 filter(None, (system_context, correction.text))

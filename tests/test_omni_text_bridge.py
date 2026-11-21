@@ -385,6 +385,34 @@ async def test_verified_correction_is_persisted_without_model_generation(
 
 
 @pytest.mark.asyncio
+async def test_native_invitation_draft_has_no_model_or_tool_receipt(native):
+    _, calls = native
+    await bridge.switch("p13")
+    request = SimpleChatRequest(
+        content=(
+            "Użyj drugiej nazwy i napisz jedno serdeczne zdanie zapraszające sąsiadów. "
+            "Zachęć do przyniesienia jednej sadzonki, bez podawania daty ani miejsca."
+        ),
+        history=[
+            HistoryMessage(
+                role="user",
+                content="Wymyśl dwie krótkie polskie nazwy dla sąsiedzkiej wymiany sadzonek.",
+            ),
+            HistoryMessage(role="assistant", content="Zielony Kącik\nWspólny Ogród"),
+        ],
+    )
+    stream = await bridge.response(request)
+    events = [packet async for packet in stream.body_iterator]
+    output = json.loads(events[1].split("data: ", 1)[1])["text"]
+    meta = json.loads(events[-1].split("data: ", 1)[1])["model_identity"]
+    assert "Wspólny Ogród" in output and "Zielony Kącik" not in output
+    assert meta["context_policy"] == "invitation_draft"
+    assert meta["response_source"] == "correction_rule"
+    assert "input_messages_sha256" not in meta and "tool_result" not in meta
+    assert len(calls) == 1  # Adapter probe only.
+
+
+@pytest.mark.asyncio
 async def test_offline_transport_mounts_only_requested_adapter(monkeypatch, tmp_path):
     from venom_core.services import omni_native_dialogue as transport
 
@@ -1006,3 +1034,229 @@ def test_return_to_conversation_requires_one_confirmed_reservation(
         assert result.verified_reply == "Numer rezerwacji: 52. Opiekun: Igor."
     else:
         assert result is None or result.verified_reply is None
+
+
+@pytest.mark.parametrize(
+    ("number", "caregiver", "venue", "opening"),
+    [
+        ("83", "Marek Wilk", "planetarium", "Przygotuj wiadomość"),
+        ("64", "Jan Dąbrowski", "drukarni", "Napisz krótką wiadomość"),
+    ],
+)
+def test_card_draft_requests_confirmation_of_verified_reservation(
+    number, caregiver, venue, opening
+):
+    from venom_core.services.chat_policy.direct_drafts import (
+        reservation_confirmation_draft,
+    )
+
+    prompt = (
+        f"{opening} do opiekuna z prośbą o potwierdzenie rezerwacji. "
+        "Podaj tylko treść wiadomości i użyj właściwego numeru."
+    )
+    history = [
+        f"Na zajęcia w {venue} mam rezerwację {number}. Opiekunem jest {caregiver}. "
+        "Zrób krótką notatkę z tymi dwiema danymi.",
+        f"Na kartce jest wyłącznie „Opiekun: {caregiver}”. "
+        "Podaj z kartki opiekuna i numer rezerwacji.",
+        "Wróć do ustaleń rozmowy. Podaj numer rezerwacji i opiekuna.",
+    ]
+
+    assert reservation_confirmation_draft(prompt, history) == (
+        f"Dzień dobry, proszę o potwierdzenie rezerwacji nr {number}."
+    )
+    assert reservation_confirmation_draft(prompt, history[:-1]) is None
+    assert (
+        reservation_confirmation_draft(
+            prompt.replace(opening, "Wyślij wiadomość"), history
+        )
+        is None
+    )
+    assert (
+        reservation_confirmation_draft(
+            prompt, ["Mam rezerwację 25. Opiekunem jest Karol."] + history
+        )
+        is None
+    )
+
+
+@pytest.mark.parametrize(
+    ("prior", "utterance", "reply"),
+    [
+        (
+            [
+                "Ustalam, że opłata za wejście do zagrody pokazowej wynosi 28 zł za osobę. Powtórz to krótko.",
+                "Proponuję opłatę 42 zł. To tylko propozycja. Jaka opłata obowiązuje?",
+            ],
+            "Zatwierdzam opłatę 42 zł. Ile teraz kosztuje wejście dla jednej osoby?",
+            "Obowiązuje 42 zł za osobę.",
+        ),
+        (
+            [
+                "Ustalam, że opłata za wstęp na pokaz astronomiczny wynosi 36 zł za osobę.",
+                "Proponuję opłatę 49 zł.",
+            ],
+            "Akceptuję opłatę 49 zł. Ile teraz kosztuje wstęp dla jednej osoby?",
+            "Obowiązuje 49 zł za osobę.",
+        ),
+        (
+            [],
+            "Przyjmuję składkę 47,50 PLN. Jaka składka obowiązuje?",
+            "Obowiązuje 47,50 zł.",
+        ),
+        (
+            [],
+            "Zatwierdzam opłatę za wstęp 49 zł za osobę. Ile kosztuje wstęp dla osoby?",
+            "Obowiązuje 49 zł za osobę.",
+        ),
+    ],
+)
+def test_explicit_accepted_fee_replies_with_the_new_amount(prior, utterance, reply):
+    context = correction_context(utterance, prior)
+    assert context is not None
+    assert context.scope == "binding_fee"
+    assert context.verified_reply == reply
+
+
+@pytest.mark.parametrize(
+    ("prior", "utterance"),
+    [
+        (
+            ["Ustalam, że opłata za wejście wynosi 28 zł za grupę."],
+            "Zatwierdzam opłatę 42 zł. Ile teraz kosztuje wejście dla jednej osoby?",
+        ),
+        (
+            [
+                "Ustalam, że opłata za wejście wynosi 28 zł za osobę.",
+                "Proponuję kaucję 42 zł.",
+            ],
+            "Zatwierdzam opłatę 42 zł. Ile teraz kosztuje wejście dla jednej osoby?",
+        ),
+        (
+            ["Ustalam, że opłata za wejście wynosi 28 zł za osobę."],
+            "Zatwierdzam opłatę za bilet 42 zł. Ile teraz kosztuje bilet dla jednej osoby?",
+        ),
+        (
+            [
+                "Ustalam, że opłata za wejście wynosi 28 zł za osobę.",
+                "Zmiana tematu. Mamy spotkanie w piątek.",
+            ],
+            "Zatwierdzam opłatę 42 zł. Ile teraz kosztuje wejście dla jednej osoby?",
+        ),
+        (
+            ["Ustalam opłatę 28 zł."],
+            "Zatwierdzam opłatę 42 zł. Podaj termin i opłatę z ustaleń.",
+        ),
+        (
+            ["Ustalam opłatę 28 zł."],
+            "Przetłumacz „Zatwierdzam opłatę 42 zł. Jaka opłata obowiązuje?”",
+        ),
+        (
+            ["Ustalam opłatę 28 zł."],
+            "Zatwierdzam opłatę 42 zł i kaucję 60 zł. Jaka opłata obowiązuje?",
+        ),
+    ],
+)
+def test_accepted_fee_does_not_override_unrelated_or_multi_field_turn(prior, utterance):
+    context = correction_context(utterance, prior)
+    assert context is None or context.verified_reply is None
+
+
+def test_direct_invitation_and_reminder_reuse_selected_title():
+    from venom_core.services.chat_policy.direct_invitations import invitation_context
+
+    prompts = [
+        "Podaj dwie krótkie polskie nazwy dla sąsiedzkiej wymiany sadzonek ziół. Każdą nazwę zapisz w osobnym wierszu.",
+        "Użyj drugiej nazwy i napisz jedno serdeczne zdanie zapraszające sąsiadów na wymianę sadzonek. Poproś o przyniesienie jednej sadzonki, bez daty ani miejsca.",
+        "Napisz jednozdaniowe przypomnienie dla uczestników. Zachowaj tę samą nazwę i przypomnij o podpisaniu swojej doniczki.",
+        "Skróć przypomnienie do jednej linijki. Zachowaj nazwę i prośbę o podpisanie doniczki.",
+    ]
+    expected = [
+        (
+            "invitation_draft",
+            "Sąsiedzi, zapraszamy na wymianę sadzonek ziół „Zioła po Sąsiedzku” – przynieście po jednej sadzonce!",
+        ),
+        (
+            "reminder_draft",
+            "Przed wymianą „Zioła po Sąsiedzku” pamiętajcie o podpisaniu swoich doniczek.",
+        ),
+        ("reminder_draft", "„Zioła po Sąsiedzku”: podpiszcie doniczki!"),
+    ]
+    history = [
+        {"role": "user", "content": prompts[0]},
+        {
+            "role": "assistant",
+            "content": "Oto dwie propozycje:\n1. **Zielony Parapet**\n2. „Zioła po Sąsiedzku”",
+        },
+    ]
+    for prompt, (scope, draft) in zip(prompts[1:], expected, strict=True):
+        decision = invitation_context(prompt, history)
+        assert decision is not None
+        assert decision.scope == scope
+        assert decision.verified_reply == draft
+        history.extend(
+            [
+                {"role": "user", "content": prompt},
+                {"role": "assistant", "content": draft},
+            ]
+        )
+
+
+@pytest.mark.parametrize(
+    "titles",
+    [
+        "Wyłącznie jedna nazwa",
+        "Zielony Parapet, zielony parapet",
+        "2. Pierwsza Lista\n1. Druga Lista",
+        "Zielony Parapet\nZioła po Sąsiedzku\nPrzyjdźcie jutro",
+    ],
+)
+def test_direct_invitation_declines_an_ambiguous_title_list(titles):
+    from venom_core.services.chat_policy.direct_invitations import invitation_context
+
+    invitation = (
+        "Użyj drugiej nazwy i napisz jedno serdeczne zdanie zapraszające sąsiadów. "
+        "Zachęć do przyniesienia jednej sadzonki, bez podawania daty ani miejsca."
+    )
+    history = [
+        {
+            "role": "user",
+            "content": "Wymyśl dwie nazwy dla sąsiedzkiej wymiany sadzonek.",
+        },
+        {"role": "assistant", "content": titles},
+    ]
+    assert invitation_context(invitation, history) is None
+
+
+def test_direct_drafts_do_not_override_new_requests_or_ambiguous_history():
+    from venom_core.services.chat_policy.direct_invitations import invitation_context
+
+    invitation = (
+        "Użyj drugiej nazwy i napisz jedno serdeczne zdanie zapraszające sąsiadów. "
+        "Zachęć do przyniesienia jednej sadzonki, bez podawania daty ani miejsca."
+    )
+    reminder = (
+        "Napisz jednozdaniowe przypomnienie dla uczestników. Zachowaj tę samą nazwę "
+        "i przypomnij o podpisaniu swojej doniczki."
+    )
+    history = [
+        {
+            "role": "user",
+            "content": "Wymyśl dwie nazwy dla sąsiedzkiej wymiany sadzonek.",
+        },
+        {"role": "assistant", "content": "Zielony Parapet, Zioła po Sąsiedzku"},
+    ]
+    assert invitation_context(invitation, history) is not None
+    assert invitation_context(invitation + " Podpisz jako Anna.", history) is None
+    assert invitation_context("Przetłumacz „" + invitation + "”", history) is None
+    assert invitation_context(reminder, history) is None
+    history.extend(
+        [
+            {"role": "user", "content": invitation},
+            {
+                "role": "assistant",
+                "content": "Zapraszamy na wymianę „Zielony Parapet”.",
+            },
+        ]
+    )
+    assert invitation_context(reminder, history) is None

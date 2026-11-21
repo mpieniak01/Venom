@@ -46,6 +46,22 @@ _CURRENT_FEE_QUERY = re.compile(
     rf"|ile (?:obecnie wynosi|wynosi obecnie) {_FEE_NOMINATIVE})\s*\?",
     re.I,
 )
+_FEE_ENTRY = r"(?:wejście|wstęp|bilet)"
+_PER_PERSON = r"(?:za (?:jedną )?osobę|na (?:jedną )?osobę|od osoby)"
+_ACCEPTED_FEE_QUESTION = re.compile(
+    rf"(?:zatwierdzam|akceptuję|przyjmuję)\s+(?P<field>{_FEE_ACCUSATIVE})"
+    rf"(?:\s+za (?P<subject>{_FEE_ENTRY}))?\s+(?:w wysokości\s+)?"
+    rf"(?P<amount>{_AMOUNT.pattern})(?:\s+(?P<unit>{_PER_PERSON}))?"
+    r"\s*[.!]\s+(?P<question>[^.!?]+\?)",
+    re.I,
+)
+_ENTRY_FEE_QUESTION = re.compile(
+    rf"ile (?:teraz |obecnie )?kosztuje (?P<subject>{_FEE_ENTRY})"
+    rf"\s+(?:dla (?:jednej )?osoby|{_PER_PERSON})\s*\?",
+    re.I,
+)
+_ENTRY_SUBJECT = re.compile(rf"\b{_FEE_ENTRY}\b", re.I)
+_PER_PERSON_UNIT = re.compile(rf"\s+{_PER_PERSON}\b", re.I)
 _FEE_UNCERTAINTY = re.compile(r"\b(?:nie|może|prawdopodobnie)\b", re.I)
 _SOURCE = re.compile(r"\b(?:ulotk|kartk|kartc|karc|kartę)\w*\b", re.I)
 _SOURCE_QUERY = re.compile(
@@ -185,9 +201,10 @@ def _verified_number_card_reply(source: str, content: str) -> str | None:
     return f"{label.capitalize()}: {field['value']}. {number}: brak danych."
 
 
-def _reservation_from_conversation(
+def verified_reservation_return(
     content: str, preceding_users: Sequence[str]
-) -> CorrectionContext | None:
+) -> tuple[str, str] | None:
+    """Read the number and caregiver for an explicit return to verified history."""
     if (
         not _RETURN_TO_RESERVATION.fullmatch(content.strip())
         or len(preceding_users) < 2
@@ -212,6 +229,16 @@ def _reservation_from_conversation(
         != f"Opiekun: {name}. Numer rezerwacji: brak danych."
     ):
         return None
+    return number, name
+
+
+def _reservation_from_conversation(
+    content: str, preceding_users: Sequence[str]
+) -> CorrectionContext | None:
+    reservation = verified_reservation_return(content, preceding_users)
+    if reservation is None:
+        return None
+    number, name = reservation
     return CorrectionContext(
         "binding_reservation",
         "Pytanie dotyczy ustaleń rozmowy o rezerwacji.",
@@ -267,6 +294,9 @@ def correction_context(
         reservation = _reservation_from_conversation(visible, preceding_users)
         if reservation is not None:
             return reservation
+        accepted = _accepted_fee_context(visible, preceding_users)
+        if accepted is not None:
+            return accepted
         pending = _pending_fee_context(visible, preceding_users)
         if pending is not None:
             return pending
@@ -306,6 +336,74 @@ def _proposal_question(text: str) -> tuple[str, str]:
     suffix = text[proposal.end() :]
     marker = _PENDING_MARKER.match(suffix)
     return proposal[0], suffix[marker.end() :] if marker else suffix
+
+
+def _accepted_fee_reference(field: str, preceding_users: Sequence[str]) -> str:
+    if not preceding_users:
+        return ""
+    prior = without_quotes(preceding_users[-1]).strip()
+    proposal, question = _proposal_question(prior)
+    if proposal:
+        proposed_field = _FEE.search(proposal)
+        if (
+            len(preceding_users) < 2
+            or not proposed_field
+            or proposed_field[1].casefold() != field
+            or (question and not _CURRENT_FEE_QUERY.fullmatch(question))
+        ):
+            return ""
+        prior = without_quotes(preceding_users[-2]).strip()
+    if _FEE_UNCERTAINTY.search(prior):
+        return ""
+    state = _FeeState()
+    state.read(prior)
+    return prior if state.field == field and state.binding is not None else ""
+
+
+def _accepted_fee_context(
+    content: str, preceding_users: Sequence[str]
+) -> CorrectionContext | None:
+    """Answer a single explicit fee question from the user's current decision."""
+    decision = _ACCEPTED_FEE_QUESTION.fullmatch(content.strip())
+    if decision is None:
+        return None
+    field = _FEE.search(decision["field"])
+    amount = _AMOUNT.fullmatch(decision["amount"])
+    if field is None or amount is None:
+        return None
+    category = field[1].casefold()
+    prior = _accepted_fee_reference(category, preceding_users)
+    prior_amount = _AMOUNT.search(prior)
+    known_subjects = {item.casefold() for item in _ENTRY_SUBJECT.findall(prior)}
+    subject = decision["subject"]
+    if subject:
+        subject = subject.casefold()
+    per_person = bool(
+        decision["unit"]
+        or (
+            prior_amount
+            and (subject is None or known_subjects == {subject})
+            and _PER_PERSON_UNIT.match(prior, prior_amount.end())
+        )
+    )
+    question = decision["question"]
+    if entry := _ENTRY_FEE_QUESTION.fullmatch(question):
+        entry_subject = entry["subject"].casefold()
+        if subject:
+            known_subjects = {subject}
+        if not per_person or known_subjects != {entry_subject}:
+            return None
+    else:
+        requested = _FEE.search(question)
+        if (
+            not _CURRENT_FEE_QUERY.fullmatch(question)
+            or not requested
+            or requested[1].casefold() != category
+        ):
+            return None
+    unit = " za osobę" if per_person else ""
+    reply = f"Obowiązuje {amount[1]} zł{unit}."
+    return CorrectionContext("binding_fee", reply, verified_reply=reply)
 
 
 def _pending_fee_context(

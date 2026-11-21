@@ -46,9 +46,9 @@ WeatherFailureReason = Literal[
 # IMGW's public synoptic station catalogue. Match both station identity and name.
 _IMGW_STATIONS = {"kalisz": "12435"}
 _WEATHER_MAX_AGE = timedelta(hours=3)
-_WTTR_CLOCK = re.compile(r"(0?[1-9]|1[0-2]):([0-5][0-9]) (AM|PM)")
-_WTTR_LOCAL_TIME = re.compile(r"([0-9]{4}-[0-9]{2}-[0-9]{2}) (.+)")
-_WTTR_DAY = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
+_WTTR_CLOCK = re.compile(r"(0?[1-9]|1[0-2]):([0-5]\d) (AM|PM)", re.ASCII)
+_WTTR_LOCAL_TIME = re.compile(r"(\d{4}-\d{2}-\d{2}) (.+)", re.ASCII)
+_WTTR_DAY = re.compile(r"\d{4}-\d{2}-\d{2}", re.ASCII)
 _WARSAW_TIME = ZoneInfo("Europe/Warsaw")
 _WEATHER_TEMPERATURE = re.compile(r"-?\d{1,3}(?:[.,]\d{1,2})?")
 

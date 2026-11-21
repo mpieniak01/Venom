@@ -270,11 +270,18 @@ class WikiUnitEvidence:
             return None
         if not binary and (len(fields) != 1 or fields[0][1]):
             return None
+        return self._converted_reply(
+            fields, binary=binary, output_unit=spec.output_unit
+        )
+
+    def _converted_reply(
+        self, fields: list[tuple[Decimal, bool]], *, binary: bool, output_unit: str
+    ) -> str:
         if self.factor is None:
             return "Poprzedni odczyt nie potwierdził potrzebnego przelicznika."
-        original = next((number for number, small in fields if not small), fields[0][0])
+        original = next(number for number, small in fields if not small)
         result = original * self.factor
-        unit = _hour_label(result) if self.unit == "day" else spec.output_unit
+        unit = _hour_label(result) if self.unit == "day" else output_unit
         if binary:
             converted = next(number for number, small in fields if small)
             return self._binary_reply(original, converted, result, unit, self.factor)

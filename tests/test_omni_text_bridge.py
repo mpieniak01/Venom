@@ -941,3 +941,17 @@ def test_explicit_pending_fee_question_returns_confirmed_amount(previous, questi
 def test_pending_fee_does_not_override_unrelated_or_approved_state(previous, question):
     context = correction_context(question, previous)
     assert context is None or context.scope != "pending_fee"
+
+
+@pytest.mark.parametrize("separator", [" ", "\u00a0", "\u202f"])
+def test_pending_fee_preserves_grouped_amount(separator):
+    current = f"1{separator}200,50"
+    proposed = f"1{separator}450"
+    context = correction_context(
+        f"Proponuję opłatę {proposed} zł. Jaka opłata obowiązuje?",
+        [f"Ustalam, że opłata wynosi {current} zł."],
+    )
+    assert context is not None
+    assert context.verified_reply == (
+        f"Obowiązuje {current} zł. Kwota {proposed} zł jest propozycją do zatwierdzenia."
+    )

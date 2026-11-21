@@ -15,7 +15,12 @@ _EDIT = re.compile(
     r"^\s*(?:przetłumacz|zacytuj|streść|porównaj|przepisz|przeformułuj|przeredaguj)\b",
     re.I,
 )
-_AMOUNT = re.compile(r"(?<![\w.,-])(\d{1,9}(?:[,.]\d{1,2})?)\s*(?:zł|PLN)\b", re.I)
+_AMOUNT = re.compile(
+    r"(?<![\w.,-])(?<!\d[ \u00a0\u202f])"
+    r"(\d{1,3}(?:[ \u00a0\u202f]+\d{3}){1,2}(?:[,.]\d{1,2})?"
+    r"|\d{1,9}(?:[,.]\d{1,2})?)\s*(?:zł|PLN)\b",
+    re.I,
+)
 _FEE = re.compile(r"\b(składk|kaucj|opłat|cen|kwot)\w*\b", re.I)
 _INITIAL = re.compile(r"^\s*(?:szykuję|ustalam|rezerwację|obowiązuje)\b", re.I)
 _PROPOSAL = re.compile(

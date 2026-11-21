@@ -2372,3 +2372,88 @@ def test_wiki_duration_checks_a_reported_question_with_a_spelled_fraction(
         )
         == expected
     )
+
+
+@pytest.mark.parametrize(
+    ("title", "first", "second", "expected"),
+    [
+        (
+            "Tech stock sell-off drags markets down as Anthropic shares slide",
+            "Wyprzedaż akcji technologicznych obniża notowania",
+            "Akcje Anthropic spadają",
+            "Wyprzedaż akcji technologicznych obniża notowania, a równocześnie akcje Anthropic spadają.",
+        ),
+        (
+            "Ferry service stops because waters rise, Taylor says",
+            "Przeprawa ustaje",
+            "Poziom wody rośnie",
+            "Przeprawa ustaje, ponieważ poziom wody rośnie.",
+        ),
+        (
+            "The ferry will not return while flood waters rise",
+            "Prom nie wróci",
+            "Poziom wody rośnie",
+            "Prom nie wróci, podczas gdy poziom wody rośnie.",
+        ),
+    ],
+)
+def test_rss_uses_the_clause_relation_and_preserves_literal_attribution(
+    title, first, second, expected
+):
+    from venom_core.services.academy.qualified_chat_rss import RSSSummary
+    from venom_core.services.verified_web import NewsHeadline
+
+    summary = RSSSummary(
+        (NewsHeadline("https://bbc.co.uk/story", title, "2026-11-21"),)
+    )
+    context = json.loads(summary.messages("Wybierz jeden wpis.")[1]["content"])
+    assert "drugi_czlon" in context["naglowki"][0]
+    answer = summary.publish(
+        json.dumps({"items": [{"index": 1, "summary": first, "secondary": second}]})
+    )
+    assert f"Nagłówek RSS: {expected}" in answer
+    assert ("Atrybucja: Taylor" in answer) is title.endswith("Taylor says")
+
+
+@pytest.mark.parametrize(
+    ("first", "second"),
+    [
+        (
+            "Wyprzedaż akcji obniża notowania",
+            "Akcje spadają dlatego, że trwa wyprzedaż",
+        ),
+        ("Bessa Anthropic obniża notowania", "Akcje Anthropic spadają"),
+        ("Wyprzedaż akcji obniża notowania", "."),
+        ("Wyprzedaż akcji obniża notowania", None),
+    ],
+)
+def test_rss_rejects_merged_or_unverified_clause_drafts(first, second):
+    from venom_core.services.academy.qualified_chat_rss import RSSSummary
+    from venom_core.services.verified_web import NewsHeadline
+
+    summary = RSSSummary(
+        (
+            NewsHeadline(
+                "https://bbc.co.uk/story",
+                "Tech stock sell-off drags markets down as Anthropic shares slide",
+                "2026-11-21",
+            ),
+        )
+    )
+    assert "Nie udało się przygotować" in summary.publish(
+        json.dumps({"items": [{"index": 1, "summary": first, "secondary": second}]})
+    )
+
+
+def test_rss_does_not_split_as_in_a_role():
+    from venom_core.services.academy.qualified_chat_rss import RSSSummary
+    from venom_core.services.verified_web import NewsHeadline
+
+    title = "Taylor serves as a senior envoy"
+    summary = RSSSummary(
+        (NewsHeadline("https://bbc.co.uk/story", title, "2026-11-21"),)
+    )
+    headline = json.loads(summary.messages("Wybierz wpis.")[1]["content"])["naglowki"][
+        0
+    ]
+    assert headline == {"index": 1, "tytul": title}

@@ -365,10 +365,9 @@ async def _weather_context(message: str, policy: str) -> str:
     city = _weather_location(message)
     if not city:
         return "\nAsk the user for the city before reporting current weather."
+    skill = AssistantSkill()
     try:
-        observation = await asyncio.wait_for(
-            AssistantSkill().read_weather_observation(city), 12
-        )
+        observation = await asyncio.wait_for(skill.read_weather_observation(city), 12)
     except TimeoutError:
         observation = WeatherObservation(
             city,
@@ -377,6 +376,15 @@ async def _weather_context(message: str, policy: str) -> str:
         )
     aliases = load_public_sources().city_aliases
     result = weather_observation_reply(observation, message, aliases)
+    if result.reason == "different_location":
+        try:
+            station = await asyncio.wait_for(
+                skill.read_imgw_station_observation(city), 5
+            )
+        except TimeoutError:
+            station = None
+        if station is not None:
+            result = weather_observation_reply(station, message, aliases)
     scope = "weather" if result.verified else "unavailable"
     context = (
         f"{policy}{result.excerpt}\n[/PUBLIC_SOURCES]"

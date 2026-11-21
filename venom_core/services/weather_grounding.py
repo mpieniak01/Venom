@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Self, get_args
 from unicodedata import normalize
 
@@ -12,6 +13,8 @@ from venom_core.execution.skills.assistant_skill import (
     AssistantSkill,
     WeatherFailureReason,
     WeatherObservation,
+    imgw_observation_time,
+    imgw_station_url,
     weather_area_name,
     weather_temperature,
 )
@@ -74,6 +77,7 @@ class WeatherEvidence:
     http_status: int | None = None
     feels_like_c: str | None = None
     preferred_metric: str | None = None
+    observed_at: datetime | None = None
 
     def to_record(self) -> dict[str, str]:
         data = {"weather_requested_location": self.requested_location}
@@ -89,6 +93,8 @@ class WeatherEvidence:
             value = getattr(self, name)
             if value is not None:
                 data["weather_" + name] = str(value)
+        if self.observed_at is not None:
+            data["weather_observed_at"] = self.observed_at.isoformat()
         return data
 
     @classmethod
@@ -118,7 +124,22 @@ class WeatherEvidence:
                 return None
         elif reason not in _FAILURES or record.get("weather_temperature_c") is not None:
             return None
+        at = record.get("weather_observed_at")
+        observed_at = None
         if source != AssistantSkill.weather_source_url(requested):
+            if (
+                source is None
+                or source != imgw_station_url(requested)
+                or observed is None
+                or observed.casefold() != requested.casefold()
+                or reason is not None
+                or not at
+            ):
+                return None
+            observed_at = imgw_observation_time(at[:10], at[11:13])
+            if observed_at is None or observed_at.isoformat() != at:
+                return None
+        elif at is not None:
             return None
         if status_text is not None and (
             reason != "provider_http_error"
@@ -134,6 +155,7 @@ class WeatherEvidence:
             int(status_text) if status_text is not None else None,
             feels,
             metric,
+            observed_at,
         )
 
     def follow_up_reply(self, message: str) -> str | None:
@@ -273,8 +295,15 @@ def weather_observation_reply(
         ):
             details.insert(0, f"Temperatura odczuwalna: {observation.feels_like_c}°C.")
         temperature = " ".join([temperature, *details])
+    when = ""
+    if observation.observed_at is not None:
+        when = (
+            f" Pomiar z {observation.observed_at:%Y-%m-%d, %H:%M} UTC. "
+            "Źródłem pochodzenia danych jest Instytut Meteorologii i Gospodarki "
+            "Wodnej – Państwowy Instytut Badawczy."
+        )
     return WeatherGroundingReply(
-        f"{context}Miejsce odczytu: {observed}. {temperature} Źródło: {observation.source_url}",
+        f"{context}Miejsce odczytu: {observed}. {temperature}{when} Źródło: {observation.source_url}",
         WeatherEvidence(
             requested,
             canonical_observed,
@@ -282,5 +311,6 @@ def weather_observation_reply(
             observation.source_url,
             feels_like_c=observation.feels_like_c,
             preferred_metric="feels_like" if only_feels else None,
+            observed_at=observation.observed_at,
         ),
     )

@@ -3,7 +3,7 @@
 import asyncio
 import re
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import Annotated, Any, Dict, Literal, Optional
 from urllib.parse import quote
 
@@ -40,6 +40,9 @@ WeatherFailureReason = Literal[
     "provider_invalid_payload",
 ]
 
+# IMGW's public synoptic station catalogue. Match both station identity and name.
+_IMGW_STATIONS = {"kalisz": "12435"}
+_IMGW_MAX_AGE = timedelta(hours=3)
 _WEATHER_TEMPERATURE = re.compile(r"-?[0-9]{1,3}(?:[.,][0-9]{1,2})?")
 
 
@@ -53,6 +56,29 @@ class WeatherObservation:
     failure_reason: WeatherFailureReason | None = None
     http_status: int | None = None
     details: tuple[tuple[str, str], ...] = ()
+    observed_at: datetime | None = None
+
+
+def imgw_station_url(location: str) -> str | None:
+    station = _IMGW_STATIONS.get(location.casefold())
+    return (
+        f"https://danepubliczne.imgw.pl/api/data/synop/id/{station}"
+        if station
+        else None
+    )
+
+
+def imgw_observation_time(day: object, hour: object) -> datetime | None:
+    if not isinstance(day, str) or type(hour) not in (int, str):
+        return None
+    if not re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", day) or not re.fullmatch(
+        r"[0-9]{1,2}", str(hour)
+    ):
+        return None
+    try:
+        return datetime.fromisoformat(f"{day}T{int(hour):02}:00:00+00:00")
+    except ValueError:
+        return None
 
 
 @dataclass(frozen=True)
@@ -284,12 +310,38 @@ class AssistantSkill:
             details=_weather_details(current),
         )
 
+    async def read_imgw_station_observation(
+        self, location: str
+    ) -> WeatherObservation | None:
+        url = imgw_station_url(location)
+        if url is None:
+            return None
+        data = await self._fetch_weather_payload(url, timeout=4.0)
+        if isinstance(data, _WeatherProviderFailure):
+            return None
+        observed = weather_area_name(data.get("stacja"))
+        value = weather_temperature(data.get("temperatura"))
+        at = imgw_observation_time(
+            data.get("data_pomiaru"), data.get("godzina_pomiaru")
+        )
+        now = datetime.now(timezone.utc)
+        if (
+            observed is None
+            or observed.casefold() != location.casefold()
+            or str(data.get("id_stacji")) != _IMGW_STATIONS[location.casefold()]
+            or value is None
+            or at is None
+            or not timedelta() <= now - at <= _IMGW_MAX_AGE
+        ):
+            return None
+        return WeatherObservation(location, url, observed, value, observed_at=at)
+
     async def _fetch_weather_payload(
-        self, url: str
+        self, url: str, *, timeout: float = 10.0
     ) -> dict[str, Any] | _WeatherProviderFailure:
         try:
             async with TrafficControlledHttpClient(
-                provider="weather", timeout=10.0
+                provider="weather", timeout=timeout
             ) as client:
                 response = await client.aget(url, raise_for_status=False)
             if response.status_code != 200:

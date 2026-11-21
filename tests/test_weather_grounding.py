@@ -258,3 +258,103 @@ def test_previous_weather_uses_stored_value_without_new_read(prompt, answer):
         reading("Kalisz", "Kalisz", "8"), "Temperatura", {}
     )
     assert initial.evidence.follow_up_reply(prompt) == answer
+
+
+def _synop_payload(**fields):
+    from datetime import datetime, timezone
+
+    now = datetime.now(timezone.utc)
+    return {
+        "id_stacji": "12435",
+        "stacja": "Kalisz",
+        "data_pomiaru": now.date().isoformat(),
+        "godzina_pomiaru": str(now.hour),
+        "temperatura": "2.1",
+        **fields,
+    }
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"id_stacji": "00000"},
+        {"stacja": "Zagorzynek"},
+        {"temperatura": "NaN"},
+        {"data_pomiaru": "2000-01-01"},
+        {"data_pomiaru": "2999-01-01"},
+        {"godzina_pomiaru": "24"},
+        {"godzina_pomiaru": True},
+        {"data_pomiaru": "wczoraj"},
+    ],
+)
+async def test_imgw_discards_wrong_station_and_unusable_observation(client, changes):
+    client.aget.return_value = httpx.Response(200, json=_synop_payload(**changes))
+    assert await AssistantSkill().read_imgw_station_observation("Kalisz") is None
+
+
+@pytest.mark.asyncio
+async def test_imgw_recovers_named_city_only_and_keeps_timestamp_in_history(client):
+    from venom_core.services import chat_grounding
+
+    nearby = httpx.Response(
+        200,
+        json={
+            "current_condition": [{"temp_C": "4"}],
+            "nearest_area": [{"areaName": [{"value": "Zagorzynek"}]}],
+        },
+    )
+    client.aget.side_effect = [
+        nearby,
+        httpx.Response(200, json=_synop_payload()),
+        nearby,
+    ]
+    text = "Sprawdź aktualną temperaturę powietrza w Kaliszu, tylko miasto."
+    context = await chat_grounding.current_chat_context(text)
+    assert "Kalisz" in context.reply and "2.1°C" in context.reply
+    assert "Zagorzynek" not in context.reply and " UTC." in context.reply
+    assert "Instytut Meteorologii i Gospodarki Wodnej" in context.reply
+    assert [call.args[0] for call in client.aget.await_args_list] == [
+        "https://wttr.in/Kalisz?format=j1",
+        "https://danepubliczne.imgw.pl/api/data/synop/id/12435",
+    ]
+    record = context.evidence.weather.to_record()
+    restored = WeatherEvidence.from_record(record)
+    assert restored == context.evidence.weather
+    assert restored.follow_up_reply("Podaj tę samą wartość.") == "Kalisz — 2.1°C"
+    assert (
+        WeatherEvidence.from_record(
+            {**record, "weather_observed_location": "Zagorzynek"}
+        )
+        is None
+    )
+    assert (
+        WeatherEvidence.from_record({**record, "weather_observed_at": "dzisiaj"})
+        is None
+    )
+    allowed = await chat_grounding.current_chat_context(
+        "Sprawdź aktualną temperaturę powietrza w Kaliszu. Dopuszczam pomiar z okolic."
+    )
+    assert "Zagorzynek" in allowed.reply and "4°C" in allowed.reply
+    assert client.aget.await_count == 3
+
+
+@pytest.mark.asyncio
+async def test_imgw_unavailable_keeps_original_location_mismatch(client):
+    from venom_core.services import chat_grounding
+
+    client.aget.side_effect = [
+        httpx.Response(
+            200,
+            json={
+                "current_condition": [{"temp_C": "4"}],
+                "nearest_area": [{"areaName": [{"value": "Zagorzynek"}]}],
+            },
+        ),
+        httpx.Response(503),
+    ]
+    context = await chat_grounding.current_chat_context(
+        "Sprawdź aktualną temperaturę powietrza w Kaliszu."
+    )
+    assert context.evidence.weather.reason == "different_location"
+    assert "°C" not in context.reply

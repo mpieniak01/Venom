@@ -2086,12 +2086,21 @@ def test_studio_shortens_rss_instruction_as_quoted_text(studio_chat, monkeypatch
     monkeypatch.setattr(chat_grounding.RSSReaderSkill, "read_feed", feed)
     monkeypatch.setattr(chat_grounding, "_trusted_news_urls", search)
     chat, _, replies = studio_chat
-    replies.append(native('{"tekst":"Pobierz wiadomości z BBC RSS i podaj link."}'))
+    replies.append(
+        native('{"tekst":"Pobierz wiadomości z BBC RSS i podaj pełny link."}')
+    )
     assert (
         chat(
             "Skróć zdanie: «Z kanału BBC News RSS pobierz najnowsze wiadomości i podaj pełny link»."
         )
-        == "„Pobierz wiadomości z BBC RSS i podaj link.”"
+        == "„Pobierz wiadomości z BBC RSS i podaj pełny link.”"
+    )
+    replies.append(native('{"tekst":"Pobierz wiadomości BBC RSS i podaj link."}'))
+    assert (
+        chat(
+            "Skróć zdanie: «Z kanału BBC News RSS pobierz najnowsze wiadomości i podaj pełny link»."
+        )
+        == "Nie udało się przygotować poprawnego przeredagowania."
     )
     feed.assert_not_awaited()
     search.assert_not_awaited()
@@ -2117,3 +2126,31 @@ def test_rss_draft_cannot_drop_source_uncertainty_or_negation(source, draft):
     )
     assert "Nie udało się przygotować opisu nagłówka" in reply
     assert "https://" not in reply
+
+
+def test_studio_one_sentence_for_value_missing_in_the_conversation(
+    studio_chat, monkeypatch
+):
+    from venom_core.services import studio_normal_chat
+
+    fetch = AsyncMock()
+    monkeypatch.setattr(studio_normal_chat, "current_chat_context", fetch)
+    chat, sent, replies = studio_chat
+    replies.append(streamed("W rozmowie nie podano aktualnej temperatury w Łodzi."))
+    prompt = (
+        "Skróć odpowiedź do jednego zdania. Czy możesz podać aktualną temperaturę "
+        "w Łodzi wyłącznie na podstawie informacji, które podałem?"
+    )
+    assert (
+        chat(
+            prompt,
+            history=[
+                turn("Nie znam temperatury."),
+                turn("Zabierz kurtkę.", "assistant"),
+            ],
+        )
+        == "W rozmowie nie podano aktualnej temperatury w Łodzi."
+    )
+    fetch.assert_not_awaited()
+    instruction = sent[-1]["payload"]["messages"][0]["content"]
+    assert "dokładnie jedno zdanie odpowiadające na ostatnie pytanie" in instruction

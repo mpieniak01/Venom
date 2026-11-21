@@ -37,6 +37,10 @@ _WORD_VALUE = re.compile(
     re.I,
 )
 _ONE_SENTENCE = re.compile(r"\bw jednym zdaniu\b", re.I)
+_FULL_LINK = re.compile(
+    r"\b(?:pełn\w*|kompletn\w*|cał\w*)\s+(?:link\w*|adres\w*|odnośnik\w*|odsyłacz\w*)\b",
+    re.I,
+)
 _NUMBERS = re.compile(r"\d+(?::\d+)?")
 _FORMAT_COUNTS = re.compile(
     r"\b(?P<count>jedn(?:ym|ego|o)|dwóch|dwa|trzech|trzy|\d+) "
@@ -148,6 +152,8 @@ class QuoteRewrite:
             outer_format = (
                 "jedno zdanie, wyraźnie krótsze od źródła, bez utraty poleceń"
             )
+            if _FULL_LINK.search(self.source):
+                outer_format += ". Zachowaj wymóg pełnego linku."
         if plain_text and act in {"polecenie", "pytanie"}:
             if outer_format:
                 operation["wymagania_formy"] = outer_format
@@ -170,6 +176,10 @@ class QuoteRewrite:
                 " Użyj wyraźnie mniej słów niż w tekście źródłowym. "
                 "Zachowaj źródło i wszystkie czynności. Usuń zbędne słowa oraz omówienia."
             )
+            if _FULL_LINK.search(self.source):
+                instruction += (
+                    " Pozostaw sformułowanie «pełny link» albo «pełny adres»."
+                )
         if _RELOCATION.match(self.source):
             instruction += (
                 " Zacznij od osoby wykonującej czynność. Zachowaj kierunek zmiany "
@@ -208,7 +218,13 @@ class QuoteRewrite:
                 and _CAUSAL_DETAIL.search(text)
             )
             or (self.one_sentence and len(re.findall(r"[.!?](?=\s|$)", text)) > 1)
-            or (self.shorten and len(text.split()) >= len(self.source.split()))
+            or (
+                self.shorten
+                and (
+                    len(text.split()) >= len(self.source.split())
+                    or (_FULL_LINK.search(self.source) and not _FULL_LINK.search(text))
+                )
+            )
         ):
             return _FAILED_REWRITE
         act = _speech_act(self.source)

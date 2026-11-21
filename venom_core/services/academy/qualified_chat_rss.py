@@ -22,7 +22,7 @@ _REPORTING_VERB = (
     r"says|said|warns|warned|reports|reported|confirms|confirmed|"
     r"mówi|powiedział\w*|ostrzega|potwierdza|informuje|twierdzi|donosi"
 )
-_REPORTING = re.compile(rf"\b(?:{_REPORTING_VERB})\b", re.I)
+_REPORTING = re.compile(rf"\b(?:{_REPORTING_VERB}|według|zdaniem)\b", re.I)
 _SPEAKER = re.compile(
     rf"^(?P<lead>[^\n,:\u2013\u2014]{{1,64}}?)\s+(?:{_REPORTING_VERB})\s+"
     rf"|,\s*(?:"
@@ -96,7 +96,7 @@ class RSSSummary:
                     "maxItems": count,
                     "items": {
                         "type": "object",
-                        "required": ["index", "summary", "attribution"],
+                        "required": ["index", "summary"],
                         "additionalProperties": False,
                         "properties": {
                             "index": {
@@ -109,16 +109,6 @@ class RSSSummary:
                                 "minLength": 1,
                                 "maxLength": 240,
                             },
-                            "attribution": {
-                                "anyOf": [
-                                    {
-                                        "type": "string",
-                                        "minLength": 1,
-                                        "maxLength": 240,
-                                    },
-                                    {"type": "null"},
-                                ]
-                            },
                         },
                     },
                 }
@@ -128,8 +118,8 @@ class RSSSummary:
     def messages(self, request: str) -> list[dict[str, str]]:
         headlines = []
         for index, headline in enumerate(self.headlines, 1):
-            proposition, speaker = _headline_fields(headline.title)
-            headlines.append({"index": index, "tytul": proposition, "mówiący": speaker})
+            proposition, _ = _headline_fields(headline.title)
+            headlines.append({"index": index, "tytul": proposition})
         data = {"zadanie": request, "naglowki": headlines}
         return [
             {
@@ -141,11 +131,10 @@ class RSSSummary:
                     "opisu w summary. Zachowaj fakty, liczby, negację i stopień "
                     "pewności tytułu. W angielskim «podmiot + to + czasownik» "
                     "wyraża zapowiedzianą czynność. Pole tytul zawiera treść po "
-                    "wydzieleniu mówiącego. W summary podaj ją po polsku. W attribution "
-                    "skopiuj dosłownie pole mówiący w języku źródłowym lub null. "
-                    "Użyj tylko informacji "
-                    "obecnych w wybranym tytule. Adres, datę publikacji i zakres "
-                    "odczytu podaje aplikacja. Nie dodawaj ich do opisu."
+                    "wydzieleniu mówiącego. W summary podaj ją po polsku. Użyj tylko "
+                    "informacji obecnych w wybranym tytule. Atrybucję, adres, datę "
+                    "publikacji i zakres odczytu podaje aplikacja. Nie dodawaj "
+                    "ich do opisu."
                 ),
             },
             {"role": "user", "content": json.dumps(data, ensure_ascii=False)},
@@ -168,11 +157,7 @@ class RSSSummary:
         seen: set[int] = set()
         blocks = []
         for item in items:
-            if not isinstance(item, dict) or item.keys() != {
-                "index",
-                "summary",
-                "attribution",
-            }:
+            if not isinstance(item, dict) or item.keys() != {"index", "summary"}:
                 return _INVALID_DRAFT
             index = item["index"]
             if (
@@ -184,19 +169,15 @@ class RSSSummary:
             headline = self.headlines[index - 1]
             summary = _draft_field(item["summary"], headline.title)
             _, speaker = _headline_fields(headline.title)
-            attribution = _draft_field(item["attribution"], headline.title)
             if (
                 summary is None
-                or (attribution is None and item["attribution"] is not None)
                 or (_MODAL.search(headline.title) and not _MODAL.search(summary))
                 or (_NEGATION.search(headline.title) and not _NEGATION.search(summary))
             ):
                 return _INVALID_DRAFT
             seen.add(index)
-            if (
-                item["attribution"] != speaker
-                or _REPORTING.search(summary)
-                or (speaker is None and _REPORTING.search(headline.title))
+            if _REPORTING.search(summary) or (
+                speaker is None and _REPORTING.search(headline.title)
             ):
                 # Keep the verified headline when the proposed attribution lacks support.
                 title = _draft_field(headline.title, headline.title)

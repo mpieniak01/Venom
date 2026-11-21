@@ -2003,10 +2003,7 @@ def test_studio_explicit_rss_publishes_current_metadata_from_the_selected_record
     monkeypatch.setattr(chat_grounding.RSSReaderSkill, "read_feed", feed)
     chat, sent, replies = studio_chat
     replies.append(
-        native(
-            '{"items":[{"index":2,"summary":"Prom nie wróci w tym tygodniu.",'
-            '"attribution":"Taylor"}]}'
-        )
+        native('{"items":[{"index":2,"summary":"Prom nie wróci w tym tygodniu."}]}')
     )
     session = str(uuid4())
     answer = chat(
@@ -2059,11 +2056,11 @@ def test_studio_rss_without_headlines_has_no_draft_or_citation(
     "draft",
     [
         "",
-        '{"items":[{"index":1,"summary":"Dobry tekst.","attribution":null}],"scope":"all"}',
-        '{"items":[{"index":0,"summary":"Dobry tekst.","attribution":null}]}',
-        '{"items":[{"index":true,"summary":"Dobry tekst.","attribution":null}]}',
-        '{"items":[{"index":1,"summary":"Odczytano cały artykuł.","attribution":null}]}',
-        '{"items":[{"index":1,"summary":"Zespół podał 23 nowe fakty.","attribution":null}]}',
+        '{"items":[{"index":1,"summary":"Dobry tekst."}],"scope":"all"}',
+        '{"items":[{"index":0,"summary":"Dobry tekst."}]}',
+        '{"items":[{"index":true,"summary":"Dobry tekst."}]}',
+        '{"items":[{"index":1,"summary":"Odczytano cały artykuł."}]}',
+        '{"items":[{"index":1,"summary":"Zespół podał 23 nowe fakty."}]}',
         '{"items":[{"index":1,"summary":"Dobry tekst.","attribution":"https://example.org/a"}]}',
         '{"items":[{"index":1,"summary":"Dobry tekst.","attribution":239}]}',
     ],
@@ -2143,9 +2140,7 @@ def test_rss_draft_cannot_drop_source_uncertainty_or_negation(source, draft):
     from venom_core.services.verified_web import NewsHeadline
 
     plan = RSSSummary((NewsHeadline("https://bbc.co.uk/a", source, "2026-11-20"),))
-    reply = plan.publish(
-        json.dumps({"items": [{"index": 1, "summary": draft, "attribution": None}]})
-    )
+    reply = plan.publish(json.dumps({"items": [{"index": 1, "summary": draft}]}))
     assert "Nie udało się przygotować opisu nagłówka" in reply
     assert "https://" not in reply
 
@@ -2179,47 +2174,36 @@ def test_studio_one_sentence_for_value_missing_in_the_conversation(
 
 
 @pytest.mark.parametrize(
-    ("source", "summary", "attribution", "expected", "speaker"),
+    ("source", "summary", "expected", "speaker"),
     [
         (
             "Retail sales rose in May",
             "Sprzedaż wzrosła w maju.",
-            None,
             "Sprzedaż wzrosła w maju.",
             None,
         ),
         (
             "Harbor council says the trial may start Friday",
             "Próba może ruszyć w piątek.",
-            "Harbor council",
             "Próba może ruszyć w piątek.",
             "Harbor council",
         ),
         (
             "Ferry service may resume Friday, Taylor says",
             "Morgan mówi, że przeprawy mogą wrócić w piątek.",
-            "Morgan",
             "„Ferry service may resume Friday, Taylor says”",
             "Taylor",
         ),
         (
             "Ferry service may resume Friday, says Taylor",
-            "Morgan mówi, że przeprawy mogą wrócić w piątek.",
-            "Taylor",
+            "Według Morgana przeprawy mogą wrócić w piątek.",
             "„Ferry service may resume Friday, says Taylor”",
             "Taylor",
-        ),
-        (
-            "Retail sales rose in May",
-            "Sprzedaż wzrosła w maju.",
-            "Taylor",
-            "„Retail sales rose in May”",
-            None,
         ),
     ],
 )
 def test_rss_binds_the_speaker_to_the_title_and_distinguishes_the_month(
-    source, summary, attribution, expected, speaker
+    source, summary, expected, speaker
 ):
     from venom_core.services.academy.qualified_chat_rss import RSSSummary
     from venom_core.services.verified_web import NewsHeadline
@@ -2228,17 +2212,13 @@ def test_rss_binds_the_speaker_to_the_title_and_distinguishes_the_month(
     plan = RSSSummary((NewsHeadline(link, source, "2026-11-21"),))
     prompt = json.loads(plan.messages("Podaj sens nagłówka.")[1]["content"])
     headline = prompt["naglowki"][0]
-    assert headline["mówiący"] == speaker
+    assert headline.keys() == {"index", "tytul"}
     if speaker:
         assert speaker not in headline["tytul"]
         assert "may" in headline["tytul"].split()
     else:
         assert headline["tytul"] == source
-    answer = plan.publish(
-        json.dumps(
-            {"items": [{"index": 1, "summary": summary, "attribution": attribution}]}
-        )
-    )
+    answer = plan.publish(json.dumps({"items": [{"index": 1, "summary": summary}]}))
     assert answer.splitlines()[0] == f"Nagłówek RSS: {expected}"
     assert ("Atrybucja:" in answer) is (speaker is not None)
     if speaker:

@@ -24,6 +24,28 @@ _DAY_NEED = re.compile(r"\b(?:godzin\w*|h)\b", re.I)
 _MASS_NEED = re.compile(r"\b(?:kilogram\w*|kg)\b", re.I)
 
 
+_REGISTERED_TONNE = re.compile(r"\bton\w*\s+rejestrow\w*\b", re.I)
+_DIMENSION = re.compile(r"\b(?:mas\w*|pojemnoś\w*|objętoś\w*)\b", re.I)
+_REGISTERED_TONNE_VOLUME = re.compile(
+    r"^\s*tona rejestrowa\b[^.!?;]{0,100}?\b(?:jednostka|jednostką)"
+    r"\s+(?:objętości|pojemności)\b",
+    re.I,
+)
+
+
+def verified_wiki_dimension_reply(
+    question: str, title: str, extract: str, url: str
+) -> str | None:
+    if (
+        _REGISTERED_TONNE.search(question)
+        and _DIMENSION.search(question)
+        and title.casefold() == "tona rejestrowa"
+        and _REGISTERED_TONNE_VOLUME.search(extract)
+    ):
+        return f"Tona rejestrowa jest jednostką objętości ({url})."
+    return None
+
+
 @dataclass(frozen=True)
 class UnitSpec:
     topic: str

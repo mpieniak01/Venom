@@ -53,12 +53,18 @@ def _draft_field(value: object, source: str) -> str | None:
     return clean
 
 
-def _speaker(title: str) -> str | None:
+def _headline_fields(title: str) -> tuple[str, str | None]:
     match = _SPEAKER.search(title)
     if match is None:
-        return None
+        return title, None
     speaker = next(value for value in match.groups() if value is not None)
-    return _draft_field(speaker, title)
+    if _draft_field(speaker, title) is None:
+        return title, None
+    if match["lead"] is not None:
+        proposition = re.sub(r"^(?:that|że)\s+", "", title[match.end() :], flags=re.I)
+    else:
+        proposition = title[: match.start()]
+    return (proposition, speaker) if proposition.strip() else (title, None)
 
 
 def _render(headline: NewsHeadline, summary: str, speaker: str | None) -> str:
@@ -120,17 +126,11 @@ class RSSSummary:
         }
 
     def messages(self, request: str) -> list[dict[str, str]]:
-        data = {
-            "zadanie": request,
-            "naglowki": [
-                {
-                    "index": index,
-                    "tytul": headline.title,
-                    "mówiący": _speaker(headline.title),
-                }
-                for index, headline in enumerate(self.headlines, 1)
-            ],
-        }
+        headlines = []
+        for index, headline in enumerate(self.headlines, 1):
+            proposition, speaker = _headline_fields(headline.title)
+            headlines.append({"index": index, "tytul": proposition, "mówiący": speaker})
+        data = {"zadanie": request, "naglowki": headlines}
         return [
             {
                 "role": "system",
@@ -140,9 +140,10 @@ class RSSSummary:
                     "ze schematem. Dla każdego użyj indeksu i jednego krótkiego "
                     "opisu w summary. Zachowaj fakty, liczby, negację i stopień "
                     "pewności tytułu. W angielskim «podmiot + to + czasownik» "
-                    "wyraża zapowiedzianą czynność. Podaj sens wypowiedzi w summary "
-                    "bez ponownego przypisywania jej mówiącemu. W attribution skopiuj "
-                    "dosłownie pole mówiący lub null. Użyj tylko informacji "
+                    "wyraża zapowiedzianą czynność. Pole tytul zawiera treść po "
+                    "wydzieleniu mówiącego. W summary podaj ją po polsku. W attribution "
+                    "skopiuj dosłownie pole mówiący w języku źródłowym lub null. "
+                    "Użyj tylko informacji "
                     "obecnych w wybranym tytule. Adres, datę publikacji i zakres "
                     "odczytu podaje aplikacja. Nie dodawaj ich do opisu."
                 ),
@@ -182,7 +183,7 @@ class RSSSummary:
                 return _INVALID_DRAFT
             headline = self.headlines[index - 1]
             summary = _draft_field(item["summary"], headline.title)
-            speaker = _speaker(headline.title)
+            _, speaker = _headline_fields(headline.title)
             attribution = _draft_field(item["attribution"], headline.title)
             if (
                 summary is None

@@ -40,6 +40,11 @@ _OPENING_ONLY = re.compile(
     r"(?:zdanie\s+otwarcia|pierwsze\s+zdanie)\b",
     re.I,
 )
+_SUBJECT_AND_OPENING = re.compile(
+    r"^\s*(?:podaj|napisz|zaproponuj|ułóż|przygotuj)\s+(?:krótki\s+)?temat\b"
+    r"[^.!?\n]{0,96}\b(?:zdanie\s+otwarcia|pierwsze\s+zdanie)\b",
+    re.I,
+)
 _SUBJECT_LINE = re.compile(r"(?im)^[ \t*]*temat[ *]*:[^\r\n]*(?:\r?\n|$)")
 _SENTENCE_END = re.compile(r"[.!?](?=\s|$)")
 
@@ -76,6 +81,13 @@ def opening_sentence(draft: str) -> str:
 
 def writing_hint(text: str) -> str:
     visible = without_quotes(text)
+    if _SUBJECT_AND_OPENING.search(visible):
+        return (
+            "Podaj temat oraz jedno gotowe zdanie otwarcia. Jeśli polecenie "
+            "zawiera zdarzenie, czas lub miejsce, użyj tych faktów od razu. "
+            "W takim poleceniu «z tego zdania» odsyła do treści bieżącej prośby. "
+            "Gdy fakty podano, przejdź do szkicu bez dopytywania o tekst."
+        )
     if not _DRAFT.search(visible) or _MULTIPLE_DRAFTS.search(visible):
         return ""
     count = _SENTENCES.search(visible)

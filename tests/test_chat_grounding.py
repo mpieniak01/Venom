@@ -1098,6 +1098,33 @@ async def test_wiki_unit_uses_only_a_matching_article_and_a_verified_factor(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("title", "extract", "confirmed"),
+    [
+        ("Tona rejestrowa", "Tona rejestrowa jest jednostką objętości.", True),
+        ("Tona metryczna", "Tona rejestrowa jest jednostką objętości.", False),
+        ("Tona rejestrowa", "Tona rejestrowa była używana w żegludze.", False),
+    ],
+)
+async def test_wikipedia_quantity_definition_needs_the_named_article(
+    monkeypatch, title, extract, confirmed
+):
+    url = "https://pl.wikipedia.org/wiki/" + title.replace(" ", "_")
+    fetch = AsyncMock(
+        return_value=[SimpleNamespace(title=title, url=url, extract=extract)]
+    )
+    monkeypatch.setattr(chat_grounding, "search_polish_wikipedia", fetch)
+    context = await chat_grounding.current_chat_context(
+        "Czym jest tona rejestrowa? Na podstawie polskiej Wikipedii wskaż, "
+        "czy mierzy masę czy pojemność, i dodaj odnośnik."
+    )
+    assert context.reply == (
+        f"Tona rejestrowa jest jednostką objętości ({url})." if confirmed else None
+    )
+    assert context.evidence.wiki_unit is None
+
+
+@pytest.mark.asyncio
 async def test_weather_source_distinguishes_mismatch_for_current_and_previous_turn(
     monkeypatch,
 ):

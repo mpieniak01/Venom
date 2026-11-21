@@ -41,6 +41,7 @@ from venom_core.services.wiki_unit_facts import (
     requested_unit_fact,
     unit_spec,
     verified_unit_factor,
+    verified_wiki_dimension_reply,
 )
 
 _PRIVATE = re.compile(
@@ -432,10 +433,22 @@ async def _wiki_context(message: str, policy: str) -> str:
         for index, item in enumerate(sources, 1)
     ]
     excerpt = "\n".join(lines)[:MAX_PUBLIC_EXCERPT_CHARS]
+    dimension_reply = next(
+        (
+            reply
+            for item in sources
+            if (
+                reply := verified_wiki_dimension_reply(
+                    message, item.title, item.extract, item.url
+                )
+            )
+        ),
+        None,
+    )
     return PublicSourceContext(
         policy + excerpt + "\n[/PUBLIC_SOURCES]",
         PublicSourceEvidence("wiki", excerpt=excerpt, wiki_unit=unit),
-        reply=unit.first_reply() if unit is not None else None,
+        reply=unit.first_reply() if unit is not None else dimension_reply,
     )
 
 

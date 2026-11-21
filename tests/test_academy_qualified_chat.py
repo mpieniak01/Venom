@@ -1389,6 +1389,28 @@ def test_short_drafting_hint_constraints_and_no_variant_override(studio_chat):
     assert not writing_hint("Napisz wiadomość do znajomych.")
 
 
+def test_message_drafting_uses_the_facts_in_the_request(studio_chat, monkeypatch):
+    from venom_core.services import studio_normal_chat
+
+    ground = AsyncMock()
+    monkeypatch.setattr(studio_normal_chat, "current_chat_context", ground)
+    chat, sent, replies = studio_chat
+    answer = "Temat: Odbiór plakatów\\nInformacja dotyczy dzisiejszego odbioru plakatów w holu."
+    replies.append(streamed(answer))
+    assert (
+        chat(
+            "Podaj temat wiadomości i krótkie zdanie otwarcia o dzisiejszym "
+            "odbiorze plakatów w holu. Użyj wyłącznie informacji z tego zdania."
+        )
+        == answer
+    )
+    assert (
+        "przejdź do szkicu bez dopytywania"
+        in sent[0]["payload"]["messages"][0]["content"]
+    )
+    ground.assert_not_awaited()
+
+
 def test_studio_does_not_attribute_supplied_revision_to_a_previous_public_link(
     studio_chat, monkeypatch
 ):
@@ -2205,7 +2227,13 @@ def test_rss_binds_the_speaker_to_the_title_and_distinguishes_the_month(
     link = "https://www.bbc.co.uk/news/articles/source"
     plan = RSSSummary((NewsHeadline(link, source, "2026-11-21"),))
     prompt = json.loads(plan.messages("Podaj sens nagłówka.")[1]["content"])
-    assert prompt["naglowki"][0]["mówiący"] == speaker
+    headline = prompt["naglowki"][0]
+    assert headline["mówiący"] == speaker
+    if speaker:
+        assert speaker not in headline["tytul"]
+        assert "may" in headline["tytul"].split()
+    else:
+        assert headline["tytul"] == source
     answer = plan.publish(
         json.dumps(
             {"items": [{"index": 1, "summary": summary, "attribution": attribution}]}

@@ -33,6 +33,7 @@ from venom_core.services import (
 )
 from venom_core.services.chat_history import persist_direct_response
 from venom_core.services.chat_materials import MaterialStore
+from venom_core.services.chat_policy import direct_text
 from venom_core.services.session_store import SessionStore
 
 configured = openrouter_fixtures.configured
@@ -1017,13 +1018,12 @@ def test_direct_default_prompt_is_neutral_and_explicit_custom_prompt_is_preserve
     )
     request = SimpleChatRequest(content="Co to jest kwadrat?")
     assert (
-        llm_simple_service._simple_system_prompt(request, "")
-        == "You are a helpful assistant."
+        direct_text.simple_system_prompt(request, "") == "You are a helpful assistant."
     )
     monkeypatch.setattr(
         llm_simple_service.SETTINGS, "SIMPLE_MODE_SYSTEM_PROMPT", "Custom instruction"
     )
-    assert llm_simple_service._simple_system_prompt(request, "") == "Custom instruction"
+    assert direct_text.simple_system_prompt(request, "") == "Custom instruction"
 
 
 @pytest.mark.asyncio
@@ -1079,7 +1079,7 @@ async def test_plain_omni_retry_preserves_distinct_context_and_configured_prompt
     expected_prompt = (
         prompt
         if prompt == "Własna instrukcja"
-        else llm_simple_service._OMNI_HISTORY_POLICY
+        else direct_text.CONVERSATION_HISTORY_POLICY
     )
     assert captured == [
         [{"role": "system", "content": expected_prompt}]
@@ -1104,9 +1104,9 @@ def test_plain_omni_history_policy_requires_remaining_context(monkeypatch):
             {"role": "assistant", "content": "Błąd"},
         ],
     )
-    retry = llm_simple_service._retry_without_previous_attempts(request)
+    retry = direct_text.retry_without_previous_attempts(request)
     assert not retry.history
-    assert llm_simple_service._simple_system_prompt(retry, "", plain_omni=True) == ""
+    assert direct_text.simple_system_prompt(retry, "", plain_omni=True) == ""
 
 
 @pytest.mark.asyncio
@@ -1169,11 +1169,11 @@ def test_plain_gemma_direct_policy_preserves_custom_prompt(monkeypatch, custom):
         llm_simple_service.SETTINGS, "SIMPLE_MODE_SYSTEM_PROMPT", custom
     )
     request = SimpleChatRequest(content="Pytanie")
-    result = llm_simple_service._simple_system_prompt(request, "", plain_gemma=True)
+    result = direct_text.simple_system_prompt(request, "", plain_gemma=True)
     expected = (
         custom
         if custom == "Custom instruction"
-        else llm_simple_service._OMNI_HISTORY_POLICY
+        else direct_text.CONVERSATION_HISTORY_POLICY
     )
     assert result == expected
 

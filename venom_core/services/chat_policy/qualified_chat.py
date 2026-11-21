@@ -47,8 +47,6 @@ from venom_core.services.chat_policy.qualified_chat_writing import (
     selects_one_proposal,
 )
 
-QUALIFIED_MODEL = "gemma4:12b-it-q4_k_m"
-QUALIFIED_BOLT_MODEL = "hf.co/nvidia/nvidia-nemotron-3.5-bolt-e4b-4gb:q4_k_m"
 _CALENDAR_UNCONFIRMED = "Wpis do kalendarza wymaga potwierdzenia wykonania."
 _DAYS = {
     "poniedziałek": "w poniedziałek",

@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import re
 import time
 from collections.abc import Callable
 from typing import Any, AsyncIterator, Optional
@@ -20,18 +19,18 @@ from fastapi.responses import StreamingResponse
 from venom_core.api.schemas.llm_simple import MAX_CHAT_HISTORY_CHARS, SimpleChatRequest
 from venom_core.config import DEFAULT_SIMPLE_MODE_SYSTEM_PROMPT, SETTINGS
 from venom_core.core.metrics import get_metrics_collector
-from venom_core.core.model_registry_clients import OllamaClient
-from venom_core.core.ollama_runtime_capabilities import is_gemma4_model_name
 from venom_core.core.tracer import TraceStatus
 from venom_core.services import llm_simple_transport
 from venom_core.services.chat_grounding import (
     PUBLIC_SOURCE_BLOCK,
     is_current_news_request,
 )
+from venom_core.services.chat_policy.direct_text import (
+    prepare_omni_history,
+    simple_system_prompt,
+)
 from venom_core.services.chat_policy.qualified_chat import (
     GENERATION_TRUNCATED,
-    QUALIFIED_BOLT_MODEL,
-    QUALIFIED_MODEL,
     CalendarClaimStream,
     QualifiedReply,
     prepare_reply,
@@ -114,7 +113,16 @@ from venom_core.services.llm_simple_stream_service import (
 from venom_core.services.llm_simple_stream_service import (
     update_stream_state_from_packet as _update_stream_state_from_packet_impl,
 )
-from venom_core.services.ollama_audio import OMNI_MODEL_ID, is_host_ollama
+from venom_core.services.ollama_audio import is_host_ollama
+from venom_core.services.ollama_text_adapter import (
+    OllamaTextProfile,
+    completed_native_draft,
+    local_direct_model,
+    native_chat_url,
+    native_draft_payload,
+    plain_text_rewrite,
+    qualified_profile,
+)
 from venom_core.services.runtime_dependencies import (
     get_model_manager,
     get_request_tracer,
@@ -147,21 +155,6 @@ _SSE_EVENT_START = "event: start\ndata: {}\n\n"
 _SSE_EVENT_DONE = "event: done\ndata: {}\n\n"
 _SSE_MEDIA_TYPE = "text/event-stream"
 _NON_STREAM_INVALID_RESPONSE_CODE = "llm_invalid_response"
-_OMNI_HISTORY_POLICY = (
-    "Odpowiedz na ostatnią wiadomość użytkownika. Korzystaj z historii przy dopytaniach. "
-    "Najnowsze ustalenia użytkownika mają pierwszeństwo. Wcześniejsze odpowiedzi asystenta mogą być błędne. "
-    "Zastosuj format wymagany w ostatniej wiadomości."
-)
-# A stated decision or correction is different from a question about an earlier reply.
-_OMNI_STATED_UPDATE = re.compile(
-    r"(?:^|(?<=[.!?])\s+)(?:"
-    r"ustalenie\s+(?:to|jest)|ustaliliśmy|ustalam(?:y)?|umówiliśmy\s+się"
-    r"|zmiana\s+(?:ustalenia|zamówienia|decyzji|planu)"
-    r"|zmieniam(?:y)?\s+(?:ustalenie|zamówienie|decyzję|plan)"
-    r"|(?:poprawka|korekta)(?=\s|[:.!]|$)"
-    r")\b[^.!?]*(?:[.!]|$)",
-    re.IGNORECASE,
-)
 httpx = llm_simple_transport.httpx_module()
 
 
@@ -1110,18 +1103,6 @@ def _draft_truncated(data: Any) -> bool:
     return data.get("done") is True and data.get("done_reason") == "length"
 
 
-def _native_draft(data: Any) -> str:
-    if (
-        not isinstance(data, dict)
-        or data.get("done") is not True
-        or data.get("done_reason") != "stop"
-    ):
-        return ""
-    message = data.get("message")
-    content = message.get("content") if isinstance(message, dict) else None
-    return content if isinstance(content, str) else ""
-
-
 async def _publish_qualified_draft(
     reply: QualifiedReply,
     data: dict[str, Any],
@@ -1129,7 +1110,7 @@ async def _publish_qualified_draft(
     url: str,
     payload: dict[str, Any],
 ) -> str:
-    content = _native_draft(data)
+    content = completed_native_draft(data)
     if reply.rss is not None:
         return (
             GENERATION_TRUNCATED
@@ -1159,7 +1140,7 @@ async def _publish_qualified_draft(
     )
     return reply.publish(
         content,
-        _native_draft(replacement),
+        completed_native_draft(replacement),
         truncated=_draft_truncated(data) or _draft_truncated(replacement),
     )
 
@@ -1323,14 +1304,11 @@ async def stream_simple_chat(request: SimpleChatRequest, *, system_context: str 
     assert_runtime_request_allowed(request_kind="simple_chat")
     from venom_core.services import omni_native_text, openrouter_runtime
 
-    if omni_native_text.selected():
-        if openrouter_runtime.selection() is not None:
-            raise HTTPException(
-                409, {"reason_code": "omni_native_text_runtime_conflict"}
-            )
-        return await omni_native_text.response(request, system_context=system_context)
-    if (request.expected_runtime_id or "").startswith("omni-native-peft-text:"):
-        raise HTTPException(409, {"reason_code": "omni_native_text_selection_changed"})
+    native_response = await omni_native_text.route_response(
+        request, system_context=system_context
+    )
+    if native_response is not None:
+        return native_response
     if openrouter_runtime.selection() is not None:
         if request.studio_normal:
             raise HTTPException(400, "studio_normal_requires_local_ollama")
@@ -1394,82 +1372,20 @@ def _plain_request_history(
     return [item.model_dump(exclude={"material_ids"}) for item in request.history]
 
 
-def _retry_without_previous_attempts(request: SimpleChatRequest) -> SimpleChatRequest:
-    """Keep distinct earlier turns while retrying the same last question."""
-    history = request.history
-    end = len(history)
-    question = request.content.strip()
-    while (
-        end >= 2
-        and history[end - 2].role == "user"
-        and history[end - 1].role == "assistant"
-        and history[end - 2].content.strip() == question
-    ):
-        end -= 2
-    return (
-        request.model_copy(update={"history": history[:end]})
-        if end < len(history)
-        else request
-    )
-
-
-def _simple_system_prompt(
-    request: SimpleChatRequest,
-    system_context: str,
-    *,
-    plain_omni: bool = False,
-    plain_gemma: bool = False,
-) -> str:
-    system_prompt = (SETTINGS.SIMPLE_MODE_SYSTEM_PROMPT or "").strip()
-    if (
-        request.studio_normal or plain_omni
-    ) and system_prompt == DEFAULT_SIMPLE_MODE_SYSTEM_PROMPT:
-        system_prompt = ""
-    if (
-        plain_omni
-        and any(turn.role == "assistant" for turn in request.history)
-        and not system_prompt
-    ):
-        system_prompt = _OMNI_HISTORY_POLICY
-    if plain_gemma and system_prompt in {"", DEFAULT_SIMPLE_MODE_SYSTEM_PROMPT}:
-        system_prompt = _OMNI_HISTORY_POLICY
-    if system_context:
-        system_prompt = "\n\n".join(filter(None, (system_prompt, system_context)))
-    return system_prompt
-
-
 def _prepare_local_direct_prompt(
     request: SimpleChatRequest,
     runtime: LLMRuntimeInfo,
     model_name: str,
     system_context: str,
 ) -> tuple[SimpleChatRequest, str]:
-    from venom_core.services.chat_material_payload import has_materials
-
-    omni = model_name == OMNI_MODEL_ID
-    gemma = is_gemma4_model_name(model_name)
-    plain_local = (
-        (omni or gemma)
-        and is_host_ollama(runtime)
-        and not (
-            request.tools or request.tool_choice is not None or has_materials(request)
-        )
-    )
-    plain_omni = plain_local and omni
-    if plain_omni:
-        request = _retry_without_previous_attempts(request)
-        if _OMNI_STATED_UPDATE.search(request.content):
-            # Earlier assistant replies can contradict an explicit current decision.
-            request = request.model_copy(
-                update={
-                    "history": [turn for turn in request.history if turn.role == "user"]
-                }
-            )
-    return request, _simple_system_prompt(
+    direct_model = local_direct_model(request, runtime, model_name)
+    if direct_model == "omni":
+        request = prepare_omni_history(request)
+    return request, simple_system_prompt(
         request,
         system_context,
-        plain_omni=plain_omni,
-        plain_gemma=plain_local and gemma,
+        plain_omni=direct_model == "omni",
+        plain_gemma=direct_model == "gemma",
     )
 
 
@@ -1489,12 +1405,10 @@ def _qualified_request(request: SimpleChatRequest, runtime: LLMRuntimeInfo) -> b
     )
 
 
-def _qualified_studio_request(request: SimpleChatRequest, model: str) -> bool:
-    return (
-        request.studio_normal
-        and not request.use_notes
-        and model in {QUALIFIED_MODEL, QUALIFIED_BOLT_MODEL}
-    )
+def _qualified_studio_request(
+    request: SimpleChatRequest, profile: OllamaTextProfile | None
+) -> bool:
+    return request.studio_normal and not request.use_notes and profile is not None
 
 
 def _prepare_qualified_reply(
@@ -1504,8 +1418,8 @@ def _prepare_qualified_reply(
 ) -> QualifiedReply | None:
     if not _qualified_request(request, runtime):
         return None
-    model = model_name.casefold()
-    if _qualified_studio_request(request, model):
+    profile = qualified_profile(model_name)
+    if _qualified_studio_request(request, profile):
         if request._studio_public_scope_reply:
             return QualifiedReply(local_text=request._studio_public_scope_reply)
         if request._studio_rss_headlines:
@@ -1523,43 +1437,9 @@ def _prepare_qualified_reply(
             return None
     return (
         prepare_reply(request.content, request.history)
-        if model == QUALIFIED_MODEL
+        if profile is not None and profile.direct_drafts
         else None
     )
-
-
-def _qualified_chat_payload(
-    request: SimpleChatRequest,
-    messages: list[dict[str, Any]],
-    reply: QualifiedReply,
-    model_name: str,
-) -> dict[str, Any]:
-    rewrite = reply.rewrite
-    native_text = rewrite is not None and model_name.casefold() == QUALIFIED_BOLT_MODEL
-    default_limit = 160 if native_text else 96
-    options = {
-        "num_ctx": build_ollama_runtime_options(SETTINGS)["num_ctx"],
-        "num_predict": request.max_tokens
-        if request.max_tokens is not None
-        else default_limit,
-        "temperature": request.temperature if request.temperature is not None else 0,
-        "seed": request.seed if request.seed is not None else 42,
-        "top_k": 1,
-    }
-    if request.top_p is not None:
-        options["top_p"] = request.top_p
-    payload = {
-        "model": model_name,
-        "messages": messages,
-        "stream": False,
-        "think": False,
-        "keep_alive": normalize_ollama_keep_alive(SETTINGS.LLM_KEEP_ALIVE),
-        "options": options,
-    }
-    schema = rewrite.schema(plain_text=native_text) if rewrite else reply.schema
-    if schema is not None:
-        payload["format"] = schema
-    return payload
 
 
 async def _resolve_non_openrouter_runtime(request: SimpleChatRequest):
@@ -1614,7 +1494,7 @@ def _apply_studio_prompt_hints(
     complete_reply: QualifiedReply | None,
 ) -> str:
     qualified_studio = _qualified_studio_request(
-        request, model_name.casefold()
+        request, qualified_profile(model_name)
     ) and _qualified_request(request, runtime)
     if qualified_studio and complete_reply is None:
         hint = explanation_hint(
@@ -1674,9 +1554,7 @@ async def _non_openrouter_messages(
     if complete_reply is not None and complete_reply.rss is not None:
         return complete_reply.rss.messages(request.content)
     if rewrite is not None:
-        return rewrite.messages(
-            plain_text=model_name.casefold() == QUALIFIED_BOLT_MODEL
-        )
+        return rewrite.messages(plain_text=plain_text_rewrite(model_name))
     user_content = _trim_user_content_for_runtime(
         request.content, system_prompt, runtime, request_id
     )
@@ -1699,13 +1577,13 @@ def _stream_non_openrouter_response(
     headers = _build_streaming_headers(str(request_id), request.session_id or "")
     completions_url = _build_chat_completions_url(runtime)
     if complete_reply is not None:
-        completions_url = f"{OllamaClient(runtime.endpoint).endpoint}/api/chat"
+        completions_url = native_chat_url(runtime)
     force_non_stream = request.stream is False or complete_reply is not None
     if is_multi_runtime(runtime_provider) or force_non_stream:
         if not completions_url:
             raise HTTPException(status_code=503, detail="Brak endpointu LLM.")
         payload = (
-            _qualified_chat_payload(request, messages, complete_reply, model_name)
+            native_draft_payload(request, messages, complete_reply, model_name)
             if complete_reply is not None
             else _build_payload(request, runtime, model_name, messages, stream=False)
         )

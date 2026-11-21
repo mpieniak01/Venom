@@ -17,8 +17,6 @@ from venom_core.api.schemas.llm_simple import HistoryMessage
 from venom_core.services import llm_simple_service, vast_chat_runtime
 from venom_core.services.chat_policy.qualified_chat import (
     GENERATION_TRUNCATED,
-    QUALIFIED_BOLT_MODEL,
-    QUALIFIED_MODEL,
     CalendarClaimStream,
     prepare_reply,
 )
@@ -34,6 +32,10 @@ from venom_core.services.chat_policy.qualified_chat_options import (
     split_options,
 )
 from venom_core.services.chat_policy.qualified_chat_schedule import route_shift
+from venom_core.services.ollama_text_adapter import (
+    QUALIFIED_BOLT_MODEL,
+    QUALIFIED_MODEL,
+)
 from venom_core.services.session_store import SessionStore
 
 

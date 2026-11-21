@@ -151,6 +151,21 @@ def selected() -> bool:
     return _ACTIVE is not None
 
 
+async def route_response(
+    request: SimpleChatRequest, *, system_context: str = ""
+) -> StreamingResponse | None:
+    """Claim native requests and reject stale native runtime identities."""
+    if selected():
+        from venom_core.services import openrouter_runtime
+
+        if openrouter_runtime.selection() is not None:
+            raise _error("omni_native_text_runtime_conflict")
+        return await response(request, system_context=system_context)
+    if (request.expected_runtime_id or "").startswith(f"{RUNTIME}:"):
+        raise _error("omni_native_text_selection_changed")
+    return None
+
+
 async def _generate(
     selection: Selection, messages: list[dict[str, str]], max_tokens: int
 ) -> dict[str, Any]:

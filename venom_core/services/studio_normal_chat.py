@@ -36,6 +36,7 @@ from venom_core.services.chat_grounding import (
     grounding_follow_up,
     is_current_news_request,
     is_rss_read_request,
+    rss_editorial_query,
 )
 from venom_core.services.public_source_evidence import (
     PublicSourceContext,
@@ -91,6 +92,7 @@ _WIKI_FACT_POLICY = (
     "przybliżenie i warunek, gdy występują w źródle. Podaj pełny adres właściwego "
     "hasła tylko raz, w nawiasie na końcu ostatniego zdania przed kropką."
 )
+_RSS_NOT_READ = "W tej turze nie odczytano nagłówków z publicznego kanału RSS."
 _SOURCE_STATUS_POLICY = (
     "\n\nPoniższy status pochodzi z aplikacji. Przekaż go własnymi słowami "
     "w języku pytania, po polsku przy polskim pytaniu. Jeśli odczyt nie "
@@ -272,14 +274,19 @@ async def prepare_studio_normal(
     prior_evidence = (
         _previous_evidence(history_records) if local_qualification else None
     )
+    explicit_rss = local_qualification and is_rss_read_request(request.content)
     scope_reply = (
         previous_scope_reply(prior_evidence)
         if local_qualification
         and asks_about_previous_scope(request.content)
-        and not is_rss_read_request(request.content)
+        and not explicit_rss
         else None
     )
-    prior_context = previous_public_fact_context(request.content, prior_evidence)
+    prior_context = (
+        ""
+        if explicit_rss
+        else previous_public_fact_context(request.content, prior_evidence)
+    )
     if (
         scope_reply
         or prior_context
@@ -292,11 +299,21 @@ async def prepare_studio_normal(
             if source_revision_hint(request.content)
             else public_lookup_query(query)
         )
+    if explicit_rss and query is not None:
+        query = rss_editorial_query(query)
     source_context = (
         ""
         if query is None
         else await current_chat_context(query, use_notes=request.use_notes)
     )
+    # Typed records exist only after this turn retrieves a public feed.
+    headlines = (
+        source_context.headlines
+        if explicit_rss and isinstance(source_context, PublicSourceContext)
+        else ()
+    )
+    if explicit_rss and not headlines:
+        scope_reply = _RSS_NOT_READ
     evidence = None
     if prior_context and len(prior_context) <= remaining:
         system_context += prior_context
@@ -330,7 +347,11 @@ async def prepare_studio_normal(
     if len(source_context) <= remaining:
         system_context += source_context
     elif source_context:
-        evidence = None
+        if headlines:
+            scope_reply = "Odczytano tylko nagłówki RSS. Nie mieszczą się w kontekście odpowiedzi."
+            headlines = ()
+        else:
+            evidence = None
         fallback = "\nFresh source context did not fit; say it was not checked."
         if len(fallback) <= remaining:
             system_context += fallback
@@ -353,4 +374,5 @@ async def prepare_studio_normal(
     )
     prepared._studio_public_source_evidence = evidence.to_record() if evidence else None
     prepared._studio_public_scope_reply = scope_reply
+    prepared._studio_rss_headlines = headlines
     return prepared, system_context

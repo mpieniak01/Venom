@@ -9,6 +9,7 @@ from typing import Literal, Self, cast
 
 from venom_core.services.academy.qualified_chat_quote import without_quotes
 from venom_core.services.academy.qualified_chat_revisions import explicit_lookup_allowed
+from venom_core.services.verified_web import NewsHeadline
 
 PublicSourceScope = Literal[
     "wiki", "rss_headlines", "article_excerpt", "weather", "unavailable"
@@ -30,6 +31,8 @@ _SCOPE_QUESTION = re.compile(
     r"(?:poprzednio|wcześniej|w poprzedniej turze)\s+"
     r"(?:odczytano|odczytałeś|odczytałaś)\s+"
     r"(?:(?:tylko|wyłącznie|same)\s+)?(?:nagłów\w*|(?:cały|pełny)\s+artykuł)\b"
+    r"|\bczy\s+(?:wtedy|wcześniej|poprzednio|w poprzedniej turze)\s+"
+    r"korzysta(?:łeś|łaś|no)\s+z\s+(?:całego|pełnego)\s+artykułu\b"
     r"|^\s*czy (?:odczytałeś|odczytałaś|przeczytałeś|przeczytałaś) "
     r"(?:także |również )?(?:cały |pełny |ten )?artykuł\b",
     re.I,
@@ -76,10 +79,18 @@ class PublicSourceContext(str):
     """A normal context string with server-side provenance for Studio."""
 
     evidence: PublicSourceEvidence
+    headlines: tuple[NewsHeadline, ...]
 
-    def __new__(cls, text: str, evidence: PublicSourceEvidence) -> Self:
+    def __new__(
+        cls,
+        text: str,
+        evidence: PublicSourceEvidence,
+        *,
+        headlines: tuple[NewsHeadline, ...] = (),
+    ) -> Self:
         context = super().__new__(cls, text)
         context.evidence = evidence
+        context.headlines = headlines
         return context
 
 

@@ -9,7 +9,8 @@ from typing import Any
 
 _QUOTE = re.compile(r'„([^”]+)”|«([^»]+)»|"([^"\n]+)"')
 _REWRITE = re.compile(
-    r"^(?:przeredaguj|przeformułuj|napisz inaczej|sformułuj inaczej|jak inaczej sformułować)\b",
+    r"^(?:przeredaguj|przeformułuj|napisz inaczej|sformułuj inaczej|"
+    r"jak inaczej sformułować|skróć(?=\s+zdanie\s*:))\b",
     re.I,
 )
 _OTHER_TRANSFORMATION = re.compile(
@@ -28,7 +29,7 @@ _QUESTION = re.compile(
 )
 _IMPERATIVE = re.compile(
     r"^(?:(?:krótko|zwięźle) )?(?:nie )?(?:wyjaśnij|wytłumacz|opisz|powiedz|podaj|wskaż|"
-    r"odpowiedz|napisz|wpisz|zapisz|zarejestruj|dodaj|wysyłaj|przesyłaj)\b",
+    r"odpowiedz|napisz|wpisz|zapisz|zarejestruj|dodaj|wysyłaj|przesyłaj|pobierz|odczytaj)\b",
     re.I,
 )
 _WORD_VALUE = re.compile(
@@ -232,4 +233,8 @@ def parse_quote_rewrite(text: str) -> QuoteRewrite | str | None:
     ).strip()
     if not source or len(source) > 1600:
         return None
-    return QuoteRewrite(source=source, one_sentence=bool(_ONE_SENTENCE.search(prefix)))
+    return QuoteRewrite(
+        source=source,
+        one_sentence=command[0].casefold() == "skróć"
+        or bool(_ONE_SENTENCE.search(prefix)),
+    )

@@ -32,6 +32,8 @@ from venom_core.services.academy.qualified_chat_quote import (
     QuoteRewrite,
     parse_quote_rewrite,
 )
+from venom_core.services.academy.qualified_chat_revisions import lookup_forbidden
+from venom_core.services.academy.qualified_chat_rss import RSSSummary
 from venom_core.services.academy.qualified_chat_schedule import (
     draft_reminder_reply,
     draft_time_revision,
@@ -153,6 +155,9 @@ _EXACT_SENTENCE = re.compile(
 _TWO_BULLETS = re.compile(r"\b(?:dwóch krótkich punktach|dwa krótkie punkty)\b", re.I)
 _MESSAGE_ONLY = re.compile(
     r"\b(?:sam tekst|samą treść|tylko treść|wyłącznie treść)\b", re.I
+)
+_EXPLICIT_UNKNOWN = re.compile(
+    r"\b(?:nie znam\w*|nie wiem\w*|nie podano|brak danych|bez danych)\b", re.I
 )
 _SHORT_DRAFT = re.compile(
     r"\b(?:krótko|wiadomoś\w*|przypomni\w*|przeredaguj|zmień ton)\b", re.I
@@ -312,12 +317,14 @@ class QualifiedReply:
     retained_seconds: int | None = None
     calendar_context: bool = False
     rewrite: QuoteRewrite | None = None
+    rss: RSSSummary | None = None
 
     @property
     def requires_complete_draft(self) -> bool:
         return (
             self.local_text is not None
             or self.rewrite is not None
+            or self.rss is not None
             or bool(self.restrictions)
             or self.timed
             or self.count is not None
@@ -326,6 +333,8 @@ class QualifiedReply:
 
     @property
     def schema(self) -> dict[str, Any] | None:
+        if self.rss is not None:
+            return self.rss.schema()
         if self.timed:
             return {
                 "type": "object",
@@ -412,6 +421,8 @@ class QualifiedReply:
     ) -> str:
         if self.rewrite is not None:
             return self.rewrite.publish(draft)
+        if self.rss is not None:
+            return self.rss.publish(draft)
         if self.timed:
             return self._publish_timed(draft)
         if self.count:
@@ -508,6 +519,12 @@ def prepare_reply(text: str, history: Sequence[HistoryMessage]) -> QualifiedRepl
             "Wybierz zgodną wcześniejszą opcję, jeśli o to proszono, i zachowaj ustalony czas."
         )
     elif count:
+        if _EXPLICIT_UNKNOWN.search(text) and lookup_forbidden(text, users):
+            hint += (
+                " Jeśli bez nieznanej informacji można podać użyteczne ogólne propozycje, "
+                "podaj samodzielne propozycje wraz z krótkim uzasadnieniem. "
+                "Nie zgaduj aktualnych danych. Unikaj alternatyw w obrębie jednej propozycji."
+            )
         hint += (
             " W polu options podaj pojedynczą pełną propozycję w każdym elemencie tablicy. "
             "Każdy element ma zawierać jedną samodzielną opcję."

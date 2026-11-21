@@ -24,7 +24,7 @@ _NO_LOOKUP = re.compile(
     r"\b(?:bez (?:\w+ )?(?:wyszukiwania|szukania|sprawdzania|korzystania z internetu)|"
     r"nie (?:szukaj|wyszukuj)(?: ponownie)?\b|"
     r"nie (?:sprawdzaj|weryfikuj) (?:ponownie )?"
-    r"(?:w internecie|w sieci|online|na stronie)|nie korzystaj z internetu)\b",
+    r"(?:internetu|w internecie|w sieci|online|na stronie)|nie korzystaj z internetu)\b",
     re.I,
 )
 _LOCAL_REVISION = re.compile(
@@ -35,7 +35,7 @@ _LOCAL_REVISION = re.compile(
     re.I,
 )
 _QUOTED_TASK = re.compile(
-    r"^\s*(?:przetłumacz|przeredaguj|przeformułuj|zacytuj|"
+    r"^\s*(?:przetłumacz|przeredaguj|przeformułuj|zacytuj|skróć|"
     r"napisz inaczej|sformułuj inaczej)\b",
     re.I,
 )

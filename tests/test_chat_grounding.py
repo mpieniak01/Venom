@@ -771,15 +771,18 @@ async def test_studio_reads_requested_rss_before_describing_its_scope(
     prepared, context = await studio_normal_chat.prepare_studio_normal(
         request, SimpleNamespace(get_history=lambda _: []), AsyncMock()
     )
-    assert prepared._studio_public_scope_reply is None
     if forbid_lookup:
         feed.assert_not_awaited()
+        assert "nie odczytano" in prepared._studio_public_scope_reply
         assert prepared._studio_public_source_evidence is None
+        assert not prepared._studio_rss_headlines
     else:
+        assert prepared._studio_public_scope_reply is None
         feed.assert_awaited_once()
         assert feed.await_args.args[0].name == "BBC News RSS"
         assert prepared._studio_public_source_evidence == {"scope": "rss_headlines"}
         assert "Test headline" in context
+        assert prepared._studio_rss_headlines == tuple(feed.return_value)
 
 
 @pytest.mark.asyncio
@@ -983,3 +986,23 @@ def test_saved_public_fact_context_requests_value_alongside_its_qualifier(questi
     assert "Wyraź przybliżenie " in context and "i jego warunki" in context
     assert "w tym samym zdaniu" in context
     assert "około 82 sekund w próżni" in context
+
+
+@pytest.mark.parametrize(
+    ("purpose", "allowed"),
+    [
+        ("do krótkiej notatki zespołu", True),
+        ("na potrzeby zwięzłej notatki dla zespołu", True),
+        ("do notatki redakcyjnej", True),
+        ("do mojej notatki", False),
+        ("do krótkiej notatki zespołu z mojego konta", False),
+    ],
+)
+def test_editorial_rss_purpose_preserves_private_signals(purpose, allowed):
+    prompt = f"Z kanału BBC News RSS wybierz nagłówek {purpose}."
+    assert chat_grounding.is_rss_read_request(prompt)
+    query = chat_grounding.rss_editorial_query(prompt)
+    assert (chat_grounding.grounding_kind(query) == "web") is allowed
+    assert chat_grounding.grounding_kind(query, use_notes=True) is None
+    quoted = f"Zacytuj zdanie «{prompt}»"
+    assert chat_grounding.rss_editorial_query(quoted) == quoted

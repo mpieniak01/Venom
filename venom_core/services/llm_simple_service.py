@@ -35,8 +35,10 @@ from venom_core.services.academy.qualified_chat import (
 )
 from venom_core.services.academy.qualified_chat_explanations import explanation_hint
 from venom_core.services.academy.qualified_chat_fit import fit_hint
+from venom_core.services.academy.qualified_chat_options import requested_count
 from venom_core.services.academy.qualified_chat_quote import english_translation_hint
 from venom_core.services.academy.qualified_chat_revisions import source_revision_hint
+from venom_core.services.academy.qualified_chat_rss import RSSSummary
 from venom_core.services.academy.qualified_chat_writing import (
     ordinary_reply_hint,
     writing_hint,
@@ -1104,6 +1106,8 @@ async def _publish_qualified_draft(
     payload: dict[str, Any],
 ) -> str:
     content = _native_draft(data)
+    if reply.rss is not None:
+        return reply.rss.publish(content)
     repair = reply.repair(content)
     if repair is None:
         if _draft_truncated(data):
@@ -1476,6 +1480,13 @@ def _prepare_qualified_reply(
     if _qualified_studio_request(request, model):
         if request._studio_public_scope_reply:
             return QualifiedReply(local_text=request._studio_public_scope_reply)
+        if request._studio_rss_headlines:
+            count = requested_count(request.content)
+            return QualifiedReply(
+                rss=RSSSummary(
+                    request._studio_rss_headlines, count.count if count else 1
+                )
+            )
         if reply := prepare_studio_reply(
             request.content, request.history, token_budget=request.max_tokens
         ):
@@ -1594,7 +1605,9 @@ async def _stream_non_openrouter_chat(
             )
         )
     rewrite = complete_reply.rewrite if complete_reply else None
-    if rewrite is not None:
+    if complete_reply is not None and complete_reply.rss is not None:
+        messages = complete_reply.rss.messages(request.content)
+    elif rewrite is not None:
         messages = rewrite.messages(
             plain_text=model_name.casefold() == QUALIFIED_BOLT_MODEL
         )

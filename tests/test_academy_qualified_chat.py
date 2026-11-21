@@ -1952,3 +1952,122 @@ def test_studio_thermal_followup_uses_local_rule_without_retrieval(
     assert "ciepło płynie od ciała cieplejszego do chłodniejszego" in result
     assert not sent
     lookup.assert_not_awaited()
+
+
+def test_studio_explicit_rss_publishes_current_metadata_from_the_selected_record(
+    studio_chat, monkeypatch
+):
+    from venom_core.services import chat_grounding, verified_web
+
+    feed = AsyncMock(
+        return_value=[
+            verified_web.NewsHeadline(
+                url="https://www.bbc.co.uk/news/articles/first",
+                title="City council may reopen the ferry",
+                published_at="2026-11-20",
+            ),
+            verified_web.NewsHeadline(
+                url="https://www.bbc.co.uk/news/articles/second",
+                title="The ferry will not return this week, Taylor says",
+                published_at="2026-11-21",
+            ),
+        ]
+    )
+    monkeypatch.setattr(chat_grounding.RSSReaderSkill, "read_feed", feed)
+    chat, sent, replies = studio_chat
+    replies.append(
+        native(
+            '{"items":[{"index":2,"summary":"Prom nie wróci w tym tygodniu.",'
+            '"attribution":"Taylor"}]}'
+        )
+    )
+    session = str(uuid4())
+    answer = chat(
+        "Z kanału BBC News RSS wybierz jeden nagłówek do krótkiej notatki zespołu. "
+        "Podaj sens po polsku, mówiącego jeśli występuje, datę i pełny link.",
+        session=session,
+    )
+    assert answer == (
+        "Nagłówek RSS: Prom nie wróci w tym tygodniu.\n"
+        "Atrybucja: Taylor\nData publikacji: 2026-11-21\n"
+        "Link: https://www.bbc.co.uk/news/articles/second\n\n"
+        "Zakres odczytu: tylko nagłówki RSS."
+    )
+    assert sent[-1]["payload"]["stream"] is False
+    assert "/news/articles/" not in str(sent[-1]["payload"]["messages"])
+    assert feed.await_args.args[0].name == "BBC News RSS"
+    assert (
+        chat(
+            "Powiedz, czy w poprzedniej turze odczytano cały artykuł z BBC RSS.",
+            session=session,
+        )
+        == "Odczyt obejmował tylko nagłówki RSS."
+    )
+    feed.assert_awaited_once()
+    assert len(sent) == 1
+
+
+@pytest.mark.parametrize(
+    ("prefix", "expected_fetches"),
+    [("", 1), ("Nie sprawdzaj internetu. ", 0)],
+)
+def test_studio_rss_without_headlines_has_no_draft_or_citation(
+    studio_chat, monkeypatch, prefix, expected_fetches
+):
+    from venom_core.services import chat_grounding
+
+    feed = AsyncMock(return_value=[])
+    monkeypatch.setattr(chat_grounding.RSSReaderSkill, "read_feed", feed)
+    chat, sent, _ = studio_chat
+    result = chat(
+        prefix
+        + "Z kanału BBC News RSS wybierz nagłówek do krótkiej notatki dla zespołu."
+    )
+    assert result == "W tej turze nie odczytano nagłówków z publicznego kanału RSS."
+    assert feed.await_count == expected_fetches
+    assert not sent
+
+
+@pytest.mark.parametrize(
+    "draft",
+    [
+        "",
+        '{"items":[{"index":1,"summary":"Dobry tekst.","attribution":null}],"scope":"all"}',
+        '{"items":[{"index":0,"summary":"Dobry tekst.","attribution":null}]}',
+        '{"items":[{"index":true,"summary":"Dobry tekst.","attribution":null}]}',
+        '{"items":[{"index":1,"summary":"Odczytano cały artykuł.","attribution":null}]}',
+        '{"items":[{"index":1,"summary":"Zespół podał 23 nowe fakty.","attribution":null}]}',
+        '{"items":[{"index":1,"summary":"Dobry tekst.","attribution":"https://example.org/a"}]}',
+        '{"items":[{"index":1,"summary":"Dobry tekst.","attribution":239}]}',
+    ],
+)
+def test_rss_publication_rejects_forged_fields_and_indices(draft):
+    from venom_core.services.academy.qualified_chat_rss import RSSSummary
+    from venom_core.services.verified_web import NewsHeadline
+
+    summary = RSSSummary(
+        (NewsHeadline("https://bbc.co.uk/a", "Original", "2026-11-20"),)
+    )
+    assert summary.publish(draft) == (
+        "Zakres odczytu: tylko nagłówki RSS. Nie udało się przygotować opisu nagłówka."
+    )
+
+
+def test_studio_general_proposals_can_use_unknown_conditions_without_lookup(
+    studio_chat,
+):
+    chat, sent, replies = studio_chat
+    replies.append(
+        native(
+            '{"options":["Ubierz bluzę na wypadek chłodu.","Zabierz butelkę wody."]}'
+        )
+    )
+    result = chat(
+        "Nie znam temperatury. Podaj dwa elementy do zabrania na spacer. "
+        "Bez korzystania z internetu."
+    )
+    assert "bluzę" in result
+    assert "butelkę" in result
+    assert (
+        "Nie zgaduj aktualnych danych" in sent[-1]["payload"]["messages"][0]["content"]
+    )

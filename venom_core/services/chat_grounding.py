@@ -87,6 +87,18 @@ _RSS_QUOTED_LABEL = re.compile(
     r'(\b(?:kanał\w*|z|według)\s+)[„«"]((?:bbc(?:\s+news)?|gus)(?:\s+rss)?)[”»"]',
     re.I,
 )
+_RSS_EDITORIAL_PURPOSE = re.compile(
+    r"\b(?:(?:do|na\s+potrzeby)\s+(?:(?:krótkiej|zwięzłej)\s+)?"
+    r"notatki\s+(?:zespołu|dla\s+zespołu|redakcyjnej)"
+    r"|(?:na|do)\s+dopisk\w*\s+do\s+wiadomości\s+dla\s+(?:naszego\s+)?zespołu"
+    r"|do\s+(?:krótkiego\s+)?zapisu\s+w\s+notatkach\s+konferencji)\b",
+    re.I,
+)
+_PRIVATE_NOTE_SOURCE = re.compile(
+    r"\b(?:z|według|na podstawie)\s+(?:(?:mojej|moich|naszej|naszych)\s+)?"
+    r"(?:prywatn\w*\s+)?notat(?:k\w*|e[kc]\w*)\b",
+    re.I,
+)
 _RSS_PUBLISHER = re.compile(
     r"\b(?:(?P<excluded>nie(?:\s+(?:korzystaj|czytaj|pobieraj|wybieraj))?(?:\s+z)?|"
     r"bez|pomiń|z\s+wyłączeniem)\s+"
@@ -137,7 +149,18 @@ def _rss_topic(message: str) -> str:
 def is_rss_read_request(message: str) -> bool:
     """Identify an instruction to fetch RSS headlines in this turn."""
     topic = _rss_topic(message)
-    return bool(_EXPLICIT_RSS.search(topic) and _RSS_READ.search(topic))
+    return bool(
+        _EXPLICIT_RSS.search(topic)
+        and _RSS_READ.search(topic)
+        and not _PRIVATE_NOTE_SOURCE.search(topic)
+    )
+
+
+def rss_editorial_query(message: str) -> str:
+    """Separate a public RSS read from a neutral note's intended audience."""
+    if not is_rss_read_request(message):
+        return message
+    return _RSS_EDITORIAL_PURPOSE.sub(" ", message)
 
 
 def _rss_feeds(topic: str, sources: PublicSources) -> tuple[FeedSource, ...]:
@@ -287,6 +310,7 @@ async def _feed_headline_context(
                 "z nagłówka i zaznacz, że artykułu nie odczytano.\n"
                 f"{lines}\n[/PUBLIC_SOURCES]",
                 PublicSourceEvidence("rss_headlines"),
+                headlines=tuple(headlines),
             )
     return None
 

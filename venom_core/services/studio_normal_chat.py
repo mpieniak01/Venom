@@ -287,54 +287,17 @@ async def _normal_chat_setup(
         raise HTTPException(400, "studio_normal_requires_session")
     if request.material_ids or request.tools or request.tool_choice:
         raise HTTPException(400, "studio_normal_text_only")
-    num_ctx = SETTINGS.OLLAMA_CONTEXT_LENGTH or 4096
-    output_tokens = min(max(1, request.max_tokens or 256), max(1, num_ctx // 4))
-    budget = max(0, (num_ctx - output_tokens - 128) * 2)
-    configured_prompt = (SETTINGS.SIMPLE_MODE_SYSTEM_PROMPT or "").strip()
-    use_default_language = configured_prompt in {"", DEFAULT_SIMPLE_MODE_SYSTEM_PROMPT}
-    if use_default_language:
-        configured_prompt = ""
-    budget -= len(request.content) + len(configured_prompt) + 64
-    if budget < 0:
-        raise HTTPException(413, {"reason_code": "studio_normal_context_limit"})
+    output_tokens, budget, use_default_language = _normal_context_budget(request)
     system_context = _NORMAL_HISTORY_POLICY
     if use_default_language:
         system_context += f" {_NORMAL_LANGUAGE_POLICY}"
     system_context += await _note_context(request, session_id, get_vector_store)
-    provided_information_only = bool(
-        SETTINGS.ACADEMY_QUALIFIED_CHAT_ENABLED
-        and not request.use_notes
-        and not explicit_lookup_allowed(request.content)
-        and _PROVIDED_INFORMATION_ONLY.search(without_quotes(request.content))
+    system_context, provided_information_only = _provided_information_policy(
+        request, system_context
     )
-    if provided_information_only:
-        system_context += (
-            " Korzystaj tylko z danych z rozmowy. Jeśli aktualnej wartości nie podano, "
-            "powiedz wprost «W rozmowie nie podano tej informacji». "
-            "Nie przypisuj sobie wypowiedzi użytkownika. "
-            "Jeśli pytanie na końcu dotyczy jednej wartości, odpowiedz na nie wprost "
-            "i nie streszczaj wcześniejszych porad."
-        )
-        format_request = _SENTENCE_REQUEST.search(without_quotes(request.content))
-        if format_request and format_request.group("one"):
-            system_context += (
-                " Napisz dokładnie jedno zdanie odpowiadające na ostatnie pytanie. "
-                "Zakończ odpowiedź na tym jednym zdaniu."
-            )
     remaining = budget - len(system_context)
-    omit_truncated = (
-        SETTINGS.ACADEMY_QUALIFIED_CHAT_ENABLED
-        and not request.use_notes
-        and changes_example(request.content)
-    )
-    local_qualification = (
-        SETTINGS.ACADEMY_QUALIFIED_CHAT_ENABLED and not request.use_notes
-    )
-    supplied_update = local_qualification and bool(
-        source_revision_hint(request.content)
-    )
-    omit_assistant_links = (
-        supplied_update and public_lookup_query(request.content) is None
+    omit_truncated, local_qualification, omit_assistant_links = _normal_history_options(
+        request
     )
     history_records = store.get_history(session_id)
     history = _recent_turns(
@@ -358,6 +321,61 @@ async def _normal_chat_setup(
         history_records,
         history,
     )
+
+
+def _normal_context_budget(request: SimpleChatRequest) -> tuple[int, int, bool]:
+    num_ctx = SETTINGS.OLLAMA_CONTEXT_LENGTH or 4096
+    output_tokens = min(max(1, request.max_tokens or 256), max(1, num_ctx // 4))
+    budget = max(0, (num_ctx - output_tokens - 128) * 2)
+    configured_prompt = (SETTINGS.SIMPLE_MODE_SYSTEM_PROMPT or "").strip()
+    use_default_language = configured_prompt in {"", DEFAULT_SIMPLE_MODE_SYSTEM_PROMPT}
+    if use_default_language:
+        configured_prompt = ""
+    budget -= len(request.content) + len(configured_prompt) + 64
+    if budget < 0:
+        raise HTTPException(413, {"reason_code": "studio_normal_context_limit"})
+    return output_tokens, budget, use_default_language
+
+
+def _provided_information_policy(
+    request: SimpleChatRequest, system_context: str
+) -> tuple[str, bool]:
+    provided_only = bool(
+        SETTINGS.ACADEMY_QUALIFIED_CHAT_ENABLED
+        and not request.use_notes
+        and not explicit_lookup_allowed(request.content)
+        and _PROVIDED_INFORMATION_ONLY.search(without_quotes(request.content))
+    )
+    if not provided_only:
+        return system_context, False
+    system_context += (
+        " Korzystaj tylko z danych z rozmowy. Jeśli aktualnej wartości nie podano, "
+        "powiedz wprost «W rozmowie nie podano tej informacji». "
+        "Nie przypisuj sobie wypowiedzi użytkownika. "
+        "Jeśli pytanie na końcu dotyczy jednej wartości, odpowiedz na nie wprost "
+        "i nie streszczaj wcześniejszych porad."
+    )
+    format_request = _SENTENCE_REQUEST.search(without_quotes(request.content))
+    if format_request and format_request.group("one"):
+        system_context += (
+            " Napisz dokładnie jedno zdanie odpowiadające na ostatnie pytanie. "
+            "Zakończ odpowiedź na tym jednym zdaniu."
+        )
+    return system_context, True
+
+
+def _normal_history_options(request: SimpleChatRequest) -> tuple[bool, bool, bool]:
+    local_qualification = (
+        SETTINGS.ACADEMY_QUALIFIED_CHAT_ENABLED and not request.use_notes
+    )
+    omit_truncated = local_qualification and changes_example(request.content)
+    supplied_update = local_qualification and bool(
+        source_revision_hint(request.content)
+    )
+    omit_assistant_links = (
+        supplied_update and public_lookup_query(request.content) is None
+    )
+    return omit_truncated, local_qualification, omit_assistant_links
 
 
 def _source_plan(

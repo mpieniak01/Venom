@@ -1572,19 +1572,13 @@ async def _resolve_non_openrouter_runtime(request: SimpleChatRequest):
     return runtime, runtime_provider, model_name
 
 
-def _qualified_stream_prompt(
-    request: SimpleChatRequest, runtime, model_name: str, system_context: str
-):
-    request, system_prompt = _prepare_local_direct_prompt(
-        request, runtime, model_name, system_context
-    )
-    qualified_reply = _prepare_qualified_reply(request, runtime, model_name)
-    complete_reply = (
-        qualified_reply
-        if qualified_reply is not None
-        and (qualified_reply.requires_complete_draft or request.stream is False)
-        else None
-    )
+def _apply_qualified_reply_prompt(
+    request: SimpleChatRequest,
+    system_context: str,
+    system_prompt: str,
+    qualified_reply: QualifiedReply | None,
+    complete_reply: QualifiedReply | None,
+) -> str:
     if qualified_reply is not None and (
         complete_reply is not None or qualified_reply.hint
     ):
@@ -1593,6 +1587,17 @@ def _qualified_stream_prompt(
         system_prompt = qualified_reply.prompt(
             "\n\n".join(filter(None, (custom, system_context)))
         )
+    return system_prompt
+
+
+def _apply_studio_prompt_hints(
+    request: SimpleChatRequest,
+    runtime,
+    model_name: str,
+    system_context: str,
+    system_prompt: str,
+    complete_reply: QualifiedReply | None,
+) -> tuple[str, bool]:
     qualified_studio = _qualified_studio_request(
         request, model_name.casefold()
     ) and _qualified_request(request, runtime)
@@ -1617,6 +1622,28 @@ def _qualified_stream_prompt(
                 ),
             )
         )
+    return system_prompt, qualified_studio
+
+
+def _qualified_stream_prompt(
+    request: SimpleChatRequest, runtime, model_name: str, system_context: str
+):
+    request, system_prompt = _prepare_local_direct_prompt(
+        request, runtime, model_name, system_context
+    )
+    qualified_reply = _prepare_qualified_reply(request, runtime, model_name)
+    complete_reply = (
+        qualified_reply
+        if qualified_reply is not None
+        and (qualified_reply.requires_complete_draft or request.stream is False)
+        else None
+    )
+    system_prompt = _apply_qualified_reply_prompt(
+        request, system_context, system_prompt, qualified_reply, complete_reply
+    )
+    system_prompt, qualified_studio = _apply_studio_prompt_hints(
+        request, runtime, model_name, system_context, system_prompt, complete_reply
+    )
     return request, system_prompt, qualified_reply, complete_reply, qualified_studio
 
 

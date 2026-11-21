@@ -240,7 +240,9 @@ class RSSSummary:
             return None
         return items
 
-    def _publish_item(self, item: object, seen: set[int]) -> str | None:
+    def _item_headline(
+        self, item: object, seen: set[int]
+    ) -> tuple[int, NewsHeadline] | None:
         if not isinstance(item, dict) or item.keys() not in (
             {"index", "summary"},
             {"index", "summary", "secondary"},
@@ -253,7 +255,12 @@ class RSSSummary:
             or index in seen
         ):
             return None
-        headline = self.headlines[index - 1]
+        return index, self.headlines[index - 1]
+
+    @staticmethod
+    def _item_summary(
+        item: dict[str, Any], headline: NewsHeadline
+    ) -> tuple[str, str | None] | None:
         summary = _draft_field(item["summary"], headline.title)
         proposition, speaker = _headline_fields(headline.title)
         relation = _split_relation(proposition)
@@ -267,16 +274,34 @@ class RSSSummary:
             or (_NEGATION.search(headline.title) and not _NEGATION.search(summary))
         ):
             return None
-        seen.add(index)
-        unsupported_attribution = _REPORTING.search(summary) or (
+        return summary, speaker
+
+    @staticmethod
+    def _supported_attribution(
+        summary: str, headline: NewsHeadline, speaker: str | None
+    ) -> str | None:
+        unsupported = _REPORTING.search(summary) or (
             speaker is None and _REPORTING.search(headline.title)
         )
-        if unsupported_attribution:
-            # Keep the verified headline when the proposed attribution lacks support.
-            title = _draft_field(headline.title, headline.title)
-            if title is None:
-                return None
-            summary = f"„{title}”"
+        if not unsupported:
+            return summary
+        # Keep the verified headline when the proposed attribution lacks support.
+        title = _draft_field(headline.title, headline.title)
+        return f"„{title}”" if title is not None else None
+
+    def _publish_item(self, item: object, seen: set[int]) -> str | None:
+        selection = self._item_headline(item, seen)
+        if selection is None:
+            return None
+        index, headline = selection
+        summary_data = self._item_summary(item, headline)
+        if summary_data is None:
+            return None
+        summary, speaker = summary_data
+        summary = self._supported_attribution(summary, headline, speaker)
+        if summary is None:
+            return None
+        seen.add(index)
         return _render(headline, summary, speaker)
 
     def publish(self, draft: str) -> str:

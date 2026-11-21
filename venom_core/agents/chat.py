@@ -1,5 +1,6 @@
 """Moduł: chat - agent do rozmów ogólnych."""
 
+from types import SimpleNamespace
 from typing import Any, Optional
 
 from venom_core.agents.base import BaseAgent
@@ -95,7 +96,8 @@ Zasady:
                 calendar_skill = GoogleCalendarSkill()
                 if calendar_skill.credentials_available:
                     self.kernel.add_plugin(
-                        calendar_skill, plugin_name="GoogleCalendarSkill"
+                        SimpleNamespace(read_agenda=calendar_skill.read_agenda),
+                        plugin_name="GoogleCalendarSkill",
                     )
                     logger.info("ChatAgent zainicjalizowany z GoogleCalendarSkill")
                 else:

@@ -765,6 +765,8 @@ async def test_chat_draft_with_file_tools_cannot_offer_calendar_write(
     )
 
     class Calendar:
+        credentials_available = True
+
         @tool_function(name="schedule_task", description="Write")
         def schedule_task(self) -> str:
             raise AssertionError("Chat draft requested no calendar write")
@@ -774,11 +776,25 @@ async def test_chat_draft_with_file_tools_cannot_offer_calendar_write(
             return ""
 
     runtime = Kernel()
-    runtime.add_plugin(Calendar(), "GoogleCalendarSkill")
+    calendar = Calendar()
+    runtime.add_plugin(calendar, "GoogleCalendarSkill")
     call = mock_chat_service.get_chat_message_content.await_args
     settings = call.kwargs["settings"]
     assert result == "Szkic przypomnienia."
     assert [
         tool.name
         for tool in runtime.native_tools(settings.function_choice_behavior.filters)
+    ] == ["GoogleCalendarSkill-read_agenda"]
+
+    # The shared runtime also serves agents that do not apply the chat filter.
+    monkeypatch.setattr(SETTINGS, "ENABLE_GOOGLE_CALENDAR", True)
+    monkeypatch.setattr("venom_core.agents.chat.GoogleCalendarSkill", lambda: calendar)
+    ChatAgent(runtime)
+    assert runtime.plugins["GoogleCalendarSkill"] == {
+        "read_agenda": calendar.read_agenda
+    }
+    assert [
+        tool.name
+        for tool in runtime.native_tools()
+        if tool.name.startswith("GoogleCalendarSkill-")
     ] == ["GoogleCalendarSkill-read_agenda"]

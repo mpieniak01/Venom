@@ -17,7 +17,10 @@ from venom_core.services.training_experiments.quality_history import (
     analyze_record,
     list_records,
 )
-from venom_core.services.training_experiments.quality_native import get_record
+from venom_core.services.training_experiments.quality_native import (
+    get_record,
+    register_parent_reference,
+)
 from venom_core.services.training_experiments.quality_schema import QualityBundle
 from venom_core.services.training_experiments.service import ExperimentService
 
@@ -29,6 +32,12 @@ def main(argv: list[str] | None = None) -> None:
     )
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("import").add_argument("bundle", type=Path)
+    parent = commands.add_parser("register-parent")
+    parent.add_argument("profile_id")
+    parent.add_argument("adapter_id")
+    parent.add_argument("checkpoint_step", type=int)
+    parent.add_argument("generation", type=Path)
+    parent.add_argument("record_id")
     commands.add_parser("list")
     commands.add_parser("show").add_argument("record_id")
     analyze = commands.add_parser("analyze")
@@ -45,6 +54,15 @@ def main(argv: list[str] | None = None) -> None:
             bundle = QualityBundle.model_validate(read_json(args.bundle))
             store = QualityStore(experiments.root)
             result = [store.import_record(record) for record in bundle.records]
+        elif args.command == "register-parent":
+            result = register_parent_reference(
+                experiments,
+                args.profile_id,
+                args.adapter_id,
+                args.generation,
+                args.checkpoint_step,
+                args.record_id,
+            )
         elif args.command == "list":
             result = list_records(experiments)
         elif args.command == "show":

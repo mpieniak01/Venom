@@ -244,8 +244,10 @@ def verify_baseline(
         raise ValueError("experiment_checkpoint_baseline_changed")
 
 
-def _baseline_inputs(folder: Path, manifest: dict, cases: list[dict]) -> dict:
-    """Check the sealed raw/anonymous views and each arm's own history."""
+def _baseline_inputs(
+    folder: Path, manifest: dict, cases: list[dict], *, variant: str = "base"
+) -> dict:
+    """Check the sealed raw/anonymous views and the requested arm's own history."""
     if manifest["evaluated_ids"] != [case["record_id"] for case in cases]:
         raise ValueError("experiment_checkpoint_baseline_generation_changed")
     raw = _raw_rows(folder, manifest)
@@ -260,10 +262,10 @@ def _baseline_inputs(folder: Path, manifest: dict, cases: list[dict]) -> dict:
     result = {}
     for case, anonymous in zip(cases, blind, strict=True):
         ident = case["record_id"]
-        labels = [label for label, tag in mapping[ident].items() if tag == "base"]
+        labels = [label for label, tag in mapping[ident].items() if tag == variant]
         if len(labels) != 1:
             raise ValueError("experiment_checkpoint_baseline_generation_changed")
-        row = raw[ident, "base"]
+        row = raw[ident, variant]
         answer = blind_answer(row)
         if anonymous["answers"].get(labels[0]) != answer:
             raise ValueError("experiment_checkpoint_baseline_generation_changed")
@@ -274,6 +276,23 @@ def _baseline_inputs(folder: Path, manifest: dict, cases: list[dict]) -> dict:
             "label": labels[0],
         }
     return result
+
+
+def verify_generation_pair(
+    directory: Path, cases: list[dict], models: dict
+) -> tuple[dict, dict]:
+    """Bind an existing paired evaluation to exact model inputs and own histories."""
+    manifest, seal = read_generation(directory)
+    if manifest["models"] != models:
+        raise ValueError("campaign_quality_parent_adapter_changed")
+    if manifest.get("case_max_new_tokens") != {
+        case["record_id"]: case.get("max_new_tokens", manifest["max_new_tokens"])
+        for case in cases
+    }:
+        raise ValueError("campaign_quality_identity_changed")
+    for name in models:
+        _baseline_inputs(directory, manifest, cases, variant=name)
+    return manifest, seal
 
 
 def _baseline_source(

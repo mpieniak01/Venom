@@ -12,13 +12,22 @@ from scripts.academy.omni_pl_chat_data import MAX_DEV_TASK_LENGTH
 from scripts.academy.omni_pl_chat_masks import SNAPSHOT_PIN
 from venom_core.services.remote_training.paths import operator_path
 
-from .calibration import scorer_protocol
-from .checkpoint_evaluation import step_directory
+from .adapters import resolve_adapter
+from .calibration import scorer_protocol, validate_calibration
+from .checkpoint_evaluation import (
+    BLIND_MAPPING,
+    read_generation,
+    step_directory,
+    verify_generation_pair,
+)
+from .evidence import ADAPTER_FILES, calibrated_judgments, review_data, sealed_report
 from .profiles import (
     MAX_JSON_BYTES,
     digest,
     load_profile,
+    parse_rows,
     read_json,
+    recipe_for,
     resolve_input,
     stable_hash,
 )
@@ -307,6 +316,79 @@ def frozen_evaluation_identity(
         },
         calibration_sha,
         calibration=calibration,
+    )
+
+
+def register_parent_reference(
+    experiments: Any,
+    profile_id: str,
+    adapter_id: str,
+    generation: Path,
+    checkpoint_step: int,
+    record_id: str,
+) -> dict:
+    """Score a sealed parent evaluation on the campaign dev without running inference."""
+    if type(checkpoint_step) is not int or not 1 <= checkpoint_step <= 10000:
+        raise ValueError("experiment_checkpoint_invalid")
+    profile, _ = load_profile(experiments.root, profile_id)
+    calibration_sha = profile.calibration_sha256
+    if calibration_sha is None:
+        raise ValueError("campaign_parent_exact_calibration_required")
+    calibration = _verified_json(
+        experiments.root / "profiles" / f"{profile_id}.calibration.json",
+        calibration_sha,
+    )
+    if not isinstance(calibration, dict) or calibration.get("judge") != "exact-v1":
+        raise ValueError("campaign_parent_exact_calibration_required")
+    _, adapter = resolve_adapter(
+        experiments.root, adapter_id, recipe_for(profile, None)
+    )
+    dev = resolve_input(experiments.root, profile.dev)
+    cases = parse_rows(_verified_bytes(dev, profile.dev_sha256).decode("utf-8"))
+    validate_calibration(calibration, profile.dev_sha256, cases)
+    categories = _dev_categories(dev, profile.dev_sha256)
+    hashes = dict(
+        zip(
+            ADAPTER_FILES,
+            (adapter["config_sha256"], adapter["weights_sha256"]),
+            strict=True,
+        )
+    )
+    tag = f"checkpoint-{checkpoint_step}"
+    generated, seal = verify_generation_pair(
+        generation, cases, {"base": {"base": True}, tag: hashes}
+    )
+    identity = evaluation_identity(generated, calibration_sha, calibration=calibration)
+    if identity != frozen_evaluation_identity(experiments, profile_id, "automatic"):
+        raise ValueError("campaign_quality_identity_changed")
+    bundle = review_data(generation, dev)
+    grades = calibrated_judgments(calibration, bundle)
+    report = sealed_report(
+        generation,
+        dev,
+        grades,
+        {"step": checkpoint_step, "sha256": adapter["weights_sha256"]},
+        include_critical_case_ids=True,
+    )
+    mapping = read_json(generation / BLIND_MAPPING)
+    if (
+        read_generation(generation) != (generated, seal)
+        or digest(dev) != profile.dev_sha256
+    ):
+        raise ValueError("experiment_quality_evidence_changed")
+    return QualityStore(experiments.root).import_record(
+        {
+            "record_id": record_id,
+            "split": "dev",
+            "identity": identity,
+            "source": {
+                "identity": f"parent:{adapter_id}:{checkpoint_step}",
+                "sha256": stable_hash(seal),
+                "kind": "academy",
+            },
+            "cases": evaluated_cases(report, categories, grades, mapping),
+            "candidate_sha256": adapter["weights_sha256"],
+        }
     )
 
 

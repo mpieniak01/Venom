@@ -306,9 +306,11 @@ def test_calendar_api_requires_a_receipt_bound_to_current_execution(
         assert response.status_code == 201
         result = response.json()
         if case == "success":
-            assert result["status"] == "success" and result["event_id"] == "event-42"
+            assert result["status"] == "success"
+            assert result["event_id"] == "event-42"
         else:
-            assert result["status"] == "error" and result["event_id"] is None
+            assert result["status"] == "error"
+            assert result["event_id"] is None
             assert "✅" not in result["message"]
     assert observed[0].request_id != observed[1].request_id
     assert (observed[0].title, observed[0].duration_minutes) == ("Odprawa", 30)

@@ -359,7 +359,8 @@ async def test_world_news_uses_labeled_bbc_headlines_when_articles_fail(monkeypa
     )
     assert feed.await_count == 1
     assert feed.await_args.args[0].article_hosts == ("stat.gov.pl",)
-    assert "GUS" in result and "Odczytano tylko nagłówki RSS" in result
+    assert "GUS" in result
+    assert "Odczytano tylko nagłówki RSS" in result
 
     feed.reset_mock()
     result = await chat_grounding.current_chat_context(
@@ -1000,7 +1001,8 @@ def test_saved_public_fact_context_requests_value_alongside_its_qualifier(questi
 
     assert "konkretny fakt" in context
     assert "wartość i jednostkę" in context
-    assert "Wyraź przybliżenie " in context and "i jego warunki" in context
+    assert "Wyraź przybliżenie " in context
+    assert "i jego warunki" in context
     assert "w tym samym zdaniu" in context
     assert "około 82 sekund w próżni" in context
 

@@ -145,7 +145,7 @@ class WeatherEvidence:
             return None
         if status_text is not None and (
             reason != "provider_http_error"
-            or not re.fullmatch(r"[1-5][0-9]{2}", status_text)
+            or not re.fullmatch(r"[1-5]\d{2}", status_text)
         ):
             return None
         return cls(

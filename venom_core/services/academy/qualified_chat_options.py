@@ -12,7 +12,7 @@ Mode = Literal["exact", "at_most"]
 
 _SINGLE = frozenset(("jeden", "jedna", "jedną", "jednego", "jednej"))
 _PAIR = frozenset(("dwa", "dwie", "dwóch"))
-_COUNT = r"(?:[1-9][0-9]{0,2}|jeden|jedna|jedną|jednego|jednej|dwa|dwie|dwóch)"
+_COUNT = r"(?:[1-9]\d{0,2}|jeden|jedna|jedną|jednego|jednej|dwa|dwie|dwóch)"
 _BOUND = r"(?:co najwyżej|najwyżej|maksymalnie|nie więcej niż)"
 _QUALIFIER = rf"(?:{_BOUND}|dokładnie|tylko)"
 _REQUEST = re.compile(
@@ -26,7 +26,7 @@ _BARE_REQUEST = re.compile(
     re.I,
 )
 _NUMERIC_TAIL = re.compile(
-    rf"^(?:[.,][0-9]|\s*(?:[–—-]|do\b|lub\b|albo\b)\s*{_COUNT}\b)", re.I
+    rf"^(?:[.,]\d|\s*(?:[–—-]|do\b|lub\b|albo\b)\s*{_COUNT}\b)", re.I
 )
 _ALTERNATE_COUNT = re.compile(
     rf"^\s+[^\W\d_]+(?:\s+[^\W\d_]+){{0,3}}\s+(?:lub|albo)\s+{_COUNT}\b", re.I
@@ -46,10 +46,10 @@ _PHRASE_END = frozenset(
     ("bez", "dla", "do", "i", "lub", "albo", "o", "od", "na", "w", "we", "z", "ze")
 )
 _BOUNDARY = re.compile(r"^(?:\s*[.!?,;:])?\s*$")
-_QUOTED = re.compile(r'„[^”]*(?:”|$)|«[^»]*(?:»|$)|“[^”]*(?:”|$)|"[^"]*(?:"|$)')
+_QUOTED = re.compile(r'[„“][^”]*(?:”|$)|«[^»]*(?:»|$)|"[^"]*(?:"|$)')
 _NEGATION = re.compile(r"(?:\bnie\s+|(?:po co|czy)\s+)$", re.I)
 
-_BULLET = re.compile(r"^\s*(?:[-*•]\s+|[1-9][0-9]{0,2}[.)]\s+)(\S.*)$")
+_BULLET = re.compile(r"^\s*(?:[-*•]\s+|[1-9]\d{0,2}[.)]\s+)(\S.*)$")
 _ALTERNATIVE = re.compile(r"\b(?:lub|albo|bądź)\b", re.I)
 _OPTION_PREFIX = (
     r"alternatywnie|inną opcją jest|inna opcja to|kolejną propozycją jest|"
@@ -65,7 +65,7 @@ _ACTION = re.compile(
     r"^\s*(?:prześlij|wyślij|wybierz|zrób|przygotuj|postaw|dodaj|zaproponuj|podaj)\b",
     re.I,
 )
-_SHORT_NUMBER = re.compile(r"\b[0-9]+(?:[.,][0-9]+)?\s*$")
+_SHORT_NUMBER = re.compile(r"\b\d+(?:[.,]\d+)?\s*$")
 _FENCE = chr(96) * 3
 
 
@@ -135,7 +135,7 @@ def _components(option: str) -> list[str]:
         clause = re.split(r"[.!?;,:]", left)[-1]
         if _EXCLUSION.search(clause) and not _ACTION.match(right):
             continue
-        if _SHORT_NUMBER.search(left) and re.match(r"\s*[0-9]", right):
+        if _SHORT_NUMBER.search(left) and re.match(r"\s*\d", right):
             continue
         element = option[consumed : split.start()].strip(" \t,;")
         if element:

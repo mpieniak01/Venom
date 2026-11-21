@@ -176,8 +176,8 @@ _STRICT_TIME = re.compile(
     r"\b(?:mniej|krócej|krótsz[aeąy]) niż (?:jedną |1 )?minut[ęy]\b", re.I
 )
 _KEEP = re.compile(r"\b(?:zachowaj|zostań przy|nadal)\b", re.I)
-_SECONDS = re.compile(r"(?<![\d,.-])([1-9][0-9]?) sekund(?:ę|y)?\b", re.I)
-_STATED_TIME = re.compile(r"\b[0-9]+(?:[.,][0-9]+)?\s*(?:sekund\w*|minut\w*|s\b)", re.I)
+_SECONDS = re.compile(r"(?<![\d,.-])([1-9]\d?) sekund(?:ę|y)?\b", re.I)
+_STATED_TIME = re.compile(r"\b\d+(?:[.,]\d+)?\s*(?:sekund\w*|minut\w*|s\b)", re.I)
 _SIGN = re.compile(
     r"\b(?:co to znaczy|wyjaśnij[^.!?]{0,40}(?:napis|co to znaczy))", re.I
 )
@@ -421,13 +421,12 @@ class QualifiedReply:
             or not self._allowed(action)
         ):
             return _CLARIFICATION
-        label = (
-            "sekundę"
-            if seconds == 1
-            else "sekundy"
-            if seconds % 10 in (2, 3, 4) and seconds % 100 not in (12, 13, 14)
-            else "sekund"
-        )
+        if seconds == 1:
+            label = "sekundę"
+        elif seconds % 10 in (2, 3, 4) and seconds % 100 not in (12, 13, 14):
+            label = "sekundy"
+        else:
+            label = "sekund"
         action = action.strip().rstrip(".!?")
         return f"Przez {seconds} {label} {action[0].lower() + action[1:]}."
 

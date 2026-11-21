@@ -805,7 +805,8 @@ def test_studio_quote_rewrite_uses_operand_without_history_and_preserves_literal
         == f"„{model_text}”"
     )
     payload = sent[0]["payload"]
-    assert payload["stream"] is False and "/api/chat" in sent[0]["completions_url"]
+    assert payload["stream"] is False
+    assert "/api/chat" in sent[0]["completions_url"]
     assert [msg["role"] for msg in payload["messages"]] == ["system", "user"]
     assert json.loads(payload["messages"][-1]["content"])["tekst_zrodlowy"] == operand
     assert (
@@ -976,7 +977,8 @@ def test_studio_evidence_requires_current_observation(question, history, expecte
     if expected is None:
         assert result is None
     else:
-        assert result is not None and expected in result
+        assert result is not None
+        assert expected in result
 
 
 def test_studio_rewrite_disambiguates_outer_instruction_and_checks_draft():
@@ -996,7 +998,8 @@ def test_studio_rewrite_disambiguates_outer_instruction_and_checks_draft():
     reply = parse_quote_rewrite(
         "Napisz inaczej w jednym zdaniu: „Czy koszt wynosi 12 zł?”"
     )
-    assert isinstance(reply, QuoteRewrite) and reply.one_sentence
+    assert isinstance(reply, QuoteRewrite)
+    assert reply.one_sentence
     assert reply.publish("Czy zapłacimy 12 zł?") == "„Czy zapłacimy 12 zł?”"
     for draft in (
         '{"tekst": 12}',
@@ -1195,8 +1198,10 @@ def test_checked_explanation_keeps_mechanism_and_named_example(
     ]
     start = checked_explanation(topic, [], token_budget=96)
     revised = checked_explanation(correction, history, token_budget=96)
-    assert start and all(part in start.text().casefold() for part in before)
-    assert revised and all(part in revised.text().casefold() for part in after)
+    assert start
+    assert all(part in start.text().casefold() for part in before)
+    assert revised
+    assert all(part in revised.text().casefold() for part in after)
     assert len(revised.text().split()) <= 40
     assert checked_explanation(correction, history, token_budget=64) is None
 
@@ -1241,7 +1246,8 @@ def test_studio_explanation_is_published_only_with_resolved_publication_slots(
     answer = chat("Zmień przykład na słomkę w misce.", session=session)
     assert "słomka w misce" in answer
     assert "wody i powietrza" in answer
-    assert "parowanie" not in answer and "kubek" not in answer
+    assert "parowanie" not in answer
+    assert "kubek" not in answer
     assert not sent
     assert evidence.await_count == 2
 
@@ -1262,9 +1268,11 @@ def test_checked_explanation_supports_repeated_example_changes_without_resuming_
     ]
     latest = "Zmień przykład na ołówek w kubku."
     selected = checked_explanation(latest, history, token_budget=96)
-    assert selected and "ołówek w kubku" in selected.text()
+    assert selected
+    assert "ołówek w kubku" in selected.text()
     selected = checked_explanation("Zmień przykład na patyczek w misce.", history)
-    assert selected and "patyczek w misce" in selected.text()
+    assert selected
+    assert "patyczek w misce" in selected.text()
     history.append(
         HistoryMessage(role="user", content="Zmieniam temat. Napisz zaproszenie.")
     )
@@ -1575,7 +1583,8 @@ def test_studio_fitting_applies_latest_user_side_and_ignores_assistant_numbers()
         HistoryMessage(**turn("Kartka ma 25 na 60 cm.", "assistant")),
     ]
     hint = fit_hint("Dłuższy bok ma 28 cm. Czy się zmieści?", history)
-    assert "28 cm ≤ 30 cm" in hint and "mieści się bez składania" in hint
+    assert "28 cm ≤ 30 cm" in hint
+    assert "mieści się bez składania" in hint
     assert fit_hint("Dłuższy bok ma około 28 cm.", history) == ""
     assert fit_hint("Dłuższy bok ma 28 cm, ale nie można obrócić.", history) == ""
 
@@ -1667,14 +1676,16 @@ def test_studio_keeps_heat_flow_from_user_premise_after_shortening(studio_chat):
     )
     answer = chat(question, session=session, max_tokens=96)
     assert answer.count(".") == 2
-    assert "z podłoża do lodu" in answer and "przewodność aluminium" in answer
+    assert "z podłoża do lodu" in answer
+    assert "przewodność aluminium" in answer
     short = chat(
         "Skróć to do jednego zdania i zachowaj kierunek przepływu ciepła.",
         session=session,
         max_tokens=96,
     )
     assert short.count(".") == 1
-    assert "z podłoża do lodu" in short and "przewodność aluminium" in short
+    assert "z podłoża do lodu" in short
+    assert "przewodność aluminium" in short
     assert not sent
 
 
@@ -1686,11 +1697,13 @@ def test_ice_comparison_requires_known_premise_and_does_not_resume_stale_topic()
         "niż na drewnie. Wyjaśnij w dwóch zdaniach."
     )
     known_answer = ice_melting_reply(known, [])
-    assert known_answer and "przewodność miedzi względem drewna" in known_answer
+    assert known_answer
+    assert "przewodność miedzi względem drewna" in known_answer
 
     unknown = "Nie znam temperatur obu podłoży. Czy lód stopi się szybciej na miedzi czy na drewnie?"
     unknown_answer = ice_melting_reply(unknown, [])
-    assert unknown_answer and unknown_answer.startswith("Podaj temperatury obu podłoży")
+    assert unknown_answer
+    assert unknown_answer.startswith("Podaj temperatury obu podłoży")
     assert "cieplejszego ciała do chłodniejszego" in unknown_answer
     assert ice_melting_reply(known, [], token_budget=64) is None
     incompatible = known.replace("na miedzi niż na drewnie", "na drewnie niż na miedzi")
@@ -1919,11 +1932,13 @@ def test_thermal_followup_preserves_direction_rule_with_latest_user_premise(
         ),
     ]
     reply = thermal_followup_reply(revision, history, token_budget=96)
-    assert reply is not None and expected in reply
+    assert reply is not None
+    assert expected in reply
     assert "ciepło płynie od ciała cieplejszego do chłodniejszego" in reply.casefold()
     assert reply.count(".") == 1
     if "znam tylko temperaturę" in revision:
-        assert "oddaje je" not in reply and "przyjmuje" not in reply
+        assert "oddaje je" not in reply
+        assert "przyjmuje" not in reply
 
 
 def test_thermal_followup_leaves_unrelated_or_ambiguous_request_to_existing_path():

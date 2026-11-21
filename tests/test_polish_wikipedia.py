@@ -134,7 +134,8 @@ async def test_section_read_is_limited_to_the_selected_article_and_heading(
     assert [call.kwargs["params"]["prop"] for call in calls] == ["sections", "text"]
     assert calls[1].kwargs["params"]["section"] == "2"
     if returned_title == source.title:
-        assert result and result.extract == "Tona metryczna wynosi 1000 kg."
+        assert result
+        assert result.extract == "Tona metryczna wynosi 1000 kg."
         assert result.url == source.url
     else:
         assert result is None

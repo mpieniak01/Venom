@@ -43,7 +43,7 @@ WeatherFailureReason = Literal[
 # IMGW's public synoptic station catalogue. Match both station identity and name.
 _IMGW_STATIONS = {"kalisz": "12435"}
 _IMGW_MAX_AGE = timedelta(hours=3)
-_WEATHER_TEMPERATURE = re.compile(r"-?[0-9]{1,3}(?:[.,][0-9]{1,2})?")
+_WEATHER_TEMPERATURE = re.compile(r"-?\d{1,3}(?:[.,]\d{1,2})?")
 
 
 @dataclass(frozen=True)
@@ -71,8 +71,8 @@ def imgw_station_url(location: str) -> str | None:
 def imgw_observation_time(day: object, hour: object) -> datetime | None:
     if not isinstance(day, str) or type(hour) not in (int, str):
         return None
-    if not re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", day) or not re.fullmatch(
-        r"[0-9]{1,2}", str(hour)
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", day) or not re.fullmatch(
+        r"\d{1,2}", str(hour)
     ):
         return None
     try:

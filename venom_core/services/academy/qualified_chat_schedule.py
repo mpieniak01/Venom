@@ -12,13 +12,17 @@ from venom_core.services.academy.qualified_chat_quote import (
     without_quotes,
 )
 
+_MONDAY = "poniedziałek"
+_WEDNESDAY = "środa"
+_FRIDAY = "piątek"
+_REHEARSAL = "próba"
 _DAYS = {
-    "poniedziałek": "poniedziałek",
+    _MONDAY: _MONDAY,
     "wtorek": "wtorek",
-    "środę": "środa",
-    "środa": "środa",
+    "środę": _WEDNESDAY,
+    _WEDNESDAY: _WEDNESDAY,
     "czwartek": "czwartek",
-    "piątek": "piątek",
+    _FRIDAY: _FRIDAY,
     "sobotę": "sobota",
     "sobota": "sobota",
     "niedzielę": "niedziela",
@@ -26,8 +30,8 @@ _DAYS = {
 }
 
 _EVENTS = {
-    "próba": "próba",
-    "próbę": "próba",
+    _REHEARSAL: _REHEARSAL,
+    "próbę": _REHEARSAL,
     "odprawa": "odprawa",
     "odprawę": "odprawa",
     "spotkanie": "spotkanie",
@@ -38,9 +42,9 @@ _DAY_FORMS = "(?:" + "|".join(_DAYS) + ")"
 _DAYS_ORDER = (
     "poniedziałek",
     "wtorek",
-    "środa",
+    _WEDNESDAY,
     "czwartek",
-    "piątek",
+    _FRIDAY,
     "sobota",
     "niedziela",
 )
@@ -76,7 +80,7 @@ _ARRIVAL = re.compile(
     r"minut[ęy]?\s+wcześniej",
     re.I,
 )
-_SHIFT_HEAD = re.compile(r"(?:(?:proszę)\s+)?(?:przesuń|cofnij)\b", re.I)
+_SHIFT_HEAD = re.compile(r"(?:proszę\s+)?(?:przesuń|cofnij)\b", re.I)
 _START_TARGET = r"(?:godzinę(?: rozpoczęcia)?|" + _EVENT + r")"
 _TIME_HINT = re.compile(
     rf"\b{_START_TARGET}\b|\bo\s+(?:[0-9]+\s+minut\w*|godzinę)", re.I

@@ -59,7 +59,8 @@ async def test_provider_binds_actual_and_perceived_to_observed_area(client):
     )
     assert observed.requested_location == "Białystok"
     assert observed.observed_location == "Olmonty"
-    assert observed.temperature_c == "3" and observed.feels_like_c == "-4"
+    assert observed.temperature_c == "3"
+    assert observed.feels_like_c == "-4"
     assert dict(observed.details) == {
         "Warunki": "Light rain",
         "Wilgotność": "91%",
@@ -166,7 +167,8 @@ def test_nearby_source_is_used_only_when_the_user_allows_it(prompt, allows_nearb
     else:
         assert reply.reason == "different_location"
         assert reply.evidence.temperature_c is None
-        assert "°C" not in reply.text and "https://" not in reply.text
+        assert "°C" not in reply.text
+        assert "https://" not in reply.text
     assert WeatherEvidence.from_record(reply.evidence.to_record()) == reply.evidence
 
 
@@ -197,7 +199,8 @@ def test_perceived_and_other_weather_fields_use_same_source():
     )
     ordinary = weather_observation_reply(observation, "Jaka pogoda w Kaliszu?", {})
     assert "Wiatr: 12 km/h" in ordinary.text
-    assert "3°C" in ordinary.text and "-4°C" in ordinary.text
+    assert "3°C" in ordinary.text
+    assert "-4°C" in ordinary.text
 
 
 def test_evidence_rejects_changed_url_bad_status_or_temperature_under_failure():
@@ -223,7 +226,8 @@ def test_evidence_rejects_changed_url_bad_status_or_temperature_under_failure():
         {},
     )
     evidence = WeatherEvidence.from_record(absent.evidence.to_record())
-    assert evidence is not None and evidence.http_status == 503
+    assert evidence is not None
+    assert evidence.http_status == 503
     assert evidence.follow_up_reply("Podaj tę samą temperaturę.") == (
         "Brak potwierdzonego odczytu temperatury dla miejscowości Kalisz."
     )
@@ -314,8 +318,10 @@ async def test_imgw_recovers_named_city_only_and_keeps_timestamp_in_history(clie
         "bez okolic i temperatury odczuwalnej."
     )
     context = await chat_grounding.current_chat_context(text)
-    assert "Kalisz" in context.reply and "2.1°C" in context.reply
-    assert "Zagorzynek" not in context.reply and " UTC." in context.reply
+    assert "Kalisz" in context.reply
+    assert "2.1°C" in context.reply
+    assert "Zagorzynek" not in context.reply
+    assert " UTC." in context.reply
     assert "odczuwalnej" not in context.reply
     assert "Instytut Meteorologii i Gospodarki Wodnej" in context.reply
     assert [call.args[0] for call in client.aget.await_args_list] == [
@@ -339,7 +345,8 @@ async def test_imgw_recovers_named_city_only_and_keeps_timestamp_in_history(clie
     allowed = await chat_grounding.current_chat_context(
         "Sprawdź aktualną temperaturę powietrza w Kaliszu. Dopuszczam pomiar z okolic."
     )
-    assert "Zagorzynek" in allowed.reply and "4°C" in allowed.reply
+    assert "Zagorzynek" in allowed.reply
+    assert "4°C" in allowed.reply
     assert client.aget.await_count == 3
 
 

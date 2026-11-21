@@ -19,9 +19,17 @@ LOCAL = re.compile(
 NEARBY = re.compile(
     r"\b(?:pozostałe|sąsiednie|inne)\b.*\b(?:dział|podaj|kapi|mają przepływ|płynie|prawidłowo|normalnie)"
 )
-GROUP = re.compile(
-    r"\b(?:cał\w* (?:lini|stref|sekcj)\w*|kilk\w* (?:kroplown|emiter|punkt)\w*|wszystk\w* (?:kroplown|emiter)\w*)"
+_GROUP_PATTERNS = (
+    re.compile(r"\bcał\w* (?:lini|stref|sekcj)\w*"),
+    re.compile(r"\bkilk\w* (?:kroplown|emiter|punkt)\w*"),
+    re.compile(r"\bwszystk\w* (?:kroplown|emiter)\w*"),
 )
+
+
+def _group_assertion(text: str) -> bool:
+    return any(pattern.search(text) for pattern in _GROUP_PATTERNS)
+
+
 WEAK = re.compile(
     r"\b(?:słab|such|ledwie|ucier|brak przepływu|nie podaj|nie dział|nie kapi|mało wody|kapie zbyt wolno)\w*"
 )
@@ -60,11 +68,11 @@ def _observations(turns: Sequence[str]) -> tuple[str, dict[str, Observation]]:
                     state.spread = None
                 continue
             if WEAK.search(assertion):
-                if GROUP.search(assertion):
+                if _group_assertion(assertion):
                     state.spread = "group"
                 elif LOCAL.search(assertion) and NEARBY.search(assertion):
                     state.spread = "local"
-            elif GROUP.search(assertion) and re.search(
+            elif _group_assertion(assertion) and re.search(
                 r"\bdziałają (?:już )?(?:prawidłowo|normalnie)", assertion
             ):
                 state.spread = None

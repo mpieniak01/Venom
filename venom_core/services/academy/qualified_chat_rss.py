@@ -158,6 +158,23 @@ class RSSSummary:
 
     def schema(self) -> dict[str, Any]:
         count = min(self.count, len(self.headlines))
+        text = {"type": "string", "minLength": 1, "maxLength": 240}
+        item_choices = []
+        for index, headline in enumerate(self.headlines, 1):
+            proposition, _ = _headline_fields(headline.title)
+            second = text if _split_relation(proposition) else {"type": "null"}
+            item_choices.append(
+                {
+                    "type": "object",
+                    "required": ["index", "summary", "secondary"],
+                    "additionalProperties": False,
+                    "properties": {
+                        "index": {"type": "integer", "enum": [index]},
+                        "summary": text,
+                        "secondary": second,
+                    },
+                }
+            )
         return {
             "type": "object",
             "required": ["items"],
@@ -167,33 +184,7 @@ class RSSSummary:
                     "type": "array",
                     "minItems": count,
                     "maxItems": count,
-                    "items": {
-                        "type": "object",
-                        "required": ["index", "summary", "secondary"],
-                        "additionalProperties": False,
-                        "properties": {
-                            "index": {
-                                "type": "integer",
-                                "minimum": 1,
-                                "maximum": len(self.headlines),
-                            },
-                            "summary": {
-                                "type": "string",
-                                "minLength": 1,
-                                "maxLength": 240,
-                            },
-                            "secondary": {
-                                "anyOf": [
-                                    {
-                                        "type": "string",
-                                        "minLength": 1,
-                                        "maxLength": 240,
-                                    },
-                                    {"type": "null"},
-                                ],
-                            },
-                        },
-                    },
+                    "items": {"anyOf": item_choices},
                 }
             },
         }
@@ -220,8 +211,10 @@ class RSSSummary:
                     "opisu w summary. Zachowaj fakty, liczby, negację i stopień "
                     "pewności tytułu. Jeżeli nagłówek ma drugi_czlon, przełóż pierwszą "
                     "część osobno w summary i drugą osobno w secondary. Zachowaj w "
-                    "każdej jej własny podmiot, działanie i skutek. Nie łącz części. "
-                    "Jeśli drugi_czlon nie występuje, ustaw secondary na wartość null. "
+                    "każdej jej własny podmiot, działanie i skutek. Oba tłumaczenia "
+                    "są obowiązkowe, jeśli podano obie części. Nie dopisuj funkcji "
+                    "ani tytułów osób. Nie łącz części. Jeśli drugi_czlon nie "
+                    "występuje, ustaw secondary na wartość null. "
                     "W angielskim «podmiot + to + czasownik» "
                     "wyraża zapowiedzianą czynność. Pole tytul zawiera treść po "
                     "wydzieleniu mówiącego. W summary podaj ją po polsku. Użyj tylko "

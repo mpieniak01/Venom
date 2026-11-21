@@ -2484,6 +2484,13 @@ def test_rss_keeps_the_simultaneous_event_outside_the_attributed_quote():
         "2026-11-21",
     )
     summary = RSSSummary((item,))
+    single = NewsHeadline("https://bbc.co.uk/other", "Harbor opens", "2026-11-21")
+    schema = RSSSummary((single, item)).schema()
+    choices = schema["properties"]["items"]["items"]["anyOf"]
+    assert choices[0]["properties"]["index"]["enum"] == [1]
+    assert choices[0]["properties"]["secondary"]["type"] == "null"
+    assert choices[1]["properties"]["index"]["enum"] == [2]
+    assert choices[1]["properties"]["secondary"]["type"] == "string"
     model_input = json.loads(summary.messages("Podaj sens.")[1]["content"])
     assert model_input["naglowki"][0]["drugi_czlon"] == "he meets Morgan"
     result = summary.publish(

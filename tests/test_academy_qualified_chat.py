@@ -2076,3 +2076,44 @@ def test_studio_general_proposals_can_use_unknown_conditions_without_lookup(
     assert (
         "Nie zgaduj aktualnych danych" in sent[-1]["payload"]["messages"][0]["content"]
     )
+
+
+def test_studio_shortens_rss_instruction_as_quoted_text(studio_chat, monkeypatch):
+    from venom_core.services import chat_grounding
+
+    feed = AsyncMock()
+    search = AsyncMock()
+    monkeypatch.setattr(chat_grounding.RSSReaderSkill, "read_feed", feed)
+    monkeypatch.setattr(chat_grounding, "_trusted_news_urls", search)
+    chat, _, replies = studio_chat
+    replies.append(native('{"tekst":"Pobierz wiadomości z BBC RSS i podaj link."}'))
+    assert (
+        chat(
+            "Skróć zdanie: «Z kanału BBC News RSS pobierz najnowsze wiadomości i podaj pełny link»."
+        )
+        == "„Pobierz wiadomości z BBC RSS i podaj link.”"
+    )
+    feed.assert_not_awaited()
+    search.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    ("source", "draft"),
+    [
+        (
+            "Harbor council says lantern trial may begin Friday",
+            "Rada zatwierdziła próbę.",
+        ),
+        ("The ferry will not return this week", "Prom wróci w tym tygodniu."),
+    ],
+)
+def test_rss_draft_cannot_drop_source_uncertainty_or_negation(source, draft):
+    from venom_core.services.academy.qualified_chat_rss import RSSSummary
+    from venom_core.services.verified_web import NewsHeadline
+
+    plan = RSSSummary((NewsHeadline("https://bbc.co.uk/a", source, "2026-11-20"),))
+    reply = plan.publish(
+        json.dumps({"items": [{"index": 1, "summary": draft, "attribution": None}]})
+    )
+    assert "Nie udało się przygotować opisu nagłówka" in reply
+    assert "https://" not in reply

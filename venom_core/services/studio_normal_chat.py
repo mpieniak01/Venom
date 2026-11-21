@@ -23,6 +23,7 @@ from venom_core.services.academy.qualified_chat import GENERATION_TRUNCATED
 from venom_core.services.academy.qualified_chat_explanations import changes_example
 from venom_core.services.academy.qualified_chat_quote import without_quotes
 from venom_core.services.academy.qualified_chat_revisions import (
+    explicit_lookup_allowed,
     lookup_forbidden,
     public_lookup_query,
     source_revision_hint,
@@ -91,6 +92,11 @@ _WIKI_FACT_POLICY = (
     " Odpowiedz wprost na szczegółowe pytanie, zachowując wartość, jednostkę, "
     "przybliżenie i warunek, gdy występują w źródle. Podaj pełny adres właściwego "
     "hasła tylko raz, w nawiasie na końcu ostatniego zdania przed kropką."
+)
+_PROVIDED_INFORMATION_ONLY = re.compile(
+    r"\b(?:tylko|wyłącznie|jedynie)\s+na podstawie\s+"
+    r"(?:tej\s+rozmowy|podanych informacji|informacji,?\s+które\s+(?:podałem|podałam))\b",
+    re.I,
 )
 _RSS_NOT_READ = "W tej turze nie odczytano nagłówków z publicznego kanału RSS."
 _SOURCE_STATUS_POLICY = (
@@ -244,6 +250,18 @@ async def prepare_studio_normal(
     if use_default_language:
         system_context += f" {_NORMAL_LANGUAGE_POLICY}"
     system_context += await _note_context(request, session_id, get_vector_store)
+    provided_information_only = bool(
+        SETTINGS.ACADEMY_QUALIFIED_CHAT_ENABLED
+        and not request.use_notes
+        and not explicit_lookup_allowed(request.content)
+        and _PROVIDED_INFORMATION_ONLY.search(without_quotes(request.content))
+    )
+    if provided_information_only:
+        system_context += (
+            " Korzystaj tylko z danych z rozmowy. Jeśli aktualnej wartości nie podano, "
+            "powiedz wprost «W rozmowie nie podano tej informacji». "
+            "Nie przypisuj sobie wypowiedzi użytkownika."
+        )
     remaining = budget - len(system_context)
     omit_truncated = (
         SETTINGS.ACADEMY_QUALIFIED_CHAT_ENABLED
@@ -290,6 +308,7 @@ async def prepare_studio_normal(
     if (
         scope_reply
         or prior_context
+        or provided_information_only
         or lookup_forbidden(request.content, previous_users)
     ):
         query = None

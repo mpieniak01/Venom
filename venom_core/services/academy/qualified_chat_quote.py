@@ -133,6 +133,7 @@ def _numeric_constraints(text: str) -> tuple[list[str], list[tuple[str, str]]]:
 class QuoteRewrite:
     source: str
     one_sentence: bool
+    shorten: bool = False
 
     @property
     def literal_reply(self) -> str | None:
@@ -143,6 +144,10 @@ class QuoteRewrite:
         act = _speech_act(self.source)
         operation: dict[str, str | None] = {"tekst_zrodlowy": self.source}
         outer_format = "jedno zdanie" if self.one_sentence else None
+        if self.shorten:
+            outer_format = (
+                "jedno zdanie, wyraźnie krótsze od źródła, bez utraty poleceń"
+            )
         if plain_text and act in {"polecenie", "pytanie"}:
             if outer_format:
                 operation["wymagania_formy"] = outer_format
@@ -160,6 +165,11 @@ class QuoteRewrite:
             "Przy pytaniu bezpośrednim zakończ znakiem zapytania. "
             "Jeśli wymagania_formy jest podane, zastosuj je do parafrazy."
         )
+        if self.shorten:
+            instruction += (
+                " Użyj wyraźnie mniej słów niż w tekście źródłowym. "
+                "Zachowaj źródło i wszystkie czynności. Usuń zbędne słowa oraz omówienia."
+            )
         if _RELOCATION.match(self.source):
             instruction += (
                 " Zacznij od osoby wykonującej czynność. Zachowaj kierunek zmiany "
@@ -198,6 +208,7 @@ class QuoteRewrite:
                 and _CAUSAL_DETAIL.search(text)
             )
             or (self.one_sentence and len(re.findall(r"[.!?](?=\s|$)", text)) > 1)
+            or (self.shorten and len(text.split()) >= len(self.source.split()))
         ):
             return _FAILED_REWRITE
         act = _speech_act(self.source)
@@ -233,8 +244,9 @@ def parse_quote_rewrite(text: str) -> QuoteRewrite | str | None:
     ).strip()
     if not source or len(source) > 1600:
         return None
+    shorten = command[0].casefold() == "skróć"
     return QuoteRewrite(
         source=source,
-        one_sentence=command[0].casefold() == "skróć"
-        or bool(_ONE_SENTENCE.search(prefix)),
+        one_sentence=shorten or bool(_ONE_SENTENCE.search(prefix)),
+        shorten=shorten,
     )

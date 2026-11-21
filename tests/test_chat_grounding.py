@@ -659,6 +659,7 @@ def test_wikipedia_entry_link_keeps_privacy_guard_for_credentials():
         "Podaj jego sens po polsku, wskaż mówiącego, jeśli występuje w tytule, "
         "i dołącz datę publikacji, pełny link i zakres odczytu.",
         "Z kanału BBC RSS podaj jeden nagłówek po polsku.",
+        "Z kanału BBC News RSS wybierz jedną pozycję i podaj datę, pełny link oraz zakres.",
         "Z kanału „BBC News RSS” wybierz nagłówek.",
     ],
 )

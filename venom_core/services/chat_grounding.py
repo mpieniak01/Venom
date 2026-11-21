@@ -83,6 +83,9 @@ _RSS_READ = re.compile(
     r"(?:\s+rss\b|[^.!?]{0,80}\b(?:nagłów\w*|wiadomoś\w*)\b)",
     re.I,
 )
+_RSS_ITEM = re.compile(
+    r"\b(?:wybierz|podaj|pokaż)\b[^.!?]{0,50}\b(?:pozycj\w*|tytuł\w*)\b", re.I
+)
 _RSS_QUOTED_LABEL = re.compile(
     r'(\b(?:kanał\w*|z|według)\s+)[„«"]((?:bbc(?:\s+news)?|gus)(?:\s+rss)?)[”»"]',
     re.I,
@@ -90,7 +93,7 @@ _RSS_QUOTED_LABEL = re.compile(
 _RSS_EDITORIAL_PURPOSE = re.compile(
     r"\b(?:(?:do|na\s+potrzeby)\s+(?:(?:krótkiej|zwięzłej)\s+)?"
     r"notatki\s+(?:zespołu|dla\s+zespołu|redakcyjnej)"
-    r"|(?:na|do)\s+dopisk\w*\s+do\s+wiadomości\s+dla\s+(?:naszego\s+)?zespołu"
+    r"|(?:na|do)\s+dop(?:isek|isk\w*)\s+do\s+wiadomości\s+dla\s+(?:naszego\s+)?zespołu"
     r"|do\s+(?:krótkiego\s+)?zapisu\s+w\s+notatkach\s+konferencji)\b",
     re.I,
 )
@@ -151,7 +154,10 @@ def is_rss_read_request(message: str) -> bool:
     topic = _rss_topic(message)
     return bool(
         _EXPLICIT_RSS.search(topic)
-        and _RSS_READ.search(topic)
+        and (
+            _RSS_READ.search(topic)
+            or (_RSS_PUBLISHER.search(topic) and _RSS_ITEM.search(topic))
+        )
         and not _PRIVATE_NOTE_SOURCE.search(topic)
     )
 

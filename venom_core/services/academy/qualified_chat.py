@@ -523,6 +523,8 @@ def prepare_reply(text: str, history: Sequence[HistoryMessage]) -> QualifiedRepl
             hint += (
                 " Jeśli bez nieznanej informacji można podać użyteczne ogólne propozycje, "
                 "podaj samodzielne propozycje wraz z krótkim uzasadnieniem. "
+                "Jeżeli użytkownik prosi o rzeczy lub elementy ubioru, podaj po jednym "
+                "konkretnym przedmiocie w opcji, nie ogólną strategię. "
                 "Nie zgaduj aktualnych danych. Unikaj alternatyw w obrębie jednej propozycji."
             )
         hint += (

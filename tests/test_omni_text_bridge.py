@@ -417,7 +417,9 @@ async def test_native_exchange_title_guidance_keeps_model_output(
     assert json.loads(events[1].split("data: ", 1)[1])["text"] == "Anna, 120 zł"
     if guided:
         assert messages[0]["role"] == "system"
-        assert "dwie różne" in messages[0]["content"]
+        guidance = messages[0]["content"]
+        assert "dwie różne" in guidance
+        assert ("„Zioła”" if "ziół" in prompt else "„Sadzonki”") in guidance
         assert meta["context_policy"] == "exchange_title_generation"
     else:
         assert len(messages) == 1

@@ -21,17 +21,6 @@ _TITLE_FORMAT = re.compile(
     r")(?:, bez (?:wstępu|objaśnień|komentarza))?[.!?]?)?",
     re.I,
 )
-_HERB_TITLE_GUIDANCE = (
-    "Podaj dwie różne krótkie nazwy. Korzystaj z naturalnych połączeń wyrazów, "
-    "takich jak zielone spotkanie, sąsiedzka giełda, wymiana sadzonek, ziołowy ogródek, sadzonki po sąsiedzku. "
-    "Dobierz słowa do wydarzenia z prośby użytkownika. Dwie nazwy, po jednej w wierszu."
-)
-_SEEDLING_TITLE_GUIDANCE = (
-    "Napisz dokładnie dwie różne polskie nazwy wydarzenia. Wzór pierwszej nazwy: "
-    "„Sąsiedzka wymiana [czego?]”. Wzór drugiej nazwy: „[co?] po sąsiedzku”. "
-    "W nawiasach wpisz właściwe wyrazy odnoszące się do wydarzenia z prośby użytkownika, "
-    "używając polskiej odmiany i szyku. Podaj tylko gotowe nazwy, jedna pod drugą."
-)
 _TITLE_LIST_INTRO = re.compile(r"oto (?:dwie (?:propozycje|nazwy)|propozycje):", re.I)
 _TITLE_ITEM = re.compile(r"^(?:[-*•]|(?P<number>\d)[.)])\s+")
 _TITLE_WORD = r"[^\W\d_]+(?:-[^\W\d_]+)*"
@@ -66,9 +55,18 @@ def exchange_title_context(content: str) -> CorrectionContext | None:
     topic = _TITLE_REQUEST.match(current)
     if topic is None or _TITLE_FORMAT.fullmatch(current, topic.end()) is None:
         return None
+    if topic["herbs"]:
+        first = "„Sąsiedzka wymiana sadzonek” i doprecyzuj rodzaj sadzonek."
+        second = "„Zioła”"
+    else:
+        first = "„Sąsiedzka wymiana” i dopisz, czego dotyczy."
+        second = "„Sadzonki”"
     return CorrectionContext(
         "exchange_title_generation",
-        _HERB_TITLE_GUIDANCE if topic["herbs"] else _SEEDLING_TITLE_GUIDANCE,
+        f"Podaj dwie różne polskie nazwy spotkania. Zacznij pierwszą od {first} "
+        f"Drugą zacznij od {second} i dodaj krótki zwrot pasujący "
+        "do wymiany między sąsiadami, np. „po sąsiedzku” lub „z sąsiedztwa”. "
+        "Podaj same tytuły, po jednym w każdym wierszu.",
     )
 
 

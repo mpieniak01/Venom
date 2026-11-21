@@ -115,7 +115,13 @@ class ResponseScopeEvidence(TypedDict):
     ignored_claims: list[str]
 
 
+class RecordScopeEvidence(TypedDict):
+    proof: semantic_fact_evidence.RecordScope
+    raw_relation: fields.Relation
+
+
 class ReviewEvidence(TypedDict, total=False):
+    record_scope: RecordScopeEvidence
     response_scope: ResponseScopeEvidence
     pickup_point: semantic_fact_evidence.PickupPointEvidence
     identifier_comparison: identifier_evidence.Comparison
@@ -500,6 +506,22 @@ def decode_with_evidence(
         flags["reason"] = (
             "Porównano dosłowną nazwę punktu z aktualnym ustaleniem użytkownika."
         )
+    if record_scope := semantic_fact_evidence.record_scope(material, candidate):
+        key = record_scope["criterion"]
+        evidence["record_scope"] = {"proof": record_scope, "raw_relation": atoms[key]}
+        atoms[key] = "omitted"
+        quotes = {record_scope["quote"], record_scope["value_quote"]}
+        if (bare_price := record_scope.get("bare_price")) and candidate.count(
+            bare_price
+        ) == 1:
+            quotes.add(bare_price)
+        claims = [claim for claim in claims if claim.text not in quotes]
+        if record_scope["kind"] == "missing_card_location":
+            claims.append(
+                fields.AdditionalClaim(
+                    text=record_scope["quote"], grounding="unsupported"
+                )
+            )
     result = fields.project_decision(atoms, claims, flags, candidate)
     _require(result is not None)
     assert result is not None

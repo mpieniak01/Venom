@@ -2,8 +2,9 @@
 
 from datetime import datetime, timedelta, timezone
 from typing import List
+from uuid import UUID, uuid4
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 
 from venom_core.api.schemas.calendar import (
     CalendarEvent,
@@ -11,6 +12,8 @@ from venom_core.api.schemas.calendar import (
     CreateEventResponse,
     EventsResponse,
 )
+from venom_core.config import SETTINGS
+from venom_core.services.calendar_execution import CalendarCreate
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -113,6 +116,42 @@ def get_calendar_events(
         )
 
 
+def _create_verified_event(
+    skill, request: CreateEventRequest, key: str | None
+) -> CreateEventResponse:
+    try:
+        request_id = uuid4() if key is None else UUID(key)
+    except ValueError as error:
+        raise HTTPException(400, "Invalid Idempotency-Key UUID.") from error
+    operation = CalendarCreate(
+        request_id,
+        request.title,
+        request.start_time,
+        request.duration_minutes,
+        request.description,
+        idempotent=key is not None,
+    )
+    result = skill.schedule_verified_task(operation)
+    receipt = result.confirmed(operation)
+    if receipt is not None:
+        return CreateEventResponse(
+            status="success",
+            message=result.message,
+            event_id=receipt.event_id,
+            event_link=receipt.event_link,
+        )
+    if result.unconfirmed_event_id:
+        return CreateEventResponse(
+            status="unconfirmed",
+            message=result.message,
+            event_id=result.unconfirmed_event_id,
+        )
+    return CreateEventResponse(
+        status="error",
+        message="Wpis do kalendarza nie został potwierdzony.",
+    )
+
+
 @router.post(
     "/event",
     response_model=CreateEventResponse,
@@ -123,7 +162,7 @@ def get_calendar_events(
         500: {"description": "Błąd wewnętrzny podczas tworzenia wydarzenia"},
     },
 )
-def create_calendar_event(request: CreateEventRequest):
+def create_calendar_event(request: CreateEventRequest, http_request: Request):
     """
     Tworzy nowe wydarzenie w kalendarzu Venoma.
 
@@ -147,6 +186,11 @@ def create_calendar_event(request: CreateEventRequest):
         if request.duration_minutes <= 0:
             raise HTTPException(
                 status_code=400, detail="Czas trwania musi być większy od 0"
+            )
+
+        if SETTINGS.ACADEMY_QUALIFIED_CHAT_ENABLED:
+            return _create_verified_event(
+                skill, request, http_request.headers.get("Idempotency-Key")
             )
 
         # Wywołaj skill do utworzenia wydarzenia

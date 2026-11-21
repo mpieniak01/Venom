@@ -2,7 +2,9 @@
 
 from typing import Any, Literal, Optional, Self
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, PrivateAttr, model_validator
+
+from venom_core.services.verified_web import NewsHeadline
 
 MAX_CHAT_MESSAGE_CHARS = 50_000
 MAX_CHAT_HISTORY_CHARS = 50_000
@@ -39,6 +41,10 @@ class SimpleChatRequest(BaseModel):
     think: Optional[bool] = None
     session_id: Optional[str] = None
     history: list[HistoryMessage] = Field(default_factory=list, max_length=200)
+
+    _studio_public_source_evidence: dict[str, str] | None = PrivateAttr(default=None)
+    _studio_public_scope_reply: str | None = PrivateAttr(default=None)
+    _studio_rss_headlines: tuple[NewsHeadline, ...] = PrivateAttr(default=())
 
     @model_validator(mode="after")
     def check_history_length(self) -> Self:

@@ -7,7 +7,13 @@
       "gdańsku": "Gdańsk", "gdańska": "Gdańsk",
       "poznaniu": "Poznań", "poznania": "Poznań",
       "łodzi": "Łódź", "katowicach": "Katowice",
-      "katowic": "Katowice", "berlinie": "Berlin"
+      "katowic": "Katowice", "berlinie": "Berlin",
+      "kaliszu": "Kalisz", "kalisza": "Kalisz",
+      "białymstoku": "Białystok", "białegostoku": "Białystok",
+      "bialymstoku": "Białystok", "bialegostoku": "Białystok",
+      "bialystok": "Białystok",
+      "warsaw": "Warszawa", "cracow": "Kraków", "krakow": "Kraków",
+      "wroclaw": "Wrocław", "gdansk": "Gdańsk", "poznan": "Poznań", "lodz": "Łódź"
     }
   },
   "news": {
@@ -17,7 +23,14 @@
         "match_terms": [],
         "search_domains": ["pap.pl"],
         "article_hosts": ["pap.pl", "gov.pl"],
-        "feeds": []
+        "feeds": [
+          {
+            "name": "GUS – aktualności statystyczne",
+            "url": "https://stat.gov.pl/rss/pl/5438/8.xml",
+            "article_hosts": ["stat.gov.pl"],
+            "article_path_prefix": "/"
+          }
+        ]
       },
       "world": {
         "match_terms": ["świat", "world", "global", "zagranic"],

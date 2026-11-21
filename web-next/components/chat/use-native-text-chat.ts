@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { fetchNativeTextCatalog, fetchNativeTextState, rollbackNativeText, selectNativeText, type NativeTextAdapter, type NativeTextState } from "@/lib/native-text-chat";
 
-export function useNativeTextChat() {
+export function useNativeTextChat(enabled = true) {
   const [state, setState] = useState<NativeTextState>({selection: null, previous: null, persistent: false});
   const [adapters, setAdapters] = useState<NativeTextAdapter[]>([]);
   const [ready, setReady] = useState(false);
@@ -11,6 +11,7 @@ export function useNativeTextChat() {
   const locked = useRef(false);
   const revision = useRef(0);
   const refresh = useCallback(async () => {
+    if (!enabled) return;
     const current = ++revision.current;
     try {
       const fresh = await fetchNativeTextState();
@@ -23,16 +24,17 @@ export function useNativeTextChat() {
     } catch {
       if (current === revision.current) { setReady(false); setError("chat2.nativeText.failed"); }
     }
-  }, []);
+  }, [enabled]);
   const invalidate = useCallback(() => { revision.current++; }, []);
   useEffect(() => {
+    if (!enabled) return;
     void refresh();
     const onFocus = () => { if (!locked.current) void refresh(); };
     window.addEventListener("focus", onFocus);
     return () => { invalidate(); window.removeEventListener("focus", onFocus); };
-  }, [refresh, invalidate]);
+  }, [enabled, refresh, invalidate]);
   const change = useCallback(async (adapter?: string | null) => {
-    if (locked.current) return false;
+    if (!enabled || locked.current) return false;
     locked.current = true; setBusy(true); setError(null); revision.current++;
     try {
       let fresh = state;
@@ -42,8 +44,8 @@ export function useNativeTextChat() {
     } catch {
       setError("chat2.nativeText.changed"); await refresh(); return false;
     } finally { locked.current = false; setBusy(false); }
-  }, [state, refresh]);
+  }, [enabled, state, refresh]);
   const deactivate = useCallback(() => change(null), [change]);
-  return {state, adapters, ready, busy, error, refresh, change, deactivate};
+  return {state, adapters, ready: !enabled || ready, busy, error, refresh, change, deactivate};
 }
 export type NativeTextChat = ReturnType<typeof useNativeTextChat>;

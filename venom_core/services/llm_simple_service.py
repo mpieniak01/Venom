@@ -10,6 +10,7 @@ import asyncio
 import json
 import re
 import time
+from collections.abc import Callable
 from typing import Any, AsyncIterator, Optional
 from uuid import UUID, uuid4
 
@@ -19,9 +20,36 @@ from fastapi.responses import StreamingResponse
 from venom_core.api.schemas.llm_simple import MAX_CHAT_HISTORY_CHARS, SimpleChatRequest
 from venom_core.config import DEFAULT_SIMPLE_MODE_SYSTEM_PROMPT, SETTINGS
 from venom_core.core.metrics import get_metrics_collector
+from venom_core.core.model_registry_clients import OllamaClient
 from venom_core.core.ollama_runtime_capabilities import is_gemma4_model_name
 from venom_core.core.tracer import TraceStatus
 from venom_core.services import llm_simple_transport
+from venom_core.services.academy.qualified_chat import (
+    GENERATION_TRUNCATED,
+    QUALIFIED_BOLT_MODEL,
+    QUALIFIED_MODEL,
+    CalendarClaimStream,
+    QualifiedReply,
+    prepare_reply,
+    prepare_studio_reply,
+)
+from venom_core.services.academy.qualified_chat_explanations import explanation_hint
+from venom_core.services.academy.qualified_chat_fit import fit_hint
+from venom_core.services.academy.qualified_chat_options import (
+    CountRequirement,
+    requested_count,
+)
+from venom_core.services.academy.qualified_chat_quote import english_translation_hint
+from venom_core.services.academy.qualified_chat_revisions import source_revision_hint
+from venom_core.services.academy.qualified_chat_rss import RSSSummary
+from venom_core.services.academy.qualified_chat_writing import (
+    ordinary_reply_hint,
+    writing_hint,
+)
+from venom_core.services.chat_grounding import (
+    PUBLIC_SOURCE_BLOCK,
+    is_current_news_request,
+)
 from venom_core.services.llm_simple_payload_service import (
     apply_optional_features_to_payload as _apply_optional_features_to_payload,
 )
@@ -460,12 +488,16 @@ def _normalize_top_logprobs_item(top_item: Any) -> dict[str, Any] | None:
     return {"token": str(top_item.get("token") or ""), "logprob": float(top_logprob)}
 
 
+def _first_completion_choice(data: dict[str, object]) -> dict[str, Any] | None:
+    choices = data.get("choices")
+    if isinstance(choices, list) and choices and isinstance(choices[0], dict):
+        return choices[0]
+    return None
+
+
 def _extract_message_content(data: dict[str, object], fallback_text: str = "") -> str:
-    choices = data.get("choices", [])
-    if not isinstance(choices, list) or not choices:
-        return fallback_text
-    first_choice = choices[0]
-    if not isinstance(first_choice, dict):
+    first_choice = _first_completion_choice(data)
+    if first_choice is None:
         return fallback_text
     message = first_choice.get("message", {})
     if isinstance(message, dict):
@@ -702,6 +734,9 @@ def _update_stream_state_from_packet(
     request_id: UUID,
     stream_start: float,
     runtime_telemetry: dict[str, int],
+    extract_visible_contents: Callable[
+        [dict[str, Any]], list[str]
+    ] = _extract_sse_contents,
 ) -> list[str]:
     return _update_stream_state_from_packet_impl(
         packet=packet,
@@ -709,11 +744,33 @@ def _update_stream_state_from_packet(
         runtime_telemetry=runtime_telemetry,
         extract_runtime_telemetry_fn=_extract_runtime_telemetry,
         extract_sse_tool_calls_fn=_extract_sse_tool_calls,
-        extract_sse_contents_fn=_extract_sse_contents,
+        extract_sse_contents_fn=extract_visible_contents,
         on_first_chunk_fn=lambda content: _trace_first_chunk(
             request_id, stream_start, content
         ),
     )
+
+
+def _visible_stream_contents(
+    packet: dict[str, Any], guard: CalendarClaimStream | None
+) -> list[str]:
+    contents = _extract_sse_contents(packet)
+    if guard is None:
+        return contents
+    text = guard.push("".join(contents))
+    return [text] if text else []
+
+
+def _stream_final_text(
+    state: _SimpleStreamState,
+    guard: CalendarClaimStream | None,
+    report_length: bool,
+) -> str | None:
+    if not state.completed or (guard is None and not report_length):
+        return None
+    if guard is not None:
+        return guard.finish(truncated=state.length_limited)
+    return f"\n\n{GENERATION_TRUNCATED}" if state.length_limited else ""
 
 
 async def _stream_single_attempt(
@@ -729,6 +786,8 @@ async def _stream_single_attempt(
     retry_backoff: float,
     state: _SimpleStreamState,
     runtime_telemetry: dict[str, int],
+    guard_calendar: bool = False,
+    report_length: bool = False,
 ) -> AsyncIterator[str]:
     provider_name = str(getattr(runtime, "provider", "") or "llm_runtime")
     transport = _StreamTransportConfig(
@@ -746,6 +805,7 @@ async def _stream_single_attempt(
         retry_backoff=retry_backoff,
         sleep_fn=asyncio.sleep,
     )
+    guard = CalendarClaimStream() if guard_calendar else None
     async for event in _stream_single_attempt_impl(
         transport=transport,
         retry=retry,
@@ -757,6 +817,9 @@ async def _stream_single_attempt(
             request_id=request_id,
             stream_start=stream_start,
             runtime_telemetry=runtime_telemetry,
+            extract_visible_contents=lambda packet: _visible_stream_contents(
+                packet, guard
+            ),
         ),
         emit_http_error_fn=lambda exc: _emit_http_status_error_and_mark_failed(
             exc=exc,
@@ -767,6 +830,16 @@ async def _stream_single_attempt(
         ),
     ):
         yield event
+    final = _stream_final_text(state, guard, report_length)
+    if final is not None:
+        for event in _update_stream_state_from_packet(
+            packet={"choices": [{"delta": {"content": final}}]},
+            state=state,
+            request_id=request_id,
+            stream_start=stream_start,
+            runtime_telemetry=runtime_telemetry,
+        ):
+            yield event
     if state.retry_requested:
         runtime_telemetry.clear()
 
@@ -775,15 +848,19 @@ def _reset_stream_attempt_state(state: _SimpleStreamState) -> None:
     _reset_stream_attempt_state_impl(state)
 
 
-def _build_done_event(runtime_telemetry: dict[str, int]) -> str:
-    """Optional native usage extends the existing done event, without inference."""
-    usage = _token_usage_from_telemetry(runtime_telemetry)
-    if not usage:
-        return _SSE_EVENT_DONE
+def _build_done_event(
+    runtime_telemetry: dict[str, int], *, length_limited: bool = False
+) -> str:
+    """Keep the done event and attach provider usage or an observed length limit."""
+    details: dict[str, Any] = {}
+    if usage := _token_usage_from_telemetry(runtime_telemetry):
+        details.update(usage=usage, usage_source="upstream")
+    if length_limited:
+        details["finish_reason"] = "length"
     return (
-        "event: done\ndata: "
-        + json.dumps({"usage": usage, "usage_source": "upstream"})
-        + "\n\n"
+        "event: done\ndata: " + json.dumps(details) + "\n\n"
+        if details
+        else _SSE_EVENT_DONE
     )
 
 
@@ -915,6 +992,8 @@ async def _stream_simple_chunks(
     runtime,
     request_id: UUID,
     model_name: str,
+    guard_calendar: bool = False,
+    report_length: bool = False,
 ) -> AsyncIterator[str]:
     expected_runtime_id, expected_config_hash = _expected_vast_identity(runtime)
     async with runtime_request_guard(
@@ -948,6 +1027,8 @@ async def _stream_simple_chunks(
                     max_attempts=max_attempts,
                     retry_backoff=retry_backoff,
                     state=state,
+                    guard_calendar=guard_calendar,
+                    report_length=report_length,
                     runtime_telemetry=runtime_telemetry,
                 ):
                     yield event
@@ -963,7 +1044,10 @@ async def _stream_simple_chunks(
                 if should_retry:
                     continue
                 if should_emit_done:
-                    yield _build_done_event(runtime_telemetry)
+                    yield _build_done_event(
+                        runtime_telemetry,
+                        length_limited=report_length and state.length_limited,
+                    )
                 return
 
             except httpx.HTTPError as exc:
@@ -994,6 +1078,88 @@ async def _stream_simple_chunks(
                 return
 
 
+async def _read_non_stream_data(
+    runtime: LLMRuntimeInfo,
+    url: str,
+    payload: dict[str, Any],
+) -> Any:
+    async with llm_simple_transport.open_stream_response(
+        provider_name=runtime.provider,
+        completions_url=url,
+        payload=payload,
+    ) as response:
+        response.raise_for_status()
+        aread = getattr(response, "aread", None)
+        if callable(aread):
+            raw = await aread()
+            return json.loads(raw.decode("utf-8", errors="replace")) if raw else {}
+        reader = getattr(response, "json", None)
+        return reader() if callable(reader) else {}
+
+
+def _draft_truncated(data: Any) -> bool:
+    if not isinstance(data, dict):
+        return False
+    choice = _first_completion_choice(data)
+    if choice is not None:
+        return choice.get("finish_reason") == "length"
+    return data.get("done") is True and data.get("done_reason") == "length"
+
+
+def _native_draft(data: Any) -> str:
+    if (
+        not isinstance(data, dict)
+        or data.get("done") is not True
+        or data.get("done_reason") != "stop"
+    ):
+        return ""
+    message = data.get("message")
+    content = message.get("content") if isinstance(message, dict) else None
+    return content if isinstance(content, str) else ""
+
+
+async def _publish_qualified_draft(
+    reply: QualifiedReply,
+    data: dict[str, Any],
+    runtime: LLMRuntimeInfo,
+    url: str,
+    payload: dict[str, Any],
+) -> str:
+    content = _native_draft(data)
+    if reply.rss is not None:
+        return (
+            GENERATION_TRUNCATED
+            if _draft_truncated(data)
+            else reply.rss.publish(content)
+        )
+    repair = reply.repair(content)
+    if repair is None:
+        if _draft_truncated(data):
+            return GENERATION_TRUNCATED
+        if not content.strip():
+            return "Nie udało się uzyskać kompletnej odpowiedzi."
+        return reply.publish(content)
+    kept, schema = repair
+    request = {
+        "role": "user",
+        "content": (
+            "Uzupełnij wyłącznie brakujące, samodzielne i zgodne propozycje. "
+            "Zachowaj wszystkie warunki. Zaakceptowane opcje: "
+            + json.dumps(kept, ensure_ascii=False)
+        ),
+    }
+    replacement = await _read_non_stream_data(
+        runtime,
+        url,
+        {**payload, "format": schema, "messages": [*payload["messages"], request]},
+    )
+    return reply.publish(
+        content,
+        _native_draft(replacement),
+        truncated=_draft_truncated(data) or _draft_truncated(replacement),
+    )
+
+
 async def _stream_simple_chunks_non_stream(
     *,
     completions_url: str,
@@ -1001,6 +1167,8 @@ async def _stream_simple_chunks_non_stream(
     runtime,
     request_id: UUID,
     model_name: str,
+    qualified_reply: QualifiedReply | None = None,
+    report_length: bool = False,
 ) -> AsyncIterator[str]:
     expected_runtime_id, expected_config_hash = _expected_vast_identity(runtime)
     async with runtime_request_guard(
@@ -1015,23 +1183,15 @@ async def _stream_simple_chunks_non_stream(
         chunks: list[str] = []
 
         yield _SSE_EVENT_START
+        if qualified_reply is not None and qualified_reply.local_text is not None:
+            content = qualified_reply.local_text
+            _trace_first_chunk(request_id, stream_start, content)
+            _trace_stream_completion(request_id, content, 1, stream_start)
+            yield "event: content\ndata: " + json.dumps({"text": content}) + "\n\n"
+            yield _SSE_EVENT_DONE
+            return
         try:
-            async with llm_simple_transport.open_stream_response(
-                provider_name=str(getattr(runtime, "provider", "") or "llm_runtime"),
-                completions_url=completions_url,
-                payload=payload,
-            ) as response:
-                response.raise_for_status()
-                aread = getattr(response, "aread", None)
-                if callable(aread):
-                    raw_body = await aread()
-                    if raw_body:
-                        data = json.loads(raw_body.decode("utf-8", errors="replace"))
-                    else:
-                        data = {}
-                else:
-                    json_reader = getattr(response, "json", None)
-                    data = json_reader() if callable(json_reader) else {}
+            data = await _read_non_stream_data(runtime, completions_url, payload)
 
             if not isinstance(data, dict):
                 _trace_stream_completion(request_id, "", 0, stream_start)
@@ -1073,7 +1233,13 @@ async def _stream_simple_chunks_non_stream(
 
             runtime_telemetry = _extract_runtime_telemetry(data)
             usage = _token_usage_from_telemetry(runtime_telemetry)
-            content = _extract_message_content(data, fallback_text="")
+            content = (
+                await _publish_qualified_draft(
+                    qualified_reply, data, runtime, completions_url, payload
+                )
+                if qualified_reply is not None
+                else _extract_message_content(data, fallback_text="")
+            )
             logprobs_telemetry = _extract_logprobs_telemetry(data)
             if logprobs_telemetry is not None:
                 yield (
@@ -1097,7 +1263,15 @@ async def _stream_simple_chunks_non_stream(
                 tokens=usage.get("prompt_tokens", 0)
                 + usage.get("completion_tokens", 0),
             )
-            yield _build_done_event(runtime_telemetry)
+            yield _build_done_event(
+                runtime_telemetry,
+                length_limited=report_length
+                and (
+                    content == GENERATION_TRUNCATED
+                    if qualified_reply is not None
+                    else _draft_truncated(data)
+                ),
+            )
         except httpx.HTTPStatusError as exc:
             result = await _emit_http_status_error_and_mark_failed(
                 exc=exc,
@@ -1295,9 +1469,96 @@ def _prepare_local_direct_prompt(
     )
 
 
-async def _stream_non_openrouter_chat(
-    request: SimpleChatRequest, *, system_context: str = ""
-):
+def _qualified_request(request: SimpleChatRequest, runtime: LLMRuntimeInfo) -> bool:
+    from venom_core.services.chat_material_payload import has_materials
+
+    return (
+        SETTINGS.ACADEMY_QUALIFIED_CHAT_ENABLED
+        and is_host_ollama(runtime)
+        and not has_materials(request)
+        and request.tools is None
+        and request.tool_choice is None
+        and request.format is None
+        and request.response_format is None
+        and not request.logprobs
+        and request.top_logprobs is None
+    )
+
+
+def _qualified_studio_request(request: SimpleChatRequest, model: str) -> bool:
+    return (
+        request.studio_normal
+        and not request.use_notes
+        and model in {QUALIFIED_MODEL, QUALIFIED_BOLT_MODEL}
+    )
+
+
+def _prepare_qualified_reply(
+    request: SimpleChatRequest,
+    runtime: LLMRuntimeInfo,
+    model_name: str,
+) -> QualifiedReply | None:
+    if not _qualified_request(request, runtime):
+        return None
+    model = model_name.casefold()
+    if _qualified_studio_request(request, model):
+        if request._studio_public_scope_reply:
+            return QualifiedReply(local_text=request._studio_public_scope_reply)
+        if request._studio_rss_headlines:
+            count = requested_count(request.content)
+            return QualifiedReply(
+                rss=RSSSummary(
+                    request._studio_rss_headlines, count or CountRequirement("exact", 1)
+                )
+            )
+        if reply := prepare_studio_reply(
+            request.content, request.history, token_budget=request.max_tokens
+        ):
+            return reply
+        if is_current_news_request(request.content):
+            return None
+    return (
+        prepare_reply(request.content, request.history)
+        if model == QUALIFIED_MODEL
+        else None
+    )
+
+
+def _qualified_chat_payload(
+    request: SimpleChatRequest,
+    messages: list[dict[str, Any]],
+    reply: QualifiedReply,
+    model_name: str,
+) -> dict[str, Any]:
+    rewrite = reply.rewrite
+    native_text = rewrite is not None and model_name.casefold() == QUALIFIED_BOLT_MODEL
+    default_limit = 160 if native_text else 96
+    options = {
+        "num_ctx": build_ollama_runtime_options(SETTINGS)["num_ctx"],
+        "num_predict": request.max_tokens
+        if request.max_tokens is not None
+        else default_limit,
+        "temperature": request.temperature if request.temperature is not None else 0,
+        "seed": request.seed if request.seed is not None else 42,
+        "top_k": 1,
+    }
+    if request.top_p is not None:
+        options["top_p"] = request.top_p
+    payload = {
+        "model": model_name,
+        "messages": messages,
+        "stream": False,
+        "think": False,
+        "keep_alive": normalize_ollama_keep_alive(SETTINGS.LLM_KEEP_ALIVE),
+        "options": options,
+    }
+    schema = rewrite.schema(plain_text=native_text) if rewrite else reply.schema
+    if schema is not None:
+        payload["format"] = schema
+    return payload
+
+
+async def _resolve_non_openrouter_runtime(request: SimpleChatRequest):
     await asyncio.sleep(0)
     from venom_core.services.vast_chat_runtime import preflight
 
@@ -1320,54 +1581,184 @@ async def _stream_non_openrouter_chat(
     )
     if not model_name:
         raise HTTPException(status_code=400, detail="Brak nazwy modelu LLM.")
-    request_id: UUID = uuid4()
-    _trace_simple_request(request_id, request, runtime, model_name)
+    return runtime, runtime_provider, model_name
 
+
+def _apply_qualified_reply_prompt(
+    system_context: str,
+    system_prompt: str,
+    qualified_reply: QualifiedReply | None,
+    complete_reply: QualifiedReply | None,
+) -> str:
+    if qualified_reply is not None and (
+        complete_reply is not None or qualified_reply.hint
+    ):
+        configured = (SETTINGS.SIMPLE_MODE_SYSTEM_PROMPT or "").strip()
+        custom = configured if configured != DEFAULT_SIMPLE_MODE_SYSTEM_PROMPT else ""
+        system_prompt = qualified_reply.prompt(
+            "\n\n".join(filter(None, (custom, system_context)))
+        )
+    return system_prompt
+
+
+def _apply_studio_prompt_hints(
+    request: SimpleChatRequest,
+    runtime,
+    model_name: str,
+    system_context: str,
+    system_prompt: str,
+    complete_reply: QualifiedReply | None,
+) -> str:
+    qualified_studio = _qualified_studio_request(
+        request, model_name.casefold()
+    ) and _qualified_request(request, runtime)
+    if qualified_studio and complete_reply is None:
+        hint = explanation_hint(
+            request.content, request.history, token_budget=request.max_tokens
+        )
+        system_prompt = "\n\n".join(
+            filter(
+                None,
+                (
+                    system_prompt,
+                    hint,
+                    fit_hint(request.content, request.history),
+                    source_revision_hint(request.content),
+                    writing_hint(request.content),
+                    ordinary_reply_hint(request.content)
+                    if (request.max_tokens or 256) <= 96
+                    and PUBLIC_SOURCE_BLOCK not in system_context
+                    else "",
+                    english_translation_hint(request.content),
+                ),
+            )
+        )
+    return system_prompt
+
+
+def _qualified_stream_prompt(
+    request: SimpleChatRequest, runtime, model_name: str, system_context: str
+):
     request, system_prompt = _prepare_local_direct_prompt(
         request, runtime, model_name, system_context
     )
+    qualified_reply = _prepare_qualified_reply(request, runtime, model_name)
+    complete_reply = (
+        qualified_reply
+        if qualified_reply is not None
+        and (qualified_reply.requires_complete_draft or request.stream is False)
+        else None
+    )
+    system_prompt = _apply_qualified_reply_prompt(
+        system_context, system_prompt, qualified_reply, complete_reply
+    )
+    system_prompt = _apply_studio_prompt_hints(
+        request, runtime, model_name, system_context, system_prompt, complete_reply
+    )
+    return request, system_prompt, qualified_reply, complete_reply
+
+
+async def _non_openrouter_messages(
+    request: SimpleChatRequest,
+    runtime,
+    model_name: str,
+    system_prompt: str,
+    complete_reply: QualifiedReply | None,
+    request_id: UUID,
+) -> list[dict[str, Any]]:
+    rewrite = complete_reply.rewrite if complete_reply else None
+    if complete_reply is not None and complete_reply.rss is not None:
+        return complete_reply.rss.messages(request.content)
+    if rewrite is not None:
+        return rewrite.messages(
+            plain_text=model_name.casefold() == QUALIFIED_BOLT_MODEL
+        )
     user_content = _trim_user_content_for_runtime(
         request.content, system_prompt, runtime, request_id
     )
     messages = _build_messages(system_prompt, user_content)
-    messages = await _include_simple_request_context(
+    return await _include_simple_request_context(
         request, runtime, model_name, system_prompt, messages
     )
-    payload = _build_payload(request, runtime, model_name, messages)
-    _trace_context_preview(request_id, messages)
+
+
+def _stream_non_openrouter_response(
+    request: SimpleChatRequest,
+    runtime,
+    runtime_provider,
+    model_name: str,
+    messages: list[dict[str, Any]],
+    request_id: UUID,
+    complete_reply: QualifiedReply | None,
+    qualified_reply: QualifiedReply | None,
+):
     headers = _build_streaming_headers(str(request_id), request.session_id or "")
     completions_url = _build_chat_completions_url(runtime)
-    force_non_stream = request.stream is False
+    if complete_reply is not None:
+        completions_url = f"{OllamaClient(runtime.endpoint).endpoint}/api/chat"
+    force_non_stream = request.stream is False or complete_reply is not None
     if is_multi_runtime(runtime_provider) or force_non_stream:
         if not completions_url:
             raise HTTPException(status_code=503, detail="Brak endpointu LLM.")
+        payload = (
+            _qualified_chat_payload(request, messages, complete_reply, model_name)
+            if complete_reply is not None
+            else _build_payload(request, runtime, model_name, messages, stream=False)
+        )
         return StreamingResponse(
             _stream_simple_chunks_non_stream(
                 completions_url=completions_url,
-                payload=_build_payload(
-                    request,
-                    runtime,
-                    model_name,
-                    messages,
-                    stream=False,
-                ),
+                payload=payload,
                 runtime=runtime,
                 request_id=request_id,
                 model_name=model_name,
+                qualified_reply=complete_reply,
+                report_length=request.studio_normal,
             ),
             media_type=_SSE_MEDIA_TYPE,
             headers=headers,
         )
     if not completions_url:
         raise HTTPException(status_code=503, detail="Brak endpointu LLM.")
+    guard_options = {"guard_calendar": True} if qualified_reply is not None else {}
+    if request.studio_normal:
+        guard_options["report_length"] = True
     return StreamingResponse(
         _stream_simple_chunks(
             completions_url=completions_url,
-            payload=payload,
+            payload=_build_payload(request, runtime, model_name, messages),
             runtime=runtime,
             request_id=request_id,
             model_name=model_name,
+            **guard_options,
         ),
         media_type=_SSE_MEDIA_TYPE,
         headers=headers,
+    )
+
+
+async def _stream_non_openrouter_chat(
+    request: SimpleChatRequest, *, system_context: str = ""
+):
+    runtime, runtime_provider, model_name = await _resolve_non_openrouter_runtime(
+        request
+    )
+    request_id: UUID = uuid4()
+    _trace_simple_request(request_id, request, runtime, model_name)
+    request, system_prompt, qualified_reply, complete_reply = _qualified_stream_prompt(
+        request, runtime, model_name, system_context
+    )
+    messages = await _non_openrouter_messages(
+        request, runtime, model_name, system_prompt, complete_reply, request_id
+    )
+    _trace_context_preview(request_id, messages)
+    return _stream_non_openrouter_response(
+        request,
+        runtime,
+        runtime_provider,
+        model_name,
+        messages,
+        request_id,
+        complete_reply,
+        qualified_reply,
     )

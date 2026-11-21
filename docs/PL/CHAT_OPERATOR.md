@@ -125,6 +125,23 @@ temat z poprzedniej tury. Prognozy są niedostępne. Do źródeł trafia bieżą
 pytanie. Notatki i prywatne prośby pozostają lokalnie.
 [Konfiguracja źródeł](CHAT_PUBLIC_SOURCES.md)
 
+Jawne polecenie odczytu RSS ma pierwszeństwo przed wyszukiwaniem hasła w
+Wikipedii. Jeśli użytkownik wskazał temat wiadomości, brak artykułu nie
+uruchamia odczytu ogólnych nagłówków.
+
+Ustawienie `ACADEMY_QUALIFIED_CHAT_ENABLED` na True włącza sprawdzanie
+odpowiedzi Academy w Studio oraz weryfikowany zapis do kalendarza.
+Domyślna wartość to False. Po wyłączeniu flagi Studio działa w zwykłym
+trybie czatu. Po jej włączeniu Studio zapisuje `public_source_evidence` w
+historii zakończonych i nieuciętych odpowiedzi. Samodzielne Studio pod
+adresem /chat2 oferuje zwykły czat z wyłączonym selektorem natywnego tekstu.
+
+Weryfikowany zapis do kalendarza zwraca sukces po potwierdzeniu parametrów
+przez Google. Gdy Google zwróci identyfikator, ale parametry pozostaną
+niepotwierdzone, formularz pokaże identyfikator i użyje tego samego klucza
+przy ponowieniu. Serwer sprawdzi istniejące wydarzenie przed nowym zapisem.
+Błąd bez znanego identyfikatora kończy się statusem error.
+
 ### Kampanie Academy
 
 W lokalnym czacie pełnego Venoma wpisz `/academy`, aby zobaczyć komendy kampanii. Ta ścieżka wymaga włączonego Academy i działa lokalnie niezależnie od wybranego modelu. `start` wymaga identyfikatora i hasha zapisanego planu. `start` i `resume` czekają, gdy kolejka jest wstrzymana lub osiągnęła limit zadań. `stop` jest dostępne podczas pauzy. [Polecenia kampanii Academy](ACADEMY_EKSPERYMENTY.md#sterowanie-kampanią-z-czatu-venom)

@@ -44,6 +44,8 @@ tests/test_academy_openrouter_judge.py
 tests/test_academy_openrouter_regression_replay.py
 tests/test_academy_optuna_backend.py
 tests/test_academy_parent_selection.py
+tests/test_academy_qualified_chat.py
+tests/test_academy_qualified_chat_state.py
 tests/test_academy_quality.py
 tests/test_academy_quality_native.py
 tests/test_academy_remote_text.py
@@ -90,6 +92,7 @@ tests/test_bootstrap_routes_contracts.py
 tests/test_bootstrap_runtime_stack_modules.py
 tests/test_browser_skill.py
 tests/test_browser_skill_unit_contracts.py
+tests/test_calendar_api.py
 tests/test_campaign_flow.py
 tests/test_changed_lines_quality_checker.py
 tests/test_changed_lines_quality_cli.py
@@ -186,6 +189,7 @@ tests/test_git_skill.py
 tests/test_git_skill_roi.py
 tests/test_github_skill_contracts.py
 tests/test_github_skill_optional_dep.py
+tests/test_google_calendar_skill.py
 tests/test_governance_api.py
 tests/test_governance_contracts.py
 tests/test_gpu_habitat.py
@@ -494,6 +498,7 @@ tests/test_vast_serving.py
 tests/test_vast_training_kit.py
 tests/test_venom_core_init_compat.py
 tests/test_voice_metadata.py
+tests/test_weather_grounding.py
 tests/test_web_skill.py
 tests/test_workflow_control_api.py
 tests/test_workflow_control_contract.py

@@ -470,6 +470,8 @@ export const pl = {
     loading: "Ładowanie wydarzeń...",
     errors: {
       no_config: "Google Calendar nie jest skonfigurowany. Sprawdź konfigurację ENABLE_GOOGLE_CALENDAR.",
+      create_failed: "Nie potwierdzono utworzenia wydarzenia",
+      event_unconfirmed: "Zapis wymaga potwierdzenia. Identyfikator wydarzenia: {{id}}.",
       fetch_failed: "Błąd podczas pobierania wydarzeń",
     },
   },

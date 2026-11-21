@@ -1176,3 +1176,62 @@ def test_plain_gemma_direct_policy_preserves_custom_prompt(monkeypatch, custom):
         else llm_simple_service._OMNI_HISTORY_POLICY
     )
     assert result == expected
+
+
+@pytest.mark.asyncio
+async def test_studio_only_persists_length_metadata_and_recovers_without_draft(
+    tmp_path,
+):
+    from venom_core.services.studio_normal_chat import _recent_turns
+
+    store = SessionStore(str(tmp_path / "session.json"))
+
+    for mode in (False, True):
+        session = f"history-{mode}"
+        request = SimpleChatRequest(
+            content="Wyjaśnij zjawisko.", session_id=session, studio_normal=mode
+        )
+
+        async def body():
+            yield event("start", {})
+            yield event("content", {"text": "Częściowa odpowiedź bez kolejnych zdań"})
+            yield event("done", {"finish_reason": "length"})
+
+        response = persist_direct_response(
+            StreamingResponse(body(), media_type="text/event-stream"), request, store
+        )
+        raw = await consume(response)
+        assert '"finish_reason": "length"' in raw
+        user, assistant = store.get_history(session)
+        assert user["status"] == assistant["status"] == "COMPLETED"
+        assert user.get("finish_reason") is None
+        assert assistant.get("finish_reason") == ("length" if mode else None)
+        assert assistant["content"] == "Częściowa odpowiedź bez kolejnych zdań"
+        turns = _recent_turns(store, session, 4096, omit_truncated=True)
+        assert turns[0].content == request.content
+        assert turns[1].content == (
+            "Poprzednia odpowiedź została przerwana przed zakończeniem."
+            if mode
+            else assistant["content"]
+        )
+
+
+def test_studio_keeps_link_only_history_when_the_assistant_url_is_omitted(tmp_path):
+    from venom_core.services.studio_normal_chat import _recent_turns
+
+    store = SessionStore(str(tmp_path / "session.json"))
+    session, request_id = "history", "old-answer"
+    url = "https://example.org/prior"
+    store.append_turn_once(
+        session,
+        request_id,
+        [
+            {"role": "user", "content": "Podaj odnośnik.", "request_id": request_id},
+            {"role": "assistant", "content": url, "request_id": request_id},
+        ],
+    )
+    normal = _recent_turns(store, session, 4096)
+    current = _recent_turns(store, session, 4096, omit_assistant_links=True)
+    assert normal[-1].content == url
+    assert current[-1].content == "Poprzednia odpowiedź zawierała tylko odnośnik."
+    assert store.get_history(session)[-1]["content"] == url

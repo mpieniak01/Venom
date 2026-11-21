@@ -286,3 +286,86 @@ def test_primary_calendar_warning(mock_google_service, mock_credentials):
             and "violates Safe Layering" in str(call)
             for call in warning_calls
         )
+
+
+@pytest.mark.parametrize(
+    "override",
+    [
+        {},
+        {"id": ""},
+        {"status": "cancelled"},
+        {"summary": "Inne spotkanie"},
+        {"description": "Inny opis"},
+        {"start": {"dateTime": "nieznany"}},
+        {"end": {"dateTime": "2026-11-20T14:45:00Z"}},
+        {"end": {}},
+    ],
+)
+def test_verified_calendar_executor_matches_provider_event(
+    calendar_skill_with_mock_service, override
+):
+    from uuid import uuid4
+
+    from venom_core.services.calendar_execution import CalendarCreate
+
+    operation = CalendarCreate(
+        uuid4(), "Odprawa", "2026-11-20T15:00:00+01:00", 30, "Zespół"
+    )
+    service = calendar_skill_with_mock_service.service.events.return_value
+    service.insert.return_value.execute.return_value = {
+        "id": "event-42",
+        "summary": "Odprawa",
+        "description": "Zespół",
+        "start": {"dateTime": "2026-11-20T14:00:00Z"},
+        "end": {"dateTime": "2026-11-20T14:30:00Z"},
+        "htmlLink": "https://calendar.google.com/calendar/event?eid=42",
+        **override,
+    }
+
+    execution = calendar_skill_with_mock_service.schedule_verified_task(operation)
+    receipt = execution.confirmed(operation)
+    if override:
+        assert receipt is None
+        assert "✅" not in execution.message
+    else:
+        assert receipt.event_id == "event-42"
+        assert receipt.event_link.endswith("eid=42")
+        assert "Odprawa" in execution.message
+
+    service.insert.assert_called_once()
+    assert service.insert.call_args.kwargs["calendarId"] == "venom_work_calendar"
+
+
+def test_calendar_retry_reconciles_existing_event_before_inserting(
+    calendar_skill_with_mock_service,
+):
+    from uuid import uuid4
+
+    from venom_core.services.calendar_execution import CalendarCreate
+
+    operation = CalendarCreate(
+        uuid4(), "Odprawa", "2026-11-20T15:00:00+01:00", 30, "Zespół", idempotent=True
+    )
+    skill = calendar_skill_with_mock_service
+    events = skill.service.events.return_value
+    existing = {
+        "id": operation.request_id.hex,
+        "summary": operation.title,
+        "description": "Wciąż niespójny",
+        "start": {"dateTime": "2026-11-20T14:00:00Z"},
+        "end": {"dateTime": "2026-11-20T14:30:00Z"},
+    }
+    events.get.return_value.execute.side_effect = [
+        None,
+        existing,
+        {**existing, "description": "Zespół"},
+    ]
+    events.insert.return_value.execute.return_value = existing
+    first = skill.schedule_verified_task(operation)
+    retry = skill.schedule_verified_task(operation)
+    confirmed = skill.schedule_verified_task(operation)
+    assert first.unconfirmed_event_id == operation.request_id.hex
+    assert retry.unconfirmed_event_id == operation.request_id.hex
+    assert confirmed.confirmed(operation) is not None
+    events.insert.assert_called_once()
+    assert events.insert.call_args.kwargs["body"]["id"] == operation.request_id.hex

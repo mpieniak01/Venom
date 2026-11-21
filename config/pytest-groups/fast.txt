@@ -49,6 +49,8 @@ tests/test_academy_openrouter_judge.py
 tests/test_academy_openrouter_regression_replay.py
 tests/test_academy_optuna_backend.py
 tests/test_academy_parent_selection.py
+tests/test_academy_qualified_chat.py
+tests/test_academy_qualified_chat_state.py
 tests/test_academy_quality.py
 tests/test_academy_quality_native.py
 tests/test_academy_remote_text.py
@@ -569,6 +571,7 @@ tests/test_verify_acceptance_criteria.py
 tests/test_vision_grounding.py
 tests/test_voice_metadata.py
 tests/test_watcher.py
+tests/test_weather_grounding.py
 tests/test_web_skill.py
 tests/test_web_skill_tavily.py
 tests/test_work_ledger.py

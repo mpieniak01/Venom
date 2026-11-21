@@ -7,7 +7,7 @@ import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { act, createContext, createElement, useContext, useState } from "react";
+import { act, createContext, createElement, useContext, useEffect, useState } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import ts from "typescript";
 import { prepareStudio } from "../scripts/prepare-studio.mjs";
@@ -174,6 +174,82 @@ function shellExports(selection: typeof nativeReference | null = null, onControl
   });
   return loadTsx(path.join(repositoryRoot, "web-next/components/chat/studio-shell.tsx"), {...imports, ...overrides});
 }
+
+test("standalone Studio keeps ordinary sending available without native text routes", () => {
+  const unsupported = () => { throw new Error("Standalone Studio must not call native text routes"); };
+  const nativeApi = {
+    fetchNativeTextState: unsupported,
+    fetchNativeTextCatalog: unsupported,
+    selectNativeText: unsupported,
+    rollbackNativeText: unsupported,
+  };
+  const realHook = loadTsx(path.join(repositoryRoot, "web-next/components/chat/use-native-text-chat.ts"), {
+    "@/lib/native-text-chat": nativeApi,
+  });
+  const StudioShell = shellExports(null, undefined, {
+    "./use-native-text-chat": realHook,
+    "./use-session-draft": { useSessionDraft: (key: string) => useState(key.startsWith("materials:") ? "" : "Gotowe") },
+    "@/components/cockpit/cockpit-chat-send": { resolveEffectiveChatModelSelection: () => "fixture" },
+  }).StudioShell;
+  const Page = loadTsx(path.join(appRoot, "app/chat2/page.tsx"), {
+    "@/components/chat/studio-shell": { StudioShell },
+  }).default as React.ComponentType;
+
+  const html = renderToStaticMarkup(createElement(Page));
+  assert.doesNotMatch(html, /chat2\.nativeText\./);
+  const send = html.match(/<button[^>]*class="studio-button studio-send"[^>]*>/)?.[0];
+  assert.ok(send);
+  assert.doesNotMatch(send, /disabled/);
+});
+
+test("disabled native text stays idle on mount, focus, and explicit actions", async () => {
+  const { JSDOM } = await import("jsdom");
+  const dom = new JSDOM('<div id="root"></div>');
+  const globals = { window: dom.window, document: dom.window.document, IS_REACT_ACT_ENVIRONMENT: true };
+  const originals = new Map(
+    Object.keys(globals).map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]),
+  );
+  for (const [key, value] of Object.entries(globals)) {
+    Object.defineProperty(globalThis, key, { value, configurable: true, writable: true });
+  }
+  const calls = { state: 0, catalog: 0, select: 0, rollback: 0 };
+  const state = { selection: nativeReference, previous: null, persistent: false };
+  type Native = ReturnType<typeof import("../../web-next/components/chat/use-native-text-chat").useNativeTextChat>;
+  const useNative = loadTsx(
+    path.join(repositoryRoot, "web-next/components/chat/use-native-text-chat.ts"),
+    { "@/lib/native-text-chat": {
+      fetchNativeTextState: async () => { calls.state++; return state; },
+      fetchNativeTextCatalog: async () => { calls.catalog++; return []; },
+      selectNativeText: async () => { calls.select++; return state; },
+      rollbackNativeText: async () => { calls.rollback++; return state; },
+    } },
+  ).useNativeTextChat as (enabled: boolean) => Native;
+  function Probe() {
+    const { refresh, change } = useNative(false);
+    useEffect(() => {
+      void refresh();
+      void change(nativeReference.adapter_id);
+      void change();
+    }, [refresh, change]);
+    return null;
+  }
+  const { createRoot } = await import("react-dom/client");
+  const root = createRoot(dom.window.document.getElementById("root")!);
+  try {
+    await act(async () => { root.render(createElement(Probe)); });
+    await act(async () => {
+      dom.window.dispatchEvent(new dom.window.Event("focus"));
+    });
+    assert.deepEqual(calls, { state: 0, catalog: 0, select: 0, rollback: 0 });
+  } finally {
+    await act(async () => { root.unmount(); });
+    dom.window.close();
+    for (const [key, descriptor] of originals) {
+      if (descriptor) Object.defineProperty(globalThis, key, descriptor);
+      else Reflect.deleteProperty(globalThis, key);
+    }
+  }
+});
 
 function shell() {
   return shellExports().StudioShell as React.ComponentType<{ showLegacyLink?: boolean }>;

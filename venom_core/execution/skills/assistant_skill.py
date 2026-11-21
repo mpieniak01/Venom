@@ -1,9 +1,12 @@
 """Moduł: assistant_skill - Podstawowe umiejętności asystenta."""
 
 import asyncio
-from datetime import datetime
-from typing import Annotated, Any, Dict, Optional
+import re
+from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
+from typing import Annotated, Any, Dict, Literal, Optional
 from urllib.parse import quote
+from zoneinfo import ZoneInfo
 
 import httpx
 
@@ -24,6 +27,205 @@ DAY_NAMES_PL = {
     "Saturday": "Sobota",
     "Sunday": "Niedziela",
 }
+
+
+WeatherFailureReason = Literal[
+    "empty_location",
+    "no_data",
+    "missing_temperature",
+    "missing_observed_location",
+    "missing_observation_time",
+    "stale_observation",
+    "provider_http_error",
+    "provider_timeout",
+    "provider_transport_error",
+    "provider_client_error",
+    "provider_invalid_payload",
+]
+
+# IMGW's public synoptic station catalogue. Match both station identity and name.
+_IMGW_STATIONS = {"kalisz": "12435"}
+_WEATHER_MAX_AGE = timedelta(hours=3)
+_WTTR_CLOCK = re.compile(r"(0?[1-9]|1[0-2]):([0-5]\d) (AM|PM)", re.ASCII)
+_WTTR_LOCAL_TIME = re.compile(r"(\d{4}-\d{2}-\d{2}) (.+)", re.ASCII)
+_WTTR_DAY = re.compile(r"\d{4}-\d{2}-\d{2}", re.ASCII)
+_WARSAW_TIME = ZoneInfo("Europe/Warsaw")
+_WEATHER_TEMPERATURE = re.compile(r"-?\d{1,3}(?:[.,]\d{1,2})?")
+
+
+@dataclass(frozen=True)
+class WeatherObservation:
+    requested_location: str
+    source_url: str
+    observed_location: str | None = None
+    temperature_c: str | None = None
+    feels_like_c: str | None = None
+    failure_reason: WeatherFailureReason | None = None
+    http_status: int | None = None
+    details: tuple[tuple[str, str], ...] = ()
+    observed_at: datetime | None = None
+
+
+def imgw_station_url(location: str) -> str | None:
+    station = _IMGW_STATIONS.get(location.casefold())
+    return (
+        f"https://danepubliczne.imgw.pl/api/data/synop/id/{station}"
+        if station
+        else None
+    )
+
+
+def imgw_observation_time(day: object, hour: object) -> datetime | None:
+    if not isinstance(day, str) or type(hour) not in (int, str):
+        return None
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", day) or not re.fullmatch(
+        r"\d{1,2}", str(hour)
+    ):
+        return None
+    try:
+        return datetime.fromisoformat(f"{day}T{int(hour):02}:00:00+00:00")
+    except ValueError:
+        return None
+
+
+def _wttr_hour(clock: re.Match[str]) -> int:
+    return int(clock[1]) % 12 + (12 if clock[3] == "PM" else 0)
+
+
+def _wttr_clock_dates(day: str, clock: re.Match[str]) -> tuple[datetime, ...]:
+    utc_time = datetime.fromisoformat(day).replace(
+        hour=_wttr_hour(clock), minute=int(clock[2]), tzinfo=timezone.utc
+    )
+    return utc_time - timedelta(days=1), utc_time, utc_time + timedelta(days=1)
+
+
+def _wttr_with_local_time(clock: re.Match[str], local: re.Match[str]) -> list[datetime]:
+    local_clock = _WTTR_CLOCK.fullmatch(local[2])
+    if local_clock is None:
+        return []
+    day = datetime.fromisoformat(local[1]).replace(tzinfo=timezone.utc)
+    local_time = day.replace(hour=_wttr_hour(local_clock), minute=int(local_clock[2]))
+    return [
+        candidate
+        for candidate in _wttr_clock_dates(local[1], clock)
+        if timedelta(hours=-12) <= local_time - candidate <= timedelta(hours=14)
+    ]
+
+
+def _wttr_with_polish_weather_date(
+    clock: re.Match[str], payload: dict[str, Any]
+) -> list[datetime]:
+    # Some j1 payloads omit localObsDateTime. Use the first local weather day
+    # only with the provider's confirmed country and its known time zone.
+    if _weather_area_field(payload, "country") not in {"Poland", "Polska"}:
+        return []
+    weather = payload.get("weather")
+    if not isinstance(weather, list) or not weather or not isinstance(weather[0], dict):
+        return []
+    day = weather[0].get("date")
+    if not isinstance(day, str) or _WTTR_DAY.fullmatch(day) is None:
+        return []
+    return [
+        candidate
+        for candidate in _wttr_clock_dates(day, clock)
+        if candidate.astimezone(_WARSAW_TIME).date().isoformat() == day
+    ]
+
+
+def _wttr_observation_time(
+    current: dict[str, Any], payload: dict[str, Any]
+) -> datetime | None:
+    """Bind the provider's UTC clock to a date without rolling it forward to today."""
+    clock = _WTTR_CLOCK.fullmatch(str(current.get("observation_time", "")))
+    if clock is None:
+        return None
+    local = _WTTR_LOCAL_TIME.fullmatch(str(current.get("localObsDateTime", "")))
+    try:
+        if local is not None:
+            possible = _wttr_with_local_time(clock, local)
+        elif "localObsDateTime" not in current:
+            possible = _wttr_with_polish_weather_date(clock, payload)
+        else:
+            return None
+    except (ValueError, OverflowError):
+        return None
+    return possible[0] if len(possible) == 1 else None
+
+
+def _wttr_observation_failure(
+    observed: str | None, temperature: str | None, at: datetime | None
+) -> WeatherFailureReason | None:
+    if observed is None:
+        return "missing_observed_location"
+    if temperature is None:
+        return "missing_temperature"
+    now = datetime.now(timezone.utc)
+    if at is None or at > now:
+        return "missing_observation_time"
+    return "stale_observation" if now - at > _WEATHER_MAX_AGE else None
+
+
+@dataclass(frozen=True)
+class _WeatherProviderFailure:
+    reason: WeatherFailureReason
+    status: int | None = None
+
+    def legacy_message(self, location: str) -> str:
+        if self.reason == "provider_timeout":
+            return "✗ Przekroczono limit czasu podczas pobierania danych pogodowych."
+        if self.reason == "provider_transport_error":
+            return "✗ Błąd połączenia z serwisem pogodowym."
+        if self.reason == "provider_http_error":
+            return (
+                f"✗ Nie udało się pobrać danych pogodowych dla '{location}'. "
+                "Sprawdź nazwę lokalizacji."
+            )
+        return "✗ Błąd podczas pobierania pogody."
+
+
+def weather_temperature(value: object) -> str | None:
+    if type(value) not in (str, int, float):
+        return None
+    raw = str(value).strip()
+    return raw.replace(",", ".") if _WEATHER_TEMPERATURE.fullmatch(raw) else None
+
+
+def _weather_area_field(payload: dict[str, Any], field: str) -> str | None:
+    areas = payload.get("nearest_area")
+    if not isinstance(areas, list) or not areas or not isinstance(areas[0], dict):
+        return None
+    names = areas[0].get(field)
+    if not isinstance(names, list) or not names or not isinstance(names[0], dict):
+        return None
+    return weather_area_name(names[0].get("value"))
+
+
+def weather_area_name(value: object) -> str | None:
+    if not isinstance(value, str):
+        return None
+    name = " ".join(value.split())
+    if (
+        not name
+        or len(name) > 120
+        or not all(char.isalpha() or char in " .-'’–" for char in name)
+    ):
+        return None
+    return name
+
+
+def _weather_details(current: dict[str, Any]) -> tuple[tuple[str, str], ...]:
+    details = []
+    desc = current.get("weatherDesc")
+    if isinstance(desc, list) and desc and isinstance(desc[0], dict):
+        if condition := weather_area_name(desc[0].get("value")):
+            details.append(("Warunki", condition))
+    if humidity := weather_temperature(current.get("humidity")):
+        details.append(("Wilgotność", f"{humidity}%"))
+    if speed := weather_temperature(current.get("windspeedKmph")):
+        direction = weather_area_name(current.get("winddir16Point"))
+        suffix = f" ({direction})" if direction else ""
+        details.append(("Wiatr", f"{speed} km/h{suffix}"))
+    return tuple(details)
 
 
 class AssistantSkill:
@@ -130,9 +332,9 @@ class AssistantSkill:
                 return "✗ Nazwa lokalizacji nie może być pusta."
 
             url = self.weather_source_url(location_safe)
-            data = await self._fetch_weather_payload(url, location_safe)
-            if isinstance(data, str):
-                return data
+            data = await self._fetch_weather_payload(url)
+            if isinstance(data, _WeatherProviderFailure):
+                return data.legacy_message(location_safe)
 
             parsed = self._parse_weather_payload(data, location_safe)
             if isinstance(parsed, str):
@@ -156,20 +358,96 @@ class AssistantSkill:
         logger.warning(f"Nieprawidłowa wartość units: '{units}'. Używam 'metric'.")
         return "metric"
 
+    async def read_weather_observation(self, location: str) -> WeatherObservation:
+        """Bind a measured temperature to the area named by the provider."""
+        requested = weather_area_name(location)
+        if requested is None:
+            return WeatherObservation("", "", failure_reason="empty_location")
+        url = self.weather_source_url(requested)
+        data = await self._fetch_weather_payload(url)
+        if isinstance(data, _WeatherProviderFailure):
+            return WeatherObservation(
+                requested, url, failure_reason=data.reason, http_status=data.status
+            )
+        conditions = data.get("current_condition")
+        if conditions is None or conditions == []:
+            return WeatherObservation(requested, url, failure_reason="no_data")
+        if not isinstance(conditions, list) or not isinstance(conditions[0], dict):
+            return WeatherObservation(
+                requested, url, failure_reason="provider_invalid_payload"
+            )
+        current = conditions[0]
+        observed = _weather_area_field(data, "areaName")
+        temperature = weather_temperature(current.get("temp_C"))
+        at = _wttr_observation_time(current, data)
+        failure = _wttr_observation_failure(observed, temperature, at)
+        return WeatherObservation(
+            requested_location=requested,
+            source_url=url,
+            observed_location=observed,
+            temperature_c=temperature if failure is None else None,
+            feels_like_c=weather_temperature(current.get("FeelsLikeC"))
+            if failure is None
+            else None,
+            failure_reason=failure,
+            details=_weather_details(current) if failure is None else (),
+            observed_at=at if failure in {None, "stale_observation"} else None,
+        )
+
+    async def read_imgw_station_observation(
+        self, location: str
+    ) -> WeatherObservation | None:
+        url = imgw_station_url(location)
+        if url is None:
+            return None
+        try:
+            async with asyncio.timeout(4.0):
+                data = await self._fetch_weather_payload(url)
+        except TimeoutError:
+            return None
+        if isinstance(data, _WeatherProviderFailure):
+            return None
+        observed = weather_area_name(data.get("stacja"))
+        value = weather_temperature(data.get("temperatura"))
+        at = imgw_observation_time(
+            data.get("data_pomiaru"), data.get("godzina_pomiaru")
+        )
+        now = datetime.now(timezone.utc)
+        if (
+            observed is None
+            or observed.casefold() != location.casefold()
+            or str(data.get("id_stacji")) != _IMGW_STATIONS[location.casefold()]
+            or value is None
+            or at is None
+            or not timedelta() <= now - at <= _WEATHER_MAX_AGE
+        ):
+            return None
+        return WeatherObservation(location, url, observed, value, observed_at=at)
+
     async def _fetch_weather_payload(
-        self, url: str, location: str
-    ) -> Dict[str, Any] | str:
-        async with TrafficControlledHttpClient(
-            provider="weather",
-            timeout=10.0,
-        ) as client:
-            response = await client.aget(url, raise_for_status=False)
+        self, url: str
+    ) -> dict[str, Any] | _WeatherProviderFailure:
+        try:
+            async with TrafficControlledHttpClient(
+                provider="weather", timeout=10.0
+            ) as client:
+                response = await client.aget(url, raise_for_status=False)
             if response.status_code != 200:
-                return (
-                    f"✗ Nie udało się pobrać danych pogodowych dla '{location}'. "
-                    "Sprawdź nazwę lokalizacji."
+                return _WeatherProviderFailure(
+                    "provider_http_error", response.status_code
                 )
-            return response.json()
+            data = response.json()
+        except (TimeoutError, httpx.TimeoutException):
+            return _WeatherProviderFailure("provider_timeout")
+        except httpx.HTTPError:
+            return _WeatherProviderFailure("provider_transport_error")
+        except RuntimeError:
+            return _WeatherProviderFailure("provider_client_error")
+        except ValueError:
+            return _WeatherProviderFailure("provider_invalid_payload")
+        if not isinstance(data, dict):
+            return _WeatherProviderFailure("provider_invalid_payload")
+        return data
 
     @staticmethod
     def _first_nested_value(items: Any, field: str, default: str) -> str:

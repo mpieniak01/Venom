@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from html.parser import HTMLParser
 from urllib.parse import quote
+
+import httpx
 
 from venom_core.infrastructure.traffic_control import TrafficControlledHttpClient
 from venom_core.utils.logger import get_logger
@@ -19,6 +23,7 @@ WIKIPEDIA_USER_AGENT = (
 MAX_QUERY_CHARS = 256
 MAX_EXTRACT_CHARS = 1200
 MAX_RESULTS = 2
+MAX_SECTION_HTML = 150_000
 
 
 @dataclass(frozen=True)
@@ -121,3 +126,116 @@ def _extract_sources(
             )
         )
     return sources
+
+
+def _reference_sup(attrs: list[tuple[str, str | None]]) -> bool:
+    classes = next((value for key, value in attrs if key == "class"), "") or ""
+    return bool({"reference", "mw-ref"}.intersection(classes.split()))
+
+
+class _SectionText(HTMLParser):
+    """Preserve paragraph boundaries and omit scripts and reference markers."""
+
+    def __init__(self):
+        super().__init__()
+        self.parts: list[str] = []
+        self.ignored: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag in {"script", "style"} or (tag == "sup" and _reference_sup(attrs)):
+            self.ignored.append(tag)
+        elif not self.ignored:
+            if tag == "sup":
+                # Preserve exponent syntax so 10<sup>3</sup> cannot become 10.
+                self.parts.append("^")
+            elif tag in {"p", "li", "div", "br", "h2", "h3", "dt", "dd", "tr"}:
+                self.parts.append("\n")
+
+    def handle_endtag(self, tag: str) -> None:
+        if self.ignored and self.ignored[-1] == tag:
+            self.ignored.pop()
+
+    def handle_data(self, data: str) -> None:
+        if not self.ignored:
+            self.parts.append(data)
+
+
+async def search_wikipedia_section(
+    source: WikipediaSource, headings: Sequence[str]
+) -> WikipediaSource | None:
+    """Read one named section from the same Polish Wikipedia article."""
+
+    headers = {"User-Agent": WIKIPEDIA_USER_AGENT}
+    params = {
+        "action": "parse",
+        "format": "json",
+        "formatversion": "2",
+    }
+    wanted = {heading.casefold() for heading in headings}
+    try:
+        async with TrafficControlledHttpClient(
+            provider="wikipedia", timeout=8.0
+        ) as client:
+            sections_response = await client.aget(
+                WIKIPEDIA_API_URL,
+                params={**params, "page": source.title, "prop": "sections|revid"},
+                headers=headers,
+                raise_for_status=False,
+            )
+            if sections_response.status_code != 200:
+                return None
+            revision_data = sections_response.json().get("parse", {})
+            revision = revision_data.get("revid")
+            if type(revision) is not int or revision <= 0:
+                return None
+            sections = revision_data.get("sections", [])
+            index = next(
+                (
+                    section["index"]
+                    for section in sections
+                    if isinstance(section, dict)
+                    and str(section.get("line", "")).strip().casefold() in wanted
+                    and re.fullmatch(r"[1-9]\d{0,2}", str(section.get("index", "")))
+                ),
+                None,
+            )
+            if index is None:
+                return None
+            section_response = await client.aget(
+                WIKIPEDIA_API_URL,
+                params={
+                    **params,
+                    "oldid": revision,
+                    "prop": "text|revid",
+                    "section": index,
+                },
+                headers=headers,
+                raise_for_status=False,
+            )
+        if section_response.status_code != 200:
+            return None
+        parsed = section_response.json().get("parse", {})
+        html = parsed.get("text")
+        if (
+            parsed.get("title") != source.title
+            or parsed.get("revid") != revision
+            or not isinstance(html, str)
+            or len(html) > MAX_SECTION_HTML
+        ):
+            return None
+        parser = _SectionText()
+        parser.feed(html)
+        excerpt = "\n".join(
+            filter(
+                None,
+                (" ".join(line.split()) for line in "".join(parser.parts).splitlines()),
+            )
+        )[:MAX_EXTRACT_CHARS]
+        return (
+            WikipediaSource(source.title, source.url, excerpt, source.retrieved_at)
+            if excerpt
+            else None
+        )
+    except (AttributeError, TypeError, ValueError, OSError, httpx.HTTPError) as exc:
+        logger.warning("Polish Wikipedia section lookup failed: %s", exc)
+        return None

@@ -728,3 +728,180 @@ def response_scope(
     return _withdrawn_role_scope(
         material, users, role_clauses, candidate
     ) or _setting_scope(material, users, clauses, candidate)
+
+
+class RecordScope(TypedDict):
+    kind: Literal["pending_price", "missing_card_location"]
+    criterion: str
+    quote: str
+    value_quote: str
+    bare_price: NotRequired[str]
+    source: UserSource
+
+
+_PLN = r"\d{1,9}(?:[.,]\d{1,2})? zł"
+_RECORD_LABELS = frozenset({"osoba", "miejsce", "godzina", "cena"})
+_PRICE_CRITERION = re.compile(rf"Pole cena: ({_PLN})\. Bez sprzecznej wartości\.", re.I)
+_PENDING_SOURCE = re.compile(rf"Pytanie o cenę ({_PLN}) nadal czeka na decyzję\.", re.I)
+_PENDING_VALUE = re.compile(rf"({_PLN}) \(oczekiwana(?: decyzja)?\)\.?", re.I)
+_MISSING_LOCATION = "Pole miejsce: brak danych w karcie. Bez sprzecznej wartości."
+_CARD_LOCATION_QUESTION = "w świetle tej karty wypisz osobę oraz miejsce; każde pominięte pole oznacz jako brak danych."
+_CLOSED_CARD_PERSON = re.compile(
+    rf"Przeczytaj bieżącą kartę, której kompletna zawartość brzmi «osoba: {_NAME}»\.",
+    re.I,
+)
+
+
+def _record_lines(candidate: str) -> dict[str, tuple[str, str]]:
+    fields: dict[str, tuple[str, str]] = {}
+    for clause in re.split(r"[;\r\n]+", candidate.strip()):
+        line = clause.strip()
+        label, separator, value = line.partition(":")
+        key = label.casefold()
+        if not separator or not value or key not in _RECORD_LABELS or key in fields:
+            return {}
+        fields[key] = (line, value.strip())
+    return fields
+
+
+def _pending_record_price(
+    material: dict, users: UserMessages, quote: str, value: str
+) -> RecordScope | None:
+    if len(users) != 2 or _UNSAFE_CONTEXT.search(users[-1][1]):
+        return None
+    match = _PENDING_VALUE.fullmatch(value)
+    if match is None:
+        return None
+    latest_index, latest = users[-1]
+    clauses = _clauses(latest)
+    pending = [clause for clause in clauses if _PENDING_SOURCE.fullmatch(clause)]
+    if len(pending) != 1:
+        return None
+    source_price = _PENDING_SOURCE.fullmatch(pending[0])
+    if source_price is None or source_price[1] != match[1]:
+        return None
+    if (
+        len(clauses) != 4
+        or not clauses[0].casefold().startswith("sprawa: ")
+        or not re.fullmatch(
+            rf"W aktualizacji zatwierdzono osobę {_NAME}[.]", clauses[1], re.I
+        )
+        or clauses[-1].casefold()
+        != "zachowaj resztę wpisu i podaj pełny obowiązujący stan."
+    ):
+        return None
+    criteria = [
+        (row["id"], m[1])
+        for row in material["criteria"]
+        if (m := _PRICE_CRITERION.fullmatch(row["description"]))
+    ]
+    if len(criteria) != 1 or criteria[0][1] == match[1]:
+        return None
+    older = [
+        clause
+        for clause in _clauses(users[0][1])
+        if clause.casefold() == f"cena: {criteria[0][1]}.".casefold()
+    ]
+    original = users[0][1]
+    if (
+        len(older) != 1
+        or _UNSAFE_CONTEXT.search(original)
+        or not original.casefold().startswith(
+            clauses[0].casefold() + " rejestr roboczy: "
+        )
+        or not original.casefold().endswith("wypisz wszystkie aktualne pola.")
+    ):
+        return None
+    return {
+        "kind": "pending_price",
+        "criterion": criteria[0][0],
+        "quote": quote,
+        "value_quote": value,
+        "bare_price": match[1],
+        "source": {
+            "message_index": latest_index,
+            "quote": pending[0],
+            "continuity_index": users[0][0],
+            "continuity_quote": older[0],
+        },
+    }
+
+
+def _closed_card_location(
+    material: dict, users: UserMessages, quote: str, value: str
+) -> RecordScope | None:
+    if len(users) < 3 or not users[-1][1].casefold().endswith(_CARD_LOCATION_QUESTION):
+        return None
+    card_index, card_turn = users[-2]
+    topic, _, rest = users[-1][1].partition(". ")
+    if (
+        not topic.casefold().startswith("sprawa: ")
+        or rest.casefold() != _CARD_LOCATION_QUESTION
+        or not card_turn.casefold().startswith(topic.casefold() + ". ")
+        or _UNSAFE_CONTEXT.search(card_turn)
+    ):
+        return None
+    clauses = _clauses(card_turn)
+    if (
+        len(clauses) not in (3, 5)
+        or _CLOSED_CARD_PERSON.fullmatch(clauses[1]) is None
+        or clauses[2].casefold() != "to materiał informacyjny bez zmiany ustaleń."
+        or (
+            len(clauses) == 5
+            and [part.casefold() for part in clauses[3:]]
+            != [
+                "pytam wyłącznie o wymienione tam miejsce.",
+                "odpowiedz samym «brak danych», jeżeli karta go nie zawiera.",
+            ]
+        )
+    ):
+        return None
+    criteria = [
+        row["id"]
+        for row in material["criteria"]
+        if row["description"] == _MISSING_LOCATION
+    ]
+    history_key = f"miejsce: {value.rstrip('.')}".casefold()
+    earlier = [
+        (idx, clause)
+        for idx, msg in users[:-2]
+        for clause in _clauses(msg)
+        if clause.rstrip(".").casefold() == history_key
+        and msg.casefold().startswith(topic.casefold() + ". rejestr roboczy: ")
+        and not _UNSAFE_CONTEXT.search(msg)
+    ]
+    if (
+        len(criteria) != 1
+        or len(earlier) != 1
+        or value.rstrip(".").casefold()
+        in {"brak danych", "nie podano", "brak", "nieznane"}
+    ):
+        return None
+    return {
+        "kind": "missing_card_location",
+        "criterion": criteria[0],
+        "quote": quote,
+        "value_quote": value,
+        "source": {
+            "message_index": card_index,
+            "quote": clauses[1],
+            "continuity_index": earlier[0][0],
+            "continuity_quote": earlier[0][1],
+        },
+    }
+
+
+def record_scope(material: dict, candidate: str) -> RecordScope | None:
+    """Bind mutually exclusive scopes without changing the speaker's other claims."""
+    if (
+        material.get("candidate") != candidate
+        or material.get("evidence")
+        or len(candidate) > MAX_EVIDENCE_TEXT_CHARS
+    ):
+        return None
+    fields = _record_lines(candidate)
+    if fields.keys() == {"osoba", "miejsce", "godzina", "cena"}:
+        return _pending_record_price(material, _users(material), *fields["cena"])
+    if fields.keys() == {"osoba", "miejsce"}:
+        return _closed_card_location(material, _users(material), *fields["miejsce"])
+    return None

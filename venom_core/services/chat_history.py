@@ -33,7 +33,12 @@ class DirectHistory:
     """Per-response observer; references and original text are never expanded here."""
 
     def __init__(
-        self, request: SimpleChatRequest, request_id: str, store: SessionStore
+        self,
+        request: SimpleChatRequest,
+        request_id: str,
+        store: SessionStore,
+        *,
+        public_source_evidence: dict[str, str] | None = None,
     ):
         self.session = request.session_id or ""
         self.request_id = request_id
@@ -49,8 +54,10 @@ class DirectHistory:
         self.started = False
         self.recorded = False
         self.terminal = False
+        self.length_limited = False
         self.cost: dict[str, Any] | None = None
         self.model_identity: dict[str, str] | None = None
+        self.public_source_evidence = public_source_evidence
 
     def feed(self, chunk: str | bytes | memoryview) -> str | None:
         text = chunk if isinstance(chunk, str) else self.decoder.decode(bytes(chunk))
@@ -94,6 +101,11 @@ class DirectHistory:
             self._content(value.get("text"))
         elif kind in {"done", "error"}:
             self.terminal = True
+            self.length_limited = (
+                self.mode == "studio_normal"
+                and kind == "done"
+                and value.get("finish_reason") == "length"
+            )
             return "COMPLETED" if kind == "done" else "FAILED"
         return None
 
@@ -129,10 +141,20 @@ class DirectHistory:
             "content": "".join(self.parts),
             "timestamp": now,
         }
+        if self.length_limited:
+            assistant["finish_reason"] = "length"
         if self.model_identity is not None:
             assistant["model_identity"] = dict(self.model_identity)
         if self.cost is not None:
             assistant["cost"] = dict(self.cost)
+        if (
+            self.mode == "studio_normal"
+            and status == "COMPLETED"
+            and not self.length_limited
+            and self.text_length > 0
+            and self.public_source_evidence is not None
+        ):
+            assistant["public_source_evidence"] = dict(self.public_source_evidence)
         # Pass frozen payloads to the existing drainable I/O helper. Repeated
         # caller cancellation cannot abandon a disk worker or mutate a new turn.
         await run_drainable_thread(
@@ -203,7 +225,11 @@ async def _stream_history(source: AsyncIterable[Any], history: DirectHistory):
 
 
 def persist_direct_response(
-    response: StreamingResponse, request: SimpleChatRequest, store: SessionStore | None
+    response: StreamingResponse,
+    request: SimpleChatRequest,
+    store: SessionStore | None,
+    *,
+    public_source_evidence: dict[str, str] | None = None,
 ) -> StreamingResponse:
     """Keep the actual stream/budget lifecycle and inject no independent store."""
     if not request.session_id or store is None:
@@ -214,6 +240,8 @@ def persist_direct_response(
     except ValueError:
         request_id = str(uuid4())
         response.headers["X-Request-Id"] = request_id
-    history = DirectHistory(request, request_id, store)
+    history = DirectHistory(
+        request, request_id, store, public_source_evidence=public_source_evidence
+    )
     response.body_iterator = _stream_history(response.body_iterator, history)
     return response

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import codecs
 import ipaddress
 import socket
 from collections.abc import Collection
@@ -249,17 +250,39 @@ async def _fetch_rss(
             ):
                 return None
             data = bytearray()
+            truncated = False
             async for chunk in response.aiter_bytes():
-                data.extend(chunk)
-                if len(data) > MAX_FEED_BYTES:
-                    return None
-        payload = data.decode("utf-8")
-        upper_payload = payload.upper()
-        if "<!DOCTYPE" in upper_payload or "<!ENTITY" in upper_payload:
-            return None
-        return ElementTree.fromstring(payload)
+                remaining = MAX_FEED_BYTES - len(data)
+                data.extend(chunk[:remaining])
+                if len(chunk) > remaining:
+                    truncated = True
+                    break
+        return _parse_rss(data, truncated=truncated)
     except (httpx.HTTPError, OSError, ValueError, ElementTree.ParseError):
         return None
+
+
+def _parse_rss(data: bytearray, *, truncated: bool) -> ElementTree.Element | None:
+    payload = codecs.getincrementaldecoder("utf-8")().decode(data, final=not truncated)
+    upper_payload = payload.upper()
+    if "<!DOCTYPE" in upper_payload or "<!ENTITY" in upper_payload:
+        return None
+    if not truncated:
+        return ElementTree.fromstring(payload)
+    parser = ElementTree.XMLPullParser(events=("start", "end"))
+    parser.feed(payload)
+    # Keep only complete channel items when the byte limit cuts off the document.
+    root = ElementTree.Element("rss")
+    channel = ElementTree.SubElement(root, "channel")
+    stack: list[str] = []
+    for event, element in parser.read_events():
+        if event == "start":
+            stack.append(element.tag)
+            continue
+        if stack == ["rss", "channel", "item"]:
+            channel.append(element)
+        stack.pop()
+    return root
 
 
 def _parse_headline(

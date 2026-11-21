@@ -7,6 +7,11 @@ from typing import Annotated, Any, Optional
 
 from venom_core.config import SETTINGS
 from venom_core.execution.agent_contracts import tool_function as kernel_function
+from venom_core.services.calendar_execution import (
+    CalendarCreate,
+    CalendarExecution,
+    confirm_insertion,
+)
 from venom_core.utils.logger import get_logger
 
 Request: Any
@@ -303,10 +308,83 @@ class GoogleCalendarSkill:
         Returns:
             Potwierdzenie utworzenia lub komunikat o błędzie
         """
+        return self._schedule_task(
+            title, start_time, duration_minutes, description
+        ).message
+
+    def schedule_verified_task(self, operation: CalendarCreate) -> CalendarExecution:
+        """Execute an authorized API request and bind the returned event to it."""
+        return self._schedule_task(
+            operation.title,
+            operation.start_time,
+            operation.duration_minutes,
+            operation.description,
+            operation=operation,
+        )
+
+    def _find_venom_event(self, event_id: str):
+        try:
+            return (
+                self.service.events()
+                .get(calendarId=self.venom_calendar_id, eventId=event_id)
+                .execute()
+            )
+        except HttpError as error:
+            if error.resp.status == 404:
+                return None
+            raise
+
+    def _write_venom_event(self, event: dict, operation: CalendarCreate | None):
+        if operation is None or not operation.idempotent:
+            return (
+                self.service.events()
+                .insert(calendarId=self.venom_calendar_id, body=event)
+                .execute()
+            )
+        event_id = operation.request_id.hex
+        existing = self._find_venom_event(event_id)
+        if existing is not None:
+            return existing
+        try:
+            return (
+                self.service.events()
+                .insert(
+                    calendarId=self.venom_calendar_id, body={**event, "id": event_id}
+                )
+                .execute()
+            )
+        except HttpError as error:
+            if error.resp.status != 409:
+                raise
+            return self._find_venom_event(event_id) or {"id": event_id}
+
+    @staticmethod
+    def _unconfirmed_event(event: object) -> CalendarExecution:
+        event_id = event.get("id") if isinstance(event, dict) else None
+        return CalendarExecution(
+            "Brak potwierdzenia parametrów wpisu w kalendarzu.",
+            unconfirmed_event_id=event_id
+            if isinstance(event_id, str) and event_id.strip()
+            else None,
+        )
+
+    def _schedule_task(
+        self,
+        title: str,
+        start_time: str,
+        duration_minutes: int,
+        description: str,
+        *,
+        operation: CalendarCreate | None = None,
+    ) -> CalendarExecution:
         if not self.credentials_available:
-            return "❌ Google Calendar nie jest skonfigurowany. Nie można zaplanować zadania."
+            return CalendarExecution(
+                "❌ Google Calendar nie jest skonfigurowany. Nie można zaplanować zadania."
+            )
         if not self.service:
-            return "❌ Google Calendar nie jest skonfigurowany (brak serwisu)"
+            return CalendarExecution(
+                "❌ Google Calendar nie jest skonfigurowany (brak serwisu)"
+            )
 
         logger.info(
             f"GoogleCalendarSkill: schedule_task (title='{title}', start={start_time}, duration={duration_minutes}min)"
@@ -345,12 +423,15 @@ class GoogleCalendarSkill:
 
             # WRITE-ONLY do kalendarza Venoma (NIE do primary)
             # Safe Layering: self.venom_calendar_id should NEVER be 'primary'
-            created_event = (
-                self.service.events()
-                .insert(calendarId=self.venom_calendar_id, body=event)
-                .execute()
-            )
+            created_event = self._write_venom_event(event, operation)
 
+            receipt = (
+                confirm_insertion(operation, created_event)
+                if operation is not None
+                else None
+            )
+            if operation is not None and receipt is None:
+                return self._unconfirmed_event(created_event)
             event_link = created_event.get("htmlLink")
 
             output = "✅ Zaplanowano zadanie w kalendarzu Venoma:\n"
@@ -365,19 +446,19 @@ class GoogleCalendarSkill:
             logger.info(
                 f"GoogleCalendarSkill: utworzono wydarzenie: {created_event.get('id')}"
             )
-            return output
+            return CalendarExecution(output, receipt)
 
         except HttpError as e:
             logger.error(f"Google Calendar API error: {e}")
-            return f"❌ Błąd Google Calendar API: {str(e)}"
+            return CalendarExecution(f"❌ Błąd Google Calendar API: {str(e)}")
         except ValueError as e:
             logger.error(f"Nieprawidłowy format czasu: {e}")
-            return (
+            return CalendarExecution(
                 "❌ Nieprawidłowy format czasu. Użyj formatu ISO: YYYY-MM-DDTHH:MM:SS"
             )
         except Exception as e:
             logger.error(f"Błąd podczas planowania zadania: {e}")
-            return f"❌ Wystąpił błąd: {str(e)}"
+            return CalendarExecution(f"❌ Wystąpił błąd: {str(e)}")
 
     def close(self):
         """Zamknięcie połączenia HTTP klienta Google Calendar (cleanup)."""

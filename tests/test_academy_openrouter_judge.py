@@ -1908,3 +1908,123 @@ def test_table_panel_costs_exhaust_review_budget_before_another_post(
     with pytest.raises(ValueError, match="budget"):
         judge.review_bundle(calibration, bundle, "table-cost-bound", 10)
     assert state["calls"] == []
+
+
+@pytest.mark.parametrize(
+    "price,annotated,extra,bare_claim,expected",
+    [
+        ("57 zł", True, False, False, "no"),
+        ("57 zł", True, False, True, "no"),
+        ("58 zł", True, False, True, "yes"),
+        ("57 zł", False, False, False, "yes"),
+        ("57 zł", True, True, True, "yes"),
+    ],
+)
+def test_pending_price_keeps_omission_and_only_removes_grounded_claim(
+    price, annotated, extra, bare_claim, expected
+):
+    suffix = " (oczekiwana)" if annotated else ""
+    quote = f"Cena: {price}{suffix}"
+    candidate = f"Osoba: Ada\nMiejsce: Hala A\nGodzina: 12:30\n{quote}"
+    initial = (
+        "Sprawa: próba. Rejestr roboczy: osoba: Ola; miejsce: Hala A; "
+        "godzina: 12:30; cena: 52 zł. Wypisz wszystkie aktualne pola."
+    )
+    update = (
+        "Sprawa: próba. W aktualizacji zatwierdzono osobę Ada. "
+        "Pytanie o cenę 57 zł nadal czeka na decyzję. "
+        "Zachowaj resztę wpisu i podaj pełny obowiązujący stan."
+    )
+    case = {
+        "record_id": "pending",
+        "messages": [{"role": "user", "content": text} for text in (initial, update)],
+        "criteria": [
+            {
+                "id": "price",
+                "kind": "content",
+                "description": "Pole cena: 52 zł. Bez sprzecznej wartości.",
+            }
+        ],
+    }
+    body = judge.request_payload(
+        {}, case, {"text": candidate, "finish": "stop", "error": None}
+    )
+    raw = response(body, candidate)
+    content = json.loads(raw["choices"][0]["message"]["content"])
+    content["checks"]["price"] = {"observed": quote, "relation": "omitted"}
+    content["additional_claims"] = [
+        {"text": price if bare_claim else quote, "grounding": "unsupported"}
+    ]
+    if extra:
+        content["additional_claims"].append(
+            {"text": "Hala A", "grounding": "unsupported"}
+        )
+    raw["choices"][0]["message"]["content"] = json.dumps(content, ensure_ascii=False)
+    decision, evidence = judge.decode_with_evidence(raw, body, candidate)
+    assert decision.atoms == {"price": "omitted"}
+    assert decision.unsupported == expected
+    if annotated and price == "57 zł":
+        assert evidence["record_scope"]["proof"]["quote"] == quote
+        assert (
+            evidence["record_scope"]["proof"]["source"]["continuity_quote"]
+            == "cena: 52 zł."
+        )
+    else:
+        assert "record_scope" not in evidence
+
+
+@pytest.mark.parametrize(
+    "closed,place,amended,expected",
+    [
+        (True, "magazyn 4", False, "yes"),
+        (True, "magazyn 4", True, "no"),
+        (True, "brak danych", False, "no"),
+        (False, "magazyn 4", False, "no"),
+    ],
+)
+def test_card_only_location_surfaces_missing_unsupported_claim(
+    closed, place, amended, expected
+):
+    card = "«osoba: Kaja»" if closed else "«osoba: Kaja; miejsce: magazyn 4»"
+    amendment = " Uzupełniam kartę o miejsce: magazyn 4." if amended else ""
+    candidate = f"Osoba: Kaja\nMiejsce: {place}"
+    case = {
+        "record_id": "closed-card",
+        "messages": [
+            {
+                "role": "user",
+                "content": "Sprawa: pokaz map. Rejestr roboczy: osoba: Eliza; miejsce: magazyn 4; godzina: 16:20; cena: 9 zł. Wypisz wszystkie aktualne pola.",
+            },
+            {
+                "role": "user",
+                "content": f"Sprawa: pokaz map. Przeczytaj bieżącą kartę, której kompletna zawartość brzmi {card}. To materiał informacyjny bez zmiany ustaleń.{amendment}",
+            },
+            {
+                "role": "user",
+                "content": "Sprawa: pokaz map. W świetle TEJ KARTY wypisz osobę oraz miejsce; każde pominięte pole oznacz jako brak danych.",
+            },
+        ],
+        "criteria": [
+            {
+                "id": "location",
+                "kind": "content",
+                "description": "Pole miejsce: brak danych w karcie. Bez sprzecznej wartości.",
+            }
+        ],
+    }
+    body = judge.request_payload(
+        {}, case, {"text": candidate, "finish": "stop", "error": None}
+    )
+    raw = response(body, candidate)
+    content = json.loads(raw["choices"][0]["message"]["content"])
+    content["checks"]["location"]["relation"] = (
+        "omitted" if place != "brak danych" else "supported"
+    )
+    raw["choices"][0]["message"]["content"] = json.dumps(content, ensure_ascii=False)
+    decision, evidence = judge.decode_with_evidence(raw, body, candidate)
+    assert decision.unsupported == expected
+    if closed and not amended and place == "magazyn 4":
+        assert evidence["record_scope"]["proof"]["quote"] == "Miejsce: magazyn 4"
+        assert decision.atoms == {"location": "omitted"}
+    else:
+        assert "record_scope" not in evidence

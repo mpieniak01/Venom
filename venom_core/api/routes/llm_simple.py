@@ -37,6 +37,7 @@ async def stream_simple_chat(
     http_request: Request = cast(Request, None),
 ):
     """Delegate the whole simple-stream flow to the service layer."""
+    evidence = None
     if request.studio_normal:
         runtime = (
             getattr(http_request.app.state, "studio_runtime", None)
@@ -48,12 +49,15 @@ async def stream_simple_chat(
         prepared, system_context = await prepare_studio_normal(
             request, session_store, runtime.get_vector_store
         )
+        evidence = prepared._studio_public_source_evidence
         response = await stream_simple_chat_service(
             prepared, system_context=system_context
         )
     else:
         response = await stream_simple_chat_service(request)
-    return persist_direct_response(response, request, session_store)
+    return persist_direct_response(
+        response, request, session_store, public_source_evidence=evidence
+    )
 
 
 __all__ = ["release_onnx_simple_client", "router", "stream_simple_chat"]

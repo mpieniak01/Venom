@@ -779,6 +779,32 @@
       "rationale": "Prevent narrow S/K gains from discarding sealed wider retention and critical regressions."
     },
     {
+      "path": "tests/test_academy_qualified_chat.py",
+      "domain": "academy",
+      "test_type": "route_contract",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Retain opt-in Gemma publication and trusted calendar isolation through the Studio HTTP route."
+    },
+    {
+      "path": "tests/test_academy_qualified_chat_state.py",
+      "domain": "academy",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Offline checks for revised conversation state and current conditions."
+    },
+    {
       "path": "tests/test_academy_quality.py",
       "domain": "academy",
       "test_type": "unit",
@@ -1602,8 +1628,9 @@
       "domain": "api",
       "test_type": "route_contract",
       "intent": "contract",
-      "primary_lane": "release",
+      "primary_lane": "new-code",
       "allowed_lanes": [
+        "new-code",
         "release"
       ],
       "legacy_targeted": false,
@@ -3367,8 +3394,9 @@
       "domain": "skills",
       "test_type": "unit",
       "intent": "regression",
-      "primary_lane": "release",
+      "primary_lane": "new-code",
       "allowed_lanes": [
+        "new-code",
         "release"
       ],
       "legacy_targeted": false,
@@ -8575,6 +8603,20 @@
       "intent": "regression",
       "primary_lane": "release",
       "allowed_lanes": [
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Default release-lane regression coverage."
+    },
+    {
+      "path": "tests/test_weather_grounding.py",
+      "domain": "skills",
+      "test_type": "service_contract",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
         "release"
       ],
       "legacy_targeted": false,

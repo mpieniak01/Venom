@@ -240,6 +240,18 @@ def test_studio_releases_only_a_terminal_draft(studio_chat, done, reason):
     assert len(sent) == 1
 
 
+@pytest.mark.parametrize("qualified_chat", [False, True])
+def test_studio_works_with_academy_disabled(studio_chat, monkeypatch, qualified_chat):
+    chat, sent, replies = studio_chat
+    monkeypatch.setattr(llm_simple_service.SETTINGS, "ENABLE_ACADEMY", False)
+    monkeypatch.setattr(
+        llm_simple_service.SETTINGS, "ACADEMY_QUALIFIED_CHAT_ENABLED", qualified_chat
+    )
+    replies.append(streamed("Dobry wieczór."))
+    assert chat("Dobry wieczór!") == "Dobry wieczór."
+    assert sent[0]["completions_url"].endswith("/v1/chat/completions")
+
+
 def test_studio_preserves_compatible_path_when_flag_is_off_or_structured(
     studio_chat, monkeypatch
 ):
@@ -857,7 +869,7 @@ def test_studio_normal_keeps_quote_as_fact_and_streams(studio_chat):
 def test_studio_evidence_uses_scoped_verified_card_and_handles_missing_card(
     studio_chat, monkeypatch
 ):
-    from venom_core.services.academy import qualified_chat_irrigation
+    from venom_core.services.chat_policy import qualified_chat_irrigation
 
     chat, sent, _ = studio_chat
     question = "Co sprawdzić najpierw w nawadnianiu kroplowym?"
@@ -1036,7 +1048,7 @@ def test_studio_rewrite_disambiguates_outer_instruction_and_checks_draft():
 
 
 def test_verified_source_refuses_malformed_or_modified_card(tmp_path, monkeypatch):
-    from venom_core.services.academy import qualified_chat_sources
+    from venom_core.services.chat_policy import qualified_chat_sources
 
     path = tmp_path / "qualified_card_ventilation.json"
     original = Path(qualified_chat_sources.__file__).with_name(path.name).read_bytes()

@@ -543,7 +543,7 @@ def test_history_identifies_old_processing_direct_traces_for_full():
 
 def test_studio_history_ignores_a_persisted_reply_over_the_message_limit(tmp_path):
     from venom_core.api.schemas.llm_simple import MAX_CHAT_MESSAGE_CHARS
-    from venom_core.services.studio_normal_chat import _recent_turns
+    from venom_core.services.chat_policy.history import recent_turns
 
     store = SessionStore(str(tmp_path / "session.json"))
     for request_id, question, reply in (
@@ -560,7 +560,7 @@ def test_studio_history_ignores_a_persisted_reply_over_the_message_limit(tmp_pat
                 },
             )
 
-    turns = _recent_turns(store, "own", budget=MAX_CHAT_MESSAGE_CHARS * 2)
+    turns = recent_turns(store, "own", budget=MAX_CHAT_MESSAGE_CHARS * 2)
 
     assert [turn.content for turn in turns] == ["Earlier question", "Earlier reply"]
 
@@ -720,7 +720,7 @@ def test_studio_normal_stream_uses_host_history_and_loads_rag_only_for_notes(
 
 
 def test_studio_normal_keeps_older_complete_turns_within_the_context_budget(tmp_path):
-    from venom_core.services.studio_normal_chat import _recent_turns
+    from venom_core.services.chat_policy.history import recent_turns
 
     store = SessionStore(str(tmp_path / "studio-long-history.json"))
     for index in range(15):
@@ -735,13 +735,13 @@ def test_studio_normal_keeps_older_complete_turns_within_the_context_budget(tmp_
             ],
         )
 
-    history = _recent_turns(store, "own", 4096)
+    history = recent_turns(store, "own", 4096)
     assert [(message.role, message.content) for message in history] == [
         turn
         for index in range(1, 15)
         for turn in (("user", f"question {index}"), ("assistant", f"answer {index}"))
     ]
-    assert _recent_turns(store, "foreign", 4096) == []
+    assert recent_turns(store, "foreign", 4096) == []
 
 
 def test_note_lookup_embeds_only_when_exact_matches_need_ranking(tmp_path):
@@ -1182,7 +1182,7 @@ def test_plain_gemma_direct_policy_preserves_custom_prompt(monkeypatch, custom):
 async def test_studio_only_persists_length_metadata_and_recovers_without_draft(
     tmp_path,
 ):
-    from venom_core.services.studio_normal_chat import _recent_turns
+    from venom_core.services.chat_policy.history import recent_turns
 
     store = SessionStore(str(tmp_path / "session.json"))
 
@@ -1207,7 +1207,7 @@ async def test_studio_only_persists_length_metadata_and_recovers_without_draft(
         assert user.get("finish_reason") is None
         assert assistant.get("finish_reason") == ("length" if mode else None)
         assert assistant["content"] == "Częściowa odpowiedź bez kolejnych zdań"
-        turns = _recent_turns(store, session, 4096, omit_truncated=True)
+        turns = recent_turns(store, session, 4096, omit_truncated=True)
         assert turns[0].content == request.content
         assert turns[1].content == (
             "Poprzednia odpowiedź została przerwana przed zakończeniem."
@@ -1217,7 +1217,7 @@ async def test_studio_only_persists_length_metadata_and_recovers_without_draft(
 
 
 def test_studio_keeps_link_only_history_when_the_assistant_url_is_omitted(tmp_path):
-    from venom_core.services.studio_normal_chat import _recent_turns
+    from venom_core.services.chat_policy.history import recent_turns
 
     store = SessionStore(str(tmp_path / "session.json"))
     session, request_id = "history", "old-answer"
@@ -1230,8 +1230,8 @@ def test_studio_keeps_link_only_history_when_the_assistant_url_is_omitted(tmp_pa
             {"role": "assistant", "content": url, "request_id": request_id},
         ],
     )
-    normal = _recent_turns(store, session, 4096)
-    current = _recent_turns(store, session, 4096, omit_assistant_links=True)
+    normal = recent_turns(store, session, 4096)
+    current = recent_turns(store, session, 4096, omit_assistant_links=True)
     assert normal[-1].content == url
     assert current[-1].content == "Poprzednia odpowiedź zawierała tylko odnośnik."
     assert store.get_history(session)[-1]["content"] == url

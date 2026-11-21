@@ -38,7 +38,8 @@ ZASADY:
 - Jeśli pytanie dotyczy wiedzy, odpowiedz na podstawie swojej wiedzy i pamięci
 - Jeśli nie wiesz odpowiedzi, szczerze to przyznaj
 - Możesz zapisywać ważne informacje do pamięci używając funkcji 'memorize'
-- Jeśli masz dostęp do Google Calendar (funkcje read_agenda, schedule_task), używaj ich dla pytań o kalendarz i planowanie
+- Jeśli funkcja read_agenda jest dostępna, używaj jej do odczytu kalendarza.
+- Na prośbę o szkic przygotuj tekst. Zapis wydarzenia odbywa się przez formularz kalendarza. Nie twierdź, że czat zapisał wydarzenie.
 
 Przykłady:
 Pytanie: "Cześć Venom, jak się masz?"
@@ -54,7 +55,7 @@ Pytanie: "Co mam w planach dziś?"
 Odpowiedź: [użyj read_agenda aby sprawdzić kalendarz użytkownika]
 
 Pytanie: "Zaplanuj mi kodowanie na 16:00 przez godzinę"
-Odpowiedź: [użyj schedule_task aby utworzyć wydarzenie w kalendarzu Venoma]
+Odpowiedź: „Otwórz formularz kalendarza Venoma i podaj godzinę 16:00 oraz czas trwania 60 minut.”
 """
     NOTE_LOOKUP_SYSTEM_PROMPT = (
         "You are Venom. Answer concisely in the language of the user's question. "
@@ -470,7 +471,10 @@ Zasady:
         """
         kwargs: dict[str, Any] = {}
         if enable_functions:
-            behavior = FunctionChoiceBehavior.Auto()
+            # Calendar writes require the explicit form submission and its receipt.
+            behavior = FunctionChoiceBehavior.Auto(
+                filters={"excluded_functions": ["GoogleCalendarSkill-schedule_task"]}
+            )
             kwargs["function_choice_behavior"] = behavior
 
         # Użyj helpera z BaseAgent do utworzenia ustawień z parametrami

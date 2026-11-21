@@ -369,3 +369,91 @@ def test_calendar_retry_reconciles_existing_event_before_inserting(
     assert confirmed.confirmed(operation) is not None
     events.insert.assert_called_once()
     assert events.insert.call_args.kwargs["body"]["id"] == operation.request_id.hex
+
+
+def test_calendar_form_confirms_retry_without_duplicate_with_academy_off(
+    calendar_skill_with_mock_service, monkeypatch
+):
+    from uuid import uuid4
+
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from googleapiclient.errors import HttpError
+
+    from venom_core.api.routes import calendar
+    from venom_core.config import SETTINGS
+
+    monkeypatch.setattr(SETTINGS, "ENABLE_ACADEMY", False)
+    monkeypatch.setattr(SETTINGS, "ACADEMY_QUALIFIED_CHAT_ENABLED", False)
+    skill = calendar_skill_with_mock_service
+    monkeypatch.setattr(calendar, "_google_calendar_skill", skill)
+    app = FastAPI()
+    app.include_router(calendar.router)
+    events = skill.service.events.return_value
+    key = uuid4()
+    request = {
+        "title": "Odprawa",
+        "start_time": "2026-11-23T15:00:00+01:00",
+        "duration_minutes": 30,
+        "description": "Próba lokalna",
+    }
+    event = {
+        "id": key.hex,
+        "summary": request["title"],
+        "description": request["description"],
+        "start": {"dateTime": "2026-11-23T14:00:00Z"},
+        "end": {"dateTime": "2026-11-23T14:30:00Z"},
+    }
+    events.get.return_value.execute.side_effect = [
+        HttpError(Mock(status=404, reason="Not found"), b"{}"),
+        event,
+        event,
+    ]
+    # Provider accepted the insertion, but its first response omitted the fields.
+    events.insert.return_value.execute.return_value = {"id": key.hex}
+    headers = {"Idempotency-Key": str(key)}
+    with TestClient(app) as client:
+        pending = client.post("/api/v1/calendar/event", json=request, headers=headers)
+        retry = client.post("/api/v1/calendar/event", json=request, headers=headers)
+        changed = client.post(
+            "/api/v1/calendar/event",
+            json={**request, "title": "Zmieniona odprawa"},
+            headers=headers,
+        )
+        invalid = client.post(
+            "/api/v1/calendar/event", json=request, headers={"Idempotency-Key": "x"}
+        )
+
+    assert pending.status_code == retry.status_code == changed.status_code == 201
+    assert pending.json()["status"] == changed.json()["status"] == "unconfirmed"
+    assert retry.json()["status"] == "success"
+    assert retry.json()["event_id"] == key.hex
+    assert invalid.status_code == 400
+    events.insert.assert_called_once()
+    assert events.insert.call_args.kwargs["calendarId"] == "venom_work_calendar"
+    assert events.insert.call_args.kwargs["body"]["id"] == key.hex
+    assert events.get.call_count == 3
+
+
+def test_verified_calendar_rejects_matching_payload_for_a_different_key(
+    calendar_skill_with_mock_service,
+):
+    from uuid import uuid4
+
+    from venom_core.services.calendar_execution import CalendarCreate
+
+    skill = calendar_skill_with_mock_service
+    operation = CalendarCreate(
+        uuid4(), "Odprawa", "2026-11-23T15:00:00+01:00", 30, idempotent=True
+    )
+    events = skill.service.events.return_value
+    events.get.return_value.execute.return_value = {
+        "id": "foreign-event",
+        "summary": operation.title,
+        "start": {"dateTime": "2026-11-23T14:00:00Z"},
+        "end": {"dateTime": "2026-11-23T14:30:00Z"},
+    }
+    execution = skill.schedule_verified_task(operation)
+    assert execution.confirmed(operation) is None
+    assert execution.unconfirmed_event_id is None
+    events.insert.assert_not_called()

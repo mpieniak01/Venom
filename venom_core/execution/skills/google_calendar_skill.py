@@ -359,8 +359,12 @@ class GoogleCalendarSkill:
             return self._find_venom_event(event_id) or {"id": event_id}
 
     @staticmethod
-    def _unconfirmed_event(event: object) -> CalendarExecution:
+    def _unconfirmed_event(
+        event: object, operation: CalendarCreate
+    ) -> CalendarExecution:
         event_id = event.get("id") if isinstance(event, dict) else None
+        if operation.idempotent and event_id != operation.request_id.hex:
+            event_id = None
         return CalendarExecution(
             "Brak potwierdzenia parametrów wpisu w kalendarzu.",
             unconfirmed_event_id=event_id
@@ -431,7 +435,7 @@ class GoogleCalendarSkill:
                 else None
             )
             if operation is not None and receipt is None:
-                return self._unconfirmed_event(created_event)
+                return self._unconfirmed_event(created_event, operation)
             event_link = created_event.get("htmlLink")
 
             output = "✅ Zaplanowano zadanie w kalendarzu Venoma:\n"

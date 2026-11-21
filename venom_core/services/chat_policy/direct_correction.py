@@ -27,19 +27,56 @@ _ACCEPT = re.compile(
     r"(?:składkę|kaucję|opłatę|cenę|kwotę|propozycję)\b",
     re.I,
 )
+_FEE_NOMINATIVE = r"(?:składka|kaucja|opłata|cena)"
+_FEE_ACCUSATIVE = r"(?:składkę|kaucję|opłatę|cenę)"
+_PENDING_PROPOSAL = re.compile(
+    rf"(?:proponuję|ktoś zaproponował|ktoś proponuje)\s+{_FEE_ACCUSATIVE}\s+"
+    rf"{_AMOUNT.pattern}(?:[.!]\s*|$)",
+    re.I,
+)
+_PENDING_MARKER = re.compile(r"to (?:na razie sugestia|tylko propozycja)\.\s*", re.I)
+_CURRENT_FEE_QUERY = re.compile(
+    rf"(?:jaką {_FEE_ACCUSATIVE} mam wpisać do aktualnych ustaleń"
+    rf"|jaka {_FEE_NOMINATIVE} (?:obowiązuje|jest aktualna)"
+    rf"|ile (?:obecnie wynosi|wynosi obecnie) {_FEE_NOMINATIVE})\s*\?",
+    re.I,
+)
+_FEE_UNCERTAINTY = re.compile(r"\b(?:nie|może|prawdopodobnie)\b", re.I)
 _SOURCE = re.compile(r"\b(?:ulotk|kartk|kartc|karc|kartę)\w*\b", re.I)
 _SOURCE_QUERY = re.compile(
     r"\b(?:sam[aej]\s+(?:ulotk|kartk|kartc|karc)\w*|z\s+(?:kartk|kartc|ulotk)\w*)\b",
     re.I,
 )
 _CLOSED_SOURCE = re.compile(r"\b(?:tylko|samym tekstem|wyłącznie)\b", re.I)
-_NUMBER_ON_CARD = re.compile(r"\bnumer\s+(?:szafki|rezerwacji)\b", re.I)
+_CARD_NUMBER = r"numer\s+(?:szafki|rezerwacji)"
+_NUMBER_ON_CARD = re.compile(rf"\b{_CARD_NUMBER}\b", re.I)
 _NAME = r"[A-ZĄĆĘŁŃÓŚŹŻ][a-ząćęłńóśźż-]+"
 _BOUNDED_NAME = rf"{_NAME}(?:[ \t]+{_NAME}){{0,3}}"
 _SINGLE_LABELED_FIELD = re.compile(
-    rf"\s*(?i:opiekunka|opiekun|osoba|sala)\s*:\s*{_BOUNDED_NAME}\s*"
+    rf"\s*(?P<label>(?i:opiekunka|opiekun|osoba|sala))\s*:\s*"
+    rf"(?P<value>{_BOUNDED_NAME})\s*"
 )
 _LOCATION_ONLY = re.compile(rf"\s*(?i:sala)\s+{_BOUNDED_NAME}\s*")
+_COMPLETE_NUMBER_CARD = re.compile(
+    r"(?:^|[.!?]\s+)(?:na (?:aktualnej )?kartce (?:jest|widnieje) "
+    r"(?:tylko|wyłącznie)(?: napis)?|mam (?:też )?kartkę z samym tekstem)"
+    r'\s*:?\s*(?:„[^”]+”|«[^»]+»|"[^"\n]+")\s*\.\s*'
+    r"(?P<question>[^.!?]+[.!?]?)\s*\Z",
+    re.I,
+)
+_CARD_NUMBER_QUERY = re.compile(
+    r"(?:odczytaj|podaj)\s+(?:z kartki\s+)?"
+    r"(?:(?P<label>opiekuna|opiekunkę|osobę|salę)\s+i\s+)?"
+    rf"(?P<number>{_CARD_NUMBER})(?:\s+z kartki)?"
+    r"(?:,\s*wskazując brakujące dane)?[.!?]?",
+    re.I,
+)
+_CARD_LABELS = {
+    "opiekuna": "opiekun",
+    "opiekunkę": "opiekunka",
+    "osobę": "osoba",
+    "salę": "sala",
+}
 _STATE_QUERY = re.compile(r"\b(?:ustalen\w*|obowiązuj\w*|wiążąc\w*)\b", re.I)
 _CANCEL_REGISTRATION = re.compile(
     r"^\s*(?:zapisy (?:jednak )?odwołane|odwołuję zapisy|rezygnuję z zapisów)"
@@ -76,6 +113,7 @@ class CorrectionContext:
     scope: str
     text: str
     free_admission: bool = False
+    verified_reply: str | None = None
 
 
 @dataclass
@@ -109,6 +147,25 @@ class _FeeState:
             self.binding, self.proposed, self.decision = amount, None, False
 
 
+def _verified_number_card_reply(source: str, content: str) -> str | None:
+    """Read a closed one-field card without using any conversation values."""
+    field = _SINGLE_LABELED_FIELD.fullmatch(source)
+    declaration = _COMPLETE_NUMBER_CARD.search(content)
+    if not field or not declaration:
+        return None
+    question = declaration["question"].strip()
+    query = _CARD_NUMBER_QUERY.fullmatch(question)
+    if not query or not _SOURCE_QUERY.search(question):
+        return None
+    number = " ".join(query["number"].lower().split()).capitalize()
+    if query["label"] is None:
+        return f"{number}: brak danych."
+    label = field["label"].casefold()
+    if _CARD_LABELS[query["label"].casefold()] != label:
+        return None
+    return f"{label.capitalize()}: {field['value']}. {number}: brak danych."
+
+
 def correction_context(
     content: str, preceding_users: Sequence[str]
 ) -> CorrectionContext | None:
@@ -138,6 +195,7 @@ def correction_context(
             "Pytanie dotyczy wyłącznie zacytowanej karty. Odczytaj jej treść. "
             "Dla pola, którego tam nie ma, napisz «brak danych». Nie uzupełniaj pól z rozmowy."
             + absent,
+            verified_reply=_verified_number_card_reply(source, content),
         )
     if (
         _CANCEL_REGISTRATION.match(visible)
@@ -152,6 +210,11 @@ def correction_context(
             "Zaproszenie ma jasno mówić, że nie trzeba się zapisywać." + admission,
             free_admission=free_admission,
         )
+    if visible == content:
+        pending = _pending_fee_context(visible, preceding_users)
+        if pending is not None:
+            return pending
+
     if not (
         _STATE_QUERY.search(visible)
         or _ACCEPT.search(visible)
@@ -178,6 +241,55 @@ def correction_context(
         "Podaj tę wiążącą kwotę. Zachowaj pozostałe ustalenia użytkownika, "
         "których nowsza wiadomość nie zmienia. Odróżnij kartę od ustaleń w rozmowie.",
     )
+
+
+def _proposal_question(text: str) -> tuple[str, str]:
+    proposal = _PENDING_PROPOSAL.match(text)
+    if proposal is None:
+        return "", text
+    suffix = text[proposal.end() :]
+    marker = _PENDING_MARKER.match(suffix)
+    return proposal[0], suffix[marker.end() :] if marker else suffix
+
+
+def _pending_fee_context(
+    content: str, preceding_users: Sequence[str]
+) -> CorrectionContext | None:
+    proposal, question = _proposal_question(content.strip())
+    if not preceding_users or _CURRENT_FEE_QUERY.fullmatch(question) is None:
+        return None
+    confirmation = preceding_users[-1]
+    if not proposal and len(preceding_users) >= 2:
+        proposal, previous_question = _proposal_question(confirmation.strip())
+        if (
+            previous_question
+            and _CURRENT_FEE_QUERY.fullmatch(previous_question) is None
+        ):
+            return None
+        confirmation = preceding_users[-2]
+    if not proposal:
+        return None
+
+    confirmation = without_quotes(confirmation)
+    if _FEE_UNCERTAINTY.search(confirmation):
+        return None
+    requested = _FEE.search(question)
+    proposed = _FEE.search(proposal)
+    if not requested or not proposed or requested[1].lower() != proposed[1].lower():
+        return None
+    state = _FeeState()
+    state.read(confirmation)
+    if state.binding is None or state.field != requested[1].lower():
+        return None
+    state.read(proposal)
+    if state.proposed is None:
+        return None
+
+    reply = (
+        f"Obowiązuje {state.binding} zł. "
+        f"Kwota {state.proposed} zł jest propozycją do zatwierdzenia."
+    )
+    return CorrectionContext("pending_fee", reply, verified_reply=reply)
 
 
 def corrected_registration_reply(context: CorrectionContext, reply: str) -> str | None:

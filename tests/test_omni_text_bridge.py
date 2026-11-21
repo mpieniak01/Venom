@@ -320,6 +320,71 @@ async def test_response_identity_is_persisted_with_the_actual_answer(native):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("prompt", "prior", "expected", "forbidden", "scope"),
+    [
+        (
+            "Na kartce jest tylko „Opiekun: Igor”. Odczytaj z kartki opiekuna i numer rezerwacji.",
+            "Na zajęcia mam rezerwację 52. Opiekunem jest Igor.",
+            ("Igor", "brak danych"),
+            "52",
+            "source_only",
+        ),
+        (
+            "Proponuję opłatę 47 zł. To na razie sugestia. Jaką opłatę mam wpisać do aktualnych ustaleń?",
+            "Ustalam, że opłata za materiały wynosi 32 zł.",
+            ("32 zł", "47 zł", "propozycją"),
+            "Obowiązuje 47 zł",
+            "pending_fee",
+        ),
+    ],
+)
+async def test_verified_correction_is_persisted_without_model_generation(
+    native, monkeypatch, prompt, prior, expected, forbidden, scope
+):
+    from venom_core.config import SETTINGS
+    from venom_core.services.chat_history import persist_direct_response
+
+    monkeypatch.setattr(SETTINGS, "ENABLE_ACADEMY", False)
+    monkeypatch.setattr(SETTINGS, "ACADEMY_QUALIFIED_CHAT_ENABLED", False)
+    _, calls = native
+    selected = await bridge.switch("p13")
+
+    class Store:
+        def append_turn_once(self, *args):
+            self.args = args
+
+    store = Store()
+    request = SimpleChatRequest(
+        content=prompt,
+        history=[
+            HistoryMessage(role="user", content=prior),
+            HistoryMessage(role="assistant", content="Zapisano ustalenia."),
+        ],
+        session_id="session",
+        expected_runtime_id=selected["selection"]["runtime_id"],
+    )
+    wrapped = persist_direct_response(await bridge.response(request), request, store)
+    chunks = [chunk async for chunk in wrapped.body_iterator]
+    assert len(calls) == 1  # The adapter selection probe is the only worker call.
+    meta = json.loads(chunks[-1].split("data: ", 1)[1])["model_identity"]
+    assistant = store.args[2][1]
+    assert all(
+        value.casefold() in assistant["content"].casefold() for value in expected
+    )
+    assert forbidden not in assistant["content"]
+    assert meta["context_policy"] == scope
+    assert (
+        meta["response_source"]
+        == assistant["model_identity"]["response_source"]
+        == "correction_rule"
+    )
+    assert meta["weights_sha256"] == selected["selection"]["weights_sha256"]
+    assert "input_messages_sha256" not in meta
+    assert "tool_result" not in assistant
+
+
+@pytest.mark.asyncio
 async def test_offline_transport_mounts_only_requested_adapter(monkeypatch, tmp_path):
     from venom_core.services import omni_native_dialogue as transport
 
@@ -756,3 +821,123 @@ def test_cancelled_registration_fallback_contains_only_confirmed_commitments():
         )
         == "Zapraszamy do udziału. Zapisy nie są wymagane."
     )
+
+
+@pytest.mark.parametrize(
+    ("question", "expected"),
+    [
+        (
+            "Na kartce jest tylko „Opiekun: Igor”. "
+            "Odczytaj z kartki opiekuna i numer rezerwacji.",
+            "Opiekun: Igor. Numer rezerwacji: brak danych.",
+        ),
+        (
+            "Zatwierdzam kaucję 44 zł. Mam też kartkę z samym tekstem „Opiekunka: Ola”. "
+            "Podaj opiekunkę i numer szafki z kartki, wskazując brakujące dane.",
+            "Opiekunka: Ola. Numer szafki: brak danych.",
+        ),
+        (
+            "Na kartce widnieje wyłącznie „Opiekun: Igor”. "
+            "Podaj numer rezerwacji z kartki.",
+            "Numer rezerwacji: brak danych.",
+        ),
+        (
+            "Na kartce jest tylko „Opiekun: Igor; numer rezerwacji: 19”. "
+            "Odczytaj z kartki opiekuna i numer rezerwacji.",
+            None,
+        ),
+        (
+            "Zapamiętaj opis „Opiekun: Igor”. Na kartce jest tylko. "
+            "Odczytaj z kartki opiekuna i numer rezerwacji.",
+            None,
+        ),
+        (
+            "Na kartce jest „Opiekun: Igor”. Odczytaj z kartki opiekuna i numer rezerwacji.",
+            None,
+        ),
+        (
+            "Przeredaguj: Na kartce jest tylko „Opiekun: Igor”. "
+            "Odczytaj z kartki opiekuna i numer rezerwacji.",
+            None,
+        ),
+        (
+            "Na kartce jest tylko „Opiekun: Igor”. "
+            "Odczytaj z kartki opiekunkę i numer rezerwacji.",
+            None,
+        ),
+    ],
+)
+def test_verified_single_field_card_does_not_import_conversation_values(
+    question, expected
+):
+    context = correction_context(
+        question, ["Ustalam numer rezerwacji 52 i szafki 27. Opiekunką jest Aneta."]
+    )
+    assert (context.verified_reply if context else None) == expected
+    if expected is not None:
+        assert context.scope == "source_only"
+
+
+@pytest.mark.parametrize(
+    ("previous", "question"),
+    [
+        (
+            [
+                "Ustalam, że warsztat linorytu jest w środę o 17:40, a opłata za materiały wynosi 32 zł."
+            ],
+            "Proponuję opłatę 47 zł. To na razie sugestia. Jaką opłatę mam wpisać do aktualnych ustaleń?",
+        ),
+        (
+            ["Ustalam opłatę 32 zł.", "Proponuję opłatę 47 zł."],
+            "Ile wynosi obecnie opłata?",
+        ),
+        (
+            ["Akceptuję opłatę 32 zł."],
+            "Proponuję opłatę 47 zł. Jaka opłata obowiązuje?",
+        ),
+    ],
+)
+def test_explicit_pending_fee_question_returns_confirmed_amount(previous, question):
+    context = correction_context(question, previous)
+    assert context and context.scope == "pending_fee"
+    assert context.verified_reply == (
+        "Obowiązuje 32 zł. Kwota 47 zł jest propozycją do zatwierdzenia."
+    )
+
+
+@pytest.mark.parametrize(
+    ("previous", "question"),
+    [
+        (
+            ["Ustalam opłatę 32 zł.", "Teraz o parkingu."],
+            "Proponuję opłatę 47 zł. Jaka opłata obowiązuje?",
+        ),
+        (
+            ["Ustalam opłatę 32 zł i kaucję 15 zł."],
+            "Proponuję opłatę 47 zł. Jaka opłata obowiązuje?",
+        ),
+        (
+            ["Ustalam, że opłata nie wynosi 32 zł."],
+            "Proponuję opłatę 47 zł. Jaka opłata obowiązuje?",
+        ),
+        (
+            ["Ustalam opłatę 32 zł."],
+            "Proponuję kaucję 47 zł. Jaka opłata obowiązuje?",
+        ),
+        (
+            ["Ustalam opłatę 32 zł."],
+            "Przetłumacz „Proponuję opłatę 47 zł. Jaka opłata obowiązuje?”",
+        ),
+        (
+            [
+                "Ustalam opłatę 32 zł.",
+                "Proponuję opłatę 47 zł.",
+                "Akceptuję opłatę 47 zł.",
+            ],
+            "Jaka opłata obowiązuje?",
+        ),
+    ],
+)
+def test_pending_fee_does_not_override_unrelated_or_approved_state(previous, question):
+    context = correction_context(question, previous)
+    assert context is None or context.scope != "pending_fee"

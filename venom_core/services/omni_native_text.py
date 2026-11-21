@@ -372,9 +372,16 @@ async def response(
         ):
             failure = None
             try:
-                result = _calculator_reply(selection, messages)
-                if result is None:
-                    result = await _generate(selection, messages, max_tokens)
+                if correction and correction.verified_reply is not None:
+                    _verify_selection(selection)
+                    result = {
+                        "text": correction.verified_reply,
+                        "response_source": "correction_rule",
+                    }
+                else:
+                    result = _calculator_reply(selection, messages)
+                    if result is None:
+                        result = await _generate(selection, messages, max_tokens)
             except (HTTPException, asyncio.CancelledError) as exc:
                 failure = exc
         if failure:

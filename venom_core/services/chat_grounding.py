@@ -7,7 +7,10 @@ from datetime import date, datetime, timezone
 from enum import StrEnum
 from urllib.parse import urlparse
 
-from venom_core.execution.skills.assistant_skill import AssistantSkill
+from venom_core.execution.skills.assistant_skill import (
+    AssistantSkill,
+    WeatherObservation,
+)
 from venom_core.execution.skills.rss_reader_skill import RSSReaderSkill
 from venom_core.execution.skills.web_skill import WebSearchSkill
 from venom_core.services.academy.qualified_chat_quote import without_quotes
@@ -17,7 +20,11 @@ from venom_core.services.chat_public_sources import (
     PublicSources,
     load_public_sources,
 )
-from venom_core.services.polish_wikipedia import search_polish_wikipedia
+from venom_core.services.polish_wikipedia import (
+    WikipediaSource,
+    search_polish_wikipedia,
+    search_wikipedia_section,
+)
 from venom_core.services.public_source_evidence import (
     MAX_PUBLIC_EXCERPT_CHARS,
     PublicSourceContext,
@@ -27,6 +34,13 @@ from venom_core.services.verified_web import (
     VerifiedArticle,
     fetch_verified_article,
     trusted_news_url,
+)
+from venom_core.services.weather_grounding import weather_observation_reply
+from venom_core.services.wiki_unit_facts import (
+    WikiUnitEvidence,
+    requested_unit_fact,
+    unit_spec,
+    verified_unit_factor,
 )
 
 _PRIVATE = re.compile(
@@ -351,17 +365,44 @@ async def _weather_context(message: str, policy: str) -> str:
     if not city:
         return "\nAsk the user for the city before reporting current weather."
     try:
-        result = await asyncio.wait_for(AssistantSkill().get_weather(city), 12)
-    except Exception:
-        result = ""
-    if not result or result.startswith("✗"):
-        return PublicSourceUnavailable.WEATHER
-    url = AssistantSkill.weather_source_url(city)
-    return PublicSourceContext(
-        f"{policy}Requested location: {city}\nSource: {url}\n"
-        f"{result[:1000]}\n[/PUBLIC_SOURCES]",
-        PublicSourceEvidence("weather"),
+        observation = await asyncio.wait_for(
+            AssistantSkill().read_weather_observation(city), 12
+        )
+    except TimeoutError:
+        observation = WeatherObservation(
+            city,
+            AssistantSkill.weather_source_url(city),
+            failure_reason="provider_timeout",
+        )
+    aliases = load_public_sources().city_aliases
+    result = weather_observation_reply(observation, message, aliases)
+    scope = "weather" if result.verified else "unavailable"
+    context = (
+        f"{policy}{result.excerpt}\n[/PUBLIC_SOURCES]"
+        if result.verified
+        else result.excerpt
     )
+    return PublicSourceContext(
+        context, PublicSourceEvidence(scope, weather=result.evidence), reply=result.text
+    )
+
+
+async def _find_wiki_unit(
+    kind: str, sources: list[WikipediaSource]
+) -> tuple[WikiUnitEvidence, list[WikipediaSource]]:
+    spec = unit_spec(kind)
+    for source in sources:
+        if source.title.casefold() not in spec.titles:
+            continue
+        factor = verified_unit_factor(kind, source.extract)
+        if factor is None:
+            section = await search_wikipedia_section(source, spec.sections)
+            if section is not None:
+                source = section
+                factor = verified_unit_factor(kind, section.extract)
+        if factor is not None:
+            return WikiUnitEvidence(kind, factor, source.url), [source]
+    return WikiUnitEvidence(kind), sources
 
 
 async def _wiki_context(message: str, policy: str) -> str:
@@ -370,7 +411,20 @@ async def _wiki_context(message: str, policy: str) -> str:
         first_question = message[prefix.end() :].split("?", 1)[0].strip()
         if first_question:
             topic = first_question
+    kind = requested_unit_fact(message)
+    if kind is not None:
+        topic = unit_spec(kind).topic
     sources = await search_polish_wikipedia(topic, limit=2)
+    if kind is not None:
+        unit, sources = await _find_wiki_unit(kind, sources)
+    else:
+        unit = None
+    if not sources and unit is not None:
+        return PublicSourceContext(
+            unit.first_reply(),
+            PublicSourceEvidence("unavailable", wiki_unit=unit),
+            reply=unit.first_reply(),
+        )
     if not sources:
         return PublicSourceUnavailable.WIKIPEDIA
     lines = [
@@ -380,7 +434,8 @@ async def _wiki_context(message: str, policy: str) -> str:
     excerpt = "\n".join(lines)[:MAX_PUBLIC_EXCERPT_CHARS]
     return PublicSourceContext(
         policy + excerpt + "\n[/PUBLIC_SOURCES]",
-        PublicSourceEvidence("wiki", excerpt=excerpt),
+        PublicSourceEvidence("wiki", excerpt=excerpt, wiki_unit=unit),
+        reply=unit.first_reply() if unit is not None else None,
     )
 
 

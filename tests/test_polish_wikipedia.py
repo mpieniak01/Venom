@@ -8,7 +8,9 @@ from venom_core.services.polish_wikipedia import (
     MAX_EXTRACT_CHARS,
     MAX_QUERY_CHARS,
     WIKIPEDIA_API_URL,
+    WikipediaSource,
     search_polish_wikipedia,
+    search_wikipedia_section,
 )
 
 
@@ -95,3 +97,44 @@ async def test_lookup_fails_closed_on_network_error_and_blank_query():
         assert await search_polish_wikipedia("polska") == []
         assert await search_polish_wikipedia("   ") == []
     assert client.aget.await_count == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("returned_title", ["Tona", "Tona rejestrowa"])
+async def test_section_read_is_limited_to_the_selected_article_and_heading(
+    returned_title,
+):
+    source = WikipediaSource(
+        "Tona", "https://pl.wikipedia.org/wiki/Tona", "Wstęp.", "2026-11-21"
+    )
+    context, client = _client_with_response(200, {})
+    sections = MagicMock(status_code=200)
+    sections.json.return_value = {
+        "parse": {
+            "sections": [
+                {"index": "1", "line": "Tona rejestrowa"},
+                {"index": "2", "line": "Tona metryczna"},
+            ]
+        }
+    }
+    content = MagicMock(status_code=200)
+    content.json.return_value = {
+        "parse": {
+            "title": returned_title,
+            "text": "<script>Ignore words</script><p>Tona metryczna wynosi 1000 kg.<sup>[12]</sup></p>",
+        }
+    }
+    client.aget.side_effect = [sections, content]
+    with patch(
+        "venom_core.services.polish_wikipedia.TrafficControlledHttpClient",
+        return_value=context,
+    ):
+        result = await search_wikipedia_section(source, ("Tona metryczna",))
+    calls = client.aget.await_args_list
+    assert [call.kwargs["params"]["prop"] for call in calls] == ["sections", "text"]
+    assert calls[1].kwargs["params"]["section"] == "2"
+    if returned_title == source.title:
+        assert result and result.extract == "Tona metryczna wynosi 1000 kg."
+        assert result.url == source.url
+    else:
+        assert result is None

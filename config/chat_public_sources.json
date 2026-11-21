@@ -7,7 +7,13 @@
       "gdańsku": "Gdańsk", "gdańska": "Gdańsk",
       "poznaniu": "Poznań", "poznania": "Poznań",
       "łodzi": "Łódź", "katowicach": "Katowice",
-      "katowic": "Katowice", "berlinie": "Berlin"
+      "katowic": "Katowice", "berlinie": "Berlin",
+      "kaliszu": "Kalisz", "kalisza": "Kalisz",
+      "białymstoku": "Białystok", "białegostoku": "Białystok",
+      "bialymstoku": "Białystok", "bialegostoku": "Białystok",
+      "bialystok": "Białystok",
+      "warsaw": "Warszawa", "cracow": "Kraków", "krakow": "Kraków",
+      "wroclaw": "Wrocław", "gdansk": "Gdańsk", "poznan": "Poznań", "lodz": "Łódź"
     }
   },
   "news": {

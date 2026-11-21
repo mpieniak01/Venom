@@ -497,6 +497,7 @@ tests/test_vast_serving.py
 tests/test_vast_training_kit.py
 tests/test_venom_core_init_compat.py
 tests/test_voice_metadata.py
+tests/test_weather_grounding.py
 tests/test_web_skill.py
 tests/test_workflow_control_api.py
 tests/test_workflow_control_contract.py

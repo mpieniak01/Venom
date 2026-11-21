@@ -10,6 +10,8 @@ from typing import Literal, Self, cast
 from venom_core.services.academy.qualified_chat_quote import without_quotes
 from venom_core.services.academy.qualified_chat_revisions import explicit_lookup_allowed
 from venom_core.services.verified_web import NewsHeadline
+from venom_core.services.weather_grounding import WeatherEvidence
+from venom_core.services.wiki_unit_facts import WikiUnitEvidence, requested_unit_fact
 
 PublicSourceScope = Literal[
     "wiki", "rss_headlines", "article_excerpt", "weather", "unavailable"
@@ -55,11 +57,17 @@ class PublicSourceEvidence:
 
     scope: PublicSourceScope
     excerpt: str = ""
+    wiki_unit: WikiUnitEvidence | None = None
+    weather: WeatherEvidence | None = None
 
     def to_record(self) -> dict[str, str]:
         record = {"scope": self.scope}
         if self.scope == "wiki" and self.excerpt:
             record["excerpt"] = self.excerpt[:MAX_PUBLIC_EXCERPT_CHARS]
+        if self.wiki_unit is not None:
+            record.update(self.wiki_unit.to_record())
+        if self.weather is not None:
+            record.update(self.weather.to_record())
         return record
 
     @classmethod
@@ -72,7 +80,16 @@ class PublicSourceEvidence:
         excerpt = value.get("excerpt", "")
         if not isinstance(excerpt, str) or len(excerpt) > MAX_PUBLIC_EXCERPT_CHARS:
             return None
-        return cls(cast(PublicSourceScope, scope), excerpt if scope == "wiki" else "")
+        return cls(
+            cast(PublicSourceScope, scope),
+            excerpt if scope == "wiki" else "",
+            WikiUnitEvidence.from_record(value)
+            if scope in {"wiki", "unavailable"}
+            else None,
+            WeatherEvidence.from_record(value)
+            if scope in {"weather", "unavailable"}
+            else None,
+        )
 
 
 class PublicSourceContext(str):
@@ -80,6 +97,7 @@ class PublicSourceContext(str):
 
     evidence: PublicSourceEvidence
     headlines: tuple[NewsHeadline, ...]
+    reply: str | None
 
     def __new__(
         cls,
@@ -87,10 +105,12 @@ class PublicSourceContext(str):
         evidence: PublicSourceEvidence,
         *,
         headlines: tuple[NewsHeadline, ...] = (),
+        reply: str | None = None,
     ) -> Self:
         context = super().__new__(cls, text)
         context.evidence = evidence
         context.headlines = headlines
+        context.reply = reply
         return context
 
 
@@ -105,6 +125,33 @@ def asks_about_previous_scope(text: str) -> bool:
 
 def previous_scope_reply(evidence: PublicSourceEvidence | None) -> str:
     return _SCOPE_REPLY[evidence.scope] if evidence is not None else _UNKNOWN_SCOPE
+
+
+def previous_verified_fact_reply(
+    question: str, evidence: PublicSourceEvidence | None
+) -> str | None:
+    visible = without_quotes(question)
+    if (
+        evidence is None
+        or _CHANGE_OF_TOPIC.search(visible)
+        or explicit_lookup_allowed(question)
+    ):
+        return None
+    unit = evidence.wiki_unit
+    requested = requested_unit_fact(visible)
+    if (
+        evidence.scope == "wiki"
+        and requested is not None
+        and (unit is None or unit.unit != requested)
+    ):
+        unit = WikiUnitEvidence(requested)
+    if unit is not None:
+        return unit.follow_up_reply(visible)
+    return (
+        evidence.weather.follow_up_reply(question)
+        if evidence.weather is not None
+        else None
+    )
 
 
 def previous_public_fact_context(

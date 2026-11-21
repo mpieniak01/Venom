@@ -77,14 +77,24 @@ def test_private_question_does_not_trigger_external_source():
 
 @pytest.mark.asyncio
 async def test_weather_includes_time_and_source(monkeypatch):
-    fetch = AsyncMock(return_value="Pogoda w Warszawie: 12°C")
-    monkeypatch.setattr(chat_grounding.AssistantSkill, "get_weather", fetch)
+    fetch = AsyncMock(
+        return_value=chat_grounding.WeatherObservation(
+            "Warszawa",
+            chat_grounding.AssistantSkill.weather_source_url("Warszawa"),
+            "Warszawa",
+            "12",
+        )
+    )
+    monkeypatch.setattr(
+        chat_grounding.AssistantSkill, "read_weather_observation", fetch
+    )
     result = await chat_grounding.current_chat_context("Jaka pogoda w Warszawie?")
     fetch.assert_awaited_once_with("Warszawa")
     assert "Retrieved at:" in result
     assert "https://wttr.in/Warszawa?format=j1" in result
     assert "Requested location: Warszawa" in result
     assert "12°C" in result
+    assert "Warszawa" in result
 
 
 @pytest.mark.parametrize(
@@ -1036,3 +1046,72 @@ def test_named_rss_accepts_other_terms_for_an_entry(item):
     assert chat_grounding.is_rss_read_request(query)
     assert chat_grounding.grounding_kind(query) == "web"
     assert not chat_grounding.is_rss_read_request(f"Podaj jeden {item} o RSS.")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("article", "unit", "initial_query", "intro", "section", "expected"),
+    [
+        (
+            "Doba",
+            "day",
+            "Podaj liczbę godzin w dobie cywilnej według Wikipedii.",
+            "Jako urzędowa jednostka czasu zdefiniowana jest jako czas trwania 24 godzin.",
+            None,
+            "24 godziny",
+        ),
+        (
+            "Tona",
+            "metric_tonne",
+            "Podaj ile kilogramów ma tona metryczna według Wikipedii.",
+            "Tona – jednostka masy.",
+            "Tona metryczna – jednostka masy równa 1 000 kilogramów.",
+            "1000 kg",
+        ),
+        (
+            "Tona rejestrowa",
+            "metric_tonne",
+            "Podaj ile kilogramów ma tona metryczna według Wikipedii.",
+            "1 t = 100 kg",
+            None,
+            "Nie udało się potwierdzić",
+        ),
+    ],
+)
+async def test_wiki_unit_uses_only_a_matching_article_and_a_verified_factor(
+    monkeypatch, article, unit, initial_query, intro, section, expected
+):
+    url = "https://pl.wikipedia.org/wiki/" + article.replace(" ", "_")
+    first = SimpleNamespace(title=article, url=url, extract=intro)
+    fetch = AsyncMock(return_value=[first])
+    second = AsyncMock(
+        return_value=SimpleNamespace(title=article, url=url, extract=section)
+        if section
+        else None
+    )
+    monkeypatch.setattr(chat_grounding, "search_polish_wikipedia", fetch)
+    monkeypatch.setattr(chat_grounding, "search_wikipedia_section", second)
+    context = await chat_grounding.current_chat_context(initial_query)
+    assert expected in context.reply
+    assert context.evidence.to_record()["wiki_unit"] == unit
+    assert second.await_count == int(section is not None)
+
+
+@pytest.mark.asyncio
+async def test_weather_source_distinguishes_mismatch_for_current_and_previous_turn(
+    monkeypatch,
+):
+    observation = chat_grounding.WeatherObservation(
+        "Białystok",
+        chat_grounding.AssistantSkill.weather_source_url("Białystok"),
+        "Olmonty",
+        "3",
+        "-2",
+    )
+    read = AsyncMock(return_value=observation)
+    monkeypatch.setattr(chat_grounding.AssistantSkill, "read_weather_observation", read)
+    result = await chat_grounding.current_chat_context("Temperatura w Białymstoku.")
+    read.assert_awaited_once_with("Białystok")
+    assert result.evidence.scope == "unavailable"
+    assert "Olmonty" in result.reply
+    assert "3°C" not in result.reply

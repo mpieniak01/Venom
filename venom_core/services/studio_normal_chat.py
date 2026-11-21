@@ -45,6 +45,7 @@ from venom_core.services.public_source_evidence import (
     asks_about_previous_scope,
     previous_public_fact_context,
     previous_scope_reply,
+    previous_verified_fact_reply,
 )
 from venom_core.services.session_store import SessionStore
 
@@ -308,6 +309,8 @@ async def prepare_studio_normal(
         and not explicit_rss
         else None
     )
+    if local_qualification and not explicit_rss and scope_reply is None:
+        scope_reply = previous_verified_fact_reply(request.content, prior_evidence)
     prior_context = (
         ""
         if explicit_rss
@@ -347,6 +350,7 @@ async def prepare_studio_normal(
     if local_qualification and source_context:
         if isinstance(source_context, PublicSourceContext):
             evidence = source_context.evidence
+            scope_reply = scope_reply or source_context.reply
         elif isinstance(source_context, PublicSourceUnavailable):
             evidence = PublicSourceEvidence("unavailable")
         if isinstance(source_context, PublicSourceUnavailable):
@@ -377,7 +381,7 @@ async def prepare_studio_normal(
         if headlines:
             scope_reply = "Odczytano tylko nagłówki RSS. Nie mieszczą się w kontekście odpowiedzi."
             headlines = ()
-        else:
+        elif scope_reply is None:
             evidence = None
         fallback = "\nFresh source context did not fit; say it was not checked."
         if len(fallback) <= remaining:

@@ -40,7 +40,8 @@ _QUOTED_TASK = re.compile(
     re.I,
 )
 _COMPOSITION_TASK = re.compile(
-    r"^\s*(?:napisz|ułóż|przygotuj|zredaguj|przeredaguj|potrzebuję|poproszę)\b", re.I
+    r"^\s*(?:napisz|ułóż|przygotuj|zredaguj|przeredaguj|potrzebuję|poproszę|podaj|zmień|popraw|zastąp)\b",
+    re.I,
 )
 _COMPOSITION_FORM = re.compile(
     r"\b(?:podziękowani\w*|zaproszeni\w*|życzeni\w*|"

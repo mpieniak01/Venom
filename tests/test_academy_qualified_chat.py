@@ -2259,3 +2259,69 @@ def test_composition_can_request_an_explicit_public_lookup():
 
     question = "Potrzebuję tematu wiadomości i zdania otwarcia. Sprawdź źródło w sieci."
     assert public_lookup_query(question) == question
+
+
+@pytest.mark.parametrize(
+    ("factor", "expected"),
+    [
+        ("1000", "750 kg"),
+        (None, "Poprzedni odczyt nie potwierdził potrzebnego przelicznika."),
+    ],
+)
+def test_verified_wikipedia_factor_survives_history_without_new_lookup(
+    studio_chat, monkeypatch, factor, expected
+):
+    from decimal import Decimal
+
+    from venom_core.services import chat_grounding
+
+    url = "https://pl.wikipedia.org/wiki/Tona"
+    unit = chat_grounding.WikiUnitEvidence(
+        "metric_tonne", Decimal(factor) if factor else None, url if factor else None
+    )
+    context = chat_grounding.PublicSourceContext(
+        "\n[PUBLIC_SOURCES] Wybrana sekcja.\n[/PUBLIC_SOURCES]",
+        chat_grounding.PublicSourceEvidence("wiki", wiki_unit=unit),
+        reply=unit.first_reply(),
+    )
+    fetch = AsyncMock(return_value=context)
+    monkeypatch.setattr(chat_grounding, "_wiki_context", fetch)
+    chat, sent, _ = studio_chat
+    session = str(uuid4())
+    assert (
+        chat(
+            "Ile kilogramów ma tona metryczna według polskiej Wikipedii?",
+            session=session,
+        )
+        == unit.first_reply()
+    )
+    assert (
+        chat(
+            "Mam do wpisania 0,75 t. Na podstawie wcześniejszego odczytu podaj sam wynik w kilogramach, bez korzystania z internetu.",
+            session=session,
+        )
+        == expected
+    )
+    fetch.assert_awaited_once()
+    assert not sent
+
+
+@pytest.mark.parametrize(
+    ("claim", "expected"),
+    [
+        ("półtorej", "Tak, 36 godzin odpowiada 1,5 doby."),
+        ("2", "Nie, 36 godzin odpowiada 1,5 doby."),
+    ],
+)
+def test_wiki_doba_polarity_follows_the_verified_factor(claim, expected):
+    from decimal import Decimal
+
+    from venom_core.services.wiki_unit_facts import WikiUnitEvidence
+
+    evidence = WikiUnitEvidence(
+        "day", Decimal("24"), "https://pl.wikipedia.org/wiki/Doba"
+    )
+    assert (
+        evidence.follow_up_reply(f"Czy z tego wynika, że 36 godzin to {claim} doby?")
+        == expected
+    )

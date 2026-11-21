@@ -8596,6 +8596,20 @@
       "rationale": "Default release-lane regression coverage."
     },
     {
+      "path": "tests/test_weather_grounding.py",
+      "domain": "skills",
+      "test_type": "service_contract",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Default release-lane regression coverage."
+    },
+    {
       "path": "tests/test_web_skill.py",
       "domain": "skills",
       "test_type": "unit",

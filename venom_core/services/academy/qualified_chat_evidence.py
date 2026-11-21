@@ -65,6 +65,50 @@ def _objects(text: str) -> set[str]:
     return {noun for key, noun in NOUNS.items() if key in text}
 
 
+def _water_cold_fact(
+    clause: str, objects: set[str], cold: str | None, heat: tuple[str, str] | None
+) -> tuple[str | None, tuple[str, str] | None]:
+    leak = bool(
+        _LEAK.search(clause) and not _NO_LEAK.search(clause) and not _HYP.search(clause)
+    )
+    revoked = bool(
+        _NEG_COLD.search(clause)
+        or _NEG_DROP.search(clause)
+        or (
+            _RETRACT.search(clause) and _COLD.search(clause) and _SURFACE.search(clause)
+        )
+    )
+    if revoked or (leak and objects) or _NEW_INSTANCE.search(clause):
+        return None, None
+    if (
+        len(objects) == 1
+        and _COLD.search(clause)
+        and _SURFACE.search(clause)
+        and _DROP.search(clause)
+        and not leak
+        and not _HYP.search(clause)
+    ):
+        return next(iter(objects)), heat
+    return cold, heat
+
+
+def _water_heat_fact(
+    clause: str, objects: set[str], heat: tuple[str, str] | None
+) -> tuple[str, str] | None:
+    if not _WARM.search(clause):
+        return heat
+    if _RETRACT.search(clause) or re.search(r"\bnie (?:ogrza|nagrza)", clause):
+        return None
+    if len(objects) != 1:
+        return heat
+    item = next(iter(objects))
+    if _HYP.search(clause):
+        return item, "conditional"
+    if _PAST_WARM.search(clause) and _DROP.search(clause) and _END.search(clause):
+        return item, "actual"
+    return heat
+
+
 def _water_facts(
     users: Sequence[str], text: str
 ) -> tuple[str | None, tuple[str, str] | None]:
@@ -78,49 +122,23 @@ def _water_facts(
             names = _objects(clause)
             if names:
                 current_objects = names
-            leak = bool(
-                _LEAK.search(clause)
-                and not _NO_LEAK.search(clause)
-                and not _HYP.search(clause)
-            )
-            new_instance = bool(_NEW_INSTANCE.search(clause))
-            revoked = bool(
-                _NEG_COLD.search(clause)
-                or _NEG_DROP.search(clause)
-                or (
-                    _RETRACT.search(clause)
-                    and _COLD.search(clause)
-                    and _SURFACE.search(clause)
-                )
-            )
-            if revoked or (leak and current_objects) or new_instance:
-                cold = heat = None
-            elif (
-                len(current_objects) == 1
-                and _COLD.search(clause)
-                and _SURFACE.search(clause)
-                and _DROP.search(clause)
-                and not leak
-                and not _HYP.search(clause)
-            ):
-                cold = next(iter(current_objects))
-            if not _WARM.search(clause):
-                continue
-            if _RETRACT.search(clause) or re.search(r"\bnie (?:ogrza|nagrza)", clause):
-                heat = None
-            elif len(current_objects) == 1 and _HYP.search(clause):
-                heat = next(iter(current_objects)), "conditional"
-            elif (
-                len(current_objects) == 1
-                and _PAST_WARM.search(clause)
-                and _DROP.search(clause)
-                and _END.search(clause)
-            ):
-                heat = next(iter(current_objects)), "actual"
+            cold, heat = _water_cold_fact(clause, current_objects, cold, heat)
+            heat = _water_heat_fact(clause, current_objects, heat)
     target = _objects(text) or current_objects
     return (
         (cold, heat) if cold and target == current_objects == {cold} else (None, None)
     )
+
+
+def _fan_sentence_state(sentence: str, state: str) -> str:
+    for clause in re.split(r",\s*(?:ale|lecz)\s+(?=(?:teraz|obecnie)\b)", sentence):
+        if _RETRACT.search(clause):
+            state = "unknown"
+        elif _NEG_FAN.search(clause):
+            state = "unavailable"
+        elif _POS_FAN.search(clause):
+            state = "available"
+    return state
 
 
 def _fan_state(users: Sequence[str]) -> str:
@@ -129,7 +147,7 @@ def _fan_state(users: Sequence[str]) -> str:
     for row in users:
         for sentence in _SENTENCE.split(row):
             mentions_fan = bool(_FAN.search(sentence))
-            related_uncertainty = (
+            related_uncertainty = bool(
                 last_explicit_fan
                 and _RETRACT.search(sentence)
                 and re.search(
@@ -141,16 +159,8 @@ def _fan_state(users: Sequence[str]) -> str:
                 sentence.endswith("?") and not _RETRACT.search(sentence)
             ):
                 continue
-            if not mentions_fan and not related_uncertainty:
-                continue
-            clauses = re.split(r",\s*(?:ale|lecz)\s+(?=(?:teraz|obecnie)\b)", sentence)
-            for clause in clauses:
-                if _RETRACT.search(clause):
-                    state = "unknown"
-                elif _NEG_FAN.search(clause):
-                    state = "unavailable"
-                elif _POS_FAN.search(clause):
-                    state = "available"
+            if mentions_fan or related_uncertainty:
+                state = _fan_sentence_state(sentence, state)
     return state
 
 

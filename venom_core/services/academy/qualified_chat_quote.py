@@ -203,6 +203,30 @@ class QuoteRewrite:
     def schema(*, plain_text: bool) -> dict[str, Any] | None:
         return None if plain_text else _SCHEMA
 
+    def _invalid_draft(self, text: str) -> bool:
+        if (
+            not text
+            or _fold(text).rstrip(".?!") == _fold(self.source).rstrip(".?!")
+            or _numeric_constraints(text) != _numeric_constraints(self.source)
+        ):
+            return True
+        if (
+            _UNEXPLAINED_LOSS.search(self.source)
+            and not _CAUSAL_DETAIL.search(self.source)
+            and _CAUSAL_DETAIL.search(text)
+        ):
+            return True
+        return self.shorten and (
+            len(text.split()) >= len(self.source.split())
+            or (_FULL_LINK.search(self.source) and not _FULL_LINK.search(text))
+        )
+
+    @staticmethod
+    def _act_matches(text: str, act: str) -> bool:
+        if act == "pytanie":
+            return text.endswith("?") or bool(_QUESTION.match(text))
+        return not _QUESTION.match(text)
+
     def publish(self, draft: str) -> str:
         try:
             decoded = json.loads(draft)
@@ -212,29 +236,12 @@ class QuoteRewrite:
         if not isinstance(text, str):
             return _FAILED_REWRITE
         text = text.strip().strip('„”«»"').strip()
-        if (
-            not text
-            or _fold(text).rstrip(".?!") == _fold(self.source).rstrip(".?!")
-            or _numeric_constraints(text) != _numeric_constraints(self.source)
-            or (
-                _UNEXPLAINED_LOSS.search(self.source)
-                and not _CAUSAL_DETAIL.search(self.source)
-                and _CAUSAL_DETAIL.search(text)
-            )
-            or (self.one_sentence and len(re.findall(r"[.!?](?=\s|$)", text)) > 1)
-            or (
-                self.shorten
-                and (
-                    len(text.split()) >= len(self.source.split())
-                    or (_FULL_LINK.search(self.source) and not _FULL_LINK.search(text))
-                )
-            )
+        if self._invalid_draft(text) or (
+            self.one_sentence and len(re.findall(r"[.!?](?=\s|$)", text)) > 1
         ):
             return _FAILED_REWRITE
         act = _speech_act(self.source)
-        if act == "pytanie" and not (text.endswith("?") or _QUESTION.match(text)):
-            return _FAILED_REWRITE
-        if act != "pytanie" and _QUESTION.match(text):
+        if not self._act_matches(text, act):
             return _FAILED_REWRITE
         end = "?" if act == "pytanie" else "."
         text = text.rstrip(".!?")

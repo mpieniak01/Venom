@@ -236,27 +236,30 @@ class WikiUnitEvidence:
             return None
         if self.factor is None:
             return "Poprzedni odczyt nie potwierdził potrzebnego przelicznika."
-        if binary:
-            original = next(number for number, small in fields if not small)
-            converted = next(number for number, small in fields if small)
-        else:
-            original, converted = fields[0][0], None
+        original = next((number for number, small in fields if not small), fields[0][0])
         result = original * self.factor
         unit = _hour_label(result) if self.unit == "day" else spec.output_unit
         if binary:
-            prefix = "Tak" if result == converted else "Nie"
-            if self.unit == "day":
-                assert converted is not None
-                days = converted / self.factor
-                if days == 1:
-                    civil_day = "1 dobie cywilnej"
-                elif days % 1 == 0:
-                    civil_day = f"{_format_value(days)} dobom cywilnym"
-                else:
-                    civil_day = f"{_format_value(days)} doby"
-                if days * self.factor == converted:
-                    hours = _hour_label(converted)
-                    return f"{prefix}, {_format_value(converted)} {hours} odpowiada {civil_day}."
-                return f"{prefix}, {_format_value(original)} doby odpowiada {_format_value(result)} {unit}."
-            return f"{prefix}, {_format_value(original)} t to {_format_value(result)} {unit}."
+            converted = next(number for number, small in fields if small)
+            return self._binary_reply(original, converted, result, unit, self.factor)
         return f"{_format_value(result)} {unit}"
+
+    def _binary_reply(
+        self, original: float, converted: float, result: float, unit: str, factor: float
+    ) -> str:
+        prefix = "Tak" if result == converted else "Nie"
+        if self.unit != "day":
+            return f"{prefix}, {_format_value(original)} t to {_format_value(result)} {unit}."
+        days = converted / factor
+        if days == 1:
+            civil_day = "1 dobie cywilnej"
+        elif days % 1 == 0:
+            civil_day = f"{_format_value(days)} dobom cywilnym"
+        else:
+            civil_day = f"{_format_value(days)} doby"
+        if days * factor == converted:
+            hours = _hour_label(converted)
+            return (
+                f"{prefix}, {_format_value(converted)} {hours} odpowiada {civil_day}."
+            )
+        return f"{prefix}, {_format_value(original)} doby odpowiada {_format_value(result)} {unit}."

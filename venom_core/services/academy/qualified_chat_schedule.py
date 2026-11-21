@@ -40,7 +40,7 @@ _EVENTS = {
 _EVENT = "(?:" + "|".join(_EVENTS) + ")"
 _DAY_FORMS = "(?:" + "|".join(_DAYS) + ")"
 _DAYS_ORDER = (
-    "poniedziałek",
+    _MONDAY,
     "wtorek",
     _WEDNESDAY,
     "czwartek",
@@ -76,7 +76,7 @@ _ENTRY_UPDATE = re.compile(
     re.I,
 )
 _ARRIVAL = re.compile(
-    r"(?:poproś o przyjście|proszę przyjść)\s+(?P<minutes>[0-9]{1,4})\s+"
+    r"(?:poproś o przyjście|proszę przyjść)\s+(?P<minutes>\d{1,4})\s+"
     r"minut[ęy]?\s+wcześniej",
     re.I,
 )
@@ -149,16 +149,22 @@ def _declaration(text: str) -> Schedule | None:
     )
 
 
-def _shift(text: str, state: Sequence[Schedule]) -> tuple[Schedule | None, str]:
+def _select_shift(
+    text: str, state: Sequence[Schedule]
+) -> tuple[re.Match[str] | None, Schedule | None, str | None]:
     match = _SHIFT.fullmatch(text)
     if not match:
-        return None, "Które zdarzenie przesunąć, o ile minut i w którą stronę?"
+        return None, None, "Które zdarzenie przesunąć, o ile minut i w którą stronę?"
     target = _EVENTS.get(match["target"].casefold())
     candidates = [value for value in state if target is None or value.event == target]
     if len(candidates) > 1:
-        return None, "Którego zdarzenia dotyczy przesunięcie?"
+        return None, None, "Którego zdarzenia dotyczy przesunięcie?"
     if not candidates:
-        return None, "Jaka jest potwierdzona godzina rozpoczęcia tego zdarzenia?"
+        return None, None, "Jaka jest potwierdzona godzina rozpoczęcia tego zdarzenia?"
+    return match, candidates[0], None
+
+
+def _shift_sign(match: re.Match[str]) -> tuple[int | None, str | None]:
     direction = (match["direction"] or "").casefold()
     if match["verb"].casefold() == "cofnij" and not direction:
         direction = "wcześniej"
@@ -166,15 +172,22 @@ def _shift(text: str, state: Sequence[Schedule]) -> tuple[Schedule | None, str]:
         direction = ""
     if direction not in (_EARLIER | _LATER):
         return None, "Czy termin ma być wcześniejszy, czy późniejszy?"
-    sign = -1 if direction in _EARLIER else 1
+    return (-1 if direction in _EARLIER else 1), None
 
-    before = candidates[0]
+
+def _shifted_schedule(
+    before: Schedule, match: re.Match[str], sign: int
+) -> tuple[Schedule | None, int, str | None]:
     hours, minutes = map(int, before.start.split(":"))
     signed_minutes = sign * int(match["minutes"])
     day_delta, minute_of_day = divmod(hours * 60 + minutes + signed_minutes, 24 * 60)
     if day_delta != 0 and "dzień" in (match["keep"] or "").casefold():
-        return None, (
-            "Przesunięcie zmienia dzień. Czy zmienić dzień zgodnie z obliczeniem, czy zachować pierwotny?"
+        return (
+            None,
+            0,
+            (
+                "Przesunięcie zmienia dzień. Czy zmienić dzień zgodnie z obliczeniem, czy zachować pierwotny?"
+            ),
         )
     weekday = (
         _DAYS_ORDER[(_DAYS_ORDER.index(before.weekday) + day_delta) % len(_DAYS_ORDER)]
@@ -186,8 +199,12 @@ def _shift(text: str, state: Sequence[Schedule]) -> tuple[Schedule | None, str]:
         start=f"{minute_of_day // 60:02d}:{minute_of_day % 60:02d}",
         weekday=weekday,
     )
-    if weekday and abs(day_delta) <= 1:
-        day_text = _DAY_TEXT[weekday] + " "
+    return result, day_delta, None
+
+
+def _shift_reply(result: Schedule, day_delta: int) -> str:
+    if result.weekday and abs(day_delta) <= 1:
+        day_text = _DAY_TEXT[result.weekday] + " "
     elif day_delta == 1:
         day_text = "następnego dnia "
     elif day_delta == -1:
@@ -207,7 +224,23 @@ def _shift(text: str, state: Sequence[Schedule]) -> tuple[Schedule | None, str]:
     if result.arrival_before is not None:
         minutes = result.arrival_before
         answer += f" Prośba: przyjdź {minutes} min wcześniej."
-    return result, answer
+    return answer
+
+
+def _shift(text: str, state: Sequence[Schedule]) -> tuple[Schedule | None, str]:
+    match, before, error = _select_shift(text, state)
+    if error:
+        return None, error
+    assert match is not None and before is not None
+    sign, error = _shift_sign(match)
+    if error:
+        return None, error
+    assert sign is not None
+    result, day_delta, error = _shifted_schedule(before, match, sign)
+    if error:
+        return None, error
+    assert result is not None
+    return result, _shift_reply(result, day_delta)
 
 
 def _confirmed_history(history: Sequence[dict[str, str]]) -> list[Schedule]:

@@ -119,6 +119,28 @@ def _display(number: Decimal) -> str:
     return format(number.normalize(), "f").replace(".", ",")
 
 
+def _fit_capacity_hint(users: Sequence[str], index: int, capacity: Size) -> str:
+    if index == len(users) - 1:
+        if any(_DIMENSIONS.search(turn) for turn in users[:index]):
+            return ""
+        return "Brakuje wymiarów przedmiotu. Zapytaj krótko o długości obu boków."
+    size = _item(users[index + 1 :])
+    if size is None:
+        return ""
+    fits = size[0] <= capacity[0] and size[1] <= capacity[1]
+    comparisons = " oraz ".join(
+        f"{_display(side)} cm {'≤' if side <= limit else '>'} {_display(limit)} cm"
+        for side, limit in zip(size, capacity, strict=True)
+    )
+    outcome = "mieści się" if fits else "nie mieści się"
+    return (
+        f"Aktualne porównanie boków wynosi {comparisons}. "
+        f"Przedmiot {outcome} bez składania. "
+        "Zacznij od nazwy miejsca lub wyboru zgodnego z regułą użytkownika. "
+        "Uzasadnij go krótko decydującym porównaniem i zakończ odpowiedź."
+    )
+
+
 def fit_hint(text: str, history: Sequence[HistoryMessage]) -> str:
     """Use only clear capacity, item and explicit side dimensions from users."""
     if is_text_transformation(text):
@@ -127,27 +149,6 @@ def fit_hint(text: str, history: Sequence[HistoryMessage]) -> str:
     users.append(without_quotes(text))
     for index in range(len(users) - 1, -1, -1):
         capacity = _capacity(users[index])
-        if capacity is None:
-            continue
-
-        if index == len(users) - 1:
-            if any(_DIMENSIONS.search(turn) for turn in users[:index]):
-                return ""
-            return "Brakuje wymiarów przedmiotu. Zapytaj krótko o długości obu boków."
-
-        size = _item(users[index + 1 :])
-        if size is None:
-            return ""
-        fits = size[0] <= capacity[0] and size[1] <= capacity[1]
-        comparisons = " oraz ".join(
-            f"{_display(side)} cm {'≤' if side <= limit else '>'} {_display(limit)} cm"
-            for side, limit in zip(size, capacity, strict=True)
-        )
-        outcome = "mieści się" if fits else "nie mieści się"
-        return (
-            f"Aktualne porównanie boków wynosi {comparisons}. "
-            f"Przedmiot {outcome} bez składania. "
-            "Zacznij od nazwy miejsca lub wyboru zgodnego z regułą użytkownika. "
-            "Uzasadnij go krótko decydującym porównaniem i zakończ odpowiedź."
-        )
+        if capacity is not None:
+            return _fit_capacity_hint(users, index, capacity)
     return ""

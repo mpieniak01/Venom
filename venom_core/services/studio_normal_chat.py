@@ -2,6 +2,7 @@
 
 import re
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from typing import Any
 
 from fastapi import HTTPException
@@ -108,6 +109,29 @@ _SOURCE_STATUS_POLICY = (
 )
 
 
+@dataclass
+class _NormalChatSetup:
+    session_id: str
+    output_tokens: int
+    budget: int
+    system_context: str
+    remaining: int
+    provided_information_only: bool
+    omit_truncated: bool
+    local_qualification: bool
+    omit_assistant_links: bool
+    history_records: list[dict[str, object]]
+    history: list[HistoryMessage]
+
+
+@dataclass
+class _SourcePlan:
+    query: str | None
+    explicit_rss: bool
+    scope_reply: str | None
+    prior_context: str
+
+
 def _wiki_sentence_policy(message: str) -> str:
     visible = without_quotes(message)
     matches = list(_SENTENCE_REQUEST.finditer(visible))
@@ -138,35 +162,20 @@ def _recent_turns(
     end = len(history)
     while end > 1:
         user, assistant = history[end - 2 : end]
-        if (
-            user.get("role") != "user"
-            or assistant.get("role") != "assistant"
-            or user.get("request_id") != assistant.get("request_id")
-            or assistant.get("status") not in {None, "COMPLETED"}
-        ):
+        if not _completed_pair(user, assistant):
             end -= 1
             continue
         end -= 2
-        prompt, reply = user.get("content"), assistant.get("content")
-        if (
-            not isinstance(prompt, str)
-            or not isinstance(reply, str)
-            or not prompt
-            or not reply
-            or max(len(prompt), len(reply)) > MAX_CHAT_MESSAGE_CHARS
-        ):
+        contents = _history_pair_contents(user, assistant)
+        if contents is None:
             continue
-        if omit_truncated and (
-            assistant.get("finish_reason") == "length"
-            or reply.endswith(f"\n\n{GENERATION_TRUNCATED}")
-            or reply == GENERATION_TRUNCATED
-        ):
-            reply = "Poprzednia odpowiedź została przerwana przed zakończeniem."
-        if omit_assistant_links:
-            reply = (
-                without_previous_links(reply)
-                or "Poprzednia odpowiedź zawierała tylko odnośnik."
-            )
+        prompt, reply = contents
+        reply = _prepare_history_reply(
+            reply,
+            assistant,
+            omit_truncated=omit_truncated,
+            omit_assistant_links=omit_assistant_links,
+        )
         cost = len(prompt) + len(reply) + 64
         if cost > budget:
             break
@@ -179,6 +188,51 @@ def _recent_turns(
         )
     result.reverse()
     return result
+
+
+def _completed_pair(user: dict[str, object], assistant: dict[str, object]) -> bool:
+    return (
+        user.get("role") == "user"
+        and assistant.get("role") == "assistant"
+        and user.get("request_id") == assistant.get("request_id")
+        and assistant.get("status") in {None, "COMPLETED"}
+    )
+
+
+def _history_pair_contents(
+    user: dict[str, object], assistant: dict[str, object]
+) -> tuple[str, str] | None:
+    prompt, reply = user.get("content"), assistant.get("content")
+    if (
+        not isinstance(prompt, str)
+        or not isinstance(reply, str)
+        or not prompt
+        or not reply
+        or max(len(prompt), len(reply)) > MAX_CHAT_MESSAGE_CHARS
+    ):
+        return None
+    return prompt, reply
+
+
+def _prepare_history_reply(
+    reply: str,
+    assistant: dict[str, object],
+    *,
+    omit_truncated: bool,
+    omit_assistant_links: bool,
+) -> str:
+    if omit_truncated and (
+        assistant.get("finish_reason") == "length"
+        or reply.endswith(f"\n\n{GENERATION_TRUNCATED}")
+        or reply == GENERATION_TRUNCATED
+    ):
+        reply = "Poprzednia odpowiedź została przerwana przed zakończeniem."
+    if omit_assistant_links:
+        reply = (
+            without_previous_links(reply)
+            or "Poprzednia odpowiedź zawierała tylko odnośnik."
+        )
+    return reply
 
 
 def _previous_evidence(history: list[dict[str, object]]) -> PublicSourceEvidence | None:
@@ -223,21 +277,18 @@ async def _note_context(
     return system_context
 
 
-async def prepare_studio_normal(
+async def _normal_chat_setup(
     request: SimpleChatRequest,
     store: SessionStore | None,
     get_vector_store: Callable[[], Awaitable[Any]],
-) -> tuple[SimpleChatRequest, str]:
-    """Build a single prompt with history and retrieve notes only when requested."""
+) -> _NormalChatSetup:
     session_id = request.session_id
     if not store or not session_id:
         raise HTTPException(400, "studio_normal_requires_session")
     if request.material_ids or request.tools or request.tool_choice:
         raise HTTPException(400, "studio_normal_text_only")
-
     num_ctx = SETTINGS.OLLAMA_CONTEXT_LENGTH or 4096
     output_tokens = min(max(1, request.max_tokens or 256), max(1, num_ctx // 4))
-    # Reserve room for role framing and use a conservative multilingual char budget.
     budget = max(0, (num_ctx - output_tokens - 128) * 2)
     configured_prompt = (SETTINGS.SIMPLE_MODE_SYSTEM_PROMPT or "").strip()
     use_default_language = configured_prompt in {"", DEFAULT_SIMPLE_MODE_SYSTEM_PROMPT}
@@ -246,7 +297,6 @@ async def prepare_studio_normal(
     budget -= len(request.content) + len(configured_prompt) + 64
     if budget < 0:
         raise HTTPException(413, {"reason_code": "studio_normal_context_limit"})
-
     system_context = _NORMAL_HISTORY_POLICY
     if use_default_language:
         system_context += f" {_NORMAL_LANGUAGE_POLICY}"
@@ -295,6 +345,29 @@ async def prepare_studio_normal(
         omit_assistant_links=omit_assistant_links,
         history=history_records,
     )
+    return _NormalChatSetup(
+        session_id,
+        output_tokens,
+        budget,
+        system_context,
+        remaining,
+        provided_information_only,
+        omit_truncated,
+        local_qualification,
+        omit_assistant_links,
+        history_records,
+        history,
+    )
+
+
+def _source_plan(
+    request: SimpleChatRequest,
+    history: list[HistoryMessage],
+    history_records: list[dict[str, object]],
+    *,
+    local_qualification: bool,
+    provided_information_only: bool,
+) -> _SourcePlan:
     previous_users = [turn.content for turn in history if turn.role == "user"]
     previous = previous_users[-1] if previous_users else ""
     query = grounding_follow_up(request.content, previous)
@@ -331,75 +404,136 @@ async def prepare_studio_normal(
         )
     if explicit_rss and query is not None:
         query = rss_editorial_query(query)
-    source_context = (
-        ""
-        if query is None
-        else await current_chat_context(query, use_notes=request.use_notes)
-    )
-    # Typed records exist only after this turn retrieves a public feed.
+    return _SourcePlan(query, explicit_rss, scope_reply, prior_context)
+
+
+def _source_policy(
+    request: SimpleChatRequest,
+    source_context: str,
+    evidence: PublicSourceEvidence | None,
+    output_tokens: int,
+) -> str:
+    if not source_context.startswith(PUBLIC_SOURCE_BLOCK):
+        return _SOURCE_STATUS_POLICY
+    policy = _RETRIEVED_SOURCE_POLICY
+    if is_current_news_request(request.content):
+        policy += (
+            " Przy odczycie nagłówka zacznij od «Nagłówek RSS». "
+            "Podaj nagłówek po polsku. Jeżeli wskazuje, kto powiedział, "
+            "poinformował lub ogłosił, podaj tę osobę lub instytucję "
+            "w osobnym polu «Atrybucja». Zachowaj tę informację także przy "
+            "tłumaczeniu końcówki «said» lub «says». Przetłumacz opis "
+            "funkcji albo instytucji w atrybucji, zachowując nazwy własne. "
+            "Dołącz pole «Data publikacji» z datą źródła i pole «Link» "
+            "z pełnym URL pozycji."
+        )
+    if output_tokens <= 128 or _SHORT_SOURCE_REQUEST.search(request.content):
+        policy += _SHORT_SOURCE_POLICY
+    if evidence is not None and evidence.scope == "wiki":
+        policy += _wiki_sentence_policy(request.content)
+    return policy
+
+
+def _source_context_state(
+    request: SimpleChatRequest,
+    source_context: Any,
+    plan: _SourcePlan,
+    setup: _NormalChatSetup,
+) -> tuple[str, tuple[Any, ...], str | None, PublicSourceEvidence | None]:
     headlines = (
         source_context.headlines
-        if explicit_rss and isinstance(source_context, PublicSourceContext)
+        if plan.explicit_rss and isinstance(source_context, PublicSourceContext)
         else ()
     )
-    if explicit_rss and not headlines:
+    scope_reply = plan.scope_reply
+    if plan.explicit_rss and not headlines:
         scope_reply = _RSS_NOT_READ
     evidence = None
+    if not setup.local_qualification or not source_context:
+        return source_context, headlines, scope_reply, evidence
+    if isinstance(source_context, PublicSourceContext):
+        evidence = source_context.evidence
+        scope_reply = scope_reply or source_context.reply
+    elif isinstance(source_context, PublicSourceUnavailable):
+        evidence = PublicSourceEvidence("unavailable")
+        source_context = "\nW tej turze nie udało się odczytać publicznego źródła."
+    policy = _source_policy(request, source_context, evidence, setup.output_tokens)
+    if len(policy) + 1 + len(source_context) <= setup.remaining:
+        source_context = f"{policy}\n{source_context}"
+    return source_context, headlines, scope_reply, evidence
+
+
+def _fit_source_context(
+    system_context: str,
+    prior_context: str,
+    source_context: str,
+    scope_reply: str | None,
+    headlines: tuple[Any, ...],
+    evidence: PublicSourceEvidence | None,
+    remaining: int,
+) -> tuple[str, str | None, tuple[Any, ...], PublicSourceEvidence | None]:
     if prior_context and len(prior_context) <= remaining:
         system_context += prior_context
-    if local_qualification and source_context:
-        if isinstance(source_context, PublicSourceContext):
-            evidence = source_context.evidence
-            scope_reply = scope_reply or source_context.reply
-        elif isinstance(source_context, PublicSourceUnavailable):
-            evidence = PublicSourceEvidence("unavailable")
-        if isinstance(source_context, PublicSourceUnavailable):
-            source_context = "\nW tej turze nie udało się odczytać publicznego źródła."
-        policy = _SOURCE_STATUS_POLICY
-        if source_context.startswith(PUBLIC_SOURCE_BLOCK):
-            policy = _RETRIEVED_SOURCE_POLICY
-            if is_current_news_request(request.content):
-                policy += (
-                    " Przy odczycie nagłówka zacznij od «Nagłówek RSS». "
-                    "Podaj nagłówek po polsku. Jeżeli wskazuje, kto powiedział, "
-                    "poinformował lub ogłosił, podaj tę osobę lub instytucję "
-                    "w osobnym polu «Atrybucja». Zachowaj tę informację także przy "
-                    "tłumaczeniu końcówki «said» lub «says». Przetłumacz opis "
-                    "funkcji albo instytucji w atrybucji, zachowując nazwy własne. "
-                    "Dołącz pole «Data publikacji» z datą źródła i pole «Link» "
-                    "z pełnym URL pozycji."
-                )
-            if output_tokens <= 128 or _SHORT_SOURCE_REQUEST.search(request.content):
-                policy += _SHORT_SOURCE_POLICY
-            if evidence is not None and evidence.scope == "wiki":
-                policy += _wiki_sentence_policy(request.content)
-        if len(policy) + 1 + len(source_context) <= remaining:
-            source_context = f"{policy}\n{source_context}"
     if len(source_context) <= remaining:
-        system_context += source_context
-    elif source_context:
-        if headlines:
-            scope_reply = "Odczytano tylko nagłówki RSS. Nie mieszczą się w kontekście odpowiedzi."
-            headlines = ()
-        elif scope_reply is None:
-            evidence = None
-        fallback = "\nFresh source context did not fit; say it was not checked."
-        if len(fallback) <= remaining:
-            system_context += fallback
-    budget -= len(system_context)
+        return system_context + source_context, scope_reply, headlines, evidence
+    if headlines:
+        scope_reply = (
+            "Odczytano tylko nagłówki RSS. Nie mieszczą się w kontekście odpowiedzi."
+        )
+        headlines = ()
+    elif scope_reply is None:
+        evidence = None
+    fallback = "\nFresh source context did not fit; say it was not checked."
+    if source_context and len(fallback) <= remaining:
+        system_context += fallback
+    return system_context, scope_reply, headlines, evidence
+
+
+async def prepare_studio_normal(
+    request: SimpleChatRequest,
+    store: SessionStore | None,
+    get_vector_store: Callable[[], Awaitable[Any]],
+) -> tuple[SimpleChatRequest, str]:
+    """Build a single prompt with history and retrieve notes only when requested."""
+    setup = await _normal_chat_setup(request, store, get_vector_store)
+    plan = _source_plan(
+        request,
+        setup.history,
+        setup.history_records,
+        local_qualification=setup.local_qualification,
+        provided_information_only=setup.provided_information_only,
+    )
+    source_context = (
+        ""
+        if plan.query is None
+        else await current_chat_context(plan.query, use_notes=request.use_notes)
+    )
+    source_context, headlines, scope_reply, evidence = _source_context_state(
+        request, source_context, plan, setup
+    )
+    system_context, scope_reply, headlines, evidence = _fit_source_context(
+        setup.system_context,
+        plan.prior_context,
+        source_context,
+        scope_reply,
+        headlines,
+        evidence,
+        setup.remaining,
+    )
+    budget = setup.budget - len(system_context)
     if budget < 0:
         raise HTTPException(413, {"reason_code": "studio_normal_context_limit"})
     prepared = request.model_copy(
         update={
             "history": _recent_turns(
                 store,
-                session_id,
+                setup.session_id,
                 min(budget, MAX_CHAT_HISTORY_CHARS),
-                omit_truncated=omit_truncated,
-                omit_assistant_links=omit_assistant_links,
-                history=history_records,
+                omit_truncated=setup.omit_truncated,
+                omit_assistant_links=setup.omit_assistant_links,
+                history=setup.history_records,
             ),
-            "max_tokens": output_tokens,
+            "max_tokens": setup.output_tokens,
             "think": False,
         }
     )

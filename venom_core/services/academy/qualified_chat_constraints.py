@@ -152,14 +152,17 @@ def _unconditional_release(text: str, end: int) -> bool:
     return not tail or bool(re.match(r",\s*(?:ale|lecz)\s+", tail, re.I))
 
 
-def _turn_effects(text: str) -> tuple[set[str], set[str]]:
-    text = _QUOTED.sub(lambda m: " " * len(m[0]), text)
+def _turn_bans(text: str) -> set[str]:
     bans = set()
     for clause in _CLAUSE.split(text):
         for lead in _WITHOUT.finditer(clause):
             if _REPORTED.search(clause[: lead.start()]):
                 continue
             bans.update(item.lastgroup for item in _matched_items(clause, lead.end()))
+    return bans
+
+
+def _allow_releases(text: str) -> set[str]:
     releases = set()
     for lead in _ALLOW.finditer(text):
         start = max(
@@ -170,6 +173,11 @@ def _turn_effects(text: str) -> tuple[set[str], set[str]]:
         items = _matched_items(text, lead.end())
         if items and _unconditional_release(text, items[-1].end()):
             releases.update(item.lastgroup for item in items)
+    return releases
+
+
+def _declared_releases(text: str) -> set[str]:
+    releases = set()
     for item in _DECLARATION.finditer(text):
         allowed = _AFTER_ALLOW.match(text, item.end())
         if not allowed or not _unconditional_release(text, allowed.end()):
@@ -180,7 +188,12 @@ def _turn_effects(text: str) -> tuple[set[str], set[str]]:
         prefix = text[start : item.start()].strip().casefold()
         if not prefix or prefix in {"jednak", "teraz", "od teraz"}:
             releases.add(item.lastgroup)
-    return bans, releases
+    return releases
+
+
+def _turn_effects(text: str) -> tuple[set[str], set[str]]:
+    text = _QUOTED.sub(lambda m: " " * len(m[0]), text)
+    return _turn_bans(text), _allow_releases(text) | _declared_releases(text)
 
 
 def _state(history: Sequence[dict[str, str]]) -> tuple[frozenset[str], frozenset[str]]:

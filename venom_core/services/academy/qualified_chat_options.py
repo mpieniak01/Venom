@@ -101,27 +101,33 @@ def _proposal_phrase(tail: str, verb: str, number: int) -> bool:
     return bool(label) and not any(_AMOUNT_UNITS.fullmatch(word) for word in label)
 
 
+def _count_requirement(text: str, match: re.Match[str]) -> CountRequirement | None:
+    verb = (match.groupdict().get("verb") or "").casefold()
+    if verb and _NEGATION.search(text[: match.start()]):
+        return None
+    numeral = match["number"].casefold()
+    if numeral in _SINGLE:
+        number = 1
+    elif numeral in _PAIR:
+        number = 2
+    else:
+        number = int(numeral)
+    if not _proposal_phrase(text[match.end() :], verb, number):
+        return None
+    modifier = (match["modifier"] or "").casefold()
+    mode = "at_most" if re.fullmatch(_BOUND, modifier) else "exact"
+    return CountRequirement(mode, number)
+
+
 def requested_count(text: str) -> CountRequirement | None:
     """Recognize a count within an explicit proposal request in the current turn."""
     text = _without_quotes(text)
-    found = set()
-    for pattern in (_REQUEST, _BARE_REQUEST):
-        for match in pattern.finditer(text):
-            verb = (match.groupdict().get("verb") or "").casefold()
-            if verb and _NEGATION.search(text[: match.start()]):
-                continue
-            numeral = match["number"].casefold()
-            if numeral in _SINGLE:
-                number = 1
-            elif numeral in _PAIR:
-                number = 2
-            else:
-                number = int(numeral)
-            if not _proposal_phrase(text[match.end() :], verb, number):
-                continue
-            modifier = (match["modifier"] or "").casefold()
-            mode = "at_most" if re.fullmatch(_BOUND, modifier) else "exact"
-            found.add(CountRequirement(mode, number))
+    found = {
+        requirement
+        for pattern in (_REQUEST, _BARE_REQUEST)
+        for match in pattern.finditer(text)
+        if (requirement := _count_requirement(text, match)) is not None
+    }
     return next(iter(found)) if len(found) == 1 else None
 
 
@@ -147,28 +153,30 @@ def _components(option: str) -> list[str]:
     return parts
 
 
-def _decode(text: str) -> list[str]:
-    text = text.strip()
-    if text.startswith(_FENCE):
-        first, _, rest = text.partition("\n")
-        if first.casefold() not in {_FENCE, _FENCE + "json"} or not rest.endswith(
-            _FENCE
-        ):
-            return []
-        text = rest[: -len(_FENCE)].strip()
-    if text.startswith(("{", "[")):
-        try:
-            result = json.loads(text)
-        except (ValueError, RecursionError):
-            return []
-        if isinstance(result, dict) and set(result) == {"options"}:
-            result = result["options"]
-        if isinstance(result, list) and all(
-            isinstance(item, str) and item.strip() for item in result
-        ):
-            return result
-        return []
+def _unfence(text: str) -> str | None:
+    if not text.startswith(_FENCE):
+        return text
+    first, _, rest = text.partition("\n")
+    if first.casefold() not in {_FENCE, _FENCE + "json"} or not rest.endswith(_FENCE):
+        return None
+    return rest[: -len(_FENCE)].strip()
 
+
+def _decode_json(text: str) -> list[str]:
+    try:
+        result = json.loads(text)
+    except (ValueError, RecursionError):
+        return []
+    if isinstance(result, dict) and set(result) == {"options"}:
+        result = result["options"]
+    if isinstance(result, list) and all(
+        isinstance(item, str) and item.strip() for item in result
+    ):
+        return result
+    return []
+
+
+def _decode_bullets(text: str) -> list[str]:
     items = []
     current = []
     for line in text.splitlines():
@@ -181,8 +189,18 @@ def _decode(text: str) -> list[str]:
             current.append(line.strip())
     if current:
         items.append(" ".join(current))
+    return [_SUMMARY.split(item, maxsplit=1)[0] for item in items]
+
+
+def _decode(text: str) -> list[str]:
+    text = _unfence(text.strip())
+    if text is None:
+        return []
+    if text.startswith(("{", "[")):
+        return _decode_json(text)
+    items = _decode_bullets(text)
     if items:
-        return [_SUMMARY.split(item, maxsplit=1)[0] for item in items]
+        return items
     plain = _SUMMARY.split(text, maxsplit=1)[0]
     return _NEW_OPTION.split(plain) if plain else []
 

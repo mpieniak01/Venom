@@ -61,29 +61,38 @@ def _observations(turns: Sequence[str]) -> tuple[str, dict[str, Observation]]:
             if zones:
                 current = zones[-1]
             state = by_zone.setdefault(current, Observation())
-            if RETRACT.search(assertion):
-                if FILTER.search(assertion):
-                    state.filter_state = None
-                else:
-                    state.spread = None
-                continue
-            if WEAK.search(assertion):
-                if _group_assertion(assertion):
-                    state.spread = "group"
-                elif LOCAL.search(assertion) and NEARBY.search(assertion):
-                    state.spread = "local"
-            elif _group_assertion(assertion) and re.search(
-                r"\bdziałają (?:już )?(?:prawidłowo|normalnie)", assertion
-            ):
-                state.spread = None
-            if FILTER.search(assertion):
-                if re.search(r"\bnie (?:jest )?(?:zabrudzon|czyst)", assertion):
-                    state.filter_state = None
-                elif DIRTY.search(assertion):
-                    state.filter_state = "dirty"
-                elif CLEAN.search(assertion):
-                    state.filter_state = "clean"
+            _apply_assertion(state, assertion)
     return current, by_zone
+
+
+def _apply_assertion(state: Observation, assertion: str) -> None:
+    if RETRACT.search(assertion):
+        if FILTER.search(assertion):
+            state.filter_state = None
+        else:
+            state.spread = None
+        return
+    if WEAK.search(assertion):
+        if _group_assertion(assertion):
+            state.spread = "group"
+        elif LOCAL.search(assertion) and NEARBY.search(assertion):
+            state.spread = "local"
+    elif _group_assertion(assertion) and re.search(
+        r"\bdziałają (?:już )?(?:prawidłowo|normalnie)", assertion
+    ):
+        state.spread = None
+    _apply_filter_assertion(state, assertion)
+
+
+def _apply_filter_assertion(state: Observation, assertion: str) -> None:
+    if not FILTER.search(assertion):
+        return
+    if re.search(r"\bnie (?:jest )?(?:zabrudzon|czyst)", assertion):
+        state.filter_state = None
+    elif DIRTY.search(assertion):
+        state.filter_state = "dirty"
+    elif CLEAN.search(assertion):
+        state.filter_state = "clean"
 
 
 def irrigation_reply(prompt: str, users: Sequence[str]) -> str | None:

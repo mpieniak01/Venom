@@ -744,6 +744,28 @@ def _update_stream_state_from_packet(
     )
 
 
+def _visible_stream_contents(
+    packet: dict[str, Any], guard: CalendarClaimStream | None
+) -> list[str]:
+    contents = _extract_sse_contents(packet)
+    if guard is None:
+        return contents
+    text = guard.push("".join(contents))
+    return [text] if text else []
+
+
+def _stream_final_text(
+    state: _SimpleStreamState,
+    guard: CalendarClaimStream | None,
+    report_length: bool,
+) -> str | None:
+    if not state.completed or (guard is None and not report_length):
+        return None
+    if guard is not None:
+        return guard.finish(truncated=state.length_limited)
+    return f"\n\n{GENERATION_TRUNCATED}" if state.length_limited else ""
+
+
 async def _stream_single_attempt(
     *,
     completions_url: str,
@@ -777,14 +799,6 @@ async def _stream_single_attempt(
         sleep_fn=asyncio.sleep,
     )
     guard = CalendarClaimStream() if guard_calendar else None
-
-    def visible_contents(packet: dict[str, Any]) -> list[str]:
-        contents = _extract_sse_contents(packet)
-        if guard is None:
-            return contents
-        text = guard.push("".join(contents))
-        return [text] if text else []
-
     async for event in _stream_single_attempt_impl(
         transport=transport,
         retry=retry,
@@ -796,7 +810,9 @@ async def _stream_single_attempt(
             request_id=request_id,
             stream_start=stream_start,
             runtime_telemetry=runtime_telemetry,
-            extract_visible_contents=visible_contents,
+            extract_visible_contents=lambda packet: _visible_stream_contents(
+                packet, guard
+            ),
         ),
         emit_http_error_fn=lambda exc: _emit_http_status_error_and_mark_failed(
             exc=exc,
@@ -807,12 +823,8 @@ async def _stream_single_attempt(
         ),
     ):
         yield event
-    if state.completed and (guard is not None or report_length):
-        final = ""
-        if guard is not None:
-            final = guard.finish(truncated=state.length_limited)
-        elif state.length_limited:
-            final = f"\n\n{GENERATION_TRUNCATED}"
+    final = _stream_final_text(state, guard, report_length)
+    if final is not None:
         for event in _update_stream_state_from_packet(
             packet={"choices": [{"delta": {"content": final}}]},
             state=state,
@@ -1534,9 +1546,7 @@ def _qualified_chat_payload(
     return payload
 
 
-async def _stream_non_openrouter_chat(
-    request: SimpleChatRequest, *, system_context: str = ""
-):
+async def _resolve_non_openrouter_runtime(request: SimpleChatRequest):
     await asyncio.sleep(0)
     from venom_core.services.vast_chat_runtime import preflight
 
@@ -1559,9 +1569,12 @@ async def _stream_non_openrouter_chat(
     )
     if not model_name:
         raise HTTPException(status_code=400, detail="Brak nazwy modelu LLM.")
-    request_id: UUID = uuid4()
-    _trace_simple_request(request_id, request, runtime, model_name)
+    return runtime, runtime_provider, model_name
 
+
+def _qualified_stream_prompt(
+    request: SimpleChatRequest, runtime, model_name: str, system_context: str
+):
     request, system_prompt = _prepare_local_direct_prompt(
         request, runtime, model_name, system_context
     )
@@ -1604,22 +1617,44 @@ async def _stream_non_openrouter_chat(
                 ),
             )
         )
+    return request, system_prompt, qualified_reply, complete_reply, qualified_studio
+
+
+async def _non_openrouter_messages(
+    request: SimpleChatRequest,
+    runtime,
+    model_name: str,
+    system_prompt: str,
+    complete_reply: QualifiedReply | None,
+    request_id: UUID,
+) -> list[dict[str, Any]]:
     rewrite = complete_reply.rewrite if complete_reply else None
     if complete_reply is not None and complete_reply.rss is not None:
-        messages = complete_reply.rss.messages(request.content)
-    elif rewrite is not None:
-        messages = rewrite.messages(
+        return complete_reply.rss.messages(request.content)
+    if rewrite is not None:
+        return rewrite.messages(
             plain_text=model_name.casefold() == QUALIFIED_BOLT_MODEL
         )
-    else:
-        user_content = _trim_user_content_for_runtime(
-            request.content, system_prompt, runtime, request_id
-        )
-        messages = _build_messages(system_prompt, user_content)
-        messages = await _include_simple_request_context(
-            request, runtime, model_name, system_prompt, messages
-        )
-    _trace_context_preview(request_id, messages)
+    user_content = _trim_user_content_for_runtime(
+        request.content, system_prompt, runtime, request_id
+    )
+    messages = _build_messages(system_prompt, user_content)
+    return await _include_simple_request_context(
+        request, runtime, model_name, system_prompt, messages
+    )
+
+
+def _stream_non_openrouter_response(
+    request: SimpleChatRequest,
+    runtime,
+    runtime_provider,
+    model_name: str,
+    messages: list[dict[str, Any]],
+    request_id: UUID,
+    complete_reply: QualifiedReply | None,
+    qualified_reply: QualifiedReply | None,
+    qualified_studio: bool,
+):
     headers = _build_streaming_headers(str(request_id), request.session_id or "")
     completions_url = _build_chat_completions_url(runtime)
     if complete_reply is not None:
@@ -1628,18 +1663,15 @@ async def _stream_non_openrouter_chat(
     if is_multi_runtime(runtime_provider) or force_non_stream:
         if not completions_url:
             raise HTTPException(status_code=503, detail="Brak endpointu LLM.")
+        payload = (
+            _qualified_chat_payload(request, messages, complete_reply, model_name)
+            if complete_reply is not None
+            else _build_payload(request, runtime, model_name, messages, stream=False)
+        )
         return StreamingResponse(
             _stream_simple_chunks_non_stream(
                 completions_url=completions_url,
-                payload=(
-                    _qualified_chat_payload(
-                        request, messages, complete_reply, model_name
-                    )
-                    if complete_reply is not None
-                    else _build_payload(
-                        request, runtime, model_name, messages, stream=False
-                    )
-                ),
+                payload=payload,
                 runtime=runtime,
                 request_id=request_id,
                 model_name=model_name,
@@ -1665,4 +1697,32 @@ async def _stream_non_openrouter_chat(
         ),
         media_type=_SSE_MEDIA_TYPE,
         headers=headers,
+    )
+
+
+async def _stream_non_openrouter_chat(
+    request: SimpleChatRequest, *, system_context: str = ""
+):
+    runtime, runtime_provider, model_name = await _resolve_non_openrouter_runtime(
+        request
+    )
+    request_id: UUID = uuid4()
+    _trace_simple_request(request_id, request, runtime, model_name)
+    request, system_prompt, qualified_reply, complete_reply, qualified_studio = (
+        _qualified_stream_prompt(request, runtime, model_name, system_context)
+    )
+    messages = await _non_openrouter_messages(
+        request, runtime, model_name, system_prompt, complete_reply, request_id
+    )
+    _trace_context_preview(request_id, messages)
+    return _stream_non_openrouter_response(
+        request,
+        runtime,
+        runtime_provider,
+        model_name,
+        messages,
+        request_id,
+        complete_reply,
+        qualified_reply,
+        qualified_studio,
     )

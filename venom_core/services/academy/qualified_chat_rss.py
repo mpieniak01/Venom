@@ -226,58 +226,68 @@ class RSSSummary:
             {"role": "user", "content": json.dumps(data, ensure_ascii=False)},
         ]
 
-    def publish(self, draft: str) -> str:
+    def _read_items(self, draft: str) -> list[object] | None:
         try:
             data = json.loads(draft)
         except ValueError:
-            return _INVALID_DRAFT
-        items = (
-            data.get("items")
-            if isinstance(data, dict) and data.keys() == {"items"}
-            else None
-        )
+            return None
+        if not isinstance(data, dict) or data.keys() != {"items"}:
+            return None
+        items = data.get("items")
         if not isinstance(items, list) or len(items) != min(
             self.count, len(self.headlines)
         ):
+            return None
+        return items
+
+    def _publish_item(self, item: object, seen: set[int]) -> str | None:
+        if not isinstance(item, dict) or item.keys() not in (
+            {"index", "summary"},
+            {"index", "summary", "secondary"},
+        ):
+            return None
+        index = item["index"]
+        if (
+            type(index) is not int
+            or not 1 <= index <= len(self.headlines)
+            or index in seen
+        ):
+            return None
+        headline = self.headlines[index - 1]
+        summary = _draft_field(item["summary"], headline.title)
+        proposition, speaker = _headline_fields(headline.title)
+        relation = _split_relation(proposition)
+        if summary is not None and relation:
+            summary = _relation_reply(summary, item.get("secondary"), relation)
+        elif item.get("secondary") is not None:
+            return None
+        if (
+            summary is None
+            or (_MODAL.search(headline.title) and not _MODAL.search(summary))
+            or (_NEGATION.search(headline.title) and not _NEGATION.search(summary))
+        ):
+            return None
+        seen.add(index)
+        unsupported_attribution = _REPORTING.search(summary) or (
+            speaker is None and _REPORTING.search(headline.title)
+        )
+        if unsupported_attribution:
+            # Keep the verified headline when the proposed attribution lacks support.
+            title = _draft_field(headline.title, headline.title)
+            if title is None:
+                return None
+            summary = f"„{title}”"
+        return _render(headline, summary, speaker)
+
+    def publish(self, draft: str) -> str:
+        items = self._read_items(draft)
+        if items is None:
             return _INVALID_DRAFT
         seen: set[int] = set()
         blocks = []
         for item in items:
-            if not isinstance(item, dict) or item.keys() not in (
-                {"index", "summary"},
-                {"index", "summary", "secondary"},
-            ):
+            block = self._publish_item(item, seen)
+            if block is None:
                 return _INVALID_DRAFT
-            index = item["index"]
-            if (
-                type(index) is not int
-                or not 1 <= index <= len(self.headlines)
-                or index in seen
-            ):
-                return _INVALID_DRAFT
-            headline = self.headlines[index - 1]
-            summary = _draft_field(item["summary"], headline.title)
-            proposition, speaker = _headline_fields(headline.title)
-            relation = _split_relation(proposition)
-            if summary is not None and relation:
-                summary = _relation_reply(summary, item.get("secondary"), relation)
-            elif item.get("secondary") is not None:
-                return _INVALID_DRAFT
-            if (
-                summary is None
-                or (_MODAL.search(headline.title) and not _MODAL.search(summary))
-                or (_NEGATION.search(headline.title) and not _NEGATION.search(summary))
-            ):
-                return _INVALID_DRAFT
-            seen.add(index)
-            if _REPORTING.search(summary) or (
-                speaker is None and _REPORTING.search(headline.title)
-            ):
-                # Keep the verified headline when the proposed attribution lacks support.
-                title = _draft_field(headline.title, headline.title)
-                if title is None:
-                    return _INVALID_DRAFT
-                blocks.append(_render(headline, f"„{title}”", speaker))
-            else:
-                blocks.append(_render(headline, summary, speaker))
+            blocks.append(block)
         return "\n\n".join([*blocks, _SCOPE])

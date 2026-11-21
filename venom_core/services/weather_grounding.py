@@ -112,7 +112,6 @@ class WeatherEvidence:
             return None
         observed = weather_area_name(record.get("weather_observed_location"))
         temperature = weather_temperature(record.get("weather_temperature_c"))
-        source = record.get("weather_source_url")
         reason = record.get("weather_reason")
         status_text = record.get("weather_http_status")
         feels = weather_temperature(record.get("weather_feels_like_c"))
@@ -126,33 +125,16 @@ class WeatherEvidence:
                 return None
         elif reason not in _FAILURES or record.get("weather_temperature_c") is not None:
             return None
-        at = record.get("weather_observed_at")
-        observed_at = None
-        if source != AssistantSkill.weather_source_url(requested):
-            if (
-                source is None
-                or source != imgw_station_url(requested)
-                or observed is None
-                or observed.casefold() != requested.casefold()
-                or reason is not None
-                or not at
-            ):
-                return None
-            observed_at = imgw_observation_time(at[:10], at[11:13])
-            if observed_at is None or observed_at.isoformat() != at:
-                return None
-        elif at is not None:
-            return None
-        if status_text is not None and (
-            reason != "provider_http_error"
-            or not re.fullmatch(r"[1-5]\d{2}", status_text)
-        ):
+        time_is_valid, observed_at = _weather_record_time(
+            record, requested, observed, reason
+        )
+        if not time_is_valid or not _weather_record_status_valid(reason, status_text):
             return None
         return cls(
             requested,
             observed,
             temperature,
-            source,
+            record.get("weather_source_url"),
             reason,
             int(status_text) if status_text is not None else None,
             feels,
@@ -186,6 +168,35 @@ class WeatherEvidence:
         return f"{self.observed_location}{separator}{value}"
 
 
+def _weather_record_time(
+    record: Mapping[str, str], requested: str, observed: str | None, reason: str | None
+) -> tuple[bool, datetime | None]:
+    source = record.get("weather_source_url")
+    at = record.get("weather_observed_at")
+    if source == AssistantSkill.weather_source_url(requested):
+        return at is None, None
+    if (
+        source is None
+        or source != imgw_station_url(requested)
+        or observed is None
+        or observed.casefold() != requested.casefold()
+        or reason is not None
+        or not at
+    ):
+        return False, None
+    observed_at = imgw_observation_time(at[:10], at[11:13])
+    if observed_at is None or observed_at.isoformat() != at:
+        return False, None
+    return True, observed_at
+
+
+def _weather_record_status_valid(reason: str | None, status: str | None) -> bool:
+    return status is None or (
+        reason == "provider_http_error"
+        and re.fullmatch(r"[1-5]\d{2}", status) is not None
+    )
+
+
 @dataclass(frozen=True)
 class WeatherGroundingReply:
     text: str
@@ -213,72 +224,55 @@ def _canonical(place: str, aliases: Mapping[str, str]) -> str:
     return aliases.get(key, place)
 
 
-def _only_feels_like(visible: str) -> bool:
-    return bool(
-        _FEELS_LIKE.search(visible)
-        and not _NO_FEELS_LIKE.search(visible)
-        and not _ACTUAL.search(visible)
-    )
-
-
-def weather_observation_reply(
-    observation: WeatherObservation,
-    message: str,
-    aliases: Mapping[str, str],
-) -> WeatherGroundingReply:
-    """Publish only the real temperature and the location bound to it."""
-    requested = observation.requested_location
-    observed = observation.observed_location
+def _weather_failure_reason(observation: WeatherObservation) -> str | None:
     reason = observation.failure_reason
     if reason is None:
-        if observed is None:
-            reason = "missing_observed_location"
-        elif observation.temperature_c is None:
-            reason = "missing_temperature"
-    if reason is not None:
-        text = (
-            f"Dostawca nie zwrócił potwierdzonej temperatury dla miejscowości {requested}."
-            if reason in {"no_data", "missing_temperature", "missing_observed_location"}
-            else f"Nie udało się pobrać danych pogodowych dla miejscowości {requested}."
-        )
-        return WeatherGroundingReply(
-            text,
-            WeatherEvidence(
-                requested,
-                observed,
-                source_url=observation.source_url,
-                reason=reason,
-                http_status=observation.http_status,
-            ),
-        )
-    assert observed is not None and observation.temperature_c is not None
-    canonical_observed = _canonical(observed, aliases)
-    same_place = (
-        normalize("NFC", _canonical(requested, aliases)).casefold()
-        == normalize("NFC", canonical_observed).casefold()
+        if observation.observed_location is None:
+            return "missing_observed_location"
+        if observation.temperature_c is None:
+            return "missing_temperature"
+    return reason
+
+
+def _weather_failure_reply(
+    observation: WeatherObservation, reason: str
+) -> WeatherGroundingReply:
+    requested = observation.requested_location
+    text = (
+        f"Dostawca nie zwrócił potwierdzonej temperatury dla miejscowości {requested}."
+        if reason in {"no_data", "missing_temperature", "missing_observed_location"}
+        else f"Nie udało się pobrać danych pogodowych dla miejscowości {requested}."
     )
-    visible = without_quotes(message)
-    nearby = bool(
-        _NEARBY_ALLOWED.search(visible) and not _NEARBY_DENIED.search(visible)
+    return WeatherGroundingReply(
+        text,
+        WeatherEvidence(
+            requested,
+            observation.observed_location,
+            source_url=observation.source_url,
+            reason=reason,
+            http_status=observation.http_status,
+        ),
     )
-    if not same_place and not nearby:
-        return WeatherGroundingReply(
-            f"Dostawca wskazał miejscowość {observed}. "
-            f"Brak potwierdzonej temperatury dla miejscowości {requested}.",
-            WeatherEvidence(
-                requested,
-                observed,
-                source_url=observation.source_url,
-                reason="different_location",
-            ),
-        )
-    context = (
-        ""
-        if same_place
-        else f"Dostawca podał pomiar z innego miejsca niż {requested}. "
+
+
+def _different_location_reply(
+    observation: WeatherObservation, requested: str, observed: str
+) -> WeatherGroundingReply:
+    return WeatherGroundingReply(
+        f"Dostawca wskazał miejscowość {observed}. "
+        f"Brak potwierdzonej temperatury dla miejscowości {requested}.",
+        WeatherEvidence(
+            requested,
+            observed,
+            source_url=observation.source_url,
+            reason="different_location",
+        ),
     )
-    only_feels = _only_feels_like(visible)
-    include_feels = _FEELS_LIKE.search(visible) and not _NO_FEELS_LIKE.search(visible)
+
+
+def _weather_temperature_text(
+    observation: WeatherObservation, visible: str, only_feels: bool, include_feels: bool
+) -> str:
     lines = []
     if not only_feels:
         lines.append(f"Temperatura powietrza: {observation.temperature_c}°C.")
@@ -297,13 +291,63 @@ def weather_observation_reply(
         ):
             details.insert(0, f"Temperatura odczuwalna: {observation.feels_like_c}°C.")
         temperature = " ".join([temperature, *details])
-    when = ""
-    if observation.observed_at is not None:
-        when = (
-            f" Pomiar z {observation.observed_at:%Y-%m-%d, %H:%M} UTC. "
-            "Źródłem pochodzenia danych jest Instytut Meteorologii i Gospodarki "
-            "Wodnej – Państwowy Instytut Badawczy."
-        )
+    return temperature
+
+
+def _weather_time_text(observed_at: datetime | None) -> str:
+    if observed_at is None:
+        return ""
+    return (
+        f" Pomiar z {observed_at:%Y-%m-%d, %H:%M} UTC. "
+        "Źródłem pochodzenia danych jest Instytut Meteorologii i Gospodarki "
+        "Wodnej – Państwowy Instytut Badawczy."
+    )
+
+
+def _only_feels_like(visible: str) -> bool:
+    return bool(
+        _FEELS_LIKE.search(visible)
+        and not _NO_FEELS_LIKE.search(visible)
+        and not _ACTUAL.search(visible)
+    )
+
+
+def weather_observation_reply(
+    observation: WeatherObservation,
+    message: str,
+    aliases: Mapping[str, str],
+) -> WeatherGroundingReply:
+    """Publish only the real temperature and the location bound to it."""
+    requested = observation.requested_location
+    observed = observation.observed_location
+    reason = _weather_failure_reason(observation)
+    if reason is not None:
+        return _weather_failure_reply(observation, reason)
+    assert observed is not None and observation.temperature_c is not None
+    canonical_observed = _canonical(observed, aliases)
+    same_place = (
+        normalize("NFC", _canonical(requested, aliases)).casefold()
+        == normalize("NFC", canonical_observed).casefold()
+    )
+    visible = without_quotes(message)
+    nearby = bool(
+        _NEARBY_ALLOWED.search(visible) and not _NEARBY_DENIED.search(visible)
+    )
+    if not same_place and not nearby:
+        return _different_location_reply(observation, requested, observed)
+    context = (
+        ""
+        if same_place
+        else f"Dostawca podał pomiar z innego miejsca niż {requested}. "
+    )
+    only_feels = _only_feels_like(visible)
+    include_feels = bool(
+        _FEELS_LIKE.search(visible) and not _NO_FEELS_LIKE.search(visible)
+    )
+    temperature = _weather_temperature_text(
+        observation, visible, only_feels, include_feels
+    )
+    when = _weather_time_text(observation.observed_at)
     return WeatherGroundingReply(
         f"{context}Miejsce odczytu: {observed}. {temperature}{when} Źródło: {observation.source_url}",
         WeatherEvidence(

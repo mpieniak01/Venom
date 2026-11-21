@@ -316,7 +316,11 @@ class AssistantSkill:
         url = imgw_station_url(location)
         if url is None:
             return None
-        data = await self._fetch_weather_payload(url, timeout=4.0)
+        try:
+            async with asyncio.timeout(4.0):
+                data = await self._fetch_weather_payload(url)
+        except TimeoutError:
+            return None
         if isinstance(data, _WeatherProviderFailure):
             return None
         observed = weather_area_name(data.get("stacja"))
@@ -337,11 +341,11 @@ class AssistantSkill:
         return WeatherObservation(location, url, observed, value, observed_at=at)
 
     async def _fetch_weather_payload(
-        self, url: str, *, timeout: float = 10.0
+        self, url: str
     ) -> dict[str, Any] | _WeatherProviderFailure:
         try:
             async with TrafficControlledHttpClient(
-                provider="weather", timeout=timeout
+                provider="weather", timeout=10.0
             ) as client:
                 response = await client.aget(url, raise_for_status=False)
             if response.status_code != 200:

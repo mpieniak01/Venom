@@ -145,12 +145,13 @@ _OTHER_MEDIUM = re.compile(r"\b(?:olej|mlek|ciecz inna|gorąc\w+ wod)\w*")
 _NO_WATER = re.compile(
     r"\b(?:na sucho|bez wody|pust\w+ (?:słoik|szklan|mis[ck]|kubk|kubec)\w*)\b"
 )
+_BENT_MASCULINE = "zgięty"
 _OPTICAL_OBJECTS = (
     (re.compile(r"\błyżecz[kc]\w*"), "łyżeczka", "zgięta"),
     (re.compile(r"\bsłom[ck]\w*"), "słomka", "zgięta"),
-    (re.compile(r"\boł[oó]w(?:e?k|c)\w*"), "ołówek", "zgięty"),
-    (re.compile(r"\bpatycz(?:e?k|c)\w*"), "patyczek", "zgięty"),
-    (re.compile(r"\bpatyk\w*"), "patyk", "zgięty"),
+    (re.compile(r"\boł[oó]w(?:e?k|c)\w*"), "ołówek", _BENT_MASCULINE),
+    (re.compile(r"\bpatycz(?:e?k|c)\w*"), "patyczek", _BENT_MASCULINE),
+    (re.compile(r"\bpatyk\w*"), "patyk", _BENT_MASCULINE),
 )
 _VESSELS = (
     (re.compile(r"\bsłoik\w*"), "w słoiku"),
@@ -277,15 +278,9 @@ def _same_heat_object(label: str, reference: str) -> bool:
     )
 
 
-def thermal_followup_reply(
-    text: str,
-    history: Sequence[HistoryMessage],
-    *,
-    token_budget: int | None = None,
-) -> str | None:
-    """Retain the heat flow rule when the latest user revises a two-body premise."""
-    if token_budget is not None and token_budget < 96:
-        return None
+def _heat_followup_inputs(
+    text: str, history: Sequence[HistoryMessage]
+) -> tuple[str, str, re.Match[str], re.Match[str] | None] | None:
     visible = _visible(text)
     statements = re.split(r"[.!?](?=\s|$)", visible, maxsplit=1)
     if len(statements) != 2 or not _HEAT_RESUME.fullmatch(
@@ -303,52 +298,83 @@ def thermal_followup_reply(
     earlier = contact_pair or _HEAT_PAIR.fullmatch(previous_premise)
     if not earlier:
         return None
+    return visible, _heat_premise(visible), earlier, contact_pair
 
-    premise = _heat_premise(visible)
-    if changed := _HEAT_PAIR.fullmatch(premise):
-        labels = {earlier["first"], earlier["second"]}
-        if len(labels) != 2 or labels != {changed["first"], changed["second"]}:
-            return None
-        first = float(changed["first_c"].split("°", 1)[0].replace(",", "."))
-        second = float(changed["second_c"].split("°", 1)[0].replace(",", "."))
-        if first == second:
-            return (
-                "Przy jednakowych temperaturach nie ma przepływu ciepła netto, "
-                f"a przy ich różnicy {_HEAT_RULE}."
-            )
-        warmer, cooler = changed["first"], changed["second"]
-        if first < second:
-            warmer, cooler = cooler, warmer
+
+def _changed_heat_pair(changed: re.Match[str], earlier: re.Match[str]) -> str | None:
+    labels = {earlier["first"], earlier["second"]}
+    if len(labels) != 2 or labels != {changed["first"], changed["second"]}:
+        return None
+    first = float(changed["first_c"].split("°", 1)[0].replace(",", "."))
+    second = float(changed["second_c"].split("°", 1)[0].replace(",", "."))
+    if first == second:
         return (
-            f"{_HEAT_RULE.capitalize()}, więc oddaje je {warmer}, a przyjmuje {cooler}."
+            "Przy jednakowych temperaturach nie ma przepływu ciepła netto, "
+            f"a przy ich różnicy {_HEAT_RULE}."
         )
+    warmer, cooler = changed["first"], changed["second"]
+    if first < second:
+        warmer, cooler = cooler, warmer
+    return f"{_HEAT_RULE.capitalize()}, więc oddaje je {warmer}, a przyjmuje {cooler}."
 
-    if known := _HEAT_ONE_KNOWN.fullmatch(premise):
-        remaining = [
-            key
-            for key in ("first", "second")
-            if not _same_heat_object(earlier[key], known["known"])
-        ]
-        if len(remaining) == 1:
-            missing_key = remaining[0]
-            label = earlier[missing_key]
-            if contact_pair:
-                if missing_key == "first":
-                    label = f"ciała położonego na podłożu ({label})"
-                return f"Brakuje temperatury {label}, ponieważ {_HEAT_RULE}."
-            return (
-                f"Brakuje informacji, jaką temperaturę ma {label}, "
-                f"ponieważ {_HEAT_RULE}."
-            )
-    if missing := _HEAT_ONE_UNKNOWN.fullmatch(premise):
-        if (
-            sum(
-                _same_heat_object(earlier[key], missing["unknown"])
-                for key in ("first", "second")
-            )
-            == 1
-        ):
-            return f"Brakuje temperatury {missing['unknown']}, ponieważ {_HEAT_RULE}."
+
+def _known_heat_followup(
+    premise: str, earlier: re.Match[str], contact_pair: re.Match[str] | None
+) -> str | None:
+    known = _HEAT_ONE_KNOWN.fullmatch(premise)
+    if not known:
+        return None
+    remaining = [
+        key
+        for key in ("first", "second")
+        if not _same_heat_object(earlier[key], known["known"])
+    ]
+    if len(remaining) != 1:
+        return None
+    missing_key = remaining[0]
+    label = earlier[missing_key]
+    if contact_pair:
+        if missing_key == "first":
+            label = f"ciała położonego na podłożu ({label})"
+        return f"Brakuje temperatury {label}, ponieważ {_HEAT_RULE}."
+    return f"Brakuje informacji, jaką temperaturę ma {label}, ponieważ {_HEAT_RULE}."
+
+
+def _unknown_heat_followup(premise: str, earlier: re.Match[str]) -> str | None:
+    missing = _HEAT_ONE_UNKNOWN.fullmatch(premise)
+    if not missing:
+        return None
+    matches = sum(
+        _same_heat_object(earlier[key], missing["unknown"])
+        for key in ("first", "second")
+    )
+    return (
+        f"Brakuje temperatury {missing['unknown']}, ponieważ {_HEAT_RULE}."
+        if matches == 1
+        else None
+    )
+
+
+def thermal_followup_reply(
+    text: str,
+    history: Sequence[HistoryMessage],
+    *,
+    token_budget: int | None = None,
+) -> str | None:
+    """Retain the heat flow rule when the latest user revises a two-body premise."""
+    if token_budget is not None and token_budget < 96:
+        return None
+    inputs = _heat_followup_inputs(text, history)
+    if inputs is None:
+        return None
+    _visible_text, premise, earlier, contact_pair = inputs
+    changed = _HEAT_PAIR.fullmatch(premise)
+    if changed:
+        return _changed_heat_pair(changed, earlier)
+    if reply := _known_heat_followup(premise, earlier, contact_pair):
+        return reply
+    if reply := _unknown_heat_followup(premise, earlier):
+        return reply
     return None
 
 
@@ -397,6 +423,31 @@ def _refraction(topic: str, example: str) -> CheckedExplanation | None:
     )
 
 
+def _explanation_topic(
+    question: str, history: Sequence[HistoryMessage], visible: str, example: str
+) -> str | None:
+    if not changes_example(question):
+        return visible
+    topic = _visible(active_explanation_topic(history))
+    if _OTHER_TASK.search(topic) or (example == visible and _NEGATION.search(visible)):
+        return None
+    return topic
+
+
+def _explanation_for_example(topic: str, example: str) -> CheckedExplanation | None:
+    if _NO_WATER.search(example) or _NEGATION.search(example):
+        if not _NO_WATER.search(example) or _NEGATION.search(
+            _NO_WATER.sub(" ", example)
+        ):
+            return None
+        return _refraction(topic, example)
+    return (
+        _thermal(topic, example)
+        or _braking(topic, example)
+        or _refraction(topic, example)
+    )
+
+
 def checked_explanation(
     question: str,
     history: Sequence[HistoryMessage],
@@ -411,25 +462,10 @@ def checked_explanation(
     visible = _visible(question)
     if _OTHER_TASK.search(visible):
         return None
-    topic = visible
     example = _requested_example(visible)
-    if changes_example(question):
-        topic = _visible(active_explanation_topic(history))
-        if _OTHER_TASK.search(topic) or (
-            example == visible and _NEGATION.search(visible)
-        ):
-            return None
+    topic = _explanation_topic(question, history, visible, example)
+    if topic is None:
+        return None
     if not example or re.match(r"\bzamiast metal", visible):
         return None
-    if _NO_WATER.search(example) or _NEGATION.search(example):
-        if not _NO_WATER.search(example) or _NEGATION.search(
-            _NO_WATER.sub(" ", example)
-        ):
-            return None
-        return _refraction(topic, example)
-
-    return (
-        _thermal(topic, example)
-        or _braking(topic, example)
-        or _refraction(topic, example)
-    )
+    return _explanation_for_example(topic, example)

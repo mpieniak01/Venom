@@ -176,7 +176,7 @@ _STRICT_TIME = re.compile(
     r"\b(?:mniej|krócej|krótsz[aeąy]) niż (?:jedną |1 )?minut[ęy]\b", re.I
 )
 _KEEP = re.compile(r"\b(?:zachowaj|zostań przy|nadal)\b", re.I)
-_SECONDS = re.compile(r"(?<![\d,.-])([1-9]\d?) sekund(?:ę|y)?\b", re.I)
+_SECONDS = re.compile(r"(?<![\d,.-])([1-9]\d?) sekund[ęy]?\b", re.I)
 _STATED_TIME = re.compile(r"\b\d+(?:[.,]\d+)?\s*(?:sekund\w*|minut\w*|s\b)", re.I)
 _SIGN = re.compile(
     r"\b(?:co to znaczy|wyjaśnij[^.!?]{0,40}(?:napis|co to znaczy))", re.I
@@ -430,6 +430,24 @@ class QualifiedReply:
         action = action.strip().rstrip(".!?")
         return f"Przez {seconds} {label} {action[0].lower() + action[1:]}."
 
+    def _publish_counted(self, draft: str, repair: str | None, truncated: bool) -> str:
+        values: dict[str, str] = {}
+        for option in [*self.options(draft), *self.options(repair or "")]:
+            values.setdefault(option_key(option), option)
+        options = list(values.values())[: self.count.count]
+        if not options or not self.count.accepts(len(options)):
+            return GENERATION_TRUNCATED if truncated else _CLARIFICATION
+        if len(options) == 1:
+            return options[0]
+        return "\n".join(f"{i}. {option}" for i, option in enumerate(options, 1))
+
+    def _publish_default(self, draft: str) -> str:
+        if self.opening_only:
+            draft = opening_sentence(draft)
+        if _claim(draft):
+            return _CALENDAR_UNCONFIRMED
+        return draft if draft.strip() and self._allowed(draft) else _CLARIFICATION
+
     def publish(
         self, draft: str, repair: str | None = None, *, truncated: bool = False
     ) -> str:
@@ -440,20 +458,8 @@ class QualifiedReply:
         if self.timed:
             return self._publish_timed(draft)
         if self.count:
-            values: dict[str, str] = {}
-            for option in [*self.options(draft), *self.options(repair or "")]:
-                values.setdefault(option_key(option), option)
-            options = list(values.values())[: self.count.count]
-            if not options or not self.count.accepts(len(options)):
-                return GENERATION_TRUNCATED if truncated else _CLARIFICATION
-            if len(options) == 1:
-                return options[0]
-            return "\n".join(f"{i}. {option}" for i, option in enumerate(options, 1))
-        if self.opening_only:
-            draft = opening_sentence(draft)
-        if _claim(draft):
-            return _CALENDAR_UNCONFIRMED
-        return draft if draft.strip() and self._allowed(draft) else _CLARIFICATION
+            return self._publish_counted(draft, repair, truncated)
+        return self._publish_default(draft)
 
 
 def prepare_studio_reply(
@@ -500,10 +506,13 @@ def prepare_studio_reply(
     return None
 
 
-def prepare_reply(text: str, history: Sequence[HistoryMessage]) -> QualifiedReply:
+def _prepare_local_reply(
+    text: str,
+    history: Sequence[HistoryMessage],
+    messages: list[dict[str, str]],
+    users: list[str],
+) -> QualifiedReply | None:
     normalized = _normalize(text)
-    users = [turn.content for turn in history if turn.role == "user"]
-    messages = [{"role": turn.role, "content": turn.content} for turn in history]
     if _ONLY_LOCATION.fullmatch(normalized):
         return QualifiedReply(
             _return_location(history) or "Gdzie dokładnie znajduje się miejsce zwrotu?"
@@ -515,13 +524,17 @@ def prepare_reply(text: str, history: Sequence[HistoryMessage]) -> QualifiedRepl
     )
     if local is not None:
         return QualifiedReply(local)
-    messages.append({"role": "user", "content": text})
-    if constraint_conflicts(messages):
-        return QualifiedReply(_CLARIFICATION)
-    restrictions = active_constraints(messages)
-    time_bound, preserved = _duration(text, history, users)
+    return None
+
+
+def _proposal_constraints(
+    text: str,
+    users: Sequence[str],
+    restrictions: frozenset[str],
+    time_bound: bool,
+    hint: str,
+) -> tuple[CountRequirement | None, str]:
     count = requested_count(text)
-    hint = _format_hint(text, restrictions)
     if (
         count is not None
         and count.count == 1
@@ -557,6 +570,21 @@ def prepare_reply(text: str, history: Sequence[HistoryMessage]) -> QualifiedRepl
         )
         if {"water", "glue"} <= restrictions:
             hint += " Wybieraj przedmioty gotowe do użycia na sucho, bez podlewania i mocowania klejem."
+    return count, hint
+
+
+def prepare_reply(text: str, history: Sequence[HistoryMessage]) -> QualifiedReply:
+    users = [turn.content for turn in history if turn.role == "user"]
+    messages = [{"role": turn.role, "content": turn.content} for turn in history]
+    if local := _prepare_local_reply(text, history, messages, users):
+        return local
+    messages.append({"role": "user", "content": text})
+    if constraint_conflicts(messages):
+        return QualifiedReply(_CLARIFICATION)
+    restrictions = active_constraints(messages)
+    time_bound, preserved = _duration(text, history, users)
+    hint = _format_hint(text, restrictions)
+    count, hint = _proposal_constraints(text, users, restrictions, time_bound, hint)
     return QualifiedReply(
         restrictions=restrictions,
         hint=hint.strip(),

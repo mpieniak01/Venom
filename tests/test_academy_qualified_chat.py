@@ -2154,3 +2154,67 @@ def test_studio_one_sentence_for_value_missing_in_the_conversation(
     fetch.assert_not_awaited()
     instruction = sent[-1]["payload"]["messages"][0]["content"]
     assert "dokładnie jedno zdanie odpowiadające na ostatnie pytanie" in instruction
+
+
+@pytest.mark.parametrize(
+    ("source", "summary", "attribution", "expected", "speaker"),
+    [
+        (
+            "Retail sales rose in May",
+            "Sprzedaż wzrosła w maju.",
+            None,
+            "Sprzedaż wzrosła w maju.",
+            None,
+        ),
+        (
+            "Harbor council says the trial may start Friday",
+            "Próba może ruszyć w piątek.",
+            "Harbor council",
+            "Próba może ruszyć w piątek.",
+            "Harbor council",
+        ),
+        (
+            "Ferry service may resume Friday, Taylor says",
+            "Morgan mówi, że przeprawy mogą wrócić w piątek.",
+            "Morgan",
+            "„Ferry service may resume Friday, Taylor says”",
+            "Taylor",
+        ),
+        (
+            "Ferry service may resume Friday, says Taylor",
+            "Morgan mówi, że przeprawy mogą wrócić w piątek.",
+            "Taylor",
+            "„Ferry service may resume Friday, says Taylor”",
+            "Taylor",
+        ),
+        (
+            "Retail sales rose in May",
+            "Sprzedaż wzrosła w maju.",
+            "Taylor",
+            "„Retail sales rose in May”",
+            None,
+        ),
+    ],
+)
+def test_rss_binds_the_speaker_to_the_title_and_distinguishes_the_month(
+    source, summary, attribution, expected, speaker
+):
+    from venom_core.services.academy.qualified_chat_rss import RSSSummary
+    from venom_core.services.verified_web import NewsHeadline
+
+    link = "https://www.bbc.co.uk/news/articles/source"
+    plan = RSSSummary((NewsHeadline(link, source, "2026-11-21"),))
+    prompt = json.loads(plan.messages("Podaj sens nagłówka.")[1]["content"])
+    assert prompt["naglowki"][0]["mówiący"] == speaker
+    answer = plan.publish(
+        json.dumps(
+            {"items": [{"index": 1, "summary": summary, "attribution": attribution}]}
+        )
+    )
+    assert answer.splitlines()[0] == f"Nagłówek RSS: {expected}"
+    assert ("Atrybucja:" in answer) is (speaker is not None)
+    if speaker:
+        assert f"Atrybucja: {speaker}\n" in answer
+    assert "Morgan" not in answer
+    assert f"Data publikacji: 2026-11-21\nLink: {link}" in answer
+    assert answer.endswith("Zakres odczytu: tylko nagłówki RSS.")

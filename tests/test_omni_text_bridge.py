@@ -14,6 +14,7 @@ from scripts.academy.omni_pl_chat_masks import SNAPSHOT_PIN
 from venom_core.api.routes import llm_simple
 from venom_core.api.schemas.llm_simple import HistoryMessage, SimpleChatRequest
 from venom_core.services import omni_native_text as bridge
+from venom_core.services.chat_policy.direct_correction import correction_context
 from venom_core.services.training_experiments.profiles import (
     digest,
     read_json,
@@ -509,3 +510,249 @@ async def test_rollback_rejects_resealed_previous_adapter_before_probe(native):
         await bridge.rollback(expected_runtime_id=current["selection"]["runtime_id"])
     assert len(calls) == 2
     assert bridge.state() == before
+
+
+@pytest.mark.asyncio
+async def test_native_direct_calculator_preserves_unit_and_own_provenance(
+    native, monkeypatch
+):
+    from venom_core.config import SETTINGS
+    from venom_core.services.chat_history import persist_direct_response
+
+    monkeypatch.setattr(SETTINGS, "ENABLE_ACADEMY", False)
+    _, calls = native
+    selected = await bridge.switch("p13")
+
+    class Store:
+        def append_turn_once(self, *args):
+            self.args = args
+
+    store = Store()
+    request = SimpleChatRequest(
+        content="Oblicz: 2 × 1,25. Jednostka: l.",
+        session_id="paint",
+        expected_runtime_id=selected["selection"]["runtime_id"],
+    )
+    wrapped = persist_direct_response(await bridge.response(request), request, store)
+    content = "".join([part async for part in wrapped.body_iterator])
+    assert len(calls) == 1  # Only the selection probe called the model.
+    assert "2,5 l" in content
+    assert "input_messages_sha256" not in content
+    assistant = store.args[2][1]
+    assert assistant["model_identity"]["response_source"] == "calculator"
+    assert (
+        assistant["model_identity"]["weights_sha256"]
+        == selected["selection"]["weights_sha256"]
+    )
+    assert assistant["tool_result"] == {
+        "tool": "calculator",
+        "status": "succeeded",
+        "value": "2.5",
+        "unit": "l",
+        "recomputed": False,
+    }
+    repeated = await bridge.response(
+        SimpleChatRequest(
+            content="Powtórz tylko wynik.",
+            history=[
+                HistoryMessage(role="user", content=request.content),
+                HistoryMessage(role="assistant", content=assistant["content"]),
+            ],
+        )
+    )
+    repeated_text = "".join([part async for part in repeated.body_iterator])
+    assert '"recomputed": true' in repeated_text and "2,5 l" in repeated_text
+    quoted = await bridge.response(
+        SimpleChatRequest(content="Przetłumacz: «Oblicz 2 * 1,25 l»")
+    )
+    assert "Anna, 120 zł" in "".join([part async for part in quoted.body_iterator])
+    assert len(calls) == 2
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("command", "text", "receipt"),
+    [
+        (
+            "Oblicz 4 - 2,5 i podaj wynik w litrach.",
+            "1,5 l",
+            ("succeeded", "1.5", "l"),
+        ),
+        ("Policz 2 * 1,25 l", "2,5 l", ("succeeded", "2.5", "l")),
+        ("Policz: −4 × 2", "-8", ("succeeded", "-8", None)),
+        ("Użyj kalkulatora.", "Jakie wyrażenie", ("missing_expression", None, None)),
+        (
+            "Oblicz: 3 / 0. Jednostka: kg.",
+            "Nie udało się obliczyć",
+            ("invalid_expression", None, "kg"),
+        ),
+        ("Napisz wiadomość z „Policz 2 * 3 zł”.", "Anna, 120 zł", None),
+        ("Oblicz: „Policz 2 * 3 zł”", "Anna, 120 zł", None),
+        ("Oblicz powierzchnię szklarni.", "Anna, 120 zł", None),
+        ("Oblicz 3 * 5 groszy.", "Anna, 120 zł", None),
+        ("Policz 2 * 4\nOpisz wynik.", "Anna, 120 zł", None),
+        ("Powtórz wynik.", "Anna, 120 zł", None),
+    ],
+)
+async def test_native_calculator_requires_explicit_bounded_command(
+    native, command, text, receipt
+):
+    _, calls = native
+    await bridge.switch("p13")
+    response = await bridge.response(SimpleChatRequest(content=command))
+    packets = [packet async for packet in response.body_iterator]
+    finished = json.loads(packets[-1].split("data: ", 1)[1])["model_identity"]
+    assert text in "".join(packets)
+    if receipt is None:
+        assert "tool_result" not in finished and len(calls) == 2
+        return
+    assert len(calls) == 1
+    tool_result = finished["tool_result"]
+    assert (tool_result["status"], tool_result["value"], tool_result["unit"]) == receipt
+
+
+def test_rejected_proposal_keeps_confirmed_fee():
+    users = [
+        "Szykuję próbę chóru: sala Pod Lipą, piątek o 18:20, składka 14 zł.",
+        "Przenoszę próbę do sali Pod Sową. Ktoś zaproponował 19 zł. Podaj aktualne ustalenia.",
+        "Odrzucam podwyżkę. Na aktualnej ulotce jest tylko napis „Sala Pod Sową”. "
+        "Jaką składkę podaje sama ulotka?",
+    ]
+    card = correction_context(users[-1], users[:-1])
+    assert card and card.scope == "source_only"
+    assert "Sama karta nie podaje kwoty." in card.text
+    assert "14 zł" not in card.text and "19 zł" not in card.text
+
+    state = correction_context("Podaj wiążące ustalenia z rozmowy.", users)
+    assert state and state.scope == "binding_fee"
+    assert "14 zł" in state.text and "19 zł" not in state.text
+
+
+def test_accepted_fee_survives_partial_card_lookup():
+    users = [
+        "Rezerwację szafki prowadzi Aneta. Numer 27, odbiór w sobotę o 10:45, kaucja 36 zł.",
+        "Zamiast Anety wpisz Olę. Proponuję podnieść kaucję do 44 zł. Podaj ustalenia.",
+        "Zatwierdzam kaucję 44 zł. Mam też kartkę z samym tekstem „Opiekunka: Ola”. "
+        "Podaj opiekunkę i numer szafki z kartki.",
+    ]
+    card = correction_context(users[-1], users[:-1])
+    assert card and card.scope == "source_only"
+    assert "Sama karta nie podaje numeru." in card.text
+
+    state = correction_context("Podaj końcowe ustalenia rozmowy.", users)
+    assert state and "44 zł" in state.text and "36 zł" not in state.text
+
+
+def test_registration_cancellation_preserves_free_admission():
+    prior = ["Napisz zaproszenie. Wstęp jest wolny, ale trzeba się zapisać."]
+    state = correction_context(
+        "Zapisy jednak odwołane. Wstęp nadal wolny. Przeredaguj zaproszenie.", prior
+    )
+    assert state and state.scope == "registration_cancelled"
+    assert "nie trzeba się zapisywać" in state.text
+    assert "Wstęp jest wolny" in state.text
+    assert correction_context("Przetłumacz „Zapisy jednak odwołane.”", prior) is None
+
+
+def test_no_hint_on_plain_text_or_ambiguous_price():
+    assert correction_context("Podaj ustalenia", ["Jaka będzie pogoda?"]) is None
+    prior = [
+        "Ustalam składkę 14 zł i kaucję 20 zł.",
+        "Proponuję 25 zł. Powtórz ustalenia.",
+    ]
+    assert correction_context("Odrzucam propozycję. Podaj ustalenia.", prior) is None
+
+
+def test_unrelated_later_topic_does_not_inherit_previous_fee():
+    prior = [
+        "Ustalam opłatę 12 zł.",
+        "Proponuję 16 zł.",
+        "Odrzucam zmianę.",
+        "Przejdźmy do osobnego tematu. Bilety drukujemy w piątek.",
+    ]
+    assert correction_context("Podaj aktualne ustalenia.", prior) is None
+
+
+def test_source_context_does_not_infer_absence_for_prose():
+    result = correction_context(
+        "Ulotka ma tylko napis „Sala Pod Sową i składka dziesięć zł”. "
+        "Jaką składkę podaje sama ulotka?",
+        [],
+    )
+    assert result is not None
+    assert result.scope == "source_only"
+    assert "Sama karta nie podaje kwoty." not in result.text
+
+
+def test_pending_proposal_keeps_unannotated_native_context():
+    previous = [
+        "Szykuję próbę chóru: sala Pod Lipą, piątek o 18:20, składka 14 zł.",
+    ]
+    assert (
+        correction_context(
+            "Przenoszę próbę do sali Pod Sową. Proponuję 19 zł. Podaj ustalenia.",
+            previous,
+        )
+        is None
+    )
+
+
+@pytest.mark.asyncio
+async def test_native_cancellation_corrects_signup_draft_with_distinct_origin(
+    native, monkeypatch
+):
+    _, calls = native
+    await bridge.switch("p13")
+    original_invoke = bridge.omni_native_dialogue._invoke
+    draft = "Zapraszamy do Klubu Logiki. Proszę się zapisać, aby wziąć udział."
+
+    async def invoke(*args, **kwargs):
+        result = json.loads(await original_invoke(*args, **kwargs))
+        result["text"] = draft
+        return json.dumps(result).encode()
+
+    monkeypatch.setattr(bridge.omni_native_dialogue, "_invoke", invoke)
+    request = SimpleChatRequest(
+        content="Zapisy jednak odwołane. Wstęp nadal wolny. Przeredaguj zaproszenie.",
+        history=[
+            HistoryMessage(
+                role="user", content="Napisz zaproszenie, ale trzeba się zapisać."
+            ),
+        ],
+    )
+    response = await bridge.response(request)
+    packets = [packet async for packet in response.body_iterator]
+    answer = json.loads(packets[1].split("data: ", 1)[1])["text"]
+    identity = json.loads(packets[-1].split("data: ", 1)[1])["model_identity"]
+    assert (
+        answer
+        == "Zapraszamy do Klubu Logiki. Wstęp jest wolny i nie trzeba się zapisywać."
+    )
+    assert identity["context_policy"] == "registration_cancelled"
+    assert identity["response_source"] == "correction_rule"
+    assert identity["input_messages_sha256"] == stable_hash(calls[-1]["messages"])
+
+
+def test_cancelled_registration_leaves_compliant_reply_and_unrelated_scope_alone():
+    previous = ["Napisz zaproszenie. Wstęp jest wolny, ale trzeba się zapisać."]
+    correct = "Zapraszamy do klubu. Wstęp jest wolny i nie trzeba się zapisywać."
+    context = correction_context(
+        "Odwołuję zapisy. Wstęp jest wolny. Napisz zaproszenie.", previous
+    )
+    assert context is not None
+    assert bridge.corrected_registration_reply(context, correct) is None
+    assert correction_context("Odwołuję zapisy. Co o tym sądzisz?", previous) is None
+
+
+def test_cancelled_registration_fallback_contains_only_confirmed_commitments():
+    context = correction_context(
+        "Odwołuję zapisy. Napisz zaproszenie.",
+        ["Napisz zaproszenie, ale trzeba się zapisać."],
+    )
+    assert context is not None
+    assert (
+        bridge.corrected_registration_reply(
+            context, "Zapraszamy na poczęstunek. Zapisy są obowiązkowe."
+        )
+        == "Zapraszamy do udziału. Zapisy nie są wymagane."
+    )

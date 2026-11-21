@@ -21,6 +21,12 @@ from fastapi.responses import StreamingResponse
 
 from venom_core.api.schemas.llm_simple import MAX_CHAT_HISTORY_CHARS, SimpleChatRequest
 from venom_core.services import omni_native_dialogue
+from venom_core.services.chat_policy.direct_calculator import plan_calculator
+from venom_core.services.chat_policy.direct_correction import (
+    corrected_registration_reply,
+    correction_context,
+)
+from venom_core.services.grounded_calculator import result_with_unit
 from venom_core.services.model_resources import model_operation
 from venom_core.services.remote_training.paths import operator_path
 from venom_core.services.runtime_switch_gate import runtime_request_guard
@@ -166,12 +172,15 @@ async def route_response(
     return None
 
 
+def _verify_selection(selection: Selection) -> None:
+    if _resolve(selection.identity["adapter_id"]) != selection:
+        raise _error("omni_native_text_selection_changed")
+
+
 async def _generate(
     selection: Selection, messages: list[dict[str, str]], max_tokens: int
 ) -> dict[str, Any]:
-    fresh = _resolve(selection.identity["adapter_id"])
-    if fresh != selection:
-        raise _error("omni_native_text_selection_changed")
+    _verify_selection(selection)
     payload = json.dumps(
         {
             "identity": selection.identity,
@@ -308,6 +317,30 @@ def _validate_request(
     ]
 
 
+def _calculator_reply(
+    selection: Selection, messages: list[dict[str, str]]
+) -> dict[str, Any] | None:
+    plan = plan_calculator(messages[-1]["content"], messages[:-1])
+    if plan is None:
+        return None
+    _verify_selection(selection)
+    receipt = result_with_unit(plan.expression, plan.unit)
+    value = receipt["value"]
+    if value is not None:
+        text = value.replace(".", ",")
+        if plan.unit:
+            text += f" {plan.unit}"
+    elif receipt["status"] == "missing_expression":
+        text = "Jakie wyrażenie mam obliczyć? Możesz też podać jednostkę."
+    else:
+        text = "Nie udało się obliczyć wyniku. Sprawdź liczby i znaki działania."
+    return {
+        "text": text,
+        "response_source": "calculator",
+        "tool_result": {"tool": "calculator", **receipt, "recomputed": plan.repeat},
+    }
+
+
 @model_operation
 async def response(
     request: SimpleChatRequest, *, system_context: str = ""
@@ -318,6 +351,14 @@ async def response(
         if selection is None:
             raise _error("omni_native_text_selection_changed")
         messages = _validate_request(request, selection)
+        correction = correction_context(
+            request.content,
+            [message.content for message in request.history if message.role == "user"],
+        )
+        if correction:
+            system_context = "\n\n".join(
+                filter(None, (system_context, correction.text))
+            )
         if system_context:
             messages.insert(0, {"role": "system", "content": system_context})
         max_tokens = request.max_tokens if request.max_tokens is not None else 256
@@ -331,7 +372,9 @@ async def response(
         ):
             failure = None
             try:
-                result = await _generate(selection, messages, max_tokens)
+                result = _calculator_reply(selection, messages)
+                if result is None:
+                    result = await _generate(selection, messages, max_tokens)
             except (HTTPException, asyncio.CancelledError) as exc:
                 failure = exc
         if failure:
@@ -339,6 +382,13 @@ async def response(
         if _ordinary_identity() != ordinary:
             raise _error("omni_native_text_runtime_changed")
         result["previous_runtime"] = ordinary
+        if correction:
+            result["context_policy"] = correction.scope
+            if result.get("response_source") is None:
+                revised = corrected_registration_reply(correction, result["text"])
+                if revised is not None:
+                    result["text"] = revised
+                    result["response_source"] = "correction_rule"
     request_id = str(uuid4())
     metadata = {
         **selection.payload(),

@@ -39,7 +39,11 @@ from venom_core.services.academy.qualified_chat_schedule import (
     draft_time_revision,
     route_shift,
 )
-from venom_core.services.academy.qualified_chat_writing import selects_one_proposal
+from venom_core.services.academy.qualified_chat_writing import (
+    opening_sentence,
+    revises_opening_only,
+    selects_one_proposal,
+)
 
 QUALIFIED_MODEL = "gemma4:12b-it-q4_k_m"
 QUALIFIED_BOLT_MODEL = "hf.co/nvidia/nvidia-nemotron-3.5-bolt-e4b-4gb:q4_k_m"
@@ -318,6 +322,7 @@ class QualifiedReply:
     calendar_context: bool = False
     rewrite: QuoteRewrite | None = None
     rss: RSSSummary | None = None
+    opening_only: bool = False
 
     @property
     def requires_complete_draft(self) -> bool:
@@ -325,6 +330,7 @@ class QualifiedReply:
             self.local_text is not None
             or self.rewrite is not None
             or self.rss is not None
+            or self.opening_only
             or bool(self.restrictions)
             or self.timed
             or self.count is not None
@@ -435,6 +441,8 @@ class QualifiedReply:
             if len(options) == 1:
                 return options[0]
             return "\n".join(f"{i}. {option}" for i, option in enumerate(options, 1))
+        if self.opening_only:
+            draft = opening_sentence(draft)
         if _claim(draft):
             return _CALENDAR_UNCONFIRMED
         return draft if draft.strip() and self._allowed(draft) else _CLARIFICATION
@@ -443,6 +451,14 @@ class QualifiedReply:
 def prepare_studio_reply(
     text: str, history: Sequence[HistoryMessage], *, token_budget: int | None = None
 ) -> QualifiedReply | None:
+    if revises_opening_only(text):
+        return QualifiedReply(
+            hint=(
+                "Napisz wyłącznie zmienione zdanie otwarcia. Zachowaj sens i negację "
+                "najnowszej prośby. Pomiń temat, powitanie, podpis i komentarz."
+            ),
+            opening_only=True,
+        )
     quote = parse_quote_rewrite(text)
     if isinstance(quote, QuoteRewrite):
         if literal := quote.literal_reply:

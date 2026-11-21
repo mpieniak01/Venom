@@ -2218,3 +2218,44 @@ def test_rss_binds_the_speaker_to_the_title_and_distinguishes_the_month(
     assert "Morgan" not in answer
     assert f"Data publikacji: 2026-11-21\nLink: {link}" in answer
     assert answer.endswith("Zakres odczytu: tylko nagłówki RSS.")
+
+
+def test_studio_message_subject_is_local_and_opening_edit_publishes_only_sentence(
+    studio_chat, monkeypatch
+):
+    from venom_core.services import studio_normal_chat
+
+    ground = AsyncMock()
+    monkeypatch.setattr(studio_normal_chat, "current_chat_context", ground)
+    chat, sent, replies = studio_chat
+    session = str(uuid4())
+    replies.extend(
+        (
+            streamed(
+                "Temat: Zapisy do pracowni\nProsimy zapoznać się z zasadami zapisów."
+            ),
+            native(
+                "**Temat:** Zapisy do pracowni\nPracownia nie zamawia materiałów w imieniu uczestników."
+            ),
+        )
+    )
+    assert "Temat: Zapisy" in chat(
+        "Potrzebuję tematu wiadomości i jednego zdania otwarcia o zapisach do pracowni.",
+        session=session,
+    )
+    assert (
+        chat(
+            "Zmień tylko zdanie otwarcia, żeby informowało, że pracownia nie zamawia materiałów w imieniu uczestników. Bez szukania.",
+            session=session,
+        )
+        == "Pracownia nie zamawia materiałów w imieniu uczestników."
+    )
+    ground.assert_not_awaited()
+    assert sent[-1]["payload"]["stream"] is False
+
+
+def test_composition_can_request_an_explicit_public_lookup():
+    from venom_core.services.academy.qualified_chat_revisions import public_lookup_query
+
+    question = "Potrzebuję tematu wiadomości i zdania otwarcia. Sprawdź źródło w sieci."
+    assert public_lookup_query(question) == question

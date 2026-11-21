@@ -35,6 +35,14 @@ _COMPARISON = re.compile(
 _COMPOUND_REQUEST = re.compile(r"\b(?:przy okazji|dodatkowo|oprócz tego)\b", re.I)
 _SAME_REQUEST = re.compile(r"\b(?:tę samą|tę samą uprzejmą) prośbę\b", re.I)
 _NARROW_REVISION = re.compile(r"\b(?:już tylko|wyłącznie|tylko i wyłącznie)\b", re.I)
+_OPENING_ONLY = re.compile(
+    r"^\s*(?:zmień|popraw|zastąp|przeredaguj)\s+(?:wyłącznie|tylko)\s+"
+    r"(?:zdanie|pierwsze zdanie)\s+otwarcia\b",
+    re.I,
+)
+_SUBJECT_LINE = re.compile(r"(?im)^[ \t*]*temat[ *]*:[^\r\n]*(?:\r?\n|$)")
+_SENTENCE_END = re.compile(r"[.!?](?=\s|$)")
+
 _ORDINARY_BUDGET_HINT = (
     "Zacznij od odpowiedzi na ostatnie pytanie. "
     "Jeśli podajesz wartość, wynik z jednostką ma poprzedzać objaśnienie. "
@@ -54,6 +62,16 @@ _COUNTS = {
     "cztery": "4",
     "czterech": "4",
 }
+
+
+def revises_opening_only(text: str) -> bool:
+    return bool(_OPENING_ONLY.match(without_quotes(text)))
+
+
+def opening_sentence(draft: str) -> str:
+    text = _SUBJECT_LINE.sub("", draft).strip()
+    end = _SENTENCE_END.search(text)
+    return text[: end.end()] if end else text
 
 
 def writing_hint(text: str) -> str:

@@ -57,12 +57,13 @@ def exchange_title_context(content: str) -> CorrectionContext | None:
         return None
     return CorrectionContext(
         "exchange_title_generation",
-        "Zaproponuj dwie różne, krótkie nazwy wydarzenia w naturalnej polszczyźnie. "
-        "Każda ma być samodzielną nazwą pasującą do podanego rodzaju wymiany. "
-        "Użyj naturalnego szyku oraz zgodnego gramatycznie połączenia słów, "
-        "np. przymiotnika z rzeczownikiem albo rzeczownika z określeniem "
-        "w odpowiednim przypadku. Unikaj sklejania rzeczowników w mianowniku. "
-        "Zapisz każdą nazwę w oddzielnym wierszu, bez numeracji i komentarza.",
+        "Wymyśl dwie krótkie nazwy wydarzenia w naturalnej polszczyźnie. "
+        "Pierwszą nazwę zbuduj z przymiotnika i rzeczownika w tym samym rodzaju. "
+        "Drugą zbuduj inaczej: użyj rzeczownika i określenia, które tworzą naturalny zwrot. "
+        "Przykład różnicy dla wymiany książek: Sąsiedzka biblioteczka / Książki po sąsiedzku. "
+        "Obie nazwy mają pasować do wydarzenia z prośby użytkownika. "
+        "Każda ma brzmieć jak tytuł na plakacie. "
+        "Podaj wyłącznie dwie nazwy w dwóch osobnych wierszach.",
     )
 
 

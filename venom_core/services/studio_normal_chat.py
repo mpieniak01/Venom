@@ -35,6 +35,13 @@ from venom_core.services.chat_grounding import (
     grounding_follow_up,
     is_current_news_request,
 )
+from venom_core.services.public_source_evidence import (
+    PublicSourceContext,
+    PublicSourceEvidence,
+    asks_about_previous_scope,
+    previous_public_fact_context,
+    previous_scope_reply,
+)
 from venom_core.services.session_store import SessionStore
 
 _NORMAL_HISTORY_POLICY = (
@@ -79,8 +86,10 @@ def _recent_turns(
     *,
     omit_truncated: bool = False,
     omit_assistant_links: bool = False,
+    history: list[dict[str, object]] | None = None,
 ) -> list[HistoryMessage]:
-    history = store.get_history(session_id)
+    if history is None:
+        history = store.get_history(session_id)
     result: list[HistoryMessage] = []
     end = len(history)
     while end > 1:
@@ -126,6 +135,22 @@ def _recent_turns(
         )
     result.reverse()
     return result
+
+
+def _previous_evidence(history: list[dict[str, object]]) -> PublicSourceEvidence | None:
+    if len(history) < 2:
+        return None
+    user, assistant = history[-2:]
+    if (
+        user.get("role") != "user"
+        or assistant.get("role") != "assistant"
+        or not assistant.get("request_id")
+        or user.get("request_id") != assistant.get("request_id")
+        or assistant.get("status") != "COMPLETED"
+        or assistant.get("finish_reason") == "length"
+    ):
+        return None
+    return PublicSourceEvidence.from_record(assistant.get("public_source_evidence"))
 
 
 async def _note_context(
@@ -197,17 +222,32 @@ async def prepare_studio_normal(
     omit_assistant_links = (
         supplied_update and public_lookup_query(request.content) is None
     )
+    history_records = store.get_history(session_id)
     history = _recent_turns(
         store,
         session_id,
         max(0, min(remaining, MAX_CHAT_HISTORY_CHARS)),
         omit_truncated=omit_truncated,
         omit_assistant_links=omit_assistant_links,
+        history=history_records,
     )
     previous_users = [turn.content for turn in history if turn.role == "user"]
     previous = previous_users[-1] if previous_users else ""
     query = grounding_follow_up(request.content, previous)
-    if lookup_forbidden(request.content, previous_users):
+    prior_evidence = (
+        _previous_evidence(history_records) if local_qualification else None
+    )
+    scope_reply = (
+        previous_scope_reply(prior_evidence)
+        if local_qualification and asks_about_previous_scope(request.content)
+        else None
+    )
+    prior_context = previous_public_fact_context(request.content, prior_evidence)
+    if (
+        scope_reply
+        or prior_context
+        or lookup_forbidden(request.content, previous_users)
+    ):
         query = None
     elif local_qualification:
         query = (
@@ -220,7 +260,14 @@ async def prepare_studio_normal(
         if query is None
         else await current_chat_context(query, use_notes=request.use_notes)
     )
+    evidence = None
+    if prior_context and len(prior_context) <= remaining:
+        system_context += prior_context
     if local_qualification and source_context:
+        if isinstance(source_context, PublicSourceContext):
+            evidence = source_context.evidence
+        elif isinstance(source_context, PublicSourceUnavailable):
+            evidence = PublicSourceEvidence("unavailable")
         if isinstance(source_context, PublicSourceUnavailable):
             source_context = "\nW tej turze nie udało się odczytać publicznego źródła."
         policy = _SOURCE_STATUS_POLICY
@@ -244,13 +291,14 @@ async def prepare_studio_normal(
     if len(source_context) <= remaining:
         system_context += source_context
     elif source_context:
+        evidence = None
         fallback = "\nFresh source context did not fit; say it was not checked."
         if len(fallback) <= remaining:
             system_context += fallback
     budget -= len(system_context)
     if budget < 0:
         raise HTTPException(413, {"reason_code": "studio_normal_context_limit"})
-    return request.model_copy(
+    prepared = request.model_copy(
         update={
             "history": _recent_turns(
                 store,
@@ -258,8 +306,12 @@ async def prepare_studio_normal(
                 min(budget, MAX_CHAT_HISTORY_CHARS),
                 omit_truncated=omit_truncated,
                 omit_assistant_links=omit_assistant_links,
+                history=history_records,
             ),
             "max_tokens": output_tokens,
             "think": False,
         }
-    ), system_context
+    )
+    prepared._studio_public_source_evidence = evidence.to_record() if evidence else None
+    prepared._studio_public_scope_reply = scope_reply
+    return prepared, system_context

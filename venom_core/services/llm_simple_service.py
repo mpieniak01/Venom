@@ -1474,6 +1474,8 @@ def _prepare_qualified_reply(
         return None
     model = model_name.casefold()
     if _qualified_studio_request(request, model):
+        if request._studio_public_scope_reply:
+            return QualifiedReply(local_text=request._studio_public_scope_reply)
         if reply := prepare_studio_reply(
             request.content, request.history, token_budget=request.max_tokens
         ):

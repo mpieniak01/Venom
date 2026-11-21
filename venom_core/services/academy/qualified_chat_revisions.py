@@ -82,6 +82,11 @@ def _lookup_instruction(visible: str) -> bool | None:
     return requested > declined
 
 
+def explicit_lookup_allowed(text: str) -> bool:
+    """Recognize the newest explicit lookup permission in the current turn."""
+    return _lookup_instruction(without_quotes(text)) is True
+
+
 def lookup_forbidden(text: str, previous_users: Sequence[str] = ()) -> bool:
     """Keep the user's lookup decision for revisions of the same answer."""
     visible = without_quotes(text)

@@ -12,6 +12,11 @@ from venom_core.execution.skills.rss_reader_skill import RSSReaderSkill
 from venom_core.execution.skills.web_skill import WebSearchSkill
 from venom_core.services.chat_public_sources import NewsRegion, load_public_sources
 from venom_core.services.polish_wikipedia import search_polish_wikipedia
+from venom_core.services.public_source_evidence import (
+    MAX_PUBLIC_EXCERPT_CHARS,
+    PublicSourceContext,
+    PublicSourceEvidence,
+)
 from venom_core.services.verified_web import (
     VerifiedArticle,
     fetch_verified_article,
@@ -205,7 +210,7 @@ async def _feed_headline_context(
                 f"Data publikacji: {item.published_at}\nLink: {item.url}"
                 for index, item in enumerate(headlines, 1)
             )
-            return (
+            return PublicSourceContext(
                 f"{policy}Kanał RSS: {feed.name} {feed.url}.\n"
                 "Odczytano tylko nagłówki RSS. Napisz po polsku treść wybranego "
                 "nagłówka. Przetłumacz tytuł obcojęzyczny, zachowując osobę, "
@@ -214,7 +219,8 @@ async def _feed_headline_context(
                 "Oznacz odpowiedź jako «Nagłówek RSS». Dołącz datę publikacji "
                 "i pełny link do tej pozycji. Zachowaj zakres informacji "
                 "z nagłówka i zaznacz, że artykułu nie odczytano.\n"
-                f"{lines}\n[/PUBLIC_SOURCES]"
+                f"{lines}\n[/PUBLIC_SOURCES]",
+                PublicSourceEvidence("rss_headlines"),
             )
     return None
 
@@ -251,9 +257,10 @@ async def _weather_context(message: str, policy: str) -> str:
     if not result or result.startswith("✗"):
         return PublicSourceUnavailable.WEATHER
     url = AssistantSkill.weather_source_url(city)
-    return (
+    return PublicSourceContext(
         f"{policy}Requested location: {city}\nSource: {url}\n"
-        f"{result[:1000]}\n[/PUBLIC_SOURCES]"
+        f"{result[:1000]}\n[/PUBLIC_SOURCES]",
+        PublicSourceEvidence("weather"),
     )
 
 
@@ -270,7 +277,11 @@ async def _wiki_context(message: str, policy: str) -> str:
         f"[{index}] {item.title} | {item.url} | {item.extract}"
         for index, item in enumerate(sources, 1)
     ]
-    return policy + "\n".join(lines)[:1600] + "\n[/PUBLIC_SOURCES]"
+    excerpt = "\n".join(lines)[:MAX_PUBLIC_EXCERPT_CHARS]
+    return PublicSourceContext(
+        policy + excerpt + "\n[/PUBLIC_SOURCES]",
+        PublicSourceEvidence("wiki", excerpt=excerpt),
+    )
 
 
 def _search(query: str) -> str:
@@ -357,9 +368,10 @@ async def _news_context(message: str, policy: str) -> str:
         f"URL: {article.url}\nArticle excerpt: {article.text}"
         for idx, article in enumerate(verified, 1)
     )
-    return (
+    return PublicSourceContext(
         f"{policy}Only the dated article excerpts below were read and checked. "
         "Cite the source URL for each current claim; distinguish its publication "
         "date from the retrieval time.\n"
-        f"{article_context[:4900]}\n[/PUBLIC_SOURCES]"
+        f"{article_context[:4900]}\n[/PUBLIC_SOURCES]",
+        PublicSourceEvidence("article_excerpt"),
     )

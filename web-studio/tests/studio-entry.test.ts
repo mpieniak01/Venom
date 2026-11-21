@@ -7,7 +7,7 @@ import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { act, createContext, createElement, useContext, useState } from "react";
+import { act, createContext, createElement, useContext, useEffect, useState } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import ts from "typescript";
 import { prepareStudio } from "../scripts/prepare-studio.mjs";
@@ -200,6 +200,55 @@ test("standalone Studio keeps ordinary sending available without native text rou
   const send = html.match(/<button[^>]*class="studio-button studio-send"[^>]*>/)?.[0];
   assert.ok(send);
   assert.doesNotMatch(send, /disabled/);
+});
+
+test("disabled native text stays idle on mount, focus, and explicit actions", async () => {
+  const { JSDOM } = await import("jsdom");
+  const dom = new JSDOM('<div id="root"></div>');
+  const globals = { window: dom.window, document: dom.window.document, IS_REACT_ACT_ENVIRONMENT: true };
+  const originals = new Map(
+    Object.keys(globals).map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]),
+  );
+  for (const [key, value] of Object.entries(globals)) {
+    Object.defineProperty(globalThis, key, { value, configurable: true, writable: true });
+  }
+  const calls = { state: 0, catalog: 0, select: 0, rollback: 0 };
+  const state = { selection: nativeReference, previous: null, persistent: false };
+  type Native = ReturnType<typeof import("../../web-next/components/chat/use-native-text-chat").useNativeTextChat>;
+  const useNative = loadTsx(
+    path.join(repositoryRoot, "web-next/components/chat/use-native-text-chat.ts"),
+    { "@/lib/native-text-chat": {
+      fetchNativeTextState: async () => { calls.state++; return state; },
+      fetchNativeTextCatalog: async () => { calls.catalog++; return []; },
+      selectNativeText: async () => { calls.select++; return state; },
+      rollbackNativeText: async () => { calls.rollback++; return state; },
+    } },
+  ).useNativeTextChat as (enabled: boolean) => Native;
+  function Probe() {
+    const { refresh, change } = useNative(false);
+    useEffect(() => {
+      void refresh();
+      void change(nativeReference.adapter_id);
+      void change();
+    }, [refresh, change]);
+    return null;
+  }
+  const { createRoot } = await import("react-dom/client");
+  const root = createRoot(dom.window.document.getElementById("root")!);
+  try {
+    await act(async () => { root.render(createElement(Probe)); });
+    await act(async () => {
+      dom.window.dispatchEvent(new dom.window.Event("focus"));
+    });
+    assert.deepEqual(calls, { state: 0, catalog: 0, select: 0, rollback: 0 });
+  } finally {
+    await act(async () => { root.unmount(); });
+    dom.window.close();
+    for (const [key, descriptor] of originals) {
+      if (descriptor) Object.defineProperty(globalThis, key, descriptor);
+      else Reflect.deleteProperty(globalThis, key);
+    }
+  }
 });
 
 function shell() {

@@ -111,6 +111,11 @@ _HEAT_SETUP = re.compile(
 )
 _HEAT_OBJECT = r"[^\W\d_][\w-]*(?: [^\W\d_][\w-]*){0,4}"
 _HEAT_CELSIUS = r"[+-]?\d{1,3}(?:[.,]\d{1,2})?\s*°\s*c"
+_MELTING_TEMPERATURE = re.compile(
+    r"\d\s*(?:°(?:\s*[cf]\b)?|[kc]\b|stopni\w*|kelwin\w*)|"
+    r"\b(?:poniżej|powyżej) zera\b"
+)
+_ADJECTIVE_ENDING = re.compile(r"(?:ego|emu|ymi|imi|ych|ich|ej|ym|im|[aąeęiy])$")
 _HEAT_PAIR = re.compile(
     rf"(?P<first>{_HEAT_OBJECT}) ma (?:jednak )?(?P<first_c>{_HEAT_CELSIUS})"
     rf",? (?:a|i|natomiast) (?P<second>{_HEAT_OBJECT}) (?:ma )?(?:jednak )?"
@@ -234,7 +239,7 @@ def ice_melting_reply(
     visible = _visible(text)
     shorten = bool(_MELTING_SHORTEN.fullmatch(visible))
     topic = _visible(active_explanation_topic(history)) if shorten else visible
-    if not topic or _OTHER_TASK.search(topic):
+    if not topic or _OTHER_TASK.search(topic) or _MELTING_TEMPERATURE.search(topic):
         return None
     pair = _MELTING_PAIR.search(topic)
     if _UNEQUAL_CONDITIONS.search(topic) and (pair or _MELTING_COMPARE.search(topic)):
@@ -263,9 +268,14 @@ def _heat_premise(text: str) -> str:
 
 
 def _same_heat_object(label: str, reference: str) -> bool:
-    # Compare the object noun across common nominative and genitive forms.
-    noun = label.split()[-1].replace("ó", "o")
-    mentioned = reference.split()[-1].replace("ó", "o")
+    *label_modifiers, label_noun = label.split()
+    *reference_modifiers, reference_noun = reference.split()
+    label_stems = {_ADJECTIVE_ENDING.sub("", word) for word in label_modifiers}
+    reference_stems = {_ADJECTIVE_ENDING.sub("", word) for word in reference_modifiers}
+    if not reference_stems <= label_stems:
+        return False
+    noun = label_noun.replace("ó", "o")
+    mentioned = reference_noun.replace("ó", "o")
     return (
         noun == mentioned
         or mentioned in {noun + "a", noun + "u"}

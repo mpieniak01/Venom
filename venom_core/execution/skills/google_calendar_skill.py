@@ -322,6 +322,42 @@ class GoogleCalendarSkill:
             operation=operation,
         )
 
+    def _find_venom_event(self, event_id: str):
+        try:
+            return (
+                self.service.events()
+                .get(calendarId=self.venom_calendar_id, eventId=event_id)
+                .execute()
+            )
+        except HttpError as error:
+            if error.resp.status == 404:
+                return None
+            raise
+
+    def _write_venom_event(self, event: dict, operation: CalendarCreate | None):
+        if operation is None or not operation.idempotent:
+            return (
+                self.service.events()
+                .insert(calendarId=self.venom_calendar_id, body=event)
+                .execute()
+            )
+        event_id = operation.request_id.hex
+        existing = self._find_venom_event(event_id)
+        if existing is not None:
+            return existing
+        try:
+            return (
+                self.service.events()
+                .insert(
+                    calendarId=self.venom_calendar_id, body={**event, "id": event_id}
+                )
+                .execute()
+            )
+        except HttpError as error:
+            if error.resp.status != 409:
+                raise
+            return self._find_venom_event(event_id) or {"id": event_id}
+
     def _schedule_task(
         self,
         title: str,
@@ -377,11 +413,7 @@ class GoogleCalendarSkill:
 
             # WRITE-ONLY do kalendarza Venoma (NIE do primary)
             # Safe Layering: self.venom_calendar_id should NEVER be 'primary'
-            created_event = (
-                self.service.events()
-                .insert(calendarId=self.venom_calendar_id, body=event)
-                .execute()
-            )
+            created_event = self._write_venom_event(event, operation)
 
             receipt = (
                 confirm_insertion(operation, created_event)
@@ -389,8 +421,14 @@ class GoogleCalendarSkill:
                 else None
             )
             if operation is not None and receipt is None:
+                event_id = (
+                    created_event.get("id") if isinstance(created_event, dict) else None
+                )
                 return CalendarExecution(
-                    "Brak potwierdzenia parametrów wpisu w kalendarzu."
+                    "Brak potwierdzenia parametrów wpisu w kalendarzu.",
+                    unconfirmed_event_id=event_id
+                    if isinstance(event_id, str) and event_id.strip()
+                    else None,
                 )
             event_link = created_event.get("htmlLink")
 

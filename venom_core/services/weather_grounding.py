@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Self, get_args
 from unicodedata import normalize
 
@@ -32,7 +32,8 @@ _NEARBY_ALLOWED = re.compile(
 )
 _NEARBY_DENIED = re.compile(
     r"\b(?:(?:tylko|wyłącznie) (?:samo |w granicach )?miast\w*|"
-    r"bez okolic\w*|nie (?:podawaj|uwzględniaj) (?:danych z )?okolic\w*)\b",
+    r"bez okolic\w*|nie (?:podawaj|uwzględniaj|może być|mogą być)"
+    r"(?: (?:danych|dane|pomiar|odczyt))? (?:z )?okolic\w*)\b",
     re.I,
 )
 _PREVIOUS_VALUE = re.compile(
@@ -58,6 +59,11 @@ _COMMA_FORMAT = re.compile(r"\bw formacie\b[^.!?]{0,60},\s*liczba\s*°?C\b", re.
 _TEMPERATURE_REQUEST = re.compile(r"\btemperatur\w*\b|°C", re.I)
 _FEELS_LIKE = re.compile(r"\bodczuwaln\w*\b", re.I)
 _ACTUAL = re.compile(r"\b(?:rzeczywist|zmierzon|powietrz)\w*\b", re.I)
+_BOTH_TEMPERATURES = re.compile(
+    r"\b(?:temperatur\w* (?:i|oraz|a także) (?:temperatur\w* )?odczuwaln\w*|"
+    r"obie temperatur\w*)\b",
+    re.I,
+)
 _NO_FEELS_LIKE = re.compile(
     r"\b(?:bez|pomiń|nie podawaj) (?:okolic\w* (?:i|ani|oraz) )?"
     r"(?:(?:temperatur|pogod)\w* )?odczuwaln\w*\b",
@@ -154,18 +160,40 @@ class WeatherEvidence:
             return "Pojedynczy pomiar temperatury nie pozwala potwierdzić prognozy."
         if not _PREVIOUS_VALUE.search(visible):
             return None
-        temperature = self.temperature_c
-        if _only_feels_like(visible) or (
-            self.preferred_metric == "feels_like" and not _ACTUAL.search(visible)
+
+        nearby_denied = (
+            _NEARBY_DENIED.search(visible)
+            and self.observed_location is not None
+            and self.observed_location.casefold() != self.requested_location.casefold()
+        )
+        if (
+            nearby_denied
+            or self.temperature_c is None
+            or self.observed_location is None
         ):
-            temperature = self.feels_like_c
-        if temperature is None or self.observed_location is None:
             return f"Brak potwierdzonego odczytu temperatury dla miejscowości {self.requested_location}."
-        value = f"{temperature}°C"
+        value = self._follow_up_temperature(visible)
         if _VALUE_ONLY.search(visible):
             return value
         separator = ", " if _COMMA_FORMAT.search(message) else " — "
         return f"{self.observed_location}{separator}{value}"
+
+    def _follow_up_temperature(self, visible: str) -> str:
+        feels_denied = _NO_FEELS_LIKE.search(visible)
+        if not feels_denied and _both_temperatures(visible):
+            actual = f"Temperatura powietrza: {self.temperature_c}°C."
+            return f"{actual} {_feels_like_text(self.feels_like_c)}"
+        if _only_feels_like(visible) or (
+            self.preferred_metric == "feels_like"
+            and not feels_denied
+            and not _ACTUAL.search(visible)
+        ):
+            return (
+                f"{self.feels_like_c}°C"
+                if self.feels_like_c is not None
+                else "Brak potwierdzonej temperatury odczuwalnej."
+            )
+        return f"{self.temperature_c}°C"
 
 
 def _weather_record_time(
@@ -174,7 +202,7 @@ def _weather_record_time(
     source = record.get("weather_source_url")
     at = record.get("weather_observed_at")
     if source == AssistantSkill.weather_source_url(requested):
-        return at is None, None
+        return _wttr_record_time(at, observed, reason)
     if (
         source is None
         or source != imgw_station_url(requested)
@@ -188,6 +216,27 @@ def _weather_record_time(
     if observed_at is None or observed_at.isoformat() != at:
         return False, None
     return True, observed_at
+
+
+def _wttr_record_time(
+    at: str | None, observed: str | None, reason: str | None
+) -> tuple[bool, datetime | None]:
+    if at is None:
+        return reason != "stale_observation", None
+    if observed is None or reason not in {None, "stale_observation"}:
+        return False, None
+    try:
+        parsed = datetime.fromisoformat(at)
+    except ValueError:
+        return False, None
+    if (
+        parsed.tzinfo != timezone.utc
+        or parsed.second
+        or parsed.microsecond
+        or parsed.isoformat() != at
+    ):
+        return False, None
+    return True, parsed
 
 
 def _weather_record_status_valid(reason: str | None, status: str | None) -> bool:
@@ -243,6 +292,8 @@ def _weather_failure_reply(
         if reason in {"no_data", "missing_temperature", "missing_observed_location"}
         else f"Nie udało się pobrać danych pogodowych dla miejscowości {requested}."
     )
+    if reason in {"stale_observation", "missing_observation_time"}:
+        text = f"Brak potwierdzonego aktualnego pomiaru dla miejscowości {requested}."
     return WeatherGroundingReply(
         text,
         WeatherEvidence(
@@ -251,6 +302,7 @@ def _weather_failure_reply(
             source_url=observation.source_url,
             reason=reason,
             http_status=observation.http_status,
+            observed_at=observation.observed_at,
         ),
     )
 
@@ -277,10 +329,7 @@ def _weather_temperature_text(
     if not only_feels:
         lines.append(f"Temperatura powietrza: {observation.temperature_c}°C.")
     if include_feels:
-        if observation.feels_like_c is None:
-            lines.append("Brak potwierdzonej temperatury odczuwalnej.")
-        else:
-            lines.append(f"Temperatura odczuwalna: {observation.feels_like_c}°C.")
+        lines.append(_feels_like_text(observation.feels_like_c))
     temperature = " ".join(lines)
     if _TEMPERATURE_REQUEST.search(visible) is None or _OTHER_METRICS.search(visible):
         details = [f"{name}: {value}." for name, value in observation.details]
@@ -294,13 +343,31 @@ def _weather_temperature_text(
     return temperature
 
 
-def _weather_time_text(observed_at: datetime | None) -> str:
+def _feels_like_text(feels: str | None) -> str:
+    return (
+        f"Temperatura odczuwalna: {feels}°C."
+        if feels is not None
+        else "Brak potwierdzonej temperatury odczuwalnej."
+    )
+
+
+def _weather_time_text(observation: WeatherObservation) -> str:
+    observed_at = observation.observed_at
     if observed_at is None:
         return ""
-    return (
-        f" Pomiar z {observed_at:%Y-%m-%d, %H:%M} UTC. "
-        "Źródłem pochodzenia danych jest Instytut Meteorologii i Gospodarki "
-        "Wodnej – Państwowy Instytut Badawczy."
+    when = f" Pomiar z {observed_at:%Y-%m-%d, %H:%M} UTC."
+    if observation.source_url == imgw_station_url(observation.requested_location):
+        when += (
+            " Źródłem pochodzenia danych jest Instytut Meteorologii i Gospodarki "
+            "Wodnej – Państwowy Instytut Badawczy."
+        )
+    return when
+
+
+def _both_temperatures(visible: str) -> bool:
+    return bool(
+        _BOTH_TEMPERATURES.search(visible)
+        or (_FEELS_LIKE.search(visible) and _ACTUAL.search(visible))
     )
 
 
@@ -308,7 +375,7 @@ def _only_feels_like(visible: str) -> bool:
     return bool(
         _FEELS_LIKE.search(visible)
         and not _NO_FEELS_LIKE.search(visible)
-        and not _ACTUAL.search(visible)
+        and not _both_temperatures(visible)
     )
 
 
@@ -342,12 +409,13 @@ def weather_observation_reply(
     )
     only_feels = _only_feels_like(visible)
     include_feels = bool(
-        _FEELS_LIKE.search(visible) and not _NO_FEELS_LIKE.search(visible)
+        (_FEELS_LIKE.search(visible) or _both_temperatures(visible))
+        and not _NO_FEELS_LIKE.search(visible)
     )
     temperature = _weather_temperature_text(
         observation, visible, only_feels, include_feels
     )
-    when = _weather_time_text(observation.observed_at)
+    when = _weather_time_text(observation)
     return WeatherGroundingReply(
         f"{context}Miejsce odczytu: {observed}. {temperature}{when} Źródło: {observation.source_url}",
         WeatherEvidence(

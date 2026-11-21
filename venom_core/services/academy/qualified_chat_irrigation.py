@@ -33,9 +33,15 @@ def _group_assertion(text: str) -> bool:
 WEAK = re.compile(
     r"\b(?:słab|such|ledwie|ucier|brak przepływu|nie podaj|nie dział|nie kapi|mało wody|kapie zbyt wolno)\w*"
 )
+_NORMAL_GROUP = re.compile(r"\bdziałają (?:już )?(?:prawidłowo|normalnie)\b")
+_NORMAL_EMITTER = re.compile(
+    r"\b(?:ten|wskazany|jedyny|pojedynczy) (?:kroplownik|emiter) "
+    r"(?:już )?(?:działa|pracuje) (?:już )?(?:prawidłowo|normalnie)\b"
+)
 FILTER = re.compile(r"\bfiltr\w*\b")
 DIRTY = re.compile(r"\b(?:zabrudz|brudn|zatkan|zapycha|osad)\w*")
-CLEAN = re.compile(r"\b(?:czyst|wyczyszcz|bez osadu)\w*")
+_NO_DEPOSIT = re.compile(r"\b(?:bez|brak|nie ma) osadu\b")
+CLEAN = re.compile(r"\b(?:czyst|wyczyszcz)\w*")
 RETRACT = re.compile(r"\b(?:cofam|nie wiem|nie potwierdz|nie wiadomo|wycofuj)\w*")
 HYPOTHETICAL = re.compile(r"\b(?:jeśli|jeżeli|gdyby|możliwe|prawdopodobnie)\b")
 
@@ -77,11 +83,15 @@ def _apply_assertion(state: Observation, assertion: str) -> None:
             state.spread = "group"
         elif LOCAL.search(assertion) and NEARBY.search(assertion):
             state.spread = "local"
-    elif _group_assertion(assertion) and re.search(
-        r"\bdziałają (?:już )?(?:prawidłowo|normalnie)", assertion
-    ):
+    elif _spread_recovered(state, assertion):
         state.spread = None
     _apply_filter_assertion(state, assertion)
+
+
+def _spread_recovered(state: Observation, assertion: str) -> bool:
+    if state.spread == "local" and _NORMAL_EMITTER.search(assertion):
+        return True
+    return _group_assertion(assertion) and bool(_NORMAL_GROUP.search(assertion))
 
 
 def _apply_filter_assertion(state: Observation, assertion: str) -> None:
@@ -89,16 +99,16 @@ def _apply_filter_assertion(state: Observation, assertion: str) -> None:
         return
     if re.search(r"\bnie (?:jest )?(?:zabrudzon|czyst)", assertion):
         state.filter_state = None
-    elif DIRTY.search(assertion):
+    elif DIRTY.search(_NO_DEPOSIT.sub("", assertion)):
         state.filter_state = "dirty"
-    elif CLEAN.search(assertion):
+    elif CLEAN.search(assertion) or _NO_DEPOSIT.search(assertion):
         state.filter_state = "clean"
 
 
 def irrigation_reply(prompt: str, users: Sequence[str]) -> str | None:
     if not (REQUEST.search(prompt) and DOMAIN.search(prompt)):
         return None
-    current, by_zone = _observations(users)
+    current, by_zone = _observations([*users, prompt])
     zones = set(ZONE.findall(prompt))
     selected = by_zone.get(next(iter(zones), current)) if len(zones) <= 1 else None
     if selected is None or selected.spread is None:

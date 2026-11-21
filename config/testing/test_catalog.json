@@ -792,6 +792,19 @@
       "rationale": "Retain opt-in Gemma publication and trusted calendar isolation through the Studio HTTP route."
     },
     {
+      "path": "tests/test_academy_qualified_chat_state.py",
+      "domain": "academy",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Offline checks for revised conversation state and current conditions."
+    },
+    {
       "path": "tests/test_academy_quality.py",
       "domain": "academy",
       "test_type": "unit",

@@ -26,8 +26,11 @@ _QUESTION = re.compile(
     re.I,
 )
 _IMPERATIVE = re.compile(
-    r"^(?:(?:krótko|zwięźle) )?(?:nie )?(?:wyjaśnij|wytłumacz|opisz|powiedz|podaj|wskaż|"
-    r"odpowiedz|napisz|wpisz|zapisz|zarejestruj|dodaj|wysyłaj|przesyłaj|pobierz|odczytaj)\b",
+    r"^(?:(?:krótko|zwięźle|proszę)\s+)?(?P<negation>nie\s+)?"
+    r"(?:wyjaśnij|wytłumacz|opisz|powiedz|podaj|podawaj|wskaż|"
+    r"odpowiedz|napisz|wpisz|zapisz|zarejestruj|dodaj|dodawaj|"
+    r"wyślij|prześlij|wysyłaj|przesyłaj|pobierz|pobieraj|odczytaj|"
+    r"ujawnij|ujawniaj|udostępnij|udostępniaj|sprawdź|oblicz|pomiń)\b",
     re.I,
 )
 _WORD_VALUE = re.compile(
@@ -221,10 +224,18 @@ class QuoteRewrite:
             or (_FULL_LINK.search(self.source) and not _FULL_LINK.search(text))
         )
 
-    @staticmethod
-    def _act_matches(text: str, act: str) -> bool:
+    def _act_matches(self, text: str, act: str) -> bool:
         if act == "pytanie":
             return text.endswith("?") or bool(_QUESTION.match(text))
+        if act == "polecenie":
+            source = _IMPERATIVE.match(self.source)
+            draft = _IMPERATIVE.match(text)
+            return bool(
+                source
+                and draft
+                and not text.endswith("?")
+                and bool(source["negation"]) == bool(draft["negation"])
+            )
         return not _QUESTION.match(text)
 
     def publish(self, draft: str) -> str:

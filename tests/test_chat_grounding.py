@@ -30,6 +30,7 @@ from venom_core.services.chat_public_sources import load_public_sources
         ("Jak zbudować kanał RSS?", None),
         ("Podaj definicję kanału RSS.", None),
         ("Co to jest BBC News RSS?", "wiki"),
+        ("Z kanału BBC RSS wybierz nagłówek o Wikipedii", "web"),
     ],
 )
 def test_routing(message, expected):
@@ -1224,3 +1225,41 @@ def test_rss_generic_editorial_destination_does_not_authorize_private_notes():
     assert chat_grounding.is_rss_read_request(
         "Weź pierwszy aktualny tytuł z BBC News RSS i oddaj jego sens."
     )
+
+
+@pytest.mark.asyncio
+async def test_oversized_feed_retains_only_complete_channel_items():
+    head = (
+        b"<rss><channel><item><title>Aktualny GUS</title>"
+        b"<link>https://stat.gov.pl/aktualnosci/1</link>"
+        b"<pubDate>Sat, 14 Nov 2026 08:00:00 GMT</pubDate></item>"
+    )
+    tail = b"<item><title>" + (b"x" * verified_web.MAX_FEED_BYTES)
+    transport = httpx.MockTransport(
+        lambda _: httpx.Response(
+            200, headers={"content-type": "application/rss+xml"}, content=head + tail
+        )
+    )
+    results = await verified_web.fetch_rss_headlines(
+        "https://stat.gov.pl/rss/pl/5438/8.xml",
+        article_hosts=("stat.gov.pl",),
+        article_path_prefix="/",
+        today=date(2026, 11, 14),
+        transport=transport,
+    )
+    assert [item.title for item in results] == ["Aktualny GUS"]
+
+
+@pytest.mark.asyncio
+async def test_news_with_publisher_and_topic_does_not_fall_back_to_general_rss(
+    monkeypatch,
+):
+    read = AsyncMock()
+    monkeypatch.setattr(chat_grounding.RSSReaderSkill, "read_feed", read)
+    result = await chat_grounding._feed_headline_context(
+        "Podaj aktualne wiadomości BBC o remoncie mostu",
+        "",
+        load_public_sources().regions["world"].feeds,
+    )
+    assert result is None
+    read.assert_not_awaited()

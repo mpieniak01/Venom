@@ -2,6 +2,7 @@
 
 import json
 from contextlib import asynccontextmanager
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 from uuid import uuid4
@@ -189,7 +190,9 @@ def test_studio_retains_full_location_and_discards_self_asserted_calendar_succes
             "kalendarza.",
         )
     )
-    assert "wymaga potwierdzenia" in chat("Co się stało?")
+    response = chat("Co się stało?")
+    assert "wymaga potwierdzenia" in response
+    assert "dodałem spotkanie do kalendarza" not in response
     assert len(sent) == 1
 
 
@@ -264,6 +267,8 @@ def test_studio_preserves_compatible_path_when_flag_is_off_or_structured(
         (True, "Ułóż kartki", "Potrzebuję"),
         (40, "Ułóż kartki", "Potrzebuję"),
         (45, "Ułóż kartki przez 2 minuty", "Potrzebuję"),
+        (45, "Oddychaj przez dwie minuty", "Potrzebuję"),
+        (45, "Oddychaj przez pół minuty", "Potrzebuję"),
     ],
 )
 def test_studio_retains_typed_duration(studio_chat, seconds, action, expected):
@@ -580,6 +585,14 @@ DRAFT_CASES = (
     ("DR20", "Zrób fotorelację z wydarzenia.", P, ("photos",), ()),
     ("DR21", "Wyślij link do galerii wydarzenia.", P, (), ("photos",)),
     ("DR22", "Wyślij zdjęcie.", (), (), ()),
+    ("DR23", "Wyślij plik tekstowy i link do galerii.", P, (), ("photos",)),
+    (
+        "DR24",
+        "Wyślij załącznik do samego tekstu albo załącznik z samym tekstem.",
+        P,
+        (),
+        (),
+    ),
 )
 
 
@@ -622,11 +635,13 @@ def test_override_still_rejects_an_actual_use_in_another_clause():
     [
         "Nie zapisałem notatki i dodałem spotkanie do kalendarza.",
         "Wpis jest już w kalendarzu.",
+        "Spotkanie jest już w kalendarzu.",
         "W kalendarzu odprawa została zapisana.",
     ],
 )
 def test_calendar_claims_in_mixed_or_passive_messages_are_withheld(draft):
-    assert "wymaga potwierdzenia" in prepare_reply("Co się stało?", []).publish(draft)
+    response = prepare_reply("Co się stało?", []).publish(draft)
+    assert response == "Wpis do kalendarza wymaga potwierdzenia wykonania."
 
 
 def test_duplicate_options_trigger_repair_and_preserve_first_writing():
@@ -688,13 +703,16 @@ def test_ordinary_stream_marks_truncation_without_asking_for_input(studio_chat):
         "Wpisałem odprawę do kalendarza.",
         "W kalendarzu została zapisana odprawa.",
         "Wpis jest już w kalendarzu.",
+        "Spotkanie jest już w kalendarzu.",
     ],
 )
 def test_claim_cues_are_held_before_publish_even_one_character_at_a_time(text):
     guard = CalendarClaimStream()
     emitted = "".join(guard.push(char) for char in text)
     assert emitted == ""
-    assert "wymaga potwierdzenia" in guard.finish(truncated=False)
+    assert guard.finish(truncated=False) == (
+        "Wpis do kalendarza wymaga potwierdzenia wykonania."
+    )
 
 
 def test_calendar_guard_preserves_a_denial_and_streams_safe_words_early():
@@ -788,6 +806,7 @@ def test_single_advice_without_prior_cause_does_not_assume_a_mechanism():
 )
 def test_studio_quote_rewrite_uses_operand_without_history_and_preserves_literal_value(
     studio_chat,
+    request,
 ):
     chat, sent, replies = studio_chat
     operand = "Czy dopłata wynosi 12 zł i czy wysyłka obejmuje niedzielę?"
@@ -809,12 +828,10 @@ def test_studio_quote_rewrite_uses_operand_without_history_and_preserves_literal
     assert "/api/chat" in sent[0]["completions_url"]
     assert [msg["role"] for msg in payload["messages"]] == ["system", "user"]
     assert json.loads(payload["messages"][-1]["content"])["tekst_zrodlowy"] == operand
-    assert (
-        "format" in payload
-        if payload["model"] == QUALIFIED_MODEL
-        else "format" not in payload
-    )
-    if payload["model"] == QUALIFIED_BOLT_MODEL:
+    model = request.node.callspec.params["studio_chat"]
+    assert payload["model"] == model
+    assert ("format" in payload) is (model == QUALIFIED_MODEL)
+    if model == QUALIFIED_BOLT_MODEL:
         assert json.loads(payload["messages"][-1]["content"]) == {
             "tekst_zrodlowy": operand
         }
@@ -1021,13 +1038,20 @@ def test_studio_rewrite_disambiguates_outer_instruction_and_checks_draft():
 def test_verified_source_refuses_malformed_or_modified_card(tmp_path, monkeypatch):
     from venom_core.services.academy import qualified_chat_sources
 
+    path = tmp_path / "qualified_card_ventilation.json"
+    original = Path(qualified_chat_sources.__file__).with_name(path.name).read_bytes()
     monkeypatch.setattr(
         qualified_chat_sources, "__file__", str(tmp_path / "sources.py")
     )
     read_untrusted = qualified_chat_sources.read_card.__wrapped__
-    path = tmp_path / "qualified_card_ventilation.json"
     assert read_untrusted("ventilation") is None
-    path.write_text('{"id":"EPA-VENT-1","url":"https://example.test"}')
+    path.write_bytes(original)
+    card = json.loads(original)
+    assert read_untrusted("ventilation") == card
+    path.write_bytes(original.replace(b"podczas prysznica", b"po prysznicu", 1))
+    altered = json.loads(path.read_bytes())
+    assert altered.keys() == card.keys()
+    assert altered["paraphrase_pl"] != card["paraphrase_pl"]
     assert read_untrusted("ventilation") is None
 
 
@@ -1403,15 +1427,16 @@ def test_message_drafting_uses_the_facts_in_the_request(studio_chat, monkeypatch
     ground = AsyncMock()
     monkeypatch.setattr(studio_normal_chat, "current_chat_context", ground)
     chat, sent, replies = studio_chat
-    answer = "Temat: Odbiór plakatów\\nInformacja dotyczy dzisiejszego odbioru plakatów w holu."
+    answer = "Temat: Odbiór plakatów\nInformacja dotyczy dzisiejszego odbioru plakatów w holu."
     replies.append(streamed(answer))
-    assert (
-        chat(
-            "Podaj temat wiadomości i krótkie zdanie otwarcia o dzisiejszym "
-            "odbiorze plakatów w holu. Użyj wyłącznie informacji z tego zdania."
-        )
-        == answer
+    response = chat(
+        "Podaj temat wiadomości i krótkie zdanie otwarcia o dzisiejszym "
+        "odbiorze plakatów w holu. Użyj wyłącznie informacji z tego zdania."
     )
+    assert response.splitlines() == [
+        "Temat: Odbiór plakatów",
+        "Informacja dotyczy dzisiejszego odbioru plakatów w holu.",
+    ]
     assert (
         "przejdź do szkicu bez dopytywania"
         in sent[0]["payload"]["messages"][0]["content"]
@@ -2278,14 +2303,14 @@ def test_studio_message_subject_is_local_and_opening_edit_publishes_only_sentenc
     assert sent[-1]["payload"]["stream"] is False
 
     replies.append(
-        native("Temat: Odbiór skrzynek\nOdbiór skrzynek nie obejmuje wnoszenia.")
+        native("Temat: Odbiór skrzynek\nOdbiór nie obejmuje wnoszenia skrzynek.")
     )
     assert (
         chat(
             "Zmień tylko otwarcie. Odbiór nie obejmuje wnoszenia skrzynek.",
             session=session,
         )
-        == "Odbiór skrzynek nie obejmuje wnoszenia."
+        == "Odbiór nie obejmuje wnoszenia skrzynek."
     )
     assert not revises_opening_only("Zmień tylko otwarcie zaworu.")
 
@@ -2523,3 +2548,185 @@ def test_rss_keeps_the_simultaneous_event_outside_the_attributed_quote():
     )
     assert "Naprawy są konieczne, a równocześnie spotyka się z Morganem." in result
     assert "Atrybucja: Taylor" in result
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Czy spotkanie jest już w kalendarzu?",
+        "Spotkanie jest już w kalendarzu?",
+        "Spotkania nie ma w kalendarzu.",
+        "Spotkanie nie jest jeszcze w kalendarzu.",
+    ],
+)
+def test_calendar_presence_guard_preserves_questions_and_denials(text):
+    assert prepare_reply("Co się stało?", []).publish(text) == text
+    guard = CalendarClaimStream()
+    visible = "".join(guard.push(char) for char in text)
+    assert visible + guard.finish(truncated=False) == text
+
+
+def test_explicit_topic_change_clears_stale_weight_and_size():
+    facts = HistoryMessage(
+        **turn("Skrzynka jest za ciężka i ma zmieścić się na półce.")
+    )
+    question = "Czy samo usunięcie podpisu wystarczy?"
+    assert prepare_reply(f"Zmieniam temat. {question}", [facts]).local_text is None
+    reset = HistoryMessage(**turn("Nowy temat: podpis pod kartką."))
+    assert prepare_reply(question, [facts, reset]).local_text is None
+    assert prepare_reply(
+        "Czy samo wyjęcie części zawartości wystarczy?", [facts]
+    ).local_text
+
+
+def test_count_sees_extra_option_after_bullet_and_keeps_normal_continuations():
+    assert split_options(
+        "- Spacer.\n  Na zewnątrz.\n- Czytanie\n\nAlternatywnie odpoczynek."
+    ) == ["Spacer. Na zewnątrz.", "Czytanie", "Alternatywnie odpoczynek."]
+
+
+def test_quote_rewrite_preserves_command_and_prohibition():
+    from venom_core.services.academy.qualified_chat_quote import QuoteRewrite
+
+    command = QuoteRewrite("Podaj wynik.", False)
+    assert command.publish("Wynik wynosi zero.").startswith("Nie udało się")
+    assert command.publish("Wskaż rezultat.") == "„Wskaż rezultat.”"
+    prohibition = QuoteRewrite("Nie wysyłaj danych.", False)
+    assert prohibition.publish("Przesyłaj dane.").startswith("Nie udało się")
+    assert prohibition.publish("Nie przesyłaj danych.") == "„Nie przesyłaj danych.”"
+
+
+def test_opening_edit_validates_the_latest_proposition_and_preserves_abbreviation():
+    from venom_core.services.academy.qualified_chat import prepare_studio_reply
+
+    reply = prepare_studio_reply(
+        "Zmień tylko zdanie otwarcia, żeby informowało, że nie potwierdzam spotkania o godz. 15:00.",
+        [],
+    )
+    assert reply is not None
+    assert reply.publish("Potwierdzam spotkanie o godz. 15:00.").startswith(
+        "Potrzebuję"
+    )
+    assert reply.publish("Nie potwierdzam spotkania o godz. 16:00.").startswith(
+        "Potrzebuję"
+    )
+    assert (
+        reply.publish(
+            "Temat: Spotkanie\nNie potwierdzam spotkania o godz. 15:00. Dam znać."
+        )
+        == "Nie potwierdzam spotkania o godz. 15:00."
+    )
+    unsupported = prepare_studio_reply("Zmień tylko otwarcie.", [])
+    assert unsupported is not None
+    assert unsupported.publish("Potwierdzam spotkanie.").startswith("Potrzebuję")
+
+
+@pytest.mark.parametrize(
+    ("title", "draft", "secondary", "expected"),
+    [
+        (
+            "Inflation rises to 5%",
+            "Inflacja spadła do 5%",
+            None,
+            "„Inflation rises to 5%”",
+        ),
+        (
+            "Inflation rises to 5%",
+            "Inflacja wzrosła do 5%",
+            None,
+            "Inflacja wzrosła do 5%",
+        ),
+        (
+            "Markets fall after jobs report",
+            "Rynki spadają z powodu raportu",
+            None,
+            "„Markets fall after jobs report”",
+        ),
+        (
+            "Markets fall after jobs report",
+            "Rynki spadają po raporcie",
+            None,
+            "Rynki spadają po raporcie",
+        ),
+        (
+            "Markets fall due to jobs report",
+            "Rynki spadają z powodu raportu",
+            None,
+            "Rynki spadają z powodu raportu",
+        ),
+        (
+            "Rates May Fall",
+            "Stopy procentowe spadną",
+            None,
+            "Nie udało się przygotować",
+        ),
+        (
+            "Rates May Fall",
+            "Stopy procentowe mogą spaść",
+            None,
+            "Stopy procentowe mogą spaść",
+        ),
+        ("May Inflation Falls", "Majowa inflacja spada", None, "Majowa inflacja spada"),
+        (
+            "Markets rise while Germany votes",
+            "Rynki rosną",
+            "Niemcy głosują",
+            "podczas gdy Niemcy głosują",
+        ),
+    ],
+)
+def test_rss_keeps_direction_causality_modality_and_translated_names(
+    title, draft, secondary, expected
+):
+    from venom_core.services.academy.qualified_chat_rss import RSSSummary
+    from venom_core.services.verified_web import NewsHeadline
+
+    summary = RSSSummary(
+        (NewsHeadline("https://bbc.co.uk/story", title, "2026-11-21"),)
+    )
+    reply = summary.publish(
+        json.dumps({"items": [{"index": 1, "summary": draft, "secondary": secondary}]})
+    )
+    assert expected in reply
+
+
+def test_rss_at_most_count_accepts_one_item_and_exact_requires_two():
+    from venom_core.services.academy.qualified_chat_options import CountRequirement
+    from venom_core.services.academy.qualified_chat_rss import RSSSummary
+    from venom_core.services.verified_web import NewsHeadline
+
+    titles = tuple(
+        NewsHeadline(f"https://bbc.co.uk/{i}", "Harbor opens", "2026-11-21")
+        for i in (1, 2)
+    )
+    bounded = RSSSummary(titles, CountRequirement("at_most", 2))
+    exact = RSSSummary(titles, CountRequirement("exact", 2))
+    draft = '{"items":[{"index":1,"summary":"Port otwarty","secondary":null}]}'
+    array = bounded.schema()["properties"]["items"]
+    assert array["minItems"] == 1
+    assert array["maxItems"] == 2
+    assert "Port otwarty" in bounded.publish(draft)
+    assert "Nie udało się przygotować" in exact.publish(draft)
+
+
+@pytest.mark.parametrize("studio_chat", ["unqualified-model"], indirect=True)
+def test_studio_marks_length_for_models_without_qualified_replies(studio_chat):
+    chat, _, replies = studio_chat
+    replies.append(streamed("Ucięta ", finish="length"))
+    assert chat("Napisz krótką odpowiedź.").endswith(GENERATION_TRUNCATED)
+
+
+def test_studio_marks_truncated_rss_before_publishing(studio_chat, monkeypatch):
+    from venom_core.services import chat_grounding, verified_web
+
+    feed = AsyncMock(
+        return_value=[
+            verified_web.NewsHeadline(
+                "https://www.bbc.co.uk/news/articles/one", "Harbor opens", "2026-11-21"
+            ),
+        ]
+    )
+    monkeypatch.setattr(chat_grounding.RSSReaderSkill, "read_feed", feed)
+    chat, _, replies = studio_chat
+    replies.append(native('{"items":[', reason="length"))
+    assert chat("Z kanału BBC RSS wybierz jeden nagłówek.") == GENERATION_TRUNCATED

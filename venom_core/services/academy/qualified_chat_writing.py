@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import re
 
-from venom_core.services.academy.qualified_chat_quote import without_quotes
+from venom_core.services.academy.qualified_chat_quote import (
+    single_quoted_operand,
+    without_quotes,
+)
 
 _DRAFT = re.compile(r"\b(?:napisz|ułóż|przygotuj)\b", re.I)
 _SENTENCES = re.compile(
@@ -47,6 +50,13 @@ _SUBJECT_AND_OPENING = re.compile(
 )
 _SUBJECT_LINE = re.compile(r"(?im)^[ \t*]*temat[ *]*:[^\r\n]*(?:\r?\n|$)")
 _SENTENCE_END = re.compile(r"[.!?](?=\s|$)")
+_ABBREVIATION = re.compile(r"\b(?:godz|ul|nr|np|tj|tzn|dr|prof|m\.in)\.$", re.I)
+_OPENING_CONTENT = re.compile(
+    r"^\s*(?:[.:]\s*|,?\s*(?:tak,\s*)?(?:żeby|aby|by)\s+"
+    r"(?:(?:informowało|wskazywało|mówiło|wynikało z niego),\s+że|"
+    r"(?:poinformować|wskazać|powiedzieć),\s+że)\s+)",
+    re.I,
+)
 
 _ORDINARY_BUDGET_HINT = (
     "Zacznij od odpowiedzi na ostatnie pytanie. "
@@ -75,8 +85,34 @@ def revises_opening_only(text: str) -> bool:
 
 def opening_sentence(draft: str) -> str:
     text = _SUBJECT_LINE.sub("", draft).strip()
-    end = _SENTENCE_END.search(text)
-    return text[: end.end()] if end else text
+    for end in _SENTENCE_END.finditer(text):
+        if not _ABBREVIATION.search(text[max(0, end.end() - 12) : end.end()]):
+            return text[: end.end()]
+    return text
+
+
+def opening_target(text: str) -> str | None:
+    command = _OPENING_ONLY.match(text)
+    if command is None:
+        return None
+    tail = text[command.end() :]
+    intro = _OPENING_CONTENT.match(tail)
+    if intro is None:
+        return None
+    content = tail[intro.end() :].strip()
+    if content.startswith(("„", "«", '"')):
+        content = single_quoted_operand(content) or ""
+    return opening_sentence(content) or None
+
+
+def _opening_key(text: str) -> str:
+    sentence = " ".join(text.split()).removesuffix(".")
+    return sentence[:1].upper() + sentence[1:]
+
+
+def opening_matches(sentence: str, target: str | None) -> bool:
+    """Verify an explicit proposition without guessing semantic equivalence."""
+    return bool(sentence and target and _opening_key(sentence) == _opening_key(target))
 
 
 def writing_hint(text: str) -> str:

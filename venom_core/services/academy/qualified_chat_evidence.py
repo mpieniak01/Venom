@@ -49,6 +49,14 @@ _TOPIC_CHANGE = re.compile(
 _BATH = re.compile(
     r"\bprzed\s+(?:(?:wejściem|rozpoczęciem)\s+(?:pod\s+)?)?prysznic", re.I
 )
+_MIRROR_FOG = re.compile(
+    r"\blustr\w*(?: \w+){0,6} (?:paruj|zapar|zachodz)\w*|"
+    r"\b(?:parowanie|zaparowani\w*|parowaniu) (?:łazienkowego )?lustr\w*"
+)
+_NO_MIRROR_FOG = re.compile(
+    r"\bnie (?:paruj|zapar|zachodz|jest zapar)\w*|"
+    r"\b(?:nie ma|brak|bez) (?:parowani|zaparowani)\w*"
+)
 _FAN = re.compile(r"wyciąg|wentylator|odciąg|wentylac", re.I)
 _NEG_FAN = re.compile(
     r"\b(?:nie\s+(?:dział|mam|ma|mogę|sprawn)|nieczynn|niesprawn|uszkodz|wyłączon|niedostępn|brak (?:sprawnego )?(?:wyciąg|wentylator|odciąg|wentylac))\w*",
@@ -174,21 +182,26 @@ def _active_topic(users: Sequence[str]) -> list[str]:
     return recent
 
 
-def _bathroom_evidence(text: str, users: Sequence[str]) -> bool:
-    def mirror_fog(value: str) -> bool:
-        for sentence in _SENTENCE.split(value):
-            if re.search(r"\blustr\w*(?: \w+){0,6} (?:paruj|zapar|zachodz)", sentence):
-                return True
-            if re.search(
-                r"\b(?:parowanie|zaparowani\w*|parowaniu) (?:łazienkowego )?lustr",
-                sentence,
+def _mirror_fog_state(
+    messages: Sequence[str], *, allow_request: bool = False
+) -> bool | None:
+    for message in reversed(messages):
+        for sentence in reversed(_SENTENCE.split(message)):
+            if not _MIRROR_FOG.search(sentence) or _HYP.search(sentence):
+                continue
+            if sentence.endswith("?") and not (
+                allow_request and _PREVENT.search(sentence)
             ):
-                return True
-        return False
+                continue
+            return not (_NO_MIRROR_FOG.search(sentence) or _RETRACT.search(sentence))
+    return None
 
-    return mirror_fog(text) or (
-        bool(_ANAPHORA.search(text)) and any(mirror_fog(message) for message in users)
-    )
+
+def _bathroom_evidence(text: str, users: Sequence[str]) -> bool:
+    current = _mirror_fog_state((text,), allow_request=True)
+    if current is not None:
+        return current
+    return bool(_ANAPHORA.search(text) and _mirror_fog_state(users))
 
 
 def _condensation_reply(text: str, users: Sequence[str]) -> str | None:

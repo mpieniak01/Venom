@@ -124,7 +124,19 @@ def asks_about_previous_scope(text: str) -> bool:
 
 
 def previous_scope_reply(evidence: PublicSourceEvidence | None) -> str:
-    return _SCOPE_REPLY[evidence.scope] if evidence is not None else _UNKNOWN_SCOPE
+    if evidence is None:
+        return _UNKNOWN_SCOPE
+    weather = evidence.weather
+    if (
+        weather is not None
+        and weather.reason == "different_location"
+        and weather.observed_location
+    ):
+        return (
+            f"Odczyt dotyczył miejscowości {weather.observed_location}. "
+            f"Nie potwierdził temperatury dla miejscowości {weather.requested_location}."
+        )
+    return _SCOPE_REPLY[evidence.scope]
 
 
 def previous_verified_fact_reply(

@@ -470,6 +470,7 @@ export const en = {
     errors: {
       no_config: "Google Calendar is not configured. Check ENABLE_GOOGLE_CALENDAR.",
       create_failed: "Event creation could not be confirmed",
+      event_unconfirmed: "The write is awaiting confirmation. Event ID: {{id}}.",
       fetch_failed: "Failed to fetch events",
     },
   },

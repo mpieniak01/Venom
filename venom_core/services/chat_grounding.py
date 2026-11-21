@@ -10,6 +10,7 @@ from urllib.parse import urlparse
 from venom_core.execution.skills.assistant_skill import (
     AssistantSkill,
     WeatherObservation,
+    weather_area_name,
 )
 from venom_core.execution.skills.rss_reader_skill import RSSReaderSkill
 from venom_core.execution.skills.web_skill import WebSearchSkill
@@ -147,7 +148,9 @@ _RSS_TRANSLATION_POLICY = (
     "Pomiń zebrania, decyzje i inne zdarzenia, których tytuł nie wymienia. "
 )
 _TOPICAL_NEWS = re.compile(
-    r"\b(?:wiadomoś(?:ć|ci)|newsy)\s+(?:o|na temat|dotycząc\w*)\b", re.I
+    r"\b(?:wiadomoś(?:ć|ci)|newsy)\s+(?:(?:bbc(?: news)?|gus|pap|reuters)\s+)?"
+    r"(?:o|na temat|dotycząc\w*)\b",
+    re.I,
 )
 _LOCATION = re.compile(
     r"\b(?:w|we|dla)\s+([A-Za-zĄĆĘŁŃÓŚŹŻąćęłńóśźż-]+(?:\s+[A-ZĄĆĘŁŃÓŚŹŻ][A-Za-zĄĆĘŁŃÓŚŹŻąćęłńóśźż-]+){0,2})",
@@ -224,13 +227,13 @@ def grounding_kind(message: str, *, use_notes: bool = False) -> str | None:
     if use_notes or _private_context(message):
         return None
     message = _CHAT_MESSAGE_REFERENCE.sub(" ", message)
+    if is_rss_read_request(message):
+        return "web"
     current = bool(_CURRENT.search(message) or _CURRENT_OFFICE.search(message))
     if _WIKI_REFERENCE.search(message) or (
         _ENCYCLOPEDIC.search(message) and not current
     ):
         return "wiki"
-    if is_rss_read_request(message):
-        return "web"
     if _WEATHER.search(message) and (
         _weather_location(message)
         or re.search(r"\b(pogod[ayę]|prognoz\w*)\b", message, re.I)
@@ -255,7 +258,9 @@ def _weather_location(message: str) -> str | None:
     match = _LOCATION.search(message)
     if not match:
         return None
-    location = match.group(1).strip()
+    location = weather_area_name(match.group(1))
+    if location is None:
+        return None
     try:
         aliases = load_public_sources().city_aliases
     except (OSError, ValueError, KeyError, TypeError):
@@ -384,7 +389,11 @@ async def _weather_context(message: str, policy: str) -> str:
         )
     aliases = load_public_sources().city_aliases
     result = weather_observation_reply(observation, message, aliases)
-    if result.reason == "different_location":
+    if result.reason in {
+        "different_location",
+        "stale_observation",
+        "missing_observation_time",
+    }:
         try:
             station = await asyncio.wait_for(
                 skill.read_imgw_station_observation(city), 5

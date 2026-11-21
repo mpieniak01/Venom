@@ -24,7 +24,7 @@ _EXAMPLE_CHANGE = re.compile(
 _USER_FORMAT = re.compile(
     r"\b(?:szczegółowo|wyczerpująco|obszernie|krok po kroku|"
     r"minimum|co najmniej|w (?:\d+|jednym|dwóch|trzech|czterech|pięciu|kilku)"
-    r" (?:\w+ )?(?:zdaniach|punktach|akapitach))\b",
+    r" (?:\w+ )?(?:zdaniu|zdaniach|punktach|akapitach))\b",
     re.I,
 )
 _PROTECTION = re.compile(

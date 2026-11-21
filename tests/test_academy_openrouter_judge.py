@@ -1911,16 +1911,17 @@ def test_table_panel_costs_exhaust_review_budget_before_another_post(
 
 
 @pytest.mark.parametrize(
-    "price,annotated,extra,expected",
+    "price,annotated,extra,bare_claim,expected",
     [
-        ("57 zł", True, False, "no"),
-        ("58 zł", True, False, "yes"),
-        ("57 zł", False, False, "yes"),
-        ("57 zł", True, True, "yes"),
+        ("57 zł", True, False, False, "no"),
+        ("57 zł", True, False, True, "no"),
+        ("58 zł", True, False, True, "yes"),
+        ("57 zł", False, False, False, "yes"),
+        ("57 zł", True, True, True, "yes"),
     ],
 )
 def test_pending_price_keeps_omission_and_only_removes_grounded_claim(
-    price, annotated, extra, expected
+    price, annotated, extra, bare_claim, expected
 ):
     suffix = " (oczekiwana)" if annotated else ""
     quote = f"Cena: {price}{suffix}"
@@ -1951,7 +1952,9 @@ def test_pending_price_keeps_omission_and_only_removes_grounded_claim(
     raw = response(body, candidate)
     content = json.loads(raw["choices"][0]["message"]["content"])
     content["checks"]["price"] = {"observed": quote, "relation": "omitted"}
-    content["additional_claims"] = [{"text": quote, "grounding": "unsupported"}]
+    content["additional_claims"] = [
+        {"text": price if bare_claim else quote, "grounding": "unsupported"}
+    ]
     if extra:
         content["additional_claims"].append(
             {"text": "Hala A", "grounding": "unsupported"}

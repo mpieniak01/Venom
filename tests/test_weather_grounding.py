@@ -1,5 +1,6 @@
 """Weather provider and Studio provenance without external requests."""
 
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock
 
 import httpx
@@ -35,6 +36,17 @@ def client(monkeypatch):
     return Client
 
 
+def _wttr_time_fields(at=None, local_offset=1):
+    if at is None:
+        at = datetime.now(timezone.utc).replace(second=0, microsecond=0)
+    return {
+        "localObsDateTime": (at + timedelta(hours=local_offset)).strftime(
+            "%Y-%m-%d %I:%M %p"
+        ),
+        "observation_time": at.strftime("%I:%M %p"),
+    }
+
+
 @pytest.mark.asyncio
 async def test_provider_binds_actual_and_perceived_to_observed_area(client):
     client.aget.return_value = httpx.Response(
@@ -42,6 +54,7 @@ async def test_provider_binds_actual_and_perceived_to_observed_area(client):
         json={
             "current_condition": [
                 {
+                    **_wttr_time_fields(),
                     "temp_C": "3",
                     "FeelsLikeC": "-4",
                     "humidity": "91",
@@ -148,6 +161,8 @@ def reading(city, area, actual="3", perceived="-4", **kwargs):
             True,
         ),
         ("Podaj pogodę. Dopuszczam pobliską miejscowość.", True),
+        ("Podaj temperaturę. Może być z okolic.", True),
+        ("Podaj temperaturę. Nie może być z okolic.", False),
         ("Możesz podać pomiar z okolic, ale ostatecznie tylko miasto.", False),
         (
             "Przetłumacz «Możesz podać pomiar z okolic». Podaj temperaturę w mieście.",
@@ -265,8 +280,6 @@ def test_previous_weather_uses_stored_value_without_new_read(prompt, answer):
 
 
 def _synop_payload(**fields):
-    from datetime import datetime, timezone
-
     now = datetime.now(timezone.utc)
     return {
         "id_stacji": "12435",
@@ -304,7 +317,7 @@ async def test_imgw_recovers_named_city_only_and_keeps_timestamp_in_history(clie
     nearby = httpx.Response(
         200,
         json={
-            "current_condition": [{"temp_C": "4"}],
+            "current_condition": [{**_wttr_time_fields(), "temp_C": "4"}],
             "nearest_area": [{"areaName": [{"value": "Zagorzynek"}]}],
         },
     )
@@ -358,7 +371,7 @@ async def test_imgw_unavailable_keeps_original_location_mismatch(client):
         httpx.Response(
             200,
             json={
-                "current_condition": [{"temp_C": "4"}],
+                "current_condition": [{**_wttr_time_fields(), "temp_C": "4"}],
                 "nearest_area": [{"areaName": [{"value": "Zagorzynek"}]}],
             },
         ),
@@ -369,3 +382,133 @@ async def test_imgw_unavailable_keeps_original_location_mismatch(client):
     )
     assert context.evidence.weather.reason == "different_location"
     assert "°C" not in context.reply
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("kind", "reason"),
+    [
+        ("old", "stale_observation"),
+        ("future", "missing_observation_time"),
+        ("missing", "missing_observation_time"),
+        ("fresh", None),
+    ],
+)
+async def test_wttr_freshness_gates_values_and_round_trips_times(client, kind, reason):
+    now = datetime.now(timezone.utc).replace(second=0, microsecond=0)
+    at = now + {"old": timedelta(hours=-6), "future": timedelta(hours=1)}.get(
+        kind, timedelta()
+    )
+    times = {} if kind == "missing" else _wttr_time_fields(at)
+    client.aget.return_value = httpx.Response(
+        200,
+        json={
+            "current_condition": [{**times, "temp_C": "3"}],
+            "nearest_area": [{"areaName": [{"value": "Kalisz"}]}],
+        },
+    )
+    observation = await AssistantSkill().read_weather_observation("Kalisz")
+    reply = weather_observation_reply(observation, "Aktualna temperatura", {})
+    assert reply.reason == reason
+    assert ("3°C" in reply.text) is (reason is None)
+    assert "Instytut Meteorologii" not in reply.text
+    assert reply.evidence.observed_at == (at if kind in {"old", "fresh"} else None)
+    record = reply.evidence.to_record()
+    assert WeatherEvidence.from_record(record) == reply.evidence
+    assert (
+        WeatherEvidence.from_record({**record, "weather_observed_at": "dzisiaj"})
+        is None
+    )
+
+
+def test_wttr_uses_previous_utc_day_after_local_midnight():
+    at = datetime(2026, 11, 21, 23, 50, tzinfo=timezone.utc)
+    assert assistant_skill._wttr_observation_time(_wttr_time_fields(at), {}) == at
+
+
+@pytest.mark.asyncio
+async def test_city_whitespace_is_normalized_before_weather_lookup_and_replay(client):
+    from venom_core.services import chat_grounding
+
+    client.aget.return_value = httpx.Response(
+        200,
+        json={
+            "current_condition": [{**_wttr_time_fields(), "temp_C": "3"}],
+            "nearest_area": [{"areaName": [{"value": "Nowy Sącz"}]}],
+        },
+    )
+    response = await chat_grounding.current_chat_context(
+        "Podaj temperaturę w Nowym  Sączu. Może być z okolic."
+    )
+    weather = response.evidence.weather
+    assert weather.requested_location == "Nowym Sączu"
+    assert "%20%20" not in client.aget.await_args.args[0]
+    assert WeatherEvidence.from_record(weather.to_record()) == weather
+
+
+def test_weather_reuse_checks_location_and_current_metric():
+    observation = reading("Białystok", "Olmonty")
+    reply = weather_observation_reply(
+        observation, "Może być z okolic. Podaj temperaturę odczuwalną.", {}
+    )
+    follow_up = reply.evidence.follow_up_reply
+    assert follow_up("Podaj tę samą wartość, samą liczbę.") == "-4°C"
+    assert follow_up(
+        "Podaj tę samą wartość, samą liczbę, ale tylko miasto, bez okolic."
+    ) == ("Brak potwierdzonego odczytu temperatury dla miejscowości Białystok.")
+    assert (
+        follow_up("Podaj tę samą wartość, samą liczbę, bez temperatury odczuwalnej.")
+        == "3°C"
+    )
+
+
+def test_weather_can_return_both_values_from_same_read():
+    observation = reading("Kalisz", "Kalisz")
+    reply = weather_observation_reply(
+        observation, "Podaj temperaturę i temperaturę odczuwalną.", {}
+    )
+    for part in ("Temperatura powietrza: 3°C", "Temperatura odczuwalna: -4°C"):
+        assert part in reply.text
+        assert part in reply.evidence.follow_up_reply(
+            "Z poprzedniego pomiaru podaj obie temperatury."
+        )
+
+
+def test_weather_scope_reports_mismatched_location_instead_of_failed_read():
+    from venom_core.services.public_source_evidence import (
+        PublicSourceEvidence,
+        previous_scope_reply,
+    )
+
+    reply = weather_observation_reply(
+        reading("Białystok", "Olmonty"), "Tylko miasto.", {}
+    )
+    evidence = PublicSourceEvidence("unavailable", weather=reply.evidence)
+    assert previous_scope_reply(evidence) == (
+        "Odczyt dotyczył miejscowości Olmonty. Nie potwierdził temperatury dla miejscowości Białystok."
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "age", [timedelta(minutes=10), timedelta(hours=6), timedelta(days=1)]
+)
+async def test_wttr_without_local_timestamp_uses_dated_polish_payload(client, age):
+    now = datetime.now(timezone.utc).replace(second=0, microsecond=0)
+    at = now - age
+    local = at.astimezone(assistant_skill._WARSAW_TIME)
+    client.aget.return_value = httpx.Response(
+        200,
+        json={
+            "current_condition": [
+                {"temp_C": "3", "observation_time": at.strftime("%I:%M %p")}
+            ],
+            "nearest_area": [
+                {"areaName": [{"value": "Kalisz"}], "country": [{"value": "Poland"}]}
+            ],
+            "weather": [{"date": local.date().isoformat()}],
+        },
+    )
+    observation = await AssistantSkill().read_weather_observation("Kalisz")
+    assert observation.observed_at == at
+    assert (observation.failure_reason is None) is (age < timedelta(hours=3))

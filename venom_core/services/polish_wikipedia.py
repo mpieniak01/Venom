@@ -128,6 +128,11 @@ def _extract_sources(
     return sources
 
 
+def _reference_sup(attrs: list[tuple[str, str | None]]) -> bool:
+    classes = next((value for key, value in attrs if key == "class"), "") or ""
+    return bool({"reference", "mw-ref"}.intersection(classes.split()))
+
+
 class _SectionText(HTMLParser):
     """Preserve paragraph boundaries and omit scripts and reference markers."""
 
@@ -137,10 +142,14 @@ class _SectionText(HTMLParser):
         self.ignored: list[str] = []
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        if tag in {"script", "style", "sup"}:
+        if tag in {"script", "style"} or (tag == "sup" and _reference_sup(attrs)):
             self.ignored.append(tag)
-        elif tag in {"p", "li", "div", "br", "h2", "h3", "dt", "dd", "tr"}:
-            self.parts.append("\n")
+        elif not self.ignored:
+            if tag == "sup":
+                # Preserve exponent syntax so 10<sup>3</sup> cannot become 10.
+                self.parts.append("^")
+            elif tag in {"p", "li", "div", "br", "h2", "h3", "dt", "dd", "tr"}:
+                self.parts.append("\n")
 
     def handle_endtag(self, tag: str) -> None:
         if self.ignored and self.ignored[-1] == tag:
@@ -159,7 +168,6 @@ async def search_wikipedia_section(
     headers = {"User-Agent": WIKIPEDIA_USER_AGENT}
     params = {
         "action": "parse",
-        "page": source.title,
         "format": "json",
         "formatversion": "2",
     }
@@ -170,13 +178,17 @@ async def search_wikipedia_section(
         ) as client:
             sections_response = await client.aget(
                 WIKIPEDIA_API_URL,
-                params={**params, "prop": "sections"},
+                params={**params, "page": source.title, "prop": "sections|revid"},
                 headers=headers,
                 raise_for_status=False,
             )
             if sections_response.status_code != 200:
                 return None
-            sections = sections_response.json().get("parse", {}).get("sections", [])
+            revision_data = sections_response.json().get("parse", {})
+            revision = revision_data.get("revid")
+            if type(revision) is not int or revision <= 0:
+                return None
+            sections = revision_data.get("sections", [])
             index = next(
                 (
                     section["index"]
@@ -191,7 +203,12 @@ async def search_wikipedia_section(
                 return None
             section_response = await client.aget(
                 WIKIPEDIA_API_URL,
-                params={**params, "prop": "text", "section": index},
+                params={
+                    **params,
+                    "oldid": revision,
+                    "prop": "text|revid",
+                    "section": index,
+                },
                 headers=headers,
                 raise_for_status=False,
             )
@@ -201,6 +218,7 @@ async def search_wikipedia_section(
         html = parsed.get("text")
         if (
             parsed.get("title") != source.title
+            or parsed.get("revid") != revision
             or not isinstance(html, str)
             or len(html) > MAX_SECTION_HTML
         ):

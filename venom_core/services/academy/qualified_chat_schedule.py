@@ -129,6 +129,7 @@ class Schedule:
     entry: str | None = None
     room: str | None = None
     arrival_before: int | None = None
+    day_offset: int = 0
 
 
 def _text(text: str) -> str:
@@ -177,14 +178,13 @@ def _shift_sign(match: re.Match[str]) -> tuple[int | None, str | None]:
 
 def _shifted_schedule(
     before: Schedule, match: re.Match[str], sign: int
-) -> tuple[Schedule | None, int, str | None]:
+) -> tuple[Schedule | None, str | None]:
     hours, minutes = map(int, before.start.split(":"))
     signed_minutes = sign * int(match["minutes"])
     day_delta, minute_of_day = divmod(hours * 60 + minutes + signed_minutes, 24 * 60)
     if day_delta != 0 and "dzień" in (match["keep"] or "").casefold():
         return (
             None,
-            0,
             (
                 "Przesunięcie zmienia dzień. Czy zmienić dzień zgodnie z obliczeniem, czy zachować pierwotny?"
             ),
@@ -198,11 +198,13 @@ def _shifted_schedule(
         before,
         start=f"{minute_of_day // 60:02d}:{minute_of_day % 60:02d}",
         weekday=weekday,
+        day_offset=before.day_offset + day_delta,
     )
-    return result, day_delta, None
+    return result, None
 
 
-def _shift_reply(result: Schedule, day_delta: int) -> str:
+def _shift_reply(result: Schedule) -> str:
+    day_delta = result.day_offset
     if result.weekday and abs(day_delta) <= 1:
         day_text = _DAY_TEXT[result.weekday] + " "
     elif day_delta == 1:
@@ -236,11 +238,11 @@ def _shift(text: str, state: Sequence[Schedule]) -> tuple[Schedule | None, str]:
     if error:
         return None, error
     assert sign is not None
-    result, day_delta, error = _shifted_schedule(before, match, sign)
+    result, error = _shifted_schedule(before, match, sign)
     if error:
         return None, error
     assert result is not None
-    return result, _shift_reply(result, day_delta)
+    return result, _shift_reply(result)
 
 
 def _confirmed_history(history: Sequence[dict[str, str]]) -> list[Schedule]:
@@ -301,7 +303,8 @@ def draft_time_revision(text: str, history: Sequence[HistoryMessage]) -> str | N
     reminder = _quoted_reminder(user.content) or _DRAFT_REMINDER.fullmatch(
         _text(draft.content)
     )
-    if not reminder or _CLOCK_IN_TEXT.findall(visible) != [reminder["old"]]:
+    previous_times = [time.zfill(5) for time in _CLOCK_IN_TEXT.findall(visible)]
+    if not reminder or previous_times != [reminder["old"].zfill(5)]:
         return None
     body = reminder["body"]
     if _CLOCK_IN_TEXT.search(body):

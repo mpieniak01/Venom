@@ -183,13 +183,17 @@ def _decode_bullets(text: str) -> list[str]:
         bullet = _BULLET.match(line)
         if bullet:
             if current:
-                items.append(" ".join(current))
+                items.append("\n".join(current))
             current = [bullet[1]]
         elif current and line.strip():
             current.append(line.strip())
     if current:
-        items.append(" ".join(current))
-    return [_SUMMARY.split(item, maxsplit=1)[0] for item in items]
+        items.append("\n".join(current))
+    return [
+        " ".join(option.splitlines())
+        for item in items
+        for option in _NEW_OPTION.split(_SUMMARY.split(item, maxsplit=1)[0])
+    ]
 
 
 def _decode(text: str) -> list[str]:

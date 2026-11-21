@@ -315,3 +315,34 @@ def test_calendar_api_requires_a_receipt_bound_to_current_execution(
     assert observed[0].request_id != observed[1].request_id
     assert (observed[0].title, observed[0].duration_minutes) == ("Odprawa", 30)
     mock_calendar_skill.schedule_task.assert_not_called()
+
+
+def test_calendar_api_reuses_the_submission_key_for_an_unconfirmed_write(
+    client, mock_calendar_skill, monkeypatch
+):
+    from uuid import uuid4
+
+    from venom_core.services.calendar_execution import CalendarExecution
+
+    monkeypatch.setattr(
+        calendar_routes.SETTINGS, "ACADEMY_QUALIFIED_CHAT_ENABLED", True
+    )
+    mock_calendar_skill.schedule_verified_task.return_value = CalendarExecution(
+        "Parametry niepotwierdzone", unconfirmed_event_id="provider-event"
+    )
+    key = uuid4()
+    request = {"title": "Odprawa", "start_time": "2026-11-20T15:00:00+01:00"}
+    for _ in range(2):
+        response = client.post(
+            "/api/v1/calendar/event",
+            json=request,
+            headers={"Idempotency-Key": str(key)},
+        )
+        assert response.status_code == 201
+        assert response.json()["status"] == "unconfirmed"
+        assert response.json()["event_id"] == "provider-event"
+    calls = mock_calendar_skill.schedule_verified_task.call_args_list
+    assert len(calls) == 2
+    assert all(
+        call.args[0].request_id == key and call.args[0].idempotent for call in calls
+    )

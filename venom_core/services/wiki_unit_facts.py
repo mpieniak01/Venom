@@ -8,6 +8,17 @@ from decimal import Decimal
 from urllib.parse import unquote, urlsplit
 
 _NUMBER = r"\d{1,9}(?:[,.]\d{1,6})?"
+_DIGIT_GROUP_DELIMITER = " \u00a0\u2009\u202f"
+_GROUPED_NUMBER = (
+    rf"\d{{1,3}}(?:[{_DIGIT_GROUP_DELIMITER}]\d{{3}}){{1,2}}(?:[,.]\d{{1,6}})?"
+)
+_ARTICLE_NUMBER = rf"(?:{_GROUPED_NUMBER}|{_NUMBER})"
+_QUANTITY_START = r"(?<![\w.,+−-])"
+_TONNE_UNIT = r"ton\w*(?:\s+metryczn\w*)?"
+_ALLOWED_AFTER_TONNE = re.compile(
+    r"\s*(?:$|[.!?,;:=()—–]|\b(?:to|na|w|z|wynosi|równa|odpowiada|według|ile)\b)",
+    re.I,
+)
 _HALF_BASES = {
     "jeden": 1,
     "jedna": 1,
@@ -22,7 +33,7 @@ _SPOKEN_NUMBER = (
 )
 _BINARY_QUESTION = re.compile(r"czy\b", re.I)
 _BINARY_AFTER_COMMA = re.compile(r",\s*czy\b", re.I)
-_ARTICLE_NUMBER = r"\d{1,3}(?:[ \u00a0]\d{3})+|" + _NUMBER
+
 _EXACT = re.compile(r"\b(?:około|średnio|w przybliżeniu|potocznie|niemal)\b", re.I)
 _CLAUSES = re.compile(r"(?<=[.!?])\s+|\n")
 _PREVIOUS = re.compile(
@@ -76,12 +87,15 @@ _DAY = UnitSpec(
     ("doba", "doba cywilna"),
     ("Doba cywilna", "Doba urzędowa"),
     re.compile(
-        rf"\b(?:dob\w*\s+cywiln\w*|urzędow\w*\s+jednostk\w+\s+czasu)\b[^.!?;]{{0,110}}?"
-        rf"\b(?P<factor>{_ARTICLE_NUMBER})\s+(?:godzin\w*|h)\b",
+        r"\b(?:dob\w*\s+cywiln\w*\s+(?:trwa|wynosi|liczy|ma|obejmuje|to|"
+        r"jest\s+(?:równa|okresem|jednostką\s+czasu\s+trwającą))|"
+        r"urzędow\w*\s+jednostk\w+\s+czasu\s+zdefiniowana\s+jest\s+jako\s+czas\s+trwania)"
+        rf"\s+(?P<factor>{_ARTICLE_NUMBER})\s+(?:godzin\w*|h)\b",
         re.I,
     ),
     re.compile(
-        rf"\b(?P<number>{_NUMBER}|{_SPOKEN_NUMBER})\s*(?P<unit>godzin\w*|h|dob\w*)\b",
+        rf"{_QUANTITY_START}(?P<number>{_ARTICLE_NUMBER}|{_SPOKEN_NUMBER})"
+        r"\s*(?P<unit>godzin\w*|h|dob\w*)\b",
         re.I,
     ),
     "godziny",
@@ -99,7 +113,8 @@ _TONNE = UnitSpec(
         re.I,
     ),
     re.compile(
-        rf"\b(?P<number>{_NUMBER}|{_SPOKEN_NUMBER})\s*(?P<unit>kilogram\w*|kg|ton\w*|t)\b",
+        rf"{_QUANTITY_START}(?P<number>{_ARTICLE_NUMBER}|{_SPOKEN_NUMBER})"
+        rf"\s*(?P<unit>kilogram\w*|kg|{_TONNE_UNIT}|t)\b",
         re.I,
     ),
     "kg",
@@ -123,9 +138,7 @@ def unit_spec(kind: str) -> UnitSpec:
 def verified_unit_factor(kind: str, extract: str) -> Decimal | None:
     spec = unit_spec(kind)
     values = {
-        Decimal(
-            match["factor"].replace(" ", "").replace("\u00a0", "").replace(",", ".")
-        )
+        _decimal_digits(match["factor"])
         for clause in _CLAUSES.split(extract)
         if not _EXACT.search(clause)
         for match in spec.fact.finditer(clause)
@@ -151,7 +164,24 @@ def _number(value: str) -> Decimal:
         return Decimal(1)
     if value == "pół":
         return Decimal("0.5")
-    return Decimal(value.replace(",", "."))
+    return _decimal_digits(value)
+
+
+def _decimal_digits(digits: str) -> Decimal:
+    return Decimal("".join(digits.split()).replace(",", "."))
+
+
+def _has_detached_digit_prefix(question: str, quantity: re.Match[str]) -> bool:
+    return question[: quantity.start()].rstrip().endswith(tuple("0123456789"))
+
+
+def _has_other_tonne_qualifier(question: str, quantity: re.Match[str]) -> bool:
+    unit = quantity["unit"].casefold()
+    return (
+        unit.startswith("ton")
+        and len(unit.split()) == 1
+        and _ALLOWED_AFTER_TONNE.match(question, quantity.end()) is None
+    )
 
 
 def _hour_label(value: Decimal) -> str:
@@ -222,6 +252,12 @@ class WikiUnitEvidence:
         needed = _DAY_NEED if self.unit == "day" else _MASS_NEED
         if not quantities or not needed.search(question) or len(quantities) > 2:
             return None
+        if any(_has_detached_digit_prefix(question, q) for q in quantities):
+            return None
+        if self.unit == "metric_tonne" and any(
+            _has_other_tonne_qualifier(question, q) for q in quantities
+        ):
+            return "Poprzedni odczyt potwierdzał wyłącznie przelicznik tony metrycznej."
         fields = [
             (_number(q["number"].casefold()), bool(needed.fullmatch(q["unit"])))
             for q in quantities
@@ -245,7 +281,12 @@ class WikiUnitEvidence:
         return f"{_format_value(result)} {unit}"
 
     def _binary_reply(
-        self, original: float, converted: float, result: float, unit: str, factor: float
+        self,
+        original: Decimal,
+        converted: Decimal,
+        result: Decimal,
+        unit: str,
+        factor: Decimal,
     ) -> str:
         prefix = "Tak" if result == converted else "Nie"
         if self.unit != "day":

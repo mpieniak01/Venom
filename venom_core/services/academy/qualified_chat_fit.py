@@ -48,6 +48,11 @@ _UNSUPPORTED = re.compile(
     r"głębokoś\w*|gruboś\w*|przekątn\w*|margines\w*|luz\w*)\b",
     re.I,
 )
+_EXTERNAL = re.compile(r"\b(?:na zewnątrz|zewnętrzn\w*)\b", re.I)
+_OTHER_TASK = re.compile(
+    r"\b(?:oblicz|wylicz|policz|wyznacz|oszacuj|przelicz|przetłumacz|zmieniam temat)\b",
+    re.I,
+)
 _UNCERTAIN = re.compile(
     r"\b(?:około|chyba|mniej więcej|co najmniej|co najwyżej|albo|lub)\b", re.I
 )
@@ -88,14 +93,18 @@ def _capacity(text: str) -> Size | None:
     if pair is None:
         return None
     area = text[max(0, pair.start() - 32) : pair.end() + 32]
-    if not _CAPACITY.search(area) or _UNCERTAIN.search(area):
+    if not _CAPACITY.search(area) or _UNCERTAIN.search(area) or _EXTERNAL.search(area):
         return None
     return _dimensions(pair)
 
 
 def _item(turns: Sequence[str]) -> Size | None:
     if len(turns) not in {1, 2} or any(
-        _UNSUPPORTED.search(turn) or _UNCERTAIN.search(turn) for turn in turns
+        _UNSUPPORTED.search(turn)
+        or _UNCERTAIN.search(turn)
+        or _EXTERNAL.search(turn)
+        or (_OTHER_TASK.search(turn) and not _FIT.search(turn))
+        for turn in turns
     ):
         return None
     pair = _one_measurement(_DIMENSIONS, turns[0])

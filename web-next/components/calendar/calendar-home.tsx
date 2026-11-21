@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import type {
   CalendarEvent,
   CreateEventRequest,
@@ -14,6 +14,7 @@ import { SectionHeading } from "@/components/ui/section-heading";
 import { cn } from "@/lib/utils";
 import { Calendar } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
+import { createBrowserUuid } from "@/lib/optional-modules/transport";
 
 export function CalendarHome() {
   const t = useTranslation();
@@ -22,6 +23,7 @@ export function CalendarHome() {
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [timeRangeHours, setTimeRangeHours] = useState(24);
+  const pendingKeys = useRef(new Map<string, string>());
 
   const fetchEvents = useCallback(async () => {
     try {
@@ -50,13 +52,17 @@ export function CalendarHome() {
   }, [timeRangeHours, t]);
 
   const handleCreateEvent = async (eventData: CreateEventRequest) => {
+    const body = JSON.stringify(eventData);
+    const key = pendingKeys.current.get(body) ?? createBrowserUuid();
+    pendingKeys.current.set(body, key);
     try {
       const response = await fetch("/api/v1/calendar/event", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "Idempotency-Key": key,
         },
-        body: JSON.stringify(eventData),
+        body,
       });
 
       if (!response.ok) {
@@ -66,9 +72,13 @@ export function CalendarHome() {
 
       const result: CreateEventResponse | null = await response.json();
       if (result?.status !== "success") {
+        if (result?.status === "unconfirmed" && result.event_id) {
+          throw new Error(t("calendar.errors.event_unconfirmed", { id: result.event_id }));
+        }
         throw new Error(result?.message || t("calendar.errors.create_failed"));
       }
 
+      pendingKeys.current.delete(body);
       await fetchEvents();
       setShowForm(false);
     } catch (err) {

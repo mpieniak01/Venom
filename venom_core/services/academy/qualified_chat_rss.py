@@ -5,6 +5,7 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
+from venom_core.services.academy.qualified_chat_options import CountRequirement
 from venom_core.services.verified_web import NewsHeadline
 
 _SCOPE = "Zakres odczytu: tylko nagłówki RSS."
@@ -18,6 +19,22 @@ _DRAFT_METADATA = re.compile(
 _NUMBER = re.compile(r"\d+(?:[.,]\d+)?")
 # Capitalized May can name a month or a person.
 _MODAL = re.compile(r"\b(?:may|(?i:might|could|possibly|może|mogą|możliwe))\b")
+_TITLE_CASE_MODAL = re.compile(
+    r"\w\s+May\s+(?:not\s+)?(?:be|have|start|begin|resume|rise|fall|grow|drop|"
+    r"gain|lose|open|close|return|stop|leave|arrive|change|cut|increase|decline)\b",
+    re.I,
+)
+_UP = re.compile(
+    r"\b(?:rise[sn]?|rising|rose|grow[sn]?|grew|growing|climb\w*|surge\w*|"
+    r"increase[sd]?|increasing|wzr[oa][sś]\w*|wzrośn\w*|rośn\w*|rosn\w*|rosł\w*|zwiększ\w*)\b",
+    re.I,
+)
+_DOWN = re.compile(
+    r"\b(?:fall[sn]?|fell|falling|drop\w*|slide[sd]?|slid|sliding|declin\w*|"
+    r"plung\w*|decreas\w*|spad\w*|spaść|obniż\w*|malej\w*|zmniejsz\w*)\b",
+    re.I,
+)
+_COMMON_CLAUSE_STARTS = {"akcje", "poziom", "spotyka"}
 _REPORTING_VERB = (
     r"says|said|warns|warned|reports|reported|confirms|confirmed|"
     r"mówi|powiedział\w*|ostrzega|potwierdza|informuje|twierdzi|donosi"
@@ -62,6 +79,27 @@ _RELATION = {
     "while": ", podczas gdy ",
     "because": ", ponieważ ",
 }
+
+
+def _has_modal(text: str) -> bool:
+    return bool(_MODAL.search(text) or _TITLE_CASE_MODAL.search(text))
+
+
+def _direction_matches(source: str, draft: str) -> bool:
+    patterns = (_UP, _DOWN)
+    expected = {pattern for pattern in patterns if pattern.search(source)}
+    return not expected or expected == {
+        pattern for pattern in patterns if pattern.search(draft)
+    }
+
+
+def _added_cause(source: str, draft: str) -> bool:
+    return bool(_ADDED_CAUSE.search(draft) and not _EXPLICIT_CAUSE.search(source))
+
+
+def _literal_headline(headline: NewsHeadline) -> str | None:
+    title = _draft_field(headline.title, headline.title)
+    return f"„{title}”" if title is not None else None
 
 
 def _numbers(text: str) -> set[str]:
@@ -125,19 +163,39 @@ def _relation_reply(
         if (
             not _numbers(draft) <= _numbers(source)
             or bool(other_names.intersection(_SOURCE_NAME.findall(draft)))
-            or (_ADDED_CAUSE.search(draft) and not _EXPLICIT_CAUSE.search(source))
-            or (_MODAL.search(source) and not _MODAL.search(draft))
-            or (_NEGATION.search(source) and not _NEGATION.search(draft))
+            or _added_cause(source, draft)
+            or _lost_qualifier(source, draft)
         ):
             return None
     left, right = first_draft.rstrip(" .!?"), second_text.rstrip(" .!?")
     if not left or not right:
         return None
-    if right[0].isupper() and not re.search(
-        rf"\b{re.escape(right.split()[0])}\b", second
-    ):
+    if right.split()[0].casefold() in _COMMON_CLAUSE_STARTS:
         right = right[0].lower() + right[1:]
     return left + join + right + "."
+
+
+def _lost_qualifier(source: str, draft: str) -> bool:
+    return (_has_modal(source) and not _has_modal(draft)) or (
+        bool(_NEGATION.search(source)) and not _NEGATION.search(draft)
+    )
+
+
+def _summarize_relation(
+    headline: NewsHeadline,
+    summary: str,
+    secondary: object,
+    relation: tuple[str, str, str],
+) -> str | None:
+    if not isinstance(secondary, str):
+        return None
+    combined = _relation_reply(summary, secondary, relation)
+    if combined is None:
+        return None
+    first, second, _ = relation
+    if _direction_matches(first, summary) and _direction_matches(second, secondary):
+        return combined
+    return _literal_headline(headline)
 
 
 def _render(headline: NewsHeadline, summary: str, speaker: str | None) -> str:
@@ -154,10 +212,15 @@ def _render(headline: NewsHeadline, summary: str, speaker: str | None) -> str:
 @dataclass(frozen=True)
 class RSSSummary:
     headlines: tuple[NewsHeadline, ...]
-    count: int = 1
+    count: CountRequirement = CountRequirement("exact", 1)
+
+    def _item_bounds(self) -> tuple[int, int]:
+        maximum = min(self.count.count, len(self.headlines))
+        minimum = min(1, maximum) if self.count.mode == "at_most" else maximum
+        return minimum, maximum
 
     def schema(self) -> dict[str, Any]:
-        count = min(self.count, len(self.headlines))
+        minimum, maximum = self._item_bounds()
         text = {"type": "string", "minLength": 1, "maxLength": 240}
         item_choices = []
         for index, headline in enumerate(self.headlines, 1):
@@ -182,8 +245,8 @@ class RSSSummary:
             "properties": {
                 "items": {
                     "type": "array",
-                    "minItems": count,
-                    "maxItems": count,
+                    "minItems": minimum,
+                    "maxItems": maximum,
                     "items": {"anyOf": item_choices},
                 }
             },
@@ -234,9 +297,8 @@ class RSSSummary:
         if not isinstance(data, dict) or data.keys() != {"items"}:
             return None
         items = data.get("items")
-        if not isinstance(items, list) or len(items) != min(
-            self.count, len(self.headlines)
-        ):
+        minimum, maximum = self._item_bounds()
+        if not isinstance(items, list) or not minimum <= len(items) <= maximum:
             return None
         return items
 
@@ -262,19 +324,20 @@ class RSSSummary:
         item: dict[str, Any], headline: NewsHeadline
     ) -> tuple[str, str | None] | None:
         summary = _draft_field(item["summary"], headline.title)
+        if summary is None:
+            return None
         proposition, speaker = _headline_fields(headline.title)
+        secondary = item.get("secondary")
         relation = _split_relation(proposition)
-        if summary is not None and relation:
-            summary = _relation_reply(summary, item.get("secondary"), relation)
-        elif item.get("secondary") is not None:
+        if relation is not None:
+            summary = _summarize_relation(headline, summary, secondary, relation)
+        elif secondary is not None or _lost_qualifier(proposition, summary):
             return None
-        if (
-            summary is None
-            or (_MODAL.search(headline.title) and not _MODAL.search(summary))
-            or (_NEGATION.search(headline.title) and not _NEGATION.search(summary))
+        elif _added_cause(proposition, summary) or not _direction_matches(
+            proposition, summary
         ):
-            return None
-        return summary, speaker
+            summary = _literal_headline(headline)
+        return (summary, speaker) if summary is not None else None
 
     @staticmethod
     def _supported_attribution(
@@ -285,9 +348,7 @@ class RSSSummary:
         )
         if not unsupported:
             return summary
-        # Keep the verified headline when the proposed attribution lacks support.
-        title = _draft_field(headline.title, headline.title)
-        return f"„{title}”" if title is not None else None
+        return _literal_headline(headline)
 
     def _publish_item(self, item: object, seen: set[int]) -> str | None:
         selection = self._item_headline(item, seen)

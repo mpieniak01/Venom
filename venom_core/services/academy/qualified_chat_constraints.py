@@ -116,9 +116,10 @@ _OPAQUE_MEDIA = re.compile(
     r"załącznik(?:a|u|i|ów|iem|ach)?)\b",
     re.I,
 )
-_TEXTUAL = re.compile(
-    r"\b(?:dokument\w*|plik\w*|album\w*|galeri\w*|załącznik\w*)\s+tekstow\w*\b"
-    r"|\b(?:z|ze|do)\s+(?:samym\s+|samego\s+)?tekst(?:em|u)|\bplik\w*\s+txt\b|\b\w+\.txt\b",
+_TEXTUAL_MEDIA = re.compile(
+    r"\b(?:(?:link|odsyłacz)\s+do\s+)?(?:album\w*|galeri\w*|załącznik\w*)\s+"
+    r"(?:tekstow\w*|(?:z|ze|do)\s+(?:samym\s+|samego\s+)?tekst(?:em|u)|"
+    r"[\w-]+\.txt(?![.-]\w))\b",
     re.I,
 )
 
@@ -255,10 +256,10 @@ _MEDIA_PREFIX_DENIAL = re.compile(
 def _has_opaque_photo_reference(text: str) -> bool:
     """Identify a potential gallery whose content is unavailable for review."""
     for clause in _CLAUSE.split(text):
-        if _TEXTUAL.search(clause):
-            continue
         for opaque in _OPAQUE_MEDIA.finditer(clause):
-            if _MEDIA_PREFIX_DENIAL.search(clause[: opaque.start()]):
+            if _TEXTUAL_MEDIA.match(clause, opaque.start()) or (
+                _MEDIA_PREFIX_DENIAL.search(clause[: opaque.start()])
+            ):
                 continue
             described = _DECLARATION.match(clause, opaque.end() + 1)
             end = (

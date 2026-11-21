@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Annotated, Any, Dict, Literal, Optional
 from urllib.parse import quote
+from zoneinfo import ZoneInfo
 
 import httpx
 
@@ -33,6 +34,8 @@ WeatherFailureReason = Literal[
     "no_data",
     "missing_temperature",
     "missing_observed_location",
+    "missing_observation_time",
+    "stale_observation",
     "provider_http_error",
     "provider_timeout",
     "provider_transport_error",
@@ -42,7 +45,11 @@ WeatherFailureReason = Literal[
 
 # IMGW's public synoptic station catalogue. Match both station identity and name.
 _IMGW_STATIONS = {"kalisz": "12435"}
-_IMGW_MAX_AGE = timedelta(hours=3)
+_WEATHER_MAX_AGE = timedelta(hours=3)
+_WTTR_CLOCK = re.compile(r"(0?[1-9]|1[0-2]):([0-5][0-9]) (AM|PM)")
+_WTTR_LOCAL_TIME = re.compile(r"([0-9]{4}-[0-9]{2}-[0-9]{2}) (.+)")
+_WTTR_DAY = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
+_WARSAW_TIME = ZoneInfo("Europe/Warsaw")
 _WEATHER_TEMPERATURE = re.compile(r"-?\d{1,3}(?:[.,]\d{1,2})?")
 
 
@@ -81,6 +88,83 @@ def imgw_observation_time(day: object, hour: object) -> datetime | None:
         return None
 
 
+def _wttr_hour(clock: re.Match[str]) -> int:
+    return int(clock[1]) % 12 + (12 if clock[3] == "PM" else 0)
+
+
+def _wttr_clock_dates(day: str, clock: re.Match[str]) -> tuple[datetime, ...]:
+    utc_time = datetime.fromisoformat(day).replace(
+        hour=_wttr_hour(clock), minute=int(clock[2]), tzinfo=timezone.utc
+    )
+    return utc_time - timedelta(days=1), utc_time, utc_time + timedelta(days=1)
+
+
+def _wttr_with_local_time(clock: re.Match[str], local: re.Match[str]) -> list[datetime]:
+    local_clock = _WTTR_CLOCK.fullmatch(local[2])
+    if local_clock is None:
+        return []
+    day = datetime.fromisoformat(local[1]).replace(tzinfo=timezone.utc)
+    local_time = day.replace(hour=_wttr_hour(local_clock), minute=int(local_clock[2]))
+    return [
+        candidate
+        for candidate in _wttr_clock_dates(local[1], clock)
+        if timedelta(hours=-12) <= local_time - candidate <= timedelta(hours=14)
+    ]
+
+
+def _wttr_with_polish_weather_date(
+    clock: re.Match[str], payload: dict[str, Any]
+) -> list[datetime]:
+    # Some j1 payloads omit localObsDateTime. Use the first local weather day
+    # only with the provider's confirmed country and its known time zone.
+    if _weather_area_field(payload, "country") not in {"Poland", "Polska"}:
+        return []
+    weather = payload.get("weather")
+    if not isinstance(weather, list) or not weather or not isinstance(weather[0], dict):
+        return []
+    day = weather[0].get("date")
+    if not isinstance(day, str) or _WTTR_DAY.fullmatch(day) is None:
+        return []
+    return [
+        candidate
+        for candidate in _wttr_clock_dates(day, clock)
+        if candidate.astimezone(_WARSAW_TIME).date().isoformat() == day
+    ]
+
+
+def _wttr_observation_time(
+    current: dict[str, Any], payload: dict[str, Any]
+) -> datetime | None:
+    """Bind the provider's UTC clock to a date without rolling it forward to today."""
+    clock = _WTTR_CLOCK.fullmatch(str(current.get("observation_time", "")))
+    if clock is None:
+        return None
+    local = _WTTR_LOCAL_TIME.fullmatch(str(current.get("localObsDateTime", "")))
+    try:
+        if local is not None:
+            possible = _wttr_with_local_time(clock, local)
+        elif "localObsDateTime" not in current:
+            possible = _wttr_with_polish_weather_date(clock, payload)
+        else:
+            return None
+    except (ValueError, OverflowError):
+        return None
+    return possible[0] if len(possible) == 1 else None
+
+
+def _wttr_observation_failure(
+    observed: str | None, temperature: str | None, at: datetime | None
+) -> WeatherFailureReason | None:
+    if observed is None:
+        return "missing_observed_location"
+    if temperature is None:
+        return "missing_temperature"
+    now = datetime.now(timezone.utc)
+    if at is None or at > now:
+        return "missing_observation_time"
+    return "stale_observation" if now - at > _WEATHER_MAX_AGE else None
+
+
 @dataclass(frozen=True)
 class _WeatherProviderFailure:
     reason: WeatherFailureReason
@@ -106,11 +190,11 @@ def weather_temperature(value: object) -> str | None:
     return raw.replace(",", ".") if _WEATHER_TEMPERATURE.fullmatch(raw) else None
 
 
-def _weather_area(payload: dict[str, Any]) -> str | None:
+def _weather_area_field(payload: dict[str, Any], field: str) -> str | None:
     areas = payload.get("nearest_area")
     if not isinstance(areas, list) or not areas or not isinstance(areas[0], dict):
         return None
-    names = areas[0].get("areaName")
+    names = areas[0].get(field)
     if not isinstance(names, list) or not names or not isinstance(names[0], dict):
         return None
     return weather_area_name(names[0].get("value"))
@@ -276,9 +360,9 @@ class AssistantSkill:
 
     async def read_weather_observation(self, location: str) -> WeatherObservation:
         """Bind a measured temperature to the area named by the provider."""
-        requested = location.strip()
-        if not requested:
-            return WeatherObservation(requested, "", failure_reason="empty_location")
+        requested = weather_area_name(location)
+        if requested is None:
+            return WeatherObservation("", "", failure_reason="empty_location")
         url = self.weather_source_url(requested)
         data = await self._fetch_weather_payload(url)
         if isinstance(data, _WeatherProviderFailure):
@@ -293,21 +377,21 @@ class AssistantSkill:
                 requested, url, failure_reason="provider_invalid_payload"
             )
         current = conditions[0]
-        observed = _weather_area(data)
+        observed = _weather_area_field(data, "areaName")
         temperature = weather_temperature(current.get("temp_C"))
-        failure: WeatherFailureReason | None = None
-        if observed is None:
-            failure = "missing_observed_location"
-        elif temperature is None:
-            failure = "missing_temperature"
+        at = _wttr_observation_time(current, data)
+        failure = _wttr_observation_failure(observed, temperature, at)
         return WeatherObservation(
             requested_location=requested,
             source_url=url,
             observed_location=observed,
-            temperature_c=temperature,
-            feels_like_c=weather_temperature(current.get("FeelsLikeC")),
+            temperature_c=temperature if failure is None else None,
+            feels_like_c=weather_temperature(current.get("FeelsLikeC"))
+            if failure is None
+            else None,
             failure_reason=failure,
-            details=_weather_details(current),
+            details=_weather_details(current) if failure is None else (),
+            observed_at=at if failure in {None, "stale_observation"} else None,
         )
 
     async def read_imgw_station_observation(
@@ -335,7 +419,7 @@ class AssistantSkill:
             or str(data.get("id_stacji")) != _IMGW_STATIONS[location.casefold()]
             or value is None
             or at is None
-            or not timedelta() <= now - at <= _IMGW_MAX_AGE
+            or not timedelta() <= now - at <= _WEATHER_MAX_AGE
         ):
             return None
         return WeatherObservation(location, url, observed, value, observed_at=at)

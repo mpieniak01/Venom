@@ -735,6 +735,7 @@ class RecordScope(TypedDict):
     criterion: str
     quote: str
     value_quote: str
+    bare_price: NotRequired[str]
     source: UserSource
 
 
@@ -816,6 +817,7 @@ def _pending_record_price(
         "criterion": criteria[0][0],
         "quote": quote,
         "value_quote": value,
+        "bare_price": match[1],
         "source": {
             "message_index": latest_index,
             "quote": pending[0],

@@ -84,6 +84,10 @@ _SENTENCE_REQUEST = re.compile(
     r"do\s+dwóch(?:\s+krótkich)?\s+zdań|(?:dwa|2)(?:\s+krótkie)?\s+zdania)\b",
     re.I,
 )
+_WIKI_LOCAL_FACT = re.compile(
+    r"(?P<fact>.+) \((?P<url>https://pl\.wikipedia\.org/wiki/\S+)\)\."
+)
+_DECIMAL_COMMA = re.compile(r"(?<=\d),(?=\d)")
 _DECIMAL_DOT_REQUEST = re.compile(r"\bkropk\w*\s+dziesiętn\w*\b", re.I)
 _DECIMAL_DOT_POLICY = (
     " W liczbach dziesiętnych użyj kropki między cyframi. Wartość z polskim "
@@ -132,19 +136,41 @@ class _SourcePlan:
     prior_context: str
 
 
-def _wiki_sentence_policy(message: str) -> str:
+def _wiki_sentence_format(message: str) -> tuple[int, bool] | None:
     visible = without_quotes(message)
     matches = list(_SENTENCE_REQUEST.finditer(visible))
     if not matches:
+        return None
+    count = 1 if matches[-1].group("one") else 2
+    return count, bool(_DECIMAL_DOT_REQUEST.search(visible))
+
+
+def _wiki_sentence_policy(message: str) -> str:
+    requested = _wiki_sentence_format(message)
+    if requested is None:
         return ""
+    count, decimal_dot = requested
     limit = (
         " Napisz dokładnie jedno zdanie. Połącz pytany fakt i odnośnik w tym samym "
         "zdaniu. Pomiń osobną definicję hasła, jeżeli pytanie dotyczy konkretnej cechy."
-        if matches[-1].group("one")
+        if count == 1
         else " Napisz dokładnie dwa zdania. W obu pozostań przy zakresie pytania."
     )
-    decimal_format = _DECIMAL_DOT_POLICY if _DECIMAL_DOT_REQUEST.search(visible) else ""
-    return limit + _WIKI_FACT_POLICY + decimal_format
+    return limit + _WIKI_FACT_POLICY + (_DECIMAL_DOT_POLICY if decimal_dot else "")
+
+
+def _wiki_local_reply(message: str, reply: str) -> str:
+    requested = _wiki_sentence_format(message)
+    fact_with_url = _WIKI_LOCAL_FACT.fullmatch(reply)
+    if requested is None or fact_with_url is None:
+        return reply
+    count, decimal_dot = requested
+    fact, url = fact_with_url["fact"], fact_with_url["url"]
+    if decimal_dot:
+        fact = _DECIMAL_COMMA.sub(".", fact)
+    if count == 1:
+        return f"{fact} ({url})."
+    return f"{fact}. Potwierdza to polska Wikipedia ({url})."
 
 
 def _recent_turns(
@@ -471,7 +497,10 @@ def _source_context_state(
         return source_context, headlines, scope_reply, evidence
     if isinstance(source_context, PublicSourceContext):
         evidence = source_context.evidence
-        scope_reply = scope_reply or source_context.reply
+        local_reply = source_context.reply
+        if evidence.scope == "wiki" and local_reply is not None:
+            local_reply = _wiki_local_reply(request.content, local_reply)
+        scope_reply = scope_reply or local_reply
     elif isinstance(source_context, PublicSourceUnavailable):
         evidence = PublicSourceEvidence("unavailable")
         source_context = "\nW tej turze nie udało się odczytać publicznego źródła."

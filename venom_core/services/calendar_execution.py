@@ -13,6 +13,7 @@ class CalendarCreate:
     start_time: str
     duration_minutes: int
     description: str = ""
+    idempotent: bool = False
 
 
 @dataclass(frozen=True)
@@ -34,6 +35,7 @@ class CalendarReceipt:
 class CalendarExecution:
     message: str
     receipt: CalendarReceipt | None = None
+    unconfirmed_event_id: str | None = None
 
     def confirmed(self, current: CalendarCreate) -> CalendarReceipt | None:
         if self.receipt is not None and self.receipt.confirms(current):

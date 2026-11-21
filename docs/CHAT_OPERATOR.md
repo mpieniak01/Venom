@@ -125,6 +125,22 @@ can inherit the topic from the preceding user turn. Forecasts are reported
 as unavailable. Source queries use the current question, while notes and
 private requests stay local. See [Public-source configuration](PL/CHAT_PUBLIC_SOURCES.md).
 
+Studio checks an explicit RSS read before encyclopedia routing. If the request
+names a news topic, missing articles do not trigger a generic headline fallback.
+
+Set `ACADEMY_QUALIFIED_CHAT_ENABLED` to True to enable Academy reply checks in
+Studio and the verified calendar path. The default is False. With the flag
+off, Studio uses the ordinary chat path. With the flag on, Studio stores
+`public_source_evidence` in chat history for completed, untruncated answers.
+Standalone Studio at /chat2 uses the ordinary chat controls with the native
+text selector disabled.
+
+A verified calendar write reports success only when Google confirms the event
+parameters. If Google returns an event ID with unconfirmed parameters, the
+form shows that ID and retries the same submission with the same key. The
+server checks the existing event before issuing a new write. A failure without
+a known event ID returns error.
+
 ### Academy campaigns
 
 In the local Full Venom chat, type `/academy` to see campaign commands. Enable Academy to use this route. The commands execute locally with the selected model left idle. `start` requires the ID and hash of a saved plan. `start` and `resume` wait while the task queue is paused or at its configured capacity. `stop` is available during a pause. [Academy campaign commands](PL/ACADEMY_EKSPERYMENTY.md#sterowanie-kampanią-z-czatu-venom)

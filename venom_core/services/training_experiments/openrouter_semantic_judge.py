@@ -511,6 +511,10 @@ def decode_with_evidence(
         evidence["record_scope"] = {"proof": record_scope, "raw_relation": atoms[key]}
         atoms[key] = "omitted"
         quotes = {record_scope["quote"], record_scope["value_quote"]}
+        if (bare_price := record_scope.get("bare_price")) and candidate.count(
+            bare_price
+        ) == 1:
+            quotes.add(bare_price)
         claims = [claim for claim in claims if claim.text not in quotes]
         if record_scope["kind"] == "missing_card_location":
             claims.append(

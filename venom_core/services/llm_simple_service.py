@@ -35,7 +35,10 @@ from venom_core.services.academy.qualified_chat import (
 )
 from venom_core.services.academy.qualified_chat_explanations import explanation_hint
 from venom_core.services.academy.qualified_chat_fit import fit_hint
-from venom_core.services.academy.qualified_chat_options import requested_count
+from venom_core.services.academy.qualified_chat_options import (
+    CountRequirement,
+    requested_count,
+)
 from venom_core.services.academy.qualified_chat_quote import english_translation_hint
 from venom_core.services.academy.qualified_chat_revisions import source_revision_hint
 from venom_core.services.academy.qualified_chat_rss import RSSSummary
@@ -485,12 +488,16 @@ def _normalize_top_logprobs_item(top_item: Any) -> dict[str, Any] | None:
     return {"token": str(top_item.get("token") or ""), "logprob": float(top_logprob)}
 
 
+def _first_completion_choice(data: dict[str, object]) -> dict[str, Any] | None:
+    choices = data.get("choices")
+    if isinstance(choices, list) and choices and isinstance(choices[0], dict):
+        return choices[0]
+    return None
+
+
 def _extract_message_content(data: dict[str, object], fallback_text: str = "") -> str:
-    choices = data.get("choices", [])
-    if not isinstance(choices, list) or not choices:
-        return fallback_text
-    first_choice = choices[0]
-    if not isinstance(first_choice, dict):
+    first_choice = _first_completion_choice(data)
+    if first_choice is None:
         return fallback_text
     message = first_choice.get("message", {})
     if isinstance(message, dict):
@@ -1091,11 +1098,12 @@ async def _read_non_stream_data(
 
 
 def _draft_truncated(data: Any) -> bool:
-    return (
-        isinstance(data, dict)
-        and data.get("done") is True
-        and data.get("done_reason") == "length"
-    )
+    if not isinstance(data, dict):
+        return False
+    choice = _first_completion_choice(data)
+    if choice is not None:
+        return choice.get("finish_reason") == "length"
+    return data.get("done") is True and data.get("done_reason") == "length"
 
 
 def _native_draft(data: Any) -> str:
@@ -1119,7 +1127,11 @@ async def _publish_qualified_draft(
 ) -> str:
     content = _native_draft(data)
     if reply.rss is not None:
-        return reply.rss.publish(content)
+        return (
+            GENERATION_TRUNCATED
+            if _draft_truncated(data)
+            else reply.rss.publish(content)
+        )
     repair = reply.repair(content)
     if repair is None:
         if _draft_truncated(data):
@@ -1496,7 +1508,7 @@ def _prepare_qualified_reply(
             count = requested_count(request.content)
             return QualifiedReply(
                 rss=RSSSummary(
-                    request._studio_rss_headlines, count.count if count else 1
+                    request._studio_rss_headlines, count or CountRequirement("exact", 1)
                 )
             )
         if reply := prepare_studio_reply(
@@ -1596,7 +1608,7 @@ def _apply_studio_prompt_hints(
     system_context: str,
     system_prompt: str,
     complete_reply: QualifiedReply | None,
-) -> tuple[str, bool]:
+) -> str:
     qualified_studio = _qualified_studio_request(
         request, model_name.casefold()
     ) and _qualified_request(request, runtime)
@@ -1621,7 +1633,7 @@ def _apply_studio_prompt_hints(
                 ),
             )
         )
-    return system_prompt, qualified_studio
+    return system_prompt
 
 
 def _qualified_stream_prompt(
@@ -1640,10 +1652,10 @@ def _qualified_stream_prompt(
     system_prompt = _apply_qualified_reply_prompt(
         system_context, system_prompt, qualified_reply, complete_reply
     )
-    system_prompt, qualified_studio = _apply_studio_prompt_hints(
+    system_prompt = _apply_studio_prompt_hints(
         request, runtime, model_name, system_context, system_prompt, complete_reply
     )
-    return request, system_prompt, qualified_reply, complete_reply, qualified_studio
+    return request, system_prompt, qualified_reply, complete_reply
 
 
 async def _non_openrouter_messages(
@@ -1679,7 +1691,6 @@ def _stream_non_openrouter_response(
     request_id: UUID,
     complete_reply: QualifiedReply | None,
     qualified_reply: QualifiedReply | None,
-    qualified_studio: bool,
 ):
     headers = _build_streaming_headers(str(request_id), request.session_id or "")
     completions_url = _build_chat_completions_url(runtime)
@@ -1702,7 +1713,7 @@ def _stream_non_openrouter_response(
                 request_id=request_id,
                 model_name=model_name,
                 qualified_reply=complete_reply,
-                report_length=qualified_studio,
+                report_length=request.studio_normal,
             ),
             media_type=_SSE_MEDIA_TYPE,
             headers=headers,
@@ -1710,7 +1721,7 @@ def _stream_non_openrouter_response(
     if not completions_url:
         raise HTTPException(status_code=503, detail="Brak endpointu LLM.")
     guard_options = {"guard_calendar": True} if qualified_reply is not None else {}
-    if qualified_studio:
+    if request.studio_normal:
         guard_options["report_length"] = True
     return StreamingResponse(
         _stream_simple_chunks(
@@ -1734,8 +1745,8 @@ async def _stream_non_openrouter_chat(
     )
     request_id: UUID = uuid4()
     _trace_simple_request(request_id, request, runtime, model_name)
-    request, system_prompt, qualified_reply, complete_reply, qualified_studio = (
-        _qualified_stream_prompt(request, runtime, model_name, system_context)
+    request, system_prompt, qualified_reply, complete_reply = _qualified_stream_prompt(
+        request, runtime, model_name, system_context
     )
     messages = await _non_openrouter_messages(
         request, runtime, model_name, system_prompt, complete_reply, request_id
@@ -1750,5 +1761,4 @@ async def _stream_non_openrouter_chat(
         request_id,
         complete_reply,
         qualified_reply,
-        qualified_studio,
     )

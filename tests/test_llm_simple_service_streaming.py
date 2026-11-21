@@ -295,14 +295,22 @@ async def test_stream_simple_chunks_http_error_emits_error_event(monkeypatch):
     assert events[1][1]["code"] == "llm_http_error"
 
 
+@pytest.mark.parametrize("finish", ["stop", "length"])
 @pytest.mark.asyncio
-async def test_stream_simple_chunks_non_stream_returns_content(monkeypatch):
+async def test_stream_simple_chunks_non_stream_returns_content(monkeypatch, finish):
     class _JsonResponse:
         def raise_for_status(self) -> None:
             return None
 
         def json(self):
-            return {"choices": [{"message": {"content": "Witaj z multi_runtime"}}]}
+            return {
+                "choices": [
+                    {
+                        "message": {"content": "Witaj z multi_runtime"},
+                        "finish_reason": finish,
+                    }
+                ]
+            }
 
     @asynccontextmanager
     async def _fake_open_stream_response(**_kwargs):
@@ -322,11 +330,15 @@ async def test_stream_simple_chunks_non_stream_returns_content(monkeypatch):
             runtime=runtime,
             request_id=uuid4(),
             model_name="model-x",
+            report_length=True,
         )
     )
 
     assert [name for name, _ in events] == ["start", "content", "done"]
     assert events[1][1]["text"] == "Witaj z multi_runtime"
+    assert events[-1][1].get("finish_reason") == (
+        "length" if finish == "length" else None
+    )
 
 
 @pytest.mark.asyncio

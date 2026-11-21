@@ -40,7 +40,9 @@ from venom_core.services.academy.qualified_chat_schedule import (
     route_shift,
 )
 from venom_core.services.academy.qualified_chat_writing import (
+    opening_matches,
     opening_sentence,
+    opening_target,
     revises_opening_only,
     selects_one_proposal,
 )
@@ -79,16 +81,25 @@ _CALENDAR_WRITE = (
 )
 _CALENDAR_CLAIM = re.compile(
     rf"{_CALENDAR_NAME}.{{0,100}}{_CALENDAR_WRITE}|"
-    rf"{_CALENDAR_WRITE}.{{0,100}}{_CALENDAR_NAME}|"
-    rf"\bwpis\w* (?:już )?(?:jest|widnieje|znajduje się) (?:już )?w {_CALENDAR_NAME}",
+    rf"{_CALENDAR_WRITE}.{{0,100}}{_CALENDAR_NAME}",
     re.I,
 )
-_CLAUSE_SPLIT = re.compile(r"[.!?;\n]|\b(?:ale|jednak|natomiast)\b", re.I)
+_CALENDAR_SUBJECT = (
+    r"\b(?:wpisy?|spotkani[ea]|wydarzeni[ea]|odpraw[ay]|wizyt[ay]|"
+    r"terminy?|rezerwacj[ae]|prób[ay]|zajęcia)\b"
+)
+_CALENDAR_PRESENCE = re.compile(
+    rf"{_CALENDAR_SUBJECT}\s+(?:już\s+)?(?:jest|są|widnieje|znajduje się)"
+    rf"\s+(?:już\s+)?w\s+{_CALENDAR_NAME}",
+    re.I,
+)
+_CALENDAR_QUESTION = re.compile(r"^\s*czy\b", re.I)
+_CLAUSE_SPLIT = re.compile(r"(?<=[.!?;])|\n|\b(?:ale|jednak|natomiast)\b", re.I)
 _CALENDAR_CONTEXT = re.compile(_CALENDAR_NAME, re.I)
 _CALENDAR_CUE = re.compile(
-    rf"{_CALENDAR_NAME}|\b(?:{_WRITE_VERBS}|wpis\w*|został\w*)\b", re.I
+    rf"{_CALENDAR_NAME}|{_CALENDAR_SUBJECT}|\b(?:{_WRITE_VERBS}|został\w*)\b", re.I
 )
-_TRAILING_CONTEXT = re.compile(r"\b(?:nie|w|we|do)\s*$", re.I)
+_TRAILING_CONTEXT = re.compile(r"\b(?:czy|nie|w|we|do)\s*$", re.I)
 _AMBIGUOUS_PLACE = re.compile(r"\b(?:i|lub|albo|oraz)\b", re.I)
 _LOCATION = r"(?:przy|w|za|pod|obok) [\w-]+(?: [\w-]+){0,5}"
 _RETURN_LOCATION = re.compile(
@@ -177,7 +188,13 @@ _STRICT_TIME = re.compile(
 )
 _KEEP = re.compile(r"\b(?:zachowaj|zostań przy|nadal)\b", re.I)
 _SECONDS = re.compile(r"(?<![\d,.-])([1-9]\d?) sekund[ęy]?\b", re.I)
-_STATED_TIME = re.compile(r"\b\d+(?:[.,]\d+)?\s*(?:sekund\w*|minut\w*|s\b)", re.I)
+_STATED_TIME = re.compile(
+    r"\b(?:\d+(?:[.,]\d+)?\s*(?:sekund\w*|minut\w*|godzin\w*|s\b|min\b|h\b)|"
+    r"(?:jedn[aeoąę]|dwa|dwie|trzy|cztery|pięć|sześć|siedem|osiem|dziewięć|"
+    r"dziesięć|kilka|kilkanaście|kilkadziesiąt|pół|półtorej|\w+naście|\w+dzieści|\w+dziesiąt)"
+    r"\s+(?:sekund\w*|minut\w*|godzin\w*)|pół(?:minut\w*|godzin\w*))\b",
+    re.I,
+)
 _SIGN = re.compile(
     r"\b(?:co to znaczy|wyjaśnij[^.!?]{0,40}(?:napis|co to znaczy))", re.I
 )
@@ -186,6 +203,10 @@ _ENTRY = re.compile(
     r"obowiązują wejściówki|wymagana wejściówka|wymagane wejściówki", re.I
 )
 _REMOVAL = re.compile(r"\b(?:czy samo|czy sama)\s+(?:wyjęcie|usunięcie)\b", re.I)
+_TOPIC_RESET = re.compile(
+    r"^\s*(?:zmieniam temat|zmieńmy temat|nowy temat|inny temat)\s*(?:[.!?:,]|$)",
+    re.I,
+)
 _WEIGHT = re.compile(r"\b(?:ciężar\w*|ciężk\w*|wag[aię]|mas[ayę]|waż\w*)\b", re.I)
 _SIZE = re.compile(
     r"\b(?:gabaryt\w*|miejsce|przejście|rozmiar\w*|wymiar\w*|(?:z)?mieśc\w*|półk\w*)\b",
@@ -193,9 +214,18 @@ _SIZE = re.compile(
 )
 
 
+def _presence_claim(clause: str) -> bool:
+    return (
+        not clause.rstrip().endswith("?")
+        and not _CALENDAR_QUESTION.match(clause)
+        and bool(_CALENDAR_PRESENCE.search(clause))
+    )
+
+
 def _claim(clauses: str) -> bool:
     return any(
-        _CALENDAR_CLAIM.search(clause) for clause in _CLAUSE_SPLIT.split(clauses)
+        _CALENDAR_CLAIM.search(clause) or _presence_claim(clause)
+        for clause in _CLAUSE_SPLIT.split(clauses)
     )
 
 
@@ -237,6 +267,13 @@ class CalendarClaimStream:
         return self.pending
 
 
+def _current_topic(users: Sequence[str]) -> str:
+    for index in range(len(users) - 1, -1, -1):
+        if reset := _TOPIC_RESET.match(users[index]):
+            return " ".join((users[index][reset.end() :], *users[index + 1 :]))
+    return " ".join(users)
+
+
 def _source_reply(text: str, users: Sequence[str]) -> str | None:
     quotes = re.findall(r"„([^”]+)”", text)
     if _SIGN.search(text) and len(quotes) == 1:
@@ -246,7 +283,7 @@ def _source_reply(text: str, users: Sequence[str]) -> str | None:
             for free, entry in (parts, parts[::-1])
         ):
             return "Wstęp jest bezpłatny. Do wejścia potrzebujesz wejściówki."
-    context = " ".join(users)
+    context = _current_topic(users)
     if _REMOVAL.search(text) and _WEIGHT.search(context) and _SIZE.search(context):
         return (
             "Wyjęcie części zawartości może zmniejszyć ciężar, ale nie gwarantuje mniejszych gabarytów. "
@@ -332,6 +369,7 @@ class QualifiedReply:
     rewrite: QuoteRewrite | None = None
     rss: RSSSummary | None = None
     opening_only: bool = False
+    requested_opening: str | None = None
 
     @property
     def requires_complete_draft(self) -> bool:
@@ -444,6 +482,8 @@ class QualifiedReply:
     def _publish_default(self, draft: str) -> str:
         if self.opening_only:
             draft = opening_sentence(draft)
+            if not opening_matches(draft, self.requested_opening):
+                return _CLARIFICATION
         if _claim(draft):
             return _CALENDAR_UNCONFIRMED
         return draft if draft.strip() and self._allowed(draft) else _CLARIFICATION
@@ -472,6 +512,7 @@ def prepare_studio_reply(
                 "najnowszej prośby. Pomiń temat, powitanie, podpis i komentarz."
             ),
             opening_only=True,
+            requested_opening=opening_target(text),
         )
     quote = parse_quote_rewrite(text)
     if isinstance(quote, QuoteRewrite):

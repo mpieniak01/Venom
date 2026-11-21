@@ -454,6 +454,51 @@ async def test_wiki_context_and_normal_chat_integration(monkeypatch):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("format_request", "expected"),
+    [
+        ("W jednym zdaniu podaj czas.", "dokładnie jedno zdanie"),
+        ("Odpowiedz w dwóch krótkich zdaniach.", "dokładnie dwa zdania"),
+        ("Podaj czas bez dodatkowego ograniczenia formatu.", ""),
+        ("Wyjaśnij cytat «Podaj w jednym zdaniu».", ""),
+        ("Zmień format z jednego na dwa zdania.", "dokładnie dwa zdania"),
+    ],
+)
+async def test_studio_first_wikipedia_answer_respects_explicit_sentence_format(
+    monkeypatch, format_request, expected
+):
+    source = SimpleNamespace(
+        title="Przykładowa definicja",
+        url="https://pl.wikipedia.org/wiki/Przyk%C5%82ad",
+        extract="Okres wynosi ok. 8,5 s w próżni.",
+    )
+    wiki = AsyncMock(return_value=[source])
+    monkeypatch.setattr(chat_grounding, "search_polish_wikipedia", wiki)
+    monkeypatch.setattr(
+        studio_normal_chat.SETTINGS, "ACADEMY_QUALIFIED_CHAT_ENABLED", True
+    )
+    request = SimpleChatRequest(
+        content=f"Czym jest okres? Oprzyj odpowiedź na polskiej Wikipedii. {format_request}",
+        session_id="test",
+        studio_normal=True,
+    )
+    prepared, context = await studio_normal_chat.prepare_studio_normal(
+        request, SimpleNamespace(get_history=lambda _session: []), AsyncMock()
+    )
+
+    wiki.assert_awaited_once_with("okres", limit=2)
+    assert source.url in context
+    assert source.extract in context
+    assert prepared._studio_public_source_evidence["scope"] == "wiki"
+    if expected:
+        assert expected in context
+        assert "jednostkę, przybliżenie i warunek" in context
+        assert "hasła tylko raz" in context
+    else:
+        assert "Napisz dokładnie" not in context
+
+
+@pytest.mark.asyncio
 async def test_note_question_never_leaves_normal_chat(monkeypatch):
     fetch = AsyncMock()
     monkeypatch.setattr(chat_grounding, "search_polish_wikipedia", fetch)

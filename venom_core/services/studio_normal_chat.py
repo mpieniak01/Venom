@@ -21,6 +21,7 @@ from venom_core.memory.chat_retrieval import (
 )
 from venom_core.services.academy.qualified_chat import GENERATION_TRUNCATED
 from venom_core.services.academy.qualified_chat_explanations import changes_example
+from venom_core.services.academy.qualified_chat_quote import without_quotes
 from venom_core.services.academy.qualified_chat_revisions import (
     lookup_forbidden,
     public_lookup_query,
@@ -71,12 +72,37 @@ _SHORT_SOURCE_POLICY = (
     "Użyj zdania źródła, które dotyczy dokładnie pytanego faktu. "
     "Pomiń wstęp, powtarzane przypisy i czas odczytu, jeśli o niego nie proszono."
 )
+_WIKI_SENTENCE_REQUEST = re.compile(
+    r"\b(?:(?P<one>w\s+jednym(?:\s+krótkim)?\s+zdaniu|"
+    r"do\s+jednego(?:\s+krótkiego)?\s+zdania|(?:jedno|1)(?:\s+krótkie)?\s+zdanie)"
+    r"|w\s+dwóch(?:\s+krótkich)?\s+zdaniach|"
+    r"do\s+dwóch(?:\s+krótkich)?\s+zdań|(?:dwa|2)(?:\s+krótkie)?\s+zdania)\b",
+    re.I,
+)
+_WIKI_FACT_POLICY = (
+    " Odpowiedz wprost na szczegółowe pytanie, zachowując wartość, jednostkę, "
+    "przybliżenie i warunek, gdy występują w źródle. Podaj pełny adres właściwego "
+    "hasła tylko raz, w nawiasie na końcu ostatniego zdania przed kropką."
+)
 _SOURCE_STATUS_POLICY = (
     "\n\nPoniższy status pochodzi z aplikacji. Przekaż go własnymi słowami "
     "w języku pytania, po polsku przy polskim pytaniu. Jeśli odczyt nie "
     "powiódł się w tej turze, powiedz, że nie udało się uzyskać źródła. "
     "Nie dopisuj danych, odnośników ani ograniczeń funkcji wyszukiwania."
 )
+
+
+def _wiki_sentence_policy(message: str) -> str:
+    matches = list(_WIKI_SENTENCE_REQUEST.finditer(without_quotes(message)))
+    if not matches:
+        return ""
+    limit = (
+        " Napisz dokładnie jedno zdanie. Połącz pytany fakt i odnośnik w tym samym "
+        "zdaniu. Pomiń osobną definicję hasła, jeżeli pytanie dotyczy konkretnej cechy."
+        if matches[-1].group("one")
+        else " Napisz dokładnie dwa zdania. W obu pozostań przy zakresie pytania."
+    )
+    return limit + _WIKI_FACT_POLICY
 
 
 def _recent_turns(
@@ -286,6 +312,8 @@ async def prepare_studio_normal(
                 )
             if output_tokens <= 128 or _SHORT_SOURCE_REQUEST.search(request.content):
                 policy += _SHORT_SOURCE_POLICY
+            if evidence is not None and evidence.scope == "wiki":
+                policy += _wiki_sentence_policy(request.content)
         if len(policy) + 1 + len(source_context) <= remaining:
             source_context = f"{policy}\n{source_context}"
     if len(source_context) <= remaining:

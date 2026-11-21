@@ -1573,7 +1573,6 @@ async def _resolve_non_openrouter_runtime(request: SimpleChatRequest):
 
 
 def _apply_qualified_reply_prompt(
-    request: SimpleChatRequest,
     system_context: str,
     system_prompt: str,
     qualified_reply: QualifiedReply | None,
@@ -1639,7 +1638,7 @@ def _qualified_stream_prompt(
         else None
     )
     system_prompt = _apply_qualified_reply_prompt(
-        request, system_context, system_prompt, qualified_reply, complete_reply
+        system_context, system_prompt, qualified_reply, complete_reply
     )
     system_prompt, qualified_studio = _apply_studio_prompt_hints(
         request, runtime, model_name, system_context, system_prompt, complete_reply

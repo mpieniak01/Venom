@@ -2134,6 +2134,132 @@ def test_repeat_best_skips_all_alternatives_without_protected_parent_gain(
     assert len(experiments.calls) == 2
 
 
+@pytest.mark.parametrize(
+    ("usable_hits", "full_hits", "reason", "parent_gain", "full_gain"),
+    [
+        (
+            {"a", "b", "c", "d"},
+            {"b", "c", "d"},
+            "parent_full_pass_lost",
+            0.5,
+            0.25,
+        ),
+        ({"a", "c"}, {"a", "c"}, "parent_full_pass_no_gain", 0.0, 0.0),
+        ({"a", "b", "c"}, {"a", "b", "c"}, None, 0.25, 0.25),
+    ],
+    ids=["higher-score-with-regression", "parent-tie", "retained-parent-gain"],
+)
+def test_automatic_checkpoint_campaign_gates_repetition_against_parent(
+    controller,
+    guarded_evidence,
+    monkeypatch,
+    usable_hits,
+    full_hits,
+    reason,
+    parent_gain,
+    full_gain,
+):
+    from venom_core.services.training_experiments import quality_native
+
+    service, experiments, _clock, spec, record = _repeat_campaign(
+        controller, guarded_evidence, monkeypatch
+    )
+    references, _ = guarded_evidence
+    parent = references["prior"]
+    for case in parent["cases"].values():
+        case["candidate"]["passed"] = case["candidate"]["usable"]
+    monkeypatch.setattr(
+        quality_native, "frozen_evaluation_identity", lambda *_: parent["identity"]
+    )
+    launch = experiments.start
+
+    def start_with_checkpoints(*args, checkpoint_steps, **kwargs):
+        started = launch(*args, **kwargs)
+        return experiments.update(started["run_id"], checkpoint_steps=checkpoint_steps)
+
+    monkeypatch.setattr(experiments, "start", start_with_checkpoints)
+
+    reports = {}
+    native_records = {}
+
+    def checkpoint_report(run_id, step):
+        report_path = reports[run_id, step]
+        return read_object(report_path), file_fingerprint(report_path)
+
+    def completed_checkpoint(run_id, step):
+        experiments.finish(run_id, usable=len(usable_hits))
+        path = experiments.run_dir(run_id) / f"checkpoint-result-{step}.json"
+        report = experiments.report(run_id)
+        report["summaries"]["base"]["total"]["usable"] = 1
+        report["checkpoint"] = {"step": step}
+        atomic_json(path, report)
+        reports[run_id, step] = path
+        evidence = record(
+            run_id, usable_hits, source={"sha256": file_fingerprint(path)}
+        )
+        for name, case in evidence["cases"].items():
+            case["base"]["usable"] = name == "a"
+            case["candidate"]["passed"] = name in full_hits
+        native_records[run_id, step] = evidence
+
+    monkeypatch.setattr(
+        experiments, "checkpoint_report", checkpoint_report, raising=False
+    )
+    monkeypatch.setattr(
+        quality_native,
+        "native_record",
+        lambda _experiments, rid, step: native_records[rid, step],
+    )
+    values = spec.model_dump()
+    values["checkpoint_steps"] = [2]
+    values["selection"].update(min_usable_delta=0.25, protect_parent_full_pass=True)
+    values["quality_policy"]["protect_parent_full_pass"] = True
+    start(service, CampaignSpec.model_validate(values))
+    initial_runs = []
+    for index in range(2):
+        run_id = launch_next(service)
+        initial_runs.append(run_id)
+        completed_checkpoint(run_id, 2)
+        result = service.advance("series")
+        checkpoint = result["trials"][index]["checkpoint_evaluations"][0]
+        guard = checkpoint["quality_guard"]
+        assert checkpoint["m0_usable_delta"] == (len(usable_hits) - 1) / 4
+        assert checkpoint["usable_delta"] == parent_gain
+        assert guard["parent_delta"]["full_pass_delta"] == full_gain
+        assert checkpoint["qualified"] is (reason is None)
+        assert {row["code"] for row in guard["reasons"]} == (
+            {reason} if reason else set()
+        )
+        assert guard["lost_parent_full_pass_case_ids"] == (
+            ["a"] if reason == "parent_full_pass_lost" else []
+        )
+
+    if reason is not None:
+        finished = service.advance("series")
+        assert finished["selected_run_id"] is None
+        assert finished["selected_checkpoint_step"] is None
+        assert finished["extension_decision"]["status"] == "skipped"
+        assert finished["repeat_confirmation"]["status"] == "failed_quality"
+        assert experiments.calls == [("start", run) for run in initial_runs]
+        return
+
+    repeat = launch_next(service)
+    selected = service.status("series")
+    decision = selected["extension_decision"]
+    assert decision["status"] == "approved"
+    assert decision["run_id"] in initial_runs
+    assert decision["checkpoint_step"] == 2
+    assert decision["repeat_run_id"] == repeat
+    assert selected["plan"]["variants"][2]["recipe"]["seed"] == 43
+    completed_checkpoint(repeat, 2)
+    service.advance("series")
+    finished = service.advance("series")
+    assert finished["status"] == "succeeded"
+    assert finished["repeat_confirmation"]["status"] == "passed"
+    assert finished["selected_checkpoint_step"] == 2
+    assert experiments.calls == [("start", run) for run in (*initial_runs, repeat)]
+
+
 @pytest.mark.parametrize("mutation", ["seed", "recipe", "duplicate", "budget"])
 def test_repeat_best_freeze_rejects_unmatched_or_unbudgeted_alternative(
     controller, guarded_evidence, monkeypatch, mutation

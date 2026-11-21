@@ -422,14 +422,24 @@ async def test_native_exchange_title_guidance_keeps_model_output(
 
 
 @pytest.mark.asyncio
-async def test_native_invitation_draft_has_no_model_or_tool_receipt(native):
-    _, calls = native
-    await bridge.switch("p13")
-    request = SimpleChatRequest(
-        content=(
+@pytest.mark.parametrize(
+    "prompt",
+    [
+        (
             "Użyj drugiej nazwy i napisz jedno serdeczne zdanie zapraszające sąsiadów. "
             "Zachęć do przyniesienia jednej sadzonki, bez podawania daty ani miejsca."
         ),
+        (
+            "Weź drugą nazwę i ułóż jedno ciepłe zdanie zapraszające sąsiadów "
+            "na wymianę sadzonek. Zachęć do przyniesienia jednej sadzonki, bez daty ani miejsca."
+        ),
+    ],
+)
+async def test_native_invitation_draft_has_no_model_or_tool_receipt(native, prompt):
+    _, calls = native
+    await bridge.switch("p13")
+    request = SimpleChatRequest(
+        content=prompt,
         history=[
             HistoryMessage(
                 role="user",

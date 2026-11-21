@@ -26,7 +26,7 @@ _TITLE_ITEM = re.compile(r"^(?:[-*•]|(?P<number>\d)[.)])\s+")
 _TITLE_WORD = r"[^\W\d_]+(?:-[^\W\d_]+)*"
 _TITLE = re.compile(rf"{_TITLE_WORD}(?:\s+{_TITLE_WORD}){{0,6}}")
 _INVITATION_REQUEST = re.compile(
-    r"(?:użyj|weź) drugiej nazwy i (?:napisz|ułóż|przygotuj) jedno "
+    r"(?:użyj drugiej nazwy|weź drugą nazwę) i (?:napisz|ułóż|przygotuj) jedno "
     r"(?:serdeczne|ciepłe|przyjazne) zdanie zapraszające sąsiadów"
     r"(?: na wymianę sadzonek(?: ziół)?)?\.\s*"
     r"(?:zachęć do przyniesienia|poproś o przyniesienie) jednej sadzonki"

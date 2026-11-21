@@ -133,7 +133,9 @@ def _rss_topic(message: str) -> str:
     return without_quotes(_RSS_QUOTED_LABEL.sub(r"\1\2", message))
 
 
-def _requests_rss(topic: str) -> bool:
+def is_rss_read_request(message: str) -> bool:
+    """Identify an instruction to fetch RSS headlines in this turn."""
+    topic = _rss_topic(message)
     return bool(_EXPLICIT_RSS.search(topic) and _RSS_READ.search(topic))
 
 
@@ -170,7 +172,7 @@ def grounding_kind(message: str, *, use_notes: bool = False) -> str | None:
         _ENCYCLOPEDIC.search(message) and not current
     ):
         return "wiki"
-    if _requests_rss(_rss_topic(message)):
+    if is_rss_read_request(message):
         return "web"
     if _WEATHER.search(message) and (
         _weather_location(message)
@@ -188,7 +190,7 @@ def is_current_news_request(message: str) -> bool:
     """Identify a request for public reporting even if retrieval was unavailable."""
     topic = _CHAT_MESSAGE_REFERENCE.sub(" ", message)
     return grounding_kind(message) == "web" and (
-        bool(_NEWS_REQUEST.search(topic)) or _requests_rss(_rss_topic(topic))
+        bool(_NEWS_REQUEST.search(topic)) or is_rss_read_request(topic)
     )
 
 

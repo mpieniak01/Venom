@@ -35,6 +35,7 @@ from venom_core.services.chat_grounding import (
     current_chat_context,
     grounding_follow_up,
     is_current_news_request,
+    is_rss_read_request,
 )
 from venom_core.services.public_source_evidence import (
     PublicSourceContext,
@@ -273,7 +274,9 @@ async def prepare_studio_normal(
     )
     scope_reply = (
         previous_scope_reply(prior_evidence)
-        if local_qualification and asks_about_previous_scope(request.content)
+        if local_qualification
+        and asks_about_previous_scope(request.content)
+        and not is_rss_read_request(request.content)
         else None
     )
     prior_context = previous_public_fact_context(request.content, prior_evidence)

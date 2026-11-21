@@ -741,6 +741,48 @@ async def test_unconfigured_named_rss_feed_does_not_read_default_feed(monkeypatc
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("forbid_lookup", [False, True])
+async def test_studio_reads_requested_rss_before_describing_its_scope(
+    monkeypatch, forbid_lookup
+):
+    monkeypatch.setattr(
+        studio_normal_chat.SETTINGS, "ACADEMY_QUALIFIED_CHAT_ENABLED", True
+    )
+    feed = AsyncMock(
+        return_value=[
+            verified_web.NewsHeadline(
+                url="https://www.bbc.co.uk/news/articles/example",
+                title="Test headline",
+                published_at="2026-11-21",
+            )
+        ]
+    )
+    monkeypatch.setattr(chat_grounding.RSSReaderSkill, "read_feed", feed)
+    content = (
+        "Z kanału BBC RSS podaj jeden nagłówek po polsku. Wskaż mówiącego, jeśli "
+        "występuje w tytule, dodaj datę publikacji i pełny adres pozycji. "
+        "Powiedz, jaki był zakres odczytu."
+    )
+    request = SimpleChatRequest(
+        content=content + (" Nie wyszukuj." if forbid_lookup else ""),
+        session_id="test",
+        studio_normal=True,
+    )
+    prepared, context = await studio_normal_chat.prepare_studio_normal(
+        request, SimpleNamespace(get_history=lambda _: []), AsyncMock()
+    )
+    assert prepared._studio_public_scope_reply is None
+    if forbid_lookup:
+        feed.assert_not_awaited()
+        assert prepared._studio_public_source_evidence is None
+    else:
+        feed.assert_awaited_once()
+        assert feed.await_args.args[0].name == "BBC News RSS"
+        assert prepared._studio_public_source_evidence == {"scope": "rss_headlines"}
+        assert "Test headline" in context
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("scope", "status", "finish_reason", "matching_turn", "expected"),
     [

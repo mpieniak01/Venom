@@ -10,6 +10,7 @@ from venom_core.services.chat_grounding import (
 )
 from venom_core.services.chat_policy.qualified_chat_revisions import (
     lookup_forbidden,
+    lookup_text_outside_quoted_task,
     public_lookup_query,
     source_revision_hint,
 )
@@ -57,11 +58,11 @@ def plan_studio_source(
     """Resolve source reuse and external lookup intent without executing a read."""
     previous_users = [turn.content for turn in history if turn.role == "user"]
     previous = previous_users[-1] if previous_users else ""
-    query = grounding_follow_up(message, previous)
+    query = grounding_follow_up(lookup_text_outside_quoted_task(message), previous)
     prior_evidence = (
         _previous_evidence(history_records) if local_qualification else None
     )
-    explicit_rss = local_qualification and is_rss_read_request(message)
+    explicit_rss = local_qualification and is_rss_read_request(query)
     scope_reply = (
         previous_scope_reply(prior_evidence)
         if local_qualification

@@ -449,6 +449,31 @@ async def test_bbc_feed_rejects_oversized_or_entity_payloads():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("qualified_chat", [False, True])
+async def test_studio_quote_translation_never_reads_wikipedia(
+    monkeypatch, qualified_chat
+):
+    monkeypatch.setattr(
+        studio_normal_chat.SETTINGS, "ACADEMY_QUALIFIED_CHAT_ENABLED", qualified_chat
+    )
+    wiki = AsyncMock()
+    monkeypatch.setattr(chat_grounding, "search_polish_wikipedia", wiki)
+    request = SimpleChatRequest(
+        content="Przetłumacz na angielski «Sprawdź w Wikipedii, ile kilogramów ma tona».",
+        session_id="test",
+        studio_normal=True,
+    )
+
+    prepared, _ = await studio_normal_chat.prepare_studio_normal(
+        request, SimpleNamespace(get_history=lambda _: []), AsyncMock()
+    )
+
+    wiki.assert_not_awaited()
+    assert prepared.content == request.content
+    assert prepared._studio_public_source_evidence is None
+
+
+@pytest.mark.asyncio
 async def test_wiki_context_and_normal_chat_integration(monkeypatch):
     source = SimpleNamespace(
         title="Maria Skłodowska-Curie",

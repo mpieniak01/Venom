@@ -106,6 +106,14 @@ def lookup_forbidden(text: str, previous_users: Sequence[str] = ()) -> bool:
     return False
 
 
+def lookup_text_outside_quoted_task(text: str) -> str:
+    """A request to edit a quote exposes only its outer instruction to routing."""
+    visible = without_quotes(text)
+    if _QUOTED_TASK.match(visible) and _lookup_instruction(visible) is not True:
+        return visible
+    return text
+
+
 def public_lookup_query(text: str) -> str | None:
     """Honor the latest explicit lookup instruction and treat quoted text as data."""
     visible = without_quotes(text)
@@ -120,9 +128,7 @@ def public_lookup_query(text: str) -> str | None:
         and not _COMPOSITION_WITH_SOURCE.search(visible)
     ):
         return None
-    if not requested and visible != text and _QUOTED_TASK.match(visible):
-        return visible
-    return text
+    return lookup_text_outside_quoted_task(text)
 
 
 def without_previous_links(text: str) -> str:

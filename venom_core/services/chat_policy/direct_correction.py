@@ -82,6 +82,20 @@ _CARD_LABELS = {
     "osobę": "osoba",
     "salę": "sala",
 }
+_RETURN_TO_RESERVATION = re.compile(
+    r"(?:teraz korzystaj z ustaleń (?:naszej )?rozmowy|"
+    r"wróć do ustaleń (?:naszej )?rozmowy)\.\s+"
+    r"(?:jaki jest (?:rzeczywisty )?numer rezerwacji i kto jest opiekunem\?"
+    r"|podaj numer rezerwacji i opiekuna\.?)",
+    re.I,
+)
+_RESERVATION_RECORD = re.compile(
+    r"(?i:(?:na zajęcia (?:w|we) [a-ząćęłńóśźż-]+ )?"
+    r"mam rezerwację )(?P<number>[0-9]{1,12})\.\s+"
+    rf"(?i:opiekunem jest )(?P<name>{_BOUNDED_NAME})\."
+    r"(?:\s+(?i:zrób krótką notatkę z tymi dwiema danymi)\.)?"
+)
+_OTHER_RESERVATION = re.compile(r"\b(?:rezerwacj|opiekun)\w*\b", re.I)
 _STATE_QUERY = re.compile(r"\b(?:ustalen\w*|obowiązuj\w*|wiążąc\w*)\b", re.I)
 _CANCEL_REGISTRATION = re.compile(
     r"^\s*(?:zapisy (?:jednak )?odwołane|odwołuję zapisy|rezygnuję z zapisów)"
@@ -171,6 +185,40 @@ def _verified_number_card_reply(source: str, content: str) -> str | None:
     return f"{label.capitalize()}: {field['value']}. {number}: brak danych."
 
 
+def _reservation_from_conversation(
+    content: str, preceding_users: Sequence[str]
+) -> CorrectionContext | None:
+    if (
+        not _RETURN_TO_RESERVATION.fullmatch(content.strip())
+        or len(preceding_users) < 2
+    ):
+        return None
+    record, card = preceding_users[-2:]
+    reservation = _RESERVATION_RECORD.fullmatch(record.strip())
+    source = single_quoted_operand(card)
+    if (
+        reservation is None
+        or source is None
+        or _EDIT.match(without_quotes(card))
+        or any(
+            _OTHER_RESERVATION.search(without_quotes(user))
+            for user in preceding_users[-6:-2]
+        )
+    ):
+        return None
+    name, number = reservation["name"], reservation["number"]
+    if (
+        _verified_number_card_reply(source, card)
+        != f"Opiekun: {name}. Numer rezerwacji: brak danych."
+    ):
+        return None
+    return CorrectionContext(
+        "binding_reservation",
+        "Pytanie dotyczy ustaleń rozmowy o rezerwacji.",
+        verified_reply=f"Numer rezerwacji: {number}. Opiekun: {name}.",
+    )
+
+
 def correction_context(
     content: str, preceding_users: Sequence[str]
 ) -> CorrectionContext | None:
@@ -216,6 +264,9 @@ def correction_context(
             free_admission=free_admission,
         )
     if visible == content:
+        reservation = _reservation_from_conversation(visible, preceding_users)
+        if reservation is not None:
+            return reservation
         pending = _pending_fee_context(visible, preceding_users)
         if pending is not None:
             return pending

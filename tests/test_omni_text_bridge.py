@@ -955,3 +955,54 @@ def test_pending_fee_preserves_grouped_amount(separator):
     assert context.verified_reply == (
         f"Obowiązuje {current} zł. Kwota {proposed} zł jest propozycją do zatwierdzenia."
     )
+
+
+@pytest.mark.parametrize(
+    ("history_edit", "request_prefix", "passes"),
+    [
+        (None, "", True),
+        ("other_number", "", False),
+        ("other_caregiver", "", False),
+        ("recent_update", "", False),
+        ("other_record", "", False),
+        ("card_has_number", "", False),
+        ("different_card_name", "", False),
+        (None, "Przetłumacz: ", False),
+    ],
+)
+def test_return_to_conversation_requires_one_confirmed_reservation(
+    history_edit, request_prefix, passes
+):
+    record = (
+        "Na zajęcia w introligatorni mam rezerwację 52. Opiekunem jest Igor. "
+        "Zrób krótką notatkę z tymi dwiema danymi."
+    )
+    card = (
+        "Na kartce jest tylko „Opiekun: Igor”. "
+        "Odczytaj z kartki opiekuna i numer rezerwacji."
+    )
+    history = [record, card]
+    if history_edit == "other_number":
+        history[0] = record.replace("52.", "52 albo 63.")
+    elif history_edit == "other_caregiver":
+        history[0] = record.replace("Igor.", "Igor albo Olgierd.")
+    elif history_edit == "recent_update":
+        history[1:1] = ["Rezerwacja 52 jest nieaktualna, obowiązuje numer 63."]
+    elif history_edit == "other_record":
+        history[:0] = ["Mam rezerwację 63. Opiekunem jest Błażej."]
+    elif history_edit == "card_has_number":
+        history[1] = card.replace("Opiekun: Igor", "Opiekun: Igor; numer 63")
+    elif history_edit == "different_card_name":
+        history[1] = card.replace("Igor", "Olgierd")
+
+    request = request_prefix + (
+        "Teraz korzystaj z ustaleń naszej rozmowy. "
+        "Jaki jest rzeczywisty numer rezerwacji i kto jest opiekunem?"
+    )
+    result = correction_context(request, history)
+    if passes:
+        assert result is not None
+        assert result.scope == "binding_reservation"
+        assert result.verified_reply == "Numer rezerwacji: 52. Opiekun: Igor."
+    else:
+        assert result is None or result.verified_reply is None

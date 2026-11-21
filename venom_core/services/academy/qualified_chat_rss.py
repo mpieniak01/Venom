@@ -41,7 +41,7 @@ _FINITE_EVENT = re.compile(
     r"am|is|are|was|were|has|have|had|will|would|must|can|could|may|might|"
     r"[a-z]+ed|(?:slide|rise|fall|drop|gain|climb|slip|sink|jump|open|close|"
     r"move|vote|arrive|leave|begin|end|resume|recover|grow|slow|spread|"
-    r"continue|return|decline|surge|rally|plunge|weaken|strengthen)s?"
+    r"continue|return|decline|surge|rally|plunge|weaken|strengthen|meet)s?"
     r")(?=\s|[.!?,]|$)",
     re.I,
 )

@@ -2472,3 +2472,32 @@ def test_rss_does_not_split_as_in_a_role():
     )
     assert "Taylor pełni funkcję wysłannika" in answer
     assert "Nie udało" not in answer
+
+
+def test_rss_keeps_the_simultaneous_event_outside_the_attributed_quote():
+    from venom_core.services.academy.qualified_chat_rss import RSSSummary
+    from venom_core.services.verified_web import NewsHeadline
+
+    item = NewsHeadline(
+        "https://bbc.co.uk/story",
+        "Taylor says repairs 'essential' as he meets Morgan",
+        "2026-11-21",
+    )
+    summary = RSSSummary((item,))
+    model_input = json.loads(summary.messages("Podaj sens.")[1]["content"])
+    assert model_input["naglowki"][0]["drugi_czlon"] == "he meets Morgan"
+    result = summary.publish(
+        json.dumps(
+            {
+                "items": [
+                    {
+                        "index": 1,
+                        "summary": "Naprawy są konieczne",
+                        "secondary": "Spotyka się z Morganem",
+                    }
+                ]
+            }
+        )
+    )
+    assert "Naprawy są konieczne, a równocześnie spotyka się z Morganem." in result
+    assert "Atrybucja: Taylor" in result

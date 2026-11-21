@@ -78,11 +78,16 @@ _ENCYCLOPEDIC = re.compile(
     re.I,
 )
 _WIKI_REFERENCE = re.compile(r"\bwikipedi\w*\b", re.I)
+_WIKI_LOOKUP = re.compile(
+    r"^\s*(?:sprawdź|ustal|zweryfikuj|odczytaj)\b[^.!?;]{0,85}\bwikipedi\w*\b",
+    re.I,
+)
 _WIKI_ENTRY_TERMS = re.compile(
     r"\bhasł\w*\s+(?:polsk\w+\s+)?wikipedi\w*\b(?!\s*[:=])"
     r"|\b(?:link|odnośnik|adres)(?:\s+do)?\s+"
-    r"(?:użytego|właściwego|encyklopedycznego)\s+hasła"
-    r"(?=\s*(?:[.!?]|$|w\s+(?:jednym|dwóch)\s+(?:krótk\w+\s+)?zdani\w*\b))",
+    r"(?:użytego|właściwego|encyklopedycznego|wykorzystanego)\s+hasła"
+    r"(?=\s*(?:[.!?]|$|w\s+(?:jednym|dwóch)\s+(?:krótk\w+\s+)?zdani\w*\b))"
+    r"|\badresem\s+(?:użyte|właściwe|wykorzystane)\s+hasło(?=\s*(?:[.!?]|$))",
     re.I,
 )
 _WIKI_TOPIC_PREFIX = re.compile(
@@ -102,7 +107,7 @@ _RSS_READ = re.compile(
     re.I,
 )
 _RSS_ITEM = re.compile(
-    r"\b(?:wybierz|podaj|pokaż)\b[^.!?]{0,50}\b(?:pozycj\w*|tytuł\w*|wpis\w*|komunikat\w*)\b",
+    r"\b(?:wybierz|podaj|pokaż|weź)\b[^.!?]{0,50}\b(?:pozycj\w*|tytuł\w*|wpis\w*|komunikat\w*)\b",
     re.I,
 )
 _RSS_QUOTED_LABEL = re.compile(
@@ -113,7 +118,8 @@ _RSS_EDITORIAL_PURPOSE = re.compile(
     r"\b(?:(?:do|na\s+potrzeby)\s+(?:(?:krótkiej|zwięzłej)\s+)?"
     r"notatki\s+(?:zespołu|dla\s+zespołu|redakcyjnej)"
     r"|(?:na|do)\s+dop(?:isek|isk\w*)\s+do\s+wiadomości\s+dla\s+(?:naszego\s+)?zespołu"
-    r"|do\s+(?:krótkiego\s+)?zapisu\s+w\s+notatkach\s+konferencji)\b",
+    r"|do\s+(?:krótkiego\s+)?zapisu\s+w\s+notatkach\s+konferencji)\b"
+    r"|\bdo\s+notatki(?=\s*(?:[.!?,]|$|(?:wybierz|podaj|streść)\b))",
     re.I,
 )
 _PRIVATE_NOTE_SOURCE = re.compile(
@@ -158,7 +164,9 @@ class PublicSourceUnavailable(StrEnum):
 
 
 def _private_context(message: str) -> bool:
-    if _WIKI_REFERENCE.search(message) and _ENCYCLOPEDIC.search(message):
+    if _WIKI_REFERENCE.search(message) and (
+        _ENCYCLOPEDIC.search(message) or _WIKI_LOOKUP.search(message)
+    ):
         message = _WIKI_ENTRY_TERMS.sub(" ", message)
     return bool(_PRIVATE.search(message) or _PRIVATE_NOTE_SOURCE.search(message))
 

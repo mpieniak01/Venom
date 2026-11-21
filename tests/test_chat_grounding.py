@@ -1184,3 +1184,41 @@ async def test_current_wikipedia_section_does_not_use_the_decitonne_for_one_tonn
         )
         == expected
     )
+
+
+@pytest.mark.parametrize(
+    "prompt",
+    [
+        "Sprawdź w polskiej Wikipedii liczbę godzin właściwą dobie cywilnej. "
+        "Podaj definicję i pełny adres wykorzystanego hasła.",
+        "Ustal na podstawie polskiej Wikipedii, ile kilogramów odpowiada jednej "
+        "tonie metrycznej, i wskaż pełnym adresem wykorzystane hasło.",
+    ],
+)
+def test_explicit_wiki_entry_reference_preserves_the_private_password_guard(prompt):
+    assert chat_grounding.grounding_kind(prompt) == "wiki"
+    assert chat_grounding.grounding_kind(prompt + " Dodaj moje hasło.") is None
+    assert chat_grounding.grounding_kind(prompt, use_notes=True) is None
+
+
+def test_rss_generic_editorial_destination_does_not_authorize_private_notes():
+    prompt = "Otwórz oficjalny GUS RSS. Do notatki wybierz jeden aktualny wpis."
+    query = chat_grounding.rss_editorial_query(prompt)
+    assert chat_grounding.grounding_kind(query) == "web"
+    assert [
+        feed.url
+        for feed in chat_grounding._rss_feeds(
+            query, chat_grounding.load_public_sources()
+        )
+    ] == ["https://stat.gov.pl/rss/pl/5438/8.xml"]
+    assert (
+        chat_grounding.grounding_kind(
+            chat_grounding.rss_editorial_query(
+                prompt + " Uzupełnij danymi z prywatnej notatki."
+            )
+        )
+        is None
+    )
+    assert chat_grounding.is_rss_read_request(
+        "Weź pierwszy aktualny tytuł z BBC News RSS i oddaj jego sens."
+    )

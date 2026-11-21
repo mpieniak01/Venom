@@ -26,6 +26,10 @@ _SCOPE_QUESTION = re.compile(
     r"|\b(?:jaki był|podaj|wskaż|określ|powiedz,?\s+jaki był)\s+zakres"
     r"(?:\s+(?:tego|poprzedniego))?\s+odczytu\b"
     r"|\bco(?: konkretnie| dokładnie)? (?:odczytano|odczytałeś|odczytałaś)\b"
+    r"|(?:^\s*|[.!?]\s+)(?:(?:podaj|powiedz),?\s+)?czy\s+"
+    r"(?:poprzednio|wcześniej|w poprzedniej turze)\s+"
+    r"(?:odczytano|odczytałeś|odczytałaś)\s+"
+    r"(?:(?:tylko|wyłącznie|same)\s+)?(?:nagłów\w*|(?:cały|pełny)\s+artykuł)\b"
     r"|^\s*czy (?:odczytałeś|odczytałaś|przeczytałeś|przeczytałaś) "
     r"(?:także |również )?(?:cały |pełny |ten )?artykuł\b",
     re.I,

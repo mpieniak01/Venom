@@ -79,7 +79,8 @@ _NEWS_REQUEST = re.compile(r"\b(?:wiadomoś(?:ć|ci)|newsy|wydarzeni\w*)\b", re.
 _EXPLICIT_RSS = re.compile(r"\bRSS\b", re.I)
 _RSS_READ = re.compile(
     r"\b(?:pobierz|przeczytaj|odczytaj)\b|"
-    r"\b(?:podaj|wybierz|pokaż)\b(?:\s+rss\b|[^.!?]{0,80}\b(?:nagłów\w*|wiadomoś\w*)\b)",
+    r"\b(?:podaj|wybierz|pokaż)\b(?!\s*,?\s*czy\b)"
+    r"(?:\s+rss\b|[^.!?]{0,80}\b(?:nagłów\w*|wiadomoś\w*)\b)",
     re.I,
 )
 _RSS_QUOTED_LABEL = re.compile(

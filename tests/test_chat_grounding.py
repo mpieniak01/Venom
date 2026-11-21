@@ -827,6 +827,43 @@ async def test_studio_reports_scope_from_own_completed_turn_without_fetching(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "content",
+    [
+        "Podaj, czy poprzednio odczytano tylko nagłówki RSS. Jaki był zakres odczytu?",
+        "Powiedz, czy wcześniej odczytano tylko nagłówki RSS.",
+        "Czy w poprzedniej turze odczytałeś cały artykuł z BBC RSS?",
+    ],
+)
+async def test_studio_resolves_indirect_questions_about_the_saved_rss_scope(
+    monkeypatch, content
+):
+    monkeypatch.setattr(
+        studio_normal_chat.SETTINGS, "ACADEMY_QUALIFIED_CHAT_ENABLED", True
+    )
+    fetch = AsyncMock()
+    monkeypatch.setattr(chat_grounding.RSSReaderSkill, "read_feed", fetch)
+    rows = [
+        {"request_id": "before", "role": "user", "content": "Podaj nagłówek BBC RSS."},
+        {
+            "request_id": "before",
+            "role": "assistant",
+            "content": "Odczytano nagłówek.",
+            "status": "COMPLETED",
+            "public_source_evidence": {"scope": "rss_headlines"},
+        },
+    ]
+    request = SimpleChatRequest(content=content, session_id="test", studio_normal=True)
+    prepared, _ = await studio_normal_chat.prepare_studio_normal(
+        request, SimpleNamespace(get_history=lambda _: rows), AsyncMock()
+    )
+
+    assert prepared._studio_public_scope_reply == "Odczyt obejmował tylko nagłówki RSS."
+    assert prepared._studio_public_source_evidence is None
+    fetch.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_studio_reuses_bounded_wikipedia_data_and_honors_new_lookup(monkeypatch):
     from venom_core.services.public_source_evidence import PublicSourceEvidence
 

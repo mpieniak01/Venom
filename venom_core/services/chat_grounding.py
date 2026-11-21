@@ -138,7 +138,7 @@ class PublicSourceUnavailable(StrEnum):
 def _private_context(message: str) -> bool:
     if _WIKI_REFERENCE.search(message) and _ENCYCLOPEDIC.search(message):
         message = _WIKI_ENTRY_LINK.sub(" ", message)
-    return bool(_PRIVATE.search(message))
+    return bool(_PRIVATE.search(message) or _PRIVATE_NOTE_SOURCE.search(message))
 
 
 def _rss_topic(message: str) -> str:

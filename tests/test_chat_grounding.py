@@ -67,6 +67,12 @@ def test_private_question_does_not_trigger_external_source():
     assert chat_grounding.grounding_kind("Jakie mam wydarzenia dziś?") is None
     assert chat_grounding.grounding_kind("Co jest dziś w moim kalendarzu?") is None
     assert chat_grounding.grounding_kind("Pogoda w Poznaniu", use_notes=True) is None
+    assert (
+        chat_grounding.grounding_kind(
+            "Z prywatnych notatek wybierz nagłówek BBC RSS o najnowszych wydarzeniach."
+        )
+        is None
+    )
 
 
 @pytest.mark.asyncio
@@ -994,6 +1000,8 @@ def test_saved_public_fact_context_requests_value_alongside_its_qualifier(questi
         ("do krótkiej notatki zespołu", True),
         ("na potrzeby zwięzłej notatki dla zespołu", True),
         ("do notatki redakcyjnej", True),
+        ("na dopisek do wiadomości dla naszego zespołu", True),
+        ("do krótkiego zapisu w notatkach konferencji", True),
         ("do mojej notatki", False),
         ("do krótkiej notatki zespołu z mojego konta", False),
     ],

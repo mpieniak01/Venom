@@ -1304,6 +1304,11 @@ def test_studio_refraction_accepts_an_explicit_counterexample_without_an_invente
             None,
         ),
         ("Nie szukaj w sieci. Podaj aktualną wartość.", None),
+        ("Nie sprawdzaj internetu. Podaj nagłówek BBC RSS.", None),
+        (
+            "Skróć zdanie: «Z kanału BBC News RSS pobierz najnowsze wiadomości».",
+            "Skróć zdanie:  .",
+        ),
         (
             "Bez wyszukiwania w internecie. Sprawdź jednak w sieci, co wiadomo dzisiaj.",
             "Bez wyszukiwania w internecie. Sprawdź jednak w sieci, co wiadomo dzisiaj.",

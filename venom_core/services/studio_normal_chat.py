@@ -75,7 +75,7 @@ _SHORT_SOURCE_POLICY = (
     "Użyj zdania źródła, które dotyczy dokładnie pytanego faktu. "
     "Pomiń wstęp, powtarzane przypisy i czas odczytu, jeśli o niego nie proszono."
 )
-_WIKI_SENTENCE_REQUEST = re.compile(
+_SENTENCE_REQUEST = re.compile(
     r"\b(?:(?P<one>w\s+jednym(?:\s+krótkim)?\s+zdaniu|"
     r"do\s+jednego(?:\s+krótkiego)?\s+zdania|(?:jedno|1)(?:\s+krótkie)?\s+zdanie)"
     r"|w\s+dwóch(?:\s+krótkich)?\s+zdaniach|"
@@ -109,7 +109,7 @@ _SOURCE_STATUS_POLICY = (
 
 def _wiki_sentence_policy(message: str) -> str:
     visible = without_quotes(message)
-    matches = list(_WIKI_SENTENCE_REQUEST.finditer(visible))
+    matches = list(_SENTENCE_REQUEST.finditer(visible))
     if not matches:
         return ""
     limit = (
@@ -260,8 +260,16 @@ async def prepare_studio_normal(
         system_context += (
             " Korzystaj tylko z danych z rozmowy. Jeśli aktualnej wartości nie podano, "
             "powiedz wprost «W rozmowie nie podano tej informacji». "
-            "Nie przypisuj sobie wypowiedzi użytkownika."
+            "Nie przypisuj sobie wypowiedzi użytkownika. "
+            "Jeśli pytanie na końcu dotyczy jednej wartości, odpowiedz na nie wprost "
+            "i nie streszczaj wcześniejszych porad."
         )
+        format_request = _SENTENCE_REQUEST.search(without_quotes(request.content))
+        if format_request and format_request.group("one"):
+            system_context += (
+                " Napisz dokładnie jedno zdanie odpowiadające na ostatnie pytanie. "
+                "Zakończ odpowiedź na tym jednym zdaniu."
+            )
     remaining = budget - len(system_context)
     omit_truncated = (
         SETTINGS.ACADEMY_QUALIFIED_CHAT_ENABLED

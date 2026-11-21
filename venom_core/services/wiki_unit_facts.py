@@ -20,7 +20,8 @@ _HALF_BASES = {
 _SPOKEN_NUMBER = (
     r"(?:(?:" + "|".join(_HALF_BASES) + r")\s+i\s+pół|półtorej|pół|jedna|jedną)"
 )
-_BINARY = re.compile(r"(?:^\s*|,\s*)czy\b", re.I)
+_BINARY_QUESTION = re.compile(r"czy\b", re.I)
+_BINARY_AFTER_COMMA = re.compile(r",\s*czy\b", re.I)
 _ARTICLE_NUMBER = r"\d{1,3}(?:[ \u00a0]\d{3})+|" + _NUMBER
 _EXACT = re.compile(r"\b(?:około|średnio|w przybliżeniu|potocznie|niemal)\b", re.I)
 _CLAUSES = re.compile(r"(?<=[.!?])\s+|\n")
@@ -225,7 +226,10 @@ class WikiUnitEvidence:
             (_number(q["number"].casefold()), bool(needed.fullmatch(q["unit"])))
             for q in quantities
         ]
-        binary = _BINARY.search(question) is not None
+        binary = bool(
+            _BINARY_QUESTION.match(question.lstrip())
+            or _BINARY_AFTER_COMMA.search(question)
+        )
         if binary and (len(fields) != 2 or fields[0][1] == fields[1][1]):
             return None
         if not binary and (len(fields) != 1 or fields[0][1]):

@@ -85,6 +85,40 @@ _UNKNOWN_MELTING = (
     "Podaj temperatury obu podłoży i warunki kontaktu. Ciepło płynie od "
     "cieplejszego ciała do chłodniejszego, a sam materiał nie rozstrzyga tempa topnienia."
 )
+_HEAT_TOPIC = re.compile(
+    r"\b(?:kierun\w* przepływu ciepła|(?:oddaj|przekazuj)\w* ciepł\w*|"
+    r"(?:przepływ|płynie)\w* ciepł\w*|ciepło (?:przepływa|płynie))\b"
+)
+_HEAT_DATA_REQUEST = (
+    r"(?:brakującą daną|brakujące dane|(?:czego|jakiej danej|jakich danych) brakuje|"
+    r"jaka dana jest potrzebna|jakie dane są potrzebne|(?:jaką daną|jakie dane) trzeba znać)"
+    r"(?: do (?:ustalenia|określenia|wyznaczenia) kierunku(?: przepływu(?: ciepła)?)?)?"
+)
+_HEAT_RESUME = re.compile(
+    r"(?:skróć (?:wyjaśnienie|odpowiedź|to) do jednego zdania"
+    rf"(?:(?: i |[.!?] )(?:(?:powiedz|napisz|wskaż|podaj),? {_HEAT_DATA_REQUEST}|"
+    r"zachowaj (?:regułę|kierunek) przepływu ciepła))?"
+    r"|w jednym (?:krótkim )?zdaniu (?:wyjaśnij|wskaż|podaj) kierunek przepływu ciepła)"
+    r"(?:[.!?] bez wyszukiwania)?"
+)
+_HEAT_SETUP = re.compile(
+    r"^(?:(?:przyjmij|załóż(?:my)?)(?: teraz)?,? że|(?:korekta|zmiana):|teraz|"
+    r"(?:przed|po) (?:bezpośrednim )?(?:zetknięciem|kontaktem))\s+"
+)
+_HEAT_OBJECT = r"[^\W\d_][\w-]*(?: [^\W\d_][\w-]*){0,4}"
+_HEAT_CELSIUS = r"[+-]?\d{1,3}(?:[.,]\d{1,2})?\s*°\s*c"
+_HEAT_PAIR = re.compile(
+    rf"(?P<first>{_HEAT_OBJECT}) ma (?:jednak )?(?P<first_c>{_HEAT_CELSIUS})"
+    rf",? (?:a|i|natomiast) (?P<second>{_HEAT_OBJECT}) (?:ma )?(?:jednak )?"
+    rf"(?P<second_c>{_HEAT_CELSIUS})"
+)
+_HEAT_ONE_KNOWN = re.compile(
+    rf"(?:znam(?:y)?|mam(?:y)?|podano) (?:tylko|jedynie) temperaturę (?P<known>{_HEAT_OBJECT})"
+)
+_HEAT_ONE_UNKNOWN = re.compile(
+    rf"(?:nie znam(?:y)?(?: już)?|nie podano|brakuje) temperatury (?P<unknown>{_HEAT_OBJECT})"
+)
+_HEAT_RULE = "ciepło płynie od ciała cieplejszego do chłodniejszego"
 _BELT = re.compile(r"\bpas(?:y|a|ów|em|ami)? bezpieczeństw\w*")
 _BRAKING = re.compile(r"\b(?:hamuj|hamowa|zwalni|zatrzym)\w*")
 _VEHICLES = (
@@ -211,6 +245,92 @@ def ice_melting_reply(
         f"{_HOT_BASE_TO_ICE}. Większa przewodność {metal} względem "
         f"{insulation} przyspiesza ten przepływ i topnienie lodu."
     )
+
+
+def _heat_premise(text: str) -> str:
+    first_statement = re.split(r"[.!?](?=\s|$)", text, maxsplit=1)[0]
+    return _HEAT_SETUP.sub("", first_statement)
+
+
+def _same_heat_object(label: str, reference: str) -> bool:
+    # Compare the object noun across common nominative and genitive forms.
+    noun = label.split()[-1].replace("ó", "o")
+    mentioned = reference.split()[-1].replace("ó", "o")
+    return (
+        noun == mentioned
+        or mentioned in {noun + "a", noun + "u"}
+        or (
+            len(noun) > 3
+            and noun[-1] in "aoe"
+            and mentioned in {noun[:-1] + "i", noun[:-1] + "y", noun[:-1] + "a"}
+        )
+    )
+
+
+def thermal_followup_reply(
+    text: str,
+    history: Sequence[HistoryMessage],
+    *,
+    token_budget: int | None = None,
+) -> str | None:
+    """Retain the heat flow rule when the latest user revises a two-body premise."""
+    if token_budget is not None and token_budget < 96:
+        return None
+    visible = _visible(text)
+    statements = re.split(r"[.!?](?=\s|$)", visible, maxsplit=1)
+    if len(statements) != 2 or not _HEAT_RESUME.fullmatch(
+        statements[1].strip().rstrip(".!?")
+    ):
+        return None
+    previous = next(
+        (_visible(turn.content) for turn in reversed(history) if turn.role == "user"),
+        "",
+    )
+    if not _HEAT_TOPIC.search(previous):
+        return None
+    earlier = _HEAT_PAIR.fullmatch(_heat_premise(previous))
+    if not earlier:
+        return None
+
+    premise = _heat_premise(visible)
+    if changed := _HEAT_PAIR.fullmatch(premise):
+        labels = {earlier["first"], earlier["second"]}
+        if len(labels) != 2 or labels != {changed["first"], changed["second"]}:
+            return None
+        first = float(changed["first_c"].split("°", 1)[0].replace(",", "."))
+        second = float(changed["second_c"].split("°", 1)[0].replace(",", "."))
+        if first == second:
+            return (
+                "Przy jednakowych temperaturach nie ma przepływu ciepła netto, "
+                f"a przy ich różnicy {_HEAT_RULE}."
+            )
+        warmer, cooler = changed["first"], changed["second"]
+        if first < second:
+            warmer, cooler = cooler, warmer
+        return (
+            f"{_HEAT_RULE.capitalize()}, więc oddaje je {warmer}, a przyjmuje {cooler}."
+        )
+
+    if known := _HEAT_ONE_KNOWN.fullmatch(premise):
+        labels = (earlier["first"], earlier["second"])
+        remaining = [
+            label for label in labels if not _same_heat_object(label, known["known"])
+        ]
+        if len(remaining) == 1:
+            return (
+                f"Brakuje informacji, jaką temperaturę ma {remaining[0]}, "
+                f"ponieważ {_HEAT_RULE}."
+            )
+    if missing := _HEAT_ONE_UNKNOWN.fullmatch(premise):
+        if (
+            sum(
+                _same_heat_object(earlier[key], missing["unknown"])
+                for key in ("first", "second")
+            )
+            == 1
+        ):
+            return f"Brakuje temperatury {missing['unknown']}, ponieważ {_HEAT_RULE}."
+    return None
 
 
 def _braking(topic: str, example: str) -> CheckedExplanation | None:

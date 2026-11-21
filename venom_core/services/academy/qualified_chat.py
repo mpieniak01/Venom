@@ -20,6 +20,7 @@ from venom_core.services.academy.qualified_chat_evidence import evidence_reply
 from venom_core.services.academy.qualified_chat_mechanisms import (
     checked_explanation,
     ice_melting_reply,
+    thermal_followup_reply,
 )
 from venom_core.services.academy.qualified_chat_options import (
     CountRequirement,
@@ -442,6 +443,7 @@ def prepare_studio_reply(
         draft_reminder_reply(text)
         or draft_time_revision(text, history)
         or ice_melting_reply(text, history, token_budget=token_budget)
+        or thermal_followup_reply(text, history, token_budget=token_budget)
     ):
         return QualifiedReply(local_text=answer)
     if explanation := checked_explanation(text, history, token_budget=token_budget):

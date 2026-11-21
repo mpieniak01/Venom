@@ -1807,3 +1807,130 @@ def test_quoted_reminder_is_a_single_unambiguous_drafting_operand():
         )
         == "Proszę, ustaw przypomnienie o odbiorze na 08:15."
     )
+
+
+@pytest.mark.parametrize(
+    ("previous", "revision", "expected"),
+    [
+        (
+            "Przed bezpośrednim zetknięciem granitowy blat ma 16°C, a ceramiczny "
+            "talerz 38°C. W dwóch zdaniach wskaż, które z tych ciał początkowo "
+            "oddaje ciepło drugiemu, i uzasadnij kierunek. Bez wyszukiwania.",
+            "Przyjmij teraz, że znam tylko temperaturę blatu. Skróć wyjaśnienie do "
+            "jednego zdania i powiedz, czego brakuje do ustalenia kierunku przepływu.",
+            "jaką temperaturę ma ceramiczny talerz",
+        ),
+        (
+            "Szklana kulka ma 12°C, a żeliwny odważnik 39°C. Wskaż, które ciało oddaje ciepło.",
+            "Przyjmij teraz, że znam tylko temperaturę szklanej kulki. Skróć "
+            "wyjaśnienie do jednego zdania i wskaż brakujące dane.",
+            "jaką temperaturę ma żeliwny odważnik",
+        ),
+        (
+            "Szklana kulka ma 12°C, a żeliwny odważnik 39°C. Wskaż, które ciało oddaje ciepło.",
+            "Załóż, że znam tylko temperaturę żeliwnego odważnika. Skróć "
+            "wyjaśnienie do jednego zdania i wskaż brakujące dane.",
+            "jaką temperaturę ma szklana kulka",
+        ),
+        (
+            "Mosiężny ciężarek ma 18°C, a gumowa podkładka 42°C. Wskaż, które ciało oddaje ciepło.",
+            "Przyjmij, że nie podano temperatury gumowej podkładki. Skróć odpowiedź do jednego "
+            "zdania i wskaż, jaka dana jest potrzebna do określenia kierunku przepływu.",
+            "Brakuje temperatury gumowej podkładki",
+        ),
+        (
+            "Stalowa pokrywka ma 39°C, a plastikowa obudowa 17°C. Wskaż kierunek przepływu ciepła.",
+            "Załóż, że znam jedynie temperaturę plastikowej obudowy. Skróć to do jednego "
+            "zdania i napisz, jakich danych brakuje do wyznaczenia kierunku przepływu ciepła.",
+            "jaką temperaturę ma stalowa pokrywka",
+        ),
+        (
+            "Miedziana płytka ma 46°C, a stalowy krążek 19°C. Wskaż, które ciało oddaje ciepło.",
+            "Stalowy krążek ma 35°C, a miedziana płytka 17°C. Skróć wyjaśnienie do jednego zdania.",
+            "oddaje je stalowy krążek, a przyjmuje miedziana płytka",
+        ),
+        (
+            "Miedziana płytka ma 46°C, a stalowy krążek 19°C. Wskaż, które ciało oddaje ciepło.",
+            "Miedziana płytka ma jednak -1,5°C, a stalowy krążek -2.1°C. "
+            "Skróć wyjaśnienie do jednego zdania.",
+            "oddaje je miedziana płytka, a przyjmuje stalowy krążek",
+        ),
+        (
+            "Miedziana płytka ma 46°C, a stalowy krążek 19°C. Wskaż, które ciało oddaje ciepło.",
+            "Miedziana płytka ma 20°C, a stalowy krążek 20°C. Skróć wyjaśnienie do jednego zdania.",
+            "nie ma przepływu ciepła netto",
+        ),
+    ],
+)
+def test_thermal_followup_preserves_direction_rule_with_latest_user_premise(
+    previous, revision, expected
+):
+    from venom_core.services.academy.qualified_chat_mechanisms import (
+        thermal_followup_reply,
+    )
+
+    history = [
+        HistoryMessage(role="user", content=previous),
+        HistoryMessage(
+            role="assistant", content="Gorętszy jest przedmiot o temperaturze 800°C."
+        ),
+    ]
+    reply = thermal_followup_reply(revision, history, token_budget=96)
+    assert reply is not None and expected in reply
+    assert "ciepło płynie od ciała cieplejszego do chłodniejszego" in reply.casefold()
+    assert reply.count(".") == 1
+
+
+def test_thermal_followup_leaves_unrelated_or_ambiguous_request_to_existing_path():
+    from venom_core.services.academy.qualified_chat_mechanisms import (
+        thermal_followup_reply,
+    )
+
+    previous = HistoryMessage(
+        role="user",
+        content="Metalowa łyżka ma 12°C, a szklany kubek 39°C. Wskaż kierunek przepływu ciepła.",
+    )
+    revision = "Przyjmij teraz, że znam tylko temperaturę kubka. Skróć wyjaśnienie do jednego zdania."
+    assert thermal_followup_reply(revision, [previous], token_budget=32) is None
+    assert (
+        thermal_followup_reply(
+            revision,
+            [
+                previous,
+                HistoryMessage(role="user", content="Zmieńmy temat na plan podróży."),
+            ],
+        )
+        is None
+    )
+    assert (
+        thermal_followup_reply(revision + " Podaj porę otwarcia muzeum.", [previous])
+        is None
+    )
+    assert (
+        thermal_followup_reply(revision.replace("kubka", "oceanu"), [previous]) is None
+    )
+
+
+def test_studio_thermal_followup_uses_local_rule_without_retrieval(
+    studio_chat, monkeypatch
+):
+    from venom_core.services import studio_normal_chat
+
+    lookup = AsyncMock(return_value="")
+    monkeypatch.setattr(studio_normal_chat, "current_chat_context", lookup)
+    chat, sent, _ = studio_chat
+    result = chat(
+        "Przyjmij teraz, że znam tylko temperaturę szklanej kulki. Skróć "
+        "wyjaśnienie do jednego zdania i wskaż brakujące dane.",
+        history=[
+            turn(
+                "Szklana kulka ma 12°C, a żeliwny odważnik 39°C. "
+                "Wskaż, które ciało oddaje ciepło. Bez wyszukiwania."
+            ),
+            turn("Szklana kulka ma teraz 45°C.", "assistant"),
+        ],
+    )
+    assert "jaką temperaturę ma żeliwny odważnik" in result
+    assert "ciepło płynie od ciała cieplejszego do chłodniejszego" in result
+    assert not sent
+    lookup.assert_not_awaited()

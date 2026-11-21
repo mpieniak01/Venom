@@ -37,7 +37,7 @@ _SAME_REQUEST = re.compile(r"\b(?:tę samą|tę samą uprzejmą) prośbę\b", re
 _NARROW_REVISION = re.compile(r"\b(?:już tylko|wyłącznie|tylko i wyłącznie)\b", re.I)
 _OPENING_ONLY = re.compile(
     r"^\s*(?:zmień|popraw|zastąp|przeredaguj)\s+(?:wyłącznie|tylko)\s+"
-    r"(?:zdanie\s+otwarcia|pierwsze\s+zdanie)\b",
+    r"(?:zdanie\s+otwarcia\b|pierwsze\s+zdanie\b|otwarcie(?=[.!?,:]|$))",
     re.I,
 )
 _SUBJECT_AND_OPENING = re.compile(

@@ -2232,6 +2232,7 @@ def test_studio_message_subject_is_local_and_opening_edit_publishes_only_sentenc
     studio_chat, monkeypatch
 ):
     from venom_core.services import studio_normal_chat
+    from venom_core.services.academy.qualified_chat_writing import revises_opening_only
 
     ground = AsyncMock()
     monkeypatch.setattr(studio_normal_chat, "current_chat_context", ground)
@@ -2260,6 +2261,18 @@ def test_studio_message_subject_is_local_and_opening_edit_publishes_only_sentenc
     )
     ground.assert_not_awaited()
     assert sent[-1]["payload"]["stream"] is False
+
+    replies.append(
+        native("Temat: Odbiór skrzynek\nOdbiór skrzynek nie obejmuje wnoszenia.")
+    )
+    assert (
+        chat(
+            "Zmień tylko otwarcie. Odbiór nie obejmuje wnoszenia skrzynek.",
+            session=session,
+        )
+        == "Odbiór skrzynek nie obejmuje wnoszenia."
+    )
+    assert not revises_opening_only("Zmień tylko otwarcie zaworu.")
 
 
 def test_composition_can_request_an_explicit_public_lookup():
@@ -2331,5 +2344,31 @@ def test_wiki_doba_polarity_follows_the_verified_factor(claim, expected):
     )
     assert (
         evidence.follow_up_reply(f"Czy z tego wynika, że 36 godzin to {claim} doby?")
+        == expected
+    )
+
+
+@pytest.mark.parametrize(
+    ("hours", "expected"),
+    [
+        ("60", "Tak, 60 godzin odpowiada 2,5 doby."),
+        ("36", "Nie, 36 godzin odpowiada 1,5 doby."),
+    ],
+)
+def test_wiki_duration_checks_a_reported_question_with_a_spelled_fraction(
+    hours, expected
+):
+    from decimal import Decimal
+
+    from venom_core.services.wiki_unit_facts import WikiUnitEvidence
+
+    evidence = WikiUnitEvidence(
+        "day", Decimal("24"), "https://pl.wikipedia.org/wiki/Doba"
+    )
+    assert (
+        evidence.follow_up_reply(
+            f"Na podstawie poprzedniego odczytu powiedz w jednym zdaniu, czy {hours} "
+            "godzin to dwie i pół doby cywilnej."
+        )
         == expected
     )

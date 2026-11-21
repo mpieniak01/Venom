@@ -8,6 +8,19 @@ from decimal import Decimal
 from urllib.parse import unquote, urlsplit
 
 _NUMBER = r"\d{1,9}(?:[,.]\d{1,6})?"
+_HALF_BASES = {
+    "jeden": 1,
+    "jedna": 1,
+    "jedną": 1,
+    "dwa": 2,
+    "dwie": 2,
+    "trzy": 3,
+    "cztery": 4,
+}
+_SPOKEN_NUMBER = (
+    r"(?:(?:" + "|".join(_HALF_BASES) + r")\s+i\s+pół|półtorej|pół|jedna|jedną)"
+)
+_BINARY = re.compile(r"^\s*czy\b|,\s*czy\b", re.I)
 _ARTICLE_NUMBER = r"\d{1,3}(?:[ \u00a0]\d{3})+|" + _NUMBER
 _EXACT = re.compile(r"\b(?:około|średnio|w przybliżeniu|potocznie|niemal)\b", re.I)
 _CLAUSES = re.compile(r"(?<=[.!?])\s+|\n")
@@ -67,7 +80,7 @@ _DAY = UnitSpec(
         re.I,
     ),
     re.compile(
-        rf"\b(?P<number>{_NUMBER}|półtorej|pół|jedna|jedną)\s*(?P<unit>godzin\w*|h|dob\w*)\b",
+        rf"\b(?P<number>{_NUMBER}|{_SPOKEN_NUMBER})\s*(?P<unit>godzin\w*|h|dob\w*)\b",
         re.I,
     ),
     "godziny",
@@ -78,13 +91,14 @@ _TONNE = UnitSpec(
     ("tona", "tona metryczna"),
     ("Tona metryczna",),
     re.compile(
-        rf"(?:(?:\bton\w*\s+metryczn\w*|\b1\s*t)\b[^.!?;]{{0,110}}?)"
-        rf"(?:równa(?:jąca)?\s+(?:się\s+)?|równe\s+|wynosi\s+|odpowiada\s+|to\s+|ma\s+|=)"
+        r"(?:\btona metryczna(?:\s*\(t\))?(?:\s*[–—-]\s*jednostka masy)?|"
+        r"(?<![\w.,])1\s*(?:tona|t)\b)\s*"
+        r"(?:równa(?:jąca)?\s+(?:się\s+)?|równe\s+|wynosi\s+|odpowiada\s+|to\s+|ma\s+|=)"
         rf"\s*(?P<factor>{_ARTICLE_NUMBER})\s*(?:kilogram\w*|kg)\b",
         re.I,
     ),
     re.compile(
-        rf"\b(?P<number>{_NUMBER}|półtorej|pół|jedna|jedną)\s*(?P<unit>kilogram\w*|kg|ton\w*|t)\b",
+        rf"\b(?P<number>{_NUMBER}|{_SPOKEN_NUMBER})\s*(?P<unit>kilogram\w*|kg|ton\w*|t)\b",
         re.I,
     ),
     "kg",
@@ -127,6 +141,9 @@ def _format_value(value: Decimal) -> str:
 
 
 def _number(value: str) -> Decimal:
+    words = value.split()
+    if len(words) == 3 and words[0] in _HALF_BASES and words[1:] == ["i", "pół"]:
+        return Decimal(_HALF_BASES[words[0]]) + Decimal("0.5")
     if value == "półtorej":
         return Decimal("1.5")
     if value in {"jedna", "jedną"}:
@@ -208,7 +225,7 @@ class WikiUnitEvidence:
             (_number(q["number"].casefold()), bool(needed.fullmatch(q["unit"])))
             for q in quantities
         ]
-        binary = question.lstrip().casefold().startswith("czy ")
+        binary = _BINARY.search(question) is not None
         if binary and (len(fields) != 2 or fields[0][1] == fields[1][1]):
             return None
         if not binary and (len(fields) != 1 or fields[0][1]):

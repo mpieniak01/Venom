@@ -1142,3 +1142,45 @@ async def test_weather_source_distinguishes_mismatch_for_current_and_previous_tu
     assert result.evidence.scope == "unavailable"
     assert "Olmonty" in result.reply
     assert "3°C" not in result.reply
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("metric_line", ["1 tona = 1000 kg = 1000000 g = 1 Mg.", ""])
+async def test_current_wikipedia_section_does_not_use_the_decitonne_for_one_tonne(
+    monkeypatch, metric_line
+):
+    url = "https://pl.wikipedia.org/wiki/Tona"
+    intro = SimpleNamespace(title="Tona", url=url, extract="Tona – jednostka masy.")
+    section = SimpleNamespace(
+        title="Tona",
+        url=url,
+        extract="\n".join(
+            (
+                "Tona metryczna[edytuj | edytuj kod]",
+                metric_line,
+                "1 decytona = 1 dt = 0,1 t = 1 kwintal = 1 q = 100 kg",
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        chat_grounding, "search_polish_wikipedia", AsyncMock(return_value=[intro])
+    )
+    fetch_section = AsyncMock(return_value=section)
+    monkeypatch.setattr(chat_grounding, "search_wikipedia_section", fetch_section)
+    context = await chat_grounding.current_chat_context(
+        "Z polskiej Wikipedii potrzebuję przelicznika tony metrycznej na kilogramy."
+    )
+    value = context.evidence.wiki_unit
+    fetch_section.assert_awaited_once()
+    if metric_line:
+        assert context.reply == f"Tona metryczna to 1000 kg ({url})."
+        expected = "1400 kg"
+    else:
+        assert "Nie udało się potwierdzić" in context.reply
+        expected = "Poprzedni odczyt nie potwierdził potrzebnego przelicznika."
+    assert (
+        value.follow_up_reply(
+            "Na podstawie tego odczytu przelicz 1,4 tony metrycznej na kilogramy."
+        )
+        == expected
+    )

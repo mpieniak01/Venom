@@ -1813,6 +1813,22 @@ def test_quoted_reminder_is_a_single_unambiguous_drafting_operand():
     ("previous", "revision", "expected"),
     [
         (
+            "Połóżmy miedziany krążek w temperaturze 21°C na kawałku ceramicznej płytki "
+            "o temperaturze 41°C. W dwóch zdaniach wyjaśnij kierunek przepływu ciepła "
+            "i jego przyczynę. Bez wyszukiwania.",
+            "Zmień warunek: znam tylko temperaturę ceramicznej płytki. Skróć wyjaśnienie "
+            "do jednego zdania i wskaż brakującą temperaturę oraz regułę przepływu ciepła. "
+            "Nie wyszukuj.",
+            "ciała położonego na podłożu (miedziany krążek)",
+        ),
+        (
+            "Umieśćmy drewniany krążek w temperaturze 50°C na fragmencie mosiężnej płytki "
+            "o temperaturze 25°C. Wyjaśnij kierunek przepływu ciepła.",
+            "Zmiana: znam tylko temperaturę drewnianego krążka. W jednym zdaniu podaj "
+            "brakującą temperaturę i ogólną regułę przepływu ciepła. Nie wyszukuj.",
+            "temperatury mosiężnej płytki",
+        ),
+        (
             "Przed bezpośrednim zetknięciem granitowy blat ma 16°C, a ceramiczny "
             "talerz 38°C. W dwóch zdaniach wskaż, które z tych ciał początkowo "
             "oddaje ciepło drugiemu, i uzasadnij kierunek. Bez wyszukiwania.",
@@ -1879,6 +1895,8 @@ def test_thermal_followup_preserves_direction_rule_with_latest_user_premise(
     assert reply is not None and expected in reply
     assert "ciepło płynie od ciała cieplejszego do chłodniejszego" in reply.casefold()
     assert reply.count(".") == 1
+    if "znam tylko temperaturę" in revision:
+        assert "oddaje je" not in reply and "przyjmuje" not in reply
 
 
 def test_thermal_followup_leaves_unrelated_or_ambiguous_request_to_existing_path():

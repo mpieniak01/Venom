@@ -90,19 +90,23 @@ _HEAT_TOPIC = re.compile(
     r"(?:przepływ|płynie)\w* ciepł\w*|ciepło (?:przepływa|płynie))\b"
 )
 _HEAT_DATA_REQUEST = (
-    r"(?:brakującą daną|brakujące dane|(?:czego|jakiej danej|jakich danych) brakuje|"
+    r"(?:brakującą temperaturę|brakującą daną|brakujące dane|"
+    r"(?:czego|jakiej danej|jakich danych) brakuje|"
     r"jaka dana jest potrzebna|jakie dane są potrzebne|(?:jaką daną|jakie dane) trzeba znać)"
     r"(?: do (?:ustalenia|określenia|wyznaczenia) kierunku(?: przepływu(?: ciepła)?)?)?"
+    r"(?: (?:i|oraz) (?:ogólną )?regułę przepływu ciepła)?"
 )
 _HEAT_RESUME = re.compile(
-    r"(?:skróć (?:wyjaśnienie|odpowiedź|to) do jednego zdania"
+    r"(?:skróć(?: wyjaśnienie| odpowiedź| to)? do jednego zdania"
     rf"(?:(?: i |[.!?] )(?:(?:powiedz|napisz|wskaż|podaj),? {_HEAT_DATA_REQUEST}|"
     r"zachowaj (?:regułę|kierunek) przepływu ciepła))?"
-    r"|w jednym (?:krótkim )?zdaniu (?:wyjaśnij|wskaż|podaj) kierunek przepływu ciepła)"
-    r"(?:[.!?] bez wyszukiwania)?"
+    r"|w jednym (?:krótkim )?zdaniu (?:wyjaśnij|wskaż|podaj) "
+    rf"(?:kierunek przepływu ciepła|{_HEAT_DATA_REQUEST}))"
+    r"(?:[.!?] (?:bez wyszukiwania|nie wyszukuj))?"
 )
 _HEAT_SETUP = re.compile(
-    r"^(?:(?:przyjmij|załóż(?:my)?)(?: teraz)?,? że|(?:korekta|zmiana):|teraz|"
+    r"^(?:(?:przyjmij|załóż(?:my)?)(?: teraz)?,? że|"
+    r"(?:korekta|zmiana(?: warunku)?|zmień warunek):|teraz|"
     r"(?:przed|po) (?:bezpośrednim )?(?:zetknięciem|kontaktem))\s+"
 )
 _HEAT_OBJECT = r"[^\W\d_][\w-]*(?: [^\W\d_][\w-]*){0,4}"
@@ -111,6 +115,11 @@ _HEAT_PAIR = re.compile(
     rf"(?P<first>{_HEAT_OBJECT}) ma (?:jednak )?(?P<first_c>{_HEAT_CELSIUS})"
     rf",? (?:a|i|natomiast) (?P<second>{_HEAT_OBJECT}) (?:ma )?(?:jednak )?"
     rf"(?P<second_c>{_HEAT_CELSIUS})"
+)
+_HEAT_CONTACT_PAIR = re.compile(
+    rf"(?:połóż(?:my)?|umieść(?:my)?) (?P<first>{_HEAT_OBJECT}) "
+    rf"w temperaturze {_HEAT_CELSIUS} na (?:kawałku|fragmencie|powierzchni) "
+    rf"(?P<second>{_HEAT_OBJECT}) (?:o|w) temperaturze {_HEAT_CELSIUS}"
 )
 _HEAT_ONE_KNOWN = re.compile(
     rf"(?:znam(?:y)?|mam(?:y)?|podano) (?:tylko|jedynie) temperaturę (?P<known>{_HEAT_OBJECT})"
@@ -259,6 +268,7 @@ def _same_heat_object(label: str, reference: str) -> bool:
     return (
         noun == mentioned
         or mentioned in {noun + "a", noun + "u"}
+        or (noun.endswith("ek") and mentioned in {noun[:-2] + "ka", noun[:-2] + "ku"})
         or (
             len(noun) > 3
             and noun[-1] in "aoe"
@@ -288,7 +298,9 @@ def thermal_followup_reply(
     )
     if not _HEAT_TOPIC.search(previous):
         return None
-    earlier = _HEAT_PAIR.fullmatch(_heat_premise(previous))
+    previous_premise = _heat_premise(previous)
+    contact_pair = _HEAT_CONTACT_PAIR.fullmatch(previous_premise)
+    earlier = contact_pair or _HEAT_PAIR.fullmatch(previous_premise)
     if not earlier:
         return None
 
@@ -312,13 +324,20 @@ def thermal_followup_reply(
         )
 
     if known := _HEAT_ONE_KNOWN.fullmatch(premise):
-        labels = (earlier["first"], earlier["second"])
         remaining = [
-            label for label in labels if not _same_heat_object(label, known["known"])
+            key
+            for key in ("first", "second")
+            if not _same_heat_object(earlier[key], known["known"])
         ]
         if len(remaining) == 1:
+            missing_key = remaining[0]
+            label = earlier[missing_key]
+            if contact_pair:
+                if missing_key == "first":
+                    label = f"ciała położonego na podłożu ({label})"
+                return f"Brakuje temperatury {label}, ponieważ {_HEAT_RULE}."
             return (
-                f"Brakuje informacji, jaką temperaturę ma {remaining[0]}, "
+                f"Brakuje informacji, jaką temperaturę ma {label}, "
                 f"ponieważ {_HEAT_RULE}."
             )
     if missing := _HEAT_ONE_UNKNOWN.fullmatch(premise):

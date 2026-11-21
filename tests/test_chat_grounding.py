@@ -1,6 +1,7 @@
 """Ordinary chat source routing without live provider calls."""
 
 import json
+from dataclasses import replace
 from datetime import date
 from pathlib import Path
 from types import SimpleNamespace
@@ -26,6 +27,9 @@ from venom_core.services.chat_public_sources import load_public_sources
         ("Kto jest prezydentem Polski?", "web"),
         ("Ile kosztuje benzyna?", "web"),
         ("Napisz mi życzenia urodzinowe", None),
+        ("Jak zbudować kanał RSS?", None),
+        ("Podaj definicję kanału RSS.", None),
+        ("Co to jest BBC News RSS?", "wiki"),
     ],
 )
 def test_routing(message, expected):
@@ -641,7 +645,19 @@ def test_wikipedia_entry_link_keeps_privacy_guard_for_credentials():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "prompt",
+    [
+        "Podaj aktualną wiadomość ze świata z kanału BBC News RSS.",
+        "Z aktualnego kanału BBC News RSS wybierz jeden nagłówek o świecie. "
+        "Podaj jego sens po polsku, wskaż mówiącego, jeśli występuje w tytule, "
+        "i dołącz datę publikacji, pełny link i zakres odczytu.",
+        "Z kanału BBC RSS podaj jeden nagłówek po polsku.",
+        "Z kanału „BBC News RSS” wybierz nagłówek.",
+    ],
+)
 async def test_explicit_rss_reads_feed_without_search_and_preserves_source_fields(
+    prompt,
     monkeypatch,
 ):
     search = AsyncMock(side_effect=AssertionError("explicit RSS attempted web search"))
@@ -656,9 +672,9 @@ async def test_explicit_rss_reads_feed_without_search_and_preserves_source_field
         ]
     )
     monkeypatch.setattr(chat_grounding.RSSReaderSkill, "read_feed", feed)
-    prompt = "Podaj aktualną wiadomość ze świata z kanału BBC News RSS."
+    assert chat_grounding.is_current_news_request(prompt)
     result = await chat_grounding.current_chat_context(prompt)
-    assert feed.await_args.args[0].name == "BBC News RSS"
+    assert [call.args[0].name for call in feed.await_args_list] == ["BBC News RSS"]
     assert "podmiot + to + czasownik" in result
     assert "City to review plans, says Taylor" in result
     assert "Data publikacji: 2026-11-14" in result
@@ -670,7 +686,58 @@ async def test_explicit_rss_reads_feed_without_search_and_preserves_source_field
         await chat_grounding.current_chat_context(prompt)
         == chat_grounding.PublicSourceUnavailable.NEWS
     )
+    assert [call.args[0].name for call in feed.await_args_list] == ["BBC News RSS"] * 2
     search.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("prompt", "expected_feed"),
+    [
+        ("Ze świata podaj nagłówek z kanału GUS RSS.", "GUS"),
+        ("Podaj polski nagłówek z kanału RSS.", "GUS"),
+        ("Podaj nagłówek RSS z Polski, nie z BBC RSS.", "GUS"),
+        ("Podaj nagłówek RSS, a tekst «BBC News RSS» pomiń.", "GUS"),
+        ("Podaj nagłówek RSS ze świata, bez BBC RSS.", None),
+        ("Przeredaguj «Z kanału BBC News RSS podaj nagłówek».", None),
+        ("Z kanału BBC RSS pobierz nagłówek do mojej notatki.", None),
+    ],
+)
+async def test_rss_publisher_constraints_keep_default_and_guarded_routing(
+    prompt,
+    expected_feed,
+    monkeypatch,
+):
+    feed = AsyncMock(return_value=[])
+    search = AsyncMock(side_effect=AssertionError("explicit RSS attempted web search"))
+    monkeypatch.setattr(chat_grounding.RSSReaderSkill, "read_feed", feed)
+    monkeypatch.setattr(chat_grounding, "_trusted_news_urls", search)
+
+    await chat_grounding.current_chat_context(prompt)
+
+    if expected_feed is None:
+        feed.assert_not_awaited()
+    else:
+        feed.assert_awaited_once()
+        assert feed.await_args.args[0].name.startswith(expected_feed)
+    search.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_unconfigured_named_rss_feed_does_not_read_default_feed(monkeypatch):
+    sources = load_public_sources()
+    regions = {**sources.regions, "world": replace(sources.regions["world"], feeds=())}
+    monkeypatch.setattr(
+        chat_grounding, "load_public_sources", lambda: replace(sources, regions=regions)
+    )
+    feed = AsyncMock(return_value=[])
+    monkeypatch.setattr(chat_grounding.RSSReaderSkill, "read_feed", feed)
+
+    assert (
+        await chat_grounding.current_chat_context("Podaj nagłówek z kanału BBC RSS.")
+        == chat_grounding.PublicSourceUnavailable.NEWS
+    )
+    feed.assert_not_awaited()
 
 
 @pytest.mark.asyncio

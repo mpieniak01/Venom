@@ -10,7 +10,13 @@ from urllib.parse import urlparse
 from venom_core.execution.skills.assistant_skill import AssistantSkill
 from venom_core.execution.skills.rss_reader_skill import RSSReaderSkill
 from venom_core.execution.skills.web_skill import WebSearchSkill
-from venom_core.services.chat_public_sources import NewsRegion, load_public_sources
+from venom_core.services.academy.qualified_chat_quote import without_quotes
+from venom_core.services.chat_public_sources import (
+    FeedSource,
+    NewsRegion,
+    PublicSources,
+    load_public_sources,
+)
 from venom_core.services.polish_wikipedia import search_polish_wikipedia
 from venom_core.services.public_source_evidence import (
     MAX_PUBLIC_EXCERPT_CHARS,
@@ -71,6 +77,27 @@ _CHAT_MESSAGE_REFERENCE = re.compile(
 )
 _NEWS_REQUEST = re.compile(r"\b(?:wiadomoś(?:ć|ci)|newsy|wydarzeni\w*)\b", re.I)
 _EXPLICIT_RSS = re.compile(r"\bRSS\b", re.I)
+_RSS_READ = re.compile(
+    r"\b(?:pobierz|przeczytaj|odczytaj)\b|"
+    r"\b(?:podaj|wybierz|pokaż)\b(?:\s+rss\b|[^.!?]{0,80}\b(?:nagłów\w*|wiadomoś\w*)\b)",
+    re.I,
+)
+_RSS_QUOTED_LABEL = re.compile(
+    r'(\b(?:kanał\w*|z|według)\s+)[„«"]((?:bbc(?:\s+news)?|gus)(?:\s+rss)?)[”»"]',
+    re.I,
+)
+_RSS_PUBLISHER = re.compile(
+    r"\b(?:(?P<excluded>nie(?:\s+(?:korzystaj|czytaj|pobieraj|wybieraj))?(?:\s+z)?|"
+    r"bez|pomiń|z\s+wyłączeniem)\s+"
+    r"|(?:z|według|rss)\s+|(?=kanał\w*\s)|(?=(?:bbc(?:\s+news)?|gus)\s+rss\b))"
+    r"(?:aktualn\w*\s+|najnowsz\w*\s+)?(?:kanał\w*\s+)?(?:rss\s+)?"
+    r"(?P<publisher>bbc|gus)\b",
+    re.I,
+)
+_RSS_PUBLISHER_HOSTS = {
+    "bbc": {"bbc.co.uk", "bbc.com", "bbci.co.uk"},
+    "gus": {"stat.gov.pl"},
+}
 _RSS_TRANSLATION_POLICY = (
     "Przekładaj tylko czynności i zdarzenia podane w tytule. W angielskim nagłówku "
     "konstrukcja «podmiot + to + czasownik» oznacza zapowiedzianą czynność. "
@@ -101,6 +128,38 @@ def _private_context(message: str) -> bool:
     return bool(_PRIVATE.search(message))
 
 
+def _rss_topic(message: str) -> str:
+    # A quoted channel label can name a source; quoted instructions remain data.
+    return without_quotes(_RSS_QUOTED_LABEL.sub(r"\1\2", message))
+
+
+def _requests_rss(topic: str) -> bool:
+    return bool(_EXPLICIT_RSS.search(topic) and _RSS_READ.search(topic))
+
+
+def _rss_feeds(topic: str, sources: PublicSources) -> tuple[FeedSource, ...]:
+    """Apply explicit publisher choices only to operator-approved feeds."""
+    choices = {
+        match["publisher"].casefold(): not match["excluded"]
+        for match in _RSS_PUBLISHER.finditer(topic)
+    }
+    included: set[str] = set()
+    excluded: set[str] = set()
+    for publisher, wanted in choices.items():
+        (included if wanted else excluded).update(_RSS_PUBLISHER_HOSTS[publisher])
+    candidates = (
+        (feed for configured in sources.regions.values() for feed in configured.feeds)
+        if included
+        else iter(sources.region_for(topic).feeds)
+    )
+    return tuple(
+        feed
+        for feed in candidates
+        if (not included or trusted_news_url(feed.url, included))
+        and not trusted_news_url(feed.url, excluded)
+    )
+
+
 def grounding_kind(message: str, *, use_notes: bool = False) -> str | None:
     """Choose a public, read-only source for an ordinary question."""
     if use_notes or _private_context(message):
@@ -111,6 +170,8 @@ def grounding_kind(message: str, *, use_notes: bool = False) -> str | None:
         _ENCYCLOPEDIC.search(message) and not current
     ):
         return "wiki"
+    if _requests_rss(_rss_topic(message)):
+        return "web"
     if _WEATHER.search(message) and (
         _weather_location(message)
         or re.search(r"\b(pogod[ayę]|prognoz\w*)\b", message, re.I)
@@ -126,7 +187,9 @@ def grounding_kind(message: str, *, use_notes: bool = False) -> str | None:
 def is_current_news_request(message: str) -> bool:
     """Identify a request for public reporting even if retrieval was unavailable."""
     topic = _CHAT_MESSAGE_REFERENCE.sub(" ", message)
-    return bool(_NEWS_REQUEST.search(topic)) and grounding_kind(message) == "web"
+    return grounding_kind(message) == "web" and (
+        bool(_NEWS_REQUEST.search(topic)) or _requests_rss(_rss_topic(topic))
+    )
 
 
 def _weather_location(message: str) -> str | None:
@@ -194,7 +257,7 @@ def _safe_results(raw: str) -> list[str]:
 
 
 async def _feed_headline_context(
-    message: str, policy: str, region: NewsRegion
+    message: str, policy: str, feeds: tuple[FeedSource, ...]
 ) -> str | None:
     topic = _CHAT_MESSAGE_REFERENCE.sub(" ", message)
     if not _EXPLICIT_RSS.search(topic) and (
@@ -202,7 +265,7 @@ async def _feed_headline_context(
     ):
         return None
     skill = RSSReaderSkill()
-    for feed in region.feeds:
+    for feed in feeds:
         headlines = await skill.read_feed(feed)
         if headlines:
             lines = "\n".join(
@@ -342,20 +405,23 @@ async def _recent_articles(
 
 async def _news_context(message: str, policy: str) -> str:
     try:
-        region = load_public_sources().region_for(message)
+        sources = load_public_sources()
     except (OSError, ValueError, KeyError, TypeError):
         return "\nPublic news sources are misconfigured; say so explicitly."
 
-    if _EXPLICIT_RSS.search(message):
+    topic = _rss_topic(message)
+    if _EXPLICIT_RSS.search(topic):
+        feeds = _rss_feeds(topic, sources)
         return (
-            await _feed_headline_context(message, policy, region)
+            await _feed_headline_context(topic, policy, feeds)
             or PublicSourceUnavailable.NEWS
         )
 
+    region = sources.region_for(message)
     trusted = await _trusted_news_urls(message, region)
     verified = await _recent_articles(trusted, region, message)
     if not verified:
-        if headlines := await _feed_headline_context(message, policy, region):
+        if headlines := await _feed_headline_context(topic, policy, region.feeds):
             return headlines
         if not trusted:
             return PublicSourceUnavailable.NEWS

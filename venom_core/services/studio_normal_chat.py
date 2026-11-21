@@ -9,7 +9,6 @@ from fastapi import HTTPException
 
 from venom_core.api.schemas.llm_simple import (
     MAX_CHAT_HISTORY_CHARS,
-    MAX_CHAT_MESSAGE_CHARS,
     HistoryMessage,
     SimpleChatRequest,
 )
@@ -20,16 +19,6 @@ from venom_core.memory.chat_retrieval import (
     note_request_language,
     retrieve_chat_memory,
 )
-from venom_core.services.academy.qualified_chat import GENERATION_TRUNCATED
-from venom_core.services.academy.qualified_chat_explanations import changes_example
-from venom_core.services.academy.qualified_chat_quote import without_quotes
-from venom_core.services.academy.qualified_chat_revisions import (
-    explicit_lookup_allowed,
-    lookup_forbidden,
-    public_lookup_query,
-    source_revision_hint,
-    without_previous_links,
-)
 from venom_core.services.background_priority import run_drainable_thread
 from venom_core.services.chat_grounding import (
     PUBLIC_SOURCE_BLOCK,
@@ -39,6 +28,15 @@ from venom_core.services.chat_grounding import (
     is_current_news_request,
     is_rss_read_request,
     rss_editorial_query,
+)
+from venom_core.services.chat_policy.history import recent_turns
+from venom_core.services.chat_policy.qualified_chat_explanations import changes_example
+from venom_core.services.chat_policy.qualified_chat_quote import without_quotes
+from venom_core.services.chat_policy.qualified_chat_revisions import (
+    explicit_lookup_allowed,
+    lookup_forbidden,
+    public_lookup_query,
+    source_revision_hint,
 )
 from venom_core.services.public_source_evidence import (
     PublicSourceContext,
@@ -173,94 +171,6 @@ def _wiki_local_reply(message: str, reply: str) -> str:
     return f"{fact}. Potwierdza to polska Wikipedia ({url})."
 
 
-def _recent_turns(
-    store: SessionStore,
-    session_id: str,
-    budget: int,
-    *,
-    omit_truncated: bool = False,
-    omit_assistant_links: bool = False,
-    history: list[dict[str, object]] | None = None,
-) -> list[HistoryMessage]:
-    if history is None:
-        history = store.get_history(session_id)
-    result: list[HistoryMessage] = []
-    end = len(history)
-    while end > 1:
-        user, assistant = history[end - 2 : end]
-        if not _completed_pair(user, assistant):
-            end -= 1
-            continue
-        end -= 2
-        contents = _history_pair_contents(user, assistant)
-        if contents is None:
-            continue
-        prompt, reply = contents
-        reply = _prepare_history_reply(
-            reply,
-            assistant,
-            omit_truncated=omit_truncated,
-            omit_assistant_links=omit_assistant_links,
-        )
-        cost = len(prompt) + len(reply) + 64
-        if cost > budget:
-            break
-        budget -= cost
-        result.extend(
-            (
-                HistoryMessage(role="assistant", content=reply),
-                HistoryMessage(role="user", content=prompt),
-            )
-        )
-    result.reverse()
-    return result
-
-
-def _completed_pair(user: dict[str, object], assistant: dict[str, object]) -> bool:
-    return (
-        user.get("role") == "user"
-        and assistant.get("role") == "assistant"
-        and user.get("request_id") == assistant.get("request_id")
-        and assistant.get("status") in {None, "COMPLETED"}
-    )
-
-
-def _history_pair_contents(
-    user: dict[str, object], assistant: dict[str, object]
-) -> tuple[str, str] | None:
-    prompt, reply = user.get("content"), assistant.get("content")
-    if (
-        not isinstance(prompt, str)
-        or not isinstance(reply, str)
-        or not prompt
-        or not reply
-        or max(len(prompt), len(reply)) > MAX_CHAT_MESSAGE_CHARS
-    ):
-        return None
-    return prompt, reply
-
-
-def _prepare_history_reply(
-    reply: str,
-    assistant: dict[str, object],
-    *,
-    omit_truncated: bool,
-    omit_assistant_links: bool,
-) -> str:
-    if omit_truncated and (
-        assistant.get("finish_reason") == "length"
-        or reply.endswith(f"\n\n{GENERATION_TRUNCATED}")
-        or reply == GENERATION_TRUNCATED
-    ):
-        reply = "Poprzednia odpowiedź została przerwana przed zakończeniem."
-    if omit_assistant_links:
-        reply = (
-            without_previous_links(reply)
-            or "Poprzednia odpowiedź zawierała tylko odnośnik."
-        )
-    return reply
-
-
 def _previous_evidence(history: list[dict[str, object]]) -> PublicSourceEvidence | None:
     if len(history) < 2:
         return None
@@ -326,7 +236,7 @@ async def _normal_chat_setup(
         request
     )
     history_records = store.get_history(session_id)
-    history = _recent_turns(
+    history = recent_turns(
         store,
         session_id,
         max(0, min(remaining, MAX_CHAT_HISTORY_CHARS)),
@@ -572,7 +482,7 @@ async def prepare_studio_normal(
         raise HTTPException(413, {"reason_code": "studio_normal_context_limit"})
     prepared = request.model_copy(
         update={
-            "history": _recent_turns(
+            "history": recent_turns(
                 store,
                 setup.session_id,
                 min(budget, MAX_CHAT_HISTORY_CHARS),

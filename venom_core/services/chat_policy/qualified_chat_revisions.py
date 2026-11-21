@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from collections.abc import Sequence
 
-from venom_core.services.academy.qualified_chat_quote import without_quotes
+from venom_core.services.chat_policy.qualified_chat_quote import without_quotes
 
 _DOCUMENT = (
     r"(?:kart[kc]|ulot[kc]|ogłosz|notat[kc]|komunikat|tablic|dokumen|instrukcj)\w*"

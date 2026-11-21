@@ -7,8 +7,10 @@ import re
 from dataclasses import dataclass
 from typing import Literal, Self, cast
 
-from venom_core.services.academy.qualified_chat_quote import without_quotes
-from venom_core.services.academy.qualified_chat_revisions import explicit_lookup_allowed
+from venom_core.services.chat_policy.qualified_chat_quote import without_quotes
+from venom_core.services.chat_policy.qualified_chat_revisions import (
+    explicit_lookup_allowed,
+)
 from venom_core.services.verified_web import NewsHeadline
 from venom_core.services.weather_grounding import WeatherEvidence
 from venom_core.services.wiki_unit_facts import WikiUnitEvidence, requested_unit_fact

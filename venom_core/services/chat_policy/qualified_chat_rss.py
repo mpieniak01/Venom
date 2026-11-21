@@ -5,7 +5,7 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
-from venom_core.services.academy.qualified_chat_options import CountRequirement
+from venom_core.services.chat_policy.qualified_chat_options import CountRequirement
 from venom_core.services.verified_web import NewsHeadline
 
 _SCOPE = "Zakres odczytu: tylko nagłówki RSS."

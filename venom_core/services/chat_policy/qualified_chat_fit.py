@@ -7,7 +7,7 @@ from collections.abc import Sequence
 from decimal import Decimal
 
 from venom_core.api.schemas.llm_simple import HistoryMessage
-from venom_core.services.academy.qualified_chat_quote import (
+from venom_core.services.chat_policy.qualified_chat_quote import (
     is_text_transformation,
     without_quotes,
 )

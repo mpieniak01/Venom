@@ -14,7 +14,7 @@ from venom_core.execution.skills.assistant_skill import (
 )
 from venom_core.execution.skills.rss_reader_skill import RSSReaderSkill
 from venom_core.execution.skills.web_skill import WebSearchSkill
-from venom_core.services.academy.qualified_chat_quote import without_quotes
+from venom_core.services.chat_policy.qualified_chat_quote import without_quotes
 from venom_core.services.chat_public_sources import (
     FeedSource,
     NewsRegion,

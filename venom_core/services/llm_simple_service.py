@@ -24,7 +24,11 @@ from venom_core.core.model_registry_clients import OllamaClient
 from venom_core.core.ollama_runtime_capabilities import is_gemma4_model_name
 from venom_core.core.tracer import TraceStatus
 from venom_core.services import llm_simple_transport
-from venom_core.services.academy.qualified_chat import (
+from venom_core.services.chat_grounding import (
+    PUBLIC_SOURCE_BLOCK,
+    is_current_news_request,
+)
+from venom_core.services.chat_policy.qualified_chat import (
     GENERATION_TRUNCATED,
     QUALIFIED_BOLT_MODEL,
     QUALIFIED_MODEL,
@@ -33,22 +37,22 @@ from venom_core.services.academy.qualified_chat import (
     prepare_reply,
     prepare_studio_reply,
 )
-from venom_core.services.academy.qualified_chat_explanations import explanation_hint
-from venom_core.services.academy.qualified_chat_fit import fit_hint
-from venom_core.services.academy.qualified_chat_options import (
+from venom_core.services.chat_policy.qualified_chat_explanations import explanation_hint
+from venom_core.services.chat_policy.qualified_chat_fit import fit_hint
+from venom_core.services.chat_policy.qualified_chat_options import (
     CountRequirement,
     requested_count,
 )
-from venom_core.services.academy.qualified_chat_quote import english_translation_hint
-from venom_core.services.academy.qualified_chat_revisions import source_revision_hint
-from venom_core.services.academy.qualified_chat_rss import RSSSummary
-from venom_core.services.academy.qualified_chat_writing import (
+from venom_core.services.chat_policy.qualified_chat_quote import (
+    english_translation_hint,
+)
+from venom_core.services.chat_policy.qualified_chat_revisions import (
+    source_revision_hint,
+)
+from venom_core.services.chat_policy.qualified_chat_rss import RSSSummary
+from venom_core.services.chat_policy.qualified_chat_writing import (
     ordinary_reply_hint,
     writing_hint,
-)
-from venom_core.services.chat_grounding import (
-    PUBLIC_SOURCE_BLOCK,
-    is_current_news_request,
 )
 from venom_core.services.llm_simple_payload_service import (
     apply_optional_features_to_payload as _apply_optional_features_to_payload,

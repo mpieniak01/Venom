@@ -7,12 +7,12 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 from venom_core.api.schemas.llm_simple import HistoryMessage
-from venom_core.services.academy.qualified_chat_explanations import (
+from venom_core.services.chat_policy.qualified_chat_explanations import (
     active_explanation_topic,
     changes_example,
     explanation_hint,
 )
-from venom_core.services.academy.qualified_chat_quote import without_quotes
+from venom_core.services.chat_policy.qualified_chat_quote import without_quotes
 
 _OTHER_TASK = re.compile(
     r"\b(?:zacytuj|przetłumacz|streść|sprawdź|zweryfikuj|oblicz|"

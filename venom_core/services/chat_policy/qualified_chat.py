@@ -9,37 +9,37 @@ from dataclasses import dataclass
 from typing import Any
 
 from venom_core.api.schemas.llm_simple import HistoryMessage
-from venom_core.services.academy.qualified_chat_constraints import (
+from venom_core.services.chat_policy.qualified_chat_constraints import (
     active_constraints,
     constraint_conflicts,
     constraint_labels,
     find_violations,
     uncertain_constraints,
 )
-from venom_core.services.academy.qualified_chat_evidence import evidence_reply
-from venom_core.services.academy.qualified_chat_mechanisms import (
+from venom_core.services.chat_policy.qualified_chat_evidence import evidence_reply
+from venom_core.services.chat_policy.qualified_chat_mechanisms import (
     checked_explanation,
     ice_melting_reply,
     thermal_followup_reply,
 )
-from venom_core.services.academy.qualified_chat_options import (
+from venom_core.services.chat_policy.qualified_chat_options import (
     CountRequirement,
     option_key,
     requested_count,
     split_options,
 )
-from venom_core.services.academy.qualified_chat_quote import (
+from venom_core.services.chat_policy.qualified_chat_quote import (
     QuoteRewrite,
     parse_quote_rewrite,
 )
-from venom_core.services.academy.qualified_chat_revisions import lookup_forbidden
-from venom_core.services.academy.qualified_chat_rss import RSSSummary
-from venom_core.services.academy.qualified_chat_schedule import (
+from venom_core.services.chat_policy.qualified_chat_revisions import lookup_forbidden
+from venom_core.services.chat_policy.qualified_chat_rss import RSSSummary
+from venom_core.services.chat_policy.qualified_chat_schedule import (
     draft_reminder_reply,
     draft_time_revision,
     route_shift,
 )
-from venom_core.services.academy.qualified_chat_writing import (
+from venom_core.services.chat_policy.qualified_chat_writing import (
     opening_matches,
     opening_sentence,
     opening_target,

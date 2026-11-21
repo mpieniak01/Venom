@@ -474,6 +474,57 @@ async def test_studio_quote_translation_never_reads_wikipedia(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("qualified_chat", [False, True])
+@pytest.mark.parametrize(
+    ("prompt", "operation"),
+    [
+        (
+            "Wyjaśnij w jednym zdaniu, co się zmieni, jeśli wentylator wyłączymy.",
+            None,
+        ),
+        ("O 17:40, przy bramie C. Podaj sam tekst wiadomości.", None),
+        ("Chcę obliczyć koszt 8 metrów taśmy. Nie podałem ceny za metr.", None),
+        ("Cena to 2,75 zł za metr. Ile kosztuje całość?", None),
+        ("Ile kosztuje 8 metrów taśmy przy cenie 2,75 zł za metr?", None),
+        (
+            "Korekta: odbiór o 15:10. Na nowej ulotce nie ma ceny. Podaj ustalenia.",
+            None,
+        ),
+        ("Powiedz, co oznacza napis «Sprawdź w Wikipedii, ile waży tona».", None),
+        ("Napisz zaproszenie na dzisiejsze wydarzenie.", None),
+        ("Podaj jedną aktualną wiadomość z Polski i link.", "news"),
+        ("Sprawdź w sieci zasady zwrotu taśmy.", "news"),
+        ("Sprawdź aktualną cenę z poprzedniej wiadomości.", "news"),
+        ("Jaka pogoda w Gdańsku?", "weather"),
+        ("Z kanału BBC RSS wybierz nagłówek o Wikipedii.", "news"),
+        ("Sprawdź w Wikipedii, ile kilogramów ma tona.", "wiki"),
+    ],
+)
+async def test_studio_routes_public_reads_by_request_intent(
+    monkeypatch, qualified_chat, prompt, operation
+):
+    monkeypatch.setattr(
+        studio_normal_chat.SETTINGS, "ACADEMY_QUALIFIED_CHAT_ENABLED", qualified_chat
+    )
+    handlers = {
+        tool: AsyncMock(return_value="") for tool in ("news", "weather", "wiki")
+    }
+    for name, handler in handlers.items():
+        monkeypatch.setattr(chat_grounding, f"_{name}_context", handler)
+    request = SimpleChatRequest(content=prompt, session_id="test", studio_normal=True)
+    prepared, _ = await studio_normal_chat.prepare_studio_normal(
+        request, SimpleNamespace(get_history=lambda _: []), AsyncMock()
+    )
+
+    assert prepared.content == prompt
+    for name, handler in handlers.items():
+        if name == operation:
+            handler.assert_awaited_once()
+        else:
+            handler.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_wiki_context_and_normal_chat_integration(monkeypatch):
     source = SimpleNamespace(
         title="Maria Skłodowska-Curie",

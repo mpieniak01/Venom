@@ -384,6 +384,7 @@ async def prepare_studio_normal(
         setup.history_records,
         local_qualification=setup.local_qualification,
         provided_information_only=setup.provided_information_only,
+        use_notes=request.use_notes,
     )
     source_context = (
         ""

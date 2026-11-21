@@ -85,7 +85,7 @@ W UI czatu są trzy tryby. Mechanizmy retencji i semantic cache wdrożone w zada
 
 ## Źródła w Studio Normal i adaptery modeli
 
-- Studio Normal korzysta z historii sesji. Reguły aplikacji wybierają odczyt polskiej Wikipedii, pogody albo wiadomości, w tym RSS. Wykonawca dostarcza kontekst źródłowy. Przy włączonej kwalifikacji dowód może także trafić do zapisu ukończonej tury. Reguły uwzględniają tryb notatek, zakaz wyszukiwania i treść cytatu do tłumaczenia przed odczytem zewnętrznym.
+- Studio Normal korzysta z historii sesji. Reguły aplikacji wybierają odczyt polskiej Wikipedii, pogody albo wiadomości, w tym RSS. Studio Normal odczytuje źródło przy jawnej prośbie albo po rozpoznaniu pytania o publiczny fakt. Sama data, cena lub wzmianka o wiadomości w zadaniu redakcji, rachunku lub korekty nie uruchamia odczytu. Wykonawca dostarcza kontekst źródłowy. Przy włączonej kwalifikacji dowód może także trafić do zapisu ukończonej tury. Reguły uwzględniają tryb notatek, zakaz wyszukiwania i treść cytatu do tłumaczenia przed odczytem zewnętrznym.
 - Adaptery lokalnej Ollamy obsługują formaty wejścia i odpowiedzi Gemmy oraz Bolta. Natywne Omni obsługuje własną tożsamość środowiska i wybór adaptera. Dostęp do narzędzi w trybie agentowym zależy od jego reguł i uprawnień.
 - `ENABLE_ACADEMY` steruje usługami treningu. `ACADEMY_QUALIFIED_CHAT_ENABLED` osobno włącza opcjonalne reguły odpowiedzi we wspieranych konfiguracjach czatu.
 

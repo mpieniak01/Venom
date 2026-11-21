@@ -85,7 +85,7 @@ In chat UI there are three modes. Retention mechanisms and semantic cache implem
 
 ## Studio Normal sources and model adapters
 
-- Studio Normal uses the session history and lets application policy select public reads. The available operations are Polish Wikipedia, weather, and news, including RSS. The executor supplies source context. With reply qualification enabled, source evidence can also be saved with the completed turn. Context from notes, a lookup ban, and text inside a translation quote are handled before external reads.
+- Studio Normal uses the session history and lets application policy select public reads. The available operations are Polish Wikipedia, weather, and news, including RSS. In Studio Normal, an explicit public lookup or a recognized request for public facts can start retrieval. Dates, prices and wording about a message inside a drafting, calculation or correction task do not on their own trigger a public read. The executor supplies source context. With reply qualification enabled, source evidence can also be saved with the completed turn. Context from notes, a lookup ban, and text inside a translation quote are handled before external reads.
 - Local Ollama adapters encode the supported request and response formats for Gemma and Bolt. Native Omni handles its own runtime identity and selection. Agent tools are controlled by the agent runtime and its permissions.
 - `ENABLE_ACADEMY` controls training services. `ACADEMY_QUALIFIED_CHAT_ENABLED` separately controls the optional chat reply policy for supported configurations.
 

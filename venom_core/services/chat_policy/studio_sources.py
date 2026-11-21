@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from venom_core.api.schemas.llm_simple import HistoryMessage
 from venom_core.services.chat_grounding import (
     grounding_follow_up,
+    grounding_kind,
     is_rss_read_request,
     rss_editorial_query,
 )
@@ -54,6 +55,7 @@ def plan_studio_source(
     *,
     local_qualification: bool,
     provided_information_only: bool,
+    use_notes: bool = False,
 ) -> StudioSourcePlan:
     """Resolve source reuse and external lookup intent without executing a read."""
     previous_users = [turn.content for turn in history if turn.role == "user"]
@@ -86,4 +88,6 @@ def plan_studio_source(
         query = None if source_revision_hint(message) else public_lookup_query(query)
     if explicit_rss and query is not None:
         query = rss_editorial_query(query)
+    if query is not None and grounding_kind(query, use_notes=use_notes) is None:
+        query = None
     return StudioSourcePlan(query, explicit_rss, scope_reply, prior_context)

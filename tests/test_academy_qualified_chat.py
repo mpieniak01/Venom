@@ -1293,7 +1293,7 @@ def test_studio_explanation_is_published_only_with_resolved_publication_slots(
     assert "parowanie" not in answer
     assert "kubek" not in answer
     assert not sent
-    assert evidence.await_count == 2
+    evidence.assert_not_awaited()
 
 
 def test_checked_explanation_supports_repeated_example_changes_without_resuming_old_topic():

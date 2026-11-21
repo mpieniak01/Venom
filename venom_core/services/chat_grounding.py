@@ -16,6 +16,10 @@ from venom_core.execution.skills.assistant_skill import (
 from venom_core.execution.skills.rss_reader_skill import RSSReaderSkill
 from venom_core.execution.skills.web_skill import WebSearchSkill
 from venom_core.services.chat_policy.qualified_chat_quote import without_quotes
+from venom_core.services.chat_policy.qualified_chat_revisions import (
+    explicit_lookup_allowed,
+    lookup_forbidden,
+)
 from venom_core.services.chat_public_sources import (
     FeedSource,
     NewsRegion,
@@ -62,20 +66,34 @@ _WEATHER_FOLLOW_UP = re.compile(
     r"\s*(?:a\s+)?(?:jutro|pojutrze|w weekend)(?:\s+(?:rano|wieczorem|po południu))?[?!.]*\s*",
     re.I,
 )
-_CURRENT = re.compile(
-    r"\b(aktualn\w*|najnowsz\w*|dzisiaj|dzisiejsz\w*|dziś|wczoraj|teraz|bieżąc\w*|"
-    r"wiadomości|newsy|wydarzeni\w*|prognoz\w*|obecn\w*|"
-    r"kurs\w*|cen[ayę]|kosztuj\w*|ostatni\w*)\b",
+# Match requests for public information. A date, price or mention of a message
+# in user-supplied text does not authorize forwarding that text to a provider.
+_CURRENT_LOOKUP = re.compile(
+    r"\b(?:sprawdź|zweryfikuj|poszukaj|ustal)\b[^.!?;]{0,80}"
+    r"\b(?:aktualn\w*|bieżąc\w*|obecn\w*|dzisiejsz\w*|najnowsz\w*)\b",
     re.I,
 )
+_REPORT_LOOKUP = re.compile(
+    r"(?:^|[.!?;]\s+)\s*(?:(?:podaj|pokaż|streść|przytocz|jakie\s+są)\s+)?"
+    r"(?:(?:dzisiaj|dziś|dzisiejsz\w*|najnowsz\w*|ostatni\w*|bieżąc\w*|aktualn\w*)\s+)?"
+    r"(?:wiadomości|newsy|wydarzeni\w*)\b"
+    r"|\b(?:podaj|pokaż)\s+(?:jedną\s+)?(?:aktualn\w*|dzisiejsz\w*|najnowsz\w*)\s+wiadomość\b",
+    re.I,
+)
+_PRICE_LOOKUP = re.compile(
+    r"^\s*(?:ile kosztuj\w*\s+(?!(?:to|całość|razem|łącznie|sumarycznie)\b)\w"
+    r"|(?:jak[ai] jest|podaj)\s+(?:aktualn\w*\s+|dzisiejsz\w*\s+)?(?:cen[ayę]|kurs)\b)",
+    re.I,
+)
+_GIVEN_RATE = re.compile(r"\d\s*(?:zł|pln|eur|usd|€|\$)\s*(?:za\s+|/)", re.I)
 _CURRENT_OFFICE = re.compile(
-    r"\b(?:kto\s+jest|jak\s+się\s+nazywa)\s+"
-    r"(?:prezydent\w*|premier\w*|minister\w*)\b",
+    r"\b(?:(?:kto|kim)\s+jest|jak\s+się\s+nazywa)\s+"
+    r"(?:(?:obecn\w*|aktualn\w*)\s+)?(?:prezydent\w*|premier\w*|minister\w*)\b",
     re.I,
 )
 _ENCYCLOPEDIC = re.compile(
     r"^\s*(?:kim (?:był|była|jest)|co to jest|czym jest|"
-    r"kiedy (?:powstał|powstała|urodził)|wyjaśnij|"
+    r"kiedy (?:powstał|powstała|urodził)|"
     r"(?:według|z) wikipedi[ia])\b",
     re.I,
 )
@@ -233,24 +251,31 @@ def _rss_feeds(topic: str, sources: PublicSources) -> tuple[FeedSource, ...]:
 
 def grounding_kind(message: str, *, use_notes: bool = False) -> PublicSourceRead | None:
     """Choose a public, read-only source for an ordinary question."""
-    if use_notes or _private_context(message):
+    if use_notes or _private_context(message) or lookup_forbidden(message):
         return None
-    message = _CHAT_MESSAGE_REFERENCE.sub(" ", message)
     if is_rss_read_request(message):
         return PublicSourceRead.NEWS
-    current = bool(_CURRENT.search(message) or _CURRENT_OFFICE.search(message))
-    if _WIKI_REFERENCE.search(message) or (
-        _ENCYCLOPEDIC.search(message) and not current
-    ):
+    visible = _CHAT_MESSAGE_REFERENCE.sub(" ", without_quotes(message))
+    if _WIKI_REFERENCE.search(visible):
         return PublicSourceRead.WIKIPEDIA
-    if _WEATHER.search(message) and (
-        _weather_area(message)
-        or re.search(r"\b(pogod[ayę]|prognoz\w*)\b", message, re.I)
+    if (
+        not _ENCYCLOPEDIC.search(visible)
+        and _WEATHER.search(visible)
+        and (
+            _weather_area(visible)
+            or re.search(r"\b(pogod[ayę]|prognoz\w*)\b", visible, re.I)
+        )
     ):
         return PublicSourceRead.WEATHER
-    if current:
+    if (
+        explicit_lookup_allowed(visible)
+        or _CURRENT_OFFICE.search(visible)
+        or _CURRENT_LOOKUP.search(visible)
+        or _REPORT_LOOKUP.search(visible)
+        or (_PRICE_LOOKUP.search(visible) and not _GIVEN_RATE.search(visible))
+    ):
         return PublicSourceRead.NEWS
-    if _ENCYCLOPEDIC.search(message):
+    if _ENCYCLOPEDIC.search(visible):
         return PublicSourceRead.WIKIPEDIA
     return None
 

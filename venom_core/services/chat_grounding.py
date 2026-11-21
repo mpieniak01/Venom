@@ -63,8 +63,11 @@ _ENCYCLOPEDIC = re.compile(
     re.I,
 )
 _WIKI_REFERENCE = re.compile(r"\bwikipedi\w*\b", re.I)
-_WIKI_ENTRY_LINK = re.compile(
-    r"\b(?:link|odnośnik) do (?:użytego|właściwego|encyklopedycznego) hasła(?=\s*(?:[.!?]|$))",
+_WIKI_ENTRY_TERMS = re.compile(
+    r"\bhasł\w*\s+(?:polsk\w+\s+)?wikipedi\w*\b(?!\s*[:=])"
+    r"|\b(?:link|odnośnik|adres)(?:\s+do)?\s+"
+    r"(?:użytego|właściwego|encyklopedycznego)\s+hasła"
+    r"(?=\s*(?:[.!?]|$|w\s+(?:jednym|dwóch)\s+(?:krótk\w+\s+)?zdani\w*\b))",
     re.I,
 )
 _WIKI_TOPIC_PREFIX = re.compile(
@@ -84,7 +87,8 @@ _RSS_READ = re.compile(
     re.I,
 )
 _RSS_ITEM = re.compile(
-    r"\b(?:wybierz|podaj|pokaż)\b[^.!?]{0,50}\b(?:pozycj\w*|tytuł\w*)\b", re.I
+    r"\b(?:wybierz|podaj|pokaż)\b[^.!?]{0,50}\b(?:pozycj\w*|tytuł\w*|wpis\w*|komunikat\w*)\b",
+    re.I,
 )
 _RSS_QUOTED_LABEL = re.compile(
     r'(\b(?:kanał\w*|z|według)\s+)[„«"]((?:bbc(?:\s+news)?|gus)(?:\s+rss)?)[”»"]',
@@ -140,7 +144,7 @@ class PublicSourceUnavailable(StrEnum):
 
 def _private_context(message: str) -> bool:
     if _WIKI_REFERENCE.search(message) and _ENCYCLOPEDIC.search(message):
-        message = _WIKI_ENTRY_LINK.sub(" ", message)
+        message = _WIKI_ENTRY_TERMS.sub(" ", message)
     return bool(_PRIVATE.search(message) or _PRIVATE_NOTE_SOURCE.search(message))
 
 

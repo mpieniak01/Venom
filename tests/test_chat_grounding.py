@@ -1015,3 +1015,24 @@ def test_editorial_rss_purpose_preserves_private_signals(purpose, allowed):
     assert chat_grounding.grounding_kind(query, use_notes=True) is None
     quoted = f"Zacytuj zdanie «{prompt}»"
     assert chat_grounding.rss_editorial_query(quoted) == quoted
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        "Czym jest jowisz? Z hasła polskiej Wikipedii podaj rozmiar i adres właściwego hasła.",
+        "Czym jest godzina? Według Wikipedii podaj liczbę minut i pełny adres właściwego hasła w jednym zdaniu.",
+    ],
+)
+def test_public_encyclopedia_entry_keeps_secret_detection(question):
+    assert chat_grounding.grounding_kind(question) == "wiki"
+    assert chat_grounding.grounding_kind(question + " Podaj moje hasło.") is None
+    assert chat_grounding.grounding_kind(question + " Dodaj hasło do konta.") is None
+
+
+@pytest.mark.parametrize("item", ["komunikat", "wpis"])
+def test_named_rss_accepts_other_terms_for_an_entry(item):
+    query = f"Z kanału GUS RSS wybierz jeden {item} do przeglądu."
+    assert chat_grounding.is_rss_read_request(query)
+    assert chat_grounding.grounding_kind(query) == "web"
+    assert not chat_grounding.is_rss_read_request(f"Podaj jeden {item} o RSS.")

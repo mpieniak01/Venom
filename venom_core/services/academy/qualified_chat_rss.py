@@ -62,7 +62,7 @@ def _speaker(title: str) -> str | None:
 
 
 def _render(headline: NewsHeadline, summary: str, speaker: str | None) -> str:
-    return "\\n".join(
+    return "\n".join(
         (
             f"Nagłówek RSS: {summary}",
             *((f"Atrybucja: {speaker}",) if speaker else ()),
@@ -204,4 +204,4 @@ class RSSSummary:
                 blocks.append(_render(headline, f"„{title}”", speaker))
             else:
                 blocks.append(_render(headline, summary, speaker))
-        return "\\n\\n".join([*blocks, _SCOPE])
+        return "\n\n".join([*blocks, _SCOPE])

@@ -239,10 +239,8 @@ _MEDIA_PREFIX_DENIAL = re.compile(
 )
 
 
-def _uncertain_constraints(text: str, restrictions: Iterable[str]) -> tuple[str, ...]:
-    """Flag proposed opaque galleries or attachments for separate manual review."""
-    if "photos" not in restrictions or "photos" in find_violations(text, ("photos",)):
-        return ()
+def _has_opaque_photo_reference(text: str) -> bool:
+    """Identify a potential gallery whose content is unavailable for review."""
     for clause in _CLAUSE.split(text):
         if _TEXTUAL.search(clause):
             continue
@@ -256,8 +254,8 @@ def _uncertain_constraints(text: str, restrictions: Iterable[str]) -> tuple[str,
                 else opaque.end()
             )
             if not _POST_NEGATED.match(clause, end):
-                return ("photos",)
-    return ()
+                return True
+    return False
 
 
 _REPLACED = re.compile(r"\bzamiast\s+(?:(?:użycia|dodawania|zamieszczania)\s+)?", re.I)
@@ -285,4 +283,11 @@ def find_violations(text: str, restrictions: Iterable[str]) -> tuple[str, ...]:
 
 
 def uncertain_constraints(text: str, restrictions: Iterable[str]) -> tuple[str, ...]:
-    return _uncertain_constraints(_mask_replaced_materials(text), restrictions)
+    uncertain = []
+    if "photos" in restrictions:
+        draft = _mask_replaced_materials(text)
+        if not find_violations(draft, ("photos",)) and _has_opaque_photo_reference(
+            draft
+        ):
+            uncertain.append("photos")
+    return tuple(uncertain)

@@ -20,7 +20,7 @@ _FORM = re.compile(r"\b(?:dwa|dwóch|2)\s+(?:krótkie\s+)?zdani", re.I)
 _BEGIN = re.compile(r"\b(?:powst|pojaw|skąd zebr)\w*", re.I)
 _END = re.compile(r"\b(?:znik|parowan|odpar|wypar)\w*", re.I)
 _WARM = re.compile(r"ogrz|nagrz|ogrzew", re.I)
-_PAST_WARM = re.compile(r"ogrz(?:ał|ano|ana|ana)|nagrz(?:ał|ano|ana)", re.I)
+_PAST_WARM = re.compile(r"ogrz(?:ał|ano|ana)|nagrz(?:ał|ano|ana)", re.I)
 _HYP = re.compile(
     r"\b(?:jeśli|jeżeli|gdyby|co by|gdy się)\b|\b(?:może|mogą)\s+wypar", re.I
 )
@@ -38,9 +38,7 @@ _NEW_INSTANCE = re.compile(
     r"\b(?:drug|inn|now|kolejn)\w*\s+(?:słoik|butelk|szklan)\w*", re.I
 )
 _CORE = re.compile(r"kropl|ros[ayę]", re.I)
-_NEG_COLD = re.compile(
-    r"(?:nie był\w*|nie było|niepotwierdzon\w*)\s+(?:zimn|chłod)", re.I
-)
+_NEG_COLD = re.compile(r"(?:nie był\w*|niepotwierdzon\w*)\s+(?:zimn|chłod)", re.I)
 _LEAK = re.compile(r"\b(?:przecieka|wyciek)\w*", re.I)
 _NO_LEAK = re.compile(r"nie (?:przecieka|ma wyciek)|bez wyciek", re.I)
 _PREVENT = re.compile(r"zapobie|ogranicz|zmniejsz|unik", re.I)

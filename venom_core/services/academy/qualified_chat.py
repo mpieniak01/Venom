@@ -88,7 +88,6 @@ _CALENDAR_CONTEXT = re.compile(_CALENDAR_NAME, re.I)
 _CALENDAR_CUE = re.compile(
     rf"{_CALENDAR_NAME}|\b(?:{_WRITE_VERBS}|wpis\w*|został\w*)\b", re.I
 )
-_UNFINISHED_WORD = re.compile(r"\w+$")
 _TRAILING_CONTEXT = re.compile(r"\b(?:nie|w|we|do)\s*$", re.I)
 _AMBIGUOUS_PLACE = re.compile(r"\b(?:i|lub|albo|oraz)\b", re.I)
 _LOCATION = r"(?:przy|w|za|pod|obok) [\w-]+(?: [\w-]+){0,5}"
@@ -200,6 +199,17 @@ def _claim(clauses: str) -> bool:
     )
 
 
+def _stable_prefix_end(text: str) -> int:
+    end = len(text) - int(text.endswith("\n"))
+    start = end
+    while start > 0:
+        char = text[start - 1]
+        if not (char == "_" or char.isalnum()):
+            break
+        start -= 1
+    return start if start < end else len(text)
+
+
 @dataclass
 class CalendarClaimStream:
     """Stream stable words until a possible calendar claim needs inspection."""
@@ -208,8 +218,7 @@ class CalendarClaimStream:
 
     def push(self, chunk: str) -> str:
         self.pending += chunk
-        tail = _UNFINISHED_WORD.search(self.pending)
-        boundary = tail.start() if tail else len(self.pending)
+        boundary = _stable_prefix_end(self.pending)
         cue = _CALENDAR_CUE.search(self.pending[:boundary])
         if cue is not None:
             boundary = cue.start()

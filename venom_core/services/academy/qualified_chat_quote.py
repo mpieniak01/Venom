@@ -16,9 +16,7 @@ _REWRITE = re.compile(
 _OTHER_TRANSFORMATION = re.compile(
     r"^(?:zacytuj|przetłumacz|streść|porównaj|napisz wiadomość)\b", re.I
 )
-_ENGLISH_TRANSLATION = re.compile(
-    r"^\s*przetłumacz\s+(?:to\s+)?na angielski\s*:\s*[.!?]?\s*$", re.I
-)
+_ENGLISH_TRANSLATION = re.compile(r"przetłumacz\s+(?:to\s+)?na angielski", re.I)
 _EXTRA_ACTION = re.compile(
     r"\b(?:odpowiedz|wykonaj|wyjaśnij|oblicz|zapisz|dodaj)\b", re.I
 )
@@ -98,7 +96,13 @@ def single_quoted_operand(text: str) -> str | None:
 def english_translation_hint(text: str) -> str:
     """Guide a simple quoted translation without adding a separate model call."""
     visible = without_quotes(text)
-    if visible == text or not _ENGLISH_TRANSLATION.fullmatch(visible):
+    command, separator, suffix = visible.partition(":")
+    if (
+        visible == text
+        or not separator
+        or suffix.strip() not in ("", ".", "!", "?")
+        or not _ENGLISH_TRANSLATION.fullmatch(command.strip())
+    ):
         return ""
     return (
         "Zwróć sam angielski przekład. Zachowaj sens, liczby i negacje. "

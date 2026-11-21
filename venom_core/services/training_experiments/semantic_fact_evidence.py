@@ -739,7 +739,7 @@ class RecordScope(TypedDict):
 
 
 _PLN = r"\d{1,9}(?:[.,]\d{1,2})? zł"
-_RECORD_LABEL = re.compile(r"(osoba|miejsce|godzina|cena):\s*([^;\r\n]+)", re.I)
+_RECORD_LABELS = frozenset({"osoba", "miejsce", "godzina", "cena"})
 _PRICE_CRITERION = re.compile(rf"Pole cena: ({_PLN})\. Bez sprzecznej wartości\.", re.I)
 _PENDING_SOURCE = re.compile(rf"Pytanie o cenę ({_PLN}) nadal czeka na decyzję\.", re.I)
 _PENDING_VALUE = re.compile(rf"({_PLN}) \(oczekiwana(?: decyzja)?\)\.?", re.I)
@@ -755,10 +755,11 @@ def _record_lines(candidate: str) -> dict[str, tuple[str, str]]:
     fields: dict[str, tuple[str, str]] = {}
     for clause in re.split(r"[;\r\n]+", candidate.strip()):
         line = clause.strip()
-        match = _RECORD_LABEL.fullmatch(line)
-        if match is None or match[1].casefold() in fields:
+        label, separator, value = line.partition(":")
+        key = label.casefold()
+        if not separator or not value or key not in _RECORD_LABELS or key in fields:
             return {}
-        fields[match[1].casefold()] = (line, match[2].strip())
+        fields[key] = (line, value.strip())
     return fields
 
 

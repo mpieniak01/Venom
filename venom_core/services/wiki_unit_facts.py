@@ -20,7 +20,7 @@ _HALF_BASES = {
 _SPOKEN_NUMBER = (
     r"(?:(?:" + "|".join(_HALF_BASES) + r")\s+i\s+pół|półtorej|pół|jedna|jedną)"
 )
-_BINARY = re.compile(r"^\s*czy\b|,\s*czy\b", re.I)
+_BINARY = re.compile(r"(?:^\s*|,\s*)czy\b", re.I)
 _ARTICLE_NUMBER = r"\d{1,3}(?:[ \u00a0]\d{3})+|" + _NUMBER
 _EXACT = re.compile(r"\b(?:około|średnio|w przybliżeniu|potocznie|niemal)\b", re.I)
 _CLAUSES = re.compile(r"(?<=[.!?])\s+|\n")

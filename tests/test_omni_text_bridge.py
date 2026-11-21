@@ -393,7 +393,10 @@ async def test_verified_correction_is_persisted_without_model_generation(
             "Każdą nazwę zapisz w osobnym wierszu, bez wstępu.",
             True,
         ),
-        ("Wymyśl dwie krótkie nazwy dla wymiany sadzonek.", True),
+        (
+            "Wymyśl dwie naturalne nazwy dla wymiany sadzonek. Zapisz każdą nazwę od nowego wiersza.",
+            True,
+        ),
         ("Podaj dwie nazwy dla wymiany sadzonek: po angielsku.", False),
         ("Podaj dwie polskie nazwy dla wystawy fotografii.", False),
     ],
@@ -414,7 +417,7 @@ async def test_native_exchange_title_guidance_keeps_model_output(
     assert json.loads(events[1].split("data: ", 1)[1])["text"] == "Anna, 120 zł"
     if guided:
         assert messages[0]["role"] == "system"
-        assert "naturalnej polszczyźnie" in messages[0]["content"]
+        assert "dwie różne" in messages[0]["content"]
         assert meta["context_policy"] == "exchange_title_generation"
     else:
         assert len(messages) == 1

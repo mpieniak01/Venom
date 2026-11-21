@@ -8,18 +8,29 @@ from collections.abc import Sequence
 from venom_core.services.chat_policy.direct_correction import CorrectionContext
 
 _TITLE_REQUEST = re.compile(
-    r"^(?:podaj|wymyśl|zaproponuj)\s+dwie(?:\s+(?:krótkie|polskie)){0,2}"
+    r"^(?:podaj|wymyśl|zaproponuj)\s+dwie(?:\s+(?:krótkie|polskie|naturalne|różne)){0,4}"
     r"\s+nazwy dla (?:sąsiedzkiej )?wymiany sadzonek(?P<herbs>\s+ziół)?"
     r"(?=[.!?,:]|$)",
     re.I,
 )
 _TITLE_FORMAT = re.compile(
     r"[.!?]?(?:\s+(?:"
-    r"każdą nazwę zapisz w osobnym wierszu, bez wstępu"
-    r"|podaj wyłącznie nazwy, po jednej w wierszu"
-    r"|zapisz je w dwóch wierszach, bez objaśnień"
-    r")[.!?]?)?",
+    r"(?:każdą nazwę zapisz|zapisz każdą nazwę) (?:w osobnym wierszu|od nowego wiersza)"
+    r"|(?:podaj|wypisz) (?:wyłącznie|tylko) nazwy, po jednej w wierszu"
+    r"|zapisz je w dwóch wierszach"
+    r")(?:, bez (?:wstępu|objaśnień|komentarza))?[.!?]?)?",
     re.I,
+)
+_HERB_TITLE_GUIDANCE = (
+    "Podaj dwie różne krótkie nazwy. Korzystaj z naturalnych połączeń wyrazów, "
+    "takich jak zielone spotkanie, sąsiedzka giełda, wymiana sadzonek, ziołowy ogródek, sadzonki po sąsiedzku. "
+    "Dobierz słowa do wydarzenia z prośby użytkownika. Dwie nazwy, po jednej w wierszu."
+)
+_SEEDLING_TITLE_GUIDANCE = (
+    "Napisz dokładnie dwie różne polskie nazwy wydarzenia. Wzór pierwszej nazwy: "
+    "„Sąsiedzka wymiana [czego?]”. Wzór drugiej nazwy: „[co?] po sąsiedzku”. "
+    "W nawiasach wpisz właściwe wyrazy odnoszące się do wydarzenia z prośby użytkownika, "
+    "używając polskiej odmiany i szyku. Podaj tylko gotowe nazwy, jedna pod drugą."
 )
 _TITLE_LIST_INTRO = re.compile(r"oto (?:dwie (?:propozycje|nazwy)|propozycje):", re.I)
 _TITLE_ITEM = re.compile(r"^(?:[-*•]|(?P<number>\d)[.)])\s+")
@@ -57,13 +68,7 @@ def exchange_title_context(content: str) -> CorrectionContext | None:
         return None
     return CorrectionContext(
         "exchange_title_generation",
-        "Wymyśl dwie krótkie nazwy wydarzenia w naturalnej polszczyźnie. "
-        "Pierwszą nazwę zbuduj z przymiotnika i rzeczownika w tym samym rodzaju. "
-        "Drugą zbuduj inaczej: użyj rzeczownika i określenia, które tworzą naturalny zwrot. "
-        "Przykład różnicy dla wymiany książek: Sąsiedzka biblioteczka / Książki po sąsiedzku. "
-        "Obie nazwy mają pasować do wydarzenia z prośby użytkownika. "
-        "Każda ma brzmieć jak tytuł na plakacie. "
-        "Podaj wyłącznie dwie nazwy w dwóch osobnych wierszach.",
+        _HERB_TITLE_GUIDANCE if topic["herbs"] else _SEEDLING_TITLE_GUIDANCE,
     )
 
 

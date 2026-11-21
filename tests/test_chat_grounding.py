@@ -761,18 +761,27 @@ async def test_studio_source_evidence_survives_only_complete_turns(tmp_path):
         assert restored[-1].get("public_source_evidence") == expected
 
 
-def test_saved_public_fact_context_requests_value_alongside_its_qualifier():
+@pytest.mark.parametrize(
+    "question",
+    [
+        "Czy z tego odczytu wiadomo, że to wartość dokładna?",
+        "Czy to pewna wartość? Podaj wynik na podstawie wcześniejszego odczytu.",
+        "Czy ta wartość obowiązuje zawsze na podstawie tego, co już odczytaliśmy?",
+    ],
+)
+def test_saved_public_fact_context_requests_value_alongside_its_qualifier(question):
     from venom_core.services.public_source_evidence import (
         PublicSourceEvidence,
         previous_public_fact_context,
     )
 
     context = previous_public_fact_context(
-        "Czy z tego odczytu wiadomo, że to wartość dokładna?",
+        question,
         PublicSourceEvidence("wiki", excerpt="Okres wynosi około 82 sekund w próżni."),
     )
 
     assert "konkretny fakt" in context
     assert "wartość i jednostkę" in context
-    assert "wyraź przybliżenie i zachowaj jego warunki" in context
+    assert "Wyraź przybliżenie " in context and "i jego warunki" in context
+    assert "w tym samym zdaniu" in context
     assert "około 82 sekund w próżni" in context

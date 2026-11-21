@@ -1,4 +1,4 @@
-"""Resolve a small family of invitation drafts from an explicitly selected title."""
+"""Guide title generation and preserve the selected title in invitation drafts."""
 
 from __future__ import annotations
 
@@ -11,6 +11,14 @@ _TITLE_REQUEST = re.compile(
     r"^(?:podaj|wymyśl|zaproponuj)\s+dwie(?:\s+(?:krótkie|polskie)){0,2}"
     r"\s+nazwy dla (?:sąsiedzkiej )?wymiany sadzonek(?P<herbs>\s+ziół)?"
     r"(?=[.!?,:]|$)",
+    re.I,
+)
+_TITLE_FORMAT = re.compile(
+    r"[.!?]?(?:\s+(?:"
+    r"każdą nazwę zapisz w osobnym wierszu, bez wstępu"
+    r"|podaj wyłącznie nazwy, po jednej w wierszu"
+    r"|zapisz je w dwóch wierszach, bez objaśnień"
+    r")[.!?]?)?",
     re.I,
 )
 _TITLE_LIST_INTRO = re.compile(r"oto (?:dwie (?:propozycje|nazwy)|propozycje):", re.I)
@@ -39,6 +47,23 @@ _SHORT_REMINDER = re.compile(
     r"(?:\s*pomiń wstęp i komentarz[.!]?)?",
     re.I,
 )
+
+
+def exchange_title_context(content: str) -> CorrectionContext | None:
+    """Give the model linguistic guidance for a standalone two-name request."""
+    current = content.strip()
+    topic = _TITLE_REQUEST.match(current)
+    if topic is None or _TITLE_FORMAT.fullmatch(current, topic.end()) is None:
+        return None
+    return CorrectionContext(
+        "exchange_title_generation",
+        "Zaproponuj dwie różne, krótkie nazwy wydarzenia w naturalnej polszczyźnie. "
+        "Każda ma być samodzielną nazwą pasującą do podanego rodzaju wymiany. "
+        "Użyj naturalnego szyku oraz zgodnego gramatycznie połączenia słów, "
+        "np. przymiotnika z rzeczownikiem albo rzeczownika z określeniem "
+        "w odpowiednim przypadku. Unikaj sklejania rzeczowników w mianowniku. "
+        "Zapisz każdą nazwę w oddzielnym wierszu, bez numeracji i komentarza.",
+    )
 
 
 def _titles(text: str) -> list[str]:

@@ -385,6 +385,43 @@ async def test_verified_correction_is_persisted_without_model_generation(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("prompt", "guided"),
+    [
+        (
+            "Podaj dwie krótkie polskie nazwy dla sąsiedzkiej wymiany sadzonek ziół. "
+            "Każdą nazwę zapisz w osobnym wierszu, bez wstępu.",
+            True,
+        ),
+        ("Wymyśl dwie krótkie nazwy dla wymiany sadzonek.", True),
+        ("Podaj dwie nazwy dla wymiany sadzonek: po angielsku.", False),
+        ("Podaj dwie polskie nazwy dla wystawy fotografii.", False),
+    ],
+)
+async def test_native_exchange_title_guidance_keeps_model_output(
+    native, prompt, guided
+):
+    _, calls = native
+    await bridge.switch("p13")
+    stream = await bridge.response(SimpleChatRequest(content=prompt))
+    events = [packet async for packet in stream.body_iterator]
+    assert len(calls) == 2  # Adapter probe and actual answer.
+    messages = calls[-1]["messages"]
+    assert messages[-1] == {"role": "user", "content": prompt}
+    meta = json.loads(events[-1].split("data: ", 1)[1])["model_identity"]
+    assert meta["input_messages_sha256"] == stable_hash(messages)
+    assert "response_source" not in meta and "tool_result" not in meta
+    assert json.loads(events[1].split("data: ", 1)[1])["text"] == "Anna, 120 zł"
+    if guided:
+        assert messages[0]["role"] == "system"
+        assert "naturalnej polszczyźnie" in messages[0]["content"]
+        assert meta["context_policy"] == "exchange_title_generation"
+    else:
+        assert len(messages) == 1
+        assert "context_policy" not in meta
+
+
+@pytest.mark.asyncio
 async def test_native_invitation_draft_has_no_model_or_tool_receipt(native):
     _, calls = native
     await bridge.switch("p13")

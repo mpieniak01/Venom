@@ -28,7 +28,10 @@ from venom_core.services.chat_policy.direct_correction import (
     correction_context,
 )
 from venom_core.services.chat_policy.direct_drafts import reservation_confirmation_draft
-from venom_core.services.chat_policy.direct_invitations import invitation_context
+from venom_core.services.chat_policy.direct_invitations import (
+    exchange_title_context,
+    invitation_context,
+)
 from venom_core.services.grounded_calculator import result_with_unit
 from venom_core.services.model_resources import model_operation
 from venom_core.services.remote_training.paths import operator_path
@@ -366,6 +369,8 @@ async def response(
                 correction = CorrectionContext(
                     "reservation_confirmation_draft", draft, verified_reply=draft
                 )
+        if correction is None:
+            correction = exchange_title_context(request.content)
         if correction:
             system_context = "\n\n".join(
                 filter(None, (system_context, correction.text))

@@ -2457,3 +2457,18 @@ def test_rss_does_not_split_as_in_a_role():
         0
     ]
     assert headline == {"index": 1, "tytul": title}
+    answer = summary.publish(
+        json.dumps(
+            {
+                "items": [
+                    {
+                        "index": 1,
+                        "summary": "Taylor pełni funkcję wysłannika",
+                        "secondary": None,
+                    }
+                ]
+            }
+        )
+    )
+    assert "Taylor pełni funkcję wysłannika" in answer
+    assert "Nie udało" not in answer

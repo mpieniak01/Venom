@@ -59,7 +59,9 @@ _TEMPERATURE_REQUEST = re.compile(r"\btemperatur\w*\b|°C", re.I)
 _FEELS_LIKE = re.compile(r"\bodczuwaln\w*\b", re.I)
 _ACTUAL = re.compile(r"\b(?:rzeczywist|zmierzon|powietrz)\w*\b", re.I)
 _NO_FEELS_LIKE = re.compile(
-    r"\b(?:bez|pomiń|nie podawaj) (?:temperatur\w* )?odczuwaln\w*\b", re.I
+    r"\b(?:bez|pomiń|nie podawaj) (?:okolic\w* (?:i|ani|oraz) )?"
+    r"(?:(?:temperatur|pogod)\w* )?odczuwaln\w*\b",
+    re.I,
 )
 _OTHER_METRICS = re.compile(
     r"\b(?:wilgotn\w*|wiatr\w*|opad\w*|zachmurzeni\w*|ciśnieni\w*)\b", re.I

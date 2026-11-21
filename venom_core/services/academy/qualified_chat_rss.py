@@ -169,7 +169,7 @@ class RSSSummary:
                     "maxItems": count,
                     "items": {
                         "type": "object",
-                        "required": ["index", "summary"],
+                        "required": ["index", "summary", "secondary"],
                         "additionalProperties": False,
                         "properties": {
                             "index": {
@@ -183,9 +183,14 @@ class RSSSummary:
                                 "maxLength": 240,
                             },
                             "secondary": {
-                                "type": "string",
-                                "minLength": 1,
-                                "maxLength": 240,
+                                "anyOf": [
+                                    {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 240,
+                                    },
+                                    {"type": "null"},
+                                ],
                             },
                         },
                     },
@@ -216,7 +221,7 @@ class RSSSummary:
                     "pewności tytułu. Jeżeli nagłówek ma drugi_czlon, przełóż pierwszą "
                     "część osobno w summary i drugą osobno w secondary. Zachowaj w "
                     "każdej jej własny podmiot, działanie i skutek. Nie łącz części. "
-                    "Bez drugiego członu podaj wyłącznie index i summary. "
+                    "Jeśli drugi_czlon nie występuje, ustaw secondary na wartość null. "
                     "W angielskim «podmiot + to + czasownik» "
                     "wyraża zapowiedzianą czynność. Pole tytul zawiera treść po "
                     "wydzieleniu mówiącego. W summary podaj ją po polsku. Użyj tylko "
@@ -263,7 +268,7 @@ class RSSSummary:
             relation = _split_relation(proposition)
             if summary is not None and relation:
                 summary = _relation_reply(summary, item.get("secondary"), relation)
-            elif "secondary" in item:
+            elif item.get("secondary") is not None:
                 return _INVALID_DRAFT
             if (
                 summary is None

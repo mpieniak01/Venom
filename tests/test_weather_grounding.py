@@ -309,10 +309,14 @@ async def test_imgw_recovers_named_city_only_and_keeps_timestamp_in_history(clie
         httpx.Response(200, json=_synop_payload()),
         nearby,
     ]
-    text = "Sprawdź aktualną temperaturę powietrza w Kaliszu, tylko miasto."
+    text = (
+        "Sprawdź aktualną temperaturę powietrza w Kaliszu, tylko miasto, "
+        "bez okolic i temperatury odczuwalnej."
+    )
     context = await chat_grounding.current_chat_context(text)
     assert "Kalisz" in context.reply and "2.1°C" in context.reply
     assert "Zagorzynek" not in context.reply and " UTC." in context.reply
+    assert "odczuwalnej" not in context.reply
     assert "Instytut Meteorologii i Gospodarki Wodnej" in context.reply
     assert [call.args[0] for call in client.aget.await_args_list] == [
         "https://wttr.in/Kalisz?format=j1",

@@ -8,6 +8,7 @@ from pathlib import Path
 
 from venom_core.config import SETTINGS
 from venom_core.services.training_experiments.conversation_review import (
+    prepare_checkpoint_review,
     register_review_request,
 )
 from venom_core.services.training_experiments.profiles import read_json
@@ -41,6 +42,9 @@ def main(argv: list[str] | None = None) -> None:
     parent.add_argument("checkpoint_step", type=int)
     parent.add_argument("generation", type=Path)
     parent.add_argument("record_id")
+    prepare = commands.add_parser("prepare-checkpoint-review")
+    prepare.add_argument("pending", type=Path)
+    prepare.add_argument("panel", type=Path)
     review = commands.add_parser("register-review")
     review.add_argument("request", type=Path)
     commands.add_parser("list")
@@ -67,6 +71,10 @@ def main(argv: list[str] | None = None) -> None:
                 args.generation,
                 args.checkpoint_step,
                 args.record_id,
+            )
+        elif args.command == "prepare-checkpoint-review":
+            result = prepare_checkpoint_review(
+                read_json(args.pending), read_json(args.panel)
             )
         elif args.command == "register-review":
             result = register_review_request(experiments.root, read_json(args.request))

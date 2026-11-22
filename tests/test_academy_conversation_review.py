@@ -8,6 +8,8 @@ from types import SimpleNamespace
 import pytest
 
 from venom_core.services.training_experiments.conversation_review import (
+    payload_sha,
+    prepare_checkpoint_review,
     register_review,
     register_review_request,
     score,
@@ -712,3 +714,70 @@ def test_review_registration_never_publishes_partial_directory(tmp_path, monkeyp
             reviewer_note="atomicity check",
         )
     assert not (target / "review-0a-02").exists()
+
+
+def test_prepare_pending_checkpoint_creates_incomplete_independent_verdicts(tmp_path):
+    panel, _, _ = _evidence()
+    identity = {
+        "model": "P13",
+        "weights_sha256": "w",
+        "config_sha256": "c",
+        "snapshot_sha256": "s",
+    }
+    binding = {
+        "campaign_id": "campaign-01",
+        "panel_sha256": payload_sha(panel),
+        "p13_identity": identity,
+        "candidate_identity": identity,
+    }
+    pending = {
+        "conversation_review_status": "pending",
+        "conversation_review_id": "review-01",
+        "conversation_review_binding": binding,
+    }
+    request = prepare_checkpoint_review(pending, panel)
+    assert request["p13"]["C000"]["T0"]["critical"] is None
+    request["p13"]["C000"]["T0"]["critical"] = True
+    assert request["candidate"]["C000"]["T0"]["critical"] is None
+    with pytest.raises(ValueError, match="reviewer_required"):
+        register_review_request(tmp_path, request)
+    with pytest.raises(ValueError, match="panel_binding_invalid"):
+        prepare_checkpoint_review(
+            pending,
+            {
+                **panel,
+                "C000": {
+                    **panel["C000"],
+                    "turns": {**panel["C000"]["turns"], "T0": ["different"]},
+                },
+            },
+        )
+    with pytest.raises(ValueError, match="pending_checkpoint_required"):
+        prepare_checkpoint_review(
+            {**pending, "conversation_review_status": "pass"}, panel
+        )
+
+
+def test_identical_registration_is_idempotent_and_tamper_fails(tmp_path):
+    binding, receipt = _register(tmp_path)
+    panel, p13, candidate = _evidence()
+    args = dict(
+        mode="dev",
+        panel=panel,
+        p13=p13,
+        candidate=candidate,
+        binding=binding,
+        p13_identity=binding["p13_identity"],
+        candidate_identity=binding["candidate_identity"],
+        reviewer_id="operator-7",
+        reviewer_note="Przegląd 96 pełnych rozmów.",
+    )
+    assert register_review(tmp_path, "review-0a-01", **args) == receipt
+    with pytest.raises(ValueError, match="immutable_conflict"):
+        register_review(tmp_path, "review-0a-01", **{**args, "reviewer_note": "zmiana"})
+    path = tmp_path / "conversation-reviews" / "review-0a-01" / "judgments.json"
+    data = json.loads(path.read_text(encoding="utf-8"))
+    data["candidate"]["C000"]["T0"]["critical"] = True
+    path.write_text(json.dumps(data), encoding="utf-8")
+    with pytest.raises(ValueError, match="immutable_conflict"):
+        register_review(tmp_path, "review-0a-01", **args)

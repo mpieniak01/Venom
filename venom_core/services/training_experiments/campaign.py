@@ -914,15 +914,17 @@ class CampaignService:
                 / "receipt.json"
             ).is_file()
         ]
-        pending_by_trial: dict[str, set[int]] = {}
+        pending_by_trial: dict[str, tuple[dict, set[int]]] = {}
         for trial, row in pending:
-            pending_by_trial.setdefault(trial["run_id"], set()).add(row["step"])
-        for trial, _row in pending:
+            if trial["run_id"] not in pending_by_trial:
+                pending_by_trial[trial["run_id"]] = (trial, set())
+            pending_by_trial[trial["run_id"]][1].add(row["step"])
+        for trial, steps in pending_by_trial.values():
             self._record_checkpoint_results(
                 state,
                 trial,
                 state["plan"].get("quality_policy"),
-                steps=pending_by_trial[trial["run_id"]],
+                steps=steps,
             )
         if pending:
             _rank(state)

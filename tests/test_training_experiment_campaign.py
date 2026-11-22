@@ -2890,6 +2890,46 @@ def test_review_refresh_updates_only_requested_checkpoint_rows():
     ]
 
 
+def test_review_refresh_assesses_pending_steps_once_per_trial(tmp_path, monkeypatch):
+    from venom_core.services.training_experiments import campaign
+    from venom_core.services.training_experiments.conversation_review import (
+        checkpoint_review_id,
+    )
+
+    service = object.__new__(CampaignService)
+    service.directory = lambda _campaign_id: tmp_path
+    calls = []
+    service._record_checkpoint_results = (
+        lambda _state, trial, _policy, *, steps: calls.append((trial["run_id"], steps))
+    )
+    monkeypatch.setattr(campaign, "_rank", lambda _state: None)
+    trial = {
+        "run_id": "run",
+        "status": "succeeded",
+        "checkpoint_evaluations": [
+            {"step": step, "conversation_review_status": "pending"} for step in (13, 26)
+        ],
+    }
+    state = {
+        "campaign_id": "series",
+        "plan": {"conversation_review": {"receipt_id_prefix": "review"}},
+        "trials": [trial],
+    }
+    for step in (13, 26):
+        receipt = (
+            tmp_path
+            / "conversation-reviews"
+            / checkpoint_review_id("review", "run", step)
+            / "receipt.json"
+        )
+        receipt.parent.mkdir(parents=True)
+        receipt.write_text("{}", encoding="utf-8")
+
+    service._refresh_pending_conversation_reviews(state)
+
+    assert calls == [("run", {13, 26})]
+
+
 @pytest.mark.parametrize("final_qualification", [False, True])
 def test_review_change_keeps_campaign_blocked(final_qualification, tmp_path):
     service = object.__new__(CampaignService)

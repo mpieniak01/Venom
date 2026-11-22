@@ -937,87 +937,163 @@ def _qualify_locked(
             directory, evidence_root, academy_root, binding
         )
         if completed:
-            assert result is not None
-            if spec.conversation_review_required:
-                if result.get("conversation_review_id") != spec.conversation_review_id:
-                    raise ValueError("remote_text_conversation_review_binding_invalid")
-                from .conversation_review import verify_final_review
-
-                current_review = verify_final_review(
-                    evidence_root,
-                    spec.conversation_review_id or "",
-                    binding,
-                    candidate_config_sha256=result.get("adapter_config_sha256", ""),
-                )
-                if stable_hash(current_review) != result.get(
-                    "conversation_review_sha256"
-                ):
-                    raise ValueError("remote_text_conversation_review_changed")
-            return result
-        if check is not None:
-            check()
-        receipt = reverify_run(
+            return _verify_completed_qualification(result, evidence_root, spec, binding)
+        return _execute_qualification(
+            directory,
             evidence_root,
             remote,
-            binding["run_id"],
-            remote["plan"]["budget"]["max_artifact_bytes"],
+            academy_root,
+            spec,
+            binding,
+            result,
+            evaluator,
+            check,
         )
-        if receipt["archive_sha256"] != binding["archive_sha256"]:
-            raise ValueError("remote_text_final_archive_changed")
-        with tempfile.TemporaryDirectory(prefix=".final-", dir=directory) as staging:
-            workspace = Path(staging)
-            checkpoint = workspace / f"checkpoint-{binding['step']}"
-            manifest = stage_candidate(
-                evidence_root,
-                binding["run_id"],
-                binding["step"],
+
+
+def _verify_completed_qualification(
+    result: dict | None,
+    evidence_root: Path,
+    spec: QualificationInputs,
+    binding: dict,
+) -> dict:
+    assert result is not None
+    if not spec.conversation_review_required:
+        return result
+    if result.get("conversation_review_id") != spec.conversation_review_id:
+        raise ValueError("remote_text_conversation_review_binding_invalid")
+    from .conversation_review import verify_final_review
+
+    current_review = verify_final_review(
+        evidence_root,
+        spec.conversation_review_id or "",
+        binding,
+        candidate_config_sha256=result.get("adapter_config_sha256", ""),
+    )
+    if stable_hash(current_review) != result.get("conversation_review_sha256"):
+        raise ValueError("remote_text_conversation_review_changed")
+    return result
+
+
+def _execute_qualification(
+    directory: Path,
+    evidence_root: Path,
+    remote: dict,
+    academy_root: Path,
+    spec: QualificationInputs,
+    binding: dict,
+    existing_result: dict | None,
+    evaluator: Callable[[list[str], Path, int, str, str], None],
+    check: Callable[[], float] | None,
+) -> dict:
+    if check is not None:
+        check()
+    receipt = reverify_run(
+        evidence_root,
+        remote,
+        binding["run_id"],
+        remote["plan"]["budget"]["max_artifact_bytes"],
+    )
+    if receipt["archive_sha256"] != binding["archive_sha256"]:
+        raise ValueError("remote_text_final_archive_changed")
+    with tempfile.TemporaryDirectory(prefix=".final-", dir=directory) as staging:
+        workspace = Path(staging)
+        checkpoint = workspace / f"checkpoint-{binding['step']}"
+        manifest = stage_candidate(
+            evidence_root,
+            binding["run_id"],
+            binding["step"],
+            checkpoint,
+            expected_archive_sha256=binding["archive_sha256"],
+        )
+        adapter = _adapter_identity(checkpoint, binding, manifest)
+        review_receipt = _qualification_review_receipt(
+            spec, binding, evidence_root, adapter
+        )
+        parent = _stage_parent(binding, manifest, academy_root, workspace)
+        result = existing_result
+        if result is None:
+            result = _run_final(
+                directory,
+                workspace,
                 checkpoint,
-                expected_archive_sha256=binding["archive_sha256"],
+                spec,
+                binding,
+                manifest,
+                adapter,
+                remote["plan"]["selection"],
+                evaluator,
+                parent=parent,
+                conversation_review=review_receipt,
+                check=check,
             )
-            adapter = _adapter_identity(checkpoint, binding, manifest)
-            review_receipt = _qualification_review_receipt(
-                spec, binding, evidence_root, adapter
-            )
-            parent = _stage_parent(binding, manifest, academy_root, workspace)
-            if result is None:
-                result = _run_final(
-                    directory,
-                    workspace,
-                    checkpoint,
-                    spec,
-                    binding,
-                    manifest,
-                    adapter,
-                    remote["plan"]["selection"],
-                    evaluator,
-                    parent=parent,
-                    conversation_review=review_receipt,
-                    check=check,
-                )
-            if check is not None:
-                check()
-            if result["qualified"] is not None:
-                _verify_parent(binding, academy_root)
-                if spec.conversation_review_required:
-                    publish_review = _qualification_review_receipt(
-                        spec, binding, evidence_root, adapter
-                    )
-                    if (
-                        publish_review is None
-                        or result.get("conversation_review_id")
-                        != spec.conversation_review_id
-                        or stable_hash(publish_review)
-                        != result.get("conversation_review_sha256")
-                        or review_receipt is None
-                        or stable_hash(publish_review) != stable_hash(review_receipt)
-                    ):
-                        raise ValueError("remote_text_conversation_review_changed")
-                _publish_adapter(academy_root, checkpoint, adapter, manifest["recipe"])
-                atomic_json(
-                    directory / "catalog.json",
-                    {"result_sha256": digest(directory / "result.json")},
-                )
-            return result
+        if check is not None:
+            check()
+        _publish_qualified_result(
+            result,
+            directory,
+            academy_root,
+            checkpoint,
+            adapter,
+            manifest,
+            spec,
+            binding,
+            evidence_root,
+            review_receipt,
+        )
+        return result
+
+
+def _publish_qualified_result(
+    result: dict,
+    directory: Path,
+    academy_root: Path,
+    checkpoint: Path,
+    adapter: dict,
+    manifest: dict,
+    spec: QualificationInputs,
+    binding: dict,
+    evidence_root: Path,
+    review_receipt: dict | None,
+) -> None:
+    if result["qualified"] is None:
+        return
+    _verify_parent(binding, academy_root)
+    if spec.conversation_review_required:
+        _verify_review_before_publication(
+            result,
+            spec,
+            binding,
+            evidence_root,
+            adapter,
+            review_receipt,
+        )
+    _publish_adapter(academy_root, checkpoint, adapter, manifest["recipe"])
+    atomic_json(
+        directory / "catalog.json",
+        {"result_sha256": digest(directory / "result.json")},
+    )
+
+
+def _verify_review_before_publication(
+    result: dict,
+    spec: QualificationInputs,
+    binding: dict,
+    evidence_root: Path,
+    adapter: dict,
+    review_receipt: dict | None,
+) -> None:
+    publish_review = _qualification_review_receipt(
+        spec, binding, evidence_root, adapter
+    )
+    if (
+        publish_review is None
+        or result.get("conversation_review_id") != spec.conversation_review_id
+        or stable_hash(publish_review) != result.get("conversation_review_sha256")
+        or review_receipt is None
+        or stable_hash(publish_review) != stable_hash(review_receipt)
+    ):
+        raise ValueError("remote_text_conversation_review_changed")
 
 
 def _validate_review_requirement(spec: QualificationInputs) -> None:

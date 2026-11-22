@@ -266,37 +266,10 @@ def register_review_request(root: Path, request: object) -> dict:
     }
     if not isinstance(request, dict) or set(request) != fields:
         raise ValueError("conversation_review_request_invalid")
-    mode = request["mode"]
     binding = request["binding"]
     if not isinstance(binding, dict):
         raise ValueError("conversation_review_binding_required")
-    if mode == "dev":
-        campaign_id = binding.get("campaign_id")
-        if not isinstance(campaign_id, str) or not _ID.fullmatch(campaign_id):
-            raise ValueError("conversation_review_campaign_binding_invalid")
-        target_root = root / "campaigns" / campaign_id
-    elif mode == "final":
-        qualification = binding.get("qualification")
-        source = (
-            qualification.get("source", "remote")
-            if isinstance(qualification, dict)
-            else None
-        )
-        campaign_id = (
-            qualification.get("campaign_id")
-            if isinstance(qualification, dict)
-            else None
-        )
-        if not isinstance(campaign_id, str) or not _ID.fullmatch(campaign_id):
-            raise ValueError("conversation_review_campaign_binding_invalid")
-        if source == "local":
-            target_root = root / "local-text-qualification" / campaign_id / "evidence"
-        elif source == "remote":
-            target_root = root / "remote-text" / campaign_id / "evidence"
-        else:
-            raise ValueError("conversation_review_campaign_binding_invalid")
-    else:
-        raise ValueError("conversation_review_campaign_binding_invalid")
+    target_root = _review_request_root(root, request["mode"], binding)
     return register_review(
         target_root,
         request["review_id"],
@@ -310,6 +283,30 @@ def register_review_request(root: Path, request: object) -> dict:
         reviewer_id=request["reviewer_id"],
         reviewer_note=request["reviewer_note"],
     )
+
+
+def _review_request_root(root: Path, mode: object, binding: dict) -> Path:
+    if mode == "dev":
+        campaign_id = _campaign_id(binding.get("campaign_id"))
+        return root / "campaigns" / campaign_id
+    if mode != "final":
+        raise ValueError("conversation_review_campaign_binding_invalid")
+    qualification = binding.get("qualification")
+    if not isinstance(qualification, dict):
+        raise ValueError("conversation_review_campaign_binding_invalid")
+    campaign_id = _campaign_id(qualification.get("campaign_id"))
+    source = qualification.get("source", "remote")
+    if source == "local":
+        return root / "local-text-qualification" / campaign_id / "evidence"
+    if source == "remote":
+        return root / "remote-text" / campaign_id / "evidence"
+    raise ValueError("conversation_review_campaign_binding_invalid")
+
+
+def _campaign_id(value: object) -> str:
+    if not isinstance(value, str) or not _ID.fullmatch(value):
+        raise ValueError("conversation_review_campaign_binding_invalid")
+    return value
 
 
 def _validate_registration(
@@ -359,6 +356,20 @@ def verify_review(
         data = json.loads(judgments_path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
         raise ValueError("conversation_review_payload_invalid") from exc
+    _validate_receipt_shape(receipt, data)
+    assert isinstance(receipt, dict) and isinstance(data, dict)
+    _validate_receipt_binding(receipt, review_id, binding)
+    _validate_judgments_shape(data)
+    _validate_review_hashes(receipt, data, binding)
+    rescored = score(receipt["mode"], data["panel"], data["p13"], data["candidate"])
+    if any(receipt.get(key) != value for key, value in rescored.items()):
+        raise ValueError("conversation_review_score_mismatch")
+    if require_pass and receipt["status"] != "PASS":
+        raise ValueError("conversation_review_thresholds_failed")
+    return receipt
+
+
+def _validate_receipt_shape(receipt: object, data: object) -> None:
     required_receipt = {
         "review_id",
         "binding",
@@ -391,6 +402,9 @@ def verify_review(
         )
     ):
         raise ValueError("conversation_review_payload_invalid")
+
+
+def _validate_receipt_binding(receipt: dict, review_id: str, binding: dict) -> None:
     if receipt.get("review_id") != review_id:
         raise ValueError("conversation_review_identity_mismatch")
     if receipt.get("binding") != binding or receipt.get(
@@ -401,12 +415,18 @@ def verify_review(
         "candidate_identity"
     ) != receipt.get("candidate_identity"):
         raise ValueError("conversation_review_model_binding_invalid")
+
+
+def _validate_judgments_shape(data: dict) -> None:
     if (
         set(data) != {"panel", "p13", "candidate"}
         or not isinstance(data.get("panel"), dict)
         or any(not isinstance(data.get(name), dict) for name in ("p13", "candidate"))
     ):
         raise ValueError("conversation_review_payload_invalid")
+
+
+def _validate_review_hashes(receipt: dict, data: dict, binding: dict) -> None:
     if receipt.get("panel_sha256") != _payload_sha(data["panel"]):
         raise ValueError("conversation_review_panel_hash_mismatch")
     if (
@@ -416,12 +436,6 @@ def verify_review(
         raise ValueError("conversation_review_panel_hash_mismatch")
     if receipt.get("judgments_sha256") != _payload_sha(data):
         raise ValueError("conversation_review_judgments_hash_mismatch")
-    rescored = score(receipt["mode"], data["panel"], data["p13"], data["candidate"])
-    if any(receipt.get(key) != value for key, value in rescored.items()):
-        raise ValueError("conversation_review_score_mismatch")
-    if require_pass and receipt["status"] != "PASS":
-        raise ValueError("conversation_review_thresholds_failed")
-    return receipt
 
 
 def verify_final_review(

@@ -620,55 +620,69 @@ def _confirm_repeat(state: dict) -> None:
         "repeat_run_id": repeat_id,
     }
     # Interrupted execution is not evidence of poor model quality.
-    eligible = [
-        item
-        for item in (_repeat_candidates(state, repeat) if repeat else [])
-        if item.get("step") == decision.get("checkpoint_step")
-    ]
-    pending_review = bool(
-        state["plan"].get("conversation_review")
-        and any(
-            row.get("conversation_review_status") == "pending"
-            for trial in (
-                next(
-                    (
-                        item
-                        for item in state["trials"]
-                        if item["run_id"] == decision.get("run_id")
-                    ),
-                    {},
-                ),
-                repeat,
-            )
-            for row in trial.get("checkpoint_evaluations", ())
-            if row.get("step") == decision.get("checkpoint_step")
-        )
-    )
-    if pending_review and state["status"] not in {"stopped", "blocked"}:
-        confirmation.update(
-            status="pending_review", reason="pending_conversation_review"
-        )
-        state["selected_run_id"] = None
-        if "selected_checkpoint_step" in state:
-            state["selected_checkpoint_step"] = None
-    elif state["status"] not in {"stopped", "blocked"} and eligible:
+    eligible = _repeat_candidates_for_step(state, repeat, decision)
+    if _repeat_review_pending(state, repeat, decision) and _can_select_repeat(state):
+        _wait_for_repeat_review(state, confirmation)
+    elif _can_select_repeat(state) and eligible:
         _confirm_repeat_success(state, decision, repeat, eligible, confirmation)
     else:
-        completed = (
-            _repeat_step_complete(repeat, decision.get("checkpoint_step"))
-            or decision.get("status") == "skipped"
-            and state["status"] == "succeeded"
-        )
-        if not development_complete(state):
-            confirmation["reason"] = "campaign_development_incomplete"
-        elif completed and state["status"] not in {"stopped", "blocked"}:
-            confirmation.update(
-                status="failed_quality", reason="campaign_repeat_failed_quality"
-            )
-        state["selected_run_id"] = None
-        if "selected_checkpoint_step" in state:
-            state["selected_checkpoint_step"] = None
+        _record_repeat_failure(state, decision, repeat, confirmation)
     state["repeat_confirmation"] = confirmation
+
+
+def _repeat_candidates_for_step(
+    state: dict, repeat: dict, decision: dict
+) -> list[dict]:
+    if not repeat:
+        return []
+    step = decision.get("checkpoint_step")
+    return [
+        item for item in _repeat_candidates(state, repeat) if item.get("step") == step
+    ]
+
+
+def _repeat_review_pending(state: dict, repeat: dict, decision: dict) -> bool:
+    if not state["plan"].get("conversation_review"):
+        return False
+    source_id = decision.get("run_id")
+    step = decision.get("checkpoint_step")
+    source: dict = next(
+        (trial for trial in state["trials"] if trial["run_id"] == source_id), {}
+    )
+    return any(
+        row.get("conversation_review_status") == "pending"
+        for trial in (source, repeat)
+        for row in trial.get("checkpoint_evaluations", ())
+        if row.get("step") == step
+    )
+
+
+def _can_select_repeat(state: dict) -> bool:
+    return state["status"] not in {"stopped", "blocked"}
+
+
+def _wait_for_repeat_review(state: dict, confirmation: dict) -> None:
+    confirmation.update(status="pending_review", reason="pending_conversation_review")
+    state["selected_run_id"] = None
+    if "selected_checkpoint_step" in state:
+        state["selected_checkpoint_step"] = None
+
+
+def _record_repeat_failure(
+    state: dict, decision: dict, repeat: dict, confirmation: dict
+) -> None:
+    completed = _repeat_step_complete(repeat, decision.get("checkpoint_step")) or (
+        decision.get("status") == "skipped" and state["status"] == "succeeded"
+    )
+    if not development_complete(state):
+        confirmation["reason"] = "campaign_development_incomplete"
+    elif completed and _can_select_repeat(state):
+        confirmation.update(
+            status="failed_quality", reason="campaign_repeat_failed_quality"
+        )
+    state["selected_run_id"] = None
+    if "selected_checkpoint_step" in state:
+        state["selected_checkpoint_step"] = None
 
 
 def _repeat_step_complete(trial: dict, step: int | None) -> bool:
@@ -876,37 +890,44 @@ class CampaignService:
         return state
 
     def _review_selection(self, state: dict) -> None:
-        if state["plan"].get("conversation_review") is not None:
-            from .conversation_review import checkpoint_review_id
+        self._refresh_pending_conversation_reviews(state)
+        self._verify_selected_quality(state)
 
-            config = state["plan"]["conversation_review"]
-            pending = [
-                (trial, row)
-                for trial in state["trials"]
-                if trial["status"] == "succeeded"
-                for row in trial.get("checkpoint_evaluations", ())
-                if row.get("conversation_review_status") == "pending"
-                and (
-                    self.directory(state["campaign_id"])
-                    / "conversation-reviews"
-                    / checkpoint_review_id(
-                        config["receipt_id_prefix"], trial["run_id"], row["step"]
-                    )
-                    / "receipt.json"
-                ).is_file()
-            ]
-            pending_by_trial: dict[str, set[int]] = {}
-            for trial, row in pending:
-                pending_by_trial.setdefault(trial["run_id"], set()).add(row["step"])
-            for trial, _row in pending:
-                self._record_checkpoint_results(
-                    state,
-                    trial,
-                    state["plan"].get("quality_policy"),
-                    steps=pending_by_trial[trial["run_id"]],
+    def _refresh_pending_conversation_reviews(self, state: dict) -> None:
+        config = state["plan"].get("conversation_review")
+        if config is None:
+            return
+        from .conversation_review import checkpoint_review_id
+
+        pending = [
+            (trial, row)
+            for trial in state["trials"]
+            if trial["status"] == "succeeded"
+            for row in trial.get("checkpoint_evaluations", ())
+            if row.get("conversation_review_status") == "pending"
+            and (
+                self.directory(state["campaign_id"])
+                / "conversation-reviews"
+                / checkpoint_review_id(
+                    config["receipt_id_prefix"], trial["run_id"], row["step"]
                 )
-            if pending:
-                _rank(state)
+                / "receipt.json"
+            ).is_file()
+        ]
+        pending_by_trial: dict[str, set[int]] = {}
+        for trial, row in pending:
+            pending_by_trial.setdefault(trial["run_id"], set()).add(row["step"])
+        for trial, _row in pending:
+            self._record_checkpoint_results(
+                state,
+                trial,
+                state["plan"].get("quality_policy"),
+                steps=pending_by_trial[trial["run_id"]],
+            )
+        if pending:
+            _rank(state)
+
+    def _verify_selected_quality(self, state: dict) -> None:
         requires_verification = (
             state["plan"].get("quality_policy") or "checkpoint_steps" in state["plan"]
         )
@@ -921,20 +942,24 @@ class CampaignService:
             )
             self._verify_quality_winner(state, winner)
         except (OSError, ValueError, KeyError, TypeError, StopIteration) as exc:
-            state["selected_run_id"] = None
-            if "selected_checkpoint_step" in state:
-                state["selected_checkpoint_step"] = None
-            if state["plan"].get("conversation_review") is not None:
-                state.update(
-                    status="blocked",
-                    phase="complete",
-                    qualification_status="incomplete",
-                    quality_policy_error="campaign_quality_conversation_review_changed",
-                    error="campaign_quality_conversation_review_changed",
-                    worker=None,
-                )
-            else:
-                state["quality_policy_error"] = _quality_error(exc)
+            self._invalidate_quality_selection(state, exc)
+
+    @staticmethod
+    def _invalidate_quality_selection(state: dict, error: Exception) -> None:
+        state["selected_run_id"] = None
+        if "selected_checkpoint_step" in state:
+            state["selected_checkpoint_step"] = None
+        if state["plan"].get("conversation_review") is not None:
+            state.update(
+                status="blocked",
+                phase="complete",
+                qualification_status="incomplete",
+                quality_policy_error="campaign_quality_conversation_review_changed",
+                error="campaign_quality_conversation_review_changed",
+                worker=None,
+            )
+        else:
+            state["quality_policy_error"] = _quality_error(error)
 
     def _review_repeat_confirmation(self, state: dict) -> None:
         confirmation = state.get("repeat_confirmation", {})
@@ -944,42 +969,7 @@ class CampaignService:
         if confirmation.get("status") != "passed":
             return
         try:
-            if (
-                state["selected_run_id"] != confirmation["finalist_run_id"]
-                or state.get("selected_checkpoint_step")
-                != confirmation["finalist_checkpoint_step"]
-            ):
-                raise ValueError("campaign_repeat_confirmation_changed")
-            for prefix in ("source", "repeat"):
-                trial = next(
-                    item
-                    for item in state["trials"]
-                    if item["run_id"] == confirmation[f"{prefix}_run_id"]
-                )
-                for step, checksum in (
-                    (
-                        confirmation[f"{prefix}_checkpoint_step"],
-                        confirmation[f"{prefix}_result_sha256"],
-                    ),
-                    (
-                        confirmation["finalist_checkpoint_step"],
-                        confirmation[f"paired_{prefix}_result_sha256"],
-                    ),
-                ):
-                    item = (
-                        next(
-                            row
-                            for row in trial["checkpoint_evaluations"]
-                            if row["step"] == step
-                        )
-                        if step is not None
-                        else trial
-                    )
-                    if item["result_sha256"] != checksum:
-                        raise ValueError("campaign_repeat_confirmation_changed")
-                    self._verify_quality_winner(
-                        {**state, "selected_checkpoint_step": step}, trial
-                    )
+            self._verify_repeat_confirmation(state, confirmation)
         except (OSError, ValueError, KeyError, TypeError, StopIteration):
             confirmation.update(
                 status="incomplete", reason="campaign_repeat_confirmation_changed"
@@ -987,6 +977,47 @@ class CampaignService:
             state["selected_run_id"] = None
             if "selected_checkpoint_step" in state:
                 state["selected_checkpoint_step"] = None
+
+    def _verify_repeat_confirmation(self, state: dict, confirmation: dict) -> None:
+        if (
+            state["selected_run_id"] != confirmation["finalist_run_id"]
+            or state.get("selected_checkpoint_step")
+            != confirmation["finalist_checkpoint_step"]
+        ):
+            raise ValueError("campaign_repeat_confirmation_changed")
+        for prefix in ("source", "repeat"):
+            self._verify_repeat_confirmation_run(state, confirmation, prefix)
+
+    def _verify_repeat_confirmation_run(
+        self, state: dict, confirmation: dict, prefix: str
+    ) -> None:
+        run_id = confirmation[f"{prefix}_run_id"]
+        trial = next(item for item in state["trials"] if item["run_id"] == run_id)
+        paired_results = (
+            (
+                confirmation[f"{prefix}_checkpoint_step"],
+                confirmation[f"{prefix}_result_sha256"],
+            ),
+            (
+                confirmation["finalist_checkpoint_step"],
+                confirmation[f"paired_{prefix}_result_sha256"],
+            ),
+        )
+        for step, checksum in paired_results:
+            item = self._repeat_confirmation_item(trial, step)
+            if item["result_sha256"] != checksum:
+                raise ValueError("campaign_repeat_confirmation_changed")
+            self._verify_quality_winner(
+                {**state, "selected_checkpoint_step": step}, trial
+            )
+
+    @staticmethod
+    def _repeat_confirmation_item(trial: dict, step: int | None) -> dict:
+        if step is None:
+            return trial
+        return next(
+            row for row in trial["checkpoint_evaluations"] if row["step"] == step
+        )
 
     def report(self, campaign_id: str) -> dict:
         return self.status(campaign_id)

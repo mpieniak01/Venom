@@ -173,45 +173,72 @@ class _FeeState:
     decision: bool = False
 
     def read(self, text: str) -> None:
+        if not self._read_field(text):
+            return
+        if self._read_rejection(text):
+            return
+        if self._read_acceptance(text):
+            return
+        if self._read_proposal(text):
+            return
+        self._read_initial_binding(text)
+
+    def _read_field(self, text: str) -> bool:
         fields = {match.lower() for match in _FEE.findall(text)} - {"kwot"}
         if len(fields) > 1:
             self.field = self.binding = self.proposed = None
             self.decision = False
-            return
+            return False
         field = next(iter(fields), self.field)
         if self.field is not None and field != self.field:
             self.binding = self.proposed = None
             self.decision = False
         self.field = field
-        amounts = _AMOUNT.findall(text)
-        amount = amounts[0] if len(amounts) == 1 else None
+        return True
+
+    def _read_rejection(self, text: str) -> bool:
         if _REJECT.search(text) and self.proposed is not None:
             self.proposed = None
             self.decision = True
-        elif (acceptance := _ACCEPT.search(text)) and not _question_in_clause(
-            text, acceptance.start()
+            return True
+        return False
+
+    def _read_acceptance(self, text: str) -> bool:
+        acceptance = _ACCEPT.search(text)
+        if acceptance is None or _question_in_clause(text, acceptance.start()):
+            return False
+        clause = text[acceptance.start() :]
+        terminator = _clause_terminator(text, acceptance.start())
+        if terminator is not None:
+            clause = text[acceptance.start() : acceptance.start() + terminator.end()]
+        amounts = _AMOUNT.findall(clause)
+        if len(amounts) == 1:
+            accepted = amounts[0]
+        elif not amounts:
+            accepted = self.proposed
+        else:
+            accepted = None
+        if accepted is not None:
+            self.binding, self.proposed, self.decision = accepted, None, True
+        return True
+
+    def _read_proposal(self, text: str) -> bool:
+        amounts = _AMOUNT.findall(text)
+        if _PROPOSAL.search(text) and len(amounts) == 1:
+            self.proposed, self.decision = amounts[0], False
+            return True
+        return False
+
+    def _read_initial_binding(self, text: str) -> None:
+        initial = _INITIAL.search(text)
+        amounts = _AMOUNT.findall(text)
+        if (
+            self.field is not None
+            and len(amounts) == 1
+            and initial is not None
+            and not _question_in_clause(text, initial.start())
         ):
-            acceptance_clause = text[acceptance.start() :]
-            terminator = _clause_terminator(text, acceptance.start())
-            if terminator is not None:
-                acceptance_clause = text[
-                    acceptance.start() : acceptance.start() + terminator.end()
-                ]
-            acceptance_amounts = _AMOUNT.findall(acceptance_clause)
-            accepted = (
-                acceptance_amounts[0]
-                if len(acceptance_amounts) == 1
-                else self.proposed
-                if not acceptance_amounts
-                else None
-            )
-            if accepted is not None:
-                self.binding, self.proposed, self.decision = accepted, None, True
-        elif _PROPOSAL.search(text) and amount:
-            self.proposed, self.decision = amount, False
-        elif self.field is not None and amount and (initial := _INITIAL.search(text)):
-            if not _question_in_clause(text, initial.start()):
-                self.binding, self.proposed, self.decision = amount, None, False
+            self.binding, self.proposed, self.decision = amounts[0], None, False
 
 
 def _verified_number_card_reply(source: str, content: str) -> str | None:

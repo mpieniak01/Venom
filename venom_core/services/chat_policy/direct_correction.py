@@ -154,6 +154,10 @@ class CorrectionContext:
     verified_reply: str | None = None
 
 
+def _fee_question(text: str) -> bool:
+    return "?" in text and bool(_FEE.search(text))
+
+
 @dataclass
 class _FeeState:
     field: str | None = None
@@ -177,11 +181,20 @@ class _FeeState:
         if _REJECT.search(text) and self.proposed is not None:
             self.proposed = None
             self.decision = True
-        elif _ACCEPT.search(text) and (accepted := amount or self.proposed):
-            self.binding, self.proposed, self.decision = accepted, None, True
+        elif _ACCEPT.search(text) and not _fee_question(text):
+            accepted = (
+                amount if amount is not None else self.proposed if not amounts else None
+            )
+            if accepted is not None:
+                self.binding, self.proposed, self.decision = accepted, None, True
         elif _PROPOSAL.search(text) and amount:
             self.proposed, self.decision = amount, False
-        elif self.field is not None and amount and _INITIAL.search(text):
+        elif (
+            self.field is not None
+            and amount
+            and _INITIAL.search(text)
+            and not _fee_question(text)
+        ):
             self.binding, self.proposed, self.decision = amount, None, False
 
 

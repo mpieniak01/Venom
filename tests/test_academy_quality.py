@@ -443,7 +443,13 @@ def test_external_outcome_is_historical_and_keeps_old_seals(tmp_path):
 
     payload = record()
     legacy = QualityRecord.model_validate(payload).model_dump(
-        mode="json", exclude={"cohorts", "reviewed_run", "candidate_sha256"}
+        mode="json",
+        exclude={
+            "cohorts",
+            "reviewed_run",
+            "candidate_sha256",
+            "candidate_config_sha256",
+        },
     )
     for item in legacy["cases"].values():
         for role in ("base", "candidate"):

@@ -1344,3 +1344,20 @@ def test_broad_panel_reservation_and_accepted_fee():
         prior,
     )
     assert result.verified_reply == "Obowiązuje 34 zł za osobę."
+
+
+def test_fee_binding_requires_one_unambiguous_declared_amount():
+    from venom_core.services.chat_policy.direct_correction import _FeeState
+
+    questioned = _FeeState()
+    questioned.read("Obowiązuje opłata 20 zł?")
+    assert questioned.binding is None
+
+    proposed = _FeeState(field="opłat", proposed="50")
+    proposed.read("Akceptuję opłatę 40 zł zamiast 10 zł.")
+    assert proposed.binding is None
+    assert proposed.proposed == "50"
+
+    accepted_without_amount = _FeeState(field="opłat", proposed="50")
+    accepted_without_amount.read("Akceptuję opłatę.")
+    assert accepted_without_amount.binding == "50"

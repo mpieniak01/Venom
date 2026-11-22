@@ -76,6 +76,7 @@ class QualityRecord(_QualityModel):
     source: QualitySource
     cases: dict[CaseId, QualityCase] = Field(min_length=1, max_length=MAX_QUALITY_CASES)
     candidate_sha256: Digest | None = None
+    candidate_config_sha256: Digest | None = None
     train_sha256: Digest | None = None
     recipe: dict[str, JsonValue] | None = None
     runtime: dict[str, JsonValue] | None = None

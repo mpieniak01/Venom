@@ -265,6 +265,10 @@ def grounding_kind(message: str, *, use_notes: bool = False) -> PublicSourceRead
         and (
             _weather_area(visible)
             or re.search(r"\b(pogod[ayę]|prognoz\w*)\b", visible, re.I)
+            or (
+                re.search(r"\btemperatur[ayę]\b", visible, re.I)
+                and re.search(r"\b(?:na zewnątrz|na dworze|na polu)\b", visible, re.I)
+            )
         )
     ):
         return PublicSourceRead.WEATHER

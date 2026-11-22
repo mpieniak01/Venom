@@ -938,6 +938,21 @@ def _qualify_locked(
         )
         if completed:
             assert result is not None
+            if spec.conversation_review_required:
+                if result.get("conversation_review_id") != spec.conversation_review_id:
+                    raise ValueError("remote_text_conversation_review_binding_invalid")
+                from .conversation_review import verify_final_review
+
+                current_review = verify_final_review(
+                    evidence_root,
+                    spec.conversation_review_id or "",
+                    binding,
+                    candidate_config_sha256=result.get("adapter_config_sha256", ""),
+                )
+                if stable_hash(current_review) != result.get(
+                    "conversation_review_sha256"
+                ):
+                    raise ValueError("remote_text_conversation_review_changed")
             return result
         if check is not None:
             check()
@@ -983,6 +998,20 @@ def _qualify_locked(
                 check()
             if result["qualified"] is not None:
                 _verify_parent(binding, academy_root)
+                if spec.conversation_review_required:
+                    publish_review = _qualification_review_receipt(
+                        spec, binding, evidence_root, adapter
+                    )
+                    if (
+                        publish_review is None
+                        or result.get("conversation_review_id")
+                        != spec.conversation_review_id
+                        or stable_hash(publish_review)
+                        != result.get("conversation_review_sha256")
+                        or review_receipt is None
+                        or stable_hash(publish_review) != stable_hash(review_receipt)
+                    ):
+                        raise ValueError("remote_text_conversation_review_changed")
                 _publish_adapter(academy_root, checkpoint, adapter, manifest["recipe"])
                 atomic_json(
                     directory / "catalog.json",

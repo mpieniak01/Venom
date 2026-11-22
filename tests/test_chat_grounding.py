@@ -19,6 +19,8 @@ from venom_core.services.chat_public_sources import load_public_sources
     ("message", "expected"),
     [
         ("Jaka pogoda w Warszawie?", "weather"),
+        ("Jaka jest teraz temperatura na zewnątrz?", "weather"),
+        ("Jaka jest temperatura pieczenia ciasta?", None),
         ("Co to jest temperatura?", "wiki"),
         ("Kim jest obecny prezydent Polski?", "web"),
         ("Jakie są dziś wiadomości z Polski?", "web"),

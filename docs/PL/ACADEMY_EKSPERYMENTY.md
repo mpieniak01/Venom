@@ -366,3 +366,16 @@ Do katalogu profili wgraj `$profile_id.data-audit.json` (wygenerowany `audit.jso
 Odczytaj stan przez `python -m scripts.academy.experiments --root "$experiment_root" audit "$profile_id"` lub w Academy. Raport, taksonomia, dane, przypięta baza, tokenizacja i limit wejścia muszą się zgadzać. Audyt blokuje duplikaty train, dokładnie wspólne znormalizowane pytania lub prefiksy train/dev i niespełnione progi. Porównanie tekstu używa normalizacji NFKC, składania wielkości liter i białych znaków. Nie mierzy podobieństwa semantycznego. Po zmianie plików wygeneruj nowy audyt i zapisz nowy plan.
 
 Raport pokazuje liczbę rekordów, liczbę tokenów nadzoru oraz pokrycie umiejętności. Liczniki dotyczą jednego przejścia przez plik train. Trener przed załadowaniem modelu sprawdza sumaryczne pomiary z raportu przy niezależnym kodowaniu. Budżet kroków oraz tryb `loss_mode` określają osobno ekspozycję danych i sposób ważenia straty. Zaliczenie audytu oznacza spełnienie zdefiniowanych warunków składu danych.
+
+
+## Rejestracja ręcznej oceny pełnych rozmów 0A
+
+Gdy kampania czeka na ocenę checkpointu, `status` zwraca `conversation_review_id` i dokładny `conversation_review_binding` dla każdej brakującej oceny. Zapisz do pliku JSON żądanie z polami `review_id`, `mode`, `panel`, `p13`, `candidate`, `binding`, `p13_identity`, `candidate_identity`, `reviewer_id` i `reviewer_note`. `panel` zawiera definicje rozmów i kryteriów; `p13` oraz `candidate` zawierają ręczne werdykty dla każdej tury w tym samym układzie. Tożsamości modeli muszą odpowiadać polom z bindingu. Dla oceny końcowej `mode` ma wartość `final`; dla checkpointu `dev`.
+
+Zarejestruj pakiet z katalogu Academy:
+
+```bash
+python -m scripts.academy.quality --root "$experiment_root" register-review "$request_json"
+```
+
+Polecenie ponownie liczy progi 0A, zapisuje niezmienny `receipt.json` i `judgments.json` atomowo oraz wypisuje wynik. Następne `status`/`advance` kampanii odczyta potwierdzenie i ponownie oceni wyłącznie oczekujące checkpointy. Nie edytuj ręcznie zapisanych plików.

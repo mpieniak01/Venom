@@ -388,6 +388,7 @@ def register_parent_reference(
             },
             "cases": evaluated_cases(report, categories, grades, mapping),
             "candidate_sha256": adapter["weights_sha256"],
+            "candidate_config_sha256": adapter["config_sha256"],
         }
     )
 

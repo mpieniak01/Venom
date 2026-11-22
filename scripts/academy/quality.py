@@ -7,6 +7,9 @@ import json
 from pathlib import Path
 
 from venom_core.config import SETTINGS
+from venom_core.services.training_experiments.conversation_review import (
+    register_review_request,
+)
 from venom_core.services.training_experiments.profiles import read_json
 from venom_core.services.training_experiments.quality import QualityStore
 from venom_core.services.training_experiments.quality_diagnostics import (
@@ -38,6 +41,8 @@ def main(argv: list[str] | None = None) -> None:
     parent.add_argument("checkpoint_step", type=int)
     parent.add_argument("generation", type=Path)
     parent.add_argument("record_id")
+    review = commands.add_parser("register-review")
+    review.add_argument("request", type=Path)
     commands.add_parser("list")
     commands.add_parser("show").add_argument("record_id")
     analyze = commands.add_parser("analyze")
@@ -63,6 +68,8 @@ def main(argv: list[str] | None = None) -> None:
                 args.checkpoint_step,
                 args.record_id,
             )
+        elif args.command == "register-review":
+            result = register_review_request(experiments.root, read_json(args.request))
         elif args.command == "list":
             result = list_records(experiments)
         elif args.command == "show":

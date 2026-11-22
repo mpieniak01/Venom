@@ -148,11 +148,11 @@ def freeze_inputs(root: Path, plan: dict, request: dict) -> dict:
     return {
         "inputs_id": request["inputs_id"],
         "reserve_seconds": request["reserve_seconds"],
-        "conversation_review_required": request.get(
-            "conversation_review_required", False
-        ),
         **(
-            {"conversation_review_id": request["conversation_review_id"]}
+            {
+                "conversation_review_required": True,
+                "conversation_review_id": request["conversation_review_id"],
+            }
             if request.get("conversation_review_required")
             else {}
         ),
@@ -248,7 +248,6 @@ def _finish_without_finalist(state: dict) -> None:
             status="awaiting_review",
             training_status=state.get("training_status", state["status"]),
             qualification_status="pending_conversation_review",
-            worker=None,
         )
     else:
         finish(

@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
+import tempfile
 from collections import Counter
 from pathlib import Path
 
@@ -237,10 +239,46 @@ def register_review(
     with file_lock(directory / ".conversation-review.lock"):
         if target.exists():
             raise ValueError("conversation_review_immutable_conflict")
-        target.mkdir(mode=0o700)
-        atomic_json(target / _JUDGMENTS_FILE, data)
-        atomic_json(target / _RECEIPT_FILE, receipt)
+        with tempfile.TemporaryDirectory(
+            prefix=f".{review_id}-", dir=directory
+        ) as staging:
+            staged = Path(staging) / review_id
+            staged.mkdir(mode=0o700)
+            atomic_json(staged / _JUDGMENTS_FILE, data)
+            atomic_json(staged / _RECEIPT_FILE, receipt)
+            os.replace(staged, target)
     return receipt
+
+
+def register_review_request(root: Path, request: object) -> dict:
+    """Register a complete operator request read from the Academy CLI JSON file."""
+    fields = {
+        "review_id",
+        "mode",
+        "panel",
+        "p13",
+        "candidate",
+        "binding",
+        "p13_identity",
+        "candidate_identity",
+        "reviewer_id",
+        "reviewer_note",
+    }
+    if not isinstance(request, dict) or set(request) != fields:
+        raise ValueError("conversation_review_request_invalid")
+    return register_review(
+        root,
+        request["review_id"],
+        mode=request["mode"],
+        panel=request["panel"],
+        p13=request["p13"],
+        candidate=request["candidate"],
+        binding=request["binding"],
+        p13_identity=request["p13_identity"],
+        candidate_identity=request["candidate_identity"],
+        reviewer_id=request["reviewer_id"],
+        reviewer_note=request["reviewer_note"],
+    )
 
 
 def _validate_registration(
@@ -285,8 +323,43 @@ def verify_review(
     target = operator_path(root / "conversation-reviews" / review_id)
     receipt_path = operator_path(target / _RECEIPT_FILE)
     judgments_path = operator_path(target / _JUDGMENTS_FILE)
-    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
-    data = json.loads(judgments_path.read_text(encoding="utf-8"))
+    try:
+        receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+        data = json.loads(judgments_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise ValueError("conversation_review_payload_invalid") from exc
+    required_receipt = {
+        "review_id",
+        "binding",
+        "binding_sha256",
+        "panel_sha256",
+        "p13_identity",
+        "candidate_identity",
+        "judgments_sha256",
+        "mode",
+        "status",
+    }
+    if (
+        not isinstance(receipt, dict)
+        or not required_receipt <= receipt.keys()
+        or not isinstance(data, dict)
+        or not isinstance(receipt.get("binding"), dict)
+        or any(
+            not isinstance(receipt.get(key), str)
+            for key in (
+                "binding_sha256",
+                "panel_sha256",
+                "judgments_sha256",
+                "mode",
+                "status",
+            )
+        )
+        or any(
+            not isinstance(receipt.get(key), dict)
+            for key in ("p13_identity", "candidate_identity")
+        )
+    ):
+        raise ValueError("conversation_review_payload_invalid")
     if receipt.get("review_id") != review_id:
         raise ValueError("conversation_review_identity_mismatch")
     if receipt.get("binding") != binding or receipt.get(
@@ -297,7 +370,11 @@ def verify_review(
         "candidate_identity"
     ) != receipt.get("candidate_identity"):
         raise ValueError("conversation_review_model_binding_invalid")
-    if set(data) != {"panel", "p13", "candidate"}:
+    if (
+        set(data) != {"panel", "p13", "candidate"}
+        or not isinstance(data.get("panel"), dict)
+        or any(not isinstance(data.get(name), dict) for name in ("p13", "candidate"))
+    ):
         raise ValueError("conversation_review_payload_invalid")
     if receipt.get("panel_sha256") != _payload_sha(data["panel"]):
         raise ValueError("conversation_review_panel_hash_mismatch")
@@ -324,21 +401,31 @@ def verify_final_review(
     candidate_config_sha256: str,
 ) -> dict:
     """Re-bind an immutable review to final result data when serving qualification."""
+    if not isinstance(review_id, str) or not _ID.fullmatch(review_id):
+        raise ValueError("conversation_review_id_invalid")
     target = operator_path(root / "conversation-reviews" / review_id)
-    receipt = json.loads(
-        operator_path(target / _RECEIPT_FILE).read_text(encoding="utf-8")
-    )
+    try:
+        receipt = json.loads(
+            operator_path(target / _RECEIPT_FILE).read_text(encoding="utf-8")
+        )
+    except json.JSONDecodeError as exc:
+        raise ValueError("conversation_review_receipt_invalid") from exc
+    if not isinstance(receipt, dict):
+        raise ValueError("conversation_review_receipt_invalid")
     binding = receipt.get("binding")
     if (
         not isinstance(binding, dict)
         or binding.get("qualification") != qualification_binding
     ):
         raise ValueError("conversation_review_binding_mismatch")
-    parent = qualification_binding.get("parent", {}).get("entry")
+    parent_spec = qualification_binding.get("parent")
+    parent = parent_spec.get("entry") if isinstance(parent_spec, dict) else None
     if not isinstance(parent, dict):
         raise ValueError("conversation_review_parent_binding_invalid")
-    candidate = binding.get("candidate_identity", {})
-    p13 = binding.get("p13_identity", {})
+    candidate = binding.get("candidate_identity")
+    p13 = binding.get("p13_identity")
+    if not isinstance(candidate, dict) or not isinstance(p13, dict):
+        raise ValueError("conversation_review_model_binding_invalid")
     if (
         candidate.get("weights_sha256")
         != qualification_binding.get("checkpoint_sha256")

@@ -561,6 +561,10 @@ def _repeat_candidates(state: dict, trial: dict) -> list[dict]:
         if trial["status"] == "succeeded"
         and item.get("result_sha256")
         and item.get("quality_guard", {}).get("status") == "passed"
+        and (
+            state["plan"].get("conversation_review") is None
+            or item.get("conversation_review_status") == "pass"
+        )
         and _passes_selection(item, state["plan"]["selection"])
         and item["usable_delta"] >= policy["min_usable_delta"]
     ]
@@ -599,6 +603,7 @@ def _confirm_repeat(state: dict) -> None:
         "timed_out",
         "stopped",
         "blocked",
+        "awaiting_review",
     }:
         return
     decision = state.get("extension_decision", {})
@@ -620,7 +625,33 @@ def _confirm_repeat(state: dict) -> None:
         for item in (_repeat_candidates(state, repeat) if repeat else [])
         if item.get("step") == decision.get("checkpoint_step")
     ]
-    if state["status"] not in {"stopped", "blocked"} and eligible:
+    pending_review = bool(
+        state["plan"].get("conversation_review")
+        and any(
+            row.get("conversation_review_status") == "pending"
+            for trial in (
+                next(
+                    (
+                        item
+                        for item in state["trials"]
+                        if item["run_id"] == decision.get("run_id")
+                    ),
+                    {},
+                ),
+                repeat,
+            )
+            for row in trial.get("checkpoint_evaluations", ())
+            if row.get("step") == decision.get("checkpoint_step")
+        )
+    )
+    if pending_review and state["status"] not in {"stopped", "blocked"}:
+        confirmation.update(
+            status="pending_review", reason="pending_conversation_review"
+        )
+        state["selected_run_id"] = None
+        if "selected_checkpoint_step" in state:
+            state["selected_checkpoint_step"] = None
+    elif state["status"] not in {"stopped", "blocked"} and eligible:
         _confirm_repeat_success(state, decision, repeat, eligible, confirmation)
     else:
         completed = (
@@ -864,9 +895,15 @@ class CampaignService:
                     / "receipt.json"
                 ).is_file()
             ]
+            pending_by_trial: dict[str, set[int]] = {}
+            for trial, row in pending:
+                pending_by_trial.setdefault(trial["run_id"], set()).add(row["step"])
             for trial, _row in pending:
                 self._record_checkpoint_results(
-                    state, trial, state["plan"].get("quality_policy")
+                    state,
+                    trial,
+                    state["plan"].get("quality_policy"),
+                    steps=pending_by_trial[trial["run_id"]],
                 )
             if pending:
                 _rank(state)
@@ -901,6 +938,9 @@ class CampaignService:
 
     def _review_repeat_confirmation(self, state: dict) -> None:
         confirmation = state.get("repeat_confirmation", {})
+        if confirmation.get("status") == "pending_review":
+            _confirm_repeat(state)
+            confirmation = state.get("repeat_confirmation", {})
         if confirmation.get("status") != "passed":
             return
         try:
@@ -1608,6 +1648,7 @@ class CampaignService:
         if (
             parent["split"] != "dev"
             or parent["candidate_sha256"] != p13_identity["weights_sha256"]
+            or parent.get("candidate_config_sha256") != p13_identity["config_sha256"]
             or parent["identity"]["model"] != p13_identity["model"]
             or parent["identity"]["base_sha256"] != p13_identity["snapshot_sha256"]
             or parent["identity"]["dataset_sha256"]
@@ -1647,14 +1688,35 @@ class CampaignService:
         return receipt, binding
 
     def _record_checkpoint_results(
-        self, state: dict, trial: dict, policy: dict | None
+        self,
+        state: dict,
+        trial: dict,
+        policy: dict | None,
+        *,
+        steps: set[int] | None = None,
     ) -> None:
         try:
             self._verify_quality_policy(state["plan"])
-            trial["checkpoint_evaluations"] = [
+            evaluated = [
                 self._assess_checkpoint(state, trial["run_id"], step, policy)
-                for step in state["plan"]["checkpoint_steps"]
+                for step in (
+                    sorted(steps)
+                    if steps is not None
+                    else state["plan"]["checkpoint_steps"]
+                )
             ]
+            if steps is None:
+                trial["checkpoint_evaluations"] = evaluated
+            else:
+                by_step = {
+                    row["step"]: row for row in trial.get("checkpoint_evaluations", ())
+                }
+                by_step.update({row["step"]: row for row in evaluated})
+                trial["checkpoint_evaluations"] = [
+                    by_step[step]
+                    for step in state["plan"]["checkpoint_steps"]
+                    if step in by_step
+                ]
         except (OSError, ValueError, KeyError, TypeError) as exc:
             reason = _quality_error(exc)
             state["quality_policy_error"] = reason

@@ -336,6 +336,7 @@ def _checkpoint_campaign(tmp_path, monkeypatch):
         "split": "dev",
         "source": {"sha256": "2" * 64},
         "candidate_sha256": p13_identity["weights_sha256"],
+        "candidate_config_sha256": p13_identity["config_sha256"],
         "identity": expected_identity,
     }
     report = {
@@ -597,3 +598,59 @@ def test_scorer_stops_checkpoint_with_critical_error_or_lost_full_pass():
     assert result["status"] == "STOP"
     assert "C000/T0" in result["critical"]
     assert "C001" in result["lost"]
+
+
+def test_malformed_nested_payloads_raise_conversation_review_errors(tmp_path):
+    binding, receipt = _register(tmp_path)
+    judgments_path = (
+        tmp_path / "conversation-reviews" / receipt["review_id"] / "judgments.json"
+    )
+    judgments_path.write_text(json.dumps({"panel": [], "p13": {}, "candidate": {}}))
+    with pytest.raises(ValueError, match="conversation_review_payload_invalid"):
+        verify_review(tmp_path, receipt["review_id"], binding)
+
+    receipt_path = (
+        tmp_path / "conversation-reviews" / receipt["review_id"] / "receipt.json"
+    )
+    receipt_path.write_text(json.dumps(["invalid"]))
+    with pytest.raises(ValueError, match="conversation_review_receipt_invalid"):
+        verify_final_review(
+            tmp_path,
+            receipt["review_id"],
+            binding["qualification"],
+            candidate_config_sha256=binding["candidate_identity"]["config_sha256"],
+        )
+
+
+def test_review_registration_never_publishes_partial_directory(tmp_path, monkeypatch):
+    import venom_core.services.training_experiments.conversation_review as review_module
+
+    panel, p13, candidate = _evidence()
+    _binding, receipt = _register(tmp_path / "seed")
+    original = review_module.atomic_json
+    writes = 0
+
+    def fail_second(path, payload):
+        nonlocal writes
+        writes += 1
+        if writes == 2:
+            raise OSError("simulated write failure")
+        return original(path, payload)
+
+    monkeypatch.setattr(review_module, "atomic_json", fail_second)
+    target = tmp_path / "failed" / "conversation-reviews"
+    with pytest.raises(OSError, match="simulated"):
+        review_module.register_review(
+            tmp_path / "failed",
+            "review-0a-02",
+            mode="dev",
+            panel=panel,
+            p13=p13,
+            candidate=candidate,
+            binding=receipt["binding"],
+            p13_identity=receipt["p13_identity"],
+            candidate_identity=receipt["candidate_identity"],
+            reviewer_id="operator-7",
+            reviewer_note="atomicity check",
+        )
+    assert not (target / "review-0a-02").exists()
